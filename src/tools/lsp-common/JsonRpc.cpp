@@ -25,6 +25,10 @@ bool parseRequest(const JsonValue &msg, JsonRpcRequest &out) {
     if (msg.type() != JsonType::Object)
         return false;
 
+    const auto *jsonrpc = msg.get("jsonrpc");
+    if (!jsonrpc || jsonrpc->type() != JsonType::String || jsonrpc->asString() != "2.0")
+        return false;
+
     // Method is required
     const auto *method = msg.get("method");
     if (!method || method->type() != JsonType::String)
@@ -37,6 +41,8 @@ bool parseRequest(const JsonValue &msg, JsonRpcRequest &out) {
 
     // ID is optional (null = notification)
     const auto *id = msg.get("id");
+    if (id && !(id->isNull() || id->type() == JsonType::String || id->type() == JsonType::Int))
+        return false;
     out.id = id ? *id : JsonValue();
 
     return true;

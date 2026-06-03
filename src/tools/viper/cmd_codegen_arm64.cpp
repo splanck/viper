@@ -15,13 +15,16 @@
 #include "codegen/aarch64/CodegenPipeline.hpp"
 #include "tools/common/ArgvView.hpp"
 
+#include <charconv>
 #include <cstdlib>
 #include <exception>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 
 namespace viper::tools::ilc {
@@ -30,7 +33,7 @@ namespace {
 using viper::tools::ArgvView;
 
 constexpr std::string_view kUsage =
-    "usage: ilc codegen arm64 <file.il> [-S <file.s>] [-o <a.out>] [-run-native]\n"
+    "usage: viper codegen arm64 <file.il> [-S <file.s>] [-o <a.out>] [-run-native]\n"
     "       [--stack-size=SIZE]\n"
     "       [--dump-mir-before-ra] [--dump-mir-after-ra] [--dump-mir-full]\n"
     "       [--native-asm|--system-asm] [--native-link|--system-link(deprecated)]\n"
@@ -41,11 +44,49 @@ constexpr std::string_view kUsage =
 
 using Pipeline = viper::codegen::aarch64::CodegenPipeline;
 
+/// @brief Result of parsing the arm64 codegen arguments.
+/// @details @c opts holds the pipeline options on success; @c diagnostics holds
+///          usage/error text when parsing fails (and @c opts is left empty).
 struct ParseOutcome {
-    std::optional<Pipeline::Options> opts{};
-    std::string diagnostics{};
+    std::optional<Pipeline::Options> opts{}; ///< Parsed options, or empty on failure.
+    std::string diagnostics{};               ///< Usage/error text when parsing fails.
 };
 
+/// @brief Parse @p text as a base-10 int within [minValue, maxValue].
+/// @return true on a full, in-range parse; false otherwise (out left unset).
+bool parseIntInRange(std::string_view text, int minValue, int maxValue, int &out) {
+    int value = 0;
+    const auto *begin = text.data();
+    const auto *end = text.data() + text.size();
+    auto [ptr, ec] = std::from_chars(begin, end, value);
+    if (ec != std::errc{} || ptr != end || value < minValue || value > maxValue)
+        return false;
+    out = value;
+    return true;
+}
+
+/// @brief Parse @p text as a base-10 size_t value.
+/// @return true on a full, in-range parse; false otherwise.
+bool parseSize(std::string_view text, std::size_t &out) {
+    unsigned long long value = 0;
+    const auto *begin = text.data();
+    const auto *end = text.data() + text.size();
+    auto [ptr, ec] = std::from_chars(begin, end, value);
+    if (ec != std::errc{} || ptr != end ||
+        value > static_cast<unsigned long long>(std::numeric_limits<std::size_t>::max())) {
+        return false;
+    }
+    out = static_cast<std::size_t>(value);
+    return true;
+}
+
+/// @brief Parse the arm64 codegen command-line arguments into pipeline options.
+/// @details The first argument is the input IL path; remaining flags select
+///          output mode (-S/-o), optimization level, and native execution. On any
+///          error (including an empty argument list) the returned outcome carries
+///          diagnostics text and no options.
+/// @param args Non-owning view over the subcommand's arguments.
+/// @return A ParseOutcome with options on success or diagnostics on failure.
 ParseOutcome parseArgs(const ArgvView &args) {
     ParseOutcome outcome{};
     if (args.empty()) {
@@ -83,15 +124,14 @@ ParseOutcome parseArgs(const ArgvView &args) {
             continue;
         }
         if (tok.substr(0, 13) == "--stack-size=") {
-            const std::string sizeStr = std::string(tok.substr(13));
-            char *endptr = nullptr;
-            const unsigned long long size = std::strtoull(sizeStr.c_str(), &endptr, 10);
-            if (endptr == sizeStr.c_str() || *endptr != '\0') {
-                diag << "error: invalid --stack-size value: " << sizeStr << "\n" << kUsage;
+            const std::string_view sizeText = tok.substr(13);
+            std::size_t size = 0;
+            if (!parseSize(sizeText, size)) {
+                diag << "error: invalid --stack-size value: " << sizeText << "\n" << kUsage;
                 outcome.diagnostics = diag.str();
                 return outcome;
             }
-            opts.stack_size = static_cast<std::size_t>(size);
+            opts.stack_size = size;
             continue;
         }
         if (tok == "--dump-mir-before-ra") {
@@ -113,7 +153,14 @@ ParseOutcome parseArgs(const ArgvView &args) {
                 outcome.diagnostics = diag.str();
                 return outcome;
             }
-            opts.optimize = std::atoi(std::string(args.at(++i)).c_str());
+            int level = 0;
+            const std::string_view value = args.at(++i);
+            if (!parseIntInRange(value, 0, 2, level)) {
+                diag << "error: invalid -O level: " << value << "\n" << kUsage;
+                outcome.diagnostics = diag.str();
+                return outcome;
+            }
+            opts.optimize = level;
             continue;
         }
         if (tok.size() == 3 && tok[0] == '-' && tok[1] == 'O' && tok[2] >= '0' && tok[2] <= '2') {
@@ -205,6 +252,14 @@ ParseOutcome parseArgs(const ArgvView &args) {
 
 int cmd_codegen_arm64(int argc, char **argv) {
     const ArgvView args{argc, argv};
+    if (args.empty()) {
+        std::cerr << kUsage;
+        return 1;
+    }
+    if (args.front() == "--help" || args.front() == "-h") {
+        std::cerr << kUsage;
+        return 0;
+    }
     const ParseOutcome parsed = parseArgs(args);
     if (!parsed.opts.has_value()) {
         if (!parsed.diagnostics.empty())

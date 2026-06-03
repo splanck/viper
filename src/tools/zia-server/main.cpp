@@ -25,7 +25,9 @@
 #include "tools/zia-server/CompilerBridge.hpp"
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <exception>
 #include <memory>
 
 using namespace viper::server;
@@ -39,6 +41,7 @@ static const ServerConfig kZiaConfig{
     "Zia",        // langLabel
 };
 
+/// @brief Print zia-server usage (protocol mode flags) to stderr.
 static void printUsage() {
     std::fprintf(stderr,
                  "Usage: zia-server [--mcp | --lsp | --help | --version]\n"
@@ -51,14 +54,16 @@ static void printUsage() {
                  "Default: auto-detect protocol from first input byte.\n");
 }
 
+/// @brief Print the zia-server version banner to stdout.
 static void printVersion() {
-    std::fprintf(stderr, "zia-server 0.1.0\n");
+    std::fprintf(stdout, "zia-server 0.1.0\n");
 }
 
+/// @brief Server protocol mode selected from the command line.
 enum class Mode {
-    Mcp,
-    Lsp,
-    AutoDetect,
+    Mcp,        ///< Serve the MCP protocol (newline-delimited JSON-RPC).
+    Lsp,        ///< Serve the LSP protocol (Content-Length framed JSON-RPC).
+    AutoDetect, ///< Choose MCP or LSP from the first byte of input.
 };
 
 /// @brief Main event loop: read messages, dispatch, write responses.
@@ -81,7 +86,12 @@ static int runMcpServer(Transport &transport, CompilerBridge &bridge) {
             continue;
         }
 
-        std::string response = handler.handleRequest(req);
+        std::string response;
+        try {
+            response = handler.handleRequest(req);
+        } catch (const std::exception &e) {
+            response = buildError(req.id, kInternalError, e.what());
+        }
         if (!response.empty())
             transport.writeMessage(response);
     }
@@ -92,58 +102,89 @@ static int runMcpServer(Transport &transport, CompilerBridge &bridge) {
 static int runLspServer(Transport &transport, CompilerBridge &bridge) {
     LspHandler handler(bridge, transport, kZiaConfig);
     RawMessage msg;
+    const bool verbose = std::getenv("VIPER_LSP_LOG") != nullptr;
 
-    std::fprintf(stderr, "[zia-server] LSP server started\n");
-    std::fflush(stderr);
+    if (verbose) {
+        std::fprintf(stderr, "[zia-server] LSP server started\n");
+        std::fflush(stderr);
+    }
 
     while (transport.readMessage(msg)) {
-        std::fprintf(stderr, "[zia-server] recv %zu bytes\n", msg.content.size());
-        std::fflush(stderr);
+        if (verbose) {
+            std::fprintf(stderr, "[zia-server] recv %zu bytes\n", msg.content.size());
+            std::fflush(stderr);
+        }
 
         JsonValue json;
         try {
             json = JsonValue::parse(msg.content);
         } catch (const std::exception &e) {
-            std::fprintf(stderr, "[zia-server] parse error: %s\n", e.what());
-            std::fflush(stderr);
+            if (verbose) {
+                std::fprintf(stderr, "[zia-server] parse error: %s\n", e.what());
+                std::fflush(stderr);
+            }
             transport.writeMessage(buildError(JsonValue(), kParseError, "Parse error"));
             continue;
         }
 
         JsonRpcRequest req;
         if (!parseRequest(json, req)) {
-            std::fprintf(stderr, "[zia-server] invalid request\n");
-            std::fflush(stderr);
+            if (verbose) {
+                std::fprintf(stderr, "[zia-server] invalid request\n");
+                std::fflush(stderr);
+            }
             transport.writeMessage(buildError(JsonValue(), kInvalidRequest, "Invalid Request"));
             continue;
         }
 
-        std::fprintf(stderr,
-                     "[zia-server] method=%s id=%s\n",
-                     req.method.c_str(),
-                     req.id.isNull() ? "null" : req.id.toCompactString().c_str());
-        std::fflush(stderr);
+        if (verbose) {
+            std::fprintf(stderr,
+                         "[zia-server] method=%s id=%s\n",
+                         req.method.c_str(),
+                         req.id.isNull() ? "null" : req.id.toCompactString().c_str());
+            std::fflush(stderr);
+        }
 
         // exit notification ends the loop
         if (req.method == "exit")
-            break;
+            return handler.shutdownRequested() ? 0 : 1;
 
-        std::string response = handler.handleRequest(req);
+        std::string response;
+        try {
+            response = handler.handleRequest(req);
+        } catch (const std::exception &e) {
+            if (verbose) {
+                std::fprintf(stderr, "[zia-server] handler error: %s\n", e.what());
+                std::fflush(stderr);
+            }
+            response = buildError(req.id, kInternalError, e.what());
+        }
         if (!response.empty()) {
-            std::fprintf(stderr, "[zia-server] resp %zu bytes\n", response.size());
-            std::fflush(stderr);
+            if (verbose) {
+                std::fprintf(stderr, "[zia-server] resp %zu bytes\n", response.size());
+                std::fflush(stderr);
+            }
             transport.writeMessage(response);
-        } else {
+        } else if (verbose) {
             std::fprintf(stderr, "[zia-server] (no response — notification handled)\n");
             std::fflush(stderr);
         }
     }
 
-    std::fprintf(stderr, "[zia-server] LSP server exiting\n");
-    std::fflush(stderr);
+    if (verbose) {
+        std::fprintf(stderr, "[zia-server] LSP server exiting\n");
+        std::fflush(stderr);
+    }
     return 0;
 }
 
+/// @brief Entry point for the Zia language server.
+/// @details Parses --mcp/--lsp/--help/--version, then runs the selected protocol
+///          server (auto-detecting from the first input byte by default) with a
+///          CompilerBridge backing the shared LSP/MCP handlers.
+/// @param argc Argument count from the C runtime.
+/// @param argv Argument vector from the C runtime.
+/// @return Process exit status (0 on clean shutdown).
 int main(int argc, char **argv) {
     platformInitStdio();
 

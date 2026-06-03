@@ -4,6 +4,26 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/tools/common/vm_executor.cpp
+// Purpose: Standardise how CLI tools run an IL module on the bytecode VM,
+//          including bytecode compilation, runtime argument setup, and trap
+//          reporting.
+// Key invariants: Bytecode is produced via compileChecked() so trusted dispatch
+//                 is safe; runtime args are reset before each run so a stale
+//                 host argv never leaks into a subsequent execution.
+// Ownership/Lifetime: The caller owns the IL module; bytecode and VM state are
+//                     local to the call. rt_string temporaries are unref'd
+//                     immediately after being pushed to the runtime arg list.
+// Links: src/tools/common/vm_executor.hpp, src/bytecode/BytecodeVM.hpp
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Shared bytecode-VM execution helper for the language frontend tools.
+/// @details Wraps the compile-to-bytecode, configure-VM, run-"main", and
+///          trap-handling sequence behind a single call so each frontend tool
+///          executes IL identically.
 
 #include "tools/common/vm_executor.hpp"
 
@@ -15,9 +35,27 @@
 
 #include <cstdio>
 #include <iostream>
+#include <limits>
 
 namespace il::tools::common {
 
+/// @brief Execute an IL module on the bytecode VM.
+/// @details Compiles @p module with BytecodeCompiler::compileChecked (so the
+///          interpreter can run with trusted dispatch); a compile failure is
+///          returned with @c compileFailed set and the diagnostic optionally
+///          printed. Runtime arguments are reset via rt_args_clear() and then
+///          repopulated from @c config.programArgs — an empty list deliberately
+///          suppresses the native host-argv fallback. The VM is configured with
+///          threaded dispatch, the caller's trusted-dispatch preference, the
+///          runtime bridge enabled, and the @c maxSteps instruction budget, then
+///          the "main" function is run. A trap sets @c trapped, captures the trap
+///          message, and yields exit code 1. Otherwise the exit code is main's
+///          return value, unless it falls outside the host @c int range — in
+///          which case @c exitCodeOutOfRange is set and the exit code is 1.
+///          stdout is flushed when requested.
+/// @param module The IL module to execute.
+/// @param config Execution configuration (arguments, trap output, flush, etc.).
+/// @return Execution result including exit code and trap/compile status.
 VMExecutorResult executeBytecodeVM(const il::core::Module &module, const VMExecutorConfig &config) {
     VMExecutorResult result;
 
@@ -29,7 +67,7 @@ VMExecutorResult executeBytecodeVM(const il::core::Module &module, const VMExecu
         result.trapped = false;
         result.exitCode = 1;
         result.trapMessage = compiled.error().message;
-        if (config.outputTrapMessage) {
+        if (config.outputCompileDiagnostics) {
             il::support::printDiag(compiled.error(), std::cerr, config.sourceManager);
         }
         if (config.flushStdout) {
@@ -53,6 +91,7 @@ VMExecutorResult executeBytecodeVM(const il::core::Module &module, const VMExecu
     bcVm.setThreadedDispatch(true);
     bcVm.setTrustedDispatch(config.trustedDispatch);
     bcVm.setRuntimeBridgeEnabled(true);
+    bcVm.setMaxInstructions(config.maxSteps);
     bcVm.load(&bcModule);
 
     viper::bytecode::BCSlot bcResult = bcVm.exec("main", {});
@@ -67,7 +106,20 @@ VMExecutorResult executeBytecodeVM(const il::core::Module &module, const VMExecu
             std::cerr << result.trapMessage << "\n";
         }
     } else {
-        result.exitCode = 0;
+        const auto intMin = static_cast<int64_t>(std::numeric_limits<int>::min());
+        const auto intMax = static_cast<int64_t>(std::numeric_limits<int>::max());
+        if (bcResult.i64 < intMin || bcResult.i64 > intMax) {
+            result.exitCodeOutOfRange = true;
+            result.exitCode = 1;
+            result.trapMessage = "program return value " + std::to_string(bcResult.i64) +
+                                 " outside host int range [" + std::to_string(intMin) + ", " +
+                                 std::to_string(intMax) + "]";
+            if (config.outputTrapMessage) {
+                std::cerr << result.trapMessage << "\n";
+            }
+        } else {
+            result.exitCode = static_cast<int>(bcResult.i64);
+        }
     }
 
     if (config.flushStdout) {

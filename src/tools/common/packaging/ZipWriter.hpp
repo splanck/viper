@@ -34,6 +34,11 @@
 
 namespace viper::pkg {
 
+/// @brief Builds a ZIP archive in memory with Unix permission bits preserved.
+/// @details Accumulates entries (files, directories, symlinks), optionally
+///          DEFLATE-compressing each, and serializes a spec-compliant archive on
+///          finish()/finishToVector(). Unix modes are stored in the external file
+///          attributes so macOS .app bundles keep their executable bits.
 class ZipWriter {
   public:
     /// @brief Metadata about a written entry, used by callers that need the

@@ -49,18 +49,22 @@ constexpr const char *kUsageMessage = VIPER_BASIC_TOOL_USAGE;
 ///          1. Validate @p path and emit the shared usage text when no argument
 ///             was supplied, allowing callers to exit early with a consistent
 ///             message.
-///          2. Stream the file contents into an @ref std::ostringstream to
-///             preserve original newlines and avoid partial reads.
-///          3. Register the path with the provided @ref il::support::SourceManager
+///          2. Reject files larger than the 256 MB limit (or with an
+///             unmeasurable size) before any allocation, guarding against
+///             out-of-memory conditions on pathological inputs.
+///          3. Read the bytes into a pre-sized buffer in a single read,
+///             reporting an "incomplete read" diagnostic on a short read and an
+///             out-of-memory diagnostic if the allocation throws @c std::bad_alloc.
+///          4. Register the path with the provided @ref il::support::SourceManager
 ///             so downstream diagnostics can resolve the file identifier back to
 ///             the textual path.
-///          4. Copy the buffered contents into @p buffer only after the previous
+///          5. Copy the buffered contents into @p buffer only after the previous
 ///             steps have succeeded, leaving the caller's storage untouched when
 ///             failures occur.
-///          Errors while opening the file or registering the path are reported to
-///          @c std::cerr with human-readable messages.  The function returns an
-///          engaged optional only when the caller can safely proceed with
-///          compilation.
+///          Errors while opening the file, exceeding the size limit, or
+///          registering the path are reported to @c std::cerr with human-readable
+///          messages.  The function returns an engaged optional only when the
+///          caller can safely proceed with compilation.
 ///
 /// @param path Filesystem path provided on the command line.
 /// @param buffer Destination string that receives the file contents on success.
@@ -90,11 +94,15 @@ std::optional<std::uint32_t> loadBasicSource(const char *path,
         return std::nullopt;
     }
 
-    std::string contents;
+    std::string contents(static_cast<std::size_t>(fileSize), '\0');
     try {
-        std::ostringstream ss;
-        ss << in.rdbuf();
-        contents = ss.str();
+        if (!contents.empty()) {
+            in.read(contents.data(), static_cast<std::streamsize>(contents.size()));
+            if (!in || in.gcount() != static_cast<std::streamsize>(contents.size())) {
+                std::cerr << "incomplete read of " << path << "\n";
+                return std::nullopt;
+            }
+        }
     } catch (const std::bad_alloc &) {
         std::cerr << "out of memory reading " << path << "\n";
         return std::nullopt;

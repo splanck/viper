@@ -20,16 +20,18 @@
 #include "cli.hpp"
 #include "cmd_codegen_arm64.hpp"
 #include "cmd_codegen_x64.hpp"
-#include "frontends/basic/Intrinsics.hpp"
 #include "il/core/Module.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 #include "viper/version.hpp"
 #include <algorithm>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <vector>
 
 #ifdef _WIN32
 #include <cstdlib>
@@ -56,7 +58,9 @@ void printVersion() {
 } // namespace
 
 namespace {
-// --dump-runtime-descriptors implementation (stable formatting)
+/// @brief Implement `--dump-runtime-descriptors`: print the runtime descriptor
+///        table in a stable, sorted format to stdout.
+/// @return 0 on success.
 int dumpRuntimeDescriptors() {
     using il::runtime::findRuntimeSignatureId;
     using il::runtime::RuntimeDescriptor;
@@ -195,7 +199,9 @@ int dumpRuntimeDescriptors() {
 } // namespace
 
 namespace {
-// --dump-runtime-classes implementation (stable formatting)
+/// @brief Implement `--dump-runtime-classes`: print the runtime class catalog
+///        (properties, methods, constructors) in a stable format to stdout.
+/// @return 0 on success.
 int dumpRuntimeClasses() {
     const auto &classes = il::runtime::runtimeClassCatalog();
     for (const auto &c : classes) {
@@ -220,78 +226,58 @@ int dumpRuntimeClasses() {
 
 /// @brief Print synopsis and option hints for the `viper` CLI.
 ///
-/// @details Step-by-step summary:
-///          1. Emit the tool banner with version information.
-///          2. Print usage lines for the `-run`, `front zia`, `front basic`,
-///             and `il-opt` subcommands, mirroring the behaviour of their
-///             handlers.
-///          3. Provide IL and BASIC specific notes, including intrinsic
-///             listings supplied by the BASIC front end.
+/// @details The top-level help intentionally stays short. Subcommand-specific
+///          help carries detailed flags so unrelated implementation options do
+///          not crowd the common command list.
 void usage() {
     std::cerr
         << "viper v" << VIPER_VERSION_STR << "\n"
-        << "Usage: viper run <target> [options] [-- program-args...]\n"
-        << "       viper build <target> [-o output] [options]\n"
+        << "Usage: viper <command> [arguments]\n"
+        << "\n"
+        << "Common commands:\n"
+        << "       viper run [target] [options] [-- program-args...]\n"
+        << "       viper build [target] [-o output] [options]\n"
         << "       viper init <project-name> [--lang zia|basic]\n"
-        << "       viper repl [zia|basic]       Interactive REPL session\n"
-        << "       viper package [target] [--target macos|linux|windows|tarball]\n"
-        << "                              [--arch arm64|x64] [-o output]\n"
-        << "       viper install-package [--target windows|macos|linux-deb|linux-rpm|tarball|all]\n"
-        << "                             (--stage-dir DIR | --build-dir DIR) [-o output]\n"
+        << "       viper repl [zia|basic]\n"
+        << "       viper package [target] [--target macos|linux|windows|tarball] [-o output]\n"
         << "\n"
-        << "  <target> is a .zia file, .bas file, directory, or viper.project path.\n"
-        << "  If omitted, defaults to current directory.\n"
+        << "Developer commands:\n"
+        << "       viper front zia|basic ...\n"
+        << "       viper -run <file.il> ...\n"
+        << "       viper il-opt <file.il> -o <out.il> ...\n"
+        << "       viper codegen x64|arm64 <file.il> ...\n"
+        << "       viper bench <file.il> ...\n"
+        << "       viper install-package ...\n"
         << "\n"
-        << "  Build output:\n"
-        << "    -o output.il       Emit IL text to file\n"
-        << "    -o output          Compile to native binary\n"
-        << "    (no -o)            Emit IL to stdout\n"
-        << "    --arch arm64|x64   Override target architecture (default: host)\n"
-        << "    --fast-link        Skip native-link size reductions for faster edit builds\n"
+        << "Targets:\n"
+        << "  A target is a .zia file, .bas file, directory, or viper.project path.\n"
+        << "  If omitted where supported, the target defaults to the current directory.\n"
         << "\n"
-        << "  Options: [--trace=il|src] [--stdin-from <file>] [--max-steps N]\n"
-        << "           [--bounds-checks|--no-bounds-checks] [--dump-trap] [--debug-vm]\n"
-        << "           [--build-profile debug|balanced|release] [-O0|-O1|-O2]\n"
-        << "           [--strict-diagnostics|--no-strict-diagnostics] [--no-runtime-namespaces]\n"
-        << "  Diagnostics: [--dump-tokens] [--dump-ast] [--dump-sema-ast] [--dump-il]\n"
-        << "               [--dump-il-opt] [--dump-il-passes] [--diagnostic-format text|json]\n"
-        << "               [--quiet-warnings] [--verify-each] [--paranoid-verify]\n"
-        << "               [--time-compile] [--pass-stats]\n"
-        << "\n"
-        << "Advanced:\n"
-        << "       viper -run <file.il> [--trace=il|src] [--stdin-from <file>] [--max-steps N]"
-           " [--break label|file:line]* [--break-src file:line]* [--watch name]* [--bounds-checks] "
-           "[--count] [--time] [--dump-trap]\n"
-        << "       viper front zia -emit-il <file.zia> [--bounds-checks|--no-bounds-checks] "
-           "[--no-runtime-namespaces]\n"
-        << "       viper front zia -run <file.zia> [--trace=il|src] [--stdin-from <file>] "
-           "[--max-steps N] [--bounds-checks|--no-bounds-checks] [--dump-trap] "
-           "[--debug-vm] [--no-runtime-namespaces]\n"
-        << "       viper front basic -emit-il <file.bas> [--bounds-checks|--no-bounds-checks] "
-           "[--no-runtime-namespaces]\n"
-        << "       viper front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>] "
-           "[--max-steps N] [--bounds-checks|--no-bounds-checks] [--dump-trap] [--debug-vm] "
-           "[--no-runtime-namespaces]\n"
-        << "       viper codegen x64 <in.il> [-S <out.s>] [-o <exe|obj>] [-run-native]\n"
-        << "                         [--native-asm|--system-asm] "
-           "[--native-link|--system-link(deprecated)] [--fast-link]\n"
-        << "       viper codegen arm64 <in.il> [-S <out.s>] [-o <exe|obj>] [-run-native]\n"
-        << "                         [--native-asm|--system-asm] [--fast-link]\n"
-        << "       viper il-opt <in.il> -o <out.il> [--passes p1,p2] [--pipeline O0|O1|O2]\n"
-        << "                     [-print-before] [-print-after] [-verify-each] [--pass-stats]"
-           " [--bisect-pipeline]\n"
-        << "       viper bench <file.il> [file2.il ...] [-n N] [--table|--switch|--threaded] "
-           "[--json]\n"
-        << "\nIL notes:\n"
-        << "  IL modules executed with -run must define func @main().\n"
-        << "\nBASIC notes:\n"
-        << "  FUNCTION must RETURN a value on all paths.\n"
-        << "  SUB cannot be used as an expression.\n"
-        << "  Array parameters are ByRef; pass the array variable, not an index.\n"
-        << "  Runtime namespaces: default ON; pass --no-runtime-namespaces to disable.\n"
-        << "  Intrinsics: ";
-    il::frontends::basic::intrinsics::dumpNames(std::cerr);
-    std::cerr << "\n";
+        << "Help:\n"
+        << "       viper help <command>\n"
+        << "       viper help package\n"
+        << "       viper help front zia|basic\n"
+        << "       viper help codegen x64|arm64\n"
+        << "       viper --version\n";
+}
+
+/// @brief Invoke a subcommand handler with a synthetic `--help` argument vector.
+/// @details Lets `viper help <command>` reuse each subcommand's own help text.
+int invokeHelp(int (*handler)(int, char **)) {
+    char helpFlag[] = "--help";
+    char *helpArgv[] = {helpFlag};
+    return handler(1, helpArgv);
+}
+
+/// @brief Print usage for the `viper codegen` subcommand (architectures + options).
+void codegenUsage() {
+    std::cerr << "Usage: viper codegen <arch> <file.il> [options]\n"
+              << "\n"
+              << "Architectures:\n"
+              << "  x64\n"
+              << "  arm64\n"
+              << "\n"
+              << "Use 'viper help codegen x64' or 'viper help codegen arm64' for backend options.\n";
 }
 
 namespace viper::tools::ilc {
@@ -335,6 +321,10 @@ int main(int argc, char **argv) {
         return 1;
     }
     std::string cmd = argv[1];
+    if (cmd == "--help" || cmd == "-h") {
+        usage();
+        return 0;
+    }
     if (cmd == "--version") {
         printVersion();
         return 0;
@@ -364,13 +354,47 @@ int main(int argc, char **argv) {
         return cmdRepl(argc - 2, argv + 2);
     }
     if (cmd == "help") {
-        if (argc >= 3 && std::string(argv[2]) == "package") {
-            // Show package-specific help via --help flag
-            char helpFlag[] = "--help";
-            char *helpArgv[] = {helpFlag};
-            cmdPackage(1, helpArgv);
+        if (argc < 3) {
+            usage();
             return 0;
         }
+        const std::string_view topic = argv[2];
+        if (topic == "run")
+            return invokeHelp(cmdRun);
+        if (topic == "build")
+            return invokeHelp(cmdBuild);
+        if (topic == "init")
+            return invokeHelp(cmdInit);
+        if (topic == "package")
+            return invokeHelp(cmdPackage);
+        if (topic == "install-package")
+            return invokeHelp(cmdInstallPackage);
+        if (topic == "repl")
+            return invokeHelp(cmdRepl);
+        if (topic == "-run")
+            return invokeHelp(cmdRunIL);
+        if (topic == "il-opt")
+            return invokeHelp(cmdILOpt);
+        if (topic == "bench")
+            return invokeHelp(cmdBench);
+        if (topic == "front") {
+            if (argc >= 4 && std::string_view(argv[3]) == "zia")
+                return invokeHelp(cmdFrontZia);
+            if (argc >= 4 && std::string_view(argv[3]) == "basic")
+                return invokeHelp(cmdFrontBasic);
+            std::cerr << "Usage: viper front zia|basic ...\n"
+                      << "Use 'viper help front zia' or 'viper help front basic'.\n";
+            return 0;
+        }
+        if (topic == "codegen") {
+            if (argc >= 4 && std::string_view(argv[3]) == "x64")
+                return invokeHelp(viper::tools::ilc::cmd_codegen_x64);
+            if (argc >= 4 && std::string_view(argv[3]) == "arm64")
+                return invokeHelp(viper::tools::ilc::cmd_codegen_arm64);
+            codegenUsage();
+            return 0;
+        }
+        std::cerr << "unknown help topic: " << topic << "\n";
         usage();
         return 0;
     }
@@ -384,6 +408,11 @@ int main(int argc, char **argv) {
         return cmdBench(argc - 2, argv + 2);
     }
     if (cmd == "codegen") {
+        if (argc >= 3 && (std::string_view(argv[2]) == "--help" ||
+                          std::string_view(argv[2]) == "-h")) {
+            codegenUsage();
+            return 0;
+        }
         if (argc >= 3) {
             if (std::string_view(argv[2]) == "x64") {
                 return viper::tools::ilc::run_codegen_x64(argc - 2, argv + 2);

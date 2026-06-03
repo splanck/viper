@@ -21,19 +21,23 @@
 namespace viper::pkg {
 namespace {
 
+/// @brief Rotate a 32-bit value left by @p bits (SHA-1 round operation).
 uint32_t rol32(uint32_t value, unsigned bits) {
     return (value << bits) | (value >> (32u - bits));
 }
 
+/// @brief Rotate a 32-bit value right by @p bits (SHA-256 round operation).
 uint32_t ror32(uint32_t value, unsigned bits) {
     return (value >> bits) | (value << (32u - bits));
 }
 
+/// @brief Read four bytes at @p p as a big-endian 32-bit word.
 uint32_t readBE32(const uint8_t *p) {
     return (static_cast<uint32_t>(p[0]) << 24) | (static_cast<uint32_t>(p[1]) << 16) |
            (static_cast<uint32_t>(p[2]) << 8) | static_cast<uint32_t>(p[3]);
 }
 
+/// @brief Store @p value at @p p as a big-endian 32-bit word.
 void writeBE32(uint8_t *p, uint32_t value) {
     p[0] = static_cast<uint8_t>((value >> 24) & 0xffu);
     p[1] = static_cast<uint8_t>((value >> 16) & 0xffu);
@@ -41,6 +45,7 @@ void writeBE32(uint8_t *p, uint32_t value) {
     p[3] = static_cast<uint8_t>(value & 0xffu);
 }
 
+/// @brief Render a fixed-size digest array as a lowercase hex string.
 template <size_t N> std::string hexDigest(const std::array<uint8_t, N> &digest) {
     std::ostringstream os;
     os << std::hex << std::setfill('0');
@@ -49,6 +54,12 @@ template <size_t N> std::string hexDigest(const std::array<uint8_t, N> &digest) 
     return os.str();
 }
 
+/// @brief Append the Merkle–Damgård padding shared by SHA-1 and SHA-256.
+/// @details Appends the 0x80 marker byte, zero-pads to 56 bytes mod 64, and then
+///          writes the original message length in bits as a big-endian 64-bit
+///          value, so the resulting tail is a whole number of 64-byte blocks.
+/// @param tail Trailing partial block to pad in place.
+/// @param bitLen Total message length in bits.
 void appendShaPadding(std::vector<uint8_t> &tail, uint64_t bitLen) {
     tail.push_back(0x80);
     while ((tail.size() % 64u) != 56u)
@@ -59,6 +70,7 @@ void appendShaPadding(std::vector<uint8_t> &tail, uint64_t bitLen) {
 
 } // namespace
 
+/// @brief SHA-1 implementation: hash full 64-byte blocks, then the padded tail.
 std::array<uint8_t, 20> sha1Bytes(const uint8_t *data, size_t len) {
     uint32_t h0 = 0x67452301u;
     uint32_t h1 = 0xefcdab89u;
@@ -134,6 +146,7 @@ std::string sha1Hex(const uint8_t *data, size_t len) {
     return hexDigest(sha1Bytes(data, len));
 }
 
+/// @brief SHA-256 implementation: hash full 64-byte blocks, then the padded tail.
 std::array<uint8_t, 32> sha256Bytes(const uint8_t *data, size_t len) {
     static constexpr std::array<uint32_t, 64> k = {
         0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u, 0x3956c25bu, 0x59f111f1u, 0x923f82a4u,

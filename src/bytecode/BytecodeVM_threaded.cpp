@@ -98,6 +98,11 @@ void BytecodeVM::runThreaded() {
         }                                                                                          \
         ++pc;                                                                                      \
         ++instrCount_;                                                                             \
+        if (maxInstrCount_ != 0 && instrCount_ > maxInstrCount_) {                                  \
+            SYNC_STATE();                                                                          \
+            trap(TrapKind::Interrupt, "VM: step limit exceeded");                                  \
+            return;                                                                                \
+        }                                                                                          \
         /* Every slot is default-filled to &&L_DEFAULT (see runThreaded), so no */                 \
         /* per-dispatch null-guard is needed — the jump target is always valid. */                 \
         goto *dispatchTable[instr & 0xFF];                                                         \

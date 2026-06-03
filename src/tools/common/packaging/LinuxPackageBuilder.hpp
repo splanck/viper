@@ -53,18 +53,24 @@ void buildTarball(const LinuxBuildParams &params);
 
 /// @brief Parameters for building Linux toolchain packages from a staged install tree.
 struct LinuxToolchainBuildParams {
-    ToolchainInstallManifest manifest;
-    std::string outputPath;
-    std::string packageName{"viper"};
+    ToolchainInstallManifest manifest; ///< Staged files and metadata to package.
+    std::string outputPath;            ///< Output package file path.
+    std::string packageName{"viper"};  ///< Package/base name (default "viper").
 };
 
 /// @brief Build a Debian toolchain package from a staged install manifest.
+/// @param params Manifest, output path, and package name.
+/// @throws std::runtime_error on failure.
 void buildToolchainDebPackage(const LinuxToolchainBuildParams &params);
 
 /// @brief Build an RPM toolchain package from a staged install manifest.
+/// @param params Manifest, output path, and package name.
+/// @throws std::runtime_error on failure.
 void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params);
 
 /// @brief Build a portable toolchain tarball from a staged install manifest.
+/// @param params Manifest, output path, and package name.
+/// @throws std::runtime_error on failure.
 void buildToolchainTarball(const LinuxToolchainBuildParams &params);
 
 } // namespace viper::pkg

@@ -1257,11 +1257,11 @@ inline std::vector<uint8_t> utf8ToUtf16LEBytes(const std::string &text, bool nul
 /// and must be used for stat/read/copy operations to avoid post-validation
 /// symlink swaps changing the packaged payload.
 struct SafeDirectoryEntry {
-    std::filesystem::path logicalPath;
-    std::filesystem::path resolvedPath;
-    bool directory{false};
-    bool regularFile{false};
-    bool symlink{false};
+    std::filesystem::path logicalPath;  ///< Archive/install-relative name source.
+    std::filesystem::path resolvedPath; ///< Validated path to stat/read/copy from.
+    bool directory{false};              ///< True when the resolved target is a directory.
+    bool regularFile{false};            ///< True when the resolved target is a regular file.
+    bool symlink{false};                ///< True when the entry was reached through a symlink.
 };
 
 /// @brief Safely iterate a directory tree, following only symlinks that remain
@@ -1305,8 +1305,9 @@ inline void safeDirectoryIterateResolved(
             fs::path resolvedSymlink;
 
             std::error_code entryEc;
-            if (fs::is_symlink(fs::symlink_status(entryPath, entryEc))) {
-                fs::path resolved = fs::canonical(entryPath, entryEc);
+            const fs::path physicalEntryPath = it->path();
+            if (fs::is_symlink(fs::symlink_status(physicalEntryPath, entryEc))) {
+                fs::path resolved = fs::canonical(physicalEntryPath, entryEc);
                 if (entryEc) {
                     throw std::runtime_error("cannot resolve package asset symlink '" +
                                              entryPath.string() + "': " + entryEc.message());
@@ -1320,7 +1321,7 @@ inline void safeDirectoryIterateResolved(
             }
 
             entryEc.clear();
-            const fs::path resolvedPath = hasResolvedSymlink ? resolvedSymlink : entryPath;
+            const fs::path resolvedPath = hasResolvedSymlink ? resolvedSymlink : physicalEntryPath;
             if (!skipEntry) {
                 const fs::file_status status = fs::status(resolvedPath, entryEc);
                 if (!entryEc) {
@@ -1339,7 +1340,7 @@ inline void safeDirectoryIterateResolved(
 
             if (!skipEntry && isDirectory) {
                 fs::path resolvedDir =
-                    hasResolvedSymlink ? resolvedSymlink : fs::canonical(entryPath, entryEc);
+                    hasResolvedSymlink ? resolvedSymlink : fs::canonical(physicalEntryPath, entryEc);
                 if (entryEc) {
                     throw std::runtime_error("cannot resolve package asset directory '" +
                                              entryPath.string() + "': " + entryEc.message());

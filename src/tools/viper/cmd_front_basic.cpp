@@ -40,7 +40,8 @@
 #include <string_view>
 
 #ifdef _WIN32
-// Windows doesn't have setenv, use _putenv_s instead
+/// @brief POSIX setenv shim for Windows, implemented via _putenv_s.
+/// @note The overwrite flag is ignored; _putenv_s always overwrites.
 inline int setenv(const char *name, const char *value, int /*overwrite*/) {
     return _putenv_s(name, value);
 }
@@ -52,6 +53,10 @@ using namespace il::support;
 
 namespace {
 
+/// @brief Run the IL verifier on @p module and print any diagnostics.
+/// @details Collects up to 50 diagnostics; prints them (errors always, warnings
+///          only when @p showWarnings) using the requested format.
+/// @return true when the module has no verifier errors.
 bool reportVerifierDiagnostics(il::core::Module &module,
                                std::ostream &err,
                                il::support::SourceManager &sm,
@@ -65,17 +70,38 @@ bool reportVerifierDiagnostics(il::core::Module &module,
     return diagnostics.errorCount() == 0;
 }
 
+/// @brief Parsed configuration for the `viper front basic` subcommand.
 struct FrontBasicConfig {
-    bool emitIl{false};
-    bool run{false};
-    bool debugVm{false}; ///< True to use standard VM for debugging.
-    std::string sourcePath;
-    ilc::SharedCliOptions shared;
-    std::optional<uint32_t> sourceFileId{};
+    bool emitIl{false};                   ///< True when `-emit-il` is requested.
+    bool run{false};                      ///< True when `-run` is requested.
+    bool debugVm{false};                  ///< True to use standard VM for debugging.
+    bool helpRequested{false};            ///< True when help was requested.
+    std::string sourcePath;               ///< Path to the input `.bas` source.
+    ilc::SharedCliOptions shared;         ///< Shared CLI settings (trace, steps, IO).
+    std::optional<uint32_t> sourceFileId{}; ///< Source-manager file id, once registered.
     std::vector<std::string> programArgs; ///< Arguments to pass to BASIC program after '--'.
-    bool noRuntimeNamespaces{false};
+    bool noRuntimeNamespaces{false};      ///< Disable runtime namespace binding.
     std::string optLevel{"O0"}; ///< Optimization level: "O0", "O1", or "O2"; default = O0.
 };
+
+/// @brief Print usage for the `viper front basic` subcommand to stderr.
+void frontBasicUsage() {
+    std::cerr
+        << "Usage: viper front basic (-emit-il|-run) <file.bas> [options] [-- program-args...]\n"
+        << "\n"
+        << "Options:\n"
+        << "  -emit-il <file.bas>            Emit IL to stdout\n"
+        << "  -run <file.bas>                Compile and execute\n"
+        << "  -O0|-O1|-O2                    Select optimization level for normal runs\n"
+        << "  --debug-vm                     Use the standard VM for debugging\n"
+        << "  --trace[=il|src]               Enable execution tracing\n"
+        << "  --stdin-from FILE              Redirect stdin from file\n"
+        << "  --max-steps N                  Limit VM execution steps\n"
+        << "  --dump-trap                    Show detailed trap diagnostics\n"
+        << "  --bounds-checks                Enable generated bounds checks\n"
+        << "  --no-bounds-checks             Disable generated bounds checks\n"
+        << "  -h, --help                     Show this help\n";
+}
 
 /// @brief Parse CLI arguments for the BASIC frontend subcommand.
 ///
@@ -121,6 +147,9 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
             config.noRuntimeNamespaces = true;
         } else if (arg == "--debug-vm") {
             config.debugVm = true;
+        } else if (arg == "--help" || arg == "-h") {
+            config.helpRequested = true;
+            return il::support::Expected<FrontBasicConfig>(std::move(config));
         } else {
             switch (ilc::parseSharedOption(i, argc, argv, config.shared)) {
                 case ilc::SharedOptionParseResult::Parsed:
@@ -135,7 +164,7 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
         }
     }
 
-    if ((config.emitIl == config.run) || config.sourcePath.empty()) {
+    if (!config.helpRequested && ((config.emitIl == config.run) || config.sourcePath.empty())) {
         return il::support::Expected<FrontBasicConfig>(il::support::Diagnostic{
             il::support::Severity::Error, "specify exactly one of -emit-il or -run", {}, {}});
     }
@@ -285,7 +314,7 @@ int runFrontBasic(const FrontBasicConfig &config,
         int rc = static_cast<int>(runner.run());
         const auto trapMessage = runner.lastTrapMessage();
         if (trapMessage) {
-            if (config.shared.dumpTrap && !trapMessage->empty()) {
+            if (!trapMessage->empty()) {
                 std::cerr << *trapMessage;
                 if (trapMessage->back() != '\n') {
                     std::cerr << '\n';
@@ -303,6 +332,7 @@ int runFrontBasic(const FrontBasicConfig &config,
     vmConfig.programArgs = config.programArgs;
     vmConfig.outputTrapMessage = true;
     vmConfig.sourceManager = &sm;
+    vmConfig.maxSteps = config.shared.maxSteps;
 
     auto vmResult = il::tools::common::executeBytecodeVM(module, vmConfig);
     return vmResult.exitCode;
@@ -323,11 +353,15 @@ int cmdFrontBasicWithSourceManager(int argc, char **argv, il::support::SourceMan
     if (!parsed) {
         const auto &diag = parsed.error();
         il::support::printDiag(diag, std::cerr, &sm);
-        usage();
+        frontBasicUsage();
         return 1;
     }
 
     FrontBasicConfig config = std::move(parsed.value());
+    if (config.helpRequested) {
+        frontBasicUsage();
+        return 0;
+    }
 
     auto source = il::tools::common::loadSourceBuffer(config.sourcePath, sm);
     if (!source) {

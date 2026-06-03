@@ -398,6 +398,28 @@ TEST(Json, ParseErrorInvalidLiteral) {
     EXPECT_TRUE(threw);
 }
 
+TEST(Json, ParseErrorUnescapedControlCharacter) {
+    EXPECT_THROWS(JsonValue::parse("\"\n\""), std::runtime_error);
+}
+
+TEST(Json, ParseErrorLoneLowSurrogate) {
+    EXPECT_THROWS(JsonValue::parse("\"\\uDC00\""), std::runtime_error);
+}
+
+TEST(Json, ParseErrorIntegerOverflow) {
+    EXPECT_THROWS(JsonValue::parse("9223372036854775808"), std::runtime_error);
+}
+
+TEST(Json, ParseErrorFloatOverflow) {
+    EXPECT_THROWS(JsonValue::parse("1e999999"), std::runtime_error);
+}
+
+TEST(Json, ParseErrorMaximumDepthExceeded) {
+    std::string nested(520, '[');
+    nested.append(520, ']');
+    EXPECT_THROWS(JsonValue::parse(nested), std::runtime_error);
+}
+
 // ===== Equality =====
 
 TEST(Json, EqualityNull) {

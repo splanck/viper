@@ -287,6 +287,15 @@ struct ResItem {
     std::vector<uint8_t> data; ///< Raw resource data
 };
 
+/// @brief Append a VS_VERSIONINFO node header (length placeholder + key).
+/// @details Writes a zero wLength placeholder (back-patched later by
+///          patchVersionLength), the wValueLength, the wType, the UTF-16
+///          NUL-terminated key, and 32-bit padding.
+/// @param buf Resource buffer being built.
+/// @param valueLength wValueLength field (in words for text, bytes for binary).
+/// @param type wType field (0 = binary value, 1 = text value).
+/// @param key Node key (e.g. "VS_VERSION_INFO", "CompanyName").
+/// @return Byte offset of this node's header (for the matching patchVersionLength).
 size_t appendVersionHeader(std::vector<uint8_t> &buf,
                            uint16_t valueLength,
                            uint16_t type,
@@ -302,6 +311,10 @@ size_t appendVersionHeader(std::vector<uint8_t> &buf,
     return start;
 }
 
+/// @brief Back-patch a node's wLength field once all its children are written.
+/// @param buf Resource buffer being built.
+/// @param start Offset returned by the matching appendVersionHeader call.
+/// @throws std::runtime_error if the node exceeds the 16-bit length limit.
 void patchVersionLength(std::vector<uint8_t> &buf, size_t start) {
     const size_t len = buf.size() - start;
     if (len > std::numeric_limits<uint16_t>::max())
@@ -309,16 +322,26 @@ void patchVersionLength(std::vector<uint8_t> &buf, size_t start) {
     putLE16(buf, start, static_cast<uint16_t>(len));
 }
 
+/// @brief Append a UTF-16LE, NUL-terminated value string to the resource buffer.
 void appendUtf16Value(std::vector<uint8_t> &buf, const std::string &value) {
     for (uint16_t ch : utf8ToUtf16CodeUnits(value))
         appendLE16(buf, ch);
     appendLE16(buf, 0);
 }
 
+/// @brief Pack two of the four version words into a 32-bit DWORD (high<<16|low).
+/// @param parts The four-element version (a.b.c.d).
+/// @param high Index of the high word (0 for a.b, 2 for c.d).
 uint32_t versionDword(const std::array<uint16_t, 4> &parts, size_t high) {
     return (static_cast<uint32_t>(parts[high]) << 16) | parts[high + 1];
 }
 
+/// @brief Append a "String" node (key/value text pair) to the StringTable.
+/// @details No-op for an empty value. Writes the header with the value's UTF-16
+///          word count, the value, padding, and back-patches the node length.
+/// @param buf Resource buffer being built.
+/// @param key String name (e.g. "CompanyName").
+/// @param value Text value to store.
 void appendVersionString(std::vector<uint8_t> &buf,
                          const std::string &key,
                          const std::string &value) {
@@ -333,6 +356,13 @@ void appendVersionString(std::vector<uint8_t> &buf,
     patchVersionLength(buf, start);
 }
 
+/// @brief Build a complete VS_VERSIONINFO resource blob from @p info.
+/// @details Emits the root node with the fixed VS_FIXEDFILEINFO block (file and
+///          product versions), a StringFileInfo/StringTable carrying the textual
+///          metadata fields, and a VarFileInfo Translation block (US English,
+///          Unicode). All node lengths are back-patched after their children.
+/// @param info Version metadata to encode.
+/// @return The RT_VERSION resource bytes.
 std::vector<uint8_t> buildVersionInfoResource(const PEVersionInfo &info) {
     std::vector<uint8_t> buf;
     const size_t root = appendVersionHeader(buf, 52, 0, "VS_VERSION_INFO");

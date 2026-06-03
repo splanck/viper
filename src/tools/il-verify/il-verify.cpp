@@ -42,6 +42,10 @@ int runCLI(
         out << "IL v" << VIPER_IL_VERSION_STR << "\n";
         return 0;
     }
+    if (argc == 2 && (std::string(argv[1]) == "--help" || std::string(argv[1]) == "-h")) {
+        err << "Usage: il-verify <file.il>\n";
+        return 0;
+    }
     if (argc != 2) {
         err << "Usage: il-verify <file.il>\n";
         return 1;
@@ -68,12 +72,15 @@ int runCLI(
 
 /// @brief Entry point for the `il-verify` binary.
 ///
-/// @details The control flow performs the full verification pipeline:
-///          1. Handle the `--version` flag by printing the IL version banner.
+/// @details Delegates to @ref il::tools::verify::runCLI, which performs the full
+///          verification pipeline:
+///          1. Handle the `--version` flag (IL version banner) and `--help`/`-h`
+///             (usage text), each returning success.
 ///          2. Validate the argument count and emit a usage message on mismatch.
-///          3. Parse the IL file into a module using
-///             @ref il::tools::common::loadModuleFromFile.
-///          4. Run the verifier via @ref il::tools::common::verifyModule.
+///          3. Register the file with the source manager (reporting a
+///             V-SRC-FILE-ID diagnostic on overflow).
+///          4. Parse and verify the module in one step via
+///             @ref il::tools::common::loadAndVerifyModule.
 ///          5. Print "OK" when verification succeeds or propagate the
 ///             appropriate error status when it fails.
 ///          The module and source manager are local stack objects so no

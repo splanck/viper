@@ -42,6 +42,8 @@
 #include <utility>
 
 #ifdef _WIN32
+/// @brief POSIX setenv shim for Windows, implemented via _putenv_s.
+/// @note The overwrite flag is ignored; _putenv_s always overwrites.
 inline int setenv(const char *name, const char *value, int) {
     return _putenv_s(name, value);
 }
@@ -55,6 +57,10 @@ namespace {
 
 enum class RunMode { Run, Build };
 
+/// @brief Run the IL verifier on @p module and print any diagnostics.
+/// @details Collects up to 50 diagnostics; prints them (errors always, warnings
+///          only when @p showWarnings) using the requested format.
+/// @return true when the module has no verifier errors.
 bool reportVerifierDiagnostics(il::core::Module &module,
                                std::ostream &err,
                                il::support::SourceManager &sm,
@@ -68,28 +74,75 @@ bool reportVerifierDiagnostics(il::core::Module &module,
     return diagnostics.errorCount() == 0;
 }
 
+/// @brief Parsed configuration shared by the `run` and `build` subcommands.
+/// @details CLI override fields (optimize level, build profile, arch, link mode,
+///          Windows runtime) take precedence over the project manifest when set.
 struct RunBuildConfig {
-    RunMode mode{RunMode::Run};
-    std::string target{"."};
-    std::string outputPath;
-    ilc::SharedCliOptions shared;
-    std::vector<std::string> programArgs;
-    bool debugVm{false};
-    bool noRuntimeNamespaces{false};
+    RunMode mode{RunMode::Run};           ///< Whether this is a run or build invocation.
+    std::string target{"."};              ///< Target file/dir/manifest (default: cwd).
+    std::string outputPath;               ///< Output path for build (-o), empty for run.
+    ilc::SharedCliOptions shared;         ///< Shared CLI settings (trace, dumps, etc.).
+    std::vector<std::string> programArgs; ///< Args forwarded to the program after '--'.
+    bool debugVm{false};                  ///< Use the standard VM for debugging (run only).
+    bool helpRequested{false};            ///< True when help was requested.
+    bool noRuntimeNamespaces{false};      ///< Disable runtime namespace binding.
 
     // CLI overrides (take precedence over manifest)
-    std::optional<std::string> optimizeLevelOverride;
-    std::optional<std::string> buildProfileOverride;
-    std::optional<viper::tools::TargetArch> archOverride;
-    std::optional<bool> fastLinkOverride;
-    std::optional<bool> windowsDebugRuntimeOverride;
+    std::optional<std::string> optimizeLevelOverride;     ///< -O0/-O1/-O2 override.
+    std::optional<std::string> buildProfileOverride;      ///< --build-profile override.
+    std::optional<viper::tools::TargetArch> archOverride; ///< --arch override.
+    std::optional<bool> fastLinkOverride;                 ///< --fast-link/--no-fast-link.
+    std::optional<bool> windowsDebugRuntimeOverride;      ///< Windows debug/release runtime.
 };
 
+/// @brief Print usage for the `viper run` or `viper build` subcommand to stderr.
+void printRunBuildUsage(RunMode mode) {
+    if (mode == RunMode::Run) {
+        std::cerr
+            << "Usage: viper run [target] [options] [-- program-args...]\n"
+            << "\n"
+            << "Run a .zia file, .bas file, project directory, or viper.project.\n"
+            << "\n"
+            << "Run options:\n"
+            << "  --debug-vm                    Use the standard VM for debugging\n"
+            << "  --stdin-from FILE             Redirect stdin from file\n"
+            << "  --max-steps N                 Limit VM execution steps\n"
+            << "  --dump-trap                   Show detailed trap diagnostics\n"
+            << "  --trace[=il|src]              Enable execution tracing\n"
+            << "  --bounds-checks               Enable generated bounds checks\n"
+            << "  --no-bounds-checks            Disable generated bounds checks\n"
+            << "  --build-profile debug|balanced|release\n"
+            << "  -O0|-O1|-O2                   Override optimization level\n"
+            << "  -h, --help                    Show this help\n";
+        return;
+    }
+
+    std::cerr
+        << "Usage: viper build [target] [-o output] [options]\n"
+        << "\n"
+        << "Build IL or a native binary from a .zia file, .bas file, project directory, or viper.project.\n"
+        << "\n"
+        << "Build options:\n"
+        << "  -o PATH                       Output .il or native binary path\n"
+        << "  --arch arm64|x64              Override native target architecture\n"
+        << "  --fast-link | --no-fast-link  Override linker mode\n"
+        << "  --windows-debug-runtime       Link Windows debug runtime\n"
+        << "  --windows-release-runtime     Link Windows release runtime\n"
+        << "  --build-profile debug|balanced|release\n"
+        << "  -O0|-O1|-O2                   Override optimization level\n"
+        << "  --bounds-checks               Enable generated bounds checks\n"
+        << "  --no-bounds-checks            Disable generated bounds checks\n"
+        << "  -h, --help                    Show this help\n";
+}
+
+/// @brief A compiled project module plus whether it has already been verified.
 struct CompiledProjectModule {
-    il::core::Module module;
-    bool verified{false};
+    il::core::Module module; ///< The lowered IL module.
+    bool verified{false};    ///< True if the module already passed verification.
 };
 
+/// @brief Map a build profile name to its default optimization level string.
+/// @return "O0"/"O1"/"O2" for debug/balanced/release, or nullopt if unrecognized.
 std::optional<std::string> optimizeForBuildProfile(std::string_view profile) {
     if (profile == "debug")
         return std::string("O0");
@@ -100,6 +153,8 @@ std::optional<std::string> optimizeForBuildProfile(std::string_view profile) {
     return std::nullopt;
 }
 
+/// @brief Map an optimization level string to its numeric value.
+/// @return 0/1/2 for "O0"/"O1"/"O2", or nullopt if unrecognized.
 std::optional<int> optimizeLevelNumber(std::string_view level) {
     if (level == "O0")
         return 0;
@@ -110,6 +165,10 @@ std::optional<int> optimizeLevelNumber(std::string_view level) {
     return std::nullopt;
 }
 
+/// @brief Print elapsed time for a compile @p phase when --time-compile is set.
+/// @param shared Shared options (checked for the timeCompile flag).
+/// @param phase Human-readable phase label.
+/// @param start Phase start timestamp; elapsed is measured against now.
 void printCompileTime(const ilc::SharedCliOptions &shared,
                       std::string_view phase,
                       std::chrono::steady_clock::time_point start) {
@@ -120,11 +179,21 @@ void printCompileTime(const ilc::SharedCliOptions &shared,
     std::cerr << "[time-compile] " << phase << " " << elapsed.count() << "ms\n";
 }
 
+/// @brief Decide whether function-level optimizer passes may run in parallel.
+/// @details Parallelism is disabled when any per-pass verification or dump option
+///          is active, since those require deterministic, observable ordering.
 bool shouldEnableParallelFunctionPasses(const ilc::SharedCliOptions &shared) {
     return !shared.verifyEachPass && !shared.dumpILPasses && !shared.dumpIL && !shared.dumpILOpt &&
            !shared.dumpAst && !shared.dumpSemaAst && !shared.dumpTokens;
 }
 
+/// @brief Parse the arguments for `viper run`/`viper build` into a RunBuildConfig.
+/// @details Recognises the target, output path, shared options, optimization/profile
+///          and architecture/link overrides, and program arguments after `--`.
+/// @param mode Whether parsing a run or build invocation (affects accepted flags).
+/// @param argc Argument count.
+/// @param argv Argument vector.
+/// @return The parsed config, or a diagnostic on malformed arguments.
 il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, char **argv) {
     RunBuildConfig config;
     config.mode = mode;
@@ -138,6 +207,9 @@ il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, 
             for (int j = i + 1; j < argc; ++j)
                 config.programArgs.emplace_back(argv[j]);
             break;
+        } else if (arg == "--help" || arg == "-h") {
+            config.helpRequested = true;
+            return il::support::Expected<RunBuildConfig>(std::move(config));
         } else if (arg == "-o") {
             if (mode != RunMode::Build) {
                 return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
@@ -274,7 +346,7 @@ int verifyAndExecute(il::core::Module &module,
 
         const auto trapMessage = runner.lastTrapMessage();
         if (trapMessage) {
-            if (shared.dumpTrap && !trapMessage->empty()) {
+            if (!trapMessage->empty()) {
                 std::cerr << *trapMessage;
                 if (trapMessage->back() != '\n')
                     std::cerr << '\n';
@@ -297,6 +369,7 @@ int verifyAndExecute(il::core::Module &module,
     vmConfig.outputTrapMessage = true;
     vmConfig.flushStdout = true;
     vmConfig.sourceManager = &sm;
+    vmConfig.maxSteps = shared.maxSteps;
 
     auto vmResult = il::tools::common::executeBytecodeVM(module, vmConfig);
     return vmResult.exitCode;
@@ -544,11 +617,15 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
         const auto &diag = parsed.error();
         SourceManager sm;
         il::support::printDiag(diag, std::cerr, &sm);
-        usage();
+        printRunBuildUsage(mode);
         return 1;
     }
 
     RunBuildConfig config = std::move(parsed.value());
+    if (config.helpRequested) {
+        printRunBuildUsage(mode);
+        return 0;
+    }
 
     // Resolve the project
     const auto projectStart = std::chrono::steady_clock::now();
@@ -653,6 +730,21 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
             if (!bundle->embeddedBlob.empty()) {
                 assetBlobPath = viper::tools::generateTempAssetPath();
                 assetObjPath = assetBlobPath + ".o";
+                {
+                    std::ofstream blobOut(assetBlobPath, std::ios::binary | std::ios::trunc);
+                    if (!blobOut) {
+                        std::cerr << "error: cannot open temporary asset blob: " << assetBlobPath
+                                  << "\n";
+                        return 1;
+                    }
+                    blobOut.write(reinterpret_cast<const char *>(bundle->embeddedBlob.data()),
+                                  static_cast<std::streamsize>(bundle->embeddedBlob.size()));
+                    if (!blobOut) {
+                        std::cerr << "error: failed to write temporary asset blob: " << assetBlobPath
+                                  << "\n";
+                        return 1;
+                    }
+                }
                 if (!viper::asset::writeAssetBlobObject(
                         bundle->embeddedBlob, assetObjPath, assetErr)) {
                     std::cerr << "error: " << assetErr << "\n";

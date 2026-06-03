@@ -10,9 +10,8 @@
 //          that preserve file mode bits when extracted on macOS/Linux.
 //
 // Key invariants:
-//   - version_made_by byte layout: high byte = host OS (3=Unix), low = spec
-//     version (20 = 2.0). So version_made_by = 0x031E = (3<<8)|30.
-//     Actually PKWARE uses 20 for 2.0; we use 20.
+//   - version_made_by byte layout: high byte = host OS (3 = Unix), low byte =
+//     spec version (20 = 2.0), giving (3 << 8) | 20 = 0x0314.
 //   - external_file_attributes: upper 16 bits = Unix mode, lower 16 = MS-DOS.
 //   - Compression: DEFLATE (method 8) for entries > 64 bytes when it saves space.
 //   - Symlinks: stored with typeflag in external attributes (0120000 prefix).
@@ -182,11 +181,16 @@ void ZipWriter::writeU32(uint32_t v) {
 
 namespace {
 
+/// @brief Compute CRC-32 over a buffer, tolerating a null pointer when empty.
+/// @details Passes a dummy byte for zero-length input so the runtime CRC call
+///          never dereferences null; used to checksum every ZIP entry.
 uint32_t crc32Bytes(const uint8_t *data, size_t len) {
     static constexpr uint8_t kEmpty = 0;
     return rt_crc32_compute(len == 0 ? &kEmpty : data, len);
 }
 
+/// @brief Thread-safe localtime conversion (localtime_s on Windows, localtime_r else).
+/// @return false if the platform call fails.
 bool portableLocalTime(std::time_t timestamp, std::tm &out) {
 #if defined(_WIN32)
     return localtime_s(&out, &timestamp) == 0;
@@ -195,6 +199,8 @@ bool portableLocalTime(std::time_t timestamp, std::tm &out) {
 #endif
 }
 
+/// @brief Thread-safe UTC conversion (gmtime_s on Windows, gmtime_r else).
+/// @return false if the platform call fails.
 bool portableGmTime(std::time_t timestamp, std::tm &out) {
 #if defined(_WIN32)
     return gmtime_s(&out, &timestamp) == 0;
@@ -203,6 +209,13 @@ bool portableGmTime(std::time_t timestamp, std::tm &out) {
 #endif
 }
 
+/// @brief Read the SOURCE_DATE_EPOCH environment variable for reproducible builds.
+/// @details When set to a valid Unix timestamp, stores it in @p timestamp and
+///          returns true so callers stamp archive entries deterministically (in
+///          UTC). Returns false when the variable is unset/empty; throws on a
+///          malformed or out-of-range value.
+/// @param timestamp Receives the parsed epoch on success.
+/// @return true when a valid SOURCE_DATE_EPOCH was found.
 bool sourceDateEpoch(std::time_t &timestamp) {
     const char *env = std::getenv("SOURCE_DATE_EPOCH");
     if (env == nullptr || *env == '\0')
@@ -218,6 +231,10 @@ bool sourceDateEpoch(std::time_t &timestamp) {
     return true;
 }
 
+/// @brief Clamp a broken-down time into the DOS date range (1980-01-01..2107).
+/// @details The DOS date format cannot represent years before 1980 or after
+///          2107, so out-of-range times are pinned to the respective boundary to
+///          keep the emitted ZIP date field valid.
 void clampDosTime(std::tm &t) {
     const int year = t.tm_year + 1900;
     if (year < 1980) {

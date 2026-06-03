@@ -42,6 +42,7 @@ struct DesktopEntryParams {
 };
 
 /// @brief Generate a .desktop file.
+/// @param params Display, exec, icon, category, and MIME settings to emit.
 /// @return .desktop file content as a string.
 std::string generateDesktopEntry(const DesktopEntryParams &params);
 

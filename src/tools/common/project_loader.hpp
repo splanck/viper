@@ -27,9 +27,9 @@ namespace il::tools::common {
 
 /// @brief Detected language for a project.
 enum class ProjectLang {
-    Zia,
-    Basic,
-    Mixed ///< Both .zia and .bas files; requires IL linker.
+    Zia,   ///< Project contains only .zia sources.
+    Basic, ///< Project contains only .bas sources.
+    Mixed  ///< Both .zia and .bas files; requires IL linker.
 };
 
 /// @brief Parsed project manifest or convention-inferred configuration.

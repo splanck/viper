@@ -114,6 +114,9 @@ uint32_t permissionBitsFor(const ToolchainFileEntry &file) {
     return file.executable ? 0755u : 0644u;
 }
 
+/// @brief Choose archive permission bits for a staged file from its on-disk mode.
+/// @return 0755 when any execute bit is set on the source file, else 0644 (also
+///         the fallback when the file cannot be stat'd).
 uint32_t permissionBitsForFilesystemPath(const fs::path &path) {
     std::error_code ec;
     const fs::perms perms = fs::status(path, ec).permissions();
@@ -125,6 +128,10 @@ uint32_t permissionBitsForFilesystemPath(const fs::path &path) {
     return executable ? 0755u : 0644u;
 }
 
+/// @brief Sanitize a package version into a portable filename component.
+/// @details Validates the Debian version, keeps alphanumerics and `.+~-`, and
+///          replaces anything else with `_` so the version can appear safely in
+///          a tarball filename. Throws if the result is empty or "."/"..".
 std::string portableArchiveVersionComponent(const std::string &version) {
     validateDebVersion(version, "package version");
     std::string out;
@@ -265,6 +272,7 @@ void requireLinuxToolchainManifest(const ToolchainInstallManifest &manifest,
     }
 }
 
+/// @brief Join strings with ", " — used to render Debian Depends/Requires lines.
 std::string joinCommaSeparated(const std::vector<std::string> &items) {
     std::ostringstream out;
     for (size_t i = 0; i < items.size(); ++i) {
@@ -275,6 +283,10 @@ std::string joinCommaSeparated(const std::vector<std::string> &items) {
     return out.str();
 }
 
+/// @brief Test whether the manifest stages a support/library file whose filename
+///        contains @p name (case-insensitive substring match).
+/// @details Used to derive runtime package dependencies from which Viper support
+///          libraries are actually included in the staged tree.
 bool manifestHasSupportLibrary(const ToolchainInstallManifest &manifest, std::string_view name) {
     for (const auto &file : manifest.files) {
         if (file.kind != ToolchainFileKind::SupportLibrary &&
@@ -288,11 +300,13 @@ bool manifestHasSupportLibrary(const ToolchainInstallManifest &manifest, std::st
     return false;
 }
 
+/// @brief True if the manifest includes graphics/GUI libraries that need X11.
 bool manifestNeedsX11(const ToolchainInstallManifest &manifest) {
     return manifestHasSupportLibrary(manifest, "vipergfx") ||
            manifestHasSupportLibrary(manifest, "vipergui");
 }
 
+/// @brief True if the manifest includes the audio library that needs ALSA.
 bool manifestNeedsAlsa(const ToolchainInstallManifest &manifest) {
     return manifestHasSupportLibrary(manifest, "viperaud");
 }
@@ -314,6 +328,10 @@ std::string toolchainDebDepends(const ToolchainInstallManifest &manifest) {
     return joinCommaSeparated(deps);
 }
 
+/// @brief Build the RPM "Requires" list for a toolchain package.
+/// @details Always requires the base C/C++ runtime and build tools, and adds
+///          libX11 / alsa-lib when the manifest stages the graphics/audio support
+///          libraries.
 std::vector<std::string> toolchainRpmRequires(const ToolchainInstallManifest &manifest) {
     std::vector<std::string> deps = {
         "glibc",
@@ -330,12 +348,16 @@ std::vector<std::string> toolchainRpmRequires(const ToolchainInstallManifest &ma
     return deps;
 }
 
+/// @brief Sort @p paths and remove exact duplicates (taken by value).
 std::vector<std::string> sortedUniquePaths(std::vector<std::string> paths) {
     std::sort(paths.begin(), paths.end());
     paths.erase(std::unique(paths.begin(), paths.end()), paths.end());
     return paths;
 }
 
+/// @brief Render the PREFIX-relative installed-files manifest written into tarballs.
+/// @details Sorts and de-duplicates @p paths and emits one path per line under a
+///          header comment, so the uninstall script knows what to remove.
 std::string renderInstallManifest(std::vector<std::string> paths) {
     paths = sortedUniquePaths(std::move(paths));
     std::ostringstream out;
@@ -345,6 +367,9 @@ std::string renderInstallManifest(std::vector<std::string> paths) {
     return out.str();
 }
 
+/// @brief Return the POSIX `install.sh` script bundled in the portable tarball.
+/// @details Copies the staged tree under PREFIX (default /usr/local), honoring
+///          DESTDIR, and records what it installed for the matching uninstaller.
 std::string linuxTarballInstallScript() {
     return R"VIPER_SCRIPT(#!/bin/sh
 set -eu
@@ -405,6 +430,8 @@ echo "Installed Viper toolchain under $install_root"
 )VIPER_SCRIPT";
 }
 
+/// @brief Return the POSIX `uninstall.sh` script bundled in the portable tarball.
+/// @details Removes the files recorded by install.sh's manifest under PREFIX.
 std::string linuxTarballUninstallScript() {
     return R"VIPER_SCRIPT(#!/bin/sh
 set -eu
@@ -463,6 +490,7 @@ echo "Removed Viper toolchain files listed in $manifest"
 )VIPER_SCRIPT";
 }
 
+/// @brief Return the README text bundled in the portable toolchain tarball.
 std::string linuxTarballReadme() {
     return R"VIPER_TEXT(Viper Toolchain Tarball
 

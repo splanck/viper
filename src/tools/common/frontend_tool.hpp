@@ -8,7 +8,10 @@
 // File: tools/common/frontend_tool.hpp
 // Purpose: Shared infrastructure for language frontend CLI tools (vbasic, zia).
 // Key invariants: All frontend tools share the same argument parsing logic.
-// Ownership/Lifetime: N/A.
+// Ownership/Lifetime: Helpers are stateless aside from buildIlcArgs, whose
+//                     returned char* vector aliases into a caller-owned storage
+//                     vector that must outlive it.
+// Links: docs/architecture.md, src/tools/common/native_compiler.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -75,12 +78,30 @@ struct FrontendToolCallbacks {
     std::function<int(int, char **)> frontendCommand;
 };
 
-/// @brief Parse frontend tool arguments.
+/// @brief Parse frontend tool arguments into a @ref FrontendToolConfig.
+///
+/// @details Walks @p argv recognising the shared option vocabulary:
+///          - `-h`/`--help` and `--version` invoke the matching callback and
+///            terminate via @c std::exit(0).
+///          - `-o`/`--output` records the output path and implies `--emit-il`.
+///          - `--arch arm64|x64` overrides the native target architecture.
+///          - `--` ends option parsing; everything after it becomes a program
+///            argument forwarded to the running program.
+///          - Any other leading-dash token is forwarded verbatim to the ilc
+///            frontend, consuming a following value for the flags that take one
+///            (`--stdin-from`, `--max-steps`, `--diagnostic-format`,
+///            `--build-profile`).
+///          - A token ending in @ref FrontendToolCallbacks::fileExtension is the
+///            single source file; a second source file is an error.
+///          Missing required values, unknown tokens, or a missing source file
+///          print usage and terminate via @c std::exit(1). When no output mode is
+///          requested the config defaults to running the program.
 ///
 /// @param argc Number of command-line arguments.
 /// @param argv Array of argument strings.
-/// @param callbacks Language-specific callbacks.
-/// @return Parsed configuration or exits on error/help/version.
+/// @param callbacks Language-specific callbacks (usage/version text, extension).
+/// @return Parsed configuration; the function does not return on
+///         error/help/version because it terminates the process.
 inline FrontendToolConfig parseArgs(int argc, char **argv, const FrontendToolCallbacks &callbacks) {
     FrontendToolConfig config{};
 
@@ -129,11 +150,10 @@ inline FrontendToolConfig parseArgs(int argc, char **argv, const FrontendToolCal
             config.forwardedArgs.push_back(std::string(arg));
 
             // Check if this flag takes an argument
-            if (arg == "--trace" || arg == "--stdin-from" || arg == "--max-steps") {
+            if (arg == "--stdin-from" || arg == "--max-steps" || arg == "--diagnostic-format" ||
+                arg == "--build-profile") {
                 if (i + 1 < argc && argv[i + 1][0] != '-') {
                     config.forwardedArgs.push_back(argv[++i]);
-                } else if (arg == "--trace") {
-                    // --trace is optional parameter, continue
                 } else {
                     std::cerr << "error: " << arg << " requires an argument\n\n";
                     callbacks.printUsage();
@@ -170,11 +190,23 @@ inline FrontendToolConfig parseArgs(int argc, char **argv, const FrontendToolCal
     return config;
 }
 
-/// @brief Build argument vector for ilc frontend subcommand.
+/// @brief Build the argument vector for the ilc frontend subcommand.
+///
+/// @details Assembles the equivalent of an `argv` array for the underlying ilc
+///          frontend: a leading mode flag (`-emit-il` or `-run`), the source
+///          path, every forwarded flag, and the program arguments after a `--`
+///          separator. The strings are first appended to @p outStorage so they
+///          have a stable address, then a parallel vector of @c char* pointers
+///          into that storage is returned.
+///
+/// @warning The returned vector aliases into @p outStorage. Callers must keep
+///          @p outStorage alive (and unmodified) for as long as the returned
+///          pointers are used; mutating @p outStorage afterwards may invalidate
+///          them.
 ///
 /// @param config Parsed frontend configuration.
-/// @param outStorage Output parameter: storage for argument strings.
-/// @return Argument vector suitable for frontend command.
+/// @param outStorage Cleared and populated with the backing argument strings.
+/// @return Argument vector of @c char* suitable for the frontend command.
 inline std::vector<char *> buildIlcArgs(const FrontendToolConfig &config,
                                         std::vector<std::string> &outStorage) {
     outStorage.clear();
@@ -213,7 +245,21 @@ inline std::vector<char *> buildIlcArgs(const FrontendToolConfig &config,
     return args;
 }
 
-/// @brief Run a frontend tool with the given callbacks.
+/// @brief Run a frontend tool end to end with the given callbacks.
+///
+/// @details Drives the full compile/run pipeline:
+///          1. Parse arguments via @ref parseArgs.
+///          2. Detect whether `-o` requests a native binary (a non-`.il` output
+///             extension); if so, redirect IL emission to a temporary file so the
+///             native code generator can consume it afterwards.
+///          3. When an output path is set, redirect @c stdout to that file with
+///             @c freopen (saving and later restoring the original descriptor so
+///             native codegen can still write to the terminal).
+///          4. Delegate to @ref FrontendToolCallbacks::frontendCommand to emit IL
+///             or run the program.
+///          5. On success with native output, invoke @ref compileToNative using
+///             the requested or host-detected architecture.
+///          6. Remove the temporary IL file, if any, before returning.
 ///
 /// @param argc Number of command-line arguments.
 /// @param argv Array of argument strings.

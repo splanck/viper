@@ -19,6 +19,7 @@
 #include "tools/lsp-common/DocumentStore.hpp"
 
 #include <cctype>
+#include <string_view>
 
 namespace viper::server {
 
@@ -49,19 +50,27 @@ std::string DocumentStore::uriToPath(const std::string &uri) {
     std::string path;
     std::string_view sv = uri;
 
-    // Strip file:// prefix
+    // Strip file:// prefix and handle the URI authority component.
     if (sv.substr(0, 7) == "file://") {
         sv.remove_prefix(7);
-        // On Unix: file:///path → /path (skip the authority component)
-        // On Windows: file:///C:/path → C:/path
-        if (sv.size() >= 3 && sv[0] == '/' && sv[2] == ':') {
-            // Windows drive letter: /C:/path → C:/path
+        std::string_view authority;
+        if (!sv.empty() && sv.front() != '/') {
+            const std::size_t slash = sv.find('/');
+            authority = slash == std::string_view::npos ? sv : sv.substr(0, slash);
+            sv = slash == std::string_view::npos ? std::string_view{} : sv.substr(slash);
+        }
+
+        if (!authority.empty() && authority != "localhost") {
+            path = "//";
+            path.append(authority);
+        } else if (sv.size() >= 3 && sv[0] == '/' && sv[2] == ':') {
+            // Windows drive letter: /C:/path -> C:/path
             sv.remove_prefix(1);
         }
     }
 
     // URL-decode %XX sequences
-    path.reserve(sv.size());
+    path.reserve(path.size() + sv.size());
     for (size_t i = 0; i < sv.size(); ++i) {
         if (sv[i] == '%' && i + 2 < sv.size()) {
             char hi = sv[i + 1];

@@ -23,6 +23,105 @@
 #include "tools/lsp-common/Transport.hpp"
 
 namespace viper::server {
+namespace {
+
+/// @brief Return @p obj's member @p name only if it is itself an Object, else null.
+const JsonValue *objectMember(const JsonValue &obj, const char *name) {
+    if (obj.type() != JsonType::Object)
+        return nullptr;
+    const JsonValue *value = obj.get(name);
+    return value && value->type() == JsonType::Object ? value : nullptr;
+}
+
+/// @brief Return @p obj's member @p name only if it is a String, else null.
+const JsonValue *stringMember(const JsonValue &obj, const char *name) {
+    if (obj.type() != JsonType::Object)
+        return nullptr;
+    const JsonValue *value = obj.get(name);
+    return value && value->type() == JsonType::String ? value : nullptr;
+}
+
+/// @brief Return @p obj's member @p name only if it is an Int, else null.
+const JsonValue *intMember(const JsonValue &obj, const char *name) {
+    if (obj.type() != JsonType::Object)
+        return nullptr;
+    const JsonValue *value = obj.get(name);
+    return value && value->type() == JsonType::Int ? value : nullptr;
+}
+
+/// @brief Extract `params.textDocument.uri` into @p uri.
+/// @return true when a non-empty URI string is present.
+bool extractTextDocumentUri(const JsonValue &params, std::string &uri) {
+    const JsonValue *textDocument = objectMember(params, "textDocument");
+    if (!textDocument)
+        return false;
+    const JsonValue *uriValue = stringMember(*textDocument, "uri");
+    if (!uriValue)
+        return false;
+    uri = uriValue->asString();
+    return !uri.empty();
+}
+
+/// @brief Extract `params.textDocument.version` into @p version.
+/// @return true when an integer version is present.
+bool extractTextDocumentVersion(const JsonValue &params, int &version) {
+    const JsonValue *textDocument = objectMember(params, "textDocument");
+    const JsonValue *versionValue = textDocument ? intMember(*textDocument, "version") : nullptr;
+    if (!versionValue)
+        return false;
+    version = static_cast<int>(versionValue->asInt());
+    return true;
+}
+
+/// @brief Extract `params.position` into 1-based @p line / @p col.
+/// @details LSP positions are 0-based; this adds 1 to each so the values match
+///          the frontend's 1-based line/column convention.
+/// @return true when both line and character are present and positive.
+bool extractPosition(const JsonValue &params, int &line, int &col) {
+    const JsonValue *position = objectMember(params, "position");
+    const JsonValue *lineValue = position ? intMember(*position, "line") : nullptr;
+    const JsonValue *colValue = position ? intMember(*position, "character") : nullptr;
+    if (!lineValue || !colValue)
+        return false;
+    line = static_cast<int>(lineValue->asInt()) + 1;
+    col = static_cast<int>(colValue->asInt()) + 1;
+    return line > 0 && col > 0;
+}
+
+/// @brief Build an LSP `Range` JSON object from 0-based start/end line/character.
+JsonValue makeRange(int startLine, int startCharacter, int endLine, int endCharacter) {
+    return JsonValue::object({
+        {"start",
+         JsonValue::object({{"line", JsonValue(startLine)}, {"character", JsonValue(startCharacter)}})},
+        {"end",
+         JsonValue::object({{"line", JsonValue(endLine)}, {"character", JsonValue(endCharacter)}})},
+    });
+}
+
+/// @brief Build an LSP `Range` covering the first occurrence of @p name in @p content.
+/// @details Scans @p content for @p name, translating the byte offset into a
+///          0-based line/character position; falls back to the start of the
+///          document (0,0)-(0,1) when @p name is empty or not found. Used to give
+///          document symbols a best-effort location without full position info.
+JsonValue rangeForFirstName(const std::string &content, const std::string &name) {
+    const size_t pos = name.empty() ? std::string::npos : content.find(name);
+    if (pos == std::string::npos)
+        return makeRange(0, 0, 0, 1);
+
+    int line = 0;
+    int character = 0;
+    for (size_t i = 0; i < pos; ++i) {
+        if (content[i] == '\n') {
+            ++line;
+            character = 0;
+        } else {
+            ++character;
+        }
+    }
+    return makeRange(line, character, line, character + static_cast<int>(name.size()));
+}
+
+} // namespace
 
 LspHandler::LspHandler(ICompilerBridge &bridge, Transport &transport, const ServerConfig &config)
     : bridge_(bridge), transport_(transport), config_(config) {}
@@ -103,23 +202,34 @@ std::string LspHandler::handleShutdown(const JsonRpcRequest &req) {
 // --- Document sync ---
 
 void LspHandler::handleDidOpen(const JsonRpcRequest &req) {
-    const auto &textDoc = req.params["textDocument"];
-    std::string uri = textDoc["uri"].asString();
-    int version = static_cast<int>(textDoc["version"].asInt());
-    std::string text = textDoc["text"].asString();
+    const auto *textDoc = objectMember(req.params, "textDocument");
+    const auto *uriValue = textDoc ? stringMember(*textDoc, "uri") : nullptr;
+    const auto *versionValue = textDoc ? intMember(*textDoc, "version") : nullptr;
+    const auto *textValue = textDoc ? stringMember(*textDoc, "text") : nullptr;
+    if (!uriValue || !versionValue || !textValue)
+        return;
+    std::string uri = uriValue->asString();
+    int version = static_cast<int>(versionValue->asInt());
+    std::string text = textValue->asString();
 
     store_.open(uri, version, std::move(text));
     publishDiagnostics(uri);
 }
 
 void LspHandler::handleDidChange(const JsonRpcRequest &req) {
-    std::string uri = req.params["textDocument"]["uri"].asString();
-    int version = static_cast<int>(req.params["textDocument"]["version"].asInt());
+    std::string uri;
+    int version = 0;
+    if (!extractTextDocumentUri(req.params, uri) || !extractTextDocumentVersion(req.params, version))
+        return;
 
     // Full sync: take the last content change
     const auto &changes = req.params["contentChanges"];
-    if (changes.size() > 0) {
-        std::string text = changes.at(changes.size() - 1)["text"].asString();
+    if (changes.type() == JsonType::Array && changes.size() > 0) {
+        const auto &lastChange = changes.at(changes.size() - 1);
+        const auto *textValue = stringMember(lastChange, "text");
+        if (!textValue)
+            return;
+        std::string text = textValue->asString();
         store_.update(uri, version, std::move(text));
     }
 
@@ -127,7 +237,9 @@ void LspHandler::handleDidChange(const JsonRpcRequest &req) {
 }
 
 void LspHandler::handleDidClose(const JsonRpcRequest &req) {
-    std::string uri = req.params["textDocument"]["uri"].asString();
+    std::string uri;
+    if (!extractTextDocumentUri(req.params, uri))
+        return;
     store_.close(uri);
 
     // Clear diagnostics for the closed document
@@ -141,10 +253,11 @@ void LspHandler::handleDidClose(const JsonRpcRequest &req) {
 // --- Completion ---
 
 std::string LspHandler::handleCompletion(const JsonRpcRequest &req) {
-    std::string uri = req.params["textDocument"]["uri"].asString();
-    int line = static_cast<int>(req.params["position"]["line"].asInt()) + 1; // LSP is 0-based
-    int col =
-        static_cast<int>(req.params["position"]["character"].asInt()) + 1; // Bridge is 1-based
+    std::string uri;
+    int line = 0;
+    int col = 0;
+    if (!extractTextDocumentUri(req.params, uri) || !extractPosition(req.params, line, col))
+        return buildError(req.id, kInvalidParams, "Invalid textDocument/completion params");
 
     const std::string *content = store_.getContent(uri);
     if (!content)
@@ -171,9 +284,11 @@ std::string LspHandler::handleCompletion(const JsonRpcRequest &req) {
 // --- Hover ---
 
 std::string LspHandler::handleHover(const JsonRpcRequest &req) {
-    std::string uri = req.params["textDocument"]["uri"].asString();
-    int line = static_cast<int>(req.params["position"]["line"].asInt()) + 1;
-    int col = static_cast<int>(req.params["position"]["character"].asInt()) + 1;
+    std::string uri;
+    int line = 0;
+    int col = 0;
+    if (!extractTextDocumentUri(req.params, uri) || !extractPosition(req.params, line, col))
+        return buildError(req.id, kInvalidParams, "Invalid textDocument/hover params");
 
     const std::string *content = store_.getContent(uri);
     if (!content)
@@ -198,7 +313,9 @@ std::string LspHandler::handleHover(const JsonRpcRequest &req) {
 // --- Document Symbols ---
 
 std::string LspHandler::handleDocumentSymbol(const JsonRpcRequest &req) {
-    std::string uri = req.params["textDocument"]["uri"].asString();
+    std::string uri;
+    if (!extractTextDocumentUri(req.params, uri))
+        return buildError(req.id, kInvalidParams, "Invalid textDocument/documentSymbol params");
 
     const std::string *content = store_.getContent(uri);
     if (!content)
@@ -214,15 +331,9 @@ std::string LspHandler::handleDocumentSymbol(const JsonRpcRequest &req) {
             {"name", JsonValue(s.name)},
             {"kind", JsonValue(symbolKindToLsp(s.kind))},
             {"location",
-             JsonValue::object({
+                 JsonValue::object({
                  {"uri", JsonValue(uri)},
-                 {"range",
-                  JsonValue::object({
-                      {"start",
-                       JsonValue::object({{"line", JsonValue(0)}, {"character", JsonValue(0)}})},
-                      {"end",
-                       JsonValue::object({{"line", JsonValue(0)}, {"character", JsonValue(0)}})},
-                  })},
+                 {"range", rangeForFirstName(*content, s.name)},
              })},
         }));
     }
@@ -262,11 +373,7 @@ void LspHandler::publishDiagnostics(const std::string &uri) {
         int line = d.line > 0 ? static_cast<int>(d.line) - 1 : 0;
         int col = d.column > 0 ? static_cast<int>(d.column) - 1 : 0;
 
-        auto range = JsonValue::object({
-            {"start",
-             JsonValue::object({{"line", JsonValue(line)}, {"character", JsonValue(col)}})},
-            {"end", JsonValue::object({{"line", JsonValue(line)}, {"character", JsonValue(col)}})},
-        });
+        auto range = makeRange(line, col, line, col + 1);
 
         auto diag = JsonValue::object({
             {"range", std::move(range)},

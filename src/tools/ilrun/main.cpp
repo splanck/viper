@@ -22,6 +22,7 @@
 
 namespace {
 
+/// @brief Print the ilrun usage/help text (options, examples, notes) to stderr.
 void printUsage() {
     std::cerr << "ilrun v" << VIPER_VERSION_STR << " - IL Program Runner\n"
               << "\n"
@@ -31,7 +32,7 @@ void printUsage() {
               << "  --trace[=il|src]               Enable execution tracing\n"
               << "  --stdin-from FILE              Redirect stdin from file\n"
               << "  --max-steps N                  Limit execution steps\n"
-              << "  --bounds-checks                Enable runtime bounds checks\n"
+              << "  --bounds-checks                Require precompiled bounds checks (source compile only)\n"
               << "  --break LABEL|FILE:LINE        Set breakpoint\n"
               << "  --break-src FILE:LINE          Set source breakpoint\n"
               << "  --watch NAME                   Watch variable\n"
@@ -49,10 +50,12 @@ void printUsage() {
               << "\n"
               << "Notes:\n"
               << "  - IL files must define func @main()\n"
+              << "  - Bounds checks are generated while compiling source; existing IL cannot add them\n"
               << "  - Use --trace=src for source-level tracing (requires debug info)\n"
               << "  - See documentation for debugging features\n";
 }
 
+/// @brief Print ilrun and IL version information to stdout.
 void printVersion() {
     std::cout << "ilrun v" << VIPER_VERSION_STR << "\n";
     std::cout << "IL Program Runner\n";

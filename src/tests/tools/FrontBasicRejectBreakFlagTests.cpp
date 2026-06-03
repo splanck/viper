@@ -19,14 +19,9 @@
 
 namespace {
 
-bool gUsageCalled = false;
 bool gCompileCalled = false;
 
 } // namespace
-
-void usage() {
-    gUsageCalled = true;
-}
 
 #include "tools/viper/cmd_front_basic.cpp"
 
@@ -58,7 +53,6 @@ int main() {
     const int rc = cmdFrontBasic(4, argv);
 
     assert(rc != 0);
-    assert(gUsageCalled);
     assert(!gCompileCalled);
 
     return 0;

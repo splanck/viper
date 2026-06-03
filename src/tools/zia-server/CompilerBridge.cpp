@@ -41,6 +41,7 @@ using namespace il::frontends::zia;
 
 // --- Helpers ---
 
+/// @brief Map a Zia semantic Symbol::Kind to the server's SymbolInfo kind string.
 static std::string symbolKindStr(Symbol::Kind k) {
     switch (k) {
         case Symbol::Kind::Variable:

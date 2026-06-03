@@ -19,9 +19,11 @@
 
 #include "tools/lsp-common/Json.hpp"
 
+#include <cerrno>
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
+#include <limits>
 #include <stdexcept>
 
 namespace viper::server {
@@ -176,6 +178,10 @@ bool JsonValue::operator!=(const JsonValue &other) const {
 
 // --- Emitter ---
 
+/// @brief Append @p s to @p out as a quoted, escaped JSON string literal.
+/// @details Escapes the standard control/quote characters and encodes any other
+///          byte below 0x20 as a \\u00XX sequence; the surrounding quotes are
+///          added by this function.
 static void emitString(std::string &out, const std::string &s) {
     out += '"';
     for (char c : s) {
@@ -287,10 +293,17 @@ std::string JsonValue::toCompactString() const {
 
 namespace {
 
+/// @brief Recursive-descent JSON parser over a borrowed string_view (RFC 8259).
+/// @details Tracks a cursor into the input and exposes a single parse() entry
+///          point; malformed input is reported by throwing std::runtime_error.
 class JsonParser {
   public:
+    /// @brief Construct a parser positioned at the start of @p input.
     explicit JsonParser(std::string_view input) : src_(input), pos_(0) {}
 
+    /// @brief Parse the entire input as a single JSON value.
+    /// @details Skips surrounding whitespace and rejects trailing characters.
+    /// @throws std::runtime_error on any syntax error.
     JsonValue parse() {
         skipWhitespace();
         auto val = parseValue();
@@ -301,9 +314,12 @@ class JsonParser {
     }
 
   private:
+    static constexpr int kMaxDepth = 512;
+
     std::string_view src_;
     size_t pos_;
 
+    /// @brief Throw a std::runtime_error annotated with the current position.
     [[noreturn]] void error(const char *msg) const {
         std::string err = "JSON parse error at position ";
         err += std::to_string(pos_);
@@ -312,18 +328,21 @@ class JsonParser {
         throw std::runtime_error(err);
     }
 
+    /// @brief Return the current character without consuming it ('\0' at end).
     char peek() const {
         if (pos_ >= src_.size())
             return '\0';
         return src_[pos_];
     }
 
+    /// @brief Consume and return the current character; errors at end of input.
     char advance() {
         if (pos_ >= src_.size())
             error("unexpected end of input");
         return src_[pos_++];
     }
 
+    /// @brief Consume the next character, erroring if it is not @p c.
     void expect(char c) {
         char got = advance();
         if (got != c) {
@@ -336,6 +355,7 @@ class JsonParser {
         }
     }
 
+    /// @brief Advance past any run of JSON whitespace (space/tab/newline/CR).
     void skipWhitespace() {
         while (pos_ < src_.size()) {
             char c = src_[pos_];
@@ -346,6 +366,7 @@ class JsonParser {
         }
     }
 
+    /// @brief Consume @p literal if it matches at the cursor; return whether it did.
     bool tryConsume(std::string_view literal) {
         if (src_.substr(pos_).substr(0, literal.size()) == literal) {
             pos_ += literal.size();
@@ -354,7 +375,12 @@ class JsonParser {
         return false;
     }
 
-    JsonValue parseValue() {
+    /// @brief Parse a single JSON value, dispatching on the leading character.
+    /// @param depth Current nesting depth, bounded by kMaxDepth to stop runaway
+    ///        recursion on deeply nested or malicious input.
+    JsonValue parseValue(int depth = 0) {
+        if (depth > kMaxDepth)
+            error("maximum nesting depth exceeded");
         skipWhitespace();
         char c = peek();
         if (c == '\0')
@@ -376,9 +402,9 @@ class JsonParser {
             case '"':
                 return JsonValue(parseString());
             case '[':
-                return parseArray();
+                return parseArray(depth + 1);
             case '{':
-                return parseObject();
+                return parseObject(depth + 1);
             default:
                 if (c == '-' || (c >= '0' && c <= '9'))
                     return parseNumber();
@@ -386,6 +412,7 @@ class JsonParser {
         }
     }
 
+    /// @brief Parse a quoted JSON string, decoding escapes (including \\uXXXX).
     std::string parseString() {
         expect('"');
         std::string result;
@@ -440,6 +467,8 @@ class JsonParser {
                                 error("missing low surrogate");
                             }
                         }
+                        if (cp >= 0xDC00 && cp <= 0xDFFF)
+                            error("lone low surrogate");
                         encodeUtf8(result, cp);
                         break;
                     }
@@ -447,11 +476,14 @@ class JsonParser {
                         error("invalid escape sequence");
                 }
             } else {
+                if (static_cast<unsigned char>(c) < 0x20)
+                    error("unescaped control character in string");
                 result += c;
             }
         }
     }
 
+    /// @brief Parse exactly four hexadecimal digits into a code unit value.
     uint32_t parseHex4() {
         if (pos_ + 4 > src_.size())
             error("incomplete \\u escape");
@@ -471,6 +503,7 @@ class JsonParser {
         return val;
     }
 
+    /// @brief Append a Unicode code point to @p out as UTF-8 (1–4 bytes).
     static void encodeUtf8(std::string &out, uint32_t cp) {
         if (cp < 0x80) {
             out += static_cast<char>(cp);
@@ -489,6 +522,8 @@ class JsonParser {
         }
     }
 
+    /// @brief Parse a JSON number, returning an Int when integral or a Double when
+    ///        it has a fraction/exponent; rejects out-of-range or malformed values.
     JsonValue parseNumber() {
         size_t start = pos_;
         bool isFloat = false;
@@ -529,20 +564,23 @@ class JsonParser {
 
         if (isFloat) {
             char *end = nullptr;
+            errno = 0;
             double d = std::strtod(numStr.c_str(), &end);
-            if (end != numStr.c_str() + numStr.size())
+            if (end != numStr.c_str() + numStr.size() || errno == ERANGE || !std::isfinite(d))
                 error("invalid number");
             return JsonValue(d);
         } else {
             char *end = nullptr;
+            errno = 0;
             long long ll = std::strtoll(numStr.c_str(), &end, 10);
-            if (end != numStr.c_str() + numStr.size())
+            if (end != numStr.c_str() + numStr.size() || errno == ERANGE)
                 error("invalid number");
             return JsonValue(static_cast<int64_t>(ll));
         }
     }
 
-    JsonValue parseArray() {
+    /// @brief Parse a JSON array `[ value, ... ]` at the given nesting depth.
+    JsonValue parseArray(int depth) {
         expect('[');
         skipWhitespace();
         JsonValue::ArrayType arr;
@@ -551,7 +589,7 @@ class JsonParser {
             return JsonValue(std::move(arr));
         }
         while (true) {
-            arr.push_back(parseValue());
+            arr.push_back(parseValue(depth));
             skipWhitespace();
             if (peek() == ']') {
                 ++pos_;
@@ -561,7 +599,8 @@ class JsonParser {
         }
     }
 
-    JsonValue parseObject() {
+    /// @brief Parse a JSON object `{ "key": value, ... }`, preserving member order.
+    JsonValue parseObject(int depth) {
         expect('{');
         skipWhitespace();
         JsonValue::ObjectType obj;
@@ -576,7 +615,7 @@ class JsonParser {
             std::string key = parseString();
             skipWhitespace();
             expect(':');
-            auto val = parseValue();
+            auto val = parseValue(depth);
             obj.emplace_back(std::move(key), std::move(val));
             skipWhitespace();
             if (peek() == '}') {

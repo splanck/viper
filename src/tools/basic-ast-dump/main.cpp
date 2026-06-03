@@ -36,17 +36,21 @@ using il::tools::basic::loadBasicSource;
 ///
 /// @details Step-by-step execution:
 ///          1. Validate the argument count and load the requested BASIC file via
-///             @ref il::tools::basic::loadBasicSource, capturing diagnostics
-///             consistent with the rest of the BASIC toolchain.
-///          2. Register the file with the source manager so future diagnostics
-///             resolve to readable paths.
+///             @ref il::tools::basic::loadBasicSource, which also registers the
+///             path with the source manager so diagnostics resolve to readable
+///             locations.
+///          2. Construct a @ref il::support::DiagnosticEngine and
+///             @ref il::frontends::basic::DiagnosticEmitter, registering the
+///             loaded text via @c addSource so caret diagnostics can quote the
+///             offending lines.
 ///          3. Parse the program into an AST using
-///             @ref il::frontends::basic::Parser.
+///             @ref il::frontends::basic::Parser; on failure flush the collected
+///             diagnostics to stderr and exit non-zero.
 ///          4. Pretty print the AST with @ref il::frontends::basic::AstPrinter
 ///             and emit the result to stdout.
 ///          The function exits with @c 0 on success or @c 1 when argument
-///          validation or file loading fails, matching the conventions of the
-///          other developer tools.
+///          validation, file loading, or parsing fails, matching the conventions
+///          of the other developer tools.
 ///
 /// @param argc Argument count supplied by the C runtime.
 /// @param argv Argument vector containing UTF-8 encoded strings.

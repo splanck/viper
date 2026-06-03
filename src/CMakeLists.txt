@@ -671,7 +671,10 @@ target_link_libraries(il-dis
         PRIVATE
         viper_common_opts
         viper::il_full
-        il_build)
+        il_build
+        il_api
+        il_tools_common
+        viper_bytecode)
 install(TARGETS il-dis RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 add_subdirectory(frontends/common)

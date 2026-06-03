@@ -13,7 +13,7 @@
 // Key invariants:
 //   - Virtual alignment = 0x1000 (4 KiB pages).
 //   - File alignment = 0x200 (512 bytes).
-//   - version_made_by: Machine = 0x8664 (AMD64).
+//   - COFF Machine = 0x8664 (AMD64) by default, 0xAA64 (ARM64) when requested.
 //   - Subsystem = IMAGE_SUBSYSTEM_WINDOWS_GUI (2) by default.
 //   - Import directory references kernel32.dll for minimal APIs.
 //   - Resource section embeds RT_MANIFEST for UAC elevation.
@@ -33,24 +33,24 @@
 
 namespace viper::pkg {
 
-/// @brief Import function entry — a function imported from a DLL.
+/// @brief Functions imported from a single DLL for the import directory.
 struct PEImport {
-    std::string dllName;
-    std::vector<std::string> functions;
+    std::string dllName;                 ///< DLL to import from (e.g. "kernel32.dll").
+    std::vector<std::string> functions;  ///< Imported function names from that DLL.
 };
 
 /// @brief VERSIONINFO metadata embedded as an RT_VERSION resource.
 struct PEVersionInfo {
-    bool enabled{false};
-    std::array<uint16_t, 4> fileVersion{0, 0, 0, 0};
-    std::array<uint16_t, 4> productVersion{0, 0, 0, 0};
-    std::string companyName;
-    std::string fileDescription;
-    std::string fileVersionText;
-    std::string internalName;
-    std::string originalFilename;
-    std::string productName;
-    std::string productVersionText;
+    bool enabled{false};                            ///< Emit the resource only when true.
+    std::array<uint16_t, 4> fileVersion{0, 0, 0, 0};    ///< Binary file version (a.b.c.d).
+    std::array<uint16_t, 4> productVersion{0, 0, 0, 0}; ///< Binary product version (a.b.c.d).
+    std::string companyName;        ///< CompanyName string-table value.
+    std::string fileDescription;    ///< FileDescription string-table value.
+    std::string fileVersionText;    ///< FileVersion display string.
+    std::string internalName;       ///< InternalName string-table value.
+    std::string originalFilename;   ///< OriginalFilename string-table value.
+    std::string productName;        ///< ProductName string-table value.
+    std::string productVersionText; ///< ProductVersion display string.
 };
 
 /// @brief Parameters for building a PE32+ executable.

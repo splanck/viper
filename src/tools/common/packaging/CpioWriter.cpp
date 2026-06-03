@@ -8,6 +8,16 @@
 // File: src/tools/common/packaging/CpioWriter.cpp
 // Purpose: Native portable ASCII CPIO writer for macOS flat package payloads.
 //
+// Key invariants:
+//   - Emits the "070707" portable ASCII format with fixed-width octal fields.
+//   - Entry paths are normalized and validated; symlink targets must not escape.
+//   - finish() always emits a TRAILER!!! record and pads to 512 bytes.
+//
+// Ownership/Lifetime:
+//   - Single-use accumulator; entries are copied in and owned by the writer.
+//
+// Links: CpioWriter.hpp, PkgUtils.hpp (path sanitization)
+//
 //===----------------------------------------------------------------------===//
 
 #include "CpioWriter.hpp"
@@ -24,6 +34,14 @@
 namespace viper::pkg {
 namespace {
 
+/// @brief Normalize an entry path to a safe "./"-prefixed relative form.
+/// @details Converts backslashes to slashes, strips trailing slashes and a
+///          leading "./", and runs the path through sanitizePackageRelativePath
+///          (which rejects traversal/absolute paths). The archive root maps to
+///          ".".
+/// @param path Raw entry path.
+/// @param directory True if the path names a directory (affects the error label).
+/// @return The normalized path, or "." for the archive root.
 std::string normalizeCpioPath(std::string path, bool directory) {
     for (char &ch : path) {
         if (ch == '\\')
@@ -39,6 +57,14 @@ std::string normalizeCpioPath(std::string path, bool directory) {
     return path.empty() ? "." : "./" + path;
 }
 
+/// @brief Validate a symlink target and confirm it stays inside the archive.
+/// @details Rejects empty, multi-line, absolute, and drive-qualified targets,
+///          then resolves the target relative to the link's parent directory and
+///          rejects it if it normalizes to "." / ".." or escapes upward.
+/// @param linkPath Normalized path of the symlink entry (provides the base dir).
+/// @param target Raw link target (taken by value; backslashes are normalized).
+/// @return The validated (forward-slash) target string.
+/// @throws std::runtime_error when the target is empty, absolute, or escapes.
 std::string normalizeCpioSymlinkTarget(const std::string &linkPath, std::string target) {
     if (target.empty())
         throw std::runtime_error("cpio symlink target must not be empty");
@@ -60,6 +86,14 @@ std::string normalizeCpioSymlinkTarget(const std::string &linkPath, std::string 
     return target;
 }
 
+/// @brief Append a zero-padded, fixed-width octal header field.
+/// @details Formats @p value as exactly @p width octal digits and appends them to
+///          @p out, throwing if the value does not fit (no overflow indicator
+///          exists in the format, so silent truncation must be avoided).
+/// @param out Output buffer to append to.
+/// @param value Value to encode.
+/// @param width Exact field width in octal digits.
+/// @param path Entry path used for error context.
 void appendOctalField(std::vector<uint8_t> &out,
                       uint64_t value,
                       size_t width,
@@ -77,6 +111,18 @@ void appendOctalField(std::vector<uint8_t> &out,
     out.insert(out.end(), field, field + width);
 }
 
+/// @brief Append one complete "070707" CPIO record (header + name + data).
+/// @details Writes the 76-byte fixed octal header (with zeroed dev/ino/uid/gid/
+///          rdev fields), the NUL-terminated name, and the payload bytes. Used
+///          for files, directories, symlinks, and the TRAILER!!! sentinel.
+/// @param out Output buffer to append to.
+/// @param path Entry name written into the record (NUL-terminated).
+/// @param mode Mode bits including the file-type field.
+/// @param nlink Link count field (2 for directories, 1 otherwise).
+/// @param mtime Modification time (Unix timestamp).
+/// @param data Payload bytes (file contents or symlink target; may be null when empty).
+/// @param dataSize Payload length in bytes.
+/// @throws std::runtime_error when the entry or path exceeds the format limits.
 void appendEntry(std::vector<uint8_t> &out,
                  const std::string &path,
                  uint32_t mode,

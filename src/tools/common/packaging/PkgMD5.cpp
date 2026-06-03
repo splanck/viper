@@ -27,10 +27,11 @@
 namespace viper::pkg {
 namespace {
 
+/// @brief Streaming MD5 state used by md5Init/md5Update/md5Final.
 struct MD5Context {
-    uint32_t state[4];
-    uint32_t count[2];
-    uint8_t buffer[64];
+    uint32_t state[4];  ///< Running A/B/C/D digest words.
+    uint32_t count[2];  ///< Message length in bits (low, high).
+    uint8_t buffer[64]; ///< Partial 64-byte block awaiting transform.
 };
 
 #define MD5_F(x, y, z) (((x) & (y)) | ((~x) & (z)))

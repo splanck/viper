@@ -54,6 +54,10 @@ bool isNativeOutputPath(const std::string &path);
 /// @param backendOptimizeLevel Backend optimization level to preserve after frontend IL
 /// optimization.
 /// @param skipIlOptimization True when the input IL has already run the frontend/project pipeline.
+/// @param timePasses When true, the codegen pipeline prints per-pass timing statistics.
+/// @param fastLink When true, selects the faster (less optimized) link path.
+/// @param windowsDebugRuntime Optional override selecting the Windows debug CRT; std::nullopt
+/// leaves the platform default in effect (ignored on non-Windows targets).
 /// @return 0 on success, non-zero on failure.
 int compileToNative(const std::string &ilPath,
                     const std::string &outputPath,
@@ -67,6 +71,27 @@ int compileToNative(const std::string &ilPath,
                     std::optional<bool> windowsDebugRuntime = std::nullopt);
 
 /// @brief Compile an already-built IL module to a native binary without reparsing IL text.
+///
+/// @details Mirrors @ref compileToNative but accepts an in-memory module, avoiding
+///          a serialize/reparse round-trip. A synthetic temporary IL path is
+///          generated purely to satisfy the pipeline's @c input_il_path option and
+///          to provide a stable name for diagnostics; no IL text is written for it.
+///          The module is moved into the selected backend pipeline.
+///
+/// @param module IL module to compile; consumed (moved) by the pipeline.
+/// @param debugSourcePath Original source path recorded for debug info/diagnostics.
+/// @param outputPath Path for the output native binary.
+/// @param arch Target architecture (defaults to host architecture).
+/// @param assetBlobPath Path to VPA asset blob for .rodata embedding (optional).
+/// @param assetObjPath Path to extra .o file with asset blob C array (optional).
+/// @param backendOptimizeLevel Backend optimization level applied during codegen.
+/// @param skipIlOptimization True when the module has already run the frontend/project pipeline.
+/// @param moduleAlreadyVerified True to skip re-verifying the module before codegen.
+/// @param timePasses When true, the codegen pipeline prints per-pass timing statistics.
+/// @param fastLink When true, selects the faster (less optimized) link path.
+/// @param windowsDebugRuntime Optional override selecting the Windows debug CRT; std::nullopt
+/// leaves the platform default in effect (ignored on non-Windows targets).
+/// @return 0 on success, non-zero on failure.
 int compileModuleToNative(il::core::Module module,
                           const std::string &debugSourcePath,
                           const std::string &outputPath,
@@ -83,6 +108,10 @@ int compileModuleToNative(il::core::Module module,
 /// @brief Generate a unique temporary file path for IL serialization.
 /// @return A path in the system temp directory with a .il extension.
 std::string generateTempIlPath();
+
+/// @brief Generate and reserve a unique temporary file path.
+/// @return A path in the system temp directory; the file is created exclusively.
+std::string generateTempFilePath(const char *prefix, const char *extension);
 
 /// @brief Generate a unique temporary file path for asset blob.
 /// @return A path in the system temp directory with a .vpa extension.

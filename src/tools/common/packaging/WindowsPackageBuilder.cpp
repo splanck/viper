@@ -158,24 +158,31 @@ std::string lowerAscii(std::string text) {
     return text;
 }
 
+/// @brief Read a little-endian uint16 at @p off (caller must bounds-check).
 uint16_t rd16(const std::vector<uint8_t> &data, size_t off) {
     return static_cast<uint16_t>(data[off] | (data[off + 1] << 8));
 }
 
+/// @brief Read a little-endian uint32 at @p off (caller must bounds-check).
 uint32_t rd32(const std::vector<uint8_t> &data, size_t off) {
     return static_cast<uint32_t>(data[off]) | (static_cast<uint32_t>(data[off + 1]) << 8) |
            (static_cast<uint32_t>(data[off + 2]) << 16) |
            (static_cast<uint32_t>(data[off + 3]) << 24);
 }
 
+/// @brief Return true if [off, off+len) lies entirely within @p data.
 bool hasBytes(const std::vector<uint8_t> &data, size_t off, size_t len) {
     return off <= data.size() && len <= data.size() - off;
 }
 
+/// @brief Rotate a 32-bit value right by @p bits (SHA-256 round operation).
 uint32_t rotr32(uint32_t value, unsigned bits) {
     return (value >> bits) | (value << (32u - bits));
 }
 
+/// @brief Compute the SHA-256 of a buffer as a lowercase hex string.
+/// @details Self-contained SHA-256 used to fingerprint payload files in the
+///          installer's integrity manifest; kept local to avoid a runtime dep.
 std::string sha256Hex(const uint8_t *data, size_t len) {
     static constexpr std::array<uint32_t, 64> k = {
         0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u, 0x3956c25bu, 0x59f111f1u, 0x923f82a4u,
@@ -255,18 +262,22 @@ std::string sha256Hex(const uint8_t *data, size_t len) {
     return os.str();
 }
 
+/// @brief One PE section's RVA/size and file-offset/size, for RVA→offset mapping.
 struct PeSectionInfo {
-    uint32_t rva{0};
-    uint32_t virtualSize{0};
-    uint32_t rawOffset{0};
-    uint32_t rawSize{0};
+    uint32_t rva{0};         ///< Virtual address of the section.
+    uint32_t virtualSize{0}; ///< Virtual size of the section.
+    uint32_t rawOffset{0};   ///< File offset of the section's raw data.
+    uint32_t rawSize{0};     ///< File size of the section's raw data.
 };
 
+/// @brief Minimal identifying info about a PE image: machine type and PE32+ flag.
 struct PeExecutableInfo {
-    uint16_t machine{0};
-    bool pe32Plus{false};
+    uint16_t machine{0};   ///< COFF Machine field (0x8664 = AMD64, 0xAA64 = ARM64).
+    bool pe32Plus{false};  ///< True when the optional header magic is 0x020B (PE32+).
 };
 
+/// @brief Parse just enough of a PE image to extract its machine type and bitness.
+/// @return PeExecutableInfo, or std::nullopt if the bytes are not a valid PE image.
 std::optional<PeExecutableInfo> inspectPeExecutable(const std::vector<uint8_t> &data) {
     if (!hasBytes(data, 0, 64) || data[0] != 'M' || data[1] != 'Z')
         return std::nullopt;
@@ -282,6 +293,8 @@ std::optional<PeExecutableInfo> inspectPeExecutable(const std::vector<uint8_t> &
     return PeExecutableInfo{rd16(data, coffOff), rd16(data, optOff) == 0x020B};
 }
 
+/// @brief Map an architecture string to its PE COFF Machine value.
+/// @throws std::runtime_error for anything other than "" / "x64" / "arm64".
 uint16_t windowsMachineForArch(const std::string &arch) {
     if (arch.empty() || arch == "x64")
         return 0x8664;
@@ -290,6 +303,9 @@ uint16_t windowsMachineForArch(const std::string &arch) {
     throw std::runtime_error("unsupported Windows package architecture '" + arch + "'");
 }
 
+/// @brief Validate that the payload binary at @p path is a PE32+ for @p arch.
+/// @throws std::runtime_error if the file is not PE32+ or its machine type does
+///         not match the requested architecture.
 void validateWindowsPayloadExecutable(const fs::path &path, const std::string &arch) {
     const auto data = readFile(path.string());
     const auto info = inspectPeExecutable(data);
@@ -305,6 +321,10 @@ void validateWindowsPayloadExecutable(const fs::path &path, const std::string &a
     }
 }
 
+/// @brief Translate a PE relative virtual address to a file offset.
+/// @details Searches @p sections for the one containing @p rva and maps it into
+///          that section's raw data. Returns nullopt when no section covers the
+///          RVA or the resulting offset would exceed @p fileSize.
 std::optional<size_t> peRvaToFileOffset(const std::vector<PeSectionInfo> &sections,
                                         uint32_t rva,
                                         size_t fileSize) {
@@ -321,6 +341,9 @@ std::optional<size_t> peRvaToFileOffset(const std::vector<PeSectionInfo> &sectio
     return std::nullopt;
 }
 
+/// @brief Read a NUL-terminated printable-ASCII string from @p data at @p off.
+/// @return The string, or "" if a non-printable byte or an unterminated run is
+///         encountered (used to read DLL name strings from the import table).
 std::string readPeAsciiZ(const std::vector<uint8_t> &data, size_t off) {
     std::string out;
     while (off < data.size() && data[off] != 0) {
@@ -332,6 +355,10 @@ std::string readPeAsciiZ(const std::vector<uint8_t> &data, size_t off) {
     return off < data.size() ? out : std::string{};
 }
 
+/// @brief Parse a PE32+ import directory and return the imported DLL names.
+/// @details Walks the import data directory's IMAGE_IMPORT_DESCRIPTOR array,
+///          mapping each Name RVA to a file offset and reading the DLL string.
+///          Returns an empty vector if the image is not a parseable PE32+.
 std::vector<std::string> importedDllNamesFromPeImpl(const std::vector<uint8_t> &data) {
     if (!hasBytes(data, 0, 64) || data[0] != 'M' || data[1] != 'Z')
         return {};
@@ -394,6 +421,12 @@ std::vector<std::string> importedDllNamesFromPeImpl(const std::vector<uint8_t> &
     return names;
 }
 
+/// @brief Decide whether a DLL is a system/redistributable that need not be bundled.
+/// @details Returns true for OS DLLs and the standard MSVC/UCRT redistributables
+///          (release builds), plus the api-ms-win/ext-ms-win API sets; returns
+///          false for debug-CRT variants (which are not redistributable) so the
+///          packager can flag a debug-linked payload. Used to decide which
+///          adjacent DLLs must travel with the application.
 bool isKnownWindowsRedistributableDll(const std::string &dll) {
     const std::string stem = dll.size() > 4 && dll.substr(dll.size() - 4) == ".dll"
                                  ? dll.substr(0, dll.size() - 4)
@@ -440,6 +473,9 @@ bool isKnownWindowsRedistributableDll(const std::string &dll) {
     return dll.rfind("api-ms-win-", 0) == 0 || dll.rfind("ext-ms-win-", 0) == 0;
 }
 
+/// @brief Find @p filename in @p dir, trying an exact path first then a
+///        case-insensitive directory scan.
+/// @return The matching path, or std::nullopt when no file matches.
 std::optional<fs::path> findAdjacentFileCaseInsensitive(const fs::path &dir,
                                                         const std::string &filename) {
     const fs::path direct = dir / filename;
@@ -459,6 +495,10 @@ std::optional<fs::path> findAdjacentFileCaseInsensitive(const fs::path &dir,
     return std::nullopt;
 }
 
+/// @brief Transitively collect non-system DLLs that ship next to @p exePath.
+/// @details Breadth-first walks the import tables of the executable and each
+///          discovered local DLL, skipping known redistributable/system DLLs, and
+///          returns the adjacent files that must be bundled into the installer.
 std::vector<fs::path> discoverAdjacentDllDependencies(const fs::path &exePath) {
     std::vector<fs::path> deps;
     const fs::path dir = exePath.parent_path();
@@ -513,12 +553,15 @@ std::string windowsInstallEnvPath(const std::string &installDir,
     return path;
 }
 
+/// @brief Wrap @p path in double quotes for embedding in a command line.
+/// @throws std::runtime_error if @p path itself contains a double quote.
 std::string windowsQuotedPath(const std::string &path) {
     if (path.find('"') != std::string::npos)
         throw std::runtime_error("Windows shortcut path must not contain quotes: " + path);
     return "\"" + path + "\"";
 }
 
+/// @brief Generate the "Viper Developer Prompt" .bat that puts bin/ on PATH.
 std::string toolchainDeveloperPromptScript() {
     std::ostringstream os;
     os << "@echo off\r\n"
@@ -533,6 +576,7 @@ std::string toolchainDeveloperPromptScript() {
     return os.str();
 }
 
+/// @brief Generate the .bat that installs the bundled VS Code (.vsix) extension.
 std::string toolchainVSCodeInstallScript() {
     return "@echo off\r\n"
            "setlocal\r\n"
@@ -555,6 +599,7 @@ std::string toolchainVSCodeInstallScript() {
            "code --install-extension \"%VSIX%\" --force\r\n";
 }
 
+/// @brief Generate the prerequisites README text bundled with the installer.
 std::string toolchainWindowsPrerequisitesReadme() {
     return "Viper Windows toolchain installer prerequisites\r\n"
            "\r\n"
@@ -595,12 +640,16 @@ uint32_t estimatedInstalledSizeKb(const WindowsPackageLayout &layout) {
     return kb > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(kb);
 }
 
+/// @brief Pick the embedded UAC manifest: asInvoker for per-user installs,
+///        admin-elevation otherwise.
 std::string windowsManifestForLayout(const WindowsPackageLayout &layout,
                                      const std::string &minOsWindows) {
     return layout.perUserInstall ? generateAsInvokerManifest(minOsWindows)
                                  : generateUacManifest(minOsWindows);
 }
 
+/// @brief Parse up to four leading numeric components of @p version into a
+///        VERSIONINFO {a,b,c,d} array (missing components default to 0).
 std::array<uint16_t, 4> windowsVersionPartsForResource(const std::string &version) {
     std::array<uint16_t, 4> parts{0, 0, 0, 0};
     size_t partIndex = 0;
@@ -625,6 +674,14 @@ std::array<uint16_t, 4> windowsVersionPartsForResource(const std::string &versio
     return parts;
 }
 
+/// @brief Build a PEVersionInfo (RT_VERSION resource) from a package layout.
+/// @details Populates file/product versions from the layout version and the
+///          publisher/display-name strings; the description is the display name
+///          optionally suffixed (e.g. " Uninstaller").
+/// @param layout Package layout providing version, publisher, and display name.
+/// @param filename Internal/original filename to record.
+/// @param descriptionSuffix Optional suffix appended to the file description.
+/// @return A populated, enabled PEVersionInfo.
 PEVersionInfo windowsVersionInfoForLayout(const WindowsPackageLayout &layout,
                                           const std::string &filename,
                                           const std::string &descriptionSuffix) {
@@ -704,6 +761,9 @@ void appendPayloadManifestEntry(std::ostringstream *payloadManifest,
                      << "\n";
 }
 
+/// @brief Record a file for removal at uninstall time, when @p deleteOnUninstall.
+/// @details Appends an uninstall entry to @p layout so the generated uninstaller
+///          knows to delete this path; no-op when the file should be left behind.
 void registerInstalledFile(WindowsPackageLayout &layout,
                            WindowsInstallRoot root,
                            const std::string &installRelativePath,
@@ -715,6 +775,12 @@ void registerInstalledFile(WindowsPackageLayout &layout,
     }
 }
 
+/// @brief Add a STORED (uncompressed) file to the overlay ZIP and register it.
+/// @details Stored entries are mandatory for bootstrap files the stub reads
+///          directly: it captures the entry's local-data offset and CRC-32 into
+///          @p layout so the stub can locate and verify the bytes without parsing
+///          the central directory. Throws if the writer compressed the entry.
+///          Optionally appends a SHA-256 line to @p payloadManifest.
 void addStoredOverlayFile(ZipWriter &zip,
                           const std::string &overlayName,
                           const uint8_t *data,
@@ -739,6 +805,11 @@ void addStoredOverlayFile(ZipWriter &zip,
         layout, root, installRelativePath, entry.uncompressedSize, deleteOnUninstall);
 }
 
+/// @brief Add a file to the compressed inner payload ZIP and register it.
+/// @details Unlike addStoredOverlayFile, entries here may be DEFLATE-compressed
+///          because the stub extracts the whole inner ZIP before use, so no
+///          stored-offset capture is needed. Records the install/uninstall entry
+///          and, for InstallDir files, appends to @p installManifestPaths.
 void addCompressedPayloadFile(ZipWriter &payloadZip,
                               const std::string &payloadName,
                               const uint8_t *data,
@@ -758,6 +829,14 @@ void addCompressedPayloadFile(ZipWriter &payloadZip,
     }
 }
 
+/// @brief Render the newline-separated, sorted, de-duplicated installed-file manifest.
+/// @details Adds the manifest's own path, sorts case-insensitively, removes
+///          case-insensitive duplicates, and joins with newlines. The installer
+///          writes this manifest so a later upgrade/uninstall knows exactly which
+///          files it placed.
+/// @param paths Install-relative paths to include (taken by value; mutated).
+/// @param manifestRelativePath Path of the manifest file itself (also recorded).
+/// @return The manifest text.
 std::string buildWindowsInstalledManifest(std::vector<std::string> paths,
                                           const std::string &manifestRelativePath) {
     paths.push_back(

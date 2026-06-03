@@ -30,9 +30,12 @@
 #include "il/verify/Verifier.hpp"
 
 #include <fstream>
+#include <limits>
 
 namespace il::tools::common {
 namespace {
+constexpr std::streamoff kMaxIlModuleSize = static_cast<std::streamoff>(256ULL * 1024 * 1024);
+
 /// @brief Build a successful load result with no diagnostics attached.
 ///
 /// @details Initialises the @ref LoadResult structure with
@@ -92,7 +95,8 @@ LoadResult makeVerifyError(const il::support::Diag &diag) {
 /// @details The loader performs a full round-trip from disk to in-memory
 ///          module:
 ///          1. Open @p path as an input stream and emit @p ioErrorPrefix
-///             followed by the failing path when the open call fails.
+///             followed by the failing path when the open call fails. The file is
+///             also rejected (as a file error) when it exceeds the 256 MB limit.
 ///          2. Invoke @ref il::api::v2::parse_text_expected to populate
 ///             @p module, preserving any diagnostics emitted by the parser via
 ///             the Expected interface.
@@ -114,9 +118,21 @@ LoadResult loadModuleFromFile(const std::string &path,
                               il::core::Module &module,
                               std::ostream &err,
                               std::string_view ioErrorPrefix) {
-    std::ifstream input(path);
+    std::ifstream input(path, std::ios::binary | std::ios::ate);
     if (!input) {
         std::string message = std::string(ioErrorPrefix) + path;
+        err << message << '\n';
+        return makeFileError(path, std::move(message));
+    }
+    const std::streamoff size = input.tellg();
+    if (size < 0 || size > kMaxIlModuleSize) {
+        std::string message = "IL module too large: " + path + " (limit: 256 MB)";
+        err << message << '\n';
+        return makeFileError(path, std::move(message));
+    }
+    input.seekg(0, std::ios::beg);
+    if (!input) {
+        std::string message = "cannot seek IL module: " + path;
         err << message << '\n';
         return makeFileError(path, std::move(message));
     }
@@ -133,18 +149,22 @@ LoadResult loadModuleFromFile(const std::string &path,
 
 /// @brief Run the IL verifier and forward diagnostics to the caller.
 ///
-/// @details Invokes @ref il::api::v2::verify_module_expected to reuse the
-///          Expected-based diagnostic pipeline and prints failures through
-///          @ref il::support::printDiag.  A @ref il::support::SourceManager pointer is
-///          accepted so tools can render file identifiers as paths when
-///          available, closely matching the output produced by the main
-///          compiler driver.
+/// @details Collects diagnostics with @ref il::verify::Verifier::verifyAll
+///          (capped at 50 entries) and prints every one through
+///          @ref il::support::printDiag, including warnings.  Only
+///          error-severity diagnostics flip the return value to @c false, so a
+///          module that emits warnings but no errors still verifies as
+///          successful.  A @ref il::support::SourceManager pointer is accepted so
+///          tools can render file identifiers as paths when available, closely
+///          matching the output produced by the main compiler driver.  This
+///          differs from @ref verifyModuleResult, which reports only the first
+///          error via the Expected pipeline without printing.
 ///
 /// @param module Module that should satisfy verifier invariants.
 /// @param err Output stream receiving verifier diagnostics.
 /// @param sm Optional source manager providing path lookups for diagnostics.
-/// @return @c true when verification succeeds, otherwise @c false after printing
-///         diagnostics to @p err.
+/// @return @c true when no error-severity diagnostics are produced, otherwise
+///         @c false after printing diagnostics to @p err.
 bool verifyModule(const il::core::Module &module,
                   std::ostream &err,
                   const il::support::SourceManager *sm) {

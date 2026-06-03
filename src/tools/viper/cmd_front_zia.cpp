@@ -37,6 +37,10 @@ using namespace il::support;
 
 namespace {
 
+/// @brief Run the IL verifier on @p module and print any diagnostics.
+/// @details Collects up to 50 diagnostics; prints them (errors always, warnings
+///          only when @p showWarnings) using the requested format.
+/// @return true when the module has no verifier errors.
 bool reportVerifierDiagnostics(il::core::Module &module,
                                std::ostream &err,
                                il::support::SourceManager &sm,
@@ -57,10 +61,31 @@ struct FrontZiaConfig {
     bool emitIl{false};                   ///< True when `-emit-il` is requested.
     bool run{false};                      ///< True when `-run` is requested.
     bool debugVm{false};                  ///< True to use standard VM for debugging.
+    bool helpRequested{false};            ///< True when help was requested.
     std::string sourcePath;               ///< Path to the input `.zia` source.
     ilc::SharedCliOptions shared;         ///< Shared CLI settings (trace, steps, IO).
     std::vector<std::string> programArgs; ///< Extra arguments forwarded to the program.
 };
+
+/// @brief Print usage for the `viper front zia` subcommand to stderr.
+void frontZiaUsage() {
+    std::cerr
+        << "Usage: viper front zia (-emit-il|-run) <file.zia> [options] [-- program-args...]\n"
+        << "\n"
+        << "Options:\n"
+        << "  -emit-il                       Emit IL to stdout\n"
+        << "  -run                           Compile and execute\n"
+        << "  --debug-vm                     Use the standard VM for debugging\n"
+        << "  --trace[=il|src]               Enable execution tracing\n"
+        << "  --stdin-from FILE              Redirect stdin from file\n"
+        << "  --max-steps N                  Limit VM execution steps\n"
+        << "  --dump-trap                    Show detailed trap diagnostics\n"
+        << "  --bounds-checks                Enable generated bounds checks\n"
+        << "  --no-bounds-checks             Disable generated bounds checks\n"
+        << "  --diagnostic-format text|json  Select diagnostic output format\n"
+        << "  -Wall, -Werror, -Wno-XXXX      Control Zia warnings\n"
+        << "  -h, --help                     Show this help\n";
+}
 
 /// @brief Parse CLI arguments for the Zia frontend subcommand.
 /// @details Recognizes `-emit-il` and `-run`, delegates shared flags to
@@ -83,6 +108,9 @@ il::support::Expected<FrontZiaConfig> parseFrontZiaArgs(int argc, char **argv) {
             config.run = true;
         } else if (arg == "--debug-vm") {
             config.debugVm = true;
+        } else if (arg == "--help" || arg == "-h") {
+            config.helpRequested = true;
+            return il::support::Expected<FrontZiaConfig>(std::move(config));
         } else if (arg == "--") {
             for (int j = i + 1; j < argc; ++j)
                 config.programArgs.emplace_back(argv[j]);
@@ -96,6 +124,13 @@ il::support::Expected<FrontZiaConfig> parseFrontZiaArgs(int argc, char **argv) {
                         il::support::Severity::Error, "failed to parse shared option", {}, {}});
                 case ilc::SharedOptionParseResult::NotMatched:
                     if (!arg.empty() && arg[0] != '-') {
+                        if (!config.sourcePath.empty()) {
+                            return il::support::Expected<FrontZiaConfig>(il::support::Diagnostic{
+                                il::support::Severity::Error,
+                                "multiple source files are not supported",
+                                {},
+                                {}});
+                        }
                         config.sourcePath = arg;
                     } else {
                         return il::support::Expected<FrontZiaConfig>(il::support::Diagnostic{
@@ -109,7 +144,7 @@ il::support::Expected<FrontZiaConfig> parseFrontZiaArgs(int argc, char **argv) {
         }
     }
 
-    if ((config.emitIl == config.run) || config.sourcePath.empty()) {
+    if (!config.helpRequested && ((config.emitIl == config.run) || config.sourcePath.empty())) {
         return il::support::Expected<FrontZiaConfig>(il::support::Diagnostic{
             il::support::Severity::Error,
             "specify exactly one of -emit-il or -run, followed by source file",
@@ -202,7 +237,7 @@ int runFrontZia(const FrontZiaConfig &config,
 
         const auto trapMessage = runner.lastTrapMessage();
         if (trapMessage) {
-            if (config.shared.dumpTrap && !trapMessage->empty()) {
+            if (!trapMessage->empty()) {
                 std::cerr << *trapMessage;
                 if (trapMessage->back() != '\n')
                     std::cerr << '\n';
@@ -219,6 +254,7 @@ int runFrontZia(const FrontZiaConfig &config,
     vmConfig.outputTrapMessage = true;
     vmConfig.flushStdout = true;
     vmConfig.sourceManager = &sm;
+    vmConfig.maxSteps = config.shared.maxSteps;
 
     auto vmResult = il::tools::common::executeBytecodeVM(module, vmConfig);
     return vmResult.exitCode;
@@ -239,11 +275,15 @@ int cmdFrontZia(int argc, char **argv) {
     if (!parsed) {
         const auto &diag = parsed.error();
         il::support::printDiag(diag, std::cerr, &sm);
-        usage();
+        frontZiaUsage();
         return 1;
     }
 
     FrontZiaConfig config = std::move(parsed.value());
+    if (config.helpRequested) {
+        frontZiaUsage();
+        return 0;
+    }
 
     auto source = il::tools::common::loadSourceBuffer(config.sourcePath, sm);
     if (!source) {

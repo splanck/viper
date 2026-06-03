@@ -35,6 +35,9 @@ namespace viper::pkg {
 std::vector<uint8_t> gzip(const uint8_t *data, size_t len, int level = 6);
 
 /// @brief Decompress a GZIP stream and validate its CRC/ISIZE trailer.
+/// @param data GZIP-compressed input bytes.
+/// @param len Length of the compressed input.
+/// @return The decompressed bytes.
 /// @throws std::runtime_error on malformed GZIP data or CRC/size mismatch.
 std::vector<uint8_t> gunzip(const uint8_t *data, size_t len);
 

@@ -62,11 +62,12 @@ class ArWriter {
     void finishToFile(const std::string &path) const;
 
   private:
+    /// @brief One pending ar member captured until finish() serializes it.
     struct Member {
-        std::string name;
-        std::vector<uint8_t> data;
-        uint32_t mtime;
-        uint32_t mode;
+        std::string name;          ///< Member name (without the trailing '/').
+        std::vector<uint8_t> data; ///< Member payload bytes.
+        uint32_t mtime;            ///< Modification time (Unix timestamp).
+        uint32_t mode;             ///< File mode in octal.
     };
 
     std::vector<Member> members_;

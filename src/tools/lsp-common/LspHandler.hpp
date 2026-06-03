@@ -52,6 +52,11 @@ class LspHandler {
     /// @return JSON-RPC response string, or empty string for notifications.
     std::string handleRequest(const JsonRpcRequest &req);
 
+    /// @brief True after a successful `shutdown` request.
+    [[nodiscard]] bool shutdownRequested() const {
+        return shutdownRequested_;
+    }
+
   private:
     ICompilerBridge &bridge_;
     Transport &transport_;
@@ -60,20 +65,29 @@ class LspHandler {
     bool shutdownRequested_{false};
 
     // Lifecycle
+    /// @brief Handle `initialize`: advertise server capabilities to the client.
     std::string handleInitialize(const JsonRpcRequest &req);
+    /// @brief Handle `shutdown`: mark the server for exit and acknowledge.
     std::string handleShutdown(const JsonRpcRequest &req);
 
     // Document sync notifications
+    /// @brief Handle `textDocument/didOpen`: store the document and publish diagnostics.
     void handleDidOpen(const JsonRpcRequest &req);
+    /// @brief Handle `textDocument/didChange`: update the document and re-diagnose.
     void handleDidChange(const JsonRpcRequest &req);
+    /// @brief Handle `textDocument/didClose`: drop the document from the store.
     void handleDidClose(const JsonRpcRequest &req);
 
     // Requests
+    /// @brief Handle `textDocument/completion`: return completion items at a position.
     std::string handleCompletion(const JsonRpcRequest &req);
+    /// @brief Handle `textDocument/hover`: return hover text for the symbol at a position.
     std::string handleHover(const JsonRpcRequest &req);
+    /// @brief Handle `textDocument/documentSymbol`: list the document's symbols.
     std::string handleDocumentSymbol(const JsonRpcRequest &req);
 
     // Helpers
+    /// @brief Compile the document for @p uri and publish its diagnostics notification.
     void publishDiagnostics(const std::string &uri);
 
     /// @brief Map CompletionInfo kind → LSP CompletionItemKind.

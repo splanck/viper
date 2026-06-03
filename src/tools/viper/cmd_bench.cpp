@@ -26,8 +26,10 @@
 #include "viper/vm/VM.hpp"
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstdint>
 #include <cstdlib>
 #include <iomanip>
@@ -35,13 +37,15 @@
 #include <numeric>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
 #ifdef _WIN32
 #include <stdlib.h>
 
-// Windows doesn't have setenv, use _putenv_s instead
+/// @brief POSIX setenv shim for Windows, implemented via _putenv_s.
+/// @note The overwrite flag is ignored; _putenv_s always overwrites.
 inline int setenv(const char *name, const char *value, int /*overwrite*/) {
     return _putenv_s(name, value);
 }
@@ -65,6 +69,13 @@ struct BenchConfig {
     bool verbose = false;
 };
 
+/// @brief Outcome of parsing the bench subcommand arguments.
+enum class BenchParseResult {
+    Ok,    ///< Arguments parsed successfully into the config.
+    Help,  ///< Help was requested; caller should exit successfully.
+    Error, ///< Arguments were invalid; usage already printed.
+};
+
 /// @brief Result of a single benchmark run.
 struct BenchResult {
     std::string file;
@@ -78,7 +89,7 @@ struct BenchResult {
 
 /// @brief Print usage information for the bench subcommand.
 void benchUsage() {
-    std::cerr << "Usage: ilc bench <file.il> [file2.il ...] [options]\n"
+    std::cerr << "Usage: viper bench <file.il> [file2.il ...] [options]\n"
               << "Options:\n"
               << "  -n <N>            Number of iterations (default: 3)\n"
               << "  --max-steps <N>   Maximum interpreter steps (0 = unlimited)\n"
@@ -107,18 +118,41 @@ bool parseBenchArgs(int argc, char **argv, BenchConfig &config) {
     for (int i = 0; i < argc; ++i) {
         std::string_view arg = argv[i];
 
-        if (arg == "-n") {
+        if (arg == "--help" || arg == "-h") {
+            benchUsage();
+            return false;
+        } else if (arg == "-n") {
             if (i + 1 >= argc) {
                 benchUsage();
                 return false;
             }
-            config.iterations = static_cast<uint32_t>(std::stoul(argv[++i]));
+            std::string_view value = argv[++i];
+            uint32_t parsed = 0;
+            const auto *begin = value.data();
+            const auto *end = value.data() + value.size();
+            auto [ptr, ec] = std::from_chars(begin, end, parsed);
+            if (ec != std::errc{} || ptr != end || parsed == 0) {
+                std::cerr << "invalid iteration count: " << value << "\n";
+                benchUsage();
+                return false;
+            }
+            config.iterations = parsed;
         } else if (arg == "--max-steps") {
             if (i + 1 >= argc) {
                 benchUsage();
                 return false;
             }
-            config.maxSteps = std::stoull(argv[++i]);
+            std::string_view value = argv[++i];
+            uint64_t parsed = 0;
+            const auto *begin = value.data();
+            const auto *end = value.data() + value.size();
+            auto [ptr, ec] = std::from_chars(begin, end, parsed);
+            if (ec != std::errc{} || ptr != end) {
+                std::cerr << "invalid --max-steps value: " << value << "\n";
+                benchUsage();
+                return false;
+            }
+            config.maxSteps = parsed;
         } else if (arg == "--table") {
             if (!strategySpecified) {
                 config.runTable = false;
@@ -200,6 +234,20 @@ bool parseBenchArgs(int argc, char **argv, BenchConfig &config) {
     return true;
 }
 
+/// @brief Parse bench args, distinguishing a help request from a parse error.
+/// @details Scans for --help/-h first (returning Help), otherwise delegates to
+///          parseBenchArgs and maps its bool result to Ok/Error.
+BenchParseResult parseBenchArgsChecked(int argc, char **argv, BenchConfig &config) {
+    for (int i = 0; i < argc; ++i) {
+        std::string_view arg = argv[i];
+        if (arg == "--help" || arg == "-h") {
+            benchUsage();
+            return BenchParseResult::Help;
+        }
+    }
+    return parseBenchArgs(argc, argv, config) ? BenchParseResult::Ok : BenchParseResult::Error;
+}
+
 /// @brief Run a single benchmark iteration.
 /// @param mod Module to execute.
 /// @param strategy Dispatch strategy name ("table", "switch", "threaded").
@@ -247,7 +295,8 @@ BenchResult runBenchmarkIteration(const core::Module &mod,
 /// @return Benchmark result.
 BenchResult runBytecodeBenchmarkIteration(const core::Module &mod,
                                           const viper::bytecode::BytecodeModule &bcModule,
-                                          const std::string &strategy) {
+                                          const std::string &strategy,
+                                          uint64_t maxSteps) {
     BenchResult result;
     result.strategy = strategy;
 
@@ -259,6 +308,7 @@ BenchResult runBytecodeBenchmarkIteration(const core::Module &mod,
         viper::bytecode::BytecodeVM vm;
         vm.setThreadedDispatch(useThreaded);
         vm.setRuntimeBridgeEnabled(true);
+        vm.setMaxInstructions(maxSteps);
         vm.load(&bcModule);
 
         auto retSlot = vm.exec("main", {});
@@ -396,7 +446,7 @@ bool benchmarkFile(const std::string &file,
             }
 
             for (uint32_t iter = 0; iter < config.iterations; ++iter) {
-                auto iterResult = runBytecodeBenchmarkIteration(mod, bcModule, strategy);
+            auto iterResult = runBytecodeBenchmarkIteration(mod, bcModule, strategy, config.maxSteps);
                 if (!iterResult.success) {
                     allSuccess = false;
                     break;
@@ -442,12 +492,53 @@ void printTextResults(const std::vector<BenchResult> &results) {
 
 /// @brief Print results in JSON format.
 void printJsonResults(const std::vector<BenchResult> &results) {
+    auto escapeJson = [](std::string_view input) {
+        std::string out;
+        out.reserve(input.size() + 8);
+        for (char c : input) {
+            switch (c) {
+                case '"':
+                    out += "\\\"";
+                    break;
+                case '\\':
+                    out += "\\\\";
+                    break;
+                case '\b':
+                    out += "\\b";
+                    break;
+                case '\f':
+                    out += "\\f";
+                    break;
+                case '\n':
+                    out += "\\n";
+                    break;
+                case '\r':
+                    out += "\\r";
+                    break;
+                case '\t':
+                    out += "\\t";
+                    break;
+                default:
+                    if (static_cast<unsigned char>(c) < 0x20) {
+                        char buf[8];
+                        std::snprintf(buf, sizeof(buf), "\\u%04x",
+                                      static_cast<unsigned char>(c));
+                        out += buf;
+                    } else {
+                        out += c;
+                    }
+                    break;
+            }
+        }
+        return out;
+    };
+
     std::cout << "[\n";
     for (size_t i = 0; i < results.size(); ++i) {
         const auto &r = results[i];
         std::cout << "  {\n";
-        std::cout << "    \"file\": \"" << r.file << "\",\n";
-        std::cout << "    \"strategy\": \"" << r.strategy << "\",\n";
+        std::cout << "    \"file\": \"" << escapeJson(r.file) << "\",\n";
+        std::cout << "    \"strategy\": \"" << escapeJson(r.strategy) << "\",\n";
         std::cout << "    \"success\": " << (r.success ? "true" : "false") << ",\n";
         std::cout << "    \"instructions\": " << r.instructions << ",\n";
         std::cout << std::fixed << std::setprecision(2);
@@ -468,15 +559,21 @@ void printJsonResults(const std::vector<BenchResult> &results) {
 /// @return Exit status; 0 on success.
 int cmdBench(int argc, char **argv) {
     BenchConfig config;
-    if (!parseBenchArgs(argc, argv, config)) {
-        return 1;
+    switch (parseBenchArgsChecked(argc, argv, config)) {
+        case BenchParseResult::Ok:
+            break;
+        case BenchParseResult::Help:
+            return 0;
+        case BenchParseResult::Error:
+            return 1;
     }
 
     std::vector<BenchResult> allResults;
 
+    bool hadFailure = false;
     for (const auto &file : config.ilFiles) {
         if (!benchmarkFile(file, config, allResults)) {
-            // Continue with other files
+            hadFailure = true;
         }
     }
 
@@ -491,5 +588,5 @@ int cmdBench(int argc, char **argv) {
         printTextResults(allResults);
     }
 
-    return 0;
+    return hadFailure ? 1 : 0;
 }

@@ -56,9 +56,10 @@ class DocumentStore {
     static std::string uriToPath(const std::string &uri);
 
   private:
+    /// @brief Stored state for one open document.
     struct Document {
-        int version;
-        std::string content;
+        int version;         ///< Last client-reported version number.
+        std::string content; ///< Full current text of the document.
     };
 
     std::unordered_map<std::string, Document> docs_;

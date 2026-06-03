@@ -17,6 +17,7 @@
 
 #include "il/core/Module.hpp"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -34,11 +35,17 @@ struct VMExecutorConfig {
     /// @brief Whether to output trap messages to stderr on trap.
     bool outputTrapMessage{true};
 
+    /// @brief Whether to print bytecode compile diagnostics before execution.
+    bool outputCompileDiagnostics{true};
+
     /// @brief Whether to flush stdout after execution.
     bool flushStdout{false};
 
     /// @brief Optional source manager for bytecode compile diagnostics and trap locations.
     const il::support::SourceManager *sourceManager{nullptr};
+
+    /// @brief Maximum bytecode instructions to dispatch before trapping (0 = unlimited).
+    std::uint64_t maxSteps{0};
 
     /// @brief Skip per-instruction interpreter validation after checked bytecode compilation.
     bool trustedDispatch{true};
@@ -46,7 +53,7 @@ struct VMExecutorConfig {
 
 /// @brief Result of bytecode VM execution.
 struct VMExecutorResult {
-    /// @brief Exit code from the program (0 = success, 1 = trapped).
+    /// @brief Exit code from the program (1 when trapped or when the return value is invalid).
     int exitCode{0};
 
     /// @brief True if the VM trapped during execution.
@@ -57,6 +64,9 @@ struct VMExecutorResult {
 
     /// @brief True when bytecode compilation failed before execution.
     bool compileFailed{false};
+
+    /// @brief True when main returned a value outside the host int exit-code range.
+    bool exitCodeOutOfRange{false};
 };
 
 /// @brief Execute an IL module using the bytecode VM.

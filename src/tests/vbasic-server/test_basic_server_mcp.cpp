@@ -49,6 +49,7 @@ static JsonValue parseResponse(const std::string &resp) {
 TEST(BasicMcp, Initialize) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
+    handler.handleRequest(makeReq("initialize"));
 
     auto resp = parseResponse(handler.handleRequest(makeReq("initialize")));
     EXPECT_EQ(resp["jsonrpc"].asString(), "2.0");
@@ -63,6 +64,7 @@ TEST(BasicMcp, Initialize) {
 TEST(BasicMcp, InitializedNotification) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
+    handler.handleRequest(makeReq("initialize"));
 
     auto resp = handler.handleRequest({"initialized", JsonValue::object({}), JsonValue()});
     EXPECT_TRUE(resp.empty());
@@ -71,6 +73,7 @@ TEST(BasicMcp, InitializedNotification) {
 TEST(BasicMcp, Ping) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
+    handler.handleRequest(makeReq("initialize"));
 
     auto resp = parseResponse(handler.handleRequest(makeReq("ping")));
     EXPECT_EQ(resp["id"].asInt(), 1);
@@ -80,6 +83,7 @@ TEST(BasicMcp, Ping) {
 TEST(BasicMcp, UnknownMethod) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
+    handler.handleRequest(makeReq("initialize"));
 
     auto resp = parseResponse(handler.handleRequest(makeReq("nonexistent/method")));
     EXPECT_TRUE(resp.has("error"));
@@ -91,6 +95,7 @@ TEST(BasicMcp, UnknownMethod) {
 TEST(BasicMcp, ToolsListReturns11Tools) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
+    handler.handleRequest(makeReq("initialize"));
 
     auto resp = parseResponse(handler.handleRequest(makeReq("tools/list")));
     auto tools = resp["result"]["tools"];
@@ -100,6 +105,7 @@ TEST(BasicMcp, ToolsListReturns11Tools) {
 TEST(BasicMcp, ToolsListHasAllBasicTools) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
+    handler.handleRequest(makeReq("initialize"));
 
     auto resp = parseResponse(handler.handleRequest(makeReq("tools/list")));
     auto tools = resp["result"]["tools"].asArray();
@@ -131,6 +137,7 @@ TEST(BasicMcp, ToolsListHasAllBasicTools) {
 TEST(BasicMcp, ToolsListDescriptionsUseBasicLabel) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
+    handler.handleRequest(makeReq("initialize"));
 
     auto resp = parseResponse(handler.handleRequest(makeReq("tools/list")));
     auto tools = resp["result"]["tools"].asArray();
@@ -149,6 +156,7 @@ TEST(BasicMcp, ToolsListDescriptionsUseBasicLabel) {
 TEST(BasicMcp, ToolsCallCheck) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
+    handler.handleRequest(makeReq("initialize"));
 
     auto params = JsonValue::object({
         {"name", JsonValue("basic/check")},
@@ -167,6 +175,7 @@ TEST(BasicMcp, ToolsCallCheck) {
 TEST(BasicMcp, ToolsCallCompile) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
+    handler.handleRequest(makeReq("initialize"));
 
     auto params = JsonValue::object({
         {"name", JsonValue("basic/compile")},
@@ -184,6 +193,7 @@ TEST(BasicMcp, ToolsCallCompile) {
 TEST(BasicMcp, ToolsCallDumpTokens) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
+    handler.handleRequest(makeReq("initialize"));
 
     auto params = JsonValue::object({
         {"name", JsonValue("basic/dump-tokens")},
@@ -200,6 +210,7 @@ TEST(BasicMcp, ToolsCallDumpTokens) {
 TEST(BasicMcp, ToolsCallRuntimeClasses) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
+    handler.handleRequest(makeReq("initialize"));
 
     auto params = JsonValue::object({
         {"name", JsonValue("basic/runtime-classes")},
@@ -214,6 +225,7 @@ TEST(BasicMcp, ToolsCallRuntimeClasses) {
 TEST(BasicMcp, ToolsCallUnknownTool) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
+    handler.handleRequest(makeReq("initialize"));
 
     auto params = JsonValue::object({
         {"name", JsonValue("nonexistent/tool")},
@@ -226,6 +238,7 @@ TEST(BasicMcp, ToolsCallUnknownTool) {
 TEST(BasicMcp, ToolsCallMissingName) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
+    handler.handleRequest(makeReq("initialize"));
 
     auto resp = parseResponse(handler.handleRequest(makeReq("tools/call", JsonValue::object({}))));
     EXPECT_TRUE(resp.has("error"));

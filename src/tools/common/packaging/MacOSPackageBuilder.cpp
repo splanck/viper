@@ -99,7 +99,12 @@ void validateBundleDisplayName(const std::string &name) {
 
 /// @brief Write `data` to `path`, creating parent directories as needed, and apply `perms`.
 void writeFileBytes(const fs::path &path, const std::vector<uint8_t> &data, fs::perms perms) {
-    fs::create_directories(path.parent_path());
+    std::error_code ec;
+    const fs::path parent = path.parent_path();
+    if (!parent.empty() && (!fs::create_directories(parent, ec) && ec)) {
+        throw std::runtime_error("cannot create macOS package directory: " + parent.string() +
+                                 ": " + ec.message());
+    }
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
     if (!out)
         throw std::runtime_error("cannot write macOS package file: " + path.string());
@@ -108,7 +113,10 @@ void writeFileBytes(const fs::path &path, const std::vector<uint8_t> &data, fs::
     if (!out)
         throw std::runtime_error("failed while writing macOS package file: " + path.string());
     out.close();
-    fs::permissions(path, perms, fs::perm_options::replace);
+    fs::permissions(path, perms, fs::perm_options::replace, ec);
+    if (ec)
+        throw std::runtime_error("cannot set macOS package file permissions: " + path.string() +
+                                 ": " + ec.message());
 }
 
 /// @brief Write `text` to `path` as UTF-8 bytes with the given Unix permissions.
@@ -191,6 +199,7 @@ std::string shQuote(const std::string &value) {
     return out;
 }
 
+/// @brief Escape the five XML metacharacters for embedding in plist/Distribution XML.
 std::string xmlEscape(const std::string &text) {
     std::string out;
     out.reserve(text.size());
@@ -343,6 +352,9 @@ void writeExecutableScript(const fs::path &path, const std::string &text) {
                         fs::perms::others_exec);
 }
 
+/// @brief Collect the sorted, unique leaf names of the toolchain's `bin/` tools.
+/// @details Includes manifest entries marked as Binary or located under `bin/`;
+///          used to create CLI symlinks and reference tools in install scripts.
 std::vector<std::string> macOSToolNames(const ToolchainInstallManifest &manifest) {
     std::vector<std::string> names;
     for (const auto &file : manifest.files) {
@@ -357,6 +369,8 @@ std::vector<std::string> macOSToolNames(const ToolchainInstallManifest &manifest
     return names;
 }
 
+/// @brief Collect the sorted, unique man-page paths (relative to `share/man/`).
+/// @details Used to create man-page symlinks under the system man hierarchy.
 std::vector<std::string> macOSManPagePaths(const ToolchainInstallManifest &manifest) {
     static constexpr std::string_view kManPrefix = "share/man/";
     std::vector<std::string> paths;
@@ -374,6 +388,10 @@ std::vector<std::string> macOSManPagePaths(const ToolchainInstallManifest &manif
     return paths;
 }
 
+/// @brief Append the sorted, de-duplicated leaf filenames directly under @p dir.
+/// @details Non-recursive; includes regular files and symlinks only. Permission
+///          errors are skipped silently. Used to enumerate expected install
+///          payloads when verifying the produced package.
 void appendLeafNamesFromDirectory(std::vector<std::string> &names, const fs::path &dir) {
     std::error_code ec;
     if (!fs::is_directory(dir, ec))
@@ -398,6 +416,10 @@ void appendLeafNamesFromDirectory(std::vector<std::string> &names, const fs::pat
     names.erase(std::unique(names.begin(), names.end()), names.end());
 }
 
+/// @brief Append every regular file/symlink under @p dir as a path relative to @p dir.
+/// @details Recursive companion to appendLeafNamesFromDirectory; permission
+///          errors are skipped silently. Used to build the expected payload-path
+///          set for post-build package verification.
 void appendRelativeFilePathsFromDirectory(std::vector<std::string> &paths, const fs::path &dir) {
     std::error_code ec;
     if (!fs::is_directory(dir, ec))
@@ -424,6 +446,12 @@ void appendRelativeFilePathsFromDirectory(std::vector<std::string> &paths, const
     paths.erase(std::unique(paths.begin(), paths.end()), paths.end());
 }
 
+/// @brief Compute the relative symlink target from a system man path back into
+///        the Viper install tree's `share/man`.
+/// @details Builds the right number of `../` hops (accounting for the
+///          `share/man/` prefix plus any subdirectories) followed by
+///          `viper/share/man/<manRelPath>`, so the installed man page is a stable
+///          relative link regardless of install root.
 fs::path macOSManSymlinkTarget(const std::string &manRelPath) {
     const fs::path relPath = fs::path(manRelPath);
     const fs::path parentPath = relPath.parent_path();
@@ -440,6 +468,7 @@ fs::path macOSManSymlinkTarget(const std::string &manRelPath) {
     return target;
 }
 
+/// @brief Return the association's file extension with any leading dot(s) removed.
 std::string fileAssociationExtensionWithoutDot(const FileAssoc &assoc) {
     std::string ext = assoc.extension;
     while (!ext.empty() && ext.front() == '.')
@@ -447,6 +476,9 @@ std::string fileAssociationExtensionWithoutDot(const FileAssoc &assoc) {
     return ext;
 }
 
+/// @brief Map a file association to its Uniform Type Identifier (UTI).
+/// @details Uses well-known UTIs for the built-in zia/bas/il types and a
+///          generic "org.viper.<ext>" for anything else.
 std::string macOSFileAssociationUTI(const FileAssoc &assoc) {
     const std::string ext = fileAssociationExtensionWithoutDot(assoc);
     if (ext == "zia")
@@ -458,6 +490,8 @@ std::string macOSFileAssociationUTI(const FileAssoc &assoc) {
     return "org.viper." + ext;
 }
 
+/// @brief Locate the staged `libexec/viper/viper-file-handler` entry, if present.
+/// @return Pointer to the manifest entry, or nullptr when no handler is staged.
 const ToolchainFileEntry *findMacOSFileHandler(const ToolchainInstallManifest &manifest) {
     auto it = std::find_if(manifest.files.begin(), manifest.files.end(), [](const auto &file) {
         return !file.symlink &&
@@ -467,6 +501,12 @@ const ToolchainFileEntry *findMacOSFileHandler(const ToolchainInstallManifest &m
     return it == manifest.files.end() ? nullptr : &*it;
 }
 
+/// @brief Build the Info.plist for the file-handler helper .app bundle.
+/// @details Declares the CFBundleDocumentTypes / UTI exports that let macOS route
+///          .zia/.bas/.il file opens to the bundled handler executable.
+/// @param params Toolchain build parameters (identifier, file associations, etc.).
+/// @param pkgVersion Version string recorded in the plist.
+/// @return The Info.plist XML text.
 std::string generateMacOSFileHandlerInfoPlist(const MacOSToolchainBuildParams &params,
                                               const std::string &pkgVersion) {
     std::ostringstream xml;
@@ -532,6 +572,9 @@ std::string generateMacOSFileHandlerInfoPlist(const MacOSToolchainBuildParams &p
     return xml.str();
 }
 
+/// @brief Render the newline-separated installed-file manifest embedded in the package.
+/// @details Lists every staged file's install-relative path so the uninstall
+///          script knows exactly what to remove.
 std::string macOSInstallManifestText(const ToolchainInstallManifest &manifest) {
     std::vector<std::string> paths;
     paths.reserve(manifest.files.size() + 2);
@@ -548,6 +591,9 @@ std::string macOSInstallManifestText(const ToolchainInstallManifest &manifest) {
     return out.str();
 }
 
+/// @brief Generate the `uninstall.sh` shell script shipped with the toolchain pkg.
+/// @details Removes the installed CMake config files and the files recorded in the
+///          install manifest for the given package identifier.
 std::string generateMacOSUninstallScript(const std::string &packageIdentifier) {
     std::ostringstream sh;
     sh << "#!/bin/sh\n";
@@ -594,6 +640,9 @@ std::string generateMacOSUninstallScript(const std::string &packageIdentifier) {
     return sh.str();
 }
 
+/// @brief Generate the installer `preinstall` script.
+/// @details Removes any prior CLI symlinks for @p toolNames before the payload is
+///          laid down, so a reinstall/upgrade starts from a clean state.
 std::string generateMacOSPreinstallScript(const std::vector<std::string> &toolNames) {
     std::ostringstream sh;
     sh << "#!/bin/sh\n";
@@ -642,6 +691,10 @@ std::string generateMacOSPreinstallScript(const std::vector<std::string> &toolNa
     return sh.str();
 }
 
+/// @brief Generate the installer `postinstall` script.
+/// @details Creates `/usr/local/bin` CLI symlinks for @p toolNames and man-page
+///          symlinks for @p manPagePaths, and registers the file-handler app with
+///          Launch Services when @p registerFileAssociationApp is true.
 std::string generateMacOSPostinstallScript(const std::vector<std::string> &toolNames,
                                            const std::vector<std::string> &manPagePaths,
                                            bool registerFileAssociationApp) {
@@ -685,6 +738,13 @@ std::string generateMacOSPostinstallScript(const std::vector<std::string> &toolN
     return sh.str();
 }
 
+/// @brief Build the component package's `PackageInfo` XML.
+/// @details Declares the package identifier/version, payload file count and size,
+///          and the preinstall/postinstall script hooks for a flat component pkg.
+/// @param params Toolchain build parameters (identifier, manifest).
+/// @param pkgVersion Dotted-numeric package version string.
+/// @param payloadEntryCount Number of files in the CPIO payload.
+/// @return The PackageInfo XML text.
 std::string generateMacOSToolchainPackageInfo(const MacOSToolchainBuildParams &params,
                                               const std::string &pkgVersion,
                                               size_t payloadEntryCount) {
@@ -711,6 +771,8 @@ std::string generateMacOSToolchainPackageInfo(const MacOSToolchainBuildParams &p
     return xml.str();
 }
 
+/// @brief Map a payload arch to the Distribution `hostArchitectures` attribute.
+/// @return "arm64", "x86_64", or "x86_64,arm64" (universal) for unknown/empty.
 std::string macOSHostArchitectures(const std::string &arch) {
     if (arch == "arm64")
         return "arm64";
@@ -719,6 +781,13 @@ std::string macOSHostArchitectures(const std::string &arch) {
     return "x86_64,arm64";
 }
 
+/// @brief Build the product archive `Distribution` XML wrapping the component pkg.
+/// @details Declares the title, host-architecture options, install size, and the
+///          single choice referencing the embedded ViperToolchain.pkg component.
+/// @param params Toolchain build parameters (display name, identifier, arch).
+/// @param pkgVersion Dotted-numeric package version string.
+/// @param installKBytes Estimated installed size in KiB.
+/// @return The Distribution XML text.
 std::string generateMacOSToolchainDistribution(const MacOSToolchainBuildParams &params,
                                                const std::string &pkgVersion,
                                                uint64_t installKBytes) {

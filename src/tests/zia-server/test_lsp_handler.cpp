@@ -180,7 +180,10 @@ TEST(LspHandler, DidChangeUpdatesDiagnostics) {
     EXPECT_TRUE(transport.written.size() > 0u);
     auto diag = JsonValue::parse(transport.written[0]);
     // Should have error diagnostics
-    EXPECT_TRUE(diag["params"]["diagnostics"].size() > 0u);
+    auto diagnostics = diag["params"]["diagnostics"];
+    EXPECT_TRUE(diagnostics.size() > 0u);
+    auto range = diagnostics.at(0)["range"];
+    EXPECT_TRUE(range["end"]["character"].asInt() > range["start"]["character"].asInt());
 }
 
 TEST(LspHandler, DidCloseClearsDiagnostics) {
@@ -260,6 +263,19 @@ TEST(LspHandler, CompletionOnClosedDoc) {
     auto resp = parseResponse(
         handler.handleRequest(makeReq("textDocument/completion", std::move(compParams))));
     EXPECT_EQ(resp["result"].size(), 0u);
+}
+
+TEST(LspHandler, CompletionInvalidParamsReturnsError) {
+    CompilerBridge bridge;
+    MockTransport transport;
+    LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+
+    auto params = JsonValue::object({
+        {"textDocument", JsonValue::object({{"uri", JsonValue("file:///x.zia")}})},
+    });
+    auto resp = parseResponse(
+        handler.handleRequest(makeReq("textDocument/completion", std::move(params))));
+    EXPECT_EQ(resp["error"]["code"].asInt(), kInvalidParams);
 }
 
 // ===== Hover =====
@@ -398,8 +414,12 @@ TEST(LspHandler, DocumentSymbolsListsFunctions) {
     // Should contain at least "start" function
     bool foundStart = false;
     for (size_t i = 0; i < result.size(); ++i) {
-        if (result.at(i)["name"].asString() == "start")
+        if (result.at(i)["name"].asString() == "start") {
             foundStart = true;
+            auto range = result.at(i)["location"]["range"];
+            EXPECT_TRUE(range["end"]["character"].asInt() >
+                        range["start"]["character"].asInt());
+        }
     }
     EXPECT_TRUE(foundStart);
 }
@@ -424,6 +444,16 @@ TEST(DocumentStore, UriToPathPercentDecode) {
 TEST(DocumentStore, UriToPathPlainPath) {
     auto path = DocumentStore::uriToPath("/just/a/path.zia");
     EXPECT_EQ(path, "/just/a/path.zia");
+}
+
+TEST(DocumentStore, UriToPathLocalhostAuthority) {
+    auto path = DocumentStore::uriToPath("file://localhost/Users/test/file.zia");
+    EXPECT_EQ(path, "/Users/test/file.zia");
+}
+
+TEST(DocumentStore, UriToPathUncAuthority) {
+    auto path = DocumentStore::uriToPath("file://server/share/file.zia");
+    EXPECT_EQ(path, "//server/share/file.zia");
 }
 
 int main(int argc, char **argv) {

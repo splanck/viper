@@ -74,17 +74,18 @@ class TarWriter {
     std::vector<uint8_t> finish() const;
 
   private:
+    /// @brief One pending tar entry captured until finish() serializes it.
     struct Entry {
-        std::string path;
-        std::string linkTarget;
-        std::vector<uint8_t> data;
-        uint32_t mode;
-        uint32_t mtime;
-        char typeflag; // '0'=file, '5'=dir, '2'=symlink
+        std::string path;          ///< Archive-relative entry path.
+        std::string linkTarget;    ///< Link target (symlink entries only).
+        std::vector<uint8_t> data; ///< File payload (regular files only).
+        uint32_t mode;             ///< Unix permission bits.
+        uint32_t mtime;            ///< Modification time (Unix timestamp).
+        char typeflag;             ///< '0'=file, '5'=dir, '2'=symlink.
     };
 
-    std::vector<Entry> entries_;
-    std::set<std::string> seenPaths_;
+    std::vector<Entry> entries_;      ///< Entries in insertion order.
+    std::set<std::string> seenPaths_; ///< Paths added so far (duplicate guard).
 };
 
 } // namespace viper::pkg

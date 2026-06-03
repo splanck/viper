@@ -32,7 +32,7 @@ void printUsage() {
               << "  zia script.zia -o file.il   Emit IL to file\n"
               << "\n"
               << "Options:\n";
-    viper::tools::printSharedOptions(std::cerr);
+    viper::tools::printSharedOptions(std::cerr, viper::tools::FrontendHelpDetail::Advanced);
     std::cerr << "\n"
               << "Examples:\n"
               << "  zia hello.zia                           Run program\n"

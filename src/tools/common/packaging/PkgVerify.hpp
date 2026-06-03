@@ -42,6 +42,11 @@ namespace viper::pkg {
 bool verifyZip(const std::vector<uint8_t> &data, std::ostream &err);
 
 /// @brief Verify a macOS .app ZIP contains the required app payload files.
+/// @param data ZIP file bytes.
+/// @param appBundleName Expected `.app` bundle directory name inside the ZIP.
+/// @param executableName Expected executable name under `Contents/MacOS`.
+/// @param err Stream for error messages.
+/// @return true if the ZIP is valid and contains the required bundle files.
 bool verifyMacOSAppZip(const std::vector<uint8_t> &data,
                        const std::string &appBundleName,
                        const std::string &executableName,
@@ -60,6 +65,10 @@ bool verifyMacOSAppZip(const std::vector<uint8_t> &data,
 bool verifyDeb(const std::vector<uint8_t> &data, std::ostream &err);
 
 /// @brief Verify a .deb archive and assert required data.tar payload paths.
+/// @param data .deb file bytes.
+/// @param requiredPaths Paths that must be present in the data.tar member.
+/// @param err Stream for error messages.
+/// @return true if the .deb is valid and contains every required path.
 bool verifyDebPayload(const std::vector<uint8_t> &data,
                       const std::vector<std::string> &requiredPaths,
                       std::ostream &err);
@@ -76,25 +85,46 @@ bool verifyDebPayload(const std::vector<uint8_t> &data,
 bool verifyTarGz(const std::vector<uint8_t> &data, std::ostream &err);
 
 /// @brief Verify a .tar.gz archive and assert required payload paths.
+/// @param data .tar.gz file bytes.
+/// @param requiredPaths Paths that must be present in the tarball.
+/// @param err Stream for error messages.
+/// @return true if the tarball is valid and contains every required path.
 bool verifyTarGzPayload(const std::vector<uint8_t> &data,
                         const std::vector<std::string> &requiredPaths,
                         std::ostream &err);
 
 /// @brief Verify structural correctness of a portable ASCII or newc CPIO archive.
+/// @param data CPIO archive bytes.
+/// @param err Stream for error messages.
+/// @return true if the CPIO archive is structurally valid.
 bool verifyCpioNewc(const std::vector<uint8_t> &data, std::ostream &err);
 
 /// @brief Verify a CPIO archive and assert required payload paths.
+/// @param data CPIO archive bytes.
+/// @param requiredPaths Paths that must be present in the archive.
+/// @param err Stream for error messages.
+/// @return true if the archive is valid and contains every required path.
 bool verifyCpioNewcPayload(const std::vector<uint8_t> &data,
                            const std::vector<std::string> &requiredPaths,
                            std::ostream &err);
 
 /// @brief Verify structural correctness of a XAR archive.
+/// @param data XAR archive bytes.
+/// @param err Stream for error messages.
+/// @return true if the XAR archive is structurally valid.
 bool verifyXar(const std::vector<uint8_t> &data, std::ostream &err);
 
 /// @brief Verify a macOS flat `.pkg` archive.
+/// @param data `.pkg` (XAR) file bytes.
+/// @param err Stream for error messages.
+/// @return true if the flat package is structurally valid.
 bool verifyMacOSPkg(const std::vector<uint8_t> &data, std::ostream &err);
 
 /// @brief Verify a macOS flat `.pkg` archive and assert payload paths.
+/// @param data `.pkg` (XAR) file bytes.
+/// @param requiredPaths Paths that must be present in the package payload.
+/// @param err Stream for error messages.
+/// @return true if the package is valid and contains every required path.
 bool verifyMacOSPkgPayload(const std::vector<uint8_t> &data,
                            const std::vector<std::string> &requiredPaths,
                            std::ostream &err);
@@ -124,11 +154,25 @@ bool verifyPE(const std::vector<uint8_t> &data, std::ostream &err);
 bool verifyPEZipOverlay(const std::vector<uint8_t> &data, std::ostream &err);
 
 /// @brief Verify a PE ZIP overlay and assert required ZIP entries.
+/// @param data PE file bytes carrying a ZIP overlay.
+/// @param requiredEntries Entry names that must be present in the overlay ZIP.
+/// @param err Stream for error messages.
+/// @return true if the overlay is valid and contains every required entry.
 bool verifyPEZipOverlayPayload(const std::vector<uint8_t> &data,
                                const std::vector<std::string> &requiredEntries,
                                std::ostream &err);
 
 /// @brief Verify a PE ZIP overlay plus a nested ZIP entry payload.
+/// @details Validates the outer overlay ZIP, confirms @p requiredOuterEntries
+///          are present, then opens the nested ZIP stored at @p innerZipEntry and
+///          confirms @p requiredInnerEntries are present inside it.
+/// @param data PE file bytes carrying a ZIP overlay.
+/// @param requiredOuterEntries Entry names required in the outer overlay ZIP.
+/// @param innerZipEntry Name of the overlay entry that is itself a ZIP archive.
+/// @param requiredInnerEntries Entry names required inside the nested ZIP.
+/// @param err Stream for error messages.
+/// @return true if both the outer overlay and the nested ZIP satisfy their
+///         required-entry lists.
 bool verifyPEZipOverlayNestedPayload(const std::vector<uint8_t> &data,
                                      const std::vector<std::string> &requiredOuterEntries,
                                      const std::string &innerZipEntry,

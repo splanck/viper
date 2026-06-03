@@ -24,11 +24,14 @@
 #include "codegen/x86_64/CodegenPipeline.hpp"
 #include "tools/common/ArgvView.hpp"
 
+#include <charconv>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <unordered_map>
 #include <utility>
 
@@ -36,7 +39,7 @@ namespace viper::tools::ilc {
 namespace {
 
 constexpr std::string_view kUsage =
-    "usage: ilc codegen x64 <file.il> [-S <file.s>] [-o <a.out>] "
+    "usage: viper codegen x64 <file.il> [-S <file.s>] [-o <a.out>] "
     "[-run-native] [--stack-size=SIZE] [--native-asm|--system-asm] "
     "[--native-link|--system-link(deprecated)] [--asset-blob <file.vpa>] "
     "[--extra-obj <file.o>] [--target-host|--target-sysv|--target-win64] "
@@ -53,6 +56,34 @@ struct ParseOutcome {
     std::optional<viper::codegen::x64::CodegenPipeline::Options> opts{};
     std::string diagnostics{};
 };
+
+/// @brief Parse @p text as a base-10 int within [minValue, maxValue].
+/// @return true on a full, in-range parse; false otherwise (out left unset).
+bool parseIntInRange(std::string_view text, int minValue, int maxValue, int &out) {
+    int value = 0;
+    const auto *begin = text.data();
+    const auto *end = text.data() + text.size();
+    auto [ptr, ec] = std::from_chars(begin, end, value);
+    if (ec != std::errc{} || ptr != end || value < minValue || value > maxValue)
+        return false;
+    out = value;
+    return true;
+}
+
+/// @brief Parse @p text as a base-10 size_t value.
+/// @return true on a full, in-range parse; false otherwise.
+bool parseSize(std::string_view text, std::size_t &out) {
+    unsigned long long value = 0;
+    const auto *begin = text.data();
+    const auto *end = text.data() + text.size();
+    auto [ptr, ec] = std::from_chars(begin, end, value);
+    if (ec != std::errc{} || ptr != end ||
+        value > static_cast<unsigned long long>(std::numeric_limits<std::size_t>::max())) {
+        return false;
+    }
+    out = static_cast<std::size_t>(value);
+    return true;
+}
 
 /// @brief Decode `ilc codegen x64 compile` arguments into pipeline options.
 /// @details Validates positional arguments, handles recognised flags, and emits
@@ -103,7 +134,14 @@ ParseOutcome parseCompileArgs(const ArgvView &args) {
                 outcome.diagnostics = diag.str();
                 return outcome;
             }
-            opts.optimize = std::atoi(std::string(args.at(++index)).c_str());
+            int level = 0;
+            const std::string_view value = args.at(++index);
+            if (!parseIntInRange(value, 0, 3, level)) {
+                diag << "error: invalid -O level: " << value << "\n" << kUsage;
+                outcome.diagnostics = diag.str();
+                return outcome;
+            }
+            opts.optimize = level;
             continue;
         }
         if (arg.size() == 3 && arg[0] == '-' && arg[1] == 'O' && arg[2] >= '0' && arg[2] <= '3') {
@@ -111,15 +149,14 @@ ParseOutcome parseCompileArgs(const ArgvView &args) {
             continue;
         }
         if (arg.substr(0, 13) == "--stack-size=") {
-            const std::string sizeStr = std::string(arg.substr(13));
-            char *endptr = nullptr;
-            const unsigned long long size = std::strtoull(sizeStr.c_str(), &endptr, 10);
-            if (endptr == sizeStr.c_str() || *endptr != '\0') {
-                diag << "error: invalid --stack-size value: " << sizeStr << "\n" << kUsage;
+            const std::string_view sizeText = arg.substr(13);
+            std::size_t size = 0;
+            if (!parseSize(sizeText, size)) {
+                diag << "error: invalid --stack-size value: " << sizeText << "\n" << kUsage;
                 outcome.diagnostics = diag.str();
                 return outcome;
             }
-            opts.stack_size = static_cast<std::size_t>(size);
+            opts.stack_size = size;
             continue;
         }
         if (arg == "--native-asm") {
@@ -263,6 +300,10 @@ int cmd_codegen_x64(int argc, char **argv) {
     }
 
     const std::string_view token = args.front();
+    if (token == "--help" || token == "-h") {
+        std::cerr << kUsage;
+        return 0;
+    }
     if (const auto it = kHandlers.find(std::string(token)); it != kHandlers.end()) {
         return it->second(args.drop_front());
     }

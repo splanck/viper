@@ -25,6 +25,7 @@
 
 namespace viper::server {
 
+/// @brief Return an ASCII-lowercased copy of @p s (used for case-insensitive search).
 static std::string toLowerStr(const std::string &s) {
     std::string lower;
     lower.reserve(s.size());

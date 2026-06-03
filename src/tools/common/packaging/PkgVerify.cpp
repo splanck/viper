@@ -52,15 +52,18 @@ uint32_t rdLE32(const uint8_t *p) {
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
+/// @brief Read a big-endian uint16_t from an unaligned byte pointer (XAR/PE fields).
 uint16_t rdBE16(const uint8_t *p) {
     return static_cast<uint16_t>((static_cast<uint16_t>(p[0]) << 8) | static_cast<uint16_t>(p[1]));
 }
 
+/// @brief Read a big-endian uint32_t from an unaligned byte pointer (XAR/PE fields).
 uint32_t rdBE32(const uint8_t *p) {
     return (static_cast<uint32_t>(p[0]) << 24) | (static_cast<uint32_t>(p[1]) << 16) |
            (static_cast<uint32_t>(p[2]) << 8) | static_cast<uint32_t>(p[3]);
 }
 
+/// @brief Read a big-endian uint64_t from an unaligned byte pointer (XAR header).
 uint64_t rdBE64(const uint8_t *p) {
     return (static_cast<uint64_t>(rdBE32(p)) << 32) | rdBE32(p + 4);
 }
@@ -71,10 +74,15 @@ bool hasRange(size_t offset, size_t length, size_t size) {
     return offset <= size && length <= size - offset;
 }
 
+/// @brief Rotate a 32-bit value right by @p bits (SHA-256 round operation).
 uint32_t rotr32(uint32_t value, unsigned bits) {
     return (value >> bits) | (value << (32u - bits));
 }
 
+/// @brief Compute the SHA-256 of a buffer as a lowercase hex string.
+/// @details A self-contained SHA-256 used to check the integrity manifests that
+///          the package writers embed (e.g. SHA-256 entries inside a ZIP). Kept
+///          local to the verifier so it has no dependency on the runtime.
 std::string sha256Hex(const uint8_t *data, size_t len) {
     static constexpr std::array<uint32_t, 64> k = {
         0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u, 0x3956c25bu, 0x59f111f1u, 0x923f82a4u,
@@ -151,6 +159,7 @@ std::string sha256Hex(const uint8_t *data, size_t len) {
     return os.str();
 }
 
+/// @brief Return true if @p text is exactly 64 hexadecimal digits (a SHA-256).
 bool isSha256Hex(const std::string &text) {
     return text.size() == 64 && std::all_of(text.begin(), text.end(), [](unsigned char ch) {
                return std::isxdigit(ch) != 0;
@@ -379,6 +388,8 @@ bool verifyTarBytes(const std::vector<uint8_t> &data,
     return true;
 }
 
+/// @brief Parse an 8-character ASCII-hex field (newc CPIO header fields).
+/// @return false if any of the 8 characters is not a hex digit.
 bool parseHex32Field(const uint8_t *field, uint32_t &out) {
     out = 0;
     for (size_t i = 0; i < 8; ++i) {
@@ -397,6 +408,9 @@ bool parseHex32Field(const uint8_t *field, uint32_t &out) {
     return true;
 }
 
+/// @brief Parse a fixed-width all-octal-digit field (odc CPIO header fields).
+/// @details Unlike parseOctalField, every byte must be an octal digit (no
+///          space/NUL terminator). Returns false on a non-octal digit or overflow.
 bool parseFixedOctalField(const uint8_t *field, size_t width, uint64_t &out) {
     out = 0;
     for (size_t i = 0; i < width; ++i) {
@@ -410,10 +424,14 @@ bool parseFixedOctalField(const uint8_t *field, size_t width, uint64_t &out) {
     return true;
 }
 
+/// @brief Round @p value up to the next multiple of 4 (newc CPIO field alignment).
 size_t align4(size_t value) {
     return (value + 3u) & ~static_cast<size_t>(3u);
 }
 
+/// @brief Return true if any path component begins with "._" (AppleDouble sidecar).
+/// @details AppleDouble files leak macOS resource forks into archives; the
+///          verifiers reject them so packages stay clean and reproducible.
 bool hasAppleDoubleComponent(const std::string &path) {
     size_t pos = 0;
     while (pos <= path.size()) {
@@ -430,6 +448,16 @@ bool hasAppleDoubleComponent(const std::string &path) {
     return false;
 }
 
+/// @brief Validate that an archive symlink target stays inside the archive root.
+/// @details Rejects empty, multi-line, absolute, and drive-qualified targets,
+///          then resolves the target relative to the entry's parent directory and
+///          rejects it if the normalized result is empty, ".", "..", or escapes
+///          upward ("../..."). Prevents symlink-based path traversal on extract.
+/// @param entryName Name of the symlink entry (provides the base directory).
+/// @param target Raw symlink target text (taken by value; normalized internally).
+/// @param kind Archive-kind label used in diagnostics (e.g. "TAR", "CPIO").
+/// @param err Stream for error messages.
+/// @return true when the target is a safe in-archive relative path.
 bool validateRelativeSymlinkTarget(const std::string &entryName,
                                    std::string target,
                                    const char *kind,
@@ -465,6 +493,18 @@ bool validateRelativeSymlinkTarget(const std::string &entryName,
     return true;
 }
 
+/// @brief Validate, normalize, and de-duplicate one CPIO entry path.
+/// @details Strips a leading "./", requires a directory/file/symlink mode,
+///          sanitizes the path (rejecting traversal and AppleDouble sidecars),
+///          and records it in @p seen (rejecting duplicates) and optionally in
+///          @p outNames.
+/// @param name Raw entry name from the CPIO header.
+/// @param mode Entry mode bits (used to classify the entry type).
+/// @param err Stream for error messages.
+/// @param seen Set of already-seen clean paths, updated to detect duplicates.
+/// @param outNames Optional collector for the normalized path.
+/// @param cleanOut Receives the sanitized relative path.
+/// @return true when the entry path is valid and not a duplicate.
 bool recordCpioPath(const std::string &name,
                     uint32_t mode,
                     std::ostream &err,
@@ -504,6 +544,16 @@ bool recordCpioPath(const std::string &name,
     return true;
 }
 
+/// @brief Verify a POSIX portable ASCII ("odc", magic 070707) CPIO stream.
+/// @details Walks each fixed 76-byte header, parses the octal mode/name-size/
+///          file-size fields, validates and records each entry path, requires a
+///          NUL-terminated name, and enforces the TRAILER!!! sentinel with no
+///          trailing non-zero bytes. Optionally collects entry names into
+///          @p outNames.
+/// @param data CPIO archive bytes.
+/// @param err Stream for error messages.
+/// @param outNames Optional collector for normalized entry names.
+/// @return true when the odc stream is structurally valid.
 bool verifyCpioOdcBytes(const std::vector<uint8_t> &data,
                         std::ostream &err,
                         std::set<std::string> *outNames = nullptr) {
@@ -591,6 +641,16 @@ bool verifyCpioOdcBytes(const std::vector<uint8_t> &data,
     return true;
 }
 
+/// @brief Verify a "newc"/"crc" (magic 070701/070702) CPIO stream.
+/// @details Delegates to verifyCpioOdcBytes when the older odc magic is detected.
+///          Otherwise walks each 110-byte header, parses the 13 ASCII-hex fields,
+///          validates 4-byte-aligned name/data regions, records each entry path,
+///          checks symlink targets for traversal, and requires the TRAILER!!!
+///          sentinel. Optionally collects entry names into @p outNames.
+/// @param data CPIO archive bytes.
+/// @param err Stream for error messages.
+/// @param outNames Optional collector for normalized entry names.
+/// @return true when the CPIO stream is structurally valid.
 bool verifyCpioNewcBytes(const std::vector<uint8_t> &data,
                          std::ostream &err,
                          std::set<std::string> *outNames = nullptr) {
@@ -690,6 +750,9 @@ bool verifyCpioNewcBytes(const std::vector<uint8_t> &data,
     return true;
 }
 
+/// @brief Extract the text between the first @p openTag and following @p closeTag.
+/// @details A deliberately minimal XML scrape (no full parser) used to read fields
+///          out of a XAR table-of-contents. Returns "" when either tag is absent.
 std::string extractXmlTagText(const std::string &text,
                               const std::string &openTag,
                               const std::string &closeTag) {
@@ -703,6 +766,8 @@ std::string extractXmlTagText(const std::string &text,
     return text.substr(content, end - content);
 }
 
+/// @brief Parse a non-empty all-digit decimal string into a uint64_t.
+/// @return false on empty input or any non-digit character.
 bool parseUnsignedDecimalText(const std::string &text, uint64_t &out) {
     if (text.empty())
         return false;
@@ -718,6 +783,13 @@ bool parseUnsignedDecimalText(const std::string &text, uint64_t &out) {
     return true;
 }
 
+/// @brief Extract the text of a `<tag ...>…</tag>` checksum element from a TOC block.
+/// @details Tolerates attributes on the opening tag (e.g.
+///          `<archived-checksum style="sha1">`) by scanning to the first '>'.
+/// @param block XAR TOC `<file>` block text.
+/// @param tag Element name without angle brackets (e.g. "archived-checksum").
+/// @param out Receives the element's inner text on success.
+/// @return true when the element is found and bounded by a closing tag.
 bool extractXarFileChecksum(const std::string &block, const std::string &tag, std::string &out) {
     const std::string open = "<" + tag;
     const size_t openPos = block.find(open);
@@ -734,11 +806,20 @@ bool extractXarFileChecksum(const std::string &block, const std::string &tag, st
     return true;
 }
 
+/// @brief Parsed XAR contents: the decompressed TOC text and extracted payloads.
 struct XarFileData {
-    std::string tocText;
-    std::map<std::string, std::vector<uint8_t>> files;
+    std::string tocText;                                  ///< Decompressed TOC XML.
+    std::map<std::string, std::vector<uint8_t>> files;    ///< Path → extracted bytes.
 };
 
+/// @brief Find the `</file>` that closes the `<file>` opened at @p openPos.
+/// @details Tracks nesting depth so nested `<file>` elements (directories
+///          containing files) are matched correctly. Returns the position just
+///          past the matching `</file>`, or npos if unbalanced within @p limit.
+/// @param text TOC text to scan.
+/// @param openPos Index of the opening `<file` token.
+/// @param limit Exclusive upper bound for the search.
+/// @return Position after the matching `</file>`, or std::string::npos.
 size_t findMatchingXarFileEnd(const std::string &text, size_t openPos, size_t limit) {
     size_t pos = openPos;
     int depth = 0;
@@ -762,6 +843,18 @@ size_t findMatchingXarFileEnd(const std::string &text, size_t openPos, size_t li
     return std::string::npos;
 }
 
+/// @brief Extract and integrity-check one XAR file's heap payload.
+/// @details Reads the offset/length/size fields from the TOC @p block, bounds-checks
+///          them against the heap, zlib-decompresses gzip-encoded payloads (or
+///          copies stored ones), verifies any archived/extracted SHA-1 checksums,
+///          and inserts the result into @p out keyed by @p name (rejecting dupes).
+/// @param block TOC `<file>` block text describing this entry.
+/// @param name Archive-relative path of the entry.
+/// @param data Full XAR archive bytes.
+/// @param heapBase Byte offset where the heap (file data region) begins.
+/// @param err Stream for error messages.
+/// @param out Accumulator receiving the extracted file bytes.
+/// @return true when the payload is in-bounds, decodes, and checksums match.
 bool extractXarFilePayload(const std::string &block,
                            const std::string &name,
                            const std::vector<uint8_t> &data,
@@ -826,6 +919,19 @@ bool extractXarFilePayload(const std::string &block,
     return true;
 }
 
+/// @brief Recursively walk `<file>` elements in a TOC range, extracting payloads.
+/// @details Each element's `<name>` is joined to @p prefix and sanitized; a
+///          "directory" type recurses into its children while a "file" type is
+///          extracted via extractXarFilePayload. AppleDouble paths are rejected.
+/// @param tocText Decompressed TOC XML.
+/// @param begin Inclusive start index in @p tocText to scan from.
+/// @param end Exclusive end index bounding the scan.
+/// @param prefix Accumulated parent path for nested entries ("" at the root).
+/// @param data Full XAR archive bytes.
+/// @param heapBase Byte offset where the heap (file data region) begins.
+/// @param err Stream for error messages.
+/// @param out Accumulator receiving the extracted files.
+/// @return true when every element in the range is valid and extracted.
 bool extractXarFileElements(const std::string &tocText,
                             size_t begin,
                             size_t end,
@@ -881,6 +987,14 @@ bool extractXarFileElements(const std::string &tocText,
     return true;
 }
 
+/// @brief Parse a XAR archive header, decompress its TOC, and extract all files.
+/// @details Validates the "xar!" magic and header fields, inflates the zlib TOC
+///          (capped at 64 MB), verifies the TOC SHA-1 stored at the heap base,
+///          and then extracts every file element into @p out.
+/// @param data Full XAR archive bytes.
+/// @param err Stream for error messages.
+/// @param out Receives the decompressed TOC text and extracted file payloads.
+/// @return true when the archive parses, checksums, and extracts cleanly.
 bool extractXarFiles(const std::vector<uint8_t> &data, std::ostream &err, XarFileData &out) {
     if (data.size() < 28 || std::memcmp(data.data(), "xar!", 4) != 0) {
         err << "XAR: missing xar header\n";
@@ -950,6 +1064,16 @@ bool extractXarFiles(const std::vector<uint8_t> &data, std::ostream &err, XarFil
     return true;
 }
 
+/// @brief Verify a macOS flat package (component or product) and its payloads.
+/// @details Extracts the XAR, then handles either a component package (top-level
+///          Payload) or a product package (Distribution referencing a nested
+///          ViperToolchain.pkg, into which it recurses). Requires the Bom,
+///          PackageInfo, and Scripts root files, gunzips and CPIO-verifies the
+///          Payload and Scripts, and requires preinstall/postinstall scripts.
+/// @param data Flat `.pkg` (XAR) bytes.
+/// @param err Stream for error messages.
+/// @param outPayloadNames Optional collector for the payload's CPIO entry names.
+/// @return true when the package and all nested payloads verify.
 bool verifyMacOSPkgInternal(const std::vector<uint8_t> &data,
                             std::ostream &err,
                             std::set<std::string> *outPayloadNames) {
@@ -1107,10 +1231,10 @@ bool parsePeOverlayRange(const std::vector<uint8_t> &data,
     return true;
 }
 
-/// @brief Compute the byte offset where overlay data begins in a PE file.
-/// Parses the DOS/COFF/section headers to find the end of the last section's
-/// raw data, then sets overlayOff to that position. Returns false (with a
-/// message to err) if the PE structure is malformed.
+/// @brief Convenience wrapper over parsePeOverlayRange that discards the end offset.
+/// @details Returns only where the overlay begins, for callers that do not need
+///          the certificate-table-aware overlay end. Forwards failures from
+///          parsePeOverlayRange.
 bool parsePeOverlayOffset(const std::vector<uint8_t> &data, size_t &overlayOff, std::ostream &err) {
     size_t overlayEnd = 0;
     return parsePeOverlayRange(data, overlayOff, overlayEnd, err);
@@ -1143,6 +1267,13 @@ bool requireArchivePaths(const std::set<std::string> &names,
     return true;
 }
 
+/// @brief Verify a ZIP parses cleanly and has safe, unique, extractable entries.
+/// @details Opens the archive with ZipReader, sanitizes every entry path
+///          (rejecting traversal and duplicates after normalization), and forces
+///          each entry to extract so corrupt payloads are caught.
+/// @param data ZIP file bytes.
+/// @param err Stream for error messages.
+/// @return true when every entry is safe and extractable.
 bool verifyZipStructure(const std::vector<uint8_t> &data, std::ostream &err) {
     try {
         ZipReader reader(data.data(), data.size());
@@ -1172,6 +1303,16 @@ bool verifyZipStructure(const std::vector<uint8_t> &data, std::ostream &err) {
     return true;
 }
 
+/// @brief Validate an optional `meta/manifest.sha256` integrity manifest in a ZIP.
+/// @details When the manifest is absent this succeeds (it is optional). When
+///          present, every "<sha256>  <path>" line must reference an existing
+///          entry whose recomputed SHA-256 matches, paths must be unique, and —
+///          conversely — every non-directory entry (except the manifest itself)
+///          must be covered by the manifest.
+/// @param reader Open ZIP reader over the archive.
+/// @param kind Archive-kind label used in diagnostics.
+/// @param err Stream for error messages.
+/// @return true when the manifest is absent or fully consistent.
 bool verifyZipSha256Manifest(const ZipReader &reader, const char *kind, std::ostream &err) {
     const ZipEntry *manifest = reader.find("meta/manifest.sha256");
     if (manifest == nullptr)

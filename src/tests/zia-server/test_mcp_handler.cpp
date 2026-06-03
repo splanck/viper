@@ -45,6 +45,7 @@ static JsonValue parseResponse(const std::string &resp) {
 TEST(McpHandler, Initialize) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    handler.handleRequest(makeReq("initialize"));
 
     auto resp = parseResponse(handler.handleRequest(makeReq("initialize")));
     EXPECT_EQ(resp["jsonrpc"].asString(), "2.0");
@@ -59,6 +60,7 @@ TEST(McpHandler, Initialize) {
 TEST(McpHandler, InitializedNotification) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    handler.handleRequest(makeReq("initialize"));
 
     // initialized is a notification (no id) — should return empty
     auto resp =
@@ -69,6 +71,7 @@ TEST(McpHandler, InitializedNotification) {
 TEST(McpHandler, Ping) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    handler.handleRequest(makeReq("initialize"));
 
     auto resp = parseResponse(handler.handleRequest(makeReq("ping")));
     EXPECT_EQ(resp["id"].asInt(), 1);
@@ -78,6 +81,7 @@ TEST(McpHandler, Ping) {
 TEST(McpHandler, UnknownMethod) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    handler.handleRequest(makeReq("initialize"));
 
     auto resp = parseResponse(handler.handleRequest(makeReq("nonexistent/method")));
     EXPECT_TRUE(resp.has("error"));
@@ -87,10 +91,19 @@ TEST(McpHandler, UnknownMethod) {
 TEST(McpHandler, UnknownNotificationSilent) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    handler.handleRequest(makeReq("initialize"));
 
     auto resp = handler.handleRequest(
         {"someNotification", JsonValue::object({}), JsonValue() /* null id */});
     EXPECT_TRUE(resp.empty());
+}
+
+TEST(McpHandler, ToolsListBeforeInitializeRejected) {
+    CompilerBridge bridge;
+    McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+
+    auto resp = parseResponse(handler.handleRequest(makeReq("tools/list")));
+    EXPECT_EQ(resp["error"]["code"].asInt(), kInvalidRequest);
 }
 
 // ===== tools/list =====
@@ -98,6 +111,7 @@ TEST(McpHandler, UnknownNotificationSilent) {
 TEST(McpHandler, ToolsListReturnsTools) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    handler.handleRequest(makeReq("initialize"));
 
     auto resp = parseResponse(handler.handleRequest(makeReq("tools/list")));
     auto tools = resp["result"]["tools"];
@@ -108,6 +122,7 @@ TEST(McpHandler, ToolsListReturnsTools) {
 TEST(McpHandler, ToolsListContainsCheck) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    handler.handleRequest(makeReq("initialize"));
 
     auto resp = parseResponse(handler.handleRequest(makeReq("tools/list")));
     auto tools = resp["result"]["tools"].asArray();
@@ -127,6 +142,7 @@ TEST(McpHandler, ToolsListContainsCheck) {
 TEST(McpHandler, ToolsListHasAllTools) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    handler.handleRequest(makeReq("initialize"));
 
     auto resp = parseResponse(handler.handleRequest(makeReq("tools/list")));
     auto tools = resp["result"]["tools"].asArray();
@@ -160,6 +176,7 @@ TEST(McpHandler, ToolsListHasAllTools) {
 TEST(McpHandler, ToolsCallCheck) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    handler.handleRequest(makeReq("initialize"));
 
     auto params = JsonValue::object({
         {"name", JsonValue("zia/check")},
@@ -180,6 +197,7 @@ TEST(McpHandler, ToolsCallCheck) {
 TEST(McpHandler, ToolsCallCompile) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    handler.handleRequest(makeReq("initialize"));
 
     auto params = JsonValue::object({
         {"name", JsonValue("zia/compile")},
@@ -199,6 +217,7 @@ TEST(McpHandler, ToolsCallCompile) {
 TEST(McpHandler, ToolsCallCompletions) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    handler.handleRequest(makeReq("initialize"));
 
     auto params = JsonValue::object({
         {"name", JsonValue("zia/completions")},
@@ -220,6 +239,7 @@ TEST(McpHandler, ToolsCallCompletions) {
 TEST(McpHandler, ToolsCallSymbols) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    handler.handleRequest(makeReq("initialize"));
 
     auto params = JsonValue::object({
         {"name", JsonValue("zia/symbols")},
@@ -245,6 +265,7 @@ TEST(McpHandler, ToolsCallSymbols) {
 TEST(McpHandler, ToolsCallDumpTokens) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    handler.handleRequest(makeReq("initialize"));
 
     auto params = JsonValue::object({
         {"name", JsonValue("zia/dump-tokens")},
@@ -261,6 +282,7 @@ TEST(McpHandler, ToolsCallDumpTokens) {
 TEST(McpHandler, ToolsCallHoverLocalVar) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    handler.handleRequest(makeReq("initialize"));
 
     // MCP uses 1-based line/col. Line 3 col 9 = 'x' in "    var x = 42;"
     auto params = JsonValue::object({
@@ -281,6 +303,7 @@ TEST(McpHandler, ToolsCallHoverLocalVar) {
 TEST(McpHandler, ToolsCallHoverFunction) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    handler.handleRequest(makeReq("initialize"));
 
     // Line 2 col 6 = 'start' in "func start() {"
     auto params = JsonValue::object({
@@ -300,6 +323,7 @@ TEST(McpHandler, ToolsCallHoverFunction) {
 TEST(McpHandler, ToolsCallHoverWhitespace) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    handler.handleRequest(makeReq("initialize"));
 
     // Line 3 col 1 = leading whitespace
     auto params = JsonValue::object({
@@ -319,6 +343,7 @@ TEST(McpHandler, ToolsCallHoverWhitespace) {
 TEST(McpHandler, ToolsCallRuntimeClasses) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    handler.handleRequest(makeReq("initialize"));
 
     auto params = JsonValue::object({
         {"name", JsonValue("zia/runtime-classes")},
@@ -333,6 +358,7 @@ TEST(McpHandler, ToolsCallRuntimeClasses) {
 TEST(McpHandler, ToolsCallRuntimeMethods) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    handler.handleRequest(makeReq("initialize"));
 
     auto params = JsonValue::object({
         {"name", JsonValue("zia/runtime-methods")},
@@ -347,6 +373,7 @@ TEST(McpHandler, ToolsCallRuntimeMethods) {
 TEST(McpHandler, ToolsCallRuntimeSearch) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    handler.handleRequest(makeReq("initialize"));
 
     auto params = JsonValue::object({
         {"name", JsonValue("zia/runtime-search")},
@@ -361,6 +388,7 @@ TEST(McpHandler, ToolsCallRuntimeSearch) {
 TEST(McpHandler, ToolsCallUnknownTool) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    handler.handleRequest(makeReq("initialize"));
 
     auto params = JsonValue::object({
         {"name", JsonValue("nonexistent/tool")},
@@ -373,9 +401,23 @@ TEST(McpHandler, ToolsCallUnknownTool) {
 TEST(McpHandler, ToolsCallMissingName) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    handler.handleRequest(makeReq("initialize"));
 
     auto resp = parseResponse(handler.handleRequest(makeReq("tools/call", JsonValue::object({}))));
     EXPECT_TRUE(resp.has("error"));
+    EXPECT_EQ(resp["error"]["code"].asInt(), kInvalidParams);
+}
+
+TEST(McpHandler, ToolsCallMissingSourceRejected) {
+    CompilerBridge bridge;
+    McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    handler.handleRequest(makeReq("initialize"));
+
+    auto params = JsonValue::object({
+        {"name", JsonValue("zia/check")},
+        {"arguments", JsonValue::object({})},
+    });
+    auto resp = parseResponse(handler.handleRequest(makeReq("tools/call", std::move(params))));
     EXPECT_EQ(resp["error"]["code"].asInt(), kInvalidParams);
 }
 

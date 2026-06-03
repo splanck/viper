@@ -7,6 +7,11 @@
 //
 // File: src/tools/common/packaging/PkgZlib.cpp
 // Purpose: zlib framing for native XAR TOCs and per-file compression.
+// Key invariants: Emits the standard 0x78 0x9C zlib header, defers compression
+//                 to PkgDeflate, and appends a big-endian Adler-32 of the
+//                 uncompressed data. Decompression rejects preset dictionaries.
+// Ownership/Lifetime: Returned vectors own their memory; inputs are read-only.
+// Links: PkgZlib.hpp, PkgDeflate.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -19,6 +24,9 @@
 namespace viper::pkg {
 namespace {
 
+/// @brief Compute the Adler-32 checksum of a buffer (RFC 1950 trailer).
+/// @details Maintains the two rolling sums modulo 65521 and packs them as
+///          (b << 16) | a, matching the value stored in a zlib trailer.
 uint32_t adler32(const uint8_t *data, size_t len) {
     uint32_t a = 1;
     uint32_t b = 0;
@@ -29,6 +37,7 @@ uint32_t adler32(const uint8_t *data, size_t len) {
     return (b << 16) | a;
 }
 
+/// @brief Read four bytes at @p p as a big-endian 32-bit word.
 uint32_t readBE32(const uint8_t *p) {
     return (static_cast<uint32_t>(p[0]) << 24) | (static_cast<uint32_t>(p[1]) << 16) |
            (static_cast<uint32_t>(p[2]) << 8) | static_cast<uint32_t>(p[3]);
@@ -36,6 +45,10 @@ uint32_t readBE32(const uint8_t *p) {
 
 } // namespace
 
+/// @brief Frame DEFLATE output as a zlib stream (header + payload + Adler-32).
+/// @details Writes the fixed 0x78 0x9C header, the raw DEFLATE bytes, then the
+///          big-endian Adler-32 of the original input. See the header for the
+///          parameter and return contract.
 std::vector<uint8_t> zlibCompress(const uint8_t *data, size_t len, int level) {
     if (len != 0 && data == nullptr)
         throw std::runtime_error("zlib: null data pointer for non-empty input");
@@ -54,6 +67,11 @@ std::vector<uint8_t> zlibCompress(const uint8_t *data, size_t len, int level) {
     return out;
 }
 
+/// @brief Validate and decompress a zlib stream.
+/// @details Checks the CMF/FLG header (method 8, FCHECK multiple of 31), rejects
+///          preset dictionaries, inflates the payload to @p expectedSize, and
+///          verifies the trailing Adler-32. See the header for the parameter and
+///          return contract.
 std::vector<uint8_t> zlibDecompress(const uint8_t *data, size_t len, size_t expectedSize) {
     if (data == nullptr || len < 6)
         throw std::runtime_error("zlib: stream too small");

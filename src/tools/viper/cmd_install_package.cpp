@@ -42,6 +42,9 @@ namespace {
 
 enum class InstallPackageTarget { Windows, MacOS, LinuxDeb, LinuxRpm, Tarball, All };
 
+/// @brief Parsed command-line arguments for the `viper install-package` subcommand.
+/// @details Selects the output format(s) and source (staged tree or build dir),
+///          plus the macOS/Windows signing and Windows installer behavior options.
 struct InstallPackageArgs {
     InstallPackageTarget target{InstallPackageTarget::All};
     std::string archOverride;
@@ -73,11 +76,13 @@ struct InstallPackageArgs {
     bool stageOnly{false};
 };
 
+/// @brief Platform/architecture detected from a staged native executable.
 struct NativeExecutableInfo {
-    std::string platform;
-    std::string arch;
+    std::string platform; ///< "windows"/"macos"/"linux".
+    std::string arch;     ///< "x64"/"arm64".
 };
 
+/// @brief Print usage for the `viper install-package` subcommand to stderr.
 void installPackageUsage() {
     std::cerr
         << "Usage: viper install-package [options]\n"
@@ -118,6 +123,7 @@ void installPackageUsage() {
         << "  --help, -h            Show this help\n";
 }
 
+/// @brief Return the host platform name ("macos"/"windows"/"linux").
 std::string hostPlatformName() {
 #if defined(__APPLE__)
     return "macos";
@@ -128,34 +134,44 @@ std::string hostPlatformName() {
 #endif
 }
 
+/// @brief Map a Viper arch ("x64"/"arm64") to its Debian architecture name.
 std::string debArchFor(const std::string &arch) {
     viper::pkg::validateToolchainArchitecture(arch);
     return arch == "arm64" ? "arm64" : "amd64";
 }
 
+/// @brief Map a Viper arch ("x64"/"arm64") to its RPM architecture name.
 std::string rpmArchFor(const std::string &arch) {
     viper::pkg::validateToolchainArchitecture(arch);
     return arch == "arm64" ? "aarch64" : "x86_64";
 }
 
+/// @brief Return true if the `rpmbuild` tool is available on PATH.
 bool rpmbuildAvailable() {
     const RunResult rr = run_process({"rpmbuild", "--version"});
     return rr.exit_code == 0;
 }
 
+/// @brief Read an environment variable, returning "" when it is unset.
 std::string getenvOrEmpty(const char *name) {
     const char *value = std::getenv(name);
     return value == nullptr ? std::string{} : std::string(value);
 }
 
+/// @brief Return true if the args request Windows Authenticode signing.
 bool windowsSigningRequested(const InstallPackageArgs &args) {
     return args.windowsSign || !args.windowsSignPfx.empty() || !args.windowsSignThumbprint.empty();
 }
 
+/// @brief Return true if the args request macOS package signing/notarization.
 bool macOSPackageSigningRequested(const InstallPackageArgs &args) {
     return !args.macosSignIdentity.empty() || !args.macosNotaryProfile.empty() || args.macosStaple;
 }
 
+/// @brief Authenticode-sign a Windows installer artifact when signing is requested.
+/// @details Resolves the PFX/thumbprint (falling back to VIPER_WINDOWS_SIGN_*
+///          env vars), invokes signtool, and optionally verifies the signature.
+/// @return true on success or when no signing was requested; false on failure.
 bool signWindowsInstallerArtifact(const InstallPackageArgs &args,
                                   const fs::path &artifactPath,
                                   std::ostream &err) {
@@ -236,6 +252,12 @@ bool signWindowsInstallerArtifact(const InstallPackageArgs &args,
     return true;
 }
 
+/// @brief Sign (and optionally notarize/staple) a macOS .pkg when requested.
+/// @details Resolves the Developer ID Installer identity and notary profile
+///          (falling back to VIPER_MACOS_* env vars), runs productsign, verifies
+///          with pkgutil, and — when a notary profile is set — submits via
+///          notarytool and optionally staples. Only available on macOS hosts.
+/// @return true on success or when no signing was requested; false on failure.
 bool signMacOSPackageArtifact(const InstallPackageArgs &args,
                               const fs::path &artifactPath,
                               std::ostream &err) {
@@ -326,31 +348,37 @@ bool signMacOSPackageArtifact(const InstallPackageArgs &args,
 #endif
 }
 
+/// @brief Read a big-endian uint16 at @p off (caller must bounds-check).
 uint16_t readBE16(const std::vector<uint8_t> &data, size_t off) {
     return static_cast<uint16_t>((data[off] << 8) | data[off + 1]);
 }
 
+/// @brief Read a little-endian uint16 at @p off (caller must bounds-check).
 uint16_t readLE16(const std::vector<uint8_t> &data, size_t off) {
     return static_cast<uint16_t>(data[off] | (data[off + 1] << 8));
 }
 
+/// @brief Read a little-endian uint32 at @p off (caller must bounds-check).
 uint32_t readLE32(const std::vector<uint8_t> &data, size_t off) {
     return static_cast<uint32_t>(data[off]) | (static_cast<uint32_t>(data[off + 1]) << 8) |
            (static_cast<uint32_t>(data[off + 2]) << 16) |
            (static_cast<uint32_t>(data[off + 3]) << 24);
 }
 
+/// @brief Read a big-endian uint32 at @p off (caller must bounds-check).
 uint32_t readBE32(const std::vector<uint8_t> &data, size_t off) {
     return (static_cast<uint32_t>(data[off]) << 24) | (static_cast<uint32_t>(data[off + 1]) << 16) |
            (static_cast<uint32_t>(data[off + 2]) << 8) | static_cast<uint32_t>(data[off + 3]);
 }
 
+/// @brief Return an ASCII-lowercased copy of @p text.
 std::string lowerAscii(std::string text) {
     for (char &c : text)
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     return text;
 }
 
+/// @brief Return the lowercased filename with any trailing ".exe" stripped.
 std::string binaryBaseName(std::string filename) {
     filename = lowerAscii(std::move(filename));
     if (filename.size() > 4 && filename.substr(filename.size() - 4) == ".exe")
@@ -358,6 +386,9 @@ std::string binaryBaseName(std::string filename) {
     return filename;
 }
 
+/// @brief Sanitize a version string into a portable filename component.
+/// @details Keeps alphanumerics and `.+~-`, replaces anything else with `_`, and
+///          falls back to "0.0.0" when the result would be empty.
 std::string portableArchiveVersionComponent(const std::string &version) {
     std::string out;
     out.reserve(version.size());
@@ -371,6 +402,10 @@ std::string portableArchiveVersionComponent(const std::string &version) {
     return out.empty() ? "0.0.0" : out;
 }
 
+/// @brief Detect the platform/arch of a native executable from its header magic.
+/// @details Recognises ELF, PE (MZ/PE), and Mach-O (thin and fat/universal),
+///          decoding the machine/cputype field into platform+arch.
+/// @return The detected info, or std::nullopt if the format is unrecognized.
 std::optional<NativeExecutableInfo> detectNativeExecutableInfo(const fs::path &path) {
     const auto data = viper::pkg::readFile(path.string());
     if (data.size() < 20)
@@ -436,6 +471,8 @@ std::optional<NativeExecutableInfo> detectNativeExecutableInfo(const fs::path &p
     return std::nullopt;
 }
 
+/// @brief Detect the platform/arch from the manifest's staged `viper` binary.
+/// @return The detected info, or std::nullopt when no usable binary is found.
 std::optional<NativeExecutableInfo> detectManifestToolchainExecutableInfo(
     const viper::pkg::ToolchainInstallManifest &manifest) {
     for (const auto &file : manifest.files) {
@@ -448,6 +485,10 @@ std::optional<NativeExecutableInfo> detectManifestToolchainExecutableInfo(
     return std::nullopt;
 }
 
+/// @brief Find the first staged PE that imports an MSVC debug CRT, if any.
+/// @details Scans each staged .exe/.dll's import table for the known debug-runtime
+///          DLLs; used to reject (or warn about) non-redistributable debug builds.
+/// @return A "<path> imports <dll>" description, or std::nullopt when none found.
 std::optional<std::string> firstWindowsDebugRuntimeReference(
     const viper::pkg::ToolchainInstallManifest &manifest) {
     static const char *debugDlls[] = {
@@ -468,6 +509,8 @@ std::optional<std::string> firstWindowsDebugRuntimeReference(
     return std::nullopt;
 }
 
+/// @brief Parse a --target value into an InstallPackageTarget.
+/// @return true on a recognized target name; false otherwise.
 bool parseTarget(const std::string &text, InstallPackageTarget &out) {
     if (text == "windows")
         out = InstallPackageTarget::Windows;
@@ -486,6 +529,8 @@ bool parseTarget(const std::string &text, InstallPackageTarget &out) {
     return true;
 }
 
+/// @brief Parse an on/off-style boolean option value.
+/// @return true on a recognized on/off/true/false/1/0/yes/no token; false otherwise.
 bool parseOnOff(const std::string &text, bool &out) {
     if (text == "on" || text == "true" || text == "1" || text == "yes") {
         out = true;
@@ -498,11 +543,32 @@ bool parseOnOff(const std::string &text, bool &out) {
     return false;
 }
 
+/// @brief Return true if @p arg is an install-package option that takes a value.
+/// @details Used during argument parsing to know when to consume the next token.
+bool installPackageOptionRequiresValue(const std::string &arg) {
+    return arg == "--target" || arg == "--arch" || arg == "--stage-dir" || arg == "--build-dir" ||
+           arg == "--config" || arg == "--verify-only" || arg == "--macos-pkg-version" ||
+           arg == "--macos-sign-identity" || arg == "--macos-notary-profile" ||
+           arg == "--windows-sign-pfx" || arg == "--windows-sign-thumbprint" ||
+           arg == "--windows-timestamp-url" || arg == "--windows-signtool" ||
+           arg == "--windows-install-scope" || arg == "--windows-install-dir" ||
+           arg == "--windows-file-associations" || arg == "--windows-shortcuts" || arg == "-o";
+}
+
+/// @brief Parse the `viper install-package` command line into @p args.
+/// @details Handles the target/source options and the macOS/Windows signing and
+///          installer options; prints usage and returns false on a malformed or
+///          missing-value argument.
+/// @return true on a successful parse.
 bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
     for (int i = 0; i < argc; ++i) {
         const std::string arg = argv[i];
         if ((arg == "--help" || arg == "-h")) {
             installPackageUsage();
+            return false;
+        }
+        if (installPackageOptionRequiresValue(arg) && i + 1 >= argc) {
+            std::cerr << "error: " << arg << " requires a value\n";
             return false;
         } else if (arg == "--target" && i + 1 < argc) {
             if (!parseTarget(argv[++i], args.target)) {
@@ -620,6 +686,9 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
     return true;
 }
 
+/// @brief Build the conventional output filename for a target from the manifest.
+/// @details Encodes the version/arch/platform per platform naming convention
+///          (e.g. `viper_<v>_<arch>.deb`); returns "" for the All meta-target.
 std::string targetFileName(InstallPackageTarget target,
                            const viper::pkg::ToolchainInstallManifest &manifest) {
     const std::string version = manifest.version.empty() ? "0.0.0" : manifest.version;
@@ -642,6 +711,11 @@ std::string targetFileName(InstallPackageTarget target,
     }
 }
 
+/// @brief Compute the payload paths a built package of @p target must contain.
+/// @details Derives the expected install-relative paths from the manifest files,
+///          adding the platform-specific layout prefixes and any file-association
+///          metadata (.desktop/MIME entries). Used by post-build verification.
+/// @return The list of required payload paths for @p target.
 std::vector<std::string> requiredPayloadPaths(
     InstallPackageTarget target, const viper::pkg::ToolchainInstallManifest &manifest) {
     std::vector<std::string> paths;
@@ -745,6 +819,12 @@ std::vector<std::string> requiredPayloadPaths(
     return paths;
 }
 
+/// @brief Verify every @p required path (leading slashes stripped) is in @p actual.
+/// @param actual Set of payload paths actually present in the built artifact.
+/// @param required Paths that must be present.
+/// @param kind Artifact-kind label for diagnostics.
+/// @param err Stream for error messages.
+/// @return true when all required paths are present.
 bool requireListedPayloadPaths(const std::set<std::string> &actual,
                                const std::vector<std::string> &required,
                                const char *kind,
@@ -761,6 +841,9 @@ bool requireListedPayloadPaths(const std::set<std::string> &actual,
     return true;
 }
 
+/// @brief Parse a newline-separated payload listing into a normalized path set.
+/// @details Trims CR/LF, strips leading slashes and a leading "./", and skips
+///          blank lines.
 std::set<std::string> parsePayloadListing(const std::string &text) {
     std::set<std::string> paths;
     std::istringstream in(text);
@@ -778,20 +861,31 @@ std::set<std::string> parsePayloadListing(const std::string &text) {
     return paths;
 }
 
+/// @brief One index entry in an RPM header section.
 struct RpmHeaderEntry {
-    uint32_t tag{0};
-    uint32_t type{0};
-    uint32_t offset{0};
-    uint32_t count{0};
+    uint32_t tag{0};    ///< RPM tag id.
+    uint32_t type{0};   ///< Value type code.
+    uint32_t offset{0}; ///< Offset into the header's data store.
+    uint32_t count{0};  ///< Number of values.
 };
 
+/// @brief A parsed RPM header: its index entries and data-store bounds.
 struct RpmHeaderView {
-    size_t storeOffset{0};
-    size_t storeSize{0};
-    size_t endOffset{0};
-    std::vector<RpmHeaderEntry> entries;
+    size_t storeOffset{0};               ///< File offset of the data store.
+    size_t storeSize{0};                 ///< Size of the data store in bytes.
+    size_t endOffset{0};                 ///< File offset just past this header.
+    std::vector<RpmHeaderEntry> entries; ///< Index entries describing the values.
 };
 
+/// @brief Parse an RPM header section at @p offset into @p header.
+/// @details Validates the header magic and index/store sizes; used to read the
+///          file listing out of a generated .rpm for verification.
+/// @param data Whole .rpm file bytes.
+/// @param offset File offset where the header begins.
+/// @param name Header name for diagnostics (e.g. "signature", "main").
+/// @param header Output parsed header view.
+/// @param err Stream for error messages.
+/// @return true when the header parses successfully.
 bool parseRpmHeaderAt(const std::vector<uint8_t> &data,
                       size_t offset,
                       const char *name,
@@ -841,6 +935,8 @@ bool parseRpmHeaderAt(const std::vector<uint8_t> &data,
     return true;
 }
 
+/// @brief Find the header index entry with the given RPM @p tag.
+/// @return Pointer to the entry, or nullptr if the tag is absent.
 const RpmHeaderEntry *findRpmHeaderEntry(const RpmHeaderView &header, uint32_t tag) {
     auto it = std::find_if(header.entries.begin(), header.entries.end(), [&](const auto &entry) {
         return entry.tag == tag;
@@ -848,6 +944,10 @@ const RpmHeaderEntry *findRpmHeaderEntry(const RpmHeaderView &header, uint32_t t
     return it == header.entries.end() ? nullptr : &*it;
 }
 
+/// @brief Read a STRING/STRING_ARRAY/I18NSTRING RPM tag value into @p values.
+/// @details Validates the entry type and reads NUL-terminated strings from the
+///          header data store, bounds-checking against truncation.
+/// @return true on success; false (with @p err set) on a type/bounds error.
 bool readRpmStringArray(const std::vector<uint8_t> &data,
                         const RpmHeaderView &header,
                         const RpmHeaderEntry &entry,
@@ -883,6 +983,8 @@ bool readRpmStringArray(const std::vector<uint8_t> &data,
     return true;
 }
 
+/// @brief Read an INT32 RPM tag value array into @p values (big-endian).
+/// @return true on success; false (with @p err set) on a type/bounds error.
 bool readRpmInt32Array(const std::vector<uint8_t> &data,
                        const RpmHeaderView &header,
                        const RpmHeaderEntry &entry,
@@ -907,6 +1009,7 @@ bool readRpmInt32Array(const std::vector<uint8_t> &data,
     return true;
 }
 
+/// @brief Normalize an RPM-listed path (strip leading slashes and a leading "./").
 std::string normalizeRpmListedPath(std::string path) {
     while (!path.empty() && path.front() == '/')
         path.erase(path.begin());
@@ -915,6 +1018,10 @@ std::string normalizeRpmListedPath(std::string path) {
     return path;
 }
 
+/// @brief Reconstruct the installed file paths recorded in an .rpm header.
+/// @details Combines the BASENAMES, DIRINDEXES, and DIRNAMES tags into full
+///          normalized paths for post-build payload verification.
+/// @return true when the path tags were read and assembled successfully.
 bool readRpmPayloadPaths(const std::vector<uint8_t> &data,
                          std::set<std::string> *payloadPaths,
                          std::ostream &err) {
@@ -1014,6 +1121,11 @@ bool readRpmPayloadPaths(const std::vector<uint8_t> &data,
     return true;
 }
 
+/// @brief Structurally verify a built package artifact for @p target.
+/// @details Dispatches to the format-specific PkgVerify routine; when @p manifest
+///          is provided, additionally asserts the required payload paths are
+///          present (using the RPM header reader for .rpm).
+/// @return true when the artifact is valid (and complete, if a manifest is given).
 bool verifyArtifact(const fs::path &artifact,
                     InstallPackageTarget target,
                     std::ostream &err,
@@ -1063,6 +1175,9 @@ bool verifyArtifact(const fs::path &artifact,
     }
 }
 
+/// @brief Infer the package target from an artifact's filename extension.
+/// @details Maps .exe/.pkg/.deb/.rpm/.tar.gz/.tgz to their targets for
+///          `--verify-only`. @return true on a recognized extension.
 bool inferVerifyTargetFromPath(const fs::path &path, InstallPackageTarget &target) {
     const std::string name = lowerAscii(path.filename().string());
     if (name.size() >= 4 && name.substr(name.size() - 4) == ".exe")
@@ -1081,10 +1196,15 @@ bool inferVerifyTargetFromPath(const fs::path &path, InstallPackageTarget &targe
     return true;
 }
 
+/// @brief RAII guard that removes an auto-created staging directory on scope exit.
+/// @details Call dismiss() to keep the directory once staging succeeds; otherwise
+///          the destructor recursively deletes it (used for auto-generated stages).
 class AutoStageCleanup {
   public:
+    /// @brief Construct a guard for @p path; cleanup runs only when @p enabled.
     AutoStageCleanup(fs::path path, bool enabled) : path_(std::move(path)), enabled_(enabled) {}
 
+    /// @brief Remove the staging directory unless the guard was dismissed.
     ~AutoStageCleanup() {
         if (enabled_ && !path_.empty()) {
             std::error_code ec;
@@ -1092,15 +1212,22 @@ class AutoStageCleanup {
         }
     }
 
+    /// @brief Cancel the pending cleanup so the directory is preserved.
     void dismiss() {
         enabled_ = false;
     }
 
   private:
-    fs::path path_;
-    bool enabled_{false};
+    fs::path path_;       ///< Staging directory to remove.
+    bool enabled_{false}; ///< Whether the destructor should delete @c path_.
 };
 
+/// @brief Return an existing staged install tree, or build/stage one on demand.
+/// @details If --stage-dir was given, returns it directly. Otherwise creates a
+///          unique directory under --build-dir, optionally runs `cmake --build`,
+///          then `cmake --install --prefix <stage>`; the directory is removed on
+///          failure (and on success unless --keep-stage-dir was set).
+/// @throws std::runtime_error on directory creation or cmake failure.
 fs::path ensureStageDir(const InstallPackageArgs &args) {
     if (!args.stageDir.empty())
         return args.stageDir;
@@ -1155,6 +1282,9 @@ fs::path ensureStageDir(const InstallPackageArgs &args) {
     return stageDir;
 }
 
+/// @brief Return true if @p target is buildable for the staged @p platform.
+/// @details Tarball matches any platform; native formats require the matching
+///          platform string.
 bool targetMatchesStagedPlatform(InstallPackageTarget target, const std::string &platform) {
     switch (target) {
         case InstallPackageTarget::Windows:
@@ -1172,6 +1302,9 @@ bool targetMatchesStagedPlatform(InstallPackageTarget target, const std::string 
     }
 }
 
+/// @brief Expand the requested target into the concrete formats to build.
+/// @details A specific target maps to itself; the All meta-target expands to the
+///          native format(s) for @p platform (deb+rpm on Linux) plus a tarball.
 std::vector<InstallPackageTarget> selectedTargets(InstallPackageTarget target,
                                                   const std::string &platform) {
     if (target != InstallPackageTarget::All)

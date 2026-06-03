@@ -43,10 +43,16 @@ struct LnkParams {
 
 /// @brief Generate a Windows .lnk shortcut file.
 ///
-/// Produces a minimal but valid .lnk file with:
-///   - ShellLinkHeader (76 bytes) with HasRelativePath | IsUnicode
-///   - StringData: NAME_STRING, RELATIVE_PATH, WORKING_DIR
-///   - No LinkTargetIDList or LinkInfo (simplifies generation).
+/// Produces a valid [MS-SHLLINK] shell link with:
+///   - ShellLinkHeader (76 bytes) with HasLinkInfo | HasName | HasRelativePath |
+///     IsUnicode (and HasWorkingDir/HasArguments/HasIconLocation/HasExpString as
+///     applicable).
+///   - LinkInfo (VolumeID + LocalBasePath, ANSI and Unicode) for reliable
+///     resolution.
+///   - StringData: NAME_STRING, RELATIVE_PATH, and — when set — WORKING_DIR,
+///     COMMAND_LINE_ARGUMENTS, and ICON_LOCATION.
+///   - An EnvironmentVariableDataBlock when the target contains %VAR% references.
+///   - No LinkTargetIDList (LinkInfo + StringData are sufficient to resolve).
 ///
 /// @param params Shortcut parameters.
 /// @return .lnk file bytes.

@@ -28,6 +28,7 @@
 
 #include "VpaWriter.hpp"
 #include "codegen/common/objfile/ObjectFileWriter.hpp"
+#include "tools/common/packaging/PkgUtils.hpp"
 #include "tools/common/project_loader.hpp"
 
 #include <algorithm>
@@ -42,7 +43,15 @@ namespace fs = std::filesystem;
 
 namespace viper::asset {
 namespace {
+constexpr std::uintmax_t kMaxAssetFileBytes = 256ULL * 1024ULL * 1024ULL;
 
+
+/// @brief Append a single file's identity fingerprint to a cache key.
+/// @details Folds the normalized path, byte size, and last-write-time ticks of
+///          @p path into @p key (using "?" placeholders when stat calls fail) so
+///          a change to any of those invalidates the asset build cache.
+/// @param path File to fingerprint.
+/// @param key Cache-key string accumulated in place.
 static void appendFileFingerprint(const fs::path &path, std::string &key) {
     std::error_code ec;
     key += path.lexically_normal().string();
@@ -59,11 +68,25 @@ static void appendFileFingerprint(const fs::path &path, std::string &key) {
     key.push_back('\n');
 }
 
+/// @brief Append a source directive's fingerprint (file or directory) to a key.
+/// @details Resolves @p sourcePath against @p rootDir, prefixes the compression
+///          mode ("C:"/"U:"), and fingerprints either the single file or, for a
+///          directory, every regular file under it in sorted order so the key is
+///          deterministic regardless of enumeration order.
+/// @param rootDir Absolute project root used to resolve @p sourcePath.
+/// @param sourcePath Project-relative source path from an embed/pack directive.
+/// @param compressed Whether the entry is to be DEFLATE-compressed.
+/// @param key Cache-key string accumulated in place.
 static void appendSourceFingerprint(const fs::path &rootDir,
                                     const std::string &sourcePath,
                                     bool compressed,
                                     std::string &key) {
-    fs::path absPath = rootDir / sourcePath;
+    fs::path absPath;
+    try {
+        absPath = viper::pkg::resolvePackageSourcePath(rootDir, sourcePath, "asset source path");
+    } catch (const std::exception &) {
+        absPath = rootDir / sourcePath;
+    }
     key += compressed ? "C:" : "U:";
     std::error_code ec;
     if (fs::is_directory(absPath, ec)) {
@@ -82,6 +105,15 @@ static void appendSourceFingerprint(const fs::path &rootDir,
     appendFileFingerprint(absPath, key);
 }
 
+/// @brief Compute a content-addressed cache key for an asset compilation.
+/// @details Combines the project root, output directory, and the fingerprints of
+///          every embed entry and pack group (including pack name and
+///          compression flag). Two calls with identical inputs and unchanged
+///          files on disk produce the same key, allowing compileAssets() to
+///          reuse a cached AssetBundle.
+/// @param config Project configuration providing embed/pack directives.
+/// @param outputDir Directory where pack files would be written.
+/// @return A string uniquely identifying this asset build.
 static std::string assetCacheKey(const il::tools::common::ProjectConfig &config,
                                  const std::string &outputDir) {
     fs::path rootDir(config.rootDir);
@@ -113,10 +145,19 @@ static bool readFile(const fs::path &path, std::vector<uint8_t> &out, std::strin
         err = "cannot determine size of: " + path.string();
         return false;
     }
+    if (static_cast<std::uintmax_t>(size) > kMaxAssetFileBytes) {
+        err = "asset file too large: " + path.string() + " (limit: 256 MB)";
+        return false;
+    }
     f.seekg(0);
-    out.resize(static_cast<size_t>(size));
+    try {
+        out.resize(static_cast<size_t>(size));
+    } catch (const std::bad_alloc &) {
+        err = "out of memory reading asset: " + path.string();
+        return false;
+    }
     if (size > 0)
-        f.read(reinterpret_cast<char *>(out.data()), size);
+        f.read(reinterpret_cast<char *>(out.data()), static_cast<std::streamsize>(out.size()));
     if (!f) {
         err = "read error on: " + path.string();
         return false;
@@ -136,25 +177,78 @@ static bool enumerateDir(const fs::path &dir,
                          const fs::path &rootDir,
                          std::vector<std::pair<std::string, fs::path>> &entries,
                          std::string &err) {
-    std::error_code ec;
-    for (auto it = fs::recursive_directory_iterator(dir, ec);
-         it != fs::recursive_directory_iterator();
-         ++it) {
-        if (ec) {
-            err = "directory enumeration error in " + dir.string() + ": " + ec.message();
-            return false;
-        }
-        if (!it->is_regular_file())
-            continue;
+    try {
+        viper::pkg::safeDirectoryIterateResolved(
+            dir, rootDir, [&](const viper::pkg::SafeDirectoryEntry &entry) {
+                if (!entry.regularFile)
+                    return;
+                std::error_code ec;
+                fs::path relPath = fs::relative(entry.logicalPath, rootDir, ec);
+                if (ec) {
+                    throw std::runtime_error("cannot compute relative path for: " +
+                                             entry.logicalPath.string());
+                }
+                entries.push_back({relPath.generic_string(), entry.resolvedPath});
+            });
+    } catch (const std::exception &e) {
+        err = e.what();
+        return false;
+    }
+    return true;
+}
 
-        // Compute relative name with forward slashes.
-        fs::path relPath = fs::relative(it->path(), rootDir, ec);
-        if (ec) {
-            err = "cannot compute relative path for: " + it->path().string();
+/// @brief Sanitize and resolve a project-relative asset source path.
+/// @details Produces both the sanitized relative path (rejecting traversal/absolute
+///          components) and the absolute on-disk path, throwing-to-error from the
+///          packaging path helpers so callers receive a uniform failure string.
+/// @param sourcePath Project-relative source path from a directive.
+/// @param rootDir Absolute project root used for resolution.
+/// @param resolvedPath Output: absolute resolved filesystem path.
+/// @param cleanPath Output: sanitized relative path (forward-slash form).
+/// @param err Set to the failure reason when resolution is rejected.
+/// @return true on success; false with @p err set on rejection.
+static bool resolveAssetSourcePath(const std::string &sourcePath,
+                                   const fs::path &rootDir,
+                                   fs::path &resolvedPath,
+                                   std::string &cleanPath,
+                                   std::string &err) {
+    try {
+        cleanPath = viper::pkg::sanitizePackageRelativePath(sourcePath, "asset source path");
+        resolvedPath =
+            viper::pkg::resolvePackageSourcePath(rootDir, sourcePath, "asset source path");
+    } catch (const std::exception &e) {
+        err = e.what();
+        return false;
+    }
+    return true;
+}
+
+/// @brief Validate every embed entry and pack group before compilation.
+/// @details Resolves each embed and pack source path (rejecting unsafe paths) and
+///          validates each pack group name via normalizeExecName so failures are
+///          reported up front rather than partway through writing output.
+/// @param config Project configuration to validate.
+/// @param err Set to the first validation failure encountered.
+/// @return true when all sources and pack names are valid; false otherwise.
+static bool validateAssetSources(const il::tools::common::ProjectConfig &config, std::string &err) {
+    const fs::path rootDir(config.rootDir);
+    fs::path resolvedPath;
+    std::string cleanPath;
+    for (const auto &entry : config.embedAssets) {
+        if (!resolveAssetSourcePath(entry.sourcePath, rootDir, resolvedPath, cleanPath, err))
+            return false;
+    }
+    for (const auto &group : config.packGroups) {
+        try {
+            (void)viper::pkg::normalizeExecName(group.name);
+        } catch (const std::exception &e) {
+            err = std::string("invalid asset pack name '") + group.name + "': " + e.what();
             return false;
         }
-        std::string name = relPath.generic_string(); // Forward slashes
-        entries.push_back({name, it->path()});
+        for (const auto &src : group.sources) {
+            if (!resolveAssetSourcePath(src, rootDir, resolvedPath, cleanPath, err))
+                return false;
+        }
     }
     return true;
 }
@@ -173,7 +267,10 @@ static bool addSourceToWriter(const std::string &sourcePath,
                               VpaWriter &writer,
                               bool compress,
                               std::string &err) {
-    fs::path absPath = rootDir / sourcePath;
+    fs::path absPath;
+    std::string cleanPath;
+    if (!resolveAssetSourcePath(sourcePath, rootDir, absPath, cleanPath, err))
+        return false;
 
     std::error_code ec;
     if (!fs::exists(absPath, ec)) {
@@ -190,7 +287,12 @@ static bool addSourceToWriter(const std::string &sourcePath,
             std::vector<uint8_t> data;
             if (!readFile(filePath, data, err))
                 return false;
-            writer.addEntry(name, data.data(), data.size(), compress);
+            try {
+                writer.addEntry(name, data.data(), data.size(), compress);
+            } catch (const std::exception &e) {
+                err = e.what();
+                return false;
+            }
         }
     } else {
         // Single file.
@@ -198,8 +300,12 @@ static bool addSourceToWriter(const std::string &sourcePath,
         if (!readFile(absPath, data, err))
             return false;
         // Use the sourcePath as the asset name (forward slashes).
-        std::string name = fs::path(sourcePath).generic_string();
-        writer.addEntry(name, data.data(), data.size(), compress);
+        try {
+            writer.addEntry(fs::path(cleanPath).generic_string(), data.data(), data.size(), compress);
+        } catch (const std::exception &e) {
+            err = e.what();
+            return false;
+        }
     }
 
     return true;
@@ -207,9 +313,20 @@ static bool addSourceToWriter(const std::string &sourcePath,
 
 // ─── compileAssets ──────────────────────────────────────────────────────────
 
+/// @brief Compile a project's embed/pack directives into an AssetBundle.
+/// @details Validates all sources first, then consults a process-local cache
+///          keyed by assetCacheKey() and guarded by a static mutex: a hit whose
+///          pack files still exist on disk is returned without rebuilding. On a
+///          miss, embed directives are gathered into a single in-memory VPA blob
+///          and each pack group is written to `<outputDir>/<project>-<pack>.vpa`,
+///          and the resulting bundle is cached before returning. See the header
+///          for the parameter and return contract.
 std::optional<AssetBundle> compileAssets(const il::tools::common::ProjectConfig &config,
                                          const std::string &outputDir,
                                          std::string &err) {
+    if (!validateAssetSources(config, err))
+        return std::nullopt;
+
     static std::mutex cacheMutex;
     static std::unordered_map<std::string, AssetBundle> cache;
     const std::string cacheKey = assetCacheKey(config, outputDir);
@@ -262,8 +379,18 @@ std::optional<AssetBundle> compileAssets(const il::tools::common::ProjectConfig 
         if (packWriter.entryCount() == 0)
             continue;
 
+        std::string safeProjectName;
+        std::string safeGroupName;
+        try {
+            safeProjectName = viper::pkg::normalizeExecName(config.name);
+            safeGroupName = viper::pkg::normalizeExecName(group.name);
+        } catch (const std::exception &e) {
+            err = e.what();
+            return std::nullopt;
+        }
+
         // Output path: <outputDir>/<projectName>-<packName>.vpa
-        std::string vpaName = config.name + "-" + group.name + ".vpa";
+        std::string vpaName = safeProjectName + "-" + safeGroupName + ".vpa";
         fs::path vpaPath = fs::path(outputDir) / vpaName;
 
         if (!packWriter.writeToFile(vpaPath.string(), err))
@@ -282,6 +409,12 @@ std::optional<AssetBundle> compileAssets(const il::tools::common::ProjectConfig 
 
 // ─── writeAssetBlobObject ───────────────────────────────────────────────────
 
+/// @brief Emit a native .o exposing the VPA blob as two .rodata symbols.
+/// @details Builds an object file (via Viper's own ObjectFileWriter for the host
+///          format/arch, so no external assembler is needed) containing an empty
+///          .text and a .rodata section defining `viper_asset_blob` (the bytes)
+///          and `viper_asset_blob_size` (a uint64 length). See the header for the
+///          parameter and return contract.
 bool writeAssetBlobObject(const std::vector<uint8_t> &blob,
                           const std::string &outPath,
                           std::string &err) {

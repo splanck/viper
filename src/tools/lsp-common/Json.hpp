@@ -89,11 +89,17 @@ class JsonValue {
 
     // --- Accessors (return default on type mismatch) ---
 
+    /// @brief Return the boolean value, or @p def when not a Bool.
     [[nodiscard]] bool asBool(bool def = false) const;
+    /// @brief Return the integer value, or @p def when not an Int.
     [[nodiscard]] int64_t asInt(int64_t def = 0) const;
+    /// @brief Return the double value, or @p def when not a Double.
     [[nodiscard]] double asDouble(double def = 0.0) const;
+    /// @brief Return the string value, or a shared empty string when not a String.
     [[nodiscard]] const std::string &asString() const;
+    /// @brief Return the array elements, or a shared empty array when not an Array.
     [[nodiscard]] const ArrayType &asArray() const;
+    /// @brief Return the object members, or a shared empty object when not an Object.
     [[nodiscard]] const ObjectType &asObject() const;
 
     // --- Object member access ---
@@ -142,7 +148,9 @@ class JsonValue {
 
     // --- Comparison ---
 
+    /// @brief Deep value equality (same type and recursively equal contents).
     bool operator==(const JsonValue &other) const;
+    /// @brief Logical negation of operator==.
     bool operator!=(const JsonValue &other) const;
 
   private:
@@ -155,6 +163,7 @@ class JsonValue {
     static const ObjectType kEmptyObject;
     static const JsonValue kNull;
 
+    /// @brief Recursively append this value's compact JSON encoding to @p out.
     void emitTo(std::string &out) const;
 };
 

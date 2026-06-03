@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -36,6 +37,7 @@
 #include <optional>
 #include <set>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -48,6 +50,7 @@ namespace fs = std::filesystem;
 // Data Structures
 //===----------------------------------------------------------------------===//
 
+/// @brief One RT_FUNC entry from runtime.def: a runtime function and its mapping.
 struct RuntimeFunc {
     std::string id;                       // Unique identifier (e.g., "PrintStr")
     std::string c_symbol;                 // C runtime symbol (e.g., "rt_print_str")
@@ -57,11 +60,13 @@ struct RuntimeFunc {
     std::vector<std::string> bridgeRoles; // Safe Zia bridge roles: none/callback/payload
 };
 
+/// @brief An RT_ALIAS entry: an extra canonical name pointing at an existing function.
 struct RuntimeAlias {
     std::string canonical; // Alias canonical name
     std::string target_id; // Target function id
 };
 
+/// @brief A property exposed by a runtime class (RT_PROP entry).
 struct RuntimeProperty {
     std::string name;      // Property name (e.g., "Length")
     std::string type;      // Property type (e.g., "i64")
@@ -69,12 +74,14 @@ struct RuntimeProperty {
     std::string setter_id; // Setter function id or "none"
 };
 
+/// @brief A method exposed by a runtime class (RT_METHOD entry).
 struct RuntimeMethod {
     std::string name;      // Method name (e.g., "Substring")
     std::string signature; // Signature without receiver (e.g., "str(i64,i64)")
     std::string target_id; // Target function id (or canonical name)
 };
 
+/// @brief A runtime OOP class (RT_CLASS block) with its properties and methods.
 struct RuntimeClass {
     std::string name;                   // Class name (e.g., "Viper.String")
     std::string type_id;                // Type ID suffix (e.g., "String")
@@ -84,81 +91,94 @@ struct RuntimeClass {
     std::vector<RuntimeMethod> methods; // Methods
 };
 
+/// @brief A C function signature parsed from a runtime header declaration.
 struct CSignature {
-    std::string returnType;
-    std::vector<std::string> argTypes;
+    std::string returnType;            ///< C return type.
+    std::vector<std::string> argTypes; ///< C parameter types, in order.
 };
 
+/// @brief Fields used to emit one descriptor row in RuntimeSignatures.inc.
 struct DescriptorFields {
-    std::string signatureId;
-    std::string spec;
-    std::string handler;
-    std::string lowering;
-    std::string hidden;
-    std::string hiddenCount;
-    std::string trapClass;
+    std::string signatureId; ///< Signature identifier.
+    std::string spec;        ///< Signature-spec expression.
+    std::string handler;     ///< VM handler expression.
+    std::string lowering;    ///< Lowering kind.
+    std::string hidden;      ///< Hidden-argument expression.
+    std::string hiddenCount; ///< Number of hidden arguments.
+    std::string trapClass;   ///< Trap classification.
 };
 
+/// @brief A runtime function prototype recovered from a runtime header.
 struct RuntimePrototype {
-    CSignature signature;
-    std::vector<std::string> paramNames;
-    std::string headerPath;
+    CSignature signature;                ///< Parsed C signature.
+    std::vector<std::string> paramNames; ///< Parameter names, in order.
+    std::string headerPath;              ///< Header file the declaration came from.
 };
 
+/// @brief A class property with canonical getter/setter names resolved.
 struct ResolvedRuntimeProperty {
-    std::string name;
-    std::string type;
-    std::string getterCanonical;
-    std::string setterCanonical;
+    std::string name;            ///< Property name.
+    std::string type;            ///< Property type.
+    std::string getterCanonical; ///< Canonical getter name.
+    std::string setterCanonical; ///< Canonical setter name, or empty.
 };
 
+/// @brief A class method with its target canonical name resolved.
 struct ResolvedRuntimeMethod {
-    std::string name;
-    std::string signature;
-    std::string targetCanonical;
+    std::string name;            ///< Method name.
+    std::string signature;       ///< Signature without receiver.
+    std::string targetCanonical; ///< Canonical target function name.
 };
 
+/// @brief A runtime class after id references are resolved to canonical names.
 struct ResolvedRuntimeClass {
-    std::string name;
-    std::string type_id;
-    std::string layout;
-    std::string ctorCanonical;
-    std::vector<ResolvedRuntimeProperty> props;
-    std::vector<ResolvedRuntimeMethod> methods;
+    std::string name;                           ///< Class name.
+    std::string type_id;                        ///< Type ID suffix.
+    std::string layout;                         ///< Layout type.
+    std::string ctorCanonical;                  ///< Canonical constructor name, or empty.
+    std::vector<ResolvedRuntimeProperty> props; ///< Resolved properties.
+    std::vector<ResolvedRuntimeMethod> methods; ///< Resolved methods.
 };
 
+/// @brief Expected runtime surface parsed from the surface-policy file, used by the
+///        audit to detect drift between runtime.def and the actual runtime.
 struct RuntimeSurfacePolicy {
-    std::unordered_set<std::string> internalHeaders;
-    std::unordered_set<std::string> internalSymbols;
-    std::unordered_map<std::string, std::string> expectedFunctions;
-    std::vector<ResolvedRuntimeMethod> expectedMethods;
-    std::vector<ResolvedRuntimeProperty> expectedProperties;
+    std::unordered_set<std::string> internalHeaders;          ///< Headers excluded from the surface.
+    std::unordered_set<std::string> internalSymbols;          ///< Symbols excluded from the surface.
+    std::unordered_map<std::string, std::string> expectedFunctions; ///< Required functions.
+    std::vector<ResolvedRuntimeMethod> expectedMethods;       ///< Required class methods.
+    std::vector<ResolvedRuntimeProperty> expectedProperties;  ///< Required class properties.
 };
 
 //===----------------------------------------------------------------------===//
 // Parser State
 //===----------------------------------------------------------------------===//
 
+/// @brief Mutable parser state accumulated while reading runtime.def.
+/// @details Holds the parsed functions/aliases/classes plus validation indices and
+///          the current line context used for error/warning reporting.
 struct ParseState {
-    std::vector<RuntimeFunc> functions;
-    std::vector<RuntimeAlias> aliases;
-    std::vector<RuntimeClass> classes;
+    std::vector<RuntimeFunc> functions; ///< All parsed RT_FUNC entries.
+    std::vector<RuntimeAlias> aliases;  ///< All parsed RT_ALIAS entries.
+    std::vector<RuntimeClass> classes;  ///< All parsed RT_CLASS blocks.
 
     // Maps for validation
-    std::map<std::string, size_t> func_by_id;
-    std::map<std::string, size_t> func_by_canonical;
-    std::set<std::string> all_canonicals;
+    std::map<std::string, size_t> func_by_id;        ///< Function id → index in @c functions.
+    std::map<std::string, size_t> func_by_canonical; ///< Canonical name → index in @c functions.
+    std::set<std::string> all_canonicals;            ///< All canonical names seen (duplicate guard).
 
     // Current class being parsed
-    std::optional<RuntimeClass> current_class;
-    int line_num = 0;
-    std::string filename;
+    std::optional<RuntimeClass> current_class; ///< Class block currently open, if any.
+    int line_num = 0;                          ///< 1-based current line for diagnostics.
+    std::string filename;                      ///< Source filename for diagnostics.
 
+    /// @brief Print a file:line error to stderr and terminate the process.
     void error(const std::string &msg) const {
         std::cerr << filename << ":" << line_num << ": error: " << msg << "\n";
         std::exit(1);
     }
 
+    /// @brief Print a non-fatal file:line warning to stderr.
     void warning(const std::string &msg) const {
         std::cerr << filename << ":" << line_num << ": warning: " << msg << "\n";
     }
@@ -168,6 +188,7 @@ struct ParseState {
 // String Utilities
 //===----------------------------------------------------------------------===//
 
+/// @brief Return a copy of @p sv with leading/trailing ASCII whitespace removed.
 static std::string trim(std::string_view sv) {
     auto is_space = [](char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; };
     while (!sv.empty() && is_space(sv.front()))
@@ -177,6 +198,9 @@ static std::string trim(std::string_view sv) {
     return std::string(sv);
 }
 
+/// @brief Split @p sv on @p delim, ignoring delimiters inside quotes or parentheses.
+/// @details Each field is trimmed; empty fields are skipped. Used to parse the
+///          comma-separated argument lists of runtime.def directives.
 static std::vector<std::string> split(std::string_view sv, char delim) {
     std::vector<std::string> result;
     size_t start = 0;
@@ -202,6 +226,10 @@ static std::vector<std::string> split(std::string_view sv, char delim) {
     return result;
 }
 
+/// @brief Split @p sv on @p delim only at the top level of nesting.
+/// @details Like split(), but also balances angle brackets, braces, and square
+///          brackets in addition to parentheses and quotes — needed to split
+///          generic-bearing type signatures (e.g. `List<Map<a,b>>`).
 static std::vector<std::string> splitTopLevel(std::string_view sv, char delim) {
     std::vector<std::string> result;
     size_t start = 0;
@@ -245,17 +273,67 @@ static std::vector<std::string> splitTopLevel(std::string_view sv, char delim) {
     return result;
 }
 
+/// @brief Encode @p value as a quoted, escaped C++ string literal for emitted code.
+/// @details Escapes quotes/backslashes/standard control chars and renders other
+///          bytes below 0x20 (and 0x7F) as `\\xNN`, so generated .inc files always
+///          compile regardless of the source text.
+static std::string cppStringLiteral(const std::string &value) {
+    std::string out;
+    out.reserve(value.size() + 2);
+    out.push_back('"');
+    for (char c : value) {
+        switch (c) {
+            case '"':
+                out += "\\\"";
+                break;
+            case '\\':
+                out += "\\\\";
+                break;
+            case '\n':
+                out += "\\n";
+                break;
+            case '\r':
+                out += "\\r";
+                break;
+            case '\t':
+                out += "\\t";
+                break;
+            case '\b':
+                out += "\\b";
+                break;
+            case '\f':
+                out += "\\f";
+                break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20 ||
+                    static_cast<unsigned char>(c) == 0x7F) {
+                    char buf[8];
+                    std::snprintf(buf, sizeof(buf), "\\x%02X",
+                                  static_cast<unsigned char>(c));
+                    out += buf;
+                } else {
+                    out.push_back(c);
+                }
+                break;
+        }
+    }
+    out.push_back('"');
+    return out;
+}
+
+/// @brief Return true if @p sv begins with @p prefix.
 static bool startsWith(std::string_view sv, std::string_view prefix) {
     return sv.size() >= prefix.size() && sv.substr(0, prefix.size()) == prefix;
 }
 
+/// @brief Return @p sv with @p prefix removed, or unchanged if it does not match.
 static std::string_view stripPrefix(std::string_view sv, std::string_view prefix) {
     if (startsWith(sv, prefix))
         return sv.substr(prefix.size());
     return sv;
 }
 
-// Trim a string_view in place
+/// @brief Return @p sv with leading/trailing ASCII whitespace removed (view, no copy).
 static std::string_view trimView(std::string_view sv) {
     auto is_space = [](char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; };
     while (!sv.empty() && is_space(sv.front()))
@@ -265,6 +343,7 @@ static std::string_view trimView(std::string_view sv) {
     return sv;
 }
 
+/// @brief Trim @p sv and remove one layer of surrounding double quotes, if present.
 static std::string stripQuotes(std::string_view sv) {
     std::string s = trim(sv);
     if (s.size() >= 2 && s.front() == '"' && s.back() == '"')
@@ -272,6 +351,9 @@ static std::string stripQuotes(std::string_view sv) {
     return s;
 }
 
+/// @brief Drop a trailing parameter name from a C parameter declaration.
+/// @details Given e.g. "const char *path", returns "const char *"; returns the
+///          input unchanged for "void" or when no trailing identifier is found.
 static std::string stripParamName(std::string_view sv) {
     std::string param = trim(sv);
     if (param.empty() || param == "void")
@@ -291,6 +373,10 @@ static std::string stripParamName(std::string_view sv) {
     return trim(param.substr(0, i));
 }
 
+/// @brief Extract the parameter name from a C parameter declaration.
+/// @details Handles function-pointer parameters (`ret (*name)(...)`) as well as
+///          ordinary `type name` declarations; returns "" when there is no name
+///          (or the parameter is "void").
 static std::string extractParamName(std::string_view sv) {
     std::string param = trim(sv);
     if (param.empty() || param == "void")
@@ -322,7 +408,11 @@ static std::string extractParamName(std::string_view sv) {
     return param.substr(start, end - start);
 }
 
-// Extract content between parentheses: "FOO(a, b, c)" -> "a, b, c"
+/// @brief Extract the argument text inside a macro call's parentheses.
+/// @details For input like `FOO(a, b, c)` with @p macro = "FOO", returns
+///          "a, b, c", matching the closing paren while respecting nested parens
+///          and quotes. Returns nullopt when @p line is not a call to @p macro or
+///          the parentheses are unbalanced.
 static std::optional<std::string> extractParens(std::string_view line, std::string_view macro) {
     if (!startsWith(line, macro))
         return std::nullopt;
@@ -354,6 +444,9 @@ static std::optional<std::string> extractParens(std::string_view line, std::stri
 // Parser
 //===----------------------------------------------------------------------===//
 
+/// @brief Parse an RT_FUNC directive and append a RuntimeFunc to @p state.
+/// @details Validates the 4–5 argument arity, strips quotes, and enforces unique
+///          ids and canonical names (reporting a fatal error otherwise).
 static void parseRtFunc(ParseState &state, const std::string &args) {
     // RT_FUNC(id, c_symbol, canonical, signature [, lowering])
     auto parts = splitTopLevel(args, ',');
@@ -389,6 +482,8 @@ static void parseRtFunc(ParseState &state, const std::string &args) {
     state.functions.push_back(std::move(func));
 }
 
+/// @brief Parse an RT_ALIAS directive, validating the target exists and the alias
+///        name is not already taken.
 static void parseRtAlias(ParseState &state, const std::string &args) {
     // RT_ALIAS(canonical, target_id)
     auto parts = split(args, ',');
@@ -416,6 +511,10 @@ static void parseRtAlias(ParseState &state, const std::string &args) {
     state.aliases.push_back(std::move(alias));
 }
 
+/// @brief Parse an RT_BRIDGE directive assigning Zia bridge roles to a function's
+///        parameters.
+/// @details Requires one role per surface parameter and validates each role is
+///          one of none/callback/payload before recording them on the target.
 static void parseRtBridge(ParseState &state, const std::string &args) {
     // RT_BRIDGE(target_id, "role0,role1,...")
     auto parts = splitTopLevel(args, ',');
@@ -448,6 +547,8 @@ static void parseRtBridge(ParseState &state, const std::string &args) {
     func.bridgeRoles = std::move(roles);
 }
 
+/// @brief Parse RT_CLASS_BEGIN, opening a new class block in @p state.
+/// @details Rejects nested class blocks; the class is finalized by parseRtClassEnd.
 static void parseRtClassBegin(ParseState &state, const std::string &args) {
     // RT_CLASS_BEGIN(name, type_id, layout, ctor_id)
     if (state.current_class.has_value())
@@ -476,6 +577,7 @@ static void parseRtClassBegin(ParseState &state, const std::string &args) {
     state.current_class = std::move(cls);
 }
 
+/// @brief Parse an RT_PROP directive, adding a property to the open class block.
 static void parseRtProp(ParseState &state, const std::string &args) {
     // RT_PROP(name, type, getter_id, setter_id_or_none)
     if (!state.current_class.has_value())
@@ -505,6 +607,7 @@ static void parseRtProp(ParseState &state, const std::string &args) {
     state.current_class->props.push_back(std::move(prop));
 }
 
+/// @brief Parse an RT_METHOD directive, adding a method to the open class block.
 static void parseRtMethod(ParseState &state, const std::string &args) {
     // RT_METHOD(name, signature, target_id)
     if (!state.current_class.has_value())
@@ -532,6 +635,7 @@ static void parseRtMethod(ParseState &state, const std::string &args) {
     state.current_class->methods.push_back(std::move(method));
 }
 
+/// @brief Parse RT_CLASS_END, committing the open class block to @p state.classes.
 static void parseRtClassEnd(ParseState &state) {
     if (!state.current_class.has_value())
         state.error("RT_CLASS_END without matching RT_CLASS_BEGIN");
@@ -540,6 +644,9 @@ static void parseRtClassEnd(ParseState &state) {
     state.current_class.reset();
 }
 
+/// @brief Dispatch one runtime.def line to the matching RT_* directive parser.
+/// @details Skips blank lines and // / # comments; an unrecognised directive is a
+///          fatal error.
 static void parseLine(ParseState &state, const std::string &line) {
     std::string trimmed = trim(line);
 
@@ -567,6 +674,9 @@ static void parseLine(ParseState &state, const std::string &line) {
     }
 }
 
+/// @brief Read and parse an entire runtime.def file into a ParseState.
+/// @details Opens @p path (fatal error on failure), parses each line, and verifies
+///          there is no unclosed class block at end of file.
 static ParseState parseFile(const fs::path &path) {
     ParseState state;
     state.filename = path.string();
@@ -621,10 +731,10 @@ static std::string ilTypeToCType(const std::string &ilType) {
         return "int8_t";
     if (baseType == "obj" || baseType == "ptr")
         return "void *";
-    // Default to void* for unknown types
-    return "void *";
+    throw std::runtime_error("unknown IL type in runtime signature: " + ilType);
 }
 
+/// @brief Return the base IL type with any `<...>` generic arguments removed.
 static std::string stripTypeArgs(const std::string &ilType) {
     size_t langle = ilType.find('<');
     if (langle == std::string::npos)
@@ -632,6 +742,7 @@ static std::string stripTypeArgs(const std::string &ilType) {
     return ilType.substr(0, langle);
 }
 
+/// @brief Return the text between the outermost `<` and `>` of an IL type, or "".
 static std::string extractTypeArg(const std::string &ilType) {
     size_t langle = ilType.find('<');
     size_t rangle = ilType.rfind('>');
@@ -660,12 +771,14 @@ static std::string ilTypeToSigType(const std::string &ilType) {
     return baseType;
 }
 
-/// @brief Parse a signature like "str(i64,str)" into return type and arg types.
+/// @brief A runtime signature split into its return type and argument types.
 struct ParsedSignature {
-    std::string returnType;
-    std::vector<std::string> argTypes;
+    std::string returnType;            ///< Return type text (before the '(').
+    std::vector<std::string> argTypes; ///< Argument type texts, in order.
 };
 
+/// @brief Parse a signature like "str(i64,str)" into return type and arg types.
+/// @details A signature with no '(' is treated as a bare return type with no args.
 static ParsedSignature parseSignature(const std::string &sig) {
     ParsedSignature result;
 
@@ -689,26 +802,17 @@ static ParsedSignature parseSignature(const std::string &sig) {
         return result; // Empty args "()"
     }
 
-    // Split by comma
-    size_t start = 0;
-    for (size_t i = 0; i <= argsStr.size(); ++i) {
-        if (i == argsStr.size() || argsStr[i] == ',') {
-            std::string arg = argsStr.substr(start, i - start);
-            // Trim whitespace
-            while (!arg.empty() && (arg.front() == ' ' || arg.front() == '\t'))
-                arg.erase(0, 1);
-            while (!arg.empty() && (arg.back() == ' ' || arg.back() == '\t'))
-                arg.pop_back();
-            if (!arg.empty()) {
-                result.argTypes.push_back(arg);
-            }
-            start = i + 1;
+    for (auto &arg : splitTopLevel(argsStr, ',')) {
+        if (!arg.empty()) {
+            result.argTypes.push_back(std::move(arg));
         }
     }
 
     return result;
 }
 
+/// @brief Return true if the signature's return or any argument is a raw `ptr`.
+/// @details Used by the Zia bridge to flag functions that expose unsafe pointers.
 static bool signatureExposesRawPointer(const std::string &sig) {
     ParsedSignature parsed = parseSignature(sig);
     if (stripTypeArgs(parsed.returnType) == "ptr")
@@ -724,6 +828,8 @@ static bool signatureExposesRawPointer(const std::string &sig) {
 // Runtime signature helpers
 //===----------------------------------------------------------------------===//
 
+/// @brief Read the signature names (first field of each SIG(...) row) from a
+///        RuntimeSigs.def file, in declaration order.
 static std::vector<std::string> parseRtSigNames(const fs::path &path) {
     std::ifstream in(path);
     if (!in) {
@@ -749,6 +855,10 @@ static std::vector<std::string> parseRtSigNames(const fs::path &path) {
     return names;
 }
 
+/// @brief Read the ordered symbol-name string list from the kRtSigSymbolNames
+///        array in RuntimeSignaturesData.hpp.
+/// @details Locates the `kRtSigSymbolNames { ... }` block and extracts each
+///          double-quoted string; returns empty if the marker is absent.
 static std::vector<std::string> parseRtSigSymbols(const fs::path &path) {
     std::ifstream in(path);
     if (!in) {
@@ -790,6 +900,9 @@ static std::vector<std::string> parseRtSigSymbols(const fs::path &path) {
     return symbols;
 }
 
+/// @brief Build a map from runtime symbol name to its RtSig:: enum expression.
+/// @details Pairs the names from RuntimeSigs.def with the symbol strings from
+///          RuntimeSignaturesData.hpp positionally; a length mismatch is fatal.
 static std::unordered_map<std::string, std::string> buildRtSigMap(const fs::path &runtimeDir) {
     const fs::path sigsPath = runtimeDir / "RuntimeSigs.def";
     const fs::path dataPath = runtimeDir / "RuntimeSignaturesData.hpp";
@@ -808,10 +921,14 @@ static std::unordered_map<std::string, std::string> buildRtSigMap(const fs::path
     return result;
 }
 
+/// @brief Build the C++ expression that indexes the spec table by signature id.
 static std::string buildSigSpecExpr(const std::string &sigId) {
     return "data::kRtSigSpecs[static_cast<std::size_t>(" + sigId + ")]";
 }
 
+/// @brief Remove // line comments and block comments from C source text.
+/// @details Quote handling is intentionally simplistic — adequate for scanning
+///          runtime headers for declarations, not for full C tokenization.
 static std::string stripComments(const std::string &input) {
     std::string out;
     out.reserve(input.size());
@@ -854,11 +971,15 @@ static std::string stripComments(const std::string &input) {
     return out;
 }
 
+/// @brief Return true if @p line ends with a backslash (continues a directive).
 static bool lineContinuesPreprocessorDirective(std::string_view line) {
     size_t end = line.find_last_not_of(" \t\r");
     return end != std::string_view::npos && line[end] == '\\';
 }
 
+/// @brief Remove preprocessor directive lines (and their `\`-continuations).
+/// @details Drops any line whose first non-space character is `#`, so header
+///          scanning sees only declaration text.
 static std::string stripPreprocessor(const std::string &input) {
     std::ostringstream out;
     std::istringstream in(input);
@@ -880,6 +1001,7 @@ static std::string stripPreprocessor(const std::string &input) {
     return out.str();
 }
 
+/// @brief Read an entire text file into a string (fatal error if it can't open).
 static std::string readTextFile(const fs::path &path) {
     std::ifstream in(path);
     if (!in) {
@@ -889,10 +1011,13 @@ static std::string readTextFile(const fs::path &path) {
     return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 }
 
+/// @brief Normalize @p path and return it with forward slashes.
 static std::string pathToGenericString(const fs::path &path) {
     return path.lexically_normal().generic_string();
 }
 
+/// @brief Return @p path relative to @p base in forward-slash form (absolute if
+///        no relative path can be formed).
 static std::string relativePathString(const fs::path &path, const fs::path &base) {
     fs::path rel = path.lexically_relative(base);
     if (rel.empty())
@@ -900,10 +1025,14 @@ static std::string relativePathString(const fs::path &path, const fs::path &base
     return pathToGenericString(rel);
 }
 
+/// @brief Return true if @p c is a C identifier character (alphanumeric or '_').
 static bool isIdentifierChar(char c) {
     return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
 }
 
+/// @brief Return true if a whole-token `rt_` symbol begins at @p pos in @p text.
+/// @details Requires `rt_` not to be preceded by an identifier char and to be
+///          followed by one, so it matches runtime symbol names but not substrings.
 static bool isRuntimeSymbolAt(const std::string &text, size_t pos) {
     if (pos + 3 > text.size() || text.compare(pos, 3, "rt_") != 0)
         return false;
@@ -914,6 +1043,8 @@ static bool isRuntimeSymbolAt(const std::string &text, size_t pos) {
     return true;
 }
 
+/// @brief Find the ')' matching the '(' at @p openPos, honoring nesting and quotes.
+/// @return Index of the matching ')', or std::string::npos if unbalanced.
 static size_t findMatchingParen(const std::string &text, size_t openPos) {
     int depth = 1;
     bool inQuotes = false;
@@ -931,6 +1062,9 @@ static size_t findMatchingParen(const std::string &text, size_t openPos) {
     return std::string::npos;
 }
 
+/// @brief Scan backwards from a symbol to the start of its declaration.
+/// @details Stops at the previous statement boundary (`;`, `{`, or `}`) so the
+///          text in between can be parsed as the return-type qualifier list.
 static size_t findDeclarationStart(const std::string &text, size_t symbolPos) {
     size_t start = symbolPos;
     while (start > 0) {
@@ -942,6 +1076,8 @@ static size_t findDeclarationStart(const std::string &text, size_t symbolPos) {
     return start;
 }
 
+/// @brief Trim a declaration's return type and strip leading storage/qualifier
+///        keywords (extern, static, inline, _Noreturn).
 static std::string normalizeReturnType(std::string retType) {
     retType = trim(retType);
 
@@ -963,6 +1099,13 @@ static std::string normalizeReturnType(std::string retType) {
     return retType;
 }
 
+/// @brief Scan all runtime headers under @p runtimeDir for `rt_*(...)` prototypes.
+/// @details Strips comments/preprocessor lines, then for each whole-token rt_
+///          symbol followed by a parenthesised, semicolon-terminated declaration
+///          records its return type, argument types, and parameter names.
+/// @param runtimeDir Directory tree of runtime .h/.hpp files to scan.
+/// @param repoRoot Repository root, used to record header paths relatively.
+/// @return Map from runtime symbol name to its parsed prototype.
 static std::unordered_map<std::string, RuntimePrototype> loadRuntimeHeaderDeclarations(
     const fs::path &runtimeDir, const fs::path &repoRoot) {
     std::unordered_map<std::string, RuntimePrototype> result;
@@ -1059,6 +1202,8 @@ static std::unordered_map<std::string, RuntimePrototype> loadRuntimeHeaderDeclar
     return result;
 }
 
+/// @brief Convenience over loadRuntimeHeaderDeclarations returning just signatures.
+/// @return Map from runtime symbol name to its parsed C signature.
 static std::unordered_map<std::string, CSignature> loadRuntimeCSignatures(
     const fs::path &runtimeDir, const fs::path &repoRoot) {
     std::unordered_map<std::string, CSignature> result;
@@ -1069,6 +1214,9 @@ static std::unordered_map<std::string, CSignature> loadRuntimeCSignatures(
     return result;
 }
 
+/// @brief Collect the set of all `rt_*` symbol tokens referenced in runtime .c/.cpp.
+/// @details Used by the audit to detect runtime functions that exist in source but
+///          are missing from runtime.def (or vice versa).
 static std::unordered_set<std::string> loadRuntimeSourceTokens(const fs::path &runtimeDir) {
     std::unordered_set<std::string> tokens;
     if (!fs::exists(runtimeDir))
@@ -1101,13 +1249,18 @@ static std::unordered_set<std::string> loadRuntimeSourceTokens(const fs::path &r
 // Code Generation
 //===----------------------------------------------------------------------===//
 
+/// @brief A flattened runtime function row used during code generation.
 struct RuntimeEntry {
-    std::string name;
-    std::string c_symbol;
-    std::string signature;
-    std::string lowering; // "always" or "" (default: manual)
+    std::string name;      ///< Canonical Viper.* name.
+    std::string c_symbol;  ///< C runtime symbol.
+    std::string signature; ///< IL type signature.
+    std::string lowering;  ///< "always" or "" (default: manual)
 };
 
+/// @brief Build the standard "AUTO-GENERATED — DO NOT EDIT" banner for an .inc file.
+/// @param filename Logical name of the generated file (for the header).
+/// @param purpose One-line description of the file's contents.
+/// @return The comment-block header text, including a trailing blank line.
 static std::string fileHeader(const std::string &filename, const std::string &purpose) {
     std::ostringstream out;
     out << "//===----------------------------------------------------------------------===//\n";
@@ -1124,6 +1277,8 @@ static std::string fileHeader(const std::string &filename, const std::string &pu
     return out.str();
 }
 
+/// @brief Resolve a function id or canonical name to its RuntimeFunc.
+/// @return Pointer into @p state, or nullptr when neither lookup matches.
 static const RuntimeFunc *resolveRuntimeFunc(const ParseState &state,
                                              const std::string &idOrCanonical) {
     if (auto it = state.func_by_id.find(idOrCanonical); it != state.func_by_id.end())
@@ -1133,6 +1288,8 @@ static const RuntimeFunc *resolveRuntimeFunc(const ParseState &state,
     return nullptr;
 }
 
+/// @brief Find a RuntimeAlias by its canonical name.
+/// @return Pointer into @p state.aliases, or nullptr if not an alias.
 static const RuntimeAlias *resolveRuntimeAlias(const ParseState &state,
                                                const std::string &canonical) {
     for (const auto &alias : state.aliases) {
@@ -1142,6 +1299,9 @@ static const RuntimeAlias *resolveRuntimeAlias(const ParseState &state,
     return nullptr;
 }
 
+/// @brief Resolve an id/canonical/alias reference to its canonical name.
+/// @return The canonical name; an empty string for "none"/empty; nullopt when the
+///         reference does not resolve.
 static std::optional<std::string> resolveRuntimeCanonical(const ParseState &state,
                                                           const std::string &idOrCanonical) {
     if (idOrCanonical.empty() || idOrCanonical == "none")
@@ -1153,6 +1313,9 @@ static std::optional<std::string> resolveRuntimeCanonical(const ParseState &stat
     return std::nullopt;
 }
 
+/// @brief Resolve an id/canonical/alias reference to its underlying C symbol.
+/// @return The C symbol; an empty string for "none"/empty; nullopt when the
+///         reference does not resolve.
 static std::optional<std::string> resolveRuntimeSymbol(const ParseState &state,
                                                        const std::string &idOrCanonical) {
     if (idOrCanonical.empty() || idOrCanonical == "none")
@@ -1166,6 +1329,7 @@ static std::optional<std::string> resolveRuntimeSymbol(const ParseState &state,
     return std::nullopt;
 }
 
+/// @brief Return the final dot-separated segment of @p dotted (e.g. the method name).
 static std::string lastSegment(std::string_view dotted) {
     size_t pos = dotted.rfind('.');
     if (pos == std::string_view::npos)
@@ -1173,6 +1337,9 @@ static std::string lastSegment(std::string_view dotted) {
     return std::string(dotted.substr(pos + 1));
 }
 
+/// @brief Build a method-slot key from a (case-insensitive name, signature) pair.
+/// @details Used to deduplicate methods across declared, constructor, and
+///          synthesized entries when resolving a class.
 static std::string methodSlotKey(std::string_view name, std::string_view signature) {
     std::string key;
     key.reserve(name.size() + signature.size() + 1);
@@ -1183,6 +1350,12 @@ static std::string methodSlotKey(std::string_view name, std::string_view signatu
     return key;
 }
 
+/// @brief Resolve every parsed class into a ResolvedRuntimeClass for codegen.
+/// @details For each class this resolves ctor/getter/setter/method id references
+///          to canonical names, then synthesizes method entries for any remaining
+///          functions whose canonical name is prefixed by the class (excluding
+///          get_/set_ accessors and already-covered slots), deduplicating by
+///          canonical name and method slot.
 static std::vector<ResolvedRuntimeClass> buildResolvedClasses(const ParseState &state) {
     std::vector<ResolvedRuntimeClass> resolved;
     resolved.reserve(state.classes.size());
@@ -1290,6 +1463,13 @@ static std::vector<ResolvedRuntimeClass> buildResolvedClasses(const ParseState &
     return resolved;
 }
 
+/// @brief Invoke @p handler with the argument text of every @p macroName call in @p text.
+/// @details Recognises whole-token macro names followed by a parenthesised
+///          argument list (respecting nesting and quotes); an unterminated call is
+///          a fatal error. Used to scan the runtime surface-policy file.
+/// @param text Source text to scan.
+/// @param macroName Macro identifier to match.
+/// @param handler Callback receiving the raw text between the parentheses.
 static void scanMacroCalls(const std::string &text,
                            std::string_view macroName,
                            const std::function<void(std::string_view)> &handler) {
@@ -1337,6 +1517,10 @@ static void scanMacroCalls(const std::string &text,
     }
 }
 
+/// @brief Parse the runtime surface-policy file into a RuntimeSurfacePolicy.
+/// @details Scans for the RUNTIME_SURFACE_* macros declaring internal headers,
+///          internal symbols, and expected functions/methods/properties; a
+///          missing file yields an empty (permissive) policy. Used by the audit.
 static RuntimeSurfacePolicy parseRuntimeSurfacePolicy(const fs::path &policyPath) {
     RuntimeSurfacePolicy policy;
     if (!fs::exists(policyPath))
@@ -1400,6 +1584,9 @@ static RuntimeSurfacePolicy parseRuntimeSurfacePolicy(const fs::path &policyPath
     return policy;
 }
 
+/// @brief Build the `&DirectHandler<...>::invoke` expression for a runtime symbol.
+/// @details Instantiates the VM's DirectHandler template with the C symbol, return
+///          type, and argument types so the interpreter can call it directly.
 static std::string buildDirectHandlerExpr(const std::string &c_symbol, const CSignature &sig) {
     std::string args = "&" + c_symbol + ", " + sig.returnType;
     for (const auto &arg : sig.argTypes) {
@@ -1408,6 +1595,9 @@ static std::string buildDirectHandlerExpr(const std::string &c_symbol, const CSi
     return "&DirectHandler<" + args + ">::invoke";
 }
 
+/// @brief Build the `&ConsumingStringHandler<...>::invoke` expression.
+/// @details Same as buildDirectHandlerExpr but for functions that take ownership
+///          of (consume) their string arguments, so the VM retains them first.
 static std::string buildConsumingStringHandlerExpr(const std::string &c_symbol,
                                                    const CSignature &sig) {
     std::string args = "&" + c_symbol + ", " + sig.returnType;
@@ -1425,6 +1615,15 @@ static bool needsConsumingStringHandler(const std::string &c_symbol) {
     return c_symbol == "rt_str_concat";
 }
 
+/// @brief Compute the descriptor fields for one runtime entry's signature row.
+/// @details Resolves the signature id/spec (preferring a known RtSig entry, else
+///          synthesizing a spec string from the IL signature) and the VM handler
+///          expression (direct or consuming-string), leaving lowering/hidden/trap
+///          fields at their defaults for the caller to override.
+/// @param entry The runtime function being described.
+/// @param cSignatures Map of C symbol → parsed C signature (for handler types).
+/// @param rtSigMap Map of C symbol → RtSig:: signature-id expression.
+/// @return The populated descriptor fields.
 static DescriptorFields buildDefaultDescriptor(
     const RuntimeEntry &entry,
     const std::unordered_map<std::string, CSignature> &cSignatures,
@@ -1445,7 +1644,7 @@ static DescriptorFields buildDefaultDescriptor(
             sigStr += ilTypeToSigType(parsed.argTypes[i]);
         }
         sigStr += ")";
-        fields.spec = "\"" + sigStr + "\"";
+        fields.spec = cppStringLiteral(sigStr);
     }
 
     auto cSigIt = cSignatures.find(entry.c_symbol);
@@ -1472,12 +1671,17 @@ static DescriptorFields buildDefaultDescriptor(
     return fields;
 }
 
+/// @brief Emit one `DescriptorRow{...}` initializer for the signatures table.
+/// @param out Output stream for the generated code.
+/// @param name Canonical name for the row.
+/// @param fields Pre-computed descriptor fields.
+/// @param indent Leading indentation (spaces).
 static void emitDescriptorRow(std::ostream &out,
                               const std::string &name,
                               const DescriptorFields &fields,
                               int indent = 4) {
     std::string pad(static_cast<size_t>(indent), ' ');
-    out << pad << "DescriptorRow{\"" << name << "\",\n";
+    out << pad << "DescriptorRow{" << cppStringLiteral(name) << ",\n";
     out << pad << "              " << fields.signatureId << ",\n";
     out << pad << "              " << fields.spec << ",\n";
     out << pad << "              " << fields.handler << ",\n";
@@ -1487,6 +1691,10 @@ static void emitDescriptorRow(std::ostream &out,
     out << pad << "              " << fields.trapClass << "},\n";
 }
 
+/// @brief Generate RuntimeNameMap.inc: canonical Viper.* → C rt_* symbol mappings.
+/// @details Emits a RUNTIME_NAME_ALIAS row for every function and every alias
+///          (resolving aliases to their target's C symbol). Fatal error on write
+///          failure.
 static void generateNameMap(const ParseState &state, const fs::path &outDir) {
     fs::path outPath = outDir / "RuntimeNameMap.inc";
     std::ofstream out(outPath);
@@ -1500,7 +1708,8 @@ static void generateNameMap(const ParseState &state, const fs::path &outDir) {
 
     // Emit primary mappings
     for (const auto &func : state.functions) {
-        out << "RUNTIME_NAME_ALIAS(\"" << func.canonical << "\", \"" << func.c_symbol << "\")\n";
+        out << "RUNTIME_NAME_ALIAS(" << cppStringLiteral(func.canonical) << ", "
+            << cppStringLiteral(func.c_symbol) << ")\n";
     }
 
     // Emit aliases
@@ -1508,14 +1717,18 @@ static void generateNameMap(const ParseState &state, const fs::path &outDir) {
         auto it = state.func_by_id.find(alias.target_id);
         if (it != state.func_by_id.end()) {
             const auto &target = state.functions[it->second];
-            out << "RUNTIME_NAME_ALIAS(\"" << alias.canonical << "\", \"" << target.c_symbol
-                << "\")\n";
+            out << "RUNTIME_NAME_ALIAS(" << cppStringLiteral(alias.canonical) << ", "
+                << cppStringLiteral(target.c_symbol) << ")\n";
         }
     }
 
     std::cout << "  Generated " << outPath << "\n";
 }
 
+/// @brief Generate RuntimeClasses.inc: the OOP class/property/method catalog.
+/// @details Resolves classes via buildResolvedClasses() and emits a RUNTIME_CLASS
+///          block per class containing RUNTIME_PROPS and RUNTIME_METHODS lists.
+///          Fatal error on write failure.
 static void generateClasses(const ParseState &state, const fs::path &outDir) {
     fs::path outPath = outDir / "RuntimeClasses.inc";
     std::ofstream out(outPath);
@@ -1528,14 +1741,14 @@ static void generateClasses(const ParseState &state, const fs::path &outDir) {
 
     for (const auto &cls : buildResolvedClasses(state)) {
         out << "RUNTIME_CLASS(\n";
-        out << "    \"" << cls.name << "\",\n";
+        out << "    " << cppStringLiteral(cls.name) << ",\n";
         out << "    RTCLS_" << cls.type_id << ",\n";
-        out << "    \"" << cls.layout << "\",\n";
+        out << "    " << cppStringLiteral(cls.layout) << ",\n";
 
         if (cls.ctorCanonical.empty()) {
-            out << "    \"\",\n";
+            out << "    " << cppStringLiteral("") << ",\n";
         } else {
-            out << "    \"" << cls.ctorCanonical << "\",\n";
+            out << "    " << cppStringLiteral(cls.ctorCanonical) << ",\n";
         }
 
         out << "    RUNTIME_PROPS(";
@@ -1544,13 +1757,14 @@ static void generateClasses(const ParseState &state, const fs::path &outDir) {
             if (i > 0)
                 out << ",\n                  ";
 
-            out << "RUNTIME_PROP(\"" << prop.name << "\", \"" << prop.type << "\", \""
-                << prop.getterCanonical << "\", ";
+            out << "RUNTIME_PROP(" << cppStringLiteral(prop.name) << ", "
+                << cppStringLiteral(prop.type) << ", " << cppStringLiteral(prop.getterCanonical)
+                << ", ";
 
             if (prop.setterCanonical == "none" || prop.setterCanonical.empty()) {
                 out << "nullptr";
             } else {
-                out << "\"" << prop.setterCanonical << "\"";
+                out << cppStringLiteral(prop.setterCanonical);
             }
             out << ")";
         }
@@ -1561,8 +1775,9 @@ static void generateClasses(const ParseState &state, const fs::path &outDir) {
             const auto &method = cls.methods[i];
             if (i > 0)
                 out << ",\n                    ";
-            out << "RUNTIME_METHOD(\"" << method.name << "\", \"" << method.signature << "\", \""
-                << method.targetCanonical << "\")";
+            out << "RUNTIME_METHOD(" << cppStringLiteral(method.name) << ", "
+                << cppStringLiteral(method.signature) << ", "
+                << cppStringLiteral(method.targetCanonical) << ")";
         }
         out << "))\n\n";
     }
@@ -1570,6 +1785,13 @@ static void generateClasses(const ParseState &state, const fs::path &outDir) {
     std::cout << "  Generated " << outPath << "\n";
 }
 
+/// @brief Generate RuntimeSignatures.inc: the descriptor row per runtime function.
+/// @details Loads C signatures from the runtime headers and the RtSig map, then
+///          emits a DescriptorRow for every function via buildDefaultDescriptor()
+///          and emitDescriptorRow(). Fatal error on write failure.
+/// @param state Parsed runtime definitions.
+/// @param outDir Directory to write the .inc file into.
+/// @param inputPath Path to runtime.def, used to locate the runtime tree.
 static void generateSignatures(const ParseState &state,
                                const fs::path &outDir,
                                const fs::path &inputPath) {
@@ -1786,16 +2008,19 @@ static std::string ilParamTypeToZiaType(const std::string &ilType) {
     return "types::any()";
 }
 
+/// @brief Emit a `, { "name", ... }` brace-list of Zia extern parameter names.
 static void emitZiaParamNames(std::ostream &out, const std::vector<std::string> &paramNames) {
     out << ", {";
     for (size_t i = 0; i < paramNames.size(); ++i) {
         if (i > 0)
             out << ", ";
-        out << "\"" << paramNames[i] << "\"";
+        out << cppStringLiteral(paramNames[i]);
     }
     out << "}";
 }
 
+/// @brief Return true if an IL type token denotes a raw `ptr` (after trimming
+///        whitespace, an optional `?`, and any generic arguments).
 static bool ziaTypeTokenIsRawPointer(std::string type) {
     while (!type.empty() && std::isspace(static_cast<unsigned char>(type.front())))
         type.erase(type.begin());
@@ -1806,6 +2031,7 @@ static bool ziaTypeTokenIsRawPointer(std::string type) {
     return stripTypeArgs(type) == "ptr";
 }
 
+/// @brief Map a bridge role string to its RuntimePointerBridgeRole enum expression.
 static std::string bridgeRoleExpr(const std::string &role) {
     if (role == "callback")
         return "RuntimePointerBridgeRole::Callback";
@@ -1814,6 +2040,10 @@ static std::string bridgeRoleExpr(const std::string &role) {
     return "RuntimePointerBridgeRole::None";
 }
 
+/// @brief Emit a `, RuntimePointerSafety{...}` initializer for a Zia extern.
+/// @details Records whether the return and each argument is a raw pointer plus
+///          the per-argument bridge role, so the Zia frontend can enforce pointer
+///          safety at call sites.
 static void emitZiaPointerSafety(std::ostream &out,
                                  const ParsedSignature &sig,
                                  const std::vector<std::string> &bridgeRoles) {
@@ -1834,6 +2064,11 @@ static void emitZiaPointerSafety(std::ostream &out,
     out << "}}";
 }
 
+/// @brief Determine the Zia extern's parameter names for a runtime function.
+/// @details Takes the trailing surface-parameter names from the C prototype (the
+///          last N, since leading C params may be hidden receivers), padding with
+///          empty names if the prototype has fewer. Returns empty when there is no
+///          prototype or no surface parameters.
 static std::vector<std::string> ziaExternParamNamesFor(const RuntimeFunc &func,
                                                        const RuntimePrototype *proto) {
     if (!proto)
@@ -1857,6 +2092,11 @@ static std::vector<std::string> ziaExternParamNamesFor(const RuntimeFunc &func,
     return names;
 }
 
+/// @brief Generate the Zia extern declarations table for runtime functions.
+/// @details Emits each runtime function as a Zia extern with its mapped Zia
+///          parameter/return types, parameter names recovered from the C
+///          prototype, and pointer-safety/bridge-role metadata. Fatal error on
+///          write failure.
 static void generateZiaExterns(const ParseState &state,
                                const fs::path &outDir,
                                const fs::path &inputPath) {
@@ -1889,8 +2129,8 @@ static void generateZiaExterns(const ParseState &state,
     out << "// RUNTIME CLASS TYPE REGISTRATIONS\n";
     out << "// " << std::string(75, '=') << "\n";
     for (const auto &cls : state.classes) {
-        out << "typeRegistry_[\"" << cls.name << "\"] = types::runtimeClass(\"" << cls.name
-            << "\");\n";
+        out << "typeRegistry_[" << cppStringLiteral(cls.name) << "] = types::runtimeClass("
+            << cppStringLiteral(cls.name) << ");\n";
     }
     out << "\n";
 
@@ -1922,7 +2162,7 @@ static void generateZiaExterns(const ParseState &state,
         for (const auto *func : funcs) {
             ParsedSignature sig = parseSignature(func->signature);
             std::string ziaType = ilTypeToZiaType(sig.returnType, func->canonical);
-            out << "defineExternFunction(\"" << func->canonical << "\", " << ziaType;
+            out << "defineExternFunction(" << cppStringLiteral(func->canonical) << ", " << ziaType;
             out << ", {";
             for (size_t i = 0; i < sig.argTypes.size(); ++i) {
                 if (i > 0)
@@ -1955,7 +2195,8 @@ static void generateZiaExterns(const ParseState &state,
                 const auto &target = state.functions[it->second];
                 ParsedSignature sig = parseSignature(target.signature);
                 std::string ziaType = ilTypeToZiaType(sig.returnType, alias.canonical);
-                out << "defineExternFunction(\"" << alias.canonical << "\", " << ziaType;
+                out << "defineExternFunction(" << cppStringLiteral(alias.canonical) << ", "
+                    << ziaType;
                 out << ", {";
                 for (size_t i = 0; i < sig.argTypes.size(); ++i) {
                     if (i > 0)
@@ -2012,6 +2253,8 @@ static std::string canonicalToIdentifier(const std::string &canonical) {
     return result;
 }
 
+/// @brief Generate RuntimeNames.hpp: C++ constants exposing canonical names to the
+///        frontends. Fatal error on write failure.
 static void generateFrontendNames(const ParseState &state, const fs::path &outDir) {
     fs::path outPath = outDir / "RuntimeNames.hpp";
     std::ofstream out(outPath);
@@ -2069,8 +2312,8 @@ static void generateFrontendNames(const ParseState &state, const fs::path &outDi
             emittedIdentifiers.insert(uniqueId);
 
             out << "/// @brief " << func->canonical << "\n";
-            out << "inline constexpr const char *" << uniqueId << " = \"" << func->canonical
-                << "\";\n\n";
+            out << "inline constexpr const char *" << uniqueId << " = "
+                << cppStringLiteral(func->canonical) << ";\n\n";
         }
     }
 
@@ -2092,8 +2335,8 @@ static void generateFrontendNames(const ParseState &state, const fs::path &outDi
             emittedIdentifiers.insert(uniqueId);
 
             out << "/// @brief " << alias.canonical << " (alias)\n";
-            out << "inline constexpr const char *" << uniqueId << " = \"" << alias.canonical
-                << "\";\n\n";
+            out << "inline constexpr const char *" << uniqueId << " = "
+                << cppStringLiteral(alias.canonical) << ";\n\n";
         }
     }
 
@@ -2102,6 +2345,16 @@ static void generateFrontendNames(const ParseState &state, const fs::path &outDi
     std::cout << "  Generated " << outPath << "\n";
 }
 
+/// @brief Audit runtime.def against the actual runtime headers/sources and policy.
+/// @details Cross-checks that declared functions exist, that runtime symbols are
+///          classified, and that the surface policy's expectations hold; prints a
+///          report and returns non-zero when strict checks fail.
+/// @param state Parsed runtime definitions.
+/// @param inputPath Path to runtime.def (locates the runtime tree and policy).
+/// @param strictHeaderSync Treat header/def drift as a failure.
+/// @param strictUnclassified Treat unclassified runtime symbols as a failure.
+/// @param summaryOnly Print only the summary counts, not per-item detail.
+/// @return 0 when the audit passes (under the chosen strictness), non-zero otherwise.
 static int runAudit(const ParseState &state,
                     const fs::path &inputPath,
                     bool strictHeaderSync,
@@ -2310,6 +2563,7 @@ static int runAudit(const ParseState &state,
 // Main
 //===----------------------------------------------------------------------===//
 
+/// @brief Print rtgen command-line usage (generate and audit modes) to stderr.
 static void printUsage(const char *prog) {
     std::cerr << "Usage: " << prog << " <input.def> <output_dir>\n";
     std::cerr
@@ -2319,6 +2573,15 @@ static void printUsage(const char *prog) {
     std::cerr << "Generates runtime registry .inc files from runtime.def\n";
 }
 
+/// @brief rtgen entry point: parse runtime.def and either audit it or generate the
+///        registry .inc files.
+/// @details Parses flags (--audit and its --strict-*/--summary-only modifiers),
+///          validates positional arguments, then in audit mode runs runAudit() and
+///          in generate mode writes RuntimeNameMap.inc, RuntimeClasses.inc,
+///          RuntimeSignatures.inc, the Zia externs, and RuntimeNames.hpp.
+/// @param argc Argument count from the C runtime.
+/// @param argv Argument vector from the C runtime.
+/// @return 0 on success; non-zero on usage error or audit failure.
 int main(int argc, char **argv) {
     bool auditMode = false;
     bool strictHeaderSync = false;
@@ -2348,13 +2611,20 @@ int main(int argc, char **argv) {
 
     fs::path inputPath = positional[0];
 
-    if (!fs::exists(inputPath)) {
+    std::error_code inputEc;
+    if (!fs::exists(inputPath, inputEc)) {
         std::cerr << "error: input file not found: " << inputPath << "\n";
         return 1;
     }
 
-    std::cout << "rtgen: Parsing " << inputPath << "\n";
-    ParseState state = parseFile(inputPath);
+    ParseState state;
+    try {
+        std::cout << "rtgen: Parsing " << inputPath << "\n";
+        state = parseFile(inputPath);
+    } catch (const std::exception &e) {
+        std::cerr << "error: " << e.what() << "\n";
+        return 1;
+    }
 
     if (auditMode)
         return runAudit(state, inputPath, strictHeaderSync, strictUnclassified, summaryOnly);
@@ -2362,19 +2632,29 @@ int main(int argc, char **argv) {
     fs::path outputDir = positional[1];
 
     // Create output directory if needed
-    if (!fs::exists(outputDir)) {
-        fs::create_directories(outputDir);
+    std::error_code ec;
+    if (!fs::exists(outputDir, ec)) {
+        if (!fs::create_directories(outputDir, ec) || ec) {
+            std::cerr << "error: cannot create output directory " << outputDir << ": "
+                      << ec.message() << "\n";
+            return 1;
+        }
     }
 
     std::cout << "rtgen: Parsed " << state.functions.size() << " functions, "
               << state.aliases.size() << " aliases, " << state.classes.size() << " classes\n";
 
     std::cout << "rtgen: Generating output files in " << outputDir << "\n";
-    generateNameMap(state, outputDir);
-    generateClasses(state, outputDir);
-    generateSignatures(state, outputDir, inputPath);
-    generateZiaExterns(state, outputDir, inputPath);
-    generateFrontendNames(state, outputDir);
+    try {
+        generateNameMap(state, outputDir);
+        generateClasses(state, outputDir);
+        generateSignatures(state, outputDir, inputPath);
+        generateZiaExterns(state, outputDir, inputPath);
+        generateFrontendNames(state, outputDir);
+    } catch (const std::exception &e) {
+        std::cerr << "error: " << e.what() << "\n";
+        return 1;
+    }
 
     std::cout << "rtgen: Done\n";
     return 0;

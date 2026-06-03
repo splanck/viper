@@ -50,6 +50,9 @@ uint32_t rdLE32(const uint8_t *p) {
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
+/// @brief Compute CRC-32 over a buffer, tolerating a null pointer when empty.
+/// @details Delegates to the runtime rt_crc32_compute; passes a dummy byte for
+///          zero-length input so the call never dereferences a null pointer.
 uint32_t crc32Bytes(const uint8_t *data, size_t len) {
     static constexpr uint8_t kEmpty = 0;
     return rt_crc32_compute(len == 0 ? &kEmpty : data, len);
@@ -64,6 +67,10 @@ std::vector<uint8_t> gzip(const uint8_t *data, size_t len, int level) {
         throw std::runtime_error("gzip: null data pointer for non-empty input");
     // Compress with raw DEFLATE
     auto deflated = deflate(data, len, level);
+    if (len > 0xFFFFFFFFull)
+        throw std::runtime_error("gzip: input too large for gzip ISIZE field");
+    if (deflated.size() > kGzipMaxOutput - 18)
+        throw std::runtime_error("gzip: compressed output is too large");
 
     // CRC-32 of original data
     uint32_t crc = crc32Bytes(data, len);

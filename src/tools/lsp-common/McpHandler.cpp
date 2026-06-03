@@ -20,7 +20,74 @@
 
 #include "tools/lsp-common/McpHandler.hpp"
 
+#include <optional>
+
 namespace viper::server {
+namespace {
+
+// Each validator returns std::nullopt when the input is acceptable, or an error
+// message string describing the first problem found.
+
+/// @brief Require @p value to be a JSON object.
+std::optional<std::string> requireObject(const JsonValue &value, const char *fieldName) {
+    if (value.type() != JsonType::Object)
+        return std::string(fieldName) + " must be an object";
+    return std::nullopt;
+}
+
+/// @brief Require @p obj to contain a String member named @p fieldName.
+std::optional<std::string> requireString(const JsonValue &obj, const char *fieldName) {
+    const auto *value = obj.get(fieldName);
+    if (!value || value->type() != JsonType::String)
+        return std::string("Missing or invalid '") + fieldName + "'";
+    return std::nullopt;
+}
+
+/// @brief Require @p obj to contain an Int member named @p fieldName.
+std::optional<std::string> requireInt(const JsonValue &obj, const char *fieldName) {
+    const auto *value = obj.get(fieldName);
+    if (!value || value->type() != JsonType::Int)
+        return std::string("Missing or invalid '") + fieldName + "'";
+    return std::nullopt;
+}
+
+/// @brief Allow @p fieldName to be absent, but if present it must be a String.
+std::optional<std::string> requireOptionalString(const JsonValue &obj, const char *fieldName) {
+    const auto *value = obj.get(fieldName);
+    if (value && value->type() != JsonType::String)
+        return std::string("Invalid optional '") + fieldName + "'";
+    return std::nullopt;
+}
+
+/// @brief Allow @p fieldName to be absent, but if present it must be a Bool.
+std::optional<std::string> requireOptionalBool(const JsonValue &obj, const char *fieldName) {
+    const auto *value = obj.get(fieldName);
+    if (value && value->type() != JsonType::Bool)
+        return std::string("Invalid optional '") + fieldName + "'";
+    return std::nullopt;
+}
+
+/// @brief Validate the args common to source-taking tools: object with a "source"
+///        string and an optional "path" string.
+std::optional<std::string> validateCommonSourceArgs(const JsonValue &args) {
+    if (auto err = requireObject(args, "arguments"))
+        return err;
+    if (auto err = requireString(args, "source"))
+        return err;
+    return requireOptionalString(args, "path");
+}
+
+/// @brief Validate position-taking tool args: the common source args plus integer
+///        "line" and "col" members.
+std::optional<std::string> validatePositionArgs(const JsonValue &args) {
+    if (auto err = validateCommonSourceArgs(args))
+        return err;
+    if (auto err = requireInt(args, "line"))
+        return err;
+    return requireInt(args, "col");
+}
+
+} // namespace
 
 McpHandler::McpHandler(ICompilerBridge &bridge, const ServerConfig &config)
     : bridge_(bridge), config_(config) {}
@@ -31,8 +98,14 @@ std::string McpHandler::handleRequest(const JsonRpcRequest &req) {
     if (req.method == "initialize")
         return handleInitialize(req);
 
-    if (req.method == "initialized")
+    if (req.method == "initialized") {
+        initialized_ = true;
         return {}; // Notification — no response
+    }
+
+    if (!initialized_ && (req.method == "tools/list" || req.method == "tools/call")) {
+        return buildError(req.id, kInvalidRequest, "Server has not been initialized");
+    }
 
     if (req.method == "tools/list")
         return handleToolsList(req);
@@ -52,6 +125,7 @@ std::string McpHandler::handleRequest(const JsonRpcRequest &req) {
 // --- Lifecycle ---
 
 std::string McpHandler::handleInitialize(const JsonRpcRequest &req) {
+    initialized_ = true;
     auto result = JsonValue::object({
         {"protocolVersion", JsonValue("2024-11-05")},
         {"capabilities", JsonValue::object({{"tools", JsonValue::object({})}})},
@@ -230,43 +304,82 @@ static JsonValue textContent(const std::string &text) {
 }
 
 std::string McpHandler::handleToolsCall(const JsonRpcRequest &req) {
+    if (auto err = requireObject(req.params, "params"))
+        return buildError(req.id, kInvalidParams, *err);
+
     const auto *nameProp = req.params.get("name");
-    if (!nameProp)
-        return buildError(req.id, kInvalidParams, "Missing 'name' in tools/call");
+    if (!nameProp || nameProp->type() != JsonType::String)
+        return buildError(req.id, kInvalidParams, "Missing or invalid 'name' in tools/call");
 
     std::string name = nameProp->asString();
     const auto *argsProp = req.params.get("arguments");
     JsonValue args = argsProp ? *argsProp : JsonValue::object({});
+    if (args.type() != JsonType::Object)
+        return buildError(req.id, kInvalidParams, "'arguments' must be an object");
 
     // Build expected tool names from config prefix
     const std::string &p = config_.toolPrefix;
 
     JsonValue content;
 
-    if (name == p + "/check")
+    std::optional<std::string> argError;
+    if (name == p + "/check") {
+        argError = validateCommonSourceArgs(args);
+        if (argError)
+            return buildError(req.id, kInvalidParams, *argError);
         content = callCheck(args);
-    else if (name == p + "/compile")
+    } else if (name == p + "/compile") {
+        argError = validateCommonSourceArgs(args);
+        if (argError)
+            return buildError(req.id, kInvalidParams, *argError);
         content = callCompile(args);
-    else if (name == p + "/completions")
+    } else if (name == p + "/completions") {
+        argError = validatePositionArgs(args);
+        if (argError)
+            return buildError(req.id, kInvalidParams, *argError);
         content = callCompletions(args);
-    else if (name == p + "/hover")
+    } else if (name == p + "/hover") {
+        argError = validatePositionArgs(args);
+        if (argError)
+            return buildError(req.id, kInvalidParams, *argError);
         content = callHover(args);
-    else if (name == p + "/symbols")
+    } else if (name == p + "/symbols") {
+        argError = validateCommonSourceArgs(args);
+        if (argError)
+            return buildError(req.id, kInvalidParams, *argError);
         content = callSymbols(args);
-    else if (name == p + "/dump-il")
+    } else if (name == p + "/dump-il") {
+        argError = validateCommonSourceArgs(args);
+        if (!argError)
+            argError = requireOptionalBool(args, "optimized");
+        if (argError)
+            return buildError(req.id, kInvalidParams, *argError);
         content = callDumpIL(args);
-    else if (name == p + "/dump-ast")
+    } else if (name == p + "/dump-ast") {
+        argError = validateCommonSourceArgs(args);
+        if (argError)
+            return buildError(req.id, kInvalidParams, *argError);
         content = callDumpAst(args);
-    else if (name == p + "/dump-tokens")
+    } else if (name == p + "/dump-tokens") {
+        argError = validateCommonSourceArgs(args);
+        if (argError)
+            return buildError(req.id, kInvalidParams, *argError);
         content = callDumpTokens(args);
-    else if (name == p + "/runtime-classes")
+    } else if (name == p + "/runtime-classes") {
         content = callRuntimeClasses(args);
-    else if (name == p + "/runtime-methods")
+    } else if (name == p + "/runtime-methods") {
+        argError = requireString(args, "className");
+        if (argError)
+            return buildError(req.id, kInvalidParams, *argError);
         content = callRuntimeMembers(args);
-    else if (name == p + "/runtime-search")
+    } else if (name == p + "/runtime-search") {
+        argError = requireString(args, "keyword");
+        if (argError)
+            return buildError(req.id, kInvalidParams, *argError);
         content = callRuntimeSearch(args);
-    else
+    } else {
         return buildError(req.id, kMethodNotFound, "Unknown tool: " + name);
+    }
 
     auto result = JsonValue::object({{"content", std::move(content)}});
     return buildResponse(req.id, result);

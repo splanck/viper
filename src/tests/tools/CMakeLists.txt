@@ -40,12 +40,24 @@ function(viper_add_tools_tests)
             -P ${_VIPER_TOOLS_DIR}/DiagnosticCliTests.cmake)
     viper_add_test_labels(diagnostic_cli tools zia)
 
+    viper_add_ctest(cli_help
+            ${CMAKE_COMMAND}
+            -DVIPER_EXE=$<TARGET_FILE:viper>
+            -P ${_VIPER_TOOLS_DIR}/CliHelpTests.cmake)
+    viper_add_test_labels(cli_help tools)
+
     viper_add_test(test_tools_frontend_native_compiler
             ${_VIPER_TOOLS_DIR}/FrontendToolAndNativeCompilerTests.cpp
             ${CMAKE_SOURCE_DIR}/src/tools/viper/cmd_codegen_x64.cpp)
     target_include_directories(test_tools_frontend_native_compiler PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_link_libraries(test_tools_frontend_native_compiler PRIVATE ${VIPER_TOOLS_LIBS} viper_native_compiler viper_codegen_x86_64)
     viper_add_ctest(test_tools_frontend_native_compiler test_tools_frontend_native_compiler)
+
+    viper_add_test(test_tools_asset_compiler
+            ${_VIPER_TOOLS_DIR}/AssetCompilerTests.cpp)
+    target_include_directories(test_tools_asset_compiler PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_link_libraries(test_tools_asset_compiler PRIVATE ${VIPER_TOOLS_LIBS} viper_packaging)
+    viper_add_ctest(test_tools_asset_compiler test_tools_asset_compiler)
 
     viper_add_ctest(run_build_performance_flags
             ${CMAKE_COMMAND}

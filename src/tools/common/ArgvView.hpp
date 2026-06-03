@@ -24,7 +24,9 @@ namespace viper::tools {
 /// @details Encapsulates the argument count and pointer pair supplied by the C
 ///          runtime so helpers can inspect and slice the list without copying.
 struct ArgvView {
+    /// @brief Number of arguments referenced by the view (may be zero).
     int argc;
+    /// @brief Borrowed pointer to the argument array; not owned by the view.
     char **argv;
 
     /// @brief Determine whether the view contains no arguments.

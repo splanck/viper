@@ -25,7 +25,9 @@
 #include "tools/vbasic-server/BasicCompilerBridge.hpp"
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <exception>
 #include <memory>
 
 using namespace viper::server;
@@ -39,6 +41,7 @@ static const ServerConfig kBasicConfig{
     "Viper BASIC",   // langLabel
 };
 
+/// @brief Print vbasic-server usage (protocol mode flags) to stderr.
 static void printUsage() {
     std::fprintf(stderr,
                  "Usage: vbasic-server [--mcp | --lsp | --help | --version]\n"
@@ -51,14 +54,16 @@ static void printUsage() {
                  "Default: auto-detect protocol from first input byte.\n");
 }
 
+/// @brief Print the vbasic-server version banner to stdout.
 static void printVersion() {
-    std::fprintf(stderr, "vbasic-server 0.1.0\n");
+    std::fprintf(stdout, "vbasic-server 0.1.0\n");
 }
 
+/// @brief Server protocol mode selected from the command line.
 enum class Mode {
-    Mcp,
-    Lsp,
-    AutoDetect,
+    Mcp,        ///< Serve the MCP protocol (newline-delimited JSON-RPC).
+    Lsp,        ///< Serve the LSP protocol (Content-Length framed JSON-RPC).
+    AutoDetect, ///< Choose MCP or LSP from the first byte of input.
 };
 
 /// @brief Main event loop for MCP protocol.
@@ -81,7 +86,12 @@ static int runMcpServer(Transport &transport, BasicCompilerBridge &bridge) {
             continue;
         }
 
-        std::string response = handler.handleRequest(req);
+        std::string response;
+        try {
+            response = handler.handleRequest(req);
+        } catch (const std::exception &e) {
+            response = buildError(req.id, kInternalError, e.what());
+        }
         if (!response.empty())
             transport.writeMessage(response);
     }
@@ -92,57 +102,88 @@ static int runMcpServer(Transport &transport, BasicCompilerBridge &bridge) {
 static int runLspServer(Transport &transport, BasicCompilerBridge &bridge) {
     LspHandler handler(bridge, transport, kBasicConfig);
     RawMessage msg;
+    const bool verbose = std::getenv("VIPER_LSP_LOG") != nullptr;
 
-    std::fprintf(stderr, "[vbasic-server] LSP server started\n");
-    std::fflush(stderr);
+    if (verbose) {
+        std::fprintf(stderr, "[vbasic-server] LSP server started\n");
+        std::fflush(stderr);
+    }
 
     while (transport.readMessage(msg)) {
-        std::fprintf(stderr, "[vbasic-server] recv %zu bytes\n", msg.content.size());
-        std::fflush(stderr);
+        if (verbose) {
+            std::fprintf(stderr, "[vbasic-server] recv %zu bytes\n", msg.content.size());
+            std::fflush(stderr);
+        }
 
         JsonValue json;
         try {
             json = JsonValue::parse(msg.content);
         } catch (const std::exception &e) {
-            std::fprintf(stderr, "[vbasic-server] parse error: %s\n", e.what());
-            std::fflush(stderr);
+            if (verbose) {
+                std::fprintf(stderr, "[vbasic-server] parse error: %s\n", e.what());
+                std::fflush(stderr);
+            }
             transport.writeMessage(buildError(JsonValue(), kParseError, "Parse error"));
             continue;
         }
 
         JsonRpcRequest req;
         if (!parseRequest(json, req)) {
-            std::fprintf(stderr, "[vbasic-server] invalid request\n");
-            std::fflush(stderr);
+            if (verbose) {
+                std::fprintf(stderr, "[vbasic-server] invalid request\n");
+                std::fflush(stderr);
+            }
             transport.writeMessage(buildError(JsonValue(), kInvalidRequest, "Invalid Request"));
             continue;
         }
 
-        std::fprintf(stderr,
-                     "[vbasic-server] method=%s id=%s\n",
-                     req.method.c_str(),
-                     req.id.isNull() ? "null" : req.id.toCompactString().c_str());
-        std::fflush(stderr);
+        if (verbose) {
+            std::fprintf(stderr,
+                         "[vbasic-server] method=%s id=%s\n",
+                         req.method.c_str(),
+                         req.id.isNull() ? "null" : req.id.toCompactString().c_str());
+            std::fflush(stderr);
+        }
 
         if (req.method == "exit")
-            break;
+            return handler.shutdownRequested() ? 0 : 1;
 
-        std::string response = handler.handleRequest(req);
+        std::string response;
+        try {
+            response = handler.handleRequest(req);
+        } catch (const std::exception &e) {
+            if (verbose) {
+                std::fprintf(stderr, "[vbasic-server] handler error: %s\n", e.what());
+                std::fflush(stderr);
+            }
+            response = buildError(req.id, kInternalError, e.what());
+        }
         if (!response.empty()) {
-            std::fprintf(stderr, "[vbasic-server] resp %zu bytes\n", response.size());
-            std::fflush(stderr);
+            if (verbose) {
+                std::fprintf(stderr, "[vbasic-server] resp %zu bytes\n", response.size());
+                std::fflush(stderr);
+            }
             transport.writeMessage(response);
-        } else {
+        } else if (verbose) {
             std::fprintf(stderr, "[vbasic-server] (no response — notification handled)\n");
             std::fflush(stderr);
         }
     }
 
-    std::fprintf(stderr, "[vbasic-server] LSP server exiting\n");
-    std::fflush(stderr);
+    if (verbose) {
+        std::fprintf(stderr, "[vbasic-server] LSP server exiting\n");
+        std::fflush(stderr);
+    }
     return 0;
 }
 
+/// @brief Entry point for the Viper BASIC language server.
+/// @details Parses --mcp/--lsp/--help/--version, then runs the selected protocol
+///          server (auto-detecting from the first input byte by default) with a
+///          BasicCompilerBridge backing the shared LSP/MCP handlers.
+/// @param argc Argument count from the C runtime.
+/// @param argv Argument vector from the C runtime.
+/// @return Process exit status (0 on clean shutdown).
 int main(int argc, char **argv) {
     platformInitStdio();
 

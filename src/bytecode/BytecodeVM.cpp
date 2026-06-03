@@ -165,7 +165,7 @@ ActiveBytecodeVMGuard::~ActiveBytecodeVMGuard() {
 ///          lifetime. Threaded dispatch is the default.
 BytecodeVM::BytecodeVM()
     : module_(nullptr), state_(VMState::Ready), trapKind_(TrapKind::None), currentErrorCode_(0),
-      sp_(nullptr), fp_(nullptr), instrCount_(0), runtimeBridgeEnabled_(false),
+      sp_(nullptr), fp_(nullptr), instrCount_(0), maxInstrCount_(0), runtimeBridgeEnabled_(false),
       useThreadedDispatch_(true), // Default to faster threaded dispatch
       trustedDispatch_(false), allocaTop_(0), singleStep_(false) {
     // Pre-allocate reasonable stack size
@@ -368,6 +368,7 @@ BytecodeVM::ExecutionEnvironment BytecodeVM::captureExecutionEnvironment() const
     env.runtimeBridgeEnabled = runtimeBridgeEnabled_;
     env.useThreadedDispatch = useThreadedDispatch_;
     env.trustedDispatch = trustedDispatch_;
+    env.maxInstructions = maxInstrCount_;
     env.nativeHandlers = nativeHandlers_;
     return env;
 }
@@ -377,6 +378,7 @@ void BytecodeVM::applyExecutionEnvironment(const ExecutionEnvironment &env) {
     runtimeBridgeEnabled_ = env.runtimeBridgeEnabled;
     useThreadedDispatch_ = env.useThreadedDispatch;
     trustedDispatch_ = env.trustedDispatch;
+    maxInstrCount_ = env.maxInstructions;
     nativeHandlers_ = env.nativeHandlers;
 }
 
@@ -1042,7 +1044,10 @@ BCSlot BytecodeVM::exec(const BytecodeFunction *func, const std::vector<BCSlot> 
     // Restore module thread-local
     tlsActiveBytecodeModule = prevModule;
 
-    // Return result
+    // Return result. Void functions do not leave a meaningful result slot.
+    if (state_ == VMState::Halted && !func->hasReturn) {
+        return BCSlot{};
+    }
     if (state_ == VMState::Halted && sp_ > valueStack_.data()) {
         return *(sp_ - 1);
     }
@@ -1074,6 +1079,10 @@ void BytecodeVM::run() {
         BCOpcode op = decodeOpcode(instr);
 
         ++instrCount_;
+        if (maxInstrCount_ != 0 && instrCount_ > maxInstrCount_) {
+            trap(TrapKind::Interrupt, "VM: step limit exceeded");
+            continue;
+        }
 
         // Trap unknown (non-enumerator) opcode bytes here so the dispatch switch
         // below can omit a `default:` and let -Wswitch enforce that every defined

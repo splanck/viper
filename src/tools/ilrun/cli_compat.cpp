@@ -11,12 +11,20 @@
 
 #include <iostream>
 
-/// @brief Stub for usage() called from cmd_run_il.cpp
-///
-/// @details cmdRunIL doesn't actually call usage() in normal operation,
-///          but it's referenced from the compilation unit. This stub
-///          provides a minimal implementation.
+/// @brief Usage callback used by cmd_run_il.cpp when linked into ilrun.
 void usage() {
-    std::cerr << "ilrun: internal error - usage() called\n";
-    std::cerr << "Please use: ilrun --help\n";
+    std::cerr << "Usage: ilrun [options] <file.il>\n"
+              << "\n"
+              << "Options:\n"
+              << "  --trace[=il|src]        Enable execution tracing\n"
+              << "  --stdin-from FILE       Redirect stdin from file\n"
+              << "  --max-steps N           Limit execution steps\n"
+              << "  --bounds-checks         Require precompiled bounds checks (source compile only)\n"
+              << "  --break LABEL|FILE:LINE Set breakpoint\n"
+              << "  --break-src FILE:LINE   Set source breakpoint\n"
+              << "  --watch NAME            Watch variable\n"
+              << "  --count                 Show instruction counts\n"
+              << "  --time                  Show execution time\n"
+              << "  --dump-trap             Show detailed trap diagnostics\n"
+              << "  -h, --help              Show help\n";
 }

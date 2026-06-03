@@ -51,11 +51,11 @@ struct PackageConfig {
     std::string identifier;  ///< package-identifier (reverse DNS)
     std::string iconPath;    ///< package-icon (relative path to PNG)
 
-    std::vector<AssetEntry> assets;
-    std::vector<FileAssoc> fileAssociations;
+    std::vector<AssetEntry> assets;          ///< Extra files to bundle (source -> target).
+    std::vector<FileAssoc> fileAssociations; ///< File-type associations to register.
 
-    bool shortcutDesktop{false};
-    bool shortcutMenu{true};
+    bool shortcutDesktop{false}; ///< Create a desktop shortcut on install.
+    bool shortcutMenu{true};     ///< Create a start-menu / app-menu entry on install.
 
     std::string minOsWindows; ///< "10.0"
     std::string minOsMacos;   ///< "11.0"
@@ -63,9 +63,9 @@ struct PackageConfig {
     std::string macosSignMode;     ///< none, preserve, adhoc, or developer-id
     std::string macosSignIdentity; ///< Developer ID Application identity
     std::string macosEntitlements; ///< Entitlements plist path, project-relative
-    bool macosHardenedRuntime{false};
-    std::string macosNotaryProfile; ///< notarytool keychain profile
-    bool macosStaple{false};
+    bool macosHardenedRuntime{false}; ///< Enable the hardened runtime when signing.
+    std::string macosNotaryProfile;   ///< notarytool keychain profile
+    bool macosStaple{false};          ///< Staple the notarization ticket to the artifact.
 
     std::string windowsInstallScope;   ///< machine (default) or user
     std::string windowsInstallDir;     ///< Optional install directory override.

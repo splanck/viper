@@ -5,10 +5,30 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the shared native compilation utility. Dispatches to the ARM64
-// or x64 codegen backend based on the requested target architecture.
+// File: src/tools/common/native_compiler.cpp
+// Purpose: Implement the shared native compilation utility that turns IL (on
+//          disk or in memory) into a native object/binary by dispatching to the
+//          ARM64 or x86-64 codegen backend.
+// Key invariants: Backend selection is driven solely by the requested
+//                 TargetArch; the x64 path additionally fixes the target ABI and
+//                 platform from the host build macros. Pipeline stdout/stderr are
+//                 forwarded to the process streams and the pipeline exit code is
+//                 propagated to the caller.
+// Ownership/Lifetime: Callers retain ownership of all path strings.
+//                     compileModuleToNative takes the module by value and moves
+//                     it into the backend pipeline.
+// Links: src/tools/common/native_compiler.hpp,
+//        src/codegen/aarch64/CodegenPipeline.hpp,
+//        src/codegen/x86_64/CodegenPipeline.hpp
 //
 //===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Shared IL-to-native compilation helpers used by the CLI frontends.
+/// @details Wraps the per-architecture codegen pipelines behind a small, uniform
+///          API so tools can request a native build without knowing backend
+///          option layouts, and provides temp-path helpers for transient IL and
+///          asset blobs.
 
 #include "tools/common/native_compiler.hpp"
 
@@ -21,19 +41,36 @@
 #include <exception>
 #include <filesystem>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
 
 #ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
 #include <process.h>
+#include <sys/stat.h>
 #else
+#include <fcntl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
 namespace viper::tools {
 namespace {
 
+/// @brief Build a collision-resistant path in the system temp directory.
+///
+/// @details Combines four sources of uniqueness so concurrent and repeated
+///          compilations never clobber one another's transient files: the
+///          process id, a steady-clock tick, and a monotonically increasing
+///          process-local atomic counter, all under the OS temp directory. The
+///          resulting name is `<prefix>_<pid>_<tick>_<counter><extension>`.
+///
+/// @param prefix Leading filename component identifying the artifact kind.
+/// @param extension File extension to append (including the leading dot).
+/// @return Absolute path string in the system temporary directory.
 std::string generateUniqueTempPath(const char *prefix, const char *extension) {
     static std::atomic<uint64_t> counter{0};
 
@@ -50,19 +87,67 @@ std::string generateUniqueTempPath(const char *prefix, const char *extension) {
         .string();
 }
 
+/// @brief Atomically create @p path so it is reserved against concurrent callers.
+/// @details Opens the file with O_CREAT|O_EXCL (the Windows equivalent), so the
+///          call fails if the path already exists; this closes the TOCTOU window
+///          between generating a unique temp name and actually using it.
+/// @throws std::runtime_error if the exclusive create fails.
+void reserveTempPath(const std::string &path) {
+#ifdef _WIN32
+    const int fd = _open(path.c_str(), _O_CREAT | _O_EXCL | _O_WRONLY | _O_BINARY, _S_IREAD | _S_IWRITE);
+    if (fd < 0)
+        throw std::runtime_error("failed to reserve temporary file: " + path);
+    _close(fd);
+#else
+    const int fd = open(path.c_str(), O_CREAT | O_EXCL | O_WRONLY, S_IRUSR | S_IWUSR);
+    if (fd < 0)
+        throw std::runtime_error("failed to reserve temporary file: " + path);
+    close(fd);
+#endif
+}
+
 } // namespace
 
-/// @brief Is native output path.
+/// @brief Determine whether an output path requests a native binary.
+/// @details Treats any path whose extension is not ".il" as a native output
+///          target, which is how the frontends decide to invoke codegen rather
+///          than stopping after IL emission.
+/// @param path Output path supplied on the command line.
+/// @return True when @p path does not end in ".il".
 bool isNativeOutputPath(const std::string &path) {
     return std::filesystem::path(path).extension() != ".il";
 }
 
-/// @brief Generate temp il path.
+/// @brief Generate a unique temporary path for serialized IL text.
+/// @return Path under the system temp directory using the "viper_build" prefix
+///         and a ".il" extension.
 std::string generateTempIlPath() {
-    return generateUniqueTempPath("viper_build", ".il");
+    return generateTempFilePath("viper_build", ".il");
 }
 
-/// @brief Compile to native.
+std::string generateTempFilePath(const char *prefix, const char *extension) {
+    for (int attempt = 0; attempt < 64; ++attempt) {
+        std::string path = generateUniqueTempPath(prefix, extension);
+        try {
+            reserveTempPath(path);
+            return path;
+        } catch (const std::runtime_error &) {
+            if (attempt == 63)
+                throw;
+        }
+    }
+    throw std::runtime_error("failed to reserve temporary file");
+}
+
+/// @brief Compile a textual IL file on disk to a native binary.
+/// @details Parses backend selection from @p arch: ARM64 routes through the
+///          AArch64 @c CodegenPipeline while every other value uses the x86-64
+///          pipeline with its ABI/platform fixed from host build macros. Asset
+///          blobs and extra object files are attached to the pipeline options
+///          when provided. Pipeline output is forwarded to stdout/stderr and the
+///          pipeline's exit code is returned; both backends map a thrown
+///          std::exception to exit code 2. See the header for the full
+///          parameter contract.
 int compileToNative(const std::string &ilPath,
                     const std::string &outputPath,
                     TargetArch arch,
@@ -87,12 +172,17 @@ int compileToNative(const std::string &ilPath,
             opts.extra_objects.push_back(assetObjPath);
 
         viper::codegen::aarch64::CodegenPipeline pipeline(opts);
-        auto result = pipeline.run();
-        if (!result.stdout_text.empty())
-            std::cout << result.stdout_text;
-        if (!result.stderr_text.empty())
-            std::cerr << result.stderr_text;
-        return result.exit_code;
+        try {
+            const auto result = pipeline.run();
+            if (!result.stdout_text.empty())
+                std::cout << result.stdout_text;
+            if (!result.stderr_text.empty())
+                std::cerr << result.stderr_text;
+            return result.exit_code;
+        } catch (const std::exception &e) {
+            std::cerr << "error: " << e.what() << "\n";
+            return 2;
+        }
     }
 
     // X64: use CodegenPipeline directly
@@ -135,6 +225,13 @@ int compileToNative(const std::string &ilPath,
     return result.exit_code;
 }
 
+/// @brief Compile an in-memory IL module to a native binary.
+/// @details Backend dispatch mirrors @ref compileToNative, but the module is fed
+///          to the pipeline via @c runWithModule (moved in) instead of being
+///          reparsed from disk. A synthetic temp IL path is generated only to
+///          populate @c input_il_path for diagnostics; no IL is written there.
+///          @p moduleAlreadyVerified lets callers skip a redundant verification
+///          pass. See the header for the full parameter contract.
 int compileModuleToNative(il::core::Module module,
                           const std::string &debugSourcePath,
                           const std::string &outputPath,
@@ -148,6 +245,8 @@ int compileModuleToNative(il::core::Module module,
                           bool fastLink,
                           std::optional<bool> windowsDebugRuntime) {
     const std::string syntheticInputPath = generateTempIlPath();
+    std::error_code syntheticEc;
+    std::filesystem::remove(syntheticInputPath, syntheticEc);
 
     if (arch == TargetArch::ARM64) {
         viper::codegen::aarch64::CodegenPipeline::Options opts;
@@ -163,13 +262,18 @@ int compileModuleToNative(il::core::Module module,
             opts.extra_objects.push_back(assetObjPath);
 
         viper::codegen::aarch64::CodegenPipeline pipeline(opts);
-        auto result =
-            pipeline.runWithModule(std::move(module), debugSourcePath, moduleAlreadyVerified);
-        if (!result.stdout_text.empty())
-            std::cout << result.stdout_text;
-        if (!result.stderr_text.empty())
-            std::cerr << result.stderr_text;
-        return result.exit_code;
+        try {
+            const auto result =
+                pipeline.runWithModule(std::move(module), debugSourcePath, moduleAlreadyVerified);
+            if (!result.stdout_text.empty())
+                std::cout << result.stdout_text;
+            if (!result.stderr_text.empty())
+                std::cerr << result.stderr_text;
+            return result.exit_code;
+        } catch (const std::exception &e) {
+            std::cerr << "error: " << e.what() << "\n";
+            return 2;
+        }
     }
 
     viper::codegen::x64::CodegenPipeline::Options opts;
@@ -211,9 +315,11 @@ int compileModuleToNative(il::core::Module module,
     return result.exit_code;
 }
 
-/// @brief Generate temp asset path.
+/// @brief Generate a unique temporary path for an asset blob.
+/// @return Path under the system temp directory using the "viper_assets" prefix
+///         and a ".vpa" extension.
 std::string generateTempAssetPath() {
-    return generateUniqueTempPath("viper_assets", ".vpa");
+    return generateTempFilePath("viper_assets", ".vpa");
 }
 
 } // namespace viper::tools

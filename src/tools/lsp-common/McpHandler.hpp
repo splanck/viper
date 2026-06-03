@@ -54,9 +54,13 @@ class McpHandler {
   private:
     ICompilerBridge &bridge_;
     ServerConfig config_;
+    bool initialized_{false};
 
+    /// @brief Handle `initialize`: return protocol version and server capabilities.
     std::string handleInitialize(const JsonRpcRequest &req);
+    /// @brief Handle `tools/list`: return the available tool definitions.
     std::string handleToolsList(const JsonRpcRequest &req);
+    /// @brief Handle `tools/call`: validate args and dispatch to the matching callXxx.
     std::string handleToolsCall(const JsonRpcRequest &req);
 
     // Tool dispatch helpers — each returns the "content" array for the MCP response

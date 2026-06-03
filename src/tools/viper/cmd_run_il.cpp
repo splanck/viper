@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the `ilc run` subcommand that executes textual IL modules through
+// Implements the `viper -run` compatibility subcommand that executes textual IL modules through
 // the in-process virtual machine.  The driver coordinates command-line parsing,
 // debugger configuration, module loading, verification, and VM execution while
 // reporting optional profiling information.
@@ -13,7 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Entry point for the `ilc run` subcommand.
+/// @brief Entry point for the `viper -run` compatibility subcommand.
 /// @details Provides CLI parsing helpers, debugger configuration utilities, and
 ///          the glue that loads IL from disk before launching the VM.  The
 ///          helpers document how tracing, breakpoints, and summary reporting are
@@ -48,27 +48,33 @@ using namespace il;
 
 namespace {
 
+/// @brief Parsed configuration for the `viper -run` (run-IL) command.
+/// @details Captures the IL file, shared CLI options, debugger settings
+///          (breakpoints, watches, step/continue), profiling flags, and the
+///          chosen VM backend (tree-walk or bytecode).
 struct RunILConfig {
+    /// @brief A file:line source breakpoint request.
     struct SourceBreak {
-        std::string file;
-        uint32_t line = 0;
+        std::string file;   ///< Source file the breakpoint refers to.
+        uint32_t line = 0;  ///< 1-based line number.
     };
 
-    std::string ilFile;
-    ilc::SharedCliOptions sharedOpts;
-    std::vector<std::string> breakLabels;
-    std::vector<SourceBreak> breakSrcLines;
-    std::vector<std::string> watchSymbols;
-    std::string debugScriptPath;
-    bool stepFlag = false;
-    bool continueFlag = false;
-    bool countFlag = false;
-    bool timeFlag = false;
-    bool boundsChecksRequested = false;
-    bool useBytecode = false;
-    bool useBytecodeThreaded = false;
-    vm::DebugCtrl debugCtrl;
-    std::unique_ptr<vm::DebugScript> debugScript;
+    std::string ilFile;                       ///< Path to the IL file to run.
+    ilc::SharedCliOptions sharedOpts;          ///< Shared CLI settings (trace, steps, IO).
+    std::vector<std::string> breakLabels;      ///< Block-label breakpoints.
+    std::vector<SourceBreak> breakSrcLines;    ///< Source file:line breakpoints.
+    std::vector<std::string> watchSymbols;     ///< Variables to watch.
+    std::string debugScriptPath;               ///< Optional debugger script path.
+    bool stepFlag = false;                     ///< Start in single-step mode.
+    bool continueFlag = false;                 ///< Continue immediately after setup.
+    bool countFlag = false;                    ///< Print instruction counts.
+    bool timeFlag = false;                     ///< Print execution time.
+    bool helpRequested = false;                ///< True when help was requested.
+    bool boundsChecksRequested = false;        ///< Enable runtime bounds checks.
+    bool useBytecode = false;                  ///< Use the bytecode VM instead of tree-walk.
+    bool useBytecodeThreaded = false;          ///< Use threaded-dispatch bytecode VM.
+    vm::DebugCtrl debugCtrl;                   ///< Debugger control state.
+    std::unique_ptr<vm::DebugScript> debugScript; ///< Loaded debugger script, if any.
 };
 
 /// @brief Trim leading and trailing ASCII whitespace from a string.
@@ -156,6 +162,12 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config) {
     if (argc < 1) {
         usage();
         return false;
+    }
+
+    if (argc == 1 && (std::string_view(argv[0]) == "--help" || std::string_view(argv[0]) == "-h")) {
+        usage();
+        config.helpRequested = true;
+        return true;
     }
 
     config.ilFile = argv[0];
@@ -405,6 +417,7 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm) {
         viper::bytecode::BytecodeVM vm;
         vm.setThreadedDispatch(config.useBytecodeThreaded);
         vm.setRuntimeBridgeEnabled(true);
+        vm.setMaxInstructions(config.sharedOpts.maxSteps);
         vm.load(&bcModule);
 
         std::chrono::steady_clock::time_point start;
@@ -422,12 +435,18 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm) {
 
         int rc = 0;
         if (vm.state() == viper::bytecode::VMState::Trapped) {
-            if (config.sharedOpts.dumpTrap) {
-                std::cerr << vm.trapMessage() << "\n";
-            }
+            std::cerr << vm.trapMessage() << "\n";
             rc = 1;
         } else {
-            rc = static_cast<int>(result.i64);
+            const auto intMin = static_cast<int64_t>(std::numeric_limits<int>::min());
+            const auto intMax = static_cast<int64_t>(std::numeric_limits<int>::max());
+            if (result.i64 < intMin || result.i64 > intMax) {
+                std::cerr << "viper -run: program return value " << result.i64
+                          << " outside host int range [" << intMin << ", " << intMax << "]\n";
+                rc = 1;
+            } else {
+                rc = static_cast<int>(result.i64);
+            }
         }
 
         if (config.countFlag || config.timeFlag) {
@@ -463,7 +482,7 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm) {
     const auto intMin = std::numeric_limits<int>::min();
     const auto intMax = std::numeric_limits<int>::max();
     if (runResult < intMin || runResult > intMax) {
-        std::cerr << "ilc run: program return value " << runResult << " outside host int range ["
+        std::cerr << "viper -run: program return value " << runResult << " outside host int range ["
                   << intMin << ", " << intMax << "]\n";
         rc = 1;
     } else {
@@ -471,7 +490,7 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm) {
     }
     const auto trapMessage = runner.lastTrapMessage();
     if (trapMessage) {
-        if (config.sharedOpts.dumpTrap && !trapMessage->empty()) {
+        if (!trapMessage->empty()) {
             std::cerr << *trapMessage;
             if (trapMessage->back() != '\n') {
                 std::cerr << '\n';
@@ -515,6 +534,9 @@ int cmdRunILWithSourceManager(int argc, char **argv, il::support::SourceManager 
     RunILConfig config;
     if (!parseRunILArgs(argc, argv, config)) {
         return 1;
+    }
+    if (config.helpRequested) {
+        return 0;
     }
 
     configureDebugger(config, config.debugCtrl, config.debugScript);

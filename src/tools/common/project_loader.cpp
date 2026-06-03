@@ -8,8 +8,25 @@
 // File: tools/common/project_loader.cpp
 // Purpose: Universal project system — manifest parsing, convention-based
 //          file discovery, language detection, and entry point resolution.
+// Key invariants: A successfully resolved ProjectConfig has a non-empty
+//                 entryFile that points at an existing source file and a lang
+//                 consistent with the discovered sources. Manifest directives
+//                 are line-oriented; scalar directives may appear at most once.
+// Ownership/Lifetime: All helpers return values or Expected<>; the caller owns
+//                     the resulting ProjectConfig. No global state is mutated.
+// Links: src/tools/common/project_loader.hpp,
+//        src/tools/common/packaging/PkgUtils.hpp, docs/codemap.md#tools
 //
 //===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements viper.project manifest parsing and convention-based project
+///        discovery shared by the Zia and BASIC frontends.
+/// @details Provides two entry points: resolveProject() classifies a CLI target
+///          (file, directory, or manifest) and either discovers sources by
+///          convention or delegates to parseManifest(), which interprets the
+///          line-oriented manifest grammar including the package-* directive
+///          family.
 
 #include "tools/common/project_loader.hpp"
 #include "tools/common/packaging/PkgUtils.hpp"
@@ -19,12 +36,10 @@
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
-#include <mutex>
 #include <set>
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 
 namespace fs = std::filesystem;
 
@@ -43,6 +58,43 @@ il::support::Diag makeManifestErr(const std::string &path, int line, const std::
     return il::support::Diagnostic{il::support::Severity::Error, full, {}, {}};
 }
 
+/// @brief Test whether a single path segment matches an exclude pattern.
+/// @details An exact match always counts; a pattern ending in '-' (e.g. "build-")
+///          matches any segment that starts with it, so build directories like
+///          "build-debug" are excluded.
+bool pathSegmentMatchesExclude(std::string_view segment, std::string_view exclude) {
+    if (segment == exclude)
+        return true;
+    return !exclude.empty() && exclude.back() == '-' && segment.rfind(exclude, 0) == 0;
+}
+
+/// @brief Test whether a project-relative path is covered by an exclude pattern.
+/// @details A slash-bearing exclude matches the path or a directory prefix of it;
+///          a slash-free exclude matches if any single path segment matches it
+///          (via pathSegmentMatchesExclude).
+bool relativePathMatchesExclude(const fs::path &relativePath, const std::string &exclude) {
+    const std::string rel = relativePath.generic_string();
+    if (rel == exclude || rel.rfind(exclude + "/", 0) == 0)
+        return true;
+
+    if (exclude.find('/') != std::string::npos)
+        return false;
+
+    for (const auto &part : relativePath) {
+        if (pathSegmentMatchesExclude(part.generic_string(), exclude))
+            return true;
+    }
+    return false;
+}
+
+/// @brief Return an ASCII-lowercased copy of @p value.
+std::string lowerAscii(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return value;
+}
+
 /// @brief Recursively collect files with a given extension under a directory.
 /// @param dir Root directory to scan.
 /// @param ext Extension including dot (e.g. ".zia").
@@ -51,32 +103,9 @@ il::support::Diag makeManifestErr(const std::string &path, int line, const std::
 std::vector<std::string> collectFiles(const fs::path &dir,
                                       const std::string &ext,
                                       const std::vector<std::string> &excludes) {
-    struct CacheEntry {
-        fs::file_time_type stamp{};
-        std::vector<std::string> files;
-    };
-
-    static std::unordered_map<std::string, CacheEntry> cache;
-    static std::mutex cacheMutex;
-
-    std::string key = fs::absolute(dir).lexically_normal().string();
-    key.push_back('\n');
-    key += ext;
-    for (const auto &ex : excludes) {
-        key.push_back('\n');
-        key += ex;
-    }
-
-    std::error_code stampEc;
-    const auto stamp = fs::last_write_time(dir, stampEc);
-    if (!stampEc) {
-        std::lock_guard<std::mutex> lock(cacheMutex);
-        if (auto it = cache.find(key); it != cache.end() && it->second.stamp == stamp)
-            return it->second.files;
-    }
-
     std::vector<std::string> result;
-    if (!fs::is_directory(dir))
+    std::error_code ec;
+    if (!fs::is_directory(dir, ec))
         return result;
 
     std::vector<std::string> effectiveExcludes = excludes;
@@ -91,36 +120,50 @@ std::vector<std::string> collectFiles(const fs::path &dir,
                               "vendor",
                               ".viper-cache"});
 
-    for (auto it =
-             fs::recursive_directory_iterator(dir, fs::directory_options::skip_permission_denied);
-         it != fs::recursive_directory_iterator();
-         ++it) {
+    auto it = fs::recursive_directory_iterator(dir, fs::directory_options::skip_permission_denied, ec);
+    const auto end = fs::recursive_directory_iterator();
+    while (!ec && it != end) {
         // Check excludes against the relative path from dir
-        if (it->is_directory()) {
-            auto rel = fs::relative(it->path(), dir).string();
+        std::error_code entryEc;
+        if (it->is_directory(entryEc) && !entryEc) {
+            auto rel = fs::relative(it->path(), dir, entryEc);
+            if (entryEc) {
+                it.increment(ec);
+                continue;
+            }
             for (const auto &ex : effectiveExcludes) {
-                // Match if the relative path starts with the exclude prefix
-                if (rel == ex || rel.rfind(ex, 0) == 0) {
+                if (relativePathMatchesExclude(rel, ex)) {
                     it.disable_recursion_pending();
                     break;
                 }
             }
+            it.increment(ec);
             continue;
         }
 
-        if (it->is_regular_file() && it->path().extension() == ext) {
-            result.push_back(fs::canonical(it->path()).string());
+        if (it->is_regular_file(entryEc) && !entryEc &&
+            lowerAscii(it->path().extension().string()) == ext) {
+            auto canonical = fs::canonical(it->path(), entryEc);
+            if (!entryEc)
+                result.push_back(canonical.string());
         }
+        it.increment(ec);
     }
 
     std::sort(result.begin(), result.end());
-    if (!stampEc) {
-        std::lock_guard<std::mutex> lock(cacheMutex);
-        cache[key] = CacheEntry{stamp, result};
-    }
     return result;
 }
 
+/// @brief Test whether a line begins with one of a set of keywords.
+/// @details Skips leading spaces/tabs, then checks each keyword for a prefix
+///          match. To avoid matching identifiers that merely start with the
+///          keyword, a match additionally requires the keyword to be followed by
+///          end-of-line, whitespace, or '(' (call syntax). Used to recognise
+///          BASIC statement leaders such as `Print` or `AddFile`.
+/// @param line Source line to inspect.
+/// @param keywords Candidate keywords to match at the start of @p line.
+/// @param caseInsensitive When true, compare using ASCII lowercasing.
+/// @return True when @p line starts with one of @p keywords as a whole token.
 bool startsWithKeywordLine(std::string_view line,
                            std::initializer_list<std::string_view> keywords,
                            bool caseInsensitive) {
@@ -333,7 +376,11 @@ il::support::Expected<ProjectConfig> discoverConvention(const fs::path &dir,
     }
 
     ProjectConfig config;
-    config.rootDir = fs::canonical(dir).string();
+    std::error_code ec;
+    auto canonicalDir = fs::canonical(dir, ec);
+    if (ec)
+        return makeErr("cannot resolve project directory: " + dir.string());
+    config.rootDir = canonicalDir.string();
     config.name = dir.filename().string();
 
     if (!ziaFiles.empty()) {
@@ -371,6 +418,16 @@ il::support::Expected<bool> parseBool(const std::string &val,
                            "invalid value '" + val + "' for " + directive + "; expected on or off");
 }
 
+/// @brief Map a build profile name to its default optimization level.
+/// @details Translates the manifest `profile` directive into an `O0`/`O1`/`O2`
+///          string: debug→O0, balanced→O1, release→O2. The optimization level
+///          is only applied when the manifest does not also set `optimize`
+///          explicitly.
+/// @param profile Profile name from the manifest ("debug", "balanced", "release").
+/// @param manifestPath Manifest path, used for error context.
+/// @param line 1-based line number, used for error context.
+/// @return The mapped optimization level string, or a diagnostic for an
+///         unrecognised profile.
 il::support::Expected<std::string> optimizeForBuildProfile(const std::string &profile,
                                                            const std::string &manifestPath,
                                                            int line) {
@@ -386,6 +443,16 @@ il::support::Expected<std::string> optimizeForBuildProfile(const std::string &pr
                                "'; expected debug, balanced, or release");
 }
 
+/// @brief Split a manifest directive value into whitespace-separated tokens.
+/// @details Implements a small lexer with double-quote grouping and backslash
+///          escapes inside quotes (`\"`, `\\`, `\n`, `\t`; any other escaped
+///          character is taken literally). Unquoted runs of spaces or tabs
+///          separate tokens. An unterminated quote is reported as an error.
+/// @param value Raw value text following the directive name.
+/// @param manifestPath Manifest path, used for error context.
+/// @param line 1-based line number, used for error context.
+/// @param directive Directive name, used for error context.
+/// @return The token list, or a diagnostic when a quote is left open.
 il::support::Expected<std::vector<std::string>> tokenizeManifestValue(
     const std::string &value,
     const std::string &manifestPath,
@@ -443,6 +510,94 @@ il::support::Expected<std::vector<std::string>> tokenizeManifestValue(
     return tokens;
 }
 
+/// @brief Tokenize a directive value and require exactly @p count tokens.
+/// @return The tokens on success, or a manifest diagnostic on a tokenize failure
+///         or arity mismatch.
+il::support::Expected<std::vector<std::string>> requireManifestTokenCount(
+    const std::string &value,
+    const std::string &manifestPath,
+    int line,
+    const std::string &directive,
+    std::size_t count) {
+    auto tokens = tokenizeManifestValue(value, manifestPath, line, directive);
+    if (!tokens)
+        return il::support::Expected<std::vector<std::string>>(tokens.error());
+    if (tokens.value().size() != count) {
+        return makeManifestErr(manifestPath,
+                               line,
+                               directive + " requires exactly " + std::to_string(count) +
+                                   " value" + (count == 1 ? "" : "s"));
+    }
+    return tokens;
+}
+
+/// @brief Resolve a project-relative manifest path to an absolute, in-root path.
+/// @details Sanitizes @p raw, resolves it against @p manifestDir, and rejects any
+///          result that escapes the project root. An empty path maps to the
+///          project root when @p allowProjectRoot, otherwise is an error.
+/// @return The resolved path, or a manifest diagnostic on rejection.
+il::support::Expected<fs::path> resolveManifestRelativePath(const fs::path &manifestDir,
+                                                            const std::string &raw,
+                                                            const std::string &manifestPath,
+                                                            int line,
+                                                            const std::string &directive,
+                                                            bool allowProjectRoot) {
+    try {
+        std::string clean = viper::pkg::sanitizePackageRelativePath(raw, directive.c_str());
+        if (clean.empty()) {
+            if (allowProjectRoot)
+                return manifestDir;
+            return makeManifestErr(manifestPath, line, directive + " path must not be empty");
+        }
+
+        std::error_code ec;
+        fs::path candidate = (manifestDir / fs::path(clean)).lexically_normal();
+        fs::path resolved = fs::weakly_canonical(candidate, ec);
+        if (ec)
+            resolved = candidate;
+        if (!viper::pkg::isPathWithin(manifestDir, resolved)) {
+            return makeManifestErr(
+                manifestPath, line, directive + " path escapes the project root: '" + raw + "'");
+        }
+        return resolved;
+    } catch (const std::exception &ex) {
+        return makeManifestErr(manifestPath, line, ex.what());
+    }
+}
+
+/// @brief Parse a directive value as a single project-relative path string.
+/// @details Requires exactly one token (requireManifestTokenCount) and resolves it
+///          via resolveManifestRelativePath; returns the resolved path as a string.
+/// @return The resolved path string, or a manifest diagnostic on failure.
+il::support::Expected<std::string> parseManifestRelativeToken(const fs::path &manifestDir,
+                                                              const std::string &value,
+                                                              const std::string &manifestPath,
+                                                              int line,
+                                                              const std::string &directive,
+                                                              bool allowProjectRoot) {
+    auto tokens = requireManifestTokenCount(value, manifestPath, line, directive, 1);
+    if (!tokens)
+        return il::support::Expected<std::string>(tokens.error());
+    auto path = resolveManifestRelativePath(
+        manifestDir, tokens.value()[0], manifestPath, line, directive, allowProjectRoot);
+    if (!path)
+        return il::support::Expected<std::string>(path.error());
+    return path.value().string();
+}
+
+/// @brief Read the contents of a project-relative script hook file.
+/// @details Used by the post-install / pre-uninstall directives. The value must
+///          tokenize to exactly one project-relative path, which is resolved
+///          against @p manifestDir (rejecting path escapes via
+///          viper::pkg::resolvePackageSourcePath), required to be a regular
+///          file, and slurped into a string. Any failure produces a manifest
+///          diagnostic with file:line context.
+/// @param manifestDir Directory the manifest lives in; the resolution root.
+/// @param value Raw directive value naming the script path.
+/// @param manifestPath Manifest path, used for error context.
+/// @param line 1-based line number, used for error context.
+/// @param directive Directive name, used for error context.
+/// @return The script file contents, or a diagnostic on any failure.
 il::support::Expected<std::string> readManifestScriptHook(const fs::path &manifestDir,
                                                           const std::string &value,
                                                           const std::string &manifestPath,
@@ -480,9 +635,16 @@ il::support::Expected<std::string> readManifestScriptHook(const fs::path &manife
     return contents.str();
 }
 
-// Free-function forms of the per-call package-scalar duplicate/parse helpers,
-// shared by parsePackageDirective(). @p seen tracks scalar directive names
-// already parsed so duplicates can be rejected.
+/// @brief Record a scalar package directive and reject duplicates.
+/// @details Inserts @p name into @p seen; if it was already present the
+///          directive appeared more than once, which is an error. Shared by
+///          parsePackageDirective() so every "package-*" scalar enforces
+///          at-most-once semantics uniformly.
+/// @param seen Set of scalar directive names already parsed this manifest.
+/// @param name Directive name being recorded.
+/// @param manifestPath Manifest path, used for error context.
+/// @param line 1-based line number, used for error context.
+/// @return True on first occurrence; a diagnostic on a duplicate.
 il::support::Expected<bool> markPackageScalar(std::set<std::string> &seen,
                                               const std::string &name,
                                               const std::string &manifestPath,
@@ -492,6 +654,17 @@ il::support::Expected<bool> markPackageScalar(std::set<std::string> &seen,
     return true;
 }
 
+/// @brief Parse a scalar package directive value, enforcing single occurrence.
+/// @details Combines markPackageScalar() (duplicate rejection) with
+///          tokenizeManifestValue() and then requires exactly one resulting
+///          token, so values containing spaces must be quoted. Shared by the
+///          many string-valued "package-*"/"macos-*"/"windows-*" directives.
+/// @param seen Set of scalar directive names already parsed this manifest.
+/// @param name Directive name being parsed.
+/// @param value Raw value text following the directive name.
+/// @param manifestPath Manifest path, used for error context.
+/// @param line 1-based line number, used for error context.
+/// @return The single scalar value, or a diagnostic on duplicate/arity errors.
 il::support::Expected<std::string> parsePackageScalar(std::set<std::string> &seen,
                                                       const std::string &name,
                                                       const std::string &value,
@@ -511,9 +684,24 @@ il::support::Expected<std::string> parsePackageScalar(std::set<std::string> &see
     return tokens.value()[0];
 }
 
-// Handle package/macOS/Windows/installer directives (the "package-*" family).
-// @return true if @p directive was a package directive (and was applied), false
-//         if it is not a package directive (caller then reports it as unknown).
+/// @brief Apply one packaging-related manifest directive to @p config.
+/// @details Dispatches the "package-*", "macos-*", "windows-*", asset embedding
+///          (asset/embed/pack/pack-compressed), file association, shortcut,
+///          dependency, and install-hook directives. Scalar directives are
+///          routed through parsePackageScalar() for duplicate/arity checking;
+///          boolean directives through parseBool(); multi-token directives
+///          through tokenizeManifestValue(). Unrecognised directives are not an
+///          error here — they return false so the caller can decide whether the
+///          directive is unknown.
+/// @param config Project configuration mutated in place with parsed values.
+/// @param packageScalarDirectives Set tracking already-seen scalar directives.
+/// @param manifestDir Directory containing the manifest (for path resolution).
+/// @param manifestPath Manifest path, used for error context.
+/// @param directive Directive name to handle.
+/// @param value Raw value text following the directive name.
+/// @param lineNum 1-based line number, used for error context.
+/// @return True when @p directive was a recognised package directive and applied;
+///         false when it is not a package directive; a diagnostic on parse error.
 il::support::Expected<bool> parsePackageDirective(ProjectConfig &config,
                                                   std::set<std::string> &packageScalarDirectives,
                                                   const fs::path &manifestDir,
@@ -673,21 +861,33 @@ il::support::Expected<bool> parsePackageDirective(ProjectConfig &config,
         config.packageConfig.assets.push_back({tokens.value()[0], tokens.value()[1]});
     } else if (directive == "embed") {
         // Format: embed <source-path>
-        if (value.empty())
-            return makeManifestErr(
-                manifestPath, lineNum, "embed requires <source-path>; got empty value");
-        config.embedAssets.push_back({value});
+        auto tokens = requireManifestTokenCount(value, manifestPath, lineNum, directive, 1);
+        if (!tokens)
+            return il::support::Expected<bool>(tokens.error());
+        try {
+            std::string embedSrc = viper::pkg::sanitizePackageRelativePath(tokens.value()[0], "embed");
+            if (embedSrc.empty())
+                return makeManifestErr(manifestPath, lineNum, "embed path must not be empty");
+            config.embedAssets.push_back({std::move(embedSrc)});
+        } catch (const std::exception &ex) {
+            return makeManifestErr(manifestPath, lineNum, ex.what());
+        }
 
     } else if (directive == "pack" || directive == "pack-compressed") {
         // Format: pack <name> <source-path>
-        auto sp = value.find_first_of(" \t");
-        if (sp == std::string::npos)
-            return makeManifestErr(manifestPath,
-                                   lineNum,
-                                   std::string(directive) +
-                                       " requires <name> <source-path>; got '" + value + "'");
-        std::string packName = value.substr(0, sp);
-        std::string packSrc = value.substr(value.find_first_not_of(" \t", sp));
+        auto tokens = requireManifestTokenCount(value, manifestPath, lineNum, directive, 2);
+        if (!tokens)
+            return il::support::Expected<bool>(tokens.error());
+        std::string packName = tokens.value()[0];
+        std::string packSrc;
+        try {
+            packSrc = viper::pkg::sanitizePackageRelativePath(tokens.value()[1], directive.c_str());
+            if (packSrc.empty())
+                return makeManifestErr(
+                    manifestPath, lineNum, std::string(directive) + " path must not be empty");
+        } catch (const std::exception &ex) {
+            return makeManifestErr(manifestPath, lineNum, ex.what());
+        }
         bool compressed = (directive == "pack-compressed");
 
         // Find existing group with same name, or create new one.
@@ -804,15 +1004,32 @@ il::support::Expected<bool> parsePackageDirective(ProjectConfig &config,
 
 } // anonymous namespace
 
+/// @brief Parse a viper.project manifest file into a ProjectConfig.
+/// @details Reads the manifest line by line (stripping a leading UTF-8 BOM,
+///          blank lines, and '#' comments), splitting each into a directive and
+///          value. Core directives (project/version/lang/entry/sources/exclude/
+///          profile/optimize/*-checks) are handled inline with duplicate
+///          detection; everything else is offered to parsePackageDirective().
+///          After directives are consumed, source files are collected from the
+///          declared (or default) directories, the language is auto-detected
+///          when not declared, the file list is sorted and de-duplicated, and
+///          the entry point is resolved or validated. See the header for the
+///          parameter and return contract.
 il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPath) {
     std::ifstream file(manifestPath);
     if (!file.is_open())
         return makeErr("cannot open manifest: " + manifestPath);
 
     fs::path manifestDir = fs::path(manifestPath).parent_path();
-    if (manifestDir.empty())
-        manifestDir = fs::current_path();
-    manifestDir = fs::canonical(manifestDir);
+    std::error_code ec;
+    if (manifestDir.empty()) {
+        manifestDir = fs::current_path(ec);
+        if (ec)
+            return makeErr("cannot resolve current directory: " + ec.message());
+    }
+    manifestDir = fs::canonical(manifestDir, ec);
+    if (ec)
+        return makeErr("cannot resolve manifest directory: " + ec.message());
 
     ProjectConfig config;
     config.rootDir = manifestDir.string();
@@ -895,11 +1112,30 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
             if (hasEntry)
                 return makeManifestErr(manifestPath, lineNum, "duplicate directive 'entry'");
             hasEntry = true;
-            config.entryFile = (manifestDir / value).string();
+            auto entry = parseManifestRelativeToken(
+                manifestDir, value, manifestPath, lineNum, directive, false);
+            if (!entry)
+                return il::support::Expected<ProjectConfig>(entry.error());
+            config.entryFile = entry.value();
         } else if (directive == "sources") {
-            sourceDirs.push_back(value);
+            auto srcDir = parseManifestRelativeToken(
+                manifestDir, value, manifestPath, lineNum, directive, true);
+            if (!srcDir)
+                return il::support::Expected<ProjectConfig>(srcDir.error());
+            sourceDirs.push_back(srcDir.value());
         } else if (directive == "exclude") {
-            excludes.push_back(value);
+            auto tokens = requireManifestTokenCount(value, manifestPath, lineNum, directive, 1);
+            if (!tokens)
+                return il::support::Expected<ProjectConfig>(tokens.error());
+            try {
+                std::string clean =
+                    viper::pkg::sanitizePackageRelativePath(tokens.value()[0], "exclude");
+                if (clean.empty())
+                    return makeManifestErr(manifestPath, lineNum, "exclude path must not be empty");
+                excludes.push_back(std::move(clean));
+            } catch (const std::exception &ex) {
+                return makeManifestErr(manifestPath, lineNum, ex.what());
+            }
         } else if (directive == "profile" || directive == "build-profile") {
             if (hasProfile)
                 return makeManifestErr(manifestPath, lineNum, "duplicate directive 'profile'");
@@ -966,7 +1202,7 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
 
     // Collect source files from declared directories (or project root by default)
     if (sourceDirs.empty())
-        sourceDirs.push_back(".");
+        sourceDirs.push_back(manifestDir.string());
 
     std::string ext = (config.lang == ProjectLang::Zia) ? ".zia" : ".bas";
 
@@ -975,7 +1211,9 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
         // Scan all source dirs for both extensions
         std::vector<std::string> allZia, allBas;
         for (const auto &sd : sourceDirs) {
-            fs::path srcDir = manifestDir / sd;
+            fs::path srcDir = sd;
+            if (srcDir.is_relative())
+                srcDir = manifestDir / srcDir;
             auto zia = collectFiles(srcDir, ".zia", excludes);
             auto bas = collectFiles(srcDir, ".bas", excludes);
             allZia.insert(allZia.end(), zia.begin(), zia.end());
@@ -1000,8 +1238,11 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
     if (config.lang == ProjectLang::Mixed) {
         // Mixed projects: collect both .zia and .bas files.
         for (const auto &sd : sourceDirs) {
-            fs::path srcDir = manifestDir / sd;
-            if (!fs::is_directory(srcDir))
+            fs::path srcDir = sd;
+            if (srcDir.is_relative())
+                srcDir = manifestDir / srcDir;
+            std::error_code srcEc;
+            if (!fs::is_directory(srcDir, srcEc))
                 return makeErr("sources directory not found: " + srcDir.string());
 
             auto zia = collectFiles(srcDir, ".zia", excludes);
@@ -1013,8 +1254,11 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
         }
     } else {
         for (const auto &sd : sourceDirs) {
-            fs::path srcDir = manifestDir / sd;
-            if (!fs::is_directory(srcDir))
+            fs::path srcDir = sd;
+            if (srcDir.is_relative())
+                srcDir = manifestDir / srcDir;
+            std::error_code srcEc;
+            if (!fs::is_directory(srcDir, srcEc))
                 return makeErr("sources directory not found: " + srcDir.string());
             auto files = collectFiles(srcDir, ext, excludes);
             config.sourceFiles.insert(config.sourceFiles.end(), files.begin(), files.end());
@@ -1042,28 +1286,45 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
         config.entryFile = std::move(entry.value());
     } else {
         // Verify entry file exists
-        if (!fs::exists(config.entryFile))
+        std::error_code entryEc;
+        if (!fs::exists(config.entryFile, entryEc))
             return makeErr("entry file not found: " + config.entryFile);
     }
 
     return config;
 }
 
+/// @brief Resolve a CLI target path into a ProjectConfig.
+/// @details Normalises @p target to an absolute path and classifies it: a single
+///          .zia or .bas file becomes a one-file project; a viper.project (or
+///          *.project) file is parsed via parseManifest(); a directory either
+///          parses a contained viper.project or falls back to convention-based
+///          discovery (discoverConvention()). Anything else yields a diagnostic.
+///          See the header for the full parameter and return contract.
 il::support::Expected<ProjectConfig> resolveProject(const std::string &target) {
     // Determine what the target is
     fs::path targetPath(target);
+    std::error_code ec;
 
     // Handle relative paths
-    if (targetPath.is_relative())
-        targetPath = fs::current_path() / targetPath;
+    if (targetPath.is_relative()) {
+        auto cwd = fs::current_path(ec);
+        if (ec)
+            return makeErr("cannot resolve current directory: " + ec.message());
+        targetPath = cwd / targetPath;
+    }
 
-    if (!fs::exists(targetPath))
+    if (!fs::exists(targetPath, ec))
         return makeErr("target not found: " + target);
 
     // Case 1: Single .zia file
-    if (fs::is_regular_file(targetPath) && targetPath.extension() == ".zia") {
+    const std::string targetExt = lowerAscii(targetPath.extension().string());
+
+    if (fs::is_regular_file(targetPath, ec) && targetExt == ".zia") {
         ProjectConfig config;
-        auto canonical = fs::canonical(targetPath);
+        auto canonical = fs::canonical(targetPath, ec);
+        if (ec)
+            return makeErr("cannot resolve target: " + target);
         config.lang = ProjectLang::Zia;
         config.entryFile = canonical.string();
         config.sourceFiles = {config.entryFile};
@@ -1073,9 +1334,11 @@ il::support::Expected<ProjectConfig> resolveProject(const std::string &target) {
     }
 
     // Case 2: Single .bas file
-    if (fs::is_regular_file(targetPath) && targetPath.extension() == ".bas") {
+    if (fs::is_regular_file(targetPath, ec) && targetExt == ".bas") {
         ProjectConfig config;
-        auto canonical = fs::canonical(targetPath);
+        auto canonical = fs::canonical(targetPath, ec);
+        if (ec)
+            return makeErr("cannot resolve target: " + target);
         config.lang = ProjectLang::Basic;
         config.entryFile = canonical.string();
         config.sourceFiles = {config.entryFile};
@@ -1085,21 +1348,26 @@ il::support::Expected<ProjectConfig> resolveProject(const std::string &target) {
     }
 
     // Case 3: Explicit manifest file
-    if (fs::is_regular_file(targetPath)) {
+    if (fs::is_regular_file(targetPath, ec)) {
         auto filename = targetPath.filename().string();
         if (filename == "viper.project" || targetPath.extension() == ".project") {
-            return parseManifest(fs::canonical(targetPath).string());
+            auto canonical = fs::canonical(targetPath, ec);
+            if (ec)
+                return makeErr("cannot resolve manifest: " + target);
+            return parseManifest(canonical.string());
         }
         return makeErr(target + " is not a .zia, .bas, or viper.project file");
     }
 
     // Case 4: Directory
-    if (fs::is_directory(targetPath)) {
-        auto canonical = fs::canonical(targetPath);
+    if (fs::is_directory(targetPath, ec)) {
+        auto canonical = fs::canonical(targetPath, ec);
+        if (ec)
+            return makeErr("cannot resolve project directory: " + target);
 
         // Check for viper.project in directory
         auto manifestPath = canonical / "viper.project";
-        if (fs::exists(manifestPath))
+        if (fs::exists(manifestPath, ec))
             return parseManifest(manifestPath.string());
 
         // Convention discovery

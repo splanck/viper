@@ -8,6 +8,17 @@
 // File: src/tools/common/packaging/XarWriter.cpp
 // Purpose: Native XAR writer used by macOS flat installer packages.
 //
+// Key invariants:
+//   - Header is 28 bytes, big-endian; TOC and (optionally) file data are
+//     zlib-compressed; the heap begins with 20 SHA-1 checksum bytes at offset 0.
+//   - The TOC is XML describing a directory tree rebuilt from flat entry paths.
+//   - Per-file archived/extracted SHA-1 checksums are recorded in the TOC.
+//
+// Ownership/Lifetime:
+//   - Single-use writer; entries are copied in and owned by the writer.
+//
+// Links: XarWriter.hpp, PkgZlib.hpp (compression), PkgHash.hpp (SHA-1)
+//
 //===----------------------------------------------------------------------===//
 
 #include "XarWriter.hpp"
@@ -26,6 +37,8 @@
 namespace viper::pkg {
 namespace {
 
+/// @brief Sanitize an entry path and require it to be non-empty.
+/// @throws std::runtime_error when the path is empty, ".", or unsafe.
 std::string normalizeXarPath(const std::string &path) {
     const std::string clean = sanitizePackageRelativePath(path, "xar file path");
     if (clean.empty())
@@ -33,6 +46,7 @@ std::string normalizeXarPath(const std::string &path) {
     return clean;
 }
 
+/// @brief Escape the five XML metacharacters (&, <, >, ", ') for TOC text.
 std::string xmlEscape(const std::string &text) {
     std::string out;
     out.reserve(text.size());
@@ -61,11 +75,13 @@ std::string xmlEscape(const std::string &text) {
     return out;
 }
 
+/// @brief Append a 16-bit value to @p out in big-endian byte order (XAR header).
 void appendBE16(std::vector<uint8_t> &out, uint16_t value) {
     out.push_back(static_cast<uint8_t>((value >> 8) & 0xffu));
     out.push_back(static_cast<uint8_t>(value & 0xffu));
 }
 
+/// @brief Append a 32-bit value to @p out in big-endian byte order (XAR header).
 void appendBE32(std::vector<uint8_t> &out, uint32_t value) {
     out.push_back(static_cast<uint8_t>((value >> 24) & 0xffu));
     out.push_back(static_cast<uint8_t>((value >> 16) & 0xffu));
@@ -73,29 +89,36 @@ void appendBE32(std::vector<uint8_t> &out, uint32_t value) {
     out.push_back(static_cast<uint8_t>(value & 0xffu));
 }
 
+/// @brief Append a 64-bit value to @p out in big-endian byte order (XAR header).
 void appendBE64(std::vector<uint8_t> &out, uint64_t value) {
     for (int shift = 56; shift >= 0; shift -= 8)
         out.push_back(static_cast<uint8_t>((value >> shift) & 0xffu));
 }
 
+/// @brief A file entry resolved for serialization: heap bytes and TOC metadata.
 struct PreparedEntry {
-    std::string path;
-    std::vector<uint8_t> extracted;
-    std::vector<uint8_t> archived;
-    bool compressed{false};
-    uint32_t mode{0644};
-    uint64_t offset{0};
+    std::string path;              ///< Archive-relative path.
+    std::vector<uint8_t> extracted; ///< Uncompressed bytes (for size/checksum).
+    std::vector<uint8_t> archived;  ///< Bytes as stored in the heap (maybe gzip).
+    bool compressed{false};         ///< Whether @c archived is zlib-compressed.
+    uint32_t mode{0644};            ///< Permission bits (octal).
+    uint64_t offset{0};             ///< Byte offset within the heap.
 };
 
+/// @brief A node in the directory tree rebuilt from flat entry paths.
+/// @details Directories own a map of child nodes; file nodes point at the
+///          PreparedEntry holding their data. The tree drives nested TOC XML.
 struct XarTreeNode {
-    std::string name;
-    std::string path;
-    bool directory{true};
-    uint32_t mode{0755};
-    const PreparedEntry *file{nullptr};
-    std::map<std::string, std::unique_ptr<XarTreeNode>> children;
+    std::string name;             ///< Leaf component name.
+    std::string path;             ///< Full archive-relative path.
+    bool directory{true};         ///< True for directories, false for files.
+    uint32_t mode{0755};          ///< Permission bits (octal).
+    const PreparedEntry *file{nullptr}; ///< Backing file entry (file nodes only).
+    std::map<std::string, std::unique_ptr<XarTreeNode>> children; ///< Child nodes.
 };
 
+/// @brief Split a '/'-separated path into its components (including a trailing
+///        empty component if the path ends in '/').
 std::vector<std::string> splitPathComponents(const std::string &path) {
     std::vector<std::string> parts;
     size_t pos = 0;
@@ -110,6 +133,14 @@ std::vector<std::string> splitPathComponents(const std::string &path) {
     return parts;
 }
 
+/// @brief Create (or reuse) the directory node chain for @p path under @p root.
+/// @details Walks each path component, creating intermediate directory nodes as
+///          needed, and sets the final node's mode. Throws if a component already
+///          exists as a file.
+/// @param root Tree root to insert under.
+/// @param path Archive-relative directory path.
+/// @param mode Permission bits for the leaf directory.
+/// @return Pointer to the leaf directory node.
 XarTreeNode *ensureDirectoryNode(XarTreeNode &root, const std::string &path, uint32_t mode) {
     XarTreeNode *node = &root;
     std::string current;
@@ -133,6 +164,10 @@ XarTreeNode *ensureDirectoryNode(XarTreeNode &root, const std::string &path, uin
     return node;
 }
 
+/// @brief Insert a file node for @p entry into the tree, creating parent dirs.
+/// @details Creates intermediate directory nodes for all but the last path
+///          component, then attaches a leaf file node pointing at @p entry.
+///          Throws on a duplicate path or a parent that is already a file.
 void addFileNode(XarTreeNode &root, const PreparedEntry &entry) {
     const auto parts = splitPathComponents(entry.path);
     if (parts.empty())
@@ -166,6 +201,12 @@ void addFileNode(XarTreeNode &root, const PreparedEntry &entry) {
     leaf->file = &entry;
 }
 
+/// @brief Emit the `<data>` element describing a file's heap payload in the TOC.
+/// @details Writes archived/extracted SHA-1 checksums, the encoding (gzip or
+///          octet-stream), the uncompressed size, and the heap offset/length.
+/// @param toc TOC string stream being built.
+/// @param entry Prepared file entry to describe.
+/// @param depth Indentation depth (spaces) for pretty-printing.
 void writeFileDataXml(std::ostringstream &toc, const PreparedEntry &entry, int depth) {
     const std::string indent(static_cast<size_t>(depth) * 1u, ' ');
     toc << indent << "<data>\n";
@@ -181,6 +222,13 @@ void writeFileDataXml(std::ostringstream &toc, const PreparedEntry &entry, int d
     toc << indent << "</data>\n";
 }
 
+/// @brief Recursively emit a `<file>` element (and children) for a tree node.
+/// @details Writes the name/type/mode/owner fields, then recurses into child
+///          nodes for directories or emits the `<data>` block for files.
+/// @param toc TOC string stream being built.
+/// @param node Tree node to emit.
+/// @param id Monotonic file-id counter, incremented per element.
+/// @param depth Indentation depth (spaces) for pretty-printing.
 void writeTreeNodeXml(std::ostringstream &toc, const XarTreeNode &node, int &id, int depth) {
     const std::string indent(static_cast<size_t>(depth) * 1u, ' ');
     toc << indent << "<file id=\"" << id++ << "\">\n";
@@ -248,6 +296,12 @@ void XarWriter::addFileString(const std::string &name,
         name, reinterpret_cast<const uint8_t *>(content.data()), content.size(), compress, mode);
 }
 
+/// @brief Serialize the archive: prepare heap entries, build the TOC tree/XML,
+///        compress the TOC, then emit header + TOC + checksum + heap.
+/// @details File payloads are laid out in the heap (after the 20 reserved
+///          checksum bytes) and their offsets recorded; the directory tree is
+///          rebuilt and rendered to XML; the TOC is zlib-compressed and its SHA-1
+///          stored at heap offset 0. See the header for the return contract.
 std::vector<uint8_t> XarWriter::finish() const {
     std::vector<PreparedEntry> prepared;
     prepared.reserve(entries_.size());

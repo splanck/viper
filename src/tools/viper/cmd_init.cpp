@@ -31,6 +31,46 @@ static bool writeFile(const fs::path &path, const std::string &content) {
     return true;
 }
 
+/// @brief Validate a project name supplied to `viper init`.
+/// @details Rejects "."/"..", path separators, control characters, and double
+///          quotes, printing a specific error to stderr for each case so the
+///          generated directory and manifest cannot be corrupted or escape.
+/// @param projectName Candidate project name from the command line.
+/// @return true if the name is safe to use; false (with an error printed) otherwise.
+static bool validateProjectName(const std::string &projectName) {
+    if (projectName == "." || projectName == "..") {
+        std::cerr << "error: project name must not be '.' or '..'\n";
+        return false;
+    }
+    if (projectName.find('/') != std::string::npos || projectName.find('\\') != std::string::npos) {
+        std::cerr << "error: project name must not contain path separators\n";
+        return false;
+    }
+    for (char c : projectName) {
+        unsigned char uc = static_cast<unsigned char>(c);
+        if (uc < 0x20 || uc == 0x7F) {
+            std::cerr << "error: project name must not contain control characters\n";
+            return false;
+        }
+        if (c == '"') {
+            std::cerr << "error: project name must not contain double quotes\n";
+            return false;
+        }
+    }
+    return true;
+}
+
+/// @brief Print usage for the `viper init` subcommand to stderr.
+static void printInitUsage() {
+    std::cerr << "Usage: viper init <project-name> [--lang zia|basic]\n"
+              << "\n"
+              << "Create a new Viper project directory with a viper.project manifest.\n"
+              << "\n"
+              << "Options:\n"
+              << "  --lang zia|basic   Source language for the generated entry file\n"
+              << "  -h, --help         Show this help\n";
+}
+
 int cmdInit(int argc, char **argv) {
     std::string projectName;
     std::string lang = "zia";
@@ -41,15 +81,21 @@ int cmdInit(int argc, char **argv) {
         if (arg == "--lang") {
             if (i + 1 >= argc) {
                 std::cerr << "error: --lang requires a value (zia or basic)\n";
+                printInitUsage();
                 return 1;
             }
             lang = argv[++i];
             if (lang != "zia" && lang != "basic") {
                 std::cerr << "error: --lang must be 'zia' or 'basic', got '" << lang << "'\n";
+                printInitUsage();
                 return 1;
             }
+        } else if (arg == "--help" || arg == "-h") {
+            printInitUsage();
+            return 0;
         } else if (arg.size() > 0 && arg[0] == '-') {
             std::cerr << "error: unknown option: " << arg << "\n";
+            printInitUsage();
             return 1;
         } else {
             if (!projectName.empty()) {
@@ -61,15 +107,12 @@ int cmdInit(int argc, char **argv) {
     }
 
     if (projectName.empty()) {
-        std::cerr << "Usage: viper init <project-name> [--lang zia|basic]\n";
+        printInitUsage();
         return 1;
     }
 
-    // Validate project name doesn't contain path separators.
-    if (projectName.find('/') != std::string::npos || projectName.find('\\') != std::string::npos) {
-        std::cerr << "error: project name must not contain path separators\n";
+    if (!validateProjectName(projectName))
         return 1;
-    }
 
     fs::path projectDir = fs::current_path() / projectName;
 

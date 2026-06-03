@@ -58,9 +58,10 @@ namespace fs = std::filesystem;
 enum class PackageTarget { MacOS, Linux, Windows, Tarball, Auto };
 enum class ExecutableFormat { MachO, ELF, PE };
 
+/// @brief Identifying details of a native executable detected from its header.
 struct ExecutableInfo {
-    ExecutableFormat format;
-    std::string arch;
+    ExecutableFormat format; ///< Detected container format (Mach-O/ELF/PE).
+    std::string arch;        ///< Architecture string ("x64"/"arm64").
 };
 
 /// @brief Print usage information for `viper package`.
@@ -68,83 +69,18 @@ void packageUsage() {
     std::cerr
         << "Usage: viper package [project] [options]\n"
         << "\n"
-        << "  Compiles a Viper project to a native binary and packages it into a\n"
-        << "  platform-specific installer using only Viper's built-in tooling.\n"
+        << "  Build a Viper project and package it for a target platform.\n"
         << "\n"
         << "  [project]  Path to a directory or viper.project file (default: .)\n"
         << "\n"
         << "Options:\n"
-        << "  --target <platform>   Target platform (default: host)\n"
-        << "                        macos    .app bundle in .zip\n"
-        << "                        linux    .deb package\n"
-        << "                        windows  Self-extracting .exe installer\n"
-        << "                        tarball  Portable .tar.gz archive\n"
+        << "  --target <platform>   macos, linux, windows, or tarball (default: host)\n"
         << "  --arch <arch>         Target architecture: x64 or arm64 (default: host)\n"
         << "  --executable <path>   Package a prebuilt native executable instead of compiling\n"
         << "  -o <path>             Output file path\n"
-        << "  --macos-sign-mode <m> macOS signing: none, preserve, adhoc, developer-id\n"
-        << "  --macos-sign-identity <id>\n"
-        << "                        Developer ID Application identity for macOS signing\n"
-        << "  --macos-entitlements <path>\n"
-        << "                        Entitlements plist for macOS signing\n"
-        << "  --macos-hardened-runtime\n"
-        << "                        Enable hardened runtime for macOS signing\n"
-        << "  --macos-notary-profile <profile>\n"
-        << "                        notarytool keychain profile for macOS notarization\n"
-        << "  --macos-staple        Staple the notarization ticket before final ZIP output\n"
-        << "  --windows-install-scope <s>\n"
-        << "                        Windows install scope: machine or user (default: machine)\n"
-        << "  --windows-install-dir <name>\n"
-        << "                        Windows install directory name override\n"
-        << "  --windows-sign        Sign Windows installer with signtool\n"
-        << "  --windows-sign-pfx <path>\n"
-        << "                        PFX certificate for Windows signing\n"
-        << "  --windows-sign-thumbprint <sha1>\n"
-        << "                        Certificate store SHA-1 thumbprint for Windows signing\n"
-        << "  --windows-timestamp-url <url>\n"
-        << "                        RFC3161 timestamp URL for Windows signing\n"
-        << "  --windows-signtool <path>\n"
-        << "                        signtool.exe path override\n"
-        << "  --windows-sign-no-verify\n"
-        << "                        Skip signtool verify after signing\n"
         << "  --dry-run             List package contents without building\n"
         << "  --verbose, -v         Show detailed packaging output\n"
         << "  --help, -h            Show this help\n"
-        << "\n"
-        << "Package manifest directives (in viper.project):\n"
-        << "  package-name <name>                 Display name\n"
-        << "  package-author <name>               Author / maintainer\n"
-        << "  package-description <text>          Short description\n"
-        << "  package-homepage <url>              Project homepage URL\n"
-        << "  package-license <spdx>              License identifier (SPDX)\n"
-        << "  package-identifier <id>             Reverse-DNS identifier\n"
-        << "  package-icon <path>                 Source PNG for generated icons\n"
-        << "  asset <source> <target>             Include asset files\n"
-        << "  file-assoc <ext> <desc> <mime> [windows-open-args]\n"
-        << "                                      Register file type association\n"
-        << "  shortcut-desktop on|off             Create desktop shortcut (Windows/Linux)\n"
-        << "  shortcut-menu on|off                Create menu entry (default: on)\n"
-        << "  min-os-macos <ver>                  Minimum macOS version (default: 10.13)\n"
-        << "  min-os-windows <ver>                Minimum Windows version\n"
-        << "  macos-sign-mode none|preserve|adhoc|developer-id\n"
-        << "  macos-sign-identity <identity>      Developer ID Application identity\n"
-        << "  macos-entitlements <path>           Entitlements plist\n"
-        << "  macos-hardened-runtime on|off       Enable hardened runtime\n"
-        << "  macos-notary-profile <profile>      notarytool keychain profile\n"
-        << "  macos-staple on|off                 Staple notarization ticket\n"
-        << "  windows-install-scope machine|user  Program Files/HKLM or LocalAppData/HKCU\n"
-        << "  windows-install-dir <name>          Windows install directory name\n"
-        << "  windows-sign on|off                 Enable Authenticode signing\n"
-        << "  windows-sign-pfx <path>             PFX certificate path\n"
-        << "  windows-sign-thumbprint <sha1>      Certificate store SHA-1 thumbprint\n"
-        << "  windows-timestamp-url <url>         RFC3161 timestamp URL\n"
-        << "  windows-signtool <path>             signtool.exe path\n"
-        << "  windows-sign-no-verify on|off       Skip signtool verify\n"
-        << "  package-category <category>          Application category (e.g. Game, Utility)\n"
-        << "  package-depends <pkg1>, <pkg2>      Package dependencies (Linux .deb)\n"
-        << "  target-arch x64|arm64               Target architecture\n"
-        << "  post-install <script>               Post-install hook (Linux .deb)\n"
-        << "  pre-uninstall <script>              Pre-uninstall hook (Linux .deb)\n"
         << "\n"
         << "Examples:\n"
         << "  viper package                       Package current dir for host platform\n"
@@ -155,9 +91,15 @@ void packageUsage() {
         << "  macOS:    .app bundle in .zip (Finder-native, drag to /Applications)\n"
         << "  Linux:    .deb package (dpkg -i), includes .desktop + MIME types\n"
         << "  Windows:  PE32+ .exe with embedded ZIP (assets, shortcuts, uninstaller)\n"
-        << "  Tarball:  .tar.gz portable archive\n";
+        << "  Tarball:  .tar.gz portable archive\n"
+        << "\n"
+        << "Manifest directives and signing options are documented in docs/tools.md.\n";
 }
 
+/// @brief Parsed command-line arguments for the `viper package` subcommand.
+/// @details Covers the target/output selection plus the macOS signing and Windows
+///          installer/signing option families; *Set companion flags record whether
+///          an option was explicitly provided so manifest defaults can apply.
 struct PackageArgs {
     std::string target;
     PackageTarget platformTarget{PackageTarget::Auto};
@@ -187,6 +129,7 @@ struct PackageArgs {
     bool help{false};
 };
 
+/// @brief Determine the packaging target matching the host build platform.
 PackageTarget detectHostPlatform() {
 #if defined(__APPLE__)
     return PackageTarget::MacOS;
@@ -199,6 +142,7 @@ PackageTarget detectHostPlatform() {
 #endif
 }
 
+/// @brief Return the lowercase platform name for a target (e.g. "macos").
 std::string platformName(PackageTarget t) {
     switch (t) {
         case PackageTarget::MacOS:
@@ -214,6 +158,7 @@ std::string platformName(PackageTarget t) {
     }
 }
 
+/// @brief Return the output file extension for a target (e.g. ".deb").
 std::string platformExtension(PackageTarget t) {
     switch (t) {
         case PackageTarget::MacOS:
@@ -229,6 +174,10 @@ std::string platformExtension(PackageTarget t) {
     }
 }
 
+/// @brief Sanitize a string for use as a filename component.
+/// @details Keeps alphanumerics and `._-+~`, replaces other characters with `_`,
+///          strips leading `.`/`-`, and returns @p fallback if the result is empty
+///          or "."/"..".
 std::string sanitizeOutputFileComponent(const std::string &text, const std::string &fallback) {
     std::string out;
     out.reserve(text.size());
@@ -246,6 +195,8 @@ std::string sanitizeOutputFileComponent(const std::string &text, const std::stri
     return out;
 }
 
+/// @brief Build the default output filename `<name>-<version>-<platform>-<arch><ext>`.
+/// @details Each component is sanitized; used when the user does not pass `-o`.
 std::string defaultPackageOutputPath(const ProjectConfig &proj,
                                      const std::string &version,
                                      PackageTarget target,
@@ -255,6 +206,8 @@ std::string defaultPackageOutputPath(const ProjectConfig &proj,
            sanitizeOutputFileComponent(archStr, "native") + platformExtension(target);
 }
 
+/// @brief Sanitize a version string into a portable filename component (keeps
+///        alphanumerics and `.+~-`, replaces anything else with `_`).
 std::string portableArchiveVersionComponent(const std::string &version) {
     std::string out;
     out.reserve(version.size());
@@ -268,21 +221,48 @@ std::string portableArchiveVersionComponent(const std::string &version) {
     return out;
 }
 
+/// @brief Read a little-endian uint16 at @p off (caller must bounds-check).
 uint16_t readLE16(const std::vector<uint8_t> &data, size_t off) {
     return static_cast<uint16_t>(data[off] | (data[off + 1] << 8));
 }
 
+/// @brief Read a little-endian uint32 at @p off (caller must bounds-check).
 uint32_t readLE32(const std::vector<uint8_t> &data, size_t off) {
     return static_cast<uint32_t>(data[off]) | (static_cast<uint32_t>(data[off + 1]) << 8) |
            (static_cast<uint32_t>(data[off + 2]) << 16) |
            (static_cast<uint32_t>(data[off + 3]) << 24);
 }
 
+/// @brief Read a big-endian uint32 at @p off (caller must bounds-check).
 uint32_t readBE32(const std::vector<uint8_t> &data, size_t off) {
     return (static_cast<uint32_t>(data[off]) << 24) | (static_cast<uint32_t>(data[off + 1]) << 16) |
            (static_cast<uint32_t>(data[off + 2]) << 8) | static_cast<uint32_t>(data[off + 3]);
 }
 
+/// @brief Read up to 64 KiB of an executable's leading bytes for format detection.
+/// @throws std::runtime_error on open/size/seek/read failure.
+std::vector<uint8_t> readExecutableHeader(const std::string &path) {
+    constexpr std::streamoff kMaxHeaderBytes = 64 * 1024;
+    std::ifstream f(path, std::ios::binary | std::ios::ate);
+    if (!f)
+        throw std::runtime_error("cannot read executable: " + path);
+    const std::streamoff fileSize = f.tellg();
+    if (fileSize < 0)
+        throw std::runtime_error("cannot determine executable size: " + path);
+    const std::streamoff readSize = std::min(fileSize, kMaxHeaderBytes);
+    f.seekg(0);
+    if (!f)
+        throw std::runtime_error("cannot seek executable: " + path);
+    std::vector<uint8_t> data(static_cast<size_t>(readSize));
+    if (!data.empty()) {
+        f.read(reinterpret_cast<char *>(data.data()), static_cast<std::streamsize>(data.size()));
+        if (!f || f.gcount() != static_cast<std::streamsize>(data.size()))
+            throw std::runtime_error("incomplete read of executable header: " + path);
+    }
+    return data;
+}
+
+/// @brief Return a human-readable name for an executable format (e.g. "Mach-O").
 std::string formatName(ExecutableFormat format) {
     switch (format) {
         case ExecutableFormat::MachO:
@@ -295,12 +275,15 @@ std::string formatName(ExecutableFormat format) {
     return "unknown";
 }
 
+/// @brief Format a uint16 as a hexadecimal string (used in error messages).
 std::string hexU16(uint16_t value) {
     std::ostringstream os;
     os << std::hex << value;
     return os.str();
 }
 
+/// @brief Return the native executable format expected for a package target.
+/// @throws std::runtime_error for the tarball target (no executable format).
 ExecutableFormat expectedExecutableFormat(PackageTarget target) {
     switch (target) {
         case PackageTarget::MacOS:
@@ -310,14 +293,19 @@ ExecutableFormat expectedExecutableFormat(PackageTarget target) {
         case PackageTarget::Windows:
             return ExecutableFormat::PE;
         case PackageTarget::Tarball:
+            throw std::runtime_error("tarball packages do not require a platform executable format");
         case PackageTarget::Auto:
         default:
             return ExecutableFormat::ELF;
     }
 }
 
+/// @brief Detect the format and architecture of a native executable.
+/// @details Inspects the leading header bytes for Mach-O, ELF, or PE magic and
+///          decodes the machine field into an "x64"/"arm64" arch string.
+/// @throws std::runtime_error when the file is too small or unrecognized.
 ExecutableInfo inspectExecutable(const std::string &path) {
-    const auto data = viper::pkg::readFile(path);
+    const auto data = readExecutableHeader(path);
     if (data.size() < 20)
         throw std::runtime_error("executable is too small to identify: " + path);
 
@@ -389,6 +377,10 @@ ExecutableInfo inspectExecutable(const std::string &path) {
     throw std::runtime_error("executable format is not Mach-O, ELF, or PE: " + path);
 }
 
+/// @brief Verify a prebuilt executable matches the requested target and arch.
+/// @details Checks the container format against the target (skipped for tarball)
+///          and the architecture against @p archStr (universal binaries match any).
+/// @throws std::runtime_error describing the mismatch.
 void validateExecutableForPackageTarget(const std::string &path,
                                         PackageTarget target,
                                         const std::string &archStr) {
@@ -408,11 +400,13 @@ void validateExecutableForPackageTarget(const std::string &path,
     }
 }
 
+/// @brief Read an environment variable, returning "" when it is unset.
 std::string getenvOrEmpty(const char *name) {
     const char *value = std::getenv(name);
     return value == nullptr ? std::string{} : std::string(value);
 }
 
+/// @brief Resolve @p pathText relative to @p projectRoot (absolute paths kept as-is).
 fs::path resolveOptionalProjectPath(const std::string &projectRoot, const std::string &pathText) {
     fs::path p(pathText);
     if (p.is_absolute())
@@ -420,10 +414,16 @@ fs::path resolveOptionalProjectPath(const std::string &projectRoot, const std::s
     return (fs::path(projectRoot) / p).lexically_normal();
 }
 
+/// @brief Return true if the package config requests Windows Authenticode signing.
 bool windowsSigningRequested(const viper::pkg::PackageConfig &pkg) {
     return pkg.windowsSign || !pkg.windowsSignPfx.empty() || !pkg.windowsSignThumbprint.empty();
 }
 
+/// @brief Sign a Windows installer artifact when signing is requested.
+/// @details Resolves the PFX path / certificate thumbprint (falling back to the
+///          VIPER_WINDOWS_SIGN_* environment variables), then invokes signtool;
+///          a no-op success when no signing was requested.
+/// @return true on success or when signing was not requested; false on failure.
 bool signWindowsInstallerArtifact(const ProjectConfig &proj,
                                   const fs::path &artifactPath,
                                   bool verbose,
@@ -519,6 +519,11 @@ bool signWindowsInstallerArtifact(const ProjectConfig &proj,
     return true;
 }
 
+/// @brief Parse the `viper package` command-line arguments into @p args.
+/// @details Handles the target/output/arch/executable options plus the macOS and
+///          Windows signing option families; prints usage and returns false on a
+///          malformed or missing-value argument.
+/// @return true on a successful parse.
 bool parsePackageArgs(int argc, char **argv, PackageArgs &args) {
     for (int i = 0; i < argc; i++) {
         std::string arg = argv[i];
@@ -670,6 +675,10 @@ bool parsePackageArgs(int argc, char **argv, PackageArgs &args) {
     return true;
 }
 
+/// @brief Verify a project-relative package source path exists on disk.
+/// @details Resolves @p path against the project root and checks it is a regular
+///          file (or directory when @p allowDirectory); prints an error otherwise.
+/// @return true when the path exists and is of an acceptable type.
 bool validatePackageSourcePathExists(const ProjectConfig &proj,
                                      const std::string &path,
                                      const char *fieldName,
@@ -689,6 +698,11 @@ bool validatePackageSourcePathExists(const ProjectConfig &proj,
     return true;
 }
 
+/// @brief Validate the package config (icon, assets, signing) for a given target.
+/// @details Checks that referenced source paths exist and that target-specific
+///          signing/installer settings are well-formed before building, printing
+///          errors to @p err.
+/// @return true when the configuration is valid for @p target / @p archStr.
 bool validatePackageConfigForTarget(const ProjectConfig &proj,
                                     PackageTarget target,
                                     const std::string &archStr,
@@ -945,7 +959,8 @@ int cmdPackage(int argc, char **argv) {
             } catch (const std::exception &ex) {
                 std::cerr << " [INVALID: " << ex.what() << "]";
             }
-            if (!iconPath.empty() && !fs::exists(iconPath))
+            std::error_code iconEc;
+            if (!iconPath.empty() && !fs::exists(iconPath, iconEc))
                 std::cerr << " [NOT FOUND]";
             std::cerr << "\n";
         }
@@ -997,16 +1012,21 @@ int cmdPackage(int argc, char **argv) {
             } catch (const std::exception &ex) {
                 std::cerr << " [INVALID: " << ex.what() << "]";
             }
-            if (!assetPath.empty() && !fs::exists(assetPath))
+            std::error_code assetEc;
+            if (!assetPath.empty() && !fs::exists(assetPath, assetEc))
                 std::cerr << " [NOT FOUND]";
-            else if (!assetPath.empty() && fs::is_directory(assetPath)) {
+            else if (!assetPath.empty() && fs::is_directory(assetPath, assetEc)) {
                 size_t count = 0;
-                viper::pkg::safeDirectoryIterateResolved(
-                    assetPath, proj.rootDir, [&](const viper::pkg::SafeDirectoryEntry &e) {
-                        if (e.regularFile)
-                            ++count;
-                    });
-                std::cerr << " (" << count << " files)";
+                try {
+                    viper::pkg::safeDirectoryIterateResolved(
+                        assetPath, proj.rootDir, [&](const viper::pkg::SafeDirectoryEntry &e) {
+                            if (e.regularFile)
+                                ++count;
+                        });
+                    std::cerr << " (" << count << " files)";
+                } catch (const std::exception &ex) {
+                    std::cerr << " [INVALID: " << ex.what() << "]";
+                }
             }
             std::cerr << "\n";
         }
@@ -1041,16 +1061,25 @@ int cmdPackage(int argc, char **argv) {
 
     if (!args.executablePath.empty()) {
         fs::path exePath(args.executablePath);
-        if (!exePath.is_absolute())
-            exePath = fs::current_path() / exePath;
+        if (!exePath.is_absolute()) {
+            std::error_code cwdEc;
+            auto cwd = fs::current_path(cwdEc);
+            if (cwdEc) {
+                std::cerr << "error: cannot resolve current directory: " << cwdEc.message()
+                          << "\n";
+                return 1;
+            }
+            exePath = cwd / exePath;
+        }
         std::error_code exeEc;
         const fs::path canonicalExe = fs::weakly_canonical(exePath, exeEc);
         packageBinaryPath = (exeEc ? exePath.lexically_normal() : canonicalExe).string();
-        if (!fs::exists(packageBinaryPath)) {
+        exeEc.clear();
+        if (!fs::exists(packageBinaryPath, exeEc)) {
             std::cerr << "error: prebuilt executable not found at " << packageBinaryPath << "\n";
             return 1;
         }
-        if (!fs::is_regular_file(packageBinaryPath)) {
+        if (!fs::is_regular_file(packageBinaryPath, exeEc)) {
             std::cerr << "error: prebuilt executable is not a regular file at " << packageBinaryPath
                       << "\n";
             return 1;
@@ -1082,12 +1111,12 @@ int cmdPackage(int argc, char **argv) {
 
         // For the initial implementation, we compile using the existing build
         // pathway by writing a temporary binary.
-        std::string tempBinaryPath = viper::tools::generateTempIlPath();
-        // Change extension to the native binary
-        tempBinaryPath = tempBinaryPath.substr(0, tempBinaryPath.rfind('.'));
+        std::string tempBinaryExt;
 #ifdef _WIN32
-        tempBinaryPath += ".exe";
+        tempBinaryExt = ".exe";
 #endif
+        std::string tempBinaryPath =
+            viper::tools::generateTempFilePath("viper_package", tempBinaryExt.c_str());
         packageBinaryPath = tempBinaryPath;
         cleanupPackagedBinary = true;
 
@@ -1208,7 +1237,7 @@ int cmdPackage(int argc, char **argv) {
 
     // Step 4: Verify the generated package
     std::error_code ec;
-    if (!fs::exists(args.outputPath)) {
+    if (!fs::exists(args.outputPath, ec)) {
         std::cerr << "error: package builder did not create output file: " << args.outputPath
                   << "\n";
         if (cleanupPackagedBinary)
@@ -1277,9 +1306,12 @@ int cmdPackage(int argc, char **argv) {
         fs::remove(packageBinaryPath, ec);
 
     std::cerr << "Package created: " << args.outputPath;
-    if (args.verbose && fs::exists(args.outputPath)) {
-        auto finalPackageSize = fs::file_size(args.outputPath);
-        std::cerr << " (" << finalPackageSize << " bytes)";
+    ec.clear();
+    if (args.verbose && fs::exists(args.outputPath, ec)) {
+        ec.clear();
+        auto finalPackageSize = fs::file_size(args.outputPath, ec);
+        if (!ec)
+            std::cerr << " (" << finalPackageSize << " bytes)";
     }
     std::cerr << "\n";
     return 0;

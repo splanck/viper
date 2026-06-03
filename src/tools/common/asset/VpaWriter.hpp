@@ -82,7 +82,7 @@ class VpaWriter {
     static bool isPreCompressed(const std::string &name);
 
     struct Entry {
-        std::string name;
+        std::string name;                ///< Relative entry name (forward slashes).
         std::vector<uint8_t> storedData; ///< Possibly compressed.
         uint64_t originalSize;           ///< Uncompressed size.
         bool compressed;                 ///< True if storedData is DEFLATE'd.

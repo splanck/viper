@@ -201,6 +201,17 @@ class BytecodeVM {
         instrCount_ = 0;
     }
 
+    /// @brief Set the maximum number of instructions this VM may dispatch.
+    /// @details A value of 0 disables the limit.
+    void setMaxInstructions(uint64_t maxInstructions) {
+        maxInstrCount_ = maxInstructions;
+    }
+
+    /// @brief Get the configured instruction dispatch limit.
+    uint64_t maxInstructions() const {
+        return maxInstrCount_;
+    }
+
     /// @brief Enable or disable the RuntimeBridge for native function calls.
     /// @details When enabled, CALL_NATIVE instructions route through the Viper
     ///          RuntimeBridge. When disabled, only directly registered handlers
@@ -244,6 +255,7 @@ class BytecodeVM {
         bool runtimeBridgeEnabled = false;
         bool useThreadedDispatch = true;
         bool trustedDispatch = false;
+        uint64_t maxInstructions = 0;
         std::unordered_map<std::string, NativeHandler> nativeHandlers;
     };
 
@@ -388,7 +400,8 @@ class BytecodeVM {
     BCFrame *fp_;
 
     // Profiling
-    uint64_t instrCount_; ///< Cumulative instruction count for profiling.
+    uint64_t instrCount_;    ///< Cumulative instruction count for profiling.
+    uint64_t maxInstrCount_; ///< Maximum dispatched instructions before trapping (0 = unlimited).
 
     // Runtime integration
     bool runtimeBridgeEnabled_; ///< Whether CALL_NATIVE routes through RuntimeBridge.

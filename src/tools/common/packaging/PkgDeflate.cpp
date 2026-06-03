@@ -60,6 +60,7 @@ static constexpr int kFixedDistCodes = 32;
 // Bit Stream Reader (for decompression)
 //=============================================================================
 
+/// @brief LSB-first bit stream reader over a borrowed byte buffer (decompression).
 struct BitReader {
     const uint8_t *data;
     size_t len;
@@ -129,6 +130,7 @@ struct BitReader {
 // Bit Stream Writer (for compression)
 //=============================================================================
 
+/// @brief LSB-first bit stream writer backed by a growable malloc buffer (compression).
 struct BitWriter {
     uint8_t *data = nullptr;
     size_t capacity = 0;
@@ -220,6 +222,7 @@ struct BitWriter {
 // Huffman Tree
 //=============================================================================
 
+/// @brief Canonical Huffman decode table built from per-symbol code lengths.
 struct HuffmanTree {
     int maxCode;
     uint16_t *symbols;
@@ -387,6 +390,7 @@ static void initFixedTrees() {
 
 static constexpr size_t kInflateMaxOutput = 256u * 1024u * 1024u;
 
+/// @brief Growable decompression output buffer with a hard size cap (anti-zip-bomb).
 struct OutputBuffer {
     uint8_t *data;
     size_t len;
@@ -670,7 +674,7 @@ static std::vector<uint8_t> inflateData(const uint8_t *data, size_t len, size_t 
 // DEFLATE Compression
 //=============================================================================
 
-// LZ77 hash table
+/// @brief LZ77 match accelerator: a 3-byte rolling hash plus sliding-window chains.
 struct LZ77State {
     int *head = nullptr;
     int *prev = nullptr;

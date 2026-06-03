@@ -100,6 +100,10 @@ constexpr int32_t kStartupInfoOff = -0x90200;
 constexpr int32_t kProcessInfoOff = -0x90280;
 constexpr uint32_t kFrameSize = 0x90400;
 
+/// @brief Flat IAT slot indices for the Win32 APIs the installer stub imports.
+/// @details Each value is the function's position across all imported DLLs and is
+///          passed to InstallerStubGen::callIATSlot to emit a `call [rip+disp]`.
+///          The order must match the import list built in buildInstallerStub.
 enum InstallerIAT : uint32_t {
     kI_ExitProcess = 0,
     kI_GetModuleFileNameW = 1,
@@ -141,6 +145,9 @@ enum InstallerIAT : uint32_t {
     kI_GetExitCodeProcess = 37,
 };
 
+/// @brief Flat IAT slot indices for the Win32 APIs the uninstaller stub imports.
+/// @details Mirrors InstallerIAT for the (smaller) uninstaller import list; the
+///          order must match the import list built in buildUninstallerStub.
 enum UninstallerIAT : uint32_t {
     kU_ExitProcess = 0,
     kU_GetModuleFileNameW = 1,
@@ -373,14 +380,17 @@ constexpr KnownFolderGuid kFolderIdPrograms = {
 constexpr KnownFolderGuid kFolderIdCommonPrograms = {
     0x4e, 0xd4, 0x39, 0x01, 0xfe, 0x6a, 0xf2, 0x49, 0x86, 0x90, 0x3d, 0xaf, 0xca, 0xe6, 0xff, 0xb8};
 
+/// @brief KNOWNFOLDERID for the install root: LocalAppData (per-user) or ProgramFiles.
 const KnownFolderGuid &installRootFolderIdFor(const WindowsPackageLayout &layout) {
     return layout.perUserInstall ? kFolderIdLocalAppData : kFolderIdProgramFiles;
 }
 
+/// @brief KNOWNFOLDERID for the desktop: the user's Desktop (per-user) or PublicDesktop.
 const KnownFolderGuid &desktopFolderIdFor(const WindowsPackageLayout &layout) {
     return layout.perUserInstall ? kFolderIdDesktop : kFolderIdPublicDesktop;
 }
 
+/// @brief KNOWNFOLDERID for Start Menu Programs: per-user Programs or CommonPrograms.
 const KnownFolderGuid &programsFolderIdFor(const WindowsPackageLayout &layout) {
     return layout.perUserInstall ? kFolderIdPrograms : kFolderIdCommonPrograms;
 }
@@ -656,9 +666,10 @@ void emitMessageBoxUnlessQuiet(
     gen.bindLabel(lblSkip);
 }
 
+/// @brief Describes an embedded command-line flag string for token detection.
 struct FlagModeSpec {
-    uint32_t stringOff;
-    uint32_t utf16ByteLen;
+    uint32_t stringOff;   ///< Offset of the UTF-16 flag text in the data section.
+    uint32_t utf16ByteLen; ///< Length of that flag text in bytes (UTF-16).
 };
 
 /// @brief Detect automation flags using case-insensitive token-boundary checks.

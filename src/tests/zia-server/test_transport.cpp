@@ -223,6 +223,32 @@ TEST(LspTransport, IgnoresOtherHeaders) {
     std::fclose(out);
 }
 
+TEST(LspTransport, RejectsInvalidContentLength) {
+    FILE *in = memRead("Content-Length: nope\r\n\r\n{}");
+    ASSERT_TRUE(in != nullptr);
+    FILE *out = std::tmpfile();
+
+    LspTransport transport(in, out);
+    RawMessage msg;
+    EXPECT_FALSE(transport.readMessage(msg));
+
+    std::fclose(in);
+    std::fclose(out);
+}
+
+TEST(LspTransport, RejectsOversizedContentLength) {
+    FILE *in = memRead("Content-Length: 999999999\r\n\r\n{}");
+    ASSERT_TRUE(in != nullptr);
+    FILE *out = std::tmpfile();
+
+    LspTransport transport(in, out);
+    RawMessage msg;
+    EXPECT_FALSE(transport.readMessage(msg));
+
+    std::fclose(in);
+    std::fclose(out);
+}
+
 // ===== JSON-RPC =====
 
 TEST(JsonRpc, ParseRequest) {

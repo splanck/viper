@@ -25,6 +25,7 @@
 #include "PkgDeflate.hpp"
 
 #include <cstring>
+#include <set>
 #include <string>
 
 extern "C" {
@@ -44,6 +45,36 @@ uint16_t rdLE16(const uint8_t *p) {
 uint32_t rdLE32(const uint8_t *p) {
     return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
+}
+
+/// @brief Reject ZIP entry names that could escape the extraction directory.
+/// @details Flags empty names, absolute paths, backslashes, drive colons, and any
+///          empty/"."/".." path segment (after trimming a trailing slash on
+///          directory entries). Used while parsing the central directory.
+/// @param name Entry name from the central directory.
+/// @return true when the name is unsafe to extract.
+bool isUnsafeZipName(const std::string &name) {
+    if (name.empty() || name.front() == '/' || name.find('\\') != std::string::npos ||
+        name.find(':') != std::string::npos) {
+        return true;
+    }
+    std::string checkName = name;
+    while (!checkName.empty() && checkName.back() == '/')
+        checkName.pop_back();
+    if (checkName.empty())
+        return true;
+    size_t pos = 0;
+    while (pos <= checkName.size()) {
+        const size_t slash = checkName.find('/', pos);
+        const std::string segment =
+            slash == std::string::npos ? checkName.substr(pos) : checkName.substr(pos, slash - pos);
+        if (segment.empty() || segment == "." || segment == "..")
+            return true;
+        if (slash == std::string::npos)
+            break;
+        pos = slash + 1;
+    }
+    return false;
 }
 
 } // namespace
@@ -100,6 +131,7 @@ void ZipReader::parseCentralDirectory() {
 
     // Parse central directory entries
     size_t pos = cdOffset;
+    std::set<std::string> seenNames;
     for (uint16_t i = 0; i < totalEntries; ++i) {
         if (pos + 46 > len_)
             throw ZipReadError("ZIP: central directory entry truncated");
@@ -139,8 +171,10 @@ void ZipReader::parseCentralDirectory() {
             throw ZipReadError("ZIP: ZIP64 entry fields are not supported");
 
         entry.name.assign(reinterpret_cast<const char *>(data_ + pos + 46), nameLen);
-        if (entry.name.empty())
-            throw ZipReadError("ZIP: entry name is empty");
+        if (isUnsafeZipName(entry.name))
+            throw ZipReadError("ZIP: unsafe entry path: " + entry.name);
+        if (!seenNames.insert(entry.name).second)
+            throw ZipReadError("ZIP: duplicate entry name: " + entry.name);
         entries_.push_back(std::move(entry));
 
         pos = centralEnd;

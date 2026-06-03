@@ -892,6 +892,44 @@ TEST(Zip, WriterRejectsDuplicateEntryNamesAfterNormalization) {
     EXPECT_THROWS(zip.addFileString("assets\\config.txt", "y"), std::runtime_error);
 }
 
+TEST(Zip, ReaderRejectsUnsafeCentralDirectoryName) {
+    ZipWriter zip;
+    zip.addFileString("safe.txt", "x");
+    auto data = zip.finishToVector();
+
+    for (size_t i = 0; i + 46 <= data.size(); ++i) {
+        if (readLE32(data.data() + i) == 0x02014B50) {
+            const char unsafe[] = "../a.txt";
+            std::memcpy(data.data() + i + 46, unsafe, sizeof(unsafe) - 1);
+            break;
+        }
+    }
+
+    EXPECT_THROWS(ZipReader(data.data(), data.size()), ZipReadError);
+}
+
+TEST(Zip, ReaderRejectsDuplicateCentralDirectoryNames) {
+    ZipWriter zip;
+    zip.addFileString("aaaa.txt", "a");
+    zip.addFileString("bbbb.txt", "b");
+    auto data = zip.finishToVector();
+
+    bool first = true;
+    for (size_t i = 0; i + 46 <= data.size(); ++i) {
+        if (readLE32(data.data() + i) != 0x02014B50)
+            continue;
+        if (first) {
+            first = false;
+            continue;
+        }
+        const char duplicate[] = "aaaa.txt";
+        std::memcpy(data.data() + i + 46, duplicate, sizeof(duplicate) - 1);
+        break;
+    }
+
+    EXPECT_THROWS(ZipReader(data.data(), data.size()), ZipReadError);
+}
+
 TEST(Zip, SupportsZeroByteNullDataFile) {
     ZipWriter zip;
     zip.addFile("empty.bin", nullptr, 0);

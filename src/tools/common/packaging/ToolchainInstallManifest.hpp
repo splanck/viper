@@ -14,6 +14,9 @@
 //   - Relative paths are normalized and preserved for platform packagers.
 //   - Validation fails fast when required toolchain files are missing.
 //
+// Ownership/Lifetime: Manifest structs are plain value types owning their own
+//                     strings/paths; callers own returned manifests.
+//
 // Links: PackageConfig.hpp, PkgUtils.hpp
 //
 //===----------------------------------------------------------------------===//
@@ -34,20 +37,20 @@ namespace viper::pkg {
 /// Used by mapInstallPath to assign the correct platform-specific destination
 /// directory (bin/, lib/, include/, share/, etc.) for each file type.
 enum class ToolchainFileKind {
-    Binary,
-    RuntimeArchive,
-    SupportLibrary,
-    Library,
-    Header,
-    CMakeConfig,
-    ManPage,
-    Doc,
-    Extra,
+    Binary,         ///< Executable tool (installed to bin/).
+    RuntimeArchive, ///< Packaged runtime archive (e.g. .a/.lib shipped to lib/).
+    SupportLibrary, ///< Viper support shared library (graphics/audio/etc.).
+    Library,        ///< Generic library file.
+    Header,         ///< C/C++ header (installed to include/).
+    CMakeConfig,    ///< CMake package-config file (lib/cmake/...).
+    ManPage,        ///< Man page (share/man/...).
+    Doc,            ///< Documentation file (share/doc/...).
+    Extra,          ///< Anything not otherwise classified.
 };
 
 /// @brief A single file or symlink entry in the toolchain install manifest.
 struct ToolchainFileEntry {
-    ToolchainFileKind kind{ToolchainFileKind::Extra};
+    ToolchainFileKind kind{ToolchainFileKind::Extra}; ///< Classification driving the install path.
     std::filesystem::path stagedAbsolutePath; ///< Full path in the staging directory.
     std::string stagedRelativePath;           ///< Path relative to the staging root.
     uint64_t sizeBytes{0};                    ///< File size in bytes (0 for symlinks).
@@ -59,11 +62,11 @@ struct ToolchainFileEntry {
 
 /// @brief The full Viper toolchain install manifest for one (arch, platform) pair.
 struct ToolchainInstallManifest {
-    std::string version;
-    std::string arch;
-    std::string platform;
-    std::vector<ToolchainFileEntry> files;
-    std::vector<FileAssoc> fileAssociations;
+    std::string version;                       ///< Toolchain version (e.g. "0.2.5").
+    std::string arch;                          ///< Target architecture ("x64"/"arm64").
+    std::string platform;                      ///< Target platform ("windows"/"macos"/"linux").
+    std::vector<ToolchainFileEntry> files;     ///< All staged files and symlinks.
+    std::vector<FileAssoc> fileAssociations;   ///< File-type associations to register.
 
     /// @brief Sum of sizeBytes for all non-symlink entries.
     uint64_t totalSizeBytes() const;

@@ -46,14 +46,16 @@ void buildMacOSPackage(const MacOSBuildParams &params);
 
 /// @brief Parameters for building a macOS toolchain installer package.
 struct MacOSToolchainBuildParams {
-    ToolchainInstallManifest manifest;
-    std::string outputPath;
-    std::string identifier{"org.viper.toolchain"};
-    std::string displayName{"Viper Toolchain"};
+    ToolchainInstallManifest manifest;             ///< Staged files and metadata to package.
+    std::string outputPath;                        ///< Output `.pkg` file path.
+    std::string identifier{"org.viper.toolchain"}; ///< CFBundleIdentifier / pkg id.
+    std::string displayName{"Viper Toolchain"};    ///< Human-readable package name.
     std::string packageVersion; ///< Optional dotted numeric package version override.
 };
 
 /// @brief Build a macOS `.pkg` installer for the staged toolchain.
+/// @param params Manifest, output path, identifier, and display metadata.
+/// @throws std::runtime_error on failure.
 void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params);
 
 } // namespace viper::pkg

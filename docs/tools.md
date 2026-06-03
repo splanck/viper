@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-18
+last-verified: 2026-06-03
 ---
 
 # CLI Tools Reference
@@ -93,6 +93,8 @@ il-dis program.il
 ## Advanced Tool: viper
 
 The unified compiler driver provides advanced functionality.
+
+`viper --help` is intentionally concise and limited to common command shapes. Use `viper <subcommand> --help` or `viper help <subcommand>` for operational flags, and this reference for release-only packaging, signing, and manifest details that are too noisy for the default help screen.
 
 ### Overview
 

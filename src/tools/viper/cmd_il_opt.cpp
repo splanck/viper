@@ -38,11 +38,13 @@ using namespace il;
 
 namespace {
 
+/// @brief Coarse size metrics for an IL module (used to report opt before/after).
 struct ModuleSize {
-    std::size_t blocks = 0;
-    std::size_t instructions = 0;
+    std::size_t blocks = 0;       ///< Total basic blocks across all functions.
+    std::size_t instructions = 0; ///< Total instructions across all blocks.
 };
 
+/// @brief Count the total basic blocks and instructions in @p module.
 ModuleSize computeModuleSize(const core::Module &module) {
     ModuleSize size{};
     for (const auto &fn : module.functions) {
@@ -51,6 +53,23 @@ ModuleSize computeModuleSize(const core::Module &module) {
             size.instructions += block.instructions.size();
     }
     return size;
+}
+
+/// @brief Print usage for the `viper il-opt` subcommand to stderr.
+void ilOptUsage() {
+    std::cerr << "Usage: viper il-opt <in.il> -o <out.il> [options]\n"
+              << "\n"
+              << "Options:\n"
+              << "  --passes p1,p2       Run explicit comma-separated passes\n"
+              << "  --pipeline NAME      Run registered pipeline O0, O1, O2, or rehab-*\n"
+              << "  --no-mem2reg         Remove mem2reg from the selected pipeline\n"
+              << "  --mem2reg-stats      Print mem2reg statistics\n"
+              << "  -print-before        Print IL before each pass\n"
+              << "  -print-after         Print IL after each pass\n"
+              << "  --verify-each        Verify between passes\n"
+              << "  --pass-stats         Print pass statistics\n"
+              << "  --bisect-pipeline    Run and report every pipeline prefix\n"
+              << "  -h, --help           Show this help\n";
 }
 
 } // namespace
@@ -74,8 +93,12 @@ ModuleSize computeModuleSize(const core::Module &module) {
 /// @param argv Argument list starting with the input IL file.
 /// @return Exit status code (zero on success, one on failure).
 int cmdILOpt(int argc, char **argv) {
+    if (argc == 1 && (std::string_view(argv[0]) == "--help" || std::string_view(argv[0]) == "-h")) {
+        ilOptUsage();
+        return 0;
+    }
     if (argc < 3) {
-        usage();
+        ilOptUsage();
         return 1;
     }
     std::string inFile = argv[0];
@@ -101,31 +124,42 @@ int cmdILOpt(int argc, char **argv) {
         }
         return std::string(begin, end);
     };
+    auto parsePassList = [&](std::string passes) -> bool {
+        size_t pos = 0;
+        passesExplicit = true;
+        while (pos != std::string::npos) {
+            size_t comma = passes.find(',', pos);
+            std::string token = trimToken(passes.substr(pos, comma - pos));
+            if (token.empty()) {
+                ilOptUsage();
+                return false;
+            }
+            passList.push_back(std::move(token));
+            if (comma == std::string::npos)
+                break;
+            pos = comma + 1;
+        }
+        return true;
+    };
 
     for (int i = 1; i < argc; ++i) {
         std::string_view arg = argv[i];
         if (arg == "-o" && i + 1 < argc) {
             outFile = argv[++i];
         } else if (arg == "--passes" && i + 1 < argc) {
-            std::string passes = argv[++i];
-            size_t pos = 0;
-            passesExplicit = true;
-            while (pos != std::string::npos) {
-                size_t comma = passes.find(',', pos);
-                std::string token = trimToken(passes.substr(pos, comma - pos));
-                if (token.empty()) {
-                    usage();
-                    return 1;
-                }
-                passList.push_back(std::move(token));
-                if (comma == std::string::npos)
-                    break;
-                pos = comma + 1;
-            }
+            if (!parsePassList(argv[++i]))
+                return 1;
+        } else if (arg.rfind("--passes=", 0) == 0) {
+            if (!parsePassList(std::string(arg.substr(9))))
+                return 1;
         } else if (arg == "--no-mem2reg") {
             noMem2Reg = true;
         } else if (arg == "--pipeline" && i + 1 < argc) {
             pipelineName = argv[++i];
+        } else if (arg == "--pipeline") {
+            std::cerr << "error: --pipeline requires a name\n";
+            ilOptUsage();
+            return 1;
         } else if (arg == "--mem2reg-stats") {
             mem2regStats = true;
         } else if (arg == "--pass-stats") {
@@ -136,15 +170,18 @@ int cmdILOpt(int argc, char **argv) {
             printBefore = true;
         } else if (arg == "-print-after") {
             printAfter = true;
-        } else if (arg == "-verify-each") {
+        } else if (arg == "--verify-each" || arg == "-verify-each") {
             verifyEach = true;
+        } else if (arg == "--help" || arg == "-h") {
+            ilOptUsage();
+            return 0;
         } else {
-            usage();
+            ilOptUsage();
             return 1;
         }
     }
     if (outFile.empty()) {
-        usage();
+        ilOptUsage();
         return 1;
     }
     core::Module m;
@@ -205,10 +242,16 @@ int cmdILOpt(int argc, char **argv) {
             std::remove(selectedPipeline.begin(), selectedPipeline.end(), "mem2reg"),
             selectedPipeline.end());
     }
+
+    for (const auto &passId : selectedPipeline) {
+        if (!pm.passes().lookup(passId)) {
+            std::cerr << "unknown pass '" << passId << "'\n";
+            return 1;
+        }
+    }
+
     // If mem2reg stats are requested, run mem2reg explicitly with stats and
-    // remove it from the pass list to avoid double-running it. This preserves
-    // the pipeline semantics while providing accurate statistics for the first
-    // (and only) mem2reg run.
+    // remove it from the pass list to avoid double-running it.
     if (mem2regStats) {
         selectedPipeline.erase(
             std::remove(selectedPipeline.begin(), selectedPipeline.end(), "mem2reg"),
@@ -217,13 +260,6 @@ int cmdILOpt(int argc, char **argv) {
         viper::passes::mem2reg(m, &stats);
         std::cout << "mem2reg: promoted " << stats.promotedVars << ", removed loads "
                   << stats.removedLoads << ", removed stores " << stats.removedStores << "\n";
-    }
-
-    for (const auto &passId : selectedPipeline) {
-        if (!pm.passes().lookup(passId)) {
-            std::cerr << "unknown pass '" << passId << "'\n";
-            return 1;
-        }
     }
 
     if (bisectPipeline) {

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tools/ilc/break_spec.hpp
+// File: tools/viper/break_spec.hpp
 // Purpose: Helpers for parsing --break flag specifications.
 // Key invariants: None.
 // Ownership/Lifetime: N/A.

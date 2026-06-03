@@ -26,6 +26,15 @@
 
 namespace il::tools::common {
 
+/// @brief Load a source file into memory and register it with @p sm.
+/// @details Opens @p path in binary mode, rejects files larger than 256 MB (or
+///          with an unmeasurable size) before allocating, then reads exactly the
+///          measured number of bytes into a pre-sized buffer. On success the file
+///          is registered with the SourceManager and the assigned id is returned;
+///          a zero id (overflow) becomes a V-SRC-FILE-ID diagnostic. A failed
+///          read, an oversized file, or a @c std::bad_alloc each map to a
+///          descriptive error diagnostic. See the header for the parameter and
+///          return contract.
 il::support::Expected<LoadedSource> loadSourceBuffer(const std::string &path,
                                                      il::support::SourceManager &sm) {
     std::ifstream in(path, std::ios::binary);
@@ -74,6 +83,12 @@ il::support::Expected<LoadedSource> loadSourceBuffer(const std::string &path,
     }
 }
 
+/// @brief Load a source file into memory without SourceManager registration.
+/// @details Identical I/O behaviour to loadSourceBuffer() — binary open, 256 MB
+///          size guard, exact pre-sized read, and @c std::bad_alloc handling —
+///          but returns just the file contents for callers that register (or do
+///          not need) a file id separately. See the header for the parameter and
+///          return contract.
 il::support::Expected<std::string> loadSourceFile(const std::string &path) {
     std::ifstream in(path, std::ios::binary);
     if (!in) {

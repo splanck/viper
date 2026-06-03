@@ -29,6 +29,11 @@ class DiagnosticEngine;
 namespace viper::server {
 
 /// @brief Extract structured diagnostics from a DiagnosticEngine.
+/// @details Converts each engine diagnostic into a server-agnostic DiagnosticInfo
+///          (message, severity, and 0-based line/column range) suitable for LSP or
+///          MCP responses, independent of any particular frontend.
+/// @param diag Diagnostic engine holding the collected frontend diagnostics.
+/// @return One DiagnosticInfo per diagnostic, in engine order.
 std::vector<DiagnosticInfo> extractDiagnostics(const il::support::DiagnosticEngine &diag);
 
 } // namespace viper::server
