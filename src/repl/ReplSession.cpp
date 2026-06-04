@@ -193,30 +193,8 @@ void ReplSession::registerDefaultCommands() {
                           << "\n";
                 return;
             }
-            std::ifstream file(args);
-            if (!file.is_open()) {
-                std::cout << colors::error() << "Could not open: " << args << colors::reset()
-                          << "\n";
-                return;
-            }
-            std::string content((std::istreambuf_iterator<char>(file)),
-                                std::istreambuf_iterator<char>());
-            file.close();
-
-            // Execute the file content as a single input
-            auto result = session.adapter().eval(content);
-            if (result.success) {
-                if (!result.output.empty()) {
-                    std::cout << colors::result() << result.output << colors::reset();
-                    if (result.output.back() != '\n')
-                        std::cout << "\n";
-                }
+            if (session.loadFile(args))
                 std::cout << colors::success() << "Loaded: " << args << colors::reset() << "\n";
-            } else {
-                std::cout << colors::error() << result.errorMessage << colors::reset();
-                if (!result.errorMessage.empty() && result.errorMessage.back() != '\n')
-                    std::cout << "\n";
-            }
         });
 
     metaCmds_.registerCommand("save",
@@ -227,17 +205,12 @@ void ReplSession::registerDefaultCommands() {
                                                 << colors::reset() << "\n";
                                       return;
                                   }
-                                  std::ofstream file(args);
-                                  if (!file.is_open()) {
+                                  auto history = editor_.getHistory();
+                                  if (!editor_.saveHistory(args)) {
                                       std::cout << colors::error() << "Could not write: " << args
                                                 << colors::reset() << "\n";
                                       return;
                                   }
-                                  auto history = editor_.getHistory();
-                                  for (const auto &entry : history) {
-                                      file << entry << "\n";
-                                  }
-                                  file.close();
                                   std::cout << colors::success() << "Saved " << history.size()
                                             << " entries to: " << args << colors::reset() << "\n";
                               });
@@ -267,12 +240,64 @@ std::string ReplSession::makeContinuationPrompt() const {
     return p;
 }
 
+bool ReplSession::loadFile(const std::string &path) {
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        std::cout << colors::error() << "Could not open: " << path << colors::reset() << "\n";
+        return false;
+    }
+
+    std::string accumulated;
+    std::string line;
+    while (std::getline(file, line)) {
+        if (!accumulated.empty())
+            accumulated += "\n";
+        accumulated += line;
+
+        InputKind kind = adapter_->classifyInput(accumulated);
+        if (kind == InputKind::Empty) {
+            accumulated.clear();
+            continue;
+        }
+        if (kind == InputKind::Incomplete)
+            continue;
+        if (kind == InputKind::MetaCommand) {
+            metaCmds_.tryHandle(accumulated, *this);
+            accumulated.clear();
+            continue;
+        }
+
+        EvalResult result = adapter_->eval(accumulated);
+        if (!result.success) {
+            std::cout << colors::error() << result.errorMessage << colors::reset();
+            if (!result.errorMessage.empty() && result.errorMessage.back() != '\n')
+                std::cout << "\n";
+            return false;
+        }
+        if (!result.output.empty()) {
+            std::cout << colors::result() << result.output << colors::reset();
+            if (result.output.back() != '\n')
+                std::cout << "\n";
+        }
+        accumulated.clear();
+    }
+
+    if (!accumulated.empty()) {
+        std::cout << colors::error() << "Incomplete input at end of file: " << path
+                  << colors::reset() << "\n";
+        return false;
+    }
+
+    return true;
+}
+
 void ReplSession::requestExit() {
     running_ = false;
 }
 
 int ReplSession::run() {
     const bool interactive = editor_.isActive();
+    int exitCode = 0;
 
     if (interactive)
         printBanner();
@@ -315,6 +340,13 @@ int ReplSession::run() {
         } else {
             // Non-interactive mode (piped input): read lines from stdin
             if (!std::getline(std::cin, line)) {
+                if (!accumulatedInput_.empty() &&
+                    adapter_->classifyInput(accumulatedInput_) == InputKind::Incomplete) {
+                    std::cout << colors::error()
+                              << "Incomplete input at end of stream; expected more input."
+                              << colors::reset() << "\n";
+                    exitCode = 1;
+                }
                 running_ = false;
                 continue;
             }
@@ -394,8 +426,9 @@ int ReplSession::run() {
     if (!histPath.empty())
         editor_.saveHistory(histPath);
 
-    std::cout << "Goodbye.\n";
-    return 0;
+    if (interactive)
+        std::cout << "Goodbye.\n";
+    return exitCode;
 }
 
 } // namespace viper::repl

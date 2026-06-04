@@ -278,9 +278,24 @@ TypeRef Sema::checkComparisonBinary(BinaryExpr *expr, TypeRef leftType, TypeRef 
                               compareLeft->isAssignableFrom(*compareRight) ||
                               compareRight->isAssignableFrom(*compareLeft);
             if (!compatible) {
-                error(expr->loc,
-                      "Cannot compare " + compareLeft->toDisplayString() + " with " +
-                          compareRight->toDisplayString());
+                const TypeRef leftInner = compareLeft->innerType();
+                const TypeRef rightInner = compareRight->innerType();
+                const bool leftIsNull =
+                    compareLeft->kind == TypeKindSem::Optional && leftInner &&
+                    leftInner->kind == TypeKindSem::Unknown;
+                const bool rightIsNull =
+                    compareRight->kind == TypeKindSem::Optional && rightInner &&
+                    rightInner->kind == TypeKindSem::Unknown;
+                if (leftIsNull != rightIsNull) {
+                    TypeRef nonNullType = leftIsNull ? compareRight : compareLeft;
+                    error(expr->loc,
+                          "Cannot compare non-nullable " + nonNullType->toDisplayString() +
+                              " with null; use an Optional type if this value can be absent");
+                } else {
+                    error(expr->loc,
+                          "Cannot compare " + compareLeft->toDisplayString() + " with " +
+                              compareRight->toDisplayString());
+                }
             }
         } else {
             bool compatible =

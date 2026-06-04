@@ -317,6 +317,37 @@ TEST(Arm64Bugfix, CurrentInstructionDefNotEvictedUnderPressure) {
     ASSERT_EQ(rc, 0);
 }
 
+/// Bug #9: Cross-block f64 reloads must use the temp's IL type even when the
+/// use block is lowered before the defining block in textual IL order.
+///
+/// The game3d showcase's forest predicate had this shape after O1 IL
+/// simplification: a block used an f64 block parameter from a later textual
+/// merge block. The AArch64 lowerer had not seen the defining block yet, so it
+/// defaulted the cross-block reload to GPR and converted the double bit pattern
+/// with SCvtF. The comparison then failed for every tree site.
+TEST(Arm64Bugfix, ForwardDefinedF64BlockParamReloadKeepsFprClass) {
+    const std::string in = outPath("arm64_bugfix_forward_f64_block_param.il");
+    const std::string il = "il 0.2.0\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  %seed = const.f64 1.5\n"
+                           "  br join(%seed)\n"
+                           "use:\n"
+                           "  %ok = fcmp_lt %x, 2.0\n"
+                           "  cbr %ok, pass, fail\n"
+                           "join(%x:f64):\n"
+                           "  br use\n"
+                           "pass:\n"
+                           "  ret 0\n"
+                           "fail:\n"
+                           "  ret 1\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-run-native", "-O1", "--skip-il-optimization"};
+    const int rc = cmd_codegen_arm64(4, const_cast<char **>(argv));
+    ASSERT_EQ(rc, 0);
+}
+
 /// Bug #8: post-RA scheduling must preserve aliasing between copied base+imm
 /// addresses that resolve to the same object field. Without that, a reload of
 /// `top` could stay ahead of the preceding store to `top`, reintroducing the

@@ -63,12 +63,21 @@ class ZiaReplAdapter : public ReplAdapter {
   private:
     /// @brief Build the full synthetic Zia source for compilation.
     /// @param input The current REPL input to wrap in start().
+    /// @param extraTopLevel Optional declaration emitted after persisted globals.
     /// @return The complete Zia program source.
-    std::string buildSource(const std::string &input) const;
+    std::string buildSource(const std::string &input,
+                            const std::string &extraTopLevel = std::string()) const;
 
     /// @brief Try to compile source without execution (for expression type probing).
     /// @return True if compilation succeeded.
     bool tryCompileOnly(const std::string &source) const;
+
+    /// @brief Compile and verify source only to produce a diagnostic string.
+    /// @details Used after a validation probe fails so callers can surface the
+    ///          verifier error as well as frontend diagnostics.
+    /// @param source Complete synthetic Zia source to compile.
+    /// @return Human-readable diagnostics, or an empty string if source is valid.
+    std::string compileOnlyDiagnostic(const std::string &source) const;
 
     /// @brief Check if input looks like a bind statement.
     bool isBind(const std::string &input) const;
@@ -85,7 +94,7 @@ class ZiaReplAdapter : public ReplAdapter {
     /// @brief Check if input looks like it could be an expression (for auto-print).
     bool isLikelyExpression(const std::string &input) const;
 
-    /// @brief Check if input is a bare assignment to a known variable.
+    /// @brief Check if input assigns to a known persistent variable root.
     bool isAssignment(const std::string &input) const;
 
     /// @brief Extract the target variable name from an assignment.
@@ -99,6 +108,29 @@ class ZiaReplAdapter : public ReplAdapter {
 
     /// @brief Extract variable name and type from a var declaration.
     std::pair<std::string, std::string> extractVarInfo(const std::string &input) const;
+
+    /// @brief Extract the initializer expression from a variable declaration.
+    /// @param input Full source text of a Zia `var` declaration.
+    /// @return Initializer expression without trailing semicolon, or empty when absent.
+    std::string extractVarInitializer(const std::string &input) const;
+
+    /// @brief Infer a storable declaration type for a REPL variable.
+    /// @details Prefer an explicit annotation, then common constructor syntax,
+    ///          then the semantic probe used by `.type`. Returns `auto` when no
+    ///          stable source-level type can be inferred.
+    /// @param input Full source text of a Zia `var` declaration.
+    /// @param explicitType Type extracted from the declaration, or `auto`.
+    /// @param initializer Initializer expression extracted from the declaration.
+    /// @return Source-level type name suitable for a top-level declaration.
+    std::string inferPersistentVarType(const std::string &input,
+                                       const std::string &explicitType,
+                                       const std::string &initializer);
+
+    /// @brief Build a top-level declaration for a persisted REPL variable.
+    /// @param name Variable name.
+    /// @param type Source-level variable type.
+    /// @return Declaration text without a trailing newline.
+    std::string makePersistentVarDecl(const std::string &name, const std::string &type) const;
 
     /// @brief Find a persistent variable by name.
     PersistentVar *findPersistentVar(const std::string &name);

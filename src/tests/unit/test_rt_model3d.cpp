@@ -2658,6 +2658,19 @@ static void test_model3d_rejects_truncated_fbx() {
                 "Model3D.Load reports truncated FBX as a hard parse error");
 }
 
+/// @brief Verify missing FBX files are recoverable through the high-level Model3D API.
+/// @details Direct `FBX.Load` remains a strict loader, but `Model3D.Load` is commonly used in
+/// fallback asset flows where a missing optional model should return NULL instead of aborting the
+/// program. This test intentionally leaves trap handling disabled so a regression manifests as a
+/// normal test-process failure.
+static void test_model3d_missing_fbx_returns_null_without_trap() {
+    const char *path = "/tmp/viper_model3d_missing_recoverable_fixture.fbx";
+    std::remove(path);
+
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model == nullptr, "Model3D.Load returns null for missing FBX files");
+}
+
 static void test_model3d_loads_demo_fbx_textures() {
     const char *path = find_existing_path({
 #ifdef VIPER_SOURCE_DIR
@@ -3277,6 +3290,7 @@ int main() {
     test_fbx_duplicate_bone_names_resolve_by_model_id();
     test_fbx_asset_accessors_clamp_corrupt_counts();
     test_model3d_rejects_truncated_fbx();
+    test_model3d_missing_fbx_returns_null_without_trap();
     test_model3d_loads_demo_fbx_textures();
     test_gltf_rejects_unknown_animation_interpolation();
     test_gltf_rejects_oversized_node_animation_key_count_before_scan();

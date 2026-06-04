@@ -84,6 +84,7 @@ typedef struct {
     int32_t traversal_order;
     int8_t cullable;
     uint32_t world_revision;
+    uint32_t geometry_revision;
 } rt_scene3d_spatial_entry;
 
 typedef struct {
@@ -164,6 +165,7 @@ typedef struct rt_scene_node3d {
     float aabb_min[3];
     float aabb_max[3];
     float bsphere_radius;
+    uint32_t mesh_bounds_revision;
 
     struct {
         double distance;
@@ -294,6 +296,10 @@ void scene3d_quat_normalize_local(double *q);
 void recompute_world_matrix(rt_scene_node3d *node);
 void scene_bounds_reset(float out_min[3], float out_max[3]);
 void scene_mesh_bounds(rt_mesh3d *mesh, float out_min[3], float out_max[3], float *out_radius);
+/// @brief Combine the geometry revisions of a node's drawable meshes into one dirty signature.
+uint32_t scene_node_geometry_revision_signature(rt_scene_node3d *node);
+/// @brief Refresh a node's cached local mesh bounds if its primary mesh geometry changed.
+void scene_node_refresh_mesh_bounds(rt_scene_node3d *node);
 void scene_node_assign_owner_recursive(rt_scene_node3d *node, rt_scene3d *owner);
 void scene_node_clear_owner_recursive(rt_scene_node3d *node, rt_scene3d *owner);
 int scene_node_collect_subtree_bounds(rt_scene_node3d *node,

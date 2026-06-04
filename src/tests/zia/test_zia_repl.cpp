@@ -67,6 +67,15 @@ TEST(ReplClassifier, BracketsInStringsIgnored) {
     EXPECT_EQ(ReplInputClassifier::classify("var s = \"(\""), InputKind::Complete);
 }
 
+TEST(ReplClassifier, CommentDoesNotHideFollowingLines) {
+    std::string input = "Say(\"ok\") // comment\nfunc f() {";
+    EXPECT_EQ(ReplInputClassifier::classify(input), InputKind::Incomplete);
+}
+
+TEST(ReplClassifier, UnterminatedStringIsIncomplete) {
+    EXPECT_EQ(ReplInputClassifier::classify("Say(\"hello"), InputKind::Incomplete);
+}
+
 // ---------------------------------------------------------------------------
 // Expression auto-print tests
 // ---------------------------------------------------------------------------
@@ -145,6 +154,18 @@ TEST(ReplVarPersist, DependentVariables) {
     auto result = adapter.eval("y");
     EXPECT_TRUE(result.success);
     EXPECT_NE(result.output.find("15"), std::string::npos);
+}
+
+TEST(ReplVarPersist, DependentVariableNotRecomputedAfterSourceReplay) {
+    ZiaReplAdapter adapter;
+    EXPECT_TRUE(adapter.eval("var x = 1").success);
+    EXPECT_TRUE(adapter.eval("var y = x + 5").success);
+    EXPECT_TRUE(adapter.eval("x = 100").success);
+
+    auto result = adapter.eval("y");
+    EXPECT_TRUE(result.success);
+    EXPECT_NE(result.output.find("6"), std::string::npos);
+    EXPECT_EQ(result.output.find("105"), std::string::npos);
 }
 
 TEST(ReplVarPersist, Assignment) {
@@ -396,6 +417,17 @@ TEST(ReplCompletion, NoMatchReturnsEmpty) {
     EXPECT_TRUE(completions.empty());
 }
 
+TEST(ReplCompletion, CursorPastEndIsClamped) {
+    ZiaReplAdapter adapter;
+    auto completions = adapter.complete("whi", 99);
+    bool foundWhile = false;
+    for (const auto &c : completions) {
+        if (c.find("while") != std::string::npos)
+            foundWhile = true;
+    }
+    EXPECT_TRUE(foundWhile);
+}
+
 // ---------------------------------------------------------------------------
 // Multi-line eval tests (Phase 3)
 // ---------------------------------------------------------------------------
@@ -471,6 +503,26 @@ TEST(ReplAutoPrint, ObjectToStringExplicit) {
     EXPECT_NE(result.output.find("Object"), std::string::npos);
 }
 
+TEST(ReplVarPersist, ObjectFieldMutationPersists) {
+    ZiaReplAdapter adapter;
+    auto cls = adapter.eval("class Point {\n    expose Integer x;\n}");
+    EXPECT_TRUE(cls.success);
+    EXPECT_TRUE(adapter.eval("var p: Point = new Point()").success);
+    EXPECT_TRUE(adapter.eval("p.x = 42").success);
+
+    auto result = adapter.eval("p.x");
+    EXPECT_TRUE(result.success);
+    EXPECT_NE(result.output.find("42"), std::string::npos);
+}
+
+TEST(ReplRuntimeOutput, LargeOutputDoesNotDeadlock) {
+    ZiaReplAdapter adapter;
+    std::string payload(70000, 'x');
+    auto result = adapter.eval("Say(\"" + payload + "\")");
+    EXPECT_TRUE(result.success);
+    EXPECT_EQ(result.output.size(), payload.size() + 1);
+}
+
 // ---------------------------------------------------------------------------
 // History persistence (Phase 5)
 // ---------------------------------------------------------------------------
@@ -502,6 +554,25 @@ TEST(ReplHistory, SaveAndLoadRoundtrip) {
     EXPECT_EQ(history[2], "func greet() -> String { return \"hi\"; }");
 
     // Clean up
+    std::filesystem::remove_all(tmpDir);
+}
+
+TEST(ReplHistory, MultiLineEntryRoundtrip) {
+    auto tmpDir = std::filesystem::temp_directory_path() / "viper_test_repl_multiline";
+    std::filesystem::create_directories(tmpDir);
+    auto histFile = tmpDir / "test_history";
+
+    ReplLineEditor editor;
+    std::string entry = "func f() -> Integer {\n  return 42;\n}";
+    editor.addHistory(entry);
+    EXPECT_TRUE(editor.saveHistory(histFile));
+
+    ReplLineEditor editor2;
+    EXPECT_EQ(editor2.loadHistory(histFile), 1u);
+    auto history = editor2.getHistory();
+    EXPECT_EQ(history.size(), 1u);
+    EXPECT_EQ(history[0], entry);
+
     std::filesystem::remove_all(tmpDir);
 }
 

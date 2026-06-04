@@ -1044,6 +1044,55 @@ static int cmp_front_to_back(const void *a, const void *b) {
     return 0;
 }
 
+/// @brief Return whether a draw sort tuple comes after the previously emitted tuple.
+/// @details The no-allocation fallback uses this to iterate a sorted order without
+///          moving or marking the source draw array. Ties fall back to original draw
+///          index, which gives a deterministic stable order even when many objects
+///          share the same depth key.
+static int canvas3d_sort_tuple_after(float key,
+                                     int32_t index,
+                                     float previous_key,
+                                     int32_t previous_index,
+                                     int descending) {
+    if (previous_index < 0)
+        return 1;
+    if (key == previous_key)
+        return index > previous_index;
+    return descending ? key < previous_key : key > previous_key;
+}
+
+/// @brief Pick the next visible main-pass draw in sorted order without allocating scratch storage.
+/// @details Used only when the normal staged sort buffer cannot be allocated. It performs
+///          an O(n²) selection pass over the existing deferred draw list, preserving the
+///          same front/back depth ordering contract as the qsort path while avoiding
+///          mutation of the mixed-pass queue.
+/// @return The source index of the next draw, or -1 when no later draw exists.
+static int32_t canvas3d_pick_next_sorted_main_draw(const deferred_draw_t *cmds,
+                                                   int32_t draw_count,
+                                                   int requires_blend,
+                                                   int descending,
+                                                   float previous_key,
+                                                   int32_t previous_index) {
+    int32_t best = -1;
+    float best_key = descending ? -FLT_MAX : FLT_MAX;
+    if (!cmds || draw_count <= 0)
+        return -1;
+    for (int32_t i = 0; i < draw_count; ++i) {
+        const deferred_draw_t *draw = &cmds[i];
+        if (draw->pass_kind != DEFERRED_PASS_MAIN || !draw->visible ||
+            draw->requires_blend != requires_blend)
+            continue;
+        if (!canvas3d_sort_tuple_after(draw->sort_key, i, previous_key, previous_index, descending))
+            continue;
+        if (best < 0 || (descending ? draw->sort_key > best_key : draw->sort_key < best_key) ||
+            (draw->sort_key == best_key && i < best)) {
+            best = i;
+            best_key = draw->sort_key;
+        }
+    }
+    return best;
+}
+
 /*==========================================================================
  * Helpers
  *=========================================================================*/
@@ -1249,9 +1298,7 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
     cmd->env_map = rt_cubemap3d_is_complete(mat->env_map) ? mat->env_map : NULL;
     cmd->reflectivity = cmd->env_map ? canvas3d_clamp01_f64(mat->reflectivity) : 0.0f;
     cmd->shading_model =
-        (mat->shading_model >= 0 && mat->shading_model <= 5 && mat->shading_model != 3)
-            ? mat->shading_model
-            : 0;
+        (mat->shading_model >= 0 && mat->shading_model <= 5) ? mat->shading_model : 0;
     for (int pi = 0; pi < 8; pi++)
         cmd->custom_params[pi] = canvas3d_clamp_material_f64(mat->custom_params[pi],
                                                             -CANVAS3D_MATERIAL_CUSTOM_PARAM_ABS_MAX,
@@ -3032,8 +3079,8 @@ void rt_canvas3d_clear(void *obj, double r, double g, double b) {
      * stride-aligned rows instead of per-pixel loop (4x faster at 1080p). */
     if (c->backend != &vgfx3d_software_backend && !c->render_target) {
         vgfx_framebuffer_t fb;
-        if (vgfx_get_framebuffer(c->gfx_win, &fb) && fb.pixels && fb.width > 0 && fb.height > 0 &&
-            fb.stride >= fb.width * (int32_t)sizeof(uint32_t)) {
+        if (vgfx_get_framebuffer(c->gfx_win, &fb) && fb.pixels &&
+            canvas3d_rgba8_stride_valid(fb.width, fb.height, fb.stride)) {
             uint8_t r8 = canvas3d_clamp01_to_u8(cr);
             uint8_t g8 = canvas3d_clamp01_to_u8(cg);
             uint8_t b8 = canvas3d_clamp01_to_u8(cb);
@@ -3104,9 +3151,9 @@ static int canvas3d_queue_screen_geometry(rt_canvas3d *c,
     cmd.indices = indices_copy;
     cmd.index_count = (uint32_t)index_count;
     cmd.model_matrix[0] = cmd.model_matrix[5] = cmd.model_matrix[10] = cmd.model_matrix[15] = 1.0f;
-    cmd.diffuse_color[0] = 1.0f;
-    cmd.diffuse_color[1] = 1.0f;
-    cmd.diffuse_color[2] = 1.0f;
+    cmd.diffuse_color[0] = r;
+    cmd.diffuse_color[1] = g;
+    cmd.diffuse_color[2] = b;
     cmd.diffuse_color[3] = a;
     cmd.alpha = a;
     cmd.unlit = 1;
@@ -4465,9 +4512,16 @@ static void canvas3d_render_main_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
             for (int32_t i = 0; i < trans_count; i++)
                 canvas3d_submit_deferred(c, &trans[i]);
         } else {
-            for (int32_t i = 0; i < c->draw_count; i++) {
-                if (cmds[i].pass_kind == DEFERRED_PASS_MAIN && !cmds[i].requires_blend &&
-                    cmds[i].visible) {
+            float previous_key = -FLT_MAX;
+            int32_t previous_index = -1;
+            for (;;) {
+                int32_t i = canvas3d_pick_next_sorted_main_draw(
+                    cmds, c->draw_count, 0, 0, previous_key, previous_index);
+                if (i < 0)
+                    break;
+                previous_key = cmds[i].sort_key;
+                previous_index = i;
+                {
                     if (use_occlusion_grid &&
                         canvas3d_occlusion_test_and_write(c, &occlusion_grid, &cmds[i])) {
                         c->last_occluded_draw_count++;
@@ -4476,10 +4530,16 @@ static void canvas3d_render_main_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
                     canvas3d_submit_deferred(c, &cmds[i]);
                 }
             }
-            for (int32_t i = 0; i < c->draw_count; i++) {
-                if (cmds[i].pass_kind == DEFERRED_PASS_MAIN && cmds[i].requires_blend &&
-                    cmds[i].visible)
-                    canvas3d_submit_deferred(c, &cmds[i]);
+            previous_key = FLT_MAX;
+            previous_index = -1;
+            for (;;) {
+                int32_t i = canvas3d_pick_next_sorted_main_draw(
+                    cmds, c->draw_count, 1, 1, previous_key, previous_index);
+                if (i < 0)
+                    break;
+                previous_key = cmds[i].sort_key;
+                previous_index = i;
+                canvas3d_submit_deferred(c, &cmds[i]);
             }
         }
     }

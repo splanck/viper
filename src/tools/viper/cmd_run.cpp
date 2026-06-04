@@ -726,28 +726,24 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
                 return 1;
             }
 
-            // Write asset blob to .o using Viper's own object file writer
+            // Write the VPA blob to a temp file; codegen injects it into .rodata
+            // (the same path as `viper codegen --asset-blob`). We deliberately do
+            // NOT also emit/link a separate asset .o here: doing both defines the
+            // `viper_asset_blob` symbol twice and fails linking with
+            // "multiply defined symbol 'viper_asset_blob'". assetObjPath stays
+            // empty so compileModuleToNative skips the redundant extra object.
             if (!bundle->embeddedBlob.empty()) {
                 assetBlobPath = viper::tools::generateTempAssetPath();
-                assetObjPath = assetBlobPath + ".o";
-                {
-                    std::ofstream blobOut(assetBlobPath, std::ios::binary | std::ios::trunc);
-                    if (!blobOut) {
-                        std::cerr << "error: cannot open temporary asset blob: " << assetBlobPath
-                                  << "\n";
-                        return 1;
-                    }
-                    blobOut.write(reinterpret_cast<const char *>(bundle->embeddedBlob.data()),
-                                  static_cast<std::streamsize>(bundle->embeddedBlob.size()));
-                    if (!blobOut) {
-                        std::cerr << "error: failed to write temporary asset blob: " << assetBlobPath
-                                  << "\n";
-                        return 1;
-                    }
+                std::ofstream blobOut(assetBlobPath, std::ios::binary | std::ios::trunc);
+                if (!blobOut) {
+                    std::cerr << "error: cannot open temporary asset blob: " << assetBlobPath << "\n";
+                    return 1;
                 }
-                if (!viper::asset::writeAssetBlobObject(
-                        bundle->embeddedBlob, assetObjPath, assetErr)) {
-                    std::cerr << "error: " << assetErr << "\n";
+                blobOut.write(reinterpret_cast<const char *>(bundle->embeddedBlob.data()),
+                              static_cast<std::streamsize>(bundle->embeddedBlob.size()));
+                if (!blobOut) {
+                    std::cerr << "error: failed to write temporary asset blob: " << assetBlobPath
+                              << "\n";
                     return 1;
                 }
             }

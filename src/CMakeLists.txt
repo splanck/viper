@@ -428,8 +428,10 @@ target_include_directories(viper_native_compiler PUBLIC
 # REPL library (custom line editor, session, adapters)
 add_library(viper_repl STATIC
         repl/ReplLineEditor.cpp
+        repl/ReplHistoryCodec.cpp
         repl/ReplInputClassifier.cpp
         repl/ReplMetaCommands.cpp
+        repl/ReplOutputCapture.cpp
         repl/ReplSession.cpp
         repl/ZiaReplAdapter.cpp
         repl/BasicReplAdapter.cpp)

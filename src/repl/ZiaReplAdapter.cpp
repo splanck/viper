@@ -22,6 +22,8 @@
 
 #include "ZiaReplAdapter.hpp"
 
+#include "ReplOutputCapture.hpp"
+
 #include "bytecode/BytecodeCompiler.hpp"
 #include "bytecode/BytecodeVM.hpp"
 #include "frontends/zia/Compiler.hpp"
@@ -32,20 +34,11 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cstdio>
 #include <cstring>
 #include <iostream>
 #include <set>
 #include <sstream>
 #include <string>
-
-#if defined(__unix__) || defined(__APPLE__)
-#include <fcntl.h>
-#include <unistd.h>
-#elif defined(_WIN32)
-#include <fcntl.h>
-#include <io.h>
-#endif
 
 namespace viper::repl {
 
@@ -75,6 +68,81 @@ static bool startsWithKeyword(const std::string &s, size_t offset, const char *k
     return true; // keyword at end of string
 }
 
+/// @brief Return true when @p c can appear in a Zia identifier.
+/// @param c Character to classify.
+/// @return True for ASCII letters, digits, and underscores.
+static bool isIdentifierChar(char c) {
+    return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+}
+
+/// @brief Find a top-level assignment operator in a Zia input line.
+/// @details String literals and nested delimiters are ignored. Comparison operators
+///          (`==`, `!=`, `<=`, `>=`) are deliberately skipped so expressions do not
+///          get misclassified as statements.
+/// @param input Source text to inspect.
+/// @return Offset of the assignment operator, or `std::string::npos` when absent.
+static size_t findTopLevelAssignmentOperator(const std::string &input) {
+    bool inString = false;
+    bool escape = false;
+    int parenDepth = 0;
+    int bracketDepth = 0;
+    int braceDepth = 0;
+
+    for (size_t pos = 0; pos < input.size(); ++pos) {
+        char c = input[pos];
+        if (escape) {
+            escape = false;
+            continue;
+        }
+        if (inString && c == '\\') {
+            escape = true;
+            continue;
+        }
+        if (c == '"') {
+            inString = !inString;
+            continue;
+        }
+        if (inString)
+            continue;
+
+        if (c == '(') {
+            ++parenDepth;
+            continue;
+        }
+        if (c == ')' && parenDepth > 0) {
+            --parenDepth;
+            continue;
+        }
+        if (c == '[') {
+            ++bracketDepth;
+            continue;
+        }
+        if (c == ']' && bracketDepth > 0) {
+            --bracketDepth;
+            continue;
+        }
+        if (c == '{') {
+            ++braceDepth;
+            continue;
+        }
+        if (c == '}' && braceDepth > 0) {
+            --braceDepth;
+            continue;
+        }
+
+        if (c != '=' || parenDepth != 0 || bracketDepth != 0 || braceDepth != 0)
+            continue;
+
+        char prev = pos > 0 ? input[pos - 1] : '\0';
+        char next = pos + 1 < input.size() ? input[pos + 1] : '\0';
+        if (prev == '=' || prev == '!' || prev == '<' || prev == '>' || next == '=')
+            continue;
+        return pos;
+    }
+
+    return std::string::npos;
+}
+
 /// @brief Auto-append semicolon if input doesn't end with ; or }
 static void appendAutoSemicolon(std::string &src, const std::string &input) {
     size_t lastNonSpace = input.find_last_not_of(" \t\r\n");
@@ -82,6 +150,21 @@ static void appendAutoSemicolon(std::string &src, const std::string &input) {
         input[lastNonSpace] != '}') {
         src += ";";
     }
+}
+
+/// @brief Return a source literal that default-initializes @p type.
+/// @param type Source-level Zia type name.
+/// @return Default expression text, or empty when no safe literal is known.
+static std::string defaultExprForZiaType(const std::string &type) {
+    if (type == "Integer")
+        return "0";
+    if (type == "Number")
+        return "0.0";
+    if (type == "Boolean")
+        return "false";
+    if (type == "String")
+        return "\"\"";
+    return "";
 }
 
 // ---------------------------------------------------------------------------
@@ -161,21 +244,14 @@ bool ZiaReplAdapter::isAssignment(const std::string &input) const {
 
     // Read identifier
     size_t idStart = pos;
-    while (pos < input.size() &&
-           (std::isalnum(static_cast<unsigned char>(input[pos])) || input[pos] == '_'))
+    while (pos < input.size() && isIdentifierChar(input[pos]))
         ++pos;
     std::string ident = input.substr(idStart, pos - idStart);
 
-    // Skip whitespace
-    pos = skipWhitespace(input, pos);
-
-    // Check for = (not ==, !=, <=, >=)
-    if (pos >= input.size() || input[pos] != '=')
-        return false;
-    if (pos + 1 < input.size() && input[pos + 1] == '=')
+    if (findTopLevelAssignmentOperator(input) == std::string::npos)
         return false;
 
-    // Must be a known variable
+    // Must assign to a known persistent root variable, including member/index writes.
     return findPersistentVar(ident) != nullptr;
 }
 
@@ -292,11 +368,78 @@ std::pair<std::string, std::string> ZiaReplAdapter::extractVarInfo(const std::st
     return {name, type};
 }
 
+std::string ZiaReplAdapter::extractVarInitializer(const std::string &input) const {
+    bool inString = false;
+    bool escape = false;
+    for (size_t pos = 0; pos < input.size(); ++pos) {
+        char c = input[pos];
+        if (escape) {
+            escape = false;
+            continue;
+        }
+        if (inString && c == '\\') {
+            escape = true;
+            continue;
+        }
+        if (c == '"') {
+            inString = !inString;
+            continue;
+        }
+        if (!inString && c == '=') {
+            std::string init = input.substr(pos + 1);
+            size_t start = skipWhitespace(init);
+            init.erase(0, start);
+            while (!init.empty() &&
+                   (init.back() == ';' || std::isspace(static_cast<unsigned char>(init.back()))))
+                init.pop_back();
+            return init;
+        }
+    }
+    return "";
+}
+
+std::string ZiaReplAdapter::inferPersistentVarType(const std::string &input,
+                                                   const std::string &explicitType,
+                                                   const std::string &initializer) {
+    if (!explicitType.empty() && explicitType != "auto")
+        return explicitType;
+
+    size_t pos = skipWhitespace(initializer);
+    if (startsWithKeyword(initializer, pos, "new")) {
+        pos = skipWhitespace(initializer, pos + 3);
+        size_t typeStart = pos;
+        while (pos < initializer.size() &&
+               (std::isalnum(static_cast<unsigned char>(initializer[pos])) ||
+                initializer[pos] == '_' || initializer[pos] == '.'))
+            ++pos;
+        if (pos > typeStart)
+            return initializer.substr(typeStart, pos - typeStart);
+    }
+
+    if (!initializer.empty()) {
+        std::string probed = getExprType(initializer);
+        if (probed == "Boolean" || probed == "Integer" || probed == "Number" ||
+            probed == "String")
+            return probed;
+    }
+
+    (void)input;
+    return "auto";
+}
+
+std::string ZiaReplAdapter::makePersistentVarDecl(const std::string &name,
+                                                  const std::string &type) const {
+    if (type.empty() || type == "auto")
+        return "";
+    return "var " + name + ": " + type;
+}
+
 // ---------------------------------------------------------------------------
 // Source building
 // ---------------------------------------------------------------------------
 
-std::string ZiaReplAdapter::buildSource(const std::string &input) const {
+std::string ZiaReplAdapter::buildSource(const std::string &input,
+                                        const std::string &extraTopLevel) const {
     std::string src;
     src.reserve(2048);
 
@@ -321,23 +464,24 @@ std::string ZiaReplAdapter::buildSource(const std::string &input) const {
         src += "\n\n";
     }
 
-    // Entry point
-    src += "func start() {\n";
-
-    // Replay persistent variable declarations and assignments
+    // Persistent REPL variables live as module globals so runtime storage
+    // persists across fresh VM/module instances without replaying initializers.
     for (const auto &pv : persistentVars_) {
-        src += "    ";
-        src += pv.declStatement;
-        appendAutoSemicolon(src, pv.declStatement);
-        src += "\n";
-
-        if (!pv.lastAssignment.empty()) {
-            src += "    ";
-            src += pv.lastAssignment;
-            appendAutoSemicolon(src, pv.lastAssignment);
+        if (!pv.declStatement.empty()) {
+            src += pv.declStatement;
+            appendAutoSemicolon(src, pv.declStatement);
             src += "\n";
         }
     }
+
+    if (!extraTopLevel.empty()) {
+        src += extraTopLevel;
+        appendAutoSemicolon(src, extraTopLevel);
+        src += "\n";
+    }
+
+    // Entry point
+    src += "func start() {\n";
 
     // Current user input
     if (!input.empty()) {
@@ -365,6 +509,24 @@ bool ZiaReplAdapter::tryCompileOnly(const std::string &source) const {
         return false;
     auto verification = il::verify::Verifier::verify(compileResult.module);
     return verification.hasValue();
+}
+
+std::string ZiaReplAdapter::compileOnlyDiagnostic(const std::string &source) const {
+    using namespace il::frontends::zia;
+
+    il::support::SourceManager sm;
+    CompilerOptions opts;
+    auto compileResult = compile({source, "<repl>"}, opts, sm);
+    if (!compileResult.succeeded()) {
+        std::ostringstream errStream;
+        compileResult.diagnostics.printAll(errStream, &sm);
+        return errStream.str();
+    }
+
+    auto verification = il::verify::Verifier::verify(compileResult.module);
+    if (!verification)
+        return "Type error: " + verification.error().message;
+    return "";
 }
 
 EvalResult ZiaReplAdapter::compileAndRun(const std::string &source) {
@@ -400,61 +562,8 @@ EvalResult ZiaReplAdapter::compileAndRun(const std::string &source) {
     bcVm.setRuntimeBridgeEnabled(true);
     bcVm.load(&bcModule);
 
-    // Capture stdout during execution
-    std::fflush(stdout);
-
-    bool captured = false;
-    int savedStdout = -1;
-    int pipeFds[2] = {-1, -1};
-
-#if defined(__unix__) || defined(__APPLE__)
-    if (pipe(pipeFds) == 0) {
-        savedStdout = dup(STDOUT_FILENO);
-        dup2(pipeFds[1], STDOUT_FILENO);
-        close(pipeFds[1]);
-        pipeFds[1] = -1;
-        captured = true;
-    }
-#elif defined(_WIN32)
-    if (_pipe(pipeFds, 65536, _O_BINARY) == 0) {
-        savedStdout = _dup(_fileno(stdout));
-        _dup2(pipeFds[1], _fileno(stdout));
-        _close(pipeFds[1]);
-        pipeFds[1] = -1;
-        captured = true;
-    }
-#endif
-
+    ScopedReplOutputCapture outputCapture;
     bcVm.exec("main", {});
-
-    std::string capturedOutput;
-    if (captured) {
-        std::fflush(stdout);
-
-#if defined(__unix__) || defined(__APPLE__)
-        dup2(savedStdout, STDOUT_FILENO);
-        close(savedStdout);
-
-        char readBuf[4096];
-        ssize_t n;
-        int flags = fcntl(pipeFds[0], F_GETFL);
-        fcntl(pipeFds[0], F_SETFL, flags | O_NONBLOCK);
-        while ((n = read(pipeFds[0], readBuf, sizeof(readBuf))) > 0) {
-            capturedOutput.append(readBuf, static_cast<size_t>(n));
-        }
-        close(pipeFds[0]);
-#elif defined(_WIN32)
-        _dup2(savedStdout, _fileno(stdout));
-        _close(savedStdout);
-
-        char readBuf[4096];
-        int n;
-        while ((n = _read(pipeFds[0], readBuf, sizeof(readBuf))) > 0) {
-            capturedOutput.append(readBuf, static_cast<size_t>(n));
-        }
-        _close(pipeFds[0]);
-#endif
-    }
 
     if (bcVm.state() == viper::bytecode::VMState::Trapped) {
         result.success = false;
@@ -464,7 +573,7 @@ EvalResult ZiaReplAdapter::compileAndRun(const std::string &source) {
     }
 
     result.success = true;
-    result.output = capturedOutput;
+    result.output = outputCapture.output();
     return result;
 }
 
@@ -495,14 +604,8 @@ EvalResult ZiaReplAdapter::eval(const std::string &input) {
         std::string testSrc = buildSource("");
         if (!tryCompileOnly(testSrc)) {
             bindStatements_.pop_back();
-            // Re-compile to get the diagnostic message
-            il::support::SourceManager sm;
-            CompilerOptions opts;
-            auto cr = compile({testSrc, "<repl>"}, opts, sm);
-            std::ostringstream errStream;
-            cr.diagnostics.printAll(errStream, &sm);
             result.success = false;
-            result.errorMessage = errStream.str();
+            result.errorMessage = compileOnlyDiagnostic(testSrc);
             return result;
         }
 
@@ -532,13 +635,8 @@ EvalResult ZiaReplAdapter::eval(const std::string &input) {
             else
                 definedFunctions_[funcName] = oldFuncSrc;
 
-            il::support::SourceManager sm;
-            CompilerOptions opts;
-            auto cr = compile({testSrc, "<repl>"}, opts, sm);
-            std::ostringstream errStream;
-            cr.diagnostics.printAll(errStream, &sm);
             result.success = false;
-            result.errorMessage = errStream.str();
+            result.errorMessage = compileOnlyDiagnostic(testSrc);
             return result;
         }
 
@@ -568,17 +666,64 @@ EvalResult ZiaReplAdapter::eval(const std::string &input) {
             else
                 definedTypes_[typeName] = oldTypeSrc;
 
-            il::support::SourceManager sm;
-            CompilerOptions opts;
-            auto cr = compile({testSrc, "<repl>"}, opts, sm);
-            std::ostringstream errStream;
-            cr.diagnostics.printAll(errStream, &sm);
             result.success = false;
-            result.errorMessage = errStream.str();
+            result.errorMessage = compileOnlyDiagnostic(testSrc);
             return result;
         }
 
         result.success = true;
+        return result;
+    }
+
+    // --- Variable declarations ---
+    if (isVarDecl(input)) {
+        auto [varName, declaredType] = extractVarInfo(input);
+        if (varName.empty()) {
+            result.success = false;
+            result.errorMessage = "Could not parse variable name.";
+            return result;
+        }
+
+        std::string initializer = extractVarInitializer(input);
+        std::string varType = inferPersistentVarType(input, declaredType, initializer);
+        std::string globalDecl = makePersistentVarDecl(varName, varType);
+        if (globalDecl.empty()) {
+            // Fall back to the compiler's diagnostic for unsupported inference cases.
+            result = compileAndRun(buildSource(input));
+            return result;
+        }
+
+        std::string initStatement;
+        if (!initializer.empty())
+            initStatement = varName + " = " + initializer;
+        else if (std::string defaultExpr = defaultExprForZiaType(varType); !defaultExpr.empty())
+            initStatement = varName + " = " + defaultExpr;
+
+        auto existing = findPersistentVar(varName);
+        std::string oldDecl;
+        std::string oldType;
+        if (existing) {
+            oldDecl = existing->declStatement;
+            oldType = existing->type;
+            existing->declStatement = globalDecl;
+            existing->lastAssignment.clear();
+            existing->type = varType;
+        }
+
+        std::string source = buildSource(initStatement, existing ? std::string() : globalDecl);
+        result = compileAndRun(source);
+        if (!result.success) {
+            if (existing) {
+                existing->declStatement = oldDecl;
+                existing->type = oldType;
+            }
+            return result;
+        }
+
+        if (!existing)
+            persistentVars_.push_back({varName, globalDecl, "", varType});
+        globalVarDecls_[varName] = varType;
+        result.resultType = ResultType::Statement;
         return result;
     }
 
@@ -634,23 +779,8 @@ EvalResult ZiaReplAdapter::eval(const std::string &input) {
         std::string target = extractAssignTarget(input);
         PersistentVar *pv = findPersistentVar(target);
         if (pv) {
-            // Try compiling with the updated assignment
-            std::string oldAssign = pv->lastAssignment;
-            // Strip trailing semicolons from input for storage
-            std::string cleanInput = input;
-            while (!cleanInput.empty() &&
-                   (cleanInput.back() == ';' ||
-                    std::isspace(static_cast<unsigned char>(cleanInput.back()))))
-                cleanInput.pop_back();
-            pv->lastAssignment = cleanInput;
-
-            std::string source = buildSource("");
-            result = compileAndRun(source);
-
-            if (!result.success) {
-                // Rollback
-                pv->lastAssignment = oldAssign;
-            }
+            (void)pv;
+            result = compileAndRun(buildSource(input));
             return result;
         }
     }
@@ -775,22 +905,16 @@ std::string ZiaReplAdapter::buildSourceForCompletion(const std::string &input,
         src += "\n\n";
     }
 
-    src += "func start() {\n";
-
-    // Replay persistent variable declarations
     for (const auto &pv : persistentVars_) {
-        src += "    ";
-        src += pv.declStatement;
-        appendAutoSemicolon(src, pv.declStatement);
-        src += "\n";
-
-        if (!pv.lastAssignment.empty()) {
-            src += "    ";
-            src += pv.lastAssignment;
-            appendAutoSemicolon(src, pv.lastAssignment);
+        if (!pv.declStatement.empty()) {
+            src += pv.declStatement;
+            appendAutoSemicolon(src, pv.declStatement);
             src += "\n";
         }
     }
+    src += "\n";
+
+    src += "func start() {\n";
 
     // Count newlines to find the line where the user input begins
     int inputLine = 1;
@@ -817,6 +941,7 @@ std::vector<std::string> ZiaReplAdapter::complete(const std::string &input, size
     using namespace il::frontends::zia;
 
     std::vector<std::string> matches;
+    cursor = std::min(cursor, input.size());
 
     if (input.empty())
         return matches;
@@ -877,15 +1002,39 @@ std::string ZiaReplAdapter::getIL(const std::string &input) {
                                    std::isspace(static_cast<unsigned char>(cleanInput.back()))))
         cleanInput.pop_back();
 
-    // Try wrapping as expression first (with Say to make it valid)
-    std::string source = buildSource("Say(Fmt.Int(" + cleanInput + "))");
+    static const char *wrappers[] = {
+        "Say(Fmt.Bool(%s))",
+        "Say(Fmt.Int(%s))",
+        "Say(Fmt.Num(%s))",
+        "Say(%s)",
+        "Say(Obj.ToString(%s))",
+    };
+
     il::support::SourceManager sm;
     CompilerOptions opts;
-    auto compileResult = compile({source, "<repl>"}, opts, sm);
+    il::frontends::zia::CompilerResult compileResult;
+    bool compiled = false;
 
-    if (!compileResult.succeeded()) {
+    for (const char *fmt : wrappers) {
+        std::string wrapped;
+        const char *pct = std::strstr(fmt, "%s");
+        if (!pct)
+            continue;
+        wrapped.append(fmt, pct);
+        wrapped += cleanInput;
+        wrapped += (pct + 2);
+
+        std::string source = buildSource(wrapped);
+        compileResult = compile({source, "<repl>"}, opts, sm);
+        if (compileResult.succeeded()) {
+            compiled = true;
+            break;
+        }
+    }
+
+    if (!compiled) {
         // Try as bare statement
-        source = buildSource(cleanInput);
+        std::string source = buildSource(cleanInput);
         il::support::SourceManager sm2;
         compileResult = compile({source, "<repl>"}, opts, sm2);
         if (!compileResult.succeeded()) {

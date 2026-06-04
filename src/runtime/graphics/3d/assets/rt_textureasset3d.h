@@ -68,6 +68,10 @@ int64_t rt_textureasset3d_get_resident_mip_start(void *obj);
 int64_t rt_textureasset3d_get_resident_mip_count(void *obj);
 /// @brief Declared byte size of resident/requested mip levels.
 int64_t rt_textureasset3d_get_resident_bytes(void *obj);
+/// @brief Internal bridge: byte size of every decoded/native mip payload retained in memory.
+/// @details Resident mip range controls the active upload window; retained bytes
+///          reports process memory that remains allocated for fast residency changes.
+int64_t rt_textureasset3d_get_retained_bytes(void *obj);
 /// @brief Request a resident mip-level range. Negative inputs trap; count clamps to available mips.
 void rt_textureasset3d_set_resident_mip_range(void *obj, int64_t first_mip, int64_t mip_count);
 

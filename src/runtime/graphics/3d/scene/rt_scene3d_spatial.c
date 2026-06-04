@@ -524,6 +524,7 @@ static int scene3d_spatial_refresh_entry_bounds(rt_scene3d_spatial_entry *entry)
     memcpy(entry->world_max, world_max, sizeof(entry->world_max));
     entry->cullable = radius > 0.0 ? 1 : 0;
     entry->world_revision = entry->node->world_revision;
+    entry->geometry_revision = scene_node_geometry_revision_signature(entry->node);
     return 1;
 }
 
@@ -589,14 +590,18 @@ static int scene3d_spatial_refit(rt_scene3d *scene) {
         return scene3d_spatial_rebuild(scene);
     for (int32_t i = 0; i < index->count; ++i) {
         uint32_t before = index->entries[i].world_revision;
+        uint32_t geometry_before = index->entries[i].geometry_revision;
+        uint32_t geometry_now;
         if (!index->entries[i].node)
             return scene3d_spatial_rebuild(scene);
+        geometry_now = scene_node_geometry_revision_signature(index->entries[i].node);
         if (!scene3d_spatial_node_or_ancestor_dirty(index->entries[i].node) &&
-            before == index->entries[i].node->world_revision)
+            before == index->entries[i].node->world_revision && geometry_before == geometry_now)
             continue;
         if (!scene3d_spatial_refresh_entry_bounds(&index->entries[i]))
             return scene3d_spatial_rebuild(scene);
-        if (index->entries[i].world_revision != before)
+        if (index->entries[i].world_revision != before ||
+            index->entries[i].geometry_revision != geometry_before)
             refreshed = 1;
     }
     if (index->root_node >= 0)
@@ -643,6 +648,7 @@ static int scene3d_spatial_add_entry(rt_scene3d_spatial_index *index,
     entry->traversal_order = traversal_order;
     entry->cullable = radius > 0.0 ? 1 : 0;
     entry->world_revision = node->world_revision;
+    entry->geometry_revision = scene_node_geometry_revision_signature(node);
     return 1;
 }
 

@@ -118,6 +118,16 @@ TEST(BasicClassifier, CommentIgnored) {
     // Comment lines should not affect classification
     EXPECT_EQ(ReplInputClassifier::classifyBasic("' This is a comment"), InputKind::Complete);
     EXPECT_EQ(ReplInputClassifier::classifyBasic("PRINT 42 ' with comment"), InputKind::Complete);
+    EXPECT_EQ(ReplInputClassifier::classifyBasic("REM full-line comment"), InputKind::Complete);
+}
+
+TEST(BasicClassifier, ColonSeparatedBlocks) {
+    EXPECT_EQ(ReplInputClassifier::classifyBasic("IF x > 0 THEN: PRINT x: END IF"),
+              InputKind::Complete);
+}
+
+TEST(BasicClassifier, UnterminatedStringIsIncomplete) {
+    EXPECT_EQ(ReplInputClassifier::classifyBasic("PRINT \"hello"), InputKind::Incomplete);
 }
 
 TEST(BasicClassifier, NestedBlocks) {
@@ -176,6 +186,27 @@ TEST(BasicRepl, VariableReassignment) {
     auto r3 = adapter.eval("x");
     EXPECT_TRUE(r3.success);
     EXPECT_NE(r3.output.find("20"), std::string::npos);
+}
+
+TEST(BasicRepl, DependentVariableNotRecomputedAfterReplay) {
+    BasicReplAdapter adapter;
+
+    EXPECT_TRUE(adapter.eval("DIM x AS Integer = 1").success);
+    EXPECT_TRUE(adapter.eval("DIM y AS Integer = x + 5").success);
+    EXPECT_TRUE(adapter.eval("x = 100").success);
+
+    auto result = adapter.eval("y");
+    EXPECT_TRUE(result.success);
+    EXPECT_NE(result.output.find("6"), std::string::npos);
+    EXPECT_EQ(result.output.find("105"), std::string::npos);
+}
+
+TEST(BasicRepl, LargeOutputDoesNotDeadlock) {
+    BasicReplAdapter adapter;
+    std::string payload(70000, 'x');
+    auto result = adapter.eval("PRINT \"" + payload + "\"");
+    EXPECT_TRUE(result.success);
+    EXPECT_GE(result.output.size(), payload.size());
 }
 
 TEST(BasicRepl, SubDefinitionAndCall) {
@@ -311,6 +342,19 @@ TEST(BasicCompletion, CaseInsensitive) {
     bool found = false;
     for (const auto &m : matches) {
         if (m.find("DIM") != std::string::npos) {
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(BasicCompletion, CursorPastEndIsClamped) {
+    BasicReplAdapter adapter;
+    auto matches = adapter.complete("PRI", 99);
+    bool found = false;
+    for (const auto &m : matches) {
+        if (m.find("PRINT") != std::string::npos) {
             found = true;
             break;
         }

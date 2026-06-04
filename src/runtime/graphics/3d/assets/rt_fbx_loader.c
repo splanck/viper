@@ -61,6 +61,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define RT_FBX_MAX_FILE_BYTES (1024ull * 1024ull * 1024ull)
+
 /*==========================================================================
  * FBX asset container
  *=========================================================================*/
@@ -4423,12 +4425,30 @@ void *rt_fbx_load(rt_string path) {
         rt_trap("FBX.Load: cannot open file");
         return NULL;
     }
-    fseek(f, 0, SEEK_END);
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        rt_trap("FBX.Load: seek failed");
+        return NULL;
+    }
     long fsize = ftell(f);
-    fseek(f, 0, SEEK_SET);
+    if (fsize < 0) {
+        fclose(f);
+        rt_trap("FBX.Load: tell failed");
+        return NULL;
+    }
+    if (fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        rt_trap("FBX.Load: seek failed");
+        return NULL;
+    }
     if (fsize < 27) {
         fclose(f);
         rt_trap("FBX.Load: file too small");
+        return NULL;
+    }
+    if ((uint64_t)fsize > RT_FBX_MAX_FILE_BYTES || (uint64_t)fsize >= (uint64_t)SIZE_MAX) {
+        fclose(f);
+        rt_trap("FBX.Load: file too large");
         return NULL;
     }
 
@@ -4634,6 +4654,84 @@ void *rt_fbx_load(rt_string path) {
     fbx_free_node(&root);
 
     return asset;
+}
+
+/// @brief Read a candidate FBX file into a NUL-terminated buffer without I/O traps.
+/// @details This helper is used by `rt_fbx_load_recoverable()` to separate ordinary
+/// filesystem or short-file failures from strict `FBX.Load` diagnostics. It returns
+/// NULL for missing files, invalid paths, seek/tell failures, short files, and read
+/// errors. Allocation failure still traps because continuing would hide a runtime
+/// resource exhaustion condition.
+/// @param path Runtime string path to the candidate FBX file.
+/// @param out_size Receives the number of bytes read when the function succeeds.
+/// @return Heap buffer containing the file bytes plus a trailing NUL, or NULL.
+static uint8_t *fbx_read_recoverable_file(rt_string path, long *out_size) {
+    if (out_size)
+        *out_size = 0;
+    if (!path || !out_size)
+        return NULL;
+    const char *cpath = rt_string_cstr(path);
+    if (!cpath)
+        return NULL;
+
+    FILE *f = fopen(cpath, "rb");
+    if (!f)
+        return NULL;
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return NULL;
+    }
+    long fsize = ftell(f);
+    if (fsize < 27 || (uint64_t)fsize > RT_FBX_MAX_FILE_BYTES ||
+        (uint64_t)fsize >= (uint64_t)SIZE_MAX) {
+        fclose(f);
+        return NULL;
+    }
+    if (fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        return NULL;
+    }
+
+    uint8_t *data = (uint8_t *)malloc((size_t)fsize + 1u);
+    if (!data) {
+        fclose(f);
+        rt_trap("FBX.Load: out of memory");
+        return NULL;
+    }
+    if (fread(data, 1, (size_t)fsize, f) != (size_t)fsize) {
+        fclose(f);
+        free(data);
+        return NULL;
+    }
+    data[(size_t)fsize] = 0;
+    fclose(f);
+    *out_size = fsize;
+    return data;
+}
+
+/// @brief Recoverably load an FBX asset for high-level model loading.
+/// @details Missing/unreadable files, too-short files, and unsupported non-binary
+/// payloads return NULL instead of trapping. Valid binary FBX files are delegated to
+/// the strict `rt_fbx_load()` parser so malformed binary contents continue to produce
+/// the existing hard diagnostics. Minimal ASCII FBX files are parsed directly from the
+/// recoverable buffer to avoid routing unsupported ASCII input through the strict path.
+/// @param path Runtime string path to the candidate FBX file.
+/// @return An FBX handle on success, or NULL for recoverable load failures.
+void *rt_fbx_load_recoverable(rt_string path) {
+    long fsize = 0;
+    uint8_t *data = fbx_read_recoverable_file(path, &fsize);
+    if (!data)
+        return NULL;
+
+    static const char magic[] = "Kaydara FBX Binary  ";
+    if (fsize >= 20 && memcmp(data, magic, 20) == 0) {
+        free(data);
+        return rt_fbx_load(path);
+    }
+
+    void *ascii_asset = fbx_load_ascii_minimal((const char *)data);
+    free(data);
+    return ascii_asset;
 }
 
 /*==========================================================================

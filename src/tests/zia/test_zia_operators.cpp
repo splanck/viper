@@ -208,6 +208,38 @@ func start() {    var a: Boolean = 5 == 5;
     EXPECT_TRUE(result.succeeded());
 }
 
+/// @brief Test the diagnostic for comparing a non-nullable List with null.
+/// @details Lists are reference-backed but non-nullable unless explicitly wrapped in an Optional.
+/// The compiler should preserve that type rule while explaining the nullability issue directly
+/// instead of emitting a generic incompatible-comparison message.
+TEST(ZiaOperators, NonNullableListNullComparisonDiagnostic) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var values: List[Integer] = [];
+    if (values == null) {
+        Viper.Terminal.Say("missing");
+    }
+}
+)";
+    CompilerInput input{.source = source, .path = "list_null_compare.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_FALSE(result.succeeded());
+    bool sawNullabilityDiagnostic = false;
+    for (const auto &d : result.diagnostics.diagnostics()) {
+        if (d.message.find("Cannot compare non-nullable List[Integer] with null") !=
+            std::string::npos) {
+            sawNullabilityDiagnostic = true;
+        }
+    }
+    EXPECT_TRUE(sawNullabilityDiagnostic);
+}
+
 /// @brief Test relational operators.
 TEST(ZiaOperators, Relational) {
     SourceManager sm;

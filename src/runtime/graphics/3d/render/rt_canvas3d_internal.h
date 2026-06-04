@@ -88,7 +88,7 @@ typedef struct {
     uint32_t geometry_revision; /* increments when CPU geometry changes */
     uint32_t tangent_revision;  /* geometry_revision for cached tangent readiness */
     int8_t tangents_ready;      /* true once tangent presence/generation was resolved */
-    int8_t resident;            /* false when stream residency has dropped this mesh payload */
+    int8_t resident;            /* false when stream draw residency should skip this mesh */
     uint8_t geometry_batch_depth;
     int8_t geometry_batch_dirty;
     void *physics_bvh_nodes;           /* rt_physics_mesh_bvh_node[], owned by mesh */

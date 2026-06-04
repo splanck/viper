@@ -4959,6 +4959,19 @@ void *rt_fbx_load(rt_string p) {
     return NULL;
 }
 
+/// @brief Stub for the recoverable FBX loader used by `Model3D.Load`.
+/// @details In a graphics-disabled build, FBX support is not merely unavailable as
+/// an asset-specific failure; the whole graphics subsystem is missing. The stub
+/// therefore preserves the graphics-disabled contract by trapping instead of
+/// returning NULL.
+/// @param p Filesystem path to the .fbx file (ignored).
+/// @return Never returns normally.
+void *rt_fbx_load_recoverable(rt_string p) {
+    (void)p;
+    rt_graphics_unavailable_("FBX.Load: graphics support not compiled in");
+    return NULL;
+}
+
 /// @brief Stub for `FBX.MeshCount` — number of meshes in the loaded FBX
 ///        document.
 ///

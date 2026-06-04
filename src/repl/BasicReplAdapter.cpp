@@ -22,6 +22,7 @@
 
 #include "BasicReplAdapter.hpp"
 
+#include "ReplOutputCapture.hpp"
 #include "ReplInputClassifier.hpp"
 
 #include "bytecode/BytecodeCompiler.hpp"
@@ -34,18 +35,9 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cstdio>
 #include <cstring>
 #include <sstream>
 #include <string>
-
-#if defined(__unix__) || defined(__APPLE__)
-#include <fcntl.h>
-#include <unistd.h>
-#elif defined(_WIN32)
-#include <fcntl.h>
-#include <io.h>
-#endif
 
 namespace viper::repl {
 
@@ -78,6 +70,129 @@ static bool startsWithKW(const std::string &s, size_t offset, const char *kw) {
     return true;
 }
 
+/// @brief Trim trailing whitespace from @p text in place.
+/// @param text String to mutate.
+static void trimTrailingWS(std::string &text) {
+    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back())))
+        text.pop_back();
+}
+
+/// @brief Compare BASIC identifiers case-insensitively.
+/// @param lhs First identifier.
+/// @param rhs Second identifier.
+/// @return True when both identifiers have the same spelling ignoring case.
+static bool basicNameEquals(const std::string &lhs, const std::string &rhs) {
+    if (lhs.size() != rhs.size())
+        return false;
+    for (size_t i = 0; i < lhs.size(); ++i) {
+        if (std::toupper(static_cast<unsigned char>(lhs[i])) !=
+            std::toupper(static_cast<unsigned char>(rhs[i])))
+            return false;
+    }
+    return true;
+}
+
+/// @brief Extract the first identifier from a BASIC statement.
+/// @details Handles an optional leading LET before reading the target token.
+/// @param input BASIC statement source.
+/// @return First target identifier, or empty when none exists.
+static std::string extractBasicLeadingIdentifier(const std::string &input) {
+    size_t pos = skipWS(input);
+    if (startsWithKW(input, pos, "LET"))
+        pos = skipWS(input, pos + 3);
+    if (pos >= input.size() ||
+        !(std::isalpha(static_cast<unsigned char>(input[pos])) || input[pos] == '_'))
+        return "";
+    size_t start = pos;
+    while (pos < input.size() &&
+           (std::isalnum(static_cast<unsigned char>(input[pos])) || input[pos] == '_'))
+        ++pos;
+    return input.substr(start, pos - start);
+}
+
+/// @brief Extract the variable name from a BASIC DIM replay statement.
+/// @param input BASIC statement source.
+/// @return DIM variable name, or empty when @p input is not a simple DIM.
+static std::string extractBasicDimName(const std::string &input) {
+    size_t pos = skipWS(input);
+    if (!startsWithKW(input, pos, "DIM"))
+        return "";
+    pos = skipWS(input, pos + 3);
+    if (pos >= input.size() ||
+        !(std::isalpha(static_cast<unsigned char>(input[pos])) || input[pos] == '_'))
+        return "";
+    size_t start = pos;
+    while (pos < input.size() &&
+           (std::isalnum(static_cast<unsigned char>(input[pos])) || input[pos] == '_'))
+        ++pos;
+    return input.substr(start, pos - start);
+}
+
+/// @brief Check whether a replay statement belongs to @p varName.
+/// @details Used when a variable is redeclared so old DIM/assignment replay
+///          entries do not conflict with the replacement declaration.
+/// @param statement Replay statement source.
+/// @param varName BASIC variable name being replaced.
+/// @return True when the replay entry should be removed.
+static bool replayStatementTouchesBasicVar(const std::string &statement,
+                                           const std::string &varName) {
+    std::string dimName = extractBasicDimName(statement);
+    if (!dimName.empty())
+        return basicNameEquals(dimName, varName);
+    std::string target = extractBasicLeadingIdentifier(statement);
+    return !target.empty() && basicNameEquals(target, varName);
+}
+
+/// @brief Determine whether a BASIC statement appears to mutate state.
+/// @details This shallow scan recognizes LET/assignment forms, including field
+///          and indexed targets, while rejecting equality comparisons and common
+///          statement-leading keywords.
+/// @param input BASIC statement source.
+/// @return True when the statement should be replayed for session state.
+static bool looksLikeBasicAssignmentStatement(const std::string &input) {
+    size_t pos = skipWS(input);
+    if (pos >= input.size())
+        return false;
+
+    static const char *nonAssignmentKeywords[] = {
+        "IF",    "FOR",   "WHILE",  "DO",     "SUB",   "FUNCTION", "SELECT", "CLASS",
+        "TYPE",  "PRINT", "INPUT",  "RETURN", "EXIT",  "END",      "NEXT",   "WEND",
+        "LOOP",  "GOTO",  "GOSUB",  "ON",     "CALL",  "REM",      "TRY",    "THROW",
+        "NAMESPACE"};
+    for (const char *kw : nonAssignmentKeywords) {
+        if (startsWithKW(input, pos, kw))
+            return false;
+    }
+
+    if (startsWithKW(input, pos, "LET"))
+        pos = skipWS(input, pos + 3);
+
+    bool sawTargetChar = false;
+    bool inString = false;
+    for (; pos < input.size(); ++pos) {
+        char c = input[pos];
+        if (c == '"') {
+            inString = !inString;
+            continue;
+        }
+        if (inString)
+            continue;
+        if (c == '=') {
+            if (pos + 1 < input.size() && input[pos + 1] == '=')
+                return false;
+            return sawTargetChar;
+        }
+        if (std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '.' || c == '(' ||
+            c == ')' || c == '[' || c == ']' || std::isspace(static_cast<unsigned char>(c))) {
+            if (!std::isspace(static_cast<unsigned char>(c)))
+                sawTargetChar = true;
+            continue;
+        }
+        return false;
+    }
+    return false;
+}
+
 // ---------------------------------------------------------------------------
 // Construction / Reset
 // ---------------------------------------------------------------------------
@@ -91,6 +206,7 @@ std::string_view BasicReplAdapter::languageName() const {
 void BasicReplAdapter::reset() {
     definedProcs_.clear();
     persistentVars_.clear();
+    replayStatements_.clear();
 }
 
 InputKind BasicReplAdapter::classifyInput(const std::string &input) {
@@ -281,15 +397,10 @@ std::string BasicReplAdapter::buildSource(const std::string &input) const {
         src += "\n\n";
     }
 
-    // Replay persistent variable declarations and assignments
-    for (const auto &pv : persistentVars_) {
-        src += pv.dimStmt;
+    // Replay persistent state in chronological order.
+    for (const auto &stmt : replayStatements_) {
+        src += stmt;
         src += "\n";
-
-        if (!pv.lastAssign.empty()) {
-            src += pv.lastAssign;
-            src += "\n";
-        }
     }
 
     // Current user input as top-level code
@@ -314,6 +425,25 @@ bool BasicReplAdapter::tryCompileOnly(const std::string &source) const {
         return false;
     auto verification = il::verify::Verifier::verify(result.module);
     return verification.hasValue();
+}
+
+std::string BasicReplAdapter::compileOnlyDiagnostic(const std::string &source) const {
+    using namespace il::frontends::basic;
+
+    il::support::SourceManager sm;
+    BasicCompilerOptions opts;
+    auto result = compileBasic({source, "<repl>"}, opts, sm);
+    if (!result.succeeded()) {
+        std::ostringstream errStream;
+        if (result.emitter)
+            result.emitter->printAll(errStream);
+        return errStream.str();
+    }
+
+    auto verification = il::verify::Verifier::verify(result.module);
+    if (!verification)
+        return "Type error: " + verification.error().message;
+    return "";
 }
 
 EvalResult BasicReplAdapter::compileAndRun(const std::string &source) {
@@ -350,61 +480,8 @@ EvalResult BasicReplAdapter::compileAndRun(const std::string &source) {
     bcVm.setRuntimeBridgeEnabled(true);
     bcVm.load(&bcModule);
 
-    // Capture stdout during execution
-    std::fflush(stdout);
-
-    bool captured = false;
-    int savedStdout = -1;
-    int pipeFds[2] = {-1, -1};
-
-#if defined(__unix__) || defined(__APPLE__)
-    if (pipe(pipeFds) == 0) {
-        savedStdout = dup(STDOUT_FILENO);
-        dup2(pipeFds[1], STDOUT_FILENO);
-        close(pipeFds[1]);
-        pipeFds[1] = -1;
-        captured = true;
-    }
-#elif defined(_WIN32)
-    if (_pipe(pipeFds, 65536, _O_BINARY) == 0) {
-        savedStdout = _dup(_fileno(stdout));
-        _dup2(pipeFds[1], _fileno(stdout));
-        _close(pipeFds[1]);
-        pipeFds[1] = -1;
-        captured = true;
-    }
-#endif
-
+    ScopedReplOutputCapture outputCapture;
     bcVm.exec("main", {});
-
-    std::string capturedOutput;
-    if (captured) {
-        std::fflush(stdout);
-
-#if defined(__unix__) || defined(__APPLE__)
-        dup2(savedStdout, STDOUT_FILENO);
-        close(savedStdout);
-
-        char readBuf[4096];
-        ssize_t n;
-        int flags = fcntl(pipeFds[0], F_GETFL);
-        fcntl(pipeFds[0], F_SETFL, flags | O_NONBLOCK);
-        while ((n = read(pipeFds[0], readBuf, sizeof(readBuf))) > 0) {
-            capturedOutput.append(readBuf, static_cast<size_t>(n));
-        }
-        close(pipeFds[0]);
-#elif defined(_WIN32)
-        _dup2(savedStdout, _fileno(stdout));
-        _close(savedStdout);
-
-        char readBuf[4096];
-        int n;
-        while ((n = _read(pipeFds[0], readBuf, sizeof(readBuf))) > 0) {
-            capturedOutput.append(readBuf, static_cast<size_t>(n));
-        }
-        _close(pipeFds[0]);
-#endif
-    }
 
     if (bcVm.state() == viper::bytecode::VMState::Trapped) {
         result.success = false;
@@ -414,7 +491,7 @@ EvalResult BasicReplAdapter::compileAndRun(const std::string &source) {
     }
 
     result.success = true;
-    result.output = capturedOutput;
+    result.output = outputCapture.output();
     return result;
 }
 
@@ -447,14 +524,8 @@ EvalResult BasicReplAdapter::eval(const std::string &input) {
             else
                 definedProcs_[procName] = oldProcSrc;
 
-            il::support::SourceManager sm;
-            il::frontends::basic::BasicCompilerOptions opts;
-            auto cr = il::frontends::basic::compileBasic({testSrc, "<repl>"}, opts, sm);
-            std::ostringstream errStream;
-            if (cr.emitter)
-                cr.emitter->printAll(errStream);
             result.success = false;
-            result.errorMessage = errStream.str();
+            result.errorMessage = compileOnlyDiagnostic(testSrc);
             return result;
         }
 
@@ -487,18 +558,15 @@ EvalResult BasicReplAdapter::eval(const std::string &input) {
         std::string target = extractAssignTarget(input);
         BasicPersistentVar *pv = findPersistentVar(target);
         if (pv) {
-            std::string oldAssign = pv->lastAssign;
             std::string cleanInput = input;
-            while (!cleanInput.empty() &&
-                   std::isspace(static_cast<unsigned char>(cleanInput.back())))
-                cleanInput.pop_back();
-            pv->lastAssign = cleanInput;
+            trimTrailingWS(cleanInput);
 
-            std::string source = buildSource("");
+            std::string source = buildSource(cleanInput);
             result = compileAndRun(source);
 
-            if (!result.success) {
-                pv->lastAssign = oldAssign;
+            if (result.success) {
+                pv->lastAssign = cleanInput;
+                replayStatements_.push_back(cleanInput);
             }
             return result;
         }
@@ -513,22 +581,35 @@ EvalResult BasicReplAdapter::eval(const std::string &input) {
         auto [varName, varType] = extractDimInfo(input);
         if (!varName.empty()) {
             std::string cleanDecl = input;
-            while (!cleanDecl.empty() && std::isspace(static_cast<unsigned char>(cleanDecl.back())))
-                cleanDecl.pop_back();
+            trimTrailingWS(cleanDecl);
 
             BasicPersistentVar *existing = findPersistentVar(varName);
             if (existing) {
                 existing->dimStmt = cleanDecl;
                 existing->lastAssign.clear();
                 existing->type = varType;
+                replayStatements_.erase(
+                    std::remove_if(replayStatements_.begin(),
+                                   replayStatements_.end(),
+                                   [&](const std::string &stmt) {
+                                       return replayStatementTouchesBasicVar(stmt, varName);
+                                   }),
+                    replayStatements_.end());
             } else {
                 persistentVars_.push_back({varName, varType, cleanDecl, ""});
             }
+            replayStatements_.push_back(cleanDecl);
         }
     }
 
     if (result.success)
         result.resultType = ResultType::Statement;
+
+    if (result.success && !isDimDecl(input) && looksLikeBasicAssignmentStatement(input)) {
+        std::string cleanInput = input;
+        trimTrailingWS(cleanInput);
+        replayStatements_.push_back(cleanInput);
+    }
 
     return result;
 }
@@ -539,6 +620,7 @@ EvalResult BasicReplAdapter::eval(const std::string &input) {
 
 std::vector<std::string> BasicReplAdapter::complete(const std::string &input, size_t cursor) {
     std::vector<std::string> matches;
+    cursor = std::min(cursor, input.size());
 
     if (input.empty())
         return matches;

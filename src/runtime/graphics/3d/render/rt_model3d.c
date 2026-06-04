@@ -37,9 +37,11 @@
 #include "rt_animcontroller3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_asset.h"
 #include "rt_fbx_loader.h"
 #include "rt_gltf.h"
 #include "rt_graphics3d_ids.h"
+#include "rt_tempfile.h"
 #include "rt_morphtarget3d.h"
 #include "rt_numeric.h"
 #include "rt_object.h"
@@ -60,6 +62,13 @@ extern void *rt_fbx_get_scene_root(void *fbx);
 extern void *rt_pixels_load(void *path);
 
 #define MODEL3D_MAX_WALK_NODES 1048576
+#define MODEL3D_OBJ_MAX_LINE_BYTES (1024u * 1024u)
+#define MODEL3D_OBJ_MAX_PATH_BYTES (64u * 1024u)
+#if defined(__clang__) || defined(__GNUC__)
+#define MODEL3D_UNUSED_PRIVATE __attribute__((unused))
+#else
+#define MODEL3D_UNUSED_PRIVATE
+#endif
 
 typedef struct {
     rt_scene_node3d *root;
@@ -1395,7 +1404,7 @@ static int model_is_absolute_path(const char *path) {
 ///   ".." segment, collapsing "." and redundant slashes.
 /// @return Non-zero if a non-empty safe path was written; 0 if empty, unsafe, or overflowing.
 static int model_normalize_relative_asset_ref(const char *src, char *out, size_t out_size) {
-    char normalized[1024];
+    char normalized[MODEL3D_OBJ_MAX_PATH_BYTES];
     const char *p;
     size_t ni = 0;
     size_t out_len = 0;
@@ -1448,7 +1457,10 @@ static int model_normalize_relative_asset_ref(const char *src, char *out, size_t
 
 /// @brief Join @p dir and @p leaf with a '/' separator into @p out (just @p leaf when @p dir
 ///   is empty), bounds-checked. @return 1 on success, 0 on bad input or overflow.
-static int model_join_path(char *out, size_t out_size, const char *dir, const char *leaf) {
+static int MODEL3D_UNUSED_PRIVATE model_join_path(char *out,
+                                                  size_t out_size,
+                                                  const char *dir,
+                                                  const char *leaf) {
     size_t dir_len;
     size_t leaf_len;
     if (!out || out_size == 0 || !leaf || !*leaf)
@@ -1476,6 +1488,88 @@ static int model_join_path(char *out, size_t out_size, const char *dir, const ch
     out[dir_len++] = '/';
     memcpy(out + dir_len, leaf, leaf_len);
     out[dir_len + leaf_len] = '\0';
+    return 1;
+}
+
+/// @brief Allocate a joined path from @p dir and @p leaf, preserving `model_join_path` semantics.
+/// @details This is used by MTL parsing where valid project-relative texture names can
+///          exceed the legacy 1 KiB stack buffers. The result is capped at
+///          MODEL3D_OBJ_MAX_PATH_BYTES so malformed assets cannot request unbounded
+///          memory through a path directive.
+/// @return A malloc-owned joined path, or NULL on invalid input, overflow, or allocation failure.
+static char *model_join_path_alloc(const char *dir, const char *leaf) {
+    size_t dir_len;
+    size_t leaf_len;
+    size_t total_len;
+    int needs_sep;
+    char *out;
+    if (!leaf || !*leaf)
+        return NULL;
+    leaf_len = strlen(leaf);
+    dir_len = (dir && *dir) ? strlen(dir) : 0;
+    needs_sep = dir_len > 0 && dir[dir_len - 1u] != '/' && dir[dir_len - 1u] != '\\';
+    if (dir_len > MODEL3D_OBJ_MAX_PATH_BYTES || leaf_len > MODEL3D_OBJ_MAX_PATH_BYTES)
+        return NULL;
+    if (dir_len > SIZE_MAX - leaf_len - (needs_sep ? 2u : 1u))
+        return NULL;
+    total_len = dir_len + leaf_len + (needs_sep ? 1u : 0u);
+    if (total_len == 0 || total_len >= MODEL3D_OBJ_MAX_PATH_BYTES)
+        return NULL;
+    out = (char *)malloc(total_len + 1u);
+    if (!out)
+        return NULL;
+    if (dir_len > 0)
+        memcpy(out, dir, dir_len);
+    if (needs_sep)
+        out[dir_len++] = '/';
+    memcpy(out + dir_len, leaf, leaf_len);
+    out[dir_len + leaf_len] = '\0';
+    return out;
+}
+
+/// @brief Read one text line into a dynamically resized buffer with an explicit byte cap.
+/// @details The buffer grows geometrically and is NUL-terminated. Returns 1 for a
+///          line, 0 for EOF before any bytes, -1 for allocation/input failure, and
+///          -2 when the line exceeds @p max_bytes.
+static int model_read_text_line(FILE *f, char **line, size_t *cap, size_t max_bytes) {
+    size_t len = 0;
+    int ch;
+    if (!f || !line || !cap || max_bytes < 2)
+        return -1;
+    if (!*line || *cap == 0) {
+        *cap = max_bytes < 256u ? max_bytes : 256u;
+        *line = (char *)malloc(*cap);
+        if (!*line) {
+            *cap = 0;
+            return -1;
+        }
+    }
+    while ((ch = fgetc(f)) != EOF) {
+        if (len + 1u >= *cap) {
+            size_t new_cap;
+            char *grown;
+            if (*cap > SIZE_MAX / 2u)
+                return -1;
+            new_cap = *cap * 2u;
+            if (new_cap > max_bytes)
+                new_cap = max_bytes;
+            if (new_cap <= *cap)
+                return -2;
+            grown = (char *)realloc(*line, new_cap);
+            if (!grown)
+                return -1;
+            *line = grown;
+            *cap = new_cap;
+        }
+        (*line)[len++] = (char)ch;
+        if (len >= max_bytes)
+            return -2;
+        if (ch == '\n')
+            break;
+    }
+    if (ch == EOF && len == 0)
+        return 0;
+    (*line)[len] = '\0';
     return 1;
 }
 
@@ -1639,21 +1733,24 @@ static void model_obj_set_texture_from_map(void *material,
                                            const char *map_value,
                                            int32_t slot) {
     char *map_ref;
-    char safe_ref[1024];
-    char path[1024];
+    char safe_ref[MODEL3D_OBJ_MAX_PATH_BYTES];
+    char *path;
     void *pixels;
     if (!material)
         return;
     map_ref = model_obj_extract_map_path(map_value);
     if (!map_ref)
         return;
-    if (!model_normalize_relative_asset_ref(map_ref, safe_ref, sizeof(safe_ref)) ||
-        !model_join_path(path, sizeof(path), mtl_dir, safe_ref)) {
+    if (!model_normalize_relative_asset_ref(map_ref, safe_ref, sizeof(safe_ref))) {
         free(map_ref);
         return;
     }
     free(map_ref);
+    path = model_join_path_alloc(mtl_dir, safe_ref);
+    if (!path)
+        return;
     pixels = rt_pixels_load(rt_const_cstr(path));
+    free(path);
     if (!pixels)
         return;
     switch (slot) {
@@ -1678,22 +1775,27 @@ static void model_obj_set_texture_from_map(void *material,
 static void model_obj_parse_mtl_file(model_obj_material_table *table,
                                      const char *obj_dir,
                                      const char *mtllib_ref) {
-    char safe_ref[1024];
-    char path[1024];
-    char mtl_dir[1024];
+    char safe_ref[MODEL3D_OBJ_MAX_PATH_BYTES];
+    char mtl_dir[MODEL3D_OBJ_MAX_PATH_BYTES];
+    char *path;
     FILE *f;
-    char line[1024];
+    char *line = NULL;
+    size_t line_cap = 0;
+    int line_status = 0;
     char *current_name = NULL;
     void *current_material = NULL;
     if (!table || !model_normalize_relative_asset_ref(mtllib_ref, safe_ref, sizeof(safe_ref)))
         return;
-    if (!model_join_path(path, sizeof(path), obj_dir, safe_ref))
+    path = model_join_path_alloc(obj_dir, safe_ref);
+    if (!path)
         return;
     model_parent_dir(mtl_dir, sizeof(mtl_dir), path);
     f = fopen(path, "r");
+    free(path);
     if (!f)
         return;
-    while (fgets(line, sizeof(line), f)) {
+    while ((line_status = model_read_text_line(
+                f, &line, &line_cap, MODEL3D_OBJ_MAX_LINE_BYTES)) > 0) {
         const char *p = line;
         while (*p == ' ' || *p == '\t')
             p++;
@@ -1768,22 +1870,29 @@ static void model_obj_parse_mtl_file(model_obj_material_table *table,
         free(current_name);
         model_release_local(current_material);
     }
+    if (line_status < 0)
+        rt_trap(line_status == -2 ? "Model3D.Load OBJ: MTL line too long"
+                                  : "Model3D.Load OBJ: MTL line allocation failed");
+    free(line);
 }
 
 /// @brief Scan the OBJ file at @p obj_path for "mtllib" directives and parse each referenced
 ///   .mtl library into @p table.
 static void model_obj_load_material_libraries(const char *obj_path,
                                               model_obj_material_table *table) {
-    char obj_dir[1024];
+    char obj_dir[MODEL3D_OBJ_MAX_PATH_BYTES];
     FILE *f;
-    char line[1024];
+    char *line = NULL;
+    size_t line_cap = 0;
+    int line_status = 0;
     if (!obj_path || !table)
         return;
     model_parent_dir(obj_dir, sizeof(obj_dir), obj_path);
     f = fopen(obj_path, "r");
     if (!f)
         return;
-    while (fgets(line, sizeof(line), f)) {
+    while ((line_status = model_read_text_line(
+                f, &line, &line_cap, MODEL3D_OBJ_MAX_LINE_BYTES)) > 0) {
         const char *p = line;
         while (*p == ' ' || *p == '\t')
             p++;
@@ -1800,6 +1909,10 @@ static void model_obj_load_material_libraries(const char *obj_path,
             }
         }
     }
+    if (line_status < 0)
+        rt_trap(line_status == -2 ? "Model3D.Load OBJ: mtllib line too long"
+                                  : "Model3D.Load OBJ: mtllib line allocation failed");
+    free(line);
     fclose(f);
 }
 
@@ -2058,11 +2171,57 @@ static int model3d_load_from_gltf(rt_model3d *model,
     return 1;
 }
 
+/// @brief Decode a binary/ASCII FBX from in-memory asset bytes via a temp-file bridge.
+/// @details The FBX importer is path-based (binary parsing re-opens the file), so embedded or
+///   packed assets are spilled to a temp file, decoded with the recoverable loader, and
+///   unlinked — mirroring the asset-decode tempfile bridge used for path-only image formats.
+/// @return FBX asset handle on success, or NULL on any failure.
+static void *model3d_fbx_from_asset_bytes(const uint8_t *bytes, size_t size) {
+    if (!bytes || size == 0)
+        return NULL;
+    rt_string tmp = rt_tempfile_path_with_ext(rt_const_cstr("viper_fbx_"), rt_const_cstr(".fbx"));
+    const char *tpath = rt_string_cstr(tmp);
+    if (!tpath) {
+        rt_string_unref(tmp);
+        return NULL;
+    }
+    FILE *f = fopen(tpath, "wb");
+    if (!f) {
+        rt_string_unref(tmp);
+        return NULL;
+    }
+    size_t wrote = fwrite(bytes, 1, size, f);
+    if (fclose(f) != 0 || wrote != size) {
+        remove(tpath);
+        rt_string_unref(tmp);
+        return NULL;
+    }
+    void *asset = rt_fbx_load_recoverable(tmp);
+    remove(tpath);
+    rt_string_unref(tmp);
+    return asset;
+}
+
 /// @brief .fbx branch of rt_model3d_load_impl: decode the asset and collect its meshes/
-///   materials/skeleton/animations/scene template onto `model`. @return 1 on success,
-///   0 on failure (local asset released; caller cleans up `model`).
-static int model3d_load_from_fbx(rt_model3d *model, rt_string path) {
-    void *asset = rt_fbx_load(path);
+///   materials/skeleton/animations/scene template onto `model`.
+/// @details Uses the recoverable FBX loader so missing or unsupported assets return 0 and let
+///   `Model3D.Load` return NULL. When @p load_assets is set, embedded/packed bytes are tried
+///   first (via a temp-file bridge) so `Model3D.LoadAsset` resolves bundled FBX models, with the
+///   filesystem path as the fallback. Valid binary FBX files still use the strict parser,
+///   preserving existing hard diagnostics for malformed binary content.
+/// @return 1 on success, 0 on recoverable load failure.
+static int model3d_load_from_fbx(rt_model3d *model, rt_string path, int load_assets) {
+    void *asset = NULL;
+    if (load_assets) {
+        size_t asset_size = 0;
+        uint8_t *asset_bytes = rt_asset_load_raw(path, &asset_size);
+        if (asset_bytes) {
+            asset = model3d_fbx_from_asset_bytes(asset_bytes, asset_size);
+            free(asset_bytes);
+        }
+    }
+    if (!asset)
+        asset = rt_fbx_load_recoverable(path);
     int32_t mesh_count;
     int32_t material_count;
     int32_t animation_count;
@@ -2150,8 +2309,8 @@ static int model3d_load_from_fbx(rt_model3d *model, rt_string path) {
 /// @brief Load a 3D model from disk into a `rt_model3d` template — auto-detects format by file
 /// extension (.vscn, .gltf/.glb, .fbx, .obj, .stl). Collects meshes, materials, skeletons,
 /// animations, and the scene-node template tree from the source asset, retaining each component for
-/// the model's lifetime. Returns NULL (with a trap message) for invalid path / unsupported
-/// extension / underlying loader failure. Use `_instantiate` to spawn a clone in a live scene.
+/// the model's lifetime. Returns NULL for recoverable loader failure; invalid paths and unsupported
+/// extensions still trap. Use `_instantiate` to spawn a clone in a live scene.
 static void *rt_model3d_load_impl(rt_string path,
                                   int load_assets,
                                   uint8_t *preloaded_gltf_data,
@@ -2198,7 +2357,7 @@ static void *rt_model3d_load_impl(rt_string path,
         if (!gltf_ok)
             goto fail;
     } else if (model_has_ext(path_cstr, ".fbx")) {
-        if (!model3d_load_from_fbx(model, path))
+        if (!model3d_load_from_fbx(model, path, load_assets))
             goto fail;
     } else if (model_has_ext(path_cstr, ".obj")) {
         if (!model3d_load_from_obj(model, path, path_cstr))

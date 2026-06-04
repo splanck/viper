@@ -1673,7 +1673,7 @@ Full-screen post-processing effect chain applied automatically in `Canvas3D.Flip
 | `AddBloom(threshold, intensity, passes)` | `void(f64, f64, i64)` | Bloom glow effect |
 | `AddTonemap(mode, exposure)` | `void(i64, f64)` | Tone mapping (0=off, 1=Reinhard, 2=ACES) |
 | `AddFXAA()` | `void()` | Fast approximate anti-aliasing |
-| `AddColorGrade(brightness, contrast, saturation)` | `void(f64, f64, f64)` | Color grading |
+| `AddColorGrade(brightnessOffset, contrast, saturation)` | `void(f64, f64, f64)` | Color grading: brightness is an additive offset centered on `0.0`; contrast and saturation are multipliers centered on `1.0` |
 | `AddVignette(radius, softness)` | `void(f64, f64)` | Screen-edge darkening |
 | `AddSSAO(radius, intensity, samples)` | `void(f64, f64, i64)` | Screen-space ambient occlusion |
 | `AddDOF(focusDist, aperture, maxBlur)` | `void(f64, f64, f64)` | Depth of field |
@@ -1682,7 +1682,7 @@ Full-screen post-processing effect chain applied automatically in `Canvas3D.Flip
 
 Effects run strictly in append order. If you add the same effect type more than once, each pass is preserved instead of being collapsed into one combined backend setting. The GPU backends now follow that same ordered-chain behavior as the CPU path, so `Flip()`, GPU screenshots, and GPU readback all match the authored `PostFX3D` chain. Bloom `passes` is part of the backend snapshot so GPU paths can widen the bloom radius consistently with the authored quality setting.
 
-PostFX parameters are bounded before they reach CPU or GPU shaders: bloom passes clamp to `0..32`, SSAO samples to `1..128`, motion-blur samples to `1..64`, vignette softness has a non-zero floor, and non-finite exposure/radius/intensity values fall back to safe defaults.
+PostFX parameters are bounded before they reach CPU or GPU shaders: bloom passes clamp to `0..32`, SSAO samples to `1..128`, motion-blur samples to `1..64`, color-grade brightness offsets clamp to `-1.0..1.0`, vignette softness has a non-zero floor, and non-finite exposure/radius/intensity values fall back to safe defaults.
 
 Bloom, Tonemap, FXAA, ColorGrade, and Vignette run on both GPU outputs and CPU render-target/software fallback outputs. SSAO, DOF, and MotionBlur require `Canvas3D.BackendSupports(canvas, "gpu_postfx")` and a window-backed `Flip()` so the backend can provide depth, scene history, and motion vectors; attaching those effects to a render target or software CPU path raises an explicit runtime trap.
 
@@ -1701,7 +1701,7 @@ func start() {
     PostFX3D.AddBloom(fx, 0.8, 0.5, 5);
     PostFX3D.AddTonemap(fx, 1, 1.2);
     PostFX3D.AddFXAA(fx);
-    PostFX3D.AddColorGrade(fx, 0.05, 1.1, 1.2);
+    PostFX3D.AddColorGrade(fx, 0.015, 1.1, 1.2);
     PostFX3D.AddVignette(fx, 0.6, 0.4);
     PostFX3D.AddSSAO(fx, 0.5, 1.0, 16);
     PostFX3D.AddDOF(fx, 10.0, 5.0, 1.0);

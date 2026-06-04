@@ -90,6 +90,11 @@ void rt_sixdof_joint3d_set_linear_motor(void *joint,
                                         double max_impulse);
 
 /* Joint solving (called from physics world step) */
+/// @brief Return the two Body3D handles retained by a joint of the supplied RT_JOINT_* type.
+/// @details Used by World3D to validate that a joint only references bodies registered
+///   in the same world and to purge constraints when a body is removed. Returns 0
+///   if @p joint does not match @p joint_type.
+int rt_joint3d_get_bodies(void *joint, int32_t joint_type, void **out_body_a, void **out_body_b);
 /// @brief Solve one substep of a joint constraint (called internally from `world_step`).
 void rt_joint3d_solve(void *joint, int32_t joint_type, double dt);
 

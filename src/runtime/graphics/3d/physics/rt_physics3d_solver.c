@@ -226,11 +226,14 @@ static int ph3d_solver_island_batch_alloc(rt_world3d *w, ph3d_solver_island_batc
            ph3d_alloc_i32_array(w->contact_count, 0, &batch->contact_indices);
 }
 
-/// @brief Linear-search the world's body array for @p body.
+/// @brief Return the world's index for @p body, using cached owner metadata first.
 /// @return Index of @p body in @p w, or -1 if absent or either argument is NULL.
 static int32_t world3d_body_index_of(const rt_world3d *w, const rt_body3d *body) {
     if (!w || !body)
         return -1;
+    if (body->owner_world == w && body->owner_index >= 0 && body->owner_index < w->body_count &&
+        w->bodies[body->owner_index] == body)
+        return body->owner_index;
     for (int32_t i = 0; i < w->body_count; ++i) {
         if (w->bodies[i] == body)
             return i;

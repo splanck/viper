@@ -805,7 +805,10 @@ void scene_node_assign_owner_recursive(rt_scene_node3d *node, rt_scene3d *owner)
         child_count = scene3d_node_child_count(current);
         current->child_count = child_count;
         for (int32_t i = child_count - 1; i >= 0; --i) {
-            if (!scene_node_stack_push(&stack, &count, &capacity, current->children[i])) {
+            rt_scene_node3d *child = scene_node3d_checked(current->children[i]);
+            if (!child)
+                continue;
+            if (!scene_node_stack_push(&stack, &count, &capacity, child)) {
                 rt_trap("Scene3D: owner traversal stack allocation failed");
                 free(stack);
                 return;
@@ -835,7 +838,10 @@ void scene_node_clear_owner_recursive(rt_scene_node3d *node, rt_scene3d *owner) 
         child_count = scene3d_node_child_count(current);
         current->child_count = child_count;
         for (int32_t i = child_count - 1; i >= 0; --i) {
-            if (!scene_node_stack_push(&stack, &count, &capacity, current->children[i])) {
+            rt_scene_node3d *child = scene_node3d_checked(current->children[i]);
+            if (!child)
+                continue;
+            if (!scene_node_stack_push(&stack, &count, &capacity, child)) {
                 rt_trap("Scene3D: owner traversal stack allocation failed");
                 free(stack);
                 return;
@@ -857,12 +863,11 @@ void mark_dirty(rt_scene_node3d *node) {
     scene3d_mark_spatial_refit_dirty(node->owner_scene);
 }
 
-/// @brief Forward declaration for the recursive node-name search used by the animation
-///        channel applier before the function's full definition appears later in the file.
-
-
-/// @brief Recompute the world matrix if local or parent state changed.
-void recompute_world_matrix(rt_scene_node3d *node) {
+/// @brief Recompute a single node's world matrix after its parent has already been refreshed.
+/// @details This is the non-recursive body used by `recompute_world_matrix`. It keeps
+///          the existing parent-revision dirty check, but assumes parent matrices are
+///          current so deep scene graphs do not consume the C call stack.
+static void recompute_world_matrix_single(rt_scene_node3d *node) {
     double local[16];
     uint32_t parent_revision = 0;
     if (!node)
@@ -870,7 +875,6 @@ void recompute_world_matrix(rt_scene_node3d *node) {
     scene3d_repair_node_transform(node);
 
     if (node->parent) {
-        recompute_world_matrix(node->parent);
         parent_revision = node->parent->world_revision;
         if (node->parent_world_revision_seen != parent_revision)
             node->world_dirty = 1;
@@ -889,6 +893,32 @@ void recompute_world_matrix(rt_scene_node3d *node) {
     node->parent_world_revision_seen = parent_revision;
     node->world_dirty = 0;
     node->world_revision = node->world_revision == UINT32_MAX ? 1u : node->world_revision + 1u;
+}
+
+/// @brief Recompute the world matrix if local or parent state changed.
+/// @details Walks the parent chain into a temporary stack, then refreshes from the
+///          highest ancestor down to @p node. This preserves lazy parent revision
+///          tracking while avoiding recursive calls on deep hierarchies.
+void recompute_world_matrix(rt_scene_node3d *node) {
+    rt_scene_node3d **stack = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    rt_scene_node3d *current = scene_node3d_checked(node);
+    while (current) {
+        rt_scene_node3d *parent;
+        if (!scene_node_stack_push(&stack, &count, &capacity, current)) {
+            rt_trap("Scene3D: world-matrix traversal stack allocation failed");
+            free(stack);
+            return;
+        }
+        parent = scene_node3d_checked(current->parent);
+        if (!parent)
+            break;
+        current = parent;
+    }
+    while (count > 0)
+        recompute_world_matrix_single(stack[--count]);
+    free(stack);
 }
 
 /// @brief Count nodes in a subtree (including the root).
@@ -1208,6 +1238,59 @@ void scene_mesh_bounds(rt_mesh3d *mesh, float out_min[3], float out_max[3], floa
     }
     if (out_radius)
         *out_radius = mesh->bsphere_radius;
+}
+
+/// @brief Mix one mesh geometry revision into a non-zero node geometry signature.
+/// @details Spatial entries store a compact signature instead of retaining every mesh
+///          pointer. FNV-style mixing keeps LOD/impostor mesh changes from colliding
+///          with the primary mesh revision in ordinary cases while preserving the
+///          cheap uint32_t comparison needed during BVH refits.
+static uint32_t scene3d_mix_mesh_revision(uint32_t signature, void *mesh_obj) {
+    rt_mesh3d *mesh =
+        rt_g3d_has_class(mesh_obj, RT_G3D_MESH3D_CLASS_ID) ? (rt_mesh3d *)mesh_obj : NULL;
+    uint32_t revision = mesh ? mesh->geometry_revision : 0u;
+    signature ^= revision + 0x9e3779b9u + (signature << 6) + (signature >> 2);
+    return signature ? signature : 1u;
+}
+
+/// @brief Combine the geometry revisions of all drawable meshes owned by @p node.
+/// @details Includes the primary mesh, every LOD mesh, and the generated impostor
+///          mesh. The result changes when any referenced mesh's CPU geometry changes,
+///          allowing the spatial index to refit stale bounds even if the node transform
+///          revision did not change.
+uint32_t scene_node_geometry_revision_signature(rt_scene_node3d *node) {
+    uint32_t signature = 2166136261u;
+    if (!node)
+        return 0;
+    signature = scene3d_mix_mesh_revision(signature, node->mesh);
+    for (int32_t i = 0, lod_count = scene3d_node_lod_count(node); i < lod_count; i++)
+        signature = scene3d_mix_mesh_revision(signature, node->lod_levels[i].mesh);
+    if (node->has_impostor)
+        signature = scene3d_mix_mesh_revision(signature, node->impostor_mesh);
+    return signature ? signature : 1u;
+}
+
+/// @brief Refresh the node's cached primary-mesh local bounds after mesh geometry changes.
+/// @details SceneNode3D stores an AABB/radius for APIs and impostor sizing, but Mesh3D
+///          geometry can be mutated after assignment. This helper compares the mesh's
+///          geometry revision to the node's last cached revision and recomputes only
+///          when necessary. Non-mesh or missing meshes reset the cache to an empty AABB.
+void scene_node_refresh_mesh_bounds(rt_scene_node3d *node) {
+    rt_mesh3d *mesh;
+    if (!node)
+        return;
+    mesh = rt_g3d_has_class(node->mesh, RT_G3D_MESH3D_CLASS_ID) ? (rt_mesh3d *)node->mesh : NULL;
+    if (!mesh) {
+        node->aabb_min[0] = node->aabb_min[1] = node->aabb_min[2] = 0.0f;
+        node->aabb_max[0] = node->aabb_max[1] = node->aabb_max[2] = 0.0f;
+        node->bsphere_radius = 0.0f;
+        node->mesh_bounds_revision = 0;
+        return;
+    }
+    if (node->mesh_bounds_revision == mesh->geometry_revision && !mesh->bounds_dirty)
+        return;
+    scene_mesh_bounds(mesh, node->aabb_min, node->aabb_max, &node->bsphere_radius);
+    node->mesh_bounds_revision = mesh->geometry_revision ? mesh->geometry_revision : 1u;
 }
 
 /// @brief Multiply a local-space point by the node's world matrix; result lands in `out`.
@@ -3170,6 +3253,7 @@ static void *scene3d_new_impostor_mesh(rt_scene_node3d *node, void *pixels) {
     ph = rt_pixels_height(pixels);
     if (pw > 0 && ph > 0)
         aspect = (double)pw / (double)ph;
+    scene_node_refresh_mesh_bounds(node);
     if (node && isfinite(node->bsphere_radius) && node->bsphere_radius > 0.0f)
         diameter = (double)node->bsphere_radius * 2.0;
     if (!isfinite(aspect) || aspect <= 0.0)

@@ -30,6 +30,15 @@ extern "C" {
 
 /// @brief Load an FBX asset from @p path. @return an FBX handle, or NULL.
 void *rt_fbx_load(rt_string path);
+/// @brief Try to load an FBX asset from @p path without trapping for recoverable I/O failure.
+/// @details This entry point is intended for higher-level asset APIs such as `Model3D.Load`,
+/// where a missing or unsupported file should be represented as a NULL model so script code can
+/// fall back cleanly. Direct `FBX.Load` remains strict and traps on the same failures. Resource
+/// exhaustion and malformed binary parser invariants may still trap because they indicate runtime
+/// integrity problems rather than ordinary asset absence.
+/// @param path Filesystem path to the .fbx file (runtime string).
+/// @return An FBX handle on success, or NULL if the file cannot be opened/read/classified.
+void *rt_fbx_load_recoverable(rt_string path);
 /// @brief Number of meshes in the loaded FBX.
 int64_t rt_fbx_mesh_count(void *fbx);
 /// @brief Get the mesh at @p index (NULL if out of range).

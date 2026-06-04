@@ -67,6 +67,14 @@ class BasicReplAdapter : public ReplAdapter {
     /// @return True if compilation succeeded.
     bool tryCompileOnly(const std::string &source) const;
 
+    /// @brief Compile and verify source only to produce diagnostics.
+    /// @details Used when a validation probe fails so callers get either BASIC
+    ///          frontend diagnostics or verifier diagnostics instead of a blank
+    ///          error string.
+    /// @param source Complete synthetic BASIC source to compile.
+    /// @return Human-readable diagnostics, or an empty string if source is valid.
+    std::string compileOnlyDiagnostic(const std::string &source) const;
+
     /// @brief Check if input looks like a SUB or FUNCTION definition.
     bool isSubOrFunc(const std::string &input) const;
 
@@ -98,6 +106,7 @@ class BasicReplAdapter : public ReplAdapter {
     // --- Session state ---
     std::map<std::string, std::string> definedProcs_; ///< name -> full source (SUB/FUNCTION)
     std::vector<BasicPersistentVar> persistentVars_;  ///< ordered persistent variables
+    std::vector<std::string> replayStatements_;       ///< Chronological state replay statements
 };
 
 } // namespace viper::repl

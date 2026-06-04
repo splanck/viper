@@ -37,7 +37,9 @@ void rt_postfx3d_add_bloom(void *obj, double threshold, double intensity, int64_
 void rt_postfx3d_add_tonemap(void *obj, int64_t mode, double exposure);
 /// @brief Append an FXAA antialiasing pass.
 void rt_postfx3d_add_fxaa(void *obj);
-/// @brief Append a color-grading pass (brightness, contrast, saturation each centered on 1.0).
+/// @brief Append a color-grading pass.
+/// @details `brightness` is a signed additive offset centered on 0.0. `contrast` and `saturation`
+/// are multipliers centered on 1.0.
 void rt_postfx3d_add_color_grade(void *obj, double brightness, double contrast, double saturation);
 /// @brief Append a vignette pass (radius = circle of full brightness, softness = falloff width).
 void rt_postfx3d_add_vignette(void *obj, double radius, double softness);

@@ -330,9 +330,19 @@ typedef struct rt_game3d_stream_cell {
     int64_t sidecar_bytes; /* size in bytes of the loaded binary sidecar payload */
 } rt_game3d_stream_cell;
 
+/// @brief Scratch entry used to sort manifest-backed streaming loads nearest-first.
+/// @details WorldStream3D owns reusable arrays of these entries so steady-state
+///   streaming updates do not allocate every frame. The index is stable within the
+///   parsed manifest array and distance_sq is the sanitized squared focus distance.
+typedef struct rt_game3d_stream_load_candidate {
+    int32_t index;
+    double distance_sq;
+} rt_game3d_stream_load_candidate;
+
 /// @brief One streaming terrain tile parsed from the terrain manifest: spatial
-///   center/scale/radius and heightmap, material/nav/layer/collision metadata, and
-///   the loaded terrain plus collider/nav entities and residency bookkeeping.
+///   center/scale/radius and heightmap, material/nav/layer/collision metadata, an
+///   optional malloc-owned binary sidecar payload, and the loaded terrain plus
+///   collider/nav entities and residency bookkeeping.
 typedef struct rt_game3d_stream_terrain_tile {
     rt_string name;
     rt_string path;
@@ -356,6 +366,8 @@ typedef struct rt_game3d_stream_terrain_tile {
     void *collider_entity;
     void *nav_entity;
     int8_t resident;
+    void *sidecar_data;    /* loaded binary sidecar payload (malloc-owned), or NULL */
+    int64_t sidecar_bytes; /* size in bytes of the loaded binary sidecar payload */
 } rt_game3d_stream_terrain_tile;
 
 /// @brief WorldStream3D payload: streaming focus/radii, mounted manifest paths,
@@ -378,6 +390,10 @@ typedef struct rt_game3d_world_stream {
     int32_t cell_capacity;
     int32_t terrain_tile_count;
     int32_t terrain_tile_capacity;
+    rt_game3d_stream_load_candidate *cell_candidates;
+    int32_t cell_candidate_capacity;
+    rt_game3d_stream_load_candidate *terrain_candidates;
+    int32_t terrain_candidate_capacity;
     int8_t cells_manifest_loaded;
     int8_t terrain_manifest_loaded;
     int8_t retains_world;

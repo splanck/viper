@@ -151,6 +151,15 @@ class ReplSession {
     std::string makePrompt() const;
     std::string makeContinuationPrompt() const;
 
+    /// @brief Load and execute a source file through the REPL accumulator.
+    /// @details The file is read line by line and classified with the active
+    ///          adapter, so multi-line definitions and multiple top-level inputs
+    ///          behave like manually-entered REPL code. Execution stops at the
+    ///          first failing input and keeps any prior successful state.
+    /// @param path Source file path supplied to `.load`.
+    /// @return True when all complete inputs in the file executed successfully.
+    bool loadFile(const std::string &path);
+
     /// @brief Get the history file path for the current language.
     /// @return Path like ~/.viper/repl_history_zia or ~/.viper/repl_history_basic.
     std::filesystem::path historyFilePath() const;

@@ -535,7 +535,7 @@ Post-processing effect chain applied to a rendered scene.
 | `AddBloom(threshold, intensity, passes)` | `Void(Double, Double, Integer)` | Add a bloom bloom effect |
 | `AddTonemap(mode, exposure)` | `Void(Integer, Double)` | Add tone mapping (`0 = Reinhard`, `1 = ACES`) |
 | `AddFXAA()` | `Void()` | Add FXAA anti-aliasing |
-| `AddColorGrade(brightness, contrast, saturation)` | `Void(Double, Double, Double)` | Add color grading |
+| `AddColorGrade(brightnessOffset, contrast, saturation)` | `Void(Double, Double, Double)` | Add color grading. Brightness is an additive offset centered on `0.0`; contrast and saturation are multipliers centered on `1.0` |
 | `AddVignette(strength, radius)` | `Void(Double, Double)` | Add a vignette darkening effect |
 | `AddSSAO(radius, intensity, samples)` | `Void(Double, Double, Integer)` | Add screen-space ambient occlusion |
 | `AddDOF(focusDist, focalRange, blurRadius)` | `Void(Double, Double, Double)` | Add depth of field |

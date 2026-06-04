@@ -29,15 +29,25 @@ void ReplMetaCommands::registerCommand(
     const std::string &name,
     const std::string &help,
     std::function<void(ReplSession &, const std::string &)> handler) {
-    commands_.push_back({name, help, std::move(handler)});
+    std::string normalizedName = name;
+    std::transform(normalizedName.begin(),
+                   normalizedName.end(),
+                   normalizedName.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    commands_.push_back({normalizedName, help, std::move(handler)});
 }
 
 bool ReplMetaCommands::tryHandle(const std::string &input, ReplSession &session) {
-    if (input.empty() || input[0] != '.')
+    size_t firstNonSpace = 0;
+    while (firstNonSpace < input.size() &&
+           std::isspace(static_cast<unsigned char>(input[firstNonSpace])))
+        ++firstNonSpace;
+
+    if (firstNonSpace >= input.size() || input[firstNonSpace] != '.')
         return false;
 
     // Parse: ".command args..."
-    size_t cmdStart = 1;
+    size_t cmdStart = firstNonSpace + 1;
     size_t cmdEnd = cmdStart;
     while (cmdEnd < input.size() && !std::isspace(static_cast<unsigned char>(input[cmdEnd])))
         ++cmdEnd;

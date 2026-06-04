@@ -35,6 +35,40 @@ extern "C" {
 ///          times; subsequent calls are no-ops.
 void rt_output_init(void);
 
+/// @brief Callback used to intercept runtime stdout writes.
+/// @details When installed with @ref rt_output_set_capture_hook, every call to
+///          @ref rt_output_str or @ref rt_output_strn is delivered to the
+///          callback instead of the process stdout stream. The callback receives
+///          exactly the bytes requested by the runtime print operation; the
+///          buffer is not null-terminated unless the caller's original payload
+///          was. Implementations must copy bytes they need after returning.
+/// @param data Pointer to the byte range being written.
+/// @param len Number of bytes available at @p data.
+/// @param ctx Opaque context pointer supplied when the hook was installed.
+typedef void (*rt_output_capture_fn)(const char *data, size_t len, void *ctx);
+
+/// @brief Previously installed runtime output capture hook.
+/// @details Returned from @ref rt_output_set_capture_hook so scoped embedders can
+///          restore the exact prior hook after temporary capture ends. Both
+///          fields are nullable; a null @c fn means runtime output writes to the
+///          normal process stdout stream.
+typedef struct rt_output_capture_hook {
+    rt_output_capture_fn fn; ///< Capture callback, or NULL when capture is disabled.
+    void *ctx;              ///< Opaque callback context associated with @c fn.
+} rt_output_capture_hook;
+
+/// @brief Replace the runtime stdout capture hook.
+/// @details This is intended for embedders such as the REPL that need to capture
+///          VM output without redirecting process file descriptors. The function
+///          returns the previous hook so callers can restore it after execution.
+///          Capture is process-global because runtime output is process-global;
+///          callers should install it only around short, controlled VM
+///          executions.
+/// @param fn New capture callback, or NULL to disable capture.
+/// @param ctx Opaque context passed to @p fn.
+/// @return The hook that was active before this call.
+rt_output_capture_hook rt_output_set_capture_hook(rt_output_capture_fn fn, void *ctx);
+
 /// @brief Write a string to the output buffer.
 /// @param s Null-terminated string to write.
 /// @details Writes to stdout without flushing unless auto-flush is enabled

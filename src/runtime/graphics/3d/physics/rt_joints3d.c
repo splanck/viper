@@ -1669,6 +1669,46 @@ static void solve_sixdof(rt_sixdof_joint3d *j, double dt) {
  * Generic joint solver dispatch
  *=========================================================================*/
 
+typedef struct {
+    void *vptr;
+    rt_body3d_kinematics *body_a;
+    rt_body3d_kinematics *body_b;
+} rt_joint3d_body_pair_view;
+
+/// @brief Return the two body handles retained by a validated joint object.
+/// @details Every concrete joint payload starts with `vptr`, `body_a`, and
+///   `body_b`; this accessor first checks that the supplied runtime type tag
+///   matches the concrete class and then reads that common prefix. It gives
+///   World3D one safe place to validate same-world membership and purge joints
+///   that mention a removed body.
+int rt_joint3d_get_bodies(void *joint, int32_t joint_type, void **out_body_a, void **out_body_b) {
+    int matches = 0;
+    if (out_body_a)
+        *out_body_a = NULL;
+    if (out_body_b)
+        *out_body_b = NULL;
+    if (!joint)
+        return 0;
+    if (joint_type == RT_JOINT_DISTANCE)
+        matches = rt_g3d_has_class(joint, RT_G3D_DISTANCEJOINT3D_CLASS_ID);
+    else if (joint_type == RT_JOINT_SPRING)
+        matches = rt_g3d_has_class(joint, RT_G3D_SPRINGJOINT3D_CLASS_ID);
+    else if (joint_type == RT_JOINT_HINGE)
+        matches = rt_g3d_has_class(joint, RT_G3D_HINGEJOINT3D_CLASS_ID);
+    else if (joint_type == RT_JOINT_ROPE)
+        matches = rt_g3d_has_class(joint, RT_G3D_ROPEJOINT3D_CLASS_ID);
+    else if (joint_type == RT_JOINT_SIXDOF)
+        matches = rt_g3d_has_class(joint, RT_G3D_SIXDOFJOINT3D_CLASS_ID);
+    if (!matches)
+        return 0;
+    rt_joint3d_body_pair_view *pair = (rt_joint3d_body_pair_view *)joint;
+    if (out_body_a)
+        *out_body_a = pair->body_a;
+    if (out_body_b)
+        *out_body_b = pair->body_b;
+    return 1;
+}
+
 /// @brief Dispatch the constraint solver for a joint based on its type.
 /// @details Called by the physics world during each step. Dispatches to
 ///          the concrete joint solver based on joint_type.

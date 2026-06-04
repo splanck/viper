@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstring>
+#include <utility>
 #include <vector>
 
 namespace viper::repl {
@@ -64,6 +65,178 @@ static bool matchKeywordCI(const std::string &line, size_t pos, const char *kw) 
     return true;
 }
 
+/// @brief Determine whether @p pos is at the beginning of a BASIC word token.
+/// @param line Source line being inspected.
+/// @param pos Candidate token offset.
+/// @return True when the preceding character is not an identifier character.
+static bool hasBasicWordStartBoundary(const std::string &line, size_t pos) {
+    if (pos == 0)
+        return true;
+    unsigned char prev = static_cast<unsigned char>(line[pos - 1]);
+    return !(std::isalnum(prev) || prev == '_');
+}
+
+/// @brief Strip BASIC single-line comments while respecting string literals.
+/// @details Apostrophe comments are recognized outside strings. REM comments are
+///          recognized as a word token outside strings, which covers both
+///          whole-line comments and comments after a colon-separated statement.
+/// @param line Raw physical BASIC line.
+/// @return Line content before the first comment marker.
+static std::string stripBasicComment(const std::string &line) {
+    bool inStr = false;
+    for (size_t i = 0; i < line.size(); ++i) {
+        if (line[i] == '"') {
+            if (inStr && i + 1 < line.size() && line[i + 1] == '"') {
+                ++i;
+                continue;
+            }
+            inStr = !inStr;
+            continue;
+        }
+        if (inStr)
+            continue;
+        if (line[i] == '\'')
+            return line.substr(0, i);
+        if (hasBasicWordStartBoundary(line, i) && matchKeywordCI(line, i, "REM"))
+            return line.substr(0, i);
+    }
+    return line;
+}
+
+/// @brief Split a BASIC line into colon-separated statements.
+/// @details Colons inside string literals are preserved as part of the current
+///          statement. Doubled quote escapes are skipped so they do not toggle
+///          string state.
+/// @param line BASIC line after comment stripping.
+/// @return Individual statement segments in source order.
+static std::vector<std::string> splitBasicStatements(const std::string &line) {
+    std::vector<std::string> statements;
+    bool inStr = false;
+    size_t start = 0;
+    for (size_t i = 0; i < line.size(); ++i) {
+        if (line[i] == '"') {
+            if (inStr && i + 1 < line.size() && line[i + 1] == '"') {
+                ++i;
+                continue;
+            }
+            inStr = !inStr;
+            continue;
+        }
+        if (!inStr && line[i] == ':') {
+            statements.push_back(line.substr(start, i - start));
+            start = i + 1;
+        }
+    }
+    statements.push_back(line.substr(start));
+    return statements;
+}
+
+/// @brief Trim trailing whitespace from a string in place.
+/// @param s String to mutate.
+static void trimRight(std::string &s) {
+    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back())))
+        s.pop_back();
+}
+
+/// @brief Test whether a BASIC physical line ends inside a string literal.
+/// @details Comment markers outside strings stop the scan. Doubled quotes inside
+///          a string are treated as escaped quotes and do not close the string.
+/// @param line Raw BASIC source line.
+/// @return True when an opening quote remains unmatched at line end.
+static bool basicLineEndsInsideString(const std::string &line) {
+    bool inStr = false;
+    for (size_t i = 0; i < line.size(); ++i) {
+        if (line[i] == '"') {
+            if (inStr && i + 1 < line.size() && line[i + 1] == '"') {
+                ++i;
+                continue;
+            }
+            inStr = !inStr;
+            continue;
+        }
+        if (inStr)
+            continue;
+        if (line[i] == '\'')
+            break;
+        if (hasBasicWordStartBoundary(line, i) && matchKeywordCI(line, i, "REM"))
+            break;
+    }
+    return inStr;
+}
+
+/// @brief Apply one BASIC statement segment to the block-depth counter.
+/// @details The classifier is intentionally shallow: it detects statement-level
+///          block openers and closers but does not parse expressions. Segments
+///          that do not affect block structure leave @p blockDepth unchanged.
+/// @param statement A single BASIC statement, with comments already removed.
+/// @param blockDepth Mutable block-depth counter.
+static void applyBasicStatementDepth(std::string statement, int &blockDepth) {
+    trimRight(statement);
+    size_t pos = findFirstNonSpace(statement);
+    if (pos >= statement.size())
+        return;
+
+    if (matchKeywordCI(statement, pos, "END")) {
+        size_t afterEnd = pos + 3;
+        while (afterEnd < statement.size() &&
+               std::isspace(static_cast<unsigned char>(statement[afterEnd])))
+            ++afterEnd;
+
+        if (matchKeywordCI(statement, afterEnd, "IF") ||
+            matchKeywordCI(statement, afterEnd, "SUB") ||
+            matchKeywordCI(statement, afterEnd, "FUNCTION") ||
+            matchKeywordCI(statement, afterEnd, "CLASS") ||
+            matchKeywordCI(statement, afterEnd, "TYPE") ||
+            matchKeywordCI(statement, afterEnd, "SELECT") ||
+            matchKeywordCI(statement, afterEnd, "TRY") ||
+            matchKeywordCI(statement, afterEnd, "PROPERTY") ||
+            matchKeywordCI(statement, afterEnd, "NAMESPACE") ||
+            matchKeywordCI(statement, afterEnd, "GET") ||
+            matchKeywordCI(statement, afterEnd, "SET")) {
+            --blockDepth;
+        }
+        return;
+    }
+
+    if (matchKeywordCI(statement, pos, "NEXT") || matchKeywordCI(statement, pos, "WEND") ||
+        matchKeywordCI(statement, pos, "LOOP")) {
+        --blockDepth;
+        return;
+    }
+
+    if (matchKeywordCI(statement, pos, "SUB") || matchKeywordCI(statement, pos, "FUNCTION")) {
+        ++blockDepth;
+        return;
+    }
+
+    if (matchKeywordCI(statement, pos, "IF")) {
+        bool foundThen = false;
+        for (size_t i = pos + 2; i < statement.size(); ++i) {
+            if (matchKeywordCI(statement, i, "THEN")) {
+                size_t afterThen = i + 4;
+                while (afterThen < statement.size() &&
+                       std::isspace(static_cast<unsigned char>(statement[afterThen])))
+                    ++afterThen;
+                if (afterThen >= statement.size())
+                    ++blockDepth;
+                foundThen = true;
+                break;
+            }
+        }
+        if (!foundThen)
+            ++blockDepth;
+        return;
+    }
+
+    if (matchKeywordCI(statement, pos, "DO") || matchKeywordCI(statement, pos, "WHILE") ||
+        matchKeywordCI(statement, pos, "FOR") || matchKeywordCI(statement, pos, "SELECT") ||
+        matchKeywordCI(statement, pos, "CLASS") || matchKeywordCI(statement, pos, "TYPE") ||
+        matchKeywordCI(statement, pos, "TRY") || matchKeywordCI(statement, pos, "PROPERTY") ||
+        matchKeywordCI(statement, pos, "NAMESPACE")) {
+        ++blockDepth;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Zia classifier (bracket depth)
 // ---------------------------------------------------------------------------
@@ -103,9 +276,13 @@ InputKind ReplInputClassifier::classify(const std::string &input) {
         if (inString)
             continue;
 
-        // Skip single-line comments
-        if (c == '/' && i + 1 < input.size() && input[i + 1] == '/')
-            break;
+        // Skip single-line comments without ignoring later accumulated lines.
+        if (c == '/' && i + 1 < input.size() && input[i + 1] == '/') {
+            i = input.find('\n', i + 2);
+            if (i == std::string::npos)
+                break;
+            continue;
+        }
 
         switch (c) {
             case '{':
@@ -131,7 +308,7 @@ InputKind ReplInputClassifier::classify(const std::string &input) {
         }
     }
 
-    if (braceDepth > 0 || parenDepth > 0 || bracketDepth > 0)
+    if (inString || braceDepth > 0 || parenDepth > 0 || bracketDepth > 0)
         return InputKind::Incomplete;
 
     return InputKind::Complete;
@@ -149,9 +326,8 @@ InputKind ReplInputClassifier::classifyBasic(const std::string &input) {
     if (firstNonSpace < input.size() && input[firstNonSpace] == '.')
         return InputKind::MetaCommand;
 
-    // Split input into lines and track block depth via keyword matching.
-    // Openers increment depth; closers decrement.
     int blockDepth = 0;
+    bool unterminatedString = false;
 
     size_t lineStart = 0;
     while (lineStart <= input.size()) {
@@ -160,153 +336,17 @@ InputKind ReplInputClassifier::classifyBasic(const std::string &input) {
             lineEnd = input.size();
 
         std::string line = input.substr(lineStart, lineEnd - lineStart);
+        if (basicLineEndsInsideString(line))
+            unterminatedString = true;
 
-        // Strip trailing whitespace and comments (REM or ')
-        size_t commentPos = std::string::npos;
-        bool inStr = false;
-        for (size_t i = 0; i < line.size(); ++i) {
-            if (line[i] == '"')
-                inStr = !inStr;
-            if (!inStr && line[i] == '\'') {
-                commentPos = i;
-                break;
-            }
-        }
-        if (commentPos != std::string::npos)
-            line = line.substr(0, commentPos);
-
-        // Trim trailing whitespace
-        while (!line.empty() && std::isspace(static_cast<unsigned char>(line.back())))
-            line.pop_back();
-
-        // Find first non-whitespace token position
-        size_t pos = findFirstNonSpace(line);
-        if (pos >= line.size()) {
-            lineStart = lineEnd + 1;
-            continue;
-        }
-
-        // Check for block closers first (they reduce depth)
-        // "END IF", "END SUB", "END FUNCTION", "END CLASS", "END TYPE",
-        // "END SELECT", "END TRY", "END PROPERTY", "END NAMESPACE"
-        if (matchKeywordCI(line, pos, "END")) {
-            size_t afterEnd = pos + 3;
-            while (afterEnd < line.size() &&
-                   std::isspace(static_cast<unsigned char>(line[afterEnd])))
-                ++afterEnd;
-
-            if (matchKeywordCI(line, afterEnd, "IF") || matchKeywordCI(line, afterEnd, "SUB") ||
-                matchKeywordCI(line, afterEnd, "FUNCTION") ||
-                matchKeywordCI(line, afterEnd, "CLASS") || matchKeywordCI(line, afterEnd, "TYPE") ||
-                matchKeywordCI(line, afterEnd, "SELECT") || matchKeywordCI(line, afterEnd, "TRY") ||
-                matchKeywordCI(line, afterEnd, "PROPERTY") ||
-                matchKeywordCI(line, afterEnd, "NAMESPACE") ||
-                matchKeywordCI(line, afterEnd, "GET") || matchKeywordCI(line, afterEnd, "SET")) {
-                --blockDepth;
-                lineStart = lineEnd + 1;
-                continue;
-            }
-        }
-
-        // "NEXT" closes FOR
-        if (matchKeywordCI(line, pos, "NEXT")) {
-            --blockDepth;
-            lineStart = lineEnd + 1;
-            continue;
-        }
-
-        // "WEND" closes WHILE
-        if (matchKeywordCI(line, pos, "WEND")) {
-            --blockDepth;
-            lineStart = lineEnd + 1;
-            continue;
-        }
-
-        // "LOOP" closes DO
-        if (matchKeywordCI(line, pos, "LOOP")) {
-            --blockDepth;
-            lineStart = lineEnd + 1;
-            continue;
-        }
-
-        // Check for block openers (they increase depth)
-
-        // SUB / FUNCTION (multi-line definitions)
-        if (matchKeywordCI(line, pos, "SUB") || matchKeywordCI(line, pos, "FUNCTION")) {
-            ++blockDepth;
-            lineStart = lineEnd + 1;
-            continue;
-        }
-
-        // IF ... THEN — multi-line if THEN is at end of line with nothing after
-        if (matchKeywordCI(line, pos, "IF")) {
-            // Find THEN keyword
-            bool foundThen = false;
-            for (size_t i = pos + 2; i < line.size(); ++i) {
-                if (matchKeywordCI(line, i, "THEN")) {
-                    // Check if there's anything after THEN
-                    size_t afterThen = i + 4;
-                    while (afterThen < line.size() &&
-                           std::isspace(static_cast<unsigned char>(line[afterThen])))
-                        ++afterThen;
-                    if (afterThen >= line.size()) {
-                        // Nothing after THEN → multi-line IF
-                        ++blockDepth;
-                    }
-                    // else: single-line IF (THEN <statement>) → no depth change
-                    foundThen = true;
-                    break;
-                }
-            }
-            if (!foundThen) {
-                // IF without THEN on same line → multi-line (continuation)
-                ++blockDepth;
-            }
-            lineStart = lineEnd + 1;
-            continue;
-        }
-
-        // DO (opens a DO/LOOP block)
-        if (matchKeywordCI(line, pos, "DO")) {
-            ++blockDepth;
-            lineStart = lineEnd + 1;
-            continue;
-        }
-
-        // WHILE (opens a WHILE/WEND block)
-        if (matchKeywordCI(line, pos, "WHILE")) {
-            ++blockDepth;
-            lineStart = lineEnd + 1;
-            continue;
-        }
-
-        // FOR ... TO ... (opens a FOR/NEXT block)
-        if (matchKeywordCI(line, pos, "FOR")) {
-            ++blockDepth;
-            lineStart = lineEnd + 1;
-            continue;
-        }
-
-        // SELECT CASE
-        if (matchKeywordCI(line, pos, "SELECT")) {
-            ++blockDepth;
-            lineStart = lineEnd + 1;
-            continue;
-        }
-
-        // CLASS / TYPE / TRY / PROPERTY / NAMESPACE
-        if (matchKeywordCI(line, pos, "CLASS") || matchKeywordCI(line, pos, "TYPE") ||
-            matchKeywordCI(line, pos, "TRY") || matchKeywordCI(line, pos, "PROPERTY") ||
-            matchKeywordCI(line, pos, "NAMESPACE")) {
-            ++blockDepth;
-            lineStart = lineEnd + 1;
-            continue;
+        for (auto statement : splitBasicStatements(stripBasicComment(line))) {
+            applyBasicStatementDepth(std::move(statement), blockDepth);
         }
 
         lineStart = lineEnd + 1;
     }
 
-    if (blockDepth > 0)
+    if (unterminatedString || blockDepth > 0)
         return InputKind::Incomplete;
 
     return InputKind::Complete;

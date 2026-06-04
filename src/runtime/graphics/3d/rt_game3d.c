@@ -582,6 +582,49 @@ static void game3d_effects_rebase_origin(void *effects_obj, const double delta[3
     }
 }
 
+/// @brief Shift WorldStream3D focus/manifest centers by a floating-origin delta.
+/// @details Scene and physics systems rebase resident runtime objects separately.
+///   This helper updates the stream's persisted local-space metadata so future
+///   load/unload distance tests and terrain draw positions stay in the same
+///   coordinate frame after the world origin moves.
+static void game3d_world_stream_rebase_origin(rt_game3d_world_stream *stream,
+                                              const double delta[3]) {
+    if (!stream || !delta)
+        return;
+    double clean_delta[3] = {
+        game3d_clamp_coord_or(delta[0], 0.0),
+        game3d_clamp_coord_or(delta[1], 0.0),
+        game3d_clamp_coord_or(delta[2], 0.0),
+    };
+    stream->center[0] = game3d_clamp_coord_or(stream->center[0] - clean_delta[0], 0.0);
+    stream->center[1] = game3d_clamp_coord_or(stream->center[1] - clean_delta[1], 0.0);
+    stream->center[2] = game3d_clamp_coord_or(stream->center[2] - clean_delta[2], 0.0);
+
+    int32_t cell_count = 0;
+    if (stream->cells && stream->cell_count > 0 && stream->cell_capacity > 0)
+        cell_count =
+            stream->cell_count < stream->cell_capacity ? stream->cell_count : stream->cell_capacity;
+    for (int32_t i = 0; i < cell_count; ++i) {
+        rt_game3d_stream_cell *cell = &stream->cells[i];
+        cell->center[0] = game3d_clamp_coord_or(cell->center[0] - clean_delta[0], 0.0);
+        cell->center[1] = game3d_clamp_coord_or(cell->center[1] - clean_delta[1], 0.0);
+        cell->center[2] = game3d_clamp_coord_or(cell->center[2] - clean_delta[2], 0.0);
+    }
+
+    int32_t tile_count = 0;
+    if (stream->terrain_tiles && stream->terrain_tile_count > 0 &&
+        stream->terrain_tile_capacity > 0)
+        tile_count = stream->terrain_tile_count < stream->terrain_tile_capacity
+                         ? stream->terrain_tile_count
+                         : stream->terrain_tile_capacity;
+    for (int32_t i = 0; i < tile_count; ++i) {
+        rt_game3d_stream_terrain_tile *tile = &stream->terrain_tiles[i];
+        tile->center[0] = game3d_clamp_coord_or(tile->center[0] - clean_delta[0], 0.0);
+        tile->center[1] = game3d_clamp_coord_or(tile->center[1] - clean_delta[1], 0.0);
+        tile->center[2] = game3d_clamp_coord_or(tile->center[2] - clean_delta[2], 0.0);
+    }
+}
+
 /// @brief Mark that the world must reach a safe boundary (e.g. end of step) before its next rebase.
 static void game3d_world_require_rebase_boundary(rt_game3d_world *world) {
     if (!world || !world->canvas)
@@ -624,6 +667,10 @@ static void game3d_world_apply_origin_rebase(rt_game3d_world *world, const doubl
     if (physics_rebased)
         rt_world3d_rebase_origin(physics, clean_delta[0], clean_delta[1], clean_delta[2]);
     game3d_effects_rebase_origin(world->effects, clean_delta);
+    game3d_world_stream_rebase_origin(
+        (rt_game3d_world_stream *)rt_g3d_checked_or_null(world->stream,
+                                                        RT_G3D_GAME3D_WORLD_STREAM3D_CLASS_ID),
+        clean_delta);
 
     int32_t entity_count = game3d_world_safe_entity_count(world);
     for (int32_t i = 0; i < entity_count; ++i) {
@@ -1507,11 +1554,17 @@ typedef struct {
     int8_t overflowed;
 } game3d_seen_ptr_set;
 
+/// @brief Initialize a temporary pointer-deduplication set to an empty state.
+/// @details The set owns only the pointer array it allocates; it never retains or
+///   releases the objects whose addresses are recorded.
 static void game3d_seen_ptr_set_init(game3d_seen_ptr_set *set) {
     if (set)
         memset(set, 0, sizeof(*set));
 }
 
+/// @brief Release the temporary storage owned by a pointer-deduplication set.
+/// @details Safe to call on an already-empty set; recorded object pointers are
+///   bookkeeping only and are not released.
 static void game3d_seen_ptr_set_free(game3d_seen_ptr_set *set) {
     if (!set)
         return;
@@ -1593,10 +1646,14 @@ static uint64_t game3d_count_material_texture_once(void *texture,
     if (!game3d_seen_ptr_set_mark(seen_textures, texture))
         return 0;
     if (is_texture_asset)
-        return game3d_u64_from_i64_nonnegative(rt_textureasset3d_get_resident_bytes(texture));
+        return game3d_u64_from_i64_nonnegative(rt_textureasset3d_get_retained_bytes(texture));
     return game3d_pixels_estimate_resident_bytes(texture);
 }
 
+/// @brief Add a cubemap's resident bytes to the total once.
+/// @details Counts the cubemap object and each complete face payload while using
+///   the same seen-set as material textures, so shared face images or shared
+///   cubemaps do not inflate cache residency estimates.
 static uint64_t game3d_count_material_cubemap_once(void *cubemap,
                                                    game3d_seen_ptr_set *seen_textures) {
     rt_cubemap3d *cm = (rt_cubemap3d *)cubemap;
@@ -3427,6 +3484,7 @@ void rt_game3d_assets_clear_cache(void) {
             break;
         if (!game3d_model_cache_wait_locked_ms(RT_GAME3D_MODEL_CACHE_WAIT_TIMEOUT_MS)) {
             game3d_model_cache_unlock();
+            rt_trap("Game3D.Assets3D.ClearCache: timed out waiting for in-flight model loads");
             return;
         }
         game3d_model_cache_unlock();
@@ -4518,7 +4576,9 @@ static int64_t game3d_stream_cell_bytes(const rt_game3d_stream_cell *cell) {
 static int64_t game3d_stream_terrain_tile_bytes(const rt_game3d_stream_terrain_tile *tile) {
     if (!tile || tile->resident_bytes <= 0)
         return 256 * 1024;
-    return tile->resident_bytes;
+    if (tile->sidecar_bytes <= 0)
+        return tile->resident_bytes;
+    return game3d_i64_saturating_add(tile->resident_bytes, tile->sidecar_bytes);
 }
 
 /// @brief Squared distance from the stream center to a cell's center (drives load/unload ordering).
@@ -4630,16 +4690,11 @@ static int game3d_stream_range_matches(
 
 static double game3d_stream_radius_sq(double radius);
 
-typedef struct {
-    int32_t index;
-    double distance_sq;
-} game3d_stream_load_candidate;
-
 /// @brief qsort comparator ordering stream load candidates by ascending squared
 ///   distance, breaking ties by ascending index; NULL/non-finite distances sort last.
 static int game3d_stream_load_candidate_cmp(const void *lhs, const void *rhs) {
-    const game3d_stream_load_candidate *a = (const game3d_stream_load_candidate *)lhs;
-    const game3d_stream_load_candidate *b = (const game3d_stream_load_candidate *)rhs;
+    const rt_game3d_stream_load_candidate *a = (const rt_game3d_stream_load_candidate *)lhs;
+    const rt_game3d_stream_load_candidate *b = (const rt_game3d_stream_load_candidate *)rhs;
     double ad = a ? a->distance_sq : HUGE_VAL;
     double bd = b ? b->distance_sq : HUGE_VAL;
     if (!isfinite(ad))
@@ -4653,6 +4708,115 @@ static int game3d_stream_load_candidate_cmp(const void *lhs, const void *rhs) {
     int32_t ai = a ? a->index : INT32_MAX;
     int32_t bi = b ? b->index : INT32_MAX;
     return (ai > bi) - (ai < bi);
+}
+
+static int32_t game3d_world_stream_safe_cell_count(const rt_game3d_world_stream *stream);
+static int32_t game3d_world_stream_safe_terrain_tile_count(
+    const rt_game3d_world_stream *stream);
+static int game3d_stream_cell_desired(const rt_game3d_world_stream *stream,
+                                      const rt_game3d_stream_cell *cell);
+static int game3d_stream_terrain_tile_desired(const rt_game3d_world_stream *stream,
+                                              const rt_game3d_stream_terrain_tile *tile);
+
+/// @brief Grow a reusable stream-load candidate buffer to at least @p needed entries.
+/// @details The stream owns candidate arrays for the lifetime of the WorldStream3D
+///   object. Reusing them avoids per-update allocation churn while still allowing
+///   manifests to grow after remount. Returns 0 on allocation failure; callers then
+///   use the deterministic no-allocation scanner.
+static int game3d_stream_reserve_load_candidates(rt_game3d_stream_load_candidate **items,
+                                                 int32_t *capacity,
+                                                 int32_t needed) {
+    if (!items || !capacity || needed <= 0)
+        return 1;
+    if (*capacity >= needed && *items)
+        return 1;
+    rt_game3d_stream_load_candidate *grown =
+        (rt_game3d_stream_load_candidate *)realloc(*items, (size_t)needed * sizeof(**items));
+    if (!grown)
+        return 0;
+    *items = grown;
+    *capacity = needed;
+    return 1;
+}
+
+/// @brief True if a load candidate tuple sorts after the previously emitted tuple.
+/// @details Used by the no-allocation nearest-first fallback. Distances are sanitized
+///   to put non-finite values last, and index breaks ties so the ordering exactly
+///   matches `game3d_stream_load_candidate_cmp`.
+static int game3d_stream_candidate_after(double distance_sq,
+                                         int32_t index,
+                                         double previous_distance_sq,
+                                         int32_t previous_index) {
+    if (!isfinite(distance_sq))
+        distance_sq = HUGE_VAL;
+    if (!isfinite(previous_distance_sq))
+        previous_distance_sq = HUGE_VAL;
+    if (previous_index < 0)
+        return 1;
+    if (distance_sq > previous_distance_sq)
+        return 1;
+    if (distance_sq < previous_distance_sq)
+        return 0;
+    return index > previous_index;
+}
+
+/// @brief Pick the next desired cell in sorted order without allocating or marking cells.
+static int32_t game3d_world_stream_pick_next_cell_noalloc(const rt_game3d_world_stream *stream,
+                                                         double previous_distance_sq,
+                                                         int32_t previous_index,
+                                                         double *out_distance_sq) {
+    int32_t best_index = -1;
+    double best_distance = HUGE_VAL;
+    int32_t cell_count = game3d_world_stream_safe_cell_count(stream);
+    for (int32_t i = 0; i < cell_count; ++i) {
+        const rt_game3d_stream_cell *cell = &stream->cells[i];
+        if (!game3d_stream_cell_desired(stream, cell))
+            continue;
+        double distance_sq = game3d_stream_cell_distance_sq(stream, cell);
+        if (!isfinite(distance_sq))
+            distance_sq = HUGE_VAL;
+        if (!game3d_stream_candidate_after(
+                distance_sq, i, previous_distance_sq, previous_index))
+            continue;
+        if (best_index < 0 || distance_sq < best_distance ||
+            (distance_sq == best_distance && i < best_index)) {
+            best_index = i;
+            best_distance = distance_sq;
+        }
+    }
+    if (out_distance_sq)
+        *out_distance_sq = best_distance;
+    return best_index;
+}
+
+/// @brief Pick the next desired terrain tile in sorted order without allocating.
+static int32_t game3d_world_stream_pick_next_terrain_noalloc(
+    const rt_game3d_world_stream *stream,
+    double previous_distance_sq,
+    int32_t previous_index,
+    double *out_distance_sq) {
+    int32_t best_index = -1;
+    double best_distance = HUGE_VAL;
+    int32_t tile_count = game3d_world_stream_safe_terrain_tile_count(stream);
+    for (int32_t i = 0; i < tile_count; ++i) {
+        const rt_game3d_stream_terrain_tile *tile = &stream->terrain_tiles[i];
+        if (!game3d_stream_terrain_tile_desired(stream, tile))
+            continue;
+        double distance_sq = game3d_stream_terrain_tile_distance_sq(stream, tile);
+        if (!isfinite(distance_sq))
+            distance_sq = HUGE_VAL;
+        if (!game3d_stream_candidate_after(
+                distance_sq, i, previous_distance_sq, previous_index))
+            continue;
+        if (best_index < 0 || distance_sq < best_distance ||
+            (distance_sq == best_distance && i < best_index)) {
+            best_index = i;
+            best_distance = distance_sq;
+        }
+    }
+    if (out_distance_sq)
+        *out_distance_sq = best_distance;
+    return best_index;
 }
 
 /// @brief Increment a pending-work counter, saturating at INT64_MAX and ignoring NULL.
@@ -4811,6 +4975,9 @@ static void game3d_world_stream_unload_terrain_tile(rt_game3d_world_stream *stre
         return;
     game3d_world_stream_detach_terrain_spatial_sources(stream, tile);
     game3d_release_typed_ref(&tile->terrain, RT_G3D_TERRAIN3D_CLASS_ID);
+    free(tile->sidecar_data);
+    tile->sidecar_data = NULL;
+    tile->sidecar_bytes = 0;
     tile->resident = 0;
 }
 
@@ -4984,6 +5151,31 @@ static void *game3d_load_heightmap_sidecar(rt_string path,
     free(samples);
     rt_string_unref(text);
     return pixels;
+}
+
+/// @brief Load a terrain tile's optional binary sidecar payload into residency.
+/// @details Terrain sidecars are opaque editor/gameplay metadata parallel to scene
+///   cell sidecars. Missing, empty, or unreadable files are recoverable and simply
+///   leave the tile with zero sidecar bytes. Any previous payload is freed first so
+///   remounts and reloads do not leak memory.
+static void game3d_stream_terrain_tile_load_sidecar(rt_game3d_stream_terrain_tile *tile) {
+    if (!tile)
+        return;
+    free(tile->sidecar_data);
+    tile->sidecar_data = NULL;
+    tile->sidecar_bytes = 0;
+    if (!game3d_string_has_bytes(tile->sidecar_path))
+        return;
+    size_t size = 0;
+    uint8_t *data = game3d_asset_read_file_bytes(rt_string_cstr(tile->sidecar_path), &size);
+    if (!data)
+        return;
+    if (size == 0) {
+        free(data);
+        return;
+    }
+    tile->sidecar_data = data;
+    tile->sidecar_bytes = (int64_t)(size > (size_t)INT64_MAX ? (size_t)INT64_MAX : size);
 }
 
 /// @brief Build the unique collider name for a terrain tile (used to register/find its physics
@@ -5257,6 +5449,7 @@ static int game3d_world_stream_load_terrain_tile(rt_game3d_world_stream *stream,
     }
     tile->terrain = terrain;
     tile->resident = 1;
+    game3d_stream_terrain_tile_load_sidecar(tile);
     int64_t stitched = game3d_world_stream_stitch_loaded_terrain_neighbors(stream, tile);
     game3d_release_ref(&heightmap);
     if (stitched > 0)
@@ -5587,6 +5780,12 @@ static void game3d_world_stream_finalize(void *obj) {
         stream->world = NULL;
     game3d_release_ref((void **)&stream->terrain_manifest);
     game3d_release_ref((void **)&stream->cells_manifest);
+    free(stream->cell_candidates);
+    stream->cell_candidates = NULL;
+    stream->cell_candidate_capacity = 0;
+    free(stream->terrain_candidates);
+    stream->terrain_candidates = NULL;
+    stream->terrain_candidate_capacity = 0;
 }
 
 /// @brief Convert a world-space load/unload radius to a cell-count radius (ceil of radius /
@@ -5719,11 +5918,12 @@ static void game3d_world_stream_recompute_cells(rt_game3d_world_stream *stream,
         int64_t budget = stream->residency_budget_bytes;
         if (budget < 0 || manifest_bytes <= budget) {
             state->cell_bytes = manifest_bytes;
-            game3d_stream_load_candidate *candidates = NULL;
+            rt_game3d_stream_load_candidate *candidates = NULL;
             int32_t candidate_count = 0;
-            if (cell_count > 0)
-                candidates =
-                    (game3d_stream_load_candidate *)calloc((size_t)cell_count, sizeof(*candidates));
+            if (cell_count > 0 &&
+                game3d_stream_reserve_load_candidates(
+                    &stream->cell_candidates, &stream->cell_candidate_capacity, cell_count))
+                candidates = stream->cell_candidates;
             for (int32_t i = 0; i < cell_count; ++i) {
                 rt_game3d_stream_cell *cell = &stream->cells[i];
                 if (cell->resident)
@@ -5732,25 +5932,38 @@ static void game3d_world_stream_recompute_cells(rt_game3d_world_stream *stream,
                     game3d_world_stream_unload_cell(stream, cell);
                     continue;
                 }
-                if (!candidates) {
-                    game3d_world_stream_process_cell(stream, state, cell, budget);
-                    continue;
+                if (candidates) {
+                    candidates[candidate_count].index = i;
+                    candidates[candidate_count].distance_sq =
+                        game3d_stream_cell_distance_sq(stream, cell);
+                    candidate_count++;
                 }
-                candidates[candidate_count].index = i;
-                candidates[candidate_count].distance_sq =
-                    game3d_stream_cell_distance_sq(stream, cell);
-                candidate_count++;
             }
-            if (candidate_count > 1)
-                qsort(candidates,
-                      (size_t)candidate_count,
-                      sizeof(*candidates),
-                      game3d_stream_load_candidate_cmp);
-            for (int32_t ci = 0; ci < candidate_count; ++ci) {
-                rt_game3d_stream_cell *cell = &stream->cells[candidates[ci].index];
-                game3d_world_stream_process_cell(stream, state, cell, budget);
+            if (candidates) {
+                if (candidate_count > 1)
+                    qsort(candidates,
+                          (size_t)candidate_count,
+                          sizeof(*candidates),
+                          game3d_stream_load_candidate_cmp);
+                for (int32_t ci = 0; ci < candidate_count; ++ci) {
+                    rt_game3d_stream_cell *cell = &stream->cells[candidates[ci].index];
+                    game3d_world_stream_process_cell(stream, state, cell, budget);
+                }
+            } else {
+                double previous_distance_sq = -1.0;
+                int32_t previous_index = -1;
+                for (;;) {
+                    double next_distance_sq = HUGE_VAL;
+                    int32_t next_index = game3d_world_stream_pick_next_cell_noalloc(
+                        stream, previous_distance_sq, previous_index, &next_distance_sq);
+                    if (next_index < 0)
+                        break;
+                    game3d_world_stream_process_cell(
+                        stream, state, &stream->cells[next_index], budget);
+                    previous_distance_sq = next_distance_sq;
+                    previous_index = next_index;
+                }
             }
-            free(candidates);
         } else {
             for (int32_t i = 0; i < cell_count; ++i)
                 game3d_world_stream_unload_cell(stream, &stream->cells[i]);
@@ -5838,38 +6051,56 @@ static void game3d_world_stream_recompute_terrain(rt_game3d_world_stream *stream
                               : (budget >= state->cell_bytes ? budget - state->cell_bytes : -1);
         if (terrain_unlimited || (remaining_budget >= 0 && manifest_bytes <= remaining_budget)) {
             state->terrain_bytes = manifest_bytes;
-            game3d_stream_load_candidate *candidates = NULL;
+            rt_game3d_stream_load_candidate *candidates = NULL;
             int32_t candidate_count = 0;
-            if (tile_count > 0)
-                candidates =
-                    (game3d_stream_load_candidate *)calloc((size_t)tile_count, sizeof(*candidates));
+            if (tile_count > 0 &&
+                game3d_stream_reserve_load_candidates(&stream->terrain_candidates,
+                                                      &stream->terrain_candidate_capacity,
+                                                      tile_count))
+                candidates = stream->terrain_candidates;
             for (int32_t i = 0; i < tile_count; ++i) {
                 rt_game3d_stream_terrain_tile *tile = &stream->terrain_tiles[i];
                 if (!game3d_stream_terrain_tile_desired(stream, tile)) {
                     game3d_world_stream_unload_terrain_tile(stream, tile);
                     continue;
                 }
-                if (!candidates) {
+                if (candidates) {
+                    candidates[candidate_count].index = i;
+                    candidates[candidate_count].distance_sq =
+                        game3d_stream_terrain_tile_distance_sq(stream, tile);
+                    candidate_count++;
+                }
+            }
+            if (candidates) {
+                if (candidate_count > 1)
+                    qsort(candidates,
+                          (size_t)candidate_count,
+                          sizeof(*candidates),
+                          game3d_stream_load_candidate_cmp);
+                for (int32_t ci = 0; ci < candidate_count; ++ci) {
+                    rt_game3d_stream_terrain_tile *tile =
+                        &stream->terrain_tiles[candidates[ci].index];
                     game3d_world_stream_process_terrain_tile(
                         stream, state, tile, terrain_unlimited, remaining_budget);
-                    continue;
                 }
-                candidates[candidate_count].index = i;
-                candidates[candidate_count].distance_sq =
-                    game3d_stream_terrain_tile_distance_sq(stream, tile);
-                candidate_count++;
+            } else {
+                double previous_distance_sq = -1.0;
+                int32_t previous_index = -1;
+                for (;;) {
+                    double next_distance_sq = HUGE_VAL;
+                    int32_t next_index = game3d_world_stream_pick_next_terrain_noalloc(
+                        stream, previous_distance_sq, previous_index, &next_distance_sq);
+                    if (next_index < 0)
+                        break;
+                    game3d_world_stream_process_terrain_tile(stream,
+                                                             state,
+                                                             &stream->terrain_tiles[next_index],
+                                                             terrain_unlimited,
+                                                             remaining_budget);
+                    previous_distance_sq = next_distance_sq;
+                    previous_index = next_index;
+                }
             }
-            if (candidate_count > 1)
-                qsort(candidates,
-                      (size_t)candidate_count,
-                      sizeof(*candidates),
-                      game3d_stream_load_candidate_cmp);
-            for (int32_t ci = 0; ci < candidate_count; ++ci) {
-                rt_game3d_stream_terrain_tile *tile = &stream->terrain_tiles[candidates[ci].index];
-                game3d_world_stream_process_terrain_tile(
-                    stream, state, tile, terrain_unlimited, remaining_budget);
-            }
-            free(candidates);
         } else {
             for (int32_t i = 0; i < tile_count; ++i)
                 game3d_world_stream_unload_terrain_tile(stream, &stream->terrain_tiles[i]);
@@ -6265,6 +6496,14 @@ rt_string rt_game3d_world_stream_get_terrain_tile_sidecar(void *obj, int64_t ind
         obj, "Game3D.WorldStream3D.getTerrainTileSidecar: invalid stream");
     rt_game3d_stream_terrain_tile *tile = game3d_world_stream_terrain_tile_at(stream, index);
     return rt_string_ref(tile && tile->sidecar_path ? tile->sidecar_path : rt_const_cstr(""));
+}
+
+/// @brief Resident bytes of a terrain-tile's loaded binary sidecar payload (0 if none/unloaded).
+int64_t rt_game3d_world_stream_get_terrain_tile_sidecar_bytes(void *obj, int64_t index) {
+    rt_game3d_world_stream *stream = game3d_world_stream_checked(
+        obj, "Game3D.WorldStream3D.getTerrainTileSidecarBytes: invalid stream");
+    rt_game3d_stream_terrain_tile *tile = game3d_world_stream_terrain_tile_at(stream, index);
+    return tile ? game3d_world_stream_nonnegative_i64(tile->sidecar_bytes) : 0;
 }
 
 /// @brief Get parsed terrain-tile collision/render layer metadata.

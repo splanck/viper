@@ -83,10 +83,12 @@ extern double rt_quat_w(void *q);
 // Core simulation structs.
 //===----------------------------------------------------------------------===//
 
+typedef struct rt_world3d rt_world3d;
+
 /// @brief Rigid body payload: pose (position/orientation/scale), linear+angular
 ///   motion state, mass/inertia, cached primitive shape, material properties,
 ///   layer/mask filtering, and sleep/CCD flags.
-typedef struct {
+typedef struct rt_body3d {
     void *vptr;
     double position[3];
     double orientation[4];
@@ -120,6 +122,8 @@ typedef struct {
     int8_t use_ccd;
     double ground_normal[3];
     uint64_t broadphase_revision;
+    rt_world3d *owner_world;
+    int32_t owner_index;
 } rt_body3d;
 
 /// @brief A contact manifold between two bodies: representative point/normal/
@@ -149,7 +153,7 @@ typedef struct ph3d_broadphase_entry ph3d_broadphase_entry;
 
 /// @brief Physics world: body/contact/event arrays, joint list, sweep-and-prune
 ///   broad-phase cache, solver tuning, and per-frame diagnostics.
-typedef struct {
+struct rt_world3d {
     void *vptr;
     double gravity[3];
     rt_body3d **bodies;
@@ -197,7 +201,7 @@ typedef struct {
     int32_t last_solver_island_count;
     int32_t last_solver_active_body_count;
     int32_t last_solver_contact_count;
-} rt_world3d;
+};
 
 struct ph3d_broadphase_entry {
     rt_body3d *body;

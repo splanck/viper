@@ -80,3 +80,92 @@ var HUD_MUTED: Integer = 0xA8BACB;
 var HUD_GOOD: Integer = 0x7DFF9A;
 var HUD_WARN: Integer = 0xFFDD44;
 var HUD_DANGER: Integer = 0xFF7D66;
+
+// --- Forest (recommendation #1: imported FBX model) ------------------------
+// MapleTree_1.fbx native AABB is ~623 x 664 x 490 model units, base at Y~=0,
+// so a uniform scale near 0.013 yields an ~8.6 world-unit-tall tree.
+// Two candidate paths so the model resolves whether the demo is run from the
+// repo root (`viper run examples/games/game3d-showcase/`) or from this folder.
+var TREE_MODEL_PATH: String = "MapleTree_1.fbx";
+var TREE_MODEL_PATH_ALT: String = "examples/games/game3d-showcase/MapleTree_1.fbx";
+// Relative to the executable's own directory (examples/bin -> examples/games/...),
+// so a standalone binary resolves the model no matter the working directory.
+var TREE_MODEL_PATH_FROM_BIN: String = "../games/game3d-showcase/MapleTree_1.fbx";
+var FOREST_CELL: Float = 8.0;          // candidate-site grid spacing (world units)
+var FOREST_MARGIN: Float = 10.0;       // keep trees away from the terrain edge
+var FOREST_MAX: Integer = 130;         // hard cap on hill-forest instances
+var FOREST_DENSITY: Float = 0.62;      // 0..1 probability a candidate cell plants
+var FOREST_SCALE_MIN: Float = 0.012;   // ~8.0 world units tall
+var FOREST_SCALE_MAX: Float = 0.020;   // ~13.3 world units tall
+var FOREST_MIN_GROUND: Float = 2.8;    // just above WATER_HEIGHT (2.2) so trees stay dry
+var FOREST_MIN_NORMALY: Float = 0.80;  // allow gentler slopes (1.0 = flat)
+var FOREST_BEACON_CLEAR: Float = 30.0; // squared clearance around beacons
+var FOREST_PLAYER_CLEAR: Float = 36.0; // squared clearance around the spawn point
+
+// Guaranteed grove ringing the spawn so trees are visible the moment the demo
+// opens (relaxed rules — anywhere above the waterline).
+var GROVE_COUNT: Integer = 22;
+var GROVE_RADIUS_MIN: Float = 9.0;
+var GROVE_RADIUS_MAX: Float = 30.0;
+
+// --- Ground vegetation (recommendation #8: instanced grass + wind) ----------
+var GRASS_BLADE_COUNT: Integer = 6000;
+var GRASS_WIND_STRENGTH: Float = 2.2;
+var GRASS_WIND_FREQ: Float = 0.25;
+var GRASS_WIND_DIR: Float = 0.6;
+var GRASS_LOD_NEAR: Float = 35.0;
+var GRASS_LOD_FAR: Float = 95.0;
+var GRASS_BLADE_W: Float = 0.45;
+var GRASS_BLADE_H: Float = 1.30;
+var GRASS_BLADE_VAR: Float = 0.40;
+
+// --- PBR material textures (recommendation #2) ------------------------------
+var PBR_TEXTURE_SIZE: Integer = 64;
+var PBR_NORMAL_STRENGTH: Float = 0.65;
+
+// --- 3D spatial audio (recommendation #4) -----------------------------------
+var AUDIO_REF_DIST: Float = 6.0;       // full-volume radius
+var AUDIO_MAX_DIST: Float = 95.0;      // silence beyond this
+var STEP_DISTANCE: Float = 2.4;        // world units between footstep sounds
+
+// --- Dynamic lights (recommendation #5) -------------------------------------
+var BEACON_LIGHT_SLOT: Integer = 3;    // beacons occupy slots 3..7 (16 max)
+var BEACON_LIGHT_RANGE: Float = 42.0;
+var BEACON_LIGHT_INTENSITY: Float = 1.6;
+var PLAYER_LIGHT_SLOT: Integer = 8;
+var PLAYER_LIGHT_RANGE: Float = 16.0;
+var PLAYER_LIGHT_INTENSITY: Float = 0.55;
+
+// --- Day/night cycle (recommendation #7) ------------------------------------
+var DAY_LENGTH_SEC: Float = 180.0;     // one full sunrise->night->sunrise
+var DAY_START_PHASE: Float = 0.25;     // start at noon so the opening frame is bright
+var SUN_INTENSITY_DAY: Float = 1.05;
+var DAY_AMBIENT_R: Float = 0.34;
+var DAY_AMBIENT_G: Float = 0.38;
+var DAY_AMBIENT_B: Float = 0.42;
+var NIGHT_AMBIENT_R: Float = 0.06;
+var NIGHT_AMBIENT_G: Float = 0.08;
+var NIGHT_AMBIENT_B: Float = 0.17;
+
+// --- Particles + decals (recommendation #6) ---------------------------------
+var FIREFLY_COUNT: Integer = 150;
+var MIST_COUNT: Integer = 120;
+var DUST_COUNT: Integer = 60;
+var SCORCH_LIFETIME: Float = 45.0;
+var DECAL_MAX: Integer = 16;
+
+// --- Raycast scanner + camera feel (recommendation #9) ----------------------
+var SCAN_MAX_DIST: Float = 140.0;
+var SHAKE_BEACON: Float = 0.22;
+var SHAKE_ALL: Float = 0.55;
+
+// --- Authored post-FX + quality + debug (recommendation #10) ----------------
+// NOTE: AddColorGrade's first arg (brightness) is an ADDITIVE offset near 0.0,
+// not a multiplier — values like 1.0 blow the frame out to pure white.
+var POSTFX_BLOOM_THRESHOLD: Float = 0.80;
+var POSTFX_BLOOM_INTENSITY: Float = 0.16;
+var POSTFX_COLORGRADE_BRIGHT: Float = 0.015;
+var POSTFX_COLORGRADE_CONTRAST: Float = 1.06;
+var POSTFX_COLORGRADE_SAT: Float = 1.10;
+var POSTFX_VIGNETTE_RADIUS: Float = 0.90;
+var POSTFX_VIGNETTE_SOFT: Float = 0.22;

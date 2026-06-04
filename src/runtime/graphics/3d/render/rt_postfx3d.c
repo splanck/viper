@@ -977,8 +977,9 @@ void rt_postfx3d_add_fxaa(void *obj) {
     e->p.fxaa.min_threshold = 0.0833f;
 }
 
-/// @brief Append a color-grading effect. All three params are multiplicative (1.0 = neutral):
-/// `brightness` adds, `contrast` scales around 0.5, `saturation` interpolates from grayscale.
+/// @brief Append a color-grading effect.
+/// @details `brightness` is a signed additive offset centered on 0.0. `contrast` scales around
+/// mid-grey (0.5) and `saturation` interpolates from grayscale; both are multipliers centered on 1.0.
 void rt_postfx3d_add_color_grade(void *obj, double brightness, double contrast, double saturation) {
     postfx_entry_t *e;
     rt_postfx3d *fx = postfx3d_checked(obj);

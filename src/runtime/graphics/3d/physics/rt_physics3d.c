@@ -71,6 +71,7 @@ int ph3d_i32_stack_push(int32_t **items, int32_t *count, int32_t *capacity, int3
 #define PH3D_STATE_ABS_MAX 1000000000000.0
 #define PH3D_PARAM_ABS_MAX 1000000000.0
 #define PH3D_STEP_DT_MAX 1.0
+#define PH3D_EVENT_DIFF_FALLBACK_PAIR_LIMIT 4194304LL
 
 
 /* The joint solver (rt_joints3d.c) reaches into a body's pose/velocity through
@@ -1728,6 +1729,38 @@ static void *world3d_cached_event_from_contact(void ***array,
     return event;
 }
 
+/// @brief Return whether a hash-table allocation failure can use the O(n²) diff fallback.
+/// @details The fallback is fine for small event sets and preserves behavior under
+///   memory pressure, but for large scenes it can cause an unbounded frame spike.
+///   This helper caps the fallback by pair comparisons and lets Step fail cleanly
+///   when both contact sets are too large to diff without hash tables.
+static int world3d_event_diff_fallback_allowed(const rt_world3d *w,
+                                               const contact_pair_hash_entry *previous_table,
+                                               const contact_pair_hash_entry *current_table) {
+    if (!w)
+        return 0;
+    if (previous_table && current_table)
+        return 1;
+    if (w->contact_count <= 0 || w->previous_contact_count <= 0)
+        return 1;
+    int64_t comparisons = (int64_t)w->contact_count * (int64_t)w->previous_contact_count;
+    return comparisons <= PH3D_EVENT_DIFF_FALLBACK_PAIR_LIMIT;
+}
+
+/// @brief Clear all collision/event counts visible to public query APIs.
+/// @details Used by explicit ClearCollisionEvents and by Step failure cleanup so
+///   callers never observe stale contacts after a failed allocation or overflow.
+static void world3d_clear_visible_collision_events(rt_world3d *w) {
+    if (!w)
+        return;
+    world3d_release_cached_event_objects(w);
+    w->contact_count = 0;
+    w->previous_contact_count = 0;
+    w->enter_event_count = 0;
+    w->stay_event_count = 0;
+    w->exit_event_count = 0;
+}
+
 /// @brief Diff this frame's contacts against the previous frame to fire enter/stay/exit events.
 ///
 /// For each contact that exists this frame:
@@ -1755,6 +1788,10 @@ static int world3d_build_event_buffers(rt_world3d *w) {
         w->previous_contacts, w->previous_contact_count, &previous_table_capacity);
     current_table =
         contact_pair_table_build(w->contacts, w->contact_count, &current_table_capacity);
+    if (!world3d_event_diff_fallback_allowed(w, previous_table, current_table)) {
+        rt_trap("Physics3D.World.Step: collision-event diff allocation failed");
+        goto fail;
+    }
 
     for (int32_t i = 0; i < w->contact_count; ++i) {
         int found = previous_table ? contact_pair_table_contains(
@@ -1873,8 +1910,13 @@ static void world3d_finalizer(void *obj) {
     int32_t body_count = world3d_body_count_safe(w);
     int32_t joint_count = world3d_joint_count_safe(w);
     for (int32_t i = 0; i < body_count; i++) {
-        if (w->bodies[i] && rt_obj_release_check0(w->bodies[i]))
-            rt_obj_free(w->bodies[i]);
+        rt_body3d *body = w->bodies[i];
+        if (body && body->owner_world == w) {
+            body->owner_world = NULL;
+            body->owner_index = -1;
+        }
+        if (body && rt_obj_release_check0(body))
+            rt_obj_free(body);
         w->bodies[i] = NULL;
     }
     for (int32_t i = 0; i < joint_count; i++) {
@@ -2128,6 +2170,7 @@ void rt_world3d_step(void *obj, double dt) {
         world3d_contact_count_safe(w->stay_events, w->stay_event_count, w->stay_event_capacity);
     w->exit_event_count =
         world3d_contact_count_safe(w->exit_events, w->exit_event_count, w->exit_event_capacity);
+    int step_ok = 0;
     int substeps = world3d_compute_substeps(w, dt);
     double sub_dt = dt / (double)substeps;
     world3d_invalidate_query_broadphase(w);
@@ -2230,10 +2273,53 @@ void rt_world3d_step(void *obj, double dt) {
         goto cleanup;
     if (!world3d_build_event_buffers(w))
         goto cleanup;
+    step_ok = 1;
 
 cleanup:
+    if (!step_ok)
+        world3d_clear_visible_collision_events(w);
     world3d_invalidate_query_broadphase(w);
     world3d_clear_body_accumulators(w);
+}
+
+/// @brief Return whether @p body is registered in @p w, using owner-index metadata first.
+/// @details Body owner fields make the common membership query O(1). If an index
+///   is stale, the helper falls back to a scan and repairs the cached index when
+///   it finds the body. This keeps old objects coherent across swap-removes and
+///   defensive count clamping.
+static int world3d_body_is_registered(rt_world3d *w, rt_body3d *body) {
+    if (!w || !body)
+        return 0;
+    int32_t body_count = world3d_body_count_safe(w);
+    w->body_count = body_count;
+    if (body->owner_world == w && body->owner_index >= 0 && body->owner_index < body_count &&
+        w->bodies[body->owner_index] == body)
+        return 1;
+    for (int32_t i = 0; i < body_count; ++i) {
+        if (w->bodies[i] == body) {
+            body->owner_world = w;
+            body->owner_index = i;
+            return 1;
+        }
+    }
+    if (body->owner_world == w) {
+        body->owner_world = NULL;
+        body->owner_index = -1;
+    }
+    return 0;
+}
+
+/// @brief Return whether a joint endpoint can be attached to @p w.
+/// @details Registered bodies are accepted directly. Bodies that are not owned by
+///   any world are also accepted for legacy/manual joint registration, while bodies
+///   already owned by a different world are rejected so constraints cannot bridge
+///   two independent simulations.
+static int world3d_joint_body_allowed(rt_world3d *w, rt_body3d *body) {
+    if (!w || !body)
+        return 0;
+    if (world3d_body_is_registered(w, body))
+        return 1;
+    return body->owner_world == NULL;
 }
 
 /// @brief `World3D.AddJoint(joint, type)` — register a constraint.
@@ -2242,10 +2328,18 @@ cleanup:
 /// dispatch correctly. Storage grows on demand.
 void rt_world3d_add_joint(void *obj, void *joint, int64_t joint_type) {
     rt_world3d *w = world3d_checked(obj);
+    void *joint_body_a = NULL;
+    void *joint_body_b = NULL;
     if (!w || !joint)
         return;
     if (!joint3d_matches_type(joint, joint_type)) {
         rt_trap("Physics3D.World.AddJoint: joint object does not match joint type");
+        return;
+    }
+    if (!rt_joint3d_get_bodies(joint, (int32_t)joint_type, &joint_body_a, &joint_body_b) ||
+        !world3d_joint_body_allowed(w, (rt_body3d *)joint_body_a) ||
+        !world3d_joint_body_allowed(w, (rt_body3d *)joint_body_b)) {
+        rt_trap("Physics3D.World.AddJoint: joint bodies cannot belong to another world");
         return;
     }
     int32_t joint_count = world3d_joint_count_safe(w);
@@ -2280,11 +2374,50 @@ void rt_world3d_remove_joint(void *obj, void *joint) {
             w->joints[i] = w->joints[--w->joint_count];
             w->joint_types[i] = w->joint_types[w->joint_count];
             w->joints[w->joint_count] = NULL;
+            w->joint_types[w->joint_count] = 0;
             if (removed && rt_obj_release_check0(removed))
                 rt_obj_free(removed);
             return;
         }
     }
+}
+
+/// @brief Return whether a concrete joint references @p body as either endpoint.
+static int world3d_joint_mentions_body(void *joint, int32_t joint_type, rt_body3d *body) {
+    void *body_a = NULL;
+    void *body_b = NULL;
+    return body && rt_joint3d_get_bodies(joint, joint_type, &body_a, &body_b) &&
+           (body_a == body || body_b == body);
+}
+
+/// @brief Remove and release every joint in @p w that references @p body.
+/// @details Called before body removal so a removed body is not retained by stale
+///   constraints and the solver never sees a joint endpoint outside the world.
+static void world3d_purge_joints_for_body(rt_world3d *w, rt_body3d *body) {
+    if (!w || !body)
+        return;
+    int32_t joint_count = world3d_joint_count_safe(w);
+    w->joint_count = joint_count;
+    int32_t write = 0;
+    for (int32_t read = 0; read < joint_count; ++read) {
+        void *joint = w->joints[read];
+        int32_t joint_type = w->joint_types[read];
+        if (world3d_joint_mentions_body(joint, joint_type, body)) {
+            if (joint && rt_obj_release_check0(joint))
+                rt_obj_free(joint);
+            continue;
+        }
+        if (write != read) {
+            w->joints[write] = w->joints[read];
+            w->joint_types[write] = w->joint_types[read];
+        }
+        write++;
+    }
+    for (int32_t i = write; i < joint_count; ++i) {
+        w->joints[i] = NULL;
+        w->joint_types[i] = 0;
+    }
+    w->joint_count = write;
 }
 
 /// @brief `World3D.JointCount` — number of registered joints (0 for NULL).
@@ -2340,17 +2473,19 @@ int8_t rt_world3d_try_add(void *obj, void *body) {
     rt_body3d *b = body3d_checked(body);
     if (!w || !b)
         return 0;
-    int32_t body_count = world3d_body_count_safe(w);
-    w->body_count = body_count;
-    for (int32_t i = 0; i < body_count; i++) {
-        if (w->bodies[i] == b)
-            return 1;
+    if (world3d_body_is_registered(w, b))
+        return 1;
+    if (b->owner_world && b->owner_world != w) {
+        rt_trap("Physics3D.World.Add: body already belongs to another world");
+        return 0;
     }
     if (!world3d_reserve_body_capacity(w, w->body_count + 1)) {
         rt_trap("Physics3D: body storage allocation failed");
         return 0;
     }
     rt_obj_retain_maybe(body);
+    b->owner_world = w;
+    b->owner_index = w->body_count;
     w->bodies[w->body_count++] = b;
     world3d_invalidate_query_broadphase(w);
     return 1;
@@ -2412,9 +2547,17 @@ void rt_world3d_remove(void *obj, void *body) {
     w->body_count = body_count;
     for (int32_t i = 0; i < body_count; i++) {
         if (w->bodies[i] == b) {
-            void *removed = w->bodies[i];
+            rt_body3d *removed = w->bodies[i];
             world3d_purge_body_contacts(w, b);
-            w->bodies[i] = w->bodies[--w->body_count];
+            world3d_purge_joints_for_body(w, b);
+            if (removed && removed->owner_world == w) {
+                removed->owner_world = NULL;
+                removed->owner_index = -1;
+            }
+            w->body_count--;
+            w->bodies[i] = w->bodies[w->body_count];
+            if (w->bodies[i] && w->bodies[i]->owner_world == w)
+                w->bodies[i]->owner_index = i;
             w->bodies[w->body_count] = NULL;
             world3d_invalidate_query_broadphase(w);
             if (removed && rt_obj_release_check0(removed))
@@ -2436,12 +2579,7 @@ int8_t rt_world3d_contains_body(void *obj, void *body) {
     rt_body3d *b = body3d_checked(body);
     if (!w || !b)
         return 0;
-    int32_t body_count = world3d_body_count_safe(w);
-    for (int32_t i = 0; i < body_count; i++) {
-        if (w->bodies[i] == b)
-            return 1;
-    }
-    return 0;
+    return world3d_body_is_registered(w, b) ? 1 : 0;
 }
 
 /// @brief `World3D.LastCCDRequestedSubsteps` — unclamped substep demand from the last Step.
@@ -2720,12 +2858,7 @@ void rt_world3d_clear_collision_events(void *obj) {
     rt_world3d *w = world3d_checked(obj);
     if (!w)
         return;
-    world3d_release_cached_event_objects(w);
-    w->contact_count = 0;
-    w->previous_contact_count = 0;
-    w->enter_event_count = 0;
-    w->stay_event_count = 0;
-    w->exit_event_count = 0;
+    world3d_clear_visible_collision_events(w);
 }
 
 // Boxed `CollisionEvent3D` field accessors — exposed to Zia as
@@ -3024,6 +3157,7 @@ static void *make_body(double mass) {
     b->collision_mask = ~(int64_t)0;
     b->motion_mode = (b->mass <= 1e-12) ? PH3D_MODE_STATIC : PH3D_MODE_DYNAMIC;
     b->can_sleep = 1;
+    b->owner_index = -1;
     b->ground_normal[1] = 1.0;
     vec3_set(b->scale, 1.0, 1.0, 1.0);
     quat_identity(b->orientation);
@@ -3468,6 +3602,19 @@ double rt_body3d_get_angular_damping(void *o) {
     return b ? ph3d_clamp_nonnegative_finite(b->angular_damping, 0.0) : 0.0;
 }
 
+/// @brief Invalidate collision state after a filter or trigger-mode change.
+/// @details The broadphase must re-evaluate candidate pairs and the contact/event
+///   history must forget pairs involving this body so the next Step reports
+///   transitions from the new filter state, not stale previous contacts.
+static void body3d_invalidate_filter_contacts(rt_body3d *body) {
+    if (!body)
+        return;
+    body3d_touch_broadphase(body);
+    body3d_wake_if_dynamic(body);
+    if (body->owner_world)
+        world3d_purge_body_contacts(body->owner_world, body);
+}
+
 /// @brief `Body3D.SetCollisionLayer(l)` — bitmask labeling this body's category.
 void rt_body3d_set_collision_layer(void *o, int64_t l) {
     rt_body3d *b = body3d_checked(o);
@@ -3477,8 +3624,10 @@ void rt_body3d_set_collision_layer(void *o, int64_t l) {
         rt_trap("Physics3DBody.SetCollisionLayer: layer must be a positive bitmask");
         return;
     }
+    if (b->collision_layer == l)
+        return;
     b->collision_layer = l;
-    body3d_touch_broadphase(b);
+    body3d_invalidate_filter_contacts(b);
 }
 
 /// @brief `Body3D.GetCollisionLayer` — read this body's layer bitmask.
@@ -3490,10 +3639,10 @@ int64_t rt_body3d_get_collision_layer(void *o) {
 /// @brief `Body3D.SetCollisionMask(m)` — bitmask of layers this body collides with.
 void rt_body3d_set_collision_mask(void *o, int64_t m) {
     rt_body3d *b = body3d_checked(o);
-    if (b) {
-        b->collision_mask = m;
-        body3d_touch_broadphase(b);
-    }
+    if (!b || b->collision_mask == m)
+        return;
+    b->collision_mask = m;
+    body3d_invalidate_filter_contacts(b);
 }
 
 /// @brief `Body3D.GetCollisionMask` — read this body's collision mask.
@@ -3562,8 +3711,13 @@ int8_t rt_body3d_is_kinematic(void *o) {
 /// positional correction — useful for damage volumes, pickup zones, etc.
 void rt_body3d_set_trigger(void *o, int8_t t) {
     rt_body3d *b = body3d_checked(o);
-    if (b)
-        b->is_trigger = t;
+    if (!b)
+        return;
+    int8_t enabled = t ? 1 : 0;
+    if (b->is_trigger == enabled)
+        return;
+    b->is_trigger = enabled;
+    body3d_invalidate_filter_contacts(b);
 }
 
 /// @brief `Body3D.IsTrigger` — true if the body is in trigger-only mode.

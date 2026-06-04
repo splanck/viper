@@ -1364,6 +1364,7 @@ set(G3D_ZIA_TESTS
         test_canvas3d_hello
         test_canvas3d_obj
         test_material3d_pbr
+        test_graphics3d_scalar_set_aliases
         test_model3d
         test_model3d_load_asset
         test_scene3d_bindings

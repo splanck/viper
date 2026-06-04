@@ -100,6 +100,7 @@ typedef struct {
     int64_t resident_mip_start;
     int64_t resident_mip_count;
     int64_t resident_bytes;
+    int64_t retained_bytes;
     const char *format;
     int8_t compressed;
     int32_t block_width;
@@ -217,6 +218,7 @@ static void textureasset3d_finalize(void *obj) {
     asset->mips = NULL;
     asset->mip_count = 0;
     asset->mip_capacity = 0;
+    asset->retained_bytes = 0;
 }
 
 /// @brief Read a little-endian uint32 from @p p (KTX2 is little-endian on all hosts).
@@ -317,6 +319,29 @@ static uint64_t textureasset3d_pixels_allocation_bytes(void *pixels) {
     data_bytes = pixel_count * (uint64_t)sizeof(uint32_t);
     total = data_bytes;
     return total;
+}
+
+/// @brief Recompute the total bytes retained by all decoded/native mip payloads.
+/// @details Resident mip range controls what backends should upload, but this
+///          asset keeps decoded fallback `Pixels` objects and native block payloads
+///          alive so the resident range can move without re-reading source bytes.
+///          This helper sums retained payload memory for cache-budget accounting
+///          and saturates to INT64_MAX for ABI stability.
+static int64_t textureasset3d_compute_retained_bytes(rt_textureasset3d *asset) {
+    uint64_t total = 0;
+    int64_t safe_mip_count = textureasset3d_safe_mip_count(asset);
+    if (!asset || safe_mip_count <= 0)
+        return 0;
+    for (int64_t i = 0; i < safe_mip_count; i++) {
+        const textureasset3d_mip *mip = &asset->mips[i];
+        if (asset->mip_payloads && asset->mip_payloads[i] && mip->length > 0) {
+            textureasset3d_add_saturating_u64(&total, mip->length);
+        } else if (asset->mip_pixels && asset->mip_pixels[i]) {
+            textureasset3d_add_saturating_u64(
+                &total, textureasset3d_pixels_allocation_bytes(asset->mip_pixels[i]));
+        }
+    }
+    return total > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)total;
 }
 
 /// @brief Set the resident mip window and recompute resident byte total / active Pixels.
@@ -1766,6 +1791,7 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
     asset->block_bytes = format.block_bytes;
     asset->cache_identity = textureasset3d_next_cache_identity();
     asset->native_revision = 1;
+    asset->retained_bytes = textureasset3d_compute_retained_bytes(asset);
     textureasset3d_set_resident_mip_range_internal(asset, 0, asset->mip_count, NULL);
     (void)api_name;
     return asset;
@@ -1875,6 +1901,19 @@ int64_t rt_textureasset3d_get_resident_bytes(void *obj) {
     if (!textureasset3d_resident_range_valid(asset) || asset->resident_bytes < 0)
         return 0;
     return asset->resident_bytes;
+}
+
+/// @brief Total byte size of all decoded/native mip payloads retained by the asset.
+/// @details This is intentionally different from `ResidentBytes`: the resident
+///          range describes the active upload window, while retained bytes reflects
+///          process memory held so the upload window can move without reloading.
+int64_t rt_textureasset3d_get_retained_bytes(void *obj) {
+    rt_textureasset3d *asset = textureasset3d_checked(obj);
+    if (!asset)
+        return 0;
+    if (asset->retained_bytes < 0)
+        asset->retained_bytes = textureasset3d_compute_retained_bytes(asset);
+    return asset->retained_bytes > 0 ? asset->retained_bytes : 0;
 }
 
 /// @brief Set the resident mip window (traps on a negative range); see the internal helper.

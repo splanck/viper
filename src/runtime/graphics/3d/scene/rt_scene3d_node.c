@@ -575,20 +575,14 @@ void rt_scene_node3d_set_mesh(void *obj, void *mesh) {
         return;
     if (n->mesh == mesh) {
         if (mesh)
-            scene_mesh_bounds((rt_mesh3d *)mesh, n->aabb_min, n->aabb_max, &n->bsphere_radius);
+            scene_node_refresh_mesh_bounds(n);
         scene3d_mark_spatial_dirty(n->owner_scene);
         return;
     }
     scene_node_assign_class_ref(&n->mesh, mesh, RT_G3D_MESH3D_CLASS_ID);
 
     /* Compute object-space AABB from mesh vertices */
-    if (mesh) {
-        scene_mesh_bounds((rt_mesh3d *)mesh, n->aabb_min, n->aabb_max, &n->bsphere_radius);
-    } else {
-        n->aabb_min[0] = n->aabb_min[1] = n->aabb_min[2] = 0.0f;
-        n->aabb_max[0] = n->aabb_max[1] = n->aabb_max[2] = 0.0f;
-        n->bsphere_radius = 0.0f;
-    }
+    scene_node_refresh_mesh_bounds(n);
     scene3d_mark_spatial_dirty(n->owner_scene);
 }
 

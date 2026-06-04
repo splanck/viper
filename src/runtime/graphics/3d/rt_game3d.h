@@ -1101,6 +1101,8 @@ int64_t rt_game3d_world_stream_get_terrain_tile_bytes(void *stream, int64_t inde
 rt_string rt_game3d_world_stream_get_terrain_tile_material(void *stream, int64_t index);
 /// @brief Get parsed terrain-tile optional binary sidecar path, or "" for invalid/missing.
 rt_string rt_game3d_world_stream_get_terrain_tile_sidecar(void *stream, int64_t index);
+/// @brief Get resident bytes of a terrain-tile's loaded binary sidecar payload (0 if none/unloaded).
+int64_t rt_game3d_world_stream_get_terrain_tile_sidecar_bytes(void *stream, int64_t index);
 /// @brief Get parsed terrain-tile collision/render layer metadata.
 int64_t rt_game3d_world_stream_get_terrain_tile_layer(void *stream, int64_t index);
 /// @brief Get parsed terrain-tile collision mask metadata.

@@ -57,6 +57,11 @@ extern const char *rt_string_cstr(rt_string s);
 #define MESH3D_OBJ_MAX_FACE_VERTS 4096
 #define MESH3D_STL_ASCII_MAX_LINE_BYTES (1024u * 1024u)
 #define MESH3D_PROCEDURAL_MAX_BYTES (128ull * 1024ull * 1024ull)
+#if defined(__clang__) || defined(__GNUC__)
+#define MESH3D_UNUSED_PRIVATE __attribute__((unused))
+#else
+#define MESH3D_UNUSED_PRIVATE
+#endif
 
 /// @brief Validate @p obj as a Mesh3D handle and return its typed pointer (NULL on mismatch).
 static rt_mesh3d *mesh3d_checked(void *obj) {
@@ -816,7 +821,12 @@ int8_t rt_mesh3d_get_resident(void *obj) {
     return (m && m->resident) ? 1 : 0;
 }
 
-/// @brief Mark a mesh payload resident/nonresident without releasing the Mesh3D object.
+/// @brief Mark a mesh payload eligible or ineligible for draw-time residency.
+/// @details Meshes can be procedural or imported without a reload handle, so toggling
+///          residency never frees the CPU vertex/index payload. The flag is instead
+///          a conservative draw/cache hint: nonresident meshes are skipped by draw
+///          submission, and setting resident true makes the preserved payload drawable
+///          again without data loss.
 void rt_mesh3d_set_resident(void *obj, int8_t resident) {
     rt_mesh3d *m = mesh3d_checked(obj);
     if (!m)
@@ -824,7 +834,11 @@ void rt_mesh3d_set_resident(void *obj, int8_t resident) {
     m->resident = resident ? 1 : 0;
 }
 
-/// @brief Resident vertex/index byte estimate; nonresident meshes report zero.
+/// @brief Active resident vertex/index byte estimate.
+/// @details `Mesh3D.Resident` controls draw/upload eligibility, not payload
+///          ownership: the geometry remains retained so a later `SetResident(true)`
+///          can restore drawing without a source reload. Nonresident meshes report
+///          zero resident bytes while still keeping CPU payloads intact.
 int64_t rt_mesh3d_get_resident_bytes(void *obj) {
     rt_mesh3d *m = mesh3d_checked(obj);
     if (!m || !m->resident)
@@ -3230,7 +3244,7 @@ static int stl_emit_triangle(void *mesh, const float *verts, const float *normal
 /// per triangle (12-byte normal + 3 × 12-byte vertices + 2-byte
 /// attribute count). Vertices are not deduplicated — STL emits
 /// each face's vertices in full.
-static void *stl_load_binary(const uint8_t *data, size_t len) {
+static void *MESH3D_UNUSED_PRIVATE stl_load_binary(const uint8_t *data, size_t len) {
     if (len < 84)
         return NULL;
     uint32_t tri_count = stl_read_u32_le(data + 80);
@@ -3381,9 +3395,10 @@ static const char *stl_skip_horizontal_ws(const char *p, const char *end) {
     return p;
 }
 
-/// @brief Trim trailing spaces, tabs and CR from a line span, returning the new end pointer.
+/// @brief Trim trailing spaces, tabs, LF, and CR from a line span, returning the new end pointer.
 static const char *stl_trim_line_end(const char *start, const char *end) {
-    while (end > start && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\r'))
+    while (end > start &&
+           (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\n' || end[-1] == '\r'))
         end--;
     return end;
 }
@@ -3459,7 +3474,7 @@ static int stl_parse_vertex_line(const char *start, const char *end, float *out_
 /// Walks the text, recognising `facet normal …` blocks each
 /// containing three `vertex …` lines. Same no-deduplication
 /// rule as the binary loader.
-static void *stl_load_ascii(const uint8_t *data, size_t len) {
+static void *MESH3D_UNUSED_PRIVATE stl_load_ascii(const uint8_t *data, size_t len) {
     enum {
         STL_ASCII_OUTSIDE_FACET = 0,
         STL_ASCII_EXPECT_OUTER_LOOP = 1,
@@ -3752,44 +3767,17 @@ void *rt_mesh3d_from_stl(rt_string path) {
         }
     }
 
-    if (file_len > 512 * 1024 * 1024) {
-        fclose(f);
-        return NULL;
-    }
-
-    uint8_t *data = (uint8_t *)malloc((size_t)file_len);
-    if (!data) {
-        fclose(f);
-        return NULL;
-    }
-    if (fread(data, 1, (size_t)file_len, f) != (size_t)file_len) {
-        free(data);
-        fclose(f);
-        return NULL;
-    }
-    fclose(f);
-
-    // Auto-detect: binary STL has predictable size based on triangle count at offset 80
-    mesh = NULL;
-    if ((size_t)file_len >= 84) {
-        uint32_t tri_count = stl_read_u32_le(data + 80);
-        size_t expected_binary = 0;
-        if ((size_t)tri_count <= (SIZE_MAX - 84u) / 50u)
-            expected_binary = 84u + (size_t)tri_count * 50u;
-        if (expected_binary != 0 && (size_t)file_len == expected_binary && tri_count > 0) {
-            mesh = stl_load_binary(data, (size_t)file_len);
+    if (file_len >= 84 && ((file_len - 84) % 50) == 0) {
+        uint64_t tri_count64 = (uint64_t)(file_len - 84) / 50u;
+        if (tri_count64 > 0 && tri_count64 <= UINT32_MAX / 3u &&
+            fseek(f, 84, SEEK_SET) == 0) {
+            mesh = stl_load_binary_stream(f, (uint32_t)tri_count64);
+            fclose(f);
+            return mesh;
         }
     }
-    if (!mesh && file_len > 5 && memcmp(data, "solid", 5) == 0) {
-        mesh = stl_load_ascii(data, (size_t)file_len);
-    }
-    if (!mesh) {
-        // Final fallback: try binary anyway (some files have non-matching header)
-        mesh = stl_load_binary(data, (size_t)file_len);
-    }
-
-    free(data);
-    return mesh;
+    fclose(f);
+    return NULL;
 }
 
 #else

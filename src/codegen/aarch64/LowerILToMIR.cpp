@@ -189,6 +189,30 @@ static std::vector<std::size_t> countTempUses(const il::core::Function &fn) {
     return uses;
 }
 
+/// @brief Build a function-wide temp register-class map from IL types.
+/// @details Cross-block reloads can see a temp before its defining block has
+///          been lowered when IL block order differs from CFG dominance order.
+///          Seeding classes up front keeps f64 temps from defaulting to GPR.
+static std::unordered_map<unsigned, RegClass> buildTempRegClassMap(
+    const il::core::Function &fn) {
+    auto classForType = [](const il::core::Type &type) {
+        return type.kind == il::core::Type::Kind::F64 ? RegClass::FPR : RegClass::GPR;
+    };
+
+    std::unordered_map<unsigned, RegClass> classes;
+    for (const auto &param : fn.params)
+        classes[param.id] = classForType(param.type);
+    for (const auto &block : fn.blocks) {
+        for (const auto &param : block.params)
+            classes[param.id] = classForType(param.type);
+        for (const auto &instr : block.instructions) {
+            if (instr.result)
+                classes[*instr.result] = classForType(instr.type);
+        }
+    }
+    return classes;
+}
+
 /// @brief Return true if @p bb's terminator is a CBr that consumes @p tempId as its condition.
 /// @details Used to skip materializing the condition into an extra vreg when the CBr
 ///          can consume the flag result directly from the preceding comparison.
@@ -415,7 +439,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
     const auto tempUseCounts = countTempUses(fn);
     std::unordered_map<unsigned, uint16_t> tempVReg;
     // Track register class (GPR vs FPR) for each temp within this function
-    std::unordered_map<unsigned, RegClass> tempRegClass;
+    std::unordered_map<unsigned, RegClass> tempRegClass = buildTempRegClassMap(fn);
     uint16_t nextVRegId = kFirstVirtualRegId; // vreg ids start at 1
 
     // Map function parameter IDs to their spill offsets (for entry block params)

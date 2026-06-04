@@ -70,6 +70,11 @@ static int g_batch_mode_depth = 0;
 /// @brief Whether an exit-time stdout flush has been registered.
 static int g_output_exit_handler_registered = 0;
 
+/// @brief Process-global runtime stdout capture callback.
+/// @details The runtime output layer is already process-global, so capture uses
+///          the same scope. The REPL installs this only around one VM execution.
+static rt_output_capture_hook g_output_capture_hook = {NULL, NULL};
+
 /// @brief atexit callback: flush buffered stdout at process exit.
 static void rt_output_flush_at_exit_(void) {
     rt_output_flush();
@@ -124,6 +129,31 @@ static void rt_output_write_bytes(const char *s, size_t len) {
 }
 #endif
 
+/// @brief Install @p hook as the current runtime output capture target.
+/// @details Returns the old hook for scoped restoration. This intentionally does
+///          not call @ref rt_output_init because capture should also work before
+///          stdout buffering is initialized.
+rt_output_capture_hook rt_output_set_capture_hook(rt_output_capture_fn fn, void *ctx) {
+    rt_output_capture_hook oldHook = g_output_capture_hook;
+    g_output_capture_hook.fn = fn;
+    g_output_capture_hook.ctx = ctx;
+    return oldHook;
+}
+
+/// @brief Try to deliver bytes to the active capture hook.
+/// @details Returns non-zero when a hook consumed the output. A null byte range
+///          or zero-length write is treated as consumed because there is nothing
+///          left for stdout to do.
+static int rt_output_try_capture_(const char *s, size_t len) {
+    if (!s || len == 0)
+        return 1;
+    rt_output_capture_hook hook = g_output_capture_hook;
+    if (!hook.fn)
+        return 0;
+    hook.fn(s, len, hook.ctx);
+    return 1;
+}
+
 /// @brief Initialize stdout buffering (idempotent, thread-safe).
 /// @details Switches stdout to full buffering with a 16KB static buffer.
 ///          Uses double-checked locking so concurrent callers are safe.
@@ -160,6 +190,8 @@ void rt_output_init(void) {
 void rt_output_str(const char *s) {
     if (!s)
         return;
+    if (rt_output_try_capture_(s, strlen(s)))
+        return;
     rt_output_init();
 #if RT_PLATFORM_WINDOWS
     rt_output_write_bytes(s, strlen(s));
@@ -171,6 +203,8 @@ void rt_output_str(const char *s) {
 /// @brief Write exactly @p len bytes from @p s to stdout without flushing.
 void rt_output_strn(const char *s, size_t len) {
     if (!s || len == 0)
+        return;
+    if (rt_output_try_capture_(s, len))
         return;
     rt_output_init();
 #if RT_PLATFORM_WINDOWS

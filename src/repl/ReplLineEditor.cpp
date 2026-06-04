@@ -20,6 +20,8 @@
 
 #include "ReplLineEditor.hpp"
 
+#include "ReplHistoryCodec.hpp"
+
 #include "tui/term/input.hpp"
 #include "tui/term/key_event.hpp"
 #include "tui/term/session.hpp"
@@ -27,7 +29,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
-#include <fstream>
+#include <cerrno>
 
 #if defined(__unix__) || defined(__APPLE__)
 #include <sys/ioctl.h>
@@ -56,6 +58,7 @@ struct ReplLineEditor::Impl {
     size_t cursor{0};
     int historyIndex{-1};
     std::string savedLine; // saved current line when browsing history
+    size_t renderedCursorRow{0};
 
     /// @brief Get terminal width.
     int termWidth() const {
@@ -74,21 +77,105 @@ struct ReplLineEditor::Impl {
     /// @brief Write raw bytes to stdout.
     void rawWrite(const char *data, size_t len) {
 #if defined(__unix__) || defined(__APPLE__)
-        (void)::write(STDOUT_FILENO, data, len);
+        while (len > 0) {
+            ssize_t n = ::write(STDOUT_FILENO, data, len);
+            if (n < 0) {
+                if (errno == EINTR)
+                    continue;
+                return;
+            }
+            if (n == 0)
+                return;
+            data += static_cast<size_t>(n);
+            len -= static_cast<size_t>(n);
+        }
 #elif defined(_WIN32)
-        DWORD written;
-        WriteConsoleA(GetStdHandle(STD_OUTPUT_HANDLE), data, (DWORD)len, &written, nullptr);
+        while (len > 0) {
+            DWORD chunk = len > 0xFFFFFFFFu ? 0xFFFFFFFFu : static_cast<DWORD>(len);
+            DWORD written = 0;
+            if (!WriteConsoleA(GetStdHandle(STD_OUTPUT_HANDLE), data, chunk, &written, nullptr) ||
+                written == 0)
+                return;
+            data += written;
+            len -= written;
+        }
 #endif
     }
 
+    /// @brief Write an owned string buffer to stdout.
+    /// @param s Byte string to write exactly as stored.
     void rawWrite(const std::string &s) {
         rawWrite(s.data(), s.size());
+    }
+
+    /// @brief Move the terminal cursor up by @p rows rows.
+    /// @param rows Number of rows to move.
+    void cursorUp(size_t rows) {
+        if (rows == 0)
+            return;
+        char moveBuf[32];
+        snprintf(moveBuf, sizeof(moveBuf), "\033[%zuA", rows);
+        rawWrite(moveBuf, strlen(moveBuf));
+    }
+
+    /// @brief Move the terminal cursor forward by @p cols columns.
+    /// @param cols Number of columns to move.
+    void cursorForward(size_t cols) {
+        if (cols == 0)
+            return;
+        char moveBuf[32];
+        snprintf(moveBuf, sizeof(moveBuf), "\033[%zuC", cols);
+        rawWrite(moveBuf, strlen(moveBuf));
+    }
+
+    /// @brief Move the terminal cursor down by @p rows rows.
+    /// @param rows Number of rows to move.
+    void cursorDown(size_t rows) {
+        if (rows == 0)
+            return;
+        char moveBuf[32];
+        snprintf(moveBuf, sizeof(moveBuf), "\033[%zuB", rows);
+        rawWrite(moveBuf, strlen(moveBuf));
+    }
+
+    /// @brief Count visible terminal columns in a string containing ANSI SGR codes.
+    /// @details Escape sequences beginning with ESC and ending in an ASCII
+    ///          alphabetic final byte are ignored. Other bytes count as one
+    ///          column; this is sufficient for stable REPL prompt layout.
+    /// @param text Text whose visible width should be measured.
+    /// @return Approximate terminal display columns.
+    static size_t visibleColumns(const std::string &text) {
+        size_t cols = 0;
+        bool inEscape = false;
+        for (unsigned char c : text) {
+            if (inEscape) {
+                if (std::isalpha(c))
+                    inEscape = false;
+                continue;
+            }
+            if (c == 0x1B) {
+                inEscape = true;
+                continue;
+            }
+            ++cols;
+        }
+        return cols;
+    }
+
+    /// @brief Move the cursor to the row where the rendered buffer ends.
+    /// @param prompt Prompt currently displayed before @c buf.
+    void moveToRenderedEndRow(const std::string &prompt) {
+        size_t width = static_cast<size_t>(std::max(1, termWidth()));
+        size_t endRow = (visibleColumns(prompt) + buf.size()) / width;
+        if (endRow > renderedCursorRow)
+            cursorDown(endRow - renderedCursorRow);
+        renderedCursorRow = endRow;
     }
 
     /// @brief Read raw bytes from stdin (blocking with timeout).
     /// @param outBuf Buffer to fill.
     /// @param maxLen Maximum bytes to read.
-    /// @return Number of bytes read, or 0 on timeout/error.
+    /// @return Number of bytes read, 0 on timeout, or -1 on EOF/fatal error.
     int rawRead(char *outBuf, int maxLen) {
 #if defined(__unix__) || defined(__APPLE__)
         // Use select with a short timeout for responsive Ctrl-C
@@ -102,7 +189,11 @@ struct ReplLineEditor::Impl {
         if (sel <= 0)
             return 0;
         auto n = ::read(STDIN_FILENO, outBuf, static_cast<size_t>(maxLen));
-        return n > 0 ? static_cast<int>(n) : 0;
+        if (n > 0)
+            return static_cast<int>(n);
+        if (n == 0)
+            return -1;
+        return (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) ? 0 : -1;
 #elif defined(_WIN32)
         HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
         DWORD avail = 0;
@@ -110,31 +201,49 @@ struct ReplLineEditor::Impl {
             return 0;
         DWORD read_count = 0;
         if (!ReadConsoleA(h, outBuf, (DWORD)maxLen, &read_count, nullptr))
-            return 0;
+            return -1;
+        if (read_count == 0)
+            return -1;
         return (int)read_count;
 #else
-        return 0;
+            return -1;
 #endif
     }
 
-    /// @brief Refresh the displayed line.
+    /// @brief Refresh the displayed prompt and editable buffer.
+    /// @details Redraw starts from the top row of the previously rendered logical
+    ///          line, clears everything below it, prints prompt plus buffer, then
+    ///          restores the terminal cursor to the logical edit cursor. This keeps
+    ///          wrapped lines from leaving stale bytes behind.
+    /// @param prompt Prompt currently displayed before @c buf.
     void refreshLine(const std::string &prompt) {
-        // Move to start of line, clear it, reprint prompt + buffer
-        rawWrite("\r\033[K");
+        size_t width = static_cast<size_t>(std::max(1, termWidth()));
+        size_t promptCols = visibleColumns(prompt);
+        size_t cursorCols = promptCols + cursor;
+        size_t endCols = promptCols + buf.size();
+        size_t cursorRow = cursorCols / width;
+        size_t cursorCol = cursorCols % width;
+        size_t endRow = endCols / width;
+
+        // Move from the previous cursor row to the top of the rendered line,
+        // clear all rows below, then reprint prompt + buffer.
+        cursorUp(renderedCursorRow);
+        rawWrite("\r\033[J");
         rawWrite(prompt);
         rawWrite(buf);
 
-        // Position cursor correctly
-        if (cursor < buf.size()) {
-            // Move cursor back from end to cursor position
-            size_t back = buf.size() - cursor;
-            char moveBuf[32];
-            snprintf(moveBuf, sizeof(moveBuf), "\033[%zuD", back);
-            rawWrite(moveBuf, strlen(moveBuf));
-        }
+        cursorUp(endRow - cursorRow);
+        rawWrite("\r");
+        cursorForward(cursorCol);
+        renderedCursorRow = cursorRow;
     }
 
-    /// @brief Handle tab completion.
+    /// @brief Invoke the configured completion callback and render matches.
+    /// @details A single match replaces the current buffer. Multiple matches are
+    ///          printed on a fresh line and the current prompt/buffer are redrawn.
+    ///          The callback receives byte offsets, matching the editor's UTF-8
+    ///          cursor model.
+    /// @param prompt Prompt currently displayed before @c buf.
     void handleTab(const std::string &prompt) {
         if (!completionCb)
             return;
@@ -177,6 +286,39 @@ struct ReplLineEditor::Impl {
         while (cursor < buf.size() && buf[cursor] == ' ')
             ++cursor;
     }
+
+    /// @brief Return true if @p c is a UTF-8 continuation byte.
+    /// @param c Byte to inspect.
+    /// @return True when the high bits match `10xxxxxx`.
+    static bool isUtf8Continuation(unsigned char c) {
+        return (c & 0xC0u) == 0x80u;
+    }
+
+    /// @brief Find the byte offset of the previous UTF-8 codepoint.
+    /// @param text UTF-8 byte buffer.
+    /// @param pos Current byte offset.
+    /// @return Start offset of the previous codepoint, or zero at buffer start.
+    static size_t previousCodepointStart(const std::string &text, size_t pos) {
+        if (pos == 0)
+            return 0;
+        --pos;
+        while (pos > 0 && isUtf8Continuation(static_cast<unsigned char>(text[pos])))
+            --pos;
+        return pos;
+    }
+
+    /// @brief Find the byte offset just after the next UTF-8 codepoint.
+    /// @param text UTF-8 byte buffer.
+    /// @param pos Start offset of the current codepoint.
+    /// @return Offset after the current codepoint, clamped to @p text size.
+    static size_t nextCodepointEnd(const std::string &text, size_t pos) {
+        if (pos >= text.size())
+            return text.size();
+        ++pos;
+        while (pos < text.size() && isUtf8Continuation(static_cast<unsigned char>(text[pos])))
+            ++pos;
+        return pos;
+    }
 };
 
 ReplLineEditor::ReplLineEditor(size_t maxHistory) : impl_(new Impl) {
@@ -218,6 +360,7 @@ ReadResult ReplLineEditor::readLine(const std::string &prompt, std::string &line
     impl_->cursor = 0;
     impl_->historyIndex = -1;
     impl_->savedLine.clear();
+    impl_->renderedCursorRow = 0;
 
     // Print the initial prompt
     impl_->rawWrite(prompt);
@@ -226,7 +369,11 @@ ReadResult ReplLineEditor::readLine(const std::string &prompt, std::string &line
 
     for (;;) {
         int n = impl_->rawRead(readBuf, sizeof(readBuf));
-        if (n <= 0)
+        if (n < 0) {
+            impl_->rawWrite("\r\n");
+            return ReadResult::Eof;
+        }
+        if (n == 0)
             continue;
 
         impl_->decoder.feed(std::string_view(readBuf, static_cast<size_t>(n)));
@@ -237,6 +384,7 @@ ReadResult ReplLineEditor::readLine(const std::string &prompt, std::string &line
 
             // Ctrl-C: interrupt
             if (ev.codepoint == 3 || (ev.codepoint == 'c' && (ev.mods & Mods::Ctrl))) {
+                impl_->moveToRenderedEndRow(prompt);
                 impl_->rawWrite("^C\r\n");
                 return ReadResult::Interrupt;
             }
@@ -249,7 +397,8 @@ ReadResult ReplLineEditor::readLine(const std::string &prompt, std::string &line
                 }
                 // On non-empty line, delete char under cursor (like Delete)
                 if (impl_->cursor < impl_->buf.size()) {
-                    impl_->buf.erase(impl_->cursor, 1);
+                    size_t end = Impl::nextCodepointEnd(impl_->buf, impl_->cursor);
+                    impl_->buf.erase(impl_->cursor, end - impl_->cursor);
                     impl_->refreshLine(prompt);
                 }
                 continue;
@@ -302,6 +451,7 @@ ReadResult ReplLineEditor::readLine(const std::string &prompt, std::string &line
 
             // --- Special keys ---
             if (ev.code == Code::Enter) {
+                impl_->moveToRenderedEndRow(prompt);
                 impl_->rawWrite("\r\n");
                 line = impl_->buf;
                 return ReadResult::Line;
@@ -314,8 +464,9 @@ ReadResult ReplLineEditor::readLine(const std::string &prompt, std::string &line
 
             if (ev.code == Code::Backspace) {
                 if (impl_->cursor > 0) {
-                    --impl_->cursor;
-                    impl_->buf.erase(impl_->cursor, 1);
+                    size_t start = Impl::previousCodepointStart(impl_->buf, impl_->cursor);
+                    impl_->buf.erase(start, impl_->cursor - start);
+                    impl_->cursor = start;
                     impl_->refreshLine(prompt);
                 }
                 continue;
@@ -323,7 +474,8 @@ ReadResult ReplLineEditor::readLine(const std::string &prompt, std::string &line
 
             if (ev.code == Code::Delete) {
                 if (impl_->cursor < impl_->buf.size()) {
-                    impl_->buf.erase(impl_->cursor, 1);
+                    size_t end = Impl::nextCodepointEnd(impl_->buf, impl_->cursor);
+                    impl_->buf.erase(impl_->cursor, end - impl_->cursor);
                     impl_->refreshLine(prompt);
                 }
                 continue;
@@ -334,7 +486,7 @@ ReadResult ReplLineEditor::readLine(const std::string &prompt, std::string &line
                     impl_->wordLeft();
                     impl_->refreshLine(prompt);
                 } else if (impl_->cursor > 0) {
-                    --impl_->cursor;
+                    impl_->cursor = Impl::previousCodepointStart(impl_->buf, impl_->cursor);
                     impl_->refreshLine(prompt);
                 }
                 continue;
@@ -345,7 +497,7 @@ ReadResult ReplLineEditor::readLine(const std::string &prompt, std::string &line
                     impl_->wordRight();
                     impl_->refreshLine(prompt);
                 } else if (impl_->cursor < impl_->buf.size()) {
-                    ++impl_->cursor;
+                    impl_->cursor = Impl::nextCodepointEnd(impl_->buf, impl_->cursor);
                     impl_->refreshLine(prompt);
                 }
                 continue;
@@ -439,41 +591,13 @@ ReadResult ReplLineEditor::readLine(const std::string &prompt, std::string &line
 }
 
 size_t ReplLineEditor::loadHistory(const std::filesystem::path &path) {
-    std::ifstream file(path);
-    if (!file.is_open())
-        return 0;
-
-    size_t count = 0;
-    std::string line;
-    while (std::getline(file, line)) {
-        if (!line.empty()) {
-            impl_->history.push_back(line);
-            ++count;
-        }
-    }
-
-    // Trim to max history size (keep most recent)
-    while (impl_->history.size() > impl_->maxHistory)
-        impl_->history.erase(impl_->history.begin());
-
-    return count;
+    ReplHistoryLoadResult loaded = ReplHistoryCodec::load(path, impl_->maxHistory);
+    impl_->history = std::move(loaded.entries);
+    return loaded.decodedEntryCount;
 }
 
 bool ReplLineEditor::saveHistory(const std::filesystem::path &path) const {
-    // Create parent directories if needed
-    std::error_code ec;
-    auto parent = path.parent_path();
-    if (!parent.empty())
-        std::filesystem::create_directories(parent, ec);
-
-    std::ofstream file(path);
-    if (!file.is_open())
-        return false;
-
-    for (const auto &entry : impl_->history) {
-        file << entry << "\n";
-    }
-    return true;
+    return ReplHistoryCodec::save(path, impl_->history);
 }
 
 } // namespace viper::repl

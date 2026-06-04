@@ -1063,6 +1063,12 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_METHOD(\"SetCastsShadows\""),
                  "Light3D.SetCastsShadows method missing") &&
          ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Light3D.SetEnabled\""),
+                 "Light3D.SetEnabled static alias missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Light3D.SetCastsShadows\""),
+                 "Light3D.SetCastsShadows static alias missing") &&
+         ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.get_HasTexture\""),
                  "Material3D.HasTexture getter must use Graphics3D PascalCase naming") &&
          ok;
@@ -1090,6 +1096,24 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"HasMetallicRoughnessMap\""),
                  "Material3D.HasMetallicRoughnessMap property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.SetMetallic\""),
+                 "Material3D.SetMetallic static alias missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.SetRoughness\""),
+                 "Material3D.SetRoughness static alias missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.SetAO\""),
+                 "Material3D.SetAO static alias missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.SetEmissiveIntensity\""),
+                 "Material3D.SetEmissiveIntensity static alias missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.SetNormalScale\""),
+                 "Material3D.SetNormalScale static alias missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.SetReflectivity\""),
+                 "Material3D.SetReflectivity static alias missing") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.SetClusteredLighting\""),
                  "Canvas3D.SetClusteredLighting must use Graphics3D PascalCase naming") &&

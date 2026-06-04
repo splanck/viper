@@ -7,6 +7,7 @@ bind Viper.Graphics3D;
 bind Viper.Core.Convert as Convert;
 bind Viper.Math;
 bind Viper.Terminal as Terminal;
+bind Viper.Sound;
 bind "./config";
 
 class Game3DShowcase {
@@ -17,6 +18,51 @@ class Game3DShowcase {
     hide Terrain3D terrain;
     hide Water3D water;
     hide CubeMap3D skybox;
+    hide Pixels splatMap;
+    hide Vegetation3D grass;
+
+    // Recommendation #4 — spatial audio.
+    hide Sound3D audio;
+    hide Sound chimeClip;
+    hide Sound humClip;
+    hide Sound stepClip;
+    hide Sound victoryClip;
+    hide Float stepPhase;
+
+    // Recommendation #5 — dynamic lights.
+    hide Light3D sunLight;
+    hide Light3D fillLight;
+    hide Light3D skyFill;
+    hide List[Light3D] beaconLights;
+    hide Light3D playerLight;
+
+    // Recommendation #6 — particles + decals.
+    hide Particles3D fireflies;
+    hide Particles3D mist;
+    hide Particles3D sprintDust;
+    hide List[Decal3D] decals;
+    hide Pixels scorchTex;
+
+    // Recommendation #3 — skeletal-animated sentinels.
+    hide Mesh3D critterMesh;
+    hide Skeleton3D critterSkel;
+    hide AnimPlayer3D critterPlayer;
+    hide Material3D critterMat;
+    hide List[Float] critterXs;
+    hide List[Float] critterZs;
+
+    // Recommendation #9 — raycast scanner.
+    hide List[Float] landmarkXs;
+    hide List[Float] landmarkYs;
+    hide List[Float] landmarkZs;
+    hide List[Float] landmarkR;
+    hide List[String] landmarkNames;
+    hide String scanLabel;
+    hide Float scanDist;
+
+    // Recommendation #10 — runtime quality + debug overlay.
+    hide Integer qualityLevel;
+    hide Boolean debugOn;
 
     hide Mesh3D cubeMesh;
     hide Mesh3D beaconMesh;
@@ -31,6 +77,7 @@ class Game3DShowcase {
     hide Material3D beaconOnMat;
     hide Material3D archiveMat;
     hide Material3D waterMarkerMat;
+    hide List[Material3D] treeMats;
 
     hide Float playerX;
     hide Float playerY;
@@ -62,7 +109,7 @@ class Game3DShowcase {
         Quality.Apply(world, QualityLevel.get_Cinematic());
         Lighting.Outdoor(world, new Vec3(-0.36, -1.0, -0.22));
         installOutdoorFillLight();
-        PostFX.Cinematic(world);
+        buildPostFX();
         Canvas3D.SetShadowBias(canvas, config.SHADOW_BIAS);
         World3D.setAmbient(world, config.AMBIENT_R, config.AMBIENT_G, config.AMBIENT_B);
         World3D.setFog(
@@ -72,25 +119,50 @@ class Game3DShowcase {
         beaconMesh = Mesh3D.NewSphere(0.54, 22);
         playerBodyMesh = Mesh3D.NewCylinder(config.PLAYER_RADIUS, config.PLAYER_BODY_HEIGHT, 20);
         playerCoreMesh = Mesh3D.NewSphere(0.36, 18);
+        // Tangents let the cube carry a tangent-space normal map (pedestals).
+        Mesh3D.CalcTangents(cubeMesh);
+
+        // Procedural PBR texture maps shared by the stone/metal landmarks.
+        var stoneAlbedo = createStoneAlbedo(config.PBR_TEXTURE_SIZE);
+        var metalAlbedo = createMetalAlbedo(config.PBR_TEXTURE_SIZE);
+        var rockNormal = createNormalMap(config.PBR_TEXTURE_SIZE, config.PBR_NORMAL_STRENGTH);
 
         terrainMat = Materials.Rubber(0.58, 0.74, 0.36);
         Material3D.SetEmissiveColor(terrainMat, 0.015, 0.026, 0.008);
-        stoneMat = Materials.Metal(0.54, 0.57, 0.60);
-        Material3D.set_Roughness(stoneMat, 0.72);
+
+        // Stone monoliths/pedestals: PBR dielectric with albedo + normal maps.
+        stoneMat = Material3D.NewPBR(0.52, 0.54, 0.57);
+        Material3D.SetAlbedoMap(stoneMat, stoneAlbedo);
+        Material3D.SetNormalMap(stoneMat, rockNormal);
+        Material3D.SetRoughness(stoneMat, 0.80);
+        Material3D.SetMetallic(stoneMat, 0.05);
         Material3D.SetEmissiveColor(stoneMat, 0.010, 0.012, 0.016);
-        pedestalMat = Materials.Plastic(0.46, 0.43, 0.34);
+
+        pedestalMat = Material3D.NewPBR(0.46, 0.43, 0.34);
+        Material3D.SetAlbedoMap(pedestalMat, stoneAlbedo);
+        Material3D.SetNormalMap(pedestalMat, rockNormal);
+        Material3D.SetRoughness(pedestalMat, 0.90);
+        Material3D.SetMetallic(pedestalMat, 0.0);
         Material3D.SetEmissiveColor(pedestalMat, 0.018, 0.016, 0.012);
+
         playerMat = Materials.Plastic(0.22, 0.76, 0.48);
         Material3D.SetEmissiveColor(playerMat, 0.012, 0.045, 0.026);
         beaconOffMat = Materials.Plastic(0.38, 0.52, 0.70);
         Material3D.SetEmissiveColor(beaconOffMat, 0.025, 0.045, 0.065);
         beaconOnMat = Materials.Emissive(0.98, 0.80, 0.22, 1.45);
-        archiveMat = Materials.Metal(0.78, 0.72, 0.58);
+
+        // Archive towers: PBR metal with a brushed albedo and sky reflection.
+        archiveMat = Material3D.NewPBR(0.78, 0.72, 0.58);
+        Material3D.SetAlbedoMap(archiveMat, metalAlbedo);
+        Material3D.SetNormalMap(archiveMat, rockNormal);
+        Material3D.SetRoughness(archiveMat, 0.34);
+        Material3D.SetMetallic(archiveMat, 0.85);
         waterMarkerMat = Materials.Emissive(0.20, 0.72, 1.0, 1.20);
 
         terrain = buildTerrain();
         skybox = createOutdoorSkybox();
         World3D.setSkybox(world, skybox);
+        applyEnvReflections();
 
         water = Water3D.New(terrainWorldMaxX(), terrainWorldMaxZ());
         Water3D.SetHeight(water, config.WATER_HEIGHT);
@@ -103,6 +175,14 @@ class Game3DShowcase {
 
         resetWorld();
         spawnLandmarks();
+        spawnForest();
+        buildVegetation();
+        setupSun();
+        setupAudio();
+        setupBeaconLights();
+        setupPlayerLight();
+        setupParticles();
+        setupCritters();
         updateCamera();
         Terminal.Say("Backend: " + Canvas3D.get_Backend(canvas));
     }
@@ -126,6 +206,15 @@ class Game3DShowcase {
             return;
         }
 
+        if (Input3D.pressed(input, Keys.get_Space())) {
+            qualityLevel = qualityLevel + 1;
+            if (qualityLevel > 2) { qualityLevel = 0; }
+            Canvas3D.SetQuality(canvas, qualityLevel);
+        }
+        if (Input3D.pressed(input, Keys.get_Ctrl())) {
+            if (debugOn) { debugOn = false; } else { debugOn = true; }
+        }
+
         var look = Input3D.lookAxis(input);
         cameraYaw = cameraYaw + Vec2.get_X(look);
         cameraPitch = cameraPitch - Vec2.get_Y(look);
@@ -147,30 +236,47 @@ class Game3DShowcase {
             moveX = moveX / moveLen;
             moveZ = moveZ / moveLen;
 
+            var sprinting = Input3D.isDown(input, Keys.get_Shift());
             var speed = config.PLAYER_MOVE_SPEED;
-            if (Input3D.isDown(input, Keys.get_Shift())) {
-                speed = speed * config.PLAYER_SPRINT_MULT;
-            }
+            if (sprinting) { speed = speed * config.PLAYER_SPRINT_MULT; }
 
             playerX = playerX + moveX * speed * stepDt;
             playerZ = playerZ + moveZ * speed * stepDt;
+
+            stepPhase = stepPhase + speed * stepDt;
+            if (stepPhase >= config.STEP_DISTANCE) {
+                stepPhase = 0.0;
+                onFootfall(sprinting);
+            }
         }
 
         clampPlayerToTerrain();
         playerY = sampleGround(playerX, playerZ);
         updateBeacons();
         updateCamera();
+        updateScanner();
+        updateDynamicLights();
+        updateTimeOfDay();
         Water3D.Update(water, stepDt);
+        updateVegetation(stepDt);
+        updateParticles(stepDt);
+        updateCritters(stepDt);
         World3D.stepSimulation(world, stepDt);
     }
 
     expose func renderFrame() {
         World3D.beginFrame(world);
         Canvas3D.DrawTerrain(canvas, terrain);
+        if (grass != null) {
+            Canvas3D.DrawVegetation(canvas, grass);
+        }
         Canvas3D.DrawWater(canvas, water, camera);
         World3D.drawScene(world);
         drawBeacons();
         drawPlayer();
+        drawCritters();
+        drawDecals();
+        drawParticles();
         World3D.drawEffects(world);
         World3D.endScene(world);
 
@@ -215,7 +321,8 @@ class Game3DShowcase {
         Terrain3D.SetLayerScale(built, 0, 11.0);
         Terrain3D.SetLayerScale(built, 1, 7.0);
         Terrain3D.SetLayerScale(built, 2, 8.0);
-        Terrain3D.SetSplatMap(built, createTerrainSplatMap(built, config.SPLAT_SIZE, config.SPLAT_SIZE));
+        splatMap = createTerrainSplatMap(built, config.SPLAT_SIZE, config.SPLAT_SIZE);
+        Terrain3D.SetSplatMap(built, splatMap);
         Terrain3D.SetLODDistances(built, config.TERRAIN_LOD_NEAR, config.TERRAIN_LOD_FAR);
         Terrain3D.SetSkirtDepth(built, config.TERRAIN_SKIRT_DEPTH);
 
@@ -409,8 +516,13 @@ class Game3DShowcase {
         cameraPitch = config.CAMERA_PITCH_START;
         cameraDistance = config.CAMERA_DISTANCE;
         worldTime = 0.0;
+        stepPhase = 0.0;
         beaconsLit = 0;
         quitRequested = false;
+        scanLabel = "";
+        scanDist = 0.0;
+        qualityLevel = 2;
+        debugOn = false;
 
         beaconXs = [];
         beaconYs = [];
@@ -424,6 +536,11 @@ class Game3DShowcase {
     }
 
     hide func spawnLandmarks() {
+        landmarkXs = [];
+        landmarkYs = [];
+        landmarkZs = [];
+        landmarkR = [];
+        landmarkNames = [];
         spawnMonolithPct("West Archive", 0.16, 0.18, 5.4, 1.35, 1.10, stoneMat);
         spawnMonolithPct("North Archive", 0.84, 0.22, 4.2, 1.00, 1.00, archiveMat);
         spawnMonolithPct("South Gate", 0.78, 0.62, 6.4, 1.55, 1.30, stoneMat);
@@ -432,11 +549,11 @@ class Game3DShowcase {
     }
 
     hide func installOutdoorFillLight() {
-        var fill = Light3D.NewDirectional(new Vec3(0.58, -0.55, 0.46), 0.50, 0.62, 0.82);
-        Light3D.SetIntensity(fill, 0.30);
-        World3D.addLight(world, 1, fill);
+        fillLight = Light3D.NewDirectional(new Vec3(0.58, -0.55, 0.46), 0.50, 0.62, 0.82);
+        Light3D.SetIntensity(fillLight, 0.30);
+        World3D.addLight(world, 1, fillLight);
 
-        var skyFill = Light3D.NewAmbient(0.54, 0.62, 0.72);
+        skyFill = Light3D.NewAmbient(0.54, 0.62, 0.72);
         Light3D.SetIntensity(skyFill, 0.28);
         World3D.addLight(world, 2, skyFill);
     }
@@ -451,8 +568,16 @@ class Game3DShowcase {
         var entity = Prefab.BoxXYZ(sx, height, sz, mat);
         Entity3D.setName(entity, name);
         Entity3D.setLayer(entity, Layers.get_World());
-        Entity3D.setPosition(entity, x, sampleGround(x, z) + height * 0.5, z);
+        var cy = sampleGround(x, z) + height * 0.5;
+        Entity3D.setPosition(entity, x, cy, z);
         World3D.spawn(world, entity);
+
+        // Record a pickable bounding sphere for the raycast scanner (#9).
+        landmarkXs.add(x);
+        landmarkYs.add(cy);
+        landmarkZs.add(z);
+        landmarkR.add(maxf(height * 0.5, maxf(sx, sz)) + 0.6);
+        landmarkNames.add(name);
     }
 
     hide func addBeaconPct(xPct: Float, zPct: Float) {
@@ -479,8 +604,11 @@ class Game3DShowcase {
                 beaconsLit = beaconsLit + 1;
                 var point = new Vec3(beaconXs.get(i), beaconYs.get(i) + 2.0, beaconZs.get(i));
                 Effects3D.Sparks(world, point, new Vec3(0.0, 1.0, 0.0));
+                onBeaconLit(i);
                 if (beaconsLit >= beaconXs.count()) {
                     Effects3D.Smoke(world, new Vec3(playerX, playerY + 1.0, playerZ));
+                    if (audio != null) { Sound3D.play2D(audio, victoryClip); }
+                    Camera3D.Shake(camera, config.SHAKE_ALL, 0.8, 3.0);
                 }
             }
         }
@@ -598,6 +726,17 @@ class Game3DShowcase {
 
         drawMiniMap(w - 172, h - 172, 144, 144);
         Canvas3D.DrawText2D(canvas, 24, h - 26, "FPS " + toString(Canvas3D.get_Fps(canvas)), config.HUD_MUTED);
+
+        // Recommendation #9 — center scanner reticle + target readout.
+        Canvas3D.DrawCrosshair(canvas, config.HUD_ACCENT, 10);
+        if (scanLabel != "") {
+            Canvas3D.DrawText2D(
+                canvas, w / 2 - 100, h / 2 + 18,
+                scanLabel + "  " + toString(Convert.NumToInt(scanDist)) + "m", config.HUD_TEXT);
+        }
+
+        // Recommendation #10 — toggleable diagnostics overlay.
+        if (debugOn) { drawDebugPanel(w); }
     }
 
     hide func drawMiniMap(x: Integer, y: Integer, width: Integer, height: Integer) {
@@ -657,5 +796,746 @@ class Game3DShowcase {
 
     hide func lerpFloat(a: Float, b: Float, t: Float) -> Float {
         return a + (b - a) * t;
+    }
+
+    // === Recommendation #1: imported maple-tree forest ====================
+
+    hide func applyEnvReflections() {
+        // Skybox-driven reflections sharpen the metal/stone landmarks; only
+        // safe to call once the cubemap skybox exists.
+        Material3D.SetEnvMap(stoneMat, skybox);
+        Material3D.SetReflectivity(stoneMat, 0.16);
+        Material3D.SetEnvMap(pedestalMat, skybox);
+        Material3D.SetReflectivity(pedestalMat, 0.10);
+        Material3D.SetEnvMap(archiveMat, skybox);
+        Material3D.SetReflectivity(archiveMat, 0.45);
+    }
+
+    hide func spawnForest() {
+        // Model3D.Load now returns null for a missing/unreadable file instead of
+        // trapping, so we probe candidate paths and keep whichever resolves —
+        // works run from the repo root OR from inside the demo folder.
+        // Packaged binaries embed the FBX (see viper.project) and resolve it via
+        // the asset system regardless of CWD. The filesystem candidates cover
+        // `viper run` during development (CWD = demo folder, then repo root).
+        var model = Model3D.LoadAsset(config.TREE_MODEL_PATH);
+        if (treeBad(model)) { model = Model3D.Load(config.TREE_MODEL_PATH); }
+        if (treeBad(model)) { model = Model3D.Load(config.TREE_MODEL_PATH_ALT); }
+        if (treeBad(model)) {
+            Terminal.Say("Forest: MapleTree_1.fbx could not be resolved (embedded or on disk); skipping trees.");
+            return;
+        }
+
+        buildFoliageMaterials();
+        var planted = plantHomeGrove(model);
+        planted = planted + plantHillForest(model);
+        Terminal.Say("Forest: planted " + toString(planted) + " maples.");
+    }
+
+    hide func treeBad(m: Model3D) -> Boolean {
+        if (m == null) { return true; }
+        return Model3D.get_MeshCount(m) <= 0;
+    }
+
+    // A guaranteed ring of maples around the spawn so the opening view always
+    // frames trees (relaxed rules: anywhere above the waterline).
+    hide func plantHomeGrove(model: Model3D) -> Integer {
+        var cx = terrainWorldMaxX() * 0.5;
+        var cz = terrainWorldMaxZ() * 0.5;
+        var planted = 0;
+
+        var i = 0;
+        while (i < config.GROVE_COUNT) {
+            var ang = (i + 0.0) / (config.GROVE_COUNT + 0.0) * 6.2831853 + hash01(i, 23);
+            var radius = config.GROVE_RADIUS_MIN
+                + hash01(i, 31) * (config.GROVE_RADIUS_MAX - config.GROVE_RADIUS_MIN);
+            var wx = cx + Sin(ang) * radius;
+            var wz = cz + Cos(ang) * radius;
+            if (wx > config.FOREST_MARGIN && wx < terrainWorldMaxX() - config.FOREST_MARGIN
+                    && wz > config.FOREST_MARGIN && wz < terrainWorldMaxZ() - config.FOREST_MARGIN) {
+                var gy = sampleGround(wx, wz);
+                if (gy > config.WATER_HEIGHT + 0.4) {
+                    var s = config.FOREST_SCALE_MIN
+                        + hash01(i, 7) * (config.FOREST_SCALE_MAX - config.FOREST_SCALE_MIN);
+                    plantTree(model, wx, wz, gy, s, hash01(i, 13) * 360.0);
+                    planted = planted + 1;
+                }
+            }
+            i = i + 1;
+        }
+
+        return planted;
+    }
+
+    // Procedural background forest scattered across the gentle high ground.
+    hide func plantHillForest(model: Model3D) -> Integer {
+        var maxX = terrainWorldMaxX();
+        var maxZ = terrainWorldMaxZ();
+        var cell = config.FOREST_CELL;
+        var planted = 0;
+        var seed = 0;
+
+        var gz = config.FOREST_MARGIN;
+        while (gz < maxZ - config.FOREST_MARGIN && planted < config.FOREST_MAX) {
+            var gx = config.FOREST_MARGIN;
+            while (gx < maxX - config.FOREST_MARGIN && planted < config.FOREST_MAX) {
+                seed = seed + 1;
+                if (hash01(seed, 17) < config.FOREST_DENSITY) {
+                    var wx = gx + (hash01(seed, 3) - 0.5) * cell * 1.4;
+                    var wz = gz + (hash01(seed, 9) - 0.5) * cell * 1.4;
+                    if (canPlantTree(wx, wz, maxX, maxZ)) {
+                        var s = config.FOREST_SCALE_MIN
+                            + hash01(seed, 5) * (config.FOREST_SCALE_MAX - config.FOREST_SCALE_MIN);
+                        plantTree(model, wx, wz, sampleGround(wx, wz), s, hash01(seed, 11) * 360.0);
+                        planted = planted + 1;
+                    }
+                }
+                gx = gx + cell;
+            }
+            gz = gz + cell;
+        }
+
+        return planted;
+    }
+
+    hide func canPlantTree(wx: Float, wz: Float, maxX: Float, maxZ: Float) -> Boolean {
+        if (wx < config.FOREST_MARGIN || wx > maxX - config.FOREST_MARGIN) { return false; }
+        if (wz < config.FOREST_MARGIN || wz > maxZ - config.FOREST_MARGIN) { return false; }
+        if (sampleGround(wx, wz) < config.FOREST_MIN_GROUND) { return false; }
+        var normal = Terrain3D.GetNormalAt(terrain, wx, wz);
+        if (Vec3.get_Y(normal) < config.FOREST_MIN_NORMALY) { return false; }
+        if (notNearBeacon(wx, wz) == false) { return false; }
+        if (notNearPlayerStart(wx, wz) == false) { return false; }
+        return true;
+    }
+
+    hide func plantTree(model: Model3D, x: Float, z: Float, y: Float, scale: Float, yawDeg: Float) {
+        var node = Model3D.Instantiate(model);
+        var ent = Entity3D.FromNode(node);
+        Entity3D.setName(ent, "maple");
+        Entity3D.setLayer(ent, Layers.get_World());
+        // The imported FBX materials read near-white; recolour the whole tree as
+        // foliage (varied per location) so it unmistakably reads as a maple.
+        Entity3D.setMaterialRecursive(ent, treeMats.get(pickFoliage(x, z)));
+        Entity3D.setScaleXYZ(ent, scale, scale, scale);
+        // MapleTree_1.fbx is authored Z-up: the entity's world-vertical spin axis
+        // is the FIRST euler component (X), not Y. Putting yaw in the Y slot tips
+        // the trunk on its side, so the turntable yaw goes in X here.
+        Entity3D.setRotationEuler(ent, yawDeg, 0.0, 0.0);
+        Entity3D.setPosition(ent, x, y, z);
+        World3D.spawn(world, ent);
+    }
+
+    hide func buildFoliageMaterials() {
+        treeMats = [];
+        treeMats.add(makeFoliage(0.20, 0.44, 0.18));   // summer green
+        treeMats.add(makeFoliage(0.74, 0.52, 0.16));   // amber
+        treeMats.add(makeFoliage(0.66, 0.26, 0.12));   // rust
+    }
+
+    hide func makeFoliage(r: Float, g: Float, b: Float) -> Material3D {
+        var m = Materials.Rubber(r, g, b);
+        Material3D.SetEmissiveColor(m, r * 0.06, g * 0.06, b * 0.06);
+        return m;
+    }
+
+    // Mostly green with a scattering of amber/rust, keyed deterministically to position.
+    hide func pickFoliage(x: Float, z: Float) -> Integer {
+        var h = hash01(Convert.NumToInt(x * 7.0), Convert.NumToInt(z * 7.0));
+        if (h < 0.55) { return 0; }
+        if (h < 0.82) { return 1; }
+        return 2;
+    }
+
+    hide func notNearBeacon(x: Float, z: Float) -> Boolean {
+        for i in 0..beaconXs.count() {
+            var dx = x - beaconXs.get(i);
+            var dz = z - beaconZs.get(i);
+            if (dx * dx + dz * dz < config.FOREST_BEACON_CLEAR) { return false; }
+        }
+        return true;
+    }
+
+    hide func notNearPlayerStart(x: Float, z: Float) -> Boolean {
+        var dx = x - terrainWorldMaxX() * 0.5;
+        var dz = z - terrainWorldMaxZ() * 0.5;
+        return dx * dx + dz * dz > config.FOREST_PLAYER_CLEAR;
+    }
+
+    // Deterministic, seedable 0..1 hash so the forest is identical every run.
+    hide func hash01(a: Integer, b: Integer) -> Float {
+        var h = (a * 374761393 + b * 668265263) % 2147483647;
+        if (h < 0) { h = 0 - h; }
+        h = (h * 1103515245 + 12345) % 2147483647;
+        if (h < 0) { h = 0 - h; }
+        return (h % 100000 + 0.0) / 100000.0;
+    }
+
+    // === Recommendation #8: instanced ground vegetation ===================
+
+    hide func buildVegetation() {
+        grass = Vegetation3D.New(createGrassBladeTexture());
+        Vegetation3D.SetBladeSize(grass, config.GRASS_BLADE_W, config.GRASS_BLADE_H, config.GRASS_BLADE_VAR);
+        Vegetation3D.SetWindParams(grass, config.GRASS_WIND_STRENGTH, config.GRASS_WIND_FREQ, config.GRASS_WIND_DIR);
+        Vegetation3D.SetLODDistances(grass, config.GRASS_LOD_NEAR, config.GRASS_LOD_FAR);
+        Vegetation3D.SetDensityMap(grass, createVegetationDensity(config.SPLAT_SIZE, config.SPLAT_SIZE));
+        Vegetation3D.Populate(grass, terrain, config.GRASS_BLADE_COUNT);
+    }
+
+    hide func updateVegetation(dt: Float) {
+        if (grass == null) { return; }
+        var camPos = Camera3D.get_Position(camera);
+        Vegetation3D.Update(grass, dt, Vec3.get_X(camPos), Vec3.get_Y(camPos), Vec3.get_Z(camPos));
+    }
+
+    // Density map keyed to gentle, dry, grassy ground (white = dense blades).
+    // Written to every channel so it works regardless of which the runtime samples.
+    hide func createVegetationDensity(width: Integer, depth: Integer) -> Pixels {
+        var density = Pixels.New(width, depth);
+        var maxX = terrainWorldMaxX();
+        var maxZ = terrainWorldMaxZ();
+        var lastX = width - 1;
+        var lastZ = depth - 1;
+
+        for (var py: Integer = 0; py < depth; py = py + 1) {
+            for (var px: Integer = 0; px < width; px = px + 1) {
+                var wx = (px + 0.0) * maxX / (lastX + 0.0);
+                var wz = (py + 0.0) * maxZ / (lastZ + 0.0);
+                var ny = Vec3.get_Y(Terrain3D.GetNormalAt(terrain, wx, wz));
+                var h = Terrain3D.GetHeightAt(terrain, wx, wz);
+                var v = 0;
+                if (ny > 0.84 && h > config.WATER_HEIGHT + 0.6) {
+                    v = clampByte(Convert.NumToInt((ny - 0.84) / 0.16 * 255.0));
+                }
+                density.Set(px, py, packPixel(v, v, v, v));
+            }
+        }
+
+        return density;
+    }
+
+    hide func createGrassBladeTexture() -> Pixels {
+        var w = 16;
+        var h = 32;
+        var tex = Pixels.New(w, h);
+
+        for (var py: Integer = 0; py < h; py = py + 1) {
+            for (var px: Integer = 0; px < w; px = px + 1) {
+                var halfW = 8 - py / 4;
+                if (halfW < 1) { halfW = 1; }
+                var dx = px - 8;
+                if (dx < 0) { dx = 0 - dx; }
+                if (dx <= halfW) {
+                    var noise = ((px * 7 + py * 13) % 20) - 10;
+                    var r = clampByte(46 + noise);
+                    var g = clampByte(150 + noise - py);
+                    var b = clampByte(34 + noise);
+                    var alpha = 255;
+                    if (py > 26) { alpha = clampByte(255 - (py - 26) * 40); }
+                    tex.Set(px, py, packPixel(r, g, b, alpha));
+                } else {
+                    tex.Set(px, py, packPixel(0, 0, 0, 0));
+                }
+            }
+        }
+
+        return tex;
+    }
+
+    // === Recommendation #2: procedural PBR texture maps ===================
+
+    hide func createStoneAlbedo(size: Integer) -> Pixels {
+        var tex = Pixels.New(size, size);
+
+        for (var py: Integer = 0; py < size; py = py + 1) {
+            for (var px: Integer = 0; px < size; px = px + 1) {
+                var n = ((px * 13 + py * 7 + px * py * 3) % 40) - 20;
+                var base = clampByte(120 + n);
+                var cool = clampByte(126 + n / 2);
+                tex.Set(px, py, packPixel(base, base, cool, 255));
+            }
+        }
+
+        return tex;
+    }
+
+    hide func createMetalAlbedo(size: Integer) -> Pixels {
+        var tex = Pixels.New(size, size);
+
+        for (var py: Integer = 0; py < size; py = py + 1) {
+            for (var px: Integer = 0; px < size; px = px + 1) {
+                var n = ((px * 9 + py * 11) % 24) - 12;
+                var brush = ((py * 5) % 14) - 7;
+                var r = clampByte(150 + n + brush);
+                var g = clampByte(140 + n + brush);
+                var b = clampByte(118 + n);
+                tex.Set(px, py, packPixel(r, g, b, 255));
+            }
+        }
+
+        return tex;
+    }
+
+    hide func createNormalMap(size: Integer, strength: Float) -> Pixels {
+        var tex = Pixels.New(size, size);
+
+        for (var py: Integer = 0; py < size; py = py + 1) {
+            for (var px: Integer = 0; px < size; px = px + 1) {
+                var hl = bumpHeight(px - 1, py, size);
+                var hr = bumpHeight(px + 1, py, size);
+                var hd = bumpHeight(px, py - 1, size);
+                var hu = bumpHeight(px, py + 1, size);
+                var nx = (hl - hr) * strength;
+                var nz = (hd - hu) * strength;
+                var ny = 1.0;
+                var len = Sqrt(nx * nx + ny * ny + nz * nz);
+                if (len <= 0.0001) { len = 1.0; }
+                nx = nx / len;
+                ny = ny / len;
+                nz = nz / len;
+                var r = clampByte(Convert.NumToInt((nx * 0.5 + 0.5) * 255.0));
+                var g = clampByte(Convert.NumToInt((nz * 0.5 + 0.5) * 255.0));
+                var b = clampByte(Convert.NumToInt((ny * 0.5 + 0.5) * 255.0));
+                tex.Set(px, py, packPixel(r, g, b, 255));
+            }
+        }
+
+        return tex;
+    }
+
+    hide func bumpHeight(x: Integer, y: Integer, size: Integer) -> Float {
+        var xx = x % size;
+        if (xx < 0) { xx = xx + size; }
+        var yy = y % size;
+        if (yy < 0) { yy = yy + size; }
+        var n = (xx * 13 + yy * 7 + xx * yy * 3) % 23;
+        return (n + 0.0) / 23.0;
+    }
+
+    // === Recommendation #7: day/night cycle ===============================
+
+    hide func setupSun() {
+        // A directional sun we own (overrides the preset's slot 0) so the
+        // day/night loop can re-aim and re-tint it every frame.
+        sunLight = Light3D.NewDirectional(new Vec3(-0.36, -1.0, -0.22), 1.0, 0.96, 0.88);
+        Light3D.SetIntensity(sunLight, config.SUN_INTENSITY_DAY);
+        World3D.addLight(world, 0, sunLight);
+    }
+
+    hide func updateTimeOfDay() {
+        if (sunLight == null) { return; }
+
+        var raw = (worldTime + config.DAY_START_PHASE * config.DAY_LENGTH_SEC) / config.DAY_LENGTH_SEC;
+        var dayT = raw - (Convert.NumToInt(raw) + 0.0);
+        if (dayT < 0.0) { dayT = dayT + 1.0; }
+
+        var ang = dayT * 6.2831853;
+        var elev = Sin(ang);                 // +1 noon, 0 dawn/dusk, -1 midnight
+        var day = clampFloat(elev, 0.0, 1.0);
+        var warm = 1.0 - day;
+
+        var dirY = 0.0 - elev;
+        if (dirY > -0.05) { dirY = -0.05; }  // keep light angled down even at dusk
+        Light3D.set_Direction(sunLight, new Vec3(Cos(ang) * 0.55, dirY, -0.22));
+        Light3D.SetColor(sunLight, 1.0, lerpFloat(0.60, 0.96, day), lerpFloat(0.34, 0.88, day));
+        Light3D.SetIntensity(sunLight, 0.05 + day * config.SUN_INTENSITY_DAY);
+
+        // Dim the static fill + sky-fill at night so darkness actually lands
+        // (leave a small floor so the world stays readable under moonlight).
+        if (fillLight != null) { Light3D.SetIntensity(fillLight, 0.04 + 0.30 * day); }
+        if (skyFill != null) { Light3D.SetIntensity(skyFill, 0.06 + 0.24 * day); }
+
+        World3D.setAmbient(
+            world,
+            lerpFloat(config.NIGHT_AMBIENT_R, config.DAY_AMBIENT_R, day),
+            lerpFloat(config.NIGHT_AMBIENT_G, config.DAY_AMBIENT_G, day),
+            lerpFloat(config.NIGHT_AMBIENT_B, config.DAY_AMBIENT_B, day));
+
+        World3D.setFog(
+            world,
+            lerpFloat(0.10, config.FOG_R, day) + warm * 0.10,
+            lerpFloat(0.12, config.FOG_G, day) + warm * 0.03,
+            lerpFloat(0.18, config.FOG_B, day),
+            config.FOG_NEAR,
+            config.FOG_FAR);
+    }
+
+    // === Recommendation #4: spatial audio =================================
+
+    hide func setupAudio() {
+        audio = World3D.get_audio(world);
+        Sound3D.listenerFollowCamera(audio, true);
+        Sound3D.setAttenuation(audio, config.AUDIO_REF_DIST, config.AUDIO_MAX_DIST);
+        // Procedurally synthesized clips — no external .wav assets required.
+        chimeClip = Synth.Sweep(520, 1040, 280, 45);
+        humClip = Synth.Tone(190, 460, 30);
+        stepClip = Synth.Noise(70, 22);
+        victoryClip = Synth.Sweep(440, 1320, 620, 55);
+    }
+
+    hide func onFootfall(sprinting: Boolean) {
+        if (audio != null) {
+            Sound3D.playAt(audio, stepClip, new Vec3(playerX, playerY, playerZ));
+        }
+        if (sprinting && sprintDust != null) {
+            Particles3D.SetPosition(sprintDust, playerX, playerY + 0.1, playerZ);
+            Particles3D.Burst(sprintDust, 8);
+        }
+    }
+
+    // === Recommendation #5: dynamic lights ================================
+
+    hide func setupBeaconLights() {
+        beaconLights = [];
+        for i in 0..beaconXs.count() {
+            var pl = Light3D.NewPoint(
+                new Vec3(beaconXs.get(i), beaconYs.get(i) + 2.4, beaconZs.get(i)),
+                1.0, 0.80, 0.34, config.BEACON_LIGHT_RANGE);
+            Light3D.SetIntensity(pl, 0.0);
+            Light3D.SetEnabled(pl, false);
+            World3D.addLight(world, config.BEACON_LIGHT_SLOT + i, pl);
+            beaconLights.add(pl);
+        }
+    }
+
+    hide func onBeaconLit(i: Integer) {
+        if (i < beaconLights.count()) {
+            var pl = beaconLights.get(i);
+            Light3D.SetEnabled(pl, true);
+            Light3D.SetIntensity(pl, config.BEACON_LIGHT_INTENSITY);
+        }
+        stampScorch(beaconXs.get(i), beaconYs.get(i), beaconZs.get(i));
+        if (audio != null) {
+            Sound3D.playAt(audio, chimeClip,
+                new Vec3(beaconXs.get(i), beaconYs.get(i) + 2.0, beaconZs.get(i)));
+        }
+        Camera3D.Shake(camera, config.SHAKE_BEACON, 0.35, 4.0);
+    }
+
+    hide func setupPlayerLight() {
+        playerLight = Light3D.NewPoint(
+            new Vec3(playerX, playerY + 1.5, playerZ), 0.40, 0.72, 1.0, config.PLAYER_LIGHT_RANGE);
+        Light3D.SetIntensity(playerLight, config.PLAYER_LIGHT_INTENSITY);
+        World3D.addLight(world, config.PLAYER_LIGHT_SLOT, playerLight);
+    }
+
+    hide func updateDynamicLights() {
+        if (playerLight != null) {
+            Light3D.set_Position(playerLight, new Vec3(playerX, playerY + 1.5, playerZ));
+        }
+    }
+
+    // === Recommendation #6: particles + decals ============================
+
+    hide func setupParticles() {
+        fireflies = Particles3D.New(config.FIREFLY_COUNT);
+        Particles3D.SetDirection(fireflies, 0.0, 1.0, 0.0, 1.0);
+        Particles3D.SetSpeed(fireflies, 0.2, 0.7);
+        Particles3D.SetLifetime(fireflies, 2.5, 5.0);
+        Particles3D.SetSize(fireflies, 0.06, 0.02);
+        Particles3D.SetGravity(fireflies, 0.0, 0.05, 0.0);
+        Particles3D.SetColor(fireflies, 0xFFE08A, 0x88AA33);
+        Particles3D.SetAlpha(fireflies, 0.9, 0.0);
+        Particles3D.SetEmitterShape(fireflies, 1);
+        Particles3D.SetEmitterSize(fireflies, 14.0, 4.0, 14.0);
+        Particles3D.SetRate(fireflies, 40.0);
+        Particles3D.set_Additive(fireflies, true);
+        Particles3D.Start(fireflies);
+
+        mist = Particles3D.New(config.MIST_COUNT);
+        Particles3D.SetDirection(mist, 0.0, 1.0, 0.0, 0.4);
+        Particles3D.SetSpeed(mist, 0.1, 0.4);
+        Particles3D.SetLifetime(mist, 3.0, 6.0);
+        Particles3D.SetSize(mist, 0.8, 2.4);
+        Particles3D.SetGravity(mist, 0.0, 0.02, 0.0);
+        Particles3D.SetColor(mist, 0x99B8C8, 0x6688A0);
+        Particles3D.SetAlpha(mist, 0.28, 0.0);
+        Particles3D.SetEmitterShape(mist, 2);
+        Particles3D.SetEmitterSize(mist, 30.0, 1.0, 30.0);
+        Particles3D.SetPosition(
+            mist, terrainWorldMaxX() * 0.5, config.WATER_HEIGHT + 0.5, terrainWorldMaxZ() * 0.5);
+        Particles3D.SetRate(mist, 22.0);
+        Particles3D.Start(mist);
+
+        sprintDust = Particles3D.New(config.DUST_COUNT);
+        Particles3D.SetDirection(sprintDust, 0.0, 1.0, 0.0, 0.5);
+        Particles3D.SetSpeed(sprintDust, 0.4, 1.2);
+        Particles3D.SetLifetime(sprintDust, 0.3, 0.7);
+        Particles3D.SetSize(sprintDust, 0.18, 0.02);
+        Particles3D.SetGravity(sprintDust, 0.0, -0.6, 0.0);
+        Particles3D.SetColor(sprintDust, 0x9C8C6E, 0x6E5E44);
+        Particles3D.SetAlpha(sprintDust, 0.5, 0.0);
+        Particles3D.SetEmitterShape(sprintDust, 0);
+
+        scorchTex = createScorchTexture(20);
+        decals = [];
+    }
+
+    hide func updateParticles(dt: Float) {
+        if (fireflies != null) {
+            Particles3D.SetPosition(fireflies, playerX, playerY + 1.5, playerZ);
+            Particles3D.Update(fireflies, dt);
+        }
+        if (mist != null) { Particles3D.Update(mist, dt); }
+        if (sprintDust != null) { Particles3D.Update(sprintDust, dt); }
+        updateDecals(dt);
+    }
+
+    hide func drawParticles() {
+        if (fireflies != null) { Particles3D.Draw(fireflies, canvas, camera); }
+        if (mist != null) { Particles3D.Draw(mist, canvas, camera); }
+        if (sprintDust != null) { Particles3D.Draw(sprintDust, canvas, camera); }
+    }
+
+    hide func updateDecals(dt: Float) {
+        var i = 0;
+        while (i < decals.count()) {
+            Decal3D.Update(decals.get(i), dt);
+            if (Decal3D.get_Expired(decals.get(i)) != false) {
+                decals.removeAt(i);
+            } else {
+                i = i + 1;
+            }
+        }
+    }
+
+    hide func drawDecals() {
+        for i in 0..decals.count() {
+            Canvas3D.DrawDecal(canvas, decals.get(i));
+        }
+    }
+
+    hide func stampScorch(x: Float, y: Float, z: Float) {
+        if (scorchTex == null) { return; }
+        var decal = Decal3D.New(new Vec3(x, y + 0.05, z), new Vec3(0.0, 1.0, 0.0), 1.8, scorchTex);
+        Decal3D.SetLifetime(decal, config.SCORCH_LIFETIME);
+        decals.add(decal);
+        if (decals.count() > config.DECAL_MAX) { decals.removeAt(0); }
+    }
+
+    hide func createScorchTexture(size: Integer) -> Pixels {
+        var buf = Pixels.New(size, size);
+        var cx = size / 2;
+        var cy = size / 2;
+
+        for (var py: Integer = 0; py < size; py = py + 1) {
+            for (var px: Integer = 0; px < size; px = px + 1) {
+                var dx = (px - cx + 0.0) / (size + 0.0);
+                var dy = (py - cy + 0.0) / (size + 0.0);
+                var dist = Sqrt(dx * dx + dy * dy);
+                var alpha = 1.0 - dist * 2.4;
+                if (alpha > 0.0) {
+                    buf.Set(px, py, packPixel(30, 22, 16, clampByte(Convert.NumToInt(alpha * 150.0))));
+                } else {
+                    buf.Set(px, py, packPixel(0, 0, 0, 0));
+                }
+            }
+        }
+
+        return buf;
+    }
+
+    // === Recommendation #3: procedurally-rigged skeletal sentinels ========
+
+    hide func setupCritters() {
+        critterSkel = Skeleton3D.New();
+        var b0 = Skeleton3D.AddBone(critterSkel, "root", -1, Mat4.Translate(0.0, 0.0, 0.0));
+        var b1 = Skeleton3D.AddBone(critterSkel, "mid", b0, Mat4.Translate(0.0, 1.0, 0.0));
+        var b2 = Skeleton3D.AddBone(critterSkel, "tip", b1, Mat4.Translate(0.0, 2.0, 0.0));
+        Skeleton3D.ComputeInverseBind(critterSkel);
+
+        critterMesh = Mesh3D.New();
+        addCritterSegment(0.0, 1.0, 0.34, b0, 0);
+        addCritterSegment(1.0, 2.0, 0.27, b1, 8);
+        addCritterSegment(2.0, 2.9, 0.18, b2, 16);
+        Mesh3D.SetSkeleton(critterMesh, critterSkel);
+        Mesh3D.RecalcNormals(critterMesh);
+
+        var anim = Animation3D.New("sway", 2.4);
+        Animation3D.set_Looping(anim, true);
+        Animation3D.AddKeyframe(
+            anim, b0, 0.0, new Vec3(0.0, 0.0, 0.0), Quat.Identity(), new Vec3(1.0, 1.0, 1.0));
+        addSwayKeys(anim, b1, 0.40);
+        addSwayKeys(anim, b2, 0.60);
+
+        critterPlayer = AnimPlayer3D.New(critterSkel);
+        AnimPlayer3D.Play(critterPlayer, anim);
+
+        critterMat = Materials.Emissive(0.32, 0.84, 0.96, 0.55);
+        Material3D.SetEmissiveColor(critterMat, 0.05, 0.18, 0.22);
+
+        critterXs = [];
+        critterZs = [];
+        var cx = terrainWorldMaxX() * 0.5;
+        var cz = terrainWorldMaxZ() * 0.5;
+        addCritter(cx, cz - 12.0);          // ahead of the player at launch
+        addCritter(cx - 15.0, cz + 9.0);
+        addCritter(cx + 17.0, cz + 5.0);
+    }
+
+    hide func addCritter(x: Float, z: Float) {
+        critterXs.add(x);
+        critterZs.add(z);
+    }
+
+    hide func updateCritters(dt: Float) {
+        if (critterPlayer != null) { AnimPlayer3D.Update(critterPlayer, dt); }
+    }
+
+    hide func drawCritters() {
+        if (critterPlayer == null) { return; }
+        for i in 0..critterXs.count() {
+            var x = critterXs.get(i);
+            var z = critterZs.get(i);
+            var xform = Mat4.Mul(Mat4.Translate(x, sampleGround(x, z), z), Mat4.Scale(0.85, 0.85, 0.85));
+            Canvas3D.DrawMeshSkinned(canvas, critterMesh, xform, critterMat, critterPlayer);
+        }
+    }
+
+    // Adds one box segment (8 verts, 12 tris) rigidly weighted to a single bone.
+    hide func addCritterSegment(y0: Float, y1: Float, hw: Float, bone: Integer, base: Integer) {
+        Mesh3D.AddVertex(critterMesh, 0.0 - hw, y0, 0.0 - hw, 0.0, 0.0, 0.0, 0.0, 0.0);
+        Mesh3D.AddVertex(critterMesh, hw, y0, 0.0 - hw, 0.0, 0.0, 0.0, 0.0, 0.0);
+        Mesh3D.AddVertex(critterMesh, hw, y0, hw, 0.0, 0.0, 0.0, 0.0, 0.0);
+        Mesh3D.AddVertex(critterMesh, 0.0 - hw, y0, hw, 0.0, 0.0, 0.0, 0.0, 0.0);
+        Mesh3D.AddVertex(critterMesh, 0.0 - hw, y1, 0.0 - hw, 0.0, 0.0, 0.0, 0.0, 0.0);
+        Mesh3D.AddVertex(critterMesh, hw, y1, 0.0 - hw, 0.0, 0.0, 0.0, 0.0, 0.0);
+        Mesh3D.AddVertex(critterMesh, hw, y1, hw, 0.0, 0.0, 0.0, 0.0, 0.0);
+        Mesh3D.AddVertex(critterMesh, 0.0 - hw, y1, hw, 0.0, 0.0, 0.0, 0.0, 0.0);
+
+        var v = 0;
+        while (v < 8) {
+            Mesh3D.SetBoneWeights(critterMesh, base + v, bone, 1.0, 0, 0.0, 0, 0.0, 0, 0.0);
+            v = v + 1;
+        }
+
+        Mesh3D.AddTriangle(critterMesh, base + 0, base + 2, base + 1);
+        Mesh3D.AddTriangle(critterMesh, base + 0, base + 3, base + 2);
+        Mesh3D.AddTriangle(critterMesh, base + 4, base + 5, base + 6);
+        Mesh3D.AddTriangle(critterMesh, base + 4, base + 6, base + 7);
+        Mesh3D.AddTriangle(critterMesh, base + 0, base + 1, base + 5);
+        Mesh3D.AddTriangle(critterMesh, base + 0, base + 5, base + 4);
+        Mesh3D.AddTriangle(critterMesh, base + 1, base + 2, base + 6);
+        Mesh3D.AddTriangle(critterMesh, base + 1, base + 6, base + 5);
+        Mesh3D.AddTriangle(critterMesh, base + 2, base + 3, base + 7);
+        Mesh3D.AddTriangle(critterMesh, base + 2, base + 7, base + 6);
+        Mesh3D.AddTriangle(critterMesh, base + 3, base + 0, base + 4);
+        Mesh3D.AddTriangle(critterMesh, base + 3, base + 4, base + 7);
+    }
+
+    hide func addSwayKeys(anim: Animation3D, bone: Integer, amp: Float) {
+        var ofs = new Vec3(0.0, 1.0, 0.0);
+        var one = new Vec3(1.0, 1.0, 1.0);
+        var zAxis = new Vec3(0.0, 0.0, 1.0);
+        Animation3D.AddKeyframe(anim, bone, 0.0, ofs, Quat.FromAxisAngle(zAxis, 0.0), one);
+        Animation3D.AddKeyframe(anim, bone, 0.6, ofs, Quat.FromAxisAngle(zAxis, amp), one);
+        Animation3D.AddKeyframe(anim, bone, 1.2, ofs, Quat.FromAxisAngle(zAxis, 0.0), one);
+        Animation3D.AddKeyframe(anim, bone, 1.8, ofs, Quat.FromAxisAngle(zAxis, 0.0 - amp), one);
+        Animation3D.AddKeyframe(anim, bone, 2.4, ofs, Quat.FromAxisAngle(zAxis, 0.0), one);
+    }
+
+    // === Recommendation #9: raycast scanner ===============================
+
+    hide func updateScanner() {
+        var w = Canvas3D.get_Width(canvas);
+        var h = Canvas3D.get_Height(canvas);
+        var o = Camera3D.ScreenToRayOrigin(camera, w / 2, h / 2, w, h);
+        var d = Camera3D.ScreenToRay(camera, w / 2, h / 2, w, h);
+        var ox = Vec3.get_X(o);
+        var oy = Vec3.get_Y(o);
+        var oz = Vec3.get_Z(o);
+        var dx = Vec3.get_X(d);
+        var dy = Vec3.get_Y(d);
+        var dz = Vec3.get_Z(d);
+        var dl = Sqrt(dx * dx + dy * dy + dz * dz);
+        if (dl < 0.0001) { scanLabel = ""; return; }
+        dx = dx / dl;
+        dy = dy / dl;
+        dz = dz / dl;
+
+        var best = config.SCAN_MAX_DIST;
+        var label = "";
+
+        for i in 0..landmarkNames.count() {
+            var t = raySphere(
+                ox, oy, oz, dx, dy, dz,
+                landmarkXs.get(i), landmarkYs.get(i), landmarkZs.get(i), landmarkR.get(i));
+            if (t > 0.0 && t < best) {
+                best = t;
+                label = landmarkNames.get(i);
+            }
+        }
+        for i in 0..beaconXs.count() {
+            var tb = raySphere(
+                ox, oy, oz, dx, dy, dz,
+                beaconXs.get(i), beaconYs.get(i) + 2.2, beaconZs.get(i), 2.2);
+            if (tb > 0.0 && tb < best) {
+                best = tb;
+                if (beaconState.get(i) != 0) { label = "Ridge beacon (linked)"; }
+                else { label = "Ridge beacon (dormant)"; }
+            }
+        }
+
+        if (label == "") {
+            scanLabel = "";
+        } else {
+            scanLabel = label;
+            scanDist = best;
+        }
+    }
+
+    // Nearest positive ray-sphere hit distance (dir must be unit length), or -1.
+    hide func raySphere(
+        ox: Float, oy: Float, oz: Float, dx: Float, dy: Float, dz: Float,
+        cx: Float, cy: Float, cz: Float, r: Float) -> Float {
+        var lx = ox - cx;
+        var ly = oy - cy;
+        var lz = oz - cz;
+        var b = dx * lx + dy * ly + dz * lz;
+        var c = lx * lx + ly * ly + lz * lz - r * r;
+        var disc = b * b - c;
+        if (disc < 0.0) { return -1.0; }
+        return (0.0 - b) - Sqrt(disc);
+    }
+
+    hide func maxf(a: Float, b: Float) -> Float {
+        if (a > b) { return a; }
+        return b;
+    }
+
+    // === Recommendation #10: authored post-FX + debug overlay =============
+
+    hide func buildPostFX() {
+        var fx = PostFX3D.New();
+        // GPU-only effects degrade gracefully on the software backend.
+        if (Canvas3D.BackendSupports(canvas, "ssao")) {
+            PostFX3D.AddSSAO(fx, 0.45, 0.55, 12);
+        }
+        PostFX3D.AddTonemap(fx, 1, 1.12);
+        PostFX3D.AddBloom(fx, config.POSTFX_BLOOM_THRESHOLD, config.POSTFX_BLOOM_INTENSITY, 3);
+        PostFX3D.AddColorGrade(
+            fx, config.POSTFX_COLORGRADE_BRIGHT, config.POSTFX_COLORGRADE_CONTRAST,
+            config.POSTFX_COLORGRADE_SAT);
+        PostFX3D.AddVignette(fx, config.POSTFX_VIGNETTE_RADIUS, config.POSTFX_VIGNETTE_SOFT);
+        PostFX3D.AddFXAA(fx);
+        Canvas3D.SetPostFX(canvas, fx);
+    }
+
+    hide func drawDebugPanel(w: Integer) {
+        var x = w - 250;
+        var y = 14;
+        Canvas3D.DrawRect2D(canvas, x, y, 236, 134, config.HUD_PANEL);
+        Canvas3D.DrawRect2D(canvas, x, y, 236, 3, config.HUD_ACCENT);
+        Canvas3D.DrawText2D(canvas, x + 10, y + 16, "DEBUG  Ctrl=toggle  Space=quality", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, x + 10, y + 38, "Backend: " + Canvas3D.get_Backend(canvas), config.HUD_TEXT);
+        Canvas3D.DrawText2D(canvas, x + 10, y + 56, "FPS: " + toString(Canvas3D.get_Fps(canvas)), config.HUD_TEXT);
+        Canvas3D.DrawText2D(canvas, x + 10, y + 74, "Draws: " + toString(Canvas3D.get_DrawCount(canvas)), config.HUD_TEXT);
+        Canvas3D.DrawText2D(
+            canvas, x + 10, y + 92,
+            "Lights: " + toString(Canvas3D.get_LightCount(canvas)) + " / "
+                + toString(Canvas3D.get_MaxActiveLights(canvas)), config.HUD_TEXT);
+        Canvas3D.DrawText2D(
+            canvas, x + 10, y + 110,
+            "Quality: " + toString(Canvas3D.get_QualityActive(canvas)), config.HUD_TEXT);
     }
 }

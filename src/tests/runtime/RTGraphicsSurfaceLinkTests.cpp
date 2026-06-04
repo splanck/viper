@@ -70,6 +70,7 @@ int main() {
         fn_bits(&rt_scene_node3d_bind_animator),
         fn_bits(&rt_scene_node3d_clear_animator_binding),
         fn_bits(&rt_scene_node3d_get_animator),
+        fn_bits(&rt_fbx_load_recoverable),
         fn_bits(&rt_fbx_get_morph_target),
         fn_bits(&rt_gltf_load),
         fn_bits(&rt_gltf_load_asset),
