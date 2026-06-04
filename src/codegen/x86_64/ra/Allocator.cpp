@@ -28,6 +28,8 @@
 #include <algorithm>
 #include <cassert>
 #include <limits>
+#include <stdexcept>
+#include <string>
 
 /// @file
 /// @brief Implements the x86-64 linear-scan register allocator.
@@ -90,6 +92,11 @@ void addPhysClobber(std::vector<PhysClobber> &clobbers, PhysReg reg) {
     if (!duplicate) {
         clobbers.push_back(PhysClobber{reg, cls});
     }
+}
+
+/// @brief Return a compact register-class name for allocator diagnostics.
+[[nodiscard]] const char *regClassName(RegClass cls) noexcept {
+    return cls == RegClass::XMM ? "XMM" : "GPR";
 }
 
 /// @brief Compute the full set of physical registers an instruction overwrites.
@@ -288,7 +295,11 @@ VirtualAllocation &LinearScanAllocator::stateFor(RegClass cls, uint16_t id) {
         state.seen = true;
     } else {
         state.seen = true;
-        assert(state.cls == cls && "VReg reused with different class");
+        if (state.cls != cls) {
+            throw std::runtime_error("x86 register allocator: virtual register v" +
+                                     std::to_string(id) + " reused as " + regClassName(cls) +
+                                     " after being seen as " + regClassName(state.cls));
+        }
     }
     return state;
 }
@@ -326,7 +337,11 @@ PhysReg LinearScanAllocator::takeRegister(RegClass cls, std::vector<MInstr> &pre
     if (pool.empty()) {
         spillOne(cls, prefix);
     }
-    assert(!pool.empty() && "register pool exhausted");
+    if (pool.empty()) {
+        throw std::runtime_error(std::string("x86 register allocator: ") + regClassName(cls) +
+                                 " register pool exhausted; all active values are pinned or "
+                                 "unspillable for the current instruction");
+    }
     const PhysReg reg = pool.front();
     pool.pop_front(); // O(1) instead of O(n) erase(begin())
     return reg;
@@ -352,10 +367,9 @@ void LinearScanAllocator::releaseRegister(PhysReg phys, RegClass cls) {
 /// @param prefix Instruction list capturing generated spill code.
 void LinearScanAllocator::spillOne(RegClass cls, std::vector<MInstr> &prefix) {
     auto &active = activeFor(cls);
-    assert(!active.empty() &&
-           "spillOne called with empty active set — pool/active bookkeeping error");
     if (active.empty()) {
-        return;
+        throw std::runtime_error(std::string("x86 register allocator: cannot spill from empty ") +
+                                 regClassName(cls) + " active set");
     }
     // Deterministic victim selection with two-pass Belady-style heuristic:
     // Pass 1: Prefer evicting non-cached vregs (those not loaded this block) to
@@ -403,8 +417,10 @@ void LinearScanAllocator::spillOne(RegClass cls, std::vector<MInstr> &prefix) {
             }
         }
     }
-    if (!found)
-        return;
+    if (!found) {
+        throw std::runtime_error(std::string("x86 register allocator: no unpinned ") +
+                                 regClassName(cls) + " spill victim is available");
+    }
     active.erase(victimId);
     auto it = states_.find(victimId);
     if (it == states_.end()) {

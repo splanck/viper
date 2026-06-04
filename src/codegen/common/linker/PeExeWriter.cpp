@@ -9,7 +9,8 @@
 // Purpose: Write PE32+ executables from a linked layout.
 // Key invariants:
 //   - Existing section RVAs from SectionMerger are preserved
-//   - Generated PE import data lives in a dedicated read-only section
+//   - Generated PE import data lives in a dedicated writable section because
+//     the Windows loader writes resolved import addresses into the IAT
 //   - Windows x64 gets a tiny startup shim that calls the resolved entry point
 //     and then terminates via ExitProcess
 //   - ASLR flags are not advertised unless relocations are emitted
@@ -420,6 +421,15 @@ bool checkedRva(uint64_t imageBase,
     return checkedU32(virtualAddr - imageBase, "RVA", err, out);
 }
 
+/// @brief Return the PE image base selected by the link layout.
+/// @details SectionMerger normally seeds LinkLayout::imageBase before assigning
+///          virtual addresses. Hand-built tests may leave it zero; in that case
+///          the writer keeps the historical Windows default.
+uint64_t peImageBaseForLayout(const LinkLayout &layout) {
+    return layout.imageBase != 0 ? layout.imageBase
+                                 : defaultImageBaseForPlatform(LinkPlatform::Windows);
+}
+
 bool checkedAlignUpU32(
     uint64_t value, uint32_t alignment, const char *what, std::ostream &err, uint32_t &out) {
     if (value > std::numeric_limits<size_t>::max()) {
@@ -762,7 +772,7 @@ bool writePeExe(const std::string &path,
                 std::ostream &err) {
     const uint16_t machine =
         (arch == LinkArch::AArch64) ? IMAGE_FILE_MACHINE_ARM64 : IMAGE_FILE_MACHINE_AMD64;
-    const uint64_t imageBase = defaultImageBaseForPlatform(LinkPlatform::Windows);
+    const uint64_t imageBase = peImageBaseForLayout(layout);
     const uint32_t sectionAlignment = 0x1000;
     const uint32_t fileAlignment = 0x200;
     const uint64_t stackReserve =
@@ -877,7 +887,8 @@ bool writePeExe(const std::string &path,
         if (!checkedSizeU32(
                 generatedImportData.size(), "import section size", err, importSec.virtualSize))
             return false;
-        importSec.characteristics = sectionChars(false, false, true);
+        importSec.writable = true;
+        importSec.characteristics = sectionChars(false, true, true);
         sections.push_back(importSec);
         uint32_t alignedImportSize = 0;
         if (!checkedAlignUpU32(generatedImportData.size(),
@@ -968,18 +979,39 @@ bool writePeExe(const std::string &path,
 
     std::vector<uint32_t> baseRelocRvas;
     for (const auto &entry : layout.rebaseEntries) {
-        if (entry.sectionIndex >= layout.sections.size())
-            continue;
+        if (entry.sectionIndex >= layout.sections.size()) {
+            err << "error: PE base relocation references missing section index "
+                << entry.sectionIndex << "\n";
+            return false;
+        }
         const auto &sec = layout.sections[entry.sectionIndex];
-        if (!sec.alloc || entry.offset + 8 > sec.data.size())
-            continue;
-        if (sec.virtualAddr < imageBase)
-            continue;
-        if (entry.offset > std::numeric_limits<uint64_t>::max() - (sec.virtualAddr - imageBase))
-            continue;
+        if (!sec.alloc) {
+            err << "error: PE base relocation references non-alloc section '" << sec.name
+                << "'\n";
+            return false;
+        }
+        if (entry.offset > sec.data.size() || sec.data.size() - entry.offset < 8) {
+            err << "error: PE base relocation in section '" << sec.name
+                << "' extends beyond initialized section data\n";
+            return false;
+        }
+        if (sec.virtualAddr < imageBase) {
+            err << "error: PE base relocation in section '" << sec.name
+                << "' is below image base\n";
+            return false;
+        }
+        if (entry.offset > std::numeric_limits<uint64_t>::max() - (sec.virtualAddr - imageBase)) {
+            err << "error: PE base relocation RVA overflows 64-bit range in section '" << sec.name
+                << "'\n";
+            return false;
+        }
         const uint64_t rva64 = (sec.virtualAddr - imageBase) + entry.offset;
-        if (rva64 <= UINT32_MAX)
-            baseRelocRvas.push_back(static_cast<uint32_t>(rva64));
+        if (rva64 > UINT32_MAX) {
+            err << "error: PE base relocation RVA exceeds 32-bit range in section '" << sec.name
+                << "'\n";
+            return false;
+        }
+        baseRelocRvas.push_back(static_cast<uint32_t>(rva64));
     }
     if (tlsLayout.directorySize != 0) {
         baseRelocRvas.push_back(tlsLayout.directoryRva + 0);

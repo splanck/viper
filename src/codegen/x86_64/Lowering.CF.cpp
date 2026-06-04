@@ -27,6 +27,7 @@
 #include "Unsupported.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <limits>
 #include <string>
 
@@ -45,6 +46,22 @@ constexpr int64_t kErrBounds = 7;
 ///          their raw @c i64 through. Used to build switch-case keys.
 [[nodiscard]] int64_t integerImmediateValue(const ILValue &value) noexcept {
     return value.kind == ILValue::Kind::I1 ? (value.i64 != 0 ? 1 : 0) : value.i64;
+}
+
+/// @brief Validate and normalize a switch_i32 case immediate.
+/// @details x86 lowering eventually emits CMPri, whose encoding is a signed
+///          32-bit immediate. Rejecting wider immediates here keeps malformed
+///          IL from failing later in the binary encoder or comparing with the
+///          wrong switch_i32 semantics.
+/// @param value IL case value operand.
+/// @return The value narrowed to an i32 switch key and widened for MIR immediates.
+[[nodiscard]] int64_t checkedSwitchI32Immediate(const ILValue &value) {
+    const int64_t raw = integerImmediateValue(value);
+    if (raw < std::numeric_limits<int32_t>::min() ||
+        raw > std::numeric_limits<int32_t>::max()) {
+        phaseAUnsupported("switch: case value out of i32 range");
+    }
+    return static_cast<int64_t>(static_cast<int32_t>(raw));
 }
 
 /// @brief Build a CALL instruction tagged with the supplied call-plan id.
@@ -332,13 +349,18 @@ void emitSwitchI32(const ILInstr &instr, MIRBuilder &builder) {
             phaseAUnsupported("switch: case target must be a label");
         }
         cases.push_back(
-            SwitchCase{integerImmediateValue(caseValue), builder.makeLabelOperand(caseLabel)});
+            SwitchCase{checkedSwitchI32Immediate(caseValue), builder.makeLabelOperand(caseLabel)});
     }
 
     Operand defLabel = builder.makeLabelOperand(instr.ops.back());
     std::sort(cases.begin(), cases.end(), [](const SwitchCase &lhs, const SwitchCase &rhs) {
         return lhs.value < rhs.value;
     });
+    for (std::size_t idx = 1; idx < cases.size(); ++idx) {
+        if (cases[idx - 1].value == cases[idx].value) {
+            phaseAUnsupported("switch: duplicate case value");
+        }
+    }
 
     if (cases.size() <= 3) {
         for (const auto &caseEntry : cases) {

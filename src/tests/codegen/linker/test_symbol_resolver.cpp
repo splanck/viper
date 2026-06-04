@@ -1222,6 +1222,46 @@ int main() {
         CHECK(globalSyms["foo"].offset == 8);
     }
 
+    // --- Windows runtime duplicate preference is scoped to archive basename ---
+    {
+        std::filesystem::create_directories("build/test-out");
+        const auto memberBytes = writeElfObjectWithGlobals(
+            "build/test-out/runtime_preference_member.o", {"force_extract", "rt_zia_probe"});
+
+        auto runWithArchivePath = [&](const std::string &archivePath, std::string &diagnostic) {
+            auto caller = makeObj("caller.o", {".text"});
+            addSymbol(caller, "rt_zia_probe", 1, ObjSymbol::Global);
+            addSymbol(caller, "force_extract", 0, ObjSymbol::Undefined);
+
+            Archive archive;
+            archive.path = archivePath;
+            archive.data = memberBytes;
+            archive.members.push_back(
+                ArchiveMember{.name = "member.o", .dataOffset = 0, .dataSize = memberBytes.size()});
+            archive.symbolCandidates["force_extract"] = {0};
+            archive.symbolIndex["force_extract"] = 0;
+
+            std::vector<ObjFile> initObjs = {caller};
+            std::vector<Archive> archives = {archive};
+            std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+            std::vector<ObjFile> allObjects;
+            std::unordered_set<std::string> dynamicSyms;
+            std::ostringstream err;
+
+            const bool ok = resolveSymbols(
+                initObjs, archives, globalSyms, allObjects, dynamicSyms, err, LinkPlatform::Windows);
+            diagnostic = err.str();
+            return ok;
+        };
+
+        std::string diagnostic;
+        CHECK(runWithArchivePath("C:/viper/lib/viper_rt_base.lib", diagnostic));
+        CHECK(diagnostic.empty());
+
+        CHECK(!runWithArchivePath("C:/work/viper_rt_shadow/user.lib", diagnostic));
+        CHECK(diagnostic.find("multiply defined symbol") != std::string::npos);
+    }
+
     // --- Result ---
     if (gFail == 0) {
         std::cout << "All SymbolResolver tests passed.\n";

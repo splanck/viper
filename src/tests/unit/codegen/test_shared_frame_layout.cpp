@@ -34,6 +34,8 @@
 #include "codegen/common/CallLoweringPlan.hpp"
 #include "codegen/common/FrameLayout.hpp"
 
+#include <stdexcept>
+
 using namespace viper::codegen::aarch64;
 using namespace viper::codegen::common;
 
@@ -149,6 +151,32 @@ TEST(SharedFrameLayout, RecreatedBuilderResumesAfterLargeLocalExtent) {
 
     builder.finalize();
     EXPECT_EQ(builder.totalBytes(), 32);
+}
+
+TEST(SharedFrameLayout, CursorRejectsInvalidAlignmentAndSize) {
+    DownwardFrameCursor cursor(8);
+
+    EXPECT_THROWS(cursor.allocate(8, 0), std::invalid_argument);
+    EXPECT_THROWS(cursor.allocate(-1, 8), std::invalid_argument);
+}
+
+TEST(SharedFrameLayout, FrameBuilderRejectsInvalidLocalSpecs) {
+    MFunction fn{};
+    fn.name = "invalid_local_specs";
+    FrameBuilder builder(fn);
+
+    EXPECT_THROWS(builder.addLocal(0, 0, 8), std::invalid_argument);
+    EXPECT_THROWS(builder.addLocal(1, 8, 3), std::invalid_argument);
+}
+
+TEST(SharedFrameLayout, FrameBuilderRejectsInvalidSpillAndOutgoingSpecs) {
+    MFunction fn{};
+    fn.name = "invalid_spill_specs";
+    FrameBuilder builder(fn);
+
+    EXPECT_THROWS(builder.ensureSpill(1, -8, 8), std::invalid_argument);
+    EXPECT_THROWS(builder.ensureSpill(2, 8, 6), std::invalid_argument);
+    EXPECT_THROWS(builder.setMaxOutgoingBytes(-1), std::invalid_argument);
 }
 
 // ===========================================================================

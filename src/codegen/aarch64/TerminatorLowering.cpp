@@ -33,6 +33,7 @@
 #include "OpcodeMappings.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <stdexcept>
 
 namespace viper::codegen::aarch64 {
@@ -55,6 +56,46 @@ struct SwitchCase {
     long long value{0};      ///< Integer constant matched by this case.
     std::string branchLabel; ///< MIR block label to branch to when matched.
 };
+
+/// @brief Validate and narrow a switch_i32 case value to a signed 32-bit key.
+/// @details Terminator lowering can be reached in tests or debug paths with
+///          malformed IL. Rejecting invalid values here avoids silently
+///          treating non-constants as zero or emitting compares with the wrong
+///          integer width.
+/// @param value IL value used as the switch case key.
+/// @param caseIndex Zero-based case index for diagnostics.
+/// @return The validated i32 case value, widened to long long for MIR immediates.
+/// @throws std::runtime_error if @p value is not a ConstInt in i32 range.
+static long long checkedSwitchI32CaseValue(const il::core::Value &value, std::size_t caseIndex) {
+    if (value.kind != il::core::Value::Kind::ConstInt) {
+        throw std::runtime_error("AArch64 terminator lowering: switch_i32 case " +
+                                 std::to_string(caseIndex) + " is not a const int");
+    }
+    if (value.i64 < std::numeric_limits<int32_t>::min() ||
+        value.i64 > std::numeric_limits<int32_t>::max()) {
+        throw std::runtime_error("AArch64 terminator lowering: switch_i32 case " +
+                                 std::to_string(caseIndex) + " is outside i32 range");
+    }
+    return static_cast<long long>(static_cast<int32_t>(value.i64));
+}
+
+/// @brief Build the synthetic spill key used for a switch_i32 dispatch tree.
+/// @details FrameBuilder spill keys share a uint32_t namespace. Switch tree
+///          spills live in a high reserved range and are checked to avoid
+///          wraparound back into normal vreg or temp spill IDs.
+/// @param blockIndex Source IL block index owning the switch.
+/// @return Reserved spill key for the switch scrutinee.
+/// @throws std::runtime_error if @p blockIndex does not fit in the reserved range.
+static uint32_t switchSpillKeyForBlock(std::size_t blockIndex) {
+    constexpr uint32_t kSwitchSpillBase = 0xE0000000u;
+    constexpr std::size_t kMaxSwitchIndex =
+        static_cast<std::size_t>(std::numeric_limits<uint32_t>::max() - kSwitchSpillBase);
+    if (blockIndex > kMaxSwitchIndex) {
+        throw std::runtime_error(
+            "AArch64 terminator lowering: switch spill key range exhausted");
+    }
+    return kSwitchSpillBase + static_cast<uint32_t>(blockIndex);
+}
 
 /// @brief Emit a compare of @p scrutineeVReg against @p imm into @p bb.
 /// @details Uses CmpRI for small non-negative immediates; falls back to
@@ -216,15 +257,31 @@ static void emitPhiEdgeCopies(
     uint16_t &nextVRegId,
     const std::unordered_map<std::string, std::vector<RegClass>> &phiRegClass,
     const std::unordered_map<std::string, std::vector<int>> &phiSpillOffset) {
+    if (args.empty())
+        return;
     auto itSpill = phiSpillOffset.find(dst);
-    if (itSpill == phiSpillOffset.end())
-        return;
+    if (itSpill == phiSpillOffset.end()) {
+        throw std::runtime_error("AArch64 terminator lowering: branch to block '" + dst +
+                                 "' carries arguments but target has no phi spill slots");
+    }
     auto itClass = phiRegClass.find(dst);
-    if (itClass == phiRegClass.end())
-        return;
+    if (itClass == phiRegClass.end()) {
+        throw std::runtime_error("AArch64 terminator lowering: branch to block '" + dst +
+                                 "' carries arguments but target has no phi class metadata");
+    }
     const auto &classes = itClass->second;
     const auto &spillOffsets = itSpill->second;
-    for (std::size_t ai = 0; ai < args.size() && ai < spillOffsets.size(); ++ai) {
+    if (classes.size() != spillOffsets.size()) {
+        throw std::runtime_error("AArch64 terminator lowering: phi metadata count mismatch for "
+                                 "block '" +
+                                 dst + "'");
+    }
+    if (args.size() != classes.size()) {
+        throw std::runtime_error("AArch64 terminator lowering: branch argument count mismatch for "
+                                 "block '" +
+                                 dst + "'");
+    }
+    for (std::size_t ai = 0; ai < args.size(); ++ai) {
         uint16_t sv = 0;
         RegClass scls = RegClass::GPR;
         if (!materializeValueToVReg(args[ai],
@@ -460,8 +517,23 @@ static void lowerSwitchI32(
     std::unordered_map<unsigned, RegClass> &tempRegClass,
     uint16_t &nextVRegId,
     std::size_t &switchAuxCounter) {
-    if (term.operands.empty())
-        return;
+    if (term.operands.empty()) {
+        throw std::runtime_error("AArch64 terminator lowering: switch_i32 missing scrutinee");
+    }
+    if (term.labels.empty()) {
+        throw std::runtime_error("AArch64 terminator lowering: switch_i32 missing default label");
+    }
+    if (term.labels.front().empty()) {
+        throw std::runtime_error("AArch64 terminator lowering: switch_i32 default label is empty");
+    }
+    if (term.brArgs.size() != term.labels.size()) {
+        throw std::runtime_error(
+            "AArch64 terminator lowering: switch_i32 branch argument vector count mismatch");
+    }
+    if (term.operands.size() != term.labels.size()) {
+        throw std::runtime_error(
+            "AArch64 terminator lowering: switch_i32 operand/label count mismatch");
+    }
 
     uint16_t sv = 0;
     RegClass scls = RegClass::GPR;
@@ -489,9 +561,11 @@ static void lowerSwitchI32(
     for (std::size_t ci = 0; ci < ncases; ++ci) {
         const auto &caseValue = il::core::switchCaseValue(term, ci);
         const std::string &caseLabel = il::core::switchCaseLabel(term, ci);
-        long long imm = 0;
-        if (caseValue.kind == il::core::Value::Kind::ConstInt)
-            imm = caseValue.i64;
+        if (caseLabel.empty()) {
+            throw std::runtime_error("AArch64 terminator lowering: switch_i32 case " +
+                                     std::to_string(ci) + " missing target label");
+        }
+        const long long imm = checkedSwitchI32CaseValue(caseValue, ci);
 
         const auto &args = il::core::switchCaseArgs(term, ci);
         std::string branchLabel = caseLabel;
@@ -544,11 +618,17 @@ static void lowerSwitchI32(
     std::sort(cases.begin(), cases.end(), [](const SwitchCase &lhs, const SwitchCase &rhs) {
         return lhs.value < rhs.value;
     });
+    for (std::size_t ci = 1; ci < cases.size(); ++ci) {
+        if (cases[ci - 1].value == cases[ci].value) {
+            throw std::runtime_error("AArch64 terminator lowering: duplicate switch_i32 case " +
+                                     std::to_string(cases[ci].value));
+        }
+    }
 
     if (cases.size() <= 3) {
         emitLinearSwitch(outBB, sv, cases, 0, cases.size(), defaultBranchLabel, nextVRegId);
     } else {
-        const uint32_t switchSpillKey = 0xE0000000u + static_cast<uint32_t>(blockIndex);
+        const uint32_t switchSpillKey = switchSpillKeyForBlock(blockIndex);
         const int switchSpillOffset = fb.ensureSpill(switchSpillKey);
         outBB.instrs.push_back(
             MInstr{MOpcode::StrRegFpImm,

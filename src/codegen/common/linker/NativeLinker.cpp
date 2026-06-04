@@ -45,6 +45,7 @@
 #include <cstdlib>
 #include <iomanip>
 #include <limits>
+#include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -145,6 +146,28 @@ void ensurePeImportFunction(std::vector<DllImport> &imports,
     }
 
     imports.push_back({dllName, {functionName}, {}});
+}
+
+/// @brief Return the image base selected by layout or the platform default.
+/// @details SectionMerger seeds LinkLayout::imageBase before relocation and
+///          writing. Hand-built test layouts may leave it zero, so callers use
+///          this helper to retain the historical default behavior.
+uint64_t imageBaseForLayout(const LinkLayout &layout, LinkPlatform platform) {
+    return layout.imageBase != 0 ? layout.imageBase : defaultImageBaseForPlatform(platform);
+}
+
+/// @brief Narrow a synthetic ObjFile symbol index to COFF's 32-bit relocation field.
+/// @details Synthetic Windows helper generation appends symbols and immediately
+///          records relocation references to them. This helper keeps that path
+///          from silently wrapping if helper generation ever exceeds the object
+///          format's symbol-index range.
+uint32_t checkedSyntheticSymbolIndex(size_t index, const char *context) {
+    if (index > std::numeric_limits<uint32_t>::max()) {
+        throw std::runtime_error(std::string("native linker: synthetic helper symbol index "
+                                             "overflow while adding ") +
+                                 context);
+    }
+    return static_cast<uint32_t>(index);
 }
 
 /// @brief Build a synthetic ObjFile that refers to @p symbolName as undefined.
@@ -416,7 +439,7 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
         sym.sectionIndex = 1;
         sym.offset = off;
         obj.symbols.push_back(std::move(sym));
-        return static_cast<uint32_t>(obj.symbols.size() - 1);
+        return checkedSyntheticSymbolIndex(obj.symbols.size() - 1, name.c_str());
     };
 
     auto addData = [&](const std::string &name, const std::vector<uint8_t> &bytes, uint32_t align) {
@@ -430,7 +453,7 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
         sym.sectionIndex = 2;
         sym.offset = off;
         obj.symbols.push_back(std::move(sym));
-        return static_cast<uint32_t>(obj.symbols.size() - 1);
+        return checkedSyntheticSymbolIndex(obj.symbols.size() - 1, name.c_str());
     };
 
     auto addAbs64DataRef = [&](const std::string &name, uint32_t align, uint32_t targetSymIdx) {
@@ -451,7 +474,7 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
         reloc.symIndex = targetSymIdx;
         reloc.addend = 0;
         dataSec.relocs.push_back(reloc);
-        return static_cast<uint32_t>(obj.symbols.size() - 1);
+        return checkedSyntheticSymbolIndex(obj.symbols.size() - 1, name.c_str());
     };
 
     auto addImportAlias = [&](const std::string &name, uint32_t targetSymIdx) {
@@ -469,12 +492,12 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
         sym.sectionIndex = 1;
         sym.offset = off;
         obj.symbols.push_back(std::move(sym));
-        const uint32_t idx = static_cast<uint32_t>(obj.symbols.size() - 1);
+        const uint32_t idx = checkedSyntheticSymbolIndex(obj.symbols.size() - 1, name.c_str());
 
         ObjSymbol targetSym;
         targetSym.name = target;
         targetSym.binding = ObjSymbol::Undefined;
-        const uint32_t targetIdx = static_cast<uint32_t>(obj.symbols.size());
+        const uint32_t targetIdx = checkedSyntheticSymbolIndex(obj.symbols.size(), target.c_str());
         obj.symbols.push_back(std::move(targetSym));
 
         ObjReloc reloc;
@@ -625,7 +648,8 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
         sym.sectionIndex = 1;
         sym.offset = off;
         obj.symbols.push_back(std::move(sym));
-        const uint32_t idx = static_cast<uint32_t>(obj.symbols.size() - 1);
+        const uint32_t idx =
+            checkedSyntheticSymbolIndex(obj.symbols.size() - 1, "__chkstk");
         addImportAlias("__chkstk", idx);
     }
     if (needsHelper("rt_audio_shutdown")) {
@@ -701,7 +725,8 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
         ObjSymbol target;
         target.name = haveVmTrapDefault ? "vm_trap_default" : "rt_abort";
         target.binding = ObjSymbol::Undefined;
-        const uint32_t targetIdx = static_cast<uint32_t>(obj.symbols.size());
+        const uint32_t targetIdx =
+            checkedSyntheticSymbolIndex(obj.symbols.size(), target.name.c_str());
         obj.symbols.push_back(std::move(target));
 
         ObjReloc reloc;
@@ -744,7 +769,7 @@ ObjFile generateWindowsArm64Helpers(const std::unordered_set<std::string> &dynam
         sym.sectionIndex = 1;
         sym.offset = off;
         obj.symbols.push_back(std::move(sym));
-        return static_cast<uint32_t>(obj.symbols.size() - 1);
+        return checkedSyntheticSymbolIndex(obj.symbols.size() - 1, name.c_str());
     };
 
     auto addRetFn = [&](const std::string &name) {
@@ -766,7 +791,7 @@ ObjFile generateWindowsArm64Helpers(const std::unordered_set<std::string> &dynam
         sym.sectionIndex = 2;
         sym.offset = off;
         obj.symbols.push_back(std::move(sym));
-        return static_cast<uint32_t>(obj.symbols.size() - 1);
+        return checkedSyntheticSymbolIndex(obj.symbols.size() - 1, name.c_str());
     };
 
     auto addAbs64DataRef = [&](const std::string &name, uint32_t align, uint32_t targetSymIdx) {
@@ -787,7 +812,7 @@ ObjFile generateWindowsArm64Helpers(const std::unordered_set<std::string> &dynam
         reloc.symIndex = targetSymIdx;
         reloc.addend = 0;
         dataSec.relocs.push_back(reloc);
-        return static_cast<uint32_t>(obj.symbols.size() - 1);
+        return checkedSyntheticSymbolIndex(obj.symbols.size() - 1, name.c_str());
     };
 
     auto addImportAlias = [&](const std::string &name, uint32_t targetSymIdx) {
@@ -1075,7 +1100,8 @@ ObjFile generateWindowsArm64Helpers(const std::unordered_set<std::string> &dynam
         ObjSymbol target;
         target.name = haveVmTrapDefault ? "vm_trap_default" : "rt_abort";
         target.binding = ObjSymbol::Undefined;
-        const uint32_t targetIdx = static_cast<uint32_t>(obj.symbols.size());
+        const uint32_t targetIdx =
+            checkedSyntheticSymbolIndex(obj.symbols.size(), target.name.c_str());
         obj.symbols.push_back(std::move(target));
 
         ObjReloc reloc;
@@ -1472,7 +1498,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
             const bool emitStartupStub = opts.entrySymbol == "main";
             if (emitStartupStub)
                 ensurePeImportFunction(peImports, "kernel32.dll", "ExitProcess");
-            const uint64_t imageBase = defaultImageBaseForPlatform(LinkPlatform::Windows);
+            const uint64_t imageBase = imageBaseForLayout(layout, LinkPlatform::Windows);
             for (const auto &imp : peImports) {
                 for (const auto &fn : imp.functions) {
                     auto it = layout.globalSyms.find("__imp_" + fn);

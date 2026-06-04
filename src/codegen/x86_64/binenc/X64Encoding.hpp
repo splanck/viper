@@ -23,9 +23,9 @@
 
 #pragma once
 
+#include "codegen/common/ICE.hpp"
 #include "codegen/x86_64/TargetX64.hpp"
 
-#include <cassert>
 #include <cstdint>
 #include <stdexcept>
 
@@ -178,7 +178,7 @@ struct RegRegOp {
 };
 
 /// Lookup the opcode bytes for a reg-reg GPR instruction.
-inline constexpr RegRegOp regRegOpcode(MOpcode op) {
+inline RegRegOp regRegOpcode(MOpcode op) {
     switch (op) {
         case MOpcode::MOVrr:
             return {0x89, 0, false}; // reg=src, r/m=dst
@@ -205,13 +205,12 @@ inline constexpr RegRegOp regRegOpcode(MOpcode op) {
         case MOpcode::MOVZXrr32:
             return {0x89, 0, false};
         default:
-            assert(false && "not a reg-reg GPR opcode");
-            return {0, 0, false};
+            VIPER_ICE("not a reg-reg GPR opcode");
     }
 }
 
 /// /ext field in ModR/M reg bits for reg-imm ALU (opcode 81/83).
-inline constexpr uint8_t regImmExt(MOpcode op) {
+inline uint8_t regImmExt(MOpcode op) {
     switch (op) {
         case MOpcode::ADDri:
             return 0; // /0
@@ -224,13 +223,12 @@ inline constexpr uint8_t regImmExt(MOpcode op) {
         case MOpcode::CMPri:
             return 7; // /7
         default:
-            assert(false && "not a reg-imm ALU opcode");
-            return 0;
+            VIPER_ICE("not a reg-imm ALU opcode");
     }
 }
 
 /// /ext field in ModR/M reg bits for shift instructions (opcode C1/D3).
-inline constexpr uint8_t shiftExt(MOpcode op) {
+inline uint8_t shiftExt(MOpcode op) {
     switch (op) {
         case MOpcode::SHLri:
         case MOpcode::SHLrc:
@@ -242,8 +240,7 @@ inline constexpr uint8_t shiftExt(MOpcode op) {
         case MOpcode::SARrc:
             return 7; // /7
         default:
-            assert(false && "not a shift opcode");
-            return 0;
+            VIPER_ICE("not a shift opcode");
     }
 }
 
@@ -259,7 +256,7 @@ struct SseOp {
 /// @details Maps FADD/FSUB/FMUL/FDIV, the FP compares, and the int<->double
 ///          conversions/moves to their (prefix, 0F-opcode, operand-direction,
 ///          REX.W) tuple. Opcodes with no SSE form fall through to the default.
-inline constexpr SseOp sseOpcode(MOpcode op) {
+inline SseOp sseOpcode(MOpcode op) {
     switch (op) {
         case MOpcode::FADD:
             return {0xF2, 0x58, true, false};
@@ -290,8 +287,7 @@ inline constexpr SseOp sseOpcode(MOpcode op) {
         case MOpcode::MOVUPSmr:
             return {0x00, 0x10, true, false}; // load: no prefix
         default:
-            assert(false && "not an SSE opcode");
-            return {0, 0, false, false};
+            VIPER_ICE("not an SSE opcode");
     }
 }
 

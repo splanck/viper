@@ -13,9 +13,13 @@
 //
 //===----------------------------------------------------------------------===//
 #include "codegen/x86_64/LowerILToMIR.hpp"
+#include "codegen/x86_64/LoweringRuleTable.hpp"
 #include "codegen/x86_64/LoweringRules.hpp"
+#include "codegen/x86_64/TargetX64.hpp"
 #include "tests/TestHarness.hpp"
 
+#include <limits>
+#include <stdexcept>
 #include <string>
 
 using viper::codegen::x64::ILInstr;
@@ -47,6 +51,45 @@ ILValue makeLabel(std::string name) {
 }
 
 } // namespace
+
+TEST(LoweringRuleEmit, SwitchRejectsDuplicateCases) {
+    viper::codegen::x64::AsmEmitter::RoDataPool rodata;
+    viper::codegen::x64::LowerILToMIR lower{viper::codegen::x64::sysvTarget(), rodata};
+    viper::codegen::x64::MBasicBlock block{};
+    block.label = ".Lentry";
+    viper::codegen::x64::MIRBuilder builder{lower, block};
+
+    ILInstr instr{};
+    instr.opcode = "switch_i32";
+    instr.ops = {makeValue(ILValue::Kind::I64, 1),
+                 makeImmediate(ILValue::Kind::I64, 7),
+                 makeLabel(".Lcase0"),
+                 makeImmediate(ILValue::Kind::I64, 7),
+                 makeLabel(".Lcase1"),
+                 makeLabel(".Ldefault")};
+
+    EXPECT_THROWS(viper::codegen::x64::lowering::emitSwitchI32(instr, builder),
+                  std::runtime_error);
+}
+
+TEST(LoweringRuleEmit, SwitchRejectsOutOfRangeI32Cases) {
+    viper::codegen::x64::AsmEmitter::RoDataPool rodata;
+    viper::codegen::x64::LowerILToMIR lower{viper::codegen::x64::sysvTarget(), rodata};
+    viper::codegen::x64::MBasicBlock block{};
+    block.label = ".Lentry";
+    viper::codegen::x64::MIRBuilder builder{lower, block};
+
+    ILInstr instr{};
+    instr.opcode = "switch_i32";
+    instr.ops = {makeValue(ILValue::Kind::I64, 1),
+                 makeImmediate(ILValue::Kind::I64,
+                               static_cast<int64_t>(std::numeric_limits<int32_t>::max()) + 1),
+                 makeLabel(".Lcase0"),
+                 makeLabel(".Ldefault")};
+
+    EXPECT_THROWS(viper::codegen::x64::lowering::emitSwitchI32(instr, builder),
+                  std::runtime_error);
+}
 
 TEST(LoweringRuleLookup, SelectsArithmeticRule) {
     ILInstr instr{};

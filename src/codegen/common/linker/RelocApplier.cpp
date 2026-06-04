@@ -27,6 +27,7 @@
 #include <array>
 #include <cstring>
 #include <limits>
+#include <optional>
 
 namespace viper::codegen::linker {
 
@@ -330,27 +331,45 @@ static bool buildLocationMap(const LinkLayout &layout, LocationMap &map, std::os
     return true;
 }
 
-static bool hasMatchingAArch64GotPageReloc(const ObjFile &obj,
-                                           LinkArch arch,
-                                           const ObjSection &sec,
-                                           const ObjReloc &pageOffRel) {
-    if (pageOffRel.offset < 4)
-        return false;
+/// @brief Find the output offset of the ADRP paired with a local GOT page-offset relocation.
+/// @details GOT relaxation rewrites an ADRP/LDR-through-GOT pair into ADRP/ADD-direct. The
+///          page-offset relocation may be separated from the page relocation by scheduler-inserted
+///          instructions, so pairing is based on relocation metadata plus the ADRP destination
+///          register used as the LDR base, not raw instruction adjacency.
+static std::optional<size_t> findMatchingAArch64GotPageRelocOffset(const ObjFile &obj,
+                                                                   LinkArch arch,
+                                                                   const ObjSection &sec,
+                                                                   const OutputSection &outSec,
+                                                                   size_t chunkBase,
+                                                                   const ObjReloc &pageOffRel,
+                                                                   uint32_t ldrBaseReg) {
+    std::optional<size_t> bestPatchOff;
     for (const auto &candidate : sec.relocs) {
-        if (candidate.offset > std::numeric_limits<size_t>::max() - 4)
-            continue;
-        if (candidate.offset + 4 != pageOffRel.offset)
+        if (candidate.offset >= pageOffRel.offset)
             continue;
         if (candidate.symIndex != pageOffRel.symIndex || candidate.addend != pageOffRel.addend)
             continue;
-        if (classifyReloc(obj.format, arch, candidate.type) == RelocAction::GotPage21)
-            return true;
-        if (obj.format == ObjFileFormat::MachO &&
-            pageOffRel.type == macho_a64::kTlvpLoadPageOff12 &&
-            candidate.type == macho_a64::kTlvpLoadPage21)
-            return true;
+        const bool isGotPage = classifyReloc(obj.format, arch, candidate.type) == RelocAction::GotPage21;
+        const bool isMachOTlvpPage =
+            obj.format == ObjFileFormat::MachO && pageOffRel.type == macho_a64::kTlvpLoadPageOff12 &&
+            candidate.type == macho_a64::kTlvpLoadPage21;
+        if (!isGotPage && !isMachOTlvpPage)
+            continue;
+
+        if (candidate.offset > std::numeric_limits<size_t>::max() - chunkBase)
+            continue;
+        const size_t candidatePatchOff = chunkBase + candidate.offset;
+        if (candidatePatchOff > outSec.data.size() || outSec.data.size() - candidatePatchOff < 4)
+            continue;
+
+        const uint32_t adrpInsn = readLE32(outSec.data.data() + candidatePatchOff);
+        if (!isAArch64AdrpOpcode(adrpInsn) || (adrpInsn & 0x1F) != ldrBaseReg)
+            continue;
+
+        if (!bestPatchOff || candidatePatchOff > *bestPatchOff)
+            bestPatchOff = candidatePatchOff;
     }
-    return false;
+    return bestPatchOff;
 }
 
 /// Look up the output section and offset for a given (objIndex, secIndex).
@@ -1452,21 +1471,12 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                             }
                             uint32_t rd = insn & 0x1F;
                             uint32_t rn = (insn >> 5) & 0x1F;
-                            if (!hasMatchingAArch64GotPageReloc(obj, arch, sec, rel) ||
-                                patchOff < 4) {
+                            const auto adrpPatchOff = findMatchingAArch64GotPageRelocOffset(
+                                obj, arch, sec, outSec, chunkBase, rel, rn);
+                            if (!adrpPatchOff) {
                                 err << "error: " << obj.name
-                                    << ": local GOT relaxation requires an adjacent matching ADRP "
-                                       "relocation";
-                                if (!symName.empty())
-                                    err << " for '" << symName << "'";
-                                err << "\n";
-                                return false;
-                            }
-                            uint32_t adrpInsn = readLE32(outSec.data.data() + patchOff - 4);
-                            if (!isAArch64AdrpOpcode(adrpInsn) || (adrpInsn & 0x1F) != rn) {
-                                err << "error: " << obj.name
-                                    << ": local GOT relaxation requires LDR base to match "
-                                       "preceding ADRP";
+                                    << ": local GOT relaxation requires a preceding matching ADRP "
+                                       "relocation using the LDR base register";
                                 if (!symName.empty())
                                     err << " for '" << symName << "'";
                                 err << "\n";

@@ -1447,7 +1447,8 @@ int main() {
         std::unordered_set<std::string> dynSyms;
         CHECK(
             !applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::AArch64, err));
-        CHECK(err.str().find("requires an adjacent matching ADRP relocation") != std::string::npos);
+        CHECK(err.str().find("requires a preceding matching ADRP relocation using the LDR base "
+                             "register") != std::string::npos);
     }
 
     // --- Mach-O AArch64 TLVP page-offset relaxation accepts its PAGE21 pair ---
@@ -1575,7 +1576,8 @@ int main() {
         std::unordered_set<std::string> dynSyms;
         CHECK(
             !applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::AArch64, err));
-        CHECK(err.str().find("requires LDR base to match preceding ADRP") != std::string::npos);
+        CHECK(err.str().find("requires a preceding matching ADRP relocation using the LDR base "
+                             "register") != std::string::npos);
     }
 
     // --- COFF AArch64 BRANCH26 patches BL/B using the Windows relocation kind ---
@@ -2091,6 +2093,60 @@ int main() {
 
         uint32_t patched = readLE32(layout.sections[0].data.data());
         CHECK(patched == 0x3000);
+    }
+
+    // --- AArch64 local GOT relaxation allows non-adjacent ADRP/LDR pair ---
+    {
+        ObjFile obj;
+        obj.name = "a64_got_relax_nonadjacent.o";
+        obj.format = ObjFileFormat::ELF;
+        obj.sections.push_back({});
+
+        ObjSection text;
+        text.name = ".text";
+        text.executable = true;
+        text.alloc = true;
+        text.alignment = 4;
+        // adrp x1, target@GOTPAGE; nop; ldr x0, [x1, target@GOTPAGEOFF]
+        text.data = {0x01, 0x00, 0x00, 0x90, 0x1F, 0x20, 0x03, 0xD5, 0x20, 0x00, 0x40, 0xF9};
+        text.relocs.push_back(ObjReloc{.offset = 0,
+                                       .type = elf_a64::kAdrGotPage,
+                                       .symIndex = 1,
+                                       .addend = 0});
+        text.relocs.push_back(ObjReloc{.offset = 8,
+                                       .type = elf_a64::kLd64GotLo12Nc,
+                                       .symIndex = 1,
+                                       .addend = 0});
+        obj.sections.push_back(std::move(text));
+
+        ObjSection dataSec;
+        dataSec.name = ".data";
+        dataSec.alloc = true;
+        dataSec.writable = true;
+        dataSec.alignment = 8;
+        dataSec.data = {0xAA, 0xBB, 0xCC, 0xDD, 0, 0, 0, 0};
+        obj.sections.push_back(std::move(dataSec));
+
+        obj.symbols.push_back({});
+        ObjSymbol target;
+        target.name = "local_target";
+        target.binding = ObjSymbol::Local;
+        target.sectionIndex = 2;
+        target.offset = 0;
+        obj.symbols.push_back(std::move(target));
+
+        std::vector<ObjFile> objs = {obj};
+        auto layout = makeLayout(objs, 0x401000);
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::AArch64, err);
+        CHECK(ok);
+        CHECK(err.str().empty());
+
+        const uint32_t relaxed = readLE32(layout.sections[0].data.data() + 8);
+        CHECK((relaxed & 0xFFC003E0u) == 0x91000020u); // ADD x0, x1, #imm12
     }
 
     // --- Result ---

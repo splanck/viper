@@ -26,7 +26,10 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <limits>
 #include <set>
+#include <stdexcept>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <variant>
@@ -55,6 +58,51 @@ struct SlotKeyHash {
         return (idxVal << 1) ^ clsVal;
     }
 };
+
+/// @brief Add two frame byte counts with signed-int overflow checking.
+/// @throws std::invalid_argument if @p rhs is negative.
+/// @throws std::overflow_error if the sum exceeds int range.
+[[nodiscard]] int checkedFrameAdd(int lhs, int rhs, const char *what) {
+    if (rhs < 0)
+        throw std::invalid_argument(std::string("x86 frame ") + what +
+                                    " byte count must be non-negative");
+    if (lhs > std::numeric_limits<int>::max() - rhs)
+        throw std::overflow_error(std::string("x86 frame ") + what +
+                                  " exceeds int range");
+    return lhs + rhs;
+}
+
+/// @brief Multiply a slot count by a slot size with signed-int overflow checking.
+/// @throws std::invalid_argument if @p slotSize is not positive.
+/// @throws std::overflow_error if the product exceeds int range.
+[[nodiscard]] int checkedFrameMul(std::size_t count, int slotSize, const char *what) {
+    if (slotSize <= 0)
+        throw std::invalid_argument(std::string("x86 frame ") + what +
+                                    " slot size must be positive");
+    const auto maxCount =
+        static_cast<std::size_t>(std::numeric_limits<int>::max() / slotSize);
+    if (count > maxCount)
+        throw std::overflow_error(std::string("x86 frame ") + what +
+                                  " exceeds int range");
+    return static_cast<int>(count) * slotSize;
+}
+
+/// @brief Convert a size_t frame quantity to int with overflow checking.
+/// @throws std::overflow_error if @p value exceeds int range.
+[[nodiscard]] int checkedFrameSizeFromSizeT(std::size_t value, const char *what) {
+    if (value > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+        throw std::overflow_error(std::string("x86 frame ") + what + " exceeds int range");
+    return static_cast<int>(value);
+}
+
+/// @brief Return a negative FP-relative offset for a positive frame extent.
+/// @throws std::invalid_argument if @p extent is not positive.
+[[nodiscard]] int negativeFrameOffset(int extent, const char *what) {
+    if (extent <= 0)
+        throw std::invalid_argument(std::string("x86 frame ") + what +
+                                    " offset extent must be positive");
+    return -extent;
+}
 
 /// @brief Build a set of callee-saved registers for O(1) lookup.
 /// @details Pre-computes the union of GPR and XMM callee-saved registers
@@ -149,7 +197,7 @@ struct CalleeSavedLayout {
         if (isXMM(reg)) {
             running = roundUp(running, kStackAlignment);
         }
-        running += calleeSaveSlotSize(reg);
+        running = checkedFrameAdd(running, calleeSaveSlotSize(reg), "callee-saved area");
         layout.offsets.push_back(-running);
     }
     layout.totalBytes = running;
@@ -214,9 +262,15 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
                 if (mem->disp >= 0) {
                     continue;
                 }
+                if (mem->disp == std::numeric_limits<int32_t>::min()) {
+                    throw std::overflow_error(
+                        "x86 frame placeholder offset cannot be represented as a positive value");
+                }
                 const int placeholder = -mem->disp;
-                assert(placeholder % kSlotSizeBytes == 0 && placeholder > 0 &&
-                       "spill slots expected to use 8-byte stepping");
+                if (placeholder <= 0 || (placeholder % kSlotSizeBytes) != 0) {
+                    throw std::runtime_error(
+                        "x86 frame placeholder offsets must use positive 8-byte stepping");
+                }
                 const int slotIndex = placeholder / kSlotSizeBytes - 1;
 
                 // Distinguish between alloca slots (< 1000) and spill slots (>= 1000)
@@ -239,8 +293,10 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
 
     // Compute the alloca area size (number of 8-byte alloca slots)
     // +1 because slotIndex is 0-based and we need space for slots 0..maxAllocaSlotIndex
+    const std::size_t allocaSlotCount =
+        maxAllocaSlotIndex >= 0 ? static_cast<std::size_t>(maxAllocaSlotIndex) + 1U : 0U;
     const int allocaAreaBytes =
-        (maxAllocaSlotIndex >= 0) ? (maxAllocaSlotIndex + 1) * kSlotSizeBytes : 0;
+        checkedFrameMul(allocaSlotCount, kSlotSizeBytes, "alloca area");
 
     frame.usedCalleeSaved.clear();
     for (auto reg : target.calleeSavedGPR) {
@@ -265,35 +321,41 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
     // Remap alloca slots to come AFTER the callee-saved area
     // Alloca slot N (with placeholder offset -(N+1)*8) maps to -(calleeSavedBytes + (N+1)*8)
     for (int slot = 0; slot <= maxAllocaSlotIndex; ++slot) {
-        const int newOffset = -(calleeSavedBytes + (slot + 1) * kSlotSizeBytes);
+        const int slotBytes =
+            checkedFrameMul(static_cast<std::size_t>(slot) + 1U, kSlotSizeBytes, "alloca slot");
+        const int newOffset =
+            negativeFrameOffset(checkedFrameAdd(calleeSavedBytes, slotBytes, "alloca slot"),
+                                "alloca slot");
         slotOffsets.emplace(SlotKey{RegClass::GPR, slot}, newOffset);
     }
 
     // Start spill slots AFTER the callee-saved area AND the alloca area
-    int runningOffset = calleeSavedBytes + allocaAreaBytes;
+    int runningOffset = checkedFrameAdd(calleeSavedBytes, allocaAreaBytes, "spill base");
 
     for (int slot : gprSpillSlots) {
-        runningOffset += kSlotSizeBytes;
-        slotOffsets.emplace(SlotKey{RegClass::GPR, slot}, -runningOffset);
+        runningOffset = checkedFrameAdd(runningOffset, kSlotSizeBytes, "GPR spill area");
+        slotOffsets.emplace(SlotKey{RegClass::GPR, slot},
+                            negativeFrameOffset(runningOffset, "GPR spill"));
     }
     for (int slot : xmmSpillSlots) {
-        runningOffset += kSlotSizeBytes;
-        slotOffsets.emplace(SlotKey{RegClass::XMM, slot}, -runningOffset);
+        runningOffset = checkedFrameAdd(runningOffset, kSlotSizeBytes, "XMM spill area");
+        slotOffsets.emplace(SlotKey{RegClass::XMM, slot},
+                            negativeFrameOffset(runningOffset, "XMM spill"));
     }
 
-    frame.spillAreaGPR = static_cast<int>(gprSpillSlots.size()) * kSlotSizeBytes;
-    frame.spillAreaXMM = static_cast<int>(xmmSpillSlots.size()) * kSlotSizeBytes;
+    frame.spillAreaGPR = checkedFrameMul(gprSpillSlots.size(), kSlotSizeBytes, "GPR spill area");
+    frame.spillAreaXMM = checkedFrameMul(xmmSpillSlots.size(), kSlotSizeBytes, "XMM spill area");
 
     if (frame.outgoingArgArea < 0) {
         frame.outgoingArgArea = 0;
     }
     if (target.shadowSpace != 0 && (hasCall || func.name == "main" || func.name == "@main")) {
-        frame.outgoingArgArea =
-            std::max(frame.outgoingArgArea, static_cast<int>(target.shadowSpace));
+        frame.outgoingArgArea = std::max(
+            frame.outgoingArgArea, checkedFrameSizeFromSizeT(target.shadowSpace, "shadow space"));
     }
     frame.outgoingArgArea = roundUp(frame.outgoingArgArea, kStackAlignment);
 
-    const int rawFrameSize = runningOffset + frame.outgoingArgArea;
+    const int rawFrameSize = checkedFrameAdd(runningOffset, frame.outgoingArgArea, "total size");
     frame.frameSize = roundUp(rawFrameSize, kStackAlignment);
 
     for (auto &block : func.blocks) {

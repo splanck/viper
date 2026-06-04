@@ -21,6 +21,7 @@
 #include "codegen/common/linker/NameMangling.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <limits>
 #include <sstream>
@@ -53,6 +54,47 @@ struct ComdatDefinition {
 static bool isSupportedCommonAlignment(size_t alignment) {
     return alignment != 0 && (alignment & (alignment - 1)) == 0 &&
            alignment <= std::numeric_limits<uint32_t>::max();
+}
+
+/// @brief Return an ASCII-lowercased copy of @p value for Windows archive-name checks.
+static std::string asciiLower(std::string value) {
+    for (char &ch : value) {
+        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    return value;
+}
+
+/// @brief Extract the archive path component from an object display name.
+/// @details Archive members are named as "path/to/archive.lib(member.obj)".
+///          Non-archive objects are returned unchanged, which lets the caller
+///          reject them by basename policy.
+static std::string archivePathFromObjectName(const std::string &objectName) {
+    const size_t memberStart = objectName.find('(');
+    return memberStart == std::string::npos ? objectName : objectName.substr(0, memberStart);
+}
+
+/// @brief Extract the final path component from @p path using both host separators.
+static std::string basenameFromPath(const std::string &path) {
+    const size_t slash = path.find_last_of("/\\");
+    return slash == std::string::npos ? path : path.substr(slash + 1);
+}
+
+/// @brief Check whether an archive basename is one of Viper's runtime archives.
+/// @details This intentionally does not search the whole object path. Only a
+///          basename such as libviper_rt_base.a, viper_rt_core.lib, or
+///          viper_runtime.lib is allowed to activate duplicate-runtime shim
+///          preference.
+static bool isViperRuntimeArchiveBasename(const std::string &basename) {
+    std::string name = asciiLower(basename);
+    if (name.size() > 4 && name.substr(name.size() - 4) == ".lib")
+        name.resize(name.size() - 4);
+    else if (name.size() > 2 && name.substr(name.size() - 2) == ".a")
+        name.resize(name.size() - 2);
+    if (name.rfind("lib", 0) == 0)
+        name.erase(0, 3);
+
+    return name == "viper_runtime" || name.rfind("viper_rt_", 0) == 0 ||
+           name.rfind("viper-runtime", 0) == 0;
 }
 
 static void setEntryFromSymbol(GlobalSymEntry &entry,
@@ -495,9 +537,7 @@ static bool isPreferredArchiveDefinitionObject(const ObjFile &obj, LinkPlatform 
     // Keep the Windows CRT/runtime shim exception scoped to Viper's own runtime
     // archives. User archives that accidentally define the same names should
     // still participate in normal multiple-definition diagnostics.
-    return obj.name.find("viper_rt") != std::string::npos ||
-           obj.name.find("viper-runtime") != std::string::npos ||
-           obj.name.find("viper_runtime") != std::string::npos;
+    return isViperRuntimeArchiveBasename(basenameFromPath(archivePathFromObjectName(obj.name)));
 }
 
 /// MSVC emits some CRT inline-function local statics in every object that uses

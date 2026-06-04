@@ -493,6 +493,80 @@ TEST(PeWriter, ImportDirectoryIsWritten) {
     EXPECT_TRUE(fileText.find("ExitProcess") != std::string::npos);
 }
 
+TEST(PeWriter, ImportSectionIsWritable) {
+    auto layout = makeMinimalLayout();
+    std::ostringstream err;
+    std::string path = "build/test-out/pe_test_imports_writable.exe";
+    std::filesystem::create_directories("build/test-out");
+
+    bool ok = writePeExe(
+        path, layout, LinkArch::X86_64, {DllImport{"kernel32.dll", {"ExitProcess"}, {}}}, err);
+    ASSERT_TRUE(ok);
+
+    const auto data = readBinaryFile(path);
+    uint32_t virtualSize = 0;
+    uint32_t rawSize = 0;
+    uint32_t rawPtr = 0;
+    uint32_t characteristics = 0;
+    ASSERT_TRUE(findSectionInfo(data, ".idata", virtualSize, rawSize, rawPtr, characteristics));
+    EXPECT_TRUE((characteristics & 0x80000000U) != 0); // IMAGE_SCN_MEM_WRITE
+}
+
+TEST(PeWriter, UsesLayoutImageBase) {
+    constexpr uint64_t kImageBase = 0x180000000ULL;
+
+    LinkLayout layout;
+    layout.imageBase = kImageBase;
+
+    OutputSection text;
+    text.name = ".text";
+    text.alloc = true;
+    text.executable = true;
+    text.data = {0xC3};
+    text.virtualAddr = kImageBase + 0x1000;
+    layout.sections.push_back(std::move(text));
+    layout.entryAddr = kImageBase + 0x1000;
+
+    std::ostringstream err;
+    std::string path = "build/test-out/pe_test_custom_image_base.exe";
+    std::filesystem::create_directories("build/test-out");
+
+    bool ok = writePeExe(path, layout, LinkArch::X86_64, {}, err);
+    ASSERT_TRUE(ok);
+
+    const auto data = readBinaryFile(path);
+    const uint32_t peOffset = readU32(data, 0x3C);
+    const size_t optOffset = peOffset + 24;
+    EXPECT_EQ(readU64(data, optOffset + 24), kImageBase);
+    EXPECT_EQ(readU32(data, optOffset + 16), 0x1000U);
+}
+
+TEST(PeWriter, InvalidBaseRelocationIsError) {
+    auto layout = makeMinimalLayout();
+    layout.rebaseEntries.push_back(RebaseEntry{.sectionIndex = 0, .offset = 0});
+
+    std::ostringstream err;
+    std::string path = "build/test-out/pe_test_bad_rebase.exe";
+    std::filesystem::create_directories("build/test-out");
+
+    bool ok = writePeExe(path, layout, LinkArch::X86_64, {}, err);
+    EXPECT_FALSE(ok);
+    EXPECT_TRUE(err.str().find("base relocation") != std::string::npos);
+}
+
+TEST(PeWriter, MissingBaseRelocationSectionIsError) {
+    auto layout = makeMinimalLayout();
+    layout.rebaseEntries.push_back(RebaseEntry{.sectionIndex = 99, .offset = 0});
+
+    std::ostringstream err;
+    std::string path = "build/test-out/pe_test_missing_rebase_section.exe";
+    std::filesystem::create_directories("build/test-out");
+
+    bool ok = writePeExe(path, layout, LinkArch::X86_64, {}, err);
+    EXPECT_FALSE(ok);
+    EXPECT_TRUE(err.str().find("missing section index") != std::string::npos);
+}
+
 TEST(PeWriter, StartupStubBecomesEntryPoint) {
     auto layout = makeMinimalLayout();
     std::ostringstream err;

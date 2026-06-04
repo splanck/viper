@@ -80,6 +80,26 @@ void emitRetainStringVReg(MIRBuilder &builder, const VReg &valueVReg) {
     return value.kind == ILValue::Kind::I1 ? (value.i64 != 0 ? 1 : 0) : value.i64;
 }
 
+/// @brief Return true when a backward peephole scan must not cross @p opcode.
+/// @details Indexed-address folding is a local straight-line rewrite. Labels
+///          and control transfers mark possible alternate paths, so scans stop
+///          there instead of inferring definitions from a different path.
+[[nodiscard]] bool isIndexedFoldScanBarrier(MOpcode opcode) noexcept {
+    return opcode == MOpcode::LABEL || opcode == MOpcode::JMP || opcode == MOpcode::JCC ||
+           opcode == MOpcode::RET || opcode == MOpcode::UD2;
+}
+
+/// @brief Return true if @p instr has a first-operand vreg definition for @p id.
+/// @details The address-building patterns this helper recognizes use
+///          destination-first MIR instructions. Treating any other definition of
+///          the tracked vreg as a blocker keeps the fold conservative.
+[[nodiscard]] bool definesVReg(const MInstr &instr, uint16_t id) noexcept {
+    if (instr.operands.empty())
+        return false;
+    const auto *dst = std::get_if<OpReg>(&instr.operands.front());
+    return dst != nullptr && !dst->isPhys && dst->idOrPhys == id;
+}
+
 /// @brief True if @p kind is integer-like (I64/I1/PTR) — GPR-eligible.
 [[nodiscard]] bool isIntegerLikeKind(ILValue::Kind kind) noexcept {
     return kind == ILValue::Kind::I64 || kind == ILValue::Kind::I1 || kind == ILValue::Kind::PTR;
@@ -274,6 +294,9 @@ std::optional<Operand> EmitCommon::tryMakeIndexedMem(const ILInstr &addrProducer
     bool haveBase = false;
     for (std::size_t i = defIdx; i > 0; --i) {
         const auto &mi = blk.instructions[i - 1];
+        if (isIndexedFoldScanBarrier(mi.opcode)) {
+            return std::nullopt;
+        }
         if (mi.opcode == MOpcode::MOVrr && mi.operands.size() >= 2) {
             const auto *dst = std::get_if<OpReg>(&mi.operands[0]);
             const auto *src = std::get_if<OpReg>(&mi.operands[1]);
@@ -282,6 +305,9 @@ std::optional<Operand> EmitCommon::tryMakeIndexedMem(const ILInstr &addrProducer
                 haveBase = true;
                 break;
             }
+        }
+        if (definesVReg(mi, addrVReg)) {
+            return std::nullopt;
         }
     }
     if (!haveBase) {
@@ -292,6 +318,12 @@ std::optional<Operand> EmitCommon::tryMakeIndexedMem(const ILInstr &addrProducer
     OpReg actualIdx = *idxReg;
     for (std::size_t i = defIdx; i > 0; --i) {
         const auto &mi = blk.instructions[i - 1];
+        if (isIndexedFoldScanBarrier(mi.opcode)) {
+            break;
+        }
+        if (definesVReg(mi, idxReg->idOrPhys) && mi.opcode != MOpcode::SHLri) {
+            break;
+        }
         if (mi.opcode == MOpcode::SHLri && mi.operands.size() >= 2) {
             const auto *dst = std::get_if<OpReg>(&mi.operands[0]);
             const auto *imm = std::get_if<OpImm>(&mi.operands[1]);
@@ -304,6 +336,9 @@ std::optional<Operand> EmitCommon::tryMakeIndexedMem(const ILInstr &addrProducer
                     bool foundOriginalIndex = false;
                     for (std::size_t j = i - 1; j > 0; --j) {
                         const auto &mj = blk.instructions[j - 1];
+                        if (isIndexedFoldScanBarrier(mj.opcode)) {
+                            return std::nullopt;
+                        }
                         if (mj.opcode == MOpcode::MOVrr && mj.operands.size() >= 2) {
                             const auto *movDst = std::get_if<OpReg>(&mj.operands[0]);
                             const auto *movSrc = std::get_if<OpReg>(&mj.operands[1]);
@@ -313,6 +348,9 @@ std::optional<Operand> EmitCommon::tryMakeIndexedMem(const ILInstr &addrProducer
                                 foundOriginalIndex = true;
                                 break;
                             }
+                        }
+                        if (definesVReg(mj, idxReg->idOrPhys)) {
+                            return std::nullopt;
                         }
                     }
                     if (!foundOriginalIndex) {

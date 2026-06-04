@@ -157,6 +157,15 @@ int sectionClassOrder(SectionClass cls) {
     return 7;
 }
 
+/// @brief Reclassify a merged output section for final VA ordering.
+/// @details Output sections no longer carry their original PendingChunk class,
+///          so the final sort derives the same class key from the merged
+///          section's name and attributes before using sectionClassOrder().
+SectionClass outputSectionClass(const OutputSection &section) {
+    return classifySection(
+        section.name, section.executable, section.writable, section.tls, section.zeroFill);
+}
+
 } // namespace
 
 bool assignSectionVirtualAddresses(LinkLayout &layout, LinkPlatform platform, std::ostream &err) {
@@ -632,7 +641,19 @@ bool mergeSections(const std::vector<ObjFile> &objects,
     std::stable_sort(
         layout.sections.begin(),
         layout.sections.end(),
-        [](const OutputSection &a, const OutputSection &b) { return permClass(a) < permClass(b); });
+        [](const OutputSection &a, const OutputSection &b) {
+            const int aPerm = permClass(a);
+            const int bPerm = permClass(b);
+            if (aPerm != bPerm)
+                return aPerm < bPerm;
+
+            const int aClass = sectionClassOrder(outputSectionClass(a));
+            const int bClass = sectionClassOrder(outputSectionClass(b));
+            if (aClass != bClass)
+                return aClass < bClass;
+
+            return a.name < b.name;
+        });
 
     if (!assignSectionVirtualAddresses(layout, platform, err))
         return false;

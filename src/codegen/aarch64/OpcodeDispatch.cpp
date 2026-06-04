@@ -107,10 +107,12 @@ static uint16_t materializeF64Constant(double value, LoweringContext &ctx, MBasi
     return dst;
 }
 
-/// @brief Return the bit width for an integer type kind (I16→16, I32→32, I64→64).
+/// @brief Return the bit width for an integer type kind (I1→1, I16→16, I32→32, I64→64).
 /// @throws std::runtime_error if @p kind is not a supported integer width.
 static int integerTypeBits(il::core::Type::Kind kind) {
     switch (kind) {
+        case il::core::Type::Kind::I1:
+            return 1;
         case il::core::Type::Kind::I16:
             return 16;
         case il::core::Type::Kind::I32:
@@ -118,13 +120,15 @@ static int integerTypeBits(il::core::Type::Kind kind) {
         case il::core::Type::Kind::I64:
             return 64;
         default:
-            throw std::runtime_error("AArch64 lowering: checked fp cast requires integer result");
+            throw std::runtime_error("AArch64 lowering: checked cast requires integer result");
     }
 }
 
 /// @brief Return the inclusive signed lower bound (e.g. -32768.0 for 16 bits).
 static double signedLowerBoundForBits(int bits) {
     switch (bits) {
+        case 1:
+            return -1.0;
         case 16:
             return -32768.0;
         case 32:
@@ -139,6 +143,8 @@ static double signedLowerBoundForBits(int bits) {
 /// @brief Return the exclusive signed upper bound (e.g. 32768.0 for 16 bits).
 static double signedUpperExclusiveForBits(int bits) {
     switch (bits) {
+        case 1:
+            return 1.0;
         case 16:
             return 32768.0;
         case 32:
@@ -153,6 +159,8 @@ static double signedUpperExclusiveForBits(int bits) {
 /// @brief Return the exclusive unsigned upper bound (e.g. 65536.0 for 16 bits).
 static double unsignedUpperExclusiveForBits(int bits) {
     switch (bits) {
+        case 1:
+            return 2.0;
         case 16:
             return 65536.0;
         case 32:
@@ -217,11 +225,7 @@ static bool lowerCastOpcodes(const il::core::Instr &ins,
         case Opcode::CastUiNarrowChk: {
             if (!ins.result || ins.operands.empty())
                 return false;
-            int bits = 64;
-            if (ins.type.kind == il::core::Type::Kind::I16)
-                bits = 16;
-            else if (ins.type.kind == il::core::Type::Kind::I32)
-                bits = 32;
+            const int bits = integerTypeBits(ins.type.kind);
             const int sh = 64 - bits;
             uint16_t sv = 0;
             RegClass scls = RegClass::GPR;

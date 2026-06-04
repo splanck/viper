@@ -31,6 +31,8 @@
 #include "codegen/aarch64/Noreturn.hpp"
 #include "codegen/common/ra/DataflowLiveness.hpp"
 
+#include <algorithm>
+
 namespace viper::codegen::aarch64::ra {
 
 void LivenessAnalysis::run(const MFunction &func) {
@@ -65,6 +67,7 @@ void LivenessAnalysis::buildCFG(const MFunction &func) {
                 }
                 sawTerminator = true;
                 needsFallthrough = false;
+                break;
             } else if (mi.opc == MOpcode::BCond) {
                 if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label) {
                     auto it = blockIndex_.find(mi.ops[1].label);
@@ -92,14 +95,20 @@ void LivenessAnalysis::buildCFG(const MFunction &func) {
             } else if (mi.opc == MOpcode::Ret) {
                 sawTerminator = true;
                 needsFallthrough = false;
+                break;
             } else if (isNoReturnCall(mi)) {
                 sawTerminator = true;
                 needsFallthrough = false;
+                break;
             }
         }
 
         if ((!sawTerminator || needsFallthrough) && i + 1 < func.blocks.size())
             succs_[i].push_back(i + 1);
+
+        auto &succs = succs_[i];
+        std::sort(succs.begin(), succs.end());
+        succs.erase(std::unique(succs.begin(), succs.end()), succs.end());
     }
 }
 

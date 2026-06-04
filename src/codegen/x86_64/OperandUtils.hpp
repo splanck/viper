@@ -10,7 +10,7 @@
 // Key invariants:
 //   - Type-check helpers (isReg, isImm, etc.) are side-effect free.
 //   - cloneOperand produces value-equal copies.
-//   - Alignment helpers require positive alignment values (asserted at runtime).
+//   - Alignment helpers require positive alignment values (checked at runtime).
 // Ownership/Lifetime:
 //   - Helpers operate on values or const references; callers retain ownership
 //     of all operands passed in.
@@ -24,6 +24,8 @@
 #include "MachineIR.hpp"
 #include "TargetX64.hpp"
 
+#include <limits>
+#include <stdexcept>
 #include <variant>
 
 namespace viper::codegen::x64 {
@@ -172,34 +174,54 @@ namespace viper::codegen::x64 {
 
 /// \brief Round value up to the nearest multiple of align.
 /// \details Used when computing spill areas and outgoing argument space to
-///          maintain stack alignment. Alignment is assumed to be positive.
+///          maintain stack alignment. Validation is always active so release
+///          builds cannot divide by zero or silently overflow.
 /// \param value Base value to round.
 /// \param align Required alignment in bytes (must be > 0).
 /// \return Smallest multiple of align that is greater than or equal to value.
+/// \throws std::invalid_argument if @p align is not positive.
+/// \throws std::overflow_error if the rounded value exceeds int range.
 [[nodiscard]] inline int roundUp(int value, int align) {
-    assert(align > 0 && "alignment must be positive");
+    if (align <= 0) {
+        throw std::invalid_argument("x86 frame alignment must be positive");
+    }
     const int remainder = value % align;
     if (remainder == 0) {
         return value;
     }
     // For negative values, C++ remainder is negative (e.g., -20 % 16 = -4).
     // Subtracting a negative remainder rounds toward +inf correctly.
-    return (remainder > 0) ? value + (align - remainder) : value - remainder;
+    if (remainder > 0) {
+        const int delta = align - remainder;
+        if (value > std::numeric_limits<int>::max() - delta) {
+            throw std::overflow_error("x86 frame byte count overflows int range after alignment");
+        }
+        return value + delta;
+    }
+    return value - remainder;
 }
 
 /// \brief Round bytes up to the nearest multiple of align, returning size_t.
 /// \details Variant of roundUp for size_t arguments, commonly used for
-///          argument slot allocation.
+///          argument slot allocation. Validation is always active.
 /// \param bytes Requested byte count.
 /// \param align Required alignment in bytes (must be > 0).
 /// \return Smallest multiple of align >= bytes.
+/// \throws std::invalid_argument if @p align is zero.
+/// \throws std::overflow_error if the rounded value exceeds size_t range.
 [[nodiscard]] inline std::size_t roundUpSize(std::size_t bytes, std::size_t align) {
-    assert(align > 0 && "alignment must be positive");
+    if (align == 0) {
+        throw std::invalid_argument("x86 frame alignment must be positive");
+    }
     const std::size_t remainder = bytes % align;
     if (remainder == 0) {
         return bytes;
     }
-    return bytes + (align - remainder);
+    const std::size_t delta = align - remainder;
+    if (bytes > std::numeric_limits<std::size_t>::max() - delta) {
+        throw std::overflow_error("x86 frame byte count overflows size_t range after alignment");
+    }
+    return bytes + delta;
 }
 
 } // namespace viper::codegen::x64
