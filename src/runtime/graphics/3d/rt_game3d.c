@@ -7573,13 +7573,13 @@ static const char *game3d_quality_name(int64_t quality) {
     }
 }
 
-/// @brief Render the 2D debug HUD when enabled: backend/FPS, quality (with fallback),
-///   node/cull/body counts, and an optional camera-info block.
+/// @brief Render the 2D debug HUD when enabled: backend/FPS, quality/fallback, node/cull/body
+///   counts, effective clip planes, shadow/occlusion diagnostics, and optional camera/caps blocks.
 static void game3d_world_draw_debug_overlay(rt_game3d_world *world) {
     if (!world || !world->canvas || !world->debug_overlay_enabled)
         return;
     rt_canvas3d_begin_overlay(world->canvas);
-    rt_canvas3d_draw_rect2d(world->canvas, 8, 8, 250, 106, 0x111820);
+    rt_canvas3d_draw_rect2d(world->canvas, 8, 8, 286, 148, 0x111820);
     game3d_world_debug_text(world, 14, 14, "Game3D Debug", 0xFFFFFF);
     rt_string backend = rt_canvas3d_get_backend(world->canvas);
     const char *backend_cs = backend ? rt_string_cstr(backend) : "unknown";
@@ -7607,11 +7607,37 @@ static void game3d_world_draw_debug_overlay(rt_game3d_world *world) {
         (long long)(world->scene ? rt_scene3d_get_node_count(world->scene) : 0),
         (long long)(world->scene ? rt_scene3d_get_culled_count(world->scene) : 0),
         (long long)(world->physics ? rt_world3d_body_count(world->physics) : 0));
+    if (world->camera) {
+        game3d_world_debug_textf(world,
+                                 14,
+                                 70,
+                                 0xCDEECC,
+                                 "clip %.3f %.1f",
+                                 rt_camera3d_get_effective_near_plane(world->camera),
+                                 rt_camera3d_get_effective_far_plane(world->camera));
+    }
+    {
+        rt_canvas3d *canvas = rt_canvas3d_checked_or_stack(world->canvas);
+        game3d_world_debug_textf(world,
+                                 14,
+                                 84,
+                                 0xFFE5AA,
+                                 "shadows %lld res %lld",
+                                 (long long)(canvas ? canvas->shadow_count : 0),
+                                 (long long)(canvas ? canvas->shadow_resolution : 0));
+    }
+    game3d_world_debug_textf(world,
+                             14,
+                             98,
+                             0xFFE5AA,
+                             "occlusion tested %lld culled %lld",
+                             (long long)rt_canvas3d_get_occlusion_candidate_count(world->canvas),
+                             (long long)rt_canvas3d_get_occluded_draw_count(world->canvas));
     if (world->debug_camera_enabled && world->camera) {
         void *pos = rt_camera3d_get_position(world->camera);
         game3d_world_debug_textf(world,
                                  14,
-                                 70,
+                                 112,
                                  0xCDEECC,
                                  "camera %.2f %.2f %.2f",
                                  pos ? rt_vec3_x(pos) : 0.0,
@@ -7621,10 +7647,10 @@ static void game3d_world_draw_debug_overlay(rt_game3d_world *world) {
     }
     if (world->debug_caps_enabled) {
         int64_t caps = rt_canvas3d_get_backend_capabilities(world->canvas);
-        game3d_world_debug_textf(world, 14, 84, 0xFFE5AA, "caps 0x%llx", (long long)caps);
+        game3d_world_debug_textf(world, 14, 126, 0xFFE5AA, "caps 0x%llx", (long long)caps);
     }
     if (world->debug_physics_enabled)
-        game3d_world_debug_text(world, 14, 98, "physics wire enabled", 0xFFE5AA);
+        game3d_world_debug_text(world, 14, 140, "physics wire enabled", 0xFFE5AA);
     rt_canvas3d_end_overlay(world->canvas);
 }
 

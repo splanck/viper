@@ -425,13 +425,119 @@ static int canvas3d_mat4_is_identity(const double *m) {
     return 1;
 }
 
-/// @brief Whether identity-transformed vertices should be rebased to the camera-relative origin.
-/// @details For an identity model matrix under camera-relative upload, the origin is subtracted
-/// from
-///          the vertices directly (no matrix to fold it into).
-static int canvas3d_should_rebase_identity_vertices(const rt_canvas3d *c,
-                                                    const double *model_matrix) {
-    return canvas3d_uses_camera_relative_upload(c) && canvas3d_mat4_is_identity(model_matrix);
+/// @brief Return whether a double-position mesh needs generalized vertex rebasing.
+/// @details AddVertex-built and procedural meshes preserve authoring coordinates in `positions64`,
+///   but most of them are ordinary local meshes near the origin. Rewriting those vertices for every
+///   camera-relative non-identity draw burns snapshot bandwidth without improving precision. This
+///   helper opts in only when at least one authoritative local coordinate is outside the
+///   float-friendly range or differs materially from the uploaded float copy, where rebasing can
+///   prevent visible jitter/flicker after transforms.
+static int canvas3d_mesh_positions64_needs_vertex_rebase(const rt_mesh3d *mesh) {
+    const double precision_risk_threshold = 65536.0;
+
+    if (!mesh || !mesh->positions64 || mesh->vertex_count == 0)
+        return 0;
+    for (uint32_t i = 0; i < mesh->vertex_count; i++) {
+        for (int axis = 0; axis < 3; axis++) {
+            double authored = mesh->positions64[(size_t)i * 3u + (size_t)axis];
+            double uploaded = (double)mesh->vertices[i].pos[axis];
+
+            if (!isfinite(authored))
+                continue;
+            if (!canvas3d_double_fits_float(authored) ||
+                fabs(authored) > precision_risk_threshold)
+                return 1;
+            if (fabs(authored - uploaded) > 1e-3)
+                return 1;
+        }
+    }
+    return 0;
+}
+
+/// @brief Compute the local-space vertex shift that rebases a model under camera-relative upload.
+/// @details For world position `A*p + t`, the camera-relative target is `A*p + t - origin`.
+///   Rewriting vertices as `p - s` and translation as `t + A*s - origin` preserves that value while
+///   keeping both vertex positions and translation near the camera. Callers intentionally restrict
+///   this to identity matrices or double-position meshes; ordinary single-precision authored meshes
+///   are better served by translation-only rebasing because rewriting their vertices adds snapshot
+///   cost without improving precision. Returns 0 for non-invertible or non-finite linear transforms,
+///   in which case callers fall back to translation-only rebasing.
+static int canvas3d_compute_vertex_rebase_shift(const rt_canvas3d *c,
+                                                const double *model_matrix,
+                                                double out_shift[3],
+                                                float out_model_matrix[16]) {
+    double a00, a01, a02, a10, a11, a12, a20, a21, a22;
+    double tx, ty, tz;
+    double rx, ry, rz;
+    double det;
+    double inv00, inv01, inv02, inv10, inv11, inv12, inv20, inv21, inv22;
+    double sx, sy, sz;
+    double adjusted[16];
+
+    if (!c || !model_matrix || !out_shift || !out_model_matrix ||
+        !canvas3d_uses_camera_relative_upload(c))
+        return 0;
+    if (canvas3d_mat4_is_identity(model_matrix)) {
+        for (int i = 0; i < 16; i++)
+            out_model_matrix[i] = (i == 0 || i == 5 || i == 10 || i == 15) ? 1.0f : 0.0f;
+        out_shift[0] = c->camera_relative_origin[0];
+        out_shift[1] = c->camera_relative_origin[1];
+        out_shift[2] = c->camera_relative_origin[2];
+        return 1;
+    }
+    for (int i = 0; i < 16; i++) {
+        if (!isfinite(model_matrix[i]))
+            return 0;
+        adjusted[i] = model_matrix[i];
+    }
+    if (fabs(model_matrix[12]) > 1e-12 || fabs(model_matrix[13]) > 1e-12 ||
+        fabs(model_matrix[14]) > 1e-12 || fabs(model_matrix[15] - 1.0) > 1e-12)
+        return 0;
+    a00 = model_matrix[0];
+    a01 = model_matrix[1];
+    a02 = model_matrix[2];
+    a10 = model_matrix[4];
+    a11 = model_matrix[5];
+    a12 = model_matrix[6];
+    a20 = model_matrix[8];
+    a21 = model_matrix[9];
+    a22 = model_matrix[10];
+    tx = model_matrix[3];
+    ty = model_matrix[7];
+    tz = model_matrix[11];
+    rx = c->camera_relative_origin[0] - tx;
+    ry = c->camera_relative_origin[1] - ty;
+    rz = c->camera_relative_origin[2] - tz;
+    det = a00 * (a11 * a22 - a12 * a21) - a01 * (a10 * a22 - a12 * a20) +
+          a02 * (a10 * a21 - a11 * a20);
+    if (!isfinite(det) || fabs(det) <= 1e-12)
+        return 0;
+    inv00 = (a11 * a22 - a12 * a21) / det;
+    inv01 = (a02 * a21 - a01 * a22) / det;
+    inv02 = (a01 * a12 - a02 * a11) / det;
+    inv10 = (a12 * a20 - a10 * a22) / det;
+    inv11 = (a00 * a22 - a02 * a20) / det;
+    inv12 = (a02 * a10 - a00 * a12) / det;
+    inv20 = (a10 * a21 - a11 * a20) / det;
+    inv21 = (a01 * a20 - a00 * a21) / det;
+    inv22 = (a00 * a11 - a01 * a10) / det;
+    sx = inv00 * rx + inv01 * ry + inv02 * rz;
+    sy = inv10 * rx + inv11 * ry + inv12 * rz;
+    sz = inv20 * rx + inv21 * ry + inv22 * rz;
+    if (!isfinite(sx) || !isfinite(sy) || !isfinite(sz))
+        return 0;
+    adjusted[3] = tx + (a00 * sx + a01 * sy + a02 * sz) - c->camera_relative_origin[0];
+    adjusted[7] = ty + (a10 * sx + a11 * sy + a12 * sz) - c->camera_relative_origin[1];
+    adjusted[11] = tz + (a20 * sx + a21 * sy + a22 * sz) - c->camera_relative_origin[2];
+    for (int i = 0; i < 16; i++) {
+        if (!canvas3d_double_fits_float(adjusted[i]))
+            return 0;
+        out_model_matrix[i] = (float)adjusted[i];
+    }
+    out_shift[0] = sx;
+    out_shift[1] = sy;
+    out_shift[2] = sz;
+    return 1;
 }
 
 /// @brief Narrow a model matrix after subtracting the active frame origin from translation.
@@ -1019,6 +1125,9 @@ typedef struct {
     int8_t occlusion_write_disabled;
     float local_bounds_min[3];
     float local_bounds_max[3];
+    int8_t has_world_bounds;
+    float world_bounds_min[3];
+    float world_bounds_max[3];
     float sort_key; /* bounds-aware view-depth key for deferred draw sorting */
     int32_t enqueue_index; /* original queue order; stable tie-breaker for equal sort keys */
 } deferred_draw_t;
@@ -1085,6 +1194,7 @@ static int ensure_deferred_capacity(void **buf, int32_t *capacity, int32_t neede
 }
 
 static void canvas3d_submit_deferred(rt_canvas3d *c, const deferred_draw_t *dd);
+static void canvas3d_cache_deferred_world_bounds(deferred_draw_t *dd);
 
 /// @brief Sanitize a draw sort key before it enters deferred ordering.
 /// @details NaN sort keys violate `qsort`'s strict weak ordering and make fallback selection
@@ -1361,6 +1471,18 @@ static int canvas3d_generate_snapshot_tangents(const rt_mesh3d *source,
     return temp.tangents_ready ? 1 : 0;
 }
 
+/// @brief Disable normal-map sampling on a draw command when no reliable tangent basis exists.
+/// @details Generated tangents are produced on a queued geometry snapshot so caller meshes are not
+///   mutated. If snapshot allocation or tangent generation fails, rendering the base material is more
+///   stable than dropping the whole draw or sampling a normal map with zero/partial tangents.
+static void canvas3d_disable_cmd_normal_map(vgfx3d_draw_cmd_t *cmd) {
+    if (!cmd)
+        return;
+    cmd->normal_map = NULL;
+    cmd->normal_map_asset = NULL;
+    cmd->normal_scale = 0.0f;
+}
+
 /// @brief Coerce a texture-wrap value to a known mode, defaulting unknown values to REPEAT.
 static int32_t canvas3d_sanitize_material_wrap(int32_t value) {
     if (value == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE ||
@@ -1551,6 +1673,8 @@ static int canvas3d_shadow_light_params_match(const vgfx3d_light_params_t *a,
         return 0;
     if (a->type != 0 || !a->casts_shadows || !b->casts_shadows)
         return 0;
+    if (a->identity || b->identity)
+        return a->identity == b->identity;
     for (int i = 0; i < 3; i++) {
         if (!canvas3d_light_param_close(a->direction[i], b->direction[i]) ||
             !canvas3d_light_param_close(a->color[i], b->color[i]))
@@ -1833,27 +1957,17 @@ static float canvas3d_compute_instanced_batch_sort_key(const rt_canvas3d *c,
                                                        int32_t instance_count,
                                                        const float *local_bounds_min,
                                                        const float *local_bounds_max) {
-    enum { CANVAS3D_INSTANCED_SORT_FULL_SCAN_LIMIT = 256 };
-
     float world_min[3] = {0.0f, 0.0f, 0.0f};
     float world_max[3] = {0.0f, 0.0f, 0.0f};
     int8_t has_bounds = 0;
-    int32_t sample_count;
 
     if (!c || !instance_matrices || instance_count <= 0 || !local_bounds_min || !local_bounds_max)
         return 0.0f;
 
-    sample_count = instance_count <= CANVAS3D_INSTANCED_SORT_FULL_SCAN_LIMIT
-                       ? instance_count
-                       : CANVAS3D_INSTANCED_SORT_FULL_SCAN_LIMIT;
-    for (int32_t sample = 0; sample < sample_count; sample++) {
-        int32_t i = sample;
+    for (int32_t i = 0; i < instance_count; i++) {
         double world_matrix[16];
         float instance_min[3];
         float instance_max[3];
-        if (sample_count > 1 && sample_count != instance_count)
-            i = (int32_t)(((int64_t)sample * (int64_t)(instance_count - 1)) /
-                          (int64_t)(sample_count - 1));
         for (int j = 0; j < 16; j++)
             world_matrix[j] = (double)instance_matrices[(size_t)i * 16u + (size_t)j];
         if (!vgfx3d_transform_aabb_checked(
@@ -2027,6 +2141,23 @@ static void canvas3d_submit_mesh(rt_canvas3d *c,
         c->backend_ctx, c->gfx_win, cmd, lights, light_count, ambient, wireframe, backface_cull);
 }
 
+/// @brief Apply shadow-pass-only material adjustments before a backend depth draw.
+/// @details Explicit `ShadowMode.Cast` lets transparent materials cast shadows. Depth maps cannot
+///   represent fractional coverage, so transparent cast mode uses the material alpha cutoff just like
+///   alpha-masked foliage. This preserves the feature while avoiding backend divergence where some
+///   paths cast a full opaque silhouette and others skipped the draw.
+static void canvas3d_prepare_shadow_draw_cmd(const rt_canvas3d *c, vgfx3d_draw_cmd_t *cmd) {
+    if (!cmd)
+        return;
+    if (c)
+        cmd->slope_scaled_depth_bias += c->shadow_slope_bias;
+    if (cmd->shadow_mode == RT_MATERIAL3D_SHADOW_MODE_CAST &&
+        (cmd->additive_blend || vgfx3d_draw_cmd_uses_alpha_blend(cmd) ||
+         cmd->alpha < 0.999f || cmd->diffuse_color[3] < 0.999f) &&
+        cmd->alpha_mode != RT_MATERIAL3D_ALPHA_MODE_MASK)
+        cmd->alpha_mode = RT_MATERIAL3D_ALPHA_MODE_MASK;
+}
+
 /// @brief Decompose an instanced draw into N individual mesh draws.
 ///
 /// Backends without `submit_draw_instanced` (e.g., software fallback)
@@ -2057,7 +2188,7 @@ static void canvas3d_submit_instanced_as_meshes(rt_canvas3d *c,
             per_instance.has_prev_model_matrix = 0;
         }
         if (shadow_only) {
-            per_instance.slope_scaled_depth_bias += c->shadow_slope_bias;
+            canvas3d_prepare_shadow_draw_cmd(c, &per_instance);
             if (c->backend->shadow_draw)
                 c->backend->shadow_draw(c->backend_ctx, &per_instance);
         } else {
@@ -2113,6 +2244,21 @@ static void canvas3d_fill_deferred_draw(rt_canvas3d *c,
     canvas3d_finalize_deferred_visibility_flags(dd, 0, 0);
 }
 
+/// @brief Append a fully prepared deferred draw and stamp shared queue metadata.
+/// @details Manual mesh draws and helper-built draws both need stable enqueue order and cached world
+///   bounds before end-of-frame sorting/culling. Centralizing that bookkeeping prevents one queue path
+///   from diverging and reintroducing unstable transparent ordering.
+static int canvas3d_append_prepared_deferred_draw(rt_canvas3d *c, deferred_draw_t *dd) {
+    if (!c || !dd)
+        return 0;
+    if (!ensure_deferred_capacity(&c->draw_cmds, &c->draw_capacity, c->draw_count + 1))
+        return 0;
+    dd->enqueue_index = c->draw_count;
+    canvas3d_cache_deferred_world_bounds(dd);
+    ((deferred_draw_t *)c->draw_cmds)[c->draw_count++] = *dd;
+    return 1;
+}
+
 /// @brief Append a draw to the deferred-draw queue (transparency / sort path).
 ///
 /// The queue is dispatched at end-of-frame in sorted order. Allocation failure
@@ -2130,19 +2276,12 @@ static int canvas3d_enqueue_draw(rt_canvas3d *c,
                                  float sort_key,
                                  const float *local_bounds_min,
                                  const float *local_bounds_max) {
-    deferred_draw_t *dd;
+    deferred_draw_t dd;
 
     if (!c || !cmd)
         return 0;
-    if (!ensure_deferred_capacity(&c->draw_cmds, &c->draw_capacity, c->draw_count + 1)) {
-        (void)pass_kind;
-        rt_trap("Canvas3D: deferred draw queue allocation failed");
-        return 0;
-    }
-
-    dd = &((deferred_draw_t *)c->draw_cmds)[c->draw_count++];
     canvas3d_fill_deferred_draw(c,
-                                dd,
+                                &dd,
                                 cmd,
                                 kind,
                                 pass_kind,
@@ -2154,7 +2293,10 @@ static int canvas3d_enqueue_draw(rt_canvas3d *c,
                                 sort_key,
                                 local_bounds_min,
                                 local_bounds_max);
-    dd->enqueue_index = c->draw_count - 1;
+    if (!canvas3d_append_prepared_deferred_draw(c, &dd)) {
+        rt_trap("Canvas3D: deferred draw queue allocation failed");
+        return 0;
+    }
     return 1;
 }
 
@@ -2244,7 +2386,7 @@ static void canvas3d_shadow_deferred(rt_canvas3d *c, const deferred_draw_t *dd) 
         return;
     }
     shadow_cmd = dd->cmd;
-    shadow_cmd.slope_scaled_depth_bias += c->shadow_slope_bias;
+    canvas3d_prepare_shadow_draw_cmd(c, &shadow_cmd);
     c->backend->shadow_draw(c->backend_ctx, &shadow_cmd);
 }
 
@@ -2258,6 +2400,64 @@ static void canvas3d_expand_bounds(float *io_min, float *io_max, const float *mn
         if (mx[i] > io_max[i])
             io_max[i] = mx[i];
     }
+}
+
+/// @brief Compute a deferred draw's complete world-space AABB without reading cached fields.
+/// @details Normal draws transform their one local mesh bound by `model_matrix`. Instanced draws
+///   scan every instance matrix and union all transformed bounds, avoiding sampled sort/cull inputs
+///   that can flicker when an unsampled instance becomes visible. Invalid transforms are skipped;
+///   the function returns 0 only when no finite contribution remains.
+static int canvas3d_compute_deferred_world_bounds_uncached(const deferred_draw_t *dd,
+                                                           float *out_min,
+                                                           float *out_max) {
+    int8_t has_bounds = 0;
+
+    if (!dd || !out_min || !out_max || !dd->has_local_bounds)
+        return 0;
+    if (dd->kind == DEFERRED_DRAW_INSTANCED && dd->instance_matrices && dd->instance_count > 0) {
+        for (int32_t i = 0; i < dd->instance_count; i++) {
+            double world_matrix[16];
+            float instance_min[3];
+            float instance_max[3];
+            for (int j = 0; j < 16; j++)
+                world_matrix[j] = (double)dd->instance_matrices[(size_t)i * 16u + (size_t)j];
+            if (!vgfx3d_transform_aabb_checked(dd->local_bounds_min,
+                                               dd->local_bounds_max,
+                                               world_matrix,
+                                               instance_min,
+                                               instance_max))
+                continue;
+            if (!has_bounds) {
+                memcpy(out_min, instance_min, sizeof(float) * 3);
+                memcpy(out_max, instance_max, sizeof(float) * 3);
+                has_bounds = 1;
+            } else {
+                canvas3d_expand_bounds(out_min, out_max, instance_min, instance_max);
+            }
+        }
+        return has_bounds ? 1 : 0;
+    }
+
+    {
+        double world_matrix[16];
+        for (int j = 0; j < 16; j++)
+            world_matrix[j] = (double)dd->cmd.model_matrix[j];
+        return vgfx3d_transform_aabb_checked(
+            dd->local_bounds_min, dd->local_bounds_max, world_matrix, out_min, out_max);
+    }
+}
+
+/// @brief Store a deferred draw's world-space AABB on the draw itself for later passes.
+/// @details Main-pass culling, occlusion, shadow bounds, and cascade assignment all need the same
+///   world bound. Caching it once keeps those passes deterministic and removes repeated full scans
+///   over large instanced batches.
+static void canvas3d_cache_deferred_world_bounds(deferred_draw_t *dd) {
+    if (!dd)
+        return;
+    dd->has_world_bounds = canvas3d_compute_deferred_world_bounds_uncached(
+        dd, dd->world_bounds_min, dd->world_bounds_max)
+                               ? 1
+                               : 0;
 }
 
 /// @brief Row-major 4×4 matrix multiply: `out = a * b`.
@@ -2284,35 +2484,21 @@ static void canvas3d_accumulate_deferred_world_bounds(const deferred_draw_t *dd,
     if (!dd || !io_min || !io_max || !io_has_bounds || !dd->has_local_bounds)
         return;
 
-    if (dd->kind == DEFERRED_DRAW_INSTANCED && dd->instance_matrices && dd->instance_count > 0) {
-        for (int32_t i = 0; i < dd->instance_count; i++) {
-            double world_matrix[16];
-            float world_min[3];
-            float world_max[3];
-            for (int j = 0; j < 16; j++)
-                world_matrix[j] = (double)dd->instance_matrices[(size_t)i * 16u + (size_t)j];
-            if (!vgfx3d_transform_aabb_checked(
-                    dd->local_bounds_min, dd->local_bounds_max, world_matrix, world_min, world_max))
-                continue;
-            if (!*io_has_bounds) {
-                memcpy(io_min, world_min, sizeof(float) * 3);
-                memcpy(io_max, world_max, sizeof(float) * 3);
-                *io_has_bounds = 1;
-            } else {
-                canvas3d_expand_bounds(io_min, io_max, world_min, world_max);
-            }
+    if (dd->has_world_bounds) {
+        if (!*io_has_bounds) {
+            memcpy(io_min, dd->world_bounds_min, sizeof(float) * 3);
+            memcpy(io_max, dd->world_bounds_max, sizeof(float) * 3);
+            *io_has_bounds = 1;
+        } else {
+            canvas3d_expand_bounds(io_min, io_max, dd->world_bounds_min, dd->world_bounds_max);
         }
         return;
     }
 
     {
-        double world_matrix[16];
         float world_min[3];
         float world_max[3];
-        for (int j = 0; j < 16; j++)
-            world_matrix[j] = (double)dd->cmd.model_matrix[j];
-        if (!vgfx3d_transform_aabb_checked(
-                dd->local_bounds_min, dd->local_bounds_max, world_matrix, world_min, world_max))
+        if (!canvas3d_compute_deferred_world_bounds_uncached(dd, world_min, world_max))
             return;
         if (!*io_has_bounds) {
             memcpy(io_min, world_min, sizeof(float) * 3);
@@ -2461,8 +2647,18 @@ static int canvas3d_build_shadow_cascade_world_bounds(const rt_canvas3d *c,
         }
     }
     if (!has_bounds) {
-        memcpy(out_min, fallback_min, sizeof(float) * 3);
-        memcpy(out_max, fallback_max, sizeof(float) * 3);
+        float depth_mid = 0.5f * (cascade_near_depth + cascade_far_depth);
+        float radius = fmaxf(1.0f, fabsf(cascade_far_depth - cascade_near_depth) * 0.05f);
+        if (!isfinite(depth_mid) || !isfinite(radius)) {
+            memcpy(out_min, fallback_min, sizeof(float) * 3);
+            memcpy(out_max, fallback_max, sizeof(float) * 3);
+            return 1;
+        }
+        for (int axis = 0; axis < 3; axis++) {
+            float center = c->cached_cam_pos[axis] + c->cached_cam_forward[axis] * depth_mid;
+            out_min[axis] = center - radius;
+            out_max[axis] = center + radius;
+        }
     }
     return 1;
 }
@@ -2496,6 +2692,29 @@ static int canvas3d_deferred_intersects_view_depth(const rt_canvas3d *c,
     return draw_far >= near_depth && draw_near <= far_depth;
 }
 
+/// @brief True if a deferred draw's cached world bounds overlap a supplied world-space AABB.
+/// @details Cascaded shadow maps first select casters by camera-depth interval, then by the fitted
+///   cascade volume. This second test prevents far-away casters that share a depth slice but sit
+///   outside the cascade fit from wasting shadow-map draw calls and perturbing depth precision.
+static int canvas3d_deferred_intersects_world_bounds(const deferred_draw_t *dd,
+                                                     const float *world_min,
+                                                     const float *world_max) {
+    float draw_min[3];
+    float draw_max[3];
+    int8_t has_bounds = 0;
+
+    if (!dd || !world_min || !world_max)
+        return 1;
+    canvas3d_accumulate_deferred_world_bounds(dd, draw_min, draw_max, &has_bounds);
+    if (!has_bounds)
+        return 1;
+    for (int axis = 0; axis < 3; axis++) {
+        if (draw_max[axis] < world_min[axis] || draw_min[axis] > world_max[axis])
+            return 0;
+    }
+    return 1;
+}
+
 /// @brief Decide whether a queued deferred draw survives frustum culling.
 /// @details Accumulates the union of the draw's world-space AABBs (one per
 ///   instance for instanced batches, otherwise the single transformed bound)
@@ -2510,6 +2729,8 @@ static int canvas3d_deferred_intersects_frustum(const deferred_draw_t *dd,
     int8_t has_bounds = 0;
 
     if (!dd || !frustum)
+        return 1;
+    if (dd->conservative_bounds)
         return 1;
     canvas3d_accumulate_deferred_world_bounds(dd, world_min, world_max, &has_bounds);
     if (!has_bounds)
@@ -2537,6 +2758,7 @@ static int canvas3d_project_world_point_to_occlusion_grid(const rt_canvas3d *c,
     float w;
     float ndc_x;
     float ndc_y;
+    float clip_slack;
 
     if (!c || !point || !out_x || !out_y)
         return 0;
@@ -2549,7 +2771,11 @@ static int canvas3d_project_world_point_to_occlusion_grid(const rt_canvas3d *c,
     clip[3] = c->cached_vp[12] * point[0] + c->cached_vp[13] * point[1] +
               c->cached_vp[14] * point[2] + c->cached_vp[15];
     w = clip[3];
-    if (!isfinite(w) || fabsf(w) <= 1e-6f)
+    if (!isfinite(clip[0]) || !isfinite(clip[1]) || !isfinite(clip[2]) || !isfinite(w) ||
+        w <= 1e-6f)
+        return 0;
+    clip_slack = fmaxf(1e-5f, fabsf(w) * 1e-5f);
+    if (clip[2] < -w - clip_slack || clip[2] > w + clip_slack)
         return 0;
     ndc_x = clip[0] / w;
     ndc_y = clip[1] / w;
@@ -2585,6 +2811,8 @@ static int canvas3d_deferred_occlusion_rect(const rt_canvas3d *c,
 
     if (!c || !dd || !out_min_x || !out_min_y || !out_max_x || !out_max_y || !out_test_depth ||
         !out_write_depth)
+        return 0;
+    if (dd->conservative_bounds)
         return 0;
     if (!isfinite(dd->sort_key))
         return 0;
@@ -2677,6 +2905,9 @@ static int canvas3d_occlusion_grid_covers(const rt_canvas3d *c,
                  ? c->occlusion_depth_margin
                  : 0.02f;
     margin += fabsf(depth) * 0.002f;
+    if (c && isfinite(c->cached_cam_near) && isfinite(c->cached_cam_far) &&
+        c->cached_cam_far > c->cached_cam_near)
+        margin += (c->cached_cam_far - c->cached_cam_near) * 1e-5f;
     for (int32_t y = min_y; y <= max_y; ++y) {
         for (int32_t x = min_x; x <= max_x; ++x) {
             int32_t index = y * CANVAS3D_OCCLUSION_GRID_W + x;
@@ -2706,6 +2937,24 @@ static void canvas3d_occlusion_grid_write(canvas3d_occlusion_grid_t *grid,
     }
 }
 
+/// @brief Return whether an AABB depth span is safe to write into the coarse occlusion grid.
+/// @details The grid stores one conservative depth per 64x64 cell, so a deep AABB proxy can behave
+///   like a wall and incorrectly hide visible triangles behind its nearest face. Testing remains
+///   allowed for wider spans, but writing is limited to shallow proxies whose far/near range is small
+///   relative to camera depth.
+static int canvas3d_occlusion_depth_span_can_write(float test_depth, float write_depth) {
+    float span;
+    float limit;
+
+    if (!isfinite(test_depth) || !isfinite(write_depth))
+        return 0;
+    span = write_depth - test_depth;
+    if (span < 0.0f)
+        span = -span;
+    limit = fmaxf(2.0f, fabsf(test_depth) * 0.10f);
+    return span <= limit;
+}
+
 /// @brief Test an object's bounds against the occlusion grid and record visible objects as occluders.
 /// @details Combines the cover test with a write so a single pass both culls hidden objects and
 /// lets
@@ -2731,7 +2980,8 @@ static int canvas3d_occlusion_test_and_write(rt_canvas3d *c,
     if (!dd->occlusion_test_disabled &&
         canvas3d_occlusion_grid_covers(c, grid, min_x, min_y, max_x, max_y, test_depth))
         return 1;
-    if (!dd->occlusion_write_disabled)
+    if (!dd->occlusion_write_disabled &&
+        canvas3d_occlusion_depth_span_can_write(test_depth, write_depth))
         canvas3d_occlusion_grid_write(grid, min_x, min_y, max_x, max_y, write_depth);
     return 0;
 }
@@ -3043,28 +3293,107 @@ static void canvas3d_release_shadow_targets(rt_canvas3d *c) {
     for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
         if (!c->shadow_rts[slot])
             continue;
-        free(c->shadow_rts[slot]->color_buf);
-        free(c->shadow_rts[slot]->hdr_color_buf);
-        free(c->shadow_rts[slot]->depth_buf);
-        free(c->shadow_rts[slot]);
+        if (c->shadow_rt_owned[slot]) {
+            free(c->shadow_rts[slot]->color_buf);
+            free(c->shadow_rts[slot]->hdr_color_buf);
+            free(c->shadow_rts[slot]->depth_buf);
+            free(c->shadow_rts[slot]);
+        }
         c->shadow_rts[slot] = NULL;
+        c->shadow_rt_owned[slot] = 0;
     }
     c->shadow_count = 0;
 }
 
-/// @brief Lazily (re)allocate all shadow-pair depth targets at the requested resolution.
-/// @details Passing `resolution <= 0` short-circuits to a "do we already have
-///   any usable depth buffers?" query without reallocating. Otherwise, if any
-///   slot is missing or has a mismatching size, every slot is freed and the
-///   full set is reallocated as square `resolution x resolution` targets so
-///   the array stays uniform. Color buffers are intentionally null — shadow
-///   passes only write depth. OOM at any point during reallocation rolls back
-///   to a fully-empty state so partial allocations can't leak into subsequent
-///   draw calls.
-/// @return 1 on success (targets ready), 0 on allocation failure.
-static int canvas3d_ensure_shadow_targets(rt_canvas3d *c, int32_t resolution) {
-    size_t depth_bytes;
+/// @brief Resolve the effective square shadow-map resolution for one target slot.
+/// @details Publicly enabled shadows store their intended resolution on the canvas. Tests and some
+///   internal fixtures can preseed `shadow_rts` directly and leave that field unset; in that case
+///   the active target dimensions are the only reliable source. Returning zero means the slot is not
+///   usable for light-space texel snapping or rendering.
+static int32_t canvas3d_shadow_slot_resolution(const rt_canvas3d *c, int32_t slot) {
+    const vgfx3d_rendertarget_t *rt;
 
+    if (!c || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
+        return 0;
+    if (c->shadow_resolution > 0)
+        return c->shadow_resolution;
+    rt = c->shadow_rts[slot];
+    if (!rt || !rt->depth_buf || rt->width <= 0 || rt->height <= 0)
+        return 0;
+    return rt->width < rt->height ? rt->width : rt->height;
+}
+
+/// @brief Return non-zero if any allocated shadow slot uses a different resolution.
+/// @details Canvas shadow slots are sampled as a contiguous array by the lighting pass; keeping all
+///   allocated slots at one square resolution avoids per-slot scale bugs and lets a resolution change
+///   release every stale depth buffer in one place.
+static int canvas3d_shadow_targets_need_resize(const rt_canvas3d *c, int32_t resolution) {
+    if (!c || resolution <= 0)
+        return 0;
+    for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
+        const vgfx3d_rendertarget_t *rt = c->shadow_rts[slot];
+        if (rt && (rt->width != resolution || rt->height != resolution))
+            return 1;
+    }
+    return 0;
+}
+
+/// @brief Lazily allocate one CPU shadow depth target slot at the requested resolution.
+/// @details Only the slots actually rendered this frame are allocated. If an existing shadow target
+///   uses a stale resolution, all slots are released before allocating the requested one so the
+///   contiguous shadow array remains uniform. Color buffers stay null because shadow passes write
+///   depth only.
+/// @return 1 when @p slot is ready for shadow rendering, 0 on invalid input or allocation failure.
+static int canvas3d_ensure_shadow_target_slot(rt_canvas3d *c, int32_t slot, int32_t resolution) {
+    size_t depth_bytes;
+    vgfx3d_rendertarget_t *new_rt;
+
+    if (!c || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
+        return 0;
+    if (resolution <= 0) {
+        vgfx3d_rendertarget_t *rt = c->shadow_rts[slot];
+
+        return rt && rt->depth_buf && rt->width > 0 && rt->height > 0;
+    }
+    if ((size_t)resolution > SIZE_MAX / (size_t)resolution)
+        return 0;
+    if (resolution > INT32_MAX / 4)
+        return 0;
+    depth_bytes = (size_t)resolution * (size_t)resolution;
+    if (depth_bytes > SIZE_MAX / sizeof(float))
+        return 0;
+    depth_bytes *= sizeof(float);
+    if (canvas3d_shadow_targets_need_resize(c, resolution))
+        canvas3d_release_shadow_targets(c);
+    if (c->shadow_rts[slot] && c->shadow_rts[slot]->depth_buf &&
+        c->shadow_rts[slot]->width == resolution && c->shadow_rts[slot]->height == resolution)
+        return 1;
+
+    new_rt = (vgfx3d_rendertarget_t *)calloc(1, sizeof(vgfx3d_rendertarget_t));
+    if (!new_rt)
+        return 0;
+    new_rt->width = resolution;
+    new_rt->height = resolution;
+    new_rt->stride = resolution * 4;
+    new_rt->color_buf = NULL;
+    new_rt->depth_buf = (float *)malloc(depth_bytes);
+    if (!new_rt->depth_buf) {
+        free(new_rt);
+        return 0;
+    }
+    vgfx3d_rendertarget_fill_depth_max(new_rt->depth_buf,
+                                       (size_t)resolution * (size_t)resolution);
+    c->shadow_rts[slot] = new_rt;
+    c->shadow_rt_owned[slot] = 1;
+    return 1;
+}
+
+/// @brief Ensure at least the first shadow target exists, or query whether any target is usable.
+/// @details The render pass allocates additional slots on demand via
+///   `canvas3d_ensure_shadow_target_slot`. This compatibility wrapper keeps public shadow-enable
+///   validation cheap for one-light scenes while preserving the old `resolution <= 0` query mode.
+/// @return 1 on success or if any usable target exists in query mode; 0 otherwise.
+static int canvas3d_ensure_shadow_targets(rt_canvas3d *c, int32_t resolution) {
     if (!c)
         return 0;
     if (resolution <= 0) {
@@ -3078,44 +3407,7 @@ static int canvas3d_ensure_shadow_targets(rt_canvas3d *c, int32_t resolution) {
         }
         return 0;
     }
-    if ((size_t)resolution > SIZE_MAX / (size_t)resolution)
-        return 0;
-    if (resolution > INT32_MAX / 4)
-        return 0;
-    depth_bytes = (size_t)resolution * (size_t)resolution;
-    if (depth_bytes > SIZE_MAX / sizeof(float))
-        return 0;
-    depth_bytes *= sizeof(float);
-    for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
-        vgfx3d_rendertarget_t *rt = c->shadow_rts[slot];
-
-        if (!rt || rt->width != resolution || rt->height != resolution) {
-            canvas3d_release_shadow_targets(c);
-            for (int32_t alloc_slot = 0; alloc_slot < VGFX3D_MAX_SHADOW_LIGHTS; alloc_slot++) {
-                vgfx3d_rendertarget_t *new_rt =
-                    (vgfx3d_rendertarget_t *)calloc(1, sizeof(vgfx3d_rendertarget_t));
-                if (!new_rt) {
-                    canvas3d_release_shadow_targets(c);
-                    return 0;
-                }
-                new_rt->width = resolution;
-                new_rt->height = resolution;
-                new_rt->stride = resolution * 4;
-                new_rt->color_buf = NULL;
-                new_rt->depth_buf = (float *)malloc(depth_bytes);
-                if (!new_rt->depth_buf) {
-                    free(new_rt);
-                    canvas3d_release_shadow_targets(c);
-                    return 0;
-                }
-                vgfx3d_rendertarget_fill_depth_max(new_rt->depth_buf,
-                                                   (size_t)resolution * (size_t)resolution);
-                c->shadow_rts[alloc_slot] = new_rt;
-            }
-            return 1;
-        }
-    }
-    return 1;
+    return canvas3d_ensure_shadow_target_slot(c, 0, resolution);
 }
 
 /// @brief Drop the cached CPU-rasterized skybox so the next frame re-renders it.
@@ -4079,6 +4371,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
     int rebase_identity_vertices = 0;
     int mesh_obj_tracked = 0;
     int material_obj_tracked = 0;
+    int suppress_normal_map = 0;
 #if defined(RT_G3D_ALLOW_STACK_FIXTURES) && RT_G3D_ALLOW_STACK_FIXTURES
     if (!mesh && mesh_obj && !rt_heap_is_payload(mesh_obj))
         mesh = (rt_mesh3d *)mesh_obj;
@@ -4093,15 +4386,13 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
         canvas3d_clear_pending_splat(c);
         return;
     }
-    rebase_identity_vertices = canvas3d_should_rebase_identity_vertices(c, model_matrix);
-    if (rebase_identity_vertices) {
-        vertex_rebase_origin[0] = c->camera_relative_origin[0];
-        vertex_rebase_origin[1] = c->camera_relative_origin[1];
-        vertex_rebase_origin[2] = c->camera_relative_origin[2];
+    if (canvas3d_mat4_is_identity(model_matrix) ||
+        canvas3d_mesh_positions64_needs_vertex_rebase(mesh)) {
+        rebase_identity_vertices = canvas3d_compute_vertex_rebase_shift(
+            c, model_matrix, vertex_rebase_origin, validated_model_matrix);
     }
-    if (!(rebase_identity_vertices
-              ? canvas3d_mat4_d2f_checked(model_matrix, validated_model_matrix)
-              : canvas3d_model_mat4_d2f_checked(c, model_matrix, validated_model_matrix))) {
+    if (!rebase_identity_vertices &&
+        !canvas3d_model_mat4_d2f_checked(c, model_matrix, validated_model_matrix)) {
         canvas3d_clear_pending_splat(c);
         rt_trap("Canvas3D.DrawMesh: model matrix must contain finite float-range values");
         return;
@@ -4153,26 +4444,39 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
     uint32_t *queued_indices = mesh->indices;
     if (needs_generated_tangents && !rebase_identity_vertices) {
         if (!canvas3d_snapshot_mesh_geometry_with_tangents_cached(
-                c, mesh, mesh_obj, &queued_vertices, &queued_indices))
-            goto fail_after_refs;
+                c, mesh, mesh_obj, &queued_vertices, &queued_indices)) {
+            queued_vertices = mesh->vertices;
+            queued_indices = mesh->indices;
+            needs_generated_tangents = 0;
+            suppress_normal_map = 1;
+        }
     } else if (needs_generated_tangents || rebase_identity_vertices) {
         int snapshot_ok =
             rebase_identity_vertices
                 ? canvas3d_snapshot_mesh_geometry_rebased(
                       c, mesh, vertex_rebase_origin, &queued_vertices, &queued_indices)
                 : canvas3d_snapshot_mesh_geometry(c, mesh, &queued_vertices, &queued_indices);
-        if (!snapshot_ok)
-            goto fail_after_refs;
+        if (!snapshot_ok) {
+            queued_vertices = mesh->vertices;
+            queued_indices = mesh->indices;
+            rebase_identity_vertices = 0;
+            if (!canvas3d_model_mat4_d2f_checked(c, model_matrix, validated_model_matrix))
+                goto fail_after_refs;
+            if (needs_generated_tangents) {
+                needs_generated_tangents = 0;
+                suppress_normal_map = 1;
+            }
+        }
         if (needs_generated_tangents &&
             !canvas3d_generate_snapshot_tangents(mesh, queued_vertices, queued_indices)) {
-            canvas3d_release_tracked_temp_buffer(c, queued_vertices);
-            canvas3d_release_tracked_temp_buffer(c, queued_indices);
-            goto fail_after_refs;
+            needs_generated_tangents = 0;
+            suppress_normal_map = 1;
         }
     } else if (canvas3d_should_snapshot_geometry(mesh, mesh_obj) &&
                !canvas3d_snapshot_mesh_geometry_cached(
                    c, mesh, mesh_obj, &queued_vertices, &queued_indices)) {
-        goto fail_after_refs;
+        queued_vertices = mesh->vertices;
+        queued_indices = mesh->indices;
     }
 
     /* Build draw command */
@@ -4192,6 +4496,8 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
                                     dd->cmd.prev_model_matrix,
                                     &dd->cmd.has_prev_model_matrix);
     canvas3d_fill_material_cmd(mat, &dd->cmd);
+    if (suppress_normal_map)
+        canvas3d_disable_cmd_normal_map(&dd->cmd);
 
     /* Consume pending terrain splat data (if set by terrain draw path) */
     dd->cmd.has_splat = pending_has_splat;
@@ -4236,8 +4542,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
                                   dd->requires_blend),
         dd->requires_blend);
 
-    if (ensure_deferred_capacity(&c->draw_cmds, &c->draw_capacity, c->draw_count + 1)) {
-        ((deferred_draw_t *)c->draw_cmds)[c->draw_count++] = queued;
+    if (canvas3d_append_prepared_deferred_draw(c, &queued)) {
         return;
     }
     if (material_obj_tracked)
@@ -4627,6 +4932,7 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
     uint32_t *queued_indices;
     int needs_generated_tangents;
     int use_fallback_instances;
+    int suppress_normal_map = 0;
 
     if (!instance_matrices || instance_count <= 0)
         return;
@@ -4690,20 +4996,24 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
     if (needs_generated_tangents) {
         if (!canvas3d_snapshot_mesh_geometry_with_tangents_cached(
                 c, mesh, mesh_obj, &queued_vertices, &queued_indices)) {
-            canvas3d_instanced_release_refs(&batch);
-            return;
+            queued_vertices = mesh->vertices;
+            queued_indices = mesh->indices;
+            needs_generated_tangents = 0;
+            suppress_normal_map = 1;
         }
     } else if (canvas3d_should_snapshot_geometry(mesh, mesh_obj) &&
                !canvas3d_snapshot_mesh_geometry_cached(
                    c, mesh, mesh_obj, &queued_vertices, &queued_indices)) {
-        canvas3d_instanced_release_refs(&batch);
-        return;
+        queued_vertices = mesh->vertices;
+        queued_indices = mesh->indices;
     }
     base_cmd.vertices = queued_vertices;
     base_cmd.indices = queued_indices;
     base_cmd.geometry_key =
         (rt_heap_is_payload(mesh_obj) && !needs_generated_tangents) ? mesh_obj : NULL;
     base_cmd.geometry_revision = base_cmd.geometry_key ? mesh->geometry_revision : 0;
+    if (suppress_normal_map)
+        canvas3d_disable_cmd_normal_map(&base_cmd);
 
     if (use_fallback_instances) {
         canvas3d_queue_instanced_fallback(&batch,
@@ -4804,6 +5114,7 @@ static void canvas3d_render_shadow_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
                    sizeof(primary_light.shadow_cascade_splits));
             for (int32_t cascade = 0; cascade < cascade_count; cascade++) {
                 vgfx3d_rendertarget_t *shadow_rt;
+                int32_t shadow_resolution;
                 float cascade_min[3];
                 float cascade_max[3];
                 float cascade_depth_near =
@@ -4811,8 +5122,13 @@ static void canvas3d_render_shadow_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
                 float cascade_depth_far = cascade_splits[cascade];
                 float light_vp[16];
 
+                if (!canvas3d_ensure_shadow_target_slot(c, c->shadow_count, c->shadow_resolution))
+                    continue;
                 shadow_rt = c->shadow_rts[c->shadow_count];
                 if (!shadow_rt || !shadow_rt->depth_buf)
+                    continue;
+                shadow_resolution = canvas3d_shadow_slot_resolution(c, c->shadow_count);
+                if (shadow_resolution <= 0)
                     continue;
                 if (!canvas3d_build_shadow_cascade_world_bounds(c,
                                                                 cmds,
@@ -4825,7 +5141,7 @@ static void canvas3d_render_shadow_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
                                                                 cascade_max))
                     continue;
                 if (!canvas3d_build_shadow_light_vp(
-                        cascade_min, cascade_max, &primary_light, c->shadow_resolution, light_vp))
+                        cascade_min, cascade_max, &primary_light, shadow_resolution, light_vp))
                     continue;
 
                 memcpy(c->shadow_light_vps[c->shadow_count], light_vp, sizeof(light_vp));
@@ -4847,6 +5163,9 @@ static void canvas3d_render_shadow_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
                     if (!canvas3d_deferred_intersects_view_depth(
                             c, &cmds[i], cascade_depth_near, cascade_depth_far))
                         continue;
+                    if (!canvas3d_deferred_intersects_world_bounds(
+                            &cmds[i], cascade_min, cascade_max))
+                        continue;
                     canvas3d_shadow_deferred(c, &cmds[i]);
                 }
                 c->backend->shadow_end(c->backend_ctx, c->shadow_count, c->shadow_bias);
@@ -4860,15 +5179,21 @@ static void canvas3d_render_shadow_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
             for (int32_t slot = 0; has_shadow_bounds && slot < selected_shadow_count; slot++) {
                 vgfx3d_rendertarget_t *shadow_rt;
                 vgfx3d_light_params_t selected_light = shadow_lights[slot];
+                int32_t shadow_resolution;
                 float light_vp[16];
 
+                if (!canvas3d_ensure_shadow_target_slot(c, c->shadow_count, c->shadow_resolution))
+                    continue;
                 shadow_rt = c->shadow_rts[c->shadow_count];
                 if (!shadow_rt || !shadow_rt->depth_buf)
+                    continue;
+                shadow_resolution = canvas3d_shadow_slot_resolution(c, c->shadow_count);
+                if (shadow_resolution <= 0)
                     continue;
                 if (!canvas3d_build_shadow_light_vp(shadow_world_min,
                                                     shadow_world_max,
                                                     &selected_light,
-                                                    c->shadow_resolution,
+                                                    shadow_resolution,
                                                     light_vp))
                     continue;
 

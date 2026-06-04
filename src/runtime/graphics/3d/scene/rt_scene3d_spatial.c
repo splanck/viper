@@ -583,6 +583,7 @@ static void scene3d_spatial_refit_bvh_node(rt_scene3d_spatial_index *index, int3
 static int scene3d_spatial_refit(rt_scene3d *scene) {
     rt_scene3d_spatial_index *index;
     int refreshed = 0;
+    enum { SCENE3D_SPATIAL_MAX_REFITS_BEFORE_REBUILD = 32 };
     if (!scene || !scene->root)
         return 0;
     index = &scene->spatial_index;
@@ -602,7 +603,7 @@ static int scene3d_spatial_refit(rt_scene3d *scene) {
             return scene3d_spatial_rebuild(scene);
         if (index->entries[i].world_revision != before ||
             index->entries[i].geometry_revision != geometry_before)
-            refreshed = 1;
+            refreshed++;
     }
     if (index->root_node >= 0)
         scene3d_spatial_refit_bvh_node(index, index->root_node);
@@ -611,6 +612,8 @@ static int scene3d_spatial_refit(rt_scene3d *scene) {
     index->topology_dirty = 0;
     if (refreshed)
         index->refit_count++;
+    if (refreshed && index->refit_count >= SCENE3D_SPATIAL_MAX_REFITS_BEFORE_REBUILD)
+        return scene3d_spatial_rebuild(scene);
     index->last_candidate_count = 0;
     index->last_prefiltered_count = 0;
     return 1;
@@ -726,6 +729,7 @@ static int scene3d_spatial_rebuild(rt_scene3d *scene) {
     index->topology_dirty = 0;
     index->valid = 1;
     index->build_count++;
+    index->refit_count = 0;
     return 1;
 }
 

@@ -181,10 +181,18 @@ static float sw_sample_shadow_visibility(
 
     sz_map = ctx->shadow_depth[slot][syi * shadow_w + sxi];
     slope_bias = ctx->shadow_bias;
-    if (sxi + 1 < shadow_w)
-        dz_du = ctx->shadow_depth[slot][syi * shadow_w + sxi + 1] - sz_map;
-    if (syi + 1 < shadow_h)
-        dz_dv = ctx->shadow_depth[slot][(syi + 1) * shadow_w + sxi] - sz_map;
+    if (!isfinite(sz_map) || sz_map > FLT_MAX * 0.5f)
+        sz_map = 1.0f;
+    if (sxi + 1 < shadow_w) {
+        float neighbor = ctx->shadow_depth[slot][syi * shadow_w + sxi + 1];
+        if (isfinite(neighbor) && neighbor < FLT_MAX * 0.5f)
+            dz_du = neighbor - sz_map;
+    }
+    if (syi + 1 < shadow_h) {
+        float neighbor = ctx->shadow_depth[slot][(syi + 1) * shadow_w + sxi];
+        if (isfinite(neighbor) && neighbor < FLT_MAX * 0.5f)
+            dz_dv = neighbor - sz_map;
+    }
     slope = sqrtf(dz_du * dz_du + dz_dv * dz_dv);
     slope_bias += ctx->shadow_bias * slope * 4.0f;
 
@@ -198,6 +206,11 @@ static float sw_sample_shadow_visibility(
             if (px < 0 || px >= shadow_w)
                 continue;
             sample_depth = ctx->shadow_depth[slot][py * shadow_w + px];
+            if (!isfinite(sample_depth) || sample_depth > FLT_MAX * 0.5f) {
+                visibility_sum += 1.0f;
+                sample_count++;
+                continue;
+            }
             visibility_sum += (sd > sample_depth + slope_bias) ? 0.15f : 1.0f;
             sample_count++;
         }
@@ -2194,7 +2207,7 @@ static int sw_raster_prepare(const screen_vert_t *v0,
     float area = (v1->sx - v0->sx) * (v2->sy - v0->sy) - (v2->sx - v0->sx) * (v1->sy - v0->sy);
     float original_area = area;
 
-    const float area_epsilon = 1e-6f;
+    const float area_epsilon = 1e-12f;
 
     if (fabsf(area) <= area_epsilon) {
         if (emit_debug) {
@@ -2236,10 +2249,10 @@ static int sw_raster_prepare(const screen_vert_t *v0,
         area = -area;
     }
 
-    int min_x = (int)fmaxf(fminf(fminf(v0->sx, v1->sx), v2->sx), 0.0f);
-    int max_x = (int)fminf(fmaxf(fmaxf(v0->sx, v1->sx), v2->sx), (float)(fb_w - 1));
-    int min_y = (int)fmaxf(fminf(fminf(v0->sy, v1->sy), v2->sy), 0.0f);
-    int max_y = (int)fminf(fmaxf(fmaxf(v0->sy, v1->sy), v2->sy), (float)(fb_h - 1));
+    int min_x = (int)fmaxf(floorf(fminf(fminf(v0->sx, v1->sx), v2->sx)), 0.0f);
+    int max_x = (int)fminf(ceilf(fmaxf(fmaxf(v0->sx, v1->sx), v2->sx)), (float)(fb_w - 1));
+    int min_y = (int)fmaxf(floorf(fminf(fminf(v0->sy, v1->sy), v2->sy)), 0.0f);
+    int max_y = (int)fminf(ceilf(fmaxf(fmaxf(v0->sy, v1->sy), v2->sy)), (float)(fb_h - 1));
     if (min_x > max_x || min_y > max_y) {
         if (emit_debug) {
             fprintf(stderr,
@@ -2336,7 +2349,7 @@ static void raster_triangle(uint8_t *pixels,
             slope_depth_bias = fmaxf(-0.05f, fminf(0.05f, slope_depth_bias));
         }
     }
-    const float edge_epsilon = -1e-5f;
+    const float edge_epsilon = 0.0f;
     int inside_samples = 0;
     int depth_passes = 0;
     int pixels_written = 0;
@@ -2528,14 +2541,14 @@ static void shadow_raster_tri(float *depth,
         alpha_v[2] = t;
         area = -area;
     }
-    if (area < 1e-6f)
+    if (area < 1e-12f)
         return;
 
     float inv_area = 1.0f / area;
-    int min_x = (int)fmaxf(fminf(fminf(sx[0], sx[1]), sx[2]), 0.0f);
-    int max_x = (int)fminf(fmaxf(fmaxf(sx[0], sx[1]), sx[2]), (float)(sw - 1));
-    int min_y = (int)fmaxf(fminf(fminf(sy[0], sy[1]), sy[2]), 0.0f);
-    int max_y = (int)fminf(fmaxf(fmaxf(sy[0], sy[1]), sy[2]), (float)(sh - 1));
+    int min_x = (int)fmaxf(floorf(fminf(fminf(sx[0], sx[1]), sx[2])), 0.0f);
+    int max_x = (int)fminf(ceilf(fmaxf(fmaxf(sx[0], sx[1]), sx[2])), (float)(sw - 1));
+    int min_y = (int)fmaxf(floorf(fminf(fminf(sy[0], sy[1]), sy[2])), 0.0f);
+    int max_y = (int)fminf(ceilf(fmaxf(fmaxf(sy[0], sy[1]), sy[2])), (float)(sh - 1));
     if (min_x > max_x || min_y > max_y)
         return;
 
@@ -2546,7 +2559,7 @@ static void shadow_raster_tri(float *depth,
     float row_w0 = e12_dx * (py0 - sy[1]) - e12_dy * (px0 - sx[1]);
     float row_w1 = e20_dx * (py0 - sy[2]) - e20_dy * (px0 - sx[2]);
     float row_w2 = e01_dx * (py0 - sy[0]) - e01_dy * (px0 - sx[0]);
-    const float edge_epsilon = -1e-5f;
+    const float edge_epsilon = 0.0f;
 
     for (int y = min_y; y <= max_y; y++) {
         float w0 = row_w0, w1 = row_w1, w2 = row_w2;
@@ -2740,8 +2753,9 @@ static void sw_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     slot = ctx->shadow_pass_slot;
     if (slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS || !ctx->shadow_depth[slot])
         return;
-    /* Skip transparent objects */
-    if (cmd->additive_blend || vgfx3d_draw_cmd_uses_alpha_blend(cmd))
+    /* Skip transparent objects unless Canvas3D explicitly converted them to shadow cutouts. */
+    if ((cmd->additive_blend || vgfx3d_draw_cmd_uses_alpha_blend(cmd)) &&
+        cmd->shadow_mode != RT_MATERIAL3D_SHADOW_MODE_CAST)
         return;
     if (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK && cmd->texture) {
         const sw_pixels_view *pv = (const sw_pixels_view *)cmd->texture;
@@ -3232,7 +3246,10 @@ static int sw_project_clip_to_screen(const pipe_vert_t *p,
                                      float half_w,
                                      float half_h,
                                      screen_vert_t *sv) {
-    if (fabsf(p->clip[3]) < 1e-7f)
+    if (!p || !sv || !isfinite(p->clip[0]) || !isfinite(p->clip[1]) || !isfinite(p->clip[2]) ||
+        !isfinite(p->clip[3]) || p->clip[3] <= 1e-7f)
+        return 0;
+    if (p->clip[2] < -p->clip[3] - 1e-5f || p->clip[2] > p->clip[3] + 1e-5f)
         return 0;
     float iw = 1.0f / p->clip[3];
     sv->sx = (p->clip[0] * iw + 1.0f) * half_w;

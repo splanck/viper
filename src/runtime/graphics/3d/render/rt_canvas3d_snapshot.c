@@ -99,10 +99,11 @@ void canvas3d_compute_vertices_aabb(const vgfx3d_vertex_t *vertices,
     vgfx3d_compute_mesh_aabb(vertices, vertex_count, sizeof(vgfx3d_vertex_t), out_min, out_max);
 }
 
-/// @brief Snapshot a mesh while subtracting @p origin from vertex positions before float upload.
-/// @details This is used for identity-matrix raw/generated meshes in camera-relative frames.
-///          `Mesh3D.AddVertex` preserves authored double positions in `positions64`; direct
-///          importer buffers without a sidecar fall back to their existing float positions.
+/// @brief Snapshot a mesh while subtracting a local-space rebase vector before float upload.
+/// @details Camera-relative rendering can move the frame origin into vertex data when the model
+///          matrix would otherwise multiply very large positions. `Mesh3D.AddVertex` preserves
+///          authored double positions in `positions64`; importer buffers without a sidecar fall back
+///          to their existing float positions.
 int canvas3d_snapshot_mesh_geometry_rebased(rt_canvas3d *c,
                                             const rt_mesh3d *mesh,
                                             const double origin[3],

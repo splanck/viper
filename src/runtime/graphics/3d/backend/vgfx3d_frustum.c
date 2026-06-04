@@ -149,6 +149,7 @@ void vgfx3d_frustum_extract(vgfx3d_frustum_t *f, const float vp[16]) {
 int vgfx3d_frustum_test_aabb(const vgfx3d_frustum_t *f, const float min[3], const float max[3]) {
     int result = 2; /* assume fully inside */
     float extent = 0.0f;
+    float coord_mag = 0.0f;
     float eps;
 
     if (!f || !f->planes_valid || !vgfx3d_vec3_is_finite(min) || !vgfx3d_vec3_is_finite(max))
@@ -158,8 +159,9 @@ int vgfx3d_frustum_test_aabb(const vgfx3d_frustum_t *f, const float min[3], cons
             return 1;
         if (max[axis] - min[axis] > extent)
             extent = max[axis] - min[axis];
+        coord_mag = fmaxf(coord_mag, fmaxf(fabsf(min[axis]), fabsf(max[axis])));
     }
-    eps = 1e-4f + fmaxf(extent, 1.0f) * 1e-6f;
+    eps = 1e-4f + fmaxf(fmaxf(extent, coord_mag), 1.0f) * 1e-6f;
     /* Planes were validated once by vgfx3d_frustum_extract; no per-object recheck. */
     for (int i = 0; i < 6; i++) {
         /* Select p-vertex: corner most along plane normal */
@@ -320,7 +322,10 @@ void vgfx3d_transform_aabb(const float obj_min[3],
 ///   stride-sized slot (matching the in-memory layout of `vgfx3d_vertex_t`,
 ///   where the position occupies the first three floats). Empty or null input
 ///   yields a zero-sized AABB at the origin rather than inverted sentinels, so
-///   downstream code doesn't need a special "empty mesh" branch.
+///   downstream code doesn't need a special "empty mesh" branch. Non-finite
+///   vertices are ignored when at least one finite vertex is present; an array
+///   with no finite positions returns a deliberately huge conservative box so
+///   culling and occlusion cannot accidentally hide suspect geometry.
 /// @param vertex_stride Byte distance between consecutive vertex position slots.
 void vgfx3d_compute_mesh_aabb(const void *vertices,
                               uint32_t vertex_count,
@@ -354,8 +359,9 @@ void vgfx3d_compute_mesh_aabb(const void *vertices,
         found = 1;
     }
     if (!found) {
-        out_min[0] = out_min[1] = out_min[2] = 0.0f;
-        out_max[0] = out_max[1] = out_max[2] = 0.0f;
+        float conservative = FLT_MAX * 0.25f;
+        out_min[0] = out_min[1] = out_min[2] = -conservative;
+        out_max[0] = out_max[1] = out_max[2] = conservative;
     }
 }
 

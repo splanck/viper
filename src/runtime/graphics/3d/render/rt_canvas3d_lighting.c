@@ -51,6 +51,7 @@ static void canvas3d_copy_light_params(const rt_canvas3d *c,
     out->shadow_index = -1;
     out->shadow_cascade_count = 1;
     out->casts_shadows = l->casts_shadows ? 1 : 0;
+    out->identity = (uintptr_t)l;
     out->direction[0] = canvas3d_sanitize_f64_to_float(l->direction[0], 0.0f);
     out->direction[1] = canvas3d_sanitize_f64_to_float(l->direction[1], -1.0f);
     out->direction[2] = canvas3d_sanitize_f64_to_float(l->direction[2], 0.0f);

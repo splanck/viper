@@ -334,6 +334,13 @@ void rt_game3d_quality_apply(void *obj, int64_t quality) {
                                    quality == RT_GAME3D_QUALITY_CINEMATIC ? 2048 : 1024);
         rt_canvas3d_set_shadow_bias(world->canvas,
                                     quality == RT_GAME3D_QUALITY_CINEMATIC ? 0.003 : 0.005);
+        rt_canvas3d_set_shadow_slope_bias(world->canvas,
+                                          quality == RT_GAME3D_QUALITY_CINEMATIC ? 0.75 : 1.0);
+        if (rt_canvas3d_backend_supports(world->canvas, rt_const_cstr("shadow-csm")))
+            rt_canvas3d_set_shadow_cascades(world->canvas,
+                                            quality == RT_GAME3D_QUALITY_CINEMATIC ? 4 : 2);
+        else
+            rt_canvas3d_set_shadow_cascades(world->canvas, 1);
     } else {
         rt_canvas3d_disable_shadows(world->canvas);
     }

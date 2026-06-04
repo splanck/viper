@@ -763,6 +763,7 @@ typedef struct {
     int32_t shadow_cascade_count;
     float shadow_slope_bias;
     vgfx3d_rendertarget_t *shadow_rts[VGFX3D_MAX_SHADOW_LIGHTS];
+    int8_t shadow_rt_owned[VGFX3D_MAX_SHADOW_LIGHTS]; /* slots allocated by Canvas3D itself */
     float shadow_light_vps[VGFX3D_MAX_SHADOW_LIGHTS][16];
 
     /* Pending terrain splat data (consumed by next draw_mesh call, then cleared) */

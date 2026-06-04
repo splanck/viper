@@ -84,9 +84,16 @@ typedef struct {
     int8_t has_local_bounds;
     int8_t visible;
     int8_t requires_blend;
+    int8_t conservative_bounds;
+    int8_t occlusion_test_disabled;
+    int8_t occlusion_write_disabled;
     float local_bounds_min[3];
     float local_bounds_max[3];
+    int8_t has_world_bounds;
+    float world_bounds_min[3];
+    float world_bounds_max[3];
     float sort_key;
+    int32_t enqueue_index;
 } test_deferred_draw_t;
 
 typedef struct {

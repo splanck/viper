@@ -174,6 +174,7 @@ typedef struct {
     int32_t shadow_index;         /* -1 = unshadowed, otherwise [0, VGFX3D_MAX_SHADOW_LIGHTS) */
     int32_t shadow_cascade_count; /* >1 means shadow_index is the first cascade slot */
     int32_t casts_shadows;
+    uintptr_t identity; /* stable CPU light identity used to match shadow slots after packing */
     float direction[3];
     float position[3];
     float color[3];

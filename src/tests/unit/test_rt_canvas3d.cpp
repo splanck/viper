@@ -6263,7 +6263,7 @@ static void test_vertex_color_default_white() {
 }
 
 static void test_shadow_enable_disable() {
-    TEST("Shadow enable/disable initializes and releases depth targets");
+    TEST("Shadow enable/disable lazily initializes and releases depth targets");
     extern void rt_canvas3d_enable_shadows(void *canvas, int64_t resolution);
     extern void rt_canvas3d_disable_shadows(void *canvas);
     extern void rt_canvas3d_set_shadow_bias(void *canvas, double bias);
@@ -6278,16 +6278,16 @@ static void test_shadow_enable_disable() {
     rt_canvas3d_enable_shadows(&canvas, 128);
     EXPECT_EQ(canvas.shadows_enabled, 1);
     EXPECT_EQ(canvas.shadow_resolution, 128);
-    for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
-        vgfx3d_rendertarget_t *rt = canvas.shadow_rts[slot];
-        EXPECT_TRUE(rt != nullptr, "EnableShadows allocates every shadow slot");
-        EXPECT_EQ(rt->width, 128);
-        EXPECT_EQ(rt->height, 128);
-        EXPECT_EQ(rt->stride, 128 * 4);
-        EXPECT_TRUE(rt->depth_buf != nullptr, "EnableShadows allocates shadow depth");
-        EXPECT_NEAR(rt->depth_buf[0], FLT_MAX, 0.0);
-        EXPECT_NEAR(rt->depth_buf[(128 * 128) - 1], FLT_MAX, 0.0);
-    }
+    vgfx3d_rendertarget_t *rt = canvas.shadow_rts[0];
+    EXPECT_TRUE(rt != nullptr, "EnableShadows allocates the query-safe first shadow slot");
+    EXPECT_EQ(rt->width, 128);
+    EXPECT_EQ(rt->height, 128);
+    EXPECT_EQ(rt->stride, 128 * 4);
+    EXPECT_TRUE(rt->depth_buf != nullptr, "EnableShadows allocates shadow depth");
+    EXPECT_NEAR(rt->depth_buf[0], FLT_MAX, 0.0);
+    EXPECT_NEAR(rt->depth_buf[(128 * 128) - 1], FLT_MAX, 0.0);
+    for (int32_t slot = 1; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++)
+        EXPECT_TRUE(canvas.shadow_rts[slot] == nullptr, "EnableShadows defers unused shadow slots");
 
     rt_canvas3d_disable_shadows(&canvas);
     EXPECT_EQ(canvas.shadows_enabled, 0);
