@@ -170,33 +170,49 @@ build_demo() {
         return 1
     fi
 
-    # Step 1: Frontend — compile to IL.
-    echo -n "  Frontend -> IL... "
-    if ! "$VIPER" build "$project_dir" -o "$il_file" 2>"$frontend_err"; then
-        echo -e "${RED}FAILED${NC}"
-        head -20 "$frontend_err"
-        rm -f "$frontend_err" "$codegen_err" "$run_out" "$run_err" "$il_file"
-        return 1
-    fi
-    echo -e "${GREEN}OK${NC}"
-
+    # chess-zia pins -O0 around an arm64 O1 aggregate-codegen bug in the GUI Move
+    # path; drop the pin once that backend issue lands.
     local codegen_opt="-O1"
-    # The chess Zia demo currently exercises a native arm64 O1 aggregate-codegen
-    # bug around Move values in the GUI path. Build it at O0 until that backend
-    # issue is fixed; the O0 binary preserves the demo behavior.
-    if [[ "$name" == "chess-zia" ]]; then
-        codegen_opt="-O0"
-    fi
+    case "$name" in
+        chess-zia) codegen_opt="-O0" ;;
+    esac
 
-    # Step 2: Native codegen — binary encoder + native linker.
-    echo -n "  Codegen (native asm+link)... "
-    if ! "$VIPER" codegen arm64 "$il_file" --native-asm --native-link "$codegen_opt" -o "$exe_file" 2>"$codegen_err"; then
-        echo -e "${RED}FAILED${NC}"
-        head -20 "$codegen_err"
-        rm -f "$frontend_err" "$codegen_err" "$run_out" "$run_err" "$il_file"
-        return 1
+    # Projects that bake assets into the build (embed -> .rodata, pack -> a .vpa
+    # beside the binary) must build in one step: `viper build` runs the asset
+    # compiler, whereas the two-step IL->codegen path carries no assets (the
+    # binary would silently fall back to loose files on disk). Plain `asset`
+    # directives ship external files and load fine via the two-step, so they are
+    # not matched here. Both paths use the from-scratch native asm + linker.
+    if grep -qE '^[[:space:]]*(embed|pack|pack-compressed)[[:space:]]' "$project_dir/viper.project"; then
+        echo -n "  Build+embed -> native (asm+link)... "
+        if ! "$VIPER" build "$project_dir" --arch arm64 "$codegen_opt" -o "$exe_file" 2>"$codegen_err"; then
+            echo -e "${RED}FAILED${NC}"
+            head -20 "$codegen_err"
+            rm -f "$frontend_err" "$codegen_err" "$run_out" "$run_err" "$il_file"
+            return 1
+        fi
+        echo -e "${GREEN}OK${NC}"
+    else
+        # Step 1: Frontend — compile to IL.
+        echo -n "  Frontend -> IL... "
+        if ! "$VIPER" build "$project_dir" -o "$il_file" 2>"$frontend_err"; then
+            echo -e "${RED}FAILED${NC}"
+            head -20 "$frontend_err"
+            rm -f "$frontend_err" "$codegen_err" "$run_out" "$run_err" "$il_file"
+            return 1
+        fi
+        echo -e "${GREEN}OK${NC}"
+
+        # Step 2: Native codegen — binary encoder + native linker.
+        echo -n "  Codegen (native asm+link)... "
+        if ! "$VIPER" codegen arm64 "$il_file" --native-asm --native-link "$codegen_opt" -o "$exe_file" 2>"$codegen_err"; then
+            echo -e "${RED}FAILED${NC}"
+            head -20 "$codegen_err"
+            rm -f "$frontend_err" "$codegen_err" "$run_out" "$run_err" "$il_file"
+            return 1
+        fi
+        echo -e "${GREEN}OK${NC}"
     fi
-    echo -e "${GREEN}OK${NC}"
 
     if [[ $SKIP_RUN -eq 0 ]]; then
         echo -n "  Run smoke... "

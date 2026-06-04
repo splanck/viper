@@ -2808,6 +2808,27 @@ void *rt_camera3d_new(double f, double a, double n, double fa) {
     return NULL;
 }
 
+/// @brief Stub for `Camera3D.NewHorizontalFov` — would normally create a perspective camera from
+///        a horizontal FOV, converting it to the renderer's vertical projection aperture using the
+///        supplied aspect ratio.
+///
+/// Trapping stub: cameras are referenced by `Canvas3D.Begin` and similar draw calls.
+///
+/// @param f  Horizontal FOV in degrees (ignored).
+/// @param a  Aspect ratio, width/height (ignored).
+/// @param n  Near plane distance, world units (ignored).
+/// @param fa Far plane distance (ignored).
+///
+/// @return Never returns normally.
+void *rt_camera3d_new_horizontal_fov(double f, double a, double n, double fa) {
+    (void)f;
+    (void)a;
+    (void)n;
+    (void)fa;
+    rt_graphics_unavailable_("Camera3D.NewHorizontalFov: graphics support not compiled in");
+    return NULL;
+}
+
 /// @brief Stub for `Camera3D.NewOrtho` — would normally create an
 ///        orthographic camera with vertical "size" `s` (the half-height
 ///        of the orthographic view volume in world units), aspect `a`,
@@ -2900,6 +2921,18 @@ double rt_camera3d_get_fov(void *o) {
 /// @param o Camera3D handle (ignored).
 /// @param f Vertical FOV in radians (ignored).
 void rt_camera3d_set_fov(void *o, double f) {
+    (void)o;
+    (void)f;
+}
+
+/// @brief Stub for `Camera3D.SetHorizontalFov` — would normally convert a horizontal FOV to the
+///        camera's stored vertical FOV and rebuild the projection matrix.
+///
+/// Silent no-op stub.
+///
+/// @param o Camera3D handle (ignored).
+/// @param f Horizontal FOV in degrees (ignored).
+void rt_camera3d_set_horizontal_fov(void *o, double f) {
     (void)o;
     (void)f;
 }
@@ -3549,6 +3582,20 @@ void rt_material3d_set_double_sided(void *o, int8_t e) {
 int8_t rt_material3d_get_double_sided(void *o) {
     (void)o;
     return 0;
+}
+
+/// @brief Stub for `Material3D.SetDepthBias` — would normally configure constant and
+///        slope-scaled depth offsets for coplanar/overlay geometry.
+///
+/// Silent no-op stub.
+///
+/// @param o Material3D handle (ignored).
+/// @param c Constant depth offset (ignored).
+/// @param s Slope-scaled depth offset (ignored).
+void rt_material3d_set_depth_bias(void *o, double c, double s) {
+    (void)o;
+    (void)c;
+    (void)s;
 }
 
 /// @brief Stub for `Mesh3D.CalcTangents` — would normally compute and
@@ -6770,6 +6817,18 @@ void rt_canvas3d_disable_shadows(void *c) {
 /// @param c Canvas3D handle (ignored).
 /// @param b Shadow bias depth offset (ignored).
 void rt_canvas3d_set_shadow_bias(void *c, double b) {
+    (void)c;
+    (void)b;
+}
+
+/// @brief Stub for `Canvas3D.SetShadowSlopeBias` — would normally apply a slope-scaled
+///        rasterization bias to shadow-map caster draws.
+///
+/// Silent no-op stub.
+///
+/// @param c Canvas3D handle (ignored).
+/// @param b Shadow slope bias (ignored).
+void rt_canvas3d_set_shadow_slope_bias(void *c, double b) {
     (void)c;
     (void)b;
 }
@@ -10274,6 +10333,18 @@ void rt_terrain3d_set_lod_distances(void *t, double n, double f) {
     (void)t;
     (void)n;
     (void)f;
+}
+
+/// @brief Stub for `Terrain3D.SetLODHysteresis` — would normally configure the stable distance
+///        band used to prevent chunk LOD threshold flicker.
+///
+/// Silent no-op stub.
+///
+/// @param t Terrain3D handle (ignored).
+/// @param d Hysteresis distance in world units (ignored).
+void rt_terrain3d_set_lod_hysteresis(void *t, double d) {
+    (void)t;
+    (void)d;
 }
 
 /// @brief Stub for `Terrain3D.SetSkirtDepth` — height of the downward-

@@ -63,6 +63,7 @@ extern void *rt_material3d_new(void);
 extern void rt_material3d_set_texture(void *m, void *tex);
 extern void rt_material3d_set_alpha(void *m, double a);
 extern void rt_material3d_set_unlit(void *m, int8_t u);
+extern void rt_material3d_set_depth_bias(void *m, double constant_bias, double slope_scaled_bias);
 
 typedef struct {
     void *vptr;
@@ -365,12 +366,13 @@ void rt_decal3d_get_position(void *obj, double out[3]) {
 ///          3. `true_up = cross(normal, right)` — already unit-length
 ///             since normal and right are both unit and orthogonal.
 ///          4. Emit the four corner vertices offset by `0.5 * size`
-///             along the right/up axes, each lifted 0.01 units along
-///             the normal to prevent z-fighting with the underlying
-///             surface.
+///             along the right/up axes, each lifted by a small size-aware
+///             normal offset to reduce exact coplanarity.
 ///          The material is created `unlit` so decals show their
 ///          texture as-is without picking up scene lighting (matches
-///          bullet-hole / scorch-mark convention).
+///          bullet-hole / scorch-mark convention). A small negative depth
+///          bias is also applied so backends resolve remaining coplanar
+///          depth ties consistently.
 static void ensure_decal_mesh(rt_decal3d *d) {
     if (!d)
         return;
@@ -418,7 +420,7 @@ static void ensure_decal_mesh(rt_decal3d *d) {
     if (d->size > DECAL3D_SIZE_MAX)
         d->size = DECAL3D_SIZE_MAX;
     double hs = d->size * 0.5; /* half-size */
-    double off = 0.01;         /* surface offset to prevent z-fighting */
+    double off = fmax(0.0005, fmin(0.01, d->size * 0.0005));
     double cx = decal3d_coord_or(d->position[0] + nx * off, 0.0);
     double cy = decal3d_coord_or(d->position[1] + ny * off, 0.0);
     double cz = decal3d_coord_or(d->position[2] + nz * off, 0.0);
@@ -476,6 +478,7 @@ static void ensure_decal_mesh(rt_decal3d *d) {
     d->alpha = decal3d_alpha_or(d->alpha, 1.0);
     rt_material3d_set_alpha(d->material, d->alpha);
     rt_material3d_set_unlit(d->material, 1); /* decals are unlit — they show texture only */
+    rt_material3d_set_depth_bias(d->material, -0.0005, -1.0);
 }
 
 /// @brief Render a decal onto the canvas (no-op for expired decals).

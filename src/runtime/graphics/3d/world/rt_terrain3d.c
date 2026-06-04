@@ -80,12 +80,14 @@ typedef struct {
     void **chunk_meshes_lod1; /* LOD 1 (step=2) mesh cache */
     void **chunk_meshes_lod2; /* LOD 2 (step=4) mesh cache */
     float *chunk_aabbs;       /* 6 floats per chunk: min[3], max[3] */
+    uint8_t *chunk_lod_state; /* last selected LOD per chunk; 0xFF = uninitialized */
     int32_t chunks_x, chunks_z;
     int32_t chunk_capacity;
     void *material;
     /* LOD distance thresholds */
     float lod_dist1;   /* distance beyond which LOD 1 is used */
     float lod_dist2;   /* distance beyond which LOD 2 is used */
+    float lod_hysteresis; /* distance band that prevents LOD threshold flicker */
     float skirt_depth; /* depth of crack-hiding skirts (0 = disabled) */
     /* Splat map: RGBA Pixels where R/G/B/A = weight for layers 0-3 */
     void *splat_map;
@@ -95,6 +97,8 @@ typedef struct {
     void *baked_texture;
     int8_t splat_dirty;
 } rt_terrain3d;
+
+static int32_t terrain_safe_chunk_count(const rt_terrain3d *t);
 
 /// @brief Release and null a GC-tracked reference slot.
 /// @details Shared plumbing for the terrain's texture slots (`base_texture`,
@@ -243,6 +247,75 @@ static void terrain_lod_distances_or(const rt_terrain3d *t, float *out_near, flo
         *out_far = (float)far_dist;
 }
 
+/// @brief Return a finite, threshold-safe LOD hysteresis band for chunk selection.
+/// @details The band is clamped below half the near/far threshold gap so LOD 1 always has a usable
+///   stable interval. Non-finite or negative values become 0, preserving sharp legacy thresholds.
+static float terrain_lod_hysteresis_or(const rt_terrain3d *t, float lod_near, float lod_far) {
+    double value = t ? (double)t->lod_hysteresis : 0.0;
+    double max_band = ((double)lod_far - (double)lod_near) * 0.45;
+
+    if (!isfinite(value) || value < 0.0)
+        value = 0.0;
+    if (!isfinite(max_band) || max_band < 0.0)
+        max_band = 0.0;
+    if (value > max_band)
+        value = max_band;
+    if (value > TERRAIN3D_ABS_MAX)
+        value = TERRAIN3D_ABS_MAX;
+    return (float)value;
+}
+
+/// @brief Clear every chunk's remembered LOD state to the uninitialized sentinel.
+/// @details Called after global LOD-distance changes and cache invalidation so the next draw
+///   chooses each chunk from raw distance once, then resumes hysteresis-stabilized switching.
+static void terrain_reset_lod_state(rt_terrain3d *t) {
+    int32_t n;
+    if (!t || !t->chunk_lod_state)
+        return;
+    n = terrain_safe_chunk_count(t);
+    if (n <= 0)
+        return;
+    memset(t->chunk_lod_state, 0xFF, (size_t)n);
+}
+
+/// @brief Select a chunk LOD with hysteresis around the configured distance thresholds.
+/// @details The first selection uses the raw thresholds. Later selections require the distance to
+///   move outside a threshold plus/minus the hysteresis band before changing state, preventing
+///   terrain triangles from visibly popping or flickering while the camera jitters near a boundary.
+static int32_t terrain_select_lod(rt_terrain3d *t,
+                                  int32_t chunk_index,
+                                  double distance,
+                                  float lod_near,
+                                  float lod_far) {
+    float hys;
+    uint8_t current;
+
+    if (!t || chunk_index < 0 || chunk_index >= terrain_safe_chunk_count(t))
+        return distance >= (double)lod_far ? 2 : (distance >= (double)lod_near ? 1 : 0);
+    if (!isfinite(distance))
+        distance = (double)lod_far;
+    hys = terrain_lod_hysteresis_or(t, lod_near, lod_far);
+    if (!t->chunk_lod_state)
+        return distance >= (double)lod_far ? 2 : (distance >= (double)lod_near ? 1 : 0);
+    current = t->chunk_lod_state[chunk_index];
+    if (current > 2)
+        current = (uint8_t)(distance >= (double)lod_far ? 2 : (distance >= (double)lod_near ? 1 : 0));
+    else if (current == 0) {
+        if (distance >= (double)lod_near + (double)hys)
+            current = 1;
+    } else if (current == 1) {
+        if (distance < (double)lod_near - (double)hys)
+            current = 0;
+        else if (distance >= (double)lod_far + (double)hys)
+            current = 2;
+    } else {
+        if (distance < (double)lod_far - (double)hys)
+            current = 1;
+    }
+    t->chunk_lod_state[chunk_index] = current;
+    return (int32_t)current;
+}
+
 /// @brief Floor a continuous heightfield coordinate to a grid index, clamped to
 ///        `[0, max_index]`. Non-finite or non-positive input maps to 0.
 static int32_t terrain_coord_to_index(double coord, int32_t max_index) {
@@ -342,7 +415,8 @@ static int32_t terrain_safe_chunk_count(const rt_terrain3d *t) {
 static int terrain_has_valid_chunk_grid(const rt_terrain3d *t) {
     int64_t product;
     if (!t || !t->chunk_meshes || !t->chunk_meshes_lod1 || !t->chunk_meshes_lod2 ||
-        !t->chunk_aabbs || t->chunk_capacity <= 0 || t->chunks_x <= 0 || t->chunks_z <= 0)
+        !t->chunk_aabbs || !t->chunk_lod_state || t->chunk_capacity <= 0 || t->chunks_x <= 0 ||
+        t->chunks_z <= 0)
         return 0;
     if (t->chunk_capacity > TERRAIN3D_MAX_CHUNKS)
         return 0;
@@ -397,11 +471,13 @@ static void terrain3d_finalizer(void *obj) {
     free(t->chunk_meshes_lod1);
     free(t->chunk_meshes_lod2);
     free(t->chunk_aabbs);
+    free(t->chunk_lod_state);
     t->heights = NULL;
     t->chunk_meshes = NULL;
     t->chunk_meshes_lod1 = NULL;
     t->chunk_meshes_lod2 = NULL;
     t->chunk_aabbs = NULL;
+    t->chunk_lod_state = NULL;
     t->height_count = 0;
     t->chunk_capacity = 0;
 }
@@ -420,6 +496,7 @@ static void invalidate_all_chunks(rt_terrain3d *t) {
         if (t->chunk_meshes_lod2)
             terrain_release_mesh_slot(&t->chunk_meshes_lod2[i]);
     }
+    terrain_reset_lod_state(t);
 }
 
 /// @brief Construct a `width × depth` heightmap terrain (heights initially zero). Allocates
@@ -472,16 +549,19 @@ void *rt_terrain3d_new(int64_t width, int64_t depth) {
     t->chunk_meshes_lod1 = (void **)calloc(chunk_count, sizeof(void *));
     t->chunk_meshes_lod2 = (void **)calloc(chunk_count, sizeof(void *));
     t->chunk_aabbs = (float *)calloc(aabb_count, sizeof(float));
+    t->chunk_lod_state = (uint8_t *)malloc(chunk_count);
     if (!t->heights || !t->chunk_meshes || !t->chunk_meshes_lod1 || !t->chunk_meshes_lod2 ||
-        !t->chunk_aabbs) {
+        !t->chunk_aabbs || !t->chunk_lod_state) {
         terrain3d_finalizer(t);
         if (rt_obj_release_check0(t))
             rt_obj_free(t);
         rt_trap("Terrain3D.New: allocation failed");
         return NULL;
     }
+    memset(t->chunk_lod_state, 0xFF, chunk_count);
     t->lod_dist1 = 100.0f;
     t->lod_dist2 = 250.0f;
+    t->lod_hysteresis = 12.0f;
     t->skirt_depth = 2.0f;
     t->material = NULL;
     t->splat_map = NULL;
@@ -1486,6 +1566,26 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz, int32_t step, 
     return mesh;
 }
 
+/// @brief Prebuild every missing terrain chunk LOD mesh.
+/// @details The draw loop only selects between resident chunk meshes. Building LOD meshes before
+///   visibility/selection avoids an individual chunk allocating geometry the first frame it crosses
+///   an LOD threshold, which can otherwise produce visible stalls or inconsistent terrain edges.
+static void terrain_prewarm_chunk_lods(rt_terrain3d *t) {
+    if (!t || !terrain_has_valid_chunk_grid(t))
+        return;
+    for (int32_t cz = 0; cz < t->chunks_z; cz++) {
+        for (int32_t cx = 0; cx < t->chunks_x; cx++) {
+            int32_t idx = cz * t->chunks_x + cx;
+            if (!t->chunk_meshes[idx])
+                t->chunk_meshes[idx] = build_chunk(t, cx, cz, 1, &t->chunk_aabbs[idx * 6]);
+            if (!t->chunk_meshes_lod1[idx])
+                t->chunk_meshes_lod1[idx] = build_chunk(t, cx, cz, 2, NULL);
+            if (!t->chunk_meshes_lod2[idx])
+                t->chunk_meshes_lod2[idx] = build_chunk(t, cx, cz, 4, NULL);
+        }
+    }
+}
+
 /// @brief Set chunk LOD switch distances. Within `near_dist` chunks render at full resolution;
 /// between near and far they use step=2 (¼ triangles); beyond `far_dist` they use step=4
 /// (1/16 triangles). Lower distances trade visual quality for triangle count.
@@ -1516,6 +1616,26 @@ void rt_terrain3d_set_lod_distances(void *obj, double near_dist, double far_dist
         return;
     t->lod_dist1 = (float)near_dist;
     t->lod_dist2 = (float)far_dist;
+    terrain_reset_lod_state(t);
+}
+
+/// @brief Set the LOD distance hysteresis band used by terrain chunk selection.
+/// @details A positive band prevents chunks from switching LOD every frame while the camera is
+///   close to `SetLODDistances` thresholds. The value is clamped to a finite non-negative range;
+///   final selection also clamps it below half the near/far threshold gap, so setting a large value
+///   remains safe and simply means "use the widest stable band possible."
+void rt_terrain3d_set_lod_hysteresis(void *obj, double distance) {
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!t)
+        return;
+    if (!isfinite(distance) || distance < 0.0)
+        distance = 0.0;
+    if (distance > TERRAIN3D_ABS_MAX)
+        distance = TERRAIN3D_ABS_MAX;
+    if (t->lod_hysteresis == (float)distance)
+        return;
+    t->lod_hysteresis = (float)distance;
+    terrain_reset_lod_state(t);
 }
 
 /// @brief Set the depth (world units) of the downward-extruded skirt geometry generated along
@@ -1635,6 +1755,8 @@ void rt_canvas3d_draw_terrain_at(
     void *splat_layers[TERRAIN_MAX_SPLAT_LAYERS] = {NULL, NULL, NULL, NULL};
     float splat_layer_scales[TERRAIN_MAX_SPLAT_LAYERS] = {1.0f, 1.0f, 1.0f, 1.0f};
     int complete_splat_layers = 0;
+    double camera_relative_origin[3] = {0.0, 0.0, 0.0};
+    int use_camera_relative_bounds = 0;
     if (!c || !t)
         return;
     if (!c->in_frame || !c->backend || !t->material ||
@@ -1666,14 +1788,18 @@ void rt_canvas3d_draw_terrain_at(
         if (t->splat_dirty || any_invalid)
             bake_splat_texture(t);
     }
+    terrain_prewarm_chunk_lods(t);
 
-    /* Extract frustum from cached VP matrix for culling */
     vgfx3d_frustum_t frustum;
-    vgfx3d_frustum_extract(&frustum, c->cached_vp);
+    int use_visibility_culling = (c->frustum_culling || c->occlusion_culling) ? 1 : 0;
+    if (use_visibility_culling)
+        vgfx3d_frustum_extract(&frustum, c->cached_vp);
 
     tx = terrain_clamp_abs_or(tx, 0.0);
     ty = terrain_clamp_abs_or(ty, 0.0);
     tz = terrain_clamp_abs_or(tz, 0.0);
+    use_camera_relative_bounds =
+        rt_canvas3d_get_camera_relative_origin(canvas_obj, camera_relative_origin);
 
     float lod_dist1;
     float lod_dist2;
@@ -1710,17 +1836,21 @@ void rt_canvas3d_draw_terrain_at(
 
             /* Phase A: Frustum culling */
             float *aabb = &t->chunk_aabbs[idx * 6];
+            double origin_x = use_camera_relative_bounds ? camera_relative_origin[0] : 0.0;
+            double origin_y = use_camera_relative_bounds ? camera_relative_origin[1] : 0.0;
+            double origin_z = use_camera_relative_bounds ? camera_relative_origin[2] : 0.0;
             float world_min[3] = {
-                aabb[0] + (float)tx,
-                aabb[1] + (float)ty,
-                aabb[2] + (float)tz,
+                canvas3d_sanitize_f64_to_float((double)aabb[0] + tx - origin_x, 0.0f),
+                canvas3d_sanitize_f64_to_float((double)aabb[1] + ty - origin_y, 0.0f),
+                canvas3d_sanitize_f64_to_float((double)aabb[2] + tz - origin_z, 0.0f),
             };
             float world_max[3] = {
-                aabb[3] + (float)tx,
-                aabb[4] + (float)ty,
-                aabb[5] + (float)tz,
+                canvas3d_sanitize_f64_to_float((double)aabb[3] + tx - origin_x, 0.0f),
+                canvas3d_sanitize_f64_to_float((double)aabb[4] + ty - origin_y, 0.0f),
+                canvas3d_sanitize_f64_to_float((double)aabb[5] + tz - origin_z, 0.0f),
             };
-            if (vgfx3d_frustum_test_aabb(&frustum, world_min, world_max) == 0)
+            if (use_visibility_culling &&
+                vgfx3d_frustum_test_aabb(&frustum, world_min, world_max) == 0)
                 continue;
 
             /* Phase B: LOD selection based on distance to camera */
@@ -1733,15 +1863,12 @@ void rt_canvas3d_draw_terrain_at(
                 dist = (double)lod_dist2;
 
             void *draw_mesh = NULL;
-            if (dist >= lod_dist2) {
+            int32_t lod = terrain_select_lod(t, idx, dist, lod_dist1, lod_dist2);
+            if (lod >= 2) {
                 /* LOD 2: quarter resolution */
-                if (!t->chunk_meshes_lod2[idx])
-                    t->chunk_meshes_lod2[idx] = build_chunk(t, cx, cz, 4, NULL);
                 draw_mesh = t->chunk_meshes_lod2[idx];
-            } else if (dist >= lod_dist1) {
+            } else if (lod == 1) {
                 /* LOD 1: half resolution */
-                if (!t->chunk_meshes_lod1[idx])
-                    t->chunk_meshes_lod1[idx] = build_chunk(t, cx, cz, 2, NULL);
                 draw_mesh = t->chunk_meshes_lod1[idx];
             } else {
                 /* LOD 0: full resolution */

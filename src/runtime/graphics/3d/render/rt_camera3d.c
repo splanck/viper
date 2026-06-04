@@ -37,6 +37,7 @@
 #define CAMERA3D_ORTHO_SIZE_MAX 1000000000.0
 #define CAMERA3D_FLOAT_ABS_MAX 3.40282346638528859812e38
 #define CAMERA3D_DAMPING_EXP_MAX 60.0
+#define CAMERA3D_MAX_FAR_NEAR_RATIO 10000000.0
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 #include "rt_trap.h"
@@ -130,10 +131,10 @@ static double sanitize_aspect(double aspect) {
     return aspect > CAMERA3D_ASPECT_MAX ? CAMERA3D_ASPECT_MAX : aspect;
 }
 
-/// @brief Guard the near/far clip planes against degenerate configurations. Forces near
-/// ≥ 0.1 (prevents z-buffer precision collapse at very small near) and ensures far
-/// exceeds near by at least ~1e-4 — defaulting far to near + 1000 when the caller passes
-/// a degenerate pair. Both arguments are in-out so caller state stays valid.
+/// @brief Guard the near/far clip planes against degenerate and low-precision configurations.
+/// @details Forces near >= 0.1, keeps far beyond near, clamps the absolute clip range, and caps
+///   the far/near ratio. A huge ratio leaves too few depth-buffer bits for mid-range triangles,
+///   which shows up as coplanar flicker and unstable CPU/GPU visibility disagreement.
 static void sanitize_clip_planes(double *near_val, double *far_val) {
     if (!near_val || !far_val)
         return;
@@ -149,6 +150,11 @@ static void sanitize_clip_planes(double *near_val, double *far_val) {
         *near_val = 0.1;
         *far_val = 1000.1;
     }
+    if (*far_val / *near_val > CAMERA3D_MAX_FAR_NEAR_RATIO) {
+        double ratio_near = *far_val / CAMERA3D_MAX_FAR_NEAR_RATIO;
+        if (isfinite(ratio_near) && ratio_near > *near_val)
+            *near_val = ratio_near;
+    }
 }
 
 /// @brief Clamp vertical FOV to the usable `[1°, 179°]` range. Below 1° the perspective
@@ -163,6 +169,24 @@ static double sanitize_fov(double fov_deg) {
     if (fov_deg > 179.0)
         return 179.0;
     return fov_deg;
+}
+
+/// @brief Convert a horizontal perspective field-of-view to the vertical FOV stored by Camera3D.
+/// @details The renderer's projection matrix is parameterized by vertical FOV, but game-facing
+///   camera tuning is often authored as horizontal FOV because that stays visually stable across
+///   common widescreen window sizes. The conversion preserves the requested horizontal aperture
+///   for @p aspect using `2 * atan(tan(hfov/2) / aspect)`, with both the input horizontal FOV and
+///   the resulting vertical FOV passed through the same safety clamps as regular Camera3D FOVs.
+///   Non-finite or degenerate aspect values fall back to 1.0 through `sanitize_aspect`.
+static double camera_vertical_fov_from_horizontal(double horizontal_fov_deg, double aspect) {
+    double horizontal_rad;
+    double vertical_rad;
+
+    horizontal_fov_deg = sanitize_fov(horizontal_fov_deg);
+    aspect = sanitize_aspect(aspect);
+    horizontal_rad = horizontal_fov_deg * (M_PI / 180.0);
+    vertical_rad = 2.0 * atan(tan(horizontal_rad * 0.5) / aspect);
+    return sanitize_fov(vertical_rad * (180.0 / M_PI));
 }
 
 /// @brief Clamp orthographic view-volume half-size away from zero — same logic as
@@ -578,12 +602,30 @@ void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val
     cam->shake_decay = 5.0;
     cam->shake_offset[0] = cam->shake_offset[1] = cam->shake_offset[2] = 0.0;
     cam->shake_seed = 0x12345678;
+    cam->last_shake_update_token = 0;
     cam->is_ortho = 0;
     cam->ortho_size = 10.0;
     cam->pick_cache_valid = 0;
     rebuild_projection(cam);
 
     return cam;
+}
+
+/// @brief Create a perspective camera from a horizontal field of view.
+/// @details This is a convenience constructor for first-person and vehicle cameras where an
+///   author-provided vertical FOV can look too wide on 16:9 and ultrawide windows. The camera still
+///   stores and reports vertical FOV internally; @p horizontal_fov is converted using @p aspect
+///   before delegating to `rt_camera3d_new`, so all clip-plane sanitization and default camera
+///   orientation remain identical to the standard constructor.
+/// @param horizontal_fov Horizontal field of view in degrees.
+/// @param aspect         Width/height aspect ratio used for the conversion.
+/// @param near_val       Near clipping plane distance.
+/// @param far_val        Far clipping plane distance.
+/// @return Opaque camera handle, or NULL on failure.
+void *rt_camera3d_new_horizontal_fov(
+    double horizontal_fov, double aspect, double near_val, double far_val) {
+    return rt_camera3d_new(
+        camera_vertical_fov_from_horizontal(horizontal_fov, aspect), aspect, near_val, far_val);
 }
 
 /// @brief Construct a row-major orthographic projection matrix into `m`.
@@ -654,6 +696,7 @@ void *rt_camera3d_new_ortho(double size, double aspect, double near_val, double 
     cam->shake_decay = 5.0;
     cam->shake_offset[0] = cam->shake_offset[1] = cam->shake_offset[2] = 0.0;
     cam->shake_seed = 0x12345678;
+    cam->last_shake_update_token = 0;
     rebuild_projection(cam);
 
     return cam;
@@ -823,6 +866,21 @@ void rt_camera3d_set_fov(void *obj, double fov) {
     if (cam->is_ortho)
         return;
     cam->fov = sanitize_fov(fov);
+    rebuild_projection(cam);
+}
+
+/// @brief Set a perspective camera's FOV from a horizontal aperture in degrees.
+/// @details Converts @p horizontal_fov using the camera's current aspect ratio and stores the
+///   resulting vertical FOV, then rebuilds the projection immediately. Orthographic cameras ignore
+///   the call, matching `rt_camera3d_set_fov`. Use this when user-facing tuning should describe
+///   the horizontal view width rather than the vertical aperture used by the projection matrix.
+void rt_camera3d_set_horizontal_fov(void *obj, double horizontal_fov) {
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    if (!cam)
+        return;
+    if (cam->is_ortho)
+        return;
+    cam->fov = camera_vertical_fov_from_horizontal(horizontal_fov, cam->aspect);
     rebuild_projection(cam);
 }
 
@@ -1406,6 +1464,34 @@ void rt_camera3d_update_shake_for_frame(void *obj, double dt) {
     camera_apply_shake_to_view(cam);
 }
 
+/// @brief Advance camera shake once for a renderer timing token and re-apply the shaken view.
+/// @details Canvas3D may render multiple 3D passes before the next poll/flip updates delta time.
+///   Calling the un-tokened shake update from every pass decays the shake and advances its PRNG
+///   multiple times in one visible frame, which can make otherwise stable triangles appear to jump
+///   or flicker. The tokened variant advances the stochastic state only when @p frame_token changes;
+///   repeated calls with the same token only re-apply the current offset after other camera code
+///   mutates the view.
+/// @param obj         Camera3D handle.
+/// @param dt          Frame delta in seconds; negative/NaN values are sanitized by the shake path.
+/// @param frame_token Monotonic renderer timing token. Non-positive tokens fall back to the legacy
+///                    un-tokened behavior for compatibility with direct internal callers.
+void rt_camera3d_update_shake_for_frame_token(void *obj, double dt, int64_t frame_token) {
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+
+    if (!cam)
+        return;
+    if (frame_token <= 0) {
+        rt_camera3d_update_shake_for_frame(obj, dt);
+        return;
+    }
+    if (cam->last_shake_update_token == frame_token) {
+        camera_apply_shake_to_view(cam);
+        return;
+    }
+    cam->last_shake_update_token = frame_token;
+    rt_camera3d_update_shake_for_frame(obj, dt);
+}
+
 /// @brief Trigger a camera shake effect (exponentially decaying random offset).
 /// @details The shake applies random XY offsets that decay over the given duration.
 ///          Used for explosions, impacts, and other feedback effects.
@@ -1416,6 +1502,7 @@ void rt_camera3d_shake(void *obj, double intensity, double duration, double deca
     cam->shake_intensity = sanitize_nonnegative(intensity, 0.0);
     cam->shake_duration = sanitize_nonnegative(duration, 0.0);
     cam->shake_decay = isfinite(decay) && decay > 0.0 ? sanitize_nonnegative(decay, 5.0) : 5.0;
+    cam->last_shake_update_token = 0;
     apply_shake(cam, 0.0);
     camera_apply_shake_to_view(cam);
 }

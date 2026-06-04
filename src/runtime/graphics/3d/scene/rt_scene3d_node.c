@@ -230,7 +230,10 @@ void *rt_scene_node3d_new(void) {
     node->lod_capacity = 0;
     node->auto_lod_enabled = 0;
     node->auto_lod_screen_error_px = 8.0;
+    node->lod_selected_index = 0;
+    node->lod_selection_valid = 0;
     node->has_impostor = 0;
+    node->impostor_selected = 0;
     node->impostor_distance = 0.0;
     node->impostor_pixels = NULL;
     node->impostor_mesh = NULL;

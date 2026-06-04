@@ -70,6 +70,12 @@ int8_t rt_canvas3d_should_close(void *obj);
 void rt_canvas3d_set_wireframe(void *obj, int8_t enabled);
 /// @brief Toggle backface culling (CCW = front-facing).
 void rt_canvas3d_set_backface_cull(void *obj, int8_t enabled);
+/// @brief Set a slope-scaled shadow bias used to reduce acne on glancing-angle casters.
+/// @details The value is applied while rendering caster geometry into shadow maps. It complements
+///   `rt_canvas3d_set_shadow_bias`, which biases the later shadow comparison. Higher values improve
+///   stability for shallow slopes and coplanar caster triangles, while excessive values can visibly
+///   detach shadows from geometry.
+void rt_canvas3d_set_shadow_slope_bias(void *obj, double bias);
 /// @brief Get the canvas width in pixels.
 int64_t rt_canvas3d_get_width(void *obj);
 /// @brief Get the canvas height in pixels.
@@ -282,6 +288,13 @@ void rt_mesh3d_calc_tangents(void *obj);
 /// @brief Create a perspective camera (FOV in degrees, aspect = width/height, near/far clip
 /// planes).
 void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val);
+/// @brief Create a perspective camera from a horizontal field of view in degrees.
+/// @details Converts @p horizontal_fov to the vertical aperture used by the renderer's projection
+///   matrix using @p aspect. This is useful for first-person/open-world cameras where designers
+///   usually author FOV horizontally and a vertical interpretation would look too wide on
+///   widescreen displays.
+void *rt_camera3d_new_horizontal_fov(
+    double horizontal_fov, double aspect, double near_val, double far_val);
 /// @brief Create an orthographic camera (vertical world-units, aspect, near/far).
 void *rt_camera3d_new_ortho(double size, double aspect, double near_val, double far_val);
 /// @brief True if the camera was created via `_new_ortho` (no perspective foreshortening).
@@ -294,6 +307,11 @@ void rt_camera3d_orbit(void *obj, void *target, double distance, double yaw, dou
 double rt_camera3d_get_fov(void *obj);
 /// @brief Set the field of view in degrees.
 void rt_camera3d_set_fov(void *obj, double fov);
+/// @brief Set the perspective camera's field of view using horizontal degrees for its aspect.
+/// @details Orthographic cameras ignore the call. Perspective cameras convert the supplied
+///   horizontal aperture through the camera's current aspect ratio and rebuild their projection
+///   immediately.
+void rt_camera3d_set_horizontal_fov(void *obj, double horizontal_fov);
 /// @brief Get the near clip-plane distance.
 double rt_camera3d_get_near_plane(void *obj);
 /// @brief Set the near clip-plane distance.
@@ -419,6 +437,12 @@ int64_t rt_material3d_get_alpha_mode(void *obj);
 void rt_material3d_set_double_sided(void *obj, int8_t enabled);
 /// @brief True if the material is configured for double-sided rendering.
 int8_t rt_material3d_get_double_sided(void *obj);
+/// @brief Set constant and slope-scaled depth bias for coplanar material draws.
+/// @details The constant term shifts all fragments by the same depth amount; negative values pull
+///   the material forward and positive values push it away. The slope-scaled term adds more offset
+///   on steep screen-space triangles and is useful for decals, debug overlays, and other geometry
+///   that intentionally sits on top of another surface.
+void rt_material3d_set_depth_bias(void *obj, double constant_bias, double slope_scaled_bias);
 
 //=========================================================================
 // Light3D — directional, point, or ambient light source
@@ -516,8 +540,10 @@ void rt_canvas3d_set_shadow_bias(void *canvas, double bias);
 void rt_canvas3d_set_shadow_cascades(void *canvas, int64_t count);
 
 /* Coarse CPU visibility: frustum rejection plus optional low-resolution
- * screen-space occlusion over front-to-back sorted opaque draws. */
-/// @brief Toggle coarse CPU frustum rejection plus front-to-back opaque ordering.
+ * screen-space occlusion. Occlusion-enabled frames sort opaque draws front-to-back so
+ * the coarse depth grid receives near occluders first; plain frustum culling preserves
+ * caller order. */
+/// @brief Toggle coarse CPU frustum rejection.
 void rt_canvas3d_set_frustum_culling(void *canvas, int8_t enabled);
 /// @brief Toggle frustum rejection plus conservative CPU occlusion skips.
 void rt_canvas3d_set_occlusion_culling(void *canvas, int8_t enabled);

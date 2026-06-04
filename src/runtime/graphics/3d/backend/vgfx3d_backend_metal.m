@@ -29,6 +29,7 @@
 #include "vgfx3d_backend_metal_shared.h"
 #include "vgfx3d_backend_utils.h"
 
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -420,6 +421,11 @@ static NSString *metal_shader_source = @
                                                                                                                                                   "    return totalWeight > 0.0001 ? skinned / totalWeight : pos;\n"
                                                                                                                                                   "}\n"
                                                                                                                                                   "\n"
+                                                                                                                                                  "float4 clipZToBackend(float4 clip) {\n"
+                                                                                                                                                  "    clip.z = clip.z * 0.5 + clip.w * 0.5;\n"
+                                                                                                                                                  "    return clip;\n"
+                                                                                                                                                  "}\n"
+                                                                                                                                                  "\n"
                                                                                                                                                   "float3 skinVector(float3 vec,\n"
                                                                                                                                                   "                  VertexIn in,\n"
                                                                                                                                                   "                  constant float4x4 *palette,\n"
@@ -457,8 +463,7 @@ static NSString *metal_shader_source = @
                                                                                                                                                   "    float4 prevWorldPos = prevModelMatrix * float4(prevPos, 1.0);\n"
                                                                                                                                                   "    float4 currClip = obj.viewProjection * worldPos;\n"
                                                                                                                                                   "    float4 prevClip = scene.prevViewProjection * prevWorldPos;\n"
-                                                                                                                                                  "    out.position = currClip;\n"
-                                                                                                                                                  "    out.position.z = out.position.z * 0.5 + out.position.w * 0.5;\n"
+                                                                                                                                                  "    out.position = clipZToBackend(currClip);\n"
                                                                                                                                                   "    out.worldPos = worldPos.xyz;\n"
                                                                                                                                                   "    out.normal = (normalMatrix * float4(currNormal, 0.0)).xyz;\n"
                                                                                                                                                   "    out.tangent = float4((normalMatrix * float4(currTangent.xyz, 0.0)).xyz, currTangent.w);\n"
@@ -590,8 +595,7 @@ static NSString *metal_shader_source = @
                                                                                                                                                   "    float4 skinnedPos = skinPosition(float4(pos, 1.0), in, bonePalette, obj.flags0.x);\n"
                                                                                                                                                   "    if (obj.flags0.x == 0)\n"
                                                                                                                                                   "        skinnedPos = float4(pos, 1.0);\n"
-                                                                                                                                                  "    out.position = obj.viewProjection * (obj.modelMatrix * skinnedPos);\n"
-                                                                                                                                                  "    out.position.z = out.position.z * 0.5 + out.position.w * 0.5;\n"
+                                                                                                                                                  "    out.position = clipZToBackend(obj.viewProjection * (obj.modelMatrix * skinnedPos));\n"
                                                                                                                                                   "    out.uv = in.uv;\n"
                                                                                                                                                   "    out.uv1 = in.uv1;\n"
                                                                                                                                                   "    out.color = in.color;\n"
@@ -621,8 +625,10 @@ static NSString *metal_shader_source = @
                                                                                                                                                   "}\n"
                                                                                                                                                   "\n"
                                                                                                                                                   "float4 motion_output(VertexOut in) {\n"
-                                                                                                                                                  "    float2 currNdc = in.currClip.xy / max(in.currClip.w, 0.0001);\n"
-                                                                                                                                                  "    float2 prevNdc = in.prevClip.xy / max(in.prevClip.w, 0.0001);\n"
+                                                                                                                                                  "    float currW = (in.currClip.w < 0.0 ? -1.0 : 1.0) * max(fabs(in.currClip.w), 0.0001);\n"
+                                                                                                                                                  "    float prevW = (in.prevClip.w < 0.0 ? -1.0 : 1.0) * max(fabs(in.prevClip.w), 0.0001);\n"
+                                                                                                                                                  "    float2 currNdc = in.currClip.xy / currW;\n"
+                                                                                                                                                  "    float2 prevNdc = in.prevClip.xy / prevW;\n"
                                                                                                                                                   "    float2 velocity = (currNdc - prevNdc) * 0.5;\n"
                                                                                                                                                   "    return float4(clamp(velocity * 0.5 + 0.5, 0.0, 1.0), in.hasObjectHistory, 1.0);\n"
                                                                                                                                                   "}\n"
@@ -2648,7 +2654,8 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                         "float2 cameraVelocity(constant PostFXParams &p, float2 uv, float3 "
                         "worldPos) {\n"
                         "    float4 prevClip = p.prevViewProjection * float4(worldPos, 1.0);\n"
-                        "    float2 prevUv = prevClip.xy / max(prevClip.w, 0.0001) * 0.5 + 0.5;\n"
+                        "    float prevW = (prevClip.w < 0.0 ? -1.0 : 1.0) * max(fabs(prevClip.w), 0.0001);\n"
+                        "    float2 prevUv = prevClip.xy / prevW * 0.5 + 0.5;\n"
                         "    return uv - prevUv;\n"
                         "}\n"],
                 [NSString
@@ -3775,6 +3782,12 @@ static void metal_submit_draw(void *ctx_ptr,
             [ctx.encoder setDepthStencilState:ctx.depthStateNoWrite];
         else
             [ctx.encoder setDepthStencilState:ctx.depthState];
+        if (fabsf(cmd->depth_bias) > 1e-8f || fabsf(cmd->slope_scaled_depth_bias) > 1e-8f)
+            [ctx.encoder setDepthBias:cmd->depth_bias
+                            slopeScale:cmd->slope_scaled_depth_bias
+                                 clamp:0.0f];
+        else
+            [ctx.encoder setDepthBias:0.0f slopeScale:0.0f clamp:0.0f];
 
         metal_get_geometry_buffers(ctx, cmd, &vb, &ib);
         if (!vb || !ib)
@@ -4279,6 +4292,7 @@ static void metal_shadow_begin(
         [ctx.encoder setViewport:vp];
         [ctx.encoder setFrontFacingWinding:MTLWindingCounterClockwise];
         [ctx.encoder setCullMode:MTLCullModeBack];
+        [ctx.encoder setDepthBias:0.0f slopeScale:0.0f clamp:0.0f];
     }
 }
 
@@ -4295,6 +4309,13 @@ static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
             cmd->vertex_count == 0 || cmd->index_count == 0 || ctx->_shadowPassSlot < 0 ||
             ctx->_shadowPassSlot >= VGFX3D_MAX_SHADOW_LIGHTS)
             return;
+        [ctx.encoder setCullMode:cmd->double_sided ? MTLCullModeNone : MTLCullModeBack];
+        if (fabsf(cmd->depth_bias) > 1e-8f || fabsf(cmd->slope_scaled_depth_bias) > 1e-8f)
+            [ctx.encoder setDepthBias:cmd->depth_bias
+                            slopeScale:cmd->slope_scaled_depth_bias
+                                 clamp:0.0f];
+        else
+            [ctx.encoder setDepthBias:0.0f slopeScale:0.0f clamp:0.0f];
 
         metal_get_geometry_buffers(ctx, cmd, &vb, &ib);
         if (!vb || !ib)
@@ -4443,6 +4464,12 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
             [ctx.encoder setDepthStencilState:ctx.depthStateNoWrite];
         else
             [ctx.encoder setDepthStencilState:ctx.depthState];
+        if (fabsf(cmd->depth_bias) > 1e-8f || fabsf(cmd->slope_scaled_depth_bias) > 1e-8f)
+            [ctx.encoder setDepthBias:cmd->depth_bias
+                            slopeScale:cmd->slope_scaled_depth_bias
+                                 clamp:0.0f];
+        else
+            [ctx.encoder setDepthBias:0.0f slopeScale:0.0f clamp:0.0f];
 
         /* Vertex/index buffers */
         metal_get_geometry_buffers(ctx, cmd, &vb, &ib);

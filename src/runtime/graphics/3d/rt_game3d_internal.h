@@ -523,6 +523,7 @@ typedef struct rt_game3d_world {
     int8_t debug_camera_enabled;
     int8_t debug_caps_enabled;
     int8_t destroyed;
+    double fixed_interpolation_alpha;
 } rt_game3d_world;
 
 #if defined(_MSC_VER)

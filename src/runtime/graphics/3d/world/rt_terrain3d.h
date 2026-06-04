@@ -48,6 +48,12 @@ double rt_terrain3d_get_height_at(void *terrain, double x, double z);
 void *rt_terrain3d_get_normal_at(void *terrain, double x, double z);
 /// @brief Configure level-of-detail switch distances (chunks past @p far_dist render as low-poly).
 void rt_terrain3d_set_lod_distances(void *terrain, double near_dist, double far_dist);
+/// @brief Configure the LOD hysteresis band that prevents threshold-edge chunk flicker.
+/// @details The distance is measured in world units. Positive values make a chunk keep its current
+///   LOD until the camera moves beyond a threshold plus/minus the band; zero restores immediate
+///   threshold switching. The runtime clamps the band to a safe fraction of the configured
+///   near/far LOD interval.
+void rt_terrain3d_set_lod_hysteresis(void *terrain, double distance);
 /// @brief Set the depth of skirts dropped from chunk edges (hides cracks between LOD seams).
 void rt_terrain3d_set_skirt_depth(void *terrain, double depth);
 

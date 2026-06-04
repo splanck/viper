@@ -83,24 +83,38 @@ build_demo() {
         return 1
     fi
 
-    echo -n "  Frontend -> IL... "
-    if ! "$VIPER" build "$project_dir" -o "$il_file" 2>/tmp/viper_nativebuild_err_$$; then
-        echo -e "${RED}FAILED${NC}"
-        head -20 /tmp/viper_nativebuild_err_$$
+    # Asset projects (embed/pack) must build in one step so the asset blob is
+    # compiled into the binary; the staged IL->codegen path carries no assets.
+    if grep -qE '^[[:space:]]*(embed|pack|pack-compressed)[[:space:]]' "$project_dir/viper.project"; then
+        echo -n "  Build+embed -> native (asm+link, -O2)... "
+        if ! "$VIPER" build "$project_dir" --arch arm64 -O2 -o "$exe_file" 2>/tmp/viper_nativebuild_err_$$; then
+            echo -e "${RED}FAILED${NC}"
+            head -20 /tmp/viper_nativebuild_err_$$
+            rm -f /tmp/viper_nativebuild_err_$$ "$il_file"
+            return 1
+        fi
         rm -f /tmp/viper_nativebuild_err_$$ "$il_file"
-        return 1
-    fi
-    echo -e "${GREEN}OK${NC}"
+        echo -e "${GREEN}OK${NC}"
+    else
+        echo -n "  Frontend -> IL... "
+        if ! "$VIPER" build "$project_dir" -o "$il_file" 2>/tmp/viper_nativebuild_err_$$; then
+            echo -e "${RED}FAILED${NC}"
+            head -20 /tmp/viper_nativebuild_err_$$
+            rm -f /tmp/viper_nativebuild_err_$$ "$il_file"
+            return 1
+        fi
+        echo -e "${GREEN}OK${NC}"
 
-    echo -n "  Codegen (native asm+link, -O2)... "
-    if ! "$VIPER" codegen arm64 "$il_file" --native-asm --native-link -O2 -o "$exe_file" 2>/tmp/viper_nativebuild_err_$$; then
-        echo -e "${RED}FAILED${NC}"
-        head -20 /tmp/viper_nativebuild_err_$$
+        echo -n "  Codegen (native asm+link, -O2)... "
+        if ! "$VIPER" codegen arm64 "$il_file" --native-asm --native-link -O2 -o "$exe_file" 2>/tmp/viper_nativebuild_err_$$; then
+            echo -e "${RED}FAILED${NC}"
+            head -20 /tmp/viper_nativebuild_err_$$
+            rm -f /tmp/viper_nativebuild_err_$$ "$il_file"
+            return 1
+        fi
         rm -f /tmp/viper_nativebuild_err_$$ "$il_file"
-        return 1
+        echo -e "${GREEN}OK${NC}"
     fi
-    rm -f /tmp/viper_nativebuild_err_$$ "$il_file"
-    echo -e "${GREEN}OK${NC}"
 
     local size
     size=$(ls -lh "$exe_file" | awk '{print $5}')

@@ -46,6 +46,7 @@
 #define MATERIAL3D_SHININESS_MAX 8192.0
 #define MATERIAL3D_EMISSIVE_INTENSITY_MAX 1000000.0
 #define MATERIAL3D_NORMAL_SCALE_MAX 1000.0
+#define MATERIAL3D_DEPTH_BIAS_ABS_MAX 1000000.0
 #define MATERIAL3D_TWO_PI 6.28318530717958647692
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
@@ -381,6 +382,8 @@ static void material_init_defaults(rt_material3d *mat) {
     mat->additive_blend = 0;
     mat->shading_model = 0;
     memset(mat->custom_params, 0, sizeof(mat->custom_params));
+    mat->depth_bias = 0.0;
+    mat->slope_scaled_depth_bias = 0.0;
 }
 
 /// @brief Re-sanitize copied material state that may have been imported through legacy direct fields.
@@ -414,6 +417,11 @@ static void material_sanitize_state(rt_material3d *mat) {
     mat->additive_blend = mat->additive_blend ? 1 : 0;
     if (mat->shading_model < 0 || mat->shading_model > 5)
         mat->shading_model = 0;
+    mat->depth_bias =
+        clamp_range(mat->depth_bias, -MATERIAL3D_DEPTH_BIAS_ABS_MAX, MATERIAL3D_DEPTH_BIAS_ABS_MAX);
+    mat->slope_scaled_depth_bias = clamp_range(mat->slope_scaled_depth_bias,
+                                               -MATERIAL3D_DEPTH_BIAS_ABS_MAX,
+                                               MATERIAL3D_DEPTH_BIAS_ABS_MAX);
     for (int slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++) {
         int32_t wrap_s = mat->texture_slot_wrap_s[slot];
         int32_t wrap_t = mat->texture_slot_wrap_t[slot];
@@ -517,6 +525,8 @@ static void *material_clone_like(void *obj) {
     dst->additive_blend = src->additive_blend;
     dst->shading_model = src->shading_model;
     memcpy(dst->custom_params, src->custom_params, sizeof(dst->custom_params));
+    dst->depth_bias = src->depth_bias;
+    dst->slope_scaled_depth_bias = src->slope_scaled_depth_bias;
     material_sanitize_state(dst);
 
     material_assign_ref(&dst->texture, src->texture);
@@ -1056,6 +1066,25 @@ int8_t rt_material3d_get_double_sided(void *obj) {
     if (!mat)
         return 0;
     return mat->double_sided ? 1 : 0;
+}
+
+/// @brief Configure constant and slope-scaled depth bias for this material.
+/// @details The bias is copied into each draw command and interpreted by the active backend's
+///          native depth-bias mechanism. Negative constant values pull coplanar geometry
+///          slightly toward the camera and are useful for decals, painted lines, and other
+///          overlays that intentionally sit on top of an existing surface. Positive values push
+///          geometry away. The slope term is added by GPU backends on steep polygons where
+///          constant bias alone often fails to separate two nearly coplanar surfaces. Both
+///          inputs are finite-clamped so malformed values cannot poison backend raster state.
+void rt_material3d_set_depth_bias(void *obj, double constant_bias, double slope_scaled_bias) {
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
+        return;
+    mat->depth_bias =
+        clamp_range(constant_bias, -MATERIAL3D_DEPTH_BIAS_ABS_MAX, MATERIAL3D_DEPTH_BIAS_ABS_MAX);
+    mat->slope_scaled_depth_bias = clamp_range(slope_scaled_bias,
+                                               -MATERIAL3D_DEPTH_BIAS_ABS_MAX,
+                                               MATERIAL3D_DEPTH_BIAS_ABS_MAX);
 }
 
 #else

@@ -317,10 +317,60 @@ static double mesh_triangle_area_sq_f64(const double *a, const double *b, const 
     return nx * nx + ny * ny + nz * nz;
 }
 
+/// @brief Return one mesh position as double precision, preferring authoritative positions64.
+static void mesh_position_f64_at(const rt_mesh3d *mesh, uint32_t index, double out[3]) {
+    if (!out)
+        return;
+    if (mesh && mesh->positions64 && index < mesh->vertex_count) {
+        const double *p = &mesh->positions64[(size_t)index * 3u];
+        out[0] = isfinite(p[0]) ? p[0] : 0.0;
+        out[1] = isfinite(p[1]) ? p[1] : 0.0;
+        out[2] = isfinite(p[2]) ? p[2] : 0.0;
+        return;
+    }
+    if (mesh && mesh->vertices && index < mesh->vertex_count) {
+        out[0] = (double)mesh->vertices[index].pos[0];
+        out[1] = (double)mesh->vertices[index].pos[1];
+        out[2] = (double)mesh->vertices[index].pos[2];
+        return;
+    }
+    out[0] = out[1] = out[2] = 0.0;
+}
+
+/// @brief Scale-aware squared-area threshold for triangle degeneracy tests.
+/// @details Area squared has length^4 units, so the epsilon scales with the square of the largest
+///   edge length squared. This avoids rejecting valid large-world triangles because of a tiny
+///   absolute threshold, while still filtering sub-ULP slivers near the origin.
+static double mesh_triangle_area_epsilon_sq_f64(const double *a, const double *b, const double *c) {
+    double abx = b[0] - a[0], aby = b[1] - a[1], abz = b[2] - a[2];
+    double acx = c[0] - a[0], acy = c[1] - a[1], acz = c[2] - a[2];
+    double bcx = c[0] - b[0], bcy = c[1] - b[1], bcz = c[2] - b[2];
+    double ab2 = abx * abx + aby * aby + abz * abz;
+    double ac2 = acx * acx + acy * acy + acz * acz;
+    double bc2 = bcx * bcx + bcy * bcy + bcz * bcz;
+    double max_edge_sq = fmax(ab2, fmax(ac2, bc2));
+    if (!isfinite(max_edge_sq) || max_edge_sq <= 0.0)
+        return 1e-24;
+    return fmax(1e-24, max_edge_sq * max_edge_sq * 1e-12);
+}
+
 /// @brief Return non-zero when three float positions define a usable triangle.
 static int mesh_positions_form_triangle(const float *a, const float *b, const float *c) {
-    double area_sq = a && b && c ? mesh_triangle_area_sq_f32(a, b, c) : 0.0;
-    return isfinite(area_sq) && area_sq > 1e-20;
+    double da[3], db[3], dc[3];
+    double area_sq;
+    if (!a || !b || !c)
+        return 0;
+    da[0] = (double)a[0];
+    da[1] = (double)a[1];
+    da[2] = (double)a[2];
+    db[0] = (double)b[0];
+    db[1] = (double)b[1];
+    db[2] = (double)b[2];
+    dc[0] = (double)c[0];
+    dc[1] = (double)c[1];
+    dc[2] = (double)c[2];
+    area_sq = mesh_triangle_area_sq_f32(a, b, c);
+    return isfinite(area_sq) && area_sq > mesh_triangle_area_epsilon_sq_f64(da, db, dc);
 }
 
 /// @brief Return non-zero when three mesh indices define a usable, non-degenerate face.
@@ -336,7 +386,7 @@ static int mesh_indices_form_triangle(const rt_mesh3d *mesh,
         const double *b = &mesh->positions64[(size_t)i1 * 3u];
         const double *c = &mesh->positions64[(size_t)i2 * 3u];
         double area_sq = mesh_triangle_area_sq_f64(a, b, c);
-        return isfinite(area_sq) && area_sq > 1e-20;
+        return isfinite(area_sq) && area_sq > mesh_triangle_area_epsilon_sq_f64(a, b, c);
     }
     return mesh_positions_form_triangle(
         mesh->vertices[i0].pos, mesh->vertices[i1].pos, mesh->vertices[i2].pos);
@@ -888,22 +938,19 @@ void rt_mesh3d_recalc_normals(void *obj) {
         if (i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count)
             continue;
 
-        float *p0 = m->vertices[i0].pos;
-        float *p1 = m->vertices[i1].pos;
-        float *p2 = m->vertices[i2].pos;
+        double p0[3], p1[3], p2[3];
+        mesh_position_f64_at(m, i0, p0);
+        mesh_position_f64_at(m, i1, p1);
+        mesh_position_f64_at(m, i2, p2);
 
-        double e1[3] = {(double)p1[0] - (double)p0[0],
-                        (double)p1[1] - (double)p0[1],
-                        (double)p1[2] - (double)p0[2]};
-        double e2[3] = {(double)p2[0] - (double)p0[0],
-                        (double)p2[1] - (double)p0[1],
-                        (double)p2[2] - (double)p0[2]};
+        double e1[3] = {p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]};
+        double e2[3] = {p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]};
 
         double nx = e1[1] * e2[2] - e1[2] * e2[1];
         double ny = e1[2] * e2[0] - e1[0] * e2[2];
         double nz = e1[0] * e2[1] - e1[1] * e2[0];
         double len_sq = nx * nx + ny * ny + nz * nz;
-        if (!isfinite(len_sq) || len_sq <= 1e-20)
+        if (!isfinite(len_sq) || len_sq <= mesh_triangle_area_epsilon_sq_f64(p0, p1, p2))
             continue;
         accum[(size_t)i0 * 3u + 0] += nx;
         accum[(size_t)i0 * 3u + 1] += ny;
@@ -1303,7 +1350,7 @@ void *rt_mesh3d_new_box(double sx, double sy, double sz) {
         return mesh_return_null_if_build_failed(m);
     }
 
-    float hx = (float)(sx * 0.5), hy = (float)(sy * 0.5), hz = (float)(sz * 0.5);
+    double hx = sx * 0.5, hy = sy * 0.5, hz = sz * 0.5;
 
     /* 6 faces, 4 verts each = 24 verts, 12 triangles (CCW winding) */
     rt_mesh3d_begin_geometry_batch((rt_mesh3d *)m);
@@ -1375,7 +1422,7 @@ void *rt_mesh3d_new_sphere(double radius, int64_t segments) {
 
     int64_t rings = segments;
     int64_t slices = segments * 2;
-    float r = (float)radius;
+    double r = radius;
     int64_t top_index = 0;
     int64_t first_ring = 1;
     int64_t ring_stride = slices + 1;
@@ -1454,7 +1501,7 @@ void *rt_mesh3d_new_plane(double sx, double sz) {
         return mesh_return_null_if_build_failed(m);
     }
 
-    float hx = (float)(sx * 0.5), hz = (float)(sz * 0.5);
+    double hx = sx * 0.5, hz = sz * 0.5;
 
     rt_mesh3d_begin_geometry_batch((rt_mesh3d *)m);
     rt_mesh3d_add_vertex(m, -hx, 0, -hz, 0, 1, 0, 0, 0);
@@ -1485,8 +1532,8 @@ void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments) {
     if (segments < 3)
         segments = 3;
 
-    float r = (float)radius;
-    float hy = (float)(height * 0.5);
+    double r = radius;
+    double hy = height * 0.5;
     if (!mesh3d_check_planned_payload((uint64_t)(4 * segments + 4),
                                       (uint64_t)(12 * segments),
                                       "Mesh3D.NewCylinder: mesh exceeds memory budget")) {
@@ -1909,9 +1956,10 @@ static double obj_projected_area2(
     const rt_mesh3d *mesh, const uint32_t *indices, int count, int ax0, int ax1) {
     double area = 0.0;
     for (int i = 0; i < count; ++i) {
-        const float *a = mesh->vertices[indices[i]].pos;
-        const float *b = mesh->vertices[indices[(i + 1) % count]].pos;
-        area += (double)a[ax0] * (double)b[ax1] - (double)b[ax0] * (double)a[ax1];
+        double a[3], b[3];
+        mesh_position_f64_at(mesh, indices[i], a);
+        mesh_position_f64_at(mesh, indices[(i + 1) % count], b);
+        area += a[ax0] * b[ax1] - b[ax0] * a[ax1];
     }
     return area;
 }
@@ -1924,11 +1972,12 @@ static void obj_choose_projection_axes(
     const rt_mesh3d *mesh, const uint32_t *indices, int count, int *ax0, int *ax1) {
     double normal[3] = {0.0, 0.0, 0.0};
     for (int i = 0; i < count; ++i) {
-        const float *a = mesh->vertices[indices[i]].pos;
-        const float *b = mesh->vertices[indices[(i + 1) % count]].pos;
-        normal[0] += ((double)a[1] - (double)b[1]) * ((double)a[2] + (double)b[2]);
-        normal[1] += ((double)a[2] - (double)b[2]) * ((double)a[0] + (double)b[0]);
-        normal[2] += ((double)a[0] - (double)b[0]) * ((double)a[1] + (double)b[1]);
+        double a[3], b[3];
+        mesh_position_f64_at(mesh, indices[i], a);
+        mesh_position_f64_at(mesh, indices[(i + 1) % count], b);
+        normal[0] += (a[1] - b[1]) * (a[2] + b[2]);
+        normal[1] += (a[2] - b[2]) * (a[0] + b[0]);
+        normal[2] += (a[0] - b[0]) * (a[1] + b[1]);
     }
     if (fabs(normal[0]) >= fabs(normal[1]) && fabs(normal[0]) >= fabs(normal[2])) {
         *ax0 = 1;
@@ -1946,13 +1995,14 @@ static void obj_choose_projection_axes(
 /// @details The signed cross product (b-a)×(c-a); >0 is CCW, <0 CW, ~0 collinear.
 static double obj_orient2(
     const rt_mesh3d *mesh, uint32_t ia, uint32_t ib, uint32_t ic, int ax0, int ax1) {
-    const float *a = mesh->vertices[ia].pos;
-    const float *b = mesh->vertices[ib].pos;
-    const float *c = mesh->vertices[ic].pos;
-    double ab0 = (double)b[ax0] - (double)a[ax0];
-    double ab1 = (double)b[ax1] - (double)a[ax1];
-    double ac0 = (double)c[ax0] - (double)a[ax0];
-    double ac1 = (double)c[ax1] - (double)a[ax1];
+    double a[3], b[3], c[3];
+    mesh_position_f64_at(mesh, ia, a);
+    mesh_position_f64_at(mesh, ib, b);
+    mesh_position_f64_at(mesh, ic, c);
+    double ab0 = b[ax0] - a[ax0];
+    double ab1 = b[ax1] - a[ax1];
+    double ac0 = c[ax0] - a[ax0];
+    double ac1 = c[ax1] - a[ax1];
     return ab0 * ac1 - ab1 * ac0;
 }
 

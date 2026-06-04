@@ -148,12 +148,18 @@ void vgfx3d_frustum_extract(vgfx3d_frustum_t *f, const float vp[16]) {
 ///   callers skip recursive culling when the parent volume is fully inside.
 int vgfx3d_frustum_test_aabb(const vgfx3d_frustum_t *f, const float min[3], const float max[3]) {
     int result = 2; /* assume fully inside */
+    float extent = 0.0f;
+    float eps;
+
     if (!f || !f->planes_valid || !vgfx3d_vec3_is_finite(min) || !vgfx3d_vec3_is_finite(max))
         return 1;
     for (int axis = 0; axis < 3; axis++) {
         if (min[axis] > max[axis])
             return 1;
+        if (max[axis] - min[axis] > extent)
+            extent = max[axis] - min[axis];
     }
+    eps = 1e-4f + fmaxf(extent, 1.0f) * 1e-6f;
     /* Planes were validated once by vgfx3d_frustum_extract; no per-object recheck. */
     for (int i = 0; i < 6; i++) {
         /* Select p-vertex: corner most along plane normal */
@@ -162,7 +168,7 @@ int vgfx3d_frustum_test_aabb(const vgfx3d_frustum_t *f, const float min[3], cons
         float pz = f->planes[i][2] >= 0 ? max[2] : min[2];
         float dist =
             f->planes[i][0] * px + f->planes[i][1] * py + f->planes[i][2] * pz + f->planes[i][3];
-        if (dist < 0)
+        if (dist < -eps)
             return 0; /* p-vertex behind plane → entirely outside */
 
         /* Select n-vertex: corner least along plane normal */
@@ -171,7 +177,7 @@ int vgfx3d_frustum_test_aabb(const vgfx3d_frustum_t *f, const float min[3], cons
         float nz = f->planes[i][2] >= 0 ? min[2] : max[2];
         float ndist =
             f->planes[i][0] * nx + f->planes[i][1] * ny + f->planes[i][2] * nz + f->planes[i][3];
-        if (ndist < 0)
+        if (ndist < eps)
             result = 1; /* n-vertex behind → intersecting */
     }
     return result;

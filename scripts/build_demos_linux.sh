@@ -222,36 +222,55 @@ build_demo() {
         return 1
     fi
 
-    echo -n "  Frontend -> IL... "
-    if ! "$VIPER" build "$project_dir" -o "$il_file" 2>"$frontend_err"; then
-        echo -e "${RED}FAILED${NC}"
-        head -20 "$frontend_err"
-        rm -f "$il_file" "$obj_file" "$frontend_err" "$codegen_out" "$codegen_err" \
-            "$link_err" "$run_out" "$run_err"
-        return 1
-    fi
-    echo -e "${GREEN}OK${NC}"
+    local demo_opt="-O1"
 
-    echo -n "  Codegen (native obj)... "
-    if ! "$VIPER" codegen "$TARGET_ARCH" compile "$il_file" --native-asm -O1 -o "$obj_file" \
-        >"$codegen_out" 2>"$codegen_err"; then
-        echo -e "${RED}FAILED${NC}"
-        head -20 "$codegen_err"
-        rm -f "$il_file" "$obj_file" "$frontend_err" "$codegen_out" "$codegen_err" \
-            "$link_err" "$run_out" "$run_err"
-        return 1
-    fi
-    echo -e "${GREEN}OK${NC}"
+    if grep -qE '^[[:space:]]*(embed|pack|pack-compressed)[[:space:]]' "$project_dir/viper.project"; then
+        # Asset projects (embed -> .rodata, pack -> a .vpa beside the binary) must
+        # build in one step: `viper build` runs the asset compiler, whereas the
+        # staged IL->obj->system-link path carries no assets (the binary would
+        # fall back to loose files on disk). Single-step links via the native linker.
+        echo -n "  Build+embed -> native... "
+        if ! "$VIPER" build "$project_dir" --arch "$TARGET_ARCH" "$demo_opt" -o "$exe_file" \
+            >"$codegen_out" 2>"$codegen_err"; then
+            echo -e "${RED}FAILED${NC}"
+            head -20 "$codegen_err"
+            rm -f "$il_file" "$obj_file" "$frontend_err" "$codegen_out" "$codegen_err" \
+                "$link_err" "$run_out" "$run_err"
+            return 1
+        fi
+        echo -e "${GREEN}OK${NC}"
+    else
+        echo -n "  Frontend -> IL... "
+        if ! "$VIPER" build "$project_dir" -o "$il_file" 2>"$frontend_err"; then
+            echo -e "${RED}FAILED${NC}"
+            head -20 "$frontend_err"
+            rm -f "$il_file" "$obj_file" "$frontend_err" "$codegen_out" "$codegen_err" \
+                "$link_err" "$run_out" "$run_err"
+            return 1
+        fi
+        echo -e "${GREEN}OK${NC}"
 
-    echo -n "  Link (system c++)... "
-    if ! link_demo "$obj_file" "$exe_file" "$link_err"; then
-        echo -e "${RED}FAILED${NC}"
-        head -40 "$link_err"
-        rm -f "$il_file" "$obj_file" "$frontend_err" "$codegen_out" "$codegen_err" \
-            "$link_err" "$run_out" "$run_err"
-        return 1
+        echo -n "  Codegen (native obj)... "
+        if ! "$VIPER" codegen "$TARGET_ARCH" compile "$il_file" --native-asm "$demo_opt" -o "$obj_file" \
+            >"$codegen_out" 2>"$codegen_err"; then
+            echo -e "${RED}FAILED${NC}"
+            head -20 "$codegen_err"
+            rm -f "$il_file" "$obj_file" "$frontend_err" "$codegen_out" "$codegen_err" \
+                "$link_err" "$run_out" "$run_err"
+            return 1
+        fi
+        echo -e "${GREEN}OK${NC}"
+
+        echo -n "  Link (system c++)... "
+        if ! link_demo "$obj_file" "$exe_file" "$link_err"; then
+            echo -e "${RED}FAILED${NC}"
+            head -40 "$link_err"
+            rm -f "$il_file" "$obj_file" "$frontend_err" "$codegen_out" "$codegen_err" \
+                "$link_err" "$run_out" "$run_err"
+            return 1
+        fi
+        echo -e "${GREEN}OK${NC}"
     fi
-    echo -e "${GREEN}OK${NC}"
 
     if [[ $SKIP_RUN -eq 0 ]]; then
         echo -n "  Run smoke... "

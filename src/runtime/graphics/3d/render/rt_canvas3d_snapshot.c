@@ -204,6 +204,91 @@ int canvas3d_snapshot_mesh_geometry_cached(rt_canvas3d *c,
         entry->index_count = index_count;
         entry->vertices = *out_vertices;
         entry->indices = *out_indices;
+        entry->tangents_generated = 0;
+    }
+    return 1;
+}
+
+/// @brief Generate tangents directly into a canvas-owned mesh snapshot.
+/// @details Builds a temporary Mesh3D facade over @p vertices/@p indices so the existing tangent
+///   generator can run without mutating the source mesh. The vertex and index buffers remain owned
+///   by the canvas temp-buffer tracker; only the transient facade lives on the stack.
+static int canvas3d_generate_cached_snapshot_tangents(const rt_mesh3d *source,
+                                                      vgfx3d_vertex_t *vertices,
+                                                      uint32_t *indices) {
+    rt_mesh3d temp;
+    if (!source || !vertices || !indices)
+        return 0;
+    memset(&temp, 0, sizeof(temp));
+    temp.vertices = vertices;
+    temp.vertex_count = rt_mesh3d_safe_vertex_count(source);
+    temp.vertex_capacity = temp.vertex_count;
+    temp.indices = indices;
+    temp.index_count = rt_mesh3d_safe_index_count(source);
+    temp.index_capacity = temp.index_count;
+    temp.geometry_revision = source->geometry_revision;
+    rt_mesh3d_calc_tangents_impl(&temp);
+    return temp.tangents_ready ? 1 : 0;
+}
+
+/// @brief Snapshot geometry and ensure generated tangents are cached for this frame.
+/// @details Normal-mapped draws with missing authored tangents need a generated tangent basis, but
+///   recomputing it for every repeated draw of the same mesh is wasteful. This function keys the
+///   generated snapshot by source object, geometry revision, and vertex/index counts. If a matching
+///   snapshot already exists, tangents are generated into it at most once and then reused.
+int canvas3d_snapshot_mesh_geometry_with_tangents_cached(rt_canvas3d *c,
+                                                         const rt_mesh3d *mesh,
+                                                         void *mesh_obj,
+                                                         vgfx3d_vertex_t **out_vertices,
+                                                         uint32_t **out_indices) {
+    uint32_t vertex_count;
+    uint32_t index_count;
+    int can_cache;
+
+    if (!c || !mesh || !out_vertices || !out_indices)
+        return 0;
+    vertex_count = rt_mesh3d_safe_vertex_count(mesh);
+    index_count = rt_mesh3d_safe_index_count(mesh);
+    can_cache = mesh_obj && rt_heap_is_payload(mesh_obj);
+    if (can_cache) {
+        for (int32_t i = 0; i < c->mesh_snapshot_count; ++i) {
+            rt_canvas3d_mesh_snapshot_entry *entry = &c->mesh_snapshots[i];
+            if (entry->source == mesh_obj && entry->geometry_revision == mesh->geometry_revision &&
+                entry->vertex_count == vertex_count && entry->index_count == index_count) {
+                if (!entry->tangents_generated) {
+                    if (!canvas3d_generate_cached_snapshot_tangents(
+                            mesh, entry->vertices, entry->indices))
+                        return 0;
+                    entry->tangents_generated = 1;
+                }
+                *out_vertices = entry->vertices;
+                *out_indices = entry->indices;
+                return 1;
+            }
+        }
+    }
+    if (!canvas3d_snapshot_mesh_geometry(c, mesh, out_vertices, out_indices))
+        return 0;
+    if (!canvas3d_generate_cached_snapshot_tangents(mesh, *out_vertices, *out_indices)) {
+        canvas3d_release_tracked_temp_buffer(c, *out_vertices);
+        canvas3d_release_tracked_temp_buffer(c, *out_indices);
+        *out_vertices = NULL;
+        *out_indices = NULL;
+        return 0;
+    }
+    if (can_cache) {
+        if (c->mesh_snapshot_count >= INT32_MAX)
+            return 1;
+        if (!canvas3d_reserve_mesh_snapshot_cache(c, c->mesh_snapshot_count + 1))
+            return 1;
+        rt_canvas3d_mesh_snapshot_entry *entry = &c->mesh_snapshots[c->mesh_snapshot_count++];
+        entry->source = mesh_obj;
+        entry->geometry_revision = mesh->geometry_revision;
+        entry->vertex_count = vertex_count;
+        entry->index_count = index_count;
+        entry->vertices = *out_vertices;
+        entry->indices = *out_indices;
+        entry->tangents_generated = 1;
     }
     return 1;
 }

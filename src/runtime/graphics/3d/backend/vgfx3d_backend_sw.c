@@ -2194,10 +2194,23 @@ static int sw_raster_prepare(const screen_vert_t *v0,
     float area = (v1->sx - v0->sx) * (v2->sy - v0->sy) - (v2->sx - v0->sx) * (v1->sy - v0->sy);
     float original_area = area;
 
+    const float area_epsilon = 1e-6f;
+
+    if (fabsf(area) <= area_epsilon) {
+        if (emit_debug) {
+            fprintf(stderr,
+                    "[sw3d] tri %d degenerate area=%.6f orig=%.6f\n",
+                    g_sw_debug_tri_count++,
+                    fabsf(area),
+                    original_area);
+        }
+        return 0;
+    }
+
     /* After viewport Y-flip, CCW world-space triangles have NEGATIVE screen-space
      * area. So negative area = front face, positive area = back face.
      * Cull back faces (positive area) when backface culling is enabled. */
-    if (backface_cull && area >= 0.0f) {
+    if (backface_cull && area > area_epsilon) {
         if (emit_debug) {
             fprintf(stderr,
                     "[sw3d] tri %d culled area=%.3f v0=(%.2f %.2f %.3f) v1=(%.2f %.2f %.3f) "
@@ -2221,16 +2234,6 @@ static int sw_raster_prepare(const screen_vert_t *v0,
         v1 = v2;
         v2 = tmp;
         area = -area;
-    }
-    if (area < 1e-6f) {
-        if (emit_debug) {
-            fprintf(stderr,
-                    "[sw3d] tri %d degenerate area=%.6f orig=%.6f\n",
-                    g_sw_debug_tri_count++,
-                    area,
-                    original_area);
-        }
-        return 0;
     }
 
     int min_x = (int)fmaxf(fminf(fminf(v0->sx, v1->sx), v2->sx), 0.0f);
@@ -2313,6 +2316,26 @@ static void raster_triangle(uint8_t *pixels,
         return;
 
     const int depth_disabled = cmd && cmd->disable_depth_test;
+    const float depth_bias = cmd ? cmd->depth_bias : 0.0f;
+    float slope_depth_bias = 0.0f;
+    if (cmd && fabsf(cmd->slope_scaled_depth_bias) > 1e-8f) {
+        float denom = g.v0->sx * (g.v1->sy - g.v2->sy) +
+                      g.v1->sx * (g.v2->sy - g.v0->sy) +
+                      g.v2->sx * (g.v0->sy - g.v1->sy);
+        if (fabsf(denom) > 1e-8f) {
+            float dzdx = (g.v0->sz * (g.v1->sy - g.v2->sy) +
+                          g.v1->sz * (g.v2->sy - g.v0->sy) +
+                          g.v2->sz * (g.v0->sy - g.v1->sy)) /
+                         denom;
+            float dzdy = (g.v0->sz * (g.v2->sx - g.v1->sx) +
+                          g.v1->sz * (g.v0->sx - g.v2->sx) +
+                          g.v2->sz * (g.v1->sx - g.v0->sx)) /
+                         denom;
+            slope_depth_bias = cmd->slope_scaled_depth_bias * fmaxf(fabsf(dzdx), fabsf(dzdy));
+        }
+    }
+    const float edge_epsilon = -1e-5f;
+    const float depth_epsilon = 1e-7f;
     int inside_samples = 0;
     int depth_passes = 0;
     int pixels_written = 0;
@@ -2352,15 +2375,16 @@ static void raster_triangle(uint8_t *pixels,
     for (int y = g.min_y; y <= g.max_y; y++) {
         float w0 = row_w0, w1 = row_w1, w2 = row_w2;
         for (int x = g.min_x; x <= g.max_x; x++) {
-            if (w0 >= 0.0f && w1 >= 0.0f && w2 >= 0.0f) {
+            if (w0 >= edge_epsilon && w1 >= edge_epsilon && w2 >= edge_epsilon) {
                 inside_samples++;
                 /* Barycentric weights from edge functions; z is linearly
                  * interpolated in screen space (not perspective-correct,
                  * but sufficient for depth testing). */
                 float b0 = w0 * g.inv_area, b1 = w1 * g.inv_area, b2 = w2 * g.inv_area;
                 float z = b0 * g.v0->sz + b1 * g.v1->sz + b2 * g.v2->sz;
+                z += depth_bias + slope_depth_bias;
                 int idx = y * fb_w + x;
-                if (depth_disabled || z < zbuf[idx]) {
+                if (depth_disabled || z <= zbuf[idx] + depth_epsilon) {
                     depth_passes++;
                     pixels_written += sw_shade_fragment(&fc, x, y, idx, z, b0, b1, b2);
                 }
@@ -2521,11 +2545,12 @@ static void shadow_raster_tri(float *depth,
     float row_w0 = e12_dx * (py0 - sy[1]) - e12_dy * (px0 - sx[1]);
     float row_w1 = e20_dx * (py0 - sy[2]) - e20_dy * (px0 - sx[2]);
     float row_w2 = e01_dx * (py0 - sy[0]) - e01_dy * (px0 - sx[0]);
+    const float edge_epsilon = -1e-5f;
 
     for (int y = min_y; y <= max_y; y++) {
         float w0 = row_w0, w1 = row_w1, w2 = row_w2;
         for (int x = min_x; x <= max_x; x++) {
-            if (w0 >= 0.0f && w1 >= 0.0f && w2 >= 0.0f) {
+            if (w0 >= edge_epsilon && w1 >= edge_epsilon && w2 >= edge_epsilon) {
                 float b0 = w0 * inv_area, b1 = w1 * inv_area, b2 = w2 * inv_area;
                 float z = b0 * sz[0] + b1 * sz[1] + b2 * sz[2];
                 int idx = y * sw + x;

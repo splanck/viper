@@ -177,8 +177,11 @@ typedef struct rt_scene_node3d {
 
     int8_t auto_lod_enabled;
     double auto_lod_screen_error_px;
+    int32_t lod_selected_index;
+    int8_t lod_selection_valid;
 
     int8_t has_impostor;
+    int8_t impostor_selected;
     double impostor_distance;
     void *impostor_pixels;
     void *impostor_mesh;

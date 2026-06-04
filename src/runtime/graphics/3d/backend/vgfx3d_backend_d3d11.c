@@ -39,6 +39,7 @@
 #include "vgfx3d_backend_utils.h"
 
 #include <math.h>
+#include <limits.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -287,6 +288,10 @@ static const char
                                                                                                                                                                                                                                                                                                                                                                                                 "float2 ndcDeltaToUvDelta(float2 delta) {\n"
                                                                                                                                                                                                                                                                                                                                                                                                 "    return float2(delta.x * 0.5, -delta.y * 0.5);\n"
                                                                                                                                                                                                                                                                                                                                                                                                 "}\n"
+                                                                                                                                                                                                                                                                                                                                                                                                "float4 clipZToBackend(float4 clip) {\n"
+                                                                                                                                                                                                                                                                                                                                                                                                "    clip.z = clip.z * 0.5 + clip.w * 0.5;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                "    return clip;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                "}\n"
                                                                                                                                                                                                                                                                                                                                                                                                 "\n"
                                                                                                                                                                                                                                                                                                                                                                                                 "float3 applyMorphPosition(float3 pos, uint vid, int usePrevWeights) {\n"
                                                                                                                                                                                                                                                                                                                                                                                                 "    if (morphShapeCount <= 0 || vertexCount <= 0)\n"
@@ -376,8 +381,7 @@ static const char
                                                                                                                                                                                                                                                                                                                                                                                                 "    float4 prevWp = mul(prevModel, float4(prevPos, 1.0));\n"
                                                                                                                                                                                                                                                                                                                                                                                                 "    float4 currClip = mul(viewProjection, wp);\n"
                                                                                                                                                                                                                                                                                                                                                                                                 "    float4 prevClip = mul(prevViewProjection, prevWp);\n"
-                                                                                                                                                                                                                                                                                                                                                                                                "    output.pos = currClip;\n"
-                                                                                                                                                                                                                                                                                                                                                                                                "    output.pos.z = output.pos.z * 0.5 + output.pos.w * 0.5;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                "    output.pos = clipZToBackend(currClip);\n"
                                                                                                                                                                                                                                                                                                                                                                                                 "    output.worldPos = wp.xyz;\n"
                                                                                                                                                                                                                                                                                                                                                                                                 "    output.normal = mul(currentNormal, float4(nrm, 0.0)).xyz;\n"
                                                                                                                                                                                                                                                                                                                                                                                                 "    output.tangent = float4(mul(currentModel, float4(tan.xyz, 0.0)).xyz, tan.w);\n"
@@ -749,8 +753,10 @@ static const char
                                                                                                                                                                                                                                                                                                                                                                                                                               "        result = lerp(result, fogColor.rgb, fogFactor);\n"
                                                                                                                                                                                                                                                                                                                                                                                                                               "    }\n"
                                                                                                                                                                                                                                                                                                                                                                                                                               "    output.color = float4(result, finalAlpha);\n"
-                                                                                                                                                                                                                                                                                                                                                                                                                              "    float2 currNdc = input.currClip.xy / max(input.currClip.w, 0.0001);\n"
-                                                                                                                                                                                                                                                                                                                                                                                                                              "    float2 prevNdc = input.prevClip.xy / max(input.prevClip.w, 0.0001);\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                              "    float currW = (input.currClip.w < 0.0 ? -1.0 : 1.0) * max(abs(input.currClip.w), 0.0001);\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                              "    float prevW = (input.prevClip.w < 0.0 ? -1.0 : 1.0) * max(abs(input.prevClip.w), 0.0001);\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                              "    float2 currNdc = input.currClip.xy / currW;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                              "    float2 prevNdc = input.prevClip.xy / prevW;\n"
                                                                                                                                                                                                                                                                                                                                                                                                                               "    float2 velocity = ndcDeltaToUvDelta(currNdc - prevNdc);\n"
                                                                                                                                                                                                                                                                                                                                                                                                                               "    output.motion = float4(saturate(velocity * 0.5 + 0.5), input.hasObjectHistory, 1.0);\n"
                                                                                                                                                                                                                                                                                                                                                                                                                               "    return output;\n"
@@ -771,8 +777,7 @@ static const char
                                                                                                                                                                                                                                                                                                                                                                                                                               "        skinnedPos = float4(pos, 1.0);\n"
                                                                                                                                                                                                                                                                                                                                                                                                                               "    float4 wp = mul(modelMatrix, skinnedPos);\n"
                                                                                                                                                                                                                                                                                                                                                                                                                               "    float4 clip = mul(viewProjection, wp);\n"
-                                                                                                                                                                                                                                                                                                                                                                                                                              "    clip.z = clip.z * 0.5 + clip.w * 0.5;\n"
-                                                                                                                                                                                                                                                                                                                                                                                                                              "    output.pos = clip;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                              "    output.pos = clipZToBackend(clip);\n"
                                                                                                                                                                                                                                                                                                                                                                                                                               "    output.uv = input.uv;\n"
                                                                                                                                                                                                                                                                                                                                                                                                                               "    output.uv1 = input.uv1;\n"
                                                                                                                                                                                                                                                                                                                                                                                                                               "    output.color = input.color;\n"
@@ -911,7 +916,8 @@ static const char *d3d11_postfx_shader_source =
     "float2 cameraVelocity(float2 uv, float depth) {\n"
     "    float3 worldPos = reconstructWorld(uv, depth);\n"
     "    float4 prevClip = mul(prevViewProjection, float4(worldPos, 1.0));\n"
-    "    float2 prevNdc = prevClip.xy / max(prevClip.w, 0.0001);\n"
+    "    float prevW = (prevClip.w < 0.0 ? -1.0 : 1.0) * max(abs(prevClip.w), 0.0001);\n"
+    "    float2 prevNdc = prevClip.xy / prevW;\n"
     "    float2 currNdc = uvToNdc(uv);\n"
     "    return ndcDeltaToUvDelta(currNdc - prevNdc);\n"
     "}\n"
@@ -1209,6 +1215,12 @@ typedef struct {
     ID3D11RasterizerState *rs_solid_no_cull;
     ID3D11RasterizerState *rs_wire_cull;
     ID3D11RasterizerState *rs_wire_no_cull;
+    ID3D11RasterizerState *rs_depth_biased_cached;
+    INT rs_depth_biased_depth_bias;
+    float rs_depth_biased_slope_bias;
+    int8_t rs_depth_biased_wireframe;
+    int8_t rs_depth_biased_backface_cull;
+    int8_t rs_depth_biased_valid;
     ID3D11SamplerState *linear_wrap_sampler;
     ID3D11SamplerState *linear_clamp_sampler;
     ID3D11SamplerState *shadow_cmp_sampler;
@@ -1535,6 +1547,98 @@ static ID3D11RasterizerState *d3d11_choose_rasterizer(d3d11_context_t *ctx,
     if (wireframe)
         return backface_cull ? ctx->rs_wire_cull : ctx->rs_wire_no_cull;
     return backface_cull ? ctx->rs_solid_cull : ctx->rs_solid_no_cull;
+}
+
+/// @brief Return whether a draw needs a unique rasterizer state for depth bias.
+/// @details The common draw path uses four cached rasterizer states. D3D11 stores depth bias on the
+///   rasterizer state itself, so only biased draws pay for a temporary state allocation.
+static int d3d11_draw_needs_depth_bias(const vgfx3d_draw_cmd_t *cmd) {
+    return cmd && (fabsf(cmd->depth_bias) > 1e-8f ||
+                   fabsf(cmd->slope_scaled_depth_bias) > 1e-8f);
+}
+
+/// @brief Convert the renderer's float depth-bias value to D3D11's integer DepthBias field.
+/// @details D3D11's constant bias is expressed in implementation-scaled integer units. Scaling the
+///   renderer value by 2^16 gives useful sub-depth-buffer offsets without overflowing normal
+///   material settings; the result is clamped before narrowing to INT.
+static INT d3d11_depth_bias_to_int(float bias) {
+    double scaled = (double)bias * 65536.0;
+    if (!isfinite(scaled))
+        return 0;
+    if (scaled > (double)INT_MAX)
+        return INT_MAX;
+    if (scaled < (double)INT_MIN)
+        return INT_MIN;
+    return (INT)lrint(scaled);
+}
+
+/// @brief Create a rasterizer state for a biased draw.
+/// @details Mirrors the cached solid/wireframe and cull/no-cull state but fills in `DepthBias` and
+///   `SlopeScaledDepthBias` from the draw command. The biased-state cache owns the returned state
+///   when it is installed through `d3d11_get_depth_biased_rasterizer`.
+static HRESULT d3d11_create_depth_biased_rasterizer(d3d11_context_t *ctx,
+                                                    const vgfx3d_draw_cmd_t *cmd,
+                                                    int8_t wireframe,
+                                                    int8_t backface_cull,
+                                                    ID3D11RasterizerState **out_state) {
+    D3D11_RASTERIZER_DESC desc;
+
+    if (out_state)
+        *out_state = NULL;
+    if (!ctx || !ctx->device || !cmd || !out_state)
+        return E_INVALIDARG;
+    memset(&desc, 0, sizeof(desc));
+    desc.FillMode = wireframe ? D3D11_FILL_WIREFRAME : D3D11_FILL_SOLID;
+    desc.CullMode = backface_cull ? D3D11_CULL_BACK : D3D11_CULL_NONE;
+    desc.FrontCounterClockwise = TRUE;
+    desc.DepthClipEnable = TRUE;
+    desc.DepthBias = d3d11_depth_bias_to_int(cmd->depth_bias);
+    desc.SlopeScaledDepthBias = cmd->slope_scaled_depth_bias;
+    desc.DepthBiasClamp = 0.0f;
+    return ID3D11Device_CreateRasterizerState(ctx->device, &desc, out_state);
+}
+
+/// @brief Return a cached rasterizer state matching a biased draw.
+/// @details D3D11 stores depth bias in the rasterizer state. A single-entry cache removes repeated
+///   `CreateRasterizerState` calls for common decal/shadow batches while still falling back to the
+///   pre-built unbiased states for normal draws.
+static HRESULT d3d11_get_depth_biased_rasterizer(d3d11_context_t *ctx,
+                                                 const vgfx3d_draw_cmd_t *cmd,
+                                                 int8_t wireframe,
+                                                 int8_t backface_cull,
+                                                 ID3D11RasterizerState **out_state) {
+    INT depth_bias;
+    float slope_bias;
+    ID3D11RasterizerState *state = NULL;
+    HRESULT hr;
+
+    if (out_state)
+        *out_state = NULL;
+    if (!ctx || !cmd || !out_state)
+        return E_INVALIDARG;
+    depth_bias = d3d11_depth_bias_to_int(cmd->depth_bias);
+    slope_bias = cmd->slope_scaled_depth_bias;
+    if (ctx->rs_depth_biased_valid && ctx->rs_depth_biased_cached &&
+        ctx->rs_depth_biased_depth_bias == depth_bias &&
+        ctx->rs_depth_biased_slope_bias == slope_bias &&
+        ctx->rs_depth_biased_wireframe == (wireframe ? 1 : 0) &&
+        ctx->rs_depth_biased_backface_cull == (backface_cull ? 1 : 0)) {
+        *out_state = ctx->rs_depth_biased_cached;
+        return S_OK;
+    }
+
+    hr = d3d11_create_depth_biased_rasterizer(ctx, cmd, wireframe, backface_cull, &state);
+    if (FAILED(hr))
+        return hr;
+    SAFE_RELEASE(ctx->rs_depth_biased_cached);
+    ctx->rs_depth_biased_cached = state;
+    ctx->rs_depth_biased_depth_bias = depth_bias;
+    ctx->rs_depth_biased_slope_bias = slope_bias;
+    ctx->rs_depth_biased_wireframe = wireframe ? 1 : 0;
+    ctx->rs_depth_biased_backface_cull = backface_cull ? 1 : 0;
+    ctx->rs_depth_biased_valid = 1;
+    *out_state = state;
+    return S_OK;
 }
 
 /// @brief Overflow-checked size_t multiplication used by backend byte calculations.
@@ -4438,7 +4542,12 @@ static void d3d11_bind_main_pipeline(d3d11_context_t *ctx,
     vgfx3d_d3d11_blend_mode_t blend_mode = vgfx3d_d3d11_choose_blend_mode(cmd);
     UINT draw_rtv_count = ctx->current_rtv_count;
 
-    rasterizer = d3d11_choose_rasterizer(ctx, wireframe, backface_cull);
+    rasterizer = NULL;
+    if (d3d11_draw_needs_depth_bias(cmd))
+        (void)d3d11_get_depth_biased_rasterizer(
+            ctx, cmd, wireframe, backface_cull, &rasterizer);
+    if (!rasterizer)
+        rasterizer = d3d11_choose_rasterizer(ctx, wireframe, backface_cull);
     if (rasterizer)
         ID3D11DeviceContext_RSSetState(ctx->ctx, rasterizer);
     if (ctx->current_target_kind == VGFX3D_D3D11_TARGET_SCENE &&
@@ -5626,6 +5735,8 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     SAFE_RELEASE(ctx->rs_wire_cull);
     SAFE_RELEASE(ctx->rs_solid_no_cull);
     SAFE_RELEASE(ctx->rs_solid_cull);
+    SAFE_RELEASE(ctx->rs_depth_biased_cached);
+    ctx->rs_depth_biased_valid = 0;
     SAFE_RELEASE(ctx->depth_state_readonly_lequal);
     SAFE_RELEASE(ctx->depth_state_disabled);
     SAFE_RELEASE(ctx->depth_state_no_write);
@@ -6072,7 +6183,7 @@ static int d3d11_draw_postfx_pass(d3d11_context_t *ctx,
     if (ctx->linear_clamp_sampler)
         ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 0, 1, &ctx->linear_clamp_sampler);
     ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 4, srvs);
-    ID3D11DeviceContext_RSSetState(ctx->ctx, ctx->rs_solid_no_cull);
+    ID3D11DeviceContext_RSSetState(ctx->ctx, ctx->rs_solid_cull);
     ID3D11DeviceContext_OMSetDepthStencilState(ctx->ctx, NULL, 0);
     ID3D11DeviceContext_OMSetBlendState(
         ctx->ctx, ctx->blend_state_opaque, blend_factor, 0xFFFFFFFF);
@@ -6559,12 +6670,21 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     UINT offset = 0;
     ID3D11Buffer *mesh_vb = NULL;
     ID3D11Buffer *mesh_ib = NULL;
+    ID3D11RasterizerState *shadow_rasterizer = NULL;
     int alpha_masked_shadow = cmd && cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK;
 
     if (!ctx || !cmd || ctx->shadow_pass_slot < 0 ||
         ctx->shadow_pass_slot >= VGFX3D_MAX_SHADOW_LIGHTS || !cmd->vertices || !cmd->indices ||
         cmd->vertex_count == 0 || cmd->index_count == 0)
         return;
+
+    if (d3d11_draw_needs_depth_bias(cmd))
+        (void)d3d11_get_depth_biased_rasterizer(
+            ctx, cmd, 0, cmd->double_sided ? 0 : 1, &shadow_rasterizer);
+    if (!shadow_rasterizer)
+        shadow_rasterizer = d3d11_choose_rasterizer(ctx, 0, cmd->double_sided ? 0 : 1);
+    if (shadow_rasterizer)
+        ID3D11DeviceContext_RSSetState(ctx->ctx, shadow_rasterizer);
 
     d3d11_prepare_object_data(cmd, &object_data);
     memset(&scene_data, 0, sizeof(scene_data));

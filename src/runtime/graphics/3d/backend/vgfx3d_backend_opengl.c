@@ -79,6 +79,7 @@ typedef unsigned int GLbitfield;
 #define GL_DEPTH_TEST 0x0B71
 #define GL_CULL_FACE 0x0B44
 #define GL_BLEND 0x0BE2
+#define GL_POLYGON_OFFSET_FILL 0x8037
 #define GL_BACK 0x0405
 #define GL_FRONT_AND_BACK 0x0408
 #define GL_CCW 0x0901
@@ -166,6 +167,7 @@ typedef void (*PFNGLCULLFACEPROC)(GLenum);
 typedef void (*PFNGLFRONTFACEPROC)(GLenum);
 typedef void (*PFNGLVIEWPORTPROC)(GLint, GLint, GLsizei, GLsizei);
 typedef void (*PFNGLPOLYGONMODEPROC)(GLenum, GLenum);
+typedef void (*PFNGLPOLYGONOFFSETPROC)(GLfloat, GLfloat);
 typedef void (*PFNGLDRAWELEMENTSPROC)(GLenum, GLsizei, GLenum, const void *);
 typedef void (*PFNGLDRAWARRAYSPROC)(GLenum, GLint, GLsizei);
 typedef void (*PFNGLDRAWELEMENTSINSTANCEDPROC)(GLenum, GLsizei, GLenum, const void *, GLsizei);
@@ -264,6 +266,7 @@ static struct {
     PFNGLFRONTFACEPROC FrontFace;
     PFNGLVIEWPORTPROC Viewport;
     PFNGLPOLYGONMODEPROC PolygonMode;
+    PFNGLPOLYGONOFFSETPROC PolygonOffset;
     PFNGLDRAWELEMENTSPROC DrawElements;
     PFNGLDRAWARRAYSPROC DrawArrays;
     PFNGLDRAWELEMENTSINSTANCEDPROC DrawElementsInstanced;
@@ -754,6 +757,7 @@ static int load_gl(void) {
         (const unsigned char *)"glXCreateContextAttribsARB");
 
     LOADP(PolygonMode);
+    LOADP(PolygonOffset);
     LOADP(DrawElements);
     LOADP(DrawArrays);
     LOADP(DrawElementsInstanced);
@@ -1233,8 +1237,10 @@ static const char *const glsl_fragment_src[] = {
     "            unlitColor = mix(unlitColor, uFogColor, fogFactor);\n"
     "        }\n"
     "        FragColor = vec4(unlitColor, finalAlpha);\n"
-    "        vec2 currNdc = vCurrClip.xy / max(vCurrClip.w, 0.0001);\n"
-    "        vec2 prevNdc = vPrevClip.xy / max(vPrevClip.w, 0.0001);\n"
+    "        float currW = (vCurrClip.w < 0.0 ? -1.0 : 1.0) * max(abs(vCurrClip.w), 0.0001);\n"
+    "        float prevW = (vPrevClip.w < 0.0 ? -1.0 : 1.0) * max(abs(vPrevClip.w), 0.0001);\n"
+    "        vec2 currNdc = vCurrClip.xy / currW;\n"
+    "        vec2 prevNdc = vPrevClip.xy / prevW;\n"
     "        vec2 velocity = (currNdc - prevNdc) * 0.5;\n"
     "        MotionColor = vec4(clamp(velocity * 0.5 + 0.5, 0.0, 1.0), vHasObjectHistory, "
     "1.0);\n"
@@ -1384,8 +1390,10 @@ static const char *const glsl_fragment_src[] = {
     "        result = mix(result, uFogColor, fogFactor);\n"
     "    }\n"
     "    FragColor = vec4(result, finalAlpha);\n"
-    "    vec2 currNdc = vCurrClip.xy / max(vCurrClip.w, 0.0001);\n"
-    "    vec2 prevNdc = vPrevClip.xy / max(vPrevClip.w, 0.0001);\n"
+    "    float currW = (vCurrClip.w < 0.0 ? -1.0 : 1.0) * max(abs(vCurrClip.w), 0.0001);\n"
+    "    float prevW = (vPrevClip.w < 0.0 ? -1.0 : 1.0) * max(abs(vPrevClip.w), 0.0001);\n"
+    "    vec2 currNdc = vCurrClip.xy / currW;\n"
+    "    vec2 prevNdc = vPrevClip.xy / prevW;\n"
     "    vec2 velocity = (currNdc - prevNdc) * 0.5;\n"
     "    MotionColor = vec4(clamp(velocity * 0.5 + 0.5, 0.0, 1.0), vHasObjectHistory, "
     "1.0);\n"
@@ -1652,7 +1660,8 @@ static const char *const glsl_postfx_fragment_src[] = {
     "}\n"
     "vec2 cameraVelocity(vec2 uv, vec3 worldPos) {\n"
     "    vec4 prevClip = uPrevViewProjection * vec4(worldPos, 1.0);\n"
-    "    float invW = 1.0 / max(prevClip.w, 0.0001);\n"
+    "    float prevW = (prevClip.w < 0.0 ? -1.0 : 1.0) * max(abs(prevClip.w), 0.0001);\n"
+    "    float invW = 1.0 / prevW;\n"
     "    vec2 prevUv = prevClip.xy * invW * 0.5 + 0.5;\n"
     "    return (uv - prevUv);\n"
     "}\n"
@@ -3174,6 +3183,20 @@ static void gl_configure_draw_output(gl_context_t *ctx, const vgfx3d_draw_cmd_t 
     gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
     gl.DrawBuffer(GL_BACK);
     gl.Viewport(0, 0, ctx->width, ctx->height);
+}
+
+/// @brief Apply per-material polygon offset for coplanar geometry.
+/// @details OpenGL keeps polygon offset as sticky global state, so every draw explicitly enables
+///   and configures it or disables it. The command contract uses negative constant values to pull
+///   triangles toward the camera and positive values to push them away, matching GL's depth offset
+///   direction with the renderer's `GL_LESS` depth test.
+static void gl_apply_depth_bias(const vgfx3d_draw_cmd_t *cmd) {
+    if (cmd && (fabsf(cmd->depth_bias) > 1e-8f || fabsf(cmd->slope_scaled_depth_bias) > 1e-8f)) {
+        gl.Enable(GL_POLYGON_OFFSET_FILL);
+        gl.PolygonOffset(cmd->slope_scaled_depth_bias, cmd->depth_bias);
+    } else {
+        gl.Disable(GL_POLYGON_OFFSET_FILL);
+    }
 }
 
 /// @brief Push every post-FX uniform from the snapshot into the program.
@@ -5424,19 +5447,21 @@ static void gl_submit_draw(void *ctx_ptr,
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
         cmd->index_count == 0)
         return;
+    if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo))
+        return;
 
+    gl.FrontFace(GL_CCW);
     if (backface_cull)
         gl.Enable(GL_CULL_FACE);
     else
         gl.Disable(GL_CULL_FACE);
     gl.PolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
     gl_configure_draw_output(ctx, cmd);
+    gl_apply_depth_bias(cmd);
 
     gl.UseProgram(ctx->program);
     upload_main_uniforms(ctx, cmd, lights, light_count, ambient, 0);
     bind_material_textures(ctx, cmd);
-    if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo))
-        return;
     configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo);
     gl.DrawElements(GL_TRIANGLES, (GLsizei)cmd->index_count, GL_UNSIGNED_INT, NULL);
     GL_CHECK();
@@ -5711,6 +5736,10 @@ static void gl_shadow_begin(
     gl.Clear(GL_DEPTH_BUFFER_BIT);
     gl.Enable(GL_DEPTH_TEST);
     gl.DepthMask(GL_TRUE);
+    gl.Enable(GL_CULL_FACE);
+    gl.CullFace(GL_BACK);
+    gl.FrontFace(GL_CCW);
+    gl.Disable(GL_POLYGON_OFFSET_FILL);
     gl.PolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     gl.UseProgram(ctx->shadow_program);
     gl.BindVertexArray(ctx->vao);
@@ -5727,6 +5756,11 @@ static void gl_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         ctx->shadow_pass_slot >= VGFX3D_MAX_SHADOW_LIGHTS || cmd->vertex_count == 0 ||
         cmd->index_count == 0)
         return;
+    if (cmd->double_sided)
+        gl.Disable(GL_CULL_FACE);
+    else
+        gl.Enable(GL_CULL_FACE);
+    gl_apply_depth_bias(cmd);
     if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo))
         return;
     configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo);
@@ -5799,6 +5833,7 @@ static void gl_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
     if (ctx->shadow_pass_slot != slot)
         return;
     ctx->shadow_bias = bias;
+    gl.Disable(GL_POLYGON_OFFSET_FILL);
     ctx->shadow_complete[slot] = (ctx->shadow_depth_tex[slot] && ctx->shadow_fbo[slot] &&
                                   ctx->shadow_width[slot] > 0 && ctx->shadow_height[slot] > 0)
                                      ? 1
@@ -5831,19 +5866,21 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
         cmd->index_count == 0 || !instance_matrices || instance_count <= 0)
         return;
+    if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo))
+        return;
 
+    gl.FrontFace(GL_CCW);
     if (backface_cull)
         gl.Enable(GL_CULL_FACE);
     else
         gl.Disable(GL_CULL_FACE);
     gl.PolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
     gl_configure_draw_output(ctx, cmd);
+    gl_apply_depth_bias(cmd);
 
     gl.UseProgram(ctx->program);
     upload_main_uniforms(ctx, cmd, lights, light_count, ambient, 1);
     bind_material_textures(ctx, cmd);
-    if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo))
-        return;
     configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo);
     if (!configure_instance_attributes(ctx,
                                        instance_matrices,

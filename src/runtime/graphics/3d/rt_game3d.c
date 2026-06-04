@@ -6174,15 +6174,20 @@ void *rt_game3d_world_new(rt_string title, int64_t width, int64_t height) {
                                            RT_GAME3D_DEFAULT_FAR);
 }
 
-/// @brief Create a world: open the canvas window and build the scene, camera, physics,
-///   input, audio, and effects subsystems, then apply default lighting/quality/ambient.
-///   Traps on non-positive dimensions or any component allocation failure. See header.
-void *rt_game3d_world_new_with_camera(rt_string title,
-                                      int64_t width,
-                                      int64_t height,
-                                      double fov_deg,
-                                      double near_plane,
-                                      double far_plane) {
+/// @brief Shared World3D constructor for vertical- and horizontal-FOV camera creation.
+/// @details Opens the canvas window and builds the scene, camera, physics, input, audio, and
+///   effects subsystems, then applies default lighting/quality/ambient. When @p horizontal_fov is
+///   non-zero, @p fov_deg is interpreted as a horizontal field of view and converted by Camera3D
+///   using the window aspect; otherwise it remains the legacy vertical FOV value.
+static void *game3d_world_new_with_camera_impl(rt_string title,
+                                               int64_t width,
+                                               int64_t height,
+                                               double fov_deg,
+                                               double near_plane,
+                                               double far_plane,
+                                               int8_t horizontal_fov) {
+    double aspect;
+
     if (width <= 0 || height <= 0)
         rt_trap("Game3D.World3D.New: dimensions must be positive");
     if (width <= 0 || height <= 0)
@@ -6199,6 +6204,7 @@ void *rt_game3d_world_new_with_camera(rt_string title,
     world->height = height;
     world->next_entity_id = 1;
     world->dt = RT_GAME3D_DEFAULT_DT;
+    world->fixed_interpolation_alpha = 0.0;
     world->worker_count = game3d_default_worker_count();
     world->jobs_enabled = world->worker_count > 1 ? 1 : 0;
     world->origin_rebase_threshold = RT_GAME3D_DEFAULT_REBASE_THRESHOLD;
@@ -6209,7 +6215,9 @@ void *rt_game3d_world_new_with_camera(rt_string title,
 
     world->canvas = rt_canvas3d_new(title, width, height);
     world->scene = rt_scene3d_new();
-    world->camera = rt_camera3d_new(fov_deg, (double)width / (double)height, near_plane, far_plane);
+    aspect = (double)width / (double)height;
+    world->camera = horizontal_fov ? rt_camera3d_new_horizontal_fov(fov_deg, aspect, near_plane, far_plane)
+                                   : rt_camera3d_new(fov_deg, aspect, near_plane, far_plane);
     world->physics = rt_world3d_new(0.0, -9.81, 0.0);
     world->input = rt_game3d_input_new();
     world->audio = game3d_audio_new(world->camera);
@@ -6229,6 +6237,34 @@ void *rt_game3d_world_new_with_camera(rt_string title,
     rt_canvas3d_set_frustum_culling(world->canvas, 1);
     rt_canvas3d_set_ambient(world->canvas, 0.28, 0.30, 0.34);
     return world;
+}
+
+/// @brief Create a world: open the canvas window and build the scene, camera, physics,
+///   input, audio, and effects subsystems, then apply default lighting/quality/ambient.
+///   Traps on non-positive dimensions or any component allocation failure. See header.
+void *rt_game3d_world_new_with_camera(rt_string title,
+                                      int64_t width,
+                                      int64_t height,
+                                      double fov_deg,
+                                      double near_plane,
+                                      double far_plane) {
+    return game3d_world_new_with_camera_impl(
+        title, width, height, fov_deg, near_plane, far_plane, 0);
+}
+
+/// @brief Create a world whose initial camera FOV is interpreted horizontally.
+/// @details This keeps the ergonomic World3D constructor while avoiding wide-angle distortion from
+///   treating a user-authored horizontal FOV as the renderer's vertical FOV. Existing
+///   `NewWithCamera` behavior is unchanged; this constructor is opt-in for first-person and
+///   open-world cameras that tune FOV in horizontal degrees.
+void *rt_game3d_world_new_with_horizontal_camera(rt_string title,
+                                                 int64_t width,
+                                                 int64_t height,
+                                                 double horizontal_fov_deg,
+                                                 double near_plane,
+                                                 double far_plane) {
+    return game3d_world_new_with_camera_impl(
+        title, width, height, horizontal_fov_deg, near_plane, far_plane, 1);
 }
 
 /// @brief Allocate and initialize a world-stream object bound to a world, with default
@@ -6744,6 +6780,23 @@ int64_t rt_game3d_world_get_dropped_fixed_steps(void *obj) {
     rt_game3d_world *world =
         game3d_world_checked(obj, "Game3D.World3D.get_DroppedFixedSteps: invalid world");
     return world && world->dropped_fixed_steps > 0 ? world->dropped_fixed_steps : 0;
+}
+
+/// @brief Get the fixed-timestep interpolation fraction for the current render frame.
+/// @details `runFixed` and `runFixedWithOverlay` set this to the remaining accumulator divided by
+///   the fixed step after all simulation steps for the displayed frame have run. Render code can use
+///   the value in `[0, 1)` to blend visual-only state between the previous and current fixed
+///   simulation snapshots without changing deterministic physics stepping.
+double rt_game3d_world_get_fixed_interpolation_alpha(void *obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.get_fixedInterpolationAlpha: invalid world");
+    if (!world || !isfinite(world->fixed_interpolation_alpha))
+        return 0.0;
+    if (world->fixed_interpolation_alpha < 0.0)
+        return 0.0;
+    if (world->fixed_interpolation_alpha >= 1.0)
+        return 0.999999;
+    return world->fixed_interpolation_alpha;
 }
 
 /// @brief Count spawned Entity3D objects currently owned by the world.
@@ -7577,6 +7630,7 @@ static void game3d_world_draw_debug_overlay(rt_game3d_world *world) {
 static int game3d_world_begin_frame_impl(rt_game3d_world *world) {
     if (!world || !world->canvas || !world->camera)
         return 0;
+    game3d_world_rebase_if_needed(world);
     rt_canvas3d_clear(world->canvas, world->clear_r, world->clear_g, world->clear_b);
     rt_canvas3d_set_camera_relative_upload(world->canvas, world->floating_origin);
     rt_canvas3d_begin(world->canvas, world->camera);
@@ -7812,6 +7866,11 @@ void rt_game3d_world_run_fixed_with_overlay(void *obj,
             world->dropped_fixed_steps += (int64_t)floor(accumulator / fixed);
             accumulator = 0.0;
         }
+        world->fixed_interpolation_alpha = fixed > 0.0 ? accumulator / fixed : 0.0;
+        if (!isfinite(world->fixed_interpolation_alpha) || world->fixed_interpolation_alpha < 0.0)
+            world->fixed_interpolation_alpha = 0.0;
+        if (world->fixed_interpolation_alpha >= 1.0)
+            world->fixed_interpolation_alpha = 0.999999;
         game3d_world_render_once(world, overlay_fn);
     }
 }
@@ -7874,6 +7933,7 @@ void rt_game3d_world_run_frames(void *obj, int64_t frame_count, double step_sec,
             game3d_world_step_simulation_impl(world, fixed, 0);
             if (!game3d_world_is_live(world))
                 break;
+            world->fixed_interpolation_alpha = 0.0;
             game3d_world_render_once(world, NULL);
         }
     }

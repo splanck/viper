@@ -14,8 +14,8 @@
 //   - Dead particles are swapped to end (unstable removal, O(1) per kill).
 //   - Billboard quads use camera right/up vectors from the view matrix.
 //   - Each Draw fills a reusable per-frame vertex+index slot for all live particles.
-//   - Additive mode submits one batched draw; alpha mode submits one keyed quad
-//     draw per particle so scene sorting remains correct.
+//   - Additive mode submits one batched draw; alpha mode sorts the batched quads
+//     back-to-front before upload so transparent draw order is deterministic.
 //   - xorshift32 PRNG for deterministic randomization (no stdlib rand).
 //   - Draw materials are slotted per frame so queued commands are not mutated by later draws.
 //
@@ -1275,7 +1275,9 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
         verts[base + 3].uv[0] = 0;
         verts[base + 3].uv[1] = 0;
 
-        /* 2 triangles per quad (CCW) */
+        /* 2 triangles per quad (CCW). Alpha particles are sorted by the vertex
+         * construction order above, so absolute indices preserve the sorted
+         * back-to-front order while keeping the emitter in a single draw. */
         indices[i * 6 + 0] = base + 0;
         indices[i * 6 + 1] = base + 1;
         indices[i * 6 + 2] = base + 2;

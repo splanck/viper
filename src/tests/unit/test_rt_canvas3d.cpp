@@ -114,12 +114,14 @@ typedef struct {
     void **chunk_meshes_lod1;
     void **chunk_meshes_lod2;
     float *chunk_aabbs;
+    uint8_t *chunk_lod_state;
     int32_t chunks_x;
     int32_t chunks_z;
     int32_t chunk_capacity;
     void *material;
     float lod_dist1;
     float lod_dist2;
+    float lod_hysteresis;
     float skirt_depth;
     void *splat_map;
     void *layer_textures[4];
@@ -5306,7 +5308,7 @@ static void test_canvas_material_shading_model_mapping() {
     rt_canvas3d_draw_mesh(&canvas, mesh, xf, mat);
     rt_canvas3d_end(&canvas);
     EXPECT_EQ(g_last_draw_cmd.unlit, 1);
-    EXPECT_EQ(g_last_draw_cmd.shading_model, 0);
+    EXPECT_EQ(g_last_draw_cmd.shading_model, 3);
     PASS();
 }
 

@@ -911,6 +911,16 @@ void *rt_game3d_world_new_with_camera(rt_string title,
                                       double fov_deg,
                                       double near_plane,
                                       double far_plane);
+/// @brief Create a game world with a camera FOV authored in horizontal degrees.
+/// @details The runtime converts @p horizontal_fov_deg to the vertical FOV used by the renderer
+///   based on the initial window aspect ratio. This avoids the wide-angle/fisheye look that can
+///   happen when a conventional horizontal FOV value is passed to the vertical-FOV constructor.
+void *rt_game3d_world_new_with_horizontal_camera(rt_string title,
+                                                 int64_t width,
+                                                 int64_t height,
+                                                 double horizontal_fov_deg,
+                                                 double near_plane,
+                                                 double far_plane);
 /// @brief Destroy the world and all owned subsystems, closing its window.
 void rt_game3d_world_destroy(void *world);
 /// @brief True if the world has been destroyed.
@@ -939,6 +949,8 @@ double rt_game3d_world_get_elapsed(void *world);
 int64_t rt_game3d_world_get_frame(void *world);
 /// @brief Count fixed-timestep updates discarded by the spiral-of-death guard.
 int64_t rt_game3d_world_get_dropped_fixed_steps(void *world);
+/// @brief Get the render interpolation fraction left in the fixed-timestep accumulator.
+double rt_game3d_world_get_fixed_interpolation_alpha(void *world);
 /// @brief Count spawned Entity3D objects currently owned by the world.
 int64_t rt_game3d_world_get_entity_count(void *world);
 /// @brief Count physics bodies currently registered through spawned entities.

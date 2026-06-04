@@ -149,20 +149,20 @@ static int32_t canvas3d_motion_hash_find_index(rt_canvas3d *c, uintptr_t key) {
     return -1;
 }
 
-/// @brief Drop motion-history entries that haven't been touched in over a frame.
+/// @brief Drop motion-history entries that have not been touched for the retention window.
 ///
-/// In-place compaction. Anything not seen in the current or previous
-/// frame is considered stale (the mesh has stopped being drawn or
-/// has been destroyed). Bounded eviction prevents the table from
-/// growing without bound.
+/// In-place compaction. Retaining a few missed frames keeps motion vectors stable when objects are
+/// temporarily skipped by frustum or occlusion culling, while bounded eviction still prevents the
+/// table from growing without bound after objects stop drawing or are destroyed.
 void canvas3d_prune_motion_history(rt_canvas3d *c) {
     if (!c || c->motion_history_count <= 0)
         return;
 
     canvas_motion_history_t *hist = (canvas_motion_history_t *)c->motion_history;
     int32_t dst = 0;
+    int64_t retention = c->motion_history_retention_frames > 0 ? c->motion_history_retention_frames : 1;
     for (int32_t i = 0; i < c->motion_history_count; i++) {
-        if (c->frame_serial - hist[i].last_frame_seen > 1)
+        if (c->frame_serial - hist[i].last_frame_seen > retention)
             continue;
         if (dst != i)
             hist[dst] = hist[i];

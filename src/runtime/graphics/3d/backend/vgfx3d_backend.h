@@ -109,6 +109,8 @@ typedef struct {
     int8_t has_prev_instance_matrices;   /* 1 when prev_instance_matrices matches instance_count */
     int32_t shading_model;  /* 0=BlinnPhong, 1=Toon, 2=PBR, 3=Unlit, 4=Fresnel, 5=Emissive */
     float custom_params[8]; /* user-defined shader parameters */
+    float depth_bias;       /* constant depth offset; negative pulls coplanar draws forward */
+    float slope_scaled_depth_bias; /* slope-proportional depth offset for steep coplanar polygons */
 } vgfx3d_draw_cmd_t;
 
 /// @brief True if the command needs standard (non-additive) alpha blending. Honors an

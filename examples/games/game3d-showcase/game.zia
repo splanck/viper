@@ -99,7 +99,8 @@ class Game3DShowcase {
     }
 
     expose func setup(title: String, width: Integer, height: Integer) {
-        world = World3D.NewWithCamera(title, width, height, config.CAMERA_FOV, config.CAMERA_NEAR, config.CAMERA_FAR);
+        world = World3D.NewWithHorizontalCamera(
+            title, width, height, config.CAMERA_FOV, config.CAMERA_NEAR, config.CAMERA_FAR);
         canvas = World3D.get_canvas(world);
         camera = World3D.get_camera(world);
         input = World3D.get_input(world);
@@ -935,7 +936,6 @@ class Game3DShowcase {
 
     hide func makeFoliage(r: Float, g: Float, b: Float) -> Material3D {
         var m = Materials.Rubber(r, g, b);
-        Material3D.SetEmissiveColor(m, r * 0.06, g * 0.06, b * 0.06);
         return m;
     }
 
@@ -1120,6 +1120,10 @@ class Game3DShowcase {
         sunLight = Light3D.NewDirectional(new Vec3(-0.36, -1.0, -0.22), 1.0, 0.96, 0.88);
         Light3D.SetIntensity(sunLight, config.SUN_INTENSITY_DAY);
         World3D.addLight(world, 0, sunLight);
+        // Primary directional shadow caster (cascaded shadow maps) for grounding depth.
+        Light3D.SetCastsShadows(sunLight, true);
+        Canvas3D.EnableShadows(canvas, 2048);
+        Canvas3D.SetShadowCascades(canvas, 3);
     }
 
     hide func updateTimeOfDay() {
@@ -1134,16 +1138,18 @@ class Game3DShowcase {
         var day = clampFloat(elev, 0.0, 1.0);
         var warm = 1.0 - day;
 
-        var dirY = 0.0 - elev;
-        if (dirY > -0.05) { dirY = -0.05; }  // keep light angled down even at dusk
-        Light3D.set_Direction(sunLight, new Vec3(Cos(ang) * 0.55, dirY, -0.22));
+        // Sun at a moderate elevation (~50deg at noon) with a steady horizontal
+        // bias, so terrain and trees always show a clear lit/shadowed side and cast
+        // real shadows. A near-overhead sun gives flat, shadowless shading.
+        var sunDirY = 0.0 - (0.40 + 0.30 * day);
+        Light3D.set_Direction(sunLight, new Vec3(Cos(ang) * 0.55 - 0.40, sunDirY, -0.42));
         Light3D.SetColor(sunLight, 1.0, lerpFloat(0.60, 0.96, day), lerpFloat(0.34, 0.88, day));
         Light3D.SetIntensity(sunLight, 0.05 + day * config.SUN_INTENSITY_DAY);
 
         // Dim the static fill + sky-fill at night so darkness actually lands
         // (leave a small floor so the world stays readable under moonlight).
-        if (fillLight != null) { Light3D.SetIntensity(fillLight, 0.04 + 0.30 * day); }
-        if (skyFill != null) { Light3D.SetIntensity(skyFill, 0.06 + 0.24 * day); }
+        if (fillLight != null) { Light3D.SetIntensity(fillLight, 0.02 + 0.06 * day); }
+        if (skyFill != null) { Light3D.SetIntensity(skyFill, 0.02 + 0.03 * day); }
 
         World3D.setAmbient(
             world,
@@ -1511,7 +1517,7 @@ class Game3DShowcase {
         if (Canvas3D.BackendSupports(canvas, "ssao")) {
             PostFX3D.AddSSAO(fx, 0.45, 0.55, 12);
         }
-        PostFX3D.AddTonemap(fx, 1, 1.12);
+        PostFX3D.AddTonemap(fx, 2, 1.0);
         PostFX3D.AddBloom(fx, config.POSTFX_BLOOM_THRESHOLD, config.POSTFX_BLOOM_INTENSITY, 3);
         PostFX3D.AddColorGrade(
             fx, config.POSTFX_COLORGRADE_BRIGHT, config.POSTFX_COLORGRADE_CONTRAST,

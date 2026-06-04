@@ -146,6 +146,20 @@ static inline void rt_mesh3d_mark_bounds_dirty(rt_mesh3d *mesh) {
         mesh->bounds_dirty = 1;
 }
 
+/// @brief Clamp a double-precision mesh coordinate into the float range used by backend AABBs.
+/// @details Meshes authored through the runtime can retain authoritative double positions while
+///   their GPU vertices store narrowed floats. Bounds should be derived from the double positions
+///   so culling remains conservative for large worlds, then clamped to the backend float domain.
+static inline float rt_mesh3d_bounds_f32_from_f64(double value) {
+    if (!isfinite(value))
+        return 0.0f;
+    if (value > (double)FLT_MAX)
+        return FLT_MAX;
+    if (value < (double)-FLT_MAX)
+        return -FLT_MAX;
+    return (float)value;
+}
+
 /// @brief Immediately mark geometry changed: dirties bounds, bumps geometry_revision (wrapping
 ///        past UINT32_MAX to 1), and invalidates cached tangents. Bypasses batch deferral.
 static inline void rt_mesh3d_touch_geometry_now(rt_mesh3d *mesh) {
@@ -208,11 +222,30 @@ static inline void rt_mesh3d_refresh_bounds(rt_mesh3d *mesh) {
         rt_mesh3d_reset_bounds(mesh);
         return;
     }
-    vgfx3d_compute_mesh_aabb(mesh->vertices,
-                             vertex_count,
-                             sizeof(vgfx3d_vertex_t),
-                             mesh->aabb_min,
-                             mesh->aabb_max);
+    if (mesh->positions64) {
+        double minv[3] = {DBL_MAX, DBL_MAX, DBL_MAX};
+        double maxv[3] = {-DBL_MAX, -DBL_MAX, -DBL_MAX};
+        for (uint32_t i = 0; i < vertex_count; i++) {
+            const double *p = &mesh->positions64[(size_t)i * 3u];
+            for (int axis = 0; axis < 3; axis++) {
+                double value = isfinite(p[axis]) ? p[axis] : 0.0;
+                if (value < minv[axis])
+                    minv[axis] = value;
+                if (value > maxv[axis])
+                    maxv[axis] = value;
+            }
+        }
+        for (int axis = 0; axis < 3; axis++) {
+            mesh->aabb_min[axis] = rt_mesh3d_bounds_f32_from_f64(minv[axis]);
+            mesh->aabb_max[axis] = rt_mesh3d_bounds_f32_from_f64(maxv[axis]);
+        }
+    } else {
+        vgfx3d_compute_mesh_aabb(mesh->vertices,
+                                 vertex_count,
+                                 sizeof(vgfx3d_vertex_t),
+                                 mesh->aabb_min,
+                                 mesh->aabb_max);
+    }
     if (!isfinite(mesh->aabb_min[0]) || !isfinite(mesh->aabb_min[1]) ||
         !isfinite(mesh->aabb_min[2]) || !isfinite(mesh->aabb_max[0]) ||
         !isfinite(mesh->aabb_max[1]) || !isfinite(mesh->aabb_max[2])) {
@@ -254,6 +287,7 @@ typedef struct {
     double shake_decay;
     double shake_offset[3];
     uint32_t shake_seed;
+    int64_t last_shake_update_token; /* renderer timing token for one shake advance per frame */
     int8_t is_ortho;   /* 1 = orthographic projection */
     double ortho_size; /* half-extent of ortho view */
     int8_t pick_cache_valid;
@@ -274,6 +308,8 @@ void rt_camera3d_sync_render_aspect(void *cam, double aspect);
 void rt_camera3d_get_render_projection(void *cam, double aspect_override, float *out_projection);
 /// @brief Internal: advance camera shake by @p dt seconds and refresh the shaken view.
 void rt_camera3d_update_shake_for_frame(void *cam, double dt);
+/// @brief Internal: advance camera shake at most once for a renderer timing token.
+void rt_camera3d_update_shake_for_frame_token(void *cam, double dt, int64_t frame_token);
 
 /// @brief Internal Mesh3D tangent generator for already-validated mesh storage.
 void rt_mesh3d_calc_tangents_impl(rt_mesh3d *mesh);
@@ -339,6 +375,8 @@ typedef struct {
     double texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][6];
     int32_t shading_model;   /* 0=BlinnPhong, 1=Toon, 2=PBR, 3=Unlit, 4=Fresnel, 5=Emissive */
     double custom_params[8]; /* user-defined parameters per shading model */
+    double depth_bias;       /* constant depth offset; negative pulls coplanar geometry forward */
+    double slope_scaled_depth_bias; /* additional slope-scaled depth offset for decals/overlays */
 } rt_material3d;
 
 /// @brief Resolve a Material3D texture slot source to the currently resident Pixels fallback.
@@ -390,6 +428,7 @@ typedef struct {
     uint32_t index_count;
     vgfx3d_vertex_t *vertices;
     uint32_t *indices;
+    int8_t tangents_generated;
 } rt_canvas3d_mesh_snapshot_entry;
 
 /* Forward declaration — defined in vgfx3d_backend.h */
@@ -630,6 +669,8 @@ typedef struct {
     float cached_vp[16];         /* VP matrix cached in begin_frame for debug drawing */
     float cached_cam_pos[3];     /* camera position cached for sort key computation */
     float cached_cam_forward[3]; /* forward vector cached for skybox + ortho shading */
+    float cached_cam_near;       /* active camera near clip distance, for stable cascade splits */
+    float cached_cam_far;        /* active camera far clip distance, for stable cascade splits */
     int8_t cached_cam_is_ortho;
     int8_t camera_relative_upload;
     double camera_relative_origin[3];
@@ -719,6 +760,7 @@ typedef struct {
     float shadow_bias;
     int32_t shadow_count;
     int32_t shadow_cascade_count;
+    float shadow_slope_bias;
     vgfx3d_rendertarget_t *shadow_rts[VGFX3D_MAX_SHADOW_LIGHTS];
     float shadow_light_vps[VGFX3D_MAX_SHADOW_LIGHTS][16];
 
@@ -733,6 +775,9 @@ typedef struct {
     int8_t backface_cull;
     int8_t frustum_culling;
     int8_t occlusion_culling;
+    int8_t opaque_depth_sorting;
+    float occlusion_depth_margin;
+    int32_t occlusion_rect_expand_cells;
     int8_t clustered_lighting;
     int32_t last_draw_count;
     int32_t last_occluded_draw_count;
@@ -745,6 +790,7 @@ typedef struct {
     int64_t delta_time_us;
     int64_t delta_time_ms;
     int64_t dt_max_ms;
+    int64_t timing_serial;
     int8_t frame_timing_updated_by_poll;
     int32_t input_source;
     int32_t clock_source;
@@ -771,6 +817,7 @@ typedef struct {
     int32_t motion_history_capacity;
     int32_t *motion_history_hash;
     int32_t motion_history_hash_capacity;
+    int32_t motion_history_retention_frames;
 } rt_canvas3d;
 
 /// @brief Validate a Canvas3D handle while optionally preserving internal stack fixtures.
@@ -940,6 +987,11 @@ int canvas3d_snapshot_mesh_geometry_cached(rt_canvas3d *c,
                                            void *mesh_obj,
                                            vgfx3d_vertex_t **out_vertices,
                                            uint32_t **out_indices);
+int canvas3d_snapshot_mesh_geometry_with_tangents_cached(rt_canvas3d *c,
+                                                         const rt_mesh3d *mesh,
+                                                         void *mesh_obj,
+                                                         vgfx3d_vertex_t **out_vertices,
+                                                         uint32_t **out_indices);
 int canvas3d_should_snapshot_geometry(const rt_mesh3d *mesh, void *mesh_obj);
 
 // Shared pixel utilities (rt_canvas3d.c) used by the CPU skybox.
