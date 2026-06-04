@@ -338,9 +338,13 @@ LinkResult linkModules(std::vector<Module> modules) {
                 }
                 if (mismatch)
                     result.errors.push_back("extern parameter type mismatch for @" + ext.name);
-                it->second.attrs().nothrow = it->second.attrs().nothrow || ext.attrs().nothrow;
-                it->second.attrs().readonly = it->second.attrs().readonly || ext.attrs().readonly;
-                it->second.attrs().pure = it->second.attrs().pure || ext.attrs().pure;
+                const bool mergedPure = it->second.attrs().pure && ext.attrs().pure;
+                const bool mergedReadonly =
+                    (it->second.attrs().readonly || it->second.attrs().pure) &&
+                    (ext.attrs().readonly || ext.attrs().pure);
+                it->second.attrs().nothrow = it->second.attrs().nothrow && ext.attrs().nothrow;
+                it->second.attrs().readonly = mergedReadonly;
+                it->second.attrs().pure = mergedPure;
             } else {
                 mergedExterns.emplace(ext.name, std::move(ext));
             }

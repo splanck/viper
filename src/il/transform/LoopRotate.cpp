@@ -252,24 +252,25 @@ bool rotateLoop(Function &function, const Loop &loop) {
     // Collect outside-loop predecessors of the header (entry edges)
     struct EntryEdge {
         size_t blockIdx;
+        size_t instrIdx;
         size_t labelIdx;
-        std::vector<Value> args;
     };
 
     std::vector<EntryEdge> entryEdges;
 
     for (size_t bi = 0; bi < function.blocks.size(); ++bi) {
-        if (loop.contains(function.blocks[bi].label))
-            continue;
-        for (auto &instr : function.blocks[bi].instructions) {
+        for (size_t ii = 0; ii < function.blocks[bi].instructions.size(); ++ii) {
+            auto &instr = function.blocks[bi].instructions[ii];
             if (!viper::il::isTerminator(instr))
                 continue;
             for (size_t li = 0; li < instr.labels.size(); ++li) {
                 if (instr.labels[li] == headerLabel) {
-                    std::vector<Value> args;
-                    if (li < instr.brArgs.size())
-                        args = instr.brArgs[li];
-                    entryEdges.push_back({bi, li, args});
+                    if (loop.contains(function.blocks[bi].label)) {
+                        if (bi != latchIdx)
+                            return false;
+                        continue;
+                    }
+                    entryEdges.push_back({bi, ii, li});
                 }
             }
             break;
@@ -350,16 +351,13 @@ bool rotateLoop(Function &function, const Loop &loop) {
 
     // === Step 3: Redirect entry edges to the guard block ===
     for (const auto &edge : entryEdges) {
-        auto &instr = function.blocks[edge.blockIdx].instructions.back();
+        auto &instr = function.blocks[edge.blockIdx].instructions[edge.instrIdx];
         instr.labels[edge.labelIdx] = guardLabel;
     }
 
-    // === Step 4: Remove the original header (it's now dead) ===
-    // Don't actually remove it — let DCE/SimplifyCFG clean it up.
-    // But we need to make it unreachable by clearing its instructions.
-    // Actually, the latch no longer branches to it, and entry edges go to guard.
-    // The header might still be referenced by the body successor if it was branching
-    // back. But we redirected the latch. The header is now dead code.
+    // The original header now has no incoming labels. It remains in place as
+    // unreachable code for the existing SimplifyCFG cleanup, but the pass never
+    // continues with the pre-rotation LoopInfo snapshot.
 
     // Add the guard block to the function
     function.blocks.push_back(std::move(guard));
@@ -374,14 +372,24 @@ std::string_view LoopRotate::id() const {
 }
 
 PreservedAnalyses LoopRotate::run(Function &function, AnalysisManager &analysis) {
-    auto &loopInfo = analysis.getFunctionResult<LoopInfo>(kAnalysisLoopInfo, function);
-
     bool changed = false;
-    for (const Loop &loop : loopInfo.loops()) {
-        // Skip nested loops — only rotate outermost
-        if (!loop.parentHeader.empty())
-            continue;
-        changed |= rotateLoop(function, loop);
+    for (;;) {
+        LoopInfo loopInfo = computeLoopInfo(analysis.module(), function);
+        bool changedThisIteration = false;
+
+        for (const Loop &loop : loopInfo.loops()) {
+            // Skip nested loops — only rotate outermost
+            if (!loop.parentHeader.empty())
+                continue;
+            if (rotateLoop(function, loop)) {
+                changed = true;
+                changedThisIteration = true;
+                break;
+            }
+        }
+
+        if (!changedThisIteration)
+            break;
     }
 
     if (!changed)

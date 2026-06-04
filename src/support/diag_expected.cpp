@@ -29,18 +29,86 @@
 #include "diag_expected.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <string_view>
 
 namespace il::support {
 namespace {
 /// @brief Calculate a same-line diagnostic underline length.
 uint32_t sameLineRangeLength(const Diag &diag) {
-    if (!diag.range.isValid() || diag.range.begin.file_id != diag.loc.file_id ||
+    if (!diag.range.isConcrete() || diag.range.begin.file_id != diag.loc.file_id ||
         diag.range.begin.line != diag.loc.line || diag.range.end.line != diag.loc.line ||
-        diag.range.begin.column == 0 || diag.range.end.column <= diag.range.begin.column) {
+        diag.range.begin.column == 0 || diag.range.begin.column != diag.loc.column ||
+        diag.range.end.column <= diag.range.begin.column) {
         return 1;
     }
     return diag.range.end.column - diag.range.begin.column;
+}
+
+/// @brief Check whether @p byte is a UTF-8 continuation byte.
+/// @param byte Byte to inspect.
+/// @return True when @p byte has the binary form 10xxxxxx.
+bool isUtf8Continuation(unsigned char byte) {
+    return (byte & 0xc0u) == 0x80u;
+}
+
+/// @brief Determine the valid UTF-8 sequence length at @p index.
+/// @param text Byte string expected to contain UTF-8.
+/// @param index Offset of the candidate leading byte.
+/// @return Valid sequence length in bytes, or zero when the sequence is invalid.
+/// @details Rejects overlong encodings, surrogate code points, truncated
+///          sequences, and code points beyond U+10FFFF so JSON output never
+///          contains malformed UTF-8.
+size_t validUtf8SequenceLength(std::string_view text, size_t index) {
+    const auto byteAt = [&](size_t offset) {
+        return static_cast<unsigned char>(text[index + offset]);
+    };
+
+    const unsigned char first = byteAt(0);
+    if (first < 0x80u)
+        return 1;
+    if (first >= 0xc2u && first <= 0xdfu) {
+        if (index + 1 < text.size() && isUtf8Continuation(byteAt(1)))
+            return 2;
+        return 0;
+    }
+    if (first == 0xe0u) {
+        if (index + 2 < text.size() && byteAt(1) >= 0xa0u && byteAt(1) <= 0xbfu &&
+            isUtf8Continuation(byteAt(2)))
+            return 3;
+        return 0;
+    }
+    if ((first >= 0xe1u && first <= 0xecu) || (first >= 0xeeu && first <= 0xefu)) {
+        if (index + 2 < text.size() && isUtf8Continuation(byteAt(1)) &&
+            isUtf8Continuation(byteAt(2)))
+            return 3;
+        return 0;
+    }
+    if (first == 0xedu) {
+        if (index + 2 < text.size() && byteAt(1) >= 0x80u && byteAt(1) <= 0x9fu &&
+            isUtf8Continuation(byteAt(2)))
+            return 3;
+        return 0;
+    }
+    if (first == 0xf0u) {
+        if (index + 3 < text.size() && byteAt(1) >= 0x90u && byteAt(1) <= 0xbfu &&
+            isUtf8Continuation(byteAt(2)) && isUtf8Continuation(byteAt(3)))
+            return 4;
+        return 0;
+    }
+    if (first >= 0xf1u && first <= 0xf3u) {
+        if (index + 3 < text.size() && isUtf8Continuation(byteAt(1)) &&
+            isUtf8Continuation(byteAt(2)) && isUtf8Continuation(byteAt(3)))
+            return 4;
+        return 0;
+    }
+    if (first == 0xf4u) {
+        if (index + 3 < text.size() && byteAt(1) >= 0x80u && byteAt(1) <= 0x8fu &&
+            isUtf8Continuation(byteAt(2)) && isUtf8Continuation(byteAt(3)))
+            return 4;
+        return 0;
+    }
+    return 0;
 }
 
 /// @brief Print the source line and caret marker for a diagnostic-like location.
@@ -51,10 +119,10 @@ void printSourceSnippet(SourceLoc loc,
     if (!sm || loc.file_id == 0 || loc.line == 0)
         return;
 
-    auto srcLine = sm->getLine(loc.file_id, loc.line);
-    if (srcLine.empty())
+    if (!sm->hasLine(loc.file_id, loc.line))
         return;
 
+    auto srcLine = sm->getLine(loc.file_id, loc.line);
     std::string lineNumStr = std::to_string(loc.line);
     std::string gutter(lineNumStr.size(), ' ');
 
@@ -110,35 +178,54 @@ void printDiagHeader(const Diag &diag, std::ostream &os, const SourceManager *sm
 /// @param text Raw text to escape and quote.
 void printJsonEscaped(std::ostream &os, std::string_view text) {
     os << '"';
-    for (unsigned char ch : text) {
+    for (size_t index = 0; index < text.size();) {
+        const unsigned char ch = static_cast<unsigned char>(text[index]);
         switch (ch) {
             case '"':
                 os << "\\\"";
+                ++index;
                 break;
             case '\\':
                 os << "\\\\";
+                ++index;
                 break;
             case '\b':
                 os << "\\b";
+                ++index;
                 break;
             case '\f':
                 os << "\\f";
+                ++index;
                 break;
             case '\n':
                 os << "\\n";
+                ++index;
                 break;
             case '\r':
                 os << "\\r";
+                ++index;
                 break;
             case '\t':
                 os << "\\t";
+                ++index;
                 break;
             default:
                 if (ch < 0x20) {
                     constexpr char hex[] = "0123456789abcdef";
                     os << "\\u00" << hex[(ch >> 4) & 0x0f] << hex[ch & 0x0f];
-                } else {
+                    ++index;
+                } else if (ch < 0x80) {
                     os << static_cast<char>(ch);
+                    ++index;
+                } else {
+                    const size_t length = validUtf8SequenceLength(text, index);
+                    if (length == 0) {
+                        os << "\\ufffd";
+                        ++index;
+                    } else {
+                        os.write(text.data() + index, static_cast<std::streamsize>(length));
+                        index += length;
+                    }
                 }
                 break;
         }
@@ -160,7 +247,11 @@ void printJsonLoc(std::ostream &os, SourceLoc loc, const SourceManager *sm) {
     os << "\"column\":" << loc.column << ',';
     os << "\"file\":";
     if (sm && loc.file_id != 0) {
-        printJsonEscaped(os, sm->getPath(loc.file_id));
+        const auto path = sm->getPath(loc.file_id);
+        if (path.empty())
+            os << "null";
+        else
+            printJsonEscaped(os, path);
     } else {
         os << "null";
     }
@@ -194,11 +285,11 @@ void printJsonSourceLine(std::ostream &os, SourceLoc loc, const SourceManager *s
         os << "null";
         return;
     }
-    const std::string line{sm->getLine(loc.file_id, loc.line)};
-    if (line.empty()) {
+    if (!sm->hasLine(loc.file_id, loc.line)) {
         os << "null";
         return;
     }
+    const std::string line{sm->getLine(loc.file_id, loc.line)};
     printJsonEscaped(os, line);
 }
 
@@ -211,7 +302,7 @@ void printJsonSourceLine(std::ostream &os, SourceLoc loc, const SourceManager *s
 /// @param sm Optional source manager used to resolve endpoint file identifiers.
 void printJsonRange(std::ostream &os, const SourceRange &range, const SourceManager *sm) {
     os << "\"range\":";
-    if (!range.isValid()) {
+    if (!range.isConcrete()) {
         os << "null";
         return;
     }
@@ -222,7 +313,11 @@ void printJsonRange(std::ostream &os, const SourceRange &range, const SourceMana
     os << "\"column\":" << range.begin.column << ',';
     os << "\"file\":";
     if (sm && range.begin.file_id != 0) {
-        printJsonEscaped(os, sm->getPath(range.begin.file_id));
+        const auto path = sm->getPath(range.begin.file_id);
+        if (path.empty())
+            os << "null";
+        else
+            printJsonEscaped(os, path);
     } else {
         os << "null";
     }
@@ -232,7 +327,11 @@ void printJsonRange(std::ostream &os, const SourceRange &range, const SourceMana
     os << "\"column\":" << range.end.column << ',';
     os << "\"file\":";
     if (sm && range.end.file_id != 0) {
-        printJsonEscaped(os, sm->getPath(range.end.file_id));
+        const auto path = sm->getPath(range.end.file_id);
+        if (path.empty())
+            os << "null";
+        else
+            printJsonEscaped(os, path);
     } else {
         os << "null";
     }
@@ -345,6 +444,7 @@ Expected<void>::operator bool() const {
 ///
 /// @return Reference to the stored diagnostic payload.
 const Diag &Expected<void>::error() const & {
+    assert(error_.has_value());
     return *error_;
 }
 
@@ -352,11 +452,9 @@ namespace detail {
 /// @brief Map a diagnostic severity to a lowercase string used for printing.
 ///
 /// @details The helper keeps the conversion in one location so diagnostic
-///          formatting stays consistent across the codebase.  Unrecognised
-///          enumerators fall back to an empty string, allowing call sites to
-///          continue emitting diagnostics even when future severities are added
-///          but not yet handled.  New severity enumerators should extend this
-///          switch to maintain predictable wording across command-line tools.
+///          formatting stays consistent across the codebase. Unrecognised
+///          enumerators fall back to "unknown" so malformed or future severity
+///          values still produce parseable diagnostic text.
 ///
 /// @param severity Severity enumeration value to translate.
 /// @return Null-terminated string naming the severity level.
@@ -369,7 +467,7 @@ const char *diagSeverityToString(Severity severity) {
         case Severity::Error:
             return "error";
     }
-    return "";
+    return "unknown";
 }
 } // namespace detail
 

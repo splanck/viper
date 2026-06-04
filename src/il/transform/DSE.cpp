@@ -39,6 +39,38 @@ using namespace il::core;
 namespace il::transform {
 
 namespace {
+using InstructionSite = std::pair<Block *, size_t>;
+
+/// @brief Erase instruction sites without relying on raw pointer ordering.
+/// @details Sites are sorted by the owning block's index in @p F and then by
+///          descending instruction index inside each block. This keeps same-block
+///          erasures stable while avoiding relational comparisons between
+///          unrelated @ref BasicBlock pointers.
+/// @param F Function that owns every block referenced in @p sites.
+/// @param sites Block/instruction pairs to remove in place.
+/// @return Number of instructions erased.
+std::size_t eraseInstructionSites(Function &F, std::vector<InstructionSite> &sites) {
+    std::unordered_map<const Block *, std::size_t> blockOrder;
+    blockOrder.reserve(F.blocks.size());
+    for (std::size_t i = 0; i < F.blocks.size(); ++i)
+        blockOrder.emplace(&F.blocks[i], i);
+
+    std::sort(sites.begin(), sites.end(), [&](const auto &a, const auto &b) {
+        const std::size_t aOrder = blockOrder.at(a.first);
+        const std::size_t bOrder = blockOrder.at(b.first);
+        if (aOrder != bOrder)
+            return aOrder < bOrder;
+        return a.second > b.second;
+    });
+
+    std::size_t erased = 0;
+    for (const auto &[block, idx] : sites) {
+        block->instructions.erase(block->instructions.begin() + static_cast<long>(idx));
+        ++erased;
+    }
+    return erased;
+}
+
 struct Addr {
     // We track by Value plus optional byte width for more precise AA queries.
     Value v;
@@ -363,11 +395,25 @@ std::vector<std::string> getSuccessors(const BasicBlock &B) {
     return succs;
 }
 
-/// Check if terminator is a return instruction
-bool isReturn(const BasicBlock &B) {
+/// @brief Determine whether @p B ends with an explicit function exit.
+/// @details Cross-block DSE treats return and trap terminators as safe path
+///          endpoints because no later instruction can observe the stored value
+///          on that path.  Malformed blocks with no terminator or non-exiting
+///          terminators are rejected by returning false, which keeps the analysis
+///          conservative when the CFG is incomplete.
+/// @param B Basic block whose final instruction is inspected.
+/// @return True when @p B terminates with `ret`, `trap`, or `trap_from_err`.
+bool isFunctionExit(const BasicBlock &B) {
     if (B.instructions.empty())
         return false;
-    return B.instructions.back().op == Opcode::Ret;
+    switch (B.instructions.back().op) {
+        case Opcode::Ret:
+        case Opcode::Trap:
+        case Opcode::TrapFromErr:
+            return true;
+        default:
+            return false;
+    }
 }
 
 } // namespace
@@ -498,12 +544,12 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM) {
                     }
                 }
 
-                if (isReturn(*succ))
+                if (isFunctionExit(*succ))
                     return finish(true);
 
                 const auto nextSuccs = getSuccessors(*succ);
                 if (nextSuccs.empty())
-                    return finish(true);
+                    return finish(false);
 
                 for (const auto &succLabel : nextSuccs)
                     if (!allPathsKillOrExit(succLabel))
@@ -525,17 +571,7 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM) {
         }
     }
 
-    // Remove dead stores in reverse order to preserve indices
-    std::sort(toRemove.begin(), toRemove.end(), [](const auto &a, const auto &b) {
-        if (a.first != b.first)
-            return a.first > b.first;
-        return a.second > b.second;
-    });
-
-    for (const auto &[block, idx] : toRemove) {
-        block->instructions.erase(block->instructions.begin() + static_cast<long>(idx));
-        changed = true;
-    }
+    changed = eraseInstructionSites(F, toRemove) != 0;
 
     return changed;
 }
@@ -555,7 +591,7 @@ bool runMemorySSADSE(Function &F, AnalysisManager &AM) {
     viper::analysis::MemorySSA &mssa =
         AM.getFunctionResult<viper::analysis::MemorySSA>(kAnalysisMemorySSA, F);
 
-    std::vector<std::pair<Block *, size_t>> toRemove;
+    std::vector<InstructionSite> toRemove;
 
     for (auto &B : F.blocks) {
         for (size_t i = 0; i < B.instructions.size(); ++i) {
@@ -569,17 +605,7 @@ bool runMemorySSADSE(Function &F, AnalysisManager &AM) {
     if (toRemove.empty())
         return false;
 
-    // Erase in reverse order to keep indices stable.
-    std::sort(toRemove.begin(), toRemove.end(), [](const auto &a, const auto &b) {
-        if (a.first != b.first)
-            return a.first > b.first;
-        return a.second > b.second;
-    });
-
-    for (const auto &[block, idx] : toRemove)
-        block->instructions.erase(block->instructions.begin() + static_cast<long>(idx));
-
-    return true;
+    return eraseInstructionSites(F, toRemove) != 0;
 }
 
 } // namespace il::transform

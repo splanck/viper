@@ -22,6 +22,7 @@
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Param.hpp"
+#include "il/internal/io/ParserUtil.hpp"
 #include "il/verify/BranchVerifier.hpp"
 #include "il/verify/DiagFormat.hpp"
 #include "il/verify/DiagSink.hpp"

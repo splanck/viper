@@ -360,7 +360,7 @@ struct OperandDispatcher {
         const auto *state = detail::VMAccess::currentExecState(vm);
         const auto *bc = state ? state->blockCache : nullptr;
         if (bc && state->ip < bc->instrOpOffset.size()) [[likely]] {
-            const uint32_t off = bc->instrOpOffset[state->ip];
+            const size_t off = bc->instrOpOffset[state->ip];
             lhs = evalFast(vm, fr, bc->resolvedOps[off], in.operands[0]);
             rhs = evalFast(vm, fr, bc->resolvedOps[off + 1], in.operands[1]);
         } else {
@@ -383,7 +383,7 @@ struct OperandDispatcher {
         const auto *state = detail::VMAccess::currentExecState(vm);
         const auto *bc = state ? state->blockCache : nullptr;
         if (bc && state->ip < bc->instrOpOffset.size()) [[likely]] {
-            const uint32_t off = bc->instrOpOffset[state->ip];
+            const size_t off = bc->instrOpOffset[state->ip];
             lhs = evalFast(vm, fr, bc->resolvedOps[off], in.operands[0]);
             rhs = evalFast(vm, fr, bc->resolvedOps[off + 1], in.operands[1]);
         } else {

@@ -16,9 +16,11 @@
 #include "il/transform/AnalysisManager.hpp"
 
 #include "il/core/Function.hpp"
+#include "il/core/Module.hpp"
 #include "il/transform/PassRegistry.hpp"
 
 #include <cassert>
+#include <unordered_set>
 #include <utility>
 
 namespace il::transform {
@@ -123,10 +125,21 @@ class AnalysisCacheInvalidator {
             return;
         if (preserved_.preservesAllFunctionAnalyses())
             return;
+        std::unordered_set<const core::Function *> liveFunctions;
+        liveFunctions.reserve(manager_.module_.functions.size());
+        std::unordered_set<const core::Function *> changedFunctions;
+        changedFunctions.reserve(manager_.module_.functions.size());
+        for (const auto &fn : manager_.module_.functions) {
+            liveFunctions.insert(&fn);
+            if (preserved_.isChangedFunction(fn.name))
+                changedFunctions.insert(&fn);
+        }
+
         auto eraseChangedFunctions =
-            [this](std::unordered_map<const core::Function *, std::any> &cacheForAnalysis) {
+            [&](std::unordered_map<const core::Function *, std::any> &cacheForAnalysis) {
                 for (auto it = cacheForAnalysis.begin(); it != cacheForAnalysis.end();) {
-                    if (it->first && preserved_.isChangedFunction(it->first->name))
+                    if (!it->first || !liveFunctions.contains(it->first) ||
+                        changedFunctions.contains(it->first))
                         it = cacheForAnalysis.erase(it);
                     else
                         ++it;
@@ -220,6 +233,22 @@ void AnalysisManager::invalidateAfterFunctionPass(const PreservedAnalyses &prese
                                                   core::Function &fn) {
     std::unique_lock<std::shared_mutex> lock(mutex_);
     AnalysisCacheInvalidator(*this, preserved).afterFunctionPass(fn);
+}
+
+/// @brief Drop a single cached function analysis for one function.
+/// @details Used by multi-phase passes that intentionally mutate the function
+///          between phases and then need one analysis recomputed without
+///          perturbing the rest of the cache.
+/// @param id Function-analysis identifier to remove.
+/// @param fn Function whose cached entry is invalidated.
+void AnalysisManager::invalidateFunctionResult(const std::string &id, core::Function &fn) {
+    std::unique_lock<std::shared_mutex> lock(mutex_);
+    auto cacheIt = functionCache_.find(id);
+    if (cacheIt == functionCache_.end())
+        return;
+    cacheIt->second.erase(&fn);
+    if (cacheIt->second.empty())
+        functionCache_.erase(cacheIt);
 }
 
 } // namespace il::transform

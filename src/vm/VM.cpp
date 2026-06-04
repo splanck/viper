@@ -92,15 +92,35 @@ namespace il::vm {
 static std::atomic<uint64_t> s_interruptEpoch{0};
 static std::atomic<uint64_t> s_interruptClearedEpoch{0};
 
+/// @brief Publish a process-wide interrupt request from normal execution code.
+/// @details This helper uses C++ atomics and is therefore called only outside
+///          POSIX signal-handler context. POSIX signals set a sig_atomic_t flag
+///          that is later folded into this epoch by @ref publishPendingSignalInterrupt.
+static void publishInterruptRequest() noexcept {
+    s_interruptEpoch.fetch_add(1, std::memory_order_relaxed);
+}
+
 #if defined(_WIN32)
 static BOOL WINAPI windowsCtrlHandler(DWORD /*ctrlType*/) {
-    s_interruptEpoch.fetch_add(1, std::memory_order_relaxed);
+    publishInterruptRequest();
     return TRUE; // We handled it; do not call the next handler.
 }
 #else
+static volatile std::sig_atomic_t s_posixInterruptPending = 0;
+
 static void posixSigintHandler(int /*signum*/) {
-    // async-signal-safe: std::atomic store is safe here.
-    s_interruptEpoch.fetch_add(1, std::memory_order_relaxed);
+    s_posixInterruptPending = 1;
+}
+
+/// @brief Fold a POSIX signal-handler flag into the atomic interrupt epoch.
+/// @details The handler itself only writes sig_atomic_t state. Interpreter
+///          threads call this helper from ordinary execution context where
+///          using C++ atomics is well-defined.
+static void publishPendingSignalInterrupt() noexcept {
+    if (s_posixInterruptPending) {
+        s_posixInterruptPending = 0;
+        publishInterruptRequest();
+    }
 }
 #endif
 
@@ -437,13 +457,42 @@ int64_t VM::run() {
         std::cerr << "missing main" << std::endl;
         return 1;
     }
-    return execFunction(*it->second, {}).i64;
+    const Function &mainFn = *it->second;
+    Slot result = execFunction(mainFn, {});
+    switch (mainFn.retType.kind) {
+        case il::core::Type::Kind::Void:
+            return 0;
+        case il::core::Type::Kind::I1:
+        case il::core::Type::Kind::I16:
+        case il::core::Type::Kind::I32:
+        case il::core::Type::Kind::I64:
+            return result.i64;
+        case il::core::Type::Kind::Str:
+            rt_str_release_maybe(result.str);
+            RuntimeBridge::trap(TrapKind::InvalidOperation,
+                                "main must return an integer or void",
+                                {},
+                                mainFn.name,
+                                "");
+            return 1;
+        case il::core::Type::Kind::F64:
+        case il::core::Type::Kind::Ptr:
+        case il::core::Type::Kind::Error:
+        case il::core::Type::Kind::ResumeTok:
+            RuntimeBridge::trap(TrapKind::InvalidOperation,
+                                "main must return an integer or void",
+                                {},
+                                mainFn.name,
+                                "");
+            return 1;
+    }
+    return 1;
 }
 
 /// @brief Request a graceful interrupt of any currently-running VM on this process.
 /// Equivalent to the user pressing Ctrl-C.  Thread-safe.
 void VM::requestInterrupt() noexcept {
-    s_interruptEpoch.fetch_add(1, std::memory_order_relaxed);
+    publishInterruptRequest();
 }
 
 /// @brief Clear any pending process-wide interrupt request.
@@ -453,6 +502,9 @@ void VM::clearInterrupt() noexcept {
 }
 
 bool VM::consumePendingInterrupt() noexcept {
+#if !defined(_WIN32)
+    publishPendingSignalInterrupt();
+#endif
     const uint64_t cleared = s_interruptClearedEpoch.load(std::memory_order_acquire);
     if (lastObservedInterruptEpoch_ < cleared)
         lastObservedInterruptEpoch_ = cleared;
@@ -462,6 +514,20 @@ bool VM::consumePendingInterrupt() noexcept {
         return false;
 
     lastObservedInterruptEpoch_ = epoch;
+    return true;
+}
+
+/// @brief Raise an interrupt trap if this VM has not consumed the current interrupt epoch.
+/// @details Called from the per-instruction dispatch hook and from coarser
+///          function-loop boundaries. Returning true means a trap observer
+///          chose to continue after the interrupt, so the dispatch state should
+///          pause instead of executing more instructions.
+/// @return True when an interrupt was delivered but control returned.
+bool VM::pollPendingInterrupt() {
+    if (!consumePendingInterrupt()) [[likely]]
+        return false;
+
+    RuntimeBridge::trap(TrapKind::Interrupt, "interrupted", {}, "", "");
     return true;
 }
 
@@ -844,8 +910,9 @@ VM::~VM() {
 /// @return Slot containing the function's return value.
 Slot VM::execFunction(const Function &fn, std::span<const Slot> args) {
     ActiveVMGuard guard(this);
-    lastTrap = {};
-    trapToken = {};
+    const bool topLevelCall = execStack.empty();
+    if (topLevelCall)
+        clearTrapState();
 
     // Check for stack overflow before pushing a new frame
     if (execStack.size() >= kMaxRecursionDepth) {
@@ -877,20 +944,25 @@ Slot VM::execFunction(const Function &fn, std::span<const Slot> args) {
     // Use the shared ExecStackGuard from VM.hpp (pre-allocated stack avoids heap allocs)
     ExecStackGuard guardStack(*this, st);
 
-    Slot result = runFunctionLoop(st);
+    try {
+        Slot result = runFunctionLoop(st);
 
-    // If the return value is a string, retain it before releasing frame buffers.
-    // releaseFrameBuffers will release all regIsStr registers, which would drop
-    // the refcount on the return value before the caller can retain it.
-    if (st.fr.func && st.fr.func->retType.kind == il::core::Type::Kind::Str &&
-        st.hasPendingResult) {
-        rt_str_retain_maybe(result.str);
+        // If the return value is a string, retain it before releasing frame buffers.
+        // releaseFrameBuffers will release all regIsStr registers, which would drop
+        // the refcount on the return value before the caller can retain or discard it.
+        if (st.fr.func && st.fr.func->retType.kind == il::core::Type::Kind::Str &&
+            st.hasPendingResult) {
+            rt_str_retain_maybe(result.str);
+        }
+
+        // Return frame buffers to pool for reuse by subsequent calls.
+        releaseFrameBuffers(st.fr);
+
+        return result;
+    } catch (...) {
+        releaseFrameBuffers(st.fr);
+        throw;
     }
-
-    // Return frame buffers to pool for reuse by subsequent calls
-    releaseFrameBuffers(st.fr);
-
-    return result;
 }
 
 /// @brief Return the number of instructions executed by the VM instance.
@@ -1032,8 +1104,13 @@ bool VM::prepareTrap(VmError &error) {
 
             fr.resumeState.block = faultBlock;
             fr.resumeState.faultIp = faultIp;
-            fr.resumeState.nextIp =
-                faultBlock ? std::min(faultIp + 1, faultBlock->instructions.size()) : faultIp;
+            if (faultBlock) {
+                const size_t instructionCount = faultBlock->instructions.size();
+                fr.resumeState.nextIp =
+                    faultIp < instructionCount ? faultIp + 1 : instructionCount;
+            } else {
+                fr.resumeState.nextIp = faultIp;
+            }
             fr.resumeState.valid = true;
 
             Slot errSlot{};
@@ -1050,6 +1127,10 @@ bool VM::prepareTrap(VmError &error) {
                 }
 
                 if (ownerFn && fr.func != ownerFn) {
+                    for (size_t idx = 0; idx < fr.regIsStr.size() && idx < fr.regs.size(); ++idx) {
+                        if (fr.regIsStr[idx])
+                            rt_str_release_maybe(fr.regs[idx].str);
+                    }
                     fr.func = ownerFn;
                     fr.regs.clear();
 

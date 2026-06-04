@@ -25,10 +25,8 @@
 #include "il/core/Module.hpp"
 #include "il/internal/io/ParserUtil.hpp"
 
-#include <cerrno>
 #include <charconv>
 #include <cstdint>
-#include <cstdlib>
 #include <limits>
 #include <string_view>
 
@@ -44,16 +42,14 @@ bool parseInteger(std::string_view text, long long &out) {
 }
 
 bool parseFloat(std::string_view text, double &out) {
-    std::string tmp{text};
-    char *end = nullptr;
-    errno = 0;
-    out = std::strtod(tmp.c_str(), &end);
-    return errno == 0 && end == tmp.c_str() + tmp.size();
+    return il::io::parseFloatLiteral(std::string{text}, out);
 }
 
 Expected<void> validateGlobal(const Global &global) {
     if (global.name.empty())
         return Expected<void>{makeError({}, "global has empty name")};
+    if (!il::io::isValidILIdentifier(global.name))
+        return Expected<void>{makeError({}, "global has malformed name @" + global.name)};
 
     if (global.type.kind == Type::Kind::Void || global.type.kind == Type::Kind::Error ||
         global.type.kind == Type::Kind::ResumeTok) {

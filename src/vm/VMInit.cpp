@@ -36,6 +36,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -169,6 +171,59 @@ size_t globalStorageSize(Type::Kind kind) {
     return 0;
 }
 
+/// @brief Advance @p cursor past trailing ASCII whitespace.
+/// @param cursor Pointer into a null-terminated initializer string.
+/// @return Pointer to the first non-whitespace byte after @p cursor.
+const char *skipTrailingSpace(const char *cursor) noexcept {
+    while (cursor && *cursor && std::isspace(static_cast<unsigned char>(*cursor)))
+        ++cursor;
+    return cursor;
+}
+
+/// @brief Parse a signed integer global initializer with full validation.
+/// @details Rejects empty input, partial parses, errno overflow, and values
+///          outside the requested inclusive range. The VM stores initializers
+///          into fixed-width global slots, so accepting truncation here would
+///          make malformed IL observe implementation-defined state.
+/// @param global Global whose initializer is being parsed, used for diagnostics.
+/// @param minValue Smallest accepted value.
+/// @param maxValue Largest accepted value.
+/// @return Parsed signed value within the requested range.
+int64_t parseCheckedIntegerInitializer(const Global &global, int64_t minValue, int64_t maxValue) {
+    errno = 0;
+    char *end = nullptr;
+    const char *text = global.init.c_str();
+    const long long parsed = std::strtoll(text, &end, 10);
+    const char *rawEnd = end;
+    end = const_cast<char *>(skipTrailingSpace(end));
+    if (text == rawEnd || !end || *end != '\0' || errno == ERANGE || parsed < minValue ||
+        parsed > maxValue) {
+        throw std::runtime_error("VM initialization failed: invalid initializer for global '" +
+                                 global.name + "'");
+    }
+    return static_cast<int64_t>(parsed);
+}
+
+/// @brief Parse a floating-point global initializer with full validation.
+/// @details Requires the entire string to be consumed and rejects errno range
+///          errors so invalid literals do not silently become zero, infinity,
+///          or a host-specific approximation.
+/// @param global Global whose initializer is being parsed.
+/// @return Parsed double-precision initializer.
+double parseCheckedFloatInitializer(const Global &global) {
+    errno = 0;
+    char *end = nullptr;
+    const char *text = global.init.c_str();
+    const double parsed = std::strtod(text, &end);
+    const char *rawEnd = end;
+    end = const_cast<char *>(skipTrailingSpace(end));
+    if (text == rawEnd || !end || *end != '\0' || errno == ERANGE) {
+        throw std::runtime_error("VM initialization failed: invalid initializer for global '" +
+                                 global.name + "'");
+    }
+    return parsed;
+}
+
 void initializeGlobalStorage(const Global &global, void *storage) {
     if (global.init.empty())
         return;
@@ -176,30 +231,36 @@ void initializeGlobalStorage(const Global &global, void *storage) {
     switch (global.type.kind) {
         case Type::Kind::I1: {
             const uint8_t value =
-                static_cast<uint8_t>(std::strtoll(global.init.c_str(), nullptr, 10) & 1);
+                static_cast<uint8_t>(parseCheckedIntegerInitializer(global, 0, 1));
             std::memcpy(storage, &value, sizeof(value));
             break;
         }
         case Type::Kind::I16: {
-            const int16_t value =
-                static_cast<int16_t>(std::strtoll(global.init.c_str(), nullptr, 10));
+            const int16_t value = static_cast<int16_t>(parseCheckedIntegerInitializer(
+                global,
+                static_cast<int64_t>(std::numeric_limits<int16_t>::min()),
+                static_cast<int64_t>(std::numeric_limits<int16_t>::max())));
             std::memcpy(storage, &value, sizeof(value));
             break;
         }
         case Type::Kind::I32: {
-            const int32_t value =
-                static_cast<int32_t>(std::strtoll(global.init.c_str(), nullptr, 10));
+            const int32_t value = static_cast<int32_t>(parseCheckedIntegerInitializer(
+                global,
+                static_cast<int64_t>(std::numeric_limits<int32_t>::min()),
+                static_cast<int64_t>(std::numeric_limits<int32_t>::max())));
             std::memcpy(storage, &value, sizeof(value));
             break;
         }
         case Type::Kind::I64: {
-            const int64_t value =
-                static_cast<int64_t>(std::strtoll(global.init.c_str(), nullptr, 10));
+            const int64_t value = parseCheckedIntegerInitializer(
+                global,
+                std::numeric_limits<int64_t>::min(),
+                std::numeric_limits<int64_t>::max());
             std::memcpy(storage, &value, sizeof(value));
             break;
         }
         case Type::Kind::F64: {
-            const double value = std::strtod(global.init.c_str(), nullptr);
+            const double value = parseCheckedFloatInitializer(global);
             std::memcpy(storage, &value, sizeof(value));
             break;
         }
@@ -365,13 +426,22 @@ void VM::init(std::shared_ptr<ProgramState> program) {
             const size_t size = globalStorageSize(g.type.kind);
             if (size == 0)
                 throw std::runtime_error("VM initialization failed: unsupported global type");
-            void *storage = std::calloc(1, size);
+            std::unique_ptr<void, decltype(&std::free)> storage(std::calloc(1, size), &std::free);
             if (!storage) {
                 throw std::runtime_error(
                     "VM initialization failed: failed to allocate mutable global storage");
             }
-            initializeGlobalStorage(g, storage);
-            programState_->mutableGlobalMap[g.name] = storage;
+            initializeGlobalStorage(g, storage.get());
+            auto [globalIt, inserted] = programState_->mutableGlobalMap.emplace(g.name,
+                                                                                storage.get());
+            (void)inserted;
+            try {
+                programState_->mutableGlobalSizes.emplace(storage.get(), size);
+            } catch (...) {
+                programState_->mutableGlobalMap.erase(globalIt);
+                throw;
+            }
+            storage.release();
         }
         programState_->initComplete.store(true, std::memory_order_release);
     }
@@ -598,10 +668,19 @@ Frame VM::setupFrame(const Function &fn, std::span<const Slot> args, const Basic
                 {},
                 fn.name,
                 bb->label);
+            bb = nullptr;
+            return fr;
         }
         for (size_t i = 0; i < params.size() && i < args.size(); ++i) {
             const auto id = params[i].id;
-            assert(id < fr.params.size());
+            if (id >= fr.params.size()) {
+                RuntimeBridge::trap(TrapKind::InvalidOperation,
+                                    "entry parameter ID out of range",
+                                    {},
+                                    fn.name,
+                                    bb->label);
+                continue;
+            }
             const bool isStringParam = params[i].type.kind == Type::Kind::Str;
             if (isStringParam) {
                 if (fr.paramsSet[id])

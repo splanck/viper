@@ -67,6 +67,21 @@ struct SourceRange {
     /// @brief Check whether both endpoints reference tracked source
     ///        locations.
     [[nodiscard]] bool isValid() const;
+
+    /// @brief Check whether the range has complete, ordered line/column data.
+    /// @return True when both endpoints are in the same file, both carry line and
+    ///         column coordinates, and @ref begin strictly precedes @ref end.
+    /// @details This is the predicate to use for machine-readable ranges such as
+    ///          JSON diagnostics and fix-it replacements. @ref isValid remains
+    ///          permissive for partially-known human diagnostic locations.
+    [[nodiscard]] bool isConcrete() const;
+
+    /// @brief Check whether the range denotes a zero-width insertion point.
+    /// @return True when both endpoints identify the exact same concrete location.
+    /// @details Insertion ranges are useful to detect explicitly, but they are not
+    ///          concrete replacement spans and therefore do not satisfy
+    ///          @ref isConcrete.
+    [[nodiscard]] bool isInsertion() const;
 };
 
 } // namespace il::support

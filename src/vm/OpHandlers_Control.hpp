@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdlib>
+#include <limits>
 #include <numeric>
 #include <string>
 #include <type_traits>
@@ -57,14 +58,55 @@ struct SwitchMeta {
 };
 
 namespace inline_impl {
+/// @brief Validate switch.i32 metadata before cache construction.
+/// @details Ensures the instruction has a default label, a scrutinee operand,
+///          one constant integer case value per non-default label, and case
+///          values that fit the i32 dispatch domain. The helper returns false
+///          after trapping so non-terminating trap observers cannot fall through
+///          into malformed metadata.
+/// @param in Switch instruction to validate.
+/// @param fr Active frame used for diagnostic function naming.
+/// @param bb Current block pointer used for diagnostic block naming.
+/// @return True when metadata is safe to consume.
+inline bool validateSwitchI32Metadata(const il::core::Instr &in,
+                                      const Frame &fr,
+                                      const il::core::BasicBlock *bb) {
+    auto trapInvalid = [&](std::string message) {
+        RuntimeBridge::trap(TrapKind::InvalidOperation,
+                            message,
+                            in.loc,
+                            fr.func ? fr.func->name : std::string(),
+                            bb ? bb->label : std::string());
+        return false;
+    };
+
+    if (in.op != il::core::Opcode::SwitchI32)
+        return trapInvalid("expected switch.i32 instruction");
+    if (in.labels.empty())
+        return trapInvalid("switch.i32 missing default target");
+    if (in.operands.size() < in.labels.size())
+        return trapInvalid("switch.i32 missing case operand");
+
+    const size_t caseCount = switchCaseCount(in);
+    if (caseCount + 1 > in.labels.size())
+        return trapInvalid("switch.i32 target count mismatch");
+    for (size_t idx = 0; idx < caseCount; ++idx) {
+        const il::core::Value &value = switchCaseValue(in, idx);
+        if (value.kind != il::core::Value::Kind::ConstInt)
+            return trapInvalid("switch.i32 case requires integer literal");
+        if (value.i64 < std::numeric_limits<int32_t>::min() ||
+            value.i64 > std::numeric_limits<int32_t>::max())
+            return trapInvalid("switch.i32 case value out of i32 range");
+    }
+    return true;
+}
+
 /// @brief Extract switch case metadata from an instruction.
 /// @details Builds a list of distinct case values and their successor indices.
 ///          Duplicate case values are ignored to preserve deterministic behavior.
 /// @param in switch.i32 instruction to analyze.
 /// @return Populated SwitchMeta describing cases and default index.
 inline SwitchMeta collectSwitchMeta(const il::core::Instr &in) {
-    assert(in.op == il::core::Opcode::SwitchI32 && "expected switch.i32 instruction");
-
     SwitchMeta meta{};
     meta.key = static_cast<const void *>(&in);
     meta.defaultIdx = !in.labels.empty() ? 0 : -1;
@@ -78,8 +120,6 @@ inline SwitchMeta collectSwitchMeta(const il::core::Instr &in) {
 
     for (size_t idx = 0; idx < caseCount; ++idx) {
         const il::core::Value &value = switchCaseValue(in, idx);
-        assert(value.kind == il::core::Value::Kind::ConstInt &&
-               "switch case requires integer literal");
         const int32_t caseValue = static_cast<int32_t>(value.i64);
         const auto [_, inserted] = seenValues.insert(caseValue);
         if (!inserted)
@@ -392,6 +432,12 @@ inline VM::ExecResult handleSwitchI32Impl(VM &vm,
                                           const VM::BlockMap &blocks,
                                           const il::core::BasicBlock *&bb,
                                           size_t &ip) {
+    if (!inline_impl::validateSwitchI32Metadata(in, fr, bb)) {
+        VM::ExecResult result{};
+        result.returned = true;
+        return result;
+    }
+
     const auto scrutineeScalar = il::vm::ops::common::eval_scrutinee(fr, in);
     const int32_t sel = scrutineeScalar.value;
 

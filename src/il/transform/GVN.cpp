@@ -164,7 +164,7 @@ void visitBlock(Function &F,
                 for (auto avail = it->second.rbegin(); avail != it->second.rend(); ++avail) {
                     if (!isTextuallyAvailable(blockOrder, *avail, B, idx))
                         continue;
-                    viper::il::replaceAllUses(F, *I.result, avail->value);
+                    viper::il::replaceUsesDominatedBy(F, *I.result, avail->value, *B, idx, DT);
                     B->instructions.erase(B->instructions.begin() + static_cast<long>(idx));
                     changed = true;
                     goto next_instruction;
@@ -183,7 +183,7 @@ void visitBlock(Function &F,
                 for (auto avail = kv.second.rbegin(); avail != kv.second.rend(); ++avail) {
                     if (!isTextuallyAvailable(blockOrder, *avail, B, idx))
                         continue;
-                    viper::il::replaceAllUses(F, *I.result, avail->value);
+                    viper::il::replaceUsesDominatedBy(F, *I.result, avail->value, *B, idx, DT);
                     B->instructions.erase(B->instructions.begin() + static_cast<long>(idx));
                     changed = true;
                     replaced = true;
@@ -245,7 +245,7 @@ void visitBlock(Function &F,
                 for (auto avail = found->second.rbegin(); avail != found->second.rend(); ++avail) {
                     if (!isTextuallyAvailable(blockOrder, *avail, B, idx))
                         continue;
-                    viper::il::replaceAllUses(F, *I.result, avail->value);
+                    viper::il::replaceUsesDominatedBy(F, *I.result, avail->value, *B, idx, DT);
                     B->instructions.erase(B->instructions.begin() + static_cast<long>(idx));
                     changed = true;
                     goto next_instruction;
@@ -324,7 +324,8 @@ PreservedAnalyses GVN::run(Function &function, AnalysisManager &analysis) {
 ///          a new @ref GVN instance.
 /// @param registry Pass registry to update.
 void registerGVNPass(PassRegistry &registry) {
-    registry.registerFunctionPass("gvn", []() { return std::make_unique<GVN>(); }, true);
+    // Sequential: depends on whole-module CFG-backed dominator analysis while deleting instructions.
+    registry.registerFunctionPass("gvn", []() { return std::make_unique<GVN>(); }, false);
 }
 
 } // namespace il::transform

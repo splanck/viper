@@ -29,6 +29,7 @@
 #include <cstddef>
 #include <queue>
 #include <stack>
+#include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -86,8 +87,10 @@ CFGContext::CFGContext(il::core::Module &module) : module(&module) {
 
             auto appendLabel = [&](const std::string &label) {
                 auto it = labelMap.find(label);
-                if (it == labelMap.end())
-                    return;
+                if (it == labelMap.end()) {
+                    throw std::invalid_argument("CFGContext: unknown label '" + label +
+                                                "' in function @" + fn.name);
+                }
                 succ.push_back(it->second);
             };
 

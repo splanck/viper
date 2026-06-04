@@ -508,17 +508,19 @@ bool fullyUnrollLoop(Function &function,
         if (latch.label != header.label) {
             // Find args from header to latch
             auto toLatchIdx = labelIndex(header.instructions.back(), latch.label);
-            if (toLatchIdx && *toLatchIdx < header.instructions.back().brArgs.size()) {
-                const auto &argsToLatch = headerTerm.brArgs[*toLatchIdx];
-                for (size_t i = 0; i < latch.params.size() && i < argsToLatch.size(); ++i) {
-                    Value mappedVal = argsToLatch[i];
-                    if (mappedVal.kind == Value::Kind::Temp) {
-                        auto it = valueMap.find(mappedVal.id);
-                        if (it != valueMap.end())
-                            mappedVal = it->second;
-                    }
-                    valueMap[latch.params[i].id] = mappedVal;
+            if (!toLatchIdx || *toLatchIdx >= header.instructions.back().brArgs.size())
+                return false;
+            const auto &argsToLatch = headerTerm.brArgs[*toLatchIdx];
+            if (argsToLatch.size() != latch.params.size())
+                return false;
+            for (size_t i = 0; i < latch.params.size(); ++i) {
+                Value mappedVal = argsToLatch[i];
+                if (mappedVal.kind == Value::Kind::Temp) {
+                    auto it = valueMap.find(mappedVal.id);
+                    if (it != valueMap.end())
+                        mappedVal = it->second;
                 }
+                valueMap[latch.params[i].id] = mappedVal;
             }
         }
 
@@ -540,6 +542,12 @@ bool fullyUnrollLoop(Function &function,
                 unsigned oldId = *cloned.result;
                 unsigned newId = nextId++;
                 cloned.result = newId;
+                std::string oldName;
+                if (oldId < function.valueNames.size())
+                    oldName = function.valueNames[oldId];
+                if (function.valueNames.size() <= newId)
+                    function.valueNames.resize(newId + 1);
+                function.valueNames[newId] = std::move(oldName);
                 valueMap[oldId] = Value::temp(newId);
             }
 
@@ -608,61 +616,63 @@ std::string_view LoopUnroll::id() const {
 }
 
 PreservedAnalyses LoopUnroll::run(Function &function, AnalysisManager &analysis) {
-    auto &loopInfo = analysis.getFunctionResult<LoopInfo>(kAnalysisLoopInfo, function);
-    auto &cfg = analysis.getFunctionResult<CFGInfo>(kAnalysisCFG, function);
-    (void)analysis.getFunctionResult<viper::analysis::DomTree>(kAnalysisDominators, function);
-
-    std::unordered_map<std::string, BasicBlock *> blockMap;
-    blockMap.reserve(function.blocks.size());
-    for (auto &blk : function.blocks)
-        blockMap.emplace(blk.label, &blk);
-
     bool changed = false;
+    for (;;) {
+        LoopInfo loopInfo = computeLoopInfo(analysis.module(), function);
+        CFGInfo cfg = buildCFG(analysis.module(), function);
 
-    // Process loops from innermost to outermost (reverse order in LoopInfo)
-    // LoopInfo stores loops with innermost first
-    for (const Loop &loop : loopInfo.loops()) {
-        // Skip nested loops (only unroll innermost)
-        if (!loop.childHeaders.empty())
-            continue;
+        std::unordered_map<std::string, BasicBlock *> blockMap;
+        blockMap.reserve(function.blocks.size());
+        for (auto &blk : function.blocks)
+            blockMap.emplace(blk.label, &blk);
 
-        BasicBlock *header = blockMap[loop.headerLabel];
-        if (!header)
-            continue;
+        bool changedThisIteration = false;
 
-        if (loop.latchLabels.size() != 1)
-            continue;
+        // Process loops from innermost to outermost (reverse order in LoopInfo).
+        // Restart after each mutation so CFGInfo and LoopInfo never outlive a block erase.
+        for (const Loop &loop : loopInfo.loops()) {
+            // Skip nested loops (only unroll innermost)
+            if (!loop.childHeaders.empty())
+                continue;
 
-        BasicBlock *latch = blockMap[loop.latchLabels[0]];
-        if (!latch)
-            continue;
+            BasicBlock *header = blockMap[loop.headerLabel];
+            if (!header)
+                continue;
 
-        BasicBlock *preheader = findPreheader(function, loop, *header, cfg, blockMap);
-        if (!preheader)
-            continue;
+            if (loop.latchLabels.size() != 1)
+                continue;
 
-        // Check loop size
-        size_t loopSize = countLoopInstructions(loop, function, blockMap);
-        if (loopSize > config_.maxLoopSize)
-            continue;
+            BasicBlock *latch = blockMap[loop.latchLabels[0]];
+            if (!latch)
+                continue;
 
-        // Analyze for counted loop pattern
-        auto counted = analyzeCountedLoop(function, loop, *header, *latch, preheader, blockMap);
-        if (!counted)
-            continue;
+            BasicBlock *preheader = findPreheader(function, loop, *header, cfg, blockMap);
+            if (!preheader)
+                continue;
 
-        // Check trip count threshold for full unrolling
-        if (counted->tripCount > config_.fullUnrollThreshold)
-            continue;
+            // Check loop size
+            size_t loopSize = countLoopInstructions(loop, function, blockMap);
+            if (loopSize > config_.maxLoopSize)
+                continue;
 
-        // Attempt full unroll
-        if (fullyUnrollLoop(function, loop, *header, *latch, preheader, *counted, blockMap)) {
-            changed = true;
-            // Rebuild block map after modification
-            blockMap.clear();
-            for (auto &blk : function.blocks)
-                blockMap.emplace(blk.label, &blk);
+            // Analyze for counted loop pattern
+            auto counted = analyzeCountedLoop(function, loop, *header, *latch, preheader, blockMap);
+            if (!counted)
+                continue;
+
+            // Check trip count threshold for full unrolling
+            if (counted->tripCount > config_.fullUnrollThreshold)
+                continue;
+
+            if (fullyUnrollLoop(function, loop, *header, *latch, preheader, *counted, blockMap)) {
+                changed = true;
+                changedThisIteration = true;
+                break;
+            }
         }
+
+        if (!changedThisIteration)
+            break;
     }
 
     if (!changed)
@@ -675,8 +685,9 @@ PreservedAnalyses LoopUnroll::run(Function &function, AnalysisManager &analysis)
 }
 
 void registerLoopUnrollPass(PassRegistry &registry) {
+    // Sequential: rewrites loop CFG and recomputes whole-module loop/CFG snapshots.
     registry.registerFunctionPass(
-        "loop-unroll", []() { return std::make_unique<LoopUnroll>(); }, true);
+        "loop-unroll", []() { return std::make_unique<LoopUnroll>(); }, false);
 }
 
 } // namespace il::transform

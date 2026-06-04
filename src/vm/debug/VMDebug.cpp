@@ -90,11 +90,20 @@ std::optional<Slot> VM::pauseOrAdvanceDebugScript(ExecState &st, std::string_vie
 /// @param bb Basic block that has just become active.
 void VM::transferBlockParams(Frame &fr, const BasicBlock &bb) {
     for (const auto &p : bb.params) {
-        assert(p.id < fr.params.size());
+        if (p.id >= fr.params.size() || p.id >= fr.paramsSet.size()) {
+            RuntimeBridge::trap(TrapKind::InvalidOperation,
+                                "block parameter ID out of range",
+                                {},
+                                fr.func ? fr.func->name : std::string{},
+                                bb.label);
+            continue;
+        }
         if (!fr.paramsSet[p.id])
             continue;
         if (fr.regs.size() <= p.id)
             fr.regs.resize(p.id + 1);
+        if (fr.regIsStr.size() <= p.id)
+            fr.regIsStr.resize(p.id + 1, 0);
 
         Instr pseudo;
         pseudo.result = p.id;

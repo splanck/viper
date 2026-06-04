@@ -31,6 +31,8 @@
 
 #include <bit>
 #include <cassert>
+#include <limits>
+#include <stdexcept>
 
 namespace il::vm {
 namespace {
@@ -75,12 +77,14 @@ ResolvedOp resolveValue(const il::core::Value &v) noexcept {
 BlockExecCache buildBlockExecCacheFor(const il::core::BasicBlock &block) {
     BlockExecCache bc;
     bc.instrOpOffset.reserve(block.instructions.size());
-    uint32_t offset = 0;
+    size_t offset = 0;
     for (const auto &instr : block.instructions) {
         bc.instrOpOffset.push_back(offset);
         for (const auto &op : instr.operands)
             bc.resolvedOps.push_back(resolveValue(op));
-        offset += static_cast<uint32_t>(instr.operands.size());
+        if (instr.operands.size() > std::numeric_limits<size_t>::max() - offset)
+            throw std::overflow_error("VM operand cache offset overflow");
+        offset += instr.operands.size();
     }
     return bc;
 }

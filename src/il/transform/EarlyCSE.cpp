@@ -74,11 +74,13 @@ static bool isTextuallyAvailable(const std::unordered_map<const BasicBlock *, st
 /// @param B         Block being processed.
 /// @param F         Function being optimized; used for safe whole-function
 ///                  operand rewrites after an instruction is removed.
+/// @param domTree   Dominator tree used to scope temp-producing replacements.
 /// @param scopes    Stack of expression tables; the back element is the
 ///                  current scope. May be modified (entries appended to back).
 /// @return True if any instruction was removed from @p B.
 bool processBlock(BasicBlock &B,
                   Function &F,
+                  const viper::analysis::DomTree &domTree,
                   std::vector<CSETable> &scopes,
                   const std::unordered_map<const BasicBlock *, std::size_t> &blockOrder) {
     bool changed = false;
@@ -98,7 +100,7 @@ bool processBlock(BasicBlock &B,
                 continue;
             if (!isTextuallyAvailable(blockOrder, hit->second.block, &B))
                 continue;
-            viper::il::replaceAllUses(F, *I.result, hit->second.value);
+            viper::il::replaceUsesDominatedBy(F, *I.result, hit->second.value, B, idx, domTree);
             B.instructions.erase(B.instructions.begin() + static_cast<long>(idx));
             changed = true;
             found = true;
@@ -171,7 +173,7 @@ bool runEarlyCSE(Module &M, Function &F) {
             // Schedule scope pop after all children are processed.
             worklist.push_back({nullptr});
 
-            changed |= processBlock(*item.block, F, scopes, blockOrder);
+            changed |= processBlock(*item.block, F, domTree, scopes, blockOrder);
 
             // Schedule dominated children (order doesn't matter for correctness).
             auto childIt = domTree.children.find(item.block);

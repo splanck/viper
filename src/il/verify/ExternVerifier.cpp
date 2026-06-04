@@ -15,6 +15,7 @@
 
 #include "il/core/Extern.hpp"
 #include "il/core/Module.hpp"
+#include "il/internal/io/ParserUtil.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
 #include <sstream>
@@ -103,6 +104,9 @@ Expected<void> ExternVerifier::run(const Module &module, DiagSink &) {
     externs_.clear();
 
     for (const auto &ext : module.externs) {
+        if (ext.name.empty() || !il::io::isValidILIdentifier(ext.name))
+            return Expected<void>{makeError({}, "extern has malformed name @" + ext.name)};
+
         for (const Type &param : ext.params) {
             if (!isExternParamTypeSupported(param.kind)) {
                 return Expected<void>{makeError(

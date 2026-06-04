@@ -29,7 +29,42 @@
 
 #include "support/diag_capture.hpp"
 
+#include <string_view>
+
 namespace il::support {
+namespace {
+/// @brief Fallback message used when a legacy API fails silently.
+constexpr std::string_view kEmptyCaptureFallback = "legacy operation failed without diagnostic output";
+
+/// @brief Remove formatting artifacts from captured legacy diagnostic text.
+/// @param text Captured text emitted by a legacy bool-plus-ostream API.
+/// @return Message text suitable for storing in a structured error diagnostic.
+/// @details Legacy helpers often write already-formatted diagnostics such as
+///          "error: message\n". DiagCapture converts the text back into a
+///          structured error, so this helper trims trailing line terminators and
+///          strips a leading severity prefix to avoid printing "error: error:".
+std::string normalizeCapturedMessage(std::string text) {
+    while (!text.empty() && (text.back() == '\n' || text.back() == '\r'))
+        text.pop_back();
+
+    constexpr std::string_view kErrorPrefix = "error: ";
+    constexpr std::string_view kWarningPrefix = "warning: ";
+    constexpr std::string_view kNotePrefix = "note: ";
+    const auto stripPrefix = [&text](std::string_view prefix) {
+        if (text.size() >= prefix.size() && std::string_view{text}.substr(0, prefix.size()) == prefix) {
+            text.erase(0, prefix.size());
+            return true;
+        }
+        return false;
+    };
+    (void)(stripPrefix(kErrorPrefix) || stripPrefix(kWarningPrefix) || stripPrefix(kNotePrefix));
+
+    if (text.empty())
+        return std::string{kEmptyCaptureFallback};
+    return text;
+}
+} // namespace
+
 /// @brief Write the given diagnostic to the supplied output stream.
 ///
 /// @details Simply forwards to @ref printDiag so all formatting (severity
@@ -54,7 +89,7 @@ void DiagCapture::printTo(std::ostream &out, const Diag &diag) {
 ///
 /// @return Diagnostic containing a copy of the captured text.
 Diag DiagCapture::toDiag() const {
-    return makeError({}, ss.str());
+    return makeError({}, normalizeCapturedMessage(ss.str()));
 }
 
 /// @brief Bridge a boolean success flag to an Expected<void> diagnostic result.

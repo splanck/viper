@@ -436,6 +436,59 @@ int8_t rt_heap_try_get_header(void *payload, rt_heap_hdr_t **out_hdr) {
     return 1;
 }
 
+/// @brief Check whether @p ptr and @p bytes are wholly inside one tracked heap payload.
+/// @details VM memory instructions commonly dereference object fields, array
+///          elements, and string payload bytes through interior pointers derived
+///          by pointer arithmetic. The exact-payload registry lookup is too
+///          narrow for those addresses, so this helper scans the live registry
+///          while holding the heap lock and compares the candidate byte range
+///          against each allocation's payload extent. It rejects null starts,
+///          unknown pointers, freed/deferred-zero allocations, corrupt headers,
+///          and ranges that cross a payload boundary or overflow the allocation.
+/// @param ptr Candidate range start.
+/// @param bytes Number of bytes requested.
+/// @return 1 when the range is fully contained by a live payload, otherwise 0.
+int8_t rt_heap_contains_range(const void *ptr, size_t bytes) {
+    if (!ptr)
+        return 0;
+
+    const uintptr_t address = (uintptr_t)ptr;
+    int found = 0;
+
+    rt_heap_registry_lock_();
+    if (g_heap_registry_.slots && g_heap_registry_.capacity > 0) {
+        for (size_t i = 0; i < g_heap_registry_.capacity; ++i) {
+            void *payload = g_heap_registry_.slots[i];
+            if (!rt_heap_registry_slot_is_live_(payload))
+                continue;
+
+            rt_heap_hdr_t *hdr = (rt_heap_hdr_t *)((uint8_t *)payload - sizeof(rt_heap_hdr_t));
+            if (!hdr || hdr->magic != RT_MAGIC)
+                continue;
+            if (__atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) == 0)
+                continue;
+            if (hdr->alloc_size < sizeof(rt_heap_hdr_t))
+                continue;
+
+            const uintptr_t begin = (uintptr_t)payload;
+            if (address < begin)
+                continue;
+
+            const size_t payload_bytes = hdr->alloc_size - sizeof(rt_heap_hdr_t);
+            const uintptr_t offset = address - begin;
+            if (offset > payload_bytes)
+                continue;
+            if (bytes <= payload_bytes - (size_t)offset) {
+                found = 1;
+                break;
+            }
+        }
+    }
+    rt_heap_registry_unlock_();
+
+    return found ? 1 : 0;
+}
+
 /// @brief Return a validated live heap header or raise a runtime trap.
 /// @details This is intentionally stricter than the historical direct
 ///          payload-to-header cast. Public heap operations can receive stale

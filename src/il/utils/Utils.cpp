@@ -17,6 +17,7 @@
 /// @details Centralising the helpers here keeps cross-cutting utilities such as
 ///          `belongsToBlock` and `isTerminator` available without bloating the
 ///          headers included throughout the compiler pipeline.
+#include "il/analysis/Dominators.hpp"
 #include "il/utils/Utils.hpp"
 
 #include "il/core/BasicBlock.hpp"
@@ -26,6 +27,8 @@
 #include "il/core/Value.hpp"
 
 #include <algorithm>
+#include <limits>
+#include <stdexcept>
 #include <string_view>
 
 namespace viper::il {
@@ -129,6 +132,78 @@ void replaceAllUses(::il::core::Function &F,
     }
 }
 
+/// @brief Test dominance from an already-materialized dominator tree.
+/// @details Uses the public immediate-dominator map directly so this utility
+///          does not depend on the out-of-line `DomTree::dominates` symbol. That
+///          keeps `il_utils` usable in small tests that do not link `il_analysis`.
+/// @param domTree Dominator tree whose map is queried.
+/// @param dominator Candidate dominating block.
+/// @param block Candidate dominated block.
+/// @return True when @p dominator is on @p block's idom chain.
+bool dominatesInTree(const ::viper::analysis::DomTree &domTree,
+                     ::il::core::BasicBlock *dominator,
+                     ::il::core::BasicBlock *block) {
+    if (!dominator || !block)
+        return false;
+    for (auto *current = block; current != nullptr;) {
+        if (current == dominator)
+            return true;
+        auto it = domTree.idom.find(current);
+        if (it == domTree.idom.end() || it->second == current)
+            break;
+        current = it->second;
+    }
+    return false;
+}
+
+/// @brief Replace uses of @p tempId only in instructions dominated by @p rootBlock.
+/// @details This dominance-aware variant is used by CSE/GVN when the replacement
+///          value may be another temporary. It keeps same-block replacements after
+///          the redundant definition and rewrites all instructions in blocks
+///          dominated by that definition block.
+/// @param F Function whose operands are rewritten.
+/// @param tempId Temporary identifier to replace.
+/// @param replacement Dominating replacement value.
+/// @param rootBlock Block containing the redundant definition.
+/// @param rootInstrIndex Instruction index of the redundant definition.
+/// @param domTree Dominator tree for @p F.
+/// @sideeffect Mutates operands and branch arguments in place.
+void replaceUsesDominatedBy(::il::core::Function &F,
+                            unsigned tempId,
+                            const ::il::core::Value &replacement,
+                            const ::il::core::BasicBlock &rootBlock,
+                            std::size_t rootInstrIndex,
+                            const ::viper::analysis::DomTree &domTree) {
+    using ::il::core::BasicBlock;
+    using ::il::core::Value;
+
+    auto shouldRewriteInstruction = [&](const BasicBlock &block, std::size_t instrIndex) {
+        if (&block == &rootBlock)
+            return instrIndex > rootInstrIndex;
+        return dominatesInTree(domTree,
+                               const_cast<BasicBlock *>(&rootBlock),
+                               const_cast<BasicBlock *>(&block));
+    };
+
+    for (auto &B : F.blocks) {
+        for (std::size_t instrIndex = 0; instrIndex < B.instructions.size(); ++instrIndex) {
+            if (!shouldRewriteInstruction(B, instrIndex))
+                continue;
+            auto &I = B.instructions[instrIndex];
+            for (auto &Op : I.operands) {
+                if (Op.kind == Value::Kind::Temp && Op.id == tempId)
+                    Op = replacement;
+            }
+            for (auto &argList : I.brArgs) {
+                for (auto &Arg : argList) {
+                    if (Arg.kind == Value::Kind::Temp && Arg.id == tempId)
+                        Arg = replacement;
+                }
+            }
+        }
+    }
+}
+
 /// @brief Compute the next unused temporary identifier in function @p F.
 /// @details Inspects procedure parameters, block parameters, instruction
 ///          results, operands, and branch arguments to find the highest-numbered
@@ -142,7 +217,12 @@ unsigned nextTempId(const ::il::core::Function &F) {
     using ::il::core::Value;
 
     unsigned next = 0;
-    auto update = [&](unsigned v) { next = std::max(next, v + 1); };
+    auto update = [&](unsigned v) {
+        if (v == std::numeric_limits<unsigned>::max())
+            throw std::overflow_error("nextTempId: temporary identifier space exhausted");
+        else
+            next = std::max(next, v + 1);
+    };
 
     // Scan function parameters
     for (const auto &p : F.params) {

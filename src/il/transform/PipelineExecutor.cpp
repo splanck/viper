@@ -29,6 +29,7 @@
 #include <iostream>
 #include <string_view>
 #include <thread>
+#include <unordered_set>
 #include <utility>
 
 namespace il::transform {
@@ -85,6 +86,7 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
 
     bool changedSinceLastCleanup = true;
     bool hasRunAnyPass = false;
+    std::unordered_set<std::string> cleanupPassesRunSinceChange;
     for (const auto &passId : pipeline) {
         driver.registerPass(
             passId,
@@ -93,9 +95,11 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
              &analysis,
              &changedSinceLastCleanup,
              &hasRunAnyPass,
+             &cleanupPassesRunSinceChange,
              passId,
              collectMetrics]() -> bool {
-                if (hasRunAnyPass && isCleanupPass(passId) && !changedSinceLastCleanup)
+                if (hasRunAnyPass && isCleanupPass(passId) && !changedSinceLastCleanup &&
+                    cleanupPassesRunSinceChange.contains(passId))
                     return true;
 
                 PassMetrics metrics{};
@@ -114,6 +118,7 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
 
                 bool executed = false;
                 bool passChanged = false;
+                AnalysisCounts parallelAnalysisCounts{};
                 switch (factory->kind) {
                     case detail::PassKind::Module: {
                         if (!factory->makeModule)
@@ -154,10 +159,11 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                             std::atomic_size_t nextIndex{0};
                             std::atomic_bool allOk{true};
                             std::atomic_bool anyChanged{false};
+                            std::vector<AnalysisCounts> workerCounts(workerCount);
                             std::vector<std::thread> workers;
                             workers.reserve(workerCount);
                             for (std::size_t w = 0; w < workerCount; ++w) {
-                                workers.emplace_back([&]() {
+                                workers.emplace_back([&, w]() {
                                     AnalysisManager workerAnalysis(module, analysisRegistry_);
                                     for (;;) {
                                         std::size_t idx = nextIndex.fetch_add(1);
@@ -171,10 +177,16 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                                         if (functionChanged)
                                             anyChanged.store(true, std::memory_order_relaxed);
                                     }
+                                    workerCounts[w] = workerAnalysis.counts();
                                 });
                             }
                             for (auto &worker : workers)
                                 worker.join();
+                            for (const AnalysisCounts &counts : workerCounts) {
+                                parallelAnalysisCounts.moduleComputations += counts.moduleComputations;
+                                parallelAnalysisCounts.functionComputations +=
+                                    counts.functionComputations;
+                            }
                             executedAll = allOk.load(std::memory_order_relaxed);
                             passChanged = anyChanged.load(std::memory_order_relaxed);
                         } else {
@@ -210,18 +222,24 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                     metrics.after = computeIRSize(module);
                     AnalysisCounts countsAfter = analysis.counts();
                     metrics.analysesComputed.moduleComputations =
-                        countsAfter.moduleComputations - countsBefore.moduleComputations;
+                        countsAfter.moduleComputations - countsBefore.moduleComputations +
+                        parallelAnalysisCounts.moduleComputations;
                     metrics.analysesComputed.functionComputations =
-                        countsAfter.functionComputations - countsBefore.functionComputations;
+                        countsAfter.functionComputations - countsBefore.functionComputations +
+                        parallelAnalysisCounts.functionComputations;
                     metrics.duration = passEndTime - startTime;
                     instrumentation_.passMetrics(passId, metrics);
                 }
 
                 hasRunAnyPass = true;
-                if (isCleanupPass(passId))
+                if (passChanged)
+                    cleanupPassesRunSinceChange.clear();
+                if (isCleanupPass(passId)) {
                     changedSinceLastCleanup = passChanged;
-                else if (passChanged)
+                    cleanupPassesRunSinceChange.insert(passId);
+                } else if (passChanged) {
                     changedSinceLastCleanup = true;
+                }
 
                 return true;
             });

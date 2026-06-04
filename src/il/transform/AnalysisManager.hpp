@@ -215,6 +215,14 @@ class AnalysisManager {
     /// @param fn Function that was transformed.
     void invalidateAfterFunctionPass(const PreservedAnalyses &preserved, core::Function &fn);
 
+    /// @brief Invalidate one cached function-analysis result for a function.
+    /// @details Provides a narrow escape hatch for multi-phase passes that need
+    ///          to recompute a specific analysis after an internal mutation while
+    ///          leaving unrelated cached analyses intact.
+    /// @param id Identifier of the function analysis to drop.
+    /// @param fn Function whose cached analysis entry should be erased.
+    void invalidateFunctionResult(const std::string &id, core::Function &fn);
+
     /// @brief Get mutable access to the module.
     /// @return Reference to the managed module.
     core::Module &module() {

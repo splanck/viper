@@ -70,6 +70,7 @@ struct RtContext;
 #include <exception>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <span>
 #include <string>
@@ -169,7 +170,7 @@ static_assert(alignof(ResolvedOp) == 8, "ResolvedOp must be 8-byte aligned");
 ///          lhs and rhs without any additional indirection.
 struct BlockExecCache {
     /// @brief Per-instruction start offset into @c resolvedOps.
-    std::vector<uint32_t> instrOpOffset;
+    std::vector<size_t> instrOpOffset;
     /// @brief Flat array of all pre-resolved operands for the block.
     std::vector<ResolvedOp> resolvedOps;
 };
@@ -502,6 +503,17 @@ class VM {
 
     using MutableGlobalMap =
         std::unordered_map<std::string_view, void *, TransparentHashSV, TransparentEqualSV>;
+    using MutableGlobalSizeMap = std::unordered_map<const void *, size_t>;
+
+    /// @brief Classification result for a VM memory access.
+    /// @details Memory handlers use this to distinguish frame-local stack
+    ///          storage from shared mutable globals. Invalid ranges are trapped
+    ///          before dereferencing so malformed IL cannot read or write
+    ///          arbitrary process memory.
+    struct MemoryAccessInfo {
+        bool valid = false;        ///< True when the full byte range is VM-owned.
+        bool sharedGlobal = false; ///< True when the range belongs to a mutable global.
+    };
 
     /// @brief Shared "program instance" state used by multi-threaded VM execution.
     /// @details Owns the shared runtime context and shared module globals storage so VM threads
@@ -514,6 +526,13 @@ class VM {
         std::shared_ptr<RtContext> rtContext;     ///< Shared runtime context for VM threads.
         StrMap strMap;                            ///< Shared global string handles.
         MutableGlobalMap mutableGlobalMap;        ///< Shared mutable module globals storage.
+        MutableGlobalSizeMap mutableGlobalSizes;  ///< Byte sizes keyed by mutable global address.
+
+        /// @brief Serializes mutable global reads and writes across worker VMs.
+        /// @details ProgramState is shared by VM threads; the maps are immutable
+        ///          after initialization, but the pointed-to global storage is
+        ///          mutable and must be protected when accessed by the interpreter.
+        mutable std::mutex mutableGlobalMutex;
 
         /// CONC-009 fix: flag set after init completes; debug-asserted on map access.
         std::atomic<bool> initComplete{false};
@@ -596,6 +615,15 @@ class VM {
     ///          by the calling VM. Running VMs that already handled the current epoch are
     ///          unaffected.
     static void clearInterrupt() noexcept;
+
+    /// @brief Deliver a pending interrupt at an instruction boundary.
+    /// @details Checks the process-wide interrupt epoch and raises an interrupt
+    ///          trap when this VM has not yet observed it. If an embedding trap
+    ///          observer returns instead of unwinding, the method reports that
+    ///          dispatch should pause to prevent execution from continuing after
+    ///          the observed interrupt.
+    /// @return True when an interrupt trap was raised and returned to the caller.
+    bool pollPendingInterrupt();
 
     /// @brief Function signature for opcode handlers.
     using OpcodeHandler = ExecResult (*)(VM &,

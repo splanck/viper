@@ -17,6 +17,7 @@
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "runtime/rt.hpp" // For fast-path runtime function calls
 #include "vm/Marshal.hpp"
+#include "vm/OpcodeHandlerHelpers.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/ViperStringHandle.hpp"
 #include "vm/tco.hpp"
@@ -121,6 +122,8 @@ VM::ExecResult handleCall(VM &vm,
     // Guard to release any string result if not consumed (e.g., on exception or unused result)
     const bool isStringResult = (in.type.kind == il::core::Type::Kind::Str);
     ScopedSlotStringGuard outGuard(out.str, isStringResult);
+    const std::string functionName = fr.func ? fr.func->name : std::string{};
+    const std::string blockLabel = bb ? bb->label : std::string{};
 
     const auto &fnMap = VMAccess::functionMap(vm);
     auto it = fnMap.find(in.callee);
@@ -192,65 +195,72 @@ VM::ExecResult handleCall(VM &vm,
 
         auto fpIt = kFastPathMap.find(std::string_view(in.callee));
         if (fpIt != kFastPathMap.end()) {
-            bool handled = true;
+            auto trapFastPathArity = [&](size_t expected) -> VM::ExecResult {
+                RuntimeBridge::trap(TrapKind::DomainError,
+                                    il::vm::detail::formatArgumentCountError(
+                                        std::string_view(in.callee), expected, args.size()),
+                                    in.loc,
+                                    functionName,
+                                    blockLabel);
+                VM::ExecResult result{};
+                result.returned = true;
+                return result;
+            };
             switch (fpIt->second) {
                 case FastPathId::InkeyStr:
+                    if (args.size() != 0)
+                        return trapFastPathArity(0);
                     out.str = rt_inkey_str();
                     break;
                 case FastPathId::TermLocate:
-                    if (args.size() >= 2)
-                        rt_term_locate_i32(static_cast<int32_t>(args[0].i64),
-                                           static_cast<int32_t>(args[1].i64));
-                    else
-                        handled = false;
+                    if (args.size() != 2)
+                        return trapFastPathArity(2);
+                    rt_term_locate_i32(static_cast<int32_t>(args[0].i64),
+                                       static_cast<int32_t>(args[1].i64));
                     break;
                 case FastPathId::TermColor:
-                    if (args.size() >= 2)
-                        rt_term_color_i32(static_cast<int32_t>(args[0].i64),
-                                          static_cast<int32_t>(args[1].i64));
-                    else
-                        handled = false;
+                    if (args.size() != 2)
+                        return trapFastPathArity(2);
+                    rt_term_color_i32(static_cast<int32_t>(args[0].i64),
+                                      static_cast<int32_t>(args[1].i64));
                     break;
                 case FastPathId::TermCls:
+                    if (args.size() != 0)
+                        return trapFastPathArity(0);
                     rt_term_cls();
                     break;
                 case FastPathId::TimerMs:
+                    if (args.size() != 0)
+                        return trapFastPathArity(0);
                     out.i64 = rt_timer_ms();
                     break;
                 case FastPathId::SleepMs:
-                    if (args.size() >= 1)
-                        rt_sleep_ms(static_cast<int32_t>(args[0].i64));
-                    else
-                        handled = false;
+                    if (args.size() != 1)
+                        return trapFastPathArity(1);
+                    rt_sleep_ms(static_cast<int32_t>(args[0].i64));
                     break;
                 case FastPathId::Keypressed:
+                    if (args.size() != 0)
+                        return trapFastPathArity(0);
                     out.i64 = rt_keypressed();
                     break;
                 case FastPathId::TermAltScreen:
-                    if (args.size() >= 1)
-                        rt_term_alt_screen_i32(static_cast<int32_t>(args[0].i64));
-                    else
-                        handled = false;
+                    if (args.size() != 1)
+                        return trapFastPathArity(1);
+                    rt_term_alt_screen_i32(static_cast<int32_t>(args[0].i64));
                     break;
                 case FastPathId::TermCursorVisible:
-                    if (args.size() >= 1)
-                        rt_term_cursor_visible_i32(static_cast<int32_t>(args[0].i64));
-                    else
-                        handled = false;
+                    if (args.size() != 1)
+                        return trapFastPathArity(1);
+                    rt_term_cursor_visible_i32(static_cast<int32_t>(args[0].i64));
                     break;
             }
-            if (handled) {
-                ops::storeResult(fr, in, out);
-                return {};
-            }
+            ops::storeResult(fr, in, out);
+            return {};
         }
 
         // End of fast path - fall through to generic RuntimeBridge
         // =========================================================================
-
-        // Function and block names for error reporting
-        const std::string functionName = fr.func ? fr.func->name : std::string{};
-        const std::string blockLabel = bb ? bb->label : std::string{};
 
         // Build bindings and original values lazily only for runtime calls
         // Use SmallVector to avoid heap allocation for typical argument counts
@@ -281,19 +291,22 @@ VM::ExecResult handleCall(VM &vm,
             originalArgs.push_back(args[i]);
         }
 
-        out = RuntimeBridge::call(VMAccess::runtimeContext(vm),
-                                  std::string_view(in.callee),
-                                  std::span<const Slot>{args},
-                                  in.loc,
-                                  functionName,
-                                  blockLabel);
+        out = RuntimeBridge::callMutable(VMAccess::runtimeContext(vm),
+                                         std::string_view(in.callee),
+                                         std::span<Slot>{args.data(), args.size()},
+                                         in.loc,
+                                         functionName,
+                                         blockLabel);
 
         const auto *signature = il::runtime::findRuntimeSignature(in.callee);
         if (signature) {
             const size_t paramCount = std::min(args.size(), signature->paramTypes.size());
             for (size_t index = 0; index < paramCount; ++index) {
+                const bool forcedOutCopy =
+                    index < 64 &&
+                    (signature->ownedOutArgMask & (std::uint64_t{1} << index)) != 0;
                 // Compare slots using bitwise equality (safe for all types)
-                if (args[index].bitwiseEquals(originalArgs[index]))
+                if (!forcedOutCopy && args[index].bitwiseEquals(originalArgs[index]))
                     continue;
 
                 const auto kind = signature->paramTypes[index].kind;
@@ -370,10 +383,8 @@ VM::ExecResult handleCall(VM &vm,
             }
         }
     }
-    // If there's a result destination, storeResult will take ownership; dismiss the guard.
-    // If no result destination, the guard will release the string on scope exit.
-    if (in.result)
-        outGuard.dismiss();
+    // storeResult retains string destinations; the guard releases the transient
+    // call result reference after that retain succeeds.
     ops::storeResult(fr, in, out);
     return {};
 }
@@ -422,12 +433,12 @@ VM::ExecResult handleCallIndirect(VM &vm,
         } else {
             const std::string functionName = fr.func ? fr.func->name : std::string{};
             const std::string blockLabel = bb ? bb->label : std::string{};
-            out = RuntimeBridge::call(VMAccess::runtimeContext(vm),
-                                      std::string_view(calleeName),
-                                      std::span<const Slot>{args},
-                                      in.loc,
-                                      functionName,
-                                      blockLabel);
+            out = RuntimeBridge::callMutable(VMAccess::runtimeContext(vm),
+                                             std::string_view(calleeName),
+                                             std::span<Slot>{args.data(), args.size()},
+                                             in.loc,
+                                             functionName,
+                                             blockLabel);
         }
     } else {
         // Pointer-based indirect call
@@ -441,6 +452,17 @@ VM::ExecResult handleCallIndirect(VM &vm,
                                 blockLabel);
         }
         const auto *fn = reinterpret_cast<const il::core::Function *>(callee.ptr);
+        if (!VMAccess::isKnownFunctionPointer(vm, fn)) {
+            const std::string blockLabel = bb ? bb->label : std::string{};
+            RuntimeBridge::trap(TrapKind::InvalidOperation,
+                                "invalid indirect callee",
+                                in.loc,
+                                fr.func ? fr.func->name : std::string(),
+                                blockLabel);
+            VM::ExecResult trapped{};
+            trapped.returned = true;
+            return trapped;
+        }
         il::support::SmallVector<Slot, 8> args;
         if (in.operands.size() > 1) {
             args.reserve(in.operands.size() - 1);
@@ -450,10 +472,8 @@ VM::ExecResult handleCallIndirect(VM &vm,
         out = VMAccess::callFunction(vm, *fn, args);
     }
 
-    // If there's a result destination, storeResult will take ownership; dismiss the guard.
-    // If no result destination, the guard will release the string on scope exit.
-    if (in.result)
-        outGuard.dismiss();
+    // storeResult retains string destinations; the guard releases the transient
+    // call result reference after that retain succeeds.
     ops::storeResult(fr, in, out);
     return {};
 }

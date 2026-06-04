@@ -1187,7 +1187,8 @@ bool CheckOpt::runGuardOverflowElim(
 }
 
 void registerCheckOptPass(PassRegistry &registry) {
-    registry.registerFunctionPass("check-opt", []() { return std::make_unique<CheckOpt>(); }, true);
+    // Sequential: consumes whole-module dominator/loop analyses while moving checks.
+    registry.registerFunctionPass("check-opt", []() { return std::make_unique<CheckOpt>(); }, false);
 }
 
 } // namespace il::transform

@@ -264,7 +264,7 @@ TEST(ModuleLinker, ExternsMergedAndDeduplicated) {
     EXPECT_EQ(result.module.externs.size(), 1u);
 }
 
-TEST(ModuleLinker, ExternEffectAttributesAreMerged) {
+TEST(ModuleLinker, ExternEffectAttributesAreIntersected) {
     Module a;
     a.functions.push_back(makeI64Func("main", Linkage::Internal));
     Extern readonlyExtern{"Viper.Foo", Type(Type::Kind::I64), {Type(Type::Kind::Ptr)}};
@@ -284,8 +284,8 @@ TEST(ModuleLinker, ExternEffectAttributesAreMerged) {
     auto result = il::link::linkModules(std::move(modules));
     ASSERT_TRUE(result.succeeded());
     ASSERT_EQ(result.module.externs.size(), 1u);
-    EXPECT_TRUE(result.module.externs.front().attrs().readonly);
-    EXPECT_TRUE(result.module.externs.front().attrs().nothrow);
+    EXPECT_FALSE(result.module.externs.front().attrs().readonly);
+    EXPECT_FALSE(result.module.externs.front().attrs().nothrow);
 }
 
 TEST(ModuleLinker, ExternSignatureMismatchFails) {

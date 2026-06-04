@@ -151,6 +151,9 @@ VM::ExecResult branchToTarget(VM &vm,
                             in.loc,
                             fr.func ? fr.func->name : std::string(),
                             blockLabel);
+        VM::ExecResult result{};
+        result.returned = true;
+        return result;
     }
 
     il::vm::ops::common::Target target{};
@@ -189,6 +192,12 @@ VM::ExecResult handleSwitchI32(VM &vm,
                                const VM::BlockMap &blocks,
                                const il::core::BasicBlock *&bb,
                                size_t &ip) {
+    if (!inline_impl::validateSwitchI32Metadata(in, fr, bb)) {
+        VM::ExecResult result{};
+        result.returned = true;
+        return result;
+    }
+
     const auto scrutineeScalar = il::vm::ops::common::eval_scrutinee(fr, in);
     const int32_t sel = scrutineeScalar.value;
 

@@ -139,6 +139,10 @@ VM::ExecResult handleGEP(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
+    if (in.operands.size() < 2)
+        return inline_impl::trapMalformedMemoryInstruction(
+            in, fr, bb, "gep missing base or offset operand");
+
     Slot base = VMAccess::eval(vm, fr, in.operands[0]);
     Slot offset = VMAccess::eval(vm, fr, in.operands[1]);
 

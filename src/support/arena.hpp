@@ -97,14 +97,26 @@ class GrowingArena {
     /// @return Pointer to the constructed object (never nullptr).
     /// @details For trivially-destructible types, no tracking overhead is incurred.
     ///          For types with non-trivial destructors, the destructor will be
-    ///          called when the arena is destroyed or reset.
+    ///          called when the arena is destroyed or reset. Destructor tracking
+    ///          storage is reserved before construction so a bookkeeping allocation
+    ///          failure cannot leave a live object untracked.
     template <typename T, typename... Args> T *create(Args &&...args) {
+        if constexpr (!std::is_trivially_destructible_v<T>) {
+            if (destructors_.size() == destructors_.max_size())
+                throw std::bad_alloc();
+            destructors_.reserve(destructors_.size() + 1);
+        }
+
         void *mem = allocate(sizeof(T), alignof(T));
         T *obj = new (mem) T(std::forward<Args>(args)...);
 
-        // Track objects that need destruction
         if constexpr (!std::is_trivially_destructible_v<T>) {
-            destructors_.push_back({obj, [](void *p) { static_cast<T *>(p)->~T(); }});
+            try {
+                destructors_.push_back({obj, [](void *p) { static_cast<T *>(p)->~T(); }});
+            } catch (...) {
+                obj->~T();
+                throw;
+            }
         }
 
         return obj;

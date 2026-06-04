@@ -20,6 +20,7 @@
 #include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
 
+#include <cassert>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -82,16 +83,19 @@ template <class T> class Expected {
 
     /// @brief Access the stored value; requires hasValue().
     T &value() {
+        assert(value_.has_value());
         return *value_;
     }
 
     /// @brief Access the stored value; requires hasValue().
     const T &value() const {
+        assert(value_.has_value());
         return *value_;
     }
 
     /// @brief Access the diagnostic describing the failure.
     const Diag &error() const & {
+        assert(error_.has_value());
         return *error_;
     }
 

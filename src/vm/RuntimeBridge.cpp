@@ -85,16 +85,17 @@ using Thunk = VmResult (*)(VM &, FrameInfo &, const RuntimeCallContext &);
 /// @param fn Name of the function executing the call.
 /// @param block Name of the basic block executing the call.
 /// @return True when counts match; false when a trap was raised.
-static void validateArgumentCount(const RuntimeDescriptor &desc,
+static bool validateArgumentCount(const RuntimeDescriptor &desc,
                                   std::span<const Slot> args,
                                   const SourceLoc &loc,
                                   const std::string &fn,
                                   const std::string &block) {
     auto validation = il::vm::validateMarshalArity(desc, args.size());
     if (validation.ok)
-        return;
+        return true;
 
     RuntimeBridge::trap(TrapKind::DomainError, validation.errorMessage, loc, fn, block);
+    return false;
 }
 
 /// @brief Execute a runtime descriptor by marshalling arguments and collecting results.
@@ -430,7 +431,7 @@ static il::core::Type mapKind(il::runtime::signatures::SigParam::Kind k) {
         case K::Ptr:
             return Type(Type::Kind::Ptr);
         case K::Str:
-            return Type(Type::Kind::Ptr);
+            return Type(Type::Kind::Str);
     }
     return Type(Type::Kind::Void);
 }
@@ -488,6 +489,21 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
                          const SourceLoc &loc,
                          const std::string &fn,
                          const std::string &block) {
+    std::vector<Slot> mutableArgs(args.begin(), args.end());
+    return RuntimeBridge::callMutable(
+        ctx, name, std::span<Slot>{mutableArgs.data(), mutableArgs.size()}, loc, fn, block);
+}
+
+/// @brief Invoke a runtime helper by name with mutable argument slots.
+/// @details Installs trap context, validates arity, and dispatches through the
+///          active extern or built-in descriptor. Mutations made by the native
+///          handler to argument slots remain visible to the opcode handler.
+Slot RuntimeBridge::callMutable(RuntimeCallContext &ctx,
+                                std::string_view name,
+                                std::span<Slot> args,
+                                const SourceLoc &loc,
+                                const std::string &fn,
+                                const std::string &block) {
     ctx.loc = loc;
     ctx.function = fn;
     ctx.block = block;
@@ -503,10 +519,11 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
             TrapKind::DomainError, diag::formatUnknownRuntimeHelper(name), loc, fn, block);
         return result;
     }
-    validateArgumentCount(*desc, args, loc, fn, block);
+    if (!validateArgumentCount(*desc, args, loc, fn, block))
+        return result;
 
     ctx.descriptor = desc;
-    ctx.argBegin = args.empty() ? nullptr : const_cast<Slot *>(args.data());
+    ctx.argBegin = args.empty() ? nullptr : args.data();
     ctx.argCount = args.size();
 
     VM *activeVm = VM::activeInstance();
@@ -521,6 +538,21 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
                          const SourceLoc &loc,
                          const std::string &fn,
                          const std::string &block) {
+    std::vector<Slot> mutableArgs(args.begin(), args.end());
+    return RuntimeBridge::callMutable(
+        ctx, desc, std::span<Slot>{mutableArgs.data(), mutableArgs.size()}, loc, fn, block);
+}
+
+/// @brief Invoke a resolved runtime descriptor with mutable argument slots.
+/// @details Applies extern overrides for the descriptor name, validates the
+///          effective signature, and preserves slot mutations for VM copy-back
+///          processing.
+Slot RuntimeBridge::callMutable(RuntimeCallContext &ctx,
+                                const il::runtime::RuntimeDescriptor &desc,
+                                std::span<Slot> args,
+                                const SourceLoc &loc,
+                                const std::string &fn,
+                                const std::string &block) {
     ctx.loc = loc;
     ctx.function = fn;
     ctx.block = block;
@@ -533,10 +565,11 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
     if (!effectiveDesc)
         effectiveDesc = &desc;
 
-    validateArgumentCount(*effectiveDesc, args, loc, fn, block);
+    if (!validateArgumentCount(*effectiveDesc, args, loc, fn, block))
+        return result;
 
     ctx.descriptor = effectiveDesc;
-    ctx.argBegin = args.empty() ? nullptr : const_cast<Slot *>(args.data());
+    ctx.argBegin = args.empty() ? nullptr : args.data();
     ctx.argCount = args.size();
 
     VM *activeVm = VM::activeInstance();

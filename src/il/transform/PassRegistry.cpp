@@ -14,6 +14,14 @@
 
 #include "il/transform/PassRegistry.hpp"
 
+#include "il/core/BasicBlock.hpp"
+#include "il/core/Extern.hpp"
+#include "il/core/Function.hpp"
+#include "il/core/Global.hpp"
+#include "il/core/Instr.hpp"
+#include "il/core/Module.hpp"
+#include "il/core/Param.hpp"
+#include "il/core/Value.hpp"
 #include "il/transform/AnalysisIDs.hpp"
 #include "il/transform/AnalysisManager.hpp"
 #include "il/transform/ConstFold.hpp"
@@ -34,11 +42,157 @@
 
 #include <algorithm>
 #include <atomic>
+#include <functional>
 #include <thread>
 #include <utility>
 #include <vector>
 
 namespace il::transform {
+namespace {
+
+/// @brief Combine one hash value into an accumulated fingerprint.
+/// @details Uses the standard boost-style hash-combine formula to build compact
+///          semantic fingerprints for legacy void-returning module passes.
+/// @param seed Accumulator updated in place.
+/// @param value Hash value to fold into @p seed.
+void hashCombine(std::size_t &seed, std::size_t value) {
+    seed ^= value + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
+}
+
+/// @brief Add a boolean field to a semantic fingerprint.
+/// @param seed Accumulator updated in place.
+/// @param value Boolean value to fold into @p seed.
+void hashBool(std::size_t &seed, bool value) {
+    hashCombine(seed, std::hash<bool>{}(value));
+}
+
+/// @brief Add an IL type discriminator to a semantic fingerprint.
+/// @param seed Accumulator updated in place.
+/// @param type IL type whose kind is folded into @p seed.
+void hashType(std::size_t &seed, const core::Type &type) {
+    hashCombine(seed, static_cast<std::size_t>(type.kind));
+}
+
+/// @brief Add callable effect attributes to a semantic fingerprint.
+/// @param seed Accumulator updated in place.
+/// @param attrs Effect attributes to fold into @p seed.
+void hashEffectAttrs(std::size_t &seed, const core::EffectAttrs &attrs) {
+    hashBool(seed, attrs.nothrow);
+    hashBool(seed, attrs.readonly);
+    hashBool(seed, attrs.pure);
+}
+
+/// @brief Add parameter metadata to a semantic fingerprint.
+/// @param seed Accumulator updated in place.
+/// @param param Function or block parameter to fold into @p seed.
+void hashParam(std::size_t &seed, const core::Param &param) {
+    hashCombine(seed, std::hash<std::string>{}(param.name));
+    hashType(seed, param.type);
+    hashCombine(seed, std::hash<unsigned>{}(param.id));
+    hashBool(seed, param.Attrs.noalias);
+    hashBool(seed, param.Attrs.nocapture);
+    hashBool(seed, param.Attrs.nonnull);
+}
+
+/// @brief Add instruction metadata to a semantic fingerprint.
+/// @details Includes opcode, result temp, operands, branch labels and arguments,
+///          direct/indirect call signature data, and instruction-local effect
+///          attributes.  Source locations are deliberately excluded.
+/// @param seed Accumulator updated in place.
+/// @param instr Instruction to fold into @p seed.
+void hashInstr(std::size_t &seed, const core::Instr &instr) {
+    hashCombine(seed, std::hash<bool>{}(instr.result.has_value()));
+    if (instr.result)
+        hashCombine(seed, std::hash<unsigned>{}(*instr.result));
+    hashCombine(seed, static_cast<std::size_t>(instr.op));
+    hashType(seed, instr.type);
+    for (const auto &operand : instr.operands)
+        hashCombine(seed, core::valueHash(operand));
+    hashCombine(seed, std::hash<std::string>{}(instr.callee));
+    for (const auto &label : instr.labels)
+        hashCombine(seed, std::hash<std::string>{}(label));
+    for (const auto &argList : instr.brArgs) {
+        hashCombine(seed, argList.size());
+        for (const auto &arg : argList)
+            hashCombine(seed, core::valueHash(arg));
+    }
+    hashBool(seed, instr.CallAttr.nothrow);
+    hashBool(seed, instr.CallAttr.readonly);
+    hashBool(seed, instr.CallAttr.pure);
+    hashBool(seed, instr.hasIndirectSignature);
+    hashType(seed, instr.indirectRetType);
+    for (const auto &type : instr.indirectParamTypes)
+        hashType(seed, type);
+    hashBool(seed, instr.indirectIsVarArg);
+}
+
+/// @brief Produce a semantic fingerprint for a module.
+/// @details Used only to detect whether legacy void-returning module passes were
+///          no-ops. Source locations are intentionally ignored because these
+///          passes should not be classified as changing IR semantics by metadata
+///          churn alone.
+/// @param module Module whose semantic IR state is fingerprinted.
+/// @return Hash value suitable for before/after equality comparisons.
+std::size_t moduleFingerprint(const core::Module &module) {
+    std::size_t seed = 0;
+    hashCombine(seed, std::hash<std::string>{}(module.version));
+    hashBool(seed, module.target.has_value());
+    if (module.target)
+        hashCombine(seed, std::hash<std::string>{}(*module.target));
+
+    for (const auto &ext : module.externs) {
+        hashCombine(seed, std::hash<std::string>{}(ext.name));
+        hashType(seed, ext.retType);
+        for (const auto &type : ext.params)
+            hashType(seed, type);
+        hashEffectAttrs(seed, ext.attrs());
+    }
+    for (const auto &global : module.globals) {
+        hashCombine(seed, std::hash<std::string>{}(global.name));
+        hashType(seed, global.type);
+        hashCombine(seed, std::hash<std::string>{}(global.init));
+        hashCombine(seed, static_cast<std::size_t>(global.linkage));
+        hashBool(seed, global.isConst);
+        hashBool(seed, global.hasInitializer);
+    }
+    for (const auto &fn : module.functions) {
+        hashCombine(seed, std::hash<std::string>{}(fn.name));
+        hashType(seed, fn.retType);
+        hashBool(seed, fn.isVarArg);
+        hashCombine(seed, static_cast<std::size_t>(fn.linkage));
+        hashEffectAttrs(seed, fn.attrs());
+        for (const auto &param : fn.params)
+            hashParam(seed, param);
+        for (const auto &name : fn.valueNames)
+            hashCombine(seed, std::hash<std::string>{}(name));
+        for (const auto &block : fn.blocks) {
+            hashCombine(seed, std::hash<std::string>{}(block.label));
+            hashBool(seed, block.terminated);
+            for (const auto &param : block.params)
+                hashParam(seed, param);
+            for (const auto &instr : block.instructions)
+                hashInstr(seed, instr);
+        }
+    }
+    return seed;
+}
+
+/// @brief Run a void-returning module pass and infer whether it changed IR.
+/// @details Several legacy passes mutate in place but do not report a change
+///          bit.  This wrapper fingerprints the module before and after the
+///          pass so the pass manager can preserve analyses for true no-ops.
+/// @param module Module transformed by @p pass.
+/// @param pass Callable taking @p module by mutable reference.
+/// @return Conservative preservation summary based on observed fingerprint change.
+template <typename Fn> PreservedAnalyses runVoidModulePass(core::Module &module, Fn &&pass) {
+    const std::size_t before = moduleFingerprint(module);
+    pass(module);
+    if (moduleFingerprint(module) == before)
+        return PreservedAnalyses::all();
+    return PreservedAnalyses::none();
+}
+
+} // namespace
 
 /// @brief Describe a summary where every registered analysis remains valid.
 /// @details Returns an instance that marks both module and function analyses as
@@ -375,17 +529,20 @@ const detail::PassFactory *PassRegistry::lookup(std::string_view id) const {
 }
 
 void registerLoopSimplifyPass(PassRegistry &registry) {
+    // Sequential: recomputes whole-module CFG/loop info while mutating block edges.
     registry.registerFunctionPass(
-        "loop-simplify", []() { return std::make_unique<LoopSimplify>(); }, true);
+        "loop-simplify", []() { return std::make_unique<LoopSimplify>(); }, false);
 }
 
 void registerLICMPass(PassRegistry &registry) {
-    registry.registerFunctionPass("licm", []() { return std::make_unique<LICM>(); }, true);
+    // Sequential: analysis dependencies scan the whole module while this pass moves instructions.
+    registry.registerFunctionPass("licm", []() { return std::make_unique<LICM>(); }, false);
 }
 
 void registerLICMSafePass(PassRegistry &registry) {
+    // Sequential for the same whole-module analysis reason as the default LICM pass.
     registry.registerFunctionPass(
-        "licm-safe", []() { return std::make_unique<LICM>(false); }, true);
+        "licm-safe", []() { return std::make_unique<LICM>(false); }, false);
 }
 
 void registerSCCPPass(PassRegistry &registry) {
@@ -435,29 +592,26 @@ void registerSCCPPass(PassRegistry &registry) {
 
 void registerConstFoldPass(PassRegistry &registry) {
     registry.registerModulePass("constfold", [](core::Module &module, AnalysisManager &) {
-        constFold(module);
-        return PreservedAnalyses::none();
+        return runVoidModulePass(module, [](core::Module &m) { constFold(m); });
     });
 }
 
 void registerPeepholePass(PassRegistry &registry) {
     registry.registerModulePass("peephole", [](core::Module &module, AnalysisManager &) {
-        peephole(module);
-        return PreservedAnalyses::none();
+        return runVoidModulePass(module, [](core::Module &m) { peephole(m); });
     });
 }
 
 void registerDCEPass(PassRegistry &registry) {
     registry.registerModulePass("dce", [](core::Module &module, AnalysisManager &) {
-        dce(module);
-        return PreservedAnalyses::none();
+        return runVoidModulePass(module, [](core::Module &m) { dce(m); });
     });
 }
 
 void registerMem2RegPass(PassRegistry &registry) {
     registry.registerModulePass("mem2reg", [](core::Module &module, AnalysisManager &) {
-        viper::passes::mem2reg(module, nullptr);
-        return PreservedAnalyses::none();
+        return runVoidModulePass(module,
+                                 [](core::Module &m) { viper::passes::mem2reg(m, nullptr); });
     });
 }
 
@@ -467,7 +621,7 @@ void registerDSEPass(PassRegistry &registry) {
         [](core::Function &fn, AnalysisManager &am) {
             bool changed = runDSE(fn, am);
             if (changed)
-                am.invalidateAfterFunctionPass(PreservedAnalyses::none(), fn);
+                am.invalidateFunctionResult(kAnalysisMemorySSA, fn);
             // MemorySSA-based cross-block DSE: catches stores that
             // runDSE's conservative call-barrier logic would miss for
             // non-escaping allocas.
@@ -485,6 +639,7 @@ void registerDSEPass(PassRegistry &registry) {
 }
 
 void registerEarlyCSEPass(PassRegistry &registry) {
+    // Sequential: rebuilds a whole-module CFGContext while removing instructions.
     registry.registerFunctionPass(
         "earlycse",
         [](core::Function &fn, AnalysisManager &am) {
@@ -498,26 +653,25 @@ void registerEarlyCSEPass(PassRegistry &registry) {
             p.preserveLoopInfo();
             return p;
         },
-        true);
+        false);
 }
 
 void registerReassociatePass(PassRegistry &registry) {
     registry.registerModulePass("reassociate", [](core::Module &module, AnalysisManager &) {
-        reassociate(module);
-        return PreservedAnalyses::none();
+        return runVoidModulePass(module, [](core::Module &m) { reassociate(m); });
     });
 }
 
 void registerEHOptPass(PassRegistry &registry) {
     registry.registerModulePass("eh-opt", [](core::Module &module, AnalysisManager &) {
-        ehOpt(module);
-        return PreservedAnalyses::none();
+        return runVoidModulePass(module, [](core::Module &m) { ehOpt(m); });
     });
 }
 
 void registerLoopRotatePass(PassRegistry &registry) {
+    // Sequential: rewrites loop edges and recomputes whole-module loop info.
     registry.registerFunctionPass(
-        "loop-rotate", []() { return std::make_unique<LoopRotate>(); }, true);
+        "loop-rotate", []() { return std::make_unique<LoopRotate>(); }, false);
 }
 
 } // namespace il::transform

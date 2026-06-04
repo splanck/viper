@@ -8,9 +8,10 @@
 // File: support/small_vector.hpp
 // Purpose: Stack-optimized vector that avoids heap allocation for small sizes.
 // Key invariants: heap_ is non-null exactly when storage has spilled to the heap;
-//                 size_ <= capacity() always; capacity() reports N while inline.
-// Ownership/Lifetime: The container owns its heap buffer (freed on destruction or
-//                     reassignment); inline storage shares the object's lifetime.
+//                 size_ <= capacity() always; capacity() reports N while inline;
+//                 only elements in [0, size_) are constructed.
+// Ownership/Lifetime: The container owns its constructed elements and heap buffer;
+//                     inline storage is raw memory tied to the object's lifetime.
 // Links: docs/codemap.md#support-library
 //
 // SmallVector stores up to N elements inline (on the stack) and only allocates
@@ -21,10 +22,11 @@
 
 #pragma once
 
-#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <initializer_list>
+#include <memory>
+#include <new>
 #include <span>
 #include <type_traits>
 #include <utility>
@@ -41,16 +43,71 @@ namespace il::support {
 template <typename T, size_t N = 8> class SmallVector {
     static_assert(N > 0, "SmallVector inline capacity must be positive");
 
-    // Private members declared first so they can be used in inline methods
-    T inlineStorage_[N]{}; ///< Inline storage for small vectors.
-    T *heap_{nullptr};     ///< Heap storage when size > N.
-    size_t capacity_{0};   ///< Heap capacity (0 when using inline).
-    size_t size_{0};       ///< Current element count.
+    using Allocator = std::allocator<T>;
+    using AllocTraits = std::allocator_traits<Allocator>;
+
+    alignas(T) std::byte inlineStorage_[sizeof(T) * N]{}; ///< Raw inline storage.
+    T *heap_{nullptr};                                    ///< Heap storage when size > N.
+    size_t capacity_{0};                                  ///< Heap capacity (0 when inline).
+    size_t size_{0};                                      ///< Current constructed element count.
+    [[no_unique_address]] Allocator allocator_{};          ///< Allocator used for heap storage.
 
     /// @brief Check whether the vector is currently using heap storage.
     /// @return true if elements reside on the heap, false if inline.
     [[nodiscard]] bool isHeap() const noexcept {
         return heap_ != nullptr;
+    }
+
+    /// @brief Return the typed pointer for inline raw storage.
+    /// @return Pointer to the first inline slot; slots may be unconstructed.
+    [[nodiscard]] T *inlineData() noexcept {
+        return reinterpret_cast<T *>(inlineStorage_);
+    }
+
+    /// @brief Return the typed pointer for const inline raw storage.
+    /// @return Pointer to the first inline slot; slots may be unconstructed.
+    [[nodiscard]] const T *inlineData() const noexcept {
+        return reinterpret_cast<const T *>(inlineStorage_);
+    }
+
+    /// @brief Destroy @p count constructed elements starting at @p ptr.
+    /// @param ptr Pointer to the first constructed element to destroy.
+    /// @param count Number of contiguous elements to destroy.
+    static void destroyRange(T *ptr, size_t count) noexcept {
+        for (size_t i = count; i > 0; --i)
+            std::destroy_at(ptr + (i - 1));
+    }
+
+    /// @brief Release heap storage after all constructed elements are gone.
+    /// @details Leaves the vector in inline-storage mode with zero heap capacity.
+    void releaseHeap() noexcept {
+        if (heap_) {
+            AllocTraits::deallocate(allocator_, heap_, capacity_);
+            heap_ = nullptr;
+            capacity_ = 0;
+        }
+    }
+
+    /// @brief Compute a checked growth capacity for at least @p minCapacity elements.
+    /// @param minCapacity Minimum required capacity.
+    /// @return Capacity to reserve, growing geometrically where possible.
+    /// @throws std::bad_array_new_length if @p minCapacity exceeds allocator limits.
+    [[nodiscard]] size_t growthCapacity(size_t minCapacity) const {
+        const size_t maxCapacity = AllocTraits::max_size(allocator_);
+        if (minCapacity > maxCapacity)
+            throw std::bad_array_new_length();
+
+        size_t next = capacity();
+        if (next == 0)
+            next = N;
+        while (next < minCapacity) {
+            if (next > maxCapacity / 2) {
+                next = maxCapacity;
+                break;
+            }
+            next *= 2;
+        }
+        return next < minCapacity ? minCapacity : next;
     }
 
   public:
@@ -71,25 +128,40 @@ template <typename T, size_t N = 8> class SmallVector {
     /// @param init List of elements to copy into the vector.
     SmallVector(std::initializer_list<T> init) {
         reserve(init.size());
-        std::copy(init.begin(), init.end(), data());
-        size_ = init.size();
+        size_t constructed = 0;
+        try {
+            for (const T &value : init) {
+                std::construct_at(data() + constructed, value);
+                ++constructed;
+            }
+        } catch (...) {
+            destroyRange(data(), constructed);
+            throw;
+        }
+        size_ = constructed;
     }
 
     /// @brief Copy constructor.
     /// @param other Source vector to copy elements from.
     SmallVector(const SmallVector &other) {
         reserve(other.size_);
-        std::copy(other.data(), other.data() + other.size_, data());
-        size_ = other.size_;
+        size_t constructed = 0;
+        try {
+            for (; constructed < other.size_; ++constructed)
+                std::construct_at(data() + constructed, other.data()[constructed]);
+        } catch (...) {
+            destroyRange(data(), constructed);
+            throw;
+        }
+        size_ = constructed;
     }
 
     /// @brief Move constructor.
     /// @details If @p other uses heap storage, the buffer is stolen in O(1).
     ///          If @p other uses inline storage, elements are copied element-wise.
     /// @param other Source vector to move from; left empty after the move.
-    SmallVector(SmallVector &&other) noexcept {
+    SmallVector(SmallVector &&other) noexcept(std::is_nothrow_move_constructible_v<T>) {
         if (other.isHeap()) {
-            // Steal the heap buffer
             heap_ = other.heap_;
             capacity_ = other.capacity_;
             size_ = other.size_;
@@ -97,18 +169,24 @@ template <typename T, size_t N = 8> class SmallVector {
             other.capacity_ = 0;
             other.size_ = 0;
         } else {
-            // Copy from inline storage
-            for (size_t i = 0; i < other.size_; ++i)
-                inlineStorage_[i] = other.inlineStorage_[i];
-            size_ = other.size_;
-            other.size_ = 0;
+            size_t constructed = 0;
+            try {
+                for (; constructed < other.size_; ++constructed)
+                    std::construct_at(inlineData() + constructed,
+                                      std::move(other.inlineData()[constructed]));
+            } catch (...) {
+                destroyRange(inlineData(), constructed);
+                throw;
+            }
+            size_ = constructed;
+            other.clear();
         }
     }
 
     /// @brief Destructor.
     ~SmallVector() {
-        if (isHeap())
-            delete[] heap_;
+        clear();
+        releaseHeap();
     }
 
     /// @brief Copy assignment.
@@ -118,8 +196,15 @@ template <typename T, size_t N = 8> class SmallVector {
         if (this != &other) {
             clear();
             reserve(other.size_);
-            std::copy(other.data(), other.data() + other.size_, data());
-            size_ = other.size_;
+            size_t constructed = 0;
+            try {
+                for (; constructed < other.size_; ++constructed)
+                    std::construct_at(data() + constructed, other.data()[constructed]);
+            } catch (...) {
+                destroyRange(data(), constructed);
+                throw;
+            }
+            size_ = constructed;
         }
         return *this;
     }
@@ -128,10 +213,10 @@ template <typename T, size_t N = 8> class SmallVector {
     /// @details Frees any existing heap buffer, then steals or copies from @p other.
     /// @param other Source vector to move from; left empty after the move.
     /// @return Reference to this vector.
-    SmallVector &operator=(SmallVector &&other) noexcept {
+    SmallVector &operator=(SmallVector &&other) noexcept(std::is_nothrow_move_constructible_v<T>) {
         if (this != &other) {
-            if (isHeap())
-                delete[] heap_;
+            clear();
+            releaseHeap();
 
             if (other.isHeap()) {
                 heap_ = other.heap_;
@@ -141,12 +226,17 @@ template <typename T, size_t N = 8> class SmallVector {
                 other.capacity_ = 0;
                 other.size_ = 0;
             } else {
-                heap_ = nullptr;
-                capacity_ = 0;
-                for (size_t i = 0; i < other.size_; ++i)
-                    inlineStorage_[i] = other.inlineStorage_[i];
-                size_ = other.size_;
-                other.size_ = 0;
+                size_t constructed = 0;
+                try {
+                    for (; constructed < other.size_; ++constructed)
+                        std::construct_at(inlineData() + constructed,
+                                          std::move(other.inlineData()[constructed]));
+                } catch (...) {
+                    destroyRange(inlineData(), constructed);
+                    throw;
+                }
+                size_ = constructed;
+                other.clear();
             }
         }
         return *this;
@@ -160,31 +250,43 @@ template <typename T, size_t N = 8> class SmallVector {
         if (n <= capacity())
             return;
 
-        // Need to grow to heap
-        T *newBuf = new T[n];
-        std::copy(data(), data() + size_, newBuf);
+        T *newBuf = AllocTraits::allocate(allocator_, n);
+        size_t constructed = 0;
+        try {
+            for (; constructed < size_; ++constructed) {
+                std::construct_at(newBuf + constructed,
+                                  std::move_if_noexcept(data()[constructed]));
+            }
+        } catch (...) {
+            destroyRange(newBuf, constructed);
+            AllocTraits::deallocate(allocator_, newBuf, n);
+            throw;
+        }
 
-        if (isHeap())
-            delete[] heap_;
+        T *oldData = data();
+        const size_t oldSize = size_;
+        T *oldHeap = heap_;
+        const size_t oldCapacity = capacity_;
+
+        destroyRange(oldData, oldSize);
+        if (oldHeap)
+            AllocTraits::deallocate(allocator_, oldHeap, oldCapacity);
 
         heap_ = newBuf;
         capacity_ = n;
+        size_ = oldSize;
     }
 
     /// @brief Add an element to the end.
     /// @param value Element to copy-append.
     void push_back(const T &value) {
-        if (size_ >= capacity())
-            reserve(capacity() == 0 ? N : capacity() * 2);
-        data()[size_++] = value;
+        emplace_back(value);
     }
 
     /// @brief Add an element to the end (move version).
     /// @param value Element to move-append.
     void push_back(T &&value) {
-        if (size_ >= capacity())
-            reserve(capacity() == 0 ? N : capacity() * 2);
-        data()[size_++] = std::move(value);
+        emplace_back(std::move(value));
     }
 
     /// @brief Construct an element in place at the end.
@@ -193,9 +295,10 @@ template <typename T, size_t N = 8> class SmallVector {
     /// @return Reference to the newly constructed element.
     template <typename... Args> reference emplace_back(Args &&...args) {
         if (size_ >= capacity())
-            reserve(capacity() == 0 ? N : capacity() * 2);
-        T *ptr = data() + size_++;
-        *ptr = T(std::forward<Args>(args)...);
+            reserve(growthCapacity(size_ + 1));
+        T *ptr = data() + size_;
+        std::construct_at(ptr, std::forward<Args>(args)...);
+        ++size_;
         return *ptr;
     }
 
@@ -203,10 +306,12 @@ template <typename T, size_t N = 8> class SmallVector {
     void pop_back() {
         assert(size_ > 0);
         --size_;
+        std::destroy_at(data() + size_);
     }
 
     /// @brief Clear all elements.
     void clear() noexcept {
+        destroyRange(data(), size_);
         size_ = 0;
     }
 
@@ -215,8 +320,21 @@ template <typename T, size_t N = 8> class SmallVector {
     ///          If @p n is smaller than size(), excess elements are logically removed.
     /// @param n Desired element count.
     void resize(size_t n) {
+        if (n < size_) {
+            destroyRange(data() + n, size_ - n);
+            size_ = n;
+            return;
+        }
         if (n > capacity())
             reserve(n);
+        size_t constructed = size_;
+        try {
+            for (; constructed < n; ++constructed)
+                std::construct_at(data() + constructed);
+        } catch (...) {
+            destroyRange(data() + size_, constructed - size_);
+            throw;
+        }
         size_ = n;
     }
 
@@ -224,10 +342,21 @@ template <typename T, size_t N = 8> class SmallVector {
     /// @param n Desired element count.
     /// @param value Value to assign to newly created elements.
     void resize(size_t n, const T &value) {
+        if (n < size_) {
+            destroyRange(data() + n, size_ - n);
+            size_ = n;
+            return;
+        }
         if (n > capacity())
             reserve(n);
-        for (size_t i = size_; i < n; ++i)
-            data()[i] = value;
+        size_t constructed = size_;
+        try {
+            for (; constructed < n; ++constructed)
+                std::construct_at(data() + constructed, value);
+        } catch (...) {
+            destroyRange(data() + size_, constructed - size_);
+            throw;
+        }
         size_ = n;
     }
 
@@ -254,13 +383,13 @@ template <typename T, size_t N = 8> class SmallVector {
     /// @brief Return a pointer to the underlying element storage.
     /// @return Pointer to the first element (inline or heap buffer).
     [[nodiscard]] T *data() noexcept {
-        return isHeap() ? heap_ : inlineStorage_;
+        return isHeap() ? heap_ : inlineData();
     }
 
     /// @brief Return a const pointer to the underlying element storage.
     /// @return Const pointer to the first element (inline or heap buffer).
     [[nodiscard]] const T *data() const noexcept {
-        return isHeap() ? heap_ : inlineStorage_;
+        return isHeap() ? heap_ : inlineData();
     }
 
     /// @brief Access element by index (unchecked in release builds).

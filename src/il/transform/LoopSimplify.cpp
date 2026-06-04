@@ -291,14 +291,21 @@ std::string_view LoopSimplify::id() const {
 }
 
 PreservedAnalyses LoopSimplify::run(Function &function, AnalysisManager &analysis) {
-    [[maybe_unused]] auto &domTree =
-        analysis.getFunctionResult<viper::analysis::DomTree>(kAnalysisDominators, function);
-    auto &loopInfo = analysis.getFunctionResult<LoopInfo>(kAnalysisLoopInfo, function);
-
     bool changed = false;
-    for (const Loop &loop : loopInfo.loops()) {
-        changed |= ensurePreheader(function, loop);
-        changed |= mergeTrivialLatches(function, loop);
+    for (;;) {
+        LoopInfo loopInfo = computeLoopInfo(analysis.module(), function);
+        bool changedThisIteration = false;
+
+        for (const Loop &loop : loopInfo.loops()) {
+            if (ensurePreheader(function, loop) || mergeTrivialLatches(function, loop)) {
+                changed = true;
+                changedThisIteration = true;
+                break;
+            }
+        }
+
+        if (!changedThisIteration)
+            break;
     }
 
     if (!changed)

@@ -38,7 +38,6 @@
 #include "vm/OpHandlerAccess.hpp"
 #include "vm/VM.hpp"
 
-#include <cassert>
 #include <optional>
 #include <string>
 
@@ -69,11 +68,19 @@ bool tryTailCall(VM &vm, const il::core::Function *callee, std::span<const Slot>
         return false;
     auto &st = *stPtr;
 
-    // Point to the VM-cached block map for the callee function.
-    st.blocks = &detail::VMAccess::getOrBuildBlockMap(vm, *callee);
     const il::core::BasicBlock *entry = callee->blocks.empty() ? nullptr : &callee->blocks.front();
     if (entry == nullptr)
         return false;
+
+    const auto &params = entry->params;
+    if (args.size() != params.size())
+        return false;
+
+    const size_t maxSsaId = detail::VMAccess::computeMaxSsaId(vm, *callee);
+    for (const auto &param : params) {
+        if (static_cast<size_t>(param.id) > maxSsaId)
+            return false;
+    }
 
     // Reinitialise frame, preserving EH and resume state
     Frame &fr = st.fr;
@@ -82,11 +89,22 @@ bool tryTailCall(VM &vm, const il::core::Function *callee, std::span<const Slot>
     auto preservedEh = fr.ehStack;
     auto preservedResume = fr.resumeState;
 
+    const VM::BlockMap &calleeBlocks = detail::VMAccess::getOrBuildBlockMap(vm, *callee);
+
+    for (size_t idx = 0; idx < fr.regIsStr.size() && idx < fr.regs.size(); ++idx) {
+        if (fr.regIsStr[idx]) {
+            rt_str_release_maybe(fr.regs[idx].str);
+            fr.regIsStr[idx] = 0;
+        }
+    }
+
+    // Point to the VM-cached block map for the callee function only after all
+    // non-mutating eligibility checks have passed.
+    st.blocks = &calleeBlocks;
     fr.func = callee;
     fr.regs.clear();
 
     // Use shared helper to compute/cache register file size
-    const size_t maxSsaId = detail::VMAccess::computeMaxSsaId(vm, *callee);
     const size_t regCount = maxSsaId + 1;
     fr.regs.resize(regCount);
     fr.regIsStr.assign(regCount, 0);
@@ -101,16 +119,9 @@ bool tryTailCall(VM &vm, const il::core::Function *callee, std::span<const Slot>
 
     // Seed entry parameters from args, retaining strings
     // Use entry block parameters for arity and seeding
-    const auto &params = entry->params;
-    if (args.size() != params.size()) {
-        // Arity mismatch: skip TCO
-        return false;
-    }
-
     for (size_t i = 0; i < params.size(); ++i) {
         const auto id = params[i].id;
         // Parameter ID must fit in the pre-sized register file
-        assert(id < fr.params.size() && "TCO: parameter ID exceeds params vector size");
         if (id >= fr.params.size())
             return false;
         const bool isStr = params[i].type.kind == il::core::Type::Kind::Str;

@@ -65,10 +65,44 @@ bool SourceRange::isValid() const {
 
     const bool have_column_info =
         have_line_info && begin.line == end.line && begin.column != 0 && end.column != 0;
-    if (have_column_info && begin.column > end.column) {
+    if (have_column_info && begin.column >= end.column) {
         return false;
     }
 
     return true;
+}
+
+/// @brief Determine whether the range is a fully-addressed replacement span.
+///
+/// @details Concrete ranges are stricter than @ref isValid: both endpoints must
+///          carry file, line, and column information, must refer to the same file,
+///          and the begin point must strictly precede the end point. This prevents
+///          partially-known ranges from being serialized as actionable fix-it
+///          spans.
+///
+/// @return True when the range has complete coordinates and nonzero length.
+bool SourceRange::isConcrete() const {
+    if (!begin.hasFile() || !end.hasFile() || begin.file_id != end.file_id)
+        return false;
+    if (!begin.hasLine() || !end.hasLine() || !begin.hasColumn() || !end.hasColumn())
+        return false;
+    if (begin.line < end.line)
+        return true;
+    if (begin.line > end.line)
+        return false;
+    return begin.column < end.column;
+}
+
+/// @brief Determine whether the range encodes an insertion point.
+///
+/// @details A zero-width range is not a replacement span, but callers can use this
+///          helper to recognize explicit insertion coordinates instead of relying
+///          on invalid or partially-known ranges.
+///
+/// @return True when both endpoints have identical concrete coordinates.
+bool SourceRange::isInsertion() const {
+    return begin.hasFile() && end.hasFile() && begin.file_id == end.file_id &&
+           begin.hasLine() && end.hasLine() && begin.line == end.line &&
+           begin.hasColumn() && end.hasColumn() && begin.column == end.column;
 }
 } // namespace il::support

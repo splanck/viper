@@ -223,6 +223,24 @@ class RuntimeBridge {
                      const std::string &fn,
                      const std::string &block);
 
+    /// @brief Invoke runtime function @p name with mutable argument slots.
+    /// @details VM opcode handlers use this overload so runtime helpers that
+    ///          mutate by-reference argument slots can be copied back to the
+    ///          originating registers or stack locations after the call.
+    /// @param ctx Runtime call context receiving trap metadata.
+    /// @param name Runtime function symbol.
+    /// @param args Mutable evaluated argument slots.
+    /// @param loc Source location of call instruction.
+    /// @param fn Calling function name.
+    /// @param block Calling block label.
+    /// @return Result slot from runtime call.
+    static Slot callMutable(RuntimeCallContext &ctx,
+                            std::string_view name,
+                            std::span<Slot> args,
+                            const il::support::SourceLoc &loc,
+                            const std::string &fn,
+                            const std::string &block);
+
     /// @brief Invoke an already resolved built-in runtime descriptor.
     /// @details Keeps RuntimeBridge validation and trap context handling while
     ///          avoiding repeated descriptor lookup on hot bytecode calls.
@@ -232,6 +250,17 @@ class RuntimeBridge {
                      const il::support::SourceLoc &loc,
                      const std::string &fn,
                      const std::string &block);
+
+    /// @brief Invoke a resolved runtime descriptor with mutable argument slots.
+    /// @details Mirrors @ref callMutable for name-based dispatch while allowing
+    ///          callers that already have a descriptor to preserve slot mutation
+    ///          semantics without unsafe const casts.
+    static Slot callMutable(RuntimeCallContext &ctx,
+                            const il::runtime::RuntimeDescriptor &desc,
+                            std::span<Slot> args,
+                            const il::support::SourceLoc &loc,
+                            const std::string &fn,
+                            const std::string &block);
 
     // Backward-compatible overload accepting std::vector to avoid callers copying into spans.
     static Slot call(RuntimeCallContext &ctx,

@@ -8,7 +8,7 @@
 
 ### What this release is about
 
-A focused continuation of the v0.2.6 hardening cycle, concentrated on the Graphics3D runtime. 3D animation, skinning, and asset import now fail closed on malformed input — non-finite values, invalid or stale handles, wrong-class private references, and overflow-prone counts can no longer reach renderer or simulation state — the remaining open-world ("3D Next Level") gaps close with new cell-streaming and navmesh-serialization tooling and a recorded spatial-index speedup, and a deep review-and-refactor pass tightens correctness and overflow safety across the asset, scene, and physics surfaces. Outside the renderer, the CLI tooling layer gains a bytecode-VM instruction budget and real program exit codes, a bytecode disassembler, and hardened temp-file, source-loading, and packaging paths.
+A focused continuation of the v0.2.6 hardening cycle, concentrated on the Graphics3D runtime. 3D animation, skinning, and asset import now fail closed on malformed input — non-finite values, invalid or stale handles, wrong-class private references, and overflow-prone counts can no longer reach renderer or simulation state — the remaining open-world ("3D Next Level") gaps close with new cell-streaming and navmesh-serialization tooling and a recorded spatial-index speedup, and a deep review-and-refactor pass tightens correctness and overflow safety across the asset, scene, and physics surfaces. Outside the renderer, the CLI tooling layer gains a bytecode-VM instruction budget and real program exit codes plus a bytecode disassembler, and the language servers, packaging pipeline, and project loader are hardened against malformed protocol input and untrusted paths.
 
 - **3D animation & skinning fail closed.** Non-finite interpolation and playback inputs clamp across Skeleton3D, AnimController3D, BlendTree3D, IKSolver3D, and the node animator; long state names canonicalize, looping seeks wrap, near-duplicate keyframes collapse, and AnimBlend3D reuses scratch buffers instead of allocating every update. CPU skinning and morphing skip invalid bone influences and revert malformed output to the source vertex; the 2D blend tree snaps a degenerate blend to the nearest sample, and the glTF cubic-spline sampler coerces non-finite curve time.
 - **Asset import is contract-checked.** glTF validates morph-target accessors, CUBICSPLINE index math, sampler component counts, and non-finite skin weights before building animation data; FBX samples through a clamped binary search that rejects non-monotonic intervals; Model3D guards scene-name and resource allocation against overflow. `extensionsRequired` now accepts only extensions with a working parser path and rejects the rest, while best-effort extensions are honored only when listed as merely used.
@@ -20,22 +20,23 @@ A focused continuation of the v0.2.6 hardening cycle, concentrated on the Graphi
 - **Targeted runtime fixes.** Legacy cached Physics3D primitive shapes stay queryable and collidable, `Mesh3D.Clone` repairs corrupt counts before copying, Water3D rewrites its retained mesh buffers in place and range-reduces wave phase over long runtimes, Vegetation3D draws double-sided instead of mutating canvas backface culling, and `Assets3D.ClearCache` leaves the cache intact when active publishers do not quiesce within its wait window.
 - **Coverage & a recorded cull baseline.** New behavioral tests close the vegetation, sprite/decal billboard, navmesh round-trip, reference-repair, and texture-atlas gaps, and the Scene3D spatial index records a ~1,800× indexed-vs-flat cull-speedup baseline on a 10k-node fixture.
 - **VM instruction budget & real exit codes.** `BytecodeVM.setMaxInstructions` traps with an interrupt once the step budget is exceeded, and the shared `viper run` / `vbasic` / `zia` executor now returns the program's `main` value as the process exit code — flagging values outside the host `int` range — instead of always exiting `0`.
-- **CLI toolchain hardening.** `il-dis` becomes a bytecode disassembler (decoded instructions, pools, and side tables); native-compile temporaries are reserved atomically (`O_CREAT|O_EXCL`) to close a unique-name race; the source and IL loaders enforce a 256 MB ceiling with out-of-memory handling; project-manifest path resolution and exclude matching factor into shared helpers; and `install-package` gains Windows/macOS signing plumbing.
+- **Language servers fail closed on bad input.** The BASIC and Zia LSP/MCP servers compute editor ranges in UTF-16 code units, distinguish JSON-RPC notifications from explicit-null-id requests, reject malformed document URIs and duplicate JSON keys, range-check protocol integers before narrowing, and exit non-zero on malformed framing.
+- **CLI toolchain & packaging hardening.** `il-dis` becomes a bytecode disassembler; native-compile temporaries are reserved atomically (`O_CREAT|O_EXCL`) to close a unique-name race; the source and IL loaders enforce a 256 MB ceiling; project discovery and manifest path resolution fail closed on traversal or canonicalization errors; the ar/zip writers reject malformed entries and the platform builders abort on unreadable payloads; asset-pack caches revalidate by size; and `install-package` gains Windows/macOS signing plumbing.
 
 ### By the Numbers
 
 | Metric | v0.2.6 | v0.2.7 | Delta |
 |---|---|---|---|
-| Commits | — | 10 | +10 |
+| Commits | — | 11 | +11 |
 | Source files | 3,096 | 3,098 | +2 |
-| Production SLOC | 669K | 682K | +13K |
+| Production SLOC | 669K | 683K | +14K |
 | Test SLOC | 278K | 289K | +11K |
 | Demo SLOC | 192K | 192K | +0 |
 
-Counts via `scripts/count_sloc.sh` (production 682,293 / test 289,294 / demo 192,151 / source files 3,098); commits since the `v0.2.6-dev` tag.
+Counts via `scripts/count_sloc.sh` (production 682,765 / test 289,310 / demo 192,151 / source files 3,098); commits since the `v0.2.6-dev` tag.
 
 ---
 
-Demos and docs tracked the work: the open-world software baseline and the Game3D showcase sample were refreshed alongside the runtime changes; the largest asset-import, scene, render, and terrain routines were decomposed into focused in-file helpers with no ABI change; `docs/graphics3d-guide.md`, `docs/viperlib/graphics/`, and a new cross-platform verification runbook gained the KTX2, glTF-extension, streaming, navmesh-export, physics-joint, and spatial-index entries; 24 previously-undocumented Graphics3D/Game3D methods were documented; and a Doxygen pass covered the Graphics3D/Game3D runtime files and functions plus every source file under the tools layer (frontend drivers, language servers, IL utilities, the packaging library, and the runtime generator).
+Demos and docs tracked the work: the open-world software baseline and the Game3D showcase sample were refreshed alongside the runtime changes; the largest asset-import, scene, render, and terrain routines were decomposed into focused in-file helpers with no ABI change; `docs/graphics3d-guide.md`, `docs/viperlib/graphics/`, and a new cross-platform verification runbook gained the KTX2, glTF-extension, streaming, navmesh-export, physics-joint, and spatial-index entries; 24 previously-undocumented Graphics3D/Game3D methods were documented; and a Doxygen pass covered the Graphics3D/Game3D runtime files and functions plus every source file under the tools and support layers (frontend drivers, language servers, IL utilities, the packaging library, the runtime generator, and the diagnostics/Expected/source-manager core).
 
 <!-- END DRAFT -->

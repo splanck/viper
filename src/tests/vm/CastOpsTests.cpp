@@ -150,8 +150,9 @@ int main(int argc, char *argv[]) {
         assert(runZext1(input) == expected);
     }
 
-    const std::array<std::pair<double, uint64_t>, 5> fpCastCases = {
+    const std::array<std::pair<double, uint64_t>, 6> fpCastCases = {
         {{0.0, UINT64_C(0)},
+         {-0.0, UINT64_C(0)},
          {0.5, UINT64_C(0)},
          {1.5, UINT64_C(2)},
          {2.5, UINT64_C(2)},
@@ -166,9 +167,8 @@ int main(int argc, char *argv[]) {
         const char *expectedKind;
     };
 
-    const std::array<TrapCase, 4> fpCastTrapInputs = {
+    const std::array<TrapCase, 3> fpCastTrapInputs = {
         {{std::numeric_limits<double>::quiet_NaN(), "InvalidCast"},
-         {-0.0, "InvalidCast"},
          {-1.0, "InvalidCast"},
          {std::ldexp(1.0, 64), "Overflow"}}};
 

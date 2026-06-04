@@ -19,6 +19,7 @@
 #include <deque>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -57,6 +58,16 @@ class StringInterner {
     /// @return View of the interned string.
     std::string_view lookup(Symbol sym) const;
 
+    /// @brief Check whether @p sym identifies a currently interned string.
+    /// @param sym Symbol to validate against this interner.
+    /// @return True when @p sym is nonzero and within the owned storage range.
+    [[nodiscard]] bool contains(Symbol sym) const noexcept;
+
+    /// @brief Retrieve an interned string while preserving invalid-vs-empty state.
+    /// @param sym Symbol previously returned by intern().
+    /// @return String view for a valid symbol, or std::nullopt for an invalid one.
+    [[nodiscard]] std::optional<std::string_view> lookupOptional(Symbol sym) const;
+
     /// @brief Copy constructor.
     /// @details Deep-copies all interned strings and rebuilds the internal map
     ///          so that string_view keys point into the new storage.
@@ -70,14 +81,18 @@ class StringInterner {
     /// @return Reference to this interner.
     StringInterner &operator=(const StringInterner &other);
 
-    /// @brief Move constructor (defaulted).
+    /// @brief Move constructor.
+    /// @details Moves the owned string storage and rebuilds the string_view-keyed
+    ///          lookup table so every key points into the destination object.
     /// @param other Interner to move from; left in a valid but unspecified state.
-    StringInterner(StringInterner &&) noexcept = default;
+    StringInterner(StringInterner &&other);
 
-    /// @brief Move assignment operator (defaulted).
+    /// @brief Move assignment operator.
+    /// @details Replaces this interner with @p other's storage and rebuilds the
+    ///          lookup table from the moved strings.
     /// @param other Interner to move from; left in a valid but unspecified state.
     /// @return Reference to this interner.
-    StringInterner &operator=(StringInterner &&) noexcept = default;
+    StringInterner &operator=(StringInterner &&other);
 
   private:
     /// @brief Heterogeneous hash enabling map lookups keyed by string_view.
@@ -122,8 +137,10 @@ class StringInterner {
         }
     };
 
+    using InternMap = std::unordered_map<std::string_view, Symbol, TransparentHash, TransparentEqual>;
+
     /// Maps string content to assigned symbols for O(1) lookup during interning.
-    std::unordered_map<std::string_view, Symbol, TransparentHash, TransparentEqual> map_;
+    InternMap map_;
     /// Retains copies of interned strings so lookups return stable views.
     std::deque<std::string> storage_;
     /// Maximum number of unique symbols representable by this interner.
@@ -134,5 +151,12 @@ class StringInterner {
     /// may become invalidated. This method reconstructs the map by iterating
     /// through the storage_ deque and creating fresh entries.
     void rebuildMap();
+
+    /// @brief Build a lookup map whose keys point into @p storage.
+    /// @param storage Owned string storage that will back every string_view key.
+    /// @return A complete string-to-symbol map for @p storage.
+    /// @details The helper builds into a temporary map so assignment operators can
+    ///          prepare all throwing state before replacing the receiving object.
+    static InternMap buildMapForStorage(const std::deque<std::string> &storage);
 };
 } // namespace il::support

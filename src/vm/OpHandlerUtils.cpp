@@ -63,19 +63,24 @@ void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val) {
     // In release builds, the cold path resize is kept as a safety fallback.
     assert(destIndex < fr.regs.size() &&
            "storeResult: register index exceeds pre-sized capacity - frame setup bug");
+    if (destIndex < fr.regs.size() && destIndex >= fr.regIsStr.size()) [[unlikely]]
+        fr.regIsStr.resize(destIndex + 1, 0);
 
     // Hot path: register file already sized, non-string type
     // This is the common case for arithmetic/comparison operations
     if (destIndex < fr.regs.size()) [[likely]] {
         if (in.type.kind != il::core::Type::Kind::Str) [[likely]] {
-            fr.regs[destIndex] = val;
-            if (destIndex < fr.regIsStr.size()) [[likely]]
+            if (destIndex < fr.regIsStr.size() && fr.regIsStr[destIndex]) [[unlikely]] {
+                rt_str_release_maybe(fr.regs[destIndex].str);
                 fr.regIsStr[destIndex] = 0;
+            }
+            fr.regs[destIndex] = val;
             return;
         }
 
         // String type: need to release old value before storing new
-        rt_str_release_maybe(fr.regs[destIndex].str);
+        if (destIndex < fr.regIsStr.size() && fr.regIsStr[destIndex])
+            rt_str_release_maybe(fr.regs[destIndex].str);
         rt_str_retain_maybe(val.str);
         fr.regs[destIndex] = val;
         if (destIndex < fr.regIsStr.size()) [[likely]]

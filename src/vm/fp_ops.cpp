@@ -468,16 +468,22 @@ VM::ExecResult handleFptosi(VM &vm,
                             in.loc,
                             fr.func ? fr.func->name : std::string(),
                             bb ? bb->label : std::string());
+        VM::ExecResult result{};
+        result.returned = true;
+        return result;
     }
 
     constexpr double kMin = static_cast<double>(std::numeric_limits<int64_t>::min());
-    constexpr double kMax = static_cast<double>(std::numeric_limits<int64_t>::max());
-    if (operand < kMin || operand > kMax) {
+    constexpr double kUpperExclusive = 0x1p63;
+    if (operand < kMin || operand >= kUpperExclusive) {
         RuntimeBridge::trap(TrapKind::Overflow,
                             "fp overflow in fptosi",
                             in.loc,
                             fr.func ? fr.func->name : std::string(),
                             bb ? bb->label : std::string());
+        VM::ExecResult result{};
+        result.returned = true;
+        return result;
     }
 
     Slot out{};

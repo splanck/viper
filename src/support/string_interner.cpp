@@ -47,9 +47,39 @@ StringInterner::StringInterner(const StringInterner &other)
 StringInterner &StringInterner::operator=(const StringInterner &other) {
     if (this == &other)
         return *this;
-    storage_ = other.storage_;
+    std::deque<std::string> newStorage = other.storage_;
+    InternMap newMap = buildMapForStorage(newStorage);
+    storage_ = std::move(newStorage);
+    map_ = std::move(newMap);
     maxSymbols_ = other.maxSymbols_;
+    return *this;
+}
+
+/// @brief Move-construct an interner and rebuild view-backed lookup keys.
+/// @param other Source interner whose storage is transferred.
+/// @details The storage deque is moved first, then @ref rebuildMap recreates every
+///          string_view key so it points into this object's storage. The moved-from
+///          instance is cleared to leave it valid and cheap to destroy.
+StringInterner::StringInterner(StringInterner &&other)
+    : map_{}, storage_(std::move(other.storage_)), maxSymbols_(other.maxSymbols_) {
     rebuildMap();
+    other.map_.clear();
+}
+
+/// @brief Move-assign an interner and rebuild view-backed lookup keys.
+/// @param other Source interner whose storage is transferred.
+/// @return Reference to this interner.
+/// @details Builds the new map against moved storage before replacing this
+///          object's map, avoiding stale string_view keys after assignment.
+StringInterner &StringInterner::operator=(StringInterner &&other) {
+    if (this == &other)
+        return *this;
+    std::deque<std::string> newStorage = std::move(other.storage_);
+    InternMap newMap = buildMapForStorage(newStorage);
+    storage_ = std::move(newStorage);
+    map_ = std::move(newMap);
+    maxSymbols_ = other.maxSymbols_;
+    other.map_.clear();
     return *this;
 }
 
@@ -71,10 +101,20 @@ Symbol StringInterner::intern(std::string_view str) {
         return it->second;
     if (storage_.size() >= maxSymbols_)
         return {};
+    map_.reserve(map_.size() + 1);
     storage_.emplace_back(str);
     Symbol sym{static_cast<uint32_t>(storage_.size())};
     const std::string &stored = storage_.back();
-    map_.emplace(std::string_view{stored}, sym);
+    try {
+        auto [inserted, didInsert] = map_.emplace(std::string_view{stored}, sym);
+        if (!didInsert) {
+            storage_.pop_back();
+            return inserted->second;
+        }
+    } catch (...) {
+        storage_.pop_back();
+        throw;
+    }
     return sym;
 }
 
@@ -89,9 +129,26 @@ Symbol StringInterner::intern(std::string_view str) {
 /// @param sym Symbol handle to resolve.
 /// @return View of the stored string, or empty view for invalid handles.
 std::string_view StringInterner::lookup(Symbol sym) const {
-    if (sym.id == 0 || sym.id > storage_.size())
+    auto value = lookupOptional(sym);
+    if (!value)
         return {};
-    return storage_[sym.id - 1];
+    return *value;
+}
+
+/// @brief Check whether a symbol belongs to this interner.
+/// @param sym Candidate symbol handle.
+/// @return True when @p sym indexes an owned interned string.
+bool StringInterner::contains(Symbol sym) const noexcept {
+    return sym.id != 0 && sym.id <= storage_.size();
+}
+
+/// @brief Retrieve an interned string without conflating invalid and empty values.
+/// @param sym Symbol handle to resolve.
+/// @return Optional view of the stored string, or std::nullopt for invalid symbols.
+std::optional<std::string_view> StringInterner::lookupOptional(Symbol sym) const {
+    if (!contains(sym))
+        return std::nullopt;
+    return std::string_view{storage_[sym.id - 1]};
 }
 
 /// @brief Rebuild the string-to-symbol lookup table from owned storage.
@@ -100,11 +157,20 @@ std::string_view StringInterner::lookup(Symbol sym) const {
 ///          1-based index into @ref storage_.  The method is used after copying
 ///          to ensure string_view keys reference the correct storage buffer.
 void StringInterner::rebuildMap() {
-    map_.clear();
-    map_.reserve(storage_.size());
+    map_ = buildMapForStorage(storage_);
+}
+
+/// @brief Build a lookup map whose string_view keys point into supplied storage.
+/// @param storage String storage that owns every key's bytes.
+/// @return Fully populated intern map for the supplied storage.
+StringInterner::InternMap
+StringInterner::buildMapForStorage(const std::deque<std::string> &storage) {
+    InternMap map;
+    map.reserve(storage.size());
     uint32_t id = 1;
-    for (const std::string &value : storage_) {
-        map_.emplace(std::string_view{value}, Symbol{id++});
+    for (const std::string &value : storage) {
+        map.emplace(std::string_view{value}, Symbol{id++});
     }
+    return map;
 }
 } // namespace il::support

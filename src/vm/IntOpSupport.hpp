@@ -302,7 +302,12 @@ template <typename T>
     if (idx < lo || idx >= hi) {
         return {false, static_cast<int64_t>(idx)};
     }
-    return {true, static_cast<int64_t>(idx - lo)};
+    using UnsignedT = std::make_unsigned_t<T>;
+    const auto normalized =
+        static_cast<UnsignedT>(idx) - static_cast<UnsignedT>(lo);
+    if (normalized > static_cast<UnsignedT>(std::numeric_limits<int64_t>::max()))
+        return {false, static_cast<int64_t>(idx)};
+    return {true, static_cast<int64_t>(normalized)};
 }
 
 /// @brief Check whether a signed 64-bit value fits in a narrower signed type.

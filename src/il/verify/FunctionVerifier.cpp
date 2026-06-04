@@ -26,6 +26,7 @@
 #include "il/core/Module.hpp"
 #include "il/core/OpcodeInfo.hpp"
 #include "il/core/Type.hpp"
+#include "il/internal/io/ParserUtil.hpp"
 #include "il/runtime/HelperEffects.hpp"
 #include "il/runtime/RuntimeOwnership.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
@@ -441,6 +442,8 @@ Expected<void> FunctionVerifier::run(const Module &module, DiagSink &sink) {
     functionMap_.clear();
 
     for (const auto &fn : module.functions) {
+        if (fn.name.empty() || !il::io::isValidILIdentifier(fn.name))
+            return Expected<void>{makeError({}, "malformed function @" + fn.name)};
         if (!functionMap_.emplace(fn.name, &fn).second)
             return Expected<void>{makeError({}, "duplicate function @" + fn.name)};
     }
@@ -521,6 +524,9 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     BlockMap blockMap;
     blockMap.reserve(fn.blocks.size());
     for (const auto &bb : fn.blocks) {
+        if (bb.label.empty() || !il::io::isValidILIdentifier(bb.label))
+            return Expected<void>{
+                makeError({}, formatFunctionDiag(fn, "malformed label " + bb.label))};
         if (!labels.insert(bb.label).second)
             return Expected<void>{
                 /// @brief Handles error condition.

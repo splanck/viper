@@ -20,6 +20,7 @@
 #include <cctype>
 #include <exception>
 #include <limits>
+#include <locale>
 #include <optional>
 #include <sstream>
 #include <string_view>
@@ -283,11 +284,8 @@ bool parseIntegerLiteral(const std::string &token, long long &value) {
     const unsigned long long limit = negative ? maxSigned + 1ULL : maxSigned;
     unsigned long long acc = 0;
     bool sawDigit = false;
-    for (; pos < token.size(); ++pos) {
-        const unsigned char ch = static_cast<unsigned char>(token[pos]);
-        if (ch == '_')
-            continue;
-
+    bool previousWasUnderscore = false;
+    auto digitValue = [base](unsigned char ch) {
         int digit = -1;
         if (ch >= '0' && ch <= '9')
             digit = ch - '0';
@@ -296,15 +294,33 @@ bool parseIntegerLiteral(const std::string &token, long long &value) {
         else if (ch >= 'A' && ch <= 'F')
             digit = 10 + (ch - 'A');
         if (digit < 0 || digit >= base)
+            return -1;
+        return digit;
+    };
+    for (; pos < token.size(); ++pos) {
+        const unsigned char ch = static_cast<unsigned char>(token[pos]);
+        if (ch == '_') {
+            if (!sawDigit || previousWasUnderscore || pos + 1 >= token.size())
+                return false;
+            const auto next = static_cast<unsigned char>(token[pos + 1]);
+            if (digitValue(next) < 0)
+                return false;
+            previousWasUnderscore = true;
+            continue;
+        }
+
+        int digit = digitValue(ch);
+        if (digit < 0)
             return false;
 
         sawDigit = true;
+        previousWasUnderscore = false;
         const auto unsignedDigit = static_cast<unsigned long long>(digit);
         if (acc > (limit - unsignedDigit) / static_cast<unsigned long long>(base))
             return false;
         acc = acc * static_cast<unsigned long long>(base) + unsignedDigit;
     }
-    if (!sawDigit)
+    if (!sawDigit || previousWasUnderscore)
         return false;
 
     if (negative) {
@@ -372,16 +388,17 @@ bool parseFloatLiteral(const std::string &token, double &value) {
         }
     }
 
-    try {
-        size_t idx = 0;
-        double parsed = std::stod(token, &idx);
-        if (idx != token.size())
-            return false;
-        value = parsed;
-        return true;
-    } catch (const std::exception &) {
+    std::istringstream stream(token);
+    stream.imbue(std::locale::classic());
+    double parsed = 0.0;
+    stream >> parsed;
+    if (!stream)
         return false;
-    }
+    stream >> std::ws;
+    if (!stream.eof())
+        return false;
+    value = parsed;
+    return true;
 }
 
 /// @brief Parse a trap-kind mnemonic into its numeric representation.

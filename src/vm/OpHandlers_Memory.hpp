@@ -34,6 +34,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <mutex>
 #include <string>
 #include <string_view>
 
@@ -42,6 +43,65 @@ namespace il::vm::detail::memory {
 using ExecState = VMAccess::ExecState;
 
 namespace inline_impl {
+/// @brief Build an execution result that halts the current dispatch path after a trap.
+/// @return ExecResult marked as returned so non-terminating trap observers do not fall through.
+inline VM::ExecResult trappedMemoryResult() {
+    VM::ExecResult result{};
+    result.returned = true;
+    return result;
+}
+
+/// @brief Trap when a memory instruction is missing required operands.
+/// @param in Malformed memory instruction.
+/// @param fr Active frame used for diagnostic function naming.
+/// @param bb Current block pointer used for diagnostic block naming.
+/// @param message Diagnostic text describing the malformed instruction.
+/// @return ExecResult that stops dispatch if the trap observer returns.
+inline VM::ExecResult trapMalformedMemoryInstruction(const il::core::Instr &in,
+                                                     const Frame &fr,
+                                                     const il::core::BasicBlock *bb,
+                                                     std::string message) {
+    RuntimeBridge::trap(TrapKind::InvalidOperation,
+                        message,
+                        in.loc,
+                        fr.func ? fr.func->name : std::string(),
+                        bb ? bb->label : std::string());
+    return trappedMemoryResult();
+}
+
+/// @brief Validate a VM-owned memory range before dereference.
+/// @details Accepts frame stack storage, mutable global storage, and live
+///          runtime heap payloads. The returned classification tells callers
+///          whether to take the shared global mutex before reading or writing.
+/// @param vm Active VM whose ProgramState owns global allocations.
+/// @param fr Active frame whose stack storage may contain the pointer.
+/// @param in Instruction being executed, used for diagnostics.
+/// @param bb Current block pointer used for diagnostics.
+/// @param ptr Pointer requested by the load/store.
+/// @param bytes Number of bytes to access.
+/// @param operation Operation name for diagnostics.
+/// @param[out] info Receives the classification on success.
+/// @return True when the range is VM-owned and in bounds.
+inline bool validateMemoryAccess(VM &vm,
+                                 const Frame &fr,
+                                 const il::core::Instr &in,
+                                 const il::core::BasicBlock *bb,
+                                 const void *ptr,
+                                 size_t bytes,
+                                 std::string_view operation,
+                                 VM::MemoryAccessInfo &info) {
+    info = VMAccess::classifyMemoryAccess(vm, fr, ptr, bytes);
+    if (info.valid)
+        return true;
+
+    RuntimeBridge::trap(TrapKind::InvalidOperation,
+                        std::string(operation) + " outside VM-owned memory",
+                        in.loc,
+                        fr.func ? fr.func->name : std::string(),
+                        bb ? bb->label : std::string());
+    return false;
+}
+
 /// @brief Return the minimum alignment required for a given IL type kind.
 /// @details The VM validates alignment before performing memory operations so
 ///          misaligned accesses can trap deterministically. The alignment is
@@ -254,6 +314,10 @@ inline VM::ExecResult handleLoadImpl(VM &vm,
     (void)blocks;
     (void)ip;
 
+    if (in.operands.size() < 1)
+        return inline_impl::trapMalformedMemoryInstruction(
+            in, fr, bb, "load missing pointer operand");
+
     void *ptr = VMAccess::eval(vm, fr, in.operands[0]).ptr;
     if (!ptr) {
         const std::string blockLabel = bb ? bb->label : std::string();
@@ -295,6 +359,15 @@ inline VM::ExecResult handleLoadImpl(VM &vm,
         return result;
     }
 
+    const size_t accessSize = inline_impl::sizeOfKind(in.type.kind);
+    VM::MemoryAccessInfo access{};
+    if (!inline_impl::validateMemoryAccess(vm, fr, in, bb, ptr, accessSize, "load", access))
+        return inline_impl::trappedMemoryResult();
+
+    std::unique_lock<std::mutex> globalLock;
+    if (access.sharedGlobal)
+        globalLock = std::unique_lock<std::mutex>(VMAccess::mutableGlobalMutex(vm));
+
     ops::storeResult(fr, in, inline_impl::loadSlotFromPtr(in.type.kind, ptr));
     return {};
 }
@@ -322,6 +395,10 @@ inline VM::ExecResult handleStoreImpl(VM &vm,
     (void)blocks;
 
     const std::string blockLabel = bb ? bb->label : std::string();
+    if (in.operands.size() < 2)
+        return inline_impl::trapMalformedMemoryInstruction(
+            in, fr, bb, "store missing pointer or value operand");
+
     void *ptr = VMAccess::eval(vm, fr, in.operands[0]).ptr;
     if (!ptr) {
         RuntimeBridge::trap(TrapKind::InvalidOperation,
@@ -361,11 +438,18 @@ inline VM::ExecResult handleStoreImpl(VM &vm,
     }
 
     Slot value = VMAccess::eval(vm, fr, in.operands[1]);
+    const size_t writeSize = inline_impl::sizeOfKind(in.type.kind);
+    VM::MemoryAccessInfo access{};
+    if (!inline_impl::validateMemoryAccess(vm, fr, in, bb, ptr, writeSize, "store", access))
+        return inline_impl::trappedMemoryResult();
+
+    std::unique_lock<std::mutex> globalLock;
+    if (access.sharedGlobal)
+        globalLock = std::unique_lock<std::mutex>(VMAccess::mutableGlobalMutex(vm));
 
     // Memory watch hook: use fast-path flag to skip entirely when no watches are active.
     // This eliminates the VMAccess::debug() call and vector empty check in the common case.
     if (VMAccess::hasMemWatchesActive(vm)) [[unlikely]] {
-        const size_t writeSize = inline_impl::sizeOfKind(in.type.kind);
         if (writeSize)
             VMAccess::debug(vm).onMemWrite(ptr, writeSize);
     }

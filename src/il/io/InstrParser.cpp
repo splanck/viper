@@ -357,6 +357,10 @@ Expected<void> parseWithMetadata(Opcode opcode,
 /// @return Empty on success; otherwise, a diagnostic for malformed syntax,
 /// operands, or shape violations.
 Expected<void> parseInstruction_E(const std::string &line, ParserState &st) {
+    if (!st.curFn || !st.curBB) {
+        return Expected<void>{il::io::makeLineErrorDiag(
+            st.curLoc, st.lineNo, "instruction appears outside a function block")};
+    }
     if (st.curBB && st.curBB->terminated) {
         return Expected<void>{il::io::makeLineErrorDiag(
             st.curLoc, st.lineNo, "instruction appears after block terminator")};

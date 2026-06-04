@@ -35,7 +35,9 @@
 #include <functional>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -91,6 +93,22 @@ constexpr size_t toIndex(Opcode op) {
     return static_cast<size_t>(op);
 }
 
+/// @brief Validate a symbol identifier before printing it into textual IL.
+/// @details The IL grammar has no quoted form for function, extern, global, or
+///          block identifiers.  Emitting an invalid name would therefore produce
+///          text that the parser cannot read back, so serialization fails fast.
+/// @param role Human-readable identifier role used in the exception message.
+/// @param name Identifier payload without sigil.
+/// @return Reference to @p name when it is valid.
+/// @throws std::invalid_argument when @p name is empty or malformed.
+const std::string &checkedIdentifier(std::string_view role, const std::string &name) {
+    if (name.empty() || !isValidILIdentifier(name)) {
+        throw std::invalid_argument("IL serializer: invalid " + std::string(role) +
+                                    " identifier '" + name + "'");
+    }
+    return name;
+}
+
 /// @brief Format a value operand into the textual representation used by IL.
 /// @details For temp values, attempts to resolve the ID to its declared name
 ///          using the serialize context. Falls back to %tN format when no
@@ -111,6 +129,10 @@ void printValue(std::ostream &os, const Value &value, const SerializeContext &ct
             os << '%' << name;
             return;
         }
+    }
+    if (value.kind == Value::Kind::GlobalAddr) {
+        os << '@' << checkedIdentifier("global reference", value.str);
+        return;
     }
     os << il::core::toString(value);
 }
@@ -168,7 +190,7 @@ void printTrapFromErrOperands(const Instr &instr, std::ostream &os, const Serial
 /// @param os Stream receiving serialized operands.
 /// @param ctx Serialization context with value name mappings.
 void printCallOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx) {
-    os << " @" << instr.callee << "(";
+    os << " @" << checkedIdentifier("callee", instr.callee) << "(";
     printValueList(os, instr.operands, ctx);
     os << ')';
     const bool hasAttrs = instr.CallAttr.nothrow || instr.CallAttr.readonly || instr.CallAttr.pure;
@@ -298,7 +320,7 @@ void printBranchTarget(const Instr &instr,
                        const SerializeContext &ctx) {
     if (index >= instr.labels.size())
         return;
-    os << instr.labels[index];
+    os << checkedIdentifier("label", instr.labels[index]);
     if (index < instr.brArgs.size() && !instr.brArgs[index].empty()) {
         os << '(';
         printValueList(os, instr.brArgs[index], ctx);
@@ -439,7 +461,7 @@ const Formatter &formatterFor(Opcode op) {
 /// @param e Imported function descriptor to serialise; not owned.
 /// @param os Stream that receives the textual representation; not owned.
 void printExtern(const Extern &e, std::ostream &os) {
-    os << "extern @" << e.name << "(";
+    os << "extern @" << checkedIdentifier("extern", e.name) << "(";
     for (size_t i = 0; i < e.params.size(); ++i) {
         if (i)
             os << ", ";
@@ -633,7 +655,7 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode) {
             os << "import ";
         if (g.isConst || g.type.kind == Type::Kind::Str)
             os << "const ";
-        os << g.type.toString() << " @" << g.name;
+        os << g.type.toString() << " @" << checkedIdentifier("global", g.name);
         if (g.type.kind == Type::Kind::Str) {
             os << " = \"" << encodeEscapedString(g.init) << "\"";
         } else if (g.hasInitializer || !g.init.empty()) {
@@ -650,7 +672,7 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode) {
             os << "export ";
         else if (f.linkage == Linkage::Import)
             os << "import ";
-        os << "@" << f.name << "(";
+        os << "@" << checkedIdentifier("function", f.name) << "(";
         for (size_t i = 0; i < f.params.size(); ++i) {
             if (i)
                 os << ", ";
@@ -675,9 +697,9 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode) {
         for (const auto &bb : f.blocks) {
             const bool handler = isHandlerBlock(bb);
             if (handler)
-                os << "handler ^" << bb.label;
+                os << "handler ^" << checkedIdentifier("block label", bb.label);
             else
-                os << bb.label;
+                os << checkedIdentifier("block label", bb.label);
             if (!bb.params.empty()) {
                 os << '(';
                 for (size_t i = 0; i < bb.params.size(); ++i) {

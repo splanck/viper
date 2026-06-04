@@ -63,6 +63,9 @@
 #ifndef VIPER_VM_DISPATCH_AFTER
 #define VIPER_VM_DISPATCH_AFTER(ST, OPCODE)                                                        \
     do {                                                                                           \
+        if ((ST).vm() && (ST).vm()->pollPendingInterrupt()) [[unlikely]] {                         \
+            (ST).requestPause();                                                                   \
+        }                                                                                          \
         const auto &cfg = (ST).config;                                                             \
         if (cfg.interruptEveryN) [[unlikely]] {                                                    \
             if ((++(ST).pollTick % cfg.interruptEveryN) == 0) {                                    \

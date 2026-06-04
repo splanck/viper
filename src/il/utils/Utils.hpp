@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <string_view>
 
 namespace il::core {
@@ -23,6 +24,10 @@ struct BasicBlock;
 struct Function;
 struct Value;
 } // namespace il::core
+
+namespace viper::analysis {
+struct DomTree;
+} // namespace viper::analysis
 
 namespace viper::il {
 
@@ -59,6 +64,26 @@ bool isTerminated(const Block &B);
 /// @param replacement New value to substitute.
 /// @sideeffect Mutates operands and branch arguments in place.
 void replaceAllUses(::il::core::Function &F, unsigned tempId, const ::il::core::Value &replacement);
+
+/// @brief Replace uses of a temporary only where a defining instruction dominates them.
+/// @details Rewrites uses in instructions dominated by @p rootBlock. Uses in the
+///          root block are rewritten only after @p rootInstrIndex, so callers can
+///          remove the root instruction without introducing same-block
+///          use-before-def problems. This helper is intended for CSE/GVN style
+///          substitutions where @p replacement may itself be a temporary.
+/// @param F Function to modify.
+/// @param tempId Temporary identifier produced by the redundant instruction.
+/// @param replacement Dominating value to substitute.
+/// @param rootBlock Block containing the redundant instruction.
+/// @param rootInstrIndex Index of the redundant instruction in @p rootBlock.
+/// @param domTree Dominator tree for @p F computed before the substitution.
+/// @sideeffect Mutates operands and branch arguments in dominated instructions.
+void replaceUsesDominatedBy(::il::core::Function &F,
+                            unsigned tempId,
+                            const ::il::core::Value &replacement,
+                            const ::il::core::BasicBlock &rootBlock,
+                            std::size_t rootInstrIndex,
+                            const ::viper::analysis::DomTree &domTree);
 
 /// @brief Compute the next available temporary identifier in a function.
 /// @details Scans all parameters, block parameters, instruction results,

@@ -14,14 +14,18 @@
 //===----------------------------------------------------------------------===//
 
 #include "support/arena.hpp"
+#include "support/diag_capture.hpp"
 #include "support/diag_expected.hpp"
 #include "support/diagnostics.hpp"
+#include "support/small_vector.hpp"
 #include "support/source_location.hpp"
 #include "support/source_manager.hpp"
 #include "support/string_interner.hpp"
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <sstream>
@@ -48,6 +52,22 @@ int main() {
     auto b = interner.intern("hello");
     assert(a == b);
     assert(interner.lookup(a) == "hello");
+    assert(interner.contains(a));
+    auto emptySym = interner.intern("");
+    assert(emptySym);
+    assert(interner.lookup(emptySym).empty());
+    auto emptyLookup = interner.lookupOptional(emptySym);
+    assert(emptyLookup.has_value());
+    assert(emptyLookup->empty());
+    assert(!interner.lookupOptional(il::support::Symbol{}).has_value());
+
+    il::support::StringInterner moveSource;
+    auto movedSym = moveSource.intern("moved");
+    il::support::StringInterner moveConstructed(std::move(moveSource));
+    assert(moveConstructed.lookup(movedSym) == "moved");
+    il::support::StringInterner moveAssigned;
+    moveAssigned = std::move(moveConstructed);
+    assert(moveAssigned.lookup(movedSym) == "moved");
 
     // Cached string_view from lookup must survive further growth.
     il::support::StringInterner stableInterner;
@@ -94,10 +114,17 @@ int main() {
     il::support::SourceLoc missingColumnEnd{loc.file_id, 4, 0};
     il::support::SourceRange missingColumnRange{sameLineBegin, missingColumnEnd};
     assert(missingColumnRange.isValid());
+    assert(!missingColumnRange.isConcrete());
 
     il::support::SourceLoc missingLineEnd{loc.file_id, 0, 0};
     il::support::SourceRange missingLineRange{sameLineBegin, missingLineEnd};
     assert(missingLineRange.isValid());
+    assert(!missingLineRange.isConcrete());
+
+    il::support::SourceRange insertionRange{sameLineBegin, sameLineBegin};
+    assert(!insertionRange.isValid());
+    assert(insertionRange.isInsertion());
+    assert(!insertionRange.isConcrete());
     il::support::Diag partialDiag{il::support::Severity::Error, "partial coordinates", partial, {}};
     std::ostringstream partialStream;
     il::support::printDiag(partialDiag, partialStream, &sm);
@@ -137,6 +164,56 @@ int main() {
     assert(jsonText.find("\"help\":\"Check the callee name.\"") != std::string::npos);
     assert(jsonText.find("\"replacement\":\"goodCall\"") != std::string::npos);
 
+    const uint32_t blankFile = sm.addFile("blank.zia");
+    sm.setSource(blankFile, "first\n\nthird\n");
+    assert(sm.hasLine(blankFile, 2));
+    assert(sm.getLine(blankFile, 2).empty());
+    il::support::Diag blankDiag{
+        il::support::Severity::Error,
+        "blank line",
+        il::support::SourceLoc{blankFile, 2, 1},
+        {},
+    };
+    std::ostringstream blankTextStream;
+    il::support::printDiag(blankDiag, blankTextStream, &sm);
+    const std::string blankText = blankTextStream.str();
+    assert(blankText.find("2 | \n") != std::string::npos);
+    assert(blankText.find(" | ^") != std::string::npos);
+
+    std::ostringstream blankJsonStream;
+    il::support::printDiagJson(blankDiag, blankJsonStream, &sm);
+    assert(blankJsonStream.str().find("\"source\":\"\"") != std::string::npos);
+
+    il::support::Diag unknownPathJson{
+        il::support::Severity::Error,
+        "unknown path json",
+        il::support::SourceLoc{9999, 1, 1},
+        {},
+    };
+    std::ostringstream unknownPathJsonStream;
+    il::support::printDiagJson(unknownPathJson, unknownPathJsonStream, &sm);
+    assert(unknownPathJsonStream.str().find("\"file\":null") != std::string::npos);
+
+    il::support::Diag invalidUtf8Diag{
+        il::support::Severity::Error,
+        std::string("bad byte ") + static_cast<char>(0xff),
+        {},
+        {},
+    };
+    std::ostringstream invalidUtf8Json;
+    il::support::printDiagJson(invalidUtf8Diag, invalidUtf8Json, &sm);
+    assert(invalidUtf8Json.str().find("\\ufffd") != std::string::npos);
+
+    il::support::Diag unknownSeverityDiag{
+        static_cast<il::support::Severity>(99),
+        "odd severity",
+        {},
+        {},
+    };
+    std::ostringstream unknownSeverityText;
+    il::support::printDiag(unknownSeverityDiag, unknownSeverityText, &sm);
+    assert(unknownSeverityText.str().find("unknown: odd severity") != std::string::npos);
+
     // Captured string views must remain valid after subsequent insertions.
     il::support::SourceManager viewSm;
     const uint32_t first_id = viewSm.addFile("first");
@@ -160,6 +237,52 @@ int main() {
         il::support::SourceManagerTestAccess::storedPathCount(dedupeSm);
     assert(stored_before == stored_after);
     assert(dedupeSm.getPath(dedupeFirst) == "dupe/file.txt");
+
+    {
+        const auto tempPath =
+            std::filesystem::temp_directory_path() / "viper_support_source_manager_lines.tmp";
+        std::filesystem::remove(tempPath);
+        il::support::SourceManager fileSm;
+        const uint32_t tempId = fileSm.addFile(tempPath.string());
+        assert(!fileSm.hasLine(tempId, 1));
+        {
+            std::ofstream out(tempPath);
+            out << "alpha\r\n\r\nomega\r\n";
+        }
+        assert(!fileSm.hasLine(tempId, 1));
+        fileSm.invalidateSource(tempId);
+        assert(fileSm.hasLine(tempId, 1));
+        assert(fileSm.hasLine(tempId, 2));
+        assert(fileSm.getLine(tempId, 1) == "alpha");
+        assert(fileSm.getLine(tempId, 2).empty());
+        assert(fileSm.getLine(tempId, 3) == "omega");
+        std::filesystem::remove(tempPath);
+    }
+
+    {
+        const auto tempDir =
+            std::filesystem::temp_directory_path() / "viper_support_source_manager_cwd";
+        std::filesystem::create_directories(tempDir);
+        const auto oldCwd = std::filesystem::current_path();
+        const auto relFile = tempDir / "relative.bas";
+        {
+            std::ofstream out(relFile);
+            out << "from original cwd\n";
+        }
+        il::support::SourceManager relSm;
+        std::filesystem::current_path(tempDir);
+        const uint32_t relId = relSm.addFile("relative.bas");
+        std::filesystem::current_path(oldCwd);
+        assert(relSm.getLine(relId, 1) == "from original cwd");
+        std::filesystem::remove(relFile);
+        std::filesystem::remove(tempDir);
+    }
+
+    {
+        il::support::SourceManager invalidSetSm;
+        invalidSetSm.setSource(42, "ghost\n");
+        assert(!invalidSetSm.hasLine(42, 1));
+    }
 
 #ifdef _WIN32
     // Windows path normalization should ignore ASCII casing to align with
@@ -202,6 +325,87 @@ int main() {
     il::support::Expected<il::support::Diag> err(diagError);
     assert(!err.hasValue());
     assert(err.error().message == diagErrorMessage);
+
+    il::support::DiagCapture formattedCapture;
+    formattedCapture.ss << "error: already formatted\n";
+    assert(formattedCapture.toDiag().message == "already formatted");
+    il::support::DiagCapture emptyCapture;
+    auto capturedFailure = il::support::capture_to_expected_impl(false, emptyCapture);
+    assert(!capturedFailure);
+    assert(capturedFailure.error().message == "legacy operation failed without diagnostic output");
+
+    // SmallVector should manage non-trivial element lifetimes exactly.
+    {
+        int liveCount = 0;
+        int destroyedCount = 0;
+        struct Counted {
+            int *live;
+            int *destroyed;
+            int value;
+
+            Counted(int *liveCounter, int *destroyedCounter, int v)
+                : live(liveCounter), destroyed(destroyedCounter), value(v) {
+                ++(*live);
+            }
+
+            Counted(const Counted &other)
+                : live(other.live), destroyed(other.destroyed), value(other.value) {
+                ++(*live);
+            }
+
+            Counted(Counted &&other) noexcept
+                : live(other.live), destroyed(other.destroyed), value(other.value) {
+                ++(*live);
+            }
+
+            ~Counted() {
+                --(*live);
+                ++(*destroyed);
+            }
+        };
+
+        {
+            il::support::SmallVector<Counted, 2> values;
+            values.emplace_back(&liveCount, &destroyedCount, 1);
+            values.emplace_back(&liveCount, &destroyedCount, 2);
+            assert(values.size() == 2);
+            assert(liveCount == 2);
+            values.emplace_back(&liveCount, &destroyedCount, 3);
+            assert(values.size() == 3);
+            assert(values[2].value == 3);
+            assert(liveCount == 3);
+            values.pop_back();
+            assert(values.size() == 2);
+            assert(liveCount == 2);
+            values.clear();
+            assert(values.empty());
+            assert(liveCount == 0);
+            values.emplace_back(&liveCount, &destroyedCount, 4);
+            il::support::SmallVector<Counted, 2> moved(std::move(values));
+            assert(values.empty());
+            assert(moved.size() == 1);
+            assert(moved.front().value == 4);
+            assert(liveCount == 1);
+        }
+        assert(liveCount == 0);
+        assert(destroyedCount > 0);
+    }
+
+    {
+        struct NoDefault {
+            int value;
+            explicit NoDefault(int v) : value(v) {}
+            NoDefault(const NoDefault &) = default;
+            NoDefault(NoDefault &&) noexcept = default;
+        };
+
+        il::support::SmallVector<NoDefault, 1> values;
+        values.emplace_back(7);
+        values.emplace_back(9);
+        assert(values.size() == 2);
+        assert(values[0].value == 7);
+        assert(values[1].value == 9);
+    }
 
     // Arena alignment
     il::support::Arena arena(64);

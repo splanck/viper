@@ -25,6 +25,7 @@
 
 #include "arena.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 
@@ -116,19 +117,33 @@ void *GrowingArena::Chunk::tryAllocate(size_t sz, size_t align) {
     // Validate alignment (power of two, non-zero)
     if (align == 0 || (align & (align - 1)) != 0)
         return nullptr;
+    if (!data || offset > size)
+        return nullptr;
 
     const std::uintptr_t base = reinterpret_cast<std::uintptr_t>(data.get());
+    if (offset > std::numeric_limits<std::uintptr_t>::max() - base)
+        return nullptr;
+
     const std::uintptr_t current = base + offset;
     const std::uintptr_t mask = static_cast<std::uintptr_t>(align - 1);
+    if (current > std::numeric_limits<std::uintptr_t>::max() - mask)
+        return nullptr;
+
     const std::uintptr_t aligned = (current + mask) & ~mask;
     const size_t adjustment = static_cast<size_t>(aligned - current);
-    const size_t newOffset = offset + adjustment + sz;
+    if (adjustment > std::numeric_limits<size_t>::max() - offset)
+        return nullptr;
 
-    if (newOffset > size)
+    const size_t alignedOffset = offset + adjustment;
+    if (sz > std::numeric_limits<size_t>::max() - alignedOffset)
+        return nullptr;
+
+    const size_t newOffset = alignedOffset + sz;
+    if (alignedOffset > size || sz > size - alignedOffset)
         return nullptr;
 
     offset = newOffset;
-    return data.get() + offset - sz;
+    return data.get() + alignedOffset;
 }
 
 GrowingArena::GrowingArena(size_t initialChunkSize, size_t growthChunkSize)
@@ -156,6 +171,9 @@ GrowingArena &GrowingArena::operator=(GrowingArena &&other) noexcept {
 }
 
 void *GrowingArena::allocate(size_t size, size_t align) {
+    if (align == 0 || (align & (align - 1)) != 0)
+        throw std::bad_alloc();
+
     // Try to allocate from the current chunk
     if (!chunks_.empty()) {
         if (void *ptr = chunks_.back().tryAllocate(size, align))
@@ -163,6 +181,8 @@ void *GrowingArena::allocate(size_t size, size_t align) {
     }
 
     // Need a new chunk - allocate at least enough for this request
+    if (size > std::numeric_limits<size_t>::max() - align)
+        throw std::bad_alloc();
     const size_t chunkSize = std::max(growthChunkSize_, size + align);
     allocateChunk(chunkSize);
 

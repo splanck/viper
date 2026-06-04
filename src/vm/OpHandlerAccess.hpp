@@ -18,6 +18,8 @@
 #include "il/core/Function.hpp"
 #include "vm/VM.hpp"
 
+#include <cstdint>
+#include <mutex>
 #include <span>
 #include <unordered_map>
 #include <vector>
@@ -66,6 +68,86 @@ struct VMAccess {
     /// @return Const reference to the map from function names to Function pointers.
     static inline const VM::FnMap &functionMap(const VM &vm) {
         return vm.fnMap;
+    }
+
+    /// @brief Check whether @p fn is a function object owned by the active module.
+    /// @details Pointer-based call.indirect operands are untrusted VM values. The
+    ///          handler must verify that the raw pointer matches one of the
+    ///          immutable Function instances cached in the VM function map before
+    ///          invoking it.
+    /// @param vm Virtual machine whose module owns valid function objects.
+    /// @param fn Candidate function pointer decoded from a VM slot.
+    /// @return True when @p fn is one of the VM's known functions.
+    static inline bool isKnownFunctionPointer(const VM &vm, const il::core::Function *fn) {
+        if (!fn)
+            return false;
+        for (const auto &entry : vm.fnMap) {
+            if (entry.second == fn)
+                return true;
+        }
+        return false;
+    }
+
+    /// @brief Classify a memory range before a VM load or store.
+    /// @details A range is valid when it lies wholly inside the active frame's
+    ///          stack storage, wholly inside one mutable global allocation, or
+    ///          wholly inside one live runtime heap payload. Pointer arithmetic
+    ///          that escapes those allocations is rejected before dereference.
+    /// @param vm VM whose shared program state owns mutable globals.
+    /// @param fr Active frame whose stack storage is also a valid memory region.
+    /// @param ptr First byte of the requested memory range.
+    /// @param bytes Number of bytes requested; zero-byte accesses are valid.
+    /// @return Access classification including whether the range is shared global storage.
+    static inline VM::MemoryAccessInfo classifyMemoryAccess(const VM &vm,
+                                                            const Frame &fr,
+                                                            const void *ptr,
+                                                            size_t bytes) noexcept {
+        VM::MemoryAccessInfo info{};
+        if (bytes == 0) {
+            info.valid = true;
+            return info;
+        }
+        if (!ptr)
+            return info;
+
+        const auto address = reinterpret_cast<std::uintptr_t>(ptr);
+        auto containsRange = [&](const void *basePtr, size_t length) noexcept {
+            if (!basePtr || length == 0)
+                return false;
+            const auto begin = reinterpret_cast<std::uintptr_t>(basePtr);
+            if (address < begin)
+                return false;
+            const std::uintptr_t offset = address - begin;
+            return offset <= length && bytes <= length - offset;
+        };
+
+        if (containsRange(fr.stack.data(), fr.stack.size())) {
+            info.valid = true;
+            return info;
+        }
+
+        if (vm.programState_) {
+            for (const auto &entry : vm.programState_->mutableGlobalSizes) {
+                if (containsRange(entry.first, entry.second)) {
+                    info.valid = true;
+                    info.sharedGlobal = true;
+                    return info;
+                }
+            }
+        }
+
+        if (rt_heap_contains_range(ptr, bytes)) {
+            info.valid = true;
+            return info;
+        }
+        return info;
+    }
+
+    /// @brief Access the mutex protecting shared mutable global storage.
+    /// @param vm VM whose shared ProgramState owns the global storage.
+    /// @return Mutex serializing mutable global reads and writes.
+    static inline std::mutex &mutableGlobalMutex(VM &vm) {
+        return vm.programState_->mutableGlobalMutex;
     }
 
     /// @brief Access the VM's runtime call context used for trap metadata.

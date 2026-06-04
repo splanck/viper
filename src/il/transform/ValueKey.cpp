@@ -15,6 +15,7 @@
 #include "il/transform/ValueKey.hpp"
 
 #include <algorithm>
+#include <cstring>
 #include <functional>
 #include <string>
 
@@ -163,12 +164,10 @@ static std::vector<Value> normaliseOperands(const Instr &instr) {
             case Value::Kind::ConstInt:
                 return {2, static_cast<unsigned long long>(v.i64 ^ (v.isBool ? 1u : 0u)), {}};
             case Value::Kind::ConstFloat: {
-                union {
-                    double d;
-                    unsigned long long u;
-                } u{};
-                u.d = v.f64;
-                return {1, u.u, {}};
+                unsigned long long bits = 0;
+                static_assert(sizeof(bits) == sizeof(v.f64));
+                std::memcpy(&bits, &v.f64, sizeof(bits));
+                return {1, bits, {}};
             }
             case Value::Kind::ConstStr:
             case Value::Kind::GlobalAddr:

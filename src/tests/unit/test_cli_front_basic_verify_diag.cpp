@@ -72,7 +72,7 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
 
     il::core::Module module{};
     il::core::Function mainFn;
-    mainFn.name = "@main";
+    mainFn.name = "main";
     mainFn.retType = il::core::Type{il::core::Type::Kind::I64};
 
     il::core::BasicBlock entry{};

@@ -25,13 +25,30 @@
 #include "support/source_location.hpp"
 #include "support/source_manager.hpp"
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <iostream>
+#include <limits>
 #include <string_view>
 
 namespace il::vm {
 namespace {
 [[maybe_unused]] constexpr bool kDebugBreakpoints = false;
+
+/// @brief Add a byte count to an address without wrapping.
+/// @details Returns the exclusive end address for a watched or written range.
+///          When the mathematical end would exceed uintptr_t, the value is
+///          clamped to the maximum address so interval intersection checks stay
+///          monotonic instead of wrapping to the low address range.
+/// @param start Inclusive start address.
+/// @param size Number of bytes in the range.
+/// @return Exclusive end address, clamped on overflow.
+std::uintptr_t saturatingRangeEnd(std::uintptr_t start, std::size_t size) noexcept {
+    const auto maxAddress = std::numeric_limits<std::uintptr_t>::max();
+    if (size > maxAddress - start)
+        return maxAddress;
+    return start + size;
+}
 } // namespace
 
 /// @brief Normalise a file-system path so breakpoint comparisons are stable.
@@ -370,7 +387,7 @@ uint32_t DebugCtrl::addMemWatch(const void *addr, std::size_t size, std::string 
     if (!addr || size == 0)
         return 0;
     const auto start = reinterpret_cast<std::uintptr_t>(addr);
-    const auto end = start + size;
+    const auto end = saturatingRangeEnd(start, size);
     const uint32_t id = nextMemWatchId_++;
     memWatches_.push_back(MemWatchRange{start, end, addr, size, std::move(tag), id});
     memWatchesSorted_ = false;
@@ -413,7 +430,7 @@ void DebugCtrl::onMemWrite(const void *addr, std::size_t size) {
         return;
 
     const auto writeStart = reinterpret_cast<std::uintptr_t>(addr);
-    const auto writeEnd = writeStart + size; // exclusive
+    const auto writeEnd = saturatingRangeEnd(writeStart, size); // exclusive
 
     // For small watch sets, linear scan is faster than sort + binary search
     constexpr std::size_t kLinearThreshold = 8;

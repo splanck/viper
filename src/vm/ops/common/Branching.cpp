@@ -96,7 +96,16 @@ Target select_case(Scalar scrutinee, std::span<const Case> table, Target default
 /// @param target Describes the branch instruction, destination map, and context.
 void jump(Frame &frame, Target target) {
     try {
-        assert(target.valid() && "attempted to jump to an invalid target");
+        if (!target.valid()) {
+            RuntimeBridge::trap(TrapKind::InvalidOperation,
+                                "invalid branch target",
+                                target.instr ? target.instr->loc : il::support::SourceLoc{},
+                                frame.func ? frame.func->name : std::string(),
+                                target.currentBlock && *target.currentBlock
+                                    ? (*target.currentBlock)->label
+                                    : std::string());
+            return;
+        }
 
         const il::core::BasicBlock *dest = nullptr;
         if (auto *st = il::vm::detail::VMAccess::currentExecState(*target.vm)) {
@@ -113,12 +122,31 @@ void jump(Frame &frame, Target target) {
                                             frame.func ? frame.func->name : std::string(),
                                             *target.currentBlock ? (*target.currentBlock)->label
                                                                  : std::string());
+                        return;
                     }
                     resolved[i] = it->second;
                 }
             }
+            if (target.labelIndex >= resolved.size() || !resolved[target.labelIndex]) {
+                RuntimeBridge::trap(TrapKind::InvalidOperation,
+                                    "branch target index out of range",
+                                    target.instr->loc,
+                                    frame.func ? frame.func->name : std::string(),
+                                    *target.currentBlock ? (*target.currentBlock)->label
+                                                         : std::string());
+                return;
+            }
             dest = resolved[target.labelIndex];
         } else {
+            if (target.labelIndex >= target.instr->labels.size()) {
+                RuntimeBridge::trap(TrapKind::InvalidOperation,
+                                    "branch target index out of range",
+                                    target.instr->loc,
+                                    frame.func ? frame.func->name : std::string(),
+                                    *target.currentBlock ? (*target.currentBlock)->label
+                                                         : std::string());
+                return;
+            }
             auto it = target.blocks->find(target.instr->labels[target.labelIndex]);
             if (it == target.blocks->end()) {
                 RuntimeBridge::trap(TrapKind::InvalidOperation,
@@ -127,6 +155,7 @@ void jump(Frame &frame, Target target) {
                                     frame.func ? frame.func->name : std::string(),
                                     *target.currentBlock ? (*target.currentBlock)->label
                                                          : std::string());
+                return;
             }
             dest = it->second;
         }
@@ -136,8 +165,10 @@ void jump(Frame &frame, Target target) {
         const size_t provided = target.labelIndex < target.instr->brArgs.size()
                                     ? target.instr->brArgs[target.labelIndex].size()
                                     : 0;
-        if (provided != expected)
+        if (provided != expected) {
             reportBranchArgMismatch(*dest, sourceBlock, expected, provided, *target.instr, frame);
+            return;
+        }
 
         if (provided > 0) {
             const auto &args = target.instr->brArgs[target.labelIndex];
@@ -150,6 +181,7 @@ void jump(Frame &frame, Target target) {
                                         target.instr->loc,
                                         frame.func ? frame.func->name : std::string(),
                                         dest->label);
+                    return;
                 }
 
                 Slot incoming = detail::VMAccess::eval(*target.vm, frame, args[i]);
@@ -197,7 +229,14 @@ void jump(Frame &frame, Target target) {
 /// @return Scalar representation of the scrutinee value.
 Scalar eval_scrutinee(Frame &frame, const il::core::Instr &instr) {
     VM *vm = activeVMInstance();
-    assert(vm != nullptr && "active VM instance required to evaluate scrutinee");
+    if (!vm) {
+        RuntimeBridge::trap(TrapKind::InvalidOperation,
+                            "active VM instance required to evaluate switch scrutinee",
+                            instr.loc,
+                            frame.func ? frame.func->name : std::string(),
+                            "");
+        return {};
+    }
     Slot slot = detail::VMAccess::eval(*vm, frame, switchScrutinee(instr));
     Scalar scalar{};
     scalar.value = static_cast<int32_t>(slot.i64);

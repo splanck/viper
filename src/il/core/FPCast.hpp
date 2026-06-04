@@ -9,6 +9,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 
 namespace il::core {
@@ -74,7 +75,7 @@ inline CheckedFPCastResult checkedFpToSiRte(double operand, int bits) {
 }
 
 inline CheckedFPCastResult checkedFpToUiRte(double operand, int bits) {
-    if (!std::isfinite(operand) || std::signbit(operand))
+    if (!std::isfinite(operand) || operand < 0.0)
         return {CheckedFPCastFailure::Invalid, 0};
 
     if (operand >= unsignedUpperExclusiveForBits(bits))
@@ -84,7 +85,10 @@ inline CheckedFPCastResult checkedFpToUiRte(double operand, int bits) {
     if (!std::isfinite(rounded) || rounded >= unsignedUpperExclusiveForBits(bits))
         return {CheckedFPCastFailure::Overflow, 0};
 
-    return {CheckedFPCastFailure::None, static_cast<int64_t>(static_cast<uint64_t>(rounded))};
+    uint64_t payload = static_cast<uint64_t>(rounded);
+    int64_t stored = 0;
+    std::memcpy(&stored, &payload, sizeof(stored));
+    return {CheckedFPCastFailure::None, stored};
 }
 
 } // namespace il::core
