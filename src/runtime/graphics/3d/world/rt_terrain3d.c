@@ -58,6 +58,17 @@ extern void rt_canvas3d_draw_mesh_matrix(void *canvas,
                                          void *mesh,
                                          const double *transform,
                                          void *material);
+extern void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *canvas,
+                                                      void *mesh,
+                                                      const double *transform,
+                                                      void *material,
+                                                      const void *motion_key,
+                                                      const float *prev_bone_palette,
+                                                      const float *prev_morph_weights,
+                                                      const float *local_bounds_min,
+                                                      const float *local_bounds_max,
+                                                      int8_t conservative_bounds,
+                                                      int8_t disable_occlusion);
 extern void rt_material3d_set_texture(void *material, void *pixels);
 extern void *rt_pixels_new(int64_t width, int64_t height);
 extern void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color);
@@ -96,6 +107,7 @@ typedef struct {
     void *base_texture;
     void *baked_texture;
     int8_t splat_dirty;
+    int8_t lod_prewarm_dirty; /* true when missing chunk LOD meshes should be rebuilt */
 } rt_terrain3d;
 
 static int32_t terrain_safe_chunk_count(const rt_terrain3d *t);
@@ -497,6 +509,7 @@ static void invalidate_all_chunks(rt_terrain3d *t) {
             terrain_release_mesh_slot(&t->chunk_meshes_lod2[i]);
     }
     terrain_reset_lod_state(t);
+    t->lod_prewarm_dirty = 1;
 }
 
 /// @brief Construct a `width × depth` heightmap terrain (heights initially zero). Allocates
@@ -563,6 +576,7 @@ void *rt_terrain3d_new(int64_t width, int64_t depth) {
     t->lod_dist2 = 250.0f;
     t->lod_hysteresis = 12.0f;
     t->skirt_depth = 2.0f;
+    t->lod_prewarm_dirty = 1;
     t->material = NULL;
     t->splat_map = NULL;
     t->base_texture = NULL;
@@ -1584,6 +1598,22 @@ static void terrain_prewarm_chunk_lods(rt_terrain3d *t) {
                 t->chunk_meshes_lod2[idx] = build_chunk(t, cx, cz, 4, NULL);
         }
     }
+    t->lod_prewarm_dirty = 0;
+}
+
+/// @brief Return true when any terrain chunk LOD mesh is missing.
+/// @details Used to keep prewarming out of the steady-state draw path while still recovering
+///   from partial allocation failures or explicit terrain invalidation.
+static int terrain_needs_lod_prewarm(const rt_terrain3d *t) {
+    if (!t || !terrain_has_valid_chunk_grid(t))
+        return 0;
+    if (t->lod_prewarm_dirty)
+        return 1;
+    for (int32_t i = 0; i < terrain_safe_chunk_count(t); i++) {
+        if (!t->chunk_meshes[i] || !t->chunk_meshes_lod1[i] || !t->chunk_meshes_lod2[i])
+            return 1;
+    }
+    return 0;
 }
 
 /// @brief Set chunk LOD switch distances. Within `near_dist` chunks render at full resolution;
@@ -1788,7 +1818,8 @@ void rt_canvas3d_draw_terrain_at(
         if (t->splat_dirty || any_invalid)
             bake_splat_texture(t);
     }
-    terrain_prewarm_chunk_lods(t);
+    if (terrain_needs_lod_prewarm(t))
+        terrain_prewarm_chunk_lods(t);
 
     vgfx3d_frustum_t frustum;
     int use_visibility_culling = (c->frustum_culling || c->occlusion_culling) ? 1 : 0;
@@ -1876,6 +1907,8 @@ void rt_canvas3d_draw_terrain_at(
             }
 
             if (draw_mesh) {
+                float local_bounds_min[3] = {aabb[0], aabb[1], aabb[2]};
+                float local_bounds_max[3] = {aabb[3], aabb[4], aabb[5]};
                 /* Set pending splat data for per-pixel terrain splatting */
                 if (splat_map && complete_splat_layers) {
                     c->pending_has_splat = 1;
@@ -1885,7 +1918,17 @@ void rt_canvas3d_draw_terrain_at(
                         c->pending_splat_layer_scales[si] = splat_layer_scales[si];
                     }
                 }
-                rt_canvas3d_draw_mesh_matrix(canvas_obj, draw_mesh, model, t->material);
+                rt_canvas3d_draw_mesh_matrix_keyed_bounds(canvas_obj,
+                                                          draw_mesh,
+                                                          model,
+                                                          t->material,
+                                                          draw_mesh,
+                                                          NULL,
+                                                          NULL,
+                                                          local_bounds_min,
+                                                          local_bounds_max,
+                                                          0,
+                                                          0);
             }
         }
     }

@@ -61,6 +61,17 @@ extern void rt_mesh3d_add_triangle(void *m, int64_t v0, int64_t v1, int64_t v2);
 extern void rt_mesh3d_clear(void *m);
 extern void *rt_mat4_identity(void);
 extern void rt_canvas3d_draw_mesh(void *canvas, void *mesh, void *transform, void *material);
+extern void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
+                                                     void *mesh_obj,
+                                                     void *material_obj,
+                                                     const float *instance_matrices,
+                                                     int32_t instance_count,
+                                                     const float *prev_instance_matrices,
+                                                     int8_t has_prev_instance_matrices,
+                                                     const float *local_bounds_min,
+                                                     const float *local_bounds_max,
+                                                     int8_t conservative_bounds,
+                                                     int8_t disable_occlusion);
 extern void *rt_material3d_new(void);
 extern void rt_material3d_set_texture(void *m, void *tex);
 extern void rt_material3d_set_unlit(void *m, int8_t u);
@@ -193,6 +204,34 @@ static void vegetation3d_enable_double_sided_material(rt_material3d *mat) {
 #else
     mat->double_sided = 1;
 #endif
+}
+
+/// @brief Integer avalanche hash used for stable vegetation LOD thinning.
+/// @details The input combines the blade index and quantized position so thinning stays stable
+///   across frames but does not keep every Nth blade in a visible grid/banding pattern.
+static uint32_t vegetation3d_hash_u32(uint32_t x) {
+    x ^= x >> 16;
+    x *= 0x7feb352du;
+    x ^= x >> 15;
+    x *= 0x846ca68bu;
+    x ^= x >> 16;
+    return x;
+}
+
+/// @brief Return true if a blade survives the current distance-thinning skip factor.
+/// @details `skip` values above one keep roughly 1/skip of blades using a deterministic hash,
+///   avoiding the camera-facing bands produced by modulo-index thinning.
+static int vegetation3d_lod_keeps_blade(int32_t index, float bx, float bz, int skip) {
+    uint32_t qx;
+    uint32_t qz;
+    uint32_t h;
+    if (skip <= 1)
+        return 1;
+    qx = (uint32_t)((int32_t)lrintf(bx * 16.0f));
+    qz = (uint32_t)((int32_t)lrintf(bz * 16.0f));
+    h = vegetation3d_hash_u32((uint32_t)index ^ vegetation3d_hash_u32(qx) ^
+                              (vegetation3d_hash_u32(qz) << 1));
+    return (h % (uint32_t)skip) == 0u;
 }
 
 /// @brief Clear corrupted retained resource slots without releasing unrelated objects.
@@ -765,7 +804,7 @@ void rt_vegetation3d_update(void *obj, double dt, double camX, double camY, doub
             int skip = 1 + (int)(t * 4.0f);
             if (skip < 1)
                 skip = 1;
-            if ((i % skip) != 0)
+            if (!vegetation3d_lod_keeps_blade(i, bx, bz, skip))
                 continue;
         }
 
@@ -830,8 +869,18 @@ void rt_canvas3d_draw_vegetation(void *canvas_obj, void *veg_obj) {
         return;
 
     vegetation3d_enable_double_sided_material(mat);
-    rt_canvas3d_queue_instanced_batch(
-        c, mesh, mat, v->visible_transforms, v->visible_count, NULL, 0);
+    rt_mesh3d_refresh_bounds(mesh);
+    rt_canvas3d_queue_instanced_batch_bounds(c,
+                                             mesh,
+                                             mat,
+                                             v->visible_transforms,
+                                             v->visible_count,
+                                             NULL,
+                                             0,
+                                             mesh->aabb_min,
+                                             mesh->aabb_max,
+                                             0,
+                                             1);
 }
 
 #else

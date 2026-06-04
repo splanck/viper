@@ -49,6 +49,14 @@ void vgfx3d_transform_aabb(const float obj_min[3],
                            const double world_matrix[16],
                            float out_min[3],
                            float out_max[3]);
+/// @brief Checked AABB transform; returns 0 instead of collapsing invalid output to zero.
+/// @details Callers that make visibility decisions should prefer this form and draw
+///   conservatively when it fails.
+int vgfx3d_transform_aabb_checked(const float obj_min[3],
+                                  const float obj_max[3],
+                                  const double world_matrix[16],
+                                  float out_min[3],
+                                  float out_max[3]);
 
 /// @brief Compute the AABB of a mesh's vertices.
 void vgfx3d_compute_mesh_aabb(const void *vertices,

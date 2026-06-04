@@ -2316,7 +2316,8 @@ static void raster_triangle(uint8_t *pixels,
         return;
 
     const int depth_disabled = cmd && cmd->disable_depth_test;
-    const float depth_bias = cmd ? cmd->depth_bias : 0.0f;
+    const float depth_bias =
+        cmd ? fmaxf(-0.05f, fminf(0.05f, cmd->depth_bias)) : 0.0f;
     float slope_depth_bias = 0.0f;
     if (cmd && fabsf(cmd->slope_scaled_depth_bias) > 1e-8f) {
         float denom = g.v0->sx * (g.v1->sy - g.v2->sy) +
@@ -2332,10 +2333,10 @@ static void raster_triangle(uint8_t *pixels,
                           g.v2->sz * (g.v1->sx - g.v0->sx)) /
                          denom;
             slope_depth_bias = cmd->slope_scaled_depth_bias * fmaxf(fabsf(dzdx), fabsf(dzdy));
+            slope_depth_bias = fmaxf(-0.05f, fminf(0.05f, slope_depth_bias));
         }
     }
     const float edge_epsilon = -1e-5f;
-    const float depth_epsilon = 1e-7f;
     int inside_samples = 0;
     int depth_passes = 0;
     int pixels_written = 0;
@@ -2384,7 +2385,7 @@ static void raster_triangle(uint8_t *pixels,
                 float z = b0 * g.v0->sz + b1 * g.v1->sz + b2 * g.v2->sz;
                 z += depth_bias + slope_depth_bias;
                 int idx = y * fb_w + x;
-                if (depth_disabled || z <= zbuf[idx] + depth_epsilon) {
+                if (depth_disabled || z < zbuf[idx]) {
                     depth_passes++;
                     pixels_written += sw_shade_fragment(&fc, x, y, idx, z, b0, b1, b2);
                 }

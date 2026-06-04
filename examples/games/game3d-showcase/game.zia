@@ -1129,12 +1129,20 @@ class Game3DShowcase {
     hide func updateTimeOfDay() {
         if (sunLight == null) { return; }
 
-        var raw = (worldTime + config.DAY_START_PHASE * config.DAY_LENGTH_SEC) / config.DAY_LENGTH_SEC;
-        var dayT = raw - (Convert.NumToInt(raw) + 0.0);
-        if (dayT < 0.0) { dayT = dayT + 1.0; }
+        // Dawn->dusk->dawn ping-pong: a triangle wave drives the sun from the
+        // dawn horizon up to noon and back down to the dusk horizon, then
+        // reverses toward dawn. The angle stays within [SUN_ARC_LO, SUN_ARC_HI]
+        // (above the horizon), so the world never goes fully dark -- dawn and
+        // dusk are low golden light, not night.
+        var cycle = worldTime / config.DAY_LENGTH_SEC + config.DAY_START_PHASE;
+        cycle = cycle - (Convert.NumToInt(cycle) + 0.0);
+        if (cycle < 0.0) { cycle = cycle + 1.0; }
 
-        var ang = dayT * 6.2831853;
-        var elev = Sin(ang);                 // +1 noon, 0 dawn/dusk, -1 midnight
+        var tri = cycle * 2.0;               // 0 -> 1 -> 0 across one round trip
+        if (tri > 1.0) { tri = 2.0 - tri; }
+
+        var ang = config.SUN_ARC_LO + tri * (config.SUN_ARC_HI - config.SUN_ARC_LO);
+        var elev = Sin(ang);                 // 1.0 at noon, ~0.41 at dawn/dusk
         var day = clampFloat(elev, 0.0, 1.0);
         var warm = 1.0 - day;
 

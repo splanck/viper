@@ -314,10 +314,18 @@ void rt_camera3d_set_fov(void *obj, double fov);
 void rt_camera3d_set_horizontal_fov(void *obj, double horizontal_fov);
 /// @brief Get the near clip-plane distance.
 double rt_camera3d_get_near_plane(void *obj);
+/// @brief Get the sanitized near clip-plane distance used for projection/rendering.
+/// @details This read-only value reflects Camera3D's precision guardrails, including the
+///   enforced near/far ratio cap that prevents depth-buffer precision loss.
+double rt_camera3d_get_effective_near_plane(void *obj);
 /// @brief Set the near clip-plane distance.
 void rt_camera3d_set_near_plane(void *obj, double near_plane);
 /// @brief Get the far clip-plane distance.
 double rt_camera3d_get_far_plane(void *obj);
+/// @brief Get the sanitized far clip-plane distance used for projection/rendering.
+/// @details The returned value is the clip plane after Camera3D validates finite values and
+///   resolves degenerate near/far ranges.
+double rt_camera3d_get_effective_far_plane(void *obj);
 /// @brief Set the far clip-plane distance.
 void rt_camera3d_set_far_plane(void *obj, double far_plane);
 /// @brief Get the camera world-space position as a Vec3.
@@ -345,6 +353,9 @@ void *rt_camera3d_screen_to_ray_origin(void *obj, int64_t sx, int64_t sy, int64_
 #define RT_MATERIAL3D_ALPHA_MODE_OPAQUE 0
 #define RT_MATERIAL3D_ALPHA_MODE_MASK 1
 #define RT_MATERIAL3D_ALPHA_MODE_BLEND 2
+#define RT_MATERIAL3D_SHADOW_MODE_AUTO 0
+#define RT_MATERIAL3D_SHADOW_MODE_NONE 1
+#define RT_MATERIAL3D_SHADOW_MODE_CAST 2
 
 /// @brief Create a default white legacy-shaded material.
 void *rt_material3d_new(void);
@@ -433,6 +444,10 @@ double rt_material3d_get_normal_scale(void *obj);
 void rt_material3d_set_alpha_mode(void *obj, int64_t mode);
 /// @brief Read the alpha mode.
 int64_t rt_material3d_get_alpha_mode(void *obj);
+/// @brief Set shadow casting mode: 0=Auto, 1=None, 2=Cast even for alpha-blended materials.
+void rt_material3d_set_shadow_mode(void *obj, int64_t mode);
+/// @brief Read the shadow casting mode.
+int64_t rt_material3d_get_shadow_mode(void *obj);
 /// @brief Toggle two-sided rendering (disables backface culling for this material).
 void rt_material3d_set_double_sided(void *obj, int8_t enabled);
 /// @brief True if the material is configured for double-sided rendering.

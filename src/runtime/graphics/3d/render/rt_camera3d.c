@@ -885,6 +885,8 @@ void rt_camera3d_set_horizontal_fov(void *obj, double horizontal_fov) {
 }
 
 /// @brief Read the near clip-plane distance.
+/// @details Returns the sanitized effective plane used by Camera3D's projection matrix rather
+/// than the raw caller-supplied field, so diagnostics see the same depth range as rendering.
 double rt_camera3d_get_near_plane(void *obj) {
     rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
     if (!cam)
@@ -893,6 +895,13 @@ double rt_camera3d_get_near_plane(void *obj) {
     double far_plane = cam->far_plane;
     sanitize_clip_planes(&near_plane, &far_plane);
     return near_plane;
+}
+
+/// @brief Read the effective near clip-plane distance used for projection and shadow splits.
+/// @details Alias for `NearPlane`'s sanitized getter. Kept as a separate runtime entry point so
+/// callers can explicitly request the render-effective value when debugging depth precision.
+double rt_camera3d_get_effective_near_plane(void *obj) {
+    return rt_camera3d_get_near_plane(obj);
 }
 
 /// @brief Set the near clip-plane distance; planes are re-sanitized on rebuild.
@@ -905,6 +914,8 @@ void rt_camera3d_set_near_plane(void *obj, double near_plane) {
 }
 
 /// @brief Read the far clip-plane distance.
+/// @details Returns the sanitized effective plane used by Camera3D's projection matrix rather
+/// than the raw caller-supplied field, so diagnostics see the same depth range as rendering.
 double rt_camera3d_get_far_plane(void *obj) {
     rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
     if (!cam)
@@ -913,6 +924,13 @@ double rt_camera3d_get_far_plane(void *obj) {
     double far_plane = cam->far_plane;
     sanitize_clip_planes(&near_plane, &far_plane);
     return far_plane;
+}
+
+/// @brief Read the effective far clip-plane distance used for projection and shadow splits.
+/// @details Alias for `FarPlane`'s sanitized getter. Exposed separately for code that wants to
+/// display the actual render depth range after Camera3D's precision guardrails.
+double rt_camera3d_get_effective_far_plane(void *obj) {
+    return rt_camera3d_get_far_plane(obj);
 }
 
 /// @brief Set the far clip-plane distance (e.g. to extend draw distance for a

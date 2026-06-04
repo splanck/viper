@@ -331,7 +331,8 @@ static int instbatch_instance_visible(const vgfx3d_frustum_t *frustum,
 
     for (int i = 0; i < 16; i++)
         world_matrix[i] = (double)model_matrix[i];
-    vgfx3d_transform_aabb(mesh_min, mesh_max, world_matrix, world_min, world_max);
+    if (!vgfx3d_transform_aabb_checked(mesh_min, mesh_max, world_matrix, world_min, world_max))
+        return 1;
     return vgfx3d_frustum_test_aabb(frustum, world_min, world_max) != 0;
 }
 

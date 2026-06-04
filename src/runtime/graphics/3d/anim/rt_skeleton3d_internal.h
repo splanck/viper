@@ -220,6 +220,22 @@ void rt_canvas3d_draw_mesh_matrix_skinned_keyed(void *canvas,
                                                 const float *bone_palette,
                                                 const float *prev_bone_palette,
                                                 int32_t bone_count);
+/// @brief Bounds-aware variant of the keyed skinned draw path.
+/// @details Used by Scene3D after it has expanded local bounds for skeletal motion. The explicit
+///   bounds are forwarded to Canvas3D for frustum/shadow fitting while CPU skinning and GPU
+///   skinning selection remain unchanged.
+void rt_canvas3d_draw_mesh_matrix_skinned_keyed_bounds(void *canvas,
+                                                       void *mesh,
+                                                       const double *model_matrix,
+                                                       void *material,
+                                                       const void *motion_key,
+                                                       const float *bone_palette,
+                                                       const float *prev_bone_palette,
+                                                       int32_t bone_count,
+                                                       const float *local_bounds_min,
+                                                       const float *local_bounds_max,
+                                                       int8_t conservative_bounds,
+                                                       int8_t disable_occlusion);
 
 /// @brief Build global bone matrices from contiguous local matrices, tolerating non-topological
 ///        parent order and breaking parent cycles by treating the cycle edge as a root.

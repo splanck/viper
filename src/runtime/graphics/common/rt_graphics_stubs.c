@@ -2942,12 +2942,26 @@ double rt_camera3d_get_near_plane(void *o) {
     return 0.0;
 }
 
+/// @brief Stub for `Camera3D.EffectiveNearPlane` — return the sanitized near clip plane.
+/// @details Graphics-disabled builds have no camera projection state, so this returns 0.0.
+double rt_camera3d_get_effective_near_plane(void *o) {
+    (void)o;
+    return 0.0;
+}
+
 void rt_camera3d_set_near_plane(void *o, double n) {
     (void)o;
     (void)n;
 }
 
 double rt_camera3d_get_far_plane(void *o) {
+    (void)o;
+    return 0.0;
+}
+
+/// @brief Stub for `Camera3D.EffectiveFarPlane` — return the sanitized far clip plane.
+/// @details Graphics-disabled builds have no camera projection state, so this returns 0.0.
+double rt_camera3d_get_effective_far_plane(void *o) {
     (void)o;
     return 0.0;
 }
@@ -3557,6 +3571,29 @@ void rt_material3d_set_alpha_mode(void *o, int64_t m) {
 int64_t rt_material3d_get_alpha_mode(void *o) {
     (void)o;
     return RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
+}
+
+/// @brief Stub for `Material3D.ShadowMode` — choose whether the material casts shadows.
+///
+/// Silent no-op stub. The full renderer accepts 0=Auto, 1=None, 2=Cast.
+///
+/// @param o Material3D handle (ignored).
+/// @param m Shadow mode 0..2 (ignored).
+void rt_material3d_set_shadow_mode(void *o, int64_t m) {
+    (void)o;
+    (void)m;
+}
+
+/// @brief Stub for `Material3D.ShadowMode` getter.
+///
+/// Silent stub returning Auto, matching the full renderer default.
+///
+/// @param o Material3D handle (ignored).
+///
+/// @return `RT_MATERIAL3D_SHADOW_MODE_AUTO`.
+int64_t rt_material3d_get_shadow_mode(void *o) {
+    (void)o;
+    return RT_MATERIAL3D_SHADOW_MODE_AUTO;
 }
 
 /// @brief Stub for `Material3D.SetDoubleSided` — when enabled, both faces

@@ -225,32 +225,26 @@ int vgfx3d_frustum_test_sphere(const vgfx3d_frustum_t *f, const float center[3],
 ///   corners would under-fit the result. The 3x3 translation column in row-major
 ///   convention is `world_matrix[3,7,11]`; the 4th row is ignored because an
 ///   affine transform leaves w unchanged.
-void vgfx3d_transform_aabb(const float obj_min[3],
-                           const float obj_max[3],
-                           const double world_matrix[16],
-                           float out_min[3],
-                           float out_max[3]) {
+int vgfx3d_transform_aabb_checked(const float obj_min[3],
+                                  const float obj_max[3],
+                                  const double world_matrix[16],
+                                  float out_min[3],
+                                  float out_max[3]) {
     if (!out_min || !out_max)
-        return;
+        return 0;
     out_min[0] = out_min[1] = out_min[2] = FLT_MAX;
     out_max[0] = out_max[1] = out_max[2] = -FLT_MAX;
     if (!obj_min || !obj_max || !world_matrix) {
-        out_min[0] = out_min[1] = out_min[2] = 0.0f;
-        out_max[0] = out_max[1] = out_max[2] = 0.0f;
-        return;
+        return 0;
     }
     for (int i = 0; i < 3; i++) {
         if (!isfinite(obj_min[i]) || !isfinite(obj_max[i])) {
-            out_min[0] = out_min[1] = out_min[2] = 0.0f;
-            out_max[0] = out_max[1] = out_max[2] = 0.0f;
-            return;
+            return 0;
         }
     }
     for (int i = 0; i < 16; i++) {
         if (!isfinite(world_matrix[i])) {
-            out_min[0] = out_min[1] = out_min[2] = 0.0f;
-            out_max[0] = out_max[1] = out_max[2] = 0.0f;
-            return;
+            return 0;
         }
     }
 
@@ -281,9 +275,7 @@ void vgfx3d_transform_aabb(const float obj_min[3],
             world_matrix[8] * cx + world_matrix[9] * cy + world_matrix[10] * cz + world_matrix[11];
         if (!isfinite(dx) || !isfinite(dy) || !isfinite(dz) || dx < -FLT_MAX || dx > FLT_MAX ||
             dy < -FLT_MAX || dy > FLT_MAX || dz < -FLT_MAX || dz > FLT_MAX) {
-            out_min[0] = out_min[1] = out_min[2] = 0.0f;
-            out_max[0] = out_max[1] = out_max[2] = 0.0f;
-            return;
+            return 0;
         }
         float wx = (float)dx;
         float wy = (float)dy;
@@ -302,6 +294,21 @@ void vgfx3d_transform_aabb(const float obj_min[3],
         if (wz > out_max[2])
             out_max[2] = wz;
     }
+    return 1;
+}
+
+/// @brief Legacy AABB transform wrapper that preserves the historical zero-on-error behavior.
+void vgfx3d_transform_aabb(const float obj_min[3],
+                           const float obj_max[3],
+                           const double world_matrix[16],
+                           float out_min[3],
+                           float out_max[3]) {
+    if (vgfx3d_transform_aabb_checked(obj_min, obj_max, world_matrix, out_min, out_max))
+        return;
+    if (!out_min || !out_max)
+        return;
+    out_min[0] = out_min[1] = out_min[2] = 0.0f;
+    out_max[0] = out_max[1] = out_max[2] = 0.0f;
 }
 
 /*==========================================================================

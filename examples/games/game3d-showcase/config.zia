@@ -136,9 +136,16 @@ var PLAYER_LIGHT_SLOT: Integer = 8;
 var PLAYER_LIGHT_RANGE: Float = 16.0;
 var PLAYER_LIGHT_INTENSITY: Float = 0.55;
 
-// --- Day/night cycle (recommendation #7) ------------------------------------
-var DAY_LENGTH_SEC: Float = 180.0;     // one full sunrise->night->sunrise
-var DAY_START_PHASE: Float = 0.25;     // start at noon so the opening frame is bright
+// --- Dawn<->dusk cycle (recommendation #7) ----------------------------------
+// The sun ping-pongs across the daytime sky: dawn -> noon -> dusk, then
+// reverses back toward dawn. It never crosses into night.
+var DAY_LENGTH_SEC: Float = 300.0;     // seconds for one full dawn->dusk->dawn round trip
+var DAY_START_PHASE: Float = 0.0;      // 0.0 = begin the cycle at dawn
+// Dawn/dusk sun angles (radians) bounding the daytime arc. Kept above the
+// horizon (Sin ~= 0.41) so dawn and dusk read as low golden light, never
+// darkness; the arc midpoint (PI/2) is full overhead noon. HI = PI - LO.
+var SUN_ARC_LO: Float = 0.42;
+var SUN_ARC_HI: Float = 2.72;
 var SUN_INTENSITY_DAY: Float = 1.5;
 var DAY_AMBIENT_R: Float = 0.22;
 var DAY_AMBIENT_G: Float = 0.24;

@@ -707,6 +707,11 @@ static void game3d_world_apply_origin_rebase(rt_game3d_world *world, const doubl
             }
         }
     }
+    {
+        rt_canvas3d *canvas = rt_canvas3d_checked_or_stack(world->canvas);
+        if (canvas)
+            canvas3d_clear_motion_history(canvas);
+    }
     if (audio) {
         void *listener = rt_g3d_checked_or_null(audio->listener, RT_G3D_SOUNDLISTENER3D_CLASS_ID);
         if (listener) {

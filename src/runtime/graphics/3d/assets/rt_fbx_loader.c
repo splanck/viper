@@ -1051,6 +1051,36 @@ static double fbx_prop_f64(fbx_node_t *node, int idx) {
     return 0.0;
 }
 
+static const char *fbx_prop_str(fbx_node_t *node, int idx);
+
+/// @brief Coerce property `idx` of `node` to a boolean-like value.
+/// @details FBX exporters encode flags as `C`, integer, or occasionally float properties inside
+///   `Properties70`. Treats non-zero numeric values and string "true"/"1" as enabled.
+static int fbx_prop_truthy(fbx_node_t *node, int idx) {
+    fbx_prop_t *p;
+    const char *text;
+    if (!node || idx >= node->prop_count)
+        return 0;
+    p = &node->props[idx];
+    switch (p->type) {
+        case 'C':
+            return p->v.bool_val ? 1 : 0;
+        case 'Y':
+        case 'I':
+        case 'L':
+            return fbx_prop_i64(node, idx) != 0;
+        case 'F':
+        case 'D':
+            return fabs(fbx_prop_f64(node, idx)) > 1e-12;
+        case 'S':
+            text = fbx_prop_str(node, idx);
+            return (strcmp(text, "true") == 0 || strcmp(text, "True") == 0 ||
+                    strcmp(text, "TRUE") == 0 || strcmp(text, "1") == 0);
+        default:
+            return 0;
+    }
+}
+
 /// @brief Borrowed C-string view of property `idx` (S/R type). NULL otherwise.
 static const char *fbx_prop_str(fbx_node_t *node, int idx) {
     if (!node || idx >= node->prop_count)
@@ -1699,10 +1729,10 @@ static void *fbx_extract_material(fbx_node_t *mat_node) {
 
     for (int32_t i = 0; i < p70->child_count; i++) {
         fbx_node_t *p = &p70->children[i];
-        if (strcmp(p->name, "P") != 0 || p->prop_count < 7)
+        if (strcmp(p->name, "P") != 0 || p->prop_count < 5)
             continue;
         const char *pname = fbx_prop_str(p, 0);
-        if (strcmp(pname, "DiffuseColor") == 0) {
+        if (strcmp(pname, "DiffuseColor") == 0 && p->prop_count >= 7) {
             double r = fbx_clamp_double(fbx_prop_f64(p, 4), 0.0, 1.0, 1.0);
             double g = fbx_clamp_double(fbx_prop_f64(p, 5), 0.0, 1.0, 1.0);
             double b = fbx_clamp_double(fbx_prop_f64(p, 6), 0.0, 1.0, 1.0);
@@ -1721,6 +1751,8 @@ static void *fbx_extract_material(fbx_node_t *mat_node) {
             if (alpha < 1.0)
                 rt_material3d_set_alpha_mode(mat, 2);
         } else if (strcmp(pname, "EmissiveColor") == 0) {
+            if (p->prop_count < 7)
+                continue;
             double r = fbx_clamp_double(fbx_prop_f64(p, 4), 0.0, 1.0, 0.0);
             double g = fbx_clamp_double(fbx_prop_f64(p, 5), 0.0, 1.0, 0.0);
             double b = fbx_clamp_double(fbx_prop_f64(p, 6), 0.0, 1.0, 0.0);
@@ -1728,6 +1760,13 @@ static void *fbx_extract_material(fbx_node_t *mat_node) {
         } else if (strcmp(pname, "EmissiveFactor") == 0) {
             rt_material3d_set_emissive_intensity(
                 mat, fbx_clamp_double(fbx_prop_f64(p, 4), 0.0, 1000000.0, 0.0));
+        } else if (strcmp(pname, "DoubleSided") == 0 || strcmp(pname, "TwoSided") == 0 ||
+                   strcmp(pname, "DoubleSidedMaterial") == 0) {
+            if (fbx_prop_truthy(p, 4))
+                rt_material3d_set_double_sided(mat, 1);
+        } else if (strcmp(pname, "BackfaceCulling") == 0) {
+            if (!fbx_prop_truthy(p, 4))
+                rt_material3d_set_double_sided(mat, 1);
         }
     }
 

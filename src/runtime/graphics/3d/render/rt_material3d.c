@@ -46,7 +46,7 @@
 #define MATERIAL3D_SHININESS_MAX 8192.0
 #define MATERIAL3D_EMISSIVE_INTENSITY_MAX 1000000.0
 #define MATERIAL3D_NORMAL_SCALE_MAX 1000.0
-#define MATERIAL3D_DEPTH_BIAS_ABS_MAX 1000000.0
+#define MATERIAL3D_DEPTH_BIAS_ABS_MAX 64.0
 #define MATERIAL3D_TWO_PI 6.28318530717958647692
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
@@ -374,6 +374,7 @@ static void material_init_defaults(rt_material3d *mat) {
     mat->alpha_cutoff = 0.5;
     mat->alpha_mode = RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
     mat->alpha_mode_auto = 0;
+    mat->shadow_mode = RT_MATERIAL3D_SHADOW_MODE_AUTO;
     material_init_texture_slots(mat);
     mat->env_map = NULL;
     mat->reflectivity = 0.0;
@@ -411,6 +412,9 @@ static void material_sanitize_state(rt_material3d *mat) {
         mat->alpha_mode > RT_MATERIAL3D_ALPHA_MODE_BLEND)
         mat->alpha_mode = RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
     mat->alpha_mode_auto = mat->alpha_mode_auto ? 1 : 0;
+    if (mat->shadow_mode < RT_MATERIAL3D_SHADOW_MODE_AUTO ||
+        mat->shadow_mode > RT_MATERIAL3D_SHADOW_MODE_CAST)
+        mat->shadow_mode = RT_MATERIAL3D_SHADOW_MODE_AUTO;
     mat->reflectivity = clamp01(mat->reflectivity);
     mat->unlit = mat->unlit ? 1 : 0;
     mat->double_sided = mat->double_sided ? 1 : 0;
@@ -509,6 +513,7 @@ static void *material_clone_like(void *obj) {
     dst->alpha_cutoff = src->alpha_cutoff;
     dst->alpha_mode = src->alpha_mode;
     dst->alpha_mode_auto = src->alpha_mode_auto;
+    dst->shadow_mode = src->shadow_mode;
     dst->texture_wrap_s = src->texture_wrap_s;
     dst->texture_wrap_t = src->texture_wrap_t;
     dst->texture_filter = src->texture_filter;
@@ -604,6 +609,7 @@ void *rt_material3d_new_pbr(double r, double g, double b) {
     mat->emissive_intensity = 1.0;
     mat->normal_scale = 1.0;
     mat->alpha_mode = RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
+    mat->shadow_mode = RT_MATERIAL3D_SHADOW_MODE_AUTO;
     return mat;
 }
 
@@ -1049,6 +1055,33 @@ int64_t rt_material3d_get_alpha_mode(void *obj) {
         mat->alpha_mode > RT_MATERIAL3D_ALPHA_MODE_BLEND)
         return RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
     return mat->alpha_mode;
+}
+
+/// @brief Set the material's shadow casting mode.
+/// @details AUTO preserves legacy behavior: opaque and alpha-masked draws cast shadows, while
+///          alpha-blended draws are skipped. NONE disables shadow casting for this material.
+///          CAST forces the shadow pass to include the material even when it is alpha-blended,
+///          useful for glass, translucent cloth, and other authored cases where a shadow is
+///          visually expected despite the main pass requiring blending.
+void rt_material3d_set_shadow_mode(void *obj, int64_t mode) {
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
+        return;
+    if (mode < RT_MATERIAL3D_SHADOW_MODE_AUTO || mode > RT_MATERIAL3D_SHADOW_MODE_CAST)
+        mode = RT_MATERIAL3D_SHADOW_MODE_AUTO;
+    mat->shadow_mode = (int32_t)mode;
+}
+
+/// @brief Read the material's shadow casting mode.
+/// @return One of RT_MATERIAL3D_SHADOW_MODE_AUTO, NONE, or CAST.
+int64_t rt_material3d_get_shadow_mode(void *obj) {
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
+        return RT_MATERIAL3D_SHADOW_MODE_AUTO;
+    if (mat->shadow_mode < RT_MATERIAL3D_SHADOW_MODE_AUTO ||
+        mat->shadow_mode > RT_MATERIAL3D_SHADOW_MODE_CAST)
+        return RT_MATERIAL3D_SHADOW_MODE_AUTO;
+    return mat->shadow_mode;
 }
 
 /// @brief Toggle double-sided rendering. Disables backface culling for this material — useful

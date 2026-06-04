@@ -2185,6 +2185,8 @@ static int obj_triangulate_face(void *mesh_obj, const uint32_t *mesh_indices, in
 void rt_mesh3d_calc_tangents_impl(rt_mesh3d *m) {
     if (!m)
         return;
+    if (m->tangents_ready && m->tangent_revision == m->geometry_revision)
+        return;
     if (m->vertex_count == 0) {
         m->tangents_ready = 1;
         m->tangent_revision = m->geometry_revision;

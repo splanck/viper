@@ -26,6 +26,7 @@ struct StubMaterial {
     void *texture = nullptr;
     void *normal_map = nullptr;
     void *env_map = nullptr;
+    int8_t double_sided = 0;
 };
 
 int g_draw_mesh_calls = 0;
@@ -193,6 +194,29 @@ extern "C" void rt_canvas3d_draw_mesh_matrix(void *canvas,
     rt_canvas3d_draw_mesh(canvas, mesh, nullptr, material);
 }
 
+extern "C" void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *canvas,
+                                                          void *mesh,
+                                                          const double *,
+                                                          void *material,
+                                                          const void *,
+                                                          const float *,
+                                                          const float *,
+                                                          const float *,
+                                                          const float *,
+                                                          int8_t,
+                                                          int8_t) {
+    rt_canvas3d_draw_mesh(canvas, mesh, nullptr, material);
+}
+
+extern "C" void vgfx3d_compute_mesh_aabb(const void *,
+                                         uint32_t,
+                                         uint32_t,
+                                         float out_min[3],
+                                         float out_max[3]) {
+    out_min[0] = out_min[1] = out_min[2] = 0.0f;
+    out_max[0] = out_max[1] = out_max[2] = 1.0f;
+}
+
 extern "C" void *rt_material3d_new_color(double, double, double) {
     void *material = std::calloc(1, sizeof(StubMaterial));
     stub_track_pointer(g_stub_materials,
@@ -204,6 +228,10 @@ extern "C" void *rt_material3d_new_color(double, double, double) {
 
 extern "C" void rt_material3d_set_alpha(void *m, double a) {
     static_cast<StubMaterial *>(m)->alpha = a;
+}
+
+extern "C" void rt_material3d_set_double_sided(void *m, int8_t enabled) {
+    static_cast<StubMaterial *>(m)->double_sided = enabled ? 1 : 0;
 }
 
 extern "C" void rt_material3d_set_shininess(void *, double) {}
@@ -265,6 +293,7 @@ static void test_material_wiring_and_reflectivity() {
     assert(material != nullptr);
     assert(material->texture == &g_dummy_texture);
     assert(material->normal_map == &g_dummy_normal);
+    assert(material->double_sided == 1);
     assert(material->reflectivity == 0.0);
 
     rt_water3d_set_env_map(water, &g_dummy_env);
@@ -301,7 +330,7 @@ static void test_material_wiring_and_reflectivity() {
     assert(material->reflectivity == 0.0);
 }
 
-static void test_draw_restores_backface_cull_state() {
+static void test_draw_keeps_canvas_backface_state() {
     void *water = rt_water3d_new(4.0, 4.0);
     rt_canvas3d canvas = {};
     rt_water3d_update(water, 0.1);
@@ -315,11 +344,9 @@ static void test_draw_restores_backface_cull_state() {
     rt_canvas3d_draw_water(&canvas, water, nullptr);
 
     assert(g_draw_mesh_calls == 1);
-    assert(g_backface_cull_off == 2);
+    assert(g_backface_cull_off == 0);
     assert(g_backface_cull_on == 0);
-    assert(g_backface_cull_call_count == 2);
-    assert(g_backface_cull_values[0] == 0);
-    assert(g_backface_cull_values[1] == 0);
+    assert(g_backface_cull_call_count == 0);
     assert(canvas.backface_cull == 0);
 }
 
@@ -353,7 +380,7 @@ static void test_numeric_inputs_are_sanitized() {
 int main() {
     test_resolution_clamp_drives_mesh_size();
     test_material_wiring_and_reflectivity();
-    test_draw_restores_backface_cull_state();
+    test_draw_keeps_canvas_backface_state();
     test_numeric_inputs_are_sanitized();
     std::printf("RTWater3DContractTests passed.\n");
     return 0;

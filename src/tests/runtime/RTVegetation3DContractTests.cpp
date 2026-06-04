@@ -218,6 +218,35 @@ extern "C" void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
     g_cull_during_batch = canvas_obj ? static_cast<rt_canvas3d *>(canvas_obj)->backface_cull : -1;
 }
 
+extern "C" void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
+                                                         void *mesh_obj,
+                                                         void *material_obj,
+                                                         const float *instance_matrices,
+                                                         int32_t instance_count,
+                                                         const float *prev_instance_matrices,
+                                                         int8_t has_prev_instance_matrices,
+                                                         const float *,
+                                                         const float *,
+                                                         int8_t,
+                                                         int8_t) {
+    rt_canvas3d_queue_instanced_batch(canvas_obj,
+                                      mesh_obj,
+                                      material_obj,
+                                      instance_matrices,
+                                      instance_count,
+                                      prev_instance_matrices,
+                                      has_prev_instance_matrices);
+}
+
+extern "C" void vgfx3d_compute_mesh_aabb(const void *,
+                                         uint32_t,
+                                         uint32_t,
+                                         float out_min[3],
+                                         float out_max[3]) {
+    out_min[0] = out_min[1] = out_min[2] = 0.0f;
+    out_max[0] = out_max[1] = out_max[2] = 1.0f;
+}
+
 static FakeTerrain make_terrain(int32_t w, int32_t d) {
     FakeTerrain t = {};
     t.vptr = nullptr;

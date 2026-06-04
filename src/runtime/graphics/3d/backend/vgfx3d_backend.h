@@ -72,6 +72,7 @@ typedef struct {
     int32_t workflow;         /* RT_MATERIAL3D_WORKFLOW_* */
     int32_t alpha_mode;       /* RT_MATERIAL3D_ALPHA_MODE_* */
     float alpha_cutoff;       /* alpha-mask cutoff */
+    int32_t shadow_mode;      /* RT_MATERIAL3D_SHADOW_MODE_* */
     int32_t double_sided;     /* culling disabled when true */
     int32_t texture_wrap_s;   /* RT_MATERIAL3D_TEXTURE_WRAP_* */
     int32_t texture_wrap_t;   /* RT_MATERIAL3D_TEXTURE_WRAP_* */

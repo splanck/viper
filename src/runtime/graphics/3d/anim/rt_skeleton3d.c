@@ -2101,14 +2101,18 @@ void rt_mesh3d_set_bone_weights(void *obj,
 ///   draw with the matching one in the previous frame. `prev_bone_palette`
 ///   supplies the previous-frame palette for per-vertex motion vectors —
 ///   without it, skinned motion blur falls back to object-space smearing.
-void rt_canvas3d_draw_mesh_matrix_skinned_keyed(void *canvas,
-                                                void *mesh_obj,
-                                                const double *model_matrix,
-                                                void *material,
-                                                const void *motion_key,
-                                                const float *bone_palette,
-                                                const float *prev_bone_palette,
-                                                int32_t bone_count) {
+void rt_canvas3d_draw_mesh_matrix_skinned_keyed_bounds(void *canvas,
+                                                       void *mesh_obj,
+                                                       const double *model_matrix,
+                                                       void *material,
+                                                       const void *motion_key,
+                                                       const float *bone_palette,
+                                                       const float *prev_bone_palette,
+                                                       int32_t bone_count,
+                                                       const float *local_bounds_min,
+                                                       const float *local_bounds_max,
+                                                       int8_t conservative_bounds,
+                                                       int8_t disable_occlusion) {
     rt_mesh3d *mesh;
     rt_canvas3d *c;
 
@@ -2137,8 +2141,17 @@ void rt_canvas3d_draw_mesh_matrix_skinned_keyed(void *canvas,
         tmp.bone_palette = bone_palette;
         tmp.prev_bone_palette = prev_bone_palette;
         tmp.bone_count = bone_count;
-        rt_canvas3d_draw_mesh_matrix_keyed(
-            canvas, &tmp, model_matrix, material, motion_key, prev_bone_palette, NULL);
+        rt_canvas3d_draw_mesh_matrix_keyed_bounds(canvas,
+                                                  &tmp,
+                                                  model_matrix,
+                                                  material,
+                                                  motion_key,
+                                                  prev_bone_palette,
+                                                  NULL,
+                                                  local_bounds_min,
+                                                  local_bounds_max,
+                                                  conservative_bounds,
+                                                  disable_occlusion);
         return;
     }
 
@@ -2161,8 +2174,40 @@ void rt_canvas3d_draw_mesh_matrix_skinned_keyed(void *canvas,
         free(skinned);
         return;
     }
-    rt_canvas3d_draw_mesh_matrix_keyed(
-        canvas, &tmp, model_matrix, material, motion_key, NULL, NULL);
+    rt_canvas3d_draw_mesh_matrix_keyed_bounds(canvas,
+                                              &tmp,
+                                              model_matrix,
+                                              material,
+                                              motion_key,
+                                              NULL,
+                                              NULL,
+                                              local_bounds_min,
+                                              local_bounds_max,
+                                              conservative_bounds,
+                                              disable_occlusion);
+}
+
+/// @brief Draw a skinned mesh using an explicit model matrix and keyed bone palette.
+void rt_canvas3d_draw_mesh_matrix_skinned_keyed(void *canvas,
+                                                void *mesh_obj,
+                                                const double *model_matrix,
+                                                void *material,
+                                                const void *motion_key,
+                                                const float *bone_palette,
+                                                const float *prev_bone_palette,
+                                                int32_t bone_count) {
+    rt_canvas3d_draw_mesh_matrix_skinned_keyed_bounds(canvas,
+                                                      mesh_obj,
+                                                      model_matrix,
+                                                      material,
+                                                      motion_key,
+                                                      bone_palette,
+                                                      prev_bone_palette,
+                                                      bone_count,
+                                                      NULL,
+                                                      NULL,
+                                                      0,
+                                                      0);
 }
 
 /// @brief Draw a skinned mesh — applies the player's bone palette before rasterising.

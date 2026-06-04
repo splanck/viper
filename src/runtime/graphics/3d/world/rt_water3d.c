@@ -38,6 +38,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(__APPLE__)
+#define WATER3D_OPTIONAL_SYMBOL __attribute__((weak_import))
+#elif defined(__GNUC__) || defined(__clang__)
+#define WATER3D_OPTIONAL_SYMBOL __attribute__((weak))
+#else
+#define WATER3D_OPTIONAL_SYMBOL
+#endif
+
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_obj_retain_maybe(void *obj);
@@ -54,8 +62,21 @@ extern void rt_canvas3d_draw_mesh_matrix(void *canvas,
                                          void *mesh,
                                          const double *transform,
                                          void *material);
+extern void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *canvas,
+                                                      void *mesh,
+                                                      const double *transform,
+                                                      void *material,
+                                                      const void *motion_key,
+                                                      const float *prev_bone_palette,
+                                                      const float *prev_morph_weights,
+                                                      const float *local_bounds_min,
+                                                      const float *local_bounds_max,
+                                                      int8_t conservative_bounds,
+                                                      int8_t disable_occlusion)
+    WATER3D_OPTIONAL_SYMBOL;
 extern void *rt_material3d_new_color(double r, double g, double b);
 extern void rt_material3d_set_alpha(void *m, double a);
+extern void rt_material3d_set_double_sided(void *m, int8_t enabled) WATER3D_OPTIONAL_SYMBOL;
 extern void rt_material3d_set_shininess(void *m, double s);
 extern void rt_material3d_set_texture(void *m, void *tex);
 extern void rt_material3d_set_normal_map(void *m, void *tex);
@@ -130,6 +151,15 @@ static void water3d_release_pixels_slot(void **slot) {
         return;
     }
     water3d_release_ref(slot);
+}
+
+/// @brief Mark the water material double-sided when the full Material3D runtime is linked.
+/// @details Isolated contract tests link Water3D without the full renderer/material module. The
+///   optional symbol keeps those tests on the legacy draw fallback while real runtime builds still
+///   preserve the no-canvas-cull-mutation rendering path.
+static void water3d_enable_double_sided_material(void *material) {
+    if (material && rt_material3d_set_double_sided)
+        rt_material3d_set_double_sided(material, 1);
 }
 
 /// @brief Release a retained mesh slot only if it still points at a Mesh3D object.
@@ -734,6 +764,7 @@ void rt_water3d_update(void *obj, double dt) {
         rt_material3d_set_color(w->material, w->color[0], w->color[1], w->color[2]);
     }
     rt_material3d_set_alpha(w->material, w->alpha);
+    water3d_enable_double_sided_material(w->material);
 
     /* Phase A: wire texture/normalmap/envmap to material */
     rt_material3d_set_texture(w->material, w->texture);
@@ -747,9 +778,9 @@ void rt_water3d_update(void *obj, double dt) {
 /// @details Emits the current water mesh at the world origin (the grid is already built
 ///          in world space around the origin by `rt_water3d_update`, so an identity model
 ///          matrix is correct — reusing a static table avoids allocating a Transform3D).
-///          Backface culling is temporarily disabled so the underside of waves and any
-///          submerged camera angle still show geometry, then restored to the canvas's
-///          prior setting so this call is transparent to other draws. Does nothing if
+///          The material is marked double-sided so the underside of waves and any
+///          submerged camera angle still show geometry without mutating canvas-wide culling.
+///          Does nothing if
 ///          the mesh/material haven't been built yet (i.e. `update` was never called) or
 ///          if `canvas` / `obj` are NULL. The `camera` argument is accepted for API
 ///          symmetry with other draw functions but currently unused.
@@ -765,8 +796,6 @@ void rt_canvas3d_draw_water(void *canvas, void *obj, void *camera) {
     if (!w->mesh || !w->material)
         return;
 
-    /* Draw with backface culling disabled (water visible from both sides) */
-    extern void rt_canvas3d_set_backface_cull(void *canvas, int8_t enabled);
     static const double identity[16] = {
         1.0,
         0.0,
@@ -785,10 +814,24 @@ void rt_canvas3d_draw_water(void *canvas, void *obj, void *camera) {
         0.0,
         1.0,
     };
-    int8_t restore_backface_cull = c->backface_cull;
-    rt_canvas3d_set_backface_cull(c, 0);
-    rt_canvas3d_draw_mesh_matrix(c, w->mesh, identity, w->material);
-    rt_canvas3d_set_backface_cull(c, restore_backface_cull);
+    rt_mesh3d *mesh = (rt_mesh3d *)w->mesh;
+    water3d_enable_double_sided_material(w->material);
+    if (rt_canvas3d_draw_mesh_matrix_keyed_bounds) {
+        rt_mesh3d_refresh_bounds(mesh);
+        rt_canvas3d_draw_mesh_matrix_keyed_bounds(c,
+                                                  w->mesh,
+                                                  identity,
+                                                  w->material,
+                                                  w,
+                                                  NULL,
+                                                  NULL,
+                                                  mesh->aabb_min,
+                                                  mesh->aabb_max,
+                                                  0,
+                                                  1);
+    } else {
+        rt_canvas3d_draw_mesh_matrix(c, w->mesh, identity, w->material);
+    }
 }
 
 #else

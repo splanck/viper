@@ -365,6 +365,7 @@ typedef struct {
     int8_t additive_blend;  /* internal-only: route through additive blend state when true */
     int32_t alpha_mode;     /* 0=opaque, 1=mask, 2=blend */
     int8_t alpha_mode_auto; /* true when SetAlpha auto-promoted OPAQUE -> BLEND */
+    int32_t shadow_mode;    /* 0=auto, 1=none, 2=cast even when alpha-blended */
     int32_t texture_wrap_s; /* RT_MATERIAL3D_TEXTURE_WRAP_* for imported material textures */
     int32_t texture_wrap_t;
     int32_t texture_filter; /* RT_MATERIAL3D_TEXTURE_FILTER_* */
@@ -872,6 +873,23 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
                                         const void *motion_key,
                                         const float *prev_bone_palette,
                                         const float *prev_morph_weights);
+/// @brief Internal: submit a mesh draw with explicit local bounds and occlusion safety metadata.
+/// @details The explicit bounds path is used by Scene3D/extras that already computed conservative
+///   local bounds for dynamic deformation or chunking. `conservative_bounds` preserves frustum
+///   culling while disabling exact-coverage assumptions in CPU occlusion. `disable_occlusion`
+///   skips both CPU occlusion testing and occluder writes for draws whose coverage is not a solid
+///   projection of their AABB.
+void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
+                                               void *mesh_obj,
+                                               const double *model_matrix,
+                                               void *material_obj,
+                                               const void *motion_key,
+                                               const float *prev_bone_palette,
+                                               const float *prev_morph_weights,
+                                               const float *local_bounds_min,
+                                               const float *local_bounds_max,
+                                               int8_t conservative_bounds,
+                                               int8_t disable_occlusion);
 /// @brief Internal: enable camera-relative float upload for large-world Game3D frames.
 void rt_canvas3d_set_camera_relative_upload(void *obj, int8_t enabled);
 /// @brief Internal: copy the active camera-relative origin; returns 1 when upload rebasing is on.
@@ -911,6 +929,18 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
                                        int32_t instance_count,
                                        const float *prev_instance_matrices,
                                        int8_t has_prev_instance_matrices);
+/// @brief Internal: queue an instanced batch with explicit local bounds and occlusion flags.
+void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
+                                              void *mesh_obj,
+                                              void *material_obj,
+                                              const float *instance_matrices,
+                                              int32_t instance_count,
+                                              const float *prev_instance_matrices,
+                                              int8_t has_prev_instance_matrices,
+                                              const float *local_bounds_min,
+                                              const float *local_bounds_max,
+                                              int8_t conservative_bounds,
+                                              int8_t disable_occlusion);
 /// @brief Internal: get the monotonic per-frame counter (used to seed motion-blur history).
 int64_t rt_canvas3d_get_frame_serial(void *obj);
 /// @brief Internal: begin a HUD/overlay sub-pass; @p preserve_existing_color skips the initial
@@ -949,6 +979,11 @@ typedef struct {
 // utilities, also used by the transient-resource tracker.
 uint32_t canvas3d_hash_u64(uintptr_t value);
 int32_t canvas3d_next_power_of_two_i32(int32_t value);
+/// @brief Drop all retained previous-model matrices after an external coordinate-space shift.
+/// @details Floating-origin rebases change every world transform by the same delta. Retaining
+///   history across that discontinuity would compare matrices from different origins, producing
+///   bogus motion vectors and temporal shimmer.
+void canvas3d_clear_motion_history(rt_canvas3d *c);
 void canvas3d_prune_motion_history(rt_canvas3d *c);
 void canvas3d_resolve_previous_model(rt_canvas3d *c,
                                      uintptr_t motion_key,

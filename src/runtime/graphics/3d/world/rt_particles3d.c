@@ -101,6 +101,8 @@ typedef struct {
     uint32_t draw_vertex_capacity[PARTICLES3D_DRAW_SLOT_COUNT];
     uint32_t draw_index_capacity[PARTICLES3D_DRAW_SLOT_COUNT];
     void *draw_materials[PARTICLES3D_DRAW_SLOT_COUNT];
+    void *sort_keys;
+    int32_t sort_key_capacity;
     int64_t draw_frame_serial;
     int32_t draw_slots_used;
 } rt_particles3d;
@@ -414,6 +416,9 @@ static void rt_particles3d_finalize(void *obj) {
         ps->draw_indices[i] = NULL;
         particles3d_release_material_slot(&ps->draw_materials[i]);
     }
+    free(ps->sort_keys);
+    ps->sort_keys = NULL;
+    ps->sort_key_capacity = 0;
     particles3d_release_texture_slot(&ps->texture);
     particles3d_release_material_slot(&ps->cached_material);
 }
@@ -840,13 +845,12 @@ void rt_particles3d_rebase_origin(void *o, double dx, double dy, double dz) {
         particles_clamp_abs_or(ps->position[2] - delta[2], 0.0, PARTICLES3D_WORLD_ABS_MAX);
 
     for (int32_t i = 0; i < ps->count;) {
-        double x =
-            particles_clamp_abs_or(ps->particles[i].pos[0] - delta[0], 0.0, PARTICLES3D_WORLD_ABS_MAX);
-        double y =
-            particles_clamp_abs_or(ps->particles[i].pos[1] - delta[1], 0.0, PARTICLES3D_WORLD_ABS_MAX);
-        double z =
-            particles_clamp_abs_or(ps->particles[i].pos[2] - delta[2], 0.0, PARTICLES3D_WORLD_ABS_MAX);
-        if (!isfinite(x) || !isfinite(y) || !isfinite(z)) {
+        double x = ps->particles[i].pos[0] - delta[0];
+        double y = ps->particles[i].pos[1] - delta[1];
+        double z = ps->particles[i].pos[2] - delta[2];
+        if (!isfinite(x) || !isfinite(y) || !isfinite(z) ||
+            fabs(x) > PARTICLES3D_WORLD_ABS_MAX || fabs(y) > PARTICLES3D_WORLD_ABS_MAX ||
+            fabs(z) > PARTICLES3D_WORLD_ABS_MAX) {
             ps->particles[i] = ps->particles[--ps->count];
             continue;
         }
@@ -977,23 +981,47 @@ extern void rt_material3d_set_alpha_mode(void *m, int64_t mode);
 extern void rt_material3d_set_texture(void *m, void *tex);
 extern int rt_canvas3d_remove_temp_buffer(void *canvas, void *buffer);
 
-/// @brief Sort record pairing a particle's index with its squared distance to the
-///   camera, used to order transparent billboards back-to-front.
+/// @brief Sort record pairing a particle's index with its camera-space depth.
+/// @details Sorting by the camera forward axis is more stable for large billboard quads than
+///   Euclidean distance, which can flip ordering near screen edges.
 typedef struct particle3d_sort_key {
     int32_t index;
-    double dist_sq;
+    double view_depth;
 } particle3d_sort_key;
 
-/// @brief qsort comparator ordering keys by descending camera distance (farthest first);
+/// @brief qsort comparator ordering keys by descending camera-space depth (farthest first);
 ///   ties break on index so the sort is stable and deterministic.
 static int particle3d_sort_key_desc(const void *a, const void *b) {
     const particle3d_sort_key *ka = (const particle3d_sort_key *)a;
     const particle3d_sort_key *kb = (const particle3d_sort_key *)b;
-    if (ka->dist_sq < kb->dist_sq)
+    if (ka->view_depth < kb->view_depth)
         return 1;
-    if (ka->dist_sq > kb->dist_sq)
+    if (ka->view_depth > kb->view_depth)
         return -1;
     return ka->index - kb->index;
+}
+
+/// @brief Ensure the persistent particle-sort scratch buffer holds @p count keys.
+/// @details Returning failure aborts alpha particle rendering for the frame instead of silently
+///   falling back to unsorted transparent quads, because that fallback causes obvious flicker.
+static int particles3d_ensure_sort_keys(rt_particles3d *ps, int32_t count) {
+    void *grown;
+    if (!ps || count <= 0)
+        return 0;
+    if (ps->sort_key_capacity >= count && ps->sort_keys)
+        return 1;
+    if ((size_t)count > SIZE_MAX / sizeof(particle3d_sort_key)) {
+        rt_trap("Particles3D.Draw: sort key allocation overflow");
+        return 0;
+    }
+    grown = realloc(ps->sort_keys, (size_t)count * sizeof(particle3d_sort_key));
+    if (!grown) {
+        rt_trap("Particles3D.Draw: sort key allocation failed");
+        return 0;
+    }
+    ps->sort_keys = grown;
+    ps->sort_key_capacity = count;
+    return 1;
 }
 
 /// @brief Lazily create the system's shared unlit white particle material in @p *slot.
@@ -1197,8 +1225,9 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
 
     /* Sort particles back-to-front for alpha blend (skip for additive) */
     if (!ps->additive_blend) {
-        if ((size_t)ps->count <= SIZE_MAX / sizeof(*sort_keys))
-            sort_keys = (particle3d_sort_key *)malloc((size_t)ps->count * sizeof(*sort_keys));
+        if (!particles3d_ensure_sort_keys(ps, ps->count))
+            return;
+        sort_keys = (particle3d_sort_key *)ps->sort_keys;
         if (sort_keys) {
             for (int32_t i = 0; i < ps->count; i++) {
                 vgfx3d_particle_t *p = &ps->particles[i];
@@ -1209,9 +1238,10 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
                 double dy = particles_clamp_abs_or(p->pos[1] - eye_y, 0.0, PARTICLES3D_WORLD_ABS_MAX);
                 double dz = particles_clamp_abs_or(p->pos[2] - eye_z, 0.0, PARTICLES3D_WORLD_ABS_MAX);
                 sort_keys[i].index = i;
-                sort_keys[i].dist_sq = dx * dx + dy * dy + dz * dz;
-                if (!isfinite(sort_keys[i].dist_sq))
-                    sort_keys[i].dist_sq = 0.0;
+                sort_keys[i].view_depth =
+                    dx * (double)forward[0] + dy * (double)forward[1] + dz * (double)forward[2];
+                if (!isfinite(sort_keys[i].view_depth))
+                    sort_keys[i].view_depth = 0.0;
             }
             qsort(sort_keys, (size_t)ps->count, sizeof(*sort_keys), particle3d_sort_key_desc);
         }
@@ -1222,7 +1252,6 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
         (size_t)ps->count > SIZE_MAX / (4u * sizeof(vgfx3d_vertex_t)) ||
         (size_t)ps->count > SIZE_MAX / (6u * sizeof(uint32_t))) {
         rt_trap("Particles3D.Draw: particle buffer allocation overflow");
-        free(sort_keys);
         return;
     }
     uint32_t vert_count = (uint32_t)ps->count * 4;
@@ -1233,7 +1262,6 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
     int canvas_owned_storage = 0;
     if (!particles3d_acquire_draw_storage(
             ps, canvas, vert_count, idx_count, &verts, &indices, &mat, &canvas_owned_storage)) {
-        free(sort_keys);
         return;
     }
 
@@ -1285,7 +1313,7 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
         indices[i * 6 + 4] = base + 2;
         indices[i * 6 + 5] = base + 3;
     }
-    free(sort_keys);
+    sort_keys = NULL;
 
     /* Create a temporary mesh and submit via the normal draw pipeline.
      * Use unlit material with particle alpha for the draw command. */

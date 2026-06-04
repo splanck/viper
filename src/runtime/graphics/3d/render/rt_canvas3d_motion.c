@@ -59,6 +59,17 @@ static void canvas3d_motion_hash_reset(rt_canvas3d *c) {
            (size_t)c->motion_history_hash_capacity * sizeof(*c->motion_history_hash));
 }
 
+/// @brief Drop all previous-model history entries without freeing their backing storage.
+/// @details Used after floating-origin rebases and other whole-world coordinate shifts. The next
+///   frame starts each motion key fresh, avoiding temporal artifacts from comparing transforms
+///   captured before and after an origin discontinuity.
+void canvas3d_clear_motion_history(rt_canvas3d *c) {
+    if (!c)
+        return;
+    c->motion_history_count = 0;
+    canvas3d_motion_hash_reset(c);
+}
+
 /// @brief Ensure the motion-history hash has a power-of-two capacity sized for @p count_hint
 /// entries.
 /// @details Targets ~2x load headroom (min 32) and resets the table on growth.

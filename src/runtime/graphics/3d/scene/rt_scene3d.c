@@ -2258,19 +2258,27 @@ static int scene3d_impostor_active_with_hysteresis(rt_scene_node3d *node, double
 ///   origin from submitted model matrices. CPU frustum tests must subtract the same origin from
 ///   AABBs before testing against the cached VP, otherwise large-world scenes can be culled against
 ///   the wrong coordinate space.
-static void scene3d_aabb_to_canvas_render_space(rt_canvas3d *canvas,
-                                                float world_min[3],
-                                                float world_max[3]) {
+/// @return 1 when the bounds were converted or no conversion was needed; 0 when subtracting the
+///   camera-relative origin would overflow the float bounds used by the renderer.
+static int scene3d_aabb_to_canvas_render_space(rt_canvas3d *canvas,
+                                               float world_min[3],
+                                               float world_max[3]) {
     double origin[3];
     if (!canvas || !world_min || !world_max || !canvas3d_uses_camera_relative_upload(canvas))
-        return;
+        return 1;
     origin[0] = canvas->camera_relative_origin[0];
     origin[1] = canvas->camera_relative_origin[1];
     origin[2] = canvas->camera_relative_origin[2];
     for (int i = 0; i < 3; ++i) {
-        world_min[i] = scene3d_float_or_zero((double)world_min[i] - origin[i]);
-        world_max[i] = scene3d_float_or_zero((double)world_max[i] - origin[i]);
+        double shifted_min = (double)world_min[i] - origin[i];
+        double shifted_max = (double)world_max[i] - origin[i];
+        if (!isfinite(shifted_min) || !isfinite(shifted_max) ||
+            fabs(shifted_min) > (double)FLT_MAX || fabs(shifted_max) > (double)FLT_MAX)
+            return 0;
+        world_min[i] = (float)shifted_min;
+        world_max[i] = (float)shifted_max;
     }
+    return 1;
 }
 
 /// @brief Push (node, inherited animator) onto a growable draw-traversal stack.
@@ -2425,7 +2433,8 @@ static int scene3d_node_cull_test(rt_scene_node3d *current,
             cull_max[1] += pad;
             cull_max[2] += pad;
         }
-        vgfx3d_transform_aabb(cull_min, cull_max, current->world_matrix, world_min, world_max);
+        if (!vgfx3d_transform_aabb_checked(cull_min, cull_max, current->world_matrix, world_min, world_max))
+            return 1;
         world_min_d[0] = (double)world_min[0];
         world_min_d[1] = (double)world_min[1];
         world_min_d[2] = (double)world_min[2];
@@ -2440,7 +2449,8 @@ static int scene3d_node_cull_test(rt_scene_node3d *current,
                 (*pvs->culled_count)++;
             return 0;
         } else if (frustum) {
-            scene3d_aabb_to_canvas_render_space(canvas, world_min, world_max);
+            if (!scene3d_aabb_to_canvas_render_space(canvas, world_min, world_max))
+                return 1;
             if (vgfx3d_frustum_test_aabb(frustum, world_min, world_max) == 0) {
                 if (culled)
                     (*culled)++;
@@ -2476,10 +2486,14 @@ static int scene3d_cached_world_bounds_cull_test(rt_scene_node3d *current,
     if (!frustum)
         return 1;
     for (int i = 0; i < 3; ++i) {
-        world_min[i] = scene3d_float_or_zero(world_min_d[i]);
-        world_max[i] = scene3d_float_or_zero(world_max_d[i]);
+        if (!isfinite(world_min_d[i]) || !isfinite(world_max_d[i]) ||
+            fabs(world_min_d[i]) > (double)FLT_MAX || fabs(world_max_d[i]) > (double)FLT_MAX)
+            return 1;
+        world_min[i] = (float)world_min_d[i];
+        world_max[i] = (float)world_max_d[i];
     }
-    scene3d_aabb_to_canvas_render_space(canvas, world_min, world_max);
+    if (!scene3d_aabb_to_canvas_render_space(canvas, world_min, world_max))
+        return 1;
     if (vgfx3d_frustum_test_aabb(frustum, world_min, world_max) == 0) {
         if (culled)
             (*culled)++;
@@ -2494,6 +2508,9 @@ static void scene3d_submit_node_draw(rt_scene_node3d *current,
                                      void *draw_mesh,
                                      void *draw_material,
                                      void *effective_animator,
+                                     const float draw_min[3],
+                                     const float draw_max[3],
+                                     float draw_radius,
                                      int32_t *visible_nodes) {
     draw_mesh = rt_g3d_checked_or_null(draw_mesh, RT_G3D_MESH3D_CLASS_ID);
     draw_material = rt_g3d_checked_or_null(draw_material, RT_G3D_MATERIAL3D_CLASS_ID);
@@ -2506,6 +2523,15 @@ static void scene3d_submit_node_draw(rt_scene_node3d *current,
     int32_t anim_bone_count = 0;
     int32_t anim_prev_bone_count = 0;
     int32_t mesh_bone_count = ((rt_mesh3d *)draw_mesh)->bone_count;
+    float submit_min[3] = {draw_min ? draw_min[0] : 0.0f,
+                           draw_min ? draw_min[1] : 0.0f,
+                           draw_min ? draw_min[2] : 0.0f};
+    float submit_max[3] = {draw_max ? draw_max[0] : 0.0f,
+                           draw_max ? draw_max[1] : 0.0f,
+                           draw_max ? draw_max[2] : 0.0f};
+    int has_dynamic_deformation =
+        scene3d_mesh_has_dynamic_deformation((rt_mesh3d *)draw_mesh, effective_animator);
+    int use_explicit_bounds = draw_min && draw_max ? 1 : 0;
 
     if (effective_animator) {
         void *anim_skeleton = rt_anim_controller3d_get_skeleton(effective_animator);
@@ -2520,22 +2546,45 @@ static void scene3d_submit_node_draw(rt_scene_node3d *current,
                 anim_prev_palette = NULL;
         }
     }
+    if (use_explicit_bounds && has_dynamic_deformation) {
+        float pad = (float)scene3d_mesh_dynamic_bound_pad(
+            (rt_mesh3d *)draw_mesh, effective_animator, (double)draw_radius);
+        submit_min[0] -= pad;
+        submit_min[1] -= pad;
+        submit_min[2] -= pad;
+        submit_max[0] += pad;
+        submit_max[1] += pad;
+        submit_max[2] += pad;
+    }
     if (anim_palette && anim_bone_count > 0 && mesh_bone_count > 0) {
         int32_t draw_bone_count =
             anim_bone_count < mesh_bone_count ? anim_bone_count : mesh_bone_count;
         if (rt_canvas3d_add_temp_object(canvas3d, effective_animator)) {
-            rt_canvas3d_draw_mesh_matrix_skinned_keyed(canvas3d,
-                                                       draw_mesh,
-                                                       current->world_matrix,
-                                                       draw_material,
-                                                       current,
-                                                       anim_palette,
-                                                       anim_prev_palette,
-                                                       draw_bone_count);
+            rt_canvas3d_draw_mesh_matrix_skinned_keyed_bounds(canvas3d,
+                                                              draw_mesh,
+                                                              current->world_matrix,
+                                                              draw_material,
+                                                              current,
+                                                              anim_palette,
+                                                              anim_prev_palette,
+                                                              draw_bone_count,
+                                                              use_explicit_bounds ? submit_min : NULL,
+                                                              use_explicit_bounds ? submit_max : NULL,
+                                                              has_dynamic_deformation,
+                                                              has_dynamic_deformation);
         }
     } else {
-        rt_canvas3d_draw_mesh_matrix_keyed(
-            canvas3d, draw_mesh, current->world_matrix, draw_material, current, NULL, NULL);
+        rt_canvas3d_draw_mesh_matrix_keyed_bounds(canvas3d,
+                                                  draw_mesh,
+                                                  current->world_matrix,
+                                                  draw_material,
+                                                  current,
+                                                  NULL,
+                                                  NULL,
+                                                  use_explicit_bounds ? submit_min : NULL,
+                                                  use_explicit_bounds ? submit_max : NULL,
+                                                  has_dynamic_deformation,
+                                                  has_dynamic_deformation);
     }
 }
 
@@ -2575,8 +2624,15 @@ static void scene3d_draw_node_self(rt_scene_node3d *current,
                                 culled))
         return;
 
-    scene3d_submit_node_draw(
-        current, canvas3d, draw_mesh, draw_material, effective_animator, visible_nodes);
+    scene3d_submit_node_draw(current,
+                             canvas3d,
+                             draw_mesh,
+                             draw_material,
+                             effective_animator,
+                             draw_min,
+                             draw_max,
+                             draw_radius,
+                             visible_nodes);
 }
 
 /// @brief Draw one spatial-index entry's node through @p canvas with the active camera,
@@ -2625,8 +2681,15 @@ static void scene3d_draw_spatial_entry(rt_scene3d_spatial_entry *entry,
                                        culled)) {
         return;
     }
-    scene3d_submit_node_draw(
-        current, canvas3d, draw_mesh, draw_material, effective_animator, visible_nodes);
+    scene3d_submit_node_draw(current,
+                             canvas3d,
+                             draw_mesh,
+                             draw_material,
+                             effective_animator,
+                             draw_min,
+                             draw_max,
+                             draw_radius,
+                             visible_nodes);
 }
 
 /// @brief Draw traversal: depth-first, skip invisible nodes, frustum-cull meshes.
