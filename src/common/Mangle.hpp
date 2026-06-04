@@ -7,7 +7,9 @@
 //
 // File: common/Mangle.hpp
 // Purpose: Provide unified mangling for linkable symbols from qualified names.
-// Key invariants: Linkage mangling is ASCII-only, stable, and case-insensitive.
+// Key invariants: Linkage mangling is ASCII-only, stable, and case-insensitive;
+//                 ordinary C-safe identifiers remain readable, while qualified
+//                 or escaped names use a reserved prefix and reversible escapes.
 // Ownership/Lifetime: Header-only declarations; implementation in Mangle.cpp.
 // Links: docs/codemap.md
 //
@@ -21,18 +23,23 @@
 namespace viper::common {
 
 /// @brief Mangle a qualified name into a safe ASCII linker symbol.
-/// @details Converts to lowercase, replaces dots with underscores, and prefixes
-///          with '@' to avoid collisions with user names. Only [a-z0-9_] remain.
-///          Unsupported characters are replaced with '_'.
+/// @details Plain identifiers that already fit the stable linker subset
+///          @c [a-z_][a-z0-9_]* are returned lowercased, except names beginning
+///          with the reserved @c vpr_ prefix.  Qualified names, names containing
+///          unsupported bytes, and names that would collide with the reserved
+///          prefix are encoded with @c vpr_ plus reversible escapes.  The output
+///          always contains only lowercase ASCII letters, digits, and underscores.
 /// @param qualified Qualified name like "A.B.F" or "Klass.__ctor".
-/// @return Mangled link symbol like "@a_b_f" or "@klass___ctor".
+/// @return Linker-safe symbol like "main", "a_b", or "vpr_a_db".
 std::string MangleLink(std::string_view qualified);
 
 /// @brief Best-effort demangle of a link symbol back to dotted form.
-/// @details Strips leading '@' when present and replaces underscores with dots.
-///          Lowercase is preserved.
-/// @param symbol Link symbol like "@a_b_f".
-/// @return Dotted form like "a.b.f".
+/// @details Decodes the reserved @c vpr_ escape form produced by
+///          @ref MangleLink.  For unprefixed legacy symbols, lowercase text is
+///          returned unchanged; for historical @c '@'-prefixed symbols the
+///          leading marker is stripped and underscores are shown as dots.
+/// @param symbol Link symbol like "vpr_a_db" or "main".
+/// @return Dotted form like "a.b" or "main".
 std::string DemangleLink(std::string_view symbol);
 
 } // namespace viper::common

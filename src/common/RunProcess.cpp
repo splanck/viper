@@ -15,27 +15,41 @@
 //   - Returned output buffers are owned by the caller via RunResult.
 //   - Helper-local OS handles/pipes are closed before return.
 // Links: common/RunProcess.hpp
-// Cross-platform touchpoints: POSIX fork/exec + pipe polling, Windows
+// Cross-platform touchpoints: POSIX spawn + pipe polling, Windows
 //                             CreateProcess handle inheritance, cwd/env
 //                             behavior across host toolchains.
 //
 //===----------------------------------------------------------------------===//
 
+#ifndef _WIN32
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#endif
+
 #include "common/RunProcess.hpp"
 
+#include <algorithm>
 #include <cerrno>
+#include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cwchar>
+#include <cwctype>
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #ifndef _WIN32
+#include <fcntl.h>
 #include <poll.h>
+#include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
 extern char **environ;
@@ -48,45 +62,110 @@ extern char **environ;
 namespace {
 
 #if defined(_WIN32)
-bool needs_quoting(const std::string &arg) {
+/// @brief Format a Win32 error code as a compact UTF-8 diagnostic string.
+/// @param error Value returned by @c GetLastError.
+/// @return Human-readable message with trailing newlines and full stop removed.
+std::string format_windows_error(DWORD error);
+
+/// @brief Convert UTF-8 command text to UTF-16 for Win32 Unicode APIs.
+/// @param text UTF-8 encoded input string.
+/// @param err Receives a diagnostic when conversion fails.
+/// @return UTF-16 string on success, or @c std::nullopt on invalid input.
+std::optional<std::wstring> utf8_to_wide(std::string_view text, std::string &err) {
+    if (text.empty()) {
+        return std::wstring{};
+    }
+    const int needed = MultiByteToWideChar(CP_UTF8,
+                                           MB_ERR_INVALID_CHARS,
+                                           text.data(),
+                                           static_cast<int>(text.size()),
+                                           nullptr,
+                                           0);
+    if (needed <= 0) {
+        err = "failed to convert UTF-8 text for Windows process launch: " +
+              format_windows_error(GetLastError());
+        return std::nullopt;
+    }
+    std::wstring out(static_cast<std::size_t>(needed), L'\0');
+    const int written = MultiByteToWideChar(CP_UTF8,
+                                            MB_ERR_INVALID_CHARS,
+                                            text.data(),
+                                            static_cast<int>(text.size()),
+                                            out.data(),
+                                            needed);
+    if (written != needed) {
+        err = "failed to convert UTF-8 text for Windows process launch: " +
+              format_windows_error(GetLastError());
+        return std::nullopt;
+    }
+    return out;
+}
+
+/// @brief Test whether a Windows environment variable name is syntactically valid.
+/// @details Empty names are ignored by the launcher for compatibility with the
+///          previous POSIX behavior.  Names containing '=' cannot be represented
+///          in a Windows or POSIX environment block.
+/// @param name Environment variable name to validate.
+/// @param err Receives a diagnostic when the name is invalid.
+/// @return True when @p name can be used in an environment block.
+bool validate_environment_name(std::string_view name, std::string &err) {
+    if (name.empty()) {
+        return true;
+    }
+    if (name.find('=') != std::string_view::npos) {
+        err = "invalid environment variable name '" + std::string{name} + "'";
+        return false;
+    }
+    return true;
+}
+
+/// @brief Determine whether a Windows argument needs command-line quoting.
+/// @param arg Argument after UTF-16 conversion.
+/// @return True when @p arg contains whitespace or shell-sensitive punctuation.
+bool needs_quoting(const std::wstring &arg) {
     if (arg.empty()) {
         return true;
     }
 
-    for (const char ch : arg) {
-        if (ch == ' ' || ch == '\t' || ch == '"' || ch == '&' || ch == '|' || ch == '<' ||
-            ch == '>' || ch == '^' || ch == '(' || ch == ')') {
+    for (const wchar_t ch : arg) {
+        if (ch == L' ' || ch == L'\t' || ch == L'"' || ch == L'&' || ch == L'|' ||
+            ch == L'<' || ch == L'>' || ch == L'^' || ch == L'(' || ch == L')') {
             return true;
         }
     }
     return false;
 }
 
-std::string quote_windows_argument(const std::string &arg) {
+/// @brief Quote one UTF-16 command-line argument using the Win32 argv rules.
+/// @details Implements the backslash-before-quote algorithm used by the
+///          Microsoft C runtime when it reconstructs argv from a command line.
+/// @param arg Raw UTF-16 argument.
+/// @return Argument text safe to concatenate into a Win32 command line.
+std::wstring quote_windows_argument(const std::wstring &arg) {
     if (!needs_quoting(arg)) {
         return arg;
     }
 
-    std::string quoted;
+    std::wstring quoted;
     quoted.reserve(arg.size() + 2);
-    quoted.push_back('"');
+    quoted.push_back(L'"');
 
     std::size_t backslash_count = 0;
-    for (const char ch : arg) {
-        if (ch == '\\') {
+    for (const wchar_t ch : arg) {
+        if (ch == L'\\') {
             ++backslash_count;
             continue;
         }
 
-        if (ch == '"') {
-            quoted.append(backslash_count * 2 + 1, '\\');
-            quoted.push_back('"');
+        if (ch == L'"') {
+            quoted.append(backslash_count * 2 + 1, L'\\');
+            quoted.push_back(L'"');
             backslash_count = 0;
             continue;
         }
 
         if (backslash_count != 0) {
-            quoted.append(backslash_count, '\\');
+            quoted.append(backslash_count, L'\\');
             backslash_count = 0;
         }
 
@@ -94,13 +173,16 @@ std::string quote_windows_argument(const std::string &arg) {
     }
 
     if (backslash_count != 0) {
-        quoted.append(backslash_count * 2, '\\');
+        quoted.append(backslash_count * 2, L'\\');
     }
 
-    quoted.push_back('"');
+    quoted.push_back(L'"');
     return quoted;
 }
 
+/// @brief Format a Win32 error code as a compact UTF-8 diagnostic string.
+/// @param error Value returned by @c GetLastError.
+/// @return Human-readable message with trailing newlines and full stop removed.
 std::string format_windows_error(DWORD error) {
     LPSTR buffer = nullptr;
     const DWORD flags =
@@ -125,15 +207,228 @@ std::string format_windows_error(DWORD error) {
     return message;
 }
 
-std::string join_windows_command_line(const std::vector<std::string> &argv) {
-    std::string cmdline;
+/// @brief Join argv into the mutable command-line string required by CreateProcessW.
+/// @param argv UTF-8 argument vector including the executable at index zero.
+/// @param err Receives a diagnostic when UTF-8 conversion fails.
+/// @return UTF-16 command line on success, or @c std::nullopt on failure.
+std::optional<std::wstring> join_windows_command_line(const std::vector<std::string> &argv,
+                                                      std::string &err) {
+    std::wstring cmdline;
     for (std::size_t i = 0; i < argv.size(); ++i) {
         if (i != 0) {
-            cmdline.push_back(' ');
+            cmdline.push_back(L' ');
         }
-        cmdline += quote_windows_argument(argv[i]);
+        auto wide = utf8_to_wide(argv[i], err);
+        if (!wide) {
+            return std::nullopt;
+        }
+        cmdline += quote_windows_argument(*wide);
     }
     return cmdline;
+}
+
+/// @brief Strict weak ordering for case-insensitive Windows environment names.
+struct CaseInsensitiveWideLess {
+    /// @brief Compare two UTF-16 strings with Windows-style case folding.
+    /// @param lhs Left string.
+    /// @param rhs Right string.
+    /// @return True when @p lhs sorts before @p rhs case-insensitively.
+    bool operator()(const std::wstring &lhs, const std::wstring &rhs) const noexcept {
+        const std::size_t common = std::min(lhs.size(), rhs.size());
+        for (std::size_t i = 0; i < common; ++i) {
+            const wchar_t lch = static_cast<wchar_t>(std::towlower(lhs[i]));
+            const wchar_t rch = static_cast<wchar_t>(std::towlower(rhs[i]));
+            if (lch < rch) {
+                return true;
+            }
+            if (lch > rch) {
+                return false;
+            }
+        }
+        return lhs.size() < rhs.size();
+    }
+};
+
+/// @brief Build a CreateProcessW environment block from scoped overrides.
+/// @details The block starts from the current process environment, applies
+///          case-insensitive overrides without mutating the parent, sorts the
+///          resulting entries as expected by Win32, and stores the required
+///          double-NUL terminator.  Empty override names are ignored.
+/// @param env_overrides UTF-8 key/value override list.
+/// @param block Receives the double-NUL-terminated UTF-16 environment block.
+/// @param err Receives a diagnostic when conversion or environment capture fails.
+/// @return True when the block was built successfully.
+bool build_windows_environment_block(
+    const std::vector<std::pair<std::string, std::string>> &env_overrides,
+    std::vector<wchar_t> &block,
+    std::string &err) {
+    using Override = std::pair<std::wstring, std::wstring>;
+    std::map<std::wstring, Override, CaseInsensitiveWideLess> overrides;
+    for (const auto &entry : env_overrides) {
+        if (!validate_environment_name(entry.first, err)) {
+            return false;
+        }
+        if (entry.first.empty()) {
+            continue;
+        }
+        auto name = utf8_to_wide(entry.first, err);
+        auto value = utf8_to_wide(entry.second, err);
+        if (!name || !value) {
+            return false;
+        }
+        overrides[*name] = Override{*name, *value};
+    }
+
+    if (overrides.empty()) {
+        block.clear();
+        return true;
+    }
+
+    LPWCH raw_environment = GetEnvironmentStringsW();
+    if (raw_environment == nullptr) {
+        err = "failed to read Windows environment: " + format_windows_error(GetLastError());
+        return false;
+    }
+
+    std::vector<std::wstring> entries;
+    std::map<std::wstring, bool, CaseInsensitiveWideLess> emitted_names;
+    for (const wchar_t *cursor = raw_environment; *cursor != L'\0';
+         cursor += std::wcslen(cursor) + 1) {
+        std::wstring current(cursor);
+        if (!current.empty() && current.front() == L'=') {
+            entries.push_back(std::move(current));
+            continue;
+        }
+
+        const std::size_t equals = current.find(L'=');
+        if (equals == std::wstring::npos) {
+            continue;
+        }
+
+        const std::wstring name = current.substr(0, equals);
+        if (emitted_names.find(name) != emitted_names.end()) {
+            continue;
+        }
+
+        if (auto override_it = overrides.find(name); override_it != overrides.end()) {
+            entries.push_back(override_it->second.first + L"=" + override_it->second.second);
+            emitted_names.emplace(override_it->second.first, true);
+            overrides.erase(override_it);
+        } else {
+            emitted_names.emplace(name, true);
+            entries.push_back(std::move(current));
+        }
+    }
+    FreeEnvironmentStringsW(raw_environment);
+
+    for (const auto &entry : overrides) {
+        entries.push_back(entry.second.first + L"=" + entry.second.second);
+    }
+
+    std::sort(entries.begin(), entries.end(), CaseInsensitiveWideLess{});
+
+    block.clear();
+    for (const auto &entry : entries) {
+        block.insert(block.end(), entry.begin(), entry.end());
+        block.push_back(L'\0');
+    }
+    block.push_back(L'\0');
+    return true;
+}
+
+/// @brief Close a Win32 handle if it currently owns a valid handle value.
+/// @param handle Handle slot to close and reset to @c INVALID_HANDLE_VALUE.
+void close_handle_if_valid(HANDLE &handle) noexcept {
+    if (handle != INVALID_HANDLE_VALUE && handle != nullptr) {
+        CloseHandle(handle);
+        handle = INVALID_HANDLE_VALUE;
+    }
+}
+
+/// @brief Duplicate a handle so it may be inherited by a child process.
+/// @param source Source handle in the current process.
+/// @return Inheritable duplicate, or @c INVALID_HANDLE_VALUE when duplication fails.
+HANDLE duplicate_inheritable_handle(HANDLE source) noexcept {
+    if (source == nullptr || source == INVALID_HANDLE_VALUE) {
+        return INVALID_HANDLE_VALUE;
+    }
+    HANDLE duplicate = INVALID_HANDLE_VALUE;
+    if (!DuplicateHandle(GetCurrentProcess(),
+                         source,
+                         GetCurrentProcess(),
+                         &duplicate,
+                         0,
+                         TRUE,
+                         DUPLICATE_SAME_ACCESS)) {
+        return INVALID_HANDLE_VALUE;
+    }
+    return duplicate;
+}
+
+/// @brief Initialise a STARTUPINFOEX handle-inheritance allow list.
+/// @details CreateProcessW requires @c bInheritHandles to be true when standard
+///          handles are redirected.  The attribute list restricts inheritance to
+///          the exact pipe/stdin handles needed by the child.
+/// @param startup Startup information receiving the attribute list pointer.
+/// @param storage Backing storage that must outlive the CreateProcessW call.
+/// @param handles Handles allowed to cross into the child process.
+/// @param err Receives a diagnostic when attribute-list setup fails.
+/// @return True when the handle list is ready for CreateProcessW.
+bool initialize_handle_inheritance_list(STARTUPINFOEXW &startup,
+                                        std::vector<char> &storage,
+                                        const std::vector<HANDLE> &handles,
+                                        std::string &err) {
+    SIZE_T bytes = 0;
+    InitializeProcThreadAttributeList(nullptr, 1, 0, &bytes);
+    if (bytes == 0) {
+        err = "failed to size process handle inheritance list: " +
+              format_windows_error(GetLastError());
+        return false;
+    }
+
+    storage.assign(bytes, 0);
+    startup.lpAttributeList = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(storage.data());
+    if (!InitializeProcThreadAttributeList(startup.lpAttributeList, 1, 0, &bytes)) {
+        err = "failed to initialise process handle inheritance list: " +
+              format_windows_error(GetLastError());
+        startup.lpAttributeList = nullptr;
+        return false;
+    }
+
+    std::vector<HANDLE> mutable_handles = handles;
+    if (!UpdateProcThreadAttribute(startup.lpAttributeList,
+                                   0,
+                                   PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                                   mutable_handles.data(),
+                                   mutable_handles.size() * sizeof(HANDLE),
+                                   nullptr,
+                                   nullptr)) {
+        err = "failed to update process handle inheritance list: " +
+              format_windows_error(GetLastError());
+        DeleteProcThreadAttributeList(startup.lpAttributeList);
+        startup.lpAttributeList = nullptr;
+        return false;
+    }
+    return true;
+}
+
+/// @brief Delete a STARTUPINFOEX attribute list when one was initialised.
+/// @param startup Startup information whose @c lpAttributeList should be freed.
+void delete_handle_inheritance_list(STARTUPINFOEXW &startup) noexcept {
+    if (startup.lpAttributeList != nullptr) {
+        DeleteProcThreadAttributeList(startup.lpAttributeList);
+        startup.lpAttributeList = nullptr;
+    }
+}
+
+/// @brief Convert a native Windows process exit code to the legacy int field.
+/// @param exit_code Exact unsigned Win32 exit code.
+/// @return @p exit_code when it fits in @c int, otherwise @c INT_MAX.
+int normalize_windows_exit_code(DWORD exit_code) noexcept {
+    if (exit_code > static_cast<DWORD>(INT_MAX)) {
+        return INT_MAX;
+    }
+    return static_cast<int>(exit_code);
 }
 
 struct CaptureThreadContext {
@@ -141,6 +436,9 @@ struct CaptureThreadContext {
     std::string *buffer = nullptr;
 };
 
+/// @brief Read one redirected Win32 pipe until EOF on a background thread.
+/// @param param Pointer to a @ref CaptureThreadContext owned by the caller.
+/// @return Always zero; errors terminate capture and leave existing bytes intact.
 DWORD WINAPI capture_handle_thread_proc(LPVOID param) {
     auto *ctx = static_cast<CaptureThreadContext *>(param);
     char chunk[4096];
@@ -259,25 +557,297 @@ bool validate_working_directory(const std::optional<std::string> &cwd, std::stri
 }
 
 #ifndef _WIN32
-void append_child_error_and_exit(int fd, const std::string &message) {
-    (void)::write(fd, message.c_str(), message.size());
-    _exit(127);
+/// @brief Test whether an environment variable name is representable.
+/// @details Empty names are ignored for compatibility with the historical
+///          implementation.  Names containing '=' are rejected because neither
+///          POSIX nor Windows environment blocks can represent them as keys.
+/// @param name Environment variable name to validate.
+/// @param err Receives a diagnostic when the name is invalid.
+/// @return True when @p name can be represented or intentionally ignored.
+bool validate_environment_name(std::string_view name, std::string &err) {
+    if (name.empty()) {
+        return true;
+    }
+    if (name.find('=') != std::string_view::npos) {
+        err = "invalid environment variable name '" + std::string{name} + "'";
+        return false;
+    }
+    return true;
 }
 
-void apply_env_overrides_in_child(
-    const std::vector<std::pair<std::string, std::string>> &env_overrides) {
-    for (const auto &entry : env_overrides) {
-        if (entry.first.empty()) {
-            continue;
-        }
-        setenv(entry.first.c_str(), entry.second.c_str(), 1);
+/// @brief Close a POSIX file descriptor when it is open.
+/// @param fd Descriptor slot to close and reset to -1.
+void close_fd_if_open(int &fd) noexcept {
+    if (fd >= 0) {
+        ::close(fd);
+        fd = -1;
     }
 }
 
-void capture_posix_pipes(int stdout_fd, int stderr_fd, std::string &out, std::string &err) {
+/// @brief Mark one descriptor close-on-exec.
+/// @param fd Descriptor to update.
+/// @param err Receives a diagnostic when @c fcntl fails.
+/// @return True when the descriptor will close across exec.
+bool set_close_on_exec(int fd, std::string &err) {
+    const int flags = ::fcntl(fd, F_GETFD);
+    if (flags < 0) {
+        err = "failed to query pipe flags: " + std::string(std::strerror(errno));
+        return false;
+    }
+    if (::fcntl(fd, F_SETFD, flags | FD_CLOEXEC) < 0) {
+        err = "failed to set close-on-exec on pipe: " + std::string(std::strerror(errno));
+        return false;
+    }
+    return true;
+}
+
+/// @brief Move a descriptor out of the standard-stream fd range when necessary.
+/// @details POSIX file actions operate by descriptor number.  If @c pipe()
+///          returns fd 0, 1, or 2 because the parent closed a standard stream,
+///          later close actions could accidentally close the child's redirected
+///          stdio.  Duplicating such descriptors to fd >= 3 keeps the action
+///          sequence unambiguous.
+/// @param fd Descriptor slot to update in place.
+/// @param err Receives a diagnostic when duplication fails.
+/// @return True when @p fd is safely outside the standard descriptor range.
+bool move_fd_above_standard_streams(int &fd, std::string &err) {
+    if (fd < 0 || fd > STDERR_FILENO) {
+        return true;
+    }
+
+#ifdef F_DUPFD_CLOEXEC
+    const int moved = ::fcntl(fd, F_DUPFD_CLOEXEC, STDERR_FILENO + 1);
+#else
+    const int moved = ::fcntl(fd, F_DUPFD, STDERR_FILENO + 1);
+#endif
+    if (moved < 0) {
+        err = "failed to move pipe descriptor above stdio range: " +
+              std::string(std::strerror(errno));
+        return false;
+    }
+#ifndef F_DUPFD_CLOEXEC
+    if (!set_close_on_exec(moved, err)) {
+        int moved_copy = moved;
+        close_fd_if_open(moved_copy);
+        return false;
+    }
+#endif
+    close_fd_if_open(fd);
+    fd = moved;
+    return true;
+}
+
+/// @brief Create a pipe whose descriptors are close-on-exec by default.
+/// @param pipe_fds Two-element descriptor array receiving read and write ends.
+/// @param err Receives a diagnostic when pipe creation or flag setup fails.
+/// @return True when both descriptors were created and marked close-on-exec.
+bool create_cloexec_pipe(int pipe_fds[2], std::string &err) {
+    pipe_fds[0] = -1;
+    pipe_fds[1] = -1;
+    if (::pipe(pipe_fds) != 0) {
+        err = "failed to create process pipes: " + std::string(std::strerror(errno));
+        return false;
+    }
+    if (!set_close_on_exec(pipe_fds[0], err) || !set_close_on_exec(pipe_fds[1], err)) {
+        close_fd_if_open(pipe_fds[0]);
+        close_fd_if_open(pipe_fds[1]);
+        return false;
+    }
+    if (!move_fd_above_standard_streams(pipe_fds[0], err) ||
+        !move_fd_above_standard_streams(pipe_fds[1], err)) {
+        close_fd_if_open(pipe_fds[0]);
+        close_fd_if_open(pipe_fds[1]);
+        return false;
+    }
+    return true;
+}
+
+/// @brief Build mutable argv pointers for @c posix_spawnp.
+/// @details The returned pointers reference strings owned by @p argv, so the
+///          caller must keep @p argv alive until the spawn call returns.
+/// @param argv Stable argument vector including the executable.
+/// @return NUL-terminated mutable pointer vector accepted by POSIX spawn APIs.
+std::vector<char *> build_spawn_argv(const std::vector<std::string> &argv) {
+    std::vector<char *> exec_argv;
+    exec_argv.reserve(argv.size() + 1);
+    for (const auto &arg : argv) {
+        exec_argv.push_back(const_cast<char *>(arg.c_str()));
+    }
+    exec_argv.push_back(nullptr);
+    return exec_argv;
+}
+
+/// @brief Build a POSIX environment vector with scoped overrides applied.
+/// @details The current process environment is copied in the parent, duplicate
+///          names are collapsed, and the last override for a key wins.  Empty
+///          override names are ignored.
+/// @param env_overrides Key/value override list.
+/// @param env_strings Receives owned @c NAME=VALUE strings.
+/// @param err Receives a diagnostic when an override name is invalid.
+/// @return True when @p env_strings is ready for pointer conversion.
+bool build_posix_environment_strings(
+    const std::vector<std::pair<std::string, std::string>> &env_overrides,
+    std::vector<std::string> &env_strings,
+    std::string &err) {
+    std::map<std::string, std::string> overrides;
+    for (const auto &entry : env_overrides) {
+        if (!validate_environment_name(entry.first, err)) {
+            return false;
+        }
+        if (entry.first.empty()) {
+            continue;
+        }
+        overrides[entry.first] = entry.second;
+    }
+
+    env_strings.clear();
+    if (overrides.empty()) {
+        return true;
+    }
+
+    std::map<std::string, bool> emitted;
+    for (char **cursor = environ; cursor != nullptr && *cursor != nullptr; ++cursor) {
+        std::string current(*cursor);
+        const std::size_t equals = current.find('=');
+        if (equals == std::string::npos) {
+            continue;
+        }
+        const std::string name = current.substr(0, equals);
+        if (emitted.find(name) != emitted.end()) {
+            continue;
+        }
+
+        if (auto override_it = overrides.find(name); override_it != overrides.end()) {
+            env_strings.push_back(override_it->first + "=" + override_it->second);
+            emitted.emplace(override_it->first, true);
+            overrides.erase(override_it);
+        } else {
+            env_strings.push_back(std::move(current));
+            emitted.emplace(name, true);
+        }
+    }
+
+    for (const auto &entry : overrides) {
+        env_strings.push_back(entry.first + "=" + entry.second);
+    }
+    return true;
+}
+
+/// @brief Build mutable envp pointers for @c posix_spawnp.
+/// @details The returned pointers reference strings owned by @p env_strings, so
+///          the caller must keep that vector alive until the spawn call returns.
+/// @param env_strings Stable @c NAME=VALUE strings.
+/// @return NUL-terminated mutable pointer vector accepted by POSIX spawn APIs.
+std::vector<char *> build_spawn_envp(std::vector<std::string> &env_strings) {
+    std::vector<char *> envp;
+    envp.reserve(env_strings.size() + 1);
+    for (auto &entry : env_strings) {
+        envp.push_back(entry.data());
+    }
+    envp.push_back(nullptr);
+    return envp;
+}
+
+/// @brief Add a working-directory change to POSIX spawn file actions.
+/// @details macOS exposes the standardized
+///          @c posix_spawn_file_actions_addchdir spelling, while glibc and
+///          several BSD libcs expose the non-standard @c *_np extension.
+///          Viper uses these APIs to preserve cwd support without running
+///          allocation-heavy code after @c fork.
+/// @param actions File actions object being prepared for @c posix_spawnp.
+/// @param cwd Working directory path.
+/// @return Zero on success, or a POSIX error number on failure/unsupported hosts.
+int add_spawn_chdir_action(posix_spawn_file_actions_t *actions, const std::string &cwd) {
+#if defined(__APPLE__)
+    return posix_spawn_file_actions_addchdir(actions, cwd.c_str());
+#elif defined(__linux__) || defined(__FreeBSD__)
+    return posix_spawn_file_actions_addchdir_np(actions, cwd.c_str());
+#else
+    (void)actions;
+    (void)cwd;
+    return ENOTSUP;
+#endif
+}
+
+/// @brief Add stdio redirection and optional cwd actions for @c posix_spawnp.
+/// @param actions Initialised POSIX file actions object.
+/// @param stdout_pipe Pipe used to capture child stdout.
+/// @param stderr_pipe Pipe used to capture child stderr.
+/// @param cwd Optional working directory.
+/// @param err Receives a diagnostic when an action cannot be added.
+/// @return True when all required actions were added.
+bool add_spawn_file_actions(posix_spawn_file_actions_t *actions,
+                            const int stdout_pipe[2],
+                            const int stderr_pipe[2],
+                            const std::optional<std::string> &cwd,
+                            std::string &err) {
+    auto fail = [&](int code, const char *what) {
+        err = std::string(what) + ": " + std::strerror(code);
+        return false;
+    };
+
+    if (cwd.has_value()) {
+        if (const int code = add_spawn_chdir_action(actions, *cwd); code != 0) {
+            return fail(code, "failed to add child working directory action");
+        }
+    }
+    if (const int code = posix_spawn_file_actions_adddup2(actions, stdout_pipe[1], STDOUT_FILENO);
+        code != 0) {
+        return fail(code, "failed to add stdout redirection action");
+    }
+    if (const int code = posix_spawn_file_actions_adddup2(actions, stderr_pipe[1], STDERR_FILENO);
+        code != 0) {
+        return fail(code, "failed to add stderr redirection action");
+    }
+    if (const int code = posix_spawn_file_actions_addclose(actions, stdout_pipe[0]); code != 0) {
+        return fail(code, "failed to add stdout read-close action");
+    }
+    if (const int code = posix_spawn_file_actions_addclose(actions, stderr_pipe[0]); code != 0) {
+        return fail(code, "failed to add stderr read-close action");
+    }
+    if (const int code = posix_spawn_file_actions_addclose(actions, stdout_pipe[1]); code != 0) {
+        return fail(code, "failed to add stdout write-close action");
+    }
+    if (const int code = posix_spawn_file_actions_addclose(actions, stderr_pipe[1]); code != 0) {
+        return fail(code, "failed to add stderr write-close action");
+    }
+    return true;
+}
+
+/// @brief Destroy POSIX spawn file actions if they were initialised.
+/// @param actions File actions object.
+/// @param initialised Whether @p actions has been initialised.
+void destroy_spawn_file_actions(posix_spawn_file_actions_t &actions, bool initialised) noexcept {
+    if (initialised) {
+        posix_spawn_file_actions_destroy(&actions);
+    }
+}
+
+/// @brief Capture stdout and stderr pipes until both reach EOF or fail.
+/// @details The function polls both descriptors so one full pipe cannot block
+///          the child while the parent reads the other.  Interrupted reads and
+///          polls are retried; hard errors are reported through @p capture_error.
+/// @param stdout_fd Read end of the stdout pipe; closed before return.
+/// @param stderr_fd Read end of the stderr pipe; closed before return.
+/// @param out Receives stdout bytes.
+/// @param err Receives stderr bytes.
+/// @param capture_error Receives diagnostics for pipe-level failures.
+/// @return True when capture reached EOF cleanly.
+bool capture_posix_pipes(int stdout_fd,
+                         int stderr_fd,
+                         std::string &out,
+                         std::string &err,
+                         std::string &capture_error) {
     bool stdout_open = stdout_fd >= 0;
     bool stderr_open = stderr_fd >= 0;
     char buffer[4096];
+    bool ok = true;
+
+    auto close_tracked = [](int fd, bool &open_flag) {
+        int close_fd = fd;
+        close_fd_if_open(close_fd);
+        open_flag = false;
+    };
 
     while (stdout_open || stderr_open) {
         pollfd fds[2];
@@ -301,11 +871,19 @@ void capture_posix_pipes(int stdout_fd, int stderr_fd, std::string &out, std::st
             if (errno == EINTR) {
                 continue;
             }
+            capture_error = "failed to poll child output pipes: " + std::string(std::strerror(errno));
+            ok = false;
+            if (stdout_open) {
+                close_tracked(stdout_fd, stdout_open);
+            }
+            if (stderr_open) {
+                close_tracked(stderr_fd, stderr_open);
+            }
             break;
         }
 
         for (nfds_t i = 0; i < nfds; ++i) {
-            if ((fds[i].revents & (POLLIN | POLLHUP)) == 0) {
+            if ((fds[i].revents & (POLLIN | POLLHUP | POLLERR | POLLNVAL)) == 0) {
                 continue;
             }
 
@@ -319,16 +897,32 @@ void capture_posix_pipes(int stdout_fd, int stderr_fd, std::string &out, std::st
                 open_flag = &stderr_open;
             }
 
+            if ((fds[i].revents & POLLNVAL) != 0) {
+                capture_error = "child output pipe became invalid";
+                ok = false;
+                *open_flag = false;
+                continue;
+            }
+
             const ssize_t nread = ::read(fds[i].fd, buffer, sizeof(buffer));
             if (nread > 0) {
                 target->append(buffer, buffer + nread);
                 continue;
+            }
+            if (nread < 0 && errno == EINTR) {
+                continue;
+            }
+            if (nread < 0) {
+                capture_error =
+                    "failed to read child output pipe: " + std::string(std::strerror(errno));
+                ok = false;
             }
 
             ::close(fds[i].fd);
             *open_flag = false;
         }
     }
+    return ok;
 }
 #endif
 
@@ -384,19 +978,43 @@ ScopedEnvironmentAssignmentMoveResult scoped_environment_assignment_move_preserv
 RunResult run_process(const std::vector<std::string> &argv,
                       std::optional<std::string> cwd,
                       const std::vector<std::pair<std::string, std::string>> &env) {
-    RunResult rr{0, "", ""};
-    if (argv.empty()) {
+    RunResult rr{};
+    auto fail_launch = [&](std::string message) {
         rr.exit_code = -1;
-        rr.err = "empty argv";
+        rr.launch_failed = true;
+        rr.err = std::move(message);
         return rr;
+    };
+
+    if (argv.empty()) {
+        return fail_launch("empty argv");
     }
 
     if (!validate_working_directory(cwd, rr.err)) {
         rr.exit_code = -1;
+        rr.launch_failed = true;
         return rr;
     }
 
 #ifdef _WIN32
+    auto cmdline = join_windows_command_line(argv, rr.err);
+    if (!cmdline) {
+        return fail_launch(rr.err);
+    }
+
+    std::optional<std::wstring> wide_cwd;
+    if (cwd.has_value()) {
+        wide_cwd = utf8_to_wide(*cwd, rr.err);
+        if (!wide_cwd) {
+            return fail_launch(rr.err);
+        }
+    }
+
+    std::vector<wchar_t> environment_block;
+    if (!build_windows_environment_block(env, environment_block, rr.err)) {
+        return fail_launch(rr.err);
+    }
+
     SECURITY_ATTRIBUTES security = {};
     security.nLength = sizeof(security);
     security.bInheritHandle = TRUE;
@@ -408,61 +1026,86 @@ RunResult run_process(const std::vector<std::string> &argv,
 
     if (!CreatePipe(&stdout_read, &stdout_write, &security, 0) ||
         !CreatePipe(&stderr_read, &stderr_write, &security, 0)) {
-        rr.exit_code = -1;
-        rr.err = "failed to create process pipes: " + format_windows_error(GetLastError());
-        if (stdout_read != INVALID_HANDLE_VALUE)
-            CloseHandle(stdout_read);
-        if (stdout_write != INVALID_HANDLE_VALUE)
-            CloseHandle(stdout_write);
-        if (stderr_read != INVALID_HANDLE_VALUE)
-            CloseHandle(stderr_read);
-        if (stderr_write != INVALID_HANDLE_VALUE)
-            CloseHandle(stderr_write);
-        return rr;
+        const std::string message =
+            "failed to create process pipes: " + format_windows_error(GetLastError());
+        close_handle_if_valid(stdout_read);
+        close_handle_if_valid(stdout_write);
+        close_handle_if_valid(stderr_read);
+        close_handle_if_valid(stderr_write);
+        return fail_launch(message);
     }
 
-    SetHandleInformation(stdout_read, HANDLE_FLAG_INHERIT, 0);
-    SetHandleInformation(stderr_read, HANDLE_FLAG_INHERIT, 0);
+    if (!SetHandleInformation(stdout_read, HANDLE_FLAG_INHERIT, 0) ||
+        !SetHandleInformation(stderr_read, HANDLE_FLAG_INHERIT, 0)) {
+        const std::string message =
+            "failed to configure process pipe inheritance: " + format_windows_error(GetLastError());
+        close_handle_if_valid(stdout_read);
+        close_handle_if_valid(stdout_write);
+        close_handle_if_valid(stderr_read);
+        close_handle_if_valid(stderr_write);
+        return fail_launch(message);
+    }
 
-    STARTUPINFOA startup = {};
-    startup.cb = sizeof(startup);
-    startup.dwFlags = STARTF_USESTDHANDLES;
-    startup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-    startup.hStdOutput = stdout_write;
-    startup.hStdError = stderr_write;
+    HANDLE stdin_for_child = duplicate_inheritable_handle(GetStdHandle(STD_INPUT_HANDLE));
+
+    STARTUPINFOEXW startup = {};
+    startup.StartupInfo.cb = sizeof(startup);
+    startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+    startup.StartupInfo.hStdInput =
+        stdin_for_child != INVALID_HANDLE_VALUE ? stdin_for_child : INVALID_HANDLE_VALUE;
+    startup.StartupInfo.hStdOutput = stdout_write;
+    startup.StartupInfo.hStdError = stderr_write;
+
+    std::vector<HANDLE> inherited_handles{stdout_write, stderr_write};
+    if (stdin_for_child != INVALID_HANDLE_VALUE) {
+        inherited_handles.push_back(stdin_for_child);
+    }
+
+    std::vector<char> attribute_storage;
+    if (!initialize_handle_inheritance_list(startup, attribute_storage, inherited_handles, rr.err)) {
+        close_handle_if_valid(stdin_for_child);
+        close_handle_if_valid(stdout_read);
+        close_handle_if_valid(stdout_write);
+        close_handle_if_valid(stderr_read);
+        close_handle_if_valid(stderr_write);
+        return fail_launch(rr.err);
+    }
 
     PROCESS_INFORMATION process = {};
-    std::string cmdline = join_windows_command_line(argv);
-    std::vector<char> mutable_cmdline(cmdline.begin(), cmdline.end());
-    mutable_cmdline.push_back('\0');
+    std::vector<wchar_t> mutable_cmdline(cmdline->begin(), cmdline->end());
+    mutable_cmdline.push_back(L'\0');
 
-    std::vector<ScopedEnvironmentAssignment> scoped_env;
-    scoped_env.reserve(env.size());
-    for (const auto &entry : env) {
-        scoped_env.emplace_back(entry.first, entry.second);
+    DWORD creation_flags = EXTENDED_STARTUPINFO_PRESENT;
+    LPVOID environment_ptr = nullptr;
+    if (!environment_block.empty()) {
+        creation_flags |= CREATE_UNICODE_ENVIRONMENT;
+        environment_ptr = environment_block.data();
     }
 
-    const BOOL created = CreateProcessA(nullptr,
+    const BOOL created = CreateProcessW(nullptr,
                                         mutable_cmdline.data(),
                                         nullptr,
                                         nullptr,
                                         TRUE,
-                                        0,
-                                        nullptr,
-                                        cwd ? cwd->c_str() : nullptr,
-                                        &startup,
+                                        creation_flags,
+                                        environment_ptr,
+                                        wide_cwd ? wide_cwd->c_str() : nullptr,
+                                        &startup.StartupInfo,
                                         &process);
+    const DWORD create_error = GetLastError();
+    delete_handle_inheritance_list(startup);
 
-    CloseHandle(stdout_write);
-    CloseHandle(stderr_write);
+    close_handle_if_valid(stdin_for_child);
+    close_handle_if_valid(stdout_write);
+    close_handle_if_valid(stderr_write);
 
     if (!created) {
-        rr.exit_code = -1;
-        rr.err = "failed to launch process: " + format_windows_error(GetLastError());
-        CloseHandle(stdout_read);
-        CloseHandle(stderr_read);
-        return rr;
+        const std::string message = "failed to launch process: " + format_windows_error(create_error);
+        close_handle_if_valid(stdout_read);
+        close_handle_if_valid(stderr_read);
+        return fail_launch(message);
     }
+    rr.launched = true;
 
     CaptureThreadContext stdout_ctx{stdout_read, &rr.out};
     CaptureThreadContext stderr_ctx{stderr_read, &rr.err};
@@ -471,90 +1114,107 @@ RunResult run_process(const std::vector<std::string> &argv,
     HANDLE stderr_thread =
         CreateThread(nullptr, 0, capture_handle_thread_proc, &stderr_ctx, 0, nullptr);
 
+    if (stdout_thread == nullptr || stderr_thread == nullptr) {
+        const std::string message =
+            "failed to create process capture thread: " + format_windows_error(GetLastError());
+        TerminateProcess(process.hProcess, 127);
+        WaitForSingleObject(process.hProcess, INFINITE);
+        if (stdout_thread != nullptr) {
+            WaitForSingleObject(stdout_thread, INFINITE);
+            CloseHandle(stdout_thread);
+        }
+        if (stderr_thread != nullptr) {
+            WaitForSingleObject(stderr_thread, INFINITE);
+            CloseHandle(stderr_thread);
+        }
+        CloseHandle(process.hThread);
+        CloseHandle(process.hProcess);
+        close_handle_if_valid(stdout_read);
+        close_handle_if_valid(stderr_read);
+        return fail_launch(message);
+    }
+
     WaitForSingleObject(process.hProcess, INFINITE);
-    if (stdout_thread != nullptr) {
-        WaitForSingleObject(stdout_thread, INFINITE);
-        CloseHandle(stdout_thread);
-    }
-    if (stderr_thread != nullptr) {
-        WaitForSingleObject(stderr_thread, INFINITE);
-        CloseHandle(stderr_thread);
-    }
+    WaitForSingleObject(stdout_thread, INFINITE);
+    CloseHandle(stdout_thread);
+    WaitForSingleObject(stderr_thread, INFINITE);
+    CloseHandle(stderr_thread);
 
     DWORD exit_code = 0;
     GetExitCodeProcess(process.hProcess, &exit_code);
-    rr.exit_code = static_cast<int>(exit_code);
+    rr.native_exit_code = static_cast<std::uint32_t>(exit_code);
+    rr.exit_code = normalize_windows_exit_code(exit_code);
 
     CloseHandle(process.hThread);
     CloseHandle(process.hProcess);
-    CloseHandle(stdout_read);
-    CloseHandle(stderr_read);
+    close_handle_if_valid(stdout_read);
+    close_handle_if_valid(stderr_read);
     return rr;
 #else
     int stdout_pipe[2] = {-1, -1};
     int stderr_pipe[2] = {-1, -1};
-    if (pipe(stdout_pipe) != 0 || pipe(stderr_pipe) != 0) {
-        rr.exit_code = -1;
-        rr.err = "failed to create process pipes: " + std::string(std::strerror(errno));
-        if (stdout_pipe[0] >= 0)
-            ::close(stdout_pipe[0]);
-        if (stdout_pipe[1] >= 0)
-            ::close(stdout_pipe[1]);
-        if (stderr_pipe[0] >= 0)
-            ::close(stderr_pipe[0]);
-        if (stderr_pipe[1] >= 0)
-            ::close(stderr_pipe[1]);
-        return rr;
+    if (!create_cloexec_pipe(stdout_pipe, rr.err) || !create_cloexec_pipe(stderr_pipe, rr.err)) {
+        close_fd_if_open(stdout_pipe[0]);
+        close_fd_if_open(stdout_pipe[1]);
+        close_fd_if_open(stderr_pipe[0]);
+        close_fd_if_open(stderr_pipe[1]);
+        return fail_launch(rr.err);
     }
 
-    const pid_t pid = fork();
-    if (pid < 0) {
-        rr.exit_code = -1;
-        rr.err = "failed to fork: " + std::string(std::strerror(errno));
-        ::close(stdout_pipe[0]);
-        ::close(stdout_pipe[1]);
-        ::close(stderr_pipe[0]);
-        ::close(stderr_pipe[1]);
-        return rr;
+    std::vector<std::string> env_strings;
+    if (!build_posix_environment_strings(env, env_strings, rr.err)) {
+        close_fd_if_open(stdout_pipe[0]);
+        close_fd_if_open(stdout_pipe[1]);
+        close_fd_if_open(stderr_pipe[0]);
+        close_fd_if_open(stderr_pipe[1]);
+        return fail_launch(rr.err);
     }
 
-    if (pid == 0) {
-        ::close(stdout_pipe[0]);
-        ::close(stderr_pipe[0]);
+    std::vector<char *> exec_argv = build_spawn_argv(argv);
+    std::vector<char *> envp_storage = build_spawn_envp(env_strings);
+    char *const *spawn_envp = env_strings.empty() ? environ : envp_storage.data();
 
-        if (cwd.has_value() && ::chdir(cwd->c_str()) != 0) {
-            append_child_error_and_exit(stderr_pipe[1],
-                                        "failed to change working directory to '" + *cwd +
-                                            "': " + std::strerror(errno));
-        }
+    posix_spawn_file_actions_t actions{};
+    bool actions_initialised = false;
+    if (const int code = posix_spawn_file_actions_init(&actions); code != 0) {
+        close_fd_if_open(stdout_pipe[0]);
+        close_fd_if_open(stdout_pipe[1]);
+        close_fd_if_open(stderr_pipe[0]);
+        close_fd_if_open(stderr_pipe[1]);
+        return fail_launch("failed to initialise process file actions: " +
+                           std::string(std::strerror(code)));
+    }
+    actions_initialised = true;
 
-        if (::dup2(stdout_pipe[1], STDOUT_FILENO) < 0 ||
-            ::dup2(stderr_pipe[1], STDERR_FILENO) < 0) {
-            append_child_error_and_exit(stderr_pipe[1],
-                                        "failed to redirect child stdio: " +
-                                            std::string(std::strerror(errno)));
-        }
-
-        ::close(stdout_pipe[1]);
-        ::close(stderr_pipe[1]);
-        apply_env_overrides_in_child(env);
-
-        std::vector<char *> exec_argv;
-        exec_argv.reserve(argv.size() + 1);
-        for (const auto &arg : argv) {
-            exec_argv.push_back(const_cast<char *>(arg.c_str()));
-        }
-        exec_argv.push_back(nullptr);
-
-        execvp(exec_argv[0], exec_argv.data());
-        append_child_error_and_exit(STDERR_FILENO,
-                                    "failed to exec '" + argv[0] +
-                                        "': " + std::string(std::strerror(errno)));
+    if (!add_spawn_file_actions(&actions, stdout_pipe, stderr_pipe, cwd, rr.err)) {
+        destroy_spawn_file_actions(actions, actions_initialised);
+        close_fd_if_open(stdout_pipe[0]);
+        close_fd_if_open(stdout_pipe[1]);
+        close_fd_if_open(stderr_pipe[0]);
+        close_fd_if_open(stderr_pipe[1]);
+        return fail_launch(rr.err);
     }
 
-    ::close(stdout_pipe[1]);
-    ::close(stderr_pipe[1]);
-    capture_posix_pipes(stdout_pipe[0], stderr_pipe[0], rr.out, rr.err);
+    pid_t pid = -1;
+    const int spawn_error =
+        posix_spawnp(&pid, argv[0].c_str(), &actions, nullptr, exec_argv.data(), spawn_envp);
+    destroy_spawn_file_actions(actions, actions_initialised);
+    close_fd_if_open(stdout_pipe[1]);
+    close_fd_if_open(stderr_pipe[1]);
+
+    if (spawn_error != 0) {
+        close_fd_if_open(stdout_pipe[0]);
+        close_fd_if_open(stderr_pipe[0]);
+        return fail_launch("failed to launch process '" + argv[0] +
+                           "': " + std::string(std::strerror(spawn_error)));
+    }
+    rr.launched = true;
+
+    std::string capture_error;
+    if (!capture_posix_pipes(stdout_pipe[0], stderr_pipe[0], rr.out, rr.err, capture_error)) {
+        rr.err += (rr.err.empty() ? "" : "\n");
+        rr.err += capture_error;
+    }
 
     int status = 0;
     while (waitpid(pid, &status, 0) < 0) {
@@ -568,10 +1228,13 @@ RunResult run_process(const std::vector<std::string> &argv,
 
     if (WIFEXITED(status)) {
         rr.exit_code = WEXITSTATUS(status);
+        rr.native_exit_code = static_cast<std::uint32_t>(rr.exit_code);
     } else if (WIFSIGNALED(status)) {
         rr.exit_code = 128 + WTERMSIG(status);
+        rr.native_exit_code = static_cast<std::uint32_t>(rr.exit_code);
     } else {
         rr.exit_code = status;
+        rr.native_exit_code = static_cast<std::uint32_t>(rr.exit_code);
     }
     return rr;
 #endif

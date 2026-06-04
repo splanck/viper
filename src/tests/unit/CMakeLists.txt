@@ -430,6 +430,13 @@ if (NOT TARGET test_integer_helpers)
     viper_add_ctest(test_integer_helpers test_integer_helpers)
 endif ()
 
+if (NOT TARGET test_mangle)
+    viper_add_test(test_mangle
+            ${VIPER_TESTS_DIR}/unit/test_mangle.cpp
+            ${CMAKE_SOURCE_DIR}/src/common/Mangle.cpp)
+    viper_add_ctest(test_mangle test_mangle)
+endif ()
+
 if (NOT TARGET test_il_verify_all)
     viper_add_test(test_il_verify_all ${VIPER_TESTS_DIR}/unit/test_il_verify_all.cpp)
     target_link_libraries(test_il_verify_all PRIVATE viper_il_full)

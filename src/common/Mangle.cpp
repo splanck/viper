@@ -9,8 +9,9 @@
 // Purpose: Implement unified mangling for linkable symbols derived from
 //          dot-qualified names used across frontends and OOP emission.
 // Key invariants:
-//   - Output is lowercase ASCII, starts with '@', and uses '_' as separator.
-//   - Input may include dots and underscores; unsupported chars map to '_'.
+//   - Output is lowercase ASCII and uses only [a-z0-9_].
+//   - Plain C-safe identifiers remain readable unless they use the reserved prefix.
+//   - Qualified or otherwise unsafe names are encoded with reversible escapes.
 // Ownership/Lifetime: Stateless helpers returning std::string by value.
 // Links: src/common/Mangle.hpp
 //
@@ -20,54 +21,185 @@
 /// @brief Implements symbol mangling helpers for linkable names.
 /// @details Provides deterministic conversions between user-facing qualified
 ///          identifiers and ASCII-safe linker symbols. The mapping is stable
-///          across platforms and is intentionally lossy so that any unknown
-///          characters collapse into a safe separator.
+///          across platforms and is reversible for names emitted with the
+///          reserved prefix.
 
 #include "common/Mangle.hpp"
 
-#include <cctype>
+#include <string>
 
 namespace viper::common {
+namespace {
+
+constexpr std::string_view kReservedPrefix = "vpr_";
+
+/// @brief Return whether @p ch is an ASCII decimal digit.
+/// @param ch Byte to classify.
+/// @return True when @p ch is in the range @c '0' through @c '9'.
+[[nodiscard]] bool is_ascii_digit(unsigned char ch) noexcept {
+    return ch >= '0' && ch <= '9';
+}
+
+/// @brief Return whether @p ch is an ASCII lowercase letter.
+/// @param ch Byte to classify.
+/// @return True when @p ch is in the range @c 'a' through @c 'z'.
+[[nodiscard]] bool is_ascii_lower(unsigned char ch) noexcept {
+    return ch >= 'a' && ch <= 'z';
+}
+
+/// @brief Convert one ASCII byte to lowercase without locale dependence.
+/// @param ch Byte to normalize.
+/// @return Lowercase ASCII byte when @p ch is @c A-Z, otherwise @p ch unchanged.
+[[nodiscard]] unsigned char ascii_lower(unsigned char ch) noexcept {
+    if (ch >= 'A' && ch <= 'Z') {
+        return static_cast<unsigned char>(ch - 'A' + 'a');
+    }
+    return ch;
+}
+
+/// @brief Return whether @p normalized is a plain symbol that can remain unescaped.
+/// @details Plain symbols are readable linker identifiers whose lowercase spelling
+///          does not begin with the reserved escape prefix.
+/// @param normalized Already-lowercased ASCII candidate symbol.
+/// @return True when @p normalized can be emitted without the reserved encoding.
+[[nodiscard]] bool can_emit_plain(std::string_view normalized) noexcept {
+    if (normalized.empty() || normalized.rfind(kReservedPrefix, 0) == 0) {
+        return false;
+    }
+    const auto first = static_cast<unsigned char>(normalized.front());
+    if (!is_ascii_lower(first) && first != '_') {
+        return false;
+    }
+    for (const unsigned char ch : normalized) {
+        if (!is_ascii_lower(ch) && !is_ascii_digit(ch) && ch != '_') {
+            return false;
+        }
+    }
+    return true;
+}
+
+/// @brief Append a two-character lowercase hexadecimal byte escape.
+/// @param out Destination symbol buffer.
+/// @param ch Byte to encode after an @c _x escape introducer.
+void append_hex_byte(std::string &out, unsigned char ch) {
+    constexpr char digits[] = "0123456789abcdef";
+    out.push_back(digits[(ch >> 4U) & 0x0FU]);
+    out.push_back(digits[ch & 0x0FU]);
+}
+
+/// @brief Decode one lowercase hexadecimal digit.
+/// @param ch ASCII byte to decode.
+/// @return Value in the range 0-15, or -1 when @p ch is not hexadecimal.
+[[nodiscard]] int decode_hex_digit(unsigned char ch) noexcept {
+    if (ch >= '0' && ch <= '9') {
+        return static_cast<int>(ch - '0');
+    }
+    if (ch >= 'a' && ch <= 'f') {
+        return static_cast<int>(ch - 'a' + 10);
+    }
+    if (ch >= 'A' && ch <= 'F') {
+        return static_cast<int>(ch - 'A' + 10);
+    }
+    return -1;
+}
+
+} // namespace
 
 /// @brief Convert a dotted qualified name into a safe linker symbol.
-/// @details The transformation lowercases all ASCII letters and replaces dots
-///          with underscores so nested names are preserved in a flat namespace.
-///          Any non-alphanumeric characters (other than underscore) are mapped
-///          to '_' to keep output strictly ASCII and deterministic across hosts.
-///          No prefix is added to maintain compatibility across platforms.
+/// @details The transformation lowercases ASCII letters. Plain safe identifiers
+///          are emitted directly, while qualified or unsafe names are encoded
+///          with the reserved @c vpr_ prefix.  Escapes are reversible:
+///          @c _d represents '.', @c _u represents '_', and @c _xHH represents
+///          any other byte.
 /// @param qualified Qualified name such as "A.B.Func" or "Klass.__ctor".
 /// @return Mangled ASCII symbol safe to pass to the native toolchain.
 std::string MangleLink(std::string_view qualified) {
-    std::string out;
-    out.reserve(qualified.size());
+    std::string normalized;
+    normalized.reserve(qualified.size());
     for (unsigned char ch : qualified) {
-        if (ch == '.') {
-            out.push_back('_');
-        } else if (std::isalnum(ch) || ch == '_') {
-            out.push_back(static_cast<char>(std::tolower(ch)));
+        normalized.push_back(static_cast<char>(ascii_lower(ch)));
+    }
+
+    if (can_emit_plain(normalized)) {
+        return normalized;
+    }
+
+    std::string out;
+    out.reserve(kReservedPrefix.size() + normalized.size() * 4U);
+    out.append(kReservedPrefix);
+    for (unsigned char ch : normalized) {
+        if (is_ascii_lower(ch) || is_ascii_digit(ch)) {
+            out.push_back(static_cast<char>(ch));
+        } else if (ch == '.') {
+            out.append("_d");
+        } else if (ch == '_') {
+            out.append("_u");
         } else {
-            // Map other characters (e.g., '$') to underscore deterministically
-            out.push_back('_');
+            out.append("_x");
+            append_hex_byte(out, ch);
         }
     }
     return out;
 }
 
 /// @brief Best-effort conversion from a mangled linker symbol to dotted form.
-/// @details Removes a leading '@' when present and replaces underscores with
-///          dots. The conversion does not restore original casing or special
-///          characters because the forward mapping is intentionally lossy; the
-///          goal is a human-readable, stable identifier for diagnostics.
-/// @param symbol Mangled symbol such as "@a_b_func".
-/// @return A dotted identifier such as "a.b.func".
+/// @details Decodes the reserved @c vpr_ escape form.  Unprefixed symbols are
+///          returned unchanged, except for legacy @c '@'-prefixed symbols where
+///          underscores are still rendered as dots for diagnostics.
+/// @param symbol Mangled symbol such as "vpr_a_db" or "main".
+/// @return A dotted identifier such as "a.b" or "main".
 std::string DemangleLink(std::string_view symbol) {
+    if (symbol.rfind(kReservedPrefix, 0) == 0) {
+        std::string out;
+        std::string_view body = symbol.substr(kReservedPrefix.size());
+        out.reserve(body.size());
+        for (std::size_t i = 0; i < body.size(); ++i) {
+            const unsigned char ch = static_cast<unsigned char>(body[i]);
+            if (ch != '_') {
+                out.push_back(static_cast<char>(ch));
+                continue;
+            }
+            if (i + 1 >= body.size()) {
+                out.push_back('_');
+                continue;
+            }
+            const unsigned char code = static_cast<unsigned char>(body[++i]);
+            if (code == 'd') {
+                out.push_back('.');
+            } else if (code == 'u') {
+                out.push_back('_');
+            } else if (code == 'x' && i + 2 < body.size()) {
+                const int hi = decode_hex_digit(static_cast<unsigned char>(body[i + 1]));
+                const int lo = decode_hex_digit(static_cast<unsigned char>(body[i + 2]));
+                if (hi >= 0 && lo >= 0) {
+                    out.push_back(static_cast<char>((hi << 4) | lo));
+                    i += 2;
+                } else {
+                    out.append("_x");
+                }
+            } else {
+                out.push_back('_');
+                out.push_back(static_cast<char>(code));
+            }
+        }
+        return out;
+    }
+
     std::string_view body = symbol;
-    if (!body.empty() && body.front() == '@')
+    if (!body.empty() && body.front() == '@') {
         body.remove_prefix(1);
+        std::string out;
+        out.reserve(body.size());
+        for (unsigned char ch : body) {
+            out.push_back(ch == '_' ? '.' : static_cast<char>(ch));
+        }
+        return out;
+    }
+
     std::string out;
     out.reserve(body.size());
     for (unsigned char ch : body) {
-        out.push_back(ch == '_' ? '.' : static_cast<char>(ch));
+        out.push_back(static_cast<char>(ch));
     }
     return out;
 }

@@ -79,7 +79,28 @@ TEST(RunProcess, ExplicitShellModeIsSeparate) {
     const RunResult result = run_shell_command("cmake -E echo viper-shell-mode");
 
     EXPECT_NE(-1, result.exit_code);
+    EXPECT_TRUE(result.launched);
+    EXPECT_FALSE(result.launch_failed);
     EXPECT_EQ("viper-shell-mode", trim_trailing_newlines(result.out));
+}
+
+TEST(RunProcess, MissingExecutableIsLaunchFailure) {
+    const RunResult result = run_process({"viper-definitely-missing-executable-for-run-process"});
+
+    EXPECT_EQ(-1, result.exit_code);
+    EXPECT_FALSE(result.launched);
+    EXPECT_TRUE(result.launch_failed);
+    EXPECT_FALSE(result.err.empty());
+}
+
+TEST(RunProcess, RejectsInvalidEnvironmentName) {
+    const RunResult result =
+        run_process({"cmake", "-E", "echo", "not-run"}, std::nullopt, {{"BAD=NAME", "value"}});
+
+    EXPECT_EQ(-1, result.exit_code);
+    EXPECT_FALSE(result.launched);
+    EXPECT_TRUE(result.launch_failed);
+    EXPECT_NE(std::string::npos, result.err.find("invalid environment variable name"));
 }
 
 TEST(RunProcess, ScopedEnvironmentAssignmentSurvivesMove) {
@@ -133,13 +154,25 @@ TEST(RunProcess, AppliesWorkingDirectory) {
 TEST(RunProcess, ReportsPosixExitStatus) {
     const RunResult result = run_process({"sh", "-c", "exit 42"});
 
+    EXPECT_TRUE(result.launched);
+    EXPECT_FALSE(result.launch_failed);
     EXPECT_EQ(42, result.exit_code);
+}
+
+TEST(RunProcess, DistinguishesPosixExit127FromLaunchFailure) {
+    const RunResult result = run_process({"sh", "-c", "exit 127"});
+
+    EXPECT_TRUE(result.launched);
+    EXPECT_FALSE(result.launch_failed);
+    EXPECT_EQ(127, result.exit_code);
 }
 
 TEST(RunProcess, SeparatesStdoutAndStderr) {
     const RunResult result =
         run_process({"sh", "-c", "printf stdout-only; printf stderr-only >&2"});
 
+    EXPECT_TRUE(result.launched);
+    EXPECT_FALSE(result.launch_failed);
     EXPECT_EQ("stdout-only", result.out);
     EXPECT_EQ("stderr-only", result.err);
 }
