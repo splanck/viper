@@ -1546,6 +1546,7 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz, int32_t step, 
         vert_cols++;
     if (rows % step != 0)
         vert_rows++;
+    rt_mesh3d_begin_geometry_batch((rt_mesh3d *)mesh);
     terrain_build_chunk_surface(
         mesh, t, x0, z0, cols, rows, step, vert_cols, vert_rows, aabb_min, aabb_max);
 
@@ -1556,6 +1557,7 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz, int32_t step, 
     if (skirt_depth > 0.0f && step > 1)
         terrain_build_chunk_skirts(
             mesh, t, x0, z0, cols, rows, step, vert_cols, vert_rows, (double)skirt_depth);
+    rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
 
     if (((rt_mesh3d *)mesh)->build_failed) {
         if (rt_obj_release_check0(mesh))

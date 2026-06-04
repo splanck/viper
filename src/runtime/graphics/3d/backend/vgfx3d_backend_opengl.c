@@ -415,6 +415,7 @@ typedef struct {
     int32_t native_format;
     int32_t native_next_block_row;
     int64_t native_next_mip;
+    int64_t native_mip_start;
     int64_t native_mip_count;
     int8_t upload_in_progress;
     uint64_t last_used_frame;
@@ -2152,8 +2153,10 @@ static uint64_t gl_texture_pending_bytes(const gl_texture_cache_entry_t *entry) 
     if (!entry)
         return 0;
     if (entry->texture_asset)
-        return vgfx3d_textureasset_pending_native_bytes(
+        return vgfx3d_textureasset_pending_native_snapshot_bytes(
             entry->texture_asset,
+            entry->native_mip_start,
+            entry->native_mip_count,
             entry->native_next_mip,
             entry->native_next_block_row,
             entry->upload_in_progress);
@@ -2227,8 +2230,11 @@ static int gl_continue_native_texture_upload(gl_context_t *ctx, gl_texture_cache
         if (ctx->texture_upload_budget_bytes != UINT64_MAX &&
             ctx->texture_upload_bytes >= ctx->texture_upload_budget_bytes)
             return 0;
-        if (!vgfx3d_textureasset_get_native_resident_mip(
-                entry->texture_asset, entry->native_next_mip, &mip))
+        if (!vgfx3d_textureasset_get_native_snapshot_mip(entry->texture_asset,
+                                                         entry->native_mip_start,
+                                                         entry->native_mip_count,
+                                                         entry->native_next_mip,
+                                                         &mip))
             return 0;
         internal_format = gl_native_texture_internal_format(&mip);
         row_bytes = gl_native_texture_row_bytes(&mip);
@@ -2307,16 +2313,16 @@ static int gl_continue_native_texture_upload(gl_context_t *ctx, gl_texture_cache
 static int gl_start_native_texture_upload(gl_context_t *ctx,
                                           gl_texture_cache_entry_t *entry,
                                           void *asset,
-                                          uint64_t cache_key) {
+                                          uint64_t cache_key,
+                                          int64_t mip_start,
+                                          int64_t mip_count) {
     vgfx3d_native_texture_mip_t first_mip;
-    int64_t mip_count;
 
     if (!ctx || !entry || !asset ||
         !vgfx3d_textureasset_native_supported(asset, gl_get_native_texture_caps(ctx)) ||
-        !vgfx3d_textureasset_get_native_resident_mip(asset, 0, &first_mip) ||
+        !vgfx3d_textureasset_get_native_snapshot_mip(asset, mip_start, mip_count, 0, &first_mip) ||
         !gl_native_texture_internal_format(&first_mip))
         return 0;
-    mip_count = rt_textureasset3d_get_resident_mip_count(asset);
     if (mip_count <= 0)
         return 0;
     if (!entry->tex) {
@@ -2334,6 +2340,7 @@ static int gl_start_native_texture_upload(gl_context_t *ctx,
     entry->native_format = first_mip.format_id;
     entry->native_next_block_row = 0;
     entry->native_next_mip = 0;
+    entry->native_mip_start = mip_start;
     entry->native_mip_count = mip_count;
     entry->upload_in_progress = 1;
     entry->last_used_frame = ctx->frame_serial;
@@ -2506,24 +2513,35 @@ static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
 /// @brief Get the GL texture for a native TextureAsset3D, creating/streaming it on a cache miss.
 /// @details Keyed by the asset's native cache key so residency changes invalidate the cache entry.
 /// @return The GL texture name, or 0 if it cannot be created.
-static GLuint gl_get_cached_native_texture(gl_context_t *ctx, void *asset) {
-    uint64_t cache_key;
-
+static GLuint gl_get_cached_native_texture(gl_context_t *ctx,
+                                           void *asset,
+                                           uint64_t cache_key,
+                                           int64_t mip_start,
+                                           int64_t mip_count) {
     if (!ctx || !asset ||
         !vgfx3d_textureasset_native_supported(asset, gl_get_native_texture_caps(ctx)))
         return 0;
-    cache_key = rt_textureasset3d_get_native_cache_key(asset);
+    if (cache_key == 0)
+        cache_key = rt_textureasset3d_get_native_cache_key(asset);
+    if (mip_start < 0)
+        mip_start = rt_textureasset3d_get_resident_mip_start(asset);
+    if (mip_count <= 0)
+        mip_count = rt_textureasset3d_get_resident_mip_count(asset);
     if (cache_key == 0)
         return 0;
 
     for (int32_t i = 0; i < ctx->texture_cache_count; i++) {
         if (ctx->texture_cache[i].texture_asset == asset &&
-            ctx->texture_cache[i].generation == cache_key) {
+            ctx->texture_cache[i].generation == cache_key &&
+            ctx->texture_cache[i].native_mip_start == mip_start &&
+            ctx->texture_cache[i].native_mip_count == mip_count) {
             ctx->texture_cache[i].last_used_frame = ctx->frame_serial;
             return ctx->texture_cache[i].tex;
         }
         if (ctx->texture_cache[i].texture_asset == asset &&
             ctx->texture_cache[i].pending_generation == cache_key &&
+            ctx->texture_cache[i].native_mip_start == mip_start &&
+            ctx->texture_cache[i].native_mip_count == mip_count &&
             ctx->texture_cache[i].upload_in_progress) {
             return gl_continue_native_texture_upload(ctx, &ctx->texture_cache[i])
                        ? ctx->texture_cache[i].tex
@@ -2533,7 +2551,8 @@ static GLuint gl_get_cached_native_texture(gl_context_t *ctx, void *asset) {
 
     for (int32_t i = 0; i < ctx->texture_cache_count; i++) {
         if (ctx->texture_cache[i].texture_asset == asset) {
-            if (!gl_start_native_texture_upload(ctx, &ctx->texture_cache[i], asset, cache_key))
+            if (!gl_start_native_texture_upload(
+                    ctx, &ctx->texture_cache[i], asset, cache_key, mip_start, mip_count))
                 return 0;
             return ctx->texture_cache[i].upload_in_progress ? 0 : ctx->texture_cache[i].tex;
         }
@@ -2555,7 +2574,7 @@ static GLuint gl_get_cached_native_texture(gl_context_t *ctx, void *asset) {
 
     gl_texture_cache_entry_t *entry = &ctx->texture_cache[ctx->texture_cache_count++];
     memset(entry, 0, sizeof(*entry));
-    if (!gl_start_native_texture_upload(ctx, entry, asset, cache_key)) {
+    if (!gl_start_native_texture_upload(ctx, entry, asset, cache_key, mip_start, mip_count)) {
         if (entry->tex)
             gl.DeleteTextures(1, &entry->tex);
         memset(entry, 0, sizeof(*entry));
@@ -2567,11 +2586,16 @@ static GLuint gl_get_cached_native_texture(gl_context_t *ctx, void *asset) {
 
 /// @brief Resolve a material's texture to a GL texture, preferring native blocks then RGBA Pixels.
 /// @return The GL texture name to bind, or 0 if neither source is uploadable.
-static GLuint gl_get_material_texture(gl_context_t *ctx, void *asset, const void *pixels) {
+static GLuint gl_get_material_texture(gl_context_t *ctx,
+                                      void *asset,
+                                      const void *pixels,
+                                      uint64_t asset_cache_key,
+                                      int64_t mip_start,
+                                      int64_t mip_count) {
     /* Native-supported assets stay on the native upload path. Falling back to
      * RGBA while native upload is budget-paused leaves abandoned pending bytes. */
     if (asset && vgfx3d_textureasset_native_supported(asset, gl_get_native_texture_caps(ctx)))
-        return gl_get_cached_native_texture(ctx, asset);
+        return gl_get_cached_native_texture(ctx, asset, asset_cache_key, mip_start, mip_count);
     return pixels ? gl_get_cached_texture(ctx, pixels) : 0;
 }
 
@@ -4417,13 +4441,46 @@ static void upload_main_uniforms(gl_context_t *ctx,
 /// `bind_morph_payload`). Each `has*` uniform tells the shader which
 /// slots are populated.
 static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
-    GLuint diffuse_tex = gl_get_material_texture(ctx, cmd->texture_asset, cmd->texture);
-    GLuint normal_tex = gl_get_material_texture(ctx, cmd->normal_map_asset, cmd->normal_map);
-    GLuint specular_tex = gl_get_material_texture(ctx, cmd->specular_map_asset, cmd->specular_map);
-    GLuint emissive_tex = gl_get_material_texture(ctx, cmd->emissive_map_asset, cmd->emissive_map);
+    GLuint diffuse_tex = gl_get_material_texture(ctx,
+                                                 cmd->texture_asset,
+                                                 cmd->texture,
+                                                 cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+                                                 cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+                                                 cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR]);
+    GLuint normal_tex = gl_get_material_texture(ctx,
+                                                cmd->normal_map_asset,
+                                                cmd->normal_map,
+                                                cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL],
+                                                cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL],
+                                                cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL]);
+    GLuint specular_tex =
+        gl_get_material_texture(ctx,
+                                cmd->specular_map_asset,
+                                cmd->specular_map,
+                                cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR],
+                                cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR],
+                                cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR]);
+    GLuint emissive_tex =
+        gl_get_material_texture(ctx,
+                                cmd->emissive_map_asset,
+                                cmd->emissive_map,
+                                cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE],
+                                cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE],
+                                cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE]);
     GLuint metallic_roughness_tex = gl_get_material_texture(
-        ctx, cmd->metallic_roughness_map_asset, cmd->metallic_roughness_map);
-    GLuint ao_tex = gl_get_material_texture(ctx, cmd->ao_map_asset, cmd->ao_map);
+        ctx,
+        cmd->metallic_roughness_map_asset,
+        cmd->metallic_roughness_map,
+        cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS],
+        cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS],
+        cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS]);
+    GLuint ao_tex = gl_get_material_texture(
+        ctx,
+        cmd->ao_map_asset,
+        cmd->ao_map,
+        cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_AO],
+        cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_AO],
+        cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_AO]);
     GLuint env_tex =
         cmd->env_map ? gl_get_cached_cubemap(ctx, (const rt_cubemap3d *)cmd->env_map) : 0;
     GLuint splat_tex = cmd->splat_map ? gl_get_cached_texture(ctx, cmd->splat_map) : 0;
@@ -5774,7 +5831,13 @@ static void gl_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         ctx->shadow_uViewProjection, 1, GL_TRUE, ctx->shadow_vp[ctx->shadow_pass_slot]);
     bind_shadow_anim(ctx, cmd);
     {
-        GLuint diffuse_tex = gl_get_material_texture(ctx, cmd->texture_asset, cmd->texture);
+        GLuint diffuse_tex =
+            gl_get_material_texture(ctx,
+                                    cmd->texture_asset,
+                                    cmd->texture,
+                                    cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+                                    cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+                                    cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR]);
         gl.Uniform1i(ctx->shadow_uHasTexture, diffuse_tex ? 1 : 0);
         gl.Uniform1i(ctx->shadow_uAlphaMode, cmd->alpha_mode);
         gl.Uniform1f(ctx->shadow_uAlphaCutoff, cmd->alpha_cutoff);

@@ -432,6 +432,16 @@ typedef struct {
     int8_t tangents_generated;
 } rt_canvas3d_mesh_snapshot_entry;
 
+/// @brief CPU occlusion history entry keyed by stable draw identity.
+/// @details Coarse occlusion culling is intentionally delayed for objects that have only just
+///          become covered. Requiring repeated covered results prevents one-frame projected-AABB
+///          mistakes from blinking visible triangles out of the scene.
+typedef struct {
+    uintptr_t key;
+    int32_t covered_streak;
+    int64_t last_frame_seen;
+} rt_canvas3d_occlusion_history_entry;
+
 /* Forward declaration — defined in vgfx3d_backend.h */
 typedef struct vgfx3d_backend vgfx3d_backend_t;
 
@@ -669,6 +679,8 @@ typedef struct {
     int8_t frame_is_2d;          /* 1 = active frame uses orthographic 2D projection */
     float cached_vp[16];         /* VP matrix cached in begin_frame for debug drawing */
     float cached_cam_pos[3];     /* camera position cached for sort key computation */
+    float cached_world_cam_pos[3]; /* unre-based world camera position for diagnostics/safety */
+    float cached_render_cam_pos[3]; /* camera position in backend render space */
     float cached_cam_forward[3]; /* forward vector cached for skybox + ortho shading */
     float cached_cam_near;       /* active camera near clip distance, for stable cascade splits */
     float cached_cam_far;        /* active camera far clip distance, for stable cascade splits */
@@ -820,6 +832,11 @@ typedef struct {
     int32_t *motion_history_hash;
     int32_t motion_history_hash_capacity;
     int32_t motion_history_retention_frames;
+    rt_canvas3d_occlusion_history_entry *occlusion_history;
+    int32_t occlusion_history_count;
+    int32_t occlusion_history_capacity;
+    int32_t *occlusion_history_hash;
+    int32_t occlusion_history_hash_capacity;
 } rt_canvas3d;
 
 /// @brief Validate a Canvas3D handle while optionally preserving internal stack fixtures.

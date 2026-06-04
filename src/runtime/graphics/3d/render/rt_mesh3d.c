@@ -57,6 +57,8 @@ extern const char *rt_string_cstr(rt_string s);
 #define MESH3D_OBJ_MAX_FACE_VERTS 4096
 #define MESH3D_STL_ASCII_MAX_LINE_BYTES (1024u * 1024u)
 #define MESH3D_PROCEDURAL_MAX_BYTES (128ull * 1024ull * 1024ull)
+#define MESH3D_CLEAR_RETAIN_VERTEX_CAP 65536u
+#define MESH3D_CLEAR_RETAIN_INDEX_CAP 196608u
 #if defined(__clang__) || defined(__GNUC__)
 #define MESH3D_UNUSED_PRIVATE __attribute__((unused))
 #else
@@ -66,6 +68,28 @@ extern const char *rt_string_cstr(rt_string s);
 /// @brief Validate @p obj as a Mesh3D handle and return its typed pointer (NULL on mismatch).
 static rt_mesh3d *mesh3d_checked(void *obj) {
     return (rt_mesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_MESH3D_CLASS_ID);
+}
+
+/// @brief Release oversized empty mesh buffers after Clear while keeping small reuse capacity.
+/// @details Dynamic meshes often clear and rebuild every frame; retaining modest buffers avoids
+///          churn. Very large one-off meshes, however, should not pin vertex/index/positions64
+///          memory after they become empty, so this helper frees capacities above conservative
+///          thresholds.
+static void mesh3d_shrink_empty_storage_if_oversized(rt_mesh3d *m) {
+    if (!m || m->vertex_count != 0 || m->index_count != 0)
+        return;
+    if (m->vertex_capacity > MESH3D_CLEAR_RETAIN_VERTEX_CAP) {
+        free(m->vertices);
+        free(m->positions64);
+        m->vertices = NULL;
+        m->positions64 = NULL;
+        m->vertex_capacity = 0;
+    }
+    if (m->index_capacity > MESH3D_CLEAR_RETAIN_INDEX_CAP) {
+        free(m->indices);
+        m->indices = NULL;
+        m->index_capacity = 0;
+    }
 }
 
 /// @brief Bump the mesh's geometry-revision counter to invalidate cached GPU/derived data
@@ -689,6 +713,7 @@ void rt_mesh3d_clear(void *obj) {
     m->physics_bvh_revision = 0;
     m->physics_bvh_node_count = 0;
     m->physics_bvh_tri_count = 0;
+    mesh3d_shrink_empty_storage_if_oversized(m);
     rt_mesh3d_touch_geometry(m);
     rt_mesh3d_reset_bounds(m);
 }

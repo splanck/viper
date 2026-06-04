@@ -6628,8 +6628,13 @@ void rt_game3d_world_stream_set_radii(void *obj, double load_radius, double unlo
     load_radius = game3d_nonnegative_clamped_or(load_radius, 0.0, RT_GAME3D_COORD_ABS_MAX);
     unload_radius =
         game3d_nonnegative_clamped_or(unload_radius, load_radius, RT_GAME3D_COORD_ABS_MAX);
-    if (unload_radius < load_radius)
-        unload_radius = load_radius;
+    {
+        double min_margin = fmax(1.0, load_radius * 0.05);
+        if (unload_radius < load_radius + min_margin)
+            unload_radius = load_radius + min_margin;
+        if (unload_radius > RT_GAME3D_COORD_ABS_MAX)
+            unload_radius = RT_GAME3D_COORD_ABS_MAX;
+    }
     stream->load_radius = load_radius;
     stream->unload_radius = unload_radius;
     game3d_world_stream_recompute(stream, -1);

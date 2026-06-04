@@ -1049,6 +1049,7 @@ typedef struct {
     int32_t native_format;
     int32_t native_next_block_row;
     int64_t native_next_mip;
+    int64_t native_mip_start;
     int64_t native_mip_count;
     int8_t upload_in_progress;
     uint64_t last_used_frame;
@@ -2445,8 +2446,10 @@ static uint64_t d3d11_texture_pending_bytes(const d3d_tex_cache_entry_t *entry) 
     if (!entry)
         return 0;
     if (entry->texture_asset)
-        return vgfx3d_textureasset_pending_native_bytes(
+        return vgfx3d_textureasset_pending_native_snapshot_bytes(
             entry->texture_asset,
+            entry->native_mip_start,
+            entry->native_mip_count,
             entry->native_next_mip,
             entry->native_next_block_row,
             entry->upload_in_progress);
@@ -2659,8 +2662,11 @@ static int d3d11_continue_native_texture_upload(d3d11_context_t *ctx,
         if (ctx->texture_upload_budget_bytes != UINT64_MAX &&
             ctx->texture_upload_bytes >= ctx->texture_upload_budget_bytes)
             return 0;
-        if (!vgfx3d_textureasset_get_native_resident_mip(
-                entry->texture_asset, entry->native_next_mip, &mip))
+        if (!vgfx3d_textureasset_get_native_snapshot_mip(entry->texture_asset,
+                                                         entry->native_mip_start,
+                                                         entry->native_mip_count,
+                                                         entry->native_next_mip,
+                                                         &mip))
             return 0;
         row_bytes = d3d11_native_texture_row_bytes(&mip);
         block_rows = ((uint64_t)(uint32_t)mip.height + (uint64_t)(uint32_t)mip.block_height - 1u) /
@@ -2723,15 +2729,15 @@ static int d3d11_continue_native_texture_upload(d3d11_context_t *ctx,
 static int d3d11_start_native_texture_upload(d3d11_context_t *ctx,
                                              d3d_tex_cache_entry_t *entry,
                                              void *asset,
-                                             uint64_t cache_key) {
+                                             uint64_t cache_key,
+                                             int64_t mip_start,
+                                             int64_t mip_count) {
     vgfx3d_native_texture_mip_t first_mip;
-    int64_t mip_count;
 
     if (!ctx || !entry || !asset ||
         !vgfx3d_textureasset_native_supported(asset, d3d11_get_native_texture_caps(ctx)) ||
-        !vgfx3d_textureasset_get_native_resident_mip(asset, 0, &first_mip))
+        !vgfx3d_textureasset_get_native_snapshot_mip(asset, mip_start, mip_count, 0, &first_mip))
         return 0;
-    mip_count = rt_textureasset3d_get_resident_mip_count(asset);
     if (mip_count <= 0)
         return 0;
     SAFE_RELEASE(entry->srv);
@@ -2750,6 +2756,7 @@ static int d3d11_start_native_texture_upload(d3d11_context_t *ctx,
     entry->native_format = first_mip.format_id;
     entry->native_next_block_row = 0;
     entry->native_next_mip = 0;
+    entry->native_mip_start = mip_start;
     entry->native_mip_count = mip_count;
     entry->upload_in_progress = 1;
     entry->last_used_frame = ctx->frame_serial;
@@ -2910,24 +2917,35 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_srv(d3d11_context_t *ctx,
 /// @brief Get the SRV for a native TextureAsset3D, creating/streaming it on a cache miss.
 /// @details Keyed by the asset's native cache key so residency changes invalidate the entry.
 /// @return The shader-resource view to bind, or NULL if it cannot be created.
-static ID3D11ShaderResourceView *d3d11_get_or_create_native_srv(d3d11_context_t *ctx, void *asset) {
-    uint64_t cache_key;
-
+static ID3D11ShaderResourceView *d3d11_get_or_create_native_srv(d3d11_context_t *ctx,
+                                                                void *asset,
+                                                                uint64_t cache_key,
+                                                                int64_t mip_start,
+                                                                int64_t mip_count) {
     if (!ctx || !asset ||
         !vgfx3d_textureasset_native_supported(asset, d3d11_get_native_texture_caps(ctx)))
         return NULL;
-    cache_key = rt_textureasset3d_get_native_cache_key(asset);
+    if (cache_key == 0)
+        cache_key = rt_textureasset3d_get_native_cache_key(asset);
+    if (mip_start < 0)
+        mip_start = rt_textureasset3d_get_resident_mip_start(asset);
+    if (mip_count <= 0)
+        mip_count = rt_textureasset3d_get_resident_mip_count(asset);
     if (cache_key == 0)
         return NULL;
 
     for (int32_t i = 0; i < ctx->tex_cache_count; i++) {
         if (ctx->tex_cache[i].texture_asset == asset && ctx->tex_cache[i].generation == cache_key &&
+            ctx->tex_cache[i].native_mip_start == mip_start &&
+            ctx->tex_cache[i].native_mip_count == mip_count &&
             ctx->tex_cache[i].tex && ctx->tex_cache[i].srv) {
             ctx->tex_cache[i].last_used_frame = ctx->frame_serial;
             return ctx->tex_cache[i].srv;
         }
         if (ctx->tex_cache[i].texture_asset == asset &&
             ctx->tex_cache[i].pending_generation == cache_key &&
+            ctx->tex_cache[i].native_mip_start == mip_start &&
+            ctx->tex_cache[i].native_mip_count == mip_count &&
             ctx->tex_cache[i].upload_in_progress) {
             return d3d11_continue_native_texture_upload(ctx, &ctx->tex_cache[i])
                        ? ctx->tex_cache[i].srv
@@ -2937,7 +2955,8 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_native_srv(d3d11_context_t 
 
     for (int32_t i = 0; i < ctx->tex_cache_count; i++) {
         if (ctx->tex_cache[i].texture_asset == asset) {
-            if (!d3d11_start_native_texture_upload(ctx, &ctx->tex_cache[i], asset, cache_key))
+            if (!d3d11_start_native_texture_upload(
+                    ctx, &ctx->tex_cache[i], asset, cache_key, mip_start, mip_count))
                 return NULL;
             return ctx->tex_cache[i].upload_in_progress ? NULL : ctx->tex_cache[i].srv;
         }
@@ -2945,7 +2964,8 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_native_srv(d3d11_context_t 
 
     for (int32_t i = 0; i < ctx->tex_cache_count; i++) {
         if (!ctx->tex_cache[i].pixels_ptr && !ctx->tex_cache[i].texture_asset) {
-            if (!d3d11_start_native_texture_upload(ctx, &ctx->tex_cache[i], asset, cache_key))
+            if (!d3d11_start_native_texture_upload(
+                    ctx, &ctx->tex_cache[i], asset, cache_key, mip_start, mip_count))
                 return NULL;
             return ctx->tex_cache[i].upload_in_progress ? NULL : ctx->tex_cache[i].srv;
         }
@@ -2953,7 +2973,7 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_native_srv(d3d11_context_t 
     if (d3d11_ensure_tex_cache_capacity(ctx, ctx->tex_cache_count + 1)) {
         d3d_tex_cache_entry_t *entry = &ctx->tex_cache[ctx->tex_cache_count++];
         memset(entry, 0, sizeof(*entry));
-        if (!d3d11_start_native_texture_upload(ctx, entry, asset, cache_key)) {
+        if (!d3d11_start_native_texture_upload(ctx, entry, asset, cache_key, mip_start, mip_count)) {
             ctx->tex_cache_count--;
             return NULL;
         }
@@ -2967,11 +2987,14 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_native_srv(d3d11_context_t 
 static ID3D11ShaderResourceView *d3d11_get_or_create_material_srv(d3d11_context_t *ctx,
                                                                   void *asset,
                                                                   const void *pixels,
+                                                                  uint64_t asset_cache_key,
+                                                                  int64_t mip_start,
+                                                                  int64_t mip_count,
                                                                   d3d_temp_srv_t *out_temp) {
     /* Native-supported assets stay on the native upload path. Falling back to
      * RGBA while native upload is budget-paused leaves abandoned pending bytes. */
     if (asset && vgfx3d_textureasset_native_supported(asset, d3d11_get_native_texture_caps(ctx)))
-        return d3d11_get_or_create_native_srv(ctx, asset);
+        return d3d11_get_or_create_native_srv(ctx, asset, asset_cache_key, mip_start, mip_count);
     return d3d11_get_or_create_srv(ctx, pixels, out_temp);
 }
 
@@ -4692,13 +4715,37 @@ static int d3d11_bind_draw_resources(d3d11_context_t *ctx,
 
     memset(resources, 0, sizeof(*resources));
     srvs[0] = d3d11_get_or_create_material_srv(
-        ctx, cmd->texture_asset, cmd->texture, &resources->textures[0]);
+        ctx,
+        cmd->texture_asset,
+        cmd->texture,
+        cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+        cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+        cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+        &resources->textures[0]);
     srvs[1] = d3d11_get_or_create_material_srv(
-        ctx, cmd->normal_map_asset, cmd->normal_map, &resources->textures[1]);
+        ctx,
+        cmd->normal_map_asset,
+        cmd->normal_map,
+        cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL],
+        cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL],
+        cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL],
+        &resources->textures[1]);
     srvs[2] = d3d11_get_or_create_material_srv(
-        ctx, cmd->specular_map_asset, cmd->specular_map, &resources->textures[2]);
+        ctx,
+        cmd->specular_map_asset,
+        cmd->specular_map,
+        cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR],
+        cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR],
+        cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR],
+        &resources->textures[2]);
     srvs[3] = d3d11_get_or_create_material_srv(
-        ctx, cmd->emissive_map_asset, cmd->emissive_map, &resources->textures[3]);
+        ctx,
+        cmd->emissive_map_asset,
+        cmd->emissive_map,
+        cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE],
+        cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE],
+        cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE],
+        &resources->textures[3]);
     for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++)
         srvs[4 + slot] = ctx->shadow_count > slot ? ctx->shadow_srv[slot] : NULL;
     srvs[8] = cmd->has_splat ? d3d11_get_or_create_srv(ctx, cmd->splat_map, &resources->textures[4])
@@ -4722,9 +4769,21 @@ static int d3d11_bind_draw_resources(d3d11_context_t *ctx,
     srvs[14] = d3d11_get_or_create_material_srv(ctx,
                                                 cmd->metallic_roughness_map_asset,
                                                 cmd->metallic_roughness_map,
+                                                cmd->texture_asset_cache_key
+                                                    [RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS],
+                                                cmd->texture_asset_mip_start
+                                                    [RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS],
+                                                cmd->texture_asset_mip_count
+                                                    [RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS],
                                                 &resources->textures[9]);
     srvs[15] = d3d11_get_or_create_material_srv(
-        ctx, cmd->ao_map_asset, cmd->ao_map, &resources->textures[10]);
+        ctx,
+        cmd->ao_map_asset,
+        cmd->ao_map,
+        cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_AO],
+        cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_AO],
+        cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_AO],
+        &resources->textures[10]);
 
     resources->has_texture = srvs[0] != NULL;
     resources->has_normal_map = srvs[1] != NULL;
@@ -6703,7 +6762,13 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     }
     if (alpha_masked_shadow) {
         shadow_diffuse_srv = d3d11_get_or_create_material_srv(
-            ctx, cmd->texture_asset, cmd->texture, &shadow_diffuse);
+            ctx,
+            cmd->texture_asset,
+            cmd->texture,
+            cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+            cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+            cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+            &shadow_diffuse);
         d3d11_prepare_material_data(
             cmd, shadow_diffuse_srv != NULL, 0, 0, 0, 0, 0, 0, 0, &material_data);
         hr = d3d11_update_constant_buffer(

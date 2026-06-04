@@ -127,10 +127,26 @@ int vgfx3d_textureasset_get_native_resident_mip(void *asset,
         return 0;
     first = rt_textureasset3d_get_resident_mip_start(asset);
     count = rt_textureasset3d_get_resident_mip_count(asset);
-    if (first < 0 || count <= 0 || relative_mip >= count || relative_mip > INT64_MAX - first)
+    return vgfx3d_textureasset_get_native_snapshot_mip(
+        asset, first, count, relative_mip, out_mip);
+}
+
+/// @brief Borrow one native compressed mip from an explicit resident-window snapshot.
+/// @details Draw commands record the resident mip window they observed at queue time. Backends use
+///          this helper during deferred submission so native compressed uploads cannot switch to a
+///          different mip window if streaming code mutates the TextureAsset3D later in the frame.
+int vgfx3d_textureasset_get_native_snapshot_mip(void *asset,
+                                                int64_t first_mip,
+                                                int64_t mip_count,
+                                                int64_t relative_mip,
+                                                vgfx3d_native_texture_mip_t *out_mip) {
+    if (out_mip)
+        memset(out_mip, 0, sizeof(*out_mip));
+    if (!asset || !out_mip || first_mip < 0 || mip_count <= 0 || relative_mip < 0 ||
+        relative_mip >= mip_count || relative_mip > INT64_MAX - first_mip)
         return 0;
     if (!rt_textureasset3d_get_native_mip_info(asset,
-                                               first + relative_mip,
+                                               first_mip + relative_mip,
                                                &out_mip->data,
                                                &out_mip->bytes,
                                                &out_mip->width,
@@ -153,17 +169,32 @@ uint64_t vgfx3d_textureasset_pending_native_bytes(void *asset,
                                                   int64_t next_relative_mip,
                                                   int32_t next_block_row,
                                                   int upload_in_progress) {
+    int64_t first;
     int64_t count;
+
+    first = asset ? rt_textureasset3d_get_resident_mip_start(asset) : 0;
+    count = asset ? rt_textureasset3d_get_resident_mip_count(asset) : 0;
+    return vgfx3d_textureasset_pending_native_snapshot_bytes(
+        asset, first, count, next_relative_mip, next_block_row, upload_in_progress);
+}
+
+/// @brief Compute pending native upload bytes inside an explicit resident-window snapshot.
+uint64_t vgfx3d_textureasset_pending_native_snapshot_bytes(void *asset,
+                                                           int64_t first_mip,
+                                                           int64_t mip_count,
+                                                           int64_t next_relative_mip,
+                                                           int32_t next_block_row,
+                                                           int upload_in_progress) {
     uint64_t total = 0;
 
-    if (!upload_in_progress || !asset || next_relative_mip < 0)
+    if (!upload_in_progress || !asset || first_mip < 0 || mip_count <= 0 ||
+        next_relative_mip < 0)
         return 0;
-    count = rt_textureasset3d_get_resident_mip_count(asset);
-    if (count <= 0 || next_relative_mip >= count)
+    if (next_relative_mip >= mip_count)
         return 0;
-    for (int64_t i = next_relative_mip; i < count; i++) {
+    for (int64_t i = next_relative_mip; i < mip_count; i++) {
         vgfx3d_native_texture_mip_t mip;
-        if (!vgfx3d_textureasset_get_native_resident_mip(asset, i, &mip))
+        if (!vgfx3d_textureasset_get_native_snapshot_mip(asset, first_mip, mip_count, i, &mip))
             return total;
         uint64_t bytes =
             (i == next_relative_mip)

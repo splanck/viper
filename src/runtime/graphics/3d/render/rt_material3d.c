@@ -46,7 +46,8 @@
 #define MATERIAL3D_SHININESS_MAX 8192.0
 #define MATERIAL3D_EMISSIVE_INTENSITY_MAX 1000000.0
 #define MATERIAL3D_NORMAL_SCALE_MAX 1000.0
-#define MATERIAL3D_DEPTH_BIAS_ABS_MAX 64.0
+#define MATERIAL3D_DEPTH_BIAS_ABS_MAX 0.05
+#define MATERIAL3D_SLOPE_DEPTH_BIAS_ABS_MAX 16.0
 #define MATERIAL3D_TWO_PI 6.28318530717958647692
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
@@ -424,8 +425,8 @@ static void material_sanitize_state(rt_material3d *mat) {
     mat->depth_bias =
         clamp_range(mat->depth_bias, -MATERIAL3D_DEPTH_BIAS_ABS_MAX, MATERIAL3D_DEPTH_BIAS_ABS_MAX);
     mat->slope_scaled_depth_bias = clamp_range(mat->slope_scaled_depth_bias,
-                                               -MATERIAL3D_DEPTH_BIAS_ABS_MAX,
-                                               MATERIAL3D_DEPTH_BIAS_ABS_MAX);
+                                               -MATERIAL3D_SLOPE_DEPTH_BIAS_ABS_MAX,
+                                               MATERIAL3D_SLOPE_DEPTH_BIAS_ABS_MAX);
     for (int slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++) {
         int32_t wrap_s = mat->texture_slot_wrap_s[slot];
         int32_t wrap_t = mat->texture_slot_wrap_t[slot];
@@ -1116,8 +1117,8 @@ void rt_material3d_set_depth_bias(void *obj, double constant_bias, double slope_
     mat->depth_bias =
         clamp_range(constant_bias, -MATERIAL3D_DEPTH_BIAS_ABS_MAX, MATERIAL3D_DEPTH_BIAS_ABS_MAX);
     mat->slope_scaled_depth_bias = clamp_range(slope_scaled_bias,
-                                               -MATERIAL3D_DEPTH_BIAS_ABS_MAX,
-                                               MATERIAL3D_DEPTH_BIAS_ABS_MAX);
+                                               -MATERIAL3D_SLOPE_DEPTH_BIAS_ABS_MAX,
+                                               MATERIAL3D_SLOPE_DEPTH_BIAS_ABS_MAX);
 }
 
 #else

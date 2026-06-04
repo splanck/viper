@@ -167,6 +167,7 @@
 @property(nonatomic) int32_t nativeFormat;
 @property(nonatomic) int32_t nativeNextBlockRow;
 @property(nonatomic) int64_t nativeNextMip;
+@property(nonatomic) int64_t nativeMipStart;
 @property(nonatomic) int64_t nativeMipCount;
 @property(nonatomic) uint64_t lastUsedFrame;
 @end
@@ -3085,8 +3086,10 @@ static uint64_t metal_texture_pending_bytes(VGFXMetalTextureCacheEntry *entry) {
     if (!entry)
         return 0;
     if (entry.textureAsset)
-        return vgfx3d_textureasset_pending_native_bytes(
+        return vgfx3d_textureasset_pending_native_snapshot_bytes(
             entry.textureAsset,
+            entry.nativeMipStart,
+            entry.nativeMipCount,
             entry.nativeNextMip,
             entry.nativeNextBlockRow,
             entry.uploadInProgress ? 1 : 0);
@@ -3152,8 +3155,11 @@ static int metal_continue_native_texture_upload(VGFXMetalContext *ctx,
         if (ctx.textureUploadBudgetBytes != UINT64_MAX &&
             ctx.textureUploadBytes >= ctx.textureUploadBudgetBytes)
             return 0;
-        if (!vgfx3d_textureasset_get_native_resident_mip(
-                entry.textureAsset, entry.nativeNextMip, &mip))
+        if (!vgfx3d_textureasset_get_native_snapshot_mip(entry.textureAsset,
+                                                         entry.nativeMipStart,
+                                                         entry.nativeMipCount,
+                                                         entry.nativeNextMip,
+                                                         &mip))
             return 0;
         row_bytes = metal_native_texture_row_bytes(&mip);
         if (row_bytes == 0 || row_bytes > (uint64_t)NSUIntegerMax ||
@@ -3212,20 +3218,20 @@ static int metal_continue_native_texture_upload(VGFXMetalContext *ctx,
 static int metal_start_native_texture_upload(VGFXMetalContext *ctx,
                                              VGFXMetalTextureCacheEntry *entry,
                                              void *asset,
-                                             uint64_t cache_key) {
+                                             uint64_t cache_key,
+                                             int64_t mip_start,
+                                             int64_t mip_count) {
     vgfx3d_native_texture_mip_t first_mip;
     MTLPixelFormat pixel_format;
-    int64_t mip_count;
 
     if (!ctx || !entry || !asset ||
         !vgfx3d_textureasset_native_supported(
             asset, metal_get_native_texture_caps((__bridge void *)ctx)) ||
-        !vgfx3d_textureasset_get_native_resident_mip(asset, 0, &first_mip))
+        !vgfx3d_textureasset_get_native_snapshot_mip(asset, mip_start, mip_count, 0, &first_mip))
         return 0;
     pixel_format = metal_native_texture_pixel_format(&first_mip);
     if (pixel_format == MTLPixelFormatInvalid)
         return 0;
-    mip_count = rt_textureasset3d_get_resident_mip_count(asset);
     if (mip_count <= 0)
         return 0;
 
@@ -3245,6 +3251,7 @@ static int metal_start_native_texture_upload(VGFXMetalContext *ctx,
     entry.nativeFormat = first_mip.format_id;
     entry.nativeNextBlockRow = 0;
     entry.nativeNextMip = 0;
+    entry.nativeMipStart = mip_start;
     entry.nativeMipCount = mip_count;
     entry.pendingGeneration = cache_key;
     entry.generation = 0;
@@ -3380,8 +3387,11 @@ static id<MTLTexture> metal_get_cached_texture(VGFXMetalContext *ctx, const void
 /// @brief Get the Metal texture for a native TextureAsset3D, creating/streaming it on a cache miss.
 /// @details Keyed by the asset's native cache key; returns nil while an upload is still in
 /// progress.
-static id<MTLTexture> metal_get_cached_native_texture(VGFXMetalContext *ctx, void *asset) {
-    uint64_t cache_key;
+static id<MTLTexture> metal_get_cached_native_texture(VGFXMetalContext *ctx,
+                                                      void *asset,
+                                                      uint64_t cache_key,
+                                                      int64_t mip_start,
+                                                      int64_t mip_count) {
     NSValue *key;
     VGFXMetalTextureCacheEntry *cached;
 
@@ -3389,24 +3399,31 @@ static id<MTLTexture> metal_get_cached_native_texture(VGFXMetalContext *ctx, voi
         !vgfx3d_textureasset_native_supported(asset,
                                               metal_get_native_texture_caps((__bridge void *)ctx)))
         return nil;
-    cache_key = rt_textureasset3d_get_native_cache_key(asset);
+    if (cache_key == 0)
+        cache_key = rt_textureasset3d_get_native_cache_key(asset);
+    if (mip_start < 0)
+        mip_start = rt_textureasset3d_get_resident_mip_start(asset);
+    if (mip_count <= 0)
+        mip_count = rt_textureasset3d_get_resident_mip_count(asset);
     if (cache_key == 0)
         return nil;
     key = [NSValue valueWithPointer:asset];
     cached = ctx.textureCache[key];
     if (cached && cached.texture && cached.textureAsset == asset &&
-        cached.generation == cache_key) {
+        cached.generation == cache_key && cached.nativeMipStart == mip_start &&
+        cached.nativeMipCount == mip_count) {
         cached.lastUsedFrame = ctx.frameSerial;
         return cached.texture;
     }
     if (cached && cached.textureAsset == asset && cached.pendingGeneration == cache_key &&
+        cached.nativeMipStart == mip_start && cached.nativeMipCount == mip_count &&
         cached.uploadInProgress) {
         return metal_continue_native_texture_upload(ctx, cached) ? cached.texture : nil;
     }
     if (!cached)
         cached = [[VGFXMetalTextureCacheEntry alloc] init];
     ctx.textureCache[key] = cached;
-    if (!metal_start_native_texture_upload(ctx, cached, asset, cache_key))
+    if (!metal_start_native_texture_upload(ctx, cached, asset, cache_key, mip_start, mip_count))
         return nil;
     return cached.uploadInProgress ? nil : cached.texture;
 }
@@ -3415,12 +3432,15 @@ static id<MTLTexture> metal_get_cached_native_texture(VGFXMetalContext *ctx, voi
 /// @return The texture to bind, or nil if neither source is uploadable yet.
 static id<MTLTexture> metal_get_material_texture(VGFXMetalContext *ctx,
                                                  void *asset,
-                                                 const void *pixels_ptr) {
+                                                 const void *pixels_ptr,
+                                                 uint64_t asset_cache_key,
+                                                 int64_t mip_start,
+                                                 int64_t mip_count) {
     /* Native-supported assets stay on the native upload path. Falling back to
      * RGBA while native upload is budget-paused leaves abandoned pending bytes. */
     if (asset && vgfx3d_textureasset_native_supported(
                      asset, metal_get_native_texture_caps((__bridge void *)ctx)))
-        return metal_get_cached_native_texture(ctx, asset);
+        return metal_get_cached_native_texture(ctx, asset, asset_cache_key, mip_start, mip_count);
     return pixels_ptr ? metal_get_cached_texture(ctx, pixels_ptr) : nil;
 }
 
@@ -3955,36 +3975,82 @@ static void metal_submit_draw(void *ctx_ptr,
 
         /* MTL-03: Bind cached textures for each material map slot */
         if (cmd->texture || cmd->texture_asset) {
-            id<MTLTexture> tex = metal_get_material_texture(ctx, cmd->texture_asset, cmd->texture);
+            id<MTLTexture> tex =
+                metal_get_material_texture(ctx,
+                                           cmd->texture_asset,
+                                           cmd->texture,
+                                           cmd->texture_asset_cache_key
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+                                           cmd->texture_asset_mip_start
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+                                           cmd->texture_asset_mip_count
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR]);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:0];
         }
         if (cmd->normal_map || cmd->normal_map_asset) {
             id<MTLTexture> tex =
-                metal_get_material_texture(ctx, cmd->normal_map_asset, cmd->normal_map);
+                metal_get_material_texture(ctx,
+                                           cmd->normal_map_asset,
+                                           cmd->normal_map,
+                                           cmd->texture_asset_cache_key
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_NORMAL],
+                                           cmd->texture_asset_mip_start
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_NORMAL],
+                                           cmd->texture_asset_mip_count
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_NORMAL]);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:1];
         }
         if (cmd->specular_map || cmd->specular_map_asset) {
             id<MTLTexture> tex =
-                metal_get_material_texture(ctx, cmd->specular_map_asset, cmd->specular_map);
+                metal_get_material_texture(ctx,
+                                           cmd->specular_map_asset,
+                                           cmd->specular_map,
+                                           cmd->texture_asset_cache_key
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR],
+                                           cmd->texture_asset_mip_start
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR],
+                                           cmd->texture_asset_mip_count
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR]);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:2];
         }
         if (cmd->emissive_map || cmd->emissive_map_asset) {
             id<MTLTexture> tex =
-                metal_get_material_texture(ctx, cmd->emissive_map_asset, cmd->emissive_map);
+                metal_get_material_texture(ctx,
+                                           cmd->emissive_map_asset,
+                                           cmd->emissive_map,
+                                           cmd->texture_asset_cache_key
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE],
+                                           cmd->texture_asset_mip_start
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE],
+                                           cmd->texture_asset_mip_count
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE]);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:3];
         }
         if (cmd->metallic_roughness_map || cmd->metallic_roughness_map_asset) {
             id<MTLTexture> tex = metal_get_material_texture(
-                ctx, cmd->metallic_roughness_map_asset, cmd->metallic_roughness_map);
+                ctx,
+                cmd->metallic_roughness_map_asset,
+                cmd->metallic_roughness_map,
+                cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS],
+                cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS],
+                cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS]);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:14];
         }
         if (cmd->ao_map || cmd->ao_map_asset) {
-            id<MTLTexture> tex = metal_get_material_texture(ctx, cmd->ao_map_asset, cmd->ao_map);
+            id<MTLTexture> tex = metal_get_material_texture(ctx,
+                                                            cmd->ao_map_asset,
+                                                            cmd->ao_map,
+                                                            cmd->texture_asset_cache_key
+                                                                [RT_MATERIAL3D_TEXTURE_SLOT_AO],
+                                                            cmd->texture_asset_mip_start
+                                                                [RT_MATERIAL3D_TEXTURE_SLOT_AO],
+                                                            cmd->texture_asset_mip_count
+                                                                [RT_MATERIAL3D_TEXTURE_SLOT_AO]);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:15];
         }
@@ -4345,7 +4411,15 @@ static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         {
             mtl_per_material_t mat;
             id<MTLTexture> diffuse_tex =
-                metal_get_material_texture(ctx, cmd->texture_asset, cmd->texture);
+                metal_get_material_texture(ctx,
+                                           cmd->texture_asset,
+                                           cmd->texture,
+                                           cmd->texture_asset_cache_key
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+                                           cmd->texture_asset_mip_start
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+                                           cmd->texture_asset_mip_count
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR]);
             memset(&mat, 0, sizeof(mat));
             memcpy(mat.dc, cmd->diffuse_color, sizeof(float) * 4);
             mat.scalars[0] = cmd->alpha;
@@ -4627,36 +4701,82 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
                                                  ctx, cmd, RT_MATERIAL3D_TEXTURE_SLOT_AO)
                                      atIndex:7];
         if (cmd->texture || cmd->texture_asset) {
-            id<MTLTexture> tex = metal_get_material_texture(ctx, cmd->texture_asset, cmd->texture);
+            id<MTLTexture> tex =
+                metal_get_material_texture(ctx,
+                                           cmd->texture_asset,
+                                           cmd->texture,
+                                           cmd->texture_asset_cache_key
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+                                           cmd->texture_asset_mip_start
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+                                           cmd->texture_asset_mip_count
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR]);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:0];
         }
         if (cmd->normal_map || cmd->normal_map_asset) {
             id<MTLTexture> tex =
-                metal_get_material_texture(ctx, cmd->normal_map_asset, cmd->normal_map);
+                metal_get_material_texture(ctx,
+                                           cmd->normal_map_asset,
+                                           cmd->normal_map,
+                                           cmd->texture_asset_cache_key
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_NORMAL],
+                                           cmd->texture_asset_mip_start
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_NORMAL],
+                                           cmd->texture_asset_mip_count
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_NORMAL]);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:1];
         }
         if (cmd->specular_map || cmd->specular_map_asset) {
             id<MTLTexture> tex =
-                metal_get_material_texture(ctx, cmd->specular_map_asset, cmd->specular_map);
+                metal_get_material_texture(ctx,
+                                           cmd->specular_map_asset,
+                                           cmd->specular_map,
+                                           cmd->texture_asset_cache_key
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR],
+                                           cmd->texture_asset_mip_start
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR],
+                                           cmd->texture_asset_mip_count
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR]);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:2];
         }
         if (cmd->emissive_map || cmd->emissive_map_asset) {
             id<MTLTexture> tex =
-                metal_get_material_texture(ctx, cmd->emissive_map_asset, cmd->emissive_map);
+                metal_get_material_texture(ctx,
+                                           cmd->emissive_map_asset,
+                                           cmd->emissive_map,
+                                           cmd->texture_asset_cache_key
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE],
+                                           cmd->texture_asset_mip_start
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE],
+                                           cmd->texture_asset_mip_count
+                                               [RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE]);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:3];
         }
         if (cmd->metallic_roughness_map || cmd->metallic_roughness_map_asset) {
             id<MTLTexture> tex = metal_get_material_texture(
-                ctx, cmd->metallic_roughness_map_asset, cmd->metallic_roughness_map);
+                ctx,
+                cmd->metallic_roughness_map_asset,
+                cmd->metallic_roughness_map,
+                cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS],
+                cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS],
+                cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS]);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:14];
         }
         if (cmd->ao_map || cmd->ao_map_asset) {
-            id<MTLTexture> tex = metal_get_material_texture(ctx, cmd->ao_map_asset, cmd->ao_map);
+            id<MTLTexture> tex = metal_get_material_texture(ctx,
+                                                            cmd->ao_map_asset,
+                                                            cmd->ao_map,
+                                                            cmd->texture_asset_cache_key
+                                                                [RT_MATERIAL3D_TEXTURE_SLOT_AO],
+                                                            cmd->texture_asset_mip_start
+                                                                [RT_MATERIAL3D_TEXTURE_SLOT_AO],
+                                                            cmd->texture_asset_mip_count
+                                                                [RT_MATERIAL3D_TEXTURE_SLOT_AO]);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:15];
         }

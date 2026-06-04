@@ -96,11 +96,27 @@ int vgfx3d_textureasset_native_supported(void *asset, int64_t native_caps);
 int vgfx3d_textureasset_get_native_resident_mip(void *asset,
                                                 int64_t relative_mip,
                                                 vgfx3d_native_texture_mip_t *out_mip);
+/// @brief Borrow one native mip from a draw-time TextureAsset3D resident-window snapshot.
+/// @details @p first_mip and @p mip_count are captured when the draw command is queued, so a
+///          later TextureAsset3D residency change cannot alter which native payload a deferred
+///          draw uploads. This helper does not mutate the asset or its current resident window.
+int vgfx3d_textureasset_get_native_snapshot_mip(void *asset,
+                                                int64_t first_mip,
+                                                int64_t mip_count,
+                                                int64_t relative_mip,
+                                                vgfx3d_native_texture_mip_t *out_mip);
 /// @brief Sum native mip payload bytes still pending from @p next_relative_mip/block-row cursor.
 uint64_t vgfx3d_textureasset_pending_native_bytes(void *asset,
                                                   int64_t next_relative_mip,
                                                   int32_t next_block_row,
                                                   int upload_in_progress);
+/// @brief Sum pending bytes for a draw-time TextureAsset3D resident-window snapshot.
+uint64_t vgfx3d_textureasset_pending_native_snapshot_bytes(void *asset,
+                                                           int64_t first_mip,
+                                                           int64_t mip_count,
+                                                           int64_t next_relative_mip,
+                                                           int32_t next_block_row,
+                                                           int upload_in_progress);
 /// @brief Decode all six cubemap faces into separate RGBA8 byte arrays (caller frees each).
 int vgfx3d_unpack_cubemap_faces_rgba(const void *cubemap_ptr,
                                      int32_t *out_face_size,

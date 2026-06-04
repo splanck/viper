@@ -3563,7 +3563,14 @@ static void *gltf_preload_take_decoded_mesh(rt_gltf_preload_bundle *preload_bund
     free(mesh->positions64);
     free(mesh->indices);
     mesh->vertices = vertices;
-    mesh->positions64 = NULL;
+    mesh->positions64 = (double *)calloc((size_t)vertex_count * 3u, sizeof(double));
+    if (mesh->positions64) {
+        for (uint32_t vi = 0; vi < vertex_count; vi++) {
+            mesh->positions64[(size_t)vi * 3u + 0] = (double)vertices[vi].pos[0];
+            mesh->positions64[(size_t)vi * 3u + 1] = (double)vertices[vi].pos[1];
+            mesh->positions64[(size_t)vi * 3u + 2] = (double)vertices[vi].pos[2];
+        }
+    }
     mesh->vertex_count = vertex_count;
     mesh->vertex_capacity = vertex_count;
     mesh->indices = indices;
@@ -10023,6 +10030,11 @@ static int gltf_mesh_append_import_vertex(rt_mesh3d *mesh,
     vertex->pos[0] = pos[0];
     vertex->pos[1] = pos[1];
     vertex->pos[2] = pos[2];
+    if (mesh->positions64) {
+        mesh->positions64[(size_t)(mesh->vertex_count - 1u) * 3u + 0] = (double)pos[0];
+        mesh->positions64[(size_t)(mesh->vertex_count - 1u) * 3u + 1] = (double)pos[1];
+        mesh->positions64[(size_t)(mesh->vertex_count - 1u) * 3u + 2] = (double)pos[2];
+    }
     vertex->normal[0] = nrm[0];
     vertex->normal[1] = nrm[1];
     vertex->normal[2] = nrm[2];

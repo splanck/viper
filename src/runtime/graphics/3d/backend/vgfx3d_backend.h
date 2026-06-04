@@ -62,6 +62,9 @@ typedef struct {
     void *normal_map_asset;
     void *specular_map_asset;
     void *emissive_map_asset;
+    uint64_t texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
+    int64_t texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
+    int64_t texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     float emissive_color[3];  /* emissive color multiplier */
     float metallic;           /* [0,1] dielectric->metal */
     float roughness;          /* [0,1] smooth->rough */
@@ -112,11 +115,13 @@ typedef struct {
     float custom_params[8]; /* user-defined shader parameters */
     float depth_bias;       /* constant depth offset; negative pulls coplanar draws forward */
     float slope_scaled_depth_bias; /* slope-proportional depth offset for steep coplanar polygons */
+    int8_t has_alpha_texture;       /* draw-time texture scan found non-opaque alpha */
 } vgfx3d_draw_cmd_t;
 
 /// @brief True if the command needs standard (non-additive) alpha blending. Honors an
-///   explicit alpha_mode (BLEND/MASK) first, treats PBR as opaque, and otherwise infers
-///   transparency from a sub-1.0 alpha or diffuse alpha.
+///   explicit alpha_mode (BLEND/MASK) first, treats alpha-bearing texture content as masked
+///   unless the caller explicitly requested blending, and otherwise infers transparency from a
+///   sub-1.0 alpha or diffuse alpha.
 static inline int vgfx3d_draw_cmd_uses_alpha_blend(const vgfx3d_draw_cmd_t *cmd) {
     if (!cmd)
         return 0;
@@ -125,6 +130,8 @@ static inline int vgfx3d_draw_cmd_uses_alpha_blend(const vgfx3d_draw_cmd_t *cmd)
     if (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_BLEND)
         return 1;
     if (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK)
+        return 0;
+    if (cmd->has_alpha_texture)
         return 0;
     if (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR)
         return 0;

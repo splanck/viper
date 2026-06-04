@@ -283,6 +283,7 @@ static void vegetation3d_finalizer(void *obj) {
 static void build_blade_mesh(void *mesh, double w, double h) {
     if (!mesh)
         return;
+    rt_mesh3d_begin_geometry_batch((rt_mesh3d *)mesh);
     w = vegetation_positive_or(w, 0.4, VEGETATION3D_BLADE_DIM_MAX);
     h = vegetation_positive_or(h, 1.2, VEGETATION3D_BLADE_DIM_MAX);
     double hw = w * 0.5;
@@ -300,6 +301,7 @@ static void build_blade_mesh(void *mesh, double w, double h) {
     rt_mesh3d_add_vertex(mesh, 0, h, -hw, 1, 0, 0, 0, 0);
     rt_mesh3d_add_triangle(mesh, 4, 5, 6);
     rt_mesh3d_add_triangle(mesh, 4, 6, 7);
+    rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
 }
 
 /// @brief Deterministic linear congruential RNG for scattering blade instances.
