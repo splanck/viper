@@ -707,8 +707,8 @@ static void test_draw_cmd_alpha_blend_policy(void) {
     cmd.workflow = RT_MATERIAL3D_WORKFLOW_PBR;
     cmd.alpha_mode = RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
     cmd.diffuse_color[3] = 0.0f;
-    EXPECT_TRUE(!vgfx3d_draw_cmd_uses_alpha_blend(&cmd),
-                "PBR opaque materials ignore base-color alpha for blend routing");
+    EXPECT_TRUE(vgfx3d_draw_cmd_uses_alpha_blend(&cmd),
+                "PBR scalar/base-color alpha uses alpha blending for backend depth policy");
 
     memset(&cmd, 0, sizeof(cmd));
     cmd.alpha = 1.0f;

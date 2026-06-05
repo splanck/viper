@@ -107,6 +107,14 @@ static void mesh3d_bump_vertex_revision(rt_mesh3d *m, int invalidate_tangents) {
         m->tangents_ready = 0;
         m->tangent_revision = 0;
     }
+    m->positions64_rebase_revision = 0;
+    m->positions64_rebase_needed = 0;
+    m->morph_bound_deltas_source = NULL;
+    m->morph_bound_revision = 0;
+    m->morph_bound_vertex_count = 0;
+    m->morph_bound_shape_count = 0;
+    m->morph_bound_pad = 0.0;
+    m->morph_bound_valid = 0;
 }
 
 /// @brief Estimate vertex/index payload bytes, saturating to INT64_MAX for ABI stability.
@@ -690,12 +698,20 @@ void *rt_mesh3d_new(void) {
     m->morph_weights = NULL;
     m->prev_morph_weights = NULL;
     m->morph_shape_count = 0;
+    m->morph_bound_deltas_source = NULL;
+    m->morph_bound_revision = 0;
+    m->morph_bound_vertex_count = 0;
+    m->morph_bound_shape_count = 0;
+    m->morph_bound_pad = 0.0;
+    m->morph_bound_valid = 0;
     m->skeleton_ref = NULL;
     m->morph_targets_ref = NULL;
     m->build_failed = 0;
     m->geometry_revision = 1;
     m->tangent_revision = 0;
     m->tangents_ready = 0;
+    m->positions64_rebase_revision = 0;
+    m->positions64_rebase_needed = 0;
     m->resident = 1;
     m->geometry_batch_depth = 0;
     m->geometry_batch_dirty = 0;
@@ -1197,6 +1213,12 @@ void *rt_mesh3d_clone(void *obj) {
     dst->morph_shape_count = 0;
     dst->morph_normal_deltas = NULL;
     dst->prev_morph_weights = NULL;
+    dst->morph_bound_deltas_source = NULL;
+    dst->morph_bound_revision = 0;
+    dst->morph_bound_vertex_count = 0;
+    dst->morph_bound_shape_count = 0;
+    dst->morph_bound_pad = 0.0;
+    dst->morph_bound_valid = 0;
     mesh_assign_skeleton_ref(&dst->skeleton_ref, src->skeleton_ref);
     if (src->morph_targets_ref) {
         void *morph_clone = rt_morphtarget3d_clone(src->morph_targets_ref);
@@ -1213,6 +1235,8 @@ void *rt_mesh3d_clone(void *obj) {
     dst->geometry_revision = src->geometry_revision;
     dst->tangent_revision = src->tangent_revision;
     dst->tangents_ready = src->tangents_ready;
+    dst->positions64_rebase_revision = src->positions64_rebase_revision;
+    dst->positions64_rebase_needed = src->positions64_rebase_needed;
     dst->resident = src->resident ? 1 : 0;
     dst->build_failed = 0;
     dst->aabb_min[0] = src->aabb_min[0];

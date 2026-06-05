@@ -291,6 +291,7 @@ void canvas3d_clear_temp_buffers(rt_canvas3d *c) {
         free(c->temp_buffers[i]);
     c->temp_buf_count = 0;
     c->mesh_snapshot_count = 0;
+    canvas3d_mesh_snapshot_hash_clear(c);
     c->mesh_snapshot_bytes = 0u;
 }
 

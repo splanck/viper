@@ -394,6 +394,47 @@ static double scene3d_morph_delta_length_or_zero(const float *delta) {
     return isfinite(len) ? len : 0.0;
 }
 
+/// @brief Return cached conservative padding for raw transient morph-delta arrays.
+/// @details DrawMeshMorphed can attach a raw `morph_deltas` pointer to a mesh for the duration of
+///   one draw. The source array often stays stable across frames, so caching the maximum delta
+///   length avoids repeatedly scanning every shape/vertex during Scene3D culling. The cache key
+///   includes the pointer, shape count, safe vertex count, and geometry revision so geometry edits
+///   or a different morph payload force a rescan.
+static double scene3d_cached_raw_morph_bound_pad(rt_mesh3d *mesh) {
+    size_t total = 0;
+    double max_len = 0.0;
+    uint32_t safe_vertex_count;
+
+    if (!mesh || !mesh->morph_deltas || mesh->morph_shape_count <= 0)
+        return 0.0;
+    safe_vertex_count = rt_mesh3d_safe_vertex_count(mesh);
+    if (safe_vertex_count == 0)
+        return 0.0;
+    if (mesh->morph_bound_valid && mesh->morph_bound_deltas_source == mesh->morph_deltas &&
+        mesh->morph_bound_revision == mesh->geometry_revision &&
+        mesh->morph_bound_vertex_count == safe_vertex_count &&
+        mesh->morph_bound_shape_count == mesh->morph_shape_count) {
+        return scene3d_distance_or_zero(mesh->morph_bound_pad);
+    }
+    mesh->morph_bound_deltas_source = mesh->morph_deltas;
+    mesh->morph_bound_revision = mesh->geometry_revision;
+    mesh->morph_bound_vertex_count = safe_vertex_count;
+    mesh->morph_bound_shape_count = mesh->morph_shape_count;
+    mesh->morph_bound_pad = 0.0;
+    mesh->morph_bound_valid = 1;
+
+    if (!scene3d_morph_delta_triplet_count(mesh, &total) || total == 0)
+        return 0.0;
+    for (size_t i = 0; i < total; i++) {
+        const float *d = mesh->morph_deltas + i * 3u;
+        double len = scene3d_morph_delta_length_or_zero(d);
+        if (len > max_len)
+            max_len = len;
+    }
+    mesh->morph_bound_pad = scene3d_distance_or_zero(max_len);
+    return mesh->morph_bound_pad;
+}
+
 /// @brief Conservative local-space padding for runtime-deformed mesh bounds.
 double scene3d_mesh_dynamic_bound_pad(rt_mesh3d *mesh,
                                       void *effective_animator,
@@ -408,18 +449,9 @@ double scene3d_mesh_dynamic_bound_pad(rt_mesh3d *mesh,
     }
     if (mesh && mesh->morph_deltas && mesh->morph_shape_count > 0 &&
         rt_mesh3d_safe_vertex_count(mesh) > 0) {
-        size_t total = 0;
-        double max_len = 0.0;
-        if (!scene3d_morph_delta_triplet_count(mesh, &total))
-            total = 0;
-        for (size_t i = 0; i < total; i++) {
-            const float *d = mesh->morph_deltas + i * 3u;
-            double len = scene3d_morph_delta_length_or_zero(d);
-            if (len > max_len)
-                max_len = len;
-        }
-        if (max_len > pad)
-            pad = scene3d_distance_or_zero(max_len);
+        double raw_morph_pad = scene3d_cached_raw_morph_bound_pad(mesh);
+        if (raw_morph_pad > pad)
+            pad = raw_morph_pad;
     }
     if (effective_animator || (mesh && mesh->morph_shape_count > 0 && pad <= 0.0)) {
         double fallback = scene3d_distance_or_zero(base_radius);
@@ -476,12 +508,15 @@ static int scene3d_include_mesh_world_bounds(rt_scene_node3d *node,
     return 1;
 }
 
-/// @brief Compute the union world AABB of a node's drawable geometry and that of its descendants.
-static int scene3d_node_world_draw_union_aabb(rt_scene_node3d *node,
-                                              void *effective_animator,
-                                              double world_min[3],
-                                              double world_max[3],
-                                              double *out_radius) {
+/// @brief Compute the union world AABB of a node's drawable geometry variants.
+/// @details Includes the base mesh, all authored LOD meshes, and the impostor mesh. The result is
+///   intentionally conservative so frustum/PVS culling uses one stable bound while the visible mesh
+///   swaps between LODs.
+int scene3d_node_world_draw_union_aabb(rt_scene_node3d *node,
+                                       void *effective_animator,
+                                       double world_min[3],
+                                       double world_max[3],
+                                       double *out_radius) {
     int has_bounds = 0;
     double radius = 0.0;
     if (!node || !world_min || !world_max)

@@ -191,8 +191,6 @@ static inline int vgfx3d_draw_cmd_uses_alpha_blend(const vgfx3d_draw_cmd_t *cmd)
         return 0;
     if (cmd->has_alpha_texture)
         return 0;
-    if (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR)
-        return 0;
     return (cmd->alpha < 0.999f || cmd->diffuse_color[3] < 0.999f) ? 1 : 0;
 }
 

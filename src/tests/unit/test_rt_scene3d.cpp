@@ -2658,7 +2658,7 @@ static void test_frustum_culled_count_initial() {
     EXPECT_TRUE(rt_scene3d_get_culled_count(scene) == 0, "Initial culled count = 0");
 }
 
-static void test_lod_culling_uses_selected_mesh_bounds() {
+static void test_lod_culling_uses_stable_union_mesh_bounds() {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
     backend.begin_frame = scene_test_begin_frame;
@@ -2692,12 +2692,12 @@ static void test_lod_culling_uses_selected_mesh_bounds() {
 
     rt_scene3d_draw(scene, &canvas, camera);
 
-    EXPECT_TRUE(g_scene_submit_count == 0,
-                "Scene3D culls against the selected LOD mesh bounds, not the base mesh bounds");
+    EXPECT_TRUE(g_scene_submit_count == 1,
+                "Scene3D keeps LOD draws visible when the node's stable union bounds intersect");
     EXPECT_TRUE(
-        rt_scene3d_get_culled_count(scene) == 1,
-        "Scene3D increments culled count when the selected LOD mesh is outside the frustum");
-    EXPECT_TRUE(rt_canvas3d_get_occluded_draw_count(&canvas) == 1,
+        rt_scene3d_get_culled_count(scene) == 0,
+        "Scene3D does not cull only because the selected LOD mesh bounds are outside the frustum");
+    EXPECT_TRUE(rt_canvas3d_get_occluded_draw_count(&canvas) == 0,
                 "Canvas3D.OccludedDrawCount mirrors the latest scene visibility skip count");
 }
 
@@ -3456,7 +3456,7 @@ int main() {
     test_frustum_no_mesh_no_aabb();
     test_node_aabb_refreshes_after_mesh_mutation();
     test_frustum_culled_count_initial();
-    test_lod_culling_uses_selected_mesh_bounds();
+    test_lod_culling_uses_stable_union_mesh_bounds();
     test_auto_lod_uses_screen_error_selection();
     test_lod_residency_falls_back_and_reports_bytes();
     test_impostor_proxy_draws_textured_quad();

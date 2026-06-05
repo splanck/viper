@@ -128,6 +128,19 @@ typedef struct {
     int32_t to_zone;
 } rt_scene3d_visibility_portal;
 
+/// @brief Per-camera/view LOD hysteresis state cached on a SceneNode3D.
+/// @details Nodes keep a small fixed cache instead of one global LOD/impostor selection so
+///   alternating cameras do not contaminate each other's hysteresis and cause mesh popping.
+typedef struct rt_scene3d_lod_view_state {
+    uintptr_t view_key;
+    uint32_t last_used;
+    int32_t lod_selected_index;
+    int8_t lod_selection_valid;
+    int8_t impostor_selected;
+} rt_scene3d_lod_view_state;
+
+#define RT_SCENE3D_LOD_VIEW_STATE_COUNT 4
+
 /// @brief SceneNode3D payload: local TRS, lazily-recomputed world matrix with dirty flag,
 ///   parent/children links, bound mesh/material/light/body/animator(s) and sync mode,
 ///   visibility, name, cached subtree AABB/bounding-sphere, LOD mesh levels,
@@ -179,6 +192,8 @@ typedef struct rt_scene_node3d {
     double auto_lod_screen_error_px;
     int32_t lod_selected_index;
     int8_t lod_selection_valid;
+    uint32_t lod_view_state_clock;
+    rt_scene3d_lod_view_state lod_view_states[RT_SCENE3D_LOD_VIEW_STATE_COUNT];
 
     int8_t has_impostor;
     int8_t impostor_selected;
@@ -387,6 +402,11 @@ int scene3d_spatial_collect_aabb(rt_scene3d *scene,
                                  scene3d_spatial_candidate_list_t *out,
                                  int count_cullable_prefilter);
 int scene3d_spatial_collect_all(rt_scene3d *scene, scene3d_spatial_candidate_list_t *out);
+int scene3d_node_world_draw_union_aabb(rt_scene_node3d *node,
+                                       void *effective_animator,
+                                       double world_min[3],
+                                       double world_max[3],
+                                       double *out_radius);
 int scene3d_mesh_has_dynamic_deformation(rt_mesh3d *mesh, void *effective_animator);
 double scene3d_mesh_dynamic_bound_pad(rt_mesh3d *mesh,
                                       void *effective_animator,

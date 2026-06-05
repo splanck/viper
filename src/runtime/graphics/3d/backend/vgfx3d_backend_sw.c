@@ -2427,7 +2427,7 @@ static void raster_triangle(uint8_t *pixels,
                 float z = b0 * g.v0->sz + b1 * g.v1->sz + b2 * g.v2->sz;
                 z += depth_bias + slope_depth_bias;
                 int idx = y * fb_w + x;
-                if (depth_disabled || z <= zbuf[idx]) {
+                if (depth_disabled || z < zbuf[idx]) {
                     depth_passes++;
                     pixels_written += sw_shade_fragment(&fc, x, y, idx, z, b0, b1, b2);
                 }
@@ -2795,6 +2795,11 @@ static void sw_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         alpha_view = *pv;
         if (alpha_view.width > 0 && alpha_view.height > 0 && alpha_view.data)
             alpha_tex = &alpha_view;
+    }
+    if (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK && cmd->texture_asset && !alpha_tex) {
+        /* Native-only cutout textures cannot be sampled by the software shadow pass. Skipping is
+         * conservative; casting the full mesh would create backend-specific solid shadow flicker. */
+        return;
     }
 
     /* Build light MVP = shadow_vp * model */

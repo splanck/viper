@@ -2183,12 +2183,73 @@ typedef struct {
 static void *scene3d_auto_lod_mesh(rt_scene_node3d *node,
                                    const rt_canvas3d *canvas,
                                    const rt_camera3d *cam,
+                                   rt_scene3d_lod_view_state *state,
                                    double radius,
                                    double distance);
 
 /// @brief Return true when a Mesh3D payload is resident and eligible for draw selection.
 static int scene3d_mesh_resident(void *mesh) {
     return mesh && rt_mesh3d_get_resident(mesh) != 0;
+}
+
+/// @brief Build a stable key for LOD/impostor hysteresis in one rendered view.
+/// @details Combines the active camera and canvas pointers. A scene drawn alternately by multiple
+///   cameras gets separate hysteresis slots so one view's distance thresholds do not push another
+///   view across an LOD boundary.
+static uintptr_t scene3d_lod_view_key(const rt_canvas3d *canvas, const rt_camera3d *cam) {
+    uintptr_t key = (uintptr_t)cam ^ ((uintptr_t)canvas << 1u) ^ ((uintptr_t)canvas >> 3u);
+    return key ? key : (uintptr_t)1u;
+}
+
+/// @brief Reset all per-view LOD and impostor hysteresis state on a node.
+/// @details Called when LOD/impostor payloads or residency change. Keeping the legacy fields reset
+///   preserves existing behavior for code that inspects the most recent selected index directly.
+static void scene3d_node_reset_lod_view_states(rt_scene_node3d *node) {
+    if (!node)
+        return;
+    memset(node->lod_view_states, 0, sizeof(node->lod_view_states));
+    node->lod_view_state_clock = 0;
+    node->lod_selected_index = 0;
+    node->lod_selection_valid = 0;
+    node->impostor_selected = 0;
+}
+
+/// @brief Return the cache slot holding hysteresis state for @p view_key, creating it if needed.
+/// @details The fixed-size cache avoids heap allocation during draw traversal. On overflow, the
+///   least-recently-used slot is replaced; the selected view then starts from the raw LOD decision
+///   for that frame, which is conservative and avoids cross-view flicker.
+static rt_scene3d_lod_view_state *scene3d_node_lod_view_state(rt_scene_node3d *node,
+                                                              uintptr_t view_key) {
+    int32_t best = 0;
+    uint32_t oldest = UINT32_MAX;
+    if (!node)
+        return NULL;
+    if (!view_key)
+        view_key = (uintptr_t)1u;
+    node->lod_view_state_clock++;
+    if (node->lod_view_state_clock == 0)
+        node->lod_view_state_clock = 1;
+    for (int32_t i = 0; i < RT_SCENE3D_LOD_VIEW_STATE_COUNT; ++i) {
+        rt_scene3d_lod_view_state *state = &node->lod_view_states[i];
+        if (state->view_key == view_key) {
+            state->last_used = node->lod_view_state_clock;
+            return state;
+        }
+        if (state->view_key == 0) {
+            best = i;
+            oldest = 0;
+            break;
+        }
+        if (state->last_used < oldest) {
+            oldest = state->last_used;
+            best = i;
+        }
+    }
+    (void)oldest;
+    memset(&node->lod_view_states[best], 0, sizeof(node->lod_view_states[best]));
+    node->lod_view_states[best].view_key = view_key;
+    node->lod_view_states[best].last_used = node->lod_view_state_clock;
+    return &node->lod_view_states[best];
 }
 
 /// @brief Return an authored LOD mesh for a 1-based selected index, or NULL for the base mesh.
@@ -2216,10 +2277,11 @@ static double scene3d_lod_distance_band(double threshold) {
 ///   near an authored distance threshold. Returns a selected index where 0 is the base mesh and
 ///   positive values index into `lod_levels` with a +1 offset.
 static int32_t scene3d_manual_lod_index_with_hysteresis(rt_scene_node3d *node,
+                                                        rt_scene3d_lod_view_state *state,
                                                         int32_t raw_index,
                                                         double distance) {
     int32_t lod_count = scene3d_node_lod_count(node);
-    int32_t prev = node && node->lod_selection_valid ? node->lod_selected_index : raw_index;
+    int32_t prev = state && state->lod_selection_valid ? state->lod_selected_index : raw_index;
     if (!node || raw_index < 0 || raw_index > lod_count)
         return 0;
     if (prev < 0 || prev > lod_count || (prev > 0 && !scene3d_lod_mesh_for_selected_index(node, prev)))
@@ -2235,6 +2297,10 @@ static int32_t scene3d_manual_lod_index_with_hysteresis(rt_scene_node3d *node,
                 raw_index = prev;
         }
     }
+    if (state) {
+        state->lod_selected_index = raw_index;
+        state->lod_selection_valid = 1;
+    }
     node->lod_selected_index = raw_index;
     node->lod_selection_valid = 1;
     return raw_index;
@@ -2242,11 +2308,12 @@ static int32_t scene3d_manual_lod_index_with_hysteresis(rt_scene_node3d *node,
 
 /// @brief Apply hysteresis to projected-size automatic LOD selection.
 static int32_t scene3d_auto_lod_index_with_hysteresis(rt_scene_node3d *node,
+                                                      rt_scene3d_lod_view_state *state,
                                                       int32_t raw_index,
                                                       double projected_px,
                                                       double screen_error_px) {
     int32_t lod_count = scene3d_node_lod_count(node);
-    int32_t prev = node && node->lod_selection_valid ? node->lod_selected_index : raw_index;
+    int32_t prev = state && state->lod_selection_valid ? state->lod_selected_index : raw_index;
     double band = fmax(1.0, screen_error_px * 0.25);
     if (!node || raw_index < 0 || raw_index > lod_count)
         return 0;
@@ -2263,21 +2330,31 @@ static int32_t scene3d_auto_lod_index_with_hysteresis(rt_scene_node3d *node,
                 raw_index = prev;
         }
     }
+    if (state) {
+        state->lod_selected_index = raw_index;
+        state->lod_selection_valid = 1;
+    }
     node->lod_selected_index = raw_index;
     node->lod_selection_valid = 1;
     return raw_index;
 }
 
 /// @brief Return non-zero when an impostor should be active after distance hysteresis.
-static int scene3d_impostor_active_with_hysteresis(rt_scene_node3d *node, double distance) {
+static int scene3d_impostor_active_with_hysteresis(rt_scene_node3d *node,
+                                                   rt_scene3d_lod_view_state *state,
+                                                   double distance) {
     double threshold;
     double band;
     int active;
+    int previously_selected;
     if (!node || !node->has_impostor)
         return 0;
     threshold = scene3d_finite_or(node->impostor_distance, 0.0);
     band = fmax(1.0, fabs(threshold) * 0.05);
-    active = node->impostor_selected ? distance >= threshold - band : distance >= threshold + band;
+    previously_selected = state ? state->impostor_selected : node->impostor_selected;
+    active = previously_selected ? distance >= threshold - band : distance >= threshold + band;
+    if (state)
+        state->impostor_selected = active ? 1 : 0;
     node->impostor_selected = active ? 1 : 0;
     return active;
 }
@@ -2353,6 +2430,8 @@ static void *scene3d_resolve_draw_mesh(rt_scene_node3d *current,
     void *draw_material = rt_g3d_checked_or_null(current->material, RT_G3D_MATERIAL3D_CLASS_ID);
     double camera_distance = 0.0;
     int has_camera_distance = 0;
+    rt_scene3d_lod_view_state *lod_state =
+        scene3d_node_lod_view_state(current, scene3d_lod_view_key(canvas, cam));
 
     if ((draw_mesh || current->has_impostor) && cam_pos) {
         float local_center[3] = {0.0f, 0.0f, 0.0f};
@@ -2377,7 +2456,8 @@ static void *scene3d_resolve_draw_mesh(rt_scene_node3d *current,
             camera_distance = dist;
             has_camera_distance = 1;
             if (draw_mesh && current->auto_lod_enabled && scene3d_node_lod_count(current) > 0) {
-                void *auto_mesh = scene3d_auto_lod_mesh(current, canvas, cam, base_radius, dist);
+                void *auto_mesh =
+                    scene3d_auto_lod_mesh(current, canvas, cam, lod_state, base_radius, dist);
                 if (auto_mesh)
                     draw_mesh = auto_mesh;
             }
@@ -2396,7 +2476,7 @@ static void *scene3d_resolve_draw_mesh(rt_scene_node3d *current,
                     break;
                 }
             }
-            raw_index = scene3d_manual_lod_index_with_hysteresis(current, raw_index, dist);
+            raw_index = scene3d_manual_lod_index_with_hysteresis(current, lod_state, raw_index, dist);
             {
                 void *lod_mesh = scene3d_lod_mesh_for_selected_index(current, raw_index);
                 if (lod_mesh)
@@ -2410,13 +2490,15 @@ static void *scene3d_resolve_draw_mesh(rt_scene_node3d *current,
     void *impostor_material =
         rt_g3d_checked_or_null(current->impostor_material, RT_G3D_MATERIAL3D_CLASS_ID);
     if (current->has_impostor && impostor_mesh && impostor_material && has_camera_distance &&
-        scene3d_impostor_active_with_hysteresis(current, camera_distance) &&
+        scene3d_impostor_active_with_hysteresis(current, lod_state, camera_distance) &&
         scene3d_mesh_resident(impostor_mesh)) {
         draw_mesh = impostor_mesh;
         draw_material = impostor_material;
     } else if (!current->has_impostor || !impostor_mesh || !impostor_material ||
                !scene3d_mesh_resident(impostor_mesh)) {
         current->impostor_selected = 0;
+        if (lod_state)
+            lod_state->impostor_selected = 0;
     }
 
     if (draw_mesh && !scene3d_mesh_resident(draw_mesh))
@@ -2432,6 +2514,14 @@ static void *scene3d_resolve_draw_mesh(rt_scene_node3d *current,
     return draw_mesh;
 }
 
+static int scene3d_cached_world_bounds_cull_test(rt_scene_node3d *current,
+                                                 rt_canvas3d *canvas,
+                                                 const vgfx3d_frustum_t *frustum,
+                                                 const scene3d_pvs_context_t *pvs,
+                                                 const double world_min_d[3],
+                                                 const double world_max_d[3],
+                                                 int32_t *culled);
+
 /// @brief Frustum + PVS visibility test for a node's chosen mesh.
 /// @return 1 when the node should be drawn, 0 when culled (bumping the cull counters).
 static int scene3d_node_cull_test(rt_scene_node3d *current,
@@ -2445,6 +2535,14 @@ static int scene3d_node_cull_test(rt_scene_node3d *current,
                                   void *effective_animator,
                                   int32_t *culled) {
     if ((frustum || (pvs && pvs->active)) && draw_mesh && draw_radius > 0.0f) {
+        double union_world_min[3];
+        double union_world_max[3];
+        double union_radius = 0.0;
+        if (scene3d_node_world_draw_union_aabb(
+                current, effective_animator, union_world_min, union_world_max, &union_radius))
+            return scene3d_cached_world_bounds_cull_test(
+                current, canvas, frustum, pvs, union_world_min, union_world_max, culled);
+
         rt_mesh3d *draw_mesh_impl = (rt_mesh3d *)draw_mesh;
         int has_dynamic_deformation =
             scene3d_mesh_has_dynamic_deformation(draw_mesh_impl, effective_animator);
@@ -3137,6 +3235,26 @@ static double scene3d_active_output_height(const rt_canvas3d *canvas) {
     return h > 0 ? (double)h : 720.0;
 }
 
+/// @brief Resolve the world-space camera position used for Scene3D visibility and LOD.
+/// @details Canvas3D.Begin applies camera shake before caching its render parameters. Reusing the
+///   cached world camera makes Scene3D distance LOD, impostors, and PVS agree with the frame that
+///   will actually render, instead of mixing unshaken camera coordinates with shaken rendering.
+static void scene3d_resolved_camera_world_position(const rt_canvas3d *canvas,
+                                                   const rt_camera3d *cam,
+                                                   double out_pos[3]) {
+    if (!out_pos)
+        return;
+    if (canvas && canvas->in_frame && !canvas->frame_is_2d) {
+        out_pos[0] = scene3d_clamp_abs_or(canvas->cached_world_cam_pos[0], 0.0);
+        out_pos[1] = scene3d_clamp_abs_or(canvas->cached_world_cam_pos[1], 0.0);
+        out_pos[2] = scene3d_clamp_abs_or(canvas->cached_world_cam_pos[2], 0.0);
+        return;
+    }
+    out_pos[0] = scene3d_clamp_abs_or(cam ? cam->eye[0] + cam->shake_offset[0] : 0.0, 0.0);
+    out_pos[1] = scene3d_clamp_abs_or(cam ? cam->eye[1] + cam->shake_offset[1] : 0.0, 0.0);
+    out_pos[2] = scene3d_clamp_abs_or(cam ? cam->eye[2] + cam->shake_offset[2] : 0.0, 0.0);
+}
+
 /// @brief Estimate how large a bounding sphere appears on screen in pixels.
 static double scene3d_projected_diameter_px(const rt_canvas3d *canvas,
                                             const rt_camera3d *cam,
@@ -3169,6 +3287,7 @@ static double scene3d_projected_diameter_px(const rt_canvas3d *canvas,
 static void *scene3d_auto_lod_mesh(rt_scene_node3d *node,
                                    const rt_canvas3d *canvas,
                                    const rt_camera3d *cam,
+                                   rt_scene3d_lod_view_state *state,
                                    double radius,
                                    double distance) {
     double projected_px;
@@ -3196,7 +3315,7 @@ static void *scene3d_auto_lod_mesh(rt_scene_node3d *node,
         }
     }
     raw_index =
-        scene3d_auto_lod_index_with_hysteresis(node, raw_index, projected_px, screen_error_px);
+        scene3d_auto_lod_index_with_hysteresis(node, state, raw_index, projected_px, screen_error_px);
     return scene3d_lod_mesh_for_selected_index(node, raw_index);
 }
 
@@ -3279,9 +3398,8 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
     if (scene3d_build_pvs_context(s, cam, &pvs))
         pvs.culled_count = &pvs_culled;
 
-    double cam_pos[3] = {scene3d_clamp_abs_or(cam->eye[0], 0.0),
-                         scene3d_clamp_abs_or(cam->eye[1], 0.0),
-                         scene3d_clamp_abs_or(cam->eye[2], 0.0)};
+    double cam_pos[3];
+    scene3d_resolved_camera_world_position(canvas, cam, cam_pos);
     prev_scene_light_count = canvas->scene_light_count;
     memcpy(prev_scene_lights, canvas->scene_lights, sizeof(prev_scene_lights));
     memcpy(prev_scene_light_storage, canvas->scene_light_storage, sizeof(prev_scene_light_storage));
@@ -3436,8 +3554,7 @@ void rt_scene_node3d_add_lod(void *obj, double distance, void *mesh) {
             rt_obj_retain_maybe(mesh);
             scene3d_release_class_ref(&node->lod_levels[i].mesh, RT_G3D_MESH3D_CLASS_ID);
             node->lod_levels[i].mesh = mesh;
-            node->lod_selected_index = 0;
-            node->lod_selection_valid = 0;
+            scene3d_node_reset_lod_view_states(node);
             scene3d_mark_spatial_dirty(node->owner_scene);
             return;
         }
@@ -3478,8 +3595,7 @@ void rt_scene_node3d_add_lod(void *obj, double distance, void *mesh) {
     node->lod_levels[pos].mesh = mesh;
     rt_obj_retain_maybe(mesh);
     node->lod_count++;
-    node->lod_selected_index = 0;
-    node->lod_selection_valid = 0;
+    scene3d_node_reset_lod_view_states(node);
     scene3d_mark_spatial_dirty(node->owner_scene);
 }
 
@@ -3489,8 +3605,7 @@ void rt_scene_node3d_set_auto_lod(void *obj, int8_t enabled, double screen_error
     if (!node)
         return;
     node->auto_lod_enabled = enabled ? 1 : 0;
-    node->lod_selected_index = 0;
-    node->lod_selection_valid = 0;
+    scene3d_node_reset_lod_view_states(node);
     if (!isfinite(screen_error_px))
         screen_error_px = 8.0;
     if (screen_error_px < 1.0)
@@ -3553,11 +3668,11 @@ void rt_scene_node3d_set_impostor(void *obj, double distance, void *pixels) {
         return;
     if (!pixels) {
         node->has_impostor = 0;
-        node->impostor_selected = 0;
         node->impostor_distance = 0.0;
         scene3d_release_pixels_ref(&node->impostor_pixels);
         scene3d_release_class_ref(&node->impostor_mesh, RT_G3D_MESH3D_CLASS_ID);
         scene3d_release_class_ref(&node->impostor_material, RT_G3D_MATERIAL3D_CLASS_ID);
+        scene3d_node_reset_lod_view_states(node);
         scene3d_mark_spatial_dirty(node->owner_scene);
         return;
     }
@@ -3590,7 +3705,7 @@ void rt_scene_node3d_set_impostor(void *obj, double distance, void *pixels) {
     node->impostor_material = material;
     node->impostor_distance = distance;
     node->has_impostor = 1;
-    node->impostor_selected = 0;
+    scene3d_node_reset_lod_view_states(node);
     scene3d_mark_spatial_dirty(node->owner_scene);
 }
 
@@ -3606,8 +3721,7 @@ void rt_scene_node3d_clear_lod(void *obj) {
     for (int32_t i = 0; i < lod_count; i++)
         scene3d_release_class_ref(&node->lod_levels[i].mesh, RT_G3D_MESH3D_CLASS_ID);
     node->lod_count = 0;
-    node->lod_selected_index = 0;
-    node->lod_selection_valid = 0;
+    scene3d_node_reset_lod_view_states(node);
     scene3d_mark_spatial_dirty(node->owner_scene);
 }
 
@@ -3666,6 +3780,7 @@ void rt_scene_node3d_set_lod_resident(void *obj, int64_t index, int8_t resident)
     if (!rt_g3d_has_class(node->lod_levels[index].mesh, RT_G3D_MESH3D_CLASS_ID))
         return;
     rt_mesh3d_set_resident(node->lod_levels[index].mesh, resident);
+    scene3d_node_reset_lod_view_states(node);
     scene3d_mark_spatial_dirty(node->owner_scene);
 }
 

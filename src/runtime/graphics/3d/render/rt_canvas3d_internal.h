@@ -78,6 +78,12 @@ typedef struct {
     const float *morph_weights;       /* shape_count floats */
     const float *prev_morph_weights;  /* previous-frame weights for motion blur */
     int32_t morph_shape_count;
+    const float *morph_bound_deltas_source; /* source pointer for cached raw morph-bound padding */
+    uint32_t morph_bound_revision;          /* geometry_revision for cached raw morph-bound padding */
+    uint32_t morph_bound_vertex_count;      /* vertex_count used by cached raw morph-bound padding */
+    int32_t morph_bound_shape_count;        /* shape_count used by cached raw morph-bound padding */
+    double morph_bound_pad;                 /* cached max raw morph delta length */
+    int8_t morph_bound_valid;
     float aabb_min[3];
     float aabb_max[3];
     float bsphere_radius;
@@ -88,6 +94,8 @@ typedef struct {
     uint32_t geometry_revision; /* increments when CPU geometry changes */
     uint32_t tangent_revision;  /* geometry_revision for cached tangent readiness */
     int8_t tangents_ready;      /* true once tangent presence/generation was resolved */
+    uint32_t positions64_rebase_revision; /* geometry_revision for cached double-position rebase test */
+    int8_t positions64_rebase_needed;     /* cached result for camera-relative vertex rebasing */
     int8_t resident;            /* false when stream draw residency should skip this mesh */
     uint8_t geometry_batch_depth;
     int8_t geometry_batch_dirty;
@@ -173,6 +181,14 @@ static inline void rt_mesh3d_touch_geometry_now(rt_mesh3d *mesh) {
         mesh->geometry_revision++;
     mesh->tangents_ready = 0;
     mesh->tangent_revision = 0;
+    mesh->positions64_rebase_revision = 0;
+    mesh->positions64_rebase_needed = 0;
+    mesh->morph_bound_deltas_source = NULL;
+    mesh->morph_bound_revision = 0;
+    mesh->morph_bound_vertex_count = 0;
+    mesh->morph_bound_shape_count = 0;
+    mesh->morph_bound_pad = 0.0;
+    mesh->morph_bound_valid = 0;
 }
 
 /// @brief Mark geometry changed: dirties bounds and bumps geometry_revision
@@ -749,6 +765,8 @@ typedef struct {
     rt_canvas3d_mesh_snapshot_entry *mesh_snapshots;
     int32_t mesh_snapshot_count;
     int32_t mesh_snapshot_capacity;
+    int32_t *mesh_snapshot_hash;
+    int32_t mesh_snapshot_hash_capacity;
     size_t mesh_snapshot_bytes;
 
     /* Temporary runtime objects retained until end of frame */
@@ -844,7 +862,7 @@ typedef struct {
     void *occlusion_last_render_target;
     int32_t occlusion_last_output_width;
     int32_t occlusion_last_output_height;
-    float occlusion_last_cam_pos[3];
+    double occlusion_last_world_cam_pos[3];
     float occlusion_last_cam_forward[3];
     float occlusion_last_near;
     float occlusion_last_far;
@@ -1078,6 +1096,7 @@ int canvas3d_snapshot_mesh_geometry_rebased(rt_canvas3d *c,
                                             vgfx3d_vertex_t **out_vertices,
                                             uint32_t **out_indices);
 int canvas3d_reserve_mesh_snapshot_cache(rt_canvas3d *c, int32_t needed);
+void canvas3d_mesh_snapshot_hash_clear(rt_canvas3d *c);
 int canvas3d_snapshot_mesh_geometry_cached(rt_canvas3d *c,
                                            const rt_mesh3d *mesh,
                                            void *mesh_obj,

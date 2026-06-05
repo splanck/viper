@@ -27,6 +27,133 @@
 #include <stdlib.h>
 #include <string.h>
 
+/// @brief Build the revision/count key used by the per-frame mesh snapshot hash table.
+/// @details The hash table indexes immutable snapshot entries by the source mesh handle plus the
+///   geometry revision and validated vertex/index counts. Tangent state is deliberately excluded:
+///   an existing plain snapshot can be upgraded in place by tangent generation.
+static uint64_t canvas3d_mesh_snapshot_key(void *source,
+                                           uint32_t geometry_revision,
+                                           uint32_t vertex_count,
+                                           uint32_t index_count) {
+    uint64_t key = canvas3d_hash_u64((uint64_t)(uintptr_t)source);
+    key = canvas3d_hash_u64(key ^ ((uint64_t)geometry_revision << 32u));
+    key = canvas3d_hash_u64(key ^ ((uint64_t)vertex_count << 16u) ^ (uint64_t)index_count);
+    return key ? key : 1u;
+}
+
+/// @brief Return whether one snapshot entry matches the requested source/revision/count tuple.
+static int canvas3d_mesh_snapshot_entry_matches(const rt_canvas3d_mesh_snapshot_entry *entry,
+                                                void *source,
+                                                uint32_t geometry_revision,
+                                                uint32_t vertex_count,
+                                                uint32_t index_count) {
+    return entry && entry->source == source && entry->geometry_revision == geometry_revision &&
+           entry->vertex_count == vertex_count && entry->index_count == index_count;
+}
+
+/// @brief Clear the snapshot hash table to all-empty slots.
+void canvas3d_mesh_snapshot_hash_clear(rt_canvas3d *c) {
+    if (!c || !c->mesh_snapshot_hash || c->mesh_snapshot_hash_capacity <= 0)
+        return;
+    for (int32_t i = 0; i < c->mesh_snapshot_hash_capacity; ++i)
+        c->mesh_snapshot_hash[i] = -1;
+}
+
+/// @brief Insert an existing snapshot entry index into the hash table.
+/// @details Open addressing keeps the table allocation-free during lookups. Returns 0 only when
+///   the table is unavailable or saturated; callers can still fall back to the linear snapshot list.
+static int canvas3d_mesh_snapshot_hash_insert(rt_canvas3d *c, int32_t entry_index) {
+    rt_canvas3d_mesh_snapshot_entry *entry;
+    uint64_t key;
+    int32_t mask;
+    int32_t slot;
+    if (!c || !c->mesh_snapshot_hash || c->mesh_snapshot_hash_capacity <= 0 ||
+        entry_index < 0 || entry_index >= c->mesh_snapshot_count)
+        return 0;
+    entry = &c->mesh_snapshots[entry_index];
+    if (!entry->source)
+        return 0;
+    key = canvas3d_mesh_snapshot_key(
+        entry->source, entry->geometry_revision, entry->vertex_count, entry->index_count);
+    mask = c->mesh_snapshot_hash_capacity - 1;
+    slot = (int32_t)(key & (uint32_t)mask);
+    for (int32_t probe = 0; probe < c->mesh_snapshot_hash_capacity; ++probe) {
+        if (c->mesh_snapshot_hash[slot] < 0) {
+            c->mesh_snapshot_hash[slot] = entry_index;
+            return 1;
+        }
+        slot = (slot + 1) & mask;
+    }
+    return 0;
+}
+
+/// @brief Ensure the snapshot hash table can index at least @p needed entries.
+/// @details Rebuilds from the snapshot array after growth so lookup remains valid if the entry
+///   array was reallocated. The hash capacity is always a power of two and at least twice the
+///   requested entry count to keep probing short.
+static int canvas3d_ensure_mesh_snapshot_hash(rt_canvas3d *c, int32_t needed) {
+    int32_t new_cap;
+    int32_t *grown;
+    if (!c || needed < 0)
+        return 0;
+    if (needed > INT32_MAX / 2)
+        return 0;
+    new_cap = canvas3d_next_power_of_two_i32(needed > 0 ? needed * 2 : 16);
+    if (new_cap < 16)
+        new_cap = 16;
+    if (c->mesh_snapshot_hash_capacity != new_cap) {
+        if ((size_t)new_cap > SIZE_MAX / sizeof(*c->mesh_snapshot_hash))
+            return 0;
+        grown = (int32_t *)realloc(c->mesh_snapshot_hash, (size_t)new_cap * sizeof(*grown));
+        if (!grown)
+            return 0;
+        c->mesh_snapshot_hash = grown;
+        c->mesh_snapshot_hash_capacity = new_cap;
+    }
+    canvas3d_mesh_snapshot_hash_clear(c);
+    for (int32_t i = 0; i < c->mesh_snapshot_count; ++i)
+        (void)canvas3d_mesh_snapshot_hash_insert(c, i);
+    return 1;
+}
+
+/// @brief Find a cached snapshot entry index, using the hash table then falling back to a scan.
+static int32_t canvas3d_find_mesh_snapshot(rt_canvas3d *c,
+                                           void *source,
+                                           uint32_t geometry_revision,
+                                           uint32_t vertex_count,
+                                           uint32_t index_count) {
+    if (!c || !source)
+        return -1;
+    if (c->mesh_snapshot_hash && c->mesh_snapshot_hash_capacity > 0) {
+        uint64_t key = canvas3d_mesh_snapshot_key(
+            source, geometry_revision, vertex_count, index_count);
+        int32_t mask = c->mesh_snapshot_hash_capacity - 1;
+        int32_t slot = (int32_t)(key & (uint32_t)mask);
+        for (int32_t probe = 0; probe < c->mesh_snapshot_hash_capacity; ++probe) {
+            int32_t index = c->mesh_snapshot_hash[slot];
+            if (index < 0)
+                break;
+            if (index < c->mesh_snapshot_count &&
+                canvas3d_mesh_snapshot_entry_matches(&c->mesh_snapshots[index],
+                                                     source,
+                                                     geometry_revision,
+                                                     vertex_count,
+                                                     index_count))
+                return index;
+            slot = (slot + 1) & mask;
+        }
+    }
+    for (int32_t i = 0; i < c->mesh_snapshot_count; ++i) {
+        if (canvas3d_mesh_snapshot_entry_matches(&c->mesh_snapshots[i],
+                                                 source,
+                                                 geometry_revision,
+                                                 vertex_count,
+                                                 index_count))
+            return i;
+    }
+    return -1;
+}
+
 /// @brief Copy mesh vertex+index arrays into canvas-owned temp buffers.
 /// @details Used when the mesh's owning heap object may be freed before the GPU
 ///          consumes the draw command — the snapshot lives on the canvas's temp
@@ -181,14 +308,13 @@ int canvas3d_snapshot_mesh_geometry_cached(rt_canvas3d *c,
     index_count = rt_mesh3d_safe_index_count(mesh);
     int can_cache = mesh_obj && rt_heap_is_payload(mesh_obj);
     if (can_cache) {
-        for (int32_t i = 0; i < c->mesh_snapshot_count; ++i) {
-            rt_canvas3d_mesh_snapshot_entry *entry = &c->mesh_snapshots[i];
-            if (entry->source == mesh_obj && entry->geometry_revision == mesh->geometry_revision &&
-                entry->vertex_count == vertex_count && entry->index_count == index_count) {
-                *out_vertices = entry->vertices;
-                *out_indices = entry->indices;
-                return 1;
-            }
+        int32_t index = canvas3d_find_mesh_snapshot(
+            c, mesh_obj, mesh->geometry_revision, vertex_count, index_count);
+        if (index >= 0) {
+            rt_canvas3d_mesh_snapshot_entry *entry = &c->mesh_snapshots[index];
+            *out_vertices = entry->vertices;
+            *out_indices = entry->indices;
+            return 1;
         }
     }
     if (!canvas3d_snapshot_mesh_geometry(c, mesh, out_vertices, out_indices))
@@ -206,6 +332,7 @@ int canvas3d_snapshot_mesh_geometry_cached(rt_canvas3d *c,
         entry->vertices = *out_vertices;
         entry->indices = *out_indices;
         entry->tangents_generated = 0;
+        (void)canvas3d_ensure_mesh_snapshot_hash(c, c->mesh_snapshot_count);
     }
     return 1;
 }
@@ -252,20 +379,19 @@ int canvas3d_snapshot_mesh_geometry_with_tangents_cached(rt_canvas3d *c,
     index_count = rt_mesh3d_safe_index_count(mesh);
     can_cache = mesh_obj && rt_heap_is_payload(mesh_obj);
     if (can_cache) {
-        for (int32_t i = 0; i < c->mesh_snapshot_count; ++i) {
-            rt_canvas3d_mesh_snapshot_entry *entry = &c->mesh_snapshots[i];
-            if (entry->source == mesh_obj && entry->geometry_revision == mesh->geometry_revision &&
-                entry->vertex_count == vertex_count && entry->index_count == index_count) {
-                if (!entry->tangents_generated) {
-                    if (!canvas3d_generate_cached_snapshot_tangents(
-                            mesh, entry->vertices, entry->indices))
-                        return 0;
-                    entry->tangents_generated = 1;
-                }
-                *out_vertices = entry->vertices;
-                *out_indices = entry->indices;
-                return 1;
+        int32_t index = canvas3d_find_mesh_snapshot(
+            c, mesh_obj, mesh->geometry_revision, vertex_count, index_count);
+        if (index >= 0) {
+            rt_canvas3d_mesh_snapshot_entry *entry = &c->mesh_snapshots[index];
+            if (!entry->tangents_generated) {
+                if (!canvas3d_generate_cached_snapshot_tangents(
+                        mesh, entry->vertices, entry->indices))
+                    return 0;
+                entry->tangents_generated = 1;
             }
+            *out_vertices = entry->vertices;
+            *out_indices = entry->indices;
+            return 1;
         }
     }
     if (!canvas3d_snapshot_mesh_geometry(c, mesh, out_vertices, out_indices))
@@ -290,6 +416,7 @@ int canvas3d_snapshot_mesh_geometry_with_tangents_cached(rt_canvas3d *c,
         entry->vertices = *out_vertices;
         entry->indices = *out_indices;
         entry->tangents_generated = 1;
+        (void)canvas3d_ensure_mesh_snapshot_hash(c, c->mesh_snapshot_count);
     }
     return 1;
 }
