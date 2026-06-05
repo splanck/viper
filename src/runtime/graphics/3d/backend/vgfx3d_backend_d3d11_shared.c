@@ -325,6 +325,108 @@ int vgfx3d_d3d11_is_valid_cubemap_extent(int32_t face_size) {
     return face_size > 0 && face_size <= VGFX3D_D3D11_MAX_CUBEMAP_DIMENSION;
 }
 
+/// @brief Validate source/destination row spans for a mapped texture readback copy.
+int vgfx3d_d3d11_validate_mapped_texture_copy(int32_t width,
+                                              int32_t dst_stride,
+                                              uint32_t src_row_pitch,
+                                              int32_t src_bytes_per_pixel,
+                                              size_t *out_src_row_bytes,
+                                              size_t *out_dst_row_bytes) {
+    size_t src_row_bytes;
+    size_t dst_row_bytes;
+
+    if (out_src_row_bytes)
+        *out_src_row_bytes = 0;
+    if (out_dst_row_bytes)
+        *out_dst_row_bytes = 0;
+    if (width <= 0 || dst_stride <= 0 || src_row_pitch == 0 || src_bytes_per_pixel <= 0)
+        return 0;
+    if (!vgfx3d_d3d11_compute_row_bytes(width, src_bytes_per_pixel, &src_row_bytes) ||
+        !vgfx3d_d3d11_compute_row_bytes(width, 4, &dst_row_bytes))
+        return 0;
+    if ((size_t)src_row_pitch < src_row_bytes || (size_t)dst_stride < dst_row_bytes)
+        return 0;
+    if (out_src_row_bytes)
+        *out_src_row_bytes = src_row_bytes;
+    if (out_dst_row_bytes)
+        *out_dst_row_bytes = dst_row_bytes;
+    return 1;
+}
+
+/// @brief Bytes per compressed/native block row for D3D11 texture updates.
+uint64_t vgfx3d_d3d11_native_mip_row_bytes(const vgfx3d_native_texture_mip_t *mip) {
+    uint64_t cols;
+
+    if (!mip || mip->width <= 0 || mip->block_width <= 0 || mip->block_bytes <= 0)
+        return 0;
+    cols = ((uint64_t)(uint32_t)mip->width + (uint64_t)(uint32_t)mip->block_width - 1u) /
+           (uint64_t)(uint32_t)mip->block_width;
+    if (cols > UINT64_MAX / (uint64_t)(uint32_t)mip->block_bytes)
+        return 0;
+    return cols * (uint64_t)(uint32_t)mip->block_bytes;
+}
+
+/// @brief Minimum payload bytes required by a complete compressed/native mip.
+uint64_t vgfx3d_d3d11_native_mip_required_bytes(const vgfx3d_native_texture_mip_t *mip) {
+    uint64_t row_bytes;
+    uint64_t block_rows;
+
+    if (!mip || mip->height <= 0 || mip->block_height <= 0)
+        return 0;
+    row_bytes = vgfx3d_d3d11_native_mip_row_bytes(mip);
+    block_rows =
+        ((uint64_t)(uint32_t)mip->height + (uint64_t)(uint32_t)mip->block_height - 1u) /
+        (uint64_t)(uint32_t)mip->block_height;
+    if (row_bytes == 0 || block_rows == 0 || block_rows > UINT64_MAX / row_bytes)
+        return 0;
+    return row_bytes * block_rows;
+}
+
+/// @brief Check one native compressed mip against D3D11 chain and block invariants.
+int vgfx3d_d3d11_validate_native_mip_desc(const vgfx3d_native_texture_mip_t *mip,
+                                          const vgfx3d_native_texture_mip_t *previous_mip,
+                                          int32_t expected_format_id,
+                                          int32_t expected_block_width,
+                                          int32_t expected_block_height,
+                                          int32_t expected_block_bytes) {
+    uint64_t required_bytes;
+
+    if (!mip || !mip->data || mip->bytes == 0 || expected_format_id <= 0)
+        return 0;
+    if (!vgfx3d_d3d11_is_valid_texture2d_extent(mip->width, mip->height))
+        return 0;
+    if (mip->format_id != expected_format_id)
+        return 0;
+    if (mip->block_width <= 0 || mip->block_height <= 0 || mip->block_bytes <= 0)
+        return 0;
+    if (expected_block_width > 0 && mip->block_width != expected_block_width)
+        return 0;
+    if (expected_block_height > 0 && mip->block_height != expected_block_height)
+        return 0;
+    if (expected_block_bytes > 0 && mip->block_bytes != expected_block_bytes)
+        return 0;
+    if (previous_mip) {
+        int32_t expected_width = previous_mip->width > 1 ? previous_mip->width >> 1 : 1;
+        int32_t expected_height = previous_mip->height > 1 ? previous_mip->height >> 1 : 1;
+        if (mip->width != expected_width || mip->height != expected_height)
+            return 0;
+    }
+    required_bytes = vgfx3d_d3d11_native_mip_required_bytes(mip);
+    if (required_bytes == 0 || mip->bytes < required_bytes)
+        return 0;
+    return 1;
+}
+
+/// @brief Check that a native mip count can fit in D3D11's MipLevels field and chain length.
+int vgfx3d_d3d11_is_valid_native_mip_count(int32_t base_width,
+                                           int32_t base_height,
+                                           int64_t mip_count) {
+    if (!vgfx3d_d3d11_is_valid_texture2d_extent(base_width, base_height) || mip_count <= 0 ||
+        mip_count > UINT_MAX)
+        return 0;
+    return mip_count <= vgfx3d_d3d11_compute_mip_count(base_width, base_height);
+}
+
 /// @brief Clamp morph shape count to shader and index-range limits.
 /// @details HLSL buffer indexing is signed-int based in the shader source, so
 ///   the largest accepted shape count is also bounded by

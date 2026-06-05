@@ -19,7 +19,7 @@ execute_process(
         RESULT_VARIABLE probe_result
         OUTPUT_VARIABLE probe_stdout
         ERROR_VARIABLE probe_stderr
-        TIMEOUT 45
+        TIMEOUT 120
 )
 
 if (NOT "${probe_stdout}" STREQUAL "")

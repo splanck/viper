@@ -25,6 +25,7 @@
 #pragma once
 
 #include "vgfx3d_backend.h"
+#include "vgfx3d_backend_utils.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -197,6 +198,28 @@ int vgfx3d_d3d11_validate_rgba8_destination(int32_t width,
 int vgfx3d_d3d11_is_valid_texture2d_extent(int32_t width, int32_t height);
 /// @brief Check a square cubemap face dimension against D3D11 limits.
 int vgfx3d_d3d11_is_valid_cubemap_extent(int32_t face_size);
+/// @brief Validate a mapped texture row span before copying it into an RGBA8 destination.
+int vgfx3d_d3d11_validate_mapped_texture_copy(int32_t width,
+                                              int32_t dst_stride,
+                                              uint32_t src_row_pitch,
+                                              int32_t src_bytes_per_pixel,
+                                              size_t *out_src_row_bytes,
+                                              size_t *out_dst_row_bytes);
+/// @brief Bytes in one compressed/native texture block row.
+uint64_t vgfx3d_d3d11_native_mip_row_bytes(const vgfx3d_native_texture_mip_t *mip);
+/// @brief Minimum bytes needed for the complete compressed/native mip payload.
+uint64_t vgfx3d_d3d11_native_mip_required_bytes(const vgfx3d_native_texture_mip_t *mip);
+/// @brief Check that a native compressed mip is valid for a D3D11 texture mip chain.
+int vgfx3d_d3d11_validate_native_mip_desc(const vgfx3d_native_texture_mip_t *mip,
+                                          const vgfx3d_native_texture_mip_t *previous_mip,
+                                          int32_t expected_format_id,
+                                          int32_t expected_block_width,
+                                          int32_t expected_block_height,
+                                          int32_t expected_block_bytes);
+/// @brief Check that a native mip count can fit in the D3D11 texture descriptor.
+int vgfx3d_d3d11_is_valid_native_mip_count(int32_t base_width,
+                                           int32_t base_height,
+                                           int64_t mip_count);
 /// @brief Clamp morph shapes so shader-side int indexing cannot overflow.
 int32_t vgfx3d_d3d11_clamp_morph_shape_count(uint32_t vertex_count, int32_t requested_shape_count);
 /// @brief Decide whether an aged cache entry can be pruned without dropping below the floor.

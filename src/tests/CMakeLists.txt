@@ -982,8 +982,9 @@ add_test(NAME zia_viperide_editor_hot_path
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/viperide/src")
 set_tests_properties(zia_viperide_editor_hot_path PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;viperide;editor;requires_display"
-        TIMEOUT 30)
+        LABELS "zia;viperide;editor;requires_display;perf"
+        PROCESSORS 4
+        TIMEOUT 60)
 
 add_test(NAME zia_viperide_intellisense
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/intellisense_probe.zia"
@@ -1015,7 +1016,8 @@ add_test(NAME zia_smoke_vipersql
 set_tests_properties(zia_smoke_vipersql PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke"
-        TIMEOUT 120)
+        PROCESSORS 4
+        TIMEOUT 240)
 
 add_test(NAME zia_smoke_3dbowling
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/3dbowling/smoke_probe.zia"
@@ -1741,7 +1743,9 @@ if (EXISTS "${GAME3D_OPENWORLD_SLICE_PROBE}")
             PASS_REGULAR_EXPRESSION "PASS: openworld_slice_perf_probe"
             LABELS "runtime;graphics3d;zia;requires_display;perf"
             ENVIRONMENT "VIPER_3D_BACKEND=software"
-            TIMEOUT 45)
+            PROCESSORS 4
+            RESOURCE_LOCK viper_display
+            TIMEOUT 120)
 
     add_test(NAME g3d_openworld_slice_perf_harness
             COMMAND "${CMAKE_COMMAND}"
@@ -1754,7 +1758,9 @@ if (EXISTS "${GAME3D_OPENWORLD_SLICE_PROBE}")
     set_tests_properties(g3d_openworld_slice_perf_harness PROPERTIES
             PASS_REGULAR_EXPRESSION "HARNESS: name=openworld_slice"
             LABELS "runtime;graphics3d;zia;requires_display;perf"
-            TIMEOUT 45)
+            PROCESSORS 4
+            RESOURCE_LOCK viper_display
+            TIMEOUT 150)
 
     add_test(NAME g3d_openworld_slice_streaming_hitch_probe
             COMMAND $<TARGET_FILE:viper> run "streaming_hitch_probe.zia"

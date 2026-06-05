@@ -2,6 +2,7 @@
 #define VIPER_ENABLE_GRAPHICS 1
 #endif
 
+#include "rt_textureasset3d.h"
 #include "vgfx3d_backend_d3d11_shared.h"
 
 #include <limits.h>
@@ -414,6 +415,111 @@ static void test_d3d11_limits_and_prune_helpers(void) {
                 "Cache prune helper keeps recently used entries");
 }
 
+static void test_mapped_copy_and_native_mip_validation_helpers(void) {
+    uint8_t mip0_data[64] = {0};
+    uint8_t mip1_data[32] = {0};
+    vgfx3d_native_texture_mip_t mip0;
+    vgfx3d_native_texture_mip_t mip1;
+    size_t src_row_bytes = 0;
+    size_t dst_row_bytes = 0;
+
+    EXPECT_TRUE(vgfx3d_d3d11_validate_mapped_texture_copy(
+                    3, 12, 32, 8, &src_row_bytes, &dst_row_bytes) == 1 &&
+                    src_row_bytes == 24u && dst_row_bytes == 12u,
+                "Mapped readback validation accepts padded source rows");
+    EXPECT_TRUE(vgfx3d_d3d11_validate_mapped_texture_copy(
+                    3, 12, 16, 8, &src_row_bytes, &dst_row_bytes) == 0 &&
+                    src_row_bytes == 0u && dst_row_bytes == 0u,
+                "Mapped readback validation rejects short source row pitch");
+    EXPECT_TRUE(vgfx3d_d3d11_validate_mapped_texture_copy(
+                    3, 8, 32, 8, &src_row_bytes, &dst_row_bytes) == 0,
+                "Mapped readback validation rejects short RGBA8 destination rows");
+    EXPECT_TRUE(vgfx3d_d3d11_validate_mapped_texture_copy(
+                    0, 12, 32, 8, &src_row_bytes, &dst_row_bytes) == 0,
+                "Mapped readback validation rejects invalid copy widths");
+
+    memset(&mip0, 0, sizeof(mip0));
+    mip0.data = mip0_data;
+    mip0.bytes = 32;
+    mip0.width = 8;
+    mip0.height = 4;
+    mip0.block_width = 4;
+    mip0.block_height = 4;
+    mip0.block_bytes = 16;
+    mip0.format_id = RT_TEXTUREASSET3D_NATIVE_FORMAT_BC7;
+    memset(&mip1, 0, sizeof(mip1));
+    mip1.data = mip1_data;
+    mip1.bytes = 16;
+    mip1.width = 4;
+    mip1.height = 2;
+    mip1.block_width = 4;
+    mip1.block_height = 4;
+    mip1.block_bytes = 16;
+    mip1.format_id = RT_TEXTUREASSET3D_NATIVE_FORMAT_BC7;
+
+    EXPECT_TRUE(vgfx3d_d3d11_native_mip_row_bytes(&mip0) == 32u,
+                "Native mip row-byte helper counts BC7 block columns");
+    EXPECT_TRUE(vgfx3d_d3d11_native_mip_required_bytes(&mip0) == 32u,
+                "Native mip required-byte helper counts BC7 block rows");
+    EXPECT_TRUE(vgfx3d_d3d11_is_valid_native_mip_count(8, 4, 4) == 1,
+                "Native mip-count validation accepts the full D3D11 mip chain");
+    EXPECT_TRUE(vgfx3d_d3d11_is_valid_native_mip_count(8, 4, 5) == 0,
+                "Native mip-count validation rejects chains longer than the base extent");
+    EXPECT_TRUE(vgfx3d_d3d11_is_valid_native_mip_count(
+                    8, 4, (int64_t)UINT_MAX + 1ll) == 0,
+                "Native mip-count validation rejects values that overflow D3D11 MipLevels");
+    EXPECT_TRUE(vgfx3d_d3d11_validate_native_mip_desc(&mip0,
+                                                      NULL,
+                                                      mip0.format_id,
+                                                      mip0.block_width,
+                                                      mip0.block_height,
+                                                      mip0.block_bytes) == 1,
+                "Native mip validation accepts a complete first mip");
+    EXPECT_TRUE(vgfx3d_d3d11_validate_native_mip_desc(&mip1,
+                                                      &mip0,
+                                                      mip0.format_id,
+                                                      mip0.block_width,
+                                                      mip0.block_height,
+                                                      mip0.block_bytes) == 1,
+                "Native mip validation accepts the expected halved next mip");
+
+    mip1.width = 5;
+    EXPECT_TRUE(vgfx3d_d3d11_validate_native_mip_desc(&mip1,
+                                                      &mip0,
+                                                      mip0.format_id,
+                                                      mip0.block_width,
+                                                      mip0.block_height,
+                                                      mip0.block_bytes) == 0,
+                "Native mip validation rejects dimensions that do not follow the mip chain");
+    mip1.width = 4;
+    mip1.format_id = RT_TEXTUREASSET3D_NATIVE_FORMAT_ASTC;
+    EXPECT_TRUE(vgfx3d_d3d11_validate_native_mip_desc(&mip1,
+                                                      &mip0,
+                                                      mip0.format_id,
+                                                      mip0.block_width,
+                                                      mip0.block_height,
+                                                      mip0.block_bytes) == 0,
+                "Native mip validation rejects format changes inside a D3D11 texture");
+    mip1.format_id = RT_TEXTUREASSET3D_NATIVE_FORMAT_BC7;
+    mip1.block_bytes = 8;
+    EXPECT_TRUE(vgfx3d_d3d11_validate_native_mip_desc(&mip1,
+                                                      &mip0,
+                                                      mip0.format_id,
+                                                      mip0.block_width,
+                                                      mip0.block_height,
+                                                      mip0.block_bytes) == 0,
+                "Native mip validation rejects block-layout changes inside a D3D11 texture");
+    mip1.block_bytes = 16;
+    mip1.bytes = 8;
+    EXPECT_TRUE(vgfx3d_d3d11_validate_native_mip_desc(&mip1,
+                                                      &mip0,
+                                                      mip0.format_id,
+                                                      mip0.block_width,
+                                                      mip0.block_height,
+                                                      mip0.block_bytes) == 0,
+                "Native mip validation rejects short compressed payloads");
+}
+
 static void test_target_fallback_helper(void) {
     EXPECT_TRUE(vgfx3d_d3d11_resolve_available_target(VGFX3D_D3D11_TARGET_SCENE, 1, 0, 0) ==
                     VGFX3D_D3D11_TARGET_SCENE,
@@ -592,6 +698,7 @@ int main(void) {
     test_target_kind_blend_and_color_format_helpers();
     test_capacity_and_mip_helpers();
     test_d3d11_limits_and_prune_helpers();
+    test_mapped_copy_and_native_mip_validation_helpers();
     test_target_fallback_helper();
     test_morph_cache_reuse_helper();
     test_shadow_and_rtt_policy_helpers();
