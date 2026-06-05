@@ -16,6 +16,7 @@
 #include "rt.hpp"
 #include "rt_bytes.h"
 #include "rt_memstream.h"
+#include "rt_object.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -304,6 +305,36 @@ static void test_invalid_payloads_trap() {
     test_result("Invalid payloads trap", true);
 }
 
+static void test_write_bytes_invalid_data_preserves_stream() {
+    printf("Testing MemStream.WriteBytes invalid data preservation...\n");
+
+    struct FakeBytes {
+        int64_t len;
+        uint8_t *data;
+    };
+
+    void *ms = rt_memstream_new();
+    rt_memstream_write_u8(ms, 0x7A);
+    rt_memstream_set_pos(ms, 1);
+
+    FakeBytes *bad =
+        static_cast<FakeBytes *>(rt_obj_new_i64(RT_BYTES_CLASS_ID, sizeof(FakeBytes)));
+    bad->len = 1;
+    bad->data = nullptr;
+
+    EXPECT_TRAP(rt_memstream_write_bytes(ms, bad));
+    assert(rt_memstream_get_len(ms) == 1);
+    assert(rt_memstream_get_pos(ms) == 1);
+
+    rt_memstream_set_pos(ms, 0);
+    assert(rt_memstream_read_u8(ms) == 0x7A);
+
+    if (rt_obj_release_check0(bad))
+        rt_obj_free(bad);
+
+    test_result("Invalid WriteBytes data preserves stream", true);
+}
+
 /// @brief Test ToBytes.
 static void test_to_bytes() {
     printf("Testing ToBytes...\n");
@@ -506,6 +537,7 @@ int main() {
     test_bytes();
     test_strings();
     test_invalid_payloads_trap();
+    test_write_bytes_invalid_data_preserves_stream();
     test_to_bytes();
     test_clear();
     test_seek_skip();

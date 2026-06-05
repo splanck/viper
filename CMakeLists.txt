@@ -108,6 +108,11 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+if(WIN32)
+  # Keep windows.h from defining min/max macros that break std::min/std::max.
+  add_compile_definitions(NOMINMAX)
+endif()
+
 # Default to strict builds: treat warnings as errors unless opted out. MSVC ARM64
 # emits a wider warning surface for existing cross-platform code, so keep that
 # host buildable by default while still allowing explicit opt-in.

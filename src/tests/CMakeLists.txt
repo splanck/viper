@@ -1108,11 +1108,13 @@ set_tests_properties(zia_smoke_3dbaseball PROPERTIES
         TIMEOUT 30)
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_tests_properties(zia_smoke_3dbaseball PROPERTIES
-            ENVIRONMENT "VIPER_3D_BACKEND=software")
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 90)
 endif ()
 if (WIN32)
     set_tests_properties(zia_smoke_3dbaseball PROPERTIES
-            ENVIRONMENT "VIPER_3D_BACKEND=software")
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 90)
 endif ()
 
 add_test(NAME zia_smoke_3dbowling_overlay

@@ -443,8 +443,11 @@ int8_t rt_heap_try_get_header(void *payload, rt_heap_hdr_t **out_hdr) {
 ///          narrow for those addresses, so this helper scans the live registry
 ///          while holding the heap lock and compares the candidate byte range
 ///          against each allocation's payload extent. It rejects null starts,
-///          unknown pointers, freed/deferred-zero allocations, corrupt headers,
+///          unknown pointers, unregistered freed allocations, corrupt headers,
 ///          and ranges that cross a payload boundary or overflow the allocation.
+///          Deferred-zero allocations remain addressable until the matching
+///          explicit free so object destructors can read fields between
+///          rt_obj_release_check0 and rt_obj_free.
 /// @param ptr Candidate range start.
 /// @param bytes Number of bytes requested.
 /// @return 1 when the range is fully contained by a live payload, otherwise 0.
@@ -464,8 +467,6 @@ int8_t rt_heap_contains_range(const void *ptr, size_t bytes) {
 
             rt_heap_hdr_t *hdr = (rt_heap_hdr_t *)((uint8_t *)payload - sizeof(rt_heap_hdr_t));
             if (!hdr || hdr->magic != RT_MAGIC)
-                continue;
-            if (__atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) == 0)
                 continue;
             if (hdr->alloc_size < sizeof(rt_heap_hdr_t))
                 continue;

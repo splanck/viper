@@ -162,16 +162,18 @@ int8_t rt_heap_is_payload(void *payload);
 /// @return 1 when @p payload is valid, 0 otherwise.
 int8_t rt_heap_try_get_header(void *payload, rt_heap_hdr_t **out_hdr);
 
-/// @brief Safely test whether a byte range lies inside a live runtime heap payload.
+/// @brief Safely test whether a byte range lies inside a registered runtime heap payload.
 /// @details This helper accepts interior pointers, unlike @ref rt_heap_is_payload
 ///          and @ref rt_heap_try_get_header, which require the exact payload
-///          address returned by the allocator. It scans the live allocation
+///          address returned by the allocator. It scans the allocation
 ///          registry under the heap lock and validates that the full
 ///          `[ptr, ptr + bytes)` range is contained by one payload before any
 ///          caller dereferences an interior object, array, or string field.
+///          Payloads whose refcount has reached zero remain valid here until
+///          the corresponding explicit free removes them from the registry.
 /// @param ptr Candidate start address, which may be an interior payload pointer.
 /// @param bytes Number of bytes that must fit inside the same payload.
-/// @return 1 when the entire range is inside one live runtime heap payload,
+/// @return 1 when the entire range is inside one registered runtime heap payload,
 ///         otherwise 0.
 int8_t rt_heap_contains_range(const void *ptr, size_t bytes);
 

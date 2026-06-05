@@ -278,6 +278,8 @@ int32_t rt_write_ch_err(int32_t channel, ViperString *s) {
 
     const uint8_t *data = NULL;
     size_t len = rt_file_string_view(s, &data);
+    if (!data && len == 0)
+        return (int32_t)Err_InvalidOperation;
     return rt_file_write_entry(entry, data, len);
 }
 
@@ -293,6 +295,8 @@ int32_t rt_println_ch_err(int32_t channel, ViperString *s) {
 
     const uint8_t *data = NULL;
     size_t len = rt_file_string_view(s, &data);
+    if (!data && len == 0)
+        return (int32_t)Err_InvalidOperation;
     status = rt_file_write_entry(entry, data, len);
     if (status != 0)
         return status;

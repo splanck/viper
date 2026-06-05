@@ -156,6 +156,11 @@ static int32_t win32_public_to_client_coord(const struct vgfx_window *win, int32
     return vgfx_internal_scale_up_i32(value, vgfx_internal_coord_scale(win));
 }
 
+static int32_t win32_logical_window_to_client_coord(const struct vgfx_window *win, int32_t value) {
+    float scale = win ? vgfx_internal_sanitize_scale(win->scale_factor) : 1.0f;
+    return vgfx_internal_scale_up_i32(value, scale);
+}
+
 static BOOL win32_adjust_window_rect_for_scale(
     const struct vgfx_window *win, LPRECT rect, DWORD style, BOOL has_menu, DWORD exstyle) {
     HMODULE user32 = GetModuleHandleW(L"user32.dll");
@@ -1553,8 +1558,8 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
     vgfx_win32_data *data = (vgfx_win32_data *)win->platform_data;
     if (!data->hwnd)
         return;
-    int32_t client_w = win32_public_to_client_coord(win, w);
-    int32_t client_h = win32_public_to_client_coord(win, h);
+    int32_t client_w = win32_logical_window_to_client_coord(win, w);
+    int32_t client_h = win32_logical_window_to_client_coord(win, h);
     RECT rect = {0, 0, client_w, client_h};
     DWORD style = (DWORD)GetWindowLong(data->hwnd, GWL_STYLE);
     DWORD exstyle = (DWORD)GetWindowLong(data->hwnd, GWL_EXSTYLE);

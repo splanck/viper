@@ -44,6 +44,20 @@
 // calls (those with <=8 arguments). The APIs now accept std::span<const Slot>.
 
 namespace il::vm::detail::control {
+namespace {
+/// @brief True when @p name consumes the caller-owned string reference directly.
+///
+/// Helpers such as concat consume retained aliases inside the runtime bridge, so
+/// their IL operands remain owned by the VM. Release helpers consume the exact
+/// argument they receive, which means an owned temp register must be dismissed
+/// after the call.
+bool consumesCallerOwnedStringArg(std::string_view name) {
+    return name == "rt_str_release" || name == "rt_str_release_maybe" ||
+           name == "rt_memory_release_str" || name == "Viper.String.ReleaseMaybe" ||
+           name == "Viper.Memory.ReleaseStr";
+}
+} // namespace
+
 /// @brief Finalise a function by propagating the return value and signalling exit.
 ///
 /// @details Return instructions optionally carry a single operand that is
@@ -291,6 +305,29 @@ VM::ExecResult handleCall(VM &vm,
             originalArgs.push_back(args[i]);
         }
 
+        const auto *signature = il::runtime::findRuntimeSignature(in.callee);
+        il::support::SmallVector<uint8_t, 4> consumedOwnedStringArgs;
+        consumedOwnedStringArgs.resize(args.size(), 0);
+        if (signature && consumesCallerOwnedStringArg(in.callee)) {
+            const size_t paramCount = std::min(args.size(), signature->paramTypes.size());
+            for (size_t index = 0; index < paramCount; ++index) {
+                if (signature->paramTypes[index].kind != il::core::Type::Kind::Str)
+                    continue;
+
+                const auto &op = in.operands[index];
+                const bool ownedTemp = op.kind == il::core::Value::Kind::Temp &&
+                                       op.id < fr.regIsStr.size() && fr.regIsStr[op.id] != 0;
+                if (ownedTemp) {
+                    consumedOwnedStringArgs[index] = 1;
+                } else {
+                    // The release helper consumes its argument. If the source is
+                    // a literal/cache/borrowed value, pass it an extra reference
+                    // so the source remains valid after the helper returns.
+                    rt_str_retain_maybe(args[index].str);
+                }
+            }
+        }
+
         out = RuntimeBridge::callMutable(VMAccess::runtimeContext(vm),
                                          std::string_view(in.callee),
                                          std::span<Slot>{args.data(), args.size()},
@@ -298,7 +335,17 @@ VM::ExecResult handleCall(VM &vm,
                                          functionName,
                                          blockLabel);
 
-        const auto *signature = il::runtime::findRuntimeSignature(in.callee);
+        for (size_t index = 0; index < consumedOwnedStringArgs.size(); ++index) {
+            if (!consumedOwnedStringArgs[index])
+                continue;
+            const auto &op = in.operands[index];
+            if (op.kind != il::core::Value::Kind::Temp || op.id >= fr.regIsStr.size())
+                continue;
+            fr.regIsStr[op.id] = 0;
+            if (op.id < fr.regs.size())
+                fr.regs[op.id].str = nullptr;
+        }
+
         if (signature) {
             const size_t paramCount = std::min(args.size(), signature->paramTypes.size());
             for (size_t index = 0; index < paramCount; ++index) {

@@ -15,6 +15,7 @@
 #include "rt_binbuf.h"
 #include "rt_bytes.h"
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -260,6 +261,17 @@ static void test_write_read_str_preserves_embedded_nul() {
     rt_string_unref(out);
 }
 
+static void test_read_truncated_str_preserves_position() {
+    void *bb = rt_binbuf_new();
+    rt_binbuf_write_i32le(bb, 4);
+    rt_binbuf_write_byte(bb, 'a');
+    rt_binbuf_write_byte(bb, 'b');
+
+    rt_binbuf_set_position(bb, 0);
+    EXPECT_TRAP(rt_binbuf_read_str(bb));
+    assert(rt_binbuf_get_position(bb) == 0);
+}
+
 static void test_write_null_str_writes_empty() {
     void *bb = rt_binbuf_new();
     rt_binbuf_write_str(bb, nullptr);
@@ -298,6 +310,26 @@ static void test_write_read_bytes() {
 static void test_write_invalid_payloads_trap() {
     void *bb = rt_binbuf_new();
     EXPECT_TRAP(rt_binbuf_write_bytes(bb, nullptr));
+}
+
+static void test_write_bytes_invalid_data_preserves_buffer() {
+    struct FakeBytes {
+        int64_t len;
+        uint8_t *data;
+    };
+
+    void *bb = rt_binbuf_new();
+    FakeBytes *bad =
+        static_cast<FakeBytes *>(rt_obj_new_i64(RT_BYTES_CLASS_ID, sizeof(FakeBytes)));
+    bad->len = 1;
+    bad->data = nullptr;
+
+    EXPECT_TRAP(rt_binbuf_write_bytes(bb, bad));
+    assert(rt_binbuf_get_position(bb) == 0);
+    assert(rt_binbuf_get_len(bb) == 0);
+
+    if (rt_obj_release_check0(bad))
+        rt_obj_free(bad);
 }
 
 //=============================================================================
@@ -480,9 +512,11 @@ int main() {
     test_narrow_integer_range_traps();
     test_write_read_str();
     test_write_read_str_preserves_embedded_nul();
+    test_read_truncated_str_preserves_position();
     test_write_null_str_writes_empty();
     test_write_read_bytes();
     test_write_invalid_payloads_trap();
+    test_write_bytes_invalid_data_preserves_buffer();
 
     // Cursor semantics
     test_position_advances_on_write();

@@ -188,11 +188,7 @@ static void bucket_insert(rt_lrucache_impl *cache, rt_lru_node *node) {
 }
 
 /// Resize the hash table when load factor is too high.
-static void maybe_resize(rt_lrucache_impl *cache) {
-    if ((long double)cache->count * (long double)LRU_LOAD_FACTOR_DEN <=
-        (long double)cache->bucket_count * (long double)LRU_LOAD_FACTOR_NUM)
-        return;
-
+static void resize_buckets(rt_lrucache_impl *cache) {
     if (cache->bucket_count > SIZE_MAX / 2)
         return; // Can't grow further
     size_t new_bucket_count = cache->bucket_count * 2;
@@ -222,6 +218,13 @@ static void maybe_resize(rt_lrucache_impl *cache) {
     free(cache->buckets);
     cache->buckets = new_buckets;
     cache->bucket_count = new_bucket_count;
+}
+
+static void maybe_resize_for_count(rt_lrucache_impl *cache, size_t next_count) {
+    if ((long double)next_count * (long double)LRU_LOAD_FACTOR_DEN <=
+        (long double)cache->bucket_count * (long double)LRU_LOAD_FACTOR_NUM)
+        return;
+    resize_buckets(cache);
 }
 
 // ---------------------------------------------------------------------------
@@ -388,6 +391,11 @@ void rt_lrucache_put(void *obj, rt_string key, void *value) {
         return;
     }
 
+    size_t projected_count =
+        (cache->max_cap != 0 && cache->count >= cache->max_cap) ? cache->count : cache->count + 1;
+    maybe_resize_for_count(cache, projected_count);
+    idx = hash % cache->bucket_count;
+
     if (value)
         rt_obj_retain_maybe(value);
 
@@ -432,8 +440,6 @@ void rt_lrucache_put(void *obj, rt_string key, void *value) {
     bucket_insert(cache, node);
     list_push_front(cache, node);
     cache->count++;
-
-    maybe_resize(cache);
 }
 
 /// @brief Look up `key` and promote it to MRU. Returns the borrowed value pointer or NULL if

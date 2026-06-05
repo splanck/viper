@@ -365,6 +365,21 @@ HANDLE duplicate_inheritable_handle(HANDLE source) noexcept {
     return duplicate;
 }
 
+/// @brief Open an inheritable NUL device handle for children without parent stdin.
+/// @return Inheritable read handle, or @c INVALID_HANDLE_VALUE on failure.
+HANDLE open_inheritable_nul_input_handle() noexcept {
+    SECURITY_ATTRIBUTES security = {};
+    security.nLength = sizeof(security);
+    security.bInheritHandle = TRUE;
+    return CreateFileW(L"NUL",
+                       GENERIC_READ,
+                       FILE_SHARE_READ | FILE_SHARE_WRITE,
+                       &security,
+                       OPEN_EXISTING,
+                       FILE_ATTRIBUTE_NORMAL,
+                       nullptr);
+}
+
 /// @brief Initialise a STARTUPINFOEX handle-inheritance allow list.
 /// @details CreateProcessW requires @c bInheritHandles to be true when standard
 ///          handles are redirected.  The attribute list restricts inheritance to
@@ -1047,35 +1062,31 @@ RunResult run_process(const std::vector<std::string> &argv,
     }
 
     HANDLE stdin_for_child = duplicate_inheritable_handle(GetStdHandle(STD_INPUT_HANDLE));
-
-    STARTUPINFOEXW startup = {};
-    startup.StartupInfo.cb = sizeof(startup);
-    startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
-    startup.StartupInfo.hStdInput =
-        stdin_for_child != INVALID_HANDLE_VALUE ? stdin_for_child : INVALID_HANDLE_VALUE;
-    startup.StartupInfo.hStdOutput = stdout_write;
-    startup.StartupInfo.hStdError = stderr_write;
-
-    std::vector<HANDLE> inherited_handles{stdout_write, stderr_write};
-    if (stdin_for_child != INVALID_HANDLE_VALUE) {
-        inherited_handles.push_back(stdin_for_child);
+    if (stdin_for_child == INVALID_HANDLE_VALUE) {
+        stdin_for_child = open_inheritable_nul_input_handle();
     }
 
-    std::vector<char> attribute_storage;
-    if (!initialize_handle_inheritance_list(startup, attribute_storage, inherited_handles, rr.err)) {
+    if (stdin_for_child == INVALID_HANDLE_VALUE) {
         close_handle_if_valid(stdin_for_child);
         close_handle_if_valid(stdout_read);
         close_handle_if_valid(stdout_write);
         close_handle_if_valid(stderr_read);
         close_handle_if_valid(stderr_write);
-        return fail_launch(rr.err);
+        return fail_launch("failed to open child stdin handle: " + format_windows_error(GetLastError()));
     }
+
+    STARTUPINFOW startup = {};
+    startup.cb = sizeof(startup);
+    startup.dwFlags = STARTF_USESTDHANDLES;
+    startup.hStdInput = stdin_for_child;
+    startup.hStdOutput = stdout_write;
+    startup.hStdError = stderr_write;
 
     PROCESS_INFORMATION process = {};
     std::vector<wchar_t> mutable_cmdline(cmdline->begin(), cmdline->end());
     mutable_cmdline.push_back(L'\0');
 
-    DWORD creation_flags = EXTENDED_STARTUPINFO_PRESENT;
+    DWORD creation_flags = 0;
     LPVOID environment_ptr = nullptr;
     if (!environment_block.empty()) {
         creation_flags |= CREATE_UNICODE_ENVIRONMENT;
@@ -1090,10 +1101,9 @@ RunResult run_process(const std::vector<std::string> &argv,
                                         creation_flags,
                                         environment_ptr,
                                         wide_cwd ? wide_cwd->c_str() : nullptr,
-                                        &startup.StartupInfo,
+                                        &startup,
                                         &process);
     const DWORD create_error = GetLastError();
-    delete_handle_inheritance_list(startup);
 
     close_handle_if_valid(stdin_for_child);
     close_handle_if_valid(stdout_write);

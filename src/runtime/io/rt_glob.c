@@ -40,7 +40,9 @@
 #include "rt_trap.h"
 
 #include <ctype.h>
+#include <setjmp.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -49,6 +51,10 @@
 #else
 #include <sys/stat.h>
 #endif
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
 
 //=============================================================================
 // Pattern Matching
@@ -324,6 +330,11 @@ static void glob_release_object(void *obj) {
         rt_obj_free(obj);
 }
 
+static void glob_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
+    const char *err = rt_trap_get_error();
+    snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
+}
+
 /// @brief Check if `path` refers to a real directory (not a symlink/reparse point).
 ///
 /// Used by the recursive walker to decide where to descend. On Windows
@@ -368,32 +379,53 @@ static int glob_is_real_directory(rt_string path) {
 /// for matches. Use `Glob.FilesRecursive` for subtree traversal. Returns
 /// an empty owning Seq if `dir` is missing or `pattern` is NULL.
 void *rt_glob_files(rt_string dir, rt_string pattern) {
-    void *result = rt_seq_new();
+    void *volatile result = rt_seq_new();
+    void *volatile files = NULL;
+    rt_string volatile full_path = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        glob_save_trap_error(saved_error, sizeof(saved_error), "Glob.Files: result append failed");
+        rt_trap_clear_recovery();
+        if (full_path)
+            rt_string_unref((rt_string)full_path);
+        glob_release_object((void *)files);
+        glob_release_object((void *)result);
+        rt_trap(saved_error);
+        return rt_seq_new();
+    }
+
     rt_seq_set_owns_elements(result, 1);
-    if (!dir || !pattern)
+    if (!dir || !pattern) {
+        rt_trap_clear_recovery();
         return result;
+    }
     const char *pat_cstr = glob_string_cstr_no_nul(pattern);
-    if (!pat_cstr)
+    if (!pat_cstr) {
+        rt_trap_clear_recovery();
         return result;
+    }
 
-    void *files = rt_dir_files_seq(dir);
+    files = rt_dir_files_seq(dir);
 
-    int64_t count = rt_seq_len(files);
+    int64_t count = rt_seq_len((void *)files);
     for (int64_t i = 0; i < count; i++) {
-        rt_string name = (rt_string)rt_seq_get(files, i);
+        rt_string name = (rt_string)rt_seq_get((void *)files, i);
         const char *name_cstr = rt_string_cstr(name);
 
         if (glob_match_impl(pat_cstr, name_cstr, 0)) {
             // Build full path
-            rt_string full_path = rt_path_join(dir, name);
-            rt_seq_push(result, full_path);
-            rt_string_unref(full_path);
+            full_path = rt_path_join(dir, name);
+            rt_seq_push((void *)result, (void *)full_path);
+            rt_string_unref((rt_string)full_path);
+            full_path = NULL;
         }
     }
 
-    // Release the intermediate files Seq
-    if (rt_obj_release_check0(files))
-        rt_obj_free(files);
+    glob_release_object((void *)files);
+    files = NULL;
+    rt_trap_clear_recovery();
 
     return result;
 }
@@ -413,57 +445,89 @@ static void glob_recursive_helper(
     rt_string base_dir, rt_string rel_path, const char *pattern, void *result, size_t depth) {
     if (depth > 4096)
         rt_trap("Glob.FilesRecursive: recursion depth exceeded");
+    rt_string volatile current_dir = NULL;
+    rt_string volatile full_path = NULL;
+    rt_string volatile entry_rel = NULL;
+    rt_string volatile temp = NULL;
+    rt_string volatile rel_ref = NULL;
+    rt_string volatile name_ref = NULL;
+    void *volatile entries = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        glob_save_trap_error(
+            saved_error, sizeof(saved_error), "Glob.FilesRecursive: traversal failed");
+        rt_trap_clear_recovery();
+        if (name_ref)
+            rt_string_unref((rt_string)name_ref);
+        if (rel_ref)
+            rt_string_unref((rt_string)rel_ref);
+        if (temp)
+            rt_string_unref((rt_string)temp);
+        if (entry_rel)
+            rt_string_unref((rt_string)entry_rel);
+        if (full_path)
+            rt_string_unref((rt_string)full_path);
+        glob_release_object((void *)entries);
+        if (current_dir)
+            rt_string_unref((rt_string)current_dir);
+        rt_trap(saved_error);
+        return;
+    }
+
     // List all entries in current directory
-    rt_string current_dir;
-    int owns_current_dir = 0;
     if (rt_str_len(rel_path) == 0) {
         current_dir = rt_string_ref(base_dir);
     } else {
         current_dir = rt_path_join(base_dir, rel_path);
-        owns_current_dir = 1;
     }
 
-    void *entries = rt_dir_list_seq(current_dir);
-    int64_t count = rt_seq_len(entries);
+    entries = rt_dir_list_seq((rt_string)current_dir);
+    int64_t count = rt_seq_len((void *)entries);
 
     for (int64_t i = 0; i < count; i++) {
-        rt_string name = (rt_string)rt_seq_get(entries, i);
-        rt_string full_path = rt_path_join(current_dir, name);
+        rt_string name = (rt_string)rt_seq_get((void *)entries, i);
+        full_path = rt_path_join((rt_string)current_dir, name);
 
         // Build relative path for matching
-        rt_string entry_rel;
         if (rt_str_len(rel_path) == 0) {
             entry_rel = rt_string_ref(name);
         } else {
             rt_string slash = rt_const_cstr("/");
-            rt_string temp = rt_str_concat(rt_string_ref(rel_path), slash);
-            entry_rel = rt_str_concat(temp, rt_string_ref(name));
-            rt_string_unref(temp);
+            rel_ref = rt_string_ref(rel_path);
+            temp = rt_str_concat((rt_string)rel_ref, slash);
+            rel_ref = NULL;
+            name_ref = rt_string_ref(name);
+            entry_rel = rt_str_concat((rt_string)temp, (rt_string)name_ref);
+            temp = NULL;
+            name_ref = NULL;
         }
 
         // Check if this entry matches the pattern
-        if (glob_match_impl(pattern, rt_string_cstr(entry_rel), 0)) {
+        if (glob_match_impl(pattern, rt_string_cstr((rt_string)entry_rel), 0)) {
             // Only add files, not directories
-            if (rt_io_file_exists(full_path)) {
-                rt_seq_push(result, full_path);
+            if (rt_io_file_exists((rt_string)full_path)) {
+                rt_seq_push(result, (void *)full_path);
             }
         }
 
         // If directory, recurse into it
-        if (glob_is_real_directory(full_path)) {
-            glob_recursive_helper(base_dir, entry_rel, pattern, result, depth + 1);
+        if (glob_is_real_directory((rt_string)full_path)) {
+            glob_recursive_helper(base_dir, (rt_string)entry_rel, pattern, result, depth + 1);
         }
 
-        rt_string_unref(entry_rel);
-        rt_string_unref(full_path);
+        rt_string_unref((rt_string)entry_rel);
+        entry_rel = NULL;
+        rt_string_unref((rt_string)full_path);
+        full_path = NULL;
     }
 
-    glob_release_object(entries);
-    if (owns_current_dir) {
-        rt_string_unref(current_dir);
-    } else {
-        rt_string_unref(current_dir);
-    }
+    glob_release_object((void *)entries);
+    entries = NULL;
+    rt_string_unref((rt_string)current_dir);
+    current_dir = NULL;
+    rt_trap_clear_recovery();
 }
 
 /// @brief `Glob.FilesRecursive(base, pattern)` — descend the `base` subtree.
@@ -473,25 +537,45 @@ static void glob_recursive_helper(
 /// `**/*.png` or `assets/**/*.wav` span multiple directories. Symlinks
 /// are not followed.
 void *rt_glob_files_recursive(rt_string base, rt_string pattern) {
-    void *result = rt_seq_new();
+    void *volatile result = rt_seq_new();
+    rt_string volatile empty = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        glob_save_trap_error(
+            saved_error, sizeof(saved_error), "Glob.FilesRecursive: traversal failed");
+        rt_trap_clear_recovery();
+        if (empty)
+            rt_string_unref((rt_string)empty);
+        glob_release_object((void *)result);
+        rt_trap(saved_error);
+        return rt_seq_new();
+    }
+
     rt_seq_set_owns_elements(result, 1);
-    rt_string empty = rt_str_empty();
+    empty = rt_str_empty();
     if (!base || !pattern) {
-        rt_string_unref(empty);
+        rt_string_unref((rt_string)empty);
+        rt_trap_clear_recovery();
         return result;
     }
     const char *pat = glob_string_cstr_no_nul(pattern);
     if (!pat) {
-        rt_string_unref(empty);
+        rt_string_unref((rt_string)empty);
+        rt_trap_clear_recovery();
         return result;
     }
     if (!glob_string_cstr_no_nul(base)) {
-        rt_string_unref(empty);
+        rt_string_unref((rt_string)empty);
+        rt_trap_clear_recovery();
         return result;
     }
 
-    glob_recursive_helper(base, empty, pat, result, 0);
-    rt_string_unref(empty);
+    glob_recursive_helper(base, (rt_string)empty, pat, (void *)result, 0);
+    rt_string_unref((rt_string)empty);
+    empty = NULL;
+    rt_trap_clear_recovery();
 
     return result;
 }
@@ -502,29 +586,53 @@ void *rt_glob_files_recursive(rt_string base, rt_string pattern) {
 /// results (via `rt_dir_list_seq` instead of `rt_dir_files_seq`).
 /// Useful when the caller wants to pattern-match directory names.
 void *rt_glob_entries(rt_string dir, rt_string pattern) {
-    void *result = rt_seq_new();
+    void *volatile result = rt_seq_new();
+    void *volatile entries = NULL;
+    rt_string volatile full_path = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        glob_save_trap_error(
+            saved_error, sizeof(saved_error), "Glob.Entries: result append failed");
+        rt_trap_clear_recovery();
+        if (full_path)
+            rt_string_unref((rt_string)full_path);
+        glob_release_object((void *)entries);
+        glob_release_object((void *)result);
+        rt_trap(saved_error);
+        return rt_seq_new();
+    }
+
     rt_seq_set_owns_elements(result, 1);
-    if (!dir || !pattern)
+    if (!dir || !pattern) {
+        rt_trap_clear_recovery();
         return result;
+    }
     const char *pat_cstr = glob_string_cstr_no_nul(pattern);
-    if (!pat_cstr)
+    if (!pat_cstr) {
+        rt_trap_clear_recovery();
         return result;
+    }
 
-    void *entries = rt_dir_list_seq(dir);
+    entries = rt_dir_list_seq(dir);
 
-    int64_t count = rt_seq_len(entries);
+    int64_t count = rt_seq_len((void *)entries);
     for (int64_t i = 0; i < count; i++) {
-        rt_string name = (rt_string)rt_seq_get(entries, i);
+        rt_string name = (rt_string)rt_seq_get((void *)entries, i);
         const char *name_cstr = rt_string_cstr(name);
 
         if (glob_match_impl(pat_cstr, name_cstr, 0)) {
             // Build full path
-            rt_string full_path = rt_path_join(dir, name);
-            rt_seq_push(result, full_path);
-            rt_string_unref(full_path);
+            full_path = rt_path_join(dir, name);
+            rt_seq_push((void *)result, (void *)full_path);
+            rt_string_unref((rt_string)full_path);
+            full_path = NULL;
         }
     }
 
-    glob_release_object(entries);
+    glob_release_object((void *)entries);
+    entries = NULL;
+    rt_trap_clear_recovery();
     return result;
 }

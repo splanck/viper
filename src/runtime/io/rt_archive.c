@@ -127,6 +127,25 @@ static void archive_save_trap_error(char *buffer, size_t buffer_size, const char
     snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
 }
 
+static void archive_add_with_temp_data(
+    void *obj, rt_string name, void *data, const char *fallback) {
+    void *volatile owned_data = data;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        archive_save_trap_error(saved_error, sizeof(saved_error), fallback);
+        rt_trap_clear_recovery();
+        archive_release_temp_object((void *)owned_data);
+        rt_trap(saved_error);
+        return;
+    }
+
+    rt_archive_add(obj, name, (void *)owned_data);
+    rt_trap_clear_recovery();
+    archive_release_temp_object((void *)owned_data);
+}
+
 /// @brief Extract a UTF-8 C path from an `rt_string`, trapping on failure.
 ///
 /// Converts a Viper string to a null-terminated C path via
@@ -2736,15 +2755,22 @@ void rt_archive_add(void *obj, rt_string name, void *data) {
         return;
     }
 
+    int64_t raw_len_i64 = bytes_len(data);
+    if (raw_len_i64 < 0) {
+        free(norm_name);
+        rt_trap("Archive: invalid data length");
+        return;
+    }
     uint8_t *raw_data = bytes_data(data);
-    size_t raw_len = (size_t)bytes_len(data);
+    size_t raw_len = (size_t)raw_len_i64;
     if (raw_len > 0 && !raw_data) {
         free(norm_name);
         rt_trap("Archive: invalid data");
         return;
     }
-    if (!archive_require_zip32_size(raw_len, "Archive: ZIP64 entries are not supported")) {
+    if (raw_len > UINT32_MAX) {
         free(norm_name);
+        rt_trap("Archive: ZIP64 entries are not supported");
         return;
     }
 
@@ -2758,23 +2784,56 @@ void rt_archive_add(void *obj, rt_string name, void *data) {
     size_t write_len = raw_len;
 
     if (raw_len > 64) {
+        void *volatile compressed_owner = NULL;
+        char *volatile norm_name_owner = norm_name;
+        jmp_buf recovery;
+        rt_trap_set_recovery(&recovery);
+        if (setjmp(recovery) != 0) {
+            char saved_error[256];
+            archive_save_trap_error(saved_error, sizeof(saved_error), "Archive: failed to compress entry");
+            rt_trap_clear_recovery();
+            archive_release_temp_object((void *)compressed_owner);
+            free((char *)norm_name_owner);
+            rt_trap(saved_error);
+            return;
+        }
+
         compressed = rt_compress_deflate(data);
+        compressed_owner = compressed;
         if (!compressed) {
+            rt_trap_clear_recovery();
             free(norm_name);
             rt_trap("Archive: failed to compress entry");
             return;
         }
-        size_t comp_len = (size_t)bytes_len(compressed);
+        int64_t comp_len_i64 = bytes_len(compressed);
+        if (comp_len_i64 < 0 || (uint64_t)comp_len_i64 > (uint64_t)SIZE_MAX) {
+            rt_trap("Archive: invalid compressed data length");
+            return;
+        }
+        uint8_t *comp_data = bytes_data(compressed);
+        if (comp_len_i64 > 0 && !comp_data) {
+            rt_trap("Archive: invalid compressed data");
+            return;
+        }
+        size_t comp_len = (size_t)comp_len_i64;
         if (comp_len < raw_len) {
             method = ZIP_METHOD_DEFLATE;
-            write_data = bytes_data(compressed);
+            write_data = comp_data;
             write_len = comp_len;
         }
+        rt_trap_clear_recovery();
     }
-    if (!archive_require_zip32_size(write_len, "Archive: ZIP64 entries are not supported") ||
-        !archive_require_zip32_size(ar->write_len, "Archive: ZIP64 archives are not supported")) {
+    if (write_len > UINT32_MAX) {
         free(norm_name);
         archive_release_temp_object(compressed);
+        rt_trap("Archive: ZIP64 entries are not supported");
+        return;
+    }
+    if (ar->write_len > UINT32_MAX) {
+        free(norm_name);
+        archive_release_temp_object(compressed);
+        rt_trap("Archive: ZIP64 archives are not supported");
         return;
     }
 
@@ -2792,9 +2851,9 @@ void rt_archive_add(void *obj, rt_string name, void *data) {
     // Write local file header
     size_t name_len = strlen(norm_name);
     if (name_len > UINT16_MAX) {
-        rt_trap("Archive: entry name too long");
         free(norm_name);
         archive_release_temp_object(compressed);
+        rt_trap("Archive: entry name too long");
         return;
     }
     uint8_t local_header[ZIP_LOCAL_HEADER_SIZE];
@@ -2839,8 +2898,7 @@ void rt_archive_add(void *obj, rt_string name, void *data) {
 /// @param text String contents.
 void rt_archive_add_str(void *obj, rt_string name, rt_string text) {
     void *data = rt_bytes_from_str(text);
-    rt_archive_add(obj, name, data);
-    archive_release_temp_object(data);
+    archive_add_with_temp_data(obj, name, data, "Archive: failed to add string entry");
 }
 
 /// @brief `Archive.AddFile(name, srcPath)` — copy a file from disk into the archive.
@@ -2928,8 +2986,7 @@ void rt_archive_add_file(void *obj, rt_string name, rt_string src_path) {
         return;
 #endif
 
-    rt_archive_add(obj, name, data);
-    archive_release_temp_object(data);
+    archive_add_with_temp_data(obj, name, data, "Archive: failed to add file entry");
 }
 
 /// @brief `Archive.AddDir(name)` — record an explicit directory entry.
@@ -3218,9 +3275,14 @@ int8_t rt_archive_is_zip_bytes(void *data) {
     if (!data)
         return 0;
 
-    if (bytes_len(data) < 4)
+    int64_t len = bytes_len(data);
+    if (len < 4)
         return 0;
 
-    uint32_t magic = read_u32(bytes_data(data));
+    const uint8_t *src = bytes_data(data);
+    if (!src)
+        return 0;
+
+    uint32_t magic = read_u32(src);
     return (magic == ZIP_LOCAL_HEADER_SIG || magic == ZIP_END_RECORD_SIG) ? 1 : 0;
 }

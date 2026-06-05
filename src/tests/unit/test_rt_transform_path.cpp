@@ -55,6 +55,7 @@ extern void *rt_mat4_inverse(void *m);
 
 static int tests_passed = 0;
 static int tests_run = 0;
+static constexpr double kPi = 3.14159265358979323846;
 
 #define EXPECT_TRUE(cond, msg)                                                                     \
     do {                                                                                           \
@@ -261,7 +262,7 @@ static void test_transform_clamps_extreme_finite_inputs() {
                 "Extreme finite quaternion normalizes to finite components");
     EXPECT_NEAR(fabs(rt_quat_x(rot)), 1.0, 0.01, "Extreme quaternion keeps dominant axis");
 
-    rt_transform3d_rotate(xf, rt_vec3_new(1.0e300, 0.0, 0.0), M_PI);
+    rt_transform3d_rotate(xf, rt_vec3_new(1.0e300, 0.0, 0.0), kPi);
     rot = rt_transform3d_get_rotation(xf);
     EXPECT_TRUE(std::isfinite(rt_quat_x(rot)) && std::isfinite(rt_quat_w(rot)),
                 "Extreme finite rotation axis normalizes without overflow");

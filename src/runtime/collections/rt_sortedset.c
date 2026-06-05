@@ -36,10 +36,16 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
+#include <setjmp.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "rt_trap.h"
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
 
 /// Internal structure for SortedSet.
 struct rt_sortedset_impl {
@@ -84,16 +90,44 @@ static rt_string retain_result_string(rt_string s) {
     return s;
 }
 
+static void sortedset_release_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static void sortedset_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
+    const char *err = rt_trap_get_error();
+    snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
+}
+
 /// @brief Push an independent copy of @p s onto @p seq (balances the copy's
 ///        reference so the seq holds the only owning ref).
 static void seq_push_string_copy(void *seq, rt_string s) {
-    rt_string copy = copy_string(s);
-    if (!copy) {
-        rt_trap("SortedSet: string allocation failed");
+    rt_string volatile copy = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        sortedset_save_trap_error(
+            saved_error, sizeof(saved_error), "SortedSet: snapshot append failed");
+        rt_trap_clear_recovery();
+        if (copy)
+            rt_str_release_maybe((rt_string)copy);
+        sortedset_release_object(seq);
+        rt_trap(saved_error);
         return;
     }
-    rt_seq_push(seq, copy);
-    rt_str_release_maybe(copy);
+
+    copy = copy_string(s);
+    if (!copy) {
+        rt_trap("SortedSet: string allocation failed");
+        rt_trap_clear_recovery();
+        return;
+    }
+    rt_seq_push(seq, (void *)copy);
+    rt_str_release_maybe((rt_string)copy);
+    copy = NULL;
+    rt_trap_clear_recovery();
 }
 
 /// @brief Lexicographic byte comparison of two strings (NULL treated as "");

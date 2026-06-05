@@ -110,6 +110,27 @@ template <typename T, size_t N = 8> class SmallVector {
         return next < minCapacity ? minCapacity : next;
     }
 
+    /// @brief Move elements from another vector's inline storage into this vector.
+    void moveInlineFrom(SmallVector &other) noexcept(std::is_nothrow_move_constructible_v<T>) {
+        size_t constructed = 0;
+        if constexpr (std::is_nothrow_move_constructible_v<T>) {
+            for (; constructed < other.size_; ++constructed)
+                std::construct_at(inlineData() + constructed,
+                                  std::move(other.inlineData()[constructed]));
+        } else {
+            try {
+                for (; constructed < other.size_; ++constructed)
+                    std::construct_at(inlineData() + constructed,
+                                      std::move(other.inlineData()[constructed]));
+            } catch (...) {
+                destroyRange(inlineData(), constructed);
+                throw;
+            }
+        }
+        size_ = constructed;
+        other.clear();
+    }
+
   public:
     using value_type = T;
     using size_type = size_t;
@@ -169,17 +190,7 @@ template <typename T, size_t N = 8> class SmallVector {
             other.capacity_ = 0;
             other.size_ = 0;
         } else {
-            size_t constructed = 0;
-            try {
-                for (; constructed < other.size_; ++constructed)
-                    std::construct_at(inlineData() + constructed,
-                                      std::move(other.inlineData()[constructed]));
-            } catch (...) {
-                destroyRange(inlineData(), constructed);
-                throw;
-            }
-            size_ = constructed;
-            other.clear();
+            moveInlineFrom(other);
         }
     }
 
@@ -226,17 +237,7 @@ template <typename T, size_t N = 8> class SmallVector {
                 other.capacity_ = 0;
                 other.size_ = 0;
             } else {
-                size_t constructed = 0;
-                try {
-                    for (; constructed < other.size_; ++constructed)
-                        std::construct_at(inlineData() + constructed,
-                                          std::move(other.inlineData()[constructed]));
-                } catch (...) {
-                    destroyRange(inlineData(), constructed);
-                    throw;
-                }
-                size_ = constructed;
-                other.clear();
+                moveInlineFrom(other);
             }
         }
         return *this;

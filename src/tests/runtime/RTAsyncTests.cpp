@@ -17,6 +17,7 @@ extern "C" {
 #include "rt_async.h"
 #include "rt_cancellation.h"
 #include "rt_future.h"
+#include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -443,6 +444,40 @@ static void test_async_all_result_owns_values() {
         rt_obj_free(results);
 }
 
+static void test_async_all_value_retain_overflow_completes_with_error() {
+    void *promise = rt_promise_new();
+    void *future = rt_promise_get_future(promise);
+    void *value = make_obj();
+    void *futures = rt_seq_new();
+
+    rt_promise_set_owned(promise, value);
+    rt_seq_push(futures, future);
+
+    rt_heap_hdr_t *hdr = rt_heap_hdr(value);
+    hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+
+    void *all_future = rt_async_all(futures);
+    assert(all_future != NULL);
+    assert(rt_future_wait_for(all_future, 250) == 1);
+    assert(rt_future_is_error(all_future) == 1);
+
+    rt_string err = rt_future_get_error(all_future);
+    assert(std::strstr(rt_string_cstr(err), "refcount overflow") != NULL);
+    rt_string_unref(err);
+
+    hdr->refcnt = 2;
+    if (rt_obj_release_check0(value))
+        rt_obj_free(value);
+    if (rt_obj_release_check0(all_future))
+        rt_obj_free(all_future);
+    if (rt_obj_release_check0(future))
+        rt_obj_free(future);
+    if (rt_obj_release_check0(promise))
+        rt_obj_free(promise);
+    if (rt_obj_release_check0(futures))
+        rt_obj_free(futures);
+}
+
 static void test_async_all_handles_already_complete_inputs() {
     void *p1 = rt_promise_new();
     void *f1 = rt_promise_get_future(p1);
@@ -562,6 +597,40 @@ static void test_async_any_handles_already_complete_winner() {
 
     rt_promise_set_owned(pending_promise, make_obj());
     assert(rt_future_get(any_future) == winner);
+}
+
+static void test_async_any_value_retain_overflow_completes_with_error() {
+    void *promise = rt_promise_new();
+    void *future = rt_promise_get_future(promise);
+    void *value = make_obj();
+    void *futures = rt_seq_new();
+
+    rt_promise_set_owned(promise, value);
+    rt_seq_push(futures, future);
+
+    rt_heap_hdr_t *hdr = rt_heap_hdr(value);
+    hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+
+    void *any_future = rt_async_any(futures);
+    assert(any_future != NULL);
+    assert(rt_future_wait_for(any_future, 250) == 1);
+    assert(rt_future_is_error(any_future) == 1);
+
+    rt_string err = rt_future_get_error(any_future);
+    assert(std::strstr(rt_string_cstr(err), "refcount overflow") != NULL);
+    rt_string_unref(err);
+
+    hdr->refcnt = 2;
+    if (rt_obj_release_check0(value))
+        rt_obj_free(value);
+    if (rt_obj_release_check0(any_future))
+        rt_obj_free(any_future);
+    if (rt_obj_release_check0(future))
+        rt_obj_free(future);
+    if (rt_obj_release_check0(promise))
+        rt_obj_free(promise);
+    if (rt_obj_release_check0(futures))
+        rt_obj_free(futures);
 }
 
 //=============================================================================
@@ -777,12 +846,14 @@ int main() {
     test_async_all_rejects_huge_count();
     test_async_all_short_circuits_on_error();
     test_async_all_result_owns_values();
+    test_async_all_value_retain_overflow_completes_with_error();
     test_async_all_handles_already_complete_inputs();
     test_async_all_already_complete_error_short_circuits();
     test_async_any_basic();
     test_async_any_empty();
     test_async_any_rejects_huge_count();
     test_async_any_handles_already_complete_winner();
+    test_async_any_value_retain_overflow_completes_with_error();
     test_async_map_basic();
     test_async_map_chained();
     test_async_map_retains_callback_result();

@@ -15,6 +15,7 @@
 #include "rt_bytes.h"
 #include "rt_compress.h"
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -84,6 +85,24 @@ static void *make_bytes(const uint8_t *data, size_t len) {
 static void *make_bytes_str(const char *str) {
     size_t len = strlen(str);
     return make_bytes((const uint8_t *)str, len);
+}
+
+static void *make_invalid_bytes_object() {
+    struct FakeBytes {
+        int64_t len;
+        uint8_t *data;
+    };
+
+    FakeBytes *bad =
+        static_cast<FakeBytes *>(rt_obj_new_i64(RT_BYTES_CLASS_ID, sizeof(FakeBytes)));
+    bad->len = 1;
+    bad->data = nullptr;
+    return bad;
+}
+
+static void release_obj(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
 }
 
 static void *bytes_with_extra_byte(void *bytes, uint8_t extra) {
@@ -541,6 +560,25 @@ static void test_inflate_rejects_trailing_data() {
     test_result("Trailing bytes rejected", true);
 }
 
+static void test_invalid_bytes_data_traps_at_api_boundary() {
+    printf("Testing invalid Bytes data traps at Compress API boundary:\n");
+
+    void *bad = make_invalid_bytes_object();
+
+    EXPECT_TRAP(rt_compress_deflate(bad));
+    EXPECT_TRAP(rt_compress_deflate_lvl(bad, 1));
+    EXPECT_TRAP(rt_compress_inflate(bad));
+    EXPECT_TRAP(rt_compress_inflate_limit(bad, 16));
+    EXPECT_TRAP((void)rt_compress_inflate_str(bad));
+    EXPECT_TRAP(rt_compress_gzip(bad));
+    EXPECT_TRAP(rt_compress_gzip_lvl(bad, 1));
+    EXPECT_TRAP(rt_compress_gunzip(bad));
+    EXPECT_TRAP((void)rt_compress_gunzip_str(bad));
+
+    release_obj(bad);
+    test_result("Invalid Bytes data rejected", true);
+}
+
 //=============================================================================
 // Entry Point
 //=============================================================================
@@ -600,6 +638,8 @@ int main() {
     test_inflate_rejects_trailing_data();
     printf("\n");
     test_inflate_limit_traps();
+    printf("\n");
+    test_invalid_bytes_data_traps_at_api_boundary();
     printf("\n");
 
     // Large data

@@ -100,16 +100,20 @@ static void rt_set_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
 
 /// @brief Resize the hash table when load factor is exceeded.
 static int resize_set(rt_set_impl *set) {
-    if (set->capacity > SIZE_MAX / 2)
+    if (set->capacity > SIZE_MAX / 2) {
+        rt_trap("Set: capacity overflow");
         return 0;
+    }
     size_t new_capacity = set->capacity * 2;
     if (new_capacity > SIZE_MAX / sizeof(rt_set_entry *)) {
         rt_trap("Set: allocation size overflow");
         return 0;
     }
     rt_set_entry **new_buckets = calloc(new_capacity, sizeof(rt_set_entry *));
-    if (!new_buckets)
-        return 0; // Allocation failed, keep old table
+    if (!new_buckets) {
+        rt_trap("Set: memory allocation failed");
+        return 0;
+    }
 
     // Rehash all entries
     for (size_t i = 0; i < set->capacity; ++i) {
@@ -196,7 +200,8 @@ int8_t rt_set_add(void *obj, void *elem) {
     // Check load factor and resize if needed
     if ((long double)set->count * (long double)SET_LOAD_FACTOR_DEN >=
         (long double)set->capacity * (long double)SET_LOAD_FACTOR_NUM) {
-        (void)resize_set(set);
+        if (!resize_set(set))
+            return 0;
     }
 
     size_t idx = rt_box_hash(elem) % set->capacity;

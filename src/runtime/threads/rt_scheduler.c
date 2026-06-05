@@ -38,7 +38,9 @@
 #include "rt_string_internal.h"
 #include "rt_threads.h"
 
+#include <setjmp.h>
 #include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -53,6 +55,10 @@
 #endif
 
 #include "rt_trap.h"
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
 
 //=============================================================================
 // Time Helper
@@ -191,6 +197,21 @@ static void scheduler_release_object(void *sched) {
         rt_obj_free(sched);
 }
 
+static void scheduler_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
+    const char *err = rt_trap_get_error();
+    snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
+}
+
+static void scheduler_free_entry_list(sched_entry *e) {
+    while (e) {
+        sched_entry *next = e->next;
+        if (e->name)
+            rt_string_unref(e->name);
+        free(e);
+        e = next;
+    }
+}
+
 /// @brief Finalizer for scheduler objects. Frees all entries.
 static void scheduler_finalizer(void *obj) {
     if (!obj)
@@ -203,13 +224,7 @@ static void scheduler_finalizer(void *obj) {
     data->count = 0;
     SCHED_UNLOCK(data);
 
-    while (e) {
-        sched_entry *next = e->next;
-        if (e->name)
-            rt_string_unref(e->name);
-        free(e);
-        e = next;
-    }
+    scheduler_free_entry_list(e);
 
 #if defined(_WIN32)
     DeleteCriticalSection(&data->mutex);
@@ -267,7 +282,19 @@ void rt_scheduler_schedule(void *sched, rt_string name, int64_t delay_ms) {
     rt_obj_retain_maybe(sched);
 
     int64_t due = due_time_from_now(delay_ms);
-    rt_string retained_name = rt_string_ref(name);
+    rt_string retained_name = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        scheduler_save_trap_error(saved_error, sizeof(saved_error), "Scheduler.Schedule: name retain failed");
+        rt_trap_clear_recovery();
+        scheduler_release_object(sched);
+        rt_trap(saved_error);
+        return;
+    }
+    retained_name = rt_string_ref(name);
+    rt_trap_clear_recovery();
 
     SCHED_LOCK(data);
 
@@ -377,17 +404,38 @@ int8_t rt_scheduler_is_due(void *sched, rt_string name) {
 /// @param sched Scheduler pointer.
 /// @return Seq of due task name strings. Empty seq if none due.
 void *rt_scheduler_poll(void *sched) {
-    void *result = rt_seq_new();
-    rt_seq_set_owns_elements(result, 1);
     if (!sched)
-        return result;
+        return rt_seq_new_owned();
     rt_scheduler_data *data = scheduler_require(sched, 0);
     if (!data)
-        return result;
+        return rt_seq_new_owned();
     rt_obj_retain_maybe(sched);
     int64_t now = current_time_ms();
     sched_entry *due_head = NULL;
     sched_entry *due_tail = NULL;
+    int64_t due_count = 0;
+
+    SCHED_LOCK(data);
+    for (sched_entry *e = data->head; e; e = e->next) {
+        if (now >= e->due_time_ms)
+            due_count++;
+    }
+    SCHED_UNLOCK(data);
+
+    void *result = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        scheduler_save_trap_error(
+            saved_error, sizeof(saved_error), "Scheduler.Poll: result allocation failed");
+        rt_trap_clear_recovery();
+        scheduler_release_object(sched);
+        rt_trap(saved_error);
+        return rt_seq_new_owned();
+    }
+    result = rt_seq_with_capacity_owned(due_count > 0 ? due_count : 1);
+    rt_trap_clear_recovery();
 
     SCHED_LOCK(data);
     sched_entry **pp = &data->head;
@@ -409,12 +457,26 @@ void *rt_scheduler_poll(void *sched) {
     SCHED_UNLOCK(data);
     scheduler_release_object(sched);
 
+    sched_entry *volatile remaining = due_head;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        scheduler_save_trap_error(
+            saved_error, sizeof(saved_error), "Scheduler.Poll: result append failed");
+        rt_trap_clear_recovery();
+        scheduler_free_entry_list((sched_entry *)remaining);
+        scheduler_release_object(result);
+        rt_trap(saved_error);
+        return rt_seq_new_owned();
+    }
     while (due_head) {
         sched_entry *next = due_head->next;
         rt_seq_push_raw(result, (void *)due_head->name);
         free(due_head);
         due_head = next;
+        remaining = due_head;
     }
+    rt_trap_clear_recovery();
     return result;
 }
 
@@ -456,10 +518,5 @@ void rt_scheduler_clear(void *sched) {
     SCHED_UNLOCK(data);
     scheduler_release_object(sched);
 
-    while (e) {
-        sched_entry *next = e->next;
-        rt_string_unref(e->name);
-        free(e);
-        e = next;
-    }
+    scheduler_free_entry_list(e);
 }

@@ -46,6 +46,9 @@ int main(void) {
     int32_t open_out = rt_open_err_vstr(path, RT_F_OUTPUT, 5);
     assert(open_out == Err_None);
 
+    assert(rt_write_ch_err(5, NULL) == Err_InvalidOperation);
+    assert(rt_println_ch_err(5, NULL) == Err_InvalidOperation);
+
     ViperString *hello = rt_const_cstr("hello ");
     int32_t write_rc = rt_write_ch_err(5, hello);
     assert(write_rc == Err_None);

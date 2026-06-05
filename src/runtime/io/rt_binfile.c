@@ -444,6 +444,10 @@ void rt_binfile_write(void *obj, void *bytes, int64_t offset, int64_t count) {
 
     int64_t bytes_len = rt_bytes_len(bytes);
     const uint8_t *bytes_data = rt_bytes_data_const(bytes);
+    if (bytes_len > 0 && !bytes_data) {
+        rt_trap("BinFile.Write: invalid bytes");
+        return;
+    }
     if (offset < 0)
         offset = 0;
     if (count <= 0)

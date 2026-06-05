@@ -13,6 +13,7 @@
 #include "rt_binfile.h"
 #include "rt_bytes.h"
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_string.h"
 #include "tests/common/PlatformSkip.h"
 
@@ -335,6 +336,39 @@ static void test_invalid_bytes_handle_traps() {
     cleanup_test_file();
 }
 
+static void test_write_invalid_bytes_data_traps_before_write() {
+    cleanup_test_file();
+
+    struct FakeBytes {
+        int64_t len;
+        uint8_t *data;
+    };
+
+    rt_string path = make_string(test_file);
+    rt_string mode = make_string("w");
+    void *bf = rt_binfile_open(path, mode);
+    assert(bf != nullptr);
+
+    FakeBytes *bad =
+        static_cast<FakeBytes *>(rt_obj_new_i64(RT_BYTES_CLASS_ID, sizeof(FakeBytes)));
+    bad->len = 1;
+    bad->data = nullptr;
+
+    EXPECT_TRAP(rt_binfile_write(bf, bad, 0, 1));
+    rt_binfile_write_byte(bf, 0x55);
+    rt_binfile_close(bf);
+
+    mode = make_string("r");
+    bf = rt_binfile_open(path, mode);
+    assert(rt_binfile_read_byte(bf) == 0x55);
+    assert(rt_binfile_read_byte(bf) == -1);
+    rt_binfile_close(bf);
+
+    if (rt_obj_release_check0(bad))
+        rt_obj_free(bad);
+    cleanup_test_file();
+}
+
 static void test_eof() {
     cleanup_test_file();
 
@@ -651,6 +685,7 @@ int main() {
     test_size();
     test_large_count_clamps_without_overflow();
     test_invalid_bytes_handle_traps();
+    test_write_invalid_bytes_data_traps_before_write();
     test_eof();
     test_append_mode();
     test_read_write_mode();

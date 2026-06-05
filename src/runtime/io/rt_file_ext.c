@@ -35,6 +35,7 @@
 
 #include "rt_file_path.h"
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
@@ -48,6 +49,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <setjmp.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -89,6 +91,21 @@ typedef struct stat rt_fileext_stat_t;
 #ifndef PATH_MAX
 #define PATH_MAX 4096
 #endif
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
+
+static void rt_fileext_release_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static void rt_fileext_save_trap_error(
+    char *buffer, size_t buffer_size, const char *fallback) {
+    const char *err = rt_trap_get_error();
+    snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
+}
 
 static uint64_t rt_fileext_random_u64(unsigned attempt) {
     uint64_t value = 0;
@@ -398,8 +415,10 @@ static int rt_fileext_open_temp_utf8(const char *path, int binary, char **out_tm
         *out_tmp = NULL;
     for (unsigned attempt = 0; attempt < 128; ++attempt) {
         char *tmp = rt_fileext_make_temp_path(path, attempt);
-        if (!tmp)
+        if (!tmp) {
+            errno = ENOMEM;
             return -1;
+        }
 
         int flags = O_WRONLY | O_CREAT | O_EXCL | (binary ? RT_FILE_O_BINARY : 0);
 #if defined(O_NOFOLLOW)
@@ -907,6 +926,10 @@ void rt_io_file_write_all_bytes(rt_string path, void *bytes) {
         return;
     }
     const uint8_t *src = rt_bytes_data_const(bytes);
+    if (len > 0 && !src) {
+        rt_trap("Viper.IO.File.WriteAllBytes: invalid Bytes data");
+        return;
+    }
     if (!rt_fileext_write_atomic_utf8(cpath, src, (size_t)len, 1))
         rt_trap("Viper.IO.File.WriteAllBytes: failed to write file");
 }
@@ -1004,6 +1027,24 @@ void *rt_io_file_read_all_lines(rt_string path) {
         free(buf);
         return NULL;
     }
+    void *volatile owned_seq = seq;
+    char *volatile owned_buf = buf;
+    rt_string volatile line = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        rt_fileext_save_trap_error(
+            saved_error, sizeof(saved_error), "Viper.IO.File.ReadAllLines: failed to split lines");
+        rt_trap_clear_recovery();
+        if (line)
+            rt_string_unref((rt_string)line);
+        rt_fileext_release_object((void *)owned_seq);
+        free((char *)owned_buf);
+        rt_trap(saved_error);
+        return rt_seq_new();
+    }
+
     rt_seq_set_owns_elements(seq, 1);
     size_t i = 0;
     while (i < off) {
@@ -1012,10 +1053,11 @@ void *rt_io_file_read_all_lines(rt_string path) {
             ++i;
         size_t end = i;
 
-        rt_string line =
+        line =
             (end == start) ? rt_str_empty() : rt_string_from_bytes(buf + start, end - start);
-        rt_seq_push(seq, line);
-        rt_string_unref(line);
+        rt_seq_push(seq, (void *)line);
+        rt_string_unref((rt_string)line);
+        line = NULL;
 
         if (i >= off)
             break;
@@ -1028,13 +1070,16 @@ void *rt_io_file_read_all_lines(rt_string path) {
             ++i; // '\n'
         }
         if (i == off) {
-            rt_string trailing = rt_str_empty();
-            rt_seq_push(seq, trailing);
-            rt_string_unref(trailing);
+            line = rt_str_empty();
+            rt_seq_push(seq, (void *)line);
+            rt_string_unref((rt_string)line);
+            line = NULL;
         }
     }
 
     free(buf);
+    owned_buf = NULL;
+    rt_trap_clear_recovery();
     return seq;
 }
 

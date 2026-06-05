@@ -6,18 +6,39 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_internal.h"
+#include "rt_heap.h"
+#include "rt_object.h"
 #include "rt_scheduler.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
 #include <cassert>
+#include <csetjmp>
 #include <cstring>
 #include <string>
 #include <thread>
 #include <vector>
 
-extern "C" void vm_trap(const char *msg) {
+extern "C" {
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+
+void vm_trap(const char *msg) {
     rt_abort(msg);
+}
+}
+
+template <typename Fn> static bool expect_trap(Fn fn) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        fn();
+        rt_trap_clear_recovery();
+        return false;
+    }
+    rt_trap_clear_recovery();
+    return true;
 }
 
 static void test_new_scheduler() {
@@ -130,6 +151,22 @@ static void test_duplicate_name_replaces() {
     assert(rt_scheduler_pending(s) == 1);
 }
 
+static void test_schedule_name_retain_overflow_drops_scheduler_reference() {
+    void *s = rt_scheduler_new();
+    rt_string name = rt_string_from_bytes("overflow", 8);
+    rt_heap_hdr_t *sched_hdr = rt_heap_hdr(s);
+    size_t sched_refcnt = sched_hdr->refcnt;
+
+    name->literal_refs = RT_HEAP_MAX_MORTAL_REFCNT;
+    assert(expect_trap([&]() { rt_scheduler_schedule(s, name, 0); }));
+    assert(sched_hdr->refcnt == sched_refcnt);
+
+    name->literal_refs = 1;
+    rt_string_unref(name);
+    if (rt_obj_release_check0(s))
+        rt_obj_free(s);
+}
+
 static void test_embedded_nul_names_are_distinct() {
     void *s = rt_scheduler_new();
     const char name1_bytes[3] = {'a', '\0', '1'};
@@ -218,6 +255,7 @@ int main() {
     test_poll_returns_due();
     test_clear();
     test_duplicate_name_replaces();
+    test_schedule_name_retain_overflow_drops_scheduler_reference();
     test_embedded_nul_names_are_distinct();
     test_embedded_nul_poll_preserves_name();
     test_concurrent_schedule_cancel();

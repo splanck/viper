@@ -437,11 +437,11 @@ void rt_binbuf_write_i64be(void *obj, int64_t value) {
 /// strings serialize as length 0 with no payload.
 void rt_binbuf_write_str(void *obj, rt_string value) {
     rt_binbuf_impl *buf = binbuf_require(obj);
+    if (!buf)
+        return;
 
     const char *cstr = value ? rt_string_cstr(value) : "";
     int64_t slen = value ? rt_str_len(value) : 0;
-    if (!buf)
-        return;
     if (slen < 0) {
         rt_trap("BinaryBuffer: invalid string length");
         return;
@@ -455,16 +455,18 @@ void rt_binbuf_write_str(void *obj, rt_string value) {
         return;
     }
 
-    // Write 4-byte LE length prefix
-    rt_binbuf_write_i32le(obj, slen);
+    if (!binbuf_ensure(buf, 4 + slen))
+        return;
 
-    // Write UTF-8 bytes
-    if (slen > 0) {
-        if (!binbuf_ensure(buf, slen))
-            return;
+    uint32_t raw = (uint32_t)(int32_t)slen;
+    buf->data[buf->position] = (uint8_t)(raw & 0xFF);
+    buf->data[buf->position + 1] = (uint8_t)((raw >> 8) & 0xFF);
+    buf->data[buf->position + 2] = (uint8_t)((raw >> 16) & 0xFF);
+    buf->data[buf->position + 3] = (uint8_t)((raw >> 24) & 0xFF);
+    buf->position += 4;
+    if (slen > 0)
         memcpy(buf->data + buf->position, cstr, (size_t)slen);
-        binbuf_advance_write(buf, slen);
-    }
+    binbuf_advance_write(buf, slen);
 }
 
 /// @brief Append a Bytes blob with a 4-byte little-endian length prefix. NULL data writes
@@ -479,23 +481,37 @@ void rt_binbuf_write_bytes(void *obj, void *data) {
     }
 
     int64_t blen = rt_bytes_len(data);
+    if (blen < 0) {
+        rt_trap("BinaryBuffer: invalid byte length");
+        return;
+    }
     if (blen > INT32_MAX) {
         rt_trap("BinaryBuffer: byte length exceeds i32 length prefix");
         return;
     }
 
     // Write 4-byte LE length prefix
-    rt_binbuf_write_i32le(obj, blen);
+    const uint8_t *src = blen > 0 ? rt_bytes_data_const(data) : NULL;
+    if (blen > 0 && !src) {
+        rt_trap("BinaryBuffer: invalid bytes data");
+        return;
+    }
+
+    if (!binbuf_ensure(buf, 4 + blen))
+        return;
+
+    uint32_t raw = (uint32_t)(int32_t)blen;
+    buf->data[buf->position] = (uint8_t)(raw & 0xFF);
+    buf->data[buf->position + 1] = (uint8_t)((raw >> 8) & 0xFF);
+    buf->data[buf->position + 2] = (uint8_t)((raw >> 16) & 0xFF);
+    buf->data[buf->position + 3] = (uint8_t)((raw >> 24) & 0xFF);
+    buf->position += 4;
 
     // Write raw bytes — use memcpy via raw pointer (avoids O(n) rt_bytes_get calls)
     if (blen > 0) {
-        if (!binbuf_ensure(buf, blen))
-            return;
-        const uint8_t *src = rt_bytes_data_const(data);
-        if (src)
-            memcpy(buf->data + buf->position, src, (size_t)blen);
-        binbuf_advance_write(buf, blen);
+        memcpy(buf->data + buf->position, src, (size_t)blen);
     }
+    binbuf_advance_write(buf, blen);
 }
 
 //=============================================================================
@@ -649,19 +665,26 @@ int64_t rt_binbuf_read_i64be(void *obj) {
 rt_string rt_binbuf_read_str(void *obj) {
     rt_binbuf_impl *buf = binbuf_require(obj);
 
-    // Read 4-byte LE length prefix
-    int64_t slen = rt_binbuf_read_i32le(obj);
+    if (!binbuf_check_read(buf, 4))
+        return rt_str_empty();
+
+    int64_t pos = buf->position;
+    uint32_t raw = (uint32_t)buf->data[pos] | ((uint32_t)buf->data[pos + 1] << 8) |
+                   ((uint32_t)buf->data[pos + 2] << 16) | ((uint32_t)buf->data[pos + 3] << 24);
+    int64_t slen = (int32_t)raw;
     if (slen < 0) {
         rt_trap("BinaryBuffer: invalid string length");
         return rt_str_empty();
     }
 
-    if (!binbuf_check_read(buf, slen))
+    int64_t payload_pos = pos + 4;
+    if (slen > buf->len - payload_pos) {
+        rt_trap("BinaryBuffer: read past end");
         return rt_str_empty();
+    }
 
-    rt_string result =
-        rt_string_from_bytes((const char *)(buf->data + buf->position), (size_t)slen);
-    buf->position += slen;
+    rt_string result = rt_string_from_bytes((const char *)(buf->data + payload_pos), (size_t)slen);
+    buf->position = payload_pos + slen;
     return result;
 }
 

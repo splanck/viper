@@ -57,8 +57,9 @@ bool isLinuxMathSymbol(const std::string &name) {
         "cbrtf", "ceil",  "ceilf", "copysign", "copysignf", "cos",    "cosf",   "cosh",  "exp",
         "expf",  "fabs",  "fabsf", "floor",    "floorf",    "fmax",   "fmaxf",  "fmin",  "fmaxl",
         "fminf", "fminl", "fmod",  "fmodf",    "hypot",     "ldexp",  "log",    "log10", "log2",
-        "logf",  "nan",   "pow",   "powf",     "round",     "roundf", "sin",    "sinf",  "sinh",
-        "sqrt",  "sqrtf", "tan",   "tanf",     "tanh",      "trunc",  "truncf",
+        "logf",  "lrint", "lrintf", "nan",      "pow",       "powf",   "round",  "roundf",
+        "sin",   "sinf",  "sinh",   "sqrt",     "sqrtf",     "tan",    "tanf",   "tanh",
+        "trunc", "truncf",
     };
     return kMath.count(name) != 0;
 }
@@ -418,6 +419,8 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "log10",
         "log2",
         "logf",
+        "lrint",
+        "lrintf",
         "longjmp",
         "lseek",
         "malloc",

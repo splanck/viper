@@ -692,6 +692,10 @@ void rt_memstream_write_bytes(void *obj, void *bytes) {
     rt_memstream_impl *ms = memstream_require(obj, "MemStream: invalid stream");
     int64_t bytes_len = rt_bytes_len(bytes);
     const uint8_t *bytes_data = rt_bytes_data_const(bytes);
+    if (bytes_len > 0 && !bytes_data) {
+        rt_trap("MemStream.WriteBytes: invalid bytes");
+        return;
+    }
 
     if (bytes_len > 0) {
         if (!prepare_write(ms, bytes_len))

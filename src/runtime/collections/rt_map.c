@@ -258,9 +258,9 @@ static void map_resize(rt_map_impl *map, size_t new_capacity) {
 /// @param map The Map to potentially resize.
 ///
 /// @note The capacity doubles on each resize.
-static void maybe_resize(rt_map_impl *map) {
+static void maybe_resize_for_count(rt_map_impl *map, size_t next_count) {
     // Resize when count * DEN > capacity * NUM (i.e., load factor > NUM/DEN)
-    if ((long double)map->count * (long double)MAP_LOAD_FACTOR_DEN >
+    if ((long double)next_count * (long double)MAP_LOAD_FACTOR_DEN >
         (long double)map->capacity * (long double)MAP_LOAD_FACTOR_NUM) {
         if (map->capacity > SIZE_MAX / 2)
             return;
@@ -415,6 +415,10 @@ void rt_map_set(void *obj, rt_string key, void *value) {
         return;
     }
 
+    if (map->count < SIZE_MAX)
+        maybe_resize_for_count(map, map->count + 1);
+    idx = hash % map->capacity;
+
     if (value)
         rt_obj_retain_maybe(value);
 
@@ -452,8 +456,6 @@ void rt_map_set(void *obj, rt_string key, void *value) {
     entry->next = map->buckets[idx];
     map->buckets[idx] = entry;
     map->count++;
-
-    maybe_resize(map);
 }
 
 /// @brief Retrieves the value associated with a key.
@@ -633,6 +635,10 @@ int8_t rt_map_set_if_missing(void *obj, rt_string key, void *value) {
     if (find_entry(map->buckets[idx], key_data, key_len))
         return 0;
 
+    if (map->count < SIZE_MAX)
+        maybe_resize_for_count(map, map->count + 1);
+    idx = hash % map->capacity;
+
     if (value)
         rt_obj_retain_maybe(value);
 
@@ -669,8 +675,6 @@ int8_t rt_map_set_if_missing(void *obj, rt_string key, void *value) {
     entry->next = map->buckets[idx];
     map->buckets[idx] = entry;
     map->count++;
-
-    maybe_resize(map);
     return 1;
 }
 

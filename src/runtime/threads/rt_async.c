@@ -41,6 +41,7 @@
 
 #include <setjmp.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -628,18 +629,45 @@ static void async_any_complete(void *future, void *ctx) {
     if (!should_resolve)
         goto done;
 
-    if (rt_future_is_error(future)) {
-        async_promise_error_from_future(state->promise, future);
+    int8_t forward_failed = 0;
+    volatile int8_t value_owned = 0;
+    void *volatile value = NULL;
+    char forward_error[256];
+    forward_error[0] = '\0';
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        if (rt_future_is_error(future)) {
+            async_promise_error_from_future(state->promise, future);
+        } else {
+            value_owned = rt_future_value_is_owned(future);
+            value = rt_future_peek_value(future);
+            if (value_owned)
+                rt_promise_set_owned(state->promise, (void *)value);
+            else
+                rt_promise_set(state->promise, (void *)value);
+        }
     } else {
-        int8_t value_owned = rt_future_value_is_owned(future);
-        void *value = rt_future_peek_value(future);
-        if (value_owned)
-            rt_promise_set_owned(state->promise, value);
-        else
-            rt_promise_set(state->promise, value);
-        if (value_owned)
-            async_release_ref(&value);
+        const char *err = rt_trap_get_error();
+        snprintf(forward_error,
+                 sizeof(forward_error),
+                 "%s",
+                 err && err[0] ? err : "Async.Any: failed to forward result");
+        forward_failed = 1;
     }
+    rt_trap_clear_recovery();
+
+    if (value_owned) {
+        void *owned_value = (void *)value;
+        async_release_ref(&owned_value);
+        value = NULL;
+    }
+
+    if (forward_failed)
+        async_promise_error_copy(
+            state->promise, forward_error, "Async.Any: failed to forward result");
+
     async_any_cancel_remaining(state);
 
 done:
@@ -808,10 +836,18 @@ static void async_all_complete(void *future, void *ctx) {
     if (!state || !state->promise || !state->monitor || !state->results)
         goto done;
 
+    int8_t should_process = 0;
+    rt_monitor_enter(state->monitor);
+    state->listeners[listener->index] = NULL;
+    if (!state->completed)
+        should_process = 1;
+    rt_monitor_exit(state->monitor);
+    if (!should_process)
+        goto done;
+
     if (rt_future_is_error(future)) {
         int8_t should_resolve = 0;
         rt_monitor_enter(state->monitor);
-        state->listeners[listener->index] = NULL;
         if (!state->completed) {
             state->completed = 1;
             should_resolve = 1;
@@ -825,21 +861,61 @@ static void async_all_complete(void *future, void *ctx) {
     }
 
     int8_t resolve_success = 0;
-    rt_monitor_enter(state->monitor);
-    state->listeners[listener->index] = NULL;
-    if (!state->completed) {
-        int8_t value_owned = rt_future_value_is_owned(future);
-        void *value = rt_future_peek_value(future);
-        rt_seq_set(state->results, listener->index, value);
-        if (value_owned)
-            async_release_ref(&value);
-        state->remaining--;
-        if (state->remaining == 0) {
-            state->completed = 1;
-            resolve_success = 1;
-        }
+    int8_t resolve_copy_error = 0;
+    int8_t value_owned = 0;
+    void *value = NULL;
+    char copy_error[256];
+    copy_error[0] = '\0';
+
+    jmp_buf peek_recovery;
+    rt_trap_set_recovery(&peek_recovery);
+    if (setjmp(peek_recovery) == 0) {
+        value_owned = rt_future_value_is_owned(future);
+        value = rt_future_peek_value(future);
+    } else {
+        const char *err = rt_trap_get_error();
+        snprintf(copy_error,
+                 sizeof(copy_error),
+                 "%s",
+                 err && err[0] ? err : "Async.All: failed to copy result");
+        resolve_copy_error = 1;
     }
-    rt_monitor_exit(state->monitor);
+    rt_trap_clear_recovery();
+
+    if (!resolve_copy_error) {
+        rt_monitor_enter(state->monitor);
+        if (!state->completed) {
+            jmp_buf set_recovery;
+            rt_trap_set_recovery(&set_recovery);
+            if (setjmp(set_recovery) == 0) {
+                rt_seq_set(state->results, listener->index, value);
+                state->remaining--;
+                if (state->remaining == 0) {
+                    state->completed = 1;
+                    resolve_success = 1;
+                }
+            } else {
+                const char *err = rt_trap_get_error();
+                snprintf(copy_error,
+                         sizeof(copy_error),
+                         "%s",
+                         err && err[0] ? err : "Async.All: failed to store result");
+                state->completed = 1;
+                resolve_copy_error = 1;
+            }
+            rt_trap_clear_recovery();
+        }
+        rt_monitor_exit(state->monitor);
+    }
+
+    if (value_owned)
+        async_release_ref(&value);
+
+    if (resolve_copy_error) {
+        async_promise_error_copy(state->promise, copy_error, "Async.All: failed to copy result");
+        async_all_cancel_remaining(state, listener->index);
+        goto done;
+    }
 
     if (resolve_success)
         rt_promise_set_owned(state->promise, state->results);

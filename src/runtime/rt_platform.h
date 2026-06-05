@@ -24,6 +24,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 //===----------------------------------------------------------------------===//
 // Platform Detection
@@ -115,6 +116,34 @@
 #define __ATOMIC_RELEASE 3
 #define __ATOMIC_ACQ_REL 4
 #define __ATOMIC_SEQ_CST 5
+
+// Atomic load (8-bit)
+static inline int8_t rt_atomic_load_i8(const volatile int8_t *ptr, int order) {
+    (void)order;
+    int8_t value = *ptr;
+#if defined(_M_ARM64)
+    __dmb(_ARM64_BARRIER_ISH);
+#else
+    _ReadWriteBarrier();
+#endif
+    return value;
+}
+
+// Atomic store (8-bit)
+static inline void rt_atomic_store_i8(volatile int8_t *ptr, int8_t value, int order) {
+    (void)order;
+#if defined(_M_ARM64)
+    __dmb(_ARM64_BARRIER_ISH);
+#else
+    _ReadWriteBarrier();
+#endif
+    *ptr = value;
+#if defined(_M_ARM64)
+    __dmb(_ARM64_BARRIER_ISH);
+#else
+    _ReadWriteBarrier();
+#endif
+}
 
 // Atomic load (32-bit)
 // CONC-004 fix: ARM64 needs CPU fence, not just compiler barrier.
@@ -340,9 +369,25 @@ static inline int rt_atomic_compare_exchange_ptr(
     return 0;
 }
 
+// Atomic load/store for double values used with GCC's non-_n builtins.
+static inline void rt_atomic_load_f64(const volatile double *ptr, double *out, int order) {
+    int64_t bits = rt_atomic_load_i64((const volatile int64_t *)ptr, order);
+    memcpy(out, &bits, sizeof(*out));
+}
+
+static inline void rt_atomic_store_f64(volatile double *ptr, const double *value, int order) {
+    int64_t bits;
+    memcpy(&bits, value, sizeof(bits));
+    rt_atomic_store_i64((volatile int64_t *)ptr, bits, order);
+}
+
 // Map GCC-style atomic builtins to our functions
 #define __atomic_load_n(ptr, order)                                                                \
     _Generic((ptr),                                                                                \
+        volatile int8_t *: rt_atomic_load_i8,                                                      \
+        const volatile int8_t *: rt_atomic_load_i8,                                                \
+        int8_t *: rt_atomic_load_i8,                                                               \
+        const int8_t *: rt_atomic_load_i8,                                                         \
         volatile int *: rt_atomic_load_i32,                                                        \
         const volatile int *: rt_atomic_load_i32,                                                  \
         int *: rt_atomic_load_i32,                                                                 \
@@ -358,12 +403,26 @@ static inline int rt_atomic_compare_exchange_ptr(
 
 #define __atomic_store_n(ptr, val, order)                                                          \
     _Generic((ptr),                                                                                \
+        volatile int8_t *: rt_atomic_store_i8,                                                     \
+        int8_t *: rt_atomic_store_i8,                                                              \
         volatile int *: rt_atomic_store_i32,                                                       \
         int *: rt_atomic_store_i32,                                                                \
         volatile int64_t *: rt_atomic_store_i64,                                                   \
         int64_t *: rt_atomic_store_i64,                                                            \
         volatile size_t *: rt_atomic_store_size,                                                   \
         size_t *: rt_atomic_store_size)((ptr), (val), (order))
+
+#define __atomic_load(ptr, ret, order)                                                             \
+    _Generic((ptr),                                                                                \
+        volatile double *: rt_atomic_load_f64,                                                     \
+        const volatile double *: rt_atomic_load_f64,                                               \
+        double *: rt_atomic_load_f64,                                                              \
+        const double *: rt_atomic_load_f64)((ptr), (ret), (order))
+
+#define __atomic_store(ptr, val, order)                                                            \
+    _Generic((ptr),                                                                                \
+        volatile double *: rt_atomic_store_f64,                                                    \
+        double *: rt_atomic_store_f64)((ptr), (val), (order))
 
 #define __atomic_exchange_n(ptr, val, order)                                                       \
     _Generic((ptr),                                                                                \

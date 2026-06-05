@@ -17,6 +17,7 @@
 #include "rt.hpp"
 #include "rt_bytes.h"
 #include "rt_file_ext.h"
+#include "rt_object.h"
 #include "rt_seq.h"
 #include "tests/common/PlatformSkip.h"
 
@@ -577,6 +578,36 @@ static void test_read_write_all_bytes() {
     printf("\n");
 }
 
+static void test_write_all_bytes_invalid_data_traps() {
+    printf("Testing rt_io_file_write_all_bytes invalid data:\n");
+
+    const char *base = get_test_base();
+    char file_path[512];
+    snprintf(file_path, sizeof(file_path), "%s_write_all_bytes_bad_data.bin", base);
+
+    struct FakeBytes {
+        int64_t len;
+        uint8_t *data;
+    };
+
+    rt_string path = rt_const_cstr(file_path);
+    remove_file(file_path);
+
+    FakeBytes *bad =
+        static_cast<FakeBytes *>(rt_obj_new_i64(RT_BYTES_CLASS_ID, sizeof(FakeBytes)));
+    bad->len = 1;
+    bad->data = nullptr;
+
+    EXPECT_TRAP(rt_io_file_write_all_bytes(path, bad));
+    test_result("target not created", rt_io_file_exists(path) == 0);
+
+    if (rt_obj_release_check0(bad))
+        rt_obj_free(bad);
+    remove_file(file_path);
+
+    printf("\n");
+}
+
 /// @brief Test rt_io_file_read_all_lines.
 static void test_read_all_lines() {
     printf("Testing rt_io_file_read_all_lines:\n");
@@ -834,6 +865,7 @@ int main() {
     test_append_line();
     test_write_all_text();
     test_read_write_all_bytes();
+    test_write_all_bytes_invalid_data_traps();
     test_read_all_lines();
     test_modified();
     test_touch();

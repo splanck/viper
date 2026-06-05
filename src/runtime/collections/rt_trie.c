@@ -44,11 +44,17 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#include <setjmp.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "rt_trap.h"
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
 
 #define TRIE_ALPHABET_SIZE 256
 
@@ -89,6 +95,16 @@ static rt_trie_impl *as_trie(void *obj, const char *what) {
         return NULL;
     }
     return (rt_trie_impl *)obj;
+}
+
+static void trie_release_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static void trie_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
+    const char *err = rt_trap_get_error();
+    snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
 }
 
 /// @brief Allocate a zero-initialized trie node (traps on OOM).
@@ -295,15 +311,35 @@ static void collect_keys(rt_trie_node *node, char **buf, size_t *buf_cap, size_t
     trie_collect_frame *stack = NULL;
     size_t len = 0;
     size_t cap = 0;
+    rt_string volatile key = NULL;
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        trie_save_trap_error(saved_error, sizeof(saved_error), "rt_trie: failed to collect keys");
+        rt_trap_clear_recovery();
+        if (key)
+            rt_str_release_maybe((rt_string)key);
+        free(stack);
+        free(*buf);
+        *buf = NULL;
+        *buf_cap = 0;
+        trie_release_object(seq);
+        rt_trap(saved_error);
+        return;
+    }
+
     push_collect_frame(&stack, &len, &cap, node, depth);
     while (len > 0) {
         trie_collect_frame *frame = &stack[len - 1];
         if (!frame->emitted) {
             frame->emitted = 1;
             if (frame->node->is_terminal) {
-                rt_string key = rt_string_from_bytes(*buf, frame->depth);
+                key = rt_string_from_bytes(*buf, frame->depth);
                 rt_seq_push(seq, (void *)key);
-                rt_str_release_maybe(key);
+                rt_str_release_maybe((rt_string)key);
+                key = NULL;
             }
         }
         if (frame->next_child < TRIE_ALPHABET_SIZE) {
@@ -321,6 +357,7 @@ static void collect_keys(rt_trie_node *node, char **buf, size_t *buf_cap, size_t
         }
         len--;
     }
+    rt_trap_clear_recovery();
     free(stack);
 }
 
@@ -658,14 +695,28 @@ static rt_trie_node *clone_node(rt_trie_node *src) {
     rt_trie_node *dst = new_node();
     if (!dst)
         return NULL;
-    dst->is_terminal = src->is_terminal;
-    dst->value = src->value;
-    if (dst->value)
-        rt_obj_retain_maybe(dst->value);
 
     trie_clone_pair *stack = NULL;
     size_t len = 0;
     size_t cap = 0;
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        trie_save_trap_error(saved_error, sizeof(saved_error), "rt_trie: clone failed");
+        rt_trap_clear_recovery();
+        free_node(dst);
+        free(stack);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
+    if (src->value)
+        rt_obj_retain_maybe(src->value);
+    dst->is_terminal = src->is_terminal;
+    dst->value = src->value;
+
     push_clone_pair(&stack, &len, &cap, src, dst);
     while (len > 0) {
         trie_clone_pair pair = stack[--len];
@@ -677,16 +728,18 @@ static rt_trie_node *clone_node(rt_trie_node *src) {
             if (!child_dst) {
                 free_node(dst);
                 free(stack);
+                rt_trap_clear_recovery();
                 return NULL;
             }
+            if (child_src->value)
+                rt_obj_retain_maybe(child_src->value);
             child_dst->is_terminal = child_src->is_terminal;
             child_dst->value = child_src->value;
-            if (child_dst->value)
-                rt_obj_retain_maybe(child_dst->value);
             pair.dst->children[i] = child_dst;
             push_clone_pair(&stack, &len, &cap, child_src, child_dst);
         }
     }
+    rt_trap_clear_recovery();
     free(stack);
 
     return dst;
@@ -704,6 +757,10 @@ void *rt_trie_clone(void *obj) {
         return NULL;
 
     rt_trie_node *cloned_root = clone_node(src->root);
+    if (!cloned_root) {
+        trie_release_object(dst);
+        return NULL;
+    }
 
     // Free the default empty root from rt_trie_new, replace with deep copy
     free_node(dst->root);

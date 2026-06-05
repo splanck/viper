@@ -333,6 +333,27 @@ static void test_set_retain_overflow_leaves_key_absent() {
     rt_release_obj(t);
 }
 
+static void test_clone_retain_overflow_keeps_source_unchanged() {
+    void *t = rt_trie_new();
+    rt_string k = make_key("clone-boom");
+    void *value = new_obj();
+
+    rt_trie_set(t, k, value);
+    rt_heap_hdr_t *hdr = rt_heap_hdr(value);
+    hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+
+    EXPECT_TRAP((void)rt_trie_clone(t));
+    assert(rt_trie_len(t) == 1);
+    assert(rt_trie_has(t, k) == 1);
+    assert(rt_trie_get(t, k) == value);
+    assert(hdr->refcnt == RT_HEAP_MAX_MORTAL_REFCNT);
+
+    hdr->refcnt = 2;
+    rt_string_unref(k);
+    rt_release_obj(value);
+    rt_release_obj(t);
+}
+
 static void test_embedded_nul_keys() {
     void *t = rt_trie_new();
     void *v = new_obj();
@@ -393,6 +414,7 @@ int main() {
     test_keys();
     test_empty_key();
     test_set_retain_overflow_leaves_key_absent();
+    test_clone_retain_overflow_keeps_source_unchanged();
     test_embedded_nul_keys();
     test_null_safety();
     return 0;

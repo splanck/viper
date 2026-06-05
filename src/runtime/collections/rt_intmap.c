@@ -166,9 +166,9 @@ static void map_resize(rt_intmap_impl *map, size_t new_capacity) {
 
 /// @brief Check if resize is needed and perform it.
 /// @param map IntMap to potentially resize.
-static void maybe_resize(rt_intmap_impl *map) {
+static void maybe_resize_for_count(rt_intmap_impl *map, size_t next_count) {
     // Resize when count * DEN > capacity * NUM (i.e., load factor > NUM/DEN)
-    if ((long double)map->count * (long double)MAP_LOAD_FACTOR_DEN >
+    if ((long double)next_count * (long double)MAP_LOAD_FACTOR_DEN >
         (long double)map->capacity * (long double)MAP_LOAD_FACTOR_NUM) {
         if (map->capacity > SIZE_MAX / 2)
             return;
@@ -246,6 +246,10 @@ void rt_intmap_set(void *obj, int64_t key, void *value) {
         return;
     }
 
+    if (map->count < SIZE_MAX)
+        maybe_resize_for_count(map, map->count + 1);
+    idx = hash % map->capacity;
+
     if (value)
         rt_obj_retain_maybe(value);
 
@@ -265,8 +269,6 @@ void rt_intmap_set(void *obj, int64_t key, void *value) {
     entry->next = map->buckets[idx];
     map->buckets[idx] = entry;
     map->count++;
-
-    maybe_resize(map);
 }
 
 /// @brief Retrieve the value associated with a key.

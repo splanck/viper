@@ -233,6 +233,8 @@ static void cm_resize(rt_concmap_impl *cm) {
     if (!cm || cm->capacity == 0 || cm->capacity > SIZE_MAX / 2)
         return;
     size_t new_cap = cm->capacity * 2;
+    if (new_cap > SIZE_MAX / sizeof(cm_entry *))
+        return;
     cm_entry **new_buckets = (cm_entry **)calloc(new_cap, sizeof(cm_entry *));
     if (!new_buckets)
         return;
@@ -738,10 +740,29 @@ void *rt_concmap_keys(void *obj) {
     CM_UNLOCK(cm);
     concmap_release_object(obj);
 
-    for (size_t i = 0; i < copied; i++) {
-        rt_string s = rt_string_from_bytes(keys[i], lens[i]);
-        rt_seq_push_raw(seq, (void *)s);
+    rt_string volatile current_key = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        concmap_save_trap_error(
+            saved_error, sizeof(saved_error), "ConcurrentMap.Keys: key copy failed");
+        rt_trap_clear_recovery();
+        if (current_key)
+            rt_str_release_maybe((rt_string)current_key);
+        free(keys);
+        free(lens);
+        free(bytes);
+        concmap_release_object(seq);
+        rt_trap(saved_error);
+        return rt_seq_new_owned();
     }
+    for (size_t i = 0; i < copied; i++) {
+        current_key = rt_string_from_bytes(keys[i], lens[i]);
+        rt_seq_push_raw(seq, (void *)current_key);
+        current_key = NULL;
+    }
+    rt_trap_clear_recovery();
 
     free(keys);
     free(lens);
@@ -820,8 +841,23 @@ void *rt_concmap_values(void *obj) {
     CM_UNLOCK(cm);
     concmap_release_object(obj);
 
-    for (size_t i = 0; i < copied; i++)
-        rt_seq_push_raw(seq, values[i]);
+    size_t volatile transferred = 0;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        concmap_save_trap_error(
+            saved_error, sizeof(saved_error), "ConcurrentMap.Values: snapshot append failed");
+        rt_trap_clear_recovery();
+        for (size_t i = transferred; i < copied; i++)
+            release_retained_value(values[i]);
+        free((void **)values);
+        concmap_release_object(seq);
+        rt_trap(saved_error);
+        return rt_seq_new_owned();
+    }
+    for (transferred = 0; transferred < copied; transferred++)
+        rt_seq_push_raw(seq, values[transferred]);
+    rt_trap_clear_recovery();
 
     free(values);
     return seq;

@@ -237,9 +237,9 @@ static void bag_resize(rt_bag_impl *bag, size_t new_capacity) {
 /// @param bag The Bag to potentially resize.
 ///
 /// @note The capacity doubles on each resize.
-static void maybe_resize(rt_bag_impl *bag) {
+static void maybe_resize_for_count(rt_bag_impl *bag, size_t next_count) {
     // Resize when count * DEN > capacity * NUM (i.e., load factor > NUM/DEN)
-    if ((long double)bag->count * (long double)BAG_LOAD_FACTOR_DEN >
+    if ((long double)next_count * (long double)BAG_LOAD_FACTOR_DEN >
         (long double)bag->capacity * (long double)BAG_LOAD_FACTOR_NUM) {
         if (bag->capacity > SIZE_MAX / 2)
             return;
@@ -397,6 +397,10 @@ int8_t rt_bag_add(void *obj, rt_string str) {
         return 0; // Already present
     }
 
+    if (bag->count < SIZE_MAX)
+        maybe_resize_for_count(bag, bag->count + 1);
+    idx = hash % bag->capacity;
+
     // Create new entry
     rt_bag_entry *entry = (rt_bag_entry *)malloc(sizeof(rt_bag_entry));
     if (!entry)
@@ -420,8 +424,6 @@ int8_t rt_bag_add(void *obj, rt_string str) {
     entry->next = bag->buckets[idx];
     bag->buckets[idx] = entry;
     bag->count++;
-
-    maybe_resize(bag);
     return 1;
 }
 

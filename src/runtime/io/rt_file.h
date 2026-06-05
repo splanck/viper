@@ -116,13 +116,13 @@ int32_t rt_close_err(int32_t channel);
 
 /// @brief Write @p s to the file bound to @p channel without a trailing newline.
 /// @param channel Numeric channel identifier previously passed to OPEN.
-/// @param s Runtime string to write; NULL strings are ignored.
+/// @param s Runtime string to write; NULL or invalid strings return Err_InvalidOperation.
 /// @return 0 on success; error code aligned with @ref Err otherwise.
 int32_t rt_write_ch_err(int32_t channel, ViperString *s);
 
 /// @brief Write @p s to the file bound to @p channel followed by a newline.
 /// @param channel Numeric channel identifier previously passed to OPEN.
-/// @param s Runtime string to write; NULL strings are treated as empty.
+/// @param s Runtime string to write; NULL or invalid strings return Err_InvalidOperation.
 /// @return 0 on success; error code aligned with @ref Err otherwise.
 int32_t rt_println_ch_err(int32_t channel, ViperString *s);
 

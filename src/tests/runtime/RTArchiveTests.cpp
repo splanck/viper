@@ -18,6 +18,7 @@
 #include "rt_bytes.h"
 #include "rt_dir.h"
 #include "rt_map.h"
+#include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "tests/common/PlatformSkip.h"
@@ -79,6 +80,24 @@ static uint8_t *get_bytes_data(void *bytes) {
 /// @brief Get bytes length
 static int64_t get_bytes_len(void *bytes) {
     return rt_bytes_len(bytes);
+}
+
+static void release_obj(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static void *make_invalid_bytes_object(int64_t len) {
+    struct FakeBytes {
+        int64_t len;
+        uint8_t *data;
+    };
+
+    FakeBytes *bad =
+        static_cast<FakeBytes *>(rt_obj_new_i64(RT_BYTES_CLASS_ID, sizeof(FakeBytes)));
+    bad->len = len;
+    bad->data = nullptr;
+    return bad;
 }
 
 /// @brief Compare two byte arrays
@@ -935,6 +954,9 @@ static void test_is_zip_bytes() {
 
     test_result("IsZipBytes on ZIP returns true", rt_archive_is_zip_bytes(zip_bytes) == 1);
     test_result("IsZipBytes on text returns false", rt_archive_is_zip_bytes(txt_bytes) == 0);
+    void *bad = make_invalid_bytes_object(4);
+    test_result("IsZipBytes on invalid Bytes returns false", rt_archive_is_zip_bytes(bad) == 0);
+    release_obj(bad);
 
     delete_file(path);
 }

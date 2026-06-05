@@ -44,8 +44,14 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#include <setjmp.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
 
 /// @brief Initial capacity for the entries array when first allocation occurs.
 ///
@@ -229,6 +235,61 @@ static void free_entry_contents(treemap_entry *e) {
     free(e->key);
     if (e->value && rt_obj_release_check0(e->value))
         rt_obj_free(e->value);
+}
+
+static void treemap_release_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static void treemap_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
+    const char *err = rt_trap_get_error();
+    snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
+}
+
+static void treemap_push_key_or_release_seq(void *seq, const char *key, size_t keylen) {
+    rt_string volatile str = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        treemap_save_trap_error(
+            saved_error, sizeof(saved_error), "TreeMap.Keys: snapshot append failed");
+        rt_trap_clear_recovery();
+        if (str)
+            rt_str_release_maybe((rt_string)str);
+        treemap_release_object(seq);
+        rt_trap(saved_error);
+        return;
+    }
+
+    str = rt_string_from_bytes(key, keylen);
+    if (!str) {
+        rt_trap("TreeMap.Keys: string allocation failed");
+        rt_trap_clear_recovery();
+        return;
+    }
+    rt_seq_push(seq, (void *)str);
+    rt_str_release_maybe((rt_string)str);
+    str = NULL;
+    rt_trap_clear_recovery();
+}
+
+static void treemap_push_value_or_release_seq(void *seq, void *value) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        treemap_save_trap_error(
+            saved_error, sizeof(saved_error), "TreeMap.Values: snapshot append failed");
+        rt_trap_clear_recovery();
+        treemap_release_object(seq);
+        rt_trap(saved_error);
+        return;
+    }
+
+    rt_seq_push(seq, value);
+    rt_trap_clear_recovery();
 }
 
 //=============================================================================
@@ -571,13 +632,7 @@ void *rt_treemap_keys(void *obj) {
         return seq;
 
     for (size_t i = 0; i < tm->count; i++) {
-        rt_string str = rt_string_from_bytes(tm->entries[i].key, tm->entries[i].keylen);
-        if (!str) {
-            rt_trap("TreeMap.Keys: string allocation failed");
-            return seq;
-        }
-        rt_seq_push(seq, (void *)str);
-        rt_str_release_maybe(str);
+        treemap_push_key_or_release_seq(seq, tm->entries[i].key, tm->entries[i].keylen);
     }
 
     return seq;
@@ -607,7 +662,7 @@ void *rt_treemap_values(void *obj) {
         return seq;
 
     for (size_t i = 0; i < tm->count; i++) {
-        rt_seq_push(seq, tm->entries[i].value);
+        treemap_push_value_or_release_seq(seq, tm->entries[i].value);
     }
 
     return seq;

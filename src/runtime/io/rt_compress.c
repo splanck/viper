@@ -41,6 +41,7 @@
 #include <setjmp.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -78,6 +79,10 @@ typedef enum {
 
 extern void rt_trap_set_recovery(jmp_buf *buf);
 extern void rt_trap_clear_recovery(void);
+extern const char *rt_trap_get_error(void);
+
+static void *deflate_data(const uint8_t *data, size_t len, int level);
+static void *gzip_data(const uint8_t *data, size_t len, int level);
 
 // Fixed Huffman code lengths (RFC 1951)
 #define FIXED_LIT_CODES 288
@@ -97,10 +102,85 @@ static inline int64_t bytes_len(void *obj) {
     return rt_bytes_len(obj);
 }
 
+static const uint8_t *compress_bytes_view(void *obj, const char *what, int64_t *out_len) {
+    if (!obj) {
+        rt_trap(what);
+        if (out_len)
+            *out_len = 0;
+        return NULL;
+    }
+    int64_t len = bytes_len(obj);
+    uint8_t *data = bytes_data(obj);
+    if (len < 0 || (len > 0 && !data)) {
+        rt_trap(what);
+        if (out_len)
+            *out_len = 0;
+        return NULL;
+    }
+    if (out_len)
+        *out_len = len;
+    return data;
+}
+
 /// @brief Release a temporary GC object that is no longer needed.
 static void compress_release_temp_object(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
+}
+
+static void compress_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
+    const char *err = rt_trap_get_error();
+    snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
+}
+
+static void *compress_run_string_bytes(void *bytes, int gzip, const char *fallback) {
+    void *volatile owned_bytes = bytes;
+    void *result = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        compress_save_trap_error(saved_error, sizeof(saved_error), fallback);
+        rt_trap_clear_recovery();
+        compress_release_temp_object((void *)owned_bytes);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
+    int64_t len = bytes_len((void *)owned_bytes);
+    if (len < 0) {
+        rt_trap(fallback);
+        return NULL;
+    }
+    if (gzip)
+        result = gzip_data(
+            bytes_data((void *)owned_bytes), (size_t)len, DEFLATE_DEFAULT_LEVEL);
+    else
+        result = deflate_data(
+            bytes_data((void *)owned_bytes), (size_t)len, DEFLATE_DEFAULT_LEVEL);
+    rt_trap_clear_recovery();
+    compress_release_temp_object((void *)owned_bytes);
+    return result;
+}
+
+static rt_string compress_bytes_to_str_or_release(void *bytes, const char *fallback) {
+    void *volatile owned_bytes = bytes;
+    rt_string result = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        compress_save_trap_error(saved_error, sizeof(saved_error), fallback);
+        rt_trap_clear_recovery();
+        compress_release_temp_object((void *)owned_bytes);
+        rt_trap(saved_error);
+        return rt_str_empty();
+    }
+
+    result = rt_bytes_to_str((void *)owned_bytes);
+    rt_trap_clear_recovery();
+    compress_release_temp_object((void *)owned_bytes);
+    return result;
 }
 
 //=============================================================================
@@ -1657,11 +1737,11 @@ static void *gunzip_data(const uint8_t *data, size_t len) {
 /// @param data Source `rt_bytes`.
 /// @return Owned `rt_bytes` containing the compressed stream.
 void *rt_compress_deflate(void *data) {
-    if (!data) {
-        rt_trap("Compress.Deflate: data is null");
+    int64_t len = 0;
+    const uint8_t *src = compress_bytes_view(data, "Compress.Deflate: invalid data", &len);
+    if (!src && len > 0)
         return NULL;
-    }
-    return deflate_data(bytes_data(data), bytes_len(data), DEFLATE_DEFAULT_LEVEL);
+    return deflate_data(src, len, DEFLATE_DEFAULT_LEVEL);
 }
 
 /// @brief `Compress.DeflateLvl(data, level)` — explicit-level DEFLATE.
@@ -1675,15 +1755,15 @@ void *rt_compress_deflate(void *data) {
 /// @param level Compression level (1..9).
 /// @return Owned `rt_bytes` containing the compressed stream.
 void *rt_compress_deflate_lvl(void *data, int64_t level) {
-    if (!data) {
-        rt_trap("Compress.DeflateLvl: data is null");
+    int64_t len = 0;
+    const uint8_t *src = compress_bytes_view(data, "Compress.DeflateLvl: invalid data", &len);
+    if (!src && len > 0)
         return NULL;
-    }
     if (level < DEFLATE_MIN_LEVEL || level > DEFLATE_MAX_LEVEL) {
         rt_trap("Compress.DeflateLvl: level must be 1-9");
         return NULL;
     }
-    return deflate_data(bytes_data(data), bytes_len(data), (int)level);
+    return deflate_data(src, len, (int)level);
 }
 
 /// @brief `Compress.Inflate(data)` — decompress a raw DEFLATE stream.
@@ -1695,23 +1775,23 @@ void *rt_compress_deflate_lvl(void *data, int64_t level) {
 /// @param data Compressed `rt_bytes`.
 /// @return Owned `rt_bytes` containing the original payload.
 void *rt_compress_inflate(void *data) {
-    if (!data) {
-        rt_trap("Compress.Inflate: data is null");
+    int64_t len = 0;
+    const uint8_t *src = compress_bytes_view(data, "Compress.Inflate: invalid data", &len);
+    if (!src && len > 0)
         return NULL;
-    }
-    return inflate_data(bytes_data(data), bytes_len(data));
+    return inflate_data(src, len);
 }
 
 void *rt_compress_inflate_limit(void *data, int64_t max_output) {
-    if (!data) {
-        rt_trap("Compress.InflateLimit: data is null");
+    int64_t len = 0;
+    const uint8_t *src = compress_bytes_view(data, "Compress.InflateLimit: invalid data", &len);
+    if (!src && len > 0)
         return NULL;
-    }
     if (max_output < 0) {
         rt_trap("Compress.InflateLimit: max output is negative");
         return NULL;
     }
-    return inflate_data_limited(bytes_data(data), bytes_len(data), (size_t)max_output);
+    return inflate_data_limited(src, len, (size_t)max_output);
 }
 
 int rt_compress_inflate_raw(
@@ -1750,11 +1830,11 @@ int rt_compress_inflate_raw(
 /// @param data Source `rt_bytes`.
 /// @return Owned `rt_bytes` containing the GZIP-wrapped stream.
 void *rt_compress_gzip(void *data) {
-    if (!data) {
-        rt_trap("Compress.Gzip: data is null");
+    int64_t len = 0;
+    const uint8_t *src = compress_bytes_view(data, "Compress.Gzip: invalid data", &len);
+    if (!src && len > 0)
         return NULL;
-    }
-    return gzip_data(bytes_data(data), bytes_len(data), DEFLATE_DEFAULT_LEVEL);
+    return gzip_data(src, len, DEFLATE_DEFAULT_LEVEL);
 }
 
 /// @brief `Compress.GzipLvl(data, level)` — explicit-level GZIP wrap.
@@ -1766,15 +1846,15 @@ void *rt_compress_gzip(void *data) {
 /// @param level Compression level (1..9).
 /// @return Owned `rt_bytes` containing the GZIP-wrapped stream.
 void *rt_compress_gzip_lvl(void *data, int64_t level) {
-    if (!data) {
-        rt_trap("Compress.GzipLvl: data is null");
+    int64_t len = 0;
+    const uint8_t *src = compress_bytes_view(data, "Compress.GzipLvl: invalid data", &len);
+    if (!src && len > 0)
         return NULL;
-    }
     if (level < DEFLATE_MIN_LEVEL || level > DEFLATE_MAX_LEVEL) {
         rt_trap("Compress.GzipLvl: level must be 1-9");
         return NULL;
     }
-    return gzip_data(bytes_data(data), bytes_len(data), (int)level);
+    return gzip_data(src, len, (int)level);
 }
 
 /// @brief `Compress.Gunzip(data)` — decode a GZIP-wrapped DEFLATE stream.
@@ -1786,11 +1866,11 @@ void *rt_compress_gzip_lvl(void *data, int64_t level) {
 /// @param data GZIP-wrapped `rt_bytes`.
 /// @return Owned `rt_bytes` containing the inflated payload.
 void *rt_compress_gunzip(void *data) {
-    if (!data) {
-        rt_trap("Compress.Gunzip: data is null");
+    int64_t len = 0;
+    const uint8_t *src = compress_bytes_view(data, "Compress.Gunzip: invalid data", &len);
+    if (!src && len > 0)
         return NULL;
-    }
-    return gunzip_data(bytes_data(data), bytes_len(data));
+    return gunzip_data(src, len);
 }
 
 /// @brief `Compress.DeflateStr(text)` — string convenience wrapper.
@@ -1808,9 +1888,7 @@ void *rt_compress_deflate_str(rt_string text) {
     void *bytes = rt_bytes_from_str(text);
     if (!bytes)
         return NULL;
-    void *result = deflate_data(bytes_data(bytes), bytes_len(bytes), DEFLATE_DEFAULT_LEVEL);
-    compress_release_temp_object(bytes);
-    return result;
+    return compress_run_string_bytes(bytes, 0, "Compress.DeflateStr: failed to deflate text");
 }
 
 /// @brief `Compress.InflateStr(data)` — inflate then decode as UTF-8 string.
@@ -1821,16 +1899,14 @@ void *rt_compress_deflate_str(rt_string text) {
 /// @param data Compressed `rt_bytes`.
 /// @return Owned `rt_string` with the inflated text.
 rt_string rt_compress_inflate_str(void *data) {
-    if (!data) {
-        rt_trap("Compress.InflateStr: data is null");
+    int64_t len = 0;
+    const uint8_t *src = compress_bytes_view(data, "Compress.InflateStr: invalid data", &len);
+    if (!src && len > 0)
         return rt_str_empty();
-    }
-    void *result = inflate_data(bytes_data(data), bytes_len(data));
+    void *result = inflate_data(src, len);
     if (!result)
         return rt_str_empty();
-    rt_string str = rt_bytes_to_str(result);
-    compress_release_temp_object(result);
-    return str;
+    return compress_bytes_to_str_or_release(result, "Compress.InflateStr: invalid UTF-8");
 }
 
 /// @brief `Compress.GzipStr(text)` — string convenience wrapper around Gzip.
@@ -1845,9 +1921,7 @@ void *rt_compress_gzip_str(rt_string text) {
     void *bytes = rt_bytes_from_str(text);
     if (!bytes)
         return NULL;
-    void *result = gzip_data(bytes_data(bytes), bytes_len(bytes), DEFLATE_DEFAULT_LEVEL);
-    compress_release_temp_object(bytes);
-    return result;
+    return compress_run_string_bytes(bytes, 1, "Compress.GzipStr: failed to gzip text");
 }
 
 /// @brief `Compress.GunzipStr(data)` — gunzip and decode as UTF-8 string.
@@ -1855,14 +1929,12 @@ void *rt_compress_gzip_str(rt_string text) {
 /// @param data GZIP-wrapped `rt_bytes`.
 /// @return Owned `rt_string` with the inflated text.
 rt_string rt_compress_gunzip_str(void *data) {
-    if (!data) {
-        rt_trap("Compress.GunzipStr: data is null");
+    int64_t len = 0;
+    const uint8_t *src = compress_bytes_view(data, "Compress.GunzipStr: invalid data", &len);
+    if (!src && len > 0)
         return rt_str_empty();
-    }
-    void *result = gunzip_data(bytes_data(data), bytes_len(data));
+    void *result = gunzip_data(src, len);
     if (!result)
         return rt_str_empty();
-    rt_string str = rt_bytes_to_str(result);
-    compress_release_temp_object(result);
-    return str;
+    return compress_bytes_to_str_or_release(result, "Compress.GunzipStr: invalid UTF-8");
 }
