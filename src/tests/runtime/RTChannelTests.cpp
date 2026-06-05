@@ -58,6 +58,20 @@ static void reentrant_channel_discard_finalizer(void *obj) {
         (void)rt_channel_get_len(g_discard_finalizer_channel);
 }
 
+struct ChannelMirror {
+    void *monitor;
+    void **buffer;
+    int64_t capacity;
+    int64_t count;
+    int64_t head;
+    int64_t tail;
+    int64_t waiting_senders;
+    int64_t waiting_receivers;
+    int64_t sync_epoch;
+    int64_t sync_acked_epoch;
+    int8_t closed;
+};
+
 //=============================================================================
 // Creation and properties
 //=============================================================================
@@ -373,6 +387,52 @@ static void test_recv_for_discard_releases_after_unlock() {
     rt_channel_close(ch);
 }
 
+static void test_sender_wait_count_overflow_traps() {
+    void *sync = rt_channel_new(0);
+    ChannelMirror *sync_state = (ChannelMirror *)sync;
+    sync_state->waiting_senders = INT64_MAX;
+    assert(expect_trap([&]() { rt_channel_send(sync, NULL); }));
+    sync_state->waiting_senders = 0;
+    rt_channel_close(sync);
+
+    void *buffered = rt_channel_new(1);
+    ChannelMirror *buffered_state = (ChannelMirror *)buffered;
+    buffered_state->waiting_senders = INT64_MAX;
+    assert(expect_trap([&]() { (void)rt_channel_send_for(buffered, NULL, 10); }));
+    buffered_state->waiting_senders = 0;
+    rt_channel_close(buffered);
+}
+
+static void test_receiver_wait_count_overflow_traps() {
+    void *sync = rt_channel_new(0);
+    ChannelMirror *sync_state = (ChannelMirror *)sync;
+    sync_state->waiting_receivers = INT64_MAX;
+    assert(expect_trap([&]() { (void)rt_channel_recv(sync); }));
+    sync_state->waiting_receivers = 0;
+    rt_channel_close(sync);
+
+    void *buffered = rt_channel_new(1);
+    ChannelMirror *buffered_state = (ChannelMirror *)buffered;
+    buffered_state->waiting_receivers = INT64_MAX;
+    void *out = NULL;
+    assert(expect_trap([&]() { (void)rt_channel_recv_for(buffered, &out, 10); }));
+    buffered_state->waiting_receivers = 0;
+    rt_channel_close(buffered);
+}
+
+static void test_sync_epoch_overflow_traps() {
+    void *ch = rt_channel_new(0);
+    ChannelMirror *state = (ChannelMirror *)ch;
+    state->waiting_receivers = 1;
+    state->sync_epoch = INT64_MAX;
+
+    assert(expect_trap([&]() { (void)rt_channel_try_send(ch, NULL); }));
+
+    state->waiting_receivers = 0;
+    state->sync_epoch = 0;
+    rt_channel_close(ch);
+}
+
 //=============================================================================
 // Null safety
 //=============================================================================
@@ -614,6 +674,9 @@ int main() {
     test_try_send_retain_overflow_does_not_lock_channel();
     test_send_for_retain_overflow_does_not_lock_channel();
     test_recv_for_discard_releases_after_unlock();
+    test_sender_wait_count_overflow_traps();
+    test_receiver_wait_count_overflow_traps();
+    test_sync_epoch_overflow_traps();
     test_null_safety();
     test_producer_consumer();
     test_close_wakes_receiver();

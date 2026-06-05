@@ -474,10 +474,20 @@ static void mb_finalizer(void *obj) {
     mb_unlock(mb);
 
     if (buckets) {
+        mb_topic *topics_to_free = NULL;
         for (int64_t i = 0; i < bucket_count; i++) {
-            mb_free_topic_chain(buckets[i]);
+            mb_topic *t = buckets[i];
+            if (t) {
+                mb_topic *tail = t;
+                while (tail->next)
+                    tail = tail->next;
+                tail->next = topics_to_free;
+                topics_to_free = t;
+                buckets[i] = NULL;
+            }
         }
         free(buckets);
+        mb_free_topic_chain(topics_to_free);
     }
 }
 
@@ -801,6 +811,10 @@ int64_t rt_msgbus_subscribe(void *obj, rt_string topic, void *callback) {
         rt_trap("rt_msgbus_subscribe: subscription id overflow");
         return -1;
     }
+    if (mb->total_subs == INT64_MAX) {
+        rt_trap("rt_msgbus_subscribe: subscription count overflow");
+        return -1;
+    }
     mb_topic *t = mb_ensure_topic_locked(mb, topic, topic_bytes, topic_len, &spare_topic);
     if (!t) {
         locked = 0;
@@ -820,6 +834,10 @@ int64_t rt_msgbus_subscribe(void *obj, rt_string topic, void *callback) {
     s->topic = retained_topic;
     s->callback = retained_callback;
     s->next = NULL;
+    if (t->count == INT64_MAX) {
+        rt_trap("rt_msgbus_subscribe: subscription count overflow");
+        return -1;
+    }
     if (!t->subs) {
         t->subs = s;
     } else {

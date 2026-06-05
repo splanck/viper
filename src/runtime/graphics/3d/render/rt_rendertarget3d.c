@@ -33,6 +33,7 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_platform.h"
 #include "vgfx3d_backend.h"
 #include <limits.h>
 #include <stdint.h>
@@ -40,8 +41,8 @@
 
 #define RT_RENDERTARGET3D_DEFAULT_BUDGET_BYTES (1024ull * 1024ull * 1024ull)
 
-static volatile uint64_t g_rendertarget3d_reserved_bytes = 0;
-static volatile uint64_t g_rendertarget3d_next_identity = 1;
+static volatile size_t g_rendertarget3d_reserved_bytes = 0;
+static volatile int64_t g_rendertarget3d_next_identity = 1;
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
@@ -103,18 +104,21 @@ static int rt_rendertarget_estimate_bytes(int32_t w,
 ///   prevents scripts from creating many huge targets and deferring failure to backend OOM.
 /// @return 1 when the reservation was accepted; 0 when it would exceed the default budget.
 static int rt_rendertarget_reserve_budget(uint64_t bytes) {
-    uint64_t old_value;
+    const size_t budget_bytes = (size_t)RT_RENDERTARGET3D_DEFAULT_BUDGET_BYTES;
+    size_t reserve_bytes;
+    size_t old_value;
     if (bytes == 0u)
         return 1;
     if (bytes > RT_RENDERTARGET3D_DEFAULT_BUDGET_BYTES)
         return 0;
+    reserve_bytes = (size_t)bytes;
     for (;;) {
         old_value = __atomic_load_n(&g_rendertarget3d_reserved_bytes, __ATOMIC_RELAXED);
-        if (old_value > RT_RENDERTARGET3D_DEFAULT_BUDGET_BYTES - bytes)
+        if (old_value > budget_bytes - reserve_bytes)
             return 0;
         if (__atomic_compare_exchange_n(&g_rendertarget3d_reserved_bytes,
                                         &old_value,
-                                        old_value + bytes,
+                                        old_value + reserve_bytes,
                                         0,
                                         __ATOMIC_ACQ_REL,
                                         __ATOMIC_RELAXED))
@@ -126,12 +130,14 @@ static int rt_rendertarget_reserve_budget(uint64_t bytes) {
 /// @details Saturates to zero on accounting mismatch so finalization remains idempotent even if a
 ///   partially constructed target is torn down during error recovery.
 static void rt_rendertarget_release_budget(uint64_t bytes) {
-    uint64_t old_value;
+    size_t release_bytes;
+    size_t old_value;
     if (bytes == 0u)
         return;
+    release_bytes = bytes > (uint64_t)SIZE_MAX ? SIZE_MAX : (size_t)bytes;
     for (;;) {
         old_value = __atomic_load_n(&g_rendertarget3d_reserved_bytes, __ATOMIC_RELAXED);
-        uint64_t new_value = old_value > bytes ? old_value - bytes : 0u;
+        size_t new_value = old_value > release_bytes ? old_value - release_bytes : 0u;
         if (__atomic_compare_exchange_n(&g_rendertarget3d_reserved_bytes,
                                         &old_value,
                                         new_value,
@@ -146,9 +152,11 @@ static void rt_rendertarget_release_budget(uint64_t bytes) {
 /// @details Backends use this instead of raw C pointers when caching native textures, avoiding stale
 ///   cache hits if the allocator reuses a recently freed target address.
 static uint64_t rt_rendertarget_next_cache_identity(void) {
-    uint64_t identity = __atomic_fetch_add(&g_rendertarget3d_next_identity, 1u, __ATOMIC_RELAXED);
+    uint64_t identity =
+        (uint64_t)__atomic_fetch_add(&g_rendertarget3d_next_identity, (int64_t)1, __ATOMIC_RELAXED);
     if (identity == 0u)
-        identity = __atomic_fetch_add(&g_rendertarget3d_next_identity, 1u, __ATOMIC_RELAXED);
+        identity = (uint64_t)__atomic_fetch_add(
+            &g_rendertarget3d_next_identity, (int64_t)1, __ATOMIC_RELAXED);
     return identity ? identity : 1u;
 }
 

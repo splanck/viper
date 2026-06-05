@@ -9,7 +9,7 @@
 // Purpose: Regression tests for buffer overflow bugs in the Viper runtime.
 //          Covers:
 //            R-12 - rt_trie collect_keys fixed-buffer overflow for long keys
-//            R-14 - rt_dateonly_format snprintf return-value clamping
+//            R-14 - rt_dateonly_format growable output across old buffer boundary
 //            R-21 - rt_pixels_resize OOB read for 1-pixel-wide/tall images
 //
 //===----------------------------------------------------------------------===//
@@ -162,15 +162,14 @@ static void test_trie_with_prefix_long_key(void) {
 /// as full month names ("September" = 9 chars) and full day names
 /// ("Wednesday" = 9 chars).  Repeating these across a 255-byte buffer boundary
 /// triggered the overflow before the fix.  After the fix the output must be
-/// null-terminated within the 256-byte buffer.
+/// complete and still null-terminated.
 static void test_dateonly_format_long_output(void) {
     // September 17, 2025 is a Wednesday.
     void *date = rt_dateonly_create(2025, 9, 17);
     assert(date != NULL);
 
-    // Build a format string that produces ~18 chars per pair repeated many times.
-    // "%B %A " -> "September Wednesday " = 19 chars, repeated 20 times = 380 chars.
-    // The fixed buffer is 256 bytes, so this should be truncated safely.
+    // Build a format string that produces 20 chars per pair repeated many times.
+    // "%B %A " -> "September Wednesday " = 20 chars, repeated 20 times = 400 chars.
     const char *fmt_cstr = "%B %A %B %A %B %A %B %A %B %A %B %A %B %A %B %A %B %A %B %A "
                            "%B %A %B %A %B %A %B %A %B %A %B %A %B %A %B %A %B %A %B %A ";
     rt_string fmt = make_key(fmt_cstr);
@@ -180,10 +179,18 @@ static void test_dateonly_format_long_output(void) {
     const char *cstr = rt_string_cstr(result);
     assert(cstr != NULL);
 
-    // The output length must be <= 255 (buffer is 256 with NUL terminator).
+    // The output must cross the old 255-byte boundary without truncation.
+    const char *expected_piece = "September Wednesday ";
+    const size_t expected_piece_len = strlen(expected_piece);
+    const size_t expected_pairs = 20;
     int64_t result_len = rt_str_len(result);
     assert(result_len >= 0);
-    assert(result_len <= 255);
+    assert(result_len == (int64_t)(expected_piece_len * expected_pairs));
+    assert(result_len > 255);
+    for (size_t i = 0; i < expected_pairs; i++) {
+        assert(memcmp(cstr + i * expected_piece_len, expected_piece, expected_piece_len) == 0);
+    }
+    assert(cstr[result_len] == '\0');
 
     rt_string_unref(fmt);
     rt_string_unref(result);

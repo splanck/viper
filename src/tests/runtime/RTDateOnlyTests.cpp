@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <setjmp.h>
+#include <string>
 
 static jmp_buf g_trap_env;
 static int g_expect_trap = 0;
@@ -361,6 +362,19 @@ static void test_dateonly_formatting() {
     {
         rt_string s = rt_dateonly_format(d, rt_const_cstr("%A, %B %d, %Y"));
         test_result("Format full date", strcmp(rt_string_cstr(s), "Thursday, July 04, 2024") == 0);
+    }
+
+    // Test 5: Long custom formats should not be truncated
+    {
+        std::string fmt(300, 'x');
+        fmt += "%Y";
+        rt_string fmt_s = rt_string_from_bytes(fmt.data(), fmt.size());
+        rt_string s = rt_dateonly_format(d, fmt_s);
+        std::string expected(300, 'x');
+        expected += "2024";
+        test_result("Format long custom pattern",
+                    rt_str_len(s) == (int64_t)expected.size() &&
+                        std::memcmp(rt_string_cstr(s), expected.data(), expected.size()) == 0);
     }
 
     printf("\n");

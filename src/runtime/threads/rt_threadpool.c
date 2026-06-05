@@ -508,7 +508,8 @@ static void worker_entry(void *arg) {
         // Mark task complete
         rt_monitor_enter(pool->monitor);
         if (trapped) {
-            pool->error_count++;
+            if (pool->error_count < INT64_MAX)
+                pool->error_count++;
             strncpy(pool->last_error,
                     task_error[0] ? task_error : "Pool.Wait: task trapped",
                     sizeof(pool->last_error) - 1);
@@ -555,6 +556,13 @@ int8_t rt_threadpool_submit(void *pool_obj, void *callback, void *arg) {
     if (pool->shutdown) {
         rt_monitor_exit(pool->monitor);
         pool_release_object(pool);
+        return 0;
+    }
+
+    if (pool->pending_count == INT64_MAX) {
+        rt_monitor_exit(pool->monitor);
+        pool_release_object(pool);
+        rt_trap("Pool.Submit: pending task count overflow");
         return 0;
     }
 

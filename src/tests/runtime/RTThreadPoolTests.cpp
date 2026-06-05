@@ -80,6 +80,44 @@ static int call_traps(void (*fn)(void *), void *arg) {
     return trapped;
 }
 
+template <typename Fn> static bool expect_trap(Fn fn) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        fn();
+        rt_trap_clear_recovery();
+        return false;
+    }
+    rt_trap_clear_recovery();
+    return true;
+}
+
+struct PoolTaskMirror {
+    void (*callback)(void *);
+    void *arg;
+    PoolTaskMirror *next;
+};
+
+struct PoolWorkerMirror {
+    void *thread;
+    void *pool;
+};
+
+struct PoolMirror {
+    void *monitor;
+    PoolTaskMirror *queue_head;
+    PoolTaskMirror *queue_tail;
+    PoolWorkerMirror *workers;
+    int64_t worker_count;
+    int64_t pending_count;
+    int64_t active_count;
+    int64_t error_count;
+    char last_error[512];
+    int8_t shutdown;
+    int8_t shutdown_now;
+    int8_t cleanup_scheduled;
+};
+
 //=============================================================================
 // Creation and properties
 //=============================================================================
@@ -256,6 +294,38 @@ static void test_task_trap_error_is_reported_once() {
     assert(call_traps(shutdown_pool, pool) == 0);
 }
 
+static void test_submit_pending_count_overflow_traps() {
+    void *pool = rt_threadpool_new(1);
+    PoolMirror *state = (PoolMirror *)pool;
+    rt_monitor_enter(state->monitor);
+    state->pending_count = INT64_MAX;
+    rt_monitor_exit(state->monitor);
+
+    assert(expect_trap([&]() { (void)rt_threadpool_submit(pool, (void *)increment_task, NULL); }));
+
+    rt_monitor_enter(state->monitor);
+    state->pending_count = 0;
+    rt_monitor_exit(state->monitor);
+    rt_threadpool_shutdown(pool);
+}
+
+static void test_error_count_saturates_and_reports_task_trap() {
+    init_counter();
+    void *pool = rt_threadpool_new(1);
+    PoolMirror *state = (PoolMirror *)pool;
+    rt_monitor_enter(state->monitor);
+    state->error_count = INT64_MAX;
+    rt_monitor_exit(state->monitor);
+
+    assert(rt_threadpool_submit(pool, (void *)trap_task, NULL) == 1);
+    assert(expect_trap([&]() { (void)rt_threadpool_wait_for(pool, 1000); }));
+
+    rt_monitor_enter(state->monitor);
+    assert(state->error_count == 0);
+    rt_monitor_exit(state->monitor);
+    assert(call_traps(shutdown_pool, pool) == 0);
+}
+
 //=============================================================================
 // Shutdown modes
 //=============================================================================
@@ -386,6 +456,8 @@ int main() {
     test_wait_for_timeout_budget();
     test_task_trap_does_not_hang_wait();
     test_task_trap_error_is_reported_once();
+    test_submit_pending_count_overflow_traps();
+    test_error_count_saturates_and_reports_task_trap();
     test_graceful_shutdown();
     test_shutdown_now();
     test_shutdown_surfaces_task_trap();

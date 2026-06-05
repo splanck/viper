@@ -241,6 +241,37 @@ static void channel_save_trap_error(char *buffer, size_t buffer_size, const char
     snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
 }
 
+/// @brief Increment a waiter counter while holding the channel monitor.
+/// @details Waiter counters drive close/wakeup decisions. Letting them wrap would
+///          make a live waiter invisible and can deadlock a matching operation.
+static int8_t channel_increment_waiter_locked(
+    channel_impl *ch, void *channel, int64_t *counter, const char *message) {
+    if (*counter == INT64_MAX) {
+        rt_monitor_exit(ch->monitor);
+        channel_release_object(channel);
+        rt_trap(message);
+        return 0;
+    }
+    (*counter)++;
+    return 1;
+}
+
+/// @brief Advance the synchronous handoff epoch while holding the channel monitor.
+/// @details The epoch is compared by senders and receivers to acknowledge an
+///          unbuffered handoff. Wrapping it can make a fresh send look already
+///          acknowledged, so overflow is a hard runtime error.
+static int8_t channel_next_sync_epoch_locked(
+    channel_impl *ch, void *channel, int64_t *out, const char *message) {
+    if (ch->sync_epoch == INT64_MAX) {
+        rt_monitor_exit(ch->monitor);
+        channel_release_object(channel);
+        rt_trap(message);
+        return 0;
+    }
+    *out = ++ch->sync_epoch;
+    return 1;
+}
+
 /// @brief Retain a runtime reference on @p item while the channel lock is held,
 ///        trap-recovering (with @p fallback message) on a retain failure.
 /// @return non-zero on success; 0 if the retain trapped (item not enqueued).
@@ -356,7 +387,9 @@ void rt_channel_send(void *channel, void *item) {
 
     // Handle synchronous channel (capacity 0)
     if (ch->capacity == 0) {
-        ch->waiting_senders++;
+        if (!channel_increment_waiter_locked(
+                ch, channel, &ch->waiting_senders, "Channel.Send: sender wait count overflow"))
+            return;
         while ((ch->count != 0 || ch->waiting_receivers == 0) && !ch->closed) {
             rt_monitor_wait(ch->monitor);
         }
@@ -369,10 +402,13 @@ void rt_channel_send(void *channel, void *item) {
             return;
         }
 
+        int64_t my_epoch = 0;
+        if (!channel_next_sync_epoch_locked(
+                ch, channel, &my_epoch, "Channel.Send: synchronous handoff epoch overflow"))
+            return;
         if (!channel_retain_item_locked(
                 ch, channel, item, &ch->waiting_senders, "Channel.Send: item retain failed"))
             return;
-        int64_t my_epoch = ++ch->sync_epoch;
         ch->buffer[0] = item;
         ch->count = 1;
 
@@ -405,7 +441,9 @@ void rt_channel_send(void *channel, void *item) {
     }
 
     // Wait for space in buffered channel
-    ch->waiting_senders++;
+    if (!channel_increment_waiter_locked(
+            ch, channel, &ch->waiting_senders, "Channel.Send: sender wait count overflow"))
+        return;
     while (ch->count >= ch->capacity && !ch->closed) {
         rt_monitor_wait(ch->monitor);
     }
@@ -474,10 +512,16 @@ int8_t rt_channel_try_send(void *channel, void *item) {
     // Synchronous TrySend is non-blocking: if a receiver is already waiting,
     // publish one handoff and return immediately. The receiver owns completion.
     if (ch->capacity == 0) {
+        int64_t ignored_epoch = 0;
+        if (!channel_next_sync_epoch_locked(
+                ch,
+                channel,
+                &ignored_epoch,
+                "Channel.TrySend: synchronous handoff epoch overflow"))
+            return 0;
         if (!channel_retain_item_locked(
                 ch, channel, item, NULL, "Channel.TrySend: item retain failed"))
             return 0;
-        ++ch->sync_epoch;
         ch->buffer[0] = item;
         ch->count = 1;
         rt_monitor_pause_all(ch->monitor);
@@ -519,7 +563,11 @@ int8_t rt_channel_send_for(void *channel, void *item, int64_t ms) {
 
     // Handle synchronous channel
     if (ch->capacity == 0) {
-        ch->waiting_senders++;
+        if (!channel_increment_waiter_locked(ch,
+                                             channel,
+                                             &ch->waiting_senders,
+                                             "Channel.SendFor: sender wait count overflow"))
+            return 0;
         while ((ch->count != 0 || ch->waiting_receivers == 0) && !ch->closed) {
             int64_t remaining = channel_remaining_ms(deadline);
             if (remaining <= 0 || !rt_monitor_wait_for(ch->monitor, remaining)) {
@@ -545,10 +593,13 @@ int8_t rt_channel_send_for(void *channel, void *item, int64_t ms) {
             return 0;
         }
 
+        int64_t my_epoch = 0;
+        if (!channel_next_sync_epoch_locked(
+                ch, channel, &my_epoch, "Channel.SendFor: synchronous handoff epoch overflow"))
+            return 0;
         if (!channel_retain_item_locked(
                 ch, channel, item, &ch->waiting_senders, "Channel.SendFor: item retain failed"))
             return 0;
-        int64_t my_epoch = ++ch->sync_epoch;
         ch->buffer[0] = item;
         ch->count = 1;
         rt_monitor_pause_all(ch->monitor);
@@ -593,7 +644,11 @@ int8_t rt_channel_send_for(void *channel, void *item, int64_t ms) {
     }
 
     // Buffered channel
-    ch->waiting_senders++;
+    if (!channel_increment_waiter_locked(ch,
+                                         channel,
+                                         &ch->waiting_senders,
+                                         "Channel.SendFor: sender wait count overflow"))
+        return 0;
     while (ch->count >= ch->capacity && !ch->closed) {
         int64_t remaining = channel_remaining_ms(deadline);
         int8_t signaled = remaining > 0 ? rt_monitor_wait_for(ch->monitor, remaining) : 0;
@@ -642,7 +697,11 @@ void *rt_channel_recv(void *channel) {
 
     // Handle synchronous channel
     if (ch->capacity == 0) {
-        ch->waiting_receivers++;
+        if (!channel_increment_waiter_locked(ch,
+                                             channel,
+                                             &ch->waiting_receivers,
+                                             "Channel.Recv: receiver wait count overflow"))
+            return NULL;
 
         // Signal any waiting senders
         if (ch->waiting_senders > 0)
@@ -677,7 +736,9 @@ void *rt_channel_recv(void *channel) {
     }
 
     // Buffered channel - wait for item
-    ch->waiting_receivers++;
+    if (!channel_increment_waiter_locked(
+            ch, channel, &ch->waiting_receivers, "Channel.Recv: receiver wait count overflow"))
+        return NULL;
     while (ch->count == 0 && !ch->closed) {
         rt_monitor_wait(ch->monitor);
     }
@@ -793,7 +854,11 @@ int8_t rt_channel_recv_for(void *channel, void **out, int64_t ms) {
 
     // Handle synchronous channel
     if (ch->capacity == 0) {
-        ch->waiting_receivers++;
+        if (!channel_increment_waiter_locked(ch,
+                                             channel,
+                                             &ch->waiting_receivers,
+                                             "Channel.RecvFor: receiver wait count overflow"))
+            return 0;
         if (ch->waiting_senders > 0)
             rt_monitor_pause(ch->monitor);
 
@@ -836,7 +901,11 @@ int8_t rt_channel_recv_for(void *channel, void **out, int64_t ms) {
     }
 
     // Buffered channel
-    ch->waiting_receivers++;
+    if (!channel_increment_waiter_locked(ch,
+                                         channel,
+                                         &ch->waiting_receivers,
+                                         "Channel.RecvFor: receiver wait count overflow"))
+        return 0;
     while (ch->count == 0 && !ch->closed) {
         int64_t remaining = channel_remaining_ms(deadline);
         int8_t signaled = remaining > 0 ? rt_monitor_wait_for(ch->monitor, remaining) : 0;

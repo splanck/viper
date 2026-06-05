@@ -44,6 +44,7 @@
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <time.h>
 
@@ -162,6 +163,62 @@ static int date_parse_digits(const char *s, int count) {
         value = value * 10 + (s[i] - '0');
     }
     return value;
+}
+
+static int dateonly_format_reserve(char **buf, size_t *cap, size_t needed) {
+    if (needed <= *cap)
+        return 1;
+    size_t next = *cap ? *cap : 64;
+    while (next < needed) {
+        if (next > SIZE_MAX / 2) {
+            next = needed;
+            break;
+        }
+        next *= 2;
+    }
+    char *grown = (char *)realloc(*buf, next);
+    if (!grown) {
+        free(*buf);
+        *buf = NULL;
+        *cap = 0;
+        rt_trap("DateOnly.Format: memory allocation failed");
+        return 0;
+    }
+    *buf = grown;
+    *cap = next;
+    return 1;
+}
+
+static int dateonly_format_append_bytes(char **buf,
+                                        size_t *cap,
+                                        size_t *len,
+                                        const char *bytes,
+                                        size_t bytes_len) {
+    if (!bytes || bytes_len == 0)
+        return 1;
+    if (*len > SIZE_MAX - bytes_len - 1) {
+        free(*buf);
+        *buf = NULL;
+        *cap = 0;
+        *len = 0;
+        rt_trap("DateOnly.Format: output too large");
+        return 0;
+    }
+    size_t needed = *len + bytes_len + 1;
+    if (!dateonly_format_reserve(buf, cap, needed))
+        return 0;
+    memcpy(*buf + *len, bytes, bytes_len);
+    *len += bytes_len;
+    (*buf)[*len] = '\0';
+    return 1;
+}
+
+static int dateonly_format_append_cstr(char **buf, size_t *cap, size_t *len, const char *text) {
+    return dateonly_format_append_bytes(buf, cap, len, text, text ? strlen(text) : 0);
+}
+
+static int dateonly_format_append_char(char **buf, size_t *cap, size_t *len, char ch) {
+    return dateonly_format_append_bytes(buf, cap, len, &ch, 1);
 }
 
 /// @brief Convert a Gregorian date to days since Unix epoch (1970-01-01).
@@ -679,77 +736,89 @@ rt_string rt_dateonly_format(void *obj, rt_string fmt) {
         "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
     static const char *day_abbr[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 
-    char buf[256];
-    int64_t buf_pos = 0;
+    char *buf = NULL;
+    size_t buf_cap = 0;
+    size_t buf_len = 0;
+    if (!dateonly_format_reserve(&buf, &buf_cap, 64))
+        return NULL;
+    buf[0] = '\0';
 
-    for (int64_t i = 0; i < fmt_len && buf_pos < 255; i++) {
+    for (int64_t i = 0; i < fmt_len; i++) {
         if (fmt_str[i] == '%' && i + 1 < fmt_len) {
             i++;
             char spec = fmt_str[i];
+            char tmp[64];
             switch (spec) {
                 case 'Y': // 4-digit year
-                    buf_pos += snprintf(
-                        buf + buf_pos, 256 - (size_t)buf_pos, "%04lld", (long long)d->year);
+                    snprintf(tmp, sizeof(tmp), "%04lld", (long long)d->year);
+                    if (!dateonly_format_append_cstr(&buf, &buf_cap, &buf_len, tmp))
+                        return NULL;
                     break;
                 case 'y': // 2-digit year
-                    buf_pos += snprintf(
-                        buf + buf_pos, 256 - (size_t)buf_pos, "%02lld", (long long)(d->year % 100));
+                    snprintf(tmp, sizeof(tmp), "%02lld", (long long)(d->year % 100));
+                    if (!dateonly_format_append_cstr(&buf, &buf_cap, &buf_len, tmp))
+                        return NULL;
                     break;
                 case 'm': // 2-digit month
-                    buf_pos += snprintf(
-                        buf + buf_pos, 256 - (size_t)buf_pos, "%02lld", (long long)d->month);
+                    snprintf(tmp, sizeof(tmp), "%02lld", (long long)d->month);
+                    if (!dateonly_format_append_cstr(&buf, &buf_cap, &buf_len, tmp))
+                        return NULL;
                     break;
                 case 'd': // 2-digit day
-                    buf_pos +=
-                        snprintf(buf + buf_pos, 256 - (size_t)buf_pos, "%02lld", (long long)d->day);
+                    snprintf(tmp, sizeof(tmp), "%02lld", (long long)d->day);
+                    if (!dateonly_format_append_cstr(&buf, &buf_cap, &buf_len, tmp))
+                        return NULL;
                     break;
                 case 'B': // Full month name
-                    if (d->month >= 1 && d->month <= 12)
-                        buf_pos += snprintf(
-                            buf + buf_pos, 256 - (size_t)buf_pos, "%s", month_names[d->month]);
+                    if (d->month >= 1 && d->month <= 12 &&
+                        !dateonly_format_append_cstr(
+                            &buf, &buf_cap, &buf_len, month_names[d->month]))
+                        return NULL;
                     break;
                 case 'b': // Abbreviated month name
-                    if (d->month >= 1 && d->month <= 12)
-                        buf_pos += snprintf(
-                            buf + buf_pos, 256 - (size_t)buf_pos, "%s", month_abbr[d->month]);
+                    if (d->month >= 1 && d->month <= 12 &&
+                        !dateonly_format_append_cstr(
+                            &buf, &buf_cap, &buf_len, month_abbr[d->month]))
+                        return NULL;
                     break;
                 case 'A': // Full day name
                 {
                     int64_t dow = rt_dateonly_day_of_week(obj);
-                    if (dow >= 0 && dow <= 6)
-                        buf_pos +=
-                            snprintf(buf + buf_pos, 256 - (size_t)buf_pos, "%s", day_names[dow]);
+                    if (dow >= 0 && dow <= 6 &&
+                        !dateonly_format_append_cstr(&buf, &buf_cap, &buf_len, day_names[dow]))
+                        return NULL;
                     break;
                 }
                 case 'a': // Abbreviated day name
                 {
                     int64_t dow = rt_dateonly_day_of_week(obj);
-                    if (dow >= 0 && dow <= 6)
-                        buf_pos +=
-                            snprintf(buf + buf_pos, 256 - (size_t)buf_pos, "%s", day_abbr[dow]);
+                    if (dow >= 0 && dow <= 6 &&
+                        !dateonly_format_append_cstr(&buf, &buf_cap, &buf_len, day_abbr[dow]))
+                        return NULL;
                     break;
                 }
                 case 'j': // Day of year
-                    buf_pos += snprintf(buf + buf_pos,
-                                        256 - (size_t)buf_pos,
-                                        "%03lld",
-                                        (long long)rt_dateonly_day_of_year(obj));
+                    snprintf(tmp, sizeof(tmp), "%03lld", (long long)rt_dateonly_day_of_year(obj));
+                    if (!dateonly_format_append_cstr(&buf, &buf_cap, &buf_len, tmp))
+                        return NULL;
                     break;
                 case '%': // Literal %
-                    buf[buf_pos++] = '%';
+                    if (!dateonly_format_append_char(&buf, &buf_cap, &buf_len, '%'))
+                        return NULL;
                     break;
                 default:
-                    buf[buf_pos++] = '%';
-                    buf[buf_pos++] = spec;
+                    if (!dateonly_format_append_char(&buf, &buf_cap, &buf_len, '%') ||
+                        !dateonly_format_append_char(&buf, &buf_cap, &buf_len, spec))
+                        return NULL;
                     break;
             }
-            if (buf_pos > 255)
-                buf_pos = 255;
         } else {
-            buf[buf_pos++] = fmt_str[i];
+            if (!dateonly_format_append_char(&buf, &buf_cap, &buf_len, fmt_str[i]))
+                return NULL;
         }
     }
 
-    buf[buf_pos] = '\0';
-    return rt_string_from_bytes(buf, buf_pos);
+    rt_string out = rt_string_from_bytes(buf, buf_len);
+    free(buf);
+    return out;
 }

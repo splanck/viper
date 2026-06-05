@@ -15,6 +15,7 @@
 
 #include <cassert>
 #include <csetjmp>
+#include <cstdint>
 #include <cstring>
 #include <string>
 
@@ -50,6 +51,8 @@ static const char *g_last_text_payload = NULL;
 static void *g_current_bus = NULL;
 static int64_t g_victim_sub_id = 0;
 static int g_callback_finalized = 0;
+static int g_trapping_callback_finalized = 0;
+static int g_second_callback_finalized = 0;
 static int g_payload_finalized = 0;
 static int g_bus_finalized = 0;
 
@@ -105,6 +108,17 @@ static void callback_finalizer(void *obj) {
     g_callback_finalized++;
 }
 
+static void trapping_callback_finalizer(void *obj) {
+    (void)obj;
+    g_trapping_callback_finalized++;
+    rt_trap("callback finalizer boom");
+}
+
+static void second_callback_finalizer(void *obj) {
+    (void)obj;
+    g_second_callback_finalized++;
+}
+
 static void payload_finalizer(void *obj) {
     (void)obj;
     g_payload_finalized++;
@@ -122,6 +136,60 @@ static void cb_release_current_bus(void *data) {
         destroy_obj(g_current_bus);
         g_current_bus = NULL;
     }
+}
+
+struct MsgBusSubMirror {
+    int64_t id;
+    rt_string topic;
+    void *callback;
+    MsgBusSubMirror *next;
+};
+
+struct MsgBusTopicMirror {
+    rt_string name;
+    char *key_bytes;
+    size_t key_len;
+    uint64_t key_hash;
+    MsgBusSubMirror *subs;
+    int64_t count;
+    MsgBusTopicMirror *next;
+};
+
+struct MsgBusMirror {
+    void *vptr;
+    MsgBusTopicMirror **buckets;
+    int64_t bucket_count;
+    int64_t next_id;
+    int64_t total_subs;
+    int lock;
+};
+
+static uint64_t test_topic_hash(const char *s, size_t len) {
+    uint64_t h = 14695981039346656037ULL;
+    for (size_t i = 0; i < len; ++i) {
+        h ^= (uint8_t)s[i];
+        h *= 1099511628211ULL;
+    }
+    return h;
+}
+
+static int test_topic_bucket(const std::string &topic) {
+    return (int)(test_topic_hash(topic.data(), topic.size()) % 32u);
+}
+
+static MsgBusTopicMirror *find_topic(void *bus, rt_string topic) {
+    MsgBusMirror *state = (MsgBusMirror *)bus;
+    const char *bytes = rt_string_cstr(topic);
+    size_t len = (size_t)rt_str_len(topic);
+    for (int64_t i = 0; i < state->bucket_count; ++i) {
+        MsgBusTopicMirror *t = state->buckets[i];
+        while (t) {
+            if (t->key_len == len && std::memcmp(t->key_bytes, bytes, len) == 0)
+                return t;
+            t = t->next;
+        }
+    }
+    return nullptr;
 }
 
 static void test_new() {
@@ -494,6 +562,115 @@ static void test_publish_trap_releases_snapshot_callbacks() {
     destroy_obj(bus);
 }
 
+static void test_subscribe_total_count_overflow_traps() {
+    void *bus = rt_msgbus_new();
+    rt_string topic = make_str("total_overflow");
+    void *callback = rt_msgbus_callback_new(cb_first);
+    MsgBusMirror *state = (MsgBusMirror *)bus;
+    state->total_subs = INT64_MAX;
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_msgbus_subscribe(bus, topic, callback);
+        rt_trap_clear_recovery();
+        assert(false && "total subscription overflow should trap");
+    } else {
+        std::string message = rt_trap_get_error();
+        rt_trap_clear_recovery();
+        assert(message.find("subscription count overflow") != std::string::npos);
+    }
+
+    state->total_subs = 0;
+    assert(rt_msgbus_total_subscriptions(bus) == 0);
+    rt_string_unref(topic);
+    destroy_obj(callback);
+    destroy_obj(bus);
+}
+
+static void test_subscribe_topic_count_overflow_traps() {
+    void *bus = rt_msgbus_new();
+    rt_string topic = make_str("topic_overflow");
+    void *callback = rt_msgbus_callback_new(cb_first);
+
+    assert(rt_msgbus_subscribe(bus, topic, callback) > 0);
+    MsgBusTopicMirror *topic_state = find_topic(bus, topic);
+    assert(topic_state != nullptr);
+    topic_state->count = INT64_MAX;
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_msgbus_subscribe(bus, topic, callback);
+        rt_trap_clear_recovery();
+        assert(false && "topic subscription overflow should trap");
+    } else {
+        std::string message = rt_trap_get_error();
+        rt_trap_clear_recovery();
+        assert(message.find("subscription count overflow") != std::string::npos);
+    }
+
+    topic_state->count = 1;
+    assert(rt_msgbus_total_subscriptions(bus) == 1);
+    rt_string_unref(topic);
+    destroy_obj(callback);
+    destroy_obj(bus);
+}
+
+static void test_finalizer_trap_drains_later_buckets() {
+    std::string trap_name;
+    std::string count_name;
+    int trap_bucket = 100;
+    int count_bucket = -1;
+    for (int i = 0; i < 256; ++i) {
+        std::string candidate = "finalizer_bucket_" + std::to_string(i);
+        int bucket = test_topic_bucket(candidate);
+        if (bucket < trap_bucket) {
+            trap_bucket = bucket;
+            trap_name = candidate;
+        }
+        if (bucket > count_bucket) {
+            count_bucket = bucket;
+            count_name = candidate;
+        }
+    }
+    assert(!trap_name.empty());
+    assert(!count_name.empty());
+    assert(trap_bucket < count_bucket);
+
+    void *bus = rt_msgbus_new();
+    rt_string trap_topic = rt_string_from_bytes(trap_name.data(), trap_name.size());
+    rt_string count_topic = rt_string_from_bytes(count_name.data(), count_name.size());
+    void *trap_callback = rt_msgbus_callback_new(cb_first);
+    void *count_callback = rt_msgbus_callback_new(cb_second);
+    rt_obj_set_finalizer(trap_callback, trapping_callback_finalizer);
+    rt_obj_set_finalizer(count_callback, second_callback_finalizer);
+    g_trapping_callback_finalized = 0;
+    g_second_callback_finalized = 0;
+
+    assert(rt_msgbus_subscribe(bus, trap_topic, trap_callback) > 0);
+    assert(rt_msgbus_subscribe(bus, count_topic, count_callback) > 0);
+    destroy_obj(trap_callback);
+    destroy_obj(count_callback);
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        destroy_obj(bus);
+        rt_trap_clear_recovery();
+        assert(false && "trapping callback finalizer should re-trap");
+    } else {
+        std::string message = rt_trap_get_error();
+        rt_trap_clear_recovery();
+        assert(message.find("callback finalizer boom") != std::string::npos);
+    }
+
+    assert(g_trapping_callback_finalized == 1);
+    assert(g_second_callback_finalized == 1);
+    rt_string_unref(trap_topic);
+    rt_string_unref(count_topic);
+}
+
 static void test_clear_topic() {
     void *bus = rt_msgbus_new();
     rt_string t = make_str("temp");
@@ -591,6 +768,9 @@ int main() {
     test_rejects_raw_pointer_callback();
     test_subscribe_retain_trap_releases_bus();
     test_publish_trap_releases_snapshot_callbacks();
+    test_subscribe_total_count_overflow_traps();
+    test_subscribe_topic_count_overflow_traps();
+    test_finalizer_trap_drains_later_buckets();
     test_clear_topic();
     test_clear();
     test_callback_object_cleanup_on_unsubscribe();

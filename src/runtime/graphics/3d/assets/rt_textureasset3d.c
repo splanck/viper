@@ -127,15 +127,15 @@ static const uint8_t ktx2_identifier[12] = {
     0x0A,
 };
 
-static volatile uint64_t g_next_textureasset3d_cache_identity = 1;
+static volatile int64_t g_next_textureasset3d_cache_identity = 1;
 
 /// @brief Atomically allocate the next process-unique, nonzero cache identity.
 /// @details 0 is reserved as "no key", so the loop retries past a wrapped-to-zero value.
 static uint64_t textureasset3d_next_cache_identity(void) {
     uint64_t id;
     do {
-        id = __atomic_fetch_add(
-            &g_next_textureasset3d_cache_identity, UINT64_C(1), __ATOMIC_RELAXED);
+        id = (uint64_t)__atomic_fetch_add(
+            &g_next_textureasset3d_cache_identity, (int64_t)1, __ATOMIC_RELAXED);
     } while (id == 0);
     return id;
 }
