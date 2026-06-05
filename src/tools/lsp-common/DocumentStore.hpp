@@ -64,12 +64,14 @@ class DocumentStore {
     /// @param outPath Receives the decoded filesystem path on success.
     /// @param err Receives a human-readable failure reason when non-null.
     /// @return True when @p uri was accepted and @p outPath was populated.
-    static bool tryUriToPath(const std::string &uri, std::string &outPath, std::string *err = nullptr);
+    static bool tryUriToPath(const std::string &uri,
+                             std::string &outPath,
+                             std::string *err = nullptr);
 
   private:
     /// @brief Stored state for one open document.
     struct Document {
-        int version;         ///< Last client-reported version number.
+        int version{0};      ///< Last client-reported version number.
         std::string content; ///< Full current text of the document.
     };
 

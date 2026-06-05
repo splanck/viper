@@ -66,8 +66,8 @@ class ArWriter {
     struct Member {
         std::string name;          ///< Member name (without the trailing '/').
         std::vector<uint8_t> data; ///< Member payload bytes.
-        uint32_t mtime;            ///< Modification time (Unix timestamp).
-        uint32_t mode;             ///< File mode in octal.
+        uint32_t mtime{0};         ///< Modification time (Unix timestamp).
+        uint32_t mode{0};          ///< File mode in octal.
     };
 
     std::vector<Member> members_;

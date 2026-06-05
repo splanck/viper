@@ -107,15 +107,15 @@ class ZipWriter {
   private:
     // Internal per-entry record used to build the central directory on finish().
     struct Entry {
-        std::string name;          ///< Normalised entry path.
-        uint32_t crc32;            ///< CRC-32 of uncompressed data.
-        uint32_t compressedSize;   ///< Byte count of data as stored in archive.
-        uint32_t uncompressedSize; ///< Byte count of data before compression.
-        uint16_t method;           ///< Compression method (0=stored, 8=deflate).
-        uint16_t modTime;          ///< DOS last-modified time.
-        uint16_t modDate;          ///< DOS last-modified date.
-        uint32_t localOffset;      ///< Byte offset of this entry's local header from archive start.
-        uint32_t externalAttrs;    ///< ZIP external file attributes (Unix mode in upper 16 bits).
+        std::string name;             ///< Normalised entry path.
+        uint32_t crc32{0};            ///< CRC-32 of uncompressed data.
+        uint32_t compressedSize{0};   ///< Byte count of data as stored in archive.
+        uint32_t uncompressedSize{0}; ///< Byte count of data before compression.
+        uint16_t method{0};           ///< Compression method (0=stored, 8=deflate).
+        uint16_t modTime{0};          ///< DOS last-modified time.
+        uint16_t modDate{0};          ///< DOS last-modified date.
+        uint32_t localOffset{0};   ///< Byte offset of this entry's local header from archive start.
+        uint32_t externalAttrs{0}; ///< ZIP external file attributes (Unix mode in upper 16 bits).
     };
 
     std::vector<uint8_t> buffer_;
@@ -144,6 +144,10 @@ class ZipWriter {
     void writeU32(uint32_t v);
     /// @brief Write all central directory records and the EOCD to buffer_.
     void writeCentralDirectory();
+    /// @brief Append central directory records and EOCD to an arbitrary archive buffer.
+    /// @details Used by finish(path) to stage a finalized archive without consuming the writer
+    /// before the output file is known to be writable.
+    void appendCentralDirectory(std::vector<uint8_t> &archive) const;
     /// @brief Return the current wall-clock time as a DOS time/date pair for entry metadata.
     static void getDosTime(uint16_t &time, uint16_t &date);
 };

@@ -25,6 +25,7 @@
 #include "PkgDeflate.hpp"
 
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -38,6 +39,8 @@ namespace viper::pkg {
 namespace {
 
 static constexpr size_t kGzipMaxOutput = 0xFFFFFFFFull;
+static_assert(kGzipMaxOutput == std::numeric_limits<uint32_t>::max(),
+              "gzip trailer ISIZE is a 32-bit field");
 
 /// @brief Read a little-endian uint16_t from a possibly-unaligned byte pointer.
 uint16_t rdLE16(const uint8_t *p) {
@@ -155,8 +158,6 @@ std::vector<uint8_t> gunzip(const uint8_t *data, size_t len) {
 
     const uint32_t expectedCrc = rdLE32(data + len - 8);
     const uint32_t expectedSize = rdLE32(data + len - 4);
-    if (expectedSize > kGzipMaxOutput)
-        throw std::runtime_error("gzip: uncompressed size exceeds 4 GiB limit");
 
     const size_t deflateLen = len - pos - 8;
     auto out = inflate(data + pos, deflateLen, expectedSize);

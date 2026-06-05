@@ -683,6 +683,8 @@ add_subdirectory(frontends/common)
 add_subdirectory(frontends/basic)
 add_subdirectory(frontends/zia)
 
+target_link_libraries(il_tools_common PRIVATE fe_basic fe_zia)
+
 add_executable(basic-ast-dump
         tools/basic-ast-dump/main.cpp
         tools/basic/common.cpp)

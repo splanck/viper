@@ -79,9 +79,9 @@ class TarWriter {
         std::string path;          ///< Archive-relative entry path.
         std::string linkTarget;    ///< Link target (symlink entries only).
         std::vector<uint8_t> data; ///< File payload (regular files only).
-        uint32_t mode;             ///< Unix permission bits.
-        uint32_t mtime;            ///< Modification time (Unix timestamp).
-        char typeflag;             ///< '0'=file, '5'=dir, '2'=symlink.
+        uint32_t mode{0};          ///< Unix permission bits.
+        uint32_t mtime{0};         ///< Modification time (Unix timestamp).
+        char typeflag{'\0'};       ///< '0'=file, '5'=dir, '2'=symlink.
     };
 
     std::vector<Entry> entries_;      ///< Entries in insertion order.

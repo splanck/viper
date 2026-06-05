@@ -118,12 +118,12 @@ inline std::string normalizeDebName(const std::string &name) {
 }
 
 /// @brief Strip leading and trailing ASCII whitespace (space, tab, CR, LF).
-inline std::string trimAsciiWhitespace(std::string value) {
+inline std::string trimAsciiWhitespace(std::string_view value) {
     const std::size_t start = value.find_first_not_of(" \t\r\n");
     if (start == std::string::npos)
         return {};
     const std::size_t end = value.find_last_not_of(" \t\r\n");
-    return value.substr(start, end - start + 1);
+    return std::string(value.substr(start, end - start + 1));
 }
 
 /// @brief Return a copy of value with all ASCII letters converted to lowercase.
@@ -712,7 +712,7 @@ inline void validateWindowsProgIdBase(const std::string &identifier,
 /// @brief Normalize a package lifecycle hook script (preinst, postinst, etc.).
 /// Converts Windows CRLF line endings to LF, and rejects NUL bytes and other
 /// non-printable control characters. Returns "" for an empty input.
-inline std::string normalizePackageHookScript(std::string script, const char *fieldName) {
+inline std::string normalizePackageHookScript(const std::string &script, const char *fieldName) {
     if (script.empty())
         return {};
     std::string out;
@@ -734,6 +734,18 @@ inline std::string normalizePackageHookScript(std::string script, const char *fi
         out.push_back(script[i]);
     }
     return out;
+}
+
+/// @brief Require an explicit manifest opt-in before lifecycle hook scripts are packaged.
+/// @details Hook text is still supported, but install-time shell execution is surprising enough
+/// that manifests must set `allow-install-hooks true` before post/pre scripts are emitted.
+inline void validatePackageHooksAllowed(const PackageConfig &pkg) {
+    if (pkg.allowInstallHooks)
+        return;
+    if (!pkg.postInstallScript.empty() || !pkg.preUninstallScript.empty()) {
+        throw std::runtime_error("package hook scripts require 'allow-install-hooks true' in "
+                                 "viper.project");
+    }
 }
 
 /// @brief Validate a single file association entry.
@@ -920,7 +932,7 @@ inline void validatePackageUrl(const std::string &url, const char *fieldName) {
 
     std::string host;
     std::string port;
-    if (!authority.empty() && authority.front() == '[') {
+    if (authority.front() == '[') {
         const std::size_t close = authority.find(']');
         if (close == std::string::npos || close == 1)
             throw std::runtime_error(std::string(fieldName) + " URL IPv6 host is malformed: '" +
@@ -991,7 +1003,7 @@ inline void validatePackageUrl(const std::string &url, const char *fieldName) {
                 throw std::runtime_error(std::string(fieldName) + " URL port must be numeric: '" +
                                          url + "'");
         }
-    } else if (!authority.empty() && authority.back() == ':') {
+    } else if (authority.back() == ':') {
         throw std::runtime_error(std::string(fieldName) + " URL port must not be empty: '" + url +
                                  "'");
     }
@@ -1156,7 +1168,7 @@ inline std::filesystem::path resolvePackageSourcePath(const std::filesystem::pat
     const fs::path weakCandidate = fs::weakly_canonical(candidate, ec);
     if (ec)
         throw std::runtime_error(std::string("cannot resolve ") + fieldName + ": " + raw);
-    if (!ec && !isPathWithin(canonicalRoot, weakCandidate)) {
+    if (!isPathWithin(canonicalRoot, weakCandidate)) {
         throw std::runtime_error(std::string(fieldName) + " escapes the project root: '" + raw +
                                  "'");
     }
@@ -1304,7 +1316,6 @@ inline void safeDirectoryIterateResolved(
         const auto end = fs::directory_iterator();
         while (it != end) {
             const fs::path entryPath = logicalDir / it->path().filename();
-            bool skipEntry = false;
             bool isDirectory = false;
             bool isRegularFile = false;
             bool hasResolvedSymlink = false;
@@ -1328,25 +1339,23 @@ inline void safeDirectoryIterateResolved(
 
             entryEc.clear();
             const fs::path resolvedPath = hasResolvedSymlink ? resolvedSymlink : physicalEntryPath;
-            if (!skipEntry) {
-                const fs::file_status status = fs::status(resolvedPath, entryEc);
-                if (!entryEc) {
-                    isDirectory = fs::is_directory(status);
-                    isRegularFile = fs::is_regular_file(status);
-                }
+            const fs::file_status status = fs::status(resolvedPath, entryEc);
+            if (!entryEc) {
+                isDirectory = fs::is_directory(status);
+                isRegularFile = fs::is_regular_file(status);
             }
             if (entryEc) {
                 throw std::runtime_error("cannot stat package asset entry '" + entryPath.string() +
                                          "': " + entryEc.message());
             }
 
-            if (!skipEntry)
-                callback(SafeDirectoryEntry{
-                    entryPath, resolvedPath, isDirectory, isRegularFile, hasResolvedSymlink});
+            callback(SafeDirectoryEntry{
+                entryPath, resolvedPath, isDirectory, isRegularFile, hasResolvedSymlink});
 
-            if (!skipEntry && isDirectory) {
-                fs::path resolvedDir =
-                    hasResolvedSymlink ? resolvedSymlink : fs::canonical(physicalEntryPath, entryEc);
+            if (isDirectory) {
+                fs::path resolvedDir = hasResolvedSymlink
+                                           ? resolvedSymlink
+                                           : fs::canonical(physicalEntryPath, entryEc);
                 if (entryEc) {
                     throw std::runtime_error("cannot resolve package asset directory '" +
                                              entryPath.string() + "': " + entryEc.message());

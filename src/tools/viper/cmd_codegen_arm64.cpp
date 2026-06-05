@@ -41,6 +41,8 @@ constexpr std::string_view kUsage =
     "       [--fast-link|--no-fast-link]\n"
     "       [-O0|-O1|-O2]\n"
     "       [--skip-il-optimization]\n";
+/// @brief Minimum accepted native stack reserve for generated executables.
+constexpr std::size_t kMinStackSize = 4096;
 
 using Pipeline = viper::codegen::aarch64::CodegenPipeline;
 
@@ -126,7 +128,7 @@ ParseOutcome parseArgs(const ArgvView &args) {
         if (tok.substr(0, 13) == "--stack-size=") {
             const std::string_view sizeText = tok.substr(13);
             std::size_t size = 0;
-            if (!parseSize(sizeText, size)) {
+            if (!parseSize(sizeText, size) || size < kMinStackSize) {
                 diag << "error: invalid --stack-size value: " << sizeText << "\n" << kUsage;
                 outcome.diagnostics = diag.str();
                 return outcome;

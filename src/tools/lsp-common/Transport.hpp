@@ -62,10 +62,12 @@ class McpTransport : public Transport {
     McpTransport(FILE *in, FILE *out);
     bool readMessage(RawMessage &out) override;
     void writeMessage(const std::string &json) override;
+    [[nodiscard]] bool lastReadFailedDueToError() const override;
 
   private:
     FILE *in_;
     FILE *out_;
+    bool lastReadHadError_{false};
 };
 
 /// @brief LSP transport: Content-Length framed messages over stdin/stdout.

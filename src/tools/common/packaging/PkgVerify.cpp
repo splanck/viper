@@ -808,8 +808,8 @@ bool extractXarFileChecksum(const std::string &block, const std::string &tag, st
 
 /// @brief Parsed XAR contents: the decompressed TOC text and extracted payloads.
 struct XarFileData {
-    std::string tocText;                                  ///< Decompressed TOC XML.
-    std::map<std::string, std::vector<uint8_t>> files;    ///< Path → extracted bytes.
+    std::string tocText;                               ///< Decompressed TOC XML.
+    std::map<std::string, std::vector<uint8_t>> files; ///< Path → extracted bytes.
 };
 
 /// @brief Find the `</file>` that closes the `<file>` opened at @p openPos.
@@ -1465,7 +1465,7 @@ bool verifyDebInternal(const std::vector<uint8_t> &data,
             name.pop_back();
         auto end = name.find('/');
         if (end != std::string::npos)
-            name = name.substr(0, end);
+            name.resize(end);
 
         // Read size
         size_t sz = 0;
@@ -1501,7 +1501,7 @@ bool verifyDebInternal(const std::vector<uint8_t> &data,
             }
             foundControl = true;
             controlTarGz.assign(content, content + sz);
-        } else if (memberIndex == 2) {
+        } else {
             if (foundData) {
                 err << "DEB: duplicate data.tar.gz member\n";
                 return false;

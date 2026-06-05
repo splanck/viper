@@ -53,6 +53,7 @@ static constexpr uint32_t kEndRecordSig = 0x06054B50;
 
 static constexpr uint16_t kMethodStored = 0;
 static constexpr uint16_t kMethodDeflate = 8;
+static constexpr uint16_t kGeneralPurposeUtf8Flag = 1u << 11;
 
 static constexpr uint16_t kVersionNeeded = 20;
 // Unix(3) in high byte, version 2.0 (20) in low byte
@@ -325,7 +326,7 @@ void ZipWriter::addFile(const std::string &name,
     uint8_t lh[kLocalHeaderSize];
     putU32(lh + 0, kLocalHeaderSig);
     putU16(lh + 4, kVersionNeeded);
-    putU16(lh + 6, 0); // General purpose flags
+    putU16(lh + 6, kGeneralPurposeUtf8Flag); // General purpose flags
     putU16(lh + 8, method);
     putU16(lh + 10, e.modTime);
     putU16(lh + 12, e.modDate);
@@ -369,9 +370,8 @@ void ZipWriter::addDirectory(const std::string &name, uint32_t unixMode) {
     dirName = normalizeEntryName(dirName);
     if (dirName.empty())
         return;
-    const std::string key = (!dirName.empty() && dirName.back() == '/')
-                                ? dirName.substr(0, dirName.size() - 1)
-                                : dirName;
+    const std::string key =
+        (dirName.back() == '/') ? dirName.substr(0, dirName.size() - 1) : dirName;
     if (!key.empty() && !seenNames_.insert(key).second)
         throw std::runtime_error("ZipWriter: duplicate entry name: " + key);
     validateArchiveLimit(entries_.size() + 1, 0xFFFFu, "more than 65535 entries");
@@ -391,7 +391,7 @@ void ZipWriter::addDirectory(const std::string &name, uint32_t unixMode) {
     uint8_t lh[kLocalHeaderSize];
     putU32(lh + 0, kLocalHeaderSig);
     putU16(lh + 4, kVersionNeeded);
-    putU16(lh + 6, 0);
+    putU16(lh + 6, kGeneralPurposeUtf8Flag);
     putU16(lh + 8, kMethodStored);
     putU16(lh + 10, e.modTime);
     putU16(lh + 12, e.modDate);
@@ -447,7 +447,7 @@ void ZipWriter::addSymlink(const std::string &name, const std::string &target) {
     uint8_t lh[kLocalHeaderSize];
     putU32(lh + 0, kLocalHeaderSig);
     putU16(lh + 4, kVersionNeeded);
-    putU16(lh + 6, 0);
+    putU16(lh + 6, kGeneralPurposeUtf8Flag);
     putU16(lh + 8, kMethodStored);
     putU16(lh + 10, e.modTime);
     putU16(lh + 12, e.modDate);
@@ -473,16 +473,18 @@ void ZipWriter::addSymlink(const std::string &name, const std::string &target) {
         false});
 }
 
-/// @brief Append all central directory file headers followed by the End-of-Central-
-/// Directory (EOCD) record. Must be called exactly once, after all entries have
-/// been added. The central directory echoes each local header's metadata plus
-/// version_made_by (Unix) and externalAttrs (Unix mode) fields.
-void ZipWriter::writeCentralDirectory() {
-    ensureOpen();
+/// @brief Append central directory file headers followed by the EOCD record to @p archive.
+/// @details This helper does not mutate finalized_ and is safe for staging a completed archive in
+/// a temporary buffer before committing writer state.
+void ZipWriter::appendCentralDirectory(std::vector<uint8_t> &archive) const {
     validateArchiveLimit(entries_.size(), 0xFFFFu, "more than 65535 entries");
-    validateArchiveLimit(buffer_.size(), 0xFFFFFFFFu, "archives larger than 4 GiB");
+    validateArchiveLimit(archive.size(), 0xFFFFFFFFu, "archives larger than 4 GiB");
 
-    uint32_t cdOffset = static_cast<uint32_t>(buffer_.size());
+    auto appendBytes = [&archive](const uint8_t *data, size_t len) {
+        archive.insert(archive.end(), data, data + len);
+    };
+
+    uint32_t cdOffset = static_cast<uint32_t>(archive.size());
 
     for (const auto &e : entries_) {
         (void)normalizeEntryName(e.name);
@@ -490,7 +492,7 @@ void ZipWriter::writeCentralDirectory() {
         putU32(ch + 0, kCentralHeaderSig);
         putU16(ch + 4, kVersionMadeBy);
         putU16(ch + 6, kVersionNeeded);
-        putU16(ch + 8, 0); // Flags
+        putU16(ch + 8, kGeneralPurposeUtf8Flag); // Flags
         putU16(ch + 10, e.method);
         putU16(ch + 12, e.modTime);
         putU16(ch + 14, e.modDate);
@@ -505,12 +507,12 @@ void ZipWriter::writeCentralDirectory() {
         putU32(ch + 38, e.externalAttrs);
         putU32(ch + 42, e.localOffset);
 
-        writeBytes(ch, kCentralHeaderSize);
-        writeBytes(reinterpret_cast<const uint8_t *>(e.name.data()), e.name.size());
+        appendBytes(ch, kCentralHeaderSize);
+        appendBytes(reinterpret_cast<const uint8_t *>(e.name.data()), e.name.size());
     }
 
-    validateArchiveLimit(buffer_.size(), 0xFFFFFFFFu, "archives larger than 4 GiB");
-    uint32_t cdSize = static_cast<uint32_t>(buffer_.size()) - cdOffset;
+    validateArchiveLimit(archive.size(), 0xFFFFFFFFu, "archives larger than 4 GiB");
+    uint32_t cdSize = static_cast<uint32_t>(archive.size()) - cdOffset;
 
     // End of central directory record
     uint8_t eocd[kEndRecordSize];
@@ -523,23 +525,36 @@ void ZipWriter::writeCentralDirectory() {
     putU32(eocd + 16, cdOffset);
     putU16(eocd + 20, 0); // Comment length
 
-    writeBytes(eocd, kEndRecordSize);
+    appendBytes(eocd, kEndRecordSize);
+}
+
+/// @brief Append all central directory file headers followed by the End-of-Central-
+/// Directory (EOCD) record. Must be called exactly once, after all entries have
+/// been added. The central directory echoes each local header's metadata plus
+/// version_made_by (Unix) and externalAttrs (Unix mode) fields.
+void ZipWriter::writeCentralDirectory() {
+    ensureOpen();
+    appendCentralDirectory(buffer_);
     finalized_ = true;
 }
 
 /// @brief Finalize the archive and write it to disk at path. Appends the central
 /// directory and EOCD, then writes the entire buffer to the output file.
 void ZipWriter::finish(const std::string &path) {
-    writeCentralDirectory();
+    ensureOpen();
 
     std::ofstream out(path, std::ios::binary);
     if (!out)
         throw std::runtime_error("ZipWriter: failed to create " + path);
 
-    out.write(reinterpret_cast<const char *>(buffer_.data()),
-              static_cast<std::streamsize>(buffer_.size()));
+    std::vector<uint8_t> complete = buffer_;
+    appendCentralDirectory(complete);
+    out.write(reinterpret_cast<const char *>(complete.data()),
+              static_cast<std::streamsize>(complete.size()));
     if (!out)
         throw std::runtime_error("ZipWriter: failed to write " + path);
+    buffer_ = std::move(complete);
+    finalized_ = true;
 }
 
 /// @brief Finalize the archive and return the complete ZIP bytes. Used when the caller

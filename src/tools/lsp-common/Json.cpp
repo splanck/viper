@@ -19,12 +19,14 @@
 
 #include "tools/lsp-common/Json.hpp"
 
-#include <cerrno>
 #include <cctype>
+#include <charconv>
 #include <cmath>
-#include <cstdlib>
+#include <cstdio>
 #include <limits>
 #include <stdexcept>
+#include <system_error>
+#include <unordered_set>
 
 namespace viper::server {
 
@@ -77,8 +79,16 @@ bool JsonValue::asBool(bool def) const {
 int64_t JsonValue::asInt(int64_t def) const {
     if (auto *p = std::get_if<int64_t>(&storage_))
         return *p;
-    if (auto *p = std::get_if<double>(&storage_))
-        return static_cast<int64_t>(*p);
+    if (auto *p = std::get_if<double>(&storage_)) {
+        if (!std::isfinite(*p))
+            return def;
+        const long double value = std::trunc(static_cast<long double>(*p));
+        if (value < static_cast<long double>(std::numeric_limits<int64_t>::min()) ||
+            value > static_cast<long double>(std::numeric_limits<int64_t>::max())) {
+            return def;
+        }
+        return static_cast<int64_t>(value);
+    }
     return def;
 }
 
@@ -476,11 +486,58 @@ class JsonParser {
                         error("invalid escape sequence");
                 }
             } else {
-                if (static_cast<unsigned char>(c) < 0x20)
+                const auto uc = static_cast<unsigned char>(c);
+                if (uc < 0x20)
                     error("unescaped control character in string");
-                result += c;
+                if (uc < 0x80) {
+                    result += c;
+                } else {
+                    appendValidatedUtf8(result, uc);
+                }
             }
         }
+    }
+
+    /// @brief Append a raw non-ASCII UTF-8 sequence after validating RFC 3629 form.
+    /// @details JSON input is UTF-8. This helper consumes the continuation bytes belonging to
+    /// @p lead, rejects malformed, overlong, surrogate, and out-of-range encodings, and appends
+    /// the original byte sequence to @p out when valid.
+    void appendValidatedUtf8(std::string &out, unsigned char lead) {
+        int length = 0;
+        uint32_t cp = 0;
+        uint32_t minCodePoint = 0;
+        if (lead >= 0xC2 && lead <= 0xDF) {
+            length = 2;
+            cp = lead & 0x1F;
+            minCodePoint = 0x80;
+        } else if (lead >= 0xE0 && lead <= 0xEF) {
+            length = 3;
+            cp = lead & 0x0F;
+            minCodePoint = 0x800;
+        } else if (lead >= 0xF0 && lead <= 0xF4) {
+            length = 4;
+            cp = lead & 0x07;
+            minCodePoint = 0x10000;
+        } else {
+            error("invalid UTF-8 sequence in string");
+        }
+
+        std::string bytes;
+        bytes.reserve(static_cast<std::size_t>(length));
+        bytes.push_back(static_cast<char>(lead));
+        for (int i = 1; i < length; ++i) {
+            if (pos_ >= src_.size())
+                error("truncated UTF-8 sequence in string");
+            const auto cont = static_cast<unsigned char>(src_[pos_++]);
+            if ((cont & 0xC0u) != 0x80u)
+                error("invalid UTF-8 continuation byte in string");
+            cp = (cp << 6) | static_cast<uint32_t>(cont & 0x3Fu);
+            bytes.push_back(static_cast<char>(cont));
+        }
+
+        if (cp < minCodePoint || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF))
+            error("invalid UTF-8 code point in string");
+        out += bytes;
     }
 
     /// @brief Parse exactly four hexadecimal digits into a code unit value.
@@ -560,22 +617,21 @@ class JsonParser {
                 ++pos_;
         }
 
-        std::string numStr(src_.substr(start, pos_ - start));
+        const char *begin = src_.data() + start;
+        const char *end = src_.data() + pos_;
 
         if (isFloat) {
-            char *end = nullptr;
-            errno = 0;
-            double d = std::strtod(numStr.c_str(), &end);
-            if (end != numStr.c_str() + numStr.size() || errno == ERANGE || !std::isfinite(d))
+            double d = 0.0;
+            auto parsed = std::from_chars(begin, end, d);
+            if (parsed.ec != std::errc{} || parsed.ptr != end || !std::isfinite(d))
                 error("invalid number");
             return JsonValue(d);
         } else {
-            char *end = nullptr;
-            errno = 0;
-            long long ll = std::strtoll(numStr.c_str(), &end, 10);
-            if (end != numStr.c_str() + numStr.size() || errno == ERANGE)
+            int64_t value = 0;
+            auto parsed = std::from_chars(begin, end, value, 10);
+            if (parsed.ec != std::errc{} || parsed.ptr != end)
                 error("invalid number");
-            return JsonValue(static_cast<int64_t>(ll));
+            return JsonValue(value);
         }
     }
 
@@ -604,6 +660,7 @@ class JsonParser {
         expect('{');
         skipWhitespace();
         JsonValue::ObjectType obj;
+        std::unordered_set<std::string> seenKeys;
         if (peek() == '}') {
             ++pos_;
             return JsonValue(std::move(obj));
@@ -615,12 +672,9 @@ class JsonParser {
             std::string key = parseString();
             skipWhitespace();
             expect(':');
+            if (!seenKeys.insert(key).second)
+                error("duplicate object key");
             auto val = parseValue(depth);
-            for (const auto &[existingKey, existingValue] : obj) {
-                (void)existingValue;
-                if (existingKey == key)
-                    error("duplicate object key");
-            }
             obj.emplace_back(std::move(key), std::move(val));
             skipWhitespace();
             if (peek() == '}') {

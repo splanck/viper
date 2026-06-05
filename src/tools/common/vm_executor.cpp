@@ -39,6 +39,28 @@
 
 namespace il::tools::common {
 
+namespace {
+
+/// @brief Clears the C runtime argv bridge for the lifetime of a bytecode VM execution.
+/// @details Construction suppresses the host-process argv fallback before tool-supplied
+/// arguments are pushed; destruction clears those arguments even if execution traps or returns
+/// through an error path.
+class RuntimeArgsScope {
+  public:
+    RuntimeArgsScope() {
+        rt_args_clear();
+    }
+
+    ~RuntimeArgsScope() {
+        rt_args_clear();
+    }
+
+    RuntimeArgsScope(const RuntimeArgsScope &) = delete;
+    RuntimeArgsScope &operator=(const RuntimeArgsScope &) = delete;
+};
+
+} // namespace
+
 /// @brief Execute an IL module on the bytecode VM.
 /// @details Compiles @p module with BytecodeCompiler::compileChecked (so the
 ///          interpreter can run with trusted dispatch); a compile failure is
@@ -79,7 +101,7 @@ VMExecutorResult executeBytecodeVM(const il::core::Module &module, const VMExecu
 
     // Set up program arguments for the runtime. An empty forwarded argument
     // list is meaningful: it must suppress the native host argv fallback.
-    rt_args_clear();
+    RuntimeArgsScope runtimeArgs;
     for (const auto &s : config.programArgs) {
         rt_string tmp = rt_string_from_bytes(s.data(), s.size());
         rt_args_push(tmp);

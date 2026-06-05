@@ -25,6 +25,7 @@
 #include "cli.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Module.hpp"
+#include "runtime/core/rt_args.h"
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
 #include "tools/common/module_loader.hpp"
@@ -48,6 +49,23 @@ using namespace il;
 
 namespace {
 
+/// @brief Clears bytecode runtime argv state around a `viper -run --bytecode` execution.
+/// @details The compatibility runner does not forward program arguments, so construction clears
+/// any host argv fallback and destruction clears the empty runtime argument list again.
+class RuntimeArgsScope {
+  public:
+    RuntimeArgsScope() {
+        rt_args_clear();
+    }
+
+    ~RuntimeArgsScope() {
+        rt_args_clear();
+    }
+
+    RuntimeArgsScope(const RuntimeArgsScope &) = delete;
+    RuntimeArgsScope &operator=(const RuntimeArgsScope &) = delete;
+};
+
 /// @brief Parsed configuration for the `viper -run` (run-IL) command.
 /// @details Captures the IL file, shared CLI options, debugger settings
 ///          (breakpoints, watches, step/continue), profiling flags, and the
@@ -55,25 +73,25 @@ namespace {
 struct RunILConfig {
     /// @brief A file:line source breakpoint request.
     struct SourceBreak {
-        std::string file;   ///< Source file the breakpoint refers to.
-        uint32_t line = 0;  ///< 1-based line number.
+        std::string file;  ///< Source file the breakpoint refers to.
+        uint32_t line = 0; ///< 1-based line number.
     };
 
-    std::string ilFile;                       ///< Path to the IL file to run.
-    ilc::SharedCliOptions sharedOpts;          ///< Shared CLI settings (trace, steps, IO).
-    std::vector<std::string> breakLabels;      ///< Block-label breakpoints.
-    std::vector<SourceBreak> breakSrcLines;    ///< Source file:line breakpoints.
-    std::vector<std::string> watchSymbols;     ///< Variables to watch.
-    std::string debugScriptPath;               ///< Optional debugger script path.
-    bool stepFlag = false;                     ///< Start in single-step mode.
-    bool continueFlag = false;                 ///< Continue immediately after setup.
-    bool countFlag = false;                    ///< Print instruction counts.
-    bool timeFlag = false;                     ///< Print execution time.
-    bool helpRequested = false;                ///< True when help was requested.
-    bool boundsChecksRequested = false;        ///< Enable runtime bounds checks.
-    bool useBytecode = false;                  ///< Use the bytecode VM instead of tree-walk.
-    bool useBytecodeThreaded = false;          ///< Use threaded-dispatch bytecode VM.
-    vm::DebugCtrl debugCtrl;                   ///< Debugger control state.
+    std::string ilFile;                           ///< Path to the IL file to run.
+    ilc::SharedCliOptions sharedOpts;             ///< Shared CLI settings (trace, steps, IO).
+    std::vector<std::string> breakLabels;         ///< Block-label breakpoints.
+    std::vector<SourceBreak> breakSrcLines;       ///< Source file:line breakpoints.
+    std::vector<std::string> watchSymbols;        ///< Variables to watch.
+    std::string debugScriptPath;                  ///< Optional debugger script path.
+    bool stepFlag = false;                        ///< Start in single-step mode.
+    bool continueFlag = false;                    ///< Continue immediately after setup.
+    bool countFlag = false;                       ///< Print instruction counts.
+    bool timeFlag = false;                        ///< Print execution time.
+    bool helpRequested = false;                   ///< True when help was requested.
+    bool boundsChecksRequested = false;           ///< Enable runtime bounds checks.
+    bool useBytecode = false;                     ///< Use the bytecode VM instead of tree-walk.
+    bool useBytecodeThreaded = false;             ///< Use threaded-dispatch bytecode VM.
+    vm::DebugCtrl debugCtrl;                      ///< Debugger control state.
     std::unique_ptr<vm::DebugScript> debugScript; ///< Loaded debugger script, if any.
 };
 
@@ -219,6 +237,11 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config) {
                 std::string label = std::move(trimmedSpec);
                 while (!label.empty() && label.back() == ':') {
                     label.pop_back();
+                }
+                if (label.empty()) {
+                    std::cerr << "error: --break label must not be empty\n";
+                    usage();
+                    return false;
                 }
                 config.breakLabels.push_back(std::move(label));
             }
@@ -412,6 +435,8 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm) {
             return 1;
         }
         viper::bytecode::BytecodeModule bcModule = std::move(compiled.value());
+
+        RuntimeArgsScope runtimeArgs;
 
         // Create and configure VM
         viper::bytecode::BytecodeVM vm;

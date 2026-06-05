@@ -272,8 +272,8 @@ struct PeSectionInfo {
 
 /// @brief Minimal identifying info about a PE image: machine type and PE32+ flag.
 struct PeExecutableInfo {
-    uint16_t machine{0};   ///< COFF Machine field (0x8664 = AMD64, 0xAA64 = ARM64).
-    bool pe32Plus{false};  ///< True when the optional header magic is 0x020B (PE32+).
+    uint16_t machine{0};  ///< COFF Machine field (0x8664 = AMD64, 0xAA64 = ARM64).
+    bool pe32Plus{false}; ///< True when the optional header magic is 0x020B (PE32+).
 };
 
 /// @brief Parse just enough of a PE image to extract its machine type and bitness.
@@ -331,9 +331,12 @@ std::optional<size_t> peRvaToFileOffset(const std::vector<PeSectionInfo> &sectio
     for (const auto &sec : sections) {
         if (sec.rawSize == 0)
             continue;
-        if (rva >= sec.rva && rva - sec.rva < sec.rawSize) {
-            const size_t off =
-                static_cast<size_t>(sec.rawOffset) + static_cast<size_t>(rva - sec.rva);
+        const uint32_t sectionSpan = std::max(sec.virtualSize, sec.rawSize);
+        if (rva >= sec.rva && rva - sec.rva < sectionSpan) {
+            const uint32_t delta = rva - sec.rva;
+            if (delta >= sec.rawSize)
+                return std::nullopt;
+            const size_t off = static_cast<size_t>(sec.rawOffset) + static_cast<size_t>(delta);
             if (off < fileSize)
                 return off;
         }
@@ -1268,7 +1271,8 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     layout.perUserInstall = params.installScope == "user";
     if (params.registerFileAssociations) {
         if (params.identifier.empty())
-            throw std::runtime_error("Windows file associations require a non-empty package identifier");
+            throw std::runtime_error(
+                "Windows file associations require a non-empty package identifier");
         for (const auto &assoc : params.manifest.fileAssociations) {
             layout.fileAssociations.push_back({assoc.extension,
                                                assoc.description,

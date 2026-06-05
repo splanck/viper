@@ -56,13 +56,15 @@ struct PackageConfig {
 
     bool shortcutDesktop{false}; ///< Create a desktop shortcut on install.
     bool shortcutMenu{true};     ///< Create a start-menu / app-menu entry on install.
+    /// Permit Linux maintainer scripts to copy desktop shortcuts into existing home Desktop dirs.
+    bool allowHomeDesktopShortcuts{false};
 
     std::string minOsWindows; ///< "10.0"
     std::string minOsMacos;   ///< "11.0"
 
-    std::string macosSignMode;     ///< none, preserve, adhoc, or developer-id
-    std::string macosSignIdentity; ///< Developer ID Application identity
-    std::string macosEntitlements; ///< Entitlements plist path, project-relative
+    std::string macosSignMode;        ///< none, preserve, adhoc, or developer-id
+    std::string macosSignIdentity;    ///< Developer ID Application identity
+    std::string macosEntitlements;    ///< Entitlements plist path, project-relative
     bool macosHardenedRuntime{false}; ///< Enable the hardened runtime when signing.
     std::string macosNotaryProfile;   ///< notarytool keychain profile
     bool macosStaple{false};          ///< Staple the notarization ticket to the artifact.
@@ -84,19 +86,22 @@ struct PackageConfig {
 
     std::string postInstallScript;  ///< Custom post-install script content
     std::string preUninstallScript; ///< Custom pre-uninstall script content
+    /// Permit package lifecycle hooks to be emitted into installer maintainer scripts.
+    bool allowInstallHooks{false};
 
     /// @brief Check if any package-* directives were specified.
     bool hasPackageConfig() const {
         return !displayName.empty() || !author.empty() || !description.empty() ||
                !homepage.empty() || !license.empty() || !identifier.empty() || !iconPath.empty() ||
                !assets.empty() || !fileAssociations.empty() || shortcutDesktop || !shortcutMenu ||
-               !minOsWindows.empty() || !minOsMacos.empty() || !macosSignMode.empty() ||
-               !macosSignIdentity.empty() || !macosEntitlements.empty() || macosHardenedRuntime ||
-               !macosNotaryProfile.empty() || macosStaple || !windowsInstallScope.empty() ||
-               windowsSignSet || !windowsSignPfx.empty() || !windowsSignThumbprint.empty() ||
-               !windowsTimestampUrl.empty() || !windowsSigntoolPath.empty() ||
-               windowsSignNoVerify || !targetArchitectures.empty() || !category.empty() ||
-               !depends.empty() || !postInstallScript.empty() || !preUninstallScript.empty();
+               allowHomeDesktopShortcuts || !minOsWindows.empty() || !minOsMacos.empty() ||
+               !macosSignMode.empty() || !macosSignIdentity.empty() || !macosEntitlements.empty() ||
+               macosHardenedRuntime || !macosNotaryProfile.empty() || macosStaple ||
+               !windowsInstallScope.empty() || windowsSignSet || !windowsSignPfx.empty() ||
+               !windowsSignThumbprint.empty() || !windowsTimestampUrl.empty() ||
+               !windowsSigntoolPath.empty() || windowsSignNoVerify ||
+               !targetArchitectures.empty() || !category.empty() || !depends.empty() ||
+               !postInstallScript.empty() || !preUninstallScript.empty() || allowInstallHooks;
     }
 };
 

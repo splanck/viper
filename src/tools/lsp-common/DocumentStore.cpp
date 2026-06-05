@@ -23,6 +23,41 @@
 #include <string_view>
 
 namespace viper::server {
+namespace {
+
+/// @brief Return true when @p text begins with a Windows drive-letter path prefix.
+bool startsWithWindowsDrivePath(std::string_view text) {
+    return text.size() >= 2 && std::isalpha(static_cast<unsigned char>(text[0])) &&
+           text[1] == ':' && (text.size() == 2 || text[2] == '/' || text[2] == '\\');
+}
+
+/// @brief Return the URI scheme prefix length, or npos when no scheme is present.
+/// @details Plain paths are allowed by the server; this helper only reports a scheme when the
+/// leading token satisfies RFC 3986 scheme syntax and is not a Windows drive path.
+std::size_t uriSchemeLength(std::string_view text) {
+    if (startsWithWindowsDrivePath(text) || text.empty() ||
+        !std::isalpha(static_cast<unsigned char>(text.front()))) {
+        return std::string_view::npos;
+    }
+    for (std::size_t i = 1; i < text.size(); ++i) {
+        const unsigned char uc = static_cast<unsigned char>(text[i]);
+        if (text[i] == ':')
+            return i;
+        if (text[i] == '/' || text[i] == '\\' || text[i] == '?' || text[i] == '#')
+            return std::string_view::npos;
+        if (!std::isalnum(uc) && text[i] != '+' && text[i] != '-' && text[i] != '.')
+            return std::string_view::npos;
+    }
+    return std::string_view::npos;
+}
+
+/// @brief Return true when @p c is forbidden in a decoded filesystem path from the client.
+bool isForbiddenUriPathChar(char c) {
+    const auto uc = static_cast<unsigned char>(c);
+    return uc < 0x20 || uc == 0x7F;
+}
+
+} // namespace
 
 void DocumentStore::open(const std::string &uri, int version, std::string content) {
     docs_[uri] = {version, std::move(content)};
@@ -49,8 +84,27 @@ bool DocumentStore::isOpen(const std::string &uri) const {
 
 bool DocumentStore::tryUriToPath(const std::string &uri, std::string &outPath, std::string *err) {
     outPath.clear();
+    if (uri.empty()) {
+        if (err)
+            *err = "document URI must not be empty";
+        return false;
+    }
+
     std::string path;
     std::string_view sv = uri;
+    const std::size_t schemeLen = uriSchemeLength(sv);
+    if (schemeLen != std::string_view::npos) {
+        if (sv.substr(0, schemeLen) != "file") {
+            if (err)
+                *err = "unsupported document URI scheme: " + uri.substr(0, schemeLen);
+            return false;
+        }
+        if (sv.substr(0, 7) != "file://") {
+            if (err)
+                *err = "file URI must use file:// form: " + uri;
+            return false;
+        }
+    }
 
     // Strip file:// prefix and handle the URI authority component.
     if (sv.substr(0, 7) == "file://") {
@@ -105,11 +159,27 @@ bool DocumentStore::tryUriToPath(const std::string &uri, std::string &outPath, s
                     *err = "URI must not percent-encode path separators: " + uri;
                 return false;
             }
+            if (isForbiddenUriPathChar(decoded)) {
+                if (err)
+                    *err = "URI path must not contain decoded control characters: " + uri;
+                return false;
+            }
             path += decoded;
             i += 2;
             continue;
         }
+        if (isForbiddenUriPathChar(sv[i])) {
+            if (err)
+                *err = "URI path must not contain control characters: " + uri;
+            return false;
+        }
         path += sv[i];
+    }
+
+    if (path.empty()) {
+        if (err)
+            *err = "document URI path must not be empty: " + uri;
+        return false;
     }
 
     outPath = std::move(path);

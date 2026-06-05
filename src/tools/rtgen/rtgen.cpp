@@ -143,11 +143,11 @@ struct ResolvedRuntimeClass {
 /// @brief Expected runtime surface parsed from the surface-policy file, used by the
 ///        audit to detect drift between runtime.def and the actual runtime.
 struct RuntimeSurfacePolicy {
-    std::unordered_set<std::string> internalHeaders;          ///< Headers excluded from the surface.
-    std::unordered_set<std::string> internalSymbols;          ///< Symbols excluded from the surface.
+    std::unordered_set<std::string> internalHeaders; ///< Headers excluded from the surface.
+    std::unordered_set<std::string> internalSymbols; ///< Symbols excluded from the surface.
     std::unordered_map<std::string, std::string> expectedFunctions; ///< Required functions.
-    std::vector<ResolvedRuntimeMethod> expectedMethods;       ///< Required class methods.
-    std::vector<ResolvedRuntimeProperty> expectedProperties;  ///< Required class properties.
+    std::vector<ResolvedRuntimeMethod> expectedMethods;             ///< Required class methods.
+    std::vector<ResolvedRuntimeProperty> expectedProperties;        ///< Required class properties.
 };
 
 //===----------------------------------------------------------------------===//
@@ -165,7 +165,7 @@ struct ParseState {
     // Maps for validation
     std::map<std::string, size_t> func_by_id;        ///< Function id → index in @c functions.
     std::map<std::string, size_t> func_by_canonical; ///< Canonical name → index in @c functions.
-    std::set<std::string> all_canonicals;            ///< All canonical names seen (duplicate guard).
+    std::set<std::string> all_canonicals; ///< All canonical names seen (duplicate guard).
 
     // Current class being parsed
     std::optional<RuntimeClass> current_class; ///< Class block currently open, if any.
@@ -305,11 +305,9 @@ static std::string cppStringLiteral(const std::string &value) {
                 out += "\\f";
                 break;
             default:
-                if (static_cast<unsigned char>(c) < 0x20 ||
-                    static_cast<unsigned char>(c) == 0x7F) {
+                if (static_cast<unsigned char>(c) < 0x20 || static_cast<unsigned char>(c) == 0x7F) {
                     char buf[8];
-                    std::snprintf(buf, sizeof(buf), "\\x%02X",
-                                  static_cast<unsigned char>(c));
+                    std::snprintf(buf, sizeof(buf), "\\x%02X", static_cast<unsigned char>(c));
                     out += buf;
                 } else {
                     out.push_back(c);
@@ -709,7 +707,7 @@ static std::string ilTypeToCType(const std::string &ilType) {
     std::string baseType = ilType;
     size_t langle = baseType.find('<');
     if (langle != std::string::npos)
-        baseType = baseType.substr(0, langle);
+        baseType.resize(langle);
 
     if (baseType == "str")
         return "rt_string";

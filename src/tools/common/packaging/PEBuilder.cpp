@@ -129,12 +129,12 @@ void padTo(std::vector<uint8_t> &buf, uint32_t alignment) {
 
 /// @brief Section descriptor during layout.
 struct SectionLayout {
-    char name[8];
-    uint32_t virtualSize;
-    uint32_t virtualAddress;
-    uint32_t rawDataSize;
-    uint32_t rawDataOffset;
-    uint32_t characteristics;
+    char name[8]{};
+    uint32_t virtualSize{0};
+    uint32_t virtualAddress{0};
+    uint32_t rawDataSize{0};
+    uint32_t rawDataOffset{0};
+    uint32_t characteristics{0};
     std::vector<uint8_t> data;
 };
 
@@ -150,10 +150,10 @@ struct SectionLayout {
 /// Returns: (rdataBytes, importDirRVA, importDirSize, iatRVA, iatSize)
 struct ImportResult {
     std::vector<uint8_t> data;
-    uint32_t importDirRVA;
-    uint32_t importDirSize;
-    uint32_t iatRVA;
-    uint32_t iatSize;
+    uint32_t importDirRVA{0};
+    uint32_t importDirSize{0};
+    uint32_t iatRVA{0};
+    uint32_t iatSize{0};
 };
 
 /// @brief Build the import directory tables (IDT, ILT, Hint/Name, DLL name strings, IAT)
@@ -169,6 +169,8 @@ ImportResult buildImportTables(const std::vector<PEImport> &imports, uint32_t rd
     size_t totalFuncs = 0;
     for (const auto &imp : imports)
         totalFuncs += imp.functions.size();
+    if (totalFuncs > std::numeric_limits<uint32_t>::max() / 8u)
+        throw std::runtime_error("PE import table has too many imported functions");
 
     // Phase 1: Calculate layout sizes
     uint32_t idtSize = static_cast<uint32_t>((imports.size() + 1) * 20); // +1 null
@@ -276,14 +278,14 @@ ImportResult buildImportTables(const std::vector<PEImport> &imports, uint32_t rd
 ///   - RT_MANIFEST (type 24): UAC manifest XML
 struct ResourceResult {
     std::vector<uint8_t> data;
-    uint32_t rsrcRVA; // filled in by caller
-    uint32_t rsrcSize;
+    uint32_t rsrcRVA{0}; // filled in by caller
+    uint32_t rsrcSize{0};
 };
 
 /// @brief A single resource data item to embed.
 struct ResItem {
-    uint16_t typeId;           ///< RT_ICON=3, RT_GROUP_ICON=14, RT_MANIFEST=24
-    uint16_t nameId;           ///< Resource name/ID within the type
+    uint16_t typeId{0};        ///< RT_ICON=3, RT_GROUP_ICON=14, RT_MANIFEST=24
+    uint16_t nameId{0};        ///< Resource name/ID within the type
     std::vector<uint8_t> data; ///< Raw resource data
 };
 
@@ -509,7 +511,7 @@ ResourceResult buildResourceSection(const std::string &manifest,
 
     // Group items by type
     struct TypeGroup {
-        uint16_t typeId;
+        uint16_t typeId{0};
         std::vector<size_t> itemIndices; // indices into items[]
     };
 
@@ -735,10 +737,8 @@ std::vector<uint8_t> buildPE(const PEBuildParams &params) {
     }
 
     // .rdata section (import tables)
-    uint32_t rdataIdx = 0;
     ImportResult importResult{};
     if (hasRdata) {
-        rdataIdx = static_cast<uint32_t>(sections.size());
         SectionLayout s{};
         std::memcpy(s.name, ".rdata\0\0", 8);
 

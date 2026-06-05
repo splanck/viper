@@ -95,6 +95,48 @@ static uint32_t adler32(const uint8_t *data, size_t len) {
 
 static constexpr size_t kMaxDecodedPngBytes = 256u * 1024u * 1024u;
 
+/// @brief Return the exact decompressed scanline byte count for an 8-bit PNG image.
+/// @details Includes each scanline's leading filter byte. Handles both non-interlaced and Adam7
+/// interlaced layouts and rejects any size that would exceed the package image cap.
+static size_t expectedPngRawBytes(uint32_t width,
+                                  uint32_t height,
+                                  int channels,
+                                  uint8_t interlaceMethod) {
+    auto checkedRowBytes = [](uint32_t rowWidth, int rowChannels) -> size_t {
+        const size_t pixelBytes = static_cast<size_t>(rowWidth) * static_cast<size_t>(rowChannels);
+        if (pixelBytes > kMaxDecodedPngBytes - 1)
+            throw PNGError("PNG: image data is too large");
+        return pixelBytes + 1;
+    };
+
+    if (interlaceMethod == 0) {
+        const size_t rowBytes = checkedRowBytes(width, channels);
+        if (height > kMaxDecodedPngBytes / rowBytes)
+            throw PNGError("PNG: image data is too large");
+        return rowBytes * height;
+    }
+
+    static constexpr uint32_t xStart[7] = {0, 4, 0, 2, 0, 1, 0};
+    static constexpr uint32_t yStart[7] = {0, 0, 4, 0, 2, 0, 1};
+    static constexpr uint32_t xStep[7] = {8, 8, 4, 4, 2, 2, 1};
+    static constexpr uint32_t yStep[7] = {8, 8, 8, 4, 4, 2, 2};
+
+    size_t total = 0;
+    for (int pass = 0; pass < 7; ++pass) {
+        if (xStart[pass] >= width || yStart[pass] >= height)
+            continue;
+        const uint32_t passWidth = (width - xStart[pass] + xStep[pass] - 1) / xStep[pass];
+        const uint32_t passHeight = (height - yStart[pass] + yStep[pass] - 1) / yStep[pass];
+        if (passWidth == 0 || passHeight == 0)
+            continue;
+        const size_t rowBytes = checkedRowBytes(passWidth, channels);
+        if (passHeight > (kMaxDecodedPngBytes - total) / rowBytes)
+            throw PNGError("PNG: image data is too large");
+        total += rowBytes * passHeight;
+    }
+    return total;
+}
+
 //=============================================================================
 // PNG Reader
 //=============================================================================
@@ -119,6 +161,9 @@ PkgImage pngReadMemory(const uint8_t *data, size_t len) {
     size_t pos = 8;
     bool seenIHDR = false;
     bool seenIEND = false;
+    bool seenPLTE = false;
+    bool seenTRNS = false;
+    bool seenIDAT = false;
 
     while (pos + 12 <= len) {
         uint32_t chunkLen = readBE32(data + pos);
@@ -157,17 +202,34 @@ PkgImage pngReadMemory(const uint8_t *data, size_t len) {
         } else if (std::memcmp(chunkType, "PLTE", 4) == 0) {
             if (!seenIHDR)
                 throw PNGError("PNG: PLTE before IHDR");
+            if (seenIDAT)
+                throw PNGError("PNG: PLTE after IDAT");
+            if (seenPLTE)
+                throw PNGError("PNG: duplicate PLTE");
             if (chunkLen == 0 || chunkLen % 3 != 0 || chunkLen / 3 > 256)
                 throw PNGError("PNG: invalid PLTE length");
             palette.assign(chunkData, chunkData + chunkLen);
+            seenPLTE = true;
         } else if (std::memcmp(chunkType, "tRNS", 4) == 0) {
             if (!seenIHDR)
                 throw PNGError("PNG: tRNS before IHDR");
+            if (seenIDAT)
+                throw PNGError("PNG: tRNS after IDAT");
+            if (seenTRNS)
+                throw PNGError("PNG: duplicate tRNS");
+            if (colorType == 3 && !seenPLTE)
+                throw PNGError("PNG: indexed tRNS before PLTE");
             transparency.assign(chunkData, chunkData + chunkLen);
+            seenTRNS = true;
         } else if (std::memcmp(chunkType, "IDAT", 4) == 0) {
             if (!seenIHDR)
                 throw PNGError("PNG: IDAT before IHDR");
+            if (chunkLen > kMaxDecodedPngBytes ||
+                idatBuf.size() > kMaxDecodedPngBytes - static_cast<size_t>(chunkLen)) {
+                throw PNGError("PNG: compressed image data is too large");
+            }
             idatBuf.insert(idatBuf.end(), chunkData, chunkData + chunkLen);
+            seenIDAT = true;
         } else if (std::memcmp(chunkType, "IEND", 4) == 0) {
             if (chunkLen != 0)
                 throw PNGError("PNG: invalid IEND length");
@@ -192,25 +254,16 @@ PkgImage pngReadMemory(const uint8_t *data, size_t len) {
         throw PNGError("PNG: tRNS palette alpha table is longer than PLTE");
     if (colorType == 0 && !transparency.empty() && transparency.size() != 2)
         throw PNGError("PNG: invalid grayscale tRNS length");
+    if (colorType == 0 && !transparency.empty() && transparency[0] != 0)
+        throw PNGError("PNG: grayscale tRNS value is out of range for 8-bit PNG");
     if (colorType == 2 && !transparency.empty() && transparency.size() != 6)
         throw PNGError("PNG: invalid RGB tRNS length");
+    if (colorType == 2 && !transparency.empty() &&
+        (transparency[0] != 0 || transparency[2] != 0 || transparency[4] != 0)) {
+        throw PNGError("PNG: RGB tRNS value is out of range for 8-bit PNG");
+    }
     if ((colorType == 4 || colorType == 6) && !transparency.empty())
         throw PNGError("PNG: tRNS is not allowed for images with alpha");
-
-    const uint8_t cmf = idatBuf[0];
-    const uint8_t flg = idatBuf[1];
-    if ((cmf & 0x0F) != 8 || (cmf >> 4) > 7 ||
-        (((static_cast<uint16_t>(cmf) << 8) | flg) % 31) != 0)
-        throw PNGError("PNG: invalid zlib header");
-    if ((flg & 0x20) != 0)
-        throw PNGError("PNG: zlib preset dictionaries are not supported");
-
-    size_t deflateLen = idatBuf.size() - 2 - 4;
-    auto raw = inflate(idatBuf.data() + 2, deflateLen);
-    const uint32_t expectedAdler = readBE32(idatBuf.data() + idatBuf.size() - 4);
-    const uint32_t actualAdler = adler32(raw.data(), raw.size());
-    if (expectedAdler != actualAdler)
-        throw PNGError("PNG: Adler-32 mismatch");
 
     int channels = 0;
     switch (colorType) {
@@ -230,6 +283,25 @@ PkgImage pngReadMemory(const uint8_t *data, size_t len) {
         default:
             throw PNGError("PNG: unsupported color type");
     }
+    const size_t expectedRawBytes = expectedPngRawBytes(width, height, channels, interlaceMethod);
+
+    const uint8_t cmf = idatBuf[0];
+    const uint8_t flg = idatBuf[1];
+    if ((cmf & 0x0F) != 8 || (cmf >> 4) > 7 ||
+        (((static_cast<uint16_t>(cmf) << 8) | flg) % 31) != 0)
+        throw PNGError("PNG: invalid zlib header");
+    if ((flg & 0x20) != 0)
+        throw PNGError("PNG: zlib preset dictionaries are not supported");
+
+    size_t deflateLen = idatBuf.size() - 2 - 4;
+    auto raw = inflate(idatBuf.data() + 2, deflateLen, expectedRawBytes);
+    if (raw.size() != expectedRawBytes)
+        throw PNGError("PNG: decompressed data size mismatch");
+    const uint32_t expectedAdler = readBE32(idatBuf.data() + idatBuf.size() - 4);
+    const uint32_t actualAdler = adler32(raw.data(), raw.size());
+    if (expectedAdler != actualAdler)
+        throw PNGError("PNG: Adler-32 mismatch");
+
     if (width > kMaxDecodedPngBytes / static_cast<size_t>(channels))
         throw PNGError("PNG: image dimensions are too large");
     const size_t stride = static_cast<size_t>(width) * channels;
@@ -274,10 +346,6 @@ PkgImage pngReadMemory(const uint8_t *data, size_t len) {
     if (interlaceMethod == 0) {
         if (stride + 1 > kMaxDecodedPngBytes || height > kMaxDecodedPngBytes / (stride + 1))
             throw PNGError("PNG: image data is too large");
-        const size_t expected = (stride + 1) * height;
-        if (raw.size() != expected)
-            throw PNGError("PNG: decompressed data size mismatch");
-
         for (uint32_t y = 0; y < height; y++) {
             uint8_t filter = raw[y * (stride + 1)];
             const uint8_t *src = raw.data() + y * (stride + 1) + 1;

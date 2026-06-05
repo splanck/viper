@@ -33,9 +33,11 @@
 
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -47,6 +49,11 @@
 inline int setenv(const char *name, const char *value, int) {
     return _putenv_s(name, value);
 }
+
+/// @brief POSIX unsetenv shim for Windows, implemented via _putenv_s with an empty value.
+inline int unsetenv(const char *name) {
+    return _putenv_s(name, "");
+}
 #endif
 
 using namespace il;
@@ -56,6 +63,75 @@ using namespace il::tools::common;
 namespace {
 
 enum class RunMode { Run, Build };
+
+/// @brief Temporarily sets or clears a process environment variable and restores it later.
+/// @details This is used around compiler invocations that depend on legacy environment toggles,
+/// preventing one `viper` subcommand from leaking that setting into later work in the same process.
+class ScopedEnvVar {
+  public:
+    ScopedEnvVar(const char *name, const char *value) : name_(name) {
+        if (const char *current = std::getenv(name_.c_str())) {
+            oldValue_ = current;
+        }
+        if (value) {
+            setenv(name_.c_str(), value, 1);
+        } else {
+            unsetenv(name_.c_str());
+        }
+    }
+
+    ~ScopedEnvVar() {
+        if (oldValue_) {
+            setenv(name_.c_str(), oldValue_->c_str(), 1);
+        } else {
+            unsetenv(name_.c_str());
+        }
+    }
+
+    ScopedEnvVar(const ScopedEnvVar &) = delete;
+    ScopedEnvVar &operator=(const ScopedEnvVar &) = delete;
+
+  private:
+    std::string name_;
+    std::optional<std::string> oldValue_;
+};
+
+/// @brief Removes a temporary file on scope exit unless no path was assigned.
+/// @details Native builds create temporary asset blobs for linker input. This guard ensures those
+/// blobs are deleted on success and on every early-return failure path.
+class ScopedTempPath {
+  public:
+    ScopedTempPath() = default;
+
+    explicit ScopedTempPath(std::string path) : path_(std::move(path)) {}
+
+    ~ScopedTempPath() {
+        if (!path_.empty()) {
+            std::error_code ec;
+            std::filesystem::remove(path_, ec);
+        }
+    }
+
+    ScopedTempPath(const ScopedTempPath &) = delete;
+    ScopedTempPath &operator=(const ScopedTempPath &) = delete;
+
+    /// @brief Replace the guarded path, deleting the previous temp file first if one existed.
+    void reset(std::string path) {
+        if (!path_.empty()) {
+            std::error_code ec;
+            std::filesystem::remove(path_, ec);
+        }
+        path_ = std::move(path);
+    }
+
+    /// @brief Return the guarded temp path as a string.
+    const std::string &path() const {
+        return path_;
+    }
+
+  private:
+    std::string path_;
+};
 
 /// @brief Run the IL verifier on @p module and print any diagnostics.
 /// @details Collects up to 50 diagnostics; prints them (errors always, warnings
@@ -98,41 +174,40 @@ struct RunBuildConfig {
 /// @brief Print usage for the `viper run` or `viper build` subcommand to stderr.
 void printRunBuildUsage(RunMode mode) {
     if (mode == RunMode::Run) {
-        std::cerr
-            << "Usage: viper run [target] [options] [-- program-args...]\n"
-            << "\n"
-            << "Run a .zia file, .bas file, project directory, or viper.project.\n"
-            << "\n"
-            << "Run options:\n"
-            << "  --debug-vm                    Use the standard VM for debugging\n"
-            << "  --stdin-from FILE             Redirect stdin from file\n"
-            << "  --max-steps N                 Limit VM execution steps\n"
-            << "  --dump-trap                   Show detailed trap diagnostics\n"
-            << "  --trace[=il|src]              Enable execution tracing\n"
-            << "  --bounds-checks               Enable generated bounds checks\n"
-            << "  --no-bounds-checks            Disable generated bounds checks\n"
-            << "  --build-profile debug|balanced|release\n"
-            << "  -O0|-O1|-O2                   Override optimization level\n"
-            << "  -h, --help                    Show this help\n";
+        std::cerr << "Usage: viper run [target] [options] [-- program-args...]\n"
+                  << "\n"
+                  << "Run a .zia file, .bas file, project directory, or viper.project.\n"
+                  << "\n"
+                  << "Run options:\n"
+                  << "  --debug-vm                    Use the standard VM for debugging\n"
+                  << "  --stdin-from FILE             Redirect stdin from file\n"
+                  << "  --max-steps N                 Limit VM execution steps\n"
+                  << "  --dump-trap                   Show detailed trap diagnostics\n"
+                  << "  --trace[=il|src]              Enable execution tracing\n"
+                  << "  --bounds-checks               Enable generated bounds checks\n"
+                  << "  --no-bounds-checks            Disable generated bounds checks\n"
+                  << "  --build-profile debug|balanced|release\n"
+                  << "  -O0|-O1|-O2                   Override optimization level\n"
+                  << "  -h, --help                    Show this help\n";
         return;
     }
 
-    std::cerr
-        << "Usage: viper build [target] [-o output] [options]\n"
-        << "\n"
-        << "Build IL or a native binary from a .zia file, .bas file, project directory, or viper.project.\n"
-        << "\n"
-        << "Build options:\n"
-        << "  -o PATH                       Output .il or native binary path\n"
-        << "  --arch arm64|x64              Override native target architecture\n"
-        << "  --fast-link | --no-fast-link  Override linker mode\n"
-        << "  --windows-debug-runtime       Link Windows debug runtime\n"
-        << "  --windows-release-runtime     Link Windows release runtime\n"
-        << "  --build-profile debug|balanced|release\n"
-        << "  -O0|-O1|-O2                   Override optimization level\n"
-        << "  --bounds-checks               Enable generated bounds checks\n"
-        << "  --no-bounds-checks            Disable generated bounds checks\n"
-        << "  -h, --help                    Show this help\n";
+    std::cerr << "Usage: viper build [target] [-o output] [options]\n"
+              << "\n"
+              << "Build IL or a native binary from a .zia file, .bas file, project directory, or "
+                 "viper.project.\n"
+              << "\n"
+              << "Build options:\n"
+              << "  -o PATH                       Output .il or native binary path\n"
+              << "  --arch arm64|x64              Override native target architecture\n"
+              << "  --fast-link | --no-fast-link  Override linker mode\n"
+              << "  --windows-debug-runtime       Link Windows debug runtime\n"
+              << "  --windows-release-runtime     Link Windows release runtime\n"
+              << "  --build-profile debug|balanced|release\n"
+              << "  -O0|-O1|-O2                   Override optimization level\n"
+              << "  --bounds-checks               Enable generated bounds checks\n"
+              << "  --no-bounds-checks            Disable generated bounds checks\n"
+              << "  -h, --help                    Show this help\n";
 }
 
 /// @brief A compiled project module plus whether it has already been verified.
@@ -250,18 +325,54 @@ il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, 
             }
             config.buildProfileOverride = std::string(value);
         } else if (arg == "--debug-vm") {
+            if (mode != RunMode::Run) {
+                return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
+                    il::support::Severity::Error, "--debug-vm is only valid with 'run'", {}, {}});
+            }
             config.debugVm = true;
         } else if (arg == "--fast-link") {
+            if (mode != RunMode::Build) {
+                return il::support::Expected<RunBuildConfig>(
+                    il::support::Diagnostic{il::support::Severity::Error,
+                                            "--fast-link is only valid with 'build'",
+                                            {},
+                                            {}});
+            }
             config.fastLinkOverride = true;
         } else if (arg == "--no-fast-link") {
+            if (mode != RunMode::Build) {
+                return il::support::Expected<RunBuildConfig>(
+                    il::support::Diagnostic{il::support::Severity::Error,
+                                            "--no-fast-link is only valid with 'build'",
+                                            {},
+                                            {}});
+            }
             config.fastLinkOverride = false;
         } else if (arg == "--windows-debug-runtime") {
+            if (mode != RunMode::Build) {
+                return il::support::Expected<RunBuildConfig>(
+                    il::support::Diagnostic{il::support::Severity::Error,
+                                            "--windows-debug-runtime is only valid with 'build'",
+                                            {},
+                                            {}});
+            }
             config.windowsDebugRuntimeOverride = true;
         } else if (arg == "--windows-release-runtime") {
+            if (mode != RunMode::Build) {
+                return il::support::Expected<RunBuildConfig>(
+                    il::support::Diagnostic{il::support::Severity::Error,
+                                            "--windows-release-runtime is only valid with 'build'",
+                                            {},
+                                            {}});
+            }
             config.windowsDebugRuntimeOverride = false;
         } else if (arg == "--no-runtime-namespaces") {
             config.noRuntimeNamespaces = true;
         } else if (arg == "--arch") {
+            if (mode != RunMode::Build) {
+                return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
+                    il::support::Severity::Error, "--arch is only valid with 'build'", {}, {}});
+            }
             if (i + 1 >= argc) {
                 return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
                     il::support::Severity::Error, "--arch requires arm64 or x64", {}, {}});
@@ -338,7 +449,17 @@ int verifyAndExecute(il::core::Module &module,
         if (shared.profile)
             startTime = std::chrono::steady_clock::now();
 
-        int rc = static_cast<int>(runner.run());
+        const int64_t runResult = runner.run();
+        int rc = 0;
+        const auto intMin = static_cast<int64_t>(std::numeric_limits<int>::min());
+        const auto intMax = static_cast<int64_t>(std::numeric_limits<int>::max());
+        if (runResult < intMin || runResult > intMax) {
+            std::cerr << "program return value " << runResult << " outside host int range ["
+                      << intMin << ", " << intMax << "]\n";
+            rc = 1;
+        } else {
+            rc = static_cast<int>(runResult);
+        }
 
         std::chrono::steady_clock::time_point endTime;
         if (shared.profile)
@@ -446,8 +567,9 @@ il::support::Expected<CompiledProjectModule> compileBasicProject(
     }
     printCompileTime(shared, "basic.read", readStart);
 
+    std::optional<ScopedEnvVar> noRuntimeNamespacesEnv;
     if (noRuntimeNamespaces)
-        setenv("VIPER_NO_RUNTIME_NAMESPACES", "1", 1);
+        noRuntimeNamespacesEnv.emplace("VIPER_NO_RUNTIME_NAMESPACES", "1");
 
     il::frontends::basic::BasicCompilerOptions opts;
     opts.boundsChecks = project.boundsChecks;
@@ -711,8 +833,8 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
         auto arch = config.archOverride.value_or(viper::tools::detectHostArch());
 
         // Compile assets (embed → blob, pack → .vpa files)
+        ScopedTempPath assetBlobTemp;
         std::string assetBlobPath;
-        std::string assetObjPath;
         if (!proj.embedAssets.empty() || !proj.packGroups.empty()) {
             const auto assetStart = std::chrono::steady_clock::now();
             std::string outputDir = std::filesystem::path(config.outputPath).parent_path().string();
@@ -733,10 +855,12 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
             // "multiply defined symbol 'viper_asset_blob'". assetObjPath stays
             // empty so compileModuleToNative skips the redundant extra object.
             if (!bundle->embeddedBlob.empty()) {
-                assetBlobPath = viper::tools::generateTempAssetPath();
+                assetBlobTemp.reset(viper::tools::generateTempAssetPath());
+                assetBlobPath = assetBlobTemp.path();
                 std::ofstream blobOut(assetBlobPath, std::ios::binary | std::ios::trunc);
                 if (!blobOut) {
-                    std::cerr << "error: cannot open temporary asset blob: " << assetBlobPath << "\n";
+                    std::cerr << "error: cannot open temporary asset blob: " << assetBlobPath
+                              << "\n";
                     return 1;
                 }
                 blobOut.write(reinterpret_cast<const char *>(bundle->embeddedBlob.data()),
@@ -758,7 +882,7 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
                                                      config.outputPath,
                                                      arch,
                                                      assetBlobPath,
-                                                     assetObjPath,
+                                                     std::string{},
                                                      backendOptimizeLevel,
                                                      true,
                                                      moduleVerified,
@@ -766,11 +890,6 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
                                                      fastLink,
                                                      config.windowsDebugRuntimeOverride);
         printCompileTime(config.shared, "native-codegen-link", nativeStart);
-        std::error_code ec;
-        if (!assetBlobPath.empty())
-            std::filesystem::remove(assetBlobPath, ec);
-        if (!assetObjPath.empty())
-            std::filesystem::remove(assetObjPath, ec);
         return rc;
     }
 

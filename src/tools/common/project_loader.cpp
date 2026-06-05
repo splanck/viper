@@ -31,11 +31,18 @@
 #include "tools/common/project_loader.hpp"
 #include "tools/common/packaging/PkgUtils.hpp"
 
+#include "frontends/basic/Lexer.hpp"
+#include "frontends/basic/Token.hpp"
+#include "frontends/zia/Lexer.hpp"
+#include "frontends/zia/Token.hpp"
+#include "support/diagnostics.hpp"
+
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <string>
@@ -46,6 +53,11 @@ namespace fs = std::filesystem;
 namespace il::tools::common {
 
 namespace {
+
+namespace basic = il::frontends::basic;
+namespace zia = il::frontends::zia;
+
+inline constexpr std::uint64_t kMaxManifestHookScriptBytes = 1024u * 1024u;
 
 /// @brief Make a diagnostic error with a message.
 il::support::Diag makeErr(const std::string &msg) {
@@ -128,6 +140,13 @@ std::vector<std::string> collectFiles(const fs::path &dir,
             *err = "cannot traverse source directory " + dir.string() + ": " + ec.message();
         return {};
     }
+    const fs::path canonicalRoot = fs::canonical(dir, ec);
+    if (ec) {
+        if (err)
+            *err = "cannot resolve source directory " + dir.string() + ": " + ec.message();
+        return {};
+    }
+    ec.clear();
     const auto end = fs::recursive_directory_iterator();
     while (!ec && it != end) {
         // Check excludes against the relative path from dir
@@ -155,6 +174,12 @@ std::vector<std::string> collectFiles(const fs::path &dir,
                 if (err)
                     *err = "cannot resolve source file " + it->path().string() + ": " +
                            entryEc.message();
+                return {};
+            }
+            if (!viper::pkg::isPathWithin(canonicalRoot, canonical)) {
+                if (err)
+                    *err = "source file escapes project root through a symlink: " +
+                           it->path().string();
                 return {};
             }
             result.push_back(canonical.string());
@@ -215,93 +240,231 @@ bool startsWithKeywordLine(std::string_view line,
     return false;
 }
 
+/// @brief Read a source file as text for convention-based lexical scans.
+/// @details Convention discovery should not report I/O diagnostics for every
+///          unreadable candidate; callers receive an empty optional and treat it
+///          as "no convention signal". Manifest-directed paths still use the
+///          stricter source loader later in the pipeline.
+/// @param path Source file path to read.
+/// @return File contents, or std::nullopt if the file could not be opened/read.
+std::optional<std::string> readConventionScanText(const std::string &path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in)
+        return std::nullopt;
+    std::ostringstream contents;
+    contents << in.rdbuf();
+    if (!in.good() && !in.eof())
+        return std::nullopt;
+    return contents.str();
+}
+
 /// @brief Check if a file contains a Zia entry point (func start() or func main()).
-/// Uses lightweight text scanning, not full parsing.
+/// @details Uses the Zia lexer so comments and string literals cannot create
+///          false entry-point candidates. The scan is intentionally shallow: it
+///          looks for a function declaration token followed by an identifier
+///          named @c start or @c main.
 bool hasZiaEntryPoint(const std::string &path) {
-    std::ifstream file(path);
-    if (!file.is_open())
+    auto source = readConventionScanText(path);
+    if (!source)
         return false;
 
-    std::string line;
-    while (std::getline(file, line)) {
-        std::size_t pos = line.find_first_not_of(" \t");
-        if (pos == std::string::npos)
+    il::support::DiagnosticEngine diag;
+    zia::Lexer lexer(std::move(*source), 1, diag);
+    for (;;) {
+        zia::Token tok = lexer.next();
+        if (tok.kind == zia::TokenKind::Eof || tok.kind == zia::TokenKind::Error)
+            return false;
+        if (tok.kind != zia::TokenKind::KwFunc)
             continue;
-        std::string_view sv(line);
-        sv.remove_prefix(pos);
-        if (sv.rfind("func", 0) != 0)
-            continue;
-        sv.remove_prefix(4);
-        pos = sv.find_first_not_of(" \t");
-        if (pos == std::string_view::npos)
-            continue;
-        sv.remove_prefix(pos);
-        auto isEntryName = [](std::string_view rest, std::string_view name) {
-            if (rest.rfind(name, 0) != 0)
-                return false;
-            rest.remove_prefix(name.size());
-            const std::size_t lparen = rest.find_first_not_of(" \t");
-            return lparen != std::string_view::npos && rest[lparen] == '(';
-        };
-        if (isEntryName(sv, "start") || isEntryName(sv, "main"))
+
+        zia::Token name = lexer.next();
+        if (name.kind == zia::TokenKind::Identifier &&
+            (name.text == "start" || name.text == "main"))
             return true;
     }
-    return false;
+}
+
+/// @brief Signals discovered while token-scanning a BASIC source file.
+/// @details The project loader uses these booleans to pick a root file by
+///          convention without needing to fully parse or lower the program.
+struct BasicConventionSignals {
+    bool hasAddFile{false};      ///< A top-level ADDFILE statement was found.
+    bool hasTopLevelCode{false}; ///< A top-level executable statement was found.
+};
+
+/// @brief Return true for procedure declaration modifiers that may precede SUB/FUNCTION.
+/// @param kind BASIC token kind to classify.
+/// @return True when @p kind is a declaration modifier, false otherwise.
+bool isBasicProcedureModifier(basic::TokenKind kind) {
+    switch (kind) {
+        case basic::TokenKind::KeywordPublic:
+        case basic::TokenKind::KeywordPrivate:
+        case basic::TokenKind::KeywordExport:
+        case basic::TokenKind::KeywordStatic:
+        case basic::TokenKind::KeywordVirtual:
+        case basic::TokenKind::KeywordOverride:
+        case basic::TokenKind::KeywordAbstract:
+        case basic::TokenKind::KeywordFinal:
+            return true;
+        default:
+            return false;
+    }
+}
+
+/// @brief Locate the first token that represents the statement leader on a BASIC line.
+/// @details Skips traditional numeric line numbers and label prefixes of the
+///          form @c Label: so top-level detection sees the executable statement
+///          that follows.
+/// @param line Tokens on a single BASIC source line.
+/// @return Index of the statement leader, or line.size() when no statement remains.
+std::size_t basicStatementLeaderIndex(const std::vector<basic::Token> &line) {
+    std::size_t index = 0;
+    if (index < line.size() && line[index].kind == basic::TokenKind::Number)
+        ++index;
+    if (index + 1 < line.size() && line[index].kind == basic::TokenKind::Identifier &&
+        line[index + 1].kind == basic::TokenKind::Colon)
+        index += 2;
+    return index;
+}
+
+/// @brief Return the declaration token after any BASIC procedure modifiers.
+/// @param line Tokens on a single BASIC source line.
+/// @return Index of the first non-modifier token, or line.size().
+std::size_t basicDeclarationLeaderIndex(const std::vector<basic::Token> &line) {
+    std::size_t index = basicStatementLeaderIndex(line);
+    while (index < line.size() && isBasicProcedureModifier(line[index].kind))
+        ++index;
+    return index;
+}
+
+/// @brief Test whether a BASIC line starts a procedure body.
+/// @details DECLARE FUNCTION/SUB prototypes are excluded because they do not
+///          introduce a body whose inner statements should be hidden from
+///          top-level convention detection.
+/// @param line Tokens on a single BASIC source line.
+/// @return True when the line begins a SUB or FUNCTION body.
+bool isBasicProcedureStartLine(const std::vector<basic::Token> &line) {
+    if (line.empty())
+        return false;
+    const std::size_t leader = basicStatementLeaderIndex(line);
+    if (leader < line.size() && line[leader].kind == basic::TokenKind::KeywordDeclare)
+        return false;
+    const std::size_t decl = basicDeclarationLeaderIndex(line);
+    return decl < line.size() && (line[decl].kind == basic::TokenKind::KeywordSub ||
+                                  line[decl].kind == basic::TokenKind::KeywordFunction);
+}
+
+/// @brief Test whether a BASIC line closes a procedure body.
+/// @param line Tokens on a single BASIC source line.
+/// @return True for @c END SUB or @c END FUNCTION.
+bool isBasicProcedureEndLine(const std::vector<basic::Token> &line) {
+    const std::size_t leader = basicStatementLeaderIndex(line);
+    return leader + 1 < line.size() && line[leader].kind == basic::TokenKind::KeywordEnd &&
+           (line[leader + 1].kind == basic::TokenKind::KeywordSub ||
+            line[leader + 1].kind == basic::TokenKind::KeywordFunction);
+}
+
+/// @brief Test whether a BASIC token is an executable top-level statement leader.
+/// @details Declaration-only keywords are deliberately omitted. @c CALL is kept
+///          as an identifier check because the current lexer treats it as a soft
+///          command name rather than a reserved keyword.
+/// @param tok Statement leader token.
+/// @return True when @p tok denotes executable code.
+bool isBasicExecutableStatementLeader(const basic::Token &tok) {
+    switch (tok.kind) {
+        case basic::TokenKind::KeywordPrint:
+        case basic::TokenKind::KeywordWrite:
+        case basic::TokenKind::KeywordInput:
+        case basic::TokenKind::KeywordIf:
+        case basic::TokenKind::KeywordFor:
+        case basic::TokenKind::KeywordWhile:
+        case basic::TokenKind::KeywordDo:
+        case basic::TokenKind::KeywordLet:
+        case basic::TokenKind::KeywordDim:
+        case basic::TokenKind::KeywordGoto:
+        case basic::TokenKind::KeywordGosub:
+        case basic::TokenKind::KeywordReturn:
+        case basic::TokenKind::KeywordAddfile:
+        case basic::TokenKind::KeywordOpen:
+        case basic::TokenKind::KeywordClose:
+        case basic::TokenKind::KeywordSleep:
+        case basic::TokenKind::KeywordRandomize:
+        case basic::TokenKind::KeywordRedim:
+            return true;
+        case basic::TokenKind::Identifier:
+            return lowerAscii(tok.lexeme) == "call";
+        default:
+            return false;
+    }
+}
+
+/// @brief Token-scan a BASIC file for convention-based root-file signals.
+/// @details Uses the BASIC lexer so comments, strings, and mixed-case REM lines
+///          cannot trigger false positives. Procedure nesting is tracked so
+///          executable statements inside SUB/FUNCTION bodies do not make a
+///          library module look like a top-level program.
+/// @param path BASIC source file to inspect.
+/// @return Convention signals found in @p path.
+BasicConventionSignals scanBasicConventionSignals(const std::string &path) {
+    BasicConventionSignals signals;
+    auto source = readConventionScanText(path);
+    if (!source)
+        return signals;
+
+    basic::Lexer lexer(std::string_view(*source), 1);
+    std::vector<basic::Token> line;
+    int procedureDepth = 0;
+
+    auto flushLine = [&]() {
+        if (line.empty())
+            return;
+        if (isBasicProcedureEndLine(line)) {
+            if (procedureDepth > 0)
+                --procedureDepth;
+            line.clear();
+            return;
+        }
+        if (procedureDepth == 0) {
+            const std::size_t leader = basicStatementLeaderIndex(line);
+            if (leader < line.size()) {
+                if (line[leader].kind == basic::TokenKind::KeywordAddfile)
+                    signals.hasAddFile = true;
+                if (isBasicExecutableStatementLeader(line[leader]))
+                    signals.hasTopLevelCode = true;
+            }
+        }
+        if (isBasicProcedureStartLine(line))
+            ++procedureDepth;
+        line.clear();
+    };
+
+    for (;;) {
+        basic::Token tok = lexer.next();
+        if (tok.kind == basic::TokenKind::EndOfLine) {
+            flushLine();
+            continue;
+        }
+        if (tok.kind == basic::TokenKind::EndOfFile) {
+            flushLine();
+            return signals;
+        }
+        if (tok.kind == basic::TokenKind::Unknown) {
+            line.clear();
+            continue;
+        }
+        line.push_back(std::move(tok));
+    }
 }
 
 /// @brief Check if a BASIC file has AddFile directives (indicating a root file).
 bool hasBasicAddFile(const std::string &path) {
-    std::ifstream file(path);
-    if (!file.is_open())
-        return false;
-
-    std::string line;
-    while (std::getline(file, line)) {
-        if (startsWithKeywordLine(line, {"AddFile"}, true))
-            return true;
-    }
-    return false;
+    return scanBasicConventionSignals(path).hasAddFile;
 }
 
 /// @brief Check if a BASIC file has top-level executable statements
 /// (not just SUB/FUNCTION definitions).
 bool hasBasicTopLevelCode(const std::string &path) {
-    std::ifstream file(path);
-    if (!file.is_open())
-        return false;
-
-    std::string line;
-    while (std::getline(file, line)) {
-        // Skip blank lines and comments
-        if (line.empty())
-            continue;
-        auto trimmed = line;
-        auto pos = trimmed.find_first_not_of(" \t");
-        if (pos == std::string::npos)
-            continue;
-        trimmed = trimmed.substr(pos);
-        if (trimmed[0] == '\'' || trimmed.rfind("REM", 0) == 0 || trimmed.rfind("rem", 0) == 0)
-            continue;
-
-        // If it matches an executable statement, this file has top-level code
-        if (startsWithKeywordLine(line,
-                                  {"Print",
-                                   "Input",
-                                   "If",
-                                   "For",
-                                   "While",
-                                   "Do",
-                                   "Call",
-                                   "Let",
-                                   "Dim",
-                                   "Goto",
-                                   "GoSub",
-                                   "Return",
-                                   "AddFile"},
-                                  true))
-            return true;
-    }
-    return false;
+    return scanBasicConventionSignals(path).hasTopLevelCode;
 }
 
 /// @brief Find the Zia entry file from a list of source files.
@@ -547,8 +710,8 @@ il::support::Expected<std::vector<std::string>> requireManifestTokenCount(
     if (tokens.value().size() != count) {
         return makeManifestErr(manifestPath,
                                line,
-                               directive + " requires exactly " + std::to_string(count) +
-                                   " value" + (count == 1 ? "" : "s"));
+                               directive + " requires exactly " + std::to_string(count) + " value" +
+                                   (count == 1 ? "" : "s"));
     }
     return tokens;
 }
@@ -576,9 +739,8 @@ il::support::Expected<fs::path> resolveManifestRelativePath(const fs::path &mani
         fs::path candidate = (manifestDir / fs::path(clean)).lexically_normal();
         fs::path resolved = fs::weakly_canonical(candidate, ec);
         if (ec)
-            return makeManifestErr(manifestPath,
-                                   line,
-                                   "cannot resolve " + directive + " path: '" + raw + "'");
+            return makeManifestErr(
+                manifestPath, line, "cannot resolve " + directive + " path: '" + raw + "'");
         if (!viper::pkg::isPathWithin(manifestDir, resolved)) {
             return makeManifestErr(
                 manifestPath, line, directive + " path escapes the project root: '" + raw + "'");
@@ -645,10 +807,23 @@ il::support::Expected<std::string> readManifestScriptHook(const fs::path &manife
         return makeManifestErr(
             manifestPath, line, directive + " script is not a regular file: " + tokens.value()[0]);
 
-    std::ifstream in(scriptPath, std::ios::binary);
+    std::ifstream in(scriptPath, std::ios::binary | std::ios::ate);
     if (!in)
         return makeManifestErr(
             manifestPath, line, "cannot read " + directive + " script: " + scriptPath.string());
+    const std::streamoff scriptSize = in.tellg();
+    if (scriptSize < 0)
+        return makeManifestErr(manifestPath,
+                               line,
+                               "cannot determine size of " + directive +
+                                   " script: " + scriptPath.string());
+    if (static_cast<std::uint64_t>(scriptSize) > kMaxManifestHookScriptBytes)
+        return makeManifestErr(
+            manifestPath, line, directive + " script exceeds 1 MiB limit: " + scriptPath.string());
+    in.seekg(0);
+    if (!in)
+        return makeManifestErr(
+            manifestPath, line, "cannot seek " + directive + " script: " + scriptPath.string());
     std::ostringstream contents;
     contents << in.rdbuf();
     if (!in.good() && !in.eof())
@@ -889,7 +1064,8 @@ il::support::Expected<bool> parsePackageDirective(ProjectConfig &config,
         if (!tokens)
             return il::support::Expected<bool>(tokens.error());
         try {
-            std::string embedSrc = viper::pkg::sanitizePackageRelativePath(tokens.value()[0], "embed");
+            std::string embedSrc =
+                viper::pkg::sanitizePackageRelativePath(tokens.value()[0], "embed");
             if (embedSrc.empty())
                 return makeManifestErr(manifestPath, lineNum, "embed path must not be empty");
             config.embedAssets.push_back({std::move(embedSrc)});
@@ -959,6 +1135,14 @@ il::support::Expected<bool> parsePackageDirective(ProjectConfig &config,
         if (!b)
             return il::support::Expected<bool>(b.error());
         config.packageConfig.shortcutMenu = b.value();
+    } else if (directive == "allow-home-desktop-shortcuts") {
+        auto seen = markPackageScalar(packageScalarDirectives, directive, manifestPath, lineNum);
+        if (!seen)
+            return il::support::Expected<bool>(seen.error());
+        auto b = parseBool(value, manifestPath, lineNum, "allow-home-desktop-shortcuts");
+        if (!b)
+            return il::support::Expected<bool>(b.error());
+        config.packageConfig.allowHomeDesktopShortcuts = b.value();
     } else if (directive == "min-os-windows") {
         auto scalar =
             parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
@@ -1020,6 +1204,14 @@ il::support::Expected<bool> parsePackageDirective(ProjectConfig &config,
         if (!script)
             return il::support::Expected<bool>(script.error());
         config.packageConfig.preUninstallScript = script.value();
+    } else if (directive == "allow-install-hooks") {
+        auto seen = markPackageScalar(packageScalarDirectives, directive, manifestPath, lineNum);
+        if (!seen)
+            return il::support::Expected<bool>(seen.error());
+        auto b = parseBool(value, manifestPath, lineNum, "allow-install-hooks");
+        if (!b)
+            return il::support::Expected<bool>(b.error());
+        config.packageConfig.allowInstallHooks = b.value();
     } else {
         return false;
     }
@@ -1088,7 +1280,7 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
         line = line.substr(start);
         auto end = line.find_last_not_of(" \t\r\n");
         if (end != std::string::npos)
-            line = line.substr(0, end + 1);
+            line.resize(end + 1);
 
         // Skip comments
         if (line.empty() || line[0] == '#')

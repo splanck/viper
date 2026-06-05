@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/tools/ilc/cmd_codegen_x64.cpp
+// File: src/tools/viper/cmd_codegen_x64.cpp
 // Purpose: Provide a thin CLI adapter around the x86-64 code-generation pipeline.
 // Key invariants: Command-line parsing emits deterministic diagnostics and defers heavy lifting
 //                 to CodegenPipeline. Ownership/Lifetime: Arguments are borrowed for the duration
@@ -45,6 +45,8 @@ constexpr std::string_view kUsage =
     "[--extra-obj <file.o>] [--target-host|--target-sysv|--target-win64] "
     "[--target-darwin|--target-linux|--target-windows] [--debug-lines] "
     "[--fast-link|--no-fast-link]\n";
+/// @brief Minimum accepted native stack reserve for generated executables.
+constexpr std::size_t kMinStackSize = 4096;
 
 // Use shared ArgvView from tools/common
 using viper::tools::ArgvView;
@@ -82,6 +84,25 @@ bool parseSize(std::string_view text, std::size_t &out) {
         return false;
     }
     out = static_cast<std::size_t>(value);
+    return true;
+}
+
+/// @brief Validate that the requested x64 ABI and target platform are compatible.
+/// @details SysV is valid for Linux/Darwin, Win64 is valid for Windows, and Host remains an
+/// automatic selection unless paired with an explicitly incompatible platform by later parsing.
+bool validateTargetCombination(const viper::codegen::x64::CodegenPipeline::Options &opts,
+                               std::ostream &diag) {
+    using ABI = viper::codegen::x64::CodegenOptions::TargetABI;
+    using Platform = viper::codegen::x64::CodegenOptions::TargetPlatform;
+    if (opts.target_abi == ABI::Win64 &&
+        (opts.target_platform == Platform::Linux || opts.target_platform == Platform::Darwin)) {
+        diag << "error: --target-win64 is only compatible with --target-windows\n" << kUsage;
+        return false;
+    }
+    if (opts.target_abi == ABI::SysV && opts.target_platform == Platform::Windows) {
+        diag << "error: --target-sysv is not compatible with --target-windows\n" << kUsage;
+        return false;
+    }
     return true;
 }
 
@@ -151,7 +172,7 @@ ParseOutcome parseCompileArgs(const ArgvView &args) {
         if (arg.substr(0, 13) == "--stack-size=") {
             const std::string_view sizeText = arg.substr(13);
             std::size_t size = 0;
-            if (!parseSize(sizeText, size)) {
+            if (!parseSize(sizeText, size) || size < kMinStackSize) {
                 diag << "error: invalid --stack-size value: " << sizeText << "\n" << kUsage;
                 outcome.diagnostics = diag.str();
                 return outcome;
@@ -191,14 +212,20 @@ ParseOutcome parseCompileArgs(const ArgvView &args) {
         }
         if (arg == "--target-darwin") {
             opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Darwin;
+            if (opts.target_abi == viper::codegen::x64::CodegenOptions::TargetABI::Host)
+                opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::SysV;
             continue;
         }
         if (arg == "--target-linux") {
             opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Linux;
+            if (opts.target_abi == viper::codegen::x64::CodegenOptions::TargetABI::Host)
+                opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::SysV;
             continue;
         }
         if (arg == "--target-windows") {
             opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Windows;
+            if (opts.target_abi == viper::codegen::x64::CodegenOptions::TargetABI::Host)
+                opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::Win64;
             continue;
         }
         if (arg == "--debug-lines") {
@@ -237,6 +264,11 @@ ParseOutcome parseCompileArgs(const ArgvView &args) {
         }
 
         diag << "error: unknown flag '" << arg << "'\n" << kUsage;
+        outcome.diagnostics = diag.str();
+        return outcome;
+    }
+
+    if (!validateTargetCombination(opts, diag)) {
         outcome.diagnostics = diag.str();
         return outcome;
     }

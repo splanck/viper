@@ -50,7 +50,7 @@ Build and test:
 ./scripts/build_viper_linux.sh
 
 # Windows
-.\scripts\build_viper.cmd
+.\scripts\build_viper_win.cmd
 ```
 
 Create and run a project:

@@ -118,7 +118,8 @@ bool extractPosition(const JsonValue &params, int &line, int &col) {
 JsonValue makeRange(int startLine, int startCharacter, int endLine, int endCharacter) {
     return JsonValue::object({
         {"start",
-         JsonValue::object({{"line", JsonValue(startLine)}, {"character", JsonValue(startCharacter)}})},
+         JsonValue::object(
+             {{"line", JsonValue(startLine)}, {"character", JsonValue(startCharacter)}})},
         {"end",
          JsonValue::object({{"line", JsonValue(endLine)}, {"character", JsonValue(endCharacter)}})},
     });
@@ -139,9 +140,7 @@ int utf16UnitsForUtf8Lead(std::string_view bytes, size_t &consumed) {
     if (b0 < 0x80)
         return 1;
 
-    auto isContinuation = [](unsigned char c) {
-        return (c & 0xC0u) == 0x80u;
-    };
+    auto isContinuation = [](unsigned char c) { return (c & 0xC0u) == 0x80u; };
 
     uint32_t codePoint = 0;
     size_t expected = 0;
@@ -204,7 +203,10 @@ int utf16CodeUnitsBeforeByte(std::string_view text, size_t byteCount) {
 /// @param byteOffset Byte offset into @p content; values past EOF are clamped.
 /// @param line Receives the zero-based line number.
 /// @param character Receives the zero-based UTF-16 character offset.
-void byteOffsetToLspPosition(const std::string &content, size_t byteOffset, int &line, int &character) {
+void byteOffsetToLspPosition(const std::string &content,
+                             size_t byteOffset,
+                             int &line,
+                             int &character) {
     const size_t limit = std::min(byteOffset, content.size());
     size_t lineStart = 0;
     line = 0;
@@ -216,8 +218,8 @@ void byteOffsetToLspPosition(const std::string &content, size_t byteOffset, int 
         }
     }
 
-    character = utf16CodeUnitsBeforeByte(std::string_view(content).substr(lineStart, limit - lineStart),
-                                         limit - lineStart);
+    character = utf16CodeUnitsBeforeByte(
+        std::string_view(content).substr(lineStart, limit - lineStart), limit - lineStart);
 }
 
 /// @brief Build an LSP `Range` covering the first occurrence of @p name in @p content.
@@ -238,13 +240,63 @@ JsonValue rangeForFirstName(const std::string &content, const std::string &name)
     return makeRange(startLine, startCharacter, endLine, endCharacter);
 }
 
+/// @brief Build an LSP range from a 1-based compiler source location.
+/// @details The compiler location points at the declaration token. The helper clamps malformed
+/// coordinates to the source line, verifies the expected symbol spelling when possible, and falls
+/// back to a same-line search before using rangeForFirstName().
+JsonValue rangeForSourceLocation(const std::string &content,
+                                 const std::string &name,
+                                 uint32_t line,
+                                 uint32_t column) {
+    if (line == 0 || column == 0)
+        return rangeForFirstName(content, name);
+
+    std::size_t lineStart = 0;
+    std::size_t currentLine = 1;
+    while (currentLine < line && lineStart < content.size()) {
+        const std::size_t next = content.find('\n', lineStart);
+        if (next == std::string::npos)
+            return rangeForFirstName(content, name);
+        lineStart = next + 1;
+        ++currentLine;
+    }
+
+    std::size_t lineEnd = content.find('\n', lineStart);
+    if (lineEnd == std::string::npos)
+        lineEnd = content.size();
+
+    std::size_t start = lineStart + static_cast<std::size_t>(column - 1);
+    if (start > lineEnd)
+        start = lineEnd;
+
+    if (!name.empty() &&
+        (start + name.size() > content.size() || content.compare(start, name.size(), name) != 0)) {
+        const std::size_t sameLine = content.find(name, lineStart);
+        if (sameLine != std::string::npos && sameLine < lineEnd) {
+            start = sameLine;
+        }
+    }
+
+    const std::size_t end = std::min(content.size(), start + std::max<std::size_t>(name.size(), 1));
+    int startLine = 0;
+    int startCharacter = 0;
+    int endLine = 0;
+    int endCharacter = 0;
+    byteOffsetToLspPosition(content, start, startLine, startCharacter);
+    byteOffsetToLspPosition(content, end, endLine, endCharacter);
+    return makeRange(startLine, startCharacter, endLine, endCharacter);
+}
+
 /// @brief Find the byte span for an existing zero-based source line.
 /// @param content Full source buffer.
 /// @param zeroBasedLine Requested source line.
 /// @param lineStart Receives the byte offset of the first byte in the line.
 /// @param lineEnd Receives the byte offset one past the last byte before '\n'.
 /// @return True when @p zeroBasedLine exists in @p content.
-bool sourceLineByteSpan(const std::string &content, int zeroBasedLine, size_t &lineStart, size_t &lineEnd) {
+bool sourceLineByteSpan(const std::string &content,
+                        int zeroBasedLine,
+                        size_t &lineStart,
+                        size_t &lineEnd) {
     if (zeroBasedLine < 0)
         return false;
     lineStart = 0;
@@ -270,10 +322,13 @@ bool sourceLineByteSpan(const std::string &content, int zeroBasedLine, size_t &l
 /// @param oneBasedLine Compiler diagnostic line number.
 /// @param oneBasedColumn Compiler diagnostic column number.
 /// @return One-character LSP range for the diagnostic position.
-JsonValue diagnosticRangeForLocation(const std::string &content, uint32_t oneBasedLine, uint32_t oneBasedColumn) {
-    const int line = oneBasedLine > 0 && oneBasedLine <= static_cast<uint32_t>(std::numeric_limits<int>::max())
-                         ? static_cast<int>(oneBasedLine) - 1
-                         : 0;
+JsonValue diagnosticRangeForLocation(const std::string &content,
+                                     uint32_t oneBasedLine,
+                                     uint32_t oneBasedColumn) {
+    const int line =
+        oneBasedLine > 0 && oneBasedLine <= static_cast<uint32_t>(std::numeric_limits<int>::max())
+            ? static_cast<int>(oneBasedLine) - 1
+            : 0;
     size_t lineStart = 0;
     size_t lineEnd = 0;
     if (!sourceLineByteSpan(content, line, lineStart, lineEnd))
@@ -293,9 +348,8 @@ JsonValue diagnosticRangeForLocation(const std::string &content, uint32_t oneBas
 ///          to suppress accidental responses for missing-id calls to request
 ///          methods such as initialize, shutdown, completion, hover, and symbols.
 bool isRequestMethod(const std::string &method) {
-    return method == "initialize" || method == "shutdown" ||
-           method == "textDocument/completion" || method == "textDocument/hover" ||
-           method == "textDocument/documentSymbol";
+    return method == "initialize" || method == "shutdown" || method == "textDocument/completion" ||
+           method == "textDocument/hover" || method == "textDocument/documentSymbol";
 }
 
 } // namespace
@@ -396,8 +450,10 @@ void LspHandler::handleDidOpen(const JsonRpcRequest &req) {
         return;
     std::string uri = uriValue->asString();
     int version = 0;
-    if (!checkedJsonIntToInt(
-            versionValue, std::numeric_limits<int>::min(), std::numeric_limits<int>::max(), version)) {
+    if (!checkedJsonIntToInt(versionValue,
+                             std::numeric_limits<int>::min(),
+                             std::numeric_limits<int>::max(),
+                             version)) {
         return;
     }
     std::string text = textValue->asString();
@@ -409,7 +465,8 @@ void LspHandler::handleDidOpen(const JsonRpcRequest &req) {
 void LspHandler::handleDidChange(const JsonRpcRequest &req) {
     std::string uri;
     int version = 0;
-    if (!extractTextDocumentUri(req.params, uri) || !extractTextDocumentVersion(req.params, version))
+    if (!extractTextDocumentUri(req.params, uri) ||
+        !extractTextDocumentVersion(req.params, version))
         return;
 
     // Full sync: every accepted content change must be a complete document body.
@@ -534,9 +591,9 @@ std::string LspHandler::handleDocumentSymbol(const JsonRpcRequest &req) {
             {"name", JsonValue(s.name)},
             {"kind", JsonValue(symbolKindToLsp(s.kind))},
             {"location",
-                 JsonValue::object({
+             JsonValue::object({
                  {"uri", JsonValue(uri)},
-                 {"range", rangeForFirstName(*content, s.name)},
+                 {"range", rangeForSourceLocation(*content, s.name, s.line, s.column)},
              })},
         }));
     }

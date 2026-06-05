@@ -447,6 +447,10 @@ case "$prefix" in
     /*) ;;
     *) echo "PREFIX must be an absolute path" >&2; exit 2 ;;
 esac
+case "$destdir" in
+    ""|/*) ;;
+    *) echo "DESTDIR must be empty or an absolute path" >&2; exit 2 ;;
+esac
 
 install_root=${destdir%/}$prefix
 manifest="$install_root/share/viper/install_manifest.txt"
@@ -753,6 +757,7 @@ void buildDebPackage(const LinuxBuildParams &params) {
     std::string exeName = normalizeExecName(params.projectName);
     std::string displayName = pkg.displayName.empty() ? params.projectName : pkg.displayName;
     const std::string version = params.version.empty() ? "0.0.0" : params.version;
+    validatePackageHooksAllowed(pkg);
     validateDebMetadata(pkg, displayName, version, params.archStr);
     if (params.archStr != "amd64" && params.archStr != "arm64" && params.archStr != "all")
         throw std::runtime_error("Debian package architecture must be amd64, arm64, or all: " +
@@ -980,7 +985,7 @@ void buildDebPackage(const LinuxBuildParams &params) {
         if (needDesktopEntry)
             pi << "if command -v update-desktop-database >/dev/null 2>&1; then "
                   "update-desktop-database /usr/share/applications; fi\n";
-        if (pkg.shortcutDesktop) {
+        if (pkg.shortcutDesktop && pkg.allowHomeDesktopShortcuts) {
             pi << "for d in /root/Desktop /home/*/Desktop; do "
                   "[ -d \"$d\" ] || continue; "
                   "(cp /usr/share/applications/"
@@ -1001,7 +1006,7 @@ void buildDebPackage(const LinuxBuildParams &params) {
         if (!pkg.preUninstallScript.empty())
             pr << normalizePackageHookScript(pkg.preUninstallScript, "pre-uninstall script")
                << "\n";
-        if (pkg.shortcutDesktop) {
+        if (pkg.shortcutDesktop && pkg.allowHomeDesktopShortcuts) {
             pr << "for d in /root/Desktop /home/*/Desktop; do "
                   "[ -e \"$d/"
                << pkgName << ".desktop\" ] && rm -f \"$d/" << pkgName

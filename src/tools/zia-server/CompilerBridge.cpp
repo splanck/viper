@@ -114,7 +114,12 @@ std::vector<DiagnosticInfo> CompilerBridge::check(const std::string &source,
 
     auto result = parseAndAnalyze(input, opts, sm);
     if (!result)
-        return {{2, "internal error: Zia analysis did not produce a result", path, 0, 0, "V-LSP-ANALYSIS"}};
+        return {{2,
+                 "internal error: Zia analysis did not produce a result",
+                 path,
+                 0,
+                 0,
+                 "V-LSP-ANALYSIS"}};
     return extractDiagnostics(result->diagnostics);
 }
 
@@ -516,7 +521,9 @@ std::vector<SymbolInfo> CompilerBridge::symbols(const std::string &source,
                        symbolKindStr(sym.kind),
                        sym.type ? sym.type->toDisplayString() : "unknown",
                        sym.isFinal,
-                       sym.isExtern});
+                       sym.isExtern,
+                       sym.decl->loc.line,
+                       sym.decl->loc.column});
     }
 
     auto types = result->sema->getTypeNames();

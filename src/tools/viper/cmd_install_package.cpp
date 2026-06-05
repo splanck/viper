@@ -426,7 +426,7 @@ std::optional<NativeExecutableInfo> detectNativeExecutableInfo(const fs::path &p
         if (data.size() < 64)
             return std::nullopt;
         const size_t peOff = readLE32(data, 60);
-        if (peOff > data.size() || data.size() - peOff < 24 || data[peOff] != 'P' ||
+        if (peOff >= data.size() || peOff > data.size() - 24 || data[peOff] != 'P' ||
             data[peOff + 1] != 'E' || data[peOff + 2] != 0 || data[peOff + 3] != 0)
             return std::nullopt;
         const uint16_t machine = readLE16(data, peOff + 4);

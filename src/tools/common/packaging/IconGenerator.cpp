@@ -164,7 +164,7 @@ std::vector<uint8_t> generateIco(const PkgImage &srcImage) {
 
     // First, generate all the PNG blobs for sizes that fit
     struct IcoEntry {
-        uint32_t size;
+        uint32_t size{0};
         std::vector<uint8_t> pngData;
     };
 

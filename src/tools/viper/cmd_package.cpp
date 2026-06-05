@@ -56,12 +56,12 @@ using namespace il::support;
 namespace fs = std::filesystem;
 
 enum class PackageTarget { MacOS, Linux, Windows, Tarball, Auto };
-enum class ExecutableFormat { MachO, ELF, PE };
+enum class ExecutableFormat { Unknown, MachO, ELF, PE };
 
 /// @brief Identifying details of a native executable detected from its header.
 struct ExecutableInfo {
-    ExecutableFormat format; ///< Detected container format (Mach-O/ELF/PE).
-    std::string arch;        ///< Architecture string ("x64"/"arm64").
+    ExecutableFormat format{ExecutableFormat::Unknown}; ///< Detected container format.
+    std::string arch;                                   ///< Architecture string ("x64"/"arm64").
 };
 
 /// @brief Print usage information for `viper package`.
@@ -265,6 +265,8 @@ std::vector<uint8_t> readExecutableHeader(const std::string &path) {
 /// @brief Return a human-readable name for an executable format (e.g. "Mach-O").
 std::string formatName(ExecutableFormat format) {
     switch (format) {
+        case ExecutableFormat::Unknown:
+            return "unknown";
         case ExecutableFormat::MachO:
             return "Mach-O";
         case ExecutableFormat::ELF:
@@ -293,7 +295,8 @@ ExecutableFormat expectedExecutableFormat(PackageTarget target) {
         case PackageTarget::Windows:
             return ExecutableFormat::PE;
         case PackageTarget::Tarball:
-            throw std::runtime_error("tarball packages do not require a platform executable format");
+            throw std::runtime_error(
+                "tarball packages do not require a platform executable format");
         case PackageTarget::Auto:
         default:
             return ExecutableFormat::ELF;
@@ -310,7 +313,7 @@ ExecutableInfo inspectExecutable(const std::string &path) {
         throw std::runtime_error("executable is too small to identify: " + path);
 
     if (data[0] == 0x7F && data[1] == 'E' && data[2] == 'L' && data[3] == 'F') {
-        if (data.size() < 20 || data[4] != 2 || data[5] != 1)
+        if (data[4] != 2 || data[5] != 1)
             throw std::runtime_error("ELF executable must be 64-bit little-endian: " + path);
         const uint16_t machine = readLE16(data, 18);
         if (machine == 62)
@@ -325,7 +328,7 @@ ExecutableInfo inspectExecutable(const std::string &path) {
         if (data.size() < 64)
             throw std::runtime_error("PE executable is truncated: " + path);
         const size_t peOff = readLE32(data, 60);
-        if (peOff > data.size() || data.size() - peOff < 24 || data[peOff] != 'P' ||
+        if (peOff >= data.size() || peOff > data.size() - 24 || data[peOff] != 'P' ||
             data[peOff + 1] != 'E' || data[peOff + 2] != 0 || data[peOff + 3] != 0) {
             throw std::runtime_error("PE executable has an invalid header: " + path);
         }
@@ -759,6 +762,7 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
                 viper::pkg::validateDesktopCategories(pkg.category);
                 for (const auto &dep : pkg.depends)
                     viper::pkg::validateDebDependency(dep);
+                viper::pkg::validatePackageHooksAllowed(pkg);
                 (void)viper::pkg::normalizePackageHookScript(pkg.postInstallScript,
                                                              "post-install script");
                 (void)viper::pkg::normalizePackageHookScript(pkg.preUninstallScript,
@@ -1065,8 +1069,7 @@ int cmdPackage(int argc, char **argv) {
             std::error_code cwdEc;
             auto cwd = fs::current_path(cwdEc);
             if (cwdEc) {
-                std::cerr << "error: cannot resolve current directory: " << cwdEc.message()
-                          << "\n";
+                std::cerr << "error: cannot resolve current directory: " << cwdEc.message() << "\n";
                 return 1;
             }
             exePath = cwd / exePath;

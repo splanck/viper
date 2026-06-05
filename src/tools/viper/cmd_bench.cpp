@@ -29,8 +29,8 @@
 #include <charconv>
 #include <chrono>
 #include <cmath>
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
@@ -107,6 +107,21 @@ void benchUsage() {
               << "  BENCH <file> <strategy> instr=<N> time_ms=<T> insns_per_sec=<R>\n";
 }
 
+/// @brief Start an explicit benchmark strategy selection when the first specific flag is seen.
+/// @details The default selection runs the standard VM strategies. Once a specific strategy flag
+/// is parsed, all strategies are cleared and subsequent specific flags add to that set. `--all`
+/// resets this mode so a later specific flag can intentionally narrow the selection again.
+void beginExplicitStrategySelection(BenchConfig &config, bool &strategySpecified) {
+    if (strategySpecified)
+        return;
+    config.runTable = false;
+    config.runSwitch = false;
+    config.runThreaded = false;
+    config.runBytecodeSwitch = false;
+    config.runBytecodeThreaded = false;
+    strategySpecified = true;
+}
+
 /// @brief Parse benchmark command-line arguments.
 /// @param argc Number of arguments.
 /// @param argv Argument vector.
@@ -154,52 +169,22 @@ bool parseBenchArgs(int argc, char **argv, BenchConfig &config) {
             }
             config.maxSteps = parsed;
         } else if (arg == "--table") {
-            if (!strategySpecified) {
-                config.runTable = false;
-                config.runSwitch = false;
-                config.runThreaded = false;
-                strategySpecified = true;
-            }
+            beginExplicitStrategySelection(config, strategySpecified);
             config.runTable = true;
         } else if (arg == "--switch") {
-            if (!strategySpecified) {
-                config.runTable = false;
-                config.runSwitch = false;
-                config.runThreaded = false;
-                strategySpecified = true;
-            }
+            beginExplicitStrategySelection(config, strategySpecified);
             config.runSwitch = true;
         } else if (arg == "--threaded") {
-            if (!strategySpecified) {
-                config.runTable = false;
-                config.runSwitch = false;
-                config.runThreaded = false;
-                strategySpecified = true;
-            }
+            beginExplicitStrategySelection(config, strategySpecified);
             config.runThreaded = true;
         } else if (arg == "--bc-switch") {
-            if (!strategySpecified) {
-                config.runTable = false;
-                config.runSwitch = false;
-                config.runThreaded = false;
-                strategySpecified = true;
-            }
+            beginExplicitStrategySelection(config, strategySpecified);
             config.runBytecodeSwitch = true;
         } else if (arg == "--bc-threaded") {
-            if (!strategySpecified) {
-                config.runTable = false;
-                config.runSwitch = false;
-                config.runThreaded = false;
-                strategySpecified = true;
-            }
+            beginExplicitStrategySelection(config, strategySpecified);
             config.runBytecodeThreaded = true;
         } else if (arg == "--bytecode") {
-            if (!strategySpecified) {
-                config.runTable = false;
-                config.runSwitch = false;
-                config.runThreaded = false;
-                strategySpecified = true;
-            }
+            beginExplicitStrategySelection(config, strategySpecified);
             config.runBytecodeSwitch = true;
             config.runBytecodeThreaded = true;
         } else if (arg == "--all") {
@@ -208,14 +193,11 @@ bool parseBenchArgs(int argc, char **argv, BenchConfig &config) {
             config.runThreaded = true;
             config.runBytecodeSwitch = true;
             config.runBytecodeThreaded = true;
-            strategySpecified = true;
+            strategySpecified = false;
         } else if (arg == "--json") {
             config.jsonOutput = true;
         } else if (arg == "-v" || arg == "--verbose") {
             config.verbose = true;
-        } else if (arg == "--help" || arg == "-h") {
-            benchUsage();
-            return false;
         } else if (arg[0] == '-') {
             std::cerr << "Unknown option: " << arg << "\n";
             benchUsage();
@@ -446,7 +428,8 @@ bool benchmarkFile(const std::string &file,
             }
 
             for (uint32_t iter = 0; iter < config.iterations; ++iter) {
-            auto iterResult = runBytecodeBenchmarkIteration(mod, bcModule, strategy, config.maxSteps);
+                auto iterResult =
+                    runBytecodeBenchmarkIteration(mod, bcModule, strategy, config.maxSteps);
                 if (!iterResult.success) {
                     allSuccess = false;
                     break;
@@ -521,8 +504,7 @@ void printJsonResults(const std::vector<BenchResult> &results) {
                 default:
                     if (static_cast<unsigned char>(c) < 0x20) {
                         char buf[8];
-                        std::snprintf(buf, sizeof(buf), "\\u%04x",
-                                      static_cast<unsigned char>(c));
+                        std::snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned char>(c));
                         out += buf;
                     } else {
                         out += c;

@@ -25,6 +25,7 @@
 
 #include "PkgDeflate.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -138,9 +139,14 @@ struct BitWriter {
     uint32_t buffer = 0;
     int bitsInBuf = 0;
 
+    BitWriter() = default;
+
     ~BitWriter() {
         std::free(data);
     }
+
+    BitWriter(const BitWriter &) = delete;
+    BitWriter &operator=(const BitWriter &) = delete;
 
     /// @brief Allocate the initial backing buffer (minimum 256 bytes). Throws on OOM.
     void init(size_t initialCap) {
@@ -679,10 +685,15 @@ struct LZ77State {
     int *head = nullptr;
     int *prev = nullptr;
 
+    LZ77State() = default;
+
     ~LZ77State() {
         std::free(head);
         std::free(prev);
     }
+
+    LZ77State(const LZ77State &) = delete;
+    LZ77State &operator=(const LZ77State &) = delete;
 
     static constexpr int kHashBits = 15;
     static constexpr int kHashSize = 1 << kHashBits;
@@ -820,9 +831,7 @@ static void deflateStored(BitWriter &bw, const uint8_t *data, size_t len) {
 
     size_t pos = 0;
     while (pos < len) {
-        size_t blockLen = len - pos;
-        if (blockLen > 65535)
-            blockLen = 65535;
+        size_t blockLen = std::min<size_t>(65535, len - pos);
 
         bool last = (pos + blockLen >= len);
         bw.write(last ? 1 : 0, 1); // BFINAL

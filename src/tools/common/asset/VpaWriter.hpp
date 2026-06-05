@@ -84,8 +84,8 @@ class VpaWriter {
     struct Entry {
         std::string name;                ///< Relative entry name (forward slashes).
         std::vector<uint8_t> storedData; ///< Possibly compressed.
-        uint64_t originalSize;           ///< Uncompressed size.
-        bool compressed;                 ///< True if storedData is DEFLATE'd.
+        uint64_t originalSize{0};        ///< Uncompressed size.
+        bool compressed{false};          ///< True if storedData is DEFLATE'd.
     };
 
     std::vector<Entry> entries_;

@@ -19,8 +19,8 @@
 
 #include "tools/lsp-common/Transport.hpp"
 
-#include <charconv>
 #include <cctype>
+#include <charconv>
 #include <cstdlib>
 #include <cstring>
 #include <stdexcept>
@@ -64,6 +64,7 @@ void platformInitStdio() {
 McpTransport::McpTransport(FILE *in, FILE *out) : in_(in), out_(out) {}
 
 bool McpTransport::readMessage(RawMessage &out) {
+    lastReadHadError_ = false;
     std::string line;
     int c;
     while ((c = std::fgetc(in_)) != EOF) {
@@ -78,8 +79,14 @@ bool McpTransport::readMessage(RawMessage &out) {
             return true;
         }
         line += static_cast<char>(c);
-        if (line.size() > kMaxProtocolMessageBytes)
+        if (line.size() > kMaxProtocolMessageBytes) {
+            lastReadHadError_ = true;
             return false;
+        }
+    }
+    if (std::ferror(in_)) {
+        lastReadHadError_ = true;
+        return false;
     }
     // Handle last line without trailing newline
     if (!line.empty()) {
@@ -89,6 +96,10 @@ bool McpTransport::readMessage(RawMessage &out) {
         return true;
     }
     return false;
+}
+
+bool McpTransport::lastReadFailedDueToError() const {
+    return lastReadHadError_;
 }
 
 void McpTransport::writeMessage(const std::string &json) {
@@ -157,10 +168,13 @@ bool LspTransport::readMessage(RawMessage &out) {
                 }
             }
             if (match) {
+                if (haveContentLength) {
+                    lastReadHadError_ = true;
+                    return false;
+                }
                 // Skip whitespace after colon
                 size_t valStart = prefixLen;
-                while (valStart < line.size() &&
-                       (line[valStart] == ' ' || line[valStart] == '\t'))
+                while (valStart < line.size() && (line[valStart] == ' ' || line[valStart] == '\t'))
                     ++valStart;
                 size_t parsed = 0;
                 const char *begin = line.data() + valStart;

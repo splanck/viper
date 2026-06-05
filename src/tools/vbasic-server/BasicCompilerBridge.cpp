@@ -36,6 +36,7 @@
 
 #include <cctype>
 #include <cstdio>
+#include <unordered_map>
 
 namespace viper::server {
 
@@ -48,6 +49,63 @@ static std::string toUpperStr(const std::string &s) {
     for (char c : s)
         upper += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
     return upper;
+}
+
+/// @brief Remove BASIC's single-character type suffix from an identifier spelling.
+/// @details Semantic symbols are case-folded and may be stored without `%`, `&`, `!`, `#`, or `$`
+/// suffixes, while lexer tokens preserve the original spelling.
+static std::string stripBasicTypeSuffix(std::string text) {
+    if (!text.empty()) {
+        const char suffix = text.back();
+        if (suffix == '%' || suffix == '&' || suffix == '!' || suffix == '#' || suffix == '$')
+            text.pop_back();
+    }
+    return text;
+}
+
+/// @brief Build a case-folded map from BASIC identifier spellings to their first token location.
+/// @details The BASIC semantic model exposes symbol names without declaration locations. This
+/// helper lexes the source once and records each identifier's first source position so LSP
+/// document symbols can report a concrete range.
+static std::unordered_map<std::string, il::support::SourceLoc> indexBasicIdentifierLocations(
+    const std::string &source, uint32_t fileId) {
+    std::unordered_map<std::string, il::support::SourceLoc> locations;
+    Lexer lexer(source, fileId);
+    while (true) {
+        Token tok = lexer.next();
+        if (tok.kind == TokenKind::EndOfFile)
+            break;
+        if (tok.kind != TokenKind::Identifier || tok.lexeme.empty())
+            continue;
+
+        const std::string key = toUpperStr(tok.lexeme);
+        locations.emplace(key, tok.loc);
+
+        const std::string stripped = toUpperStr(stripBasicTypeSuffix(tok.lexeme));
+        if (!stripped.empty())
+            locations.emplace(stripped, tok.loc);
+    }
+    return locations;
+}
+
+/// @brief Find the best known source location for a BASIC semantic symbol name.
+/// @details Qualified names are resolved by exact uppercase spelling first and by their final
+/// component second, matching how class members and nested class names are commonly displayed.
+static il::support::SourceLoc findBasicSymbolLocation(
+    const std::unordered_map<std::string, il::support::SourceLoc> &locations,
+    const std::string &name) {
+    const std::string key = toUpperStr(stripBasicTypeSuffix(name));
+    if (auto it = locations.find(key); it != locations.end())
+        return it->second;
+
+    const std::size_t dot = name.find_last_of('.');
+    if (dot != std::string::npos && dot + 1 < name.size()) {
+        const std::string leaf = toUpperStr(stripBasicTypeSuffix(name.substr(dot + 1)));
+        if (auto it = locations.find(leaf); it != locations.end())
+            return it->second;
+    }
+
+    return {};
 }
 
 /// @brief Append token lexeme text with printable escapes for line-oriented dumps.
@@ -100,7 +158,12 @@ std::vector<DiagnosticInfo> BasicCompilerBridge::check(const std::string &source
     BasicCompilerInput input{.source = source, .path = path};
     auto result = parseAndAnalyzeBasic(input, sm);
     if (!result)
-        return {{2, "internal error: BASIC analysis did not produce a result", path, 0, 0, "V-LSP-ANALYSIS"}};
+        return {{2,
+                 "internal error: BASIC analysis did not produce a result",
+                 path,
+                 0,
+                 0,
+                 "V-LSP-ANALYSIS"}};
     return extractDiagnostics(result->diagnostics);
 }
 
@@ -271,6 +334,8 @@ std::string BasicCompilerBridge::hover(const std::string &source,
 std::vector<SymbolInfo> BasicCompilerBridge::symbols(const std::string &source,
                                                      const std::string &path) {
     il::support::SourceManager sm;
+    const uint32_t fileId = sm.addFile(path);
+    const auto symbolLocations = indexBasicIdentifierLocations(source, fileId);
     BasicCompilerInput input{.source = source, .path = path};
     auto result = parseAndAnalyzeBasic(input, sm);
     if (!result || !result->sema)
@@ -316,18 +381,22 @@ std::vector<SymbolInfo> BasicCompilerBridge::symbols(const std::string &source,
                     break;
             }
         }
-        out.push_back({sym, "variable", typeStr, sema.isConstSymbol(sym), false});
+        const auto loc = findBasicSymbolLocation(symbolLocations, sym);
+        out.push_back(
+            {sym, "variable", typeStr, sema.isConstSymbol(sym), false, loc.line, loc.column});
     }
 
     // Procedures
     for (const auto &[name, sig] : sema.procs()) {
         std::string kind = sig.kind == ProcSignature::Kind::Function ? "function" : "method";
-        out.push_back({name, kind, "", false, false});
+        const auto loc = findBasicSymbolLocation(symbolLocations, name);
+        out.push_back({name, kind, "", false, false, loc.line, loc.column});
     }
 
     // Classes
     for (const auto &[name, info] : sema.oopIndex().classes()) {
-        out.push_back({name, "type", info.qualifiedName, false, false});
+        const auto loc = findBasicSymbolLocation(symbolLocations, name);
+        out.push_back({name, "type", info.qualifiedName, false, false, loc.line, loc.column});
     }
 
     return out;

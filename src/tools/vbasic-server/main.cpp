@@ -126,7 +126,7 @@ static int runMcpServer(Transport &transport, BasicCompilerBridge &bridge) {
         if (!response.empty())
             transport.writeMessage(response);
     }
-    return 0;
+    return transport.lastReadFailedDueToError() ? 1 : 0;
 }
 
 /// @brief Main event loop for LSP protocol.

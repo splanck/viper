@@ -193,12 +193,11 @@ void writeOctal(uint8_t *field, size_t width, uint64_t value) {
 
 /// @brief Write a NUL-terminated string into a fixed-width field.
 void writeString(uint8_t *field, size_t width, const std::string &s) {
-    if (s.size() > width)
+    if (s.size() >= width)
         throw std::runtime_error("tar string field too long: " + s);
     size_t len = s.size();
     std::memcpy(field, s.data(), len);
-    if (len < width)
-        field[len] = '\0';
+    field[len] = '\0';
 }
 
 /// @brief Compute the USTAR checksum for a 512-byte header.
