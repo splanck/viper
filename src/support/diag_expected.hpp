@@ -84,19 +84,19 @@ template <class T> class Expected {
     /// @brief Access the stored value; requires hasValue().
     T &value() {
         assert(value_.has_value());
-        return *value_;
+        return value_.value();
     }
 
     /// @brief Access the stored value; requires hasValue().
     const T &value() const {
         assert(value_.has_value());
-        return *value_;
+        return value_.value();
     }
 
     /// @brief Access the diagnostic describing the failure.
     const Diag &error() const & {
         assert(error_.has_value());
-        return *error_;
+        return error_.value();
     }
 
   private:

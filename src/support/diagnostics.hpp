@@ -54,7 +54,7 @@ struct DiagnosticFixIt {
 
 /// @brief Single diagnostic message with location.
 struct Diagnostic {
-    Severity severity;                   ///< Message severity
+    Severity severity = Severity::Error; ///< Message severity
     std::string message;                 ///< Human-readable text
     SourceLoc loc;                       ///< Optional source location
     std::string code;                    ///< Optional diagnostic code (e.g., "B1001", "IL001")

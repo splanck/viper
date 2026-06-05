@@ -137,7 +137,8 @@ class StringInterner {
         }
     };
 
-    using InternMap = std::unordered_map<std::string_view, Symbol, TransparentHash, TransparentEqual>;
+    using InternMap =
+        std::unordered_map<std::string_view, Symbol, TransparentHash, TransparentEqual>;
 
     /// Maps string content to assigned symbols for O(1) lookup during interning.
     InternMap map_;
@@ -158,5 +159,12 @@ class StringInterner {
     /// @details The helper builds into a temporary map so assignment operators can
     ///          prepare all throwing state before replacing the receiving object.
     static InternMap buildMapForStorage(const std::deque<std::string> &storage);
+
+    /// @brief Swap all owned interner state with @p other.
+    /// @param other Interner whose state should be exchanged with this object.
+    /// @details The intern map stores string_view keys into the companion storage
+    ///          deque.  Swapping both containers together preserves that pairing
+    ///          and lets assignment operators provide strong replacement semantics.
+    void swapWith(StringInterner &other) noexcept;
 };
 } // namespace il::support

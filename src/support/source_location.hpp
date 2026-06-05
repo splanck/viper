@@ -64,9 +64,20 @@ struct SourceRange {
     ///        @ref isValid returns false.
     SourceLoc end{};
 
-    /// @brief Check whether both endpoints reference tracked source
-    ///        locations.
+    /// @brief Check whether the range has usable ordered coordinates.
+    /// @return True when the range is concrete or denotes a valid insertion point.
+    /// @details Use this predicate for diagnostics and tooling that need complete
+    ///          source coordinates.  Use @ref isTracked when partially-known
+    ///          endpoint metadata is still useful.
     [[nodiscard]] bool isValid() const;
+
+    /// @brief Check whether both endpoints reference tracked source locations.
+    /// @return True when both endpoints carry file ids for the same registered file.
+    /// @details This preserves the older permissive range query for clients that
+    ///          can tolerate missing line or column information.  It still rejects
+    ///          known reversed line/column coordinates when enough metadata exists
+    ///          to prove the ordering is invalid.
+    [[nodiscard]] bool isTracked() const;
 
     /// @brief Check whether the range has complete, ordered line/column data.
     /// @return True when both endpoints are in the same file, both carry line and

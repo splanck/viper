@@ -13,7 +13,7 @@
 #   SLOC = source lines of code (excluding blank lines and comment-only lines)
 #
 # Comment detection:
-#   C/C++/ObjC:  lines matching ^\s*$ (blank) or ^\s*// (line comment)
+#   C/C++/ObjC/.inc:  lines matching ^\s*$ (blank) or ^\s*// (line comment)
 #                Block comments (/* ... */) are NOT filtered (complex to parse
 #                without a real lexer; treating them as code is the conservative
 #                choice and matches cloc/sloccount behavior for mixed lines).
@@ -38,7 +38,7 @@ NC='\033[0m'
 
 # ─── Counting helpers ────────────────────────────────────────────────────────
 
-# SLOC for C-style files (C/C++/ObjC/Zia): exclude blank + // comment-only lines
+# SLOC for C-style files (C/C++/ObjC/.inc/Zia): exclude blank + // comment-only lines
 sloc_c() {
     xargs cat 2>/dev/null | grep -cv '^\s*$\|^\s*//' 2>/dev/null || echo 0
 }
@@ -58,14 +58,14 @@ sloc_basic() {
     xargs cat 2>/dev/null | grep -civ '^\s*$\|^\s*REM\b\|^\s*'"'"'' 2>/dev/null || echo 0
 }
 
-# File finder for C/C++/ObjC in a directory
+# File finder for C/C++/ObjC and C-style include fragments in a directory
 find_c_files() {
-    find "$1" -name '*.c' -o -name '*.h' -o -name '*.cpp' -o -name '*.hpp' -o -name '*.m' 2>/dev/null
+    find "$1" -name '*.c' -o -name '*.h' -o -name '*.cpp' -o -name '*.hpp' -o -name '*.m' -o -name '*.inc' 2>/dev/null
 }
 
 # Count files
 count_files() {
-    find "$1" -name '*.c' -o -name '*.h' -o -name '*.cpp' -o -name '*.hpp' -o -name '*.m' 2>/dev/null | wc -l | tr -d ' '
+    find "$1" -name '*.c' -o -name '*.h' -o -name '*.cpp' -o -name '*.hpp' -o -name '*.m' -o -name '*.inc' 2>/dev/null | wc -l | tr -d ' '
 }
 
 # ─── Compute all metrics ─────────────────────────────────────────────────────
@@ -76,7 +76,8 @@ SLOC_H=$(find src -name '*.h' | sloc_c)
 SLOC_CPP=$(find src -name '*.cpp' | sloc_c)
 SLOC_HPP=$(find src -name '*.hpp' | sloc_c)
 SLOC_OBJC=$(find src -name '*.m' | sloc_c)
-SLOC_SRC=$((SLOC_C + SLOC_H + SLOC_CPP + SLOC_HPP + SLOC_OBJC))
+SLOC_INC=$(find src -name '*.inc' | sloc_c)
+SLOC_SRC=$((SLOC_C + SLOC_H + SLOC_CPP + SLOC_HPP + SLOC_OBJC + SLOC_INC))
 
 # Tests (subset of src/)
 SLOC_TESTS=$(find_c_files src/tests | sloc_c)
@@ -167,6 +168,7 @@ print_all() {
     printf "  %-24s %'10d SLOC\n" "C++ (.cpp)"       "$SLOC_CPP"
     printf "  %-24s %'10d SLOC\n" "C++ headers (.hpp)" "$SLOC_HPP"
     printf "  %-24s %'10d SLOC\n" "C headers (.h)"   "$SLOC_H"
+    printf "  %-24s %'10d SLOC\n" "C/C++ includes (.inc)" "$SLOC_INC"
     printf "  %-24s %'10d SLOC\n" "ObjC (.m)"        "$SLOC_OBJC"
     echo "  ─────────────────────────────────────"
     printf "  %-24s %'10d SLOC\n" "All src/"         "$SLOC_SRC"
@@ -213,6 +215,7 @@ print_json() {
       "cpp": $SLOC_CPP,
       "hpp": $SLOC_HPP,
       "h": $SLOC_H,
+      "inc": $SLOC_INC,
       "objc": $SLOC_OBJC
     },
     "by_subsystem": {

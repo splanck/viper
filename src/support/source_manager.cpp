@@ -33,6 +33,8 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <memory>
+#include <optional>
 #include <system_error>
 
 namespace il::support {
@@ -49,6 +51,9 @@ namespace {
 /// @param path Raw filesystem path supplied by the caller.
 /// @return Normalised path string owned by the caller.
 std::string normalizePath(std::string path) {
+    if (path.empty())
+        return "<unknown>";
+
     std::filesystem::path p(std::move(path));
     std::string normalized = p.lexically_normal().generic_string();
 
@@ -79,6 +84,33 @@ std::filesystem::path makeDiskPath(const std::string &path) {
     if (ec)
         absolute = p;
     return absolute.lexically_normal();
+}
+
+/// @brief Build the deduplication key used for registered source paths.
+/// @param diskPath Absolute path used for disk I/O, when one exists.
+/// @param displayPath Normalized path that will be printed in diagnostics.
+/// @return Stable lookup key for @ref SourceManager::path_to_id_.
+/// @details Display paths intentionally remain relative and user-facing, but they
+///          are not enough to identify files registered from different current
+///          working directories.  Disk-backed files therefore dedupe by absolute
+///          disk path, while virtual or empty paths fall back to display text.
+std::string makePathLookupKey(const std::filesystem::path &diskPath, std::string_view displayPath) {
+    std::string key;
+    if (!diskPath.empty())
+        key = diskPath.lexically_normal().generic_string();
+    else
+        key = std::string(displayPath);
+    if (key.empty())
+        key = "<unknown>";
+
+#ifdef _WIN32
+    for (char &ch : key) {
+        if (ch >= 'A' && ch <= 'Z')
+            ch = static_cast<char>(ch - 'A' + 'a');
+    }
+#endif
+
+    return (diskPath.empty() ? "display:" : "disk:") + key;
 }
 
 /// @brief Remove a trailing carriage return from a line buffer.
@@ -112,6 +144,26 @@ std::vector<std::string> splitSourceLines(std::string_view source) {
     }
     return lines;
 }
+
+/// @brief Read and split source lines from a disk path.
+/// @param path Absolute or relative path to open.
+/// @return Cached line vector, or std::nullopt when the file cannot be opened.
+/// @details The file is opened in binary mode so bytes and diagnostic columns are
+///          interpreted consistently across platforms.  Line endings are still
+///          normalized by @ref stripTrailingCarriageReturn after std::getline.
+std::optional<std::vector<std::string>> loadSourceLinesFromDisk(const std::filesystem::path &path) {
+    std::vector<std::string> lines;
+    std::ifstream f(path, std::ios::binary);
+    if (!f)
+        return std::nullopt;
+
+    std::string buf;
+    while (std::getline(f, buf)) {
+        stripTrailingCarriageReturn(buf);
+        lines.push_back(std::move(buf));
+    }
+    return lines;
+}
 } // namespace
 
 /// @brief Register a file path and assign it a stable identifier.
@@ -130,9 +182,10 @@ std::vector<std::string> splitSourceLines(std::string_view source) {
 uint32_t SourceManager::addFile(std::string path) {
     std::string normalized = normalizePath(path);
     std::filesystem::path diskPath = makeDiskPath(path);
+    std::string lookupKey = makePathLookupKey(diskPath, normalized);
 
     std::lock_guard lock(mutex_);
-    if (auto it = path_to_id_.find(normalized); it != path_to_id_.end())
+    if (auto it = path_to_id_.find(lookupKey); it != path_to_id_.end())
         return it->second;
 
     if (next_file_id_ > std::numeric_limits<uint32_t>::max()) {
@@ -149,7 +202,7 @@ uint32_t SourceManager::addFile(std::string path) {
         throw;
     }
     try {
-        path_to_id_.emplace(files_.back(), file_id);
+        path_to_id_.emplace(std::move(lookupKey), file_id);
     } catch (...) {
         disk_paths_.pop_back();
         files_.pop_back();
@@ -192,8 +245,7 @@ std::string_view SourceManager::getLine(uint32_t file_id, uint32_t line) const {
     if (file_id == 0 || line == 0)
         return {};
 
-    std::lock_guard lock(mutex_);
-    const auto *lines = ensureLineCacheLocked(file_id);
+    const auto lines = ensureLineCache(file_id);
     if (!lines || line > lines->size())
         return {};
     return (*lines)[line - 1];
@@ -212,8 +264,7 @@ bool SourceManager::hasLine(uint32_t file_id, uint32_t line) const {
     if (file_id == 0 || line == 0)
         return false;
 
-    std::lock_guard lock(mutex_);
-    const auto *lines = ensureLineCacheLocked(file_id);
+    const auto lines = ensureLineCache(file_id);
     return lines && line <= lines->size();
 }
 
@@ -229,7 +280,7 @@ void SourceManager::invalidateSource(uint32_t file_id) const {
         return;
 
     std::lock_guard lock(mutex_);
-    lineCache_.erase(file_id);
+    retireLineCacheLocked(file_id);
 }
 
 /// @brief Seed the line cache for a file id directly from in-memory text.
@@ -249,7 +300,9 @@ void SourceManager::setSource(uint32_t file_id, std::string source) {
     if (!isRegisteredFileId(file_id))
         return;
 
-    lineCache_[file_id] = splitSourceLines(source);
+    retireLineCacheLocked(file_id);
+    lineCache_[file_id] =
+        std::make_shared<const std::vector<std::string>>(splitSourceLines(source));
 }
 
 /// @brief Check whether a file identifier is in the registered range.
@@ -268,28 +321,51 @@ std::string_view SourceManager::getPathLocked(uint32_t file_id) const {
     return files_[file_id - 1];
 }
 
-/// @brief Load or retrieve cached source lines without acquiring the mutex.
+/// @brief Load or retrieve cached source lines.
 /// @param file_id Registered 1-based file identifier.
-/// @return Pointer to the cached line vector, or nullptr if @p file_id is invalid.
-const std::vector<std::string> *SourceManager::ensureLineCacheLocked(uint32_t file_id) const {
+/// @return Shared cached line vector, or null when @p file_id is invalid.
+std::shared_ptr<const std::vector<std::string>> SourceManager::ensureLineCache(
+    uint32_t file_id) const {
+    std::filesystem::path diskPath;
+    {
+        std::lock_guard lock(mutex_);
+        if (!isRegisteredFileId(file_id))
+            return {};
+
+        auto it = lineCache_.find(file_id);
+        if (it != lineCache_.end())
+            return it->second;
+
+        diskPath = disk_paths_[file_id - 1];
+    }
+
+    auto loadedLines = loadSourceLinesFromDisk(diskPath);
+    if (!loadedLines)
+        return {};
+    auto loaded = std::make_shared<const std::vector<std::string>>(std::move(*loadedLines));
+
+    std::lock_guard lock(mutex_);
     if (!isRegisteredFileId(file_id))
-        return nullptr;
+        return {};
 
     auto it = lineCache_.find(file_id);
     if (it != lineCache_.end())
-        return &it->second;
+        return it->second;
 
-    std::vector<std::string> lines;
-    std::ifstream f(disk_paths_[file_id - 1]);
-    if (f) {
-        std::string buf;
-        while (std::getline(f, buf)) {
-            stripTrailingCarriageReturn(buf);
-            lines.push_back(std::move(buf));
-        }
-    }
+    auto inserted = lineCache_.emplace(file_id, std::move(loaded)).first;
+    return inserted->second;
+}
 
-    auto inserted = lineCache_.emplace(file_id, std::move(lines)).first;
-    return &inserted->second;
+/// @brief Preserve and erase the current cache for a file id.
+/// @param file_id Registered 1-based file identifier.
+/// @details Moving the shared line buffer into @ref retiredLineCaches_ keeps
+///          previously returned string views valid while allowing future lookups
+///          to reload or replace the active cache.
+void SourceManager::retireLineCacheLocked(uint32_t file_id) const {
+    auto it = lineCache_.find(file_id);
+    if (it == lineCache_.end())
+        return;
+    retiredLineCaches_.push_back(std::move(it->second));
+    lineCache_.erase(it);
 }
 } // namespace il::support

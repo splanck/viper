@@ -209,6 +209,34 @@ size_t GrowingArena::totalAllocated() const noexcept {
     return total;
 }
 
+/// @brief Capture the current allocation cursor for later rollback.
+/// @return Mark describing the current chunk count and final chunk offset.
+/// @details The mark is intentionally small and value-like so create<T>() can
+///          take it before raw allocation and restore the arena if placement
+///          construction fails.
+GrowingArena::AllocationMark GrowingArena::markAllocationPoint() const noexcept {
+    if (chunks_.empty())
+        return {};
+    return AllocationMark{chunks_.size(), chunks_.back().offset};
+}
+
+/// @brief Rewind the arena allocation cursor to a previous mark.
+/// @param mark Allocation mark produced by @ref markAllocationPoint.
+/// @details Any chunks allocated after the mark are released and the surviving
+///          final chunk's offset is restored.  This is only used for failed
+///          construction paths where no live object has been registered.
+void GrowingArena::rewindTo(AllocationMark mark) noexcept {
+    if (mark.chunkCount == 0) {
+        chunks_.clear();
+        return;
+    }
+
+    if (chunks_.size() > mark.chunkCount)
+        chunks_.resize(mark.chunkCount);
+    if (!chunks_.empty())
+        chunks_.back().offset = mark.lastOffset;
+}
+
 void GrowingArena::allocateChunk(size_t minSize) {
     chunks_.emplace_back(minSize);
 }

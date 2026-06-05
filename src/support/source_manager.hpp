@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <deque>
 #include <filesystem>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <string_view>
@@ -96,15 +97,28 @@ class SourceManager {
 
     /// @brief Ensure the line cache for @p file_id exists.
     /// @param file_id Registered 1-based file identifier.
-    /// @return Pointer to the cached line vector, or nullptr for invalid ids.
+    /// @return Shared cached line vector, or null for invalid ids.
+    /// @details May perform disk I/O without holding @ref mutex_ and then publish
+    ///          the resulting immutable line vector under the lock.
+    [[nodiscard]] std::shared_ptr<const std::vector<std::string>> ensureLineCache(
+        uint32_t file_id) const;
+
+    /// @brief Preserve an existing cache before replacing or invalidating it.
+    /// @param file_id Registered 1-based file identifier whose cache should retire.
     /// @pre Caller must hold @ref mutex_.
-    [[nodiscard]] const std::vector<std::string> *ensureLineCacheLocked(uint32_t file_id) const;
+    /// @details Public accessors return string_view values into cached lines.  This
+    ///          helper keeps old vectors alive for the manager lifetime so earlier
+    ///          views do not dangle after setSource() or invalidateSource().
+    void retireLineCacheLocked(uint32_t file_id) const;
 
     /// Serializes access to path tables and mutable line cache.
     mutable std::mutex mutex_;
     /// Cached file contents split by line, keyed by file_id.
     /// Mutable because getLine() is logically const but lazily populates the cache.
-    mutable std::unordered_map<uint32_t, std::vector<std::string>> lineCache_;
+    mutable std::unordered_map<uint32_t, std::shared_ptr<const std::vector<std::string>>>
+        lineCache_;
+    /// Retired line caches kept alive so previously returned string_views remain valid.
+    mutable std::deque<std::shared_ptr<const std::vector<std::string>>> retiredLineCaches_;
     /// Stored file paths. Index corresponds to file identifier; index 0 is reserved.
     /// Implemented with std::deque to keep string references stable as new files are added.
     std::deque<std::string> files_;
@@ -115,7 +129,7 @@ class SourceManager {
     /// Next identifier to assign; stored as 64-bit to detect overflow safely.
     uint64_t next_file_id_ = 1;
 
-    /// Fast lookup from normalized path to previously assigned identifier.
+    /// Fast lookup from canonical disk/display key to previously assigned identifier.
     std::unordered_map<std::string, uint32_t> path_to_id_;
 
     friend struct SourceManagerTestAccess;

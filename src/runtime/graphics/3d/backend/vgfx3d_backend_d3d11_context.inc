@@ -1,0 +1,796 @@
+//===----------------------------------------------------------------------===//
+// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_context.inc  (#included from vgfx3d_backend_d3d11.c; not a standalone translation unit)
+// Purpose: D3D11 device/swapchain/context creation, state objects, and teardown
+//===----------------------------------------------------------------------===//
+typedef struct d3d11_shader_blobs_t {
+    ID3DBlob *vs;
+    ID3DBlob *vs_instanced;
+    ID3DBlob *ps;
+    ID3DBlob *vs_shadow;
+    ID3DBlob *ps_shadow;
+    ID3DBlob *vs_skybox;
+    ID3DBlob *ps_skybox;
+    ID3DBlob *vs_postfx;
+    ID3DBlob *ps_postfx;
+    ID3DBlob *ps_overlay;
+} d3d11_shader_blobs_t;
+
+/// @brief Release all temporary shader blobs used while creating a context.
+static void d3d11_release_shader_blobs(d3d11_shader_blobs_t *blobs) {
+    SAFE_RELEASE(blobs->vs);
+    SAFE_RELEASE(blobs->vs_instanced);
+    SAFE_RELEASE(blobs->ps);
+    SAFE_RELEASE(blobs->vs_shadow);
+    SAFE_RELEASE(blobs->ps_shadow);
+    SAFE_RELEASE(blobs->vs_skybox);
+    SAFE_RELEASE(blobs->ps_skybox);
+    SAFE_RELEASE(blobs->vs_postfx);
+    SAFE_RELEASE(blobs->ps_postfx);
+    SAFE_RELEASE(blobs->ps_overlay);
+}
+
+/// @brief Initialize matrix defaults and target/upload state on a new D3D11 context.
+static void d3d11_init_context_defaults(d3d11_context_t *ctx, int32_t width, int32_t height) {
+    ctx->width = width;
+    ctx->height = height;
+    memcpy(ctx->view, k_identity4x4, sizeof(ctx->view));
+    memcpy(ctx->projection, k_identity4x4, sizeof(ctx->projection));
+    memcpy(ctx->vp, k_identity4x4, sizeof(ctx->vp));
+    memcpy(ctx->inv_vp, k_identity4x4, sizeof(ctx->inv_vp));
+    memcpy(ctx->draw_prev_vp, k_identity4x4, sizeof(ctx->draw_prev_vp));
+    memcpy(ctx->scene_vp, k_identity4x4, sizeof(ctx->scene_vp));
+    memcpy(ctx->scene_prev_vp, k_identity4x4, sizeof(ctx->scene_prev_vp));
+    memcpy(ctx->scene_inv_vp, k_identity4x4, sizeof(ctx->scene_inv_vp));
+    ctx->current_target_kind = VGFX3D_D3D11_TARGET_SWAPCHAIN;
+    ctx->active_target_kind = VGFX3D_D3D11_TARGET_SWAPCHAIN;
+    ctx->texture_upload_budget_bytes = UINT64_MAX;
+}
+
+/// @brief Fill the swap-chain descriptor for the current window/backbuffer size.
+static void d3d11_fill_swap_chain_desc(DXGI_SWAP_CHAIN_DESC *swap_desc,
+                                       HWND hwnd,
+                                       int32_t width,
+                                       int32_t height) {
+    memset(swap_desc, 0, sizeof(*swap_desc));
+    swap_desc->BufferCount = 1;
+    swap_desc->BufferDesc.Width = (UINT)width;
+    swap_desc->BufferDesc.Height = (UINT)height;
+    swap_desc->BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    swap_desc->BufferDesc.RefreshRate.Numerator = 60;
+    swap_desc->BufferDesc.RefreshRate.Denominator = 1;
+    swap_desc->BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    swap_desc->OutputWindow = hwnd;
+    swap_desc->SampleDesc.Count = 1;
+    swap_desc->Windowed = TRUE;
+}
+
+/// @brief Create the swapchain render-target view and matching main depth target.
+static HRESULT d3d11_create_swapchain_targets(d3d11_context_t *ctx,
+                                             int32_t width,
+                                             int32_t height) {
+    ID3D11Texture2D *back_buffer = NULL;
+    HRESULT hr = IDXGISwapChain_GetBuffer(
+        ctx->swap_chain, 0, &IID_ID3D11Texture2D, (void **)&back_buffer);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("IDXGISwapChain::GetBuffer", hr);
+        return hr;
+    }
+    hr = ID3D11Device_CreateRenderTargetView(
+        ctx->device, (ID3D11Resource *)back_buffer, NULL, &ctx->rtv);
+    SAFE_RELEASE(back_buffer);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateRenderTargetView(backbuffer)", hr);
+        return hr;
+    }
+    hr = d3d11_create_depth_target(ctx, width, height, 0, &ctx->depth_tex, &ctx->dsv, NULL);
+    if (FAILED(hr))
+        d3d11_log_hresult("CreateTexture2D/DepthStencilView(main)", hr);
+    return hr;
+}
+
+/// @brief Create opaque, transparent, disabled, and skybox depth-stencil states.
+static HRESULT d3d11_create_context_depth_states(d3d11_context_t *ctx) {
+    D3D11_DEPTH_STENCIL_DESC depth_desc;
+    HRESULT hr;
+    memset(&depth_desc, 0, sizeof(depth_desc));
+    depth_desc.DepthEnable = TRUE;
+    depth_desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+    depth_desc.DepthFunc = D3D11_COMPARISON_LESS;
+    hr = ID3D11Device_CreateDepthStencilState(ctx->device, &depth_desc, &ctx->depth_state);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateDepthStencilState(opaque)", hr);
+        return hr;
+    }
+    depth_desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+    hr = ID3D11Device_CreateDepthStencilState(ctx->device, &depth_desc, &ctx->depth_state_no_write);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateDepthStencilState(transparent)", hr);
+        return hr;
+    }
+    depth_desc.DepthEnable = FALSE;
+    depth_desc.DepthFunc = D3D11_COMPARISON_ALWAYS;
+    hr = ID3D11Device_CreateDepthStencilState(ctx->device, &depth_desc, &ctx->depth_state_disabled);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateDepthStencilState(disabled)", hr);
+        return hr;
+    }
+    depth_desc.DepthEnable = TRUE;
+    depth_desc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+    hr = ID3D11Device_CreateDepthStencilState(
+        ctx->device, &depth_desc, &ctx->depth_state_readonly_lequal);
+    if (FAILED(hr))
+        d3d11_log_hresult("CreateDepthStencilState(skybox)", hr);
+    return hr;
+}
+
+/// @brief Create opaque, alpha, additive, and premultiplied-alpha blend states.
+static HRESULT d3d11_create_context_blend_states(d3d11_context_t *ctx) {
+    D3D11_BLEND_DESC blend_desc;
+    HRESULT hr;
+    memset(&blend_desc, 0, sizeof(blend_desc));
+    blend_desc.IndependentBlendEnable = TRUE;
+    blend_desc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    blend_desc.RenderTarget[1].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    hr = ID3D11Device_CreateBlendState(ctx->device, &blend_desc, &ctx->blend_state_opaque);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateBlendState(opaque)", hr);
+        return hr;
+    }
+
+    memset(&blend_desc, 0, sizeof(blend_desc));
+    blend_desc.IndependentBlendEnable = TRUE;
+    blend_desc.RenderTarget[0].BlendEnable = TRUE;
+    blend_desc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
+    blend_desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+    blend_desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+    blend_desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+    blend_desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+    blend_desc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+    blend_desc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    blend_desc.RenderTarget[1].BlendEnable = FALSE;
+    blend_desc.RenderTarget[1].RenderTargetWriteMask = 0;
+    hr = ID3D11Device_CreateBlendState(ctx->device, &blend_desc, &ctx->blend_state_alpha);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateBlendState(alpha)", hr);
+        return hr;
+    }
+
+    blend_desc.RenderTarget[0].DestBlend = D3D11_BLEND_ONE;
+    blend_desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
+    hr = ID3D11Device_CreateBlendState(ctx->device, &blend_desc, &ctx->blend_state_additive);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateBlendState(additive)", hr);
+        return hr;
+    }
+
+    blend_desc.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
+    blend_desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+    blend_desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+    hr = ID3D11Device_CreateBlendState(
+        ctx->device, &blend_desc, &ctx->blend_state_premultiplied_alpha);
+    if (FAILED(hr))
+        d3d11_log_hresult("CreateBlendState(premultiplied alpha)", hr);
+    return hr;
+}
+
+/// @brief Create all solid/wireframe and cull/no-cull rasterizer-state combinations.
+static HRESULT d3d11_create_context_rasterizer_states(d3d11_context_t *ctx) {
+    HRESULT hr = d3d11_create_rasterizer_state(
+        ctx, D3D11_FILL_SOLID, D3D11_CULL_BACK, &ctx->rs_solid_cull);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateRasterizerState(solid+cull)", hr);
+        return hr;
+    }
+    hr = d3d11_create_rasterizer_state(
+        ctx, D3D11_FILL_SOLID, D3D11_CULL_NONE, &ctx->rs_solid_no_cull);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateRasterizerState(solid+nocull)", hr);
+        return hr;
+    }
+    hr = d3d11_create_rasterizer_state(
+        ctx, D3D11_FILL_WIREFRAME, D3D11_CULL_BACK, &ctx->rs_wire_cull);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateRasterizerState(wire+cull)", hr);
+        return hr;
+    }
+    hr = d3d11_create_rasterizer_state(
+        ctx, D3D11_FILL_WIREFRAME, D3D11_CULL_NONE, &ctx->rs_wire_no_cull);
+    if (FAILED(hr))
+        d3d11_log_hresult("CreateRasterizerState(wire+nocull)", hr);
+    return hr;
+}
+
+/// @brief Create default linear wrap/clamp samplers and the shadow comparison sampler.
+static HRESULT d3d11_create_context_sampler_states(d3d11_context_t *ctx) {
+    D3D11_SAMPLER_DESC sampler_desc;
+    HRESULT hr;
+    d3d11_init_sampler_desc_defaults(&sampler_desc);
+    sampler_desc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    sampler_desc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+    sampler_desc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+    sampler_desc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+    hr = ID3D11Device_CreateSamplerState(ctx->device, &sampler_desc, &ctx->linear_wrap_sampler);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateSamplerState(linearWrap)", hr);
+        return hr;
+    }
+    sampler_desc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampler_desc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampler_desc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    hr = ID3D11Device_CreateSamplerState(ctx->device, &sampler_desc, &ctx->linear_clamp_sampler);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateSamplerState(linearClamp)", hr);
+        return hr;
+    }
+    d3d11_init_sampler_desc_defaults(&sampler_desc);
+    sampler_desc.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT;
+    sampler_desc.AddressU = D3D11_TEXTURE_ADDRESS_BORDER;
+    sampler_desc.AddressV = D3D11_TEXTURE_ADDRESS_BORDER;
+    sampler_desc.AddressW = D3D11_TEXTURE_ADDRESS_BORDER;
+    sampler_desc.BorderColor[0] = 1.0f;
+    sampler_desc.BorderColor[1] = 1.0f;
+    sampler_desc.BorderColor[2] = 1.0f;
+    sampler_desc.BorderColor[3] = 1.0f;
+    sampler_desc.ComparisonFunc = D3D11_COMPARISON_LESS_EQUAL;
+    hr = ID3D11Device_CreateSamplerState(ctx->device, &sampler_desc, &ctx->shadow_cmp_sampler);
+    if (FAILED(hr))
+        d3d11_log_hresult("CreateSamplerState(shadowCmp)", hr);
+    return hr;
+}
+
+/// @brief Compile every HLSL shader entry point needed by the context.
+static HRESULT d3d11_compile_context_shaders(d3d11_shader_blobs_t *blobs) {
+    HRESULT hr;
+    memset(blobs, 0, sizeof(*blobs));
+    hr = d3d11_compile_shader(d3d11_shader_source, "VSMain", "vs_5_0", &blobs->vs);
+    if (FAILED(hr))
+        return hr;
+    hr = d3d11_compile_shader(
+        d3d11_shader_source, "VSMainInstanced", "vs_5_0", &blobs->vs_instanced);
+    if (FAILED(hr))
+        return hr;
+    hr = d3d11_compile_shader(d3d11_shader_source, "PSMain", "ps_5_0", &blobs->ps);
+    if (FAILED(hr))
+        return hr;
+    hr = d3d11_compile_shader(d3d11_shader_source, "VSShadow", "vs_5_0", &blobs->vs_shadow);
+    if (FAILED(hr))
+        return hr;
+    hr = d3d11_compile_shader(d3d11_shader_source, "PSShadow", "ps_5_0", &blobs->ps_shadow);
+    if (FAILED(hr))
+        return hr;
+    hr = d3d11_compile_shader(
+        d3d11_skybox_shader_source, "VSSkybox", "vs_5_0", &blobs->vs_skybox);
+    if (FAILED(hr))
+        return hr;
+    hr = d3d11_compile_shader(
+        d3d11_skybox_shader_source, "PSSkybox", "ps_5_0", &blobs->ps_skybox);
+    if (FAILED(hr))
+        return hr;
+    hr = d3d11_compile_shader(
+        d3d11_postfx_shader_source, "VSPostFX", "vs_5_0", &blobs->vs_postfx);
+    if (FAILED(hr))
+        return hr;
+    hr = d3d11_compile_shader(
+        d3d11_postfx_shader_source, "PSPostFX", "ps_5_0", &blobs->ps_postfx);
+    if (FAILED(hr))
+        return hr;
+    return d3d11_compile_shader(
+        d3d11_postfx_shader_source, "PSOverlayComposite", "ps_5_0", &blobs->ps_overlay);
+}
+
+/// @brief Create all shader objects from compiled HLSL blobs.
+static HRESULT d3d11_create_context_shader_objects(d3d11_context_t *ctx,
+                                                  const d3d11_shader_blobs_t *blobs) {
+    HRESULT hr = ID3D11Device_CreateVertexShader(ctx->device,
+                                                 ID3D10Blob_GetBufferPointer(blobs->vs),
+                                                 ID3D10Blob_GetBufferSize(blobs->vs),
+                                                 NULL,
+                                                 &ctx->vs_main);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateVertexShader(main)", hr);
+        return hr;
+    }
+    hr = ID3D11Device_CreateVertexShader(ctx->device,
+                                         ID3D10Blob_GetBufferPointer(blobs->vs_instanced),
+                                         ID3D10Blob_GetBufferSize(blobs->vs_instanced),
+                                         NULL,
+                                         &ctx->vs_instanced);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateVertexShader(instanced)", hr);
+        return hr;
+    }
+    hr = ID3D11Device_CreatePixelShader(ctx->device,
+                                        ID3D10Blob_GetBufferPointer(blobs->ps),
+                                        ID3D10Blob_GetBufferSize(blobs->ps),
+                                        NULL,
+                                        &ctx->ps_main);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreatePixelShader(main)", hr);
+        return hr;
+    }
+    hr = ID3D11Device_CreateVertexShader(ctx->device,
+                                         ID3D10Blob_GetBufferPointer(blobs->vs_shadow),
+                                         ID3D10Blob_GetBufferSize(blobs->vs_shadow),
+                                         NULL,
+                                         &ctx->vs_shadow);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateVertexShader(shadow)", hr);
+        return hr;
+    }
+    hr = ID3D11Device_CreatePixelShader(ctx->device,
+                                        ID3D10Blob_GetBufferPointer(blobs->ps_shadow),
+                                        ID3D10Blob_GetBufferSize(blobs->ps_shadow),
+                                        NULL,
+                                        &ctx->ps_shadow);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreatePixelShader(shadow)", hr);
+        return hr;
+    }
+    hr = ID3D11Device_CreateVertexShader(ctx->device,
+                                         ID3D10Blob_GetBufferPointer(blobs->vs_skybox),
+                                         ID3D10Blob_GetBufferSize(blobs->vs_skybox),
+                                         NULL,
+                                         &ctx->vs_skybox);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateVertexShader(skybox)", hr);
+        return hr;
+    }
+    hr = ID3D11Device_CreatePixelShader(ctx->device,
+                                        ID3D10Blob_GetBufferPointer(blobs->ps_skybox),
+                                        ID3D10Blob_GetBufferSize(blobs->ps_skybox),
+                                        NULL,
+                                        &ctx->ps_skybox);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreatePixelShader(skybox)", hr);
+        return hr;
+    }
+    hr = ID3D11Device_CreateVertexShader(ctx->device,
+                                         ID3D10Blob_GetBufferPointer(blobs->vs_postfx),
+                                         ID3D10Blob_GetBufferSize(blobs->vs_postfx),
+                                         NULL,
+                                         &ctx->vs_postfx);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateVertexShader(postfx)", hr);
+        return hr;
+    }
+    hr = ID3D11Device_CreatePixelShader(ctx->device,
+                                        ID3D10Blob_GetBufferPointer(blobs->ps_postfx),
+                                        ID3D10Blob_GetBufferSize(blobs->ps_postfx),
+                                        NULL,
+                                        &ctx->ps_postfx);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreatePixelShader(postfx)", hr);
+        return hr;
+    }
+    hr = ID3D11Device_CreatePixelShader(ctx->device,
+                                        ID3D10Blob_GetBufferPointer(blobs->ps_overlay),
+                                        ID3D10Blob_GetBufferSize(blobs->ps_overlay),
+                                        NULL,
+                                        &ctx->ps_overlay_composite);
+    if (FAILED(hr))
+        d3d11_log_hresult("CreatePixelShader(overlayComposite)", hr);
+    return hr;
+}
+
+/// @brief Fill the base per-vertex input layout for vgfx3d_vertex_t.
+static void d3d11_fill_vertex_layout(D3D11_INPUT_ELEMENT_DESC layout[8]) {
+    layout[0].SemanticName = "POSITION";
+    layout[0].SemanticIndex = 0;
+    layout[0].Format = DXGI_FORMAT_R32G32B32_FLOAT;
+    layout[0].InputSlot = 0;
+    layout[0].AlignedByteOffset = (UINT)offsetof(vgfx3d_vertex_t, pos);
+    layout[0].InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
+    layout[0].InstanceDataStepRate = 0;
+    layout[1] = layout[0];
+    layout[1].SemanticName = "NORMAL";
+    layout[1].AlignedByteOffset = (UINT)offsetof(vgfx3d_vertex_t, normal);
+    layout[2] = layout[0];
+    layout[2].SemanticName = "TEXCOORD";
+    layout[2].Format = DXGI_FORMAT_R32G32_FLOAT;
+    layout[2].AlignedByteOffset = (UINT)offsetof(vgfx3d_vertex_t, uv);
+    layout[3] = layout[0];
+    layout[3].SemanticName = "TEXCOORD";
+    layout[3].SemanticIndex = 1;
+    layout[3].Format = DXGI_FORMAT_R32G32_FLOAT;
+    layout[3].AlignedByteOffset = (UINT)offsetof(vgfx3d_vertex_t, uv1);
+    layout[4] = layout[0];
+    layout[4].SemanticName = "COLOR";
+    layout[4].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    layout[4].AlignedByteOffset = (UINT)offsetof(vgfx3d_vertex_t, color);
+    layout[5] = layout[0];
+    layout[5].SemanticName = "TANGENT";
+    layout[5].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    layout[5].AlignedByteOffset = (UINT)offsetof(vgfx3d_vertex_t, tangent);
+    layout[6] = layout[0];
+    layout[6].SemanticName = "BLENDINDICES";
+    layout[6].Format = DXGI_FORMAT_R8G8B8A8_UINT;
+    layout[6].AlignedByteOffset = (UINT)offsetof(vgfx3d_vertex_t, bone_indices);
+    layout[7] = layout[0];
+    layout[7].SemanticName = "BLENDWEIGHT";
+    layout[7].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    layout[7].AlignedByteOffset = (UINT)offsetof(vgfx3d_vertex_t, bone_weights);
+}
+
+/// @brief Extend the base layout with model/normal/previous-model instance matrices.
+static void d3d11_fill_instanced_layout(D3D11_INPUT_ELEMENT_DESC instanced_layout[20],
+                                        const D3D11_INPUT_ELEMENT_DESC layout[8]) {
+    memcpy(instanced_layout, layout, sizeof(D3D11_INPUT_ELEMENT_DESC) * 8u);
+    instanced_layout[0].InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
+    int elem = 8;
+    for (int row = 0; row < 4; row++, elem++) {
+        instanced_layout[elem].SemanticName = "TEXCOORD";
+        instanced_layout[elem].SemanticIndex = 4u + (UINT)row;
+        instanced_layout[elem].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        instanced_layout[elem].InputSlot = 1;
+        instanced_layout[elem].AlignedByteOffset =
+            (UINT)(offsetof(d3d_instance_data_t, model) + row * 16);
+        instanced_layout[elem].InputSlotClass = D3D11_INPUT_PER_INSTANCE_DATA;
+        instanced_layout[elem].InstanceDataStepRate = 1;
+    }
+    for (int row = 0; row < 4; row++, elem++) {
+        instanced_layout[elem].SemanticName = "TEXCOORD";
+        instanced_layout[elem].SemanticIndex = 8u + (UINT)row;
+        instanced_layout[elem].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        instanced_layout[elem].InputSlot = 1;
+        instanced_layout[elem].AlignedByteOffset =
+            (UINT)(offsetof(d3d_instance_data_t, normal) + row * 16);
+        instanced_layout[elem].InputSlotClass = D3D11_INPUT_PER_INSTANCE_DATA;
+        instanced_layout[elem].InstanceDataStepRate = 1;
+    }
+    for (int row = 0; row < 4; row++, elem++) {
+        instanced_layout[elem].SemanticName = "TEXCOORD";
+        instanced_layout[elem].SemanticIndex = 12u + (UINT)row;
+        instanced_layout[elem].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        instanced_layout[elem].InputSlot = 1;
+        instanced_layout[elem].AlignedByteOffset =
+            (UINT)(offsetof(d3d_instance_data_t, prev_model) + row * 16);
+        instanced_layout[elem].InputSlotClass = D3D11_INPUT_PER_INSTANCE_DATA;
+        instanced_layout[elem].InstanceDataStepRate = 1;
+    }
+}
+
+/// @brief Create main, instanced, and skybox input layouts.
+static HRESULT d3d11_create_context_input_layouts(d3d11_context_t *ctx,
+                                                 const d3d11_shader_blobs_t *blobs) {
+    D3D11_INPUT_ELEMENT_DESC layout[8];
+    D3D11_INPUT_ELEMENT_DESC instanced_layout[20];
+    D3D11_INPUT_ELEMENT_DESC skybox_layout[1];
+    HRESULT hr;
+
+    d3d11_fill_vertex_layout(layout);
+    hr = ID3D11Device_CreateInputLayout(ctx->device,
+                                        layout,
+                                        8,
+                                        ID3D10Blob_GetBufferPointer(blobs->vs),
+                                        ID3D10Blob_GetBufferSize(blobs->vs),
+                                        &ctx->input_layout);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateInputLayout(main)", hr);
+        return hr;
+    }
+
+    d3d11_fill_instanced_layout(instanced_layout, layout);
+    hr = ID3D11Device_CreateInputLayout(ctx->device,
+                                        instanced_layout,
+                                        20,
+                                        ID3D10Blob_GetBufferPointer(blobs->vs_instanced),
+                                        ID3D10Blob_GetBufferSize(blobs->vs_instanced),
+                                        &ctx->input_layout_instanced);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateInputLayout(instanced)", hr);
+        return hr;
+    }
+
+    skybox_layout[0].SemanticName = "POSITION";
+    skybox_layout[0].SemanticIndex = 0;
+    skybox_layout[0].Format = DXGI_FORMAT_R32G32B32_FLOAT;
+    skybox_layout[0].InputSlot = 0;
+    skybox_layout[0].AlignedByteOffset = 0;
+    skybox_layout[0].InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
+    skybox_layout[0].InstanceDataStepRate = 0;
+    hr = ID3D11Device_CreateInputLayout(ctx->device,
+                                        skybox_layout,
+                                        1,
+                                        ID3D10Blob_GetBufferPointer(blobs->vs_skybox),
+                                        ID3D10Blob_GetBufferSize(blobs->vs_skybox),
+                                        &ctx->input_layout_skybox);
+    if (FAILED(hr))
+        d3d11_log_hresult("CreateInputLayout(skybox)", hr);
+    return hr;
+}
+
+/// @brief Create constant buffers and the dynamic vertex/index/instance buffers.
+static HRESULT d3d11_create_context_buffers(d3d11_context_t *ctx) {
+    HRESULT hr = d3d11_create_constant_buffer(ctx, sizeof(d3d_per_object_t), &ctx->cb_per_object);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateBuffer(cbPerObject)", hr);
+        return hr;
+    }
+    hr = d3d11_create_constant_buffer(ctx, sizeof(d3d_per_scene_t), &ctx->cb_per_scene);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateBuffer(cbPerScene)", hr);
+        return hr;
+    }
+    hr = d3d11_create_constant_buffer(ctx, sizeof(d3d_per_material_t), &ctx->cb_per_material);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateBuffer(cbPerMaterial)", hr);
+        return hr;
+    }
+    hr = d3d11_create_constant_buffer(
+        ctx, sizeof(d3d_light_t) * (uint32_t)VGFX3D_MAX_LIGHTS, &ctx->cb_per_lights);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateBuffer(cbPerLights)", hr);
+        return hr;
+    }
+    hr = d3d11_create_constant_buffer(ctx, VGFX3D_D3D11_BONE_PALETTE_BYTES, &ctx->cb_bones);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateBuffer(cbBones)", hr);
+        return hr;
+    }
+    hr = d3d11_create_constant_buffer(ctx, VGFX3D_D3D11_BONE_PALETTE_BYTES, &ctx->cb_prev_bones);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateBuffer(cbPrevBones)", hr);
+        return hr;
+    }
+    hr = d3d11_create_constant_buffer(ctx, sizeof(d3d_skybox_cb_t), &ctx->cb_skybox);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateBuffer(cbSkybox)", hr);
+        return hr;
+    }
+    hr = d3d11_create_constant_buffer(ctx, sizeof(d3d_postfx_cb_t), &ctx->cb_postfx);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateBuffer(cbPostFX)", hr);
+        return hr;
+    }
+    hr = d3d11_ensure_dynamic_buffer(ctx,
+                                     &ctx->dynamic_vb,
+                                     &ctx->dynamic_vb_size,
+                                     D3D11_BIND_VERTEX_BUFFER,
+                                     D3D11_INITIAL_DYNAMIC_VB_SIZE,
+                                     D3D11_INITIAL_DYNAMIC_VB_SIZE);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateBuffer(dynamicVB)", hr);
+        return hr;
+    }
+    hr = d3d11_ensure_dynamic_buffer(ctx,
+                                     &ctx->dynamic_ib,
+                                     &ctx->dynamic_ib_size,
+                                     D3D11_BIND_INDEX_BUFFER,
+                                     D3D11_INITIAL_DYNAMIC_IB_SIZE,
+                                     D3D11_INITIAL_DYNAMIC_IB_SIZE);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateBuffer(dynamicIB)", hr);
+        return hr;
+    }
+    hr = d3d11_ensure_dynamic_buffer(ctx,
+                                     &ctx->instance_buffer,
+                                     &ctx->instance_buffer_size,
+                                     D3D11_BIND_VERTEX_BUFFER,
+                                     D3D11_INITIAL_INSTANCE_BUFFER_SIZE,
+                                     D3D11_INITIAL_INSTANCE_BUFFER_SIZE);
+    if (FAILED(hr))
+        d3d11_log_hresult("CreateBuffer(instanceBuffer)", hr);
+    return hr;
+}
+
+/// @brief Create the immutable fullscreen-triangle skybox vertex buffer.
+static HRESULT d3d11_create_context_skybox_buffer(d3d11_context_t *ctx) {
+    static const float skybox_vertices[] = {
+        -1.0f,
+        -1.0f,
+        1.0f,
+        3.0f,
+        -1.0f,
+        1.0f,
+        -1.0f,
+        3.0f,
+        1.0f,
+    };
+    D3D11_BUFFER_DESC skybox_desc;
+    D3D11_SUBRESOURCE_DATA skybox_init;
+    memset(&skybox_desc, 0, sizeof(skybox_desc));
+    skybox_desc.Usage = D3D11_USAGE_IMMUTABLE;
+    skybox_desc.ByteWidth = sizeof(skybox_vertices);
+    skybox_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    memset(&skybox_init, 0, sizeof(skybox_init));
+    skybox_init.pSysMem = skybox_vertices;
+    HRESULT hr = ID3D11Device_CreateBuffer(
+        ctx->device, &skybox_desc, &skybox_init, &ctx->skybox_vb);
+    if (FAILED(hr))
+        d3d11_log_hresult("CreateBuffer(skyboxVB)", hr);
+    return hr;
+}
+
+/// @brief Allocate and initialize the entire D3D11 backend context.
+///
+/// The big one — creates the device + swap chain, compiles every
+/// shader (main VS/PS, instanced VS, shadow VS, skybox VS/PS, postfx
+/// VS/PS, overlay PS), creates input layouts, depth/blend/sampler
+/// states, all four rasterizer-state combos, all cbuffers, and the
+/// skybox cube vertex buffer. Returns NULL on any device-create
+/// failure (the host falls back to the software backend in that case).
+static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) {
+    d3d11_context_t *ctx = NULL;
+    HWND hwnd = (HWND)vgfx_get_native_view(win);
+    vgfx_framebuffer_t fb;
+    DXGI_SWAP_CHAIN_DESC swap_desc;
+    D3D_FEATURE_LEVEL feature_level = D3D_FEATURE_LEVEL_11_0;
+    d3d11_shader_blobs_t blobs;
+    HRESULT hr;
+    memset(&blobs, 0, sizeof(blobs));
+
+    if (!hwnd)
+        return NULL;
+    if (vgfx_get_framebuffer(win, &fb) && fb.width > 0 && fb.height > 0) {
+        width = fb.width;
+        height = fb.height;
+    }
+    if (width <= 0)
+        width = 1;
+    if (height <= 0)
+        height = 1;
+    if (!vgfx3d_d3d11_is_valid_texture2d_extent(width, height))
+        return NULL;
+
+    ctx = (d3d11_context_t *)calloc(1, sizeof(d3d11_context_t));
+    if (!ctx)
+        return NULL;
+    d3d11_init_context_defaults(ctx, width, height);
+    d3d11_fill_swap_chain_desc(&swap_desc, hwnd, width, height);
+
+    hr = D3D11CreateDeviceAndSwapChain(NULL,
+                                       D3D_DRIVER_TYPE_HARDWARE,
+                                       NULL,
+                                       0,
+                                       &feature_level,
+                                       1,
+                                       D3D11_SDK_VERSION,
+                                       &swap_desc,
+                                       &ctx->swap_chain,
+                                       &ctx->device,
+                                       NULL,
+                                       &ctx->ctx);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("D3D11CreateDeviceAndSwapChain", hr);
+        free(ctx);
+        return NULL;
+    }
+
+    hr = d3d11_create_swapchain_targets(ctx, width, height);
+    if (FAILED(hr))
+        goto fail;
+    hr = d3d11_create_context_depth_states(ctx);
+    if (FAILED(hr))
+        goto fail;
+    hr = d3d11_create_context_blend_states(ctx);
+    if (FAILED(hr))
+        goto fail;
+
+    hr = d3d11_create_context_rasterizer_states(ctx);
+    if (FAILED(hr))
+        goto fail;
+    hr = d3d11_create_context_sampler_states(ctx);
+    if (FAILED(hr))
+        goto fail;
+    hr = d3d11_compile_context_shaders(&blobs);
+    if (FAILED(hr))
+        goto fail;
+    hr = d3d11_create_context_shader_objects(ctx, &blobs);
+    if (FAILED(hr))
+        goto fail;
+
+    hr = d3d11_create_context_input_layouts(ctx, &blobs);
+    if (FAILED(hr))
+        goto fail;
+
+    hr = d3d11_create_context_buffers(ctx);
+    if (FAILED(hr))
+        goto fail;
+    hr = d3d11_create_context_skybox_buffer(ctx);
+    if (FAILED(hr))
+        goto fail;
+
+    d3d11_create_frame_timing_queries(ctx);
+    d3d11_release_shader_blobs(&blobs);
+    return ctx;
+
+fail:
+    d3d11_release_shader_blobs(&blobs);
+    d3d11_destroy_ctx(ctx);
+    return NULL;
+}
+
+/// @brief Tear down the D3D11 backend context — releases everything created in `_create_ctx`.
+///
+/// Strict reverse-order release: caches first (so they don't reference
+/// the device after it's gone), then framebuffer + offscreen targets,
+/// then dynamic buffers, cbuffers, input layouts, shaders, sampler
+/// states, rasterizer states, depth-stencil states, blend states,
+/// finally swap chain + device. Frees the wrapper struct last.
+static void d3d11_destroy_ctx(void *ctx_ptr) {
+    d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
+    if (!ctx)
+        return;
+
+    if (ctx->ctx) {
+        d3d11_unbind_draw_resources(ctx);
+        d3d11_unbind_shadow_resources(ctx);
+        d3d11_unbind_output_targets(ctx);
+        ID3D11DeviceContext_ClearState(ctx->ctx);
+        ID3D11DeviceContext_Flush(ctx->ctx);
+    }
+
+    d3d11_release_texture_cache(ctx);
+    d3d11_release_cubemap_cache(ctx);
+    d3d11_release_mesh_cache(ctx);
+    d3d11_release_morph_cache(ctx);
+    d3d11_destroy_shadow_targets(ctx);
+    d3d11_destroy_rtt_targets(ctx);
+    d3d11_destroy_scene_targets(ctx);
+    vgfx3d_postfx_chain_free(&ctx->gpu_postfx_chain);
+
+    SAFE_RELEASE(ctx->frame_time_end_query);
+    SAFE_RELEASE(ctx->frame_time_start_query);
+    SAFE_RELEASE(ctx->frame_time_disjoint_query);
+    SAFE_RELEASE(ctx->morph_normal_srv);
+    SAFE_RELEASE(ctx->morph_normal_buffer);
+    SAFE_RELEASE(ctx->morph_srv);
+    SAFE_RELEASE(ctx->morph_buffer);
+    SAFE_RELEASE(ctx->skybox_vb);
+    SAFE_RELEASE(ctx->instance_buffer);
+    SAFE_RELEASE(ctx->dynamic_ib);
+    SAFE_RELEASE(ctx->dynamic_vb);
+    SAFE_RELEASE(ctx->cb_postfx);
+    SAFE_RELEASE(ctx->cb_skybox);
+    SAFE_RELEASE(ctx->cb_prev_bones);
+    SAFE_RELEASE(ctx->cb_bones);
+    SAFE_RELEASE(ctx->cb_per_lights);
+    SAFE_RELEASE(ctx->cb_per_material);
+    SAFE_RELEASE(ctx->cb_per_scene);
+    SAFE_RELEASE(ctx->cb_per_object);
+    SAFE_RELEASE(ctx->input_layout_skybox);
+    SAFE_RELEASE(ctx->input_layout_instanced);
+    SAFE_RELEASE(ctx->input_layout);
+    SAFE_RELEASE(ctx->ps_postfx);
+    SAFE_RELEASE(ctx->ps_overlay_composite);
+    SAFE_RELEASE(ctx->vs_postfx);
+    SAFE_RELEASE(ctx->ps_skybox);
+    SAFE_RELEASE(ctx->vs_skybox);
+    SAFE_RELEASE(ctx->ps_shadow);
+    SAFE_RELEASE(ctx->vs_shadow);
+    SAFE_RELEASE(ctx->ps_main);
+    SAFE_RELEASE(ctx->vs_instanced);
+    SAFE_RELEASE(ctx->vs_main);
+    for (int ws = 0; ws < 3; ws++) {
+        for (int wt = 0; wt < 3; wt++) {
+            for (int filter = 0; filter < 2; filter++)
+                SAFE_RELEASE(ctx->material_samplers[ws][wt][filter]);
+        }
+    }
+    SAFE_RELEASE(ctx->shadow_cmp_sampler);
+    SAFE_RELEASE(ctx->linear_clamp_sampler);
+    SAFE_RELEASE(ctx->linear_wrap_sampler);
+    SAFE_RELEASE(ctx->rs_wire_no_cull);
+    SAFE_RELEASE(ctx->rs_wire_cull);
+    SAFE_RELEASE(ctx->rs_solid_no_cull);
+    SAFE_RELEASE(ctx->rs_solid_cull);
+    SAFE_RELEASE(ctx->rs_depth_biased_cached);
+    ctx->rs_depth_biased_valid = 0;
+    SAFE_RELEASE(ctx->depth_state_readonly_lequal);
+    SAFE_RELEASE(ctx->depth_state_disabled);
+    SAFE_RELEASE(ctx->depth_state_no_write);
+    SAFE_RELEASE(ctx->depth_state);
+    SAFE_RELEASE(ctx->blend_state_premultiplied_alpha);
+    SAFE_RELEASE(ctx->blend_state_additive);
+    SAFE_RELEASE(ctx->blend_state_alpha);
+    SAFE_RELEASE(ctx->blend_state_opaque);
+    SAFE_RELEASE(ctx->dsv);
+    SAFE_RELEASE(ctx->depth_tex);
+    SAFE_RELEASE(ctx->rtv);
+    SAFE_RELEASE(ctx->swap_chain);
+    SAFE_RELEASE(ctx->ctx);
+    SAFE_RELEASE(ctx->device);
+    free(ctx->instance_upload_data);
+    free(ctx);
+}

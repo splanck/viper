@@ -35,11 +35,13 @@ namespace il::support {
 ///
 /// @param d Diagnostic to store (moved into the engine).
 void DiagnosticEngine::report(Diagnostic d) {
-    if (d.severity == Severity::Error)
-        ++errors_;
-    else if (d.severity == Severity::Warning)
-        ++warnings_;
+    const bool isError = d.severity == Severity::Error;
+    const bool isWarning = d.severity == Severity::Warning;
     diags_.push_back(std::move(d));
+    if (isError)
+        ++errors_;
+    else if (isWarning)
+        ++warnings_;
 }
 
 /// @brief Print all recorded diagnostics in insertion order.

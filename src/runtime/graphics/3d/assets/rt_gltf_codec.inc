@@ -1,0 +1,1278 @@
+//===----------------------------------------------------------------------===//
+// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// File: src/runtime/graphics/3d/assets/rt_gltf_codec.inc  (#included from rt_gltf.c; not a standalone translation unit)
+// Purpose: glTF image-codec, data-URI/base64, byte I/O, and buffer-view access helpers
+//===----------------------------------------------------------------------===//
+//===----------------------------------------------------------------------===//
+// Buffer management
+//===----------------------------------------------------------------------===//
+
+typedef struct {
+    uint8_t *data;
+    size_t len;
+} gltf_buffer_t;
+
+typedef enum {
+    GLTF_PRELOAD_DEP_BUFFER = 1,
+    GLTF_PRELOAD_DEP_IMAGE = 2,
+    GLTF_PRELOAD_DEP_IMAGE_RGBA = 3,
+    GLTF_PRELOAD_DEP_MESH_POD = 4,
+    GLTF_PRELOAD_DEP_MORPH_POD = 5,
+    GLTF_PRELOAD_DEP_IMAGE_PIXELS = 6
+} gltf_preload_dependency_kind_t;
+
+#define GLTF_PRELOAD_MESH_POD_MAGIC 0x504D4756u /* "VGMP" little-endian */
+#define GLTF_PRELOAD_MESH_POD_VERSION 1u
+#define GLTF_PRELOAD_MESH_POD_HEADER_SIZE 32u
+#define GLTF_PRELOAD_MESH_POD_HAS_NORMALS 0x1u
+#define GLTF_PRELOAD_MESH_POD_HAS_UV0 0x2u
+#define GLTF_PRELOAD_MESH_POD_HAS_TANGENTS 0x4u
+#define GLTF_PRELOAD_MESH_POD_HAS_SKINNING 0x8u
+
+#define GLTF_PRELOAD_MORPH_POD_MAGIC 0x544D4756u /* "VGMT" little-endian */
+#define GLTF_PRELOAD_MORPH_POD_VERSION 1u
+#define GLTF_PRELOAD_MORPH_POD_HEADER_SIZE 32u
+#define GLTF_PRELOAD_MORPH_POD_RECORD_SIZE 32u
+#define GLTF_PRELOAD_MORPH_POD_HAS_POSITIONS 0x1u
+#define GLTF_PRELOAD_MORPH_POD_HAS_NORMALS 0x2u
+#define GLTF_PRELOAD_MORPH_POD_HAS_TANGENTS 0x4u
+
+/// @brief One staged preload dependency: an owned key (path), raw bytes and/or a decoded
+///        runtime object, how many bytes have been incrementally prepared, and its kind tag.
+typedef struct {
+    char *path;
+    uint8_t *data;
+    void *object;
+    size_t len;
+    size_t prepared;
+    gltf_preload_dependency_kind_t kind;
+} gltf_preload_dependency_t;
+
+typedef struct {
+    const uint8_t *data;
+    size_t len;
+} gltf_preload_buffer_ref_t;
+
+typedef struct {
+    int buffer;
+    size_t byte_offset;
+    size_t byte_length;
+    size_t byte_stride;
+    int valid;
+} gltf_preload_buffer_view_ref_t;
+
+typedef struct {
+    int view;
+    size_t byte_offset;
+    int comp_type;
+    int comp_count;
+    int count;
+    int8_t normalized;
+    int8_t has_sparse;
+    int sparse_indices_view;
+    size_t sparse_indices_offset;
+    int sparse_values_view;
+    size_t sparse_values_offset;
+    int sparse_count;
+    int sparse_index_comp_type;
+    int valid;
+} gltf_preload_accessor_ref_t;
+
+struct rt_gltf_preload_bundle {
+    uint8_t *root_data;
+    size_t root_size;
+    gltf_preload_dependency_t *dependencies;
+    size_t dependency_count;
+    size_t dependency_capacity;
+};
+
+typedef struct {
+    const uint8_t *data;
+    int32_t count;
+    int32_t stride;
+    int32_t comp_type;
+    int32_t comp_count;
+    int8_t normalized;
+    const uint8_t *sparse_indices;
+    const uint8_t *sparse_values;
+    int32_t sparse_count;
+    int32_t sparse_index_comp_type;
+    int32_t sparse_index_stride;
+    int32_t sparse_value_stride;
+} gltf_accessor_view_t;
+
+static void gltf_preload_mesh_key(int mesh_index, int primitive_index, char *out, size_t out_cap);
+static void gltf_preload_morph_key(int mesh_index, int primitive_index, char *out, size_t out_cap);
+static uint32_t gltf_read_u32_le(const uint8_t *p);
+static int gltf_checked_mul_size(size_t a, size_t b, size_t *out);
+static int gltf_preload_rgba_blob_pixel_bytes(const uint8_t *blob,
+                                              size_t len,
+                                              uint32_t *out_width,
+                                              uint32_t *out_height,
+                                              size_t *out_pixel_bytes);
+
+/// @brief Compute a checked geometric capacity for preload staging arrays.
+static int gltf_preload_next_capacity_size(
+    size_t current, size_t required, size_t initial, size_t elem_size, size_t *out_capacity) {
+    size_t next;
+    if (out_capacity)
+        *out_capacity = current;
+    if (!out_capacity || elem_size == 0u || required == 0u)
+        return 0;
+    if (current >= required)
+        return 1;
+    next = current > 0u ? current : initial;
+    if (next == 0u)
+        next = 1u;
+    while (next < required) {
+        size_t prev = next;
+        if (next > SIZE_MAX / 2u)
+            next = required;
+        else
+            next *= 2u;
+        if (next <= prev && next < required)
+            return 0;
+    }
+    if (next > SIZE_MAX / elem_size)
+        return 0;
+    *out_capacity = next;
+    return 1;
+}
+
+/// @brief Int-capacity wrapper for JSON-indexed preload ref tables.
+static int gltf_preload_next_capacity_int(
+    int current, int required, int initial, size_t elem_size, int *out_capacity) {
+    size_t next = 0u;
+    if (out_capacity)
+        *out_capacity = current;
+    if (!out_capacity || current < 0 || required <= 0)
+        return 0;
+    if (current >= required)
+        return 1;
+    if (!gltf_preload_next_capacity_size(
+            (size_t)current, (size_t)required, (size_t)initial, elem_size, &next) ||
+        next > (size_t)INT_MAX)
+        return 0;
+    *out_capacity = (int)next;
+    return 1;
+}
+
+/// @brief Duplicate a NUL-terminated string into a malloc'd copy (NULL in -> NULL out).
+static char *gltf_strdup_cstr(const char *text) {
+    size_t len;
+    char *copy;
+    if (!text)
+        return NULL;
+    len = strlen(text);
+    copy = (char *)malloc(len + 1u);
+    if (!copy)
+        return NULL;
+    memcpy(copy, text, len + 1u);
+    return copy;
+}
+
+/// @brief Release a GC reference held in @p *slot if this is its last drop, then NULL it.
+static void gltf_preload_release_object(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (rt_obj_release_check0(*slot))
+        rt_obj_free(*slot);
+    *slot = NULL;
+}
+
+/// @brief Free one dependency's owned path, raw bytes, and decoded object, then zero it.
+static void gltf_preload_dependency_clear(gltf_preload_dependency_t *dep) {
+    if (!dep)
+        return;
+    free(dep->path);
+    free(dep->data);
+    gltf_preload_release_object(&dep->object);
+    memset(dep, 0, sizeof(*dep));
+}
+
+/// @brief Free a preload bundle: its root JSON bytes, every staged dependency, and the bundle.
+void rt_gltf_preload_bundle_free(rt_gltf_preload_bundle *bundle) {
+    if (!bundle)
+        return;
+    free(bundle->root_data);
+    bundle->root_data = NULL;
+    for (size_t i = 0; i < bundle->dependency_count; ++i)
+        gltf_preload_dependency_clear(&bundle->dependencies[i]);
+    free(bundle->dependencies);
+    free(bundle);
+}
+
+/// @brief Number of staged dependencies in the bundle (0 if NULL).
+size_t rt_gltf_preload_bundle_dependency_count(const rt_gltf_preload_bundle *bundle) {
+    return bundle ? bundle->dependency_count : 0u;
+}
+
+/// @brief Count staged dependencies that are decoded RGBA images.
+size_t rt_gltf_preload_bundle_decoded_image_count(const rt_gltf_preload_bundle *bundle) {
+    size_t count = 0;
+    if (!bundle)
+        return 0u;
+    for (size_t i = 0; i < bundle->dependency_count; ++i) {
+        if (bundle->dependencies[i].kind == GLTF_PRELOAD_DEP_IMAGE_RGBA)
+            count++;
+    }
+    return count;
+}
+
+/// @brief Total still-unprepared RGBA pixel bytes across decoded-image dependencies.
+/// @details Excludes the 12-byte "VGRA" header and any bytes already prepared via the slice
+///          API; saturates at SIZE_MAX. Lets a caller budget remaining main-thread upload work.
+size_t rt_gltf_preload_bundle_decoded_image_bytes(const rt_gltf_preload_bundle *bundle) {
+    size_t bytes = 0;
+    if (!bundle)
+        return 0u;
+    for (size_t i = 0; i < bundle->dependency_count; ++i) {
+        if (bundle->dependencies[i].kind == GLTF_PRELOAD_DEP_IMAGE_RGBA) {
+            size_t len = 0u;
+            size_t prepared = bundle->dependencies[i].prepared;
+            if (!gltf_preload_rgba_blob_pixel_bytes(
+                    bundle->dependencies[i].data, bundle->dependencies[i].len, NULL, NULL, &len))
+                continue;
+            if (prepared < len)
+                len -= prepared;
+            else
+                len = 0u;
+            if (SIZE_MAX - bytes < len)
+                return SIZE_MAX;
+            bytes += len;
+        }
+    }
+    return bytes;
+}
+
+/// @brief Validate a "VGRA" blob header and report its width, height, and pixel byte count.
+/// @return 1 with the out-params set, or 0 on a malformed/too-short blob (out-params zeroed).
+static int gltf_preload_rgba_blob_pixel_bytes(const uint8_t *blob,
+                                              size_t len,
+                                              uint32_t *out_width,
+                                              uint32_t *out_height,
+                                              size_t *out_pixel_bytes) {
+    uint32_t width;
+    uint32_t height;
+    size_t pixel_count;
+    size_t pixel_bytes;
+    if (out_width)
+        *out_width = 0;
+    if (out_height)
+        *out_height = 0;
+    if (out_pixel_bytes)
+        *out_pixel_bytes = 0;
+    if (!blob || len < 12u)
+        return 0;
+    if (blob[0] != 'V' || blob[1] != 'G' || blob[2] != 'R' || blob[3] != 'A')
+        return 0;
+    width = gltf_read_u32_le(blob + 4);
+    height = gltf_read_u32_le(blob + 8);
+    if (width == 0 || height == 0)
+        return 0;
+    if (!gltf_checked_mul_size((size_t)width, (size_t)height, &pixel_count) ||
+        !gltf_checked_mul_size(pixel_count, 4u, &pixel_bytes) || pixel_bytes > len - 12u)
+        return 0;
+    if (out_width)
+        *out_width = width;
+    if (out_height)
+        *out_height = height;
+    if (out_pixel_bytes)
+        *out_pixel_bytes = pixel_bytes;
+    return 1;
+}
+
+/// @brief Size (<= @p max_bytes) of the next decoded-image slice that would be prepared.
+/// @details Returns a 4-byte-aligned (whole-pixel) byte count for the first decoded-RGBA
+///          dependency with work remaining, letting the caller pace upload without mutating
+///          state. Returns 0 when nothing is pending or a blob is malformed.
+size_t rt_gltf_preload_bundle_next_decoded_image_slice_bytes(const rt_gltf_preload_bundle *bundle,
+                                                             size_t max_bytes) {
+    if (!bundle || max_bytes == 0u)
+        return 0u;
+    for (size_t i = 0; i < bundle->dependency_count; ++i) {
+        const gltf_preload_dependency_t *dep = &bundle->dependencies[i];
+        size_t pixel_bytes;
+        size_t remaining;
+        size_t slice;
+        if (dep->kind != GLTF_PRELOAD_DEP_IMAGE_RGBA)
+            continue;
+        if (!gltf_preload_rgba_blob_pixel_bytes(dep->data, dep->len, NULL, NULL, &pixel_bytes))
+            return 0u;
+        if (dep->prepared >= pixel_bytes)
+            continue;
+        remaining = pixel_bytes - dep->prepared;
+        slice = remaining < max_bytes ? remaining : max_bytes;
+        if (slice < 4u)
+            slice = remaining < 4u ? remaining : 4u;
+        return slice - (slice % 4u);
+    }
+    return 0u;
+}
+
+/// @brief Incrementally upload up to @p max_bytes of the next decoded image into its Pixels object.
+/// @details Lazily allocates the destination Pixels on first slice, copies a whole-pixel-aligned
+///          run of RGBA texels, and advances the prepared cursor. When a blob finishes it marks the
+///          surface dirty, frees the staging bytes, and retags the dependency as IMAGE_PIXELS. This
+///          spreads large texture uploads across frames to avoid a single main-thread stall.
+/// @return Bytes prepared this call (0 when nothing remains or allocation fails).
+size_t rt_gltf_preload_bundle_prepare_decoded_image_slice(rt_gltf_preload_bundle *bundle,
+                                                          size_t max_bytes) {
+    if (!bundle || max_bytes == 0u)
+        return 0u;
+    for (size_t i = 0; i < bundle->dependency_count; ++i) {
+        gltf_preload_dependency_t *dep = &bundle->dependencies[i];
+        uint32_t width;
+        uint32_t height;
+        size_t pixel_bytes;
+        size_t remaining;
+        size_t copy_bytes;
+        size_t first_pixel;
+        size_t copy_pixels;
+        rt_pixels_impl *pixels;
+        if (dep->kind != GLTF_PRELOAD_DEP_IMAGE_RGBA)
+            continue;
+        if (!gltf_preload_rgba_blob_pixel_bytes(dep->data, dep->len, &width, &height, &pixel_bytes))
+            return 0u;
+        if (dep->prepared >= pixel_bytes) {
+            dep->prepared = pixel_bytes;
+            continue;
+        }
+        if (!dep->object) {
+            dep->object = pixels_alloc((int64_t)width, (int64_t)height);
+            if (!dep->object)
+                return 0u;
+        }
+        remaining = pixel_bytes - dep->prepared;
+        copy_bytes = remaining < max_bytes ? remaining : max_bytes;
+        if (copy_bytes < 4u)
+            copy_bytes = remaining < 4u ? remaining : 4u;
+        copy_bytes -= copy_bytes % 4u;
+        if (copy_bytes == 0u)
+            return 0u;
+        first_pixel = dep->prepared / 4u;
+        copy_pixels = copy_bytes / 4u;
+        pixels = (rt_pixels_impl *)dep->object;
+        for (size_t pi = 0; pi < copy_pixels; ++pi) {
+            const uint8_t *sp = dep->data + 12u + dep->prepared + pi * 4u;
+            pixels->data[first_pixel + pi] = ((uint32_t)sp[0] << 24) | ((uint32_t)sp[1] << 16) |
+                                             ((uint32_t)sp[2] << 8) | (uint32_t)sp[3];
+        }
+        dep->prepared += copy_bytes;
+        if (dep->prepared >= pixel_bytes) {
+            pixels_touch(pixels);
+            free(dep->data);
+            dep->data = NULL;
+            dep->len = 0u;
+            dep->prepared = 0u;
+            dep->kind = GLTF_PRELOAD_DEP_IMAGE_PIXELS;
+        }
+        return copy_bytes;
+    }
+    return 0u;
+}
+
+/// @brief Count staged dependencies that are packed mesh POD blobs.
+size_t rt_gltf_preload_bundle_decoded_mesh_count(const rt_gltf_preload_bundle *bundle) {
+    size_t count = 0;
+    if (!bundle)
+        return 0u;
+    for (size_t i = 0; i < bundle->dependency_count; ++i) {
+        if (bundle->dependencies[i].kind == GLTF_PRELOAD_DEP_MESH_POD)
+            count++;
+    }
+    return count;
+}
+
+/// @brief Append a dependency (taking ownership of @p data) under key @p path, growing the array.
+/// @details Doubles capacity as needed and copies the key string. On any failure the caller
+///          retains ownership of @p data (it is not stored).
+/// @return 1 on success, 0 on invalid args or allocation failure.
+static int gltf_preload_bundle_add_dependency(rt_gltf_preload_bundle *bundle,
+                                              const char *path,
+                                              gltf_preload_dependency_kind_t kind,
+                                              uint8_t *data,
+                                              size_t len) {
+    gltf_preload_dependency_t *grown;
+    char *path_copy;
+    if (!bundle || !path || !data)
+        return 0;
+    if (bundle->dependency_count == bundle->dependency_capacity) {
+        size_t next_capacity;
+        if (!gltf_preload_next_capacity_size(bundle->dependency_capacity,
+                                             bundle->dependency_count + 1u,
+                                             8u,
+                                             sizeof(*bundle->dependencies),
+                                             &next_capacity))
+            return 0;
+        grown = (gltf_preload_dependency_t *)realloc(bundle->dependencies,
+                                                     next_capacity * sizeof(*bundle->dependencies));
+        if (!grown)
+            return 0;
+        memset(grown + bundle->dependency_capacity,
+               0,
+               (next_capacity - bundle->dependency_capacity) * sizeof(*grown));
+        bundle->dependencies = grown;
+        bundle->dependency_capacity = next_capacity;
+    }
+    path_copy = gltf_strdup_cstr(path);
+    if (!path_copy)
+        return 0;
+    bundle->dependencies[bundle->dependency_count].path = path_copy;
+    bundle->dependencies[bundle->dependency_count].data = data;
+    bundle->dependencies[bundle->dependency_count].object = NULL;
+    bundle->dependencies[bundle->dependency_count].len = len;
+    bundle->dependencies[bundle->dependency_count].prepared = 0u;
+    bundle->dependencies[bundle->dependency_count].kind = kind;
+    bundle->dependency_count++;
+    return 1;
+}
+
+/// @brief Find a dependency by (kind, path), remove it, and hand its raw bytes to the caller.
+/// @details Transfers ownership of the returned buffer (caller frees) and compacts the array.
+/// @return The dependency's data with @p out_len set, or NULL if no match.
+static uint8_t *gltf_preload_bundle_take_dependency(rt_gltf_preload_bundle *bundle,
+                                                    const char *path,
+                                                    gltf_preload_dependency_kind_t kind,
+                                                    size_t *out_len) {
+    if (out_len)
+        *out_len = 0;
+    if (!bundle || !path)
+        return NULL;
+    for (size_t i = 0; i < bundle->dependency_count; ++i) {
+        gltf_preload_dependency_t *dep = &bundle->dependencies[i];
+        if (dep->kind == kind && dep->path && strcmp(dep->path, path) == 0) {
+            uint8_t *data = dep->data;
+            if (out_len)
+                *out_len = dep->len;
+            free(dep->path);
+            if (i + 1u < bundle->dependency_count) {
+                memmove(dep,
+                        dep + 1u,
+                        (bundle->dependency_count - i - 1u) * sizeof(*bundle->dependencies));
+            }
+            bundle->dependency_count--;
+            memset(
+                &bundle->dependencies[bundle->dependency_count], 0, sizeof(*bundle->dependencies));
+            return data;
+        }
+    }
+    return NULL;
+}
+
+/// @brief Find a dependency by (kind, path), remove it, and hand its decoded object to the caller.
+/// @details Frees the dependency's raw bytes and key, compacts the array, and transfers ownership
+///          of the returned runtime object. Returns NULL if no match.
+static void *gltf_preload_bundle_take_object_dependency(rt_gltf_preload_bundle *bundle,
+                                                        const char *path,
+                                                        gltf_preload_dependency_kind_t kind) {
+    if (!bundle || !path)
+        return NULL;
+    for (size_t i = 0; i < bundle->dependency_count; ++i) {
+        gltf_preload_dependency_t *dep = &bundle->dependencies[i];
+        if (dep->kind == kind && dep->path && strcmp(dep->path, path) == 0) {
+            void *object = dep->object;
+            free(dep->path);
+            free(dep->data);
+            dep->object = NULL;
+            if (i + 1u < bundle->dependency_count) {
+                memmove(dep,
+                        dep + 1u,
+                        (bundle->dependency_count - i - 1u) * sizeof(*bundle->dependencies));
+            }
+            bundle->dependency_count--;
+            memset(
+                &bundle->dependencies[bundle->dependency_count], 0, sizeof(*bundle->dependencies));
+            return object;
+        }
+    }
+    return NULL;
+}
+
+/// @brief Read a little-endian uint32 from an unaligned byte pointer.
+/// @details Uses individual byte loads and explicit shifts to avoid undefined behaviour
+///   from unaligned access on strict-alignment platforms. Used for parsing the 12-byte
+///   GLB (binary glTF) header and chunk-header magic/length fields.
+static uint32_t gltf_read_u32_le(const uint8_t *p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+/// @brief Overflow-safe size_t addition: sets *out = a+b and returns 1, or returns 0 on overflow.
+/// @details Guards all byte-range arithmetic in the accessor/buffer-view bounds checks so that
+///   a malformed glTF with exaggerated offsets or lengths can't wrap around to a valid-looking
+///   in-bounds address. Returns 0 also when @p out is NULL.
+static int gltf_checked_add_size(size_t a, size_t b, size_t *out) {
+    if (!out || a > SIZE_MAX - b)
+        return 0;
+    *out = a + b;
+    return 1;
+}
+
+/// @brief Overflow-safe size_t multiplication: sets *out = a*b and returns 1, or returns 0 on
+/// overflow.
+/// @details Uses the `b > SIZE_MAX / a` guard (avoiding the multiply itself when `a != 0`) to
+///   detect the overflow before it happens. Used alongside `gltf_checked_add_size` to
+///   safely compute `stride * count` and `comp_size * comp_count` bounds checks.
+static int gltf_checked_mul_size(size_t a, size_t b, size_t *out) {
+    if (!out)
+        return 0;
+    if (a != 0 && b > SIZE_MAX / a)
+        return 0;
+    *out = a * b;
+    return 1;
+}
+
+/// @brief Read a little-endian uint16 from @p p.
+static uint16_t gltf_read_u16_le(const uint8_t *p) {
+    return (uint16_t)((uint16_t)p[0] | ((uint16_t)p[1] << 8));
+}
+
+/// @brief Read a little-endian int32 from @p p (two's-complement reinterpretation of the u32).
+static int32_t gltf_read_i32_le(const uint8_t *p) {
+    return (int32_t)gltf_read_u32_le(p);
+}
+
+/// @brief Write @p v as a little-endian uint32 into @p p.
+static void gltf_write_u32_le(uint8_t *p, uint32_t v) {
+    p[0] = (uint8_t)(v & 0xFFu);
+    p[1] = (uint8_t)((v >> 8) & 0xFFu);
+    p[2] = (uint8_t)((v >> 16) & 0xFFu);
+    p[3] = (uint8_t)((v >> 24) & 0xFFu);
+}
+
+/// @brief Read a little-endian IEEE-754 float32 from @p p (bit-copied, no aliasing).
+static float gltf_read_f32_le(const uint8_t *p) {
+    uint32_t bits = gltf_read_u32_le(p);
+    float value = 0.0f;
+    memcpy(&value, &bits, sizeof(value));
+    return value;
+}
+
+/// @brief Write @p value as a little-endian IEEE-754 float32 into @p p.
+static void gltf_write_f32_le(uint8_t *p, float value) {
+    uint32_t bits = 0u;
+    memcpy(&bits, &value, sizeof(bits));
+    gltf_write_u32_le(p, bits);
+}
+
+/// @brief Case-insensitive substring search: is @p needle present anywhere in @p text?
+/// @details An empty needle matches; used to spot a MIME token within a longer type string.
+static int gltf_ascii_has_token_i(const char *text, const char *needle) {
+    size_t needle_len;
+    if (!text || !needle)
+        return 0;
+    needle_len = strlen(needle);
+    if (needle_len == 0)
+        return 1;
+    for (size_t i = 0; text[i] != '\0'; ++i) {
+        if (gltf_ascii_ieq_n(text + i, needle, needle_len))
+            return 1;
+    }
+    return 0;
+}
+
+/// @brief Whether @p mime_or_name denotes a BMP image (by MIME token or .bmp extension).
+static int gltf_preload_image_is_bmp(const char *mime_or_name) {
+    size_t len;
+    if (!mime_or_name)
+        return 0;
+    if (gltf_ascii_has_token_i(mime_or_name, "image/bmp") ||
+        gltf_ascii_has_token_i(mime_or_name, "image/x-ms-bmp"))
+        return 1;
+    len = strlen(mime_or_name);
+    return len >= 4u && gltf_ascii_ieq_n(mime_or_name + len - 4u, ".bmp", 4u);
+}
+
+/// @brief Whether @p mime_or_name denotes a PNG image (by MIME token or .png extension).
+static int gltf_preload_image_is_png(const char *mime_or_name) {
+    size_t len;
+    if (!mime_or_name)
+        return 0;
+    if (gltf_ascii_has_token_i(mime_or_name, "image/png"))
+        return 1;
+    len = strlen(mime_or_name);
+    return len >= 4u && gltf_ascii_ieq_n(mime_or_name + len - 4u, ".png", 4u);
+}
+
+/// @brief Whether @p mime_or_name denotes a JPEG image (by MIME token or .jpg/.jpeg extension).
+static int gltf_preload_image_is_jpeg(const char *mime_or_name) {
+    size_t len;
+    if (!mime_or_name)
+        return 0;
+    if (gltf_ascii_has_token_i(mime_or_name, "image/jpeg") ||
+        gltf_ascii_has_token_i(mime_or_name, "image/jpg"))
+        return 1;
+    len = strlen(mime_or_name);
+    return (len >= 4u && gltf_ascii_ieq_n(mime_or_name + len - 4u, ".jpg", 4u)) ||
+           (len >= 5u && gltf_ascii_ieq_n(mime_or_name + len - 5u, ".jpeg", 5u));
+}
+
+/// @brief Whether @p mime_or_name denotes a GIF image (by MIME token or .gif extension).
+static int gltf_preload_image_is_gif(const char *mime_or_name) {
+    size_t len;
+    if (!mime_or_name)
+        return 0;
+    if (gltf_ascii_has_token_i(mime_or_name, "image/gif"))
+        return 1;
+    len = strlen(mime_or_name);
+    return len >= 4u && gltf_ascii_ieq_n(mime_or_name + len - 4u, ".gif", 4u);
+}
+
+/// @brief Whether the image format is one the preloader can decode (PNG/BMP/JPEG/GIF).
+static int gltf_preload_image_is_supported_format(const char *mime_or_name) {
+    return gltf_preload_image_is_png(mime_or_name) || gltf_preload_image_is_bmp(mime_or_name) ||
+           gltf_preload_image_is_jpeg(mime_or_name) || gltf_preload_image_is_gif(mime_or_name);
+}
+
+/// @brief Whether @p mime_or_name denotes a KTX2 texture asset.
+static int gltf_image_is_ktx2(const char *mime_or_name) {
+    size_t len;
+    if (!mime_or_name)
+        return 0;
+    if (gltf_ascii_has_token_i(mime_or_name, "image/ktx2") ||
+        gltf_ascii_has_token_i(mime_or_name, "model/ktx2") ||
+        gltf_ascii_has_token_i(mime_or_name, "application/ktx2"))
+        return 1;
+    len = strlen(mime_or_name);
+    return len >= 5u && gltf_ascii_ieq_n(mime_or_name + len - 5u, ".ktx2", 5u);
+}
+
+/// @brief Decode KTX2 payloads under trap recovery so malformed textures fail the import cleanly.
+static void *gltf_decode_ktx2_payload(const uint8_t *data, size_t data_len) {
+    void *asset = NULL;
+    jmp_buf recovery;
+    if (!data || data_len == 0)
+        return NULL;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0)
+        asset = rt_textureasset3d_load_ktx2_memory(data, (uint64_t)data_len);
+    rt_trap_clear_recovery();
+    return asset;
+}
+
+/// @brief Decode an uncompressed 24/32-bpp BMP into an owned "VGRA" RGBA blob.
+/// @details Parses the BMP/DIB headers, handles bottom-up vs. top-down (negative height) row
+///          order and the 4-byte row-stride padding, and swizzles BGR(A) to RGBA. Every size
+///          computation is overflow-checked. The output blob is `V`,`G`,`R`,`A` + LE width +
+///          LE height + tightly-packed RGBA8 rows (caller frees @p out_blob).
+/// @return 1 on success, 0 on a malformed/unsupported BMP or allocation failure.
+static int gltf_decode_bmp_to_rgba_blob(const uint8_t *data,
+                                        size_t len,
+                                        uint8_t **out_blob,
+                                        size_t *out_len) {
+    uint32_t pixel_offset;
+    uint32_t dib_size;
+    int32_t width_i;
+    int32_t height_i;
+    uint16_t planes;
+    uint16_t bit_count;
+    uint32_t compression;
+    uint32_t width;
+    uint32_t height;
+    size_t row_stride;
+    size_t image_rows;
+    size_t pixel_bytes;
+    size_t blob_len;
+    uint8_t *blob;
+    int top_down = 0;
+
+    if (out_blob)
+        *out_blob = NULL;
+    if (out_len)
+        *out_len = 0;
+    if (!data || len < 54u || !out_blob || !out_len)
+        return 0;
+    if (data[0] != 'B' || data[1] != 'M')
+        return 0;
+
+    pixel_offset = gltf_read_u32_le(data + 10);
+    dib_size = gltf_read_u32_le(data + 14);
+    if (dib_size < 40u || pixel_offset >= len)
+        return 0;
+    width_i = gltf_read_i32_le(data + 18);
+    height_i = gltf_read_i32_le(data + 22);
+    planes = gltf_read_u16_le(data + 26);
+    bit_count = gltf_read_u16_le(data + 28);
+    compression = gltf_read_u32_le(data + 30);
+    if (width_i <= 0 || height_i == 0 || planes != 1 || compression != 0 ||
+        (bit_count != 24 && bit_count != 32))
+        return 0;
+    if (height_i < 0) {
+        if (height_i == INT32_MIN)
+            return 0;
+        top_down = 1;
+        height_i = -height_i;
+    }
+    width = (uint32_t)width_i;
+    height = (uint32_t)height_i;
+    if (!gltf_checked_mul_size((size_t)width, (size_t)bit_count, &row_stride))
+        return 0;
+    if (!gltf_checked_add_size(row_stride, 31u, &row_stride))
+        return 0;
+    row_stride = (row_stride / 32u) * 4u;
+    if (!gltf_checked_mul_size(row_stride, (size_t)height, &image_rows))
+        return 0;
+    if ((size_t)pixel_offset > len || image_rows > len - (size_t)pixel_offset)
+        return 0;
+    if (!gltf_checked_mul_size((size_t)width, (size_t)height, &pixel_bytes) ||
+        !gltf_checked_mul_size(pixel_bytes, 4u, &pixel_bytes) ||
+        !gltf_checked_add_size(12u, pixel_bytes, &blob_len))
+        return 0;
+    blob = (uint8_t *)malloc(blob_len);
+    if (!blob)
+        return 0;
+    blob[0] = 'V';
+    blob[1] = 'G';
+    blob[2] = 'R';
+    blob[3] = 'A';
+    gltf_write_u32_le(blob + 4, width);
+    gltf_write_u32_le(blob + 8, height);
+    for (uint32_t y = 0; y < height; ++y) {
+        uint32_t src_y = top_down ? y : (height - 1u - y);
+        const uint8_t *row = data + (size_t)pixel_offset + (size_t)src_y * row_stride;
+        uint8_t *dst = blob + 12u + (size_t)y * (size_t)width * 4u;
+        for (uint32_t x = 0; x < width; ++x) {
+            if (bit_count == 32) {
+                const uint8_t *sp = row + (size_t)x * 4u;
+                dst[x * 4u + 0u] = sp[2];
+                dst[x * 4u + 1u] = sp[1];
+                dst[x * 4u + 2u] = sp[0];
+                dst[x * 4u + 3u] = sp[3];
+            } else {
+                const uint8_t *sp = row + (size_t)x * 3u;
+                dst[x * 4u + 0u] = sp[2];
+                dst[x * 4u + 1u] = sp[1];
+                dst[x * 4u + 2u] = sp[0];
+                dst[x * 4u + 3u] = 0xFFu;
+            }
+        }
+    }
+    *out_blob = blob;
+    *out_len = blob_len;
+    return 1;
+}
+
+/// @brief Pack a 0xRRGGBBAA pixel array into an owned "VGRA" RGBA blob (overflow-checked).
+/// @details Shared sink for the PNG/JPEG/GIF decoders, which all emit packed 32-bit pixels.
+static int gltf_rgba32_to_rgba_blob(const uint32_t *pixels,
+                                    int64_t width_i,
+                                    int64_t height_i,
+                                    uint8_t **out_blob,
+                                    size_t *out_len) {
+    uint32_t width;
+    uint32_t height;
+    size_t pixel_count;
+    size_t pixel_bytes;
+    size_t blob_len;
+    uint8_t *blob;
+    if (out_blob)
+        *out_blob = NULL;
+    if (out_len)
+        *out_len = 0;
+    if (!pixels || !out_blob || !out_len || width_i <= 0 || height_i <= 0 ||
+        (uint64_t)width_i > UINT32_MAX || (uint64_t)height_i > UINT32_MAX)
+        return 0;
+    width = (uint32_t)width_i;
+    height = (uint32_t)height_i;
+    if (!gltf_checked_mul_size((size_t)width, (size_t)height, &pixel_count) ||
+        !gltf_checked_mul_size(pixel_count, 4u, &pixel_bytes) ||
+        !gltf_checked_add_size(12u, pixel_bytes, &blob_len))
+        return 0;
+    blob = (uint8_t *)malloc(blob_len);
+    if (!blob)
+        return 0;
+    blob[0] = 'V';
+    blob[1] = 'G';
+    blob[2] = 'R';
+    blob[3] = 'A';
+    gltf_write_u32_le(blob + 4, width);
+    gltf_write_u32_le(blob + 8, height);
+    for (size_t i = 0; i < pixel_count; ++i) {
+        uint32_t rgba = pixels[i];
+        uint8_t *dst = blob + 12u + i * 4u;
+        dst[0] = (uint8_t)((rgba >> 24) & 0xFFu);
+        dst[1] = (uint8_t)((rgba >> 16) & 0xFFu);
+        dst[2] = (uint8_t)((rgba >> 8) & 0xFFu);
+        dst[3] = (uint8_t)(rgba & 0xFFu);
+    }
+    *out_blob = blob;
+    *out_len = blob_len;
+    return 1;
+}
+
+/// @brief Decode an encoded image payload (PNG/BMP/JPEG/GIF) into an owned "VGRA" RGBA blob.
+/// @details Dispatches on @p mime_or_name to the matching codec; PNG/JPEG/GIF go through the
+///          shared rt_*_decode helpers then gltf_rgba32_to_rgba_blob, BMP uses the inline decoder.
+/// @return 1 on success, 0 for an unsupported format or any decode failure.
+static int gltf_decode_image_payload_to_rgba_blob(const char *mime_or_name,
+                                                  const uint8_t *data,
+                                                  size_t data_len,
+                                                  uint8_t **out_blob,
+                                                  size_t *out_len) {
+    if (out_blob)
+        *out_blob = NULL;
+    if (out_len)
+        *out_len = 0;
+    if (!mime_or_name || !data || data_len == 0 || !out_blob || !out_len)
+        return 0;
+    if (gltf_preload_image_is_png(mime_or_name)) {
+        uint32_t *rgba32 = NULL;
+        int64_t width = 0;
+        int64_t height = 0;
+        int ok = 0;
+        if (rt_png_decode_buffer_rgba32(data, data_len, &rgba32, &width, &height))
+            ok = gltf_rgba32_to_rgba_blob(rgba32, width, height, out_blob, out_len);
+        free(rgba32);
+        return ok;
+    }
+    if (gltf_preload_image_is_bmp(mime_or_name))
+        return gltf_decode_bmp_to_rgba_blob(data, data_len, out_blob, out_len);
+    if (gltf_preload_image_is_jpeg(mime_or_name)) {
+        uint32_t *rgba32 = NULL;
+        int64_t width = 0;
+        int64_t height = 0;
+        int ok = 0;
+        if (rt_jpeg_decode_buffer_rgba32(data, data_len, &rgba32, &width, &height))
+            ok = gltf_rgba32_to_rgba_blob(rgba32, width, height, out_blob, out_len);
+        free(rgba32);
+        return ok;
+    }
+    if (gltf_preload_image_is_gif(mime_or_name)) {
+        uint32_t *rgba32 = NULL;
+        int width = 0;
+        int height = 0;
+        int ok = 0;
+        if (rt_gif_decode_memory_first_rgba32(data, data_len, &rgba32, &width, &height))
+            ok = gltf_rgba32_to_rgba_blob(
+                rgba32, (int64_t)width, (int64_t)height, out_blob, out_len);
+        free(rgba32);
+        return ok;
+    }
+    return 0;
+}
+
+/// @brief Build a runtime Pixels object from a "VGRA" RGBA blob (inverse of the blob encoders).
+/// @details Validates the magic and header, bounds-checks the payload, then packs the RGBA
+///          bytes into the Pixels 0xRRGGBBAA words and marks the surface dirty.
+/// @return New Pixels handle, or NULL on a malformed blob or allocation failure.
+static void *gltf_pixels_from_rgba_blob(uint8_t *blob, size_t len) {
+    uint32_t width;
+    uint32_t height;
+    size_t pixel_count;
+    size_t pixel_bytes;
+    rt_pixels_impl *pixels;
+    const uint8_t *src;
+    if (!blob || len < 12u)
+        return NULL;
+    if (blob[0] != 'V' || blob[1] != 'G' || blob[2] != 'R' || blob[3] != 'A')
+        return NULL;
+    width = gltf_read_u32_le(blob + 4);
+    height = gltf_read_u32_le(blob + 8);
+    if (width == 0 || height == 0)
+        return NULL;
+    if (!gltf_checked_mul_size((size_t)width, (size_t)height, &pixel_count) ||
+        !gltf_checked_mul_size(pixel_count, 4u, &pixel_bytes) || pixel_bytes > len - 12u)
+        return NULL;
+    pixels = pixels_alloc((int64_t)width, (int64_t)height);
+    if (!pixels)
+        return NULL;
+    src = blob + 12u;
+    for (size_t i = 0; i < pixel_count; ++i) {
+        const uint8_t *sp = src + i * 4u;
+        pixels->data[i] = ((uint32_t)sp[0] << 24) | ((uint32_t)sp[1] << 16) |
+                          ((uint32_t)sp[2] << 8) | (uint32_t)sp[3];
+    }
+    if (pixel_count > 0)
+        pixels_touch(pixels);
+    return pixels;
+}
+
+/// @brief Read a non-negative integer field from a JSON object as a `size_t`.
+/// @details Calls `jint` with the supplied default, then rejects negative values (which indicate
+///   a malformed glTF or missing field) by returning 0. Used for `byteOffset`, `byteLength`,
+///   and `byteStride` fields where negative values would cause pointer arithmetic to underflow.
+/// @param obj  JSON object to read from.
+/// @param key  Field name.
+/// @param def  Default `size_t` value when the field is absent.
+/// @param out  Receives the validated value; not written on failure.
+/// @return 1 on success, 0 if the value is negative or @p out is NULL.
+static int gltf_nonnegative_size(void *obj, const char *key, size_t def, size_t *out) {
+    int64_t raw;
+    if (!out)
+        return 0;
+    raw = jint(obj, key, (int64_t)def);
+    if (raw < 0)
+        return 0;
+    *out = (size_t)raw;
+    return 1;
+}
+
+/// @brief Sanitize a decoded glTF resource URI into a safe relative path in @p out.
+/// @details Path-traversal guard for external buffers/images: rejects absolute paths,
+///   Windows drive letters (`X:`), URI scheme separators, forbids any `..` segment,
+///   and collapses `.` and redundant separators, emitting forward-slash-joined segments.
+/// @return Non-zero if a non-empty safe path was written; 0 (with out[0]='\0') if the URI
+///   is empty, unsafe, or would overflow @p out_cap.
+static int gltf_normalize_relative_uri(const char *decoded_uri, char *out, size_t out_cap) {
+    const char *p;
+    size_t out_len = 0;
+    int wrote_segment = 0;
+    if (!out || out_cap == 0)
+        return 0;
+    out[0] = '\0';
+    if (!decoded_uri || decoded_uri[0] == '\0')
+        return 0;
+    if (decoded_uri[0] == '/' || decoded_uri[0] == '\\')
+        return 0;
+    if (strchr(decoded_uri, ':') || strstr(decoded_uri, "://"))
+        return 0;
+
+    p = decoded_uri;
+    while (*p) {
+        const char *seg;
+        size_t seg_len;
+        while (*p == '/' || *p == '\\')
+            p++;
+        seg = p;
+        while (*p && *p != '/' && *p != '\\')
+            p++;
+        seg_len = (size_t)(p - seg);
+        if (seg_len == 0 || (seg_len == 1 && seg[0] == '.'))
+            continue;
+        if (seg_len == 2 && seg[0] == '.' && seg[1] == '.')
+            return 0;
+        if (wrote_segment) {
+            if (out_len + 1 >= out_cap)
+                return 0;
+            out[out_len++] = '/';
+        }
+        if (seg_len >= out_cap || out_len > out_cap - 1 - seg_len)
+            return 0;
+        memcpy(out + out_len, seg, seg_len);
+        out_len += seg_len;
+        out[out_len] = '\0';
+        wrote_segment = 1;
+    }
+    return wrote_segment;
+}
+
+static const char gltf_base64_chars[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/// @brief Value of a hex digit (0-15), or -1 if @p ch is not a hex digit. Used for %XX URI escapes.
+static int gltf_data_uri_hex_digit(char ch) {
+    if (ch >= '0' && ch <= '9')
+        return ch - '0';
+    if (ch >= 'a' && ch <= 'f')
+        return ch - 'a' + 10;
+    if (ch >= 'A' && ch <= 'F')
+        return ch - 'A' + 10;
+    return -1;
+}
+
+/// @brief ASCII whitespace test (space, tab, CR, LF, form-feed, vertical-tab); locale-independent.
+static int gltf_ascii_isspace(char ch) {
+    return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' || ch == '\f' || ch == '\v';
+}
+
+/// @brief Case-insensitive compare of the first @p len bytes of @p a and @p b (ASCII only).
+/// @return 1 if equal ignoring ASCII case, 0 otherwise.
+static int gltf_ascii_ieq_n(const char *a, const char *b, size_t len) {
+    for (size_t i = 0; i < len; ++i) {
+        char ca = a[i];
+        char cb = b[i];
+        if (ca >= 'A' && ca <= 'Z')
+            ca = (char)(ca - 'A' + 'a');
+        if (cb >= 'A' && cb <= 'Z')
+            cb = (char)(cb - 'A' + 'a');
+        if (ca != cb)
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Whether a data-URI metadata segment contains a ";base64" token.
+/// @details Scans the semicolon-separated parameters between the MIME type and the comma,
+///          matching the literal "base64" parameter case-insensitively.
+static int gltf_data_uri_meta_has_base64(const char *meta, size_t len) {
+    size_t start = 0;
+    while (start < len) {
+        size_t end = start;
+        while (end < len && meta[end] != ';')
+            end++;
+        if (end > start && end - start == 6 && gltf_ascii_ieq_n(meta + start, "base64", 6))
+            return 1;
+        start = end + 1;
+    }
+    return 0;
+}
+
+/// @brief Percent-decode (%XX) a URI string into a freshly allocated byte buffer (caller frees).
+/// @details Decodes %XX escapes to bytes and copies all other characters verbatim. Malformed
+///          escapes reject the URI instead of leaving a literal `%` in the payload. The buffer is
+///          sized to the input length (an upper bound, since decoding only shrinks).
+/// @return 1 with @p out_data / @p out_len set, or 0 on bad args or allocation failure.
+static int gltf_percent_decode_bytes(const char *src,
+                                     size_t len,
+                                     uint8_t **out_data,
+                                     size_t *out_len) {
+    uint8_t *decoded;
+    size_t write = 0;
+    if (out_data)
+        *out_data = NULL;
+    if (out_len)
+        *out_len = 0;
+    if (!src || !out_data || !out_len)
+        return 0;
+    decoded = (uint8_t *)malloc(len > 0 ? len : 1);
+    if (!decoded)
+        return 0;
+    for (size_t read = 0; read < len; ++read) {
+        if (src[read] == '%') {
+            int hi;
+            int lo;
+            if (read + 2 >= len) {
+                free(decoded);
+                return 0;
+            }
+            hi = gltf_data_uri_hex_digit(src[read + 1]);
+            lo = gltf_data_uri_hex_digit(src[read + 2]);
+            if (hi < 0 || lo < 0) {
+                free(decoded);
+                return 0;
+            }
+            decoded[write++] = (uint8_t)((hi << 4) | lo);
+            read += 2;
+            continue;
+        }
+        decoded[write++] = (uint8_t)src[read];
+    }
+    *out_data = decoded;
+    *out_len = write;
+    return 1;
+}
+
+/// @brief Decode a single base64 character to its 0-63 value (-2 for '=', -1 for invalid).
+static int gltf_base64_digit_value(char c) {
+    const char *p = strchr(gltf_base64_chars, c);
+    if (p)
+        return (int)(p - gltf_base64_chars);
+    if (c == '=')
+        return -2;
+    return -1;
+}
+
+/// @brief Decode a base64 string of `len` characters into raw bytes (caller `free`s).
+static uint8_t *gltf_base64_decode(const char *data, size_t len, size_t *out_len) {
+    char *compact = NULL;
+    const char *src;
+    size_t compact_len = 0;
+    if (out_len)
+        *out_len = 0;
+    if (!data)
+        return NULL;
+    for (size_t i = 0; i < len; ++i) {
+        if (!gltf_ascii_isspace(data[i]))
+            compact_len++;
+    }
+    if (compact_len != len) {
+        compact = (char *)malloc(compact_len > 0 ? compact_len : 1);
+        if (!compact)
+            return NULL;
+        compact_len = 0;
+        for (size_t i = 0; i < len; ++i) {
+            if (!gltf_ascii_isspace(data[i]))
+                compact[compact_len++] = data[i];
+        }
+        src = compact;
+    } else {
+        src = data;
+    }
+    len = compact_len;
+    if (len == 0) {
+        uint8_t *empty = (uint8_t *)malloc(1);
+        if (out_len)
+            *out_len = 0;
+        free(compact);
+        return empty;
+    }
+    if (len % 4 != 0) {
+        free(compact);
+        return NULL;
+    }
+
+    size_t olen = (len / 4) * 3;
+    if (len > 0 && src[len - 1] == '=')
+        olen--;
+    if (len > 1 && src[len - 2] == '=')
+        olen--;
+
+    uint8_t *output = (uint8_t *)malloc(olen > 0 ? olen : 1);
+    if (!output) {
+        free(compact);
+        return NULL;
+    }
+
+    size_t i = 0;
+    size_t j = 0;
+    while (i < len) {
+        int a = gltf_base64_digit_value(src[i++]);
+        int b = gltf_base64_digit_value(src[i++]);
+        int c = gltf_base64_digit_value(src[i++]);
+        int d = gltf_base64_digit_value(src[i++]);
+        if (a < 0 || b < 0 || c == -1 || d == -1) {
+            free(output);
+            free(compact);
+            return NULL;
+        }
+        if ((c == -2 && d != -2) || ((c == -2 || d == -2) && i < len)) {
+            free(output);
+            free(compact);
+            return NULL;
+        }
+        if (c == -2)
+            c = 0;
+        if (d == -2)
+            d = 0;
+        {
+            uint32_t triple =
+                ((uint32_t)a << 18) | ((uint32_t)b << 12) | ((uint32_t)c << 6) | (uint32_t)d;
+            if (j < olen)
+                output[j++] = (uint8_t)((triple >> 16) & 0xFF);
+            if (j < olen)
+                output[j++] = (uint8_t)((triple >> 8) & 0xFF);
+            if (j < olen)
+                output[j++] = (uint8_t)(triple & 0xFF);
+        }
+    }
+
+    if (out_len)
+        *out_len = olen;
+    free(compact);
+    return output;
+}
+
+/// @brief Parse a `data:[<mediatype>][;base64],<data>` URI inline-embedded in glTF JSON.
+///
+/// Recognises the base64 marker and strips the MIME-type prefix.
+/// Used for inline texture / buffer data so a single .gltf file
+/// can be self-contained without separate .bin sidecars.
+/// @return 1 on success (writes decoded bytes + MIME type), 0 on malformed URI.
+static int gltf_parse_data_uri(
+    const char *uri, char *mime_buf, size_t mime_buf_cap, uint8_t **out_data, size_t *out_len) {
+    const char *comma;
+    const char *payload;
+    uint8_t *decoded_payload = NULL;
+    size_t decoded_payload_len = 0;
+    size_t mime_len = 0;
+    int is_base64 = 0;
+    if (out_data)
+        *out_data = NULL;
+    if (out_len)
+        *out_len = 0;
+    if (mime_buf && mime_buf_cap > 0)
+        mime_buf[0] = '\0';
+    if (!out_data || !out_len)
+        return 0;
+    if (!uri || strncmp(uri, "data:", 5) != 0)
+        return 0;
+    comma = strchr(uri, ',');
+    if (!comma)
+        return 0;
+    payload = comma + 1;
+
+    {
+        const char *meta = uri + 5;
+        size_t meta_len = (size_t)(comma - meta);
+        const char *semi = memchr(meta, ';', meta_len);
+        if (semi) {
+            mime_len = (size_t)(semi - meta);
+            is_base64 = gltf_data_uri_meta_has_base64(meta, meta_len);
+        } else {
+            mime_len = meta_len;
+        }
+        if (mime_buf && mime_buf_cap > 0 && mime_len > 0) {
+            if (mime_len >= mime_buf_cap)
+                mime_len = mime_buf_cap - 1;
+            memcpy(mime_buf, meta, mime_len);
+            mime_buf[mime_len] = '\0';
+        }
+    }
+
+    if (!gltf_percent_decode_bytes(
+            payload, strlen(payload), &decoded_payload, &decoded_payload_len))
+        return 0;
+    if (is_base64) {
+        *out_data = gltf_base64_decode((const char *)decoded_payload, decoded_payload_len, out_len);
+        free(decoded_payload);
+        return *out_data != NULL;
+    }
+
+    *out_data = decoded_payload;
+    *out_len = decoded_payload_len;
+    return 1;
+}
+
+/// @brief Copy a data-URI's MIME type (the part between "data:" and the first ';' or ',') into
+///        @p mime_buf, NUL-terminated and truncated to @p mime_buf_cap. Empties the buffer if
+///        absent.
+static void gltf_data_uri_copy_mime(const char *uri, char *mime_buf, size_t mime_buf_cap) {
+    const char *comma;
+    const char *meta;
+    const char *semi;
+    size_t meta_len;
+    size_t mime_len;
+    if (mime_buf && mime_buf_cap > 0)
+        mime_buf[0] = '\0';
+    if (!uri || strncmp(uri, "data:", 5) != 0 || !mime_buf || mime_buf_cap == 0)
+        return;
+    comma = strchr(uri, ',');
+    if (!comma)
+        return;
+    meta = uri + 5;
+    meta_len = (size_t)(comma - meta);
+    semi = memchr(meta, ';', meta_len);
+    mime_len = semi ? (size_t)(semi - meta) : meta_len;
+    if (mime_len == 0)
+        return;
+    if (mime_len >= mime_buf_cap)
+        mime_len = mime_buf_cap - 1u;
+    memcpy(mime_buf, meta, mime_len);
+    mime_buf[mime_len] = '\0';
+}
+
+/// @brief Resolve a buffer-view index to its `(data, length)` slice into the underlying buffer.
+///
+/// glTF separates buffers (raw bytes) from bufferViews (named
+/// offset+length slices). Most accessors reference data through a
+/// bufferView, so this helper centralises the indirection.
+static const uint8_t *gltf_get_buffer_view_data(
+    void *root, int64_t view_idx, gltf_buffer_t *buffers, int buf_count, size_t *out_len) {
+    static const uint8_t empty_buffer_view_byte = 0;
+    void *views = jarr(root, "bufferViews");
+    size_t byte_offset;
+    size_t byte_length;
+    size_t byte_end;
+    if (!views || view_idx < 0 || view_idx >= jarr_len(views))
+        return NULL;
+    void *view = rt_seq_get(views, view_idx);
+    if (!view)
+        return NULL;
+    int buf_idx = (int)jint(view, "buffer", -1);
+    if (buf_idx < 0 || buf_idx >= buf_count)
+        return NULL;
+    if (!gltf_nonnegative_size(view, "byteOffset", 0, &byte_offset) ||
+        !gltf_nonnegative_size(view, "byteLength", 0, &byte_length))
+        return NULL;
+    if (!gltf_checked_add_size(byte_offset, byte_length, &byte_end))
+        return NULL;
+    if (byte_end > buffers[buf_idx].len)
+        return NULL;
+    if (out_len)
+        *out_len = byte_length;
+    if (byte_length == 0)
+        return buffers[buf_idx].data ? buffers[buf_idx].data + byte_offset : &empty_buffer_view_byte;
+    if (!buffers[buf_idx].data)
+        return NULL;
+    return buffers[buf_idx].data + byte_offset;
+}

@@ -13,6 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "support/alignment.hpp"
 #include "support/arena.hpp"
 #include "support/diag_capture.hpp"
 #include "support/diag_expected.hpp"
@@ -68,6 +69,16 @@ int main() {
     il::support::StringInterner moveAssigned;
     moveAssigned = std::move(moveConstructed);
     assert(moveAssigned.lookup(movedSym) == "moved");
+    il::support::StringInterner copyAssigned;
+    copyAssigned.intern("old");
+    copyAssigned = moveAssigned;
+    assert(copyAssigned.lookup(movedSym) == "moved");
+    auto copiedFresh = copyAssigned.intern("fresh");
+    assert(copyAssigned.lookup(copiedFresh) == "fresh");
+    il::support::StringInterner movedAgain;
+    movedAgain = std::move(copyAssigned);
+    assert(movedAgain.lookup(movedSym) == "moved");
+    assert(movedAgain.lookup(copiedFresh) == "fresh");
 
     // Cached string_view from lookup must survive further growth.
     il::support::StringInterner stableInterner;
@@ -100,7 +111,8 @@ int main() {
     assert(partial.hasLine());
     assert(!partial.hasColumn());
     il::support::SourceRange mixed{loc, partial};
-    assert(mixed.isValid());
+    assert(!mixed.isValid());
+    assert(mixed.isTracked());
     assert(!mixed.end.hasColumn());
 
     il::support::SourceLoc otherFile{sm.addFile("other"), 3, 5};
@@ -113,16 +125,18 @@ int main() {
     il::support::SourceLoc sameLineBegin{loc.file_id, 4, 7};
     il::support::SourceLoc missingColumnEnd{loc.file_id, 4, 0};
     il::support::SourceRange missingColumnRange{sameLineBegin, missingColumnEnd};
-    assert(missingColumnRange.isValid());
+    assert(!missingColumnRange.isValid());
+    assert(missingColumnRange.isTracked());
     assert(!missingColumnRange.isConcrete());
 
     il::support::SourceLoc missingLineEnd{loc.file_id, 0, 0};
     il::support::SourceRange missingLineRange{sameLineBegin, missingLineEnd};
-    assert(missingLineRange.isValid());
+    assert(!missingLineRange.isValid());
+    assert(missingLineRange.isTracked());
     assert(!missingLineRange.isConcrete());
 
     il::support::SourceRange insertionRange{sameLineBegin, sameLineBegin};
-    assert(!insertionRange.isValid());
+    assert(insertionRange.isValid());
     assert(insertionRange.isInsertion());
     assert(!insertionRange.isConcrete());
     il::support::Diag partialDiag{il::support::Severity::Error, "partial coordinates", partial, {}};
@@ -155,6 +169,20 @@ int main() {
     assert(rangedText.find("2 | func start() { badCall(); }") != std::string::npos);
     assert(rangedText.find("^~~~~~~") != std::string::npos);
     assert(rangedText.find("<memory>.zia:1:8: note: module declared here") != std::string::npos);
+    assert(rangedText.find("  stage: sema") != std::string::npos);
+    assert(rangedText.find("  help: Check the callee name.") != std::string::npos);
+    assert(rangedText.find("  fix-it: replace bad call at 2:16-2:23 -> goodCall") !=
+           std::string::npos);
+
+    il::support::Diag sanitizedTextDiag{
+        il::support::Severity::Error,
+        "first line\nsecond\tline",
+        il::support::SourceLoc{memoryFile, 2, 1},
+        {},
+    };
+    std::ostringstream sanitizedTextStream;
+    il::support::printDiag(sanitizedTextDiag, sanitizedTextStream, &sm);
+    assert(sanitizedTextStream.str().find("first line\\nsecond\\tline") != std::string::npos);
 
     std::ostringstream jsonStream;
     il::support::printDiagJson(rangedDiag, jsonStream, &sm);
@@ -163,6 +191,21 @@ int main() {
     assert(jsonText.find("\"source\":\"func start() { badCall(); }\"") != std::string::npos);
     assert(jsonText.find("\"help\":\"Check the callee name.\"") != std::string::npos);
     assert(jsonText.find("\"replacement\":\"goodCall\"") != std::string::npos);
+
+    il::support::Diag insertFixitDiag{
+        il::support::Severity::Error,
+        "missing token",
+        il::support::SourceLoc{memoryFile, 2, 16},
+        {},
+    };
+    insertFixitDiag.fixits.push_back({{}, "inserted", "insert token"});
+    std::ostringstream insertFixitJson;
+    il::support::printDiagJson(insertFixitDiag, insertFixitJson, &sm);
+    const std::string insertFixitText = insertFixitJson.str();
+    assert(insertFixitText.find("\"message\":\"insert token\"") != std::string::npos);
+    assert(insertFixitText.find("\"replacement\":\"inserted\"") != std::string::npos);
+    assert(insertFixitText.find("\"end\":{\"file_id\":" + std::to_string(memoryFile) +
+                                ",\"line\":2,\"column\":16") != std::string::npos);
 
     const uint32_t blankFile = sm.addFile("blank.zia");
     sm.setSource(blankFile, "first\n\nthird\n");
@@ -225,6 +268,9 @@ int main() {
     std::string_view refreshed_view = viewSm.getPath(first_id);
     assert(first_view == refreshed_view);
     assert(first_data == refreshed_view.data());
+    const uint32_t emptyPathId = viewSm.addFile("");
+    assert(emptyPathId != 0);
+    assert(viewSm.getPath(emptyPathId) == "<unknown>");
 
     // Re-adding an existing path should reuse the identifier and avoid growth.
     il::support::SourceManager dedupeSm;
@@ -249,13 +295,19 @@ int main() {
             std::ofstream out(tempPath);
             out << "alpha\r\n\r\nomega\r\n";
         }
-        assert(!fileSm.hasLine(tempId, 1));
-        fileSm.invalidateSource(tempId);
         assert(fileSm.hasLine(tempId, 1));
         assert(fileSm.hasLine(tempId, 2));
         assert(fileSm.getLine(tempId, 1) == "alpha");
         assert(fileSm.getLine(tempId, 2).empty());
         assert(fileSm.getLine(tempId, 3) == "omega");
+        std::string_view oldLineView = fileSm.getLine(tempId, 1);
+        {
+            std::ofstream out(tempPath);
+            out << "updated\n";
+        }
+        fileSm.invalidateSource(tempId);
+        assert(oldLineView == "alpha");
+        assert(fileSm.getLine(tempId, 1) == "updated");
         std::filesystem::remove(tempPath);
     }
 
@@ -276,6 +328,47 @@ int main() {
         assert(relSm.getLine(relId, 1) == "from original cwd");
         std::filesystem::remove(relFile);
         std::filesystem::remove(tempDir);
+    }
+
+    {
+        const auto tempRoot =
+            std::filesystem::temp_directory_path() / "viper_support_source_manager_cwd_dedupe";
+        const auto dirA = tempRoot / "a";
+        const auto dirB = tempRoot / "b";
+        std::filesystem::remove_all(tempRoot);
+        std::filesystem::create_directories(dirA);
+        std::filesystem::create_directories(dirB);
+        {
+            std::ofstream out(dirA / "shared.bas");
+            out << "from a\n";
+        }
+        {
+            std::ofstream out(dirB / "shared.bas");
+            out << "from b\n";
+        }
+        const auto oldCwd = std::filesystem::current_path();
+        il::support::SourceManager cwdSm;
+        std::filesystem::current_path(dirA);
+        const uint32_t idA = cwdSm.addFile("shared.bas");
+        std::filesystem::current_path(dirB);
+        const uint32_t idB = cwdSm.addFile("shared.bas");
+        std::filesystem::current_path(oldCwd);
+        assert(idA != 0);
+        assert(idB != 0);
+        assert(idA != idB);
+        assert(cwdSm.getLine(idA, 1) == "from a");
+        assert(cwdSm.getLine(idB, 1) == "from b");
+        std::filesystem::remove_all(tempRoot);
+    }
+
+    {
+        il::support::SourceManager stableLineSm;
+        const uint32_t stableLineId = stableLineSm.addFile("stable-lines");
+        stableLineSm.setSource(stableLineId, "old\n");
+        std::string_view oldView = stableLineSm.getLine(stableLineId, 1);
+        stableLineSm.setSource(stableLineId, "new\n");
+        assert(oldView == "old");
+        assert(stableLineSm.getLine(stableLineId, 1) == "new");
     }
 
     {
@@ -329,6 +422,16 @@ int main() {
     il::support::DiagCapture formattedCapture;
     formattedCapture.ss << "error: already formatted\n";
     assert(formattedCapture.toDiag().message == "already formatted");
+    il::support::DiagCapture warningCapture;
+    warningCapture.ss << "warning: be careful\n";
+    auto warningDiag = warningCapture.toDiag();
+    assert(warningDiag.severity == il::support::Severity::Warning);
+    assert(warningDiag.message == "be careful");
+    il::support::DiagCapture locatedCapture;
+    locatedCapture.ss << "file.bas:2:4: note: details here\n";
+    auto locatedDiag = locatedCapture.toDiag();
+    assert(locatedDiag.severity == il::support::Severity::Note);
+    assert(locatedDiag.message == "details here");
     il::support::DiagCapture emptyCapture;
     auto capturedFailure = il::support::capture_to_expected_impl(false, emptyCapture);
     assert(!capturedFailure);
@@ -338,6 +441,7 @@ int main() {
     {
         int liveCount = 0;
         int destroyedCount = 0;
+
         struct Counted {
             int *live;
             int *destroyed;
@@ -394,7 +498,9 @@ int main() {
     {
         struct NoDefault {
             int value;
+
             explicit NoDefault(int v) : value(v) {}
+
             NoDefault(const NoDefault &) = default;
             NoDefault(NoDefault &&) noexcept = default;
         };
@@ -407,7 +513,32 @@ int main() {
         assert(values[1].value == 9);
     }
 
+    {
+        il::support::SmallVector<std::string, 1> values;
+        values.emplace_back("alpha");
+        values.emplace_back(values[0]);
+        assert(values.size() == 2);
+        assert(values[0] == "alpha");
+        assert(values[1] == "alpha");
+
+        il::support::SmallVector<std::string, 1> resized;
+        resized.emplace_back("seed");
+        resized.resize(3, resized[0]);
+        assert(resized.size() == 3);
+        assert(resized[0] == "seed");
+        assert(resized[1] == "seed");
+        assert(resized[2] == "seed");
+    }
+
     // Arena alignment
+    assert(il::support::isPowerOfTwo(8u));
+    assert(!il::support::isPowerOfTwo(0u));
+    auto checkedAligned = il::support::checkedAlignUp<uint32_t>(5u, 4u);
+    assert(checkedAligned.has_value());
+    assert(*checkedAligned == 8u);
+    assert(!il::support::checkedAlignUp<uint32_t>(std::numeric_limits<uint32_t>::max() - 1u, 8u));
+    assert(il::support::alignUp<uint32_t>(5u, 0u) == 5u);
+    assert(!il::support::isAligned<uint32_t>(8u, 0u));
     il::support::Arena arena(64);
     void *p1 = arena.allocate(1, 1);
     (void)p1;
@@ -490,6 +621,25 @@ int main() {
             // Will be destroyed on scope exit
         }
         assert(destructorCount == 3);
+    }
+
+    {
+        struct ThrowingObj {
+            ThrowingObj() {
+                throw 7;
+            }
+        };
+
+        il::support::GrowingArena throwArena(64, 64);
+        const size_t before = throwArena.totalAllocated();
+        bool threw = false;
+        try {
+            throwArena.create<ThrowingObj>();
+        } catch (int) {
+            threw = true;
+        }
+        assert(threw);
+        assert(throwArena.totalAllocated() == before);
     }
 
     // String interner overflow handling

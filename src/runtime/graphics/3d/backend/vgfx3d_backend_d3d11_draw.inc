@@ -1,0 +1,1105 @@
+//===----------------------------------------------------------------------===//
+// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_draw.inc  (#included from vgfx3d_backend_d3d11.c; not a standalone translation unit)
+// Purpose: D3D11 draw state, constant-buffer packing, pipeline binding, and draw submission
+//===----------------------------------------------------------------------===//
+
+/// @brief Push the currently-selected render target(s) and viewport into the pipeline.
+///
+/// Combines `OMSetRenderTargets` (color RTVs + depth DSV) with a
+/// matching `RSSetViewports`. Called whenever the active target
+/// changes.
+static void d3d11_bind_render_targets(d3d11_context_t *ctx) {
+    D3D11_VIEWPORT viewport;
+
+    if (!ctx || !ctx->ctx)
+        return;
+    ID3D11DeviceContext_OMSetRenderTargets(
+        ctx->ctx, ctx->current_rtv_count, ctx->current_rtvs, ctx->current_dsv);
+    if (ctx->current_width <= 0 || ctx->current_height <= 0)
+        return;
+
+    memset(&viewport, 0, sizeof(viewport));
+    viewport.TopLeftX = 0.0f;
+    viewport.TopLeftY = 0.0f;
+    viewport.Width = (FLOAT)ctx->current_width;
+    viewport.Height = (FLOAT)ctx->current_height;
+    viewport.MinDepth = 0.0f;
+    viewport.MaxDepth = 1.0f;
+    ID3D11DeviceContext_RSSetViewports(ctx->ctx, 1, &viewport);
+}
+
+/// @brief Translate the active target kind into concrete RTV/DSV pointers.
+///
+/// Decision tree:
+///   - RTT mode → user-bound color + depth.
+///   - SCENE mode → scene color + motion + depth (MRT, 2 color targets).
+///   - OVERLAY mode → overlay color (with fallback to scene/swapchain).
+///   - default (SWAPCHAIN) → backbuffer + main depth.
+/// Then pushes everything into the pipeline via `bind_render_targets`.
+static void d3d11_select_current_targets(d3d11_context_t *ctx) {
+    if (!ctx)
+        return;
+    if (ctx->active_target_kind == VGFX3D_D3D11_TARGET_RTT && d3d11_has_rtt_targets(ctx)) {
+        ctx->current_rtvs[0] = ctx->rtt_rtv;
+        ctx->current_rtvs[1] = NULL;
+        ctx->current_rtv_count = 1;
+        ctx->current_dsv = ctx->rtt_dsv;
+        ctx->current_width = ctx->rtt_width;
+        ctx->current_height = ctx->rtt_height;
+        ctx->current_target_kind = VGFX3D_D3D11_TARGET_RTT;
+    } else if (ctx->active_target_kind == VGFX3D_D3D11_TARGET_SCENE &&
+               d3d11_has_scene_targets(ctx)) {
+        ctx->current_rtvs[0] = ctx->scene_color_rtv;
+        ctx->current_rtvs[1] = ctx->scene_motion_rtv;
+        ctx->current_rtv_count = 2;
+        ctx->current_dsv = ctx->scene_dsv;
+        ctx->current_width = ctx->scene_width;
+        ctx->current_height = ctx->scene_height;
+        ctx->current_target_kind = VGFX3D_D3D11_TARGET_SCENE;
+    } else if (ctx->active_target_kind == VGFX3D_D3D11_TARGET_OVERLAY) {
+        ctx->current_rtvs[1] = NULL;
+        ctx->current_rtv_count = 1;
+        ctx->current_dsv = NULL;
+        if (d3d11_has_overlay_target(ctx)) {
+            ctx->current_rtvs[0] = ctx->overlay_color_rtv;
+            ctx->current_width = ctx->overlay_width;
+            ctx->current_height = ctx->overlay_height;
+            ctx->current_target_kind = VGFX3D_D3D11_TARGET_OVERLAY;
+        } else if (d3d11_has_scene_targets(ctx)) {
+            ctx->current_rtvs[0] = ctx->scene_color_rtv;
+            ctx->current_width = ctx->scene_width;
+            ctx->current_height = ctx->scene_height;
+            ctx->current_target_kind = VGFX3D_D3D11_TARGET_SCENE;
+        } else {
+            ctx->current_rtvs[0] = ctx->rtv;
+            ctx->current_dsv = ctx->dsv;
+            ctx->current_rtv_count = ctx->rtv ? 1u : 0u;
+            ctx->current_width = ctx->rtv ? ctx->width : 0;
+            ctx->current_height = ctx->rtv ? ctx->height : 0;
+            ctx->current_target_kind = VGFX3D_D3D11_TARGET_SWAPCHAIN;
+        }
+    } else {
+        ctx->current_rtvs[0] = ctx->rtv;
+        ctx->current_rtvs[1] = NULL;
+        ctx->current_rtv_count = ctx->rtv ? 1u : 0u;
+        ctx->current_dsv = ctx->dsv;
+        ctx->current_width = ctx->rtv ? ctx->width : 0;
+        ctx->current_height = ctx->rtv ? ctx->height : 0;
+        ctx->current_target_kind = VGFX3D_D3D11_TARGET_SWAPCHAIN;
+    }
+    d3d11_bind_render_targets(ctx);
+}
+
+/// @brief Force-bind the swapchain backbuffer (skip the kind dispatch).
+///
+/// Used during present / postfx composition where we always want to
+/// write to the swapchain regardless of the active target kind.
+static void d3d11_bind_swapchain_target(d3d11_context_t *ctx) {
+    if (!ctx)
+        return;
+    ctx->current_rtvs[0] = ctx->rtv;
+    ctx->current_rtvs[1] = NULL;
+    ctx->current_rtv_count = ctx->rtv ? 1u : 0u;
+    ctx->current_dsv = NULL;
+    ctx->current_width = ctx->rtv ? ctx->width : 0;
+    ctx->current_height = ctx->rtv ? ctx->height : 0;
+    ctx->current_target_kind = VGFX3D_D3D11_TARGET_SWAPCHAIN;
+    d3d11_bind_render_targets(ctx);
+}
+
+/// @brief Clear color + (optionally) depth on the currently-bound targets.
+///
+/// Overlay targets always clear to transparent black. Scene MRT also
+/// clears the motion-vector target to (0.5, 0.5, 0, 1) — the encoded
+/// "no motion" sentinel. The `load_existing_*` flags let callers
+/// preserve the contents (used by additive overlay passes).
+static void d3d11_clear_current_targets(d3d11_context_t *ctx,
+                                        int8_t load_existing_color,
+                                        int8_t load_existing_depth) {
+    float clear_color[4];
+    static const float overlay_clear[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    float motion_clear[4] = {0.5f, 0.5f, 0.0f, 1.0f};
+
+    if (!ctx)
+        return;
+
+    if (ctx->current_target_kind == VGFX3D_D3D11_TARGET_OVERLAY) {
+        memcpy(clear_color, overlay_clear, sizeof(clear_color));
+    } else {
+        clear_color[0] = ctx->clear_r;
+        clear_color[1] = ctx->clear_g;
+        clear_color[2] = ctx->clear_b;
+        clear_color[3] = 1.0f;
+    }
+
+    if (ctx->current_target_kind == VGFX3D_D3D11_TARGET_OVERLAY && !load_existing_color &&
+        ctx->current_rtv_count > 0 && ctx->current_rtvs[0]) {
+        ID3D11DeviceContext_ClearRenderTargetView(ctx->ctx, ctx->current_rtvs[0], clear_color);
+    } else if (!load_existing_color && ctx->current_rtv_count > 0 && ctx->current_rtvs[0]) {
+        ID3D11DeviceContext_ClearRenderTargetView(ctx->ctx, ctx->current_rtvs[0], clear_color);
+    }
+    if (!load_existing_color && ctx->current_target_kind == VGFX3D_D3D11_TARGET_SCENE &&
+        ctx->current_rtv_count > 1 && ctx->current_rtvs[1])
+        ID3D11DeviceContext_ClearRenderTargetView(ctx->ctx, ctx->current_rtvs[1], motion_clear);
+    if (!load_existing_depth && ctx->current_dsv)
+        ID3D11DeviceContext_ClearDepthStencilView(
+            ctx->ctx, ctx->current_dsv, D3D11_CLEAR_DEPTH, 1.0f, 0);
+}
+
+/// @brief Bind the three sampler states the pixel shader expects.
+///
+/// Slot 0: linear/wrap (diffuse/normal/specular textures).
+/// Slot 1: comparison sampler for shadow PCF.
+/// Slot 2: linear/clamp (skybox + post-processing).
+static int d3d11_sampler_wrap_index(int32_t mode) {
+    if (mode == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE)
+        return 1;
+    if (mode == RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT)
+        return 2;
+    return 0;
+}
+
+/// @brief Map a Viper wrap-mode index (returned by d3d11_wrap_mode_index) to the
+///        corresponding D3D11_TEXTURE_ADDRESS_MODE enum value.
+/// @details index 1 → CLAMP, index 2 → MIRROR, any other value → WRAP (default repeat).
+static D3D11_TEXTURE_ADDRESS_MODE d3d11_sampler_address_mode(int index) {
+    if (index == 1)
+        return D3D11_TEXTURE_ADDRESS_CLAMP;
+    if (index == 2)
+        return D3D11_TEXTURE_ADDRESS_MIRROR;
+    return D3D11_TEXTURE_ADDRESS_WRAP;
+}
+
+/// @brief Return a cached or newly-created D3D11 sampler state for the given draw command and
+/// texture slot.
+/// @details Resolves wrap_s, wrap_t, and filter from the per-slot or primary material parameters,
+///          maps them to cache indices via `d3d11_sampler_wrap_index`, and returns the cached entry
+///          in `ctx->material_samplers[wrap_s][wrap_t][filter]` when available. Otherwise creates
+///          a new `ID3D11SamplerState` and caches it. Falls back to `ctx->linear_wrap_sampler` on
+///          creation failure or null cmd.
+static ID3D11SamplerState *d3d11_get_material_sampler(d3d11_context_t *ctx,
+                                                      const vgfx3d_draw_cmd_t *cmd,
+                                                      int32_t slot) {
+    int wrap_s;
+    int wrap_t;
+    int filter;
+    D3D11_SAMPLER_DESC desc;
+    HRESULT hr;
+    if (!ctx)
+        return NULL;
+    if (!cmd)
+        return ctx->linear_wrap_sampler;
+    if (slot >= 0 && slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT) {
+        wrap_s = d3d11_sampler_wrap_index(cmd->texture_slot_wrap_s[slot]);
+        wrap_t = d3d11_sampler_wrap_index(cmd->texture_slot_wrap_t[slot]);
+        filter = cmd->texture_slot_filter[slot] == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? 1 : 0;
+    } else {
+        wrap_s = d3d11_sampler_wrap_index(cmd->texture_wrap_s);
+        wrap_t = d3d11_sampler_wrap_index(cmd->texture_wrap_t);
+        filter = cmd->texture_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? 1 : 0;
+    }
+    if (ctx->material_samplers[wrap_s][wrap_t][filter])
+        return ctx->material_samplers[wrap_s][wrap_t][filter];
+    d3d11_init_sampler_desc_defaults(&desc);
+    desc.Filter = filter ? D3D11_FILTER_MIN_MAG_MIP_POINT : D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    desc.AddressU = d3d11_sampler_address_mode(wrap_s);
+    desc.AddressV = d3d11_sampler_address_mode(wrap_t);
+    desc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+    hr = ID3D11Device_CreateSamplerState(
+        ctx->device, &desc, &ctx->material_samplers[wrap_s][wrap_t][filter]);
+    if (FAILED(hr))
+        return ctx->linear_wrap_sampler;
+    return ctx->material_samplers[wrap_s][wrap_t][filter];
+}
+
+/// @brief Bind all material sampler states for a draw command to the pixel shader slots.
+/// @details Material textures occupy PS sampler slots 0–7: slot 0 = base color,
+///   slot 1 = shadow comparison sampler, slot 2 = linear-clamp (for screen-space
+///   textures), slots 3–7 = normal, specular, emissive, metallic-roughness, AO.
+///   Each per-material sampler is created lazily (or retrieved from a cache) by
+///   `d3d11_get_material_sampler`, so NULL entries are skipped rather than bound.
+static void d3d11_bind_common_state(d3d11_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
+    ID3D11SamplerState *material_samplers[8] = {NULL};
+    if (!ctx)
+        return;
+    material_samplers[0] =
+        d3d11_get_material_sampler(ctx, cmd, RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR);
+    material_samplers[3] = d3d11_get_material_sampler(ctx, cmd, RT_MATERIAL3D_TEXTURE_SLOT_NORMAL);
+    material_samplers[4] =
+        d3d11_get_material_sampler(ctx, cmd, RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR);
+    material_samplers[5] =
+        d3d11_get_material_sampler(ctx, cmd, RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE);
+    material_samplers[6] =
+        d3d11_get_material_sampler(ctx, cmd, RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS);
+    material_samplers[7] = d3d11_get_material_sampler(ctx, cmd, RT_MATERIAL3D_TEXTURE_SLOT_AO);
+    if (material_samplers[0])
+        ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 0, 1, &material_samplers[0]);
+    if (ctx->shadow_cmp_sampler)
+        ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 1, 1, &ctx->shadow_cmp_sampler);
+    if (ctx->linear_clamp_sampler)
+        ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 2, 1, &ctx->linear_clamp_sampler);
+    if (material_samplers[3])
+        ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 3, 1, &material_samplers[3]);
+    if (material_samplers[4])
+        ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 4, 1, &material_samplers[4]);
+    if (material_samplers[5])
+        ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 5, 1, &material_samplers[5]);
+    if (material_samplers[6])
+        ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 6, 1, &material_samplers[6]);
+    if (material_samplers[7])
+        ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 7, 1, &material_samplers[7]);
+}
+
+/// @brief Pack draw-command per-object state into the cbuffer struct.
+///
+/// Computes the normal matrix, sets up skinning / morph / instance
+/// flags, and packs morph weights into float4 lanes (HLSL doesn't have
+/// scalar arrays in cbuffers, so we manually pack 4 weights per vec4).
+static void d3d11_prepare_object_data(const vgfx3d_draw_cmd_t *cmd, d3d_per_object_t *object_data) {
+    int morph_count = 0;
+
+    memset(object_data, 0, sizeof(*object_data));
+    memcpy(object_data->model, cmd->model_matrix, sizeof(object_data->model));
+    memcpy(object_data->prev_model,
+           cmd->has_prev_model_matrix ? cmd->prev_model_matrix : cmd->model_matrix,
+           sizeof(object_data->prev_model));
+    vgfx3d_compute_normal_matrix4(cmd->model_matrix, object_data->normal);
+
+    object_data->has_prev_model_matrix = cmd->has_prev_model_matrix ? 1 : 0;
+    object_data->has_skinning =
+        vgfx3d_d3d11_should_enable_skinning(cmd->bone_palette, cmd->bone_count) ? 1 : 0;
+    object_data->has_prev_skinning =
+        (object_data->has_skinning && cmd->prev_bone_palette != NULL) ? 1 : 0;
+    object_data->has_prev_instance_matrices = cmd->has_prev_instance_matrices ? 1 : 0;
+
+    if (cmd->morph_deltas && cmd->morph_weights && cmd->morph_shape_count > 0)
+        morph_count =
+            vgfx3d_d3d11_clamp_morph_shape_count(cmd->vertex_count, cmd->morph_shape_count);
+    object_data->morph_shape_count = morph_count;
+    object_data->vertex_count = morph_count > 0 ? (int32_t)cmd->vertex_count : 0;
+    object_data->has_prev_morph_weights =
+        (morph_count > 0 && cmd->prev_morph_weights != NULL) ? 1 : 0;
+    object_data->has_morph_normal_deltas =
+        (morph_count > 0 && cmd->morph_normal_deltas != NULL) ? 1 : 0;
+    if (morph_count > 0) {
+        vgfx3d_d3d11_pack_scalar_array4(object_data->morph_weights_packed,
+                                        VGFX3D_D3D11_PACKED_MORPH_WEIGHT_VECS,
+                                        cmd->morph_weights,
+                                        morph_count);
+        vgfx3d_d3d11_pack_scalar_array4(object_data->prev_morph_weights_packed,
+                                        VGFX3D_D3D11_PACKED_MORPH_WEIGHT_VECS,
+                                        cmd->prev_morph_weights ? cmd->prev_morph_weights
+                                                                : cmd->morph_weights,
+                                        morph_count);
+    }
+}
+
+/// @brief Pack per-scene state (camera/lights/shadows/fog) into cbuffer struct.
+///
+/// `lights` parameter is unused at this layer — light data goes into
+/// the dedicated PerLights cbuffer via `prepare_light_data`. This
+/// struct holds the everything-else scene constants.
+static void d3d11_prepare_scene_data(d3d11_context_t *ctx,
+                                     const vgfx3d_light_params_t *lights,
+                                     int32_t light_count,
+                                     const float *ambient,
+                                     d3d_per_scene_t *scene_data) {
+    memset(scene_data, 0, sizeof(*scene_data));
+    memcpy(scene_data->vp, ctx->vp, sizeof(scene_data->vp));
+    memcpy(scene_data->prev_vp, ctx->draw_prev_vp, sizeof(scene_data->prev_vp));
+    memcpy(scene_data->shadow_vp, ctx->shadow_vp, sizeof(scene_data->shadow_vp));
+    memcpy(scene_data->camera_pos, ctx->cam_pos, sizeof(float) * 3);
+    scene_data->camera_pos[3] = ctx->cam_is_ortho ? 1.0f : 0.0f;
+    memcpy(scene_data->camera_forward, ctx->cam_forward, sizeof(scene_data->camera_forward));
+    if (ambient) {
+        scene_data->ambient[0] = ambient[0];
+        scene_data->ambient[1] = ambient[1];
+        scene_data->ambient[2] = ambient[2];
+    }
+    scene_data->ambient[3] = 1.0f;
+    scene_data->fog_color[0] = ctx->fog_color[0];
+    scene_data->fog_color[1] = ctx->fog_color[1];
+    scene_data->fog_color[2] = ctx->fog_color[2];
+    scene_data->fog_color[3] = ctx->fog_enabled ? 1.0f : 0.0f;
+    scene_data->fog_near = ctx->fog_near;
+    scene_data->fog_far = ctx->fog_far;
+    scene_data->shadow_bias = ctx->shadow_bias;
+    scene_data->light_count =
+        lights ? (light_count < 0
+                      ? 0
+                      : (light_count > VGFX3D_MAX_LIGHTS ? VGFX3D_MAX_LIGHTS : light_count))
+               : 0;
+    scene_data->shadow_count = vgfx3d_d3d11_clamp_shadow_count(ctx->shadow_count);
+}
+
+/// @brief Pack material colors, scalars, and texture-availability flags into the cbuffer.
+///
+/// Bundles every per-material constant the pixel shader needs:
+/// PBR scalars (metallic, roughness, AO, emissive intensity), normal-
+/// scale, alpha-cutoff, custom params, and the boolean flags telling
+/// the shader which texture slots are populated.
+static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
+                                        int has_texture,
+                                        int has_normal_map,
+                                        int has_specular_map,
+                                        int has_emissive_map,
+                                        int has_env_map,
+                                        int has_splat,
+                                        int has_metallic_roughness_map,
+                                        int has_ao_map,
+                                        d3d_per_material_t *material_data) {
+    memset(material_data, 0, sizeof(*material_data));
+    memcpy(material_data->diffuse, cmd->diffuse_color, sizeof(material_data->diffuse));
+    material_data->specular[0] = cmd->specular[0];
+    material_data->specular[1] = cmd->specular[1];
+    material_data->specular[2] = cmd->specular[2];
+    material_data->specular[3] = cmd->shininess;
+    material_data->emissive[0] = cmd->emissive_color[0];
+    material_data->emissive[1] = cmd->emissive_color[1];
+    material_data->emissive[2] = cmd->emissive_color[2];
+    material_data->scalars[0] = cmd->alpha;
+    material_data->scalars[1] = cmd->reflectivity;
+    material_data->scalars[2] =
+        cmd->env_map ? d3d11_cubemap_max_lod((const rt_cubemap3d *)cmd->env_map) : 0.0f;
+    material_data->pbr_scalars0[0] = cmd->metallic;
+    material_data->pbr_scalars0[1] = cmd->roughness;
+    material_data->pbr_scalars0[2] = cmd->ao;
+    material_data->pbr_scalars0[3] = cmd->emissive_intensity;
+    material_data->pbr_scalars1[0] = cmd->normal_scale;
+    material_data->pbr_scalars1[1] = cmd->alpha_cutoff;
+    material_data->flags0[0] = has_texture;
+    material_data->flags0[1] = cmd->unlit;
+    material_data->flags0[2] = has_normal_map;
+    material_data->flags0[3] = has_specular_map;
+    material_data->flags1[0] = has_emissive_map;
+    material_data->flags1[1] = has_env_map;
+    material_data->flags1[2] = has_splat;
+    material_data->pbr_flags[0] = cmd->workflow;
+    material_data->pbr_flags[1] = cmd->alpha_mode;
+    material_data->pbr_flags[2] = has_metallic_roughness_map;
+    material_data->pbr_flags[3] = has_ao_map;
+    material_data->shading_model = cmd->shading_model;
+    vgfx3d_d3d11_pack_scalar_array4(material_data->custom_params_packed,
+                                    VGFX3D_D3D11_PACKED_CUSTOM_PARAM_VECS,
+                                    cmd->custom_params,
+                                    8);
+    for (int32_t slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++) {
+        if (slot < 4)
+            material_data->texture_uv_sets0[slot] = cmd->texture_slot_uv_set[slot];
+        else
+            material_data->texture_uv_sets1[slot - 4] = cmd->texture_slot_uv_set[slot];
+        material_data->texture_uv_transform0[slot][0] = cmd->texture_slot_uv_transform[slot][0];
+        material_data->texture_uv_transform0[slot][1] = cmd->texture_slot_uv_transform[slot][1];
+        material_data->texture_uv_transform0[slot][2] = cmd->texture_slot_uv_transform[slot][2];
+        material_data->texture_uv_transform0[slot][3] = cmd->texture_slot_uv_transform[slot][3];
+        material_data->texture_uv_transform1[slot][0] = cmd->texture_slot_uv_transform[slot][4];
+        material_data->texture_uv_transform1[slot][1] = cmd->texture_slot_uv_transform[slot][5];
+    }
+    memcpy(
+        material_data->splat_scales, cmd->splat_layer_scales, sizeof(material_data->splat_scales));
+}
+
+/// @brief Copy up to `VGFX3D_MAX_LIGHTS` lights from the scene into the cbuffer Light array.
+///
+/// Each light contributes type, direction, position, color, intensity,
+/// attenuation, and spot-cone parameters. Anything beyond `VGFX3D_MAX_LIGHTS`
+/// is dropped silently (the shader's array is fixed-size). Shadow indices are
+/// sanitized against the contiguous advertised shadow-slot range so a stale or
+/// sparse light cannot sample an unbound shadow SRV.
+static void d3d11_prepare_light_data(const vgfx3d_light_params_t *lights,
+                                     int32_t light_count,
+                                     int32_t advertised_shadow_count,
+                                     d3d_light_t *light_data) {
+    if (!light_data)
+        return;
+    memset(light_data, 0, sizeof(d3d_light_t) * VGFX3D_MAX_LIGHTS);
+    if (!lights || light_count <= 0)
+        return;
+    for (int32_t i = 0; i < light_count && i < VGFX3D_MAX_LIGHTS; i++) {
+        light_data[i].type = lights[i].type;
+        light_data[i].shadow_index =
+            vgfx3d_d3d11_sanitize_shadow_index(lights[i].shadow_index, advertised_shadow_count);
+        light_data[i].shadow_cascade_count =
+            light_data[i].shadow_index >= 0 ? lights[i].shadow_cascade_count : 1;
+        light_data[i].direction[0] = lights[i].direction[0];
+        light_data[i].direction[1] = lights[i].direction[1];
+        light_data[i].direction[2] = lights[i].direction[2];
+        light_data[i].position[0] = lights[i].position[0];
+        light_data[i].position[1] = lights[i].position[1];
+        light_data[i].position[2] = lights[i].position[2];
+        light_data[i].color[0] = lights[i].color[0];
+        light_data[i].color[1] = lights[i].color[1];
+        light_data[i].color[2] = lights[i].color[2];
+        light_data[i].intensity = lights[i].intensity;
+        light_data[i].attenuation = lights[i].attenuation;
+        light_data[i].inner_cos = lights[i].inner_cos;
+        light_data[i].outer_cos = lights[i].outer_cos;
+        memcpy(light_data[i].shadow_cascade_splits,
+               lights[i].shadow_cascade_splits,
+               sizeof(light_data[i].shadow_cascade_splits));
+    }
+}
+
+/// @brief Upload bone palettes and morph deltas, with caching.
+///
+/// Bones are cbuffer arrays (current + previous-frame for motion
+/// blur). Morph deltas live in SRV buffers and are cached by
+/// `(morph_key, morph_revision)` so static morph targets aren't
+/// re-uploaded each frame. Returns 1 if the SRVs are bound, 0 if
+/// the draw should fall back to no-morph.
+static int d3d11_prepare_anim_resources(d3d11_context_t *ctx,
+                                        const vgfx3d_draw_cmd_t *cmd,
+                                        d3d_per_object_t *object_data) {
+    float bone_palette[VGFX3D_D3D11_BONE_PALETTE_FLOATS];
+    float prev_bone_palette[VGFX3D_D3D11_BONE_PALETTE_FLOATS];
+    HRESULT hr;
+    size_t morph_count;
+    int current_bone_upload_ok = 1;
+    int prev_bone_upload_ok = 1;
+    int morph_upload_ok = 1;
+    int morph_normal_upload_ok = 1;
+
+    if (!ctx || !cmd || !object_data)
+        return 0;
+
+    ctx->current_morph_srv = NULL;
+    ctx->current_morph_normal_srv = NULL;
+
+    vgfx3d_d3d11_pack_bone_palette(
+        bone_palette, object_data->has_skinning ? cmd->bone_palette : NULL, cmd->bone_count);
+    vgfx3d_d3d11_pack_bone_palette(prev_bone_palette,
+                                   object_data->has_prev_skinning
+                                       ? cmd->prev_bone_palette
+                                       : (object_data->has_skinning ? cmd->bone_palette : NULL),
+                                   cmd->bone_count);
+
+    hr = d3d11_update_constant_buffer(ctx, ctx->cb_bones, bone_palette, sizeof(bone_palette));
+    if (FAILED(hr))
+        d3d11_log_hresult("Map(cbBones)", hr);
+    current_bone_upload_ok = SUCCEEDED(hr);
+    hr = d3d11_update_constant_buffer(
+        ctx, ctx->cb_prev_bones, prev_bone_palette, sizeof(prev_bone_palette));
+    if (FAILED(hr))
+        d3d11_log_hresult("Map(cbPrevBones)", hr);
+    prev_bone_upload_ok = SUCCEEDED(hr);
+    vgfx3d_d3d11_resolve_bone_upload_status(
+        object_data, current_bone_upload_ok, prev_bone_upload_ok);
+
+    if (object_data->morph_shape_count <= 0 || !cmd->morph_deltas || !cmd->morph_weights) {
+        object_data->morph_shape_count = 0;
+        object_data->vertex_count = 0;
+        object_data->has_prev_morph_weights = 0;
+        object_data->has_morph_normal_deltas = 0;
+        return 0;
+    }
+
+    if (!d3d11_checked_mul_size(
+            (size_t)object_data->morph_shape_count, (size_t)cmd->vertex_count, &morph_count) ||
+        !d3d11_checked_mul_size(morph_count, 3u, &morph_count)) {
+        object_data->morph_shape_count = 0;
+        object_data->vertex_count = 0;
+        object_data->has_prev_morph_weights = 0;
+        object_data->has_morph_normal_deltas = 0;
+        return 0;
+    }
+    morph_upload_ok = 0;
+    morph_normal_upload_ok = object_data->has_morph_normal_deltas ? 0 : 1;
+    if (cmd->morph_key && cmd->morph_revision != 0) {
+        d3d11_morph_cache_entry_t *slot = NULL;
+        d3d11_morph_cache_entry_t *oldest = NULL;
+
+        for (int32_t i = 0; i < D3D11_MORPH_CACHE_CAPACITY; i++) {
+            d3d11_morph_cache_entry_t *entry = &ctx->morph_cache[i];
+            if (entry->key == cmd->morph_key) {
+                slot = entry;
+                break;
+            }
+            if (!entry->key && !slot)
+                slot = entry;
+            if (!oldest || entry->last_used_frame < oldest->last_used_frame)
+                oldest = entry;
+        }
+        if (!slot)
+            slot = oldest;
+        if (slot) {
+            int cache_reusable =
+                slot->buffer && slot->srv &&
+                (!object_data->has_morph_normal_deltas ||
+                 (slot->normal_buffer && slot->normal_srv)) &&
+                vgfx3d_d3d11_should_reuse_morph_cache(slot->key,
+                                                      slot->generation,
+                                                      (int32_t)slot->shape_count,
+                                                      slot->vertex_count,
+                                                      (int8_t)slot->has_normal_deltas,
+                                                      cmd);
+            if (!cache_reusable) {
+                d3d11_unbind_draw_resources(ctx);
+                d3d11_release_morph_cache_entry(slot);
+                hr = d3d11_update_float_srv_buffer(ctx,
+                                                   &slot->buffer,
+                                                   &slot->srv,
+                                                   &slot->element_count,
+                                                   cmd->morph_deltas,
+                                                   morph_count);
+                if (FAILED(hr)) {
+                    d3d11_log_hresult("Create/UpdateBuffer(morphDeltas cache)", hr);
+                } else {
+                    slot->key = cmd->morph_key;
+                    slot->generation = cmd->morph_revision;
+                    slot->vertex_count = (uint32_t)cmd->vertex_count;
+                    slot->shape_count = (uint32_t)object_data->morph_shape_count;
+                    slot->has_normal_deltas = object_data->has_morph_normal_deltas ? 1 : 0;
+                    morph_upload_ok = 1;
+                    if (object_data->has_morph_normal_deltas) {
+                        hr = d3d11_update_float_srv_buffer(ctx,
+                                                           &slot->normal_buffer,
+                                                           &slot->normal_srv,
+                                                           &slot->normal_element_count,
+                                                           cmd->morph_normal_deltas,
+                                                           morph_count);
+                        if (FAILED(hr)) {
+                            d3d11_log_hresult("Create/UpdateBuffer(morphNormalDeltas cache)", hr);
+                        } else {
+                            morph_normal_upload_ok = 1;
+                        }
+                    }
+                }
+            } else {
+                morph_upload_ok = 1;
+                morph_normal_upload_ok =
+                    object_data->has_morph_normal_deltas ? (slot->normal_srv != NULL) : 1;
+            }
+            if (morph_upload_ok) {
+                slot->last_used_frame = ctx->frame_serial;
+                ctx->current_morph_srv = slot->srv;
+                ctx->current_morph_normal_srv = morph_normal_upload_ok ? slot->normal_srv : NULL;
+            }
+        }
+    }
+
+    if (!ctx->current_morph_srv) {
+        hr = d3d11_update_float_srv_buffer(ctx,
+                                           &ctx->morph_buffer,
+                                           &ctx->morph_srv,
+                                           &ctx->morph_buffer_size,
+                                           cmd->morph_deltas,
+                                           morph_count);
+        if (FAILED(hr)) {
+            d3d11_log_hresult("Create/UpdateBuffer(morphDeltas)", hr);
+        } else {
+            morph_upload_ok = 1;
+            ctx->current_morph_srv = ctx->morph_srv;
+        }
+        if (object_data->has_morph_normal_deltas) {
+            hr = d3d11_update_float_srv_buffer(ctx,
+                                               &ctx->morph_normal_buffer,
+                                               &ctx->morph_normal_srv,
+                                               &ctx->morph_normal_buffer_size,
+                                               cmd->morph_normal_deltas,
+                                               morph_count);
+            if (FAILED(hr)) {
+                d3d11_log_hresult("Create/UpdateBuffer(morphNormalDeltas)", hr);
+            } else {
+                morph_normal_upload_ok = 1;
+                ctx->current_morph_normal_srv = ctx->morph_normal_srv;
+            }
+        }
+    }
+
+    vgfx3d_d3d11_resolve_morph_upload_status(object_data, morph_upload_ok, morph_normal_upload_ok);
+    if (object_data->morph_shape_count <= 0) {
+        ctx->current_morph_srv = NULL;
+        ctx->current_morph_normal_srv = NULL;
+        return 0;
+    }
+    if (!object_data->has_morph_normal_deltas)
+        ctx->current_morph_normal_srv = NULL;
+    return 1;
+}
+
+/// @brief Bind the main vertex+pixel shader pipeline state for a draw.
+///
+/// Selects rasterizer (wireframe/cull combo), depth-stencil state
+/// (alpha blending = no depth write), blend mode, primitive topology,
+/// the right input layout (instanced vs. non), main shaders, all four
+/// cbuffers, sampler states, and morph SRVs.
+static void d3d11_bind_main_pipeline(d3d11_context_t *ctx,
+                                     const vgfx3d_draw_cmd_t *cmd,
+                                     int8_t wireframe,
+                                     int8_t backface_cull,
+                                     int instanced) {
+    ID3D11RasterizerState *rasterizer;
+    ID3D11ShaderResourceView *vs_srvs[2];
+    float blend_factor[4] = {0, 0, 0, 0};
+    vgfx3d_d3d11_blend_mode_t blend_mode = vgfx3d_d3d11_choose_blend_mode(cmd);
+    UINT draw_rtv_count = ctx->current_rtv_count;
+
+    rasterizer = NULL;
+    if (d3d11_draw_needs_depth_bias(cmd))
+        (void)d3d11_get_depth_biased_rasterizer(
+            ctx, cmd, wireframe, backface_cull, &rasterizer);
+    if (!rasterizer)
+        rasterizer = d3d11_choose_rasterizer(ctx, wireframe, backface_cull);
+    if (rasterizer)
+        ID3D11DeviceContext_RSSetState(ctx->ctx, rasterizer);
+    if (ctx->current_target_kind == VGFX3D_D3D11_TARGET_SCENE &&
+        vgfx3d_d3d11_choose_motion_attachment_mode(ctx->current_target_kind, cmd) ==
+            VGFX3D_D3D11_MOTION_ATTACHMENTS_COLOR_ONLY)
+        draw_rtv_count = 1;
+    ID3D11DeviceContext_OMSetRenderTargets(
+        ctx->ctx, draw_rtv_count, ctx->current_rtvs, ctx->current_dsv);
+    ID3D11DeviceContext_OMSetDepthStencilState(ctx->ctx,
+                                               cmd->disable_depth_test
+                                                   ? ctx->depth_state_disabled
+                                                   : (blend_mode == VGFX3D_D3D11_BLEND_OPAQUE
+                                                          ? ctx->depth_state
+                                                          : ctx->depth_state_no_write),
+                                               0);
+    ID3D11DeviceContext_OMSetBlendState(ctx->ctx,
+                                        blend_mode == VGFX3D_D3D11_BLEND_ALPHA
+                                            ? ctx->blend_state_alpha
+                                            : (blend_mode == VGFX3D_D3D11_BLEND_ADDITIVE
+                                                   ? ctx->blend_state_additive
+                                                   : ctx->blend_state_opaque),
+                                        blend_factor,
+                                        0xFFFFFFFF);
+    ID3D11DeviceContext_IASetPrimitiveTopology(ctx->ctx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ID3D11DeviceContext_IASetInputLayout(
+        ctx->ctx, instanced ? ctx->input_layout_instanced : ctx->input_layout);
+    ID3D11DeviceContext_VSSetShader(
+        ctx->ctx, instanced ? ctx->vs_instanced : ctx->vs_main, NULL, 0);
+    ID3D11DeviceContext_PSSetShader(ctx->ctx, ctx->ps_main, NULL, 0);
+    ID3D11DeviceContext_VSSetConstantBuffers(ctx->ctx, 0, 1, &ctx->cb_per_object);
+    ID3D11DeviceContext_VSSetConstantBuffers(ctx->ctx, 1, 1, &ctx->cb_per_scene);
+    ID3D11DeviceContext_VSSetConstantBuffers(ctx->ctx, 4, 1, &ctx->cb_bones);
+    ID3D11DeviceContext_VSSetConstantBuffers(ctx->ctx, 5, 1, &ctx->cb_prev_bones);
+    ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 1, 1, &ctx->cb_per_scene);
+    ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 2, 1, &ctx->cb_per_material);
+    ID3D11DeviceContext_PSSetConstantBuffers(ctx->ctx, 3, 1, &ctx->cb_per_lights);
+    d3d11_bind_common_state(ctx, cmd);
+
+    vs_srvs[0] = ctx->current_morph_srv;
+    vs_srvs[1] = ctx->current_morph_normal_srv;
+    ID3D11DeviceContext_VSSetShaderResources(ctx->ctx, 0, 2, vs_srvs);
+}
+
+/// @brief Clear all VS / PS texture bindings (the "untether" call).
+///
+/// Necessary before binding the same resource as an RTV next frame —
+/// D3D11 forbids a texture being bound as both SRV and RTV simultaneously.
+static void d3d11_unbind_draw_resources(d3d11_context_t *ctx) {
+    ID3D11ShaderResourceView *null_vs[2] = {NULL, NULL};
+    ID3D11ShaderResourceView *null_ps[16] = {NULL};
+    if (!ctx || !ctx->ctx)
+        return;
+    ID3D11DeviceContext_VSSetShaderResources(ctx->ctx, 0, 2, null_vs);
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 16, null_ps);
+}
+
+/// @brief Pack inverse-projection + inverse-view-rotation data for the skybox shader.
+static void d3d11_prepare_skybox_data(d3d11_context_t *ctx, d3d_skybox_cb_t *skybox_data) {
+    float view_rotation[16];
+
+    memcpy(view_rotation, ctx->view, sizeof(view_rotation));
+    view_rotation[3] = 0.0f;
+    view_rotation[7] = 0.0f;
+    view_rotation[11] = 0.0f;
+    view_rotation[12] = 0.0f;
+    view_rotation[13] = 0.0f;
+    view_rotation[14] = 0.0f;
+    view_rotation[15] = 1.0f;
+    if (vgfx3d_invert_matrix4(ctx->projection, skybox_data->inverse_projection) != 0)
+        memcpy(skybox_data->inverse_projection,
+               k_identity4x4,
+               sizeof(skybox_data->inverse_projection));
+    for (int r = 0; r < 4; r++)
+        for (int c = 0; c < 4; c++)
+            skybox_data->inverse_view_rotation[r * 4 + c] = view_rotation[c * 4 + r];
+    memcpy(skybox_data->camera_forward, ctx->cam_forward, sizeof(float) * 3);
+    skybox_data->camera_forward[3] = ctx->cam_is_ortho ? 1.0f : 0.0f;
+}
+
+/// @brief Pack the post-FX cbuffer with snapshot data + camera + resolution.
+///
+/// Bundles every post-process toggle and parameter the shaders need:
+/// bloom thresholds, tonemap mode/exposure, FXAA, color grading,
+/// vignette, SSAO, depth-of-field, motion blur. NULL snapshot means
+/// "post-FX disabled" (most fields stay at their zero defaults).
+static void d3d11_prepare_postfx_data(d3d11_context_t *ctx,
+                                      const vgfx3d_postfx_snapshot_t *snapshot,
+                                      d3d_postfx_cb_t *postfx_data) {
+    memset(postfx_data, 0, sizeof(*postfx_data));
+    memcpy(postfx_data->inv_vp, ctx->scene_inv_vp, sizeof(postfx_data->inv_vp));
+    memcpy(postfx_data->prev_vp, ctx->scene_prev_vp, sizeof(postfx_data->prev_vp));
+    memcpy(postfx_data->camera_pos, ctx->scene_cam_pos, sizeof(float) * 3);
+    postfx_data->camera_pos[3] = 1.0f;
+    postfx_data->inv_resolution[0] = ctx->scene_width > 0 ? 1.0f / (float)ctx->scene_width : 0.0f;
+    postfx_data->inv_resolution[1] = ctx->scene_height > 0 ? 1.0f / (float)ctx->scene_height : 0.0f;
+    postfx_data->tonemap_exposure = 1.0f;
+    postfx_data->cg_contrast = 1.0f;
+    postfx_data->cg_saturation = 1.0f;
+    postfx_data->vignette_radius = 1.0f;
+    if (!snapshot)
+        return;
+    postfx_data->bloom_enabled = snapshot->bloom_enabled ? 1 : 0;
+    postfx_data->bloom_threshold = snapshot->bloom_threshold;
+    postfx_data->bloom_intensity = snapshot->bloom_intensity;
+    postfx_data->bloom_passes = snapshot->bloom_passes;
+    postfx_data->tonemap_mode = snapshot->tonemap_mode;
+    postfx_data->tonemap_exposure = snapshot->tonemap_exposure;
+    postfx_data->fxaa_enabled = snapshot->fxaa_enabled ? 1 : 0;
+    postfx_data->color_grade_enabled = snapshot->color_grade_enabled ? 1 : 0;
+    postfx_data->cg_brightness = snapshot->cg_brightness;
+    postfx_data->cg_contrast = snapshot->cg_contrast;
+    postfx_data->cg_saturation = snapshot->cg_saturation;
+    postfx_data->vignette_enabled = snapshot->vignette_enabled ? 1 : 0;
+    postfx_data->vignette_radius = snapshot->vignette_radius;
+    postfx_data->vignette_softness = snapshot->vignette_softness;
+    postfx_data->ssao_enabled = snapshot->ssao_enabled ? 1 : 0;
+    postfx_data->ssao_radius = snapshot->ssao_radius;
+    postfx_data->ssao_intensity = snapshot->ssao_intensity;
+    postfx_data->ssao_samples = snapshot->ssao_samples;
+    postfx_data->dof_enabled = snapshot->dof_enabled ? 1 : 0;
+    postfx_data->dof_focus_distance = snapshot->dof_focus_distance;
+    postfx_data->dof_aperture = snapshot->dof_aperture;
+    postfx_data->dof_max_blur = snapshot->dof_max_blur;
+    postfx_data->motion_blur_enabled = snapshot->motion_blur_enabled ? 1 : 0;
+    postfx_data->motion_blur_intensity = snapshot->motion_blur_intensity;
+    postfx_data->motion_blur_samples = snapshot->motion_blur_samples;
+}
+
+/// @brief Bind every texture / cubemap SRV the shader expects (PS slots 0..15).
+///
+/// Slots: 0=diffuse, 1=normal, 2=specular, 3=emissive, 4-7=shadows,
+/// 8=splat-control, 9-12=splat layers, 13=env cube, 14=metallic-rough,
+/// 15=AO. Unbound slots get NULL so the shader's `has*` flags can
+/// gate sampling. Returns whether splat sampling was actually enabled.
+static int d3d11_bind_draw_resources(d3d11_context_t *ctx,
+                                     const vgfx3d_draw_cmd_t *cmd,
+                                     d3d_draw_resources_t *resources) {
+    ID3D11ShaderResourceView *srvs[16];
+
+    if (!ctx || !cmd || !resources)
+        return 0;
+
+    memset(resources, 0, sizeof(*resources));
+    srvs[0] = d3d11_get_or_create_material_srv(
+        ctx,
+        cmd->texture_asset,
+        cmd->texture,
+        cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+        cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+        cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+        &resources->textures[0]);
+    srvs[1] = d3d11_get_or_create_material_srv(
+        ctx,
+        cmd->normal_map_asset,
+        cmd->normal_map,
+        cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL],
+        cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL],
+        cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL],
+        &resources->textures[1]);
+    srvs[2] = d3d11_get_or_create_material_srv(
+        ctx,
+        cmd->specular_map_asset,
+        cmd->specular_map,
+        cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR],
+        cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR],
+        cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR],
+        &resources->textures[2]);
+    srvs[3] = d3d11_get_or_create_material_srv(
+        ctx,
+        cmd->emissive_map_asset,
+        cmd->emissive_map,
+        cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE],
+        cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE],
+        cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE],
+        &resources->textures[3]);
+    for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++)
+        srvs[4 + slot] = ctx->shadow_count > slot ? ctx->shadow_srv[slot] : NULL;
+    srvs[8] = cmd->has_splat ? d3d11_get_or_create_srv(ctx, cmd->splat_map, &resources->textures[4])
+                             : NULL;
+    srvs[9] = cmd->has_splat
+                  ? d3d11_get_or_create_srv(ctx, cmd->splat_layers[0], &resources->textures[5])
+                  : NULL;
+    srvs[10] = cmd->has_splat
+                   ? d3d11_get_or_create_srv(ctx, cmd->splat_layers[1], &resources->textures[6])
+                   : NULL;
+    srvs[11] = cmd->has_splat
+                   ? d3d11_get_or_create_srv(ctx, cmd->splat_layers[2], &resources->textures[7])
+                   : NULL;
+    srvs[12] = cmd->has_splat
+                   ? d3d11_get_or_create_srv(ctx, cmd->splat_layers[3], &resources->textures[8])
+                   : NULL;
+    srvs[13] = (cmd->env_map && cmd->reflectivity > 0.0001f)
+                   ? d3d11_get_or_create_cubemap_srv(
+                         ctx, (const rt_cubemap3d *)cmd->env_map, &resources->cubemap)
+                   : NULL;
+    srvs[14] = d3d11_get_or_create_material_srv(ctx,
+                                                cmd->metallic_roughness_map_asset,
+                                                cmd->metallic_roughness_map,
+                                                cmd->texture_asset_cache_key
+                                                    [RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS],
+                                                cmd->texture_asset_mip_start
+                                                    [RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS],
+                                                cmd->texture_asset_mip_count
+                                                    [RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS],
+                                                &resources->textures[9]);
+    srvs[15] = d3d11_get_or_create_material_srv(
+        ctx,
+        cmd->ao_map_asset,
+        cmd->ao_map,
+        cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_AO],
+        cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_AO],
+        cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_AO],
+        &resources->textures[10]);
+
+    resources->has_texture = srvs[0] != NULL;
+    resources->has_normal_map = srvs[1] != NULL;
+    resources->has_specular_map = srvs[2] != NULL;
+    resources->has_emissive_map = srvs[3] != NULL;
+    resources->has_env_map = srvs[13] != NULL;
+    resources->has_metallic_roughness_map = srvs[14] != NULL;
+    resources->has_ao_map = srvs[15] != NULL;
+    resources->has_splat = vgfx3d_d3d11_has_complete_splat(cmd->has_splat,
+                                                           srvs[8] != NULL,
+                                                           srvs[9] != NULL,
+                                                           srvs[10] != NULL,
+                                                           srvs[11] != NULL,
+                                                           srvs[12] != NULL);
+    if (!resources->has_splat) {
+        srvs[8] = NULL;
+        srvs[9] = NULL;
+        srvs[10] = NULL;
+        srvs[11] = NULL;
+        srvs[12] = NULL;
+    }
+
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 16, srvs);
+    return resources->has_splat;
+}
+
+/// @brief Release any temp SRVs the per-draw bind path created.
+///
+/// Called at end of each draw to clean up resources that didn't fit in
+/// the texture/cubemap caches. Cached resources are no-ops here.
+static void d3d11_release_temporary_resources(d3d_draw_resources_t *resources) {
+    if (!resources)
+        return;
+    for (int i = 0; i < 11; i++)
+        d3d11_release_temp_srv(&resources->textures[i]);
+    d3d11_release_temp_srv(&resources->cubemap);
+}
+
+/// @brief End-to-end draw for a single non-instanced mesh command.
+///
+/// Composes everything: pack object/scene/light/material data into
+/// cbuffers, prep skinning + morph buffers, bind textures + samplers,
+/// bind pipeline state, get VB/IB (cached or dynamic), set them on
+/// the IA, issue `DrawIndexed`, then release any temp resources.
+static void d3d11_submit_draw(void *ctx_ptr,
+                              vgfx_window_t win,
+                              const vgfx3d_draw_cmd_t *cmd,
+                              const vgfx3d_light_params_t *lights,
+                              int32_t light_count,
+                              const float *ambient,
+                              int8_t wireframe,
+                              int8_t backface_cull) {
+    d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
+    d3d_per_object_t object_data;
+    d3d_per_scene_t scene_data;
+    d3d_per_material_t material_data;
+    d3d_light_t light_data[VGFX3D_MAX_LIGHTS];
+    d3d_draw_resources_t draw_resources;
+    int has_splat;
+    HRESULT hr;
+    UINT stride = sizeof(vgfx3d_vertex_t);
+    UINT offset = 0;
+    ID3D11Buffer *mesh_vb = NULL;
+    ID3D11Buffer *mesh_ib = NULL;
+    uint32_t index_count;
+
+    (void)win;
+    if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
+        cmd->index_count == 0)
+        return;
+    index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
+    if (index_count == 0)
+        return;
+
+    d3d11_prepare_object_data(cmd, &object_data);
+    d3d11_prepare_scene_data(ctx, lights, light_count, ambient, &scene_data);
+    d3d11_prepare_light_data(lights, scene_data.light_count, scene_data.shadow_count, light_data);
+    d3d11_prepare_anim_resources(ctx, cmd, &object_data);
+
+    hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_object, &object_data, sizeof(object_data));
+    if (FAILED(hr)) {
+        d3d11_log_hresult("Map(cbPerObject)", hr);
+        return;
+    }
+    hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_scene, &scene_data, sizeof(scene_data));
+    if (FAILED(hr)) {
+        d3d11_log_hresult("Map(cbPerScene)", hr);
+        return;
+    }
+    hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_lights, light_data, sizeof(light_data));
+    if (FAILED(hr)) {
+        d3d11_log_hresult("Map(cbPerLights)", hr);
+        return;
+    }
+
+    has_splat = d3d11_bind_draw_resources(ctx, cmd, &draw_resources);
+    d3d11_prepare_material_data(cmd,
+                                draw_resources.has_texture,
+                                draw_resources.has_normal_map,
+                                draw_resources.has_specular_map,
+                                draw_resources.has_emissive_map,
+                                draw_resources.has_env_map,
+                                has_splat,
+                                draw_resources.has_metallic_roughness_map,
+                                draw_resources.has_ao_map,
+                                &material_data);
+    hr = d3d11_update_constant_buffer(
+        ctx, ctx->cb_per_material, &material_data, sizeof(material_data));
+    if (FAILED(hr)) {
+        d3d11_log_hresult("Map(cbPerMaterial)", hr);
+        d3d11_unbind_draw_resources(ctx);
+        d3d11_release_temporary_resources(&draw_resources);
+        return;
+    }
+
+    if (!d3d11_acquire_mesh_buffers(ctx, cmd, &mesh_vb, &mesh_ib)) {
+        d3d11_unbind_draw_resources(ctx);
+        d3d11_release_temporary_resources(&draw_resources);
+        return;
+    }
+
+    ID3D11DeviceContext_IASetVertexBuffers(ctx->ctx, 0, 1, &mesh_vb, &stride, &offset);
+    ID3D11DeviceContext_IASetIndexBuffer(ctx->ctx, mesh_ib, DXGI_FORMAT_R32_UINT, 0);
+    d3d11_bind_main_pipeline(ctx, cmd, wireframe, backface_cull, 0);
+    ID3D11DeviceContext_DrawIndexed(ctx->ctx, index_count, 0, 0);
+
+    d3d11_unbind_draw_resources(ctx);
+    d3d11_release_temporary_resources(&draw_resources);
+}
+
+/// @brief Instanced version of `d3d11_submit_draw` (one DrawIndexedInstanced).
+///
+/// Same flow as the non-instanced path plus: pack per-instance matrix
+/// data into a CPU scratch buffer, upload to the dynamic instance
+/// vertex buffer, and bind that buffer to slot 1 alongside the mesh
+/// VB at slot 0. The instanced input layout reads instance attributes
+/// from slot 1 with `D3D11_INPUT_PER_INSTANCE_DATA`.
+static void d3d11_submit_draw_instanced(void *ctx_ptr,
+                                        vgfx_window_t win,
+                                        const vgfx3d_draw_cmd_t *cmd,
+                                        const float *instance_matrices,
+                                        int32_t instance_count,
+                                        const vgfx3d_light_params_t *lights,
+                                        int32_t light_count,
+                                        const float *ambient,
+                                        int8_t wireframe,
+                                        int8_t backface_cull) {
+    d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
+    d3d_per_object_t object_data;
+    d3d_per_scene_t scene_data;
+    d3d_per_material_t material_data;
+    d3d_light_t light_data[VGFX3D_MAX_LIGHTS];
+    d3d_draw_resources_t draw_resources;
+    int has_splat;
+    HRESULT hr;
+    size_t instance_upload_bytes;
+    UINT strides[2];
+    UINT offsets[2] = {0, 0};
+    ID3D11Buffer *vertex_buffers[2];
+    ID3D11Buffer *mesh_vb = NULL;
+    ID3D11Buffer *mesh_ib = NULL;
+    uint32_t index_count;
+
+    (void)win;
+    if (!ctx || !cmd || !instance_matrices || instance_count <= 0 || !cmd->vertices ||
+        !cmd->indices)
+        return;
+    index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
+    if (index_count == 0)
+        return;
+
+    if (!d3d11_ensure_instance_upload_capacity(ctx, instance_count))
+        return;
+    vgfx3d_d3d11_fill_instance_data(ctx->instance_upload_data,
+                                    instance_count,
+                                    instance_matrices,
+                                    cmd->prev_instance_matrices,
+                                    cmd->has_prev_instance_matrices);
+
+    d3d11_prepare_object_data(cmd, &object_data);
+    object_data.has_prev_model_matrix = 0;
+    object_data.has_prev_instance_matrices = cmd->has_prev_instance_matrices ? 1 : 0;
+    d3d11_prepare_scene_data(ctx, lights, light_count, ambient, &scene_data);
+    d3d11_prepare_light_data(lights, scene_data.light_count, scene_data.shadow_count, light_data);
+    d3d11_prepare_anim_resources(ctx, cmd, &object_data);
+
+    hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_object, &object_data, sizeof(object_data));
+    if (FAILED(hr)) {
+        d3d11_log_hresult("Map(cbPerObject)", hr);
+        return;
+    }
+    hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_scene, &scene_data, sizeof(scene_data));
+    if (FAILED(hr)) {
+        d3d11_log_hresult("Map(cbPerScene)", hr);
+        return;
+    }
+    hr = d3d11_update_constant_buffer(ctx, ctx->cb_per_lights, light_data, sizeof(light_data));
+    if (FAILED(hr)) {
+        d3d11_log_hresult("Map(cbPerLights)", hr);
+        return;
+    }
+
+    has_splat = d3d11_bind_draw_resources(ctx, cmd, &draw_resources);
+    d3d11_prepare_material_data(cmd,
+                                draw_resources.has_texture,
+                                draw_resources.has_normal_map,
+                                draw_resources.has_specular_map,
+                                draw_resources.has_emissive_map,
+                                draw_resources.has_env_map,
+                                has_splat,
+                                draw_resources.has_metallic_roughness_map,
+                                draw_resources.has_ao_map,
+                                &material_data);
+    hr = d3d11_update_constant_buffer(
+        ctx, ctx->cb_per_material, &material_data, sizeof(material_data));
+    if (FAILED(hr)) {
+        d3d11_log_hresult("Map(cbPerMaterial)", hr);
+        d3d11_unbind_draw_resources(ctx);
+        d3d11_release_temporary_resources(&draw_resources);
+        return;
+    }
+
+    if (!vgfx3d_d3d11_compute_instance_upload_bytes(
+            instance_count, sizeof(d3d_instance_data_t), &instance_upload_bytes) ||
+        !d3d11_acquire_mesh_buffers(ctx, cmd, &mesh_vb, &mesh_ib) ||
+        !d3d11_upload_dynamic_buffer(ctx,
+                                     &ctx->instance_buffer,
+                                     &ctx->instance_buffer_size,
+                                     D3D11_BIND_VERTEX_BUFFER,
+                                     ctx->instance_upload_data,
+                                     instance_upload_bytes,
+                                     D3D11_INITIAL_INSTANCE_BUFFER_SIZE)) {
+        d3d11_unbind_draw_resources(ctx);
+        d3d11_release_temporary_resources(&draw_resources);
+        return;
+    }
+
+    strides[0] = sizeof(vgfx3d_vertex_t);
+    strides[1] = sizeof(d3d_instance_data_t);
+    vertex_buffers[0] = mesh_vb;
+    vertex_buffers[1] = ctx->instance_buffer;
+    ID3D11DeviceContext_IASetVertexBuffers(ctx->ctx, 0, 2, vertex_buffers, strides, offsets);
+    ID3D11DeviceContext_IASetIndexBuffer(ctx->ctx, mesh_ib, DXGI_FORMAT_R32_UINT, 0);
+    d3d11_bind_main_pipeline(ctx, cmd, wireframe, backface_cull, 1);
+    ID3D11DeviceContext_DrawIndexedInstanced(ctx->ctx, index_count, instance_count, 0, 0, 0);
+
+    d3d11_unbind_draw_resources(ctx);
+    d3d11_release_temporary_resources(&draw_resources);
+}

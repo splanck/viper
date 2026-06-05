@@ -1,0 +1,1876 @@
+//===----------------------------------------------------------------------===//
+// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// File: src/runtime/graphics/3d/scene/rt_scene3d_helpers.inc  (#included from rt_scene3d.c; not a standalone translation unit)
+// Purpose: Scene3D transform/world-matrix, node lifecycle, light, and bounds helpers
+//===----------------------------------------------------------------------===//
+/*==========================================================================
+ * Helpers
+ *=========================================================================*/
+
+/// @brief Build a TRS matrix: Translate * Rotate * Scale (row-major).
+/// Quaternion (x,y,z,w) is expanded inline to avoid allocating a Mat4.
+static void build_trs_matrix(const double *pos,
+                             const double *quat,
+                             const double *scl,
+                             double *out) {
+    double p[3] = {pos ? pos[0] : 0.0, pos ? pos[1] : 0.0, pos ? pos[2] : 0.0};
+    double q[4] = {
+        quat ? quat[0] : 0.0, quat ? quat[1] : 0.0, quat ? quat[2] : 0.0, quat ? quat[3] : 1.0};
+    double s[3] = {scl ? scl[0] : 1.0, scl ? scl[1] : 1.0, scl ? scl[2] : 1.0};
+    scene3d_sanitize_vec3d(p, 0.0);
+    scene3d_sanitize_scale3(s);
+    scene3d_quat_normalize_local(q);
+    double x = q[0], y = q[1], z = q[2], w = q[3];
+    double x2 = x + x, y2 = y + y, z2 = z + z;
+    double xx = x * x2, xy = x * y2, xz = x * z2;
+    double yy = y * y2, yz = y * z2, zz = z * z2;
+    double wx = w * x2, wy = w * y2, wz = w * z2;
+
+    double sx = s[0], sy = s[1], sz = s[2];
+
+    /* R * S (rotation columns scaled) */
+    out[0] = (1.0 - (yy + zz)) * sx;
+    out[1] = (xy - wz) * sy;
+    out[2] = (xz + wy) * sz;
+    out[3] = p[0];
+
+    out[4] = (xy + wz) * sx;
+    out[5] = (1.0 - (xx + zz)) * sy;
+    out[6] = (yz - wx) * sz;
+    out[7] = p[1];
+
+    out[8] = (xz - wy) * sx;
+    out[9] = (yz + wx) * sy;
+    out[10] = (1.0 - (xx + yy)) * sz;
+    out[11] = p[2];
+
+    out[12] = 0.0;
+    out[13] = 0.0;
+    out[14] = 0.0;
+    out[15] = 1.0;
+}
+
+/// @brief Multiply two 4x4 row-major matrices: out = a * b.
+static void mat4d_mul(const double *a, const double *b, double *out) {
+    double tmp[16];
+    if (!out)
+        return;
+    if (!scene3d_matrix_is_finite(a) || !scene3d_matrix_is_finite(b)) {
+        mat4d_identity(out);
+        return;
+    }
+    for (int r = 0; r < 4; r++) {
+        for (int c = 0; c < 4; c++) {
+            double v = a[r * 4 + 0] * b[0 * 4 + c] + a[r * 4 + 1] * b[1 * 4 + c] +
+                       a[r * 4 + 2] * b[2 * 4 + c] + a[r * 4 + 3] * b[3 * 4 + c];
+            tmp[r * 4 + c] = scene3d_clamp_abs_or(v, r == c ? 1.0 : 0.0);
+        }
+    }
+    memcpy(out, tmp, sizeof(tmp));
+}
+
+/// @brief Write an identity 4x4 row-major matrix into @p out.
+void mat4d_identity(double *out) {
+    if (!out)
+        return;
+    memset(out, 0, sizeof(double) * 16);
+    out[0] = 1.0;
+    out[5] = 1.0;
+    out[10] = 1.0;
+    out[15] = 1.0;
+}
+
+/// @brief Invert a row-major 4x4 matrix using the cofactor expansion.
+///
+/// Returns 0 on success and writes the inverse into `out`. Returns -1
+/// if the matrix is singular (`|det| < 1e-12`); `out` is then untouched.
+/// Used to derive parent-from-world transforms and bind-pose inverses.
+static int mat4d_invert(const double *m, double *out) {
+    double inv[16];
+    double det;
+    double inv_det;
+    if (!out || !scene3d_matrix_is_finite(m))
+        return -1;
+    inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] +
+             m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
+    inv[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] -
+             m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
+    inv[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] +
+             m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
+    inv[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] -
+              m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
+    inv[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15] -
+             m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
+    inv[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15] +
+             m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
+    inv[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15] -
+             m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
+    inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] +
+              m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
+    inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] + m[5] * m[3] * m[14] +
+             m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
+    inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] -
+             m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
+    inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] +
+              m[4] * m[3] * m[13] + m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
+    inv[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] + m[4] * m[1] * m[14] -
+              m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
+    inv[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11] -
+             m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
+    inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] + m[4] * m[3] * m[10] +
+             m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
+    inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] - m[4] * m[3] * m[9] -
+              m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
+    inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] + m[4] * m[2] * m[9] +
+              m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
+
+    for (int i = 0; i < 16; i++) {
+        if (!isfinite(inv[i]))
+            return -1;
+    }
+    det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
+    if (!isfinite(det) || fabs(det) < 1e-12)
+        return -1;
+
+    inv_det = 1.0 / det;
+    for (int i = 0; i < 16; i++) {
+        out[i] = inv[i] * inv_det;
+        if (!isfinite(out[i]))
+            return -1;
+    }
+    return 0;
+}
+
+/// @brief Set `out` to the identity quaternion `(0, 0, 0, 1)` — no rotation.
+static void quat_identity(double *out) {
+    if (!out)
+        return;
+    out[0] = 0.0;
+    out[1] = 0.0;
+    out[2] = 0.0;
+    out[3] = 1.0;
+}
+
+/// @brief Renormalise `q` so |q|=1; defaults to identity if it's degenerate.
+void scene3d_quat_normalize_local(double *q) {
+    double max_abs;
+    double x;
+    double y;
+    double z;
+    double w;
+    double len_sq;
+    double inv_len;
+    if (!q)
+        return;
+    if (!isfinite(q[0]) || !isfinite(q[1]) || !isfinite(q[2]) || !isfinite(q[3])) {
+        quat_identity(q);
+        return;
+    }
+    max_abs = fmax(fmax(fabs(q[0]), fabs(q[1])), fmax(fabs(q[2]), fabs(q[3])));
+    if (!isfinite(max_abs) || max_abs < 1e-24) {
+        quat_identity(q);
+        return;
+    }
+    x = q[0] / max_abs;
+    y = q[1] / max_abs;
+    z = q[2] / max_abs;
+    w = q[3] / max_abs;
+    len_sq = x * x + y * y + z * z + w * w;
+    if (!isfinite(len_sq) || len_sq < 1e-20) {
+        quat_identity(q);
+        return;
+    }
+    inv_len = 1.0 / sqrt(len_sq);
+    q[0] = x * inv_len;
+    q[1] = y * inv_len;
+    q[2] = z * inv_len;
+    q[3] = w * inv_len;
+}
+
+/// @brief Square root helper for quaternion extraction, treating invalid terms as zero.
+static double scene3d_sqrt_nonnegative(double value) {
+    if (!isfinite(value) || value <= 0.0)
+        return 0.0;
+    return sqrt(value);
+}
+
+/// @brief Quaternion conjugate for unit-rotation inverse.
+static void quat_conjugate_local(const double *q, double *out) {
+    if (!out)
+        return;
+    if (!q) {
+        quat_identity(out);
+        return;
+    }
+    out[0] = -q[0];
+    out[1] = -q[1];
+    out[2] = -q[2];
+    out[3] = q[3];
+}
+
+/// @brief Quaternion product `out = a * b`.
+static void quat_mul_local(const double *a, const double *b, double *out) {
+    double ax;
+    double ay;
+    double az;
+    double aw;
+    double bx;
+    double by;
+    double bz;
+    double bw;
+    if (!out)
+        return;
+    if (!a || !b) {
+        quat_identity(out);
+        return;
+    }
+    ax = a[0];
+    ay = a[1];
+    az = a[2];
+    aw = a[3];
+    bx = b[0];
+    by = b[1];
+    bz = b[2];
+    bw = b[3];
+    out[0] = aw * bx + ax * bw + ay * bz - az * by;
+    out[1] = aw * by - ax * bz + ay * bw + az * bx;
+    out[2] = aw * bz + ax * by - ay * bx + az * bw;
+    out[3] = aw * bw - ax * bx - ay * by - az * bz;
+    scene3d_quat_normalize_local(out);
+}
+
+/// @brief Transform a point by a row-major 4x4 matrix with translation in column 3.
+static void mat4d_transform_point(const double *m, const double *point, double *out) {
+    double p[3] = {point ? point[0] : 0.0, point ? point[1] : 0.0, point ? point[2] : 0.0};
+    double x;
+    double y;
+    double z;
+    if (!out)
+        return;
+    scene3d_sanitize_vec3d(p, 0.0);
+    if (!scene3d_matrix_is_finite(m)) {
+        out[0] = p[0];
+        out[1] = p[1];
+        out[2] = p[2];
+        return;
+    }
+    x = m[0] * p[0] + m[1] * p[1] + m[2] * p[2] + m[3];
+    y = m[4] * p[0] + m[5] * p[1] + m[6] * p[2] + m[7];
+    z = m[8] * p[0] + m[9] * p[1] + m[10] * p[2] + m[11];
+    out[0] = scene3d_clamp_abs_or(x, 0.0);
+    out[1] = scene3d_clamp_abs_or(y, 0.0);
+    out[2] = scene3d_clamp_abs_or(z, 0.0);
+}
+
+/// @brief Extract a unit quaternion from the rotation part of a row-major matrix.
+///
+/// Picks the largest of four possible diagonal terms and uses
+/// the corresponding extraction formula — Shepperd's method —
+/// for numerical stability across the full sphere of orientations.
+static void quat_from_matrix_rows(double m00,
+                                  double m01,
+                                  double m02,
+                                  double m10,
+                                  double m11,
+                                  double m12,
+                                  double m20,
+                                  double m21,
+                                  double m22,
+                                  double *out) {
+    double trace;
+    if (!out)
+        return;
+    trace = m00 + m11 + m22;
+    if (trace > 0.0) {
+        double s = scene3d_sqrt_nonnegative(trace + 1.0) * 2.0;
+        if (s <= 1e-12) {
+            quat_identity(out);
+            return;
+        }
+        out[3] = 0.25 * s;
+        out[0] = (m21 - m12) / s;
+        out[1] = (m02 - m20) / s;
+        out[2] = (m10 - m01) / s;
+    } else if (m00 > m11 && m00 > m22) {
+        double s = scene3d_sqrt_nonnegative(1.0 + m00 - m11 - m22) * 2.0;
+        if (s <= 1e-12) {
+            quat_identity(out);
+            return;
+        }
+        out[3] = (m21 - m12) / s;
+        out[0] = 0.25 * s;
+        out[1] = (m01 + m10) / s;
+        out[2] = (m02 + m20) / s;
+    } else if (m11 > m22) {
+        double s = scene3d_sqrt_nonnegative(1.0 + m11 - m00 - m22) * 2.0;
+        if (s <= 1e-12) {
+            quat_identity(out);
+            return;
+        }
+        out[3] = (m02 - m20) / s;
+        out[0] = (m01 + m10) / s;
+        out[1] = 0.25 * s;
+        out[2] = (m12 + m21) / s;
+    } else {
+        double s = scene3d_sqrt_nonnegative(1.0 + m22 - m00 - m11) * 2.0;
+        if (s <= 1e-12) {
+            quat_identity(out);
+            return;
+        }
+        out[3] = (m10 - m01) / s;
+        out[0] = (m02 + m20) / s;
+        out[1] = (m12 + m21) / s;
+        out[2] = 0.25 * s;
+    }
+    scene3d_quat_normalize_local(out);
+}
+
+/// @brief Strip translation/scale and call `quat_from_matrix_rows` to recover the rotation
+/// quaternion.
+///
+/// Used when reading back world-space orientation after a node's
+/// world matrix has been composed from parent transforms — we need
+/// the rotation back as a quaternion for further composition.
+static int scene_extract_rotation_basis(const double *m, double basis[9]) {
+    double rx;
+    double ry;
+    double rz;
+    double ux;
+    double uy;
+    double uz;
+    double fx;
+    double fy;
+    double fz;
+    double rlen;
+    double ulen;
+    double flen;
+    double det;
+    if (!m || !basis)
+        return 0;
+    rx = m[0];
+    ry = m[4];
+    rz = m[8];
+    ux = m[1];
+    uy = m[5];
+    uz = m[9];
+    fx = m[2];
+    fy = m[6];
+    fz = m[10];
+    rlen = sqrt(rx * rx + ry * ry + rz * rz);
+    ulen = sqrt(ux * ux + uy * uy + uz * uz);
+    flen = sqrt(fx * fx + fy * fy + fz * fz);
+    if (!isfinite(rlen) || !isfinite(ulen) || !isfinite(flen) || rlen < 1e-12 || ulen < 1e-12 ||
+        flen < 1e-12)
+        return 0;
+    rx /= rlen;
+    ry /= rlen;
+    rz /= rlen;
+    ux /= ulen;
+    uy /= ulen;
+    uz /= ulen;
+    fx /= flen;
+    fy /= flen;
+    fz /= flen;
+    det = rx * (uy * fz - uz * fy) - ux * (ry * fz - rz * fy) + fx * (ry * uz - rz * uy);
+    if (!isfinite(det))
+        return 0;
+    if (det < 0.0) {
+        if (rlen >= ulen && rlen >= flen) {
+            rx = -rx;
+            ry = -ry;
+            rz = -rz;
+        } else if (ulen >= flen) {
+            ux = -ux;
+            uy = -uy;
+            uz = -uz;
+        } else {
+            fx = -fx;
+            fy = -fy;
+            fz = -fz;
+        }
+    }
+    basis[0] = rx;
+    basis[1] = ux;
+    basis[2] = fx;
+    basis[3] = ry;
+    basis[4] = uy;
+    basis[5] = fy;
+    basis[6] = rz;
+    basis[7] = uz;
+    basis[8] = fz;
+    return 1;
+}
+
+/// @brief Extract a unit quaternion from a world matrix's rotation, normalizing the basis
+///   first; falls back to identity when the matrix has no recoverable rotation.
+static void quat_from_world_matrix(const double *m, double *out) {
+    double basis[9];
+    if (!out)
+        return;
+    if (!scene_extract_rotation_basis(m, basis)) {
+        quat_identity(out);
+        return;
+    }
+    quat_from_matrix_rows(basis[0],
+                          basis[1],
+                          basis[2],
+                          basis[3],
+                          basis[4],
+                          basis[5],
+                          basis[6],
+                          basis[7],
+                          basis[8],
+                          out);
+}
+
+/// @brief Push @p node onto an iterative-traversal node stack, growing it geometrically.
+/// @details Used by walk functions that prefer iterative traversal over recursion
+///   (avoids stack overflow on deep scene graphs).
+///   Returns 1 on success or no-op (NULL node), 0 on overflow / OOM.
+int scene_node_stack_push(rt_scene_node3d ***stack,
+                          size_t *count,
+                          size_t *capacity,
+                          rt_scene_node3d *node) {
+    rt_scene_node3d *checked;
+    if (!stack || !count || !capacity || !node)
+        return 1;
+    checked = scene_node3d_checked(node);
+    if (!checked)
+        return 1;
+    if (*count >= *capacity) {
+        if (!scene3d_grow_stack_storage((void **)stack, capacity, sizeof(**stack)))
+            return 0;
+    }
+    (*stack)[(*count)++] = checked;
+    return 1;
+}
+
+/// @brief `scene_node_stack_push` for read-only `const` traversals.
+/// @details Same growth contract; the const variant is needed because the C type
+///   system disallows aliasing a `const T**` as a `T**` even when only reads happen.
+static int scene_node_const_stack_push(const rt_scene_node3d ***stack,
+                                       size_t *count,
+                                       size_t *capacity,
+                                       const rt_scene_node3d *node) {
+    if (!stack || !count || !capacity || !node)
+        return 1;
+    if (*count >= *capacity) {
+        if (!scene3d_grow_stack_storage((void **)stack, capacity, sizeof(**stack)))
+            return 0;
+    }
+    (*stack)[(*count)++] = node;
+    return 1;
+}
+
+/// @brief Set @p owner as the owning scene on @p node and every descendant (iterative DFS).
+void scene_node_assign_owner_recursive(rt_scene_node3d *node, rt_scene3d *owner) {
+    rt_scene_node3d **stack = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    if (!node)
+        return;
+    if (!scene_node_stack_push(&stack, &count, &capacity, node)) {
+        rt_trap("Scene3D: owner traversal stack allocation failed");
+        return;
+    }
+    while (count > 0) {
+        rt_scene_node3d *current = stack[--count];
+        int32_t child_count;
+        current->owner_scene = owner;
+        child_count = scene3d_node_child_count(current);
+        current->child_count = child_count;
+        for (int32_t i = child_count - 1; i >= 0; --i) {
+            rt_scene_node3d *child = scene_node3d_checked(current->children[i]);
+            if (!child)
+                continue;
+            if (!scene_node_stack_push(&stack, &count, &capacity, child)) {
+                rt_trap("Scene3D: owner traversal stack allocation failed");
+                free(stack);
+                return;
+            }
+        }
+    }
+    free(stack);
+}
+
+/// @brief Clear @p owner from @p node and every descendant that still references it (iterative
+/// DFS).
+void scene_node_clear_owner_recursive(rt_scene_node3d *node, rt_scene3d *owner) {
+    rt_scene_node3d **stack = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    if (!node || !owner)
+        return;
+    if (!scene_node_stack_push(&stack, &count, &capacity, node)) {
+        rt_trap("Scene3D: owner traversal stack allocation failed");
+        return;
+    }
+    while (count > 0) {
+        rt_scene_node3d *current = stack[--count];
+        int32_t child_count;
+        if (current->owner_scene == owner)
+            current->owner_scene = NULL;
+        child_count = scene3d_node_child_count(current);
+        current->child_count = child_count;
+        for (int32_t i = child_count - 1; i >= 0; --i) {
+            rt_scene_node3d *child = scene_node3d_checked(current->children[i]);
+            if (!child)
+                continue;
+            if (!scene_node_stack_push(&stack, &count, &capacity, child)) {
+                rt_trap("Scene3D: owner traversal stack allocation failed");
+                free(stack);
+                return;
+            }
+        }
+    }
+    free(stack);
+}
+
+/// @brief Mark a node's local world transform dirty.
+///
+/// Descendants do not need eager dirty propagation. Each node tracks the parent
+/// world-matrix revision it last consumed, so a child lazily notices parent
+/// changes during `recompute_world_matrix` without allocating a traversal stack.
+void mark_dirty(rt_scene_node3d *node) {
+    if (!node)
+        return;
+    node->world_dirty = 1;
+    scene3d_mark_spatial_refit_dirty(node->owner_scene);
+}
+
+/// @brief Recompute a single node's world matrix after its parent has already been refreshed.
+/// @details This is the non-recursive body used by `recompute_world_matrix`. It keeps
+///          the existing parent-revision dirty check, but assumes parent matrices are
+///          current so deep scene graphs do not consume the C call stack.
+static void recompute_world_matrix_single(rt_scene_node3d *node) {
+    double local[16];
+    uint32_t parent_revision = 0;
+    if (!node)
+        return;
+    scene3d_repair_node_transform(node);
+
+    if (node->parent) {
+        parent_revision = node->parent->world_revision;
+        if (node->parent_world_revision_seen != parent_revision)
+            node->world_dirty = 1;
+    }
+
+    if (!node->world_dirty && scene3d_matrix_is_finite(node->world_matrix))
+        return;
+
+    build_trs_matrix(node->position, node->rotation, node->scale_xyz, local);
+    if (node->parent)
+        mat4d_mul(node->parent->world_matrix, local, node->world_matrix);
+    else
+        memcpy(node->world_matrix, local, sizeof(double) * 16);
+    if (!scene3d_matrix_is_finite(node->world_matrix))
+        mat4d_identity(node->world_matrix);
+    node->parent_world_revision_seen = parent_revision;
+    node->world_dirty = 0;
+    node->world_revision = node->world_revision == UINT32_MAX ? 1u : node->world_revision + 1u;
+}
+
+/// @brief Recompute the world matrix if local or parent state changed.
+/// @details Walks the parent chain into a temporary stack, then refreshes from the
+///          highest ancestor down to @p node. This preserves lazy parent revision
+///          tracking while avoiding recursive calls on deep hierarchies.
+void recompute_world_matrix(rt_scene_node3d *node) {
+    rt_scene_node3d **stack = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    rt_scene_node3d *current = scene_node3d_checked(node);
+    while (current) {
+        rt_scene_node3d *parent;
+        if (!scene_node_stack_push(&stack, &count, &capacity, current)) {
+            rt_trap("Scene3D: world-matrix traversal stack allocation failed");
+            free(stack);
+            return;
+        }
+        parent = scene_node3d_checked(current->parent);
+        if (!parent)
+            break;
+        current = parent;
+    }
+    while (count > 0)
+        recompute_world_matrix_single(stack[--count]);
+    free(stack);
+}
+
+/// @brief Count nodes in a subtree (including the root).
+static int32_t count_subtree(const rt_scene_node3d *node) {
+    const rt_scene_node3d **stack = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    int32_t total = 0;
+    const rt_scene_node3d *root = scene_node3d_checked_const(node);
+    if (!root)
+        return 0;
+    if (!scene_node_const_stack_push(&stack, &count, &capacity, root))
+        return INT32_MAX;
+    while (count > 0) {
+        const rt_scene_node3d *current = stack[--count];
+        if (total == INT32_MAX) {
+            free(stack);
+            return INT32_MAX;
+        }
+        total++;
+        for (int32_t i = 0, child_count = scene3d_node_child_count(current); i < child_count; i++) {
+            const rt_scene_node3d *child = scene_node3d_checked(current->children[i]);
+            if (!scene_node_const_stack_push(&stack, &count, &capacity, child)) {
+                free(stack);
+                return INT32_MAX;
+            }
+        }
+    }
+    free(stack);
+    return total;
+}
+
+/// @brief Compose `node->world_matrix` from its ancestors and read the translation column.
+void scene_node_get_world_position(rt_scene_node3d *node, double *x, double *y, double *z) {
+    if (!x || !y || !z) {
+        return;
+    }
+    *x = 0.0;
+    *y = 0.0;
+    *z = 0.0;
+    if (!node)
+        return;
+    recompute_world_matrix(node);
+    *x = scene3d_clamp_abs_or(node->world_matrix[3], 0.0);
+    *y = scene3d_clamp_abs_or(node->world_matrix[7], 0.0);
+    *z = scene3d_clamp_abs_or(node->world_matrix[11], 0.0);
+}
+
+/// @brief Read this node's world-space rotation as a quaternion (composing parent rotations).
+void scene_node_get_world_rotation(rt_scene_node3d *node, double *out_quat) {
+    if (!out_quat) {
+        return;
+    }
+    quat_identity(out_quat);
+    if (!node)
+        return;
+    recompute_world_matrix(node);
+    quat_from_world_matrix(node->world_matrix, out_quat);
+}
+
+/// @brief Set a node's world-space TRS, working backward through parents to update local TRS.
+///
+/// Inverts the parent chain's world matrix and applies it to the
+/// requested world transform so the resulting local transform
+/// produces the requested world pose. Used by physics → scene
+/// sync to apply rigid-body world poses to scene nodes.
+static void scene_node_set_world_transform(rt_scene_node3d *node,
+                                           const double *world_pos,
+                                           const double *world_quat) {
+    double world_rot[4];
+    double inv_parent[16];
+    if (!node || !world_pos || !world_quat)
+        return;
+    world_rot[0] = world_quat[0];
+    world_rot[1] = world_quat[1];
+    world_rot[2] = world_quat[2];
+    world_rot[3] = world_quat[3];
+    scene3d_quat_normalize_local(world_rot);
+
+    if (!node->parent) {
+        node->position[0] = scene3d_clamp_abs_or(world_pos[0], 0.0);
+        node->position[1] = scene3d_clamp_abs_or(world_pos[1], 0.0);
+        node->position[2] = scene3d_clamp_abs_or(world_pos[2], 0.0);
+        node->rotation[0] = world_rot[0];
+        node->rotation[1] = world_rot[1];
+        node->rotation[2] = world_rot[2];
+        node->rotation[3] = world_rot[3];
+        mark_dirty(node);
+        return;
+    }
+
+    recompute_world_matrix(node->parent);
+    {
+        double safe_world_pos[3] = {scene3d_clamp_abs_or(world_pos[0], 0.0),
+                                    scene3d_clamp_abs_or(world_pos[1], 0.0),
+                                    scene3d_clamp_abs_or(world_pos[2], 0.0)};
+        if (mat4d_invert(node->parent->world_matrix, inv_parent) == 0) {
+            mat4d_transform_point(inv_parent, safe_world_pos, node->position);
+        } else {
+            memcpy(node->position, safe_world_pos, sizeof(node->position));
+        }
+    }
+    {
+        double parent_world_rot[4];
+        double inv_parent_rot[4];
+        scene_node_get_world_rotation(node->parent, parent_world_rot);
+        quat_conjugate_local(parent_world_rot, inv_parent_rot);
+        quat_mul_local(inv_parent_rot, world_rot, node->rotation);
+    }
+    node->position[0] = scene3d_clamp_abs_or(node->position[0], 0.0);
+    node->position[1] = scene3d_clamp_abs_or(node->position[1], 0.0);
+    node->position[2] = scene3d_clamp_abs_or(node->position[2], 0.0);
+    node->scale_xyz[0] = scene3d_scale_or_unit(node->scale_xyz[0]);
+    node->scale_xyz[1] = scene3d_scale_or_unit(node->scale_xyz[1]);
+    node->scale_xyz[2] = scene3d_scale_or_unit(node->scale_xyz[2]);
+
+    mark_dirty(node);
+}
+
+/// @brief Shift an entire root-level subtree by subtracting a world-space delta.
+static void scene_node_rebase_root_child(rt_scene_node3d *node, const double delta[3]) {
+    double world_pos[3];
+    double world_rot[4];
+    if (!node || !delta)
+        return;
+    node = scene_node3d_checked(node);
+    if (!node)
+        return;
+    scene_node_get_world_position(node, &world_pos[0], &world_pos[1], &world_pos[2]);
+    scene_node_get_world_rotation(node, world_rot);
+    world_pos[0] = scene3d_clamp_abs_or(world_pos[0] - delta[0], 0.0);
+    world_pos[1] = scene3d_clamp_abs_or(world_pos[1] - delta[1], 0.0);
+    world_pos[2] = scene3d_clamp_abs_or(world_pos[2] - delta[2], 0.0);
+    scene_node_set_world_transform(node, world_pos, world_rot);
+}
+
+/// @brief Move the node by the per-frame "root motion" delta produced by the bound animator.
+///
+/// Animations whose root bone moves (walk cycles, jumps) report the
+/// per-frame translation/rotation as a delta; here we apply it to
+/// the node's local transform so the character actually traverses.
+static void scene_node_apply_root_motion(rt_scene_node3d *node) {
+    void *delta;
+    void *delta_rot;
+    void *node_rot;
+    void *combined_rot;
+    void *animator =
+        node ? rt_g3d_checked_or_null(node->bound_animator, RT_G3D_ANIMCONTROLLER3D_CLASS_ID)
+             : NULL;
+    if (!node || !animator)
+        return;
+    delta = rt_anim_controller3d_consume_root_motion(animator);
+    delta_rot = rt_anim_controller3d_consume_root_motion_rotation(animator);
+    if (!delta) {
+        scene3d_release_ref(&delta_rot);
+        return;
+    }
+    node->position[0] = scene3d_clamp_abs_or(scene3d_clamp_abs_or(node->position[0], 0.0) +
+                                                 scene3d_clamp_abs_or(rt_vec3_x(delta), 0.0),
+                                             0.0);
+    node->position[1] = scene3d_clamp_abs_or(scene3d_clamp_abs_or(node->position[1], 0.0) +
+                                                 scene3d_clamp_abs_or(rt_vec3_y(delta), 0.0),
+                                             0.0);
+    node->position[2] = scene3d_clamp_abs_or(scene3d_clamp_abs_or(node->position[2], 0.0) +
+                                                 scene3d_clamp_abs_or(rt_vec3_z(delta), 0.0),
+                                             0.0);
+    if (delta_rot) {
+        node_rot =
+            rt_quat_new(node->rotation[0], node->rotation[1], node->rotation[2], node->rotation[3]);
+        combined_rot = node_rot ? rt_quat_mul(node_rot, delta_rot) : NULL;
+        if (combined_rot) {
+            node->rotation[0] = rt_quat_x(combined_rot);
+            node->rotation[1] = rt_quat_y(combined_rot);
+            node->rotation[2] = rt_quat_z(combined_rot);
+            node->rotation[3] = rt_quat_w(combined_rot);
+            scene3d_quat_normalize_local(node->rotation);
+        }
+        scene3d_release_ref(&combined_rot);
+        scene3d_release_ref(&node_rot);
+        scene3d_release_ref(&delta_rot);
+    }
+    if (rt_obj_release_check0(delta))
+        rt_obj_free(delta);
+    mark_dirty(node);
+}
+
+/// @brief Walk the subtree synchronising node transforms with bound bodies / animators.
+///
+/// Per node, depending on `sync_mode`:
+///   - `BODY_TO_NODE`: copies the rigid body's world pose into the node.
+///   - `NODE_TO_BODY`: pushes the node's transform back into the body.
+///   - root motion: bumps the local TRS by the animator's per-frame delta.
+/// Then recurses into children.
+static void scene_node_sync_recursive(rt_scene_node3d *node, double dt) {
+    rt_scene_node3d **stack = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    if (!node)
+        return;
+    if (!scene_node_stack_push(&stack, &count, &capacity, node)) {
+        rt_trap("Scene3D.SyncBindings: traversal stack allocation failed");
+        return;
+    }
+    while (count > 0) {
+        rt_scene_node3d *current = stack[--count];
+        int64_t mode;
+        int pull_from_body;
+        int push_to_body;
+        int body_is_kinematic;
+        void *node_animator =
+            rt_g3d_checked_or_null(current->bound_node_animator, RT_G3D_NODEANIMATOR3D_CLASS_ID);
+        void *animator =
+            rt_g3d_checked_or_null(current->bound_animator, RT_G3D_ANIMCONTROLLER3D_CLASS_ID);
+
+        if (animator && current->bound_animator_scene_update)
+            rt_anim_controller3d_update(animator, dt);
+        if (node_animator)
+            node_animator_update((rt_node_animator3d *)node_animator, dt);
+
+        mode = current->sync_mode;
+        body_is_kinematic = current->bound_body ? rt_body3d_is_kinematic(current->bound_body) : 0;
+        pull_from_body = current->bound_body &&
+                         (mode == RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY ||
+                          (mode == RT_SCENE_NODE3D_SYNC_TWO_WAY_KINEMATIC && !body_is_kinematic));
+        push_to_body = current->bound_body &&
+                       (mode == RT_SCENE_NODE3D_SYNC_BODY_FROM_NODE ||
+                        (mode == RT_SCENE_NODE3D_SYNC_TWO_WAY_KINEMATIC && body_is_kinematic));
+
+        if (pull_from_body) {
+            double world_pos[3];
+            double world_quat[4];
+            rt_body3d_get_pose_raw(current->bound_body, world_pos, world_quat, NULL);
+            scene_node_set_world_transform(current, world_pos, world_quat);
+        } else if (animator &&
+                   (mode == RT_SCENE_NODE3D_SYNC_NODE_FROM_ANIMATOR_ROOT_MOTION || push_to_body)) {
+            scene_node_apply_root_motion(current);
+        }
+
+        if (push_to_body) {
+            double world_pos[3];
+            double world_quat[4];
+            scene_node_get_world_position(current, &world_pos[0], &world_pos[1], &world_pos[2]);
+            scene_node_get_world_rotation(current, world_quat);
+            rt_body3d_set_position(current->bound_body, world_pos[0], world_pos[1], world_pos[2]);
+            {
+                void *quat =
+                    rt_quat_new(world_quat[0], world_quat[1], world_quat[2], world_quat[3]);
+                rt_body3d_set_orientation(current->bound_body, quat);
+                scene3d_release_ref(&quat);
+            }
+        }
+
+        for (int32_t i = scene3d_node_child_count(current) - 1; i >= 0; i--) {
+            if (!scene_node_stack_push(&stack, &count, &capacity, current->children[i])) {
+                rt_trap("Scene3D.SyncBindings: traversal stack allocation failed");
+                free(stack);
+                return;
+            }
+        }
+    }
+    free(stack);
+}
+
+/// @brief True if `target` appears anywhere in the subtree rooted at `root`.
+/// Used to prevent cycles when reparenting (don't re-attach a node under one of its descendants).
+int node_contains(const rt_scene_node3d *root, const rt_scene_node3d *target) {
+    const rt_scene_node3d **stack = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    root = scene_node3d_checked_const(root);
+    target = scene_node3d_checked_const(target);
+    if (!root || !target)
+        return 0;
+    if (!scene_node_const_stack_push(&stack, &count, &capacity, root))
+        return root == target;
+    while (count > 0) {
+        const rt_scene_node3d *current = stack[--count];
+        if (current == target) {
+            free(stack);
+            return 1;
+        }
+        for (int32_t i = 0, child_count = scene3d_node_child_count(current); i < child_count; i++) {
+            const rt_scene_node3d *child = scene_node3d_checked(current->children[i]);
+            if (!scene_node_const_stack_push(&stack, &count, &capacity, child)) {
+                rt_trap("SceneNode3D: traversal stack allocation failed");
+                free(stack);
+                return 0;
+            }
+        }
+    }
+    free(stack);
+    return 0;
+}
+
+/// @brief Compute the local-space AABB of `mesh` by min/maxing every vertex position.
+/// Cached on the mesh so subsequent calls are O(1).
+void scene_mesh_bounds(rt_mesh3d *mesh, float out_min[3], float out_max[3], float *out_radius) {
+    if (!mesh) {
+        if (out_min)
+            out_min[0] = out_min[1] = out_min[2] = 0.0f;
+        if (out_max)
+            out_max[0] = out_max[1] = out_max[2] = 0.0f;
+        if (out_radius)
+            *out_radius = 0.0f;
+        return;
+    }
+    rt_mesh3d_refresh_bounds(mesh);
+    if (out_min) {
+        out_min[0] = mesh->aabb_min[0];
+        out_min[1] = mesh->aabb_min[1];
+        out_min[2] = mesh->aabb_min[2];
+    }
+    if (out_max) {
+        out_max[0] = mesh->aabb_max[0];
+        out_max[1] = mesh->aabb_max[1];
+        out_max[2] = mesh->aabb_max[2];
+    }
+    if (out_radius)
+        *out_radius = mesh->bsphere_radius;
+}
+
+/// @brief Mix an arbitrary 64-bit value into a non-zero node geometry signature.
+/// @details Spatial entries use this compact signature to notice mesh, LOD, and impostor metadata
+///   changes without retaining a larger snapshot. It is not cryptographic; it only needs to make
+///   ordinary scene-edit collisions unlikely enough for BVH refit invalidation.
+static uint32_t scene3d_mix_signature_u64(uint32_t signature, uint64_t value) {
+    uint32_t lo = (uint32_t)(value & 0xffffffffu);
+    uint32_t hi = (uint32_t)(value >> 32u);
+    signature ^= lo + 0x9e3779b9u + (signature << 6) + (signature >> 2);
+    signature ^= hi + 0x85ebca6bu + (signature << 6) + (signature >> 2);
+    return signature ? signature : 1u;
+}
+
+/// @brief Convert a double to bits for compact geometry-signature mixing.
+static uint64_t scene3d_double_bits_for_signature(double value) {
+    union {
+        double d;
+        uint64_t u;
+    } bits;
+
+    bits.d = isfinite(value) ? value : 0.0;
+    return bits.u;
+}
+
+/// @brief Mix one mesh identity and geometry revision into a non-zero node geometry signature.
+/// @details Spatial entries store a compact signature instead of retaining every mesh
+///          pointer snapshot. Including the pointer catches replacement by a different mesh whose
+///          geometry revision happens to match the prior one.
+static uint32_t scene3d_mix_mesh_revision(uint32_t signature, void *mesh_obj) {
+    rt_mesh3d *mesh =
+        rt_g3d_has_class(mesh_obj, RT_G3D_MESH3D_CLASS_ID) ? (rt_mesh3d *)mesh_obj : NULL;
+    uint32_t revision = mesh ? mesh->geometry_revision : 0u;
+    signature = scene3d_mix_signature_u64(signature, (uint64_t)(uintptr_t)mesh_obj);
+    signature = scene3d_mix_signature_u64(signature, (uint64_t)revision);
+    return signature;
+}
+
+/// @brief Combine the geometry revisions of all drawable meshes owned by @p node.
+/// @details Includes the primary mesh, every LOD mesh, and the generated impostor
+///          mesh. The result changes when any referenced mesh's CPU geometry changes,
+///          allowing the spatial index to refit stale bounds even if the node transform
+///          revision did not change.
+uint32_t scene_node_geometry_revision_signature(rt_scene_node3d *node) {
+    uint32_t signature = 2166136261u;
+    if (!node)
+        return 0;
+    signature = scene3d_mix_mesh_revision(signature, node->mesh);
+    signature = scene3d_mix_signature_u64(signature, (uint64_t)scene3d_node_lod_count(node));
+    signature = scene3d_mix_signature_u64(signature, (uint64_t)(uint8_t)node->auto_lod_enabled);
+    signature = scene3d_mix_signature_u64(
+        signature, scene3d_double_bits_for_signature(node->auto_lod_screen_error_px));
+    for (int32_t i = 0, lod_count = scene3d_node_lod_count(node); i < lod_count; i++) {
+        signature = scene3d_mix_mesh_revision(signature, node->lod_levels[i].mesh);
+        signature = scene3d_mix_signature_u64(
+            signature, scene3d_double_bits_for_signature(node->lod_levels[i].distance));
+    }
+    signature = scene3d_mix_signature_u64(signature, (uint64_t)(uint8_t)node->has_impostor);
+    signature = scene3d_mix_signature_u64(
+        signature, scene3d_double_bits_for_signature(node->impostor_distance));
+    if (node->has_impostor)
+        signature = scene3d_mix_mesh_revision(signature, node->impostor_mesh);
+    return signature ? signature : 1u;
+}
+
+/// @brief Refresh the node's cached primary-mesh local bounds after mesh geometry changes.
+/// @details SceneNode3D stores an AABB/radius for APIs and impostor sizing, but Mesh3D
+///          geometry can be mutated after assignment. This helper compares the mesh's
+///          geometry revision to the node's last cached revision and recomputes only
+///          when necessary. Non-mesh or missing meshes reset the cache to an empty AABB.
+void scene_node_refresh_mesh_bounds(rt_scene_node3d *node) {
+    rt_mesh3d *mesh;
+    if (!node)
+        return;
+    mesh = rt_g3d_has_class(node->mesh, RT_G3D_MESH3D_CLASS_ID) ? (rt_mesh3d *)node->mesh : NULL;
+    if (!mesh) {
+        node->aabb_min[0] = node->aabb_min[1] = node->aabb_min[2] = 0.0f;
+        node->aabb_max[0] = node->aabb_max[1] = node->aabb_max[2] = 0.0f;
+        node->bsphere_radius = 0.0f;
+        node->mesh_bounds_revision = 0;
+        return;
+    }
+    if (node->mesh_bounds_revision == mesh->geometry_revision && !mesh->bounds_dirty)
+        return;
+    scene_mesh_bounds(mesh, node->aabb_min, node->aabb_max, &node->bsphere_radius);
+    node->mesh_bounds_revision = mesh->geometry_revision ? mesh->geometry_revision : 1u;
+}
+
+/// @brief Multiply a local-space point by the node's world matrix; result lands in `out`.
+static void scene_world_point(const double *world_matrix, const float local[3], float out[3]) {
+    double p[3];
+    double x;
+    double y;
+    double z;
+    if (!world_matrix || !local || !out)
+        return;
+    if (!scene3d_matrix_is_finite(world_matrix)) {
+        out[0] = out[1] = out[2] = 0.0f;
+        return;
+    }
+    p[0] = scene3d_clamp_abs_or((double)local[0], 0.0);
+    p[1] = scene3d_clamp_abs_or((double)local[1], 0.0);
+    p[2] = scene3d_clamp_abs_or((double)local[2], 0.0);
+    x = world_matrix[0] * p[0] + world_matrix[1] * p[1] + world_matrix[2] * p[2] + world_matrix[3];
+    y = world_matrix[4] * p[0] + world_matrix[5] * p[1] + world_matrix[6] * p[2] + world_matrix[7];
+    z = world_matrix[8] * p[0] + world_matrix[9] * p[1] + world_matrix[10] * p[2] +
+        world_matrix[11];
+    out[0] = scene3d_float_or_zero(scene3d_clamp_abs_or(x, 0.0));
+    out[1] = scene3d_float_or_zero(scene3d_clamp_abs_or(y, 0.0));
+    out[2] = scene3d_float_or_zero(scene3d_clamp_abs_or(z, 0.0));
+}
+
+/// @brief Multiply a local-space point by the node's world matrix without narrowing to float.
+/// @details LOD and impostor selection can sit on tight distance thresholds. Keeping the world
+///          center and camera position in double precision avoids frame-to-frame selection jitter
+///          in large-world scenes where float truncation erases the low bits near the camera.
+static void scene_world_point_d(const double *world_matrix, const float local[3], double out[3]) {
+    double p[3];
+    double x;
+    double y;
+    double z;
+    if (!world_matrix || !local || !out)
+        return;
+    if (!scene3d_matrix_is_finite(world_matrix)) {
+        out[0] = out[1] = out[2] = 0.0;
+        return;
+    }
+    p[0] = scene3d_clamp_abs_or((double)local[0], 0.0);
+    p[1] = scene3d_clamp_abs_or((double)local[1], 0.0);
+    p[2] = scene3d_clamp_abs_or((double)local[2], 0.0);
+    x = world_matrix[0] * p[0] + world_matrix[1] * p[1] + world_matrix[2] * p[2] + world_matrix[3];
+    y = world_matrix[4] * p[0] + world_matrix[5] * p[1] + world_matrix[6] * p[2] + world_matrix[7];
+    z = world_matrix[8] * p[0] + world_matrix[9] * p[1] + world_matrix[10] * p[2] +
+        world_matrix[11];
+    out[0] = scene3d_clamp_abs_or(x, 0.0);
+    out[1] = scene3d_clamp_abs_or(y, 0.0);
+    out[2] = scene3d_clamp_abs_or(z, 0.0);
+}
+
+/// @brief Normalize a float[3] vector in-place, substituting a caller-supplied fallback
+///        direction when the vector is degenerate (zero-length or non-finite magnitude).
+/// @details Used to normalize light direction vectors that have been transformed into
+///   world space via the node's 3×3 rotation sub-matrix. A scale component in the
+///   matrix can inflate or shrink the transformed direction, so re-normalization is
+///   always required. The 1e-8 threshold guards against divide-by-near-zero; the
+///   (0, 0, -1) fallback used by the caller makes a degenerate light point forward
+///   rather than disappear.
+/// @param v          float[3] vector to normalize in-place; must not be NULL.
+/// @param fallback_x X component of the replacement direction on degenerate input.
+/// @param fallback_y Y component of the replacement direction on degenerate input.
+/// @param fallback_z Z component of the replacement direction on degenerate input.
+static void scene_normalize_f32_vec3(float v[3],
+                                     float fallback_x,
+                                     float fallback_y,
+                                     float fallback_z) {
+    float len;
+    if (!v)
+        return;
+    len = sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    if (!isfinite(len) || len <= 1e-8f) {
+        v[0] = fallback_x;
+        v[1] = fallback_y;
+        v[2] = fallback_z;
+        return;
+    }
+    v[0] /= len;
+    v[1] /= len;
+    v[2] /= len;
+}
+
+/// @brief Transform a node-attached light into world space for the current draw snapshot.
+static void scene_transform_node_light(rt_scene_node3d *node,
+                                       const rt_light3d *src,
+                                       rt_light3d *dst) {
+    float local_pos[3];
+    float world_pos[3];
+    float world_dir[3];
+    double basis[9];
+    double local_dir[3];
+    if (!node || !src || !dst)
+        return;
+    recompute_world_matrix(node);
+    memcpy(dst, src, sizeof(*dst));
+    local_pos[0] = (float)src->position[0];
+    local_pos[1] = (float)src->position[1];
+    local_pos[2] = (float)src->position[2];
+    scene_world_point(node->world_matrix, local_pos, world_pos);
+    dst->position[0] = world_pos[0];
+    dst->position[1] = world_pos[1];
+    dst->position[2] = world_pos[2];
+
+    local_dir[0] = scene3d_finite_or(src->direction[0], 0.0);
+    local_dir[1] = scene3d_finite_or(src->direction[1], 0.0);
+    local_dir[2] = scene3d_finite_or(src->direction[2], -1.0);
+    if (scene_extract_rotation_basis(node->world_matrix, basis)) {
+        world_dir[0] =
+            (float)(basis[0] * local_dir[0] + basis[1] * local_dir[1] + basis[2] * local_dir[2]);
+        world_dir[1] =
+            (float)(basis[3] * local_dir[0] + basis[4] * local_dir[1] + basis[5] * local_dir[2]);
+        world_dir[2] =
+            (float)(basis[6] * local_dir[0] + basis[7] * local_dir[1] + basis[8] * local_dir[2]);
+    } else {
+        world_dir[0] = (float)local_dir[0];
+        world_dir[1] = (float)local_dir[1];
+        world_dir[2] = (float)local_dir[2];
+    }
+    scene_normalize_f32_vec3(world_dir, 0.0f, 0.0f, -1.0f);
+    dst->direction[0] = world_dir[0];
+    dst->direction[1] = world_dir[1];
+    dst->direction[2] = world_dir[2];
+}
+
+/// @brief Recursively collect world-space lights from visible nodes into the draw snapshot.
+/// @details Traverses the subtree rooted at @p node, skipping invisible nodes entirely
+///   (their children are also skipped, consistent with visibility culling elsewhere).
+///   For each visible node that carries a light, `scene_transform_node_light` writes
+///   the world-space copy into @p storage[*io_count] and adds its address to
+///   @p out_lights[*io_count] before incrementing the counter. Collection stops when
+///   the hardware light limit `VGFX3D_MAX_LIGHTS` is reached; excess lights are silently
+///   dropped, which is the standard GPU behavior for too many dynamic lights.
+/// @param node       Root of the subtree to search.
+/// @param storage    Pre-allocated array of at least VGFX3D_MAX_LIGHTS rt_light3d structs
+///                   used as scratch space for world-space copies.
+/// @param out_lights Output pointer array; receives addresses into @p storage.
+/// @param io_count   In/out: current light count; incremented for each light found.
+static void scene_collect_node_lights(rt_scene_node3d *node,
+                                      rt_light3d *storage,
+                                      rt_light3d **out_lights,
+                                      int32_t *io_count) {
+    rt_scene_node3d **stack = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    if (!node || !storage || !out_lights || !io_count)
+        return;
+    if (!scene_node_stack_push(&stack, &count, &capacity, node)) {
+        rt_trap("Scene3D.Draw: light traversal stack allocation failed");
+        return;
+    }
+    while (count > 0 && *io_count < VGFX3D_MAX_LIGHTS) {
+        rt_scene_node3d *current = stack[--count];
+        if (!current->visible)
+            continue;
+        if (current->light) {
+            int32_t index = *io_count;
+            scene_transform_node_light(
+                current, (const rt_light3d *)current->light, &storage[index]);
+            out_lights[index] = &storage[index];
+            *io_count = index + 1;
+            if (*io_count >= VGFX3D_MAX_LIGHTS)
+                break;
+        }
+        for (int32_t i = scene3d_node_child_count(current) - 1; i >= 0; i--) {
+            if (!scene_node_stack_push(&stack, &count, &capacity, current->children[i])) {
+                rt_trap("Scene3D.Draw: light traversal stack allocation failed");
+                free(stack);
+                return;
+            }
+        }
+    }
+    free(stack);
+}
+
+/// @brief Initialise a min/max pair so subsequent point inserts grow a valid AABB.
+void scene_bounds_reset(float out_min[3], float out_max[3]) {
+    if (out_min) {
+        out_min[0] = FLT_MAX;
+        out_min[1] = FLT_MAX;
+        out_min[2] = FLT_MAX;
+    }
+    if (out_max) {
+        out_max[0] = -FLT_MAX;
+        out_max[1] = -FLT_MAX;
+        out_max[2] = -FLT_MAX;
+    }
+}
+
+/// @brief Reset an AABB to the empty state (min = +DBL_MAX, max = -DBL_MAX) ready for accumulation.
+void scene_bounds_reset_d(double out_min[3], double out_max[3]) {
+    if (out_min) {
+        out_min[0] = DBL_MAX;
+        out_min[1] = DBL_MAX;
+        out_min[2] = DBL_MAX;
+    }
+    if (out_max) {
+        out_max[0] = -DBL_MAX;
+        out_max[1] = -DBL_MAX;
+        out_max[2] = -DBL_MAX;
+    }
+}
+
+/// @brief Expand @p bounds_min/@p bounds_max to include @p point.
+static void scene_bounds_include_point(float bounds_min[3],
+                                       float bounds_max[3],
+                                       const float point[3]) {
+    if (!bounds_min || !bounds_max || !point)
+        return;
+    for (int i = 0; i < 3; i++) {
+        if (point[i] < bounds_min[i])
+            bounds_min[i] = point[i];
+        if (point[i] > bounds_max[i])
+            bounds_max[i] = point[i];
+    }
+}
+
+/// @brief Expand an AABB in place to contain a point.
+void scene_bounds_include_point_d(double bounds_min[3],
+                                  double bounds_max[3],
+                                  const double point[3]) {
+    double p[3];
+    if (!bounds_min || !bounds_max || !point)
+        return;
+    p[0] = scene3d_clamp_abs_or(point[0], 0.0);
+    p[1] = scene3d_clamp_abs_or(point[1], 0.0);
+    p[2] = scene3d_clamp_abs_or(point[2], 0.0);
+    for (int i = 0; i < 3; i++) {
+        if (p[i] < bounds_min[i])
+            bounds_min[i] = p[i];
+        if (p[i] > bounds_max[i])
+            bounds_max[i] = p[i];
+    }
+}
+
+/// @brief Transform a local AABB by a matrix into a world AABB by bounding its eight rotated
+/// corners.
+int scene3d_transform_aabb_d(const float obj_min[3],
+                             const float obj_max[3],
+                             const double world_matrix[16],
+                             double out_min[3],
+                             double out_max[3]) {
+    if (!out_min || !out_max)
+        return 0;
+    scene_bounds_reset_d(out_min, out_max);
+    if (!obj_min || !obj_max || !world_matrix) {
+        out_min[0] = out_min[1] = out_min[2] = 0.0;
+        out_max[0] = out_max[1] = out_max[2] = 0.0;
+        return 0;
+    }
+    for (int i = 0; i < 3; i++) {
+        if (!isfinite(obj_min[i]) || !isfinite(obj_max[i])) {
+            out_min[0] = out_min[1] = out_min[2] = 0.0;
+            out_max[0] = out_max[1] = out_max[2] = 0.0;
+            return 0;
+        }
+    }
+    if (!scene3d_matrix_is_finite(world_matrix)) {
+        out_min[0] = out_min[1] = out_min[2] = 0.0;
+        out_max[0] = out_max[1] = out_max[2] = 0.0;
+        return 0;
+    }
+    float safe_min[3];
+    float safe_max[3];
+    for (int axis = 0; axis < 3; axis++) {
+        if (obj_min[axis] <= obj_max[axis]) {
+            safe_min[axis] = obj_min[axis];
+            safe_max[axis] = obj_max[axis];
+        } else {
+            safe_min[axis] = obj_max[axis];
+            safe_max[axis] = obj_min[axis];
+        }
+    }
+    for (int corner = 0; corner < 8; corner++) {
+        double cx = (corner & 1) ? (double)safe_max[0] : (double)safe_min[0];
+        double cy = (corner & 2) ? (double)safe_max[1] : (double)safe_min[1];
+        double cz = (corner & 4) ? (double)safe_max[2] : (double)safe_min[2];
+        double p[3];
+        p[0] = scene3d_clamp_abs_or(world_matrix[0] * cx + world_matrix[1] * cy +
+                                        world_matrix[2] * cz + world_matrix[3],
+                                    0.0);
+        p[1] = scene3d_clamp_abs_or(world_matrix[4] * cx + world_matrix[5] * cy +
+                                        world_matrix[6] * cz + world_matrix[7],
+                                    0.0);
+        p[2] = scene3d_clamp_abs_or(world_matrix[8] * cx + world_matrix[9] * cy +
+                                        world_matrix[10] * cz + world_matrix[11],
+                                    0.0);
+        scene_bounds_include_point_d(out_min, out_max, p);
+    }
+    return 1;
+}
+
+/// @brief Transform the 8 corners of a local AABB and union them into @p bounds_min/max.
+static void scene_bounds_include_aabb(float bounds_min[3],
+                                      float bounds_max[3],
+                                      const float local_min[3],
+                                      const float local_max[3],
+                                      const double *local_to_root) {
+    float local_corner[3];
+    float root_corner[3];
+    if (!bounds_min || !bounds_max || !local_min || !local_max || !local_to_root)
+        return;
+    for (int xi = 0; xi < 2; xi++) {
+        for (int yi = 0; yi < 2; yi++) {
+            for (int zi = 0; zi < 2; zi++) {
+                local_corner[0] = xi ? local_max[0] : local_min[0];
+                local_corner[1] = yi ? local_max[1] : local_min[1];
+                local_corner[2] = zi ? local_max[2] : local_min[2];
+                scene_world_point(local_to_root, local_corner, root_corner);
+                scene_bounds_include_point(bounds_min, bounds_max, root_corner);
+            }
+        }
+    }
+}
+
+typedef struct {
+    rt_scene_node3d *node;
+    double node_to_root[16];
+} scene_bounds_stack_item_t;
+
+/// @brief Push (node, node→root matrix) onto a growable explicit traversal stack.
+/// @details Used instead of recursion so deep scene hierarchies cannot overflow
+///          the C stack. Capacity doubles on demand (seeded at 64) via an
+///          overflow-guarded realloc.
+/// @return 1 on success — and also on NULL/missing arguments, treated as a no-op;
+///         0 only when capacity growth overflows or realloc fails.
+static int scene_bounds_stack_push(scene_bounds_stack_item_t **stack,
+                                   size_t *count,
+                                   size_t *capacity,
+                                   rt_scene_node3d *node,
+                                   const double *node_to_root) {
+    rt_scene_node3d *checked;
+    if (!stack || !count || !capacity || !node || !node_to_root)
+        return 1;
+    checked = scene_node3d_checked(node);
+    if (!checked)
+        return 1;
+    if (*count >= *capacity) {
+        if (!scene3d_grow_stack_storage((void **)stack, capacity, sizeof(**stack)))
+            return 0;
+    }
+    (*stack)[*count].node = checked;
+    memcpy((*stack)[*count].node_to_root, node_to_root, sizeof(double) * 16);
+    (*count)++;
+    return 1;
+}
+
+/// @brief Compute a node subtree's local-space AABB relative to the queried root node.
+///
+/// @param node Current subtree node.
+/// @param node_to_root Row-major matrix mapping @p node local space into the queried root's local
+/// space.
+/// @param out_min Running subtree minimum.
+/// @param out_max Running subtree maximum.
+/// @return 1 if the subtree contributed any mesh bounds, otherwise 0.
+int scene_node_collect_subtree_bounds(rt_scene_node3d *node,
+                                      const double *node_to_root,
+                                      float out_min[3],
+                                      float out_max[3]) {
+    int has_bounds = 0;
+    scene_bounds_stack_item_t *stack = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    if (!node || !node_to_root || !out_min || !out_max)
+        return 0;
+
+    if (!scene_bounds_stack_push(&stack, &count, &capacity, node, node_to_root)) {
+        rt_trap("SceneNode3D.GetAabb: traversal stack allocation failed");
+        return 0;
+    }
+    while (count > 0) {
+        scene_bounds_stack_item_t item = stack[--count];
+        void *mesh = rt_g3d_checked_or_null(item.node->mesh, RT_G3D_MESH3D_CLASS_ID);
+        if (mesh) {
+            float mesh_min[3];
+            float mesh_max[3];
+            scene_mesh_bounds((rt_mesh3d *)mesh, mesh_min, mesh_max, NULL);
+            scene_bounds_include_aabb(out_min, out_max, mesh_min, mesh_max, item.node_to_root);
+            has_bounds = 1;
+        }
+        for (int32_t i = scene3d_node_child_count(item.node) - 1; i >= 0; i--) {
+            rt_scene_node3d *child = scene_node3d_checked(item.node->children[i]);
+            if (!child)
+                continue;
+            double child_local[16];
+            double child_to_root[16];
+            build_trs_matrix(child->position, child->rotation, child->scale_xyz, child_local);
+            mat4d_mul(item.node_to_root, child_local, child_to_root);
+            if (!scene_bounds_stack_push(&stack, &count, &capacity, child, child_to_root)) {
+                rt_trap("SceneNode3D.GetAabb: traversal stack allocation failed");
+                free(stack);
+                return has_bounds;
+            }
+        }
+    }
+    free(stack);
+
+    return has_bounds;
+}
+
+/// @brief Depth-first search for a node whose `name` matches `target` (NULL on miss).
+rt_scene_node3d *find_by_name(rt_scene_node3d *node, const char *target) {
+    rt_scene_node3d **stack = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    if (!node || !target)
+        return NULL;
+    if (!scene_node_stack_push(&stack, &count, &capacity, node)) {
+        rt_trap("SceneNode3D.Find: traversal stack allocation failed");
+        return NULL;
+    }
+    while (count > 0) {
+        rt_scene_node3d *current = stack[--count];
+        if (current->name) {
+            if (!rt_string_is_handle(current->name)) {
+                current->name = NULL;
+            } else {
+                const char *s = rt_string_cstr(current->name);
+                if (s && strcmp(s, target) == 0) {
+                    free(stack);
+                    return current;
+                }
+            }
+        }
+        for (int32_t i = scene3d_node_child_count(current) - 1; i >= 0; i--) {
+            if (!scene_node_stack_push(&stack, &count, &capacity, current->children[i])) {
+                rt_trap("SceneNode3D.Find: traversal stack allocation failed");
+                free(stack);
+                return NULL;
+            }
+        }
+    }
+    free(stack);
+    return NULL;
+}
+
+/// @brief Read a boxed Vec3 into a double[3], trapping with @p trap_message on a non-Vec3 handle.
+int scene3d_read_vec3d(void *obj, double out[3], const char *trap_message) {
+    if (!out)
+        return 0;
+    if (!rt_g3d_is_vec3(obj)) {
+        rt_trap(trap_message);
+        return 0;
+    }
+    out[0] = scene3d_clamp_abs_or(rt_vec3_x(obj), 0.0);
+    out[1] = scene3d_clamp_abs_or(rt_vec3_y(obj), 0.0);
+    out[2] = scene3d_clamp_abs_or(rt_vec3_z(obj), 0.0);
+    return 1;
+}
+
+/// @brief Get a node's own mesh AABB in world space. Transform-only nodes return false.
+int scene3d_node_world_mesh_aabb(rt_scene_node3d *node, double world_min[3], double world_max[3]) {
+    float local_min[3];
+    float local_max[3];
+    rt_mesh3d *mesh;
+    if (!node || !node->mesh || !world_min || !world_max)
+        return 0;
+    mesh = (rt_mesh3d *)rt_g3d_checked_or_null(node->mesh, RT_G3D_MESH3D_CLASS_ID);
+    if (!mesh)
+        return 0;
+    recompute_world_matrix(node);
+    scene_mesh_bounds(mesh, local_min, local_max, NULL);
+    if (!scene3d_transform_aabb_d(local_min, local_max, node->world_matrix, world_min, world_max))
+        return 0;
+    scene3d_canonicalize_aabb_d(world_min, world_max);
+    return 1;
+}
+
+/// @brief Whether two AABBs overlap on all three axes.
+int scene3d_aabb_intersects_aabb(const double a_min[3],
+                                 const double a_max[3],
+                                 const double b_min[3],
+                                 const double b_max[3]) {
+    double amin[3] = {a_min ? a_min[0] : 0.0, a_min ? a_min[1] : 0.0, a_min ? a_min[2] : 0.0};
+    double amax[3] = {a_max ? a_max[0] : 0.0, a_max ? a_max[1] : 0.0, a_max ? a_max[2] : 0.0};
+    double bmin[3] = {b_min ? b_min[0] : 0.0, b_min ? b_min[1] : 0.0, b_min ? b_min[2] : 0.0};
+    double bmax[3] = {b_max ? b_max[0] : 0.0, b_max ? b_max[1] : 0.0, b_max ? b_max[2] : 0.0};
+    scene3d_canonicalize_aabb_d(amin, amax);
+    scene3d_canonicalize_aabb_d(bmin, bmax);
+    return amin[0] <= bmax[0] && amax[0] >= bmin[0] && amin[1] <= bmax[1] && amax[1] >= bmin[1] &&
+           amin[2] <= bmax[2] && amax[2] >= bmin[2];
+}
+
+/// @brief Whether a sphere overlaps an AABB, via closest-point squared distance vs radius².
+int scene3d_aabb_intersects_sphere(const double aabb_min[3],
+                                   const double aabb_max[3],
+                                   const double center[3],
+                                   double radius) {
+    double mn[3] = {
+        aabb_min ? aabb_min[0] : 0.0, aabb_min ? aabb_min[1] : 0.0, aabb_min ? aabb_min[2] : 0.0};
+    double mx[3] = {
+        aabb_max ? aabb_max[0] : 0.0, aabb_max ? aabb_max[1] : 0.0, aabb_max ? aabb_max[2] : 0.0};
+    double c[3] = {center ? center[0] : 0.0, center ? center[1] : 0.0, center ? center[2] : 0.0};
+    double dist2 = 0.0;
+    scene3d_canonicalize_aabb_d(mn, mx);
+    scene3d_sanitize_vec3d(c, 0.0);
+    radius = scene3d_distance_or_zero(radius);
+    for (int i = 0; i < 3; ++i) {
+        double v = c[i];
+        if (v < mn[i]) {
+            double d = mn[i] - v;
+            dist2 += d * d;
+        } else if (v > mx[i]) {
+            double d = v - mx[i];
+            dist2 += d * d;
+        }
+        if (!isfinite(dist2))
+            return 0;
+    }
+    return dist2 <= radius * radius;
+}
+
+/// @brief Ray-vs-AABB slab test with a normalized direction and finite max distance.
+int scene3d_ray_intersects_aabb(const double origin[3],
+                                const double direction[3],
+                                const double aabb_min[3],
+                                const double aabb_max[3],
+                                double max_distance,
+                                double *out_t) {
+    double o[3] = {origin ? origin[0] : 0.0, origin ? origin[1] : 0.0, origin ? origin[2] : 0.0};
+    double dvec[3] = {direction ? direction[0] : 0.0,
+                      direction ? direction[1] : 0.0,
+                      direction ? direction[2] : 0.0};
+    double mn[3] = {
+        aabb_min ? aabb_min[0] : 0.0, aabb_min ? aabb_min[1] : 0.0, aabb_min ? aabb_min[2] : 0.0};
+    double mx[3] = {
+        aabb_max ? aabb_max[0] : 0.0, aabb_max ? aabb_max[1] : 0.0, aabb_max ? aabb_max[2] : 0.0};
+    double tmin = 0.0;
+    double tmax;
+    scene3d_sanitize_vec3d(o, 0.0);
+    scene3d_sanitize_vec3d(dvec, 0.0);
+    if (!scene3d_normalize_vec3d(dvec))
+        return 0;
+    scene3d_canonicalize_aabb_d(mn, mx);
+    if (!isfinite(max_distance))
+        max_distance = SCENE3D_ABS_MAX;
+    if (max_distance < 0.0)
+        return 0;
+    max_distance = scene3d_distance_or_zero(max_distance);
+    tmax = max_distance;
+    for (int i = 0; i < 3; ++i) {
+        double axis_origin = o[i];
+        double d = dvec[i];
+        if (fabs(d) <= 1e-12) {
+            if (axis_origin < mn[i] || axis_origin > mx[i])
+                return 0;
+            continue;
+        }
+        double inv = 1.0 / d;
+        double t1 = (mn[i] - axis_origin) * inv;
+        double t2 = (mx[i] - axis_origin) * inv;
+        if (!isfinite(t1) || !isfinite(t2))
+            return 0;
+        if (t1 > t2) {
+            double tmp = t1;
+            t1 = t2;
+            t2 = tmp;
+        }
+        if (t1 > tmin)
+            tmin = t1;
+        if (t2 < tmax)
+            tmax = t2;
+        if (tmin > tmax)
+            return 0;
+    }
+    if (out_t)
+        *out_t = scene3d_distance_or_zero(tmin);
+    return tmin <= max_distance;
+}
+
+typedef struct {
+    uint8_t *visible_zones;
+    int32_t zone_count;
+    int32_t *culled_count;
+    int8_t active;
+} scene3d_pvs_context_t;
+
+/// @brief Push a (node, inherited-animator) frame onto the index-build traversal stack, growing it.
+/// @return 1 on success (or NULL no-op), 0 on overflow/allocation failure.
+int scene_index_build_stack_push(scene_index_build_stack_item_t **stack,
+                                 size_t *count,
+                                 size_t *capacity,
+                                 rt_scene_node3d *node,
+                                 void *inherited_animator) {
+    rt_scene_node3d *checked;
+    if (!stack || !count || !capacity || !node)
+        return 1;
+    checked = scene_node3d_checked(node);
+    if (!checked)
+        return 1;
+    if (*count >= *capacity) {
+        if (!scene3d_grow_stack_storage((void **)stack, capacity, sizeof(**stack)))
+            return 0;
+    }
+    (*stack)[*count].node = checked;
+    (*stack)[*count].inherited_animator = inherited_animator;
+    (*count)++;
+    return 1;
+}
+
+/// @brief Ensure the spatial index can hold @p needed leaf entries (doubling growth).
+
+/// @brief Grow the scene's visibility-zone array to hold at least @p needed zones (doubling
+/// growth).
+/// @return 1 on success or when capacity already suffices; 0 on overflow or allocation failure.
+static int scene3d_visibility_zone_ensure_capacity(rt_scene3d *scene, int32_t needed) {
+    int32_t new_capacity;
+    rt_scene3d_visibility_zone *grown;
+    if (!scene || needed < 0)
+        return 0;
+    if (needed <= scene->visibility_zone_capacity)
+        return 1;
+    new_capacity = scene->visibility_zone_capacity < 8 ? 8 : scene->visibility_zone_capacity;
+    while (new_capacity < needed) {
+        if (new_capacity > INT32_MAX / 2)
+            return 0;
+        new_capacity *= 2;
+    }
+    if ((size_t)new_capacity > SIZE_MAX / sizeof(scene->visibility_zones[0]))
+        return 0;
+    grown = (rt_scene3d_visibility_zone *)realloc(
+        scene->visibility_zones, (size_t)new_capacity * sizeof(scene->visibility_zones[0]));
+    if (!grown)
+        return 0;
+    scene->visibility_zones = grown;
+    scene->visibility_zone_capacity = new_capacity;
+    return 1;
+}
+
+/// @brief Grow the scene's visibility-portal array to hold at least @p needed portals (doubling
+/// growth).
+/// @return 1 on success or when capacity already suffices; 0 on overflow or allocation failure.
+static int scene3d_visibility_portal_ensure_capacity(rt_scene3d *scene, int32_t needed) {
+    int32_t new_capacity;
+    rt_scene3d_visibility_portal *grown;
+    if (!scene || needed < 0)
+        return 0;
+    if (needed <= scene->visibility_portal_capacity)
+        return 1;
+    new_capacity = scene->visibility_portal_capacity < 8 ? 8 : scene->visibility_portal_capacity;
+    while (new_capacity < needed) {
+        if (new_capacity > INT32_MAX / 2)
+            return 0;
+        new_capacity *= 2;
+    }
+    if ((size_t)new_capacity > SIZE_MAX / sizeof(scene->visibility_portals[0]))
+        return 0;
+    grown = (rt_scene3d_visibility_portal *)realloc(
+        scene->visibility_portals, (size_t)new_capacity * sizeof(scene->visibility_portals[0]));
+    if (!grown)
+        return 0;
+    scene->visibility_portals = grown;
+    scene->visibility_portal_capacity = new_capacity;
+    return 1;
+}
+
+static int32_t scene3d_visibility_array_count_or_zero(const void *array,
+                                                      int32_t count,
+                                                      int32_t capacity) {
+    if (!array || count <= 0 || capacity <= 0)
+        return 0;
+    return count < capacity ? count : capacity;
+}
+
+static int32_t scene3d_visibility_zone_count_safe(const rt_scene3d *scene) {
+    return scene ? scene3d_visibility_array_count_or_zero(scene->visibility_zones,
+                                                          scene->visibility_zone_count,
+                                                          scene->visibility_zone_capacity)
+                 : 0;
+}
+
+static int32_t scene3d_visibility_portal_count_safe(const rt_scene3d *scene) {
+    return scene ? scene3d_visibility_array_count_or_zero(scene->visibility_portals,
+                                                          scene->visibility_portal_count,
+                                                          scene->visibility_portal_capacity)
+                 : 0;
+}
+
+/// @brief Test whether @p point lies inside the zone's world-space AABB (inclusive bounds).
+static int scene3d_visibility_zone_contains_point(const rt_scene3d_visibility_zone *zone,
+                                                  const double point[3]) {
+    return zone && point && point[0] >= zone->world_min[0] && point[0] <= zone->world_max[0] &&
+           point[1] >= zone->world_min[1] && point[1] <= zone->world_max[1] &&
+           point[2] >= zone->world_min[2] && point[2] <= zone->world_max[2];
+}
+
+/// @brief Find the visibility zone containing the camera eye (including its shake offset).
+/// @return Index of the first containing zone, or -1 if the eye is non-finite or outside every
+/// zone.
+static int scene3d_visibility_find_camera_zone(const rt_scene3d *scene, const rt_camera3d *cam) {
+    double eye[3];
+    int32_t zone_count;
+    if (!scene || !cam)
+        return -1;
+    zone_count = scene3d_visibility_zone_count_safe(scene);
+    eye[0] = cam->eye[0] + cam->shake_offset[0];
+    eye[1] = cam->eye[1] + cam->shake_offset[1];
+    eye[2] = cam->eye[2] + cam->shake_offset[2];
+    if (!isfinite(eye[0]) || !isfinite(eye[1]) || !isfinite(eye[2]))
+        return -1;
+    for (int32_t i = 0; i < zone_count; ++i) {
+        if (scene3d_visibility_zone_contains_point(&scene->visibility_zones[i], eye))
+            return i;
+    }
+    return -1;
+}
+
+/// @brief Build the potentially-visible-set for the camera's current zone by portal flood-fill.
+/// @details Locates the zone containing the camera, then breadth-first traverses the directed
+///          visibility portals to mark every zone reachable from it. The result is a per-zone
+///          visibility bitmap consumed by scene3d_pvs_allows_aabb. Left inactive (zeroed) when the
+///          scene has no zones, the camera is outside all zones, or allocation fails.
+/// @return 1 if an active PVS context was produced; 0 otherwise (with @p out zeroed).
+static int scene3d_build_pvs_context(rt_scene3d *scene,
+                                     rt_camera3d *cam,
+                                     scene3d_pvs_context_t *out) {
+    int32_t zone_count;
+    int32_t portal_count;
+    int32_t camera_zone;
+    int32_t *queue = NULL;
+    int32_t head = 0;
+    int32_t tail = 0;
+    if (!scene || !cam || !out)
+        return 0;
+    zone_count = scene3d_visibility_zone_count_safe(scene);
+    portal_count = scene3d_visibility_portal_count_safe(scene);
+    if (zone_count <= 0)
+        return 0;
+    camera_zone = scene3d_visibility_find_camera_zone(scene, cam);
+    if (camera_zone < 0)
+        return 0;
+    out->visible_zones = (uint8_t *)calloc((size_t)zone_count, 1);
+    queue = (int32_t *)malloc((size_t)zone_count * sizeof(queue[0]));
+    if (!out->visible_zones || !queue) {
+        free(out->visible_zones);
+        free(queue);
+        memset(out, 0, sizeof(*out));
+        return 0;
+    }
+    out->zone_count = zone_count;
+    out->active = 1;
+    out->visible_zones[camera_zone] = 1;
+    queue[tail++] = camera_zone;
+    while (head < tail) {
+        int32_t zone = queue[head++];
+        for (int32_t i = 0; i < portal_count; ++i) {
+            const rt_scene3d_visibility_portal *portal = &scene->visibility_portals[i];
+            if (portal->from_zone != zone || portal->to_zone < 0 || portal->to_zone >= zone_count)
+                continue;
+            if (!out->visible_zones[portal->to_zone]) {
+                out->visible_zones[portal->to_zone] = 1;
+                queue[tail++] = portal->to_zone;
+            }
+        }
+    }
+    free(queue);
+    return 1;
+}
+
+/// @brief Release a PVS context's zone bitmap and reset it to the inactive state. Safe on NULL.
+static void scene3d_pvs_context_clear(scene3d_pvs_context_t *pvs) {
+    if (!pvs)
+        return;
+    free(pvs->visible_zones);
+    memset(pvs, 0, sizeof(*pvs));
+}
+
+/// @brief Test whether an AABB may be visible under the current PVS.
+/// @details An AABB passes if it overlaps no authored zone (zones do not cover it) or overlaps at
+///          least one zone flagged visible in @p pvs. Returns visible (1) whenever the PVS is
+///          inactive, so visibility culling degrades safely to a no-op.
+/// @return 1 if the AABB should be considered visible; 0 if every overlapping zone is culled.
+static int scene3d_pvs_allows_aabb(const rt_scene3d *scene,
+                                   const scene3d_pvs_context_t *pvs,
+                                   const double world_min[3],
+                                   const double world_max[3]) {
+    int matched_zone = 0;
+    int32_t zone_count;
+    int32_t visible_zone_count;
+    if (!scene || !pvs || !pvs->active || !pvs->visible_zones || !world_min || !world_max)
+        return 1;
+    zone_count = scene3d_visibility_zone_count_safe(scene);
+    visible_zone_count = pvs->zone_count < zone_count ? pvs->zone_count : zone_count;
+    for (int32_t i = 0; i < visible_zone_count; ++i) {
+        const rt_scene3d_visibility_zone *zone = &scene->visibility_zones[i];
+        if (!scene3d_aabb_intersects_aabb(world_min, world_max, zone->world_min, zone->world_max))
+            continue;
+        matched_zone = 1;
+        if (pvs->visible_zones[i])
+            return 1;
+    }
+    return matched_zone ? 0 : 1;
+}
+
+/// @brief Compute the AABB swept by a ray segment (origin to origin + dir·length) for broadphase
+/// culling.
+int scene3d_ray_sweep_bounds(const double origin[3],
+                             const double direction[3],
+                             double max_distance,
+                             double out_min[3],
+                             double out_max[3]) {
+    double o[3] = {origin ? origin[0] : 0.0, origin ? origin[1] : 0.0, origin ? origin[2] : 0.0};
+    double d[3] = {direction ? direction[0] : 0.0,
+                   direction ? direction[1] : 0.0,
+                   direction ? direction[2] : 0.0};
+    double end[3];
+    if (!origin || !direction || !out_min || !out_max)
+        return 0;
+    scene3d_sanitize_vec3d(o, 0.0);
+    scene3d_sanitize_vec3d(d, 0.0);
+    if (!scene3d_normalize_vec3d(d))
+        return 0;
+    if (!isfinite(max_distance) || max_distance > SCENE3D_ABS_MAX)
+        max_distance = SCENE3D_ABS_MAX;
+    if (max_distance < 0.0)
+        return 0;
+    for (int i = 0; i < 3; ++i) {
+        double e = o[i] + d[i] * max_distance;
+        if (!isfinite(e))
+            return 0;
+        end[i] = scene3d_clamp_abs_or(e, 0.0);
+        out_min[i] = fmin(o[i], end[i]);
+        out_max[i] = fmax(o[i], end[i]);
+    }
+    scene3d_canonicalize_aabb_d(out_min, out_max);
+    return 1;
+}
+
+/// @brief Compute a world-space AABB enclosing the view frustum of a view-projection matrix.
+/// @details Unprojects the eight clip-space corners through the inverse VP and bounds them, giving
+/// a
+///          coarse AABB the spatial index can use to reject off-screen nodes before exact culling.
+static int scene3d_frustum_bounds_from_vp(const float vp[16],
+                                          double out_min[3],
+                                          double out_max[3]) {
+    double m[16];
+    double inv[16];
+    if (!vp || !out_min || !out_max)
+        return 0;
+    for (int i = 0; i < 16; ++i) {
+        if (!isfinite(vp[i]))
+            return 0;
+        m[i] = (double)vp[i];
+    }
+    if (mat4d_invert(m, inv) != 0)
+        return 0;
+    scene_bounds_reset_d(out_min, out_max);
+    for (int xi = 0; xi < 2; ++xi) {
+        for (int yi = 0; yi < 2; ++yi) {
+            for (int zi = 0; zi < 2; ++zi) {
+                double x = xi ? 1.0 : -1.0;
+                double y = yi ? 1.0 : -1.0;
+                double z = zi ? 1.0 : -1.0;
+                double wx = inv[0] * x + inv[1] * y + inv[2] * z + inv[3];
+                double wy = inv[4] * x + inv[5] * y + inv[6] * z + inv[7];
+                double wz = inv[8] * x + inv[9] * y + inv[10] * z + inv[11];
+                double ww = inv[12] * x + inv[13] * y + inv[14] * z + inv[15];
+                double point[3];
+                if (!isfinite(ww) || fabs(ww) <= 1.0e-12)
+                    return 0;
+                wx /= ww;
+                wy /= ww;
+                wz /= ww;
+                if (!isfinite(wx) || !isfinite(wy) || !isfinite(wz))
+                    return 0;
+                point[0] = wx;
+                point[1] = wy;
+                point[2] = wz;
+                scene_bounds_include_point_d(out_min, out_max, point);
+            }
+        }
+    }
+    return out_min[0] <= out_max[0] && out_min[1] <= out_max[1] && out_min[2] <= out_max[2];
+}

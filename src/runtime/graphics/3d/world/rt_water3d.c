@@ -545,6 +545,147 @@ void rt_water3d_clear_waves(void *obj) {
     }
 }
 
+/// @brief Fill the (grid+1)^2 water vertices: position, Gerstner/legacy wave height, analytic
+///        normal, and UVs. Pure transform of @p w into @p mesh; see rt_water3d_update.
+static void water3d_fill_vertices(rt_water3d *w,
+                                  rt_mesh3d *mesh,
+                                  int32_t grid,
+                                  int32_t row,
+                                  double hx,
+                                  double hz,
+                                  double step_x,
+                                  double step_z,
+                                  double inv_grid,
+                                  const int8_t *wave_valid,
+                                  const double *wave_time_phase) {
+    for (int gz = 0; gz <= grid; gz++) {
+        for (int gx = 0; gx <= grid; gx++) {
+            uint32_t vertex_index = (uint32_t)(gz * row + gx);
+            vgfx3d_vertex_t *vt = &mesh->vertices[vertex_index];
+            double x = -hx + gx * step_x;
+            double z = -hz + gz * step_z;
+            double y = w->height;
+            double dydx = 0.0, dydz = 0.0;
+
+            if (w->wave_count > 0) {
+                /* Gerstner multi-wave sum. Standard form is A·sin(k·x − ω·t):
+                 * the minus sign on the time term makes crests propagate in
+                 * +direction of `dir`. Previously this used `+ time*speed`,
+                 * so waves visually travelled opposite the user-specified
+                 * direction. */
+                for (int32_t wi = 0; wi < w->wave_count; wi++) {
+                    water_wave_t *wv = &w->waves[wi];
+                    if (!wave_valid[wi])
+                        continue;
+                    double dot = wv->dir[0] * x + wv->dir[1] * z;
+                    double phase = wv->frequency * dot - wave_time_phase[wi];
+                    if (!isfinite(phase))
+                        continue;
+                    phase = fmod(phase, WATER3D_TWO_PI);
+                    if (!isfinite(phase))
+                        phase = 0.0;
+                    y += wv->amplitude * sin(phase);
+                    double dc = wv->amplitude * wv->frequency * cos(phase);
+                    dydx += dc * wv->dir[0];
+                    dydz += dc * wv->dir[1];
+                }
+            } else {
+                /* Legacy single sine wave — keep same sign convention as above. */
+                double phase = w->wave_frequency * (x + z) - w->time * w->wave_speed;
+                if (!isfinite(phase))
+                    phase = 0.0;
+                phase = fmod(phase, WATER3D_TWO_PI);
+                if (!isfinite(phase))
+                    phase = 0.0;
+                y += w->wave_amplitude * sin(phase);
+                double dc = w->wave_amplitude * w->wave_frequency * cos(phase);
+                dydx = dc;
+                dydz = dc;
+            }
+
+            if (!isfinite(y))
+                y = w->height;
+            if (!isfinite(dydx))
+                dydx = 0.0;
+            if (!isfinite(dydz))
+                dydz = 0.0;
+
+            /* Normal from wave derivatives */
+            double nx = -dydx, ny = 1.0, nz = -dydz;
+            double nlen = sqrt(nx * nx + ny * ny + nz * nz);
+            if (isfinite(nlen) && nlen > 1e-8) {
+                nx /= nlen;
+                ny /= nlen;
+                nz /= nlen;
+            } else {
+                nx = 0.0;
+                ny = 1.0;
+                nz = 0.0;
+            }
+
+            double u = (double)gx * inv_grid;
+            double v = (double)gz * inv_grid;
+            memset(vt, 0, sizeof(*vt));
+            vt->pos[0] = (float)x;
+            vt->pos[1] = (float)y;
+            vt->pos[2] = (float)z;
+            vt->normal[0] = (float)nx;
+            vt->normal[1] = (float)ny;
+            vt->normal[2] = (float)nz;
+            vt->uv[0] = (float)u;
+            vt->uv[1] = (float)v;
+            vt->uv1[0] = (float)u;
+            vt->uv1[1] = (float)v;
+            vt->color[0] = 1.0f;
+            vt->color[1] = 1.0f;
+            vt->color[2] = 1.0f;
+            vt->color[3] = 1.0f;
+            vt->tangent[3] = 1.0f;
+            if (mesh->positions64) {
+                mesh->positions64[(size_t)vertex_index * 3u + 0] = x;
+                mesh->positions64[(size_t)vertex_index * 3u + 1] = y;
+                mesh->positions64[(size_t)vertex_index * 3u + 2] = z;
+            }
+        }
+    }
+}
+
+/// @brief Emit the 2*grid*grid triangle indices for the water grid (two triangles per cell).
+static void water3d_fill_indices(rt_mesh3d *mesh, int32_t grid, int32_t row) {
+        uint32_t out_index = 0;
+        for (int gz = 0; gz < grid; gz++) {
+            for (int gx = 0; gx < grid; gx++) {
+                uint32_t base = (uint32_t)(gz * row + gx);
+                mesh->indices[out_index++] = base;
+                mesh->indices[out_index++] = base + (uint32_t)row;
+                mesh->indices[out_index++] = base + 1u;
+                mesh->indices[out_index++] = base + 1u;
+                mesh->indices[out_index++] = base + (uint32_t)row;
+                mesh->indices[out_index++] = base + (uint32_t)row + 1u;
+            }
+        }
+}
+
+/// @brief Create the water material on first use or refresh its color/alpha/texture/env bindings.
+/// @return 0 when the material could not be allocated (caller aborts without clearing mesh_dirty).
+static int water3d_update_material(rt_water3d *w) {
+    if (!w->material) {
+        w->material = rt_material3d_new_color(w->color[0], w->color[1], w->color[2]);
+        if (!w->material)
+            return 0;
+        rt_material3d_set_shininess(w->material, 128.0);
+    } else {
+        rt_material3d_set_color(w->material, w->color[0], w->color[1], w->color[2]);
+    }
+    rt_material3d_set_alpha(w->material, w->alpha);
+    water3d_enable_double_sided_material(w->material);
+    rt_material3d_set_texture(w->material, w->texture);
+    rt_material3d_set_normal_map(w->material, w->normal_map);
+    rt_material3d_set_env_map(w->material, w->env_map);
+    rt_material3d_set_reflectivity(w->material, w->env_map ? w->reflectivity : 0.0);
+    return 1;
+}
+
 /// @brief Advance the water simulation by `dt` seconds and regenerate the surface mesh.
 /// @details Rebuilds the (grid+1)x(grid+1) vertex grid and the 2*grid*grid triangle list
 ///          each frame. Vertex heights come from either the Gerstner multi-wave sum (when
@@ -642,111 +783,11 @@ void rt_water3d_update(void *obj, double dt) {
     mesh->build_failed = 0;
 
     /* Vertices */
-    for (int gz = 0; gz <= grid; gz++) {
-        for (int gx = 0; gx <= grid; gx++) {
-            uint32_t vertex_index = (uint32_t)(gz * row + gx);
-            vgfx3d_vertex_t *vt = &mesh->vertices[vertex_index];
-            double x = -hx + gx * step_x;
-            double z = -hz + gz * step_z;
-            double y = w->height;
-            double dydx = 0.0, dydz = 0.0;
+    water3d_fill_vertices(w, mesh, grid, row, hx, hz, step_x, step_z, inv_grid, wave_valid,
+                          wave_time_phase);
 
-            if (w->wave_count > 0) {
-                /* Gerstner multi-wave sum. Standard form is A·sin(k·x − ω·t):
-                 * the minus sign on the time term makes crests propagate in
-                 * +direction of `dir`. Previously this used `+ time*speed`,
-                 * so waves visually travelled opposite the user-specified
-                 * direction. */
-                for (int32_t wi = 0; wi < w->wave_count; wi++) {
-                    water_wave_t *wv = &w->waves[wi];
-                    if (!wave_valid[wi])
-                        continue;
-                    double dot = wv->dir[0] * x + wv->dir[1] * z;
-                    double phase = wv->frequency * dot - wave_time_phase[wi];
-                    if (!isfinite(phase))
-                        continue;
-                    phase = fmod(phase, WATER3D_TWO_PI);
-                    if (!isfinite(phase))
-                        phase = 0.0;
-                    y += wv->amplitude * sin(phase);
-                    double dc = wv->amplitude * wv->frequency * cos(phase);
-                    dydx += dc * wv->dir[0];
-                    dydz += dc * wv->dir[1];
-                }
-            } else {
-                /* Legacy single sine wave — keep same sign convention as above. */
-                double phase = w->wave_frequency * (x + z) - w->time * w->wave_speed;
-                if (!isfinite(phase))
-                    phase = 0.0;
-                phase = fmod(phase, WATER3D_TWO_PI);
-                if (!isfinite(phase))
-                    phase = 0.0;
-                y += w->wave_amplitude * sin(phase);
-                double dc = w->wave_amplitude * w->wave_frequency * cos(phase);
-                dydx = dc;
-                dydz = dc;
-            }
-
-            if (!isfinite(y))
-                y = w->height;
-            if (!isfinite(dydx))
-                dydx = 0.0;
-            if (!isfinite(dydz))
-                dydz = 0.0;
-
-            /* Normal from wave derivatives */
-            double nx = -dydx, ny = 1.0, nz = -dydz;
-            double nlen = sqrt(nx * nx + ny * ny + nz * nz);
-            if (isfinite(nlen) && nlen > 1e-8) {
-                nx /= nlen;
-                ny /= nlen;
-                nz /= nlen;
-            } else {
-                nx = 0.0;
-                ny = 1.0;
-                nz = 0.0;
-            }
-
-            double u = (double)gx * inv_grid;
-            double v = (double)gz * inv_grid;
-            memset(vt, 0, sizeof(*vt));
-            vt->pos[0] = (float)x;
-            vt->pos[1] = (float)y;
-            vt->pos[2] = (float)z;
-            vt->normal[0] = (float)nx;
-            vt->normal[1] = (float)ny;
-            vt->normal[2] = (float)nz;
-            vt->uv[0] = (float)u;
-            vt->uv[1] = (float)v;
-            vt->uv1[0] = (float)u;
-            vt->uv1[1] = (float)v;
-            vt->color[0] = 1.0f;
-            vt->color[1] = 1.0f;
-            vt->color[2] = 1.0f;
-            vt->color[3] = 1.0f;
-            vt->tangent[3] = 1.0f;
-            if (mesh->positions64) {
-                mesh->positions64[(size_t)vertex_index * 3u + 0] = x;
-                mesh->positions64[(size_t)vertex_index * 3u + 1] = y;
-                mesh->positions64[(size_t)vertex_index * 3u + 2] = z;
-            }
-        }
-    }
-
-    if (topology_dirty) {
-        uint32_t out_index = 0;
-        for (int gz = 0; gz < grid; gz++) {
-            for (int gx = 0; gx < grid; gx++) {
-                uint32_t base = (uint32_t)(gz * row + gx);
-                mesh->indices[out_index++] = base;
-                mesh->indices[out_index++] = base + (uint32_t)row;
-                mesh->indices[out_index++] = base + 1u;
-                mesh->indices[out_index++] = base + 1u;
-                mesh->indices[out_index++] = base + (uint32_t)row;
-                mesh->indices[out_index++] = base + (uint32_t)row + 1u;
-            }
-        }
-    }
+    if (topology_dirty)
+        water3d_fill_indices(mesh, grid, row);
     rt_mesh3d_touch_geometry(mesh);
     if (((rt_mesh3d *)w->mesh)->build_failed) {
         rt_mesh3d_clear(w->mesh);
@@ -755,22 +796,8 @@ void rt_water3d_update(void *obj, double dt) {
     }
 
     /* Update material — create on first use, update properties every frame */
-    if (!w->material) {
-        w->material = rt_material3d_new_color(w->color[0], w->color[1], w->color[2]);
-        if (!w->material)
-            return;
-        rt_material3d_set_shininess(w->material, 128.0);
-    } else {
-        rt_material3d_set_color(w->material, w->color[0], w->color[1], w->color[2]);
-    }
-    rt_material3d_set_alpha(w->material, w->alpha);
-    water3d_enable_double_sided_material(w->material);
-
-    /* Phase A: wire texture/normalmap/envmap to material */
-    rt_material3d_set_texture(w->material, w->texture);
-    rt_material3d_set_normal_map(w->material, w->normal_map);
-    rt_material3d_set_env_map(w->material, w->env_map);
-    rt_material3d_set_reflectivity(w->material, w->env_map ? w->reflectivity : 0.0);
+    if (!water3d_update_material(w))
+        return;
     w->mesh_dirty = 0;
 }
 

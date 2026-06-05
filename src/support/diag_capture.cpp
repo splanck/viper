@@ -34,34 +34,79 @@
 namespace il::support {
 namespace {
 /// @brief Fallback message used when a legacy API fails silently.
-constexpr std::string_view kEmptyCaptureFallback = "legacy operation failed without diagnostic output";
+constexpr std::string_view kEmptyCaptureFallback =
+    "legacy operation failed without diagnostic output";
+
+/// @brief Normalized payload extracted from captured legacy diagnostic text.
+struct CapturedDiagnosticPayload {
+    Severity severity = Severity::Error; ///< Severity parsed from a textual prefix.
+    std::string message;                 ///< Message without redundant formatting.
+};
+
+/// @brief Strip a leading severity prefix from @p text.
+/// @param text Message text that may begin with "error: ", "warning: ", or "note: ".
+/// @param severity Severity to assign when @p prefix is present.
+/// @param prefix Textual severity prefix to remove.
+/// @return True when the prefix was found and stripped.
+/// @details This helper handles diagnostics that were captured after they had
+///          already been printed once, preventing converted diagnostics from
+///          later rendering as "error: error: message".
+bool stripSeverityPrefix(std::string &text,
+                         Severity &severity,
+                         Severity parsed,
+                         std::string_view prefix) {
+    if (text.size() >= prefix.size() && std::string_view{text}.substr(0, prefix.size()) == prefix) {
+        text.erase(0, prefix.size());
+        severity = parsed;
+        return true;
+    }
+    return false;
+}
+
+/// @brief Strip a leading source prefix before a textual severity marker.
+/// @param text Captured diagnostic text that may be "file:line: severity: message".
+/// @param severity Severity assigned when a marker is found.
+/// @param parsed Severity associated with @p marker.
+/// @param marker Marker to find after a source-location prefix.
+/// @return True when a marker was found and text before it was removed.
+/// @details Legacy printers commonly emit fully formatted diagnostics.  Source
+///          locations cannot be reconstructed here without a SourceManager, but
+///          retaining the source prefix inside @ref Diag::message would duplicate
+///          formatting when the diagnostic is printed again.
+bool stripFormattedPrefix(std::string &text,
+                          Severity &severity,
+                          Severity parsed,
+                          std::string_view marker) {
+    const size_t pos = text.find(marker);
+    if (pos == std::string::npos)
+        return false;
+    text.erase(0, pos + marker.size());
+    severity = parsed;
+    return true;
+}
 
 /// @brief Remove formatting artifacts from captured legacy diagnostic text.
 /// @param text Captured text emitted by a legacy bool-plus-ostream API.
-/// @return Message text suitable for storing in a structured error diagnostic.
+/// @return Severity and message suitable for storing in a structured diagnostic.
 /// @details Legacy helpers often write already-formatted diagnostics such as
 ///          "error: message\n". DiagCapture converts the text back into a
-///          structured error, so this helper trims trailing line terminators and
-///          strips a leading severity prefix to avoid printing "error: error:".
-std::string normalizeCapturedMessage(std::string text) {
+///          structured value, so this helper trims trailing line terminators and
+///          strips severity/source prefixes to avoid printing duplicated headers.
+CapturedDiagnosticPayload normalizeCapturedDiagnostic(std::string text) {
     while (!text.empty() && (text.back() == '\n' || text.back() == '\r'))
         text.pop_back();
 
-    constexpr std::string_view kErrorPrefix = "error: ";
-    constexpr std::string_view kWarningPrefix = "warning: ";
-    constexpr std::string_view kNotePrefix = "note: ";
-    const auto stripPrefix = [&text](std::string_view prefix) {
-        if (text.size() >= prefix.size() && std::string_view{text}.substr(0, prefix.size()) == prefix) {
-            text.erase(0, prefix.size());
-            return true;
-        }
-        return false;
-    };
-    (void)(stripPrefix(kErrorPrefix) || stripPrefix(kWarningPrefix) || stripPrefix(kNotePrefix));
+    Severity severity = Severity::Error;
+    (void)(stripSeverityPrefix(text, severity, Severity::Error, "error: ") ||
+           stripSeverityPrefix(text, severity, Severity::Warning, "warning: ") ||
+           stripSeverityPrefix(text, severity, Severity::Note, "note: ") ||
+           stripFormattedPrefix(text, severity, Severity::Error, ": error: ") ||
+           stripFormattedPrefix(text, severity, Severity::Warning, ": warning: ") ||
+           stripFormattedPrefix(text, severity, Severity::Note, ": note: "));
 
     if (text.empty())
-        return std::string{kEmptyCaptureFallback};
-    return text;
+        return {Severity::Error, std::string{kEmptyCaptureFallback}};
+    return {severity, std::move(text)};
 }
 } // namespace
 
@@ -89,7 +134,8 @@ void DiagCapture::printTo(std::ostream &out, const Diag &diag) {
 ///
 /// @return Diagnostic containing a copy of the captured text.
 Diag DiagCapture::toDiag() const {
-    return makeError({}, normalizeCapturedMessage(ss.str()));
+    CapturedDiagnosticPayload payload = normalizeCapturedDiagnostic(ss.str());
+    return Diag{payload.severity, std::move(payload.message), {}, {}};
 }
 
 /// @brief Bridge a boolean success flag to an Expected<void> diagnostic result.

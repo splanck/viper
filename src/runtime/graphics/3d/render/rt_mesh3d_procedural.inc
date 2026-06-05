@@ -1,0 +1,265 @@
+//===----------------------------------------------------------------------===//
+// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// File: src/runtime/graphics/3d/render/rt_mesh3d_procedural.inc  (#included from rt_mesh3d.c; not a standalone translation unit)
+// Purpose: Mesh3D procedural generators: box, sphere, plane, cylinder
+//===----------------------------------------------------------------------===//
+/* Procedural generators — NewBox, NewSphere, NewPlane, NewCylinder */
+/// @brief Generate a box mesh centered at the origin with full size (sx, sy, sz).
+void *rt_mesh3d_new_box(double sx, double sy, double sz) {
+    if (!mesh_validate_positive_finite(sx, "Mesh3D.NewBox: sx") ||
+        !mesh_validate_positive_finite(sy, "Mesh3D.NewBox: sy") ||
+        !mesh_validate_positive_finite(sz, "Mesh3D.NewBox: sz"))
+        return NULL;
+    void *m = rt_mesh3d_new();
+    if (!m)
+        return NULL;
+    if (!mesh3d_reserve_storage((rt_mesh3d *)m, 24u, 36u, "Mesh3D.NewBox")) {
+        mesh_mark_build_failed((rt_mesh3d *)m);
+        return mesh_return_null_if_build_failed(m);
+    }
+
+    double hx = sx * 0.5, hy = sy * 0.5, hz = sz * 0.5;
+
+    /* 6 faces, 4 verts each = 24 verts, 12 triangles (CCW winding) */
+    rt_mesh3d_begin_geometry_batch((rt_mesh3d *)m);
+    /* Front face (+Z) */
+    rt_mesh3d_add_vertex(m, -hx, -hy, hz, 0, 0, 1, 0, 1);
+    rt_mesh3d_add_vertex(m, hx, -hy, hz, 0, 0, 1, 1, 1);
+    rt_mesh3d_add_vertex(m, hx, hy, hz, 0, 0, 1, 1, 0);
+    rt_mesh3d_add_vertex(m, -hx, hy, hz, 0, 0, 1, 0, 0);
+    rt_mesh3d_add_triangle(m, 0, 1, 2);
+    rt_mesh3d_add_triangle(m, 0, 2, 3);
+
+    /* Back face (-Z) */
+    rt_mesh3d_add_vertex(m, hx, -hy, -hz, 0, 0, -1, 0, 1);
+    rt_mesh3d_add_vertex(m, -hx, -hy, -hz, 0, 0, -1, 1, 1);
+    rt_mesh3d_add_vertex(m, -hx, hy, -hz, 0, 0, -1, 1, 0);
+    rt_mesh3d_add_vertex(m, hx, hy, -hz, 0, 0, -1, 0, 0);
+    rt_mesh3d_add_triangle(m, 4, 5, 6);
+    rt_mesh3d_add_triangle(m, 4, 6, 7);
+
+    /* Right face (+X) */
+    rt_mesh3d_add_vertex(m, hx, -hy, hz, 1, 0, 0, 0, 1);
+    rt_mesh3d_add_vertex(m, hx, -hy, -hz, 1, 0, 0, 1, 1);
+    rt_mesh3d_add_vertex(m, hx, hy, -hz, 1, 0, 0, 1, 0);
+    rt_mesh3d_add_vertex(m, hx, hy, hz, 1, 0, 0, 0, 0);
+    rt_mesh3d_add_triangle(m, 8, 9, 10);
+    rt_mesh3d_add_triangle(m, 8, 10, 11);
+
+    /* Left face (-X) */
+    rt_mesh3d_add_vertex(m, -hx, -hy, -hz, -1, 0, 0, 0, 1);
+    rt_mesh3d_add_vertex(m, -hx, -hy, hz, -1, 0, 0, 1, 1);
+    rt_mesh3d_add_vertex(m, -hx, hy, hz, -1, 0, 0, 1, 0);
+    rt_mesh3d_add_vertex(m, -hx, hy, -hz, -1, 0, 0, 0, 0);
+    rt_mesh3d_add_triangle(m, 12, 13, 14);
+    rt_mesh3d_add_triangle(m, 12, 14, 15);
+
+    /* Top face (+Y) */
+    rt_mesh3d_add_vertex(m, -hx, hy, hz, 0, 1, 0, 0, 1);
+    rt_mesh3d_add_vertex(m, hx, hy, hz, 0, 1, 0, 1, 1);
+    rt_mesh3d_add_vertex(m, hx, hy, -hz, 0, 1, 0, 1, 0);
+    rt_mesh3d_add_vertex(m, -hx, hy, -hz, 0, 1, 0, 0, 0);
+    rt_mesh3d_add_triangle(m, 16, 17, 18);
+    rt_mesh3d_add_triangle(m, 16, 18, 19);
+
+    /* Bottom face (-Y) */
+    rt_mesh3d_add_vertex(m, -hx, -hy, -hz, 0, -1, 0, 0, 1);
+    rt_mesh3d_add_vertex(m, hx, -hy, -hz, 0, -1, 0, 1, 1);
+    rt_mesh3d_add_vertex(m, hx, -hy, hz, 0, -1, 0, 1, 0);
+    rt_mesh3d_add_vertex(m, -hx, -hy, hz, 0, -1, 0, 0, 0);
+    rt_mesh3d_add_triangle(m, 20, 21, 22);
+    rt_mesh3d_add_triangle(m, 20, 22, 23);
+    rt_mesh3d_end_geometry_batch((rt_mesh3d *)m);
+
+    return mesh_return_null_if_build_failed(m);
+}
+
+/// @brief Generate a UV sphere mesh with the given radius and segment count.
+void *rt_mesh3d_new_sphere(double radius, int64_t segments) {
+    if (!mesh_validate_positive_finite(radius, "Mesh3D.NewSphere: radius"))
+        return NULL;
+    if (segments > MESH_MAX_SPHERE_SEGMENTS) {
+        rt_trap("Mesh3D.NewSphere: segments exceeds safe limit");
+        return NULL;
+    }
+    void *m = rt_mesh3d_new();
+    if (!m)
+        return NULL;
+    if (segments < 4)
+        segments = 4;
+
+    int64_t rings = segments;
+    int64_t slices = segments * 2;
+    double r = radius;
+    int64_t top_index = 0;
+    int64_t first_ring = 1;
+    int64_t ring_stride = slices + 1;
+    int64_t bottom_index;
+    uint32_t vertex_capacity = (uint32_t)(2 + (rings - 1) * ring_stride);
+    uint32_t index_capacity = (uint32_t)(slices * 3 + (rings - 2) * slices * 6 + slices * 3);
+    if (!mesh3d_check_planned_payload(
+            vertex_capacity, index_capacity, "Mesh3D.NewSphere: mesh exceeds memory budget")) {
+        mesh_mark_build_failed((rt_mesh3d *)m);
+        return mesh_return_null_if_build_failed(m);
+    }
+    if (!mesh3d_reserve_storage(
+            (rt_mesh3d *)m, vertex_capacity, index_capacity, "Mesh3D.NewSphere")) {
+        mesh_mark_build_failed((rt_mesh3d *)m);
+        return mesh_return_null_if_build_failed(m);
+    }
+
+    /* Generate a single pole vertex at each end, and seam-duplicated body rings.
+     * This keeps UV seams intact without emitting zero-area cap triangles. */
+    rt_mesh3d_begin_geometry_batch((rt_mesh3d *)m);
+    rt_mesh3d_add_vertex(m, 0.0, r, 0.0, 0.0, 1.0, 0.0, 0.5, 0.0);
+    for (int64_t ring = 1; ring < rings; ring++) {
+        float phi = (float)M_PI * (float)ring / (float)rings;
+        float sp = sinf(phi), cp = cosf(phi);
+
+        for (int64_t slice = 0; slice <= slices; slice++) {
+            float theta = 2.0f * (float)M_PI * (float)slice / (float)slices;
+            float st = sinf(theta), ct = cosf(theta);
+
+            float nx = sp * ct, ny = cp, nz = sp * st;
+            float u = (float)slice / (float)slices;
+            float v = (float)ring / (float)rings;
+            rt_mesh3d_add_vertex(m, nx * r, ny * r, nz * r, nx, ny, nz, u, v);
+        }
+    }
+    bottom_index = (int64_t)((rt_mesh3d *)m)->vertex_count;
+    rt_mesh3d_add_vertex(m, 0.0, -r, 0.0, 0.0, -1.0, 0.0, 0.5, 1.0);
+
+    /* Generate indices (CCW) */
+    for (int64_t slice = 0; slice < slices; slice++) {
+        int64_t b = first_ring + slice;
+        rt_mesh3d_add_triangle(m, top_index, b + 1, b);
+    }
+    for (int64_t ring = 1; ring < rings - 1; ring++) {
+        int64_t a_base = first_ring + (ring - 1) * ring_stride;
+        int64_t b_base = a_base + ring_stride;
+        for (int64_t slice = 0; slice < slices; slice++) {
+            int64_t a = a_base + slice;
+            int64_t b = b_base + slice;
+            rt_mesh3d_add_triangle(m, a, a + 1, b);
+            rt_mesh3d_add_triangle(m, a + 1, b + 1, b);
+        }
+    }
+    {
+        int64_t last_ring = first_ring + (rings - 2) * ring_stride;
+        for (int64_t slice = 0; slice < slices; slice++) {
+            int64_t a = last_ring + slice;
+            rt_mesh3d_add_triangle(m, a, a + 1, bottom_index);
+        }
+    }
+    rt_mesh3d_end_geometry_batch((rt_mesh3d *)m);
+
+    return mesh_return_null_if_build_failed(m);
+}
+
+/// @brief Generate a flat plane mesh on the XZ plane (facing +Y) with the given size.
+void *rt_mesh3d_new_plane(double sx, double sz) {
+    if (!mesh_validate_positive_finite(sx, "Mesh3D.NewPlane: sx") ||
+        !mesh_validate_positive_finite(sz, "Mesh3D.NewPlane: sz"))
+        return NULL;
+    void *m = rt_mesh3d_new();
+    if (!m)
+        return NULL;
+    if (!mesh3d_reserve_storage((rt_mesh3d *)m, 4u, 6u, "Mesh3D.NewPlane")) {
+        mesh_mark_build_failed((rt_mesh3d *)m);
+        return mesh_return_null_if_build_failed(m);
+    }
+
+    double hx = sx * 0.5, hz = sz * 0.5;
+
+    rt_mesh3d_begin_geometry_batch((rt_mesh3d *)m);
+    rt_mesh3d_add_vertex(m, -hx, 0, -hz, 0, 1, 0, 0, 0);
+    rt_mesh3d_add_vertex(m, hx, 0, -hz, 0, 1, 0, 1, 0);
+    rt_mesh3d_add_vertex(m, hx, 0, hz, 0, 1, 0, 1, 1);
+    rt_mesh3d_add_vertex(m, -hx, 0, hz, 0, 1, 0, 0, 1);
+
+    /* CCW when viewed from +Y so normals, lighting, and backface culling agree. */
+    rt_mesh3d_add_triangle(m, 0, 2, 1);
+    rt_mesh3d_add_triangle(m, 0, 3, 2);
+    rt_mesh3d_end_geometry_batch((rt_mesh3d *)m);
+
+    return mesh_return_null_if_build_failed(m);
+}
+
+/// @brief Generate a cylinder mesh with circular caps, centered at the origin.
+void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments) {
+    if (!mesh_validate_positive_finite(radius, "Mesh3D.NewCylinder: radius") ||
+        !mesh_validate_positive_finite(height, "Mesh3D.NewCylinder: height"))
+        return NULL;
+    if (segments > MESH_MAX_CYLINDER_SEGMENTS) {
+        rt_trap("Mesh3D.NewCylinder: segments exceeds safe limit");
+        return NULL;
+    }
+    void *m = rt_mesh3d_new();
+    if (!m)
+        return NULL;
+    if (segments < 3)
+        segments = 3;
+
+    double r = radius;
+    double hy = height * 0.5;
+    if (!mesh3d_check_planned_payload((uint64_t)(4 * segments + 4),
+                                      (uint64_t)(12 * segments),
+                                      "Mesh3D.NewCylinder: mesh exceeds memory budget")) {
+        mesh_mark_build_failed((rt_mesh3d *)m);
+        return mesh_return_null_if_build_failed(m);
+    }
+    if (!mesh3d_reserve_storage((rt_mesh3d *)m,
+                                (uint32_t)(4 * segments + 4),
+                                (uint32_t)(12 * segments),
+                                "Mesh3D.NewCylinder")) {
+        mesh_mark_build_failed((rt_mesh3d *)m);
+        return mesh_return_null_if_build_failed(m);
+    }
+
+    /* Side vertices */
+    rt_mesh3d_begin_geometry_batch((rt_mesh3d *)m);
+    for (int64_t i = 0; i <= segments; i++) {
+        float theta = 2.0f * (float)M_PI * (float)i / (float)segments;
+        float ct = cosf(theta), st = sinf(theta);
+        float u = (float)i / (float)segments;
+
+        rt_mesh3d_add_vertex(m, r * ct, -hy, r * st, ct, 0, st, u, 1.0);
+        rt_mesh3d_add_vertex(m, r * ct, hy, r * st, ct, 0, st, u, 0.0);
+    }
+
+    /* Side triangles */
+    for (int64_t i = 0; i < segments; i++) {
+        int64_t b = i * 2;
+        rt_mesh3d_add_triangle(m, b, b + 1, b + 2);
+        rt_mesh3d_add_triangle(m, b + 1, b + 3, b + 2);
+    }
+
+    /* Top cap center */
+    int64_t tc = (int64_t)((rt_mesh3d *)m)->vertex_count;
+    rt_mesh3d_add_vertex(m, 0, hy, 0, 0, 1, 0, 0.5, 0.5);
+    for (int64_t i = 0; i < segments; i++) {
+        float theta = 2.0f * (float)M_PI * (float)i / (float)segments;
+        float ct = cosf(theta), st = sinf(theta);
+        rt_mesh3d_add_vertex(m, r * ct, hy, r * st, 0, 1, 0, ct * 0.5 + 0.5, st * 0.5 + 0.5);
+    }
+    for (int64_t i = 0; i < segments; i++) {
+        int64_t next = (i + 1) % segments;
+        rt_mesh3d_add_triangle(m, tc, tc + 1 + next, tc + 1 + i);
+    }
+
+    /* Bottom cap center */
+    int64_t bc = (int64_t)((rt_mesh3d *)m)->vertex_count;
+    rt_mesh3d_add_vertex(m, 0, -hy, 0, 0, -1, 0, 0.5, 0.5);
+    for (int64_t i = 0; i < segments; i++) {
+        float theta = 2.0f * (float)M_PI * (float)i / (float)segments;
+        float ct = cosf(theta), st = sinf(theta);
+        rt_mesh3d_add_vertex(m, r * ct, -hy, r * st, 0, -1, 0, ct * 0.5 + 0.5, st * 0.5 + 0.5);
+    }
+    for (int64_t i = 0; i < segments; i++) {
+        int64_t next = (i + 1) % segments;
+        rt_mesh3d_add_triangle(m, bc, bc + 1 + i, bc + 1 + next);
+    }
+    rt_mesh3d_end_geometry_batch((rt_mesh3d *)m);
+
+    return mesh_return_null_if_build_failed(m);
+}

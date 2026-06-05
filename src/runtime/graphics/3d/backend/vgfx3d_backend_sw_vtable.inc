@@ -1,0 +1,607 @@
+//===----------------------------------------------------------------------===//
+// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_sw_vtable.inc  (#included from vgfx3d_backend_sw.c; not a standalone translation unit)
+// Purpose: Software backend vtable implementation (clear, frame, submit, present)
+//===----------------------------------------------------------------------===//
+/*==========================================================================
+ * Backend vtable implementation
+ *=========================================================================*/
+
+/// @brief Backend `create_ctx` op — allocate the software-renderer state struct.
+///
+/// Trivial compared to hardware backends — no shaders, no FBOs, no
+/// device. Just a `sw_context_t` with a deferred-allocated zbuffer.
+static void *sw_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
+    sw_context_t *ctx = (sw_context_t *)calloc(1, sizeof(sw_context_t));
+    if (!ctx)
+        return NULL;
+
+    /* Use physical framebuffer dimensions (HiDPI-aware), not logical dimensions.
+     * The rasterizer writes to fb.pixels which is at physical resolution. */
+    vgfx_framebuffer_t fb;
+    if (win && vgfx_get_framebuffer(win, &fb)) {
+        ctx->width = fb.width;
+        ctx->height = fb.height;
+    } else {
+        ctx->width = w;
+        ctx->height = h;
+    }
+
+    if (!sw_ensure_zbuf_capacity(ctx, ctx->width, ctx->height)) {
+        free(ctx);
+        return NULL;
+    }
+    return ctx;
+}
+
+/// @brief Backend `destroy_ctx` op — free zbuffer + struct.
+static void sw_destroy_ctx(void *ctx_ptr) {
+    if (!ctx_ptr)
+        return;
+    sw_context_t *ctx = (sw_context_t *)ctx_ptr;
+    free(ctx->zbuf);
+    free(ctx->vertex_scratch);
+    free(ctx);
+}
+
+/// @brief Backend `clear` op — clear the framebuffer to a solid color and reset Z.
+///
+/// Fills every pixel with `(r, g, b, 1)` packed as 0xAARRGGBB and
+/// sets every Z value to +infinity (well, FLT_MAX) so the next draw's
+/// "less than" depth tests succeed unconditionally.
+static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b) {
+    sw_context_t *ctx = (sw_context_t *)ctx_ptr;
+    if (!ctx)
+        return;
+
+    uint8_t cr = (uint8_t)(clamp01f(r) * 255.0f);
+    uint8_t cg = (uint8_t)(clamp01f(g) * 255.0f);
+    uint8_t cb = (uint8_t)(clamp01f(b) * 255.0f);
+
+    if (ctx->render_target) {
+        vgfx3d_rendertarget_t *rt = ctx->render_target;
+        if (!vgfx3d_rendertarget_ensure_color(rt) || !vgfx3d_rendertarget_ensure_depth(rt))
+            return;
+        for (int32_t y = 0; y < rt->height; y++)
+            for (int32_t x = 0; x < rt->width; x++) {
+                uint8_t *px = &rt->color_buf[y * rt->stride + x * 4];
+                px[0] = cr;
+                px[1] = cg;
+                px[2] = cb;
+                px[3] = 0xFF;
+            }
+        size_t total = (size_t)rt->width * (size_t)rt->height;
+        for (size_t i = 0; i < total; i++)
+            rt->depth_buf[i] = FLT_MAX;
+        rt->hdr_color_valid = 0;
+        vgfx3d_rendertarget_clear_sync(rt);
+    } else {
+        vgfx_framebuffer_t fb;
+        if (vgfx_get_framebuffer(win, &fb)) {
+            if (!sw_ensure_zbuf_capacity(ctx, fb.width, fb.height))
+                return;
+            for (int32_t y = 0; y < fb.height; y++)
+                for (int32_t x = 0; x < fb.width; x++) {
+                    uint8_t *px = &fb.pixels[y * fb.stride + x * 4];
+                    px[0] = cr;
+                    px[1] = cg;
+                    px[2] = cb;
+                    px[3] = 0xFF;
+                }
+        }
+        size_t total = (size_t)ctx->width * (size_t)ctx->height;
+        for (size_t i = 0; i < total; i++)
+            ctx->zbuf[i] = FLT_MAX;
+    }
+}
+
+/// @brief Backend `begin_frame` op — capture camera + compute view-projection.
+///
+/// Multiplies projection × view, captures fog state and camera
+/// position. Doesn't touch any pixels — drawing happens in `submit_draw`.
+static void sw_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
+    sw_context_t *ctx = (sw_context_t *)ctx_ptr;
+    if (!ctx || !cam)
+        return;
+    /* VP = projection * view */
+    mat4f_mul(cam->projection, cam->view, ctx->vp);
+    ctx->cam_pos[0] = cam->position[0];
+    ctx->cam_pos[1] = cam->position[1];
+    ctx->cam_pos[2] = cam->position[2];
+    ctx->cam_forward[0] = cam->forward[0];
+    ctx->cam_forward[1] = cam->forward[1];
+    ctx->cam_forward[2] = cam->forward[2];
+    ctx->cam_is_ortho = cam->is_ortho ? 1 : 0;
+    ctx->fog_enabled = cam->fog_enabled;
+    ctx->fog_near = cam->fog_near;
+    ctx->fog_far = cam->fog_far;
+    ctx->fog_color[0] = cam->fog_color[0];
+    ctx->fog_color[1] = cam->fog_color[1];
+    ctx->fog_color[2] = cam->fog_color[2];
+    if (!cam->load_existing_depth) {
+        if (ctx->render_target) {
+            vgfx3d_rendertarget_t *rt = ctx->render_target;
+            if (vgfx3d_rendertarget_ensure_depth(rt)) {
+                size_t total = (size_t)rt->width * (size_t)rt->height;
+                for (size_t i = 0; i < total; i++)
+                    rt->depth_buf[i] = FLT_MAX;
+            }
+        } else {
+            size_t total = (size_t)ctx->width * (size_t)ctx->height;
+            for (size_t i = 0; i < total; i++)
+                ctx->zbuf[i] = FLT_MAX;
+        }
+    }
+    /* Reset shadow state — rebuilt if shadows are enabled this frame */
+    ctx->shadow_pass_slot = -1;
+    ctx->shadow_count = 0;
+    memset(ctx->shadow_complete, 0, sizeof(ctx->shadow_complete));
+}
+
+/// @brief A draw call's resolved material texture views plus the (possibly NULL)
+///   pointers handed to the rasterizer. The pointers alias the views stored in
+///   this struct, so it must outlive the rasterization loop that reads them.
+typedef struct {
+    sw_pixels_view tex_view, emissive_view, normal_view;
+    sw_pixels_view specular_view, metallic_roughness_view, ao_view;
+    sw_pixels_view *tex_ptr;
+    sw_pixels_view *emissive_ptr;
+    sw_pixels_view *normal_ptr;
+    sw_pixels_view *specular_ptr;
+    sw_pixels_view *metallic_roughness_ptr;
+    sw_pixels_view *ao_ptr;
+} sw_material_views;
+
+/// @brief Copy each present material map (base color, emissive, normal, specular,
+///   metallic-roughness, AO) into @p mv, setting the matching pointer non-NULL
+///   only when the view has non-empty dimensions and backing data.
+static void sw_resolve_material_views(const vgfx3d_draw_cmd_t *cmd, sw_material_views *mv) {
+    mv->tex_ptr = NULL;
+    mv->emissive_ptr = NULL;
+    mv->normal_ptr = NULL;
+    mv->specular_ptr = NULL;
+    mv->metallic_roughness_ptr = NULL;
+    mv->ao_ptr = NULL;
+    if (cmd->texture) {
+        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->texture;
+        mv->tex_view = *pv;
+        if (mv->tex_view.width > 0 && mv->tex_view.height > 0 && mv->tex_view.data)
+            mv->tex_ptr = &mv->tex_view;
+    }
+    if (cmd->emissive_map) {
+        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->emissive_map;
+        mv->emissive_view = *pv;
+        if (mv->emissive_view.width > 0 && mv->emissive_view.height > 0 && mv->emissive_view.data)
+            mv->emissive_ptr = &mv->emissive_view;
+    }
+    if (cmd->normal_map) {
+        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->normal_map;
+        mv->normal_view = *pv;
+        if (mv->normal_view.width > 0 && mv->normal_view.height > 0 && mv->normal_view.data)
+            mv->normal_ptr = &mv->normal_view;
+    }
+    if (cmd->specular_map) {
+        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->specular_map;
+        mv->specular_view = *pv;
+        if (mv->specular_view.width > 0 && mv->specular_view.height > 0 && mv->specular_view.data)
+            mv->specular_ptr = &mv->specular_view;
+    }
+    if (cmd->metallic_roughness_map) {
+        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->metallic_roughness_map;
+        mv->metallic_roughness_view = *pv;
+        if (mv->metallic_roughness_view.width > 0 && mv->metallic_roughness_view.height > 0 &&
+            mv->metallic_roughness_view.data)
+            mv->metallic_roughness_ptr = &mv->metallic_roughness_view;
+    }
+    if (cmd->ao_map) {
+        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->ao_map;
+        mv->ao_view = *pv;
+        if (mv->ao_view.width > 0 && mv->ao_view.height > 0 && mv->ao_view.data)
+            mv->ao_ptr = &mv->ao_view;
+    }
+}
+
+/// @brief Backend `submit_draw` op — render one indexed mesh in software.
+///
+/// End-to-end pipeline:
+///   1. Resolve framebuffer + ensure zbuffer is sized.
+///   2. Compute world × view × projection matrix.
+///   3. Set up texture views from material maps.
+///   4. For each triangle: transform vertices to clip space, light
+///      (Gouraud), clip against frustum, project to screen, rasterize.
+/// Either runs the wireframe path (3 line draws per triangle) or the
+/// full `raster_triangle` shader.
+/// @brief Select the render output buffers — either the bound render target or
+///   the window framebuffer — ensuring their color/depth allocations. Returns 1
+///   with the out-params filled, or 0 if a required buffer could not be ensured.
+static int sw_resolve_output_target(sw_context_t *ctx,
+                                    vgfx_window_t win,
+                                    uint8_t **out_pixels,
+                                    float **out_zbuf,
+                                    int32_t *out_w,
+                                    int32_t *out_h,
+                                    int32_t *out_stride) {
+    if (ctx->render_target) {
+        vgfx3d_rendertarget_t *rt = ctx->render_target;
+        if (!vgfx3d_rendertarget_ensure_color(rt) || !vgfx3d_rendertarget_ensure_depth(rt))
+            return 0;
+        *out_pixels = rt->color_buf;
+        *out_zbuf = rt->depth_buf;
+        *out_w = rt->width;
+        *out_h = rt->height;
+        *out_stride = rt->stride;
+        rt->hdr_color_valid = 0;
+        vgfx3d_rendertarget_clear_sync(rt);
+    } else {
+        vgfx_framebuffer_t fb;
+        if (!vgfx_get_framebuffer(win, &fb))
+            return 0;
+        if (!sw_ensure_zbuf_capacity(ctx, fb.width, fb.height))
+            return 0;
+        *out_pixels = fb.pixels;
+        *out_zbuf = ctx->zbuf;
+        *out_w = fb.width;
+        *out_h = fb.height;
+        *out_stride = fb.stride;
+    }
+    return 1;
+}
+
+/// @brief Transform every mesh vertex into the pipeline-vertex scratch buffer:
+///   world position, world normal + tangent (via the normal matrix), clip-space
+///   position (via MVP), UVs, and color. Computes per-vertex Gouraud lighting for
+///   legacy unlit/non-normal-mapped materials; otherwise stores raw albedo so the
+///   fragment stage can light per-pixel.
+static void sw_transform_vertices(sw_context_t *ctx,
+                                  const vgfx3d_draw_cmd_t *cmd,
+                                  pipe_vert_t *pv,
+                                  uint32_t vc,
+                                  const float *mvp,
+                                  const float *normal_matrix,
+                                  const vgfx3d_light_params_t *lights,
+                                  int32_t light_count,
+                                  const float *ambient) {
+    for (uint32_t i = 0; i < vc; i++) {
+        const vgfx3d_vertex_t *src = &cmd->vertices[i];
+        pipe_vert_t *dst = &pv[i];
+        float pos4[4] = {src->pos[0], src->pos[1], src->pos[2], 1.0f};
+
+        /* World-space */
+        float world4[4];
+        mat4f_transform4(cmd->model_matrix, pos4, world4);
+        dst->world[0] = world4[0];
+        dst->world[1] = world4[1];
+        dst->world[2] = world4[2];
+
+        float nrm4[4] = {src->normal[0], src->normal[1], src->normal[2], 0.0f};
+        float wnrm4[4];
+        mat4f_transform4(normal_matrix, nrm4, wnrm4);
+        dst->normal[0] = wnrm4[0];
+        dst->normal[1] = wnrm4[1];
+        dst->normal[2] = wnrm4[2];
+
+        /* Transform tangent to world space (for TBN construction with normal maps) */
+        float tan4[4] = {src->tangent[0], src->tangent[1], src->tangent[2], 0.0f};
+        float wtan4[4];
+        mat4f_transform4(normal_matrix, tan4, wtan4);
+        dst->tangent[0] = wtan4[0];
+        dst->tangent[1] = wtan4[1];
+        dst->tangent[2] = wtan4[2];
+        dst->tangent[3] = src->tangent[3];
+
+        /* Clip-space */
+        float clip[4];
+        mat4f_transform4(mvp, pos4, clip);
+        dst->clip[0] = clip[0];
+        dst->clip[1] = clip[1];
+        dst->clip[2] = clip[2];
+        dst->clip[3] = clip[3];
+
+        dst->uv[0] = src->uv[0];
+        dst->uv[1] = src->uv[1];
+        dst->uv1[0] = src->uv1[0];
+        dst->uv1[1] = src->uv1[1];
+
+        /* Vertex color (defaults to white {1,1,1,1} if not set) */
+        dst->color[0] = src->color[0];
+        dst->color[1] = src->color[1];
+        dst->color[2] = src->color[2];
+        dst->color[3] = src->color[3];
+
+        /* Per-vertex lighting (Gouraud) — skipped when normal/PBR work is done per-pixel. */
+        if (!cmd->unlit && (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR || cmd->normal_map)) {
+            /* Store raw albedo: vertex_color * diffuse (lighting computed per-pixel) */
+            dst->color[0] = cmd->diffuse_color[0] * dst->color[0];
+            dst->color[1] = cmd->diffuse_color[1] * dst->color[1];
+            dst->color[2] = cmd->diffuse_color[2] * dst->color[2];
+            dst->color[3] = dst->color[3] * cmd->diffuse_color[3] * cmd->alpha;
+        } else {
+            compute_lighting(dst, ctx, cmd, lights, light_count, ambient);
+        }
+    }
+}
+
+/// @brief Emit verbose per-draw diagnostics (command params, MVP rows, first few
+///   transformed vertices) to stderr for the first 8 draws when SW debug is on.
+static void sw_debug_log_draw(const vgfx3d_draw_cmd_t *cmd,
+                              const float *mvp,
+                              const pipe_vert_t *pv,
+                              uint32_t vc,
+                              const float *ambient,
+                              int32_t light_count) {
+    static int debug_draw_count = 0;
+    if (!sw_debug_enabled() || debug_draw_count >= 8)
+        return;
+    uint32_t limit = vc < 4 ? vc : 4;
+    fprintf(stderr,
+            "[sw3d] draw %d vc=%u ic=%u ambient=(%.3f %.3f %.3f) lights=%d alpha=%.3f "
+            "diffuse=(%.3f %.3f %.3f %.3f)\n",
+            debug_draw_count,
+            cmd->vertex_count,
+            cmd->index_count,
+            ambient ? ambient[0] : 0.0f,
+            ambient ? ambient[1] : 0.0f,
+            ambient ? ambient[2] : 0.0f,
+            light_count,
+            cmd->alpha,
+            cmd->diffuse_color[0],
+            cmd->diffuse_color[1],
+            cmd->diffuse_color[2],
+            cmd->diffuse_color[3]);
+    fprintf(stderr,
+            "[sw3d] mvp rows=(%.3f %.3f %.3f %.3f) (%.3f %.3f %.3f %.3f) (%.3f %.3f %.3f "
+            "%.3f) (%.3f %.3f %.3f %.3f)\n",
+            mvp[0],
+            mvp[1],
+            mvp[2],
+            mvp[3],
+            mvp[4],
+            mvp[5],
+            mvp[6],
+            mvp[7],
+            mvp[8],
+            mvp[9],
+            mvp[10],
+            mvp[11],
+            mvp[12],
+            mvp[13],
+            mvp[14],
+            mvp[15]);
+    for (uint32_t i = 0; i < limit; i++) {
+        fprintf(stderr,
+                "[sw3d] v%u pos=(%.3f %.3f %.3f) clip=(%.3f %.3f %.3f %.3f) color=(%.3f "
+                "%.3f %.3f %.3f)\n",
+                i,
+                cmd->vertices[i].pos[0],
+                cmd->vertices[i].pos[1],
+                cmd->vertices[i].pos[2],
+                pv[i].clip[0],
+                pv[i].clip[1],
+                pv[i].clip[2],
+                pv[i].clip[3],
+                pv[i].color[0],
+                pv[i].color[1],
+                pv[i].color[2],
+                pv[i].color[3]);
+    }
+    debug_draw_count++;
+}
+
+/// @brief Perspective-divide one clipped pipeline vertex into a screen-space
+///   vertex (viewport-mapped position + perspective-correct attribute carriers).
+///   Returns 0 (skip the triangle) when the clip-space w is degenerate.
+static int sw_project_clip_to_screen(const pipe_vert_t *p,
+                                     float half_w,
+                                     float half_h,
+                                     screen_vert_t *sv) {
+    if (!p || !sv || !isfinite(p->clip[0]) || !isfinite(p->clip[1]) || !isfinite(p->clip[2]) ||
+        !isfinite(p->clip[3]) || p->clip[3] <= 1e-7f)
+        return 0;
+    if (p->clip[2] < -p->clip[3] - 1e-5f || p->clip[2] > p->clip[3] + 1e-5f)
+        return 0;
+    float iw = 1.0f / p->clip[3];
+    sv->sx = (p->clip[0] * iw + 1.0f) * half_w;
+    sv->sy = (1.0f - p->clip[1] * iw) * half_h;
+    sv->sz = p->clip[2] * iw;
+    sv->r = p->color[0];
+    sv->g = p->color[1];
+    sv->b = p->color[2];
+    sv->a = p->color[3];
+    sv->inv_w = iw;
+    sv->u_over_w = p->uv[0] * iw;
+    sv->v_over_w = p->uv[1] * iw;
+    sv->u1_over_w = p->uv1[0] * iw;
+    sv->v1_over_w = p->uv1[1] * iw;
+    sv->wx = p->world[0];
+    sv->wy = p->world[1];
+    sv->wz = p->world[2];
+    sv->nx = p->normal[0];
+    sv->ny = p->normal[1];
+    sv->nz = p->normal[2];
+    sv->tx = p->tangent[0];
+    sv->ty = p->tangent[1];
+    sv->tz = p->tangent[2];
+    sv->tw = p->tangent[3];
+    return 1;
+}
+
+/// @brief Draw the three edges of a screen-space triangle as wireframe lines,
+///   colored from the first vertex's interpolated color.
+static void sw_draw_wireframe_tri(
+    uint8_t *pixels, int32_t fb_w, int32_t fb_h, int32_t stride, const screen_vert_t *sv) {
+    uint8_t wr = (uint8_t)(clamp01f(sv[0].r) * 255.0f);
+    uint8_t wg = (uint8_t)(clamp01f(sv[0].g) * 255.0f);
+    uint8_t wb = (uint8_t)(clamp01f(sv[0].b) * 255.0f);
+    draw_line(pixels,
+              fb_w,
+              fb_h,
+              stride,
+              (int)sv[0].sx,
+              (int)sv[0].sy,
+              (int)sv[1].sx,
+              (int)sv[1].sy,
+              wr,
+              wg,
+              wb);
+    draw_line(pixels,
+              fb_w,
+              fb_h,
+              stride,
+              (int)sv[1].sx,
+              (int)sv[1].sy,
+              (int)sv[2].sx,
+              (int)sv[2].sy,
+              wr,
+              wg,
+              wb);
+    draw_line(pixels,
+              fb_w,
+              fb_h,
+              stride,
+              (int)sv[2].sx,
+              (int)sv[2].sy,
+              (int)sv[0].sx,
+              (int)sv[0].sy,
+              wr,
+              wg,
+              wb);
+}
+
+/// @brief Backend `submit_draw` op for the software rasterizer. Resolves output
+///   buffers, transforms vertices, then clips and rasterizes (or wireframes) each
+///   triangle of the mesh.
+static void sw_submit_draw(void *ctx_ptr,
+                           vgfx_window_t win,
+                           const vgfx3d_draw_cmd_t *cmd,
+                           const vgfx3d_light_params_t *lights,
+                           int32_t light_count,
+                           const float *ambient,
+                           int8_t wireframe,
+    int8_t backface_cull) {
+    sw_context_t *ctx = (sw_context_t *)ctx_ptr;
+    static const float zero_ambient[3] = {0.0f, 0.0f, 0.0f};
+    uint32_t index_count;
+    if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
+        cmd->index_count == 0)
+        return;
+    index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
+    if (index_count == 0)
+        return;
+    if (!ambient)
+        ambient = zero_ambient;
+    if (!lights || light_count < 0)
+        light_count = 0;
+
+    /* Determine output buffers: render target or window framebuffer */
+    uint8_t *out_pixels;
+    float *out_zbuf;
+    int32_t out_w, out_h, out_stride;
+    if (!sw_resolve_output_target(ctx, win, &out_pixels, &out_zbuf, &out_w, &out_h, &out_stride))
+        return;
+
+    /* Build MVP = VP * model */
+    float mvp[16];
+    float normal_matrix[16];
+    mat4f_mul(ctx->vp, cmd->model_matrix, mvp);
+    vgfx3d_compute_normal_matrix4(cmd->model_matrix, normal_matrix);
+
+    /* Texture setup — resolve up to six material maps into stack-local views. */
+    sw_material_views mv;
+    sw_resolve_material_views(cmd, &mv);
+
+    float half_w = (float)out_w * 0.5f;
+    float half_h = (float)out_h * 0.5f;
+
+    /* Transform mesh vertices */
+    uint32_t vc = cmd->vertex_count;
+    pipe_vert_t *pv = sw_acquire_pipe_vertices(ctx, vc);
+    if (!pv)
+        return;
+    sw_transform_vertices(ctx, cmd, pv, vc, mvp, normal_matrix, lights, light_count, ambient);
+    sw_debug_log_draw(cmd, mvp, pv, vc, ambient, light_count);
+
+    /* Process triangles: clip → rasterize */
+    pipe_vert_t clipped[MAX_CLIP_VERTS];
+
+    for (uint32_t i = 0; i + 2 < index_count; i += 3) {
+        uint32_t i0 = cmd->indices[i], i1 = cmd->indices[i + 1], i2 = cmd->indices[i + 2];
+        if (i0 >= vc || i1 >= vc || i2 >= vc)
+            continue;
+
+        pipe_vert_t tri[3] = {pv[i0], pv[i1], pv[i2]};
+        int clip_count = clip_triangle(tri, clipped);
+        if (clip_count < 3)
+            continue;
+
+        for (int t = 1; t < clip_count - 1; t++) {
+            screen_vert_t sv[3];
+            const pipe_vert_t *fan[3] = {&clipped[0], &clipped[t], &clipped[t + 1]};
+            int ok = 1;
+            for (int vi = 0; vi < 3; vi++) {
+                if (!sw_project_clip_to_screen(fan[vi], half_w, half_h, &sv[vi])) {
+                    ok = 0;
+                    break;
+                }
+            }
+            if (!ok)
+                continue;
+
+            if (wireframe) {
+                sw_draw_wireframe_tri(out_pixels, out_w, out_h, out_stride, sv);
+            } else {
+                raster_triangle(out_pixels,
+                                out_zbuf,
+                                out_w,
+                                out_h,
+                                out_stride,
+                                &sv[0],
+                                &sv[1],
+                                &sv[2],
+                                mv.tex_ptr,
+                                mv.emissive_ptr,
+                                cmd->emissive_color,
+                                mv.normal_ptr,
+                                mv.specular_ptr,
+                                mv.metallic_roughness_ptr,
+                                mv.ao_ptr,
+                                cmd,
+                                lights,
+                                light_count,
+                                ambient,
+                                backface_cull,
+                                ctx);
+            }
+        }
+    }
+}
+
+/// @brief Backend `end_frame` op — no-op for software (frames write directly to fb).
+static void sw_end_frame(void *ctx_ptr) {
+    (void)ctx_ptr;
+}
+
+/// @brief Backend `resize` op — re-allocate the depth buffer to the new size.
+static void sw_resize(void *ctx_ptr, int32_t w, int32_t h) {
+    sw_context_t *ctx = (sw_context_t *)ctx_ptr;
+    if (!ctx || ctx->render_target)
+        return;
+    sw_ensure_zbuf_capacity(ctx, w, h);
+}
+
+/// @brief Backend `set_render_target` op — bind / unbind a host-memory RTT.
+///
+/// Software backend RTT is just "render directly to the user-supplied
+/// host buffer instead of the swapchain". No GPU resources to manage.
+/// NULL `rt` reverts to swapchain rendering.
+static void sw_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
+    sw_context_t *ctx = (sw_context_t *)ctx_ptr;
+    if (!ctx)
+        return;
+    if (rt) {
+        if (!vgfx3d_rendertarget_ensure_color(rt) || !vgfx3d_rendertarget_ensure_depth(rt)) {
+            ctx->render_target = NULL;
+            return;
+        }
+    }
+    ctx->render_target = rt;
+}

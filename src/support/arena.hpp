@@ -107,14 +107,22 @@ class GrowingArena {
             destructors_.reserve(destructors_.size() + 1);
         }
 
+        const AllocationMark mark = markAllocationPoint();
         void *mem = allocate(sizeof(T), alignof(T));
-        T *obj = new (mem) T(std::forward<Args>(args)...);
+        T *obj = nullptr;
+        try {
+            obj = new (mem) T(std::forward<Args>(args)...);
+        } catch (...) {
+            rewindTo(mark);
+            throw;
+        }
 
         if constexpr (!std::is_trivially_destructible_v<T>) {
             try {
                 destructors_.push_back({obj, [](void *p) { static_cast<T *>(p)->~T(); }});
             } catch (...) {
                 obj->~T();
+                rewindTo(mark);
                 throw;
             }
         }
@@ -166,11 +174,30 @@ class GrowingArena {
         void (*destroy)(void *); ///< Type-erased destructor thunk for @c object.
     };
 
+    /// @brief Saved bump-allocation position for exception rollback.
+    struct AllocationMark {
+        size_t chunkCount = 0; ///< Number of chunks present when the mark was taken.
+        size_t lastOffset = 0; ///< Offset of the last chunk when the mark was taken.
+    };
+
     /// @brief Allocate a new chunk of at least the given size.
     void allocateChunk(size_t minSize);
 
     /// @brief Destroy all tracked objects in reverse order.
     void destroyObjects();
+
+    /// @brief Capture the current bump-allocation position.
+    /// @return Mark that can be passed to @ref rewindTo.
+    /// @details Used by create<T>() so constructor failure can restore arena
+    ///          capacity to the state observed before raw memory was allocated.
+    [[nodiscard]] AllocationMark markAllocationPoint() const noexcept;
+
+    /// @brief Restore the bump-allocation position to @p mark.
+    /// @param mark Previously captured allocation mark.
+    /// @details Drops chunks allocated after the mark and restores the final
+    ///          surviving chunk's offset.  Callers must only use this for memory
+    ///          that has not been published as a live tracked object.
+    void rewindTo(AllocationMark mark) noexcept;
 
     std::vector<Chunk> chunks_;                 ///< Allocated chunks in creation order.
     std::vector<DestructorRecord> destructors_; ///< Pending destructors, run LIFO on reset.

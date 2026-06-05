@@ -20,6 +20,8 @@
 
 #include "string_interner.hpp"
 
+#include <utility>
+
 namespace il::support {
 
 /// @brief Construct an interner that caps the number of distinct symbols.
@@ -47,11 +49,8 @@ StringInterner::StringInterner(const StringInterner &other)
 StringInterner &StringInterner::operator=(const StringInterner &other) {
     if (this == &other)
         return *this;
-    std::deque<std::string> newStorage = other.storage_;
-    InternMap newMap = buildMapForStorage(newStorage);
-    storage_ = std::move(newStorage);
-    map_ = std::move(newMap);
-    maxSymbols_ = other.maxSymbols_;
+    StringInterner copy(other);
+    swapWith(copy);
     return *this;
 }
 
@@ -74,12 +73,8 @@ StringInterner::StringInterner(StringInterner &&other)
 StringInterner &StringInterner::operator=(StringInterner &&other) {
     if (this == &other)
         return *this;
-    std::deque<std::string> newStorage = std::move(other.storage_);
-    InternMap newMap = buildMapForStorage(newStorage);
-    storage_ = std::move(newStorage);
-    map_ = std::move(newMap);
-    maxSymbols_ = other.maxSymbols_;
-    other.map_.clear();
+    StringInterner moved(std::move(other));
+    swapWith(moved);
     return *this;
 }
 
@@ -163,8 +158,8 @@ void StringInterner::rebuildMap() {
 /// @brief Build a lookup map whose string_view keys point into supplied storage.
 /// @param storage String storage that owns every key's bytes.
 /// @return Fully populated intern map for the supplied storage.
-StringInterner::InternMap
-StringInterner::buildMapForStorage(const std::deque<std::string> &storage) {
+StringInterner::InternMap StringInterner::buildMapForStorage(
+    const std::deque<std::string> &storage) {
     InternMap map;
     map.reserve(storage.size());
     uint32_t id = 1;
@@ -172,5 +167,18 @@ StringInterner::buildMapForStorage(const std::deque<std::string> &storage) {
         map.emplace(std::string_view{value}, Symbol{id++});
     }
     return map;
+}
+
+/// @brief Swap every storage component with another interner.
+/// @param other Interner whose state should be exchanged with this object.
+/// @details The lookup map and string storage must move together because map keys
+///          are string_view references into the storage deque.  Assignment
+///          operators use this helper after preparing a fully rebuilt temporary
+///          interner so this object is replaced atomically from the caller's view.
+void StringInterner::swapWith(StringInterner &other) noexcept {
+    using std::swap;
+    swap(map_, other.map_);
+    swap(storage_, other.storage_);
+    swap(maxSymbols_, other.maxSymbols_);
 }
 } // namespace il::support

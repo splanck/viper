@@ -17,21 +17,77 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
+#include <optional>
 #include <type_traits>
 
 namespace il::support {
 
-/// @brief Round a value up to the next multiple of alignment.
-/// @details Computes the smallest value >= n that is a multiple of alignment.
-///          Uses the standard bit manipulation formula: (n + align - 1) & ~(align - 1)
-///          Alignment must be a power of two for correct results.
+/// @brief Check whether @p value is a positive power of two.
+/// @tparam T Integral type of the value being checked.
+/// @param value Candidate alignment value.
+/// @return True when @p value is non-zero, positive, and has exactly one bit set.
+/// @details Alignment utilities use this helper to validate preconditions before
+///          applying bit-mask formulas.  Signed negative values are rejected.
+template <typename T> [[nodiscard]] constexpr bool isPowerOfTwo(T value) noexcept {
+    static_assert(std::is_integral_v<T>, "isPowerOfTwo requires an integral type");
+    if (value <= 0)
+        return false;
+    using Unsigned = std::make_unsigned_t<T>;
+    const Unsigned unsignedValue = static_cast<Unsigned>(value);
+    return (unsignedValue & (unsignedValue - 1)) == 0;
+}
+
+/// @brief Try to round a value up to the next multiple of alignment.
 /// @tparam T Integral type of the value being aligned.
 /// @param n Value to align.
 /// @param alignment Alignment boundary (must be power of two).
-/// @return Smallest value >= n that is a multiple of alignment.
+/// @return Smallest aligned value, or std::nullopt for invalid alignment/overflow.
+/// @details This checked form avoids the overflow-prone `(n + alignment - 1)`
+///          expression.  Signed negative values are treated as invalid because
+///          byte and offset alignment in this support library is non-negative.
+template <typename T>
+[[nodiscard]] constexpr std::optional<T> checkedAlignUp(T n, T alignment) noexcept {
+    static_assert(std::is_integral_v<T>, "checkedAlignUp requires an integral type");
+    if (!isPowerOfTwo(alignment))
+        return std::nullopt;
+    if constexpr (std::is_signed_v<T>) {
+        if (n < 0)
+            return std::nullopt;
+    }
+
+    using Unsigned = std::make_unsigned_t<T>;
+    const Unsigned unsignedValue = static_cast<Unsigned>(n);
+    const Unsigned unsignedAlignment = static_cast<Unsigned>(alignment);
+    const Unsigned mask = unsignedAlignment - 1;
+    const Unsigned remainder = unsignedValue & mask;
+    if (remainder == 0)
+        return n;
+
+    const Unsigned delta = unsignedAlignment - remainder;
+    if (unsignedValue > std::numeric_limits<Unsigned>::max() - delta)
+        return std::nullopt;
+
+    const Unsigned aligned = unsignedValue + delta;
+    if constexpr (std::is_signed_v<T>) {
+        if (aligned > static_cast<Unsigned>(std::numeric_limits<T>::max()))
+            return std::nullopt;
+    }
+    return static_cast<T>(aligned);
+}
+
+/// @brief Round a value up to the next multiple of alignment.
+/// @details Computes the smallest value >= n that is a multiple of alignment.
+///          Invalid alignments or overflow leave @p n unchanged; callers that
+///          need to distinguish those cases should use @ref checkedAlignUp.
+/// @tparam T Integral type of the value being aligned.
+/// @param n Value to align.
+/// @param alignment Alignment boundary (must be power of two).
+/// @return Smallest value >= n that is a multiple of alignment, or @p n on failure.
 template <typename T> [[nodiscard]] constexpr T alignUp(T n, T alignment) noexcept {
     static_assert(std::is_integral_v<T>, "alignUp requires an integral type");
-    return (n + alignment - 1) & ~(alignment - 1);
+    auto aligned = checkedAlignUp(n, alignment);
+    return aligned ? *aligned : n;
 }
 
 /// @brief Check if a value is aligned to a given boundary.
@@ -41,7 +97,14 @@ template <typename T> [[nodiscard]] constexpr T alignUp(T n, T alignment) noexce
 /// @return true if n is a multiple of alignment.
 template <typename T> [[nodiscard]] constexpr bool isAligned(T n, T alignment) noexcept {
     static_assert(std::is_integral_v<T>, "isAligned requires an integral type");
-    return (n & (alignment - 1)) == 0;
+    if (!isPowerOfTwo(alignment))
+        return false;
+    if constexpr (std::is_signed_v<T>) {
+        if (n < 0)
+            return false;
+    }
+    using Unsigned = std::make_unsigned_t<T>;
+    return (static_cast<Unsigned>(n) & (static_cast<Unsigned>(alignment) - 1)) == 0;
 }
 
 } // namespace il::support

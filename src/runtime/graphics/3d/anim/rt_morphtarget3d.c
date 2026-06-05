@@ -916,6 +916,71 @@ static int morphtarget_has_active_position_deltas(const rt_morphtarget3d *mt) {
     return 0;
 }
 
+/// @brief Accumulate weighted morph-target position/normal/tangent deltas into @p morphed,
+///        re-normalize affected directions, and replace any non-finite position with the base.
+/// @details Pure CPU blend extracted from morphtarget_draw_mesh_matrix; weights are pre-sanitized.
+static void morphtarget_accumulate_morphed_vertices(rt_morphtarget3d *mt,
+                                                    const rt_mesh3d *m,
+                                                    int32_t shape_count,
+                                                    vgfx3d_vertex_t *morphed) {
+    int has_normal_deltas = 0;
+    int has_tangent_deltas = 0;
+    for (int32_t s = 0; s < shape_count; s++) {
+        /* Weights were already sanitized in place by morphtarget_sanitize_weights()
+         * above, so read the stored value directly instead of re-clamping it. */
+        float w = mt->weights[s];
+        if (!isfinite(w) || fabsf(w) < 1e-6f)
+            continue;
+
+        const float *pd = mt->shapes[s].pos_deltas;
+        const float *nd = mt->shapes[s].nrm_deltas;
+        const float *td = mt->shapes[s].tan_deltas;
+        if (!pd)
+            continue;
+
+        for (uint32_t v = 0; v < m->vertex_count; v++) {
+            size_t base = (size_t)v * 3u;
+            morphed[v].pos[0] += w * morphtarget_sanitize_delta(pd[base + 0]);
+            morphed[v].pos[1] += w * morphtarget_sanitize_delta(pd[base + 1]);
+            morphed[v].pos[2] += w * morphtarget_sanitize_delta(pd[base + 2]);
+
+            if (nd) {
+                morphed[v].normal[0] += w * morphtarget_sanitize_delta(nd[base + 0]);
+                morphed[v].normal[1] += w * morphtarget_sanitize_delta(nd[base + 1]);
+                morphed[v].normal[2] += w * morphtarget_sanitize_delta(nd[base + 2]);
+                has_normal_deltas = 1;
+            }
+            if (td) {
+                morphed[v].tangent[0] += w * morphtarget_sanitize_delta(td[base + 0]);
+                morphed[v].tangent[1] += w * morphtarget_sanitize_delta(td[base + 1]);
+                morphed[v].tangent[2] += w * morphtarget_sanitize_delta(td[base + 2]);
+                has_tangent_deltas = 1;
+            }
+        }
+    }
+
+    /* Re-normalize normals if any shape had normal deltas */
+    if (has_normal_deltas) {
+        for (uint32_t v = 0; v < m->vertex_count; v++) {
+            float *n = morphed[v].normal;
+            morphtarget_normalize3_or_copy(n, m->vertices[v].normal);
+        }
+    }
+
+    if (has_tangent_deltas) {
+        for (uint32_t v = 0; v < m->vertex_count; v++) {
+            float *t = morphed[v].tangent;
+            morphtarget_normalize3_or_copy(t, m->vertices[v].tangent);
+        }
+    }
+
+    for (uint32_t v = 0; v < m->vertex_count; v++) {
+        if (!isfinite(morphed[v].pos[0]) || !isfinite(morphed[v].pos[1]) ||
+            !isfinite(morphed[v].pos[2]))
+            memcpy(morphed[v].pos, m->vertices[v].pos, sizeof(float) * 3);
+    }
+}
+
 /// @brief Submit a mesh draw with morph-target blend applied on GPU or CPU.
 /// @details Picks the evaluation path by asking the backend
 ///   (`vgfx3d_backend_prefers_gpu_morph`). GPU path: builds a shallow stack
@@ -1042,63 +1107,8 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
     /* Start with base mesh */
     memcpy(morphed, m->vertices, (size_t)m->vertex_count * sizeof(vgfx3d_vertex_t));
 
-    /* Accumulate weighted deltas */
-    int has_normal_deltas = 0;
-    int has_tangent_deltas = 0;
-    for (int32_t s = 0; s < shape_count; s++) {
-        /* Weights were already sanitized in place by morphtarget_sanitize_weights()
-         * above, so read the stored value directly instead of re-clamping it. */
-        float w = mt->weights[s];
-        if (!isfinite(w) || fabsf(w) < 1e-6f)
-            continue;
-
-        const float *pd = mt->shapes[s].pos_deltas;
-        const float *nd = mt->shapes[s].nrm_deltas;
-        const float *td = mt->shapes[s].tan_deltas;
-        if (!pd)
-            continue;
-
-        for (uint32_t v = 0; v < m->vertex_count; v++) {
-            size_t base = (size_t)v * 3u;
-            morphed[v].pos[0] += w * morphtarget_sanitize_delta(pd[base + 0]);
-            morphed[v].pos[1] += w * morphtarget_sanitize_delta(pd[base + 1]);
-            morphed[v].pos[2] += w * morphtarget_sanitize_delta(pd[base + 2]);
-
-            if (nd) {
-                morphed[v].normal[0] += w * morphtarget_sanitize_delta(nd[base + 0]);
-                morphed[v].normal[1] += w * morphtarget_sanitize_delta(nd[base + 1]);
-                morphed[v].normal[2] += w * morphtarget_sanitize_delta(nd[base + 2]);
-                has_normal_deltas = 1;
-            }
-            if (td) {
-                morphed[v].tangent[0] += w * morphtarget_sanitize_delta(td[base + 0]);
-                morphed[v].tangent[1] += w * morphtarget_sanitize_delta(td[base + 1]);
-                morphed[v].tangent[2] += w * morphtarget_sanitize_delta(td[base + 2]);
-                has_tangent_deltas = 1;
-            }
-        }
-    }
-
-    /* Re-normalize normals if any shape had normal deltas */
-    if (has_normal_deltas) {
-        for (uint32_t v = 0; v < m->vertex_count; v++) {
-            float *n = morphed[v].normal;
-            morphtarget_normalize3_or_copy(n, m->vertices[v].normal);
-        }
-    }
-
-    if (has_tangent_deltas) {
-        for (uint32_t v = 0; v < m->vertex_count; v++) {
-            float *t = morphed[v].tangent;
-            morphtarget_normalize3_or_copy(t, m->vertices[v].tangent);
-        }
-    }
-
-    for (uint32_t v = 0; v < m->vertex_count; v++) {
-        if (!isfinite(morphed[v].pos[0]) || !isfinite(morphed[v].pos[1]) ||
-            !isfinite(morphed[v].pos[2]))
-            memcpy(morphed[v].pos, m->vertices[v].pos, sizeof(float) * 3);
-    }
+    /* Accumulate weighted deltas, re-normalize, and sanitize non-finite positions (CPU morph). */
+    morphtarget_accumulate_morphed_vertices(mt, m, shape_count, morphed);
 
     if (rt_heap_is_payload(mesh) && !rt_canvas3d_add_temp_object(canvas, mesh)) {
         free(morphed);

@@ -1,0 +1,501 @@
+//===----------------------------------------------------------------------===//
+// Part of the Viper project, under the GNU GPL v3. See LICENSE.
+// File: src/runtime/graphics/3d/anim/rt_skeleton3d_player.inc  (#included from rt_skeleton3d.c; not a standalone translation unit)
+// Purpose: AnimPlayer3D single-clip playback implementation
+//===----------------------------------------------------------------------===//
+/*==========================================================================
+ * AnimPlayer3D implementation
+ *=========================================================================*/
+
+/// @brief GC finalizer for AnimPlayer3D — release the bound skeleton/animation refs and the bone
+/// palette buffer.
+static void rt_anim_player3d_finalize(void *obj) {
+    rt_anim_player3d *p = (rt_anim_player3d *)obj;
+    animation3d_release_class_ref((void **)&p->skeleton, RT_G3D_SKELETON3D_CLASS_ID);
+    animation3d_release_class_ref((void **)&p->current, RT_G3D_ANIMATION3D_CLASS_ID);
+    animation3d_release_class_ref((void **)&p->crossfade_from, RT_G3D_ANIMATION3D_CLASS_ID);
+    free(p->bone_palette);
+    p->bone_palette = NULL;
+    free(p->prev_bone_palette);
+    p->prev_bone_palette = NULL;
+    free(p->motion_palette_snapshot);
+    p->motion_palette_snapshot = NULL;
+    free(p->local_transforms);
+    p->local_transforms = NULL;
+    free(p->globals_buf);
+    p->globals_buf = NULL;
+}
+
+static void compute_bone_palette(rt_anim_player3d *p);
+static void compute_player_bind_pose(rt_anim_player3d *p);
+static int8_t anim_player_current_looping(rt_anim_player3d *p);
+
+static int32_t skeleton3d_pose_capacity_for_count(int32_t bone_count) {
+    if (bone_count <= 0)
+        return 1;
+    if (bone_count > VGFX3D_MAX_BONES)
+        return VGFX3D_MAX_BONES;
+    return bone_count;
+}
+
+static int skeleton3d_grow_pose_buffer(float **buffer, int32_t old_capacity, int32_t new_capacity) {
+    if (!buffer || new_capacity <= old_capacity)
+        return 1;
+    size_t old_floats = (size_t)(old_capacity > 0 ? old_capacity : 0) * 16u;
+    size_t new_floats = (size_t)new_capacity * 16u;
+    if (new_floats > SIZE_MAX / sizeof(float))
+        return 0;
+    float *grown = (float *)realloc(*buffer, new_floats * sizeof(float));
+    if (!grown)
+        return 0;
+    memset(grown + old_floats, 0, (new_floats - old_floats) * sizeof(float));
+    *buffer = grown;
+    return 1;
+}
+
+static int anim_player3d_ensure_pose_capacity(rt_anim_player3d *p, int32_t bone_count) {
+    if (!p)
+        return 0;
+    int32_t new_capacity = skeleton3d_pose_capacity_for_count(bone_count);
+    int32_t old_capacity = p->pose_capacity > 0 ? p->pose_capacity : 0;
+    if (new_capacity <= old_capacity)
+        return 1;
+    if (!skeleton3d_grow_pose_buffer(&p->bone_palette, old_capacity, new_capacity) ||
+        !skeleton3d_grow_pose_buffer(&p->prev_bone_palette, old_capacity, new_capacity) ||
+        !skeleton3d_grow_pose_buffer(&p->motion_palette_snapshot, old_capacity, new_capacity) ||
+        !skeleton3d_grow_pose_buffer(&p->local_transforms, old_capacity, new_capacity) ||
+        !skeleton3d_grow_pose_buffer(&p->globals_buf, old_capacity, new_capacity))
+        return 0;
+    p->pose_capacity = new_capacity;
+    return 1;
+}
+
+/// @brief Create an animation player bound to a target skeleton.
+///
+/// The player holds the current playback time, the active and
+/// fading-out clip, and a per-bone palette buffer (3-frame ring
+/// for motion-blur previous-pose lookup).
+void *rt_anim_player3d_new(void *skeleton) {
+    rt_skeleton3d *skel =
+        (rt_skeleton3d *)rt_g3d_checked_or_null(skeleton, RT_G3D_SKELETON3D_CLASS_ID);
+    if (!skel) {
+        rt_trap("AnimPlayer3D.New: null skeleton");
+        return NULL;
+    }
+    int32_t bone_count = skeleton3d_safe_bone_count(skel);
+    skel->bone_count = bone_count;
+
+    rt_anim_player3d *p = (rt_anim_player3d *)rt_obj_new_i64(RT_G3D_ANIMPLAYER3D_CLASS_ID,
+                                                             (int64_t)sizeof(rt_anim_player3d));
+    if (!p) {
+        rt_trap("AnimPlayer3D.New: memory allocation failed");
+        return NULL;
+    }
+    p->vptr = NULL;
+    p->skeleton = skel;
+    rt_obj_retain_maybe(skeleton);
+    p->current = NULL;
+    p->crossfade_from = NULL;
+    p->current_time = 0.0f;
+    p->crossfade_time = 0.0f;
+    p->crossfade_duration = 0.0f;
+    p->crossfade_from_time = 0.0f;
+    p->crossfade_from_speed = 1.0f;
+    p->speed = 1.0f;
+    p->playing = 0;
+    p->loop_override_enabled = 0;
+    p->loop_override_value = 0;
+    p->crossfade_from_looping = 0;
+    p->last_motion_frame = 0;
+    p->has_prev_motion_palette = 0;
+
+    p->pose_capacity = skeleton3d_pose_capacity_for_count(bone_count);
+    size_t palette_size = (size_t)p->pose_capacity * 16u * sizeof(float);
+    p->bone_palette = (float *)calloc(1, palette_size);
+    p->prev_bone_palette = (float *)calloc(1, palette_size);
+    p->motion_palette_snapshot = (float *)calloc(1, palette_size);
+    p->local_transforms = (float *)calloc(1, palette_size);
+    p->globals_buf = (float *)calloc(1, palette_size);
+    if (!p->bone_palette || !p->prev_bone_palette || !p->motion_palette_snapshot ||
+        !p->local_transforms || !p->globals_buf) {
+        rt_anim_player3d_finalize(p);
+        if (rt_obj_release_check0(p))
+            rt_obj_free(p);
+        rt_trap("AnimPlayer3D.New: memory allocation failed");
+        return NULL;
+    }
+
+    skeleton3d_freeze(skel);
+    compute_player_bind_pose(p);
+    if (palette_size > 0) {
+        memcpy(p->prev_bone_palette, p->bone_palette, palette_size);
+        memcpy(p->motion_palette_snapshot, p->bone_palette, palette_size);
+    }
+
+    rt_obj_set_finalizer(p, rt_anim_player3d_finalize);
+    return p;
+}
+
+/// @brief Snap-cut to a new animation clip, resetting playback time to 0.
+/// For smooth transitions, prefer `rt_anim_player3d_crossfade`.
+void rt_anim_player3d_play(void *obj, void *animation) {
+    rt_anim_player3d *p = anim_player3d_checked(obj);
+    rt_animation3d *anim = animation ? animation3d_checked(animation) : NULL;
+    if (!p || (animation && !anim))
+        return;
+    animation3d_assign_class_ref((void **)&p->current, anim, RT_G3D_ANIMATION3D_CLASS_ID);
+    p->current_time = 0.0f;
+    p->playing = anim ? 1 : 0;
+    animation3d_assign_class_ref((void **)&p->crossfade_from, NULL, RT_G3D_ANIMATION3D_CLASS_ID);
+    p->crossfade_time = 0.0f;
+    p->crossfade_duration = 0.0f;
+    p->crossfade_from_time = 0.0f;
+    p->has_prev_motion_palette = 0;
+    p->last_motion_frame = 0;
+    compute_bone_palette(p);
+}
+
+/// @brief Cross-fade smoothly into a new animation clip over `duration` seconds.
+///
+/// Both clips run in parallel during the fade; per-bone TRS is
+/// linearly blended (lerp + slerp) by the elapsed-fade ratio.
+void rt_anim_player3d_crossfade(void *obj, void *animation, double duration) {
+    rt_anim_player3d *p = anim_player3d_checked(obj);
+    rt_animation3d *anim = animation3d_checked(animation);
+    rt_animation3d *current;
+    if (!p || !anim)
+        return;
+    if (!isfinite(duration) || duration <= 0.0) {
+        rt_anim_player3d_play(obj, anim);
+        return;
+    }
+    current = animation3d_clip_slot((void **)&p->current);
+    animation3d_assign_class_ref((void **)&p->crossfade_from, current, RT_G3D_ANIMATION3D_CLASS_ID);
+    p->crossfade_from_time = p->current_time;
+    p->crossfade_from_speed = isfinite(p->speed) ? p->speed : 1.0f;
+    p->crossfade_from_looping = anim_player_current_looping(p);
+    animation3d_assign_class_ref((void **)&p->current, anim, RT_G3D_ANIMATION3D_CLASS_ID);
+    p->current_time = 0.0f;
+    p->crossfade_time = 0.0f;
+    p->crossfade_duration = skeleton3d_clamp_nonnegative_float(duration, FLT_MAX);
+    p->playing = 1;
+    p->has_prev_motion_palette = 0;
+    p->last_motion_frame = 0;
+    compute_bone_palette(p);
+}
+
+/// @brief Stop playback and return the output pose to the skeleton bind pose.
+void rt_anim_player3d_stop(void *obj) {
+    rt_anim_player3d *p = anim_player3d_checked(obj);
+    if (!p)
+        return;
+    p->playing = 0;
+    animation3d_assign_class_ref((void **)&p->crossfade_from, NULL, RT_G3D_ANIMATION3D_CLASS_ID);
+    p->crossfade_time = 0.0f;
+    p->crossfade_duration = 0.0f;
+    p->crossfade_from_time = 0.0f;
+    p->has_prev_motion_palette = 0;
+    p->last_motion_frame = 0;
+    compute_player_bind_pose(p);
+}
+
+/// @brief Build global matrices and skinning palette from local bone transforms.
+static void compute_palette_from_locals(const rt_skeleton3d *skel,
+                                        const float *locals,
+                                        float *globals,
+                                        float *palette) {
+    int32_t bone_count = skeleton3d_safe_bone_count(skel);
+    if (!skel || !locals || !globals || !palette || bone_count <= 0)
+        return;
+
+    skeleton3d_compute_globals_from_locals(skel, locals, globals, bone_count);
+    for (int32_t i = 0; i < bone_count; i++)
+        mat4f_mul_local(&globals[i * 16], skel->bones[i].inverse_bind, &palette[i * 16]);
+}
+
+/// @brief Force a player to the skeleton bind pose in both world and skinning buffers.
+static void compute_player_bind_pose(rt_anim_player3d *p) {
+    rt_skeleton3d *skel = p ? animation3d_skeleton_slot((void **)&p->skeleton) : NULL;
+    int32_t bone_count = skeleton3d_safe_bone_count(skel);
+    if (p && !anim_player3d_ensure_pose_capacity(p, bone_count))
+        return;
+    if (!p || !skel || bone_count <= 0 || !p->local_transforms || !p->globals_buf ||
+        !p->bone_palette)
+        return;
+    skel->bone_count = bone_count;
+    for (int32_t i = 0; i < bone_count; i++)
+        memcpy(&p->local_transforms[i * 16], skel->bones[i].bind_pose_local, 16 * sizeof(float));
+    compute_palette_from_locals(skel, p->local_transforms, p->globals_buf, p->bone_palette);
+}
+
+/// @brief Compute the bone palette from the current animation state.
+static void compute_bone_palette(rt_anim_player3d *p) {
+    rt_skeleton3d *skel = p ? animation3d_skeleton_slot((void **)&p->skeleton) : NULL;
+    rt_animation3d *current = p ? animation3d_clip_slot((void **)&p->current) : NULL;
+    rt_animation3d *crossfade_from = p ? animation3d_clip_slot((void **)&p->crossfade_from) : NULL;
+    int32_t bone_count = skeleton3d_safe_bone_count(skel);
+    if (p && !anim_player3d_ensure_pose_capacity(p, bone_count))
+        return;
+    if (!p || !skel || bone_count == 0 || !p->local_transforms || !p->globals_buf ||
+        !p->bone_palette)
+        return;
+    skel->bone_count = bone_count;
+
+    /* Start with bind pose for all bones */
+    for (int32_t i = 0; i < bone_count; i++)
+        memcpy(&p->local_transforms[i * 16], skel->bones[i].bind_pose_local, 16 * sizeof(float));
+
+    /* Override with animated transforms from current animation */
+    if (current) {
+        int32_t channel_count = animation3d_safe_channel_count(current);
+        current->channel_count = channel_count;
+        for (int32_t c = 0; c < channel_count; c++) {
+            int32_t bone = current->channels[c].bone_index;
+            if (bone >= 0 && bone < bone_count) {
+                sample_channel_with_fallback(&current->channels[c],
+                                             p->current_time,
+                                             skel->bones[bone].bind_pose_local,
+                                             &p->local_transforms[bone * 16]);
+            }
+        }
+    }
+
+    /* Crossfade over every bone so target-only and source-only channels blend
+     * against bind pose instead of popping at transition boundaries. */
+    if (crossfade_from && current && p->crossfade_duration > 0.0f) {
+        float factor = skeleton3d_clamp01f(p->crossfade_time / p->crossfade_duration);
+
+        for (int32_t bone = 0; bone < bone_count; bone++) {
+            float from_pos[3], from_rot[4], from_scl[3];
+            float to_pos[3], to_rot[4], to_scl[3];
+            float blend_pos[3], blend_rot[4], blend_scl[3];
+            sample_animation_trs_for_bone(crossfade_from,
+                                          bone,
+                                          p->crossfade_from_time,
+                                          skel->bones[bone].bind_pose_local,
+                                          from_pos,
+                                          from_rot,
+                                          from_scl);
+            sample_animation_trs_for_bone(current,
+                                          bone,
+                                          p->current_time,
+                                          skel->bones[bone].bind_pose_local,
+                                          to_pos,
+                                          to_rot,
+                                          to_scl);
+            for (int i = 0; i < 3; i++) {
+                blend_pos[i] = from_pos[i] + factor * (to_pos[i] - from_pos[i]);
+                blend_scl[i] = from_scl[i] + factor * (to_scl[i] - from_scl[i]);
+            }
+            quat_slerp_float(from_rot, to_rot, factor, blend_rot);
+            animation3d_sanitize_trs(blend_pos, blend_rot, blend_scl, from_pos, from_rot, from_scl);
+            build_trs_float(blend_pos, blend_rot, blend_scl, &p->local_transforms[bone * 16]);
+        }
+    }
+
+    compute_palette_from_locals(skel, p->local_transforms, p->globals_buf, p->bone_palette);
+}
+
+/// @brief True if the player's currently active clip is set to loop.
+static int8_t anim_player_current_looping(rt_anim_player3d *p) {
+    rt_animation3d *current = p ? animation3d_clip_slot((void **)&p->current) : NULL;
+    if (!current)
+        return 0;
+    if (p->loop_override_enabled)
+        return p->loop_override_value ? 1 : 0;
+    return current->looping ? 1 : 0;
+}
+
+/// @brief Advance playback by `delta_time` seconds and refresh the bone palette.
+///
+/// Handles wrap-around for looping clips, fade-in / fade-out for
+/// active cross-fades, and copies the new bone palette into the
+/// motion-blur ring buffer for the next-frame previous-pose lookup.
+void rt_anim_player3d_update(void *obj, double delta_time) {
+    rt_anim_player3d *p = anim_player3d_checked(obj);
+    rt_animation3d *current;
+    rt_animation3d *crossfade_from;
+    if (!p)
+        return;
+    current = animation3d_clip_slot((void **)&p->current);
+    if (!p->playing || !current)
+        return;
+    if (!isfinite(delta_time) || delta_time < 0.0)
+        return;
+    if (!isfinite(p->speed))
+        p->speed = 1.0f;
+
+    p->current_time += skeleton3d_clamp_to_float(delta_time * (double)p->speed, 0.0f);
+    if (!isfinite(p->current_time))
+        p->current_time = 0.0f;
+
+    /* Handle looping / end */
+    if (anim_player_current_looping(p)) {
+        if (current->duration > 0.0f)
+            p->current_time = animation3d_wrap_time(p->current_time, current->duration);
+    } else {
+        if (p->current_time >= current->duration) {
+            p->current_time = current->duration;
+            p->playing = 0;
+        } else if (p->current_time <= 0.0f && p->speed < 0.0f) {
+            p->current_time = 0.0f;
+            p->playing = 0;
+        }
+    }
+
+    /* Update crossfade */
+    crossfade_from = animation3d_clip_slot((void **)&p->crossfade_from);
+    if (crossfade_from) {
+        p->crossfade_time += skeleton3d_clamp_to_float(delta_time, 0.0f);
+        p->crossfade_from_time +=
+            skeleton3d_clamp_to_float(delta_time * (double)p->crossfade_from_speed, 0.0f);
+        if (!isfinite(p->crossfade_time))
+            p->crossfade_time = 0.0f;
+        if (!isfinite(p->crossfade_from_time))
+            p->crossfade_from_time = 0.0f;
+        if (crossfade_from->duration > 0.0f) {
+            if (p->crossfade_from_looping)
+                p->crossfade_from_time =
+                    animation3d_wrap_time(p->crossfade_from_time, crossfade_from->duration);
+            else if (p->crossfade_from_time > crossfade_from->duration)
+                p->crossfade_from_time = crossfade_from->duration;
+            else if (p->crossfade_from_time < 0.0f)
+                p->crossfade_from_time = 0.0f;
+        }
+        if (p->crossfade_time >= p->crossfade_duration) {
+            animation3d_assign_class_ref(
+                (void **)&p->crossfade_from, NULL, RT_G3D_ANIMATION3D_CLASS_ID);
+            p->crossfade_time = 0.0f;
+            p->crossfade_duration = 0.0f;
+            p->crossfade_from_time = 0.0f;
+            p->crossfade_from_speed = 1.0f;
+            p->crossfade_from_looping = 0;
+        }
+    }
+
+    compute_bone_palette(p);
+}
+
+/// @brief Time-scale factor applied per `update` call (1.0 = real time, 0.5 = slow-mo, etc.).
+void rt_anim_player3d_set_speed(void *obj, double speed) {
+    rt_anim_player3d *p = anim_player3d_checked(obj);
+    if (p) {
+        if (!isfinite(speed))
+            speed = 1.0;
+        p->speed = skeleton3d_clamp_to_float(speed, 1.0f);
+    }
+}
+
+/// @brief Current speed multiplier (1.0 if `obj` is NULL).
+double rt_anim_player3d_get_speed(void *obj) {
+    rt_anim_player3d *p = anim_player3d_checked(obj);
+    return (p && isfinite(p->speed)) ? p->speed : 1.0;
+}
+
+/// @brief True if the player is currently advancing time on `update` calls.
+int8_t rt_anim_player3d_is_playing(void *obj) {
+    rt_anim_player3d *p = anim_player3d_checked(obj);
+    return p && p->playing ? 1 : 0;
+}
+
+/// @brief Current playback time within the active clip (seconds).
+double rt_anim_player3d_get_time(void *obj) {
+    rt_anim_player3d *p = anim_player3d_checked(obj);
+    return (p && isfinite(p->current_time)) ? p->current_time : 0.0;
+}
+
+/// @brief Seek to an absolute time in the current clip.
+/// Resets the motion-blur previous-pose snapshot so blur doesn't span the discontinuity.
+void rt_anim_player3d_set_time(void *obj, double time) {
+    rt_anim_player3d *p = anim_player3d_checked(obj);
+    if (p) {
+        rt_animation3d *current = animation3d_clip_slot((void **)&p->current);
+        if (!isfinite(time))
+            time = 0.0;
+        if (current && current->duration > 0.0f && anim_player_current_looping(p)) {
+            p->current_time =
+                animation3d_wrap_time(skeleton3d_clamp_to_float(time, 0.0f), current->duration);
+        } else {
+            if (time < 0.0)
+                time = 0.0;
+            if (current && current->duration > 0.0f && time > current->duration)
+                time = current->duration;
+            p->current_time = skeleton3d_float_or(time, 0.0f);
+        }
+        p->has_prev_motion_palette = 0;
+        p->last_motion_frame = 0;
+        if (current)
+            compute_bone_palette(p);
+        else
+            compute_player_bind_pose(p);
+    }
+}
+
+/// @brief Promote last frame's pose into the "previous" slot for motion-blur shaders.
+///
+/// Called at the start of each frame's draw — promotes the last
+/// snapshot to `prev_bone_palette` and snapshots the current pose
+/// into `motion_palette_snapshot` for the *next* frame to consume.
+/// Returns the previous palette (or NULL if no prior frame yet).
+static const float *anim_player_prepare_prev_palette(rt_anim_player3d *p, int64_t frame_serial) {
+    rt_skeleton3d *skel;
+    if (!p || !p->bone_palette)
+        return NULL;
+    skel = animation3d_skeleton_slot((void **)&p->skeleton);
+    int32_t bone_count = skeleton3d_safe_bone_count(skel);
+    if (skel)
+        skel->bone_count = bone_count;
+    if (!anim_player3d_ensure_pose_capacity(p, bone_count))
+        return NULL;
+    size_t palette_size = (size_t)bone_count * 16 * sizeof(float);
+    if (p->last_motion_frame != frame_serial) {
+        if (p->prev_bone_palette && p->motion_palette_snapshot && bone_count > 0 &&
+            p->last_motion_frame != 0) {
+            memcpy(p->prev_bone_palette, p->motion_palette_snapshot, palette_size);
+            p->has_prev_motion_palette = 1;
+        } else if (!p->prev_bone_palette) {
+            p->has_prev_motion_palette = 0;
+        }
+        if (p->motion_palette_snapshot && bone_count > 0)
+            memcpy(p->motion_palette_snapshot, p->bone_palette, palette_size);
+        p->last_motion_frame = frame_serial;
+    }
+    return p->has_prev_motion_palette ? p->prev_bone_palette : NULL;
+}
+
+/// @brief Read the current world matrix for one bone as a Mat4 (NULL on out-of-range).
+void *rt_anim_player3d_get_bone_matrix(void *obj, int64_t bone_index) {
+    rt_anim_player3d *p = anim_player3d_checked(obj);
+    rt_skeleton3d *skel;
+    int32_t bone_count;
+    if (!p)
+        return NULL;
+    skel = animation3d_skeleton_slot((void **)&p->skeleton);
+    if (!skel)
+        return NULL;
+    bone_count = skeleton3d_safe_bone_count(skel);
+    skel->bone_count = bone_count;
+    if (bone_index < 0 || bone_index >= bone_count)
+        return NULL;
+    if (!p->globals_buf)
+        compute_bone_palette(p);
+    if (!p->globals_buf)
+        return NULL;
+    const float *m = &p->globals_buf[bone_index * 16];
+    return rt_mat4_new(m[0],
+                       m[1],
+                       m[2],
+                       m[3],
+                       m[4],
+                       m[5],
+                       m[6],
+                       m[7],
+                       m[8],
+                       m[9],
+                       m[10],
+                       m[11],
+                       m[12],
+                       m[13],
+                       m[14],
+                       m[15]);
+}

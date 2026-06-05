@@ -39,17 +39,27 @@ bool SourceLoc::isValid() const {
     return file_id != 0;
 }
 
-/// @brief Determine whether the range refers to a concrete span of source.
+/// @brief Determine whether the range has complete usable source coordinates.
 ///
-/// @details The range is considered valid when both endpoints identify tracked
-///          source locations. Clients are responsible for ensuring the
-///          begin/end ordering when constructing the range; this helper only
-///          checks that both endpoints came from the source manager.  It is used
-///          extensively by syntax highlighters and diagnostics to decide whether
-///          to underline spans of text.
+/// @details Valid ranges are either concrete replacement spans or explicit
+///          zero-width insertion points.  This keeps the public predicate aligned
+///          with the range invariant while preserving the older permissive query
+///          through @ref isTracked.
 ///
-/// @return True when both @ref begin and @ref end carry valid file ids.
+/// @return True when the range is concrete or an insertion point.
 bool SourceRange::isValid() const {
+    return isConcrete() || isInsertion();
+}
+
+/// @brief Determine whether the range endpoints refer to tracked source.
+///
+/// @details This helper intentionally accepts partially-known coordinates as long
+///          as both endpoints name the same file.  When line and column metadata
+///          is present it rejects reversed order, while allowing zero-width
+///          insertion points.
+///
+/// @return True when both endpoints carry compatible valid file ids.
+bool SourceRange::isTracked() const {
     if (!begin.isValid() || !end.isValid()) {
         return false;
     }
@@ -65,7 +75,7 @@ bool SourceRange::isValid() const {
 
     const bool have_column_info =
         have_line_info && begin.line == end.line && begin.column != 0 && end.column != 0;
-    if (have_column_info && begin.column >= end.column) {
+    if (have_column_info && begin.column > end.column) {
         return false;
     }
 
@@ -101,8 +111,8 @@ bool SourceRange::isConcrete() const {
 ///
 /// @return True when both endpoints have identical concrete coordinates.
 bool SourceRange::isInsertion() const {
-    return begin.hasFile() && end.hasFile() && begin.file_id == end.file_id &&
-           begin.hasLine() && end.hasLine() && begin.line == end.line &&
-           begin.hasColumn() && end.hasColumn() && begin.column == end.column;
+    return begin.hasFile() && end.hasFile() && begin.file_id == end.file_id && begin.hasLine() &&
+           end.hasLine() && begin.line == end.line && begin.hasColumn() && end.hasColumn() &&
+           begin.column == end.column;
 }
 } // namespace il::support

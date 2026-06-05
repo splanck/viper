@@ -283,7 +283,11 @@ std::unordered_set<std::string> runtimeSourceTokens() {
         if (!it->is_regular_file())
             continue;
         const fs::path path = it->path();
-        if (path.extension() != ".c" && path.extension() != ".cpp")
+        const fs::path ext = path.extension();
+        // .inc and .m are runtime implementation sources too: large 3D translation units are
+        // split into cohesive .inc fragments (#included into their .c), and the Metal backend
+        // is .m. Implementation tokens can therefore live in any of these.
+        if (ext != ".c" && ext != ".cpp" && ext != ".inc" && ext != ".m")
             continue;
         const std::string text = readText(path);
         for (std::sregex_iterator rit(text.begin(), text.end(), re), rend; rit != rend; ++rit) {

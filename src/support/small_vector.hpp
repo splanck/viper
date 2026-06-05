@@ -50,7 +50,7 @@ template <typename T, size_t N = 8> class SmallVector {
     T *heap_{nullptr};                                    ///< Heap storage when size > N.
     size_t capacity_{0};                                  ///< Heap capacity (0 when inline).
     size_t size_{0};                                      ///< Current constructed element count.
-    [[no_unique_address]] Allocator allocator_{};          ///< Allocator used for heap storage.
+    [[no_unique_address]] Allocator allocator_{};         ///< Allocator used for heap storage.
 
     /// @brief Check whether the vector is currently using heap storage.
     /// @return true if elements reside on the heap, false if inline.
@@ -61,13 +61,13 @@ template <typename T, size_t N = 8> class SmallVector {
     /// @brief Return the typed pointer for inline raw storage.
     /// @return Pointer to the first inline slot; slots may be unconstructed.
     [[nodiscard]] T *inlineData() noexcept {
-        return reinterpret_cast<T *>(inlineStorage_);
+        return std::launder(reinterpret_cast<T *>(inlineStorage_));
     }
 
     /// @brief Return the typed pointer for const inline raw storage.
     /// @return Pointer to the first inline slot; slots may be unconstructed.
     [[nodiscard]] const T *inlineData() const noexcept {
-        return reinterpret_cast<const T *>(inlineStorage_);
+        return std::launder(reinterpret_cast<const T *>(inlineStorage_));
     }
 
     /// @brief Destroy @p count constructed elements starting at @p ptr.
@@ -108,6 +108,61 @@ template <typename T, size_t N = 8> class SmallVector {
             next *= 2;
         }
         return next < minCapacity ? minCapacity : next;
+    }
+
+    /// @brief Return size() + 1 after checking allocator limits.
+    /// @return The next element count after one append.
+    /// @throws std::bad_array_new_length when appending would exceed max_size().
+    /// @details Calculating size_ + 1 directly can wrap before growth checks run
+    ///          on pathological inputs.  Centralising the check keeps append paths
+    ///          consistent with reserve().
+    [[nodiscard]] size_t checkedAppendSize() const {
+        if (size_ >= AllocTraits::max_size(allocator_))
+            throw std::bad_array_new_length();
+        return size_ + 1;
+    }
+
+    /// @brief Grow storage and append a new element while old elements remain alive.
+    /// @tparam Args Constructor argument types for the appended element.
+    /// @param newCapacity Capacity of the replacement heap buffer.
+    /// @param args Arguments forwarded to the appended element constructor.
+    /// @return Reference to the newly appended element.
+    /// @details The appended element is constructed before existing elements are
+    ///          moved or copied.  That ordering preserves correctness for calls
+    ///          such as `v.emplace_back(v[0])`, where constructor arguments may
+    ///          reference elements in the old storage.
+    template <typename... Args> T &growAndEmplaceBack(size_t newCapacity, Args &&...args) {
+        T *newBuf = AllocTraits::allocate(allocator_, newCapacity);
+        size_t constructedExisting = 0;
+        bool tailConstructed = false;
+        try {
+            std::construct_at(newBuf + size_, std::forward<Args>(args)...);
+            tailConstructed = true;
+            for (; constructedExisting < size_; ++constructedExisting) {
+                std::construct_at(newBuf + constructedExisting,
+                                  std::move_if_noexcept(data()[constructedExisting]));
+            }
+        } catch (...) {
+            destroyRange(newBuf, constructedExisting);
+            if (tailConstructed)
+                std::destroy_at(newBuf + size_);
+            AllocTraits::deallocate(allocator_, newBuf, newCapacity);
+            throw;
+        }
+
+        T *oldData = data();
+        const size_t oldSize = size_;
+        T *oldHeap = heap_;
+        const size_t oldCapacity = capacity_;
+
+        destroyRange(oldData, oldSize);
+        if (oldHeap)
+            AllocTraits::deallocate(allocator_, oldHeap, oldCapacity);
+
+        heap_ = newBuf;
+        capacity_ = newCapacity;
+        size_ = oldSize + 1;
+        return heap_[oldSize];
     }
 
     /// @brief Move elements from another vector's inline storage into this vector.
@@ -250,13 +305,14 @@ template <typename T, size_t N = 8> class SmallVector {
     void reserve(size_t n) {
         if (n <= capacity())
             return;
+        if (n > AllocTraits::max_size(allocator_))
+            throw std::bad_array_new_length();
 
         T *newBuf = AllocTraits::allocate(allocator_, n);
         size_t constructed = 0;
         try {
             for (; constructed < size_; ++constructed) {
-                std::construct_at(newBuf + constructed,
-                                  std::move_if_noexcept(data()[constructed]));
+                std::construct_at(newBuf + constructed, std::move_if_noexcept(data()[constructed]));
             }
         } catch (...) {
             destroyRange(newBuf, constructed);
@@ -296,7 +352,8 @@ template <typename T, size_t N = 8> class SmallVector {
     /// @return Reference to the newly constructed element.
     template <typename... Args> reference emplace_back(Args &&...args) {
         if (size_ >= capacity())
-            reserve(growthCapacity(size_ + 1));
+            return growAndEmplaceBack(growthCapacity(checkedAppendSize()),
+                                      std::forward<Args>(args)...);
         T *ptr = data() + size_;
         std::construct_at(ptr, std::forward<Args>(args)...);
         ++size_;
@@ -348,8 +405,20 @@ template <typename T, size_t N = 8> class SmallVector {
             size_ = n;
             return;
         }
-        if (n > capacity())
+        if (n > capacity()) {
+            T valueCopy(value);
             reserve(n);
+            size_t constructed = size_;
+            try {
+                for (; constructed < n; ++constructed)
+                    std::construct_at(data() + constructed, valueCopy);
+            } catch (...) {
+                destroyRange(data() + size_, constructed - size_);
+                throw;
+            }
+            size_ = n;
+            return;
+        }
         size_t constructed = size_;
         try {
             for (; constructed < n; ++constructed)
@@ -477,21 +546,33 @@ template <typename T, size_t N = 8> class SmallVector {
 
     /// @brief Implicit conversion to span for API compatibility.
     /// @return A read-only span covering all elements.
-    [[nodiscard]] operator std::span<const T>() const noexcept {
+    [[nodiscard]] operator std::span<const T>() const & noexcept {
         return {data(), size_};
     }
+
+    /// @brief Disallow implicit spans from temporaries.
+    /// @details A span borrows the vector storage.  Deleting the rvalue overload
+    ///          prevents accidental dangling spans from expressions such as
+    ///          `std::span<const T>{makeVector()}` while preserving lvalue use.
+    [[nodiscard]] operator std::span<const T>() const && = delete;
 
     /// @brief Explicit conversion to mutable span.
     /// @return A mutable span covering all elements.
-    [[nodiscard]] std::span<T> span() noexcept {
+    [[nodiscard]] std::span<T> span() & noexcept {
         return {data(), size_};
     }
 
+    /// @brief Disallow mutable spans from temporaries.
+    [[nodiscard]] std::span<T> span() && = delete;
+
     /// @brief Explicit conversion to const span.
     /// @return A read-only span covering all elements.
-    [[nodiscard]] std::span<const T> span() const noexcept {
+    [[nodiscard]] std::span<const T> span() const & noexcept {
         return {data(), size_};
     }
+
+    /// @brief Disallow const spans from temporaries.
+    [[nodiscard]] std::span<const T> span() const && = delete;
 };
 
 } // namespace il::support
