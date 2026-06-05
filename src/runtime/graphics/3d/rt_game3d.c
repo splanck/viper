@@ -667,10 +667,9 @@ static void game3d_world_apply_origin_rebase(rt_game3d_world *world, const doubl
     if (physics_rebased)
         rt_world3d_rebase_origin(physics, clean_delta[0], clean_delta[1], clean_delta[2]);
     game3d_effects_rebase_origin(world->effects, clean_delta);
-    game3d_world_stream_rebase_origin(
-        (rt_game3d_world_stream *)rt_g3d_checked_or_null(world->stream,
-                                                        RT_G3D_GAME3D_WORLD_STREAM3D_CLASS_ID),
-        clean_delta);
+    game3d_world_stream_rebase_origin((rt_game3d_world_stream *)rt_g3d_checked_or_null(
+                                          world->stream, RT_G3D_GAME3D_WORLD_STREAM3D_CLASS_ID),
+                                      clean_delta);
 
     int32_t entity_count = game3d_world_safe_entity_count(world);
     for (int32_t i = 0; i < entity_count; ++i) {
@@ -4719,8 +4718,7 @@ static int game3d_stream_load_candidate_cmp(const void *lhs, const void *rhs) {
 }
 
 static int32_t game3d_world_stream_safe_cell_count(const rt_game3d_world_stream *stream);
-static int32_t game3d_world_stream_safe_terrain_tile_count(
-    const rt_game3d_world_stream *stream);
+static int32_t game3d_world_stream_safe_terrain_tile_count(const rt_game3d_world_stream *stream);
 static int game3d_stream_cell_desired(const rt_game3d_world_stream *stream,
                                       const rt_game3d_stream_cell *cell);
 static int game3d_stream_terrain_tile_desired(const rt_game3d_world_stream *stream,
@@ -4770,9 +4768,9 @@ static int game3d_stream_candidate_after(double distance_sq,
 
 /// @brief Pick the next desired cell in sorted order without allocating or marking cells.
 static int32_t game3d_world_stream_pick_next_cell_noalloc(const rt_game3d_world_stream *stream,
-                                                         double previous_distance_sq,
-                                                         int32_t previous_index,
-                                                         double *out_distance_sq) {
+                                                          double previous_distance_sq,
+                                                          int32_t previous_index,
+                                                          double *out_distance_sq) {
     int32_t best_index = -1;
     double best_distance = HUGE_VAL;
     int32_t cell_count = game3d_world_stream_safe_cell_count(stream);
@@ -4783,8 +4781,7 @@ static int32_t game3d_world_stream_pick_next_cell_noalloc(const rt_game3d_world_
         double distance_sq = game3d_stream_cell_distance_sq(stream, cell);
         if (!isfinite(distance_sq))
             distance_sq = HUGE_VAL;
-        if (!game3d_stream_candidate_after(
-                distance_sq, i, previous_distance_sq, previous_index))
+        if (!game3d_stream_candidate_after(distance_sq, i, previous_distance_sq, previous_index))
             continue;
         if (best_index < 0 || distance_sq < best_distance ||
             (distance_sq == best_distance && i < best_index)) {
@@ -4798,11 +4795,10 @@ static int32_t game3d_world_stream_pick_next_cell_noalloc(const rt_game3d_world_
 }
 
 /// @brief Pick the next desired terrain tile in sorted order without allocating.
-static int32_t game3d_world_stream_pick_next_terrain_noalloc(
-    const rt_game3d_world_stream *stream,
-    double previous_distance_sq,
-    int32_t previous_index,
-    double *out_distance_sq) {
+static int32_t game3d_world_stream_pick_next_terrain_noalloc(const rt_game3d_world_stream *stream,
+                                                             double previous_distance_sq,
+                                                             int32_t previous_index,
+                                                             double *out_distance_sq) {
     int32_t best_index = -1;
     double best_distance = HUGE_VAL;
     int32_t tile_count = game3d_world_stream_safe_terrain_tile_count(stream);
@@ -4813,8 +4809,7 @@ static int32_t game3d_world_stream_pick_next_terrain_noalloc(
         double distance_sq = game3d_stream_terrain_tile_distance_sq(stream, tile);
         if (!isfinite(distance_sq))
             distance_sq = HUGE_VAL;
-        if (!game3d_stream_candidate_after(
-                distance_sq, i, previous_distance_sq, previous_index))
+        if (!game3d_stream_candidate_after(distance_sq, i, previous_distance_sq, previous_index))
             continue;
         if (best_index < 0 || distance_sq < best_distance ||
             (distance_sq == best_distance && i < best_index)) {
@@ -6062,9 +6057,8 @@ static void game3d_world_stream_recompute_terrain(rt_game3d_world_stream *stream
             rt_game3d_stream_load_candidate *candidates = NULL;
             int32_t candidate_count = 0;
             if (tile_count > 0 &&
-                game3d_stream_reserve_load_candidates(&stream->terrain_candidates,
-                                                      &stream->terrain_candidate_capacity,
-                                                      tile_count))
+                game3d_stream_reserve_load_candidates(
+                    &stream->terrain_candidates, &stream->terrain_candidate_capacity, tile_count))
                 candidates = stream->terrain_candidates;
             for (int32_t i = 0; i < tile_count; ++i) {
                 rt_game3d_stream_terrain_tile *tile = &stream->terrain_tiles[i];
@@ -6224,8 +6218,9 @@ static void *game3d_world_new_with_camera_impl(rt_string title,
     world->canvas = rt_canvas3d_new(title, width, height);
     world->scene = rt_scene3d_new();
     aspect = (double)width / (double)height;
-    world->camera = horizontal_fov ? rt_camera3d_new_horizontal_fov(fov_deg, aspect, near_plane, far_plane)
-                                   : rt_camera3d_new(fov_deg, aspect, near_plane, far_plane);
+    world->camera = horizontal_fov
+                        ? rt_camera3d_new_horizontal_fov(fov_deg, aspect, near_plane, far_plane)
+                        : rt_camera3d_new(fov_deg, aspect, near_plane, far_plane);
     world->physics = rt_world3d_new(0.0, -9.81, 0.0);
     world->input = rt_game3d_input_new();
     world->audio = game3d_audio_new(world->camera);
@@ -6797,8 +6792,8 @@ int64_t rt_game3d_world_get_dropped_fixed_steps(void *obj) {
 
 /// @brief Get the fixed-timestep interpolation fraction for the current render frame.
 /// @details `runFixed` and `runFixedWithOverlay` set this to the remaining accumulator divided by
-///   the fixed step after all simulation steps for the displayed frame have run. Render code can use
-///   the value in `[0, 1)` to blend visual-only state between the previous and current fixed
+///   the fixed step after all simulation steps for the displayed frame have run. Render code can
+///   use the value in `[0, 1)` to blend visual-only state between the previous and current fixed
 ///   simulation snapshots without changing deterministic physics stepping.
 double rt_game3d_world_get_fixed_interpolation_alpha(void *obj) {
     rt_game3d_world *world =
@@ -6851,6 +6846,22 @@ int64_t rt_game3d_world_get_occluded_draw_count(void *obj) {
     return canvas ? rt_canvas3d_get_occluded_draw_count(canvas) : 0;
 }
 
+/// @brief Count draw submissions skipped specifically by CPU frustum culling.
+int64_t rt_game3d_world_get_frustum_culled_draw_count(void *obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.get_frustumCulledDrawCount: invalid world");
+    void *canvas = world ? rt_g3d_checked_or_null(world->canvas, RT_G3D_CANVAS3D_CLASS_ID) : NULL;
+    return canvas ? rt_canvas3d_get_frustum_culled_draw_count(canvas) : 0;
+}
+
+/// @brief Count draw submissions skipped specifically by the CPU occlusion grid.
+int64_t rt_game3d_world_get_cpu_occluded_draw_count(void *obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.get_cpuOccludedDrawCount: invalid world");
+    void *canvas = world ? rt_g3d_checked_or_null(world->canvas, RT_G3D_CANVAS3D_CLASS_ID) : NULL;
+    return canvas ? rt_canvas3d_get_cpu_occluded_draw_count(canvas) : 0;
+}
+
 /// @brief Count bytes resident in the world-owned stream controller, if any.
 int64_t rt_game3d_world_get_stream_resident_bytes(void *obj) {
     rt_game3d_world *world =
@@ -6900,8 +6911,18 @@ int8_t rt_game3d_world_get_floating_origin(void *obj) {
 void rt_game3d_world_set_floating_origin(void *obj, int8_t enabled) {
     rt_game3d_world *world =
         game3d_world_checked(obj, "Game3D.World3D.set_floatingOrigin: invalid world");
-    if (world)
-        world->floating_origin = enabled ? 1 : 0;
+    if (world) {
+        int8_t next = enabled ? 1 : 0;
+        if (world->floating_origin != next) {
+            rt_canvas3d *canvas = rt_canvas3d_checked_or_stack(world->canvas);
+            if (canvas) {
+                canvas3d_clear_motion_history(canvas);
+                canvas3d_clear_occlusion_history(canvas);
+                canvas->occlusion_state_valid = 0;
+            }
+        }
+        world->floating_origin = next;
+    }
 }
 
 /// @brief Get the accumulated world-origin offset as a Vec3.
@@ -7587,7 +7608,7 @@ static void game3d_world_draw_debug_overlay(rt_game3d_world *world) {
     if (!world || !world->canvas || !world->debug_overlay_enabled)
         return;
     rt_canvas3d_begin_overlay(world->canvas);
-    rt_canvas3d_draw_rect2d(world->canvas, 8, 8, 286, 148, 0x111820);
+    rt_canvas3d_draw_rect2d(world->canvas, 8, 8, 360, 176, 0x111820);
     game3d_world_debug_text(world, 14, 14, "Game3D Debug", 0xFFFFFF);
     rt_string backend = rt_canvas3d_get_backend(world->canvas);
     const char *backend_cs = backend ? rt_string_cstr(backend) : "unknown";
@@ -7638,14 +7659,56 @@ static void game3d_world_draw_debug_overlay(rt_game3d_world *world) {
                              14,
                              98,
                              0xFFE5AA,
-                             "occlusion tested %lld culled %lld",
-                             (long long)rt_canvas3d_get_occlusion_candidate_count(world->canvas),
-                             (long long)rt_canvas3d_get_occluded_draw_count(world->canvas));
+                             "cull f %lld cpu %lld tested %lld",
+                             (long long)rt_canvas3d_get_frustum_culled_draw_count(world->canvas),
+                             (long long)rt_canvas3d_get_cpu_occluded_draw_count(world->canvas),
+                             (long long)rt_canvas3d_get_occlusion_candidate_count(world->canvas));
+    {
+        int64_t terrain_total = 0;
+        int64_t terrain_drawn = 0;
+        int64_t terrain_frustum = 0;
+        int64_t terrain_missing = 0;
+        int64_t terrain_lod0 = 0;
+        int64_t terrain_lod1 = 0;
+        int64_t terrain_lod2 = 0;
+        int64_t terrain_clamped = 0;
+        rt_game3d_world_stream *stream =
+            world->stream ? (rt_game3d_world_stream *)rt_g3d_checked_or_null(
+                                world->stream, RT_G3D_GAME3D_WORLD_STREAM3D_CLASS_ID)
+                          : NULL;
+        int32_t tile_count = game3d_world_stream_safe_terrain_tile_count(stream);
+        for (int32_t i = 0; i < tile_count; ++i) {
+            void *terrain = game3d_stream_terrain_tile_terrain_ref(&stream->terrain_tiles[i]);
+            if (!terrain)
+                continue;
+            terrain_total += rt_terrain3d_get_last_chunk_count(terrain);
+            terrain_drawn += rt_terrain3d_get_last_drawn_chunk_count(terrain);
+            terrain_frustum += rt_terrain3d_get_last_frustum_culled_chunk_count(terrain);
+            terrain_missing += rt_terrain3d_get_last_missing_lod_count(terrain);
+            terrain_lod0 += rt_terrain3d_get_last_lod0_chunk_count(terrain);
+            terrain_lod1 += rt_terrain3d_get_last_lod1_chunk_count(terrain);
+            terrain_lod2 += rt_terrain3d_get_last_lod2_chunk_count(terrain);
+            terrain_clamped += rt_terrain3d_get_last_lod_clamped_chunk_count(terrain);
+        }
+        game3d_world_debug_textf(world,
+                                 14,
+                                 112,
+                                 0xFFE5AA,
+                                 "terrain %lld/%lld f %lld miss %lld lod %lld/%lld/%lld clamp %lld",
+                                 (long long)terrain_drawn,
+                                 (long long)terrain_total,
+                                 (long long)terrain_frustum,
+                                 (long long)terrain_missing,
+                                 (long long)terrain_lod0,
+                                 (long long)terrain_lod1,
+                                 (long long)terrain_lod2,
+                                 (long long)terrain_clamped);
+    }
     if (world->debug_camera_enabled && world->camera) {
         void *pos = rt_camera3d_get_position(world->camera);
         game3d_world_debug_textf(world,
                                  14,
-                                 112,
+                                 126,
                                  0xCDEECC,
                                  "camera %.2f %.2f %.2f",
                                  pos ? rt_vec3_x(pos) : 0.0,
@@ -7655,11 +7718,44 @@ static void game3d_world_draw_debug_overlay(rt_game3d_world *world) {
     }
     if (world->debug_caps_enabled) {
         int64_t caps = rt_canvas3d_get_backend_capabilities(world->canvas);
-        game3d_world_debug_textf(world, 14, 126, 0xFFE5AA, "caps 0x%llx", (long long)caps);
+        game3d_world_debug_textf(world, 14, 140, 0xFFE5AA, "caps 0x%llx", (long long)caps);
     }
     if (world->debug_physics_enabled)
-        game3d_world_debug_text(world, 14, 140, "physics wire enabled", 0xFFE5AA);
+        game3d_world_debug_text(world, 14, 154, "physics wire enabled", 0xFFE5AA);
     rt_canvas3d_end_overlay(world->canvas);
+}
+
+/// @brief Expand the camera far plane enough to cover the active stream terrain horizon.
+/// @details Streamed terrain uses load/unload radii and tile radii to decide residency. If the
+///   camera far plane is shorter than that horizon, valid resident floor chunks can be clipped
+///   before either Terrain3D or Canvas3D culling gets a chance to keep them. This helper only
+///   raises the far plane; user-authored larger values are preserved.
+static void game3d_world_sync_camera_far_for_stream(rt_game3d_world *world) {
+    rt_game3d_world_stream *stream;
+    double desired_far;
+    int32_t tile_count;
+    if (!world || !world->camera || !world->stream)
+        return;
+    stream = (rt_game3d_world_stream *)rt_g3d_checked_or_null(
+        world->stream, RT_G3D_GAME3D_WORLD_STREAM3D_CLASS_ID);
+    if (!stream || !stream->terrain_manifest_loaded)
+        return;
+    desired_far = game3d_clamp_coord_or(stream->load_radius, 0.0);
+    tile_count = game3d_world_stream_safe_terrain_tile_count(stream);
+    for (int32_t i = 0; i < tile_count; ++i) {
+        rt_game3d_stream_terrain_tile *tile = &stream->terrain_tiles[i];
+        if (!tile || !tile->resident)
+            continue;
+        if (isfinite(tile->radius) && tile->radius > 0.0)
+            desired_far = fmax(desired_far, stream->load_radius + tile->radius);
+    }
+    desired_far += 16.0;
+    if (!isfinite(desired_far) || desired_far <= 0.0)
+        return;
+    if (desired_far > RT_GAME3D_COORD_ABS_MAX)
+        desired_far = RT_GAME3D_COORD_ABS_MAX;
+    if (rt_camera3d_get_far_plane(world->camera) < desired_far)
+        rt_camera3d_set_far_plane(world->camera, desired_far);
 }
 
 /// @brief Shared begin-frame body: clear the back buffer to the world's clear color,
@@ -7670,6 +7766,7 @@ static int game3d_world_begin_frame_impl(rt_game3d_world *world) {
     if (!world || !world->canvas || !world->camera)
         return 0;
     game3d_world_rebase_if_needed(world);
+    game3d_world_sync_camera_far_for_stream(world);
     rt_canvas3d_clear(world->canvas, world->clear_r, world->clear_g, world->clear_b);
     rt_canvas3d_set_camera_relative_upload(world->canvas, world->floating_origin);
     rt_canvas3d_begin(world->canvas, world->camera);

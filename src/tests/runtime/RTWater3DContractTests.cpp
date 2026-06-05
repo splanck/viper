@@ -204,15 +204,13 @@ extern "C" void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *canvas,
                                                           const float *,
                                                           const float *,
                                                           int8_t,
-                                                          int8_t) {
+                                                          int8_t,
+                                                          float) {
     rt_canvas3d_draw_mesh(canvas, mesh, nullptr, material);
 }
 
-extern "C" void vgfx3d_compute_mesh_aabb(const void *,
-                                         uint32_t,
-                                         uint32_t,
-                                         float out_min[3],
-                                         float out_max[3]) {
+extern "C" void vgfx3d_compute_mesh_aabb(
+    const void *, uint32_t, uint32_t, float out_min[3], float out_max[3]) {
     out_min[0] = out_min[1] = out_min[2] = 0.0f;
     out_max[0] = out_max[1] = out_max[2] = 1.0f;
 }

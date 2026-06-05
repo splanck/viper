@@ -54,6 +54,39 @@ static int vgfx3d_vec3_is_finite(const float v[3]) {
     return v && isfinite(v[0]) && isfinite(v[1]) && isfinite(v[2]);
 }
 
+/// @brief Return the adjacent IEEE-754 float farther along the requested axis.
+/// @details `nextafterf` would be the usual library helper for this, but the
+///   native-link path audits runtime archives for unresolved dynamic imports.
+///   This bit-level step keeps transformed culling bounds conservatively widened
+///   by one ULP without adding a libm symbol dependency. Callers pass finite
+///   values only; non-finite input is returned unchanged as a defensive fallback.
+/// @param value Finite single-precision value to widen.
+/// @param toward_positive Non-zero to step toward +infinity, zero toward
+///   -infinity.
+/// @return The adjacent representable float in the requested direction.
+static float vgfx3d_float_step_outward(float value, int toward_positive) {
+    typedef union vgfx3d_float_bits_u {
+        float f;
+        uint32_t u;
+    } vgfx3d_float_bits_t;
+
+    if (!isfinite(value))
+        return value;
+    if (value == 0.0f) {
+        vgfx3d_float_bits_t zero_step;
+        zero_step.u = toward_positive ? 0x00000001u : 0x80000001u;
+        return zero_step.f;
+    }
+
+    vgfx3d_float_bits_t bits;
+    bits.f = value;
+    if ((value > 0.0f) == (toward_positive != 0))
+        bits.u += 1u;
+    else
+        bits.u -= 1u;
+    return bits.f;
+}
+
 /// @brief Extract the six view-frustum planes from a view-projection matrix.
 /// @details Uses Gribb-Hartmann: each plane equation `ax + by + cz + d = 0` is
 ///   the sum or difference of two rows of a row-major VP matrix. Plane ordering
@@ -185,6 +218,34 @@ int vgfx3d_frustum_test_aabb(const vgfx3d_frustum_t *f, const float min[3], cons
     return result;
 }
 
+/// @brief Test a padded AABB against the frustum without mutating caller-owned bounds.
+/// @details The padding is applied symmetrically in all three axes and then canonicalized so
+///   callers can pass local or transformed bounds directly. If the padding cannot be represented
+///   safely, the function falls back to the unpadded test instead of manufacturing invalid bounds.
+int vgfx3d_frustum_test_aabb_padded(const vgfx3d_frustum_t *f,
+                                    const float min[3],
+                                    const float max[3],
+                                    float pad) {
+    float padded_min[3];
+    float padded_max[3];
+    if (!isfinite(pad) || pad <= 0.0f)
+        return vgfx3d_frustum_test_aabb(f, min, max);
+    if (!vgfx3d_vec3_is_finite(min) || !vgfx3d_vec3_is_finite(max))
+        return vgfx3d_frustum_test_aabb(f, min, max);
+    for (int axis = 0; axis < 3; axis++) {
+        float lo = min[axis] <= max[axis] ? min[axis] : max[axis];
+        float hi = min[axis] <= max[axis] ? max[axis] : min[axis];
+        double expanded_lo = (double)lo - (double)pad;
+        double expanded_hi = (double)hi + (double)pad;
+        if (!isfinite(expanded_lo) || !isfinite(expanded_hi) || expanded_lo < -(double)FLT_MAX ||
+            expanded_hi > (double)FLT_MAX)
+            return vgfx3d_frustum_test_aabb(f, min, max);
+        padded_min[axis] = (float)expanded_lo;
+        padded_max[axis] = (float)expanded_hi;
+    }
+    return vgfx3d_frustum_test_aabb(f, padded_min, padded_max);
+}
+
 /*==========================================================================
  * Bounding sphere frustum test
  *=========================================================================*/
@@ -295,6 +356,17 @@ int vgfx3d_transform_aabb_checked(const float obj_min[3],
             out_max[1] = wy;
         if (wz > out_max[2])
             out_max[2] = wz;
+    }
+    for (int axis = 0; axis < 3; axis++) {
+        if (out_min[axis] > out_max[axis]) {
+            float tmp = out_min[axis];
+            out_min[axis] = out_max[axis];
+            out_max[axis] = tmp;
+        }
+        if (out_min[axis] > -FLT_MAX)
+            out_min[axis] = vgfx3d_float_step_outward(out_min[axis], 0);
+        if (out_max[axis] < FLT_MAX)
+            out_max[axis] = vgfx3d_float_step_outward(out_max[axis], 1);
     }
     return 1;
 }

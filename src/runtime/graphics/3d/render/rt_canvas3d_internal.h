@@ -79,10 +79,10 @@ typedef struct {
     const float *prev_morph_weights;  /* previous-frame weights for motion blur */
     int32_t morph_shape_count;
     const float *morph_bound_deltas_source; /* source pointer for cached raw morph-bound padding */
-    uint32_t morph_bound_revision;          /* geometry_revision for cached raw morph-bound padding */
-    uint32_t morph_bound_vertex_count;      /* vertex_count used by cached raw morph-bound padding */
-    int32_t morph_bound_shape_count;        /* shape_count used by cached raw morph-bound padding */
-    double morph_bound_pad;                 /* cached max raw morph delta length */
+    uint32_t morph_bound_revision;     /* geometry_revision for cached raw morph-bound padding */
+    uint32_t morph_bound_vertex_count; /* vertex_count used by cached raw morph-bound padding */
+    int32_t morph_bound_shape_count;   /* shape_count used by cached raw morph-bound padding */
+    double morph_bound_pad;            /* cached max raw morph delta length */
     int8_t morph_bound_valid;
     float aabb_min[3];
     float aabb_max[3];
@@ -94,9 +94,10 @@ typedef struct {
     uint32_t geometry_revision; /* increments when CPU geometry changes */
     uint32_t tangent_revision;  /* geometry_revision for cached tangent readiness */
     int8_t tangents_ready;      /* true once tangent presence/generation was resolved */
-    uint32_t positions64_rebase_revision; /* geometry_revision for cached double-position rebase test */
-    int8_t positions64_rebase_needed;     /* cached result for camera-relative vertex rebasing */
-    int8_t resident;            /* false when stream draw residency should skip this mesh */
+    uint32_t
+        positions64_rebase_revision;  /* geometry_revision for cached double-position rebase test */
+    int8_t positions64_rebase_needed; /* cached result for camera-relative vertex rebasing */
+    int8_t resident;                  /* false when stream draw residency should skip this mesh */
     uint8_t geometry_batch_depth;
     int8_t geometry_batch_dirty;
     void *physics_bvh_nodes;           /* rt_physics_mesh_bvh_node[], owned by mesh */
@@ -256,11 +257,8 @@ static inline void rt_mesh3d_refresh_bounds(rt_mesh3d *mesh) {
             mesh->aabb_max[axis] = rt_mesh3d_bounds_f32_from_f64(maxv[axis]);
         }
     } else {
-        vgfx3d_compute_mesh_aabb(mesh->vertices,
-                                 vertex_count,
-                                 sizeof(vgfx3d_vertex_t),
-                                 mesh->aabb_min,
-                                 mesh->aabb_max);
+        vgfx3d_compute_mesh_aabb(
+            mesh->vertices, vertex_count, sizeof(vgfx3d_vertex_t), mesh->aabb_min, mesh->aabb_max);
     }
     if (!isfinite(mesh->aabb_min[0]) || !isfinite(mesh->aabb_min[1]) ||
         !isfinite(mesh->aabb_min[2]) || !isfinite(mesh->aabb_max[0]) ||
@@ -304,8 +302,8 @@ typedef struct {
     double shake_offset[3];
     uint32_t shake_seed;
     int64_t last_shake_update_token; /* renderer timing token for one shake advance per frame */
-    int8_t is_ortho;   /* 1 = orthographic projection */
-    double ortho_size; /* half-extent of ortho view */
+    int8_t is_ortho;                 /* 1 = orthographic projection */
+    double ortho_size;               /* half-extent of ortho view */
     int8_t pick_cache_valid;
     int8_t pick_cache_is_ortho;
     double pick_cache_aspect;
@@ -335,7 +333,9 @@ typedef struct {
     void *mesh;
 } rt_mesh3d_obj_group_t;
 
-int rt_mesh3d_from_obj_groups(rt_string path, rt_mesh3d_obj_group_t **out_groups, int32_t *out_count);
+int rt_mesh3d_from_obj_groups(rt_string path,
+                              rt_mesh3d_obj_group_t **out_groups,
+                              int32_t *out_count);
 void rt_mesh3d_obj_groups_free(rt_mesh3d_obj_group_t *groups, int32_t count);
 
 //=============================================================================
@@ -527,8 +527,7 @@ static inline int vgfx3d_rendertarget_valid_pixels(const vgfx3d_rendertarget_t *
         *out_pixel_count = 0u;
     if (!target || target->width <= 0 || target->height <= 0)
         return 0;
-    if (target->width > VGFX3D_RENDERTARGET_DIM_MAX ||
-        target->height > VGFX3D_RENDERTARGET_DIM_MAX)
+    if (target->width > VGFX3D_RENDERTARGET_DIM_MAX || target->height > VGFX3D_RENDERTARGET_DIM_MAX)
         return 0;
     if ((size_t)target->width > SIZE_MAX / (size_t)target->height)
         return 0;
@@ -691,15 +690,15 @@ typedef struct {
     void *backend_ctx;               /* opaque backend state */
 
     /* Frame state */
-    int8_t in_frame;             /* 1 = between Begin/End */
-    int8_t frame_is_2d;          /* 1 = active frame uses orthographic 2D projection */
-    float cached_vp[16];         /* VP matrix cached in begin_frame for debug drawing */
-    float cached_cam_pos[3];     /* camera position cached for sort key computation */
+    int8_t in_frame;                /* 1 = between Begin/End */
+    int8_t frame_is_2d;             /* 1 = active frame uses orthographic 2D projection */
+    float cached_vp[16];            /* VP matrix cached in begin_frame for debug drawing */
+    float cached_cam_pos[3];        /* camera position cached for sort key computation */
     double cached_world_cam_pos[3]; /* unre-based world camera position for diagnostics/safety */
     float cached_render_cam_pos[3]; /* camera position in backend render space */
-    float cached_cam_forward[3]; /* forward vector cached for skybox + ortho shading */
-    float cached_cam_near;       /* active camera near clip distance, for stable cascade splits */
-    float cached_cam_far;        /* active camera far clip distance, for stable cascade splits */
+    float cached_cam_forward[3];    /* forward vector cached for skybox + ortho shading */
+    float cached_cam_near; /* active camera near clip distance, for stable cascade splits */
+    float cached_cam_far;  /* active camera far clip distance, for stable cascade splits */
     int8_t cached_cam_is_ortho;
     int8_t camera_relative_upload;
     double camera_relative_origin[3];
@@ -719,7 +718,8 @@ typedef struct {
     void **final_overlay_temp_buffers;
     int32_t final_overlay_temp_buf_count;
     int32_t final_overlay_temp_buf_capacity;
-    void **final_overlay_temp_objects; /* GC objs (materials/textures) kept alive until overlay replay */
+    void **final_overlay_temp_objects; /* GC objs (materials/textures) kept alive until overlay
+                                          replay */
     int32_t final_overlay_temp_obj_count;
     int32_t final_overlay_temp_obj_capacity;
     int8_t final_overlay_recording;
@@ -816,6 +816,8 @@ typedef struct {
     int8_t clustered_lighting;
     int32_t last_draw_count;
     int32_t last_occluded_draw_count;
+    int32_t last_frustum_culled_draw_count;
+    int32_t last_cpu_occluded_draw_count;
     int32_t last_occlusion_candidate_count;
     int64_t last_texture_upload_bytes;
 
@@ -926,7 +928,8 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
 ///   local bounds for dynamic deformation or chunking. `conservative_bounds` preserves frustum
 ///   culling while disabling exact-coverage assumptions in CPU occlusion. `disable_occlusion`
 ///   skips both CPU occlusion testing and occluder writes for draws whose coverage is not a solid
-///   projection of their AABB.
+///   projection of their AABB. `culling_pad` expands only CPU frustum tests, which is useful for
+///   terrain chunks whose edge triangles must survive small CPU/GPU precision differences.
 void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
                                                void *mesh_obj,
                                                const double *model_matrix,
@@ -937,7 +940,8 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
                                                const float *local_bounds_min,
                                                const float *local_bounds_max,
                                                int8_t conservative_bounds,
-                                               int8_t disable_occlusion);
+                                               int8_t disable_occlusion,
+                                               float culling_pad);
 /// @brief Internal: enable camera-relative float upload for large-world Game3D frames.
 void rt_canvas3d_set_camera_relative_upload(void *obj, int8_t enabled);
 /// @brief Internal: copy the active camera-relative origin; returns 1 when upload rebasing is on.
@@ -1014,9 +1018,9 @@ const float *canvas3d_active_scene_vp(const rt_canvas3d *c);
 int canvas3d_queue_screen_rect(
     rt_canvas3d *c, float x, float y, float w, float h, float r, float g, float b, float a);
 /// @brief Internal: queue a screen-space textured quad sampling `pixels` over UV (0,0)-(1,1).
-int canvas3d_queue_screen_image(
-    rt_canvas3d *c, float x, float y, float w, float h, void *pixels);
-/// @brief Internal: retain a GC object referenced by a final-overlay draw until the overlay replays.
+int canvas3d_queue_screen_image(rt_canvas3d *c, float x, float y, float w, float h, void *pixels);
+/// @brief Internal: retain a GC object referenced by a final-overlay draw until the overlay
+/// replays.
 int canvas3d_track_final_overlay_temp_object(rt_canvas3d *c, void *obj);
 /// @brief Internal: apply a height-weighted XZ wind sway to a mesh's vertices in place.
 /// @details Base vertices (lowest local-Y) stay planted; displacement scales with

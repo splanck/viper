@@ -974,7 +974,8 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
                                                   local_bounds_min,
                                                   local_bounds_max,
                                                   conservative_bounds,
-                                                  disable_occlusion);
+                                                  disable_occlusion,
+                                                  0.0f);
         return;
     }
 
@@ -1018,7 +1019,8 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
                                                   local_bounds_min,
                                                   local_bounds_max,
                                                   1,
-                                                  1);
+                                                  1,
+                                                  0.0f);
         return;
     }
 
@@ -1125,7 +1127,8 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
                                               local_bounds_min,
                                               local_bounds_max,
                                               1,
-                                              1);
+                                              1,
+                                              0.0f);
 }
 
 /// @brief Draw a mesh with morph targets applied, using a raw 4×4 model matrix.

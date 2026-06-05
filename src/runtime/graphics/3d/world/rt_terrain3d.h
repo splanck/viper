@@ -56,6 +56,28 @@ void rt_terrain3d_set_lod_distances(void *terrain, double near_dist, double far_
 void rt_terrain3d_set_lod_hysteresis(void *terrain, double distance);
 /// @brief Set the depth of skirts dropped from chunk edges (hides cracks between LOD seams).
 void rt_terrain3d_set_skirt_depth(void *terrain, double depth);
+/// @brief Enable or disable Terrain3D participation in Canvas3D CPU occlusion testing/writes.
+/// @details Disabled by default because terrain chunk AABBs are not solid occluders and can hide
+///   visible floor triangles at the horizon. Frustum culling remains active either way.
+void rt_terrain3d_set_cpu_occlusion(void *terrain, int8_t enabled);
+/// @brief Return whether Terrain3D CPU occlusion participation is enabled.
+int8_t rt_terrain3d_get_cpu_occlusion(void *terrain);
+/// @brief Number of chunks in the most recent terrain draw attempt.
+int64_t rt_terrain3d_get_last_chunk_count(void *terrain);
+/// @brief Number of chunks submitted to Canvas3D by the most recent terrain draw.
+int64_t rt_terrain3d_get_last_drawn_chunk_count(void *terrain);
+/// @brief Number of chunks rejected by Terrain3D's conservative frustum pre-pass.
+int64_t rt_terrain3d_get_last_frustum_culled_chunk_count(void *terrain);
+/// @brief Number of chunks whose selected LOD was missing and required fallback or skipped.
+int64_t rt_terrain3d_get_last_missing_lod_count(void *terrain);
+/// @brief Number of chunks whose selected LOD was clamped to maintain neighbor seam safety.
+int64_t rt_terrain3d_get_last_lod_clamped_chunk_count(void *terrain);
+/// @brief Number of chunks drawn at LOD0 during the most recent terrain draw.
+int64_t rt_terrain3d_get_last_lod0_chunk_count(void *terrain);
+/// @brief Number of chunks drawn at LOD1 during the most recent terrain draw.
+int64_t rt_terrain3d_get_last_lod1_chunk_count(void *terrain);
+/// @brief Number of chunks drawn at LOD2 during the most recent terrain draw.
+int64_t rt_terrain3d_get_last_lod2_chunk_count(void *terrain);
 
 /// @brief Internal edge identifiers used by streaming terrain seam stitching.
 enum {

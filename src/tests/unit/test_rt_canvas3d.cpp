@@ -5725,6 +5725,52 @@ static void test_canvas_draw_terrain_sanitizes_nonfinite_lod_distance() {
     PASS();
 }
 
+static void test_canvas_draw_terrain_disables_cpu_occlusion_by_default() {
+    TEST("Canvas3D.DrawTerrain disables CPU occlusion by default");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(8.0, 10.0, 24.0);
+    void *target = rt_vec3_new(8.0, 0.0, 8.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    void *terrain = rt_terrain3d_new(16, 16);
+    void *material = rt_material3d_new_color(0.2, 0.4, 0.6);
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 640;
+    canvas.height = 480;
+
+    rt_camera3d_look_at(cam, eye, target, up);
+    rt_terrain3d_set_material(terrain, material);
+    EXPECT_EQ(rt_terrain3d_get_cpu_occlusion(terrain), 0);
+    rt_terrain3d_set_cpu_occlusion(terrain, 1);
+    EXPECT_EQ(rt_terrain3d_get_cpu_occlusion(terrain), 1);
+    rt_terrain3d_set_cpu_occlusion(terrain, 0);
+
+    g_canvas_submit_draw_calls = 0;
+    rt_canvas3d_set_occlusion_culling(&canvas, 1);
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_terrain(&canvas, terrain);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_EQ(g_canvas_submit_draw_calls, 1);
+    EXPECT_EQ(rt_canvas3d_get_draw_count(&canvas), 1);
+    EXPECT_EQ(rt_canvas3d_get_occlusion_candidate_count(&canvas), 0);
+    EXPECT_EQ(rt_canvas3d_get_cpu_occluded_draw_count(&canvas), 0);
+    EXPECT_EQ(rt_terrain3d_get_last_chunk_count(terrain), 1);
+    EXPECT_EQ(rt_terrain3d_get_last_drawn_chunk_count(terrain), 1);
+    EXPECT_EQ(rt_terrain3d_get_last_missing_lod_count(terrain), 0);
+    EXPECT_EQ(rt_terrain3d_get_last_lod0_chunk_count(terrain), 1);
+    PASS();
+}
+
 //=============================================================================
 // Terrain3D splat tests
 //=============================================================================
@@ -7346,6 +7392,7 @@ int main() {
     test_canvas_draw_mesh_rejects_corrupt_raw_morph_shape_count();
     test_canvas_draw_terrain_rejects_2d_frame();
     test_canvas_draw_terrain_sanitizes_nonfinite_lod_distance();
+    test_canvas_draw_terrain_disables_cpu_occlusion_by_default();
 
     /* Terrain3D splat */
     test_terrain_create();

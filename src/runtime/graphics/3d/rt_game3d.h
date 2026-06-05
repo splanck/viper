@@ -963,6 +963,10 @@ int64_t rt_game3d_world_get_draw_count(void *world);
 int64_t rt_game3d_world_get_visible_node_count(void *world);
 /// @brief Count draw submissions skipped by latest visibility culling.
 int64_t rt_game3d_world_get_occluded_draw_count(void *world);
+/// @brief Count draw submissions skipped specifically by CPU frustum culling.
+int64_t rt_game3d_world_get_frustum_culled_draw_count(void *world);
+/// @brief Count draw submissions skipped specifically by the CPU occlusion grid.
+int64_t rt_game3d_world_get_cpu_occluded_draw_count(void *world);
 /// @brief Count bytes resident in the world-owned stream controller, if any.
 int64_t rt_game3d_world_get_stream_resident_bytes(void *world);
 /// @brief Get the configured worker count for internal deterministic jobs.
@@ -1115,7 +1119,8 @@ int64_t rt_game3d_world_stream_get_terrain_tile_bytes(void *stream, int64_t inde
 rt_string rt_game3d_world_stream_get_terrain_tile_material(void *stream, int64_t index);
 /// @brief Get parsed terrain-tile optional binary sidecar path, or "" for invalid/missing.
 rt_string rt_game3d_world_stream_get_terrain_tile_sidecar(void *stream, int64_t index);
-/// @brief Get resident bytes of a terrain-tile's loaded binary sidecar payload (0 if none/unloaded).
+/// @brief Get resident bytes of a terrain-tile's loaded binary sidecar payload (0 if
+/// none/unloaded).
 int64_t rt_game3d_world_stream_get_terrain_tile_sidecar_bytes(void *stream, int64_t index);
 /// @brief Get parsed terrain-tile collision/render layer metadata.
 int64_t rt_game3d_world_stream_get_terrain_tile_layer(void *stream, int64_t index);

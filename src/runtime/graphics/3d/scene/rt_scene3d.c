@@ -339,8 +339,8 @@ static void build_trs_matrix(const double *pos,
                              const double *scl,
                              double *out) {
     double p[3] = {pos ? pos[0] : 0.0, pos ? pos[1] : 0.0, pos ? pos[2] : 0.0};
-    double q[4] = {quat ? quat[0] : 0.0, quat ? quat[1] : 0.0, quat ? quat[2] : 0.0,
-                   quat ? quat[3] : 1.0};
+    double q[4] = {
+        quat ? quat[0] : 0.0, quat ? quat[1] : 0.0, quat ? quat[2] : 0.0, quat ? quat[3] : 1.0};
     double s[3] = {scl ? scl[0] : 1.0, scl ? scl[1] : 1.0, scl ? scl[2] : 1.0};
     scene3d_sanitize_vec3d(p, 0.0);
     scene3d_sanitize_scale3(s);
@@ -939,8 +939,7 @@ static int32_t count_subtree(const rt_scene_node3d *node) {
             return INT32_MAX;
         }
         total++;
-        for (int32_t i = 0, child_count = scene3d_node_child_count(current); i < child_count;
-             i++) {
+        for (int32_t i = 0, child_count = scene3d_node_child_count(current); i < child_count; i++) {
             const rt_scene_node3d *child = scene_node3d_checked(current->children[i]);
             if (!scene_node_const_stack_push(&stack, &count, &capacity, child)) {
                 free(stack);
@@ -1199,8 +1198,7 @@ int node_contains(const rt_scene_node3d *root, const rt_scene_node3d *target) {
             free(stack);
             return 1;
         }
-        for (int32_t i = 0, child_count = scene3d_node_child_count(current); i < child_count;
-             i++) {
+        for (int32_t i = 0, child_count = scene3d_node_child_count(current); i < child_count; i++) {
             const rt_scene_node3d *child = scene_node3d_checked(current->children[i]);
             if (!scene_node_const_stack_push(&stack, &count, &capacity, child)) {
                 rt_trap("SceneNode3D: traversal stack allocation failed");
@@ -1240,17 +1238,40 @@ void scene_mesh_bounds(rt_mesh3d *mesh, float out_min[3], float out_max[3], floa
         *out_radius = mesh->bsphere_radius;
 }
 
-/// @brief Mix one mesh geometry revision into a non-zero node geometry signature.
+/// @brief Mix an arbitrary 64-bit value into a non-zero node geometry signature.
+/// @details Spatial entries use this compact signature to notice mesh, LOD, and impostor metadata
+///   changes without retaining a larger snapshot. It is not cryptographic; it only needs to make
+///   ordinary scene-edit collisions unlikely enough for BVH refit invalidation.
+static uint32_t scene3d_mix_signature_u64(uint32_t signature, uint64_t value) {
+    uint32_t lo = (uint32_t)(value & 0xffffffffu);
+    uint32_t hi = (uint32_t)(value >> 32u);
+    signature ^= lo + 0x9e3779b9u + (signature << 6) + (signature >> 2);
+    signature ^= hi + 0x85ebca6bu + (signature << 6) + (signature >> 2);
+    return signature ? signature : 1u;
+}
+
+/// @brief Convert a double to bits for compact geometry-signature mixing.
+static uint64_t scene3d_double_bits_for_signature(double value) {
+    union {
+        double d;
+        uint64_t u;
+    } bits;
+
+    bits.d = isfinite(value) ? value : 0.0;
+    return bits.u;
+}
+
+/// @brief Mix one mesh identity and geometry revision into a non-zero node geometry signature.
 /// @details Spatial entries store a compact signature instead of retaining every mesh
-///          pointer. FNV-style mixing keeps LOD/impostor mesh changes from colliding
-///          with the primary mesh revision in ordinary cases while preserving the
-///          cheap uint32_t comparison needed during BVH refits.
+///          pointer snapshot. Including the pointer catches replacement by a different mesh whose
+///          geometry revision happens to match the prior one.
 static uint32_t scene3d_mix_mesh_revision(uint32_t signature, void *mesh_obj) {
     rt_mesh3d *mesh =
         rt_g3d_has_class(mesh_obj, RT_G3D_MESH3D_CLASS_ID) ? (rt_mesh3d *)mesh_obj : NULL;
     uint32_t revision = mesh ? mesh->geometry_revision : 0u;
-    signature ^= revision + 0x9e3779b9u + (signature << 6) + (signature >> 2);
-    return signature ? signature : 1u;
+    signature = scene3d_mix_signature_u64(signature, (uint64_t)(uintptr_t)mesh_obj);
+    signature = scene3d_mix_signature_u64(signature, (uint64_t)revision);
+    return signature;
 }
 
 /// @brief Combine the geometry revisions of all drawable meshes owned by @p node.
@@ -1263,8 +1284,18 @@ uint32_t scene_node_geometry_revision_signature(rt_scene_node3d *node) {
     if (!node)
         return 0;
     signature = scene3d_mix_mesh_revision(signature, node->mesh);
-    for (int32_t i = 0, lod_count = scene3d_node_lod_count(node); i < lod_count; i++)
+    signature = scene3d_mix_signature_u64(signature, (uint64_t)scene3d_node_lod_count(node));
+    signature = scene3d_mix_signature_u64(signature, (uint64_t)(uint8_t)node->auto_lod_enabled);
+    signature = scene3d_mix_signature_u64(
+        signature, scene3d_double_bits_for_signature(node->auto_lod_screen_error_px));
+    for (int32_t i = 0, lod_count = scene3d_node_lod_count(node); i < lod_count; i++) {
         signature = scene3d_mix_mesh_revision(signature, node->lod_levels[i].mesh);
+        signature = scene3d_mix_signature_u64(
+            signature, scene3d_double_bits_for_signature(node->lod_levels[i].distance));
+    }
+    signature = scene3d_mix_signature_u64(signature, (uint64_t)(uint8_t)node->has_impostor);
+    signature = scene3d_mix_signature_u64(
+        signature, scene3d_double_bits_for_signature(node->impostor_distance));
     if (node->has_impostor)
         signature = scene3d_mix_mesh_revision(signature, node->impostor_mesh);
     return signature ? signature : 1u;
@@ -1308,10 +1339,8 @@ static void scene_world_point(const double *world_matrix, const float local[3], 
     p[0] = scene3d_clamp_abs_or((double)local[0], 0.0);
     p[1] = scene3d_clamp_abs_or((double)local[1], 0.0);
     p[2] = scene3d_clamp_abs_or((double)local[2], 0.0);
-    x = world_matrix[0] * p[0] + world_matrix[1] * p[1] + world_matrix[2] * p[2] +
-        world_matrix[3];
-    y = world_matrix[4] * p[0] + world_matrix[5] * p[1] + world_matrix[6] * p[2] +
-        world_matrix[7];
+    x = world_matrix[0] * p[0] + world_matrix[1] * p[1] + world_matrix[2] * p[2] + world_matrix[3];
+    y = world_matrix[4] * p[0] + world_matrix[5] * p[1] + world_matrix[6] * p[2] + world_matrix[7];
     z = world_matrix[8] * p[0] + world_matrix[9] * p[1] + world_matrix[10] * p[2] +
         world_matrix[11];
     out[0] = scene3d_float_or_zero(scene3d_clamp_abs_or(x, 0.0));
@@ -1337,10 +1366,8 @@ static void scene_world_point_d(const double *world_matrix, const float local[3]
     p[0] = scene3d_clamp_abs_or((double)local[0], 0.0);
     p[1] = scene3d_clamp_abs_or((double)local[1], 0.0);
     p[2] = scene3d_clamp_abs_or((double)local[2], 0.0);
-    x = world_matrix[0] * p[0] + world_matrix[1] * p[1] + world_matrix[2] * p[2] +
-        world_matrix[3];
-    y = world_matrix[4] * p[0] + world_matrix[5] * p[1] + world_matrix[6] * p[2] +
-        world_matrix[7];
+    x = world_matrix[0] * p[0] + world_matrix[1] * p[1] + world_matrix[2] * p[2] + world_matrix[3];
+    y = world_matrix[4] * p[0] + world_matrix[5] * p[1] + world_matrix[6] * p[2] + world_matrix[7];
     z = world_matrix[8] * p[0] + world_matrix[9] * p[1] + world_matrix[10] * p[2] +
         world_matrix[11];
     out[0] = scene3d_clamp_abs_or(x, 0.0);
@@ -1574,12 +1601,12 @@ int scene3d_transform_aabb_d(const float obj_min[3],
         double cy = (corner & 2) ? (double)safe_max[1] : (double)safe_min[1];
         double cz = (corner & 4) ? (double)safe_max[2] : (double)safe_min[2];
         double p[3];
-        p[0] = scene3d_clamp_abs_or(
-            world_matrix[0] * cx + world_matrix[1] * cy + world_matrix[2] * cz + world_matrix[3],
-            0.0);
-        p[1] = scene3d_clamp_abs_or(
-            world_matrix[4] * cx + world_matrix[5] * cy + world_matrix[6] * cz + world_matrix[7],
-            0.0);
+        p[0] = scene3d_clamp_abs_or(world_matrix[0] * cx + world_matrix[1] * cy +
+                                        world_matrix[2] * cz + world_matrix[3],
+                                    0.0);
+        p[1] = scene3d_clamp_abs_or(world_matrix[4] * cx + world_matrix[5] * cy +
+                                        world_matrix[6] * cz + world_matrix[7],
+                                    0.0);
         p[2] = scene3d_clamp_abs_or(world_matrix[8] * cx + world_matrix[9] * cy +
                                         world_matrix[10] * cz + world_matrix[11],
                                     0.0);
@@ -1747,15 +1774,17 @@ int scene3d_read_vec3d(void *obj, double out[3], const char *trap_message) {
 }
 
 /// @brief Get a node's own mesh AABB in world space. Transform-only nodes return false.
-int scene3d_node_world_mesh_aabb(rt_scene_node3d *node,
-                                 double world_min[3],
-                                 double world_max[3]) {
+int scene3d_node_world_mesh_aabb(rt_scene_node3d *node, double world_min[3], double world_max[3]) {
     float local_min[3];
     float local_max[3];
+    rt_mesh3d *mesh;
     if (!node || !node->mesh || !world_min || !world_max)
         return 0;
+    mesh = (rt_mesh3d *)rt_g3d_checked_or_null(node->mesh, RT_G3D_MESH3D_CLASS_ID);
+    if (!mesh)
+        return 0;
     recompute_world_matrix(node);
-    scene_mesh_bounds((rt_mesh3d *)node->mesh, local_min, local_max, NULL);
+    scene_mesh_bounds(mesh, local_min, local_max, NULL);
     if (!scene3d_transform_aabb_d(local_min, local_max, node->world_matrix, world_min, world_max))
         return 0;
     scene3d_canonicalize_aabb_d(world_min, world_max);
@@ -1767,18 +1796,14 @@ int scene3d_aabb_intersects_aabb(const double a_min[3],
                                  const double a_max[3],
                                  const double b_min[3],
                                  const double b_max[3]) {
-    double amin[3] = {a_min ? a_min[0] : 0.0, a_min ? a_min[1] : 0.0,
-                      a_min ? a_min[2] : 0.0};
-    double amax[3] = {a_max ? a_max[0] : 0.0, a_max ? a_max[1] : 0.0,
-                      a_max ? a_max[2] : 0.0};
-    double bmin[3] = {b_min ? b_min[0] : 0.0, b_min ? b_min[1] : 0.0,
-                      b_min ? b_min[2] : 0.0};
-    double bmax[3] = {b_max ? b_max[0] : 0.0, b_max ? b_max[1] : 0.0,
-                      b_max ? b_max[2] : 0.0};
+    double amin[3] = {a_min ? a_min[0] : 0.0, a_min ? a_min[1] : 0.0, a_min ? a_min[2] : 0.0};
+    double amax[3] = {a_max ? a_max[0] : 0.0, a_max ? a_max[1] : 0.0, a_max ? a_max[2] : 0.0};
+    double bmin[3] = {b_min ? b_min[0] : 0.0, b_min ? b_min[1] : 0.0, b_min ? b_min[2] : 0.0};
+    double bmax[3] = {b_max ? b_max[0] : 0.0, b_max ? b_max[1] : 0.0, b_max ? b_max[2] : 0.0};
     scene3d_canonicalize_aabb_d(amin, amax);
     scene3d_canonicalize_aabb_d(bmin, bmax);
-    return amin[0] <= bmax[0] && amax[0] >= bmin[0] && amin[1] <= bmax[1] &&
-           amax[1] >= bmin[1] && amin[2] <= bmax[2] && amax[2] >= bmin[2];
+    return amin[0] <= bmax[0] && amax[0] >= bmin[0] && amin[1] <= bmax[1] && amax[1] >= bmin[1] &&
+           amin[2] <= bmax[2] && amax[2] >= bmin[2];
 }
 
 /// @brief Whether a sphere overlaps an AABB, via closest-point squared distance vs radius².
@@ -1786,12 +1811,11 @@ int scene3d_aabb_intersects_sphere(const double aabb_min[3],
                                    const double aabb_max[3],
                                    const double center[3],
                                    double radius) {
-    double mn[3] = {aabb_min ? aabb_min[0] : 0.0, aabb_min ? aabb_min[1] : 0.0,
-                    aabb_min ? aabb_min[2] : 0.0};
-    double mx[3] = {aabb_max ? aabb_max[0] : 0.0, aabb_max ? aabb_max[1] : 0.0,
-                    aabb_max ? aabb_max[2] : 0.0};
-    double c[3] = {center ? center[0] : 0.0, center ? center[1] : 0.0,
-                   center ? center[2] : 0.0};
+    double mn[3] = {
+        aabb_min ? aabb_min[0] : 0.0, aabb_min ? aabb_min[1] : 0.0, aabb_min ? aabb_min[2] : 0.0};
+    double mx[3] = {
+        aabb_max ? aabb_max[0] : 0.0, aabb_max ? aabb_max[1] : 0.0, aabb_max ? aabb_max[2] : 0.0};
+    double c[3] = {center ? center[0] : 0.0, center ? center[1] : 0.0, center ? center[2] : 0.0};
     double dist2 = 0.0;
     scene3d_canonicalize_aabb_d(mn, mx);
     scene3d_sanitize_vec3d(c, 0.0);
@@ -1818,14 +1842,14 @@ int scene3d_ray_intersects_aabb(const double origin[3],
                                 const double aabb_max[3],
                                 double max_distance,
                                 double *out_t) {
-    double o[3] = {origin ? origin[0] : 0.0, origin ? origin[1] : 0.0,
-                   origin ? origin[2] : 0.0};
-    double dvec[3] = {direction ? direction[0] : 0.0, direction ? direction[1] : 0.0,
+    double o[3] = {origin ? origin[0] : 0.0, origin ? origin[1] : 0.0, origin ? origin[2] : 0.0};
+    double dvec[3] = {direction ? direction[0] : 0.0,
+                      direction ? direction[1] : 0.0,
                       direction ? direction[2] : 0.0};
-    double mn[3] = {aabb_min ? aabb_min[0] : 0.0, aabb_min ? aabb_min[1] : 0.0,
-                    aabb_min ? aabb_min[2] : 0.0};
-    double mx[3] = {aabb_max ? aabb_max[0] : 0.0, aabb_max ? aabb_max[1] : 0.0,
-                    aabb_max ? aabb_max[2] : 0.0};
+    double mn[3] = {
+        aabb_min ? aabb_min[0] : 0.0, aabb_min ? aabb_min[1] : 0.0, aabb_min ? aabb_min[2] : 0.0};
+    double mx[3] = {
+        aabb_max ? aabb_max[0] : 0.0, aabb_max ? aabb_max[1] : 0.0, aabb_max ? aabb_max[2] : 0.0};
     double tmin = 0.0;
     double tmax;
     scene3d_sanitize_vec3d(o, 0.0);
@@ -2046,8 +2070,7 @@ static int scene3d_build_pvs_context(rt_scene3d *scene,
         int32_t zone = queue[head++];
         for (int32_t i = 0; i < portal_count; ++i) {
             const rt_scene3d_visibility_portal *portal = &scene->visibility_portals[i];
-            if (portal->from_zone != zone || portal->to_zone < 0 ||
-                portal->to_zone >= zone_count)
+            if (portal->from_zone != zone || portal->to_zone < 0 || portal->to_zone >= zone_count)
                 continue;
             if (!out->visible_zones[portal->to_zone]) {
                 out->visible_zones[portal->to_zone] = 1;
@@ -2101,9 +2124,9 @@ int scene3d_ray_sweep_bounds(const double origin[3],
                              double max_distance,
                              double out_min[3],
                              double out_max[3]) {
-    double o[3] = {origin ? origin[0] : 0.0, origin ? origin[1] : 0.0,
-                   origin ? origin[2] : 0.0};
-    double d[3] = {direction ? direction[0] : 0.0, direction ? direction[1] : 0.0,
+    double o[3] = {origin ? origin[0] : 0.0, origin ? origin[1] : 0.0, origin ? origin[2] : 0.0};
+    double d[3] = {direction ? direction[0] : 0.0,
+                   direction ? direction[1] : 0.0,
                    direction ? direction[2] : 0.0};
     double end[3];
     if (!origin || !direction || !out_min || !out_max)
@@ -2284,7 +2307,8 @@ static int32_t scene3d_manual_lod_index_with_hysteresis(rt_scene_node3d *node,
     int32_t prev = state && state->lod_selection_valid ? state->lod_selected_index : raw_index;
     if (!node || raw_index < 0 || raw_index > lod_count)
         return 0;
-    if (prev < 0 || prev > lod_count || (prev > 0 && !scene3d_lod_mesh_for_selected_index(node, prev)))
+    if (prev < 0 || prev > lod_count ||
+        (prev > 0 && !scene3d_lod_mesh_for_selected_index(node, prev)))
         prev = raw_index;
     if (prev != raw_index) {
         if (raw_index > prev) {
@@ -2317,7 +2341,8 @@ static int32_t scene3d_auto_lod_index_with_hysteresis(rt_scene_node3d *node,
     double band = fmax(1.0, screen_error_px * 0.25);
     if (!node || raw_index < 0 || raw_index > lod_count)
         return 0;
-    if (prev < 0 || prev > lod_count || (prev > 0 && !scene3d_lod_mesh_for_selected_index(node, prev)))
+    if (prev < 0 || prev > lod_count ||
+        (prev > 0 && !scene3d_lod_mesh_for_selected_index(node, prev)))
         prev = raw_index;
     if (prev != raw_index) {
         if (raw_index > prev) {
@@ -2476,7 +2501,8 @@ static void *scene3d_resolve_draw_mesh(rt_scene_node3d *current,
                     break;
                 }
             }
-            raw_index = scene3d_manual_lod_index_with_hysteresis(current, lod_state, raw_index, dist);
+            raw_index =
+                scene3d_manual_lod_index_with_hysteresis(current, lod_state, raw_index, dist);
             {
                 void *lod_mesh = scene3d_lod_mesh_for_selected_index(current, raw_index);
                 if (lod_mesh)
@@ -2485,8 +2511,7 @@ static void *scene3d_resolve_draw_mesh(rt_scene_node3d *current,
         }
     }
 
-    void *impostor_mesh =
-        rt_g3d_checked_or_null(current->impostor_mesh, RT_G3D_MESH3D_CLASS_ID);
+    void *impostor_mesh = rt_g3d_checked_or_null(current->impostor_mesh, RT_G3D_MESH3D_CLASS_ID);
     void *impostor_material =
         rt_g3d_checked_or_null(current->impostor_material, RT_G3D_MATERIAL3D_CLASS_ID);
     if (current->has_impostor && impostor_mesh && impostor_material && has_camera_distance &&
@@ -2560,7 +2585,8 @@ static int scene3d_node_cull_test(rt_scene_node3d *current,
             cull_max[1] += pad;
             cull_max[2] += pad;
         }
-        if (!vgfx3d_transform_aabb_checked(cull_min, cull_max, current->world_matrix, world_min, world_max))
+        if (!vgfx3d_transform_aabb_checked(
+                cull_min, cull_max, current->world_matrix, world_min, world_max))
             return 1;
         world_min_d[0] = (double)world_min[0];
         world_min_d[1] = (double)world_min[1];
@@ -2666,9 +2692,8 @@ static void scene3d_submit_node_draw(rt_scene_node3d *current,
         if (!mesh_impl->skeleton_ref || mesh_impl->skeleton_ref == anim_skeleton) {
             anim_palette =
                 rt_anim_controller3d_get_final_palette_data(effective_animator, &anim_bone_count);
-            anim_prev_palette =
-                rt_anim_controller3d_get_previous_palette_data(effective_animator,
-                                                               &anim_prev_bone_count);
+            anim_prev_palette = rt_anim_controller3d_get_previous_palette_data(
+                effective_animator, &anim_prev_bone_count);
             if (anim_prev_bone_count <= 0 || anim_prev_bone_count < anim_bone_count)
                 anim_prev_palette = NULL;
         }
@@ -2687,18 +2712,19 @@ static void scene3d_submit_node_draw(rt_scene_node3d *current,
         int32_t draw_bone_count =
             anim_bone_count < mesh_bone_count ? anim_bone_count : mesh_bone_count;
         if (rt_canvas3d_add_temp_object(canvas3d, effective_animator)) {
-            rt_canvas3d_draw_mesh_matrix_skinned_keyed_bounds(canvas3d,
-                                                              draw_mesh,
-                                                              current->world_matrix,
-                                                              draw_material,
-                                                              current,
-                                                              anim_palette,
-                                                              anim_prev_palette,
-                                                              draw_bone_count,
-                                                              use_explicit_bounds ? submit_min : NULL,
-                                                              use_explicit_bounds ? submit_max : NULL,
-                                                              has_dynamic_deformation,
-                                                              has_dynamic_deformation);
+            rt_canvas3d_draw_mesh_matrix_skinned_keyed_bounds(
+                canvas3d,
+                draw_mesh,
+                current->world_matrix,
+                draw_material,
+                current,
+                anim_palette,
+                anim_prev_palette,
+                draw_bone_count,
+                use_explicit_bounds ? submit_min : NULL,
+                use_explicit_bounds ? submit_max : NULL,
+                has_dynamic_deformation,
+                has_dynamic_deformation);
         }
     } else {
         rt_canvas3d_draw_mesh_matrix_keyed_bounds(canvas3d,
@@ -2711,7 +2737,8 @@ static void scene3d_submit_node_draw(rt_scene_node3d *current,
                                                   use_explicit_bounds ? submit_min : NULL,
                                                   use_explicit_bounds ? submit_max : NULL,
                                                   has_dynamic_deformation,
-                                                  has_dynamic_deformation);
+                                                  has_dynamic_deformation,
+                                                  0.0f);
     }
 }
 
@@ -2782,6 +2809,7 @@ static void scene3d_draw_spatial_entry(rt_scene3d_spatial_entry *entry,
     float draw_max[3];
     float draw_radius;
     int use_cached_bounds;
+    rt_mesh3d *draw_mesh_impl;
     if (!entry || !entry->node)
         return;
     current = entry->node;
@@ -2789,9 +2817,9 @@ static void scene3d_draw_spatial_entry(rt_scene3d_spatial_entry *entry,
     recompute_world_matrix(current);
     draw_mesh = scene3d_resolve_draw_mesh(
         current, canvas, cam, cam_pos, &draw_material, draw_min, draw_max, &draw_radius);
-    use_cached_bounds =
-        draw_mesh == current->mesh &&
-        !scene3d_mesh_has_dynamic_deformation((rt_mesh3d *)draw_mesh, effective_animator);
+    draw_mesh_impl = (rt_mesh3d *)rt_g3d_checked_or_null(draw_mesh, RT_G3D_MESH3D_CLASS_ID);
+    use_cached_bounds = draw_mesh_impl && entry->cullable &&
+                        !scene3d_mesh_has_dynamic_deformation(draw_mesh_impl, effective_animator);
     if (use_cached_bounds) {
         if (!scene3d_cached_world_bounds_cull_test(
                 current, canvas, frustum, pvs, entry->world_min, entry->world_max, culled))
@@ -3110,8 +3138,7 @@ int64_t rt_scene3d_add_visibility_zone(void *obj, rt_string name, void *min_obj,
         return -1;
     zone_count = scene3d_visibility_zone_count_safe(s);
     s->visibility_zone_count = zone_count;
-    if (zone_count == INT32_MAX ||
-        !scene3d_visibility_zone_ensure_capacity(s, zone_count + 1)) {
+    if (zone_count == INT32_MAX || !scene3d_visibility_zone_ensure_capacity(s, zone_count + 1)) {
         rt_trap("Scene3D.AddVisibilityZone: allocation failed");
         return -1;
     }
@@ -3314,8 +3341,8 @@ static void *scene3d_auto_lod_mesh(rt_scene_node3d *node,
             break;
         }
     }
-    raw_index =
-        scene3d_auto_lod_index_with_hysteresis(node, state, raw_index, projected_px, screen_error_px);
+    raw_index = scene3d_auto_lod_index_with_hysteresis(
+        node, state, raw_index, projected_px, screen_error_px);
     return scene3d_lod_mesh_for_selected_index(node, raw_index);
 }
 
@@ -3425,6 +3452,7 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
     s->last_visible_node_count = visible_nodes;
     s->last_pvs_culled_count = pvs_culled;
     canvas->last_occluded_draw_count += culled;
+    canvas->last_frustum_culled_draw_count += culled > pvs_culled ? (culled - pvs_culled) : 0;
     scene3d_pvs_context_clear(&pvs);
 }
 

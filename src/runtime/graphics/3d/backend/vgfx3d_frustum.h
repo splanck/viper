@@ -38,6 +38,16 @@ void vgfx3d_frustum_extract(vgfx3d_frustum_t *f, const float vp[16]);
 /// @return 0 = fully outside, 1 = intersecting, 2 = fully inside.
 int vgfx3d_frustum_test_aabb(const vgfx3d_frustum_t *f, const float min[3], const float max[3]);
 
+/// @brief Test an AABB after expanding it outward by @p pad world/render units.
+/// @details Terrain and horizon-adjacent chunks need culling to be slightly more conservative
+///   than rasterization because a one-ULP CPU bounds shrink can otherwise reject visible triangles.
+///   Non-finite, negative, and zero padding falls back to the ordinary AABB test.
+/// @return 0 = fully outside, 1 = intersecting, 2 = fully inside.
+int vgfx3d_frustum_test_aabb_padded(const vgfx3d_frustum_t *f,
+                                    const float min[3],
+                                    const float max[3],
+                                    float pad);
+
 /// @brief Test a bounding sphere against the frustum.
 /// @return 0 = fully outside, 1 = intersecting, 2 = fully inside.
 int vgfx3d_frustum_test_sphere(const vgfx3d_frustum_t *f, const float center[3], float radius);

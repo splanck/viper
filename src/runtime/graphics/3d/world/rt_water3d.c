@@ -72,8 +72,8 @@ extern void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *canvas,
                                                       const float *local_bounds_min,
                                                       const float *local_bounds_max,
                                                       int8_t conservative_bounds,
-                                                      int8_t disable_occlusion)
-    WATER3D_OPTIONAL_SYMBOL;
+                                                      int8_t disable_occlusion,
+                                                      float culling_pad) WATER3D_OPTIONAL_SYMBOL;
 extern void *rt_material3d_new_color(double r, double g, double b);
 extern void rt_material3d_set_alpha(void *m, double a);
 extern void rt_material3d_set_double_sided(void *m, int8_t enabled) WATER3D_OPTIONAL_SYMBOL;
@@ -828,7 +828,8 @@ void rt_canvas3d_draw_water(void *canvas, void *obj, void *camera) {
                                                   mesh->aabb_min,
                                                   mesh->aabb_max,
                                                   0,
-                                                  1);
+                                                  1,
+                                                  0.0f);
     } else {
         rt_canvas3d_draw_mesh_matrix(c, w->mesh, identity, w->material);
     }

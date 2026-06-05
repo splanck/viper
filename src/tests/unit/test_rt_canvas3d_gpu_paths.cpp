@@ -87,12 +87,16 @@ typedef struct {
     int8_t conservative_bounds;
     int8_t occlusion_test_disabled;
     int8_t occlusion_write_disabled;
+    float culling_pad;
     float local_bounds_min[3];
     float local_bounds_max[3];
     int8_t has_world_bounds;
     float world_bounds_min[3];
     float world_bounds_max[3];
     float sort_key;
+    uintptr_t stable_sort_id;
+    uintptr_t occlusion_fingerprint;
+    uintptr_t occlusion_key;
     int32_t enqueue_index;
 } test_deferred_draw_t;
 
@@ -1001,8 +1005,7 @@ static void test_gpu_morph_rejects_nonfinite_position_payload(void) {
 
     test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
     EXPECT_TRUE(canvas.draw_count == 1, "Corrupt morph payload still submits the base mesh draw");
-    EXPECT_TRUE(draws[0].cmd.morph_deltas == nullptr &&
-                    draws[0].cmd.morph_weights == nullptr &&
+    EXPECT_TRUE(draws[0].cmd.morph_deltas == nullptr && draws[0].cmd.morph_weights == nullptr &&
                     draws[0].cmd.morph_shape_count == 0,
                 "Non-finite position morph payload disables GPU morph bindings");
 
@@ -1023,8 +1026,7 @@ static void test_gpu_morph_drops_nonfinite_normal_payload(void) {
     rt_morphtarget3d_set_weight(morph, 0, 0.5);
 
     const float *packed_pos = rt_morphtarget3d_get_packed_deltas(morph);
-    float *packed_normal =
-        const_cast<float *>(rt_morphtarget3d_get_packed_normal_deltas(morph));
+    float *packed_normal = const_cast<float *>(rt_morphtarget3d_get_packed_normal_deltas(morph));
     EXPECT_TRUE(packed_pos != nullptr && packed_normal != nullptr,
                 "Test morph builds packed position and normal payloads");
     if (packed_normal)
@@ -1034,8 +1036,7 @@ static void test_gpu_morph_drops_nonfinite_normal_payload(void) {
 
     test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
     EXPECT_TRUE(canvas.draw_count == 1, "Corrupt normal payload still submits the morphed draw");
-    EXPECT_TRUE(draws[0].cmd.morph_deltas != nullptr &&
-                    draws[0].cmd.morph_weights != nullptr &&
+    EXPECT_TRUE(draws[0].cmd.morph_deltas != nullptr && draws[0].cmd.morph_weights != nullptr &&
                     draws[0].cmd.morph_shape_count == 1,
                 "Valid position morph payload remains active");
     EXPECT_TRUE(draws[0].cmd.morph_normal_deltas == nullptr,
@@ -1301,8 +1302,7 @@ static void test_incomplete_cubemaps_are_not_forwarded(void) {
     ((rt_cubemap3d *)bound_cubemap)->face_size = 2;
     skybox_draw_calls = 0;
     rt_canvas3d_end(&canvas);
-    EXPECT_TRUE(skybox_draw_calls == 0,
-                "Canvas3D.End rejects skyboxes corrupted after binding");
+    EXPECT_TRUE(skybox_draw_calls == 0, "Canvas3D.End rejects skyboxes corrupted after binding");
     EXPECT_TRUE(canvas.skybox == nullptr,
                 "Canvas3D.End clears corrupted skyboxes before later frames reuse them");
     EXPECT_TRUE(rt_heap_hdr(bound_cubemap)->refcnt == 1,
@@ -1311,11 +1311,8 @@ static void test_incomplete_cubemaps_are_not_forwarded(void) {
     init_fake_canvas(&canvas, &kOpenGLBackend);
     void *mesh = make_test_mesh();
     void *material = rt_material3d_new();
-    EXPECT_TRUE(expect_trap_contains(
-                    [&]() {
-                        rt_material3d_set_env_map(material, cubemap);
-                    },
-                    "complete CubeMap3D"),
+    EXPECT_TRUE(expect_trap_contains([&]() { rt_material3d_set_env_map(material, cubemap); },
+                                     "complete CubeMap3D"),
                 "Material3D.SetEnvMap rejects incomplete cubemap payloads");
     rt_material3d_set_reflectivity(material, 0.75);
     rt_canvas3d_draw_mesh(&canvas, mesh, rt_mat4_identity(), material);
@@ -2210,8 +2207,7 @@ static void test_material_draw_uses_neutral_fallbacks_for_nonfinite_private_scal
     EXPECT_TRUE(canvas.draw_count == 1, "Corrupt private material scalar draw enqueues one draw");
     EXPECT_TRUE(draws[0].cmd.diffuse_color[3] == 1.0f,
                 "Non-finite diffuse alpha falls back to opaque");
-    EXPECT_TRUE(draws[0].cmd.alpha == 1.0f,
-                "Non-finite material alpha falls back to opaque");
+    EXPECT_TRUE(draws[0].cmd.alpha == 1.0f, "Non-finite material alpha falls back to opaque");
     EXPECT_TRUE(draws[0].cmd.roughness == 0.5f,
                 "Non-finite roughness falls back to the material default");
     EXPECT_TRUE(draws[0].cmd.ao == 1.0f, "Non-finite AO falls back to unoccluded");

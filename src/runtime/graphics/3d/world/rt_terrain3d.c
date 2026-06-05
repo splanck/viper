@@ -28,11 +28,11 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "rt_terrain3d.h"
-#include "rt_world3d_common.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_pixels_internal.h"
+#include "rt_world3d_common.h"
 
 #include "vgfx3d_frustum.h"
 
@@ -68,7 +68,8 @@ extern void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *canvas,
                                                       const float *local_bounds_min,
                                                       const float *local_bounds_max,
                                                       int8_t conservative_bounds,
-                                                      int8_t disable_occlusion);
+                                                      int8_t disable_occlusion,
+                                                      float culling_pad);
 extern void rt_material3d_set_texture(void *material, void *pixels);
 extern void *rt_pixels_new(int64_t width, int64_t height);
 extern void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color);
@@ -96,10 +97,10 @@ typedef struct {
     int32_t chunk_capacity;
     void *material;
     /* LOD distance thresholds */
-    float lod_dist1;   /* distance beyond which LOD 1 is used */
-    float lod_dist2;   /* distance beyond which LOD 2 is used */
+    float lod_dist1;      /* distance beyond which LOD 1 is used */
+    float lod_dist2;      /* distance beyond which LOD 2 is used */
     float lod_hysteresis; /* distance band that prevents LOD threshold flicker */
-    float skirt_depth; /* depth of crack-hiding skirts (0 = disabled) */
+    float skirt_depth;    /* depth of crack-hiding skirts (0 = disabled) */
     /* Splat map: RGBA Pixels where R/G/B/A = weight for layers 0-3 */
     void *splat_map;
     void *layer_textures[TERRAIN_MAX_SPLAT_LAYERS];
@@ -108,6 +109,16 @@ typedef struct {
     void *baked_texture;
     int8_t splat_dirty;
     int8_t lod_prewarm_dirty; /* true when missing chunk LOD meshes should be rebuilt */
+    float *chunk_aabbs_lod1;  /* 6 floats per chunk for LOD 1 generated geometry */
+    float *chunk_aabbs_lod2;  /* 6 floats per chunk for LOD 2 generated geometry */
+    float *chunk_aabbs_union; /* conservative union of every resident LOD for stable culling */
+    int32_t last_chunk_count;
+    int32_t last_drawn_chunk_count;
+    int32_t last_frustum_culled_chunk_count;
+    int32_t last_missing_lod_count;
+    int32_t last_lod_counts[TERRAIN_LOD_LEVELS];
+    int32_t last_lod_clamped_chunk_count;
+    int8_t cpu_occlusion_enabled; /* opt-in: default off because terrain AABBs are not solid */
 } rt_terrain3d;
 
 static int32_t terrain_safe_chunk_count(const rt_terrain3d *t);
@@ -123,7 +134,8 @@ static void terrain_release_ref(void **slot) {
     *slot = NULL;
 }
 
-/// @brief True if @p ref is a usable terrain texture reference (a Pixels image or a TextureAsset3D).
+/// @brief True if @p ref is a usable terrain texture reference (a Pixels image or a
+/// TextureAsset3D).
 static int terrain_texture_ref_supported(void *ref) {
     return ref && (rt_pixels_checked_impl_or_null(ref) ||
                    rt_g3d_has_class(ref, RT_G3D_TEXTUREASSET3D_CLASS_ID));
@@ -294,11 +306,8 @@ static void terrain_reset_lod_state(rt_terrain3d *t) {
 /// @details The first selection uses the raw thresholds. Later selections require the distance to
 ///   move outside a threshold plus/minus the hysteresis band before changing state, preventing
 ///   terrain triangles from visibly popping or flickering while the camera jitters near a boundary.
-static int32_t terrain_select_lod(rt_terrain3d *t,
-                                  int32_t chunk_index,
-                                  double distance,
-                                  float lod_near,
-                                  float lod_far) {
+static int32_t terrain_select_lod(
+    rt_terrain3d *t, int32_t chunk_index, double distance, float lod_near, float lod_far) {
     float hys;
     uint8_t current;
 
@@ -311,7 +320,8 @@ static int32_t terrain_select_lod(rt_terrain3d *t,
         return distance >= (double)lod_far ? 2 : (distance >= (double)lod_near ? 1 : 0);
     current = t->chunk_lod_state[chunk_index];
     if (current > 2)
-        current = (uint8_t)(distance >= (double)lod_far ? 2 : (distance >= (double)lod_near ? 1 : 0));
+        current =
+            (uint8_t)(distance >= (double)lod_far ? 2 : (distance >= (double)lod_near ? 1 : 0));
     else if (current == 0) {
         if (distance >= (double)lod_near + (double)hys)
             current = 1;
@@ -427,13 +437,156 @@ static int32_t terrain_safe_chunk_count(const rt_terrain3d *t) {
 static int terrain_has_valid_chunk_grid(const rt_terrain3d *t) {
     int64_t product;
     if (!t || !t->chunk_meshes || !t->chunk_meshes_lod1 || !t->chunk_meshes_lod2 ||
-        !t->chunk_aabbs || !t->chunk_lod_state || t->chunk_capacity <= 0 || t->chunks_x <= 0 ||
-        t->chunks_z <= 0)
+        !t->chunk_aabbs || !t->chunk_aabbs_lod1 || !t->chunk_aabbs_lod2 || !t->chunk_aabbs_union ||
+        !t->chunk_lod_state || t->chunk_capacity <= 0 || t->chunks_x <= 0 || t->chunks_z <= 0)
         return 0;
     if (t->chunk_capacity > TERRAIN3D_MAX_CHUNKS)
         return 0;
     product = (int64_t)t->chunks_x * (int64_t)t->chunks_z;
     return product > 0 && product <= t->chunk_capacity;
+}
+
+/// @brief Return the mesh-slot array for @p lod (0, 1, or 2), or NULL for invalid input.
+/// @details Keeping this as a single helper prevents draw, prewarm, and fallback logic from
+///   accidentally disagreeing about which cache owns a given terrain LOD.
+static void **terrain_lod_mesh_array(rt_terrain3d *t, int32_t lod) {
+    if (!t)
+        return NULL;
+    if (lod <= 0)
+        return t->chunk_meshes;
+    if (lod == 1)
+        return t->chunk_meshes_lod1;
+    if (lod == 2)
+        return t->chunk_meshes_lod2;
+    return NULL;
+}
+
+/// @brief Return the AABB slot for @p lod (0, 1, or 2), or NULL for invalid input.
+/// @details The slot stores six floats as min.xyz then max.xyz in terrain-local space.
+static float *terrain_lod_aabb_slot(rt_terrain3d *t, int32_t chunk_index, int32_t lod) {
+    float *base;
+    if (!terrain_has_valid_chunk_grid(t) || chunk_index < 0 ||
+        chunk_index >= terrain_safe_chunk_count(t))
+        return NULL;
+    if (lod <= 0)
+        base = t->chunk_aabbs;
+    else if (lod == 1)
+        base = t->chunk_aabbs_lod1;
+    else if (lod == 2)
+        base = t->chunk_aabbs_lod2;
+    else
+        return NULL;
+    return base ? &base[chunk_index * 6] : NULL;
+}
+
+/// @brief Return a class-checked resident chunk mesh for @p lod, or NULL if absent/corrupt.
+/// @details Corrupt private slots are treated as missing. The release paths already avoid freeing
+///   wrong-class slots, so this helper keeps rendering conservative without taking ownership.
+static void *terrain_lod_mesh_or_null(const rt_terrain3d *t, int32_t chunk_index, int32_t lod) {
+    void *const *array;
+    if (!terrain_has_valid_chunk_grid(t) || chunk_index < 0 ||
+        chunk_index >= terrain_safe_chunk_count(t))
+        return NULL;
+    if (lod <= 0)
+        array = t->chunk_meshes;
+    else if (lod == 1)
+        array = t->chunk_meshes_lod1;
+    else if (lod == 2)
+        array = t->chunk_meshes_lod2;
+    else
+        array = NULL;
+    return array ? rt_g3d_checked_or_null(array[chunk_index], RT_G3D_MESH3D_CLASS_ID) : NULL;
+}
+
+/// @brief Return the decimation step used to generate the requested terrain LOD.
+static int32_t terrain_lod_step(int32_t lod) {
+    return lod >= 2 ? 4 : (lod == 1 ? 2 : 1);
+}
+
+/// @brief Return whether an AABB slot contains finite, ordered bounds.
+static int terrain_aabb_is_valid(const float *aabb) {
+    if (!aabb)
+        return 0;
+    for (int axis = 0; axis < 3; ++axis) {
+        if (!isfinite(aabb[axis]) || !isfinite(aabb[axis + 3]) || aabb[axis] > aabb[axis + 3])
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Reset an AABB slot to a harmless empty sentinel.
+static void terrain_aabb_clear(float *aabb) {
+    if (!aabb)
+        return;
+    for (int i = 0; i < 6; ++i)
+        aabb[i] = 0.0f;
+}
+
+/// @brief Expand @p dst to include @p src, initializing it when @p has_dst is false.
+static void terrain_aabb_include(float dst[6], int *has_dst, const float src[6]) {
+    if (!dst || !has_dst || !terrain_aabb_is_valid(src))
+        return;
+    if (!*has_dst) {
+        memcpy(dst, src, sizeof(float) * 6);
+        *has_dst = 1;
+        return;
+    }
+    for (int axis = 0; axis < 3; ++axis) {
+        if (src[axis] < dst[axis])
+            dst[axis] = src[axis];
+        if (src[axis + 3] > dst[axis + 3])
+            dst[axis + 3] = src[axis + 3];
+    }
+}
+
+/// @brief Rebuild the conservative union AABB for one chunk from every resident LOD.
+/// @details Terrain frustum culling uses this union so LOD swaps cannot tighten the bounds for a
+///   single frame and create visible horizon cracks. Missing LODs are ignored; if no usable mesh
+///   exists, the union slot is cleared and the draw path falls back conservatively.
+static int terrain_rebuild_chunk_union_aabb(rt_terrain3d *t, int32_t chunk_index) {
+    float union_aabb[6] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    int has_union = 0;
+    float *dst;
+    if (!terrain_has_valid_chunk_grid(t) || chunk_index < 0 ||
+        chunk_index >= terrain_safe_chunk_count(t))
+        return 0;
+    for (int32_t lod = 0; lod < TERRAIN_LOD_LEVELS; ++lod) {
+        if (terrain_lod_mesh_or_null(t, chunk_index, lod))
+            terrain_aabb_include(
+                union_aabb, &has_union, terrain_lod_aabb_slot(t, chunk_index, lod));
+    }
+    dst = &t->chunk_aabbs_union[chunk_index * 6];
+    if (!has_union) {
+        terrain_aabb_clear(dst);
+        return 0;
+    }
+    memcpy(dst, union_aabb, sizeof(union_aabb));
+    return 1;
+}
+
+/// @brief Return the conservative union AABB for a chunk, rebuilding it from LOD slots if needed.
+static const float *terrain_chunk_union_aabb(rt_terrain3d *t, int32_t chunk_index) {
+    float *aabb;
+    if (!terrain_has_valid_chunk_grid(t) || chunk_index < 0 ||
+        chunk_index >= terrain_safe_chunk_count(t))
+        return NULL;
+    aabb = &t->chunk_aabbs_union[chunk_index * 6];
+    if (!terrain_aabb_is_valid(aabb) && !terrain_rebuild_chunk_union_aabb(t, chunk_index))
+        return NULL;
+    return terrain_aabb_is_valid(aabb) ? aabb : NULL;
+}
+
+/// @brief Reset per-frame Terrain3D draw diagnostics before a chunk submission pass.
+static void terrain_reset_draw_stats(rt_terrain3d *t, int32_t chunk_count) {
+    if (!t)
+        return;
+    t->last_chunk_count = chunk_count > 0 ? chunk_count : 0;
+    t->last_drawn_chunk_count = 0;
+    t->last_frustum_culled_chunk_count = 0;
+    t->last_missing_lod_count = 0;
+    t->last_lod_clamped_chunk_count = 0;
+    for (int i = 0; i < TERRAIN_LOD_LEVELS; ++i)
+        t->last_lod_counts[i] = 0;
 }
 
 /// @brief Release every LOD mesh stored in the chunk grid.
@@ -455,6 +608,14 @@ static void terrain_release_chunk_meshes(rt_terrain3d *t) {
             terrain_release_mesh_slot(&t->chunk_meshes_lod1[i]);
         if (t->chunk_meshes_lod2)
             terrain_release_mesh_slot(&t->chunk_meshes_lod2[i]);
+        if (t->chunk_aabbs)
+            terrain_aabb_clear(&t->chunk_aabbs[i * 6]);
+        if (t->chunk_aabbs_lod1)
+            terrain_aabb_clear(&t->chunk_aabbs_lod1[i * 6]);
+        if (t->chunk_aabbs_lod2)
+            terrain_aabb_clear(&t->chunk_aabbs_lod2[i * 6]);
+        if (t->chunk_aabbs_union)
+            terrain_aabb_clear(&t->chunk_aabbs_union[i * 6]);
     }
 }
 
@@ -483,12 +644,18 @@ static void terrain3d_finalizer(void *obj) {
     free(t->chunk_meshes_lod1);
     free(t->chunk_meshes_lod2);
     free(t->chunk_aabbs);
+    free(t->chunk_aabbs_lod1);
+    free(t->chunk_aabbs_lod2);
+    free(t->chunk_aabbs_union);
     free(t->chunk_lod_state);
     t->heights = NULL;
     t->chunk_meshes = NULL;
     t->chunk_meshes_lod1 = NULL;
     t->chunk_meshes_lod2 = NULL;
     t->chunk_aabbs = NULL;
+    t->chunk_aabbs_lod1 = NULL;
+    t->chunk_aabbs_lod2 = NULL;
+    t->chunk_aabbs_union = NULL;
     t->chunk_lod_state = NULL;
     t->height_count = 0;
     t->chunk_capacity = 0;
@@ -562,9 +729,13 @@ void *rt_terrain3d_new(int64_t width, int64_t depth) {
     t->chunk_meshes_lod1 = (void **)calloc(chunk_count, sizeof(void *));
     t->chunk_meshes_lod2 = (void **)calloc(chunk_count, sizeof(void *));
     t->chunk_aabbs = (float *)calloc(aabb_count, sizeof(float));
+    t->chunk_aabbs_lod1 = (float *)calloc(aabb_count, sizeof(float));
+    t->chunk_aabbs_lod2 = (float *)calloc(aabb_count, sizeof(float));
+    t->chunk_aabbs_union = (float *)calloc(aabb_count, sizeof(float));
     t->chunk_lod_state = (uint8_t *)malloc(chunk_count);
     if (!t->heights || !t->chunk_meshes || !t->chunk_meshes_lod1 || !t->chunk_meshes_lod2 ||
-        !t->chunk_aabbs || !t->chunk_lod_state) {
+        !t->chunk_aabbs || !t->chunk_aabbs_lod1 || !t->chunk_aabbs_lod2 || !t->chunk_aabbs_union ||
+        !t->chunk_lod_state) {
         terrain3d_finalizer(t);
         if (rt_obj_release_check0(t))
             rt_obj_free(t);
@@ -582,6 +753,7 @@ void *rt_terrain3d_new(int64_t width, int64_t depth) {
     t->base_texture = NULL;
     t->baked_texture = NULL;
     t->splat_dirty = 0;
+    t->cpu_occlusion_enabled = 0;
     for (int i = 0; i < TERRAIN_MAX_SPLAT_LAYERS; i++) {
         t->layer_textures[i] = NULL;
         t->layer_scales[i] = 1.0;
@@ -738,7 +910,8 @@ void rt_terrain3d_set_splat_map(void *obj, void *pixels) {
     }
     terrain_assign_texture_ref(&t->splat_map, pixels);
     if (!pixels) {
-        void *base_texture = terrain_texture_ref_supported(t->base_texture) ? t->base_texture : NULL;
+        void *base_texture =
+            terrain_texture_ref_supported(t->base_texture) ? t->base_texture : NULL;
         if (!base_texture)
             terrain_release_texture_slot(&t->base_texture);
         terrain_restore_material_base_texture(t);
@@ -998,8 +1171,7 @@ static void terrain_grid_normal_at(const rt_terrain3d *t,
     zu = iz < t->depth - 1 ? iz + 1 : iz;
     span_x = (double)(xr - xl) * sx;
     span_z = (double)(zu - zd) * sz;
-    if (!isfinite(span_x) || !isfinite(span_z) || fabs(span_x) < 1e-12 ||
-        fabs(span_z) < 1e-12)
+    if (!isfinite(span_x) || !isfinite(span_z) || fabs(span_x) < 1e-12 || fabs(span_z) < 1e-12)
         return;
 
     hL = sample_height(t, xl, iz);
@@ -1229,8 +1401,7 @@ void *rt_terrain3d_get_normal_at(void *obj, double wx, double wz) {
 ///   layer texture is invalidated — subsequent frames just sample the baked
 ///   result.
 static void bake_splat_texture(rt_terrain3d *t) {
-    if (!t->splat_map || !t->material ||
-        !rt_g3d_has_class(t->material, RT_G3D_MATERIAL3D_CLASS_ID))
+    if (!t->splat_map || !t->material || !rt_g3d_has_class(t->material, RT_G3D_MATERIAL3D_CLASS_ID))
         return;
 
     void *splat_obj = terrain_valid_splat_pixels_or_null(t->splat_map);
@@ -1305,8 +1476,7 @@ static void bake_splat_texture(rt_terrain3d *t) {
             int32_t cg = terrain_channel_to_u8(bg);
             int32_t cb = terrain_channel_to_u8(bb);
             int32_t ca = terrain_channel_to_u8(ba);
-            int64_t color =
-                ((int64_t)cr << 24) | ((int64_t)cg << 16) | ((int64_t)cb << 8) | ca;
+            int64_t color = ((int64_t)cr << 24) | ((int64_t)cg << 16) | ((int64_t)cb << 8) | ca;
             rt_pixels_set(baked, x, y, color);
         }
     }
@@ -1582,25 +1752,168 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz, int32_t step, 
     return mesh;
 }
 
+/// @brief Build one chunk LOD if its mesh slot is empty or corrupt.
+/// @details The generated AABB is written to the matching per-LOD bounds array. Wrong-class private
+///   mesh slots are cleared without releasing them, matching the terrain finalizer's defensive slot
+///   policy. Returns true only when both a checked Mesh3D and valid AABB are resident afterward.
+static int terrain_build_chunk_lod_if_missing(
+    rt_terrain3d *t, int32_t cx, int32_t cz, int32_t chunk_index, int32_t lod) {
+    void **array;
+    float *aabb;
+    if (!terrain_has_valid_chunk_grid(t) || chunk_index < 0 ||
+        chunk_index >= terrain_safe_chunk_count(t))
+        return 0;
+    array = terrain_lod_mesh_array(t, lod);
+    aabb = terrain_lod_aabb_slot(t, chunk_index, lod);
+    if (!array || !aabb)
+        return 0;
+    if (!terrain_lod_mesh_or_null(t, chunk_index, lod)) {
+        terrain_release_mesh_slot(&array[chunk_index]);
+        terrain_aabb_clear(aabb);
+        array[chunk_index] = build_chunk(t, cx, cz, terrain_lod_step(lod), aabb);
+    }
+    return terrain_lod_mesh_or_null(t, chunk_index, lod) != NULL && terrain_aabb_is_valid(aabb);
+}
+
+/// @brief Clamp a selected LOD so initialized neighbors differ by at most one level.
+/// @details This is a lightweight seam guard for the chunked renderer. It preserves the existing
+///   distance/hysteresis selection but prevents a high-detail chunk from sitting directly beside
+///   the coarsest LOD, a configuration that makes T-junction cracks much easier to see.
+static int32_t terrain_clamp_lod_to_neighbors(rt_terrain3d *t, int32_t chunk_index, int32_t lod) {
+    int32_t cx;
+    int32_t cz;
+    int32_t clamped = lod;
+    if (!terrain_has_valid_chunk_grid(t) || !t->chunk_lod_state || chunk_index < 0 ||
+        chunk_index >= terrain_safe_chunk_count(t))
+        return lod < 0 ? 0 : (lod > 2 ? 2 : lod);
+    cx = chunk_index % t->chunks_x;
+    cz = chunk_index / t->chunks_x;
+    const int32_t offsets[4][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+    for (int i = 0; i < 4; ++i) {
+        int32_t nx = cx + offsets[i][0];
+        int32_t nz = cz + offsets[i][1];
+        int32_t nidx;
+        int32_t neighbor_lod;
+        if (nx < 0 || nz < 0 || nx >= t->chunks_x || nz >= t->chunks_z)
+            continue;
+        nidx = nz * t->chunks_x + nx;
+        if (nidx < 0 || nidx >= terrain_safe_chunk_count(t))
+            continue;
+        neighbor_lod = t->chunk_lod_state[nidx];
+        if (neighbor_lod == 0xFF)
+            continue;
+        if (clamped > neighbor_lod + 1)
+            clamped = neighbor_lod + 1;
+        else if (neighbor_lod > clamped + 1)
+            clamped = neighbor_lod - 1;
+    }
+    if (clamped < 0)
+        clamped = 0;
+    if (clamped > 2)
+        clamped = 2;
+    if (clamped != lod)
+        t->last_lod_clamped_chunk_count++;
+    t->chunk_lod_state[chunk_index] = (uint8_t)clamped;
+    return clamped;
+}
+
+/// @brief Resolve the mesh and exact AABB to draw for a chunk, falling back across resident LODs.
+/// @details A missing selected LOD must not turn into a terrain hole. The fallback order prefers
+///   nearby quality (`LOD1 -> LOD0 -> LOD2`, `LOD2 -> LOD1 -> LOD0`) while ensuring any resident
+///   mesh draws. `last_missing_lod_count` records both fallback and complete-miss cases.
+static void *terrain_select_draw_mesh_with_fallback(rt_terrain3d *t,
+                                                    int32_t chunk_index,
+                                                    int32_t requested_lod,
+                                                    int32_t *out_lod,
+                                                    const float **out_aabb) {
+    int32_t order[3];
+    if (out_lod)
+        *out_lod = requested_lod;
+    if (out_aabb)
+        *out_aabb = NULL;
+    if (!terrain_has_valid_chunk_grid(t))
+        return NULL;
+    if (requested_lod <= 0) {
+        order[0] = 0;
+        order[1] = 1;
+        order[2] = 2;
+    } else if (requested_lod == 1) {
+        order[0] = 1;
+        order[1] = 0;
+        order[2] = 2;
+    } else {
+        order[0] = 2;
+        order[1] = 1;
+        order[2] = 0;
+    }
+    for (int i = 0; i < 3; ++i) {
+        int32_t lod = order[i];
+        void *mesh = terrain_lod_mesh_or_null(t, chunk_index, lod);
+        const float *aabb = terrain_lod_aabb_slot(t, chunk_index, lod);
+        if (!mesh || !terrain_aabb_is_valid(aabb))
+            continue;
+        if (lod != requested_lod) {
+            t->last_missing_lod_count++;
+            t->lod_prewarm_dirty = 1;
+        }
+        if (out_lod)
+            *out_lod = lod;
+        if (out_aabb)
+            *out_aabb = aabb;
+        return mesh;
+    }
+    t->last_missing_lod_count++;
+    t->lod_prewarm_dirty = 1;
+    return NULL;
+}
+
+/// @brief Return a stable per-chunk key for sorting, motion history, and optional occlusion
+/// history.
+/// @details Using the selected LOD mesh as identity churns history when a chunk crosses an LOD
+///   threshold. The chunk LOD-state byte has stable storage for the life of the terrain cache.
+static const void *terrain_chunk_motion_key(rt_terrain3d *t, int32_t chunk_index, void *fallback) {
+    if (!terrain_has_valid_chunk_grid(t) || !t->chunk_lod_state || chunk_index < 0 ||
+        chunk_index >= terrain_safe_chunk_count(t))
+        return fallback;
+    return &t->chunk_lod_state[chunk_index];
+}
+
+/// @brief Return the terrain-specific CPU frustum padding in render/world units.
+/// @details The union AABB is already conservative for LOD geometry; this extra half-cell guard
+///   covers float rounding and camera-relative conversion differences at the horizon.
+static float terrain_chunk_culling_pad(const rt_terrain3d *t) {
+    double sx = terrain_scale_axis_or(t, 0, 1.0);
+    double sz = terrain_scale_axis_or(t, 2, 1.0);
+    double pad = fmax(fabs(sx), fabs(sz)) * 0.5;
+    if (!isfinite(pad) || pad < 1e-3)
+        pad = 1e-3;
+    if (pad > 10000.0)
+        pad = 10000.0;
+    return (float)pad;
+}
+
 /// @brief Prebuild every missing terrain chunk LOD mesh.
 /// @details The draw loop only selects between resident chunk meshes. Building LOD meshes before
 ///   visibility/selection avoids an individual chunk allocating geometry the first frame it crosses
 ///   an LOD threshold, which can otherwise produce visible stalls or inconsistent terrain edges.
 static void terrain_prewarm_chunk_lods(rt_terrain3d *t) {
+    int all_ready = 1;
     if (!t || !terrain_has_valid_chunk_grid(t))
         return;
     for (int32_t cz = 0; cz < t->chunks_z; cz++) {
         for (int32_t cx = 0; cx < t->chunks_x; cx++) {
             int32_t idx = cz * t->chunks_x + cx;
-            if (!t->chunk_meshes[idx])
-                t->chunk_meshes[idx] = build_chunk(t, cx, cz, 1, &t->chunk_aabbs[idx * 6]);
-            if (!t->chunk_meshes_lod1[idx])
-                t->chunk_meshes_lod1[idx] = build_chunk(t, cx, cz, 2, NULL);
-            if (!t->chunk_meshes_lod2[idx])
-                t->chunk_meshes_lod2[idx] = build_chunk(t, cx, cz, 4, NULL);
+            if (!terrain_build_chunk_lod_if_missing(t, cx, cz, idx, 0))
+                all_ready = 0;
+            if (!terrain_build_chunk_lod_if_missing(t, cx, cz, idx, 1))
+                all_ready = 0;
+            if (!terrain_build_chunk_lod_if_missing(t, cx, cz, idx, 2))
+                all_ready = 0;
+            if (!terrain_rebuild_chunk_union_aabb(t, idx))
+                all_ready = 0;
         }
     }
-    t->lod_prewarm_dirty = 0;
+    t->lod_prewarm_dirty = all_ready ? 0 : 1;
 }
 
 /// @brief Return true when any terrain chunk LOD mesh is missing.
@@ -1612,7 +1925,9 @@ static int terrain_needs_lod_prewarm(const rt_terrain3d *t) {
     if (t->lod_prewarm_dirty)
         return 1;
     for (int32_t i = 0; i < terrain_safe_chunk_count(t); i++) {
-        if (!t->chunk_meshes[i] || !t->chunk_meshes_lod1[i] || !t->chunk_meshes_lod2[i])
+        if (!terrain_lod_mesh_or_null(t, i, 0) || !terrain_lod_mesh_or_null(t, i, 1) ||
+            !terrain_lod_mesh_or_null(t, i, 2) ||
+            !terrain_aabb_is_valid(&t->chunk_aabbs_union[i * 6]))
             return 1;
     }
     return 0;
@@ -1685,6 +2000,83 @@ void rt_terrain3d_set_skirt_depth(void *obj, double depth) {
         return;
     t->skirt_depth = (float)depth;
     invalidate_all_chunks(t);
+}
+
+/// @brief Enable or disable Terrain3D CPU occlusion-grid participation.
+/// @details Terrain remains frustum-culled in both modes. When disabled (the default), chunks are
+///   submitted with conservative bounds and cannot become coarse AABB occluders, preventing
+///   horizon/floor cracks caused by over-aggressive CPU occlusion.
+void rt_terrain3d_set_cpu_occlusion(void *obj, int8_t enabled) {
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!t)
+        return;
+    t->cpu_occlusion_enabled = enabled ? 1 : 0;
+}
+
+/// @brief Return whether Terrain3D CPU occlusion-grid participation is enabled.
+int8_t rt_terrain3d_get_cpu_occlusion(void *obj) {
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    return t && t->cpu_occlusion_enabled ? 1 : 0;
+}
+
+/// @brief Clamp an internal terrain diagnostic counter to the public non-negative int64 range.
+static int64_t terrain_stat_or_zero(int32_t value) {
+    return value > 0 ? (int64_t)value : 0;
+}
+
+/// @brief Number of chunks in the most recent terrain draw attempt.
+int64_t rt_terrain3d_get_last_chunk_count(void *obj) {
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    return t ? terrain_stat_or_zero(t->last_chunk_count) : 0;
+}
+
+/// @brief Number of chunks submitted to Canvas3D by the most recent terrain draw.
+int64_t rt_terrain3d_get_last_drawn_chunk_count(void *obj) {
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    return t ? terrain_stat_or_zero(t->last_drawn_chunk_count) : 0;
+}
+
+/// @brief Number of chunks rejected by Terrain3D's conservative frustum pre-pass.
+int64_t rt_terrain3d_get_last_frustum_culled_chunk_count(void *obj) {
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    return t ? terrain_stat_or_zero(t->last_frustum_culled_chunk_count) : 0;
+}
+
+/// @brief Number of chunks whose selected LOD was absent and required fallback or skipping.
+int64_t rt_terrain3d_get_last_missing_lod_count(void *obj) {
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    return t ? terrain_stat_or_zero(t->last_missing_lod_count) : 0;
+}
+
+/// @brief Number of chunks clamped to keep neighboring LOD levels crack-safe.
+int64_t rt_terrain3d_get_last_lod_clamped_chunk_count(void *obj) {
+    rt_terrain3d *t = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    return t ? terrain_stat_or_zero(t->last_lod_clamped_chunk_count) : 0;
+}
+
+/// @brief Number of chunks drawn at the requested/actual LOD index.
+static int64_t terrain_last_lod_count(rt_terrain3d *t, int32_t lod) {
+    if (!t || lod < 0 || lod >= TERRAIN_LOD_LEVELS)
+        return 0;
+    return terrain_stat_or_zero(t->last_lod_counts[lod]);
+}
+
+/// @brief Number of chunks drawn at LOD0 during the most recent terrain draw.
+int64_t rt_terrain3d_get_last_lod0_chunk_count(void *obj) {
+    return terrain_last_lod_count(
+        (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID), 0);
+}
+
+/// @brief Number of chunks drawn at LOD1 during the most recent terrain draw.
+int64_t rt_terrain3d_get_last_lod1_chunk_count(void *obj) {
+    return terrain_last_lod_count(
+        (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID), 1);
+}
+
+/// @brief Number of chunks drawn at LOD2 during the most recent terrain draw.
+int64_t rt_terrain3d_get_last_lod2_chunk_count(void *obj) {
+    return terrain_last_lod_count(
+        (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID), 2);
 }
 
 /// @brief Number of nav-mesh grid samples along an axis of @p max_index cells decimated by @p step.
@@ -1792,8 +2184,8 @@ void rt_canvas3d_draw_terrain_at(
     if (!c || !t)
         return;
     if (!c->in_frame || !c->backend || !t->material ||
-        !rt_g3d_has_class(t->material, RT_G3D_MATERIAL3D_CLASS_ID) ||
-        !terrain_has_valid_grid(t) || !terrain_has_valid_chunk_grid(t))
+        !rt_g3d_has_class(t->material, RT_G3D_MATERIAL3D_CLASS_ID) || !terrain_has_valid_grid(t) ||
+        !terrain_has_valid_chunk_grid(t))
         return;
     if (c->frame_is_2d) {
         rt_trap("Canvas3D.DrawTerrain: cannot draw terrain during Begin2D/End");
@@ -1802,6 +2194,7 @@ void rt_canvas3d_draw_terrain_at(
 
     /* Bake splat-blended texture if splat map is set and chunks are invalid */
     chunk_count = terrain_safe_chunk_count(t);
+    terrain_reset_draw_stats(t, chunk_count);
     splat_map = terrain_valid_splat_pixels_or_null(t->splat_map);
     if (t->splat_map && !splat_map)
         terrain_clear_invalid_splat_state(t);
@@ -1837,6 +2230,9 @@ void rt_canvas3d_draw_terrain_at(
     float lod_dist1;
     float lod_dist2;
     terrain_lod_distances_or(t, &lod_dist1, &lod_dist2);
+    float culling_pad = terrain_chunk_culling_pad(t);
+    int terrain_disable_occlusion = t->cpu_occlusion_enabled ? 0 : 1;
+    int terrain_conservative_bounds = terrain_disable_occlusion ? 1 : 0;
 
     double model[16] = {
         1.0,
@@ -1861,30 +2257,35 @@ void rt_canvas3d_draw_terrain_at(
         for (int32_t cx = 0; cx < t->chunks_x; cx++) {
             int32_t idx = cz * t->chunks_x + cx;
 
-            /* Ensure LOD 0 mesh + AABB are built (AABB computed from LOD 0) */
-            if (!t->chunk_meshes[idx])
-                t->chunk_meshes[idx] = build_chunk(t, cx, cz, 1, &t->chunk_aabbs[idx * 6]);
-            if (!t->chunk_meshes[idx])
+            if (!terrain_build_chunk_lod_if_missing(t, cx, cz, idx, 0)) {
+                t->last_missing_lod_count++;
                 continue;
+            }
+            terrain_rebuild_chunk_union_aabb(t, idx);
 
-            /* Phase A: Frustum culling */
-            float *aabb = &t->chunk_aabbs[idx * 6];
+            const float *cull_aabb = terrain_chunk_union_aabb(t, idx);
+            if (!cull_aabb) {
+                t->last_missing_lod_count++;
+                continue;
+            }
             double origin_x = use_camera_relative_bounds ? camera_relative_origin[0] : 0.0;
             double origin_y = use_camera_relative_bounds ? camera_relative_origin[1] : 0.0;
             double origin_z = use_camera_relative_bounds ? camera_relative_origin[2] : 0.0;
             float world_min[3] = {
-                canvas3d_sanitize_f64_to_float((double)aabb[0] + tx - origin_x, 0.0f),
-                canvas3d_sanitize_f64_to_float((double)aabb[1] + ty - origin_y, 0.0f),
-                canvas3d_sanitize_f64_to_float((double)aabb[2] + tz - origin_z, 0.0f),
+                canvas3d_sanitize_f64_to_float((double)cull_aabb[0] + tx - origin_x, 0.0f),
+                canvas3d_sanitize_f64_to_float((double)cull_aabb[1] + ty - origin_y, 0.0f),
+                canvas3d_sanitize_f64_to_float((double)cull_aabb[2] + tz - origin_z, 0.0f),
             };
             float world_max[3] = {
-                canvas3d_sanitize_f64_to_float((double)aabb[3] + tx - origin_x, 0.0f),
-                canvas3d_sanitize_f64_to_float((double)aabb[4] + ty - origin_y, 0.0f),
-                canvas3d_sanitize_f64_to_float((double)aabb[5] + tz - origin_z, 0.0f),
+                canvas3d_sanitize_f64_to_float((double)cull_aabb[3] + tx - origin_x, 0.0f),
+                canvas3d_sanitize_f64_to_float((double)cull_aabb[4] + ty - origin_y, 0.0f),
+                canvas3d_sanitize_f64_to_float((double)cull_aabb[5] + tz - origin_z, 0.0f),
             };
             if (use_visibility_culling &&
-                vgfx3d_frustum_test_aabb(&frustum, world_min, world_max) == 0)
+                vgfx3d_frustum_test_aabb_padded(&frustum, world_min, world_max, culling_pad) == 0) {
+                t->last_frustum_culled_chunk_count++;
                 continue;
+            }
 
             /* Phase B: LOD selection based on distance to camera */
             float chunk_cx = (world_min[0] + world_max[0]) * 0.5f;
@@ -1895,22 +2296,18 @@ void rt_canvas3d_draw_terrain_at(
             if (!isfinite(dist))
                 dist = (double)lod_dist2;
 
-            void *draw_mesh = NULL;
             int32_t lod = terrain_select_lod(t, idx, dist, lod_dist1, lod_dist2);
-            if (lod >= 2) {
-                /* LOD 2: quarter resolution */
-                draw_mesh = t->chunk_meshes_lod2[idx];
-            } else if (lod == 1) {
-                /* LOD 1: half resolution */
-                draw_mesh = t->chunk_meshes_lod1[idx];
-            } else {
-                /* LOD 0: full resolution */
-                draw_mesh = t->chunk_meshes[idx];
-            }
+            lod = terrain_clamp_lod_to_neighbors(t, idx, lod);
 
+            const float *selected_aabb = NULL;
+            void *draw_mesh =
+                terrain_select_draw_mesh_with_fallback(t, idx, lod, &lod, &selected_aabb);
             if (draw_mesh) {
-                float local_bounds_min[3] = {aabb[0], aabb[1], aabb[2]};
-                float local_bounds_max[3] = {aabb[3], aabb[4], aabb[5]};
+                const float *submit_aabb = terrain_disable_occlusion
+                                               ? cull_aabb
+                                               : (selected_aabb ? selected_aabb : cull_aabb);
+                float local_bounds_min[3] = {submit_aabb[0], submit_aabb[1], submit_aabb[2]};
+                float local_bounds_max[3] = {submit_aabb[3], submit_aabb[4], submit_aabb[5]};
                 /* Set pending splat data for per-pixel terrain splatting */
                 if (splat_map && complete_splat_layers) {
                     c->pending_has_splat = 1;
@@ -1920,17 +2317,22 @@ void rt_canvas3d_draw_terrain_at(
                         c->pending_splat_layer_scales[si] = splat_layer_scales[si];
                     }
                 }
-                rt_canvas3d_draw_mesh_matrix_keyed_bounds(canvas_obj,
-                                                          draw_mesh,
-                                                          model,
-                                                          t->material,
-                                                          draw_mesh,
-                                                          NULL,
-                                                          NULL,
-                                                          local_bounds_min,
-                                                          local_bounds_max,
-                                                          0,
-                                                          0);
+                rt_canvas3d_draw_mesh_matrix_keyed_bounds(
+                    canvas_obj,
+                    draw_mesh,
+                    model,
+                    t->material,
+                    terrain_chunk_motion_key(t, idx, draw_mesh),
+                    NULL,
+                    NULL,
+                    local_bounds_min,
+                    local_bounds_max,
+                    terrain_conservative_bounds,
+                    terrain_disable_occlusion,
+                    culling_pad);
+                t->last_drawn_chunk_count++;
+                if (lod >= 0 && lod < TERRAIN_LOD_LEVELS)
+                    t->last_lod_counts[lod]++;
             }
         }
     }

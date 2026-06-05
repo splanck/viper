@@ -56,8 +56,14 @@ void rt_canvas3d_draw_text_3d(void *canvas, int64_t x, int64_t y, rt_string text
 /// @brief Submit a mesh+transform+material draw inside the active 3D pass.
 void rt_canvas3d_draw_mesh(void *obj, void *mesh, void *transform, void *material);
 /// @brief Draw a mesh with a height-weighted per-vertex wind sway (foliage/canopies).
-void rt_canvas3d_draw_mesh_wind(void *obj, void *mesh, void *transform, void *material,
-                                double dir_x, double dir_z, double strength, double phase);
+void rt_canvas3d_draw_mesh_wind(void *obj,
+                                void *mesh,
+                                void *transform,
+                                void *material,
+                                double dir_x,
+                                double dir_z,
+                                double strength,
+                                double phase);
 /// @brief End the current 3D or 2D pass and flush queued draws.
 void rt_canvas3d_end(void *obj);
 /// @brief Present the back buffer to the window (vsync-controlled by backend).
@@ -182,6 +188,10 @@ int8_t rt_canvas3d_backend_supports(void *obj, rt_string capability);
 int64_t rt_canvas3d_get_draw_count(void *obj);
 /// @brief Number of draw submissions rejected by visibility culling in the latest scene draw.
 int64_t rt_canvas3d_get_occluded_draw_count(void *obj);
+/// @brief Number of draw submissions rejected by CPU frustum culling in the latest ended frame.
+int64_t rt_canvas3d_get_frustum_culled_draw_count(void *obj);
+/// @brief Number of opaque draw submissions rejected by the CPU occlusion grid in the latest frame.
+int64_t rt_canvas3d_get_cpu_occluded_draw_count(void *obj);
 /// @brief Number of opaque draw candidates tested by the CPU occlusion grid in the latest frame.
 int64_t rt_canvas3d_get_occlusion_candidate_count(void *obj);
 /// @brief Texture payload bytes uploaded to backend storage in the latest ended frame.
@@ -302,8 +312,10 @@ void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val
 ///   matrix using @p aspect. This is useful for first-person/open-world cameras where designers
 ///   usually author FOV horizontally and a vertical interpretation would look too wide on
 ///   widescreen displays.
-void *rt_camera3d_new_horizontal_fov(
-    double horizontal_fov, double aspect, double near_val, double far_val);
+void *rt_camera3d_new_horizontal_fov(double horizontal_fov,
+                                     double aspect,
+                                     double near_val,
+                                     double far_val);
 /// @brief Create an orthographic camera (vertical world-units, aspect, near/far).
 void *rt_camera3d_new_ortho(double size, double aspect, double near_val, double far_val);
 /// @brief True if the camera was created via `_new_ortho` (no perspective foreshortening).
@@ -529,7 +541,8 @@ void rt_canvas3d_draw_crosshair(void *canvas, int64_t color, int64_t size);
 /// @brief Draw screen-space text on top of the rendered scene.
 void rt_canvas3d_draw_text2d(void *canvas, int64_t x, int64_t y, rt_string text, int64_t color);
 /// @brief Blit a Pixels image into the 2D overlay at (x,y) scaled to (w,h). NULL-safe.
-void rt_canvas3d_draw_image2d(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, void *pixels);
+void rt_canvas3d_draw_image2d(
+    void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, void *pixels);
 
 /* Debug gizmos */
 /// @brief Draw an axis-aligned bounding box outline between min and max corners.

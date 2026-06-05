@@ -202,7 +202,8 @@ static void test_compressed_block_upload_budget_and_pending_bytes(void) {
         int32_t steps = 0;
         uint64_t prev_pending = vgfx3d_pending_block_upload_bytes(w, h, bw, bh, bb, 0, 1) + 1u;
         while (next < total_block_rows) {
-            int32_t rows = vgfx3d_upload_block_rows_for_budget(w, h, bw, bh, bb, next, tight_budget, 0);
+            int32_t rows =
+                vgfx3d_upload_block_rows_for_budget(w, h, bw, bh, bb, next, tight_budget, 0);
             uint64_t pending = vgfx3d_pending_block_upload_bytes(w, h, bw, bh, bb, next, 1);
             EXPECT_TRUE(rows >= 1, "tight budget still uploads at least one block-row (progress)");
             EXPECT_TRUE(rows < total_block_rows,
@@ -882,10 +883,14 @@ static void test_transform_aabb_orders_inverted_extents(void) {
 
     vgfx3d_transform_aabb(obj_min, obj_max, world, out_min, out_max);
 
-    EXPECT_NEAR(out_min[0], 9.0f, 1e-6f, "AABB transform accepts inverted X extents");
-    EXPECT_NEAR(out_min[2], 24.0f, 1e-6f, "AABB transform accepts inverted Z extents");
-    EXPECT_NEAR(out_max[0], 13.0f, 1e-6f, "AABB transform refits max X after ordering");
-    EXPECT_NEAR(out_max[2], 35.0f, 1e-6f, "AABB transform refits max Z after ordering");
+    EXPECT_TRUE(out_min[0] <= 9.0f && out_min[0] >= 8.99999f,
+                "AABB transform accepts inverted X extents conservatively");
+    EXPECT_TRUE(out_min[2] <= 24.0f && out_min[2] >= 23.99998f,
+                "AABB transform accepts inverted Z extents conservatively");
+    EXPECT_TRUE(out_max[0] >= 13.0f && out_max[0] <= 13.00001f,
+                "AABB transform refits max X after ordering conservatively");
+    EXPECT_TRUE(out_max[2] >= 35.0f && out_max[2] <= 35.00002f,
+                "AABB transform refits max Z after ordering conservatively");
 }
 
 static void test_skinning_multibone_reuses_normal_palette(void) {

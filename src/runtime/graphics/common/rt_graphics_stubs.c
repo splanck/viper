@@ -2122,8 +2122,8 @@ void rt_canvas3d_draw_mesh(void *o, void *m, void *t, void *mt) {
     (void)mt;
 }
 
-void rt_canvas3d_draw_mesh_wind(void *o, void *m, void *t, void *mt,
-                                double dx, double dz, double s, double ph) {
+void rt_canvas3d_draw_mesh_wind(
+    void *o, void *m, void *t, void *mt, double dx, double dz, double s, double ph) {
     (void)o;
     (void)m;
     (void)t;
@@ -2515,6 +2515,30 @@ int64_t rt_canvas3d_get_draw_count(void *o) {
 ///
 /// @return `0`.
 int64_t rt_canvas3d_get_occluded_draw_count(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Canvas3D.FrustumCulledDrawCount` — latest frustum-reject telemetry.
+///
+/// Silent stub returning 0.
+///
+/// @param o Canvas3D handle (ignored).
+///
+/// @return `0`.
+int64_t rt_canvas3d_get_frustum_culled_draw_count(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Canvas3D.CpuOccludedDrawCount` — latest CPU occlusion reject telemetry.
+///
+/// Silent stub returning 0.
+///
+/// @param o Canvas3D handle (ignored).
+///
+/// @return `0`.
+int64_t rt_canvas3d_get_cpu_occluded_draw_count(void *o) {
     (void)o;
     return 0;
 }
@@ -10430,6 +10454,73 @@ void rt_terrain3d_set_lod_hysteresis(void *t, double d) {
 void rt_terrain3d_set_skirt_depth(void *t, double d) {
     (void)t;
     (void)d;
+}
+
+/// @brief Stub for `Terrain3D.SetCpuOcclusion` — opt-in terrain CPU occlusion participation.
+///
+/// Silent no-op stub.
+///
+/// @param t Terrain3D handle (ignored).
+/// @param enabled Requested state (ignored).
+void rt_terrain3d_set_cpu_occlusion(void *t, int8_t enabled) {
+    (void)t;
+    (void)enabled;
+}
+
+/// @brief Stub for `Terrain3D.CpuOcclusion` — returns whether CPU occlusion is enabled.
+///
+/// @return `0`.
+int8_t rt_terrain3d_get_cpu_occlusion(void *t) {
+    (void)t;
+    return 0;
+}
+
+/// @brief Stub for Terrain3D draw diagnostics; returns `0`.
+int64_t rt_terrain3d_get_last_chunk_count(void *t) {
+    (void)t;
+    return 0;
+}
+
+/// @brief Stub for Terrain3D draw diagnostics; returns `0`.
+int64_t rt_terrain3d_get_last_drawn_chunk_count(void *t) {
+    (void)t;
+    return 0;
+}
+
+/// @brief Stub for Terrain3D draw diagnostics; returns `0`.
+int64_t rt_terrain3d_get_last_frustum_culled_chunk_count(void *t) {
+    (void)t;
+    return 0;
+}
+
+/// @brief Stub for Terrain3D draw diagnostics; returns `0`.
+int64_t rt_terrain3d_get_last_missing_lod_count(void *t) {
+    (void)t;
+    return 0;
+}
+
+/// @brief Stub for Terrain3D draw diagnostics; returns `0`.
+int64_t rt_terrain3d_get_last_lod_clamped_chunk_count(void *t) {
+    (void)t;
+    return 0;
+}
+
+/// @brief Stub for Terrain3D draw diagnostics; returns `0`.
+int64_t rt_terrain3d_get_last_lod0_chunk_count(void *t) {
+    (void)t;
+    return 0;
+}
+
+/// @brief Stub for Terrain3D draw diagnostics; returns `0`.
+int64_t rt_terrain3d_get_last_lod1_chunk_count(void *t) {
+    (void)t;
+    return 0;
+}
+
+/// @brief Stub for Terrain3D draw diagnostics; returns `0`.
+int64_t rt_terrain3d_get_last_lod2_chunk_count(void *t) {
+    (void)t;
+    return 0;
 }
 
 /// @brief Stub for `Terrain3D.SetHeightmap` — would normally upload a

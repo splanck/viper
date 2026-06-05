@@ -309,8 +309,7 @@ void rt_canvas3d_draw_rect2d(void *obj, int64_t x, int64_t y, int64_t w, int64_t
 /// @details Screen-space, unlit, ignores the 3D camera — composites over the scene like
 ///   `DrawRect2D`/`DrawText2D`. Pair with `RenderTarget3D.AsPixels` to display a rendered
 ///   texture (e.g. a top-down minimap) on the HUD. NULL- and empty-rect-safe.
-void rt_canvas3d_draw_image2d(
-    void *obj, int64_t x, int64_t y, int64_t w, int64_t h, void *pixels) {
+void rt_canvas3d_draw_image2d(void *obj, int64_t x, int64_t y, int64_t w, int64_t h, void *pixels) {
     int8_t started_temp_frame = 0;
 
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
@@ -568,6 +567,18 @@ int64_t rt_canvas3d_get_draw_count(void *obj) {
 int64_t rt_canvas3d_get_occluded_draw_count(void *obj) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     return c ? c->last_occluded_draw_count : 0;
+}
+
+/// @brief Number of latest draw submissions rejected by CPU frustum culling.
+int64_t rt_canvas3d_get_frustum_culled_draw_count(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c ? c->last_frustum_culled_draw_count : 0;
+}
+
+/// @brief Number of latest draw submissions rejected by the CPU occlusion grid.
+int64_t rt_canvas3d_get_cpu_occluded_draw_count(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c ? c->last_cpu_occluded_draw_count : 0;
 }
 
 /// @brief Number of opaque draws tested by the CPU occlusion grid in the latest frame.
