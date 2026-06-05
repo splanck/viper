@@ -80,6 +80,23 @@ TEST(AssetCompiler, SanitizesPackOutputName) {
     fs::remove_all(root, ec);
 }
 
+TEST(AssetCompiler, Game3DShowcaseRequiredAssetsArePresent) {
+#if defined(VIPER_SOURCE_DIR)
+    fs::path output = makeTempRoot("viper_game3d_showcase_asset_compiler");
+    auto project = il::tools::common::resolveProject(
+        (fs::path(VIPER_SOURCE_DIR) / "examples" / "games" / "game3d-showcase").string());
+    ASSERT_TRUE(project);
+
+    std::string err;
+    auto bundle = viper::asset::compileAssets(project.value(), output.string(), err);
+    EXPECT_TRUE(bundle.has_value());
+    EXPECT_EQ(err, std::string());
+
+    std::error_code ec;
+    fs::remove_all(output, ec);
+#endif
+}
+
 TEST(VpaWriter, RejectsDuplicateEntries) {
     const uint8_t data[] = {'x'};
     viper::asset::VpaWriter writer;

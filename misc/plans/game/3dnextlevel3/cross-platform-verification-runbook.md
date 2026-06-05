@@ -16,6 +16,22 @@ No CI workflows are created or modified (project rule); these are local-host lan
 | Software-baseline parity | ✅ | recorded | ⏳ |
 | Named perf baseline | ✅ `perf_macos_apple_m4_max.md` | ✅ `perf_windows_shakylaptop_ryzen7940hs.md` | ⏳ `perf_linux_*` (blocked) |
 
+### Windows rerun notes (2026-06-04 local)
+
+- `build_viper_win.cmd` configure/build/lint/runtime-audit path passed with
+  tests/smoke/install skipped, followed by the explicit graphics and smoke lanes
+  below.
+- `scripts/build_demos_win.cmd` built all 11 native demos after
+  `game3d-showcase` stopped hard-requiring the absent optional
+  `MapleTree_1.fbx`.
+- `ctest --test-dir build -C Debug -L graphics3d --output-on-failure -j 1`
+  passed 79/79 on Windows.
+- `bash scripts/run_cross_platform_smoke.sh --build-dir build` passed on
+  Windows.
+- D3D11 GPU timing is now observable through `Canvas3D.FrameGpuTimeUs`:
+  `g3d_openworld_slice_gpu_smoke` recorded `frame_gpu_us=1035`, and direct
+  `VIPER_3D_BACKEND=d3d11 perf_probe.zia` recorded `frame_gpu_us=1468`.
+
 ## Procedure (run on the target host)
 
 ### Windows (x64, MSVC)

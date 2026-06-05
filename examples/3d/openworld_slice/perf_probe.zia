@@ -81,6 +81,7 @@ func start() {
                  " elapsed_ms=" + fmt(ms(frameUs)) +
                  " avg_ms=" + fmt(avgFrameMs(frameUs, frames)) +
                  " fps=" + fmt(fps(frameUs, frames)) +
+                 " frame_gpu_us=" + Fmt.Int(Canvas3D.get_FrameGpuTimeUs(canvas)) +
                  " draw_count=" + Fmt.Int(World3D.get_drawCount(world)) +
                  " visible_nodes=" + Fmt.Int(World3D.get_visibleNodeCount(world)) +
                  " entities=" + Fmt.Int(World3D.get_entityCount(world)) +

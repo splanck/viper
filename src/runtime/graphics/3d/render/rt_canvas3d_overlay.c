@@ -582,6 +582,12 @@ int64_t rt_canvas3d_get_texture_upload_bytes(void *obj) {
     return c ? c->last_texture_upload_bytes : 0;
 }
 
+/// @brief Latest completed backend GPU frame time in microseconds.
+int64_t rt_canvas3d_get_frame_gpu_time_us(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c ? c->last_frame_gpu_time_us : 0;
+}
+
 /// @brief Set the active backend's per-frame texture upload budget.
 void rt_canvas3d_set_texture_upload_budget(void *obj, int64_t bytes) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);

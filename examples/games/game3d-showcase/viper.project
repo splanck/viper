@@ -2,8 +2,3 @@ project game3d_showcase
 version 0.1.0
 lang zia
 entry main.zia
-
-# Bundle the tree model into the executable so a standalone binary (run from
-# anywhere, e.g. examples/bin/) can load it via Model3D.LoadAsset regardless of
-# the working directory.
-embed MapleTree_1.fbx

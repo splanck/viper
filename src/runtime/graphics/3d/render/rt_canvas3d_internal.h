@@ -818,6 +818,7 @@ typedef struct {
     int32_t last_occluded_draw_count;
     int32_t last_occlusion_candidate_count;
     int64_t last_texture_upload_bytes;
+    int64_t last_frame_gpu_time_us;
 
     /* Timing */
     int64_t frame_serial;

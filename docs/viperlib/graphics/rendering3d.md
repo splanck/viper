@@ -201,6 +201,7 @@ through the same upload-budget telemetry path.
 |--------|------|-------------|
 | `TextureUploadBytes` | `Integer` property | Texture bytes uploaded into backend storage during the latest ended frame |
 | `TextureUploadPendingBytes` | `Integer` property | Texture bytes still waiting for backend texture or cubemap upload budget |
+| `FrameGpuTimeUs` | `Integer` property | Latest completed backend GPU frame time in microseconds, or `0` when unsupported/not yet available |
 | `SetTextureUploadBudget(bytes)` | `Void(Integer)` method | Set the backend material-texture/cubemap upload byte budget per frame; negative means unlimited, `0` pauses new upload rows |
 
 `TextureUploadBytes` counts actual texture cache uploads and re-uploads performed by the active
@@ -217,6 +218,13 @@ percentages, and final-frame tolerance after the budgeted native mip upload
 drains. Use these members with
 `Assets3D.SetUploadBudget` and streaming counters to find frames where decoded asset commits are
 followed by GPU texture upload pressure.
+
+`FrameGpuTimeUs` is backend-owned timing telemetry. The D3D11 backend records it
+with `D3D11_QUERY_TIMESTAMP` plus a disjoint query and reports the latest
+completed non-disjoint sample; unsupported backends or frames without a ready
+sample report `0`. The open-world perf and GPU-smoke probes include the value in
+their `PERF:` / `GPU_FRAME_TIME:` lines so Windows reference runs can record CPU
+frame-loop metrics and D3D11 GPU timestamp evidence together.
 
 ### Canvas3D Visibility Controls
 
@@ -237,6 +245,7 @@ paths are not GPU occlusion queries or Hi-Z culling.
 | `OcclusionCandidateCount` | `Integer` | Opaque draw candidates tested by the CPU occlusion grid in the latest frame |
 | `TextureUploadBytes` | `Integer` | Backend texture upload bytes in the latest ended frame |
 | `TextureUploadPendingBytes` | `Integer` | Backend material texture and cubemap bytes still pending upload |
+| `FrameGpuTimeUs` | `Integer` | Latest completed backend GPU frame time in microseconds, or `0` when unsupported |
 
 Use `SetFrustumCulling` when you only want off-frustum rejection. Use
 `SetOcclusionCulling` for the stronger CPU visibility path; transparent draws

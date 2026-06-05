@@ -245,6 +245,8 @@ func start() {
         return;
     }
 
+    Terminal.Say("GPU_FRAME_TIME: backend=" + Canvas3D.get_Backend(canvas) +
+                 " frame_gpu_us=" + Fmt.Int(Canvas3D.get_FrameGpuTimeUs(canvas)));
     World3D.present(game.getWorld());
     game.destroy();
     Terminal.Say("PASS: " + backend);

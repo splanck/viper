@@ -6067,6 +6067,16 @@ static void canvas3d_refresh_texture_upload_bytes(rt_canvas3d *c) {
         c->last_texture_upload_bytes = bytes > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)bytes;
 }
 
+/// @brief Recompute the canvas's latest backend GPU frame-time counter.
+static void canvas3d_refresh_frame_gpu_time(rt_canvas3d *c) {
+    uint64_t us = 0;
+
+    if (c && c->backend && c->backend->get_frame_gpu_time_us)
+        us = c->backend->get_frame_gpu_time_us(c->backend_ctx);
+    if (c)
+        c->last_frame_gpu_time_us = us > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)us;
+}
+
 /// @brief Render one non-cascaded shadow light into the next available shadow slot.
 /// @details Used both by the simple shadow path and by the cascaded path after the primary
 ///   directional light has consumed its cascade slots. The helper owns slot validation, light VP
@@ -6408,6 +6418,7 @@ void rt_canvas3d_end(void *obj) {
         c->frame_is_2d = 0;
         c->last_draw_count = 0;
         c->last_texture_upload_bytes = 0;
+        c->last_frame_gpu_time_us = 0;
         c->draw_count = 0;
         canvas3d_clear_temp_buffers(c);
         canvas3d_clear_temp_objects(c);
@@ -6477,6 +6488,7 @@ void rt_canvas3d_end(void *obj) {
     if (main_count == 0 && overlay_count == 0) {
         c->backend->end_frame(c->backend_ctx);
         canvas3d_refresh_texture_upload_bytes(c);
+        canvas3d_refresh_frame_gpu_time(c);
         c->in_frame = 0;
         c->frame_is_2d = 0;
         c->draw_count = 0;
@@ -6497,6 +6509,7 @@ void rt_canvas3d_end(void *obj) {
 
     c->backend->end_frame(c->backend_ctx);
     canvas3d_refresh_texture_upload_bytes(c);
+    canvas3d_refresh_frame_gpu_time(c);
     c->in_frame = 0;
 
     if (!c->frame_is_2d && overlay_count > 0) {
@@ -6508,6 +6521,7 @@ void rt_canvas3d_end(void *obj) {
             }
             c->backend->end_frame(c->backend_ctx);
             canvas3d_refresh_texture_upload_bytes(c);
+            canvas3d_refresh_frame_gpu_time(c);
         }
     }
 

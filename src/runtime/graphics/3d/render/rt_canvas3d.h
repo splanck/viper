@@ -186,6 +186,8 @@ int64_t rt_canvas3d_get_occluded_draw_count(void *obj);
 int64_t rt_canvas3d_get_occlusion_candidate_count(void *obj);
 /// @brief Texture payload bytes uploaded to backend storage in the latest ended frame.
 int64_t rt_canvas3d_get_texture_upload_bytes(void *obj);
+/// @brief Latest completed backend GPU frame time in microseconds, or 0 when unsupported.
+int64_t rt_canvas3d_get_frame_gpu_time_us(void *obj);
 /// @brief Set the backend texture upload byte budget for each frame; negative disables the budget.
 void rt_canvas3d_set_texture_upload_budget(void *obj, int64_t bytes);
 /// @brief Texture payload bytes still waiting for backend texture upload budget.

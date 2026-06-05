@@ -56,6 +56,7 @@ function(viper_add_tools_tests)
     viper_add_test(test_tools_asset_compiler
             ${_VIPER_TOOLS_DIR}/AssetCompilerTests.cpp)
     target_include_directories(test_tools_asset_compiler PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_definitions(test_tools_asset_compiler PRIVATE VIPER_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     target_link_libraries(test_tools_asset_compiler PRIVATE ${VIPER_TOOLS_LIBS} viper_packaging)
     viper_add_ctest(test_tools_asset_compiler test_tools_asset_compiler)
 
