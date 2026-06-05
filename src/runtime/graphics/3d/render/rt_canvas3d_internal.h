@@ -94,6 +94,8 @@ typedef struct {
     uint32_t geometry_revision; /* increments when CPU geometry changes */
     uint32_t tangent_revision;  /* geometry_revision for cached tangent readiness */
     int8_t tangents_ready;      /* true once tangent presence/generation was resolved */
+    uint32_t validated_index_revision; /* geometry_revision for cached index validation */
+    uint32_t validated_index_count;    /* complete in-range triangle-list count, 0 = invalid */
     uint32_t
         positions64_rebase_revision;  /* geometry_revision for cached double-position rebase test */
     int8_t positions64_rebase_needed; /* cached result for camera-relative vertex rebasing */
@@ -115,8 +117,9 @@ static inline uint32_t rt_mesh3d_safe_vertex_count(const rt_mesh3d *mesh) {
     return mesh->vertex_count < mesh->vertex_capacity ? mesh->vertex_count : mesh->vertex_capacity;
 }
 
-/// @brief Index count safe to read directly — the live count clamped to capacity, 0 when
-///   the index buffer is absent or empty.
+/// @brief Index count safe to read directly.
+/// @details The live count is clamped to capacity, but otherwise preserved. Callers that require a
+///   complete triangle-list count should use rt_mesh3d_validated_index_count() instead.
 static inline uint32_t rt_mesh3d_safe_index_count(const rt_mesh3d *mesh) {
     if (!mesh || !mesh->indices || mesh->index_count == 0 || mesh->index_capacity == 0)
         return 0;
@@ -136,7 +139,38 @@ static inline void rt_mesh3d_repair_geometry_counts(rt_mesh3d *mesh) {
         mesh->vertex_count = vertex_count;
         mesh->index_count = index_count;
         mesh->bounds_dirty = 1;
+        mesh->validated_index_revision = 0;
+        mesh->validated_index_count = 0;
     }
+}
+
+/// @brief Return a cached complete, in-range triangle-list index count for @p mesh.
+/// @details The validation scan is paid once per geometry revision. Backends can trust a draw
+///   command carrying this exact count and avoid rescanning every index in every pass. Corrupt
+///   indices invalidate the cache with a zero count so consumers skip the draw safely. Revision
+///   zero is reserved for stack/transient meshes and is always scanned instead of trusting the
+///   zero-initialized cache stamp.
+static inline uint32_t rt_mesh3d_validated_index_count(rt_mesh3d *mesh) {
+    uint32_t vertex_count;
+    uint32_t index_count;
+    if (!mesh)
+        return 0;
+    rt_mesh3d_repair_geometry_counts(mesh);
+    if (mesh->geometry_revision != 0 && mesh->validated_index_revision == mesh->geometry_revision)
+        return mesh->validated_index_count;
+    mesh->validated_index_revision = mesh->geometry_revision ? mesh->geometry_revision : 1u;
+    mesh->validated_index_count = 0;
+    vertex_count = rt_mesh3d_safe_vertex_count(mesh);
+    index_count = rt_mesh3d_safe_index_count(mesh);
+    index_count -= index_count % 3u;
+    if (!mesh->indices || vertex_count == 0 || index_count < 3u)
+        return 0;
+    for (uint32_t i = 0; i < index_count; ++i) {
+        if (mesh->indices[i] >= vertex_count)
+            return 0;
+    }
+    mesh->validated_index_count = index_count;
+    return index_count;
 }
 
 /// @brief Zero a mesh's cached AABB/bounding-sphere and clear the dirty flag.
@@ -182,6 +216,8 @@ static inline void rt_mesh3d_touch_geometry_now(rt_mesh3d *mesh) {
         mesh->geometry_revision++;
     mesh->tangents_ready = 0;
     mesh->tangent_revision = 0;
+    mesh->validated_index_revision = 0;
+    mesh->validated_index_count = 0;
     mesh->positions64_rebase_revision = 0;
     mesh->positions64_rebase_needed = 0;
     mesh->morph_bound_deltas_source = NULL;
@@ -507,6 +543,8 @@ struct vgfx3d_rendertarget {
     int32_t height;
     int32_t stride; /* width * 4 */
     int32_t color_format;
+    uint64_t cache_identity;  /* stable key generation across allocator pointer reuse */
+    uint64_t estimated_bytes; /* color + depth footprint reserved against RT budget */
     int8_t color_dirty;
     int8_t hdr_color_valid;
     vgfx3d_rendertarget_sync_fn sync_color;
@@ -660,6 +698,19 @@ static inline void vgfx3d_rendertarget_clear_sync(vgfx3d_rendertarget_t *target)
     target->hdr_color_valid = 0;
     target->sync_color = NULL;
     target->sync_color_userdata = NULL;
+}
+
+/// @brief Detach the backend sync callback while preserving the current dirty bit.
+/// @details Used when a backend resource is about to be destroyed or reused after a failed readback.
+///   The CPU mirror is no longer trustworthy, but clearing `color_dirty` would make `AsPixels`
+///   return stale bytes. Leaving dirty set with no callback makes readback fail explicitly.
+static inline void vgfx3d_rendertarget_detach_sync_preserve_dirty(vgfx3d_rendertarget_t *target) {
+    int8_t dirty;
+    if (!target)
+        return;
+    dirty = target->color_dirty;
+    vgfx3d_rendertarget_clear_sync(target);
+    target->color_dirty = dirty;
 }
 
 /// @brief RenderTarget3D payload: a GC wrapper holding the backing render target plus

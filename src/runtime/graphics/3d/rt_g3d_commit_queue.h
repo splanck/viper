@@ -16,6 +16,7 @@ extern "C" {
 #endif
 
 typedef void (*rt_g3d_commit_fn)(void *user_data);
+typedef void (*rt_g3d_commit_cancel_fn)(void *user_data);
 
 #define RT_G3D_COMMIT_COST_UNIT 1ull
 #define RT_G3D_COMMIT_COST_UNLIMITED UINT64_MAX
@@ -38,6 +39,17 @@ int8_t rt_g3d_commit_queue_enqueue_cost(void *queue,
                                         rt_g3d_commit_fn fn,
                                         void *user_data,
                                         uint64_t cost);
+
+/// @brief Enqueue a commit callback with an ownership cleanup callback for discarded work.
+/// @details `cancel_fn` runs only if the queue is closed/freed before `fn` drains. This lets worker
+///          jobs hand retained runtime handles or malloc-owned staging buffers to the queue without
+///          leaking them during shutdown. A successfully drained item never calls `cancel_fn`.
+/// @return Non-zero when the callback was queued.
+int8_t rt_g3d_commit_queue_enqueue_cost_cancel(void *queue,
+                                               rt_g3d_commit_fn fn,
+                                               void *user_data,
+                                               uint64_t cost,
+                                               rt_g3d_commit_cancel_fn cancel_fn);
 
 /// @brief Drain up to @p max_items callbacks on the main thread.
 /// @details `max_items <= 0` drains until the queue is empty.

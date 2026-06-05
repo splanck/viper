@@ -2963,9 +2963,13 @@ static void destroy_rtt_targets(gl_context_t *ctx) {
     if (!ctx)
         return;
     if (ctx->rtt_target) {
+        int sync_ok = 1;
         if (ctx->rtt_color_dirty)
-            gl_sync_render_target_color(ctx, ctx->rtt_target);
-        vgfx3d_rendertarget_clear_sync(ctx->rtt_target);
+            sync_ok = gl_sync_render_target_color(ctx, ctx->rtt_target);
+        if (sync_ok || !ctx->rtt_target->color_dirty)
+            vgfx3d_rendertarget_clear_sync(ctx->rtt_target);
+        else
+            vgfx3d_rendertarget_detach_sync_preserve_dirty(ctx->rtt_target);
     }
     if (ctx->rtt_depth_rbo)
         gl.DeleteRenderbuffers(1, &ctx->rtt_depth_rbo);
@@ -2998,17 +3002,16 @@ static int ensure_rtt_targets(gl_context_t *ctx, vgfx3d_rendertarget_t *rt) {
     if (ctx->rtt_fbo && ctx->rtt_width == rt->width && ctx->rtt_height == rt->height &&
         ctx->rtt_color_format == rt->color_format) {
         if (ctx->rtt_target && ctx->rtt_target != rt) {
-            if (ctx->rtt_color_dirty)
-                gl_sync_render_target_color(ctx, ctx->rtt_target);
-            vgfx3d_rendertarget_clear_sync(ctx->rtt_target);
+            destroy_rtt_targets(ctx);
+        } else {
+            ctx->rtt_active = 1;
+            ctx->rtt_target = rt;
+            ctx->rtt_color_dirty = 0;
+            rt->color_dirty = 0;
+            rt->sync_color = gl_sync_render_target_color;
+            rt->sync_color_userdata = ctx;
+            return 0;
         }
-        ctx->rtt_active = 1;
-        ctx->rtt_target = rt;
-        ctx->rtt_color_dirty = 0;
-        rt->color_dirty = 0;
-        rt->sync_color = gl_sync_render_target_color;
-        rt->sync_color_userdata = ctx;
-        return 0;
     }
 
     destroy_rtt_targets(ctx);
@@ -3515,9 +3518,13 @@ static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
             float *dst_row = rt->hdr_color_buf + (size_t)y * (size_t)rt->width * 4u;
             memcpy(dst_row, src_row, (size_t)rt->width * 4u * sizeof(float));
         }
-        vgfx3d_copy_linear_rgba32f_to_rgba8(
-            rt->color_buf, rt->stride, rt->width, rt->height, tmpf, rt->width * 16);
-        vgfx3d_flip_rgba_rows(rt->color_buf, rt->width, rt->height);
+        /* Convert from the already top-left-oriented HDR mirror so both CPU mirrors match. */
+        vgfx3d_copy_linear_rgba32f_to_rgba8(rt->color_buf,
+                                            rt->stride,
+                                            rt->width,
+                                            rt->height,
+                                            rt->hdr_color_buf,
+                                            rt->width * 16);
         rt->hdr_color_valid = 1;
         free(tmpf);
     } else {

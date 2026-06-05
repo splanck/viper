@@ -3886,9 +3886,13 @@ static void d3d11_destroy_rtt_targets(d3d11_context_t *ctx) {
     if (!ctx)
         return;
     if (ctx->rtt_target) {
+        int sync_ok = 1;
         if (ctx->rtt_target->color_dirty)
-            d3d11_sync_render_target_color(ctx, ctx->rtt_target);
-        vgfx3d_rendertarget_clear_sync(ctx->rtt_target);
+            sync_ok = d3d11_sync_render_target_color(ctx, ctx->rtt_target);
+        if (sync_ok || !ctx->rtt_target->color_dirty)
+            vgfx3d_rendertarget_clear_sync(ctx->rtt_target);
+        else
+            vgfx3d_rendertarget_detach_sync_preserve_dirty(ctx->rtt_target);
     }
     if (ctx->current_target_kind == VGFX3D_D3D11_TARGET_RTT) {
         d3d11_unbind_output_targets(ctx);
@@ -3926,19 +3930,18 @@ static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarge
         ctx->rtt_staging && ctx->rtt_width == rt->width && ctx->rtt_height == rt->height &&
         ctx->rtt_color_format == rt->color_format) {
         if (ctx->rtt_target && ctx->rtt_target != rt) {
-            if (ctx->rtt_target->color_dirty)
-                d3d11_sync_render_target_color(ctx, ctx->rtt_target);
-            vgfx3d_rendertarget_clear_sync(ctx->rtt_target);
+            d3d11_destroy_rtt_targets(ctx);
+        } else {
+            ctx->rtt_active = 1;
+            ctx->rtt_target = rt;
+            ctx->current_pass_is_overlay = 0;
+            ctx->current_load_existing_color = 0;
+            ctx->overlay_used_this_frame = 0;
+            rt->color_dirty = 0;
+            rt->sync_color = d3d11_sync_render_target_color;
+            rt->sync_color_userdata = ctx;
+            return S_OK;
         }
-        ctx->rtt_active = 1;
-        ctx->rtt_target = rt;
-        ctx->current_pass_is_overlay = 0;
-        ctx->current_load_existing_color = 0;
-        ctx->overlay_used_this_frame = 0;
-        rt->color_dirty = 0;
-        rt->sync_color = d3d11_sync_render_target_color;
-        rt->sync_color_userdata = ctx;
-        return S_OK;
     }
 
     d3d11_destroy_rtt_targets(ctx);

@@ -1259,12 +1259,19 @@ static int mesh_bvh_build_node(rt_mesh3d *mesh,
 /// @return 1 on success, 0 on allocation failure or empty geometry.
 int mesh_physics_bvh_rebuild(rt_mesh3d *mesh) {
     uint32_t tri_total;
+    uint32_t vertex_count;
+    uint32_t index_count;
     uint32_t *tri_indices = NULL;
     rt_physics_mesh_bvh_node *nodes = NULL;
     int32_t tri_count = 0;
     int32_t node_capacity;
     int32_t node_count = 0;
-    if (!mesh || mesh->index_count < 3 || mesh->vertex_count == 0)
+    if (!mesh)
+        return 0;
+    rt_mesh3d_repair_geometry_counts(mesh);
+    vertex_count = rt_mesh3d_safe_vertex_count(mesh);
+    index_count = rt_mesh3d_validated_index_count(mesh);
+    if (index_count < 3u || vertex_count == 0)
         return 0;
     if (mesh->physics_bvh_nodes && mesh->physics_bvh_revision == mesh->geometry_revision)
         return mesh->physics_bvh_node_count > 0;
@@ -1275,7 +1282,7 @@ int mesh_physics_bvh_rebuild(rt_mesh3d *mesh) {
     mesh->physics_bvh_node_count = 0;
     mesh->physics_bvh_tri_count = 0;
     mesh->physics_bvh_revision = 0;
-    tri_total = mesh->index_count / 3u;
+    tri_total = index_count / 3u;
     if (tri_total == 0 || tri_total > (uint32_t)(INT32_MAX / 2))
         return 0;
     tri_indices = (uint32_t *)malloc((size_t)tri_total * sizeof(*tri_indices));
@@ -1285,7 +1292,7 @@ int mesh_physics_bvh_rebuild(rt_mesh3d *mesh) {
         uint32_t i0 = mesh->indices[tri * 3u + 0u];
         uint32_t i1 = mesh->indices[tri * 3u + 1u];
         uint32_t i2 = mesh->indices[tri * 3u + 2u];
-        if (i0 >= mesh->vertex_count || i1 >= mesh->vertex_count || i2 >= mesh->vertex_count)
+        if (i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count)
             continue;
         tri_indices[tri_count++] = tri;
     }

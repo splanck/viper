@@ -74,6 +74,11 @@ int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *out, int
 #define CANVAS3D_MATERIAL_DEPTH_BIAS_ABS_MAX 0.05
 #define CANVAS3D_MATERIAL_SLOPE_DEPTH_BIAS_ABS_MAX 16.0
 #define CANVAS3D_MAX_RAW_MORPH_SHAPES 32
+#if defined(__clang__) || defined(__GNUC__)
+#define CANVAS3D_UNUSED_PRIVATE __attribute__((unused))
+#else
+#define CANVAS3D_UNUSED_PRIVATE
+#endif
 
 static void *g_canvas3d_synthetic_owner = NULL;
 static void canvas3d_release_synthetic_input(rt_canvas3d *c);
@@ -597,6 +602,25 @@ static int canvas3d_copy_mat4_f32_for_frame(const rt_canvas3d *c, const float *s
         dst[11] = (float)tz;
     }
     return 1;
+}
+
+/// @brief Compute camera-relative vertex rebasing for a float instance matrix.
+/// @details Instancing APIs pass float matrices, while the regular mesh path works from double
+///   Mat4 values. This adapter keeps the same rebase math and validation contract for the
+///   per-instance fallback used by large double-position meshes.
+static int canvas3d_compute_vertex_rebase_shift_f32(const rt_canvas3d *c,
+                                                    const float *model_matrix,
+                                                    double out_shift[3],
+                                                    float out_model_matrix[16]) {
+    double m[16];
+    if (!model_matrix)
+        return 0;
+    for (int i = 0; i < 16; ++i) {
+        if (!isfinite(model_matrix[i]))
+            return 0;
+        m[i] = (double)model_matrix[i];
+    }
+    return canvas3d_compute_vertex_rebase_shift(c, m, out_shift, out_model_matrix);
 }
 
 /// @brief Verify every entry across an array of @p count Mat4s is finite.
@@ -1487,13 +1511,14 @@ static int canvas3d_sort_tuple_less(const deferred_draw_t *a,
 ///          same front/back depth ordering contract as the qsort path while avoiding
 ///          mutation of the mixed-pass queue.
 /// @return The source index of the next draw, or -1 when no later draw exists.
-static int32_t canvas3d_pick_next_sorted_main_draw(const deferred_draw_t *cmds,
-                                                   int32_t draw_count,
-                                                   int requires_blend,
-                                                   int descending,
-                                                   float previous_key,
-                                                   uintptr_t previous_stable_sort_id,
-                                                   int32_t previous_enqueue_index) {
+static CANVAS3D_UNUSED_PRIVATE int32_t canvas3d_pick_next_sorted_main_draw(
+    const deferred_draw_t *cmds,
+    int32_t draw_count,
+    int requires_blend,
+    int descending,
+    float previous_key,
+    uintptr_t previous_stable_sort_id,
+    int32_t previous_enqueue_index) {
     int32_t best = -1;
     if (!cmds || draw_count <= 0)
         return -1;
@@ -1627,15 +1652,17 @@ static int canvas3d_generate_snapshot_tangents(const rt_mesh3d *source,
                                                vgfx3d_vertex_t *vertices,
                                                uint32_t *indices) {
     rt_mesh3d temp;
-    if (!source || !vertices || !indices || source->vertex_count == 0 || source->index_count == 0)
+    uint32_t vertex_count = rt_mesh3d_safe_vertex_count(source);
+    uint32_t index_count = rt_mesh3d_safe_index_count(source);
+    if (!source || !vertices || !indices || vertex_count == 0 || index_count == 0)
         return 0;
     memset(&temp, 0, sizeof(temp));
     temp.vertices = vertices;
-    temp.vertex_count = source->vertex_count;
-    temp.vertex_capacity = source->vertex_count;
+    temp.vertex_count = vertex_count;
+    temp.vertex_capacity = vertex_count;
     temp.indices = indices;
-    temp.index_count = source->index_count;
-    temp.index_capacity = source->index_count;
+    temp.index_count = index_count;
+    temp.index_capacity = index_count;
     temp.geometry_revision = source->geometry_revision ? source->geometry_revision : 1u;
     temp.bounds_dirty = source->bounds_dirty;
     memcpy(temp.aabb_min, source->aabb_min, sizeof(temp.aabb_min));
@@ -1643,6 +1670,19 @@ static int canvas3d_generate_snapshot_tangents(const rt_mesh3d *source,
     temp.bsphere_radius = source->bsphere_radius;
     rt_mesh3d_calc_tangents_impl(&temp);
     return temp.tangents_ready ? 1 : 0;
+}
+
+/// @brief Stamp @p cmd with a mesh's cached validated index count when it matches the command.
+/// @details Backend validation still rescans unmarked commands. This helper only marks commands
+///   backed by already-validated Mesh3D geometry, letting repeated static draws avoid a per-pass
+///   O(index_count) range scan while preserving the old safety contract for transient callers.
+static void canvas3d_mark_cmd_validated_indices(vgfx3d_draw_cmd_t *cmd, rt_mesh3d *mesh) {
+    uint32_t validated;
+    if (!cmd || !mesh)
+        return;
+    validated = rt_mesh3d_validated_index_count(mesh);
+    if (validated == cmd->index_count)
+        cmd->validated_index_count = validated;
 }
 
 /// @brief Disable normal-map sampling on a draw command when no reliable tangent basis exists.
@@ -2087,6 +2127,20 @@ void canvas3d_clear_final_overlay(rt_canvas3d *c) {
         c->final_overlay_temp_objects = NULL;
         c->final_overlay_temp_obj_capacity = 0;
     }
+}
+
+/// @brief Reset finalized-frame latches when a new frame starts without a previous Flip().
+/// @details `FinalizeFrame` may be used for capture or manual compositing. If the caller then begins
+///   another frame without presenting, post-FX and final-overlay state must not leak forward.
+static void canvas3d_reset_finalized_frame_state(rt_canvas3d *c) {
+    if (!c)
+        return;
+    canvas3d_clear_final_overlay(c);
+    c->frame_postfx_state_latched = 0;
+    c->frame_gpu_postfx_enabled = 0;
+    c->frame_finalized = 0;
+    c->frame_presented_by_finalize = 0;
+    vgfx3d_postfx_chain_reset(&c->frame_postfx_chain);
 }
 
 /// @brief Transform a local point by a row-major 4x4 model matrix.
@@ -4320,11 +4374,8 @@ void rt_canvas3d_clear(void *obj, double r, double g, double b) {
         return;
     if (!c->gfx_win || !c->backend)
         return;
-    if (c->frame_finalized) {
-        canvas3d_clear_final_overlay(c);
-        c->frame_finalized = 0;
-        c->frame_presented_by_finalize = 0;
-    }
+    if (c->frame_finalized)
+        canvas3d_reset_finalized_frame_state(c);
     float cr = canvas3d_clamp01_f64(r);
     float cg = canvas3d_clamp01_f64(g);
     float cb = canvas3d_clamp01_f64(b);
@@ -4407,6 +4458,7 @@ static int canvas3d_queue_screen_geometry(rt_canvas3d *c,
     cmd.vertex_count = (uint32_t)vertex_count;
     cmd.indices = indices_copy;
     cmd.index_count = (uint32_t)index_count;
+    cmd.validated_index_count = cmd.index_count;
     cmd.model_matrix[0] = cmd.model_matrix[5] = cmd.model_matrix[10] = cmd.model_matrix[15] = 1.0f;
     cmd.diffuse_color[0] = 1.0f;
     cmd.diffuse_color[1] = 1.0f;
@@ -4572,6 +4624,7 @@ int canvas3d_queue_screen_image(rt_canvas3d *c, float x, float y, float w, float
     cmd.vertex_count = 4;
     cmd.indices = indices_copy;
     cmd.index_count = 6;
+    cmd.validated_index_count = cmd.index_count;
     cmd.model_matrix[0] = cmd.model_matrix[5] = cmd.model_matrix[10] = cmd.model_matrix[15] = 1.0f;
     canvas3d_fill_material_cmd((const rt_material3d *)mat, &cmd);
     cmd.unlit = 1;
@@ -4705,11 +4758,8 @@ void rt_canvas3d_begin_2d(void *obj) {
         rt_trap("Canvas3D.Begin2D: Begin/End must not nest");
         return;
     }
-    if (c->frame_finalized) {
-        canvas3d_clear_final_overlay(c);
-        c->frame_finalized = 0;
-        c->frame_presented_by_finalize = 0;
-    }
+    if (c->frame_finalized)
+        canvas3d_reset_finalized_frame_state(c);
     if (c->backend->show_gpu_layer)
         c->backend->show_gpu_layer(c->backend_ctx);
 
@@ -5013,11 +5063,8 @@ void rt_canvas3d_begin(void *obj, void *camera) {
         rt_trap("Canvas3D.Begin: Begin/End must not nest");
         return;
     }
-    if (c->frame_finalized) {
-        canvas3d_clear_final_overlay(c);
-        c->frame_finalized = 0;
-        c->frame_presented_by_finalize = 0;
-    }
+    if (c->frame_finalized)
+        canvas3d_reset_finalized_frame_state(c);
 
     /* Show GPU layer for 3D rendering (in case it was hidden for 2D menu) */
     if (c->backend->show_gpu_layer)
@@ -5247,10 +5294,9 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
         pending_splat_layer_scales[i] =
             canvas3d_sanitize_splat_layer_scale(c->pending_splat_layer_scales[i]);
     }
-    canvas3d_clear_pending_splat(c);
 
     safe_vertex_count = rt_mesh3d_safe_vertex_count(mesh);
-    safe_index_count = rt_mesh3d_safe_index_count(mesh);
+    safe_index_count = rt_mesh3d_validated_index_count(mesh);
     if (safe_vertex_count == 0 || safe_index_count == 0)
         return;
     int needs_generated_tangents = canvas3d_prepare_normal_map_tangent_state(mesh, mat);
@@ -5339,6 +5385,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
     dd->cmd.vertex_count = safe_vertex_count;
     dd->cmd.indices = queued_indices;
     dd->cmd.index_count = safe_index_count;
+    canvas3d_mark_cmd_validated_indices(&dd->cmd, mesh);
     dd->cmd.geometry_key =
         (rt_heap_is_payload(mesh_obj) && !needs_generated_tangents && !rebase_identity_vertices)
             ? mesh_obj
@@ -5402,6 +5449,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
     dd->occlusion_key = dd->stable_sort_id ? dd->stable_sort_id : (uintptr_t)queued_vertices;
 
     if (canvas3d_append_prepared_deferred_draw(c, &queued)) {
+        canvas3d_clear_pending_splat(c);
         return;
     }
     canvas3d_release_new_draw_resources(c, new_draw_refs, new_draw_ref_count);
@@ -5597,7 +5645,8 @@ static void canvas3d_build_instanced_base_cmd(rt_mesh3d *mesh,
     base_cmd->vertices = mesh->vertices;
     base_cmd->vertex_count = rt_mesh3d_safe_vertex_count(mesh);
     base_cmd->indices = mesh->indices;
-    base_cmd->index_count = rt_mesh3d_safe_index_count(mesh);
+    base_cmd->index_count = rt_mesh3d_validated_index_count(mesh);
+    canvas3d_mark_cmd_validated_indices(base_cmd, mesh);
     base_cmd->model_matrix[0] = base_cmd->model_matrix[5] = base_cmd->model_matrix[10] =
         base_cmd->model_matrix[15] = 1.0f;
     canvas3d_fill_material_cmd(mat, base_cmd);
@@ -5631,6 +5680,8 @@ static void canvas3d_queue_instanced_fallback(const canvas3d_instanced_batch_t *
                                               int32_t instance_count,
                                               const float *prev_instance_matrices,
                                               int8_t has_prev_instance_matrices,
+                                              int rebase_positions64_instances,
+                                              int generate_rebased_tangents,
                                               const float *explicit_local_bounds_min,
                                               const float *explicit_local_bounds_max,
                                               int8_t conservative_bounds,
@@ -5654,10 +5705,20 @@ static void canvas3d_queue_instanced_fallback(const canvas3d_instanced_batch_t *
     }
     for (int32_t i = 0; i < instance_count; i++) {
         float preflight[16];
-        if (!canvas3d_copy_mat4_f32_for_frame(c, &instance_matrices[(size_t)i * 16u], preflight) ||
-            (has_prev_instance_matrices && prev_instance_matrices &&
-             !canvas3d_copy_mat4_f32_for_frame(
-                 c, &prev_instance_matrices[(size_t)i * 16u], preflight))) {
+        double shift[3];
+        int preflight_ok;
+        if (rebase_positions64_instances) {
+            preflight_ok = canvas3d_compute_vertex_rebase_shift_f32(
+                c, &instance_matrices[(size_t)i * 16u], shift, preflight);
+        } else {
+            preflight_ok =
+                canvas3d_copy_mat4_f32_for_frame(
+                    c, &instance_matrices[(size_t)i * 16u], preflight) &&
+                (!has_prev_instance_matrices || !prev_instance_matrices ||
+                 canvas3d_copy_mat4_f32_for_frame(
+                     c, &prev_instance_matrices[(size_t)i * 16u], preflight));
+        }
+        if (!preflight_ok) {
             canvas3d_instanced_release_refs(b);
             rt_trap("Canvas3D.DrawMeshInstanced: rebased instance matrix is out of float range");
             return;
@@ -5667,12 +5728,36 @@ static void canvas3d_queue_instanced_fallback(const canvas3d_instanced_batch_t *
         vgfx3d_draw_cmd_t per_instance = *base_cmd;
         uintptr_t instance_motion_key = canvas3d_instance_motion_key(
             b->mesh_obj, b->material_obj, instance_matrices, instance_count, i);
-        if (!canvas3d_copy_mat4_f32_for_frame(
-                c, &instance_matrices[(size_t)i * 16u], per_instance.model_matrix)) {
+        if (rebase_positions64_instances) {
+            double vertex_rebase_origin[3] = {0.0, 0.0, 0.0};
+            vgfx3d_vertex_t *rebased_vertices = NULL;
+            uint32_t *rebased_indices = NULL;
+            if (!canvas3d_compute_vertex_rebase_shift_f32(c,
+                                                          &instance_matrices[(size_t)i * 16u],
+                                                          vertex_rebase_origin,
+                                                          per_instance.model_matrix) ||
+                !canvas3d_snapshot_mesh_geometry_rebased(
+                    c, mesh, vertex_rebase_origin, &rebased_vertices, &rebased_indices)) {
+                rt_trap("Canvas3D.DrawMeshInstanced: rebased instance geometry allocation failed");
+                return;
+            }
+            if (generate_rebased_tangents &&
+                !canvas3d_generate_snapshot_tangents(mesh, rebased_vertices, rebased_indices))
+                canvas3d_disable_cmd_normal_map(&per_instance);
+            per_instance.vertices = rebased_vertices;
+            per_instance.indices = rebased_indices;
+            per_instance.geometry_key = NULL;
+            per_instance.geometry_revision = 0;
+            memcpy(per_instance.prev_model_matrix,
+                   per_instance.model_matrix,
+                   sizeof(per_instance.prev_model_matrix));
+            per_instance.has_prev_model_matrix = 0;
+        } else if (!canvas3d_copy_mat4_f32_for_frame(
+                       c, &instance_matrices[(size_t)i * 16u], per_instance.model_matrix)) {
             rt_trap("Canvas3D.DrawMeshInstanced: rebased instance matrix is out of float range");
             return;
         }
-        if (has_prev_instance_matrices && prev_instance_matrices) {
+        if (!rebase_positions64_instances && has_prev_instance_matrices && prev_instance_matrices) {
             if (!canvas3d_copy_mat4_f32_for_frame(
                     c, &prev_instance_matrices[(size_t)i * 16u], per_instance.prev_model_matrix)) {
                 rt_trap("Canvas3D.DrawMeshInstanced: rebased previous instance matrix is out of "
@@ -5680,7 +5765,7 @@ static void canvas3d_queue_instanced_fallback(const canvas3d_instanced_batch_t *
                 return;
             }
             per_instance.has_prev_model_matrix = 1;
-        } else {
+        } else if (!rebase_positions64_instances) {
             canvas3d_resolve_previous_model(c,
                                             instance_motion_key,
                                             per_instance.model_matrix,
@@ -5912,6 +5997,7 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
     uint32_t *queued_indices;
     int needs_generated_tangents;
     int use_fallback_instances;
+    int rebase_positions64_instances;
     int suppress_normal_map = 0;
 
     if (!instance_matrices || instance_count <= 0)
@@ -5931,19 +6017,22 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
         return;
     rt_mesh3d_repair_geometry_counts(mesh);
     if (!c->in_frame || !c->backend || !mesh->resident || rt_mesh3d_safe_vertex_count(mesh) == 0 ||
-        rt_mesh3d_safe_index_count(mesh) == 0)
+        rt_mesh3d_validated_index_count(mesh) == 0)
         return;
     if (has_prev_instance_matrices && !prev_instance_matrices) {
         rt_trap("Canvas3D.DrawMeshInstanced: previous instance matrices pointer is required");
         return;
     }
 
+    rebase_positions64_instances =
+        canvas3d_uses_camera_relative_upload(c) && canvas3d_mesh_positions64_needs_vertex_rebase(mesh);
     needs_generated_tangents = canvas3d_prepare_normal_map_tangent_state(mesh, mat);
     rt_mesh3d_refresh_bounds(mesh);
     canvas3d_build_instanced_base_cmd(mesh, mat, c, &base_cmd);
 
     use_fallback_instances =
-        canvas3d_cmd_requires_blend(&base_cmd) || !c->backend->submit_draw_instanced;
+        rebase_positions64_instances || canvas3d_cmd_requires_blend(&base_cmd) ||
+        !c->backend->submit_draw_instanced;
     if (use_fallback_instances && instance_count > CANVAS3D_MAX_FALLBACK_INSTANCES) {
         rt_trap("Canvas3D.DrawMeshInstanced: fallback instance count exceeds limit");
         return;
@@ -5975,7 +6064,7 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
 
     queued_vertices = mesh->vertices;
     queued_indices = mesh->indices;
-    if (needs_generated_tangents) {
+    if (!rebase_positions64_instances && needs_generated_tangents) {
         if (!canvas3d_snapshot_mesh_geometry_with_tangents_cached(
                 c, mesh, mesh_obj, &queued_vertices, &queued_indices)) {
             if (canvas3d_should_snapshot_geometry(mesh, mesh_obj)) {
@@ -5991,7 +6080,7 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
             needs_generated_tangents = 0;
             suppress_normal_map = 1;
         }
-    } else if (canvas3d_should_snapshot_geometry(mesh, mesh_obj) &&
+    } else if (!rebase_positions64_instances && canvas3d_should_snapshot_geometry(mesh, mesh_obj) &&
                !canvas3d_snapshot_mesh_geometry_cached(
                    c, mesh, mesh_obj, &queued_vertices, &queued_indices)) {
         canvas3d_instanced_release_refs(&batch);
@@ -6000,7 +6089,9 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
     base_cmd.vertices = queued_vertices;
     base_cmd.indices = queued_indices;
     base_cmd.geometry_key =
-        (rt_heap_is_payload(mesh_obj) && !needs_generated_tangents) ? mesh_obj : NULL;
+        (rt_heap_is_payload(mesh_obj) && !needs_generated_tangents && !rebase_positions64_instances)
+            ? mesh_obj
+            : NULL;
     base_cmd.geometry_revision = base_cmd.geometry_key ? mesh->geometry_revision : 0;
     if (suppress_normal_map)
         canvas3d_disable_cmd_normal_map(&base_cmd);
@@ -6012,6 +6103,8 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
                                           instance_count,
                                           prev_instance_matrices,
                                           has_prev_instance_matrices,
+                                          rebase_positions64_instances,
+                                          needs_generated_tangents,
                                           explicit_local_bounds_min,
                                           explicit_local_bounds_max,
                                           conservative_bounds,
@@ -6331,58 +6424,9 @@ static void canvas3d_render_main_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
                 qsort(trans, (size_t)trans_count, sizeof(deferred_draw_t), cmp_back_to_front);
             for (int32_t i = 0; i < trans_count; i++)
                 canvas3d_submit_deferred(c, &trans[i]);
-        } else {
-            float previous_key = -FLT_MAX;
-            uintptr_t previous_stable_sort_id = 0;
-            int32_t previous_enqueue_index = -1;
-            if (sort_opaque) {
-                for (;;) {
-                    int32_t i = canvas3d_pick_next_sorted_main_draw(cmds,
-                                                                    c->draw_count,
-                                                                    0,
-                                                                    0,
-                                                                    previous_key,
-                                                                    previous_stable_sort_id,
-                                                                    previous_enqueue_index);
-                    if (i < 0)
-                        break;
-                    previous_key = cmds[i].sort_key;
-                    previous_stable_sort_id = cmds[i].stable_sort_id;
-                    previous_enqueue_index = cmds[i].enqueue_index;
-                    if (use_occlusion_grid &&
-                        canvas3d_occlusion_test_and_write(c, &occlusion_grid, &cmds[i])) {
-                        c->last_occluded_draw_count++;
-                        c->last_cpu_occluded_draw_count++;
-                        continue;
-                    }
-                    canvas3d_submit_deferred(c, &cmds[i]);
-                }
-            } else {
-                for (int32_t i = 0; i < c->draw_count; ++i) {
-                    if (cmds[i].pass_kind != DEFERRED_PASS_MAIN || !cmds[i].visible ||
-                        cmds[i].requires_blend)
-                        continue;
-                    canvas3d_submit_deferred(c, &cmds[i]);
-                }
-            }
-            previous_key = FLT_MAX;
-            previous_stable_sort_id = 0;
-            previous_enqueue_index = -1;
-            for (;;) {
-                int32_t i = canvas3d_pick_next_sorted_main_draw(cmds,
-                                                                c->draw_count,
-                                                                1,
-                                                                1,
-                                                                previous_key,
-                                                                previous_stable_sort_id,
-                                                                previous_enqueue_index);
-                if (i < 0)
-                    break;
-                previous_key = cmds[i].sort_key;
-                previous_stable_sort_id = cmds[i].stable_sort_id;
-                previous_enqueue_index = cmds[i].enqueue_index;
-                canvas3d_submit_deferred(c, &cmds[i]);
-            }
+        } else if (staged_total > 0) {
+            rt_trap("Canvas3D.End: deferred sort buffer allocation failed");
+            return;
         }
     }
 }
@@ -6553,9 +6597,10 @@ static void canvas3d_replay_final_overlay(rt_canvas3d *c) {
     c->frame_is_2d = 0;
 }
 
-/// @brief Apply post-FX and final overlay exactly once.
-void rt_canvas3d_finalize_frame(void *obj) {
-    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+/// @brief Apply post-FX and final overlay exactly once, optionally presenting to the window.
+/// @details `present_to_window` is false for screenshot capture so finalization can composite the
+///   final frame without swapping/presenting a drawable as a side effect.
+static void canvas3d_finalize_frame_impl(rt_canvas3d *c, int present_to_window) {
     if (!c)
         return;
     if (!c->gfx_win)
@@ -6564,11 +6609,11 @@ void rt_canvas3d_finalize_frame(void *obj) {
         return;
 
     if (c->final_overlay_recording)
-        rt_canvas3d_end_overlay(obj);
+        rt_canvas3d_end_overlay(c);
     if (c->in_frame)
-        rt_canvas3d_end(obj);
+        rt_canvas3d_end(c);
 
-    if (canvas3d_backend_uses_gpu_postfx(c) &&
+    if (present_to_window && canvas3d_backend_uses_gpu_postfx(c) &&
         (c->final_overlay_count == 0 || canvas3d_backend_splits_gpu_postfx_present(c))) {
         if (c->frame_gpu_postfx_enabled) {
             if (canvas3d_backend_splits_gpu_postfx_present(c)) {
@@ -6583,10 +6628,22 @@ void rt_canvas3d_finalize_frame(void *obj) {
             return;
         }
     }
+    if (!present_to_window && canvas3d_backend_splits_gpu_postfx_present(c) &&
+        c->frame_gpu_postfx_enabled) {
+        c->backend->apply_postfx(c->backend_ctx, &c->frame_postfx_chain);
+        canvas3d_replay_final_overlay(c);
+        c->frame_finalized = 1;
+        return;
+    }
 
-    rt_postfx3d_apply_to_canvas(obj);
+    rt_postfx3d_apply_to_canvas(c);
     canvas3d_replay_final_overlay(c);
     c->frame_finalized = 1;
+}
+
+/// @brief Apply post-FX and final overlay exactly once.
+void rt_canvas3d_finalize_frame(void *obj) {
+    canvas3d_finalize_frame_impl(rt_canvas3d_checked_or_stack(obj), 1);
 }
 
 /// @brief Return whether the current frame has already been finalized.
@@ -6597,7 +6654,7 @@ int8_t rt_canvas3d_get_frame_finalized(void *obj) {
 
 /// @brief Capture finalized frame pixels, finalizing first if needed.
 void *rt_canvas3d_screenshot_final(void *obj) {
-    rt_canvas3d_finalize_frame(obj);
+    canvas3d_finalize_frame_impl(rt_canvas3d_checked_or_stack(obj), 0);
     return rt_canvas3d_screenshot(obj);
 }
 
@@ -6622,12 +6679,7 @@ void rt_canvas3d_flip(void *obj) {
     /* Always call vgfx_update to keep the window alive and process display
      * refresh. GPU backends own the final on-screen present path. */
     vgfx_update(c->gfx_win);
-    c->frame_postfx_state_latched = 0;
-    c->frame_gpu_postfx_enabled = 0;
-    c->frame_finalized = 0;
-    c->frame_presented_by_finalize = 0;
-    canvas3d_clear_final_overlay(c);
-    vgfx3d_postfx_chain_reset(&c->frame_postfx_chain);
+    canvas3d_reset_finalized_frame_state(c);
 
     if (c->clock_source == 1) {
         canvas3d_apply_synthetic_clock(c);

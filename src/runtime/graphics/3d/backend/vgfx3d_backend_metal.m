@@ -228,6 +228,7 @@
 @property(nonatomic, strong) id<MTLTexture> depthTexture;
 @property(nonatomic, strong) id<MTLCommandBuffer> pendingCommandBuffer;
 @property(nonatomic, assign) vgfx3d_rendertarget_t *target;
+@property(nonatomic) uint64_t cacheIdentity;
 @property(nonatomic) int32_t width;
 @property(nonatomic) int32_t height;
 @property(nonatomic) MTLPixelFormat colorPixelFormat;
@@ -1272,12 +1273,69 @@ static void metal_prune_morph_cache(VGFXMetalContext *ctx) {
     [ctx.morphCache removeObjectsForKeys:keys_to_remove];
 }
 
+/// @brief Remove stale Metal render-target cache entries.
+/// @details Entries are keyed by RenderTarget3D cache identity and retain GPU textures after a target
+///   is unbound so later readback/rebind is cheap. This periodic prune waits for any pending command
+///   buffer before removal and also drops entries whose borrowed CPU target pointer no longer matches
+///   its identity.
+static void metal_prune_render_target_cache(VGFXMetalContext *ctx) {
+    const uint64_t k_render_target_cache_max_age = 120;
+    NSMutableArray *keys_to_remove;
+
+    if (!ctx || !ctx.renderTargetCache)
+        return;
+    keys_to_remove = [NSMutableArray array];
+    for (id key in ctx.renderTargetCache) {
+        VGFXMetalRenderTargetCacheEntry *entry = ctx.renderTargetCache[key];
+        vgfx3d_rendertarget_t *target = entry ? entry.target : NULL;
+        if (!entry || !entry.colorTexture || !entry.depthTexture || !target ||
+            entry.cacheIdentity != target->cache_identity ||
+            vgfx3d_metal_should_prune_cache_entry(
+                ctx.frameSerial, entry.lastUsedFrame, k_render_target_cache_max_age)) {
+            if (entry.pendingCommandBuffer)
+                [entry.pendingCommandBuffer waitUntilCompleted];
+            if (target && target->sync_color_userdata == (__bridge void *)ctx)
+                vgfx3d_rendertarget_clear_sync(target);
+            [keys_to_remove addObject:key];
+        }
+    }
+    [ctx.renderTargetCache removeObjectsForKeys:keys_to_remove];
+}
+
+/// @brief Clear all CPU-side sync callbacks owned by @p ctx before destroying the Metal context.
+/// @details RenderTarget3D objects may outlive the backend context. Once the context is being
+///   released, any pending lazy readback callback would point at invalid Objective-C state.
+static void metal_clear_render_target_sync_callbacks(VGFXMetalContext *ctx) {
+    if (!ctx || !ctx.renderTargetCache)
+        return;
+    for (id key in ctx.renderTargetCache) {
+        VGFXMetalRenderTargetCacheEntry *entry = ctx.renderTargetCache[key];
+        vgfx3d_rendertarget_t *target = entry ? entry.target : NULL;
+        if (entry && entry.pendingCommandBuffer) {
+            [entry.pendingCommandBuffer waitUntilCompleted];
+            entry.pendingCommandBuffer = nil;
+        }
+        if (target && target->sync_color_userdata == (__bridge void *)ctx)
+            vgfx3d_rendertarget_clear_sync(target);
+    }
+}
+
 /// @brief Look up the cached Metal textures for a RenderTarget3D (NULL if not cached).
 static VGFXMetalRenderTargetCacheEntry *metal_lookup_render_target_entry(
     VGFXMetalContext *ctx, vgfx3d_rendertarget_t *rt) {
+    NSNumber *key;
+    VGFXMetalRenderTargetCacheEntry *entry;
     if (!ctx || !ctx.renderTargetCache || !rt)
         return nil;
-    return ctx.renderTargetCache[[NSValue valueWithPointer:rt]];
+    key = @(rt->cache_identity);
+    entry = ctx.renderTargetCache[key];
+    if (entry && (entry.target != rt || entry.cacheIdentity != rt->cache_identity)) {
+        if (entry.pendingCommandBuffer)
+            [entry.pendingCommandBuffer waitUntilCompleted];
+        [ctx.renderTargetCache removeObjectForKey:key];
+        return nil;
+    }
+    return entry;
 }
 
 /// @brief Get or create the cached color/depth/motion textures for a render target.
@@ -1285,7 +1343,7 @@ static VGFXMetalRenderTargetCacheEntry *metal_lookup_render_target_entry(
 ///          returns the existing entry. NULL on invalid input or allocation failure.
 static VGFXMetalRenderTargetCacheEntry *metal_ensure_render_target_entry(
     VGFXMetalContext *ctx, vgfx3d_rendertarget_t *rt) {
-    NSValue *key;
+    NSNumber *key;
     VGFXMetalRenderTargetCacheEntry *entry;
     MTLTextureDescriptor *color_desc;
     MTLTextureDescriptor *depth_desc;
@@ -1294,7 +1352,7 @@ static VGFXMetalRenderTargetCacheEntry *metal_ensure_render_target_entry(
     if (!ctx || !ctx.renderTargetCache || !rt || rt->width <= 0 || rt->height <= 0)
         return nil;
 
-    key = [NSValue valueWithPointer:rt];
+    key = @(rt->cache_identity);
     entry = ctx.renderTargetCache[key];
     desired_color_format =
         metal_color_pixel_format(vgfx3d_rendertarget_is_hdr(rt) ? VGFX3D_METAL_COLOR_FORMAT_HDR16F
@@ -1303,6 +1361,7 @@ static VGFXMetalRenderTargetCacheEntry *metal_ensure_render_target_entry(
         entry.motionTexture && entry.depthTexture &&
         entry.colorPixelFormat == desired_color_format) {
         entry.target = rt;
+        entry.cacheIdentity = rt->cache_identity;
         entry.lastUsedFrame = ctx.frameSerial;
         return entry;
     }
@@ -1314,6 +1373,7 @@ static VGFXMetalRenderTargetCacheEntry *metal_ensure_render_target_entry(
 
     entry = [[VGFXMetalRenderTargetCacheEntry alloc] init];
     entry.target = rt;
+    entry.cacheIdentity = rt->cache_identity;
     entry.width = rt->width;
     entry.height = rt->height;
     entry.colorPixelFormat = desired_color_format;
@@ -1821,9 +1881,15 @@ static void metal_detach_render_target(VGFXMetalContext *ctx, BOOL syncColor) {
             target->color_dirty = 1;
     }
     if (target) {
+        int sync_ok = 1;
         if (syncColor && target->color_dirty)
-            (void)metal_sync_render_target_color((__bridge void *)ctx, target);
-        vgfx3d_rendertarget_clear_sync(target);
+            sync_ok = metal_sync_render_target_color((__bridge void *)ctx, target);
+        if (sync_ok || !target->color_dirty) {
+            vgfx3d_rendertarget_clear_sync(target);
+        } else {
+            target->sync_color = metal_sync_render_target_color;
+            target->sync_color_userdata = (__bridge void *)ctx;
+        }
     }
     ctx.rttActive = NO;
     ctx.rttColorTexture = nil;
@@ -2980,6 +3046,7 @@ static void metal_destroy_ctx(void *ctx_ptr) {
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge_transfer VGFXMetalContext *)ctx_ptr;
         metal_detach_render_target(ctx, YES);
+        metal_clear_render_target_sync_callbacks(ctx);
         metal_free_gpu_postfx_chain(ctx);
         [ctx.metalLayer removeFromSuperlayer];
         ctx.metalLayer = nil;
@@ -3078,6 +3145,7 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
             metal_prune_texture_cache(ctx);
             metal_prune_cubemap_cache(ctx);
             metal_prune_morph_cache(ctx);
+            metal_prune_render_target_cache(ctx);
         }
 
         metal_begin_scene_encoder(ctx, load_existing_color, cam->load_existing_depth);

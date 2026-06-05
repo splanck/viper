@@ -38,6 +38,11 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#define RT_RENDERTARGET3D_DEFAULT_BUDGET_BYTES (1024ull * 1024ull * 1024ull)
+
+static volatile uint64_t g_rendertarget3d_reserved_bytes = 0;
+static volatile uint64_t g_rendertarget3d_next_identity = 1;
+
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_obj_retain_maybe(void *obj);
@@ -92,6 +97,61 @@ static int rt_rendertarget_estimate_bytes(int32_t w,
     return 1;
 }
 
+/// @brief Reserve @p bytes against the process-wide RenderTarget3D footprint budget.
+/// @details Render-target CPU mirrors and GPU textures are allocated lazily by the active backend,
+///   but the dimensions define a predictable maximum footprint. Reserving that estimate up front
+///   prevents scripts from creating many huge targets and deferring failure to backend OOM.
+/// @return 1 when the reservation was accepted; 0 when it would exceed the default budget.
+static int rt_rendertarget_reserve_budget(uint64_t bytes) {
+    uint64_t old_value;
+    if (bytes == 0u)
+        return 1;
+    if (bytes > RT_RENDERTARGET3D_DEFAULT_BUDGET_BYTES)
+        return 0;
+    for (;;) {
+        old_value = __atomic_load_n(&g_rendertarget3d_reserved_bytes, __ATOMIC_RELAXED);
+        if (old_value > RT_RENDERTARGET3D_DEFAULT_BUDGET_BYTES - bytes)
+            return 0;
+        if (__atomic_compare_exchange_n(&g_rendertarget3d_reserved_bytes,
+                                        &old_value,
+                                        old_value + bytes,
+                                        0,
+                                        __ATOMIC_ACQ_REL,
+                                        __ATOMIC_RELAXED))
+            return 1;
+    }
+}
+
+/// @brief Release a previous RenderTarget3D footprint reservation.
+/// @details Saturates to zero on accounting mismatch so finalization remains idempotent even if a
+///   partially constructed target is torn down during error recovery.
+static void rt_rendertarget_release_budget(uint64_t bytes) {
+    uint64_t old_value;
+    if (bytes == 0u)
+        return;
+    for (;;) {
+        old_value = __atomic_load_n(&g_rendertarget3d_reserved_bytes, __ATOMIC_RELAXED);
+        uint64_t new_value = old_value > bytes ? old_value - bytes : 0u;
+        if (__atomic_compare_exchange_n(&g_rendertarget3d_reserved_bytes,
+                                        &old_value,
+                                        new_value,
+                                        0,
+                                        __ATOMIC_ACQ_REL,
+                                        __ATOMIC_RELAXED))
+            return;
+    }
+}
+
+/// @brief Allocate a monotonic non-zero cache identity for a render-target shell.
+/// @details Backends use this instead of raw C pointers when caching native textures, avoiding stale
+///   cache hits if the allocator reuses a recently freed target address.
+static uint64_t rt_rendertarget_next_cache_identity(void) {
+    uint64_t identity = __atomic_fetch_add(&g_rendertarget3d_next_identity, 1u, __ATOMIC_RELAXED);
+    if (identity == 0u)
+        identity = __atomic_fetch_add(&g_rendertarget3d_next_identity, 1u, __ATOMIC_RELAXED);
+    return identity ? identity : 1u;
+}
+
 /// @brief Allocate the backend-side `vgfx3d_rendertarget_t` shell at `w × h` (RGBA8 stride =
 /// w * 4), with `color_buf` / `depth_buf` left NULL. CPU-side buffers are allocated lazily
 /// on first read or when the software backend binds the target — see
@@ -109,12 +169,17 @@ static vgfx3d_rendertarget_t *rt_alloc(int32_t w,
         free(rt);
         return NULL;
     }
-    (void)estimated_bytes;
+    if (!rt_rendertarget_reserve_budget((uint64_t)estimated_bytes)) {
+        free(rt);
+        return NULL;
+    }
 
     rt->width = w;
     rt->height = h;
     rt->stride = w * 4;
     rt->color_format = (int32_t)color_format;
+    rt->estimated_bytes = (uint64_t)estimated_bytes;
+    rt->cache_identity = rt_rendertarget_next_cache_identity();
 
     return rt;
 }
@@ -127,6 +192,7 @@ static void rt_free(vgfx3d_rendertarget_t *rt) {
     free(rt->color_buf);
     free(rt->hdr_color_buf);
     free(rt->depth_buf);
+    rt_rendertarget_release_budget(rt->estimated_bytes);
     free(rt);
 }
 

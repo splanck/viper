@@ -2966,6 +2966,7 @@ static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
         for (size_t i = 0; i < total; i++)
             rt->depth_buf[i] = FLT_MAX;
         rt->hdr_color_valid = 0;
+        vgfx3d_rendertarget_clear_sync(rt);
     } else {
         vgfx_framebuffer_t fb;
         if (vgfx_get_framebuffer(win, &fb)) {
@@ -3122,6 +3123,7 @@ static int sw_resolve_output_target(sw_context_t *ctx,
         *out_h = rt->height;
         *out_stride = rt->stride;
         rt->hdr_color_valid = 0;
+        vgfx3d_rendertarget_clear_sync(rt);
     } else {
         vgfx_framebuffer_t fb;
         if (!vgfx_get_framebuffer(win, &fb))
