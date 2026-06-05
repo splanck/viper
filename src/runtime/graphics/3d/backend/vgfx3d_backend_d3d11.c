@@ -1371,6 +1371,12 @@ typedef struct {
     int8_t scene_composited_to_swapchain;
     int8_t presented_color_valid;
     vgfx3d_postfx_chain_t gpu_postfx_chain;
+    ID3D11Query *frame_time_disjoint_query;
+    ID3D11Query *frame_time_start_query;
+    ID3D11Query *frame_time_end_query;
+    uint64_t frame_gpu_time_us;
+    int8_t frame_time_active;
+    int8_t frame_time_pending;
 } d3d11_context_t;
 
 #define SAFE_RELEASE(x)                                                                            \
@@ -1398,6 +1404,8 @@ static HRESULT d3d11_recreate_swapchain_main_targets(d3d11_context_t *ctx,
                                                      int32_t width,
                                                      int32_t height,
                                                      const char *log_context);
+static void d3d11_begin_frame_timing(d3d11_context_t *ctx);
+static void d3d11_end_frame_timing(d3d11_context_t *ctx);
 
 /// @brief Multiply two row-major 4×4 matrices: `out = a * b`.
 ///
@@ -1449,6 +1457,135 @@ static void d3d11_log_shader_error(const char *stage, ID3DBlob *err_blob) {
         OutputDebugStringA(buffer);
         fputs(buffer, stderr);
     }
+}
+
+/// @brief Best-effort D3D11 timestamp query creation for frame GPU-time telemetry.
+static void d3d11_create_frame_timing_queries(d3d11_context_t *ctx) {
+    D3D11_QUERY_DESC desc;
+    HRESULT hr = S_FALSE;
+
+    if (!ctx || !ctx->device)
+        return;
+    memset(&desc, 0, sizeof(desc));
+    desc.Query = D3D11_QUERY_TIMESTAMP_DISJOINT;
+    hr = ID3D11Device_CreateQuery(ctx->device, &desc, &ctx->frame_time_disjoint_query);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateQuery(frame timestamp disjoint)", hr);
+        return;
+    }
+    desc.Query = D3D11_QUERY_TIMESTAMP;
+    hr = ID3D11Device_CreateQuery(ctx->device, &desc, &ctx->frame_time_start_query);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateQuery(frame timestamp start)", hr);
+        SAFE_RELEASE(ctx->frame_time_disjoint_query);
+        return;
+    }
+    hr = ID3D11Device_CreateQuery(ctx->device, &desc, &ctx->frame_time_end_query);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateQuery(frame timestamp end)", hr);
+        SAFE_RELEASE(ctx->frame_time_start_query);
+        SAFE_RELEASE(ctx->frame_time_disjoint_query);
+    }
+}
+
+/// @brief Try to read the pending timestamp query into `frame_gpu_time_us`.
+static int d3d11_harvest_frame_timing(d3d11_context_t *ctx, int block) {
+    D3D11_QUERY_DATA_TIMESTAMP_DISJOINT disjoint;
+    UINT64 start_ticks = 0;
+    UINT64 end_ticks = 0;
+    HRESULT hr = S_FALSE;
+    int attempts = block ? 100000 : 1;
+    UINT flags = block ? 0u : D3D11_ASYNC_GETDATA_DONOTFLUSH;
+
+    if (!ctx || !ctx->ctx || !ctx->frame_time_pending || !ctx->frame_time_disjoint_query ||
+        !ctx->frame_time_start_query || !ctx->frame_time_end_query)
+        return 0;
+    memset(&disjoint, 0, sizeof(disjoint));
+    while (attempts-- > 0) {
+        hr = ID3D11DeviceContext_GetData(ctx->ctx,
+                                         (ID3D11Asynchronous *)ctx->frame_time_disjoint_query,
+                                         &disjoint,
+                                         sizeof(disjoint),
+                                         flags);
+        if (hr != S_FALSE)
+            break;
+        if (!block)
+            return 0;
+        Sleep(0);
+    }
+    if (hr == S_FALSE)
+        return 0;
+    if (FAILED(hr)) {
+        d3d11_log_hresult("GetData(frame timestamp disjoint)", hr);
+        ctx->frame_time_pending = 0;
+        return 0;
+    }
+    hr = ID3D11DeviceContext_GetData(ctx->ctx,
+                                     (ID3D11Asynchronous *)ctx->frame_time_start_query,
+                                     &start_ticks,
+                                     sizeof(start_ticks),
+                                     flags);
+    if (hr == S_FALSE)
+        return 0;
+    if (FAILED(hr)) {
+        d3d11_log_hresult("GetData(frame timestamp start)", hr);
+        ctx->frame_time_pending = 0;
+        return 0;
+    }
+    hr = ID3D11DeviceContext_GetData(ctx->ctx,
+                                     (ID3D11Asynchronous *)ctx->frame_time_end_query,
+                                     &end_ticks,
+                                     sizeof(end_ticks),
+                                     flags);
+    if (hr == S_FALSE)
+        return 0;
+    if (FAILED(hr)) {
+        d3d11_log_hresult("GetData(frame timestamp end)", hr);
+        ctx->frame_time_pending = 0;
+        return 0;
+    }
+    ctx->frame_time_pending = 0;
+    if (!disjoint.Disjoint && disjoint.Frequency > 0 && end_ticks >= start_ticks) {
+        double us =
+            ((double)(end_ticks - start_ticks) * 1000000.0) / (double)disjoint.Frequency;
+        ctx->frame_gpu_time_us = us >= (double)UINT64_MAX ? UINT64_MAX : (uint64_t)(us + 0.5);
+        return 1;
+    }
+    return 0;
+}
+
+/// @brief Begin a D3D11 timestamp/disjoint query pair for the current backend pass.
+static void d3d11_begin_frame_timing(d3d11_context_t *ctx) {
+    if (!ctx || !ctx->ctx || !ctx->frame_time_disjoint_query || !ctx->frame_time_start_query ||
+        !ctx->frame_time_end_query)
+        return;
+    if (ctx->frame_time_pending)
+        (void)d3d11_harvest_frame_timing(ctx, 0);
+    if (ctx->frame_time_pending)
+        return;
+    ID3D11DeviceContext_Begin(ctx->ctx, (ID3D11Asynchronous *)ctx->frame_time_disjoint_query);
+    ID3D11DeviceContext_End(ctx->ctx, (ID3D11Asynchronous *)ctx->frame_time_start_query);
+    ctx->frame_time_active = 1;
+}
+
+/// @brief End the active D3D11 timestamp/disjoint query pair.
+static void d3d11_end_frame_timing(d3d11_context_t *ctx) {
+    if (!ctx || !ctx->ctx || !ctx->frame_time_active)
+        return;
+    ID3D11DeviceContext_End(ctx->ctx, (ID3D11Asynchronous *)ctx->frame_time_end_query);
+    ID3D11DeviceContext_End(ctx->ctx, (ID3D11Asynchronous *)ctx->frame_time_disjoint_query);
+    ctx->frame_time_active = 0;
+    ctx->frame_time_pending = 1;
+}
+
+/// @brief Return the latest completed D3D11 GPU frame timing in microseconds.
+static uint64_t d3d11_get_frame_gpu_time_us(void *ctx_ptr) {
+    d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
+    if (!ctx)
+        return 0;
+    if (ctx->frame_time_pending)
+        (void)d3d11_harvest_frame_timing(ctx, 1);
+    return ctx->frame_gpu_time_us;
 }
 
 /// @brief Present the back buffer with vsync (sync interval = 1).
@@ -5715,6 +5852,7 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
     if (FAILED(hr))
         goto fail;
 
+    d3d11_create_frame_timing_queries(ctx);
     d3d11_release_shader_blobs(&blobs);
     return ctx;
 
@@ -5753,6 +5891,9 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     d3d11_destroy_scene_targets(ctx);
     vgfx3d_postfx_chain_free(&ctx->gpu_postfx_chain);
 
+    SAFE_RELEASE(ctx->frame_time_end_query);
+    SAFE_RELEASE(ctx->frame_time_start_query);
+    SAFE_RELEASE(ctx->frame_time_disjoint_query);
     SAFE_RELEASE(ctx->morph_normal_srv);
     SAFE_RELEASE(ctx->morph_normal_buffer);
     SAFE_RELEASE(ctx->morph_srv);
@@ -5928,6 +6069,7 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     d3d11_select_current_targets(ctx);
     d3d11_clear_current_targets(ctx, ctx->current_load_existing_color, cam->load_existing_depth);
     d3d11_bind_common_state(ctx, NULL);
+    d3d11_begin_frame_timing(ctx);
     if ((ctx->frame_serial & 31u) == 0u) {
         d3d11_prune_texture_cache(ctx);
         d3d11_prune_cubemap_cache(ctx);
@@ -5944,6 +6086,7 @@ static void d3d11_end_frame(void *ctx_ptr) {
 
     if (!ctx)
         return;
+    d3d11_end_frame_timing(ctx);
     if (!vgfx3d_d3d11_should_mark_rtt_dirty(ctx->rtt_active,
                                             ctx->rtt_target != NULL,
                                             ctx->rtt_color_tex != NULL,
@@ -6243,7 +6386,7 @@ static int d3d11_draw_postfx_pass(d3d11_context_t *ctx,
     if (ctx->linear_clamp_sampler)
         ID3D11DeviceContext_PSSetSamplers(ctx->ctx, 0, 1, &ctx->linear_clamp_sampler);
     ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 4, srvs);
-    ID3D11DeviceContext_RSSetState(ctx->ctx, ctx->rs_solid_cull);
+    ID3D11DeviceContext_RSSetState(ctx->ctx, ctx->rs_solid_no_cull);
     ID3D11DeviceContext_OMSetDepthStencilState(ctx->ctx, NULL, 0);
     ID3D11DeviceContext_OMSetBlendState(
         ctx->ctx, ctx->blend_state_opaque, blend_factor, 0xFFFFFFFF);
@@ -6926,6 +7069,7 @@ const vgfx3d_backend_t vgfx3d_d3d11_backend = {
     .set_texture_upload_budget = d3d11_set_texture_upload_budget,
     .get_texture_upload_pending_bytes = d3d11_get_texture_upload_pending_bytes,
     .get_texture_upload_bytes = d3d11_get_texture_upload_bytes,
+    .get_frame_gpu_time_us = d3d11_get_frame_gpu_time_us,
     .get_native_texture_caps = d3d11_get_native_texture_caps,
 };
 

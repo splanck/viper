@@ -1087,6 +1087,14 @@ endif ()
 if (WIN32)
     set_tests_properties(zia_smoke_game3d_showcase PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
+    add_test(NAME zia_smoke_game3d_showcase_d3d11
+            COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase/smoke_probe.zia"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase")
+    set_tests_properties(zia_smoke_game3d_showcase_d3d11 PROPERTIES
+            PASS_REGULAR_EXPRESSION "RESULT: ok"
+            LABELS "zia;smoke;graphics3d;requires_display;d3d11"
+            ENVIRONMENT "VIPER_3D_BACKEND=d3d11"
+            TIMEOUT 90)
 endif ()
 if (APPLE)
     add_test(NAME zia_smoke_game3d_showcase_software
@@ -1130,7 +1138,8 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif ()
 if (WIN32)
     set_tests_properties(zia_smoke_3dbowling_overlay PROPERTIES
-            ENVIRONMENT "VIPER_3D_BACKEND=software")
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 120)
 endif ()
 
 add_test(NAME zia_smoke_3dbowling_title_postfx

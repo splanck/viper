@@ -3604,6 +3604,7 @@ static int32_t g_backend_resize_h = 0;
 static uint64_t g_backend_texture_upload_bytes = 0;
 static uint64_t g_backend_texture_upload_budget = UINT64_MAX;
 static uint64_t g_backend_texture_upload_pending_bytes = 0;
+static uint64_t g_backend_frame_gpu_time_us = 0;
 } // namespace
 
 typedef struct {
@@ -3664,6 +3665,10 @@ static void tracked_set_texture_upload_budget(void *, uint64_t bytes) {
 
 static uint64_t tracked_texture_upload_pending_bytes(void *) {
     return g_backend_texture_upload_pending_bytes;
+}
+
+static uint64_t tracked_frame_gpu_time_us(void *) {
+    return g_backend_frame_gpu_time_us;
 }
 
 static void tracked_backend_resize(void *, int32_t w, int32_t h) {
@@ -5124,6 +5129,42 @@ static void test_canvas_texture_upload_bytes_telemetry() {
     rt_canvas3d_begin(&canvas, cam);
     rt_canvas3d_end(&canvas);
     EXPECT_EQ(rt_canvas3d_get_texture_upload_bytes(&canvas), 0);
+    PASS();
+}
+
+static void test_canvas_frame_gpu_time_telemetry() {
+    TEST("Canvas3D.FrameGpuTimeUs reports backend GPU timing telemetry");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+
+    backend.name = "d3d11";
+    backend.begin_frame = tracked_begin_frame;
+    backend.end_frame = tracked_end_frame;
+    backend.get_frame_gpu_time_us = tracked_frame_gpu_time_us;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 64;
+    canvas.height = 64;
+
+    g_backend_frame_gpu_time_us = 4242;
+    rt_canvas3d_begin(&canvas, cam);
+    EXPECT_EQ(rt_canvas3d_get_frame_gpu_time_us(&canvas), 0);
+    rt_canvas3d_end(&canvas);
+    EXPECT_EQ(rt_canvas3d_get_frame_gpu_time_us(&canvas), 4242);
+
+    g_backend_frame_gpu_time_us = (uint64_t)INT64_MAX + 1u;
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_end(&canvas);
+    EXPECT_EQ(rt_canvas3d_get_frame_gpu_time_us(&canvas), INT64_MAX);
+
+    backend.get_frame_gpu_time_us = nullptr;
+    canvas.last_frame_gpu_time_us = 77;
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_end(&canvas);
+    EXPECT_EQ(rt_canvas3d_get_frame_gpu_time_us(&canvas), 0);
     PASS();
 }
 
@@ -7374,6 +7415,7 @@ int main() {
     test_canvas_shadow_cascades_capability_gate();
     test_canvas_occlusion_culling_skips_covered_opaque_draws();
     test_canvas_texture_upload_bytes_telemetry();
+    test_canvas_frame_gpu_time_telemetry();
     test_canvas_texture_upload_budget_controls_backend();
     test_canvas_delta_time_preserves_first_zero();
     test_canvas_poll_event_queue_drains_in_order();

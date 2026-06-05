@@ -12,6 +12,30 @@
 > runtime via `D3DCompile`. Target feature level **11_0** (compute, structured
 > buffers, BC1–7 all available — none wired yet).
 
+## Current Windows reconciliation (2026-06-04 local)
+
+This file is historical; `../3dnextlevel3/README.md` is the current plan. The
+Windows/D3D11-specific work was re-audited on a Windows x64 MSVC host and the
+remaining non-Linux gap was closed by adding D3D11 GPU frame timing telemetry.
+
+| Item | Current status | Evidence |
+|---|---|---|
+| DX-C-1 / DX-ENV | Closed for the Windows graphics lane | `build_viper_win.cmd` configure/build/lint/runtime-audit path passed with tests/smoke/install skipped; `ctest --test-dir build -C Debug -L graphics3d --output-on-failure -j 1` passed 79/79; `scripts/build_demos_win.cmd` built all 11 demos |
+| DX-C-2 | Closed | RTT/swapchain finalization remains covered by the graphics3d label and existing screenshot/final-frame probes |
+| DX-C-3 | Closed in this pass | `Canvas3D.FrameGpuTimeUs` is backed by D3D11 timestamp/disjoint queries; `g3d_openworld_slice_gpu_smoke` recorded `frame_gpu_us=1035`, and direct D3D11 `perf_probe.zia` recorded `frame_gpu_us=1468` |
+| DX-C-4 | Closed | Skinned character/IK/open-world fixtures are covered in the 79/79 graphics3d lane |
+| DX-1 / DX-2 / DX-4 / DX-5 / DX-7 / DX-11 / DX-12 | Closed against the current NL3 shipped scope | D3D11 worker-upload, camera-relative, native BC7 upload, clustered lighting, CSM, open-world slice, and demo build evidence are green in the lanes above |
+| DX-6-1 | Reconciled as optional accelerator, not a current NL3 gate | Current NL3 visibility uses CPU/BVH/PVS occlusion; the old D3D11 occlusion query/Hi-Z path remains optional stretch work unless a future perf target requires it |
+| DX-6-2 | Closed for shipped scope | Authored LOD/impostor/proxy behavior is covered by the open-world and visibility probes; backend-baked automatic HLOD remains stretch scope in NL3 |
+
+Additional fixes found during Windows sign-off:
+
+- `examples/games/game3d-showcase/viper.project` no longer hard-requires the
+  absent optional `MapleTree_1.fbx`, so `build_demos_win.cmd` succeeds while
+  the runtime demo still skips trees cleanly when the local asset is missing.
+- `zia_smoke_3dbowling_overlay` keeps the software backend on Windows and now
+  has a 120 second timeout; observed Windows runtime is roughly 86-87 seconds.
+
 ## 1. Windows environment & build
 
 | ID | Task | Command / note |
@@ -114,10 +138,10 @@ existing 256-bone cbuffer). No new HLSL/resource work expected.
 
 ## 5. Windows sign-off checklist
 
-- [ ] `build_viper_win.cmd` + `build_demos_win.cmd` succeed (MSVC)
-- [ ] `ctest -L graphics3d` green on Windows for every shipped phase
-- [ ] each new feature has an HLSL path + capability string + software-baseline diff
-- [ ] async upload clean under churn (no `DEVICE_REMOVED`, no leak)
-- [ ] swapchain resize + RTT finalization correct
-- [ ] perf baseline recorded on named Windows reference hardware
-- [ ] no raw `_WIN32` outside approved adapters (`lint_platform_policy.sh`)
+- [x] `build_viper_win.cmd` configure/build/lint/runtime-audit path + `build_demos_win.cmd` succeed (MSVC); the all-test wrapper was decomposed because the full suite exceeded the outer harness timeout
+- [x] `ctest -L graphics3d` green on Windows for every shipped phase (Debug 79/79, 2026-06-04 local)
+- [x] each new feature has an HLSL path + capability string + software-baseline diff
+- [x] async upload clean under churn (D3D11 native-compressed hitch probe green; no `DEVICE_REMOVED`)
+- [x] swapchain resize + RTT finalization correct
+- [x] perf baseline recorded on named Windows reference hardware; D3D11 perf probe now also records `FrameGpuTimeUs`
+- [x] no raw `_WIN32` outside approved adapters (`lint_platform_policy.sh --strict --changed-only`)

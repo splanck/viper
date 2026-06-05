@@ -21,8 +21,9 @@ viper run examples/games/game3d-showcase/smoke_probe.zia
 Built on the higher-level `Viper.Game3D` world surface plus direct `Viper.Graphics3D`
 rendering, the scene exercises a broad slice of the 3D API:
 
-- **Imported models** — `MapleTree_1.fbx` loaded with `Model3D.Load` and instanced into a
-  deterministic forest, placed by terrain slope/height (avoids cliffs and water)
+- **Imported models** — optional `MapleTree_1.fbx` loaded with `Model3D.Load` when present
+  on disk and instanced into a deterministic forest, placed by terrain slope/height
+  (avoids cliffs and water)
 - **PBR materials** — stone/metal landmarks use `NewPBR` with procedural albedo + normal maps
   and skybox environment reflections
 - **Instanced vegetation** — wind-animated grass populated from the terrain's grass splat channel
@@ -45,9 +46,9 @@ rendering, the scene exercises a broad slice of the 3D API:
   materials (`SceneNode3D` traversal), a sprint **FOV kick** with depth-of-field + motion blur,
   and a "return home" **Trigger3D** objective
 
-> The forest loads `MapleTree_1.fbx` relative to the working directory — run via
-> `viper run examples/games/game3d-showcase/` (or from within this folder) so it resolves. If the
-> file is missing the demo logs a notice and continues without trees.
+> The forest treats `MapleTree_1.fbx` as an optional local asset. If the file is
+> missing, the demo logs a notice and continues without trees; native demo builds
+> therefore do not embed it as a required asset.
 
 ## Controls
 

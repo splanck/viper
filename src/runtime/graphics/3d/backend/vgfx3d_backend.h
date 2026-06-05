@@ -350,6 +350,9 @@ typedef struct vgfx3d_backend {
     /* Optional streaming/upload telemetry. Returns the texture payload bytes
      * uploaded to backend storage during the current frame. NULL = unsupported. */
     uint64_t (*get_texture_upload_bytes)(void *ctx);
+    /* Optional GPU timing telemetry. Returns the latest completed backend GPU
+     * frame time in microseconds, or 0 when unsupported/not yet available. */
+    uint64_t (*get_frame_gpu_time_us)(void *ctx);
     /* Optional native compressed TextureAsset3D capability bits. Return a mask
      * using RT_CANVAS3D_BACKEND_CAP_BC7 / ASTC / ETC2 when native block upload is
      * wired and supported by the active device. */

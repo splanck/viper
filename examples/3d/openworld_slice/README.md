@@ -50,7 +50,9 @@ asset fixture loaded through `Sound3D.loadAsset`;
 baseline used by `test.zia`; `baselines/perf_macos_apple_m4_max.md` records the
 current named macOS perf baseline for `perf_probe.zia`, while
 `baselines/perf_windows_shakylaptop_ryzen7940hs.md` records the Windows
-x64/MSVC software and D3D11 baseline. The probe also builds a
+x64/MSVC software and D3D11 baseline. The `PERF:` line includes
+`frame_gpu_us`, which is non-zero when the active backend exposes GPU timestamp
+telemetry and otherwise remains `0`. The probe also builds a
 small three-bone foot chain, samples the resident terrain tile height, renders
 marker/leg entities near the streamed tile center, and asserts
 `IKSolver3D.TwoBone` plants the foot on that terrain target. Per-tile
@@ -91,4 +93,5 @@ unavailable. The smoke includes a small degenerate-normal/tangent normal-map
 draw and a 24-light clustered/forward+ draw so GPU shader basis fallbacks and
 many-light upload paths are exercised with the rest of the slice. It also
 enables a 3-cascade primary directional CSM fixture with near/mid/far shadow
-casters and reports `CSM_SHADOWS:` telemetry for the authored shadow path.
+casters, reports `CSM_SHADOWS:` telemetry for the authored shadow path, and
+prints `GPU_FRAME_TIME:` with backend GPU timing when the backend provides it.

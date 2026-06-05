@@ -1136,6 +1136,9 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_TextureUploadBytes\""),
                  "Canvas3D.TextureUploadBytes getter must use Graphics3D PascalCase naming") &&
          ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_FrameGpuTimeUs\""),
+                 "Canvas3D.FrameGpuTimeUs getter must use Graphics3D PascalCase naming") &&
+         ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.SetTextureUploadBudget\""),
                  "Canvas3D.SetTextureUploadBudget must use Graphics3D PascalCase naming") &&
          ok;
@@ -1178,6 +1181,9 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"TextureUploadBytes\""),
                  "Canvas3D.TextureUploadBytes property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"FrameGpuTimeUs\""),
+                 "Canvas3D.FrameGpuTimeUs property missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetTextureUploadBudget\""),
                  "Canvas3D.SetTextureUploadBudget method missing") &&

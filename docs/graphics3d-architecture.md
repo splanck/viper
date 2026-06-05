@@ -112,8 +112,9 @@ entity/body/draw/visibility/stream telemetry counters, captures the final
 post-FX plus overlay frame, compares it to the committed software baseline, and
 repeats the same fixed-step sequence for deterministic replay. A companion
 `g3d_openworld_slice_perf_probe` CTest records deterministic software frame-loop
-metrics and validates that the telemetry counters remain populated; the current
-named local Release software and Metal measurements live under
+metrics, optional backend GPU frame time, and validates that the telemetry
+counters remain populated; the current named local Release software and Metal
+measurements live under
 `examples/3d/openworld_slice/baselines/`; `g3d_openworld_slice_perf_harness`
 wraps the probe and validates the required counters for CI logs. A second companion,
 `g3d_openworld_slice_long_traversal`, repeats all-quadrant stream
@@ -127,7 +128,10 @@ submits a degenerate-normal/tangent normal-mapped mesh and a 24-light
 clustered/forward+ draw so GPU shader basis fallbacks and many-light upload
 paths stay exercised outside unit tests. The same smoke now follows with a
 3-cascade primary directional CSM fixture, covering the lifted four-slot shadow
-payload and backend cascade split metadata on the platform GPU lane.
+payload and backend cascade split metadata on the platform GPU lane. On D3D11,
+`Canvas3D.FrameGpuTimeUs` is backed by timestamp/disjoint queries so the Windows
+GPU smoke and perf probes can record real device-frame timing alongside CPU
+wall-clock metrics.
 
 ## Runtime Input Guards
 

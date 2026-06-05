@@ -143,6 +143,9 @@ here so they do not disappear.
   Linux reference GPU hardware. Local macOS Metal smoke/perf evidence exists,
   and Windows x64 D3D11 smoke/perf evidence is now recorded in
   `examples/3d/openworld_slice/baselines/perf_windows_shakylaptop_ryzen7940hs.md`.
+  The 2026-06-04 Windows rerun also records D3D11 `FrameGpuTimeUs` through
+  `g3d_openworld_slice_gpu_smoke` and direct `perf_probe.zia`; Linux remains the
+  open external lane.
 - **W2-003 - Windows/Linux Release software FPS baselines and `-L graphics3d`
   green.** Windows x64 MSVC Debug and Release `-L graphics3d` are green and the
   Windows Release software baseline is recorded in
