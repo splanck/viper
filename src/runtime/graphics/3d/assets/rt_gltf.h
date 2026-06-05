@@ -51,6 +51,16 @@ rt_gltf_preload_bundle *rt_gltf_preload_bundle_create(rt_string path,
                                                       int load_assets,
                                                       char *error,
                                                       size_t error_cap);
+/// @brief Internal async path: stage a glTF/GLB root plus dependencies from a C path.
+/// @details Takes ownership of @p root_data on both success and failure. This variant avoids
+///          touching runtime strings from worker threads; use it only with filesystem paths unless
+///          the caller can guarantee any asset-system access is thread-safe for its use case.
+rt_gltf_preload_bundle *rt_gltf_preload_bundle_create_cstr(const char *path,
+                                                           uint8_t *root_data,
+                                                           size_t root_size,
+                                                           int load_assets,
+                                                           char *error,
+                                                           size_t error_cap);
 /// @brief Free a bundle returned by rt_gltf_preload_bundle_create.
 void rt_gltf_preload_bundle_free(rt_gltf_preload_bundle *bundle);
 /// @brief Number of dependency payloads staged into @p bundle.

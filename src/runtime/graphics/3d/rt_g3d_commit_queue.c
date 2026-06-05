@@ -20,6 +20,7 @@
 /// @brief One queued commit: the callback, its user data, and its budget cost.
 typedef struct rt_g3d_commit_item {
     rt_g3d_commit_fn fn;
+    rt_g3d_commit_cancel_fn cancel_fn;
     void *user_data;
     uint64_t cost;
 } rt_g3d_commit_item;
@@ -55,6 +56,8 @@ static void rt_g3d_commit_queue_discard_pending(rt_g3d_commit_queue *queue) {
         rt_g3d_commit_item *item = (rt_g3d_commit_item *)rt_concqueue_try_dequeue(queue->items);
         if (!item)
             break;
+        if (item->cancel_fn)
+            item->cancel_fn(item->user_data);
         free(item);
     }
 }
@@ -74,13 +77,16 @@ void rt_g3d_commit_queue_free(void *obj) {
     free(queue);
 }
 
-/// @brief Enqueue a commit callback tagged with a main-thread cost estimate.
-/// @details Traps on allocation failure rather than silently dropping the commit.
+/// @brief Enqueue a commit callback tagged with a main-thread cost estimate and cleanup hook.
+/// @details Traps on allocation failure rather than silently dropping the commit. If the queue is
+///          later closed before the item drains, `cancel_fn` receives `user_data` so payload
+///          ownership can be released.
 /// @return 1 when queued; 0 when the queue or callback handle is invalid.
-int8_t rt_g3d_commit_queue_enqueue_cost(void *obj,
-                                        rt_g3d_commit_fn fn,
-                                        void *user_data,
-                                        uint64_t cost) {
+int8_t rt_g3d_commit_queue_enqueue_cost_cancel(void *obj,
+                                               rt_g3d_commit_fn fn,
+                                               void *user_data,
+                                               uint64_t cost,
+                                               rt_g3d_commit_cancel_fn cancel_fn) {
     rt_g3d_commit_queue *queue = (rt_g3d_commit_queue *)obj;
     if (!queue || !queue->items || !fn)
         return 0;
@@ -92,11 +98,20 @@ int8_t rt_g3d_commit_queue_enqueue_cost(void *obj,
         return 0;
     }
     item->fn = fn;
+    item->cancel_fn = cancel_fn;
     item->user_data = user_data;
     item->cost = cost;
     rt_concqueue_enqueue(queue->items, item);
     __atomic_fetch_add(&queue->submitted, 1, __ATOMIC_RELAXED);
     return 1;
+}
+
+/// @brief Enqueue a commit callback tagged with a main-thread cost estimate.
+int8_t rt_g3d_commit_queue_enqueue_cost(void *obj,
+                                        rt_g3d_commit_fn fn,
+                                        void *user_data,
+                                        uint64_t cost) {
+    return rt_g3d_commit_queue_enqueue_cost_cancel(obj, fn, user_data, cost, NULL);
 }
 
 /// @brief Enqueue a commit callback with the default unit cost (1).

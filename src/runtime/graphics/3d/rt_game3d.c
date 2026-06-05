@@ -151,6 +151,12 @@ static void *g_game3d_asset_commit_queue = NULL;
 #define RT_GAME3D_ASSET_UPLOAD_BUDGET_DEFAULT_BYTES (16ull * 1024ull * 1024ull)
 #define RT_GAME3D_ASSET_UPLOAD_SLICE_BYTES (64ull * 1024ull)
 #define RT_GAME3D_ASSET_ASYNC_ROOT_BYTES_MAX (256ull * 1024ull * 1024ull)
+#define RT_GAME3D_STREAM_MANIFEST_MAX_BYTES (16ull * 1024ull * 1024ull)
+#if defined(__clang__) || defined(__GNUC__)
+#define GAME3D_UNUSED_PRIVATE __attribute__((unused))
+#else
+#define GAME3D_UNUSED_PRIVATE
+#endif
 /* Animator3D updates can allocate/release runtime strings while sampling events and root motion.
  * Keep those updates on the main thread until those runtime paths are explicitly audited as
  * worker-thread safe. */
@@ -390,11 +396,13 @@ void game3d_assign_ref(void **slot, void *value) {
 
 /// @brief Release an owned slot only when its current object still has the expected class.
 /// @details Wrong-class private state is treated as corruption and cleared without touching the
-///          referenced object's refcount, avoiding accidental release of an unrelated handle.
+///          referenced object's refcount, avoiding accidental release of an unrelated handle that
+///          this slot cannot prove it retained.
 void game3d_release_typed_ref(void **slot, int64_t class_id) {
+    void *obj;
     if (!slot || !*slot)
         return;
-    void *obj = *slot;
+    obj = *slot;
     *slot = NULL;
     if (rt_g3d_has_class(obj, class_id) && rt_obj_release_check0(obj))
         rt_obj_free(obj);
@@ -1515,7 +1523,9 @@ static uint8_t *game3d_asset_read_file_bytes(const char *path, size_t *out_size)
 }
 
 /// @brief Load a model's root bytes, preferring the packed asset system and falling back to disk.
-static uint8_t *game3d_asset_load_root_bytes(rt_string path, int8_t asset_path, size_t *out_size) {
+static GAME3D_UNUSED_PRIVATE uint8_t *game3d_asset_load_root_bytes(rt_string path,
+                                                                   int8_t asset_path,
+                                                                   size_t *out_size) {
     const char *path_cstr = path ? rt_string_cstr(path) : NULL;
     uint8_t *data;
     if (out_size)
@@ -2499,6 +2509,20 @@ static rt_string game3d_asset_handle_load_error(rt_game3d_asset_handle *handle) 
     return rt_const_cstr("failed to load model");
 }
 
+/// @brief Normalize async loader diagnostics to the public AssetHandle3D error contract.
+/// @details Packed-asset glTF loading can report a verbose dependency failure when the root asset
+///          itself is absent. Synchronous Game3D asset APIs expose that condition as the stable
+///          `"failed to load model asset"` string, so async handles do the same while preserving
+///          genuinely specific parser and texture diagnostics.
+static const char *game3d_asset_async_error_or_fallback(rt_game3d_asset_handle *handle,
+                                                       const char *message) {
+    if (handle && handle->asset_path && message && strstr(message, "failed to load model dependency"))
+        return "failed to load model asset";
+    if (message && message[0])
+        return message;
+    return (handle && handle->asset_path) ? "failed to load model asset" : "failed to load model";
+}
+
 static int8_t game3d_asset_handle_load_flag(const int8_t *flag) {
     return flag && __atomic_load_n(flag, __ATOMIC_ACQUIRE) ? 1 : 0;
 }
@@ -2674,6 +2698,35 @@ static void game3d_asset_async_job_free(rt_game3d_asset_async_job *job) {
     free(job);
 }
 
+/// @brief Commit-queue discard callback for async asset jobs.
+/// @details If the queue is freed while a job is pending, the queued callback never runs. This hook
+///          releases the retained handle and any staged glTF payload so shutdown cannot leak jobs.
+static void game3d_asset_async_job_cancel(void *user_data) {
+    game3d_asset_async_job_free((rt_game3d_asset_async_job *)user_data);
+}
+
+/// @brief Copy an AssetHandle3D request into worker-safe POD fields on @p job.
+/// @details Must run on the main thread before the job is submitted. The worker reads only these
+///          snapshotted bytes and flags, never the handle's runtime strings or mutable request state.
+/// @return 1 when the request was copied; 0 when the path is absent or too large for the job buffer.
+static int game3d_asset_async_snapshot_request(rt_game3d_asset_async_job *job,
+                                               const rt_game3d_asset_handle *handle) {
+    const char *path;
+    size_t len;
+    if (!job || !handle || !handle->path)
+        return 0;
+    path = rt_string_cstr(handle->path);
+    if (!path || path[0] == '\0')
+        return 0;
+    len = strlen(path);
+    if (len >= sizeof(job->path))
+        return 0;
+    memcpy(job->path, path, len + 1u);
+    job->asset_path = handle->asset_path ? 1 : 0;
+    job->template_request = handle->template_request ? 1 : 0;
+    return 1;
+}
+
 /// @brief Estimate the main-thread cost (in budget units) of committing an async job's result.
 static uint64_t game3d_asset_async_job_commit_cost(rt_game3d_asset_async_job *job) {
     size_t decoded_image_bytes;
@@ -2705,13 +2758,17 @@ static void game3d_asset_async_prepare_upload_slice(void *user_data);
 static int game3d_asset_async_enqueue_next_commit(rt_game3d_asset_async_job *job) {
     uint64_t slice_cost = game3d_asset_async_next_upload_slice_cost(job);
     if (slice_cost > 0u) {
-        return rt_g3d_commit_queue_enqueue_cost(
-            g_game3d_asset_commit_queue, game3d_asset_async_prepare_upload_slice, job, slice_cost);
+        return rt_g3d_commit_queue_enqueue_cost_cancel(g_game3d_asset_commit_queue,
+                                                       game3d_asset_async_prepare_upload_slice,
+                                                       job,
+                                                       slice_cost,
+                                                       game3d_asset_async_job_cancel);
     }
-    return rt_g3d_commit_queue_enqueue_cost(g_game3d_asset_commit_queue,
-                                            game3d_asset_async_commit,
-                                            job,
-                                            game3d_asset_async_job_commit_cost(job));
+    return rt_g3d_commit_queue_enqueue_cost_cancel(g_game3d_asset_commit_queue,
+                                                   game3d_asset_async_commit,
+                                                   job,
+                                                   game3d_asset_async_job_commit_cost(job),
+                                                   game3d_asset_async_job_cancel);
 }
 
 /// @brief Build the final Model3D on the main thread from an async job's preloaded glTF bundle.
@@ -2744,9 +2801,7 @@ static void *game3d_asset_async_commit_load_model(rt_game3d_asset_async_job *job
         snprintf(job->error,
                  sizeof(job->error),
                  "%s",
-                 (msg && msg[0]) ? msg
-                                 : (handle->asset_path ? "failed to load model asset"
-                                                       : "failed to load model"));
+                 game3d_asset_async_error_or_fallback(handle, msg));
     }
     rt_trap_clear_recovery();
     return loaded_model;
@@ -2886,7 +2941,7 @@ static void game3d_asset_async_commit(void *user_data) {
 static void game3d_asset_async_worker(void *user_data) {
     rt_game3d_asset_async_job *job = (rt_game3d_asset_async_job *)user_data;
     rt_game3d_asset_handle *handle = job ? job->handle : NULL;
-    const char *path = handle && handle->path ? rt_string_cstr(handle->path) : NULL;
+    const char *path = job ? job->path : NULL;
     uint8_t *root_data = NULL;
     size_t root_len = 0;
     if (!job || !handle) {
@@ -2894,36 +2949,35 @@ static void game3d_asset_async_worker(void *user_data) {
         return;
     }
 
-    if (game3d_path_has_gltf_extension(path)) {
-        root_data = game3d_asset_load_root_bytes(handle->path, handle->asset_path, &root_len);
+    if (!job->asset_path && game3d_path_has_gltf_extension(path)) {
+        root_data = game3d_asset_read_file_bytes(path, &root_len);
         if (!root_data) {
-            const char *fallback =
-                handle->asset_path ? "failed to load model asset" : "failed to load model";
-            snprintf(job->error, sizeof(job->error), "%s", fallback);
+            snprintf(job->error, sizeof(job->error), "%s", "failed to load model");
         } else if (root_len == 0u) {
             snprintf(job->error, sizeof(job->error), "%s", "empty model file");
             free(root_data);
             root_data = NULL;
         } else {
-            job->preloaded_gltf = rt_gltf_preload_bundle_create(handle->path,
-                                                                root_data,
-                                                                root_len,
-                                                                handle->asset_path,
-                                                                job->error,
-                                                                sizeof(job->error));
+            job->preloaded_gltf = rt_gltf_preload_bundle_create_cstr(path,
+                                                                     root_data,
+                                                                     root_len,
+                                                                     0,
+                                                                     job->error,
+                                                                     sizeof(job->error));
             root_data = NULL;
             job->upload_total_bytes =
                 (uint64_t)rt_gltf_preload_bundle_decoded_image_bytes(job->preloaded_gltf);
             if (!job->preloaded_gltf && !job->error[0]) {
-                const char *fallback =
-                    handle->asset_path ? "failed to load model asset" : "failed to load model";
-                snprintf(job->error, sizeof(job->error), "%s", fallback);
+                snprintf(job->error, sizeof(job->error), "%s", "failed to load model");
             }
         }
     }
 
     if (!game3d_asset_async_enqueue_next_commit(job)) {
-        game3d_asset_handle_fail_terminal(handle, "failed to schedule asset commit");
+        game3d_asset_handle_store_flag(&handle->deferred, 0);
+        game3d_asset_handle_store_flag(&handle->async_started, 0);
+        game3d_asset_handle_store_progress(handle, 1.0);
+        game3d_asset_handle_store_flag(&handle->ready, 1);
         game3d_asset_async_job_free(job);
     }
 }
@@ -2988,6 +3042,11 @@ static void game3d_asset_handle_start_async(rt_game3d_asset_handle *handle) {
         return;
     }
 
+    if (!game3d_asset_async_snapshot_request(job, handle)) {
+        game3d_asset_handle_fail_terminal(handle, "failed to schedule asset load");
+        free(job);
+        return;
+    }
     job->handle = handle;
     job->cache_generation = game3d_model_cache_current_generation();
     rt_obj_retain_maybe(handle);
@@ -3095,8 +3154,11 @@ static rt_game3d_model_template *game3d_assets_load_template_cached_impl(rt_stri
             rt_game3d_model_cache_entry *entry = &g_game3d_model_cache[index];
             if (entry->loading) {
                 if (!game3d_model_cache_wait_locked_ms(RT_GAME3D_MODEL_CACHE_WAIT_TIMEOUT_MS)) {
-                    game3d_model_cache_remove_at(index);
-                    game3d_model_cache_notify_all();
+                    game3d_model_cache_unlock();
+                    game3d_release_ref((void **)&cache_path);
+                    if (trap_on_fail)
+                        rt_trap("Game3D.Assets3D: timed out waiting for model cache load");
+                    return NULL;
                 }
                 game3d_model_cache_unlock();
                 continue;
@@ -3143,7 +3205,7 @@ static rt_game3d_model_template *game3d_assets_load_template_cached_impl(rt_stri
         break;
     }
 
-    void *loaded_model = asset_path ? rt_model3d_load_asset(path) : rt_model3d_load(cache_path);
+    void *loaded_model = asset_path ? rt_model3d_load_asset(path) : rt_model3d_load(path);
     if (!loaded_model) {
         game3d_model_cache_cancel_pending(cache_path, asset_path);
         game3d_release_ref((void **)&cache_path);
@@ -3945,14 +4007,20 @@ rt_game3d_entity *game3d_world_find_entity_by_body(rt_game3d_world *world, void 
     int slot;
     if (!world || !body)
         return NULL;
+    if (!game3d_world_body_index_ensure_usable(world))
+        return NULL;
     slot = game3d_world_body_index_find_slot(
         world->body_index_entries, world->body_index_capacity, body, &found);
     if (!found || slot < 0)
         return NULL;
     rt_game3d_entity *entity = world->body_index_entries[slot].entity;
-    void *entity_body = game3d_entity_body_ref(entity);
-    if (!entity || !entity->spawned || entity->world != world || entity_body != body ||
+    if (!entity || !entity->spawned || entity->world != world ||
         (world->physics && !rt_world3d_contains_body(world->physics, body))) {
+        game3d_world_body_index_remove(world, body);
+        return NULL;
+    }
+    void *entity_body = game3d_entity_body_ref(entity);
+    if (entity_body != body) {
         game3d_world_body_index_remove(world, body);
         return NULL;
     }
@@ -3998,6 +4066,12 @@ typedef struct game3d_entity_tree_item {
     int8_t visited;
 } game3d_entity_tree_item;
 
+typedef struct game3d_spawned_entity_list {
+    rt_game3d_entity **items;
+    int32_t count;
+    int32_t capacity;
+} game3d_spawned_entity_list;
+
 /// @brief Push an entity-tree traversal item onto the work list, growing it as needed.
 static int game3d_entity_tree_push(game3d_entity_tree_item **items,
                                    int32_t *count,
@@ -4025,14 +4099,51 @@ static int game3d_entity_tree_push(game3d_entity_tree_item **items,
     return 1;
 }
 
-/// @brief Despawn a single entity: detach it from physics/scene, unregister it, and release it.
-static void game3d_world_despawn_entity_one(rt_game3d_world *world,
-                                            rt_game3d_entity *entity,
-                                            int detach_root) {
+/// @brief Record one entity spawned during the current tree transaction.
+/// @details The list owns only the pointer array; entity lifetimes are held by the world registry.
+///          Rollback uses the reverse order so children are removed before parents.
+static int game3d_spawned_entity_list_push(game3d_spawned_entity_list *list,
+                                           rt_game3d_entity *entity) {
+    rt_game3d_entity **grown;
+    int32_t new_capacity;
+    if (!list || !entity)
+        return 0;
+    if (list->count >= list->capacity) {
+        if (!game3d_compute_capacity(
+                list->capacity, list->count + 1, 16, sizeof(*list->items), &new_capacity))
+            return 0;
+        grown = (rt_game3d_entity **)realloc(list->items, (size_t)new_capacity * sizeof(*grown));
+        if (!grown)
+            return 0;
+        list->items = grown;
+        list->capacity = new_capacity;
+    }
+    list->items[list->count++] = entity;
+    return 1;
+}
+
+/// @brief Free the pointer storage owned by a spawned-entity rollback list.
+static void game3d_spawned_entity_list_free(game3d_spawned_entity_list *list) {
+    if (!list)
+        return;
+    free(list->items);
+    memset(list, 0, sizeof(*list));
+}
+
+/// @brief Despawn one entity, optionally marking the retained handle destroyed after cleanup.
+/// @details Destroy marking happens after physics, scene, and registry removal so cleanup helpers
+///          still see a live spawned entity. A temporary retain keeps the handle valid after the
+///          registry releases its ownership.
+static void game3d_world_despawn_entity_one_internal(rt_game3d_world *world,
+                                                     rt_game3d_entity *entity,
+                                                     int detach_root,
+                                                     int mark_destroyed) {
     if (!world || !entity)
         return;
     if (!entity->spawned || entity->world != world)
         return;
+    if (mark_destroyed)
+        rt_obj_retain_maybe(entity);
     void *body = game3d_entity_body_ref(entity);
     if (body && world->physics) {
         rt_world3d_remove(world->physics, body);
@@ -4043,12 +4154,43 @@ static void game3d_world_despawn_entity_one(rt_game3d_world *world,
     entity->spawned = 0;
     entity->world = NULL;
     game3d_world_registry_remove_no_rebuild(world, entity);
+    if (mark_destroyed) {
+        entity->destroyed = 1;
+        if (rt_obj_release_check0(entity))
+            rt_obj_free(entity);
+    }
 }
 
-/// @brief Despawn an entity tree with an explicit heap stack, avoiding C-stack overflow.
-static void game3d_world_despawn_entity_tree(rt_game3d_world *world,
-                                             rt_game3d_entity *entity,
-                                             int detach_root) {
+/// @brief Despawn a single entity: detach it from physics/scene, unregister it, and release it.
+static void game3d_world_despawn_entity_one(rt_game3d_world *world,
+                                            rt_game3d_entity *entity,
+                                            int detach_root) {
+    game3d_world_despawn_entity_one_internal(world, entity, detach_root, 0);
+}
+
+/// @brief Roll back entities spawned by a failed tree-spawn transaction.
+/// @details Only entities recorded in @p spawned are removed; already-spawned entities in the input
+///          tree are left alone. The root scene link is detached only if the recorded entity is the
+///          transaction root.
+static void game3d_world_rollback_spawned_entities(rt_game3d_world *world,
+                                                   game3d_spawned_entity_list *spawned,
+                                                   rt_game3d_entity *root,
+                                                   int attach_to_scene) {
+    if (!world || !spawned)
+        return;
+    for (int32_t i = spawned->count - 1; i >= 0; --i) {
+        rt_game3d_entity *entity = spawned->items[i];
+        game3d_world_despawn_entity_one(
+            world, entity, entity == root && attach_to_scene ? 1 : 0);
+    }
+    game3d_world_rebuild_name_index(world);
+}
+
+/// @brief Despawn an entity tree with an explicit heap stack, optionally marking nodes destroyed.
+static void game3d_world_despawn_entity_tree_internal(rt_game3d_world *world,
+                                                      rt_game3d_entity *entity,
+                                                      int detach_root,
+                                                      int mark_destroyed) {
     game3d_entity_tree_item *stack = NULL;
     int32_t count = 0;
     int32_t capacity = 0;
@@ -4063,7 +4205,8 @@ static void game3d_world_despawn_entity_tree(rt_game3d_world *world,
         if (!item.entity)
             continue;
         if (item.visited) {
-            game3d_world_despawn_entity_one(world, item.entity, item.root_link);
+            game3d_world_despawn_entity_one_internal(
+                world, item.entity, item.root_link, mark_destroyed);
             continue;
         }
         if (!game3d_entity_tree_push(&stack, &count, &capacity, item.entity, item.root_link, 1)) {
@@ -4082,6 +4225,13 @@ static void game3d_world_despawn_entity_tree(rt_game3d_world *world,
     }
     free(stack);
     game3d_world_rebuild_name_index(world);
+}
+
+/// @brief Despawn an entity tree with an explicit heap stack, avoiding C-stack overflow.
+static void game3d_world_despawn_entity_tree(rt_game3d_world *world,
+                                             rt_game3d_entity *entity,
+                                             int detach_root) {
+    game3d_world_despawn_entity_tree_internal(world, entity, detach_root, 0);
 }
 
 /// @brief Spawn one entity in a tree walk; returns 1 when children should be visited,
@@ -4189,10 +4339,12 @@ int game3d_world_spawn_entity_tree(rt_game3d_world *world,
                                    int attach_to_scene,
                                    int64_t *next_id) {
     game3d_entity_tree_item *stack = NULL;
+    game3d_spawned_entity_list spawned_entities;
     int32_t count = 0;
     int32_t capacity = 0;
     if (!world || !entity)
         return 0;
+    memset(&spawned_entities, 0, sizeof(spawned_entities));
     if (!game3d_entity_tree_push(&stack, &count, &capacity, entity, attach_to_scene, 0)) {
         rt_trap("Game3D.World3D.spawn: traversal stack allocation failed");
         return 0;
@@ -4202,22 +4354,36 @@ int game3d_world_spawn_entity_tree(rt_game3d_world *world,
         int spawned = game3d_world_spawn_entity_one(world, item.entity, item.root_link, next_id);
         if (spawned < 0) {
             free(stack);
-            game3d_world_despawn_entity_tree(world, entity, attach_to_scene);
+            game3d_world_rollback_spawned_entities(
+                world, &spawned_entities, entity, attach_to_scene);
+            game3d_spawned_entity_list_free(&spawned_entities);
             return 0;
         }
         if (spawned == 0)
             continue;
+        if (!game3d_spawned_entity_list_push(&spawned_entities, item.entity)) {
+            game3d_world_despawn_entity_one(world, item.entity, item.root_link);
+            free(stack);
+            game3d_world_rollback_spawned_entities(
+                world, &spawned_entities, entity, attach_to_scene);
+            game3d_spawned_entity_list_free(&spawned_entities);
+            rt_trap("Game3D.World3D.spawn: rollback list allocation failed");
+            return 0;
+        }
         for (int32_t i = game3d_entity_child_count(item.entity) - 1; i >= 0; --i) {
             if (!game3d_entity_tree_push(
                     &stack, &count, &capacity, item.entity->children[i], 0, 0)) {
                 free(stack);
-                game3d_world_despawn_entity_tree(world, entity, attach_to_scene);
+                game3d_world_rollback_spawned_entities(
+                    world, &spawned_entities, entity, attach_to_scene);
+                game3d_spawned_entity_list_free(&spawned_entities);
                 rt_trap("Game3D.World3D.spawn: traversal stack allocation failed");
                 return 0;
             }
         }
     }
     free(stack);
+    game3d_spawned_entity_list_free(&spawned_entities);
     return 1;
 }
 
@@ -4230,9 +4396,8 @@ static void game3d_world_release_runtime(rt_game3d_world *world, int mark_entiti
     while (world->entity_count > 0) {
         rt_game3d_entity *entity = world->entities[world->entity_count - 1];
         if (entity) {
-            if (mark_entities_destroyed)
-                entity->destroyed = 1;
-            game3d_world_despawn_entity_tree(world, entity, 1);
+            game3d_world_despawn_entity_tree_internal(
+                world, entity, 1, mark_entities_destroyed);
         } else {
             world->entity_count--;
         }
@@ -4402,13 +4567,22 @@ static int game3d_json_vec3_or(void *map,
     return 1;
 }
 
-/// @brief Read a text file into a runtime string, returning NULL on failure instead of trapping.
-/// @details Used for optional manifest/sidecar files where a missing file is a normal, recoverable
-/// case.
+/// @brief Read optional manifest text through the asset manager or filesystem without trapping.
+/// @details Packed/embedded asset lookup is tried first so `asset://` stream manifests work. The
+///          byte cap is enforced for both sources; missing or oversized manifests return NULL.
 static rt_string game3d_read_text_file_no_trap(rt_string path) {
     const char *cpath = path ? rt_string_cstr(path) : NULL;
     if (!cpath || cpath[0] == '\0')
         return NULL;
+    size_t asset_size = 0;
+    uint8_t *asset_bytes = rt_asset_load_raw(path, &asset_size);
+    if (asset_bytes) {
+        rt_string result = NULL;
+        if ((uint64_t)asset_size <= RT_GAME3D_STREAM_MANIFEST_MAX_BYTES)
+            result = rt_string_from_bytes((const char *)asset_bytes, asset_size);
+        free(asset_bytes);
+        return result;
+    }
     FILE *file = fopen(cpath, "rb");
     if (!file)
         return NULL;
@@ -4417,7 +4591,8 @@ static rt_string game3d_read_text_file_no_trap(rt_string path) {
         return NULL;
     }
     long size = ftell(file);
-    if (size < 0 || size > 16 * 1024 * 1024 || fseek(file, 0, SEEK_SET) != 0) {
+    if (size < 0 || (uint64_t)size > RT_GAME3D_STREAM_MANIFEST_MAX_BYTES ||
+        fseek(file, 0, SEEK_SET) != 0) {
         fclose(file);
         return NULL;
     }
@@ -6350,6 +6525,8 @@ void *rt_game3d_world_stream_get_resident_terrain_tile(void *obj, int64_t index)
     int32_t tile_count = game3d_world_stream_safe_terrain_tile_count(stream);
     for (int32_t i = 0; i < tile_count; ++i) {
         rt_game3d_stream_terrain_tile *tile = &stream->terrain_tiles[i];
+        if (!tile || !tile->resident)
+            continue;
         void *terrain = game3d_stream_terrain_tile_terrain_ref(tile);
         if (!terrain)
             continue;
@@ -7725,21 +7902,57 @@ static void game3d_world_draw_debug_overlay(rt_game3d_world *world) {
     rt_canvas3d_end_overlay(world->canvas);
 }
 
-/// @brief Expand the camera far plane enough to cover the active stream terrain horizon.
+/// @brief Return true when two far-plane values are close enough to treat as unchanged.
+static int game3d_camera_far_almost_equal(double a, double b) {
+    double scale = fmax(fmax(fabs(a), fabs(b)), 1.0);
+    return isfinite(a) && isfinite(b) && fabs(a - b) <= scale * 1e-9;
+}
+
+/// @brief Restore a camera far plane previously overridden for stream terrain.
+/// @details If user code changed the far plane while the stream override was active, that value is
+///          treated as the new user-authored far plane rather than forcing an older snapshot back.
+static void game3d_world_restore_stream_camera_far(rt_game3d_world *world) {
+    double current_far;
+    double user_far;
+    if (!world || !world->camera || !world->stream_camera_far_active)
+        return;
+    current_far = rt_camera3d_get_far_plane(world->camera);
+    if (!game3d_camera_far_almost_equal(current_far, world->stream_camera_effective_far) &&
+        isfinite(current_far) && current_far > 0.0)
+        world->stream_camera_user_far = current_far;
+    user_far = world->stream_camera_user_far;
+    if (isfinite(user_far) && user_far > 0.0 &&
+        !game3d_camera_far_almost_equal(current_far, user_far))
+        rt_camera3d_set_far_plane(world->camera, user_far);
+    world->stream_camera_far_active = 0;
+    world->stream_camera_effective_far = 0.0;
+    world->stream_camera_user_far = 0.0;
+}
+
+/// @brief Sync the camera far plane to the active stream terrain horizon without one-way growth.
 /// @details Streamed terrain uses load/unload radii and tile radii to decide residency. If the
-///   camera far plane is shorter than that horizon, valid resident floor chunks can be clipped
-///   before either Terrain3D or Canvas3D culling gets a chance to keep them. This helper only
-///   raises the far plane; user-authored larger values are preserved.
+///          camera far plane is shorter than that horizon, valid resident floor chunks can be clipped
+///          before Terrain3D or Canvas3D culling can keep them. This helper remembers the user's far
+///          plane, applies `max(user_far, stream_horizon)`, and lowers/restores it when possible.
 static void game3d_world_sync_camera_far_for_stream(rt_game3d_world *world) {
     rt_game3d_world_stream *stream;
     double desired_far;
+    double current_far;
+    double user_far;
+    double effective_far;
     int32_t tile_count;
-    if (!world || !world->camera || !world->stream)
+    if (!world || !world->camera)
         return;
+    if (!world->stream) {
+        game3d_world_restore_stream_camera_far(world);
+        return;
+    }
     stream = (rt_game3d_world_stream *)rt_g3d_checked_or_null(
         world->stream, RT_G3D_GAME3D_WORLD_STREAM3D_CLASS_ID);
-    if (!stream || !stream->terrain_manifest_loaded)
+    if (!stream || !stream->terrain_manifest_loaded) {
+        game3d_world_restore_stream_camera_far(world);
         return;
+    }
     desired_far = game3d_clamp_coord_or(stream->load_radius, 0.0);
     tile_count = game3d_world_stream_safe_terrain_tile_count(stream);
     for (int32_t i = 0; i < tile_count; ++i) {
@@ -7750,12 +7963,31 @@ static void game3d_world_sync_camera_far_for_stream(rt_game3d_world *world) {
             desired_far = fmax(desired_far, stream->load_radius + tile->radius);
     }
     desired_far += 16.0;
-    if (!isfinite(desired_far) || desired_far <= 0.0)
+    if (!isfinite(desired_far) || desired_far <= 0.0) {
+        game3d_world_restore_stream_camera_far(world);
         return;
+    }
     if (desired_far > RT_GAME3D_COORD_ABS_MAX)
         desired_far = RT_GAME3D_COORD_ABS_MAX;
-    if (rt_camera3d_get_far_plane(world->camera) < desired_far)
-        rt_camera3d_set_far_plane(world->camera, desired_far);
+
+    current_far = rt_camera3d_get_far_plane(world->camera);
+    if (!world->stream_camera_far_active) {
+        world->stream_camera_user_far =
+            isfinite(current_far) && current_far > 0.0 ? current_far : RT_GAME3D_DEFAULT_FAR;
+    } else if (!game3d_camera_far_almost_equal(current_far, world->stream_camera_effective_far) &&
+               isfinite(current_far) && current_far > 0.0) {
+        world->stream_camera_user_far = current_far;
+    }
+    user_far = isfinite(world->stream_camera_user_far) && world->stream_camera_user_far > 0.0
+                   ? world->stream_camera_user_far
+                   : RT_GAME3D_DEFAULT_FAR;
+    effective_far = fmax(user_far, desired_far);
+    if (effective_far > RT_GAME3D_COORD_ABS_MAX)
+        effective_far = RT_GAME3D_COORD_ABS_MAX;
+    if (!game3d_camera_far_almost_equal(current_far, effective_far))
+        rt_camera3d_set_far_plane(world->camera, effective_far);
+    world->stream_camera_far_active = 1;
+    world->stream_camera_effective_far = effective_far;
 }
 
 /// @brief Shared begin-frame body: clear the back buffer to the world's clear color,

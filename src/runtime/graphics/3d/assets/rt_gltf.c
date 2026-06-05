@@ -7242,20 +7242,18 @@ static int gltf_preload_stage_bundle_json(rt_gltf_preload_bundle *bundle,
     return ok;
 }
 
-/// @brief Build an off-main-thread preload bundle by staging a glTF model's buffers, views,
-///        accessors, images, and meshes from its raw bytes.
+/// @brief Build an off-main-thread preload bundle from a C path and raw glTF/GLB bytes.
 /// @details Extracts the JSON, validates accessors, and stages all dependencies so the subsequent
 ///          rt_gltf_load_preloaded_bundle call can build runtime objects on the main thread with no
 ///          file I/O or re-parsing. Takes ownership of @p root_data. On failure writes @p error,
 ///          frees partial work, and returns NULL.
 /// @return A populated preload bundle (caller frees via rt_gltf_preload_bundle_free), or NULL.
-rt_gltf_preload_bundle *rt_gltf_preload_bundle_create(rt_string path,
-                                                      uint8_t *root_data,
-                                                      size_t root_size,
-                                                      int load_assets,
-                                                      char *error,
-                                                      size_t error_cap) {
-    const char *model_path = path ? rt_string_cstr(path) : NULL;
+rt_gltf_preload_bundle *rt_gltf_preload_bundle_create_cstr(const char *model_path,
+                                                           uint8_t *root_data,
+                                                           size_t root_size,
+                                                           int load_assets,
+                                                           char *error,
+                                                           size_t error_cap) {
     rt_gltf_preload_bundle *bundle;
     char *json = NULL;
     size_t json_len = 0;
@@ -7282,6 +7280,23 @@ rt_gltf_preload_bundle *rt_gltf_preload_bundle_create(rt_string path,
         }
     }
     return bundle;
+}
+
+/// @brief Build an off-main-thread preload bundle from a runtime string path.
+/// @details Thin compatibility wrapper around `rt_gltf_preload_bundle_create_cstr`; callers that run
+///          on worker threads should prefer the C-string variant with an already-snapshotted path.
+rt_gltf_preload_bundle *rt_gltf_preload_bundle_create(rt_string path,
+                                                      uint8_t *root_data,
+                                                      size_t root_size,
+                                                      int load_assets,
+                                                      char *error,
+                                                      size_t error_cap) {
+    return rt_gltf_preload_bundle_create_cstr(path ? rt_string_cstr(path) : NULL,
+                                              root_data,
+                                              root_size,
+                                              load_assets,
+                                              error,
+                                              error_cap);
 }
 
 /// @brief Synthesize a name for an embedded resource (e.g. `inline-image-3.png`).

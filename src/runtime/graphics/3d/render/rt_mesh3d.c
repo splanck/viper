@@ -107,6 +107,8 @@ static void mesh3d_bump_vertex_revision(rt_mesh3d *m, int invalidate_tangents) {
         m->tangents_ready = 0;
         m->tangent_revision = 0;
     }
+    m->validated_index_revision = 0;
+    m->validated_index_count = 0;
     m->positions64_rebase_revision = 0;
     m->positions64_rebase_needed = 0;
     m->morph_bound_deltas_source = NULL;
@@ -601,7 +603,9 @@ static void mesh_release_ref(void **slot) {
     *slot = NULL;
 }
 
-/// @brief Release a retained Skeleton3D slot only if it still points at Skeleton3D.
+/// @brief Release an owned Skeleton3D slot only when it still stores a Skeleton3D.
+/// @details Wrong-class private state is cleared without releasing the object because the mesh
+///          cannot prove the corrupted slot owns that unrelated handle.
 static void mesh_release_skeleton_slot(void **slot) {
     if (!slot || !*slot)
         return;
@@ -612,7 +616,8 @@ static void mesh_release_skeleton_slot(void **slot) {
     mesh_release_ref(slot);
 }
 
-/// @brief Release a retained MorphTarget3D slot only if it still points at MorphTarget3D.
+/// @brief Release an owned MorphTarget3D slot only when it still stores a MorphTarget3D.
+/// @details Wrong-class private state is cleared without releasing the unrelated object.
 static void mesh_release_morph_slot(void **slot) {
     if (!slot || !*slot)
         return;
@@ -1235,6 +1240,8 @@ void *rt_mesh3d_clone(void *obj) {
     dst->geometry_revision = src->geometry_revision;
     dst->tangent_revision = src->tangent_revision;
     dst->tangents_ready = src->tangents_ready;
+    dst->validated_index_revision = 0;
+    dst->validated_index_count = 0;
     dst->positions64_rebase_revision = src->positions64_rebase_revision;
     dst->positions64_rebase_needed = src->positions64_rebase_needed;
     dst->resident = src->resident ? 1 : 0;

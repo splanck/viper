@@ -10,6 +10,36 @@ static uintptr_t game3d_hash_body_ptr(const void *body) {
     return x ? x : (uintptr_t)1u;
 }
 
+/// @brief Return true when @p value is a positive power-of-two table capacity.
+static int game3d_index_capacity_is_power_of_two(int32_t value) {
+    return value > 0 && (value & (value - 1)) == 0;
+}
+
+/// @brief Drop body-index storage and reset its counters after invariant corruption.
+/// @details The index stores borrowed body/entity pointers only; the authoritative ownership lives
+///          in the world registry, so clearing the table does not release runtime objects.
+static void game3d_world_reset_body_index(rt_game3d_world *world) {
+    if (!world)
+        return;
+    free(world->body_index_entries);
+    world->body_index_entries = NULL;
+    world->body_index_count = 0;
+    world->body_index_capacity = 0;
+}
+
+/// @brief Return true when the body-index arrays and counters are safe to probe with a mask.
+static int game3d_world_body_index_usable(const rt_game3d_world *world) {
+    if (!world)
+        return 0;
+    if (world->body_index_count < 0 || world->body_index_capacity < 0 ||
+        world->body_index_count > world->body_index_capacity)
+        return 0;
+    if (world->body_index_capacity == 0)
+        return world->body_index_entries == NULL && world->body_index_count == 0;
+    return world->body_index_entries &&
+           game3d_index_capacity_is_power_of_two(world->body_index_capacity);
+}
+
 /// @brief Linear-probe the body→entity table for `body`, returning its slot — the existing entry
 ///   or the first empty one — and setting *`found_out` when an existing mapping was matched.
 /// @details Assumes a power-of-two `capacity` (mask = capacity - 1).
@@ -22,7 +52,7 @@ static int game3d_world_body_index_find_slot(const rt_game3d_body_index_entry *e
     uintptr_t slot;
     if (found_out)
         *found_out = 0;
-    if (!entries || capacity <= 0 || !body)
+    if (!entries || capacity <= 0 || !body || !game3d_index_capacity_is_power_of_two(capacity))
         return -1;
     slot = game3d_hash_body_ptr(body) & mask;
     for (int32_t probe = 0; probe < capacity; ++probe) {
@@ -66,6 +96,8 @@ static int game3d_world_grow_body_index(rt_game3d_world *world, int32_t need) {
     int32_t old_count;
     if (!world)
         return 0;
+    if (!game3d_world_body_index_usable(world))
+        game3d_world_reset_body_index(world);
     if (need < 0 || need > INT32_MAX / 2)
         return 0;
     if (world->body_index_capacity > 0 &&
@@ -102,11 +134,45 @@ static int game3d_world_grow_body_index(rt_game3d_world *world, int32_t need) {
     return 1;
 }
 
+/// @brief Rebuild the body→entity index from the world's authoritative entity registry.
+/// @details Used after capacity/counter corruption is detected, or when callers need to recover from
+///          a stale open-addressing table. The index remains borrowed metadata; no entity refs move.
+static int game3d_world_rebuild_body_index(rt_game3d_world *world) {
+    int32_t entity_count;
+    if (!world)
+        return 0;
+    game3d_world_reset_body_index(world);
+    entity_count = game3d_world_safe_entity_count(world);
+    for (int32_t i = 0; i < entity_count; ++i) {
+        rt_game3d_entity *entity = world->entities[i];
+        void *body = game3d_entity_body_ref(entity);
+        if (!entity || !entity->spawned || entity->world != world || !body)
+            continue;
+        if (!game3d_world_grow_body_index(world, world->body_index_count + 1) ||
+            !game3d_world_body_index_insert_no_grow(world, body, entity)) {
+            game3d_world_reset_body_index(world);
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/// @brief Ensure the body index is safe to probe, rebuilding it if invariant checks fail.
+static int game3d_world_body_index_ensure_usable(rt_game3d_world *world) {
+    if (!world)
+        return 0;
+    if (game3d_world_body_index_usable(world))
+        return 1;
+    return game3d_world_rebuild_body_index(world);
+}
+
 /// @brief Remove the entry for physics `body` from the open-addressed body→entity index.
 void game3d_world_body_index_remove(rt_game3d_world *world, void *body) {
     int found = 0;
     int slot;
     if (!world || !body || world->body_index_capacity <= 0)
+        return;
+    if (!game3d_world_body_index_ensure_usable(world))
         return;
     slot = game3d_world_body_index_find_slot(
         world->body_index_entries, world->body_index_capacity, body, &found);
@@ -133,6 +199,8 @@ int game3d_world_body_index_add(rt_game3d_world *world, rt_game3d_entity *entity
     void *body = game3d_entity_body_ref(entity);
     if (!world || !body)
         return 1;
+    if (!game3d_world_body_index_ensure_usable(world))
+        return 0;
     if (!game3d_world_grow_body_index(world, world->body_index_count + 1))
         return 0;
     return game3d_world_body_index_insert_no_grow(world, body, entity);
@@ -159,6 +227,19 @@ static int game3d_world_grow_name_index(rt_game3d_world *world, int32_t need) {
     int32_t new_cap = 16;
     if (!world)
         return 0;
+    if (world->name_index_capacity < 0 || world->name_index_count < 0 ||
+        world->name_index_count > world->name_index_capacity ||
+        (world->name_index_capacity > 0 &&
+         (!world->name_index_hashes || !world->name_index_entities ||
+          !game3d_index_capacity_is_power_of_two(world->name_index_capacity)))) {
+        free(world->name_index_hashes);
+        free(world->name_index_entities);
+        world->name_index_hashes = NULL;
+        world->name_index_entities = NULL;
+        world->name_index_count = 0;
+        world->name_index_capacity = 0;
+        world->name_index_valid = 0;
+    }
     if (need < 0 || need > INT32_MAX / 2)
         return 0;
     while (new_cap < need * 2) {
@@ -189,6 +270,16 @@ static int game3d_world_grow_name_index(rt_game3d_world *world, int32_t need) {
 static void game3d_world_clear_name_index(rt_game3d_world *world) {
     if (!world)
         return;
+    if (world->name_index_capacity < 0 ||
+        (world->name_index_capacity > 0 &&
+         (!world->name_index_hashes || !world->name_index_entities ||
+          !game3d_index_capacity_is_power_of_two(world->name_index_capacity)))) {
+        free(world->name_index_hashes);
+        free(world->name_index_entities);
+        world->name_index_hashes = NULL;
+        world->name_index_entities = NULL;
+        world->name_index_capacity = 0;
+    }
     if (world->name_index_capacity > 0 && world->name_index_hashes && world->name_index_entities) {
         memset(world->name_index_hashes,
                0,
@@ -207,7 +298,9 @@ static void game3d_world_name_index_insert(rt_game3d_world *world, rt_game3d_ent
     const char *name;
     uint64_t hash;
     int32_t mask;
-    if (!world || !entity || !entity->name || world->name_index_capacity <= 0)
+    if (!world || !entity || !entity->name || world->name_index_capacity <= 0 ||
+        !world->name_index_hashes || !world->name_index_entities ||
+        !game3d_index_capacity_is_power_of_two(world->name_index_capacity))
         return;
     name = rt_string_cstr(entity->name);
     if (!name || !*name)
@@ -261,7 +354,10 @@ int game3d_world_name_index_add_entity(rt_game3d_world *world, rt_game3d_entity 
     int32_t old_capacity;
     if (!world || !entity)
         return 1;
-    if (!world->name_index_valid) {
+    if (!world->name_index_valid ||
+        (world->name_index_capacity > 0 &&
+         (!world->name_index_hashes || !world->name_index_entities ||
+          !game3d_index_capacity_is_power_of_two(world->name_index_capacity)))) {
         game3d_world_rebuild_name_index(world);
         return world->name_index_valid ? 1 : 0;
     }
@@ -292,6 +388,13 @@ rt_game3d_entity *game3d_world_name_index_find(rt_game3d_world *world, const cha
     int32_t mask;
     if (!world || !world->name_index_valid || !name || !*name || world->name_index_capacity <= 0)
         return NULL;
+    if (!world->name_index_hashes || !world->name_index_entities ||
+        !game3d_index_capacity_is_power_of_two(world->name_index_capacity)) {
+        world->name_index_valid = 0;
+        game3d_world_rebuild_name_index(world);
+        if (!world->name_index_valid || world->name_index_capacity <= 0)
+            return NULL;
+    }
     hash = game3d_hash_name(name);
     mask = world->name_index_capacity - 1;
     for (int32_t probe = 0; probe < world->name_index_capacity; ++probe) {

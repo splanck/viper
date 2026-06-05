@@ -32,6 +32,7 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_object.h"
 #include "rt_pixels.h"
 #include "rt_pixels_internal.h"
 #include "rt_textureasset3d.h"
@@ -82,7 +83,9 @@ static void material_release_ref(void **slot) {
     *slot = NULL;
 }
 
-/// @brief Release a material texture slot only when it still points at a supported texture.
+/// @brief Release an owned material texture slot only when it still stores a supported texture.
+/// @details Wrong-class private state is treated as corruption. The slot is cleared without
+///          releasing the object because this material cannot prove it owns that unrelated handle.
 static void material_release_texture_slot(void **slot) {
     if (!slot || !*slot)
         return;
@@ -93,7 +96,8 @@ static void material_release_texture_slot(void **slot) {
     material_release_ref(slot);
 }
 
-/// @brief Release an environment-map slot only when it still points at a Cubemap3D.
+/// @brief Release an owned environment-map slot only when it still stores a CubeMap3D.
+/// @details Wrong-class private state is cleared without altering the unrelated object's refcount.
 static void material_release_env_map_slot(void **slot) {
     if (!slot || !*slot)
         return;

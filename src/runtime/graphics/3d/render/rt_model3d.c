@@ -195,7 +195,10 @@ static void model_release_ref(void **slot) {
     *slot = NULL;
 }
 
-/// @brief Release a retained Graphics3D slot only when it still has the expected class.
+/// @brief Release an owned Graphics3D slot only when it still has the expected class.
+/// @details Model3D assignment paths validate classes before retaining. If private state is later
+///          corrupted to an unrelated object, clear the slot without altering that object's
+///          refcount because ownership can no longer be proven.
 static void model_release_class_ref(void **slot, int64_t class_id) {
     if (!slot || !*slot)
         return;

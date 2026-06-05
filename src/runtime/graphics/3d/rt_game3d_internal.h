@@ -64,6 +64,9 @@
 #define RT_GAME3D_ANIM_SPEED_ABS_MAX 1000000.0     ///< Max animation playback speed multiplier.
 #define RT_GAME3D_EFFECT_STEP_MAX 10.0             ///< Max single EffectRegistry3D update step.
 #define RT_GAME3D_EFFECT_LIFETIME_MAX 86400.0      ///< Max effect auto-expire lifetime.
+#ifndef RT_GAME3D_MODEL_CACHE_KEY_MAX
+#define RT_GAME3D_MODEL_CACHE_KEY_MAX 4096 ///< Max bytes snapshotted for model cache/load paths.
+#endif
 
 /// @brief Internal effect-item discriminator stored in rt_game3d_effect_item.type.
 enum {
@@ -292,11 +295,15 @@ typedef struct rt_game3d_asset_handle {
     void *model_template;
 } rt_game3d_asset_handle;
 
-/// @brief Async asset-load worker job: the target AssetHandle3D, any preloaded glTF
-///   bundle, the cache generation it was scheduled against, upload-byte progress
-///   counters, and a fixed-size error buffer filled on worker-thread failure.
+/// @brief Async asset-load worker job: the target AssetHandle3D, snapshotted request
+///   metadata safe for worker-thread reads, any preloaded glTF bundle, the cache
+///   generation it was scheduled against, upload-byte progress counters, and a
+///   fixed-size error buffer filled on worker-thread failure.
 typedef struct rt_game3d_asset_async_job {
     rt_game3d_asset_handle *handle;
+    char path[RT_GAME3D_MODEL_CACHE_KEY_MAX];
+    int8_t asset_path;
+    int8_t template_request;
     rt_gltf_preload_bundle *preloaded_gltf;
     uint64_t cache_generation;
     uint64_t upload_total_bytes;
@@ -517,11 +524,14 @@ typedef struct rt_game3d_world {
     double clear_b;
     void *debug_axis_origin;
     double debug_axis_size;
+    double stream_camera_user_far;
+    double stream_camera_effective_far;
     int8_t debug_overlay_enabled;
     int8_t debug_axes_enabled;
     int8_t debug_physics_enabled;
     int8_t debug_camera_enabled;
     int8_t debug_caps_enabled;
+    int8_t stream_camera_far_active;
     int8_t destroyed;
     double fixed_interpolation_alpha;
 } rt_game3d_world;

@@ -44,6 +44,7 @@ typedef struct {
     uint32_t vertex_count;
     const uint32_t *indices;
     uint32_t index_count;
+    uint32_t validated_index_count; /* non-zero when Canvas3D has already range-validated indices */
     /* Stable identity for backend-side static geometry caches. NULL means the
      * geometry is transient and should use the streaming upload path. */
     const void *geometry_key;
@@ -137,6 +138,8 @@ static inline uint32_t vgfx3d_draw_cmd_validated_index_count(const vgfx3d_draw_c
         return 0;
     if ((cmd->index_count % 3u) != 0u)
         return 0;
+    if (cmd->validated_index_count == cmd->index_count)
+        return cmd->index_count;
     count = cmd->index_count;
     for (uint32_t i = 0; i < count; i++) {
         if (cmd->indices[i] >= cmd->vertex_count)
