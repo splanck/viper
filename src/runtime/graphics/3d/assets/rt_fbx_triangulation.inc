@@ -35,13 +35,14 @@ static int fbx_point_in_tri_2d(
 }
 
 /// @brief Triangulate an FBX polygon of `poly_count` vertices and emit the triangles
-///   into `mesh`. Returns 0 on a mesh build failure (or >32-gon), 1 otherwise.
+///   into `mesh`. Returns 0 on allocation or mesh build failure, 1 otherwise.
 /// @details Fast-paths triangles; for N-gons it derives a projection plane from the
 ///   Newell normal, then ear-clips in 2D (a poly_count² guard bounds the loop). On a
 ///   degenerate/zero-area polygon or stalled clip it falls back to a naive triangle fan.
 static int fbx_emit_polygon_triangles(void *mesh_obj, const int32_t *polygon, int32_t poly_count) {
     rt_mesh3d *mesh = (rt_mesh3d *)mesh_obj;
-    int32_t indices[32];
+    int32_t stack_indices[64];
+    int32_t *indices = stack_indices;
     double normal[3] = {0.0, 0.0, 0.0};
     double area = 0.0;
     int drop_axis = 2;
@@ -54,8 +55,13 @@ static int fbx_emit_polygon_triangles(void *mesh_obj, const int32_t *polygon, in
         rt_mesh3d_add_triangle(mesh_obj, polygon[0], polygon[1], polygon[2]);
         return mesh->build_failed ? 0 : 1;
     }
-    if (poly_count > 32)
-        return 0;
+    if ((size_t)poly_count > sizeof(stack_indices) / sizeof(stack_indices[0])) {
+        if ((size_t)poly_count > SIZE_MAX / sizeof(int32_t))
+            return 0;
+        indices = (int32_t *)malloc((size_t)poly_count * sizeof(int32_t));
+        if (!indices)
+            return 0;
+    }
     for (int32_t i = 0; i < poly_count; ++i) {
         const float *a = mesh->vertices[polygon[i]].pos;
         const float *b = mesh->vertices[polygon[(i + 1) % poly_count]].pos;
@@ -77,6 +83,8 @@ static int fbx_emit_polygon_triangles(void *mesh_obj, const int32_t *polygon, in
     if (!isfinite(area) || fabs(area) < 1e-12) {
         for (int32_t fi = 1; fi < poly_count - 1; ++fi)
             rt_mesh3d_add_triangle(mesh_obj, polygon[0], polygon[fi], polygon[fi + 1]);
+        if (indices != stack_indices)
+            free(indices);
         return mesh->build_failed ? 0 : 1;
     }
     ccw = area > 0.0;
@@ -112,8 +120,11 @@ static int fbx_emit_polygon_triangles(void *mesh_obj, const int32_t *polygon, in
             if (contains)
                 continue;
             rt_mesh3d_add_triangle(mesh_obj, ia, ib, ic);
-            if (mesh->build_failed)
+            if (mesh->build_failed) {
+                if (indices != stack_indices)
+                    free(indices);
                 return 0;
+            }
             for (int32_t j = i; j < remaining - 1; ++j)
                 indices[j] = indices[j + 1];
             remaining--;
@@ -129,5 +140,7 @@ static int fbx_emit_polygon_triangles(void *mesh_obj, const int32_t *polygon, in
         for (int32_t fi = 1; fi < poly_count - 1; ++fi)
             rt_mesh3d_add_triangle(mesh_obj, polygon[0], polygon[fi], polygon[fi + 1]);
     }
+    if (indices != stack_indices)
+        free(indices);
     return mesh->build_failed ? 0 : 1;
 }

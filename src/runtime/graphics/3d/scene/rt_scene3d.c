@@ -1133,6 +1133,8 @@ static void scene_node_sync_recursive(rt_scene_node3d *node, double dt) {
         void *animator =
             rt_g3d_checked_or_null(current->bound_animator, RT_G3D_ANIMCONTROLLER3D_CLASS_ID);
 
+        if (animator && current->bound_animator_scene_update)
+            rt_anim_controller3d_update(animator, dt);
         if (node_animator)
             node_animator_update((rt_node_animator3d *)node_animator, dt);
 

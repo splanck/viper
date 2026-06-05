@@ -43,6 +43,12 @@ void *rt_model3d_load_preloaded_gltf(rt_string path,
                                      uint8_t *preloaded_data,
                                      size_t preloaded_size,
                                      int load_assets);
+/// @brief Internal async path: build an FBX model from preloaded root bytes.
+/// @details Takes ownership of @p preloaded_data; callers must not reuse it.
+void *rt_model3d_load_preloaded_fbx(rt_string path,
+                                    uint8_t *preloaded_data,
+                                    size_t preloaded_size,
+                                    int load_assets);
 struct rt_gltf_preload_bundle;
 /// @brief Internal async path: load a glTF/GLB Model3D from staged root/dependency bytes.
 /// @details Takes ownership of @p bundle.
@@ -58,6 +64,10 @@ int64_t rt_model3d_get_material_count(void *obj);
 int64_t rt_model3d_get_skeleton_count(void *obj);
 /// @brief Number of animations contained in the model.
 int64_t rt_model3d_get_animation_count(void *obj);
+/// @brief Number of node/object/morph/camera animations contained in the model.
+/// @details NodeAnimation3D clips are imported from glTF node animation channels and are
+/// separate from skeletal Animation3D clips.
+int64_t rt_model3d_get_node_animation_count(void *obj);
 /// @brief Number of scene-graph nodes contained in the model.
 int64_t rt_model3d_get_node_count(void *obj);
 /// @brief Number of immutable scenes contained in the model.
@@ -73,6 +83,10 @@ void *rt_model3d_get_material(void *obj, int64_t index);
 void *rt_model3d_get_skeleton(void *obj, int64_t index);
 /// @brief Get the animation at @p index (NULL if out of range).
 void *rt_model3d_get_animation(void *obj, int64_t index);
+/// @brief Get the node animation at @p index (NULL if out of range).
+void *rt_model3d_get_node_animation(void *obj, int64_t index);
+/// @brief Get the node animation name at @p index (empty string if out of range).
+rt_string rt_model3d_get_node_animation_name(void *obj, int64_t index);
 /// @brief Get the imported camera at @p index in @p scene_index (NULL if out of range).
 void *rt_model3d_get_camera(void *obj, int64_t scene_index, int64_t index);
 /// @brief Get the immutable scene name at @p index (empty string if out of range).
@@ -86,6 +100,17 @@ void *rt_model3d_instantiate(void *obj);
 void *rt_model3d_instantiate_scene(void *obj);
 /// @brief Instantiate the immutable scene at @p index as a complete standalone Scene3D.
 void *rt_model3d_instantiate_scene_at(void *obj, int64_t index);
+/// @brief Load a model file and return a retained skeletal Animation3D clip by index.
+/// @details This is a convenience for external animation-file workflows. The temporary
+/// Model3D is released before returning, so the caller receives a standalone retained clip.
+void *rt_model3d_load_animation(rt_string path, int64_t index);
+/// @brief Load a packed model asset and return a retained skeletal Animation3D clip by index.
+void *rt_model3d_load_animation_asset(rt_string path, int64_t index);
+/// @brief Load a model file and return a retained NodeAnimation3D clip by index.
+/// @details Use this for glTF object, camera, and morph-weight animation clips.
+void *rt_model3d_load_node_animation(rt_string path, int64_t index);
+/// @brief Load a packed model asset and return a retained NodeAnimation3D clip by index.
+void *rt_model3d_load_node_animation_asset(rt_string path, int64_t index);
 
 #ifdef __cplusplus
 }

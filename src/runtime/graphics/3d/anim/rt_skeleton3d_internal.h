@@ -98,6 +98,7 @@ typedef struct rt_anim_player3d {
     float *motion_palette_snapshot;
     float *local_transforms;
     float *globals_buf;
+    int32_t pose_capacity;
     int64_t last_motion_frame;
     int8_t has_prev_motion_palette;
 } rt_anim_player3d;
@@ -126,6 +127,7 @@ typedef struct rt_anim_blend3d {
     float *local_transforms;
     float *temp_state_local;
     float *globals_buf;
+    int32_t pose_capacity;
     int64_t last_motion_frame;
     int8_t has_prev_motion_palette;
 } rt_anim_blend3d;

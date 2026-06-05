@@ -69,6 +69,7 @@ typedef struct {
 
 typedef struct {
     void *controller;
+    void *node_animator;
     rt_string events[64];
     int32_t event_count;
 } Game3DAnimatorTestLayout;
@@ -5251,6 +5252,44 @@ static bool test_phase5_animator3d_events_and_root_motion() {
     EXPECT_TRUE(rt_game3d_animator_get_controller(rt_game3d_entity_get_anim(entity2)) ==
                     controller3,
                 "raw controller attach creates an Animator3D wrapper");
+
+    void *node_entity = rt_game3d_entity_new();
+    void *node_clip = rt_node_animation3d_new(rt_const_cstr("nodeMove"), 1.0);
+    double node_times[2] = {0.0, 1.0};
+    float node_values[6] = {0.0f, 0.0f, 0.0f, 4.0f, 0.0f, 0.0f};
+    EXPECT_TRUE(rt_node_animation3d_add_channel(node_clip,
+                                                rt_const_cstr("game_node_anim_target"),
+                                                RT_NODE_ANIM_PATH_TRANSLATION,
+                                                RT_NODE_ANIM_INTERP_LINEAR,
+                                                2,
+                                                3,
+                                                node_times,
+                                                node_values) >= 0,
+                "NodeAnimation3D fixture accepts Game3D entity transform channels");
+    void *node_animator = rt_node_animator3d_new(node_clip);
+    rt_scene_node3d_set_name(rt_game3d_entity_get_node(node_entity),
+                             rt_const_cstr("game_node_anim_target"));
+    rt_game3d_entity_attach_animator(node_entity, node_animator);
+    void *wrapped_node_animator = rt_game3d_entity_get_anim(node_entity);
+    EXPECT_TRUE(wrapped_node_animator != nullptr,
+                "Entity3D.attachAnimator accepts raw NodeAnimator3D");
+    EXPECT_TRUE(rt_game3d_animator_get_controller(wrapped_node_animator) == nullptr,
+                "NodeAnimator-backed Animator3D does not expose a skeletal controller");
+    EXPECT_TRUE(rt_game3d_animator_get_node_animator(wrapped_node_animator) == node_animator,
+                "Animator3D.nodeAnimator exposes the wrapped NodeAnimator3D");
+    EXPECT_TRUE(rt_scene_node3d_get_node_animator(rt_game3d_entity_get_node(node_entity)) ==
+                    node_animator,
+                "Entity3D.attachAnimator binds raw NodeAnimator3D to the entity node");
+    EXPECT_TRUE(rt_game3d_animator_play(wrapped_node_animator, rt_const_cstr("nodeMove")) != 0,
+                "Animator3D.play starts a wrapped NodeAnimator3D clip");
+    rt_game3d_world_spawn(world, node_entity);
+    rt_game3d_world_step_simulation(world, 0.25);
+    pos = rt_game3d_entity_position(node_entity);
+    EXPECT_NEAR(rt_vec3_x(pos), 1.0, 0.05, "World3D scene sync advances NodeAnimator3D");
+    EXPECT_NEAR(rt_game3d_animator_state_time(wrapped_node_animator),
+                0.25,
+                0.05,
+                "Animator3D.stateTime reports wrapped NodeAnimator3D time");
 
     rt_game3d_world_destroy(world);
     PASS();

@@ -73,6 +73,14 @@ typedef struct rt_node_animator3d {
     double speed;
     int8_t playing;
     struct rt_scene_node3d *root;
+    struct rt_scene_node3d **cached_targets;
+    int32_t cached_target_capacity;
+    int32_t cached_clip_index;
+    struct rt_scene_node3d *cached_root;
+    float *sample_scratch;
+    int32_t sample_scratch_capacity;
+    struct rt_scene_node3d **traversal_stack;
+    size_t traversal_stack_capacity;
 } rt_node_animator3d;
 
 struct rt_scene3d;
@@ -169,6 +177,7 @@ typedef struct rt_scene_node3d {
     void *bound_body;
     void *bound_animator;
     void *bound_node_animator;
+    int8_t bound_animator_scene_update;
     int32_t sync_mode;
     int32_t import_index;
 
@@ -267,8 +276,6 @@ static inline int32_t scene3d_node_animator_clip_count(const rt_node_animator3d 
 extern "C" {
 #endif
 
-/// @brief Create a named node-animation clip of the given duration (seconds).
-void *rt_node_animation3d_new(rt_string name, double duration);
 /// @brief Add a keyframe channel targeting @p target_name's @p path property.
 /// @details @p interpolation selects step/linear; keys are @p key_count tuples
 ///          of @p value_width floats sampled at @p times. @return channel index.
@@ -297,8 +304,8 @@ void rt_node_animation3d_set_channel_target_node_index(void *obj,
                                                        int64_t node_index);
 /// @brief Build a node animator that blends/sequences the given clips.
 void *rt_node_animator3d_new_from_clips(void **clips, int64_t clip_count);
-/// @brief Attach a node animator to a scene node so it drives its transform.
-void rt_scene_node3d_bind_node_animator(void *obj, void *animator);
+/// @brief Enable/disable Scene3D.SyncBindings auto-update for the skeletal controller binding.
+void rt_scene_node3d_set_animator_scene_update(void *obj, int8_t enabled);
 /// @brief Attach a Light3D to a scene node.
 void rt_scene_node3d_set_light(void *obj, void *light);
 /// @brief Get the Light3D attached to a scene node (NULL if none).

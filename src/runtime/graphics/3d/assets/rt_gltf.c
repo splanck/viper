@@ -678,6 +678,19 @@ static int gltf_node_local_matrix(void *nodes_arr, int32_t node_idx, double *out
         if (rotation && jarr_len(rotation) > i)
             quat[i] = jvalue_num(rt_seq_get(rotation, i), quat[i]);
     }
+    for (int i = 0; i < 3; i++) {
+        if (!isfinite(pos[i]))
+            pos[i] = 0.0;
+        if (!isfinite(scale[i]))
+            scale[i] = 1.0;
+    }
+    if (!isfinite(quat[0]) || !isfinite(quat[1]) || !isfinite(quat[2]) ||
+        !isfinite(quat[3])) {
+        quat[0] = 0.0;
+        quat[1] = 0.0;
+        quat[2] = 0.0;
+        quat[3] = 1.0;
+    }
     gltf_build_trs_matrix(pos, quat, scale, out);
     return 1;
 }
@@ -6030,7 +6043,8 @@ static int gltf_preload_stage_morph_targets(rt_gltf_preload_bundle *bundle,
                                                          views,
                                                          view_count,
                                                          &pos_view) &&
-                      pos_view.comp_type == 5126 && pos_view.comp_count >= 3;
+                      gltf_accessor_has_payload(&pos_view) &&
+                      gltf_accessor_is_f32_components(&pos_view, 3, 3);
             has_norm = gltf_preload_resolve_accessor_view(accessors,
                                                           accessor_count,
                                                           norm_acc,
@@ -6039,7 +6053,8 @@ static int gltf_preload_stage_morph_targets(rt_gltf_preload_bundle *bundle,
                                                           views,
                                                           view_count,
                                                           &norm_view) &&
-                       norm_view.comp_type == 5126 && norm_view.comp_count >= 3;
+                       gltf_accessor_has_payload(&norm_view) &&
+                       gltf_accessor_is_f32_components(&norm_view, 3, 3);
             has_tangent = gltf_preload_resolve_accessor_view(accessors,
                                                              accessor_count,
                                                              tangent_acc,
@@ -6048,7 +6063,8 @@ static int gltf_preload_stage_morph_targets(rt_gltf_preload_bundle *bundle,
                                                              views,
                                                              view_count,
                                                              &tangent_view) &&
-                          tangent_view.comp_type == 5126 && tangent_view.comp_count >= 3;
+                          gltf_accessor_has_payload(&tangent_view) &&
+                          gltf_accessor_is_f32_components(&tangent_view, 3, 4);
             if (has_pos || has_norm || has_tangent) {
                 if (shape_count >= SIZE_MAX / sizeof(*shapes)) {
                     gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
@@ -6252,7 +6268,9 @@ static int gltf_preload_resolve_primitive_attribs(const char *json,
                                                       views,
                                                       view_count,
                                                       &out->uv0_view) &&
-                   out->uv0_view.comp_count >= 2 && out->uv0_view.count >= out->pos_view.count;
+                   gltf_accessor_has_payload(&out->uv0_view) &&
+                   gltf_accessor_is_texcoord(&out->uv0_view) &&
+                   out->uv0_view.count >= out->pos_view.count;
     out->has_uv1 = gltf_preload_resolve_accessor_view(accessors,
                                                       accessor_count,
                                                       uv1_acc,
@@ -6261,7 +6279,9 @@ static int gltf_preload_resolve_primitive_attribs(const char *json,
                                                       views,
                                                       view_count,
                                                       &out->uv1_view) &&
-                   out->uv1_view.comp_count >= 2 && out->uv1_view.count >= out->pos_view.count;
+                   gltf_accessor_has_payload(&out->uv1_view) &&
+                   gltf_accessor_is_texcoord(&out->uv1_view) &&
+                   out->uv1_view.count >= out->pos_view.count;
     out->has_colors = gltf_preload_resolve_accessor_view(accessors,
                                                          accessor_count,
                                                          color_acc,
@@ -6270,7 +6290,8 @@ static int gltf_preload_resolve_primitive_attribs(const char *json,
                                                          views,
                                                          view_count,
                                                          &out->color_view) &&
-                      out->color_view.comp_count >= 3 &&
+                      gltf_accessor_has_payload(&out->color_view) &&
+                      gltf_accessor_is_color(&out->color_view) &&
                       out->color_view.count >= out->pos_view.count;
     out->has_tangents = gltf_preload_resolve_accessor_view(accessors,
                                                            accessor_count,
@@ -6280,7 +6301,8 @@ static int gltf_preload_resolve_primitive_attribs(const char *json,
                                                            views,
                                                            view_count,
                                                            &out->tangent_view) &&
-                        out->tangent_view.comp_count >= 3 &&
+                        gltf_accessor_has_payload(&out->tangent_view) &&
+                        gltf_accessor_is_f32_components(&out->tangent_view, 4, 4) &&
                         out->tangent_view.count >= out->pos_view.count;
     out->has_joints = gltf_preload_resolve_accessor_view(accessors,
                                                          accessor_count,
@@ -6290,7 +6312,8 @@ static int gltf_preload_resolve_primitive_attribs(const char *json,
                                                          views,
                                                          view_count,
                                                          &out->joints_view) &&
-                      out->joints_view.comp_count >= 4 &&
+                      gltf_accessor_has_payload(&out->joints_view) &&
+                      gltf_accessor_is_joints(&out->joints_view) &&
                       out->joints_view.count >= out->pos_view.count;
     out->has_weights = gltf_preload_resolve_accessor_view(accessors,
                                                           accessor_count,
@@ -6300,7 +6323,8 @@ static int gltf_preload_resolve_primitive_attribs(const char *json,
                                                           views,
                                                           view_count,
                                                           &out->weights_view) &&
-                       out->weights_view.comp_count >= 4 &&
+                       gltf_accessor_has_payload(&out->weights_view) &&
+                       gltf_accessor_is_weights(&out->weights_view) &&
                        out->weights_view.count >= out->pos_view.count;
     out->has_joints1 = gltf_preload_resolve_accessor_view(accessors,
                                                           accessor_count,
@@ -6310,7 +6334,8 @@ static int gltf_preload_resolve_primitive_attribs(const char *json,
                                                           views,
                                                           view_count,
                                                           &out->joints1_view) &&
-                       out->joints1_view.comp_count >= 4 &&
+                       gltf_accessor_has_payload(&out->joints1_view) &&
+                       gltf_accessor_is_joints(&out->joints1_view) &&
                        out->joints1_view.count >= out->pos_view.count;
     out->has_weights1 = gltf_preload_resolve_accessor_view(accessors,
                                                            accessor_count,
@@ -6320,10 +6345,13 @@ static int gltf_preload_resolve_primitive_attribs(const char *json,
                                                            views,
                                                            view_count,
                                                            &out->weights1_view) &&
-                        out->weights1_view.comp_count >= 4 &&
+                        gltf_accessor_has_payload(&out->weights1_view) &&
+                        gltf_accessor_is_weights(&out->weights1_view) &&
                         out->weights1_view.count >= out->pos_view.count;
-    out->has_skinning_attrs =
-        out->has_joints || out->has_weights || out->has_joints1 || out->has_weights1;
+    if ((out->has_joints != out->has_weights) || (out->has_joints1 != out->has_weights1))
+        return 0;
+    out->has_skinning_attrs = (out->has_joints && out->has_weights) ||
+                              (out->has_joints1 && out->has_weights1);
     out->has_indices = gltf_preload_resolve_accessor_view(accessors,
                                                           accessor_count,
                                                           idx_acc,
@@ -7696,6 +7724,10 @@ static void gltf_parse_skins(rt_gltf_asset *asset,
                                                 node_count,
                                                 &skins[si]);
         if (skin_result < 0) {
+            gltf_parse_skins_fail(asset, skins, skin_count, node_parents, hard_error);
+            return;
+        }
+        if (skin_result == 0) {
             gltf_parse_skins_fail(asset, skins, skin_count, node_parents, hard_error);
             return;
         }

@@ -4297,6 +4297,131 @@ void *rt_scene_node3d_get_animator(void *n) {
     return NULL;
 }
 
+/// @brief Stub for `SceneNode3D.BindNodeAnimator` — attach a NodeAnimator3D to drive
+///        scene-node TRS or morph weights.
+void rt_scene_node3d_bind_node_animator(void *n, void *a) {
+    (void)n;
+    (void)a;
+}
+
+/// @brief Stub for `SceneNode3D.ClearNodeAnimatorBinding` — detach any bound node animator.
+void rt_scene_node3d_clear_node_animator_binding(void *n) {
+    (void)n;
+}
+
+/// @brief Stub for `SceneNode3D.NodeAnimator` — get the bound NodeAnimator3D, or NULL.
+void *rt_scene_node3d_get_node_animator(void *n) {
+    (void)n;
+    return NULL;
+}
+
+/// @brief Stub for `NodeAnimation3D.New`; graphics support is unavailable.
+void *rt_node_animation3d_new(rt_string name, double duration) {
+    (void)name;
+    (void)duration;
+    rt_graphics_unavailable_("NodeAnimation3D.New: graphics support not compiled in");
+    return NULL;
+}
+
+/// @brief Stub for `NodeAnimation3D.Name`.
+rt_string rt_node_animation3d_get_name(void *animation) {
+    (void)animation;
+    return rt_const_cstr("");
+}
+
+/// @brief Stub for `NodeAnimation3D.Duration`.
+double rt_node_animation3d_get_duration(void *animation) {
+    (void)animation;
+    return 0.0;
+}
+
+/// @brief Stub for `NodeAnimation3D.ChannelCount`.
+int64_t rt_node_animation3d_get_channel_count(void *animation) {
+    (void)animation;
+    return 0;
+}
+
+/// @brief Stub for `NodeAnimator3D.New`; graphics support is unavailable.
+void *rt_node_animator3d_new(void *clip) {
+    (void)clip;
+    rt_graphics_unavailable_("NodeAnimator3D.New: graphics support not compiled in");
+    return NULL;
+}
+
+/// @brief Stub for `NodeAnimator3D.ClipCount`.
+int64_t rt_node_animator3d_get_clip_count(void *animator) {
+    (void)animator;
+    return 0;
+}
+
+/// @brief Stub for `NodeAnimator3D.GetClip`.
+void *rt_node_animator3d_get_clip(void *animator, int64_t index) {
+    (void)animator;
+    (void)index;
+    return NULL;
+}
+
+/// @brief Stub for `NodeAnimator3D.GetClipName`.
+rt_string rt_node_animator3d_get_clip_name(void *animator, int64_t index) {
+    (void)animator;
+    (void)index;
+    return rt_const_cstr("");
+}
+
+/// @brief Stub for `NodeAnimator3D.CurrentClip`.
+rt_string rt_node_animator3d_get_current_clip(void *animator) {
+    (void)animator;
+    return rt_const_cstr("");
+}
+
+/// @brief Stub for `NodeAnimator3D.Playing`.
+int8_t rt_node_animator3d_get_playing(void *animator) {
+    (void)animator;
+    return 0;
+}
+
+/// @brief Stub for `NodeAnimator3D.Speed`.
+double rt_node_animator3d_get_speed(void *animator) {
+    (void)animator;
+    return 0.0;
+}
+
+/// @brief Stub for `NodeAnimator3D.Time`.
+double rt_node_animator3d_get_time(void *animator) {
+    (void)animator;
+    return 0.0;
+}
+
+/// @brief Stub for `NodeAnimator3D.Play`.
+int8_t rt_node_animator3d_play(void *animator, rt_string name) {
+    (void)animator;
+    (void)name;
+    return 0;
+}
+
+/// @brief Stub for `NodeAnimator3D.Stop`.
+void rt_node_animator3d_stop(void *animator) {
+    (void)animator;
+}
+
+/// @brief Stub for `NodeAnimator3D.SetSpeed`.
+void rt_node_animator3d_set_speed(void *animator, double speed) {
+    (void)animator;
+    (void)speed;
+}
+
+/// @brief Stub for `NodeAnimator3D.SetTime`.
+void rt_node_animator3d_set_time(void *animator, double time) {
+    (void)animator;
+    (void)time;
+}
+
+/// @brief Stub for `NodeAnimator3D.Update`.
+void rt_node_animator3d_update(void *animator, double dt) {
+    (void)animator;
+    (void)dt;
+}
+
 /// @brief Stub for `SceneNode3D.AddChild` — would normally append `c` as
 ///        the last child of `n`, taking ownership of the reference.
 ///
@@ -5583,6 +5708,12 @@ int64_t rt_model3d_get_animation_count(void *m) {
     return 0;
 }
 
+/// @brief Stub for `Model3D.NodeAnimationCount`.
+int64_t rt_model3d_get_node_animation_count(void *m) {
+    (void)m;
+    return 0;
+}
+
 /// @brief Stub for `Model3D.NodeCount` — total node count across the
 ///        model's scene tree.
 ///
@@ -5650,6 +5781,52 @@ void *rt_model3d_get_skeleton(void *m, int64_t i) {
 void *rt_model3d_get_animation(void *m, int64_t i) {
     (void)m;
     (void)i;
+    return NULL;
+}
+
+/// @brief Stub for `Model3D.GetNodeAnimation`.
+void *rt_model3d_get_node_animation(void *m, int64_t i) {
+    (void)m;
+    (void)i;
+    return NULL;
+}
+
+/// @brief Stub for `Model3D.GetNodeAnimationName`.
+rt_string rt_model3d_get_node_animation_name(void *m, int64_t i) {
+    (void)m;
+    (void)i;
+    return rt_const_cstr("");
+}
+
+/// @brief Stub for `Model3D.LoadAnimation`.
+void *rt_model3d_load_animation(rt_string path, int64_t index) {
+    (void)path;
+    (void)index;
+    rt_graphics_unavailable_("Model3D.LoadAnimation: graphics support not compiled in");
+    return NULL;
+}
+
+/// @brief Stub for `Model3D.LoadAnimationAsset`.
+void *rt_model3d_load_animation_asset(rt_string path, int64_t index) {
+    (void)path;
+    (void)index;
+    rt_graphics_unavailable_("Model3D.LoadAnimationAsset: graphics support not compiled in");
+    return NULL;
+}
+
+/// @brief Stub for `Model3D.LoadNodeAnimation`.
+void *rt_model3d_load_node_animation(rt_string path, int64_t index) {
+    (void)path;
+    (void)index;
+    rt_graphics_unavailable_("Model3D.LoadNodeAnimation: graphics support not compiled in");
+    return NULL;
+}
+
+/// @brief Stub for `Model3D.LoadNodeAnimationAsset`.
+void *rt_model3d_load_node_animation_asset(rt_string path, int64_t index) {
+    (void)path;
+    (void)index;
+    rt_graphics_unavailable_("Model3D.LoadNodeAnimationAsset: graphics support not compiled in");
     return NULL;
 }
 

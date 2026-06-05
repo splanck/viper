@@ -65,6 +65,8 @@ typedef struct {
     float *packed_pos_deltas;
     float *packed_nrm_deltas;
     uint64_t payload_generation;
+    uint64_t max_delta_generation;
+    double max_position_delta_cache;
     int32_t shape_count;
     int32_t shape_capacity;
     int32_t vertex_count;
@@ -763,6 +765,9 @@ double rt_morphtarget3d_get_max_position_delta(void *obj) {
     double max_len = 0.0;
     if (!mt || mt->vertex_count <= 0)
         return 0.0;
+    if (mt->max_delta_generation == mt->payload_generation &&
+        isfinite(mt->max_position_delta_cache) && mt->max_position_delta_cache >= 0.0)
+        return mt->max_position_delta_cache;
     for (int32_t s = 0, count = morphtarget_safe_shape_count(mt); s < count; s++) {
         const float *deltas = mt->shapes[s].pos_deltas;
         if (!deltas)
@@ -774,6 +779,8 @@ double rt_morphtarget3d_get_max_position_delta(void *obj) {
                 max_len = len;
         }
     }
+    mt->max_position_delta_cache = max_len;
+    mt->max_delta_generation = mt->payload_generation;
     return max_len;
 }
 

@@ -790,10 +790,21 @@ void rt_scene_node3d_bind_animator(void *obj, void *controller) {
     scene_node_repair_class_slot(&node->bound_animator, RT_G3D_ANIMCONTROLLER3D_CLASS_ID);
     if (controller && !rt_g3d_has_class(controller, RT_G3D_ANIMCONTROLLER3D_CLASS_ID))
         return;
-    if (node->bound_animator == controller)
+    if (node->bound_animator == controller) {
+        node->bound_animator_scene_update = 0;
         return;
+    }
     scene_node_assign_class_ref(
         &node->bound_animator, controller, RT_G3D_ANIMCONTROLLER3D_CLASS_ID);
+    node->bound_animator_scene_update = 0;
+}
+
+/// @brief Control whether Scene3D.SyncBindings advances this node's skeletal controller.
+void rt_scene_node3d_set_animator_scene_update(void *obj, int8_t enabled) {
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    if (!node)
+        return;
+    node->bound_animator_scene_update = enabled ? 1 : 0;
 }
 
 /// @brief Bind a NodeAnimator3D to this scene node so its clip channels are applied
@@ -840,6 +851,19 @@ void rt_scene_node3d_bind_node_animator(void *obj, void *animator) {
         node_animator->root = node;
 }
 
+/// @brief Detach only the bound NodeAnimator3D from this scene node.
+void rt_scene_node3d_clear_node_animator_binding(void *obj) {
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    rt_node_animator3d *node_animator;
+    if (!node)
+        return;
+    scene_node_repair_class_slot(&node->bound_node_animator, RT_G3D_NODEANIMATOR3D_CLASS_ID);
+    node_animator = scene_node_animator_ref(node->bound_node_animator);
+    if (node_animator)
+        node_animator->root = NULL;
+    scene_node_release_class_slot(&node->bound_node_animator, RT_G3D_NODEANIMATOR3D_CLASS_ID);
+}
+
 /// @brief Detach any bound skeletal or node animator. Subsequent frames stop applying motion.
 void rt_scene_node3d_clear_animator_binding(void *obj) {
     rt_scene_node3d *node = scene_node3d_checked(obj);
@@ -847,6 +871,7 @@ void rt_scene_node3d_clear_animator_binding(void *obj) {
     if (!node)
         return;
     scene_node_release_class_slot(&node->bound_animator, RT_G3D_ANIMCONTROLLER3D_CLASS_ID);
+    node->bound_animator_scene_update = 0;
     scene_node_repair_class_slot(&node->bound_node_animator, RT_G3D_NODEANIMATOR3D_CLASS_ID);
     node_animator = scene_node_animator_ref(node->bound_node_animator);
     if (node_animator)
@@ -858,6 +883,14 @@ void rt_scene_node3d_clear_animator_binding(void *obj) {
 void *rt_scene_node3d_get_animator(void *obj) {
     rt_scene_node3d *node = scene_node3d_checked(obj);
     return node ? rt_g3d_checked_or_null(node->bound_animator, RT_G3D_ANIMCONTROLLER3D_CLASS_ID)
+                : NULL;
+}
+
+/// @brief Currently bound node animator handle (NULL if none).
+void *rt_scene_node3d_get_node_animator(void *obj) {
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    return node ? rt_g3d_checked_or_null(node->bound_node_animator,
+                                         RT_G3D_NODEANIMATOR3D_CLASS_ID)
                 : NULL;
 }
 

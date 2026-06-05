@@ -560,6 +560,21 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_METHOD(\"setIKSolver\""),
                  "Animator3D.setIKSolver method missing") &&
          ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Animator3D.get_nodeAnimator\""),
+                 "Animator3D.nodeAnimator getter must use Game3D lower/camel naming") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"nodeAnimator\""),
+                 "Animator3D.nodeAnimator property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadAnimation\""),
+                 "Assets3D.LoadAnimation must expose skeletal animation loading") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadNodeAnimation\""),
+                 "Assets3D.LoadNodeAnimation must expose node animation loading") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"LoadNodeAnimation\""),
+                 "Assets3D.LoadNodeAnimation method missing") &&
+         ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Mesh3D.get_Resident\""),
                  "Mesh3D.Resident getter must use Graphics3D PascalCase naming") &&
          ok;
@@ -608,6 +623,15 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Model3D.InstantiateSceneAt\""),
                  "Model3D.InstantiateSceneAt must use Graphics3D PascalCase naming") &&
          ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Model3D.get_NodeAnimationCount\""),
+                 "Model3D.NodeAnimationCount getter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Model3D.GetNodeAnimation\""),
+                 "Model3D.GetNodeAnimation must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Model3D.LoadNodeAnimation\""),
+                 "Model3D.LoadNodeAnimation must use Graphics3D PascalCase naming") &&
+         ok;
     ok = require(contains(runtime_def, "RT_PROP(\"SceneCount\""),
                  "Model3D.SceneCount property missing") &&
          ok;
@@ -622,6 +646,39 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"InstantiateSceneAt\""),
                  "Model3D.InstantiateSceneAt method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"NodeAnimationCount\""),
+                 "Model3D.NodeAnimationCount property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"GetNodeAnimation\""),
+                 "Model3D.GetNodeAnimation method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"LoadNodeAnimation\""),
+                 "Model3D.LoadNodeAnimation method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode3D.BindNodeAnimator\""),
+                 "SceneNode3D.BindNodeAnimator must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode3D.get_NodeAnimator\""),
+                 "SceneNode3D.NodeAnimator getter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"NodeAnimator\""),
+                 "SceneNode3D.NodeAnimator property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"BindNodeAnimator\""),
+                 "SceneNode3D.BindNodeAnimator method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Viper.Graphics3D.NodeAnimation3D\""),
+                 "NodeAnimation3D class missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Viper.Graphics3D.NodeAnimator3D\""),
+                 "NodeAnimator3D class missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NodeAnimator3D.Play\""),
+                 "NodeAnimator3D.Play must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"ClipCount\""),
+                 "NodeAnimator3D.ClipCount property missing") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.TextureAsset3D.LoadKTX2\""),
                  "TextureAsset3D.LoadKTX2 must use Graphics3D PascalCase naming") &&

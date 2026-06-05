@@ -4391,7 +4391,11 @@ static int metal_readback_rgba(
         readback_kind = vgfx3d_metal_choose_readback_kind(
             (ctx.gpuPostfxEnabled && ctx.gpuPostfxChainValid) ? 1 : 0);
         if (!ctx.rttActive && ctx.cmdBuf) {
-            if (readback_kind == VGFX3D_METAL_READBACK_POSTFX_COMPOSITE) {
+            if (ctx.postfxCompositedToDrawable) {
+                if (!metal_capture_current_drawable_to_display_texture(ctx))
+                    return 0;
+                ctx.postfxCompositedToDrawable = 0;
+            } else if (readback_kind == VGFX3D_METAL_READBACK_POSTFX_COMPOSITE) {
                 if (ctx.gpuPostfxChainValid) {
                     vgfx3d_postfx_chain_t stored_chain = ctx.gpuPostfxChain;
                     if (vgfx3d_postfx_chain_copy(&chain_copy, &stored_chain))

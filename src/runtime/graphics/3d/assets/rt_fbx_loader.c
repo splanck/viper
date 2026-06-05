@@ -63,6 +63,16 @@
 
 #define RT_FBX_MAX_FILE_BYTES (1024ull * 1024ull * 1024ull)
 
+#if defined(_MSC_VER)
+#define RT_FBX_THREAD_LOCAL __declspec(thread)
+#else
+#define RT_FBX_THREAD_LOCAL _Thread_local
+#endif
+
+/// @brief Thread-local original path used when a temp FBX file should resolve external textures
+/// beside the source asset rather than beside the temp spill file.
+static RT_FBX_THREAD_LOCAL rt_string g_fbx_texture_base_override = NULL;
+
 /*==========================================================================
  * FBX asset container
  *=========================================================================*/
@@ -426,35 +436,66 @@ static int fbx_normalize_relative_texture_ref(const char *src, char *out, size_t
     return wrote_segment;
 }
 
-/// @brief Try a safe relative texture reference, then fall back to its basename beside the FBX
-/// file.
+/// @brief Return non-zero for URI-style paths such as file:/, http:, or data:.
+/// @details A Windows drive prefix (`C:`) is not a URI scheme and is handled as an absolute path.
+static int fbx_has_uri_scheme(const char *path) {
+    const char *p;
+    if (!path || !*path)
+        return 0;
+    for (p = path; *p; ++p) {
+        if (*p == '/' || *p == '\\')
+            return 0;
+        if (*p == ':') {
+            if (p == path + 1 && isalpha((unsigned char)path[0]))
+                return 0;
+            return p > path;
+        }
+    }
+    return 0;
+}
+
+/// @brief Try a local texture reference, then fall back to its basename beside the FBX file.
 static void *fbx_try_load_texture_path(const char *fbx_path, const char *texture_ref) {
+    char raw_ref[1024];
     char normalized_ref[1024];
     char dir[1024];
     char candidate[1024];
     const char *basename;
-    void *pixels;
+    void *pixels = NULL;
+    int have_relative;
 
     if (!texture_ref || !*texture_ref)
         return NULL;
+    if (strlen(texture_ref) >= sizeof(raw_ref))
+        return NULL;
 
-    if (!fbx_normalize_relative_texture_ref(texture_ref, normalized_ref, sizeof(normalized_ref)))
+    fbx_normalize_path(raw_ref, sizeof(raw_ref), texture_ref);
+    if (!*raw_ref || fbx_has_uri_scheme(raw_ref))
         return NULL;
 
     fbx_parent_dir(dir, sizeof(dir), fbx_path);
-    if (*dir) {
-        fbx_join_path(candidate, sizeof(candidate), dir, normalized_ref);
-        pixels = rt_pixels_load(rt_const_cstr(candidate));
-    } else {
-        pixels = rt_pixels_load(rt_const_cstr(normalized_ref));
+    if (fbx_is_absolute_path(raw_ref)) {
+        pixels = rt_pixels_load(rt_const_cstr(raw_ref));
+        if (pixels)
+            return pixels;
     }
-    if (pixels)
-        return pixels;
 
-    basename = fbx_path_basename(normalized_ref);
+    have_relative = fbx_normalize_relative_texture_ref(raw_ref, normalized_ref, sizeof(normalized_ref));
+    if (have_relative) {
+        if (*dir) {
+            fbx_join_path(candidate, sizeof(candidate), dir, normalized_ref);
+            pixels = rt_pixels_load(rt_const_cstr(candidate));
+        } else {
+            pixels = rt_pixels_load(rt_const_cstr(normalized_ref));
+        }
+        if (pixels)
+            return pixels;
+    }
+
+    basename = fbx_path_basename(raw_ref);
     if (!basename || !*basename)
         return NULL;
-    if (strcmp(basename, normalized_ref) == 0 && !*dir)
+    if (have_relative && strcmp(basename, normalized_ref) == 0 && !*dir)
         return NULL;
 
     if (*dir)
@@ -480,6 +521,38 @@ static int fbx_ascii_ends_with_i(const char *text, const char *suffix) {
             return 0;
     }
     return 1;
+}
+
+/// @brief Case-insensitive ASCII substring search.
+static int fbx_ascii_contains_i(const char *text, const char *needle) {
+    size_t needle_len;
+    if (!text || !needle)
+        return 0;
+    needle_len = strlen(needle);
+    if (needle_len == 0)
+        return 1;
+    for (const char *p = text; *p; ++p) {
+        size_t i = 0;
+        while (i < needle_len && p[i] &&
+               tolower((unsigned char)p[i]) == tolower((unsigned char)needle[i]))
+            i++;
+        if (i == needle_len)
+            return 1;
+    }
+    return 0;
+}
+
+/// @brief Case-insensitive ASCII string equality (NULL operands compare unequal).
+static int fbx_ascii_equals_i(const char *a, const char *b) {
+    if (!a || !b)
+        return 0;
+    while (*a && *b) {
+        unsigned char ca = (unsigned char)*a++;
+        unsigned char cb = (unsigned char)*b++;
+        if (tolower(ca) != tolower(cb))
+            return 0;
+    }
+    return *a == '\0' && *b == '\0';
 }
 
 /// @brief Build a Pixels object from a width×height RGBA32 buffer (copied), with
@@ -654,7 +727,6 @@ static void fbx_skip(fbx_reader_t *r, size_t n) {
  *=========================================================================*/
 
 #define FBX_MAX_CHILDREN 256
-#define FBX_MAX_PROPS 32
 #define FBX_MAX_COMPRESSED_ARRAY_BYTES (256u * 1024u * 1024u)
 
 typedef struct {
@@ -695,9 +767,23 @@ typedef struct fbx_node {
     int32_t child_capacity;
 } fbx_node_t;
 
+static fbx_node_t *fbx_find_object_by_id(fbx_node_t *objects, int64_t id);
+
 /*==========================================================================
  * Array decompression (zlib → raw DEFLATE → rt_compress_inflate)
  *=========================================================================*/
+
+static uint32_t fbx_adler32(const uint8_t *data, size_t len) {
+    uint32_t a = 1u;
+    uint32_t b = 0u;
+    for (size_t i = 0; i < len; ++i) {
+        a += data ? data[i] : 0u;
+        a %= 65521u;
+        b += a;
+        b %= 65521u;
+    }
+    return (b << 16) | a;
+}
 
 /// @brief Inflate a zlib-wrapped FBX array property to raw bytes.
 ///
@@ -714,7 +800,15 @@ static void *fbx_decompress_array(const uint8_t *data,
         return NULL;
     if (comp_len > FBX_MAX_COMPRESSED_ARRAY_BYTES)
         return NULL;
+    if ((data[0] & 0x0fu) != 8u || (data[0] >> 4) > 7u ||
+        ((((uint32_t)data[0] << 8) | (uint32_t)data[1]) % 31u) != 0u ||
+        (data[1] & 0x20u) != 0u)
+        return NULL;
     uint32_t deflate_len = comp_len - 6; /* strip 2-byte header + 4-byte adler32 */
+    uint32_t expected_adler = ((uint32_t)data[comp_len - 4] << 24) |
+                              ((uint32_t)data[comp_len - 3] << 16) |
+                              ((uint32_t)data[comp_len - 2] << 8) |
+                              (uint32_t)data[comp_len - 1];
 
     void *comp_bytes = rt_bytes_new((int64_t)deflate_len);
     if (!comp_bytes)
@@ -742,14 +836,24 @@ static void *fbx_decompress_array(const uint8_t *data,
         return NULL; /* overflow guard for 32-bit platforms */
     }
     size_t expected = (size_t)count * elem_size;
-    if ((size_t)iv->len < expected) {
+    if ((size_t)iv->len != expected) {
+        if (rt_obj_release_check0(inflated))
+            rt_obj_free(inflated);
+        return NULL;
+    }
+    if (fbx_adler32(iv->bdata, expected) != expected_adler) {
         if (rt_obj_release_check0(inflated))
             rt_obj_free(inflated);
         return NULL;
     }
 
-    void *result = malloc(expected);
-    if (result)
+    void *result = expected > 0 ? malloc(expected) : NULL;
+    if (expected > 0 && !result) {
+        if (rt_obj_release_check0(inflated))
+            rt_obj_free(inflated);
+        return NULL;
+    }
+    if (expected > 0)
         memcpy(result, iv->bdata, expected);
     if (rt_obj_release_check0(inflated))
         rt_obj_free(inflated);
@@ -856,17 +960,19 @@ static int fbx_parse_property(fbx_reader_t *r, fbx_prop_t *prop) {
                     fbx_decompress_array(r->data + r->pos, comp_len, count, elem_size);
                 if (count > 0 && !prop->v.array.data)
                     return -1;
-            } else {
+            } else if (encoding == 0) {
                 if (elem_size > 0 && count > SIZE_MAX / elem_size)
                     return -1; /* overflow guard for 32-bit platforms */
                 size_t expected = (size_t)count * elem_size;
-                if (comp_len < expected)
+                if (comp_len != expected)
                     return -1;
                 prop->v.array.data = malloc(expected);
                 if (expected > 0 && !prop->v.array.data)
                     return -1;
                 if (expected > 0)
                     memcpy(prop->v.array.data, r->data + r->pos, expected);
+            } else {
+                return -1;
             }
             fbx_skip(r, comp_len);
             break;
@@ -923,13 +1029,14 @@ static void fbx_free_node(fbx_node_t *n) {
 static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node) {
     uint8_t encoded_name_len;
     uint8_t copy_name_len;
+    uint64_t props_start;
+    uint64_t props_end;
 
     memset(node, 0, sizeof(fbx_node_t));
 
     uint64_t end_offset = r->is_64bit ? fbx_u64(r) : fbx_u32(r);
     uint64_t num_props = r->is_64bit ? fbx_u64(r) : fbx_u32(r);
     uint64_t prop_list_len = r->is_64bit ? fbx_u64(r) : fbx_u32(r);
-    (void)prop_list_len;
 
     encoded_name_len = fbx_u8(r);
     if (r->error)
@@ -940,8 +1047,6 @@ static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node) {
 
     if (end_offset > r->len || end_offset < r->pos)
         return -1;
-    if (num_props > FBX_MAX_PROPS)
-        return -1;
     if (!fbx_require(r, encoded_name_len))
         return -1;
     copy_name_len = encoded_name_len > 127 ? 127 : encoded_name_len;
@@ -949,19 +1054,42 @@ static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node) {
     node->name[copy_name_len] = '\0';
     fbx_skip(r, encoded_name_len);
 
+    props_start = (uint64_t)r->pos;
+    if (props_start > end_offset || prop_list_len > end_offset - props_start)
+        return -1;
+    props_end = props_start + prop_list_len;
+    if (props_end > r->len)
+        return -1;
+    if (num_props > INT32_MAX || (size_t)num_props > SIZE_MAX / sizeof(fbx_prop_t))
+        return -1;
+    if (num_props > 0 && prop_list_len < num_props)
+        return -1;
+
     /* Parse properties */
     if (num_props > 0) {
         node->props = (fbx_prop_t *)calloc((size_t)num_props, sizeof(fbx_prop_t));
         if (!node->props)
             return -1;
         for (uint64_t i = 0; i < num_props; i++) {
+            if ((uint64_t)r->pos >= props_end) {
+                node->prop_count = (int32_t)i;
+                return -1;
+            }
             if (fbx_parse_property(r, &node->props[i]) < 0) {
                 node->prop_count = (int32_t)i;
+                return -1;
+            }
+            if ((uint64_t)r->pos > props_end) {
+                node->prop_count = (int32_t)(i + 1);
                 return -1;
             }
         }
         node->prop_count = (int32_t)num_props;
     }
+    if ((uint64_t)r->pos < props_end)
+        fbx_skip(r, (size_t)(props_end - (uint64_t)r->pos));
+    if (r->error || (uint64_t)r->pos != props_end)
+        return -1;
 
     /* Parse children (until end_offset or null record) */
     while (r->pos < (size_t)end_offset && !fbx_eof(r)) {
@@ -1001,6 +1129,8 @@ static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node) {
     }
 
     /* Ensure we're at end_offset */
+    if ((uint64_t)r->pos > end_offset)
+        return -1;
     if (r->pos < (size_t)end_offset)
         r->pos = (size_t)end_offset;
 
@@ -1403,11 +1533,14 @@ static int32_t fbx_material_slot_for_polygon(const int32_t *slots,
 ///   value array plus its optional index array and mapping/reference modes.
 typedef struct {
     double *data;
+    float *data32;
     int32_t *indices;
     uint32_t count;
     uint32_t index_count;
+    int components;
     int by_polygon_vertex;
     int by_polygon;
+    int all_same;
     int index_to_direct;
 } fbx_vertex_layer_t;
 
@@ -1420,22 +1553,75 @@ typedef struct {
     int all_same;
 } fbx_material_layer_t;
 
+/// @brief Return true when a LayerElement node has an explicit numeric layer index.
+/// @param layer Candidate FBX `LayerElement*` node.
+/// @param out_index Receives the numeric layer index when present.
+/// @return Non-zero when the first property is a numeric index.
+static int fbx_layer_element_numeric_index(fbx_node_t *layer, int64_t *out_index) {
+    fbx_prop_t *p;
+    if (!layer || layer->prop_count < 1 || !out_index)
+        return 0;
+    p = &layer->props[0];
+    if (p->type == 'Y' || p->type == 'I' || p->type == 'L' || p->type == 'C') {
+        *out_index = fbx_prop_i64(layer, 0);
+        return 1;
+    }
+    return 0;
+}
+
+/// @brief Locate a specific FBX vertex layer by numeric layer index or occurrence order.
+/// @details Many FBX files contain several nodes with the same name, such as two
+///          `LayerElementUV` children for UV0/UV1. The binary tree helper returns only the first
+///          child, so this routine scans all siblings and prefers an explicit layer-index property
+///          matching @p desired_index. When indices are absent, occurrence order is used.
+/// @param geom_node Geometry node containing `LayerElement*` children.
+/// @param layer_name Child node name, e.g. `LayerElementUV`.
+/// @param desired_index Layer index to find.
+/// @return Matching layer node, or NULL.
+static fbx_node_t *fbx_find_vertex_layer(fbx_node_t *geom_node,
+                                         const char *layer_name,
+                                         int desired_index) {
+    fbx_node_t *first = NULL;
+    int occurrence = 0;
+    if (!geom_node || !layer_name || desired_index < 0)
+        return NULL;
+    for (int32_t i = 0; i < geom_node->child_count; i++) {
+        fbx_node_t *child = &geom_node->children[i];
+        int64_t explicit_index = 0;
+        if (strcmp(child->name, layer_name) != 0)
+            continue;
+        if (!first)
+            first = child;
+        if (fbx_layer_element_numeric_index(child, &explicit_index)) {
+            if (explicit_index == desired_index)
+                return child;
+        } else if (occurrence == desired_index) {
+            return child;
+        }
+        occurrence++;
+    }
+    return desired_index == 0 ? first : NULL;
+}
+
 /// @brief Parse a vertex-attribute layer (e.g. LayerElementNormal/-UV) of
 ///   `components` floats per element from @p geom_node into *out. @p index_name_alt
-///   is an optional fallback index-array name (or NULL). All fields are zeroed when
-///   the layer is absent or malformed.
+///   is an optional fallback index-array name (or NULL). @p layer_index selects among
+///   repeated FBX layer nodes, allowing UV1/vertex-color imports in addition to the
+///   first normal/UV layer. All fields are zeroed when the layer is absent or malformed.
 static void fbx_parse_vertex_layer(fbx_node_t *geom_node,
                                    const char *layer_name,
                                    const char *data_name,
                                    const char *index_name,
                                    const char *index_name_alt,
                                    int components,
+                                   int layer_index,
                                    fbx_vertex_layer_t *out) {
     memset(out, 0, sizeof(*out));
-    fbx_node_t *layer = fbx_find_child(geom_node, layer_name);
+    fbx_node_t *layer = fbx_find_vertex_layer(geom_node, layer_name, layer_index);
     if (!layer)
         return;
     fbx_node_t *d_node = fbx_find_child(layer, data_name);
+    out->components = components;
     if (d_node && d_node->prop_count >= 1 && d_node->props[0].type == 'd') {
         out->data = (double *)d_node->props[0].v.array.data;
         out->count = d_node->props[0].v.array.count / (uint32_t)components;
@@ -1443,16 +1629,25 @@ static void fbx_parse_vertex_layer(fbx_node_t *geom_node,
             out->data = NULL;
             out->count = 0;
         }
+    } else if (d_node && d_node->prop_count >= 1 && d_node->props[0].type == 'f') {
+        out->data32 = (float *)d_node->props[0].v.array.data;
+        out->count = d_node->props[0].v.array.count / (uint32_t)components;
+        if (out->count > (uint32_t)INT32_MAX) {
+            out->data32 = NULL;
+            out->count = 0;
+        }
     }
     fbx_node_t *mm = fbx_find_child(layer, "MappingInformationType");
     if (mm && mm->prop_count >= 1) {
-        out->by_polygon_vertex = strcmp(fbx_prop_str(mm, 0), "ByPolygonVertex") == 0;
-        out->by_polygon = strcmp(fbx_prop_str(mm, 0), "ByPolygon") == 0;
+        const char *mapping = fbx_prop_str(mm, 0);
+        out->by_polygon_vertex = fbx_ascii_equals_i(mapping, "ByPolygonVertex");
+        out->by_polygon = fbx_ascii_equals_i(mapping, "ByPolygon");
+        out->all_same = fbx_ascii_equals_i(mapping, "AllSame");
     }
     fbx_node_t *rm = fbx_find_child(layer, "ReferenceInformationType");
     if (rm && rm->prop_count >= 1)
-        out->index_to_direct = strcmp(fbx_prop_str(rm, 0), "IndexToDirect") == 0 ||
-                               strcmp(fbx_prop_str(rm, 0), "Index") == 0;
+        out->index_to_direct = fbx_ascii_equals_i(fbx_prop_str(rm, 0), "IndexToDirect") ||
+                               fbx_ascii_equals_i(fbx_prop_str(rm, 0), "Index");
     if (out->index_to_direct) {
         fbx_node_t *ni = fbx_find_child(layer, index_name);
         if (!ni && index_name_alt)
@@ -1462,6 +1657,30 @@ static void fbx_parse_vertex_layer(fbx_node_t *geom_node,
             out->index_count = ni->props[0].v.array.count;
         }
     }
+}
+
+/// @brief Read one component from a parsed vertex layer as double.
+/// @param layer Parsed layer.
+/// @param element_index Direct element index.
+/// @param component Component index within the element.
+/// @param fallback Value returned when data is absent or invalid.
+/// @return Finite component value or @p fallback.
+static double fbx_vertex_layer_component(const fbx_vertex_layer_t *layer,
+                                         int32_t element_index,
+                                         int component,
+                                         double fallback) {
+    double value;
+    if (!layer || element_index < 0 || element_index >= (int32_t)layer->count ||
+        component < 0 || component >= layer->components)
+        return fallback;
+    if (layer->data)
+        value = layer->data[(size_t)element_index * (size_t)layer->components + (size_t)component];
+    else if (layer->data32)
+        value =
+            (double)layer->data32[(size_t)element_index * (size_t)layer->components + (size_t)component];
+    else
+        return fallback;
+    return isfinite(value) ? value : fallback;
 }
 
 /// @brief Parse the LayerElementMaterial of @p geom_node into *out (zeroed when
@@ -1475,8 +1694,8 @@ static void fbx_parse_material_layer(fbx_node_t *geom_node, fbx_material_layer_t
     fbx_node_t *mm = fbx_find_child(mat_layer, "MappingInformationType");
     if (mm && mm->prop_count >= 1) {
         const char *mapping = fbx_prop_str(mm, 0);
-        out->by_polygon = strcmp(mapping, "ByPolygon") == 0;
-        out->all_same = strcmp(mapping, "AllSame") == 0;
+        out->by_polygon = fbx_ascii_equals_i(mapping, "ByPolygon");
+        out->all_same = fbx_ascii_equals_i(mapping, "AllSame");
     }
     if (m_node && m_node->prop_count >= 1 && m_node->props[0].type == 'i' &&
         m_node->props[0].v.array.data) {
@@ -1498,6 +1717,7 @@ static int32_t fbx_resolve_layer_index(const fbx_vertex_layer_t *layer,
                                        int32_t vi) {
     uint32_t source_index = layer->by_polygon_vertex ? (uint32_t)polygon_vertex_idx
                             : layer->by_polygon      ? polygon_idx
+                            : layer->all_same        ? 0u
                                                      : (uint32_t)vi;
     int32_t idx;
     if (layer->index_to_direct) {
@@ -1567,10 +1787,29 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
 
     /* Vertex attribute layers (optional) + material assignment (optional) */
     fbx_vertex_layer_t norm_layer;
-    fbx_parse_vertex_layer(
-        geom_node, "LayerElementNormal", "Normals", "NormalsIndex", "NormalIndex", 3, &norm_layer);
+    fbx_parse_vertex_layer(geom_node,
+                           "LayerElementNormal",
+                           "Normals",
+                           "NormalsIndex",
+                           "NormalIndex",
+                           3,
+                           0,
+                           &norm_layer);
     fbx_vertex_layer_t uv_layer;
-    fbx_parse_vertex_layer(geom_node, "LayerElementUV", "UV", "UVIndex", NULL, 2, &uv_layer);
+    fbx_parse_vertex_layer(
+        geom_node, "LayerElementUV", "UV", "UVIndex", NULL, 2, 0, &uv_layer);
+    fbx_vertex_layer_t uv1_layer;
+    fbx_parse_vertex_layer(
+        geom_node, "LayerElementUV", "UV", "UVIndex", NULL, 2, 1, &uv1_layer);
+    fbx_vertex_layer_t color_layer;
+    fbx_parse_vertex_layer(geom_node,
+                           "LayerElementColor",
+                           "Colors",
+                           "ColorIndex",
+                           "ColorIndex",
+                           4,
+                           0,
+                           &color_layer);
     fbx_material_layer_t mat;
     fbx_parse_material_layer(geom_node, &mat);
 
@@ -1623,12 +1862,12 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
 
         /* Get normal */
         double nx = 0, ny = 1, nz = 0;
-        if (norm_layer.data) {
+        if (norm_layer.data || norm_layer.data32) {
             int32_t ni = fbx_resolve_layer_index(&norm_layer, polygon_vertex_idx, polygon_idx, vi);
             if (ni >= 0) {
-                nx = norm_layer.data[ni * 3 + 0];
-                ny = norm_layer.data[ni * 3 + 1];
-                nz = norm_layer.data[ni * 3 + 2];
+                nx = fbx_vertex_layer_component(&norm_layer, ni, 0, nx);
+                ny = fbx_vertex_layer_component(&norm_layer, ni, 1, ny);
+                nz = fbx_vertex_layer_component(&norm_layer, ni, 2, nz);
                 if (z_up)
                     fbx_correct_zup(&nx, &ny, &nz);
             }
@@ -1637,11 +1876,12 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
 
         /* Get UV */
         double u = 0, v = 0;
-        if (uv_layer.data) {
+        if (uv_layer.data || uv_layer.data32) {
             int32_t ui = fbx_resolve_layer_index(&uv_layer, polygon_vertex_idx, polygon_idx, vi);
             if (ui >= 0) {
-                u = uv_layer.data[ui * 2 + 0];
-                v = 1.0 - uv_layer.data[ui * 2 + 1]; /* FBX V is flipped vs OpenGL */
+                u = fbx_vertex_layer_component(&uv_layer, ui, 0, u);
+                v = 1.0 -
+                    fbx_vertex_layer_component(&uv_layer, ui, 1, 1.0); /* FBX V flips */
             }
         }
         u = fbx_clamp_abs_or(u, 0.0, FBX_UV_ABS_MAX);
@@ -1669,6 +1909,41 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
             rt_mesh3d_add_vertex(mesh, px, py, pz, nx, ny, nz, u, v);
             if (((rt_mesh3d *)mesh)->build_failed)
                 return fbx_geom_fail(polygon, polygon_stack, mesh);
+            if ((uv1_layer.data || uv1_layer.data32) &&
+                emitted_vertex >= 0 &&
+                emitted_vertex < (int32_t)((rt_mesh3d *)mesh)->vertex_count) {
+                int32_t ui1 =
+                    fbx_resolve_layer_index(&uv1_layer, polygon_vertex_idx, polygon_idx, vi);
+                if (ui1 >= 0) {
+                    double u1 = fbx_vertex_layer_component(&uv1_layer, ui1, 0, u);
+                    double v1 =
+                        1.0 - fbx_vertex_layer_component(&uv1_layer, ui1, 1, 1.0 - v);
+                    ((rt_mesh3d *)mesh)->vertices[emitted_vertex].uv1[0] =
+                        (float)fbx_clamp_abs_or(u1, u, FBX_UV_ABS_MAX);
+                    ((rt_mesh3d *)mesh)->vertices[emitted_vertex].uv1[1] =
+                        (float)fbx_clamp_abs_or(v1, v, FBX_UV_ABS_MAX);
+                }
+            }
+            if ((color_layer.data || color_layer.data32) &&
+                emitted_vertex >= 0 &&
+                emitted_vertex < (int32_t)((rt_mesh3d *)mesh)->vertex_count) {
+                int32_t ci =
+                    fbx_resolve_layer_index(&color_layer, polygon_vertex_idx, polygon_idx, vi);
+                if (ci >= 0) {
+                    ((rt_mesh3d *)mesh)->vertices[emitted_vertex].color[0] =
+                        (float)fbx_clamp_double(
+                            fbx_vertex_layer_component(&color_layer, ci, 0, 1.0), 0.0, 1.0, 1.0);
+                    ((rt_mesh3d *)mesh)->vertices[emitted_vertex].color[1] =
+                        (float)fbx_clamp_double(
+                            fbx_vertex_layer_component(&color_layer, ci, 1, 1.0), 0.0, 1.0, 1.0);
+                    ((rt_mesh3d *)mesh)->vertices[emitted_vertex].color[2] =
+                        (float)fbx_clamp_double(
+                            fbx_vertex_layer_component(&color_layer, ci, 2, 1.0), 0.0, 1.0, 1.0);
+                    ((rt_mesh3d *)mesh)->vertices[emitted_vertex].color[3] =
+                        (float)fbx_clamp_double(
+                            fbx_vertex_layer_component(&color_layer, ci, 3, 1.0), 0.0, 1.0, 1.0);
+                }
+            }
             fbx_mesh_remap_add_vertex(remap, vi, emitted_vertex);
             polygon[poly_count++] = emitted_vertex;
         }
@@ -1701,7 +1976,7 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
             rt_obj_free(mesh);
         return NULL;
     }
-    if (!norm_layer.data || norm_layer.count == 0)
+    if ((!norm_layer.data && !norm_layer.data32) || norm_layer.count == 0)
         rt_mesh3d_recalc_normals(mesh);
     return mesh;
 }
@@ -1732,39 +2007,62 @@ static void *fbx_extract_material(fbx_node_t *mat_node) {
         if (strcmp(p->name, "P") != 0 || p->prop_count < 5)
             continue;
         const char *pname = fbx_prop_str(p, 0);
-        if (strcmp(pname, "DiffuseColor") == 0 && p->prop_count >= 7) {
+        if ((fbx_ascii_equals_i(pname, "DiffuseColor") ||
+             fbx_ascii_equals_i(pname, "BaseColor") ||
+             fbx_ascii_equals_i(pname, "Albedo") || fbx_ascii_contains_i(pname, "basecolor") ||
+             fbx_ascii_contains_i(pname, "base_color")) &&
+            p->prop_count >= 7) {
             double r = fbx_clamp_double(fbx_prop_f64(p, 4), 0.0, 1.0, 1.0);
             double g = fbx_clamp_double(fbx_prop_f64(p, 5), 0.0, 1.0, 1.0);
             double b = fbx_clamp_double(fbx_prop_f64(p, 6), 0.0, 1.0, 1.0);
             rt_material3d_set_color(mat, r, g, b);
-        } else if (strcmp(pname, "Shininess") == 0 || strcmp(pname, "ShininessExponent") == 0) {
+        } else if (fbx_ascii_equals_i(pname, "Shininess") ||
+                   fbx_ascii_equals_i(pname, "ShininessExponent")) {
             double s = fbx_clamp_double(fbx_prop_f64(p, 4), 0.0, 1000000.0, 32.0);
             rt_material3d_set_shininess(mat, s);
-        } else if (strcmp(pname, "Opacity") == 0) {
+        } else if (fbx_ascii_equals_i(pname, "Opacity") || fbx_ascii_equals_i(pname, "Alpha")) {
             double alpha = fbx_clamp_double(fbx_prop_f64(p, 4), 0.0, 1.0, 1.0);
             rt_material3d_set_alpha(mat, alpha);
             if (alpha < 1.0)
                 rt_material3d_set_alpha_mode(mat, 2);
-        } else if (strcmp(pname, "TransparencyFactor") == 0) {
+        } else if (fbx_ascii_equals_i(pname, "TransparencyFactor") ||
+                   fbx_ascii_equals_i(pname, "TransparentFactor")) {
             double alpha = 1.0 - fbx_clamp_double(fbx_prop_f64(p, 4), 0.0, 1.0, 0.0);
             rt_material3d_set_alpha(mat, alpha);
             if (alpha < 1.0)
                 rt_material3d_set_alpha_mode(mat, 2);
-        } else if (strcmp(pname, "EmissiveColor") == 0) {
-            if (p->prop_count < 7)
-                continue;
+        } else if ((fbx_ascii_equals_i(pname, "EmissiveColor") ||
+                    fbx_ascii_equals_i(pname, "EmissionColor") ||
+                    fbx_ascii_contains_i(pname, "emissivecolor")) &&
+                   p->prop_count >= 7) {
             double r = fbx_clamp_double(fbx_prop_f64(p, 4), 0.0, 1.0, 0.0);
             double g = fbx_clamp_double(fbx_prop_f64(p, 5), 0.0, 1.0, 0.0);
             double b = fbx_clamp_double(fbx_prop_f64(p, 6), 0.0, 1.0, 0.0);
             rt_material3d_set_emissive_color(mat, r, g, b);
-        } else if (strcmp(pname, "EmissiveFactor") == 0) {
+        } else if (fbx_ascii_equals_i(pname, "EmissiveFactor") ||
+                   fbx_ascii_equals_i(pname, "EmissionFactor") ||
+                   fbx_ascii_equals_i(pname, "EmissiveIntensity")) {
             rt_material3d_set_emissive_intensity(
                 mat, fbx_clamp_double(fbx_prop_f64(p, 4), 0.0, 1000000.0, 0.0));
-        } else if (strcmp(pname, "DoubleSided") == 0 || strcmp(pname, "TwoSided") == 0 ||
-                   strcmp(pname, "DoubleSidedMaterial") == 0) {
+        } else if (fbx_ascii_contains_i(pname, "metallic") ||
+                   fbx_ascii_contains_i(pname, "metalness")) {
+            rt_material3d_set_metallic(mat, fbx_clamp_double(fbx_prop_f64(p, 4), 0.0, 1.0, 0.0));
+        } else if (fbx_ascii_contains_i(pname, "roughness")) {
+            rt_material3d_set_roughness(mat, fbx_clamp_double(fbx_prop_f64(p, 4), 0.0, 1.0, 0.5));
+        } else if (fbx_ascii_contains_i(pname, "occlusion") ||
+                   fbx_ascii_equals_i(pname, "AO")) {
+            rt_material3d_set_ao(mat, fbx_clamp_double(fbx_prop_f64(p, 4), 0.0, 1.0, 1.0));
+        } else if (fbx_ascii_equals_i(pname, "NormalMapScale") ||
+                   fbx_ascii_equals_i(pname, "BumpFactor") ||
+                   fbx_ascii_equals_i(pname, "Bump")) {
+            rt_material3d_set_normal_scale(
+                mat, fbx_clamp_double(fbx_prop_f64(p, 4), 0.0, 1000000.0, 1.0));
+        } else if (fbx_ascii_equals_i(pname, "DoubleSided") ||
+                   fbx_ascii_equals_i(pname, "TwoSided") ||
+                   fbx_ascii_equals_i(pname, "DoubleSidedMaterial")) {
             if (fbx_prop_truthy(p, 4))
                 rt_material3d_set_double_sided(mat, 1);
-        } else if (strcmp(pname, "BackfaceCulling") == 0) {
+        } else if (fbx_ascii_equals_i(pname, "BackfaceCulling")) {
             if (!fbx_prop_truthy(p, 4))
                 rt_material3d_set_double_sided(mat, 1);
         }
@@ -1797,61 +2095,632 @@ static void fbx_set_clean_object_name(void *node, const char *raw_name) {
         rt_scene_node3d_set_name(node, rt_const_cstr(name));
 }
 
-/// @brief Pull Lcl-Translation / Lcl-Rotation / Lcl-Scaling off an FBX `Model` node's
-/// `Properties70` block and convert into the engine's TRS triple. FBX stores Euler
-/// angles in degrees with XYZ order — this routine re-derives the quaternion from the
-/// three Euler components using the standard "half-angle" construction (c = cos(θ/2),
-/// s = sin(θ/2)) and multiplies in XYZ order to match FBX's rotation convention.
-/// When `z_up` is set, the translation is run through `fbx_correct_zup` so the Z-up
-/// authoring orientation maps onto Viper's Y-up runtime. Missing P-properties default
-/// to (0,0,0) / identity / (1,1,1) so partial models still build cleanly.
+/// @brief Parsed FBX `Model` transform properties before matrix composition.
+/// @details FBX stores a model transform as a layered stack: local TRS, pre/post rotations,
+///          rotation/scaling pivots, offsets, and a geometric transform. Keeping these fields
+///          explicit lets the scene-node and skeleton importers share the same interpretation
+///          instead of each rebuilding a partial Euler-only path.
+typedef struct {
+    double translation[3];
+    double rotation[3];
+    double scale[3];
+    double pre_rotation[3];
+    double post_rotation[3];
+    double rotation_offset[3];
+    double rotation_pivot[3];
+    double scaling_offset[3];
+    double scaling_pivot[3];
+    double geometric_translation[3];
+    double geometric_rotation[3];
+    double geometric_scale[3];
+    int rotation_order;
+    int rotation_active;
+} fbx_transform_components_t;
+
+/// @brief Initialize an FBX transform component record to identity/default values.
+/// @param out Destination component record; ignored when NULL.
+static void fbx_transform_components_init(fbx_transform_components_t *out) {
+    if (!out)
+        return;
+    memset(out, 0, sizeof(*out));
+    out->scale[0] = 1.0;
+    out->scale[1] = 1.0;
+    out->scale[2] = 1.0;
+    out->geometric_scale[0] = 1.0;
+    out->geometric_scale[1] = 1.0;
+    out->geometric_scale[2] = 1.0;
+    out->rotation_order = 0;
+    out->rotation_active = 1;
+}
+
+/// @brief Read a vector-style `Properties70` P-node into a fixed XYZ array.
+/// @details FBX vector properties store their numeric payload at property slots 4, 5, and 6.
+///          Non-finite lanes are ignored by returning 0 so callers can keep prior defaults.
+/// @param p The P-node to read.
+/// @param out_xyz Receives X, Y, Z on success.
+/// @return Non-zero when all three components were finite and copied.
+static int fbx_read_p_xyz(fbx_node_t *p, double out_xyz[3]) {
+    double x;
+    double y;
+    double z;
+    if (!p || !out_xyz || p->prop_count < 7)
+        return 0;
+    x = fbx_prop_f64(p, 4);
+    y = fbx_prop_f64(p, 5);
+    z = fbx_prop_f64(p, 6);
+    if (!isfinite(x) || !isfinite(y) || !isfinite(z))
+        return 0;
+    out_xyz[0] = x;
+    out_xyz[1] = y;
+    out_xyz[2] = z;
+    return 1;
+}
+
+/// @brief Parse every FBX transform-stack property from a `Model` node.
+/// @details Reads the common Autodesk stack fields: local TRS, PreRotation, PostRotation,
+///          RotationOffset/Pivot, ScalingOffset/Pivot, RotationOrder, RotationActive, and
+///          Geometric* values. Unknown properties are ignored, preserving forward compatibility.
+/// @param model_node FBX `Model` node.
+/// @param out Receives a complete default-filled transform component record.
+static void fbx_read_model_transform_components(fbx_node_t *model_node,
+                                                fbx_transform_components_t *out) {
+    fbx_node_t *p70;
+    fbx_transform_components_init(out);
+    if (!model_node || !out)
+        return;
+    p70 = fbx_find_child(model_node, "Properties70");
+    if (!p70)
+        return;
+    for (int32_t pi = 0; pi < p70->child_count; pi++) {
+        fbx_node_t *p = &p70->children[pi];
+        const char *pn;
+        if (strcmp(p->name, "P") != 0 || p->prop_count < 1)
+            continue;
+        pn = fbx_prop_str(p, 0);
+        if (fbx_ascii_equals_i(pn, "Lcl Translation")) {
+            (void)fbx_read_p_xyz(p, out->translation);
+        } else if (fbx_ascii_equals_i(pn, "Lcl Rotation")) {
+            (void)fbx_read_p_xyz(p, out->rotation);
+        } else if (fbx_ascii_equals_i(pn, "Lcl Scaling")) {
+            (void)fbx_read_p_xyz(p, out->scale);
+        } else if (fbx_ascii_equals_i(pn, "PreRotation")) {
+            (void)fbx_read_p_xyz(p, out->pre_rotation);
+        } else if (fbx_ascii_equals_i(pn, "PostRotation")) {
+            (void)fbx_read_p_xyz(p, out->post_rotation);
+        } else if (fbx_ascii_equals_i(pn, "RotationOffset")) {
+            (void)fbx_read_p_xyz(p, out->rotation_offset);
+        } else if (fbx_ascii_equals_i(pn, "RotationPivot")) {
+            (void)fbx_read_p_xyz(p, out->rotation_pivot);
+        } else if (fbx_ascii_equals_i(pn, "ScalingOffset")) {
+            (void)fbx_read_p_xyz(p, out->scaling_offset);
+        } else if (fbx_ascii_equals_i(pn, "ScalingPivot")) {
+            (void)fbx_read_p_xyz(p, out->scaling_pivot);
+        } else if (fbx_ascii_equals_i(pn, "GeometricTranslation")) {
+            (void)fbx_read_p_xyz(p, out->geometric_translation);
+        } else if (fbx_ascii_equals_i(pn, "GeometricRotation")) {
+            (void)fbx_read_p_xyz(p, out->geometric_rotation);
+        } else if (fbx_ascii_equals_i(pn, "GeometricScaling")) {
+            (void)fbx_read_p_xyz(p, out->geometric_scale);
+        } else if (fbx_ascii_equals_i(pn, "RotationOrder") && p->prop_count >= 5) {
+            int64_t order = fbx_prop_i64(p, 4);
+            if (order >= 0 && order <= 6)
+                out->rotation_order = (int)order;
+        } else if (fbx_ascii_equals_i(pn, "RotationActive") && p->prop_count >= 5) {
+            out->rotation_active = fbx_prop_truthy(p, 4);
+        }
+    }
+    for (int i = 0; i < 3; i++) {
+        out->translation[i] = fbx_clamp_abs_or(out->translation[i], 0.0, FBX_NUMERIC_ABS_MAX);
+        out->rotation[i] = fbx_sanitize_rotation_degrees(out->rotation[i]);
+        out->scale[i] = fbx_scale_or_unit(out->scale[i]);
+        out->pre_rotation[i] = fbx_sanitize_rotation_degrees(out->pre_rotation[i]);
+        out->post_rotation[i] = fbx_sanitize_rotation_degrees(out->post_rotation[i]);
+        out->rotation_offset[i] =
+            fbx_clamp_abs_or(out->rotation_offset[i], 0.0, FBX_NUMERIC_ABS_MAX);
+        out->rotation_pivot[i] =
+            fbx_clamp_abs_or(out->rotation_pivot[i], 0.0, FBX_NUMERIC_ABS_MAX);
+        out->scaling_offset[i] =
+            fbx_clamp_abs_or(out->scaling_offset[i], 0.0, FBX_NUMERIC_ABS_MAX);
+        out->scaling_pivot[i] =
+            fbx_clamp_abs_or(out->scaling_pivot[i], 0.0, FBX_NUMERIC_ABS_MAX);
+        out->geometric_translation[i] =
+            fbx_clamp_abs_or(out->geometric_translation[i], 0.0, FBX_NUMERIC_ABS_MAX);
+        out->geometric_rotation[i] =
+            fbx_sanitize_rotation_degrees(out->geometric_rotation[i]);
+        out->geometric_scale[i] = fbx_scale_or_unit(out->geometric_scale[i]);
+    }
+}
+
+/// @brief Write a row-major 4x4 identity matrix into @p out.
+/// @param out Sixteen-element row-major matrix buffer.
+static void fbx_mat4_identity_local(double out[16]) {
+    if (!out)
+        return;
+    memset(out, 0, 16u * sizeof(double));
+    out[0] = 1.0;
+    out[5] = 1.0;
+    out[10] = 1.0;
+    out[15] = 1.0;
+}
+
+/// @brief Multiply row-major 4x4 matrices (`out = a * b`), safe for aliased output.
+/// @param a Left-hand matrix.
+/// @param b Right-hand matrix.
+/// @param out Receives the product.
+static void fbx_mat4_mul_local(const double a[16], const double b[16], double out[16]) {
+    double r[16];
+    for (int row = 0; row < 4; row++) {
+        for (int col = 0; col < 4; col++) {
+            r[row * 4 + col] = a[row * 4 + 0] * b[0 * 4 + col] +
+                               a[row * 4 + 1] * b[1 * 4 + col] +
+                               a[row * 4 + 2] * b[2 * 4 + col] +
+                               a[row * 4 + 3] * b[3 * 4 + col];
+        }
+    }
+    memcpy(out, r, sizeof(r));
+}
+
+/// @brief Post-multiply @p acc by @p rhs (`acc = acc * rhs`).
+/// @param acc Accumulated transform matrix, modified in place.
+/// @param rhs Transform matrix appended to the stack.
+static void fbx_mat4_append_local(double acc[16], const double rhs[16]) {
+    fbx_mat4_mul_local(acc, rhs, acc);
+}
+
+/// @brief Build a row-major translation matrix.
+/// @param x Translation along X.
+/// @param y Translation along Y.
+/// @param z Translation along Z.
+/// @param out Receives the matrix.
+static void fbx_mat4_translate_local(double x, double y, double z, double out[16]) {
+    fbx_mat4_identity_local(out);
+    out[3] = fbx_clamp_abs_or(x, 0.0, FBX_NUMERIC_ABS_MAX);
+    out[7] = fbx_clamp_abs_or(y, 0.0, FBX_NUMERIC_ABS_MAX);
+    out[11] = fbx_clamp_abs_or(z, 0.0, FBX_NUMERIC_ABS_MAX);
+}
+
+/// @brief Build a row-major non-uniform scale matrix.
+/// @param x Scale along X.
+/// @param y Scale along Y.
+/// @param z Scale along Z.
+/// @param out Receives the matrix.
+static void fbx_mat4_scale_local(double x, double y, double z, double out[16]) {
+    fbx_mat4_identity_local(out);
+    out[0] = fbx_scale_or_unit(x);
+    out[5] = fbx_scale_or_unit(y);
+    out[10] = fbx_scale_or_unit(z);
+}
+
+/// @brief Build a row-major single-axis rotation matrix from degrees.
+/// @param axis Axis selector: 0 = X, 1 = Y, 2 = Z.
+/// @param degrees Rotation angle in degrees.
+/// @param out Receives the matrix.
+static void fbx_mat4_rotate_axis_degrees(int axis, double degrees, double out[16]) {
+    double radians = fbx_sanitize_rotation_degrees(degrees) * 3.14159265358979323846 / 180.0;
+    double c = cos(radians);
+    double s = sin(radians);
+    fbx_mat4_identity_local(out);
+    if (!isfinite(c) || !isfinite(s))
+        return;
+    if (axis == 0) {
+        out[5] = c;
+        out[6] = -s;
+        out[9] = s;
+        out[10] = c;
+    } else if (axis == 1) {
+        out[0] = c;
+        out[2] = s;
+        out[8] = -s;
+        out[10] = c;
+    } else {
+        out[0] = c;
+        out[1] = -s;
+        out[4] = s;
+        out[5] = c;
+    }
+}
+
+/// @brief Append one axis rotation to an Euler composition matrix.
+/// @param acc Accumulated Euler matrix.
+/// @param axis Axis selector: 0 = X, 1 = Y, 2 = Z.
+/// @param degrees Axis angle in degrees.
+static void fbx_mat4_append_axis_rotation(double acc[16], int axis, double degrees) {
+    double r[16];
+    fbx_mat4_rotate_axis_degrees(axis, degrees, r);
+    fbx_mat4_append_local(acc, r);
+}
+
+/// @brief Build an FBX Euler rotation matrix for the requested RotationOrder.
+/// @details FBX's order value names the local axis sequence. With Viper's row-major matrices and
+///          column vectors, preserving the legacy XYZ result means composing in reverse axis order
+///          (`XYZ` becomes `Rz * Ry * Rx`). The same rule is applied to the other FBX orders:
+///          0 XYZ, 1 XZY, 2 YZX, 3 YXZ, 4 ZXY, 5 ZYX, 6 SphericXYZ (treated as XYZ).
+/// @param xyz_degrees Euler components in degrees.
+/// @param rotation_order FBX RotationOrder integer.
+/// @param out Receives the rotation matrix.
+static void fbx_mat4_euler_degrees(const double xyz_degrees[3],
+                                   int rotation_order,
+                                   double out[16]) {
+    int order = (rotation_order >= 0 && rotation_order <= 6) ? rotation_order : 0;
+    fbx_mat4_identity_local(out);
+    switch (order) {
+        case 1: /* XZY */
+            fbx_mat4_append_axis_rotation(out, 1, xyz_degrees[1]);
+            fbx_mat4_append_axis_rotation(out, 2, xyz_degrees[2]);
+            fbx_mat4_append_axis_rotation(out, 0, xyz_degrees[0]);
+            break;
+        case 2: /* YZX */
+            fbx_mat4_append_axis_rotation(out, 0, xyz_degrees[0]);
+            fbx_mat4_append_axis_rotation(out, 2, xyz_degrees[2]);
+            fbx_mat4_append_axis_rotation(out, 1, xyz_degrees[1]);
+            break;
+        case 3: /* YXZ */
+            fbx_mat4_append_axis_rotation(out, 2, xyz_degrees[2]);
+            fbx_mat4_append_axis_rotation(out, 0, xyz_degrees[0]);
+            fbx_mat4_append_axis_rotation(out, 1, xyz_degrees[1]);
+            break;
+        case 4: /* ZXY */
+            fbx_mat4_append_axis_rotation(out, 1, xyz_degrees[1]);
+            fbx_mat4_append_axis_rotation(out, 0, xyz_degrees[0]);
+            fbx_mat4_append_axis_rotation(out, 2, xyz_degrees[2]);
+            break;
+        case 5: /* ZYX */
+            fbx_mat4_append_axis_rotation(out, 0, xyz_degrees[0]);
+            fbx_mat4_append_axis_rotation(out, 1, xyz_degrees[1]);
+            fbx_mat4_append_axis_rotation(out, 2, xyz_degrees[2]);
+            break;
+        case 0: /* XYZ */
+        case 6: /* SphericXYZ fallback */
+        default:
+            fbx_mat4_append_axis_rotation(out, 2, xyz_degrees[2]);
+            fbx_mat4_append_axis_rotation(out, 1, xyz_degrees[1]);
+            fbx_mat4_append_axis_rotation(out, 0, xyz_degrees[0]);
+            break;
+    }
+}
+
+/// @brief Apply FBX Z-up to Viper Y-up conversion to a full affine matrix.
+/// @details Vector correction alone is not enough once pivots and bind matrices are involved.
+///          This performs the basis change `C * M * C^-1`, where C maps `(x,y,z)` to
+///          `(x,z,-y)`.
+/// @param matrix Row-major matrix updated in place.
+static void fbx_mat4_apply_zup(double matrix[16]) {
+    static const double c[16] = {
+        1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
+        0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+    };
+    static const double c_inv[16] = {
+        1.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0,
+        0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+    };
+    double tmp[16];
+    if (!matrix)
+        return;
+    fbx_mat4_mul_local(c, matrix, tmp);
+    fbx_mat4_mul_local(tmp, c_inv, matrix);
+}
+
+/// @brief Compose the full FBX model transform stack into one affine matrix.
+/// @details The stack follows the FBX SDK transform order for local transforms, including
+///          rotation/scaling pivots and offsets. Geometric translation is folded into the initial
+///          node translation to preserve Viper's existing scene-node behavior; geometric rotation
+///          and scale remain appended because there is no separate per-geometry transform slot.
+/// @param c Parsed transform components.
+/// @param out Receives a row-major affine matrix.
+static void fbx_build_model_transform_matrix(const fbx_transform_components_t *c, double out[16]) {
+    double step[16];
+    double neg[3];
+    double post_inverse[3];
+    if (!c || !out) {
+        if (out)
+            fbx_mat4_identity_local(out);
+        return;
+    }
+    fbx_mat4_identity_local(out);
+
+    fbx_mat4_translate_local(c->translation[0] + c->geometric_translation[0],
+                             c->translation[1] + c->geometric_translation[1],
+                             c->translation[2] + c->geometric_translation[2],
+                             step);
+    fbx_mat4_append_local(out, step);
+
+    fbx_mat4_translate_local(c->rotation_offset[0], c->rotation_offset[1], c->rotation_offset[2], step);
+    fbx_mat4_append_local(out, step);
+    fbx_mat4_translate_local(c->rotation_pivot[0], c->rotation_pivot[1], c->rotation_pivot[2], step);
+    fbx_mat4_append_local(out, step);
+    if (c->rotation_active) {
+        fbx_mat4_euler_degrees(c->pre_rotation, c->rotation_order, step);
+        fbx_mat4_append_local(out, step);
+        fbx_mat4_euler_degrees(c->rotation, c->rotation_order, step);
+        fbx_mat4_append_local(out, step);
+        post_inverse[0] = -c->post_rotation[0];
+        post_inverse[1] = -c->post_rotation[1];
+        post_inverse[2] = -c->post_rotation[2];
+        fbx_mat4_euler_degrees(post_inverse, c->rotation_order, step);
+        fbx_mat4_append_local(out, step);
+    }
+    neg[0] = -c->rotation_pivot[0];
+    neg[1] = -c->rotation_pivot[1];
+    neg[2] = -c->rotation_pivot[2];
+    fbx_mat4_translate_local(neg[0], neg[1], neg[2], step);
+    fbx_mat4_append_local(out, step);
+
+    fbx_mat4_translate_local(c->scaling_offset[0], c->scaling_offset[1], c->scaling_offset[2], step);
+    fbx_mat4_append_local(out, step);
+    fbx_mat4_translate_local(c->scaling_pivot[0], c->scaling_pivot[1], c->scaling_pivot[2], step);
+    fbx_mat4_append_local(out, step);
+    fbx_mat4_scale_local(c->scale[0], c->scale[1], c->scale[2], step);
+    fbx_mat4_append_local(out, step);
+    neg[0] = -c->scaling_pivot[0];
+    neg[1] = -c->scaling_pivot[1];
+    neg[2] = -c->scaling_pivot[2];
+    fbx_mat4_translate_local(neg[0], neg[1], neg[2], step);
+    fbx_mat4_append_local(out, step);
+
+    fbx_mat4_euler_degrees(c->geometric_rotation, c->rotation_order, step);
+    fbx_mat4_append_local(out, step);
+    fbx_mat4_scale_local(
+        c->geometric_scale[0], c->geometric_scale[1], c->geometric_scale[2], step);
+    fbx_mat4_append_local(out, step);
+}
+
+/// @brief Invert an affine row-major 4x4 matrix.
+/// @details Only the upper-left 3x3 and translation column are used; the bottom row is assumed
+///          to be `[0 0 0 1]`, matching FBX transform/bind matrices. Singular matrices return 0.
+/// @param m Matrix to invert.
+/// @param out Receives the inverse when the function returns non-zero.
+/// @return Non-zero on success, zero for singular or malformed matrices.
+static int fbx_mat4_inverse_affine(const double m[16], double out[16]) {
+    double a00;
+    double a01;
+    double a02;
+    double a10;
+    double a11;
+    double a12;
+    double a20;
+    double a21;
+    double a22;
+    double det;
+    double inv_det;
+    if (!m || !out)
+        return 0;
+    a00 = m[0];
+    a01 = m[1];
+    a02 = m[2];
+    a10 = m[4];
+    a11 = m[5];
+    a12 = m[6];
+    a20 = m[8];
+    a21 = m[9];
+    a22 = m[10];
+    det = a00 * (a11 * a22 - a12 * a21) - a01 * (a10 * a22 - a12 * a20) +
+          a02 * (a10 * a21 - a11 * a20);
+    if (!isfinite(det) || fabs(det) < 1e-18)
+        return 0;
+    inv_det = 1.0 / det;
+    out[0] = (a11 * a22 - a12 * a21) * inv_det;
+    out[1] = (a02 * a21 - a01 * a22) * inv_det;
+    out[2] = (a01 * a12 - a02 * a11) * inv_det;
+    out[4] = (a12 * a20 - a10 * a22) * inv_det;
+    out[5] = (a00 * a22 - a02 * a20) * inv_det;
+    out[6] = (a02 * a10 - a00 * a12) * inv_det;
+    out[8] = (a10 * a21 - a11 * a20) * inv_det;
+    out[9] = (a01 * a20 - a00 * a21) * inv_det;
+    out[10] = (a00 * a11 - a01 * a10) * inv_det;
+    out[3] = -(out[0] * m[3] + out[1] * m[7] + out[2] * m[11]);
+    out[7] = -(out[4] * m[3] + out[5] * m[7] + out[6] * m[11]);
+    out[11] = -(out[8] * m[3] + out[9] * m[7] + out[10] * m[11]);
+    out[12] = 0.0;
+    out[13] = 0.0;
+    out[14] = 0.0;
+    out[15] = 1.0;
+    return 1;
+}
+
+/// @brief Convert a row-major matrix into a runtime Mat4 object.
+/// @param m Sixteen-element row-major matrix.
+/// @return New Mat4 object, or NULL if allocation fails.
+static void *fbx_mat4_to_rt(const double m[16]) {
+    if (!m)
+        return NULL;
+    return rt_mat4_new(m[0],
+                       m[1],
+                       m[2],
+                       m[3],
+                       m[4],
+                       m[5],
+                       m[6],
+                       m[7],
+                       m[8],
+                       m[9],
+                       m[10],
+                       m[11],
+                       m[12],
+                       m[13],
+                       m[14],
+                       m[15]);
+}
+
+/// @brief Read a 16-element matrix child as either double-array, float-array, or scalar props.
+/// @details Cluster `Transform` / `TransformLink` nodes are usually array properties, but older
+///          ASCII-to-binary conversion tools can emit sixteen scalar properties. Both layouts are
+///          accepted so valid bind poses are not discarded due to representation.
+/// @param node Parent node containing the matrix child.
+/// @param child_name Child node name to read.
+/// @param out Receives a row-major matrix on success.
+/// @return Non-zero when a finite 16-value matrix was read.
+static int fbx_read_child_matrix16(fbx_node_t *node, const char *child_name, double out[16]) {
+    fbx_node_t *child;
+    if (!node || !child_name || !out)
+        return 0;
+    child = fbx_find_child(node, child_name);
+    if (!child || child->prop_count < 1)
+        return 0;
+    if ((child->props[0].type == 'd' || child->props[0].type == 'f') &&
+        child->props[0].v.array.data && child->props[0].v.array.count >= 16u) {
+        if (child->props[0].type == 'd') {
+            const double *src = (const double *)child->props[0].v.array.data;
+            for (int i = 0; i < 16; i++)
+                out[i] = src[i];
+        } else {
+            const float *src = (const float *)child->props[0].v.array.data;
+            for (int i = 0; i < 16; i++)
+                out[i] = (double)src[i];
+        }
+    } else if (child->prop_count >= 16) {
+        for (int i = 0; i < 16; i++) {
+            fbx_prop_t *p = &child->props[i];
+            if (p->type == 'D' || p->type == 'F')
+                out[i] = fbx_prop_f64(child, i);
+            else if (p->type == 'L' || p->type == 'I' || p->type == 'Y' || p->type == 'C')
+                out[i] = (double)fbx_prop_i64(child, i);
+            else
+                return 0;
+        }
+    } else {
+        return 0;
+    }
+    for (int i = 0; i < 16; i++) {
+        if (!isfinite(out[i]))
+            return 0;
+        out[i] = fbx_clamp_abs_or(out[i], 0.0, FBX_NUMERIC_ABS_MAX);
+    }
+    return 1;
+}
+
+/// @brief Decompose a row-major affine matrix into position, quaternion, and scale.
+/// @details SceneNode3D stores TRS rather than a raw matrix. This extracts translation from the
+///          matrix column, scale from basis-vector lengths, and a normalized quaternion from the
+///          remaining orthonormalized rotation matrix. Shear is intentionally discarded.
+/// @param m Source row-major affine matrix.
+/// @param pos Receives XYZ translation when non-NULL.
+/// @param quat Receives XYZW quaternion when non-NULL.
+/// @param scale Receives XYZ scale when non-NULL.
+static void fbx_decompose_matrix_trs(const double m[16],
+                                     double *pos,
+                                     double *quat,
+                                     double *scale) {
+    double sx;
+    double sy;
+    double sz;
+    double r00;
+    double r01;
+    double r02;
+    double r10;
+    double r11;
+    double r12;
+    double r20;
+    double r21;
+    double r22;
+    double det;
+    double trace;
+    double qx = 0.0;
+    double qy = 0.0;
+    double qz = 0.0;
+    double qw = 1.0;
+    if (pos) {
+        pos[0] = m ? fbx_clamp_abs_or(m[3], 0.0, FBX_NUMERIC_ABS_MAX) : 0.0;
+        pos[1] = m ? fbx_clamp_abs_or(m[7], 0.0, FBX_NUMERIC_ABS_MAX) : 0.0;
+        pos[2] = m ? fbx_clamp_abs_or(m[11], 0.0, FBX_NUMERIC_ABS_MAX) : 0.0;
+    }
+    if (!m) {
+        if (quat) {
+            quat[0] = quat[1] = quat[2] = 0.0;
+            quat[3] = 1.0;
+        }
+        if (scale) {
+            scale[0] = scale[1] = scale[2] = 1.0;
+        }
+        return;
+    }
+    sx = sqrt(m[0] * m[0] + m[4] * m[4] + m[8] * m[8]);
+    sy = sqrt(m[1] * m[1] + m[5] * m[5] + m[9] * m[9]);
+    sz = sqrt(m[2] * m[2] + m[6] * m[6] + m[10] * m[10]);
+    sx = fbx_scale_or_unit(sx);
+    sy = fbx_scale_or_unit(sy);
+    sz = fbx_scale_or_unit(sz);
+    det = m[0] * (m[5] * m[10] - m[6] * m[9]) -
+          m[1] * (m[4] * m[10] - m[6] * m[8]) +
+          m[2] * (m[4] * m[9] - m[5] * m[8]);
+    if (isfinite(det) && det < 0.0)
+        sx = -sx;
+    r00 = m[0] / sx;
+    r01 = m[1] / sy;
+    r02 = m[2] / sz;
+    r10 = m[4] / sx;
+    r11 = m[5] / sy;
+    r12 = m[6] / sz;
+    r20 = m[8] / sx;
+    r21 = m[9] / sy;
+    r22 = m[10] / sz;
+    trace = r00 + r11 + r22;
+    if (trace > 0.0) {
+        double s = sqrt(trace + 1.0) * 2.0;
+        if (s > 1e-12) {
+            qw = 0.25 * s;
+            qx = (r21 - r12) / s;
+            qy = (r02 - r20) / s;
+            qz = (r10 - r01) / s;
+        }
+    } else if (r00 > r11 && r00 > r22) {
+        double s = sqrt(1.0 + r00 - r11 - r22) * 2.0;
+        if (s > 1e-12) {
+            qw = (r21 - r12) / s;
+            qx = 0.25 * s;
+            qy = (r01 + r10) / s;
+            qz = (r02 + r20) / s;
+        }
+    } else if (r11 > r22) {
+        double s = sqrt(1.0 + r11 - r00 - r22) * 2.0;
+        if (s > 1e-12) {
+            qw = (r02 - r20) / s;
+            qx = (r01 + r10) / s;
+            qy = 0.25 * s;
+            qz = (r12 + r21) / s;
+        }
+    } else {
+        double s = sqrt(1.0 + r22 - r00 - r11) * 2.0;
+        if (s > 1e-12) {
+            qw = (r10 - r01) / s;
+            qx = (r02 + r20) / s;
+            qy = (r12 + r21) / s;
+            qz = 0.25 * s;
+        }
+    }
+    {
+        double qlen = sqrt(qx * qx + qy * qy + qz * qz + qw * qw);
+        if (isfinite(qlen) && qlen > 1e-12) {
+            qx /= qlen;
+            qy /= qlen;
+            qz /= qlen;
+            qw /= qlen;
+        } else {
+            qx = qy = qz = 0.0;
+            qw = 1.0;
+        }
+    }
+    if (quat) {
+        quat[0] = qx;
+        quat[1] = qy;
+        quat[2] = qz;
+        quat[3] = qw;
+    }
+    if (scale) {
+        scale[0] = fbx_scale_or_unit(sx);
+        scale[1] = fbx_scale_or_unit(sy);
+        scale[2] = fbx_scale_or_unit(sz);
+    }
+}
+
+/// @brief Pull the complete FBX transform stack off a `Model` node and expose it as TRS.
+/// @details Unlike the older local-TRS-only path, this honors RotationOrder, pivots, offsets,
+///          PreRotation/PostRotation, and geometric transforms before decomposing to the
+///          SceneNode3D representation. `z_up` applies a full matrix basis conversion so rotated
+///          and pivoted models convert correctly.
 static void fbx_extract_model_trs(
     fbx_node_t *model_node, int z_up, double *pos, double *quat, double *scale) {
-    double tx = 0.0;
-    double ty = 0.0;
-    double tz = 0.0;
-    double rx = 0.0;
-    double ry = 0.0;
-    double rz = 0.0;
-    double pre_rx = 0.0;
-    double pre_ry = 0.0;
-    double pre_rz = 0.0;
-    double post_rx = 0.0;
-    double post_ry = 0.0;
-    double post_rz = 0.0;
-    double geo_tx = 0.0;
-    double geo_ty = 0.0;
-    double geo_tz = 0.0;
-    double geo_rx = 0.0;
-    double geo_ry = 0.0;
-    double geo_rz = 0.0;
-    double rot_off_x = 0.0;
-    double rot_off_y = 0.0;
-    double rot_off_z = 0.0;
-    double scale_off_x = 0.0;
-    double scale_off_y = 0.0;
-    double scale_off_z = 0.0;
-    double sx = 1.0;
-    double sy = 1.0;
-    double sz = 1.0;
-    double geo_sx = 1.0;
-    double geo_sy = 1.0;
-    double geo_sz = 1.0;
-    double hx;
-    double hy;
-    double hz;
-    double cx;
-    double cy;
-    double cz;
-    double sxh;
-    double syh;
-    double szh;
-    double qx;
-    double qy;
-    double qz;
-    double qw;
-    fbx_node_t *p70;
-
+    fbx_transform_components_t components;
+    double matrix[16];
     if (pos) {
         pos[0] = 0.0;
         pos[1] = 0.0;
@@ -1870,125 +2739,11 @@ static void fbx_extract_model_trs(
     }
     if (!model_node)
         return;
-
-    p70 = fbx_find_child(model_node, "Properties70");
-    if (p70) {
-        for (int32_t pi = 0; pi < p70->child_count; pi++) {
-            fbx_node_t *p = &p70->children[pi];
-            const char *pn;
-            if (strcmp(p->name, "P") != 0 || p->prop_count < 7)
-                continue;
-            pn = fbx_prop_str(p, 0);
-            if (strcmp(pn, "Lcl Translation") == 0) {
-                tx = fbx_prop_f64(p, 4);
-                ty = fbx_prop_f64(p, 5);
-                tz = fbx_prop_f64(p, 6);
-            } else if (strcmp(pn, "Lcl Rotation") == 0) {
-                rx = fbx_prop_f64(p, 4);
-                ry = fbx_prop_f64(p, 5);
-                rz = fbx_prop_f64(p, 6);
-            } else if (strcmp(pn, "Lcl Scaling") == 0) {
-                sx = fbx_prop_f64(p, 4);
-                sy = fbx_prop_f64(p, 5);
-                sz = fbx_prop_f64(p, 6);
-            } else if (strcmp(pn, "PreRotation") == 0) {
-                pre_rx = fbx_prop_f64(p, 4);
-                pre_ry = fbx_prop_f64(p, 5);
-                pre_rz = fbx_prop_f64(p, 6);
-            } else if (strcmp(pn, "PostRotation") == 0) {
-                post_rx = fbx_prop_f64(p, 4);
-                post_ry = fbx_prop_f64(p, 5);
-                post_rz = fbx_prop_f64(p, 6);
-            } else if (strcmp(pn, "GeometricTranslation") == 0) {
-                geo_tx = fbx_prop_f64(p, 4);
-                geo_ty = fbx_prop_f64(p, 5);
-                geo_tz = fbx_prop_f64(p, 6);
-            } else if (strcmp(pn, "GeometricRotation") == 0) {
-                geo_rx = fbx_prop_f64(p, 4);
-                geo_ry = fbx_prop_f64(p, 5);
-                geo_rz = fbx_prop_f64(p, 6);
-            } else if (strcmp(pn, "GeometricScaling") == 0) {
-                geo_sx = fbx_prop_f64(p, 4);
-                geo_sy = fbx_prop_f64(p, 5);
-                geo_sz = fbx_prop_f64(p, 6);
-            } else if (strcmp(pn, "RotationOffset") == 0) {
-                rot_off_x = fbx_prop_f64(p, 4);
-                rot_off_y = fbx_prop_f64(p, 5);
-                rot_off_z = fbx_prop_f64(p, 6);
-            } else if (strcmp(pn, "ScalingOffset") == 0) {
-                scale_off_x = fbx_prop_f64(p, 4);
-                scale_off_y = fbx_prop_f64(p, 5);
-                scale_off_z = fbx_prop_f64(p, 6);
-            }
-        }
-    }
-
-    tx += geo_tx + rot_off_x + scale_off_x;
-    ty += geo_ty + rot_off_y + scale_off_y;
-    tz += geo_tz + rot_off_z + scale_off_z;
-    rx += pre_rx + post_rx + geo_rx;
-    ry += pre_ry + post_ry + geo_ry;
-    rz += pre_rz + post_rz + geo_rz;
-    sx *= geo_sx;
-    sy *= geo_sy;
-    sz *= geo_sz;
-
-    tx = fbx_clamp_abs_or(tx, 0.0, FBX_NUMERIC_ABS_MAX);
-    ty = fbx_clamp_abs_or(ty, 0.0, FBX_NUMERIC_ABS_MAX);
-    tz = fbx_clamp_abs_or(tz, 0.0, FBX_NUMERIC_ABS_MAX);
-    rx = fbx_sanitize_rotation_degrees(rx);
-    ry = fbx_sanitize_rotation_degrees(ry);
-    rz = fbx_sanitize_rotation_degrees(rz);
-    sx = fbx_scale_or_unit(sx);
-    sy = fbx_scale_or_unit(sy);
-    sz = fbx_scale_or_unit(sz);
-
+    fbx_read_model_transform_components(model_node, &components);
+    fbx_build_model_transform_matrix(&components, matrix);
     if (z_up)
-        fbx_correct_zup(&tx, &ty, &tz);
-    fbx_sanitize_position3(&tx, &ty, &tz);
-
-    hx = rx * 3.14159265358979323846 / 360.0;
-    hy = ry * 3.14159265358979323846 / 360.0;
-    hz = rz * 3.14159265358979323846 / 360.0;
-    cx = cos(hx);
-    cy = cos(hy);
-    cz = cos(hz);
-    sxh = sin(hx);
-    syh = sin(hy);
-    szh = sin(hz);
-    qw = cx * cy * cz + sxh * syh * szh;
-    qx = sxh * cy * cz - cx * syh * szh;
-    qy = cx * syh * cz + sxh * cy * szh;
-    qz = cx * cy * szh - sxh * syh * cz;
-    {
-        double qlen = sqrt(qx * qx + qy * qy + qz * qz + qw * qw);
-        if (isfinite(qlen) && qlen > 1e-12) {
-            qx /= qlen;
-            qy /= qlen;
-            qz /= qlen;
-            qw /= qlen;
-        } else {
-            qx = qy = qz = 0.0;
-            qw = 1.0;
-        }
-    }
-
-    if (pos) {
-        pos[0] = fbx_clamp_abs_or(tx, 0.0, FBX_NUMERIC_ABS_MAX);
-        pos[1] = fbx_clamp_abs_or(ty, 0.0, FBX_NUMERIC_ABS_MAX);
-        pos[2] = fbx_clamp_abs_or(tz, 0.0, FBX_NUMERIC_ABS_MAX);
-    }
-    if (quat) {
-        quat[0] = qx;
-        quat[1] = qy;
-        quat[2] = qz;
-        quat[3] = qw;
-    }
-    if (scale) {
-        scale[0] = fbx_scale_or_unit(sx);
-        scale[1] = fbx_scale_or_unit(sy);
-        scale[2] = fbx_scale_or_unit(sz);
-    }
+        fbx_mat4_apply_zup(matrix);
+    fbx_decompose_matrix_trs(matrix, pos, quat, scale);
 }
 
 /// @brief Linear-search @p bindings for the entry with the given @p id; NULL if not found.
@@ -2385,13 +3140,60 @@ static void *fbx_build_scene_root(fbx_node_t *root,
  * Skeleton extraction
  *=========================================================================*/
 
+/// @brief Find a Cluster bind matrix connected to a bone model.
+/// @details Skinned FBX files often store the authoritative bone bind pose in the Cluster
+///          `TransformLink` matrix instead of exactly matching the bone Model's current local
+///          transform. This scans all Cluster deformers connected to @p model_id and returns the
+///          first finite `TransformLink` matrix, with optional Z-up basis conversion applied.
+///          `TransformAssociateModel` is accepted as a compatibility fallback for exporters that
+///          use it for link-style matrices.
+/// @param objects FBX `Objects` node.
+/// @param ct Parsed connection table.
+/// @param model_id Bone Model object ID.
+/// @param z_up Non-zero when source coordinates are Z-up.
+/// @param out Receives the row-major global bind matrix on success.
+/// @return Non-zero when a cluster link matrix was found.
+static int fbx_find_cluster_transform_link_for_model(fbx_node_t *objects,
+                                                     const fbx_conn_table_t *ct,
+                                                     int64_t model_id,
+                                                     int z_up,
+                                                     double out[16]) {
+    if (!objects || !ct || model_id == 0 || !out)
+        return 0;
+    for (int32_t oi = 0; oi < objects->child_count; oi++) {
+        fbx_node_t *cluster = &objects->children[oi];
+        int64_t cluster_id;
+        int connected = 0;
+        if (strcmp(cluster->name, "Deformer") != 0 || cluster->prop_count < 3 ||
+            strcmp(fbx_prop_str(cluster, 2), "Cluster") != 0)
+            continue;
+        cluster_id = fbx_prop_i64(cluster, 0);
+        for (int32_t ci = 0; ci < ct->count; ci++) {
+            if (ct->entries[ci].child_id == cluster_id && ct->entries[ci].parent_id == model_id) {
+                connected = 1;
+                break;
+            }
+        }
+        if (!connected)
+            continue;
+        if (!fbx_read_child_matrix16(cluster, "TransformLink", out) &&
+            !fbx_read_child_matrix16(cluster, "TransformAssociateModel", out))
+            continue;
+        if (z_up)
+            fbx_mat4_apply_zup(out);
+        return 1;
+    }
+    return 0;
+}
+
 /// @brief Build a `rt_skeleton3d_t` from the FBX `Model` nodes of type LimbNode/Limb/Root.
 ///
 /// Walks the connection table to determine each bone's parent
-/// (translating bone-IDs to in-skeleton indices), pulls the
-/// `Lcl Translation/Rotation/Scaling` properties for the bind
-/// pose, and computes inverse-bind matrices for skinning.
-/// `z_up` triggers the same axis-swap normalisation as the geometry pass.
+/// (translating bone-IDs to in-skeleton indices), composes the full FBX
+/// transform stack for each bone, then reconciles that local hierarchy with
+/// Cluster `TransformLink` global bind matrices when present. `z_up` triggers
+/// the same basis conversion as the geometry pass, but at matrix level so
+/// rotations, pivots, and bind poses stay coherent.
 static void *fbx_extract_skeleton(fbx_node_t *root,
                                   const fbx_conn_table_t *ct,
                                   int z_up,
@@ -2411,9 +3213,10 @@ static void *fbx_extract_skeleton(fbx_node_t *root,
     typedef struct {
         int64_t id;
         char name[64];
-        double lcl_translation[3];
-        double lcl_rotation[3];
-        double lcl_scaling[3];
+        fbx_transform_components_t transform;
+        double local_model_bind[16];
+        double cluster_global_bind[16];
+        int has_cluster_global_bind;
         int64_t parent_id;
         int32_t bone_index; /* assigned after topological sort */
     } bone_info_t;
@@ -2457,31 +3260,12 @@ static void *fbx_extract_skeleton(fbx_node_t *root,
             nlen = 63;
         memcpy(bi->name, nstr, nlen);
         bi->name[nlen] = '\0';
-        bi->lcl_scaling[0] = bi->lcl_scaling[1] = bi->lcl_scaling[2] = 1.0;
-
-        /* Extract Lcl Translation/Rotation/Scaling from Properties70 */
-        fbx_node_t *p70 = fbx_find_child(obj, "Properties70");
-        if (p70) {
-            for (int32_t pi = 0; pi < p70->child_count; pi++) {
-                fbx_node_t *p = &p70->children[pi];
-                if (strcmp(p->name, "P") != 0 || p->prop_count < 7)
-                    continue;
-                const char *pn = fbx_prop_str(p, 0);
-                if (strcmp(pn, "Lcl Translation") == 0) {
-                    bi->lcl_translation[0] = fbx_prop_f64(p, 4);
-                    bi->lcl_translation[1] = fbx_prop_f64(p, 5);
-                    bi->lcl_translation[2] = fbx_prop_f64(p, 6);
-                } else if (strcmp(pn, "Lcl Rotation") == 0) {
-                    bi->lcl_rotation[0] = fbx_prop_f64(p, 4);
-                    bi->lcl_rotation[1] = fbx_prop_f64(p, 5);
-                    bi->lcl_rotation[2] = fbx_prop_f64(p, 6);
-                } else if (strcmp(pn, "Lcl Scaling") == 0) {
-                    bi->lcl_scaling[0] = fbx_prop_f64(p, 4);
-                    bi->lcl_scaling[1] = fbx_prop_f64(p, 5);
-                    bi->lcl_scaling[2] = fbx_prop_f64(p, 6);
-                }
-            }
-        }
+        fbx_read_model_transform_components(obj, &bi->transform);
+        fbx_build_model_transform_matrix(&bi->transform, bi->local_model_bind);
+        if (z_up)
+            fbx_mat4_apply_zup(bi->local_model_bind);
+        bi->has_cluster_global_bind = fbx_find_cluster_transform_link_for_model(
+            objects, ct, bi->id, z_up, bi->cluster_global_bind);
 
         bi->parent_id = fbx_find_parent(ct, bi->id);
     }
@@ -2501,6 +3285,7 @@ static void *fbx_extract_skeleton(fbx_node_t *root,
     /* Assign bone indices: process bones in parent-first order */
     int32_t *order = (int32_t *)calloc((size_t)bone_count, sizeof(int32_t));
     int8_t *placed = (int8_t *)calloc((size_t)bone_count, sizeof(int8_t));
+    double *global_binds = NULL;
     int32_t placed_count = 0;
     int failed = 0;
     if (!order || !placed) {
@@ -2556,11 +3341,25 @@ static void *fbx_extract_skeleton(fbx_node_t *root,
             return NULL;
         }
     }
+    if (placed_count > 0) {
+        if ((size_t)placed_count <= SIZE_MAX / (16u * sizeof(double)))
+            global_binds = (double *)calloc((size_t)placed_count * 16u, sizeof(double));
+        if (!global_binds) {
+            free(bindings);
+            free(order);
+            free(placed);
+            free(bones);
+            fbx_release_ref(&skel);
+            return NULL;
+        }
+    }
 
     /* Add bones to skeleton in topological order */
     for (int32_t i = 0; i < placed_count; i++) {
         bone_info_t *bi = &bones[order[i]];
         int64_t parent_idx = -1;
+        double global_bind[16];
+        double local_bind[16];
         for (int32_t j = 0; j < i; j++) {
             if (bi->parent_id == bones[order[j]].id) {
                 parent_idx = j;
@@ -2568,51 +3367,28 @@ static void *fbx_extract_skeleton(fbx_node_t *root,
             }
         }
 
-        double tx = bi->lcl_translation[0], ty = bi->lcl_translation[1],
-               tz = bi->lcl_translation[2];
-        if (z_up)
-            fbx_correct_zup(&tx, &ty, &tz);
-        if (!fbx_sanitize_position3(&tx, &ty, &tz)) {
-            tx = 0.0;
-            ty = 0.0;
-            tz = 0.0;
+        if (bi->has_cluster_global_bind) {
+            memcpy(global_bind, bi->cluster_global_bind, sizeof(global_bind));
+        } else if (parent_idx >= 0) {
+            fbx_mat4_mul_local(&global_binds[(size_t)parent_idx * 16u],
+                               bi->local_model_bind,
+                               global_bind);
+        } else {
+            memcpy(global_bind, bi->local_model_bind, sizeof(global_bind));
+        }
+        memcpy(&global_binds[(size_t)i * 16u], global_bind, sizeof(global_bind));
+
+        if (parent_idx >= 0) {
+            double inv_parent[16];
+            if (fbx_mat4_inverse_affine(&global_binds[(size_t)parent_idx * 16u], inv_parent))
+                fbx_mat4_mul_local(inv_parent, global_bind, local_bind);
+            else
+                memcpy(local_bind, bi->local_model_bind, sizeof(local_bind));
+        } else {
+            memcpy(local_bind, global_bind, sizeof(local_bind));
         }
 
-        /* Build full TRS bind matrix (rotation from Euler ZYX, then scale) */
-        double rx =
-            fbx_sanitize_rotation_degrees(bi->lcl_rotation[0]) * 3.14159265358979323846 / 180.0;
-        double ry =
-            fbx_sanitize_rotation_degrees(bi->lcl_rotation[1]) * 3.14159265358979323846 / 180.0;
-        double rz =
-            fbx_sanitize_rotation_degrees(bi->lcl_rotation[2]) * 3.14159265358979323846 / 180.0;
-        double cxr = cos(rx), sxr = sin(rx);
-        double cyr = cos(ry), syr = sin(ry);
-        double czr = cos(rz), szr = sin(rz);
-        /* R = Rz * Ry * Rx (standard FBX Euler order) */
-        double r00 = cyr * czr, r01 = sxr * syr * czr - cxr * szr,
-               r02 = cxr * syr * czr + sxr * szr;
-        double r10 = cyr * szr, r11 = sxr * syr * szr + cxr * czr,
-               r12 = cxr * syr * szr - sxr * czr;
-        double r20 = -syr, r21 = sxr * cyr, r22 = cxr * cyr;
-        double scx = fbx_scale_or_unit(bi->lcl_scaling[0]);
-        double scy = fbx_scale_or_unit(bi->lcl_scaling[1]);
-        double scz = fbx_scale_or_unit(bi->lcl_scaling[2]);
-        void *bind_mat = rt_mat4_new(r00 * scx,
-                                     r01 * scy,
-                                     r02 * scz,
-                                     tx,
-                                     r10 * scx,
-                                     r11 * scy,
-                                     r12 * scz,
-                                     ty,
-                                     r20 * scx,
-                                     r21 * scy,
-                                     r22 * scz,
-                                     tz,
-                                     0,
-                                     0,
-                                     0,
-                                     1);
+        void *bind_mat = fbx_mat4_to_rt(local_bind);
         int64_t added = rt_skeleton3d_add_bone(skel, rt_const_cstr(bi->name), parent_idx, bind_mat);
         fbx_release_ref(&bind_mat);
         if (added < 0) {
@@ -2628,6 +3404,7 @@ static void *fbx_extract_skeleton(fbx_node_t *root,
     }
     if (failed) {
         free(bindings);
+        free(global_binds);
         free(order);
         free(placed);
         free(bones);
@@ -2637,6 +3414,7 @@ static void *fbx_extract_skeleton(fbx_node_t *root,
 
     rt_skeleton3d_compute_inverse_bind(skel);
 
+    free(global_binds);
     free(order);
     free(placed);
     free(bones);
@@ -3041,8 +3819,20 @@ typedef struct {
     const int64_t *times;
     const double *values64;
     const float *values32;
+    const int32_t *attr_flags;
+    const double *attr_data64;
+    const float *attr_data32;
     uint32_t count;
+    uint32_t attr_flag_count;
+    uint32_t attr_data_count;
 } fbx_anim_curve_view_t;
+
+#define FBX_ANIM_INTERP_LINEAR 0
+#define FBX_ANIM_INTERP_CONSTANT 1
+#define FBX_ANIM_INTERP_CUBIC 2
+#define FBX_ANIM_INTERP_FLAG_CONSTANT 0x00000002
+#define FBX_ANIM_INTERP_FLAG_LINEAR 0x00000004
+#define FBX_ANIM_INTERP_FLAG_CUBIC 0x00000008
 
 typedef struct {
     int8_t initialized;
@@ -3126,8 +3916,8 @@ static int fbx_anim_curve_view_valid(const fbx_anim_curve_view_t *curve) {
     for (uint32_t i = 0; i < curve->count; i++) {
         double value = curve->values64 ? curve->values64[i] : (double)curve->values32[i];
         double seconds = (double)curve->times[i] / (double)FBX_TIME_SECOND;
-        if (!isfinite(value) || curve->times[i] < 0 || !isfinite(seconds) ||
-            seconds > FBX_ANIM_TIME_SECONDS_MAX)
+        if (!isfinite(value) || !isfinite(seconds) ||
+            fabs(seconds) > FBX_ANIM_TIME_SECONDS_MAX)
             return 0;
         if (i > 0 && curve->times[i] <= curve->times[i - 1])
             return 0;
@@ -3165,11 +3955,138 @@ static int32_t fbx_anim_component_from_connection_prop(const char *prop) {
     return -1;
 }
 
-/// @brief Sample the animation curve at the given FBX tick time using linear interpolation.
+/// @brief Return one animation curve key value as double.
+/// @param curve Animation curve view.
+/// @param key_index Key index to read.
+/// @param fallback Returned when the key is out of range or non-finite.
+/// @return The finite key value or @p fallback.
+static double fbx_anim_curve_key_value(const fbx_anim_curve_view_t *curve,
+                                       uint32_t key_index,
+                                       double fallback) {
+    double value;
+    if (!fbx_anim_curve_has_data(curve) || key_index >= curve->count)
+        return fallback;
+    value = curve->values64 ? curve->values64[key_index] : (double)curve->values32[key_index];
+    return isfinite(value) ? value : fallback;
+}
+
+/// @brief Classify an FBX curve segment's interpolation mode from `KeyAttrFlags`.
+/// @details FBX SDK interpolation bits are commonly 0x2 constant, 0x4 linear, and 0x8 cubic.
+///          Some exporters omit flags or write sparse metadata; those segments fall back to
+///          linear interpolation because that is the safest representation for the runtime.
+/// @param curve Animation curve view.
+/// @param segment_index Segment starting key index.
+/// @return One of FBX_ANIM_INTERP_*.
+static int fbx_anim_curve_segment_mode(const fbx_anim_curve_view_t *curve,
+                                       uint32_t segment_index) {
+    int32_t flags;
+    if (!curve || !curve->attr_flags || segment_index >= curve->attr_flag_count)
+        return FBX_ANIM_INTERP_LINEAR;
+    flags = curve->attr_flags[segment_index];
+    if (flags & FBX_ANIM_INTERP_FLAG_CONSTANT)
+        return FBX_ANIM_INTERP_CONSTANT;
+    if (flags & FBX_ANIM_INTERP_FLAG_CUBIC)
+        return FBX_ANIM_INTERP_CUBIC;
+    if (flags & FBX_ANIM_INTERP_FLAG_LINEAR)
+        return FBX_ANIM_INTERP_LINEAR;
+    return FBX_ANIM_INTERP_LINEAR;
+}
+
+/// @brief Read tangent slope metadata from a curve's `KeyAttrDataFloat` array.
+/// @details Exporters typically store four floats per key; this helper treats slot 0 as the
+///          outgoing slope and slot 1 as the incoming slope. Two-float-per-key data is accepted
+///          as a compact variant. Missing/non-finite data returns @p fallback_slope.
+/// @param curve Animation curve view.
+/// @param key_index Key whose tangent is requested.
+/// @param incoming Non-zero for incoming tangent, zero for outgoing tangent.
+/// @param fallback_slope Value used when no usable tangent metadata exists.
+/// @return Tangent slope in value-per-second units.
+static double fbx_anim_curve_tangent_slope(const fbx_anim_curve_view_t *curve,
+                                           uint32_t key_index,
+                                           int incoming,
+                                           double fallback_slope) {
+    uint32_t stride = 0;
+    uint32_t slot;
+    double value;
+    if (!curve || key_index >= curve->count || curve->attr_data_count == 0 ||
+        (!curve->attr_data64 && !curve->attr_data32))
+        return fallback_slope;
+    if (curve->attr_data_count >= curve->count * 4u)
+        stride = 4u;
+    else if (curve->attr_data_count >= curve->count * 2u)
+        stride = 2u;
+    if (stride == 0)
+        return fallback_slope;
+    slot = key_index * stride + (incoming ? 1u : 0u);
+    if (slot >= curve->attr_data_count)
+        return fallback_slope;
+    value = curve->attr_data64 ? curve->attr_data64[slot] : (double)curve->attr_data32[slot];
+    if (!isfinite(value))
+        return fallback_slope;
+    return fbx_clamp_abs_or(value, fallback_slope, FBX_NUMERIC_ABS_MAX);
+}
+
+/// @brief Hermite-sample one cubic FBX animation segment.
+/// @details The runtime animation format is keyframe-only, but importing cubic source curves still
+///          benefits from correct intermediate samples. Tangents are interpreted as value/second;
+///          when missing, linear slope fallback makes this reduce to ordinary linear interpolation.
+/// @param curve Animation curve view.
+/// @param lo Segment start key index.
+/// @param hi Segment end key index.
+/// @param fbx_time Time inside the segment.
+/// @param fallback Returned on malformed data.
+/// @return Interpolated curve value.
+static double fbx_anim_curve_cubic_value(const fbx_anim_curve_view_t *curve,
+                                         uint32_t lo,
+                                         uint32_t hi,
+                                         int64_t fbx_time,
+                                         double fallback) {
+    int64_t t0 = curve->times[lo];
+    int64_t t1 = curve->times[hi];
+    double span_seconds;
+    double u;
+    double v0;
+    double v1;
+    double slope;
+    double m0;
+    double m1;
+    double u2;
+    double u3;
+    double h00;
+    double h10;
+    double h01;
+    double h11;
+    if (t1 <= t0)
+        return fallback;
+    span_seconds = (double)(t1 - t0) / (double)FBX_TIME_SECOND;
+    if (!isfinite(span_seconds) || span_seconds <= 0.0)
+        return fallback;
+    u = (double)(fbx_time - t0) / (double)(t1 - t0);
+    if (!isfinite(u) || u < 0.0)
+        u = 0.0;
+    if (u > 1.0)
+        u = 1.0;
+    v0 = fbx_anim_curve_key_value(curve, lo, fallback);
+    v1 = fbx_anim_curve_key_value(curve, hi, fallback);
+    if (!isfinite(v0) || !isfinite(v1))
+        return fallback;
+    slope = (v1 - v0) / span_seconds;
+    m0 = fbx_anim_curve_tangent_slope(curve, lo, 0, slope);
+    m1 = fbx_anim_curve_tangent_slope(curve, hi, 1, slope);
+    u2 = u * u;
+    u3 = u2 * u;
+    h00 = 2.0 * u3 - 3.0 * u2 + 1.0;
+    h10 = u3 - 2.0 * u2 + u;
+    h01 = -2.0 * u3 + 3.0 * u2;
+    h11 = u3 - u2;
+    return h00 * v0 + h10 * span_seconds * m0 + h01 * v1 + h11 * span_seconds * m1;
+}
+
+/// @brief Sample the animation curve at the given FBX tick time using FBX interpolation flags.
 /// @details Times before the first keyframe return the first value; times after the last return
-///          the last value (no extrapolation).  FBX allows either double (`'d'`) or float (`'f'`)
-///          value arrays; both are handled by testing `values64` vs `values32`.  FBX time is in
-///          units of 1/46,186,158,000 second (see FBX_TIME_SECOND).
+///          the last value (no extrapolation).  Constant segments hold the left key, cubic
+///          segments use Hermite interpolation with `KeyAttrDataFloat` tangents when available,
+///          and all other segments are linear. FBX time is in units of 1/46,186,158,000 second.
 /// @param fallback Value returned when the curve has no data.
 static double fbx_anim_curve_value(const fbx_anim_curve_view_t *curve,
                                    int64_t fbx_time,
@@ -3183,9 +4100,8 @@ static double fbx_anim_curve_value(const fbx_anim_curve_view_t *curve,
     double a;
     if (!fbx_anim_curve_has_data(curve))
         return fallback;
-    v0 = curve->values64 ? curve->values64[0] : (double)curve->values32[0];
-    v1 = curve->values64 ? curve->values64[curve->count - 1]
-                         : (double)curve->values32[curve->count - 1];
+    v0 = fbx_anim_curve_key_value(curve, 0, fallback);
+    v1 = fbx_anim_curve_key_value(curve, curve->count - 1, fallback);
     if (!isfinite(v0) || !isfinite(v1))
         return fallback;
     if (fbx_time <= curve->times[0])
@@ -3205,10 +4121,17 @@ static double fbx_anim_curve_value(const fbx_anim_curve_view_t *curve,
     t1 = curve->times[hi];
     if (t1 <= t0)
         return fallback;
-    v0 = curve->values64 ? curve->values64[lo] : (double)curve->values32[lo];
-    v1 = curve->values64 ? curve->values64[hi] : (double)curve->values32[hi];
+    v0 = fbx_anim_curve_key_value(curve, lo, fallback);
+    v1 = fbx_anim_curve_key_value(curve, hi, fallback);
     if (!isfinite(v0) || !isfinite(v1))
         return fallback;
+    {
+        int mode = fbx_anim_curve_segment_mode(curve, lo);
+        if (mode == FBX_ANIM_INTERP_CONSTANT)
+            return v0;
+        if (mode == FBX_ANIM_INTERP_CUBIC)
+            return fbx_anim_curve_cubic_value(curve, lo, hi, fbx_time, fallback);
+    }
     a = (double)(fbx_time - t0) / (double)(t1 - t0);
     if (!isfinite(a) || a < 0.0)
         a = 0.0;
@@ -3228,9 +4151,9 @@ static int fbx_i64_compare(const void *a, const void *b) {
 static int fbx_anim_append_time(int64_t **times, int32_t *count, int32_t *capacity, int64_t value) {
     double seconds = (double)value / (double)FBX_TIME_SECOND;
     if (!times || !count || !capacity || *count < 0 || *capacity < 0 || *count > *capacity ||
-        (*count > 0 && !*times) || value < 0)
+        (*count > 0 && !*times))
         return 0;
-    if (!isfinite(seconds) || seconds > FBX_ANIM_TIME_SECONDS_MAX)
+    if (!isfinite(seconds) || fabs(seconds) > FBX_ANIM_TIME_SECONDS_MAX)
         return 1;
     if (*count >= *capacity) {
         int32_t new_capacity;
@@ -3248,6 +4171,58 @@ static int fbx_anim_append_time(int64_t **times, int32_t *count, int32_t *capaci
     }
     (*times)[*count] = value;
     (*count)++;
+    return 1;
+}
+
+/// @brief Append all runtime-needed sample times for an FBX animation curve.
+/// @details Adds authored key times unconditionally. Constant segments also add one representable
+///          pre-step sample before the next key so runtime linear interpolation holds the previous
+///          value until the step. Cubic segments add one-third and two-third samples, giving the
+///          existing keyframe runtime enough points to approximate Hermite source curves without
+///          changing Animation3D's storage model.
+/// @param times Dynamic array receiving unsorted FBX tick times.
+/// @param count Current array count.
+/// @param capacity Current array capacity.
+/// @param curve Curve whose key and intermediate sample times should be appended.
+/// @return Non-zero on success.
+static int fbx_anim_append_curve_sample_times(int64_t **times,
+                                              int32_t *count,
+                                              int32_t *capacity,
+                                              const fbx_anim_curve_view_t *curve) {
+    if (!fbx_anim_curve_has_data(curve))
+        return 1;
+    for (uint32_t k = 0; k < curve->count; k++) {
+        if (!fbx_anim_append_time(times, count, capacity, curve->times[k]))
+            return 0;
+    }
+    for (uint32_t k = 0; k + 1u < curve->count; k++) {
+        int64_t t0 = curve->times[k];
+        int64_t t1 = curve->times[k + 1u];
+        int64_t delta = t1 - t0;
+        int mode;
+        if (delta <= 1)
+            continue;
+        mode = fbx_anim_curve_segment_mode(curve, k);
+        if (mode == FBX_ANIM_INTERP_CONSTANT) {
+            int64_t step_delta = FBX_TIME_SECOND / 100000LL; /* 10 microseconds */
+            if (step_delta < 1)
+                step_delta = 1;
+            if (step_delta >= delta)
+                step_delta = 1;
+            if (t1 - step_delta > t0 &&
+                !fbx_anim_append_time(times, count, capacity, t1 - step_delta))
+                return 0;
+        } else if (mode == FBX_ANIM_INTERP_CUBIC && delta >= 3) {
+            int64_t t_a = t0 + delta / 3;
+            int64_t t_b = t0 + (delta * 2) / 3;
+            if (t_a > t0 && t_a < t1 &&
+                !fbx_anim_append_time(times, count, capacity, t_a))
+                return 0;
+            if (t_b > t0 && t_b < t1 && t_b != t_a &&
+                !fbx_anim_append_time(times, count, capacity, t_b))
+                return 0;
+        }
+    }
     return 1;
 }
 
@@ -3407,12 +4382,27 @@ static void fbx_anim_collect_curves(fbx_node_t *objects,
                 {
                     fbx_anim_curve_view_t *view = &builders[bone_idx].curves[trs_type][comp];
                     fbx_anim_curve_view_t candidate;
+                    uint32_t attr_flag_count = 0;
+                    uint32_t attr_data_count = 0;
+                    const int32_t *attr_flags = fbx_get_i32_array(
+                        curve, "KeyAttrFlags", &attr_flag_count);
+                    const double *attr_data64 = fbx_get_f64_array(
+                        curve, "KeyAttrDataFloat", &attr_data_count);
+                    const float *attr_data32 = NULL;
                     if (fbx_anim_curve_has_data(view))
                         continue;
+                    if (!attr_data64)
+                        attr_data32 = fbx_get_f32_array(curve, "KeyAttrDataFloat", &attr_data_count);
+                    memset(&candidate, 0, sizeof(candidate));
                     candidate.times = times;
                     candidate.values64 = dvals;
                     candidate.values32 = fvals;
+                    candidate.attr_flags = attr_flags;
+                    candidate.attr_data64 = attr_data64;
+                    candidate.attr_data32 = attr_data32;
                     candidate.count = tc;
+                    candidate.attr_flag_count = attr_flags ? attr_flag_count : 0;
+                    candidate.attr_data_count = (attr_data64 || attr_data32) ? attr_data_count : 0;
                     if (fbx_anim_curve_view_valid(&candidate))
                         *view = candidate;
                 }
@@ -3439,10 +4429,18 @@ static int fbx_anim_stack_has_layer(fbx_node_t *objects,
     return 0;
 }
 
-/// @brief Largest keyframe time (seconds) across all of @p builders' curves.
-static double fbx_anim_compute_max_time(const fbx_anim_bone_builder_t *builders,
-                                        int64_t bone_count) {
-    double max_time = 0.0;
+/// @brief Smallest and largest FBX key ticks across all of @p builders' curves.
+static int fbx_anim_compute_time_bounds(const fbx_anim_bone_builder_t *builders,
+                                        int64_t bone_count,
+                                        int64_t *out_min_time,
+                                        int64_t *out_max_time) {
+    int found = 0;
+    int64_t min_time = 0;
+    int64_t max_time = 0;
+    if (out_min_time)
+        *out_min_time = 0;
+    if (out_max_time)
+        *out_max_time = 0;
     for (int64_t bone_idx = 0; bone_idx < bone_count; bone_idx++) {
         if (!builders[bone_idx].initialized)
             continue;
@@ -3452,15 +4450,25 @@ static double fbx_anim_compute_max_time(const fbx_anim_bone_builder_t *builders,
                 if (!fbx_anim_curve_has_data(curve))
                     continue;
                 for (uint32_t k = 0; k < curve->count; k++) {
-                    double t = (double)curve->times[k] / (double)FBX_TIME_SECOND;
-                    if (isfinite(t) && t > 0.0 && t <= FBX_ANIM_TIME_SECONDS_MAX &&
-                        t > max_time)
-                        max_time = t;
+                    double seconds = (double)curve->times[k] / (double)FBX_TIME_SECOND;
+                    if (!isfinite(seconds) || fabs(seconds) > FBX_ANIM_TIME_SECONDS_MAX)
+                        continue;
+                    if (!found || curve->times[k] < min_time)
+                        min_time = curve->times[k];
+                    if (!found || curve->times[k] > max_time)
+                        max_time = curve->times[k];
+                    found = 1;
                 }
             }
         }
     }
-    return max_time;
+    if (!found)
+        return 0;
+    if (out_min_time)
+        *out_min_time = min_time;
+    if (out_max_time)
+        *out_max_time = max_time;
+    return 1;
 }
 
 /// @brief Sample one bone's T/R/S curves at each unique keyframe time and emit keyframes into
@@ -3468,7 +4476,8 @@ static double fbx_anim_compute_max_time(const fbx_anim_bone_builder_t *builders,
 static int fbx_anim_build_bone_keyframes(void *anim,
                                          const fbx_anim_bone_builder_t *builders,
                                          int64_t bone_idx,
-                                         int z_up) {
+                                         int z_up,
+                                         int64_t clip_start_time) {
     int64_t *times = NULL;
     int32_t time_count = 0;
     int32_t time_capacity = 0;
@@ -3481,14 +4490,10 @@ static int fbx_anim_build_bone_keyframes(void *anim,
             const fbx_anim_curve_view_t *curve = &builders[bone_idx].curves[trs][comp];
             if (!fbx_anim_curve_has_data(curve))
                 continue;
-            for (uint32_t k = 0; k < curve->count; k++) {
-                if (!fbx_anim_append_time(&times, &time_count, &time_capacity, curve->times[k])) {
-                    time_failed = 1;
-                    break;
-                }
-            }
-            if (time_failed)
+            if (!fbx_anim_append_curve_sample_times(&times, &time_count, &time_capacity, curve)) {
+                time_failed = 1;
                 break;
+            }
         }
         if (time_failed)
             break;
@@ -3500,10 +4505,12 @@ static int fbx_anim_build_bone_keyframes(void *anim,
     fbx_anim_sort_unique_times(times, &time_count);
     for (int32_t ti = 0; ti < time_count; ti++) {
         int64_t fbx_time = times[ti];
-        double t = (double)fbx_time / (double)FBX_TIME_SECOND;
+        double t = ((double)fbx_time - (double)clip_start_time) / (double)FBX_TIME_SECOND;
         double tv[3];
         double rv[3];
         double sv[3];
+        if (isfinite(t) && t < 0.0 && t > -1e-9)
+            t = 0.0;
         if (!isfinite(t) || t < 0.0 || t > FBX_ANIM_TIME_SECONDS_MAX)
             continue;
         memcpy(tv, builders[bone_idx].base_translation, sizeof(tv));
@@ -3599,7 +4606,9 @@ static void fbx_extract_animations(fbx_node_t *root,
     for (int32_t i = 0; i < objects->child_count; i++) {
         fbx_node_t *obj = &objects->children[i];
         fbx_anim_bone_builder_t *builders;
-        double max_time;
+        int64_t min_time;
+        int64_t max_time;
+        double duration;
         if (strcmp(obj->name, "AnimationStack") != 0)
             continue;
 
@@ -3622,10 +4631,13 @@ static void fbx_extract_animations(fbx_node_t *root,
 
         fbx_anim_collect_curves(
             objects, ct, skeleton, bone_bindings, bone_binding_count, bone_count, stack_id, builders);
-        max_time = fbx_anim_compute_max_time(builders, bone_count);
-
-        max_time = fbx_clamp_double(max_time, 0.0, FBX_ANIM_TIME_SECONDS_MAX, 0.0);
-        void *anim = rt_animation3d_new(rt_const_cstr(anim_name), max_time > 0.0 ? max_time : 1.0);
+        if (!fbx_anim_compute_time_bounds(builders, bone_count, &min_time, &max_time)) {
+            free(builders);
+            continue;
+        }
+        duration = ((double)max_time - (double)min_time) / (double)FBX_TIME_SECOND;
+        duration = fbx_clamp_double(duration, 0.0, FBX_ANIM_TIME_SECONDS_MAX, 0.0);
+        void *anim = rt_animation3d_new(rt_const_cstr(anim_name), duration > 0.0 ? duration : 1.0);
         int emitted_any = 0;
         if (!anim) {
             free(builders);
@@ -3633,7 +4645,7 @@ static void fbx_extract_animations(fbx_node_t *root,
         }
 
         for (int64_t bone_idx = 0; bone_idx < bone_count; bone_idx++) {
-            if (fbx_anim_build_bone_keyframes(anim, builders, bone_idx, z_up))
+            if (fbx_anim_build_bone_keyframes(anim, builders, bone_idx, z_up, min_time))
                 emitted_any = 1;
         }
         free(builders);
@@ -3807,19 +4819,63 @@ static int fbx_ascii_parse_i32_array(const char *payload, int32_t **out, size_t 
     return count > 0;
 }
 
+/// @brief Resolve an optional ASCII-FBX per-corner/per-control-point index.
+/// @details ASCII fallback parsing does not build a full LayerElement tree, so this helper uses
+///          exporter-common heuristics: explicit index arrays win; arrays sized to polygon-vertex
+///          count map by polygon corner; otherwise values map by control-point index.
+/// @param direct_count Number of direct elements in the attribute array.
+/// @param element_components Components per direct element.
+/// @param explicit_indices Optional per-polygon-vertex index array.
+/// @param explicit_index_count Count of @p explicit_indices.
+/// @param polygon_vertex_idx Running polygon-vertex index.
+/// @param control_index Control point index.
+/// @param polygon_vertex_total Total polygon-vertex count from `PolygonVertexIndex`.
+/// @return Direct element index, or -1 when unavailable.
+static int32_t fbx_ascii_resolve_attribute_index(size_t direct_count,
+                                                 size_t element_components,
+                                                 const int32_t *explicit_indices,
+                                                 size_t explicit_index_count,
+                                                 size_t polygon_vertex_idx,
+                                                 int32_t control_index,
+                                                 size_t polygon_vertex_total) {
+    size_t element_count = element_components > 0 ? direct_count / element_components : 0;
+    int32_t idx;
+    if (element_count == 0)
+        return -1;
+    if (explicit_indices && polygon_vertex_idx < explicit_index_count) {
+        idx = explicit_indices[polygon_vertex_idx];
+        return idx >= 0 && (size_t)idx < element_count ? idx : -1;
+    }
+    if (element_count == polygon_vertex_total)
+        return polygon_vertex_idx <= (size_t)INT32_MAX ? (int32_t)polygon_vertex_idx : -1;
+    return control_index >= 0 && (size_t)control_index < element_count ? control_index : -1;
+}
+
 /// @brief Build a Mesh3D from ASCII-FBX vertex positions and polygon-vertex indices.
 /// @details FBX marks each polygon's final index with a bitwise complement (a negative value);
-///   this fan-triangulates arbitrary-sized polygons and skips out-of-range indices.
+///   this triangulates arbitrary-sized polygons, skips out-of-range indices, and consumes optional
+///   ASCII normals, UVs, and vertex colors using direct, indexed, or inferred mapping.
 /// @return The new mesh object, or NULL on malformed input or allocation failure.
 static void *fbx_ascii_build_mesh(const double *positions,
                                   size_t position_count,
                                   const int32_t *indices,
-                                  size_t index_count) {
+                                  size_t index_count,
+                                  const double *normals,
+                                  size_t normal_count,
+                                  const double *uvs,
+                                  size_t uv_count,
+                                  const int32_t *uv_indices,
+                                  size_t uv_index_count,
+                                  const double *colors,
+                                  size_t color_count,
+                                  const int32_t *color_indices,
+                                  size_t color_index_count) {
     int32_t polygon_stack[16];
     int32_t *polygon = polygon_stack;
     int32_t poly_count = 0;
     int32_t poly_capacity = (int32_t)(sizeof(polygon_stack) / sizeof(polygon_stack[0]));
     int polygon_invalid = 0;
+    size_t polygon_vertex_idx = 0;
     void *mesh;
     if (!positions || !indices || position_count % 3u != 0)
         return NULL;
@@ -3834,6 +4890,7 @@ static void *fbx_ascii_build_mesh(const double *positions,
         int32_t emitted;
         if (vi < 0 || (size_t)vi >= position_count / 3u) {
             polygon_invalid = 1;
+            polygon_vertex_idx++;
             if (end) {
                 poly_count = 0;
                 polygon_invalid = 0;
@@ -3855,18 +4912,59 @@ static void *fbx_ascii_build_mesh(const double *positions,
             poly_capacity = new_capacity;
         }
         emitted = (int32_t)((rt_mesh3d *)mesh)->vertex_count;
-        rt_mesh3d_add_vertex(mesh,
-                             positions[(size_t)vi * 3u + 0],
-                             positions[(size_t)vi * 3u + 1],
-                             positions[(size_t)vi * 3u + 2],
-                             0.0,
-                             1.0,
-                             0.0,
-                             0.0,
-                             0.0);
+        {
+            double nx = 0.0;
+            double ny = 1.0;
+            double nz = 0.0;
+            double u = 0.0;
+            double v = 0.0;
+            int32_t ni = fbx_ascii_resolve_attribute_index(
+                normal_count, 3u, NULL, 0, polygon_vertex_idx, vi, index_count);
+            int32_t ui = fbx_ascii_resolve_attribute_index(
+                uv_count, 2u, uv_indices, uv_index_count, polygon_vertex_idx, vi, index_count);
+            if (normals && ni >= 0) {
+                nx = normals[(size_t)ni * 3u + 0];
+                ny = normals[(size_t)ni * 3u + 1];
+                nz = normals[(size_t)ni * 3u + 2];
+                fbx_sanitize_normal3(&nx, &ny, &nz);
+            }
+            if (uvs && ui >= 0) {
+                u = fbx_clamp_abs_or(uvs[(size_t)ui * 2u + 0], 0.0, FBX_UV_ABS_MAX);
+                v = fbx_clamp_abs_or(1.0 - uvs[(size_t)ui * 2u + 1], 0.0, FBX_UV_ABS_MAX);
+            }
+            rt_mesh3d_add_vertex(mesh,
+                                 positions[(size_t)vi * 3u + 0],
+                                 positions[(size_t)vi * 3u + 1],
+                                 positions[(size_t)vi * 3u + 2],
+                                 nx,
+                                 ny,
+                                 nz,
+                                 u,
+                                 v);
+        }
         if (((rt_mesh3d *)mesh)->build_failed)
             goto fail;
+        if (colors && emitted >= 0 && emitted < (int32_t)((rt_mesh3d *)mesh)->vertex_count) {
+            int32_t ci = fbx_ascii_resolve_attribute_index(color_count,
+                                                           4u,
+                                                           color_indices,
+                                                           color_index_count,
+                                                           polygon_vertex_idx,
+                                                           vi,
+                                                           index_count);
+            if (ci >= 0) {
+                ((rt_mesh3d *)mesh)->vertices[emitted].color[0] =
+                    (float)fbx_clamp_double(colors[(size_t)ci * 4u + 0], 0.0, 1.0, 1.0);
+                ((rt_mesh3d *)mesh)->vertices[emitted].color[1] =
+                    (float)fbx_clamp_double(colors[(size_t)ci * 4u + 1], 0.0, 1.0, 1.0);
+                ((rt_mesh3d *)mesh)->vertices[emitted].color[2] =
+                    (float)fbx_clamp_double(colors[(size_t)ci * 4u + 2], 0.0, 1.0, 1.0);
+                ((rt_mesh3d *)mesh)->vertices[emitted].color[3] =
+                    (float)fbx_clamp_double(colors[(size_t)ci * 4u + 3], 0.0, 1.0, 1.0);
+            }
+        }
         polygon[poly_count++] = emitted;
+        polygon_vertex_idx++;
         if (end) {
             if (!polygon_invalid && !fbx_emit_polygon_triangles(mesh, polygon, poly_count))
                 goto fail;
@@ -3884,7 +4982,8 @@ static void *fbx_ascii_build_mesh(const double *positions,
     }
     if (polygon != polygon_stack)
         free(polygon);
-    rt_mesh3d_recalc_normals(mesh);
+    if (!normals || normal_count < 3u)
+        rt_mesh3d_recalc_normals(mesh);
     return mesh;
 fail:
     rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
@@ -3895,14 +4994,195 @@ fail:
     return NULL;
 }
 
-/// @brief Minimal ASCII-FBX fallback loader: parse the "Vertices:" and "PolygonVertexIndex:"
-///   arrays into a single mesh with a default material under a fresh scene root.
+/// @brief Advance to the payload after the Nth comma in an ASCII FBX property line.
+/// @param p Start pointer inside a property line.
+/// @param comma_count Number of commas to skip.
+/// @return Pointer after the requested comma count, or NULL when the line ends first.
+static const char *fbx_ascii_after_commas(const char *p, int comma_count) {
+    if (!p || comma_count < 0)
+        return NULL;
+    while (*p && comma_count > 0) {
+        if (*p == ',')
+            comma_count--;
+        p++;
+        if (*p == '\n' || *p == '\r')
+            return NULL;
+    }
+    return comma_count == 0 ? p : NULL;
+}
+
+/// @brief Return the first line terminator at or after @p p without importing `strpbrk`.
+/// @details Native-linked Viper runtimes use an explicit import allow-list; keeping this tiny scan
+///          local avoids adding another C library dependency solely for ASCII FBX fallback parsing.
+/// @param p Start of the text span to scan.
+/// @return Pointer to '\r' or '\n', or NULL when the string ends first.
+static const char *fbx_ascii_line_end(const char *p) {
+    if (!p)
+        return NULL;
+    while (*p) {
+        if (*p == '\r' || *p == '\n')
+            return p;
+        p++;
+    }
+    return NULL;
+}
+
+/// @brief Parse an ASCII-FBX `P: "Name", ...` vector3 property.
+/// @param text ASCII FBX document.
+/// @param property_name Property name to find.
+/// @param out Receives three doubles when found.
+/// @return Non-zero when a finite vector was parsed.
+static int fbx_ascii_parse_property_vec3(const char *text,
+                                         const char *property_name,
+                                         double out[3]) {
+    const char *p = text;
+    if (!text || !property_name || !out)
+        return 0;
+    while ((p = strstr(p, "P:")) != NULL) {
+        const char *line_end = fbx_ascii_line_end(p);
+        const char *name = strstr(p, property_name);
+        if (name && (!line_end || name < line_end)) {
+            const char *nums = fbx_ascii_after_commas(p, 4);
+            char *end0 = NULL;
+            char *end1 = NULL;
+            char *end2 = NULL;
+            if (!nums || (line_end && nums > line_end))
+                return 0;
+            out[0] = strtod(nums, &end0);
+            if (!end0 || end0 == nums)
+                return 0;
+            out[1] = strtod(end0 + (*end0 == ','), &end1);
+            if (!end1 || end1 == end0)
+                return 0;
+            out[2] = strtod(end1 + (*end1 == ','), &end2);
+            if (!end2 || end2 == end1)
+                return 0;
+            return isfinite(out[0]) && isfinite(out[1]) && isfinite(out[2]);
+        }
+        p += 2;
+    }
+    return 0;
+}
+
+/// @brief Parse an ASCII-FBX `P: "Name", ...` scalar property.
+/// @param text ASCII FBX document.
+/// @param property_name Property name to find.
+/// @param out Receives the parsed scalar when found.
+/// @return Non-zero when a finite scalar was parsed.
+static int fbx_ascii_parse_property_scalar(const char *text,
+                                           const char *property_name,
+                                           double *out) {
+    const char *p = text;
+    if (!text || !property_name || !out)
+        return 0;
+    while ((p = strstr(p, "P:")) != NULL) {
+        const char *line_end = fbx_ascii_line_end(p);
+        const char *name = strstr(p, property_name);
+        if (name && (!line_end || name < line_end)) {
+            const char *num = fbx_ascii_after_commas(p, 4);
+            char *end = NULL;
+            if (!num || (line_end && num > line_end))
+                return 0;
+            *out = strtod(num, &end);
+            return end && end != num && isfinite(*out);
+        }
+        p += 2;
+    }
+    return 0;
+}
+
+/// @brief Apply common ASCII-FBX material properties to a runtime material.
+/// @details The fallback parser does not build the full Material node graph, but it can still read
+///          PBR-relevant scalar/vector properties from the text form used by Autodesk exporters.
+/// @param text ASCII FBX document.
+/// @param material Runtime material to mutate.
+static void fbx_ascii_apply_material_properties(const char *text, void *material) {
+    double color[3];
+    double scalar;
+    if (!text || !material)
+        return;
+    if (fbx_ascii_parse_property_vec3(text, "BaseColor", color) ||
+        fbx_ascii_parse_property_vec3(text, "DiffuseColor", color) ||
+        fbx_ascii_parse_property_vec3(text, "Albedo", color)) {
+        rt_material3d_set_color(material,
+                                fbx_clamp_double(color[0], 0.0, 1.0, 1.0),
+                                fbx_clamp_double(color[1], 0.0, 1.0, 1.0),
+                                fbx_clamp_double(color[2], 0.0, 1.0, 1.0));
+    }
+    if (fbx_ascii_parse_property_scalar(text, "Opacity", &scalar) ||
+        fbx_ascii_parse_property_scalar(text, "Alpha", &scalar)) {
+        scalar = fbx_clamp_double(scalar, 0.0, 1.0, 1.0);
+        rt_material3d_set_alpha(material, scalar);
+        if (scalar < 1.0)
+            rt_material3d_set_alpha_mode(material, 2);
+    }
+    if (fbx_ascii_parse_property_vec3(text, "EmissiveColor", color) ||
+        fbx_ascii_parse_property_vec3(text, "EmissionColor", color)) {
+        rt_material3d_set_emissive_color(material,
+                                         fbx_clamp_double(color[0], 0.0, 1.0, 0.0),
+                                         fbx_clamp_double(color[1], 0.0, 1.0, 0.0),
+                                         fbx_clamp_double(color[2], 0.0, 1.0, 0.0));
+    }
+    if (fbx_ascii_parse_property_scalar(text, "EmissiveFactor", &scalar) ||
+        fbx_ascii_parse_property_scalar(text, "EmissionFactor", &scalar))
+        rt_material3d_set_emissive_intensity(
+            material, fbx_clamp_double(scalar, 0.0, 1000000.0, 0.0));
+    if (fbx_ascii_parse_property_scalar(text, "Metallic", &scalar) ||
+        fbx_ascii_parse_property_scalar(text, "Metalness", &scalar))
+        rt_material3d_set_metallic(material, fbx_clamp_double(scalar, 0.0, 1.0, 0.0));
+    if (fbx_ascii_parse_property_scalar(text, "Roughness", &scalar))
+        rt_material3d_set_roughness(material, fbx_clamp_double(scalar, 0.0, 1.0, 0.5));
+}
+
+/// @brief Extract a readable model name from an ASCII-FBX `Model:` line.
+/// @param text ASCII FBX document.
+/// @param out Name output buffer.
+/// @param out_size Size of @p out in bytes.
+static void fbx_ascii_extract_model_name(const char *text, char *out, size_t out_size) {
+    const char *model;
+    const char *first_quote;
+    const char *second_quote;
+    char raw[128];
+    size_t len;
+    if (!out || out_size == 0)
+        return;
+    out[0] = '\0';
+    model = text ? strstr(text, "Model:") : NULL;
+    if (!model)
+        return;
+    first_quote = strchr(model, '"');
+    if (!first_quote)
+        return;
+    second_quote = strchr(first_quote + 1, '"');
+    if (!second_quote)
+        return;
+    len = (size_t)(second_quote - first_quote - 1);
+    if (len >= sizeof(raw))
+        len = sizeof(raw) - 1;
+    memcpy(raw, first_quote + 1, len);
+    raw[len] = '\0';
+    fbx_decode_object_name(raw, out, out_size);
+}
+
+/// @brief ASCII-FBX fallback loader: parse mesh arrays, optional attributes, material properties,
+///   and a model name into a single runtime asset.
 /// @return A new FBX asset, or NULL if the required arrays are missing or allocation fails.
 static void *fbx_load_ascii_minimal(const char *text) {
     double *positions = NULL;
     int32_t *indices = NULL;
+    double *normals = NULL;
+    double *uvs = NULL;
+    int32_t *uv_indices = NULL;
+    double *colors = NULL;
+    int32_t *color_indices = NULL;
     size_t position_count = 0;
     size_t index_count = 0;
+    size_t normal_count = 0;
+    size_t uv_count = 0;
+    size_t uv_index_count = 0;
+    size_t color_count = 0;
+    size_t color_index_count = 0;
+    char model_name[128];
     void *mesh = NULL;
     void *material = NULL;
     void *scene_root = NULL;
@@ -3913,7 +5193,29 @@ static void *fbx_load_ascii_minimal(const char *text) {
         !fbx_ascii_parse_i32_array(
             fbx_ascii_array_payload(text, "PolygonVertexIndex:"), &indices, &index_count))
         goto fail;
-    mesh = fbx_ascii_build_mesh(positions, position_count, indices, index_count);
+    (void)fbx_ascii_parse_double_array(
+        fbx_ascii_array_payload(text, "Normals:"), &normals, &normal_count);
+    (void)fbx_ascii_parse_double_array(fbx_ascii_array_payload(text, "UV:"), &uvs, &uv_count);
+    (void)fbx_ascii_parse_i32_array(
+        fbx_ascii_array_payload(text, "UVIndex:"), &uv_indices, &uv_index_count);
+    (void)fbx_ascii_parse_double_array(
+        fbx_ascii_array_payload(text, "Colors:"), &colors, &color_count);
+    (void)fbx_ascii_parse_i32_array(
+        fbx_ascii_array_payload(text, "ColorIndex:"), &color_indices, &color_index_count);
+    mesh = fbx_ascii_build_mesh(positions,
+                                position_count,
+                                indices,
+                                index_count,
+                                normals,
+                                normal_count,
+                                uvs,
+                                uv_count,
+                                uv_indices,
+                                uv_index_count,
+                                colors,
+                                color_count,
+                                color_indices,
+                                color_index_count);
     material = rt_material3d_new();
     scene_root = rt_scene_node3d_new();
     mesh_node = rt_scene_node3d_new();
@@ -3933,7 +5235,10 @@ static void *fbx_load_ascii_minimal(const char *text) {
     asset->materials[0] = material;
     asset->material_count = 1;
     asset->material_capacity = 1;
-    rt_scene_node3d_set_name(mesh_node, rt_const_cstr("mesh_0"));
+    fbx_ascii_apply_material_properties(text, material);
+    fbx_ascii_extract_model_name(text, model_name, sizeof(model_name));
+    rt_scene_node3d_set_name(mesh_node,
+                             rt_const_cstr(model_name[0] ? model_name : "mesh_0"));
     rt_scene_node3d_set_mesh(mesh_node, mesh);
     rt_scene_node3d_set_material(mesh_node, material);
     if (!rt_scene_node3d_try_add_child(scene_root, mesh_node))
@@ -3942,10 +5247,20 @@ static void *fbx_load_ascii_minimal(const char *text) {
     fbx_release_ref(&mesh_node);
     free(positions);
     free(indices);
+    free(normals);
+    free(uvs);
+    free(uv_indices);
+    free(colors);
+    free(color_indices);
     return asset;
 fail:
     free(positions);
     free(indices);
+    free(normals);
+    free(uvs);
+    free(uv_indices);
+    free(colors);
+    free(color_indices);
     fbx_release_ref(&mesh_node);
     fbx_release_ref(&scene_root);
     fbx_release_ref(&material);
@@ -3977,14 +5292,38 @@ static const uint8_t *fbx_video_content_bytes(fbx_node_t *video, uint32_t *out_l
     return NULL;
 }
 
-/// @brief Best-effort texture filename for a Video node, checking its Properties70
-///   RelativeFilename/FileName entries then child RelativeFilename/FileName nodes.
-///   Returns "" when none is present.
-static const char *fbx_video_filename_hint(fbx_node_t *video) {
+/// @brief Return true when an FBX property/child name is likely to contain a media filename.
+/// @details Different exporters use `RelativeFilename`, `Filename`, `OriginalFilename`, `Path`,
+///          `URI`, or `TextureName` for the same concept. Matching these aliases improves both
+///          external texture loading and embedded payload codec hints.
+/// @param name Candidate property or child node name.
+/// @return Non-zero for known filename/path aliases.
+static int fbx_media_filename_alias(const char *name) {
+    return fbx_ascii_equals_i(name, "RelativeFilename") ||
+           fbx_ascii_equals_i(name, "FileName") ||
+           fbx_ascii_equals_i(name, "Filename") ||
+           fbx_ascii_equals_i(name, "OriginalFilename") ||
+           fbx_ascii_equals_i(name, "OriginalFileName") ||
+           fbx_ascii_equals_i(name, "FullName") ||
+           fbx_ascii_equals_i(name, "Media") ||
+           fbx_ascii_equals_i(name, "Path") ||
+           fbx_ascii_equals_i(name, "URI") ||
+           fbx_ascii_equals_i(name, "URL") ||
+           fbx_ascii_equals_i(name, "Url") ||
+           fbx_ascii_equals_i(name, "TextureName");
+}
+
+/// @brief Best-effort texture/media filename for an FBX node.
+/// @details Checks `Properties70` P-nodes and direct child nodes using the broad alias list in
+///          `fbx_media_filename_alias`. The returned pointer is borrowed from the FBX node tree
+///          and remains valid until that tree is freed.
+/// @param node Texture or Video node.
+/// @return Borrowed filename/path hint, or an empty string when none is present.
+static const char *fbx_node_media_filename_hint(fbx_node_t *node) {
     fbx_node_t *p70;
-    if (!video)
+    if (!node)
         return "";
-    p70 = fbx_find_child(video, "Properties70");
+    p70 = fbx_find_child(node, "Properties70");
     if (p70) {
         for (int32_t pi = 0; pi < p70->child_count; pi++) {
             fbx_node_t *p = &p70->children[pi];
@@ -3992,22 +5331,18 @@ static const char *fbx_video_filename_hint(fbx_node_t *video) {
             if (strcmp(p->name, "P") != 0 || p->prop_count < 5)
                 continue;
             pname = fbx_prop_str(p, 0);
-            if (strcmp(pname, "RelativeFilename") == 0 || strcmp(pname, "FileName") == 0) {
+            if (fbx_media_filename_alias(pname)) {
                 const char *value = fbx_prop_str(p, 4);
                 if (value && *value)
                     return value;
             }
         }
     }
-    {
-        fbx_node_t *rfn = fbx_find_child(video, "RelativeFilename");
-        if (rfn && rfn->prop_count > 0 && *fbx_prop_str(rfn, 0))
-            return fbx_prop_str(rfn, 0);
-    }
-    {
-        fbx_node_t *fn = fbx_find_child(video, "FileName");
-        if (fn && fn->prop_count > 0 && *fbx_prop_str(fn, 0))
-            return fbx_prop_str(fn, 0);
+    for (int32_t i = 0; i < node->child_count; i++) {
+        fbx_node_t *child = &node->children[i];
+        if (fbx_media_filename_alias(child->name) && child->prop_count > 0 &&
+            *fbx_prop_str(child, 0))
+            return fbx_prop_str(child, 0);
     }
     return "";
 }
@@ -4036,7 +5371,7 @@ static void *fbx_try_decode_embedded_texture(fbx_node_t *objects,
         content = fbx_video_content_bytes(video, &content_len);
         if (!content || content_len == 0)
             continue;
-        hint = fbx_video_filename_hint(video);
+        hint = fbx_node_media_filename_hint(video);
         pixels = fbx_decode_texture_payload(hint && *hint ? hint : texture_hint, content, content_len);
         if (!pixels && fallback_hint && fallback_hint != texture_hint)
             pixels = fbx_decode_texture_payload(fallback_hint, content, content_len);
@@ -4044,6 +5379,45 @@ static void *fbx_try_decode_embedded_texture(fbx_node_t *objects,
             return pixels;
     }
     return NULL;
+}
+
+static int fbx_texture_prop_is_normal(const char *prop) {
+    return fbx_ascii_streq_ignore_case(prop, "NormalMap") ||
+           fbx_ascii_streq_ignore_case(prop, "Bump") ||
+           fbx_ascii_streq_ignore_case(prop, "normalCamera") ||
+           fbx_ascii_contains_i(prop, "normal") || fbx_ascii_contains_i(prop, "bump");
+}
+
+static int fbx_texture_prop_is_specular(const char *prop) {
+    return fbx_ascii_streq_ignore_case(prop, "SpecularColor") ||
+           fbx_ascii_streq_ignore_case(prop, "SpecularFactor") ||
+           fbx_ascii_contains_i(prop, "specular");
+}
+
+static int fbx_texture_prop_is_emissive(const char *prop) {
+    return fbx_ascii_streq_ignore_case(prop, "EmissiveColor") ||
+           fbx_ascii_streq_ignore_case(prop, "EmissiveFactor") ||
+           fbx_ascii_contains_i(prop, "emissive") || fbx_ascii_contains_i(prop, "emission");
+}
+
+static int fbx_texture_prop_is_metallic_roughness(const char *prop) {
+    return fbx_ascii_contains_i(prop, "metallic") || fbx_ascii_contains_i(prop, "metalness") ||
+           fbx_ascii_contains_i(prop, "roughness") || fbx_ascii_contains_i(prop, "rough");
+}
+
+static int fbx_texture_prop_is_ao(const char *prop) {
+    return fbx_ascii_contains_i(prop, "ambientocclusion") ||
+           fbx_ascii_contains_i(prop, "occlusion") || fbx_ascii_streq_ignore_case(prop, "AO") ||
+           fbx_ascii_contains_i(prop, "ambient_occlusion");
+}
+
+static int fbx_texture_prop_is_diffuse(const char *prop) {
+    return !prop || *prop == '\0' || fbx_ascii_streq_ignore_case(prop, "DiffuseColor") ||
+           fbx_ascii_streq_ignore_case(prop, "DiffuseFactor") ||
+           fbx_ascii_streq_ignore_case(prop, "BaseColor") ||
+           fbx_ascii_streq_ignore_case(prop, "Albedo") ||
+           fbx_ascii_contains_i(prop, "basecolor") || fbx_ascii_contains_i(prop, "base_color") ||
+           fbx_ascii_contains_i(prop, "albedo") || fbx_ascii_contains_i(prop, "diffuse");
 }
 
 /// @brief Resolve and attach textures to the asset's materials: for each Texture node, load
@@ -4065,45 +5439,20 @@ static void fbx_load_link_textures(rt_fbx_asset *asset,
         // Collect Texture nodes and their filenames
         for (int32_t i = 0; i < objects->child_count; i++) {
             fbx_node_t *obj = &objects->children[i];
+            const char *rel_filename;
+            const char *filename;
+            void *pixels;
+            int64_t tex_id;
             if (strcmp(obj->name, "Texture") != 0)
                 continue;
             if (obj->prop_count < 1)
                 continue;
-            int64_t tex_id = fbx_prop_i64(obj, 0);
-
-            // Extract RelativeFilename from Properties70
-            fbx_node_t *p70 = fbx_find_child(obj, "Properties70");
-            const char *rel_filename = NULL;
-            const char *filename = NULL;
-            if (p70) {
-                for (int32_t pi = 0; pi < p70->child_count; pi++) {
-                    fbx_node_t *p = &p70->children[pi];
-                    if (strcmp(p->name, "P") != 0 || p->prop_count < 5)
-                        continue;
-                    const char *pname = fbx_prop_str(p, 0);
-                    if (strcmp(pname, "RelativeFilename") == 0) {
-                        rel_filename = fbx_prop_str(p, 4);
-                    } else if (strcmp(pname, "FileName") == 0) {
-                        filename = fbx_prop_str(p, 4);
-                    }
-                }
-            }
-            // Fallback: check for direct RelativeFilename child node
-            if (!rel_filename || !*rel_filename) {
-                fbx_node_t *rfn = fbx_find_child(obj, "RelativeFilename");
-                if (rfn && rfn->prop_count > 0)
-                    rel_filename = fbx_prop_str(rfn, 0);
-            }
-            if (!filename || !*filename) {
-                fbx_node_t *fn = fbx_find_child(obj, "FileName");
-                if (fn && fn->prop_count > 0)
-                    filename = fbx_prop_str(fn, 0);
-            }
-            if ((!rel_filename || !*rel_filename) && (!filename || !*filename))
-                continue;
+            tex_id = fbx_prop_i64(obj, 0);
+            rel_filename = fbx_node_media_filename_hint(obj);
+            filename = rel_filename;
 
             // Load texture via auto-detect loader
-            void *pixels = fbx_try_load_texture_path(cpath, rel_filename);
+            pixels = fbx_try_load_texture_path(cpath, rel_filename);
             if (!pixels && filename && *filename &&
                 (!rel_filename || !*rel_filename || strcmp(filename, rel_filename) != 0))
                 pixels = fbx_try_load_texture_path(cpath, filename);
@@ -4131,14 +5480,18 @@ static void fbx_load_link_textures(rt_fbx_asset *asset,
                     continue;
 
                 // Assign based on property name in Connection
-                if (strcmp(prop_name, "DiffuseColor") == 0 || *prop_name == '\0')
-                    rt_material3d_set_texture(mat, pixels);
-                else if (strcmp(prop_name, "NormalMap") == 0 || strcmp(prop_name, "Bump") == 0)
+                if (fbx_texture_prop_is_normal(prop_name))
                     rt_material3d_set_normal_map(mat, pixels);
-                else if (strcmp(prop_name, "SpecularColor") == 0)
+                else if (fbx_texture_prop_is_specular(prop_name))
                     rt_material3d_set_specular_map(mat, pixels);
-                else if (strcmp(prop_name, "EmissiveColor") == 0)
+                else if (fbx_texture_prop_is_emissive(prop_name))
                     rt_material3d_set_emissive_map(mat, pixels);
+                else if (fbx_texture_prop_is_metallic_roughness(prop_name))
+                    rt_material3d_set_metallic_roughness_map(mat, pixels);
+                else if (fbx_texture_prop_is_ao(prop_name))
+                    rt_material3d_set_ao_map(mat, pixels);
+                else if (fbx_texture_prop_is_diffuse(prop_name))
+                    rt_material3d_set_texture(mat, pixels);
                 else
                     rt_material3d_set_texture(mat, pixels); // default to diffuse
                 break;
@@ -4633,7 +5986,17 @@ void *rt_fbx_load(rt_string path) {
     }
 
     /* Extract textures and link to materials */
-    fbx_load_link_textures(asset, objects, cpath, ct, material_bindings, material_binding_count);
+    {
+        const char *texture_base = g_fbx_texture_base_override
+                                       ? rt_string_cstr(g_fbx_texture_base_override)
+                                       : NULL;
+        fbx_load_link_textures(asset,
+                               objects,
+                               texture_base && texture_base[0] ? texture_base : cpath,
+                               ct,
+                               material_bindings,
+                               material_binding_count);
+    }
 
     /* Extract morph targets (BlendShape deformers) */
     fbx_load_extract_morphs(asset, objects, ct, z_up, mesh_remaps, mesh_remap_count);
@@ -4771,6 +6134,16 @@ void *rt_fbx_load_recoverable(rt_string path) {
     void *ascii_asset = fbx_load_ascii_minimal((const char *)data);
     free(data);
     return ascii_asset;
+}
+
+/// @brief Recoverably load an FBX path while overriding relative texture lookup base path.
+void *rt_fbx_load_recoverable_with_texture_base(rt_string path, rt_string texture_base) {
+    rt_string previous = g_fbx_texture_base_override;
+    void *asset;
+    g_fbx_texture_base_override = texture_base;
+    asset = rt_fbx_load_recoverable(path);
+    g_fbx_texture_base_override = previous;
+    return asset;
 }
 
 /*==========================================================================

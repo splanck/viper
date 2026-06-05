@@ -1940,6 +1940,108 @@ static void test_node_animator_handles_large_morph_weight_channels() {
                 "Node animation applies morph weights beyond the old fixed scratch limit");
 }
 
+static void test_node_animator_public_controls_drive_bound_nodes() {
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    double times[2] = {0.0, 1.0};
+    float translation_values[6] = {0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f};
+    void *clip = rt_node_animation3d_new(rt_const_cstr("move"), 1.0);
+    EXPECT_TRUE(rt_node_animation3d_add_channel(clip,
+                                                rt_const_cstr("public_target"),
+                                                RT_NODE_ANIM_PATH_TRANSLATION,
+                                                RT_NODE_ANIM_INTERP_LINEAR,
+                                                2,
+                                                3,
+                                                times,
+                                                translation_values) >= 0,
+                "Node animation public-control fixture creates a translation channel");
+    void *animator = rt_node_animator3d_new(clip);
+    EXPECT_TRUE(animator != nullptr, "NodeAnimator3D.New creates an animator");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_node_animation3d_get_name(clip)), "move") == 0,
+                "NodeAnimation3D.Name exposes the clip name");
+    EXPECT_NEAR(rt_node_animation3d_get_duration(clip),
+                1.0,
+                0.0001,
+                "NodeAnimation3D.Duration exposes the clip duration");
+    EXPECT_TRUE(rt_node_animation3d_get_channel_count(clip) == 1,
+                "NodeAnimation3D.ChannelCount exposes repaired channel count");
+    EXPECT_TRUE(rt_node_animator3d_get_clip_count(animator) == 1,
+                "NodeAnimator3D.ClipCount exposes the retained clip");
+    EXPECT_TRUE(rt_node_animator3d_get_clip(animator, 0) == clip,
+                "NodeAnimator3D.GetClip returns the retained clip");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_node_animator3d_get_clip_name(animator, 0)),
+                            "move") == 0,
+                "NodeAnimator3D.GetClipName exposes clip names");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_node_animator3d_get_current_clip(animator)),
+                            "move") == 0,
+                "NodeAnimator3D.CurrentClip starts on the first clip");
+    EXPECT_TRUE(rt_node_animator3d_get_playing(animator) != 0,
+                "NodeAnimator3D.Playing defaults to true");
+    EXPECT_NEAR(rt_node_animator3d_get_speed(animator),
+                1.0,
+                0.0001,
+                "NodeAnimator3D.Speed defaults to one");
+
+    rt_scene_node3d_set_name(node, rt_const_cstr("public_target"));
+    rt_scene3d_add(scene, node);
+    rt_scene_node3d_bind_node_animator(rt_scene3d_get_root(scene), animator);
+    EXPECT_TRUE(rt_scene_node3d_get_node_animator(rt_scene3d_get_root(scene)) == animator,
+                "SceneNode3D.NodeAnimator returns the bound NodeAnimator3D");
+
+    rt_scene3d_sync_bindings(scene, 0.25);
+    void *pos = rt_scene_node3d_get_position(node);
+    EXPECT_NEAR(rt_vec3_x(pos), 0.5, 0.001, "NodeAnimator3D.Update drives bound nodes");
+    EXPECT_NEAR(rt_node_animator3d_get_time(animator),
+                0.25,
+                0.001,
+                "NodeAnimator3D.Time advances during Scene3D.SyncBindings");
+
+    rt_node_animator3d_set_speed(animator, 2.0);
+    rt_scene3d_sync_bindings(scene, 0.25);
+    pos = rt_scene_node3d_get_position(node);
+    EXPECT_NEAR(rt_vec3_x(pos), 1.5, 0.001, "NodeAnimator3D.SetSpeed scales playback time");
+
+    rt_node_animator3d_stop(animator);
+    rt_scene3d_sync_bindings(scene, 0.25);
+    pos = rt_scene_node3d_get_position(node);
+    EXPECT_NEAR(rt_vec3_x(pos), 1.5, 0.001, "NodeAnimator3D.Stop pauses scene-side updates");
+    EXPECT_TRUE(rt_node_animator3d_get_playing(animator) == 0,
+                "NodeAnimator3D.Playing reflects Stop");
+
+    EXPECT_TRUE(rt_node_animator3d_play(animator, rt_const_cstr("missing")) == 0,
+                "NodeAnimator3D.Play rejects unknown clips");
+    EXPECT_TRUE(rt_node_animator3d_play(animator, rt_const_cstr("move")) != 0,
+                "NodeAnimator3D.Play restarts a named clip");
+    rt_node_animator3d_set_time(animator, 0.5);
+    rt_node_animator3d_update(animator, 0.0);
+    pos = rt_scene_node3d_get_position(node);
+    EXPECT_NEAR(rt_vec3_x(pos), 1.0, 0.001, "NodeAnimator3D.SetTime applies on manual update");
+
+    rt_scene_node3d_clear_node_animator_binding(rt_scene3d_get_root(scene));
+    EXPECT_TRUE(rt_scene_node3d_get_node_animator(rt_scene3d_get_root(scene)) == nullptr,
+                "SceneNode3D.ClearNodeAnimatorBinding detaches the NodeAnimator3D");
+}
+
+static void test_node_animator_empty_clip_is_noop_but_advances_time() {
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *clip = rt_node_animation3d_new(rt_const_cstr("empty"), 1.0);
+    void *animator = rt_node_animator3d_new(clip);
+
+    rt_scene_node3d_set_name(node, rt_const_cstr("empty_target"));
+    rt_scene_node3d_set_position(node, 3.0, 0.0, 0.0);
+    rt_scene3d_add(scene, node);
+    rt_scene_node3d_bind_node_animator(rt_scene3d_get_root(scene), animator);
+    rt_scene3d_sync_bindings(scene, 0.25);
+
+    void *pos = rt_scene_node3d_get_position(node);
+    EXPECT_NEAR(rt_vec3_x(pos), 3.0, 0.001, "Empty NodeAnimation3D clips leave nodes unchanged");
+    EXPECT_NEAR(rt_node_animator3d_get_time(animator),
+                0.25,
+                0.001,
+                "Empty NodeAnimation3D clips still advance animator time");
+}
+
 static void test_node_animator_clears_unkeyed_morph_weight_tail() {
     void *scene = rt_scene3d_new();
     void *node = rt_scene_node3d_new();
@@ -3482,6 +3584,8 @@ int main() {
     test_scene_roundtrip_loads_shared_assets();
     test_scene_save_skips_invalid_material_asset_refs();
     test_node_animator_handles_large_morph_weight_channels();
+    test_node_animator_public_controls_drive_bound_nodes();
+    test_node_animator_empty_clip_is_noop_but_advances_time();
     test_node_animator_clears_unkeyed_morph_weight_tail();
     test_node_animator_skips_corrupt_channel_shape();
     test_node_animator_skips_corrupt_channel_interpolation();

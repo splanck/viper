@@ -912,7 +912,9 @@ static int model_collect_template_refs(rt_model3d *model) {
 ///   unnamed clips), then plays the first state so the model arrives in a live pose immediately
 ///   after instantiation.  No-op when the root already has a bound animator, there are no
 ///   skeletons, or there are no animation clips to add.  The controller's local reference is
-///   released after binding because the root's `bound_animator` slot owns the retain.
+///   released after binding because the root's `bound_animator` slot owns the retain. When an
+///   importer produces more than one skeleton, the first valid skeleton is used for the default
+///   controller so multi-skin assets still get a controllable default instead of no playback.
 static void model_bind_default_animator(rt_model3d *model, rt_scene_node3d *root) {
     void *controller;
     int added_any = 0;
@@ -932,12 +934,11 @@ static void model_bind_default_animator(rt_model3d *model, rt_scene_node3d *root
         void *candidate = rt_g3d_checked_or_null(model->skeletons[i], RT_G3D_SKELETON3D_CLASS_ID);
         if (!candidate)
             continue;
-        skeleton = candidate;
+        if (!skeleton)
+            skeleton = candidate;
         valid_skeleton_count++;
-        if (valid_skeleton_count > 1)
-            return;
     }
-    if (valid_skeleton_count != 1 || !skeleton)
+    if (valid_skeleton_count <= 0 || !skeleton)
         return;
     controller = rt_anim_controller3d_new(skeleton);
     if (!controller)
@@ -2179,7 +2180,7 @@ static int model3d_load_from_gltf(rt_model3d *model,
 ///   packed assets are spilled to a temp file, decoded with the recoverable loader, and
 ///   unlinked — mirroring the asset-decode tempfile bridge used for path-only image formats.
 /// @return FBX asset handle on success, or NULL on any failure.
-static void *model3d_fbx_from_asset_bytes(const uint8_t *bytes, size_t size) {
+static void *model3d_fbx_from_asset_bytes(rt_string original_path, const uint8_t *bytes, size_t size) {
     if (!bytes || size == 0)
         return NULL;
     rt_string tmp = rt_tempfile_path_with_ext(rt_const_cstr("viper_fbx_"), rt_const_cstr(".fbx"));
@@ -2199,7 +2200,7 @@ static void *model3d_fbx_from_asset_bytes(const uint8_t *bytes, size_t size) {
         rt_string_unref(tmp);
         return NULL;
     }
-    void *asset = rt_fbx_load_recoverable(tmp);
+    void *asset = rt_fbx_load_recoverable_with_texture_base(tmp, original_path);
     remove(tpath);
     rt_string_unref(tmp);
     return asset;
@@ -2213,13 +2214,19 @@ static void *model3d_fbx_from_asset_bytes(const uint8_t *bytes, size_t size) {
 ///   filesystem path as the fallback. Valid binary FBX files still use the strict parser,
 ///   preserving existing hard diagnostics for malformed binary content.
 /// @return 1 on success, 0 on recoverable load failure.
-static int model3d_load_from_fbx(rt_model3d *model, rt_string path, int load_assets) {
+static int model3d_load_from_fbx(rt_model3d *model,
+                                 rt_string path,
+                                 int load_assets,
+                                 const uint8_t *preloaded_fbx_data,
+                                 size_t preloaded_fbx_size) {
     void *asset = NULL;
-    if (load_assets) {
+    if (preloaded_fbx_data && preloaded_fbx_size > 0u)
+        asset = model3d_fbx_from_asset_bytes(path, preloaded_fbx_data, preloaded_fbx_size);
+    if (!asset && load_assets) {
         size_t asset_size = 0;
         uint8_t *asset_bytes = rt_asset_load_raw(path, &asset_size);
         if (asset_bytes) {
-            asset = model3d_fbx_from_asset_bytes(asset_bytes, asset_size);
+            asset = model3d_fbx_from_asset_bytes(path, asset_bytes, asset_size);
             free(asset_bytes);
         }
     }
@@ -2318,13 +2325,16 @@ static void *rt_model3d_load_impl(rt_string path,
                                   int load_assets,
                                   uint8_t *preloaded_gltf_data,
                                   size_t preloaded_gltf_size,
-                                  struct rt_gltf_preload_bundle *preloaded_gltf_bundle) {
+                                  struct rt_gltf_preload_bundle *preloaded_gltf_bundle,
+                                  uint8_t *preloaded_fbx_data,
+                                  size_t preloaded_fbx_size) {
     const char *path_cstr = path ? rt_string_cstr(path) : NULL;
     const char *api_name = load_assets ? "Model3D.LoadAsset" : "Model3D.Load";
     rt_model3d *model;
 
     if (!path || !path_cstr) {
         free(preloaded_gltf_data);
+        free(preloaded_fbx_data);
         rt_gltf_preload_bundle_free(preloaded_gltf_bundle);
         rt_trap(load_assets ? "Model3D.LoadAsset: invalid path" : "Model3D.Load: invalid path");
         return NULL;
@@ -2333,6 +2343,7 @@ static void *rt_model3d_load_impl(rt_string path,
     model = model_new();
     if (!model) {
         free(preloaded_gltf_data);
+        free(preloaded_fbx_data);
         rt_gltf_preload_bundle_free(preloaded_gltf_bundle);
         return NULL;
     }
@@ -2360,7 +2371,12 @@ static void *rt_model3d_load_impl(rt_string path,
         if (!gltf_ok)
             goto fail;
     } else if (model_has_ext(path_cstr, ".fbx")) {
-        if (!model3d_load_from_fbx(model, path, load_assets))
+        int fbx_ok =
+            model3d_load_from_fbx(model, path, load_assets, preloaded_fbx_data, preloaded_fbx_size);
+        free(preloaded_fbx_data);
+        preloaded_fbx_data = NULL;
+        preloaded_fbx_size = 0u;
+        if (!fbx_ok)
             goto fail;
     } else if (model_has_ext(path_cstr, ".obj")) {
         if (!model3d_load_from_obj(model, path, path_cstr))
@@ -2413,6 +2429,7 @@ static void *rt_model3d_load_impl(rt_string path,
 
 fail:
     free(preloaded_gltf_data);
+    free(preloaded_fbx_data);
     rt_gltf_preload_bundle_free(preloaded_gltf_bundle);
     model_release_local(model);
     return NULL;
@@ -2420,12 +2437,12 @@ fail:
 
 /// @brief Load a model from the filesystem (no asset-manager resolution). See header.
 void *rt_model3d_load(rt_string path) {
-    return rt_model3d_load_impl(path, 0, NULL, 0, NULL);
+    return rt_model3d_load_impl(path, 0, NULL, 0, NULL, NULL, 0);
 }
 
 /// @brief Load a model through the asset manager (mounted/embedded + dev fallback). See header.
 void *rt_model3d_load_asset(rt_string path) {
-    return rt_model3d_load_impl(path, 1, NULL, 0, NULL);
+    return rt_model3d_load_impl(path, 1, NULL, 0, NULL, NULL, 0);
 }
 
 /// @brief Internal async path: build a glTF/GLB Model3D from worker-staged root bytes.
@@ -2440,7 +2457,24 @@ void *rt_model3d_load_preloaded_gltf(rt_string path,
         free(preloaded_data);
         return load_assets ? rt_model3d_load_asset(path) : rt_model3d_load(path);
     }
-    return rt_model3d_load_impl(path, load_assets ? 1 : 0, preloaded_data, preloaded_size, NULL);
+    return rt_model3d_load_impl(
+        path, load_assets ? 1 : 0, preloaded_data, preloaded_size, NULL, NULL, 0);
+}
+
+/// @brief Internal async path: build an FBX Model3D from worker-staged root bytes.
+/// @details Takes ownership of @p preloaded_data. Non-FBX paths free it and use the normal
+///   loader so conservative async callers do not leak when falling back to main-thread loading.
+void *rt_model3d_load_preloaded_fbx(rt_string path,
+                                    uint8_t *preloaded_data,
+                                    size_t preloaded_size,
+                                    int load_assets) {
+    const char *path_cstr = path ? rt_string_cstr(path) : NULL;
+    if (!path_cstr || !model_has_ext(path_cstr, ".fbx")) {
+        free(preloaded_data);
+        return load_assets ? rt_model3d_load_asset(path) : rt_model3d_load(path);
+    }
+    return rt_model3d_load_impl(
+        path, load_assets ? 1 : 0, NULL, 0, NULL, preloaded_data, preloaded_size);
 }
 
 /// @brief Build a Model3D from a glTF asset that was staged off-thread into @p bundle.
@@ -2457,7 +2491,7 @@ void *rt_model3d_load_preloaded_gltf_bundle(rt_string path,
         rt_gltf_preload_bundle_free(bundle);
         return load_assets ? rt_model3d_load_asset(path) : rt_model3d_load(path);
     }
-    return rt_model3d_load_impl(path, load_assets ? 1 : 0, NULL, 0, bundle);
+    return rt_model3d_load_impl(path, load_assets ? 1 : 0, NULL, 0, bundle, NULL, 0);
 }
 
 /// @brief Number of meshes loaded into this model.
@@ -2488,6 +2522,15 @@ int64_t rt_model3d_get_animation_count(void *obj) {
     rt_model3d *model = model3d_checked(obj);
     return model ? model_clamped_array_count(
                        model->animations, model->animation_count, model->animation_capacity)
+                 : 0;
+}
+
+/// @brief Number of node/object/morph/camera animation clips loaded into this model.
+int64_t rt_model3d_get_node_animation_count(void *obj) {
+    rt_model3d *model = model3d_checked(obj);
+    return model ? model_clamped_array_count(model->node_animations,
+                                             model->node_animation_count,
+                                             model->node_animation_capacity)
                  : 0;
 }
 
@@ -2571,6 +2614,23 @@ void *rt_model3d_get_animation(void *obj, int64_t index) {
     return rt_g3d_checked_or_null(model->animations[index], RT_G3D_ANIMATION3D_CLASS_ID);
 }
 
+/// @brief Borrow the i-th NodeAnimation3D clip (NULL on out-of-range).
+void *rt_model3d_get_node_animation(void *obj, int64_t index) {
+    rt_model3d *model = model3d_checked(obj);
+    int32_t animation_count = model ? model_clamped_array_count(model->node_animations,
+                                                                model->node_animation_count,
+                                                                model->node_animation_capacity)
+                                    : 0;
+    if (!model || index < 0 || index >= animation_count)
+        return NULL;
+    return rt_g3d_checked_or_null(model->node_animations[index], RT_G3D_NODEANIMATION3D_CLASS_ID);
+}
+
+/// @brief Borrow the i-th NodeAnimation3D name, or an empty string on out-of-range.
+rt_string rt_model3d_get_node_animation_name(void *obj, int64_t index) {
+    return rt_node_animation3d_get_name(rt_model3d_get_node_animation(obj, index));
+}
+
 /// @brief Borrow an imported Camera3D from @p scene_index (NULL on out-of-range).
 void *rt_model3d_get_camera(void *obj, int64_t scene_index, int64_t index) {
     rt_model3d *model = model3d_checked(obj);
@@ -2595,6 +2655,43 @@ rt_string rt_model3d_get_scene_name(void *obj, int64_t index) {
     if (!model || index < 0 || index >= scene_count || !model->scenes[index].name)
         return rt_const_cstr("");
     return rt_const_cstr(model->scenes[index].name);
+}
+
+/// @brief Load a temporary Model3D and return one retained clip from it.
+static void *model3d_load_clip_from_model(rt_string path,
+                                          int64_t index,
+                                          int asset_path,
+                                          int node_animation) {
+    void *model = asset_path ? rt_model3d_load_asset(path) : rt_model3d_load(path);
+    void *clip = NULL;
+    if (!model)
+        return NULL;
+    clip = node_animation ? rt_model3d_get_node_animation(model, index)
+                          : rt_model3d_get_animation(model, index);
+    if (clip)
+        rt_obj_retain_maybe(clip);
+    model_release_local(model);
+    return clip;
+}
+
+/// @brief Load a model file and return a retained skeletal Animation3D clip by index.
+void *rt_model3d_load_animation(rt_string path, int64_t index) {
+    return model3d_load_clip_from_model(path, index, 0, 0);
+}
+
+/// @brief Load a packed model asset and return a retained skeletal Animation3D clip by index.
+void *rt_model3d_load_animation_asset(rt_string path, int64_t index) {
+    return model3d_load_clip_from_model(path, index, 1, 0);
+}
+
+/// @brief Load a model file and return a retained NodeAnimation3D clip by index.
+void *rt_model3d_load_node_animation(rt_string path, int64_t index) {
+    return model3d_load_clip_from_model(path, index, 0, 1);
+}
+
+/// @brief Load a packed model asset and return a retained NodeAnimation3D clip by index.
+void *rt_model3d_load_node_animation_asset(rt_string path, int64_t index) {
+    return model3d_load_clip_from_model(path, index, 1, 1);
 }
 
 /// @brief Locate a node in the template subtree by exact name match. NULL if not found.

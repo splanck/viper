@@ -261,10 +261,11 @@ typedef struct rt_game3d_collision_event {
     void *raw;
 } rt_game3d_collision_event;
 
-/// @brief Animator3D payload: the driving controller plus the names of events
-///   fired during the most recent update (bounded by RT_GAME3D_ANIM_EVENT_MAX).
+/// @brief Animator3D payload: optional skeletal controller, optional node animator,
+///   plus names of skeletal events fired during the most recent update.
 typedef struct rt_game3d_animator {
     void *controller;
+    void *node_animator;
     rt_string events[RT_GAME3D_ANIM_EVENT_MAX];
     int32_t event_count;
 } rt_game3d_animator;
@@ -296,8 +297,8 @@ typedef struct rt_game3d_asset_handle {
 } rt_game3d_asset_handle;
 
 /// @brief Async asset-load worker job: the target AssetHandle3D, snapshotted request
-///   metadata safe for worker-thread reads, any preloaded glTF bundle, the cache
-///   generation it was scheduled against, upload-byte progress counters, and a
+///   metadata safe for worker-thread reads, any preloaded glTF bundle or FBX root bytes,
+///   the cache generation it was scheduled against, upload-byte progress counters, and a
 ///   fixed-size error buffer filled on worker-thread failure.
 typedef struct rt_game3d_asset_async_job {
     rt_game3d_asset_handle *handle;
@@ -305,6 +306,8 @@ typedef struct rt_game3d_asset_async_job {
     int8_t asset_path;
     int8_t template_request;
     rt_gltf_preload_bundle *preloaded_gltf;
+    uint8_t *preloaded_fbx_data;
+    size_t preloaded_fbx_size;
     uint64_t cache_generation;
     uint64_t upload_total_bytes;
     uint64_t upload_prepared_bytes;
@@ -768,6 +771,14 @@ void game3d_assign_ref(void **slot, void *value);
 void game3d_release_ref(void **slot);
 void game3d_assign_typed_ref(void **slot, void *value, int64_t class_id);
 void game3d_release_typed_ref(void **slot, int64_t class_id);
+/// @brief Create an Animator3D wrapper that can hold both skeletal and node-animation drivers.
+/// @details Used by model instantiation so imported assets with skeletal Animation3D clips,
+/// NodeAnimation3D clips, or both expose a single Game3D Animator3D handle to scripts.
+void *rt_game3d_animator_new_from_bindings(void *controller, void *node_animator);
+/// @brief Return true when a Game3D animator must be advanced during World3D animation jobs.
+/// @details NodeAnimator3D-only wrappers are stepped by Scene3D.SyncBindings because they mutate
+/// scene node transforms directly; skeletal controllers still run in the Game3D animation phase.
+int8_t rt_game3d_animator_needs_game_update(void *obj);
 double game3d_clamp(double value, double lo, double hi);
 double game3d_clamp_dt(double dt);
 double game3d_finite_or(double value, double fallback);

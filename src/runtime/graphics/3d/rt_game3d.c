@@ -1470,6 +1470,15 @@ static int game3d_path_has_gltf_extension(const char *path) {
     return 0;
 }
 
+/// @brief Whether @p path ends in an FBX extension, case-insensitive.
+static int game3d_path_has_fbx_extension(const char *path) {
+    const char *dot = path ? strrchr(path, '.') : NULL;
+    if (!dot || !dot[1])
+        return 0;
+    return tolower((unsigned char)dot[1]) == 'f' && tolower((unsigned char)dot[2]) == 'b' &&
+           tolower((unsigned char)dot[3]) == 'x' && dot[4] == '\0';
+}
+
 /// @brief Read an entire file into a malloc'd buffer (caller frees; @p out_size set). NULL on
 /// failure.
 static uint8_t *game3d_asset_read_file_bytes(const char *path, size_t *out_size) {
@@ -1734,6 +1743,7 @@ static uint64_t game3d_model_template_estimate_resident_bytes(
         int64_t material_count = rt_model3d_get_material_count(model);
         int64_t skeleton_count = rt_model3d_get_skeleton_count(model);
         int64_t animation_count = rt_model3d_get_animation_count(model);
+        int64_t node_animation_count = rt_model3d_get_node_animation_count(model);
         int64_t node_count = rt_model3d_get_node_count(model);
         total = game3d_u64_saturating_add(total, 256u);
         total = game3d_u64_saturating_add(
@@ -1745,6 +1755,10 @@ static uint64_t game3d_model_template_estimate_resident_bytes(
         total = game3d_u64_saturating_add(
             total,
             game3d_u64_saturating_mul_u64(game3d_u64_from_i64_nonnegative(animation_count), 2048u));
+        total = game3d_u64_saturating_add(
+            total,
+            game3d_u64_saturating_mul_u64(game3d_u64_from_i64_nonnegative(node_animation_count),
+                                          2048u));
         total = game3d_u64_saturating_add(
             total,
             game3d_u64_saturating_mul_u64(game3d_u64_from_i64_nonnegative(node_count), 256u));
@@ -2693,6 +2707,7 @@ static void game3d_asset_async_job_free(rt_game3d_asset_async_job *job) {
     if (!job)
         return;
     rt_gltf_preload_bundle_free(job->preloaded_gltf);
+    free(job->preloaded_fbx_data);
     if (job->handle && rt_obj_release_check0(job->handle))
         rt_obj_free(job->handle);
     free(job);
@@ -2732,6 +2747,10 @@ static uint64_t game3d_asset_async_job_commit_cost(rt_game3d_asset_async_job *jo
     size_t decoded_image_bytes;
     if (!job || job->error[0])
         return 0u;
+    if (job->preloaded_fbx_data)
+        return 1u;
+    if (!job->preloaded_gltf)
+        return 1u;
     decoded_image_bytes = rt_gltf_preload_bundle_decoded_image_bytes(job->preloaded_gltf);
     if (decoded_image_bytes > UINT64_MAX)
         return UINT64_MAX;
@@ -2787,6 +2806,12 @@ static void *game3d_asset_async_commit_load_model(rt_game3d_asset_async_job *job
             loaded_model =
                 rt_model3d_load_preloaded_gltf_bundle(handle->path, bundle, handle->asset_path);
             job->preloaded_gltf = NULL;
+        } else if (job->preloaded_fbx_data) {
+            uint8_t *data = job->preloaded_fbx_data;
+            size_t size = job->preloaded_fbx_size;
+            loaded_model = rt_model3d_load_preloaded_fbx(handle->path, data, size, handle->asset_path);
+            job->preloaded_fbx_data = NULL;
+            job->preloaded_fbx_size = 0u;
         } else {
             loaded_model = handle->asset_path ? rt_model3d_load_asset(handle->path)
                                               : rt_model3d_load(handle->path);
@@ -2970,6 +2995,20 @@ static void game3d_asset_async_worker(void *user_data) {
             if (!job->preloaded_gltf && !job->error[0]) {
                 snprintf(job->error, sizeof(job->error), "%s", "failed to load model");
             }
+        }
+    } else if (!job->asset_path && game3d_path_has_fbx_extension(path)) {
+        root_data = game3d_asset_read_file_bytes(path, &root_len);
+        if (!root_data) {
+            snprintf(job->error, sizeof(job->error), "%s", "failed to load model");
+        } else if (root_len == 0u) {
+            snprintf(job->error, sizeof(job->error), "%s", "empty model file");
+            free(root_data);
+            root_data = NULL;
+        } else {
+            job->preloaded_fbx_data = root_data;
+            job->preloaded_fbx_size = root_len;
+            root_data = NULL;
+            game3d_asset_handle_store_progress(handle, 0.10);
         }
     }
 
@@ -3251,8 +3290,16 @@ static void *game3d_entity_from_model_root(void *root) {
     if (!entity)
         return NULL;
     animator = rt_scene_node3d_get_animator(root);
-    if (animator)
-        rt_game3d_entity_attach_animator(entity, animator);
+    {
+        void *node_animator = rt_scene_node3d_get_node_animator(root);
+        if (animator || node_animator) {
+            void *game_animator = rt_game3d_animator_new_from_bindings(animator, node_animator);
+            if (game_animator) {
+                rt_game3d_entity_attach_animator(entity, game_animator);
+                game3d_release_ref(&game_animator);
+            }
+        }
+    }
     return entity;
 }
 
@@ -3364,6 +3411,26 @@ void *rt_game3d_assets_load_model_asset(rt_string path) {
     if (rt_obj_release_check0(model_template))
         rt_obj_free(model_template);
     return entity;
+}
+
+/// @brief Load a skeletal animation clip from a filesystem model.
+void *rt_game3d_assets_load_animation(rt_string path, int64_t index) {
+    return rt_model3d_load_animation(path, index);
+}
+
+/// @brief Load a skeletal animation clip from a packed model asset.
+void *rt_game3d_assets_load_animation_asset(rt_string path, int64_t index) {
+    return rt_model3d_load_animation_asset(path, index);
+}
+
+/// @brief Load a node animation clip from a filesystem model.
+void *rt_game3d_assets_load_node_animation(rt_string path, int64_t index) {
+    return rt_model3d_load_node_animation(path, index);
+}
+
+/// @brief Load a node animation clip from a packed model asset.
+void *rt_game3d_assets_load_node_animation_asset(rt_string path, int64_t index) {
+    return rt_model3d_load_node_animation_asset(path, index);
 }
 
 /// @brief Load a filesystem model as a cached reusable template. See header.
@@ -3870,47 +3937,38 @@ static void game3d_world_update_animations(rt_game3d_world *world, double dt) {
         return;
     int32_t entity_count = game3d_world_safe_entity_count(world);
     int32_t animator_count = 0;
+    void **animators = NULL;
+    if (entity_count <= 0)
+        return;
+    animators = (void **)malloc((size_t)entity_count * sizeof(*animators));
+    if (!animators)
+        return;
     for (int32_t i = 0; i < entity_count; ++i) {
         rt_game3d_entity *entity = world->entities[i];
-        if (!entity || entity->destroyed)
+        void *anim = game3d_entity_anim_ref(entity);
+        int duplicate = 0;
+        if (!entity || entity->destroyed || !anim || !rt_game3d_animator_needs_game_update(anim))
             continue;
-        if (game3d_entity_anim_ref(entity))
-            animator_count++;
+        for (int32_t j = 0; j < animator_count; ++j) {
+            if (animators[j] == anim) {
+                duplicate = 1;
+                break;
+            }
+        }
+        if (!duplicate)
+            animators[animator_count++] = anim;
     }
-    if (animator_count <= 0)
+    if (animator_count <= 0) {
+        free(animators);
         return;
+    }
     if (!RT_GAME3D_PARALLEL_ANIMATOR_UPDATES || !world->jobs_enabled || world->worker_count <= 1 ||
         animator_count <= 1 || !game3d_world_ensure_job_pool(world)) {
-        for (int32_t i = 0; i < entity_count; ++i) {
-            rt_game3d_entity *entity = world->entities[i];
-            void *anim = game3d_entity_anim_ref(entity);
-            if (!entity || entity->destroyed || !anim)
-                continue;
-            rt_game3d_animator_update(anim, dt);
-        }
+        game3d_update_animator_list_serial(animators, animator_count, dt);
+        free(animators);
         return;
     }
 
-    void **animators = (void **)malloc((size_t)animator_count * sizeof(*animators));
-    if (!animators) {
-        for (int32_t i = 0; i < entity_count; ++i) {
-            rt_game3d_entity *entity = world->entities[i];
-            void *anim = game3d_entity_anim_ref(entity);
-            if (!entity || entity->destroyed || !anim)
-                continue;
-            rt_game3d_animator_update(anim, dt);
-        }
-        return;
-    }
-    int32_t write = 0;
-    for (int32_t i = 0; i < entity_count && write < animator_count; ++i) {
-        rt_game3d_entity *entity = world->entities[i];
-        void *anim = game3d_entity_anim_ref(entity);
-        if (!entity || entity->destroyed || !anim)
-            continue;
-        animators[write++] = anim;
-    }
-    animator_count = write;
     int32_t task_count = game3d_animation_job_count(world->worker_count, animator_count);
     rt_game3d_animation_job *tasks =
         (rt_game3d_animation_job *)calloc((size_t)task_count, sizeof(*tasks));

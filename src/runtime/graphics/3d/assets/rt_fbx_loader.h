@@ -39,6 +39,12 @@ void *rt_fbx_load(rt_string path);
 /// @param path Filesystem path to the .fbx file (runtime string).
 /// @return An FBX handle on success, or NULL if the file cannot be opened/read/classified.
 void *rt_fbx_load_recoverable(rt_string path);
+/// @brief Recoverably load an FBX temp file while resolving external textures relative to a
+/// different original model path.
+/// @details Packed and async FBX loads spill root bytes to a temporary file because the parser is
+/// path-based. Passing @p texture_base keeps relative texture references anchored beside the
+/// source asset rather than beside the temporary file.
+void *rt_fbx_load_recoverable_with_texture_base(rt_string path, rt_string texture_base);
 /// @brief Number of meshes in the loaded FBX.
 int64_t rt_fbx_mesh_count(void *fbx);
 /// @brief Get the mesh at @p index (NULL if out of range).

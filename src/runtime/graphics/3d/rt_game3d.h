@@ -464,7 +464,7 @@ void *rt_game3d_entity_set_layer(void *entity, int64_t layer);
 void *rt_game3d_entity_set_collision_mask(void *entity, void *mask);
 /// @brief Fluent: attach a physics body (from a Body or BodyDef) and return the entity.
 void *rt_game3d_entity_attach_body(void *entity, void *body_or_def);
-/// @brief Fluent: attach an animator (from an Animator or controller) and return the entity.
+/// @brief Fluent: attach an animator, skeletal controller, or node animator and return entity.
 void *rt_game3d_entity_attach_animator(void *entity, void *animator_or_controller);
 /// @brief Apply an instantaneous linear impulse to the entity's body.
 void rt_game3d_entity_apply_impulse(void *entity, double x, double y, double z);
@@ -483,10 +483,15 @@ int8_t rt_game3d_entity_is_destroyed(void *entity);
 // Animator3D — animation state-machine driver (Viper.Game3D.Animator3D)
 //=========================================================================
 
-/// @brief Create an animator driven by the given animation controller.
+/// @brief Create an animator driven by an AnimController3D or NodeAnimator3D.
+/// @details Imported models can expose both skeletal and node animation. Use
+/// ModelTemplate.Instantiate() to receive a combined wrapper automatically, or pass a raw
+/// AnimController3D/NodeAnimator3D here for manual construction.
 void *rt_game3d_animator_new(void *controller);
 /// @brief Get the animation controller backing this animator.
 void *rt_game3d_animator_get_controller(void *animator);
+/// @brief Get the node animator backing this animator, or NULL for skeletal-only wrappers.
+void *rt_game3d_animator_get_node_animator(void *animator);
 /// @brief Play the named clip immediately; returns false if the clip is unknown.
 int8_t rt_game3d_animator_play(void *animator, rt_string name);
 /// @brief Cross-fade to the named clip over `seconds`; returns false if unknown.
@@ -667,6 +672,14 @@ void *rt_game3d_prefab_ground(double size, void *material);
 void *rt_game3d_assets_load_model(rt_string path);
 /// @brief Load a model from a packed asset path as a ready-to-spawn entity.
 void *rt_game3d_assets_load_model_asset(rt_string path);
+/// @brief Load a skeletal Animation3D clip from a model file by index.
+void *rt_game3d_assets_load_animation(rt_string path, int64_t index);
+/// @brief Load a skeletal Animation3D clip from a packed model asset by index.
+void *rt_game3d_assets_load_animation_asset(rt_string path, int64_t index);
+/// @brief Load a NodeAnimation3D clip from a model file by index.
+void *rt_game3d_assets_load_node_animation(rt_string path, int64_t index);
+/// @brief Load a NodeAnimation3D clip from a packed model asset by index.
+void *rt_game3d_assets_load_node_animation_asset(rt_string path, int64_t index);
 /// @brief Load a model from a filesystem path as a reusable instancing template.
 void *rt_game3d_assets_load_model_template(rt_string path);
 /// @brief Load a model from a packed asset path as a reusable instancing template.

@@ -38,6 +38,10 @@ extern rt_string rt_const_cstr(const char *s);
 extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
+extern double rt_quat_x(void *q);
+extern double rt_quat_y(void *q);
+extern double rt_quat_z(void *q);
+extern double rt_quat_w(void *q);
 extern void *rt_mat4_identity(void);
 extern void *rt_mesh3d_new_box(double w, double h, double d);
 extern void *rt_material3d_new_color(double r, double g, double b);
@@ -182,6 +186,15 @@ static bool write_text_file(const char *path, const std::string &text) {
     if (!f)
         return false;
     bool ok = std::fwrite(text.data(), 1, text.size(), f) == text.size();
+    std::fclose(f);
+    return ok;
+}
+
+static bool write_binary_file(const char *path, const std::vector<uint8_t> &bytes) {
+    FILE *f = std::fopen(path, "wb");
+    if (!f)
+        return false;
+    bool ok = bytes.empty() || std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
     std::fclose(f);
     return ok;
 }
@@ -350,6 +363,17 @@ static FbxNodeFixture make_fbx_property_scalar(const char *name, double value) {
     return node;
 }
 
+static FbxNodeFixture make_fbx_property_int(const char *name, int64_t value) {
+    FbxNodeFixture node;
+    node.name = "P";
+    node.props.push_back(fbx_prop_string_fixture(name ? name : ""));
+    node.props.push_back(fbx_prop_string_fixture("int"));
+    node.props.push_back(fbx_prop_string_fixture(""));
+    node.props.push_back(fbx_prop_string_fixture("A"));
+    node.props.push_back(fbx_prop_i64_fixture(value));
+    return node;
+}
+
 static FbxNodeFixture make_fbx_property_string(const char *name, const char *value) {
     FbxNodeFixture node;
     node.name = "P";
@@ -377,6 +401,13 @@ static FbxNodeFixture make_fbx_model_fixture(
     return node;
 }
 
+static FbxNodeFixture make_fbx_matrix_child(const char *name, const double *values16) {
+    FbxNodeFixture node;
+    node.name = name ? name : "";
+    node.props.push_back(fbx_prop_array_fixture('d', values16, 16));
+    return node;
+}
+
 static FbxNodeFixture make_fbx_connection_fixture(int64_t child,
                                                   int64_t parent,
                                                   const char *prop = nullptr) {
@@ -388,6 +419,19 @@ static FbxNodeFixture make_fbx_connection_fixture(int64_t child,
     if (prop)
         node.props.push_back(fbx_prop_string_fixture(prop));
     return node;
+}
+
+static bool write_fbx_document_fixture(const char *path,
+                                       const FbxNodeFixture &objects,
+                                       const FbxNodeFixture &connections) {
+    std::vector<uint8_t> bytes;
+    bytes.insert(bytes.end(), {'K', 'a', 'y', 'd', 'a', 'r', 'a', ' ', 'F',  'B',    'X', ' ',
+                               'B', 'i', 'n', 'a', 'r', 'y', ' ', ' ', '\0', '\x1A', '\0'});
+    append_bytes(bytes, (uint32_t)7400);
+    write_fbx_node_fixture(objects, bytes);
+    write_fbx_node_fixture(connections, bytes);
+    bytes.resize(bytes.size() + 13, 0);
+    return write_binary_file(path, bytes);
 }
 
 static FbxNodeFixture make_fbx_deformer_fixture(int64_t id, const char *name, const char *type) {
@@ -426,6 +470,17 @@ static FbxNodeFixture make_fbx_animation_curve_fixture(int64_t id,
         FbxNodeFixture{"KeyTime", {fbx_prop_array_fixture('l', times, count)}, {}});
     node.children.push_back(
         FbxNodeFixture{"KeyValueFloat", {fbx_prop_array_fixture('d', values, count)}, {}});
+    return node;
+}
+
+static FbxNodeFixture make_fbx_animation_curve_fixture_with_attrs(int64_t id,
+                                                                  const int64_t *times,
+                                                                  const double *values,
+                                                                  const int32_t *attr_flags,
+                                                                  size_t count) {
+    FbxNodeFixture node = make_fbx_animation_curve_fixture(id, times, values, count);
+    node.children.push_back(
+        FbxNodeFixture{"KeyAttrFlags", {fbx_prop_array_fixture('i', attr_flags, count)}, {}});
     return node;
 }
 
@@ -639,7 +694,6 @@ static bool write_fbx_embedded_texture_fixture(const char *path,
     FbxNodeFixture material;
     FbxNodeFixture material_props70;
     FbxNodeFixture texture;
-    FbxNodeFixture texture_props70;
     FbxNodeFixture video;
     FbxNodeFixture video_props70;
     FbxNodeFixture objects;
@@ -676,10 +730,6 @@ static bool write_fbx_embedded_texture_fixture(const char *path,
     texture.props.push_back(
         fbx_prop_string_fixture(make_fbx_object_name("EmbeddedAlbedo", "Texture")));
     texture.props.push_back(fbx_prop_string_fixture(""));
-    texture_props70.name = "Properties70";
-    texture_props70.children.push_back(
-        make_fbx_property_string("RelativeFilename", "missing_embedded_albedo.png"));
-    texture.children.push_back(texture_props70);
 
     video.name = "Video";
     video.props.push_back(fbx_prop_i64_fixture(kVideoId));
@@ -687,7 +737,7 @@ static bool write_fbx_embedded_texture_fixture(const char *path,
     video.props.push_back(fbx_prop_string_fixture("Clip"));
     video_props70.name = "Properties70";
     video_props70.children.push_back(
-        make_fbx_property_string("RelativeFilename", "embedded_albedo.png"));
+        make_fbx_property_string("OriginalFilename", "embedded_albedo.png"));
     video.children.push_back(video_props70);
     video.children.push_back(
         FbxNodeFixture{"Content", {fbx_prop_raw_fixture(png_data, png_len)}, {}});
@@ -722,6 +772,582 @@ static bool write_fbx_embedded_texture_fixture(const char *path,
     return ok;
 }
 
+static bool write_fbx_many_property_node_fixture(const char *path) {
+    static const int64_t kGeometryId = 4101;
+    static const int64_t kModelId = 4102;
+    static const int64_t kMaterialId = 4103;
+    static const double kPositions[] = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0};
+    static const int32_t kIndices[] = {0, 1, ~2};
+
+    FbxNodeFixture geometry;
+    FbxNodeFixture material;
+    FbxNodeFixture material_props70;
+    FbxNodeFixture metadata;
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    FbxNodeFixture model =
+        make_fbx_model_fixture(kModelId, "ManyProperties", "Mesh", 0.0, 0.0, 0.0);
+    std::vector<uint8_t> bytes;
+
+    geometry.name = "Geometry";
+    geometry.props.push_back(fbx_prop_i64_fixture(kGeometryId));
+    geometry.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("ManyPropertyMesh", "Geometry")));
+    geometry.props.push_back(fbx_prop_string_fixture("Mesh"));
+    geometry.children.push_back(FbxNodeFixture{
+        "Vertices",
+        {fbx_prop_array_fixture('d', kPositions, sizeof(kPositions) / sizeof(kPositions[0]))},
+        {}});
+    geometry.children.push_back(FbxNodeFixture{
+        "PolygonVertexIndex",
+        {fbx_prop_array_fixture('i', kIndices, sizeof(kIndices) / sizeof(kIndices[0]))},
+        {}});
+
+    material.name = "Material";
+    material.props.push_back(fbx_prop_i64_fixture(kMaterialId));
+    material.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("ManyPropertyMaterial", "Material")));
+    material.props.push_back(fbx_prop_string_fixture(""));
+    material_props70.name = "Properties70";
+    material_props70.children.push_back(make_fbx_property_vec3("DiffuseColor", 0.8, 0.7, 0.6));
+    material.children.push_back(material_props70);
+
+    metadata.name = "UserData";
+    for (int i = 0; i < 48; ++i) {
+        char name[32];
+        std::snprintf(name, sizeof(name), "extra_%02d", i);
+        metadata.props.push_back(fbx_prop_string_fixture(name));
+    }
+
+    objects.name = "Objects";
+    objects.children.push_back(geometry);
+    objects.children.push_back(material);
+    objects.children.push_back(metadata);
+    objects.children.push_back(model);
+
+    connections.name = "Connections";
+    connections.children.push_back(make_fbx_connection_fixture(kModelId, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kGeometryId, kModelId));
+    connections.children.push_back(make_fbx_connection_fixture(kMaterialId, kModelId));
+
+    bytes.insert(bytes.end(), {'K', 'a', 'y', 'd', 'a', 'r', 'a', ' ', 'F',  'B',    'X', ' ',
+                               'B', 'i', 'n', 'a', 'r', 'y', ' ', ' ', '\0', '\x1A', '\0'});
+    append_bytes(bytes, (uint32_t)7400);
+    write_fbx_node_fixture(objects, bytes);
+    write_fbx_node_fixture(connections, bytes);
+    bytes.resize(bytes.size() + 13, 0);
+
+    FILE *f = std::fopen(path, "wb");
+    if (!f)
+        return false;
+    bool ok = std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
+    std::fclose(f);
+    return ok;
+}
+
+static bool write_fbx_large_ngon_fixture(const char *path) {
+    static const int64_t kGeometryId = 4201;
+    static const int64_t kModelId = 4202;
+    constexpr int kVertexCount = 80;
+    constexpr double kPi = 3.14159265358979323846;
+
+    std::vector<double> positions;
+    std::vector<int32_t> indices;
+    FbxNodeFixture geometry;
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    FbxNodeFixture model = make_fbx_model_fixture(kModelId, "LargeNgon", "Mesh", 0.0, 0.0, 0.0);
+    std::vector<uint8_t> bytes;
+
+    positions.reserve(kVertexCount * 3);
+    indices.reserve(kVertexCount);
+    for (int i = 0; i < kVertexCount; ++i) {
+        double angle = (2.0 * kPi * (double)i) / (double)kVertexCount;
+        positions.push_back(std::cos(angle));
+        positions.push_back(std::sin(angle));
+        positions.push_back(0.0);
+        indices.push_back(i);
+    }
+    indices.back() = ~indices.back();
+
+    geometry.name = "Geometry";
+    geometry.props.push_back(fbx_prop_i64_fixture(kGeometryId));
+    geometry.props.push_back(fbx_prop_string_fixture(make_fbx_object_name("LargeNgon", "Geometry")));
+    geometry.props.push_back(fbx_prop_string_fixture("Mesh"));
+    geometry.children.push_back(FbxNodeFixture{
+        "Vertices", {fbx_prop_array_fixture('d', positions.data(), positions.size())}, {}});
+    geometry.children.push_back(FbxNodeFixture{
+        "PolygonVertexIndex", {fbx_prop_array_fixture('i', indices.data(), indices.size())}, {}});
+
+    objects.name = "Objects";
+    objects.children.push_back(geometry);
+    objects.children.push_back(model);
+
+    connections.name = "Connections";
+    connections.children.push_back(make_fbx_connection_fixture(kModelId, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kGeometryId, kModelId));
+
+    bytes.insert(bytes.end(), {'K', 'a', 'y', 'd', 'a', 'r', 'a', ' ', 'F',  'B',    'X', ' ',
+                               'B', 'i', 'n', 'a', 'r', 'y', ' ', ' ', '\0', '\x1A', '\0'});
+    append_bytes(bytes, (uint32_t)7400);
+    write_fbx_node_fixture(objects, bytes);
+    write_fbx_node_fixture(connections, bytes);
+    bytes.resize(bytes.size() + 13, 0);
+
+    FILE *f = std::fopen(path, "wb");
+    if (!f)
+        return false;
+    bool ok = std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
+    std::fclose(f);
+    return ok;
+}
+
+static bool write_fbx_texture_alias_fixture(const char *path, const char *texture_ref) {
+    static const int64_t kGeometryId = 4301;
+    static const int64_t kModelId = 4302;
+    static const int64_t kMaterialId = 4303;
+    static const int64_t kBaseTextureId = 4304;
+    static const int64_t kNormalTextureId = 4305;
+    static const double kPositions[] = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0};
+    static const int32_t kIndices[] = {0, 1, ~2};
+
+    FbxNodeFixture geometry;
+    FbxNodeFixture material;
+    FbxNodeFixture material_props70;
+    FbxNodeFixture base_texture;
+    FbxNodeFixture normal_texture;
+    FbxNodeFixture base_texture_props70;
+    FbxNodeFixture normal_texture_props70;
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    FbxNodeFixture model = make_fbx_model_fixture(kModelId, "TextureAliases", "Mesh", 0.0, 0.0, 0.0);
+    std::vector<uint8_t> bytes;
+
+    geometry.name = "Geometry";
+    geometry.props.push_back(fbx_prop_i64_fixture(kGeometryId));
+    geometry.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("TextureAliasMesh", "Geometry")));
+    geometry.props.push_back(fbx_prop_string_fixture("Mesh"));
+    geometry.children.push_back(FbxNodeFixture{
+        "Vertices",
+        {fbx_prop_array_fixture('d', kPositions, sizeof(kPositions) / sizeof(kPositions[0]))},
+        {}});
+    geometry.children.push_back(FbxNodeFixture{
+        "PolygonVertexIndex",
+        {fbx_prop_array_fixture('i', kIndices, sizeof(kIndices) / sizeof(kIndices[0]))},
+        {}});
+
+    material.name = "Material";
+    material.props.push_back(fbx_prop_i64_fixture(kMaterialId));
+    material.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("TextureAliasMaterial", "Material")));
+    material.props.push_back(fbx_prop_string_fixture(""));
+    material_props70.name = "Properties70";
+    material_props70.children.push_back(make_fbx_property_vec3("DiffuseColor", 1.0, 1.0, 1.0));
+    material.children.push_back(material_props70);
+
+    base_texture.name = "Texture";
+    base_texture.props.push_back(fbx_prop_i64_fixture(kBaseTextureId));
+    base_texture.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("AliasBaseColor", "Texture")));
+    base_texture.props.push_back(fbx_prop_string_fixture(""));
+    base_texture_props70.name = "Properties70";
+    base_texture_props70.children.push_back(make_fbx_property_string("RelativeFilename", texture_ref));
+    base_texture.children.push_back(base_texture_props70);
+
+    normal_texture.name = "Texture";
+    normal_texture.props.push_back(fbx_prop_i64_fixture(kNormalTextureId));
+    normal_texture.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("AliasNormal", "Texture")));
+    normal_texture.props.push_back(fbx_prop_string_fixture(""));
+    normal_texture_props70.name = "Properties70";
+    normal_texture_props70.children.push_back(make_fbx_property_string("RelativeFilename", texture_ref));
+    normal_texture.children.push_back(normal_texture_props70);
+
+    objects.name = "Objects";
+    objects.children.push_back(geometry);
+    objects.children.push_back(material);
+    objects.children.push_back(base_texture);
+    objects.children.push_back(normal_texture);
+    objects.children.push_back(model);
+
+    connections.name = "Connections";
+    connections.children.push_back(make_fbx_connection_fixture(kModelId, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kGeometryId, kModelId));
+    connections.children.push_back(make_fbx_connection_fixture(kMaterialId, kModelId));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kBaseTextureId, kMaterialId, "Maya|baseColor"));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kNormalTextureId, kMaterialId, "Maya|normalCamera"));
+
+    bytes.insert(bytes.end(), {'K', 'a', 'y', 'd', 'a', 'r', 'a', ' ', 'F',  'B',    'X', ' ',
+                               'B', 'i', 'n', 'a', 'r', 'y', ' ', ' ', '\0', '\x1A', '\0'});
+    append_bytes(bytes, (uint32_t)7400);
+    write_fbx_node_fixture(objects, bytes);
+    write_fbx_node_fixture(connections, bytes);
+    bytes.resize(bytes.size() + 13, 0);
+
+    FILE *f = std::fopen(path, "wb");
+    if (!f)
+        return false;
+    bool ok = std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
+    std::fclose(f);
+    return ok;
+}
+
+static bool write_fbx_material_alias_fixture(const char *path) {
+    static const int64_t kGeometryId = 4401;
+    static const int64_t kModelId = 4402;
+    static const int64_t kMaterialId = 4403;
+    static const double kPositions[] = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0};
+    static const int32_t kIndices[] = {0, 1, ~2};
+    static const double kUv[] = {0.25, 0.75};
+
+    FbxNodeFixture geometry;
+    FbxNodeFixture uv_layer;
+    FbxNodeFixture material;
+    FbxNodeFixture material_props70;
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    FbxNodeFixture model = make_fbx_model_fixture(kModelId, "MaterialAliases", "Mesh", 0.0, 0.0, 0.0);
+    std::vector<uint8_t> bytes;
+
+    geometry.name = "Geometry";
+    geometry.props.push_back(fbx_prop_i64_fixture(kGeometryId));
+    geometry.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("MaterialAliasMesh", "Geometry")));
+    geometry.props.push_back(fbx_prop_string_fixture("Mesh"));
+    geometry.children.push_back(FbxNodeFixture{
+        "Vertices",
+        {fbx_prop_array_fixture('d', kPositions, sizeof(kPositions) / sizeof(kPositions[0]))},
+        {}});
+    geometry.children.push_back(FbxNodeFixture{
+        "PolygonVertexIndex",
+        {fbx_prop_array_fixture('i', kIndices, sizeof(kIndices) / sizeof(kIndices[0]))},
+        {}});
+    uv_layer.name = "LayerElementUV";
+    uv_layer.children.push_back(
+        FbxNodeFixture{"MappingInformationType", {fbx_prop_string_fixture("AllSame")}, {}});
+    uv_layer.children.push_back(
+        FbxNodeFixture{"ReferenceInformationType", {fbx_prop_string_fixture("Direct")}, {}});
+    uv_layer.children.push_back(
+        FbxNodeFixture{"UV", {fbx_prop_array_fixture('d', kUv, sizeof(kUv) / sizeof(kUv[0]))}, {}});
+    geometry.children.push_back(uv_layer);
+
+    material.name = "Material";
+    material.props.push_back(fbx_prop_i64_fixture(kMaterialId));
+    material.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("MaterialAliasMaterial", "Material")));
+    material.props.push_back(fbx_prop_string_fixture(""));
+    material_props70.name = "Properties70";
+    material_props70.children.push_back(make_fbx_property_vec3("BaseColor", 0.3, 0.4, 0.5));
+    material_props70.children.push_back(make_fbx_property_scalar("Metalness", 0.7));
+    material_props70.children.push_back(make_fbx_property_scalar("Roughness", 0.25));
+    material_props70.children.push_back(make_fbx_property_scalar("AmbientOcclusion", 0.6));
+    material_props70.children.push_back(make_fbx_property_scalar("NormalMapScale", 0.8));
+    material_props70.children.push_back(make_fbx_property_vec3("EmissionColor", 0.1, 0.2, 0.3));
+    material_props70.children.push_back(make_fbx_property_scalar("EmissionFactor", 2.0));
+    material_props70.children.push_back(make_fbx_property_scalar("TwoSided", 1.0));
+    material.children.push_back(material_props70);
+
+    objects.name = "Objects";
+    objects.children.push_back(geometry);
+    objects.children.push_back(material);
+    objects.children.push_back(model);
+
+    connections.name = "Connections";
+    connections.children.push_back(make_fbx_connection_fixture(kModelId, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kGeometryId, kModelId));
+    connections.children.push_back(make_fbx_connection_fixture(kMaterialId, kModelId));
+
+    bytes.insert(bytes.end(), {'K', 'a', 'y', 'd', 'a', 'r', 'a', ' ', 'F',  'B',    'X', ' ',
+                               'B', 'i', 'n', 'a', 'r', 'y', ' ', ' ', '\0', '\x1A', '\0'});
+    append_bytes(bytes, (uint32_t)7400);
+    write_fbx_node_fixture(objects, bytes);
+    write_fbx_node_fixture(connections, bytes);
+    bytes.resize(bytes.size() + 13, 0);
+
+    FILE *f = std::fopen(path, "wb");
+    if (!f)
+        return false;
+    bool ok = std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
+    std::fclose(f);
+    return ok;
+}
+
+static bool write_fbx_multilayer_attribute_fixture(const char *path) {
+    static const int64_t kGeometryId = 4501;
+    static const int64_t kModelId = 4502;
+    static const int64_t kMaterialId = 4503;
+    static const double kPositions[] = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0};
+    static const int32_t kIndices[] = {0, 1, ~2};
+    static const double kUv0[] = {0.0, 0.0, 1.0, 0.0, 0.0, 1.0};
+    static const double kUv1[] = {0.9, 0.1, 0.8, 0.2, 0.7, 0.3};
+    static const double kColors[] = {1.0, 0.0, 0.0, 1.0, 0.0, 1.0,
+                                     0.0, 1.0, 0.0, 0.0, 1.0, 0.5};
+
+    FbxNodeFixture geometry;
+    FbxNodeFixture uv0_layer;
+    FbxNodeFixture uv1_layer;
+    FbxNodeFixture color_layer;
+    FbxNodeFixture material;
+    FbxNodeFixture material_props70;
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    FbxNodeFixture model =
+        make_fbx_model_fixture(kModelId, "LayeredAttributes", "Mesh", 0.0, 0.0, 0.0);
+
+    geometry.name = "Geometry";
+    geometry.props.push_back(fbx_prop_i64_fixture(kGeometryId));
+    geometry.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("LayeredAttributeMesh", "Geometry")));
+    geometry.props.push_back(fbx_prop_string_fixture("Mesh"));
+    geometry.children.push_back(FbxNodeFixture{
+        "Vertices",
+        {fbx_prop_array_fixture('d', kPositions, sizeof(kPositions) / sizeof(kPositions[0]))},
+        {}});
+    geometry.children.push_back(FbxNodeFixture{
+        "PolygonVertexIndex",
+        {fbx_prop_array_fixture('i', kIndices, sizeof(kIndices) / sizeof(kIndices[0]))},
+        {}});
+
+    uv0_layer.name = "LayerElementUV";
+    uv0_layer.props.push_back(fbx_prop_i64_fixture(0));
+    uv0_layer.children.push_back(
+        FbxNodeFixture{"MappingInformationType", {fbx_prop_string_fixture("ByPolygonVertex")}, {}});
+    uv0_layer.children.push_back(
+        FbxNodeFixture{"ReferenceInformationType", {fbx_prop_string_fixture("Direct")}, {}});
+    uv0_layer.children.push_back(
+        FbxNodeFixture{"UV", {fbx_prop_array_fixture('d', kUv0, sizeof(kUv0) / sizeof(kUv0[0]))}, {}});
+    geometry.children.push_back(uv0_layer);
+
+    uv1_layer.name = "LayerElementUV";
+    uv1_layer.props.push_back(fbx_prop_i64_fixture(1));
+    uv1_layer.children.push_back(
+        FbxNodeFixture{"MappingInformationType", {fbx_prop_string_fixture("ByPolygonVertex")}, {}});
+    uv1_layer.children.push_back(
+        FbxNodeFixture{"ReferenceInformationType", {fbx_prop_string_fixture("Direct")}, {}});
+    uv1_layer.children.push_back(
+        FbxNodeFixture{"UV", {fbx_prop_array_fixture('d', kUv1, sizeof(kUv1) / sizeof(kUv1[0]))}, {}});
+    geometry.children.push_back(uv1_layer);
+
+    color_layer.name = "LayerElementColor";
+    color_layer.props.push_back(fbx_prop_i64_fixture(0));
+    color_layer.children.push_back(
+        FbxNodeFixture{"MappingInformationType", {fbx_prop_string_fixture("ByPolygonVertex")}, {}});
+    color_layer.children.push_back(
+        FbxNodeFixture{"ReferenceInformationType", {fbx_prop_string_fixture("Direct")}, {}});
+    color_layer.children.push_back(FbxNodeFixture{
+        "Colors", {fbx_prop_array_fixture('d', kColors, sizeof(kColors) / sizeof(kColors[0]))}, {}});
+    geometry.children.push_back(color_layer);
+
+    material.name = "Material";
+    material.props.push_back(fbx_prop_i64_fixture(kMaterialId));
+    material.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("LayeredAttributeMaterial", "Material")));
+    material.props.push_back(fbx_prop_string_fixture(""));
+    material_props70.name = "Properties70";
+    material_props70.children.push_back(make_fbx_property_vec3("DiffuseColor", 1.0, 1.0, 1.0));
+    material.children.push_back(material_props70);
+
+    objects.name = "Objects";
+    objects.children.push_back(geometry);
+    objects.children.push_back(material);
+    objects.children.push_back(model);
+
+    connections.name = "Connections";
+    connections.children.push_back(make_fbx_connection_fixture(kModelId, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kGeometryId, kModelId));
+    connections.children.push_back(make_fbx_connection_fixture(kMaterialId, kModelId));
+    return write_fbx_document_fixture(path, objects, connections);
+}
+
+static bool write_fbx_cluster_transform_link_fixture(const char *path) {
+    static const int64_t kGeometryId = 4601;
+    static const int64_t kMeshModelId = 4602;
+    static const int64_t kRootBoneId = 4603;
+    static const int64_t kChildBoneId = 4604;
+    static const int64_t kSkinId = 4605;
+    static const int64_t kRootClusterId = 4606;
+    static const int64_t kChildClusterId = 4607;
+    static const double kPositions[] = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0};
+    static const int32_t kIndices[] = {0, 1, ~2};
+    static const int32_t kRootIndices[] = {0};
+    static const int32_t kChildIndices[] = {1, 2};
+    static const double kRootWeights[] = {1.0};
+    static const double kChildWeights[] = {1.0, 1.0};
+    static const double kRootLink[16] = {1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+                                         0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0};
+    static const double kChildLink[16] = {1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 4.0,
+                                          0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0};
+    FbxNodeFixture geometry;
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    FbxNodeFixture skin = make_fbx_deformer_fixture(kSkinId, "Skin", "Skin");
+    FbxNodeFixture root_cluster = make_fbx_cluster_fixture(kRootClusterId,
+                                                           "RootCluster",
+                                                           kRootIndices,
+                                                           sizeof(kRootIndices) / sizeof(kRootIndices[0]),
+                                                           kRootWeights,
+                                                           sizeof(kRootWeights) / sizeof(kRootWeights[0]));
+    FbxNodeFixture child_cluster = make_fbx_cluster_fixture(kChildClusterId,
+                                                            "ChildCluster",
+                                                            kChildIndices,
+                                                            sizeof(kChildIndices) / sizeof(kChildIndices[0]),
+                                                            kChildWeights,
+                                                            sizeof(kChildWeights) / sizeof(kChildWeights[0]));
+
+    root_cluster.children.push_back(make_fbx_matrix_child("TransformLink", kRootLink));
+    child_cluster.children.push_back(make_fbx_matrix_child("TransformLink", kChildLink));
+
+    geometry.name = "Geometry";
+    geometry.props.push_back(fbx_prop_i64_fixture(kGeometryId));
+    geometry.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("BindPoseMesh", "Geometry")));
+    geometry.props.push_back(fbx_prop_string_fixture("Mesh"));
+    geometry.children.push_back(FbxNodeFixture{
+        "Vertices",
+        {fbx_prop_array_fixture('d', kPositions, sizeof(kPositions) / sizeof(kPositions[0]))},
+        {}});
+    geometry.children.push_back(FbxNodeFixture{
+        "PolygonVertexIndex",
+        {fbx_prop_array_fixture('i', kIndices, sizeof(kIndices) / sizeof(kIndices[0]))},
+        {}});
+
+    objects.name = "Objects";
+    objects.children.push_back(geometry);
+    objects.children.push_back(make_fbx_model_fixture(kMeshModelId, "MeshNode", "Mesh", 0.0, 0.0, 0.0));
+    objects.children.push_back(make_fbx_model_fixture(kRootBoneId, "RootBone", "Root", 0.0, 0.0, 0.0));
+    objects.children.push_back(
+        make_fbx_model_fixture(kChildBoneId, "ChildBone", "LimbNode", 0.0, 1.0, 0.0));
+    objects.children.push_back(skin);
+    objects.children.push_back(root_cluster);
+    objects.children.push_back(child_cluster);
+
+    connections.name = "Connections";
+    connections.children.push_back(make_fbx_connection_fixture(kMeshModelId, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kRootBoneId, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kChildBoneId, kRootBoneId));
+    connections.children.push_back(make_fbx_connection_fixture(kGeometryId, kMeshModelId));
+    connections.children.push_back(make_fbx_connection_fixture(kSkinId, kGeometryId));
+    connections.children.push_back(make_fbx_connection_fixture(kRootClusterId, kSkinId));
+    connections.children.push_back(make_fbx_connection_fixture(kRootClusterId, kRootBoneId));
+    connections.children.push_back(make_fbx_connection_fixture(kChildClusterId, kSkinId));
+    connections.children.push_back(make_fbx_connection_fixture(kChildClusterId, kChildBoneId));
+    return write_fbx_document_fixture(path, objects, connections);
+}
+
+static bool write_fbx_constant_animation_fixture(const char *path) {
+    static const int64_t kGeometryId = 4701;
+    static const int64_t kMeshModelId = 4702;
+    static const int64_t kRootBoneId = 4703;
+    static const int64_t kSkinId = 4704;
+    static const int64_t kRootClusterId = 4705;
+    static const int64_t kStackId = 4706;
+    static const int64_t kLayerId = 4707;
+    static const int64_t kTranslateNodeId = 4708;
+    static const int64_t kCurveXId = 4709;
+    static const int64_t kFbxSecond = 46186158000LL;
+    static const double kPositions[] = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0};
+    static const int32_t kIndices[] = {0, 1, ~2};
+    static const int32_t kRootIndices[] = {0, 1, 2};
+    static const double kRootWeights[] = {1.0, 1.0, 1.0};
+    static const int64_t kTimes[] = {0, kFbxSecond};
+    static const double kValues[] = {0.0, 10.0};
+    static const int32_t kFlags[] = {0x00000002, 0x00000002};
+    FbxNodeFixture geometry;
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    FbxNodeFixture skin = make_fbx_deformer_fixture(kSkinId, "Skin", "Skin");
+    FbxNodeFixture anim_stack;
+    FbxNodeFixture anim_layer;
+    FbxNodeFixture translate_node;
+
+    geometry.name = "Geometry";
+    geometry.props.push_back(fbx_prop_i64_fixture(kGeometryId));
+    geometry.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("ConstantAnimMesh", "Geometry")));
+    geometry.props.push_back(fbx_prop_string_fixture("Mesh"));
+    geometry.children.push_back(FbxNodeFixture{
+        "Vertices",
+        {fbx_prop_array_fixture('d', kPositions, sizeof(kPositions) / sizeof(kPositions[0]))},
+        {}});
+    geometry.children.push_back(FbxNodeFixture{
+        "PolygonVertexIndex",
+        {fbx_prop_array_fixture('i', kIndices, sizeof(kIndices) / sizeof(kIndices[0]))},
+        {}});
+
+    anim_stack.name = "AnimationStack";
+    anim_stack.props.push_back(fbx_prop_i64_fixture(kStackId));
+    anim_stack.props.push_back(fbx_prop_string_fixture(make_fbx_object_name("Constant", "AnimStack")));
+    anim_stack.props.push_back(fbx_prop_string_fixture(""));
+    anim_layer.name = "AnimationLayer";
+    anim_layer.props.push_back(fbx_prop_i64_fixture(kLayerId));
+    anim_layer.props.push_back(fbx_prop_string_fixture(make_fbx_object_name("BaseLayer", "AnimLayer")));
+    anim_layer.props.push_back(fbx_prop_string_fixture(""));
+    translate_node.name = "AnimationCurveNode";
+    translate_node.props.push_back(fbx_prop_i64_fixture(kTranslateNodeId));
+    translate_node.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("RootTranslate", "AnimCurveNode")));
+    translate_node.props.push_back(fbx_prop_string_fixture(""));
+
+    objects.name = "Objects";
+    objects.children.push_back(geometry);
+    objects.children.push_back(make_fbx_model_fixture(kMeshModelId, "MeshNode", "Mesh", 0.0, 0.0, 0.0));
+    objects.children.push_back(make_fbx_model_fixture(kRootBoneId, "RootBone", "Root", 0.0, 0.0, 0.0));
+    objects.children.push_back(skin);
+    objects.children.push_back(make_fbx_cluster_fixture(kRootClusterId,
+                                                        "RootCluster",
+                                                        kRootIndices,
+                                                        sizeof(kRootIndices) / sizeof(kRootIndices[0]),
+                                                        kRootWeights,
+                                                        sizeof(kRootWeights) / sizeof(kRootWeights[0])));
+    objects.children.push_back(anim_stack);
+    objects.children.push_back(anim_layer);
+    objects.children.push_back(translate_node);
+    objects.children.push_back(make_fbx_animation_curve_fixture_with_attrs(
+        kCurveXId, kTimes, kValues, kFlags, sizeof(kTimes) / sizeof(kTimes[0])));
+
+    connections.name = "Connections";
+    connections.children.push_back(make_fbx_connection_fixture(kMeshModelId, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kRootBoneId, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kGeometryId, kMeshModelId));
+    connections.children.push_back(make_fbx_connection_fixture(kSkinId, kGeometryId));
+    connections.children.push_back(make_fbx_connection_fixture(kRootClusterId, kSkinId));
+    connections.children.push_back(make_fbx_connection_fixture(kRootClusterId, kRootBoneId));
+    connections.children.push_back(make_fbx_connection_fixture(kLayerId, kStackId));
+    connections.children.push_back(make_fbx_connection_fixture(kTranslateNodeId, kLayerId));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kTranslateNodeId, kRootBoneId, "Lcl Translation"));
+    connections.children.push_back(make_fbx_connection_fixture(kCurveXId, kTranslateNodeId, "d|X"));
+    return write_fbx_document_fixture(path, objects, connections);
+}
+
+static bool write_fbx_rotation_order_fixture(const char *path) {
+    static const int64_t kDefaultModelId = 4801;
+    static const int64_t kZyxModelId = 4802;
+    FbxNodeFixture default_model =
+        make_fbx_model_fixture(kDefaultModelId, "DefaultOrder", "Null", 0.0, 0.0, 0.0);
+    FbxNodeFixture zyx_model =
+        make_fbx_model_fixture(kZyxModelId, "ZyxOrder", "Null", 1.0, 0.0, 0.0);
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+
+    default_model.children[0].children.push_back(
+        make_fbx_property_vec3("Lcl Rotation", 10.0, 20.0, 30.0));
+    zyx_model.children[0].children.push_back(
+        make_fbx_property_vec3("Lcl Rotation", 10.0, 20.0, 30.0));
+    zyx_model.children[0].children.push_back(make_fbx_property_int("RotationOrder", 5));
+
+    objects.name = "Objects";
+    objects.children.push_back(default_model);
+    objects.children.push_back(zyx_model);
+    connections.name = "Connections";
+    connections.children.push_back(make_fbx_connection_fixture(kDefaultModelId, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kZyxModelId, 0));
+    return write_fbx_document_fixture(path, objects, connections);
+}
+
 static bool write_fbx_skinned_animation_fixture_ex(const char *path,
                                                    bool duplicate_x_curve,
                                                    int dummy_layers,
@@ -730,7 +1356,8 @@ static bool write_fbx_skinned_animation_fixture_ex(const char *path,
                                                    bool animate_child_bone,
                                                    bool mismatched_x_curve,
                                                    bool bare_curve_component_names = false,
-                                                   bool lowercase_curve_component_names = false) {
+                                                   bool lowercase_curve_component_names = false,
+                                                   int64_t key_time_offset = 0) {
     static const int64_t kGeometryId = 1100;
     static const int64_t kMeshModelId = 1200;
     static const int64_t kRootBoneId = 1300;
@@ -753,11 +1380,11 @@ static bool write_fbx_skinned_animation_fixture_ex(const char *path,
     static const double kRootWeights[2] = {1.0, 0.25};
     static const int32_t kChildIndices[2] = {1, 2};
     static const double kChildWeights[2] = {0.75, 1.0};
-    static const int64_t kKeyTimes[2] = {0, kFbxSecond};
     static const double kCurveXValues[2] = {0.0, 10.0};
     static const double kCurveYValues[2] = {0.0, 20.0};
     static const double kCurveXDuplicateValues[2] = {0.0, 99.0};
     static const double kCurveXShortValues[1] = {123.0};
+    const int64_t key_times[2] = {key_time_offset, key_time_offset + kFbxSecond};
 
     FbxNodeFixture geometry;
     FbxNodeFixture objects;
@@ -857,22 +1484,22 @@ static bool write_fbx_skinned_animation_fixture_ex(const char *path,
     if (mismatched_x_curve) {
         objects.children.push_back(make_fbx_animation_curve_mismatched_fixture(
             kCurveXId,
-            kKeyTimes,
-            sizeof(kKeyTimes) / sizeof(kKeyTimes[0]),
+            key_times,
+            sizeof(key_times) / sizeof(key_times[0]),
             kCurveXShortValues,
             sizeof(kCurveXShortValues) / sizeof(kCurveXShortValues[0])));
     } else {
         objects.children.push_back(make_fbx_animation_curve_fixture(
-            kCurveXId, kKeyTimes, kCurveXValues, sizeof(kKeyTimes) / sizeof(kKeyTimes[0])));
+            kCurveXId, key_times, kCurveXValues, sizeof(key_times) / sizeof(key_times[0])));
     }
     objects.children.push_back(make_fbx_animation_curve_fixture(
-        kCurveYId, kKeyTimes, kCurveYValues, sizeof(kKeyTimes) / sizeof(kKeyTimes[0])));
+        kCurveYId, key_times, kCurveYValues, sizeof(key_times) / sizeof(key_times[0])));
     if (duplicate_x_curve) {
         objects.children.push_back(make_fbx_animation_curve_fixture(kCurveXDuplicateId,
-                                                                    kKeyTimes,
+                                                                    key_times,
                                                                     kCurveXDuplicateValues,
-                                                                    sizeof(kKeyTimes) /
-                                                                        sizeof(kKeyTimes[0])));
+                                                                    sizeof(key_times) /
+                                                                        sizeof(key_times[0])));
     }
 
     connections.name = "Connections";
@@ -954,6 +1581,11 @@ static bool write_fbx_bare_component_animation_curve_fixture(const char *path) {
 static bool write_fbx_lowercase_component_animation_curve_fixture(const char *path) {
     return write_fbx_skinned_animation_fixture_ex(
         path, false, 0, 0, false, false, false, false, true);
+}
+
+static bool write_fbx_negative_time_animation_fixture(const char *path) {
+    return write_fbx_skinned_animation_fixture_ex(
+        path, false, 0, 0, false, false, false, false, false, -46186158000LL);
 }
 
 static bool write_truncated_fbx_fixture(const char *path) {
@@ -1751,6 +2383,51 @@ static void test_model3d_adapts_fbx_scene_graphs() {
                 "FBX-backed Model3D instances preserve child names");
 }
 
+static void test_model3d_imports_fbx_nodes_with_many_properties() {
+    const char *path = "/tmp/viper_model3d_many_properties.fbx";
+    bool wrote_fixture = write_fbx_many_property_node_fixture(path);
+    EXPECT_TRUE(wrote_fixture, "FBX many-property fixture can be written");
+    if (!wrote_fixture)
+        return;
+
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load accepts FBX nodes with many direct properties");
+    if (!model)
+        return;
+    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1,
+                "Many-property FBX fixture still imports geometry");
+    EXPECT_TRUE(rt_model3d_get_material_count(model) == 1,
+                "Many-property FBX fixture still imports materials");
+}
+
+static void test_model3d_loads_preloaded_fbx_bytes() {
+    const char *path = "/tmp/viper_model3d_preloaded_fixture.fbx";
+    std::vector<uint8_t> bytes;
+    bool wrote_fixture = write_fbx_fixture(path);
+    EXPECT_TRUE(wrote_fixture, "Preloaded FBX fixture can be written");
+    if (!wrote_fixture)
+        return;
+    EXPECT_TRUE(read_binary_file(path, bytes), "Preloaded FBX fixture can be read");
+    if (bytes.empty())
+        return;
+    uint8_t *owned = static_cast<uint8_t *>(std::malloc(bytes.size()));
+    EXPECT_TRUE(owned != nullptr, "Preloaded FBX byte buffer can be allocated");
+    if (!owned)
+        return;
+    std::memcpy(owned, bytes.data(), bytes.size());
+
+    void *model = rt_model3d_load_preloaded_fbx(rt_const_cstr(path), owned, bytes.size(), 0);
+    EXPECT_TRUE(model != nullptr, "Model3D.LoadPreloadedFBX parses staged FBX bytes");
+    if (!model)
+        return;
+    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1,
+                "Preloaded FBX byte path imports meshes");
+    EXPECT_TRUE(rt_model3d_get_material_count(model) == 1,
+                "Preloaded FBX byte path imports materials");
+    EXPECT_TRUE(rt_model3d_find_node(model, rt_const_cstr("Child")) != nullptr,
+                "Preloaded FBX byte path preserves scene nodes");
+}
+
 static void test_model3d_loads_obj_as_template_asset() {
     const char *path = "/tmp/viper_model3d_fixture.obj";
     const char *obj = "# simple indexed triangle\n"
@@ -2108,6 +2785,26 @@ static void test_model3d_splits_fbx_layer_element_materials() {
     EXPECT_NEAR(blue_mat->diffuse[2], 0.9, 0.001, "FBX second material slot uses Blue material");
 }
 
+static void test_model3d_triangulates_large_fbx_ngons() {
+    const char *path = "/tmp/viper_model3d_large_ngon.fbx";
+    bool wrote_fixture = write_fbx_large_ngon_fixture(path);
+    EXPECT_TRUE(wrote_fixture, "Large n-gon FBX fixture can be written");
+    if (!wrote_fixture)
+        return;
+
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load triangulates FBX n-gons larger than 32 vertices");
+    if (!model)
+        return;
+    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1,
+                "Large n-gon FBX fixture imports one mesh");
+    auto *mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(model, 0));
+    EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 80,
+                "Large n-gon FBX mesh preserves all polygon vertices");
+    EXPECT_TRUE(mesh != nullptr && mesh->index_count == (80 - 2) * 3,
+                "Large n-gon FBX mesh triangulates to N-2 triangles");
+}
+
 static void test_model3d_imports_fbx_embedded_textures() {
     const char *path = "/tmp/viper_model3d_embedded_texture_fixture.fbx";
     const char *png_path = "/tmp/viper_model3d_embedded_texture_source.png";
@@ -2133,6 +2830,214 @@ static void test_model3d_imports_fbx_embedded_textures() {
     EXPECT_TRUE(mat != nullptr && mat->texture != nullptr &&
                     rt_pixels_get(mat->texture, 0, 0) == 0x4A6C8EFFll,
                 "FBX embedded texture pixels preserve decoded PNG contents");
+}
+
+static void test_model3d_imports_fbx_texture_aliases_and_absolute_basename_fallback() {
+    const char *path = "/tmp/viper_model3d_texture_aliases.fbx";
+    const char *png_path = "/tmp/viper_model3d_texture_aliases.png";
+    const char *exporter_path = "/missing/export/machine/viper_model3d_texture_aliases.png";
+    void *pixels = rt_pixels_new(1, 1);
+    rt_pixels_set(pixels, 0, 0, 0x66AAEEFFll);
+    EXPECT_TRUE(rt_pixels_save_png(pixels, rt_const_cstr(png_path)) == 1,
+                "FBX texture alias PNG fixture can be written");
+    EXPECT_TRUE(write_fbx_texture_alias_fixture(path, exporter_path),
+                "FBX texture alias fixture can be written");
+
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr,
+                "Model3D.Load imports FBX texture aliases with absolute basename fallback");
+    if (!model)
+        return;
+    EXPECT_TRUE(rt_model3d_get_material_count(model) == 1,
+                "FBX texture alias fixture imports one material");
+    auto *mat = static_cast<rt_material3d *>(rt_model3d_get_material(model, 0));
+    EXPECT_TRUE(mat != nullptr && rt_material3d_get_has_texture(mat) == 1,
+                "FBX Maya baseColor texture alias assigns the diffuse texture slot");
+    EXPECT_TRUE(mat != nullptr && rt_material3d_get_has_normal_map(mat) == 1,
+                "FBX Maya normalCamera texture alias assigns the normal map slot");
+}
+
+static void test_model3d_imports_fbx_material_scalar_aliases_and_allsame_uvs() {
+    const char *path = "/tmp/viper_model3d_material_aliases.fbx";
+    bool wrote_fixture = write_fbx_material_alias_fixture(path);
+    EXPECT_TRUE(wrote_fixture, "FBX material alias fixture can be written");
+    if (!wrote_fixture)
+        return;
+
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX material aliases");
+    if (!model)
+        return;
+
+    auto *mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(model, 0));
+    EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3,
+                "FBX material alias fixture imports mesh vertices");
+    if (mesh && mesh->vertex_count == 3) {
+        for (uint32_t i = 0; i < mesh->vertex_count; ++i) {
+            EXPECT_NEAR(mesh->vertices[i].uv[0], 0.25, 0.001, "FBX AllSame UV maps U to all vertices");
+            EXPECT_NEAR(mesh->vertices[i].uv[1], 0.25, 0.001, "FBX AllSame UV maps flipped V to all vertices");
+        }
+    }
+
+    auto *mat = static_cast<rt_material3d *>(rt_model3d_get_material(model, 0));
+    EXPECT_TRUE(mat != nullptr, "FBX material alias fixture imports a material");
+    if (!mat)
+        return;
+    EXPECT_NEAR(mat->diffuse[0], 0.3, 0.001, "FBX BaseColor aliases diffuse R");
+    EXPECT_NEAR(mat->diffuse[1], 0.4, 0.001, "FBX BaseColor aliases diffuse G");
+    EXPECT_NEAR(mat->diffuse[2], 0.5, 0.001, "FBX BaseColor aliases diffuse B");
+    EXPECT_NEAR(mat->metallic, 0.7, 0.001, "FBX Metalness aliases metallic factor");
+    EXPECT_NEAR(mat->roughness, 0.25, 0.001, "FBX Roughness imports roughness factor");
+    EXPECT_NEAR(mat->ao, 0.6, 0.001, "FBX AmbientOcclusion imports AO factor");
+    EXPECT_NEAR(mat->normal_scale, 0.8, 0.001, "FBX NormalMapScale imports normal scale");
+    EXPECT_NEAR(mat->emissive[0], 0.1, 0.001, "FBX EmissionColor imports emissive R");
+    EXPECT_NEAR(mat->emissive_intensity, 2.0, 0.001, "FBX EmissionFactor imports intensity");
+    EXPECT_TRUE(mat->double_sided == 1, "FBX TwoSided enables double-sided rendering");
+}
+
+static void test_model3d_imports_fbx_secondary_uvs_and_vertex_colors() {
+    const char *path = "/tmp/viper_model3d_multilayer_attributes.fbx";
+    EXPECT_TRUE(write_fbx_multilayer_attribute_fixture(path),
+                "FBX multi-layer attribute fixture can be written");
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX secondary UV/color layers");
+    if (!model)
+        return;
+    auto *mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(model, 0));
+    EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3,
+                "FBX secondary attribute fixture imports three vertices");
+    if (!mesh || mesh->vertex_count != 3)
+        return;
+    EXPECT_NEAR(mesh->vertices[0].uv[0], 0.0, 0.001, "FBX UV0 layer imports primary U");
+    EXPECT_NEAR(mesh->vertices[0].uv[1], 1.0, 0.001, "FBX UV0 layer flips primary V");
+    EXPECT_NEAR(mesh->vertices[0].uv1[0], 0.9, 0.001, "FBX UV1 layer imports secondary U");
+    EXPECT_NEAR(mesh->vertices[0].uv1[1], 0.9, 0.001, "FBX UV1 layer flips secondary V");
+    EXPECT_NEAR(mesh->vertices[1].color[1], 1.0, 0.001, "FBX vertex colors import green");
+    EXPECT_NEAR(mesh->vertices[2].color[2], 1.0, 0.001, "FBX vertex colors import blue");
+    EXPECT_NEAR(mesh->vertices[2].color[3], 0.5, 0.001, "FBX vertex colors import alpha");
+}
+
+static void test_fbx_cluster_transform_link_drives_bind_pose() {
+    const char *path = "/tmp/viper_model3d_cluster_transform_link.fbx";
+    EXPECT_TRUE(write_fbx_cluster_transform_link_fixture(path),
+                "FBX TransformLink bind-pose fixture can be written");
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX Cluster TransformLink bind poses");
+    if (!model)
+        return;
+    auto *skeleton = static_cast<rt_skeleton3d *>(rt_model3d_get_skeleton(model, 0));
+    EXPECT_TRUE(skeleton != nullptr && skeleton->bone_count == 2,
+                "FBX TransformLink fixture imports a two-bone skeleton");
+    if (!skeleton || skeleton->bone_count < 2)
+        return;
+    EXPECT_TRUE(skeleton->bones[1].parent_index == 0,
+                "FBX TransformLink fixture keeps child parent index");
+    EXPECT_NEAR(skeleton->bones[1].bind_pose_local[7],
+                4.0,
+                0.001,
+                "FBX child bind pose uses Cluster TransformLink instead of Model Lcl Translation");
+}
+
+static void test_fbx_constant_animation_curve_preserves_step() {
+    const char *path = "/tmp/viper_model3d_constant_anim_curve.fbx";
+    EXPECT_TRUE(write_fbx_constant_animation_fixture(path),
+                "FBX constant animation fixture can be written");
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX constant animation curves");
+    if (!model)
+        return;
+    auto *anim = static_cast<rt_animation3d *>(rt_model3d_get_animation(model, 0));
+    EXPECT_TRUE(anim != nullptr, "FBX constant animation imports an Animation3D");
+    if (!anim)
+        return;
+    const vgfx3d_anim_channel_t *root_channel = nullptr;
+    for (int32_t i = 0; i < anim->channel_count; i++) {
+        if (anim->channels[i].bone_index == 0) {
+            root_channel = &anim->channels[i];
+            break;
+        }
+    }
+    EXPECT_TRUE(root_channel != nullptr, "FBX constant animation creates a root channel");
+    if (!root_channel)
+        return;
+    EXPECT_TRUE(root_channel->keyframe_count >= 3,
+                "FBX constant curves add a pre-step sample for runtime interpolation");
+    if (root_channel->keyframe_count < 3)
+        return;
+    EXPECT_NEAR(root_channel->keyframes[root_channel->keyframe_count - 2].position[0],
+                0.0,
+                0.001,
+                "FBX constant curve holds the previous value before the next key");
+    EXPECT_NEAR(root_channel->keyframes[root_channel->keyframe_count - 1].position[0],
+                10.0,
+                0.001,
+                "FBX constant curve jumps at the authored next key");
+}
+
+static void test_model3d_loads_ascii_fbx_attributes_and_materials() {
+    const char *path = "/tmp/viper_model3d_ascii_attributes.fbx";
+    const char *fbx = "; FBX 7.4.0 project file\n"
+                      "Objects:  {\n"
+                      "  Model: 2, \"Model::AsciiNamed\", \"Mesh\" {\n"
+                      "  }\n"
+                      "  Material: 3, \"Material::AsciiMat\", \"\" {\n"
+                      "    Properties70:  {\n"
+                      "      P: \"DiffuseColor\", \"Color\", \"\", \"A\",0.2,0.4,0.6\n"
+                      "    }\n"
+                      "  }\n"
+                      "  Geometry: 1, \"Geometry::AsciiMesh\", \"Mesh\" {\n"
+                      "    Vertices: *9 { a: 0,0,0, 1,0,0, 0,1,0 }\n"
+                      "    PolygonVertexIndex: *3 { a: 0,1,-3 }\n"
+                      "    Normals: *9 { a: 0,0,1, 0,0,1, 0,0,1 }\n"
+                      "    UV: *6 { a: 0,0, 1,0, 0,1 }\n"
+                      "    UVIndex: *3 { a: 0,1,2 }\n"
+                      "    Colors: *12 { a: 1,0,0,1, 0,1,0,1, 0,0,1,0.5 }\n"
+                      "  }\n"
+                      "}\n";
+    EXPECT_TRUE(write_text_file(path, fbx), "ASCII FBX attribute fixture can be written");
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load parses ASCII FBX attributes/materials");
+    if (!model)
+        return;
+    EXPECT_TRUE(rt_model3d_find_node(model, rt_const_cstr("AsciiNamed")) != nullptr,
+                "ASCII FBX fallback preserves Model names");
+    auto *mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(model, 0));
+    EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3,
+                "ASCII FBX attribute fixture imports mesh vertices");
+    if (mesh && mesh->vertex_count == 3) {
+        EXPECT_NEAR(mesh->vertices[1].uv[0], 1.0, 0.001, "ASCII FBX UV imports U");
+        EXPECT_NEAR(mesh->vertices[2].uv[1], 0.0, 0.001, "ASCII FBX UV flips V");
+        EXPECT_NEAR(mesh->vertices[2].color[2], 1.0, 0.001, "ASCII FBX Colors import blue");
+        EXPECT_NEAR(mesh->vertices[2].color[3], 0.5, 0.001, "ASCII FBX Colors import alpha");
+    }
+    auto *mat = static_cast<rt_material3d *>(rt_model3d_get_material(model, 0));
+    EXPECT_TRUE(mat != nullptr, "ASCII FBX material fixture imports a material");
+    if (mat) {
+        EXPECT_NEAR(mat->diffuse[0], 0.2, 0.001, "ASCII FBX DiffuseColor imports R");
+        EXPECT_NEAR(mat->diffuse[2], 0.6, 0.001, "ASCII FBX DiffuseColor imports B");
+    }
+}
+
+static void test_model3d_honors_fbx_rotation_order() {
+    const char *path = "/tmp/viper_model3d_rotation_order.fbx";
+    EXPECT_TRUE(write_fbx_rotation_order_fixture(path), "FBX RotationOrder fixture can be written");
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX RotationOrder properties");
+    if (!model)
+        return;
+    void *default_node = rt_model3d_find_node(model, rt_const_cstr("DefaultOrder"));
+    void *zyx_node = rt_model3d_find_node(model, rt_const_cstr("ZyxOrder"));
+    EXPECT_TRUE(default_node != nullptr && zyx_node != nullptr,
+                "FBX RotationOrder fixture imports both scene nodes");
+    if (!default_node || !zyx_node)
+        return;
+    void *default_q = rt_scene_node3d_get_rotation(default_node);
+    void *zyx_q = rt_scene_node3d_get_rotation(zyx_node);
+    double diff = std::fabs(rt_quat_x(default_q) - rt_quat_x(zyx_q)) +
+                  std::fabs(rt_quat_y(default_q) - rt_quat_y(zyx_q)) +
+                  std::fabs(rt_quat_z(default_q) - rt_quat_z(zyx_q)) +
+                  std::fabs(rt_quat_w(default_q) - rt_quat_w(zyx_q));
+    EXPECT_TRUE(diff > 0.01, "FBX RotationOrder changes the imported node quaternion");
 }
 
 static void test_model3d_imports_fbx_skinning_and_grouped_animation() {
@@ -2369,6 +3274,52 @@ static void test_fbx_lowercase_animation_curve_component_names_import() {
                 20.0,
                 0.001,
                 "FBX lowercase Y component connections drive translation Y");
+}
+
+static void test_fbx_negative_animation_key_times_normalize_to_clip_start() {
+    const char *path = "/tmp/viper_model3d_negative_time_anim_curve_fixture.fbx";
+    bool wrote_fixture = write_fbx_negative_time_animation_fixture(path);
+    EXPECT_TRUE(wrote_fixture, "Negative-time FBX fixture can be written");
+    if (!wrote_fixture)
+        return;
+
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX assets with negative animation keys");
+    if (!model)
+        return;
+
+    auto *anim = static_cast<rt_animation3d *>(rt_model3d_get_animation(model, 0));
+    EXPECT_TRUE(anim != nullptr, "Negative-time FBX animation is available");
+    if (!anim)
+        return;
+    EXPECT_NEAR(anim->duration, 1.0, 0.001, "FBX negative key times keep the clip span");
+
+    const vgfx3d_anim_channel_t *root_channel = nullptr;
+    for (int32_t i = 0; i < anim->channel_count; i++) {
+        if (anim->channels[i].bone_index == 0) {
+            root_channel = &anim->channels[i];
+            break;
+        }
+    }
+    EXPECT_TRUE(root_channel != nullptr, "Negative-time FBX animation creates a root channel");
+    if (!root_channel || root_channel->keyframe_count < 2)
+        return;
+    EXPECT_NEAR(root_channel->keyframes[0].time,
+                0.0,
+                0.001,
+                "FBX negative first key normalizes to engine clip time zero");
+    EXPECT_NEAR(root_channel->keyframes[1].time,
+                1.0,
+                0.001,
+                "FBX later key normalizes relative to the first source key");
+    EXPECT_NEAR(root_channel->keyframes[1].position[0],
+                10.0,
+                0.001,
+                "FBX negative-time X curve still drives translation X");
+    EXPECT_NEAR(root_channel->keyframes[1].position[1],
+                20.0,
+                0.001,
+                "FBX negative-time Y curve still drives translation Y");
 }
 
 static void test_fbx_animation_layers_beyond_fixed_cap_import() {
@@ -2783,6 +3734,25 @@ static void test_model3d_autoplays_gltf_node_and_morph_animation() {
     EXPECT_TRUE(model != nullptr, "Model3D.Load imports glTF node animation clips");
     if (!model)
         return;
+    EXPECT_TRUE(rt_model3d_get_node_animation_count(model) == 1,
+                "Model3D.NodeAnimationCount exposes imported glTF node clips");
+    void *borrowed_clip = rt_model3d_get_node_animation(model, 0);
+    EXPECT_TRUE(borrowed_clip != nullptr, "Model3D.GetNodeAnimation borrows imported node clips");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_model3d_get_node_animation_name(model, 0)),
+                            "MoveAndSmile") == 0,
+                "Model3D.GetNodeAnimationName exposes imported node clip names");
+    void *loaded_node_clip = rt_model3d_load_node_animation(rt_const_cstr(path), 0);
+    EXPECT_TRUE(loaded_node_clip != nullptr,
+                "Model3D.LoadNodeAnimation returns a retained external node clip");
+    if (loaded_node_clip) {
+        EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_node_animation3d_get_name(loaded_node_clip)),
+                                "MoveAndSmile") == 0,
+                    "Model3D.LoadNodeAnimation preserves node clip names");
+        if (rt_obj_release_check0(loaded_node_clip))
+            rt_obj_free(loaded_node_clip);
+    }
+    EXPECT_TRUE(rt_model3d_load_animation(rt_const_cstr(path), 0) == nullptr,
+                "Model3D.LoadAnimation returns null when a file has no skeletal clips");
     void *scene = rt_model3d_instantiate_scene(model);
     EXPECT_TRUE(scene != nullptr, "Model3D.InstantiateScene creates a scene for node animation");
     if (!scene)
@@ -2805,6 +3775,7 @@ static void test_model3d_autoplays_gltf_node_and_morph_animation() {
                     0.001,
                     "Scene3D.SyncBindings advances glTF morph weight animation");
     }
+    std::remove(path);
 }
 
 static void test_gltf_short_node_weights_clear_morph_tail() {
@@ -3044,7 +4015,7 @@ static void test_model3d_rejects_wrong_handle_types() {
                 "Model3D.InstantiateSceneAt rejects non-Model3D handles");
 }
 
-static void test_model3d_skips_default_skeletal_animator_for_multiple_skeletons() {
+static void test_model3d_binds_first_valid_default_skeletal_animator_for_multiple_skeletons() {
     const char *path = "/tmp/viper_model3d_multi_skeleton_autobind.obj";
     const char *obj = "v 0 0 0\n"
                       "v 1 0 0\n"
@@ -3085,8 +4056,18 @@ static void test_model3d_skips_default_skeletal_animator_for_multiple_skeletons(
 
     auto *instance = static_cast<rt_scene_node3d *>(rt_model3d_instantiate(model));
     EXPECT_TRUE(instance != nullptr, "Model3D.Instantiate succeeds for multi-skeleton fixture");
-    EXPECT_TRUE(instance && instance->bound_animator == nullptr,
-                "Model3D skips arbitrary default skeletal animator for multiple skeletons");
+    void *controller = instance ? rt_scene_node3d_get_animator(instance) : nullptr;
+    EXPECT_TRUE(controller != nullptr,
+                "Model3D binds a default skeletal animator when multiple skeletons are present");
+    if (controller) {
+        EXPECT_TRUE(rt_anim_controller3d_get_skeleton(controller) == view->skeletons[0],
+                    "Model3D default animator uses the first valid imported skeleton");
+        EXPECT_TRUE(rt_anim_controller3d_get_state_count(controller) == 2,
+                    "Model3D default animator keeps all imported clips for multi-skeleton assets");
+        EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_anim_controller3d_get_current_state(controller)),
+                                "clip_a") == 0,
+                    "Model3D default animator starts the first imported clip");
+    }
 
     std::remove(path);
 }
@@ -3260,7 +4241,7 @@ static void test_model3d_clamps_corrupt_counts_and_child_walks() {
 
 int main() {
     test_model3d_rejects_wrong_handle_types();
-    test_model3d_skips_default_skeletal_animator_for_multiple_skeletons();
+    test_model3d_binds_first_valid_default_skeletal_animator_for_multiple_skeletons();
     test_model3d_clamps_corrupt_counts_and_child_walks();
     test_model3d_roundtrips_vscn_assets();
     test_model3d_find_node_rejects_wrong_string_handles();
@@ -3270,6 +4251,8 @@ int main() {
     test_model3d_load_asset_resolves_mounted_gltf_dependencies();
     test_model3d_load_asset_diagnostics_name_missing_dependency();
     test_model3d_adapts_fbx_scene_graphs();
+    test_model3d_imports_fbx_nodes_with_many_properties();
+    test_model3d_loads_preloaded_fbx_bytes();
     test_model3d_loads_obj_as_template_asset();
     test_model3d_preserves_obj_mtl_material_groups();
     test_model3d_imports_obj_mtl_texture_maps();
@@ -3279,12 +4262,21 @@ int main() {
     test_model3d_loads_stl_as_template_asset();
     test_model3d_loads_minimal_ascii_fbx();
     test_model3d_splits_fbx_layer_element_materials();
+    test_model3d_triangulates_large_fbx_ngons();
     test_model3d_imports_fbx_embedded_textures();
+    test_model3d_imports_fbx_texture_aliases_and_absolute_basename_fallback();
+    test_model3d_imports_fbx_material_scalar_aliases_and_allsame_uvs();
+    test_model3d_imports_fbx_secondary_uvs_and_vertex_colors();
+    test_fbx_cluster_transform_link_drives_bind_pose();
+    test_fbx_constant_animation_curve_preserves_step();
+    test_model3d_loads_ascii_fbx_attributes_and_materials();
+    test_model3d_honors_fbx_rotation_order();
     test_model3d_imports_fbx_skinning_and_grouped_animation();
     test_fbx_duplicate_animation_curves_keep_first_component();
     test_fbx_mismatched_animation_curve_key_arrays_are_ignored();
     test_fbx_bare_animation_curve_component_names_import();
     test_fbx_lowercase_animation_curve_component_names_import();
+    test_fbx_negative_animation_key_times_normalize_to_clip_start();
     test_fbx_animation_layers_beyond_fixed_cap_import();
     test_fbx_animation_curve_nodes_beyond_fixed_cap_import();
     test_fbx_duplicate_bone_names_resolve_by_model_id();

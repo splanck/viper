@@ -1548,6 +1548,46 @@ static void compute_bone_palette(rt_anim_player3d *p);
 static void compute_player_bind_pose(rt_anim_player3d *p);
 static int8_t anim_player_current_looping(rt_anim_player3d *p);
 
+static int32_t skeleton3d_pose_capacity_for_count(int32_t bone_count) {
+    if (bone_count <= 0)
+        return 1;
+    if (bone_count > VGFX3D_MAX_BONES)
+        return VGFX3D_MAX_BONES;
+    return bone_count;
+}
+
+static int skeleton3d_grow_pose_buffer(float **buffer, int32_t old_capacity, int32_t new_capacity) {
+    if (!buffer || new_capacity <= old_capacity)
+        return 1;
+    size_t old_floats = (size_t)(old_capacity > 0 ? old_capacity : 0) * 16u;
+    size_t new_floats = (size_t)new_capacity * 16u;
+    if (new_floats > SIZE_MAX / sizeof(float))
+        return 0;
+    float *grown = (float *)realloc(*buffer, new_floats * sizeof(float));
+    if (!grown)
+        return 0;
+    memset(grown + old_floats, 0, (new_floats - old_floats) * sizeof(float));
+    *buffer = grown;
+    return 1;
+}
+
+static int anim_player3d_ensure_pose_capacity(rt_anim_player3d *p, int32_t bone_count) {
+    if (!p)
+        return 0;
+    int32_t new_capacity = skeleton3d_pose_capacity_for_count(bone_count);
+    int32_t old_capacity = p->pose_capacity > 0 ? p->pose_capacity : 0;
+    if (new_capacity <= old_capacity)
+        return 1;
+    if (!skeleton3d_grow_pose_buffer(&p->bone_palette, old_capacity, new_capacity) ||
+        !skeleton3d_grow_pose_buffer(&p->prev_bone_palette, old_capacity, new_capacity) ||
+        !skeleton3d_grow_pose_buffer(&p->motion_palette_snapshot, old_capacity, new_capacity) ||
+        !skeleton3d_grow_pose_buffer(&p->local_transforms, old_capacity, new_capacity) ||
+        !skeleton3d_grow_pose_buffer(&p->globals_buf, old_capacity, new_capacity))
+        return 0;
+    p->pose_capacity = new_capacity;
+    return 1;
+}
+
 /// @brief Create an animation player bound to a target skeleton.
 ///
 /// The player holds the current playback time, the active and
@@ -1587,7 +1627,8 @@ void *rt_anim_player3d_new(void *skeleton) {
     p->last_motion_frame = 0;
     p->has_prev_motion_palette = 0;
 
-    size_t palette_size = (size_t)VGFX3D_MAX_BONES * 16 * sizeof(float);
+    p->pose_capacity = skeleton3d_pose_capacity_for_count(bone_count);
+    size_t palette_size = (size_t)p->pose_capacity * 16u * sizeof(float);
     p->bone_palette = (float *)calloc(1, palette_size);
     p->prev_bone_palette = (float *)calloc(1, palette_size);
     p->motion_palette_snapshot = (float *)calloc(1, palette_size);
@@ -1694,6 +1735,8 @@ static void compute_palette_from_locals(const rt_skeleton3d *skel,
 static void compute_player_bind_pose(rt_anim_player3d *p) {
     rt_skeleton3d *skel = p ? animation3d_skeleton_slot((void **)&p->skeleton) : NULL;
     int32_t bone_count = skeleton3d_safe_bone_count(skel);
+    if (p && !anim_player3d_ensure_pose_capacity(p, bone_count))
+        return;
     if (!p || !skel || bone_count <= 0 || !p->local_transforms || !p->globals_buf ||
         !p->bone_palette)
         return;
@@ -1709,6 +1752,8 @@ static void compute_bone_palette(rt_anim_player3d *p) {
     rt_animation3d *current = p ? animation3d_clip_slot((void **)&p->current) : NULL;
     rt_animation3d *crossfade_from = p ? animation3d_clip_slot((void **)&p->crossfade_from) : NULL;
     int32_t bone_count = skeleton3d_safe_bone_count(skel);
+    if (p && !anim_player3d_ensure_pose_capacity(p, bone_count))
+        return;
     if (!p || !skel || bone_count == 0 || !p->local_transforms || !p->globals_buf ||
         !p->bone_palette)
         return;
@@ -1918,6 +1963,8 @@ static const float *anim_player_prepare_prev_palette(rt_anim_player3d *p, int64_
     int32_t bone_count = skeleton3d_safe_bone_count(skel);
     if (skel)
         skel->bone_count = bone_count;
+    if (!anim_player3d_ensure_pose_capacity(p, bone_count))
+        return NULL;
     size_t palette_size = (size_t)bone_count * 16 * sizeof(float);
     if (p->last_motion_frame != frame_serial) {
         if (p->prev_bone_palette && p->motion_palette_snapshot && bone_count > 0 &&
@@ -2298,6 +2345,24 @@ static void anim_blend3d_finalizer(void *obj) {
     b->state_count = 0;
 }
 
+static int anim_blend3d_ensure_pose_capacity(rt_anim_blend3d *b, int32_t bone_count) {
+    if (!b)
+        return 0;
+    int32_t new_capacity = skeleton3d_pose_capacity_for_count(bone_count);
+    int32_t old_capacity = b->pose_capacity > 0 ? b->pose_capacity : 0;
+    if (new_capacity <= old_capacity)
+        return 1;
+    if (!skeleton3d_grow_pose_buffer(&b->bone_palette, old_capacity, new_capacity) ||
+        !skeleton3d_grow_pose_buffer(&b->prev_bone_palette, old_capacity, new_capacity) ||
+        !skeleton3d_grow_pose_buffer(&b->motion_palette_snapshot, old_capacity, new_capacity) ||
+        !skeleton3d_grow_pose_buffer(&b->local_transforms, old_capacity, new_capacity) ||
+        !skeleton3d_grow_pose_buffer(&b->temp_state_local, old_capacity, new_capacity) ||
+        !skeleton3d_grow_pose_buffer(&b->globals_buf, old_capacity, new_capacity))
+        return 0;
+    b->pose_capacity = new_capacity;
+    return 1;
+}
+
 /// @brief Create a multi-clip blender that mixes several animations on the same skeleton.
 ///
 /// Useful for blendspaces (e.g. mixing walk + run by speed) and
@@ -2323,7 +2388,8 @@ void *rt_anim_blend3d_new(void *skel_obj) {
     b->has_prev_motion_palette = 0;
 
     int32_t bone_count = skeleton3d_safe_bone_count(skel);
-    size_t buf_sz = (size_t)VGFX3D_MAX_BONES * 16 * sizeof(float);
+    b->pose_capacity = skeleton3d_pose_capacity_for_count(bone_count);
+    size_t buf_sz = (size_t)b->pose_capacity * 16u * sizeof(float);
     b->bone_palette = (float *)calloc(1, buf_sz);
     b->prev_bone_palette = (float *)calloc(1, buf_sz);
     b->motion_palette_snapshot = (float *)calloc(1, buf_sz);
@@ -2478,6 +2544,8 @@ void rt_anim_blend3d_update(void *obj, double dt) {
     int32_t state_count = anim_blend3d_state_slot_limit(b);
     if (!skel || bc == 0)
         return;
+    if (!anim_blend3d_ensure_pose_capacity(b, bc))
+        return;
     if (!b->local_transforms || !b->temp_state_local || !b->globals_buf || !b->bone_palette)
         return;
 
@@ -2578,6 +2646,8 @@ const float *rt_anim_blend3d_get_local_transform_data(void *obj, int32_t *bone_c
     skel = animation3d_skeleton_slot((void **)&b->skeleton);
     if (!skel)
         return NULL;
+    if (!anim_blend3d_ensure_pose_capacity(b, skeleton3d_safe_bone_count(skel)))
+        return NULL;
     if (bone_count)
         *bone_count = skeleton3d_safe_bone_count(skel);
     return b->local_transforms;
@@ -2590,6 +2660,8 @@ static const float *anim_blend_prepare_prev_palette(rt_anim_blend3d *b, int64_t 
         return NULL;
     skel = animation3d_skeleton_slot((void **)&b->skeleton);
     int32_t bone_count = skeleton3d_safe_bone_count(skel);
+    if (!anim_blend3d_ensure_pose_capacity(b, bone_count))
+        return NULL;
     size_t palette_size = (size_t)bone_count * 16 * sizeof(float);
     if (b->last_motion_frame != frame_serial) {
         if (b->prev_bone_palette && b->motion_palette_snapshot && bone_count > 0 &&

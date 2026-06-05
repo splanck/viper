@@ -157,6 +157,52 @@ void rt_scene_node3d_bind_animator(void *node, void *controller);
 void rt_scene_node3d_clear_animator_binding(void *node);
 /// @brief Get the bound AnimController3D (NULL if none).
 void *rt_scene_node3d_get_animator(void *node);
+/// @brief Bind a NodeAnimator3D so imported node, morph-weight, object, or camera clips drive
+/// this node's subtree during Scene3D.SyncBindings().
+void rt_scene_node3d_bind_node_animator(void *node, void *animator);
+/// @brief Remove only the bound NodeAnimator3D, leaving any skeletal AnimController3D intact.
+void rt_scene_node3d_clear_node_animator_binding(void *node);
+/// @brief Get the bound NodeAnimator3D (NULL if no node-animation playback is attached).
+void *rt_scene_node3d_get_node_animator(void *node);
+
+/* NodeAnimation3D / NodeAnimator3D */
+/// @brief Create a NodeAnimation3D clip that targets scene-node TRS or morph-weight channels.
+/// @details Node animations mirror glTF node animation semantics and are separate from
+/// skeletal Animation3D clips. They are useful for object motion, camera paths, and morph target
+/// weight animation.
+void *rt_node_animation3d_new(rt_string name, double duration);
+/// @brief Get the authored NodeAnimation3D clip name, or an empty string for invalid handles.
+rt_string rt_node_animation3d_get_name(void *animation);
+/// @brief Get the NodeAnimation3D duration in seconds.
+double rt_node_animation3d_get_duration(void *animation);
+/// @brief Get the number of channels stored on a NodeAnimation3D clip.
+int64_t rt_node_animation3d_get_channel_count(void *animation);
+/// @brief Create a NodeAnimator3D that owns and plays a single NodeAnimation3D clip.
+void *rt_node_animator3d_new(void *clip);
+/// @brief Get the number of clips retained by a NodeAnimator3D.
+int64_t rt_node_animator3d_get_clip_count(void *animator);
+/// @brief Borrow a clip from a NodeAnimator3D by index, or NULL when out of range.
+void *rt_node_animator3d_get_clip(void *animator, int64_t index);
+/// @brief Get the clip name at @p index, or an empty string when out of range.
+rt_string rt_node_animator3d_get_clip_name(void *animator, int64_t index);
+/// @brief Get the currently active node-animation clip name, or an empty string when none.
+rt_string rt_node_animator3d_get_current_clip(void *animator);
+/// @brief Play the named node-animation clip immediately and reset its playback time.
+int8_t rt_node_animator3d_play(void *animator, rt_string name);
+/// @brief Stop a NodeAnimator3D without clearing its clip selection or current time.
+void rt_node_animator3d_stop(void *animator);
+/// @brief Set the global playback speed multiplier for a NodeAnimator3D.
+void rt_node_animator3d_set_speed(void *animator, double speed);
+/// @brief Get the global playback speed multiplier for a NodeAnimator3D.
+double rt_node_animator3d_get_speed(void *animator);
+/// @brief Set the current clip time in seconds; the next update clamps or wraps it to the clip.
+void rt_node_animator3d_set_time(void *animator, double time);
+/// @brief Get the current clip time in seconds.
+double rt_node_animator3d_get_time(void *animator);
+/// @brief Return whether the NodeAnimator3D is currently advancing playback.
+int8_t rt_node_animator3d_get_playing(void *animator);
+/// @brief Advance and apply the current node-animation clip by @p dt seconds.
+void rt_node_animator3d_update(void *animator, double dt);
 
 /* LOD — Level of Detail */
 /// @brief Add a level-of-detail mesh swap: when camera distance exceeds @p distance, use @p mesh.
