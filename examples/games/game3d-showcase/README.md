@@ -38,6 +38,12 @@ rendering, the scene exercises a broad slice of the 3D API:
   plus a runtime quality toggle and a diagnostics overlay
 - procedural terrain (splat-mapped grass/rock/dirt), reflective animated water, a generated
   cubemap skybox, and a final-overlay HUD/minimap
+- **F11 fullscreen toggle** (`Canvas3D.ToggleFullscreen`), rigid-body physics props (a dynamic
+  boulder pile settling on a static plinth), **wind-swayed reeds** (`Canvas3D.DrawMeshWind`), a
+  **render-to-image minimap** (`Canvas3D.DrawImage2D`), **AnimController3D** idle/move sentinels
+  that wander the meadow (skinned via `Canvas3D.DrawMeshSkinned`), bark/canopy split tree
+  materials (`SceneNode3D` traversal), a sprint **FOV kick** with depth-of-field + motion blur,
+  and a "return home" **Trigger3D** objective
 
 > The forest loads `MapleTree_1.fbx` relative to the working directory — run via
 > `viper run examples/games/game3d-showcase/` (or from within this folder) so it resolves. If the
@@ -49,6 +55,7 @@ rendering, the scene exercises a broad slice of the 3D API:
 - `Mouse`: look
 - `Wheel`: zoom camera
 - `Shift`: sprint
+- `F11`: toggle fullscreen (starts windowed)
 - `Space`: cycle render quality (performance / balanced / cinematic)
 - `Ctrl`: toggle the diagnostics overlay
 - `Esc`: quit

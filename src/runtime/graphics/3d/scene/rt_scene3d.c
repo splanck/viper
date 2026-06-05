@@ -1319,6 +1319,35 @@ static void scene_world_point(const double *world_matrix, const float local[3], 
     out[2] = scene3d_float_or_zero(scene3d_clamp_abs_or(z, 0.0));
 }
 
+/// @brief Multiply a local-space point by the node's world matrix without narrowing to float.
+/// @details LOD and impostor selection can sit on tight distance thresholds. Keeping the world
+///          center and camera position in double precision avoids frame-to-frame selection jitter
+///          in large-world scenes where float truncation erases the low bits near the camera.
+static void scene_world_point_d(const double *world_matrix, const float local[3], double out[3]) {
+    double p[3];
+    double x;
+    double y;
+    double z;
+    if (!world_matrix || !local || !out)
+        return;
+    if (!scene3d_matrix_is_finite(world_matrix)) {
+        out[0] = out[1] = out[2] = 0.0;
+        return;
+    }
+    p[0] = scene3d_clamp_abs_or((double)local[0], 0.0);
+    p[1] = scene3d_clamp_abs_or((double)local[1], 0.0);
+    p[2] = scene3d_clamp_abs_or((double)local[2], 0.0);
+    x = world_matrix[0] * p[0] + world_matrix[1] * p[1] + world_matrix[2] * p[2] +
+        world_matrix[3];
+    y = world_matrix[4] * p[0] + world_matrix[5] * p[1] + world_matrix[6] * p[2] +
+        world_matrix[7];
+    z = world_matrix[8] * p[0] + world_matrix[9] * p[1] + world_matrix[10] * p[2] +
+        world_matrix[11];
+    out[0] = scene3d_clamp_abs_or(x, 0.0);
+    out[1] = scene3d_clamp_abs_or(y, 0.0);
+    out[2] = scene3d_clamp_abs_or(z, 0.0);
+}
+
 /// @brief Normalize a float[3] vector in-place, substituting a caller-supplied fallback
 ///        direction when the vector is degenerate (zero-length or non-finite magnitude).
 /// @details Used to normalize light direction vectors that have been transformed into
@@ -2315,19 +2344,19 @@ static int scene_draw_stack_push(scene_draw_stack_item_t **stack,
 static void *scene3d_resolve_draw_mesh(rt_scene_node3d *current,
                                        rt_canvas3d *canvas,
                                        rt_camera3d *cam,
-                                       const float *cam_pos,
+                                       const double *cam_pos,
                                        void **out_material,
                                        float out_min[3],
                                        float out_max[3],
                                        float *out_radius) {
     void *draw_mesh = rt_g3d_checked_or_null(current->mesh, RT_G3D_MESH3D_CLASS_ID);
     void *draw_material = rt_g3d_checked_or_null(current->material, RT_G3D_MATERIAL3D_CLASS_ID);
-    float camera_distance = 0.0f;
+    double camera_distance = 0.0;
     int has_camera_distance = 0;
 
     if ((draw_mesh || current->has_impostor) && cam_pos) {
         float local_center[3] = {0.0f, 0.0f, 0.0f};
-        float world_center[3];
+        double world_center[3];
         float base_min[3] = {0.0f, 0.0f, 0.0f};
         float base_max[3] = {0.0f, 0.0f, 0.0f};
         float base_radius = 0.0f;
@@ -2337,14 +2366,14 @@ static void *scene3d_resolve_draw_mesh(rt_scene_node3d *current,
             local_center[1] = 0.5f * (base_min[1] + base_max[1]);
             local_center[2] = 0.5f * (base_min[2] + base_max[2]);
         }
-        scene_world_point(current->world_matrix, local_center, world_center);
+        scene_world_point_d(current->world_matrix, local_center, world_center);
         {
-            float dx = world_center[0] - cam_pos[0];
-            float dy = world_center[1] - cam_pos[1];
-            float dz = world_center[2] - cam_pos[2];
-            float dist = sqrtf(dx * dx + dy * dy + dz * dz);
+            double dx = world_center[0] - cam_pos[0];
+            double dy = world_center[1] - cam_pos[1];
+            double dz = world_center[2] - cam_pos[2];
+            double dist = sqrt(dx * dx + dy * dy + dz * dz);
             if (!isfinite(dist))
-                dist = 0.0f;
+                dist = 0.0;
             camera_distance = dist;
             has_camera_distance = 1;
             if (draw_mesh && current->auto_lod_enabled && scene3d_node_lod_count(current) > 0) {
@@ -2358,10 +2387,10 @@ static void *scene3d_resolve_draw_mesh(rt_scene_node3d *current,
     if (draw_mesh) {
         int32_t lod_count = scene3d_node_lod_count(current);
         if (!current->auto_lod_enabled && lod_count > 0 && has_camera_distance) {
-            float dist = camera_distance;
+            double dist = camera_distance;
             int32_t raw_index = 0;
             for (int32_t l = lod_count - 1; l >= 0; l--) {
-                if (dist >= (float)current->lod_levels[l].distance &&
+                if (dist >= current->lod_levels[l].distance &&
                     scene3d_mesh_resident(current->lod_levels[l].mesh)) {
                     raw_index = l + 1;
                     break;
@@ -2597,7 +2626,7 @@ static void scene3d_draw_node_self(rt_scene_node3d *current,
                                    const scene3d_pvs_context_t *pvs,
                                    int32_t *culled,
                                    int32_t *visible_nodes,
-                                   const float *cam_pos,
+                                   const double *cam_pos,
                                    void *effective_animator) {
     void *draw_mesh;
     void *draw_material;
@@ -2646,7 +2675,7 @@ static void scene3d_draw_spatial_entry(rt_scene3d_spatial_entry *entry,
                                        const scene3d_pvs_context_t *pvs,
                                        int32_t *culled,
                                        int32_t *visible_nodes,
-                                       const float *cam_pos) {
+                                       const double *cam_pos) {
     rt_scene_node3d *current;
     void *effective_animator;
     void *draw_mesh;
@@ -2703,7 +2732,7 @@ static void draw_node(rt_scene_node3d *node,
                       const scene3d_pvs_context_t *pvs,
                       int32_t *culled,
                       int32_t *visible_nodes,
-                      const float *cam_pos,
+                      const double *cam_pos,
                       void *inherited_animator) {
     scene_draw_stack_item_t *stack = NULL;
     size_t count = 0;
@@ -2749,6 +2778,31 @@ static void draw_node(rt_scene_node3d *node,
     free(stack);
 }
 
+/// @brief Test a spatial BVH candidate against the exact frustum planes before draw resolution.
+/// @details `scene3d_spatial_collect_aabb` queries with the frustum's enclosing AABB so it can
+///          traverse the BVH cheaply in double precision. This second-stage filter rejects the
+///          enclosing-box false positives before the heavier LOD, material, skinning, and morph
+///          resolution paths run.
+static int scene3d_spatial_entry_frustum_prefilter(rt_scene3d_spatial_entry *entry,
+                                                   rt_canvas3d *canvas,
+                                                   const vgfx3d_frustum_t *frustum) {
+    float world_min[3];
+    float world_max[3];
+    if (!entry || !frustum)
+        return 1;
+    for (int i = 0; i < 3; ++i) {
+        if (!isfinite(entry->world_min[i]) || !isfinite(entry->world_max[i]) ||
+            fabs(entry->world_min[i]) > (double)FLT_MAX ||
+            fabs(entry->world_max[i]) > (double)FLT_MAX)
+            return 1;
+        world_min[i] = (float)entry->world_min[i];
+        world_max[i] = (float)entry->world_max[i];
+    }
+    if (!scene3d_aabb_to_canvas_render_space(canvas, world_min, world_max))
+        return 1;
+    return vgfx3d_frustum_test_aabb(frustum, world_min, world_max) != 0;
+}
+
 /// @brief Draw the scene using the spatial index for frustum culling.
 /// @details Gathers candidate nodes whose bounds intersect the camera frustum via the BVH, sorts
 /// them
@@ -2763,7 +2817,7 @@ static int draw_node_spatial(rt_scene3d *scene,
                              const float vp[16],
                              int32_t *culled,
                              int32_t *visible_nodes,
-                             const float *cam_pos) {
+                             const double *cam_pos) {
     scene3d_spatial_candidate_list_t candidates = {0};
     double frustum_min[3];
     double frustum_max[3];
@@ -2781,6 +2835,11 @@ static int draw_node_spatial(rt_scene3d *scene,
     if (culled)
         *culled += scene->spatial_index.last_prefiltered_count;
     for (int32_t i = 0; i < candidates.count; ++i) {
+        if (!scene3d_spatial_entry_frustum_prefilter(candidates.items[i], canvas, frustum)) {
+            if (culled)
+                (*culled)++;
+            continue;
+        }
         scene3d_draw_spatial_entry(candidates.items[i],
                                    canvas3d,
                                    canvas,
@@ -3220,9 +3279,9 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
     if (scene3d_build_pvs_context(s, cam, &pvs))
         pvs.culled_count = &pvs_culled;
 
-    float cam_pos[3] = {scene3d_float_or_zero(cam->eye[0]),
-                        scene3d_float_or_zero(cam->eye[1]),
-                        scene3d_float_or_zero(cam->eye[2])};
+    double cam_pos[3] = {scene3d_clamp_abs_or(cam->eye[0], 0.0),
+                         scene3d_clamp_abs_or(cam->eye[1], 0.0),
+                         scene3d_clamp_abs_or(cam->eye[2], 0.0)};
     prev_scene_light_count = canvas->scene_light_count;
     memcpy(prev_scene_lights, canvas->scene_lights, sizeof(prev_scene_lights));
     memcpy(prev_scene_light_storage, canvas->scene_light_storage, sizeof(prev_scene_light_storage));

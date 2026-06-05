@@ -115,24 +115,27 @@ static uint64_t rt_g3d_commit_queue_cost_add(uint64_t a, uint64_t b) {
 
 /// @brief Run pending commits on the main thread under item-count and cost budgets.
 /// @details Peeks each item's cost before dequeuing, so a commit runs only when it
-///          fits the remaining cost budget. The first item always runs even if it
-///          exceeds the budget (the `count > 0` guard), so an oversized asset commit
-///          cannot stall the queue forever. Asserts it is called on the main thread.
+///          fits the remaining cost budget. A zero budget drains only zero-cost work; an unlimited
+///          budget disables cost limiting. The first item always runs even if it exceeds a positive
+///          budget (the `count > 0` guard), so an oversized asset commit cannot stall the queue
+///          forever. Asserts it is called on the main thread.
 /// @return Number of commits actually run.
 int64_t rt_g3d_commit_queue_drain_budget(void *obj, int64_t max_items, uint64_t max_cost) {
     rt_g3d_commit_queue *queue = (rt_g3d_commit_queue *)obj;
+    int no_cost_limit;
     if (!queue || !queue->items)
         return 0;
     RT_ASSERT_MAIN_THREAD();
 
     int64_t count = 0;
     uint64_t cost = 0;
+    no_cost_limit = (max_cost == UINT64_MAX);
     while (max_items <= 0 || count < max_items) {
         rt_g3d_commit_item *peek = (rt_g3d_commit_item *)rt_concqueue_peek(queue->items);
         if (!peek)
             break;
         uint64_t item_cost = peek->cost;
-        if (max_cost != UINT64_MAX && item_cost > 0) {
+        if (!no_cost_limit && item_cost > 0) {
             uint64_t next_cost = rt_g3d_commit_queue_cost_add(cost, item_cost);
             if (next_cost > max_cost) {
                 if (count > 0 || max_cost == 0)

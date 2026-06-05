@@ -928,7 +928,11 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
                                          const double *model_matrix,
                                          void *material,
                                          const void *motion_key,
-                                         void *morph_targets) {
+                                         void *morph_targets,
+                                         const float *local_bounds_min,
+                                         const float *local_bounds_max,
+                                         int8_t conservative_bounds,
+                                         int8_t disable_occlusion) {
     if (!canvas || !mesh || !model_matrix || !material || !morph_targets)
         return;
 
@@ -960,8 +964,17 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
         tmp.morph_weights = NULL;
         tmp.prev_morph_weights = NULL;
         tmp.morph_shape_count = 0;
-        rt_canvas3d_draw_mesh_matrix_keyed(
-            canvas, &tmp, model_matrix, material, motion_key, NULL, NULL);
+        rt_canvas3d_draw_mesh_matrix_keyed_bounds(canvas,
+                                                  &tmp,
+                                                  model_matrix,
+                                                  material,
+                                                  motion_key,
+                                                  NULL,
+                                                  NULL,
+                                                  local_bounds_min,
+                                                  local_bounds_max,
+                                                  conservative_bounds,
+                                                  disable_occlusion);
         return;
     }
 
@@ -995,8 +1008,17 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
         tmp.morph_weights = mt->weights;
         tmp.prev_morph_weights = prev_weights;
         tmp.morph_shape_count = shape_count;
-        rt_canvas3d_draw_mesh_matrix_keyed(
-            canvas, &tmp, model_matrix, material, motion_key, NULL, prev_weights);
+        rt_canvas3d_draw_mesh_matrix_keyed_bounds(canvas,
+                                                  &tmp,
+                                                  model_matrix,
+                                                  material,
+                                                  motion_key,
+                                                  NULL,
+                                                  prev_weights,
+                                                  local_bounds_min,
+                                                  local_bounds_max,
+                                                  1,
+                                                  1);
         return;
     }
 
@@ -1093,8 +1115,17 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
     tmp.morph_shape_count = 0;
     tmp.bounds_dirty = 1;
     rt_mesh3d_refresh_bounds(&tmp);
-    rt_canvas3d_draw_mesh_matrix_keyed(
-        canvas, &tmp, model_matrix, material, motion_key, NULL, NULL);
+    rt_canvas3d_draw_mesh_matrix_keyed_bounds(canvas,
+                                              &tmp,
+                                              model_matrix,
+                                              material,
+                                              motion_key,
+                                              NULL,
+                                              NULL,
+                                              local_bounds_min,
+                                              local_bounds_max,
+                                              1,
+                                              1);
 }
 
 /// @brief Draw a mesh with morph targets applied, using a raw 4×4 model matrix.
@@ -1107,7 +1138,34 @@ void rt_canvas3d_draw_mesh_matrix_morphed(void *canvas,
                                           void *material,
                                           const void *motion_key,
                                           void *morph_targets) {
-    morphtarget_draw_mesh_matrix(canvas, mesh, model_matrix, material, motion_key, morph_targets);
+    morphtarget_draw_mesh_matrix(
+        canvas, mesh, model_matrix, material, motion_key, morph_targets, NULL, NULL, 1, 1);
+}
+
+/// @brief Draw a morph-target mesh with caller-provided conservative bounds and occlusion flags.
+/// @details Used by Scene3D when animation has already expanded local bounds. The public morphed
+///          draw wrapper remains conservative by default; this internal variant prevents the
+///          attached-morph fast path from discarding Scene3D's safer culling metadata.
+void rt_canvas3d_draw_mesh_matrix_morphed_bounds(void *canvas,
+                                                 void *mesh,
+                                                 const double *model_matrix,
+                                                 void *material,
+                                                 const void *motion_key,
+                                                 void *morph_targets,
+                                                 const float *local_bounds_min,
+                                                 const float *local_bounds_max,
+                                                 int8_t conservative_bounds,
+                                                 int8_t disable_occlusion) {
+    morphtarget_draw_mesh_matrix(canvas,
+                                 mesh,
+                                 model_matrix,
+                                 material,
+                                 motion_key,
+                                 morph_targets,
+                                 local_bounds_min,
+                                 local_bounds_max,
+                                 conservative_bounds,
+                                 disable_occlusion);
 }
 
 /// @brief Draw a morphed mesh using a Mat4 transform handle (convenience wrapper).
@@ -1118,7 +1176,7 @@ void rt_canvas3d_draw_mesh_morphed(
     if (!transform_mat)
         return;
     morphtarget_draw_mesh_matrix(
-        canvas, mesh, transform_mat->m, material, transform, morph_targets);
+        canvas, mesh, transform_mat->m, material, transform, morph_targets, NULL, NULL, 1, 1);
 }
 
 #else

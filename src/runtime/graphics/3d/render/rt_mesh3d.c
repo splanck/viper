@@ -125,6 +125,39 @@ static int64_t mesh3d_estimate_payload_bytes(const rt_mesh3d *m) {
     return total > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)total;
 }
 
+/// @brief Repair private index-buffer corruption before cloning a Mesh3D.
+/// @details Programmatic AddTriangle already enforces in-range indices, but tests and internal
+///          repair paths intentionally tolerate corrupt private counts. When a count repair exposes
+///          unused capacity slots as real indices, clamp any out-of-range slot to zero so the clone
+///          cannot later feed undefined vertex fetches to GPU backends. Existing public count-repair
+///          semantics are preserved; draw submission still rejects incomplete triangle-list tails.
+static int mesh3d_sanitize_triangle_indices(rt_mesh3d *m, const char *op) {
+    uint32_t vertex_count;
+    uint32_t index_count;
+    int repaired = 0;
+    if (!m)
+        return 0;
+    vertex_count = rt_mesh3d_safe_vertex_count(m);
+    index_count = rt_mesh3d_safe_index_count(m);
+    if (index_count == 0)
+        return 1;
+    if (vertex_count == 0) {
+        m->index_count = 0;
+        mesh3d_bump_vertex_revision(m, 1);
+        return 1;
+    }
+    for (uint32_t i = 0; i < index_count; i++) {
+        if (m->indices[i] >= vertex_count) {
+            m->indices[i] = 0;
+            repaired = 1;
+        }
+    }
+    if (repaired)
+        mesh3d_bump_vertex_revision(m, 1);
+    (void)op;
+    return 1;
+}
+
 /// @brief Check a planned vertex/index allocation against a predictable procedural budget.
 static int mesh3d_check_planned_payload(uint64_t vertex_count,
                                         uint64_t index_count,
@@ -1090,6 +1123,8 @@ void *rt_mesh3d_clone(void *obj) {
         return NULL;
     }
     rt_mesh3d_repair_geometry_counts(src);
+    if (!mesh3d_sanitize_triangle_indices(src, "Mesh3D.Clone: invalid triangle index buffer"))
+        return NULL;
     vertex_count = rt_mesh3d_safe_vertex_count(src);
     index_count = rt_mesh3d_safe_index_count(src);
     rt_mesh3d *dst = (rt_mesh3d *)rt_mesh3d_new();

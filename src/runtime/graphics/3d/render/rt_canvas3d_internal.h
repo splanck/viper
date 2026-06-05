@@ -679,7 +679,7 @@ typedef struct {
     int8_t frame_is_2d;          /* 1 = active frame uses orthographic 2D projection */
     float cached_vp[16];         /* VP matrix cached in begin_frame for debug drawing */
     float cached_cam_pos[3];     /* camera position cached for sort key computation */
-    float cached_world_cam_pos[3]; /* unre-based world camera position for diagnostics/safety */
+    double cached_world_cam_pos[3]; /* unre-based world camera position for diagnostics/safety */
     float cached_render_cam_pos[3]; /* camera position in backend render space */
     float cached_cam_forward[3]; /* forward vector cached for skybox + ortho shading */
     float cached_cam_near;       /* active camera near clip distance, for stable cascade splits */
@@ -703,6 +703,9 @@ typedef struct {
     void **final_overlay_temp_buffers;
     int32_t final_overlay_temp_buf_count;
     int32_t final_overlay_temp_buf_capacity;
+    void **final_overlay_temp_objects; /* GC objs (materials/textures) kept alive until overlay replay */
+    int32_t final_overlay_temp_obj_count;
+    int32_t final_overlay_temp_obj_capacity;
     int8_t final_overlay_recording;
     int8_t frame_finalized;
     int8_t frame_presented_by_finalize;
@@ -837,6 +840,15 @@ typedef struct {
     int32_t occlusion_history_capacity;
     int32_t *occlusion_history_hash;
     int32_t occlusion_history_hash_capacity;
+    int8_t occlusion_state_valid;
+    void *occlusion_last_render_target;
+    int32_t occlusion_last_output_width;
+    int32_t occlusion_last_output_height;
+    float occlusion_last_cam_pos[3];
+    float occlusion_last_cam_forward[3];
+    float occlusion_last_near;
+    float occlusion_last_far;
+    int8_t occlusion_last_is_ortho;
 } rt_canvas3d;
 
 /// @brief Validate a Canvas3D handle while optionally preserving internal stack fixtures.
@@ -921,6 +933,20 @@ void rt_canvas3d_draw_mesh_matrix_morphed(void *canvas,
                                           void *material,
                                           const void *motion_key,
                                           void *morph_targets);
+/// @brief Internal: submit a morph-target draw while preserving explicit conservative bounds.
+/// @details Scene3D precomputes expanded local bounds for animated/morphed geometry. This variant
+///          carries those bounds plus occlusion safety flags through the attached-MorphTarget fast
+///          path so morphed vertices are not culled or CPU-occluded against the static mesh AABB.
+void rt_canvas3d_draw_mesh_matrix_morphed_bounds(void *canvas,
+                                                 void *mesh,
+                                                 const double *model_matrix,
+                                                 void *material,
+                                                 const void *motion_key,
+                                                 void *morph_targets,
+                                                 const float *local_bounds_min,
+                                                 const float *local_bounds_max,
+                                                 int8_t conservative_bounds,
+                                                 int8_t disable_occlusion);
 /// @brief Internal: retain a GC-managed object until the current frame is fully submitted.
 int rt_canvas3d_add_temp_object(void *obj, void *value);
 /// @brief Internal: sample a cubemap direction into linear RGB components.
@@ -969,6 +995,17 @@ const float *canvas3d_active_scene_vp(const rt_canvas3d *c);
 /// @brief Internal: queue a 2D rect into the overlay pass at clip-space position with RGBA color.
 int canvas3d_queue_screen_rect(
     rt_canvas3d *c, float x, float y, float w, float h, float r, float g, float b, float a);
+/// @brief Internal: queue a screen-space textured quad sampling `pixels` over UV (0,0)-(1,1).
+int canvas3d_queue_screen_image(
+    rt_canvas3d *c, float x, float y, float w, float h, void *pixels);
+/// @brief Internal: retain a GC object referenced by a final-overlay draw until the overlay replays.
+int canvas3d_track_final_overlay_temp_object(rt_canvas3d *c, void *obj);
+/// @brief Internal: apply a height-weighted XZ wind sway to a mesh's vertices in place.
+/// @details Base vertices (lowest local-Y) stay planted; displacement scales with
+///   (normalized height)^2 along (dir_x, dir_z), modulated by sin(phase). Marks geometry
+///   dirty. NULL/degenerate-safe. Exposed (non-static) so wind deformation is unit-testable.
+void canvas3d_deform_mesh_wind(
+    rt_mesh3d *mesh, double dir_x, double dir_z, double strength, double phase);
 /// @brief Internal: queue a 2D line into the overlay pass with thickness and RGBA color.
 int canvas3d_queue_screen_line(rt_canvas3d *c,
                                float x0,
@@ -1002,6 +1039,12 @@ int32_t canvas3d_next_power_of_two_i32(int32_t value);
 ///   history across that discontinuity would compare matrices from different origins, producing
 ///   bogus motion vectors and temporal shimmer.
 void canvas3d_clear_motion_history(rt_canvas3d *c);
+/// @brief Drop all CPU occlusion covered-streak history after a visibility-space discontinuity.
+/// @details CPU occlusion culling is deliberately history-gated. Floating-origin rebases, camera
+///          cuts, projection/viewport changes, and render-target switches invalidate the prior
+///          projected coverage relation, so retaining covered streaks across them can hide visible
+///          triangles for one or more frames.
+void canvas3d_clear_occlusion_history(rt_canvas3d *c);
 void canvas3d_prune_motion_history(rt_canvas3d *c);
 void canvas3d_resolve_previous_model(rt_canvas3d *c,
                                      uintptr_t motion_key,

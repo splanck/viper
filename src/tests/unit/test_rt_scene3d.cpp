@@ -1367,6 +1367,10 @@ static void test_scene_occlusion_grid_uses_spatial_candidates() {
     rt_canvas3d_set_occlusion_culling(&canvas, 1);
     reset_scene_capture();
     rt_scene3d_draw(scene, &canvas, camera);
+    reset_scene_capture();
+    rt_scene3d_draw(scene, &canvas, camera);
+    reset_scene_capture();
+    rt_scene3d_draw(scene, &canvas, camera);
 
     EXPECT_TRUE(scene_impl->spatial_index.count == 130,
                 "Scene3D occlusion fixture indexes every drawable node");

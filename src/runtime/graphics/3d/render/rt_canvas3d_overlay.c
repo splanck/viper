@@ -305,6 +305,29 @@ void rt_canvas3d_draw_rect2d(void *obj, int64_t x, int64_t y, int64_t w, int64_t
         rt_canvas3d_end(c);
 }
 
+/// @brief Blit a `Pixels` image into the 2D overlay at (x,y) scaled to (w,h).
+/// @details Screen-space, unlit, ignores the 3D camera — composites over the scene like
+///   `DrawRect2D`/`DrawText2D`. Pair with `RenderTarget3D.AsPixels` to display a rendered
+///   texture (e.g. a top-down minimap) on the HUD. NULL- and empty-rect-safe.
+void rt_canvas3d_draw_image2d(
+    void *obj, int64_t x, int64_t y, int64_t w, int64_t h, void *pixels) {
+    int8_t started_temp_frame = 0;
+
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || !pixels)
+        return;
+    if (w <= 0 || h <= 0)
+        return;
+    if (!c->in_frame) {
+        if (!canvas3d_begin_overlay_frame(c, 1))
+            return;
+        started_temp_frame = 1;
+    }
+    (void)canvas3d_queue_screen_image(c, (float)x, (float)y, (float)w, (float)h, pixels);
+    if (started_temp_frame)
+        rt_canvas3d_end(c);
+}
+
 /// @brief Draw a centered crosshair (FPS reticle) at screen center with `size` arms in `color`.
 void rt_canvas3d_draw_crosshair(void *obj, int64_t color, int64_t size) {
     int8_t started_temp_frame = 0;

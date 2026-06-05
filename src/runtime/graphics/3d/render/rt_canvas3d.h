@@ -55,6 +55,9 @@ void rt_canvas3d_draw_rect_3d(
 void rt_canvas3d_draw_text_3d(void *canvas, int64_t x, int64_t y, rt_string text, int64_t color);
 /// @brief Submit a mesh+transform+material draw inside the active 3D pass.
 void rt_canvas3d_draw_mesh(void *obj, void *mesh, void *transform, void *material);
+/// @brief Draw a mesh with a height-weighted per-vertex wind sway (foliage/canopies).
+void rt_canvas3d_draw_mesh_wind(void *obj, void *mesh, void *transform, void *material,
+                                double dir_x, double dir_z, double strength, double phase);
 /// @brief End the current 3D or 2D pass and flush queued draws.
 void rt_canvas3d_end(void *obj);
 /// @brief Present the back buffer to the window (vsync-controlled by backend).
@@ -84,6 +87,12 @@ int64_t rt_canvas3d_get_height(void *obj);
 int64_t rt_canvas3d_get_window_width(void *obj);
 /// @brief Get the backing window height, ignoring any bound render target.
 int64_t rt_canvas3d_get_window_height(void *obj);
+/// @brief Switch the canvas window between fullscreen and windowed mode (non-zero = fullscreen).
+void rt_canvas3d_set_fullscreen(void *obj, int8_t enabled);
+/// @brief Report whether the canvas window is currently fullscreen (1) or windowed (0).
+int8_t rt_canvas3d_is_fullscreen(void *obj);
+/// @brief Flip the canvas window between fullscreen and windowed mode.
+void rt_canvas3d_toggle_fullscreen(void *obj);
 /// @brief Get the active output width (window, or current render target when bound).
 int64_t rt_canvas3d_get_active_output_width(void *obj);
 /// @brief Get the active output height (window, or current render target when bound).
@@ -519,6 +528,8 @@ void rt_canvas3d_draw_rect2d(
 void rt_canvas3d_draw_crosshair(void *canvas, int64_t color, int64_t size);
 /// @brief Draw screen-space text on top of the rendered scene.
 void rt_canvas3d_draw_text2d(void *canvas, int64_t x, int64_t y, rt_string text, int64_t color);
+/// @brief Blit a Pixels image into the 2D overlay at (x,y) scaled to (w,h). NULL-safe.
+void rt_canvas3d_draw_image2d(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, void *pixels);
 
 /* Debug gizmos */
 /// @brief Draw an axis-aligned bounding box outline between min and max corners.

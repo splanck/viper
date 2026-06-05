@@ -4135,11 +4135,15 @@ static void test_canvas_occlusion_culling_skips_covered_opaque_draws() {
     EXPECT_EQ(canvas.frustum_culling, 1);
     EXPECT_EQ(canvas.occlusion_culling, 1);
 
-    rt_canvas3d_begin(&canvas, camera);
-    for (int64_t i = 0; i < covered_draws; i++)
-        rt_canvas3d_draw_mesh(&canvas, mesh, far_xf, material);
-    rt_canvas3d_draw_mesh(&canvas, mesh, near_xf, material);
-    rt_canvas3d_end(&canvas);
+    for (int frame = 0; frame < 3; ++frame) {
+        if (frame == 2)
+            g_canvas_submit_draw_calls = 0;
+        rt_canvas3d_begin(&canvas, camera);
+        for (int64_t i = 0; i < covered_draws; i++)
+            rt_canvas3d_draw_mesh(&canvas, mesh, far_xf, material);
+        rt_canvas3d_draw_mesh(&canvas, mesh, near_xf, material);
+        rt_canvas3d_end(&canvas);
+    }
 
     EXPECT_EQ(rt_canvas3d_get_draw_count(&canvas), covered_draws + 1);
     EXPECT_EQ(g_canvas_submit_draw_calls, 1);
@@ -7086,6 +7090,53 @@ static void test_backend_select() {
 }
 
 //=============================================================================
+// New Canvas3D bindings: wind deformation + window-control NULL-safety
+//=============================================================================
+
+static void test_wind_deform_base_fixed_canopy_sways() {
+    TEST("DrawMeshWind deform: base planted, canopy sways, height preserved");
+    rt_mesh3d *m = (rt_mesh3d *)rt_mesh3d_new();
+    assert(m);
+    rt_mesh3d_add_vertex(m, 0.0, 0.0, 0.0, 0, 1, 0, 0, 0); /* base (y=0)   */
+    rt_mesh3d_add_vertex(m, 0.0, 4.0, 0.0, 0, 1, 0, 0, 0); /* canopy (y=4) */
+    /* Wind along +X, full strength, phase=PI/2 (peak swing). */
+    canvas3d_deform_mesh_wind(m, 1.0, 0.0, 1.0, 1.5707963267948966);
+    /* Base vertex: height weight 0 -> no XZ displacement. */
+    EXPECT_NEAR(m->vertices[0].pos[0], 0.0f, 1e-5);
+    EXPECT_NEAR(m->vertices[0].pos[2], 0.0f, 1e-5);
+    /* Canopy vertex: displaced along the wind (+X). */
+    EXPECT_TRUE(m->vertices[1].pos[0] > 0.1f, "canopy swayed along +X");
+    /* Height (Y) is preserved for both vertices. */
+    EXPECT_NEAR(m->vertices[0].pos[1], 0.0f, 1e-5);
+    EXPECT_NEAR(m->vertices[1].pos[1], 4.0f, 1e-5);
+    PASS();
+}
+
+static void test_wind_deform_zero_strength_and_null_safe() {
+    TEST("DrawMeshWind deform: zero strength is a no-op; NULL-safe");
+    rt_mesh3d *m = (rt_mesh3d *)rt_mesh3d_new();
+    assert(m);
+    rt_mesh3d_add_vertex(m, 0.0, 0.0, 0.0, 0, 1, 0, 0, 0);
+    rt_mesh3d_add_vertex(m, 0.0, 4.0, 0.0, 0, 1, 0, 0, 0);
+    float before_x = m->vertices[1].pos[0];
+    canvas3d_deform_mesh_wind(m, 1.0, 0.0, 0.0, 1.5707963267948966); /* strength 0 */
+    EXPECT_NEAR(m->vertices[1].pos[0], before_x, 1e-6);
+    canvas3d_deform_mesh_wind(nullptr, 1.0, 0.0, 1.0, 1.0); /* NULL mesh -> no crash */
+    PASS();
+}
+
+static void test_canvas3d_window_bindings_null_safe() {
+    TEST("Canvas3D fullscreen/image/wind entry points are NULL-safe");
+    /* Headless tests open no window; the new entry points must tolerate NULL. */
+    rt_canvas3d_set_fullscreen(nullptr, 1);
+    rt_canvas3d_toggle_fullscreen(nullptr);
+    EXPECT_EQ(rt_canvas3d_is_fullscreen(nullptr), 0);
+    rt_canvas3d_draw_image2d(nullptr, 0, 0, 16, 16, nullptr);
+    rt_canvas3d_draw_mesh_wind(nullptr, nullptr, nullptr, nullptr, 1.0, 0.0, 1.0, 1.0);
+    PASS();
+}
+
+//=============================================================================
 // Main
 //=============================================================================
 
@@ -7359,6 +7410,11 @@ int main() {
     test_backend_select();
     test_backend_select_software_override();
     test_backend_select_platform_override();
+
+    /* New Canvas3D bindings (wind sway + window-control NULL-safety) */
+    test_wind_deform_base_fixed_canopy_sways();
+    test_wind_deform_zero_strength_and_null_safe();
+    test_canvas3d_window_bindings_null_safe();
 
     printf("\n%d/%d tests passed\n", tests_passed, tests_total);
     return tests_passed == tests_total ? 0 : 1;

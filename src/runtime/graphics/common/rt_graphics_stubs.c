@@ -2122,6 +2122,18 @@ void rt_canvas3d_draw_mesh(void *o, void *m, void *t, void *mt) {
     (void)mt;
 }
 
+void rt_canvas3d_draw_mesh_wind(void *o, void *m, void *t, void *mt,
+                                double dx, double dz, double s, double ph) {
+    (void)o;
+    (void)m;
+    (void)t;
+    (void)mt;
+    (void)dx;
+    (void)dz;
+    (void)s;
+    (void)ph;
+}
+
 /// @brief Stub for `Canvas3D.End` — would normally finalize the current
 ///        render pass and submit accumulated draw commands to the backend.
 ///
@@ -2219,6 +2231,29 @@ int64_t rt_canvas3d_get_window_width(void *o) {
 int64_t rt_canvas3d_get_window_height(void *o) {
     (void)o;
     return 0;
+}
+
+void rt_canvas3d_set_fullscreen(void *o, int8_t e) {
+    (void)o;
+    (void)e;
+}
+
+int8_t rt_canvas3d_is_fullscreen(void *o) {
+    (void)o;
+    return 0;
+}
+
+void rt_canvas3d_toggle_fullscreen(void *o) {
+    (void)o;
+}
+
+void rt_canvas3d_draw_image2d(void *o, int64_t x, int64_t y, int64_t w, int64_t h, void *p) {
+    (void)o;
+    (void)x;
+    (void)y;
+    (void)w;
+    (void)h;
+    (void)p;
 }
 
 int64_t rt_canvas3d_get_active_output_width(void *o) {

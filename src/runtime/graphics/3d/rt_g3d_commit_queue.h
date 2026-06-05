@@ -44,10 +44,11 @@ int8_t rt_g3d_commit_queue_enqueue_cost(void *queue,
 int64_t rt_g3d_commit_queue_drain(void *queue, int64_t max_items);
 
 /// @brief Drain callbacks up to both an item count and cost budget.
-/// @details `max_items <= 0` means no item limit. `max_cost == UINT64_MAX` means
-/// no cost limit. If the first pending item is larger than a positive budget,
-/// it drains alone so oversized assets cannot deadlock the queue. This is a single-consumer,
-/// main-thread drain; worker threads may enqueue concurrently but must not drain.
+/// @details `max_items <= 0` means no item limit. `max_cost == 0` drains only zero-cost work,
+/// which lets callers pause positive-cost uploads without starving bookkeeping callbacks.
+/// `max_cost == UINT64_MAX` means no cost limit. If the first pending item is larger than a
+/// positive budget, it drains alone so oversized assets cannot deadlock the queue. This is a
+/// single-consumer, main-thread drain; worker threads may enqueue concurrently but must not drain.
 int64_t rt_g3d_commit_queue_drain_budget(void *queue, int64_t max_items, uint64_t max_cost);
 
 /// @brief Approximate number of pending commits; concurrent enqueue/drain can change it instantly.

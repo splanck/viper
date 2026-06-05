@@ -223,6 +223,8 @@ int64_t rt_game3d_key_down(void);
 int64_t rt_game3d_key_left(void);
 /// @brief Key code for the Right arrow.
 int64_t rt_game3d_key_right(void);
+/// @brief Key code for the F11 function key.
+int64_t rt_game3d_key_f11(void);
 
 //=========================================================================
 // MouseButtons — mouse-button code constants (Viper.Game3D.MouseButtons)

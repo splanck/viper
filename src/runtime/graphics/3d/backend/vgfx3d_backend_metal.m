@@ -124,6 +124,13 @@
 @property(nonatomic, strong) id<MTLDepthStencilState> shadowDepthState;
 /* MTL-13: Instanced rendering — pooled instance buffer */
 @property(nonatomic, strong) id<MTLBuffer> instanceBuf;
+/* Reusable transient geometry buffers for non-cacheable draws. */
+@property(nonatomic, strong) id<MTLBuffer> dynamicVertexBuf;
+@property(nonatomic, strong) id<MTLBuffer> dynamicIndexBuf;
+@property(nonatomic) NSUInteger dynamicVertexBufLength;
+@property(nonatomic) NSUInteger dynamicIndexBufLength;
+@property(nonatomic) NSUInteger dynamicVertexWriteOffset;
+@property(nonatomic) NSUInteger dynamicIndexWriteOffset;
 /* MTL-11: Post-processing state */
 @property(nonatomic, strong) id<MTLTexture> postfxColorTexture;
 @property(nonatomic, strong) id<MTLTexture> postfxScratchTexture;
@@ -1907,6 +1914,75 @@ static id<MTLBuffer> metal_new_shared_buffer_with_length(VGFXMetalContext *ctx, 
     return [ctx.device newBufferWithLength:length options:MTLResourceStorageModeShared];
 }
 
+/// @brief Align a Metal dynamic-buffer write offset to a conservative boundary.
+/// @details Vertex buffer offsets are generally flexible, while index buffer offsets must at least
+///          satisfy the index element size. A 256-byte alignment keeps both paths conservative and
+///          avoids backend-specific validation edge cases.
+static NSUInteger metal_align_dynamic_offset(NSUInteger value) {
+    const NSUInteger align = 256u;
+    return (value + align - 1u) & ~(align - 1u);
+}
+
+/// @brief Upload transient geometry into a reusable shared-storage Metal buffer slice.
+/// @details Non-cacheable meshes can be produced every frame by skinning/morphing/snapshotting.
+///          Allocating a fresh MTLBuffer for each draw creates avoidable churn and frame spikes.
+///          This helper grows a per-command-buffer ring, appends the current draw bytes at a unique
+///          offset, and returns both buffer and offset so earlier encoded draws are never
+///          overwritten before the GPU consumes them.
+static id<MTLBuffer> metal_upload_dynamic_geometry_buffer(VGFXMetalContext *ctx,
+                                                          BOOL vertex_buffer,
+                                                          const void *bytes,
+                                                          size_t length,
+                                                          NSUInteger *out_offset) {
+    id<MTLBuffer> buffer;
+    NSUInteger capacity;
+    NSUInteger write_offset;
+    NSUInteger aligned_offset;
+    NSUInteger new_capacity;
+    const NSUInteger max_capacity = (NSUInteger)-1;
+
+    if (out_offset)
+        *out_offset = 0;
+    if (!ctx || !bytes || length == 0 || length > (size_t)max_capacity)
+        return nil;
+    buffer = vertex_buffer ? ctx.dynamicVertexBuf : ctx.dynamicIndexBuf;
+    capacity = vertex_buffer ? ctx.dynamicVertexBufLength : ctx.dynamicIndexBufLength;
+    write_offset =
+        vertex_buffer ? ctx.dynamicVertexWriteOffset : ctx.dynamicIndexWriteOffset;
+    aligned_offset = metal_align_dynamic_offset(write_offset);
+    if (aligned_offset > max_capacity - (NSUInteger)length)
+        return nil;
+    if (!buffer || capacity < aligned_offset + (NSUInteger)length) {
+        aligned_offset = 0;
+        new_capacity = capacity > 0 ? capacity : 65536u;
+        while (new_capacity < (NSUInteger)length) {
+            if (new_capacity > max_capacity / 2u) {
+                new_capacity = (NSUInteger)length;
+                break;
+            }
+            new_capacity *= 2u;
+        }
+        buffer = metal_new_shared_buffer_with_length(ctx, (size_t)new_capacity);
+        if (!buffer)
+            return nil;
+        if (vertex_buffer) {
+            ctx.dynamicVertexBuf = buffer;
+            ctx.dynamicVertexBufLength = new_capacity;
+        } else {
+            ctx.dynamicIndexBuf = buffer;
+            ctx.dynamicIndexBufLength = new_capacity;
+        }
+    }
+    memcpy((uint8_t *)buffer.contents + aligned_offset, bytes, length);
+    if (vertex_buffer)
+        ctx.dynamicVertexWriteOffset = aligned_offset + (NSUInteger)length;
+    else
+        ctx.dynamicIndexWriteOffset = aligned_offset + (NSUInteger)length;
+    if (out_offset)
+        *out_offset = aligned_offset;
+    return buffer;
+}
+
 /// @brief Run the texture/cubemap/morph cache pruning passes once per frame.
 static void metal_cache_evict_if_needed(VGFXMetalContext *ctx) {
     NSValue *oldestKey = nil;
@@ -1929,12 +2005,18 @@ static void metal_cache_evict_if_needed(VGFXMetalContext *ctx) {
 static void metal_get_geometry_buffers(VGFXMetalContext *ctx,
                                        const vgfx3d_draw_cmd_t *cmd,
                                        id<MTLBuffer> *outVB,
-                                       id<MTLBuffer> *outIB) {
+                                       id<MTLBuffer> *outIB,
+                                       NSUInteger *outVertexOffset,
+                                       NSUInteger *outIndexOffset) {
     if (!outVB || !outIB) {
         return;
     }
     *outVB = nil;
     *outIB = nil;
+    if (outVertexOffset)
+        *outVertexOffset = 0;
+    if (outIndexOffset)
+        *outIndexOffset = 0;
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
         cmd->index_count == 0)
         return;
@@ -1969,10 +2051,17 @@ static void metal_get_geometry_buffers(VGFXMetalContext *ctx,
         return;
     }
 
-    *outVB = metal_new_shared_buffer(
-        ctx, cmd->vertices, (size_t)cmd->vertex_count * sizeof(vgfx3d_vertex_t));
-    *outIB =
-        metal_new_shared_buffer(ctx, cmd->indices, (size_t)cmd->index_count * sizeof(uint32_t));
+    *outVB = metal_upload_dynamic_geometry_buffer(ctx,
+                                                  YES,
+                                                  cmd->vertices,
+                                                  (size_t)cmd->vertex_count *
+                                                      sizeof(vgfx3d_vertex_t),
+                                                  outVertexOffset);
+    *outIB = metal_upload_dynamic_geometry_buffer(ctx,
+                                                  NO,
+                                                  cmd->indices,
+                                                  (size_t)cmd->index_count * sizeof(uint32_t),
+                                                  outIndexOffset);
 }
 
 /// @brief The texture that holds the current frame's final image for readback/present.
@@ -2974,6 +3063,8 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
             ctx.displayTexture = nil;
             ctx.postfxEncodedThisFrame = 0;
             ctx.postfxCompositedToDrawable = 0;
+            ctx.dynamicVertexWriteOffset = 0;
+            ctx.dynamicIndexWriteOffset = 0;
             new_command_buffer = YES;
         } else if (!ctx.frameBuffers)
             ctx.frameBuffers = [NSMutableArray arrayWithCapacity:32];
@@ -3777,10 +3868,16 @@ static void metal_submit_draw(void *ctx_ptr,
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
         id<MTLBuffer> vb;
         id<MTLBuffer> ib;
+        NSUInteger vb_offset = 0;
+        NSUInteger ib_offset = 0;
+        uint32_t index_count;
         vgfx3d_metal_blend_mode_t blend_mode;
         static const float zero_ambient[3] = {0.0f, 0.0f, 0.0f};
         if (!ctx || !ctx.encoder || !ctx.inFrame || !cmd || !cmd->vertices || !cmd->indices ||
             cmd->vertex_count == 0 || cmd->index_count == 0)
+            return;
+        index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
+        if (index_count == 0)
             return;
         if (!ambient)
             ambient = zero_ambient;
@@ -3803,16 +3900,16 @@ static void metal_submit_draw(void *ctx_ptr,
         else
             [ctx.encoder setDepthStencilState:ctx.depthState];
         if (fabsf(cmd->depth_bias) > 1e-8f || fabsf(cmd->slope_scaled_depth_bias) > 1e-8f)
-            [ctx.encoder setDepthBias:cmd->depth_bias
+            [ctx.encoder setDepthBias:vgfx3d_depth_bias_constant_units(cmd->depth_bias)
                             slopeScale:cmd->slope_scaled_depth_bias
                                  clamp:0.0f];
         else
             [ctx.encoder setDepthBias:0.0f slopeScale:0.0f clamp:0.0f];
 
-        metal_get_geometry_buffers(ctx, cmd, &vb, &ib);
+        metal_get_geometry_buffers(ctx, cmd, &vb, &ib, &vb_offset, &ib_offset);
         if (!vb || !ib)
             return;
-        [ctx.encoder setVertexBuffer:vb offset:0 atIndex:0];
+        [ctx.encoder setVertexBuffer:vb offset:vb_offset atIndex:0];
 
         /* Retain buffers until frame commit — prevents ARC from releasing
          * them before the GPU executes the draw commands. */
@@ -4109,10 +4206,10 @@ static void metal_submit_draw(void *ctx_ptr,
         }
 
         [ctx.encoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
-                                indexCount:cmd->index_count
+                                indexCount:index_count
                                  indexType:MTLIndexTypeUInt32
                                indexBuffer:ib
-                         indexBufferOffset:0];
+                         indexBufferOffset:ib_offset];
     }
 }
 
@@ -4368,6 +4465,9 @@ static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
         id<MTLBuffer> vb;
         id<MTLBuffer> ib;
+        NSUInteger vb_offset = 0;
+        NSUInteger ib_offset = 0;
+        uint32_t index_count;
         int has_skinning;
         int prev_bone_upload_ok = 0;
         metal_morph_bind_status_t morph_status;
@@ -4375,18 +4475,21 @@ static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
             cmd->vertex_count == 0 || cmd->index_count == 0 || ctx->_shadowPassSlot < 0 ||
             ctx->_shadowPassSlot >= VGFX3D_MAX_SHADOW_LIGHTS)
             return;
+        index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
+        if (index_count == 0)
+            return;
         [ctx.encoder setCullMode:cmd->double_sided ? MTLCullModeNone : MTLCullModeBack];
         if (fabsf(cmd->depth_bias) > 1e-8f || fabsf(cmd->slope_scaled_depth_bias) > 1e-8f)
-            [ctx.encoder setDepthBias:cmd->depth_bias
+            [ctx.encoder setDepthBias:vgfx3d_depth_bias_constant_units(cmd->depth_bias)
                             slopeScale:cmd->slope_scaled_depth_bias
                                  clamp:0.0f];
         else
             [ctx.encoder setDepthBias:0.0f slopeScale:0.0f clamp:0.0f];
 
-        metal_get_geometry_buffers(ctx, cmd, &vb, &ib);
+        metal_get_geometry_buffers(ctx, cmd, &vb, &ib, &vb_offset, &ib_offset);
         if (!vb || !ib)
             return;
-        [ctx.encoder setVertexBuffer:vb offset:0 atIndex:0];
+        [ctx.encoder setVertexBuffer:vb offset:vb_offset atIndex:0];
         if (ctx.frameBuffers) {
             [ctx.frameBuffers addObject:vb];
             [ctx.frameBuffers addObject:ib];
@@ -4448,10 +4551,10 @@ static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         }
 
         [ctx.encoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
-                                indexCount:cmd->index_count
+                                indexCount:index_count
                                  indexType:MTLIndexTypeUInt32
                                indexBuffer:ib
-                         indexBufferOffset:0];
+                         indexBufferOffset:ib_offset];
     }
 }
 
@@ -4501,11 +4604,17 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         vgfx3d_metal_instance_data_t *instance_data;
         id<MTLBuffer> vb;
         id<MTLBuffer> ib;
+        NSUInteger vb_offset = 0;
+        NSUInteger ib_offset = 0;
+        uint32_t index_count;
         vgfx3d_metal_blend_mode_t blend_mode;
         static const float zero_ambient[3] = {0.0f, 0.0f, 0.0f};
         if (!ctx || !ctx.encoder || !ctx.inFrame || !cmd || !cmd->vertices || !cmd->indices ||
             cmd->vertex_count == 0 || cmd->index_count == 0 || !instance_matrices ||
             instance_count <= 0)
+            return;
+        index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
+        if (index_count == 0)
             return;
         if (!ambient)
             ambient = zero_ambient;
@@ -4539,17 +4648,17 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         else
             [ctx.encoder setDepthStencilState:ctx.depthState];
         if (fabsf(cmd->depth_bias) > 1e-8f || fabsf(cmd->slope_scaled_depth_bias) > 1e-8f)
-            [ctx.encoder setDepthBias:cmd->depth_bias
+            [ctx.encoder setDepthBias:vgfx3d_depth_bias_constant_units(cmd->depth_bias)
                             slopeScale:cmd->slope_scaled_depth_bias
                                  clamp:0.0f];
         else
             [ctx.encoder setDepthBias:0.0f slopeScale:0.0f clamp:0.0f];
 
         /* Vertex/index buffers */
-        metal_get_geometry_buffers(ctx, cmd, &vb, &ib);
+        metal_get_geometry_buffers(ctx, cmd, &vb, &ib, &vb_offset, &ib_offset);
         if (!vb || !ib || !ctx.instanceBuf)
             return;
-        [ctx.encoder setVertexBuffer:vb offset:0 atIndex:0];
+        [ctx.encoder setVertexBuffer:vb offset:vb_offset atIndex:0];
         [ctx.encoder setVertexBuffer:ctx.instanceBuf offset:0 atIndex:6];
         if (ctx.frameBuffers) {
             [ctx.frameBuffers addObject:vb];
@@ -4833,10 +4942,10 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         }
 
         [ctx.encoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
-                                indexCount:cmd->index_count
+                                indexCount:index_count
                                  indexType:MTLIndexTypeUInt32
                                indexBuffer:ib
-                         indexBufferOffset:0
+                         indexBufferOffset:ib_offset
                              instanceCount:(NSUInteger)instance_count];
     }
 }

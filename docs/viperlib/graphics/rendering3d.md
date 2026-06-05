@@ -64,6 +64,25 @@ CPU-safe post-FX, final overlay recording, and `ScreenshotFinal()` coverage.
 `examples/3d/walk_min_probe.zia` is registered as a software-backend ctest and
 compares against `examples/3d/baselines/walk_min_software.png`.
 
+### Canvas3D Window, Image, and Foliage Helpers
+
+- **Fullscreen** — `Canvas3D.SetFullscreen(canvas, on)`, `Canvas3D.ToggleFullscreen(canvas)`,
+  and `Canvas3D.get_IsFullscreen(canvas)` switch the backing window between windowed and
+  native desktop fullscreen (implemented per-platform on Cocoa, Win32, and X11). The canvas
+  re-syncs its size on the toggle and the per-frame projection derives aspect from the active
+  output, so the view stays un-stretched. `Game3D.Keys.get_F11` pairs naturally with these.
+- **Overlay image blit** — `Canvas3D.DrawImage2D(canvas, x, y, w, h, pixels)` blits a `Pixels`
+  image into the 2D overlay (unlit, screen-space) scaled to `w×h`. Combine with
+  `RenderTarget3D.AsPixels(rt)` to show a rendered texture, such as a top-down minimap, on the HUD.
+- **Wind foliage** — `Canvas3D.DrawMeshWind(canvas, mesh, transform, material, dirX, dirZ, strength, phase)`
+  draws a mesh with a height-weighted per-vertex sway: the base (lowest local-Y) stays planted
+  while the canopy bends along `(dirX, dirZ)` by `sin(phase)`. Pass per-instance `phase` offsets so
+  a cluster ripples instead of pulsing. It runs on every backend because the geometry is deformed
+  before submission rather than in a vertex shader.
+- **Skinned draw** — `Canvas3D.DrawMeshSkinned(canvas, mesh, transform, material, animator)` accepts
+  an `AnimController3D` as well as an `AnimPlayer3D`, so a state-machine pose (idle/walk crossfades)
+  can skin the mesh directly.
+
 ### Canvas3D Synthetic Input and Clock
 
 Live loops call `Canvas3D.Poll()` once per frame and then read

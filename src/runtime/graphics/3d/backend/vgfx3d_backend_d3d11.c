@@ -1563,14 +1563,7 @@ static int d3d11_draw_needs_depth_bias(const vgfx3d_draw_cmd_t *cmd) {
 ///   renderer value by 2^16 gives useful sub-depth-buffer offsets without overflowing normal
 ///   material settings; the result is clamped before narrowing to INT.
 static INT d3d11_depth_bias_to_int(float bias) {
-    double scaled = (double)bias * 65536.0;
-    if (!isfinite(scaled))
-        return 0;
-    if (scaled > (double)INT_MAX)
-        return INT_MAX;
-    if (scaled < (double)INT_MIN)
-        return INT_MIN;
-    return (INT)lrint(scaled);
+    return (INT)vgfx3d_depth_bias_d3d11_units(bias);
 }
 
 /// @brief Create a rasterizer state for a biased draw.
@@ -4848,10 +4841,14 @@ static void d3d11_submit_draw(void *ctx_ptr,
     UINT offset = 0;
     ID3D11Buffer *mesh_vb = NULL;
     ID3D11Buffer *mesh_ib = NULL;
+    uint32_t index_count;
 
     (void)win;
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
         cmd->index_count == 0)
+        return;
+    index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
+    if (index_count == 0)
         return;
 
     d3d11_prepare_object_data(cmd, &object_data);
@@ -4904,7 +4901,7 @@ static void d3d11_submit_draw(void *ctx_ptr,
     ID3D11DeviceContext_IASetVertexBuffers(ctx->ctx, 0, 1, &mesh_vb, &stride, &offset);
     ID3D11DeviceContext_IASetIndexBuffer(ctx->ctx, mesh_ib, DXGI_FORMAT_R32_UINT, 0);
     d3d11_bind_main_pipeline(ctx, cmd, wireframe, backface_cull, 0);
-    ID3D11DeviceContext_DrawIndexed(ctx->ctx, cmd->index_count, 0, 0);
+    ID3D11DeviceContext_DrawIndexed(ctx->ctx, index_count, 0, 0);
 
     d3d11_unbind_draw_resources(ctx);
     d3d11_release_temporary_resources(&draw_resources);
@@ -4941,10 +4938,14 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
     ID3D11Buffer *vertex_buffers[2];
     ID3D11Buffer *mesh_vb = NULL;
     ID3D11Buffer *mesh_ib = NULL;
+    uint32_t index_count;
 
     (void)win;
     if (!ctx || !cmd || !instance_matrices || instance_count <= 0 || !cmd->vertices ||
         !cmd->indices)
+        return;
+    index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
+    if (index_count == 0)
         return;
 
     if (!d3d11_ensure_instance_upload_capacity(ctx, instance_count))
@@ -5020,7 +5021,7 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
     ID3D11DeviceContext_IASetVertexBuffers(ctx->ctx, 0, 2, vertex_buffers, strides, offsets);
     ID3D11DeviceContext_IASetIndexBuffer(ctx->ctx, mesh_ib, DXGI_FORMAT_R32_UINT, 0);
     d3d11_bind_main_pipeline(ctx, cmd, wireframe, backface_cull, 1);
-    ID3D11DeviceContext_DrawIndexedInstanced(ctx->ctx, cmd->index_count, instance_count, 0, 0, 0);
+    ID3D11DeviceContext_DrawIndexedInstanced(ctx->ctx, index_count, instance_count, 0, 0, 0);
 
     d3d11_unbind_draw_resources(ctx);
     d3d11_release_temporary_resources(&draw_resources);
@@ -6731,10 +6732,14 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     ID3D11Buffer *mesh_ib = NULL;
     ID3D11RasterizerState *shadow_rasterizer = NULL;
     int alpha_masked_shadow = cmd && cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK;
+    uint32_t index_count;
 
     if (!ctx || !cmd || ctx->shadow_pass_slot < 0 ||
         ctx->shadow_pass_slot >= VGFX3D_MAX_SHADOW_LIGHTS || !cmd->vertices || !cmd->indices ||
         cmd->vertex_count == 0 || cmd->index_count == 0)
+        return;
+    index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
+    if (index_count == 0)
         return;
 
     if (d3d11_draw_needs_depth_bias(cmd))
@@ -6806,7 +6811,7 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         ID3D11ShaderResourceView *vs_srvs[2] = {ctx->current_morph_srv, NULL};
         ID3D11DeviceContext_VSSetShaderResources(ctx->ctx, 0, 2, vs_srvs);
     }
-    ID3D11DeviceContext_DrawIndexed(ctx->ctx, cmd->index_count, 0, 0);
+    ID3D11DeviceContext_DrawIndexed(ctx->ctx, index_count, 0, 0);
     ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 1, null_shadow_ps_srv);
     d3d11_release_temp_srv(&shadow_diffuse);
     {

@@ -2190,7 +2190,28 @@ typedef struct {
     float area, original_area, inv_area;
     float e12_dx, e12_dy, e20_dx, e20_dy, e01_dx, e01_dy;
     float row_w0, row_w1, row_w2;
+    uint8_t edge12_top_left, edge20_top_left, edge01_top_left;
 } sw_raster_geom;
+
+/// @brief Return whether an oriented edge owns samples exactly on that edge.
+/// @details Implements the standard top-left fill convention so adjacent triangles sharing an edge
+///          do not both shade it or both leave a crack. The software backend uses screen-space
+///          coordinates after viewport transform, so this deterministic ownership rule is based on
+///          the final rasterized edge direction.
+static int sw_edge_is_top_left(const screen_vert_t *a, const screen_vert_t *b) {
+    float dx;
+    float dy;
+    if (!a || !b)
+        return 0;
+    dx = b->sx - a->sx;
+    dy = b->sy - a->sy;
+    return (dy > 0.0f || (dy == 0.0f && dx < 0.0f)) ? 1 : 0;
+}
+
+/// @brief Test one edge function value using top-left sample ownership.
+static int sw_edge_accepts_sample(float value, uint8_t top_left) {
+    return value > 0.0f || (top_left && value == 0.0f);
+}
 
 /// @brief Backface-cull, fix winding, reject degenerate/offscreen triangles, and
 ///   compute the bounding box + half-space edge functions. Returns 1 with *g
@@ -2206,8 +2227,12 @@ static int sw_raster_prepare(const screen_vert_t *v0,
                              sw_raster_geom *g) {
     float area = (v1->sx - v0->sx) * (v2->sy - v0->sy) - (v2->sx - v0->sx) * (v1->sy - v0->sy);
     float original_area = area;
-
-    const float area_epsilon = 1e-12f;
+    float span_x = fmaxf(fmaxf(v0->sx, v1->sx), v2->sx) -
+                   fminf(fminf(v0->sx, v1->sx), v2->sx);
+    float span_y = fmaxf(fmaxf(v0->sy, v1->sy), v2->sy) -
+                   fminf(fminf(v0->sy, v1->sy), v2->sy);
+    float scale = fmaxf(1.0f, fmaxf(fabsf(span_x), fabsf(span_y)));
+    const float area_epsilon = fmaxf(1e-12f, scale * scale * 1e-12f);
 
     if (fabsf(area) <= area_epsilon) {
         if (emit_debug) {
@@ -2296,6 +2321,9 @@ static int sw_raster_prepare(const screen_vert_t *v0,
     g->row_w0 = e12_dx * (py0 - v1->sy) - e12_dy * (px0 - v1->sx);
     g->row_w1 = e20_dx * (py0 - v2->sy) - e20_dy * (px0 - v2->sx);
     g->row_w2 = e01_dx * (py0 - v0->sy) - e01_dy * (px0 - v0->sx);
+    g->edge12_top_left = (uint8_t)sw_edge_is_top_left(v1, v2);
+    g->edge20_top_left = (uint8_t)sw_edge_is_top_left(v2, v0);
+    g->edge01_top_left = (uint8_t)sw_edge_is_top_left(v0, v1);
     return 1;
 }
 
@@ -2349,7 +2377,6 @@ static void raster_triangle(uint8_t *pixels,
             slope_depth_bias = fmaxf(-0.05f, fminf(0.05f, slope_depth_bias));
         }
     }
-    const float edge_epsilon = 0.0f;
     int inside_samples = 0;
     int depth_passes = 0;
     int pixels_written = 0;
@@ -2389,7 +2416,9 @@ static void raster_triangle(uint8_t *pixels,
     for (int y = g.min_y; y <= g.max_y; y++) {
         float w0 = row_w0, w1 = row_w1, w2 = row_w2;
         for (int x = g.min_x; x <= g.max_x; x++) {
-            if (w0 >= edge_epsilon && w1 >= edge_epsilon && w2 >= edge_epsilon) {
+            if (sw_edge_accepts_sample(w0, g.edge12_top_left) &&
+                sw_edge_accepts_sample(w1, g.edge20_top_left) &&
+                sw_edge_accepts_sample(w2, g.edge01_top_left)) {
                 inside_samples++;
                 /* Barycentric weights from edge functions; z is linearly
                  * interpolated in screen space (not perspective-correct,
@@ -2398,7 +2427,7 @@ static void raster_triangle(uint8_t *pixels,
                 float z = b0 * g.v0->sz + b1 * g.v1->sz + b2 * g.v2->sz;
                 z += depth_bias + slope_depth_bias;
                 int idx = y * fb_w + x;
-                if (depth_disabled || z < zbuf[idx]) {
+                if (depth_disabled || z <= zbuf[idx]) {
                     depth_passes++;
                     pixels_written += sw_shade_fragment(&fc, x, y, idx, z, b0, b1, b2);
                 }
@@ -2747,8 +2776,12 @@ static void sw_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     int32_t slot;
     sw_pixels_view alpha_view;
     sw_pixels_view *alpha_tex = NULL;
+    uint32_t index_count;
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
         cmd->index_count == 0)
+        return;
+    index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
+    if (index_count == 0)
         return;
     slot = ctx->shadow_pass_slot;
     if (slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS || !ctx->shadow_depth[slot])
@@ -2771,7 +2804,7 @@ static void sw_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     float half_w = (float)ctx->shadow_w[slot] * 0.5f;
     float half_h = (float)ctx->shadow_h[slot] * 0.5f;
 
-    for (uint32_t i = 0; i + 2 < cmd->index_count; i += 3) {
+    for (uint32_t i = 0; i + 2 < index_count; i += 3) {
         uint32_t i0 = cmd->indices[i], i1 = cmd->indices[i + 1], i2 = cmd->indices[i + 2];
         if (i0 >= cmd->vertex_count || i1 >= cmd->vertex_count || i2 >= cmd->vertex_count)
             continue;
@@ -3329,11 +3362,15 @@ static void sw_submit_draw(void *ctx_ptr,
                            int32_t light_count,
                            const float *ambient,
                            int8_t wireframe,
-                           int8_t backface_cull) {
+    int8_t backface_cull) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
     static const float zero_ambient[3] = {0.0f, 0.0f, 0.0f};
+    uint32_t index_count;
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
         cmd->index_count == 0)
+        return;
+    index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
+    if (index_count == 0)
         return;
     if (!ambient)
         ambient = zero_ambient;
@@ -3371,7 +3408,7 @@ static void sw_submit_draw(void *ctx_ptr,
     /* Process triangles: clip → rasterize */
     pipe_vert_t clipped[MAX_CLIP_VERTS];
 
-    for (uint32_t i = 0; i + 2 < cmd->index_count; i += 3) {
+    for (uint32_t i = 0; i + 2 < index_count; i += 3) {
         uint32_t i0 = cmd->indices[i], i1 = cmd->indices[i + 1], i2 = cmd->indices[i + 2];
         if (i0 >= vc || i1 >= vc || i2 >= vc)
             continue;

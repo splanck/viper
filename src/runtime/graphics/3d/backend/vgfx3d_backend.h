@@ -27,6 +27,8 @@
 #include "rt_canvas3d_internal.h"
 #include "rt_postfx3d.h"
 #include "vgfx.h"
+#include <limits.h>
+#include <math.h>
 #include <stdint.h>
 
 /*==========================================================================
@@ -117,6 +119,62 @@ typedef struct {
     float slope_scaled_depth_bias; /* slope-proportional depth offset for steep coplanar polygons */
     int8_t has_alpha_texture;       /* draw-time texture scan found non-opaque alpha */
 } vgfx3d_draw_cmd_t;
+
+#define VGFX3D_MAX_DRAW_INDEX_COUNT ((uint32_t)INT_MAX)
+#define VGFX3D_DEPTH_BIAS_CONSTANT_SCALE 65536.0f
+
+/// @brief Return the triangle-list index count accepted by all backends, or 0 if invalid.
+/// @details GPU APIs do not share the software backend's per-triangle out-of-range guard. This
+///          helper defines a single conservative contract: commands must contain complete
+///          triangles, fit APIs with signed draw-count parameters, and every referenced vertex
+///          must be inside the submitted vertex buffer. Rejecting bad commands before upload avoids
+///          undefined GPU fetches that can surface as flickering or exploding triangles.
+static inline uint32_t vgfx3d_draw_cmd_validated_index_count(const vgfx3d_draw_cmd_t *cmd) {
+    uint32_t count;
+    if (!cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 || cmd->index_count < 3)
+        return 0;
+    if (cmd->index_count > VGFX3D_MAX_DRAW_INDEX_COUNT)
+        return 0;
+    if ((cmd->index_count % 3u) != 0u)
+        return 0;
+    count = cmd->index_count;
+    for (uint32_t i = 0; i < count; i++) {
+        if (cmd->indices[i] >= cmd->vertex_count)
+            return 0;
+    }
+    return count;
+}
+
+/// @brief True when @p cmd contains a complete, in-range indexed triangle list.
+static inline int vgfx3d_draw_cmd_has_valid_triangles(const vgfx3d_draw_cmd_t *cmd) {
+    return vgfx3d_draw_cmd_validated_index_count(cmd) != 0u;
+}
+
+/// @brief Convert renderer depth-bias units to backend constant-bias units.
+/// @details Material3D exposes a small float bias in renderer units. Backends with
+///          implementation-specific constant-bias scales use this conversion so decal/shadow
+///          offsets remain comparable across GL, D3D11, Metal, and software.
+static inline float vgfx3d_depth_bias_constant_units(float bias) {
+    double scaled;
+    if (!isfinite(bias))
+        return 0.0f;
+    scaled = (double)bias * (double)VGFX3D_DEPTH_BIAS_CONSTANT_SCALE;
+    if (scaled > (double)INT_MAX)
+        return (float)INT_MAX;
+    if (scaled < (double)INT_MIN)
+        return (float)INT_MIN;
+    return (float)scaled;
+}
+
+/// @brief Convert renderer depth-bias units to D3D11's integer DepthBias field.
+static inline int32_t vgfx3d_depth_bias_d3d11_units(float bias) {
+    float scaled = vgfx3d_depth_bias_constant_units(bias);
+    if (scaled >= (float)INT_MAX)
+        return INT_MAX;
+    if (scaled <= (float)INT_MIN)
+        return INT_MIN;
+    return (int32_t)lrintf(scaled);
+}
 
 /// @brief True if the command needs standard (non-additive) alpha blending. Honors an
 ///   explicit alpha_mode (BLEND/MASK) first, treats alpha-bearing texture content as masked

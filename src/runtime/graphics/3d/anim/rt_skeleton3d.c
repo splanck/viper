@@ -30,6 +30,7 @@
 
 #include "rt_skeleton3d.h"
 #include "rt_blendtree3d.h"
+#include "rt_animcontroller3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_graphics3d_ids.h"
@@ -2210,27 +2211,53 @@ void rt_canvas3d_draw_mesh_matrix_skinned_keyed(void *canvas,
                                                       0);
 }
 
-/// @brief Draw a skinned mesh — applies the player's bone palette before rasterising.
+/// @brief Draw a skinned mesh — applies an animator's bone palette before rasterising.
+/// @details Accepts either a raw `AnimPlayer3D` or an `AnimController3D`. For a
+///   controller, the state-machine's computed final/previous bone palettes and
+///   skeleton drive the skinning, so idle/walk states and crossfades render directly.
 void rt_canvas3d_draw_mesh_skinned(
     void *canvas, void *mesh, void *transform, void *material, void *anim_player) {
     rt_mesh3d *m;
     rt_anim_player3d *p;
     rt_skeleton3d *skel;
     const float *prev_palette;
+    mat4_impl *transform_mat;
     if (!canvas || !mesh || !transform || !material || !anim_player)
         return;
     if (!rt_canvas3d_checked_or_stack(canvas))
         return;
-    mat4_impl *transform_mat = skeleton3d_mat4_checked(transform);
+    transform_mat = skeleton3d_mat4_checked(transform);
     if (!transform_mat)
         return;
     m = (rt_mesh3d *)rt_g3d_checked_or_null(mesh, RT_G3D_MESH3D_CLASS_ID);
-    p = (rt_anim_player3d *)rt_g3d_checked_or_null(anim_player, RT_G3D_ANIMPLAYER3D_CLASS_ID);
-    if (!m || !p)
+    if (!m)
         return;
     rt_mesh3d_repair_geometry_counts(m);
+    if (m->vertex_count == 0)
+        return;
+
+    if (rt_g3d_has_class(anim_player, RT_G3D_ANIMCONTROLLER3D_CLASS_ID)) {
+        int32_t ctrl_bone_count = 0;
+        const float *ctrl_palette =
+            rt_anim_controller3d_get_final_palette_data(anim_player, &ctrl_bone_count);
+        const float *ctrl_prev =
+            rt_anim_controller3d_get_previous_palette_data(anim_player, NULL);
+        void *ctrl_skel = rt_anim_controller3d_get_skeleton(anim_player);
+        if (!ctrl_palette || ctrl_bone_count <= 0 || !ctrl_skel)
+            return;
+        if (!rt_canvas3d_add_temp_object(canvas, anim_player))
+            return;
+        rt_canvas3d_draw_mesh_matrix_skinned_keyed(
+            canvas, mesh, transform_mat->m, material, transform, ctrl_palette, ctrl_prev,
+            skeleton3d_safe_bone_count((rt_skeleton3d *)ctrl_skel));
+        return;
+    }
+
+    p = (rt_anim_player3d *)rt_g3d_checked_or_null(anim_player, RT_G3D_ANIMPLAYER3D_CLASS_ID);
+    if (!p)
+        return;
     skel = animation3d_skeleton_slot((void **)&p->skeleton);
-    if (m->vertex_count == 0 || !skel || !p->bone_palette)
+    if (!skel || !p->bone_palette)
         return;
     if (!rt_canvas3d_add_temp_object(canvas, anim_player))
         return;

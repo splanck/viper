@@ -952,7 +952,8 @@ frame.
 | `captureMouse()` / `releaseMouse()` | Forward to the active mouse capture policy |
 
 Use `Game3D.Keys` and `Game3D.MouseButtons` instead of hard-coded integer input
-codes in game code.
+codes in game code. `Game3D.Keys` covers the WASD/arrow movement keys plus `Space`,
+`Shift`, `Ctrl`, `Escape`, and `F11` (handy for a fullscreen toggle).
 
 ---
 

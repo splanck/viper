@@ -77,6 +77,10 @@ void rt_textureasset3d_set_resident_mip_range(void *obj, int64_t first_mip, int6
 
 /// @brief Internal bridge: borrow the active resident RGBA8 Pixels fallback, if one was decoded.
 void *rt_textureasset3d_get_pixels(void *obj);
+/// @brief Internal bridge: true when load-time alpha metadata is exact for this asset.
+int8_t rt_textureasset3d_alpha_metadata_known(void *obj);
+/// @brief Internal bridge: true when exact metadata found any non-opaque texel.
+int8_t rt_textureasset3d_has_alpha_texels(void *obj);
 /// @brief Internal bridge: stable key that changes when native mip residency changes.
 uint64_t rt_textureasset3d_get_native_cache_key(void *obj);
 /// @brief Internal bridge: normalized native compressed format id.

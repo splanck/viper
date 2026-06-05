@@ -45,6 +45,9 @@ typedef struct rt_pixels_impl {
     uint32_t *data;          ///< Pixel storage (RGBA, row-major).
     uint64_t generation;     ///< Monotonic content version for GPU caches.
     uint64_t cache_identity; ///< Stable cache key to survive allocator address reuse.
+    uint64_t alpha_scan_generation; ///< Pixels generation used for cached alpha classification.
+    int8_t alpha_scan_valid;        ///< True once alpha_scan_has_alpha matches alpha_scan_generation.
+    int8_t alpha_scan_has_alpha;    ///< Cached non-opaque-alpha result for 3D material routing.
 } rt_pixels_impl;
 
 /// @brief Trap for invalid opaque Pixels handles without exposing runtime.def symbols here.
@@ -136,8 +139,39 @@ static inline int8_t set_pixel_raw(rt_pixels_impl *p, int64_t x, int64_t y, uint
 
 /// @brief Bump the image content generation after an in-place mutation.
 static inline void pixels_touch(rt_pixels_impl *p) {
-    if (p)
+    if (p) {
         p->generation++;
+        p->alpha_scan_valid = 0;
+    }
+}
+
+/// @brief Return whether a Pixels buffer has any texel with alpha below 255, caching by generation.
+/// @details 3D material classification may query the same texture every draw. The Pixels content
+///          generation already changes on mutation, so the alpha scan can be cached directly on the
+///          image object without changing public Pixels behavior.
+static inline int rt_pixels_has_alpha_texels_cached(rt_pixels_impl *p) {
+    uint64_t count;
+    if (!p || p->width <= 0 || p->height <= 0 || !p->data)
+        return 0;
+    if (p->alpha_scan_valid && p->alpha_scan_generation == p->generation)
+        return p->alpha_scan_has_alpha ? 1 : 0;
+    if ((uint64_t)p->width > UINT64_MAX / (uint64_t)p->height) {
+        p->alpha_scan_generation = p->generation;
+        p->alpha_scan_has_alpha = 1;
+        p->alpha_scan_valid = 1;
+        return 1;
+    }
+    count = (uint64_t)p->width * (uint64_t)p->height;
+    p->alpha_scan_has_alpha = 0;
+    for (uint64_t i = 0; i < count; i++) {
+        if ((p->data[i] & 0xFFu) < 0xFFu) {
+            p->alpha_scan_has_alpha = 1;
+            break;
+        }
+    }
+    p->alpha_scan_generation = p->generation;
+    p->alpha_scan_valid = 1;
+    return p->alpha_scan_has_alpha ? 1 : 0;
 }
 
 /// @brief Saturating int64 addition for clipping math.

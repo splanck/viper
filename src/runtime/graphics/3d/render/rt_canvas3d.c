@@ -1440,15 +1440,34 @@ static int cmp_front_to_back(const void *a, const void *b) {
 ///          index, which gives a deterministic stable order even when many objects
 ///          share the same depth key.
 static int canvas3d_sort_tuple_after(float key,
-                                     int32_t index,
+                                     uintptr_t stable_sort_id,
+                                     int32_t enqueue_index,
                                      float previous_key,
-                                     int32_t previous_index,
+                                     uintptr_t previous_stable_sort_id,
+                                     int32_t previous_enqueue_index,
                                      int descending) {
-    if (previous_index < 0)
+    if (previous_enqueue_index < 0)
         return 1;
     if (key == previous_key)
-        return index > previous_index;
+        return stable_sort_id == previous_stable_sort_id
+                   ? enqueue_index > previous_enqueue_index
+                   : stable_sort_id > previous_stable_sort_id;
     return descending ? key < previous_key : key > previous_key;
+}
+
+/// @brief Compare two deferred sort tuples using the same ordering as the qsort paths.
+/// @details This keeps the no-allocation fallback deterministic under memory pressure by honoring
+///          stable draw identity before falling back to enqueue order.
+static int canvas3d_sort_tuple_less(const deferred_draw_t *a,
+                                    const deferred_draw_t *b,
+                                    int descending) {
+    if (!a || !b)
+        return 0;
+    if (a->sort_key != b->sort_key)
+        return descending ? (a->sort_key > b->sort_key) : (a->sort_key < b->sort_key);
+    if (a->stable_sort_id != b->stable_sort_id)
+        return a->stable_sort_id < b->stable_sort_id;
+    return a->enqueue_index < b->enqueue_index;
 }
 
 /// @brief Pick the next visible main-pass draw in sorted order without allocating scratch storage.
@@ -1462,9 +1481,9 @@ static int32_t canvas3d_pick_next_sorted_main_draw(const deferred_draw_t *cmds,
                                                    int requires_blend,
                                                    int descending,
                                                    float previous_key,
-                                                   int32_t previous_index) {
+                                                   uintptr_t previous_stable_sort_id,
+                                                   int32_t previous_enqueue_index) {
     int32_t best = -1;
-    float best_key = descending ? -FLT_MAX : FLT_MAX;
     if (!cmds || draw_count <= 0)
         return -1;
     for (int32_t i = 0; i < draw_count; ++i) {
@@ -1472,13 +1491,16 @@ static int32_t canvas3d_pick_next_sorted_main_draw(const deferred_draw_t *cmds,
         if (draw->pass_kind != DEFERRED_PASS_MAIN || !draw->visible ||
             draw->requires_blend != requires_blend)
             continue;
-        if (!canvas3d_sort_tuple_after(draw->sort_key, i, previous_key, previous_index, descending))
+        if (!canvas3d_sort_tuple_after(draw->sort_key,
+                                       draw->stable_sort_id,
+                                       draw->enqueue_index,
+                                       previous_key,
+                                       previous_stable_sort_id,
+                                       previous_enqueue_index,
+                                       descending))
             continue;
-        if (best < 0 || (descending ? draw->sort_key > best_key : draw->sort_key < best_key) ||
-            (draw->sort_key == best_key && i < best)) {
+        if (best < 0 || canvas3d_sort_tuple_less(draw, &cmds[best], descending))
             best = i;
-            best_key = draw->sort_key;
-        }
     }
     return best;
 }
@@ -1674,43 +1696,16 @@ static float canvas3d_sanitize_splat_layer_scale(float value) {
 ///          alpha-mask draw so cutout textures do not depth-write as solid quads.
 static int canvas3d_pixels_has_alpha_texels(void *pixels_ref) {
     rt_pixels_impl *pixels = rt_pixels_checked_impl_or_null(pixels_ref);
-    uint64_t count;
 
-    if (!pixels || pixels->width <= 0 || pixels->height <= 0 || !pixels->data)
-        return 0;
-    if ((uint64_t)pixels->width > UINT64_MAX / (uint64_t)pixels->height)
-        return 1;
-    count = (uint64_t)pixels->width * (uint64_t)pixels->height;
-    for (uint64_t i = 0; i < count; i++) {
-        if ((pixels->data[i] & 0xFFu) < 0xFFu)
-            return 1;
-    }
-    return 0;
-}
-
-/// @brief Return non-zero when a TextureAsset3D format can carry alpha without a decoded scan.
-/// @details Native-only compressed assets may not expose a Pixels fallback for every backend. For
-///          formats that are explicitly RGBA/alpha-capable, Canvas3D chooses the alpha-mask path
-///          unless the material author overrides alpha mode. This favors avoiding visible solid
-///          foliage/card artifacts over assuming opacity from an unreadable compressed payload.
-static int canvas3d_texture_asset_format_may_have_alpha(void *asset) {
-    rt_string format_str;
-    const char *format;
-
-    if (!rt_g3d_has_class(asset, RT_G3D_TEXTUREASSET3D_CLASS_ID))
-        return 0;
-    format_str = rt_textureasset3d_get_format(asset);
-    format = rt_string_cstr(format_str);
-    if (!format)
-        return 0;
-    return strcmp(format, "rgba8") == 0 || strcmp(format, "bc3") == 0 ||
-           strcmp(format, "bc7") == 0 || strcmp(format, "etc2") == 0 ||
-           strncmp(format, "astc", 4) == 0;
+    return rt_pixels_has_alpha_texels_cached(pixels);
 }
 
 /// @brief Return non-zero when a material texture source should be treated as alpha-bearing.
 /// @details Checks raw Pixels first, then TextureAsset3D's currently resident decoded fallback,
-///          and finally the asset's native format when no fallback is available.
+///          and finally exact TextureAsset3D alpha metadata computed at load time. Native-only
+///          assets without exact metadata are treated as opaque unless the material explicitly
+///          requests MASK/BLEND, avoiding the old format-name guess that over-classified opaque
+///          compressed textures as cutouts.
 static int canvas3d_texture_source_has_alpha(void *texture_ref) {
     void *pixels;
 
@@ -1723,7 +1718,9 @@ static int canvas3d_texture_source_has_alpha(void *texture_ref) {
     pixels = rt_textureasset3d_get_pixels(texture_ref);
     if (canvas3d_pixels_has_alpha_texels(pixels))
         return 1;
-    return canvas3d_texture_asset_format_may_have_alpha(texture_ref);
+    if (rt_textureasset3d_alpha_metadata_known(texture_ref))
+        return rt_textureasset3d_has_alpha_texels(texture_ref) ? 1 : 0;
+    return 0;
 }
 
 /// @brief Capture a TextureAsset3D native cache key and mip window into a draw command slot.
@@ -2060,6 +2057,12 @@ void canvas3d_clear_final_overlay(rt_canvas3d *c) {
     for (int32_t i = 0; i < c->final_overlay_temp_buf_count; i++)
         free(c->final_overlay_temp_buffers[i]);
     c->final_overlay_temp_buf_count = 0;
+    for (int32_t i = 0; i < c->final_overlay_temp_obj_count; i++) {
+        if (c->final_overlay_temp_objects[i] &&
+            rt_obj_release_check0(c->final_overlay_temp_objects[i]))
+            rt_obj_free(c->final_overlay_temp_objects[i]);
+    }
+    c->final_overlay_temp_obj_count = 0;
     c->final_overlay_count = 0;
     c->final_overlay_recording = 0;
     if (c->final_overlay_capacity > CANVAS3D_FINAL_OVERLAY_RETAIN_CMD_CAP) {
@@ -2071,6 +2074,11 @@ void canvas3d_clear_final_overlay(rt_canvas3d *c) {
         free(c->final_overlay_temp_buffers);
         c->final_overlay_temp_buffers = NULL;
         c->final_overlay_temp_buf_capacity = 0;
+    }
+    if (c->final_overlay_temp_obj_capacity > CANVAS3D_FINAL_OVERLAY_RETAIN_TEMP_BUF_CAP) {
+        free(c->final_overlay_temp_objects);
+        c->final_overlay_temp_objects = NULL;
+        c->final_overlay_temp_obj_capacity = 0;
     }
 }
 
@@ -2320,12 +2328,12 @@ int canvas3d_begin_overlay_frame(rt_canvas3d *c, int8_t preserve_existing_color)
     c->cached_cam_pos[0] = 0.0f;
     c->cached_cam_pos[1] = 0.0f;
     c->cached_cam_pos[2] = 1.0f;
-    c->cached_world_cam_pos[0] = c->cached_render_cam_pos[0] = 0.0f;
-    c->cached_world_cam_pos[1] = c->cached_render_cam_pos[1] = 0.0f;
-    c->cached_world_cam_pos[2] = c->cached_render_cam_pos[2] = 1.0f;
-    c->cached_world_cam_pos[0] = c->cached_render_cam_pos[0] = 0.0f;
-    c->cached_world_cam_pos[1] = c->cached_render_cam_pos[1] = 0.0f;
-    c->cached_world_cam_pos[2] = c->cached_render_cam_pos[2] = 1.0f;
+    c->cached_render_cam_pos[0] = 0.0f;
+    c->cached_render_cam_pos[1] = 0.0f;
+    c->cached_render_cam_pos[2] = 1.0f;
+    c->cached_world_cam_pos[0] = 0.0;
+    c->cached_world_cam_pos[1] = 0.0;
+    c->cached_world_cam_pos[2] = 1.0;
     canvas3d_reset_camera_relative_origin(c);
     c->cached_cam_forward[0] = params.forward[0];
     c->cached_cam_forward[1] = params.forward[1];
@@ -2488,6 +2496,23 @@ static void canvas3d_fill_deferred_draw(rt_canvas3d *c,
     canvas3d_finalize_deferred_visibility_flags(dd, 0, 0);
 }
 
+/// @brief Mix a persistent draw identity with its stable per-frame occurrence index.
+/// @details A scene can submit the same mesh/material/transform many times. If those draws share
+///          one occlusion-history key, the covered-streak table collapses distinct objects and the
+///          anti-flicker hysteresis only advances for one of them. The enqueue index is stable for
+///          deterministic draw streams, so folding it into the key preserves cross-frame history
+///          while separating duplicate submissions inside the same frame.
+static uintptr_t canvas3d_occlusion_occurrence_key(uintptr_t base_key, int32_t enqueue_index) {
+    uint64_t key;
+    if (!base_key)
+        return 0;
+    key = (uint64_t)base_key ^
+          ((uint64_t)(uint32_t)enqueue_index + 0x9E3779B97F4A7C15ull +
+           ((uint64_t)base_key << 6u) + ((uint64_t)base_key >> 2u));
+    key = canvas3d_hash_u64(key);
+    return key ? (uintptr_t)key : base_key;
+}
+
 /// @brief Append a fully prepared deferred draw and stamp shared queue metadata.
 /// @details Manual mesh draws and helper-built draws both need stable enqueue order and cached world
 ///   bounds before end-of-frame sorting/culling. Centralizing that bookkeeping prevents one queue path
@@ -2498,6 +2523,7 @@ static int canvas3d_append_prepared_deferred_draw(rt_canvas3d *c, deferred_draw_
     if (!ensure_deferred_capacity(&c->draw_cmds, &c->draw_capacity, c->draw_count + 1))
         return 0;
     dd->enqueue_index = c->draw_count;
+    dd->occlusion_key = canvas3d_occlusion_occurrence_key(dd->occlusion_key, dd->enqueue_index);
     canvas3d_cache_deferred_world_bounds(dd);
     ((deferred_draw_t *)c->draw_cmds)[c->draw_count++] = *dd;
     return 1;
@@ -2974,8 +3000,6 @@ static int canvas3d_deferred_intersects_frustum(const deferred_draw_t *dd,
 
     if (!dd || !frustum)
         return 1;
-    if (dd->conservative_bounds)
-        return 1;
     canvas3d_accumulate_deferred_world_bounds(dd, world_min, world_max, &has_bounds);
     if (!has_bounds)
         return 1;
@@ -2998,6 +3022,17 @@ static void canvas3d_occlusion_history_hash_clear(rt_canvas3d *c) {
         return;
     for (int32_t i = 0; i < c->occlusion_history_hash_capacity; i++)
         c->occlusion_history_hash[i] = -1;
+}
+
+/// @brief Drop all CPU occlusion history while keeping allocated tables reusable.
+/// @details Visibility-history streaks are tied to the prior camera/projection/render-target
+///          relationship. Clearing counts but retaining capacity makes invalidation cheap during
+///          floating-origin rebases, camera cuts, output resizes, and occlusion-setting toggles.
+void canvas3d_clear_occlusion_history(rt_canvas3d *c) {
+    if (!c)
+        return;
+    c->occlusion_history_count = 0;
+    canvas3d_occlusion_history_hash_clear(c);
 }
 
 /// @brief Rebuild the CPU occlusion-history open-addressing index from compact entries.
@@ -3096,21 +3131,22 @@ static rt_canvas3d_occlusion_history_entry *canvas3d_occlusion_history_entry(rt_
     return NULL;
 }
 
-/// @brief Return whether a covered draw can be culled without waiting for history hysteresis.
-/// @details Solid, opaque, non-deforming draws with exact bounds are low-risk CPU occlusion
-///          candidates. Keeping their first-frame cull preserves the original high-density
-///          occlusion behavior. Draws with conservative/deforming/alpha/biased coverage keep the
-///          two-frame history gate because their projected AABBs are more likely to over-cover
-///          visible triangles and cause flicker.
-static int canvas3d_occlusion_can_cull_immediately(const deferred_draw_t *dd) {
+/// @brief Number of consecutive covered frames required before CPU occlusion can hide a draw.
+/// @details Even solid opaque meshes can flicker when their projected AABB is near a depth edge or
+///          the camera jitters. Exact, depth-writing draws use a two-frame gate; conservative or
+///          coverage-ambiguous draws require an additional confirmation frame when they are not
+///          already excluded from testing.
+static int32_t canvas3d_occlusion_required_covered_streak(const deferred_draw_t *dd) {
     const vgfx3d_draw_cmd_t *cmd;
 
     if (!dd || dd->conservative_bounds || dd->occlusion_test_disabled ||
         dd->occlusion_write_disabled || dd->requires_blend)
-        return 0;
+        return 3;
     cmd = &dd->cmd;
-    return cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_OPAQUE && !cmd->has_alpha_texture &&
-           !canvas3d_cmd_has_runtime_deformation(cmd);
+    return (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_OPAQUE && !cmd->has_alpha_texture &&
+            !canvas3d_cmd_has_runtime_deformation(cmd))
+               ? 2
+               : 3;
 }
 
 /// @brief Update occlusion history and decide whether a covered draw may be culled this frame.
@@ -3128,9 +3164,7 @@ static int canvas3d_occlusion_history_allows_cull(rt_canvas3d *c, const deferred
     else
         entry->covered_streak = 1;
     entry->last_frame_seen = c->frame_serial;
-    if (canvas3d_occlusion_can_cull_immediately(dd))
-        return 1;
-    return entry->covered_streak >= 2;
+    return entry->covered_streak >= canvas3d_occlusion_required_covered_streak(dd);
 }
 
 /// @brief Reset the occlusion covered streak for a draw that remained visible.
@@ -3171,6 +3205,79 @@ static void canvas3d_occlusion_history_prune(rt_canvas3d *c) {
         return;
     c->occlusion_history_count = write_index;
     canvas3d_occlusion_history_rebuild_hash(c);
+}
+
+/// @brief Return non-zero when scalar camera parameters differ enough to invalidate occlusion.
+static int canvas3d_occlusion_param_changed(float a, float b) {
+    float scale = fmaxf(1.0f, fmaxf(fabsf(a), fabsf(b)));
+    return fabsf(a - b) > scale * 1e-4f;
+}
+
+/// @brief Return non-zero when the current camera/output state is a new occlusion space.
+/// @details Small camera movement should keep history so occlusion can work. Large teleports,
+///          sharp camera cuts, projection-range changes, output-size changes, and render-target
+///          switches invalidate old covered streaks because the old screen coverage no longer
+///          predicts the new one.
+static int canvas3d_occlusion_state_changed_for_begin(const rt_canvas3d *c,
+                                                       int32_t output_w,
+                                                       int32_t output_h) {
+    float dx;
+    float dy;
+    float dz;
+    float dist2;
+    float far_plane;
+    float cut_distance;
+    float dot;
+
+    if (!c || !c->occlusion_state_valid)
+        return 1;
+    if (c->occlusion_last_render_target != (void *)c->render_target ||
+        c->occlusion_last_output_width != output_w ||
+        c->occlusion_last_output_height != output_h ||
+        c->occlusion_last_is_ortho != c->cached_cam_is_ortho)
+        return 1;
+    if (canvas3d_occlusion_param_changed(c->occlusion_last_near, c->cached_cam_near) ||
+        canvas3d_occlusion_param_changed(c->occlusion_last_far, c->cached_cam_far))
+        return 1;
+
+    dx = c->cached_cam_pos[0] - c->occlusion_last_cam_pos[0];
+    dy = c->cached_cam_pos[1] - c->occlusion_last_cam_pos[1];
+    dz = c->cached_cam_pos[2] - c->occlusion_last_cam_pos[2];
+    dist2 = dx * dx + dy * dy + dz * dz;
+    far_plane = isfinite(c->cached_cam_far) && c->cached_cam_far > 1.0f ? c->cached_cam_far : 1000.0f;
+    cut_distance = fmaxf(8.0f, fminf(far_plane * 0.20f, 100000.0f));
+    if (isfinite(dist2) && dist2 > cut_distance * cut_distance)
+        return 1;
+
+    dot = c->cached_cam_forward[0] * c->occlusion_last_cam_forward[0] +
+          c->cached_cam_forward[1] * c->occlusion_last_cam_forward[1] +
+          c->cached_cam_forward[2] * c->occlusion_last_cam_forward[2];
+    if (!isfinite(dot) || dot < 0.75f)
+        return 1;
+    return 0;
+}
+
+/// @brief Update the occlusion-space signature captured at Canvas3D.Begin.
+/// @details Clears covered-streak history before storing the new signature when a discontinuity is
+///          detected. This keeps the first frame after a camera cut or output switch conservative.
+static void canvas3d_update_occlusion_state_for_begin(rt_canvas3d *c,
+                                                      int32_t output_w,
+                                                      int32_t output_h) {
+    if (!c)
+        return;
+    if (canvas3d_occlusion_state_changed_for_begin(c, output_w, output_h))
+        canvas3d_clear_occlusion_history(c);
+    c->occlusion_state_valid = 1;
+    c->occlusion_last_render_target = (void *)c->render_target;
+    c->occlusion_last_output_width = output_w;
+    c->occlusion_last_output_height = output_h;
+    memcpy(c->occlusion_last_cam_pos, c->cached_cam_pos, sizeof(c->occlusion_last_cam_pos));
+    memcpy(c->occlusion_last_cam_forward,
+           c->cached_cam_forward,
+           sizeof(c->occlusion_last_cam_forward));
+    c->occlusion_last_near = c->cached_cam_near;
+    c->occlusion_last_far = c->cached_cam_far;
+    c->occlusion_last_is_ortho = c->cached_cam_is_ortho;
 }
 
 /// @brief Project a world point to occlusion-grid cell coordinates and a normalized depth.
@@ -3903,6 +4010,9 @@ static void rt_canvas3d_finalize(void *obj) {
     free(c->final_overlay_temp_buffers);
     c->final_overlay_temp_buffers = NULL;
     c->final_overlay_temp_buf_capacity = 0;
+    free(c->final_overlay_temp_objects);
+    c->final_overlay_temp_objects = NULL;
+    c->final_overlay_temp_obj_capacity = 0;
     free(c->motion_history);
     c->motion_history = NULL;
     c->motion_history_count = c->motion_history_capacity = 0;
@@ -4283,6 +4393,159 @@ int canvas3d_queue_screen_rect(
     return canvas3d_queue_screen_geometry(c, verts, 4, indices, 6, r, g, b, a);
 }
 
+/// @brief Retain a GC object (material/texture) referenced by a final-overlay draw.
+/// @details The HUD/final-overlay queue replays after post-FX, past the normal
+///          end-of-frame temp-object sweep, so textured overlay draws need their
+///          backing material kept alive separately. Released in
+///          `canvas3d_clear_final_overlay` once the overlay has replayed.
+int canvas3d_track_final_overlay_temp_object(rt_canvas3d *c, void *obj) {
+    if (!c || !obj)
+        return 0;
+    if (c->final_overlay_temp_obj_count >= c->final_overlay_temp_obj_capacity) {
+        if (c->final_overlay_temp_obj_capacity < 0 ||
+            c->final_overlay_temp_obj_capacity > INT32_MAX / 2)
+            return 0;
+        int32_t new_cap =
+            c->final_overlay_temp_obj_capacity == 0 ? 8 : c->final_overlay_temp_obj_capacity * 2;
+        if ((size_t)new_cap > SIZE_MAX / sizeof(void *))
+            return 0;
+        void **nb =
+            (void **)realloc(c->final_overlay_temp_objects, (size_t)new_cap * sizeof(void *));
+        if (!nb)
+            return 0;
+        c->final_overlay_temp_objects = nb;
+        c->final_overlay_temp_obj_capacity = new_cap;
+    }
+    rt_obj_retain_maybe(obj);
+    c->final_overlay_temp_objects[c->final_overlay_temp_obj_count++] = obj;
+    return 1;
+}
+
+/// @brief Queue a screen-space textured quad (image blit) over pixel rect (x,y)-(x+w,y+h),
+///        sampling `pixels` across UV (0,0)-(1,1). Unlit, depth-test disabled.
+/// @details Builds a transient unlit material from `pixels` and reuses the standard
+///          material->draw-command path (`canvas3d_fill_material_cmd`) so texture
+///          upload/sampling is identical across backends. The material is retained for
+///          the frame (or until the final overlay replays, for HUD draws) so the
+///          deferred command's resolved texture stays valid through submission.
+int canvas3d_queue_screen_image(
+    rt_canvas3d *c, float x, float y, float w, float h, void *pixels) {
+    vgfx3d_vertex_t verts[4];
+    static const uint32_t indices[6] = {0, 1, 2, 0, 2, 3};
+    size_t vertex_bytes;
+    size_t index_bytes;
+    uint8_t *block;
+    vgfx3d_vertex_t *verts_copy;
+    uint32_t *indices_copy;
+    vgfx3d_draw_cmd_t cmd;
+    void *mat;
+
+    if (!c || !c->in_frame || !pixels || w <= 0.0f || h <= 0.0f)
+        return 0;
+
+    memset(verts, 0, sizeof(verts));
+    verts[0].pos[0] = x;
+    verts[0].pos[1] = y;
+    verts[1].pos[0] = x + w;
+    verts[1].pos[1] = y;
+    verts[2].pos[0] = x + w;
+    verts[2].pos[1] = y + h;
+    verts[3].pos[0] = x;
+    verts[3].pos[1] = y + h;
+    verts[0].uv[0] = 0.0f;
+    verts[0].uv[1] = 0.0f;
+    verts[1].uv[0] = 1.0f;
+    verts[1].uv[1] = 0.0f;
+    verts[2].uv[0] = 1.0f;
+    verts[2].uv[1] = 1.0f;
+    verts[3].uv[0] = 0.0f;
+    verts[3].uv[1] = 1.0f;
+    for (int i = 0; i < 4; i++) {
+        verts[i].normal[2] = 1.0f;
+        verts[i].color[0] = 1.0f;
+        verts[i].color[1] = 1.0f;
+        verts[i].color[2] = 1.0f;
+        verts[i].color[3] = 1.0f;
+    }
+
+    vertex_bytes = sizeof(verts);
+    index_bytes = sizeof(indices);
+    block = (uint8_t *)malloc(vertex_bytes + index_bytes);
+    if (!block)
+        return 0;
+    verts_copy = (vgfx3d_vertex_t *)block;
+    indices_copy = (uint32_t *)(block + vertex_bytes);
+    memcpy(verts_copy, verts, vertex_bytes);
+    memcpy(indices_copy, indices, index_bytes);
+
+    mat = rt_material3d_new_textured(pixels);
+    if (!mat) {
+        free(block);
+        return 0;
+    }
+    rt_material3d_set_unlit(mat, 1);
+
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.vertices = verts_copy;
+    cmd.vertex_count = 4;
+    cmd.indices = indices_copy;
+    cmd.index_count = 6;
+    cmd.model_matrix[0] = cmd.model_matrix[5] = cmd.model_matrix[10] = cmd.model_matrix[15] = 1.0f;
+    canvas3d_fill_material_cmd((const rt_material3d *)mat, &cmd);
+    cmd.unlit = 1;
+    cmd.disable_depth_test = 1;
+    cmd.alpha = 1.0f;
+
+    if (c->final_overlay_recording) {
+        if (!canvas3d_track_final_overlay_temp_object(c, mat)) {
+            if (rt_obj_release_check0(mat))
+                rt_obj_free(mat);
+            free(block);
+            return 0;
+        }
+        if (rt_obj_release_check0(mat)) /* canvas now owns the frame reference */
+            rt_obj_free(mat);
+        if (!canvas3d_track_final_overlay_temp_buffer(c, block)) {
+            free(block);
+            return 0;
+        }
+        if (!canvas3d_enqueue_final_overlay_draw(c, &cmd, NULL, NULL)) {
+            canvas3d_release_tracked_final_overlay_temp_buffer(c, block);
+            return 0;
+        }
+        return 1;
+    }
+
+    if (!canvas3d_track_temp_object(c, mat)) {
+        if (rt_obj_release_check0(mat))
+            rt_obj_free(mat);
+        free(block);
+        return 0;
+    }
+    if (rt_obj_release_check0(mat)) /* canvas now owns the frame reference */
+        rt_obj_free(mat);
+    if (!canvas3d_track_temp_buffer(c, block)) {
+        free(block);
+        return 0;
+    }
+    if (!canvas3d_enqueue_draw(c,
+                               &cmd,
+                               DEFERRED_DRAW_MESH,
+                               canvas3d_screen_pass_kind(c),
+                               NULL,
+                               0,
+                               0,
+                               0,
+                               0,
+                               0.0f,
+                               NULL,
+                               NULL)) {
+        canvas3d_release_tracked_temp_buffer(c, block);
+        return 0;
+    }
+    return 1;
+}
+
 /// @brief Queue a screen-space line as a thin quad (tessellated triangles).
 ///
 /// Width is in screen pixels. The endpoints define the centerline;
@@ -4373,9 +4636,12 @@ void rt_canvas3d_begin_2d(void *obj) {
     c->cached_cam_pos[0] = 0.0f;
     c->cached_cam_pos[1] = 0.0f;
     c->cached_cam_pos[2] = 1.0f;
-    c->cached_world_cam_pos[0] = c->cached_render_cam_pos[0] = 0.0f;
-    c->cached_world_cam_pos[1] = c->cached_render_cam_pos[1] = 0.0f;
-    c->cached_world_cam_pos[2] = c->cached_render_cam_pos[2] = 1.0f;
+    c->cached_render_cam_pos[0] = 0.0f;
+    c->cached_render_cam_pos[1] = 0.0f;
+    c->cached_render_cam_pos[2] = 1.0f;
+    c->cached_world_cam_pos[0] = 0.0;
+    c->cached_world_cam_pos[1] = 0.0;
+    c->cached_world_cam_pos[2] = 1.0;
     canvas3d_reset_camera_relative_origin(c);
     c->cached_cam_forward[0] = params.forward[0];
     c->cached_cam_forward[1] = params.forward[1];
@@ -4715,8 +4981,9 @@ void rt_canvas3d_begin(void *obj, void *camera) {
         rt_trap("Canvas3D.Begin: camera projection matrix must contain finite values");
         return;
     }
-    if (!canvas3d_double_fits_float(cam_x) || !canvas3d_double_fits_float(cam_y) ||
-        !canvas3d_double_fits_float(cam_z)) {
+    if (!c->camera_relative_upload &&
+        (!canvas3d_double_fits_float(cam_x) || !canvas3d_double_fits_float(cam_y) ||
+         !canvas3d_double_fits_float(cam_z))) {
         rt_trap("Canvas3D.Begin: camera position must contain finite float-range values");
         return;
     }
@@ -4744,9 +5011,9 @@ void rt_canvas3d_begin(void *obj, void *camera) {
     c->cached_cam_pos[0] = params.position[0];
     c->cached_cam_pos[1] = params.position[1];
     c->cached_cam_pos[2] = params.position[2];
-    c->cached_world_cam_pos[0] = (float)cam_x;
-    c->cached_world_cam_pos[1] = (float)cam_y;
-    c->cached_world_cam_pos[2] = (float)cam_z;
+    c->cached_world_cam_pos[0] = cam_x;
+    c->cached_world_cam_pos[1] = cam_y;
+    c->cached_world_cam_pos[2] = cam_z;
     c->cached_render_cam_pos[0] = params.position[0];
     c->cached_render_cam_pos[1] = params.position[1];
     c->cached_render_cam_pos[2] = params.position[2];
@@ -4756,6 +5023,7 @@ void rt_canvas3d_begin(void *obj, void *camera) {
     c->cached_cam_near = (float)rt_camera3d_get_near_plane(cam);
     c->cached_cam_far = (float)rt_camera3d_get_far_plane(cam);
     c->cached_cam_is_ortho = params.is_ortho;
+    canvas3d_update_occlusion_state_for_begin(c, output_w, output_h);
 
     /* Reset draw command queue for this frame */
     c->frame_serial++;
@@ -4799,9 +5067,15 @@ int64_t rt_canvas3d_get_frame_serial(void *obj) {
 /// @brief Internal opt-in used by Game3D floating origin to keep backend floats near the camera.
 void rt_canvas3d_set_camera_relative_upload(void *obj, int8_t enabled) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    int8_t next;
     if (!c)
         return;
-    c->camera_relative_upload = enabled ? 1 : 0;
+    next = enabled ? 1 : 0;
+    if (c->camera_relative_upload != next) {
+        canvas3d_clear_occlusion_history(c);
+        c->occlusion_state_valid = 0;
+    }
+    c->camera_relative_upload = next;
     if (!c->camera_relative_upload)
         canvas3d_reset_camera_relative_origin(c);
 }
@@ -4865,8 +5139,16 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
 
     if (mesh->morph_targets_ref && mesh->morph_deltas == NULL && mesh->morph_weights == NULL &&
         mesh->morph_shape_count == 0) {
-        rt_canvas3d_draw_mesh_matrix_morphed(
-            obj, mesh_obj, model_matrix, material_obj, motion_key, mesh->morph_targets_ref);
+        rt_canvas3d_draw_mesh_matrix_morphed_bounds(obj,
+                                                    mesh_obj,
+                                                    model_matrix,
+                                                    material_obj,
+                                                    motion_key,
+                                                    mesh->morph_targets_ref,
+                                                    explicit_local_bounds_min,
+                                                    explicit_local_bounds_max,
+                                                    conservative_bounds,
+                                                    disable_occlusion);
         canvas3d_clear_pending_splat(c);
         return;
     }
@@ -5089,6 +5371,103 @@ void rt_canvas3d_draw_mesh(void *obj, void *mesh_obj, void *transform_obj, void 
         obj, mesh_obj, transform->m, material_obj, (const void *)motion_key, NULL, NULL);
 }
 
+/// @brief Apply a height-weighted XZ wind sway to a mesh's vertices in place.
+/// @details Base vertices (lowest local-Y) stay planted; displacement scales with
+///   (normalized height)^2 along (dir_x, dir_z), modulated by sin(phase) with a smaller
+///   perpendicular flutter. Only the XZ position changes (height is preserved). Marks the
+///   mesh geometry dirty so cached bounds/tangents/upload refresh. NULL/degenerate-safe.
+void canvas3d_deform_mesh_wind(
+    rt_mesh3d *mesh, double dir_x, double dir_z, double strength, double phase) {
+    uint32_t n;
+    float min_y;
+    float max_y;
+    float range;
+    double swing;
+    double flutter;
+    if (!mesh || !mesh->vertices || mesh->vertex_count == 0 || !(strength > 0.0))
+        return;
+    n = mesh->vertex_count;
+    min_y = mesh->vertices[0].pos[1];
+    max_y = min_y;
+    for (uint32_t i = 1; i < n; i++) {
+        float y = mesh->vertices[i].pos[1];
+        if (y < min_y)
+            min_y = y;
+        if (y > max_y)
+            max_y = y;
+    }
+    range = max_y - min_y;
+    if (!(range > 1e-4f))
+        return;
+    swing = sin(phase);
+    flutter = sin(phase * 1.7 + 1.3);
+    for (uint32_t i = 0; i < n; i++) {
+        float h = (mesh->vertices[i].pos[1] - min_y) / range;
+        if (h < 0.0f)
+            h = 0.0f;
+        else if (h > 1.0f)
+            h = 1.0f;
+        double w = (double)h * (double)h * strength;
+        double sway = w * swing;
+        double cross = w * 0.35 * flutter;
+        double dx = dir_x * sway - dir_z * cross;
+        double dz = dir_z * sway + dir_x * cross;
+        mesh->vertices[i].pos[0] += (float)dx;
+        mesh->vertices[i].pos[2] += (float)dz;
+        if (mesh->positions64) {
+            mesh->positions64[(size_t)i * 3u + 0u] += dx;
+            mesh->positions64[(size_t)i * 3u + 2u] += dz;
+        }
+    }
+    rt_mesh3d_touch_geometry_now(mesh);
+}
+
+/// @brief Draw a mesh with a per-vertex wind sway (e.g. tree canopies, foliage).
+/// @details A height-weighted XZ displacement is applied on the CPU to a transient
+///   clone of the mesh, so the trunk/base (low local-Y) stays planted while the
+///   canopy (high local-Y) sways along (dir_x, dir_z). `phase` advances the sway
+///   over time; pass per-instance phase offsets (e.g. derived from world position)
+///   so neighbouring meshes move out of step. Works on every backend because it
+///   deforms geometry before submission rather than relying on a vertex shader.
+///   `strength <= 0` (or a degenerate mesh) falls back to a plain DrawMesh.
+void rt_canvas3d_draw_mesh_wind(void *obj,
+                                void *mesh_obj,
+                                void *transform_obj,
+                                void *material_obj,
+                                double dir_x,
+                                double dir_z,
+                                double strength,
+                                double phase) {
+    rt_mesh3d *clone;
+    void *clone_obj;
+    if (!rt_canvas3d_checked_or_stack(obj))
+        return;
+    if (!mesh_obj || !rt_g3d_has_class(mesh_obj, RT_G3D_MESH3D_CLASS_ID))
+        return;
+    if (!transform_obj || !material_obj)
+        return;
+    if (!(strength > 0.0)) {
+        rt_canvas3d_draw_mesh(obj, mesh_obj, transform_obj, material_obj);
+        return;
+    }
+
+    clone_obj = rt_mesh3d_clone(mesh_obj);
+    if (!clone_obj) {
+        rt_canvas3d_draw_mesh(obj, mesh_obj, transform_obj, material_obj);
+        return;
+    }
+    clone = (rt_mesh3d *)rt_g3d_checked_or_null(clone_obj, RT_G3D_MESH3D_CLASS_ID);
+    canvas3d_deform_mesh_wind(clone, dir_x, dir_z, strength, phase);
+
+    rt_canvas3d_draw_mesh(obj, clone_obj, transform_obj, material_obj);
+    /* Keep the deformed clone alive until the deferred main pass replays, then
+       drop our construction reference so the canvas owns the frame lifetime. */
+    if (rt_canvas3d_add_temp_object(obj, clone_obj)) {
+        if (rt_obj_release_check0(clone_obj))
+            rt_obj_free(clone_obj);
+    }
+}
+
 /// @brief Queue an instanced draw — render `instance_count` copies of `mesh` with per-instance
 /// transforms.
 ///
@@ -5192,6 +5571,9 @@ static void canvas3d_queue_instanced_fallback(const canvas3d_instanced_batch_t *
     }
     for (int32_t i = 0; i < instance_count; i++) {
         vgfx3d_draw_cmd_t per_instance = *base_cmd;
+        uintptr_t instance_motion_key =
+            canvas3d_instance_motion_key(
+                b->mesh_obj, b->material_obj, instance_matrices, instance_count, i);
         if (!canvas3d_copy_mat4_f32_for_frame(
                 c, &instance_matrices[(size_t)i * 16u], per_instance.model_matrix)) {
             rt_trap("Canvas3D.DrawMeshInstanced: rebased instance matrix is out of float range");
@@ -5209,8 +5591,7 @@ static void canvas3d_queue_instanced_fallback(const canvas3d_instanced_batch_t *
         } else {
             canvas3d_resolve_previous_model(
                 c,
-                canvas3d_instance_motion_key(
-                    b->mesh_obj, b->material_obj, instance_matrices, instance_count, i),
+                instance_motion_key,
                 per_instance.model_matrix,
                 per_instance.prev_model_matrix,
                 &per_instance.has_prev_model_matrix);
@@ -5241,10 +5622,17 @@ static void canvas3d_queue_instanced_fallback(const canvas3d_instanced_batch_t *
             rt_trap("Canvas3D.DrawMeshInstanced: deferred draw queue allocation failed");
             return;
         }
-        canvas3d_finalize_deferred_visibility_flags(
-            &((deferred_draw_t *)c->draw_cmds)[c->draw_count - 1],
-            conservative_bounds,
-            disable_occlusion);
+        {
+            deferred_draw_t *queued = &((deferred_draw_t *)c->draw_cmds)[c->draw_count - 1];
+            queued->stable_sort_id =
+                instance_motion_key ? instance_motion_key
+                                    : (queued->stable_sort_id ^ (uintptr_t)(uint32_t)i);
+            queued->occlusion_key = canvas3d_occlusion_occurrence_key(
+                queued->stable_sort_id ? queued->stable_sort_id : (uintptr_t)per_instance.vertices,
+                queued->enqueue_index);
+            canvas3d_finalize_deferred_visibility_flags(
+                queued, conservative_bounds, disable_occlusion);
+        }
     }
 }
 
@@ -5793,15 +6181,23 @@ static void canvas3d_render_main_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
                 canvas3d_submit_deferred(c, &trans[i]);
         } else {
             float previous_key = -FLT_MAX;
-            int32_t previous_index = -1;
+            uintptr_t previous_stable_sort_id = 0;
+            int32_t previous_enqueue_index = -1;
             if (sort_opaque) {
                 for (;;) {
                     int32_t i = canvas3d_pick_next_sorted_main_draw(
-                        cmds, c->draw_count, 0, 0, previous_key, previous_index);
+                        cmds,
+                        c->draw_count,
+                        0,
+                        0,
+                        previous_key,
+                        previous_stable_sort_id,
+                        previous_enqueue_index);
                     if (i < 0)
                         break;
                     previous_key = cmds[i].sort_key;
-                    previous_index = i;
+                    previous_stable_sort_id = cmds[i].stable_sort_id;
+                    previous_enqueue_index = cmds[i].enqueue_index;
                     if (use_occlusion_grid &&
                         canvas3d_occlusion_test_and_write(c, &occlusion_grid, &cmds[i])) {
                         c->last_occluded_draw_count++;
@@ -5818,14 +6214,22 @@ static void canvas3d_render_main_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
                 }
             }
             previous_key = FLT_MAX;
-            previous_index = -1;
+            previous_stable_sort_id = 0;
+            previous_enqueue_index = -1;
             for (;;) {
                 int32_t i = canvas3d_pick_next_sorted_main_draw(
-                    cmds, c->draw_count, 1, 1, previous_key, previous_index);
+                    cmds,
+                    c->draw_count,
+                    1,
+                    1,
+                    previous_key,
+                    previous_stable_sort_id,
+                    previous_enqueue_index);
                 if (i < 0)
                     break;
                 previous_key = cmds[i].sort_key;
-                previous_index = i;
+                previous_stable_sort_id = cmds[i].stable_sort_id;
+                previous_enqueue_index = cmds[i].enqueue_index;
                 canvas3d_submit_deferred(c, &cmds[i]);
             }
         }
@@ -6326,6 +6730,54 @@ int64_t rt_canvas3d_get_window_height(void *obj) {
     return (c && c->height > 0) ? c->height : 0;
 }
 
+/// @brief Re-query the live window size after a mode change and propagate it into
+///        the canvas/backend so the next frame uses the new dimensions.
+/// @details Mirrors the 2D canvas's resync-after-fullscreen path. The window's own
+///          resize event is also hooked (`rt_canvas3d_on_resize`), but a mode toggle
+///          should take effect immediately rather than waiting for the next polled
+///          event. The per-frame projection derives aspect from the active output
+///          size (see `canvas3d_active_output_size`), so updating width/height here
+///          is sufficient to keep the view un-stretched across the toggle.
+static void rt_canvas3d_resync_window_size(rt_canvas3d *c) {
+    int32_t logical_w = 0;
+    int32_t logical_h = 0;
+    if (!c || !c->gfx_win)
+        return;
+    if (vgfx_get_size(c->gfx_win, &logical_w, &logical_h) && logical_w > 0 && logical_h > 0)
+        rt_canvas3d_apply_resize(c, logical_w, logical_h, 0, 0);
+}
+
+/// @brief Switch the canvas window between fullscreen and windowed mode.
+/// @param obj Canvas3D handle. NULL-safe.
+/// @param enabled Non-zero requests fullscreen; zero requests windowed.
+void rt_canvas3d_set_fullscreen(void *obj, int8_t enabled) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || !c->gfx_win)
+        return;
+    vgfx_set_fullscreen(c->gfx_win, enabled ? 1 : 0);
+    rt_canvas3d_resync_window_size(c);
+}
+
+/// @brief Report whether the canvas window is currently fullscreen.
+/// @param obj Canvas3D handle. NULL-safe.
+/// @return 1 when fullscreen, 0 when windowed or unavailable.
+int8_t rt_canvas3d_is_fullscreen(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || !c->gfx_win)
+        return 0;
+    return vgfx_is_fullscreen(c->gfx_win) > 0 ? 1 : 0;
+}
+
+/// @brief Flip the canvas window between fullscreen and windowed mode.
+/// @param obj Canvas3D handle. NULL-safe.
+void rt_canvas3d_toggle_fullscreen(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || !c->gfx_win)
+        return;
+    vgfx_set_fullscreen(c->gfx_win, vgfx_is_fullscreen(c->gfx_win) > 0 ? 0 : 1);
+    rt_canvas3d_resync_window_size(c);
+}
+
 /// @brief Explicit alias for Width: the active output width, including render targets.
 int64_t rt_canvas3d_get_active_output_width(void *obj) {
     return rt_canvas3d_get_width(obj);
@@ -6696,9 +7148,15 @@ void rt_canvas3d_set_frustum_culling(void *obj, int8_t enabled) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     if (!c)
         return;
-    c->frustum_culling = enabled ? 1 : 0;
-    if (!enabled)
+    enabled = enabled ? 1 : 0;
+    if (c->frustum_culling != enabled)
+        canvas3d_clear_occlusion_history(c);
+    c->frustum_culling = enabled;
+    if (!enabled) {
+        if (c->occlusion_culling)
+            canvas3d_clear_occlusion_history(c);
         c->occlusion_culling = 0;
+    }
 }
 
 /// @brief Enable coarse CPU occlusion culling; includes frustum rejection.
@@ -6706,8 +7164,11 @@ void rt_canvas3d_set_occlusion_culling(void *obj, int8_t enabled) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     if (!c)
         return;
-    c->frustum_culling = enabled ? 1 : 0;
-    c->occlusion_culling = enabled ? 1 : 0;
+    enabled = enabled ? 1 : 0;
+    if (c->occlusion_culling != enabled || c->frustum_culling != enabled)
+        canvas3d_clear_occlusion_history(c);
+    c->frustum_culling = enabled;
+    c->occlusion_culling = enabled;
 }
 
 #else

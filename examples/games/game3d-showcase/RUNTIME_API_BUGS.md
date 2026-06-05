@@ -165,3 +165,31 @@ Severity: **P0** blocks the demo · **P1** wrong/missing behavior with a workaro
   function before lowering blocks, so cross-block reloads keep the defining IL type even when the use
   block appears earlier in textual order. Verified: `-O1` native now logs "planted 152 maples";
   added `Arm64Bugfix.ForwardDefinedF64BlockParamReloadKeepsFprClass`.
+
+---
+
+## Note N3 — `PostFX3D.AddSSAO` / `AddDOF` / `AddMotionBlur` trap on the CPU post-FX path
+- **Date:** 2026-06-04
+- **Severity:** P2 (papercut — a clear trap, but easy to hit)
+- **Area:** `Viper.Graphics3D.PostFX3D`
+- **Symptom:** Adding SSAO, depth-of-field, or motion blur to a chain that is later applied on the
+  **software backend or to a RenderTarget3D** raises `DomainError: SSAO, DOF, and motion blur require
+  GPU window postfx; RenderTarget3D and software CPU postfx support Bloom, Tonemap, FXAA, ColorGrade,
+  and Vignette`. The error surfaces at apply/validate time (e.g. the smoke probe), not at `Add*`.
+- **Workaround:** Gate all three behind `Canvas3D.BackendSupports(canvas, "ssao")` (this demo's
+  `buildPostFX` does exactly this); the CPU-safe effects (bloom/tonemap/colour-grade/vignette/FXAA)
+  may always be added. Status: working as intended; documented here so future post-FX work gates the
+  GPU-only effects up front.
+
+---
+
+## Note N4 — New Canvas3D / Keys bindings added for this enhancement pass
+- **Date:** 2026-06-04
+- **Area:** runtime additions (not bugs) supporting recommendations #1, #5, #6, #9.
+- **Added:** `Canvas3D.SetFullscreen(i1)` / `get_IsFullscreen` / `ToggleFullscreen` (→ existing
+  `vgfx_set_fullscreen`), `Canvas3D.DrawImage2D(x,y,w,h,pixels)` (overlay image blit; also added a
+  final-overlay GC-object retention list so HUD-pass textured draws survive post-FX), `Canvas3D.
+  DrawMeshWind(mesh,xform,mat,dirX,dirZ,strength,phase)` (CPU height-weighted vertex sway), and
+  `Game3D.Keys.get_F11`. Also: `Canvas3D.DrawMeshSkinned` now accepts an `AnimController3D` as well
+  as an `AnimPlayer3D`. Unit coverage in `src/tests/unit/test_rt_canvas3d.cpp` (wind deform + NULL
+  safety); docs in `docs/viperlib/graphics/rendering3d.md`.

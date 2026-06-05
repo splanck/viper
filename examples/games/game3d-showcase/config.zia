@@ -176,3 +176,25 @@ var POSTFX_COLORGRADE_CONTRAST: Float = 1.06;
 var POSTFX_COLORGRADE_SAT: Float = 1.10;
 var POSTFX_VIGNETTE_RADIUS: Float = 0.98;
 var POSTFX_VIGNETTE_SOFT: Float = 0.12;
+// Depth-of-field (focus distance / focus range / blur strength) + motion blur.
+var POSTFX_DOF_FOCUS: Float = 26.0;
+var POSTFX_DOF_RANGE: Float = 44.0;
+var POSTFX_DOF_STRENGTH: Float = 0.55;
+var POSTFX_MOTIONBLUR_STRENGTH: Float = 0.32;
+var POSTFX_MOTIONBLUR_SAMPLES: Integer = 6;
+
+// Sprint FOV "kick" target (resting FOV is CAMERA_FOV).
+var CAMERA_FOV_SPRINT: Float = 80.0;
+
+// --- Wind-swayed reeds (recommendation #9, uses Canvas3D.DrawMeshWind) ---------
+var REED_COUNT: Integer = 28;
+var REED_WIND_STRENGTH: Float = 0.55;
+
+// --- Render-to-image minimap (recommendation #6, uses Canvas3D.DrawImage2D) -----
+var MINIMAP_SIZE: Integer = 128;
+
+// --- Rigid-body physics props (recommendation #2) ------------------------------
+var PHYS_BALL_COUNT: Integer = 6;
+
+// --- Wandering sentinels (recommendation #4) -----------------------------------
+var CRITTER_SPEED: Float = 2.4;

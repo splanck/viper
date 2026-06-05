@@ -108,6 +108,8 @@ typedef struct {
     int32_t block_bytes;
     uint64_t cache_identity;
     uint64_t native_revision;
+    int8_t alpha_metadata_known;
+    int8_t has_alpha_texels;
 } rt_textureasset3d;
 
 static const uint8_t ktx2_identifier[12] = {
@@ -319,6 +321,35 @@ static uint64_t textureasset3d_pixels_allocation_bytes(void *pixels) {
     data_bytes = pixel_count * (uint64_t)sizeof(uint32_t);
     total = data_bytes;
     return total;
+}
+
+/// @brief Scan one decoded mip for any non-opaque texel using Pixels' generation cache.
+static int textureasset3d_decoded_mip_has_alpha(void *pixels) {
+    rt_pixels_impl *p = rt_pixels_checked_impl_or_null(pixels);
+    return rt_pixels_has_alpha_texels_cached(p) ? 1 : 0;
+}
+
+/// @brief Compute exact alpha metadata from decoded mip fallbacks.
+/// @details Returns 1 only when every loaded mip has a decoded Pixels fallback, making the
+///          resulting alpha classification exact. Native-only compressed assets without a decoded
+///          fallback remain "unknown" instead of being classified by format name.
+static int textureasset3d_compute_alpha_metadata(void **mip_pixels,
+                                                 int64_t mip_count,
+                                                 int8_t *out_has_alpha) {
+    int has_alpha = 0;
+    if (out_has_alpha)
+        *out_has_alpha = 0;
+    if (!mip_pixels || mip_count <= 0)
+        return 0;
+    for (int64_t i = 0; i < mip_count; i++) {
+        if (!mip_pixels[i])
+            return 0;
+        if (textureasset3d_decoded_mip_has_alpha(mip_pixels[i]))
+            has_alpha = 1;
+    }
+    if (out_has_alpha)
+        *out_has_alpha = has_alpha ? 1 : 0;
+    return 1;
 }
 
 /// @brief Recompute the total bytes retained by all decoded/native mip payloads.
@@ -1791,6 +1822,10 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
     asset->block_bytes = format.block_bytes;
     asset->cache_identity = textureasset3d_next_cache_identity();
     asset->native_revision = 1;
+    asset->alpha_metadata_known =
+        textureasset3d_compute_alpha_metadata(mip_pixels, mip_count, &asset->has_alpha_texels)
+            ? 1
+            : 0;
     asset->retained_bytes = textureasset3d_compute_retained_bytes(asset);
     textureasset3d_set_resident_mip_range_internal(asset, 0, asset->mip_count, NULL);
     (void)api_name;
@@ -1929,6 +1964,23 @@ void *rt_textureasset3d_get_pixels(void *obj) {
     if (!textureasset3d_resident_range_valid(asset) || !asset->mip_pixels)
         return NULL;
     return asset->mip_pixels[asset->resident_mip_start];
+}
+
+/// @brief Return whether this asset has exact load-time alpha metadata.
+/// @details Exact metadata is available when decoded Pixels fallbacks were produced for all mips.
+///          Native-only payloads without decoded fallbacks intentionally report unknown so Canvas3D
+///          does not assume alpha solely from an alpha-capable compressed format.
+int8_t rt_textureasset3d_alpha_metadata_known(void *obj) {
+    rt_textureasset3d *asset = textureasset3d_checked(obj);
+    return (asset && asset->alpha_metadata_known) ? 1 : 0;
+}
+
+/// @brief Return whether exact alpha metadata found any non-opaque texel.
+/// @details Returns 0 for both "known opaque" and "unknown"; callers that need to distinguish those
+///          states should first call `rt_textureasset3d_alpha_metadata_known`.
+int8_t rt_textureasset3d_has_alpha_texels(void *obj) {
+    rt_textureasset3d *asset = textureasset3d_checked(obj);
+    return (asset && asset->alpha_metadata_known && asset->has_alpha_texels) ? 1 : 0;
 }
 
 /// @brief Compute the backend texture-cache key for this asset's resident native blocks.

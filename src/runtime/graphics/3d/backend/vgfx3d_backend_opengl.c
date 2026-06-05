@@ -362,6 +362,23 @@ static __attribute__((unused)) void gl_check_error(const char *file, int line) {
 #define GL_CHECK() ((void)0)
 #endif
 
+/// @brief Return whether the last OpenGL operation completed without a GL error.
+/// @details Static mesh cache population must not record a slot as valid after an upload failure.
+///          This helper is intentionally available in release builds, unlike GL_CHECK, because
+///          caching failed buffers can cause persistent missing/flickering geometry.
+static int gl_upload_ok(void) {
+    GLenum err;
+    if (!gl.GetError)
+        return 1;
+    err = gl.GetError();
+    if (err == GL_NO_ERROR)
+        return 1;
+#ifndef NDEBUG
+    fprintf(stderr, "GL upload error 0x%04X\n", (unsigned)err);
+#endif
+    return 0;
+}
+
 typedef void *GLXContext;
 typedef unsigned long GLXDrawable;
 typedef struct __GLXFBConfigRec *GLXFBConfig;
@@ -3222,7 +3239,8 @@ static void gl_configure_draw_output(gl_context_t *ctx, const vgfx3d_draw_cmd_t 
 static void gl_apply_depth_bias(const vgfx3d_draw_cmd_t *cmd) {
     if (cmd && (fabsf(cmd->depth_bias) > 1e-8f || fabsf(cmd->slope_scaled_depth_bias) > 1e-8f)) {
         gl.Enable(GL_POLYGON_OFFSET_FILL);
-        gl.PolygonOffset(cmd->slope_scaled_depth_bias, cmd->depth_bias);
+        gl.PolygonOffset(cmd->slope_scaled_depth_bias,
+                         vgfx3d_depth_bias_constant_units(cmd->depth_bias));
     } else {
         gl.Disable(GL_POLYGON_OFFSET_FILL);
     }
@@ -3600,6 +3618,14 @@ static int gl_lookup_cached_mesh_buffers(gl_context_t *ctx,
         gl.BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)vbytes, cmd->vertices, GL_STATIC_DRAW);
         gl.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, slot->ibo);
         gl.BufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)ibytes, cmd->indices, GL_STATIC_DRAW);
+        if (!gl_upload_ok()) {
+            if (slot->vbo)
+                gl.DeleteBuffers(1, &slot->vbo);
+            if (slot->ibo)
+                gl.DeleteBuffers(1, &slot->ibo);
+            memset(slot, 0, sizeof(*slot));
+            return 0;
+        }
 
         slot->key = cmd->geometry_key;
         slot->revision = cmd->geometry_revision;
@@ -5506,8 +5532,12 @@ static void gl_submit_draw(void *ctx_ptr,
     (void)win;
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     GLuint mesh_vbo, mesh_ibo;
+    uint32_t index_count;
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
         cmd->index_count == 0)
+        return;
+    index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
+    if (index_count == 0)
         return;
     if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo))
         return;
@@ -5525,7 +5555,7 @@ static void gl_submit_draw(void *ctx_ptr,
     upload_main_uniforms(ctx, cmd, lights, light_count, ambient, 0);
     bind_material_textures(ctx, cmd);
     configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo);
-    gl.DrawElements(GL_TRIANGLES, (GLsizei)cmd->index_count, GL_UNSIGNED_INT, NULL);
+    gl.DrawElements(GL_TRIANGLES, (GLsizei)index_count, GL_UNSIGNED_INT, NULL);
     GL_CHECK();
 }
 
@@ -5814,9 +5844,13 @@ static void gl_shadow_begin(
 static void gl_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     GLuint mesh_vbo, mesh_ibo;
+    uint32_t index_count;
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || ctx->shadow_pass_slot < 0 ||
         ctx->shadow_pass_slot >= VGFX3D_MAX_SHADOW_LIGHTS || cmd->vertex_count == 0 ||
         cmd->index_count == 0)
+        return;
+    index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
+    if (index_count == 0)
         return;
     if (cmd->double_sided)
         gl.Disable(GL_CULL_FACE);
@@ -5885,7 +5919,7 @@ static void gl_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
                                        cmd,
                                        RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR);
     }
-    gl.DrawElements(GL_TRIANGLES, (GLsizei)cmd->index_count, GL_UNSIGNED_INT, NULL);
+    gl.DrawElements(GL_TRIANGLES, (GLsizei)index_count, GL_UNSIGNED_INT, NULL);
 }
 
 /// @brief Backend `shadow_end` op — exit shadow-pass mode and switch back to main.
@@ -5931,8 +5965,12 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
     (void)win;
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     GLuint mesh_vbo, mesh_ibo;
+    uint32_t index_count;
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
         cmd->index_count == 0 || !instance_matrices || instance_count <= 0)
+        return;
+    index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
+    if (index_count == 0 || instance_count > INT_MAX)
         return;
     if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo))
         return;
@@ -5959,7 +5997,7 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
         return;
     }
     gl.DrawElementsInstanced(
-        GL_TRIANGLES, (GLsizei)cmd->index_count, GL_UNSIGNED_INT, NULL, (GLsizei)instance_count);
+        GL_TRIANGLES, (GLsizei)index_count, GL_UNSIGNED_INT, NULL, (GLsizei)instance_count);
     set_identity_instance_constants();
 }
 

@@ -21,13 +21,22 @@ class Game3DShowcase {
     hide Pixels splatMap;
     hide Vegetation3D grass;
 
+    // Recommendation #6 — pre-rendered terrain minimap image (blitted via DrawImage2D).
+    hide Pixels minimapBase;
+
     // Recommendation #4 — spatial audio.
     hide Sound3D audio;
     hide Sound chimeClip;
     hide Sound humClip;
     hide Sound stepClip;
     hide Sound victoryClip;
+    hide Sound gustClip;
     hide Float stepPhase;
+    hide Float ambientTimer;
+
+    // Recommendation #7 — a "home sanctuary" trigger volume + objective state.
+    hide Trigger3D homeTrigger;
+    hide Boolean sanctuaryDone;
 
     // Recommendation #5 — dynamic lights.
     hide Light3D sunLight;
@@ -46,10 +55,15 @@ class Game3DShowcase {
     // Recommendation #3 — skeletal-animated sentinels.
     hide Mesh3D critterMesh;
     hide Skeleton3D critterSkel;
-    hide AnimPlayer3D critterPlayer;
+    hide AnimController3D critterCtrl;
+    hide Boolean crittersActive;
     hide Material3D critterMat;
     hide List[Float] critterXs;
     hide List[Float] critterZs;
+    // Recommendation #4 — wandering targets per sentinel.
+    hide List[Float] critterTX;
+    hide List[Float] critterTZ;
+    hide Integer critterWanderSeed;
 
     // Recommendation #9 — raycast scanner.
     hide List[Float] landmarkXs;
@@ -63,6 +77,7 @@ class Game3DShowcase {
     // Recommendation #10 — runtime quality + debug overlay.
     hide Integer qualityLevel;
     hide Boolean debugOn;
+    hide Boolean fullscreenOn;
 
     hide Mesh3D cubeMesh;
     hide Mesh3D beaconMesh;
@@ -78,6 +93,14 @@ class Game3DShowcase {
     hide Material3D archiveMat;
     hide Material3D waterMarkerMat;
     hide List[Material3D] treeMats;
+    hide Material3D barkMat;
+
+    // Recommendation #9 — wind-swayed procedural foliage (uses Canvas3D.DrawMeshWind).
+    hide Mesh3D saplingMesh;
+    hide Material3D saplingMat;
+    hide List[Float] reedXs;
+    hide List[Float] reedZs;
+    hide List[Float] reedPhase;
 
     hide Float playerX;
     hide Float playerY;
@@ -85,6 +108,7 @@ class Game3DShowcase {
     hide Float cameraYaw;
     hide Float cameraPitch;
     hide Float cameraDistance;
+    hide Float cameraFov;
     hide Float worldTime;
     hide Integer beaconsLit;
     hide Boolean quitRequested;
@@ -174,16 +198,21 @@ class Game3DShowcase {
         Water3D.AddWave(water, 1.0, 0.30, 2.1, 0.22, 18.0);
         Water3D.AddWave(water, -0.35, 0.82, 1.7, 0.12, 11.0);
 
+        minimapBase = buildMinimapImage(config.MINIMAP_SIZE);
+
         resetWorld();
         spawnLandmarks();
         spawnForest();
         buildVegetation();
+        setupReeds();
         setupSun();
         setupAudio();
         setupBeaconLights();
         setupPlayerLight();
         setupParticles();
+        setupPhysicsProps();
         setupCritters();
+        setupObjective();
         updateCamera();
         Terminal.Say("Backend: " + Canvas3D.get_Backend(canvas));
     }
@@ -214,6 +243,13 @@ class Game3DShowcase {
         }
         if (Input3D.pressed(input, Keys.get_Ctrl())) {
             if (debugOn) { debugOn = false; } else { debugOn = true; }
+        }
+        // F11 toggles native desktop fullscreen (starts windowed). The canvas
+        // re-syncs its size on the toggle, and the per-frame projection derives
+        // aspect from the active output, so the view stays un-stretched.
+        if (Input3D.pressed(input, Keys.get_F11())) {
+            Canvas3D.ToggleFullscreen(canvas);
+            fullscreenOn = Canvas3D.get_IsFullscreen(canvas);
         }
 
         var look = Input3D.lookAxis(input);
@@ -251,6 +287,15 @@ class Game3DShowcase {
             }
         }
 
+        // Recommendation #10 — a subtle FOV "kick" while sprinting gives a sense
+        // of speed; it eases back to the resting FOV when the player slows.
+        var fovTarget = config.CAMERA_FOV;
+        if (Input3D.isDown(input, Keys.get_Shift()) && moveLen > 0.001) {
+            fovTarget = config.CAMERA_FOV_SPRINT;
+        }
+        cameraFov = cameraFov + (fovTarget - cameraFov) * 0.12;
+        Camera3D.SetHorizontalFov(camera, cameraFov);
+
         clampPlayerToTerrain();
         playerY = sampleGround(playerX, playerZ);
         updateBeacons();
@@ -262,6 +307,7 @@ class Game3DShowcase {
         updateVegetation(stepDt);
         updateParticles(stepDt);
         updateCritters(stepDt);
+        updateObjective(stepDt);
         World3D.stepSimulation(world, stepDt);
     }
 
@@ -276,6 +322,7 @@ class Game3DShowcase {
         drawBeacons();
         drawPlayer();
         drawCritters();
+        drawReeds();
         drawDecals();
         drawParticles();
         World3D.drawEffects(world);
@@ -516,6 +563,7 @@ class Game3DShowcase {
         cameraYaw = 0.0;
         cameraPitch = config.CAMERA_PITCH_START;
         cameraDistance = config.CAMERA_DISTANCE;
+        cameraFov = config.CAMERA_FOV;
         worldTime = 0.0;
         stepPhase = 0.0;
         beaconsLit = 0;
@@ -524,6 +572,9 @@ class Game3DShowcase {
         scanDist = 0.0;
         qualityLevel = 2;
         debugOn = false;
+        fullscreenOn = false;
+        sanctuaryDone = false;
+        ambientTimer = 2.0;
 
         beaconXs = [];
         beaconYs = [];
@@ -707,7 +758,11 @@ class Game3DShowcase {
 
         if (beaconsLit >= total) {
             statusColor = config.HUD_GOOD;
-            statusText = "All beacons linked.";
+            statusText = "All linked. Return home.";
+        }
+        if (sanctuaryDone) {
+            statusColor = config.HUD_GOOD;
+            statusText = "Sanctuary restored!";
         }
 
         Canvas3D.DrawRect2D(
@@ -720,7 +775,7 @@ class Game3DShowcase {
         Canvas3D.DrawRect2D(
             canvas, config.HUD_PANEL_X, config.HUD_PANEL_Y, config.HUD_PANEL_W, 3, config.HUD_ACCENT);
         Canvas3D.DrawText2D(canvas, 24, 28, "GAME3D OPEN WORLD", config.HUD_TEXT);
-        Canvas3D.DrawText2D(canvas, 24, 52, "WASD/arrows move | Mouse look", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, 24, 52, "WASD move | Mouse look | F11", config.HUD_MUTED);
         Canvas3D.DrawText2D(canvas, 24, 72, "Wheel zoom | Shift sprint | Esc", config.HUD_MUTED);
         Canvas3D.DrawText2D(canvas, 24, 104, "Ridge beacons: " + toString(beaconsLit) + " / " + toString(total), statusColor);
         Canvas3D.DrawText2D(canvas, 24, 126, statusText, config.HUD_TEXT);
@@ -740,22 +795,56 @@ class Game3DShowcase {
         if (debugOn) { drawDebugPanel(w); }
     }
 
+    // Recommendation #6 — blit the pre-rendered terrain image as the minimap base
+    // (Canvas3D.DrawImage2D), then overlay live beacon/player markers on top. Falls
+    // back to a flat panel if the image is unavailable.
     hide func drawMiniMap(x: Integer, y: Integer, width: Integer, height: Integer) {
-        Canvas3D.DrawRect2D(canvas, x, y, width, height, config.HUD_PANEL);
+        if (minimapBase != null) {
+            Canvas3D.DrawImage2D(canvas, x, y, width, height, minimapBase);
+        } else {
+            Canvas3D.DrawRect2D(canvas, x, y, width, height, config.HUD_PANEL);
+        }
         Canvas3D.DrawRect2D(canvas, x, y, width, 3, config.HUD_ACCENT);
-        Canvas3D.DrawText2D(canvas, x + 10, y + 14, "REGION", config.HUD_MUTED);
 
         for i in 0..beaconXs.count() {
-            var mx = x + 10 + Convert.NumToInt((beaconXs.get(i) / terrainWorldMaxX()) * (width - 22));
-            var my = y + 30 + Convert.NumToInt((beaconZs.get(i) / terrainWorldMaxZ()) * (height - 42));
+            var mx = x + Convert.NumToInt((beaconXs.get(i) / terrainWorldMaxX()) * (width + 0.0));
+            var my = y + Convert.NumToInt((beaconZs.get(i) / terrainWorldMaxZ()) * (height + 0.0));
             var color = config.HUD_DANGER;
             if (beaconState.get(i) != 0) { color = config.HUD_GOOD; }
             Canvas3D.DrawRect2D(canvas, mx - 3, my - 3, 6, 6, color);
         }
 
-        var px = x + 10 + Convert.NumToInt((playerX / terrainWorldMaxX()) * (width - 22));
-        var py = y + 30 + Convert.NumToInt((playerZ / terrainWorldMaxZ()) * (height - 42));
-        Canvas3D.DrawRect2D(canvas, px - 4, py - 4, 8, 8, config.HUD_ACCENT);
+        var ppx = x + Convert.NumToInt((playerX / terrainWorldMaxX()) * (width + 0.0));
+        var ppy = y + Convert.NumToInt((playerZ / terrainWorldMaxZ()) * (height + 0.0));
+        Canvas3D.DrawRect2D(canvas, ppx - 4, ppy - 4, 8, 8, config.HUD_ACCENT);
+    }
+
+    // Renders the terrain heightfield top-down into a Pixels image once at startup:
+    // water below the shoreline, grading from meadow green to rocky highland.
+    hide func buildMinimapImage(size: Integer) -> Pixels {
+        var img = Pixels.New(size, size);
+        var maxX = terrainWorldMaxX();
+        var maxZ = terrainWorldMaxZ();
+        var last = size - 1;
+        for (var py: Integer = 0; py < size; py = py + 1) {
+            for (var px: Integer = 0; px < size; px = px + 1) {
+                var wx = (px + 0.0) * maxX / (last + 0.0);
+                var wz = (py + 0.0) * maxZ / (last + 0.0);
+                img.Set(px, py, minimapHeightColor(Terrain3D.GetHeightAt(terrain, wx, wz)));
+            }
+        }
+        return img;
+    }
+
+    hide func minimapHeightColor(h: Float) -> Integer {
+        if (h < config.WATER_HEIGHT) {
+            return packPixel(28, 70, 110, 255);
+        }
+        var t = clampFloat((h - config.WATER_HEIGHT) / 20.0, 0.0, 1.0);
+        var r = Convert.NumToInt(lerpFloat(64.0, 150.0, t));
+        var g = Convert.NumToInt(lerpFloat(112.0, 138.0, t));
+        var b = Convert.NumToInt(lerpFloat(56.0, 120.0, t));
+        return packPixel(clampByte(r), clampByte(g), clampByte(b), 255);
     }
 
     hide func terrainWorldMaxX() -> Float {
@@ -915,9 +1004,11 @@ class Game3DShowcase {
         var ent = Entity3D.FromNode(node);
         Entity3D.setName(ent, "maple");
         Entity3D.setLayer(ent, Layers.get_World());
-        // The imported FBX materials read near-white; recolour the whole tree as
-        // foliage (varied per location) so it unmistakably reads as a maple.
-        Entity3D.setMaterialRecursive(ent, treeMats.get(pickFoliage(x, z)));
+        // The imported FBX materials read near-white; split the submeshes into a
+        // brown bark trunk and a per-location-varied foliage canopy (#3) instead of
+        // one flat recolour. Falls back to a recursive recolour if the model has no
+        // addressable submeshes.
+        applyTreeMaterials(ent, treeMats.get(pickFoliage(x, z)));
         Entity3D.setScaleXYZ(ent, scale, scale, scale);
         // MapleTree_1.fbx is authored Z-up: the entity's world-vertical spin axis
         // is the FIRST euler component (X), not Y. Putting yaw in the Y slot tips
@@ -932,6 +1023,84 @@ class Game3DShowcase {
         treeMats.add(makeFoliage(0.20, 0.44, 0.18));   // summer green
         treeMats.add(makeFoliage(0.74, 0.52, 0.16));   // amber
         treeMats.add(makeFoliage(0.66, 0.26, 0.12));   // rust
+        barkMat = Materials.Rubber(0.30, 0.21, 0.13);  // brown trunk bark
+        Material3D.SetEmissiveColor(barkMat, 0.010, 0.007, 0.004);
+    }
+
+    // Recommendation #3 — split an imported tree's submeshes into bark vs canopy.
+    // Tall, narrow submeshes (height dominates the horizontal extent) read as the
+    // trunk and take the bark material; everything else takes the canopy colour.
+    // If the model exposes no mesh-bearing child nodes we fall back to a recursive
+    // recolour, so this never renders worse than the original single-colour tree.
+    hide func applyTreeMaterials(ent: Entity3D, canopyMat: Material3D) {
+        var node = Entity3D.get_node(ent);
+        var count = SceneNode3D.get_ChildCount(node);
+        var assigned = 0;
+        for i in 0..count {
+            var child = SceneNode3D.GetChild(node, i);
+            if (SceneNode3D.get_Mesh(child) != null) {
+                var amin = SceneNode3D.get_AABBMin(child);
+                var amax = SceneNode3D.get_AABBMax(child);
+                var dy = Vec3.get_Y(amax) - Vec3.get_Y(amin);
+                var dxz = maxf(Vec3.get_X(amax) - Vec3.get_X(amin),
+                               Vec3.get_Z(amax) - Vec3.get_Z(amin));
+                if (dy > dxz * 1.4) {
+                    SceneNode3D.set_Material(child, barkMat);
+                } else {
+                    SceneNode3D.set_Material(child, canopyMat);
+                }
+                assigned = assigned + 1;
+            }
+        }
+        if (assigned == 0) {
+            Entity3D.setMaterialRecursive(ent, canopyMat);
+        }
+    }
+
+    // Recommendation #9 — a ring of wind-swayed reeds near the spawn rendered with
+    // Canvas3D.DrawMeshWind: the base stays planted while the tip bends along the
+    // wind, each reed offset in phase so the cluster ripples rather than pulsing.
+    hide func setupReeds() {
+        saplingMesh = Mesh3D.NewCylinder(0.07, 2.6, 6);
+        saplingMat = Materials.Rubber(0.30, 0.60, 0.26);
+        Material3D.SetEmissiveColor(saplingMat, 0.010, 0.030, 0.008);
+        reedXs = [];
+        reedZs = [];
+        reedPhase = [];
+        var cx = terrainWorldMaxX() * 0.5;
+        var cz = terrainWorldMaxZ() * 0.5;
+        var i = 0;
+        while (i < config.REED_COUNT) {
+            var ang = (i + 0.0) / (config.REED_COUNT + 0.0) * 6.2831853 + hash01(i, 41);
+            var radius = 6.0 + hash01(i, 43) * 18.0;
+            var wx = cx + Sin(ang) * radius;
+            var wz = cz + Cos(ang) * radius;
+            if (wx > config.TERRAIN_MARGIN && wx < terrainWorldMaxX() - config.TERRAIN_MARGIN
+                    && wz > config.TERRAIN_MARGIN && wz < terrainWorldMaxZ() - config.TERRAIN_MARGIN) {
+                if (sampleGround(wx, wz) > config.WATER_HEIGHT + 0.3) {
+                    reedXs.add(wx);
+                    reedZs.add(wz);
+                    reedPhase.add(hash01(i, 47) * 6.2831853);
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    hide func drawReeds() {
+        if (saplingMesh == null) { return; }
+        var windDirX = Sin(config.GRASS_WIND_DIR);
+        var windDirZ = Cos(config.GRASS_WIND_DIR);
+        for i in 0..reedXs.count() {
+            var x = reedXs.get(i);
+            var z = reedZs.get(i);
+            var gy = sampleGround(x, z) + 1.3;   // half the 2.6 height: base sits on ground
+            var xform = Mat4.Translate(x, gy, z);
+            var phase = worldTime * config.GRASS_WIND_FREQ * 6.0 + reedPhase.get(i);
+            Canvas3D.DrawMeshWind(
+                canvas, saplingMesh, xform, saplingMat, windDirX, windDirZ,
+                config.REED_WIND_STRENGTH, phase);
+        }
     }
 
     hide func makeFoliage(r: Float, g: Float, b: Float) -> Material3D {
@@ -1185,6 +1354,34 @@ class Game3DShowcase {
         humClip = Synth.Tone(190, 460, 30);
         stepClip = Synth.Noise(70, 22);
         victoryClip = Synth.Sweep(440, 1320, 620, 55);
+        gustClip = Synth.Noise(180, 60);
+    }
+
+    // Recommendation #7 — a trigger volume ringing the spawn; stepping back into it
+    // once every beacon is linked restores the sanctuary (the demo's win state).
+    hide func setupObjective() {
+        var hx = terrainWorldMaxX() * 0.5;
+        var hz = terrainWorldMaxZ() * 0.5;
+        var hy = sampleGround(hx, hz);
+        homeTrigger = Trigger3D.New(hx - 5.0, hy - 2.0, hz - 5.0, hx + 5.0, hy + 7.0, hz + 5.0);
+    }
+
+    // Recommendations #7 + #8 — advance the objective trigger and a periodic
+    // wind-gust ambience lapping across the lake.
+    hide func updateObjective(dt: Float) {
+        ambientTimer = ambientTimer - dt;
+        if (ambientTimer <= 0.0 && audio != null) {
+            ambientTimer = 5.5;
+            Sound3D.playAt(audio, gustClip,
+                new Vec3(terrainWorldMaxX() * 0.5, config.WATER_HEIGHT + 1.5, terrainWorldMaxZ() * 0.5));
+        }
+        if (sanctuaryDone == false && homeTrigger != null && beaconsLit >= beaconXs.count()) {
+            if (Trigger3D.Contains(homeTrigger, new Vec3(playerX, playerY + 1.0, playerZ))) {
+                sanctuaryDone = true;
+                if (audio != null) { Sound3D.play2D(audio, victoryClip); }
+                Camera3D.Shake(camera, config.SHAKE_ALL, 1.0, 3.0);
+            }
+        }
     }
 
     hide func onFootfall(sprinting: Boolean) {
@@ -1349,6 +1546,45 @@ class Game3DShowcase {
         return buf;
     }
 
+    // === Recommendation #2: rigid-body physics props ======================
+
+    // A static plinth plus a stack of dynamic spheres dropped above it: the
+    // already-running World3D.stepSimulation settles them into a resting pile,
+    // exercising collision, restitution and the warm-started solver. (The player
+    // is kinematic, so it passes through — the props showcase the simulation.)
+    hide func setupPhysicsProps() {
+        var cx = terrainWorldMaxX() * 0.5 - 13.0;
+        var cz = terrainWorldMaxZ() * 0.5 - 13.0;
+        var gy = sampleGround(cx, cz);
+
+        var plinth = Prefab.BoxXYZ(5.0, 0.6, 5.0, pedestalMat);
+        Entity3D.setName(plinth, "Plinth");
+        Entity3D.setLayer(plinth, Layers.get_World());
+        Entity3D.setPosition(plinth, cx, gy + 0.3, cz);
+        Entity3D.attachBody(plinth, BodyDef.StaticBox(5.0, 0.6, 5.0));
+        World3D.spawn(world, plinth);
+
+        var i = 0;
+        while (i < config.PHYS_BALL_COUNT) {
+            var ball = Prefab.Sphere(0.45, 16, beaconOnMat);
+            var bx = cx + (hash01(i, 61) - 0.5) * 2.4;
+            var bz = cz + (hash01(i, 63) - 0.5) * 2.4;
+            Entity3D.setName(ball, "Boulder");
+            Entity3D.setLayer(ball, Layers.get_Dynamic());
+            Entity3D.setPosition(ball, bx, gy + 4.0 + (i + 0.0) * 1.2, bz);
+
+            var bdef = BodyDef.Sphere(0.45, 1.0);
+            BodyDef.set_restitution(bdef, 0.45);
+            BodyDef.withLayer(bdef, Layers.get_Dynamic());
+            var mask = LayerMask.Of(Layers.get_World());
+            mask = LayerMask.include(mask, Layers.get_Dynamic());
+            BodyDef.withMask(bdef, mask);
+            Entity3D.attachBody(ball, bdef);
+            World3D.spawn(world, ball);
+            i = i + 1;
+        }
+    }
+
     // === Recommendation #3: procedurally-rigged skeletal sentinels ========
 
     hide func setupCritters() {
@@ -1365,15 +1601,31 @@ class Game3DShowcase {
         Mesh3D.SetSkeleton(critterMesh, critterSkel);
         Mesh3D.RecalcNormals(critterMesh);
 
-        var anim = Animation3D.New("sway", 2.4);
-        Animation3D.set_Looping(anim, true);
+        // Recommendation #5 — an AnimController3D state machine (idle <-> move)
+        // drives the sentinels: the "move" state plays a stronger sway and the
+        // controller crossfades states when the player approaches. DrawMeshSkinned
+        // now accepts the controller directly (no separate AnimPlayer needed).
+        var idleAnim = Animation3D.New("idle", 2.4);
+        Animation3D.set_Looping(idleAnim, true);
         Animation3D.AddKeyframe(
-            anim, b0, 0.0, new Vec3(0.0, 0.0, 0.0), Quat.Identity(), new Vec3(1.0, 1.0, 1.0));
-        addSwayKeys(anim, b1, 0.40);
-        addSwayKeys(anim, b2, 0.60);
+            idleAnim, b0, 0.0, new Vec3(0.0, 0.0, 0.0), Quat.Identity(), new Vec3(1.0, 1.0, 1.0));
+        addSwayKeys(idleAnim, b1, 0.16);
+        addSwayKeys(idleAnim, b2, 0.24);
 
-        critterPlayer = AnimPlayer3D.New(critterSkel);
-        AnimPlayer3D.Play(critterPlayer, anim);
+        var moveAnim = Animation3D.New("move", 2.4);
+        Animation3D.set_Looping(moveAnim, true);
+        Animation3D.AddKeyframe(
+            moveAnim, b0, 0.0, new Vec3(0.0, 0.0, 0.0), Quat.Identity(), new Vec3(1.0, 1.0, 1.0));
+        addSwayKeys(moveAnim, b1, 0.40);
+        addSwayKeys(moveAnim, b2, 0.60);
+
+        critterCtrl = AnimController3D.New(critterSkel);
+        AnimController3D.AddState(critterCtrl, "idle", idleAnim);
+        AnimController3D.AddState(critterCtrl, "move", moveAnim);
+        AnimController3D.AddTransition(critterCtrl, "idle", "move", 0.35);
+        AnimController3D.AddTransition(critterCtrl, "move", "idle", 0.5);
+        AnimController3D.Play(critterCtrl, "idle");
+        crittersActive = false;
 
         critterMat = Materials.Emissive(0.32, 0.84, 0.96, 0.55);
         Material3D.SetEmissiveColor(critterMat, 0.05, 0.18, 0.22);
@@ -1385,6 +1637,30 @@ class Game3DShowcase {
         addCritter(cx, cz - 12.0);          // ahead of the player at launch
         addCritter(cx - 15.0, cz + 9.0);
         addCritter(cx + 17.0, cz + 5.0);
+
+        critterTX = [];
+        critterTZ = [];
+        critterWanderSeed = 11;
+        for i in 0..critterXs.count() {
+            critterTX.add(critterXs.get(i));
+            critterTZ.add(critterZs.get(i));
+            pickCritterTarget(i);
+        }
+    }
+
+    // Recommendation #4 — pick a fresh wander target for sentinel `i`, biased
+    // around the central meadow and kept inside the playable margin.
+    hide func pickCritterTarget(i: Integer) {
+        critterWanderSeed = critterWanderSeed + 1;
+        var ang = hash01(critterWanderSeed, 71) * 6.2831853;
+        critterWanderSeed = critterWanderSeed + 1;
+        var radius = 6.0 + hash01(critterWanderSeed, 73) * 26.0;
+        var cx = terrainWorldMaxX() * 0.5;
+        var cz = terrainWorldMaxZ() * 0.5;
+        critterTX.set(i, clampFloat(cx + Sin(ang) * radius,
+            config.TERRAIN_MARGIN, terrainWorldMaxX() - config.TERRAIN_MARGIN));
+        critterTZ.set(i, clampFloat(cz + Cos(ang) * radius,
+            config.TERRAIN_MARGIN, terrainWorldMaxZ() - config.TERRAIN_MARGIN));
     }
 
     hide func addCritter(x: Float, z: Float) {
@@ -1393,16 +1669,49 @@ class Game3DShowcase {
     }
 
     hide func updateCritters(dt: Float) {
-        if (critterPlayer != null) { AnimPlayer3D.Update(critterPlayer, dt); }
+        if (critterCtrl == null) { return; }
+        // Recommendation #4 — steer each sentinel toward its wander target,
+        // retargeting on arrival, so the chorus drifts across the meadow.
+        for i in 0..critterXs.count() {
+            var dx = critterTX.get(i) - critterXs.get(i);
+            var dz = critterTZ.get(i) - critterZs.get(i);
+            var dist = Sqrt(dx * dx + dz * dz);
+            if (dist < 1.2) {
+                pickCritterTarget(i);
+            } else {
+                var sp = config.CRITTER_SPEED * dt;
+                if (sp > dist) { sp = dist; }
+                critterXs.set(i, critterXs.get(i) + dx / dist * sp);
+                critterZs.set(i, critterZs.get(i) + dz / dist * sp);
+            }
+        }
+        // Crossfade the whole sentinel chorus to "move" when the player draws
+        // near the nearest one, and back to "idle" when they wander off.
+        var near = false;
+        for i in 0..critterXs.count() {
+            var dx = playerX - critterXs.get(i);
+            var dz = playerZ - critterZs.get(i);
+            if (dx * dx + dz * dz < 144.0) { near = true; }
+        }
+        if (near && crittersActive == false) {
+            AnimController3D.Crossfade(critterCtrl, "move", 0.35);
+            crittersActive = true;
+        } else {
+            if (near == false && crittersActive) {
+                AnimController3D.Crossfade(critterCtrl, "idle", 0.5);
+                crittersActive = false;
+            }
+        }
+        AnimController3D.Update(critterCtrl, dt);
     }
 
     hide func drawCritters() {
-        if (critterPlayer == null) { return; }
+        if (critterCtrl == null) { return; }
         for i in 0..critterXs.count() {
             var x = critterXs.get(i);
             var z = critterZs.get(i);
             var xform = Mat4.Mul(Mat4.Translate(x, sampleGround(x, z), z), Mat4.Scale(0.85, 0.85, 0.85));
-            Canvas3D.DrawMeshSkinned(canvas, critterMesh, xform, critterMat, critterPlayer);
+            Canvas3D.DrawMeshSkinned(canvas, critterMesh, xform, critterMat, critterCtrl);
         }
     }
 
@@ -1521,12 +1830,20 @@ class Game3DShowcase {
 
     hide func buildPostFX() {
         var fx = PostFX3D.New();
-        // GPU-only effects degrade gracefully on the software backend.
-        if (Canvas3D.BackendSupports(canvas, "ssao")) {
+        // SSAO, depth-of-field, and motion blur require GPU window post-FX — they
+        // trap on the software / render-target CPU post-FX path — so gate all three
+        // behind the backend capability. Tonemap/bloom/colour-grade/vignette/FXAA
+        // are CPU-safe and always applied. (Recommendation #10 adds DOF + motion blur.)
+        var gpuFx = Canvas3D.BackendSupports(canvas, "ssao");
+        if (gpuFx) {
             PostFX3D.AddSSAO(fx, 0.45, 0.55, 12);
         }
         PostFX3D.AddTonemap(fx, 2, 1.0);
         PostFX3D.AddBloom(fx, config.POSTFX_BLOOM_THRESHOLD, config.POSTFX_BLOOM_INTENSITY, 3);
+        if (gpuFx) {
+            PostFX3D.AddDOF(fx, config.POSTFX_DOF_FOCUS, config.POSTFX_DOF_RANGE, config.POSTFX_DOF_STRENGTH);
+            PostFX3D.AddMotionBlur(fx, config.POSTFX_MOTIONBLUR_STRENGTH, config.POSTFX_MOTIONBLUR_SAMPLES);
+        }
         PostFX3D.AddColorGrade(
             fx, config.POSTFX_COLORGRADE_BRIGHT, config.POSTFX_COLORGRADE_CONTRAST,
             config.POSTFX_COLORGRADE_SAT);

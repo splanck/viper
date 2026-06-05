@@ -231,6 +231,11 @@ int64_t rt_game3d_key_right(void) {
     return rt_keyboard_key_right();
 }
 
+/// @brief Key code for the F11 function key (forwards to the shared keyboard table).
+int64_t rt_game3d_key_f11(void) {
+    return rt_keyboard_key_f11();
+}
+
 /// @brief Button code for the left mouse button (forwards to the shared mouse table).
 int64_t rt_game3d_mouse_left(void) {
     return rt_mouse_button_left();
