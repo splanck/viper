@@ -29,7 +29,7 @@
 #include <vector>
 
 struct PipelineResult {
-    int exit_code;           ///< Final exit status of the pipeline; zero indicates success.
+    int exit_code{0};        ///< Final exit status of the pipeline; zero indicates success.
     std::string stdout_text; ///< Aggregated standard output emitted by subprocesses.
     std::string stderr_text; ///< Aggregated diagnostics and error messages.
 };

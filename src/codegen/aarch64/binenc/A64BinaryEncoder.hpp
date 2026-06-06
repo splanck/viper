@@ -222,9 +222,9 @@ class A64BinaryEncoder {
     /// @details After all instructions of the function are emitted, pendingBranches_ is
     ///          iterated and each entry is patched with the now-known target offset.
     struct PendingBranch {
-        size_t offset;      ///< Byte offset in CodeSection of the instruction.
-        std::string target; ///< Target label name.
-        MOpcode kind;       ///< Branch type (Br/BCond/Cbz/Cbnz/Bl).
+        size_t offset = 0;          ///< Byte offset in CodeSection of the instruction.
+        std::string target;         ///< Target label name.
+        MOpcode kind = MOpcode::Br; ///< Branch type (Br/BCond/Cbz/Cbnz/Bl).
     };
 
     /// Label name → byte offset in CodeSection.

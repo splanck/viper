@@ -32,9 +32,9 @@ namespace viper::codegen::linker {
 
 /// A member within an archive.
 struct ArchiveMember {
-    std::string name;  ///< Member name (e.g., "foo.o").
-    size_t dataOffset; ///< Byte offset of member data within the archive file.
-    size_t dataSize;   ///< Size of the member data in bytes.
+    std::string name;      ///< Member name (e.g., "foo.o").
+    size_t dataOffset = 0; ///< Byte offset of member data within the archive file.
+    size_t dataSize = 0;   ///< Size of the member data in bytes.
 };
 
 /// Parsed archive with symbol index and member list.

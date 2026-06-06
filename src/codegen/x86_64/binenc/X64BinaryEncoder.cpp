@@ -291,7 +291,8 @@ static void validateEncodedMemOperand(const OpMem &mem, const char *context) {
 ///          the same 4-bit field carries the XMM index (`XMM0=0`, …, `XMM15=15`);
 ///          the kind (GPR vs XMM) is implied by the `UNWIND_CODE_KIND` field.
 /// @param reg Physical register being recorded.
-/// @return 4-bit Win64 register number; returns 0 for unrecognised inputs.
+/// @return 4-bit Win64 register number.
+/// @throws std::runtime_error if @p reg is not encodable in a Win64 unwind code.
 static uint8_t win64RegNumber(PhysReg reg) {
     switch (reg) {
         case PhysReg::RAX:
@@ -359,7 +360,7 @@ static uint8_t win64RegNumber(PhysReg reg) {
         case PhysReg::XMM15:
             return 15;
     }
-    return 0;
+    throw std::runtime_error("x86-64 binary encoder: unsupported register in Win64 unwind data");
 }
 
 struct EmittedWin64UnwindOp {
@@ -379,6 +380,31 @@ static bool operandIsPhysReg(const Operand &operand, PhysReg reg) {
     return opReg && opReg->isPhys && opReg->idOrPhys == static_cast<uint16_t>(reg);
 }
 
+/// @brief Test whether @p operand names the stack slot described by a Win64 save op.
+/// @details Frame lowering emits callee-save stores through RBP-relative memory
+///          operands, but Win64 unwind records describe save slots as positive
+///          offsets from final RSP. This helper translates the unwind offset
+///          back to the expected RBP displacement and verifies the memory shape.
+/// @param operand Memory operand from a callee-save store instruction.
+/// @param frame Frame metadata containing the final frame size.
+/// @param op Planned Win64 save operation being matched.
+/// @return True only when @p operand stores to the exact unwind-described slot.
+static bool operandIsWin64SaveSlot(const Operand &operand,
+                                   const FrameInfo &frame,
+                                   const Win64UnwindOp &op) {
+    const auto *mem = std::get_if<OpMem>(&operand);
+    if (mem == nullptr || mem->hasIndex)
+        return false;
+    if (!operandIsPhysReg(mem->base, PhysReg::RBP))
+        return false;
+    const int64_t expectedDisp =
+        static_cast<int64_t>(op.stackOffset) - static_cast<int64_t>(frame.frameSize);
+    if (expectedDisp < std::numeric_limits<int32_t>::min() ||
+        expectedDisp > std::numeric_limits<int32_t>::max())
+        return false;
+    return mem->disp == static_cast<int32_t>(expectedDisp);
+}
+
 /// @brief Test whether the emitted @p instr realises a Win64 unwind op @p op.
 /// @details After prologue emission, Win64 requires an `UNWIND_INFO` record that
 ///          lists each prologue instruction along with its offset. This helper
@@ -388,9 +414,12 @@ static bool operandIsPhysReg(const Operand &operand, PhysReg reg) {
 ///            - `SaveNonVol`: `MOV [mem], reg` (general save to stack)
 ///            - `SaveXmm128`: `MOVUPS [mem], xmm` (128-bit XMM save)
 /// @param instr Machine instruction being matched.
+/// @param frame Frame metadata used to verify save-slot addresses.
 /// @param op    Unwind op the encoder expected to emit.
 /// @return True if @p instr is the encoded form of @p op.
-static bool instrMatchesWin64UnwindOp(const MInstr &instr, const Win64UnwindOp &op) {
+static bool instrMatchesWin64UnwindOp(const MInstr &instr,
+                                      const FrameInfo &frame,
+                                      const Win64UnwindOp &op) {
     switch (op.kind) {
         case Win64UnwindOpKind::PushNonVol:
             return instr.opcode == MOpcode::PUSH && !instr.operands.empty() &&
@@ -404,9 +433,11 @@ static bool instrMatchesWin64UnwindOp(const MInstr &instr, const Win64UnwindOp &
         }
         case Win64UnwindOpKind::SaveNonVol:
             return instr.opcode == MOpcode::MOVrm && instr.operands.size() >= 2 &&
+                   operandIsWin64SaveSlot(instr.operands[0], frame, op) &&
                    operandIsPhysReg(instr.operands[1], op.reg);
         case Win64UnwindOpKind::SaveXmm128:
             return instr.opcode == MOpcode::MOVUPSrm && instr.operands.size() >= 2 &&
+                   operandIsWin64SaveSlot(instr.operands[0], frame, op) &&
                    operandIsPhysReg(instr.operands[1], op.reg);
     }
     return false;
@@ -569,7 +600,7 @@ X64BinaryEncoder::LabelLayout X64BinaryEncoder::computeFunctionLabelLayout(const
         }
     }
 
-    const size_t maxIterations = std::max<size_t>(2, relaxCandidates + 1);
+    const size_t maxIterations = std::max<size_t>(2, relaxCandidates + 2);
     for (size_t iter = 0; iter < maxIterations; ++iter) {
         bool changed = false;
         LabelOffsetMap known = estimated;
@@ -612,7 +643,9 @@ X64BinaryEncoder::LabelLayout X64BinaryEncoder::computeFunctionLabelLayout(const
         estimatedSize = offset;
     }
 
-    return {std::move(estimated), estimatedSize};
+    throw std::runtime_error("x86-64 binary encoder: short-branch relaxation did not converge for "
+                             "function '" +
+                             fn.name + "'");
 }
 
 /// @brief Assert that emission matches the pre-computed offset for @p label.
@@ -690,7 +723,8 @@ void X64BinaryEncoder::encodeFunction(const MFunction &fn,
             encodeInstruction(instr, text, rodata, isDarwin);
             if (blockIndex == 0 && emitWin64Unwind && frame &&
                 win64UnwindCursor < frame->win64UnwindOps.size() &&
-                instrMatchesWin64UnwindOp(instr, frame->win64UnwindOps[win64UnwindCursor])) {
+                instrMatchesWin64UnwindOp(
+                    instr, *frame, frame->win64UnwindOps[win64UnwindCursor])) {
                 emittedWin64UnwindOps.push_back(
                     {frame->win64UnwindOps[win64UnwindCursor], text.currentOffset()});
                 ++win64UnwindCursor;
@@ -1096,7 +1130,9 @@ void X64BinaryEncoder::encodeNullary(MOpcode op, objfile::CodeSection &cs) {
             cs.emit8(0x0B);
             return;
         default:
-            assert(false && "not a nullary opcode");
+            throw std::runtime_error("x86-64 binary encoder: opcode '" +
+                                     std::to_string(static_cast<int>(op)) +
+                                     "' is not a nullary opcode");
     }
 }
 
@@ -1330,8 +1366,9 @@ void X64BinaryEncoder::encodeMemOp(MOpcode op,
             opByte = 0x8B;
             break; // load
         default:
-            assert(false && "not a memory GPR opcode");
-            return;
+            throw std::runtime_error("x86-64 binary encoder: opcode '" +
+                                     std::to_string(static_cast<int>(op)) +
+                                     "' is not a memory GPR opcode");
     }
 
     emitWithMemOperand(hwReg.bits3,

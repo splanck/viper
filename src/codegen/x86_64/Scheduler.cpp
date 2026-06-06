@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <iterator>
+#include <stdexcept>
 #include <unordered_set>
 
 namespace viper::codegen::x64 {
@@ -299,7 +300,7 @@ void addMemRegs(const OpMem &mem, InstrDeps &deps) {
     }
 
     if (order.size() != n)
-        return segment;
+        throw std::runtime_error("x86-64 scheduler: dependency graph did not schedule every node");
 
     for (std::size_t i = 0; i < n; ++i) {
         if (order[i] != i) {

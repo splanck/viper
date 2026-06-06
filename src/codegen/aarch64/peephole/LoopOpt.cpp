@@ -55,10 +55,10 @@ namespace {
 /// @brief A single register-to-register copy to be inserted on a loop back-edge
 ///        in place of a removed phi-slot store+load round-trip.
 struct EdgeMove {
-    std::size_t storeInstrIdx; ///< Index of the phi store instruction being removed.
-    MOperand srcReg;           ///< Source physical register (the store's source).
-    MOperand dstReg;           ///< Destination physical register (the load's destination).
-    RegClass cls;              ///< GPR or FPR — selects MovRR vs FMovRR opcode.
+    std::size_t storeInstrIdx{0}; ///< Index of the phi store instruction being removed.
+    MOperand srcReg{};            ///< Source physical register (the store's source).
+    MOperand dstReg{};            ///< Destination physical register (the load's destination).
+    RegClass cls{RegClass::GPR};  ///< GPR or FPR — selects MovRR vs FMovRR opcode.
 };
 
 /// @brief Order a set of parallel register moves so that no destination is overwritten
@@ -205,8 +205,8 @@ std::size_t hoistLoopConstants(MFunction &fn) {
     };
 
     struct LoopInfo {
-        std::size_t header;
-        std::size_t latch;
+        std::size_t header{0};
+        std::size_t latch{0};
         std::unordered_set<std::size_t> body;
     };
 
@@ -617,15 +617,15 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
     };
 
     struct PhiLoad {
-        std::size_t instrIdx;
-        int64_t fpOffset;
-        MOperand dstReg;
+        std::size_t instrIdx{0};
+        int64_t fpOffset{0};
+        MOperand dstReg{};
     };
 
     struct PhiStore {
-        std::size_t instrIdx;
-        int64_t fpOffset;
-        MOperand srcReg;
+        std::size_t instrIdx{0};
+        int64_t fpOffset{0};
+        MOperand srcReg{};
     };
 
     auto appendPhiLoads =

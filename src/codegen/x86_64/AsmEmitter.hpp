@@ -311,12 +311,12 @@ struct OperandPattern {
 
 /// \brief Descriptor tying opcodes to textual mnemonics and operand policies.
 struct EncodingRow {
-    MOpcode opcode;            ///< Opcode handled by this specification.
-    std::string_view mnemonic; ///< Canonical mnemonic without condition suffixes.
-    EncodingForm form;         ///< Encoding form describing operand semantics.
-    OperandOrder order;        ///< Operand emission policy for the opcode.
-    OperandPattern pattern;    ///< Operand kind pattern used for lookup.
-    EncodingFlag flags;        ///< ModRM/SIB/immediate/prefix metadata.
+    MOpcode opcode{MOpcode::MOVrr};           ///< Opcode handled by this specification.
+    std::string_view mnemonic;                ///< Canonical mnemonic without condition suffixes.
+    EncodingForm form{EncodingForm::Nullary}; ///< Encoding form describing operand semantics.
+    OperandOrder order{OperandOrder::NONE};   ///< Operand emission policy for the opcode.
+    OperandPattern pattern{};                 ///< Operand kind pattern used for lookup.
+    EncodingFlag flags{EncodingFlag::None};   ///< ModRM/SIB/immediate/prefix metadata.
 };
 
 /// \brief Locate the encoding row matching an opcode and operand sequence.

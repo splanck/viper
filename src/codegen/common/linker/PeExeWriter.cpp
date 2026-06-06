@@ -31,6 +31,7 @@
 #include <fstream>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -64,6 +65,21 @@ struct ImportLayout {
     std::unordered_map<std::string, uint32_t> slotRvas;
     std::vector<std::pair<uint32_t, uint64_t>> slotInitializers;
 };
+
+/// @brief Append a fixed-width PE/COFF section-name field.
+/// @details PE section headers carry exactly eight name bytes. This helper
+///          emits a zero-padded field with explicit bounds so overlong names are
+///          truncated intentionally and short names never depend on strncpy's
+///          C-string termination behavior.
+/// @param file Destination executable byte buffer.
+/// @param name Section name to serialize.
+/// @param width Required field width in bytes.
+void appendFixedNameField(std::vector<uint8_t> &file, std::string_view name, size_t width) {
+    for (size_t i = 0; i < width; ++i) {
+        const uint8_t byte = i < name.size() ? static_cast<uint8_t>(name[i]) : 0;
+        file.push_back(byte);
+    }
+}
 
 struct TlsLayout {
     std::vector<uint8_t> data;
@@ -986,8 +1002,7 @@ bool writePeExe(const std::string &path,
         }
         const auto &sec = layout.sections[entry.sectionIndex];
         if (!sec.alloc) {
-            err << "error: PE base relocation references non-alloc section '" << sec.name
-                << "'\n";
+            err << "error: PE base relocation references non-alloc section '" << sec.name << "'\n";
             return false;
         }
         if (entry.offset > sec.data.size() || sec.data.size() - entry.offset < 8) {
@@ -1259,9 +1274,12 @@ bool writePeExe(const std::string &path,
     }
 
     for (const auto &sec : sections) {
-        char secName[8] = {};
-        std::strncpy(secName, sec.name.c_str(), sizeof(secName));
-        file.insert(file.end(), secName, secName + sizeof(secName));
+        if (sec.name.size() > 8) {
+            err << "error: PE section name '" << sec.name
+                << "' exceeds the 8-byte executable section-header limit\n";
+            return false;
+        }
+        appendFixedNameField(file, sec.name, 8);
 
         writeLE32(file, sec.virtualSize);
         writeLE32(file, sec.virtualAddress);

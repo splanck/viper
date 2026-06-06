@@ -35,11 +35,11 @@ namespace viper::codegen::linker {
 size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
                           std::unordered_map<std::string, GlobalSymEntry> &globalSyms) {
     struct SymLoc {
-        size_t objIdx;
-        size_t symIdx;
-        uint32_t secIdx;
-        size_t originalOffset;
-        size_t strLen;
+        size_t objIdx = 0;
+        size_t symIdx = 0;
+        uint32_t secIdx = 0;
+        size_t originalOffset = 0;
+        size_t strLen = 0;
         bool keepBytes = true;
     };
 

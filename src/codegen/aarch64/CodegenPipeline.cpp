@@ -46,6 +46,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <string_view>
 #include <unordered_set>
@@ -183,13 +184,16 @@ static int linkToExe(const std::string &asmPath,
 }
 
 /// @brief Populate @p archives with all runtime archive paths required for linking.
-/// @details Deduplicates by absolute path. On Windows, always pulls in Oop/Arrays/Collections/
-///          Threads/Text/IoFs alongside the Base archive because the Windows CRT startup expects
-///          them to be present. Graphics and Audio support libraries are appended when the link
-///          context declares those components.
-/// @param ctx     Link context produced by prepareLinkContext/prepareLinkContextFromSymbols.
+/// @details Deduplicates by absolute path. When the requested target platform is
+///          Windows, always pulls in Oop/Arrays/Collections/Threads/Text/IoFs
+///          alongside the Base archive because the Windows CRT startup expects
+///          them to be present. Graphics and Audio support libraries are
+///          appended when the link context declares those components.
+/// @param ctx Link context produced by prepareLinkContext/prepareLinkContextFromSymbols.
+/// @param targetPlatform Requested OS platform; Host is resolved through targetLinkPlatform().
 /// @param archives Output list; entries are absolute paths appended in dependency order.
 static void collectNativeLinkArchives(const common::LinkContext &ctx,
+                                      TargetPlatform targetPlatform,
                                       std::vector<std::string> &archives) {
     std::unordered_set<std::string> seenArchives;
 
@@ -208,8 +212,8 @@ static void collectNativeLinkArchives(const common::LinkContext &ctx,
     for (const auto &entry : ctx.requiredArchives)
         appendIfExists(entry.second);
 
-#if defined(_WIN32)
-    if (common::hasComponent(ctx, RtComponent::Base)) {
+    if (targetLinkPlatform(targetPlatform) == linker::LinkPlatform::Windows &&
+        common::hasComponent(ctx, RtComponent::Base)) {
         appendComponent(RtComponent::Oop);
         appendComponent(RtComponent::Arrays);
         appendComponent(RtComponent::Collections);
@@ -217,7 +221,6 @@ static void collectNativeLinkArchives(const common::LinkContext &ctx,
         appendComponent(RtComponent::Text);
         appendComponent(RtComponent::IoFs);
     }
-#endif
 
     if (common::hasComponent(ctx, RtComponent::Graphics)) {
         appendIfExists(common::supportLibraryPath(ctx.buildDir, "vipergui"));
@@ -277,7 +280,7 @@ static int linkObjToExe(const std::string &objPath,
     linkOpts.preserveDebugSections = preserveDebugSections;
     linkOpts.windowsDebugRuntime = windowsDebugRuntime;
     linkOpts.extraObjPaths = extraObjects;
-    collectNativeLinkArchives(ctx, linkOpts.archivePaths);
+    collectNativeLinkArchives(ctx, targetPlatform, linkOpts.archivePaths);
     if (ctx.needsZiaFrontend) {
         const auto ziaLib = common::supportLibraryPath(ctx.buildDir, "fe_zia");
         if (common::fileExists(ziaLib))
@@ -558,27 +561,60 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
     // --- Inject asset blob into .rodata (if present) ---
     if (pipelineModule.binaryRodata && !opts_.asset_blob_path.empty()) {
         std::ifstream af(opts_.asset_blob_path, std::ios::binary | std::ios::ate);
-        if (af.is_open()) {
-            auto blobSize = af.tellg();
-            if (blobSize > 0) {
-                af.seekg(0);
-                std::vector<uint8_t> assetBlob(static_cast<size_t>(blobSize));
-                af.read(reinterpret_cast<char *>(assetBlob.data()), blobSize);
-
-                // AArch64 MachO writer adds _ prefix to global symbols automatically.
-                auto &rodata = *pipelineModule.binaryRodata;
-                rodata.alignTo(16);
-                rodata.defineSymbol("viper_asset_blob",
-                                    objfile::SymbolBinding::Global,
-                                    objfile::SymbolSection::Rodata);
-                rodata.emitBytes(assetBlob.data(), assetBlob.size());
-                rodata.alignTo(8);
-                rodata.defineSymbol("viper_asset_blob_size",
-                                    objfile::SymbolBinding::Global,
-                                    objfile::SymbolSection::Rodata);
-                rodata.emit64LE(static_cast<uint64_t>(assetBlob.size()));
+        if (!af.is_open()) {
+            err << "error: failed to open asset blob '" << opts_.asset_blob_path << "'\n";
+            result.exit_code = 1;
+            return finish();
+        }
+        const std::streampos blobSizePos = af.tellg();
+        if (blobSizePos < 0) {
+            err << "error: failed to determine asset blob size '" << opts_.asset_blob_path << "'\n";
+            result.exit_code = 1;
+            return finish();
+        }
+        const auto blobSizeU64 = static_cast<uint64_t>(blobSizePos);
+        if (blobSizeU64 > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
+            err << "error: asset blob '" << opts_.asset_blob_path
+                << "' is too large for this host\n";
+            result.exit_code = 1;
+            return finish();
+        }
+        const auto blobSize = static_cast<size_t>(blobSizeU64);
+        if (blobSize > static_cast<size_t>(std::numeric_limits<std::streamsize>::max())) {
+            err << "error: asset blob '" << opts_.asset_blob_path
+                << "' is too large for a single stream read\n";
+            result.exit_code = 1;
+            return finish();
+        }
+        std::vector<uint8_t> assetBlob(blobSize);
+        af.seekg(0);
+        if (!af.good()) {
+            err << "error: failed to seek asset blob '" << opts_.asset_blob_path << "'\n";
+            result.exit_code = 1;
+            return finish();
+        }
+        if (blobSize != 0) {
+            af.read(reinterpret_cast<char *>(assetBlob.data()),
+                    static_cast<std::streamsize>(assetBlob.size()));
+            if (af.gcount() != static_cast<std::streamsize>(assetBlob.size())) {
+                err << "error: failed to read complete asset blob '" << opts_.asset_blob_path
+                    << "'\n";
+                result.exit_code = 1;
+                return finish();
             }
         }
+
+        // AArch64 MachO writer adds _ prefix to global symbols automatically.
+        auto &rodata = *pipelineModule.binaryRodata;
+        rodata.alignTo(16);
+        rodata.defineSymbol(
+            "viper_asset_blob", objfile::SymbolBinding::Global, objfile::SymbolSection::Rodata);
+        rodata.emitBytes(assetBlob.data(), assetBlob.size());
+        rodata.alignTo(8);
+        rodata.defineSymbol("viper_asset_blob_size",
+                            objfile::SymbolBinding::Global,
+                            objfile::SymbolSection::Rodata);
+        rodata.emit64LE(static_cast<uint64_t>(assetBlob.size()));
     }
 
     if (opts_.assembler_mode == AssemblerMode::Native && pipelineModule.binaryText) {
@@ -602,14 +638,15 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
         const bool hasDebugLine = !pipelineModule.debugLineData.empty();
         if (hasDebugLine)
             writer->setDebugLineData(std::move(pipelineModule.debugLineData));
-        const bool wroteObject = hasDebugLine ? writer->write(objPath.string(),
-                                                              *pipelineModule.binaryText,
-                                                              *pipelineModule.binaryRodata,
-                                                              err)
-                                              : writer->write(objPath.string(),
-                                                              pipelineModule.binaryTextSections,
-                                                              *pipelineModule.binaryRodata,
-                                                              err);
+        const bool wroteObject = !pipelineModule.binaryTextSections.empty()
+                                     ? writer->write(objPath.string(),
+                                                     pipelineModule.binaryTextSections,
+                                                     *pipelineModule.binaryRodata,
+                                                     err)
+                                     : writer->write(objPath.string(),
+                                                     *pipelineModule.binaryText,
+                                                     *pipelineModule.binaryRodata,
+                                                     err);
         if (!wroteObject) {
             err << "error: failed to write object file '" << objPath.string() << "'\n";
             result.exit_code = 1;

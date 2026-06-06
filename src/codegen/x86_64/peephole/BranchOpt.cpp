@@ -12,7 +12,7 @@
 //          fallthrough jump removal.
 // Key invariants:
 //   - Entry block always stays first in the layout.
-//   - Branch chain resolution limits hops to 8 to avoid cycles.
+//   - Branch chain resolution detects cycles and leaves cyclic chains unchanged.
 //   - All control-flow rewrites preserve semantic equivalence.
 // Ownership/Lifetime:
 //   - Stateless; all state is owned by the caller.
@@ -26,6 +26,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace viper::codegen::x64::peephole {
@@ -268,18 +269,7 @@ void moveColdBlocks(MFunction &fn, PeepholeStats &stats) {
     for (std::size_t bi = 1; bi < fn.blocks.size(); ++bi) {
         const auto &block = fn.blocks[bi];
         bool isCold = false;
-
-        // Check for trap/error indicators in label
-        const auto &label = block.label;
-        if (!fallthroughProtected[bi] &&
-            (label.find("trap") != std::string::npos || label.find("error") != std::string::npos ||
-             label.find("panic") != std::string::npos ||
-             label.find("unreachable") != std::string::npos)) {
-            isCold = true;
-        }
-
-        // Check for UD2 instruction (trap)
-        if (!isCold && !fallthroughProtected[bi]) {
+        if (!fallthroughProtected[bi]) {
             for (const auto &instr : block.instructions) {
                 if (instr.opcode == MOpcode::UD2) {
                     isCold = true;
@@ -329,15 +319,28 @@ void eliminateBranchChains(MFunction &fn, PeepholeStats &stats) {
         }
     }
 
-    // Resolve chains (limit hops to avoid cycles from self-loops).
+    // Resolve chains with explicit cycle detection. Cyclic forwarding entries
+    // are erased so existing branch targets remain unchanged.
+    std::vector<std::string> cyclicLabels;
     for (auto &[label, target] : forwarding) {
-        for (int hops = 0; hops < 8; ++hops) {
+        std::unordered_set<std::string> seen;
+        seen.insert(label);
+        bool cycle = false;
+        for (;;) {
+            if (!seen.insert(target).second) {
+                cycle = true;
+                break;
+            }
             auto it = forwarding.find(target);
-            if (it == forwarding.end() || it->second == target)
+            if (it == forwarding.end())
                 break;
             target = it->second;
         }
+        if (cycle)
+            cyclicLabels.push_back(label);
     }
+    for (const auto &label : cyclicLabels)
+        forwarding.erase(label);
 
     // Retarget branches.
     if (!forwarding.empty()) {

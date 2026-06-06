@@ -970,8 +970,8 @@ std::optional<int> EmitCommon::icmpConditionCode(std::string_view opcode) noexce
     /// Static lookup table mapping icmp suffix strings to SETcc condition codes.
     /// Order: eq=0, ne=1, slt=2, sle=3, sgt=4, sge=5, ugt=6, uge=7, ult=8, ule=9.
     struct Entry {
-        std::string_view suffix;
-        int code;
+        std::string_view suffix{}; ///< Opcode suffix without the `icmp_` prefix.
+        int code{0};               ///< SETcc condition-code index for the suffix.
     };
 
     static constexpr Entry kTable[] = {
@@ -1072,8 +1072,8 @@ std::optional<int> EmitCommon::fcmpConditionCode(std::string_view opcode) noexce
     /// Uses unsigned condition codes because UCOMISD clears SF/OF:
     /// lt→8 ("b"/below), le→9 ("be"/below-or-equal), gt→6 ("a"/above), ge→7 ("ae"/above-or-equal).
     struct Entry {
-        std::string_view suffix;
-        int code;
+        std::string_view suffix{}; ///< Opcode suffix without the `fcmp_` prefix.
+        int code{0};               ///< SETcc condition-code index for the suffix.
     };
 
     static constexpr Entry kTable[] = {

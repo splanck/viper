@@ -312,11 +312,11 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
     // Track member headers and their file offsets for symbol index mapping.
     struct RawMember {
         std::string name;
-        size_t headerOffset;
-        size_t dataOffset;
-        size_t dataSize;
-        size_t bsdNameLen; // BSD "#1/N" name length (0 if not BSD long name).
-        bool isSpecial;    // true for "/", "//", "__.SYMDEF"
+        size_t headerOffset = 0;
+        size_t dataOffset = 0;
+        size_t dataSize = 0;
+        size_t bsdNameLen = 0;  // BSD "#1/N" name length (0 if not BSD long name).
+        bool isSpecial = false; // true for "/", "//", "__.SYMDEF"
     };
 
     std::vector<RawMember> rawMembers;

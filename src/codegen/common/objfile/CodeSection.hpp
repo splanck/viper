@@ -84,6 +84,33 @@ struct WinArm64UnwindEntry {
     uint8_t epilogCodeIndex{0};
 };
 
+/// @brief Return the encoded fixup width for a relocation kind.
+/// @details CodeSection uses this construction-time check to reject relocation
+///          records whose source window cannot fit inside the section byte
+///          buffer. Object writers still perform architecture-specific
+///          validation before serializing, but invalid offsets now fail at the
+///          point where the relocation is recorded.
+/// @param kind Architecture-independent relocation kind.
+/// @return Number of bytes occupied by the fixup field.
+inline size_t codeSectionRelocationFixupWidth(RelocKind kind) {
+    switch (kind) {
+        case RelocKind::PCRel32:
+        case RelocKind::Branch32:
+        case RelocKind::A64Call26:
+        case RelocKind::A64Jump26:
+        case RelocKind::A64AdrpPage21:
+        case RelocKind::A64AddPageOff12:
+        case RelocKind::A64LdSt32Off12:
+        case RelocKind::A64LdSt64Off12:
+        case RelocKind::A64LdSt128Off12:
+        case RelocKind::A64CondBr19:
+            return 4;
+        case RelocKind::Abs64:
+            return 8;
+    }
+    return 0;
+}
+
 /// A growable byte buffer with relocation and symbol tracking.
 ///
 /// Used by binary encoders to accumulate machine code (.text) or read-only
@@ -293,7 +320,13 @@ class CodeSection {
                                     SymbolSection targetSection,
                                     size_t targetOffset,
                                     int64_t addend = 0) {
-        addSectionOffsetRelocationAt(currentOffset(), kind, targetSection, targetOffset, addend);
+        if (targetSection == SymbolSection::Undefined)
+            throw std::invalid_argument(
+                "CodeSection section-offset relocation requires a target section");
+        Relocation rel{currentOffset(), kind, 0, addend, targetSection};
+        rel.targetOffsetValid = true;
+        rel.targetOffset = targetOffset;
+        relocations_.push_back(rel);
     }
 
     /// Record a relocation that targets a concrete offset in a specific CodeSection.
@@ -302,8 +335,17 @@ class CodeSection {
                                     SymbolSection targetSection,
                                     size_t targetOffset,
                                     int64_t addend = 0) {
-        addSectionOffsetRelocationAt(
-            currentOffset(), kind, target, targetSection, targetOffset, addend);
+        if (targetSection == SymbolSection::Undefined)
+            throw std::invalid_argument(
+                "CodeSection section-offset relocation requires a target section");
+        if (!target.containsOffsetRange(targetOffset, 0))
+            throw std::out_of_range("CodeSection relocation target offset is out of range");
+        Relocation rel{currentOffset(), kind, 0, addend, targetSection};
+        rel.targetOffsetValid = true;
+        rel.targetOffset = targetOffset;
+        rel.targetSectionIdentityValid = true;
+        rel.targetSectionIdentity = target.sectionIdentity();
+        relocations_.push_back(rel);
     }
 
     /// Record a section-offset relocation at a specific source offset.
@@ -335,6 +377,8 @@ class CodeSection {
                 "CodeSection section-offset relocation requires a target section");
         if (offset < offsetBias_ || offset - offsetBias_ > bytes_.size())
             throw std::out_of_range("CodeSection relocation offset is out of range");
+        if (!target.containsOffsetRange(targetOffset, 0))
+            throw std::out_of_range("CodeSection relocation target offset is out of range");
         Relocation rel{offset, kind, 0, addend, targetSection};
         rel.targetOffsetValid = true;
         rel.targetOffset = targetOffset;
@@ -384,6 +428,23 @@ class CodeSection {
         bytes_[offset - offsetBias_] = val;
     }
 
+    /// @brief Replace an existing logical byte range without resizing the section.
+    /// @details This constrained patch API is intended for writer-side addend
+    ///          embedding and late fixups that already know their exact byte
+    ///          payload. It preserves relocation and symbol offsets by rejecting
+    ///          any range that would extend beyond emitted bytes.
+    /// @param offset Logical section offset at which @p data should be written.
+    /// @param data Replacement bytes. Empty ranges are accepted as no-ops.
+    void patchBytes(size_t offset, const std::vector<uint8_t> &data) {
+        if (data.empty())
+            return;
+        if (!containsOffsetRange(offset, data.size()))
+            throw std::out_of_range("CodeSection patchBytes range is out of range");
+        const size_t physicalOffset = offset - offsetBias_;
+        std::copy(
+            data.begin(), data.end(), bytes_.begin() + static_cast<std::ptrdiff_t>(physicalOffset));
+    }
+
     /// Read 4 bytes at a logical offset, little-endian.
     uint32_t read32LE(size_t offset) const {
         if (!containsOffsetRange(offset, 4))
@@ -402,7 +463,10 @@ class CodeSection {
         return bytes_;
     }
 
-    /// Mutable byte buffer (for Mach-O addend embedding).
+    /// Mutable byte buffer compatibility escape hatch.
+    ///
+    /// Prefer patch32LE(), patch8(), or patchBytes() for bounded updates that
+    /// cannot accidentally resize the section and invalidate relocation sites.
     std::vector<uint8_t> &mutableBytes() {
         return bytes_;
     }

@@ -56,6 +56,21 @@ static std::string sanitizeLabel(const std::string &name) {
     return viper::codegen::common::sanitizeLabel(name);
 }
 
+/// @brief Normalize a MIR function name for object-file symbol tables.
+/// @details Text assembly and binary object emission must agree on public
+///          function names. The frontend spelling @c @main is the canonical
+///          program entry point and is emitted as @c main; all other names are
+///          passed through the common assembler label sanitizer so object
+///          writers never receive characters that are invalid in downstream
+///          symbol consumers.
+/// @param name Raw MIR function name.
+/// @return Sanitized object-file symbol name.
+static std::string objectFunctionSymbolName(const std::string &name) {
+    if (name == "@main")
+        return "main";
+    return sanitizeLabel(name);
+}
+
 /// Extract PhysReg from a register operand.
 static PhysReg getReg(const MOperand &op) {
     if (op.kind != MOperand::Kind::Reg)
@@ -1041,8 +1056,9 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
         }
         pendingBranches_.reserve(branchCount);
 
-        const uint32_t funcSymIdx = text.defineSymbol(
-            fn.name, objfile::SymbolBinding::Global, objfile::SymbolSection::Text);
+        const uint32_t funcSymIdx = text.defineSymbol(objectFunctionSymbolName(fn.name),
+                                                      objfile::SymbolBinding::Global,
+                                                      objfile::SymbolSection::Text);
 
         // Emit BTI landing pad for indirect call targets (safe NOP on pre-ARMv8.5).
         if (currentAbi_ == ABIFormat::Darwin)
@@ -1184,9 +1200,22 @@ void A64BinaryEncoder::encodePrologue(const MFunction &fn, objfile::CodeSection 
     struct Steps {
         A64BinaryEncoder &self;
         objfile::CodeSection &cs;
-        uint32_t sp;
-        uint32_t fp;
-        uint32_t lr;
+        uint32_t sp{0};
+        uint32_t fp{0};
+        uint32_t lr{0};
+
+        /// @brief Bind binary prologue emission state to frame-codegen callbacks.
+        /// @param encoder Encoder that owns the low-level instruction helpers.
+        /// @param section Destination text section receiving encoded instructions.
+        /// @param stackPointer Hardware register number for SP.
+        /// @param framePointer Hardware register number for FP/X29.
+        /// @param linkRegister Hardware register number for LR/X30.
+        Steps(A64BinaryEncoder &encoder,
+              objfile::CodeSection &section,
+              uint32_t stackPointer,
+              uint32_t framePointer,
+              uint32_t linkRegister)
+            : self(encoder), cs(section), sp(stackPointer), fp(framePointer), lr(linkRegister) {}
 
         void paciasp() const {
             self.emit32(kPaciasp, cs);
@@ -1233,7 +1262,7 @@ void A64BinaryEncoder::encodePrologue(const MFunction &fn, objfile::CodeSection 
                     fn.savedFPRs,
                     fn.localFrameSize,
                     currentAbi_ == ABIFormat::Darwin,
-                    Steps{*this, cs, sp, fp, lr});
+                    Steps(*this, cs, sp, fp, lr));
 }
 
 void A64BinaryEncoder::encodeEpilogue(const MFunction &fn, objfile::CodeSection &cs) {
@@ -1244,9 +1273,22 @@ void A64BinaryEncoder::encodeEpilogue(const MFunction &fn, objfile::CodeSection 
     struct Steps {
         A64BinaryEncoder &self;
         objfile::CodeSection &cs;
-        uint32_t sp;
-        uint32_t fp;
-        uint32_t lr;
+        uint32_t sp{0};
+        uint32_t fp{0};
+        uint32_t lr{0};
+
+        /// @brief Bind binary epilogue emission state to frame-codegen callbacks.
+        /// @param encoder Encoder that owns the low-level instruction helpers.
+        /// @param section Destination text section receiving encoded instructions.
+        /// @param stackPointer Hardware register number for SP.
+        /// @param framePointer Hardware register number for FP/X29.
+        /// @param linkRegister Hardware register number for LR/X30.
+        Steps(A64BinaryEncoder &encoder,
+              objfile::CodeSection &section,
+              uint32_t stackPointer,
+              uint32_t framePointer,
+              uint32_t linkRegister)
+            : self(encoder), cs(section), sp(stackPointer), fp(framePointer), lr(linkRegister) {}
 
         void ldpFprPair(PhysReg r0, PhysReg r1) const {
             self.emit32(
@@ -1289,7 +1331,7 @@ void A64BinaryEncoder::encodeEpilogue(const MFunction &fn, objfile::CodeSection 
                     fn.savedFPRs,
                     fn.localFrameSize,
                     currentAbi_ == ABIFormat::Darwin,
-                    Steps{*this, cs, sp, fp, lr});
+                    Steps(*this, cs, sp, fp, lr));
 }
 
 void A64BinaryEncoder::recordWindowsArm64UnwindEntry(const MFunction &fn,
@@ -2141,19 +2183,23 @@ void A64BinaryEncoder::encodeAddressInstr(const MInstr &mi, objfile::CodeSection
         currentRodata_ != nullptr ? currentRodata_->symbols().find(sym) : 0;
     const auto relocKind =
         isAdrp ? objfile::RelocKind::A64AdrpPage21 : objfile::RelocKind::A64AddPageOff12;
-    if (rodataSymIdx != 0) {
-        const auto &rodataSym = currentRodata_->symbols().at(rodataSymIdx);
-        cs.addSectionOffsetRelocation(
-            relocKind, *currentRodata_, objfile::SymbolSection::Rodata, rodataSym.offset);
-    } else {
-        const uint32_t symIdx = cs.findOrDeclareSymbol(sym);
-        cs.addRelocation(relocKind, symIdx, 0);
-    }
+    const size_t relocOffset = cs.currentOffset();
     if (isAdrp) {
         emit32(kAdrp | rd, cs); // immediate filled by linker
     } else {
         const uint32_t rn = hwGPR(getReg(mi.ops[1]));
         emit32(encodeAddSubImm(kAddRI, rd, rn, 0), cs); // imm12 filled by linker
+    }
+    if (rodataSymIdx != 0) {
+        const auto &rodataSym = currentRodata_->symbols().at(rodataSymIdx);
+        cs.addSectionOffsetRelocationAt(relocOffset,
+                                        relocKind,
+                                        *currentRodata_,
+                                        objfile::SymbolSection::Rodata,
+                                        rodataSym.offset);
+    } else {
+        const uint32_t symIdx = cs.findOrDeclareSymbol(sym);
+        cs.addRelocationAt(relocOffset, relocKind, symIdx, 0);
     }
 }
 
@@ -2328,8 +2374,9 @@ void A64BinaryEncoder::encodeBranchInstr(const MInstr &mi, objfile::CodeSection 
                 emit32(kBl | (static_cast<uint32_t>(imm26) & 0x3FFFFFF), cs);
             } else {
                 uint32_t symIdx = cs.findOrDeclareSymbol(sym);
-                cs.addRelocation(objfile::RelocKind::A64Call26, symIdx, 0);
+                const size_t relocOffset = cs.currentOffset();
                 emit32(kBl, cs); // imm26 = 0, filled by linker
+                cs.addRelocationAt(relocOffset, objfile::RelocKind::A64Call26, symIdx, 0);
             }
             return;
         }

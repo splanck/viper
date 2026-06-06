@@ -349,6 +349,23 @@ add_custom_target(format
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
+find_program(CPPCHECK_EXECUTABLE cppcheck)
+if(CPPCHECK_EXECUTABLE)
+  add_custom_target(cppcheck-codegen
+    COMMAND ${CPPCHECK_EXECUTABLE}
+            --project=${CMAKE_BINARY_DIR}/compile_commands.json
+            "--file-filter=src/codegen/*"
+            --enable=all
+            --inconclusive
+            --inline-suppr
+            --suppress=missingIncludeSystem
+            --suppress=unusedFunction
+            --suppress=unmatchedSuppression
+            "--template=gcc"
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Run cppcheck over src/codegen")
+endif()
+
 # Convenience cleanup: clean build tree and remove source-generated artifacts.
 add_custom_target(clean-all
   COMMAND ${CMAKE_COMMAND} --build . --target clean

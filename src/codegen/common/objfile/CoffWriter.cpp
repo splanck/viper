@@ -34,6 +34,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -252,8 +253,23 @@ static bool patchCoffRelocationAddend(const CodeSection &section,
     return true;
 }
 
+/// @brief Append a fixed-width, zero-padded COFF name field.
+/// @details COFF section headers carry exactly eight raw name bytes. This
+///          helper copies at most @p width bytes from @p name and pads the
+///          remainder with NUL bytes without indexing past the end of short
+///          string literals such as ".text".
+/// @param out Destination byte buffer receiving the fixed-size field.
+/// @param name Section name bytes to copy.
+/// @param width Required field width in bytes.
+static void appendFixedNameField(std::vector<uint8_t> &out, std::string_view name, size_t width) {
+    for (size_t i = 0; i < width; ++i) {
+        const uint8_t byte = i < name.size() ? static_cast<uint8_t>(name[i]) : 0;
+        out.push_back(byte);
+    }
+}
+
 static void writeSectionHeader(std::vector<uint8_t> &out,
-                               const char *name,
+                               std::string_view name,
                                uint32_t virtualSize,
                                uint32_t virtualAddr,
                                uint32_t rawDataSize,
@@ -261,15 +277,7 @@ static void writeSectionHeader(std::vector<uint8_t> &out,
                                uint32_t relocPtr,
                                uint32_t numRelocs,
                                uint32_t characteristics) {
-    for (int i = 0; i < 8; ++i) {
-        if (name[i] != '\0') {
-            out.push_back(static_cast<uint8_t>(name[i]));
-        } else {
-            for (int j = i; j < 8; ++j)
-                out.push_back(0);
-            break;
-        }
-    }
+    appendFixedNameField(out, name, 8);
 
     appendLE32(out, virtualSize);
     appendLE32(out, virtualAddr);
@@ -1373,15 +1381,8 @@ bool CoffWriter::write(const std::string &path,
                 return false;
             const uint32_t debugChars =
                 kImageScnCntInitData | kImageScnMemDiscardable | kImageScnMemRead | kImageScnAlign1;
-            writeSectionHeader(file,
-                               debugSecName.c_str(),
-                               0,
-                               0,
-                               debugLineDataSize,
-                               debugLineDataOff,
-                               0,
-                               0,
-                               debugChars);
+            writeSectionHeader(
+                file, debugSecName, 0, 0, debugLineDataSize, debugLineDataOff, 0, 0, debugChars);
         }
 
         padTo(file, textDataOff);
@@ -2152,15 +2153,8 @@ bool CoffWriter::write(const std::string &path,
         if (hasDebugLine) {
             const uint32_t debugChars =
                 kImageScnCntInitData | kImageScnMemDiscardable | kImageScnMemRead | kImageScnAlign1;
-            writeSectionHeader(file,
-                               debugHeaderName.c_str(),
-                               0,
-                               0,
-                               debugLineDataSize,
-                               debugLineDataOff,
-                               0,
-                               0,
-                               debugChars);
+            writeSectionHeader(
+                file, debugHeaderName, 0, 0, debugLineDataSize, debugLineDataOff, 0, 0, debugChars);
         }
 
         for (size_t ti = 0; ti < textCount; ++ti) {

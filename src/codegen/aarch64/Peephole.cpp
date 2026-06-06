@@ -46,25 +46,25 @@ namespace {
 
 /// @brief Descriptor for an FP-relative load at the start of a join block.
 struct JoinLoad {
-    std::size_t instrIndex; ///< Index of the load instruction in the block.
-    int64_t offset;         ///< FP-relative byte offset loaded from.
-    MOperand dstReg;        ///< Destination register operand.
-    RegClass cls;           ///< GPR or FPR.
+    std::size_t instrIndex{0};   ///< Index of the load instruction in the block.
+    int64_t offset{0};           ///< FP-relative byte offset loaded from.
+    MOperand dstReg{};           ///< Destination register operand.
+    RegClass cls{RegClass::GPR}; ///< GPR or FPR.
 };
 
 /// @brief Descriptor for an FP-relative store at the end of a predecessor block.
 struct JoinStore {
-    std::size_t instrIndex; ///< Index of the store instruction in the predecessor.
-    int64_t offset;         ///< FP-relative byte offset stored to.
-    MOperand srcReg;        ///< Source register operand.
-    RegClass cls;           ///< GPR or FPR.
+    std::size_t instrIndex{0};   ///< Index of the store instruction in the predecessor.
+    int64_t offset{0};           ///< FP-relative byte offset stored to.
+    MOperand srcReg{};           ///< Source register operand.
+    RegClass cls{RegClass::GPR}; ///< GPR or FPR.
 };
 
 /// @brief A single register-to-register copy to be inserted on a pred→join edge.
 struct JoinCopy {
-    MOperand srcReg; ///< Source (value stored in predecessor).
-    MOperand dstReg; ///< Destination (value loaded in join block).
-    RegClass cls;    ///< GPR or FPR.
+    MOperand srcReg{};           ///< Source (value stored in predecessor).
+    MOperand dstReg{};           ///< Destination (value loaded in join block).
+    RegClass cls{RegClass::GPR}; ///< GPR or FPR.
 };
 
 /// @brief Build a 32-bit key encoding register class and physical ID for set lookups.
@@ -586,8 +586,8 @@ static bool coalesceJoinPhiLoads(MFunction &fn, PeepholeStats &stats) {
             continue;
 
         struct PredStorePlan {
-            std::size_t predIndex;
-            std::unordered_map<int64_t, JoinStore> stores;
+            std::size_t predIndex{0};                      ///< Predecessor block index.
+            std::unordered_map<int64_t, JoinStore> stores; ///< Stores keyed by FP offset.
         };
 
         std::vector<PredStorePlan> predStorePlans;
@@ -756,8 +756,8 @@ static void forwardLayoutSuccessorStoreLoad(MFunction &fn, PeepholeStats &stats)
 
         // Collect trailing FP-relative stores in the predecessor.
         struct StoreInfo {
-            std::size_t idx;
-            MOperand srcReg;
+            std::size_t idx{0}; ///< Store instruction index in the predecessor block.
+            MOperand srcReg{};  ///< Stored source register.
         };
 
         std::unordered_map<int64_t, StoreInfo> endStores;
@@ -773,8 +773,7 @@ static void forwardLayoutSuccessorStoreLoad(MFunction &fn, PeepholeStats &stats)
             if (instr.opc == MOpcode::StrRegFpImm && instr.ops.size() >= 2 &&
                 ph::isPhysReg(instr.ops[0]) && instr.ops[1].kind == MOperand::Kind::Imm) {
                 const int64_t off = instr.ops[1].imm;
-                if (endStores.find(off) == endStores.end())
-                    endStores[off] = {i, instr.ops[0]};
+                endStores.try_emplace(off, StoreInfo{i, instr.ops[0]});
                 continue;
             }
 
@@ -785,14 +784,14 @@ static void forwardLayoutSuccessorStoreLoad(MFunction &fn, PeepholeStats &stats)
             continue;
 
         struct PrefixLoad {
-            std::size_t idx;
-            MInstr instr;
+            std::size_t idx{0}; ///< Load instruction index in the successor block.
+            MInstr instr{};     ///< Load instruction to replace when forwarding succeeds.
         };
 
         struct ForwardPair {
-            std::size_t idx;
-            MOperand dstReg;
-            MOperand srcReg;
+            std::size_t idx{0}; ///< Successor load index to rewrite.
+            MOperand dstReg{};  ///< Destination loaded register.
+            MOperand srcReg{};  ///< Predecessor stored register.
         };
 
         std::vector<PrefixLoad> prefixLoads;

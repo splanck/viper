@@ -108,10 +108,10 @@ enum class RelocKind : uint8_t {
 
 /// A relocation entry recorded during binary encoding.
 struct Relocation {
-    size_t offset;        ///< Byte offset in section where fixup applies.
-    RelocKind kind;       ///< Architecture-agnostic relocation type.
-    uint32_t symbolIndex; ///< Index into SymbolTable.
-    int64_t addend;       ///< Addend (ELF RELA style; Mach-O embeds in instruction).
+    size_t offset = 0;                   ///< Byte offset in section where fixup applies.
+    RelocKind kind = RelocKind::PCRel32; ///< Architecture-agnostic relocation type.
+    uint32_t symbolIndex = 0;            ///< Index into SymbolTable.
+    int64_t addend = 0;                  ///< Addend (ELF RELA style; Mach-O embeds in instruction).
     SymbolSection targetSection = SymbolSection::Undefined; ///< Optional cross-section target hint.
     bool targetOffsetValid =
         false;               ///< True when targetSection/targetOffset identify the target directly.

@@ -238,7 +238,7 @@ std::optional<MFunction> tryIntArithmeticFastPaths(FastPathContext &ctx) {
                 if (o0.kind == il::core::Value::Kind::Temp &&
                     o1.kind == il::core::Value::Kind::ConstInt) {
                     for (size_t i = 0; i < bb.params.size(); ++i)
-                        if (bb.params[i].id == o0.id && i < kMaxGPRArgs) {
+                        if (i < kMaxGPRArgs && bb.params[i].id == o0.id) {
                             emitImm(static_cast<unsigned>(i), o1.i64);
                             return ctx.mf;
                         }
@@ -249,7 +249,7 @@ std::optional<MFunction> tryIntArithmeticFastPaths(FastPathContext &ctx) {
                     // Shifts (shl, lshr, ashr) are NOT commutative: `5 << x` != `x << 5`.
                     if (isAdd || isAddOvf) {
                         for (size_t i = 0; i < bb.params.size(); ++i)
-                            if (bb.params[i].id == o1.id && i < kMaxGPRArgs) {
+                            if (i < kMaxGPRArgs && bb.params[i].id == o1.id) {
                                 emitImm(static_cast<unsigned>(i), o0.i64);
                                 return ctx.mf;
                             }
@@ -280,7 +280,7 @@ std::optional<MFunction> tryIntArithmeticFastPaths(FastPathContext &ctx) {
                 if (o0.kind == il::core::Value::Kind::Temp &&
                     o1.kind == il::core::Value::Kind::ConstInt) {
                     for (size_t i = 0; i < bb.params.size(); ++i)
-                        if (bb.params[i].id == o0.id && i < kMaxGPRArgs) {
+                        if (i < kMaxGPRArgs && bb.params[i].id == o0.id) {
                             emitCmpImm(static_cast<unsigned>(i), o1.i64);
                             return ctx.mf;
                         }

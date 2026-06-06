@@ -255,13 +255,13 @@ std::string makeTrampolineSymbolName(const std::vector<ObjFile> &objects,
 
 /// Record of an out-of-range branch that needs a trampoline.
 struct OutOfRangeBranch {
-    size_t objIdx;
-    size_t secIdx;
-    size_t relocIdx;
-    uint32_t targetSymIndex;
-    int64_t targetAddend;
+    size_t objIdx = 0;
+    size_t secIdx = 0;
+    size_t relocIdx = 0;
+    uint32_t targetSymIndex = 0;
+    int64_t targetAddend = 0;
     std::string targetSymName;
-    uint64_t targetAddr;
+    uint64_t targetAddr = 0;
     size_t islandBoundary = 0;
     std::string trampolineSymName;
 };
