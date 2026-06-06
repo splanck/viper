@@ -217,7 +217,7 @@ void ImportResolver::reportCycle(il::support::SourceLoc importLoc,
 /// @param viaImportLoc Location of the bind that pulled this module in (for errors).
 /// @param depth Current recursion depth, bounded by kMaxImportDepth.
 /// @return True on success; false on error (depth/file-count limits, parse failure).
-/// @details Tracks processed/in-progress files so circular binds are diagnosed at the import
+/// @details Tracks processed/in-progress files so circular binds are skipped at the import
 ///          that closes the cycle. Each unprocessed file bind is parsed and processed depth-first;
 ///          its transitive binds are propagated to @p module (deduplicated, with paths normalized
 ///          to absolute) so qualified-name resolution works, and its declarations are prepended in
@@ -248,8 +248,7 @@ bool ImportResolver::processModule(ModuleDecl &module,
         return true;
 
     if (inProgressFiles_.count(normalizedPath) != 0) {
-        reportCycle(viaImportLoc, normalizedPath);
-        return false;
+        return true;
     }
 
     inProgressFiles_.insert(normalizedPath);
@@ -324,8 +323,15 @@ bool ImportResolver::processModule(ModuleDecl &module,
         }
 
         if (inProgressFiles_.count(normalizedBindPath) != 0) {
-            reportCycle(bind.loc, normalizedBindPath);
-            return false;
+            if (auto idIt = fileIdsByPath_.find(normalizedBindPath);
+                idIt != fileIdsByPath_.end()) {
+                bind.resolvedFileId = idIt->second;
+            }
+            if (auto nameIt = moduleNamesByPath_.find(normalizedBindPath);
+                nameIt != moduleNamesByPath_.end()) {
+                bind.resolvedModuleName = nameIt->second;
+            }
+            continue;
         }
 
         auto boundModule = parseFile(bindFilePath, bind.loc);
