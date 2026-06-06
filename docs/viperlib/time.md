@@ -283,6 +283,7 @@ PRINT "Hour: "; Viper.Time.DateTime.Hour(now)
 ' Format as string
 PRINT Viper.Time.DateTime.Format(now, "%Y-%m-%d %H:%M:%S")
 ' Output: "2025-12-06 14:30:00"
+' Empty, null, or embedded-NUL format patterns return an empty string.
 
 ' Local ISO (no Z suffix, consistent with Create)
 PRINT Viper.Time.DateTime.ToLocal(now)
@@ -508,6 +509,7 @@ PRINT "End of month: "; eom.ToString()    ' Output: 2025-06-30
 ' Parse from string
 DIM parsed AS OBJECT = Viper.Time.DateOnly.Parse("2025-12-25")
 PRINT "Parsed: "; parsed.ToString()  ' Output: 2025-12-25
+' DateOnly.Parse accepts exactly YYYY-MM-DD with no hidden suffix bytes.
 
 ' Get today's date
 DIM today AS OBJECT = Viper.Time.DateOnly.Today()

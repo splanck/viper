@@ -70,6 +70,25 @@ static void test_wrap() {
                     strcmp(rt_string_cstr((rt_string)rt_seq_get(lines, 0)), "") == 0);
     }
 
+    // Test 6: Width zero or negative disables wrapping
+    {
+        rt_string text = rt_const_cstr("one two three");
+        rt_string zero = rt_textwrap_wrap(text, 0);
+        test_result("Width zero leaves text unchanged",
+                    strcmp(rt_string_cstr(zero), "one two three") == 0);
+
+        rt_string negative = rt_textwrap_wrap(text, -4);
+        test_result("Negative width leaves text unchanged",
+                    strcmp(rt_string_cstr(negative), "one two three") == 0);
+
+        void *lines = rt_textwrap_wrap_lines(rt_const_cstr("one two\nthree"), 0);
+        test_result("Disabled WrapLines preserves line count", rt_seq_len(lines) == 2);
+        test_result("Disabled WrapLines first line",
+                    strcmp(rt_string_cstr((rt_string)rt_seq_get(lines, 0)), "one two") == 0);
+        test_result("Disabled WrapLines second line",
+                    strcmp(rt_string_cstr((rt_string)rt_seq_get(lines, 1)), "three") == 0);
+    }
+
     printf("\n");
 }
 

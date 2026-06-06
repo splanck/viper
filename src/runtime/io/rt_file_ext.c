@@ -1247,6 +1247,13 @@ static void rt_file_move_impl(rt_string src, rt_string dst, int replace) {
     const char *dst_path =
         rt_io_file_require_path(dst, "Viper.IO.File.Move: invalid destination path");
 
+    rt_fileext_stat_t src_st;
+    if (rt_fileext_stat_path(src_path, &src_st) != 0 ||
+        !rt_fileext_is_regular_mode(src_st.st_mode)) {
+        rt_trap("File.Move: source is not a regular file");
+        return;
+    }
+
     if (rt_fileext_same_existing_file(src_path, dst_path)) {
         rt_trap("File.Move: source and destination are the same file");
         return;

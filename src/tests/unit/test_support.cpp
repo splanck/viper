@@ -292,7 +292,7 @@ int main() {
         const uint32_t tempId = fileSm.addFile(tempPath.string());
         assert(!fileSm.hasLine(tempId, 1));
         {
-            std::ofstream out(tempPath);
+            std::ofstream out(tempPath, std::ios::binary);
             out << "alpha\r\n\r\nomega\r\n";
         }
         assert(fileSm.hasLine(tempId, 1));
@@ -302,7 +302,7 @@ int main() {
         assert(fileSm.getLine(tempId, 3) == "omega");
         std::string_view oldLineView = fileSm.getLine(tempId, 1);
         {
-            std::ofstream out(tempPath);
+            std::ofstream out(tempPath, std::ios::binary);
             out << "updated\n";
         }
         fileSm.invalidateSource(tempId);

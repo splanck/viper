@@ -11,8 +11,16 @@ echo ==========================================
 echo.
 
 REM --- Parallel job detection -------------------------------------------------
-set JOBS=%NUMBER_OF_PROCESSORS%
-if "%JOBS%"=="" set JOBS=8
+REM MSVC can exhaust compiler heap when a large clean build fans out across every
+REM logical CPU. Keep the automatic default conservative; VIPER_JOBS remains an
+REM explicit opt-in for larger builders.
+if not "%VIPER_JOBS%"=="" (
+    set "JOBS=%VIPER_JOBS%"
+) else (
+    set "JOBS=%NUMBER_OF_PROCESSORS%"
+    if "!JOBS!"=="" set "JOBS=8"
+    if !JOBS! GTR 8 set "JOBS=8"
+)
 echo Using %JOBS% parallel jobs
 
 if "%VIPER_BUILD_DIR%"=="" set "VIPER_BUILD_DIR=build"

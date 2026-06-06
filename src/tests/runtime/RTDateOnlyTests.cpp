@@ -136,6 +136,15 @@ static void test_dateonly_parsing() {
         test_result("Invalid parsed date returns NULL", d == NULL);
     }
 
+    // Test 6: Runtime length is authoritative even when a C string prefix looks valid
+    {
+        const char hidden[] = "2024-06-15\0junk";
+        rt_string hidden_s = rt_string_from_bytes(hidden, sizeof(hidden) - 1);
+        void *d = rt_dateonly_parse(hidden_s);
+        test_result("Embedded NUL suffix returns NULL", d == NULL);
+        rt_string_unref(hidden_s);
+    }
+
     printf("\n");
 }
 

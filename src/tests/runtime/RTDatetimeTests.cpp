@@ -87,6 +87,25 @@ static void test_to_iso(void) {
     rt_string_unref(epoch_iso);
 }
 
+static void test_format(void) {
+    printf("rt_datetime_format:\n");
+
+    rt_string year = rt_datetime_format(kRef, rt_const_cstr("%Y"));
+    check("format extracts year", strcmp(rt_string_cstr(year), "2025") == 0);
+    rt_string_unref(year);
+
+    rt_string null_format = rt_datetime_format(kRef, NULL);
+    check("null format returns empty", rt_str_len(null_format) == 0);
+    rt_string_unref(null_format);
+
+    const char hidden_format[] = "%Y\0-%m";
+    rt_string hidden = rt_string_from_bytes(hidden_format, sizeof(hidden_format) - 1);
+    rt_string hidden_result = rt_datetime_format(kRef, hidden);
+    check("embedded NUL format returns empty", rt_str_len(hidden_result) == 0);
+    rt_string_unref(hidden_result);
+    rt_string_unref(hidden);
+}
+
 static void test_now(void) {
     printf("rt_datetime_now:\n");
     int64_t ts = rt_datetime_now();
@@ -208,6 +227,7 @@ int main(void) {
     printf("=== RTDatetimeTests ===\n");
     test_components();
     test_to_iso();
+    test_format();
     test_now();
     test_parsing();
     test_create_bounds();

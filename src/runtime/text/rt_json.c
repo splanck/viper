@@ -42,12 +42,18 @@
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
+#include <locale.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if defined(__APPLE__)
+#include <xlocale.h>
+#endif
 
 //=============================================================================
 // JSON Type Tags (stored in box type field)
@@ -84,6 +90,15 @@ typedef struct {
 static void json_release_value(void *value) {
     if (value && rt_obj_release_check0(value))
         rt_obj_free(value);
+}
+
+static void json_discard_value(void *value) {
+    if (!value)
+        return;
+    if (rt_string_is_handle(value))
+        rt_string_unref((rt_string)value);
+    else
+        json_release_value(value);
 }
 
 // ---------------------------------------------------------------------------
@@ -189,6 +204,55 @@ static int json_number_is_finite_span(const char *start, size_t len) {
     int ok = endptr == num_str + len && errno != ERANGE && isfinite(value);
     free(num_str);
     return ok;
+}
+
+static int json_vsnprintf_c_locale(char *buffer, size_t size, const char *fmt, va_list args) {
+    if (!buffer || size == 0 || !fmt)
+        return -1;
+
+#if defined(_WIN32)
+    _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
+    if (!c_locale)
+        return -1;
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+#endif
+    int written = _vsnprintf_l(buffer, size, fmt, c_locale, args);
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+    _free_locale(c_locale);
+    return written;
+#else
+    locale_t c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
+    if (!c_locale)
+        return -1;
+    locale_t previous = uselocale(c_locale);
+    if (previous == (locale_t)0) {
+        freelocale(c_locale);
+        return -1;
+    }
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+#endif
+    int written = vsnprintf(buffer, size, fmt, args);
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+    uselocale(previous);
+    freelocale(c_locale);
+    return written;
+#endif
+}
+
+static int json_snprintf_c_locale(char *buffer, size_t size, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    int written = json_vsnprintf_c_locale(buffer, size, fmt, args);
+    va_end(args);
+    return written;
 }
 
 //=============================================================================
@@ -1117,7 +1181,11 @@ static void format_value(
                 return;
             }
             char buf[64];
-            snprintf(buf, sizeof(buf), "%.17g", val);
+            int written = json_snprintf_c_locale(buf, sizeof(buf), "%.17g", val);
+            if (written < 0 || (size_t)written >= sizeof(buf)) {
+                sb_append(sb, "null");
+                return;
+            }
             sb_append(sb, buf);
             return;
         }
@@ -1194,9 +1262,11 @@ void *rt_json_parse(rt_string text) {
 
     void *result = parse_value(&p);
 
-    /* S-16: If depth limit was hit, return NULL without inspecting trailing chars */
-    if (p.depth_exceeded)
+    if (p.depth_exceeded) {
+        json_discard_value(result);
+        parser_error(&p, "maximum nesting depth exceeded");
         return NULL;
+    }
 
     // Check for trailing content
     parser_skip_whitespace(&p);
@@ -1254,10 +1324,7 @@ int8_t rt_json_try_parse(rt_string text,
 
     if (p.has_error) {
         if (result) {
-            if (rt_string_is_handle(result))
-                rt_string_unref((rt_string)result);
-            else if (rt_obj_release_check0(result))
-                rt_obj_free(result);
+            json_discard_value(result);
         }
         if (out_message)
             *out_message =
@@ -1273,10 +1340,7 @@ int8_t rt_json_try_parse(rt_string text,
     if (out_value)
         *out_value = result;
     else if (result) {
-        if (rt_string_is_handle(result))
-            rt_string_unref((rt_string)result);
-        else if (rt_obj_release_check0(result))
-            rt_obj_free(result);
+        json_discard_value(result);
     }
     return 1;
 }
@@ -1323,6 +1387,12 @@ void *rt_json_parse_object(rt_string text) {
     }
 
     void *result = parse_object(&p);
+
+    if (p.depth_exceeded) {
+        json_discard_value(result);
+        parser_error(&p, "maximum nesting depth exceeded");
+        return rt_map_new();
+    }
 
     parser_skip_whitespace(&p);
     if (!parser_eof(&p)) {
@@ -1375,6 +1445,12 @@ void *rt_json_parse_array(rt_string text) {
     }
 
     void *result = parse_array(&p);
+
+    if (p.depth_exceeded) {
+        json_discard_value(result);
+        parser_error(&p, "maximum nesting depth exceeded");
+        return rt_seq_new();
+    }
 
     parser_skip_whitespace(&p);
     if (!parser_eof(&p)) {
@@ -1615,53 +1691,71 @@ static int validate_value(json_parser *p) {
     }
 
     if (c == '{') {
+        if (p->depth >= JSON_MAX_DEPTH)
+            return 0;
+        p->depth++;
         parser_consume(p);
         parser_skip_whitespace(p);
         if (!parser_eof(p) && parser_peek(p) == '}') {
             parser_consume(p);
+            p->depth--;
             return 1;
         }
+        int ok = 0;
         for (;;) {
             parser_skip_whitespace(p);
             if (parser_eof(p) || parser_peek(p) != '"')
-                return 0;
+                break;
             if (!validate_value(p))
-                return 0; // key
+                break; // key
             parser_skip_whitespace(p);
             if (parser_eof(p) || parser_consume(p) != ':')
-                return 0;
+                break;
             if (!validate_value(p))
-                return 0; // value
+                break; // value
             parser_skip_whitespace(p);
             if (parser_eof(p))
-                return 0;
+                break;
             c = parser_consume(p);
-            if (c == '}')
-                return 1;
+            if (c == '}') {
+                ok = 1;
+                break;
+            }
             if (c != ',')
-                return 0;
+                break;
         }
+        p->depth--;
+        return ok;
     }
 
     if (c == '[') {
+        if (p->depth >= JSON_MAX_DEPTH)
+            return 0;
+        p->depth++;
         parser_consume(p);
         parser_skip_whitespace(p);
         if (!parser_eof(p) && parser_peek(p) == ']') {
             parser_consume(p);
+            p->depth--;
             return 1;
         }
+        int ok = 0;
         for (;;) {
             if (!validate_value(p))
-                return 0;
+                break;
             parser_skip_whitespace(p);
             if (parser_eof(p))
-                return 0;
+                break;
             c = parser_consume(p);
-            if (c == ']')
-                return 1;
+            if (c == ']') {
+                ok = 1;
+                break;
+            }
             if (c != ',')
-                return 0;
+                break;
         }
+        p->depth--;
+        return ok;
     }
 
     // Keywords: true, false, null

@@ -18,6 +18,7 @@
 #include "rt_string.h"
 
 #include <cassert>
+#include <clocale>
 #include <cmath>
 #include <csetjmp>
 #include <cstdio>
@@ -262,6 +263,38 @@ static void test_parse_object_only() {
     printf("test_parse_object_only: PASSED\n");
 }
 
+static std::string make_deep_array_json(int depth) {
+    std::string json;
+    json.append((size_t)depth, '[');
+    json += "0";
+    json.append((size_t)depth, ']');
+    return json;
+}
+
+static std::string make_deep_object_json(int depth) {
+    std::string json;
+    for (int i = 0; i < depth; ++i)
+        json += "{\"x\":";
+    json += "0";
+    for (int i = 0; i < depth; ++i)
+        json += "}";
+    return json;
+}
+
+static void test_depth_limit_consistency() {
+    std::string deep_array = make_deep_array_json(205);
+    assert(rt_json_is_valid(make_str(deep_array.c_str())) == 0);
+    EXPECT_TRAP(rt_json_parse(make_str(deep_array.c_str())));
+    EXPECT_TRAP(rt_json_parse_array(make_str(deep_array.c_str())));
+
+    std::string deep_object = make_deep_object_json(205);
+    assert(rt_json_is_valid(make_str(deep_object.c_str())) == 0);
+    EXPECT_TRAP(rt_json_parse(make_str(deep_object.c_str())));
+    EXPECT_TRAP(rt_json_parse_object(make_str(deep_object.c_str())));
+
+    printf("test_depth_limit_consistency: PASSED\n");
+}
+
 // ============================================================================
 // Format Tests
 // ============================================================================
@@ -293,6 +326,35 @@ static void test_format_number() {
     assert(strstr(str_cstr(n2), "3.14") != nullptr);
 
     printf("test_format_number: PASSED\n");
+}
+
+static void test_format_number_locale_independent() {
+    const char *saved_locale = setlocale(LC_NUMERIC, NULL);
+    std::string saved = saved_locale ? saved_locale : "C";
+    const char *candidates[] = {
+        "fr_FR.UTF-8",
+        "de_DE.UTF-8",
+        "en_US.UTF-8",
+        "French_France.1252",
+        "German_Germany.1252",
+        NULL,
+    };
+
+    bool changed_locale = false;
+    for (int i = 0; candidates[i] != NULL; ++i) {
+        if (setlocale(LC_NUMERIC, candidates[i]) != NULL) {
+            changed_locale = true;
+            break;
+        }
+    }
+
+    rt_string formatted = rt_json_format(rt_box_f64(1.5));
+    assert_str_eq(formatted, "1.5");
+
+    if (changed_locale)
+        setlocale(LC_NUMERIC, saved.c_str());
+
+    printf("test_format_number_locale_independent: PASSED\n");
 }
 
 static void test_format_string() {
@@ -435,11 +497,13 @@ int main() {
     test_parse_many_empty_objects_does_not_leak_depth();
     test_parse_array_only();
     test_parse_object_only();
+    test_depth_limit_consistency();
 
     // Formatting
     test_format_null();
     test_format_bool();
     test_format_number();
+    test_format_number_locale_independent();
     test_format_string();
     test_format_array();
     test_format_object();

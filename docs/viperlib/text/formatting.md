@@ -298,7 +298,7 @@ Text wrapping, alignment, indentation, and truncation utilities for formatting t
 
 ### Notes
 
-- `Wrap` breaks at word boundaries (spaces); words longer than the width are not broken
+- `Wrap` breaks at word boundaries when possible; words longer than a positive width may be split, and `width <= 0` disables wrapping
 - `Fill` is equivalent to `Wrap` but ensures single newlines between lines (normalizes whitespace)
 - `Truncate` appends "..." only when the text exceeds the specified width; the total length including "..." equals width
 - `TruncateWith` clips a suffix that is longer than the requested width so the returned string never exceeds width

@@ -67,14 +67,12 @@ static char *checked_malloc(size_t size, const char *op) {
 ///          been seen on the current line, force-breaks at the
 ///          overflow point. Existing newlines in the input act as
 ///          paragraph boundaries (column resets, last-space cleared).
-///          Width is clamped to `[1, ...]` so the worst-case is
-///          one-character lines, never an infinite loop.
+///          Widths less than or equal to zero disable wrapping.
 rt_string rt_textwrap_wrap(rt_string text, int64_t width) {
-    if (width < 1)
-        width = 1;
-
     if (!text)
         return rt_string_from_bytes("", 0);
+    if (width <= 0)
+        return rt_string_ref(text);
 
     const char *src = rt_string_cstr(text);
     int64_t src_len = rt_str_len(text);

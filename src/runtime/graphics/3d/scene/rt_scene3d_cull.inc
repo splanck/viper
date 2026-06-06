@@ -489,6 +489,7 @@ static void scene3d_submit_node_draw(rt_scene_node3d *current,
                            draw_max ? draw_max[2] : 0.0f};
     int has_dynamic_deformation =
         scene3d_mesh_has_dynamic_deformation((rt_mesh3d *)draw_mesh, effective_animator);
+    int8_t dynamic_deformation_flag = (int8_t)(has_dynamic_deformation ? 1 : 0);
     int use_explicit_bounds = draw_min && draw_max ? 1 : 0;
 
     if (effective_animator) {
@@ -528,8 +529,8 @@ static void scene3d_submit_node_draw(rt_scene_node3d *current,
                 draw_bone_count,
                 use_explicit_bounds ? submit_min : NULL,
                 use_explicit_bounds ? submit_max : NULL,
-                has_dynamic_deformation,
-                has_dynamic_deformation);
+                dynamic_deformation_flag,
+                dynamic_deformation_flag);
         }
     } else {
         rt_canvas3d_draw_mesh_matrix_keyed_bounds(canvas3d,
@@ -541,8 +542,8 @@ static void scene3d_submit_node_draw(rt_scene_node3d *current,
                                                   NULL,
                                                   use_explicit_bounds ? submit_min : NULL,
                                                   use_explicit_bounds ? submit_max : NULL,
-                                                  has_dynamic_deformation,
-                                                  has_dynamic_deformation,
+                                                  dynamic_deformation_flag,
+                                                  dynamic_deformation_flag,
                                                   0.0f);
     }
 }

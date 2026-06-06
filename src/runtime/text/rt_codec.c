@@ -33,7 +33,6 @@
 #include "rt_internal.h"
 #include "rt_string.h"
 
-#include <ctype.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -63,7 +62,8 @@ static int b64_digit_value(char c) {
 /// @brief Check if character is unreserved in URL encoding.
 /// @details Unreserved: A-Z a-z 0-9 - _ . ~
 static int is_url_unreserved(unsigned char c) {
-    return isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~';
+    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+           (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~';
 }
 
 //=============================================================================

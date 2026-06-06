@@ -39,6 +39,7 @@
 #include "rt_trap.h"
 
 #include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -539,15 +540,27 @@ rt_string rt_datetime_format(int64_t timestamp, rt_string format) {
         return rt_string_from_bytes("", 0);
     }
 
-    // Get format string as C string
+    if (!format)
+        return rt_string_from_bytes("", 0);
+    int64_t fmt_len64 = rt_str_len(format);
+    if (fmt_len64 <= 0 || (uint64_t)fmt_len64 > (uint64_t)SIZE_MAX)
+        return rt_string_from_bytes("", 0);
+
     const char *fmt_cstr = rt_string_cstr(format);
-    if (!fmt_cstr || *fmt_cstr == '\0') {
+    if (!fmt_cstr || memchr(fmt_cstr, '\0', (size_t)fmt_len64) != NULL) {
         return rt_string_from_bytes("", 0);
     }
 
     // Format the time
     char buffer[256];
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+#endif
     size_t len = strftime(buffer, sizeof(buffer), fmt_cstr, tm);
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
     if (len == 0) {
         return rt_string_from_bytes("", 0);

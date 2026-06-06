@@ -357,10 +357,13 @@ void *rt_dateonly_today(void) {
 /// @param s Runtime string containing the date text.
 /// @return New DateOnly, or NULL if the string is malformed or out of range.
 void *rt_dateonly_parse(rt_string s) {
+    int64_t len = rt_str_len(s);
+    if (len != 10)
+        return NULL;
     const char *str = rt_string_cstr(s);
     if (!str)
         return NULL;
-    if (strlen(str) != 10 || str[4] != '-' || str[7] != '-')
+    if (str[4] != '-' || str[7] != '-')
         return NULL;
 
     int year = date_parse_digits(str, 4);

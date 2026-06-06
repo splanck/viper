@@ -164,6 +164,8 @@ Viper.IO.File.Move("old_name.txt", "new_name.txt")
 ' Replace an existing destination explicitly
 Viper.IO.File.MoveOver("new_data.txt", "data.txt")
 
+' Use Viper.IO.Dir.Move for directories; file moves require a regular-file source.
+
 ' Get file info
 DIM size AS INTEGER
 size = Viper.IO.File.Size("data.txt")

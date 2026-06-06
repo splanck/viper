@@ -325,6 +325,43 @@ static void test_move_over_replaces() {
     printf("\n");
 }
 
+/// @brief Test file move APIs reject directory sources.
+static void test_move_directory_source_traps() {
+    printf("Testing rt_file_move rejects directories:\n");
+
+    const char *base = get_test_base();
+    char src_path[512], dst_path[512];
+    snprintf(src_path, sizeof(src_path), "%s_move_dir_src", base);
+    snprintf(dst_path, sizeof(dst_path), "%s_move_dir_dst", base);
+    rmdir_p(src_path);
+    rmdir_p(dst_path);
+    mkdir_p(src_path);
+
+    EXPECT_TRAP(rt_file_move(rt_const_cstr(src_path), rt_const_cstr(dst_path)));
+    test_result("directory source still not a file",
+                rt_io_file_exists(rt_const_cstr(src_path)) == 0);
+    test_result("directory destination not created as file",
+                rt_io_file_exists(rt_const_cstr(dst_path)) == 0);
+    rmdir_p(src_path);
+    rmdir_p(dst_path);
+
+    snprintf(src_path, sizeof(src_path), "%s_move_over_dir_src", base);
+    snprintf(dst_path, sizeof(dst_path), "%s_move_over_dir_dst", base);
+    rmdir_p(src_path);
+    rmdir_p(dst_path);
+    mkdir_p(src_path);
+
+    EXPECT_TRAP(rt_file_move_over(rt_const_cstr(src_path), rt_const_cstr(dst_path)));
+    test_result("MoveOver directory source still not a file",
+                rt_io_file_exists(rt_const_cstr(src_path)) == 0);
+    test_result("MoveOver directory destination not created as file",
+                rt_io_file_exists(rt_const_cstr(dst_path)) == 0);
+    rmdir_p(src_path);
+    rmdir_p(dst_path);
+
+    printf("\n");
+}
+
 /// @brief Test rt_file_size.
 static void test_size() {
     printf("Testing rt_file_size:\n");
@@ -856,6 +893,7 @@ int main() {
     test_move();
     test_move_existing_destination_traps();
     test_move_over_replaces();
+    test_move_directory_source_traps();
     test_size();
     test_read_regular_file_required();
     test_embedded_nul_path_rejected();

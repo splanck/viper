@@ -104,6 +104,9 @@ Build succeeded.
 ```
 
 The build script leaves Debug binaries in the build tree for local development.
+On machines with many logical CPUs, the script caps automatic MSVC build
+parallelism to avoid compiler heap exhaustion. Set `VIPER_JOBS`, for example
+`$env:VIPER_JOBS = "12"`, when you want to override that default.
 Use the installer script below when you want a reusable developer toolchain on
 the machine.
 

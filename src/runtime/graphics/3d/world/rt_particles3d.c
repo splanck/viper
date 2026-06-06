@@ -883,6 +883,7 @@ void rt_particles3d_update(void *o, double delta_time) {
     double dt = delta_time;
     if (!isfinite(dt) || dt <= 0.0)
         return;
+    float dtf = (float)dt;
     double gravity[3] = {
         particles_clamp_abs_or(ps->gravity[0], 0.0, PARTICLES3D_PARAM_MAX),
         particles_clamp_abs_or(ps->gravity[1], 0.0, PARTICLES3D_PARAM_MAX),
@@ -906,7 +907,7 @@ void rt_particles3d_update(void *o, double delta_time) {
             ps->particles[i] = ps->particles[--ps->count];
             continue;
         }
-        p->life -= dt;
+        p->life -= dtf;
         if (p->life <= 0.0f) {
             /* Kill: swap with last alive particle (O(1) unstable removal) */
             ps->particles[i] = ps->particles[--ps->count];

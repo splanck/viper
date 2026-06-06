@@ -115,7 +115,7 @@ END IF
 
 - `Parse`, `ParseObject`, `ParseArray`, and `IsValid` use the runtime string byte length, not C-string truncation.
 - Invalid escapes, malformed UTF-16 surrogate pairs, raw control characters inside strings, trailing content, leading-zero numbers, and out-of-range/non-finite numbers are rejected.
-- `IsValid` mirrors the parser for string escapes and number range checks.
+- `IsValid` mirrors the parser for string escapes, number range checks, and nesting-depth limits.
 - `Format` escapes embedded `NUL` and other control bytes as JSON escapes, and traps on cyclic `Seq`/`Map` object graphs instead of recursing indefinitely.
 
 ---

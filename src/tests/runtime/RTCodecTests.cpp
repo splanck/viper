@@ -14,8 +14,10 @@
 #include "rt_string.h"
 
 #include <cassert>
+#include <clocale>
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 /// @brief Helper to print test result.
 static void test_result(const char *name, bool passed) {
@@ -153,6 +155,45 @@ static void test_url_roundtrip() {
         }
     }
     test_result("All roundtrips preserve original", all_passed);
+
+    printf("\n");
+}
+
+static void test_url_encode_ascii_unreserved_only() {
+    printf("Testing Codec.UrlEncode ASCII-only unreserved set:\n");
+
+    const unsigned char high_byte_raw[] = {0xE9u};
+    const char *high_byte = reinterpret_cast<const char *>(high_byte_raw);
+    rt_string high = rt_string_from_bytes(high_byte, sizeof(high_byte_raw));
+    test_result("High byte is percent-encoded",
+                strcmp(rt_string_cstr(rt_codec_url_encode(high)), "%e9") == 0);
+
+    const char *saved_locale = setlocale(LC_CTYPE, NULL);
+    std::string saved = saved_locale ? saved_locale : "C";
+    const char *candidates[] = {
+        "fr_FR.UTF-8",
+        "de_DE.UTF-8",
+        "en_US.UTF-8",
+        "French_France.1252",
+        "German_Germany.1252",
+        NULL,
+    };
+
+    bool changed_locale = false;
+    for (int i = 0; candidates[i] != NULL; ++i) {
+        if (setlocale(LC_CTYPE, candidates[i]) != NULL) {
+            changed_locale = true;
+            break;
+        }
+    }
+
+    if (changed_locale) {
+        test_result("High byte remains encoded outside C locale",
+                    strcmp(rt_string_cstr(rt_codec_url_encode(high)), "%e9") == 0);
+        setlocale(LC_CTYPE, saved.c_str());
+    } else {
+        test_result("Non-C character locale unavailable", true);
+    }
 
     printf("\n");
 }
@@ -386,6 +427,7 @@ int main() {
     test_url_encode_basic();
     test_url_decode_basic();
     test_url_roundtrip();
+    test_url_encode_ascii_unreserved_only();
 
     // Base64 encoding tests
     test_base64_encode();

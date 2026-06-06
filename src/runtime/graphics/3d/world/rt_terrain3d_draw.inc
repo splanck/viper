@@ -356,8 +356,8 @@ void rt_canvas3d_draw_terrain_at(
     float lod_dist2;
     terrain_lod_distances_or(t, &lod_dist1, &lod_dist2);
     float culling_pad = terrain_chunk_culling_pad(t);
-    int terrain_disable_occlusion = t->cpu_occlusion_enabled ? 0 : 1;
-    int terrain_conservative_bounds = terrain_disable_occlusion ? 1 : 0;
+    int8_t terrain_disable_occlusion = (int8_t)(t->cpu_occlusion_enabled ? 0 : 1);
+    int8_t terrain_conservative_bounds = (int8_t)(terrain_disable_occlusion ? 1 : 0);
 
     double model[16] = {
         1.0,

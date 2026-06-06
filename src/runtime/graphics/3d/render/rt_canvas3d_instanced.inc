@@ -169,7 +169,7 @@ static void canvas3d_queue_instanced_fallback(const canvas3d_instanced_batch_t *
         }
         per_instance.prev_instance_matrices = NULL;
         per_instance.has_prev_instance_matrices = 0;
-        int instance_blends = canvas3d_cmd_requires_blend(&per_instance);
+        int8_t instance_blends = canvas3d_cmd_requires_blend(&per_instance);
         if (!canvas3d_enqueue_draw(
                 c,
                 &per_instance,

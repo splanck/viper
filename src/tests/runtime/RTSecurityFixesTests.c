@@ -18,6 +18,7 @@
 #include "rt_yaml.h"
 
 #include <assert.h>
+#include <setjmp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,6 +26,10 @@
 
 static int tests_run = 0;
 static int tests_failed = 0;
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
 
 #define ASSERT(cond)                                                                               \
     do {                                                                                           \
@@ -210,12 +215,20 @@ static void test_json_depth_within_limit(void) {
 }
 
 static void test_json_depth_exceeds_limit(void) {
-    // 500 levels — beyond the 200-level limit — parse returns NULL or partial
+    // 500 levels beyond the parser limit traps cleanly instead of recursing.
     rt_string src = make_deep_json(500);
-    // We just verify the parser returns without crashing; result may be NULL
-    void *v = rt_json_parse(src);
-    (void)v;   // May or may not be non-NULL depending on how partial parse works
-    ASSERT(1); // If we get here, no stack overflow
+    jmp_buf recovery;
+    int trapped = 0;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_json_parse(src);
+        rt_trap_clear_recovery();
+    } else {
+        const char *message = rt_trap_get_error();
+        trapped = message && strstr(message, "maximum nesting depth exceeded") != NULL;
+        rt_trap_clear_recovery();
+    }
+    ASSERT(trapped);
     rt_string_unref(src);
 }
 
