@@ -1134,6 +1134,16 @@ void rt_videoplayer_update(void *obj, double dt) {
         vp->position = videoplayer_clamp_seconds(vp, vp->position + dt);
     }
 
+    if (isfinite(vp->duration) && vp->duration > 0.0 && vp->position >= vp->duration) {
+        vp->position = vp->duration;
+        vp->playing = 0;
+#ifdef VIPER_ENABLE_AUDIO
+        if (vp->container_type == 1)
+            videoplayer_stop_audio(vp);
+#endif
+        return;
+    }
+
     /* Determine target frame */
     int32_t target = videoplayer_frame_index_at(vp, vp->position);
     if (target < 0 || target >= vp->total_frames) {

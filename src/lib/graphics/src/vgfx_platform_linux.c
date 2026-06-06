@@ -506,6 +506,51 @@ static int x11_recreate_ximage(struct vgfx_window *win) {
     return 1;
 }
 
+static int x11_resize_backing_store(struct vgfx_window *win,
+                                    int32_t new_w,
+                                    int32_t new_h,
+                                    int64_t timestamp,
+                                    int emit_event) {
+    if (!win || !win->platform_data)
+        return 0;
+    if (new_w <= 0 || new_h <= 0 || new_w > VGFX_MAX_WIDTH || new_h > VGFX_MAX_HEIGHT ||
+        new_w > INT32_MAX / 4) {
+        vgfx_internal_set_error(VGFX_ERR_INVALID_PARAM, "X11 resize exceeds framebuffer limits");
+        return 0;
+    }
+
+    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+    int32_t new_stride = new_w * 4;
+    XImage *new_image = NULL;
+    uint8_t *new_buf = NULL;
+    size_t new_size = 0;
+    if (!x11_create_ximage_resources(
+            x11, new_w, new_h, new_stride, &new_image, &new_buf, &new_size)) {
+        return 0;
+    }
+
+    if (!vgfx_internal_resize_framebuffer(win, new_w, new_h)) {
+        if (new_image) {
+            new_image->data = NULL;
+            XDestroyImage(new_image);
+        }
+        free(new_buf);
+        return 0;
+    }
+
+    x11_replace_ximage(x11, new_image, new_buf, new_size);
+    x11->width = new_w;
+    x11->height = new_h;
+
+    if (emit_event) {
+        vgfx_event_t event = {0};
+        vgfx_internal_init_resize_event(&event, win, timestamp, new_w, new_h);
+        vgfx_internal_enqueue_event(win, &event);
+    }
+
+    return 1;
+}
+
 static void x11_cleanup_platform(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return;
@@ -1425,36 +1470,7 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                      event.xconfigure.height != x11->height)) {
                     int32_t new_w = event.xconfigure.width;
                     int32_t new_h = event.xconfigure.height;
-                    if (new_w <= 0 || new_h <= 0 || new_w > VGFX_MAX_WIDTH ||
-                        new_h > VGFX_MAX_HEIGHT || new_w > INT32_MAX / 4) {
-                        vgfx_internal_set_error(VGFX_ERR_INVALID_PARAM,
-                                                "X11 resize exceeds framebuffer limits");
-                        break;
-                    }
-                    int32_t new_stride = new_w * 4;
-                    XImage *new_image = NULL;
-                    uint8_t *new_buf = NULL;
-                    size_t new_size = 0;
-                    if (x11_create_ximage_resources(
-                            x11, new_w, new_h, new_stride, &new_image, &new_buf, &new_size) &&
-                        vgfx_internal_resize_framebuffer(win, new_w, new_h)) {
-                        x11_replace_ximage(x11, new_image, new_buf, new_size);
-                        x11->width = event.xconfigure.width;
-                        x11->height = event.xconfigure.height;
-                        vgfx_event_t vgfx_event = {0};
-                        vgfx_internal_init_resize_event(&vgfx_event,
-                                                        win,
-                                                        timestamp,
-                                                        event.xconfigure.width,
-                                                        event.xconfigure.height);
-                        vgfx_internal_enqueue_event(win, &vgfx_event);
-                    } else {
-                        if (new_image) {
-                            new_image->data = NULL;
-                            XDestroyImage(new_image);
-                        }
-                        free(new_buf);
-                    }
+                    (void)x11_resize_backing_store(win, new_w, new_h, timestamp, 1);
                 }
                 break;
             }
@@ -2033,10 +2049,15 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
     vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
     if (!x11->display || !x11->window)
         return;
+    int32_t physical_w = x11_logical_to_physical(win, w);
+    int32_t physical_h = x11_logical_to_physical(win, h);
+    if (physical_w <= 0 || physical_h <= 0)
+        return;
+    (void)x11_resize_backing_store(win, physical_w, physical_h, vgfx_platform_now_ms(), 1);
     XResizeWindow(x11->display,
                   x11->window,
-                  (unsigned int)x11_logical_to_physical(win, w),
-                  (unsigned int)x11_logical_to_physical(win, h));
+                  (unsigned int)physical_w,
+                  (unsigned int)physical_h);
     XFlush(x11->display);
 }
 

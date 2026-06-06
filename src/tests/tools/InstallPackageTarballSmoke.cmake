@@ -48,3 +48,5 @@ if (NOT _verify_rv EQUAL 0)
     message(FATAL_ERROR
             "viper install-package verify-only failed\nstdout:\n${_verify_out}\nstderr:\n${_verify_err}")
 endif ()
+
+file(REMOVE_RECURSE "${_tmp_root}")

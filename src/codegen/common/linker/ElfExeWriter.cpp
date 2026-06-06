@@ -148,7 +148,6 @@ struct Elf64_Dyn {
 };
 
 struct SegmentInfo {
-    size_t layoutIdx = 0;
     size_t fileOffset = 0;
     uint64_t vaddr = 0;
     size_t fileSize = 0;
@@ -311,6 +310,30 @@ uint64_t dynInfoForSym(uint32_t symIndex, uint32_t type) {
 /// @brief Test whether @p value fits in a signed 32-bit field (PC-relative reach check).
 bool fitsInt32(int64_t value) {
     return value >= -2147483648LL && value <= 2147483647LL;
+}
+
+uint32_t segmentFlagsForSection(const OutputSection &sec) {
+    uint32_t flags = PF_R;
+    if (sec.executable)
+        flags |= PF_X;
+    if (sec.writable)
+        flags |= PF_W;
+    return flags;
+}
+
+size_t countLoadSegments(const LinkLayout &layout, const std::vector<size_t> &loadableIndices) {
+    size_t count = 0;
+    bool haveCurrent = false;
+    uint32_t currentFlags = 0;
+    for (size_t idx : loadableIndices) {
+        const uint32_t flags = segmentFlagsForSection(layout.sections[idx]);
+        if (!haveCurrent || flags != currentFlags) {
+            ++count;
+            haveCurrent = true;
+            currentFlags = flags;
+        }
+    }
+    return count;
 }
 
 using viper::codegen::objfile::putLE32;
@@ -625,7 +648,7 @@ bool writeElfExe(const std::string &path,
     std::vector<size_t> nonAllocIndices;
     for (size_t i = 0; i < layout.sections.size(); ++i) {
         const auto &sec = layout.sections[i];
-        if (sec.data.empty())
+        if (sec.data.empty() && outputSectionMemSize(sec) == 0)
             continue;
         if (!sec.alloc) {
             nonAllocIndices.push_back(i);
@@ -697,7 +720,7 @@ bool writeElfExe(const std::string &path,
 
     std::vector<SegmentInfo> segments;
     const size_t ehdrSize = sizeof(Elf64_Ehdr);
-    const size_t baseLoadCount = loadableIndices.size();
+    const size_t baseLoadCount = countLoadSegments(layout, loadableIndices);
     const bool hasDynRo = dynInfo.enabled && !dynInfo.roBlob.empty();
     const bool hasDynRw = dynInfo.enabled && !dynInfo.dynamic.empty();
     const bool hasTls = std::any_of(loadableIndices.begin(),
@@ -723,54 +746,95 @@ bool writeElfExe(const std::string &path,
     size_t filePos = 0;
     if (!checkedAlignUpSize(headerTablesSize, pageSize, "first load segment offset", err, filePos))
         return false;
+    std::vector<size_t> loadableFileOffsets;
+    loadableFileOffsets.reserve(loadableIndices.size());
     for (size_t idx : loadableIndices) {
         const auto &sec = layout.sections[idx];
-        if (!checkedAlignUpSize(filePos, pageSize, "load segment file offset", err, filePos))
-            return false;
         const size_t fileSize = sec.zeroFill ? 0 : sec.data.size();
         const size_t memSize = outputSectionMemSize(sec);
-        uint32_t flags = PF_R;
-        if (sec.executable)
-            flags |= PF_X;
-        if (sec.writable)
-            flags |= PF_W;
-        segments.push_back({idx, filePos, sec.virtualAddr, fileSize, memSize, flags});
-        if (!checkedAddSize(filePos, fileSize, "load segment file range", err, filePos))
-            return false;
+        const uint32_t flags = segmentFlagsForSection(sec);
+
+        bool startNewSegment = segments.empty() || segments.back().flags != flags ||
+                               sec.virtualAddr < segments.back().vaddr;
+        size_t secFileOffset = 0;
+        if (startNewSegment) {
+            if (!checkedAlignUpSize(filePos, pageSize, "load segment file offset", err, filePos))
+                return false;
+            const size_t vaddrRemainder = static_cast<size_t>(sec.virtualAddr % pageSize);
+            const uint64_t segVaddr = sec.virtualAddr - vaddrRemainder;
+            if (!checkedAddSize(
+                    filePos, vaddrRemainder, "load section file offset", err, secFileOffset))
+                return false;
+            size_t segFileSize = 0;
+            size_t segMemSize = 0;
+            if (!checkedAddSize(vaddrRemainder, fileSize, "load segment file size", err, segFileSize) ||
+                !checkedAddSize(vaddrRemainder, memSize, "load segment memory size", err, segMemSize))
+                return false;
+            segments.push_back({filePos, segVaddr, segFileSize, segMemSize, flags});
+        } else {
+            auto &seg = segments.back();
+            const uint64_t delta64 = sec.virtualAddr - seg.vaddr;
+            if (delta64 > std::numeric_limits<size_t>::max()) {
+                err << "error: load segment virtual span exceeds addressable size\n";
+                return false;
+            }
+            const size_t delta = static_cast<size_t>(delta64);
+            if (!checkedAddSize(seg.fileOffset, delta, "load section file offset", err, secFileOffset))
+                return false;
+
+            size_t segFileEnd = 0;
+            size_t segMemEnd = 0;
+            if (!checkedAddSize(delta, fileSize, "load segment file size", err, segFileEnd) ||
+                !checkedAddSize(delta, memSize, "load segment memory size", err, segMemEnd))
+                return false;
+            seg.fileSize = std::max(seg.fileSize, segFileEnd);
+            seg.memSize = std::max(seg.memSize, segMemEnd);
+        }
+
+        loadableFileOffsets.push_back(secFileOffset);
+        if (!sec.zeroFill) {
+            size_t secFileEnd = 0;
+            if (!checkedAddSize(
+                    secFileOffset, fileSize, "load segment file range", err, secFileEnd))
+                return false;
+            filePos = std::max(filePos, secFileEnd);
+        }
     }
 
     TlsSegmentInfo tlsInfo;
-    for (const auto &seg : segments) {
-        const auto &sec = layout.sections[seg.layoutIdx];
+    for (size_t i = 0; i < loadableIndices.size(); ++i) {
+        const auto &sec = layout.sections[loadableIndices[i]];
         if (!sec.tls)
             continue;
 
         if (!tlsInfo.present) {
             tlsInfo.present = true;
-            tlsInfo.fileOffset = seg.fileOffset;
-            tlsInfo.vaddr = seg.vaddr;
+            tlsInfo.fileOffset = loadableFileOffsets[i];
+            tlsInfo.vaddr = sec.virtualAddr;
         }
-        if (seg.vaddr < tlsInfo.vaddr) {
+        if (sec.virtualAddr < tlsInfo.vaddr) {
             err << "error: TLS section addresses are not monotonically ordered\n";
             return false;
         }
-        const uint64_t rel64 = seg.vaddr - tlsInfo.vaddr;
+        const uint64_t rel64 = sec.virtualAddr - tlsInfo.vaddr;
         if (rel64 > std::numeric_limits<size_t>::max()) {
             err << "error: TLS segment span exceeds addressable size\n";
             return false;
         }
         const size_t rel = static_cast<size_t>(rel64);
-        if (seg.memSize > std::numeric_limits<size_t>::max() - rel) {
+        const size_t memSize = outputSectionMemSize(sec);
+        const size_t fileSize = sec.zeroFill ? 0 : sec.data.size();
+        if (memSize > std::numeric_limits<size_t>::max() - rel) {
             err << "error: TLS segment memory size overflows address space\n";
             return false;
         }
-        tlsInfo.memSize = std::max(tlsInfo.memSize, rel + seg.memSize);
+        tlsInfo.memSize = std::max(tlsInfo.memSize, rel + memSize);
         if (!sec.zeroFill) {
-            if (seg.fileSize > std::numeric_limits<size_t>::max() - rel) {
+            if (fileSize > std::numeric_limits<size_t>::max() - rel) {
                 err << "error: TLS segment file size overflows address space\n";
                 return false;
             }
-            tlsInfo.fileSize = std::max(tlsInfo.fileSize, rel + seg.fileSize);
+            tlsInfo.fileSize = std::max(tlsInfo.fileSize, rel + fileSize);
         }
         tlsInfo.align = std::max<uint64_t>(tlsInfo.align, std::max<uint32_t>(sec.alignment, 1u));
     }
@@ -1122,11 +1186,12 @@ bool writeElfExe(const std::string &path,
         phdrOff += sizeof(Elf64_Phdr);
     }
 
-    for (const auto &seg : segments) {
-        const auto &sec = layout.sections[seg.layoutIdx];
-        if (seg.fileSize == 0)
+    for (size_t i = 0; i < loadableIndices.size(); ++i) {
+        const auto &sec = layout.sections[loadableIndices[i]];
+        if (sec.zeroFill || sec.data.empty())
             continue;
-        std::memcpy(fileData.data() + seg.fileOffset, sec.data.data(), seg.fileSize);
+        std::memcpy(
+            fileData.data() + loadableFileOffsets[i], sec.data.data(), sec.data.size());
     }
     if (hasDynRo)
         std::memcpy(
@@ -1163,7 +1228,7 @@ bool writeElfExe(const std::string &path,
         if (sec.tls)
             shdr.sh_flags |= SHF_TLS;
         shdr.sh_addr = sec.virtualAddr;
-        shdr.sh_offset = segments[i].fileOffset;
+        shdr.sh_offset = loadableFileOffsets[i];
         shdr.sh_size = outputSectionMemSize(sec);
         shdr.sh_addralign = std::max<uint32_t>(sec.alignment, 1u);
         writeStruct(fileData, shdrOff, shdr);

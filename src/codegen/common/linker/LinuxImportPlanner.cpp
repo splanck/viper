@@ -69,9 +69,10 @@ bool isLinuxMathSymbol(const std::string &name) {
         "cbrtf",  "ceil",  "ceilf", "copysign", "copysignf", "cos",    "cosf",   "cosh",  "exp",
         "expf",   "fabs",  "fabsf", "floor",    "floorf",    "fmax",   "fmaxf",  "fmin",  "fminf",
         "fmod",   "fmodf", "hypot", "ldexp",    "log",       "log10",  "log2",   "logf",  "nan",
-        "pow",    "powf",  "rint",  "round",    "roundf",    "sin",    "sinf",   "sinh",  "sqrt",
-        "sqrtf",  "tan",   "tanf",  "tanh",     "trunc",     "truncf", "atan2l", "ceill", "cosl",
-        "floorl", "fmaxl", "fminl", "fmodl",    "sinl",      "sqrtl",
+        "pow",    "powf",  "rint",  "round",    "roundf",    "lrint",  "lrintf", "llrint",
+        "sin",    "sinf",  "sinh",  "sqrt",     "sqrtf",     "tan",    "tanf",   "tanh",
+        "trunc",  "truncf", "atan2l", "ceill",   "cosl",      "floorl", "fmaxl",  "fminl",
+        "fmodl",  "sinl",  "sqrtl",
     };
     return kMath.count(name) != 0;
 }
@@ -93,6 +94,9 @@ bool isLinuxCppRuntimeSymbol(const std::string &name) {
     static const char *const kPrefixes[] = {
         "_ZNSt",
         "_ZNKSt",
+        "_ZNKRSt",
+        "_ZNSi",
+        "_ZNSo",
         "_ZTINSt",
         "_ZTSNSt",
         "_ZTVNSt",

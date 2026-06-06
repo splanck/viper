@@ -168,6 +168,7 @@ endif ()
 
 if (DEFINED VIPER_RUN_NATIVE_CODEGEN AND NOT VIPER_RUN_NATIVE_CODEGEN)
     message(STATUS "Skipping installed native codegen smoke; native link is disabled for ${_installed_codegen_arch}")
+    file(REMOVE_RECURSE "${_tmp_root}")
     return()
 endif ()
 
@@ -220,3 +221,5 @@ if (NOT _installed_run_out MATCHES "Hello, installed Viper!")
     message(FATAL_ERROR
             "native executable built by staged viper produced unexpected output\nstdout:\n${_installed_run_out}\nstderr:\n${_installed_run_err}")
 endif ()
+
+file(REMOVE_RECURSE "${_tmp_root}")

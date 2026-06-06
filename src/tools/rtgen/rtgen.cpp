@@ -1162,6 +1162,10 @@ static std::unordered_map<std::string, RuntimePrototype> loadRuntimeHeaderDeclar
 
             const size_t declStart = findDeclarationStart(contents, pos);
             std::string retType = normalizeReturnType(contents.substr(declStart, pos - declStart));
+            if (retType.find('=') != std::string::npos) {
+                pos = afterClose + 1;
+                continue;
+            }
             std::string funcName = contents.substr(pos, nameEnd - pos);
             std::string argsStr = contents.substr(cursor + 1, close - cursor - 1);
 

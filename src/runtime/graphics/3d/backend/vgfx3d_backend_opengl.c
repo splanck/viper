@@ -119,6 +119,7 @@ typedef unsigned int GLbitfield;
 #define GL_TEXTURE_MAG_FILTER 0x2800
 #define GL_TEXTURE_BASE_LEVEL 0x813C
 #define GL_TEXTURE_MAX_LEVEL 0x813D
+#define GL_UNPACK_ALIGNMENT 0x0CF5
 #define GL_EXTENSIONS 0x1F03
 #define GL_VERSION 0x1F02
 #define GL_NUM_EXTENSIONS 0x821D
@@ -218,8 +219,11 @@ typedef void (*PFNGLGENTEXTURESPROC)(GLsizei, GLuint *);
 typedef void (*PFNGLDELETETEXTURESPROC)(GLsizei, const GLuint *);
 typedef void (*PFNGLACTIVETEXTUREPROC)(GLenum);
 typedef void (*PFNGLBINDTEXTUREPROC)(GLenum, GLuint);
+typedef void (*PFNGLPIXELSTOREIPROC)(GLenum, GLint);
 typedef void (*PFNGLTEXIMAGE2DPROC)(
     GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void *);
+typedef void (*PFNGLTEXSUBIMAGE2DPROC)(
+    GLenum, GLint, GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, const void *);
 typedef void (*PFNGLCOMPRESSEDTEXIMAGE2DPROC)(
     GLenum, GLint, GLenum, GLsizei, GLsizei, GLint, GLsizei, const void *);
 typedef void (*PFNGLCOMPRESSEDTEXSUBIMAGE2DPROC)(
@@ -316,7 +320,9 @@ static struct {
     PFNGLDELETETEXTURESPROC DeleteTextures;
     PFNGLACTIVETEXTUREPROC ActiveTexture;
     PFNGLBINDTEXTUREPROC BindTexture;
+    PFNGLPIXELSTOREIPROC PixelStorei;
     PFNGLTEXIMAGE2DPROC TexImage2D;
+    PFNGLTEXSUBIMAGE2DPROC TexSubImage2D;
     PFNGLCOMPRESSEDTEXIMAGE2DPROC CompressedTexImage2D;
     PFNGLCOMPRESSEDTEXSUBIMAGE2DPROC CompressedTexSubImage2D;
     PFNGLTEXPARAMETERIPROC TexParameteri;
@@ -823,7 +829,9 @@ static int load_gl(void) {
     LOADP(DeleteTextures);
     LOADP(ActiveTexture);
     LOADP(BindTexture);
+    LOADP(PixelStorei);
     LOADP(TexImage2D);
+    LOADP(TexSubImage2D);
     LOADP(CompressedTexImage2D);
     LOADP(CompressedTexSubImage2D);
     LOADP(TexParameteri);
