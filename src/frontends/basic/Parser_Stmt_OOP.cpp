@@ -540,10 +540,7 @@ void Parser::parseClassMemberSection(ClassDecl &declRef, std::optional<Access> c
 
                 emitError(
                     "B3010", peek(), "expected GET, SET, or END PROPERTY inside PROPERTY block");
-                if (at(TokenKind::EndOfLine))
-                    consume();
-                else
-                    consume();
+                consume();
             }
 
             if (!seenGet && !seenSet)
@@ -772,8 +769,6 @@ StmtPtr Parser::parseTypeDecl() {
     if (at(TokenKind::EndOfLine))
         consume();
 
-    std::optional<Access> curAccess;
-
     while (!at(TokenKind::EndOfFile)) {
         while (at(TokenKind::EndOfLine))
             consume();
@@ -784,7 +779,13 @@ StmtPtr Parser::parseTypeDecl() {
         // Access prefixes are not applied to TYPE fields; ignore if present.
         // (Future ADR may define semantics for TYPE.)
         if (at(TokenKind::KeywordPublic) || at(TokenKind::KeywordPrivate)) {
-            consume();
+            Token accessTok = consume();
+            emitError("B3012", accessTok.loc, "access modifiers are not valid in TYPE declarations");
+            while (!at(TokenKind::EndOfLine) && !at(TokenKind::EndOfFile))
+                consume();
+            if (at(TokenKind::EndOfLine))
+                consume();
+            continue;
         }
 
         if (at(TokenKind::Number)) {

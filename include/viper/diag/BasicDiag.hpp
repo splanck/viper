@@ -70,7 +70,7 @@ struct BasicDiagInfo
 {
     std::string_view id;            ///< Unique diagnostic identifier string.
     std::string_view code;          ///< Numeric diagnostic code for programmatic use.
-    il::support::Severity severity; ///< Severity level (error, warning, etc.).
+    il::support::Severity severity{il::support::Severity::Error}; ///< Severity level.
     std::string_view format;        ///< Message format string with placeholders.
 };
 

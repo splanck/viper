@@ -56,8 +56,8 @@ enum class MethodReturnKind {
 
 /// @brief Descriptor for a collection method's return type.
 struct CollectionMethodInfo {
-    std::string_view name;
-    MethodReturnKind returnKind;
+    std::string_view name{};
+    MethodReturnKind returnKind{MethodReturnKind::Unknown};
 };
 
 /// @brief List methods and their return types.

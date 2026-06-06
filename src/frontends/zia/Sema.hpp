@@ -1286,6 +1286,17 @@ class Sema {
     ///        local-binding scopes and the running set of already-captured
     ///        names so we don't push duplicates.
     struct CaptureContext {
+        /// @brief Create capture-walker state for a single lambda analysis.
+        /// @param alreadyCaptured Names captured before this context is created.
+        /// @param scopes Local scopes that shadow outer variables.
+        /// @param outCaptures Destination vector receiving discovered captures.
+        CaptureContext(std::set<std::string> alreadyCaptured,
+                       std::vector<std::set<std::string>> scopes,
+                       std::vector<CapturedVar> &outCaptures)
+            : captured(std::move(alreadyCaptured)),
+              localScopes(std::move(scopes)),
+              captures(outCaptures) {}
+
         std::set<std::string> captured;
         std::vector<std::set<std::string>> localScopes;
         std::vector<CapturedVar> &captures;

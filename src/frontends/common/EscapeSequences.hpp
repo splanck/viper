@@ -80,6 +80,8 @@ namespace il::frontends::common::escape_sequences {
 /// @return The UTF-8 encoded string, or nullopt if the codepoint is out of range.
 [[nodiscard]] inline std::optional<std::string> codepointToUtf8(uint32_t codepoint) {
     std::string result;
+    if (codepoint >= 0xD800 && codepoint <= 0xDFFF)
+        return std::nullopt;
     if (codepoint <= 0x7F) {
         result.push_back(static_cast<char>(codepoint));
     } else if (codepoint <= 0x7FF) {

@@ -181,8 +181,8 @@ struct FieldScope {
 struct IfBlocks {
     std::vector<std::size_t> tests; ///< indexes of test blocks
     std::vector<std::size_t> thens; ///< indexes of THEN blocks
-    std::size_t elseIdx;            ///< index of ELSE block
-    std::size_t exitIdx;            ///< index of common exit block
+    std::size_t elseIdx{static_cast<std::size_t>(-1)}; ///< index of ELSE block
+    std::size_t exitIdx{static_cast<std::size_t>(-1)}; ///< index of common exit block
 };
 
 /// @brief Control-flow state emitted by structured statement helpers.

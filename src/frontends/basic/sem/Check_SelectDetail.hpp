@@ -233,15 +233,16 @@ inline bool checkIntervalCollision(ArmContext &ctx,
     return false;
 }
 
-/// @brief Record a CASE ELSE arm and emit an error if duplicated.
+/// @brief Record a CASE ELSE arm and report whether it is valid.
 /// @details Increments the CASE ELSE counter and emits a "duplicate CASE ELSE"
 ///          diagnostic if more than one CASE ELSE arm has been seen.
 /// @param ctx The arm validation context tracking the CASE ELSE count.
 /// @param arm The CASE arm identified as CASE ELSE (for source location).
-inline void noteCaseElse(ArmContext &ctx, const CaseArm &arm) {
+/// @return True when this is the first CASE ELSE arm, false if duplicated.
+inline bool noteCaseElse(ArmContext &ctx, const CaseArm &arm) {
     ++ctx.caseElseCount;
     if (ctx.caseElseCount <= 1)
-        return;
+        return true;
 
     std::string msg(diag::ERR_SelectCase_DuplicateElse.text);
     ctx.de.emit(il::support::Severity::Error,
@@ -249,6 +250,7 @@ inline void noteCaseElse(ArmContext &ctx, const CaseArm &arm) {
                 arm.range.begin,
                 1,
                 std::move(msg));
+    return false;
 }
 
 /// @brief Emit a diagnostic when CASE arms mix numeric and string labels.
@@ -256,9 +258,10 @@ inline void noteCaseElse(ArmContext &ctx, const CaseArm &arm) {
 ///          via the reportedMixedLabelTypes flag.
 /// @param ctx The arm validation context.
 /// @param arm The CASE arm where the mixed types were detected.
-inline void reportMixedLabelTypes(ArmContext &ctx, const CaseArm &arm) {
+/// @return Always false so callers can fold it into their validation state.
+inline bool reportMixedLabelTypes(ArmContext &ctx, const CaseArm &arm) {
     if (ctx.reportedMixedLabelTypes)
-        return;
+        return false;
 
     std::string msg(diag::ERR_SelectCase_MixedLabelTypes.text);
     ctx.de.emit(il::support::Severity::Error,
@@ -267,6 +270,7 @@ inline void reportMixedLabelTypes(ArmContext &ctx, const CaseArm &arm) {
                 1,
                 std::move(msg));
     ctx.reportedMixedLabelTypes = true;
+    return false;
 }
 
 /// @brief Track the label kind of the current arm and detect mixed types.
@@ -275,15 +279,17 @@ inline void reportMixedLabelTypes(ArmContext &ctx, const CaseArm &arm) {
 /// @param ctx The arm validation context.
 /// @param kind The label kind of the current arm (Numeric or String).
 /// @param arm The CASE arm being validated (for diagnostic source location).
-inline void trackArmLabelKind(ArmContext &ctx, LabelKind kind, const CaseArm &arm) {
+/// @return True when the arm kind is compatible with previous arms.
+inline bool trackArmLabelKind(ArmContext &ctx, LabelKind kind, const CaseArm &arm) {
     if (kind == LabelKind::None || ctx.reportedMixedLabelTypes)
-        return;
+        return kind == LabelKind::None;
     if (ctx.seenArmLabelKind == LabelKind::None) {
         ctx.seenArmLabelKind = kind;
-        return;
+        return true;
     }
     if (ctx.seenArmLabelKind != kind)
-        reportMixedLabelTypes(ctx, arm);
+        return reportMixedLabelTypes(ctx, arm);
+    return true;
 }
 
 /// @brief Emit an out-of-32-bit-range error for a CASE range bound.
@@ -413,8 +419,9 @@ inline SemanticAnalyzer::SelectCaseSelectorInfo classifySelectCaseSelector(
 ///          labels. Tracks label-kind consistency and detects duplicate string values.
 /// @param arm The CASE arm containing string labels to validate.
 /// @param ctx The arm validation context tracking seen labels and types.
-/// @return Always returns true (validation errors are reported via diagnostics).
+/// @return True when no errors were emitted for this arm.
 inline bool validateSelectCaseStringArm(const CaseArm &arm, ArmContext &ctx) {
+    bool ok = true;
     if (ctx.selectorIsNumeric) {
         std::string msg(diag::ERR_SelectCase_StringLabelSelector.text);
         ctx.de.emit(il::support::Severity::Error,
@@ -422,15 +429,17 @@ inline bool validateSelectCaseStringArm(const CaseArm &arm, ArmContext &ctx) {
                     arm.range.begin,
                     1,
                     std::move(msg));
+        ok = false;
     }
 
-    trackArmLabelKind(ctx, LabelKind::String, arm);
+    ok = trackArmLabelKind(ctx, LabelKind::String, arm) && ok;
     for (const auto &label : arm.str_labels) {
         if (ctx.seenStringLabels.insert(label).second)
             continue;
         emitDuplicateLabel(ctx, arm, '"' + label + '"');
+        ok = false;
     }
-    return true;
+    return ok;
 }
 
 /// @brief Validate numeric labels, ranges, and relational conditions in a CASE arm.
@@ -439,8 +448,9 @@ inline bool validateSelectCaseStringArm(const CaseArm &arm, ArmContext &ctx) {
 ///          relational intervals. Updates the accumulated label/range state in ctx.
 /// @param arm The CASE arm containing numeric labels to validate.
 /// @param ctx The arm validation context tracking seen labels, ranges, and intervals.
-/// @return Always returns true (validation errors are reported via diagnostics).
+/// @return True when no errors were emitted for this arm.
 inline bool validateSelectCaseNumericArm(const CaseArm &arm, ArmContext &ctx) {
+    bool ok = true;
     if (ctx.selectorIsString) {
         std::string msg(diag::ERR_SelectCase_StringSelectorLabels.text);
         ctx.de.emit(il::support::Severity::Error,
@@ -448,50 +458,65 @@ inline bool validateSelectCaseNumericArm(const CaseArm &arm, ArmContext &ctx) {
                     arm.range.begin,
                     1,
                     std::move(msg));
+        ok = false;
     }
 
-    trackArmLabelKind(ctx, LabelKind::Numeric, arm);
+    ok = trackArmLabelKind(ctx, LabelKind::Numeric, arm) && ok;
 
     for (const auto &[rawLo, rawHi] : arm.ranges) {
-        if (!validateRangeBounds(ctx, arm, rawLo, rawHi))
+        if (!validateRangeBounds(ctx, arm, rawLo, rawHi)) {
+            ok = false;
             continue;
+        }
 
         const auto interval =
             makeRangeInterval(static_cast<int32_t>(rawLo), static_cast<int32_t>(rawHi));
-        if (checkIntervalCollision(ctx, arm, interval))
+        if (checkIntervalCollision(ctx, arm, interval)) {
+            ok = false;
             continue;
+        }
 
         ctx.seenRanges.emplace_back(static_cast<int32_t>(rawLo), static_cast<int32_t>(rawHi));
     }
 
     for (int64_t rawLabel : arm.labels) {
-        if (emitOutOfRangeLabel(arm, ctx, rawLabel))
+        if (emitOutOfRangeLabel(arm, ctx, rawLabel)) {
+            ok = false;
             continue;
+        }
 
         const int32_t label = static_cast<int32_t>(rawLabel);
-        if (auto [_, inserted] = ctx.seenLabels.insert(label); !inserted)
+        if (auto [_, inserted] = ctx.seenLabels.insert(label); !inserted) {
             emitDuplicateLabel(ctx, arm, std::to_string(label));
+            ok = false;
+        }
     }
 
     for (const auto &rel : arm.rels) {
-        if (emitOutOfRangeLabel(arm, ctx, rel.rhs))
+        if (emitOutOfRangeLabel(arm, ctx, rel.rhs)) {
+            ok = false;
             continue;
+        }
 
         const int32_t rhs = static_cast<int32_t>(rel.rhs);
         const auto interval = makeRelInterval(rel.op, rhs);
-        if (checkIntervalCollision(ctx, arm, interval))
+        if (checkIntervalCollision(ctx, arm, interval)) {
+            ok = false;
             continue;
+        }
 
         if (rel.op == CaseArm::CaseRel::Op::EQ) {
-            if (auto [_, inserted] = ctx.seenLabels.insert(rhs); !inserted)
+            if (auto [_, inserted] = ctx.seenLabels.insert(rhs); !inserted) {
                 emitDuplicateLabel(ctx, arm, std::to_string(rel.rhs));
+                ok = false;
+            }
             continue;
         }
 
         ctx.seenRelIntervals.push_back(interval);
     }
 
-    return true;
+    return ok;
 }
 
 /// @brief Validate a complete CASE arm (CASE ELSE, string, numeric, or mixed).
@@ -500,19 +525,20 @@ inline bool validateSelectCaseNumericArm(const CaseArm &arm, ArmContext &ctx) {
 ///          Reports mixed label types if an arm contains both string and numeric labels.
 /// @param arm The CASE arm to validate.
 /// @param ctx The arm validation context tracking cumulative label state.
-/// @return True on success (errors are reported via diagnostics but do not halt).
+/// @return True when no validation errors were emitted for the arm.
 inline bool validateSelectCaseArm(const CaseArm &arm, ArmContext &ctx) {
     if (isCaseElseArm(arm)) {
-        noteCaseElse(ctx, arm);
-        return true;
+        return noteCaseElse(ctx, arm);
     }
 
     const bool hasString = !arm.str_labels.empty();
     const bool hasNumeric = !arm.labels.empty() || !arm.ranges.empty() || !arm.rels.empty();
-    if (hasString && hasNumeric)
-        reportMixedLabelTypes(ctx, arm);
-
     bool ok = true;
+    if (hasString && hasNumeric) {
+        reportMixedLabelTypes(ctx, arm);
+        ok = false;
+    }
+
     if (hasString)
         ok = validateSelectCaseStringArm(arm, ctx) && ok;
     if (hasNumeric)

@@ -1029,7 +1029,7 @@ struct MatchArm {
         };
 
         /// @brief The pattern kind.
-        Kind kind;
+        Kind kind{Kind::Wildcard};
 
         /// @brief Name for Binding patterns, type name for Constructor.
         std::string binding;

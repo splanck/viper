@@ -65,16 +65,16 @@ enum class Type {
 
 /// @brief Parameter descriptor.
 struct Param {
-    Type type;     ///< Parameter type.
-    bool optional; ///< True if the parameter is optional.
+    Type type{Type::Int};  ///< Parameter type.
+    bool optional{false};  ///< True if the parameter is optional.
 };
 
 /// @brief Intrinsic function descriptor.
 struct Intrinsic {
-    std::string_view name;  ///< BASIC name including $ suffix.
-    Type returnType;        ///< Return type.
-    const Param *params;    ///< Pointer to ordered parameter descriptors.
-    std::size_t paramCount; ///< Number of parameters in @ref params.
+    std::string_view name{};       ///< BASIC name including $ suffix.
+    Type returnType{Type::Int};    ///< Return type.
+    const Param *params{nullptr};  ///< Pointer to ordered parameter descriptors.
+    std::size_t paramCount{0};     ///< Number of parameters in @ref params.
 };
 
 /// @brief Lookup intrinsic by BASIC name.

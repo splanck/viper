@@ -49,7 +49,8 @@ std::pair<std::string_view, std::vector<std::string_view>> parseSignatureString(
     size_t start = 0;
     while (start < argsStr.size()) {
         // Skip whitespace
-        while (start < argsStr.size() && std::isspace(argsStr[start]))
+        while (start < argsStr.size() &&
+               std::isspace(static_cast<unsigned char>(argsStr[start])) != 0)
             ++start;
 
         if (start >= argsStr.size())
@@ -62,7 +63,8 @@ std::pair<std::string_view, std::vector<std::string_view>> parseSignatureString(
 
         // Trim trailing whitespace
         size_t typeEnd = end;
-        while (typeEnd > start && std::isspace(argsStr[typeEnd - 1]))
+        while (typeEnd > start &&
+               std::isspace(static_cast<unsigned char>(argsStr[typeEnd - 1])) != 0)
             --typeEnd;
 
         if (typeEnd > start) {

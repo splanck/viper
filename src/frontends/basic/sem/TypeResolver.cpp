@@ -82,7 +82,9 @@ std::string TypeResolver::tryResolveInNamespace(const std::string &ns,
 
     if (registry_.typeExists(candidate)) {
         // Return the canonical spelling from registry.
-        auto kind = registry_.getTypeKind(candidate);
+        const auto kind = registry_.getTypeKind(candidate);
+        if (kind == NamespaceRegistry::TypeKind::None)
+            return "";
         // We need to get the canonical name; for now return the candidate
         // since registry doesn't expose a "get canonical name" method.
         // The registry stores canonical spellings internally.

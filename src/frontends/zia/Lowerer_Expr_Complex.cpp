@@ -375,7 +375,7 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
 
     // Runtime class types (Ptr): resolve ctor from the RuntimeRegistry catalog.
     // Class and Struct types have their own lowering below.
-    if (type && !type->name.empty() && type->kind != TypeKindSem::Class &&
+    if (!type->name.empty() && type->kind != TypeKindSem::Class &&
         type->kind != TypeKindSem::Struct) {
         return lowerNewRuntimeClass(expr, type);
     }
@@ -396,6 +396,8 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
 ///          are lowered in the semantically resolved order and coerced to the descriptor's
 ///          parameter types (boxing scalars into Ptr params, widening I64→F64).
 LowerResult Lowerer::lowerNewRuntimeClass(NewExpr *expr, TypeRef type) {
+    if (!type)
+        return {Value::null(), Type(Type::Kind::Ptr)};
     {
         std::string ctorName;
         if (expr->args.empty()) {
@@ -479,6 +481,8 @@ LowerResult Lowerer::lowerNewRuntimeClass(NewExpr *expr, TypeRef type) {
 ///          first) or stores each constructor argument / field default into its field slot,
 ///          coercing to the declared field type.
 std::optional<LowerResult> Lowerer::lowerNewStruct(NewExpr *expr, TypeRef type) {
+    if (!type)
+        return std::nullopt;
     // Struct types can be instantiated with 'new' just like class types.
     std::string typeName = type->name;
     const StructTypeInfo *valueInfo = getOrCreateStructTypeInfo(typeName);
@@ -607,6 +611,8 @@ std::optional<LowerResult> Lowerer::lowerNewStruct(NewExpr *expr, TypeRef type) 
 ///          defaults, boxing struct-typed fields and routing weak fields through
 ///          emitFieldStore().
 LowerResult Lowerer::lowerNewClass(NewExpr *expr, TypeRef type) {
+    if (!type)
+        return {Value::null(), Type(Type::Kind::Ptr)};
     std::string typeName = type->name;
     const ClassTypeInfo *infoPtr = getOrCreateClassTypeInfo(typeName);
     if (!infoPtr) {

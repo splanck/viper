@@ -422,10 +422,9 @@ set(RT_THREADS_SOURCES
         threads/rt_channel.c
         threads/rt_concmap.c
         threads/rt_future.c
-        threads/rt_monitor.c
         threads/rt_parallel.c
         threads/rt_safe_i64.c
-        threads/rt_threads.c
+        threads/rt_threads_common.c
         threads/rt_threadpool.c
         threads/rt_threads_primitives.cpp
         threads/rt_concqueue.c
@@ -433,6 +432,15 @@ set(RT_THREADS_SOURCES
         threads/rt_debounce.c
         threads/rt_scheduler.c
 )
+
+# Monitor and thread runtimes are split by platform: SRWLOCK/CONDITION_VARIABLE
+# and Win32 threads on Windows, pthread mutex/condvar/threads elsewhere. The
+# platform-neutral SafeThread layer (rt_threads_common.c) is compiled everywhere.
+if (WIN32)
+    list(APPEND RT_THREADS_SOURCES threads/rt_monitor_win.c threads/rt_threads_win.c)
+else ()
+    list(APPEND RT_THREADS_SOURCES threads/rt_monitor_posix.c threads/rt_threads_posix.c)
+endif ()
 
 set(RT_LOCALIZATION_SOURCES
         localization/rt_locale.c
@@ -473,7 +481,7 @@ set(RT_NETWORK_SOURCES
         network/rt_crypto.c
         network/rt_crypto_module.c
         network/rt_tls.c
-        network/rt_tls_verify.c
+        network/rt_tls_verify_common.c
         network/rt_ecdsa_p256.c
         network/rt_rsa.c
         network/rt_http_router.c
@@ -489,6 +497,15 @@ set(RT_NETWORK_SOURCES
         network/rt_smtp.c
         network/rt_async_socket.c
 )
+
+# TLS certificate verification is split by platform: CryptoAPI trust store on
+# Windows, native Security.framework / manual verification elsewhere. The common
+# DER/SAN/hostname parsing (rt_tls_verify_common.c) is compiled everywhere.
+if (WIN32)
+    list(APPEND RT_NETWORK_SOURCES network/rt_tls_verify_win.c)
+else ()
+    list(APPEND RT_NETWORK_SOURCES network/rt_tls_verify_posix.c)
+endif ()
 
 set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/2d/rt_action.h

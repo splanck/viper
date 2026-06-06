@@ -27,6 +27,10 @@ namespace {
 // ---------------------------------------------------------------------------
 
 struct Printer {
+    /// @brief Bind the helper to the stream that receives printed AST output.
+    /// @param out Destination stream used by all subsequent line writes.
+    explicit Printer(std::ostream &out) : os(out) {}
+
     std::ostream &os;
     int indent = 0;
 

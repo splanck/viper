@@ -36,8 +36,8 @@ namespace il::frontends::zia {
 struct FieldLayout {
     std::string name;   ///< Field name.
     TypeRef type;       ///< Semantic type of the field.
-    size_t offset;      ///< Byte offset within the owning object/struct.
-    size_t size;        ///< Byte size of the field's storage.
+    size_t offset{0};   ///< Byte offset within the owning object/struct.
+    size_t size{0};     ///< Byte size of the field's storage.
     bool isWeak{false}; ///< True for weak reference fields (released via WeakRef.Free).
 };
 
@@ -48,7 +48,7 @@ struct StructTypeInfo {
     std::string name;                  ///< Qualified type name.
     std::vector<FieldLayout> fields;   ///< Fields in declaration order.
     std::vector<MethodDecl *> methods; ///< Declared methods.
-    size_t totalSize;                  ///< Total byte size of the struct.
+    size_t totalSize{0};               ///< Total byte size of the struct.
     int classId{-1};                   ///< Runtime class id (for interface binding).
     std::unordered_map<std::string, size_t> fieldIndex; ///< Field name -> index into @c fields.
     std::unordered_map<std::string, MethodDecl *> methodMap; ///< Method name -> declaration.
@@ -78,8 +78,8 @@ struct ClassTypeInfo {
     std::string baseClass;                              ///< Qualified base-class name ("" if none).
     std::vector<FieldLayout> fields;                    ///< Fields (inherited first, then own).
     std::vector<MethodDecl *> methods;                  ///< Declared methods.
-    size_t totalSize;                                   ///< Total byte size including header.
-    int classId;                                        ///< Unique runtime class id.
+    size_t totalSize{0};                                ///< Total byte size including header.
+    int classId{-1};                                    ///< Unique runtime class id.
     std::unordered_map<std::string, size_t> fieldIndex; ///< Field name -> index into @c fields.
     std::unordered_map<std::string, MethodDecl *> methodMap; ///< Method name -> declaration.
     std::vector<std::string> vtable;                     ///< Lowered method name per vtable slot.

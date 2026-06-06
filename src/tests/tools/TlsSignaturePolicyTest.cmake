@@ -5,10 +5,16 @@ if (NOT DEFINED VIPER_SOURCE_DIR)
 endif ()
 
 set(_tls_client "${VIPER_SOURCE_DIR}/src/runtime/network/rt_tls.c")
-set(_tls_verify "${VIPER_SOURCE_DIR}/src/runtime/network/rt_tls_verify.c")
+# Certificate verification was split by platform; scan all of its translation units.
+set(_tls_verify_common "${VIPER_SOURCE_DIR}/src/runtime/network/rt_tls_verify_common.c")
+set(_tls_verify_win "${VIPER_SOURCE_DIR}/src/runtime/network/rt_tls_verify_win.c")
+set(_tls_verify_posix "${VIPER_SOURCE_DIR}/src/runtime/network/rt_tls_verify_posix.c")
 
 file(READ "${_tls_client}" _tls_client_text)
-file(READ "${_tls_verify}" _tls_verify_text)
+file(READ "${_tls_verify_common}" _tls_verify_common_text)
+file(READ "${_tls_verify_win}" _tls_verify_win_text)
+file(READ "${_tls_verify_posix}" _tls_verify_posix_text)
+set(_tls_verify_text "${_tls_verify_common_text}${_tls_verify_win_text}${_tls_verify_posix_text}")
 
 if (_tls_client_text MATCHES "0x0503")
     message(FATAL_ERROR "ClientHello still advertises ecdsa_secp384r1_sha384 (0x0503)")

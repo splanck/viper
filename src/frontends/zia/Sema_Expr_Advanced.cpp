@@ -1131,6 +1131,11 @@ TypeRef Sema::analyzeMatchExpr(MatchExpr *expr) {
 
 TypeRef Sema::analyzeNew(NewExpr *expr) {
     TypeRef type = resolveTypeNode(expr->type.get());
+    if (!type) {
+        for (auto &arg : expr->args)
+            analyzeExpr(arg.value.get());
+        return types::unknown();
+    }
 
     auto findRuntimeCtor = [&](TypeRef candidate) -> Symbol * {
         if (!candidate || candidate->name.empty())
@@ -1166,7 +1171,7 @@ TypeRef Sema::analyzeNew(NewExpr *expr) {
                    type->kind == TypeKindSem::Map;
 
     // Also allow new for runtime classes that have a constructor
-    if (!allowed && type && !type->name.empty()) {
+    if (!allowed && !type->name.empty()) {
         if (findRuntimeCtor(type)) {
             allowed = true;
         }
@@ -1183,7 +1188,7 @@ TypeRef Sema::analyzeNew(NewExpr *expr) {
 
     if (type->kind != TypeKindSem::Struct && type->kind != TypeKindSem::Class) {
         Symbol *ctorSym = nullptr;
-        if (type && !type->name.empty()) {
+        if (!type->name.empty()) {
             ctorSym = findRuntimeCtor(type);
         }
 

@@ -402,8 +402,8 @@ class Lowerer {
     /// @brief A temporary value pending release at statement boundary.
     struct DeferredRelease {
         Value value;     ///< The temporary SSA value to release.
-        bool isString;   ///< true = rt_str_release_maybe; false = managed object release.
-        size_t blockIdx; ///< Block where this temp was defined (for SSA safety).
+        bool isString{false}; ///< true = rt_str_release_maybe; false = managed object release.
+        size_t blockIdx{static_cast<size_t>(-1)}; ///< Block where this temp was defined.
     };
 
     /// @brief Temporaries queued for release at the next statement boundary.

@@ -21,13 +21,13 @@
 
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/ASTUtils.hpp"
+#include "frontends/basic/LineUtils.hpp"
 #include "frontends/basic/Options.hpp"
 #include "frontends/basic/StringUtils.hpp"
 #include "support/source_manager.hpp"
 #include <array>
 #include <cctype>
 #include <cstdio>
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -327,7 +327,10 @@ std::unique_ptr<Program> Parser::parseProgram() {
             break;
         if (at(TokenKind::Number) && peek(1).kind == TokenKind::KeywordAddfile) {
             Token numberTok = consume();
-            noteNumericLabelUsage(std::atoi(numberTok.lexeme.c_str()));
+            if (auto parsed = parseLineNumberLiteral(numberTok.lexeme))
+                noteNumericLabelUsage(*parsed);
+            else
+                emitError("B0001", numberTok, "line number is out of range");
         }
         if (at(TokenKind::KeywordAddfile)) {
             if (handleTopLevelAddFile(*prog)) {

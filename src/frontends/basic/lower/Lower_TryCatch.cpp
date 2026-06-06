@@ -24,6 +24,7 @@
 /// semantics without leaking state between statements.
 
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/OopIndex.hpp"
 #include "frontends/basic/OopLoweringContext.hpp"
 
@@ -172,6 +173,24 @@ void Lowerer::lowerTryCatch(const TryCatchStmt &stmt) {
 
     const bool hasFinally = !stmt.finallyBody.empty();
     const bool hasCatch = !stmt.catchBody.empty() || stmt.catchVar.has_value();
+    if (!hasCatch && !hasFinally) {
+        if (auto *diag = diagnosticEmitter()) {
+            diag->emit(il::support::Severity::Error,
+                       "B0801",
+                       stmt.loc,
+                       1,
+                       "TRY requires CATCH, FINALLY, or both");
+        }
+        for (const auto &st : stmt.tryBody) {
+            if (!st)
+                continue;
+            lowerStmt(*st);
+            BasicBlock *cur = ctx.current();
+            if (!cur || cur->terminated)
+                break;
+        }
+        return;
+    }
 
     // Capture the index of the current block before creating any new blocks,
     // since appending to the function's block list may reallocate and

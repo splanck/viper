@@ -97,7 +97,7 @@ std::optional<ResolvedMethod> resolveMethodOverload(const OopIndex &index,
     // Build candidate list: methodName plus property accessors matching arity.
     // BUG-OOP-002/003 fix: Walk the inheritance hierarchy to find methods.
     struct Cand {
-        const ClassInfo::MethodInfo *mi;
+        const ClassInfo::MethodInfo *mi{nullptr};
         std::string name;
         std::string declaringClass; // Class where method is defined (for mangling)
     };

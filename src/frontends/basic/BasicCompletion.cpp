@@ -72,8 +72,8 @@ BasicCompletionEngine::Context BasicCompletionEngine::extractContext(std::string
     while (lineEnd < src.size() && src[lineEnd] != '\n')
         ++lineEnd;
 
-    // col is 1-based
-    size_t cursorOff = lineStart + static_cast<size_t>(col - 1);
+    // col is 1-based; clamp invalid client input to the start of the line.
+    size_t cursorOff = lineStart + (col <= 1 ? 0U : static_cast<size_t>(col - 1));
     if (cursorOff > lineEnd)
         cursorOff = lineEnd;
 

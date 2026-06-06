@@ -290,7 +290,7 @@ namespace {
 
 struct KeywordEntry {
     std::string_view key;
-    TokenKind kind;
+    TokenKind kind{TokenKind::Error};
 };
 
 // Sorted for binary search.

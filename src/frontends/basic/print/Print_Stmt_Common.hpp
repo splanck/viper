@@ -34,6 +34,13 @@ namespace il::frontends::basic::print_stmt {
 ///          subexpressions, delegate nested statements, and access the output stream without
 ///          copying heavy printing state.
 struct Context {
+    /// @brief Bind a statement-printing context to active printer collaborators.
+    /// @param p Printer that owns indentation and stream output.
+    /// @param s Style helper used for expression and argument formatting.
+    /// @param d Dispatcher visitor used for nested statements.
+    Context(AstPrinter::Printer &p, AstPrinter::PrintStyle &s, AstPrinter::StmtPrinter &d)
+        : printer(p), style(s), dispatcher(d) {}
+
     AstPrinter::Printer &printer;
     AstPrinter::PrintStyle &style;
     AstPrinter::StmtPrinter &dispatcher;

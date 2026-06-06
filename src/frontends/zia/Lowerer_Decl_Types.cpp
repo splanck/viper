@@ -24,6 +24,7 @@
 
 #include <functional>
 #include <unordered_set>
+#include <utility>
 
 namespace il::frontends::zia {
 
@@ -343,9 +344,9 @@ void Lowerer::emitItableInit() {
 
     // Save current function context
     Function *savedFunc = currentFunc_;
-    auto savedLocals = std::move(locals_);
-    auto savedSlots = std::move(slots_);
-    auto savedLocalTypes = std::move(localTypes_);
+    auto savedLocals = std::exchange(locals_, {});
+    auto savedSlots = std::exchange(slots_, {});
+    auto savedLocalTypes = std::exchange(localTypes_, {});
 
     std::unordered_map<std::string, std::string> structIfaceAdapters;
 
@@ -371,10 +372,6 @@ void Lowerer::emitItableInit() {
     currentFunc_ = &fn;
     definedFunctions_.insert("__zia_iface_init");
     blockMgr_.bind(builder_.get(), &fn);
-    locals_.clear();
-    slots_.clear();
-    localTypes_.clear();
-
     // Create entry block
     builder_->createBlock(fn, "entry_0", {});
     setBlock(fn.blocks.size() - 1);

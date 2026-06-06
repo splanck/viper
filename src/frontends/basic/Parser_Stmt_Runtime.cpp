@@ -16,11 +16,11 @@
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
+#include "frontends/basic/LineUtils.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/StringUtils.hpp"
 
 #include <cstdio>
-#include <cstdlib>
 
 /// @file
 /// @brief Runtime statement parsing helpers for the BASIC front end.
@@ -76,10 +76,16 @@ StmtPtr Parser::parseOnErrorGotoStatement() {
         noteNamedLabelReference(targetTok, target);
         consume();
     } else {
-        target = std::atoi(targetTok.lexeme.c_str());
-        expect(TokenKind::Number);
-        noteNumericLabelUsage(target);
-        toZero = targetTok.kind == TokenKind::Number && target == 0;
+        Token numberTok = expect(TokenKind::Number);
+        if (numberTok.kind == TokenKind::Number) {
+            if (auto parsed = parseLineNumberLiteral(numberTok.lexeme)) {
+                target = *parsed;
+                noteNumericLabelUsage(target);
+                toZero = target == 0;
+            } else {
+                emitError("B0001", numberTok, "line number is out of range");
+            }
+        }
     }
     auto stmt = std::make_unique<OnErrorGoto>();
     stmt->loc = loc;
@@ -122,9 +128,15 @@ StmtPtr Parser::parseResumeStatement() {
             noteNamedLabelReference(labelTok, target);
             consume();
         } else {
-            target = std::atoi(labelTok.lexeme.c_str());
-            expect(TokenKind::Number);
-            noteNumericLabelUsage(target);
+            Token numberTok = expect(TokenKind::Number);
+            if (numberTok.kind == TokenKind::Number) {
+                if (auto parsed = parseLineNumberLiteral(numberTok.lexeme)) {
+                    target = *parsed;
+                    noteNumericLabelUsage(target);
+                } else {
+                    emitError("B0001", numberTok, "line number is out of range");
+                }
+            }
         }
         stmt->mode = Resume::Mode::Label;
         stmt->target = target;

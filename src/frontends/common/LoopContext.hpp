@@ -28,8 +28,8 @@ namespace il::frontends::common {
 /// @brief Context for a single loop during lowering.
 /// @details Tracks the block indices that break and continue should target.
 struct LoopContext {
-    std::size_t breakBlockIdx;    ///< Target block for break statements.
-    std::size_t continueBlockIdx; ///< Target block for continue statements.
+    std::size_t breakBlockIdx{static_cast<std::size_t>(-1)};    ///< Target block for break statements.
+    std::size_t continueBlockIdx{static_cast<std::size_t>(-1)}; ///< Target block for continue statements.
 
     /// @brief Optional update block for FOR-style loops.
     /// @details When set, FOR loops use this for continue; otherwise

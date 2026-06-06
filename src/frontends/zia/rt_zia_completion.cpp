@@ -1333,6 +1333,13 @@ std::string formatHoverForSymbol(const il::support::SourceManager &sm,
 }
 
 int activeParameterForSource(std::string_view source, int line, int col) {
+    if (source.empty())
+        return 0;
+    if (line < 1)
+        line = 1;
+    if (col < 0)
+        col = 0;
+
     size_t cursor = 0;
     int curLine = 1;
     while (cursor < source.size() && curLine < line) {

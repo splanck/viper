@@ -260,7 +260,9 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
     // This ensures rt_typeid_of can identify the object's type via vptr lookup.
     if (const ClassInfo *ciInit = oopIndex_.findClass(qualify(klass.name))) {
         // Get class type ID from layout
-        auto itLayout = classLayouts_.find(klass.name);
+        auto itLayout = classLayouts_.find(ciInit->name);
+        if (itLayout == classLayouts_.end())
+            itLayout = classLayouts_.find(klass.name);
         if (itLayout != classLayouts_.end()) {
             const long long typeId = (long long)itLayout->second.classId;
             // Retrieve the registered vtable for this class

@@ -63,6 +63,7 @@ RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/network/rt_http2.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/network/rt_network_internal.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/network/rt_rsa.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/network/rt_tls_internal.h")
+RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/network/rt_tls_verify_internal.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/network/rt_tls_server_internal.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/oop/rt_exc.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/oop/rt_oop.h")
@@ -72,6 +73,8 @@ RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/text/rt_hash_util.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/text/rt_json_internal.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/text/rt_keyderive_internal.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/text/rt_numfmt_internal.h")
+RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/threads/rt_monitor_internal.h")
+RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/threads/rt_threads_internal.h")
 
 // Localization: Collator ships the C implementation + docs + tests, but the
 // frontend class is intentionally not registered in runtime.def for v1.

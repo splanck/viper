@@ -17,9 +17,9 @@
 
 #pragma once
 
+#include "frontends/basic/LineUtils.hpp"
 #include "frontends/basic/Parser.hpp"
 
-#include <cstdlib>
 #include <initializer_list>
 #include <utility>
 #include <vector>
@@ -54,7 +54,10 @@ inline void Parser::skipOptionalLineLabelAfterBreak(
     if (at(TokenKind::Number)) {
         Token numberTok = peek();
         if (matchesFollowers(peek(1).kind)) {
-            noteNumericLabelUsage(std::atoi(numberTok.lexeme.c_str()));
+            if (auto parsed = parseLineNumberLiteral(numberTok.lexeme))
+                noteNumericLabelUsage(*parsed);
+            else
+                emitError("B0001", numberTok, "line number is out of range");
             consume();
         }
         return;

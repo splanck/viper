@@ -272,6 +272,8 @@ void SelectCaseLowering::lowerNumericDispatch(const SelectCaseStmt &stmt,
                                               il::core::Value selector) {
     auto &ctx = lowerer_.context();
     auto *func = ctx.function();
+    if (!func)
+        return;
 
     std::vector<CasePlanEntry> plan;
     plan.reserve(model.numericRelations.size() + model.numericRanges.size() + 1);
