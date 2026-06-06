@@ -77,11 +77,11 @@ constexpr uint64_t defaultImageBaseForPlatform(LinkPlatform platform) {
 
 /// A chunk of data from one input section within an output section.
 struct InputChunk {
-    size_t inputObjIndex;   ///< Index into the linker's object file list.
-    size_t inputSecIndex;   ///< Index into that ObjFile's sections.
-    size_t outputOffset;    ///< Byte offset within the output section.
-    size_t size;            ///< Size in bytes.
-    bool synthetic = false; ///< True when the bytes were created by the linker.
+    size_t inputObjIndex = 0; ///< Index into the linker's object file list.
+    size_t inputSecIndex = 0; ///< Index into that ObjFile's sections.
+    size_t outputOffset = 0;  ///< Byte offset within the output section.
+    size_t size = 0;          ///< Size in bytes.
+    bool synthetic = false;   ///< True when the bytes were created by the linker.
 };
 
 /// Hashable key for maps indexed by an input object/section pair.
@@ -192,13 +192,13 @@ inline bool isWindowsLinkerHelperSymbol(const std::string &name) {
            name == "__vcrt_initialize" || name == "__vcrt_thread_attach" ||
            name == "__vcrt_thread_detach" || name == "__vcrt_uninitialize" ||
            name == "__vcrt_uninitialize_critical" || name == "__isa_available" ||
-           name == "__acrt_initialize" ||
-           name == "__acrt_thread_attach" || name == "__acrt_thread_detach" ||
-           name == "__acrt_uninitialize" || name == "__acrt_uninitialize_critical" ||
-           name == "__isa_available_init" || name == "__scrt_exe_initialize_mta" ||
-           name == "__CxxFrameHandler4" || name == "??_7type_info@@6B@" ||
-           name == "??2@YAPEAX_K@Z" || name == "??2@YAPEAX_KAEBUnothrow_t@std@@@Z" ||
-           name == "??3@YAXPEAX@Z" || name == "??3@YAXPEAX_K@Z" || name == "IID_ID3D11Texture2D" ||
+           name == "__acrt_initialize" || name == "__acrt_thread_attach" ||
+           name == "__acrt_thread_detach" || name == "__acrt_uninitialize" ||
+           name == "__acrt_uninitialize_critical" || name == "__isa_available_init" ||
+           name == "__scrt_exe_initialize_mta" || name == "__CxxFrameHandler4" ||
+           name == "??_7type_info@@6B@" || name == "??2@YAPEAX_K@Z" ||
+           name == "??2@YAPEAX_KAEBUnothrow_t@std@@@Z" || name == "??3@YAXPEAX@Z" ||
+           name == "??3@YAXPEAX_K@Z" || name == "IID_ID3D11Texture2D" ||
            isWindowsStdioOptionsStorageSymbol(name) || name == "vm_trap" ||
            name == "rt_audio_shutdown";
 }
@@ -267,16 +267,16 @@ struct GotEntry {
 
 /// A location in the output that contains an absolute pointer needing ASLR rebase.
 struct RebaseEntry {
-    size_t sectionIndex; ///< Index into LinkLayout::sections.
-    size_t offset;       ///< Byte offset within the output section.
+    size_t sectionIndex = 0; ///< Index into LinkLayout::sections.
+    size_t offset = 0;       ///< Byte offset within the output section.
 };
 
 /// A data-pointer location that must be bound to a dynamic symbol at load time.
 /// Used for non-GOT references (e.g., ObjC classrefs) to external symbols.
 struct BindEntry {
-    std::string symbolName; ///< External symbol name (e.g., "OBJC_CLASS_$_NSColor").
-    size_t sectionIndex;    ///< Index into LinkLayout::sections.
-    size_t offset;          ///< Byte offset within the output section.
+    std::string symbolName;  ///< External symbol name (e.g., "OBJC_CLASS_$_NSColor").
+    size_t sectionIndex = 0; ///< Index into LinkLayout::sections.
+    size_t offset = 0;       ///< Byte offset within the output section.
 };
 
 /// Complete memory layout for the linked output.

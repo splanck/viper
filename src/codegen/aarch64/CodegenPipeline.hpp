@@ -11,8 +11,8 @@
 //          replaces the monolithic per-function loop in the CLI driver.
 //
 // Key invariants:
-//   - Passes run in order: Lowering → RegAlloc → BlockLayout → Peephole →
-//     Scheduler → Peephole → Emit.
+//   - Passes run in order: Lowering → Legalize → optional PreRegAllocOpt →
+//     RegAlloc → BlockLayout → Peephole → Scheduler → Peephole → Emit.
 //   - The AArch64Module struct is threaded through all passes.
 //   - MIR dump callbacks fire between passes when enabled.
 //

@@ -215,8 +215,8 @@ class X64BinaryEncoder {
 
     /// A branch that needs its rel32 patched after all blocks are emitted.
     struct PendingBranch {
-        size_t patchOffset; ///< Offset in CodeSection of the rel32 placeholder.
-        std::string target; ///< Target label name.
+        size_t patchOffset = 0; ///< Offset in CodeSection of the rel32 placeholder.
+        std::string target;     ///< Target label name.
     };
 
     /// Label name -> byte offset in CodeSection.

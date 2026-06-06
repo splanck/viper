@@ -511,9 +511,11 @@ std::string AsmEmitter::RoDataPool::stringLabel(int index) const {
 /// @param index Pool index supplied by @ref addStringLiteral.
 /// @return Number of bytes stored for the literal.
 std::size_t AsmEmitter::RoDataPool::stringByteLength(int index) const {
-    assert(index >= 0);
+    if (index < 0)
+        throw std::out_of_range("x86-64 rodata string index is negative");
     const auto idx = static_cast<std::size_t>(index);
-    assert(idx < stringLengths_.size());
+    if (idx >= stringLengths_.size())
+        throw std::out_of_range("x86-64 rodata string index is out of range");
     return stringLengths_[idx];
 }
 

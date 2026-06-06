@@ -153,7 +153,9 @@ set(RT_TEXT_SOURCES
         text/rt_json_validate.c
         text/rt_json_stream.c
         text/rt_xml.c
+        text/rt_xml_format.c
         text/rt_yaml.c
+        text/rt_yaml_format.c
         text/rt_keyderive.c
         text/rt_aes.c
         text/rt_cipher.c
@@ -194,6 +196,7 @@ set(RT_IO_FS_SOURCES
         io/rt_tempfile.c
         io/rt_watcher.c
         io/rt_compress.c
+        io/rt_deflate.c
         io/rt_archive.c
         io/rt_savedata.c
         io/rt_vpa_reader.c
@@ -244,10 +247,13 @@ set(RT_GRAPHICS_SOURCES
         graphics/3d/physics/rt_collider3d.c
         graphics/2d/rt_pixels.c
         graphics/2d/rt_pixels_io.c
+        graphics/2d/rt_pixels_png.c
+        graphics/2d/rt_pixels_jpeg.c
         graphics/2d/rt_pixels_transform.c
         graphics/2d/rt_pixels_draw.c
         graphics/media/rt_gif.c
         graphics/3d/assets/rt_gltf.c
+        graphics/3d/assets/rt_gltf_trs.c
         graphics/3d/assets/rt_gltf_json.c
         graphics/3d/assets/rt_textureasset3d.c
         graphics/2d/rt_sprite.c
@@ -366,6 +372,8 @@ set(RT_GRAPHICS_DISABLED_SOURCES
         graphics/2d/rt_physics2d_joint.c
         graphics/2d/rt_pixels.c
         graphics/2d/rt_pixels_io.c
+        graphics/2d/rt_pixels_png.c
+        graphics/2d/rt_pixels_jpeg.c
         graphics/2d/rt_pixels_transform.c
         graphics/2d/rt_pixels_draw.c
         graphics/media/rt_gif.c
@@ -408,6 +416,7 @@ endif ()
 
 set(RT_AUDIO_SOURCES
         audio/rt_audio.c
+        audio/rt_audio_decode.c
         audio/rt_playlist.c
         audio/rt_soundbank.c
         audio/rt_synth.c
@@ -447,6 +456,7 @@ set(RT_LOCALIZATION_SOURCES
         localization/rt_locale_data_en_us.c
         localization/rt_locale_info.c
         localization/rt_locale_manager.c
+        localization/rt_locale_plural.c
         localization/rt_numformat.c
         localization/rt_plural_rules.c
         localization/rt_dateformat.c
@@ -473,12 +483,15 @@ set(RT_NETWORK_SOURCES
         network/rt_network_dns.c
         network/rt_network_http.c
         network/rt_http2.c
+        network/rt_hpack.c
         network/rt_http_url.c
         network/rt_restclient.c
         network/rt_retry.c
         network/rt_ratelimit.c
         network/rt_websocket.c
+        network/rt_ws_crypto.c
         network/rt_crypto.c
+        network/rt_x25519.c
         network/rt_crypto_module.c
         network/rt_tls.c
         network/rt_tls_verify_common.c

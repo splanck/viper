@@ -136,16 +136,17 @@ class FrameBuilder : public common::FrameLayout {
   private:
     /// @brief Lifetime record for a single spill slot.
     ///
-    /// Tracks the FP-relative offset, the instruction index of the last use of
-    /// the most-recent vreg assigned to this slot, and the block epoch in which
-    /// that last use occurred.  Slots are only eligible for reuse within the
-    /// SAME block epoch — cross-block reuse is prohibited because
+    /// Tracks the FP-relative offset, size/alignment compatibility, the
+    /// instruction index of the last use of the most-recent vreg assigned to
+    /// this slot, and the block epoch in which that last use occurred. Slots
+    /// are only eligible for reuse within the SAME block epoch because
     /// @p currentInstrIdx is a per-block counter that resets to 0 at each block
     /// boundary, making cross-epoch comparisons meaningless.
     struct SlotLifetime {
         uint32_t vreg;       ///< Most-recent vreg assigned to this slot.
         int offset;          ///< FP-relative offset (always negative).
         int sizeBytes;       ///< Slot size (for size-compatible reuse check).
+        int alignBytes;      ///< Guaranteed alignment of the slot.
         unsigned lastUseIdx; ///< Last instruction index reading the current vreg.
         uint32_t epoch;      ///< Block epoch when lastUseIdx was recorded.
     };

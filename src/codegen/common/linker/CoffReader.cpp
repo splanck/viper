@@ -691,8 +691,8 @@ bool readCoffObj(
                     }
                     if (!readSymName(sym, comdatKeyBySection[sectionNumber]))
                         return false;
-                    if (comdatKeyBySection[sectionNumber].empty() &&
-                        sectionNumber < obj.sections.size())
+                    if (sectionNumber < obj.sections.size() &&
+                        comdatKeyBySection[sectionNumber].empty())
                         comdatKeyBySection[sectionNumber] = obj.sections[sectionNumber].name;
                     const uint32_t assocSection =
                         static_cast<uint32_t>(static_cast<uint16_t>(aux->Number)) |

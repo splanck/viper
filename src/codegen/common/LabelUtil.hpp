@@ -26,6 +26,26 @@
 /// IL function names, block labels, and other identifiers into valid assembly labels.
 namespace viper::codegen::common {
 
+/// @brief Append assembler-safe characters from @p fragment to @p out.
+/// @details Applies the same character policy used by @ref sanitizeLabel:
+///          alphanumerics, underscore, period, and dollar are preserved, while
+///          hyphens and all other characters are converted to underscores. This
+///          helper intentionally does not apply the leading-digit rule; callers
+///          apply that rule once to the full label stem before appending any
+///          suffix.
+/// @param out Destination label buffer.
+/// @param fragment Input label fragment to sanitize and append.
+inline void appendSanitizedLabelFragment(std::string &out, std::string_view fragment) {
+    for (unsigned char ch : fragment) {
+        const bool isAlpha = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
+        const bool isDigit = (ch >= '0' && ch <= '9');
+        if (isAlpha || isDigit || ch == '_' || ch == '.' || ch == '$')
+            out.push_back(static_cast<char>(ch));
+        else
+            out.push_back('_');
+    }
+}
+
 /// @brief Transforms an arbitrary string into a valid assembler label.
 ///
 /// Assembly labels typically have restrictions on allowed characters and cannot
@@ -43,7 +63,7 @@ namespace viper::codegen::common {
 /// - Empty input produces "L" as the output
 ///
 /// **Suffix Support:**
-/// - An optional suffix is appended verbatim after sanitization
+/// - An optional suffix is sanitized with the same character rules and appended
 /// - Useful for generating unique labels (e.g., "_entry", "_exit", "_123")
 ///
 /// @par Example Usage:
@@ -65,21 +85,12 @@ namespace viper::codegen::common {
 inline std::string sanitizeLabel(std::string_view in, std::string_view suffix = {}) {
     std::string out;
     out.reserve(in.size() + suffix.size() + 2);
-    for (unsigned char ch : in) {
-        const bool isAlpha = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
-        const bool isDigit = (ch >= '0' && ch <= '9');
-        if (isAlpha || isDigit || ch == '_' || ch == '.' || ch == '$') {
-            out.push_back(static_cast<char>(ch));
-        } else if (ch == '-') {
-            out.push_back('_');
-        } else {
-            out.push_back('_');
-        }
-    }
+
+    appendSanitizedLabelFragment(out, in);
     if (out.empty() || (out[0] >= '0' && out[0] <= '9'))
         out.insert(out.begin(), 'L');
     if (!suffix.empty()) {
-        out.append(suffix);
+        appendSanitizedLabelFragment(out, suffix);
     }
     return out;
 }

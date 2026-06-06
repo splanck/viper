@@ -220,12 +220,12 @@ bool mergeSections(const std::vector<ObjFile> &objects,
 
     // Collect input sections by class.
     struct PendingChunk {
-        size_t objIdx;
-        size_t secIdx;
-        SectionClass cls;
+        size_t objIdx = 0;
+        size_t secIdx = 0;
+        SectionClass cls = SectionClass::Other;
         std::string name;
-        uint32_t alignment;
-        size_t inputOrder;
+        uint32_t alignment = 1;
+        size_t inputOrder = 0;
     };
 
     std::vector<PendingChunk> pending;
@@ -638,22 +638,21 @@ bool mergeSections(const std::vector<ObjFile> &objects,
     // Without this, non-writable ObjC sections (e.g., __objc_classname) get
     // VAs after writable sections, causing __TEXT/__DATA segment overlap in
     // the Mach-O executable (SIGKILL on macOS ARM64).
-    std::stable_sort(
-        layout.sections.begin(),
-        layout.sections.end(),
-        [](const OutputSection &a, const OutputSection &b) {
-            const int aPerm = permClass(a);
-            const int bPerm = permClass(b);
-            if (aPerm != bPerm)
-                return aPerm < bPerm;
+    std::stable_sort(layout.sections.begin(),
+                     layout.sections.end(),
+                     [](const OutputSection &a, const OutputSection &b) {
+                         const int aPerm = permClass(a);
+                         const int bPerm = permClass(b);
+                         if (aPerm != bPerm)
+                             return aPerm < bPerm;
 
-            const int aClass = sectionClassOrder(outputSectionClass(a));
-            const int bClass = sectionClassOrder(outputSectionClass(b));
-            if (aClass != bClass)
-                return aClass < bClass;
+                         const int aClass = sectionClassOrder(outputSectionClass(a));
+                         const int bClass = sectionClassOrder(outputSectionClass(b));
+                         if (aClass != bClass)
+                             return aClass < bClass;
 
-            return a.name < b.name;
-        });
+                         return a.name < b.name;
+                     });
 
     if (!assignSectionVirtualAddresses(layout, platform, err))
         return false;

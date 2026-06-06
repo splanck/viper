@@ -30,6 +30,8 @@
 
 #include <algorithm>
 #include <cassert>
+#include <limits>
+#include <stdexcept>
 #include <string>
 
 namespace viper::codegen::x64 {
@@ -38,6 +40,46 @@ namespace {
 
 constexpr PhysReg kScratchGPR = PhysReg::R11;
 constexpr PhysReg kScratchXMM = PhysReg::XMM15;
+
+/// @brief Compute outgoing-call stack bytes with overflow checking.
+/// @details The call layout reports stack slots in 8-byte units and Win64 adds
+///          a fixed shadow-space prefix. This helper performs the multiplication
+///          and addition in size_t while rejecting values that would wrap.
+/// @param shadowSpace ABI-mandated prefix bytes before stack arguments.
+/// @param stackSlots Number of 8-byte outgoing stack slots.
+/// @return Total outgoing-call byte count before frame-size rounding.
+static std::size_t checkedOutgoingStackBytes(std::size_t shadowSpace, std::size_t stackSlots) {
+    constexpr std::size_t kMax = std::numeric_limits<std::size_t>::max();
+    if (stackSlots > (kMax - shadowSpace) / kSlotSizeBytes)
+        throw std::length_error("x86-64 call lowering: outgoing argument area exceeds size_t");
+    return shadowSpace + stackSlots * kSlotSizeBytes;
+}
+
+/// @brief Compute a frame-resident outgoing stack slot offset.
+/// @details Returns the byte offset used by stack-slot MIR operands, rejecting
+///          layouts that cannot be represented in the signed 32-bit displacement
+///          carried by the downstream frame and encoding paths.
+/// @param shadowSpace ABI-mandated prefix bytes before stack arguments.
+/// @param stackSlotIndex Zero-based outgoing stack slot index.
+/// @return Signed 32-bit byte offset from the outgoing-argument area base.
+static int32_t checkedStackSlotOffset(std::size_t shadowSpace, std::size_t stackSlotIndex) {
+    const std::size_t offset = checkedOutgoingStackBytes(shadowSpace, stackSlotIndex);
+    if (offset > static_cast<std::size_t>(std::numeric_limits<int32_t>::max()))
+        throw std::length_error("x86-64 call lowering: stack argument offset exceeds int32_t");
+    return static_cast<int32_t>(offset);
+}
+
+/// @brief Round and narrow outgoing-call frame bytes to FrameInfo's int field.
+/// @details FrameInfo stores byte counts as signed ints, so this helper rejects
+///          valid size_t layouts that would not survive the existing field type.
+/// @param stackBytes Raw outgoing-call byte count.
+/// @return Rounded byte count representable as int.
+static int checkedOutgoingAreaForFrame(std::size_t stackBytes) {
+    const std::size_t rounded = roundUpSize(stackBytes, kSlotSizeBytes);
+    if (rounded > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+        throw std::length_error("x86-64 call lowering: outgoing argument area exceeds int");
+    return static_cast<int>(rounded);
+}
 
 /// @brief Decide whether an instruction produces the boolean SSA value @p vreg.
 ///
@@ -153,7 +195,8 @@ void lowerCall(MBasicBlock &block,
                const CallLoweringPlan &plan,
                const TargetInfo &target,
                FrameInfo &frame) {
-    assert(insertIdx <= block.instructions.size() && "insert index out of range");
+    if (insertIdx > block.instructions.size())
+        throw std::out_of_range("x86-64 call lowering: insert index is out of range");
 
     auto insertIt = block.instructions.begin();
     std::advance(insertIt, static_cast<std::ptrdiff_t>(insertIdx));
@@ -218,7 +261,7 @@ void lowerCall(MBasicBlock &block,
                                          {makePhysOperand(RegClass::GPR, destReg), scratch}));
             } else {
                 const auto slotOffset =
-                    static_cast<int32_t>(target.shadowSpace + loc.stackSlotIndex * kSlotSizeBytes);
+                    checkedStackSlotOffset(target.shadowSpace, loc.stackSlotIndex);
                 insertInstr(MInstr::make(MOpcode::MOVrm, {makeStackSlot(slotOffset), scratch}));
             }
         } else {
@@ -230,7 +273,7 @@ void lowerCall(MBasicBlock &block,
                 maybeDuplicateWin64VarArgFpr(loc, destReg);
             } else {
                 const auto slotOffset =
-                    static_cast<int32_t>(target.shadowSpace + loc.stackSlotIndex * kSlotSizeBytes);
+                    checkedStackSlotOffset(target.shadowSpace, loc.stackSlotIndex);
                 const Operand scratchXmm = makePhysOperand(RegClass::XMM, kScratchXMM);
                 insertInstr(MInstr::make(MOpcode::MOVSDrr,
                                          {scratchXmm, makeVRegOperand(RegClass::XMM, arg.vreg)}));
@@ -254,7 +297,7 @@ void lowerCall(MBasicBlock &block,
                     {makePhysOperand(RegClass::GPR, destReg), makeImmOperand(arg.imm)}));
             } else {
                 const auto slotOffset =
-                    static_cast<int32_t>(target.shadowSpace + loc.stackSlotIndex * kSlotSizeBytes);
+                    checkedStackSlotOffset(target.shadowSpace, loc.stackSlotIndex);
                 const Operand scratch = makePhysOperand(RegClass::GPR, kScratchGPR);
                 insertInstr(MInstr::make(MOpcode::MOVri, {scratch, makeImmOperand(arg.imm)}));
                 insertInstr(MInstr::make(MOpcode::MOVrm, {makeStackSlot(slotOffset), scratch}));
@@ -269,7 +312,7 @@ void lowerCall(MBasicBlock &block,
                 maybeDuplicateWin64VarArgFpr(loc, destReg);
             } else {
                 const auto slotOffset =
-                    static_cast<int32_t>(target.shadowSpace + loc.stackSlotIndex * kSlotSizeBytes);
+                    checkedStackSlotOffset(target.shadowSpace, loc.stackSlotIndex);
                 const Operand scratchGpr = makePhysOperand(RegClass::GPR, kScratchGPR);
                 const Operand scratchXmm = makePhysOperand(RegClass::XMM, kScratchXMM);
                 insertInstr(MInstr::make(MOpcode::MOVri, {scratchGpr, makeImmOperand(arg.imm)}));
@@ -280,9 +323,10 @@ void lowerCall(MBasicBlock &block,
         }
     }
 
-    const std::size_t stackBytes = target.shadowSpace + layout.stackSlotsUsed * kSlotSizeBytes;
+    const std::size_t stackBytes =
+        checkedOutgoingStackBytes(target.shadowSpace, layout.stackSlotsUsed);
     frame.outgoingArgArea =
-        std::max(frame.outgoingArgArea, static_cast<int>(roundUpSize(stackBytes, kSlotSizeBytes)));
+        std::max(frame.outgoingArgArea, checkedOutgoingAreaForFrame(stackBytes));
 
     // SysV AMD64 varargs: %al must carry the number of XMM registers used.
     // Win64 instead mirrors FP register args into the corresponding integer

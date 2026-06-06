@@ -123,6 +123,50 @@ struct LoweringContext {
     /// @brief Counter used to generate unique trap label names.
     unsigned &trapLabelCounter;
 
+    /// @brief Construct a lowering context with every borrowed state object bound explicitly.
+    /// @details The context stores references into the surrounding lowering pass and must never
+    ///          outlive that pass invocation. Using an explicit constructor keeps the long member
+    ///          list checked in one place and prevents accidental default construction of required
+    ///          reference state.
+    /// @param function IL function currently being lowered.
+    /// @param targetInfo ABI and register information for the AArch64 target.
+    /// @param frameBuilder Frame-layout allocator used while lowering.
+    /// @param machineFunction Output MIR function being built.
+    /// @param nextVirtualRegId Counter used to allocate new virtual registers.
+    /// @param tempVirtualRegs Function-wide mapping from IL temp IDs to vreg IDs.
+    /// @param tempClasses Function-wide mapping from IL temp IDs to register classes.
+    /// @param phiVirtualRegs Phi-parameter vreg IDs by block label.
+    /// @param phiClasses Phi-parameter register classes by block label.
+    /// @param phiSpillOffsets Phi spill-slot offsets by block label.
+    /// @param crossBlockSpillOffsets Spill slots for temps live across blocks.
+    /// @param tempDefinitionBlocks Basic-block index that defines each temp.
+    /// @param crossBlockLiveTemps Temps proven live across basic blocks.
+    /// @param stringLiteralLengths Optional global string literal byte-length table.
+    /// @param varArgNamedArgCounts Optional direct-callee named-argument count table.
+    /// @param trapCounter Counter for unique trap label generation.
+    LoweringContext(const il::core::Function &function,
+                    const TargetInfo &targetInfo,
+                    FrameBuilder &frameBuilder,
+                    MFunction &machineFunction,
+                    uint16_t &nextVirtualRegId,
+                    std::unordered_map<unsigned, uint16_t> &tempVirtualRegs,
+                    std::unordered_map<unsigned, RegClass> &tempClasses,
+                    std::unordered_map<std::string, std::vector<uint16_t>> &phiVirtualRegs,
+                    std::unordered_map<std::string, std::vector<RegClass>> &phiClasses,
+                    std::unordered_map<std::string, std::vector<int>> &phiSpillOffsets,
+                    std::unordered_map<unsigned, int> &crossBlockSpillOffsets,
+                    std::unordered_map<unsigned, std::size_t> &tempDefinitionBlocks,
+                    std::unordered_set<unsigned> &crossBlockLiveTemps,
+                    const std::unordered_map<std::string, std::size_t> *stringLiteralLengths,
+                    const std::unordered_map<std::string, std::size_t> *varArgNamedArgCounts,
+                    unsigned &trapCounter)
+        : fn(function), ti(targetInfo), fb(frameBuilder), mf(machineFunction),
+          nextVRegId(nextVirtualRegId), tempVReg(tempVirtualRegs), tempRegClass(tempClasses),
+          phiVregId(phiVirtualRegs), phiRegClass(phiClasses), phiSpillOffset(phiSpillOffsets),
+          crossBlockSpillOffset(crossBlockSpillOffsets), tempDefBlock(tempDefinitionBlocks),
+          crossBlockTemps(crossBlockLiveTemps), stringLiteralByteLengths(stringLiteralLengths),
+          knownVarArgNamedArgCounts(varArgNamedArgCounts), trapLabelCounter(trapCounter) {}
+
     /// @brief Retrieve the MIR basic block at the given index.
     /// @param idx Zero-based index into the function's block list.
     /// @return Reference to the corresponding MBasicBlock.

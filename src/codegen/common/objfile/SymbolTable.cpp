@@ -45,7 +45,13 @@ uint32_t SymbolTable::add(Symbol sym) {
 
             if (existing.binding == SymbolBinding::External &&
                 sym.binding != SymbolBinding::External) {
+                const std::string oldName = existing.name;
                 existing = std::move(sym);
+                if (existing.name != oldName) {
+                    nameIndex_.erase(oldName);
+                    nameIndex_[existing.name] = it->second;
+                }
+                ambiguousNames_.erase(oldName);
                 ambiguousNames_.erase(existing.name);
                 return it->second;
             }

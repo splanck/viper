@@ -12,7 +12,9 @@
 // Key invariants:
 //   - emitFunction() is re-entrant; all per-function state is reset on entry.
 //   - All MIR operands must have physical registers (allocation complete).
-//   - resolveBaseOffset() uses kScratchGPR2/3; callers must not hold values there.
+//   - Late expansion helpers use kScratchGPR/kScratchGPR2/kScratchGPR3; the
+//     register allocator reserves all three so emitted scratch sequences cannot
+//     clobber allocated values.
 // Ownership/Lifetime:
 //   - AsmEmitter holds a non-owning pointer to TargetInfo; caller keeps it alive.
 //   - currentPlan_ is only valid during a single emitFunction() call.
@@ -28,6 +30,9 @@
 #include "codegen/common/ICE.hpp"
 #include "codegen/common/LabelUtil.hpp"
 #include "il/runtime/RuntimeNameMap.hpp"
+
+#include <limits>
+#include <stdexcept>
 
 // ---------------------------------------------------------------------------
 // Emit primitives — reduce per-method boilerplate for common instruction forms.
@@ -118,16 +123,23 @@ static bool isDarwinLocalSymbolName(std::string_view name) {
 }
 
 /// @brief Mangle a symbol name for the target platform.
-/// On Darwin (macOS), C symbols require an underscore prefix.
-/// Assembler local labels are not mangled.
-/// On Linux ELF, no prefix is applied.
+/// @details Normalizes frontend entry names such as @c @main, sanitizes
+///          assembler-hostile characters, and applies the Darwin underscore
+///          prefix for externally visible C-level symbols. Assembler local
+///          labels are already controlled by block lowering and are not
+///          mangled on Darwin.
+/// @param name Raw MIR/runtime symbol name.
+/// @param isDarwin True when emitting Mach-O/Darwin assembly syntax.
+/// @return Assembly-safe symbol spelling for directives and operands.
 static std::string mangleSymbolImpl(const std::string &name, bool isDarwin) {
+    const std::string normalized =
+        (name == "@main") ? std::string{"main"} : viper::codegen::common::sanitizeLabel(name);
     if (isDarwin) {
         if (isDarwinLocalSymbolName(name))
             return name;
-        return "_" + name;
+        return "_" + normalized;
     }
-    return name;
+    return normalized;
 }
 
 /// @brief Mangle a call target symbol for emission.
@@ -199,6 +211,11 @@ void AsmEmitter::emitPrologue(std::ostream &os, const FramePlan &plan) const {
         std::ostream &os;
         const AsmEmitter &self;
 
+        /// @brief Bind text prologue emission state to frame-codegen callbacks.
+        /// @param out Destination assembly stream.
+        /// @param emitter Emitter that owns register formatting helpers.
+        Steps(std::ostream &out, const AsmEmitter &emitter) : os(out), self(emitter) {}
+
         void paciasp() const {
             os << "  paciasp\n";
         }
@@ -242,13 +259,18 @@ void AsmEmitter::emitPrologue(std::ostream &os, const FramePlan &plan) const {
                     plan.saveFPRs,
                     plan.localFrameSize,
                     target_->hasReturnAddressSigning(),
-                    Steps{os, *this});
+                    Steps(os, *this));
 }
 
 void AsmEmitter::emitEpilogue(std::ostream &os, const FramePlan &plan) const {
     struct Steps {
         std::ostream &os;
         const AsmEmitter &self;
+
+        /// @brief Bind text epilogue emission state to frame-codegen callbacks.
+        /// @param out Destination assembly stream.
+        /// @param emitter Emitter that owns register formatting helpers.
+        Steps(std::ostream &out, const AsmEmitter &emitter) : os(out), self(emitter) {}
 
         void ldpFprPair(PhysReg r0, PhysReg r1) const {
             os << "  ldp ";
@@ -293,7 +315,7 @@ void AsmEmitter::emitEpilogue(std::ostream &os, const FramePlan &plan) const {
                     plan.saveFPRs,
                     plan.localFrameSize,
                     target_->hasReturnAddressSigning(),
-                    Steps{os, *this});
+                    Steps(os, *this));
 }
 
 void AsmEmitter::emitMovRR(std::ostream &os, PhysReg dst, PhysReg src) const {
@@ -568,6 +590,22 @@ static bool isPairImm7Offset(long long offset) {
         return false;
     const long long scaled = offset / 8;
     return scaled >= -64 && scaled <= 63;
+}
+
+/// @brief Add two signed offsets while rejecting overflow.
+/// @details Used by pair load/store fallbacks that split an LDP/STP into two
+///          scalar accesses at @c offset and @c offset+8. Keeping the check in
+///          the text emitter mirrors the binary encoder's guarded fallback.
+/// @param lhs Base offset in bytes.
+/// @param rhs Delta in bytes.
+/// @param context Diagnostic context for any overflow exception.
+/// @return Sum of @p lhs and @p rhs.
+static long long checkedOffsetAdd(long long lhs, long long rhs, const char *context) {
+    if ((rhs > 0 && lhs > std::numeric_limits<long long>::max() - rhs) ||
+        (rhs < 0 && lhs < std::numeric_limits<long long>::min() - rhs)) {
+        throw std::overflow_error(std::string(context) + " offset overflow");
+    }
+    return lhs + rhs;
 }
 
 /// @brief GAS mnemonic for an unscaled narrow load of @p bytes (1/2/4).
@@ -1274,7 +1312,9 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const {
         case MOpcode::LdpRegFpImm:
             if (!isPairImm7Offset(getImm(mi.ops[2]))) {
                 emitLdrFromFp(os, getReg(mi.ops[0]), getImm(mi.ops[2]));
-                emitLdrFromFp(os, getReg(mi.ops[1]), getImm(mi.ops[2]) + 8);
+                emitLdrFromFp(os,
+                              getReg(mi.ops[1]),
+                              checkedOffsetAdd(getImm(mi.ops[2]), 8, "AArch64 ldp fallback"));
                 return;
             }
             os << "  ldp " << rn(getReg(mi.ops[0])) << ", " << rn(getReg(mi.ops[1])) << ", [x29, #"
@@ -1283,7 +1323,9 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const {
         case MOpcode::StpRegFpImm:
             if (!isPairImm7Offset(getImm(mi.ops[2]))) {
                 emitStrToFp(os, getReg(mi.ops[0]), getImm(mi.ops[2]));
-                emitStrToFp(os, getReg(mi.ops[1]), getImm(mi.ops[2]) + 8);
+                emitStrToFp(os,
+                            getReg(mi.ops[1]),
+                            checkedOffsetAdd(getImm(mi.ops[2]), 8, "AArch64 stp fallback"));
                 return;
             }
             os << "  stp " << rn(getReg(mi.ops[0])) << ", " << rn(getReg(mi.ops[1])) << ", [x29, #"
@@ -1292,7 +1334,10 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const {
         case MOpcode::LdpFprFpImm: {
             if (!isPairImm7Offset(getImm(mi.ops[2]))) {
                 emitLdrFprFromFp(os, getReg(mi.ops[0]), getImm(mi.ops[2]));
-                emitLdrFprFromFp(os, getReg(mi.ops[1]), getImm(mi.ops[2]) + 8);
+                emitLdrFprFromFp(
+                    os,
+                    getReg(mi.ops[1]),
+                    checkedOffsetAdd(getImm(mi.ops[2]), 8, "AArch64 ldp fpr fallback"));
                 return;
             }
             os << "  ldp ";
@@ -1305,7 +1350,9 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const {
         case MOpcode::StpFprFpImm: {
             if (!isPairImm7Offset(getImm(mi.ops[2]))) {
                 emitStrFprToFp(os, getReg(mi.ops[0]), getImm(mi.ops[2]));
-                emitStrFprToFp(os, getReg(mi.ops[1]), getImm(mi.ops[2]) + 8);
+                emitStrFprToFp(os,
+                               getReg(mi.ops[1]),
+                               checkedOffsetAdd(getImm(mi.ops[2]), 8, "AArch64 stp fpr fallback"));
                 return;
             }
             os << "  stp ";

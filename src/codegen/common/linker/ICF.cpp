@@ -59,14 +59,14 @@ uint64_t fnv1aMix(uint64_t h, uint64_t val) {
 
 /// Normalized relocation signature for identity comparison.
 struct RelocSig {
-    size_t offset;
-    uint32_t type;
+    size_t offset = 0;
+    uint32_t type = 0;
     std::string targetName;
     size_t targetObjIdx = 0;
     uint32_t targetSectionIndex = 0;
     size_t targetOffset = 0;
     bool targetIsLocalDefinition = false;
-    int64_t addend;
+    int64_t addend = 0;
 
     bool operator==(const RelocSig &o) const {
         return offset == o.offset && type == o.type && targetName == o.targetName &&
@@ -96,10 +96,10 @@ struct RelocSig {
 
 /// ICF candidate: a per-function .text section.
 struct Candidate {
-    size_t objIdx;
-    size_t secIdx;
+    size_t objIdx = 0;
+    size_t secIdx = 0;
     std::string funcSymName; ///< The Global symbol this section defines.
-    uint64_t hash;           ///< Combined hash of bytes + reloc sigs.
+    uint64_t hash = 0;       ///< Combined hash of bytes + reloc sigs.
     std::vector<RelocSig> sigs;
 };
 

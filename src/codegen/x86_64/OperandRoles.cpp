@@ -8,7 +8,7 @@
 // File: codegen/x86_64/OperandRoles.cpp
 // Purpose: Shared x86-64 Machine IR operand role classification.
 // Key invariants:
-//   - Covers all defined MIR opcodes; unknown opcodes return conservative roles.
+//   - Covers all defined MIR opcodes; unknown future opcodes return conservative roles.
 // Ownership/Lifetime:
 //   - Stateless free functions; no dynamic allocation.
 // Links: codegen/x86_64/OperandRoles.hpp,
@@ -28,8 +28,8 @@ namespace viper::codegen::x64 {
 ///          right-hand value at index 1 (use only). Loads have dest at 0
 ///          (def), address operands at 1+ (use). Stores have address and
 ///          value both as uses. The fallback at the end conservatively
-///          treats unknown operands as "use" so liveness analysis cannot
-///          accidentally drop live values.
+///          treats unknown operands as both use and def so liveness analysis
+///          cannot accidentally drop live values or miss implicit writes.
 std::pair<bool, bool> operandRoles(const MInstr &instr, std::size_t idx) noexcept {
     switch (instr.opcode) {
         case MOpcode::PUSH:
@@ -146,7 +146,7 @@ std::pair<bool, bool> operandRoles(const MInstr &instr, std::size_t idx) noexcep
                 return {true, false};
             return {false, false};
     }
-    return {true, false};
+    return {true, true};
 }
 
 /// @brief Predicate: does @p opcode read x86 EFLAGS?
@@ -233,9 +233,51 @@ bool hasObservableSideEffects(MOpcode opcode) noexcept {
         case MOpcode::IMULOvfrr:
         case MOpcode::PX_COPY:
             return true;
-        default:
+        case MOpcode::MOVrr:
+        case MOpcode::MOVri:
+        case MOpcode::MOVmr:
+        case MOpcode::CMOVNErr:
+        case MOpcode::SELECT_GPR:
+        case MOpcode::SELECT_XMM:
+        case MOpcode::LEA:
+        case MOpcode::ADDrr:
+        case MOpcode::ADDri:
+        case MOpcode::ANDrr:
+        case MOpcode::ANDri:
+        case MOpcode::ORrr:
+        case MOpcode::ORri:
+        case MOpcode::XORrr:
+        case MOpcode::XORri:
+        case MOpcode::SUBrr:
+        case MOpcode::SHLri:
+        case MOpcode::SHLrc:
+        case MOpcode::SHRri:
+        case MOpcode::SHRrc:
+        case MOpcode::SARri:
+        case MOpcode::SARrc:
+        case MOpcode::IMULrr:
+        case MOpcode::XORrr32:
+        case MOpcode::CMPrr:
+        case MOpcode::CMPri:
+        case MOpcode::SETcc:
+        case MOpcode::TESTrr:
+        case MOpcode::MOVZXrr8:
+        case MOpcode::MOVZXrr32:
+        case MOpcode::FADD:
+        case MOpcode::FSUB:
+        case MOpcode::FMUL:
+        case MOpcode::FDIV:
+        case MOpcode::UCOMIS:
+        case MOpcode::CVTSI2SD:
+        case MOpcode::CVTTSD2SI:
+        case MOpcode::MOVQrx:
+        case MOpcode::MOVQxr:
+        case MOpcode::MOVSDrr:
+        case MOpcode::MOVSDmr:
+        case MOpcode::MOVUPSmr:
             return false;
     }
+    return true;
 }
 
 } // namespace viper::codegen::x64

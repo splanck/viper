@@ -11,8 +11,8 @@
 // Key invariants:
 //   - lowerOverflowOps() must run before register allocation (pseudos are
 //     lowered to virtual-register sequences that RA then allocates).
-//   - Trap blocks (Ltrap_… prefix) are excluded from isLeaf analysis so that
-//     hot paths can still benefit from leaf-function frame optimizations.
+//   - All calls, including calls in trap blocks, contribute to isLeaf so frame
+//     and unwind decisions match the emitted instruction stream.
 // Ownership/Lifetime:
 //   - Stateless pass; mutates AArch64Module::mir in place.
 // Links: codegen/aarch64/passes/LegalizePass.hpp,
@@ -30,12 +30,6 @@
 namespace viper::codegen::aarch64::passes {
 namespace {
 
-/// @brief Return true if @p name begins with any recognised trap-block prefix.
-[[nodiscard]] bool isTrapBlockName(const std::string &name) noexcept {
-    return name.rfind("Ltrap_", 0) == 0 || name.rfind(".Ltrap_", 0) == 0 ||
-           name.rfind("L.Ltrap_", 0) == 0 || name.rfind("L_Ltrap_", 0) == 0;
-}
-
 /// @brief Return true if @p instr is a direct (Bl) or indirect (Blr) call.
 [[nodiscard]] bool isCall(const MInstr &instr) noexcept {
     return instr.opc == MOpcode::Bl || instr.opc == MOpcode::Blr;
@@ -50,7 +44,7 @@ namespace {
 /// @brief Insert rt_legacy_context + rt_set_current_context at the start of @main.
 /// @details Idempotent: does nothing if the calls are already present.
 void insertMainRuntimeContextInit(MFunction &fn) {
-    if (fn.name != "main" || fn.blocks.empty())
+    if ((fn.name != "main" && fn.name != "@main") || fn.blocks.empty())
         return;
 
     auto &entryInstrs = fn.blocks.front().instrs;
@@ -64,12 +58,10 @@ void insertMainRuntimeContextInit(MFunction &fn) {
                         MInstr{MOpcode::Bl, {MOperand::labelOp("rt_set_current_context")}}});
 }
 
-/// @brief Recompute MFunction::isLeaf, skipping trap blocks.
+/// @brief Recompute MFunction::isLeaf from the emitted instruction stream.
 void refreshLeafFlag(MFunction &fn) noexcept {
     fn.isLeaf = true;
     for (const auto &bb : fn.blocks) {
-        if (isTrapBlockName(bb.name))
-            continue;
         for (const auto &instr : bb.instrs) {
             if (isCall(instr)) {
                 fn.isLeaf = false;

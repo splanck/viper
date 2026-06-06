@@ -33,6 +33,7 @@
 #include <exception>
 #include <fstream>
 #include <limits>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -193,10 +194,25 @@ static void writeSegmentCmd(std::vector<uint8_t> &out,
     appendLE32(out, 0); // flags
 }
 
+/// @brief Append a fixed-width, zero-padded Mach-O name field.
+/// @details Mach-O section_64 headers store section and segment names as raw
+///          16-byte fields. This helper uses explicit bounded copying rather
+///          than strncpy so callers get deterministic padding and no accidental
+///          dependence on C-string termination.
+/// @param out Destination object-file buffer.
+/// @param name Section or segment name to serialize.
+/// @param width Required fixed field width in bytes.
+static void appendFixedNameField(std::vector<uint8_t> &out, std::string_view name, size_t width) {
+    for (size_t i = 0; i < width; ++i) {
+        const uint8_t byte = i < name.size() ? static_cast<uint8_t>(name[i]) : 0;
+        out.push_back(byte);
+    }
+}
+
 /// Write a section_64 header (80 bytes).
 static void writeSectionHdr(std::vector<uint8_t> &out,
-                            const char *sectname,
-                            const char *segname,
+                            std::string_view sectname,
+                            std::string_view segname,
                             uint64_t addr,
                             uint64_t size,
                             uint32_t offset,
@@ -205,13 +221,9 @@ static void writeSectionHdr(std::vector<uint8_t> &out,
                             uint32_t nreloc,
                             uint32_t flags) {
     // sectname: 16 bytes, zero-padded
-    char buf[16] = {};
-    std::strncpy(buf, sectname, 16);
-    out.insert(out.end(), buf, buf + 16);
+    appendFixedNameField(out, sectname, 16);
     // segname: 16 bytes, zero-padded
-    std::memset(buf, 0, 16);
-    std::strncpy(buf, segname, 16);
-    out.insert(out.end(), buf, buf + 16);
+    appendFixedNameField(out, segname, 16);
     appendLE64(out, addr);
     appendLE64(out, size);
     appendLE32(out, offset);
@@ -298,12 +310,12 @@ struct MachoRelocAttrs {
 };
 
 struct MachoReloc {
-    uint32_t address;
-    uint32_t packed;
+    uint32_t address = 0;
+    uint32_t packed = 0;
 };
 
 struct MachoRelocGroup {
-    uint32_t address;
+    uint32_t address = 0;
     std::vector<MachoReloc> entries;
 };
 
@@ -366,13 +378,13 @@ bool MachOWriter::write(const std::string &path,
 
         // --- 2. Collect and categorize symbols ---
         struct PendingSym {
-            uint32_t encoderIdx;
-            bool fromText;
+            uint32_t encoderIdx = 0;
+            bool fromText = false;
             bool syntheticOffsetAnchor = false;
-            uint32_t strx;
-            uint8_t type;
-            uint8_t sect;
-            uint64_t value;
+            uint32_t strx = 0;
+            uint8_t type = 0;
+            uint8_t sect = 0;
+            uint64_t value = 0;
             std::string mangledName;
         };
 
@@ -480,8 +492,9 @@ bool MachOWriter::write(const std::string &path,
                     return false;
                 }
                 int64_t effectiveAddend = 0;
-                const bool needsAnchor = !sectionOffsetAddend(rel, sectionName, effectiveAddend) ||
-                                         !fitsArm64RelocAddend(effectiveAddend);
+                if (!sectionOffsetAddend(rel, sectionName, effectiveAddend))
+                    return false;
+                const bool needsAnchor = !fitsArm64RelocAddend(effectiveAddend);
                 if (!needsAnchor)
                     continue;
                 auto &seen = (rel.targetSection == SymbolSection::Text) ? textOffsetAnchors
@@ -680,8 +693,9 @@ bool MachOWriter::write(const std::string &path,
                     }
                     const bool haveSectionOffsetAddend =
                         sectionOffsetAddend(rel, sectionName, effectiveAddend);
-                    if (arch_ == ObjArch::AArch64 &&
-                        (!haveSectionOffsetAddend || !fitsArm64RelocAddend(effectiveAddend))) {
+                    if (!haveSectionOffsetAddend)
+                        return false;
+                    if (arch_ == ObjArch::AArch64 && !fitsArm64RelocAddend(effectiveAddend)) {
                         const auto &anchorMap = (rel.targetSection == SymbolSection::Text)
                                                     ? textOffsetAnchorMap
                                                     : constOffsetAnchorMap;
@@ -694,11 +708,6 @@ bool MachOWriter::write(const std::string &path,
                         symIdx = anchorIt->second;
                         effectiveAddend = rel.addend;
                         return true;
-                    }
-                    if (!haveSectionOffsetAddend) {
-                        err << "MachOWriter: relocation in " << sectionName
-                            << " has a section-offset addend outside int64 range\n";
-                        return false;
                     }
                     symIdx = anchorIdx;
                     return true;

@@ -31,7 +31,7 @@ namespace viper::codegen::aarch64::ra {
 /// @param r The physical register to check.
 /// @return True if the register can be allocated to virtual registers.
 /// @details Excludes frame pointer (X29), link register (X30), stack pointer (SP),
-///          platform reserved (X18), and the global scratch registers (X9/X16).
+///          platform reserved (X18), and the global scratch registers (X9/X16/X17).
 inline bool isAllocatableGPR(PhysReg r) {
     switch (r) {
         case PhysReg::X29:

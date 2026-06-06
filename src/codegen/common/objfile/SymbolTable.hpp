@@ -77,12 +77,12 @@ class SymbolTable {
 
     /// Look up a symbol by index.
     const Symbol &at(uint32_t index) const {
-        return symbols_[index];
+        return symbols_.at(index);
     }
 
     /// Mutable look up a symbol by index.
     Symbol &at(uint32_t index) {
-        return symbols_[index];
+        return symbols_.at(index);
     }
 
     /// Total number of symbols (including null entry at index 0).

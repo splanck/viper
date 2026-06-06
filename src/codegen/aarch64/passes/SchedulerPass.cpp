@@ -434,11 +434,11 @@ static bool isCall(MOpcode opc) noexcept {
 // ---------------------------------------------------------------------------
 
 struct DepNode {
-    std::size_t instrIdx;           ///< Index into the body instruction array.
+    std::size_t instrIdx{0};        ///< Index into the body instruction array.
     std::vector<std::size_t> preds; ///< Predecessor indices (must complete first).
     std::vector<unsigned> predLat;  ///< Latency for each predecessor edge.
-    unsigned critPath;              ///< Critical-path length from this node to end.
-    unsigned predsDone;             ///< Count of predecessors already scheduled.
+    unsigned critPath{0};           ///< Critical-path length from this node to end.
+    unsigned predsDone{0};          ///< Count of predecessors already scheduled.
 };
 
 // ---------------------------------------------------------------------------
@@ -679,7 +679,8 @@ static std::vector<DepNode> buildDependencyGraph(const std::vector<MInstr> &body
     return nodes;
 }
 
-static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body, const TargetInfo &target) {
+static std::vector<MInstr> scheduleBlock(const std::vector<MInstr> &body,
+                                         const TargetInfo &target) {
     const std::size_t N = body.size();
     if (N <= 1)
         return body;

@@ -50,6 +50,7 @@
 #include <mutex>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <string_view>
 #include <thread>
 #include <unordered_set>
@@ -254,7 +255,9 @@ void lowerPendingCalls(MFunction &func,
             }
 
             if (instr.callPlanId >= plans.size()) {
-                break;
+                throw std::runtime_error("x86-64 backend: call plan id " +
+                                         std::to_string(instr.callPlanId) +
+                                         " is out of range for function '" + func.name + "'");
             }
 
             // Save callPlanId before lowerCall — insertion may reallocate
@@ -272,8 +275,12 @@ void lowerPendingCalls(MFunction &func,
         }
     }
 
-    assert(std::all_of(consumed.begin(), consumed.end(), [](bool used) { return used; }) &&
-           "call plan count mismatch");
+    auto missing = std::find(consumed.begin(), consumed.end(), false);
+    if (missing != consumed.end()) {
+        const auto planId = static_cast<std::size_t>(std::distance(consumed.begin(), missing));
+        throw std::runtime_error("x86-64 backend: call plan " + std::to_string(planId) +
+                                 " was not consumed in function '" + func.name + "'");
+    }
 }
 
 /// @brief Lower one function to MIR and run pre-RA legalization.
@@ -488,7 +495,12 @@ bool scheduleModuleMIR(std::vector<MFunction> &mir,
     if (options.optimizeLevel < 1)
         return true;
 
-    (void)scheduleModule(mir);
+    try {
+        (void)scheduleModule(mir);
+    } catch (const std::exception &ex) {
+        errors = ex.what();
+        return false;
+    }
     return true;
 }
 
@@ -551,6 +563,7 @@ CodegenResult emitMIRToAssembly(const std::vector<MFunction> &mir,
 
     std::ostringstream asmStream{};
     std::ostringstream errorStream{};
+    bool emissionFailed = false;
 
     if (const auto warning = syntaxWarning(options); !warning.empty()) {
         errorStream << warning;
@@ -571,13 +584,16 @@ CodegenResult emitMIRToAssembly(const std::vector<MFunction> &mir,
 
         emitter.emitRoData(asmStream);
     } catch (const std::exception &ex) {
+        emissionFailed = true;
+        asmStream.str("");
+        asmStream.clear();
         errorStream << ex.what() << '\n';
     }
 
     // Mark the stack as non-executable on ELF targets.  Without this directive
     // the GNU linker defaults to an executable stack, triggering a warning and
     // creating a security issue.
-    if (format == objfile::ObjFormat::ELF) {
+    if (!emissionFailed && format == objfile::ObjFormat::ELF) {
         asmStream << "\n.section .note.GNU-stack,\"\",@progbits\n";
     }
 

@@ -67,8 +67,7 @@ struct SlotKeyHash {
         throw std::invalid_argument(std::string("x86 frame ") + what +
                                     " byte count must be non-negative");
     if (lhs > std::numeric_limits<int>::max() - rhs)
-        throw std::overflow_error(std::string("x86 frame ") + what +
-                                  " exceeds int range");
+        throw std::overflow_error(std::string("x86 frame ") + what + " exceeds int range");
     return lhs + rhs;
 }
 
@@ -79,11 +78,9 @@ struct SlotKeyHash {
     if (slotSize <= 0)
         throw std::invalid_argument(std::string("x86 frame ") + what +
                                     " slot size must be positive");
-    const auto maxCount =
-        static_cast<std::size_t>(std::numeric_limits<int>::max() / slotSize);
+    const auto maxCount = static_cast<std::size_t>(std::numeric_limits<int>::max() / slotSize);
     if (count > maxCount)
-        throw std::overflow_error(std::string("x86 frame ") + what +
-                                  " exceeds int range");
+        throw std::overflow_error(std::string("x86 frame ") + what + " exceeds int range");
     return static_cast<int>(count) * slotSize;
 }
 
@@ -206,8 +203,13 @@ struct CalleeSavedLayout {
 
 /// @brief Convert an RBP-relative save slot into a positive offset from final RSP.
 [[nodiscard]] uint32_t unwindOffsetFromFinalRsp(int frameSize, int rbpRelativeOffset) {
-    assert(rbpRelativeOffset <= 0 && "callee-saved slots must live below %rbp");
-    return static_cast<uint32_t>(frameSize + rbpRelativeOffset);
+    if (rbpRelativeOffset > 0)
+        throw std::runtime_error("x86-64 frame lowering: callee-saved slot is above RBP");
+    const int64_t offset =
+        static_cast<int64_t>(frameSize) + static_cast<int64_t>(rbpRelativeOffset);
+    if (offset < 0 || offset > static_cast<int64_t>(std::numeric_limits<uint32_t>::max()))
+        throw std::runtime_error("x86-64 frame lowering: Win64 unwind save offset is out of range");
+    return static_cast<uint32_t>(offset);
 }
 
 } // namespace
@@ -295,8 +297,7 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
     // +1 because slotIndex is 0-based and we need space for slots 0..maxAllocaSlotIndex
     const std::size_t allocaSlotCount =
         maxAllocaSlotIndex >= 0 ? static_cast<std::size_t>(maxAllocaSlotIndex) + 1U : 0U;
-    const int allocaAreaBytes =
-        checkedFrameMul(allocaSlotCount, kSlotSizeBytes, "alloca area");
+    const int allocaAreaBytes = checkedFrameMul(allocaSlotCount, kSlotSizeBytes, "alloca area");
 
     frame.usedCalleeSaved.clear();
     for (auto reg : target.calleeSavedGPR) {
@@ -323,9 +324,8 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
     for (int slot = 0; slot <= maxAllocaSlotIndex; ++slot) {
         const int slotBytes =
             checkedFrameMul(static_cast<std::size_t>(slot) + 1U, kSlotSizeBytes, "alloca slot");
-        const int newOffset =
-            negativeFrameOffset(checkedFrameAdd(calleeSavedBytes, slotBytes, "alloca slot"),
-                                "alloca slot");
+        const int newOffset = negativeFrameOffset(
+            checkedFrameAdd(calleeSavedBytes, slotBytes, "alloca slot"), "alloca slot");
         slotOffsets.emplace(SlotKey{RegClass::GPR, slot}, newOffset);
     }
 

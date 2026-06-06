@@ -70,8 +70,7 @@ void validateStackObjectSpec(const char *what, int sizeBytes, int alignBytes) {
         throw std::invalid_argument(std::string("AArch64 frame ") + what +
                                     " byte count must be non-negative");
     if (lhs > std::numeric_limits<int>::max() - rhs)
-        throw std::overflow_error(std::string("AArch64 frame ") + what +
-                                  " exceeds int range");
+        throw std::overflow_error(std::string("AArch64 frame ") + what + " exceeds int range");
     return lhs + rhs;
 }
 
@@ -143,7 +142,8 @@ int FrameBuilder::ensureSpillWithReuse(uint32_t vreg,
     // Cross-epoch (cross-block) reuse is prohibited because currentInstrIdx
     // is a per-block counter that resets to 0 at each block boundary.
     for (auto &L : slotLifetimes_) {
-        if (L.sizeBytes == sizeBytes && L.epoch == blockEpoch_ && L.lastUseIdx < currentInstrIdx) {
+        if (L.sizeBytes == sizeBytes && L.alignBytes >= alignBytes && L.epoch == blockEpoch_ &&
+            L.lastUseIdx < currentInstrIdx) {
             // Recycle: update the vreg→offset mapping and refresh the lifetime.
             fn_->frame.spills.push_back(
                 MFunction::SpillSlot{vreg, sizeBytes, alignBytes, L.offset});
@@ -157,7 +157,8 @@ int FrameBuilder::ensureSpillWithReuse(uint32_t vreg,
     // No dead slot available: allocate a fresh one and track its lifetime.
     const int off = assignAlignedSlot(sizeBytes, alignBytes);
     fn_->frame.spills.push_back(MFunction::SpillSlot{vreg, sizeBytes, alignBytes, off});
-    slotLifetimes_.push_back(SlotLifetime{vreg, off, sizeBytes, lastUseInstrIdx, blockEpoch_});
+    slotLifetimes_.push_back(
+        SlotLifetime{vreg, off, sizeBytes, alignBytes, lastUseInstrIdx, blockEpoch_});
     return off;
 }
 
