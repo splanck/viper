@@ -18,6 +18,7 @@
 //
 //===----------------------------------------------------------------------===//
 #include "../../include/vg_theme.h"
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -247,10 +248,10 @@ vg_theme_t *vg_theme_create(const char *name, const vg_theme_t *base) {
         *theme = g_dark_theme;
     }
 
-    if (name) {
-        theme->name = strdup(name);
-    } else {
-        theme->name = strdup("Custom");
+    theme->name = strdup(name ? name : "Custom");
+    if (!theme->name) {
+        free(theme);
+        return NULL;
     }
 
     return theme;
@@ -266,6 +267,9 @@ void vg_theme_destroy(vg_theme_t *theme) {
     if (theme == &g_dark_theme || theme == &g_light_theme)
         return;
 
+    if (g_current_theme == theme)
+        g_current_theme = &g_dark_theme;
+
     if (theme->name) {
         free((void *)theme->name);
     }
@@ -280,7 +284,7 @@ void vg_theme_destroy(vg_theme_t *theme) {
 /// @brief Linearly interpolates between colors @p c1 and @p c2 by factor @p t in [0,1], blending
 /// all four channels.
 uint32_t vg_color_blend(uint32_t c1, uint32_t c2, float t) {
-    if (t <= 0.0f)
+    if (!isfinite(t) || t <= 0.0f)
         return c1;
     if (t >= 1.0f)
         return c2;

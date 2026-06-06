@@ -33,6 +33,7 @@
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -104,13 +105,80 @@ static void outputpane_set_font_widget(vg_widget_t *widget, void *font, float si
 }
 
 /// @brief Return the total character count across all segments of a line.
+/// @details Counts UTF-8 codepoint starts rather than raw bytes so selection
+///          columns cannot split a multibyte sequence.
+/// @param text UTF-8 text; may be NULL.
+/// @return Number of codepoint columns in the string.
+static size_t outputpane_utf8_column_count(const char *text) {
+    size_t count = 0;
+    if (!text)
+        return 0;
+    for (const unsigned char *p = (const unsigned char *)text; *p; p++) {
+        if ((*p & 0xC0u) != 0x80u)
+            count++;
+    }
+    return count;
+}
+
+/// @brief Return the byte length of the UTF-8 sequence starting at text.
+/// @details Invalid or truncated sequences are treated as one byte so selection
+///          extraction always makes progress and never reads past the NUL
+///          terminator.
+/// @param text Pointer to a NUL-terminated UTF-8 sequence.
+/// @return Number of bytes in the next codepoint-like unit.
+static size_t outputpane_utf8_next_len(const char *text) {
+    const unsigned char *p = (const unsigned char *)text;
+    if (!p || p[0] == '\0')
+        return 0;
+    if (p[0] < 0x80u)
+        return 1;
+    size_t expected = 1;
+    if ((p[0] & 0xE0u) == 0xC0u)
+        expected = 2;
+    else if ((p[0] & 0xF0u) == 0xE0u)
+        expected = 3;
+    else if ((p[0] & 0xF8u) == 0xF0u)
+        expected = 4;
+    for (size_t i = 1; i < expected; i++) {
+        if (p[i] == '\0')
+            return 1;
+        if ((p[i] & 0xC0u) != 0x80u)
+            return 1;
+    }
+    return expected;
+}
+
+/// @brief Map a UTF-8 codepoint column to a byte offset.
+/// @param text UTF-8 text to inspect.
+/// @param target_col Codepoint column to locate.
+/// @return Byte offset into @p text at the requested column or string end.
+static size_t outputpane_utf8_byte_offset_for_column(const char *text, size_t target_col) {
+    size_t col = 0;
+    size_t offset = 0;
+    if (!text)
+        return 0;
+    while (text[offset] && col < target_col) {
+        size_t cp_len = outputpane_utf8_next_len(text + offset);
+        if (cp_len == 0)
+            break;
+        offset += cp_len;
+        col++;
+    }
+    return offset;
+}
+
+/// @brief Return the total character count across all segments of a line.
 static size_t outputpane_line_length(const vg_output_line_t *line) {
     size_t len = 0;
     if (!line)
         return 0;
     for (size_t i = 0; i < line->segment_count; i++) {
-        if (line->segments[i].text)
-            len += strlen(line->segments[i].text);
+        if (line->segments[i].text) {
+            size_t seg_cols = outputpane_utf8_column_count(line->segments[i].text);
+            if (seg_cols > SIZE_MAX - len)
+                return SIZE_MAX;
+            len += seg_cols;
+        }
     }
     return len;
 }
@@ -132,8 +200,11 @@ static float outputpane_prefix_width(vg_outputpane_t *pane,
 
         if (!text)
             continue;
-        seg_len = strlen(text);
-        if (col + seg_len <= target_col) {
+        seg_len = outputpane_utf8_column_count(text);
+        if ((size_t)target_col <= col)
+            return width;
+        size_t remaining_cols = (size_t)target_col - col;
+        if (seg_len <= remaining_cols) {
             vg_font_measure_text(pane->font, pane->font_size, text, &metrics);
             width += metrics.width;
             col += seg_len;
@@ -141,7 +212,8 @@ static float outputpane_prefix_width(vg_outputpane_t *pane,
         }
 
         if (target_col > col) {
-            size_t partial_len = (size_t)(target_col - col);
+            size_t partial_len =
+                outputpane_utf8_byte_offset_for_column(text, (size_t)(target_col - col));
             char *partial = malloc(partial_len + 1);
             if (partial) {
                 memcpy(partial, text, partial_len);
@@ -198,9 +270,13 @@ static void outputpane_note_evicted_first_line(vg_outputpane_t *pane) {
 /// @brief Append and return a zeroed segment slot to line, growing the array if needed.
 static vg_styled_segment_t *add_segment(vg_output_line_t *line) {
     if (line->segment_count >= line->segment_capacity) {
+        if (line->segment_capacity > SIZE_MAX / 2u)
+            return NULL;
         size_t new_cap = line->segment_capacity * 2;
         if (new_cap < 4)
             new_cap = 4;
+        if (new_cap > SIZE_MAX / sizeof(vg_styled_segment_t))
+            return NULL;
         vg_styled_segment_t *new_segs =
             realloc(line->segments, new_cap * sizeof(vg_styled_segment_t));
         if (!new_segs)
@@ -212,6 +288,43 @@ static vg_styled_segment_t *add_segment(vg_output_line_t *line) {
     vg_styled_segment_t *seg = &line->segments[line->segment_count++];
     memset(seg, 0, sizeof(vg_styled_segment_t));
     return seg;
+}
+
+/// @brief Append a copied styled text segment atomically.
+/// @details Allocates the segment text before reserving the segment slot.  If
+///          either allocation fails, the line is left unchanged and no empty
+///          segment is committed.
+/// @param line Destination output line.
+/// @param text Source text bytes to copy.
+/// @param len Number of bytes to copy from @p text.
+/// @param fg Foreground color for the new segment.
+/// @param bg Background color for the new segment.
+/// @param bold Whether the segment should be rendered bold.
+/// @return true when the segment was appended; false on invalid input or OOM.
+static bool outputpane_append_segment_copy(vg_output_line_t *line,
+                                           const char *text,
+                                           size_t len,
+                                           uint32_t fg,
+                                           uint32_t bg,
+                                           bool bold) {
+    if (!line || !text || len == 0 || len == SIZE_MAX)
+        return false;
+    char *copy = malloc(len + 1u);
+    if (!copy)
+        return false;
+    memcpy(copy, text, len);
+    copy[len] = '\0';
+
+    vg_styled_segment_t *seg = add_segment(line);
+    if (!seg) {
+        free(copy);
+        return false;
+    }
+    seg->text = copy;
+    seg->fg_color = fg;
+    seg->bg_color = bg;
+    seg->bold = bold;
+    return true;
 }
 
 /// @brief Append a new empty line to pane, evicting the oldest if the ring buffer is full.
@@ -232,11 +345,15 @@ static vg_output_line_t *add_line(vg_outputpane_t *pane) {
 
     // Expand capacity if needed
     if (pane->line_count >= pane->line_capacity) {
+        if (pane->line_capacity > SIZE_MAX / 2u)
+            return NULL;
         size_t new_cap = pane->line_capacity * 2;
         if (new_cap < 64)
             new_cap = 64;
         if (new_cap > pane->max_lines)
             new_cap = pane->max_lines;
+        if (new_cap == 0 || new_cap > SIZE_MAX / sizeof(vg_output_line_t))
+            return NULL;
         vg_output_line_t *new_lines = realloc(pane->lines, new_cap * sizeof(vg_output_line_t));
         if (!new_lines)
             return NULL;
@@ -560,18 +677,12 @@ void vg_outputpane_append(vg_outputpane_t *pane, const char *text) {
         if (*p == '\033') {
             // Flush pending text
             if (p > segment_start) {
-                vg_styled_segment_t *seg = add_segment(line);
-                if (seg) {
-                    size_t len = (size_t)(p - segment_start);
-                    seg->text = malloc(len + 1);
-                    if (seg->text) {
-                        memcpy(seg->text, segment_start, len);
-                        seg->text[len] = '\0';
-                    }
-                    seg->fg_color = pane->current_fg;
-                    seg->bg_color = pane->current_bg;
-                    seg->bold = pane->ansi_bold;
-                }
+                (void)outputpane_append_segment_copy(line,
+                                                     segment_start,
+                                                     (size_t)(p - segment_start),
+                                                     pane->current_fg,
+                                                     pane->current_bg,
+                                                     pane->ansi_bold);
             }
 
             // Start escape sequence
@@ -584,9 +695,13 @@ void vg_outputpane_append(vg_outputpane_t *pane, const char *text) {
             if (pane->escape_len < (int)sizeof(pane->escape_buf) - 1) {
                 pane->escape_buf[pane->escape_len++] = *p;
                 pane->escape_buf[pane->escape_len] = '\0';
+            } else {
+                pane->in_escape = false;
+                pane->escape_len = 0;
+                segment_start = p + 1;
             }
 
-            if (*p == 'm' || *p == 'H' || *p == 'J' || *p == 'K') {
+            if (pane->in_escape && (*p == 'm' || *p == 'H' || *p == 'J' || *p == 'K')) {
                 // End of escape sequence
                 process_ansi_escape(pane);
                 segment_start = p + 1;
@@ -595,18 +710,12 @@ void vg_outputpane_append(vg_outputpane_t *pane, const char *text) {
         } else if (*p == '\n') {
             // Flush pending text
             if (p > segment_start) {
-                vg_styled_segment_t *seg = add_segment(line);
-                if (seg) {
-                    size_t len = (size_t)(p - segment_start);
-                    seg->text = malloc(len + 1);
-                    if (seg->text) {
-                        memcpy(seg->text, segment_start, len);
-                        seg->text[len] = '\0';
-                    }
-                    seg->fg_color = pane->current_fg;
-                    seg->bg_color = pane->current_bg;
-                    seg->bold = pane->ansi_bold;
-                }
+                (void)outputpane_append_segment_copy(line,
+                                                     segment_start,
+                                                     (size_t)(p - segment_start),
+                                                     pane->current_fg,
+                                                     pane->current_bg,
+                                                     pane->ansi_bold);
             }
 
             // Start new line
@@ -623,18 +732,12 @@ void vg_outputpane_append(vg_outputpane_t *pane, const char *text) {
 
     // Flush remaining text
     if (p > segment_start && !pane->in_escape) {
-        vg_styled_segment_t *seg = add_segment(line);
-        if (seg) {
-            size_t len = (size_t)(p - segment_start);
-            seg->text = malloc(len + 1);
-            if (seg->text) {
-                memcpy(seg->text, segment_start, len);
-                seg->text[len] = '\0';
-            }
-            seg->fg_color = pane->current_fg;
-            seg->bg_color = pane->current_bg;
-            seg->bold = pane->ansi_bold;
-        }
+        (void)outputpane_append_segment_copy(line,
+                                             segment_start,
+                                             (size_t)(p - segment_start),
+                                             pane->current_fg,
+                                             pane->current_bg,
+                                             pane->ansi_bold);
     }
 
     // Auto-scroll
@@ -703,13 +806,7 @@ void vg_outputpane_append_styled(
             return;
     }
 
-    vg_styled_segment_t *seg = add_segment(line);
-    if (seg) {
-        seg->text = strdup(text);
-        seg->fg_color = fg;
-        seg->bg_color = bg;
-        seg->bold = bold;
-    }
+    (void)outputpane_append_segment_copy(line, text, strlen(text), fg, bg, bold);
 
     // Auto-scroll
     if (pane->auto_scroll && !pane->scroll_locked) {
@@ -826,17 +923,27 @@ char *vg_outputpane_get_selection(vg_outputpane_t *pane) {
             const char *seg = line->segments[si].text;
             if (!seg)
                 continue;
-            size_t seg_len = strlen(seg);
-            for (size_t ci = 0; ci < seg_len; ci++, col++) {
+            for (size_t ci = 0; seg[ci] != '\0';) {
+                size_t cp_len = outputpane_utf8_next_len(seg + ci);
+                if (cp_len == 0)
+                    break;
                 if (li == start_line && col < start_col)
-                    continue;
+                    goto next_codepoint_count;
                 if (li == end_line && col >= end_col && end_col != UINT32_MAX)
                     break;
-                total++;
+                if (cp_len > SIZE_MAX - total)
+                    return NULL;
+                total += cp_len;
+            next_codepoint_count:
+                ci += cp_len;
+                col++;
             }
         }
-        if (li < end_line)
+        if (li < end_line) {
+            if (total == SIZE_MAX)
+                return NULL;
             total++; // newline between lines
+        }
     }
 
     if (total == 0)
@@ -855,13 +962,19 @@ char *vg_outputpane_get_selection(vg_outputpane_t *pane) {
             const char *seg = line->segments[si].text;
             if (!seg)
                 continue;
-            size_t seg_len = strlen(seg);
-            for (size_t ci = 0; ci < seg_len; ci++, col++) {
+            for (size_t ci = 0; seg[ci] != '\0';) {
+                size_t cp_len = outputpane_utf8_next_len(seg + ci);
+                if (cp_len == 0)
+                    break;
                 if (li == start_line && col < start_col)
-                    continue;
+                    goto next_codepoint_copy;
                 if (li == end_line && col >= end_col && end_col != UINT32_MAX)
                     break;
-                buf[out++] = seg[ci];
+                memcpy(buf + out, seg + ci, cp_len);
+                out += cp_len;
+            next_codepoint_copy:
+                ci += cp_len;
+                col++;
             }
         }
         if (li < end_line)

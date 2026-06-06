@@ -2106,7 +2106,7 @@ char *vgfx_clipboard_get_text(void) {
 
         int64_t start = vgfx_platform_now_ms();
         int target_done = 0;
-        while (!target_done && vgfx_platform_now_ms() - start < 500) {
+        while (!target_done && vgfx_platform_now_ms() - start < 100) {
             XEvent event;
             if (XCheckIfEvent(x11->display,
                               &event,

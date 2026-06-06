@@ -224,13 +224,11 @@ static int minimap_trimmed_line_bounds(const char *text,
     if (max_columns < 1)
         max_columns = 1;
 
-    for (int i = 0; text[i] && i <= max_columns; i++) {
+    for (int i = 0; i < max_columns && text[i]; i++) {
         if (text[i] != ' ' && text[i] != '\t') {
             if (first < 0)
                 first = i;
             last = i;
-            if (last >= max_columns)
-                break;
         }
     }
 

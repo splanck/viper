@@ -135,6 +135,8 @@ char *vg_native_open_file(const char *title,
             NSURL *url = [[panel URLs] firstObject];
             if (url) {
                 const char *path = [[url path] UTF8String];
+                if (!path)
+                    return NULL;
                 return strdup(path);
             }
         }
@@ -259,6 +261,8 @@ char *vg_native_save_file(const char *title,
             NSURL *url = [panel URL];
             if (url) {
                 const char *path = [[url path] UTF8String];
+                if (!path)
+                    return NULL;
                 return strdup(path);
             }
         }
@@ -295,6 +299,8 @@ char *vg_native_select_folder(const char *title, const char *initial_path) {
             NSURL *url = [[panel URLs] firstObject];
             if (url) {
                 const char *path = [[url path] UTF8String];
+                if (!path)
+                    return NULL;
                 return strdup(path);
             }
         }

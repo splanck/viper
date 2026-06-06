@@ -59,6 +59,9 @@ static uint64_t make_cache_key(float size, uint32_t codepoint) {
 
 /// @brief Hash a cache key to a bucket index using FNV-1a-style mixing.
 static size_t hash_key(uint64_t key, size_t bucket_count) {
+    if (bucket_count == 0)
+        return 0;
+
     // FNV-1a style mixing
     key ^= key >> 33;
     key *= 0xff51afd7ed558ccd;
@@ -156,6 +159,11 @@ void vg_cache_clear(vg_glyph_cache_t *cache) {
 
 /// @brief Double the bucket array and rehash all entries; caps at VG_CACHE_MAX_SIZE.
 static bool cache_resize(vg_glyph_cache_t *cache) {
+    if (!cache || cache->bucket_count == 0)
+        return false;
+    if (cache->bucket_count > SIZE_MAX / 2 && cache->bucket_count < VG_CACHE_MAX_SIZE)
+        return false;
+
     size_t new_count = cache->bucket_count * 2;
     if (new_count > VG_CACHE_MAX_SIZE) {
         new_count = VG_CACHE_MAX_SIZE;
@@ -202,6 +210,9 @@ static int compare_ticks(const void *a, const void *b) {
 
 /// @brief Evict the 25% least-recently-used entries to reclaim bitmap memory.
 static void cache_evict_some(vg_glyph_cache_t *cache) {
+    if (!cache || cache->bucket_count == 0 || !cache->buckets)
+        return;
+
     size_t count = cache->entry_count;
     if (count == 0)
         return;
@@ -235,7 +246,11 @@ static void cache_evict_some(vg_glyph_cache_t *cache) {
         if (*prev == victim)
             *prev = victim->next;
 
-        cache->memory_used -= victim->glyph.width * victim->glyph.height;
+        size_t victim_memory = 0;
+        if (glyph_bitmap_size(&victim->glyph, &victim_memory) && victim_memory <= cache->memory_used)
+            cache->memory_used -= victim_memory;
+        else
+            cache->memory_used = 0;
         cache->entry_count--;
         free_entry(victim);
     }
@@ -249,6 +264,8 @@ static void cache_evict_some(vg_glyph_cache_t *cache) {
 
 const vg_glyph_t *vg_cache_get(vg_glyph_cache_t *cache, float size, uint32_t codepoint) {
     if (!cache)
+        return NULL;
+    if (cache->bucket_count == 0 || !cache->buckets)
         return NULL;
 
     uint64_t key = make_cache_key(size, codepoint);
@@ -289,6 +306,8 @@ void vg_cache_put(vg_glyph_cache_t *cache,
                   const vg_glyph_t *glyph) {
     if (!cache || !glyph)
         return;
+    if (cache->bucket_count == 0 || !cache->buckets)
+        return;
 
     uint64_t key = make_cache_key(size, codepoint);
 
@@ -313,7 +332,8 @@ void vg_cache_put(vg_glyph_cache_t *cache,
     }
 
     // Check load factor and resize if necessary
-    if (cache->entry_count >= cache->bucket_count * 0.75) {
+    size_t resize_threshold = cache->bucket_count - cache->bucket_count / 4;
+    if (cache->entry_count >= resize_threshold) {
         cache_resize(cache);
         idx = hash_key(key, cache->bucket_count); // Recalculate after resize
     }

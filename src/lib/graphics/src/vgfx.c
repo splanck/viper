@@ -43,8 +43,13 @@
 //===----------------------------------------------------------------------===//
 
 #if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
 #include <malloc.h>
 #elif defined(__APPLE__) || defined(__linux__)
+#include <sched.h>
 #include <stdlib.h>
 #endif
 
@@ -260,12 +265,126 @@ void vgfx_internal_clear_input_state(struct vgfx_window *win) {
 // FIFO eviction when full, with special handling for CLOSE events.
 //===----------------------------------------------------------------------===//
 
+/// @brief Yield during event queue lock contention.
+/// @details Uses the native scheduler yield primitive where available.  This
+///          keeps the queue's critical section lightweight while preventing
+///          producer/consumer contention from becoming a pure busy-wait.
+void vgfx_internal_event_wait(void) {
+#if defined(_WIN32)
+    SwitchToThread();
+#elif defined(__APPLE__) || defined(__linux__)
+    sched_yield();
+#else
+    vgfx_platform_sleep_ms(1);
+#endif
+}
+
+/// @brief Test whether an event must survive queue pressure.
+/// @details Release-like state transitions repair sticky input state and close
+///          events carry the destruction request.  Dropping these events can
+///          leave callers with a permanently pressed key/button or a missed close
+///          notification.
+/// @param type Event type to classify.
+/// @return Non-zero for close/key-up/mouse-up/focus-lost events.
+static int vgfx_event_is_release_state_event(vgfx_event_type_t type) {
+    return type == VGFX_EVENT_CLOSE || type == VGFX_EVENT_KEY_UP || type == VGFX_EVENT_MOUSE_UP ||
+           type == VGFX_EVENT_FOCUS_LOST;
+}
+
+/// @brief Test whether an event is cheap to evict during overflow.
+/// @details Transient events either supersede earlier state snapshots or are
+///          useful but not required for input-state correctness.  They are the
+///          first candidates removed when a full queue must make room for a more
+///          important state transition.
+/// @param type Event type to classify.
+/// @return Non-zero when the event is a preferred overflow victim.
+static int vgfx_event_is_transient_overflow_candidate(vgfx_event_type_t type) {
+    return type == VGFX_EVENT_MOUSE_MOVE || type == VGFX_EVENT_TEXT_INPUT ||
+           type == VGFX_EVENT_SCROLL || type == VGFX_EVENT_RESIZE ||
+           type == VGFX_EVENT_FOCUS_GAINED;
+}
+
+/// @brief Advance a ring-buffer index by one slot.
+/// @param index Current slot index.
+/// @return Next slot index with wraparound applied.
+static int vgfx_ring_next_index(int32_t index) {
+    return (index + 1) % VGFX_INTERNAL_EVENT_QUEUE_SLOTS;
+}
+
+/// @brief Remove one queued event while preserving the order of all others.
+/// @details The event queue lock must already be held.  Events after
+///          `drop_index` are shifted one slot toward the tail, and `event_head`
+///          is moved back to represent the newly freed slot.
+/// @param win Window whose event queue is full.
+/// @param drop_index Ring-buffer slot to remove.
+/// @pre win != NULL.
+/// @pre drop_index identifies an occupied slot in win's queue.
+static void vgfx_drop_event_at_locked(struct vgfx_window *win, int32_t drop_index) {
+    int32_t cursor = drop_index;
+    int32_t next = vgfx_ring_next_index(cursor);
+    while (next != win->event_head) {
+        win->event_queue[cursor] = win->event_queue[next];
+        cursor = next;
+        next = vgfx_ring_next_index(next);
+    }
+    win->event_head = cursor;
+}
+
+/// @brief Choose which queued event to evict for a new event.
+/// @details Preserves close and release-like events whenever possible.  New close
+///          events can evict any older non-close event unless a close is already
+///          queued, because a duplicate close adds no observable state.
+/// @param win Window whose queue is full.
+/// @param new_event Event the caller wants to enqueue.
+/// @return Ring-buffer slot to evict, or -1 when the new event should be dropped.
+/// @pre win != NULL.
+/// @pre new_event != NULL.
+/// @pre The event queue lock is held and the queue is full.
+static int32_t vgfx_find_overflow_victim_locked(struct vgfx_window *win,
+                                                const vgfx_event_t *new_event) {
+    if (new_event->type == VGFX_EVENT_CLOSE) {
+        for (int32_t index = win->event_tail; index != win->event_head;
+             index = vgfx_ring_next_index(index)) {
+            if (win->event_queue[index].type == VGFX_EVENT_CLOSE)
+                return -1;
+        }
+
+        for (int32_t index = win->event_tail; index != win->event_head;
+             index = vgfx_ring_next_index(index)) {
+            if (win->event_queue[index].type != VGFX_EVENT_CLOSE)
+                return index;
+        }
+        return -1;
+    }
+
+    int32_t oldest = win->event_tail;
+    if (!vgfx_event_is_release_state_event(win->event_queue[oldest].type))
+        return oldest;
+
+    for (int32_t index = vgfx_ring_next_index(oldest); index != win->event_head;
+         index = vgfx_ring_next_index(index)) {
+        if (vgfx_event_is_transient_overflow_candidate(win->event_queue[index].type))
+            return index;
+    }
+
+    if (vgfx_event_is_release_state_event(new_event->type)) {
+        for (int32_t index = vgfx_ring_next_index(oldest); index != win->event_head;
+             index = vgfx_ring_next_index(index)) {
+            if (!vgfx_event_is_release_state_event(win->event_queue[index].type))
+                return index;
+        }
+    }
+
+    return -1;
+}
+
 /// @brief Enqueue an event into the window's ring buffer.
 /// @details Attempts to add the event to the queue.  If the queue is full,
-///          implements FIFO eviction with the following policy:
-///            - If oldest event is CLOSE: drop new event (unless also CLOSE)
-///            - If oldest event is not CLOSE: drop oldest, enqueue new
-///            - Dropped events (except CLOSE) increment event_overflow counter
+///          evicts one queued event only when doing so preserves important
+///          state transitions.  CLOSE, KEY_UP, MOUSE_UP, and FOCUS_LOST events
+///          are kept whenever possible so close requests and release state are
+///          not lost under bursty input.  Transient events such as mouse move,
+///          scroll, resize, and text input are preferred overflow victims.
 ///
 ///          This ensures CLOSE events are never lost once enqueued.
 ///
@@ -281,31 +400,21 @@ int vgfx_internal_enqueue_event(struct vgfx_window *win, const vgfx_event_t *eve
         return 0;
 
     vgfx_internal_event_lock(win);
-    int32_t next_head = (win->event_head + 1) % VGFX_INTERNAL_EVENT_QUEUE_SLOTS;
+    int32_t next_head = vgfx_ring_next_index(win->event_head);
 
     /* Queue full? */
     if (next_head == win->event_tail) {
-        /* FIFO eviction: drop oldest event to make room for new event.
-         * Exception: Never drop CLOSE events - they signal window destruction. */
-        if (win->event_queue[win->event_tail].type == VGFX_EVENT_CLOSE) {
-            /* Oldest event is CLOSE - can't drop it */
-            if (event->type == VGFX_EVENT_CLOSE) {
-                /* Duplicate CLOSE event - drop the new one (no overflow increment) */
-                vgfx_internal_event_unlock(win);
-                return 0;
-            } else {
-                /* New event is regular - drop it to preserve CLOSE */
-                if (win->event_overflow < INT32_MAX)
-                    win->event_overflow++;
-                vgfx_internal_event_unlock(win);
-                return 0;
-            }
-        } else {
-            /* Oldest event is not CLOSE - drop it to make room for new event */
-            win->event_tail = (win->event_tail + 1) % VGFX_INTERNAL_EVENT_QUEUE_SLOTS;
+        int32_t victim = vgfx_find_overflow_victim_locked(win, event);
+        if (victim < 0) {
             if (win->event_overflow < INT32_MAX)
                 win->event_overflow++;
+            vgfx_internal_event_unlock(win);
+            return 0;
         }
+        vgfx_drop_event_at_locked(win, victim);
+        next_head = vgfx_ring_next_index(win->event_head);
+        if (win->event_overflow < INT32_MAX)
+            win->event_overflow++;
     }
 
     /* Enqueue event (queue now has space) */
@@ -921,11 +1030,10 @@ int32_t vgfx_get_size(vgfx_window_t window, int32_t *width, int32_t *height) {
     if (!window)
         return 0;
 
-    float cs = vgfx_internal_coord_scale(window);
     if (width)
-        *width = (cs > 1.0f) ? vgfx_internal_scale_down_i32(window->width, cs) : window->width;
+        *width = vgfx_internal_public_extent_i32(window->width, window);
     if (height)
-        *height = (cs > 1.0f) ? vgfx_internal_scale_down_i32(window->height, cs) : window->height;
+        *height = vgfx_internal_public_extent_i32(window->height, window);
     return 1;
 }
 

@@ -363,6 +363,14 @@ int vgfx_platform_present(struct vgfx_window *win);
 /// @param ms Duration to sleep in milliseconds
 void vgfx_platform_sleep_ms(int32_t ms);
 
+/// @brief Yield while waiting for the event queue lock.
+/// @details Called by the internal event queue spin lock when another thread
+///          currently owns the queue.  The implementation delegates to the
+///          platform timing backend with a zero-duration sleep/yield so native
+///          event producers and the application consumer do not burn a full CPU
+///          core during brief contention.
+void vgfx_internal_event_wait(void);
+
 /// @brief Get current high-resolution timestamp in milliseconds.
 /// @details Returns a monotonic timestamp (never decreases) with millisecond
 ///          precision.  The epoch is arbitrary but consistent within a process.
@@ -562,6 +570,7 @@ void vgfx_internal_clear_input_state(struct vgfx_window *win);
 
 static inline void vgfx_internal_event_lock(struct vgfx_window *win) {
     while (vgfx_atomic_flag_test_and_set(&win->event_lock)) {
+        vgfx_internal_event_wait();
     }
 }
 
@@ -631,6 +640,20 @@ static inline int32_t vgfx_internal_scale_down_i32(int32_t physical, float scale
     return vgfx_internal_round_scaled((float)physical / vgfx_internal_sanitize_scale(scale));
 }
 
+/// @brief Convert a framebuffer dimension to the public coordinate-space size.
+/// @details The public size APIs and resize event logical fields report the
+///          framebuffer dimension divided by the active coordinate scale.  When
+///          the GUI layer leaves coord_scale at 1.0 this is the physical
+///          framebuffer size; when the Canvas layer sets coord_scale to the
+///          HiDPI backing scale it is the logical drawing size.
+/// @param framebuffer_extent Physical framebuffer width or height in pixels.
+/// @param win Window whose coordinate scale should be applied.
+/// @return Public coordinate-space extent after scale conversion.
+static inline int32_t vgfx_internal_public_extent_i32(int32_t framebuffer_extent,
+                                                      const struct vgfx_window *win) {
+    return vgfx_internal_scale_down_i32(framebuffer_extent, vgfx_internal_coord_scale(win));
+}
+
 static inline void vgfx_internal_refresh_scale_factor(struct vgfx_window *win, float new_scale) {
     if (!win)
         return;
@@ -653,14 +676,12 @@ static inline void vgfx_internal_init_resize_event(vgfx_event_t *event,
     if (!event)
         return;
 
-    float coord_scale = vgfx_internal_coord_scale(win);
     event->type = VGFX_EVENT_RESIZE;
     event->time_ms = time_ms;
     event->data.resize.width = framebuffer_width;
     event->data.resize.height = framebuffer_height;
-    event->data.resize.logical_width = vgfx_internal_scale_down_i32(framebuffer_width, coord_scale);
-    event->data.resize.logical_height =
-        vgfx_internal_scale_down_i32(framebuffer_height, coord_scale);
+    event->data.resize.logical_width = vgfx_internal_public_extent_i32(framebuffer_width, win);
+    event->data.resize.logical_height = vgfx_internal_public_extent_i32(framebuffer_height, win);
 }
 
 static inline int vgfx_internal_codepoint_is_private_use(uint32_t codepoint) {

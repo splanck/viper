@@ -781,8 +781,12 @@ void vg_breadcrumb_set_separator(vg_breadcrumb_t *bc, const char *sep) {
     if (!bc)
         return;
 
+    char *new_separator = sep ? strdup(sep) : NULL;
+    if (sep && !new_separator)
+        return;
+
     free(bc->separator);
-    bc->separator = sep ? strdup(sep) : NULL;
+    bc->separator = new_separator;
     bc->base.needs_layout = true;
     bc->base.needs_paint = true;
 }

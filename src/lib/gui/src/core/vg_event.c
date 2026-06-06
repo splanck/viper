@@ -295,14 +295,16 @@ static bool event_has_widget_local_mouse_coords(vg_event_type_t type) {
 
 /// @brief Returns the screen-space X coordinate from a mouse or wheel event.
 static float event_screen_x(const vg_event_t *event) {
-    return event && event->type == VG_EVENT_MOUSE_WHEEL ? event->wheel.screen_x
-                                                        : event->mouse.screen_x;
+    if (!event)
+        return 0.0f;
+    return event->type == VG_EVENT_MOUSE_WHEEL ? event->wheel.screen_x : event->mouse.screen_x;
 }
 
 /// @brief Returns the screen-space Y coordinate from a mouse or wheel event.
 static float event_screen_y(const vg_event_t *event) {
-    return event && event->type == VG_EVENT_MOUSE_WHEEL ? event->wheel.screen_y
-                                                        : event->mouse.screen_y;
+    if (!event)
+        return 0.0f;
+    return event->type == VG_EVENT_MOUSE_WHEEL ? event->wheel.screen_y : event->mouse.screen_y;
 }
 
 /// @brief Subtracts the widget's screen origin from the event's screen coordinates to produce
@@ -422,13 +424,13 @@ static void remember_click(vg_widget_t *widget, const vg_event_t *event) {
 /// @brief Returns true if @p event qualifies as a double-click on @p widget — same button, within
 /// time and distance thresholds.
 static bool is_double_click_for_widget(vg_widget_t *widget, const vg_event_t *event) {
-    if (!widget || !event || event->timestamp <= 0)
+    if (!widget || !event || event->timestamp == 0)
         return false;
 
     vg_widget_runtime_state_t state = {0};
     vg_widget_get_runtime_state(&state);
     if (state.last_click_widget != widget ||
-        state.last_click_button != (int32_t)event->mouse.button || state.last_click_time_ms <= 0 ||
+        state.last_click_button != (int32_t)event->mouse.button || state.last_click_time_ms == 0 ||
         event->timestamp < state.last_click_time_ms) {
         return false;
     }

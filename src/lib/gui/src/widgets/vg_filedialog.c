@@ -36,6 +36,7 @@
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
 #include <ctype.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,7 +57,6 @@
 #define S_ISREG(m) (((m) & _S_IFMT) == _S_IFREG)
 #else
 #include <dirent.h>
-#include <fnmatch.h>
 #include <pwd.h>
 #include <strings.h>
 #include <unistd.h>
@@ -113,10 +113,15 @@ static vg_widget_vtable_t g_filedialog_vtable = {.destroy = filedialog_destroy,
 // Platform Abstraction Layer
 //=============================================================================
 
-#ifdef _WIN32
-
-/// @brief Windows-only case-insensitive glob match with * and ? wildcards.
-static bool win_match_pattern(const char *pattern, const char *filename) {
+/// @brief Case-insensitive glob match with `*` and `?` wildcards.
+/// @details Used for file-extension filters on every platform so matching does
+///          not depend on non-portable `fnmatch()` extension flags.  ASCII case
+///          folding is sufficient for extension-style patterns such as
+///          `*.png;*.jpg`.
+/// @param pattern Glob pattern to evaluate.
+/// @param filename Candidate filename.
+/// @return true when @p filename matches @p pattern.
+static bool filedialog_match_pattern_ci(const char *pattern, const char *filename) {
     const char *p = pattern;
     const char *f = filename;
 
@@ -127,7 +132,7 @@ static bool win_match_pattern(const char *pattern, const char *filename) {
                 return true; // Trailing * matches everything
             // Try to match rest of pattern at each position
             while (*f) {
-                if (win_match_pattern(p, f))
+                if (filedialog_match_pattern_ci(p, f))
                     return true;
                 f++;
             }
@@ -154,8 +159,6 @@ static bool win_match_pattern(const char *pattern, const char *filename) {
     return !*p && !*f;
 }
 
-#endif
-
 /// @brief Return a heap-allocated string holding the current user's home directory path.
 static char *get_home_directory(void) {
 #ifdef _WIN32
@@ -168,11 +171,15 @@ static char *get_home_directory(void) {
     const char *homedrive = getenv("HOMEDRIVE");
     const char *homepath = getenv("HOMEPATH");
     if (homedrive && homepath) {
-        size_t len = strlen(homedrive) + strlen(homepath) + 1;
+        size_t drive_len = strlen(homedrive);
+        size_t path_len = strlen(homepath);
+        if (drive_len > SIZE_MAX - path_len || drive_len + path_len > SIZE_MAX - 1)
+            return NULL;
+        size_t len = drive_len + path_len + 1;
         char *result = malloc(len);
         if (result) {
-            strcpy(result, homedrive);
-            strcat(result, homepath);
+            memcpy(result, homedrive, drive_len);
+            memcpy(result + drive_len, homepath, path_len + 1);
             return result;
         }
     }
@@ -622,7 +629,7 @@ static bool match_filter(const char *filename, const char *pattern) {
     char *patterns = strdup(pattern);
 #endif
     if (!patterns)
-        return true;
+        return false;
 
     char *saveptr = NULL;
     char *token = NULL;
@@ -649,17 +656,13 @@ static bool match_filter(const char *filename, const char *pattern) {
             continue;
         }
 
-#ifdef _WIN32
-        if (win_match_pattern(token, filename)) {
+        if (filedialog_match_pattern_ci(token, filename)) {
             free(patterns);
             return true;
         }
+#ifdef _WIN32
         token = strtok_s(NULL, ";", &saveptr);
 #else
-        if (fnmatch(token, filename, FNM_CASEFOLD) == 0) {
-            free(patterns);
-            return true;
-        }
         token = strtok_r(NULL, ";", &saveptr);
 #endif
     }
@@ -891,6 +894,8 @@ static void load_directory(vg_filedialog_t *dialog, const char *path) {
 static void select_entry(vg_filedialog_t *dialog, size_t index) {
     if (index >= dialog->entry_count)
         return;
+    if (index > (size_t)INT_MAX)
+        return;
 
     if (!dialog->multi_select) {
         if (dialog->selection_capacity == 0) {
@@ -919,6 +924,8 @@ static void select_entry(vg_filedialog_t *dialog, size_t index) {
         if (!found) {
             // Add to selection
             if (dialog->selection_count >= dialog->selection_capacity) {
+                if (dialog->selection_capacity > SIZE_MAX / (2u * sizeof(int)))
+                    return;
                 size_t new_cap =
                     dialog->selection_capacity == 0 ? 8 : dialog->selection_capacity * 2;
                 int *new_indices = realloc(dialog->selected_indices, new_cap * sizeof(int));
@@ -934,6 +941,9 @@ static void select_entry(vg_filedialog_t *dialog, size_t index) {
 
 /// @brief Return true if the entry at index is in the current selection.
 static bool is_selected(vg_filedialog_t *dialog, size_t index) {
+    if (!dialog || index > (size_t)INT_MAX)
+        return false;
+
     for (size_t i = 0; i < dialog->selection_count; i++) {
         if (dialog->selected_indices[i] == (int)index)
             return true;
@@ -979,7 +989,17 @@ static void confirm_selection(vg_filedialog_t *dialog) {
             size_t name_len = strlen(save_name);
             size_t ext_len = strlen(dialog->default_extension);
             bool needs_dot = dialog->default_extension[0] != '.';
-            char *with_ext = realloc(save_name, name_len + ext_len + (needs_dot ? 2 : 1));
+            size_t dot_len = needs_dot ? 1u : 0u;
+            if (ext_len > SIZE_MAX - dot_len) {
+                free(save_name);
+                return;
+            }
+            size_t extra = ext_len + dot_len;
+            if (name_len > SIZE_MAX - extra || name_len + extra > SIZE_MAX - 1u) {
+                free(save_name);
+                return;
+            }
+            char *with_ext = realloc(save_name, name_len + extra + 1u);
             if (!with_ext) {
                 free(save_name);
                 return;
@@ -990,23 +1010,23 @@ static void confirm_selection(vg_filedialog_t *dialog) {
             memcpy(save_name + name_len, dialog->default_extension, ext_len + 1);
         }
 
-        dialog->selected_files = malloc(sizeof(char *));
-        if (!dialog->selected_files) {
+        char **new_selected_files = malloc(sizeof(char *));
+        if (!new_selected_files) {
             free(save_name);
             return;
         }
 
         if (filedialog_absolute_path(save_name)) {
-            dialog->selected_files[0] = save_name;
+            new_selected_files[0] = save_name;
         } else {
-            dialog->selected_files[0] = join_path(dialog->current_path, save_name);
+            new_selected_files[0] = join_path(dialog->current_path, save_name);
             free(save_name);
         }
-        if (!dialog->selected_files[0]) {
-            free(dialog->selected_files);
-            dialog->selected_files = NULL;
+        if (!new_selected_files[0]) {
+            free(new_selected_files);
             return;
         }
+        dialog->selected_files = new_selected_files;
         dialog->selected_file_count = 1;
     } else if (dialog->selection_count > 0) {
         int single_idx = dialog->selected_indices[0];
@@ -1017,8 +1037,11 @@ static void confirm_selection(vg_filedialog_t *dialog) {
             return;
         }
 
-        dialog->selected_files = malloc(dialog->selection_count * sizeof(char *));
-        if (dialog->selected_files) {
+        if (dialog->selection_count > SIZE_MAX / sizeof(char *))
+            return;
+        char **new_selected_files = calloc(dialog->selection_count, sizeof(char *));
+        size_t new_selected_count = 0;
+        if (new_selected_files) {
             for (size_t i = 0; i < dialog->selection_count; i++) {
                 int idx = dialog->selected_indices[i];
                 if (idx < 0 || (size_t)idx >= dialog->entry_count)
@@ -1032,30 +1055,29 @@ static void confirm_selection(vg_filedialog_t *dialog) {
                 path = strdup(dialog->entries[idx]->full_path);
 #endif
                 if (!path) {
-                    for (size_t j = 0; j < dialog->selected_file_count; j++)
-                        free(dialog->selected_files[j]);
-                    free(dialog->selected_files);
-                    dialog->selected_files = NULL;
-                    dialog->selected_file_count = 0;
+                    for (size_t j = 0; j < new_selected_count; j++)
+                        free(new_selected_files[j]);
+                    free(new_selected_files);
                     return;
                 }
-                dialog->selected_files[dialog->selected_file_count++] = path;
+                new_selected_files[new_selected_count++] = path;
             }
+            dialog->selected_files = new_selected_files;
+            dialog->selected_file_count = new_selected_count;
         }
     } else if (dialog->mode == VG_FILEDIALOG_SELECT_FOLDER) {
-        dialog->selected_files = malloc(sizeof(char *));
-        if (dialog->selected_files) {
+        char **new_selected_files = malloc(sizeof(char *));
+        if (new_selected_files) {
 #ifdef _WIN32
-            dialog->selected_files[0] = _strdup(dialog->current_path);
+            new_selected_files[0] = _strdup(dialog->current_path);
 #else
-            dialog->selected_files[0] = strdup(dialog->current_path);
+            new_selected_files[0] = strdup(dialog->current_path);
 #endif
-            if (!dialog->selected_files[0]) {
-                free(dialog->selected_files);
-                dialog->selected_files = NULL;
-                dialog->selected_file_count = 0;
+            if (!new_selected_files[0]) {
+                free(new_selected_files);
                 return;
             }
+            dialog->selected_files = new_selected_files;
             dialog->selected_file_count = 1;
         }
     }
@@ -1961,6 +1983,7 @@ void vg_filedialog_set_title(vg_filedialog_t *dialog, const char *title) {
         return;
     free((void *)dialog->base.title);
     dialog->base.title = new_title;
+    dialog->base.base.needs_paint = true;
 }
 
 /// @brief Set the directory the dialog opens at; defaults to home if NULL.
@@ -1977,8 +2000,15 @@ void vg_filedialog_set_initial_path(vg_filedialog_t *dialog, const char *path) {
 #endif
     if (!new_path)
         return;
-    free(dialog->current_path);
-    dialog->current_path = new_path;
+    if (dialog->base.is_open || dialog->base.base.visible) {
+        load_directory(dialog, new_path);
+        free(new_path);
+    } else {
+        free(dialog->current_path);
+        dialog->current_path = new_path;
+    }
+    dialog->base.base.needs_layout = true;
+    dialog->base.base.needs_paint = true;
 }
 
 /// @brief Set the default filename pre-filled in the save-mode text field.
@@ -2138,6 +2168,8 @@ void vg_filedialog_add_bookmark(vg_filedialog_t *dialog, const char *name, const
         return;
 
     if (dialog->bookmark_count >= dialog->bookmark_capacity) {
+        if (dialog->bookmark_capacity > SIZE_MAX / (2u * sizeof(vg_bookmark_t)))
+            return;
         size_t new_cap = dialog->bookmark_capacity == 0 ? 8 : dialog->bookmark_capacity * 2;
         vg_bookmark_t *new_bookmarks = realloc(dialog->bookmarks, new_cap * sizeof(vg_bookmark_t));
         if (!new_bookmarks)

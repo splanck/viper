@@ -1000,7 +1000,6 @@ static bool ttf_get_composite_glyph_outline(vg_font_t *font,
                     all_points_x = all_points_y = NULL;
                     all_flags = NULL;
                     all_contour_ends = NULL;
-                    total_points = total_contours = 0;
                     free(comp_x);
                     free(comp_y);
                     free(comp_flags);

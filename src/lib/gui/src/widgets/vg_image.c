@@ -113,6 +113,9 @@ static bool image_load_bmp(vg_image_t *image, const char *path) {
     uint32_t dib_size = image_read_le32(header + 14);
     if (dib_size < 40)
         goto cleanup;
+    if (dib_size > UINT32_MAX - 14u || pixel_offset < 14u + dib_size ||
+        pixel_offset < sizeof(header))
+        goto cleanup;
 
     int32_t width = (int32_t)image_read_le32(header + 18);
     int32_t raw_height = (int32_t)image_read_le32(header + 22);
@@ -436,12 +439,11 @@ void vg_image_set_pixels(vg_image_t *image, const uint8_t *pixels, int width, in
     if (!image)
         return;
 
-    free(image->pixels);
-    image->pixels = NULL;
-    image->img_width = 0;
-    image->img_height = 0;
-
     if (!pixels || width <= 0 || height <= 0) {
+        free(image->pixels);
+        image->pixels = NULL;
+        image->img_width = 0;
+        image->img_height = 0;
         image->base.needs_layout = true;
         image->base.needs_paint = true;
         return;
@@ -455,14 +457,16 @@ void vg_image_set_pixels(vg_image_t *image, const uint8_t *pixels, int width, in
         return;
     }
     size_t size = w * h * 4;
-    image->pixels = malloc(size);
-    if (!image->pixels) {
+    uint8_t *new_pixels = malloc(size);
+    if (!new_pixels) {
         image->base.needs_layout = true;
         image->base.needs_paint = true;
         return;
     }
 
-    memcpy(image->pixels, pixels, size);
+    memcpy(new_pixels, pixels, size);
+    free(image->pixels);
+    image->pixels = new_pixels;
     image->img_width = width;
     image->img_height = height;
     image->base.needs_layout = true;

@@ -351,9 +351,12 @@ static void tabbar_sync_hover_tooltip(vg_tabbar_t *tabbar) {
 
     if (hover_tooltip) {
         if (!tabbar->hover_tooltip_active) {
-            free(tabbar->saved_tooltip_text);
-            tabbar->saved_tooltip_text =
+            char *saved_tooltip =
                 tabbar->base.tooltip_text ? strdup(tabbar->base.tooltip_text) : NULL;
+            if (tabbar->base.tooltip_text && !saved_tooltip)
+                return;
+            free(tabbar->saved_tooltip_text);
+            tabbar->saved_tooltip_text = saved_tooltip;
             tabbar->hover_tooltip_active = true;
         }
         if ((!tabbar->base.tooltip_text && hover_tooltip) ||

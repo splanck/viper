@@ -26,6 +26,7 @@
 #include "vg_ttf_internal.h"
 #include <limits.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -294,14 +295,24 @@ static void rasterize_scanlines(raster_point_t *points,
                                 int width,
                                 int height,
                                 uint8_t *bitmap) {
+    if (!bitmap || width <= 0 || height <= 0)
+        return;
+
+    size_t bitmap_size = 0;
+    if ((size_t)width > SIZE_MAX / (size_t)height)
+        return;
+    bitmap_size = (size_t)width * (size_t)height;
+
     // Clear bitmap
-    memset(bitmap, 0, width * height);
+    memset(bitmap, 0, bitmap_size);
 
     if (point_count < 3 || !contour_ends || contour_count <= 0)
         return;
 
     // Build edge list
-    raster_edge_t *edges = malloc(point_count * sizeof(raster_edge_t));
+    if ((size_t)point_count > SIZE_MAX / sizeof(raster_edge_t))
+        return;
+    raster_edge_t *edges = malloc((size_t)point_count * sizeof(raster_edge_t));
     if (!edges)
         return;
 

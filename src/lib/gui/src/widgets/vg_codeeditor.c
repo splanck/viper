@@ -336,11 +336,9 @@ static bool codeeditor_ensure_highlight_line_index(vg_codeeditor_t *editor) {
     editor->highlight_line_index_line_count = 0;
     editor->highlight_line_index_span_count = 0;
 
-    if (editor->line_count < 0)
+    if (editor->line_count < 0 || editor->line_count == INT_MAX)
         return false;
     int offset_count = editor->line_count + 1;
-    if (offset_count <= 0)
-        return false;
 
     if (offset_count > editor->highlight_line_offsets_cap) {
         if ((size_t)offset_count > SIZE_MAX / sizeof(int))
@@ -385,14 +383,12 @@ static bool codeeditor_ensure_highlight_line_index(vg_codeeditor_t *editor) {
     }
 
     int *write_offsets = NULL;
-    if (offset_count > 0) {
-        if ((size_t)offset_count > SIZE_MAX / sizeof(int))
-            return false;
-        write_offsets = (int *)malloc((size_t)offset_count * sizeof(int));
-        if (!write_offsets)
-            return false;
-        memcpy(write_offsets, editor->highlight_line_offsets, (size_t)offset_count * sizeof(int));
-    }
+    if ((size_t)offset_count > SIZE_MAX / sizeof(int))
+        return false;
+    write_offsets = (int *)malloc((size_t)offset_count * sizeof(int));
+    if (!write_offsets)
+        return false;
+    memcpy(write_offsets, editor->highlight_line_offsets, (size_t)offset_count * sizeof(int));
 
     for (int s = 0; s < editor->highlight_span_count; s++) {
         int start = 0;
@@ -1302,10 +1298,14 @@ static bool codeeditor_layout_cache_ensure(const vg_codeeditor_t *editor, float 
         mutable_editor->layout_cache_line_count == mutable_editor->line_count)
         return true;
 
+    if (mutable_editor->line_count == INT_MAX)
+        return false;
     int needed = mutable_editor->line_count + 1;
     if (needed < 1)
         needed = 1;
     if (mutable_editor->layout_cache_capacity < needed) {
+        if ((size_t)needed > SIZE_MAX / sizeof(int))
+            return false;
         int *rows = realloc(mutable_editor->layout_cache_prefix_rows, (size_t)needed * sizeof(int));
         if (!rows)
             return false;
@@ -3846,6 +3846,8 @@ static bool codeeditor_insert_bytes_at(
 static bool codeeditor_split_line_at(vg_codeeditor_t *editor, int line_idx, int col) {
     if (!editor || line_idx < 0 || line_idx >= editor->line_count)
         return false;
+    if (editor->line_count == INT_MAX)
+        return false;
     if (!ensure_line_capacity(editor, editor->line_count + 1))
         return false;
 
@@ -5357,11 +5359,18 @@ bool vg_codeeditor_copy(vg_codeeditor_t *editor) {
                                        &part_lengths[i]);
         if (!parts[i])
             goto cleanup;
+        if (part_lengths[i] > SIZE_MAX - total_len)
+            goto cleanup;
         total_len += part_lengths[i];
-        if (i + 1 < target_count)
+        if (i + 1 < target_count) {
+            if (total_len == SIZE_MAX)
+                goto cleanup;
             total_len++;
+        }
     }
 
+    if (total_len == SIZE_MAX)
+        goto cleanup;
     clipboard_text = malloc(total_len + 1);
     if (!clipboard_text)
         goto cleanup;
@@ -5459,6 +5468,8 @@ void vg_codeeditor_select_all(vg_codeeditor_t *editor) {
 ///               normal text size.
 void vg_codeeditor_set_font(vg_codeeditor_t *editor, vg_font_t *font, float size) {
     if (!editor)
+        return;
+    if (!font)
         return;
 
     editor->font = font;

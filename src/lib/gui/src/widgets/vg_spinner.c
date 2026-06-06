@@ -677,6 +677,8 @@ void vg_spinner_set_decimals(vg_spinner_t *spinner, int decimals) {
 void vg_spinner_set_font(vg_spinner_t *spinner, vg_font_t *font, float size) {
     if (!spinner)
         return;
+    if (!font)
+        return;
     spinner->font = font;
     spinner->font_size =
         (isfinite(size) && size > 0.0f) ? size : vg_theme_get_current()->typography.size_normal;

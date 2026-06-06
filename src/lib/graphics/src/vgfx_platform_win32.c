@@ -52,12 +52,6 @@
 #define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
 #endif
 
-#if defined(_MSC_VER)
-#define VGFX_WIN32_THREAD_LOCAL __declspec(thread)
-#else
-#define VGFX_WIN32_THREAD_LOCAL _Thread_local
-#endif
-
 //===----------------------------------------------------------------------===//
 // Platform Data Structure
 //===----------------------------------------------------------------------===//
@@ -285,8 +279,6 @@ static int win32_resize_backing_store(struct vgfx_window *win,
     vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
     int phys_w = client_w;
     int phys_h = client_h;
-    if (phys_w <= 0 || phys_h <= 0)
-        return 0;
 
     if (client_w == w32->width && client_h == w32->height && phys_w == win->width &&
         phys_h == win->height && w32->memdc && w32->hdc && w32->hbmp && w32->dib_pixels) {
@@ -1182,12 +1174,14 @@ int64_t vgfx_platform_now_ms(void) {
     return (int64_t)millis;
 }
 
-static HANDLE win32_get_sleep_timer(void) {
-    static VGFX_WIN32_THREAD_LOCAL HANDLE timer = NULL;
-    if (timer)
-        return timer;
-
-    timer = CreateWaitableTimerExW(
+/// @brief Create a waitable timer for one frame-pacing sleep.
+/// @details Uses CREATE_WAITABLE_TIMER_HIGH_RESOLUTION when available so frame
+///          pacing is not quantized by the default scheduler tick.  The caller
+///          owns the returned handle and must close it with CloseHandle().
+/// @return A waitable timer handle on success, or NULL when both timer creation
+///         attempts fail.
+static HANDLE win32_create_sleep_timer(void) {
+    HANDLE timer = CreateWaitableTimerExW(
         NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_MODIFY_STATE | SYNCHRONIZE);
     if (!timer) {
         timer = CreateWaitableTimerExW(NULL, NULL, 0, TIMER_MODIFY_STATE | SYNCHRONIZE);
@@ -1205,14 +1199,16 @@ void vgfx_platform_sleep_ms(int32_t ms) {
     if (ms <= 0)
         return;
 
-    HANDLE timer = win32_get_sleep_timer();
+    HANDLE timer = win32_create_sleep_timer();
     if (timer) {
         LARGE_INTEGER due_time;
         due_time.QuadPart = -(LONGLONG)ms * 10000LL;
         if (SetWaitableTimer(timer, &due_time, 0, NULL, NULL, FALSE)) {
             WaitForSingleObject(timer, INFINITE);
+            CloseHandle(timer);
             return;
         }
+        CloseHandle(timer);
     }
 
     Sleep((DWORD)ms);

@@ -131,6 +131,17 @@ static void sound_unregister_locked(vaud_context_t ctx, vaud_sound_t sound) {
     }
 }
 
+/// @brief Test whether a sound is still attached to the expected context.
+/// @details Callers must hold @p ctx->mutex.  Keeping this check in one helper
+///          documents the synchronization contract used by play calls racing
+///          against detach/free operations.
+/// @param sound Sound handle being played.
+/// @param ctx Context whose mutex is currently held.
+/// @return Non-zero when @p sound still belongs to @p ctx.
+static int sound_is_attached_to_context_locked(vaud_sound_t sound, vaud_context_t ctx) {
+    return sound && ctx && sound->ctx == ctx;
+}
+
 static int sound_register(vaud_context_t ctx, vaud_sound_t sound) {
     if (!ctx || !sound)
         return 0;
@@ -548,10 +559,10 @@ void vaud_free_sound(vaud_sound_t sound) {
             }
         }
         sound_unregister_locked(ctx, sound);
+        sound->ctx = NULL;
         vaud_mutex_unlock(&ctx->mutex);
     }
 
-    sound->ctx = NULL;
     free(sound->samples);
     free(sound);
 }
@@ -570,10 +581,10 @@ void vaud_detach_sound(vaud_sound_t sound) {
             }
         }
         sound_unregister_locked(ctx, sound);
+        sound->ctx = NULL;
         vaud_mutex_unlock(&ctx->mutex);
     }
 
-    sound->ctx = NULL;
 }
 
 int vaud_sound_is_attached(vaud_sound_t sound) {
@@ -593,11 +604,12 @@ vaud_voice_id vaud_play_ex(vaud_sound_t sound, float volume, float pan) {
         return VAUD_INVALID_VOICE;
 
     vaud_context_t ctx = sound->ctx;
-    if (vaud_context_is_destroying(ctx))
+    if (!ctx)
         return VAUD_INVALID_VOICE;
 
     vaud_mutex_lock(&ctx->mutex);
-    if (sound->ctx != ctx || vaud_atomic_load_i32(&ctx->destroying) != 0) {
+    if (!sound_is_attached_to_context_locked(sound, ctx) ||
+        vaud_atomic_load_i32(&ctx->destroying) != 0) {
         vaud_mutex_unlock(&ctx->mutex);
         return VAUD_INVALID_VOICE;
     }
@@ -627,11 +639,12 @@ vaud_voice_id vaud_play_loop(vaud_sound_t sound, float volume, float pan) {
         return VAUD_INVALID_VOICE;
 
     vaud_context_t ctx = sound->ctx;
-    if (vaud_context_is_destroying(ctx))
+    if (!ctx)
         return VAUD_INVALID_VOICE;
 
     vaud_mutex_lock(&ctx->mutex);
-    if (sound->ctx != ctx || vaud_atomic_load_i32(&ctx->destroying) != 0) {
+    if (!sound_is_attached_to_context_locked(sound, ctx) ||
+        vaud_atomic_load_i32(&ctx->destroying) != 0) {
         vaud_mutex_unlock(&ctx->mutex);
         return VAUD_INVALID_VOICE;
     }

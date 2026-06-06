@@ -27,6 +27,8 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
+#include <limits.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -326,21 +328,23 @@ void vg_colorpalette_set_colors(vg_colorpalette_t *palette, const uint32_t *colo
     if (!palette)
         return;
 
-    // Free existing colors
-    if (palette->colors) {
-        free(palette->colors);
-        palette->colors = NULL;
+    uint32_t *new_colors = NULL;
+    if (colors && count > 0) {
+        if ((size_t)count > SIZE_MAX / sizeof(uint32_t))
+            return;
+        new_colors = malloc((size_t)count * sizeof(uint32_t));
+        if (!new_colors)
+            return;
+        memcpy(new_colors, colors, (size_t)count * sizeof(uint32_t));
     }
 
-    palette->color_count = 0;
+    free(palette->colors);
+    palette->colors = new_colors;
+    palette->color_count = new_colors ? count : 0;
     palette->selected_index = -1;
 
-    if (colors && count > 0) {
-        palette->colors = malloc(count * sizeof(uint32_t));
-        if (palette->colors) {
-            memcpy(palette->colors, colors, count * sizeof(uint32_t));
-            palette->color_count = count;
-        }
+    if (!colors || count <= 0) {
+        palette->color_count = 0;
     }
 
     palette->base.needs_layout = true;
@@ -355,8 +359,12 @@ void vg_colorpalette_add_color(vg_colorpalette_t *palette, uint32_t color) {
     if (!palette)
         return;
 
+    if (palette->color_count == INT_MAX)
+        return;
     int new_count = palette->color_count + 1;
-    uint32_t *new_colors = realloc(palette->colors, new_count * sizeof(uint32_t));
+    if ((size_t)new_count > SIZE_MAX / sizeof(uint32_t))
+        return;
+    uint32_t *new_colors = realloc(palette->colors, (size_t)new_count * sizeof(uint32_t));
     if (!new_colors)
         return;
 

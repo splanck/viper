@@ -253,8 +253,8 @@ void vg_font_get_metrics(vg_font_t *font, float size, vg_font_metrics_t *metrics
     metrics->ascent = 0;
     metrics->descent = 0;
     metrics->line_height = 0;
-    metrics->units_per_em = font ? font->head.units_per_em : 0;
-    if (!vg_font_valid_size(size) || font->head.units_per_em <= 0)
+    metrics->units_per_em = font->head.units_per_em;
+    if (!vg_font_valid_size(size) || font->head.units_per_em == 0)
         return;
 
     float scale = size / (float)font->head.units_per_em;
