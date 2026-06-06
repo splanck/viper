@@ -71,7 +71,7 @@ SemanticAnalyzer::Type analyzeCallExpr(SemanticAnalyzer &analyzer, const CallExp
     }
 
     const auto *sig = context.resolveCallee(expr, ProcSignature::Kind::Function);
-    auto argTypes [[maybe_unused]] = context.checkCallArgs(expr, sig);
+    (void)context.checkCallArgs(expr, sig);
     return context.inferCallType(expr, sig);
 }
 

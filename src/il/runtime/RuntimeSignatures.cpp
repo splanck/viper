@@ -423,8 +423,7 @@ constexpr RuntimeLowering featureLowering(RuntimeFeature feature, bool ordered =
 /// @details Used for Viper.System.Environment.IsNative so VM runs return false while
 ///          native binaries link against the real rt_env_is_native helper.
 void vm_env_is_native(void ** /*args*/, void *result) {
-    if (result)
-        *reinterpret_cast<int64_t *>(result) = 0;
+    detail::storeRequiredResult<int64_t>(result, 0);
 }
 
 constexpr std::array<RuntimeHiddenParam, 1> kPowHidden{
@@ -434,11 +433,11 @@ struct DescriptorRow {
     std::string_view name;
     std::optional<RtSig> signatureId;
     std::string_view spec;
-    RuntimeHandler handler;
+    RuntimeHandler handler{nullptr};
     RuntimeLowering lowering;
-    const RuntimeHiddenParam *hidden;
-    std::size_t hiddenCount;
-    RuntimeTrapClass trapClass;
+    const RuntimeHiddenParam *hidden{nullptr};
+    std::size_t hiddenCount{0};
+    RuntimeTrapClass trapClass{RuntimeTrapClass::None};
 };
 
 // Use deduced array size to avoid mismatches that would create an empty default row.

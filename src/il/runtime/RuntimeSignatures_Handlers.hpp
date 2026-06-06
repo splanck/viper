@@ -22,10 +22,55 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <type_traits>
 #include <utility>
 
 namespace il::runtime {
+namespace detail {
+
+/// @brief Abort execution after reporting a runtime-handler marshalling invariant failure.
+/// @details Runtime handlers are called from the VM through a C ABI function pointer and cannot
+///          return structured diagnostics. A missing argument slot or result buffer means the VM
+///          bridge and descriptor metadata disagree; continuing would reinterpret invalid storage,
+///          so the bridge fails closed with a fatal diagnostic.
+/// @param message Human-readable reason for the marshalling failure.
+[[noreturn]] inline void runtimeHandlerFatal(const char *message) {
+    std::fprintf(stderr, "[FATAL] Runtime handler marshalling failure: %s\n", message);
+    std::abort();
+}
+
+/// @brief Return a typed pointer to a required VM argument slot.
+/// @details The VM passes one pointer to storage for each argument. This helper validates both
+///          the outer argument array and the selected slot before applying the typed cast used by
+///          runtime handler templates.
+/// @tparam T Argument storage type expected by the bound runtime function.
+/// @param args VM-provided argument slot array.
+/// @param index Zero-based argument index.
+/// @return Pointer to typed argument storage.
+template <typename T> T *requiredArgSlot(void **args, std::size_t index) {
+    if (!args)
+        runtimeHandlerFatal("argument array is null");
+    if (!args[index])
+        runtimeHandlerFatal("argument slot is null");
+    return reinterpret_cast<T *>(args[index]);
+}
+
+/// @brief Store a non-void runtime return value into required VM result storage.
+/// @details Non-void runtime descriptors must provide result storage. This helper checks that
+///          contract and performs the same typed storage write that the VM bridge expects.
+/// @tparam T Return value type.
+/// @param result VM-provided result storage.
+/// @param value Runtime helper result to store.
+template <typename T> void storeRequiredResult(void *result, T value) {
+    if (!result)
+        runtimeHandlerFatal("non-void runtime call missing result storage");
+    using StoredT = std::remove_cv_t<T>;
+    *reinterpret_cast<StoredT *>(result) = static_cast<StoredT>(value);
+}
+
+} // namespace detail
 
 /// @brief Adapter that invokes a concrete runtime function from VM call stubs.
 ///
@@ -56,10 +101,10 @@ template <auto Fn, typename Ret, typename... Args> struct DirectHandler {
     template <std::size_t... I>
     static void call(void **args, void *result, std::index_sequence<I...>) {
         if constexpr (std::is_void_v<Ret>) {
-            Fn(*reinterpret_cast<Args *>(args[I])...);
+            Fn(*detail::requiredArgSlot<Args>(args, I)...);
         } else {
-            Ret value = Fn(*reinterpret_cast<Args *>(args[I])...);
-            *reinterpret_cast<Ret *>(result) = value;
+            detail::storeRequiredResult<Ret>(
+                result, Fn(*detail::requiredArgSlot<Args>(args, I)...));
         }
     }
 };

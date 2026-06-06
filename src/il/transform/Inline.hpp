@@ -76,7 +76,7 @@ class Inliner : public ModulePass {
 
     /// @brief Construct an inliner with a custom cost configuration.
     /// @param config Cost model thresholds controlling inlining decisions.
-    explicit Inliner(InlineCostConfig config) : config_(config) {}
+    explicit Inliner(const InlineCostConfig &config) : config_(config) {}
 
     /// @brief Return the pass identifier string ("inline").
     std::string_view id() const override;
@@ -95,7 +95,7 @@ class Inliner : public ModulePass {
 
     /// @brief Replace the entire cost configuration.
     /// @param config New cost model configuration to use.
-    void setConfig(InlineCostConfig config) {
+    void setConfig(const InlineCostConfig &config) {
         config_ = config;
     }
 

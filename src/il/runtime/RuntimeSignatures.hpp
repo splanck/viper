@@ -193,7 +193,7 @@ struct RuntimeSignature {
 struct RuntimeDescriptor {
     std::string_view name;      ///< Symbol exported by the runtime library.
     RuntimeSignature signature; ///< Canonical IL signature for the helper.
-    RuntimeHandler handler;     ///< Adapter that invokes the C implementation.
+    RuntimeHandler handler{nullptr}; ///< Adapter that invokes the C implementation.
     RuntimeLowering lowering;   ///< Lowering metadata controlling declaration.
     RuntimeTrapClass trapClass{RuntimeTrapClass::None}; ///< Trap classification for VM bridge.
 };

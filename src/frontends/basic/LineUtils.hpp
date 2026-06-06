@@ -15,6 +15,10 @@
 
 #pragma once
 
+#include <charconv>
+#include <limits>
+#include <optional>
+#include <string_view>
 #include <type_traits>
 
 namespace il::frontends::basic {
@@ -40,6 +44,26 @@ template <typename T> [[nodiscard]] constexpr bool isUnlabeledLine(T line) noexc
 /// @return True when a positive user-specified line label exists.
 template <typename T> [[nodiscard]] constexpr bool hasUserLine(T line) noexcept {
     return !isUnlabeledLine(line);
+}
+
+/// @brief Parse a BASIC numeric line label as a bounded signed integer.
+/// @details Requires the entire token text to be consumed and rejects overflow.
+///          BASIC labels are stored as @c int throughout the legacy frontend, so
+///          this helper centralizes that boundary check for parser code paths
+///          that previously used unchecked C conversions.
+/// @param text Token lexeme containing decimal digits for a line label.
+/// @return Parsed line number, or @c std::nullopt if the token is malformed or
+///         outside the representable @c int range.
+[[nodiscard]] inline std::optional<int> parseLineNumberLiteral(std::string_view text) noexcept {
+    long long parsed = 0;
+    const char *begin = text.data();
+    const char *end = begin + text.size();
+    auto result = std::from_chars(begin, end, parsed, 10);
+    if (result.ec != std::errc{} || result.ptr != end)
+        return std::nullopt;
+    if (parsed < std::numeric_limits<int>::min() || parsed > std::numeric_limits<int>::max())
+        return std::nullopt;
+    return static_cast<int>(parsed);
 }
 
 } // namespace il::frontends::basic

@@ -45,8 +45,8 @@ struct ValueEq {
 
 /// @brief Normalised key describing a pure instruction.
 struct ValueKey {
-    il::core::Opcode op;
-    il::core::Type::Kind type;
+    il::core::Opcode op{il::core::Opcode::Count};
+    il::core::Type::Kind type{il::core::Type::Kind::Void};
     std::vector<il::core::Value> operands;
 
     bool operator==(const ValueKey &o) const noexcept;

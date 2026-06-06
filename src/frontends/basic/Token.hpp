@@ -58,7 +58,7 @@ enum class TokenKind {
 /// starting source location.
 struct Token {
     /// @brief Classification of this token.
-    TokenKind kind;
+    TokenKind kind{TokenKind::Unknown};
 
     /// @brief Exact character sequence for this token.
     /// @ownership Owned by this token.

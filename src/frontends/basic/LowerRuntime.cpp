@@ -654,8 +654,8 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b) {
 
     struct ManualHelperDescriptor {
         std::string_view name;
-        ManualRuntimeHelper helper;
-        [[maybe_unused]] void (Lowerer::*requireHook)();
+        ManualRuntimeHelper helper{ManualRuntimeHelper::Trap};
+        [[maybe_unused]] void (Lowerer::*requireHook)() = nullptr;
     };
 
     static constexpr std::array<ManualHelperDescriptor, manualRuntimeHelperCount> manualHelpers{{

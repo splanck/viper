@@ -580,26 +580,27 @@ enum class RuntimeTypeId : std::size_t {
 /// @details Properties surface as getters/setters. Setters may be null when
 ///          the property is read-only.
 struct RuntimeProperty {
-    const char *name;   ///< Property name (e.g., "Length").
-    const char *type;   ///< IL scalar type (e.g., "i64", "i1").
-    const char *getter; ///< Canonical extern target (e.g., "Viper.String.get_Length").
-    const char *setter; ///< Canonical extern target or nullptr if read-only.
-    bool readonly;      ///< True if setter is nullptr.
+    const char *name{nullptr};   ///< Property name (e.g., "Length").
+    const char *type{nullptr};   ///< IL scalar type (e.g., "i64", "i1").
+    const char *getter{nullptr}; ///< Canonical extern target (e.g., "Viper.String.get_Length").
+    const char *setter{nullptr}; ///< Canonical extern target or nullptr if read-only.
+    bool readonly{false};        ///< True if setter is nullptr.
 };
 
 /// @brief Describes a method on a runtime class.
 struct RuntimeMethod {
-    const char *name;      ///< Method name (e.g., "Substring").
-    const char *signature; ///< Signature string in compact IL grammar.
-    const char *target;    ///< Canonical extern target (e.g., "Viper.String.Substring").
+    const char *name{nullptr};      ///< Method name (e.g., "Substring").
+    const char *signature{nullptr}; ///< Signature string in compact IL grammar.
+    const char *target{nullptr};    ///< Canonical extern target (e.g., "Viper.String.Substring").
 };
 
 /// @brief Describes a runtime class and its members.
 struct RuntimeClass {
-    const char *qname;    ///< Fully-qualified name (e.g., "Viper.String").
-    const char *layout;   ///< Layout descriptor (opaque until object model defined).
-    const char *ctor;     ///< Optional ctor helper extern; may be nullptr.
-    RuntimeTypeId typeId; ///< Stable type identifier.
+    const char *qname{nullptr};  ///< Fully-qualified name (e.g., "Viper.String").
+    const char *layout{nullptr}; ///< Layout descriptor (opaque until object model defined).
+    const char *ctor{nullptr};   ///< Optional ctor helper extern; may be nullptr.
+    RuntimeTypeId typeId{
+        RuntimeTypeId::RTCLS_String}; ///< Stable type identifier.
     std::vector<RuntimeProperty> properties; ///< Declared properties.
     std::vector<RuntimeMethod> methods;      ///< Declared methods.
 };
@@ -660,18 +661,18 @@ struct ParsedSignature {
 
 /// @brief Extended method descriptor with parsed signature.
 struct ParsedMethod {
-    const char *name;   ///< Method name (e.g., "Substring").
-    const char *target; ///< Canonical extern target.
+    const char *name{nullptr};   ///< Method name (e.g., "Substring").
+    const char *target{nullptr}; ///< Canonical extern target.
     ParsedSignature signature;
 };
 
 /// @brief Extended property descriptor with parsed type.
 struct ParsedProperty {
-    const char *name;   ///< Property name (e.g., "Length").
-    ILScalarType type;  ///< Resolved property type.
-    const char *getter; ///< Getter extern target.
-    const char *setter; ///< Setter extern target or nullptr.
-    bool readonly;      ///< True if setter is nullptr.
+    const char *name{nullptr};   ///< Property name (e.g., "Length").
+    ILScalarType type{ILScalarType::Unknown}; ///< Resolved property type.
+    const char *getter{nullptr}; ///< Getter extern target.
+    const char *setter{nullptr}; ///< Setter extern target or nullptr.
+    bool readonly{false};        ///< True if setter is nullptr.
 };
 
 /// @brief Parse a signature string like "str(i64,i64)" into structured form.

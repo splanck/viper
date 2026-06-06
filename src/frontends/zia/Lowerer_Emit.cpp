@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cctype>
 #include <functional>
+#include <utility>
 
 namespace il::frontends::zia {
 
@@ -1387,10 +1388,10 @@ void Lowerer::emitDestructorDispatch() {
     });
 
     Function *savedFunc = currentFunc_;
-    auto savedLocals = std::move(locals_);
-    auto savedSlots = std::move(slots_);
-    auto savedLocalTypes = std::move(localTypes_);
-    auto savedDeferredTemps = std::move(deferredTemps_);
+    auto savedLocals = std::exchange(locals_, {});
+    auto savedSlots = std::exchange(slots_, {});
+    auto savedLocalTypes = std::exchange(localTypes_, {});
+    auto savedDeferredTemps = std::exchange(deferredTemps_, {});
     TypeRef savedReturnType = currentReturnType_;
     const ClassTypeInfo *savedEntityType = currentClassType_;
     const StructTypeInfo *savedValueType = currentStructType_;
@@ -1403,11 +1404,6 @@ void Lowerer::emitDestructorDispatch() {
     currentStructType_ = nullptr;
     definedFunctions_.insert("__zia_dtor_dispatch");
     blockMgr_.bind(builder_.get(), &fn);
-    locals_.clear();
-    slots_.clear();
-    localTypes_.clear();
-    deferredTemps_.clear();
-
     builder_->createBlock(fn, "entry_0", fn.params);
     setBlock(fn.blocks.size() - 1);
 

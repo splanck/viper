@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <functional>
 #include <string_view>
+#include <utility>
 
 namespace il::frontends::zia {
 
@@ -77,7 +78,7 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr) {
         Value value;
         Type type;
         TypeRef semType;
-        bool isSlot;
+        bool isSlot{false};
     };
 
     std::vector<CaptureInfo> captureInfos;
@@ -146,14 +147,10 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr) {
     }
     size_t savedBlockIdx = blockMgr_.currentBlockIndex();
     unsigned savedNextBlockId = blockMgr_.nextBlockId();
-    auto savedLocals = std::move(locals_);
-    auto savedSlots = std::move(slots_);
-    auto savedLocalTypes = std::move(localTypes_);
-    auto savedDeferredTemps = std::move(deferredTemps_);
-    locals_.clear();
-    slots_.clear();
-    localTypes_.clear();
-    deferredTemps_.clear();
+    auto savedLocals = std::exchange(locals_, {});
+    auto savedSlots = std::exchange(slots_, {});
+    auto savedLocalTypes = std::exchange(localTypes_, {});
+    auto savedDeferredTemps = std::exchange(deferredTemps_, {});
 
     // Create the lambda function and entry block via IRBuilder so param IDs are assigned.
     currentFunc_ = &builder_->startFunction(lambdaName, ilReturnType, params);

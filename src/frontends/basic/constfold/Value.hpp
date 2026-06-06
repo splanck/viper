@@ -92,15 +92,16 @@ inline ParsedNumber parseNumericLiteral(std::string_view sv) noexcept {
     if (sv.empty())
         return result;
 
+    std::string normalisedStorage;
     bool hasFloatMarkers = sv.find_first_of(".eEpP") != std::string_view::npos;
 
     if (sv.find_first_of("dD") != std::string_view::npos) {
-        std::string normalised(sv.begin(), sv.end());
-        for (char &ch : normalised) {
+        normalisedStorage.assign(sv.begin(), sv.end());
+        for (char &ch : normalisedStorage) {
             if (ch == 'd' || ch == 'D')
                 ch = 'e';
         }
-        sv = normalised;
+        sv = normalisedStorage;
         hasFloatMarkers = true;
     }
 

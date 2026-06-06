@@ -411,7 +411,7 @@ std::optional<long long> checkedMul(long long lhs, long long rhs) {
         if (rhs > 0) {
             if (lhs < min / rhs)
                 return std::nullopt;
-        } else if (lhs != 0 && rhs < max / lhs) {
+        } else if (rhs < max / lhs) {
             return std::nullopt;
         }
     }

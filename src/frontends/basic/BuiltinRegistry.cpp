@@ -117,19 +117,19 @@ constexpr TypeMask operator|(TypeMask lhs, TypeMask rhs) noexcept {
 
 /// @brief Inclusive argument-count bounds for a builtin.
 struct Arity {
-    std::uint8_t minArgs; ///< Minimum required arguments.
-    std::uint8_t maxArgs; ///< Maximum accepted arguments.
+    std::uint8_t minArgs{0}; ///< Minimum required arguments.
+    std::uint8_t maxArgs{0}; ///< Maximum accepted arguments.
 };
 
 /// @brief Single compile-time row of the densely indexed builtin table.
 /// @details One entry exists per @ref BuiltinCallExpr::Builtin enumerator, in
 ///          declaration order, so the enumerator value doubles as the index.
 struct BuiltinDescriptor {
-    const char *name;                          ///< Canonical uppercase BASIC spelling.
-    B builtin;                                 ///< Enumerator this row describes.
-    Arity arity;                               ///< Accepted argument-count range.
-    TypeMask typeMask;                         ///< Possible result categories (see @ref TypeMask).
-    SemanticAnalyzer::BuiltinAnalyzer analyze; ///< Optional semantic-analysis hook.
+    const char *name{nullptr};                 ///< Canonical uppercase BASIC spelling.
+    B builtin{B::Len};                         ///< Enumerator this row describes.
+    Arity arity{};                             ///< Accepted argument-count range.
+    TypeMask typeMask{TypeMask::None};         ///< Possible result categories (see @ref TypeMask).
+    SemanticAnalyzer::BuiltinAnalyzer analyze{}; ///< Optional semantic-analysis hook.
 };
 
 /// @brief Build the compile-time descriptor table for each builtin.

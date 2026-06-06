@@ -19,7 +19,13 @@
 #include "viper/il/IO.hpp"
 #include <algorithm>
 #include <array>
+#include <cerrno>
+#include <charconv>
+#include <cmath>
 #include <cstdlib>
+#include <limits>
+#include <optional>
+#include <string>
 #include <string_view>
 
 namespace il::frontends::basic {
@@ -154,6 +160,65 @@ bool classifyBasedIntegerLiteral(std::string_view lex, int &base, size_t &digitO
         return true;
     }
     return false;
+}
+
+/// @brief Convert an unsigned 64-bit bit pattern to the corresponding signed value.
+/// @details BASIC based-integer literals are accepted across the full 64-bit
+///          range. Values with the high bit set are interpreted as two's-complement
+///          bit patterns rather than rejected as positive signed overflow.
+/// @param raw Parsed unsigned bit pattern.
+/// @return Signed interpretation of @p raw using two's-complement rules.
+int64_t signedFromU64Bits(uint64_t raw) noexcept {
+    constexpr uint64_t signBit = uint64_t{1} << 63;
+    if (raw < signBit)
+        return static_cast<int64_t>(raw);
+
+    const uint64_t magnitude = (~raw) + 1;
+    if (magnitude == signBit)
+        return std::numeric_limits<int64_t>::min();
+    return -static_cast<int64_t>(magnitude);
+}
+
+/// @brief Parse an unsigned integer and require the whole token to be consumed.
+/// @param text Digit text to parse.
+/// @param base Numeric base accepted by @c std::from_chars.
+/// @return Parsed value, or @c std::nullopt on invalid text or overflow.
+std::optional<uint64_t> parseCompleteUnsigned(std::string_view text, int base) noexcept {
+    uint64_t value = 0;
+    const char *begin = text.data();
+    const char *end = begin + text.size();
+    auto result = std::from_chars(begin, end, value, base);
+    if (result.ec != std::errc{} || result.ptr != end)
+        return std::nullopt;
+    return value;
+}
+
+/// @brief Parse a signed decimal integer and require complete consumption.
+/// @param text Decimal literal text without a BASIC type suffix.
+/// @return Parsed value, or @c std::nullopt on invalid text or overflow.
+std::optional<int64_t> parseCompleteSigned(std::string_view text) noexcept {
+    int64_t value = 0;
+    const char *begin = text.data();
+    const char *end = begin + text.size();
+    auto result = std::from_chars(begin, end, value, 10);
+    if (result.ec != std::errc{} || result.ptr != end)
+        return std::nullopt;
+    return value;
+}
+
+/// @brief Parse a floating-point literal and require complete consumption.
+/// @details Uses @c strtod for portability with Apple toolchains where
+///          floating-point @c from_chars support may be incomplete.
+/// @param text Floating-point literal text without a BASIC type suffix.
+/// @return Parsed finite value, or @c std::nullopt on invalid text or overflow.
+std::optional<double> parseCompleteDouble(std::string_view text) noexcept {
+    std::string storage(text);
+    char *end = nullptr;
+    errno = 0;
+    const double value = std::strtod(storage.c_str(), &end);
+    if (end != storage.c_str() + storage.size() || errno == ERANGE || !std::isfinite(value))
+        return std::nullopt;
+    return value;
 }
 
 } // namespace
@@ -299,8 +364,13 @@ ExprPtr Parser::parseNumber() {
 
     if (isBasedInteger) {
         const std::string digits = lex.substr(digitOffset);
-        const auto raw = std::strtoull(digits.c_str(), nullptr, base);
-        auto e = makeIntExpr(static_cast<int64_t>(raw), loc);
+        auto parsed = parseCompleteUnsigned(digits, base);
+        if (!parsed) {
+            emitError("B0001", peek(), "invalid integer literal");
+            consume();
+            return makeIntExpr(0, loc);
+        }
+        auto e = makeIntExpr(signedFromU64Bits(*parsed), loc);
         auto *intExpr = static_cast<IntExpr *>(e.get());
         if (suffix == '%')
             intExpr->suffix = IntExpr::Suffix::Integer;
@@ -311,7 +381,13 @@ ExprPtr Parser::parseNumber() {
     }
 
     if (isFloatLiteral) {
-        auto e = makeFloatExpr(std::strtod(lex.c_str(), nullptr), loc);
+        auto parsed = parseCompleteDouble(lex);
+        if (!parsed) {
+            emitError("B0001", peek(), "invalid floating-point literal");
+            consume();
+            return makeFloatExpr(0.0, loc);
+        }
+        auto e = makeFloatExpr(*parsed, loc);
         auto *floatExpr = static_cast<FloatExpr *>(e.get());
         if (suffix == '!')
             floatExpr->suffix = FloatExpr::Suffix::Single;
@@ -321,8 +397,13 @@ ExprPtr Parser::parseNumber() {
         return e;
     }
 
-    int64_t v = std::strtoll(lex.c_str(), nullptr, 10);
-    auto e = makeIntExpr(v, loc);
+    auto parsed = parseCompleteSigned(lex);
+    if (!parsed) {
+        emitError("B0001", peek(), "invalid integer literal");
+        consume();
+        return makeIntExpr(0, loc);
+    }
+    auto e = makeIntExpr(*parsed, loc);
     auto *intExpr = static_cast<IntExpr *>(e.get());
     if (suffix == '%')
         intExpr->suffix = IntExpr::Suffix::Integer;

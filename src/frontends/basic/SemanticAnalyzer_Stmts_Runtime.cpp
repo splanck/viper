@@ -313,7 +313,7 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l) {
         // Single-dimensional array (backward compatible path)
         auto indexTy = visitExpr(*a.index);
         if (indexTy == Type::Float) {
-            if (auto *floatLiteral = as<FloatExpr>(*a.index)) {
+            if (as<FloatExpr>(*a.index)) {
                 insertImplicitCast(*a.index, Type::Int);
                 std::string msg = "narrowing conversion from FLOAT to INT in array index";
                 de.emit(il::support::Severity::Warning, "B2002", a.loc, 1, std::move(msg));
@@ -332,7 +332,7 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l) {
                 continue;
             auto indexTy = visitExpr(*indexPtr);
             if (indexTy == Type::Float) {
-                if (auto *floatLiteral = as<FloatExpr>(*indexPtr)) {
+                if (as<FloatExpr>(*indexPtr)) {
                     insertImplicitCast(*indexPtr, Type::Int);
                     std::string msg = "narrowing conversion from FLOAT to INT in array index";
                     de.emit(il::support::Severity::Warning, "B2002", a.loc, 1, std::move(msg));
@@ -474,7 +474,7 @@ void SemanticAnalyzer::analyzeLet(LetStmt &l) {
                 continue;
             Type ty = visitExpr(*arg);
             if (ty == Type::Float) {
-                if (auto *fl = as<FloatExpr>(*arg)) {
+                if (as<FloatExpr>(*arg)) {
                     insertImplicitCast(*arg, Type::Int);
                     std::string msg = "narrowing conversion from FLOAT to INT in array index";
                     de.emit(il::support::Severity::Warning, "B2002", mc->loc, 1, std::move(msg));
@@ -500,7 +500,7 @@ void SemanticAnalyzer::analyzeLet(LetStmt &l) {
                         continue;
                     Type ty = visitExpr(*arg);
                     if (ty == Type::Float) {
-                        if (auto *fl = as<FloatExpr>(*arg)) {
+                        if (as<FloatExpr>(*arg)) {
                             insertImplicitCast(*arg, Type::Int);
                             std::string msg =
                                 "narrowing conversion from FLOAT to INT in array index";

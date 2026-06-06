@@ -1460,7 +1460,8 @@ function(viper_add_runtime_tests)
     viper_add_isolated_runtime_test(test_rt_canvas_contract
             ${VIPER_TESTS_DIR}/runtime/RTCanvasContractTests.cpp
             ${CMAKE_SOURCE_DIR}/src/runtime/graphics/2d/rt_drawing.c
-            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/2d/rt_drawing_advanced.c)
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/2d/rt_drawing_advanced.c
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/2d/rt_color.c)
     target_compile_definitions(test_rt_canvas_contract PRIVATE
             VIPER_ENABLE_GRAPHICS=1
             RT_DRAWING_ADVANCED_NO_PATH2D=1

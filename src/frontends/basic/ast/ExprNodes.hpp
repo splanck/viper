@@ -358,8 +358,6 @@ struct CallExpr : Expr {
     /// Ordered argument expressions; owned.
     std::vector<ExprPtr> args;
 
-    /// Source location of the call operator.
-    il::support::SourceLoc loc{};
     void accept(ExprVisitor &visitor) const override;
     void accept(MutExprVisitor &visitor) override;
 };

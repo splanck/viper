@@ -175,8 +175,8 @@ constexpr NumericType powerResult(NumericType, NumericType) noexcept {
 }
 
 struct BinaryRule {
-    std::string_view op;
-    BinaryFn fn;
+    std::string_view op{};
+    BinaryFn fn{nullptr};
 };
 
 constexpr std::array<BinaryRule, 7> Rules = {{{"+", &arithmeticResult},

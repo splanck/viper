@@ -88,34 +88,15 @@ const Loop *LoopInfo::parent(const Loop &loop) const {
 
 namespace {
 /// @brief Collect predecessor blocks for @p block using CFG context data.
-/// @details Returns a mutable vector of predecessors derived from the cached
-///          CFG context. The helper performs a const-cast because the CFG stores
-///          pointers as const to prevent accidental mutation during analysis.
+/// @details Returns the cached predecessor edge list from the CFG context.
+///          Duplicate entries are preserved because IL branch arguments are
+///          edge-specific.
 /// @param ctx CFG context holding predecessor maps.
 /// @param block Block whose predecessors should be returned.
-/// @return Vector of predecessor pointers (may be empty).
-std::vector<BasicBlock *> getPredecessors(const viper::analysis::CFGContext &ctx,
-                                          BasicBlock &block) {
-    auto it = ctx.blockPredecessors.find(&block);
-    if (it != ctx.blockPredecessors.end()) {
-        std::vector<BasicBlock *> result;
-        result.reserve(it->second.size());
-        for (auto *pred : it->second)
-            result.push_back(const_cast<BasicBlock *>(pred));
-        return result;
-    }
-    return {};
-}
-
-/// @brief Const overload that forwards to the mutable predecessor helper.
-/// @details Provides a convenience wrapper so const callers can reuse the
-///          same logic without duplicating the predecessor lookup.
-/// @param ctx CFG context holding predecessor maps.
-/// @param block Block whose predecessors should be returned.
-/// @return Vector of predecessor pointers (may be empty).
-std::vector<BasicBlock *> getPredecessors(const viper::analysis::CFGContext &ctx,
-                                          const BasicBlock &block) {
-    return getPredecessors(ctx, const_cast<BasicBlock &>(block));
+/// @return Reference to predecessor pointers (may be empty).
+const std::vector<BasicBlock *> &getPredecessors(const viper::analysis::CFGContext &ctx,
+                                                 const BasicBlock &block) {
+    return viper::analysis::predecessors(ctx, block);
 }
 
 } // namespace
@@ -209,13 +190,18 @@ LoopInfo computeLoopInfo(Module &module, Function &function) {
         }
     }
     // Populate children lists
+    auto findMutableLoop = [&](std::string_view headerLabel) -> Loop * {
+        for (auto &candidate : info.loops_) {
+            if (candidate.headerLabel == headerLabel)
+                return &candidate;
+        }
+        return nullptr;
+    };
     for (auto &loop : info.loops_) {
         if (loop.parentHeader.empty())
             continue;
-        if (auto *parentLoop = info.findLoop(loop.parentHeader)) {
-            auto *mutableParent = const_cast<Loop *>(parentLoop);
-            mutableParent->childHeaders.push_back(loop.headerLabel);
-        }
+        if (auto *parentLoop = findMutableLoop(loop.parentHeader))
+            parentLoop->childHeaders.push_back(loop.headerLabel);
     }
 
     // Exits: edges from loop body to outside.

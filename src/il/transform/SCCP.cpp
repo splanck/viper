@@ -185,7 +185,7 @@ struct FoldResult {
         return kind == Kind::Constant;
     }
 
-    Kind kind;
+    Kind kind{Kind::Unknown};
     Value value;
 };
 
@@ -345,6 +345,16 @@ long long arithmeticShiftRight(long long value, unsigned shift) {
 
 /// @brief Context for resolving instruction operands during folding.
 struct FoldContext {
+    /// @brief Create a folding context for one instruction.
+    /// @details The context borrows the instruction being evaluated and owns
+    ///          the resolver callable used to translate operand indices into
+    ///          lattice values. The instruction reference must outlive the
+    ///          folding operation.
+    /// @param source Instruction currently being folded.
+    /// @param resolver Callable that resolves operand indices into values.
+    FoldContext(const Instr &source, std::function<bool(size_t, Value &)> resolver)
+        : instr(source), resolveOperand(std::move(resolver)) {}
+
     const Instr &instr;
     std::function<bool(size_t, Value &)> resolveOperand;
 

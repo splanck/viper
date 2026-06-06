@@ -30,6 +30,7 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
+#include "il/utils/CheckedIntRange.hpp"
 #include "il/verify/DiagSink.hpp"
 #include "il/verify/InstructionCheckUtils.hpp"
 #include "il/verify/InstructionCheckerShared.hpp"
@@ -73,6 +74,12 @@ using il::core::Type;
 using il::core::Value;
 using il::support::Expected;
 using il::support::makeError;
+using il::utils::addRanges;
+using il::utils::exactRange;
+using il::utils::IntRange;
+using il::utils::mergeIncomingRange;
+using il::utils::mulRanges;
+using il::utils::subRanges;
 
 using StrategyFn = Expected<void> (*)(const VerifyCtx &, const InstructionSpec &);
 
@@ -369,120 +376,6 @@ const Instr *findLocalDef(const BasicBlock &block, unsigned id) {
     return nullptr;
 }
 
-bool addOverflows(int64_t a, int64_t b) {
-    if (b > 0 && a > std::numeric_limits<int64_t>::max() - b)
-        return true;
-    if (b < 0 && a < std::numeric_limits<int64_t>::min() - b)
-        return true;
-    return false;
-}
-
-bool subOverflows(int64_t a, int64_t b) {
-    if (b < 0 && a > std::numeric_limits<int64_t>::max() + b)
-        return true;
-    if (b > 0 && a < std::numeric_limits<int64_t>::min() + b)
-        return true;
-    return false;
-}
-
-bool mulOverflows(int64_t a, int64_t b) {
-    if (a == 0 || b == 0)
-        return false;
-    if (a == -1)
-        return b == std::numeric_limits<int64_t>::min();
-    if (b == -1)
-        return a == std::numeric_limits<int64_t>::min();
-    if ((a > 0) == (b > 0))
-        return a > std::numeric_limits<int64_t>::max() / b;
-    return a < std::numeric_limits<int64_t>::min() / b;
-}
-
-struct IntRange {
-    std::optional<int64_t> lower;
-    std::optional<int64_t> upper;
-};
-
-IntRange exactRange(int64_t value) {
-    return IntRange{value, value};
-}
-
-std::optional<int64_t> addCheckedValue(int64_t lhs, int64_t rhs) {
-    if (addOverflows(lhs, rhs))
-        return std::nullopt;
-    return lhs + rhs;
-}
-
-std::optional<int64_t> subCheckedValue(int64_t lhs, int64_t rhs) {
-    if (subOverflows(lhs, rhs))
-        return std::nullopt;
-    return lhs - rhs;
-}
-
-std::optional<int64_t> mulCheckedValue(int64_t lhs, int64_t rhs) {
-    if (mulOverflows(lhs, rhs))
-        return std::nullopt;
-    return lhs * rhs;
-}
-
-std::optional<IntRange> addRanges(const IntRange &lhs, const IntRange &rhs) {
-    const int64_t lhsLower = lhs.lower.value_or(std::numeric_limits<int64_t>::min());
-    const int64_t lhsUpper = lhs.upper.value_or(std::numeric_limits<int64_t>::max());
-    const int64_t rhsLower = rhs.lower.value_or(std::numeric_limits<int64_t>::min());
-    const int64_t rhsUpper = rhs.upper.value_or(std::numeric_limits<int64_t>::max());
-    auto lower = addCheckedValue(lhsLower, rhsLower);
-    auto upper = addCheckedValue(lhsUpper, rhsUpper);
-    if (!lower || !upper)
-        return std::nullopt;
-
-    IntRange result;
-    if (lhs.lower || rhs.lower)
-        result.lower = *lower;
-    if (lhs.upper || rhs.upper)
-        result.upper = *upper;
-    return result;
-}
-
-std::optional<IntRange> subRanges(const IntRange &lhs, const IntRange &rhs) {
-    const int64_t lhsLower = lhs.lower.value_or(std::numeric_limits<int64_t>::min());
-    const int64_t lhsUpper = lhs.upper.value_or(std::numeric_limits<int64_t>::max());
-    const int64_t rhsLower = rhs.lower.value_or(std::numeric_limits<int64_t>::min());
-    const int64_t rhsUpper = rhs.upper.value_or(std::numeric_limits<int64_t>::max());
-    auto lower = subCheckedValue(lhsLower, rhsUpper);
-    auto upper = subCheckedValue(lhsUpper, rhsLower);
-    if (!lower || !upper)
-        return std::nullopt;
-
-    IntRange result;
-    if (lhs.lower || rhs.upper)
-        result.lower = *lower;
-    if (lhs.upper || rhs.lower)
-        result.upper = *upper;
-    return result;
-}
-
-std::optional<IntRange> mulRanges(const IntRange &lhs, const IntRange &rhs) {
-    if (!lhs.lower || !lhs.upper || !rhs.lower || !rhs.upper)
-        return std::nullopt;
-
-    std::array<std::optional<int64_t>, 4> products{
-        mulCheckedValue(*lhs.lower, *rhs.lower),
-        mulCheckedValue(*lhs.lower, *rhs.upper),
-        mulCheckedValue(*lhs.upper, *rhs.lower),
-        mulCheckedValue(*lhs.upper, *rhs.upper),
-    };
-    for (const auto &product : products)
-        if (!product)
-            return std::nullopt;
-
-    int64_t lo = *products[0];
-    int64_t hi = *products[0];
-    for (const auto &product : products) {
-        lo = std::min(lo, *product);
-        hi = std::max(hi, *product);
-    }
-    return IntRange{lo, hi};
-}
-
 std::optional<IntRange> rangeForValue(const Value &value,
                                       const std::unordered_map<unsigned, IntRange> &ranges) {
     if (value.kind == Value::Kind::ConstInt)
@@ -493,17 +386,6 @@ std::optional<IntRange> rangeForValue(const Value &value,
     if (it == ranges.end())
         return std::nullopt;
     return it->second;
-}
-
-std::optional<IntRange> mergeIncomingRange(const IntRange &lhs, const IntRange &rhs) {
-    IntRange merged;
-    if (lhs.lower && rhs.lower)
-        merged.lower = std::min(*lhs.lower, *rhs.lower);
-    if (lhs.upper && rhs.upper)
-        merged.upper = std::max(*lhs.upper, *rhs.upper);
-    if (!merged.lower && !merged.upper)
-        return std::nullopt;
-    return merged;
 }
 
 bool deriveCompareBranchRange(const Instr &cmp,
@@ -918,7 +800,7 @@ Expected<void> applyReject(const VerifyCtx &ctx, const InstructionSpec &spec) {
     if (isVerifiedCheckedDivRemDemotion(ctx))
         return {};
     const char *message = spec.rejectMessage ? spec.rejectMessage : "opcode rejected";
-    return fail(ctx, std::string(message));
+    return fail(ctx, message);
 }
 
 constexpr std::array<StrategyFn, static_cast<size_t>(VerifyStrategy::Count)> kStrategyTable = {

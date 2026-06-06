@@ -36,19 +36,17 @@ namespace {
 
 constexpr const char kTestBridgeMutatedText[] = "bridge-mutated";
 
-/// @brief Return a typed pointer to a VM argument slot when present.
+/// @brief Return a typed pointer to a required VM argument slot.
 /// @details Runtime bridge handlers receive a `void**` where each element points
-///          to storage for the corresponding IL argument.  This helper performs
-///          both the outer array and individual slot null checks before applying
-///          the typed reinterpret cast used by the adapter layer.
+///          to storage for the corresponding IL argument. Missing slots indicate
+///          descriptor/VM bridge disagreement and are fatal because continuing
+///          would fabricate arguments that the IL program did not supply.
 /// @tparam T Stored argument type expected in the slot.
 /// @param args VM-provided argument slot array.
 /// @param index Zero-based argument index to read.
-/// @return Pointer to the typed slot storage, or nullptr when unavailable.
+/// @return Pointer to typed slot storage.
 template <typename T> T *argSlot(void **args, size_t index) {
-    if (!args || !args[index])
-        return nullptr;
-    return reinterpret_cast<T *>(args[index]);
+    return detail::requiredArgSlot<T>(args, index);
 }
 
 /// @brief Clamp a 64-bit runtime file position/length to a 32-bit IL value.
@@ -86,14 +84,12 @@ int32_t rt_loc_ch_i32(int32_t channel) {
 
 void trapFromRuntimeString(void **args, void * /*result*/) {
     auto *slot = argSlot<rt_string>(args, 0);
-    rt_string str = slot ? *slot : nullptr;
+    rt_string str = *slot;
     rt_trap_string(str);
 }
 
 void testMutateStringNoStack(void **args, void * /*result*/) {
     auto *slot = argSlot<rt_string>(args, 0);
-    if (!slot)
-        return;
     rt_string updated =
         rt_string_from_bytes(kTestBridgeMutatedText, sizeof(kTestBridgeMutatedText) - 1);
     *slot = updated;
@@ -105,73 +101,66 @@ void testMutateStringNoStack(void **args, void * /*result*/) {
 
 void invokeRtArrI32New(void **args, void *result) {
     const auto lenPtr = argSlot<const int64_t>(args, 0);
-    const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
+    const size_t len = static_cast<size_t>(*lenPtr);
     int32_t *arr = rt_arr_i32_new(len);
-    if (result)
-        *reinterpret_cast<void **>(result) = arr;
+    detail::storeRequiredResult<void *>(result, arr);
 }
 
 void invokeRtArrI32Len(void **args, void *result) {
     const auto arrPtr = argSlot<int32_t *>(args, 0);
-    int32_t *arr = arrPtr ? *arrPtr : nullptr;
+    int32_t *arr = *arrPtr;
     const size_t len = rt_arr_i32_len(arr);
-    if (result)
-        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(len);
+    detail::storeRequiredResult<int64_t>(result, static_cast<int64_t>(len));
 }
 
 void invokeRtArrI32Get(void **args, void *result) {
     const auto arrPtr = argSlot<int32_t *>(args, 0);
     const auto idxPtr = argSlot<const int64_t>(args, 1);
-    int32_t *arr = arrPtr ? *arrPtr : nullptr;
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
+    int32_t *arr = *arrPtr;
+    const size_t idx = static_cast<size_t>(*idxPtr);
     const int32_t value = rt_arr_i32_get(arr, idx);
-    if (result)
-        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(value);
+    detail::storeRequiredResult<int64_t>(result, static_cast<int64_t>(value));
 }
 
 void invokeRtArrI32Set(void **args, void * /*result*/) {
     const auto arrPtr = argSlot<int32_t *>(args, 0);
     const auto idxPtr = argSlot<const int64_t>(args, 1);
     const auto valPtr = argSlot<const int64_t>(args, 2);
-    int32_t *arr = arrPtr ? *arrPtr : nullptr;
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
-    const int32_t value = valPtr ? static_cast<int32_t>(*valPtr) : 0;
+    int32_t *arr = *arrPtr;
+    const size_t idx = static_cast<size_t>(*idxPtr);
+    const int32_t value = static_cast<int32_t>(*valPtr);
     rt_arr_i32_set(arr, idx, value);
 }
 
 void invokeRtArrI32GetFast(void **args, void *result) {
     const auto arrPtr = argSlot<int32_t *>(args, 0);
     const auto idxPtr = argSlot<const int64_t>(args, 1);
-    int32_t *arr = arrPtr ? *arrPtr : nullptr;
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
+    int32_t *arr = *arrPtr;
+    const size_t idx = static_cast<size_t>(*idxPtr);
     const int32_t value = rt_arr_i32_get_fast(arr, idx);
-    if (result)
-        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(value);
+    detail::storeRequiredResult<int64_t>(result, static_cast<int64_t>(value));
 }
 
 void invokeRtArrI32SetFast(void **args, void * /*result*/) {
     const auto arrPtr = argSlot<int32_t *>(args, 0);
     const auto idxPtr = argSlot<const int64_t>(args, 1);
     const auto valPtr = argSlot<const int64_t>(args, 2);
-    int32_t *arr = arrPtr ? *arrPtr : nullptr;
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
-    const int32_t value = valPtr ? static_cast<int32_t>(*valPtr) : 0;
+    int32_t *arr = *arrPtr;
+    const size_t idx = static_cast<size_t>(*idxPtr);
+    const int32_t value = static_cast<int32_t>(*valPtr);
     rt_arr_i32_set_fast(arr, idx, value);
 }
 
 void invokeRtArrI32Resize(void **args, void *result) {
     const auto arrPtr = argSlot<int32_t *>(args, 0);
     const auto newLenPtr = argSlot<const int64_t>(args, 1);
-    int32_t *arr = arrPtr ? *arrPtr : nullptr;
-    const size_t newLen = newLenPtr ? static_cast<size_t>(*newLenPtr) : 0;
-    int32_t *local = arr;
-    int32_t **handle = arrPtr ? arrPtr : &local;
+    const size_t newLen = static_cast<size_t>(*newLenPtr);
+    int32_t **handle = arrPtr;
     int rc = rt_arr_i32_resize(handle, newLen);
     int32_t *resized = (rc == 0) ? *handle : nullptr;
-    if (arrPtr && rc == 0)
+    if (rc == 0)
         *arrPtr = resized;
-    if (result)
-        *reinterpret_cast<void **>(result) = resized;
+    detail::storeRequiredResult<void *>(result, resized);
 }
 
 // ============================================================================
@@ -180,73 +169,66 @@ void invokeRtArrI32Resize(void **args, void *result) {
 
 void invokeRtArrI64New(void **args, void *result) {
     const auto lenPtr = argSlot<const int64_t>(args, 0);
-    const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
+    const size_t len = static_cast<size_t>(*lenPtr);
     int64_t *arr = rt_arr_i64_new(len);
-    if (result)
-        *reinterpret_cast<void **>(result) = arr;
+    detail::storeRequiredResult<void *>(result, arr);
 }
 
 void invokeRtArrI64Len(void **args, void *result) {
     const auto arrPtr = argSlot<int64_t *>(args, 0);
-    int64_t *arr = arrPtr ? *arrPtr : nullptr;
+    int64_t *arr = *arrPtr;
     const size_t len = rt_arr_i64_len(arr);
-    if (result)
-        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(len);
+    detail::storeRequiredResult<int64_t>(result, static_cast<int64_t>(len));
 }
 
 void invokeRtArrI64Get(void **args, void *result) {
     const auto arrPtr = argSlot<int64_t *>(args, 0);
     const auto idxPtr = argSlot<const int64_t>(args, 1);
-    int64_t *arr = arrPtr ? *arrPtr : nullptr;
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
+    int64_t *arr = *arrPtr;
+    const size_t idx = static_cast<size_t>(*idxPtr);
     const int64_t value = rt_arr_i64_get(arr, idx);
-    if (result)
-        *reinterpret_cast<int64_t *>(result) = value;
+    detail::storeRequiredResult<int64_t>(result, value);
 }
 
 void invokeRtArrI64Set(void **args, void * /*result*/) {
     const auto arrPtr = argSlot<int64_t *>(args, 0);
     const auto idxPtr = argSlot<const int64_t>(args, 1);
     const auto valPtr = argSlot<const int64_t>(args, 2);
-    int64_t *arr = arrPtr ? *arrPtr : nullptr;
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
-    const int64_t value = valPtr ? *valPtr : 0;
+    int64_t *arr = *arrPtr;
+    const size_t idx = static_cast<size_t>(*idxPtr);
+    const int64_t value = *valPtr;
     rt_arr_i64_set(arr, idx, value);
 }
 
 void invokeRtArrI64GetFast(void **args, void *result) {
     const auto arrPtr = argSlot<int64_t *>(args, 0);
     const auto idxPtr = argSlot<const int64_t>(args, 1);
-    int64_t *arr = arrPtr ? *arrPtr : nullptr;
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
+    int64_t *arr = *arrPtr;
+    const size_t idx = static_cast<size_t>(*idxPtr);
     const int64_t value = rt_arr_i64_get_fast(arr, idx);
-    if (result)
-        *reinterpret_cast<int64_t *>(result) = value;
+    detail::storeRequiredResult<int64_t>(result, value);
 }
 
 void invokeRtArrI64SetFast(void **args, void * /*result*/) {
     const auto arrPtr = argSlot<int64_t *>(args, 0);
     const auto idxPtr = argSlot<const int64_t>(args, 1);
     const auto valPtr = argSlot<const int64_t>(args, 2);
-    int64_t *arr = arrPtr ? *arrPtr : nullptr;
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
-    const int64_t value = valPtr ? *valPtr : 0;
+    int64_t *arr = *arrPtr;
+    const size_t idx = static_cast<size_t>(*idxPtr);
+    const int64_t value = *valPtr;
     rt_arr_i64_set_fast(arr, idx, value);
 }
 
 void invokeRtArrI64Resize(void **args, void *result) {
     const auto arrPtr = argSlot<int64_t *>(args, 0);
     const auto newLenPtr = argSlot<const int64_t>(args, 1);
-    int64_t *arr = arrPtr ? *arrPtr : nullptr;
-    const size_t newLen = newLenPtr ? static_cast<size_t>(*newLenPtr) : 0;
-    int64_t *local = arr;
-    int64_t **handle = arrPtr ? arrPtr : &local;
+    const size_t newLen = static_cast<size_t>(*newLenPtr);
+    int64_t **handle = arrPtr;
     int rc = rt_arr_i64_resize(handle, newLen);
     int64_t *resized = (rc == 0) ? *handle : nullptr;
-    if (arrPtr && rc == 0)
+    if (rc == 0)
         *arrPtr = resized;
-    if (result)
-        *reinterpret_cast<void **>(result) = resized;
+    detail::storeRequiredResult<void *>(result, resized);
 }
 
 // ============================================================================
@@ -255,73 +237,66 @@ void invokeRtArrI64Resize(void **args, void *result) {
 
 void invokeRtArrF64New(void **args, void *result) {
     const auto lenPtr = argSlot<const int64_t>(args, 0);
-    const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
+    const size_t len = static_cast<size_t>(*lenPtr);
     double *arr = rt_arr_f64_new(len);
-    if (result)
-        *reinterpret_cast<void **>(result) = arr;
+    detail::storeRequiredResult<void *>(result, arr);
 }
 
 void invokeRtArrF64Len(void **args, void *result) {
     const auto arrPtr = argSlot<double *>(args, 0);
-    double *arr = arrPtr ? *arrPtr : nullptr;
+    double *arr = *arrPtr;
     const size_t len = rt_arr_f64_len(arr);
-    if (result)
-        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(len);
+    detail::storeRequiredResult<int64_t>(result, static_cast<int64_t>(len));
 }
 
 void invokeRtArrF64Get(void **args, void *result) {
     const auto arrPtr = argSlot<double *>(args, 0);
     const auto idxPtr = argSlot<const int64_t>(args, 1);
-    double *arr = arrPtr ? *arrPtr : nullptr;
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
+    double *arr = *arrPtr;
+    const size_t idx = static_cast<size_t>(*idxPtr);
     const double value = rt_arr_f64_get(arr, idx);
-    if (result)
-        *reinterpret_cast<double *>(result) = value;
+    detail::storeRequiredResult<double>(result, value);
 }
 
 void invokeRtArrF64Set(void **args, void * /*result*/) {
     const auto arrPtr = argSlot<double *>(args, 0);
     const auto idxPtr = argSlot<const int64_t>(args, 1);
     const auto valPtr = argSlot<const double>(args, 2);
-    double *arr = arrPtr ? *arrPtr : nullptr;
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
-    const double value = valPtr ? *valPtr : 0.0;
+    double *arr = *arrPtr;
+    const size_t idx = static_cast<size_t>(*idxPtr);
+    const double value = *valPtr;
     rt_arr_f64_set(arr, idx, value);
 }
 
 void invokeRtArrF64GetFast(void **args, void *result) {
     const auto arrPtr = argSlot<double *>(args, 0);
     const auto idxPtr = argSlot<const int64_t>(args, 1);
-    double *arr = arrPtr ? *arrPtr : nullptr;
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
+    double *arr = *arrPtr;
+    const size_t idx = static_cast<size_t>(*idxPtr);
     const double value = rt_arr_f64_get_fast(arr, idx);
-    if (result)
-        *reinterpret_cast<double *>(result) = value;
+    detail::storeRequiredResult<double>(result, value);
 }
 
 void invokeRtArrF64SetFast(void **args, void * /*result*/) {
     const auto arrPtr = argSlot<double *>(args, 0);
     const auto idxPtr = argSlot<const int64_t>(args, 1);
     const auto valPtr = argSlot<const double>(args, 2);
-    double *arr = arrPtr ? *arrPtr : nullptr;
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
-    const double value = valPtr ? *valPtr : 0.0;
+    double *arr = *arrPtr;
+    const size_t idx = static_cast<size_t>(*idxPtr);
+    const double value = *valPtr;
     rt_arr_f64_set_fast(arr, idx, value);
 }
 
 void invokeRtArrF64Resize(void **args, void *result) {
     const auto arrPtr = argSlot<double *>(args, 0);
     const auto newLenPtr = argSlot<const int64_t>(args, 1);
-    double *arr = arrPtr ? *arrPtr : nullptr;
-    const size_t newLen = newLenPtr ? static_cast<size_t>(*newLenPtr) : 0;
-    double *local = arr;
-    double **handle = arrPtr ? arrPtr : &local;
+    const size_t newLen = static_cast<size_t>(*newLenPtr);
+    double **handle = arrPtr;
     int rc = rt_arr_f64_resize(handle, newLen);
     double *resized = (rc == 0) ? *handle : nullptr;
-    if (arrPtr && rc == 0)
+    if (rc == 0)
         *arrPtr = resized;
-    if (result)
-        *reinterpret_cast<void **>(result) = resized;
+    detail::storeRequiredResult<void *>(result, resized);
 }
 
 // ============================================================================
@@ -330,48 +305,44 @@ void invokeRtArrF64Resize(void **args, void *result) {
 
 void invokeRtArrObjNew(void **args, void *result) {
     const auto lenPtr = argSlot<const int64_t>(args, 0);
-    const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
+    const size_t len = static_cast<size_t>(*lenPtr);
     void **arr = rt_arr_obj_new(len);
-    if (result)
-        *reinterpret_cast<void **>(result) = arr;
+    detail::storeRequiredResult<void *>(result, arr);
 }
 
 void invokeRtArrObjLen(void **args, void *result) {
     const auto arrPtr = argSlot<void **>(args, 0);
-    void **arr = arrPtr ? *arrPtr : nullptr;
+    void **arr = *arrPtr;
     const size_t len = rt_arr_obj_len(arr);
-    if (result)
-        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(len);
+    detail::storeRequiredResult<int64_t>(result, static_cast<int64_t>(len));
 }
 
 void invokeRtArrObjGet(void **args, void *result) {
     const auto arrPtr = argSlot<void **>(args, 0);
     const auto idxPtr = argSlot<const int64_t>(args, 1);
-    void **arr = arrPtr ? *arrPtr : nullptr;
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
+    void **arr = *arrPtr;
+    const size_t idx = static_cast<size_t>(*idxPtr);
     void *ptr = rt_arr_obj_get(arr, idx);
-    if (result)
-        *reinterpret_cast<void **>(result) = ptr;
+    detail::storeRequiredResult<void *>(result, ptr);
 }
 
 void invokeRtArrObjPut(void **args, void * /*result*/) {
     const auto arrPtr = argSlot<void **>(args, 0);
     const auto idxPtr = argSlot<const int64_t>(args, 1);
     const auto valPtr = argSlot<void *>(args, 2);
-    void **arr = arrPtr ? *arrPtr : nullptr;
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
-    void *val = valPtr ? *valPtr : nullptr;
+    void **arr = *arrPtr;
+    const size_t idx = static_cast<size_t>(*idxPtr);
+    void *val = *valPtr;
     rt_arr_obj_put(arr, idx, val);
 }
 
 void invokeRtArrObjResize(void **args, void *result) {
     const auto arrPtr = argSlot<void **>(args, 0);
     const auto lenPtr = argSlot<const int64_t>(args, 1);
-    void **arr = arrPtr ? *arrPtr : nullptr;
-    const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
+    void **arr = *arrPtr;
+    const size_t len = static_cast<size_t>(*lenPtr);
     void **res = rt_arr_obj_resize(arr, len);
-    if (result)
-        *reinterpret_cast<void **>(result) = res;
+    detail::storeRequiredResult<void *>(result, res);
 }
 
 // ============================================================================
@@ -380,51 +351,48 @@ void invokeRtArrObjResize(void **args, void *result) {
 
 void invokeRtArrStrAlloc(void **args, void *result) {
     const auto lenPtr = argSlot<const int64_t>(args, 0);
-    const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
+    const size_t len = static_cast<size_t>(*lenPtr);
     rt_string *arr = rt_arr_str_alloc(len);
-    if (result)
-        *reinterpret_cast<void **>(result) = arr;
+    detail::storeRequiredResult<void *>(result, arr);
 }
 
 void invokeRtArrStrRelease(void **args, void * /*result*/) {
     // Param 0 is a pointer-typed IL value; args[0] points to storage containing the pointer.
     const auto arrPtr = argSlot<rt_string *>(args, 0);
-    rt_string *arr = arrPtr ? *arrPtr : nullptr;
+    rt_string *arr = *arrPtr;
     const auto sizePtr = argSlot<const int64_t>(args, 1);
-    const size_t size = sizePtr ? static_cast<size_t>(*sizePtr) : 0;
+    const size_t size = static_cast<size_t>(*sizePtr);
     rt_arr_str_release(arr, size);
 }
 
 void invokeRtArrStrGet(void **args, void *result) {
     // Param 0 (ptr): args[0] -> storage holding the array payload pointer
     const auto arrPtr = argSlot<rt_string *>(args, 0);
-    rt_string *arr = arrPtr ? *arrPtr : nullptr;
+    rt_string *arr = *arrPtr;
     const auto idxPtr = argSlot<const int64_t>(args, 1);
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
+    const size_t idx = static_cast<size_t>(*idxPtr);
     rt_string value = rt_arr_str_get(arr, idx);
-    if (result)
-        *reinterpret_cast<rt_string *>(result) = value;
+    detail::storeRequiredResult<rt_string>(result, value);
 }
 
 void invokeRtArrStrPut(void **args, void * /*result*/) {
     // Param 0 (ptr): args[0] -> storage holding the array payload pointer
     const auto arrPtr = argSlot<rt_string *>(args, 0);
-    rt_string *arr = arrPtr ? *arrPtr : nullptr;
+    rt_string *arr = *arrPtr;
     const auto idxPtr = argSlot<const int64_t>(args, 1);
     // Param 2 (string): args[2] -> storage holding the string handle directly
     const auto valuePtr = argSlot<rt_string>(args, 2);
-    rt_string value = valuePtr ? *valuePtr : nullptr;
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
+    rt_string value = *valuePtr;
+    const size_t idx = static_cast<size_t>(*idxPtr);
     rt_arr_str_put(arr, idx, value);
 }
 
 void invokeRtArrStrLen(void **args, void *result) {
     // Param 0 (ptr): args[0] -> storage holding the array payload pointer
     const auto arrPtr = argSlot<rt_string *>(args, 0);
-    rt_string *arr = arrPtr ? *arrPtr : nullptr;
+    rt_string *arr = *arrPtr;
     const size_t len = rt_arr_str_len(arr);
-    if (result)
-        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(len);
+    detail::storeRequiredResult<int64_t>(result, static_cast<int64_t>(len));
 }
 
 // ============================================================================
@@ -434,8 +402,8 @@ void invokeRtArrStrLen(void **args, void *result) {
 void invokeRtArrOobPanic(void **args, void * /*result*/) {
     const auto idxPtr = argSlot<const int64_t>(args, 0);
     const auto lenPtr = argSlot<const int64_t>(args, 1);
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
-    const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
+    const size_t idx = static_cast<size_t>(*idxPtr);
+    const size_t len = static_cast<size_t>(*lenPtr);
     rt_arr_oob_panic(idx, len);
 }
 
@@ -446,76 +414,69 @@ void invokeRtArrOobPanic(void **args, void * /*result*/) {
 void invokeRtCintFromDouble(void **args, void *result) {
     const auto xPtr = argSlot<const double>(args, 0);
     const auto okPtr = argSlot<bool *>(args, 1);
-    const double x = xPtr ? *xPtr : 0.0;
-    bool *ok = okPtr ? *okPtr : nullptr;
+    const double x = *xPtr;
+    bool *ok = *okPtr;
     const int16_t value = rt_cint_from_double(x, ok);
-    if (result)
-        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(value);
+    detail::storeRequiredResult<int64_t>(result, static_cast<int64_t>(value));
 }
 
 void invokeRtClngFromDouble(void **args, void *result) {
     const auto xPtr = argSlot<const double>(args, 0);
     const auto okPtr = argSlot<bool *>(args, 1);
-    const double x = xPtr ? *xPtr : 0.0;
-    bool *ok = okPtr ? *okPtr : nullptr;
+    const double x = *xPtr;
+    bool *ok = *okPtr;
     const int32_t value = rt_clng_from_double(x, ok);
-    if (result)
-        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(value);
+    detail::storeRequiredResult<int64_t>(result, static_cast<int64_t>(value));
 }
 
 void invokeRtCsngFromDouble(void **args, void *result) {
     const auto xPtr = argSlot<const double>(args, 0);
     const auto okPtr = argSlot<bool *>(args, 1);
-    const double x = xPtr ? *xPtr : 0.0;
-    bool *ok = okPtr ? *okPtr : nullptr;
+    const double x = *xPtr;
+    bool *ok = *okPtr;
     const float value = rt_csng_from_double(x, ok);
-    if (result)
-        *reinterpret_cast<double *>(result) = static_cast<double>(value);
+    detail::storeRequiredResult<double>(result, static_cast<double>(value));
 }
 
 void invokeRtStrFAlloc(void **args, void *result) {
     const auto xPtr = argSlot<const double>(args, 0);
-    const float value = xPtr ? static_cast<float>(*xPtr) : 0.0f;
+    const float value = static_cast<float>(*xPtr);
     rt_string str = rt_str_f_alloc(value);
-    if (result)
-        *reinterpret_cast<rt_string *>(result) = str;
+    detail::storeRequiredResult<rt_string>(result, str);
 }
 
 void invokeRtRoundEven(void **args, void *result) {
     const auto xPtr = argSlot<const double>(args, 0);
     const auto digitsPtr = argSlot<const int64_t>(args, 1);
-    const double x = xPtr ? *xPtr : 0.0;
-    const int ndigits = digitsPtr ? static_cast<int>(*digitsPtr) : 0;
+    const double x = *xPtr;
+    const int ndigits = static_cast<int>(*digitsPtr);
     const double rounded = rt_round_even(x, ndigits);
-    if (result)
-        *reinterpret_cast<double *>(result) = rounded;
+    detail::storeRequiredResult<double>(result, rounded);
 }
 
 void invokeRtPowF64Chkdom(void **args, void *result) {
     const auto basePtr = argSlot<const double>(args, 0);
     const auto expPtr = argSlot<const double>(args, 1);
     const auto okPtrPtr = argSlot<bool *>(args, 2);
-    const double base = basePtr ? *basePtr : 0.0;
-    const double exponent = expPtr ? *expPtr : 0.0;
-    bool *ok = okPtrPtr ? *okPtrPtr : nullptr;
+    const double base = *basePtr;
+    const double exponent = *expPtr;
+    bool *ok = *okPtrPtr;
     const double value = rt_pow_f64_chkdom(base, exponent, ok);
-    if (result)
-        *reinterpret_cast<double *>(result) = value;
+    detail::storeRequiredResult<double>(result, value);
 }
 
 void vmInvokeRtPow(void **args, void *result) {
     const auto basePtr = argSlot<const double>(args, 0);
     const auto expPtr = argSlot<const double>(args, 1);
-    const double base = basePtr ? *basePtr : 0.0;
-    const double exponent = expPtr ? *expPtr : 0.0;
+    const double base = *basePtr;
+    const double exponent = *expPtr;
     bool ok = true;
     const double value = rt_pow_f64_chkdom(base, exponent, &ok);
     if (!ok) {
         rt_trap("Pow: domain error or overflow");
         return;
     }
-    if (result)
-        *reinterpret_cast<double *>(result) = value;
+    detail::storeRequiredResult<double>(result, value);
 }
 
 } // namespace il::runtime

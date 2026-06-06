@@ -182,7 +182,7 @@ namespace detail {
 enum class PassKind { Module, Function };
 
 struct PassFactory {
-    PassKind kind;
+    PassKind kind{PassKind::Function};
     std::function<std::unique_ptr<ModulePass>()> makeModule;
     std::function<std::unique_ptr<FunctionPass>()> makeFunction;
     bool parallelSafe = false;

@@ -149,11 +149,12 @@ void SemanticAnalyzer::analyzeClassDecl(ClassDecl &decl) {
     if (decl.baseName) {
         std::string resolvedBase = resolveTypeRef(
             *decl.baseName, nsStack_, decl.loc, static_cast<uint32_t>(decl.baseName->size()));
-        // Store resolved base for later use (error recovery - continue even if unresolved).
+        if (!resolvedBase.empty())
+            decl.baseName = std::move(resolvedBase);
     }
 
     // Resolve implemented interfaces.
-    for (const auto &ifaceQN : decl.implementsQualifiedNames) {
+    for (auto &ifaceQN : decl.implementsQualifiedNames) {
         // Build dotted name from qualified segments.
         std::string ifaceName;
         for (size_t i = 0; i < ifaceQN.size(); ++i) {
@@ -165,8 +166,8 @@ void SemanticAnalyzer::analyzeClassDecl(ClassDecl &decl) {
         if (!ifaceName.empty()) {
             std::string resolvedIface = resolveTypeRef(
                 ifaceName, nsStack_, decl.loc, static_cast<uint32_t>(ifaceName.size()));
-            // Store resolved interface for later use (error recovery - continue even if
-            // unresolved).
+            if (!resolvedIface.empty())
+                ifaceQN = SplitDots(resolvedIface);
         }
     }
 

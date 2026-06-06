@@ -638,8 +638,8 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     // Collect EhPush targets and label references during single pass over blocks.
     // This avoids two additional O(blocks × instructions) traversals.
     struct EhPushCheck {
-        const BasicBlock *bb;
-        const Instr *instr;
+        const BasicBlock *bb{nullptr};
+        const Instr *instr{nullptr};
         std::string target;
     };
 

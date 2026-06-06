@@ -185,11 +185,11 @@ bool threadJumps(SimplifyCFG::SimplifyCFGPassContext &ctx) {
 
     // Collect blocks to thread (don't modify while iterating)
     struct ThreadingCandidate {
-        il::core::BasicBlock *pred;
-        il::core::BasicBlock *intermediate;
+        il::core::BasicBlock *pred{nullptr};
+        il::core::BasicBlock *intermediate{nullptr};
         std::string newTarget;
         std::vector<il::core::Value> newArgs;
-        size_t predBranchIdx;
+        size_t predBranchIdx{0};
     };
 
     std::vector<ThreadingCandidate> candidates;

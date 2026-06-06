@@ -52,6 +52,29 @@ class TypeInference;
 
 /// @brief Bundles shared verifier state when validating a single instruction.
 struct VerifyCtx {
+    /// @brief Construct a verifier context for one instruction.
+    /// @details The context borrows all maps and IR nodes. Callers must ensure
+    ///          the referenced verifier state and IR objects outlive the
+    ///          instruction verification call.
+    /// @param diagSink Diagnostic sink for warnings and errors.
+    /// @param typeState Type inference table for the current function.
+    /// @param externMap Known extern declarations by name.
+    /// @param functionMap Known function declarations by name.
+    /// @param globalMap Known globals by name.
+    /// @param function Function that owns @p instruction.
+    /// @param basicBlock Block that contains @p instruction.
+    /// @param instruction Instruction being verified.
+    VerifyCtx(DiagSink &diagSink,
+              TypeInference &typeState,
+              const std::unordered_map<std::string, const il::core::Extern *> &externMap,
+              const std::unordered_map<std::string, const il::core::Function *> &functionMap,
+              const std::unordered_map<std::string, const il::core::Global *> &globalMap,
+              const il::core::Function &function,
+              const il::core::BasicBlock &basicBlock,
+              const il::core::Instr &instruction)
+        : diags(diagSink), types(typeState), externs(externMap), functions(functionMap),
+          globals(globalMap), fn(function), block(basicBlock), instr(instruction) {}
+
     DiagSink &diags;      ///< Diagnostic sink used for warnings and errors.
     TypeInference &types; ///< Type inference table tracking temporaries.
     const std::unordered_map<std::string, const il::core::Extern *>

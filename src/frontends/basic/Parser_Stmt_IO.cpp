@@ -20,9 +20,8 @@
 
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
+#include "frontends/basic/LineUtils.hpp"
 #include "frontends/basic/Parser.hpp"
-
-#include <cstdlib>
 
 namespace il::frontends::basic {
 
@@ -220,7 +219,13 @@ StmtPtr Parser::parseInputStatement() {
     if (at(TokenKind::Hash)) {
         consume();
         Token channelTok = expect(TokenKind::Number);
-        int channel = std::atoi(channelTok.lexeme.c_str());
+        int channel = 0;
+        if (channelTok.kind == TokenKind::Number) {
+            if (auto parsed = parseLineNumberLiteral(channelTok.lexeme))
+                channel = *parsed;
+            else
+                emitError("B0001", channelTok, "channel number is out of range");
+        }
         expect(TokenKind::Comma);
         auto stmt = std::make_unique<InputChStmt>();
         stmt->loc = loc;

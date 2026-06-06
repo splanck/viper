@@ -133,7 +133,7 @@ Expected<void> parseInstr(parser_impl::ParserState &state) {
 
     struct Dispatch {
         std::string_view opcode;
-        Handler handler;
+        Handler handler{nullptr};
     };
 
     static constexpr std::array<Dispatch, 3> kDispatchTable = {{
@@ -144,10 +144,10 @@ Expected<void> parseInstr(parser_impl::ParserState &state) {
 
     std::string_view opcode = state.ts ? extractOpcode(state.ts->line()) : std::string_view{};
     for (const auto &entry : kDispatchTable) {
-        if (entry.opcode.empty() || entry.opcode == opcode)
+        if ((entry.opcode.empty() || entry.opcode == opcode) && entry.handler)
             return entry.handler(state, opcode);
     }
-    return kDispatchTable.back().handler(state, opcode);
+    return lineError<void>(state.lineNo(), "instruction parser dispatch missing handler");
 }
 
 Expected<void> parseBody(TokenStream &stream, parser_impl::ParserState &state) {

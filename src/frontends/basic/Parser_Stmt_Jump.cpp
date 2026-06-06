@@ -22,9 +22,8 @@
 /// @details Provides the parsing routines for GOTO, GOSUB, and RETURN statements
 ///          and returns heap-allocated AST nodes describing the parsed constructs.
 
+#include "frontends/basic/LineUtils.hpp"
 #include "frontends/basic/Parser.hpp"
-
-#include <cstdlib>
 
 namespace il::frontends::basic {
 
@@ -46,8 +45,12 @@ StmtPtr Parser::parseGotoStatement() {
         noteNamedLabelReference(targetTok, target);
     } else if (at(TokenKind::Number)) {
         Token targetTok = consume();
-        target = std::atoi(targetTok.lexeme.c_str());
-        noteNumericLabelUsage(target);
+        if (auto parsed = parseLineNumberLiteral(targetTok.lexeme)) {
+            target = *parsed;
+            noteNumericLabelUsage(target);
+        } else {
+            emitError("B0001", targetTok, "line number is out of range");
+        }
     } else {
         Token unexpected = peek();
         emitError("B0001", unexpected, "expected label or number after GOTO");
@@ -78,8 +81,12 @@ StmtPtr Parser::parseGosubStatement() {
         noteNamedLabelReference(targetTok, target);
     } else if (at(TokenKind::Number)) {
         Token targetTok = consume();
-        target = std::atoi(targetTok.lexeme.c_str());
-        noteNumericLabelUsage(target);
+        if (auto parsed = parseLineNumberLiteral(targetTok.lexeme)) {
+            target = *parsed;
+            noteNumericLabelUsage(target);
+        } else {
+            emitError("B0001", targetTok, "line number is out of range");
+        }
     } else {
         Token unexpected = peek();
         emitError("B0001", unexpected, "expected label or number after GOSUB");

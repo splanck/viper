@@ -98,16 +98,16 @@ Instr makeLoopCarriedVerifierStable(Instr instr) {
 
 /// Matched pattern information for the sibling recursion transformation.
 struct SiblingPattern {
-    size_t blockIdx; // Index of the recurse block in fn.blocks
-    size_t call1Idx; // Instruction index of first self-call
-    size_t call2Idx; // Instruction index of second self-call
-    size_t addIdx;   // Instruction index of the combining add
-    Opcode addOp;    // The add opcode (IAddOvf or Add)
+    size_t blockIdx{0}; // Index of the recurse block in fn.blocks
+    size_t call1Idx{0}; // Instruction index of first self-call
+    size_t call2Idx{0}; // Instruction index of second self-call
+    size_t addIdx{0};   // Instruction index of the combining add
+    Opcode addOp{Opcode::Count}; // The add opcode (IAddOvf or Add)
 
     // Entry/predecessor block base case info
-    Opcode cmpOp;        // Base case comparison opcode (e.g., SCmpLE)
+    Opcode cmpOp{Opcode::Count}; // Base case comparison opcode (e.g., SCmpLE)
     Value cmpThreshold;  // Base case threshold value (e.g., 1)
-    bool baseCaseIsTrue; // True if base case fires on the TRUE branch of CBr
+    bool baseCaseIsTrue{false}; // True if base case fires on the TRUE branch of CBr
 };
 
 /// Attempt to match the sibling recursion pattern in a function.

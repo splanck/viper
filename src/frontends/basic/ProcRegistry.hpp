@@ -135,7 +135,7 @@ class ProcRegistry {
 
   private:
     struct ProcDescriptor {
-        ProcSignature::Kind kind;
+        ProcSignature::Kind kind{ProcSignature::Kind::Function};
         std::optional<Type> retType;
         std::span<const Param> params;
         il::support::SourceLoc loc;

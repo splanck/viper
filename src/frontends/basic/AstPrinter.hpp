@@ -79,6 +79,10 @@ class AstPrinter {
   private:
     /// @brief Stateful helper that writes lines with indentation.
     struct Printer {
+        /// @brief Bind the printer to an output stream.
+        /// @param out Stream that receives formatted AST lines.
+        explicit Printer(std::ostream &out) : os(out) {}
+
         /// Output stream where text is emitted.
         std::ostream &os;
 

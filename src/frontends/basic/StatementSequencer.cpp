@@ -17,7 +17,6 @@
 #include "frontends/basic/LineUtils.hpp"
 
 #include "frontends/basic/Parser.hpp"
-#include <cstdlib>
 
 /// @file
 /// @brief Statement sequencing helper shared by BASIC parser productions.
@@ -144,9 +143,14 @@ void StatementSequencer::withOptionalLineNumber(
         loc = tok.loc;
     } else if (parser_.at(TokenKind::Number)) {
         const Token &tok = parser_.peek();
-        line = std::atoi(tok.lexeme.c_str());
+        if (auto parsed = parseLineNumberLiteral(tok.lexeme)) {
+            line = *parsed;
+        } else {
+            parser_.emitError("B0001", tok, "line number is out of range");
+        }
         loc = tok.loc;
-        parser_.noteNumericLabelUsage(line);
+        if (line != 0)
+            parser_.noteNumericLabelUsage(line);
         parser_.consume();
     }
     fn(line, loc);
@@ -204,8 +208,12 @@ StatementSequencer::LineAction StatementSequencer::evaluateLineAction(
     if (deferredLineOnly_) {
         if (parser_.at(TokenKind::Number)) {
             const Token &next = parser_.peek();
-            int nextLine = std::atoi(next.lexeme.c_str());
-            stashPendingLine(nextLine, next.loc);
+            if (auto parsed = parseLineNumberLiteral(next.lexeme)) {
+                stashPendingLine(*parsed, next.loc);
+            } else {
+                parser_.emitError("B0001", next, "line number is out of range");
+                stashPendingLine(0, next.loc);
+            }
             parser_.consume();
             state.hadPendingLine = true;
         }

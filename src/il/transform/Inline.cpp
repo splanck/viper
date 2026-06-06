@@ -69,26 +69,31 @@ struct InlineCost {
         if (!isInlinable())
             return INT_MAX;
 
-        int cost = static_cast<int>(instrCount);
+        long long cost = static_cast<long long>(instrCount);
 
         // Apply bonuses
         if (callSites == 1)
-            cost -= static_cast<int>(config.singleUseBonus);
+            cost -= static_cast<long long>(config.singleUseBonus);
 
         if (instrCount <= 8)
-            cost -= static_cast<int>(config.tinyFunctionBonus);
+            cost -= static_cast<long long>(config.tinyFunctionBonus);
 
         // Constant arguments enable optimization
-        cost -= static_cast<int>(constArgCount * config.constArgBonus);
+        cost -= static_cast<long long>(constArgCount) *
+                static_cast<long long>(config.constArgBonus);
 
         // Penalty for functions with many nested calls (may cause code explosion)
-        cost += static_cast<int>(nestedCalls * 2);
+        cost += static_cast<long long>(nestedCalls) * 2LL;
 
         // Multiple returns are slightly more expensive to inline
         if (returnCount > 1)
-            cost += static_cast<int>((returnCount - 1) * 2);
+            cost += static_cast<long long>(returnCount - 1) * 2LL;
 
-        return cost;
+        if (cost > static_cast<long long>(INT_MAX))
+            return INT_MAX;
+        if (cost < static_cast<long long>(INT_MIN))
+            return INT_MIN;
+        return static_cast<int>(cost);
     }
 
     /// @brief Decide whether a call site is within the inline budget.
@@ -915,7 +920,8 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &) {
 
                     // Check code growth budget
                     const InlineCost &cost = costCache.at(callee->name);
-                    if (codeGrowth + cost.instrCount > config_.maxCodeGrowth) {
+                    if (cost.instrCount > config_.maxCodeGrowth ||
+                        codeGrowth > config_.maxCodeGrowth - cost.instrCount) {
                         ++instIdx;
                         continue;
                     }

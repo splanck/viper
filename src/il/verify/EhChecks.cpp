@@ -438,7 +438,7 @@ class HandlerCoverageTraversal {
 
         State initial;
         initial.block = model.entry();
-        enqueueState(std::move(initial));
+        enqueueState(initial);
 
         std::deque<State> worklist;
         if (!pending.empty()) {
@@ -553,7 +553,7 @@ class HandlerCoverageTraversal {
         nextState.block = handlerBlock;
         nextState.handlerStack = handlerStackAfterDispatch(state.handlerStack);
         nextState.hasResumeToken = true;
-        enqueueState(std::move(nextState), worklist);
+        enqueueState(nextState, worklist);
     }
 
     /// @brief Queue successor blocks reached after executing a terminator.
@@ -572,7 +572,7 @@ class HandlerCoverageTraversal {
             nextState.block = succ;
             if (terminator.op == Opcode::ResumeLabel)
                 nextState.hasResumeToken = false;
-            enqueueState(std::move(nextState), worklist);
+            enqueueState(nextState, worklist);
         }
     }
 
@@ -582,7 +582,7 @@ class HandlerCoverageTraversal {
     ///          lacking a block pointer are discarded silently.
     /// @param state Candidate state to explore.
     /// @param worklist Work queue managed by @ref compute.
-    void enqueueState(State state, std::deque<State> &worklist) {
+    void enqueueState(const State &state, std::deque<State> &worklist) {
         if (!state.block)
             return;
 
@@ -598,7 +598,7 @@ class HandlerCoverageTraversal {
     ///          deque used to bootstrap the traversal before the main loop
     ///          begins.  This keeps queue initialisation logic centralised.
     /// @param state Candidate state to schedule.
-    void enqueueState(State state) {
+    void enqueueState(const State &state) {
         if (!state.block)
             return;
 
@@ -606,7 +606,7 @@ class HandlerCoverageTraversal {
         if (!visited[state.block].insert(key).second)
             return;
 
-        pending.push_back(std::move(state));
+        pending.push_back(state);
     }
 
     const EhModel &model;

@@ -114,7 +114,7 @@ class BasicAA {
     std::unordered_set<unsigned> params_;
 
     struct DefInfo {
-        il::core::Opcode op;
+        il::core::Opcode op{il::core::Opcode::Count};
         std::vector<il::core::Value> operands;
     };
 

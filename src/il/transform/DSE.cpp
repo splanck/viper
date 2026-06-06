@@ -235,14 +235,14 @@ namespace {
 
 /// Represents a store that might be dead
 struct PendingStore {
-    BasicBlock *block;
-    size_t instrIdx;
+    BasicBlock *block{nullptr};
+    size_t instrIdx{0};
     Value ptr;
     std::optional<unsigned> size;
 };
 
 struct DefInfo {
-    Opcode op;
+    Opcode op{Opcode::Count};
     std::vector<Value> operands;
 };
 

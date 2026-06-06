@@ -61,7 +61,7 @@ struct Symbol {
     };
 
     /// @brief The symbol kind.
-    Kind kind;
+    Kind kind{Kind::Variable};
 
     /// @brief The symbol name as declared.
     std::string name;

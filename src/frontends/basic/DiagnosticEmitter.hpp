@@ -120,11 +120,11 @@ class DiagnosticEmitter {
   private:
     /// @brief Diagnostic record captured for later printing.
     struct Entry {
-        il::support::Severity severity; ///< Diagnostic severity.
+        il::support::Severity severity{il::support::Severity::Error}; ///< Diagnostic severity.
         std::string code;               ///< Error code like B1001.
         std::string message;            ///< Description text.
         il::support::SourceLoc loc;     ///< Start source location.
-        uint32_t length;                ///< Number of characters to mark.
+        uint32_t length{0};             ///< Number of characters to mark.
     };
 
     /// @brief Retrieve full line text for @p fileId at @p line.

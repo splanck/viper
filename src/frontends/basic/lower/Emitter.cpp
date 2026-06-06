@@ -466,7 +466,6 @@ void Emitter::releaseDeferredTemps() {
         if (!func || !ctx2.current())
             continue;
         std::size_t originIdx = static_cast<std::size_t>(ctx2.current() - &func->blocks[0]);
-        auto *origin = &func->blocks[originIdx];
 
         // Create destroy and continue blocks.
         std::string destroyLabel;

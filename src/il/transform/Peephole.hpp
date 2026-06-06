@@ -40,9 +40,9 @@ struct Match {
     };
 
     /// Opcode to match.
-    core::Opcode op;
+    core::Opcode op{core::Opcode::Count};
     /// Which matching strategy to use.
-    Kind kind;
+    Kind kind{Kind::ConstOperand};
     /// Operand index holding the constant (ConstOperand/ConstFloatOperand) or unused
     /// (SameOperands).
     unsigned constIdx = 0;
@@ -61,7 +61,7 @@ struct Replace {
         ConstFloat ///< Synthesize a floating-point literal.
     };
 
-    Kind kind;
+    Kind kind{Kind::Operand};
     /// Index of the operand to use when kind == Operand.
     unsigned operandIdx = 0;
     /// Constant payload when kind == Const.
@@ -76,7 +76,7 @@ struct Replace {
 struct Rule {
     Match match;      ///< Match pattern.
     Replace repl;     ///< Replacement action.
-    const char *name; ///< Debug identifier for tracing.
+    const char *name{nullptr}; ///< Debug identifier for tracing.
 };
 
 /// \brief Registry of peephole rules.

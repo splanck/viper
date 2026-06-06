@@ -123,7 +123,7 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker> {
 
         // BUG-OOP-001 fix: Include inherited fields from base class hierarchy.
         // Walk the inheritance chain and collect all base fields first.
-        std::vector<const ClassInfo::FieldInfo *> inheritedFields;
+        std::vector<ClassInfo::FieldInfo> inheritedFields;
         // Note: decl.qualifiedName is often empty; use decl.name directly to look up in OopIndex
         // The OopIndex key is built the same way: just the class name when there's no namespace.
         if (const ClassInfo *cinfo = oopIndex_.findClass(decl.name)) {
@@ -140,22 +140,22 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker> {
             // Process bases from most ancestral to most derived (so offsets are correct)
             for (auto it = bases.rbegin(); it != bases.rend(); ++it) {
                 for (const auto &field : (*it)->fields) {
-                    inheritedFields.push_back(&field);
+                    inheritedFields.push_back(field);
                 }
             }
         }
 
         // Add inherited fields first
-        for (const auto *field : inheritedFields) {
+        for (const auto &field : inheritedFields) {
             offset = alignTo(offset, kFieldAlignment);
             Lowerer::ClassLayout::Field info{};
-            info.name = field->name;
-            info.type = field->type;
+            info.name = field.name;
+            info.type = field.type;
             info.offset = offset;
-            info.size = field->isArray ? kPointerSize : type_conv::getFieldSize(field->type);
-            info.isArray = field->isArray;
-            info.arrayExtents = field->arrayExtents;
-            info.objectClassName = field->objectClassName;
+            info.size = field.isArray ? kPointerSize : type_conv::getFieldSize(field.type);
+            info.isArray = field.isArray;
+            info.arrayExtents = field.arrayExtents;
+            info.objectClassName = field.objectClassName;
             layout.fields.push_back(std::move(info));
             layout.fieldIndex.emplace(layout.fields.back().name, layout.fields.size() - 1);
             offset += layout.fields.back().size;

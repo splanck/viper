@@ -25,12 +25,34 @@
 #include "frontends/basic/constfold/Dispatch.hpp"
 #include "viper/il/IO.hpp"
 
-#include <cstdlib>
+#include <charconv>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 namespace il::frontends::basic {
+namespace {
+
+/// @brief Parse a CASE numeric label token with full validation.
+/// @details Requires every character in @p text to be consumed and rejects
+///          overflow. SELECT CASE labels participate in duplicate and range
+///          checks, so preserving the exact parsed integer is important for
+///          later semantic diagnostics.
+/// @param text Token lexeme containing an optional sign and decimal digits.
+/// @return Parsed integer, or @c std::nullopt if the text is invalid.
+std::optional<int64_t> parseCaseIntegerLiteral(std::string_view text) noexcept {
+    int64_t value = 0;
+    const char *begin = text.data();
+    const char *end = begin + text.size();
+    auto result = std::from_chars(begin, end, value, 10);
+    if (result.ec != std::errc{} || result.ptr != end)
+        return std::nullopt;
+    return value;
+}
+
+} // namespace
 
 /// @brief Parse the `SELECT CASE` header and initialise parser state.
 ///
@@ -148,9 +170,7 @@ void Parser::parseSelectArms(SelectParseState &state) {
         CaseArm arm = parseCaseArm();
         arm.range.begin = caseTok.loc;
         state.stmt->arms.push_back(std::move(arm));
-        if (!state.stmt->arms.empty()) {
-            state.stmt->range.end = state.stmt->arms.back().range.end;
-        }
+        state.stmt->range.end = state.stmt->arms.back().range.end;
         state.sawCaseArm = true;
     }
 }
@@ -223,7 +243,7 @@ Parser::SelectInlineBodyResult Parser::collectInlineSelectBody() {
         inlineCtx.withOptionalLineNumber(
             [&](int currentLine, il::support::SourceLoc) { line = currentLine; });
 
-        if (!at(TokenKind::EndOfLine) && !at(TokenKind::Colon)) {
+        if (!at(TokenKind::Colon)) {
             auto stmt = parseStatement(line);
             if (stmt) {
                 stmt->line = line;
@@ -388,12 +408,12 @@ il::support::Expected<Parser::CaseArmSyntax> Parser::parseCaseArmSyntax(Cursor &
 
     cursor.caseTok = expect(TokenKind::KeywordCase);
 
-    bool bail = false;
-    while (!bail) {
+    while (true) {
         if ((at(TokenKind::Identifier) && peek().lexeme == "IS") || at(TokenKind::KeywordIs)) {
             consume();
             Cursor::Relation rel;
             Token opTok = peek();
+            bool validRelOp = true;
             switch (opTok.kind) {
                 case TokenKind::Less:
                     rel.op = CaseArm::CaseRel::Op::LT;
@@ -414,11 +434,11 @@ il::support::Expected<Parser::CaseArmSyntax> Parser::parseCaseArmSyntax(Cursor &
                     if (opTok.kind != TokenKind::EndOfLine) {
                         emitError("B0001", opTok, "CASE IS requires a relational operator");
                     }
-                    bail = true;
+                    validRelOp = false;
                     break;
                 }
             }
-            if (bail)
+            if (!validRelOp)
                 break;
 
             consume();
@@ -433,7 +453,6 @@ il::support::Expected<Parser::CaseArmSyntax> Parser::parseCaseArmSyntax(Cursor &
                 if (bad.kind != TokenKind::EndOfLine) {
                     emitError("B0001", bad, "SELECT CASE labels must be integer literals");
                 }
-                bail = true;
                 break;
             }
 
@@ -485,10 +504,10 @@ il::support::Expected<Parser::CaseArmSyntax> Parser::parseCaseArmSyntax(Cursor &
 
             // CONST integer/string lookup
             if (auto itS = knownConstStrs_.find(canon); itS != knownConstStrs_.end()) {
-                consume();
+                Token labelTok = consume();
                 Token t;
                 t.kind = TokenKind::String;
-                t.loc = peek().loc;
+                t.loc = labelTok.loc;
                 // Store raw string value without quotes (matching lexer behavior)
                 t.lexeme = itS->second;
                 cursor.stringLabels.push_back(std::move(t));
@@ -513,8 +532,15 @@ il::support::Expected<Parser::CaseArmSyntax> Parser::parseCaseArmSyntax(Cursor &
                     }
                     long long hiVal = 0;
                     if (at(TokenKind::Number)) {
-                        hiVal = std::strtoll(peek().lexeme.c_str(), nullptr, 10);
-                        consume();
+                        Token hiTok = consume();
+                        if (auto parsed = parseCaseIntegerLiteral(hiTok.lexeme)) {
+                            hiVal = *parsed;
+                        } else {
+                            emitError("B0001",
+                                      hiTok,
+                                      "SELECT CASE range end must be an integer literal or CONST");
+                            break;
+                        }
                     } else if (at(TokenKind::Identifier)) {
                         std::string hiName = CanonicalizeIdent(peek().lexeme);
                         if (auto itHi = knownConstInts_.find(hiName);
@@ -525,14 +551,12 @@ il::support::Expected<Parser::CaseArmSyntax> Parser::parseCaseArmSyntax(Cursor &
                             emitError("B0001",
                                       peek(),
                                       "SELECT CASE range end must be an integer literal or CONST");
-                            bail = true;
                             break;
                         }
                     } else {
                         emitError("B0001",
                                   peek(),
                                   "SELECT CASE range end must be an integer literal or CONST");
-                        bail = true;
                         break;
                     }
 
@@ -579,7 +603,6 @@ il::support::Expected<Parser::CaseArmSyntax> Parser::parseCaseArmSyntax(Cursor &
                 if (bad.kind != TokenKind::EndOfLine) {
                     emitError("B0001", bad, "SELECT CASE labels must be integer literals");
                 }
-                bail = true;
                 break;
             }
 
@@ -606,7 +629,6 @@ il::support::Expected<Parser::CaseArmSyntax> Parser::parseCaseArmSyntax(Cursor &
                     if (bad.kind != TokenKind::EndOfLine) {
                         emitError("B0001", bad, "SELECT CASE labels must be integer literals");
                     }
-                    bail = true;
                     break;
                 }
 
@@ -655,22 +677,33 @@ il::support::Expected<CaseArm> Parser::lowerCaseArm(const CaseArmSyntax &syntax)
     arm.caseKeywordLength = static_cast<uint32_t>(cursor.caseTok.lexeme.size());
 
     for (const Token &labelTok : cursor.numericLabels) {
-        long long value = std::strtoll(labelTok.lexeme.c_str(), nullptr, 10);
-        arm.labels.push_back(static_cast<int64_t>(value));
+        if (auto value = parseCaseIntegerLiteral(labelTok.lexeme)) {
+            arm.labels.push_back(*value);
+        } else {
+            emitError("B0001", labelTok, "SELECT CASE labels must be integer literals");
+        }
     }
 
     for (const auto &rangeTok : cursor.ranges) {
-        long long lo = std::strtoll(rangeTok.first.lexeme.c_str(), nullptr, 10);
-        long long hi = std::strtoll(rangeTok.second.lexeme.c_str(), nullptr, 10);
-        arm.ranges.emplace_back(static_cast<int64_t>(lo), static_cast<int64_t>(hi));
+        auto lo = parseCaseIntegerLiteral(rangeTok.first.lexeme);
+        auto hi = parseCaseIntegerLiteral(rangeTok.second.lexeme);
+        if (!lo)
+            emitError("B0001", rangeTok.first, "SELECT CASE range start must be an integer literal");
+        if (!hi)
+            emitError("B0001", rangeTok.second, "SELECT CASE range end must be an integer literal");
+        if (lo && hi)
+            arm.ranges.emplace_back(*lo, *hi);
     }
 
     for (const Cursor::Relation &relTok : cursor.relations) {
-        long long value = std::strtoll(relTok.valueTok.lexeme.c_str(), nullptr, 10);
-        CaseArm::CaseRel rel;
-        rel.op = relTok.op;
-        rel.rhs = static_cast<int64_t>(relTok.sign * value);
-        arm.rels.push_back(rel);
+        if (auto value = parseCaseIntegerLiteral(relTok.valueTok.lexeme)) {
+            CaseArm::CaseRel rel;
+            rel.op = relTok.op;
+            rel.rhs = static_cast<int64_t>(relTok.sign * *value);
+            arm.rels.push_back(rel);
+        } else {
+            emitError("B0001", relTok.valueTok, "SELECT CASE labels must be integer literals");
+        }
     }
 
     for (const Token &stringTok : cursor.stringLabels) {

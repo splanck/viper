@@ -63,7 +63,7 @@ inline std::string formatDiag(const VerifyCtx &ctx, std::string_view message) {
 /// @param ctx Verification context that supplies diagnostic metadata.
 /// @param message Human-readable text describing the issue.
 /// @return Expected holding a diagnostic error populated with @p message.
-inline Expected<void> fail(const VerifyCtx &ctx, std::string message) {
+inline Expected<void> fail(const VerifyCtx &ctx, std::string_view message) {
     return Expected<void>(makeError(ctx.instr.loc, formatDiag(ctx, message)));
 }
 
@@ -72,7 +72,7 @@ inline Expected<void> fail(const VerifyCtx &ctx, std::string message) {
 /// @param ctx Verification context that supplies diagnostic metadata.
 /// @param message Human-readable text describing the issue.
 /// @return Expected<T> holding a diagnostic error populated with @p message.
-template <typename T> inline Expected<T> failWith(const VerifyCtx &ctx, std::string message) {
+template <typename T> inline Expected<T> failWith(const VerifyCtx &ctx, std::string_view message) {
     return Expected<T>(makeError(ctx.instr.loc, formatDiag(ctx, message)));
 }
 

@@ -131,7 +131,7 @@ class IRBuilder {
     void br(il::core::BasicBlock &dst, const std::vector<il::core::Value> &args = {});
 
     /// @brief Emit conditional branch.
-    void cbr(il::core::Value cond,
+    void cbr(const il::core::Value &cond,
              il::core::BasicBlock &t,
              const std::vector<il::core::Value> &targs,
              il::core::BasicBlock &f,
@@ -165,18 +165,18 @@ class IRBuilder {
     /// @brief Emit resume that rethrows the current error within the same handler.
     /// @param token Resume token supplied by the active handler.
     /// @param loc Source location for diagnostics.
-    void emitResumeSame(il::core::Value token, il::support::SourceLoc loc);
+    void emitResumeSame(const il::core::Value &token, il::support::SourceLoc loc);
 
     /// @brief Emit resume that propagates to the next enclosing handler.
     /// @param token Resume token supplied by the active handler.
     /// @param loc Source location for diagnostics.
-    void emitResumeNext(il::core::Value token, il::support::SourceLoc loc);
+    void emitResumeNext(const il::core::Value &token, il::support::SourceLoc loc);
 
     /// @brief Emit resume to a specific handler block label.
     /// @param token Resume token supplied by the active handler.
     /// @param target Handler block receiving control.
     /// @param loc Source location for diagnostics.
-    void emitResumeLabel(il::core::Value token,
+    void emitResumeLabel(const il::core::Value &token,
                          il::core::BasicBlock &target,
                          il::support::SourceLoc loc);
 

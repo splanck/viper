@@ -217,11 +217,11 @@ void ImportResolver::reportCycle(il::support::SourceLoc importLoc,
 /// @param viaImportLoc Location of the bind that pulled this module in (for errors).
 /// @param depth Current recursion depth, bounded by kMaxImportDepth.
 /// @return True on success; false on error (depth/file-count limits, parse failure).
-/// @details Tracks processed/in-progress files to make circular binds a no-op rather than an
-///          error (Sema's multi-pass analysis resolves forward references). Each unprocessed
-///          file bind is parsed and processed depth-first; its transitive binds are propagated
-///          to @p module (deduplicated, with paths normalized to absolute) so qualified-name
-///          resolution works, and its declarations are prepended in import order.
+/// @details Tracks processed/in-progress files so circular binds are skipped at the import
+///          that closes the cycle. Each unprocessed file bind is parsed and processed depth-first;
+///          its transitive binds are propagated to @p module (deduplicated, with paths normalized
+///          to absolute) so qualified-name resolution works, and its declarations are prepended in
+///          import order.
 bool ImportResolver::processModule(ModuleDecl &module,
                                    const std::string &modulePath,
                                    il::support::SourceLoc viaImportLoc,
@@ -248,10 +248,6 @@ bool ImportResolver::processModule(ModuleDecl &module,
         return true;
 
     if (inProgressFiles_.count(normalizedPath) != 0) {
-        // Circular bind — not an error. The in-progress file's declarations
-        // will be included in the final merged AST when its outer processModule
-        // call completes. Sema's multi-pass analysis (register types → register
-        // signatures → analyze bodies) handles forward references correctly.
         return true;
     }
 
@@ -327,11 +323,8 @@ bool ImportResolver::processModule(ModuleDecl &module,
         }
 
         if (inProgressFiles_.count(normalizedBindPath) != 0) {
-            // Circular bind — skip this import. The target file is currently
-            // being processed by an outer call and its declarations will be
-            // available in the final merged AST. The BindDecl remains in the
-            // AST so Sema will still create the Module symbol for qualified access.
-            if (auto idIt = fileIdsByPath_.find(normalizedBindPath); idIt != fileIdsByPath_.end()) {
+            if (auto idIt = fileIdsByPath_.find(normalizedBindPath);
+                idIt != fileIdsByPath_.end()) {
                 bind.resolvedFileId = idIt->second;
             }
             if (auto nameIt = moduleNamesByPath_.find(normalizedBindPath);

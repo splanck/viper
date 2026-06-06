@@ -181,13 +181,6 @@ struct PrototypeParseResult {
     std::string_view callingConvSegment; ///< Trailing text after the parameter list.
 };
 
-/// @brief Calling convention annotation parsed from function headers.
-/// @details Currently only the default calling convention is supported.
-///          Future extensions may add fastcall, stdcall, etc.
-enum class CallingConv {
-    Default, ///< Standard platform calling convention.
-};
-
 /// @brief Parsed function attributes.
 struct Attrs {
     bool nothrow = false;
@@ -199,7 +192,8 @@ struct Attrs {
 struct FunctionHeader {
     std::string name;           ///< Function identifier.
     Prototype proto;            ///< Return type and parameter list.
-    CallingConv cc;             ///< Calling convention annotation.
+    il::core::CallingConv cc{
+        il::core::CallingConv::Default}; ///< Calling convention annotation.
     Attrs attrs;                ///< Parsed function attributes.
     il::support::SourceLoc loc; ///< Source location of the function declaration.
 };

@@ -46,9 +46,25 @@ namespace viper::il::io
 /// @brief Shared parser context for operand helpers.
 struct Context
 {
+    /// @brief Construct an operand parser context.
+    /// @details Read-only operand parsers only need @p instruction. Parsers
+    ///          that intentionally mutate instruction metadata, such as type
+    ///          immediates, must also pass @p mutableInstruction.
+    /// @param parserState Legacy parser state providing diagnostics and SSA maps.
+    /// @param instruction Instruction state visible to operand parsers.
+    /// @param mutableInstruction Optional mutable sink for type parsers.
+    Context(::il::io::detail::ParserState &parserState,
+            const ::il::core::Instr &instruction,
+            ::il::core::Instr *mutableInstruction = nullptr)
+        : state(parserState), instr(instruction), mutableInstr(mutableInstruction)
+    {
+    }
+
     ::il::io::detail::ParserState
         &state;               ///< Legacy parser state providing SSA maps and diagnostics.
-    ::il::core::Instr &instr; ///< Instruction under construction receiving parsed operands.
+    const ::il::core::Instr &instr; ///< Instruction state visible to read-only operand parsers.
+    ::il::core::Instr
+        *mutableInstr{nullptr}; ///< Instruction sink used only by mutating type parsers.
 };
 
 /// @brief Result bundle returned by operand-specific parsers.
