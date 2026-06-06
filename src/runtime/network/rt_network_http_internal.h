@@ -14,11 +14,71 @@
 
 #include "rt_string.h"
 
+#include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
+
+// Default per-request redirect cap / timeout (shared by client + wrappers).
+#define HTTP_MAX_REDIRECTS 5
+#define HTTP_DEFAULT_TIMEOUT_MS 30000
+
+/// @brief Parsed URL structure.
+typedef struct parsed_url {
+    char *host;  // Allocated hostname
+    int port;    // Port number (default 80 for http, 443 for https)
+    char *path;  // Path including query string (allocated)
+    int use_tls; // 1 for https, 0 for http
+} parsed_url_t;
+
+/// @brief HTTP header entry.
+typedef struct http_header {
+    char *name;
+    char *value;
+    struct http_header *next;
+} http_header_t;
+
+/// @brief HTTP request structure.
+typedef struct rt_http_req {
+    char *method;           // HTTP method
+    parsed_url_t url;       // Parsed URL
+    http_header_t *headers; // Linked list of headers
+    uint8_t *body;          // Request body
+    size_t body_len;        // Body length
+    int timeout_ms;         // Timeout in milliseconds
+    int tls_verify;         // 1 = verify peer certificate, 0 = allow insecure HTTPS
+    int follow_redirects;   // Automatically follow redirect responses
+    int max_redirects;      // Redirect limit for this request
+    int accept_gzip;        // Advertise gzip support when no explicit Accept-Encoding is set
+    int decode_gzip;        // Transparently decode gzip-encoded response bodies
+    int keep_alive;         // Request connection reuse when paired with a pool
+    void *connection_pool;  // Internal pool used by session-style HTTP clients
+    int force_http1;        // Keep the transport on HTTP/1.1 even over TLS
+} rt_http_req_t;
+
+/// @brief HTTP response structure.
+typedef struct rt_http_res {
+    int status;        // HTTP status code
+    char *status_text; // Status text (allocated)
+    void *headers;     // Map of headers
+    uint8_t *body;     // Response body
+    size_t body_len;   // Body length
+} rt_http_res_t;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// HTTP client core (defined in rt_network_http.c, consumed by rt_network_http_api.c).
+int http_method_is_token(const char *method);
+int http_rt_string_has_embedded_nul(rt_string text);
+void free_parsed_url(parsed_url_t *url);
+int parse_url(const char *url_str, parsed_url_t *result);
+void free_headers(http_header_t *headers);
+void add_header(rt_http_req_t *req, const char *name, const char *value);
+bool has_header(rt_http_req_t *req, const char *name);
+void set_request_body_from_string(rt_http_req_t *req, rt_string body);
+rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remaining);
+int do_http_download_request(rt_http_req_t *req, int redirects_remaining, FILE *out);
 
 /// @brief Create an internal HTTP connection pool for keep-alive reuse.
 void *rt_http_conn_pool_new(int64_t max_size);

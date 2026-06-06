@@ -1,0 +1,640 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/physics/rt_joints3d_math.c
+// Purpose: Vector, quaternion, and anchor math primitives for the 3D joint
+//          solvers. Split out of rt_joints3d.c; declarations and shared
+//          types/limits live in rt_joints3d_internal.h.
+//
+// Key invariants:
+//   - All clamp/sanitize helpers map non-finite input to safe defaults, so the
+//     solvers never propagate NaN into body state.
+//   - Quaternion helpers keep orientation normalized; rotation-vector and
+//     axis-angle conversions are the canonical small-angle path.
+//
+// Ownership/Lifetime:
+//   - Pure functions over caller-owned double arrays and body views; no
+//     allocation or ownership transfer.
+//
+// Links: src/runtime/graphics/3d/physics/rt_joints3d.c (joint solvers + API),
+//        src/runtime/graphics/3d/physics/rt_joints3d_internal.h (decls/types)
+//
+//===----------------------------------------------------------------------===//
+
+#include "rt_joints3d.h"
+#include "rt_joints3d_internal.h"
+#include "rt_graphics3d_ids.h"
+#include "rt_mat4.h"
+#include "rt_physics3d.h"
+
+#include <math.h>
+#include <stdint.h>
+#include <string.h>
+
+extern double rt_vec3_x(void *v);
+extern double rt_vec3_y(void *v);
+extern double rt_vec3_z(void *v);
+#include "rt_trap.h"
+
+//=============================================================================
+// Joint math primitives
+//=============================================================================
+
+/// @brief Clamp a joint parameter to `[0, RT_JOINT3D_MAX_PARAM]`; non-finite maps to 0.
+double joint3d_sanitize_nonnegative(double value) {
+    if (!isfinite(value) || value < 0.0)
+        return 0.0;
+    return value > RT_JOINT3D_MAX_PARAM ? RT_JOINT3D_MAX_PARAM : value;
+}
+
+/// @brief Clamp a force/impulse magnitude to `±RT_JOINT3D_MAX_FORCE`; non-finite maps to 0.
+double joint3d_clamp_force(double value) {
+    if (!isfinite(value))
+        return 0.0;
+    if (value > RT_JOINT3D_MAX_FORCE)
+        return RT_JOINT3D_MAX_FORCE;
+    if (value < -RT_JOINT3D_MAX_FORCE)
+        return -RT_JOINT3D_MAX_FORCE;
+    return value;
+}
+
+/// @brief Clamp a coordinate-like value to the joint runtime envelope.
+double joint3d_clamp_coord(double value) {
+    if (!isfinite(value))
+        return 0.0;
+    if (value > RT_JOINT3D_MAX_COORD)
+        return RT_JOINT3D_MAX_COORD;
+    if (value < -RT_JOINT3D_MAX_COORD)
+        return -RT_JOINT3D_MAX_COORD;
+    return value;
+}
+
+/// @brief Clamp a timestep to a finite positive range used by joint force integration.
+double joint3d_sanitize_dt(double dt) {
+    if (!isfinite(dt) || dt <= 0.0)
+        return 0.0;
+    return dt > RT_JOINT3D_MAX_DT ? RT_JOINT3D_MAX_DT : dt;
+}
+
+/// @brief Whether @p v is non-NULL and all three components are finite.
+int joint3d_vec3_all_finite(const double *v) {
+    return v && isfinite(v[0]) && isfinite(v[1]) && isfinite(v[2]);
+}
+
+/// @brief Clamp a raw 3-vector in place.
+void joint3d_vec3_sanitize(double *v) {
+    if (!v)
+        return;
+    v[0] = joint3d_clamp_coord(v[0]);
+    v[1] = joint3d_clamp_coord(v[1]);
+    v[2] = joint3d_clamp_coord(v[2]);
+}
+
+/// @brief Set a 3-vector to (x, y, z) (no-op if @p dst is NULL).
+void joint3d_vec3_set(double *dst, double x, double y, double z) {
+    if (!dst)
+        return;
+    dst[0] = joint3d_clamp_coord(x);
+    dst[1] = joint3d_clamp_coord(y);
+    dst[2] = joint3d_clamp_coord(z);
+}
+
+/// @brief Component-wise difference out = a - b for 3-vectors.
+void joint3d_vec3_sub(const double *a, const double *b, double *out) {
+    if (!out)
+        return;
+    out[0] = joint3d_clamp_coord((a ? a[0] : 0.0) - (b ? b[0] : 0.0));
+    out[1] = joint3d_clamp_coord((a ? a[1] : 0.0) - (b ? b[1] : 0.0));
+    out[2] = joint3d_clamp_coord((a ? a[2] : 0.0) - (b ? b[2] : 0.0));
+}
+
+/// @brief Dot product of two 3-vectors.
+double joint3d_vec3_dot(const double *a, const double *b) {
+    double ax = joint3d_clamp_coord(a ? a[0] : 0.0);
+    double ay = joint3d_clamp_coord(a ? a[1] : 0.0);
+    double az = joint3d_clamp_coord(a ? a[2] : 0.0);
+    double bx = joint3d_clamp_coord(b ? b[0] : 0.0);
+    double by = joint3d_clamp_coord(b ? b[1] : 0.0);
+    double bz = joint3d_clamp_coord(b ? b[2] : 0.0);
+    double dot = ax * bx + ay * by + az * bz;
+    return isfinite(dot) ? dot : 0.0;
+}
+
+/// @brief Euclidean length of the vector (x, y, z); returns INFINITY for non-finite inputs
+///   or overflow so callers can reject degenerate joint geometry.
+double joint3d_len3(double x, double y, double z) {
+    double max_abs;
+    double sx;
+    double sy;
+    double sz;
+    double len_sq;
+    if (!isfinite(x) || !isfinite(y) || !isfinite(z))
+        return INFINITY;
+    max_abs = fmax(fabs(x), fmax(fabs(y), fabs(z)));
+    if (max_abs <= 0.0)
+        return 0.0;
+    if (!isfinite(max_abs))
+        return INFINITY;
+    sx = x / max_abs;
+    sy = y / max_abs;
+    sz = z / max_abs;
+    len_sq = sx * sx + sy * sy + sz * sz;
+    if (!isfinite(len_sq) || len_sq < 0.0)
+        return INFINITY;
+    return max_abs * sqrt(len_sq);
+}
+
+/// @brief Euclidean length of a 3-vector.
+double joint3d_vec3_len(const double *v) {
+    return v ? joint3d_len3(v[0], v[1], v[2]) : INFINITY;
+}
+
+/// @brief Normalize a 3-vector in place; returns 0 (leaving it unchanged) if non-finite or
+/// near-zero.
+int joint3d_vec3_normalize(double *v) {
+    double max_abs;
+    double x;
+    double y;
+    double z;
+    double len_sq;
+    double inv_len;
+    if (!joint3d_vec3_all_finite(v))
+        return 0;
+    max_abs = fmax(fabs(v[0]), fmax(fabs(v[1]), fabs(v[2])));
+    if (!isfinite(max_abs) || max_abs < 1e-24)
+        return 0;
+    x = v[0] / max_abs;
+    y = v[1] / max_abs;
+    z = v[2] / max_abs;
+    len_sq = x * x + y * y + z * z;
+    if (!isfinite(len_sq) || len_sq < 1e-24)
+        return 0;
+    inv_len = 1.0 / sqrt(len_sq);
+    v[0] = x * inv_len;
+    v[1] = y * inv_len;
+    v[2] = z * inv_len;
+    return 1;
+}
+
+/// @brief Read a boxed Vec3 handle into @p out; returns 0 if not a Vec3 or any component is
+/// non-finite.
+int joint3d_read_vec3(void *obj, double *out) {
+    if (!out || !rt_g3d_is_vec3(obj))
+        return 0;
+    out[0] = rt_vec3_x(obj);
+    out[1] = rt_vec3_y(obj);
+    out[2] = rt_vec3_z(obj);
+    if (!joint3d_vec3_all_finite(out))
+        return 0;
+    joint3d_vec3_sanitize(out);
+    return 1;
+}
+
+/// @brief Swap any min/max pair where min > max so each axis' [min, max] limit is well-ordered.
+void joint3d_canonicalize_limits(double *min_v, double *max_v) {
+    if (!min_v || !max_v)
+        return;
+    joint3d_vec3_sanitize(min_v);
+    joint3d_vec3_sanitize(max_v);
+    for (int i = 0; i < 3; i++) {
+        if (min_v[i] > max_v[i]) {
+            double tmp = min_v[i];
+            min_v[i] = max_v[i];
+            max_v[i] = tmp;
+        }
+    }
+}
+
+/// @brief Validate @p obj as a Mat4 payload and return its typed view (NULL on mismatch).
+joint3d_mat4_view *joint3d_mat4_checked(void *obj) {
+    if (!obj || !rt_heap_is_payload(obj) || rt_obj_class_id(obj) != RT_MAT4_CLASS_ID)
+        return NULL;
+    return (joint3d_mat4_view *)obj;
+}
+
+/// @brief Extract the translation column from a Mat4 handle; returns 0 if invalid or non-finite.
+int joint3d_read_mat4_translation(void *obj, double *out) {
+    joint3d_mat4_view *m = joint3d_mat4_checked(obj);
+    if (!m || !out)
+        return 0;
+    for (int i = 0; i < 16; i++) {
+        if (!isfinite(m->m[i]))
+            return 0;
+    }
+    out[0] = joint3d_clamp_coord(m->m[3]);
+    out[1] = joint3d_clamp_coord(m->m[7]);
+    out[2] = joint3d_clamp_coord(m->m[11]);
+    return 1;
+}
+
+/// @brief Hamilton product out = a * b (apply b then a) for (x,y,z,w) quaternions.
+void joint3d_quat_mul(const double *a, const double *b, double *out) {
+    double ax = a && isfinite(a[0]) ? a[0] : 0.0;
+    double ay = a && isfinite(a[1]) ? a[1] : 0.0;
+    double az = a && isfinite(a[2]) ? a[2] : 0.0;
+    double aw = a && isfinite(a[3]) ? a[3] : 1.0;
+    double bx = b && isfinite(b[0]) ? b[0] : 0.0;
+    double by = b && isfinite(b[1]) ? b[1] : 0.0;
+    double bz = b && isfinite(b[2]) ? b[2] : 0.0;
+    double bw = b && isfinite(b[3]) ? b[3] : 1.0;
+    if (!out)
+        return;
+    out[0] = aw * bx + ax * bw + ay * bz - az * by;
+    out[1] = aw * by - ax * bz + ay * bw + az * bx;
+    out[2] = aw * bz + ax * by - ay * bx + az * bw;
+    out[3] = aw * bw - ax * bx - ay * by - az * bz;
+}
+
+/// @brief Quaternion conjugate (negated vector part) — the inverse for a unit quaternion.
+void joint3d_quat_conjugate(const double *q, double *out) {
+    if (!out)
+        return;
+    if (!q) {
+        out[0] = out[1] = out[2] = 0.0;
+        out[3] = 1.0;
+        return;
+    }
+    out[0] = isfinite(q[0]) ? -q[0] : 0.0;
+    out[1] = isfinite(q[1]) ? -q[1] : 0.0;
+    out[2] = isfinite(q[2]) ? -q[2] : 0.0;
+    out[3] = isfinite(q[3]) ? q[3] : 1.0;
+    joint3d_quat_normalize(out);
+}
+
+/// @brief Normalize a quaternion in place, falling back to identity for invalid values.
+void joint3d_quat_normalize(double *q) {
+    double max_abs;
+    double x;
+    double y;
+    double z;
+    double w;
+    double len_sq;
+    double inv_len;
+    if (!q) {
+        return;
+    }
+    if (!isfinite(q[0]) || !isfinite(q[1]) || !isfinite(q[2]) || !isfinite(q[3])) {
+        q[0] = 0.0;
+        q[1] = 0.0;
+        q[2] = 0.0;
+        q[3] = 1.0;
+        return;
+    }
+    max_abs = fmax(fmax(fabs(q[0]), fabs(q[1])), fmax(fabs(q[2]), fabs(q[3])));
+    if (!isfinite(max_abs) || max_abs < 1e-24) {
+        q[0] = 0.0;
+        q[1] = 0.0;
+        q[2] = 0.0;
+        q[3] = 1.0;
+        return;
+    }
+    x = q[0] / max_abs;
+    y = q[1] / max_abs;
+    z = q[2] / max_abs;
+    w = q[3] / max_abs;
+    len_sq = x * x + y * y + z * z + w * w;
+    if (!isfinite(len_sq) || len_sq < 1e-24) {
+        q[0] = 0.0;
+        q[1] = 0.0;
+        q[2] = 0.0;
+        q[3] = 1.0;
+        return;
+    }
+    inv_len = 1.0 / sqrt(len_sq);
+    q[0] = x * inv_len;
+    q[1] = y * inv_len;
+    q[2] = z * inv_len;
+    q[3] = w * inv_len;
+}
+
+/// @brief Build a quaternion from a normalized world axis and an angle in radians.
+void joint3d_quat_from_axis_angle(const double *axis, double angle, double *out) {
+    double half;
+    double s;
+    if (!axis || !out || !joint3d_vec3_all_finite(axis) || !isfinite(angle)) {
+        if (out) {
+            out[0] = 0.0;
+            out[1] = 0.0;
+            out[2] = 0.0;
+            out[3] = 1.0;
+        }
+        return;
+    }
+    angle = fmod(angle, RT_JOINT3D_TWO_PI);
+    if (!isfinite(angle))
+        angle = 0.0;
+    half = angle * 0.5;
+    s = sin(half);
+    out[0] = axis[0] * s;
+    out[1] = axis[1] * s;
+    out[2] = axis[2] * s;
+    out[3] = cos(half);
+    joint3d_quat_normalize(out);
+}
+
+/// @brief Prepend a world-axis rotation to an orientation quaternion.
+void joint3d_quat_prepend_axis_angle(double *orientation, const double *axis, double angle) {
+    double delta[4];
+    double out[4];
+    if (!orientation || !axis || fabs(angle) < 1e-12)
+        return;
+    joint3d_quat_from_axis_angle(axis, angle, delta);
+    joint3d_quat_mul(delta, orientation, out);
+    memcpy(orientation, out, sizeof(out));
+    joint3d_quat_normalize(orientation);
+}
+
+/// @brief Convert a quaternion delta into a shortest-arc rotation vector.
+void joint3d_quat_to_rotation_vector(const double *q, double *out) {
+    double qn[4];
+    double v_len;
+    double angle;
+    double scale;
+    if (!out)
+        return;
+    joint3d_vec3_set(out, 0.0, 0.0, 0.0);
+    if (!q)
+        return;
+    memcpy(qn, q, sizeof(qn));
+    joint3d_quat_normalize(qn);
+    if (qn[3] < 0.0) {
+        qn[0] = -qn[0];
+        qn[1] = -qn[1];
+        qn[2] = -qn[2];
+        qn[3] = -qn[3];
+    }
+    v_len = sqrt(qn[0] * qn[0] + qn[1] * qn[1] + qn[2] * qn[2]);
+    if (!isfinite(v_len) || v_len < 1e-12) {
+        out[0] = 2.0 * qn[0];
+        out[1] = 2.0 * qn[1];
+        out[2] = 2.0 * qn[2];
+        return;
+    }
+    angle = 2.0 * atan2(v_len, qn[3]);
+    scale = angle / v_len;
+    out[0] = qn[0] * scale;
+    out[1] = qn[1] * scale;
+    out[2] = qn[2] * scale;
+}
+
+/// @brief Rotate vector @p v by quaternion @p q (out = q * v * q⁻¹).
+void joint3d_quat_rotate_vec3(const double *q, const double *v, double *out) {
+    double qn[4];
+    double vv[3] = {v ? v[0] : 0.0, v ? v[1] : 0.0, v ? v[2] : 0.0};
+    double qv[4];
+    double q_conj[4];
+    double tmp[4];
+    double rotated[4];
+    if (!out)
+        return;
+    if (!q) {
+        joint3d_vec3_set(out, vv[0], vv[1], vv[2]);
+        return;
+    }
+    memcpy(qn, q, sizeof(qn));
+    joint3d_quat_normalize(qn);
+    joint3d_vec3_sanitize(vv);
+    qv[0] = vv[0];
+    qv[1] = vv[1];
+    qv[2] = vv[2];
+    qv[3] = 0.0;
+    joint3d_quat_conjugate(qn, q_conj);
+    joint3d_quat_mul(qn, qv, tmp);
+    joint3d_quat_mul(tmp, q_conj, rotated);
+    joint3d_vec3_set(out, rotated[0], rotated[1], rotated[2]);
+}
+
+/// @brief Transform a body-local anchor point into world space (rotate by orientation, add
+/// position).
+void joint3d_world_anchor(const rt_body3d_kinematics *body,
+                                 const double *local_anchor,
+                                 double *out) {
+    double rotated[3];
+    if (!out)
+        return;
+    if (!body || !local_anchor) {
+        joint3d_vec3_set(out, 0.0, 0.0, 0.0);
+        return;
+    }
+    joint3d_quat_rotate_vec3(body->orientation, local_anchor, rotated);
+    out[0] = joint3d_clamp_coord(body->position[0] + rotated[0]);
+    out[1] = joint3d_clamp_coord(body->position[1] + rotated[1]);
+    out[2] = joint3d_clamp_coord(body->position[2] + rotated[2]);
+}
+
+/// @brief Transform a world-space point into a body's local frame (subtract position, unrotate).
+void joint3d_local_from_world(const rt_body3d_kinematics *body,
+                                     const double *world_point,
+                                     double *out) {
+    double delta[3];
+    double inv_rotation[4];
+    if (!body || !world_point || !out) {
+        if (out)
+            joint3d_vec3_set(out, 0.0, 0.0, 0.0);
+        return;
+    }
+    joint3d_vec3_sub(world_point, body->position, delta);
+    joint3d_quat_conjugate(body->orientation, inv_rotation);
+    joint3d_quat_rotate_vec3(inv_rotation, delta, out);
+    joint3d_vec3_sanitize(out);
+}
+
+/// @brief Rotate a body-local axis into world space and normalize it (defaults to +Y if
+/// degenerate).
+void joint3d_world_axis_from_local(const rt_body3d_kinematics *body,
+                                          const double *local_axis,
+                                          double *out) {
+    if (!body || !local_axis || !out) {
+        if (out)
+            joint3d_vec3_set(out, 0.0, 1.0, 0.0);
+        return;
+    }
+    joint3d_quat_rotate_vec3(body->orientation, local_axis, out);
+    if (!joint3d_vec3_normalize(out))
+        joint3d_vec3_set(out, 0.0, 1.0, 0.0);
+}
+
+/// @brief Positionally pull two bodies' world anchors together (a ball-socket positional
+/// constraint).
+/// @details Splits the anchor gap between the bodies in inverse-mass proportion, scaled by
+///          @p stiffness (clamped to (0, 1]). No-op for non-finite bodies or two immovable bodies.
+void joint3d_correct_anchor_pair(rt_body3d_kinematics *body_a,
+                                        rt_body3d_kinematics *body_b,
+                                        const double *local_anchor_a,
+                                        const double *local_anchor_b,
+                                        double stiffness) {
+    double anchor_a[3];
+    double anchor_b[3];
+    double delta[3];
+    double inv_sum;
+    if (!joint3d_body_is_finite(body_a) || !joint3d_body_is_finite(body_b))
+        return;
+    inv_sum = body_a->inv_mass + body_b->inv_mass;
+    if (!isfinite(inv_sum) || inv_sum < 1e-12)
+        return;
+    joint3d_world_anchor(body_a, local_anchor_a, anchor_a);
+    joint3d_world_anchor(body_b, local_anchor_b, anchor_b);
+    joint3d_vec3_sub(anchor_b, anchor_a, delta);
+    if (!joint3d_vec3_all_finite(delta))
+        return;
+    if (!isfinite(stiffness) || stiffness <= 0.0)
+        stiffness = 1.0;
+    if (stiffness > 1.0)
+        stiffness = 1.0;
+    double scale = stiffness / inv_sum;
+    for (int i = 0; i < 3; i++) {
+        double correction = delta[i] * scale;
+        body_a->position[i] =
+            joint3d_clamp_coord(body_a->position[i] + correction * body_a->inv_mass);
+        body_b->position[i] =
+            joint3d_clamp_coord(body_b->position[i] - correction * body_b->inv_mass);
+    }
+}
+
+/// @brief Positionally correct only the per-axis anchor-gap components that exceed [min, max].
+/// @details Like joint3d_correct_anchor_pair but the constraint is a box: an axis within its
+///          linear limits is left free; only the limit overshoot is projected out (inverse-mass
+///          split).
+void joint3d_correct_anchor_pair_limited(rt_body3d_kinematics *body_a,
+                                                rt_body3d_kinematics *body_b,
+                                                const double *local_anchor_a,
+                                                const double *local_anchor_b,
+                                                const double *linear_min,
+                                                const double *linear_max) {
+    double anchor_a[3];
+    double anchor_b[3];
+    double delta[3];
+    double violation[3] = {0.0, 0.0, 0.0};
+    double inv_sum;
+    int has_violation = 0;
+    if (!joint3d_body_is_finite(body_a) || !joint3d_body_is_finite(body_b) || !linear_min ||
+        !linear_max)
+        return;
+    inv_sum = body_a->inv_mass + body_b->inv_mass;
+    if (!isfinite(inv_sum) || inv_sum < 1e-12)
+        return;
+    joint3d_world_anchor(body_a, local_anchor_a, anchor_a);
+    joint3d_world_anchor(body_b, local_anchor_b, anchor_b);
+    joint3d_vec3_sub(anchor_b, anchor_a, delta);
+    if (!joint3d_vec3_all_finite(delta))
+        return;
+    for (int i = 0; i < 3; i++) {
+        if (delta[i] < linear_min[i]) {
+            violation[i] = delta[i] - linear_min[i];
+            has_violation = 1;
+        } else if (delta[i] > linear_max[i]) {
+            violation[i] = delta[i] - linear_max[i];
+            has_violation = 1;
+        }
+    }
+    if (!has_violation)
+        return;
+    for (int i = 0; i < 3; i++) {
+        double correction = violation[i] / inv_sum;
+        correction = joint3d_clamp_coord(correction);
+        body_a->position[i] =
+            joint3d_clamp_coord(body_a->position[i] + correction * body_a->inv_mass);
+        body_b->position[i] =
+            joint3d_clamp_coord(body_b->position[i] - correction * body_b->inv_mass);
+    }
+}
+
+/// @brief Cancel @p amount (0..1) of the bodies' relative linear velocity, inverse-mass weighted.
+void joint3d_remove_relative_linear_velocity(rt_body3d_kinematics *body_a,
+                                                    rt_body3d_kinematics *body_b,
+                                                    double amount) {
+    double inv_sum;
+    double rel[3];
+    if (!joint3d_body_is_finite(body_a) || !joint3d_body_is_finite(body_b))
+        return;
+    inv_sum = body_a->inv_mass + body_b->inv_mass;
+    if (!isfinite(inv_sum) || inv_sum < 1e-12)
+        return;
+    if (!isfinite(amount) || amount <= 0.0)
+        amount = 1.0;
+    if (amount > 1.0)
+        amount = 1.0;
+    joint3d_vec3_sub(body_b->velocity, body_a->velocity, rel);
+    if (!joint3d_vec3_all_finite(rel))
+        return;
+    for (int i = 0; i < 3; i++) {
+        double correction = rel[i] * amount / inv_sum;
+        correction = joint3d_clamp_force(correction);
+        body_a->velocity[i] =
+            joint3d_clamp_force(body_a->velocity[i] + correction * body_a->inv_mass);
+        body_b->velocity[i] =
+            joint3d_clamp_force(body_b->velocity[i] - correction * body_b->inv_mass);
+    }
+}
+
+/// @brief Fully cancel relative linear velocity only along locked axes (those with min == max).
+void joint3d_remove_relative_linear_velocity_locked_axes(rt_body3d_kinematics *body_a,
+                                                                rt_body3d_kinematics *body_b,
+                                                                const double *linear_min,
+                                                                const double *linear_max) {
+    double inv_sum;
+    double rel[3];
+    if (!joint3d_body_is_finite(body_a) || !joint3d_body_is_finite(body_b) || !linear_min ||
+        !linear_max)
+        return;
+    inv_sum = body_a->inv_mass + body_b->inv_mass;
+    if (!isfinite(inv_sum) || inv_sum < 1e-12)
+        return;
+    joint3d_vec3_sub(body_b->velocity, body_a->velocity, rel);
+    if (!joint3d_vec3_all_finite(rel))
+        return;
+    for (int i = 0; i < 3; i++) {
+        if (fabs(linear_max[i] - linear_min[i]) > 1e-12)
+            continue;
+        double correction = rel[i] / inv_sum;
+        correction = joint3d_clamp_force(correction);
+        body_a->velocity[i] =
+            joint3d_clamp_force(body_a->velocity[i] + correction * body_a->inv_mass);
+        body_b->velocity[i] =
+            joint3d_clamp_force(body_b->velocity[i] - correction * body_b->inv_mass);
+    }
+}
+
+/// @brief Cancel the bodies' relative angular velocity except the component along @p allowed_axis.
+/// @details Implements a hinge's angular constraint: spin about the hinge axis is preserved while
+///          all off-axis relative rotation is removed (inverse-mass weighted). A NULL axis removes
+///          all.
+void joint3d_remove_relative_angular_velocity(rt_body3d_kinematics *body_a,
+                                                     rt_body3d_kinematics *body_b,
+                                                     const double *allowed_axis) {
+    double rel[3];
+    double remove[3];
+    double inv_sum;
+    if (!joint3d_body_is_finite(body_a) || !joint3d_body_is_finite(body_b))
+        return;
+    if (!joint3d_vec3_all_finite(body_a->angular_velocity) ||
+        !joint3d_vec3_all_finite(body_b->angular_velocity))
+        return;
+    inv_sum = body_a->inv_mass + body_b->inv_mass;
+    if (!isfinite(inv_sum) || inv_sum < 1e-12)
+        return;
+    joint3d_vec3_sub(body_b->angular_velocity, body_a->angular_velocity, rel);
+    remove[0] = rel[0];
+    remove[1] = rel[1];
+    remove[2] = rel[2];
+    if (allowed_axis && joint3d_vec3_all_finite(allowed_axis)) {
+        double axial = joint3d_vec3_dot(rel, allowed_axis);
+        remove[0] -= allowed_axis[0] * axial;
+        remove[1] -= allowed_axis[1] * axial;
+        remove[2] -= allowed_axis[2] * axial;
+    }
+    if (!joint3d_vec3_all_finite(remove))
+        return;
+    for (int i = 0; i < 3; i++) {
+        double correction = remove[i] / inv_sum;
+        correction = joint3d_clamp_force(correction);
+        body_a->angular_velocity[i] =
+            joint3d_clamp_force(body_a->angular_velocity[i] + correction * body_a->inv_mass);
+        body_b->angular_velocity[i] =
+            joint3d_clamp_force(body_b->angular_velocity[i] - correction * body_b->inv_mass);
+    }
+}

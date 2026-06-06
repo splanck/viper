@@ -48,6 +48,7 @@ RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/3d/render/rt_canvas3d_inte
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/text/rt_font.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/common/rt_graphics_internal.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/gui/rt_gui_internal.h")
+RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/gui/rt_gui_codeeditor_internal.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/2d/rt_action_internal.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/2d/rt_physics2d_internal.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/2d/rt_pixels_internal.h")

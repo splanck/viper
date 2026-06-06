@@ -126,6 +126,7 @@ set(RT_GAME_SOURCES
         game/rt_quadtree.c
         game/rt_debugoverlay.c
         game/rt_gameui.c
+        game/rt_gameui_widgets.c
         game/rt_pathfinder.c
         game/rt_dialogue.c
         game/rt_lighting2d.c
@@ -162,6 +163,8 @@ set(RT_TEXT_SOURCES
         text/rt_password.c
         text/rt_rand.c
         text/rt_regex.c
+        text/rt_regex_parse.c
+        text/rt_regex_match.c
         text/rt_compiled_pattern.c
         text/rt_scanner.c
         text/rt_template.c
@@ -198,6 +201,7 @@ set(RT_IO_FS_SOURCES
         io/rt_compress.c
         io/rt_deflate.c
         io/rt_archive.c
+        io/rt_archive_fs.c
         io/rt_savedata.c
         io/rt_vpa_reader.c
         io/rt_path_exe.c
@@ -223,14 +227,19 @@ set(RT_GRAPHICS_SOURCES
         graphics/2d/rt_color.c
         graphics/gui/rt_gui_app.c
         graphics/gui/rt_gui_codeeditor.c
+        graphics/gui/rt_gui_codeeditor_syntax.c
         graphics/gui/rt_gui_messagebox.c
         graphics/gui/rt_gui_filedialog.c
         graphics/gui/rt_gui_findbar.c
         graphics/gui/rt_gui_features.c
+        graphics/gui/rt_gui_navaids.c
         graphics/gui/rt_gui_menus.c
+        graphics/gui/rt_gui_bars.c
         graphics/gui/rt_gui_system.c
         graphics/gui/rt_gui_widgets.c
+        graphics/gui/rt_gui_subhandle.c
         graphics/gui/rt_gui_widgets_complex.c
+        graphics/gui/rt_gui_image.c
         graphics/gui/rt_gui_ide.cpp
         graphics/input/rt_input.c
         graphics/input/rt_input_pad.c
@@ -243,6 +252,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/math/rt_quat.c
         graphics/math/rt_spline.c
         graphics/2d/rt_physics2d.c
+        graphics/2d/rt_physics2d_collision.c
         graphics/2d/rt_physics2d_joint.c
         graphics/3d/physics/rt_collider3d.c
         graphics/2d/rt_pixels.c
@@ -266,6 +276,8 @@ set(RT_GRAPHICS_SOURCES
         graphics/2d/rt_texatlas.c
         graphics/text/rt_bitmapfont.c
         graphics/2d/rt_graphics2d.c
+        graphics/2d/rt_graphics2d_tilemap.c
+        graphics/2d/rt_graphics2d_render.c
         graphics/text/fonts/embedded_font.c  # JetBrains Mono Regular (MIT) — embedded for portable font rendering
         graphics/3d/render/rt_canvas3d.c
         graphics/3d/render/rt_canvas3d_overlay.c
@@ -317,6 +329,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/3d/physics/rt_physics3d_query.c
         graphics/3d/physics/rt_physics3d_solver.c
         graphics/3d/physics/rt_joints3d.c
+        graphics/3d/physics/rt_joints3d_math.c
         graphics/3d/scene/rt_transform3d.c
         graphics/3d/nav/rt_path3d.c
         graphics/3d/render/rt_instbatch3d.c
@@ -350,14 +363,19 @@ set(RT_GRAPHICS_DISABLED_SOURCES
         graphics/text/rt_font.c
         graphics/gui/rt_gui_app.c
         graphics/gui/rt_gui_codeeditor.c
+        graphics/gui/rt_gui_codeeditor_syntax.c
         graphics/gui/rt_gui_messagebox.c
         graphics/gui/rt_gui_filedialog.c
         graphics/gui/rt_gui_findbar.c
         graphics/gui/rt_gui_features.c
+        graphics/gui/rt_gui_navaids.c
         graphics/gui/rt_gui_menus.c
+        graphics/gui/rt_gui_bars.c
         graphics/gui/rt_gui_system.c
         graphics/gui/rt_gui_widgets.c
+        graphics/gui/rt_gui_subhandle.c
         graphics/gui/rt_gui_widgets_complex.c
+        graphics/gui/rt_gui_image.c
         graphics/input/rt_input.c
         graphics/input/rt_input_pad.c
         graphics/input/rt_inputmgr.c
@@ -369,6 +387,7 @@ set(RT_GRAPHICS_DISABLED_SOURCES
         graphics/math/rt_quat.c
         graphics/math/rt_spline.c
         graphics/2d/rt_physics2d.c
+        graphics/2d/rt_physics2d_collision.c
         graphics/2d/rt_physics2d_joint.c
         graphics/2d/rt_pixels.c
         graphics/2d/rt_pixels_io.c
@@ -387,6 +406,8 @@ set(RT_GRAPHICS_DISABLED_SOURCES
         graphics/2d/rt_texatlas.c
         graphics/text/rt_bitmapfont.c
         graphics/2d/rt_graphics2d.c
+        graphics/2d/rt_graphics2d_tilemap.c
+        graphics/2d/rt_graphics2d_render.c
         graphics/text/fonts/embedded_font.c
         graphics/3d/rt_g3d_commit_queue.c
         graphics/3d/rt_game3d.c
@@ -482,6 +503,7 @@ set(RT_NETWORK_SOURCES
         network/rt_network_udp.c
         network/rt_network_dns.c
         network/rt_network_http.c
+        network/rt_network_http_api.c
         network/rt_http2.c
         network/rt_hpack.c
         network/rt_http_url.c
@@ -494,6 +516,7 @@ set(RT_NETWORK_SOURCES
         network/rt_x25519.c
         network/rt_crypto_module.c
         network/rt_tls.c
+        network/rt_tls_api.c
         network/rt_tls_verify_common.c
         network/rt_ecdsa_p256.c
         network/rt_rsa.c

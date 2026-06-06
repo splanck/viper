@@ -116,3 +116,26 @@ void rt_physics2d_solve_spring_joints(void *world, double dt);
 /// @brief Positional (Baumgarte/NGS) correction pass for joints after the
 ///        velocity solve, to remove residual constraint drift.
 void rt_physics2d_solve_position_joints(void *world, double dt);
+
+//=============================================================================
+// Collision broad/narrow-phase (defined in rt_physics2d_collision.c)
+//=============================================================================
+
+/// @brief Broad/narrow-phase resolve for the body pair (ii, jj) in @p w for this
+///        @p dt step: AABB/swept reject, shape overlap, then impulse resolution.
+void maybe_resolve_pair(rt_world_impl *w, int ii, int jj, double dt);
+
+//=============================================================================
+// Shared body/contact helpers (defined in rt_physics2d.c)
+//=============================================================================
+
+/// @brief Previous-frame AABB bounds accessors (used by swept collision).
+double body_prev_min_x(rt_body_impl *b);
+double body_prev_min_y(rt_body_impl *b);
+double body_prev_max_x(rt_body_impl *b);
+double body_prev_max_y(rt_body_impl *b);
+/// @brief Clamp a body's state to finite, sane values before integration.
+void sanitize_body_state(rt_body_impl *b);
+/// @brief Append a contact manifold to the world's per-step contact list.
+void world_record_contact(
+    rt_world_impl *w, rt_body_impl *a, rt_body_impl *b, double nx, double ny, double pen);

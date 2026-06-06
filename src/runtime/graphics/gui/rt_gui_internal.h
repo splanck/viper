@@ -670,3 +670,17 @@ void rt_shortcuts_clear_triggered(rt_gui_app_t *app);
 /// @param mods Translated VG_MOD_* flags active for the event.
 /// @return Non-zero if a matching shortcut was triggered; 0 otherwise.
 int8_t rt_shortcuts_check_key(rt_gui_app_t *app, int key, int mods);
+
+//=============================================================================
+// Shared status-bar / tool-bar helpers (defined in rt_gui_menus.c, consumed by
+// the status-bar/tool-bar widgets in rt_gui_bars.c). Icon helpers are also used
+// by the menu widgets that remain in rt_gui_menus.c.
+//=============================================================================
+
+vg_statusbar_item_t *rt_statusbaritem_checked(void *item);
+vg_toolbar_item_t *rt_toolbaritem_checked(void *item);
+vg_statusbar_t *rt_statusbar_checked(void *bar);
+vg_toolbar_t *rt_toolbar_checked(void *toolbar);
+int rt_statusbar_zone_checked(int64_t zone, vg_statusbar_zone_t *out_zone);
+vg_icon_t rt_gui_icon_from_pixels(void *pixels);
+vg_icon_t rt_gui_icon_from_path_cstr(const char *path);

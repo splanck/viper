@@ -89,6 +89,97 @@ bool re_find_match_with_groups(re_compiled_pattern *cp,
 /// @return Number of capture groups (not including group 0).
 int re_group_count(re_compiled_pattern *cp);
 
+//=============================================================================
+// Engine internals
+//
+// AST node types and primitive constructors shared between the core
+// (rt_regex.c), the parser (rt_regex_parse.c), and the matcher
+// (rt_regex_match.c). These are engine-private; rt_compiled_pattern.c
+// includes this header for the re_* API above and simply ignores them.
+//=============================================================================
+
+typedef enum {
+    RE_LITERAL,      // Single character literal
+    RE_DOT,          // . matches any char except newline
+    RE_ANCHOR_START, // ^
+    RE_ANCHOR_END,   // $
+    RE_CLASS,        // Character class [...]
+    RE_GROUP,        // Grouping (...)
+    RE_CONCAT,       // Sequence of nodes
+    RE_ALT,          // Alternation a|b
+    RE_QUANT,        // Quantifier applied to child
+} re_node_type;
+
+typedef enum {
+    QUANT_STAR,  // *
+    QUANT_PLUS,  // +
+    QUANT_QUEST, // ?
+} re_quant_type;
+
+/// Character class representation using bit array for ASCII
+typedef struct {
+    uint8_t bits[32]; // 256 bits for ASCII chars
+    bool negated;
+} re_class;
+
+typedef struct re_node re_node;
+
+struct re_node {
+    re_node_type type;
+
+    union {
+        char literal;        // RE_LITERAL
+        re_class char_class; // RE_CLASS
+
+        struct {
+            re_node **children;
+            int count;
+            int capacity;
+        } children; // RE_CONCAT, RE_ALT, RE_GROUP
+
+        struct {
+            re_node *child;
+            re_quant_type qtype;
+            bool greedy;
+        } quant; // RE_QUANT
+    } data;
+};
+
+/// Compiled pattern (forward-declared above as re_compiled_pattern)
+struct re_compiled_pattern {
+    char *pattern_str;
+    re_node *root;
+    bool anchored_start; // Pattern starts with ^
+    bool anchored_end;   // Pattern ends with $
+    int group_count;     // Number of capture groups (not including group 0)
+    unsigned int cache_refs;
+    bool cache_linked;
+};
+
+// Local typedef for compatibility with existing code
+typedef struct re_compiled_pattern compiled_pattern;
+
+/// Parser cursor over a pattern source string.
+typedef struct {
+    const char *src;
+    int pos;
+    int len;
+} parser_state;
+
+// AST node/class primitives (defined in rt_regex.c).
+re_node *node_new(re_node_type type);
+void node_free(re_node *n);
+void children_add(re_node *n, re_node *child);
+void class_set(re_class *c, int ch);
+bool class_test(const re_class *c, int ch);
+void class_add_range(re_class *c, int from, int to);
+void class_add_shorthand(re_class *c, char shorthand);
+
+// Parser entry points (defined in rt_regex_parse.c).
+re_node *parse_alternation(parser_state *p);
+bool at_end(parser_state *p);
+void parse_error(parser_state *p, const char *msg);
+
 #ifdef __cplusplus
 }
 #endif

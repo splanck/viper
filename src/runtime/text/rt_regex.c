@@ -160,70 +160,6 @@ static void ensure_result_capacity(
     *result_cap = new_cap;
 }
 
-//=============================================================================
-// Regex AST Node Types
-//=============================================================================
-
-typedef enum {
-    RE_LITERAL,      // Single character literal
-    RE_DOT,          // . matches any char except newline
-    RE_ANCHOR_START, // ^
-    RE_ANCHOR_END,   // $
-    RE_CLASS,        // Character class [...]
-    RE_GROUP,        // Grouping (...)
-    RE_CONCAT,       // Sequence of nodes
-    RE_ALT,          // Alternation a|b
-    RE_QUANT,        // Quantifier applied to child
-} re_node_type;
-
-typedef enum {
-    QUANT_STAR,  // *
-    QUANT_PLUS,  // +
-    QUANT_QUEST, // ?
-} re_quant_type;
-
-/// Character class representation using bit array for ASCII
-typedef struct {
-    uint8_t bits[32]; // 256 bits for ASCII chars
-    bool negated;
-} re_class;
-
-typedef struct re_node re_node;
-
-struct re_node {
-    re_node_type type;
-
-    union {
-        char literal;        // RE_LITERAL
-        re_class char_class; // RE_CLASS
-
-        struct {
-            re_node **children;
-            int count;
-            int capacity;
-        } children; // RE_CONCAT, RE_ALT, RE_GROUP
-
-        struct {
-            re_node *child;
-            re_quant_type qtype;
-            bool greedy;
-        } quant; // RE_QUANT
-    } data;
-};
-
-/// Compiled pattern (exposed via rt_regex_internal.h as re_compiled_pattern)
-struct re_compiled_pattern {
-    char *pattern_str;
-    re_node *root;
-    bool anchored_start; // Pattern starts with ^
-    bool anchored_end;   // Pattern ends with $
-    int group_count;     // Number of capture groups (not including group 0)
-    unsigned int cache_refs;
-    bool cache_linked;
-};
-
-// Local typedef for compatibility with existing code
-typedef struct re_compiled_pattern compiled_pattern;
 
 //=============================================================================
 // Memory Management
@@ -234,7 +170,7 @@ typedef struct re_compiled_pattern compiled_pattern;
 /// Uses `calloc` so the union starts cleared (important for the
 /// `children` variant where `count`/`capacity` must be 0). Traps on
 /// OOM — there's no recovery path during pattern compile.
-static re_node *node_new(re_node_type type) {
+re_node *node_new(re_node_type type) {
     re_node *n = (re_node *)calloc(1, sizeof(re_node));
     if (!n)
         rt_trap("Pattern: memory allocation failed");
@@ -247,7 +183,7 @@ static re_node *node_new(re_node_type type) {
 /// Walks the tree depth-first: container types (concat/alt/group) free
 /// each child then their `children` array; quantifier nodes free their
 /// single child; leaf types just free themselves. Safe on NULL.
-static void node_free(re_node *n) {
+void node_free(re_node *n) {
     if (!n)
         return;
 
@@ -274,7 +210,7 @@ static void node_free(re_node *n) {
 /// Geometric resize (cap doubles, starting at 4) so amortized cost is
 /// O(1) per add. Traps on OOM. Caller transfers ownership of `child`
 /// to `n` — the parent's `node_free` will reclaim it.
-static void children_add(re_node *n, re_node *child) {
+void children_add(re_node *n, re_node *child) {
     if (n->data.children.count >= n->data.children.capacity) {
         if (n->data.children.capacity > INT_MAX / 2)
             rt_trap("Pattern: too many child nodes");
@@ -321,7 +257,7 @@ void re_free(re_compiled_pattern *cp) {
 /// The bitset is 256 bits (32 bytes), one per ASCII byte value. Bytes
 /// outside [0, 255] are ignored — matching of multibyte/Unicode chars
 /// happens via the negation flag in `class_test`.
-static void class_set(re_class *c, int ch) {
+void class_set(re_class *c, int ch) {
     if (ch >= 0 && ch < 256) {
         c->bits[ch / 8] |= (1 << (ch % 8));
     }
@@ -332,7 +268,7 @@ static void class_set(re_class *c, int ch) {
 /// Bytes outside [0, 255] match if and only if the class is negated —
 /// preserves the "negated class accepts everything not explicitly listed"
 /// semantics for arbitrary code units.
-static bool class_test(const re_class *c, int ch) {
+bool class_test(const re_class *c, int ch) {
     if (ch < 0 || ch >= 256)
         return c->negated;
     bool in_class = (c->bits[ch / 8] & (1 << (ch % 8))) != 0;
@@ -340,7 +276,7 @@ static bool class_test(const re_class *c, int ch) {
 }
 
 /// @brief Set every bit in the inclusive range `[from, to]`.
-static void class_add_range(re_class *c, int from, int to) {
+void class_add_range(re_class *c, int from, int to) {
     for (int ch = from; ch <= to && ch < 256; ch++) {
         class_set(c, ch);
     }
@@ -351,7 +287,7 @@ static void class_add_range(re_class *c, int from, int to) {
 /// Lowercase shorthands set the matching characters; uppercase variants
 /// also flip the `negated` flag so the class matches the complement.
 /// Used both inside `[...]` brackets and as standalone atoms.
-static void class_add_shorthand(re_class *c, char shorthand) {
+void class_add_shorthand(re_class *c, char shorthand) {
     switch (shorthand) {
         case 'd': // digits
             class_add_range(c, '0', '9');
@@ -393,331 +329,6 @@ static void class_add_shorthand(re_class *c, char shorthand) {
     }
 }
 
-//=============================================================================
-// Pattern Parser
-//=============================================================================
-
-typedef struct {
-    const char *src;
-    int pos;
-    int len;
-} parser_state;
-
-/// @brief Return the next byte without advancing; '\\0' at EOF.
-static char peek(parser_state *p) {
-    return p->pos < p->len ? p->src[p->pos] : '\0';
-}
-
-/// @brief Consume and return the next byte; '\\0' at EOF.
-static char advance(parser_state *p) {
-    return p->pos < p->len ? p->src[p->pos++] : '\0';
-}
-
-/// @brief True if the parser cursor is past the end of the pattern.
-static bool at_end(parser_state *p) {
-    return p->pos >= p->len;
-}
-
-/// @brief Trap with a contextual parse-error message including the cursor position.
-///
-/// Always traps; never returns. Used by the parser when it encounters
-/// malformed regex syntax (unclosed bracket / group, trailing
-/// backslash, etc.).
-static void parse_error(parser_state *p, const char *msg) {
-    char buf[256];
-    snprintf(buf, sizeof(buf), "Pattern error at position %d: %s", p->pos, msg);
-    rt_trap(buf);
-}
-
-// Forward declarations
-static re_node *parse_alternation(parser_state *p);
-static re_node *parse_concat(parser_state *p);
-static re_node *parse_quantified(parser_state *p);
-static re_node *parse_atom(parser_state *p);
-
-/// @brief Parse a `[...]` character class (cursor positioned after the `[`).
-///
-/// Handles:
-///   - Leading `^` for negation.
-///   - Escape sequences (`\\n`, `\\d`, etc.).
-///   - Ranges (`a-z`).
-///   - Literal `-` when at end (`[abc-]`).
-/// Traps via `parse_error` if `]` is missing.
-static re_node *parse_class(parser_state *p) {
-    re_node *n = node_new(RE_CLASS);
-    memset(n->data.char_class.bits, 0, sizeof(n->data.char_class.bits));
-    n->data.char_class.negated = false;
-
-    // Check for negation
-    if (peek(p) == '^') {
-        n->data.char_class.negated = true;
-        advance(p);
-    }
-
-    bool first = true;
-    while (!at_end(p) && (first || peek(p) != ']')) {
-        first = false;
-        char c = advance(p);
-
-        if (c == '\\' && !at_end(p)) {
-            char esc = advance(p);
-            switch (esc) {
-                case 'd':
-                case 'D':
-                case 'w':
-                case 'W':
-                case 's':
-                case 'S':
-                    class_add_shorthand(&n->data.char_class, esc);
-                    break;
-                case 'n':
-                    class_set(&n->data.char_class, '\n');
-                    break;
-                case 'r':
-                    class_set(&n->data.char_class, '\r');
-                    break;
-                case 't':
-                    class_set(&n->data.char_class, '\t');
-                    break;
-                default:
-                    class_set(&n->data.char_class, (unsigned char)esc);
-                    break;
-            }
-        } else if (peek(p) == '-' && p->pos + 1 < p->len && p->src[p->pos + 1] != ']') {
-            // Range: a-z
-            advance(p); // consume -
-            char end = advance(p);
-            if (end == '\\' && !at_end(p)) {
-                end = advance(p);
-                // Handle escape in range end
-                switch (end) {
-                    case 'n':
-                        end = '\n';
-                        break;
-                    case 'r':
-                        end = '\r';
-                        break;
-                    case 't':
-                        end = '\t';
-                        break;
-                }
-            }
-            class_add_range(&n->data.char_class, (unsigned char)c, (unsigned char)end);
-        } else {
-            class_set(&n->data.char_class, (unsigned char)c);
-        }
-    }
-
-    if (peek(p) != ']') {
-        node_free(n);
-        parse_error(p, "unclosed character class");
-    }
-    advance(p); // consume ]
-
-    return n;
-}
-
-/// @brief Parse a single atom: literal char, escape, `.`, anchor, class, or group.
-///
-/// Returns NULL when the cursor is at a quantifier or alternation
-/// boundary (`* + ? | )` or EOF) — the caller treats that as
-/// "no more atoms in this concat". Group atoms recursively invoke
-/// `parse_alternation` for the body.
-static re_node *parse_atom(parser_state *p) {
-    char c = peek(p);
-
-    if (c == '\\') {
-        advance(p);
-        if (at_end(p))
-            parse_error(p, "trailing backslash");
-
-        char esc = advance(p);
-        switch (esc) {
-            case 'd':
-            case 'D':
-            case 'w':
-            case 'W':
-            case 's':
-            case 'S': {
-                re_node *n = node_new(RE_CLASS);
-                memset(n->data.char_class.bits, 0, sizeof(n->data.char_class.bits));
-                n->data.char_class.negated = false;
-                class_add_shorthand(&n->data.char_class, esc);
-                return n;
-            }
-            case 'n': {
-                re_node *n = node_new(RE_LITERAL);
-                n->data.literal = '\n';
-                return n;
-            }
-            case 'r': {
-                re_node *n = node_new(RE_LITERAL);
-                n->data.literal = '\r';
-                return n;
-            }
-            case 't': {
-                re_node *n = node_new(RE_LITERAL);
-                n->data.literal = '\t';
-                return n;
-            }
-            default: {
-                // Escaped special char or literal
-                re_node *n = node_new(RE_LITERAL);
-                n->data.literal = esc;
-                return n;
-            }
-        }
-    } else if (c == '.') {
-        advance(p);
-        return node_new(RE_DOT);
-    } else if (c == '^') {
-        advance(p);
-        return node_new(RE_ANCHOR_START);
-    } else if (c == '$') {
-        advance(p);
-        return node_new(RE_ANCHOR_END);
-    } else if (c == '[') {
-        advance(p);
-        return parse_class(p);
-    } else if (c == '(') {
-        advance(p);
-        re_node *inner = parse_alternation(p);
-        if (peek(p) != ')') {
-            node_free(inner);
-            parse_error(p, "unclosed group");
-        }
-        advance(p);
-        re_node *group = node_new(RE_GROUP);
-        children_add(group, inner);
-        return group;
-    } else if (c == ')' || c == '|' || c == '*' || c == '+' || c == '?' || c == '\0') {
-        // These end an atom
-        return NULL;
-    } else {
-        advance(p);
-        re_node *n = node_new(RE_LITERAL);
-        n->data.literal = c;
-        return n;
-    }
-}
-
-/// @brief Parse an atom plus optional quantifier (`* + ?` with optional `?` for non-greedy).
-///
-/// Wraps the atom in an `RE_QUANT` node when a quantifier follows;
-/// otherwise returns the bare atom. The trailing `?` after a quantifier
-/// flips it to non-greedy mode.
-static re_node *parse_quantified(parser_state *p) {
-    re_node *atom = parse_atom(p);
-    if (!atom)
-        return NULL;
-
-    char c = peek(p);
-    if (c == '*' || c == '+' || c == '?') {
-        advance(p);
-        re_node *q = node_new(RE_QUANT);
-        q->data.quant.child = atom;
-        q->data.quant.greedy = true;
-
-        switch (c) {
-            case '*':
-                q->data.quant.qtype = QUANT_STAR;
-                break;
-            case '+':
-                q->data.quant.qtype = QUANT_PLUS;
-                break;
-            case '?':
-                q->data.quant.qtype = QUANT_QUEST;
-                break;
-        }
-
-        // Check for non-greedy modifier
-        if (peek(p) == '?') {
-            advance(p);
-            q->data.quant.greedy = false;
-        }
-
-        return q;
-    }
-
-    return atom;
-}
-
-/// @brief Parse a sequence of quantified atoms into a concat node.
-///
-/// Stops at `)`, `|`, or EOF. As an optimization, the result is
-/// flattened: empty concat returns NULL, single-child concat returns
-/// just the child (avoids one indirection in the matcher).
-static re_node *parse_concat(parser_state *p) {
-    re_node *concat = node_new(RE_CONCAT);
-
-    while (!at_end(p)) {
-        char c = peek(p);
-        if (c == ')' || c == '|')
-            break;
-
-        re_node *child = parse_quantified(p);
-        if (!child)
-            break;
-
-        children_add(concat, child);
-    }
-
-    // Simplify single-child concat
-    if (concat->data.children.count == 0) {
-        node_free(concat);
-        return NULL;
-    }
-    if (concat->data.children.count == 1) {
-        re_node *child = concat->data.children.children[0];
-        concat->data.children.children[0] = NULL;
-        concat->data.children.count = 0;
-        node_free(concat);
-        return child;
-    }
-
-    return concat;
-}
-
-/// @brief Parse an alternation `a|b|c` (top of the recursive-descent grammar).
-///
-/// Empty alternatives (e.g., `(|x)`) get an explicit empty `RE_CONCAT`
-/// branch so they can match the empty string. Single-branch
-/// alternations are flattened to just the branch (matcher optimization).
-static re_node *parse_alternation(parser_state *p) {
-    re_node *first = parse_concat(p);
-
-    if (peek(p) != '|') {
-        return first;
-    }
-
-    re_node *alt = node_new(RE_ALT);
-    if (first)
-        children_add(alt, first);
-    else {
-        // Empty alternative (matches empty string)
-        children_add(alt, node_new(RE_CONCAT));
-    }
-
-    while (peek(p) == '|') {
-        advance(p); // consume |
-        re_node *branch = parse_concat(p);
-        if (branch)
-            children_add(alt, branch);
-        else
-            children_add(alt, node_new(RE_CONCAT));
-    }
-
-    // Simplify single-branch alternation
-    if (alt->data.children.count == 1) {
-        re_node *child = alt->data.children.children[0];
-        alt->data.children.children[0] = NULL;
-        alt->data.children.count = 0;
-        node_free(alt);
-        return child;
-    }
-
-    return alt;
-}
 
 /// @brief Count `RE_GROUP` nodes in a subtree (excluding the implicit group 0).
 ///
@@ -814,547 +425,6 @@ int re_group_count(re_compiled_pattern *cp) {
     return cp ? cp->group_count : 0;
 }
 
-//=============================================================================
-// Pattern Matching Engine (Backtracking)
-//=============================================================================
-
-/* S-11: Maximum backtracking steps before aborting (ReDoS guard) */
-#define RE_MAX_STEPS 1000000
-
-typedef struct {
-    const char *text;
-    int text_len;
-    int start_pos; // Start position for this match attempt
-    int steps;     // Backtracking step counter
-    int max_steps; // Step limit (0 = unlimited)
-} match_context;
-
-// Forward declarations
-static bool match_node(match_context *ctx, re_node *n, int pos, int *end_pos);
-static bool match_concat_from(
-    match_context *ctx, re_node **children, int count, int index, int pos, int *end_pos);
-
-/// @brief Enumerate the end positions reachable by repeating a quantifier.
-///
-/// For `<child>{0..max}` (or `{1..max}` for `+`, or `{0..1}` for `?`),
-/// greedily steps the cursor forward, recording each successful end
-/// position. Returns the count. Detects zero-width matches and bails
-/// (otherwise `()*` would loop forever). Used by both `match_quant`
-/// (standalone) and `match_concat_from` (with backtracking).
-///
-/// @param ctx           Match context (text, length, step counter).
-/// @param n             Quantifier node.
-/// @param pos           Starting cursor.
-/// @param positions     Out: array of reachable end positions.
-/// @param max_positions Capacity of `positions`.
-/// @return Number of end positions written.
-static int collect_quant_positions(
-    match_context *ctx, re_node *n, int pos, int *positions, int max_positions) {
-    re_node *child = n->data.quant.child;
-    re_quant_type qtype = n->data.quant.qtype;
-
-    int min_count = (qtype == QUANT_PLUS) ? 1 : 0;
-    int max_count = (qtype == QUANT_QUEST) ? 1 : INT32_MAX;
-
-    int num = 0;
-    int cur_pos = pos;
-
-    // Position for 0 matches (if allowed)
-    if (min_count == 0 && num < max_positions)
-        positions[num++] = pos;
-
-    // Greedily collect match positions
-    int count = 0;
-    while (count < max_count && num < max_positions) {
-        int child_end;
-        if (match_node(ctx, child, cur_pos, &child_end)) {
-            if (child_end == cur_pos)
-                break; // Zero-width match; only count once
-            cur_pos = child_end;
-            count++;
-            if (count >= min_count)
-                positions[num++] = cur_pos;
-        } else {
-            break;
-        }
-    }
-
-    return num;
-}
-
-static int *alloc_match_positions(int text_len, int pos, int *capacity_out) {
-    if (capacity_out)
-        *capacity_out = 0;
-    if (pos < 0 || pos > text_len)
-        rt_trap("Pattern: invalid match position");
-    size_t capacity = (size_t)(text_len - pos) + 2;
-    if (capacity > (size_t)INT_MAX || capacity > SIZE_MAX / sizeof(int))
-        rt_trap("Pattern: position allocation overflow");
-    int *positions = (int *)malloc(sizeof(int) * capacity);
-    if (!positions)
-        rt_trap("Pattern: memory allocation failed");
-    if (capacity_out)
-        *capacity_out = (int)capacity;
-    return positions;
-}
-
-/// @brief Match a quantifier node when it has no following continuation.
-///
-/// Picks the longest (greedy) or shortest (lazy) reachable end without
-/// any backtracking — there's no "what comes after" to consult. Used
-/// when the quantifier is the entire pattern or the last child of a
-/// concat. The full backtracking version lives in `match_concat_from`.
-static bool match_quant(match_context *ctx, re_node *n, int pos, int *end_pos) {
-    bool greedy = n->data.quant.greedy;
-
-    int capacity = 0;
-    int *positions = alloc_match_positions(ctx->text_len, pos, &capacity);
-    int num = collect_quant_positions(ctx, n, pos, positions, capacity);
-
-    bool found = false;
-    if (greedy) {
-        // Try longest first
-        if (num > 0) {
-            *end_pos = positions[num - 1];
-            found = true;
-        }
-    } else {
-        // Try shortest first
-        if (num > 0) {
-            *end_pos = positions[0];
-            found = true;
-        }
-    }
-
-    free(positions);
-    return found;
-}
-
-/// @brief Match a node against `ctx->text` starting at `pos`.
-///
-/// Returns true on success and writes the post-match cursor to
-/// `*end_pos`. Implements the per-node-kind match logic via switch.
-/// Increments the global step counter on each call and bails (returns
-/// false) when the S-11 ReDoS cap is exceeded — this is what protects
-/// the engine from catastrophic backtracking inputs.
-static bool match_node(match_context *ctx, re_node *n, int pos, int *end_pos) {
-    if (!ctx || !end_pos || pos < 0 || pos > ctx->text_len)
-        return false;
-    /* S-11: ReDoS guard — abort if step limit exceeded */
-    if (ctx->max_steps > 0 && ++ctx->steps > ctx->max_steps) {
-        *end_pos = pos;
-        return false;
-    }
-
-    if (!n) {
-        *end_pos = pos;
-        return true;
-    }
-
-    switch (n->type) {
-        case RE_LITERAL:
-            if (pos < ctx->text_len && ctx->text[pos] == n->data.literal) {
-                *end_pos = pos + 1;
-                return true;
-            }
-            return false;
-
-        case RE_DOT:
-            if (pos < ctx->text_len && ctx->text[pos] != '\n') {
-                *end_pos = pos + 1;
-                return true;
-            }
-            return false;
-
-        case RE_ANCHOR_START:
-            if (pos == 0) {
-                *end_pos = pos;
-                return true;
-            }
-            return false;
-
-        case RE_ANCHOR_END:
-            if (pos == ctx->text_len) {
-                *end_pos = pos;
-                return true;
-            }
-            return false;
-
-        case RE_CLASS:
-            if (pos < ctx->text_len &&
-                class_test(&n->data.char_class, (unsigned char)ctx->text[pos])) {
-                *end_pos = pos + 1;
-                return true;
-            }
-            return false;
-
-        case RE_CONCAT:
-            return match_concat_from(
-                ctx, n->data.children.children, n->data.children.count, 0, pos, end_pos);
-
-        case RE_ALT:
-            for (int i = 0; i < n->data.children.count; i++) {
-                int child_end;
-                if (match_node(ctx, n->data.children.children[i], pos, &child_end)) {
-                    *end_pos = child_end;
-                    return true;
-                }
-            }
-            return false;
-
-        case RE_GROUP:
-            if (n->data.children.count > 0) {
-                return match_node(ctx, n->data.children.children[0], pos, end_pos);
-            }
-            *end_pos = pos;
-            return true;
-
-        case RE_QUANT:
-            return match_quant(ctx, n, pos, end_pos);
-    }
-
-    return false;
-}
-
-/// @brief Match the tail of a concat sequence starting at `children[index]`.
-///
-/// The interesting case is a quantifier child: we enumerate every
-/// reachable end position and try each one in greedy/lazy order,
-/// recursing for the remaining children. This is the backtracking
-/// loop — most patterns terminate quickly, but the S-11 step cap in
-/// `match_node` ensures even pathological cases bail eventually.
-/// Non-quantifier children are matched once; if they succeed we tail
-/// into the next child.
-static bool match_concat_from(
-    match_context *ctx, re_node **children, int count, int index, int pos, int *end_pos) {
-    if (index >= count) {
-        *end_pos = pos;
-        return true;
-    }
-
-    re_node *child = children[index];
-
-    if (child->type == RE_QUANT) {
-        bool greedy = child->data.quant.greedy;
-
-        int capacity = 0;
-        int *positions = alloc_match_positions(ctx->text_len, pos, &capacity);
-        int num = collect_quant_positions(ctx, child, pos, positions, capacity);
-
-        bool found = false;
-        if (greedy) {
-            // Try longest match first, backtrack to shorter
-            for (int i = num - 1; i >= 0; i--) {
-                if (match_concat_from(ctx, children, count, index + 1, positions[i], end_pos)) {
-                    found = true;
-                    break;
-                }
-            }
-        } else {
-            // Try shortest match first
-            for (int i = 0; i < num; i++) {
-                if (match_concat_from(ctx, children, count, index + 1, positions[i], end_pos)) {
-                    found = true;
-                    break;
-                }
-            }
-        }
-
-        free(positions);
-        return found;
-    } else {
-        // Non-quantifier child: single match attempt
-        int child_end;
-        if (match_node(ctx, child, pos, &child_end))
-            return match_concat_from(ctx, children, count, index + 1, child_end, end_pos);
-        return false;
-    }
-}
-
-/// @brief Scan the text for the first match starting at or after `start_from`.
-///
-/// Walks the cursor forward one byte at a time, attempting `match_node`
-/// at each position. Caps the per-attempt step count via `RE_MAX_STEPS`
-/// (S-11). Returns true on first hit with start/end set.
-static bool find_match(compiled_pattern *cp,
-                       const char *text,
-                       int text_len,
-                       int start_from,
-                       int *match_start,
-                       int *match_end) {
-    match_context ctx = {text, text_len, 0, 0, RE_MAX_STEPS};
-
-    for (int i = start_from; i <= text_len; i++) {
-        ctx.start_pos = i;
-        int end_pos;
-        if (match_node(&ctx, cp->root, i, &end_pos)) {
-            *match_start = i;
-            *match_end = end_pos;
-            return true;
-        }
-    }
-    return false;
-}
-
-/// @brief Public `find_match` exposed via `rt_regex_internal.h`.
-///
-/// Wraps the static helper for the cached-pattern API and any other
-/// in-process consumer that holds a compiled pattern directly.
-bool re_find_match(re_compiled_pattern *cp,
-                   const char *text,
-                   int text_len,
-                   int start_from,
-                   int *match_start,
-                   int *match_end) {
-    return find_match(cp, text, text_len, start_from, match_start, match_end);
-}
-
-//-----------------------------------------------------------------------------
-// Capture Group Support
-//-----------------------------------------------------------------------------
-
-/// @brief Match context augmented with capture-group tracking arrays.
-///
-/// Pairs the standard text/length/start with caller-provided arrays
-/// for group start/end positions. `next_group` is bumped each time a
-/// `RE_GROUP` is entered so groups get the same index they would in
-/// PCRE-style pattern numbering.
-typedef struct {
-    const char *text;
-    int text_len;
-    int start_pos;
-    int *group_starts;
-    int *group_ends;
-    int max_groups;
-    int next_group;
-} match_context_groups;
-
-// Forward declarations for group-capturing versions
-static bool match_node_groups(match_context_groups *ctx, re_node *n, int pos, int *end_pos);
-
-/// @brief Match a quantifier node carrying capture-group state.
-///
-/// Same logic as `match_quant` but uses the group-aware match recursion
-/// so any captures inside the quantified subexpression are recorded.
-/// Note: this version doesn't backtrack against the continuation —
-/// capture groups inside `+`/`*` are best-effort (last successful match
-/// wins) rather than fully PCRE-compliant.
-static bool match_quant_groups(match_context_groups *ctx, re_node *n, int pos, int *end_pos) {
-    re_node *child = n->data.quant.child;
-    re_quant_type qtype = n->data.quant.qtype;
-    bool greedy = n->data.quant.greedy;
-
-    int min_count = (qtype == QUANT_PLUS) ? 1 : 0;
-    int max_count = (qtype == QUANT_QUEST) ? 1 : INT32_MAX;
-
-    int capacity = 0;
-    int *match_ends = alloc_match_positions(ctx->text_len, pos, &capacity);
-
-    int num_matches = 0;
-    int cur_pos = pos;
-
-    if (num_matches < capacity)
-        match_ends[num_matches++] = pos;
-
-    while (num_matches < capacity && num_matches - 1 < max_count) {
-        int child_end;
-        if (match_node_groups(ctx, child, cur_pos, &child_end)) {
-            if (child_end == cur_pos)
-                break;
-            cur_pos = child_end;
-            match_ends[num_matches++] = cur_pos;
-        } else {
-            break;
-        }
-    }
-
-    bool found = false;
-    if (greedy) {
-        for (int i = num_matches - 1; i >= 0; i--) {
-            if (i >= min_count) {
-                *end_pos = match_ends[i];
-                found = true;
-                break;
-            }
-        }
-    } else {
-        for (int i = 0; i < num_matches; i++) {
-            if (i >= min_count) {
-                *end_pos = match_ends[i];
-                found = true;
-                break;
-            }
-        }
-    }
-
-    free(match_ends);
-    return found;
-}
-
-/// @brief Group-tracking variant of `match_node`.
-///
-/// Same dispatch table as the non-group matcher, but the `RE_GROUP`
-/// branch records `[start, end)` into `ctx->group_starts/ends` on
-/// success. If a group fails to match, the `next_group` counter is
-/// decremented so subsequent groups get the right index. No ReDoS
-/// step counter here — typical group-capturing matches are bounded
-/// in practice by the public API only running once per call.
-static bool match_node_groups(match_context_groups *ctx, re_node *n, int pos, int *end_pos) {
-    if (!ctx || !end_pos || pos < 0 || pos > ctx->text_len)
-        return false;
-    if (!n) {
-        *end_pos = pos;
-        return true;
-    }
-
-    switch (n->type) {
-        case RE_LITERAL:
-            if (pos < ctx->text_len && ctx->text[pos] == n->data.literal) {
-                *end_pos = pos + 1;
-                return true;
-            }
-            return false;
-
-        case RE_DOT:
-            if (pos < ctx->text_len && ctx->text[pos] != '\n') {
-                *end_pos = pos + 1;
-                return true;
-            }
-            return false;
-
-        case RE_ANCHOR_START:
-            if (pos == 0) {
-                *end_pos = pos;
-                return true;
-            }
-            return false;
-
-        case RE_ANCHOR_END:
-            if (pos == ctx->text_len) {
-                *end_pos = pos;
-                return true;
-            }
-            return false;
-
-        case RE_CLASS:
-            if (pos < ctx->text_len &&
-                class_test(&n->data.char_class, (unsigned char)ctx->text[pos])) {
-                *end_pos = pos + 1;
-                return true;
-            }
-            return false;
-
-        case RE_CONCAT: {
-            int cur_pos = pos;
-            for (int i = 0; i < n->data.children.count; i++) {
-                int child_end;
-                if (!match_node_groups(ctx, n->data.children.children[i], cur_pos, &child_end)) {
-                    return false;
-                }
-                cur_pos = child_end;
-            }
-            *end_pos = cur_pos;
-            return true;
-        }
-
-        case RE_ALT:
-            for (int i = 0; i < n->data.children.count; i++) {
-                int child_end;
-                if (match_node_groups(ctx, n->data.children.children[i], pos, &child_end)) {
-                    *end_pos = child_end;
-                    return true;
-                }
-            }
-            return false;
-
-        case RE_GROUP: {
-            int group_idx = ctx->next_group++;
-            int child_end = pos;
-            bool matched = true;
-
-            if (n->data.children.count > 0) {
-                matched = match_node_groups(ctx, n->data.children.children[0], pos, &child_end);
-            }
-
-            if (matched && group_idx < ctx->max_groups) {
-                ctx->group_starts[group_idx] = pos;
-                ctx->group_ends[group_idx] = child_end;
-            }
-
-            if (matched) {
-                *end_pos = child_end;
-            } else {
-                ctx->next_group--; // Revert group index
-            }
-            return matched;
-        }
-
-        case RE_QUANT:
-            return match_quant_groups(ctx, n, pos, end_pos);
-    }
-
-    return false;
-}
-
-/// @brief Group-tracking version of `find_match`.
-///
-/// Same scan loop, but uses `match_node_groups` so capture-group
-/// positions land in the caller-provided arrays. `*num_groups` is
-/// set to the number of groups actually captured (may be less than
-/// `max_groups` when the pattern doesn't reach all of them).
-static bool find_match_groups(compiled_pattern *cp,
-                              const char *text,
-                              int text_len,
-                              int start_from,
-                              int *match_start,
-                              int *match_end,
-                              int *group_starts,
-                              int *group_ends,
-                              int max_groups,
-                              int *num_groups) {
-    match_context_groups ctx = {text, text_len, 0, group_starts, group_ends, max_groups, 0};
-
-    for (int i = start_from; i <= text_len; i++) {
-        ctx.start_pos = i;
-        ctx.next_group = 0;
-        int end_pos;
-        if (match_node_groups(&ctx, cp->root, i, &end_pos)) {
-            *match_start = i;
-            *match_end = end_pos;
-            *num_groups = ctx.next_group;
-            return true;
-        }
-    }
-    *num_groups = 0;
-    return false;
-}
-
-/// @brief Public group-capturing find — exposed via `rt_regex_internal.h`.
-///
-/// Wraps `find_match_groups` for callers that hold a compiled pattern
-/// directly (cached-pattern wrapper, replace-with-references helpers,
-/// etc.).
-bool re_find_match_with_groups(re_compiled_pattern *cp,
-                               const char *text,
-                               int text_len,
-                               int start_from,
-                               int *match_start,
-                               int *match_end,
-                               int *group_starts,
-                               int *group_ends,
-                               int max_groups,
-                               int *num_groups) {
-    return find_match_groups(cp,
-                             text,
-                             text_len,
-                             start_from,
-                             match_start,
-                             match_end,
-                             group_starts,
-                             group_ends,
-                             max_groups,
-                             num_groups);
-}
 
 //=============================================================================
 // Pattern Cache (Simple LRU)
@@ -1460,7 +530,7 @@ int8_t rt_pattern_is_match(rt_string text, rt_string pattern) {
 
     compiled_pattern *cp = get_cached_pattern(pat_str);
     int match_start, match_end;
-    int8_t matched = find_match(cp, txt_str, text_len, 0, &match_start, &match_end) ? 1 : 0;
+    int8_t matched = re_find_match(cp, txt_str, text_len, 0, &match_start, &match_end) ? 1 : 0;
     release_cached_pattern(cp);
     return matched;
 }
@@ -1475,7 +545,7 @@ rt_string rt_pattern_find(rt_string text, rt_string pattern) {
     int match_start, match_end;
     rt_string result;
 
-    if (find_match(cp, txt_str, text_len, 0, &match_start, &match_end)) {
+    if (re_find_match(cp, txt_str, text_len, 0, &match_start, &match_end)) {
         result = rt_string_from_bytes(txt_str + match_start, match_end - match_start);
     } else {
         result = rt_const_cstr("");
@@ -1499,7 +569,7 @@ rt_string rt_pattern_find_from(rt_string text, rt_string pattern, int64_t start)
     int match_start, match_end;
     rt_string result;
 
-    if (find_match(cp, txt_str, text_len, (int)start, &match_start, &match_end)) {
+    if (re_find_match(cp, txt_str, text_len, (int)start, &match_start, &match_end)) {
         result = rt_string_from_bytes(txt_str + match_start, match_end - match_start);
     } else {
         result = rt_const_cstr("");
@@ -1517,7 +587,7 @@ int64_t rt_pattern_find_pos(rt_string text, rt_string pattern) {
     int match_start, match_end;
     int64_t result = -1;
 
-    if (find_match(cp, txt_str, safe_rt_string_len_int(text), 0, &match_start, &match_end))
+    if (re_find_match(cp, txt_str, safe_rt_string_len_int(text), 0, &match_start, &match_end))
         result = (int64_t)match_start;
     release_cached_pattern(cp);
     return result;
@@ -1536,7 +606,7 @@ void *rt_pattern_find_all(rt_string text, rt_string pattern) {
 
     while (pos <= text_len) {
         int match_start, match_end;
-        if (!find_match(cp, txt_str, text_len, pos, &match_start, &match_end))
+        if (!re_find_match(cp, txt_str, text_len, pos, &match_start, &match_end))
             break;
 
         rt_string match = rt_string_from_bytes(txt_str + match_start, match_end - match_start);
@@ -1573,7 +643,7 @@ rt_string rt_pattern_replace(rt_string text, rt_string pattern, rt_string replac
     int pos = 0;
     while (pos <= text_len) {
         int match_start, match_end;
-        if (!find_match(cp, txt_str, text_len, pos, &match_start, &match_end)) {
+        if (!re_find_match(cp, txt_str, text_len, pos, &match_start, &match_end)) {
             // Copy rest of text
             size_t remaining = text_len - pos;
             ensure_result_capacity(&result,
@@ -1626,7 +696,7 @@ rt_string rt_pattern_replace_first(rt_string text, rt_string pattern, rt_string 
     int rep_len = safe_rt_string_len_int(replacement);
 
     int match_start, match_end;
-    if (!find_match(cp, txt_str, text_len, 0, &match_start, &match_end)) {
+    if (!re_find_match(cp, txt_str, text_len, 0, &match_start, &match_end)) {
         // No match, return original
         rt_string out = rt_string_from_bytes(txt_str, text_len);
         release_cached_pattern(cp);
@@ -1668,7 +738,7 @@ void *rt_pattern_split(rt_string text, rt_string pattern) {
 
     while (pos <= text_len) {
         int match_start, match_end;
-        if (!find_match(cp, txt_str, text_len, pos, &match_start, &match_end)) {
+        if (!re_find_match(cp, txt_str, text_len, pos, &match_start, &match_end)) {
             // No more matches; add remaining text
             rt_string part = rt_string_from_bytes(txt_str + pos, text_len - pos);
             rt_seq_push(seq, (void *)part);

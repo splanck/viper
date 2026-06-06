@@ -32,6 +32,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_graphics2d.h"
+#include "rt_graphics2d_internal.h"
 
 #include "rt_bitmapfont.h"
 #include "rt_camera.h"
@@ -53,7 +54,6 @@
 
 #define RT2D_MAX_DIM 1000000LL
 #define RT2D_MAX_ELEMENTS 268435456LL
-#define RT2D_INITIAL_CAP 16
 #define RT2D_PI 3.14159265358979323846
 #define RT2D_RENDERTARGET_MAGIC 0x525432445247544cLL /* "RT2DRGTL" */
 #define RT2D_TEXTURE_MAGIC 0x525432445445584cLL      /* "RT2DTEXL" */
@@ -64,16 +64,7 @@
 #define RT2D_MATERIAL_CLASS_ID INT64_C(-0x620103)
 #define RT2D_SHADER_CLASS_ID INT64_C(-0x620104)
 #define RT2D_VIEWPORT_CLASS_ID INT64_C(-0x620105)
-#define RT2D_TILESET_CLASS_ID INT64_C(-0x620106)
-#define RT2D_TILELAYER_CLASS_ID INT64_C(-0x620107)
-#define RT2D_OBJECTLAYER_CLASS_ID INT64_C(-0x620108)
-#define RT2D_AUTOTILE_CLASS_ID INT64_C(-0x620109)
 #define RT2D_PATH_CLASS_ID INT64_C(-0x62010A)
-#define RT2D_SHAPERENDERER_CLASS_ID INT64_C(-0x62010B)
-#define RT2D_TEXTRENDERER_CLASS_ID INT64_C(-0x62010C)
-#define RT2D_SDFFONT_CLASS_ID INT64_C(-0x62010D)
-#define RT2D_NINESLICE_CLASS_ID INT64_C(-0x62010E)
-#define RT2D_DEBUGDRAW_CLASS_ID INT64_C(-0x62010F)
 #define RT2D_TRANSFORM_CLASS_ID INT64_C(-0x620110)
 #define RT2D_SAMPLER_CLASS_ID INT64_C(-0x620111)
 #define RT2D_BLENDSTATE_CLASS_ID INT64_C(-0x620112)
@@ -175,37 +166,6 @@ typedef struct {
     int64_t offset_y;
 } rt_viewport2d_impl;
 
-typedef struct {
-    void *pixels;
-    int64_t tile_width;
-    int64_t tile_height;
-} rt_tileset2d_impl;
-
-typedef struct {
-    int64_t width;
-    int64_t height;
-    int64_t visible;
-    int64_t opacity;
-    int64_t *tiles;
-} rt_tilelayer2d_impl;
-
-typedef struct {
-    int64_t x;
-    int64_t y;
-    int64_t width;
-    int64_t height;
-    int64_t type;
-} rt_objectlayer2d_entry;
-
-typedef struct {
-    rt_objectlayer2d_entry *items;
-    int64_t count;
-    int64_t capacity;
-} rt_objectlayer2d_impl;
-
-typedef struct {
-    int64_t variants[16];
-} rt_autotile2d_impl;
 
 typedef struct {
     int64_t x;
@@ -219,45 +179,6 @@ typedef struct {
     int64_t capacity;
 } rt_path2d_impl;
 
-typedef struct {
-    int64_t stroke;
-    int64_t fill;
-} rt_shaperenderer2d_impl;
-
-typedef struct {
-    void *font;
-    int64_t scale;
-    int64_t color;
-} rt_textrenderer2d_impl;
-
-typedef struct {
-    void *bitmap_font;
-    int64_t spread;
-} rt_sdffont_impl;
-
-typedef struct {
-    void *pixels;
-    int64_t left;
-    int64_t top;
-    int64_t right;
-    int64_t bottom;
-} rt_nineslice2d_impl;
-
-typedef struct {
-    int32_t type;
-    int64_t x0;
-    int64_t y0;
-    int64_t x1;
-    int64_t y1;
-    int64_t value;
-    int64_t color;
-} rt_debugdraw2d_cmd;
-
-typedef struct {
-    rt_debugdraw2d_cmd *cmds;
-    int64_t count;
-    int64_t capacity;
-} rt_debugdraw2d_impl;
 
 //=============================================================================
 // Internal helpers — shared by every class in this file
@@ -279,7 +200,7 @@ static int64_t clamp_u8_i64(int64_t value) {
 }
 
 /// @brief Saturating integer addition: returns INT64_MAX / INT64_MIN instead of wrapping.
-static int64_t saturating_add_i64(int64_t a, int64_t b) {
+int64_t saturating_add_i64(int64_t a, int64_t b) {
     if (b > 0 && a > INT64_MAX - b)
         return INT64_MAX;
     if (b < 0 && a < INT64_MIN - b)
@@ -289,7 +210,7 @@ static int64_t saturating_add_i64(int64_t a, int64_t b) {
 
 /// @brief Saturating integer multiplication using `long double` to detect overflow before
 /// truncation.
-static int64_t saturating_mul_i64(int64_t a, int64_t b) {
+int64_t saturating_mul_i64(int64_t a, int64_t b) {
     long double value = (long double)a * (long double)b;
     if (value >= (long double)INT64_MAX)
         return INT64_MAX;
@@ -343,17 +264,17 @@ static rt_renderer2d_impl *renderer2d_checked(void *renderer) {
 /// @details Used by every public Renderer2D / Material2D / TileLayer2D entry
 ///          point as a one-line type guard before downcasting an opaque
 ///          handle to its concrete impl pointer.
-static int32_t rt2d_has_class(void *obj, int64_t class_id) {
+int32_t rt2d_has_class(void *obj, int64_t class_id) {
     return obj && rt_obj_is_instance(obj, class_id, 0);
 }
 
 /// @brief Like rt2d_has_class but also requires the payload be at least
 ///        @p min_size bytes (guards struct-layout mismatches before a cast).
-static int32_t rt2d_has_class_min(void *obj, int64_t class_id, size_t min_size) {
+int32_t rt2d_has_class_min(void *obj, int64_t class_id, size_t min_size) {
     return obj && rt_obj_is_instance(obj, class_id, min_size);
 }
 
-static int32_t rt2d_is_bitmap_font_handle(void *font) {
+int32_t rt2d_is_bitmap_font_handle(void *font) {
     return font && (rt_obj_is_instance(font, RT_BITMAPFONT_CLASS_ID, 0) ||
                     rt_obj_is_instance(font, RT_SPRITEFONT_CLASS_ID, 0));
 }
@@ -389,20 +310,6 @@ static rt_viewport2d_impl *viewport2d_checked(void *viewport) {
 }
 
 /// @brief Safe-cast an opaque handle to rt_tileset2d_impl, or NULL.
-static rt_tileset2d_impl *tileset2d_checked(void *tileset) {
-    return rt2d_has_class_min(tileset, RT2D_TILESET_CLASS_ID, sizeof(rt_tileset2d_impl))
-               ? (rt_tileset2d_impl *)tileset
-               : NULL;
-}
-
-/// @brief Safe-cast an opaque handle to rt_tilelayer2d_impl, or NULL.
-static rt_tilelayer2d_impl *tilelayer2d_checked(void *layer) {
-    return rt2d_has_class_min(layer, RT2D_TILELAYER_CLASS_ID, sizeof(rt_tilelayer2d_impl))
-               ? (rt_tilelayer2d_impl *)layer
-               : NULL;
-}
-
-/// @brief Test whether @p value falls in the half-open interval `[start, start+length)`.
 /// @details Uses an unsigned subtraction trick to collapse the "negative start" and
 ///   "value < start" cases into a single bounds check without signed-overflow UB.
 static int32_t point_in_interval_i64(int64_t start, int64_t length, int64_t value) {
@@ -530,7 +437,7 @@ static int64_t normalized_dim(int64_t value) {
 /// @param elem_size Bytes per element (e.g. `sizeof(uint32_t)` for RGBA32).
 /// @param out_count Optional output — receives `width * height` on success.
 /// @return 1 on success, 0 on invalid dimensions or overflow.
-static int32_t checked_count(int64_t width, int64_t height, int64_t elem_size, int64_t *out_count) {
+int32_t checked_count(int64_t width, int64_t height, int64_t elem_size, int64_t *out_count) {
     if (width <= 0 || height <= 0 || elem_size <= 0)
         return 0;
     if (width > RT2D_MAX_DIM || height > RT2D_MAX_DIM)
@@ -552,7 +459,7 @@ static int32_t checked_count(int64_t width, int64_t height, int64_t elem_size, i
 ///          thrash through tiny reallocs; ceiling 1Mi entries to cap a pathological
 ///          "reserve everything up front" caller. Negative / zero requests default
 ///          to the floor.
-static int64_t initial_capacity(int64_t requested) {
+int64_t initial_capacity(int64_t requested) {
     if (requested <= 0)
         return RT2D_INITIAL_CAP;
     if (requested > 1048576)
@@ -565,7 +472,7 @@ static int64_t initial_capacity(int64_t requested) {
 ///          or opaque handles (constants, interned values) that don't need refcount
 ///          maintenance. `rt_heap_is_payload` distinguishes the two; this wrapper
 ///          means callers don't have to probe the heap bit themselves.
-static void retain_ref(void *obj) {
+void retain_ref(void *obj) {
     if (obj && rt_heap_is_payload(obj))
         rt_obj_retain_maybe(obj);
 }
@@ -575,7 +482,7 @@ static void retain_ref(void *obj) {
 ///          The slot is cleared *before* the potential free so observers can't see
 ///          a dangling pointer mid-release. Non-payload handles are skipped just
 ///          like `retain_ref`.
-static void release_ref_slot(void **slot) {
+void release_ref_slot(void **slot) {
     if (!slot || !*slot)
         return;
     void *obj = *slot;
@@ -588,7 +495,7 @@ static void release_ref_slot(void **slot) {
 /// @details Shape/debug APIs accept Canvas-style `0x00RRGGBB`, raw
 ///          `0xRRGGBBAA`, or tagged Color.RGBA values. Alpha is ignored by
 ///          these RGB-only drawing primitives.
-static int64_t draw_rgb(int64_t color) {
+int64_t draw_rgb(int64_t color) {
     uint64_t full = (uint64_t)color;
     uint64_t c = full & 0xFFFFFFFFu;
     if ((full & (uint64_t)RT_PIXELS_COLOR_EXPLICIT_ALPHA_FLAG) != 0)
@@ -682,7 +589,7 @@ static uint32_t blend_pixel(uint32_t dst, uint32_t src, int64_t blend_mode) {
 /// @param tint 0x00RRGGBB multiplicative tint, or negative to skip tinting.
 /// @param alpha Alpha scale in [0, 255].
 /// @param blend_mode One of `RT_GRAPHICS2D_BLEND_*`.
-static void blit_pixels(void *dst,
+void blit_pixels(void *dst,
                         int64_t dx,
                         int64_t dy,
                         void *src,
@@ -1154,7 +1061,7 @@ static void apply_tint_alpha_in_place(void *pixels, int64_t tint, int64_t alpha)
 ///   The source coordinates are NOT clipped — callers that may have out-of-bounds regions
 ///   should call `clip_region_to_source` first. Returns NULL if allocation fails or inputs
 ///   are invalid.
-static void *copy_region_pixels(
+void *copy_region_pixels(
     void *pixels, int64_t sx, int64_t sy, int64_t width, int64_t height) {
     if (!pixels || width <= 0 || height <= 0)
         return NULL;
@@ -2519,403 +2426,6 @@ int64_t rt_viewport2d_screen_to_world_y(void *viewport, int64_t y) {
 }
 
 //=============================================================================
-// TileSet2D
-//=============================================================================
-// Uniform grid over a Pixels image. `columns × rows` is derived from the
-// image size and per-tile dimensions; individual tiles can be extracted as
-// their own Pixels for rendering or inspection.
-
-/// @brief GC finalizer — releases the retained backing Pixels.
-static void tileset2d_finalize(void *obj) {
-    rt_tileset2d_impl *tileset = tileset2d_checked(obj);
-    if (!tileset)
-        return;
-    release_ref_slot(&tileset->pixels);
-}
-
-/// @brief Wrap a Pixels image as a tileset with fixed `tile_width × tile_height`
-///        cells.
-/// @details Returns NULL (no trap) if `pixels` is null, either tile dimension is
-///          non-positive, or the image is smaller than one tile — callers can
-///          probe for "is this a usable tileset" without catching a trap. The
-///          grid doesn't have to divide evenly; any partial column/row on the
-///          right or bottom is inaccessible.
-void *rt_tileset2d_new(void *pixels, int64_t tile_width, int64_t tile_height) {
-    if (!pixels || tile_width <= 0 || tile_height <= 0)
-        return NULL;
-    if (!rt_obj_is_instance(pixels, RT_PIXELS_CLASS_ID, sizeof(rt_pixels_impl)))
-        return NULL;
-    int64_t pixels_width = rt_pixels_width(pixels);
-    int64_t pixels_height = rt_pixels_height(pixels);
-    if (pixels_width < tile_width || pixels_height < tile_height)
-        return NULL;
-    retain_ref(pixels);
-    rt_tileset2d_impl *tileset = (rt_tileset2d_impl *)rt_obj_new_i64(
-        RT2D_TILESET_CLASS_ID, (int64_t)sizeof(rt_tileset2d_impl));
-    if (!tileset) {
-        void *owned_pixels = pixels;
-        release_ref_slot(&owned_pixels);
-        return NULL;
-    }
-    tileset->pixels = pixels;
-    tileset->tile_width = tile_width;
-    tileset->tile_height = tile_height;
-    rt_obj_set_finalizer(tileset, tileset2d_finalize);
-    return tileset;
-}
-
-/// @brief Return the number of whole tile columns in the tileset image.
-int64_t rt_tileset2d_columns(void *tileset) {
-    rt_tileset2d_impl *impl = tileset2d_checked(tileset);
-    if (!impl || impl->tile_width <= 0)
-        return 0;
-    return rt_pixels_width(impl->pixels) / impl->tile_width;
-}
-
-/// @brief Return the number of whole tile rows in the tileset image.
-int64_t rt_tileset2d_rows(void *tileset) {
-    rt_tileset2d_impl *impl = tileset2d_checked(tileset);
-    if (!impl || impl->tile_height <= 0)
-        return 0;
-    return rt_pixels_height(impl->pixels) / impl->tile_height;
-}
-
-/// @brief Return the total number of tiles (`columns * rows`) in the tileset.
-int64_t rt_tileset2d_tile_count(void *tileset) {
-    return rt_tileset2d_columns(tileset) * rt_tileset2d_rows(tileset);
-}
-
-/// @brief Extract one tile by index and return it as a new Pixels buffer.
-/// @details Tiles are indexed left-to-right, top-to-bottom starting at 0. Returns NULL for
-///   out-of-range indices; caller owns the returned Pixels.
-void *rt_tileset2d_get_tile_pixels(void *tileset, int64_t tile_index) {
-    if (!tileset || tile_index < 0 || tile_index >= rt_tileset2d_tile_count(tileset))
-        return NULL;
-    rt_tileset2d_impl *impl = tileset2d_checked(tileset);
-    if (!impl)
-        return NULL;
-    int64_t columns = rt_tileset2d_columns(tileset);
-    if (columns <= 0)
-        return NULL;
-    int64_t sx = (tile_index % columns) * impl->tile_width;
-    int64_t sy = (tile_index / columns) * impl->tile_height;
-    return copy_region_pixels(impl->pixels, sx, sy, impl->tile_width, impl->tile_height);
-}
-
-//=============================================================================
-// TileLayer2D
-//=============================================================================
-// Dense `width × height` grid of int64 tile IDs, plus visibility flag and
-// per-layer opacity. Zero IDs conventionally mean "empty cell," but the
-// interpretation is ultimately the consumer's. Paired with `TileSet2D` at
-// draw time to resolve an ID to a renderable tile.
-
-/// @brief GC finalizer — frees the `tiles` buffer.
-static void tilelayer2d_finalize(void *obj) {
-    rt_tilelayer2d_impl *layer = tilelayer2d_checked(obj);
-    if (!layer)
-        return;
-    free(layer->tiles);
-}
-
-/// @brief Allocate a tile-grid layer `width × height`, zero-initialized and visible
-///        at full opacity.
-/// @details Validates dimensions through `checked_count` with an int64-sized
-///          element cost (one int64 per tile ID) so an enormous grid can't
-///          overflow the total byte count. Traps on invalid dimensions — the
-///          caller gets a clear error rather than a silent NULL. On malloc
-///          failure the partially-constructed impl is torn down cleanly.
-void *rt_tilelayer2d_new(int64_t width, int64_t height) {
-    int64_t count = 0;
-    if (!checked_count(width, height, (int64_t)sizeof(int64_t), &count)) {
-        rt_trap("TileLayer2D.New: invalid dimensions");
-        return NULL;
-    }
-    rt_tilelayer2d_impl *layer = (rt_tilelayer2d_impl *)rt_obj_new_i64(
-        RT2D_TILELAYER_CLASS_ID, (int64_t)sizeof(rt_tilelayer2d_impl));
-    if (!layer)
-        return NULL;
-    layer->tiles = (int64_t *)calloc((size_t)count, sizeof(int64_t));
-    if (!layer->tiles) {
-        if (rt_obj_release_check0(layer))
-            rt_obj_free(layer);
-        return NULL;
-    }
-    layer->width = width;
-    layer->height = height;
-    layer->visible = 1;
-    layer->opacity = 100;
-    rt_obj_set_finalizer(layer, tilelayer2d_finalize);
-    return layer;
-}
-
-/// @brief Return the width (in tiles) of the layer.
-int64_t rt_tilelayer2d_width(void *layer) {
-    rt_tilelayer2d_impl *impl = tilelayer2d_checked(layer);
-    return impl ? impl->width : 0;
-}
-
-/// @brief Return the height (in tiles) of the layer.
-int64_t rt_tilelayer2d_height(void *layer) {
-    rt_tilelayer2d_impl *impl = tilelayer2d_checked(layer);
-    return impl ? impl->height : 0;
-}
-
-/// @brief Return non-zero if tile cell (x, y) is within the layer's bounds.
-static int32_t tilelayer2d_in_bounds(rt_tilelayer2d_impl *layer, int64_t x, int64_t y) {
-    return layer && x >= 0 && y >= 0 && x < layer->width && y < layer->height;
-}
-
-/// @brief Write a tile ID into a cell, using row-major flat indexing.
-/// @details Bounds are checked via `tilelayer2d_in_bounds`; out-of-range writes
-///          are silently dropped. Tile ID 0 conventionally means "empty".
-void rt_tilelayer2d_set(void *layer, int64_t x, int64_t y, int64_t tile) {
-    rt_tilelayer2d_impl *impl = tilelayer2d_checked(layer);
-    if (!tilelayer2d_in_bounds(impl, x, y))
-        return;
-    impl->tiles[y * impl->width + x] = tile;
-}
-
-/// @brief Read the tile ID at `(x, y)`, returning -1 for out-of-range coords.
-int64_t rt_tilelayer2d_get(void *layer, int64_t x, int64_t y) {
-    rt_tilelayer2d_impl *impl = tilelayer2d_checked(layer);
-    if (!tilelayer2d_in_bounds(impl, x, y))
-        return -1;
-    return impl->tiles[y * impl->width + x];
-}
-
-/// @brief Fill every cell in the layer with the same tile ID.
-void rt_tilelayer2d_fill(void *layer, int64_t tile) {
-    rt_tilelayer2d_impl *impl = tilelayer2d_checked(layer);
-    if (!impl)
-        return;
-    int64_t count = impl->width * impl->height;
-    for (int64_t i = 0; i < count; i++)
-        impl->tiles[i] = tile;
-}
-
-/// @brief Fill every cell with tile ID 0 (empty).
-void rt_tilelayer2d_clear(void *layer) {
-    rt_tilelayer2d_fill(layer, 0);
-}
-
-/// @brief Set whether the layer is included in tilemap renders.
-void rt_tilelayer2d_set_visible(void *layer, int64_t visible) {
-    rt_tilelayer2d_impl *impl = tilelayer2d_checked(layer);
-    if (impl)
-        impl->visible = visible != 0;
-}
-
-/// @brief Return non-zero if the layer is currently marked visible.
-int64_t rt_tilelayer2d_is_visible(void *layer) {
-    rt_tilelayer2d_impl *impl = tilelayer2d_checked(layer);
-    return impl ? impl->visible : 0;
-}
-
-/// @brief Set the layer opacity in percent [0, 100]; values are clamped.
-void rt_tilelayer2d_set_opacity(void *layer, int64_t opacity) {
-    rt_tilelayer2d_impl *impl = tilelayer2d_checked(layer);
-    if (impl)
-        impl->opacity = clamp_i64(opacity, 0, 100);
-}
-
-/// @brief Return the current layer opacity in percent [0, 100].
-int64_t rt_tilelayer2d_get_opacity(void *layer) {
-    rt_tilelayer2d_impl *impl = tilelayer2d_checked(layer);
-    return impl ? impl->opacity : 0;
-}
-
-//=============================================================================
-// ObjectLayer2D
-//=============================================================================
-// Dynamic list of rect objects — used for collision volumes, triggers, spawn
-// points, and editor metadata. Each entry has `(x, y, width, height, type)`;
-// interpretation of `type` is app-specific.
-
-/// @brief GC finalizer — frees the dynamic `items` array.
-static void objectlayer2d_finalize(void *obj) {
-    if (!rt2d_has_class(obj, RT2D_OBJECTLAYER_CLASS_ID))
-        return;
-    rt_objectlayer2d_impl *layer = (rt_objectlayer2d_impl *)obj;
-    free(layer->items);
-}
-
-/// @brief Allocate an object layer with the given initial capacity.
-/// @details Capacity is clamped by `initial_capacity` (floor 16, ceiling 1Mi).
-///          Returns NULL on allocation failure without trapping — the caller
-///          can fall back to a smaller capacity or handle the error.
-void *rt_objectlayer2d_new(int64_t capacity) {
-    rt_objectlayer2d_impl *layer = (rt_objectlayer2d_impl *)rt_obj_new_i64(
-        RT2D_OBJECTLAYER_CLASS_ID, (int64_t)sizeof(rt_objectlayer2d_impl));
-    if (!layer)
-        return NULL;
-    layer->capacity = initial_capacity(capacity);
-    layer->items = (rt_objectlayer2d_entry *)calloc((size_t)layer->capacity, sizeof(*layer->items));
-    if (!layer->items) {
-        if (rt_obj_release_check0(layer))
-            rt_obj_free(layer);
-        return NULL;
-    }
-    rt_obj_set_finalizer(layer, objectlayer2d_finalize);
-    return layer;
-}
-
-/// @brief Grow the object-entry array to fit at least `needed` entries.
-/// @details Same doubling pattern as `renderer2d_reserve` with both element-count
-///          and byte-count overflow guards. Returns 0 on failure so the caller
-///          can decide whether to trap or drop-the-add — used by `Add` to
-///          trap-on-overflow with a clear message.
-static int32_t objectlayer2d_reserve(rt_objectlayer2d_impl *layer, int64_t needed) {
-    if (!layer || needed <= layer->capacity)
-        return 1;
-    int64_t cap = layer->capacity > 0 ? layer->capacity : RT2D_INITIAL_CAP;
-    while (cap < needed) {
-        if (cap > INT64_MAX / 2)
-            return 0;
-        cap *= 2;
-    }
-    if (cap > INT64_MAX / (int64_t)sizeof(rt_objectlayer2d_entry))
-        return 0;
-    rt_objectlayer2d_entry *items =
-        (rt_objectlayer2d_entry *)realloc(layer->items, (size_t)cap * sizeof(*items));
-    if (!items)
-        return 0;
-    memset(items + layer->capacity, 0, (size_t)(cap - layer->capacity) * sizeof(*items));
-    layer->items = items;
-    layer->capacity = cap;
-    return 1;
-}
-
-/// @brief Append a new rect entry and return its index.
-/// @details Grows the backing array if needed (doubling, checked). Traps via
-///          `rt_trap` on capacity overflow. Returns -1 if `layer` is NULL.
-///          The `type` field is opaque — callers use it as a category tag
-///          (e.g. collision=1, trigger=2, spawn=3).
-int64_t rt_objectlayer2d_add_rect(
-    void *layer, int64_t x, int64_t y, int64_t width, int64_t height, int64_t type) {
-    rt_objectlayer2d_impl *impl =
-        rt2d_has_class(layer, RT2D_OBJECTLAYER_CLASS_ID) ? (rt_objectlayer2d_impl *)layer : NULL;
-    if (!impl)
-        return -1;
-    if (!objectlayer2d_reserve(impl, impl->count + 1)) {
-        rt_trap("ObjectLayer2D: capacity overflow");
-        return -1;
-    }
-    if (width == INT64_MIN || height == INT64_MIN)
-        return -1;
-    if (width < 0) {
-        x = saturating_add_i64(x, width);
-        width = -width;
-    }
-    if (height < 0) {
-        y = saturating_add_i64(y, height);
-        height = -height;
-    }
-    if (width <= 0 || height <= 0)
-        return -1;
-    int64_t index = impl->count++;
-    impl->items[index].x = x;
-    impl->items[index].y = y;
-    impl->items[index].width = width;
-    impl->items[index].height = height;
-    impl->items[index].type = type;
-    return index;
-}
-
-/// @brief Return the number of rect entries currently in the layer.
-int64_t rt_objectlayer2d_count(void *layer) {
-    return rt2d_has_class(layer, RT2D_OBJECTLAYER_CLASS_ID)
-               ? ((rt_objectlayer2d_impl *)layer)->count
-               : 0;
-}
-
-/// @brief Reset the entry count to zero without freeing the backing array.
-void rt_objectlayer2d_clear(void *layer) {
-    if (rt2d_has_class(layer, RT2D_OBJECTLAYER_CLASS_ID))
-        ((rt_objectlayer2d_impl *)layer)->count = 0;
-}
-
-/// @brief Return a pointer to the entry at @p index in the object layer, or NULL if out of range.
-static rt_objectlayer2d_entry *objectlayer2d_get_entry(void *layer, int64_t index) {
-    rt_objectlayer2d_impl *impl =
-        rt2d_has_class(layer, RT2D_OBJECTLAYER_CLASS_ID) ? (rt_objectlayer2d_impl *)layer : NULL;
-    if (!impl || index < 0 || index >= impl->count)
-        return NULL;
-    return &impl->items[index];
-}
-
-/// @brief Return the X position of the entry at `index`, or 0 if out of range.
-int64_t rt_objectlayer2d_get_x(void *layer, int64_t index) {
-    rt_objectlayer2d_entry *entry = objectlayer2d_get_entry(layer, index);
-    return entry ? entry->x : 0;
-}
-
-/// @brief Return the Y position of the entry at `index`, or 0 if out of range.
-int64_t rt_objectlayer2d_get_y(void *layer, int64_t index) {
-    rt_objectlayer2d_entry *entry = objectlayer2d_get_entry(layer, index);
-    return entry ? entry->y : 0;
-}
-
-/// @brief Return the width of the entry at `index`, or 0 if out of range.
-int64_t rt_objectlayer2d_get_width(void *layer, int64_t index) {
-    rt_objectlayer2d_entry *entry = objectlayer2d_get_entry(layer, index);
-    return entry ? entry->width : 0;
-}
-
-/// @brief Return the height of the entry at `index`, or 0 if out of range.
-int64_t rt_objectlayer2d_get_height(void *layer, int64_t index) {
-    rt_objectlayer2d_entry *entry = objectlayer2d_get_entry(layer, index);
-    return entry ? entry->height : 0;
-}
-
-/// @brief Return the application-defined type tag of the entry at `index`,
-///        or 0 if out of range.
-int64_t rt_objectlayer2d_get_type(void *layer, int64_t index) {
-    rt_objectlayer2d_entry *entry = objectlayer2d_get_entry(layer, index);
-    return entry ? entry->type : 0;
-}
-
-//=============================================================================
-// AutoTile2D
-//=============================================================================
-// 16-variant autotile resolver. Given a 4-bit neighbour mask (one bit per
-// cardinal direction: N / E / S / W typically), returns the pre-configured
-// tile ID to place so edges and corners join up seamlessly. The mask-to-ID
-// table is filled via `SetVariant`; `Apply` writes the resolved ID directly
-// into a TileLayer2D cell.
-
-/// @brief Allocate a zeroed autotile variant table (16 entries, all 0).
-void *rt_autotile2d_new(void) {
-    return rt_obj_new_i64(RT2D_AUTOTILE_CLASS_ID, (int64_t)sizeof(rt_autotile2d_impl));
-}
-
-/// @brief Register the tile ID to use when the neighbour mask equals `mask`.
-/// @details Only the low 4 bits of `mask` are used (16 possible combinations).
-void rt_autotile2d_set_variant(void *autotile, int64_t mask, int64_t tile) {
-    if (!rt2d_has_class(autotile, RT2D_AUTOTILE_CLASS_ID))
-        return;
-    ((rt_autotile2d_impl *)autotile)->variants[mask & 15] = tile;
-}
-
-/// @brief Look up the tile ID for a given 4-bit neighbour `mask`.
-/// @details Returns 0 if the autotile pointer is NULL or the variant was never
-///          set (variants default to 0 on allocation).
-int64_t rt_autotile2d_resolve(void *autotile, int64_t mask) {
-    return rt2d_has_class(autotile, RT2D_AUTOTILE_CLASS_ID)
-               ? ((rt_autotile2d_impl *)autotile)->variants[mask & 15]
-               : 0;
-}
-
-/// @brief Resolve `mask` to a tile ID and write it into the TileLayer2D cell at `(x, y)`.
-/// @details Combines `rt_autotile2d_resolve` + `rt_tilelayer2d_set` so game
-///          code can update a cell in one call without a temporary variable.
-void rt_autotile2d_apply(void *autotile, void *layer, int64_t x, int64_t y, int64_t mask) {
-    if (!rt2d_has_class(autotile, RT2D_AUTOTILE_CLASS_ID) || !layer)
-        return;
-    rt_tilelayer2d_set(layer, x, y, rt_autotile2d_resolve(autotile, mask));
-}
-
-//=============================================================================
 // Path2D
 //=============================================================================
 // Dynamic sequence of `(x, y, move)` points. `move == 1` marks a pen-up
@@ -3050,518 +2560,6 @@ void rt_path2d_draw_to_pixels(void *path, void *pixels, int64_t rgba) {
                             impl->points[i].x,
                             impl->points[i].y,
                             color);
-    }
-}
-
-//=============================================================================
-// ShapeRenderer2D
-//=============================================================================
-// Stateful line / rect / circle / path drawer. Holds current stroke + fill
-// colors; drawing ops write directly into a Pixels buffer via the shared
-// `rt_pixels_draw_*` primitives. A negative color (the default for `fill`)
-// skips that half of the draw — e.g. rect with `fill = -1` is stroke-only.
-
-/// @brief Allocate a ShapeRenderer2D with default colors (white stroke, no fill).
-void *rt_shaperenderer2d_new(void) {
-    rt_shaperenderer2d_impl *renderer = (rt_shaperenderer2d_impl *)rt_obj_new_i64(
-        RT2D_SHAPERENDERER_CLASS_ID, (int64_t)sizeof(rt_shaperenderer2d_impl));
-    if (!renderer)
-        return NULL;
-    renderer->stroke = 0x00FFFFFF;
-    renderer->fill = -1;
-    return renderer;
-}
-
-/// @brief Set the stroke (outline) color; pass any negative value to disable stroke.
-void rt_shaperenderer2d_set_stroke(void *renderer, int64_t rgba) {
-    if (rt2d_has_class(renderer, RT2D_SHAPERENDERER_CLASS_ID))
-        ((rt_shaperenderer2d_impl *)renderer)->stroke = rgba;
-}
-
-/// @brief Set the fill color; pass any negative value to disable fill (stroke-only mode).
-void rt_shaperenderer2d_set_fill(void *renderer, int64_t rgba) {
-    if (rt2d_has_class(renderer, RT2D_SHAPERENDERER_CLASS_ID))
-        ((rt_shaperenderer2d_impl *)renderer)->fill = rgba;
-}
-
-/// @brief Draw a line from `(x0, y0)` to `(x1, y1)` using the current stroke color.
-/// @details Uses `rt_pixels_draw_line`; no-op if stroke is negative or any pointer is NULL.
-void rt_shaperenderer2d_line(
-    void *renderer, void *pixels, int64_t x0, int64_t y0, int64_t x1, int64_t y1) {
-    if (!rt2d_has_class(renderer, RT2D_SHAPERENDERER_CLASS_ID) || !pixels)
-        return;
-    rt_shaperenderer2d_impl *impl = (rt_shaperenderer2d_impl *)renderer;
-    if (impl->stroke < 0)
-        return;
-    rt_pixels_draw_line(pixels, x0, y0, x1, y1, draw_rgb(impl->stroke));
-}
-
-/// @brief Draw a rectangle at `(x, y)` with `width × height`.
-/// @details Draws a filled solid rect first (if fill >= 0), then a 1-px
-///          outline frame on top (if stroke >= 0), so the stroke is always
-///          visible over the fill color.
-void rt_shaperenderer2d_rect(
-    void *renderer, void *pixels, int64_t x, int64_t y, int64_t width, int64_t height) {
-    if (!rt2d_has_class(renderer, RT2D_SHAPERENDERER_CLASS_ID) || !pixels)
-        return;
-    rt_shaperenderer2d_impl *impl = (rt_shaperenderer2d_impl *)renderer;
-    if (impl->fill >= 0)
-        rt_pixels_draw_box(pixels, x, y, width, height, draw_rgb(impl->fill));
-    if (impl->stroke >= 0)
-        rt_pixels_draw_frame(pixels, x, y, width, height, draw_rgb(impl->stroke));
-}
-
-/// @brief Draw a circle at `(x, y)` with the given `radius`.
-/// @details Same fill-then-stroke ordering as `rt_shaperenderer2d_rect`.
-///          Fill uses `rt_pixels_draw_disc`; stroke uses `rt_pixels_draw_ring`.
-void rt_shaperenderer2d_circle(void *renderer, void *pixels, int64_t x, int64_t y, int64_t radius) {
-    if (!rt2d_has_class(renderer, RT2D_SHAPERENDERER_CLASS_ID) || !pixels)
-        return;
-    rt_shaperenderer2d_impl *impl = (rt_shaperenderer2d_impl *)renderer;
-    if (impl->fill >= 0)
-        rt_pixels_draw_disc(pixels, x, y, radius, draw_rgb(impl->fill));
-    if (impl->stroke >= 0)
-        rt_pixels_draw_ring(pixels, x, y, radius, draw_rgb(impl->stroke));
-}
-
-/// @brief Render a Path2D into `pixels` using the current stroke color.
-/// @details Delegates entirely to `rt_path2d_draw_to_pixels`; fill is ignored
-///          for paths (paths have no closed-region fill support).
-void rt_shaperenderer2d_path(void *renderer, void *pixels, void *path) {
-    if (!rt2d_has_class(renderer, RT2D_SHAPERENDERER_CLASS_ID) || !pixels || !path)
-        return;
-    rt_shaperenderer2d_impl *impl = (rt_shaperenderer2d_impl *)renderer;
-    if (impl->stroke < 0)
-        return;
-    rt_path2d_draw_to_pixels(path, pixels, impl->stroke);
-}
-
-//=============================================================================
-// TextRenderer2D
-//=============================================================================
-// Wraps a BitmapFont (optional) plus a scale + color, and exposes measure /
-// draw entries that go through the existing `rt_canvas_text_*` primitives.
-// When no font is bound, measurement and drawing fall back to the Canvas
-// built-in font so a TextRenderer2D is always usable from construction.
-
-/// @brief GC finalizer — releases the retained BitmapFont reference.
-static void textrenderer2d_finalize(void *obj) {
-    if (!rt2d_has_class(obj, RT2D_TEXTRENDERER_CLASS_ID))
-        return;
-    rt_textrenderer2d_impl *renderer = (rt_textrenderer2d_impl *)obj;
-    release_ref_slot(&renderer->font);
-}
-
-/// @brief Allocate a TextRenderer2D with default state (no font, 1x scale, white).
-void *rt_textrenderer2d_new(void) {
-    rt_textrenderer2d_impl *renderer = (rt_textrenderer2d_impl *)rt_obj_new_i64(
-        RT2D_TEXTRENDERER_CLASS_ID, (int64_t)sizeof(rt_textrenderer2d_impl));
-    if (!renderer)
-        return NULL;
-    renderer->scale = 1;
-    renderer->color = 0x00FFFFFF;
-    rt_obj_set_finalizer(renderer, textrenderer2d_finalize);
-    return renderer;
-}
-
-/// @brief Bind a BitmapFont to this renderer, retaining a reference.
-/// @details Releases any previously held font before storing the new one,
-///          following the standard retain-before-release slot discipline.
-///          Pass NULL to revert to the built-in Canvas font.
-void rt_textrenderer2d_set_font(void *renderer, void *font) {
-    if (!rt2d_has_class(renderer, RT2D_TEXTRENDERER_CLASS_ID) ||
-        (font && !rt2d_is_bitmap_font_handle(font)))
-        return;
-    rt_textrenderer2d_impl *impl = (rt_textrenderer2d_impl *)renderer;
-    retain_ref(font);
-    release_ref_slot(&impl->font);
-    impl->font = font;
-}
-
-/// @brief Set the integer pixel scale factor; clamped to [1, 64].
-void rt_textrenderer2d_set_scale(void *renderer, int64_t scale) {
-    if (rt2d_has_class(renderer, RT2D_TEXTRENDERER_CLASS_ID))
-        ((rt_textrenderer2d_impl *)renderer)->scale = clamp_i64(scale, 1, 64);
-}
-
-/// @brief Set the text color as a packed 0x00RRGGBB value (alpha bits are masked off).
-void rt_textrenderer2d_set_color(void *renderer, int64_t rgb) {
-    if (rt2d_has_class(renderer, RT2D_TEXTRENDERER_CLASS_ID))
-        ((rt_textrenderer2d_impl *)renderer)->color = rgb & 0x00FFFFFF;
-}
-
-/// @brief Measure the pixel width of `text` using the bound font and scale.
-/// @details Falls back to `rt_canvas_text_width` when no BitmapFont is bound.
-///          Width is multiplied by scale using saturating arithmetic to avoid overflow.
-int64_t rt_textrenderer2d_measure_width(void *renderer, rt_string text) {
-    if (!rt2d_has_class(renderer, RT2D_TEXTRENDERER_CLASS_ID))
-        return rt_canvas_text_width(text);
-    rt_textrenderer2d_impl *impl = (rt_textrenderer2d_impl *)renderer;
-    int64_t width =
-        impl->font ? rt_bitmapfont_text_width(impl->font, text) : rt_canvas_text_width(text);
-    return saturating_mul_i64(width, impl->scale);
-}
-
-/// @brief Measure the pixel height of one line of text with the bound font and scale.
-/// @details The `text` argument is ignored — line height is font-uniform, not
-///          string-dependent. Falls back to `rt_canvas_text_height` when no font is bound.
-int64_t rt_textrenderer2d_measure_height(void *renderer, rt_string text) {
-    (void)text;
-    if (!rt2d_has_class(renderer, RT2D_TEXTRENDERER_CLASS_ID))
-        return rt_canvas_text_height();
-    rt_textrenderer2d_impl *impl = (rt_textrenderer2d_impl *)renderer;
-    int64_t height = impl->font ? rt_bitmapfont_text_height(impl->font) : rt_canvas_text_height();
-    return saturating_mul_i64(height, impl->scale);
-}
-
-/// @brief Draw `text` at `(x, y)` into `canvas` using the bound font, scale, and color.
-/// @details If a BitmapFont is bound, uses `rt_canvas_text_font_scaled`; otherwise
-///          falls back to `rt_canvas_text_scaled` with the built-in Canvas font.
-void rt_textrenderer2d_draw(void *renderer, void *canvas, int64_t x, int64_t y, rt_string text) {
-    if (!rt2d_has_class(renderer, RT2D_TEXTRENDERER_CLASS_ID) || !canvas)
-        return;
-    rt_textrenderer2d_impl *impl = (rt_textrenderer2d_impl *)renderer;
-    if (impl->font)
-        rt_canvas_text_font_scaled(canvas, x, y, text, impl->font, impl->scale, impl->color);
-    else
-        rt_canvas_text_scaled(canvas, x, y, text, impl->scale, impl->color);
-}
-
-//=============================================================================
-// SdfFont
-//=============================================================================
-// Forward-compatible name for a signed-distance-field font. The current
-// backend wraps a BitmapFont and stores a `spread` parameter; real SDF
-// raster drawing is a future addition. Callers should code against the
-// SdfFont surface today and gain crisper scaling when the backend upgrades.
-
-/// @brief GC finalizer — releases the retained BitmapFont reference.
-static void sdffont_finalize(void *obj) {
-    if (!rt2d_has_class(obj, RT2D_SDFFONT_CLASS_ID))
-        return;
-    rt_sdffont_impl *font = (rt_sdffont_impl *)obj;
-    release_ref_slot(&font->bitmap_font);
-}
-
-/// @brief Wrap a BitmapFont as an SdfFont with the given SDF spread parameter.
-/// @details `spread` is clamped to `[1, 64]`. Consumers that support real SDF
-///          rendering will use `spread` directly; the current bitmap-backed
-///          implementation records it but ignores it at draw time.
-void *rt_sdffont_new(void *bitmap_font, int64_t spread) {
-    if (bitmap_font && !rt2d_is_bitmap_font_handle(bitmap_font))
-        return NULL;
-    retain_ref(bitmap_font);
-    rt_sdffont_impl *font =
-        (rt_sdffont_impl *)rt_obj_new_i64(RT2D_SDFFONT_CLASS_ID, (int64_t)sizeof(rt_sdffont_impl));
-    if (!font) {
-        void *owned_font = bitmap_font;
-        release_ref_slot(&owned_font);
-        return NULL;
-    }
-    font->bitmap_font = bitmap_font;
-    font->spread = clamp_i64(spread, 1, 64);
-    rt_obj_set_finalizer(font, sdffont_finalize);
-    return font;
-}
-
-/// @brief Return the underlying BitmapFont pointer (not retained — caller must not release it).
-void *rt_sdffont_get_bitmap_font(void *font) {
-    return rt2d_has_class(font, RT2D_SDFFONT_CLASS_ID) ? ((rt_sdffont_impl *)font)->bitmap_font
-                                                       : NULL;
-}
-
-/// @brief Return the SDF spread value stored at construction time (range [1, 64]).
-int64_t rt_sdffont_get_spread(void *font) {
-    return rt2d_has_class(font, RT2D_SDFFONT_CLASS_ID) ? ((rt_sdffont_impl *)font)->spread : 0;
-}
-
-//=============================================================================
-// NineSlice2D
-//=============================================================================
-// Stretchable UI image — four corner tiles stay fixed-size, four edge tiles
-// stretch along one axis, the center tile stretches both axes. Used for
-// resizable panels, buttons, and window frames where the border decoration
-// shouldn't smear under scale. The `left / top / right / bottom` parameters
-// are source-image border widths, measured inward from each edge.
-
-/// @brief GC finalizer — releases the retained source Pixels.
-static void nineslice2d_finalize(void *obj) {
-    if (!rt2d_has_class(obj, RT2D_NINESLICE_CLASS_ID))
-        return;
-    rt_nineslice2d_impl *slice = (rt_nineslice2d_impl *)obj;
-    release_ref_slot(&slice->pixels);
-}
-
-/// @brief Wrap a source Pixels image as a nine-slice with the given border widths.
-/// @details Border widths are clamped to `[0, image_dim]` so passing e.g. a
-///          border larger than the image falls back to the whole image edge.
-///          The caller retains ownership of their `pixels` reference; this
-///          constructor takes its own.
-void *rt_nineslice2d_new(void *pixels, int64_t left, int64_t top, int64_t right, int64_t bottom) {
-    if (!pixels)
-        return NULL;
-    if (!rt_obj_is_instance(pixels, RT_PIXELS_CLASS_ID, sizeof(rt_pixels_impl)))
-        return NULL;
-    int64_t pixels_width = rt_pixels_width(pixels);
-    int64_t pixels_height = rt_pixels_height(pixels);
-    retain_ref(pixels);
-    rt_nineslice2d_impl *slice = (rt_nineslice2d_impl *)rt_obj_new_i64(
-        RT2D_NINESLICE_CLASS_ID, (int64_t)sizeof(rt_nineslice2d_impl));
-    if (!slice) {
-        void *owned_pixels = pixels;
-        release_ref_slot(&owned_pixels);
-        return NULL;
-    }
-    slice->pixels = pixels;
-    slice->left = clamp_i64(left, 0, pixels_width);
-    slice->top = clamp_i64(top, 0, pixels_height);
-    slice->right = clamp_i64(right, 0, pixels_width);
-    slice->bottom = clamp_i64(bottom, 0, pixels_height);
-    rt_obj_set_finalizer(slice, nineslice2d_finalize);
-    return slice;
-}
-
-/// @brief Copy one rectangular region from `source` into `target`, scaling as
-///        needed. Used by the nine-slice draw to place each of the 9 sub-rects.
-/// @details Fast path when source and destination sizes match — a direct
-///          `blit_pixels` with no intermediate allocation. When they don't,
-///          allocates a temporary region copy (via `copy_region_pixels`),
-///          scales it to the destination dimensions (`rt_pixels_scale`), and
-///          blits the scaled result. Both temporaries are released before
-///          returning. No-op if any dimension is non-positive.
-static void nineslice_copy_scaled(void *target,
-                                  int64_t dx,
-                                  int64_t dy,
-                                  int64_t dw,
-                                  int64_t dh,
-                                  void *source,
-                                  int64_t sx,
-                                  int64_t sy,
-                                  int64_t sw,
-                                  int64_t sh) {
-    if (!target || !source || dw <= 0 || dh <= 0 || sw <= 0 || sh <= 0)
-        return;
-    if (dw == sw && dh == sh) {
-        blit_pixels(target, dx, dy, source, sx, sy, sw, sh, -1, 255, RT_GRAPHICS2D_BLEND_ALPHA);
-        return;
-    }
-    void *region = copy_region_pixels(source, sx, sy, sw, sh);
-    if (!region)
-        return;
-    void *scaled = rt_pixels_scale(region, dw, dh);
-    if (scaled)
-        blit_pixels(target, dx, dy, scaled, 0, 0, dw, dh, -1, 255, RT_GRAPHICS2D_BLEND_ALPHA);
-    release_ref_slot(&scaled);
-    release_ref_slot(&region);
-}
-
-/// @brief Render the nine-slice into `target` at position `(x, y)`, stretched to
-///        `width × height`.
-/// @details The core layout computes two rectangle sets:
-///          - **Source:** `sl`, `sr`, `st`, `sb` are the border widths, clamped
-///            so they can never overlap (right is clamped to `width - left`).
-///            `scw` / `sch` are the remaining center dimensions.
-///          - **Destination:** `dl`, `dr`, `dt`, `db` use the same border
-///            widths but clamped against the destination dimensions, so a
-///            nine-slice drawn smaller than its source still produces
-///            sensible (shrunken) borders. `dcw` / `dch` are the stretched
-///            center dimensions.
-///
-///          Then nine `nineslice_copy_scaled` calls place the nine sub-rects
-///          in row-major order: top-left / top-center / top-right,
-///          middle-left / middle-center / middle-right, bottom-left /
-///          bottom-center / bottom-right. The four corners always copy at
-///          native size; the four edges each stretch along one axis; the
-///          center stretches on both.
-void rt_nineslice2d_draw_to_pixels(
-    void *slice, void *target, int64_t x, int64_t y, int64_t width, int64_t height) {
-    if (!rt2d_has_class(slice, RT2D_NINESLICE_CLASS_ID) || !target || width <= 0 || height <= 0)
-        return;
-    rt_nineslice2d_impl *impl = (rt_nineslice2d_impl *)slice;
-    int64_t source_width = rt_pixels_width(impl->pixels);
-    int64_t source_height = rt_pixels_height(impl->pixels);
-    int64_t sl = clamp_i64(impl->left, 0, source_width);
-    int64_t sr = clamp_i64(impl->right, 0, source_width - sl);
-    int64_t st = clamp_i64(impl->top, 0, source_height);
-    int64_t sb = clamp_i64(impl->bottom, 0, source_height - st);
-    int64_t dl = clamp_i64(sl, 0, width);
-    int64_t dr = clamp_i64(sr, 0, width - dl);
-    int64_t dt = clamp_i64(st, 0, height);
-    int64_t db = clamp_i64(sb, 0, height - dt);
-    int64_t scw = source_width - sl - sr;
-    int64_t sch = source_height - st - sb;
-    int64_t dcw = width - dl - dr;
-    int64_t dch = height - dt - db;
-
-    int64_t x_dl = saturating_add_i64(x, dl);
-    int64_t x_dl_dcw = saturating_add_i64(x_dl, dcw);
-    int64_t y_dt = saturating_add_i64(y, dt);
-    int64_t y_dt_dch = saturating_add_i64(y_dt, dch);
-
-    nineslice_copy_scaled(target, x, y, dl, dt, impl->pixels, 0, 0, sl, st);
-    nineslice_copy_scaled(target, x_dl, y, dcw, dt, impl->pixels, sl, 0, scw, st);
-    nineslice_copy_scaled(target, x_dl_dcw, y, dr, dt, impl->pixels, sl + scw, 0, sr, st);
-
-    nineslice_copy_scaled(target, x, y_dt, dl, dch, impl->pixels, 0, st, sl, sch);
-    nineslice_copy_scaled(target, x_dl, y_dt, dcw, dch, impl->pixels, sl, st, scw, sch);
-    nineslice_copy_scaled(target, x_dl_dcw, y_dt, dr, dch, impl->pixels, sl + scw, st, sr, sch);
-
-    nineslice_copy_scaled(target, x, y_dt_dch, dl, db, impl->pixels, 0, st + sch, sl, sb);
-    nineslice_copy_scaled(target, x_dl, y_dt_dch, dcw, db, impl->pixels, sl, st + sch, scw, sb);
-    nineslice_copy_scaled(
-        target, x_dl_dcw, y_dt_dch, dr, db, impl->pixels, sl + scw, st + sch, sr, sb);
-}
-
-//=============================================================================
-// DebugDraw2D
-//=============================================================================
-// Retained queue of debug line / rect / circle primitives. Typical usage:
-// gameplay code accumulates shapes during the logic update, the renderer
-// flushes them all at the end of the frame. `Clear` resets the queue;
-// queueing after clear starts fresh without any retained allocations.
-
-/// @brief GC finalizer — frees the command buffer.
-static void debugdraw2d_finalize(void *obj) {
-    if (!rt2d_has_class(obj, RT2D_DEBUGDRAW_CLASS_ID))
-        return;
-    rt_debugdraw2d_impl *debug_draw = (rt_debugdraw2d_impl *)obj;
-    free(debug_draw->cmds);
-}
-
-/// @brief Allocate a DebugDraw2D with the given initial command-buffer capacity.
-/// @details Capacity is clamped by `initial_capacity` (floor 16, ceiling 1Mi).
-///          Returns NULL on allocation failure.
-void *rt_debugdraw2d_new(int64_t capacity) {
-    rt_debugdraw2d_impl *debug_draw = (rt_debugdraw2d_impl *)rt_obj_new_i64(
-        RT2D_DEBUGDRAW_CLASS_ID, (int64_t)sizeof(rt_debugdraw2d_impl));
-    if (!debug_draw)
-        return NULL;
-    debug_draw->capacity = initial_capacity(capacity);
-    debug_draw->cmds =
-        (rt_debugdraw2d_cmd *)calloc((size_t)debug_draw->capacity, sizeof(*debug_draw->cmds));
-    if (!debug_draw->cmds) {
-        if (rt_obj_release_check0(debug_draw))
-            rt_obj_free(debug_draw);
-        return NULL;
-    }
-    rt_obj_set_finalizer(debug_draw, debugdraw2d_finalize);
-    return debug_draw;
-}
-
-/// @brief Discard all queued commands without freeing the backing buffer.
-void rt_debugdraw2d_clear(void *debug_draw) {
-    if (rt2d_has_class(debug_draw, RT2D_DEBUGDRAW_CLASS_ID))
-        ((rt_debugdraw2d_impl *)debug_draw)->count = 0;
-}
-
-/// @brief Return the number of commands currently queued.
-int64_t rt_debugdraw2d_count(void *debug_draw) {
-    return rt2d_has_class(debug_draw, RT2D_DEBUGDRAW_CLASS_ID)
-               ? ((rt_debugdraw2d_impl *)debug_draw)->count
-               : 0;
-}
-
-/// @brief Ensure the debug-draw command buffer has capacity for at least @p needed entries.
-/// @details Grows geometrically from RT2D_INITIAL_CAP, doubling until capacity ≥ needed.
-///          Guards against integer overflow when computing the byte size for realloc.
-/// @return 1 on success; 0 on OOM or overflow.
-static int32_t debugdraw2d_reserve(rt_debugdraw2d_impl *debug_draw, int64_t needed) {
-    if (!debug_draw || needed <= debug_draw->capacity)
-        return 1;
-    int64_t cap = debug_draw->capacity > 0 ? debug_draw->capacity : RT2D_INITIAL_CAP;
-    while (cap < needed) {
-        if (cap > INT64_MAX / 2)
-            return 0;
-        cap *= 2;
-    }
-    if (cap > INT64_MAX / (int64_t)sizeof(rt_debugdraw2d_cmd))
-        return 0;
-    rt_debugdraw2d_cmd *cmds =
-        (rt_debugdraw2d_cmd *)realloc(debug_draw->cmds, (size_t)cap * sizeof(*cmds));
-    if (!cmds)
-        return 0;
-    memset(cmds + debug_draw->capacity, 0, (size_t)(cap - debug_draw->capacity) * sizeof(*cmds));
-    debug_draw->cmds = cmds;
-    debug_draw->capacity = cap;
-    return 1;
-}
-
-/// @brief Append a single typed debug-draw command (line, circle, rect, text, etc.) to the buffer.
-/// @details Calls debugdraw2d_reserve to grow if needed; traps on overflow. The @p type field
-///          selects the shape; @p value and @p rgba carry shape-specific extra data (e.g.,
-///          radius or packed color).
-static void debugdraw2d_add(rt_debugdraw2d_impl *debug_draw,
-                            int32_t type,
-                            int64_t x0,
-                            int64_t y0,
-                            int64_t x1,
-                            int64_t y1,
-                            int64_t value,
-                            int64_t rgba) {
-    if (!debug_draw)
-        return;
-    if (!debugdraw2d_reserve(debug_draw, debug_draw->count + 1)) {
-        rt_trap("DebugDraw2D: capacity overflow");
-        return;
-    }
-    rt_debugdraw2d_cmd *cmd = &debug_draw->cmds[debug_draw->count++];
-    cmd->type = type;
-    cmd->x0 = x0;
-    cmd->y0 = y0;
-    cmd->x1 = x1;
-    cmd->y1 = y1;
-    cmd->value = value;
-    cmd->color = rgba;
-}
-
-/// @brief Queue a line from `(x0, y0)` to `(x1, y1)` with `rgba` color (type=1).
-void rt_debugdraw2d_line(
-    void *debug_draw, int64_t x0, int64_t y0, int64_t x1, int64_t y1, int64_t rgba) {
-    rt_debugdraw2d_impl *impl = rt2d_has_class(debug_draw, RT2D_DEBUGDRAW_CLASS_ID)
-                                    ? (rt_debugdraw2d_impl *)debug_draw
-                                    : NULL;
-    debugdraw2d_add(impl, 1, x0, y0, x1, y1, 0, rgba);
-}
-
-/// @brief Queue a rectangle outline at `(x, y)` with `width × height` and `rgba` color (type=2).
-void rt_debugdraw2d_rect(
-    void *debug_draw, int64_t x, int64_t y, int64_t width, int64_t height, int64_t rgba) {
-    rt_debugdraw2d_impl *impl = rt2d_has_class(debug_draw, RT2D_DEBUGDRAW_CLASS_ID)
-                                    ? (rt_debugdraw2d_impl *)debug_draw
-                                    : NULL;
-    debugdraw2d_add(impl, 2, x, y, width, height, 0, rgba);
-}
-
-/// @brief Queue a circle outline at `(x, y)` with the given `radius` and `rgba` color (type=3).
-void rt_debugdraw2d_circle(void *debug_draw, int64_t x, int64_t y, int64_t radius, int64_t rgba) {
-    rt_debugdraw2d_impl *impl = rt2d_has_class(debug_draw, RT2D_DEBUGDRAW_CLASS_ID)
-                                    ? (rt_debugdraw2d_impl *)debug_draw
-                                    : NULL;
-    debugdraw2d_add(impl, 3, x, y, 0, 0, radius, rgba);
-}
-
-/// @brief Flush all queued commands into `pixels`.
-/// @details Iterates the command list and dispatches to the appropriate
-///          `rt_pixels_draw_*` primitive by command type:
-///          - type 1 → `rt_pixels_draw_line`
-///          - type 2 → `rt_pixels_draw_frame` (outline rect)
-///          - type 3 → `rt_pixels_draw_ring` (outline circle)
-///          Unknown types are silently skipped.
-void rt_debugdraw2d_draw_to_pixels(void *debug_draw, void *pixels) {
-    rt_debugdraw2d_impl *impl = rt2d_has_class(debug_draw, RT2D_DEBUGDRAW_CLASS_ID)
-                                    ? (rt_debugdraw2d_impl *)debug_draw
-                                    : NULL;
-    if (!impl || !pixels)
-        return;
-    for (int64_t i = 0; i < impl->count; i++) {
-        rt_debugdraw2d_cmd *cmd = &impl->cmds[i];
-        int64_t color = draw_rgb(cmd->color);
-        if (cmd->type == 1)
-            rt_pixels_draw_line(pixels, cmd->x0, cmd->y0, cmd->x1, cmd->y1, color);
-        else if (cmd->type == 2)
-            rt_pixels_draw_frame(pixels, cmd->x0, cmd->y0, cmd->x1, cmd->y1, color);
-        else if (cmd->type == 3)
-            rt_pixels_draw_ring(pixels, cmd->x0, cmd->y0, cmd->value, color);
     }
 }
 
