@@ -266,7 +266,7 @@ Expected<void> parseWithMetadata(Opcode opcode,
                     return Expected<void>{il::io::makeLineErrorDiag(in.loc, st.lineNo, oss.str())};
                 }
                 viper::parse::Cursor typeCursor{token, viper::parse::SourcePos{st.lineNo, 0}};
-                viper::il::io::Context typeCtx{st, in};
+                viper::il::io::Context typeCtx{st, in, &in};
                 auto parsedType = viper::il::io::parseTypeOperand(typeCursor, typeCtx);
                 if (!parsedType.ok())
                     return Expected<void>{parsedType.status.error()};
@@ -389,7 +389,7 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st) {
                     il::io::makeLineErrorDiag(in.loc, st.lineNo, "malformed result name")};
             }
             viper::parse::Cursor annotCursor{tyTok, viper::parse::SourcePos{st.lineNo, 0}};
-            viper::il::io::Context annotCtx{st, in};
+            viper::il::io::Context annotCtx{st, in, &in};
             auto parsedType = viper::il::io::parseTypeOperand(annotCursor, annotCtx);
             if (!parsedType.ok())
                 return Expected<void>{parsedType.status.error()};

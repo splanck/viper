@@ -37,6 +37,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <optional>
+#include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -83,6 +84,20 @@ static bool isDeadOverflowOp(const il::core::Instr &instr) {
 using namespace il::core;
 
 namespace il::transform {
+namespace {
+constexpr unsigned kMaxDenseUseVectorTempId = 10'000'000;
+
+/// @brief Validate that a temp id is safe for DCE's dense use-count vector.
+/// @details DCE intentionally uses vector indexing for speed on well-formed IL.
+///          A corrupted or hostile module can otherwise force a huge allocation
+///          by referencing a very large temporary id.
+/// @param id Highest temporary identifier observed.
+static void requireDenseUseVectorTempId(unsigned id) {
+    if (id > kMaxDenseUseVectorTempId)
+        throw std::overflow_error("DCE: temporary id exceeds dense use-count limit");
+}
+} // namespace
+
 /// @brief Count how many times each temporary identifier is referenced.
 ///
 /// @details Determines the maximum SSA id and uses an indexed vector for
@@ -104,6 +119,7 @@ static std::vector<size_t> countUses(Function &F) {
             if (I.result)
                 maxId = std::max(maxId, static_cast<unsigned>(*I.result));
     }
+    requireDenseUseVectorTempId(maxId);
 
     std::vector<size_t> uses(static_cast<size_t>(maxId) + 1, 0);
 
@@ -113,6 +129,7 @@ static std::vector<size_t> countUses(Function &F) {
             (void)uses[p.id];
 
     auto touch = [&](unsigned id) {
+        requireDenseUseVectorTempId(id);
         if (id >= uses.size())
             uses.resize(static_cast<size_t>(id) + 1, 0);
         uses[id]++;

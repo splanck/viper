@@ -23,8 +23,11 @@
 
 #include "il/build/IRBuilder.hpp"
 #include "il/core/OpcodeInfo.hpp"
+#include <algorithm>
 #include <cassert>
+#include <limits>
 #include <stdexcept>
+#include <string_view>
 #include <unordered_set>
 
 namespace il::build {
@@ -32,18 +35,105 @@ using namespace il::core;
 using namespace il::support;
 
 //===----------------------------------------------------------------------===//
-// Debug Assertion Helpers
+// Validation Helpers
 //===----------------------------------------------------------------------===//
 
-#ifndef NDEBUG
-/// @brief Check that a parameter type is valid (not Void).
+/// @brief Check that a builder-visible name is present.
+/// @details Empty names produce malformed IL and can poison callee or block
+///          lookup caches. Builder APIs treat them as programming errors in
+///          every build mode.
+/// @param value Name to validate.
+/// @param role Human-readable role for the thrown diagnostic.
+static void validateNonEmptyName(std::string_view value, const char *role) {
+    if (value.empty())
+        throw std::invalid_argument(std::string("IRBuilder: ") + role + " cannot be empty");
+}
+
+/// @brief Check that all parameters have non-void types.
+/// @details Void parameters cannot be represented as SSA values. Enforcing this
+///          before insertion keeps the function/block parameter lists valid even
+///          when assertions are disabled.
 /// @param params Parameters to validate.
-static void assertValidParamTypes(const std::vector<Param> &params) {
+static void validateParamTypes(const std::vector<Param> &params) {
     for (const auto &p : params) {
-        assert(p.type.kind != Type::Kind::Void && "parameter cannot have Void type");
+        if (p.type.kind == Type::Kind::Void)
+            throw std::invalid_argument("IRBuilder: parameter cannot have Void type");
     }
 }
-#endif // NDEBUG
+
+/// @brief Check whether a module already declares a function named @p name.
+/// @param module Module to inspect.
+/// @param name Function name to find.
+/// @return True when the name is already used by a function.
+static bool moduleHasFunction(const Module &module, std::string_view name) {
+    return std::any_of(module.functions.begin(), module.functions.end(), [&](const Function &fn) {
+        return fn.name == name;
+    });
+}
+
+/// @brief Check whether a module already declares an extern named @p name.
+/// @param module Module to inspect.
+/// @param name Extern name to find.
+/// @return True when the name is already used by an extern declaration.
+static bool moduleHasExtern(const Module &module, std::string_view name) {
+    return std::any_of(module.externs.begin(), module.externs.end(), [&](const Extern &ext) {
+        return ext.name == name;
+    });
+}
+
+/// @brief Check whether a function already contains a block label.
+/// @param function Function to inspect.
+/// @param label Candidate block label.
+/// @return True when @p label is already present in @p function.
+static bool functionHasBlockLabel(const Function &function, std::string_view label) {
+    return std::any_of(function.blocks.begin(), function.blocks.end(), [&](const BasicBlock &bb) {
+        return bb.label == label;
+    });
+}
+
+/// @brief Validate that a value does not reference a future temporary.
+/// @details Builder-created operands must reference parameters or instruction
+///          results already reserved in the active function. Constants and
+///          globals are always accepted.
+/// @param value Operand to inspect.
+/// @param nextTemp First not-yet-allocated temporary id.
+/// @param context Description of the operand role.
+static void validateTempValue(const Value &value, unsigned nextTemp, const char *context) {
+    if (value.kind == Value::Kind::Temp && value.id >= nextTemp) {
+        throw std::logic_error(std::string("IRBuilder: ") + context +
+                               " temp ID exceeds allocated temporaries");
+    }
+}
+
+/// @brief Validate every temporary operand in a value list.
+/// @param values Operands to inspect.
+/// @param nextTemp First not-yet-allocated temporary id.
+/// @param context Description of the operand list role.
+static void validateTempValues(const std::vector<Value> &values,
+                               unsigned nextTemp,
+                               const char *context) {
+    for (const auto &value : values)
+        validateTempValue(value, nextTemp, context);
+}
+
+/// @brief Validate edge arguments against a target block's parameter list.
+/// @details Branch argument count mismatches make SSA block parameters
+///          ill-formed. The builder reports them before appending terminators so
+///          malformed blocks are not partially constructed.
+/// @param target Destination block receiving the edge.
+/// @param args Values supplied to @p target.
+/// @param nextTemp First not-yet-allocated temporary id.
+/// @param context Human-readable edge description.
+static void validateBranchArgs(const BasicBlock &target,
+                               const std::vector<Value> &args,
+                               unsigned nextTemp,
+                               const char *context) {
+    if (args.size() != target.params.size()) {
+        throw std::invalid_argument(std::string("IRBuilder: ") + context +
+                                    " argument count must match target block parameters");
+    }
+    validateTempValues(args, nextTemp, context);
+}
 
 /// @brief Initialise a builder that mutates an existing module.
 ///
@@ -79,6 +169,9 @@ IRBuilder::IRBuilder(il::core::Module &m) : mod(m) {
 il::core::Extern &IRBuilder::addExtern(const std::string &name,
                                        il::core::Type ret,
                                        const std::vector<il::core::Type> &params) {
+    validateNonEmptyName(name, "extern name");
+    if (moduleHasExtern(mod, name) || moduleHasFunction(mod, name))
+        throw std::invalid_argument("IRBuilder: extern name already exists in module");
 #ifndef NDEBUG
     // Extern name must not be empty
     assert(!name.empty() && "extern name cannot be empty");
@@ -101,6 +194,7 @@ il::core::Extern &IRBuilder::addExtern(const std::string &name,
 il::core::Global &IRBuilder::addGlobal(const std::string &name,
                                        il::core::Type type,
                                        const std::string &init) {
+    validateNonEmptyName(name, "global name");
 #ifndef NDEBUG
     // Global name must not be empty
     assert(!name.empty() && "global name cannot be empty");
@@ -132,14 +226,18 @@ il::core::Global &IRBuilder::addGlobalStr(const std::string &name, const std::st
 il::core::Function &IRBuilder::startFunction(const std::string &name,
                                              il::core::Type ret,
                                              const std::vector<il::core::Param> &params) {
+    validateNonEmptyName(name, "function name");
+    validateParamTypes(params);
+    if (moduleHasFunction(mod, name) || moduleHasExtern(mod, name))
+        throw std::invalid_argument("IRBuilder: function name already exists in module");
 #ifndef NDEBUG
     // Function name must not be empty
     assert(!name.empty() && "function name cannot be empty");
     // Validate parameter types (no Void parameters allowed)
-    assertValidParamTypes(params);
-    // Note: We don't assert function name uniqueness here because:
-    // 1. Some code patterns call startFunction multiple times (VM_TailCallTests)
-    // 2. Duplicate function names indicate bugs elsewhere but are caught by verification
+    validateParamTypes(params);
+    assert(usedFunctionNames_.find(name) == usedFunctionNames_.end() &&
+           "function name already exists in module");
+    usedFunctionNames_.insert(name);
     // Initialize per-function block label tracking for this function
     usedBlockLabelsPerFunc_[name].clear();
 #endif
@@ -172,6 +270,10 @@ il::core::Function &IRBuilder::startFunction(const std::string &name,
 il::core::BasicBlock &IRBuilder::createBlock(il::core::Function &fn,
                                              const std::string &label,
                                              const std::vector<il::core::Param> &params) {
+    validateNonEmptyName(label, "block label");
+    validateParamTypes(params);
+    if (functionHasBlockLabel(fn, label))
+        throw std::invalid_argument("IRBuilder: block label already exists in function");
 #ifndef NDEBUG
     // Block label must not be empty
     assert(!label.empty() && "block label cannot be empty");
@@ -181,7 +283,7 @@ il::core::BasicBlock &IRBuilder::createBlock(il::core::Function &fn,
     assert(funcLabels.find(label) == funcLabels.end() && "block label already exists in function");
     funcLabels.insert(label);
     // Validate block parameter types (no Void parameters allowed)
-    assertValidParamTypes(params);
+    validateParamTypes(params);
 #endif
 
     fn.blocks.push_back({label, {}, {}, false});
@@ -212,6 +314,9 @@ il::core::BasicBlock &IRBuilder::addBlock(il::core::Function &fn, const std::str
 il::core::BasicBlock &IRBuilder::insertBlock(il::core::Function &fn,
                                              size_t idx,
                                              const std::string &label) {
+    validateNonEmptyName(label, "block label");
+    if (functionHasBlockLabel(fn, label))
+        throw std::invalid_argument("IRBuilder: block label already exists in function");
 #ifndef NDEBUG
     // Block label must not be empty
     assert(!label.empty() && "block label cannot be empty");
@@ -236,6 +341,8 @@ il::core::BasicBlock &IRBuilder::insertBlock(il::core::Function &fn,
 /// @pre idx must reference an existing parameter.
 il::core::Value IRBuilder::blockParam(il::core::BasicBlock &bb, unsigned idx) {
     assert(idx < bb.params.size());
+    if (idx >= bb.params.size())
+        throw std::out_of_range("IRBuilder: block parameter index out of range");
     return il::core::Value::temp(bb.params[idx].id);
 }
 
@@ -247,6 +354,7 @@ il::core::Value IRBuilder::blockParam(il::core::BasicBlock &bb, unsigned idx) {
 void IRBuilder::br(il::core::BasicBlock &dst, const std::vector<il::core::Value> &args) {
     assert(args.size() == dst.params.size() &&
            "branch argument count must match block parameter count");
+    validateBranchArgs(dst, args, nextTemp, "branch");
 
 #ifndef NDEBUG
     // Validate all branch argument temp IDs are within bounds
@@ -274,7 +382,7 @@ void IRBuilder::br(il::core::BasicBlock &dst, const std::vector<il::core::Value>
 /// @param fargs Arguments supplied when branching to @p f.
 /// @pre Argument counts must match the parameter lists of both targets.
 /// @post Current block is marked terminated.
-void IRBuilder::cbr(il::core::Value cond,
+void IRBuilder::cbr(const il::core::Value &cond,
                     il::core::BasicBlock &t,
                     const std::vector<il::core::Value> &targs,
                     il::core::BasicBlock &f,
@@ -283,6 +391,9 @@ void IRBuilder::cbr(il::core::Value cond,
            "true branch argument count must match target block parameters");
     assert(fargs.size() == f.params.size() &&
            "false branch argument count must match target block parameters");
+    validateTempValue(cond, nextTemp, "condition");
+    validateBranchArgs(t, targs, nextTemp, "true branch");
+    validateBranchArgs(f, fargs, nextTemp, "false branch");
 
 #ifndef NDEBUG
     // Verify condition temp ID is within bounds
@@ -348,6 +459,7 @@ void IRBuilder::setInsertPoint(il::core::BasicBlock &bb) {
     }
 
     assert(false && "insert point block does not belong to any function");
+    throw std::logic_error("IRBuilder: insert point block does not belong to any function");
 }
 
 /// @brief Append an instruction to the current block and update termination state.
@@ -358,8 +470,31 @@ void IRBuilder::setInsertPoint(il::core::BasicBlock &bb) {
 il::core::Instr &IRBuilder::append(il::core::Instr instr) {
     assert(curBlockIdx.has_value() && "insert point not set");
     assert(curFunc && "no active function");
+    if (!curFunc)
+        throw std::logic_error("IRBuilder: no active function");
+    if (!curBlockIdx)
+        throw std::logic_error("IRBuilder: insert point not set");
+    if (*curBlockIdx >= curFunc->blocks.size())
+        throw std::logic_error("IRBuilder: insert point index is out of range");
+    if (instr.op == Opcode::Count)
+        throw std::logic_error("IRBuilder: instruction opcode was not initialized");
 
     il::core::BasicBlock &curBlock = curFunc->blocks[*curBlockIdx];
+    if (curBlock.terminated)
+        throw std::logic_error("IRBuilder: cannot append instruction to terminated block");
+    validateTempValues(instr.operands, nextTemp, "instruction operand");
+    for (const auto &argList : instr.brArgs)
+        validateTempValues(argList, nextTemp, "branch argument");
+    if (instr.result) {
+        constexpr unsigned kResultIdSlack = 1000;
+        const unsigned maxAllowed =
+            nextTemp > std::numeric_limits<unsigned>::max() - kResultIdSlack
+                ? std::numeric_limits<unsigned>::max()
+                : nextTemp + kResultIdSlack;
+        if (*instr.result > maxAllowed) {
+            throw std::logic_error("IRBuilder: result temp ID is unreasonably large");
+        }
+    }
 
 #ifndef NDEBUG
     // Cannot append normal instructions after a terminator
@@ -433,6 +568,9 @@ void IRBuilder::emitCall(const std::string &callee,
                          const std::vector<il::core::Value> &args,
                          const std::optional<il::core::Value> &dst,
                          il::support::SourceLoc loc) {
+    validateTempValues(args, nextTemp, "call argument");
+    if (dst && dst->kind != Value::Kind::Temp)
+        throw std::invalid_argument("IRBuilder: call destination must be a temporary");
 #ifndef NDEBUG
     // Validate that all argument temp IDs are within bounds
     for (const auto &arg : args) {
@@ -454,6 +592,10 @@ void IRBuilder::emitCall(const std::string &callee,
     if (dst) {
         instr.result = dst->id;
         if (dst->id >= nextTemp) {
+            if (!curFunc)
+                throw std::logic_error("IRBuilder: call destination requires an active function");
+            if (dst->id == std::numeric_limits<unsigned>::max())
+                throw std::overflow_error("IRBuilder: call destination temp ID overflows");
             nextTemp = dst->id + 1;
             if (curFunc->valueNames.size() <= dst->id)
                 curFunc->valueNames.resize(dst->id + 1);
@@ -468,6 +610,8 @@ void IRBuilder::emitCall(const std::string &callee,
 /// @param loc Source location carried by the instruction.
 /// @post Marks the block as terminated and enforces the void return opcode when absent.
 void IRBuilder::emitRet(const std::optional<il::core::Value> &v, il::support::SourceLoc loc) {
+    if (v)
+        validateTempValue(*v, nextTemp, "return value");
 #ifndef NDEBUG
     // Validate return value temp ID if present
     if (v && v->kind == Value::Kind::Temp) {
@@ -492,7 +636,8 @@ void IRBuilder::emitRet(const std::optional<il::core::Value> &v, il::support::So
 /// source location for diagnostics.
 /// @param token SSA value representing the exception token to resume.
 /// @param loc Source location used when formatting verifier diagnostics.
-void IRBuilder::emitResumeSame(il::core::Value token, il::support::SourceLoc loc) {
+void IRBuilder::emitResumeSame(const il::core::Value &token, il::support::SourceLoc loc) {
+    validateTempValue(token, nextTemp, "resume token");
 #ifndef NDEBUG
     // Validate token temp ID
     if (token.kind == Value::Kind::Temp) {
@@ -516,7 +661,8 @@ void IRBuilder::emitResumeSame(il::core::Value token, il::support::SourceLoc loc
 /// and records the provided source location.
 /// @param token SSA value representing the exception token to resume.
 /// @param loc Source location used when formatting verifier diagnostics.
-void IRBuilder::emitResumeNext(il::core::Value token, il::support::SourceLoc loc) {
+void IRBuilder::emitResumeNext(const il::core::Value &token, il::support::SourceLoc loc) {
+    validateTempValue(token, nextTemp, "resume token");
 #ifndef NDEBUG
     // Validate token temp ID
     if (token.kind == Value::Kind::Temp) {
@@ -541,9 +687,10 @@ void IRBuilder::emitResumeNext(il::core::Value token, il::support::SourceLoc loc
 /// @param target Handler block that receives control once the token is
 /// resumed.
 /// @param loc Source location used when formatting verifier diagnostics.
-void IRBuilder::emitResumeLabel(il::core::Value token,
+void IRBuilder::emitResumeLabel(const il::core::Value &token,
                                 il::core::BasicBlock &target,
                                 il::support::SourceLoc loc) {
+    validateTempValue(token, nextTemp, "resume token");
 #ifndef NDEBUG
     // Validate token temp ID
     if (token.kind == Value::Kind::Temp) {
@@ -570,6 +717,8 @@ void IRBuilder::emitResumeLabel(il::core::Value token,
 /// @return Identifier assigned to the new temporary.
 unsigned IRBuilder::reserveTempId() {
     assert(curFunc && "reserveTempId requires an active function");
+    if (!curFunc)
+        throw std::logic_error("IRBuilder: reserveTempId requires an active function");
     unsigned id = nextTemp++;
     if (curFunc->valueNames.size() <= id)
         curFunc->valueNames.resize(id + 1);

@@ -148,7 +148,9 @@ set(RT_TEXT_SOURCES
         text/rt_guid.c
         text/rt_hash.c
         text/rt_hash_util.c
-        text/rt_json.c
+        text/rt_json_parse.c
+        text/rt_json_format.c
+        text/rt_json_validate.c
         text/rt_json_stream.c
         text/rt_xml.c
         text/rt_yaml.c
@@ -187,6 +189,7 @@ set(RT_IO_FS_SOURCES
         io/rt_linewriter.c
         io/rt_path.c
         io/rt_dir.c
+        io/rt_dir_list.c
         io/rt_glob.c
         io/rt_tempfile.c
         io/rt_watcher.c
@@ -208,10 +211,13 @@ set(RT_EXEC_SOURCES
 
 set(RT_GRAPHICS_SOURCES
         graphics/2d/rt_action.c
+        graphics/2d/rt_action_presets.c
+        graphics/2d/rt_action_io.c
         graphics/text/rt_font.c
         graphics/2d/rt_canvas.c
         graphics/2d/rt_drawing.c
         graphics/2d/rt_drawing_advanced.c
+        graphics/2d/rt_color.c
         graphics/gui/rt_gui_app.c
         graphics/gui/rt_gui_codeeditor.c
         graphics/gui/rt_gui_messagebox.c
@@ -285,7 +291,8 @@ set(RT_GRAPHICS_SOURCES
         graphics/3d/scene/rt_scene3d_nodeanim.c
         graphics/3d/scene/rt_scene3d_query.c
         graphics/3d/scene/rt_scene3d_spatial.c
-        graphics/3d/scene/rt_scene3d_vscn.c
+        graphics/3d/scene/rt_scene3d_vscn_save.c
+        graphics/3d/scene/rt_scene3d_vscn_load.c
         graphics/3d/anim/rt_animcontroller3d.c
         graphics/3d/anim/rt_blendtree3d.c
         graphics/3d/anim/rt_iksolver3d.c
@@ -332,6 +339,8 @@ set(RT_GRAPHICS_PLATFORM_SOURCES)
 
 set(RT_GRAPHICS_DISABLED_SOURCES
         graphics/2d/rt_action.c
+        graphics/2d/rt_action_presets.c
+        graphics/2d/rt_action_io.c
         graphics/text/rt_font.c
         graphics/gui/rt_gui_app.c
         graphics/gui/rt_gui_codeeditor.c

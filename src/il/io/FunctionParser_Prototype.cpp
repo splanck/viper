@@ -223,13 +223,14 @@ Expected<PrototypeParseResult> parsePrototype(Cursor &cur, bool isImport = false
 }
 
 /// @brief Parse an optional calling convention specifier.
-Expected<CallingConv> parseCallingConv(std::string_view segment, unsigned lineNo) {
+Expected<il::core::CallingConv> parseCallingConv(std::string_view segment, unsigned lineNo) {
     segment = trimView(segment);
     if (segment.empty())
-        return CallingConv::Default;
+        return il::core::CallingConv::Default;
 
-    static constexpr std::array<std::pair<std::string_view, CallingConv>, 1> kCallingConvs = {{
-        {"default", CallingConv::Default},
+    static constexpr std::array<std::pair<std::string_view, il::core::CallingConv>, 1>
+        kCallingConvs = {{
+            {"default", il::core::CallingConv::Default},
     }};
 
     for (const auto &entry : kCallingConvs) {
@@ -239,7 +240,7 @@ Expected<CallingConv> parseCallingConv(std::string_view segment, unsigned lineNo
 
     std::ostringstream oss;
     oss << "unknown calling convention '" << segment << "'";
-    return lineError<CallingConv>(lineNo, oss.str());
+    return lineError<il::core::CallingConv>(lineNo, oss.str());
 }
 
 /// @brief Parse function attributes before the opening brace or declaration end.
@@ -406,6 +407,7 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st) {
     fn.retType = fh.proto.retType;
     fn.params = std::move(fh.proto.params);
     fn.isVarArg = fh.proto.isVarArg;
+    fn.callingConv = fh.cc;
     fn.linkage = linkage;
     fn.attrs().nothrow = fh.attrs.nothrow;
     fn.attrs().readonly = fh.attrs.readonly;

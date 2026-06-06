@@ -176,7 +176,9 @@ void Parser::parseClassFieldSection(ClassDecl &declRef, std::optional<Access> &c
 
         if (at(TokenKind::Number)) {
             TokenKind nextKind = peek(1).kind;
-            if (nextKind == TokenKind::Identifier && peek(2).kind == TokenKind::KeywordAs) {
+            if ((nextKind == TokenKind::Identifier && peek(2).kind == TokenKind::KeywordAs) ||
+                (nextKind == TokenKind::KeywordDim && isSoftIdentToken(peek(2).kind) &&
+                 (peek(3).kind == TokenKind::KeywordAs || peek(3).kind == TokenKind::LParen))) {
                 consume();
                 continue;
             }

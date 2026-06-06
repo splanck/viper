@@ -169,23 +169,23 @@ inline constexpr size_t kMaxOperandParseEntries = 4;
 
 /// @brief Declarative description of how to parse an opcode's tokens.
 struct OperandParseSpec {
-    OperandParseKind kind; ///< Kind of token expected at this position.
-    const char *role;      ///< Human-readable role used for diagnostics (optional).
+    OperandParseKind kind{OperandParseKind::None}; ///< Kind of token expected at this position.
+    const char *role{nullptr}; ///< Human-readable role used for diagnostics (optional).
 };
 
 /// @brief Static description of an opcode signature and behaviour.
 struct OpcodeInfo {
-    const char *name;        ///< Canonical mnemonic.
-    ResultArity resultArity; ///< Expected result arity.
-    TypeCategory resultType; ///< Result type constraint, if any.
-    uint8_t numOperandsMin;  ///< Minimum operand count.
-    uint8_t numOperandsMax;  ///< Maximum operand count or kVariadicOperandCount.
-    std::array<TypeCategory, kMaxOperandCategories> operandTypes; ///< Operand constraints.
-    bool hasSideEffects;   ///< Instruction mutates state or control flow.
-    uint8_t numSuccessors; ///< Number of successor labels required.
-    bool isTerminator;     ///< Instruction terminates a block.
-    VMDispatch vmDispatch; ///< Interpreter dispatch category.
-    std::array<OperandParseSpec, kMaxOperandParseEntries> parse; ///< Textual parsing recipe.
+    const char *name{""}; ///< Canonical mnemonic.
+    ResultArity resultArity{ResultArity::None}; ///< Expected result arity.
+    TypeCategory resultType{TypeCategory::None}; ///< Result type constraint, if any.
+    uint8_t numOperandsMin{0}; ///< Minimum operand count.
+    uint8_t numOperandsMax{0}; ///< Maximum operand count or kVariadicOperandCount.
+    std::array<TypeCategory, kMaxOperandCategories> operandTypes{}; ///< Operand constraints.
+    bool hasSideEffects{false}; ///< Instruction mutates state or control flow.
+    uint8_t numSuccessors{0};   ///< Number of successor labels required.
+    bool isTerminator{false};   ///< Instruction terminates a block.
+    VMDispatch vmDispatch{VMDispatch::None}; ///< Interpreter dispatch category.
+    std::array<OperandParseSpec, kMaxOperandParseEntries> parse{}; ///< Textual parsing recipe.
 };
 
 /// @brief Metadata table indexed by @c Opcode enumerators.

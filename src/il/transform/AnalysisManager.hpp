@@ -30,6 +30,7 @@
 #include <iostream>
 #include <mutex>
 #include <shared_mutex>
+#include <stdexcept>
 #include <string>
 #include <typeindex>
 #include <unordered_map>
@@ -50,6 +51,40 @@ struct FunctionAnalysisRecord {
     std::function<std::any(core::Module &, core::Function &)> compute;
     std::type_index type{typeid(void)};
 };
+
+/// @brief Build a diagnostic for an unregistered analysis lookup.
+/// @details The analysis manager is usually queried by pass identifiers. Listing
+///          the registered names in release builds keeps pipeline mistakes
+///          actionable instead of turning them into null dereferences.
+/// @tparam Map Analysis registry map type.
+/// @param scope Human-readable analysis scope.
+/// @param id Requested analysis identifier.
+/// @param analyses Registered analyses for @p scope.
+/// @return Error message suitable for std::logic_error.
+template <typename Map>
+std::string unknownAnalysisMessage(const char *scope, const std::string &id, const Map &analyses) {
+    std::string message = "unknown ";
+    message += scope;
+    message += " analysis '";
+    message += id;
+    message += "'; registered:";
+    for (const auto &entry : analyses) {
+        message += ' ';
+        message += entry.first;
+    }
+    return message;
+}
+
+/// @brief Validate that a registered analysis produces the requested result type.
+/// @details A mismatched type means the caller's template argument and the
+///          registry declaration disagree. Throwing @c std::bad_any_cast keeps
+///          release builds from dereferencing a null cast result.
+/// @tparam Result Type requested by the caller.
+/// @param actual Type recorded by the registry.
+template <typename Result> void requireAnalysisType(std::type_index actual) {
+    if (actual != std::type_index(typeid(Result)))
+        throw std::bad_any_cast();
+}
 } // namespace detail
 
 using ModuleAnalysisMap = std::unordered_map<std::string, detail::ModuleAnalysisRecord>;
@@ -120,22 +155,34 @@ class AnalysisManager {
         {
             std::shared_lock<std::shared_mutex> lock(mutex_);
             assert(moduleAnalyses_ && "no module analyses registered");
-            [[maybe_unused]] auto it = moduleAnalyses_->find(id);
+            if (!moduleAnalyses_)
+                throw std::logic_error("no module analyses registered");
+            auto it = moduleAnalyses_->find(id);
             assert(it != moduleAnalyses_->end() && "unknown module analysis");
+            if (it == moduleAnalyses_->end())
+                throw std::logic_error(
+                    detail::unknownAnalysisMessage("module", id, *moduleAnalyses_));
             auto cacheIt = moduleCache_.find(id);
             if (cacheIt != moduleCache_.end() && cacheIt->second.has_value()) {
                 assert(it->second.type == std::type_index(typeid(Result)) &&
                        "analysis result type mismatch");
+                detail::requireAnalysisType<Result>(it->second.type);
                 auto *value = std::any_cast<Result>(&cacheIt->second);
                 assert(value && "analysis result cast failed");
+                if (!value)
+                    throw std::bad_any_cast();
                 return *value;
             }
         }
 
         std::unique_lock<std::shared_mutex> lock(mutex_);
         assert(moduleAnalyses_ && "no module analyses registered");
+        if (!moduleAnalyses_)
+            throw std::logic_error("no module analyses registered");
         auto it = moduleAnalyses_->find(id);
         assert(it != moduleAnalyses_->end() && "unknown module analysis");
+        if (it == moduleAnalyses_->end())
+            throw std::logic_error(detail::unknownAnalysisMessage("module", id, *moduleAnalyses_));
         std::any &cache = moduleCache_[id];
         if (!cache.has_value()) {
             cache = it->second.compute(module_);
@@ -143,8 +190,11 @@ class AnalysisManager {
         }
         assert(it->second.type == std::type_index(typeid(Result)) &&
                "analysis result type mismatch");
+        detail::requireAnalysisType<Result>(it->second.type);
         auto *value = std::any_cast<Result>(&cache);
         assert(value && "analysis result cast failed");
+        if (!value)
+            throw std::bad_any_cast();
         return *value;
     }
 
@@ -159,7 +209,9 @@ class AnalysisManager {
         {
             std::shared_lock<std::shared_mutex> lock(mutex_);
             assert(functionAnalyses_ && "no function analyses registered");
-            [[maybe_unused]] auto it = functionAnalyses_->find(id);
+            if (!functionAnalyses_)
+                throw std::logic_error("no function analyses registered");
+            auto it = functionAnalyses_->find(id);
 #ifndef NDEBUG
             if (it == functionAnalyses_->end()) {
                 std::cerr << "Unknown function analysis '" << id << "'; registered:";
@@ -169,14 +221,20 @@ class AnalysisManager {
             }
 #endif
             assert(it != functionAnalyses_->end() && "unknown function analysis");
+            if (it == functionAnalyses_->end())
+                throw std::logic_error(
+                    detail::unknownAnalysisMessage("function", id, *functionAnalyses_));
             auto cacheIt = functionCache_.find(id);
             if (cacheIt != functionCache_.end()) {
                 auto fnIt = cacheIt->second.find(&fn);
                 if (fnIt != cacheIt->second.end() && fnIt->second.has_value()) {
                     assert(it->second.type == std::type_index(typeid(Result)) &&
                            "analysis result type mismatch");
+                    detail::requireAnalysisType<Result>(it->second.type);
                     auto *value = std::any_cast<Result>(&fnIt->second);
                     assert(value && "analysis result cast failed");
+                    if (!value)
+                        throw std::bad_any_cast();
                     return *value;
                 }
             }
@@ -184,6 +242,8 @@ class AnalysisManager {
 
         std::unique_lock<std::shared_mutex> lock(mutex_);
         assert(functionAnalyses_ && "no function analyses registered");
+        if (!functionAnalyses_)
+            throw std::logic_error("no function analyses registered");
         auto it = functionAnalyses_->find(id);
 #ifndef NDEBUG
         if (it == functionAnalyses_->end()) {
@@ -194,6 +254,9 @@ class AnalysisManager {
         }
 #endif
         assert(it != functionAnalyses_->end() && "unknown function analysis");
+        if (it == functionAnalyses_->end())
+            throw std::logic_error(
+                detail::unknownAnalysisMessage("function", id, *functionAnalyses_));
         std::any &cache = functionCache_[id][&fn];
         if (!cache.has_value()) {
             cache = it->second.compute(module_, fn);
@@ -201,8 +264,11 @@ class AnalysisManager {
         }
         assert(it->second.type == std::type_index(typeid(Result)) &&
                "analysis result type mismatch");
+        detail::requireAnalysisType<Result>(it->second.type);
         auto *value = std::any_cast<Result>(&cache);
         assert(value && "analysis result cast failed");
+        if (!value)
+            throw std::bad_any_cast();
         return *value;
     }
 

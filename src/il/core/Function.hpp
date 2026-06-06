@@ -35,6 +35,15 @@
 
 namespace il::core {
 
+/// @brief Calling convention used when lowering an IL function to native code.
+/// @details The current IL grammar exposes only the default platform calling
+///          convention. Keeping this as explicit function metadata prevents the
+///          parser from accepting and then dropping convention annotations when
+///          additional conventions are added.
+enum class CallingConv {
+    Default, ///< Standard platform calling convention.
+};
+
 /// @brief Definition of an IL function with parameters and basic blocks.
 /// @see docs/il-guide.md#reference
 struct Function {
@@ -55,6 +64,9 @@ struct Function {
 
     /// True when the function accepts a C-style variadic argument tail.
     bool isVarArg = false;
+
+    /// Calling convention used by calls to this function.
+    CallingConv callingConv = CallingConv::Default;
 
     /// Basic blocks comprising the function body.
     /// @ownership Function owns all blocks; each block's parent is this function.

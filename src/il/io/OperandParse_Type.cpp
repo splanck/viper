@@ -69,7 +69,9 @@ ParseResult parseTypeOperand(viper::parse::Cursor &cur, Context &ctx) {
         return syntaxError(ctx, oss.str());
     }
 
-    ctx.instr.type = type;
+    if (!ctx.mutableInstr)
+        return syntaxError(ctx, "type parser requires mutable instruction context");
+    ctx.mutableInstr->type = type;
 
     // Position the cursor after the consumed token.
     cur.seek(beginOffset + rawToken.size());

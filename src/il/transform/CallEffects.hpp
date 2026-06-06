@@ -80,7 +80,7 @@ struct CallEffects {
 };
 
 inline void applyRuntimeOwnership(CallEffects &effects,
-                                  il::runtime::RuntimeOwnershipEffects ownership) {
+                                  const il::runtime::RuntimeOwnershipEffects &ownership) {
     effects.consumedArgMask |= ownership.consumedArgMask;
     effects.retainedArgMask |= ownership.retainedArgMask;
     effects.ownedOutArgMask |= ownership.ownedOutArgMask;

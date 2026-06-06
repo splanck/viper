@@ -347,7 +347,7 @@ OperandParser::OperandParser(ParserState &state, Instr &instr) : state_(state), 
 /// @return Parsed value or an error diagnostic.
 Expected<Value> OperandParser::parseValueToken(const std::string &tok) const {
     viper::parse::Cursor cursor{tok, viper::parse::SourcePos{state_.lineNo, 0}};
-    viper::il::io::Context ctx{state_, const_cast<Instr &>(instr_)};
+    viper::il::io::Context ctx{state_, instr_};
     auto parsed = viper::il::io::parseValueOperand(cursor, ctx);
     if (!parsed.ok())
         return Expected<Value>{parsed.status.error()};
@@ -531,7 +531,7 @@ Expected<void> OperandParser::parseBranchTarget(const std::string &segment,
                                                 std::vector<Value> &args) const {
     std::string text = trim(segment);
     const char *mnemonic = il::core::getOpcodeInfo(instr_.op).name;
-    viper::il::io::Context ctx{state_, const_cast<Instr &>(instr_)};
+    viper::il::io::Context ctx{state_, instr_};
     size_t lp = std::string::npos;
     StringStateTracker stringState;
     for (size_t pos = 0; pos < text.size(); ++pos) {

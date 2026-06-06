@@ -68,7 +68,7 @@ using il::transform::ValueKeyHash;
 ///          size; in that case the key still differentiates by pointer+type.
 struct LoadKey {
     Value ptr;
-    Type::Kind type;
+    Type::Kind type{Type::Kind::Void};
     std::optional<unsigned> size;
 
     bool operator==(const LoadKey &o) const noexcept {

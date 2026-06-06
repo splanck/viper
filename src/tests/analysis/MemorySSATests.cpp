@@ -41,6 +41,8 @@
 #include "support/diag_expected.hpp"
 #include "tests/TestHarness.hpp"
 
+#include <algorithm>
+#include <cstdint>
 #include <iostream>
 
 using namespace il::core;
@@ -610,6 +612,70 @@ TEST(MemorySSA, SameBlockLoadUsesNearestAliasingStore) {
     EXPECT_EQ(load->definingAccess, store1->id);
     EXPECT_NE(load->definingAccess, store2->id);
     EXPECT_FALSE(mssa.isDeadStore(&entry, 2));
+}
+
+TEST(MemorySSA, PhiIncomingArmsTrackPredecessorDefs) {
+    Module module;
+    il::build::IRBuilder builder(module);
+
+    Function &fn = builder.startFunction("phi_incoming_defs", Type(Type::Kind::Void), {});
+    builder.createBlock(fn, "entry");
+    builder.createBlock(fn, "left");
+    builder.createBlock(fn, "right");
+    builder.createBlock(fn, "join");
+    BasicBlock &entry = fn.blocks[0];
+    BasicBlock &left = fn.blocks[1];
+    BasicBlock &right = fn.blocks[2];
+    BasicBlock &join = fn.blocks[3];
+
+    const unsigned ptrId = builder.reserveTempId();
+    const unsigned valId = builder.reserveTempId();
+
+    Instr alloca;
+    alloca.result = ptrId;
+    alloca.op = Opcode::Alloca;
+    alloca.type = Type(Type::Kind::Ptr);
+    alloca.operands.push_back(Value::constInt(8));
+    entry.instructions.push_back(std::move(alloca));
+
+    builder.setInsertPoint(entry);
+    builder.cbr(Value::constBool(true), left, {}, right, {});
+
+    addStore(left, ptrId, 1);
+    builder.setInsertPoint(left);
+    builder.br(join);
+
+    addStore(right, ptrId, 2);
+    builder.setInsertPoint(right);
+    builder.br(join);
+
+    addLoad(join, valId, ptrId);
+    builder.setInsertPoint(join);
+    builder.emitRet(std::nullopt, {});
+
+    verifyOrDie(module);
+
+    viper::analysis::BasicAA aa(module, fn);
+    viper::analysis::MemorySSA mssa = viper::analysis::computeMemorySSA(fn, aa);
+
+    const auto *leftStore = mssa.accessFor(&left, 0);
+    ASSERT_TRUE(leftStore != nullptr);
+    const auto *rightStore = mssa.accessFor(&right, 0);
+    ASSERT_TRUE(rightStore != nullptr);
+    const auto *joinPhi = mssa.accessFor(&join, static_cast<size_t>(-1));
+    ASSERT_TRUE(joinPhi != nullptr);
+    EXPECT_EQ(joinPhi->kind, viper::analysis::MemAccessKind::Phi);
+
+    const auto hasIncoming = [&](uint32_t id) {
+        return std::find(joinPhi->incoming.begin(), joinPhi->incoming.end(), id) !=
+               joinPhi->incoming.end();
+    };
+    EXPECT_TRUE(hasIncoming(leftStore->id));
+    EXPECT_TRUE(hasIncoming(rightStore->id));
+
+    const auto *load = mssa.accessFor(&join, 0);
+    ASSERT_TRUE(load != nullptr);
+    EXPECT_EQ(load->definingAccess, joinPhi->id);
 }
 
 int main(int argc, char **argv) {

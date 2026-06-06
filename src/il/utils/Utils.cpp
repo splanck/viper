@@ -141,14 +141,15 @@ void replaceAllUses(::il::core::Function &F,
 /// @param block Candidate dominated block.
 /// @return True when @p dominator is on @p block's idom chain.
 bool dominatesInTree(const ::viper::analysis::DomTree &domTree,
-                     ::il::core::BasicBlock *dominator,
-                     ::il::core::BasicBlock *block) {
+                     const ::il::core::BasicBlock *dominator,
+                     const ::il::core::BasicBlock *block) {
     if (!dominator || !block)
         return false;
-    for (auto *current = block; current != nullptr;) {
+    const auto *current = block;
+    while (current) {
         if (current == dominator)
             return true;
-        auto it = domTree.idom.find(current);
+        auto it = domTree.idom.find(const_cast<::il::core::BasicBlock *>(current));
         if (it == domTree.idom.end() || it->second == current)
             break;
         current = it->second;
@@ -180,9 +181,7 @@ void replaceUsesDominatedBy(::il::core::Function &F,
     auto shouldRewriteInstruction = [&](const BasicBlock &block, std::size_t instrIndex) {
         if (&block == &rootBlock)
             return instrIndex > rootInstrIndex;
-        return dominatesInTree(domTree,
-                               const_cast<BasicBlock *>(&rootBlock),
-                               const_cast<BasicBlock *>(&block));
+        return dominatesInTree(domTree, &rootBlock, &block);
     };
 
     for (auto &B : F.blocks) {

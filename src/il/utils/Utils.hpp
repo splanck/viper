@@ -65,6 +65,18 @@ bool isTerminated(const Block &B);
 /// @sideeffect Mutates operands and branch arguments in place.
 void replaceAllUses(::il::core::Function &F, unsigned tempId, const ::il::core::Value &replacement);
 
+/// @brief Query whether one block dominates another using an existing tree.
+/// @details Accepts const block pointers because the query is read-only; the
+///          underlying dominator tree stores non-const block keys from analysis
+///          construction.
+/// @param domTree Dominator tree for the containing function.
+/// @param dominator Candidate dominator block.
+/// @param block Candidate dominated block.
+/// @return True when @p dominator is on @p block's immediate-dominator chain.
+bool dominatesInTree(const ::viper::analysis::DomTree &domTree,
+                     const ::il::core::BasicBlock *dominator,
+                     const ::il::core::BasicBlock *block);
+
 /// @brief Replace uses of a temporary only where a defining instruction dominates them.
 /// @details Rewrites uses in instructions dominated by @p rootBlock. Uses in the
 ///          root block are rewritten only after @p rootInstrIndex, so callers can

@@ -63,11 +63,11 @@ enum class MemAccessKind {
 /// MemoryAccess nodes are owned and indexed inside @ref MemorySSA.  Consumers
 /// hold IDs (uint32_t) and look up nodes through the owning analysis.
 struct MemoryAccess {
-    MemAccessKind kind;
-    uint32_t id;                    ///< Dense ID; 0 is reserved for LiveOnEntry.
-    il::core::Block *block;         ///< Containing block; nullptr for LiveOnEntry.
-    int instrIdx;                   ///< Index into block->instructions; -1 for Phi/LiveOnEntry.
-    uint32_t definingAccess;        ///< ID of the reaching Def/Phi for this Use or Def.
+    MemAccessKind kind{MemAccessKind::LiveOnEntry};
+    uint32_t id{0};                 ///< Dense ID; 0 is reserved for LiveOnEntry.
+    il::core::Block *block{nullptr}; ///< Containing block; nullptr for LiveOnEntry.
+    int instrIdx{-1};               ///< Index into block->instructions; -1 for Phi/LiveOnEntry.
+    uint32_t definingAccess{0};     ///< ID of the reaching Def/Phi for this Use or Def.
     std::vector<uint32_t> incoming; ///< For Phi: one definingAccess per predecessor (by order).
     std::vector<uint32_t> users;    ///< IDs of accesses that read this Def or Phi.
 };

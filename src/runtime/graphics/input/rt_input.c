@@ -595,210 +595,67 @@ int8_t rt_keyboard_caps_lock(void) {
 /// @brief Get the human-readable name of a key code (e.g., "A", "Space", "F1").
 rt_string rt_keyboard_key_name(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
-    const char *name = NULL;
 
-    // Letters
+    // Letters A-Z and digits 0-9 map directly to their ASCII character. The
+    // single byte lives on the stack; rt_string_from_bytes copies exactly the
+    // requested length, so no null terminator (or shared static buffer) is needed.
     if (key >= VIPER_KEY_A && key <= VIPER_KEY_Z) {
-        static char letter[2] = {0, 0};
-        letter[0] = (char)key;
-        return rt_string_from_bytes(letter, 1);
+        char letter = (char)key;
+        return rt_string_from_bytes(&letter, 1);
     }
-
-    // Numbers
     if (key >= VIPER_KEY_0 && key <= VIPER_KEY_9) {
-        static char digit[2] = {0, 0};
-        digit[0] = (char)key;
-        return rt_string_from_bytes(digit, 1);
+        char digit = (char)key;
+        return rt_string_from_bytes(&digit, 1);
     }
 
-    // Special keys
-    switch (key) {
-        case VIPER_KEY_UNKNOWN:
-            name = "Unknown";
+    // Named keys: a declarative table keeps the keycode->label mapping auditable
+    // and diffable. VIPER_KEY_UNKNOWN and any unlisted code fall through to the
+    // "Unknown" default below.
+    static const struct {
+        int64_t key;
+        const char *name;
+    } kKeyNames[] = {
+        {VIPER_KEY_SPACE, "Space"},         {VIPER_KEY_ESCAPE, "Escape"},
+        {VIPER_KEY_ENTER, "Enter"},         {VIPER_KEY_TAB, "Tab"},
+        {VIPER_KEY_BACKSPACE, "Backspace"}, {VIPER_KEY_INSERT, "Insert"},
+        {VIPER_KEY_DELETE, "Delete"},       {VIPER_KEY_RIGHT, "Right"},
+        {VIPER_KEY_LEFT, "Left"},           {VIPER_KEY_DOWN, "Down"},
+        {VIPER_KEY_UP, "Up"},               {VIPER_KEY_PAGEUP, "PageUp"},
+        {VIPER_KEY_PAGEDOWN, "PageDown"},   {VIPER_KEY_HOME, "Home"},
+        {VIPER_KEY_END, "End"},             {VIPER_KEY_F1, "F1"},
+        {VIPER_KEY_F2, "F2"},               {VIPER_KEY_F3, "F3"},
+        {VIPER_KEY_F4, "F4"},               {VIPER_KEY_F5, "F5"},
+        {VIPER_KEY_F6, "F6"},               {VIPER_KEY_F7, "F7"},
+        {VIPER_KEY_F8, "F8"},               {VIPER_KEY_F9, "F9"},
+        {VIPER_KEY_F10, "F10"},             {VIPER_KEY_F11, "F11"},
+        {VIPER_KEY_F12, "F12"},             {VIPER_KEY_LSHIFT, "Left Shift"},
+        {VIPER_KEY_RSHIFT, "Right Shift"},  {VIPER_KEY_LCTRL, "Left Ctrl"},
+        {VIPER_KEY_RCTRL, "Right Ctrl"},    {VIPER_KEY_LALT, "Left Alt"},
+        {VIPER_KEY_RALT, "Right Alt"},      {VIPER_KEY_MINUS, "Minus"},
+        {VIPER_KEY_EQUALS, "Equals"},       {VIPER_KEY_LBRACKET, "Left Bracket"},
+        {VIPER_KEY_RBRACKET, "Right Bracket"},
+        {VIPER_KEY_BACKSLASH, "Backslash"}, {VIPER_KEY_SEMICOLON, "Semicolon"},
+        {VIPER_KEY_QUOTE, "Quote"},         {VIPER_KEY_GRAVE, "Grave"},
+        {VIPER_KEY_COMMA, "Comma"},         {VIPER_KEY_PERIOD, "Period"},
+        {VIPER_KEY_SLASH, "Slash"},         {VIPER_KEY_NUM0, "Numpad 0"},
+        {VIPER_KEY_NUM1, "Numpad 1"},       {VIPER_KEY_NUM2, "Numpad 2"},
+        {VIPER_KEY_NUM3, "Numpad 3"},       {VIPER_KEY_NUM4, "Numpad 4"},
+        {VIPER_KEY_NUM5, "Numpad 5"},       {VIPER_KEY_NUM6, "Numpad 6"},
+        {VIPER_KEY_NUM7, "Numpad 7"},       {VIPER_KEY_NUM8, "Numpad 8"},
+        {VIPER_KEY_NUM9, "Numpad 9"},       {VIPER_KEY_NUMADD, "Numpad Add"},
+        {VIPER_KEY_NUMSUB, "Numpad Subtract"},
+        {VIPER_KEY_NUMMUL, "Numpad Multiply"},
+        {VIPER_KEY_NUMDIV, "Numpad Divide"},
+        {VIPER_KEY_NUMENTER, "Numpad Enter"},
+        {VIPER_KEY_NUMDOT, "Numpad Decimal"},
+    };
+
+    const char *name = "Unknown";
+    for (size_t i = 0; i < sizeof(kKeyNames) / sizeof(kKeyNames[0]); ++i) {
+        if (kKeyNames[i].key == key) {
+            name = kKeyNames[i].name;
             break;
-        case VIPER_KEY_SPACE:
-            name = "Space";
-            break;
-        case VIPER_KEY_ESCAPE:
-            name = "Escape";
-            break;
-        case VIPER_KEY_ENTER:
-            name = "Enter";
-            break;
-        case VIPER_KEY_TAB:
-            name = "Tab";
-            break;
-        case VIPER_KEY_BACKSPACE:
-            name = "Backspace";
-            break;
-        case VIPER_KEY_INSERT:
-            name = "Insert";
-            break;
-        case VIPER_KEY_DELETE:
-            name = "Delete";
-            break;
-        case VIPER_KEY_RIGHT:
-            name = "Right";
-            break;
-        case VIPER_KEY_LEFT:
-            name = "Left";
-            break;
-        case VIPER_KEY_DOWN:
-            name = "Down";
-            break;
-        case VIPER_KEY_UP:
-            name = "Up";
-            break;
-        case VIPER_KEY_PAGEUP:
-            name = "PageUp";
-            break;
-        case VIPER_KEY_PAGEDOWN:
-            name = "PageDown";
-            break;
-        case VIPER_KEY_HOME:
-            name = "Home";
-            break;
-        case VIPER_KEY_END:
-            name = "End";
-            break;
-        case VIPER_KEY_F1:
-            name = "F1";
-            break;
-        case VIPER_KEY_F2:
-            name = "F2";
-            break;
-        case VIPER_KEY_F3:
-            name = "F3";
-            break;
-        case VIPER_KEY_F4:
-            name = "F4";
-            break;
-        case VIPER_KEY_F5:
-            name = "F5";
-            break;
-        case VIPER_KEY_F6:
-            name = "F6";
-            break;
-        case VIPER_KEY_F7:
-            name = "F7";
-            break;
-        case VIPER_KEY_F8:
-            name = "F8";
-            break;
-        case VIPER_KEY_F9:
-            name = "F9";
-            break;
-        case VIPER_KEY_F10:
-            name = "F10";
-            break;
-        case VIPER_KEY_F11:
-            name = "F11";
-            break;
-        case VIPER_KEY_F12:
-            name = "F12";
-            break;
-        case VIPER_KEY_LSHIFT:
-            name = "Left Shift";
-            break;
-        case VIPER_KEY_RSHIFT:
-            name = "Right Shift";
-            break;
-        case VIPER_KEY_LCTRL:
-            name = "Left Ctrl";
-            break;
-        case VIPER_KEY_RCTRL:
-            name = "Right Ctrl";
-            break;
-        case VIPER_KEY_LALT:
-            name = "Left Alt";
-            break;
-        case VIPER_KEY_RALT:
-            name = "Right Alt";
-            break;
-        case VIPER_KEY_MINUS:
-            name = "Minus";
-            break;
-        case VIPER_KEY_EQUALS:
-            name = "Equals";
-            break;
-        case VIPER_KEY_LBRACKET:
-            name = "Left Bracket";
-            break;
-        case VIPER_KEY_RBRACKET:
-            name = "Right Bracket";
-            break;
-        case VIPER_KEY_BACKSLASH:
-            name = "Backslash";
-            break;
-        case VIPER_KEY_SEMICOLON:
-            name = "Semicolon";
-            break;
-        case VIPER_KEY_QUOTE:
-            name = "Quote";
-            break;
-        case VIPER_KEY_GRAVE:
-            name = "Grave";
-            break;
-        case VIPER_KEY_COMMA:
-            name = "Comma";
-            break;
-        case VIPER_KEY_PERIOD:
-            name = "Period";
-            break;
-        case VIPER_KEY_SLASH:
-            name = "Slash";
-            break;
-        case VIPER_KEY_NUM0:
-            name = "Numpad 0";
-            break;
-        case VIPER_KEY_NUM1:
-            name = "Numpad 1";
-            break;
-        case VIPER_KEY_NUM2:
-            name = "Numpad 2";
-            break;
-        case VIPER_KEY_NUM3:
-            name = "Numpad 3";
-            break;
-        case VIPER_KEY_NUM4:
-            name = "Numpad 4";
-            break;
-        case VIPER_KEY_NUM5:
-            name = "Numpad 5";
-            break;
-        case VIPER_KEY_NUM6:
-            name = "Numpad 6";
-            break;
-        case VIPER_KEY_NUM7:
-            name = "Numpad 7";
-            break;
-        case VIPER_KEY_NUM8:
-            name = "Numpad 8";
-            break;
-        case VIPER_KEY_NUM9:
-            name = "Numpad 9";
-            break;
-        case VIPER_KEY_NUMADD:
-            name = "Numpad Add";
-            break;
-        case VIPER_KEY_NUMSUB:
-            name = "Numpad Subtract";
-            break;
-        case VIPER_KEY_NUMMUL:
-            name = "Numpad Multiply";
-            break;
-        case VIPER_KEY_NUMDIV:
-            name = "Numpad Divide";
-            break;
-        case VIPER_KEY_NUMENTER:
-            name = "Numpad Enter";
-            break;
-        case VIPER_KEY_NUMDOT:
-            name = "Numpad Decimal";
-            break;
-        default:
-            name = "Unknown";
-            break;
+        }
     }
 
     return rt_string_from_bytes(name, strlen(name));

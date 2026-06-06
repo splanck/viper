@@ -119,7 +119,7 @@ inline bool isUse(const Instr &I, viper::analysis::BasicAA &AA) {
 
 /// True if this alloca's address is passed to a call or stored elsewhere.
 struct DefInfo {
-    Opcode op;
+    Opcode op{Opcode::Count};
     std::vector<Value> operands;
 };
 
@@ -453,7 +453,7 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
                         uint32_t newArm = outDef[predList[pi]];
                         if (pi >= phi.incoming.size()) {
                             phi.incoming.push_back(newArm);
-                        } else if (phi.incoming[pi] != newArm) {
+                        } else {
                             phi.incoming[pi] = newArm;
                         }
                     }

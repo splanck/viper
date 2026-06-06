@@ -1,0 +1,38 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: misc/video/demo.zia
+// Purpose: Minimal on-camera demo program for the Viper introduction video.
+//          Small enough that its source and emitted IL both fit on screen,
+//          while still exercising a function call, a loop, and arithmetic so
+//          the optimizer has something visible to do (inlining + SSA cleanup).
+// Key invariants:
+//   - Keep this short; the emitted IL is shown on screen.
+//   - Output is deterministic so the VM run and native run match exactly.
+// Ownership/Lifetime:
+//   - Standalone program; owns no external resources.
+// Links: misc/video/script.md, misc/video/runbook.md
+//
+//===----------------------------------------------------------------------===//
+
+module Demo;
+
+bind Viper.Terminal;
+bind Fmt = Viper.Text.Fmt;
+
+func square(n: Integer) -> Integer {
+    return n * n;
+}
+
+func start() {
+    Say("Viper, compiled from scratch.");
+    var total = 0;
+    for i in 1..6 {
+        total = total + square(i);
+    }
+    Say("Sum of squares 1..5 = " + Fmt.Int(total));
+}

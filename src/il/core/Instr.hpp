@@ -61,8 +61,8 @@ struct Instr {
 
     /// Operation code selecting semantics.
     /// Owned by the instruction.
-    /// Must be a valid Opcode enumerator.
-    Opcode op;
+    /// Must be set to a valid Opcode enumerator before the instruction is used.
+    Opcode op{Opcode::Count};
 
     /// Result type or void.
     /// Owned by the instruction.

@@ -95,9 +95,14 @@ std::vector<Diag> Verifier::verifyAll(const Module &m, size_t maxDiagnostics) {
     std::vector<Diag> diagnostics;
 
     auto appendDiagnostics = [&](const Expected<void> &result) {
-        for (const auto &diag : sink.diagnostics()) {
-            if (diagnostics.size() >= maxDiagnostics)
-                return;
+        bool capped = false;
+        const auto captured = sink.diagnostics();
+        sink.clear();
+        for (const auto &diag : captured) {
+            if (diagnostics.size() >= maxDiagnostics) {
+                capped = true;
+                continue;
+            }
             Diag normalized = normalizeVerifierDiag(diag);
             const bool duplicate =
                 std::any_of(diagnostics.begin(), diagnostics.end(), [&](const Diag &existing) {
@@ -106,7 +111,6 @@ std::vector<Diag> Verifier::verifyAll(const Module &m, size_t maxDiagnostics) {
             if (!duplicate)
                 diagnostics.push_back(std::move(normalized));
         }
-        sink.clear();
         if (!result && diagnostics.size() < maxDiagnostics) {
             Diag resultDiag = normalizeVerifierDiag(result.error());
             const bool duplicate =
@@ -115,22 +119,22 @@ std::vector<Diag> Verifier::verifyAll(const Module &m, size_t maxDiagnostics) {
                 });
             if (!duplicate)
                 diagnostics.push_back(std::move(resultDiag));
+        } else if (!result) {
+            capped = true;
         }
+        return capped || diagnostics.size() >= maxDiagnostics;
     };
 
     ExternVerifier externVerifier;
-    appendDiagnostics(externVerifier.run(m, sink));
-    if (diagnostics.size() >= maxDiagnostics)
+    if (appendDiagnostics(externVerifier.run(m, sink)))
         return diagnostics;
 
     GlobalVerifier globalVerifier;
-    appendDiagnostics(globalVerifier.run(m, sink));
-    if (diagnostics.size() >= maxDiagnostics)
+    if (appendDiagnostics(globalVerifier.run(m, sink)))
         return diagnostics;
 
     FunctionVerifier functionVerifier(externVerifier.externs(), globalVerifier.globals());
-    appendDiagnostics(functionVerifier.run(m, sink));
-    if (diagnostics.size() >= maxDiagnostics)
+    if (appendDiagnostics(functionVerifier.run(m, sink)))
         return diagnostics;
 
     EhVerifier ehVerifier;

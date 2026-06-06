@@ -59,17 +59,19 @@ enum class VerifyStrategy : uint8_t {
 
 /// @brief Schema-driven specification describing operand and control-flow rules.
 struct InstructionSpec {
-    il::core::ResultArity resultArity; ///< Required result cardinality.
-    il::core::TypeCategory resultType; ///< Declared result type category.
-    uint8_t numOperandsMin;            ///< Minimum number of operands.
-    uint8_t numOperandsMax;            ///< Maximum number of operands (or variadic sentinel).
+    il::core::ResultArity resultArity{
+        il::core::ResultArity::None}; ///< Required result cardinality.
+    il::core::TypeCategory resultType{
+        il::core::TypeCategory::None}; ///< Declared result type category.
+    uint8_t numOperandsMin{0};         ///< Minimum number of operands.
+    uint8_t numOperandsMax{0};         ///< Maximum number of operands (or variadic sentinel).
     std::array<il::core::TypeCategory, il::core::kMaxOperandCategories>
-        operandTypes;          ///< Operand type category constraints.
-    bool hasSideEffects;       ///< Whether the opcode mutates observable state.
-    uint8_t numSuccessors;     ///< Number of successor labels (or variadic sentinel).
-    bool isTerminator;         ///< Marks block-terminating instructions.
-    VerifyStrategy strategy;   ///< Post-structure verification strategy.
-    const char *rejectMessage; ///< Diagnostic message for Reject strategy.
+        operandTypes{};        ///< Operand type category constraints.
+    bool hasSideEffects{false}; ///< Whether the opcode mutates observable state.
+    uint8_t numSuccessors{0};   ///< Number of successor labels (or variadic sentinel).
+    bool isTerminator{false};   ///< Marks block-terminating instructions.
+    VerifyStrategy strategy{VerifyStrategy::Default}; ///< Post-structure verification strategy.
+    const char *rejectMessage{nullptr}; ///< Diagnostic message for Reject strategy.
 };
 
 /// @brief Retrieve the specification associated with an opcode.

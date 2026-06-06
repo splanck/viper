@@ -58,7 +58,7 @@ void tarjanDFS(const std::string &start,
     // Each stack frame records: (node, edge_iterator_index).
     struct Frame {
         std::string node;
-        std::size_t edgeIdx; // index into the callee list for this node
+        std::size_t edgeIdx{0}; // index into the callee list for this node
     };
 
     std::vector<Frame> callStack;
