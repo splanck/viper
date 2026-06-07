@@ -67,18 +67,27 @@ static rt_url_t *rt_url_require_obj(void *obj, const char *context) {
     return (rt_url_t *)obj;
 }
 
-/// @brief `malloc(size)` or trap with `context` (returns a non-NULL buffer).
-/// @brief malloc-or-trap: allocate `size` bytes; trap with RUNTIME_ERROR on failure.
+/// @brief `malloc(size)` or trap with `context`.
+/// @details Returns NULL if a custom trap handler returns after an allocation failure.
 static char *rt_url_alloc_or_trap(size_t size, const char *context) {
     char *buffer = (char *)malloc(size);
-    if (!buffer)
+    if (!buffer) {
         rt_url_trap_runtime(context);
+        return NULL;
+    }
     return buffer;
 }
 
 static void rt_url_size_add_or_trap(size_t *total, size_t value, const char *context) {
-    if (!total || value == SIZE_MAX || *total > SIZE_MAX - value)
+    if (!total) {
         rt_url_trap_runtime(context);
+        return;
+    }
+    if (value == SIZE_MAX || *total > SIZE_MAX - value) {
+        *total = SIZE_MAX;
+        rt_url_trap_runtime(context);
+        return;
+    }
     *total += value;
 }
 
@@ -95,12 +104,14 @@ static char *rt_url_dup_slice_or_trap_cleanup(rt_url_t *url,
         if (url)
             free_url(url);
         rt_url_trap_runtime(context);
+        return NULL;
     }
     char *copy = (char *)malloc(len + 1);
     if (!copy) {
         if (url)
             free_url(url);
         rt_url_trap_runtime(context);
+        return NULL;
     }
     memcpy(copy, begin, len);
     copy[len] = '\0';
@@ -130,8 +141,10 @@ static size_t rt_url_string_len_or_trap(rt_string value, const char *context) {
     if (!value)
         return 0;
     int64_t len64 = rt_str_len(value);
-    if (len64 < 0 || (uint64_t)len64 > (uint64_t)SIZE_MAX)
+    if (len64 < 0 || (uint64_t)len64 > (uint64_t)SIZE_MAX) {
         rt_url_trap_runtime(context);
+        return 0;
+    }
     return (size_t)len64;
 }
 
@@ -140,8 +153,10 @@ static size_t rt_url_string_len_or_trap(rt_string value, const char *context) {
 static char *rt_url_dup_string_arg(rt_string value, const char *context) {
     const char *str = value ? rt_string_cstr(value) : NULL;
     size_t len = rt_url_string_len_or_trap(value, context);
-    if (str && len > 0 && memchr(str, '\0', len))
+    if (str && len > 0 && memchr(str, '\0', len)) {
         rt_trap_net("URL: embedded NUL in component", Err_InvalidUrl);
+        return NULL;
+    }
     return str ? rt_url_dup_slice_or_trap_cleanup(NULL, str, len, context) : NULL;
 }
 
@@ -151,8 +166,10 @@ static rt_string rt_url_string_from_bytes_or_trap(const char *bytes,
                                                   size_t len,
                                                   const char *context) {
     rt_string str = rt_string_from_bytes(bytes, len);
-    if (!str)
+    if (!str) {
         rt_url_trap_runtime(context);
+        return NULL;
+    }
     return str;
 }
 
@@ -539,11 +556,15 @@ static char *normalize_path(const char *path) {
         return rt_url_strdup_or_trap_cleanup(NULL, "/", "URL.NormalizePath: allocation failed");
 
     size_t input_len = strlen(path);
-    if (input_len == SIZE_MAX || input_len + 1 > SIZE_MAX / sizeof(char *))
+    if (input_len == SIZE_MAX || input_len + 1 > SIZE_MAX / sizeof(char *)) {
         rt_url_trap_runtime("URL.NormalizePath: length overflow");
+        return NULL;
+    }
     char **segments = (char **)calloc(input_len + 1, sizeof(char *));
-    if (!segments)
+    if (!segments) {
         rt_url_trap_runtime("URL.NormalizePath: segment allocation failed");
+        return NULL;
+    }
 
     int absolute = path[0] == '/';
     size_t segment_count = 0;
@@ -642,14 +663,20 @@ static void rt_url_finalize(void *obj) {
 /// @brief Parse `url_str` per RFC 3986 into a Url object; traps on syntactic failure.
 void *rt_url_parse(rt_string url_str) {
     const char *str = url_str ? rt_string_cstr(url_str) : NULL;
-    if (!str)
+    if (!str) {
         rt_trap_net("URL: Invalid URL string", Err_InvalidUrl);
-    if (rt_url_string_has_embedded_nul(url_str))
+        return NULL;
+    }
+    if (rt_url_string_has_embedded_nul(url_str)) {
         rt_trap_net("URL: Invalid URL string", Err_InvalidUrl);
+        return NULL;
+    }
 
     rt_url_t *url = (rt_url_t *)rt_obj_new_i64(0, sizeof(rt_url_t));
-    if (!url)
+    if (!url) {
         rt_url_trap_runtime("URL.Parse: memory allocation failed");
+        return NULL;
+    }
 
     memset(url, 0, sizeof(*url));
     rt_obj_set_finalizer(url, rt_url_finalize);
@@ -658,6 +685,7 @@ void *rt_url_parse(rt_string url_str) {
         if (rt_obj_release_check0(url))
             rt_obj_free(url);
         rt_trap_net("URL: Failed to parse URL", Err_InvalidUrl);
+        return NULL;
     }
 
     return url;
@@ -666,8 +694,10 @@ void *rt_url_parse(rt_string url_str) {
 /// @brief Allocate an empty Url with all components NULL.
 void *rt_url_new(void) {
     rt_url_t *url = (rt_url_t *)rt_obj_new_i64(0, sizeof(rt_url_t));
-    if (!url)
+    if (!url) {
         rt_url_trap_runtime("URL.New: memory allocation failed");
+        return NULL;
+    }
 
     memset(url, 0, sizeof(*url));
     rt_obj_set_finalizer(url, rt_url_finalize);
@@ -701,8 +731,10 @@ void rt_url_set_scheme(void *obj, rt_string scheme) {
         url->scheme = NULL;
         return;
     }
-    if (memchr(scheme_str, '\0', scheme_len) || !rt_url_scheme_is_valid(scheme_str, scheme_len))
+    if (memchr(scheme_str, '\0', scheme_len) || !rt_url_scheme_is_valid(scheme_str, scheme_len)) {
         rt_trap_net("URL.set_Scheme: invalid scheme", Err_InvalidUrl);
+        return;
+    }
     rt_url_replace_field(&url->scheme, scheme, "URL.set_Scheme: allocation failed", 1);
 }
 
@@ -727,8 +759,10 @@ int64_t rt_url_port(void *obj) {
 void rt_url_set_port(void *obj, int64_t port) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.set_Port: null receiver");
 
-    if (port < 0 || port > 65535)
+    if (port < 0 || port > 65535) {
         rt_trap_net("URL.set_Port: invalid port", Err_InvalidUrl);
+        return;
+    }
 
     url->port = port;
 }
@@ -852,10 +886,14 @@ rt_string rt_url_authority(void *obj) {
 
     if (size == 0)
         return rt_str_empty();
-    if (size == SIZE_MAX)
+    if (size == SIZE_MAX) {
         rt_url_trap_runtime("URL.Authority: length overflow");
+        return rt_str_empty();
+    }
 
     char *result = rt_url_alloc_or_trap(size + 1, "URL.Authority: allocation failed");
+    if (!result)
+        return rt_str_empty();
 
     char *p = result;
     char *end = result + size + 1;
@@ -892,9 +930,13 @@ rt_string rt_url_host_port(void *obj) {
         &size, rt_url_formatted_host_len(url->host), "URL.HostPort: length overflow");
     if (show_port)
         rt_url_size_add_or_trap(&size, 22, "URL.HostPort: length overflow");
-    if (size == SIZE_MAX)
+    if (size == SIZE_MAX) {
         rt_url_trap_runtime("URL.HostPort: length overflow");
+        return rt_str_empty();
+    }
     char *result = rt_url_alloc_or_trap(size + 1, "URL.HostPort: allocation failed");
+    if (!result)
+        return rt_str_empty();
 
     char *p = result;
     char *end = result + size + 1;
@@ -945,10 +987,14 @@ rt_string rt_url_full(void *obj) {
 
     if (size == 0)
         return rt_str_empty();
-    if (size == SIZE_MAX)
+    if (size == SIZE_MAX) {
         rt_url_trap_runtime("URL.Full: length overflow");
+        return rt_str_empty();
+    }
 
     char *result = rt_url_alloc_or_trap(size + 1, "URL.Full: allocation failed");
+    if (!result)
+        return rt_str_empty();
 
     char *p = result;
     char *end = result + size + 1;
@@ -1110,12 +1156,16 @@ void *rt_url_query_map(void *obj) {
 /// (`path`), and same-document (`#fragment`). Returns a fresh Url.
 void *rt_url_resolve(void *obj, rt_string relative) {
     rt_url_t *base = rt_url_require_obj(obj, "URL.Resolve: null receiver");
+    if (!base)
+        return NULL;
     const char *rel_str = relative ? rt_string_cstr(relative) : NULL;
 
     if (!rel_str || *rel_str == '\0')
         return rt_url_clone(obj);
-    if (rt_url_string_has_embedded_nul(relative))
+    if (rt_url_string_has_embedded_nul(relative)) {
         rt_trap_net("URL.Resolve: invalid relative URL", Err_InvalidUrl);
+        return NULL;
+    }
 
     // Parse relative URL.
     rt_url_t rel;
@@ -1123,12 +1173,16 @@ void *rt_url_resolve(void *obj, rt_string relative) {
     if (parse_url_full(rel_str, &rel) != 0) {
         free_url(&rel);
         rt_trap_net("URL.Resolve: invalid relative URL", Err_InvalidUrl);
+        return NULL;
     }
 
     // Create new URL
     rt_url_t *result = (rt_url_t *)rt_obj_new_i64(0, sizeof(rt_url_t));
-    if (!result)
+    if (!result) {
+        free_url(&rel);
         rt_url_trap_runtime("URL.Resolve: memory allocation failed");
+        return NULL;
+    }
     memset(result, 0, sizeof(*result));
     rt_obj_set_finalizer(result, rt_url_finalize);
 
@@ -1250,9 +1304,13 @@ void *rt_url_resolve(void *obj, rt_string relative) {
 /// @brief Deep-copy a Url — every component string is duplicated so the clone is fully independent.
 void *rt_url_clone(void *obj) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.Clone: null receiver");
+    if (!url)
+        return NULL;
     rt_url_t *clone = (rt_url_t *)rt_obj_new_i64(0, sizeof(rt_url_t));
-    if (!clone)
+    if (!clone) {
         rt_url_trap_runtime("URL.Clone: memory allocation failed");
+        return NULL;
+    }
     memset(clone, 0, sizeof(*clone));
     rt_obj_set_finalizer(clone, rt_url_finalize);
 
@@ -1282,8 +1340,10 @@ rt_string rt_url_encode(rt_string text) {
     size_t text_len = rt_url_string_len_or_trap(text, "URL.Encode: invalid input length");
     size_t encoded_len = 0;
     char *encoded = percent_encode_n(str, text_len, true, &encoded_len);
-    if (!encoded)
+    if (!encoded) {
         rt_url_trap_runtime("URL.Encode: allocation failed");
+        return rt_str_empty();
+    }
 
     rt_string result = rt_url_string_from_bytes_or_trap(
         encoded, encoded_len, "URL.Encode: string allocation failed");
@@ -1297,8 +1357,10 @@ rt_string rt_url_decode(rt_string text) {
     size_t text_len = rt_url_string_len_or_trap(text, "URL.Decode: invalid input length");
     size_t decoded_len = 0;
     char *decoded = percent_decode_internal_n(str, text_len, false, &decoded_len);
-    if (!decoded)
+    if (!decoded) {
         rt_url_trap_runtime("URL.Decode: allocation failed");
+        return rt_str_empty();
+    }
 
     rt_string result = rt_url_string_from_bytes_or_trap(
         decoded, decoded_len, "URL.Decode: string allocation failed");
@@ -1323,6 +1385,11 @@ rt_string rt_url_encode_query(void *map) {
     // Build query string
     size_t cap = 256;
     char *result = rt_url_alloc_or_trap(cap, "URL.EncodeQuery: allocation failed");
+    if (!result) {
+        if (keys && rt_obj_release_check0(keys))
+            rt_obj_free(keys);
+        return rt_str_empty();
+    }
 
     size_t pos = 0;
     for (int64_t i = 0; i < len; i++) {
@@ -1357,6 +1424,7 @@ rt_string rt_url_encode_query(void *map) {
             if (keys && rt_obj_release_check0(keys))
                 rt_obj_free(keys);
             rt_url_trap_runtime("URL.EncodeQuery: allocation failed");
+            return rt_str_empty();
         }
 
         if (enc_value_len > SIZE_MAX - 2 || enc_key_len > SIZE_MAX - enc_value_len - 2) {
@@ -1368,6 +1436,7 @@ rt_string rt_url_encode_query(void *map) {
             if (keys && rt_obj_release_check0(keys))
                 rt_obj_free(keys);
             rt_url_trap_runtime("URL.EncodeQuery: length overflow");
+            return rt_str_empty();
         }
         size_t max_needed = enc_key_len + enc_value_len + 2;
         if (pos > SIZE_MAX - max_needed) {
@@ -1379,6 +1448,7 @@ rt_string rt_url_encode_query(void *map) {
             if (keys && rt_obj_release_check0(keys))
                 rt_obj_free(keys);
             rt_url_trap_runtime("URL.EncodeQuery: length overflow");
+            return rt_str_empty();
         }
         size_t needed = enc_key_len + 1 + enc_value_len + (i > 0 ? 1 : 0);
         if (pos + needed + 1 > cap) {
@@ -1400,6 +1470,7 @@ rt_string rt_url_encode_query(void *map) {
                 if (keys && rt_obj_release_check0(keys))
                     rt_obj_free(keys);
                 rt_url_trap_runtime("URL.EncodeQuery: allocation failed");
+                return rt_str_empty();
             }
             result = new_result;
         }

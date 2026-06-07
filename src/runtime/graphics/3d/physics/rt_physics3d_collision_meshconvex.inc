@@ -570,13 +570,13 @@ static int test_triangle_convex_hull_gjk_epa(const double tri[3][3],
                                              const double *hull_center,
                                              double *normal,
                                              double *depth) {
+    if (!tri || !hull_collider || !hull_pose || !normal || !depth)
+        return 0;
     ph3d_triangle_hull_support_ctx ctx;
     double centroid[3] = {(tri[0][0] + tri[1][0] + tri[2][0]) / 3.0,
                           (tri[0][1] + tri[1][1] + tri[2][1]) / 3.0,
                           (tri[0][2] + tri[1][2] + tri[2][2]) / 3.0};
     double seed[3];
-    if (!tri || !hull_collider || !hull_pose || !normal || !depth)
-        return 0;
     memcpy(ctx.tri, tri, sizeof(ctx.tri));
     ctx.hull_collider = hull_collider;
     ctx.hull_pose = hull_pose;

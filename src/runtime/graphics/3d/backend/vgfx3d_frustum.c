@@ -29,6 +29,7 @@
 #include <math.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 /*==========================================================================
  * Frustum plane extraction (Gribb-Hartmann method)
@@ -419,7 +420,8 @@ void vgfx3d_compute_mesh_aabb(const void *vertices,
     const uint8_t *base = (const uint8_t *)vertices;
     int found = 0;
     for (uint32_t i = 0; i < vertex_count; i++) {
-        const float *pos = (const float *)(base + (size_t)i * (size_t)vertex_stride);
+        float pos[3];
+        memcpy(pos, base + (size_t)i * (size_t)vertex_stride, sizeof(pos));
         if (!isfinite(pos[0]) || !isfinite(pos[1]) || !isfinite(pos[2]))
             continue;
         for (int j = 0; j < 3; j++) {

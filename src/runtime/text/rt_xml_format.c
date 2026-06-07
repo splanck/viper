@@ -41,8 +41,10 @@ static void buf_append(char **buf, size_t *cap, size_t *len, const char *str) {
     size_t slen = strlen(str);
     while (*len + slen + 1 < *len || *len + slen + 1 > *cap) {
         size_t new_cap = (*cap == 0) ? 256 : (*cap * 2);
-        if (new_cap <= *cap)
+        if (new_cap <= *cap) {
             rt_trap("XML format: output length overflow");
+            return;
+        }
         char *tmp = (char *)realloc(*buf, new_cap);
         if (!tmp) {
             rt_trap("XML format: memory allocation failed");
@@ -60,11 +62,15 @@ static void buf_append(char **buf, size_t *cap, size_t *len, const char *str) {
 static void buf_append_bytes(char **buf, size_t *cap, size_t *len, const char *str, size_t slen) {
     while (*len + slen + 1 < *len || *len + slen + 1 > *cap) {
         size_t new_cap = (*cap == 0) ? 256 : (*cap * 2);
-        if (new_cap <= *cap)
+        if (new_cap <= *cap) {
             rt_trap("XML format: output length overflow");
+            return;
+        }
         char *tmp = (char *)realloc(*buf, new_cap);
-        if (!tmp)
+        if (!tmp) {
             rt_trap("XML format: memory allocation failed");
+            return;
+        }
         *buf = tmp;
         *cap = new_cap;
     }
@@ -77,11 +83,15 @@ static void buf_append_bytes(char **buf, size_t *cap, size_t *len, const char *s
 static void buf_append_char(char **buf, size_t *cap, size_t *len, char c) {
     if (*len + 2 > *cap) {
         size_t new_cap = (*cap == 0) ? 256 : (*cap * 2);
-        if (new_cap <= *cap)
+        if (new_cap <= *cap) {
             rt_trap("XML format: output length overflow");
+            return;
+        }
         char *tmp = (char *)realloc(*buf, new_cap);
-        if (!tmp)
+        if (!tmp) {
             rt_trap("XML format: memory allocation failed");
+            return;
+        }
         *buf = tmp;
         *cap = new_cap;
     }

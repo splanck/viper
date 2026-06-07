@@ -35,6 +35,10 @@ extern "C" {
 #endif
 
 /// @brief Trap with the supplied message using the active runtime trap handler.
+/// @details Runtime trap hooks may be overridden by tests and embedders, and an override is
+///          allowed to return after recording the trap. Callers that cannot safely continue
+///          after a trap must immediately return, jump, or otherwise stop their local control
+///          flow after invoking this function.
 /// @param msg Null-terminated trap message, or NULL for a generic trap.
 void rt_trap(const char *msg);
 

@@ -255,10 +255,14 @@ static void *rt_udp_bind_impl(const char *address, int64_t port) {
 
     rt_net_init_wsa();
 
-    if (port < 0 || port > 65535)
+    if (port < 0 || port > 65535) {
         rt_trap("Network: invalid port number");
-    if (address && *address == '\0')
+        return NULL;
+    }
+    if (address && *address == '\0') {
         rt_trap("Network: invalid address");
+        return NULL;
+    }
 
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;
@@ -267,8 +271,10 @@ static void *rt_udp_bind_impl(const char *address, int64_t port) {
         hints.ai_flags = AI_PASSIVE;
 
     snprintf(port_str, sizeof(port_str), "%d", (int)port);
-    if (getaddrinfo(address, port_str, &hints, &res) != 0 || !res)
+    if (getaddrinfo(address, port_str, &hints, &res) != 0 || !res) {
         rt_trap("Network: invalid address");
+        return NULL;
+    }
 
     for (rp = res; rp != NULL; rp = rp->ai_next) {
         int reuse = 1;
@@ -291,11 +297,16 @@ static void *rt_udp_bind_impl(const char *address, int64_t port) {
     freeaddrinfo(res);
 
     if (sock == INVALID_SOCK) {
-        if (last_err == ADDR_IN_USE)
+        if (last_err == ADDR_IN_USE) {
             rt_trap_net("Network: port already in use", Err_NetworkError);
-        if (last_err == PERM_DENIED)
+            return NULL;
+        }
+        if (last_err == PERM_DENIED) {
             rt_trap_net("Network: permission denied (port < 1024?)", Err_NetworkError);
+            return NULL;
+        }
         rt_trap_net("Network: bind failed", Err_NetworkError);
+        return NULL;
     }
 
     if (port == 0) {
@@ -317,6 +328,7 @@ static void *rt_udp_bind_impl(const char *address, int64_t port) {
         if (!addr_cstr) {
             CLOSE_SOCKET(sock);
             rt_trap("Network: memory allocation failed");
+            return NULL;
         }
         memcpy(addr_cstr, addr_ptr, addr_len + 1);
     }
@@ -327,6 +339,7 @@ static void *rt_udp_bind_impl(const char *address, int64_t port) {
             CLOSE_SOCKET(sock);
             free(addr_cstr);
             rt_trap("Network: memory allocation failed");
+            return NULL;
         }
         rt_obj_set_finalizer(udp, rt_udp_finalize);
 
@@ -377,12 +390,14 @@ void *rt_udp_new(void) {
     }
     if (sock == INVALID_SOCK) {
         rt_trap("Network: failed to create UDP socket");
+        return NULL;
     }
 
     rt_udp_t *udp = (rt_udp_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_udp_t));
     if (!udp) {
         CLOSE_SOCKET(sock);
         rt_trap("Network: memory allocation failed");
+        return NULL;
     }
     rt_obj_set_finalizer(udp, rt_udp_finalize);
 
@@ -412,8 +427,10 @@ void *rt_udp_bind(int64_t port) {
 void *rt_udp_bind_at(rt_string address, int64_t port) {
     const char *addr_ptr = NULL;
     size_t addr_len = 0;
-    if (!rt_net_cstr_no_embedded_nul(address, &addr_ptr, &addr_len) || addr_len == 0)
+    if (!rt_net_cstr_no_embedded_nul(address, &addr_ptr, &addr_len) || addr_len == 0) {
         rt_trap("Network: invalid address");
+        return NULL;
+    }
     return rt_udp_bind_impl(addr_ptr, port);
 }
 
@@ -424,8 +441,10 @@ void *rt_udp_bind_at(rt_string address, int64_t port) {
 /// @brief Read the bound port (0 for unbound sockets created via `rt_udp_new`). Useful when the
 /// constructor used `port=0` and you need to discover which ephemeral port the OS assigned.
 int64_t rt_udp_port(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL socket");
+        return 0;
+    }
 
     rt_udp_t *udp = (rt_udp_t *)obj;
     return udp->port;
@@ -434,8 +453,10 @@ int64_t rt_udp_port(void *obj) {
 /// @brief Read the bound address as an rt_string ("0.0.0.0" if bound to all interfaces). Returns
 /// the empty string for unbound sockets.
 rt_string rt_udp_address(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL socket");
+        return rt_str_empty();
+    }
 
     rt_udp_t *udp = (rt_udp_t *)obj;
     if (udp->address)
@@ -446,8 +467,10 @@ rt_string rt_udp_address(void *obj) {
 /// @brief Returns 1 if the socket was created via `bind()` (i.e. has a fixed local port); 0 if
 /// it was created via `rt_udp_new` and only sends.
 int8_t rt_udp_is_bound(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL socket");
+        return 0;
+    }
 
     rt_udp_t *udp = (rt_udp_t *)obj;
     return udp->is_bound ? 1 : 0;
@@ -463,22 +486,32 @@ int8_t rt_udp_is_bound(void *obj) {
 /// Returns the byte count actually sent. Traps with specific kinds for EMSGSIZE, host-not-found,
 /// and generic send errors so callers can distinguish recoverable failures.
 int64_t rt_udp_send_to(void *obj, rt_string host, int64_t port, void *data) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL socket");
-    if (!data)
+        return -1;
+    }
+    if (!data) {
         rt_trap("Network: NULL data");
+        return -1;
+    }
 
     rt_udp_t *udp = (rt_udp_t *)obj;
-    if (!udp->is_open)
+    if (!udp->is_open) {
         rt_trap_net("Network: socket closed", Err_ConnectionClosed);
+        return -1;
+    }
 
     const char *host_ptr = NULL;
     size_t host_len = 0;
-    if (!rt_net_cstr_no_embedded_nul(host, &host_ptr, &host_len) || host_len == 0)
+    if (!rt_net_cstr_no_embedded_nul(host, &host_ptr, &host_len) || host_len == 0) {
         rt_trap("Network: invalid host");
+        return -1;
+    }
 
-    if (port < 1 || port > 65535)
+    if (port < 1 || port > 65535) {
         rt_trap("Network: invalid port number");
+        return -1;
+    }
 
     int64_t len = bytes_len(data);
     uint8_t *buf = bytes_data(data);
@@ -487,14 +520,18 @@ int64_t rt_udp_send_to(void *obj, rt_string host, int64_t port, void *data) {
         return 0;
 
     // Check packet size
-    if (len > 65507)
+    if (len > 65507) {
         rt_trap_net("Network: message too large (max 65507 bytes for UDP)", Err_NetworkError);
+        return -1;
+    }
 
     // Resolve destination
     struct sockaddr_storage dest_addr;
     socklen_t dest_len = 0;
-    if (udp_resolve_destination(host_ptr, (int)port, udp->family, &dest_addr, &dest_len) != 0)
+    if (udp_resolve_destination(host_ptr, (int)port, udp->family, &dest_addr, &dest_len) != 0) {
         rt_trap_net("Network: host not found", Err_HostNotFound);
+        return -1;
+    }
 
     int sent = sendto(udp->sock,
                       (const char *)buf,
@@ -505,13 +542,18 @@ int64_t rt_udp_send_to(void *obj, rt_string host, int64_t port, void *data) {
     if (sent == SOCK_ERROR) {
 #ifdef _WIN32
         int err = WSAGetLastError();
-        if (err == WSAEMSGSIZE)
+        if (err == WSAEMSGSIZE) {
             rt_trap_net("Network: message too large", Err_NetworkError);
+            return -1;
+        }
 #else
-        if (errno == EMSGSIZE)
+        if (errno == EMSGSIZE) {
             rt_trap_net("Network: message too large", Err_NetworkError);
+            return -1;
+        }
 #endif
         rt_trap_net("Network: send failed", net_classify_errno());
+        return -1;
     }
 
     return sent;
@@ -520,45 +562,62 @@ int64_t rt_udp_send_to(void *obj, rt_string host, int64_t port, void *data) {
 /// @brief String-payload variant of `rt_udp_send_to`. Sends the rt_string's UTF-8 bytes
 /// (without a NUL terminator) as a single datagram. Same 65507-byte cap and error semantics.
 int64_t rt_udp_send_to_str(void *obj, rt_string host, int64_t port, rt_string text) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL socket");
+        return -1;
+    }
 
     rt_udp_t *udp = (rt_udp_t *)obj;
-    if (!udp->is_open)
+    if (!udp->is_open) {
         rt_trap_net("Network: socket closed", Err_ConnectionClosed);
+        return -1;
+    }
 
     const char *host_ptr = NULL;
     size_t host_len = 0;
-    if (!rt_net_cstr_no_embedded_nul(host, &host_ptr, &host_len) || host_len == 0)
+    if (!rt_net_cstr_no_embedded_nul(host, &host_ptr, &host_len) || host_len == 0) {
         rt_trap("Network: invalid host");
+        return -1;
+    }
 
-    if (port < 1 || port > 65535)
+    if (port < 1 || port > 65535) {
         rt_trap("Network: invalid port number");
+        return -1;
+    }
 
     const char *text_ptr = rt_string_cstr(text);
-    if (!text_ptr)
+    if (!text_ptr) {
         rt_trap("Network: NULL string");
+        return -1;
+    }
     int64_t len64 = rt_str_len(text);
-    if (len64 < 0 || (uint64_t)len64 > (uint64_t)SIZE_MAX)
+    if (len64 < 0 || (uint64_t)len64 > (uint64_t)SIZE_MAX) {
         rt_trap("Network: invalid string length");
+        return -1;
+    }
     size_t len = (size_t)len64;
 
     if (len == 0)
         return 0;
 
-    if (len > 65507)
+    if (len > 65507) {
         rt_trap_net("Network: message too large (max 65507 bytes for UDP)", Err_NetworkError);
+        return -1;
+    }
 
     // Resolve destination
     struct sockaddr_storage dest_addr;
     socklen_t dest_len = 0;
-    if (udp_resolve_destination(host_ptr, (int)port, udp->family, &dest_addr, &dest_len) != 0)
+    if (udp_resolve_destination(host_ptr, (int)port, udp->family, &dest_addr, &dest_len) != 0) {
         rt_trap_net("Network: host not found", Err_HostNotFound);
+        return -1;
+    }
 
     int sent =
         sendto(udp->sock, text_ptr, (int)len, SEND_FLAGS, (struct sockaddr *)&dest_addr, dest_len);
     if (sent == SOCK_ERROR) {
         rt_trap_net("Network: send failed", net_classify_errno());
+        return -1;
     }
 
     return sent;
@@ -580,22 +639,30 @@ void *rt_udp_recv(void *obj, int64_t max_bytes) {
 /// (EAGAIN / WSAETIMEDOUT, configured via `set_recv_timeout`), returns an empty Bytes rather
 /// than trapping — lets receive loops poll cheaply.
 void *rt_udp_recv_from(void *obj, int64_t max_bytes) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL socket");
+        return NULL;
+    }
 
     rt_udp_t *udp = (rt_udp_t *)obj;
-    if (!udp->is_open)
+    if (!udp->is_open) {
         rt_trap_net("Network: socket closed", Err_ConnectionClosed);
+        return NULL;
+    }
 
     if (max_bytes <= 0)
         return rt_bytes_new(0);
     int recv_len = 0;
-    if (!rt_net_i64_len_to_int(max_bytes, &recv_len))
+    if (!rt_net_i64_len_to_int(max_bytes, &recv_len)) {
         rt_trap("Network: receive size too large");
+        return NULL;
+    }
 
     int pending_len = 0;
-    if (udp_pending_datagram_size(udp->sock, &pending_len) && pending_len > recv_len)
+    if (udp_pending_datagram_size(udp->sock, &pending_len) && pending_len > recv_len) {
         rt_trap_net("Network: datagram exceeds receive buffer", Err_ProtocolError);
+        return NULL;
+    }
 
     // Allocate receive buffer
     void *result = rt_bytes_new(max_bytes);
@@ -654,21 +721,29 @@ void *rt_udp_recv_from(void *obj, int64_t max_bytes) {
 /// NULL on expiry, while `set_recv_timeout` sets a persistent socket option that returns empty
 /// Bytes.
 void *rt_udp_recv_for(void *obj, int64_t max_bytes, int64_t timeout_ms) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL socket");
+        return NULL;
+    }
 
     rt_udp_t *udp = (rt_udp_t *)obj;
-    if (!udp->is_open)
+    if (!udp->is_open) {
         rt_trap_net("Network: socket closed", Err_ConnectionClosed);
+        return NULL;
+    }
 
-    if (timeout_ms < 0)
+    if (timeout_ms < 0) {
         rt_trap("Network: invalid timeout");
+        return NULL;
+    }
 
     // Use select for timeout
     if (timeout_ms > 0) {
         int timeout_int = 0;
-        if (!rt_net_timeout_ms_to_int(timeout_ms, &timeout_int))
+        if (!rt_net_timeout_ms_to_int(timeout_ms, &timeout_int)) {
             rt_trap("Network: invalid timeout");
+            return NULL;
+        }
         int ready = wait_socket(udp->sock, timeout_int, false);
         if (ready == 0) {
             // Timeout - return NULL
@@ -676,6 +751,7 @@ void *rt_udp_recv_for(void *obj, int64_t max_bytes, int64_t timeout_ms) {
         }
         if (ready < 0) {
             rt_trap_net("Network: receive failed", net_classify_errno());
+            return NULL;
         }
     }
 
@@ -685,8 +761,10 @@ void *rt_udp_recv_for(void *obj, int64_t max_bytes, int64_t timeout_ms) {
 /// @brief Read the source IPv4 of the most recently received datagram. Empty until the first
 /// successful `recv*`.
 rt_string rt_udp_sender_host(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL socket");
+        return rt_str_empty();
+    }
 
     rt_udp_t *udp = (rt_udp_t *)obj;
     return rt_const_cstr(udp->sender_host);
@@ -694,8 +772,10 @@ rt_string rt_udp_sender_host(void *obj) {
 
 /// @brief Read the source port of the most recently received datagram. 0 until the first recv*.
 int64_t rt_udp_sender_port(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL socket");
+        return 0;
+    }
 
     rt_udp_t *udp = (rt_udp_t *)obj;
     return udp->sender_port;
@@ -708,40 +788,53 @@ int64_t rt_udp_sender_port(void *obj) {
 /// @brief Toggle SO_BROADCAST on the socket. Required before sending to 255.255.255.255 or any
 /// directed-broadcast address; without it the kernel returns EACCES.
 void rt_udp_set_broadcast(void *obj, int8_t enable) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL socket");
+        return;
+    }
 
     rt_udp_t *udp = (rt_udp_t *)obj;
-    if (!udp->is_open)
+    if (!udp->is_open) {
         rt_trap_net("Network: socket closed", Err_ConnectionClosed);
+        return;
+    }
 
     int flag = enable ? 1 : 0;
     if (setsockopt(udp->sock, SOL_SOCKET, SO_BROADCAST, (const char *)&flag, sizeof(flag)) ==
         SOCK_ERROR) {
         rt_trap_net("Network: failed to set broadcast option", Err_NetworkError);
+        return;
     }
 }
 
 /// @brief Subscribe to an IPv4 or IPv6 multicast group. IPv4 uses `IP_ADD_MEMBERSHIP`;
 /// IPv6 uses `IPV6_ADD_MEMBERSHIP`.
 void rt_udp_join_group(void *obj, rt_string group_addr) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL socket");
+        return;
+    }
 
     rt_udp_t *udp = (rt_udp_t *)obj;
-    if (!udp->is_open)
+    if (!udp->is_open) {
         rt_trap_net("Network: socket closed", Err_ConnectionClosed);
+        return;
+    }
 
     const char *addr_ptr = NULL;
     size_t addr_len = 0;
-    if (!rt_net_cstr_no_embedded_nul(group_addr, &addr_ptr, &addr_len) || addr_len == 0)
+    if (!rt_net_cstr_no_embedded_nul(group_addr, &addr_ptr, &addr_len) || addr_len == 0) {
         rt_trap("Network: invalid multicast address");
+        return;
+    }
 
     struct in_addr mcast_addr;
     if (inet_pton(AF_INET, addr_ptr, &mcast_addr) == 1) {
         uint32_t addr_val = ntohl(mcast_addr.s_addr);
-        if ((addr_val & 0xF0000000) != 0xE0000000)
+        if ((addr_val & 0xF0000000) != 0xE0000000) {
             rt_trap("Network: invalid multicast address (must be 224.0.0.0 - 239.255.255.255)");
+            return;
+        }
 
         {
             struct ip_mreq mreq;
@@ -759,10 +852,14 @@ void rt_udp_join_group(void *obj, rt_string group_addr) {
 
     {
         struct in6_addr mcast_addr6;
-        if (inet_pton(AF_INET6, addr_ptr, &mcast_addr6) != 1)
+        if (inet_pton(AF_INET6, addr_ptr, &mcast_addr6) != 1) {
             rt_trap("Network: invalid multicast address");
-        if (mcast_addr6.s6_addr[0] != 0xFF)
+            return;
+        }
+        if (mcast_addr6.s6_addr[0] != 0xFF) {
             rt_trap("Network: invalid multicast address (IPv6 multicast must be ff00::/8)");
+            return;
+        }
 #ifdef IPV6_ADD_MEMBERSHIP
         {
             struct ipv6_mreq mreq6;
@@ -787,8 +884,10 @@ void rt_udp_join_group(void *obj, rt_string group_addr) {
 /// @brief Unsubscribe from an IPv4 or IPv6 multicast group. Tolerant of bad input — silently
 /// no-ops on closed sockets, empty addresses, or malformed IPs.
 void rt_udp_leave_group(void *obj, rt_string group_addr) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL socket");
+        return;
+    }
 
     rt_udp_t *udp = (rt_udp_t *)obj;
     if (!udp->is_open)
@@ -829,13 +928,17 @@ void rt_udp_leave_group(void *obj, rt_string group_addr) {
 /// that exceed this duration return empty Bytes (rather than the per-call NULL of `recv_for`).
 /// Pass `0` to clear (block indefinitely).
 void rt_udp_set_recv_timeout(void *obj, int64_t timeout_ms) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL socket");
+        return;
+    }
 
     rt_udp_t *udp = (rt_udp_t *)obj;
     int timeout_int = 0;
-    if (!rt_net_timeout_ms_to_int(timeout_ms, &timeout_int))
+    if (!rt_net_timeout_ms_to_int(timeout_ms, &timeout_int)) {
         rt_trap("Network: invalid timeout");
+        return;
+    }
     udp->recv_timeout_ms = timeout_int;
     set_socket_timeout(udp->sock, timeout_int, true);
 }

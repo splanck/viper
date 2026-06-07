@@ -98,6 +98,7 @@ static Result *result_alloc_trap_safe(const char *what) {
         char buf[128];
         snprintf(buf, sizeof(buf), "%s: allocation failed", what ? what : "Result");
         rt_trap(buf);
+        return NULL;
     }
     return r;
 }
@@ -105,6 +106,8 @@ static Result *result_alloc_trap_safe(const char *what) {
 /// @brief Construct `Ok(ptr)` over a generic pointer payload. Retains `value` via the heap path.
 void *rt_result_ok(void *value) {
     Result *r = result_alloc_trap_safe("Result.Ok");
+    if (!r)
+        return NULL;
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) != 0) {
@@ -131,6 +134,8 @@ void *rt_result_ok(void *value) {
 /// @brief Construct `Ok(string)` — retains the string (heap or literal) via `rt_string_ref`.
 void *rt_result_ok_str(rt_string value) {
     Result *r = result_alloc_trap_safe("Result.OkStr");
+    if (!r)
+        return NULL;
     rt_string retained = NULL;
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
@@ -158,6 +163,8 @@ void *rt_result_ok_str(rt_string value) {
 /// @brief Construct `Ok(i64)` with the value stored inline (no heap allocation for payload).
 void *rt_result_ok_i64(int64_t value) {
     Result *r = result_alloc_trap_safe("Result.OkI64");
+    if (!r)
+        return NULL;
     r->variant = RESULT_OK;
     r->value_type = VALUE_I64;
     r->value.i64 = value;
@@ -168,6 +175,8 @@ void *rt_result_ok_i64(int64_t value) {
 /// @brief Construct `Ok(f64)` with the value stored inline.
 void *rt_result_ok_f64(double value) {
     Result *r = result_alloc_trap_safe("Result.OkF64");
+    if (!r)
+        return NULL;
     r->variant = RESULT_OK;
     r->value_type = VALUE_F64;
     r->value.f64 = value;
@@ -179,6 +188,8 @@ void *rt_result_ok_f64(double value) {
 /// object). Retains the error so it survives until the Result is finalized.
 void *rt_result_err(void *error) {
     Result *r = result_alloc_trap_safe("Result.Err");
+    if (!r)
+        return NULL;
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) != 0) {
@@ -206,6 +217,8 @@ void *rt_result_err(void *error) {
 /// caller-friendly diagnostic that doesn't require allocating a separate error class.
 void *rt_result_err_str(rt_string message) {
     Result *r = result_alloc_trap_safe("Result.ErrStr");
+    if (!r)
+        return NULL;
     rt_string retained = NULL;
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
@@ -261,47 +274,69 @@ static void trap_with_message(const char *msg) {
 
 /// @brief Extract the Ok pointer payload; **traps** if NULL or Err. Use after `is_ok()` check.
 void *rt_result_unwrap(void *obj) {
-    if (!obj)
+    if (!obj) {
         trap_with_message("Unwrap called on NULL Result");
+        return NULL;
+    }
     Result *r = (Result *)obj;
-    if (r->variant != RESULT_OK)
+    if (r->variant != RESULT_OK) {
         trap_with_message("Unwrap called on Err Result");
+        return NULL;
+    }
     return r->value.ptr;
 }
 
 /// @brief Extract the string value from an Ok result; traps if Err or wrong type.
 rt_string rt_result_unwrap_str(void *obj) {
-    if (!obj)
+    if (!obj) {
         trap_with_message("Unwrap called on NULL Result");
+        return NULL;
+    }
     Result *r = (Result *)obj;
-    if (r->variant != RESULT_OK)
+    if (r->variant != RESULT_OK) {
         trap_with_message("Unwrap called on Err Result");
-    if (r->value_type != VALUE_STR)
+        return NULL;
+    }
+    if (r->value_type != VALUE_STR) {
         trap_with_message("Unwrap string called on non-string Result");
+        return NULL;
+    }
     return r->value.str;
 }
 
 /// @brief Extract the i64 value from an Ok result; traps if Err or wrong type.
 int64_t rt_result_unwrap_i64(void *obj) {
-    if (!obj)
+    if (!obj) {
         trap_with_message("Unwrap called on NULL Result");
+        return 0;
+    }
     Result *r = (Result *)obj;
-    if (r->variant != RESULT_OK)
+    if (r->variant != RESULT_OK) {
         trap_with_message("Unwrap called on Err Result");
-    if (r->value_type != VALUE_I64)
+        return 0;
+    }
+    if (r->value_type != VALUE_I64) {
         trap_with_message("Unwrap i64 called on non-i64 Result");
+        return 0;
+    }
     return r->value.i64;
 }
 
 /// @brief Extract the f64 value from an Ok result; traps if Err or wrong type.
 double rt_result_unwrap_f64(void *obj) {
-    if (!obj)
+    if (!obj) {
         trap_with_message("Unwrap called on NULL Result");
+        return 0.0;
+    }
     Result *r = (Result *)obj;
-    if (r->variant != RESULT_OK)
+    if (r->variant != RESULT_OK) {
         trap_with_message("Unwrap called on Err Result");
-    if (r->value_type != VALUE_F64)
+        return 0.0;
+    }
+    if (r->value_type != VALUE_F64) {
         trap_with_message("Unwrap f64 called on non-f64 Result");
+        return 0.0;
+    }
     return r->value.f64;
 }
 
@@ -354,23 +389,33 @@ double rt_result_unwrap_or_f64(void *obj, double def) {
 /// @brief Extract the Err pointer payload; **traps** if NULL or Ok. Mirror of `unwrap` for the
 /// Err side — used to inspect the error after `is_err()` confirms one is present.
 void *rt_result_unwrap_err(void *obj) {
-    if (!obj)
+    if (!obj) {
         trap_with_message("UnwrapErr called on NULL Result");
+        return NULL;
+    }
     Result *r = (Result *)obj;
-    if (r->variant != RESULT_ERR)
+    if (r->variant != RESULT_ERR) {
         trap_with_message("UnwrapErr called on Ok Result");
+        return NULL;
+    }
     return r->value.ptr;
 }
 
 /// @brief Unwrap the err str of the result.
 rt_string rt_result_unwrap_err_str(void *obj) {
-    if (!obj)
+    if (!obj) {
         trap_with_message("UnwrapErr called on NULL Result");
+        return NULL;
+    }
     Result *r = (Result *)obj;
-    if (r->variant != RESULT_ERR)
+    if (r->variant != RESULT_ERR) {
         trap_with_message("UnwrapErr called on Ok Result");
-    if (r->value_type != VALUE_STR)
+        return NULL;
+    }
+    if (r->value_type != VALUE_STR) {
         trap_with_message("UnwrapErr string called on non-string Result");
+        return NULL;
+    }
     return r->value.str;
 }
 
@@ -408,11 +453,13 @@ void *rt_result_expect(void *obj, rt_string msg) {
     if (!obj) {
         snprintf(buffer, sizeof(buffer), "Result expect: %s (NULL Result)", msg_str);
         rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, -1, buffer);
+        return NULL;
     }
     Result *r = (Result *)obj;
     if (r->variant != RESULT_OK) {
         snprintf(buffer, sizeof(buffer), "Result expect: %s", msg_str);
         rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, -1, buffer);
+        return NULL;
     }
     return r->value.ptr;
 }
@@ -425,11 +472,13 @@ void *rt_result_expect_err(void *obj, rt_string msg) {
     if (!obj) {
         snprintf(buffer, sizeof(buffer), "Result expect_err: %s (NULL Result)", msg_str);
         rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, -1, buffer);
+        return NULL;
     }
     Result *r = (Result *)obj;
     if (r->variant != RESULT_ERR) {
         snprintf(buffer, sizeof(buffer), "Result expect_err: %s", msg_str);
         rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, -1, buffer);
+        return NULL;
     }
     return r->value.ptr;
 }

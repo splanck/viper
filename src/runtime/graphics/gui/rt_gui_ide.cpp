@@ -84,11 +84,15 @@ struct HarnessHandle {
 };
 
 HarnessHandle *requireHarness(void *obj) {
-    if (!obj || rt_obj_class_id(obj) != RT_GUI_TEST_HARNESS_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_GUI_TEST_HARNESS_CLASS_ID) {
         rt_trap("GUI.TestHarness: invalid handle");
+        return nullptr;
+    }
     auto *h = static_cast<HarnessHandle *>(obj);
-    if (!h->state)
+    if (!h->state) {
         rt_trap("GUI.TestHarness: destroyed handle");
+        return nullptr;
+    }
     return h;
 }
 
@@ -133,11 +137,15 @@ struct VirtualListHandle {
 };
 
 VirtualListHandle *requireList(void *obj) {
-    if (!obj || rt_obj_class_id(obj) != RT_GUI_VIRTUAL_LIST_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_GUI_VIRTUAL_LIST_CLASS_ID) {
         rt_trap("GUI.VirtualList: invalid handle");
+        return nullptr;
+    }
     auto *h = static_cast<VirtualListHandle *>(obj);
-    if (!h->state)
+    if (!h->state) {
         rt_trap("GUI.VirtualList: destroyed handle");
+        return nullptr;
+    }
     return h;
 }
 
@@ -183,11 +191,15 @@ struct VirtualTreeHandle {
 };
 
 VirtualTreeHandle *requireTree(void *obj) {
-    if (!obj || rt_obj_class_id(obj) != RT_GUI_VIRTUAL_TREE_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_GUI_VIRTUAL_TREE_CLASS_ID) {
         rt_trap("GUI.VirtualTree: invalid handle");
+        return nullptr;
+    }
     auto *h = static_cast<VirtualTreeHandle *>(obj);
-    if (!h->state)
+    if (!h->state) {
         rt_trap("GUI.VirtualTree: destroyed handle");
+        return nullptr;
+    }
     return h;
 }
 
@@ -211,11 +223,15 @@ struct CommandStateHandle {
 };
 
 CommandStateHandle *requireCommandState(void *obj) {
-    if (!obj || rt_obj_class_id(obj) != RT_GUI_COMMAND_STATE_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_GUI_COMMAND_STATE_CLASS_ID) {
         rt_trap("GUI.CommandState: invalid handle");
+        return nullptr;
+    }
     auto *h = static_cast<CommandStateHandle *>(obj);
-    if (!h->state)
+    if (!h->state) {
         rt_trap("GUI.CommandState: destroyed handle");
+        return nullptr;
+    }
     return h;
 }
 

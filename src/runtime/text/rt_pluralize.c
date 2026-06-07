@@ -139,8 +139,10 @@ static rt_string inflection_with_input_case(const char *src,
                                             const char *replacement) {
     size_t len = strlen(replacement);
     char *buf = (char *)malloc(len + 1);
-    if (!buf)
+    if (!buf) {
         rt_trap("Pluralize: memory allocation failed");
+        return rt_string_from_bytes(replacement, len);
+    }
     memcpy(buf, replacement, len + 1);
 
     if (is_ascii_all_caps_word(src, src_len)) {

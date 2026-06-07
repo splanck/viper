@@ -296,11 +296,15 @@ struct SceneHandle {
 };
 
 SceneHandle *requireScene(void *scene) {
-    if (!scene || rt_obj_class_id(scene) != RT_GAME_SCENE_CLASS_ID)
+    if (!scene || rt_obj_class_id(scene) != RT_GAME_SCENE_CLASS_ID) {
         rt_trap("Game.Scene: invalid handle");
+        return nullptr;
+    }
     auto *h = static_cast<SceneHandle *>(scene);
-    if (!h->state)
+    if (!h->state) {
         rt_trap("Game.Scene: destroyed handle");
+        return nullptr;
+    }
     return h;
 }
 

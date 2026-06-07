@@ -388,19 +388,24 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
     size_t host_len = 0;
     if (!rt_net_cstr_no_embedded_nul(host, &host_ptr, &host_len) || host_len == 0) {
         rt_trap("Network: invalid host");
+        return NULL;
     }
 
     if (port < 1 || port > 65535) {
         rt_trap("Network: invalid port number");
+        return NULL;
     }
     int timeout_int = 0;
-    if (!rt_net_timeout_ms_to_int(timeout_ms, &timeout_int))
+    if (!rt_net_timeout_ms_to_int(timeout_ms, &timeout_int)) {
         rt_trap("Network: invalid timeout");
+        return NULL;
+    }
 
     // Copy host string
     char *host_cstr = (char *)malloc(host_len + 1);
     if (!host_cstr) {
         rt_trap("Network: memory allocation failed");
+        return NULL;
     }
     memcpy(host_cstr, host_ptr, host_len);
     host_cstr[host_len] = '\0';
@@ -418,6 +423,7 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
     if (status != 0) {
         free(host_cstr);
         rt_trap_net("Network: host not found", Err_HostNotFound);
+        return NULL;
     }
 
     socket_t sock = INVALID_SOCK;
@@ -440,8 +446,10 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
 
     if (sock == INVALID_SOCK) {
         free(host_cstr);
-        if (last_err == CONN_REFUSED)
+        if (last_err == CONN_REFUSED) {
             rt_trap_net("Network: connection refused", Err_ConnectionRefused);
+            return NULL;
+        }
 #ifdef _WIN32
         if (last_err == WSAETIMEDOUT)
 #else
@@ -449,6 +457,7 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
 #endif
             rt_trap_net("Network: connection timeout", Err_Timeout);
         rt_trap_net("Network: connection failed", Err_NetworkError);
+        return NULL;
     }
 
     // Enable TCP_NODELAY
@@ -460,6 +469,7 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
         CLOSE_SOCKET(sock);
         free(host_cstr);
         rt_trap("Network: memory allocation failed");
+        return NULL;
     }
     rt_obj_set_finalizer(tcp, rt_tcp_finalize);
 
@@ -486,8 +496,10 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
 
 /// @brief Return the host string the connection was opened with (empty for NULL/closed).
 rt_string rt_tcp_host(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL connection");
+        return rt_str_empty();
+    }
 
     rt_tcp_t *tcp = (rt_tcp_t *)obj;
     return rt_const_cstr(tcp->host);
@@ -495,8 +507,10 @@ rt_string rt_tcp_host(void *obj) {
 
 /// @brief Return the remote port of the connection (the one passed to `connect`).
 int64_t rt_tcp_port(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL connection");
+        return 0;
+    }
 
     rt_tcp_t *tcp = (rt_tcp_t *)obj;
     return tcp->port;
@@ -504,8 +518,10 @@ int64_t rt_tcp_port(void *obj) {
 
 /// @brief Return the local (ephemeral) port the OS assigned to this socket.
 int64_t rt_tcp_local_port(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL connection");
+        return 0;
+    }
 
     rt_tcp_t *tcp = (rt_tcp_t *)obj;
     return tcp->local_port;
@@ -513,8 +529,10 @@ int64_t rt_tcp_local_port(void *obj) {
 
 /// @brief 1 if the underlying socket is still open; 0 if closed (or `obj` is NULL).
 int8_t rt_tcp_is_open(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL connection");
+        return 0;
+    }
 
     rt_tcp_t *tcp = (rt_tcp_t *)obj;
     return tcp->is_open ? 1 : 0;
@@ -523,8 +541,10 @@ int8_t rt_tcp_is_open(void *obj) {
 /// @brief Number of bytes available for non-blocking read (best-effort `FIONREAD`).
 /// 0 means "unknown" or "nothing pending"; the actual recv may still block briefly.
 int64_t rt_tcp_available(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL connection");
+        return 0;
+    }
 
     rt_tcp_t *tcp = (rt_tcp_t *)obj;
     if (!tcp->is_open)
@@ -548,14 +568,20 @@ int64_t rt_tcp_available(void *obj) {
 /// @brief Send a Bytes payload — may write fewer bytes than requested if the kernel buffer is full.
 /// @return Bytes actually sent, or -1 on error.
 int64_t rt_tcp_send(void *obj, void *data) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL connection");
-    if (!data)
+        return -1;
+    }
+    if (!data) {
         rt_trap("Network: NULL data");
+        return -1;
+    }
 
     rt_tcp_t *tcp = (rt_tcp_t *)obj;
-    if (!tcp->is_open)
+    if (!tcp->is_open) {
         rt_trap_net("Network: connection closed", Err_ConnectionClosed);
+        return -1;
+    }
 
     int64_t len = bytes_len(data);
     uint8_t *buf = bytes_data(data);
@@ -569,6 +595,7 @@ int64_t rt_tcp_send(void *obj, void *data) {
     if (sent == SOCK_ERROR) {
         tcp->is_open = false;
         rt_trap_net("Network: send failed", net_classify_errno());
+        return -1;
     }
 
     return sent;
@@ -576,19 +603,27 @@ int64_t rt_tcp_send(void *obj, void *data) {
 
 /// @brief Send a string payload as UTF-8 bytes. May short-write — see `rt_tcp_send`.
 int64_t rt_tcp_send_str(void *obj, rt_string text) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL connection");
+        return -1;
+    }
 
     rt_tcp_t *tcp = (rt_tcp_t *)obj;
-    if (!tcp->is_open)
+    if (!tcp->is_open) {
         rt_trap_net("Network: connection closed", Err_ConnectionClosed);
+        return -1;
+    }
 
     const char *text_ptr = rt_string_cstr(text);
-    if (!text_ptr)
+    if (!text_ptr) {
         rt_trap("Network: NULL string");
+        return -1;
+    }
     int64_t len64 = rt_str_len(text);
-    if (len64 < 0 || (uint64_t)len64 > (uint64_t)SIZE_MAX)
+    if (len64 < 0 || (uint64_t)len64 > (uint64_t)SIZE_MAX) {
         rt_trap("Network: invalid string length");
+        return -1;
+    }
     size_t len = (size_t)len64;
     if (len == 0)
         return 0;
@@ -599,6 +634,7 @@ int64_t rt_tcp_send_str(void *obj, rt_string text) {
     if (sent == SOCK_ERROR) {
         tcp->is_open = false;
         rt_trap_net("Network: send failed", net_classify_errno());
+        return -1;
     }
 
     return sent;
@@ -607,14 +643,20 @@ int64_t rt_tcp_send_str(void *obj, rt_string text) {
 /// @brief Send a Bytes payload, looping on partial writes until every byte is delivered.
 /// Traps on send failure (closed peer, broken pipe, etc.).
 void rt_tcp_send_all(void *obj, void *data) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL connection");
-    if (!data)
+        return;
+    }
+    if (!data) {
         rt_trap("Network: NULL data");
+        return;
+    }
 
     rt_tcp_t *tcp = (rt_tcp_t *)obj;
-    if (!tcp->is_open)
+    if (!tcp->is_open) {
         rt_trap_net("Network: connection closed", Err_ConnectionClosed);
+        return;
+    }
 
     int64_t len = bytes_len(data);
     uint8_t *buf = bytes_data(data);
@@ -627,10 +669,12 @@ void rt_tcp_send_all(void *obj, void *data) {
         if (sent == SOCK_ERROR) {
             tcp->is_open = false;
             rt_trap_net("Network: send failed", net_classify_errno());
+            return;
         }
         if (sent == 0) {
             tcp->is_open = false;
             rt_trap_net("Network: connection closed by peer", Err_ConnectionClosed);
+            return;
         }
         total_sent += sent;
     }
@@ -639,14 +683,20 @@ void rt_tcp_send_all(void *obj, void *data) {
 /// @brief Internal: send `len` bytes from a raw buffer without looking up Bytes metadata.
 /// Used by HTTP / WebSocket layers that already have raw pointers.
 void rt_tcp_send_all_raw(void *obj, const void *data, int64_t len) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL connection");
-    if (!data && len > 0)
+        return;
+    }
+    if (!data && len > 0) {
         rt_trap("Network: NULL data");
+        return;
+    }
 
     rt_tcp_t *tcp = (rt_tcp_t *)obj;
-    if (!tcp->is_open)
+    if (!tcp->is_open) {
         rt_trap_net("Network: connection closed", Err_ConnectionClosed);
+        return;
+    }
 
     if (len <= 0)
         return;
@@ -660,10 +710,12 @@ void rt_tcp_send_all_raw(void *obj, const void *data, int64_t len) {
         if (sent == SOCK_ERROR) {
             tcp->is_open = false;
             rt_trap_net("Network: send failed", net_classify_errno());
+            return;
         }
         if (sent == 0) {
             tcp->is_open = false;
             rt_trap_net("Network: connection closed by peer", Err_ConnectionClosed);
+            return;
         }
         total_sent += sent;
     }
@@ -679,18 +731,24 @@ void rt_tcp_send_all_raw(void *obj, const void *data, int64_t len) {
 /// empty Bytes signals connection closed by peer; a trap means a
 /// real socket error.
 void *rt_tcp_recv(void *obj, int64_t max_bytes) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL connection");
+        return NULL;
+    }
 
     rt_tcp_t *tcp = (rt_tcp_t *)obj;
-    if (!tcp->is_open)
+    if (!tcp->is_open) {
         rt_trap_net("Network: connection closed", Err_ConnectionClosed);
+        return NULL;
+    }
 
     if (max_bytes <= 0)
         return rt_bytes_new(0);
     int recv_len = 0;
-    if (!rt_net_i64_len_to_int(max_bytes, &recv_len))
+    if (!rt_net_i64_len_to_int(max_bytes, &recv_len)) {
         rt_trap("Network: receive size too large");
+        return NULL;
+    }
 
     // Allocate receive buffer
     void *result = rt_bytes_new(max_bytes);
@@ -708,6 +766,7 @@ void *rt_tcp_recv(void *obj, int64_t max_bytes) {
         if (rt_obj_release_check0(result))
             rt_obj_free(result);
         rt_trap_net("Network: receive failed", net_classify_errno());
+        return NULL;
     }
 
     if (received == 0) {
@@ -742,17 +801,23 @@ rt_string rt_tcp_recv_str(void *obj, int64_t max_bytes) {
 /// @brief Receive *exactly* `count` bytes, looping until the buffer fills or the connection drops.
 /// Traps on short read (premature EOF) — use `rt_tcp_recv` if partial reads are acceptable.
 void *rt_tcp_recv_exact(void *obj, int64_t count) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL connection");
+        return NULL;
+    }
 
     rt_tcp_t *tcp = (rt_tcp_t *)obj;
-    if (!tcp->is_open)
+    if (!tcp->is_open) {
         rt_trap_net("Network: connection closed", Err_ConnectionClosed);
+        return NULL;
+    }
 
     if (count <= 0)
         return rt_bytes_new(0);
-    if (count > INT_MAX)
+    if (count > INT_MAX) {
         rt_trap("Network: receive size too large");
+        return NULL;
+    }
 
     void *result = rt_bytes_new(count);
     uint8_t *buf = bytes_data(result);
@@ -764,15 +829,19 @@ void *rt_tcp_recv_exact(void *obj, int64_t count) {
             if (rt_obj_release_check0(result))
                 rt_obj_free(result);
             rt_trap("Network: receive size too large");
+            return NULL;
         }
         int received = recv(tcp->sock, (char *)(buf + total_received), chunk_len, 0);
         if (received == SOCK_ERROR) {
             if (rt_obj_release_check0(result))
                 rt_obj_free(result);
-            if (socket_recv_timed_out())
+            if (socket_recv_timed_out()) {
                 rt_trap_net("Network: receive timeout", Err_Timeout);
+                return NULL;
+            }
             tcp->is_open = false;
             rt_trap_net("Network: receive failed", net_classify_errno());
+            return NULL;
         }
         if (received == 0) {
             tcp->is_open = false;
@@ -780,6 +849,7 @@ void *rt_tcp_recv_exact(void *obj, int64_t count) {
                 rt_obj_free(result);
             rt_trap_net("Network: connection closed before receiving all data",
                         Err_ConnectionClosed);
+            return NULL;
         }
         total_received += received;
     }
@@ -792,29 +862,38 @@ void *rt_tcp_recv_exact(void *obj, int64_t count) {
 /// Caps at 64 KB to prevent unbounded growth from a malicious peer.
 /// Returns the empty string on connection close.
 rt_string rt_tcp_recv_line(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL connection");
+        return rt_str_empty();
+    }
 
     rt_tcp_t *tcp = (rt_tcp_t *)obj;
-    if (!tcp->is_open)
+    if (!tcp->is_open) {
         rt_trap_net("Network: connection closed", Err_ConnectionClosed);
+        return rt_str_empty();
+    }
 
     // Line buffer with initial capacity
     size_t cap = 256;
     size_t len = 0;
     char *line = (char *)malloc(cap);
-    if (!line)
+    if (!line) {
         rt_trap("Network: memory allocation failed");
+        return rt_str_empty();
+    }
 
     while (1) {
         char c;
         int received = recv(tcp->sock, &c, 1, 0);
         if (received == SOCK_ERROR) {
             free(line);
-            if (socket_recv_timed_out())
+            if (socket_recv_timed_out()) {
                 rt_trap_net("Network: receive timeout", Err_Timeout);
+                return rt_str_empty();
+            }
             tcp->is_open = false;
             rt_trap_net("Network: receive failed", net_classify_errno());
+            return rt_str_empty();
         }
         if (received == 0) {
             free(line);
@@ -834,6 +913,7 @@ rt_string rt_tcp_recv_line(void *obj) {
         if (len >= 65536) {
             free(line);
             rt_trap_net("Network: line exceeds 64KB limit", Err_ProtocolError);
+            return rt_str_empty();
         }
 
         // Add character to buffer, growing if needed.
@@ -845,6 +925,7 @@ rt_string rt_tcp_recv_line(void *obj) {
             if (!new_line) {
                 free(line);
                 rt_trap("Network: memory allocation failed");
+                return rt_str_empty();
             }
             line = new_line;
         }
@@ -863,26 +944,34 @@ rt_string rt_tcp_recv_line(void *obj) {
 
 /// @brief Apply `SO_RCVTIMEO` to the socket — recv operations fail with timeout after `timeout_ms`.
 void rt_tcp_set_recv_timeout(void *obj, int64_t timeout_ms) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL connection");
+        return;
+    }
 
     rt_tcp_t *tcp = (rt_tcp_t *)obj;
     int timeout_int = 0;
-    if (!rt_net_timeout_ms_to_int(timeout_ms, &timeout_int))
+    if (!rt_net_timeout_ms_to_int(timeout_ms, &timeout_int)) {
         rt_trap("Network: invalid timeout");
+        return;
+    }
     tcp->recv_timeout_ms = timeout_int;
     set_socket_timeout(tcp->sock, timeout_int, true);
 }
 
 /// @brief Apply `SO_SNDTIMEO` to the socket — send operations fail with timeout after `timeout_ms`.
 void rt_tcp_set_send_timeout(void *obj, int64_t timeout_ms) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL connection");
+        return;
+    }
 
     rt_tcp_t *tcp = (rt_tcp_t *)obj;
     int timeout_int = 0;
-    if (!rt_net_timeout_ms_to_int(timeout_ms, &timeout_int))
+    if (!rt_net_timeout_ms_to_int(timeout_ms, &timeout_int)) {
         rt_trap("Network: invalid timeout");
+        return;
+    }
     tcp->send_timeout_ms = timeout_int;
     set_socket_timeout(tcp->sock, timeout_int, false);
 }
@@ -931,8 +1020,10 @@ void rt_tcp_detach_socket(void *obj) {
 static void *rt_tcp_server_listen_impl(const char *address, int64_t port) {
     rt_net_init_wsa();
 
-    if (port < 0 || port > 65535)
+    if (port < 0 || port > 65535) {
         rt_trap("Network: invalid port number");
+        return NULL;
+    }
 
     struct addrinfo hints;
     struct addrinfo *res = NULL;
@@ -946,8 +1037,10 @@ static void *rt_tcp_server_listen_impl(const char *address, int64_t port) {
     if (!address)
         hints.ai_flags = AI_PASSIVE;
 
-    if (getaddrinfo(address, port_str, &hints, &res) != 0)
+    if (getaddrinfo(address, port_str, &hints, &res) != 0) {
         rt_trap("Network: invalid address");
+        return NULL;
+    }
 
     socket_t sock = INVALID_SOCK;
     int last_err = 0;
@@ -982,11 +1075,16 @@ static void *rt_tcp_server_listen_impl(const char *address, int64_t port) {
     freeaddrinfo(res);
 
     if (sock == INVALID_SOCK) {
-        if (last_err == ADDR_IN_USE)
+        if (last_err == ADDR_IN_USE) {
             rt_trap_net("Network: port already in use", Err_NetworkError);
-        if (last_err == PERM_DENIED)
+            return NULL;
+        }
+        if (last_err == PERM_DENIED) {
             rt_trap_net("Network: permission denied (port < 1024?)", Err_NetworkError);
+            return NULL;
+        }
         rt_trap_net("Network: bind failed", Err_NetworkError);
+        return NULL;
     }
 
     const char *bound_addr = address ? address : (bound_family == AF_INET6 ? "::" : "0.0.0.0");
@@ -994,6 +1092,7 @@ static void *rt_tcp_server_listen_impl(const char *address, int64_t port) {
     if (!addr_cstr) {
         CLOSE_SOCKET(sock);
         rt_trap("Network: memory allocation failed");
+        return NULL;
     }
     memcpy(addr_cstr, bound_addr, strlen(bound_addr) + 1);
 
@@ -1003,6 +1102,7 @@ static void *rt_tcp_server_listen_impl(const char *address, int64_t port) {
         CLOSE_SOCKET(sock);
         free(addr_cstr);
         rt_trap("Network: memory allocation failed");
+        return NULL;
     }
     rt_obj_set_finalizer(server, rt_tcp_server_finalize);
 
@@ -1023,8 +1123,10 @@ void *rt_tcp_server_listen(int64_t port) {
 void *rt_tcp_server_listen_at(rt_string address, int64_t port) {
     const char *addr_ptr = NULL;
     size_t addr_len = 0;
-    if (!rt_net_cstr_no_embedded_nul(address, &addr_ptr, &addr_len) || addr_len == 0)
+    if (!rt_net_cstr_no_embedded_nul(address, &addr_ptr, &addr_len) || addr_len == 0) {
         rt_trap("Network: invalid address");
+        return NULL;
+    }
     return rt_tcp_server_listen_impl(addr_ptr, port);
 }
 
@@ -1034,8 +1136,10 @@ void *rt_tcp_server_listen_at(rt_string address, int64_t port) {
 
 /// @brief Listening port (useful when the caller passed 0 to ask the OS to pick).
 int64_t rt_tcp_server_port(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL server");
+        return 0;
+    }
 
     rt_tcp_server_t *server = (rt_tcp_server_t *)obj;
     return server->port;
@@ -1043,8 +1147,10 @@ int64_t rt_tcp_server_port(void *obj) {
 
 /// @brief Bound listen address (e.g. "0.0.0.0", "::1"), or empty string if not listening.
 rt_string rt_tcp_server_address(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL server");
+        return rt_str_empty();
+    }
 
     rt_tcp_server_t *server = (rt_tcp_server_t *)obj;
     return rt_const_cstr(server->address);
@@ -1052,8 +1158,10 @@ rt_string rt_tcp_server_address(void *obj) {
 
 /// @brief 1 if the server socket is still in the `listen()` state.
 int8_t rt_tcp_server_is_listening(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL server");
+        return 0;
+    }
 
     rt_tcp_server_t *server = (rt_tcp_server_t *)obj;
     return server->is_listening ? 1 : 0;
@@ -1072,20 +1180,28 @@ void *rt_tcp_server_accept(void *obj) {
 /// @brief Accept with a timeout — uses `select` first to wait for readability.
 /// @return A connected client `rt_tcp_t*` on accept, NULL on timeout.
 void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Network: NULL server");
+        return NULL;
+    }
 
     rt_tcp_server_t *server = (rt_tcp_server_t *)obj;
-    if (!server->is_listening)
+    if (!server->is_listening) {
         rt_trap_net("Network: server not listening", Err_ConnectionClosed);
-    if (timeout_ms < 0)
+        return NULL;
+    }
+    if (timeout_ms < 0) {
         rt_trap("Network: invalid timeout");
+        return NULL;
+    }
 
     // Use select for timeout
     if (timeout_ms > 0) {
         int timeout_int = 0;
-        if (!rt_net_timeout_ms_to_int(timeout_ms, &timeout_int))
+        if (!rt_net_timeout_ms_to_int(timeout_ms, &timeout_int)) {
             rt_trap("Network: invalid timeout");
+            return NULL;
+        }
         int ready = wait_socket(server->sock, timeout_int, false);
         if (ready == 0) {
             // Timeout - return NULL
@@ -1096,6 +1212,7 @@ void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms) {
             if (!server->is_listening || socket_accept_interrupted_by_close(err))
                 return NULL;
             rt_trap_net("Network: accept failed", Err_NetworkError);
+            return NULL;
         }
     }
 
@@ -1110,6 +1227,7 @@ void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms) {
         if (!server->is_listening || socket_accept_interrupted_by_close(err))
             return NULL;
         rt_trap_net("Network: accept failed", Err_NetworkError);
+        return NULL;
     }
 
     suppress_sigpipe(client_sock);
@@ -1135,6 +1253,7 @@ void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms) {
     if (!host_cstr) {
         CLOSE_SOCKET(client_sock);
         rt_trap("Network: memory allocation failed");
+        return NULL;
     }
     memcpy(host_cstr, host_buf, strlen(host_buf) + 1);
 
@@ -1144,6 +1263,7 @@ void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms) {
         CLOSE_SOCKET(client_sock);
         free(host_cstr);
         rt_trap("Network: memory allocation failed");
+        return NULL;
     }
     rt_obj_set_finalizer(tcp, rt_tcp_finalize);
 

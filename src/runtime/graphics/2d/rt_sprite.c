@@ -1309,7 +1309,7 @@ int rt_sprite_animator_add_clip(rt_sprite_animator_t *animator,
         existing >= 0 ? &animator->clips[existing] : &animator->clips[animator->clip_count++];
     /* Safe string copy: name field is char[64], guarantee NUL termination */
     int i = 0;
-    while (name[i] && i < 63) {
+    while (i < 63 && name[i]) {
         clip->name[i] = name[i];
         i++;
     }

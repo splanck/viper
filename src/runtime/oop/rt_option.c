@@ -164,6 +164,10 @@ void *rt_option_some_str(rt_string value) {
 /// @brief Construct `Some(i64)` with the value stored inline in the union (no heap retention).
 void *rt_option_some_i64(int64_t value) {
     Option *o = (Option *)rt_obj_new_i64(RT_OPTION_CLASS_ID, (int64_t)sizeof(Option));
+    if (!o) {
+        rt_trap("Option.SomeI64: allocation failed");
+        return NULL;
+    }
 
     o->variant = OPTION_SOME;
     o->value_type = VALUE_I64;
@@ -180,6 +184,10 @@ void *rt_option_some_i1(int8_t value) {
 /// @brief Construct `Some(f64)` with the value stored inline (no heap retention).
 void *rt_option_some_f64(double value) {
     Option *o = (Option *)rt_obj_new_i64(RT_OPTION_CLASS_ID, (int64_t)sizeof(Option));
+    if (!o) {
+        rt_trap("Option.SomeF64: allocation failed");
+        return NULL;
+    }
 
     o->variant = OPTION_SOME;
     o->value_type = VALUE_F64;
@@ -233,35 +241,51 @@ static void trap_with_message(const char *msg) {
 /// @brief Extract the pointer payload from a Some option; **traps** if NULL or None. Use this
 /// when you've already proven (via `is_some`) that the option holds a value.
 void *rt_option_unwrap(void *obj) {
-    if (!obj)
+    if (!obj) {
         trap_with_message("Unwrap called on NULL Option");
+        return NULL;
+    }
     Option *o = (Option *)obj;
-    if (o->variant != OPTION_SOME)
+    if (o->variant != OPTION_SOME) {
         trap_with_message("Unwrap called on None Option");
+        return NULL;
+    }
     return o->value.ptr;
 }
 
 /// @brief Extract the string value from a Some option; traps if None or wrong type.
 rt_string rt_option_unwrap_str(void *obj) {
-    if (!obj)
+    if (!obj) {
         trap_with_message("Unwrap called on NULL Option");
+        return NULL;
+    }
     Option *o = (Option *)obj;
-    if (o->variant != OPTION_SOME)
+    if (o->variant != OPTION_SOME) {
         trap_with_message("Unwrap called on None Option");
-    if (o->value_type != VALUE_STR)
+        return NULL;
+    }
+    if (o->value_type != VALUE_STR) {
         trap_with_message("Unwrap string called on non-string Option");
+        return NULL;
+    }
     return o->value.str;
 }
 
 /// @brief Extract the i64 value from a Some option; traps if None or wrong type.
 int64_t rt_option_unwrap_i64(void *obj) {
-    if (!obj)
+    if (!obj) {
         trap_with_message("Unwrap called on NULL Option");
+        return 0;
+    }
     Option *o = (Option *)obj;
-    if (o->variant != OPTION_SOME)
+    if (o->variant != OPTION_SOME) {
         trap_with_message("Unwrap called on None Option");
-    if (o->value_type != VALUE_I64)
+        return 0;
+    }
+    if (o->value_type != VALUE_I64) {
         trap_with_message("Unwrap i64 called on non-i64 Option");
+        return 0;
+    }
     return o->value.i64;
 }
 
@@ -272,13 +296,19 @@ int8_t rt_option_unwrap_i1(void *obj) {
 
 /// @brief Extract the f64 value from a Some option; traps if None or wrong type.
 double rt_option_unwrap_f64(void *obj) {
-    if (!obj)
+    if (!obj) {
         trap_with_message("Unwrap called on NULL Option");
+        return 0.0;
+    }
     Option *o = (Option *)obj;
-    if (o->variant != OPTION_SOME)
+    if (o->variant != OPTION_SOME) {
         trap_with_message("Unwrap called on None Option");
-    if (o->value_type != VALUE_F64)
+        return 0.0;
+    }
+    if (o->value_type != VALUE_F64) {
         trap_with_message("Unwrap f64 called on non-f64 Option");
+        return 0.0;
+    }
     return o->value.f64;
 }
 
@@ -363,11 +393,13 @@ void *rt_option_expect(void *obj, rt_string msg) {
     if (!obj) {
         snprintf(buffer, sizeof(buffer), "Option expect: %s (NULL Option)", msg_str);
         rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, -1, buffer);
+        return NULL;
     }
     Option *o = (Option *)obj;
     if (o->variant != OPTION_SOME) {
         snprintf(buffer, sizeof(buffer), "Option expect: %s", msg_str);
         rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, -1, buffer);
+        return NULL;
     }
     return o->value.ptr;
 }
@@ -512,17 +544,21 @@ void *rt_option_ok_or_str(void *obj, rt_string err) {
 
 /// @brief Compare two option instances for structural equality.
 int8_t rt_option_equals(void *a, void *b) {
-    if (a == b)
-        return 1;
-
     // Both NULL = equal (both "None-like")
     if (!a && !b)
         return 1;
-    if (!a || !b) {
-        // One NULL, one not - check if the non-NULL is None
-        Option *non_null = a ? (Option *)a : (Option *)b;
-        return non_null->variant == OPTION_NONE ? 1 : 0;
+
+    if (!a) {
+        Option *ob = (Option *)b;
+        return ob->variant == OPTION_NONE ? 1 : 0;
     }
+    if (!b) {
+        Option *oa = (Option *)a;
+        return oa->variant == OPTION_NONE ? 1 : 0;
+    }
+
+    if (a == b)
+        return 1;
 
     Option *oa = (Option *)a;
     Option *ob = (Option *)b;

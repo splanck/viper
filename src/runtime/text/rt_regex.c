@@ -99,11 +99,15 @@ static void pattern_cache_unlock(void) {
 
 /// @brief Safely cast strlen() result to int, trapping on overflow.
 static int safe_strlen_int(const char *s) {
-    if (!s)
+    if (!s) {
         rt_trap("Pattern: null string");
+        return 0;
+    }
     size_t n = strlen(s);
-    if (n > (size_t)INT_MAX)
+    if (n > (size_t)INT_MAX) {
         rt_trap("Pattern: string too long for regex engine");
+        return 0;
+    }
     return (int)n;
 }
 
@@ -111,8 +115,10 @@ static int safe_rt_string_len_int(rt_string s) {
     if (!s)
         return 0;
     int64_t n = rt_str_len(s);
-    if (n < 0 || (uint64_t)n > (uint64_t)INT_MAX)
+    if (n < 0 || (uint64_t)n > (uint64_t)INT_MAX) {
         rt_trap("Pattern: string too long for regex engine");
+        return 0;
+    }
     return (int)n;
 }
 
@@ -127,37 +133,48 @@ static const char *pattern_required(rt_string pattern) {
         return "";
     }
     const char *cstr = rt_string_cstr(pattern);
-    if (!cstr)
+    if (!cstr) {
         rt_trap("Pattern: invalid pattern string");
+        return "";
+    }
     return cstr;
 }
 
-static void ensure_result_capacity(
+static int ensure_result_capacity(
     char **result, size_t *result_cap, size_t result_len, size_t add, const char *trap_msg) {
-    if (add > SIZE_MAX - result_len)
+    if (add > SIZE_MAX - result_len) {
         rt_trap(trap_msg);
+        return 0;
+    }
     size_t needed = result_len + add;
     if (needed < *result_cap)
-        return;
-    if (needed == SIZE_MAX)
+        return 1;
+    if (needed == SIZE_MAX) {
         rt_trap(trap_msg);
+        return 0;
+    }
     size_t new_cap = *result_cap;
     if (new_cap == 0)
         new_cap = 64;
     while (new_cap <= needed) {
         if (new_cap > SIZE_MAX / 2) {
-            if (needed == SIZE_MAX)
+            if (needed == SIZE_MAX) {
                 rt_trap(trap_msg);
+                return 0;
+            }
             new_cap = needed + 1;
             break;
         }
         new_cap *= 2;
     }
     char *tmp = (char *)realloc(*result, new_cap);
-    if (!tmp)
+    if (!tmp) {
         rt_trap("Pattern: memory allocation failed");
+        return 0;
+    }
     *result = tmp;
     *result_cap = new_cap;
+    return 1;
 }
 
 
@@ -172,8 +189,10 @@ static void ensure_result_capacity(
 /// OOM — there's no recovery path during pattern compile.
 re_node *node_new(re_node_type type) {
     re_node *n = (re_node *)calloc(1, sizeof(re_node));
-    if (!n)
+    if (!n) {
         rt_trap("Pattern: memory allocation failed");
+        return NULL;
+    }
     n->type = type;
     return n;
 }
@@ -211,16 +230,26 @@ void node_free(re_node *n) {
 /// O(1) per add. Traps on OOM. Caller transfers ownership of `child`
 /// to `n` — the parent's `node_free` will reclaim it.
 void children_add(re_node *n, re_node *child) {
+    if (!n || !child) {
+        rt_trap("Pattern: invalid child node");
+        return;
+    }
     if (n->data.children.count >= n->data.children.capacity) {
-        if (n->data.children.capacity > INT_MAX / 2)
+        if (n->data.children.capacity > INT_MAX / 2) {
             rt_trap("Pattern: too many child nodes");
+            return;
+        }
         int new_cap = n->data.children.capacity == 0 ? 4 : n->data.children.capacity * 2;
-        if ((size_t)new_cap > SIZE_MAX / sizeof(re_node *))
+        if ((size_t)new_cap > SIZE_MAX / sizeof(re_node *)) {
             rt_trap("Pattern: child node allocation overflow");
+            return;
+        }
         re_node **new_children =
             (re_node **)realloc(n->data.children.children, new_cap * sizeof(re_node *));
-        if (!new_children)
+        if (!new_children) {
             rt_trap("Pattern: memory allocation failed");
+            return;
+        }
         n->data.children.children = new_children;
         n->data.children.capacity = new_cap;
     }
@@ -657,11 +686,15 @@ rt_string rt_pattern_replace(rt_string text, rt_string pattern, rt_string replac
         if (!re_find_match(cp, txt_str, text_len, pos, &match_start, &match_end)) {
             // Copy rest of text
             size_t remaining = text_len - pos;
-            ensure_result_capacity(&result,
-                                   &result_cap,
-                                   result_len,
-                                   remaining,
-                                   "Pattern: replacement length overflow");
+            if (!ensure_result_capacity(&result,
+                                        &result_cap,
+                                        result_len,
+                                        remaining,
+                                        "Pattern: replacement length overflow")) {
+                free(result);
+                release_cached_pattern(cp);
+                return rt_string_from_bytes("", 0);
+            }
             memcpy(result + result_len, txt_str + pos, remaining);
             result_len += remaining;
             break;
@@ -673,12 +706,17 @@ rt_string rt_pattern_replace(rt_string text, rt_string pattern, rt_string replac
             free(result);
             release_cached_pattern(cp);
             rt_trap("Pattern: replacement length overflow");
+            return rt_string_from_bytes("", 0);
         }
-        ensure_result_capacity(&result,
-                               &result_cap,
-                               result_len,
-                               before_len + (size_t)rep_len,
-                               "Pattern: replacement length overflow");
+        if (!ensure_result_capacity(&result,
+                                    &result_cap,
+                                    result_len,
+                                    before_len + (size_t)rep_len,
+                                    "Pattern: replacement length overflow")) {
+            free(result);
+            release_cached_pattern(cp);
+            return rt_string_from_bytes("", 0);
+        }
         memcpy(result + result_len, txt_str + pos, before_len);
         result_len += before_len;
 
@@ -717,11 +755,17 @@ rt_string rt_pattern_replace_first(rt_string text, rt_string pattern, rt_string 
     // Build result: before + replacement + after
     size_t result_len = (size_t)match_start;
     if ((size_t)rep_len > SIZE_MAX - result_len ||
-        (size_t)(text_len - match_end) > SIZE_MAX - result_len - (size_t)rep_len)
+        (size_t)(text_len - match_end) > SIZE_MAX - result_len - (size_t)rep_len) {
+        release_cached_pattern(cp);
         rt_trap("Pattern: replacement length overflow");
+        return rt_string_from_bytes("", 0);
+    }
     result_len += (size_t)rep_len + (size_t)(text_len - match_end);
-    if (result_len == SIZE_MAX)
+    if (result_len == SIZE_MAX) {
+        release_cached_pattern(cp);
         rt_trap("Pattern: replacement length overflow");
+        return rt_string_from_bytes("", 0);
+    }
     char *result = (char *)malloc(result_len + 1);
     if (!result) {
         rt_trap("Pattern: memory allocation failed");
@@ -799,8 +843,10 @@ rt_string rt_pattern_escape(rt_string text) {
         char c = txt_str[i];
         if (c == '\\' || c == '.' || c == '*' || c == '+' || c == '?' || c == '^' || c == '$' ||
             c == '[' || c == ']' || c == '(' || c == ')' || c == '|' || c == '{' || c == '}') {
-            if (special_count == SIZE_MAX)
+            if (special_count == SIZE_MAX) {
                 rt_trap("Pattern: escape length overflow");
+                return rt_string_from_bytes("", 0);
+            }
             special_count++;
         }
     }

@@ -196,14 +196,14 @@ static int jpeg_huff_decode(jpeg_ctx_t *ctx, jpeg_huff_t *h) {
 ///
 /// JPEG stores coefficients as (size, magnitude) where negative
 /// values are encoded as 1s-complement. Convert back to a signed
-/// integer by adding `(-1 << bits) + 1` whenever the high bit
+/// integer by subtracting `(1 << bits) - 1` whenever the high bit
 /// indicates negativity.
 static int jpeg_extend(int val, int bits) {
     if (bits == 0)
         return 0;
-    int vt = 1 << (bits - 1);
+    int vt = (int)(1u << (unsigned)(bits - 1));
     if (val < vt)
-        val += (-1 << bits) + 1;
+        val -= (int)((1u << (unsigned)bits) - 1u);
     return val;
 }
 

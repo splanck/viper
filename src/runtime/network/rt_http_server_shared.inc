@@ -208,6 +208,8 @@ static bool header_value_contains_token(const char *value,
                                         size_t value_len,
                                         const char *token,
                                         size_t token_len) {
+    if (!value || !token)
+        return false;
     const char *p = value;
     const char *end = value + value_len;
 
@@ -435,8 +437,6 @@ static bool parse_content_length_header_block(const char *headers,
 static bool parse_transfer_encoding_value_strict(const char *value,
                                                  size_t value_len,
                                                  bool *chunked_out) {
-    const char *p = value;
-    const char *end = value + value_len;
     bool saw_token = false;
     bool saw_chunked = false;
 
@@ -444,6 +444,8 @@ static bool parse_transfer_encoding_value_strict(const char *value,
         *chunked_out = false;
     if (!value)
         return false;
+    const char *p = value;
+    const char *end = value + value_len;
 
     while (p < end) {
         const char *token_start;

@@ -29,8 +29,10 @@ static void *game3d_env_handle_new(rt_game3d_world *world) {
 
 /// @brief Resolve and validate the world an EnvHandle targets; traps `method` if absent.
 static rt_game3d_world *game3d_env_world(rt_game3d_env_handle *env, const char *method) {
-    if (!env || !env->world)
+    if (!env || !env->world) {
         rt_trap(method);
+        return NULL;
+    }
     return game3d_world_checked(env->world, method);
 }
 

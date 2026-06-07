@@ -361,12 +361,14 @@ rt_string rt_tempfile_create_with_prefix(rt_string prefix) {
     if (dir_len > SIZE_MAX - prefix_len - 8) {
         rt_string_unref(temp_dir);
         rt_trap("TempFile.Create: path length overflow");
+        return rt_str_empty();
     }
     size_t tmpl_len = dir_len + 1 + prefix_len + 6 + 1;
     char *tmpl = (char *)malloc(tmpl_len);
     if (!tmpl) {
         rt_string_unref(temp_dir);
         rt_trap("TempFile.Create: memory allocation failed");
+        return rt_str_empty();
     }
     snprintf(tmpl, tmpl_len, "%s/%sXXXXXX", dir_cstr, prefix_cstr);
     rt_string_unref(temp_dir);

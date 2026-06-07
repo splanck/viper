@@ -90,10 +90,18 @@ static void rt_smtp_finalize(void *obj) {
 // SMTP Helpers
 //=============================================================================
 
-/// @brief Replace the cached last-error message (frees prior copy, strdups the new one).
+/// @brief Replace the cached last-error message with an owned copy.
+/// @details Leaves the prior error intact if allocation fails and a custom trap handler returns.
 static void set_error(rt_smtp_impl *s, const char *msg) {
+    if (!s)
+        return;
+    char *copy = msg ? strdup(msg) : NULL;
+    if (msg && !copy) {
+        rt_trap("SmtpClient: error allocation failed");
+        return;
+    }
     free(s->last_error);
-    s->last_error = strdup(msg);
+    s->last_error = copy;
 }
 
 /// @brief Drop the cached last-error so a successful call doesn't leak a stale prior failure.
@@ -538,9 +546,11 @@ static void smtp_parse_ehlo_caps_line(const char *line, void *ctx) {
 /// Validates host and port (1–65535) up front and traps via `rt_trap` on bad inputs / OOM.
 /// Returns a GC-managed handle wired to `rt_smtp_finalize`.
 void *rt_smtp_new(rt_string host, int64_t port) {
-    const char *h = rt_string_cstr(host);
-    if (!h || port < 1 || port > 65535)
+    const char *h = host ? rt_string_cstr(host) : NULL;
+    if (!h || port < 1 || port > 65535) {
         rt_trap("SmtpClient: invalid host or port");
+        return NULL;
+    }
 
     rt_smtp_impl *s = (rt_smtp_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_smtp_impl));
     if (!s) {
@@ -549,6 +559,10 @@ void *rt_smtp_new(rt_string host, int64_t port) {
     }
     memset(s, 0, sizeof(*s));
     s->host = strdup(h);
+    if (!s->host) {
+        rt_trap("SmtpClient: host allocation failed");
+        return NULL;
+    }
     s->port = (int)port;
     s->use_tls = (port == 465) ? 1 : 0; // Port 465 = implicit TLS
     rt_obj_set_finalizer(s, rt_smtp_finalize);
@@ -561,12 +575,20 @@ void rt_smtp_set_auth(void *obj, rt_string username, rt_string password) {
     if (!obj)
         return;
     rt_smtp_impl *s = (rt_smtp_impl *)obj;
-    const char *u = rt_string_cstr(username);
-    const char *p = rt_string_cstr(password);
+    const char *u = username ? rt_string_cstr(username) : NULL;
+    const char *p = password ? rt_string_cstr(password) : NULL;
+    char *new_username = u ? strdup(u) : NULL;
+    char *new_password = p ? strdup(p) : NULL;
+    if ((u && !new_username) || (p && !new_password)) {
+        free(new_username);
+        free(new_password);
+        rt_trap("SmtpClient: auth allocation failed");
+        return;
+    }
     free(s->username);
     free(s->password);
-    s->username = u ? strdup(u) : NULL;
-    s->password = p ? strdup(p) : NULL;
+    s->username = new_username;
+    s->password = new_password;
 }
 
 /// @brief Toggle TLS opportunistically. With `enable=1` and a non-465 port, the next send will

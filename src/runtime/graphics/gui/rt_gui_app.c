@@ -1163,16 +1163,18 @@ static int rt_gui_send_event_to_widget(vg_widget_t *widget, vg_event_t *event) {
 ///          events use `event->wheel.screen_x`; all other pointer events use
 ///          `event->mouse.screen_x`.
 static float rt_gui_event_screen_x(const vg_event_t *event) {
-    return event && event->type == VG_EVENT_MOUSE_WHEEL ? event->wheel.screen_x
-                                                        : event->mouse.screen_x;
+    if (!event)
+        return 0.0f;
+    return event->type == VG_EVENT_MOUSE_WHEEL ? event->wheel.screen_x : event->mouse.screen_x;
 }
 
 /// @brief Extract the screen-space Y coordinate from any pointer event.
 /// @details Mirrors `rt_gui_event_screen_x`; dispatches on wheel vs. mouse
 ///          union to read the correct Y field.
 static float rt_gui_event_screen_y(const vg_event_t *event) {
-    return event && event->type == VG_EVENT_MOUSE_WHEEL ? event->wheel.screen_y
-                                                        : event->mouse.screen_y;
+    if (!event)
+        return 0.0f;
+    return event->type == VG_EVENT_MOUSE_WHEEL ? event->wheel.screen_y : event->mouse.screen_y;
 }
 
 /// @brief Snapshot the widget that was clicked this frame into `app->last_clicked`.

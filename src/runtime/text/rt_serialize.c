@@ -181,8 +181,10 @@ static rt_string sanitized_xml_name(const char *name, const char *fallback) {
     size_t len = strlen(src);
     size_t cap = len + strlen(fallback) + 8;
     char *buf = (char *)malloc(cap);
-    if (!buf)
+    if (!buf) {
         rt_trap("Serialize: memory allocation failed");
+        return rt_string_from_bytes(src, len);
+    }
     size_t out = 0;
     if (!xml_name_start((unsigned char)src[0])) {
         for (const char *p = fallback; *p; ++p)

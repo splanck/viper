@@ -329,6 +329,10 @@ void *rt_dateonly_create(int64_t year, int64_t month, int64_t day) {
         return NULL;
 
     DateOnly *d = (DateOnly *)rt_obj_new_i64(0, (int64_t)sizeof(DateOnly));
+    if (!d) {
+        rt_trap("DateOnly.New: memory allocation failed");
+        return NULL;
+    }
 
     d->year = year;
     d->month = month;

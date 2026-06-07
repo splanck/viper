@@ -204,8 +204,10 @@ static void free_string_vector(process_string_vector *vector) {
 static rt_process_impl *process_alloc(void) {
     rt_process_impl *proc =
         (rt_process_impl *)rt_obj_new_i64(RT_PROCESS_CLASS_ID, (int64_t)sizeof(rt_process_impl));
-    if (!proc)
+    if (!proc) {
         rt_trap("Process.Start: allocation failed");
+        return NULL;
+    }
     memset(proc, 0, sizeof(*proc));
     proc->exit_code = -1;
 #if defined(_WIN32)
@@ -461,6 +463,13 @@ static rt_process_impl *process_start_impl(rt_string program,
     }
 
     rt_process_impl *proc = process_alloc();
+    if (!proc) {
+        close_handle(&stdout_read);
+        close_handle(&stderr_read);
+        close_handle(&pi.hProcess);
+        close_handle(&pi.hThread);
+        return NULL;
+    }
     proc->started = 1;
     proc->running = 1;
     proc->process = pi.hProcess;
@@ -648,6 +657,11 @@ static rt_process_impl *process_start_impl(rt_string program,
     free_string_vector(&argv);
 
     rt_process_impl *proc = process_alloc();
+    if (!proc) {
+        close_fd(&stdout_pipe[0]);
+        close_fd(&stderr_pipe[0]);
+        return NULL;
+    }
     proc->started = 1;
     proc->running = 1;
     proc->pid = pid;

@@ -103,6 +103,7 @@ rt_string rt_dns_resolve(rt_string hostname) {
         if (result)
             freeaddrinfo(result);
         rt_trap_net("Network: hostname not found", Err_DnsError);
+        return rt_str_empty();
     }
 
     char ip_str[INET6_ADDRSTRLEN];
@@ -189,6 +190,7 @@ rt_string rt_dns_resolve4(rt_string hostname) {
         if (result)
             freeaddrinfo(result);
         rt_trap_net("Network: no IPv4 address found", Err_DnsError);
+        return rt_str_empty();
     }
 
     char ip_str[INET_ADDRSTRLEN];
@@ -218,6 +220,7 @@ rt_string rt_dns_resolve6(rt_string hostname) {
         if (result)
             freeaddrinfo(result);
         rt_trap_net("Network: no IPv6 address found", Err_DnsError);
+        return rt_str_empty();
     }
 
     char ip_str[INET6_ADDRSTRLEN];

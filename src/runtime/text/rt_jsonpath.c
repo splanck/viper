@@ -313,8 +313,12 @@ void *rt_jsonpath_query(void *root, rt_string path) {
         if (pre_len > 0 && p[pre_len - 1] == '.')
             pre_len--;
         char *pre = (char *)malloc((size_t)(pre_len + 1));
-        if (!pre)
+        if (!pre) {
             rt_trap("rt_jsonpath: memory allocation failed");
+            if (owned_root)
+                release_local_obj(root);
+            return results;
+        }
         memcpy(pre, p, (size_t)pre_len);
         pre[pre_len] = '\0';
         parent = resolve_path(root, pre);

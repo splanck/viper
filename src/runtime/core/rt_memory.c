@@ -56,8 +56,10 @@ static void *rt_alloc_impl(int64_t bytes) {
     if (request == 0)
         request = 1;
     void *p = calloc(1, request);
-    if (!p)
+    if (!p) {
         rt_trap("out of memory");
+        return NULL;
+    }
     return p;
 }
 

@@ -66,6 +66,23 @@ static void rt_http_req_finalize(void *obj) {
     req->timeout_ms = 0;
 }
 
+/// @brief Duplicate an HTTP method token into request-owned storage.
+/// @details The one-shot and builder APIs store `method` in `rt_http_req_t` and later free it
+///          through normal request cleanup. This helper centralizes the allocation check so an
+///          out-of-memory trap cannot be followed by a request with a NULL method when a test or
+///          embedding trap hook returns.
+/// @param method Non-NULL HTTP method token to duplicate.
+/// @return Heap-allocated method string, or NULL only if the active trap handler returned after
+///         reporting allocation failure.
+static char *http_dup_method_or_trap(const char *method) {
+    char *copy = method ? strdup(method) : NULL;
+    if (!copy) {
+        rt_trap("HTTP: method allocation failed");
+        return NULL;
+    }
+    return copy;
+}
+
 //=============================================================================
 // Http Static Class Implementation
 //=============================================================================
@@ -84,28 +101,37 @@ static void rt_http_req_finalize(void *obj) {
 ///         Err_NetworkError on transport failure.
 rt_string rt_http_get(rt_string url) {
     const char *url_str = rt_string_cstr(url);
-    if (!url_str || *url_str == '\0')
+    if (!url_str || *url_str == '\0') {
         rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);
+        return rt_string_from_bytes("", 0);
+    }
 
     // Create request
     rt_http_req_t req = {0};
-    req.method = strdup("GET");
+    req.method = http_dup_method_or_trap("GET");
+    if (!req.method)
+        return rt_string_from_bytes("", 0);
     req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
     req.tls_verify = 1;
     req.follow_redirects = 1;
     req.accept_gzip = 1;
     req.decode_gzip = 1;
 
-    if (parse_url(url_str, &req.url) < 0)
+    if (parse_url(url_str, &req.url) < 0) {
+        free(req.method);
         rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
+        return rt_string_from_bytes("", 0);
+    }
 
     // Execute request
     rt_http_res_t *res = do_http_request(&req, HTTP_MAX_REDIRECTS);
     free(req.method);
     free_parsed_url(&req.url);
 
-    if (!res)
+    if (!res) {
         rt_trap_net("HTTP: request failed", Err_NetworkError);
+        return rt_string_from_bytes("", 0);
+    }
 
     rt_string result = rt_string_from_bytes((const char *)res->body, res->body_len);
 
@@ -119,26 +145,35 @@ rt_string rt_http_get(rt_string url) {
 /// @throws Err_InvalidUrl / Err_NetworkError on failure (see `rt_http_get`).
 void *rt_http_get_bytes(rt_string url) {
     const char *url_str = rt_string_cstr(url);
-    if (!url_str || *url_str == '\0')
+    if (!url_str || *url_str == '\0') {
         rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);
+        return NULL;
+    }
 
     rt_http_req_t req = {0};
-    req.method = strdup("GET");
+    req.method = http_dup_method_or_trap("GET");
+    if (!req.method)
+        return NULL;
     req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
     req.tls_verify = 1;
     req.follow_redirects = 1;
     req.accept_gzip = 1;
     req.decode_gzip = 1;
 
-    if (parse_url(url_str, &req.url) < 0)
+    if (parse_url(url_str, &req.url) < 0) {
+        free(req.method);
         rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
+        return NULL;
+    }
 
     rt_http_res_t *res = do_http_request(&req, HTTP_MAX_REDIRECTS);
     free(req.method);
     free_parsed_url(&req.url);
 
-    if (!res)
+    if (!res) {
         rt_trap_net("HTTP: request failed", Err_NetworkError);
+        return NULL;
+    }
 
     void *result = rt_bytes_new((int64_t)res->body_len);
     uint8_t *result_ptr = bytes_data(result);
@@ -160,19 +195,26 @@ rt_string rt_http_post(rt_string url, rt_string body) {
     const char *url_str = rt_string_cstr(url);
     const char *body_str = rt_string_cstr(body);
 
-    if (!url_str || *url_str == '\0')
+    if (!url_str || *url_str == '\0') {
         rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);
+        return rt_string_from_bytes("", 0);
+    }
 
     rt_http_req_t req = {0};
-    req.method = strdup("POST");
+    req.method = http_dup_method_or_trap("POST");
+    if (!req.method)
+        return rt_string_from_bytes("", 0);
     req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
     req.tls_verify = 1;
     req.follow_redirects = 1;
     req.accept_gzip = 1;
     req.decode_gzip = 1;
 
-    if (parse_url(url_str, &req.url) < 0)
+    if (parse_url(url_str, &req.url) < 0) {
+        free(req.method);
         rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
+        return rt_string_from_bytes("", 0);
+    }
 
     if (body_str)
         set_request_body_from_string(&req, body);
@@ -187,8 +229,10 @@ rt_string rt_http_post(rt_string url, rt_string body) {
     free_parsed_url(&req.url);
     free_headers(req.headers);
 
-    if (!res)
+    if (!res) {
         rt_trap_net("HTTP: request failed", Err_NetworkError);
+        return rt_string_from_bytes("", 0);
+    }
 
     rt_string result = rt_string_from_bytes((const char *)res->body, res->body_len);
 
@@ -206,19 +250,26 @@ rt_string rt_http_post(rt_string url, rt_string body) {
 void *rt_http_post_bytes(rt_string url, void *body) {
     const char *url_str = rt_string_cstr(url);
 
-    if (!url_str || *url_str == '\0')
+    if (!url_str || *url_str == '\0') {
         rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);
+        return NULL;
+    }
 
     rt_http_req_t req = {0};
-    req.method = strdup("POST");
+    req.method = http_dup_method_or_trap("POST");
+    if (!req.method)
+        return NULL;
     req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
     req.tls_verify = 1;
     req.follow_redirects = 1;
     req.accept_gzip = 1;
     req.decode_gzip = 1;
 
-    if (parse_url(url_str, &req.url) < 0)
+    if (parse_url(url_str, &req.url) < 0) {
+        free(req.method);
         rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
+        return NULL;
+    }
 
     if (body) {
         int64_t body_len = rt_bytes_len(body);
@@ -235,8 +286,10 @@ void *rt_http_post_bytes(rt_string url, void *body) {
     free_parsed_url(&req.url);
     free_headers(req.headers);
 
-    if (!res)
+    if (!res) {
         rt_trap_net("HTTP: request failed", Err_NetworkError);
+        return NULL;
+    }
 
     void *result = rt_bytes_new((int64_t)res->body_len);
     uint8_t *result_ptr = bytes_data(result);
@@ -268,6 +321,8 @@ int8_t rt_http_download(rt_string url, rt_string dest_path) {
 
     rt_http_req_t req = {0};
     req.method = strdup("GET");
+    if (!req.method)
+        return 0;
     req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
     req.tls_verify = 1;
     req.follow_redirects = 1;
@@ -308,26 +363,35 @@ int8_t rt_http_download(rt_string url, rt_string dest_path) {
 /// transport failure.
 void *rt_http_head(rt_string url) {
     const char *url_str = rt_string_cstr(url);
-    if (!url_str || *url_str == '\0')
+    if (!url_str || *url_str == '\0') {
         rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);
+        return NULL;
+    }
 
     rt_http_req_t req = {0};
-    req.method = strdup("HEAD");
+    req.method = http_dup_method_or_trap("HEAD");
+    if (!req.method)
+        return NULL;
     req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
     req.tls_verify = 1;
     req.follow_redirects = 1;
     req.accept_gzip = 1;
     req.decode_gzip = 1;
 
-    if (parse_url(url_str, &req.url) < 0)
+    if (parse_url(url_str, &req.url) < 0) {
+        free(req.method);
         rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
+        return NULL;
+    }
 
     rt_http_res_t *res = do_http_request(&req, HTTP_MAX_REDIRECTS);
     free(req.method);
     free_parsed_url(&req.url);
 
-    if (!res)
+    if (!res) {
         rt_trap_net("HTTP: request failed", Err_NetworkError);
+        return NULL;
+    }
 
     void *headers = rt_http_res_headers(res);
     if (rt_obj_release_check0(res))
@@ -344,19 +408,26 @@ rt_string rt_http_patch(rt_string url, rt_string body) {
     const char *url_str = rt_string_cstr(url);
     const char *body_str = rt_string_cstr(body);
 
-    if (!url_str || *url_str == '\0')
+    if (!url_str || *url_str == '\0') {
         rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);
+        return rt_string_from_bytes("", 0);
+    }
 
     rt_http_req_t req = {0};
-    req.method = strdup("PATCH");
+    req.method = http_dup_method_or_trap("PATCH");
+    if (!req.method)
+        return rt_string_from_bytes("", 0);
     req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
     req.tls_verify = 1;
     req.follow_redirects = 1;
     req.accept_gzip = 1;
     req.decode_gzip = 1;
 
-    if (parse_url(url_str, &req.url) < 0)
+    if (parse_url(url_str, &req.url) < 0) {
+        free(req.method);
         rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
+        return rt_string_from_bytes("", 0);
+    }
 
     if (body_str)
         set_request_body_from_string(&req, body);
@@ -370,8 +441,10 @@ rt_string rt_http_patch(rt_string url, rt_string body) {
     free_parsed_url(&req.url);
     free_headers(req.headers);
 
-    if (!res)
+    if (!res) {
         rt_trap_net("HTTP: request failed", Err_NetworkError);
+        return rt_string_from_bytes("", 0);
+    }
 
     rt_string result = rt_string_from_bytes((const char *)res->body, res->body_len);
 
@@ -387,26 +460,35 @@ rt_string rt_http_patch(rt_string url, rt_string body) {
 /// data lives in the response headers (`Allow`, `Access-Control-*`).
 rt_string rt_http_options(rt_string url) {
     const char *url_str = rt_string_cstr(url);
-    if (!url_str || *url_str == '\0')
+    if (!url_str || *url_str == '\0') {
         rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);
+        return rt_string_from_bytes("", 0);
+    }
 
     rt_http_req_t req = {0};
-    req.method = strdup("OPTIONS");
+    req.method = http_dup_method_or_trap("OPTIONS");
+    if (!req.method)
+        return rt_string_from_bytes("", 0);
     req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
     req.tls_verify = 1;
     req.follow_redirects = 1;
     req.accept_gzip = 1;
     req.decode_gzip = 1;
 
-    if (parse_url(url_str, &req.url) < 0)
+    if (parse_url(url_str, &req.url) < 0) {
+        free(req.method);
         rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
+        return rt_string_from_bytes("", 0);
+    }
 
     rt_http_res_t *res = do_http_request(&req, HTTP_MAX_REDIRECTS);
     free(req.method);
     free_parsed_url(&req.url);
 
-    if (!res)
+    if (!res) {
         rt_trap_net("HTTP: request failed", Err_NetworkError);
+        return rt_string_from_bytes("", 0);
+    }
 
     rt_string result = rt_string_from_bytes((const char *)res->body, res->body_len);
 
@@ -424,19 +506,26 @@ rt_string rt_http_put(rt_string url, rt_string body) {
     const char *url_str = rt_string_cstr(url);
     const char *body_str = rt_string_cstr(body);
 
-    if (!url_str || *url_str == '\0')
+    if (!url_str || *url_str == '\0') {
         rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);
+        return rt_string_from_bytes("", 0);
+    }
 
     rt_http_req_t req = {0};
-    req.method = strdup("PUT");
+    req.method = http_dup_method_or_trap("PUT");
+    if (!req.method)
+        return rt_string_from_bytes("", 0);
     req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
     req.tls_verify = 1;
     req.follow_redirects = 1;
     req.accept_gzip = 1;
     req.decode_gzip = 1;
 
-    if (parse_url(url_str, &req.url) < 0)
+    if (parse_url(url_str, &req.url) < 0) {
+        free(req.method);
         rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
+        return rt_string_from_bytes("", 0);
+    }
 
     if (body_str)
         set_request_body_from_string(&req, body);
@@ -450,8 +539,10 @@ rt_string rt_http_put(rt_string url, rt_string body) {
     free_parsed_url(&req.url);
     free_headers(req.headers);
 
-    if (!res)
+    if (!res) {
         rt_trap_net("HTTP: request failed", Err_NetworkError);
+        return rt_string_from_bytes("", 0);
+    }
 
     rt_string result = rt_string_from_bytes((const char *)res->body, res->body_len);
 
@@ -468,19 +559,26 @@ rt_string rt_http_put(rt_string url, rt_string body) {
 void *rt_http_put_bytes(rt_string url, void *body) {
     const char *url_str = rt_string_cstr(url);
 
-    if (!url_str || *url_str == '\0')
+    if (!url_str || *url_str == '\0') {
         rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);
+        return NULL;
+    }
 
     rt_http_req_t req = {0};
-    req.method = strdup("PUT");
+    req.method = http_dup_method_or_trap("PUT");
+    if (!req.method)
+        return NULL;
     req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
     req.tls_verify = 1;
     req.follow_redirects = 1;
     req.accept_gzip = 1;
     req.decode_gzip = 1;
 
-    if (parse_url(url_str, &req.url) < 0)
+    if (parse_url(url_str, &req.url) < 0) {
+        free(req.method);
         rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
+        return NULL;
+    }
 
     if (body) {
         int64_t body_len = rt_bytes_len(body);
@@ -497,8 +595,10 @@ void *rt_http_put_bytes(rt_string url, void *body) {
     free_parsed_url(&req.url);
     free_headers(req.headers);
 
-    if (!res)
+    if (!res) {
         rt_trap_net("HTTP: request failed", Err_NetworkError);
+        return NULL;
+    }
 
     void *result = rt_bytes_new((int64_t)res->body_len);
     uint8_t *result_ptr = bytes_data(result);
@@ -514,26 +614,35 @@ void *rt_http_put_bytes(rt_string url, void *body) {
 /// @brief HTTP DELETE; returns the response body as a string.
 rt_string rt_http_delete(rt_string url) {
     const char *url_str = rt_string_cstr(url);
-    if (!url_str || *url_str == '\0')
+    if (!url_str || *url_str == '\0') {
         rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);
+        return rt_string_from_bytes("", 0);
+    }
 
     rt_http_req_t req = {0};
-    req.method = strdup("DELETE");
+    req.method = http_dup_method_or_trap("DELETE");
+    if (!req.method)
+        return rt_string_from_bytes("", 0);
     req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
     req.tls_verify = 1;
     req.follow_redirects = 1;
     req.accept_gzip = 1;
     req.decode_gzip = 1;
 
-    if (parse_url(url_str, &req.url) < 0)
+    if (parse_url(url_str, &req.url) < 0) {
+        free(req.method);
         rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
+        return rt_string_from_bytes("", 0);
+    }
 
     rt_http_res_t *res = do_http_request(&req, HTTP_MAX_REDIRECTS);
     free(req.method);
     free_parsed_url(&req.url);
 
-    if (!res)
+    if (!res) {
         rt_trap_net("HTTP: request failed", Err_NetworkError);
+        return rt_string_from_bytes("", 0);
+    }
 
     rt_string result = rt_string_from_bytes((const char *)res->body, res->body_len);
 
@@ -546,26 +655,35 @@ rt_string rt_http_delete(rt_string url) {
 /// @brief HTTP DELETE; returns the response body as a Bytes object.
 void *rt_http_delete_bytes(rt_string url) {
     const char *url_str = rt_string_cstr(url);
-    if (!url_str || *url_str == '\0')
+    if (!url_str || *url_str == '\0') {
         rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);
+        return NULL;
+    }
 
     rt_http_req_t req = {0};
-    req.method = strdup("DELETE");
+    req.method = http_dup_method_or_trap("DELETE");
+    if (!req.method)
+        return NULL;
     req.timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
     req.tls_verify = 1;
     req.follow_redirects = 1;
     req.accept_gzip = 1;
     req.decode_gzip = 1;
 
-    if (parse_url(url_str, &req.url) < 0)
+    if (parse_url(url_str, &req.url) < 0) {
+        free(req.method);
         rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
+        return NULL;
+    }
 
     rt_http_res_t *res = do_http_request(&req, HTTP_MAX_REDIRECTS);
     free(req.method);
     free_parsed_url(&req.url);
 
-    if (!res)
+    if (!res) {
         rt_trap_net("HTTP: request failed", Err_NetworkError);
+        return NULL;
+    }
 
     void *result = rt_bytes_new((int64_t)res->body_len);
     uint8_t *result_ptr = bytes_data(result);
@@ -597,19 +715,27 @@ void *rt_http_req_new(rt_string method, rt_string url) {
     const char *method_str = method ? rt_string_cstr(method) : NULL;
     const char *url_str = url ? rt_string_cstr(url) : NULL;
 
-    if (!method_str || http_rt_string_has_embedded_nul(method) || !http_method_is_token(method_str))
+    if (!method_str || http_rt_string_has_embedded_nul(method) || !http_method_is_token(method_str)) {
         rt_trap("HTTP: invalid method");
-    if (!url_str || *url_str == '\0' || http_rt_string_has_embedded_nul(url))
+        return NULL;
+    }
+    if (!url_str || *url_str == '\0' || http_rt_string_has_embedded_nul(url)) {
         rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);
+        return NULL;
+    }
 
     // Must use rt_obj_new_i64 for GC management
     rt_http_req_t *req = (rt_http_req_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_http_req_t));
-    if (!req)
+    if (!req) {
         rt_trap("HTTP: memory allocation failed");
+        return NULL;
+    }
 
     memset(req, 0, sizeof(*req));
     rt_obj_set_finalizer(req, rt_http_req_finalize);
-    req->method = strdup(method_str);
+    req->method = http_dup_method_or_trap(method_str);
+    if (!req->method)
+        return NULL;
     req->timeout_ms = HTTP_DEFAULT_TIMEOUT_MS;
     req->tls_verify = 1;
     req->follow_redirects = 1;
@@ -621,8 +747,10 @@ void *rt_http_req_new(rt_string method, rt_string url) {
 
     if (parse_url(url_str, &req->url) < 0) {
         free(req->method);
+        req->method = NULL;
         // Note: GC-managed object, so we don't free it directly
         rt_trap_net("HTTP: invalid URL format", Err_InvalidUrl);
+        return NULL;
     }
 
     return req;
@@ -631,8 +759,10 @@ void *rt_http_req_new(rt_string method, rt_string url) {
 /// @brief Append a request header. Silently ignores NULL name/value.
 /// @return `obj` (for fluent chaining).
 void *rt_http_req_set_header(void *obj, rt_string name, rt_string value) {
-    if (!obj)
+    if (!obj) {
         rt_trap("HTTP: NULL request");
+        return NULL;
+    }
 
     rt_http_req_t *req = (rt_http_req_t *)obj;
     const char *name_str = name ? rt_string_cstr(name) : NULL;
@@ -651,8 +781,10 @@ void *rt_http_req_set_header(void *obj, rt_string name, rt_string value) {
 /// request-owned buffer so the caller's Bytes lifetime is independent.
 /// @return `obj` (for fluent chaining).
 void *rt_http_req_set_body(void *obj, void *data) {
-    if (!obj)
+    if (!obj) {
         rt_trap("HTTP: NULL request");
+        return NULL;
+    }
 
     rt_http_req_t *req = (rt_http_req_t *)obj;
 
@@ -665,13 +797,17 @@ void *rt_http_req_set_body(void *obj, void *data) {
     if (data) {
         int64_t len = rt_bytes_len(data);
         uint8_t *ptr = bytes_data(data);
-        if (len < 0 || (uint64_t)len > (uint64_t)SIZE_MAX)
+        if (len < 0 || (uint64_t)len > (uint64_t)SIZE_MAX) {
             rt_trap("HTTP: invalid body length");
+            return obj;
+        }
 
         if (len > 0) {
             req->body = (uint8_t *)malloc((size_t)len);
-            if (!req->body)
+            if (!req->body) {
                 rt_trap("HTTP: memory allocation failed");
+                return obj;
+            }
             memcpy(req->body, ptr, (size_t)len);
             req->body_len = (size_t)len;
         }
@@ -683,8 +819,10 @@ void *rt_http_req_set_body(void *obj, void *data) {
 /// @brief Replace the request body with a string (copied).
 /// @return `obj` (for fluent chaining).
 void *rt_http_req_set_body_str(void *obj, rt_string text) {
-    if (!obj)
+    if (!obj) {
         rt_trap("HTTP: NULL request");
+        return NULL;
+    }
 
     rt_http_req_t *req = (rt_http_req_t *)obj;
     const char *text_str = text ? rt_string_cstr(text) : NULL;
@@ -697,13 +835,17 @@ void *rt_http_req_set_body_str(void *obj, rt_string text) {
 
     if (text_str) {
         int64_t len64 = rt_str_len(text);
-        if (len64 < 0 || (uint64_t)len64 > (uint64_t)SIZE_MAX)
+        if (len64 < 0 || (uint64_t)len64 > (uint64_t)SIZE_MAX) {
             rt_trap("HTTP: invalid body length");
+            return obj;
+        }
         size_t len = (size_t)len64;
         if (len > 0) {
             req->body = (uint8_t *)malloc(len);
-            if (!req->body)
+            if (!req->body) {
                 rt_trap("HTTP: memory allocation failed");
+                return obj;
+            }
             memcpy(req->body, text_str, len);
             req->body_len = len;
         }
@@ -715,13 +857,17 @@ void *rt_http_req_set_body_str(void *obj, rt_string text) {
 /// @brief Set per-request I/O timeout in milliseconds.
 /// @return `obj` (for fluent chaining).
 void *rt_http_req_set_timeout(void *obj, int64_t timeout_ms) {
-    if (!obj)
+    if (!obj) {
         rt_trap("HTTP: NULL request");
+        return NULL;
+    }
 
     rt_http_req_t *req = (rt_http_req_t *)obj;
     int timeout_int = 0;
-    if (!rt_net_timeout_ms_to_int(timeout_ms, &timeout_int))
+    if (!rt_net_timeout_ms_to_int(timeout_ms, &timeout_int)) {
         rt_trap("HTTP: invalid timeout");
+        return obj;
+    }
     req->timeout_ms = timeout_int;
 
     return obj;
@@ -730,8 +876,10 @@ void *rt_http_req_set_timeout(void *obj, int64_t timeout_ms) {
 /// @brief Toggle TLS certificate verification for HTTPS requests.
 /// @return `obj` (for fluent chaining).
 void *rt_http_req_set_tls_verify(void *obj, int8_t verify) {
-    if (!obj)
+    if (!obj) {
         rt_trap("HTTP: NULL request");
+        return NULL;
+    }
 
     rt_http_req_t *req = (rt_http_req_t *)obj;
     req->tls_verify = verify ? 1 : 0;
@@ -741,8 +889,10 @@ void *rt_http_req_set_tls_verify(void *obj, int8_t verify) {
 /// @brief Toggle automatic redirect following (3xx Location handling).
 /// @return `obj` (for fluent chaining).
 void *rt_http_req_set_follow_redirects(void *obj, int8_t follow) {
-    if (!obj)
+    if (!obj) {
         rt_trap("HTTP: NULL request");
+        return NULL;
+    }
 
     rt_http_req_t *req = (rt_http_req_t *)obj;
     req->follow_redirects = follow ? 1 : 0;
@@ -752,14 +902,18 @@ void *rt_http_req_set_follow_redirects(void *obj, int8_t follow) {
 /// @brief Override the per-request redirect cap (negative values clamp to 0).
 /// @return `obj` (for fluent chaining).
 void *rt_http_req_set_max_redirects(void *obj, int64_t max_redirects) {
-    if (!obj)
+    if (!obj) {
         rt_trap("HTTP: NULL request");
+        return NULL;
+    }
 
     rt_http_req_t *req = (rt_http_req_t *)obj;
     if (max_redirects < 0)
         max_redirects = 0;
-    if (max_redirects > INT_MAX)
+    if (max_redirects > INT_MAX) {
         rt_trap("HTTP: invalid redirect limit");
+        return obj;
+    }
     req->max_redirects = (int)max_redirects;
     return obj;
 }
@@ -767,8 +921,10 @@ void *rt_http_req_set_max_redirects(void *obj, int64_t max_redirects) {
 /// @brief Toggle keep-alive / pooled transport for this request.
 /// @return `obj` (for fluent chaining).
 void *rt_http_req_set_keep_alive(void *obj, int8_t keep_alive) {
-    if (!obj)
+    if (!obj) {
         rt_trap("HTTP: NULL request");
+        return NULL;
+    }
 
     rt_http_req_t *req = (rt_http_req_t *)obj;
     req->keep_alive = keep_alive ? 1 : 0;
@@ -784,8 +940,10 @@ void *rt_http_req_set_keep_alive(void *obj, int8_t keep_alive) {
 ///          persistence is implicit). Default is `0` (allow HTTP/2).
 /// @return `obj` (for fluent chaining).
 void *rt_http_req_set_force_http1(void *obj, int8_t force) {
-    if (!obj)
+    if (!obj) {
         rt_trap("HTTP: NULL request");
+        return NULL;
+    }
 
     rt_http_req_t *req = (rt_http_req_t *)obj;
     req->force_http1 = force ? 1 : 0;
@@ -795,8 +953,10 @@ void *rt_http_req_set_force_http1(void *obj, int8_t force) {
 /// @brief Attach an internal connection pool to this request.
 /// @return `obj` (for fluent chaining).
 void *rt_http_req_set_connection_pool(void *obj, void *pool) {
-    if (!obj)
+    if (!obj) {
         rt_trap("HTTP: NULL request");
+        return NULL;
+    }
 
     rt_http_req_t *req = (rt_http_req_t *)obj;
     if (req->connection_pool == pool)
@@ -818,8 +978,10 @@ void *rt_http_req_set_connection_pool(void *obj, void *pool) {
 /// @return Newly-allocated `rt_http_res_t*` (GC-managed) or NULL on
 ///         transport failure (`do_http_request` returns NULL).
 void *rt_http_req_send(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("HTTP: NULL request");
+        return NULL;
+    }
 
     rt_http_req_t *req = (rt_http_req_t *)obj;
 

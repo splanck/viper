@@ -97,8 +97,10 @@ static int canvas3d_ensure_motion_hash_capacity(rt_canvas3d *c, int32_t count_hi
 /// @brief Insert history entry @p index into the hash by linear probing (slot stores index+1).
 /// @return 1 on success, 0 if the table is full or inputs are invalid.
 static int canvas3d_motion_hash_insert_existing(rt_canvas3d *c, int32_t index) {
+    if (!c || !c->motion_history_hash || index < 0 || index >= c->motion_history_count)
+        return 0;
     canvas_motion_history_t *hist = (canvas_motion_history_t *)c->motion_history;
-    if (!c || !c->motion_history_hash || !hist || index < 0 || index >= c->motion_history_count)
+    if (!hist)
         return 0;
     int32_t mask = c->motion_history_hash_capacity - 1;
     int32_t slot = (int32_t)(canvas3d_hash_u64(hist[index].key) & (uint32_t)mask);

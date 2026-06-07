@@ -121,12 +121,12 @@ static int collider_type_is_simple(int64_t type) {
 /// non-simple shapes (the caller falls back to AABB-vs-AABB).
 int build_simple_proxy(const rt_collider_pose *pose, void *collider, rt_body3d *out) {
     double hx[3];
-    double sx = fabs(pose->scale[0]);
-    double sy = fabs(pose->scale[1]);
-    double sz = fabs(pose->scale[2]);
     int64_t type;
     if (!pose || !collider || !out)
         return 0;
+    double sx = fabs(pose->scale[0]);
+    double sy = fabs(pose->scale[1]);
+    double sz = fabs(pose->scale[2]);
     memset(out, 0, sizeof(*out));
     out->position[0] = pose->position[0];
     out->position[1] = pose->position[1];
