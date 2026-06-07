@@ -153,16 +153,17 @@ static int clip_triangle(const pipe_vert_t *tri, pipe_vert_t *out) {
     pipe_vert_t buf_a[MAX_CLIP_VERTS], buf_b[MAX_CLIP_VERTS];
     memcpy(buf_a, tri, 3 * sizeof(pipe_vert_t));
     int count = 3;
+    pipe_vert_t *src = buf_a;
+    pipe_vert_t *dst = buf_b;
     for (int plane = 0; plane < 6; plane++) {
-        pipe_vert_t *src = (plane % 2 == 0) ? buf_a : buf_b;
-        pipe_vert_t *dst = (plane % 2 == 0) ? buf_b : buf_a;
         count = clip_poly_plane(src, count, dst, plane);
         if (count < 3)
             return 0;
+        pipe_vert_t *tmp = src;
+        src = dst;
+        dst = tmp;
     }
-    /* After 6 planes (even count), last output landed in buf_b */
-    pipe_vert_t *result = (5 % 2 == 0) ? buf_b : buf_a;
-    memcpy(out, result, (size_t)count * sizeof(pipe_vert_t));
+    memcpy(out, src, (size_t)count * sizeof(pipe_vert_t));
     return count;
 }
 

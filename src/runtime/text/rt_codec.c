@@ -121,20 +121,28 @@ rt_string rt_codec_url_encode(rt_string str) {
         if (is_url_unreserved(c))
             out_len++;
         else {
-            if (out_len > SIZE_MAX - 3)
+            if (out_len > SIZE_MAX - 3) {
                 rt_trap("Codec.UrlEncode: output length overflow");
+                return rt_string_from_bytes("", 0);
+            }
             out_len += 3; // %XX
             continue;
         }
-        if (out_len == 0)
+        if (out_len == 0) {
             rt_trap("Codec.UrlEncode: output length overflow");
+            return rt_string_from_bytes("", 0);
+        }
     }
-    if (out_len == SIZE_MAX)
+    if (out_len == SIZE_MAX) {
         rt_trap("Codec.UrlEncode: output length overflow");
+        return rt_string_from_bytes("", 0);
+    }
 
     char *out = (char *)malloc(out_len + 1);
-    if (!out)
+    if (!out) {
         rt_trap("Codec.UrlEncode: memory allocation failed");
+        return rt_string_from_bytes("", 0);
+    }
 
     size_t o = 0;
     for (size_t i = 0; i < input_len; i++) {
@@ -198,8 +206,10 @@ rt_string rt_codec_url_decode(rt_string str) {
 
     // Output is at most as long as input
     char *out = (char *)malloc(input_len + 1);
-    if (!out)
+    if (!out) {
         rt_trap("Codec.UrlDecode: memory allocation failed");
+        return rt_string_from_bytes("", 0);
+    }
 
     size_t o = 0;
     for (size_t i = 0; i < input_len; i++) {
@@ -279,18 +289,26 @@ rt_string rt_codec_base64_enc(rt_string str) {
     if (input_len == 0)
         return rt_string_from_bytes("", 0);
 
-    if (input_len > SIZE_MAX - 2)
+    if (input_len > SIZE_MAX - 2) {
         rt_trap("Codec.Base64Enc: output length overflow");
+        return rt_string_from_bytes("", 0);
+    }
     size_t groups = (input_len + 2) / 3;
-    if (groups > SIZE_MAX / 4)
+    if (groups > SIZE_MAX / 4) {
         rt_trap("Codec.Base64Enc: output length overflow");
+        return rt_string_from_bytes("", 0);
+    }
     size_t output_len = groups * 4;
-    if (output_len == SIZE_MAX)
+    if (output_len == SIZE_MAX) {
         rt_trap("Codec.Base64Enc: output length overflow");
+        return rt_string_from_bytes("", 0);
+    }
 
     char *out = (char *)malloc(output_len + 1);
-    if (!out)
+    if (!out) {
         rt_trap("Codec.Base64Enc: memory allocation failed");
+        return rt_string_from_bytes("", 0);
+    }
 
     const uint8_t *data = (const uint8_t *)input;
     size_t i = 0;
@@ -374,8 +392,10 @@ rt_string rt_codec_base64_dec(rt_string str) {
     if (b64_len == 0)
         return rt_string_from_bytes("", 0);
 
-    if (b64_len % 4 != 0)
+    if (b64_len % 4 != 0) {
         rt_trap("Codec.Base64Dec: base64 length must be a multiple of 4");
+        return rt_string_from_bytes("", 0);
+    }
 
     size_t padding = 0;
     if (b64_len >= 1 && input[b64_len - 1] == '=') {
@@ -386,8 +406,10 @@ rt_string rt_codec_base64_dec(rt_string str) {
 
     // Check for invalid padding position
     for (size_t i = 0; i < b64_len - padding; ++i) {
-        if (input[i] == '=')
+        if (input[i] == '=') {
             rt_trap("Codec.Base64Dec: invalid padding");
+            return rt_string_from_bytes("", 0);
+        }
     }
 
     size_t out_len = (b64_len / 4) * 3 - padding;
@@ -395,8 +417,10 @@ rt_string rt_codec_base64_dec(rt_string str) {
         return rt_string_from_bytes("", 0);
 
     char *out = (char *)malloc(out_len + 1);
-    if (!out)
+    if (!out) {
         rt_trap("Codec.Base64Dec: memory allocation failed");
+        return rt_string_from_bytes("", 0);
+    }
 
     size_t out_pos = 0;
     for (size_t i = 0; i < b64_len; i += 4) {
@@ -414,22 +438,27 @@ rt_string rt_codec_base64_dec(rt_string str) {
             free(out);
             if (v0 == -2 || v1 == -2)
                 rt_trap("Codec.Base64Dec: invalid padding");
-            rt_trap("Codec.Base64Dec: invalid base64 character");
+            else
+                rt_trap("Codec.Base64Dec: invalid base64 character");
+            return rt_string_from_bytes("", 0);
         }
 
         if (v2 == -1 || v3 == -1) {
             free(out);
             rt_trap("Codec.Base64Dec: invalid base64 character");
+            return rt_string_from_bytes("", 0);
         }
 
         if (v2 == -2) {
             if (v3 != -2 || i + 4 != b64_len) {
                 free(out);
                 rt_trap("Codec.Base64Dec: invalid padding");
+                return rt_string_from_bytes("", 0);
             }
             if ((v1 & 0x0F) != 0) {
                 free(out);
                 rt_trap("Codec.Base64Dec: invalid padding");
+                return rt_string_from_bytes("", 0);
             }
 
             uint32_t triple = ((uint32_t)v0 << 18) | ((uint32_t)v1 << 12);
@@ -441,10 +470,12 @@ rt_string rt_codec_base64_dec(rt_string str) {
             if (i + 4 != b64_len) {
                 free(out);
                 rt_trap("Codec.Base64Dec: invalid padding");
+                return rt_string_from_bytes("", 0);
             }
             if ((v2 & 0x03) != 0) {
                 free(out);
                 rt_trap("Codec.Base64Dec: invalid padding");
+                return rt_string_from_bytes("", 0);
             }
 
             uint32_t triple = ((uint32_t)v0 << 18) | ((uint32_t)v1 << 12) | ((uint32_t)v2 << 6);
@@ -463,6 +494,7 @@ rt_string rt_codec_base64_dec(rt_string str) {
     if (out_pos != out_len) {
         free(out);
         rt_trap("Codec.Base64Dec: invalid padding");
+        return rt_string_from_bytes("", 0);
     }
 
     out[out_pos] = '\0';
@@ -527,12 +559,16 @@ rt_string rt_codec_hex_enc(rt_string str) {
     if (input_len == 0)
         return rt_string_from_bytes("", 0);
 
-    if (input_len > (SIZE_MAX - 1) / 2)
+    if (input_len > (SIZE_MAX - 1) / 2) {
         rt_trap("Codec.HexEnc: output length overflow");
+        return rt_string_from_bytes("", 0);
+    }
     size_t output_len = input_len * 2;
     char *out = (char *)malloc(output_len + 1);
-    if (!out)
+    if (!out) {
         rt_trap("Codec.HexEnc: memory allocation failed");
+        return rt_string_from_bytes("", 0);
+    }
 
     const uint8_t *data = (const uint8_t *)input;
     for (size_t i = 0; i < input_len; i++) {
@@ -558,12 +594,16 @@ rt_string rt_codec_hex_enc_bytes(const uint8_t *data, size_t len) {
     if (!data || len == 0)
         return rt_string_from_bytes("", 0);
 
-    if (len > (SIZE_MAX - 1) / 2)
+    if (len > (SIZE_MAX - 1) / 2) {
         rt_trap("Codec.HexEncBytes: output length overflow");
+        return rt_string_from_bytes("", 0);
+    }
     size_t output_len = len * 2;
     char *out = (char *)malloc(output_len + 1);
-    if (!out)
+    if (!out) {
         rt_trap("Codec.HexEncBytes: memory allocation failed");
+        return rt_string_from_bytes("", 0);
+    }
 
     for (size_t i = 0; i < len; i++) {
         out[i * 2] = rt_hex_chars[(data[i] >> 4) & 0xF];
@@ -621,13 +661,17 @@ rt_string rt_codec_hex_dec(rt_string str) {
     if (hex_len == 0)
         return rt_string_from_bytes("", 0);
 
-    if (hex_len % 2 != 0)
+    if (hex_len % 2 != 0) {
         rt_trap("Codec.HexDec: hex string length must be even");
+        return rt_string_from_bytes("", 0);
+    }
 
     size_t out_len = hex_len / 2;
     char *out = (char *)malloc(out_len + 1);
-    if (!out)
+    if (!out) {
         rt_trap("Codec.HexDec: memory allocation failed");
+        return rt_string_from_bytes("", 0);
+    }
 
     for (size_t i = 0; i < out_len; i++) {
         int hi = rt_hex_digit_value(input[i * 2]);
@@ -636,6 +680,7 @@ rt_string rt_codec_hex_dec(rt_string str) {
         if (hi < 0 || lo < 0) {
             free(out);
             rt_trap("Codec.HexDec: invalid hex character");
+            return rt_string_from_bytes("", 0);
         }
 
         out[i] = (char)((hi << 4) | lo);

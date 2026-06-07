@@ -311,8 +311,10 @@ rt_string rt_csv_quote_alloc(rt_string value) {
     }
     size_t total = len + extra + 2; // leading and trailing quotes
     char *buffer = (char *)malloc(total + 1);
-    if (!buffer)
+    if (!buffer) {
         rt_trap("rt_csv_quote_alloc: out of memory");
+        return rt_string_from_bytes("", 0);
+    }
 
     size_t pos = 0;
     buffer[pos++] = '"';

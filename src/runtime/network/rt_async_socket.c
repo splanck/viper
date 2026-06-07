@@ -213,8 +213,11 @@ void *rt_async_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
     void *future = rt_promise_get_future(promise);
 
     connect_args_t *args = (connect_args_t *)malloc(sizeof(connect_args_t));
-    if (!args)
+    if (!args) {
         rt_trap("AsyncSocket: OOM");
+        async_fail_submit(promise, "AsyncSocket: OOM");
+        return future;
+    }
     args->host = async_copy_bytes(h, host_len);
     args->host_len = host_len;
     args->port = port;
@@ -284,8 +287,11 @@ void *rt_async_send(void *tcp, void *data) {
     void *future = rt_promise_get_future(promise);
 
     send_args_t *args = (send_args_t *)malloc(sizeof(send_args_t));
-    if (!args)
+    if (!args) {
         rt_trap("AsyncSocket: OOM");
+        async_fail_submit(promise, "AsyncSocket: OOM");
+        return future;
+    }
     rt_obj_retain_maybe(tcp);
     rt_obj_retain_maybe(data);
     args->tcp = tcp;
@@ -343,8 +349,11 @@ void *rt_async_recv(void *tcp, int64_t max_bytes) {
     void *future = rt_promise_get_future(promise);
 
     recv_args_t *args = (recv_args_t *)malloc(sizeof(recv_args_t));
-    if (!args)
+    if (!args) {
         rt_trap("AsyncSocket: OOM");
+        async_fail_submit(promise, "AsyncSocket: OOM");
+        return future;
+    }
     rt_obj_retain_maybe(tcp);
     args->tcp = tcp;
     args->max_bytes = max_bytes;
@@ -412,8 +421,11 @@ void *rt_async_http_get(rt_string url) {
     void *future = rt_promise_get_future(promise);
 
     http_args_t *args = (http_args_t *)malloc(sizeof(http_args_t));
-    if (!args)
+    if (!args) {
         rt_trap("AsyncSocket: OOM");
+        async_fail_submit(promise, "AsyncSocket: OOM");
+        return future;
+    }
     args->url = async_copy_bytes(u, url_len);
     args->url_len = url_len;
     args->body = NULL;
@@ -486,8 +498,11 @@ void *rt_async_http_post(rt_string url, rt_string body) {
     void *future = rt_promise_get_future(promise);
 
     http_args_t *args = (http_args_t *)malloc(sizeof(http_args_t));
-    if (!args)
+    if (!args) {
         rt_trap("AsyncSocket: OOM");
+        async_fail_submit(promise, "AsyncSocket: OOM");
+        return future;
+    }
     args->url = async_copy_bytes(u, url_len);
     args->url_len = url_len;
     args->body = body ? async_copy_bytes(b ? b : "", body_len) : NULL;

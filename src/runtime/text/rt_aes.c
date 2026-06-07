@@ -82,19 +82,28 @@ static void aes_secure_zero(void *ptr, size_t len) {
 /// @brief Extract a raw byte pointer and byte count from a required rt_string.
 ///        Returns an empty C string and sets *len = 0 for real zero-length input.
 static const uint8_t *aes_string_bytes(rt_string str, size_t *len, const char *null_message) {
-    if (!str)
+    if (!str) {
         rt_trap(null_message);
+        *len = 0;
+        return (const uint8_t *)"";
+    }
     int64_t len64 = rt_str_len(str);
-    if (len64 < 0)
+    if (len64 < 0) {
         rt_trap("AES: invalid string length");
+        *len = 0;
+        return (const uint8_t *)"";
+    }
     if (len64 == 0) {
         *len = 0;
         return (const uint8_t *)"";
     }
 
     const char *cstr = rt_string_cstr(str);
-    if (!cstr)
+    if (!cstr) {
         rt_trap(null_message);
+        *len = 0;
+        return (const uint8_t *)"";
+    }
 
     *len = (size_t)len64;
     return (const uint8_t *)cstr;
@@ -615,16 +624,23 @@ static void aes_decrypt_block(const uint8_t *input, uint8_t *output, const uint8
 /// @param out_len Output: length of padded data (always multiple of 16)
 /// @return Newly allocated padded data
 static uint8_t *pkcs7_pad(const uint8_t *data, size_t len, size_t *out_len) {
-    if (!data && len > 0)
+    if (!data && len > 0) {
         rt_trap("AES: input buffer is null");
+        return NULL;
+    }
     size_t pad_len = AES_BLOCK_SIZE - (len % AES_BLOCK_SIZE);
-    if (len > SIZE_MAX - pad_len)
+    if (len > SIZE_MAX - pad_len) {
         rt_trap("AES: input too large");
+        return NULL;
+    }
     *out_len = len + pad_len;
 
     uint8_t *padded = (uint8_t *)malloc(*out_len);
-    if (!padded)
+    if (!padded) {
         rt_trap("AES: memory allocation failed");
+        *out_len = 0;
+        return NULL;
+    }
 
     if (len > 0)
         memcpy(padded, data, len);
@@ -681,13 +697,20 @@ static uint8_t *aes_cbc_encrypt(const uint8_t *plaintext,
     // Expand key
     size_t w_size = (size_t)(16 * (nr + 1));
     uint8_t *w = (uint8_t *)malloc(w_size);
-    if (!w)
+    if (!w) {
         rt_trap("AES: memory allocation failed");
+        return NULL;
+    }
     aes_key_expansion(key, w, nk, nr);
 
     // Pad plaintext
     size_t padded_len;
     uint8_t *padded = pkcs7_pad(plaintext, len, &padded_len);
+    if (!padded) {
+        aes_secure_zero(w, w_size);
+        free(w);
+        return NULL;
+    }
 
     // Allocate ciphertext
     uint8_t *ciphertext = (uint8_t *)malloc(padded_len);
@@ -697,6 +720,7 @@ static uint8_t *aes_cbc_encrypt(const uint8_t *plaintext,
         free(w);
         free(padded);
         rt_trap("AES: memory allocation failed");
+        return NULL;
     }
 
     // CBC encryption
@@ -747,8 +771,10 @@ static uint8_t *aes_cbc_decrypt(const uint8_t *ciphertext,
     // Expand key
     size_t w_size = (size_t)(16 * (nr + 1));
     uint8_t *w = (uint8_t *)malloc(w_size);
-    if (!w)
+    if (!w) {
         rt_trap("AES: memory allocation failed");
+        return NULL;
+    }
     aes_key_expansion(key, w, nk, nr);
 
     // Allocate plaintext buffer
@@ -757,6 +783,7 @@ static uint8_t *aes_cbc_decrypt(const uint8_t *ciphertext,
         aes_secure_zero(w, w_size);
         free(w);
         rt_trap("AES: memory allocation failed");
+        return NULL;
     }
 
     // CBC decryption
@@ -806,14 +833,22 @@ static uint8_t *aes_cbc_decrypt(const uint8_t *ciphertext,
 /// @param iv Bytes object containing initialization vector (must be 16 bytes)
 /// @return Bytes object containing ciphertext
 void *rt_aes_encrypt(void *data, void *key, void *iv) {
-    if (rt_crypto_module_is_approved_mode())
+    if (rt_crypto_module_is_approved_mode()) {
         rt_trap("AES.CBC is not an approved-mode Viper service; use AES-GCM");
-    if (!data)
+        return NULL;
+    }
+    if (!data) {
         rt_trap("AES: plaintext is null");
-    if (!key)
+        return NULL;
+    }
+    if (!key) {
         rt_trap("AES: key is null");
-    if (!iv)
+        return NULL;
+    }
+    if (!iv) {
         rt_trap("AES: IV is null");
+        return NULL;
+    }
     size_t data_len, key_len, iv_len;
     uint8_t *data_raw = rt_bytes_extract_raw(data, &data_len);
     uint8_t *key_raw = rt_bytes_extract_raw(key, &key_len);
@@ -881,14 +916,22 @@ void *rt_aes_encrypt(void *data, void *key, void *iv) {
 /// @param iv Bytes object containing initialization vector (must be 16 bytes)
 /// @return Bytes object containing plaintext, or NULL on decryption error
 void *rt_aes_decrypt(void *data, void *key, void *iv) {
-    if (rt_crypto_module_is_approved_mode())
+    if (rt_crypto_module_is_approved_mode()) {
         rt_trap("AES.CBC is not an approved-mode Viper service; use AES-GCM");
-    if (!data)
+        return NULL;
+    }
+    if (!data) {
         rt_trap("AES: ciphertext is null");
-    if (!key)
+        return NULL;
+    }
+    if (!key) {
         rt_trap("AES: key is null");
-    if (!iv)
+        return NULL;
+    }
+    if (!iv) {
         rt_trap("AES: IV is null");
+        return NULL;
+    }
     size_t data_len, key_len, iv_len;
     uint8_t *data_raw = rt_bytes_extract_raw(data, &data_len);
     uint8_t *key_raw = rt_bytes_extract_raw(key, &key_len);
@@ -967,10 +1010,14 @@ void *rt_aes_decrypt(void *data, void *key, void *iv) {
 /// @param aad  Optional additional authenticated data; may be NULL.
 /// @return New bytes object owning the framed ciphertext, or NULL on bad key.
 void *rt_aes_encrypt_auth(void *data, void *key, void *aad) {
-    if (!data)
+    if (!data) {
         rt_trap("AES.Auth: plaintext is null");
-    if (!key)
+        return NULL;
+    }
+    if (!key) {
         rt_trap("AES.Auth: key is null");
+        return NULL;
+    }
     size_t data_len, key_len;
     uint8_t *data_raw = rt_bytes_extract_raw(data, &data_len);
     uint8_t *key_raw = rt_bytes_extract_raw(key, &key_len);
@@ -988,6 +1035,7 @@ void *rt_aes_encrypt_auth(void *data, void *key, void *aad) {
         aes_secure_zero(key_raw, key_len);
         free(key_raw);
         rt_trap("AES.Auth: plaintext too large");
+        return NULL;
     }
 
     size_t total_len = AES_AUTH_HEADER_LEN + data_len + 16;
@@ -997,6 +1045,7 @@ void *rt_aes_encrypt_auth(void *data, void *key, void *aad) {
         aes_secure_zero(key_raw, key_len);
         free(key_raw);
         rt_trap("AES.Auth: memory allocation failed");
+        return NULL;
     }
 
     out[0] = AES_AUTH_MAGIC0;
@@ -1032,6 +1081,7 @@ void *rt_aes_encrypt_auth(void *data, void *key, void *aad) {
         aes_secure_zero(out, total_len);
         free(out);
         rt_trap("AES.Auth: encryption failed");
+        return NULL;
     }
 
     void *result = rt_bytes_from_raw(out, total_len);
@@ -1252,6 +1302,7 @@ void *rt_aes_encrypt_str(rt_string data, rt_string password) {
         aes_secure_zero(salt, sizeof(salt));
         aes_secure_zero(nonce, sizeof(nonce));
         rt_trap("AES: plaintext too large");
+        return NULL;
     }
     cipher_len = plain_len + 16;
     if (cipher_len > SIZE_MAX - AES_STR_HEADER_LEN) {
@@ -1259,6 +1310,7 @@ void *rt_aes_encrypt_str(rt_string data, rt_string password) {
         aes_secure_zero(salt, sizeof(salt));
         aes_secure_zero(nonce, sizeof(nonce));
         rt_trap("AES: plaintext too large");
+        return NULL;
     }
 
     total_len = AES_STR_HEADER_LEN + cipher_len;
@@ -1268,6 +1320,7 @@ void *rt_aes_encrypt_str(rt_string data, rt_string password) {
         aes_secure_zero(salt, sizeof(salt));
         aes_secure_zero(nonce, sizeof(nonce));
         rt_trap("AES: memory allocation failed");
+        return NULL;
     }
 
     out[0] = AES_STR_MAGIC0;
@@ -1290,6 +1343,7 @@ void *rt_aes_encrypt_str(rt_string data, rt_string password) {
         aes_secure_zero(out, total_len);
         free(out);
         rt_trap("AES: authenticated encryption failed");
+        return NULL;
     }
 
     result = rt_bytes_from_raw(out, total_len);
@@ -1324,8 +1378,10 @@ rt_string rt_aes_decrypt_str(void *data, rt_string password) {
     }
 
     uint8_t *encoded = (uint8_t *)malloc((size_t)total_len);
-    if (!encoded)
+    if (!encoded) {
         rt_trap("AES: memory allocation failed");
+        return rt_const_cstr("");
+    }
     for (int64_t i = 0; i < total_len; i++)
         encoded[i] = (uint8_t)rt_bytes_get(data, i);
 
@@ -1406,6 +1462,7 @@ rt_string rt_aes_decrypt_str(void *data, rt_string password) {
         aes_secure_zero(encoded, (size_t)total_len);
         free(encoded);
         rt_trap("AES: memory allocation failed");
+        return rt_const_cstr("");
     }
 
     memcpy(iv, encoded, sizeof(iv));

@@ -181,6 +181,10 @@ static rt_string join_url(rt_string base, rt_string path) {
 /// every default header copied in, and the configured timeout applied. Returned req is owned by
 /// the caller (will be released by `execute_request`).
 static void *create_request(rest_client *client, rt_string method, rt_string path) {
+    if (!client) {
+        rt_trap("RestClient: NULL client");
+        return NULL;
+    }
     rt_string url = join_url(client->base_url, path);
     void *req = rt_http_req_new(method, url);
     rt_string_unref(url); // Release after use — req copies the C string
@@ -213,6 +217,12 @@ static void *create_request(rest_client *client, rt_string method, rt_string pat
 /// and update `last_status` for ergonomic post-call checks. Releases `req` regardless of outcome.
 /// Returns the HttpRes (a separate retained reference is stored in `client->last_response`).
 static void *execute_request(rest_client *client, void *req) {
+    if (!client) {
+        if (req && rt_obj_release_check0(req))
+            rt_obj_free(req);
+        rt_trap("RestClient: NULL client");
+        return NULL;
+    }
     void *res = rt_http_req_send(req);
     if (req && rt_obj_release_check0(req))
         rt_obj_free(req);
@@ -236,24 +246,42 @@ static void *execute_request(rest_client *client, void *req) {
 /// a GC-managed handle wired to `rest_client_finalize`.
 void *rt_restclient_new(rt_string base_url) {
     rest_client *client = (rest_client *)rt_obj_new_i64(0, (int64_t)sizeof(rest_client));
-    if (!client)
+    if (!client) {
         rt_trap("RestClient: memory allocation failed");
+        return NULL;
+    }
     memset(client, 0, sizeof(rest_client));
+    rt_obj_set_finalizer(client, rest_client_finalize);
 
     size_t url_len = 0;
     const char *url_str = rest_string_bytes(base_url, &url_len, "RestClient: invalid base URL", 1);
     client->base_url = rt_string_from_bytes(url_str, url_len);
-    if (!client->base_url)
+    if (!client->base_url) {
         rt_trap("RestClient: memory allocation failed");
+        if (rt_obj_release_check0(client))
+            rt_obj_free(client);
+        return NULL;
+    }
     client->headers = rt_map_new();
+    if (!client->headers) {
+        rt_trap("RestClient: memory allocation failed");
+        if (rt_obj_release_check0(client))
+            rt_obj_free(client);
+        return NULL;
+    }
     client->timeout_ms = 30000; // 30 second default
     client->last_response = NULL;
     client->last_status = 0;
     client->pool_size = 8;
     client->keep_alive = 1;
     client->connection_pool = rt_http_conn_pool_new(client->pool_size);
+    if (!client->connection_pool) {
+        rt_trap("RestClient: memory allocation failed");
+        if (rt_obj_release_check0(client))
+            rt_obj_free(client);
+        return NULL;
+    }
 
-    rt_obj_set_finalizer(client, rest_client_finalize);
     return client;
 }
 

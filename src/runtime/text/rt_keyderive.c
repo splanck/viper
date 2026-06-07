@@ -51,19 +51,28 @@
 ///          empty buffer. The returned pointer is borrowed; caller must not
 ///          free it.
 static const uint8_t *pbkdf2_string_bytes(rt_string password, size_t *len) {
-    if (!password)
+    if (!password) {
         rt_trap("KeyDerive: password must not be null");
+        *len = 0;
+        return (const uint8_t *)"";
+    }
     int64_t len64 = rt_str_len(password);
-    if (len64 < 0)
+    if (len64 < 0) {
         rt_trap("KeyDerive: invalid password length");
+        *len = 0;
+        return (const uint8_t *)"";
+    }
     if (len64 == 0) {
         *len = 0;
         return (const uint8_t *)"";
     }
 
     const char *pwd_cstr = rt_string_cstr(password);
-    if (!pwd_cstr)
+    if (!pwd_cstr) {
         rt_trap("KeyDerive: password data is null");
+        *len = 0;
+        return (const uint8_t *)"";
+    }
 
     *len = (size_t)len64;
     return (const uint8_t *)pwd_cstr;
@@ -125,27 +134,41 @@ void rt_keyderive_pbkdf2_sha256_raw(const uint8_t *password,
                                     uint32_t iterations,
                                     uint8_t *out,
                                     size_t out_len) {
-    if (!password && password_len > 0)
+    if (!password && password_len > 0) {
         rt_trap("PBKDF2: invalid password buffer");
-    if (!salt && salt_len > 0)
+        return;
+    }
+    if (!salt && salt_len > 0) {
         rt_trap("PBKDF2: invalid salt buffer");
-    if (iterations == 0)
+        return;
+    }
+    if (iterations == 0) {
         rt_trap("PBKDF2: iterations must be greater than 0");
-    if (iterations > RT_PBKDF2_MAX_ITERATIONS)
+        return;
+    }
+    if (iterations > RT_PBKDF2_MAX_ITERATIONS) {
         rt_trap("PBKDF2: iterations exceed policy maximum");
-    if (!out || out_len == 0 || out_len > RT_SCRYPT_MAX_MEMORY)
+        return;
+    }
+    if (!out || out_len == 0 || out_len > RT_SCRYPT_MAX_MEMORY) {
         rt_trap("PBKDF2: invalid output length");
+        return;
+    }
 
     // Number of blocks needed
     uint32_t block_count = (uint32_t)((out_len + SHA256_DIGEST_LEN - 1) / SHA256_DIGEST_LEN);
 
     // Allocate buffer for salt || INT(i)
-    if (salt_len > SIZE_MAX - 4)
+    if (salt_len > SIZE_MAX - 4) {
         rt_trap("PBKDF2: salt too large");
+        return;
+    }
     size_t salt_int_len = salt_len + 4;
     uint8_t *salt_int = (uint8_t *)malloc(salt_int_len);
-    if (!salt_int)
+    if (!salt_int) {
         rt_trap("PBKDF2: memory allocation failed");
+        return;
+    }
 
     if (salt_len > 0)
         memcpy(salt_int, salt, salt_len);
@@ -317,11 +340,15 @@ static uint64_t scrypt_integerify(const uint8_t *block, uint32_t r) {
 ///          All sensitive scratch is zeroed before return.
 static void scrypt_romix(uint8_t *block, uint64_t n, uint32_t r) {
     size_t block_len = (size_t)128 * r;
-    if (n > SIZE_MAX / block_len)
+    if (n > SIZE_MAX / block_len) {
         rt_trap("scrypt: memory cost is too large");
+        return;
+    }
     size_t v_len = (size_t)n * block_len;
-    if (v_len > RT_SCRYPT_MAX_MEMORY)
+    if (v_len > RT_SCRYPT_MAX_MEMORY) {
         rt_trap("scrypt: memory cost exceeds policy maximum");
+        return;
+    }
 
     uint8_t *v = (uint8_t *)malloc(v_len);
     uint8_t *tmp = (uint8_t *)malloc(block_len);
@@ -329,6 +356,7 @@ static void scrypt_romix(uint8_t *block, uint64_t n, uint32_t r) {
         free(v);
         free(tmp);
         rt_trap("scrypt: memory allocation failed");
+        return;
     }
 
     for (uint64_t i = 0; i < n; i++) {
@@ -411,16 +439,22 @@ void rt_keyderive_scrypt_sha256_raw(const uint8_t *password,
                                     uint32_t p,
                                     uint8_t *out,
                                     size_t out_len) {
-    if ((!password && password_len > 0) || (!salt && salt_len > 0) || !out)
+    if ((!password && password_len > 0) || (!salt && salt_len > 0) || !out) {
         rt_trap("scrypt: invalid buffer");
-    if (!scrypt_params_valid(n, r, p, out_len))
+        return;
+    }
+    if (!scrypt_params_valid(n, r, p, out_len)) {
         rt_trap("scrypt: invalid or unsupported parameters");
+        return;
+    }
 
     size_t block_len = (size_t)128 * r;
     size_t b_len = block_len * p;
     uint8_t *b = (uint8_t *)malloc(b_len);
-    if (!b)
+    if (!b) {
         rt_trap("scrypt: memory allocation failed");
+        return;
+    }
 
     rt_keyderive_pbkdf2_sha256_raw(password, password_len, salt, salt_len, 1, b, b_len);
     for (uint32_t i = 0; i < p; i++)
@@ -449,14 +483,22 @@ void *rt_keyderive_pbkdf2_sha256(rt_string password,
     size_t salt_len;
     uint8_t *salt_data;
 
-    if (iterations < RT_PBKDF2_MIN_ITERATIONS)
+    if (iterations < RT_PBKDF2_MIN_ITERATIONS) {
         rt_trap("PBKDF2: iterations are below the policy minimum");
-    if (iterations > UINT32_MAX)
+        return NULL;
+    }
+    if (iterations > UINT32_MAX) {
         rt_trap("PBKDF2: iterations must not exceed 4294967295");
-    if (iterations > RT_PBKDF2_MAX_ITERATIONS)
+        return NULL;
+    }
+    if (iterations > RT_PBKDF2_MAX_ITERATIONS) {
         rt_trap("PBKDF2: iterations exceed policy maximum");
-    if (key_len < 1 || key_len > RT_PBKDF2_MAX_KEY_LEN)
+        return NULL;
+    }
+    if (key_len < 1 || key_len > RT_PBKDF2_MAX_KEY_LEN) {
         rt_trap("PBKDF2: key_len must be between 1 and 1024");
+        return NULL;
+    }
 
     size_t pwd_len;
     const uint8_t *pwd = pbkdf2_string_bytes(password, &pwd_len);
@@ -465,12 +507,14 @@ void *rt_keyderive_pbkdf2_sha256(rt_string password,
     if (!salt_data || salt_len == 0) {
         free(salt_data);
         rt_trap("PBKDF2: salt must not be empty");
+        return NULL;
     }
 
     uint8_t *derived_key = (uint8_t *)malloc((size_t)key_len);
     if (!derived_key) {
         free(salt_data);
         rt_trap("PBKDF2: memory allocation failed");
+        return NULL;
     }
 
     rt_keyderive_pbkdf2_sha256_raw(
@@ -503,14 +547,22 @@ rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password,
     size_t salt_len;
     uint8_t *salt_data;
 
-    if (iterations < RT_PBKDF2_MIN_ITERATIONS)
+    if (iterations < RT_PBKDF2_MIN_ITERATIONS) {
         rt_trap("PBKDF2: iterations are below the policy minimum");
-    if (iterations > UINT32_MAX)
+        return rt_str_empty();
+    }
+    if (iterations > UINT32_MAX) {
         rt_trap("PBKDF2: iterations must not exceed 4294967295");
-    if (iterations > RT_PBKDF2_MAX_ITERATIONS)
+        return rt_str_empty();
+    }
+    if (iterations > RT_PBKDF2_MAX_ITERATIONS) {
         rt_trap("PBKDF2: iterations exceed policy maximum");
-    if (key_len < 1 || key_len > RT_PBKDF2_MAX_KEY_LEN)
+        return rt_str_empty();
+    }
+    if (key_len < 1 || key_len > RT_PBKDF2_MAX_KEY_LEN) {
         rt_trap("PBKDF2: key_len must be between 1 and 1024");
+        return rt_str_empty();
+    }
 
     size_t pwd_len;
     const uint8_t *pwd = pbkdf2_string_bytes(password, &pwd_len);
@@ -519,12 +571,14 @@ rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password,
     if (!salt_data || salt_len == 0) {
         free(salt_data);
         rt_trap("PBKDF2: salt must not be empty");
+        return rt_str_empty();
     }
 
     uint8_t *derived_key = (uint8_t *)malloc((size_t)key_len);
     if (!derived_key) {
         free(salt_data);
         rt_trap("PBKDF2: memory allocation failed");
+        return rt_str_empty();
     }
 
     rt_keyderive_pbkdf2_sha256_raw(
@@ -548,20 +602,30 @@ rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password,
 ///          caller learns about misconfiguration immediately rather than
 ///          getting silent clamping. On success, fills @p n / @p r / @p p
 ///          with the validated native-typed values.
-static void validate_public_scrypt_params(
+/// @return 1 when parameters were valid, 0 after a recoverable validation trap.
+static int validate_public_scrypt_params(
     int64_t n64, int64_t r64, int64_t p64, int64_t key_len, uint64_t *n, uint32_t *r, uint32_t *p) {
-    if (n64 < 2 || r64 < 1 || p64 < 1)
+    if (n64 < 2 || r64 < 1 || p64 < 1) {
         rt_trap("scrypt: cost parameters must be positive");
-    if (key_len < 1 || key_len > RT_SCRYPT_MAX_KEY_LEN)
+        return 0;
+    }
+    if (key_len < 1 || key_len > RT_SCRYPT_MAX_KEY_LEN) {
         rt_trap("scrypt: key_len must be between 1 and 1024");
-    if (r64 > UINT32_MAX || p64 > UINT32_MAX)
+        return 0;
+    }
+    if (r64 > UINT32_MAX || p64 > UINT32_MAX) {
         rt_trap("scrypt: cost parameters are too large");
+        return 0;
+    }
 
     *n = (uint64_t)n64;
     *r = (uint32_t)r64;
     *p = (uint32_t)p64;
-    if (!scrypt_params_valid(*n, *r, *p, (size_t)key_len))
+    if (!scrypt_params_valid(*n, *r, *p, (size_t)key_len)) {
         rt_trap("scrypt: invalid or unsupported parameters");
+        return 0;
+    }
+    return 1;
 }
 
 /// @brief Public Viper.Crypto.KeyDerive.ScryptSHA256 — derive a key, return as bytes.
@@ -577,12 +641,15 @@ static void validate_public_scrypt_params(
 /// @return Bytes object owning the derived key.
 void *rt_keyderive_scrypt_sha256(
     rt_string password, void *salt, int64_t n64, int64_t r64, int64_t p64, int64_t key_len) {
-    if (!rt_crypto_module_service_allowed(RT_CRYPTO_SERVICE_SCRYPT))
+    if (!rt_crypto_module_service_allowed(RT_CRYPTO_SERVICE_SCRYPT)) {
         rt_trap("KeyDerive.ScryptSHA256 is disabled in approved mode");
+        return NULL;
+    }
     uint64_t n;
     uint32_t r;
     uint32_t p;
-    validate_public_scrypt_params(n64, r64, p64, key_len, &n, &r, &p);
+    if (!validate_public_scrypt_params(n64, r64, p64, key_len, &n, &r, &p))
+        return NULL;
 
     size_t pwd_len;
     const uint8_t *pwd = pbkdf2_string_bytes(password, &pwd_len);
@@ -592,12 +659,14 @@ void *rt_keyderive_scrypt_sha256(
     if (!salt_data || salt_len == 0) {
         free(salt_data);
         rt_trap("scrypt: salt must not be empty");
+        return NULL;
     }
 
     uint8_t *derived_key = (uint8_t *)malloc((size_t)key_len);
     if (!derived_key) {
         free(salt_data);
         rt_trap("scrypt: memory allocation failed");
+        return NULL;
     }
 
     rt_keyderive_scrypt_sha256_raw(
@@ -619,12 +688,15 @@ void *rt_keyderive_scrypt_sha256(
 /// @return Lowercase-hex rt_string of the derived key bytes.
 rt_string rt_keyderive_scrypt_sha256_str(
     rt_string password, void *salt, int64_t n64, int64_t r64, int64_t p64, int64_t key_len) {
-    if (!rt_crypto_module_service_allowed(RT_CRYPTO_SERVICE_SCRYPT))
+    if (!rt_crypto_module_service_allowed(RT_CRYPTO_SERVICE_SCRYPT)) {
         rt_trap("KeyDerive.ScryptSHA256Str is disabled in approved mode");
+        return rt_str_empty();
+    }
     uint64_t n;
     uint32_t r;
     uint32_t p;
-    validate_public_scrypt_params(n64, r64, p64, key_len, &n, &r, &p);
+    if (!validate_public_scrypt_params(n64, r64, p64, key_len, &n, &r, &p))
+        return rt_str_empty();
 
     size_t pwd_len;
     const uint8_t *pwd = pbkdf2_string_bytes(password, &pwd_len);
@@ -634,12 +706,14 @@ rt_string rt_keyderive_scrypt_sha256_str(
     if (!salt_data || salt_len == 0) {
         free(salt_data);
         rt_trap("scrypt: salt must not be empty");
+        return rt_str_empty();
     }
 
     uint8_t *derived_key = (uint8_t *)malloc((size_t)key_len);
     if (!derived_key) {
         free(salt_data);
         rt_trap("scrypt: memory allocation failed");
+        return rt_str_empty();
     }
 
     rt_keyderive_scrypt_sha256_raw(

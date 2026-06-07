@@ -1027,14 +1027,28 @@ void *rt_http_server_new(int64_t port) {
 
     rt_http_server_impl *server =
         (rt_http_server_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_http_server_impl));
-    if (!server)
+    if (!server) {
         rt_trap("HttpServer: memory allocation failed");
+        return NULL;
+    }
     memset(server, 0, sizeof(*server));
     rt_obj_set_finalizer(server, rt_http_server_finalize);
 
     server->port = port;
     server->router = rt_http_router_new();
+    if (!server->router) {
+        rt_trap("HttpServer: router allocation failed");
+        if (rt_obj_release_check0(server))
+            rt_obj_free(server);
+        return NULL;
+    }
     server->worker_pool = rt_threadpool_new(8);
+    if (!server->worker_pool) {
+        rt_trap("HttpServer: worker pool allocation failed");
+        if (rt_obj_release_check0(server))
+            rt_obj_free(server);
+        return NULL;
+    }
     server->running = false;
     HTTP_SERVER_MUTEX_INIT(&server->state_lock);
     server->state_lock_initialized = true;
@@ -1171,8 +1185,10 @@ void rt_http_server_bind_handler_dispatch(
 ///
 /// @param obj HttpServer handle.
 void rt_http_server_start(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("HttpServer: NULL server");
+        return;
+    }
 
     rt_http_server_impl *server = (rt_http_server_impl *)obj;
     if (server_is_running(server))
@@ -1180,11 +1196,24 @@ void rt_http_server_start(void *obj) {
 
     // Create TCP server
     server->tcp_server = rt_tcp_server_listen(server->port);
-    if (!server->tcp_server)
+    if (!server->tcp_server) {
         rt_trap("HttpServer: failed to bind listener");
+        return;
+    }
     server->port = rt_tcp_server_port(server->tcp_server);
-    if (!server->worker_pool)
+    if (!server->worker_pool) {
         server->worker_pool = rt_threadpool_new(8);
+        if (!server->worker_pool) {
+            if (server->tcp_server) {
+                rt_tcp_server_close(server->tcp_server);
+                if (rt_obj_release_check0(server->tcp_server))
+                    rt_obj_free(server->tcp_server);
+                server->tcp_server = NULL;
+            }
+            rt_trap("HttpServer: worker pool allocation failed");
+            return;
+        }
+    }
     server_state_lock(server);
     server->running = true;
     server_state_unlock(server);
@@ -1207,6 +1236,7 @@ void rt_http_server_start(void *obj) {
             server->tcp_server = NULL;
         }
         rt_trap("HttpServer: failed to start accept thread");
+        return;
     }
 }
 

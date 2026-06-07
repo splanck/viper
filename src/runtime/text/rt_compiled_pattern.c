@@ -309,11 +309,15 @@ rt_string rt_compiled_pattern_replace(void *obj, rt_string text, rt_string repla
 
     // Build result
     size_t result_cap = (size_t)text_len + 64;
-    if (result_cap < (size_t)text_len)
+    if (result_cap < (size_t)text_len) {
         rt_trap("CompiledPattern: replacement length overflow");
+        return rt_string_from_bytes("", 0);
+    }
     char *result = (char *)malloc(result_cap);
-    if (!result)
+    if (!result) {
         rt_trap("CompiledPattern: memory allocation failed");
+        return rt_string_from_bytes("", 0);
+    }
     size_t result_len = 0;
 
     int pos = 0;
@@ -374,8 +378,10 @@ rt_string rt_compiled_pattern_replace_first(void *obj, rt_string text, rt_string
     if (result_len == SIZE_MAX)
         rt_trap("CompiledPattern: replacement length overflow");
     char *result = (char *)malloc(result_len + 1);
-    if (!result)
+    if (!result) {
         rt_trap("CompiledPattern: memory allocation failed");
+        return rt_string_from_bytes("", 0);
+    }
 
     memcpy(result, txt_str, match_start);
     memcpy(result + match_start, rep_str, rep_len);

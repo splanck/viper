@@ -80,24 +80,6 @@ const char *rt_trap_get_error(void);
 // ZIP Constants
 //=============================================================================
 
-#define ZIP_LOCAL_HEADER_SIG 0x04034b50
-#define ZIP_CENTRAL_HEADER_SIG 0x02014b50
-#define ZIP_END_RECORD_SIG 0x06054b50
-#define ZIP_DATA_DESCRIPTOR_SIG 0x08074b50
-
-#define ZIP_METHOD_STORED 0
-#define ZIP_METHOD_DEFLATE 8
-
-#define ZIP_LOCAL_HEADER_SIZE 30
-#define ZIP_CENTRAL_HEADER_SIZE 46
-#define ZIP_END_RECORD_SIZE 22
-
-#define ZIP_VERSION_NEEDED 20 // 2.0 for deflate
-#define ZIP_VERSION_MADE 20
-#define ZIP_GP_FLAG_ENCRYPTED 0x0001u
-#define ZIP_GP_FLAG_DATA_DESCRIPTOR 0x0008u
-#define ZIP_GP_FLAG_STRONG_ENCRYPTION 0x0040u
-#define ZIP_EXTRA_ZIP64 0x0001u
 
 //=============================================================================
 // Internal Bytes Access
@@ -193,46 +175,12 @@ static const char *archive_entry_name_cstr(rt_string name) {
 //=============================================================================
 
 /// @brief Metadata for a single entry parsed from the ZIP central directory.
-typedef struct zip_entry {
-    char *name;                 ///< Entry name (heap-allocated, owned).
-    uint32_t crc32;             ///< CRC-32 of the uncompressed data.
-    uint32_t compressed_size;   ///< Stored size in the archive (bytes).
-    uint32_t uncompressed_size; ///< Original uncompressed size (bytes).
-    uint16_t method;            ///< Compression method: 0=stored, 8=DEFLATE.
-    uint16_t flags;             ///< ZIP general-purpose bit flags.
-    uint16_t version_needed;    ///< Minimum extractor version required.
-    uint16_t mod_time;          ///< DOS-encoded modification time.
-    uint16_t mod_date;          ///< DOS-encoded modification date.
-    uint32_t local_offset;      ///< Byte offset of the local file header.
-    bool is_directory;          ///< True when the entry name ends with '/'.
-} zip_entry_t;
 
 //=============================================================================
 // Archive Structure
 //=============================================================================
 
 /// @brief Internal state for an open ZIP archive (read or write mode).
-typedef struct rt_archive {
-    rt_string path;   ///< File path string, or NULL for byte-backed archives.
-    uint8_t *data;    ///< Full archive bytes (malloc'd copy or provided blob).
-    size_t data_len;  ///< Length of `data` in bytes.
-    bool owns_data;   ///< True when this object allocated `data` and must free it.
-    bool is_writing;  ///< True when opened via `Archive.Create` (write mode).
-    bool is_finished; ///< True after `Archive.Finish` has been called.
-
-    // Read-side fields
-    zip_entry_t *entries; ///< Array of parsed central-directory entries.
-    int entry_count;      ///< Number of entries in `entries`.
-
-    // Write-side fields
-    int fd;                     ///< POSIX fd used for streaming writes (-1 if unused).
-    uint8_t *write_buf;         ///< In-memory write accumulation buffer.
-    size_t write_len;           ///< Current number of valid bytes in `write_buf`.
-    size_t write_cap;           ///< Allocated capacity of `write_buf`.
-    zip_entry_t *write_entries; ///< Metadata for each entry added so far.
-    int write_entry_count;      ///< Number of entries in `write_entries`.
-    int write_entry_cap;        ///< Allocated capacity of `write_entries`.
-} rt_archive_t;
 
 static rt_archive_t *archive_require(void *obj, const char *context) {
     if (!obj || rt_obj_class_id(obj) != RT_ARCHIVE_CLASS_ID) {
@@ -274,7 +222,7 @@ static inline void write_u32(uint8_t *p, uint32_t v) {
     p[3] = (uint8_t)((v >> 24) & 0xFF);
 }
 
-static bool archive_extra_is_malformed_or_zip64(const uint8_t *extra, size_t extra_len) {
+bool archive_extra_is_malformed_or_zip64(const uint8_t *extra, size_t extra_len) {
     size_t pos = 0;
     while (pos + 4 <= extra_len) {
         uint16_t header_id = read_u16(extra + pos);
@@ -407,7 +355,7 @@ static void archive_free_entries(rt_archive_t *ar) {
 ///
 /// @param entries Array of zip_entry_t to release (may be NULL).
 /// @param count   Number of entries whose `name` fields are initialized.
-static void archive_free_entry_array(zip_entry_t *entries, int count) {
+void archive_free_entry_array(zip_entry_t *entries, int count) {
     if (!entries)
         return;
     for (int i = 0; i < count; ++i)
@@ -470,307 +418,6 @@ static int archive_require_zip16_count(int count, const char *context) {
         return 0;
     }
     return 1;
-}
-
-//=============================================================================
-// ZIP Parsing (for reading)
-//=============================================================================
-
-/// @brief Locate the End of Central Directory (EOCD) record within a ZIP buffer.
-///
-/// The EOCD is at the tail of every ZIP file, just before any optional
-/// archive comment (max 65,535 bytes per spec). We scan backwards from
-/// the end up to comment-max + EOCD-size for the 4-byte signature.
-/// On match, `*eocd_offset` is set; the caller reads fields off it.
-///
-/// @param data        Pointer to the full ZIP byte buffer.
-/// @param len         Length of `data`.
-/// @param eocd_offset Out-parameter: offset of the EOCD signature.
-/// @return True if EOCD found, false otherwise.
-static bool find_eocd(const uint8_t *data, size_t len, size_t *eocd_offset) {
-    if (len < ZIP_END_RECORD_SIZE)
-        return false;
-
-    // Search backwards for EOCD signature (handles comments)
-    size_t max_comment = 65535;
-    size_t search_len =
-        len < (ZIP_END_RECORD_SIZE + max_comment) ? len : (ZIP_END_RECORD_SIZE + max_comment);
-
-    for (size_t i = ZIP_END_RECORD_SIZE; i <= search_len; i++) {
-        size_t offset = len - i;
-        if (read_u32(data + offset) == ZIP_END_RECORD_SIG && offset <= len - ZIP_END_RECORD_SIZE) {
-            uint16_t comment_len = read_u16(data + offset + 20);
-            if (offset + ZIP_END_RECORD_SIZE + (size_t)comment_len != len)
-                continue;
-            *eocd_offset = offset;
-            return true;
-        }
-    }
-    return false;
-}
-
-/// @brief Parse the central directory and populate `ar->entries`.
-///
-/// Locates the EOCD (`find_eocd`), validates it isn't a multi-disk
-/// archive (we don't support that), then walks each central-directory
-/// header: copying out method, CRC, sizes, mod time, local-header
-/// offset, and the entry name. Detects directories via trailing `/`.
-/// Returns false (without trapping) if the central directory is
-/// missing, malformed, multi-disk, or out of bounds — the caller's
-/// trap message lets us distinguish "not a ZIP" from other errors.
-///
-/// @param ar Archive whose `data`/`data_len` is already populated.
-/// @return True on successful parse, false on any structural problem.
-static bool parse_central_directory(rt_archive_t *ar) {
-    size_t eocd_offset;
-    if (!find_eocd(ar->data, ar->data_len, &eocd_offset))
-        return false;
-
-    const uint8_t *eocd = ar->data + eocd_offset;
-
-    // Parse EOCD
-    uint16_t disk_num = read_u16(eocd + 4);
-    uint16_t cd_disk = read_u16(eocd + 6);
-    uint16_t disk_entries = read_u16(eocd + 8);
-    uint16_t total_entries = read_u16(eocd + 10);
-    uint32_t cd_size = read_u32(eocd + 12);
-    uint32_t cd_offset = read_u32(eocd + 16);
-
-    // We don't support multi-disk archives
-    if (disk_num != 0 || cd_disk != 0 || disk_entries != total_entries)
-        return false;
-    if (disk_entries == UINT16_MAX || total_entries == UINT16_MAX || cd_size == UINT32_MAX ||
-        cd_offset == UINT32_MAX)
-        return false;
-
-    // Validate central directory bounds
-    if ((size_t)cd_offset > eocd_offset || (size_t)cd_size > eocd_offset - (size_t)cd_offset)
-        return false;
-
-    zip_entry_t *entries = NULL;
-    if (total_entries > 0) {
-        entries = (zip_entry_t *)calloc(total_entries, sizeof(zip_entry_t));
-        if (!entries)
-            return false;
-    }
-
-    // Parse each central directory entry
-    const uint8_t *p = ar->data + cd_offset;
-    const uint8_t *cd_end = p + cd_size;
-
-    int parsed = 0;
-    for (; parsed < total_entries; parsed++) {
-        if ((size_t)(cd_end - p) < ZIP_CENTRAL_HEADER_SIZE) {
-            archive_free_entry_array(entries, parsed);
-            return false;
-        }
-        if (read_u32(p) != ZIP_CENTRAL_HEADER_SIG) {
-            archive_free_entry_array(entries, parsed);
-            return false;
-        }
-
-        uint16_t name_len = read_u16(p + 28);
-        uint16_t extra_len = read_u16(p + 30);
-        uint16_t comment_len = read_u16(p + 32);
-        size_t record_len =
-            ZIP_CENTRAL_HEADER_SIZE + (size_t)name_len + (size_t)extra_len + (size_t)comment_len;
-
-        if ((size_t)(cd_end - p) < record_len) {
-            archive_free_entry_array(entries, parsed);
-            return false;
-        }
-        if (name_len == 0 || memchr(p + ZIP_CENTRAL_HEADER_SIZE, '\0', name_len) != NULL) {
-            archive_free_entry_array(entries, parsed);
-            return false;
-        }
-
-        zip_entry_t *e = &entries[parsed];
-        e->version_needed = read_u16(p + 6);
-        e->flags = read_u16(p + 8);
-        e->method = read_u16(p + 10);
-        e->mod_time = read_u16(p + 12);
-        e->mod_date = read_u16(p + 14);
-        e->crc32 = read_u32(p + 16);
-        e->compressed_size = read_u32(p + 20);
-        e->uncompressed_size = read_u32(p + 24);
-        e->local_offset = read_u32(p + 42);
-        if ((e->flags & (ZIP_GP_FLAG_ENCRYPTED | ZIP_GP_FLAG_DATA_DESCRIPTOR |
-                         ZIP_GP_FLAG_STRONG_ENCRYPTION)) != 0 ||
-            e->version_needed >= 45 || e->compressed_size == UINT32_MAX ||
-            e->uncompressed_size == UINT32_MAX || e->local_offset == UINT32_MAX ||
-            archive_extra_is_malformed_or_zip64(p + ZIP_CENTRAL_HEADER_SIZE + name_len,
-                                                extra_len)) {
-            archive_free_entry_array(entries, parsed);
-            return false;
-        }
-
-        // Copy name
-        e->name = (char *)malloc(name_len + 1);
-        if (!e->name) {
-            archive_free_entry_array(entries, parsed);
-            return false;
-        }
-        memcpy(e->name, p + ZIP_CENTRAL_HEADER_SIZE, name_len);
-        e->name[name_len] = '\0';
-        for (int prior = 0; prior < parsed; ++prior) {
-            if (entries[prior].name && strcmp(entries[prior].name, e->name) == 0) {
-                archive_free_entry_array(entries, parsed + 1);
-                return false;
-            }
-        }
-
-        // Check if directory
-        e->is_directory = (name_len > 0 && e->name[name_len - 1] == '/');
-
-        p += record_len;
-    }
-
-    if (parsed != total_entries || p != cd_end) {
-        archive_free_entry_array(entries, parsed);
-        return false;
-    }
-
-    ar->entries = entries;
-    ar->entry_count = parsed;
-    return true;
-}
-
-/// @brief Linear-scan lookup of a central-directory entry by exact name.
-///
-/// Names are compared via `strcmp` — the caller must normalize ahead
-/// of time (path separators, leading `./`, etc.). Returns NULL when no
-/// matching entry exists. O(n); acceptable for typical ZIPs where n is
-/// small. If we ever need fast lookup we'd add a hash side-table here.
-///
-/// @param ar   Read-mode archive with parsed `entries`.
-/// @param name Normalized entry name.
-/// @return Pointer to the entry, or NULL if not found.
-static zip_entry_t *find_entry(rt_archive_t *ar, const char *name) {
-    if (!ar || !name)
-        return NULL;
-    for (int i = 0; i < ar->entry_count; i++) {
-        if (ar->entries[i].name && strcmp(ar->entries[i].name, name) == 0)
-            return &ar->entries[i];
-    }
-    return NULL;
-}
-
-/// @brief Materialize a single entry's payload into a fresh `rt_bytes`.
-///
-/// Re-validates the local file header signature (defends against
-/// archives whose central-directory offsets point at garbage), skips
-/// the variable-length name + extra fields, then either:
-///   - copies stored data verbatim (method 0), or
-///   - inflates DEFLATE-compressed data via `rt_compress_inflate`
-///     (method 8).
-/// Both branches verify the CRC32 against the header. The DEFLATE
-/// branch additionally verifies the inflated size matches the
-/// uncompressed-size field. Traps on any mismatch.
-///
-/// @param ar Read-mode archive.
-/// @param e  Entry from `ar->entries`.
-/// @return Owned `rt_bytes` containing the uncompressed payload.
-static void *read_entry_data(rt_archive_t *ar, zip_entry_t *e) {
-    // Find local header
-    size_t local_offset = (size_t)e->local_offset;
-    if (local_offset > ar->data_len || ar->data_len - local_offset < ZIP_LOCAL_HEADER_SIZE) {
-        rt_trap("Archive: corrupt local header offset");
-        return NULL;
-    }
-
-    const uint8_t *local = ar->data + local_offset;
-    if (read_u32(local) != ZIP_LOCAL_HEADER_SIG) {
-        rt_trap("Archive: invalid local header signature");
-        return NULL;
-    }
-
-    uint16_t local_flags = read_u16(local + 6);
-    uint16_t local_method = read_u16(local + 8);
-    uint32_t local_crc = read_u32(local + 14);
-    uint32_t local_compressed_size = read_u32(local + 18);
-    uint32_t local_uncompressed_size = read_u32(local + 22);
-    uint16_t name_len = read_u16(local + 26);
-    uint16_t extra_len = read_u16(local + 28);
-    size_t header_total = ZIP_LOCAL_HEADER_SIZE + (size_t)name_len + (size_t)extra_len;
-    if (local_offset > ar->data_len || ar->data_len - local_offset < header_total) {
-        rt_trap("Archive: corrupt entry data");
-        return NULL;
-    }
-    if (local_flags != e->flags || local_method != e->method ||
-        (local_flags & ZIP_GP_FLAG_DATA_DESCRIPTOR) != 0 ||
-        archive_extra_is_malformed_or_zip64(local + ZIP_LOCAL_HEADER_SIZE + name_len, extra_len)) {
-        rt_trap("Archive: unsupported local header");
-        return NULL;
-    }
-    if (local_crc != e->crc32 || local_compressed_size != e->compressed_size ||
-        local_uncompressed_size != e->uncompressed_size) {
-        rt_trap("Archive: local header metadata mismatch");
-        return NULL;
-    }
-    size_t data_offset = local_offset + header_total;
-    if ((size_t)e->compressed_size > ar->data_len - data_offset) {
-        rt_trap("Archive: corrupt entry data");
-        return NULL;
-    }
-
-    const uint8_t *compressed = ar->data + data_offset;
-
-    // Handle uncompressed (stored) data
-    if (e->method == ZIP_METHOD_STORED) {
-        if (e->compressed_size != e->uncompressed_size) {
-            rt_trap("Archive: stored entry size mismatch");
-            return NULL;
-        }
-        // Verify CRC
-        uint32_t crc = rt_crc32_compute(compressed, e->uncompressed_size);
-        if (crc != e->crc32) {
-            rt_trap("Archive: CRC mismatch");
-            return NULL;
-        }
-
-        void *result = rt_bytes_new(e->uncompressed_size);
-        if (!result)
-            return NULL;
-        memcpy(bytes_data(result), compressed, e->uncompressed_size);
-        return result;
-    }
-
-    // Handle deflated data
-    if (e->method == ZIP_METHOD_DEFLATE) {
-        // Create bytes with compressed data
-        void *comp_bytes = rt_bytes_new(e->compressed_size);
-        if (!comp_bytes)
-            return NULL;
-        memcpy(bytes_data(comp_bytes), compressed, e->compressed_size);
-
-        // Inflate
-        void *result = rt_compress_inflate_limit(comp_bytes, (int64_t)e->uncompressed_size);
-        archive_release_temp_object(comp_bytes);
-        if (!result) {
-            rt_trap("Archive: failed to inflate entry");
-            return NULL;
-        }
-
-        // Verify CRC
-        uint32_t crc = rt_crc32_compute(bytes_data(result), bytes_len(result));
-        if (crc != e->crc32) {
-            archive_release_temp_object(result);
-            rt_trap("Archive: CRC mismatch");
-            return NULL;
-        }
-
-        // Verify size
-        if (bytes_len(result) != e->uncompressed_size) {
-            archive_release_temp_object(result);
-            rt_trap("Archive: size mismatch");
-            return NULL;
-        }
-
-        return result;
-    }
-
-    rt_trap("Archive: unsupported compression method");
-    return NULL;
 }
 
 //=============================================================================
@@ -873,7 +520,6 @@ static int archive_write_has_entry(rt_archive_t *ar, const char *name) {
 
 /// @brief Result enum for `normalize_name` — distinguishes invalid input
 ///        from out-of-memory so callers can pick the right trap message.
-typedef enum { NAME_OK = 0, NAME_INVALID, NAME_OOM } name_result_t;
 
 /// @brief Canonicalize an entry name to ZIP-safe POSIX-style form.
 ///

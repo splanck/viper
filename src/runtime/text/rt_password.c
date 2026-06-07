@@ -308,6 +308,7 @@ static rt_string password_format_hash(const char *prefix,
         free(salt_b64);
         free(hash_b64);
         rt_trap(op_name);
+        return rt_str_empty();
     }
 
     char buffer[192];
@@ -319,13 +320,16 @@ static rt_string password_format_hash(const char *prefix,
         free(salt_b64);
         free(hash_b64);
         rt_trap(op_name);
+        return rt_str_empty();
     }
 
     free(salt_b64);
     free(hash_b64);
     rt_string result = rt_string_from_bytes(buffer, strlen(buffer));
-    if (!result)
+    if (!result) {
         rt_trap(op_name);
+        return rt_str_empty();
+    }
     return result;
 }
 

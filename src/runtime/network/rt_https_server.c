@@ -1252,21 +1252,39 @@ void *rt_https_server_new(int64_t port, rt_string cert_file, rt_string key_file)
 
     rt_http_server_impl *server =
         (rt_http_server_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_http_server_impl));
-    if (!server)
+    if (!server) {
         rt_trap("HttpsServer: memory allocation failed");
+        return NULL;
+    }
     memset(server, 0, sizeof(*server));
     rt_obj_set_finalizer(server, rt_http_server_finalize);
 
     server->port = port;
     server->router = rt_http_router_new();
+    if (!server->router) {
+        rt_trap("HttpsServer: router allocation failed");
+        if (rt_obj_release_check0(server))
+            rt_obj_free(server);
+        return NULL;
+    }
     server->worker_pool = rt_threadpool_new(8);
+    if (!server->worker_pool) {
+        rt_trap("HttpsServer: worker pool allocation failed");
+        if (rt_obj_release_check0(server))
+            rt_obj_free(server);
+        return NULL;
+    }
     server->running = false;
     HTTPS_SERVER_MUTEX_INIT(&server->state_lock);
     server->state_lock_initialized = true;
     server->cert_file = dup_cstr(rt_string_cstr(cert_file));
     server->key_file = dup_cstr(rt_string_cstr(key_file));
-    if (!server->cert_file || !server->key_file)
+    if (!server->cert_file || !server->key_file) {
         rt_trap("HttpsServer: failed to copy certificate paths");
+        if (rt_obj_release_check0(server))
+            rt_obj_free(server);
+        return NULL;
+    }
     {
         rt_tls_server_config_t tls_cfg;
         rt_tls_server_config_init(&tls_cfg);
@@ -1274,8 +1292,12 @@ void *rt_https_server_new(int64_t port, rt_string cert_file, rt_string key_file)
         tls_cfg.key_file = server->key_file;
         tls_cfg.alpn_protocol = "h2,http/1.1";
         server->tls_ctx = rt_tls_server_ctx_new(&tls_cfg);
-        if (!server->tls_ctx)
+        if (!server->tls_ctx) {
             rt_trap(rt_tls_server_last_error());
+            if (rt_obj_release_check0(server))
+                rt_obj_free(server);
+            return NULL;
+        }
     }
 
     return server;

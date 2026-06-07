@@ -513,8 +513,10 @@ void *rt_ws_server_new(int64_t port) {
 
     rt_ws_server_impl *s =
         (rt_ws_server_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_ws_server_impl));
-    if (!s)
+    if (!s) {
         rt_trap("WsServer: memory allocation failed");
+        return NULL;
+    }
     memset(s, 0, sizeof(*s));
     rt_obj_set_finalizer(s, rt_ws_server_finalize);
     s->port = port;

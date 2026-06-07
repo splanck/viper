@@ -166,10 +166,16 @@ static void copy_suffix_with_input_case(
 
 static rt_string append_suffix(const char *src, size_t len, const char *suffix) {
     size_t suffix_len = strlen(suffix);
+    if (len > SIZE_MAX - suffix_len || len + suffix_len == SIZE_MAX) {
+        rt_trap("Pluralize: output length overflow");
+        return rt_string_from_bytes(src ? src : "", src ? len : 0);
+    }
     size_t blen = len + suffix_len;
     char *buf = (char *)malloc(blen + 1);
-    if (!buf)
+    if (!buf) {
         rt_trap("Pluralize: memory allocation failed");
+        return rt_string_from_bytes(src ? src : "", src ? len : 0);
+    }
     memcpy(buf, src, len);
     copy_suffix_with_input_case(buf + len, src, len, suffix, suffix_len);
     buf[blen] = '\0';
@@ -181,13 +187,19 @@ static rt_string append_suffix(const char *src, size_t len, const char *suffix) 
 static rt_string replace_suffix(const char *src,
                                 size_t len,
                                 size_t remove_len,
-                                const char *replacement) {
+    const char *replacement) {
     size_t replacement_len = strlen(replacement);
     size_t stem_len = remove_len > len ? 0 : len - remove_len;
+    if (stem_len > SIZE_MAX - replacement_len || stem_len + replacement_len == SIZE_MAX) {
+        rt_trap("Pluralize: output length overflow");
+        return rt_string_from_bytes(src ? src : "", src ? len : 0);
+    }
     size_t blen = stem_len + replacement_len;
     char *buf = (char *)malloc(blen + 1);
-    if (!buf)
+    if (!buf) {
         rt_trap("Pluralize: memory allocation failed");
+        return rt_string_from_bytes(src ? src : "", src ? len : 0);
+    }
     memcpy(buf, src, stem_len);
     copy_suffix_with_input_case(buf + stem_len, src, len, replacement, replacement_len);
     buf[blen] = '\0';
@@ -366,10 +378,12 @@ rt_string rt_pluralize_count(int64_t count, rt_string word) {
     if (count_len < 0) {
         rt_string_unref(noun);
         rt_trap("Pluralize: count formatting failed");
+        return rt_string_from_bytes("", 0);
     }
     if ((size_t)count_len > SIZE_MAX - noun_len - 1) {
         rt_string_unref(noun);
         rt_trap("Pluralize: output length overflow");
+        return rt_string_from_bytes("", 0);
     }
 
     size_t blen = (size_t)count_len + 1 + noun_len;
@@ -377,6 +391,7 @@ rt_string rt_pluralize_count(int64_t count, rt_string word) {
     if (!buf) {
         rt_string_unref(noun);
         rt_trap("Pluralize: memory allocation failed");
+        return rt_string_from_bytes("", 0);
     }
     memcpy(buf, count_buf, (size_t)count_len);
     buf[count_len] = ' ';

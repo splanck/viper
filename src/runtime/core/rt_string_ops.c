@@ -457,8 +457,10 @@ rt_string rt_empty_string(void) {
         return cached;
 
     char *payload = (char *)rt_heap_alloc(RT_HEAP_STRING, RT_ELEM_NONE, 1, 0, 1);
-    if (!payload)
+    if (!payload) {
         rt_trap("rt_empty_string: alloc");
+        return NULL;
+    }
     payload[0] = '\0';
 
     rt_heap_hdr_t *hdr = rt_heap_hdr(payload);

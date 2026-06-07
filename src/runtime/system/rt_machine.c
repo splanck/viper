@@ -428,9 +428,9 @@ int64_t rt_machine_mem_free(void) {
 
 #elif defined(__APPLE__)
     // macOS: use vm_statistics64 for free memory
-    vm_size_t page_size;
+    vm_size_t page_size = 0;
     mach_port_t mach_port = mach_host_self();
-    vm_statistics64_data_t vm_stats;
+    vm_statistics64_data_t vm_stats = {0};
     mach_msg_type_number_t count = sizeof(vm_stats) / sizeof(natural_t);
 
     if (host_page_size(mach_port, &page_size) != KERN_SUCCESS) {

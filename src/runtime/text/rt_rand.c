@@ -184,24 +184,28 @@ static int secure_random_fill(uint8_t *buf, size_t len) {
 void *rt_crypto_rand_bytes(int64_t count) {
     if (count < 0) {
         rt_trap("Rand.Bytes: count must not be negative");
+        return rt_bytes_new(0);
     }
     if (count == 0) {
         return rt_bytes_new(0);
     }
     if ((uint64_t)count > (uint64_t)SIZE_MAX) {
         rt_trap("Rand.Bytes: count is too large");
+        return rt_bytes_new(0);
     }
 
     // Allocate temporary buffer
     uint8_t *buf = (uint8_t *)malloc((size_t)count);
     if (!buf) {
         rt_trap("Rand.Bytes: memory allocation failed");
+        return rt_bytes_new(0);
     }
 
     // Fill with random data
     if (secure_random_fill(buf, (size_t)count) != 0) {
         free(buf);
         rt_trap("Rand.Bytes: failed to generate random bytes");
+        return rt_bytes_new(0);
     }
 
     // Create Bytes object directly from the filled buffer (bulk copy)

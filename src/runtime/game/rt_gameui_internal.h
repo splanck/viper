@@ -56,3 +56,16 @@ int64_t ui_text_prefix_width(const char *text, int64_t bytes, void *font, int64_
 void ui_draw_text_basic(
     void *canvas, int64_t x, int64_t y, const char *text, void *font, int64_t scale, int64_t color);
 int8_t ui_point_inside(int64_t x, int64_t y, int64_t w, int64_t h, int64_t px, int64_t py);
+
+// Text/UTF-8 helpers shared with UITextInput (defined in rt_gameui.c).
+int8_t ui_validate_bitmapfont(void *font, const char *api);
+size_t ui_visible_len(const char *s, size_t max_len);
+size_t ui_utf8_cp_len(const char *s, size_t len, size_t pos);
+size_t ui_utf8_trunc_len(const char *s, size_t len, size_t max_bytes);
+size_t ui_utf8_trunc_codepoints(const char *s, size_t len, size_t max_codepoints);
+void ui_replace_ref(void **slot, void *value);
+int64_t ui_codepoint_count_bytes(const char *text, int64_t bytes);
+int64_t ui_byte_for_codepoint(const char *text, int64_t bytes, int64_t cp_index);
+int64_t ui_codepoint_for_byte(const char *text, int64_t bytes, int64_t byte_index);
+int64_t ui_prev_codepoint_byte(const char *text, int64_t bytes, int64_t byte_index);
+int64_t ui_next_codepoint_byte(const char *text, int64_t bytes, int64_t byte_index);

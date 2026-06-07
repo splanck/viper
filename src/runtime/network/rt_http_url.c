@@ -299,6 +299,8 @@ static char *percent_decode_internal_n(const char *str,
 /// @brief Internal URL parsing.
 /// @return 0 on success, -1 on error.
 static int parse_url_full(const char *url_str, rt_url_t *result) {
+    if (!result)
+        return -1;
     memset(result, 0, sizeof(*result));
 
     if (!url_str || *url_str == '\0')

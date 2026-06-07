@@ -369,17 +369,22 @@ static int count_groups(re_node *n) {
 /// on syntax error (via `parse_error`) or OOM. Empty patterns are
 /// represented as an empty concat (matches everywhere with zero width).
 static compiled_pattern *compile_pattern(const char *pattern) {
-    if (!pattern)
+    if (!pattern) {
         rt_trap("Pattern: null pattern");
+        return NULL;
+    }
 
     compiled_pattern *cp = (compiled_pattern *)calloc(1, sizeof(compiled_pattern));
-    if (!cp)
+    if (!cp) {
         rt_trap("Pattern: memory allocation failed");
+        return NULL;
+    }
 
     cp->pattern_str = strdup(pattern);
     if (!cp->pattern_str) {
         free(cp);
         rt_trap("Pattern: memory allocation failed");
+        return NULL;
     }
 
     parser_state p = {pattern, 0, safe_strlen_int(pattern)};
@@ -633,11 +638,17 @@ rt_string rt_pattern_replace(rt_string text, rt_string pattern, rt_string replac
 
     // Build result
     size_t result_cap = (size_t)text_len + 64;
-    if (result_cap < (size_t)text_len)
+    if (result_cap < (size_t)text_len) {
         rt_trap("Pattern: replacement length overflow");
+        release_cached_pattern(cp);
+        return rt_string_from_bytes("", 0);
+    }
     char *result = (char *)malloc(result_cap);
-    if (!result)
+    if (!result) {
         rt_trap("Pattern: memory allocation failed");
+        release_cached_pattern(cp);
+        return rt_string_from_bytes("", 0);
+    }
     size_t result_len = 0;
 
     int pos = 0;
@@ -712,8 +723,11 @@ rt_string rt_pattern_replace_first(rt_string text, rt_string pattern, rt_string 
     if (result_len == SIZE_MAX)
         rt_trap("Pattern: replacement length overflow");
     char *result = (char *)malloc(result_len + 1);
-    if (!result)
+    if (!result) {
         rt_trap("Pattern: memory allocation failed");
+        release_cached_pattern(cp);
+        return rt_string_from_bytes("", 0);
+    }
 
     memcpy(result, txt_str, match_start);
     memcpy(result + match_start, rep_str, rep_len);
@@ -792,14 +806,20 @@ rt_string rt_pattern_escape(rt_string text) {
     }
 
     // Allocate result
-    if ((size_t)text_len > SIZE_MAX - special_count)
+    if ((size_t)text_len > SIZE_MAX - special_count) {
         rt_trap("Pattern: escape length overflow");
+        return rt_string_from_bytes("", 0);
+    }
     size_t result_len = (size_t)text_len + special_count;
-    if (result_len == SIZE_MAX)
+    if (result_len == SIZE_MAX) {
         rt_trap("Pattern: escape length overflow");
+        return rt_string_from_bytes("", 0);
+    }
     char *result = (char *)malloc(result_len + 1);
-    if (!result)
+    if (!result) {
         rt_trap("Pattern: memory allocation failed");
+        return rt_string_from_bytes("", 0);
+    }
 
     size_t j = 0;
     for (int i = 0; i < text_len; i++) {

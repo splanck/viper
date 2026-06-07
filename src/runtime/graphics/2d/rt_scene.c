@@ -429,34 +429,31 @@ static void update_world_transform(scene_node_impl *node) {
     // Collect the chain of dirty ancestors (including node itself).
     // Use a small fixed inline buffer; spill to heap for deep hierarchies.
     scene_node_impl *inline_buf[64];
+    scene_node_impl **heap_chain = NULL;
     scene_node_impl **chain = inline_buf;
     int64_t capacity = 64;
     int64_t depth = 0;
-    int heap_allocated = 0;
 
     scene_node_impl *cur = node;
     while (cur && cur->transform_dirty) {
         if (depth >= capacity) {
             if (capacity > INT64_MAX / 2 ||
                 (uint64_t)(capacity * 2) > (uint64_t)SIZE_MAX / sizeof(*chain)) {
-                if (heap_allocated)
-                    free(chain);
+                free(heap_chain);
                 rt_trap("SceneNode: transform chain too deep");
                 return;
             }
             int64_t new_cap = capacity * 2;
             scene_node_impl **grown = malloc((size_t)new_cap * sizeof(*grown));
             if (!grown) {
-                if (heap_allocated)
-                    free(chain);
+                free(heap_chain);
                 return;
             }
             memcpy(grown, chain, (size_t)depth * sizeof(*grown));
-            if (heap_allocated)
-                free(chain);
+            free(heap_chain);
+            heap_chain = grown;
             chain = grown;
             capacity = new_cap;
-            heap_allocated = 1;
         }
         chain[depth++] = cur;
         cur = cur->parent;
@@ -466,8 +463,7 @@ static void update_world_transform(scene_node_impl *node) {
     for (int64_t i = depth - 1; i >= 0; i--)
         apply_node_transform(chain[i]);
 
-    if (heap_allocated)
-        free(chain);
+    free(heap_chain);
 }
 
 //=============================================================================

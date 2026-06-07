@@ -379,8 +379,10 @@ static void rt_multipart_finalize(void *obj) {
 void *rt_multipart_new(void) {
     rt_multipart_impl *mp =
         (rt_multipart_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_multipart_impl));
-    if (!mp)
+    if (!mp) {
         rt_trap("Multipart: memory allocation failed");
+        return NULL;
+    }
     memset(mp, 0, sizeof(*mp));
     generate_boundary(mp->boundary, sizeof(mp->boundary));
     rt_obj_set_finalizer(mp, rt_multipart_finalize);
@@ -390,19 +392,27 @@ void *rt_multipart_new(void) {
 /// @brief Append a text field (`Content-Disposition: form-data; name="..."`). Returns the
 /// builder for fluent chaining. Traps on null input or pool overflow (MAX_PARTS=128).
 void *rt_multipart_add_field(void *obj, rt_string name, rt_string value) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Multipart: NULL object");
+        return NULL;
+    }
     rt_multipart_impl *mp = (rt_multipart_impl *)obj;
-    if (mp->part_count >= MAX_PARTS)
+    if (mp->part_count >= MAX_PARTS) {
         rt_trap("Multipart: too many parts (max 128)");
+        return obj;
+    }
 
     const char *n = multipart_header_param_cstr(name, "", "Multipart: invalid field name", 0);
-    if (!value)
+    if (!value) {
         rt_trap("Multipart: NULL field value");
+        return obj;
+    }
     const char *v = rt_string_cstr(value);
     int64_t v_len64 = rt_str_len(value);
-    if (!v || v_len64 < 0 || (uint64_t)v_len64 > (uint64_t)SIZE_MAX)
+    if (!v || v_len64 < 0 || (uint64_t)v_len64 > (uint64_t)SIZE_MAX) {
         rt_trap("Multipart: invalid field value");
+        return obj;
+    }
     size_t v_len = (size_t)v_len64;
 
     char *name_copy = n ? strdup(n) : strdup("");
@@ -411,6 +421,7 @@ void *rt_multipart_add_field(void *obj, rt_string name, rt_string value) {
         free(name_copy);
         free(data_copy);
         rt_trap("Multipart: memory allocation failed");
+        return obj;
     }
     if (v_len > 0)
         memcpy(data_copy, v, v_len);
@@ -429,19 +440,25 @@ void *rt_multipart_add_field(void *obj, rt_string name, rt_string value) {
 /// `Content-Type: application/octet-stream`). `data` is a Bytes object (the raw file contents).
 /// Returns the builder for chaining. NULL filename defaults to "file".
 void *rt_multipart_add_file(void *obj, rt_string name, rt_string filename, void *data) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Multipart: NULL object");
+        return NULL;
+    }
     rt_multipart_impl *mp = (rt_multipart_impl *)obj;
-    if (mp->part_count >= MAX_PARTS)
+    if (mp->part_count >= MAX_PARTS) {
         rt_trap("Multipart: too many parts (max 128)");
+        return obj;
+    }
 
     const char *n = multipart_header_param_cstr(name, "", "Multipart: invalid file field name", 0);
     const char *fn =
         multipart_header_param_cstr(filename, "file", "Multipart: invalid filename", 1);
     int64_t len = data ? bytes_len_impl(data) : 0;
     uint8_t *ptr = data ? bytes_data(data) : NULL;
-    if (len < 0 || (uint64_t)len > (uint64_t)SIZE_MAX)
+    if (len < 0 || (uint64_t)len > (uint64_t)SIZE_MAX) {
         rt_trap("Multipart: invalid file data length");
+        return obj;
+    }
     size_t data_len = (size_t)len;
     char *name_copy = n ? strdup(n) : strdup("");
     char *filename_copy = fn ? strdup(fn) : strdup("file");
@@ -451,6 +468,7 @@ void *rt_multipart_add_file(void *obj, rt_string name, rt_string filename, void 
         free(filename_copy);
         free(data_copy);
         rt_trap("Multipart: memory allocation failed");
+        return obj;
     }
     if (data_len > 0 && ptr)
         memcpy(data_copy, ptr, data_len);

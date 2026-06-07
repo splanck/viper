@@ -53,18 +53,24 @@ static uint64_t abs_i64_magnitude(int64_t n) {
 static char *numfmt_alloc_buffer(int needed) {
     if (needed < 0) {
         rt_trap("NumberFormat: formatting failed");
+        needed = 0;
     }
 
     char *buf = (char *)malloc((size_t)needed + 1);
-    if (!buf)
+    if (!buf) {
         rt_trap("NumberFormat: memory allocation failed");
+        return NULL;
+    }
     return buf;
 }
 
 static rt_string numfmt_finish_buffer(char *buf, int written, int needed) {
+    if (!buf)
+        return rt_string_from_bytes("", 0);
     if (written < 0 || written > needed) {
         free(buf);
         rt_trap("NumberFormat: formatting failed");
+        return rt_string_from_bytes("", 0);
     }
 
     rt_string result = rt_string_from_bytes(buf, (size_t)written);
@@ -75,6 +81,8 @@ static rt_string numfmt_finish_buffer(char *buf, int written, int needed) {
 static rt_string numfmt_fixed(double value, int decimals) {
     int needed = snprintf(NULL, 0, "%.*f", decimals, value);
     char *buf = numfmt_alloc_buffer(needed);
+    if (!buf)
+        return rt_string_from_bytes("", 0);
     int written = snprintf(buf, (size_t)needed + 1, "%.*f", decimals, value);
     return numfmt_finish_buffer(buf, written, needed);
 }
@@ -83,6 +91,8 @@ static rt_string numfmt_percent_fixed(double value, int decimals) {
     int needed =
         decimals == 0 ? snprintf(NULL, 0, "%.0f%%", value) : snprintf(NULL, 0, "%.1f%%", value);
     char *buf = numfmt_alloc_buffer(needed);
+    if (!buf)
+        return rt_string_from_bytes("", 0);
     int written = decimals == 0 ? snprintf(buf, (size_t)needed + 1, "%.0f%%", value)
                                 : snprintf(buf, (size_t)needed + 1, "%.1f%%", value);
     return numfmt_finish_buffer(buf, written, needed);

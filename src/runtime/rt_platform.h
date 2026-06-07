@@ -371,14 +371,31 @@ static inline int rt_atomic_compare_exchange_ptr(
 
 // Atomic load/store for double values used with GCC's non-_n builtins.
 static inline void rt_atomic_load_f64(const volatile double *ptr, double *out, int order) {
-    int64_t bits = rt_atomic_load_i64((const volatile int64_t *)ptr, order);
-    memcpy(out, &bits, sizeof(*out));
+    (void)order;
+    double value = *ptr;
+#if defined(_M_ARM64)
+    __dmb(_ARM64_BARRIER_ISH);
+#else
+    _ReadWriteBarrier();
+#endif
+    memcpy(out, &value, sizeof(*out));
 }
 
 static inline void rt_atomic_store_f64(volatile double *ptr, const double *value, int order) {
-    int64_t bits;
-    memcpy(&bits, value, sizeof(bits));
-    rt_atomic_store_i64((volatile int64_t *)ptr, bits, order);
+    (void)order;
+    double stored;
+    memcpy(&stored, value, sizeof(stored));
+#if defined(_M_ARM64)
+    __dmb(_ARM64_BARRIER_ISH);
+#else
+    _ReadWriteBarrier();
+#endif
+    *ptr = stored;
+#if defined(_M_ARM64)
+    __dmb(_ARM64_BARRIER_ISH);
+#else
+    _ReadWriteBarrier();
+#endif
 }
 
 // Map GCC-style atomic builtins to our functions
@@ -646,6 +663,9 @@ static inline void rt_windows_sleep_ms(int64_t ms) {
 /// @param result Pointer to struct tm to store the result.
 /// @return Pointer to result on success, NULL on failure.
 static inline struct tm *rt_localtime_r(const time_t *timer, struct tm *result) {
+    if (!timer || !result)
+        return NULL;
+    memset(result, 0, sizeof(*result));
 #if RT_PLATFORM_WINDOWS
     // Windows localtime_s has reversed parameter order and returns errno_t
     if (localtime_s(result, timer) == 0)

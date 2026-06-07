@@ -19,6 +19,7 @@
 #pragma once
 
 #include "rt_crypto.h"
+#include "rt_rsa.h"
 #include "rt_tls.h"
 #include <stddef.h>
 #include <stdint.h>
@@ -155,3 +156,28 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
 #ifdef __cplusplus
 }
 #endif
+
+// Certificate / DER parsing helpers (split across rt_tls.c + rt_tls_certs.c).
+int tls_der_read_tlv(
+    const uint8_t *buf, size_t buf_len, uint8_t *tag, size_t *val_len, size_t *hdr_len);
+int tls_oid_matches(const uint8_t *buf, size_t buf_len, const uint8_t *oid, size_t oid_len);
+char *tls_read_text_file(const char *path, size_t *len_out);
+int tls_extract_cert_key_type(const uint8_t *cert_der, size_t cert_len);
+
+// PEM/key parsers shared between rt_tls.c (server config) and rt_tls_certs.c.
+size_t tls_pem_base64_decode(const char *pem_b64, size_t b64_len, uint8_t *out_der, size_t max_der);
+int tls_find_pem_block(const char *pem, const char *begin_marker, const char *end_marker,
+                       const char **body_out, size_t *body_len_out, const char **next_out);
+int tls_parse_sec1_ec_private_key(const uint8_t *der, size_t der_len, uint8_t out_priv[32]);
+int tls_parse_pkcs8_ec_private_key(const uint8_t *der, size_t der_len, uint8_t out_priv[32]);
+int tls_extract_cert_ec_pubkey(
+    const uint8_t *cert_der, size_t cert_len, uint8_t x_out[32], uint8_t y_out[32]);
+int tls_extract_cert_rsa_pubkey(const uint8_t *cert_der, size_t cert_len, rt_rsa_key_t *out);
+
+// Server key/signature type (shared: cert detection in rt_tls_certs.c sets it,
+// the handshake in rt_tls.c selects the signature algorithm from it).
+enum {
+    TLS_SERVER_KEY_NONE = 0,
+    TLS_SERVER_KEY_ECDSA_P256 = 1,
+    TLS_SERVER_KEY_RSA_PSS_SHA256 = 2,
+};

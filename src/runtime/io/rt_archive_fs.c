@@ -376,38 +376,44 @@ static int archive_write_exact_posix(int fd,
 }
 #endif
 
-static uint64_t archive_random_u64(unsigned attempt) {
+/// @brief Read 64 bits from platform secure randomness for archive temp names.
+/// @details Returns failure instead of falling back to pid/time-derived values; those values are
+///          collision context only and are not suitable entropy for exclusive temp names.
+/// @param out Receives the random value on success.
+/// @return 1 on success, 0 when OS entropy is unavailable.
+static int archive_random_u64(uint64_t *out) {
     uint64_t value = 0;
 #ifdef _WIN32
-    value = (uint64_t)GetCurrentProcessId() ^ ((uint64_t)GetTickCount64() << 16) ^
-            ((uint64_t)attempt << 48);
     unsigned int rand_value = 0;
-    if (rand_s(&rand_value) == 0)
-        value ^= ((uint64_t)rand_value << 32) | rand_value;
+    unsigned int rand_value2 = 0;
+    if (rand_s(&rand_value) != 0 || rand_s(&rand_value2) != 0)
+        return 0;
+    value = ((uint64_t)rand_value << 32) | rand_value2;
 #else
     int fd = archive_open_posix("/dev/urandom", O_RDONLY, 0);
-    if (fd >= 0) {
-        size_t got = 0;
-        while (got < sizeof(value)) {
-            ssize_t n = read(fd, ((uint8_t *)&value) + got, sizeof(value) - got);
-            if (n < 0 && errno == EINTR)
-                continue;
-            if (n <= 0)
-                break;
-            got += (size_t)n;
-        }
-        close(fd);
+    if (fd < 0)
+        return 0;
+    size_t got = 0;
+    while (got < sizeof(value)) {
+        ssize_t n = read(fd, ((uint8_t *)&value) + got, sizeof(value) - got);
+        if (n < 0 && errno == EINTR)
+            continue;
+        if (n <= 0)
+            break;
+        got += (size_t)n;
     }
-    if (value == 0)
-        value = (uint64_t)getpid() ^ ((uint64_t)time(NULL) << 32) ^ ((uint64_t)attempt << 48);
+    close(fd);
+    if (got != sizeof(value))
+        return 0;
 #endif
-    return value;
+    *out = value;
+    return 1;
 }
 
 /// @brief Build a unique temporary file path adjacent to `path`.
 ///
-/// Constructs a sidecar name in the same directory as `path` using the
-/// current process ID, random entropy, and `attempt` as collision guard.
+/// Constructs a sidecar name in the same directory as `path` using secure
+/// random entropy plus process ID and `attempt` as collision context.
 /// The caller must `free()` the returned string. Returns NULL on allocation
 /// failure or path length overflow.
 ///
@@ -427,7 +433,12 @@ char *archive_make_temp_path(const char *path, unsigned attempt) {
     }
 
     char nonce[17];
-    snprintf(nonce, sizeof(nonce), "%016llx", (unsigned long long)archive_random_u64(attempt));
+    uint64_t random_value = 0;
+    if (!archive_random_u64(&random_value)) {
+        rt_trap("Archive: failed to obtain secure randomness");
+        return NULL;
+    }
+    snprintf(nonce, sizeof(nonce), "%016llx", (unsigned long long)random_value);
     size_t nonce_len = strlen(nonce);
     if (parent_len > SIZE_MAX - nonce_len - 64)
         return NULL;
@@ -841,11 +852,16 @@ void archive_write_bytes_to_dirfd_posix(int parent_fd, const char *leaf, void *d
     char tmp_name[128];
     int fd = -1;
     for (unsigned attempt = 0; attempt < 128; ++attempt) {
+        uint64_t random_value = 0;
+        if (!archive_random_u64(&random_value)) {
+            rt_trap("Archive: failed to obtain secure randomness");
+            return;
+        }
         snprintf(tmp_name,
                  sizeof(tmp_name),
                  ".viper-archive-extract-tmp.%lu.%016llx.%u",
                  (unsigned long)getpid(),
-                 (unsigned long long)archive_random_u64(attempt),
+                 (unsigned long long)random_value,
                  attempt);
         int flags = O_WRONLY | O_CREAT | O_EXCL;
 #ifdef O_NOFOLLOW

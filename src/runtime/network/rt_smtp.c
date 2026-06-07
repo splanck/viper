@@ -543,8 +543,10 @@ void *rt_smtp_new(rt_string host, int64_t port) {
         rt_trap("SmtpClient: invalid host or port");
 
     rt_smtp_impl *s = (rt_smtp_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_smtp_impl));
-    if (!s)
+    if (!s) {
         rt_trap("SmtpClient: OOM");
+        return NULL;
+    }
     memset(s, 0, sizeof(*s));
     s->host = strdup(h);
     s->port = (int)port;

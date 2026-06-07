@@ -623,11 +623,15 @@ void *rt_str_split_fields_seq(rt_string line) {
     if (total <= 0)
         return seq;
 
-    if ((uint64_t)total > SIZE_MAX / sizeof(rt_string))
+    if ((uint64_t)total > SIZE_MAX / sizeof(rt_string)) {
         rt_trap("rt_str_split_fields_seq: allocation size overflow");
+        return seq;
+    }
     rt_string *fields = (rt_string *)calloc((size_t)total, sizeof(rt_string));
-    if (!fields)
+    if (!fields) {
         rt_trap("out of memory");
+        return seq;
+    }
 
     int64_t parsed = rt_str_split_fields(line, fields, total);
     for (int64_t i = 0; i < parsed && i < total; ++i)

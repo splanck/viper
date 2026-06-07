@@ -285,7 +285,7 @@ static int game3d_callback_pointer_is_native(void *callback) {
 #elif defined(__APPLE__)
     mach_vm_address_t region = (mach_vm_address_t)(uintptr_t)callback;
     mach_vm_size_t size = 0;
-    vm_region_basic_info_data_64_t info;
+    vm_region_basic_info_data_64_t info = {0};
     mach_msg_type_number_t count = VM_REGION_BASIC_INFO_COUNT_64;
     mach_port_t object = MACH_PORT_NULL;
     if (mach_vm_region(mach_task_self(),

@@ -701,6 +701,12 @@ void *rt_msgbus_new(void) {
                  err && err[0] ? err : "rt_msgbus_new: allocation or GC track failed");
         rt_trap_clear_recovery();
         if (mb) {
+            mb_topic **owned_buckets = mb->buckets;
+            if (buckets != owned_buckets)
+                free(buckets);
+            buckets = NULL;
+            free(owned_buckets);
+            mb->buckets = NULL;
             if (rt_obj_release_check0(mb))
                 rt_obj_free(mb);
         } else {
@@ -713,6 +719,7 @@ void *rt_msgbus_new(void) {
     mb = (rt_msgbus_impl *)rt_obj_new_i64(RT_MSGBUS_CLASS_ID, (int64_t)sizeof(rt_msgbus_impl));
     mb->bucket_count = 32;
     mb->buckets = buckets;
+    buckets = NULL;
     mb->next_id = 1;
     mb->total_subs = 0;
     rt_obj_set_finalizer(mb, mb_finalizer);
@@ -789,6 +796,8 @@ int64_t rt_msgbus_subscribe(void *obj, rt_string topic, void *callback) {
     spare_topic = mb_prepare_topic(topic, topic_bytes, topic_len);
     if (!spare_topic) {
         rt_trap("rt_msgbus: memory allocation failed");
+        rt_trap_clear_recovery();
+        mb_release_bus(mb);
         return -1;
     }
     retained_topic = rt_string_ref(topic);
@@ -796,12 +805,26 @@ int64_t rt_msgbus_subscribe(void *obj, rt_string topic, void *callback) {
     retained_callback = callback;
     if (!mb_callback_is_native(retained_callback)) {
         rt_trap("rt_msgbus_subscribe: callback must be a live MessageBus callback object");
+        rt_trap_clear_recovery();
+        mb_free_topic_node(spare_topic);
+        if (retained_topic)
+            rt_string_unref(retained_topic);
+        if (retained_callback && rt_obj_release_check0(retained_callback))
+            rt_obj_free(retained_callback);
+        mb_release_bus(mb);
         return -1;
     }
 
     s = (mb_sub *)calloc(1, sizeof(mb_sub));
     if (!s) {
         rt_trap("rt_msgbus: memory allocation failed");
+        rt_trap_clear_recovery();
+        mb_free_topic_node(spare_topic);
+        if (retained_topic)
+            rt_string_unref(retained_topic);
+        if (retained_callback && rt_obj_release_check0(retained_callback))
+            rt_obj_free(retained_callback);
+        mb_release_bus(mb);
         return -1;
     }
 
@@ -809,10 +832,30 @@ int64_t rt_msgbus_subscribe(void *obj, rt_string topic, void *callback) {
     locked = 1;
     if (mb->next_id <= 0) {
         rt_trap("rt_msgbus_subscribe: subscription id overflow");
+        locked = 0;
+        mb_unlock(mb);
+        rt_trap_clear_recovery();
+        free(s);
+        mb_free_topic_node(spare_topic);
+        if (retained_topic)
+            rt_string_unref(retained_topic);
+        if (retained_callback && rt_obj_release_check0(retained_callback))
+            rt_obj_free(retained_callback);
+        mb_release_bus(mb);
         return -1;
     }
     if (mb->total_subs == INT64_MAX) {
         rt_trap("rt_msgbus_subscribe: subscription count overflow");
+        locked = 0;
+        mb_unlock(mb);
+        rt_trap_clear_recovery();
+        free(s);
+        mb_free_topic_node(spare_topic);
+        if (retained_topic)
+            rt_string_unref(retained_topic);
+        if (retained_callback && rt_obj_release_check0(retained_callback))
+            rt_obj_free(retained_callback);
+        mb_release_bus(mb);
         return -1;
     }
     mb_topic *t = mb_ensure_topic_locked(mb, topic, topic_bytes, topic_len, &spare_topic);
@@ -836,6 +879,16 @@ int64_t rt_msgbus_subscribe(void *obj, rt_string topic, void *callback) {
     s->next = NULL;
     if (t->count == INT64_MAX) {
         rt_trap("rt_msgbus_subscribe: subscription count overflow");
+        locked = 0;
+        mb_unlock(mb);
+        rt_trap_clear_recovery();
+        free(s);
+        mb_free_topic_node(spare_topic);
+        if (retained_topic)
+            rt_string_unref(retained_topic);
+        if (retained_callback && rt_obj_release_check0(retained_callback))
+            rt_obj_free(retained_callback);
+        mb_release_bus(mb);
         return -1;
     }
     if (!t->subs) {

@@ -89,22 +89,25 @@ static const char *tempfile_require_fragment(rt_string fragment, const char *wha
 }
 
 /// @brief Generate a unique identifier using OS-provided entropy (S-21).
-static void generate_unique_id(char *buffer, size_t size) {
+/// @details Fails closed when platform entropy is unavailable so temporary path names are never
+///          derived from predictable process IDs, timestamps, stack addresses, or counters.
+/// @return 1 when @p buffer was filled with a hexadecimal identifier, 0 on entropy failure.
+static int generate_unique_id(char *buffer, size_t size) {
     uint64_t rnd = 0;
-    static int64_t fallback_counter = 0;
 
 #ifdef _WIN32
     /* Use CryptGenRandom for unpredictable IDs */
     HCRYPTPROV hProv;
     if (CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
-        if (!CryptGenRandom(hProv, sizeof(rnd), (BYTE *)&rnd))
-            rnd = (uint64_t)GetTickCount64() ^ (uint64_t)(uintptr_t)buffer ^
-                  (uint64_t)GetCurrentProcessId();
+        int ok = CryptGenRandom(hProv, sizeof(rnd), (BYTE *)&rnd) != 0;
         CryptReleaseContext(hProv, 0);
+        if (!ok) {
+            rt_trap("TempFile: failed to obtain secure randomness");
+            return 0;
+        }
     } else {
-        /* Fallback: mix tick count with address entropy */
-        rnd = (uint64_t)GetTickCount64() ^ (uint64_t)(uintptr_t)buffer ^
-              (uint64_t)GetCurrentProcessId();
+        rt_trap("TempFile: failed to obtain secure randomness");
+        return 0;
     }
 #else
     /* Read from /dev/urandom for unpredictable IDs */
@@ -133,18 +136,17 @@ static void generate_unique_id(char *buffer, size_t size) {
         }
         close(fd);
         if (got != sizeof(rnd)) {
-            int64_t seq = __atomic_fetch_add(&fallback_counter, 1, __ATOMIC_RELAXED) + 1;
-            rnd ^= (uint64_t)(uintptr_t)buffer ^ (uint64_t)getpid() ^ (uint64_t)time(NULL) ^
-                   (uint64_t)seq;
+            rt_trap("TempFile: failed to obtain secure randomness");
+            return 0;
         }
     } else {
-        int64_t seq = __atomic_fetch_add(&fallback_counter, 1, __ATOMIC_RELAXED) + 1;
-        rnd =
-            (uint64_t)(uintptr_t)buffer ^ (uint64_t)getpid() ^ (uint64_t)time(NULL) ^ (uint64_t)seq;
+        rt_trap("TempFile: failed to obtain secure randomness");
+        return 0;
     }
 #endif
 
     snprintf(buffer, size, "%016llx", (unsigned long long)rnd);
+    return 1;
 }
 
 #if !defined(_WIN32)
@@ -304,7 +306,8 @@ rt_string rt_tempfile_path_with_prefix(rt_string prefix) {
 /// chance negligible even after millions of calls.
 rt_string rt_tempfile_path_with_ext(rt_string prefix, rt_string extension) {
     char unique_id[64];
-    generate_unique_id(unique_id, sizeof(unique_id));
+    if (!generate_unique_id(unique_id, sizeof(unique_id)))
+        return rt_str_empty();
 
     const char *prefix_cstr = tempfile_require_fragment(prefix, "TempFile: invalid prefix");
     const char *ext_cstr = tempfile_require_fragment(extension, "TempFile: invalid extension");

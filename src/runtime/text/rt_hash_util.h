@@ -93,9 +93,10 @@ static inline uint64_t rt_siphash24(const void *data, size_t len) {
     /* Process 8-byte blocks. */
     size_t blocks = len / 8;
     for (size_t i = 0; i < blocks; i++) {
+        const uint8_t *block = bytes + (i * 8);
         uint64_t m = 0;
         for (int j = 0; j < 8; j++)
-            m |= ((uint64_t)bytes[i * 8 + j]) << (j * 8);
+            m |= ((uint64_t)block[j]) << (j * 8);
         v3 ^= m;
         RT_SIPROUND_;
         RT_SIPROUND_;

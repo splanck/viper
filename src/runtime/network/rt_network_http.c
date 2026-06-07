@@ -1535,8 +1535,19 @@ static char *build_request(rt_http_req_t *req) {
     int want_keep_alive = req->keep_alive ? 1 : 0;
 
     // Calculate total size
-    size_t size =
-        strlen(req->method) + 1 + strlen(req->url.path) + 11; // "METHOD PATH HTTP/1.1\r\n"
+    size_t size = 0;
+#define HTTP_REQUEST_ADD_SIZE(amount_)                                                             \
+    do {                                                                                             \
+        size_t http_request_amount_ = (amount_);                                                     \
+        if (http_request_amount_ > SIZE_MAX - size)                                                  \
+            return NULL;                                                                             \
+        size += http_request_amount_;                                                                \
+    } while (0)
+
+    HTTP_REQUEST_ADD_SIZE(strlen(req->method));
+    HTTP_REQUEST_ADD_SIZE(1);
+    HTTP_REQUEST_ADD_SIZE(strlen(req->url.path));
+    HTTP_REQUEST_ADD_SIZE(11); // " HTTP/1.1\r\n"
 
     // Host header
     char host_header[300];
@@ -1551,7 +1562,7 @@ static char *build_request(rt_http_req_t *req) {
                  sizeof(host_header),
                  host_needs_brackets(req->url.host) ? "Host: [%s]\r\n" : "Host: %s\r\n",
                  req->url.host);
-    size += strlen(host_header);
+    HTTP_REQUEST_ADD_SIZE(strlen(host_header));
 
     // Content-Length if body
     char content_len_header[64] = "";
@@ -1560,22 +1571,26 @@ static char *build_request(rt_http_req_t *req) {
                  sizeof(content_len_header),
                  "Content-Length: %zu\r\n",
                  req->body_len);
-        size += strlen(content_len_header);
+        HTTP_REQUEST_ADD_SIZE(strlen(content_len_header));
     }
 
     if (add_default_connection)
-        size += want_keep_alive ? 24 : 19; // keep-alive / close
+        HTTP_REQUEST_ADD_SIZE(want_keep_alive ? 24 : 19); // keep-alive / close
 
     if (req->accept_gzip && !has_header(req, "Accept-Encoding"))
-        size += 23; // "Accept-Encoding: gzip\r\n"
+        HTTP_REQUEST_ADD_SIZE(23); // "Accept-Encoding: gzip\r\n"
 
     // User headers
     for (http_header_t *h = req->headers; h; h = h->next) {
-        size += strlen(h->name) + 2 + strlen(h->value) + 2; // "Name: Value\r\n"
+        HTTP_REQUEST_ADD_SIZE(strlen(h->name));
+        HTTP_REQUEST_ADD_SIZE(2);
+        HTTP_REQUEST_ADD_SIZE(strlen(h->value));
+        HTTP_REQUEST_ADD_SIZE(2); // "Name: Value\r\n"
     }
 
-    size += 2; // Final CRLF
-    size += 1; // Null terminator
+    HTTP_REQUEST_ADD_SIZE(2); // Final CRLF
+    HTTP_REQUEST_ADD_SIZE(1); // Null terminator
+#undef HTTP_REQUEST_ADD_SIZE
 
     char *request = (char *)malloc(size);
     if (!request)

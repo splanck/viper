@@ -127,6 +127,7 @@ set(RT_GAME_SOURCES
         game/rt_debugoverlay.c
         game/rt_gameui.c
         game/rt_gameui_widgets.c
+        game/rt_gameui_textinput.c
         game/rt_pathfinder.c
         game/rt_dialogue.c
         game/rt_lighting2d.c
@@ -202,6 +203,7 @@ set(RT_IO_FS_SOURCES
         io/rt_deflate.c
         io/rt_archive.c
         io/rt_archive_fs.c
+        io/rt_archive_read.c
         io/rt_savedata.c
         io/rt_vpa_reader.c
         io/rt_path_exe.c
@@ -226,6 +228,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/2d/rt_drawing_advanced.c
         graphics/2d/rt_color.c
         graphics/gui/rt_gui_app.c
+        graphics/gui/rt_gui_app_font.c
         graphics/gui/rt_gui_codeeditor.c
         graphics/gui/rt_gui_codeeditor_syntax.c
         graphics/gui/rt_gui_messagebox.c
@@ -240,6 +243,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/gui/rt_gui_subhandle.c
         graphics/gui/rt_gui_widgets_complex.c
         graphics/gui/rt_gui_image.c
+        graphics/gui/rt_gui_controls.c
         graphics/gui/rt_gui_ide.cpp
         graphics/input/rt_input.c
         graphics/input/rt_input_pad.c
@@ -327,6 +331,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/3d/physics/rt_physics3d_character.c
         graphics/3d/physics/rt_physics3d_collision.c
         graphics/3d/physics/rt_physics3d_query.c
+        graphics/3d/physics/rt_physics3d_raycast.c
         graphics/3d/physics/rt_physics3d_solver.c
         graphics/3d/physics/rt_joints3d.c
         graphics/3d/physics/rt_joints3d_math.c
@@ -343,6 +348,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/media/rt_avi.c
         graphics/media/rt_videoplayer.c
         graphics/media/rt_theora.c
+        graphics/media/rt_theora_recon.c
         graphics/media/rt_ycbcr.c
         graphics/gui/rt_videowidget.c
         graphics/3d/render/rt_texatlas3d.c
@@ -362,6 +368,7 @@ set(RT_GRAPHICS_DISABLED_SOURCES
         graphics/2d/rt_action_io.c
         graphics/text/rt_font.c
         graphics/gui/rt_gui_app.c
+        graphics/gui/rt_gui_app_font.c
         graphics/gui/rt_gui_codeeditor.c
         graphics/gui/rt_gui_codeeditor_syntax.c
         graphics/gui/rt_gui_messagebox.c
@@ -376,6 +383,7 @@ set(RT_GRAPHICS_DISABLED_SOURCES
         graphics/gui/rt_gui_subhandle.c
         graphics/gui/rt_gui_widgets_complex.c
         graphics/gui/rt_gui_image.c
+        graphics/gui/rt_gui_controls.c
         graphics/input/rt_input.c
         graphics/input/rt_input_pad.c
         graphics/input/rt_inputmgr.c
@@ -413,6 +421,7 @@ set(RT_GRAPHICS_DISABLED_SOURCES
         graphics/3d/rt_game3d.c
         graphics/media/rt_avi.c
         graphics/media/rt_theora.c
+        graphics/media/rt_theora_recon.c
         graphics/media/rt_ycbcr.c
         graphics/3d/backend/vgfx3d_backend_utils.c
         graphics/3d/backend/vgfx3d_backend_d3d11_shared.c
@@ -453,6 +462,7 @@ set(RT_THREADS_SOURCES
         threads/rt_concmap.c
         threads/rt_future.c
         threads/rt_parallel.c
+        threads/rt_parallel_ops.c
         threads/rt_safe_i64.c
         threads/rt_threads_common.c
         threads/rt_threadpool.c
@@ -517,6 +527,7 @@ set(RT_NETWORK_SOURCES
         network/rt_crypto_module.c
         network/rt_tls.c
         network/rt_tls_api.c
+        network/rt_tls_certs.c
         network/rt_tls_verify_common.c
         network/rt_ecdsa_p256.c
         network/rt_rsa.c

@@ -776,19 +776,33 @@ static void *do_request(rt_http_client_impl *c, const char *method, rt_string ur
 void *rt_http_client_new(void) {
     rt_http_client_impl *c =
         (rt_http_client_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_http_client_impl));
-    if (!c)
+    if (!c) {
         rt_trap("HttpClient: OOM");
+        return NULL;
+    }
     memset(c, 0, sizeof(*c));
+    rt_obj_set_finalizer(c, rt_http_client_finalize);
     c->default_headers = rt_map_new();
+    if (!c->default_headers) {
+        rt_trap("HttpClient: OOM");
+        if (rt_obj_release_check0(c))
+            rt_obj_free(c);
+        return NULL;
+    }
     c->timeout_ms = 30000;
     c->max_redirects = 5;
     c->follow_redirects = 1;
     c->pool_size = 8;
     c->keep_alive = 1;
     c->connection_pool = rt_http_conn_pool_new(c->pool_size);
+    if (!c->connection_pool) {
+        rt_trap("HttpClient: OOM");
+        if (rt_obj_release_check0(c))
+            rt_obj_free(c);
+        return NULL;
+    }
     HTTP_CLIENT_MUTEX_INIT(&c->lock);
     c->lock_initialized = 1;
-    rt_obj_set_finalizer(c, rt_http_client_finalize);
     return c;
 }
 

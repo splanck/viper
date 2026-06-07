@@ -85,11 +85,15 @@ struct DebugHandle {
 };
 
 DebugHandle *requireSession(void *session) {
-    if (!session || rt_obj_class_id(session) != RT_DEBUG_PROTOCOL_SESSION_CLASS_ID)
+    if (!session || rt_obj_class_id(session) != RT_DEBUG_PROTOCOL_SESSION_CLASS_ID) {
         rt_trap("Debug.Protocol: invalid session");
+        return nullptr;
+    }
     auto *h = static_cast<DebugHandle *>(session);
-    if (!h->state)
+    if (!h->state) {
         rt_trap("Debug.Protocol: destroyed session");
+        return nullptr;
+    }
     return h;
 }
 

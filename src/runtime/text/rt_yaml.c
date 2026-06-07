@@ -469,8 +469,10 @@ static bool append_utf8(uint32_t cp, char **buf, size_t *len, size_t *capacity) 
     while (*len + n + 1 > *capacity) {
         *capacity *= 2;
         char *tmp = realloc(*buf, *capacity);
-        if (!tmp)
+        if (!tmp) {
             rt_trap("rt_yaml: memory allocation failed");
+            return false;
+        }
         *buf = tmp;
     }
     memcpy(*buf + *len, bytes, n);
@@ -490,8 +492,10 @@ static rt_string parse_quoted_string(yaml_parser *p, char quote) {
 
     size_t capacity = 64;
     char *buf = malloc(capacity);
-    if (!buf)
+    if (!buf) {
         rt_trap("rt_yaml: memory allocation failed");
+        return NULL;
+    }
     size_t len = 0;
 
     while (!parser_eof(p)) {
@@ -623,9 +627,13 @@ static rt_string parse_quoted_string(yaml_parser *p, char quote) {
 
         if (len >= capacity - 1) {
             capacity *= 2;
-            buf = realloc(buf, capacity);
-            if (!buf)
+            char *tmp = (char *)realloc(buf, capacity);
+            if (!tmp) {
                 rt_trap("rt_yaml: memory allocation failed");
+                free(buf);
+                return NULL;
+            }
+            buf = tmp;
         }
         buf[len++] = c;
     }
@@ -1192,8 +1200,10 @@ static void *parse_value(yaml_parser *p, int base_indent) {
 
         size_t capacity = 256;
         char *buf = malloc(capacity);
-        if (!buf)
+        if (!buf) {
             rt_trap("rt_yaml: memory allocation failed");
+            return NULL;
+        }
         size_t len = 0;
 
         while (!parser_eof(p)) {
@@ -1213,9 +1223,13 @@ static void *parse_value(yaml_parser *p, int base_indent) {
             while (!parser_eof(p) && parser_peek(p) != '\n') {
                 if (len >= capacity - 2) {
                     capacity *= 2;
-                    buf = realloc(buf, capacity);
-                    if (!buf)
+                    char *tmp = (char *)realloc(buf, capacity);
+                    if (!tmp) {
                         rt_trap("rt_yaml: memory allocation failed");
+                        free(buf);
+                        return NULL;
+                    }
+                    buf = tmp;
                 }
                 buf[len++] = parser_advance(p);
             }

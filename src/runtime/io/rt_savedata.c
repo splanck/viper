@@ -638,13 +638,18 @@ static int savedata_file_size(FILE *fp, uint64_t *out_size) {
     return 1;
 }
 
-static uint64_t savedata_random_u64(unsigned attempt) {
-    uint64_t value = (uint64_t)GetCurrentProcessId() ^ ((uint64_t)GetTickCount64() << 16) ^
-                     ((uint64_t)attempt << 48);
+/// @brief Read 64 bits of OS entropy for atomic save temp-file names.
+/// @details Fails instead of falling back to pid/time-derived names so atomic writes never use
+///          predictable sidecar paths when secure randomness is unavailable.
+/// @param out Receives the random value on success.
+/// @return 1 on success, 0 on entropy failure.
+static int savedata_random_u64(uint64_t *out) {
     unsigned int rand_value = 0;
-    if (rand_s(&rand_value) == 0)
-        value ^= ((uint64_t)rand_value << 32) | rand_value;
-    return value;
+    unsigned int rand_value2 = 0;
+    if (rand_s(&rand_value) != 0 || rand_s(&rand_value2) != 0)
+        return 0;
+    *out = ((uint64_t)rand_value << 32) | rand_value2;
+    return 1;
 }
 #else
 /// @brief Open a file at a UTF-8 path using `fopen` (POSIX).
@@ -700,41 +705,39 @@ static int savedata_sync_parent_dir(const char *path) {
     return ok;
 }
 
-static uint64_t savedata_random_u64(unsigned attempt) {
+/// @brief Read 64 bits of OS entropy for atomic save temp-file names.
+/// @details Fails instead of falling back to pid/time-derived names so atomic writes never use
+///          predictable sidecar paths when secure randomness is unavailable.
+/// @param out Receives the random value on success.
+/// @return 1 on success, 0 on entropy failure.
+static int savedata_random_u64(uint64_t *out) {
     uint64_t value = 0;
-#ifdef _WIN32
-    value = (uint64_t)GetCurrentProcessId() ^ ((uint64_t)GetTickCount64() << 16) ^
-            ((uint64_t)attempt << 48);
-    unsigned int rand_value = 0;
-    if (rand_s(&rand_value) == 0)
-        value ^= ((uint64_t)rand_value << 32) | rand_value;
-#else
     int flags = O_RDONLY;
 #ifdef O_CLOEXEC
     flags |= O_CLOEXEC;
 #endif
     int fd = open("/dev/urandom", flags);
-    if (fd >= 0) {
+    if (fd < 0)
+        return 0;
 #if defined(FD_CLOEXEC) && !defined(O_CLOEXEC)
-        int fd_flags = fcntl(fd, F_GETFD);
-        if (fd_flags >= 0)
-            (void)fcntl(fd, F_SETFD, fd_flags | FD_CLOEXEC);
+    int fd_flags = fcntl(fd, F_GETFD);
+    if (fd_flags >= 0)
+        (void)fcntl(fd, F_SETFD, fd_flags | FD_CLOEXEC);
 #endif
-        size_t got = 0;
-        while (got < sizeof(value)) {
-            ssize_t n = read(fd, ((uint8_t *)&value) + got, sizeof(value) - got);
-            if (n < 0 && errno == EINTR)
-                continue;
-            if (n <= 0)
-                break;
-            got += (size_t)n;
-        }
-        close(fd);
+    size_t got = 0;
+    while (got < sizeof(value)) {
+        ssize_t n = read(fd, ((uint8_t *)&value) + got, sizeof(value) - got);
+        if (n < 0 && errno == EINTR)
+            continue;
+        if (n <= 0)
+            break;
+        got += (size_t)n;
     }
-    if (value == 0)
-        value = (uint64_t)getpid() ^ ((uint64_t)time(NULL) << 32) ^ ((uint64_t)attempt << 48);
-#endif
-    return value;
+    close(fd);
+    if (got != sizeof(value))
+        return 0;
+    *out = value;
+    return 1;
 }
 
 /// @brief Get the size of an open file in bytes using `fseeko`/`ftello` (POSIX).
@@ -1012,7 +1015,12 @@ static int savedata_write_atomic(const char *path, const char *data, size_t len)
     FILE *fp = NULL;
     for (unsigned attempt = 0; attempt < 128; ++attempt) {
         char nonce[17];
-        snprintf(nonce, sizeof(nonce), "%016llx", (unsigned long long)savedata_random_u64(attempt));
+        uint64_t random_value = 0;
+        if (!savedata_random_u64(&random_value)) {
+            rt_trap("SaveData: failed to obtain secure randomness");
+            return 0;
+        }
+        snprintf(nonce, sizeof(nonce), "%016llx", (unsigned long long)random_value);
         if (path_len > SIZE_MAX - strlen(nonce) - 48)
             return 0;
         size_t tmp_cap = path_len + strlen(nonce) + 48;

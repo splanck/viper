@@ -420,8 +420,10 @@ static const uint8_t x25519_basepoint[32] = {9};
 /// `x25519_scalarmult` — callers can therefore pass any 32 random
 /// bytes as the secret without pre-clamping.
 void rt_x25519_keygen(uint8_t secret[32], uint8_t public_key[32]) {
-    if (!secret || !public_key)
+    if (!secret || !public_key) {
         rt_trap("X25519.Keygen: output buffer is null");
+        return;
+    }
     rt_crypto_random_bytes(secret, 32);
     x25519_scalarmult(public_key, secret, x25519_basepoint);
 }

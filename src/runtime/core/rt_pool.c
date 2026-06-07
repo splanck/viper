@@ -113,14 +113,12 @@ typedef struct rt_pool_slab {
 //
 //===----------------------------------------------------------------------===//
 
-#if defined(__arm64e__) || defined(_M_ARM64EC)
-#define RT_POOL_PAC_SAFE 1
-#elif defined(__has_feature)
-#if __has_feature(ptrauth_calls)
-#define RT_POOL_PAC_SAFE 1
-#else
-#define RT_POOL_PAC_SAFE 0
+#ifndef __has_feature
+#define __has_feature(feature) 0
 #endif
+
+#if defined(__arm64e__) || defined(_M_ARM64EC) || __has_feature(ptrauth_calls)
+#define RT_POOL_PAC_SAFE 1
 #else
 #define RT_POOL_PAC_SAFE 0
 #endif

@@ -166,8 +166,10 @@ static rt_string parse_field(csv_parser *p, bool *at_line_end) {
         size_t cap = 64;
         size_t len = 0;
         char *buf = (char *)malloc(cap);
-        if (!buf)
+        if (!buf) {
             rt_trap("Csv.Parse: memory allocation failed");
+            return rt_string_from_bytes("", 0);
+        }
 
         bool closed = false;
         while (!parser_eof(p)) {
@@ -182,12 +184,14 @@ static rt_string parse_field(csv_parser *p, bool *at_line_end) {
                         if (cap > SIZE_MAX / 2) {
                             free(buf);
                             rt_trap("Csv.Parse: field length overflow");
+                            return rt_string_from_bytes("", 0);
                         }
                         cap *= 2;
                         char *tmp = (char *)realloc(buf, cap);
                         if (!tmp) {
                             free(buf);
                             rt_trap("Csv.Parse: memory allocation failed");
+                            return rt_string_from_bytes("", 0);
                         }
                         buf = tmp;
                     }
@@ -200,15 +204,17 @@ static rt_string parse_field(csv_parser *p, bool *at_line_end) {
             } else {
                 // Regular character (including newlines in quoted fields)
                 if (len + 1 >= cap) {
-                    if (cap > SIZE_MAX / 2) {
-                        free(buf);
-                        rt_trap("Csv.Parse: field length overflow");
-                    }
+                        if (cap > SIZE_MAX / 2) {
+                            free(buf);
+                            rt_trap("Csv.Parse: field length overflow");
+                            return rt_string_from_bytes("", 0);
+                        }
                     cap *= 2;
                     char *tmp = (char *)realloc(buf, cap);
                     if (!tmp) {
                         free(buf);
                         rt_trap("Csv.Parse: memory allocation failed");
+                        return rt_string_from_bytes("", 0);
                     }
                     buf = tmp;
                 }
@@ -219,6 +225,7 @@ static rt_string parse_field(csv_parser *p, bool *at_line_end) {
         if (!closed) {
             free(buf);
             rt_trap("Csv.Parse: unterminated quoted field");
+            return rt_string_from_bytes("", 0);
         }
 
         buf[len] = '\0';
@@ -241,6 +248,7 @@ static rt_string parse_field(csv_parser *p, bool *at_line_end) {
             } else {
                 rt_string_unref(result);
                 rt_trap("Csv.Parse: invalid character after closing quote");
+                return rt_string_from_bytes("", 0);
             }
         } else {
             *at_line_end = true;
@@ -254,8 +262,10 @@ static rt_string parse_field(csv_parser *p, bool *at_line_end) {
             char c = parser_peek(p);
             if (c == p->delim || c == '\r' || c == '\n')
                 break;
-            if (c == '"')
+            if (c == '"') {
                 rt_trap("Csv.Parse: quote in unquoted field");
+                return rt_string_from_bytes("", 0);
+            }
             parser_consume(p);
         }
         size_t field_len = p->pos - start;
@@ -743,8 +753,10 @@ rt_string rt_csv_format_line_with(void *fields, rt_string delim) {
         rt_trap("Csv.FormatLine: output length overflow");
 
     char *out = (char *)malloc(total_size + 1);
-    if (!out)
+    if (!out) {
         rt_trap("Csv.FormatLine: memory allocation failed");
+        return rt_string_from_bytes("", 0);
+    }
 
     size_t pos = 0;
     for (int64_t i = 0; i < count; i++) {

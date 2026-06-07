@@ -44,8 +44,10 @@ static void buf_append(char **buf, size_t *cap, size_t *len, const char *str) {
         if (new_cap <= *cap)
             rt_trap("XML format: output length overflow");
         char *tmp = (char *)realloc(*buf, new_cap);
-        if (!tmp)
+        if (!tmp) {
             rt_trap("XML format: memory allocation failed");
+            return;
+        }
         *buf = tmp;
         *cap = new_cap;
     }

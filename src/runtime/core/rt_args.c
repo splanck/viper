@@ -292,14 +292,19 @@ static wchar_t *rt_env_utf8_to_wide_or_trap(const char *utf8, const char *contex
     if (!utf8)
         return NULL;
     int needed = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, NULL, 0);
-    if (needed <= 0)
+    if (needed <= 0) {
         rt_trap(context ? context : "Environment: UTF-8 to UTF-16 conversion failed");
+        return NULL;
+    }
     wchar_t *wide = (wchar_t *)malloc((size_t)needed * sizeof(wchar_t));
-    if (!wide)
+    if (!wide) {
         rt_trap("Environment: allocation failed");
+        return NULL;
+    }
     if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wide, needed) <= 0) {
         free(wide);
         rt_trap(context ? context : "Environment: UTF-8 to UTF-16 conversion failed");
+        return NULL;
     }
     return wide;
 }
@@ -316,14 +321,19 @@ static rt_string rt_env_wide_to_string_or_trap(const wchar_t *wide,
     if (!wide || wide_len <= 0)
         return rt_str_empty();
     int needed = WideCharToMultiByte(CP_UTF8, 0, wide, wide_len, NULL, 0, NULL, NULL);
-    if (needed <= 0)
+    if (needed <= 0) {
         rt_trap(context ? context : "Environment: UTF-16 to UTF-8 conversion failed");
+        return rt_str_empty();
+    }
     char *buffer = (char *)malloc((size_t)needed);
-    if (!buffer)
+    if (!buffer) {
         rt_trap("Environment: allocation failed");
+        return rt_str_empty();
+    }
     if (WideCharToMultiByte(CP_UTF8, 0, wide, wide_len, buffer, needed, NULL, NULL) <= 0) {
         free(buffer);
         rt_trap(context ? context : "Environment: UTF-16 to UTF-8 conversion failed");
+        return rt_str_empty();
     }
     rt_string out = rt_string_from_bytes(buffer, (size_t)needed);
     free(buffer);
@@ -558,11 +568,13 @@ int64_t rt_env_is_native(void) {
 static const char *rt_env_require_name(rt_string name, const char *context) {
     if (!name) {
         rt_trap(context ? context : "Environment: variable name is null");
+        return "";
     }
 
     const char *cname = rt_string_cstr(name);
     if (!cname || cname[0] == '\0') {
         rt_trap(context ? context : "Environment: variable name is empty");
+        return "";
     }
     return cname;
 }
@@ -588,6 +600,7 @@ rt_string rt_env_get_var(rt_string name) {
             return rt_str_empty();
         }
         rt_trap("Viper.System.Environment.GetVariable: failed to query variable");
+        return rt_str_empty();
     }
 
     if (required <= 1) {
@@ -599,6 +612,7 @@ rt_string rt_env_get_var(rt_string name) {
     if (!buffer) {
         free(wname);
         rt_trap("Viper.System.Environment.GetVariable: allocation failed");
+        return rt_str_empty();
     }
 
     SetLastError(ERROR_SUCCESS);
@@ -611,6 +625,7 @@ rt_string rt_env_get_var(rt_string name) {
             return rt_str_empty();
         }
         rt_trap("Viper.System.Environment.GetVariable: failed to read variable");
+        return rt_str_empty();
     }
 
     rt_string out = rt_env_wide_to_string_or_trap(

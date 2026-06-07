@@ -244,6 +244,7 @@ static rt_string parse_string(json_parser *p) {
                             if (!tmp) {
                                 free(buf);
                                 rt_trap("Json.Parse: memory allocation failed");
+                                return rt_string_from_bytes("", 0);
                             }
                             buf = tmp;
                         }
@@ -255,6 +256,7 @@ static rt_string parse_string(json_parser *p) {
                             if (!tmp) {
                                 free(buf);
                                 rt_trap("Json.Parse: memory allocation failed");
+                                return rt_string_from_bytes("", 0);
                             }
                             buf = tmp;
                         }
@@ -267,6 +269,7 @@ static rt_string parse_string(json_parser *p) {
                             if (!tmp) {
                                 free(buf);
                                 rt_trap("Json.Parse: memory allocation failed");
+                                return rt_string_from_bytes("", 0);
                             }
                             buf = tmp;
                         }
@@ -281,6 +284,7 @@ static rt_string parse_string(json_parser *p) {
                             if (!tmp) {
                                 free(buf);
                                 rt_trap("Json.Parse: memory allocation failed");
+                                return rt_string_from_bytes("", 0);
                             }
                             buf = tmp;
                         }
@@ -303,6 +307,7 @@ static rt_string parse_string(json_parser *p) {
                 if (!tmp) {
                     free(buf);
                     rt_trap("Json.Parse: memory allocation failed");
+                    return rt_string_from_bytes("", 0);
                 }
                 buf = tmp;
             }
@@ -320,6 +325,7 @@ static rt_string parse_string(json_parser *p) {
                 if (!tmp) {
                     free(buf);
                     rt_trap("Json.Parse: memory allocation failed");
+                    return rt_string_from_bytes("", 0);
                 }
                 buf = tmp;
             }

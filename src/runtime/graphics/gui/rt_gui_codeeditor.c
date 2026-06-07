@@ -86,17 +86,23 @@ static vg_icon_t rt_codeeditor_icon_from_pixels(void *pixels) {
     const uint32_t *raw = rt_pixels_raw_buffer(pixels);
     if (width <= 0 || height <= 0 || !raw)
         return icon;
-    if ((uintmax_t)width > (uintmax_t)SIZE_MAX || (uintmax_t)height > (uintmax_t)SIZE_MAX)
+    if ((uintmax_t)width > (uintmax_t)SIZE_MAX || (uintmax_t)height > (uintmax_t)SIZE_MAX) {
         rt_trap_raise_kind(
             RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, "CodeEditor.SetGutterIcon: icon too large");
+        return icon;
+    }
 
     size_t pixel_count = (size_t)width * (size_t)height;
-    if (pixel_count / (size_t)width != (size_t)height)
+    if (pixel_count / (size_t)width != (size_t)height) {
         rt_trap_raise_kind(
             RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, "CodeEditor.SetGutterIcon: icon too large");
-    if (width > UINT32_MAX || height > UINT32_MAX || pixel_count > SIZE_MAX / 4)
+        return icon;
+    }
+    if (width > UINT32_MAX || height > UINT32_MAX || pixel_count > SIZE_MAX / 4) {
         rt_trap_raise_kind(
             RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, "CodeEditor.SetGutterIcon: icon too large");
+        return icon;
+    }
 
     uint8_t *rgba = (uint8_t *)malloc(pixel_count * 4);
     if (!rgba)
@@ -104,6 +110,8 @@ static vg_icon_t rt_codeeditor_icon_from_pixels(void *pixels) {
                            Err_RuntimeError,
                            -1,
                            "CodeEditor.SetGutterIcon: allocation failed");
+    if (!rgba)
+        return icon;
 
     for (size_t i = 0; i < pixel_count; i++) {
         uint32_t px = raw[i];

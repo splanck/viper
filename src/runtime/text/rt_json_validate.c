@@ -48,8 +48,10 @@ static int json_number_is_finite_span(const char *start, size_t len) {
         return 0;
 
     char *num_str = (char *)malloc(len + 1);
-    if (!num_str)
+    if (!num_str) {
         rt_trap("Json: memory allocation failed");
+        return 0;
+    }
     memcpy(num_str, start, len);
     num_str[len] = '\0';
 

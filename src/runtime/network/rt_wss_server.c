@@ -721,16 +721,28 @@ void *rt_wss_server_new(int64_t port, rt_string cert_file, rt_string key_file) {
 
     rt_ws_server_impl *s =
         (rt_ws_server_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_ws_server_impl));
-    if (!s)
+    if (!s) {
         rt_trap("WssServer: memory allocation failed");
+        return NULL;
+    }
     memset(s, 0, sizeof(*s));
     rt_obj_set_finalizer(s, rt_ws_server_finalize);
     s->port = port;
     s->worker_pool = rt_threadpool_new(8);
+    if (!s->worker_pool) {
+        rt_trap("WssServer: worker pool allocation failed");
+        if (rt_obj_release_check0(s))
+            rt_obj_free(s);
+        return NULL;
+    }
     s->cert_file = strdup(rt_string_cstr(cert_file));
     s->key_file = strdup(rt_string_cstr(key_file));
-    if (!s->cert_file || !s->key_file)
+    if (!s->cert_file || !s->key_file) {
         rt_trap("WssServer: failed to copy certificate paths");
+        if (rt_obj_release_check0(s))
+            rt_obj_free(s);
+        return NULL;
+    }
     {
         rt_tls_server_config_t tls_cfg;
         rt_tls_server_config_init(&tls_cfg);
@@ -738,8 +750,12 @@ void *rt_wss_server_new(int64_t port, rt_string cert_file, rt_string key_file) {
         tls_cfg.key_file = s->key_file;
         tls_cfg.alpn_protocol = "http/1.1";
         s->tls_ctx = rt_tls_server_ctx_new(&tls_cfg);
-        if (!s->tls_ctx)
+        if (!s->tls_ctx) {
             rt_trap(rt_tls_server_last_error());
+            if (rt_obj_release_check0(s))
+                rt_obj_free(s);
+            return NULL;
+        }
     }
     WS_MUTEX_INIT(&s->lock);
     s->lock_initialized = true;

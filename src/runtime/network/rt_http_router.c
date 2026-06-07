@@ -305,8 +305,10 @@ static void rt_route_match_finalize(void *obj) {
 void *rt_http_router_new(void) {
     rt_http_router_impl *router =
         (rt_http_router_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_http_router_impl));
-    if (!router)
+    if (!router) {
         rt_trap("HttpRouter: memory allocation failed");
+        return NULL;
+    }
     memset(router, 0, sizeof(*router));
     rt_obj_set_finalizer(router, rt_http_router_finalize);
     return router;
@@ -316,14 +318,20 @@ void *rt_http_router_new(void) {
 /// (literal/param/wildcard), allocates per-segment storage, and appends to the routes array.
 /// Traps on null input or pool overflow.
 static void *add_route(void *obj, const char *method, const char *pattern) {
-    if (!obj)
+    if (!obj) {
         rt_trap("HttpRouter: NULL router");
-    if (!method || !pattern)
+        return NULL;
+    }
+    if (!method || !pattern) {
         rt_trap("HttpRouter: NULL method or pattern");
+        return obj;
+    }
 
     rt_http_router_impl *router = (rt_http_router_impl *)obj;
-    if (router->route_count >= MAX_ROUTES)
+    if (router->route_count >= MAX_ROUTES) {
         rt_trap("HttpRouter: too many routes (max 256)");
+        return obj;
+    }
 
     route_t *route = &router->routes[router->route_count];
     memset(route, 0, sizeof(*route));
@@ -332,11 +340,13 @@ static void *add_route(void *obj, const char *method, const char *pattern) {
     if (!route->method || !route->pattern) {
         free_route(route);
         rt_trap("HttpRouter: memory allocation failed");
+        return obj;
     }
     route->segment_count = parse_pattern(pattern, route->segments, MAX_ROUTE_SEGMENTS);
     if (route->segment_count < 0) {
         free_route(route);
         rt_trap("HttpRouter: invalid or too-deep route pattern");
+        return obj;
     }
 
     router->route_count++;

@@ -61,14 +61,20 @@
 static const char *rt_string_format_bytes(rt_string s, size_t *len, const char *fn_name) {
     if (len)
         *len = 0;
-    if (!s)
+    if (!s) {
         rt_trap(fn_name);
-    if (!rt_string_is_handle(s))
+        return "";
+    }
+    if (!rt_string_is_handle(s)) {
         rt_trap("INPUT: invalid string handle");
+        return "";
+    }
     size_t n = rt_string_len_bytes(s);
     const char *data = rt_string_cstr(s);
-    if (!data)
+    if (!data) {
         rt_trap("INPUT: invalid string data");
+        return "";
+    }
     if (len)
         *len = n;
     return data;
@@ -115,16 +121,24 @@ int64_t rt_to_int(rt_string s) {
     size_t j = len;
     while (j > i && rt_string_format_is_ascii_space((unsigned char)p[j - 1]))
         --j;
-    if (i == j)
+    if (i == j) {
         rt_trap("INPUT: expected numeric value");
+        return 0;
+    }
     size_t sz = j - i;
-    if (memchr(p + i, '\0', sz))
+    if (memchr(p + i, '\0', sz)) {
         rt_trap("INPUT: expected numeric value");
-    if (sz == SIZE_MAX || sz > (size_t)INT64_MAX - 1)
+        return 0;
+    }
+    if (sz == SIZE_MAX || sz > (size_t)INT64_MAX - 1) {
         rt_trap("INPUT: numeric value too large");
+        return 0;
+    }
     char *buf = (char *)rt_alloc((int64_t)(sz + 1));
-    if (!buf)
+    if (!buf) {
         rt_trap("INPUT: allocation failed");
+        return 0;
+    }
     memcpy(buf, p + i, sz);
     buf[sz] = '\0';
     errno = 0;
@@ -133,10 +147,12 @@ int64_t rt_to_int(rt_string s) {
     if (errno == ERANGE) {
         rt_free(buf);
         rt_trap("INPUT: numeric overflow");
+        return 0;
     }
     if (!endp || *endp != '\0') {
         rt_free(buf);
         rt_trap("INPUT: expected numeric value");
+        return 0;
     }
     rt_free(buf);
     return (int64_t)v;
@@ -151,17 +167,23 @@ int64_t rt_to_int(rt_string s) {
 /// @param s Runtime string handle.
 /// @return Parsed floating-point value.
 double rt_to_double(rt_string s) {
-    if (rt_string_contains_embedded_nul(s))
+    if (rt_string_contains_embedded_nul(s)) {
         rt_trap("INPUT: expected numeric value");
+        return 0.0;
+    }
     double value = 0.0;
     size_t len = 0;
     const char *data = rt_string_format_bytes(s, &len, "rt_to_double: null");
     (void)len;
     int32_t err = rt_parse_double(data, &value);
-    if (err == (int32_t)Err_Overflow)
+    if (err == (int32_t)Err_Overflow) {
         rt_trap("INPUT: numeric overflow");
-    if (err != (int32_t)Err_None)
+        return 0.0;
+    }
+    if (err != (int32_t)Err_None) {
         rt_trap("INPUT: expected numeric value");
+        return 0.0;
+    }
     return value;
 }
 
@@ -186,6 +208,7 @@ rt_string rt_int_to_str(int64_t v) {
             msg = "rt_int_to_str: invalid";
         rt_sb_free(&sb);
         rt_trap(msg);
+        return rt_string_from_bytes("", 0);
     }
 
     rt_string s = rt_string_from_bytes(sb.data, sb.len);
@@ -263,8 +286,10 @@ rt_string rt_str_i16_alloc(int16_t v) {
 /// @param s Runtime string handle.
 /// @return Parsed floating-point value; 0.0 when no numeric prefix is present.
 double rt_val(rt_string s) {
-    if (!s)
+    if (!s) {
         rt_trap("rt_val: null");
+        return 0.0;
+    }
     const char *data = s->data;
     if (!data)
         return 0.0;

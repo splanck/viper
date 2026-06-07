@@ -503,18 +503,24 @@ rt_string rt_template_escape(rt_string text) {
 
     if (escape_count == 0) {
         rt_string unchanged = rt_string_from_bytes(txt_str, (size_t)txt_len);
-        if (!unchanged)
+        if (!unchanged) {
             rt_trap("Template.Escape: out of memory");
+            return rt_string_from_bytes("", 0);
+        }
         return unchanged;
     }
 
     // Allocate result (each {{ or }} becomes {{{{ or }}}})
-    if (escape_count > (INT_MAX - txt_len) / 2)
+    if (escape_count > (INT_MAX - txt_len) / 2) {
         rt_trap("Template.Escape: output length overflow");
+        return rt_string_from_bytes("", 0);
+    }
     int result_len = txt_len + escape_count * 2;
     char *result = (char *)malloc(result_len + 1);
-    if (!result)
+    if (!result) {
         rt_trap("Template.Escape: out of memory");
+        return rt_string_from_bytes("", 0);
+    }
 
     int j = 0;
     for (int i = 0; i < txt_len; i++) {
@@ -544,7 +550,9 @@ rt_string rt_template_escape(rt_string text) {
 
     rt_string rs = rt_string_from_bytes(result, j);
     free(result);
-    if (!rs)
+    if (!rs) {
         rt_trap("Template.Escape: out of memory");
+        return rt_string_from_bytes("", 0);
+    }
     return rs;
 }

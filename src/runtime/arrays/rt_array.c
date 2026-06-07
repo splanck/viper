@@ -41,8 +41,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-extern _Noreturn void rt_trap(const char *msg);
-
 /// @brief Retrieve the heap header for a runtime array payload.
 /// @details Delegates to @ref rt_heap_hdr while tolerating null payloads so
 ///          callers can interrogate optional handles without branching.
@@ -61,6 +59,7 @@ void rt_arr_oob_panic(size_t idx, size_t len) {
     char buf[128];
     snprintf(buf, sizeof(buf), "rt_arr_i32: index %zu out of bounds (len=%zu)", idx, len);
     rt_trap(buf);
+    abort();
 }
 
 // Generate standard array helper functions using macros from rt_internal.h
