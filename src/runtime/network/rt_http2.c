@@ -27,8 +27,9 @@
 #else
 #include <pthread.h>
 #include <strings.h>
-#include "rt_http2_internal.h"
 #endif
+
+#include "rt_http2_internal.h"
 
 #define H2_FRAME_DATA 0x0
 #define H2_FRAME_HEADERS 0x1

@@ -49,8 +49,9 @@
 #include <windows.h>
 #else
 #include <pthread.h>
-#include "rt_compress_internal.h"
 #endif
+
+#include "rt_compress_internal.h"
 
 //=============================================================================
 // Constants
@@ -64,15 +65,6 @@ typedef enum {
 } rt_huffman_type_t;
 
 #define DEFLATE_DEFAULT_LEVEL 6
-#define DEFLATE_MIN_LEVEL 1
-#define DEFLATE_MAX_LEVEL 9
-
-#define WINDOW_SIZE 32768  // 32KB sliding window
-#define WINDOW_MASK 0x7FFF // For wrapping
-#define MAX_MATCH_LEN 258  // Maximum match length
-#define MIN_MATCH_LEN 3    // Minimum match length
-#define MAX_DISTANCE 32768 // Maximum back-reference distance
-
 #define MAX_BITS 15           // Maximum Huffman code length
 #define MAX_LIT_CODES 286     // 0-255 literals + 256 end + 257-285 lengths
 #define MAX_DIST_CODES 30     // Distance codes

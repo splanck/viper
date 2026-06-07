@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
 #define WINDOW_SIZE 32768

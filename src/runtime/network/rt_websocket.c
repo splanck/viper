@@ -53,10 +53,11 @@ typedef int socklen_t;
 #include <netinet/tcp.h>
 #include <poll.h>
 #include <sys/select.h>
-#include "rt_websocket_internal.h"
 #include <sys/socket.h>
 #include <unistd.h>
 #endif
+
+#include "rt_websocket_internal.h"
 
 // SIGPIPE suppression (same approach as rt_network.c).
 #if defined(__linux__) || defined(__viperdos__)

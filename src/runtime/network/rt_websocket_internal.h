@@ -13,7 +13,10 @@
 
 #pragma once
 
+#include "rt_string.h"
+
 #include <stddef.h>
+#include <stdint.h>
 
 rt_string generate_ws_key(void);
 int ws_sha1(const uint8_t *data, size_t len, uint8_t digest[20]);

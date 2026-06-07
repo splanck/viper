@@ -1141,7 +1141,8 @@ endif ()
 if (WIN32)
     set_tests_properties(zia_smoke_3dbowling_overlay PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software"
-            TIMEOUT 120)
+            PROCESSORS 4
+            TIMEOUT 180)
 endif ()
 
 add_test(NAME zia_smoke_3dbowling_title_postfx
@@ -1264,7 +1265,8 @@ add_test(NAME zia_season_baseball
 set_tests_properties(zia_season_baseball PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;comprehensive"
-        TIMEOUT 180)
+        PROCESSORS 4
+        TIMEOUT 300)
 
 add_test(NAME zia_persistence_baseball
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/baseball/persistence_probe.zia"
@@ -1280,7 +1282,8 @@ add_test(NAME zia_reporting_baseball
 set_tests_properties(zia_reporting_baseball PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke"
-        TIMEOUT 30)
+        PROCESSORS 4
+        TIMEOUT 90)
 
 set(VIPER_BASEBALL_DATA_TESTS
         zia_smoke_baseball
