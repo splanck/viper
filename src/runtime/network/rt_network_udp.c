@@ -36,6 +36,7 @@
 #include "rt_map.h"
 
 #ifndef _WIN32
+#include <sys/ioctl.h>
 #include <sys/uio.h>
 #endif
 
@@ -78,6 +79,17 @@ static socket_t udp_create_socket(int family, int dual_stack) {
     return sock;
 }
 
+#if defined(_WIN32) || defined(FIONREAD)
+/// @brief Query the byte size of the next pending UDP datagram when supported.
+///
+/// `FIONREAD`/`ioctlsocket` lets the receive path reject datagrams that would
+/// not fit into the caller-provided buffer before allocating the result object.
+/// Unsupported platforms skip this helper and rely on `recvfrom` truncation
+/// detection instead.
+///
+/// @param sock     UDP socket descriptor.
+/// @param size_out Receives the pending datagram size on success.
+/// @return 1 when a size was queried, 0 when unavailable.
 static int udp_pending_datagram_size(socket_t sock, int *size_out) {
     if (!size_out)
         return 0;
@@ -98,11 +110,10 @@ static int udp_pending_datagram_size(socket_t sock, int *size_out) {
             return 1;
         }
     }
-#else
-    (void)sock;
 #endif
     return 0;
 }
+#endif
 
 static int udp_recvfrom_checked(socket_t sock,
                                 uint8_t *buf,
@@ -658,11 +669,15 @@ void *rt_udp_recv_from(void *obj, int64_t max_bytes) {
         return NULL;
     }
 
-    int pending_len = 0;
-    if (udp_pending_datagram_size(udp->sock, &pending_len) && pending_len > recv_len) {
-        rt_trap_net("Network: datagram exceeds receive buffer", Err_ProtocolError);
-        return NULL;
+#if defined(_WIN32) || defined(FIONREAD)
+    {
+        int pending_len = 0;
+        if (udp_pending_datagram_size(udp->sock, &pending_len) && pending_len > recv_len) {
+            rt_trap_net("Network: datagram exceeds receive buffer", Err_ProtocolError);
+            return NULL;
+        }
     }
+#endif
 
     // Allocate receive buffer
     void *result = rt_bytes_new(max_bytes);

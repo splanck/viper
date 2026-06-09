@@ -1175,7 +1175,7 @@ static int send_record(rt_tls_session_t *session,
         else
             ciphertext_len = rt_chacha20_poly1305_encrypt(
                 session->write_keys.key, nonce, aad, 5, plaintext, len + 1, record + 5);
-        if (ciphertext_len == 0 && (len + 1) != 0) {
+        if (ciphertext_len == 0) {
             session->error = "TLS: record encryption failed";
             return RT_TLS_ERROR;
         }
@@ -1600,11 +1600,7 @@ static int process_server_hello(rt_tls_session_t *session,
 
     size_t pos = 34;
 
-    // Session ID — bounds-check before advancing (S-02 fix)
-    if (pos >= len) {
-        session->error = "ServerHello: session_id length field missing";
-        return RT_TLS_ERROR_HANDSHAKE;
-    }
+    // Session ID — the earlier minimum-length check guarantees this field exists.
     uint8_t session_id_len = data[pos++];
     if (pos + session_id_len + 3 > len) /* +3 for cipher(2) + compression(1) */
     {

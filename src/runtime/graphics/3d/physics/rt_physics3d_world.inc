@@ -484,7 +484,7 @@ void rt_world3d_remove_joint(void *obj, void *joint) {
             w->joint_types[i] = w->joint_types[w->joint_count];
             w->joints[w->joint_count] = NULL;
             w->joint_types[w->joint_count] = 0;
-            if (removed && rt_obj_release_check0(removed))
+            if (rt_obj_release_check0(removed))
                 rt_obj_free(removed);
             return;
         }

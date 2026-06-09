@@ -579,7 +579,7 @@ static void game3d_effects_rebase_origin(void *effects_obj, const double delta[3
     };
     for (int32_t i = 0; i < effects->count; ++i) {
         rt_game3d_effect_item *item = &effects->items[i];
-        if (!item || !item->object)
+        if (!item->object)
             continue;
         if (item->type == RT_GAME3D_EFFECT_PARTICLES &&
             rt_g3d_has_class(item->object, RT_G3D_PARTICLES3D_CLASS_ID))
@@ -776,7 +776,6 @@ void game3d_normalize_axis3(double *x, double *y, double *z) {
     double vy = game3d_finite_or(y ? *y : 0.0, 0.0);
     double vz = game3d_finite_or(z ? *z : 0.0, 0.0);
     double max_abs = fmax(fabs(vx), fmax(fabs(vy), fabs(vz)));
-    double len = 0.0;
     if (!isfinite(max_abs)) {
         vx = 0.0;
         vy = 0.0;
@@ -785,7 +784,7 @@ void game3d_normalize_axis3(double *x, double *y, double *z) {
         double sx = vx / max_abs;
         double sy = vy / max_abs;
         double sz = vz / max_abs;
-        len = max_abs * sqrt(sx * sx + sy * sy + sz * sz);
+        double len = max_abs * sqrt(sx * sx + sy * sy + sz * sz);
         if (isfinite(len) && len > 1.0) {
             vx /= len;
             vy /= len;

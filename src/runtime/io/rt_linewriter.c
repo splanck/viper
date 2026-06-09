@@ -324,7 +324,7 @@ void rt_linewriter_write(void *obj, rt_string text) {
         rt_trap("LineWriter.Write: invalid string");
         return;
     }
-    if (data && len > 0) {
+    if (len > 0) {
         // IO-C-4: check fwrite return to detect disk-full / I/O errors
         size_t written = fwrite(data, 1, (size_t)len, lw->fp);
         if (written != (size_t)len)
@@ -389,7 +389,7 @@ void rt_linewriter_write_ln(void *obj, rt_string text) {
         rt_trap("LineWriter.WriteLn: invalid string");
         return;
     }
-    if (data && len > 0) {
+    if (len > 0) {
         // IO-C-4: check fwrite return to detect disk-full / I/O errors
         size_t written = fwrite(data, 1, (size_t)len, lw->fp);
         if (written != (size_t)len)
@@ -404,7 +404,7 @@ void rt_linewriter_write_ln(void *obj, rt_string text) {
             rt_trap("LineWriter.WriteLn: invalid newline");
             return;
         }
-        if (nl && nl_len > 0) {
+        if (nl_len > 0) {
             // IO-C-4: check fwrite return for newline write too
             size_t written = fwrite(nl, 1, (size_t)nl_len, lw->fp);
             if (written != (size_t)nl_len)

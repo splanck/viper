@@ -492,7 +492,7 @@ static rt_pixels_impl *vscn_parse_texture(void *texture_obj) {
         return NULL;
     if ((uint64_t)width > SIZE_MAX || (uint64_t)height > SIZE_MAX)
         return NULL;
-    if ((size_t)width > SIZE_MAX / (size_t)(height > 0 ? height : 1))
+    if ((size_t)width > SIZE_MAX / (size_t)height)
         return NULL;
     if ((size_t)width * (size_t)height > SIZE_MAX / 4)
         return NULL;
@@ -1065,13 +1065,12 @@ static rt_scene_node3d *vscn_parse_node(void *node_obj,
 /// @return The buffer (caller frees) with its byte length in @p out_size, or NULL on I/O error or
 ///   when the file exceeds VSCN_MAX_FILE_BYTES (256 MiB).
 static char *vscn_read_file(const char *filepath, size_t *out_size) {
+    if (!out_size)
+        return NULL;
     FILE *f = fopen(filepath, "rb");
     int64_t file_size;
     char *json;
-    if (out_size)
-        *out_size = 0;
-    if (!out_size)
-        return NULL;
+    *out_size = 0;
     if (!f)
         return NULL;
     if (vscn_fseek(f, 0, SEEK_END) != 0) {

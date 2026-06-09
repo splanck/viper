@@ -660,15 +660,21 @@ static int h2_send_headers_block(rt_http2_conn_t *conn,
                                  size_t block_len,
                                  int end_stream) {
     size_t pos = 0;
-    size_t chunk = 0;
-    uint8_t flags = 0;
     if (!conn)
         return 0;
-    do {
-        chunk = block_len - pos;
+    if (block_len == 0) {
+        uint8_t flags = H2_FLAG_END_HEADERS;
+        if (end_stream)
+            flags |= H2_FLAG_END_STREAM;
+        return h2_send_frame(conn, H2_FRAME_HEADERS, flags, stream_id, NULL, 0);
+    }
+    while (pos < block_len) {
+        size_t chunk = block_len - pos;
+        uint8_t flags = 0;
         if (chunk > conn->peer_max_frame_size)
             chunk = conn->peer_max_frame_size;
-        flags = 0;
+        if (chunk == 0)
+            return h2_conn_fail(conn, "HTTP/2: peer max frame size is zero");
         if (pos == 0 && end_stream && block_len == chunk)
             flags |= H2_FLAG_END_STREAM;
         if (pos + chunk == block_len)
@@ -682,12 +688,6 @@ static int h2_send_headers_block(rt_http2_conn_t *conn,
             return 0;
         }
         pos += chunk;
-    } while (pos < block_len);
-    if (block_len == 0) {
-        flags = H2_FLAG_END_HEADERS;
-        if (end_stream)
-            flags |= H2_FLAG_END_STREAM;
-        return h2_send_frame(conn, H2_FRAME_HEADERS, flags, stream_id, NULL, 0);
     }
     return 1;
 }
@@ -1097,7 +1097,7 @@ int rt_http2_client_roundtrip(rt_http2_conn_t *conn,
                         return h2_conn_fail(conn, "HTTP/2: invalid response pseudo-header");
                     }
                 }
-                if (!saw_status || status_tmp < 100 || status_tmp > 599) {
+                if (!saw_status) {
                     rt_http2_headers_free(response_headers);
                     rt_http2_headers_free(decoded);
                     h2_frame_free(&frame);

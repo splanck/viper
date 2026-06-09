@@ -269,10 +269,10 @@ rt_string rt_dateformat_date_only(void *self, void *dateonly, rt_string style) {
     const char *pattern = fmt->data->dates.patterns.medium_p;
     const char *style_cs = style ? rt_string_cstr(style) : NULL;
     if (style_cs) {
-        if (strcmp(style_cs, "short") == 0)
+        if (strcmp(style_cs, "medium") == 0) {
+            /* Keep the default medium pattern. */
+        } else if (strcmp(style_cs, "short") == 0)
             pattern = fmt->data->dates.patterns.short_p;
-        else if (strcmp(style_cs, "medium") == 0)
-            pattern = fmt->data->dates.patterns.medium_p;
         else if (strcmp(style_cs, "long") == 0)
             pattern = fmt->data->dates.patterns.long_p;
         else if (strcmp(style_cs, "full") == 0)

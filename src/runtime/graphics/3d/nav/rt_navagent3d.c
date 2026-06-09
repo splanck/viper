@@ -997,7 +997,7 @@ static void navagent_rebuild_path(rt_navagent3d *agent) {
     agent->path_points_xyz = points;
     agent->path_point_count = (int32_t)point_count;
     agent->path_index = point_count > 1 ? 1 : 0;
-    agent->has_path = point_count > 0 ? 1 : 0;
+    agent->has_path = 1;
     navagent_refresh_path_index(agent);
     agent->remaining_distance = navagent_compute_remaining_distance(agent);
 }

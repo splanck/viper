@@ -102,7 +102,7 @@ void rt_arr_i32_set_fast(int32_t *arr, size_t idx, int32_t value);
 /// @return Stored value at @p idx.
 /// @warning No bounds checking! Use only when compiler has verified safety.
 /// @note This is an inline function for maximum performance in tight loops.
-static inline int32_t rt_arr_i32_get_unchecked(int32_t *arr, size_t idx) {
+static inline int32_t rt_arr_i32_get_unchecked(const int32_t *arr, size_t idx) {
     return arr[idx];
 }
 

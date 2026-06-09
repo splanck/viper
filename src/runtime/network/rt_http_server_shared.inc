@@ -697,14 +697,34 @@ fail:
     return false;
 }
 
-static const char *map_get_lower_header_cstr(void *headers, const char *lower_name) {
+/// @brief Look up a lower-case header map entry and verify it is an rt_string.
+///
+/// Header maps are populated internally with `rt_string` keys and values, but
+/// native handler code can still mutate response maps through opaque handles.
+/// This helper keeps every direct header-value cast guarded by the runtime
+/// string registry before callers ask for the C string payload.
+///
+/// @param headers    Runtime map containing lower-case header names.
+/// @param lower_name Lower-case header name to look up.
+/// @return Header value handle, or NULL if absent or not a valid string.
+static rt_string map_get_lower_header_string(void *headers, const char *lower_name) {
     if (!headers || !lower_name)
         return NULL;
     rt_string key = rt_const_cstr(lower_name);
     void *val = rt_map_get(headers, key);
-    if (!val)
+    if (!val || !rt_string_is_handle(val))
         return NULL;
-    return rt_string_cstr((rt_string)val);
+    return (rt_string)val;
+}
+
+/// @brief Look up a lower-case header value as a borrowed C string.
+///
+/// @param headers    Runtime map containing lower-case header names.
+/// @param lower_name Lower-case header name to look up.
+/// @return NUL-terminated header bytes, or NULL when absent/invalid.
+static const char *map_get_lower_header_cstr(void *headers, const char *lower_name) {
+    rt_string val = map_get_lower_header_string(headers, lower_name);
+    return val ? rt_string_cstr(val) : NULL;
 }
 
 static int request_allows_keep_alive(const server_req_t *req) {
@@ -726,6 +746,39 @@ static int response_forces_close(const server_res_t *res) {
     if (!connection)
         return 0;
     return header_value_contains_token(connection, strlen(connection), "close", 5);
+}
+
+/// @brief Decide whether a response status may carry a message body.
+///
+/// HTTP/1.1 forbids response bodies for `204 No Content` and
+/// `304 Not Modified`. The runtime still lets handlers set those status codes
+/// through the normal response API, so the shared formatter centralizes the
+/// body-suppression rule before calculating `Content-Length` and copying bytes
+/// to the wire buffer.
+///
+/// @param res Response being formatted.
+/// @return Non-zero when the status code is allowed to include a body.
+static int response_status_allows_body(const server_res_t *res) {
+    if (!res)
+        return 0;
+    return res->status_code != 204 && res->status_code != 304;
+}
+
+/// @brief Return the number of response body bytes to emit on the wire.
+///
+/// The `sent` flag records that the public response API finalized the body.
+/// Direct native handlers may still populate `body/body_len` themselves, so
+/// this helper preserves that legacy path while making the finalized-body
+/// signal observable in the shared HTTP and HTTPS response builder.
+///
+/// @param res Response being formatted.
+/// @return Body byte count after HTTP status-body rules are applied.
+static size_t response_wire_body_len(const server_res_t *res) {
+    if (!res || !response_status_allows_body(res))
+        return 0;
+    if (res->sent || res->body)
+        return res->body_len;
+    return 0;
 }
 
 /// @brief Map an HTTP status code to its canonical reason-phrase.
@@ -760,7 +813,7 @@ static const char *status_text_for_code(int code) {
 
 /// @brief Build an HTTP response string.
 static char *build_response(server_res_t *res, int keep_alive, size_t *out_len) {
-    size_t body_len = res->body_len;
+    size_t body_len = response_wire_body_len(res);
     size_t cap = (size_t)snprintf(
         NULL, 0, "HTTP/1.1 %d %s\r\n", res->status_code, status_text_for_code(res->status_code));
     cap += (size_t)snprintf(NULL, 0, "Content-Length: %zu\r\n", body_len);

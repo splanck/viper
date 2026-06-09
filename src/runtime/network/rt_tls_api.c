@@ -309,8 +309,6 @@ int64_t rt_viper_tls_send_str(void *obj, rt_string text) {
     if (len64 <= 0)
         return 0;
     size_t len = (size_t)len64;
-    if (len == 0)
-        return 0;
 
     long result = rt_tls_send(tls->session, cstr, len);
     return (int64_t)result;

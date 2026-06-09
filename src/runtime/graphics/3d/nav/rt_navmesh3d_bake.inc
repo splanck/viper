@@ -568,8 +568,6 @@ static int navmesh3d_voxel_grid_dims(double span_x, double span_z, double *cell_
     int32_t nz = (int32_t)nz64;
     if (nx < 1)
         nx = 1;
-    if (nz < 1)
-        nz = 1;
     *out_nx = nx;
     *out_nz = nz;
     return 1;

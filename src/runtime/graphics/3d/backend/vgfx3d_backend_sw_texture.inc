@@ -101,7 +101,7 @@ static int sw_wrap_index(int index, int size, int32_t mode) {
         return index;
     }
     if (mode == RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT) {
-        if (size <= 0 || size > INT32_MAX / 2)
+        if (size > INT32_MAX / 2)
             return index < 0 ? 0 : (index >= size ? size - 1 : index);
         int period = size * 2;
         int wrapped = index % period;

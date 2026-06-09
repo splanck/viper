@@ -633,7 +633,7 @@ void rt_codeeditor_remove_cursor(void *editor, int64_t index) {
     if (index <= 0 || index > INT32_MAX)
         return;
     int idx = (int)index - 1; /* index 0 = primary cursor (not in extra array) */
-    if (idx < 0 || idx >= ce->extra_cursor_count)
+    if (idx >= ce->extra_cursor_count)
         return;
     /* Shift remaining cursors down */
     for (int i = idx; i < ce->extra_cursor_count - 1; i++)

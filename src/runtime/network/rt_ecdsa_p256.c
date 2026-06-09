@@ -599,12 +599,10 @@ static void fp_reduce_512(u256 r, const u512 t) {
     if (top > 0) {
         // Subtract p up to a few times
         for (int64_t i = 0; i < top + 1; i++) {
-            u256 tmp;
             if (u256_cmp(r, P256_P) >= 0)
                 u256_sub(r, r, P256_P);
             else
                 break;
-            (void)tmp;
         }
     } else if (top < 0) {
         // Add p to make positive

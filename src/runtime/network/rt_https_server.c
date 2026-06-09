@@ -673,6 +673,7 @@ static HTTPS_MAYBE_UNUSED char *rt_https_server_test_build_response(int status_c
     }
     res.body = body_copy;
     res.body_len = body_copy ? body_len : 0;
+    res.sent = true;
     res.headers = rt_map_new();
     if (!res.headers) {
         free(body_copy);
@@ -1103,6 +1104,7 @@ static void set_json_error_response(server_res_t *res, int status_code, const ch
             if (written >= 0) {
                 res->body = json;
                 res->body_len = (size_t)written;
+                res->sent = true;
             } else {
                 free(json);
             }
@@ -1163,6 +1165,8 @@ static void build_route_response(rt_http_server_impl *server,
         binding->dispatch(binding->ctx, req, res);
         if (res->status_code <= 0)
             res->status_code = 200;
+        if (res->body || res->body_len > 0)
+            res->sent = true;
     } else {
         set_json_error_response(res, 404, "Not Found");
     }

@@ -79,9 +79,7 @@ void rt_terrain3d_set_lod_distances(void *obj, double near_dist, double far_dist
         far_dist = near_dist + 1.0;
         if (far_dist > TERRAIN3D_ABS_MAX) {
             far_dist = TERRAIN3D_ABS_MAX;
-            near_dist = far_dist - 1.0;
-            if (near_dist < 0.0)
-                near_dist = 0.0;
+            near_dist = TERRAIN3D_ABS_MAX > 1.0 ? TERRAIN3D_ABS_MAX - 1.0 : 0.0;
         }
     }
     if (t->lod_dist1 == (float)near_dist && t->lod_dist2 == (float)far_dist)

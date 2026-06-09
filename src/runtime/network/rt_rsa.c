@@ -70,6 +70,37 @@ static int rsa_be_is_zero(const uint8_t *data, size_t len) {
     return acc == 0;
 }
 
+/// @brief Compare two unsigned big-endian byte arrays after trimming leading zeroes.
+///
+/// DER INTEGER encodings can include a leading 0x00 sign-protection byte.
+/// Public component validation is about numeric magnitude, not raw encoded
+/// length, so this helper strips those leading zero bytes before comparing
+/// lengths and then byte values.
+///
+/// @param a     First big-endian integer byte array.
+/// @param a_len Length of @p a in bytes.
+/// @param b     Second big-endian integer byte array.
+/// @param b_len Length of @p b in bytes.
+/// @return -1 when a < b, 0 when equal, 1 when a > b.
+static int rsa_be_cmp_trimmed(const uint8_t *a, size_t a_len, const uint8_t *b, size_t b_len) {
+    while (a_len > 0 && a && *a == 0) {
+        a++;
+        a_len--;
+    }
+    while (b_len > 0 && b && *b == 0) {
+        b++;
+        b_len--;
+    }
+    if (a_len < b_len)
+        return -1;
+    if (a_len > b_len)
+        return 1;
+    if (a_len == 0)
+        return 0;
+    int cmp = memcmp(a, b, a_len);
+    return cmp < 0 ? -1 : (cmp > 0 ? 1 : 0);
+}
+
 /// @brief Validate that a parsed key has plausible public components.
 /// @details Sanity checks the @c modulus + @c public_exponent pair before
 ///          we hand them to the modular-exponentiation core:
@@ -86,11 +117,15 @@ static int rsa_validate_public_components(const rt_rsa_key_t *key) {
     if (rsa_be_is_zero(key->modulus, key->modulus_len) ||
         (key->modulus[key->modulus_len - 1] & 1u) == 0)
         return 0;
-    if (key->public_exponent_len == 0 || key->public_exponent_len > 8 ||
-        key->public_exponent_len > key->modulus_len)
+    if (key->public_exponent_len == 0 || key->public_exponent_len > 8)
         return 0;
     if (rsa_be_is_zero(key->public_exponent, key->public_exponent_len) ||
         (key->public_exponent[key->public_exponent_len - 1] & 1u) == 0)
+        return 0;
+    if (rsa_be_cmp_trimmed(key->public_exponent,
+                           key->public_exponent_len,
+                           key->modulus,
+                           key->modulus_len) >= 0)
         return 0;
     if (key->public_exponent_len == 1 && key->public_exponent[0] < 3)
         return 0;

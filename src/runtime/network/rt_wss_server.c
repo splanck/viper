@@ -149,6 +149,25 @@ typedef struct {
 
 #include "rt_ws_shared.inc"
 
+/// @brief Read a WSS server's running flag under its state mutex.
+///
+/// The accept worker can race with `Stop`, which clears `running` and closes the
+/// listener from another thread. This helper gives post-accept and post-TLS
+/// checks the same synchronization used for the client table, so workers stop
+/// before completing a handshake when shutdown has already begun.
+///
+/// @param s WSS server implementation.
+/// @return Non-zero if the server is still accepting clients.
+static int ws_server_is_running_locked(rt_ws_server_impl *s) {
+    int running;
+    if (!s)
+        return 0;
+    WS_MUTEX_LOCK(&s->lock);
+    running = s->running ? 1 : 0;
+    WS_MUTEX_UNLOCK(&s->lock);
+    return running;
+}
+
 static int ws_tls_is_open(void *tcp) {
     return tcp && rt_tls_get_socket((rt_tls_session_t *)tcp) >= 0;
 }
@@ -624,7 +643,7 @@ static void ws_accept_task_run(void *arg) {
     int slot = -1;
 
     free(task);
-    if (!s || !tcp || !s->running) {
+    if (!s || !tcp || !ws_server_is_running_locked(s)) {
         ws_release_raw_tcp(&tcp);
         return;
     }
@@ -637,7 +656,7 @@ static void ws_accept_task_run(void *arg) {
     if (!tls)
         return;
 
-    if (!s->running || !ws_server_handshake(tls, s->subprotocol)) {
+    if (!ws_server_is_running_locked(s) || !ws_server_handshake(tls, s->subprotocol)) {
         ws_release_tcp((void **)&tls);
         return;
     }
@@ -988,7 +1007,7 @@ int64_t rt_wss_server_port(void *obj) {
 int8_t rt_wss_server_is_running(void *obj) {
     if (!obj)
         return 0;
-    return ((rt_ws_server_impl *)obj)->running ? 1 : 0;
+    return ws_server_is_running_locked((rt_ws_server_impl *)obj) ? 1 : 0;
 }
 
 /// @brief **Synchronous** accept (alternative to the background `_start` thread). Blocks until

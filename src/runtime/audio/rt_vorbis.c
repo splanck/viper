@@ -1382,7 +1382,7 @@ residue_done:
         if (overlap_size > dec->blocksize_1 / 2)
             overlap_size = dec->blocksize_1 / 2;
         memset(dec->overlap[ch], 0, (size_t)(dec->blocksize_1 / 2) * sizeof(float));
-        for (int j = 0; j < n2 && j < dec->blocksize_1 / 2; j++)
+        for (int j = 0; j < overlap_size; j++)
             dec->overlap[ch][j] = windowed[n2 + j];
     }
 

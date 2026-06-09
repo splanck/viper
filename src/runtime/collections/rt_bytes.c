@@ -491,6 +491,8 @@ void *rt_bytes_slice(void *obj, int64_t start, int64_t end) {
     int64_t new_len = end - start;
 
     rt_bytes_impl *result = rt_bytes_alloc(new_len);
+    if (!result)
+        return NULL;
     if (new_len > 0)
         memcpy(result->data, bytes->data + start, (size_t)new_len);
     return result;
@@ -765,7 +767,7 @@ void *rt_bytes_from_base64(rt_string b64) {
         rt_bytes_trap_domain("Bytes.FromBase64: base64 length must be a multiple of 4");
 
     size_t padding = 0;
-    if (b64_len >= 1 && b64_str[b64_len - 1] == '=') {
+    if (b64_str[b64_len - 1] == '=') {
         padding = 1;
         if (b64_len >= 2 && b64_str[b64_len - 2] == '=')
             padding = 2;

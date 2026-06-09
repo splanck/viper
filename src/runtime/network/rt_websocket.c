@@ -618,6 +618,32 @@ static int ws_header_has_token(const char *value,
     return 0;
 }
 
+/// @brief Trim optional HTTP whitespace from a header value slice.
+///
+/// Header parsing keeps values as non-owning slices into the response buffer.
+/// This helper normalizes a slice by advancing past leading spaces/tabs and
+/// shortening the length to exclude trailing spaces/tabs. It does not modify
+/// the underlying response bytes.
+///
+/// @param value_io In/out pointer to the first byte of the value slice.
+/// @param len_io   In/out length of the value slice in bytes.
+static void ws_trim_header_value(const char **value_io, size_t *len_io) {
+    const char *value;
+    size_t len;
+    if (!value_io || !*value_io || !len_io)
+        return;
+    value = *value_io;
+    len = *len_io;
+    while (len > 0 && (*value == ' ' || *value == '\t')) {
+        value++;
+        len--;
+    }
+    while (len > 0 && (value[len - 1] == ' ' || value[len - 1] == '\t'))
+        len--;
+    *value_io = value;
+    *len_io = len;
+}
+
 /// @brief Validate the server's WebSocket upgrade response (test-visible).
 ///
 /// Per RFC 6455 §4.1 a successful handshake requires:
@@ -664,6 +690,7 @@ static int ws_validate_handshake_response(const char *response,
                 value++;
             size_t name_len = (size_t)(colon - p);
             size_t value_len = (size_t)(next - value);
+            ws_trim_header_value(&value, &value_len);
             if (name_len == strlen("Upgrade") && ws_ascii_ieq_n(p, "Upgrade", name_len))
                 upgrade_ok = (value_len == strlen("websocket") &&
                               ws_ascii_ieq_n(value, "websocket", value_len));
@@ -1373,12 +1400,12 @@ void *rt_ws_connect_for_protocol(rt_string url, int64_t timeout_ms, rt_string su
         ws->tls = rt_tls_new(ws->socket_fd, &config);
         if (!ws->tls) {
             const char *detail = rt_tls_last_error();
-            char msg[512];
             free(host);
             free(path);
             if (rt_obj_release_check0(ws))
                 rt_obj_free(ws);
             if (detail && *detail) {
+                char msg[512];
                 snprintf(msg, sizeof(msg), "WebSocket: TLS setup failed: %s", detail);
                 rt_trap_net(msg, Err_TlsError);
             }
@@ -1388,12 +1415,12 @@ void *rt_ws_connect_for_protocol(rt_string url, int64_t timeout_ms, rt_string su
 
         if (rt_tls_handshake(ws->tls) != RT_TLS_OK) {
             const char *detail = rt_tls_get_error(ws->tls);
-            char msg[512];
             free(host);
             free(path);
             if (rt_obj_release_check0(ws))
                 rt_obj_free(ws);
             if (detail && *detail) {
+                char msg[512];
                 snprintf(msg, sizeof(msg), "WebSocket: TLS handshake failed: %s", detail);
                 rt_trap_net(msg, Err_TlsError);
             }

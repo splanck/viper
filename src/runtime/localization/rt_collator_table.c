@@ -361,7 +361,7 @@ int rt_collator_codepoint_weights(uint32_t cp,
             s = sec;
             // Uppercase Latin-1 letters occupy 0xC0-0xDE; the odd ×/÷ are
             // handled by the decompose table not returning 1. Detect case:
-            if (cp >= 0x00C0 && cp <= 0x00DE && cp != 0x00D7)
+            if (cp <= 0x00DE && cp != 0x00D7)
                 t = 1;
         } else {
             // Fallback (e.g. × multiplication sign).
@@ -372,31 +372,31 @@ int rt_collator_codepoint_weights(uint32_t cp,
     // compact; adding full coverage is a Phase-6+ improvement).
     else if (cp >= 0x0100 && cp <= 0x017F) {
         // Best-effort: attempt base-letter recovery for common pairs.
-        if ((cp >= 0x0100 && cp <= 0x0105)) {
+        if (cp <= 0x0105) {
             p = PRI_LETTER0 + 0;
             s = 9;
             t = (cp & 1) ? 0 : 1;
-        } else if (cp >= 0x0106 && cp <= 0x010D) {
+        } else if (cp <= 0x010D) {
             p = PRI_LETTER0 + 2;
             s = 9;
             t = (cp & 1) ? 0 : 1;
-        } else if (cp >= 0x010E && cp <= 0x0111) {
+        } else if (cp <= 0x0111) {
             p = PRI_LETTER0 + 3;
             s = 9;
             t = (cp & 1) ? 0 : 1;
-        } else if (cp >= 0x0112 && cp <= 0x011B) {
+        } else if (cp <= 0x011B) {
             p = PRI_LETTER0 + 4;
             s = 9;
             t = (cp & 1) ? 0 : 1;
-        } else if (cp >= 0x011C && cp <= 0x0123) {
+        } else if (cp <= 0x0123) {
             p = PRI_LETTER0 + 6;
             s = 9;
             t = (cp & 1) ? 0 : 1;
-        } else if (cp >= 0x0124 && cp <= 0x0127) {
+        } else if (cp <= 0x0127) {
             p = PRI_LETTER0 + 7;
             s = 9;
             t = (cp & 1) ? 0 : 1;
-        } else if (cp >= 0x0128 && cp <= 0x0131) {
+        } else if (cp <= 0x0131) {
             p = PRI_LETTER0 + 8;
             s = 9;
             t = (cp & 1) ? 0 : 1;
@@ -404,7 +404,7 @@ int rt_collator_codepoint_weights(uint32_t cp,
             p = PRI_LETTER0 + 11;
             s = 9;
             t = (cp & 1) ? 0 : 1;
-        } else if (cp >= 0x0143 && cp <= 0x0148) {
+        } else if (cp <= 0x0148) {
             p = PRI_LETTER0 + 13;
             s = 9;
             t = (cp & 1) ? 0 : 1;
@@ -416,27 +416,27 @@ int rt_collator_codepoint_weights(uint32_t cp,
             p = PRI_LETTER0 + 17;
             s = 9;
             t = (cp & 1) ? 0 : 1;
-        } else if (cp >= 0x015A && cp <= 0x0161) {
+        } else if (cp <= 0x0161) {
             p = PRI_LETTER0 + 18;
             s = 9;
             t = (cp & 1) ? 0 : 1;
-        } else if (cp >= 0x0162 && cp <= 0x0167) {
+        } else if (cp <= 0x0167) {
             p = PRI_LETTER0 + 19;
             s = 9;
             t = (cp & 1) ? 0 : 1;
-        } else if (cp >= 0x0168 && cp <= 0x0173) {
+        } else if (cp <= 0x0173) {
             p = PRI_LETTER0 + 20;
             s = 9;
             t = (cp & 1) ? 0 : 1;
-        } else if (cp >= 0x0174 && cp <= 0x0175) {
+        } else if (cp <= 0x0175) {
             p = PRI_LETTER0 + 22;
             s = 9;
             t = (cp & 1) ? 0 : 1;
-        } else if (cp >= 0x0176 && cp <= 0x0178) {
+        } else if (cp <= 0x0178) {
             p = PRI_LETTER0 + 24;
             s = 9;
             t = (cp & 1) ? 0 : 1;
-        } else if (cp >= 0x0179 && cp <= 0x017E) {
+        } else if (cp <= 0x017E) {
             p = PRI_LETTER0 + 25;
             s = 9;
             t = (cp & 1) ? 0 : 1;

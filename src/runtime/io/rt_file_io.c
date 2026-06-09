@@ -116,9 +116,9 @@ typedef unsigned short mode_t;
 /// @brief Clamp errno values into the 32-bit range stored by @ref RtError.
 /// @details Ensures large positive or negative errno values fit into the
 ///          runtime's signed 32-bit field without overflow.
-/// @param err Errno value produced by the OS.
+/// @param err Errno value produced by the OS, promoted to a wide type.
 /// @return Clamped errno suitable for storage in @ref RtError::code.
-static int32_t rt_file_clamp_errno(int err) {
+static int32_t rt_file_clamp_errno(long err) {
     if (err > INT32_MAX)
         return INT32_MAX;
     if (err < INT32_MIN)
@@ -206,11 +206,6 @@ static bool rt_file_offset_in_range(int64_t offset) {
     const int shift = bits - 1;
     if (shift <= 0)
         return offset == 0;
-    if (shift >= 63) {
-        const int64_t max = INT64_MAX;
-        const int64_t min = INT64_MIN;
-        return offset >= min && offset <= max;
-    }
     const int64_t M = (INT64_MAX >> (63 - shift));
     const int64_t max = M;
     const int64_t min = -M - 1;

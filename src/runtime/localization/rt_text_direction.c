@@ -159,9 +159,9 @@ static cp_dir_t classify(uint32_t cp) {
     // Common neutrals: ASCII space, punctuation, digits, control.
     if (cp < 0x30)
         return DIR_NEUTRAL; // controls + space + punct
-    if (cp >= 0x30 && cp <= 0x39)
+    if (cp <= 0x39)
         return DIR_NEUTRAL; // digits
-    if (cp >= 0x3A && cp <= 0x40)
+    if (cp <= 0x40)
         return DIR_NEUTRAL; // more punct
     if (cp >= 0x5B && cp <= 0x60)
         return DIR_NEUTRAL; // [\]^_`

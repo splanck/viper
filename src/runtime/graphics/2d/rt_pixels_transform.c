@@ -508,13 +508,13 @@ void *rt_pixels_rotate(void *pixels, double angle_degrees) {
             // Get the four surrounding pixels (with bounds checking)
             uint32_t c00 = 0, c10 = 0, c01 = 0, c11 = 0;
 
-            if (x0 >= 0 && x0 < p->width && y0 >= 0 && y0 < p->height)
+            if (x0 >= 0 && y0 >= 0)
                 c00 = p->data[y0 * p->width + x0];
-            if (x1 >= 0 && x1 < p->width && y0 >= 0 && y0 < p->height)
+            if (x1 < p->width && y0 >= 0)
                 c10 = p->data[y0 * p->width + x1];
-            if (x0 >= 0 && x0 < p->width && y1 >= 0 && y1 < p->height)
+            if (x0 >= 0 && y1 < p->height)
                 c01 = p->data[y1 * p->width + x0];
-            if (x1 >= 0 && x1 < p->width && y1 >= 0 && y1 < p->height)
+            if (x1 < p->width && y1 < p->height)
                 c11 = p->data[y1 * p->width + x1];
 
             result->data[dy * new_width + dx] =

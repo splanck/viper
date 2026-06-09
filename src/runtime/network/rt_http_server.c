@@ -667,6 +667,7 @@ char *rt_http_server_test_build_response(int status_code,
     }
     res.body = body_copy;
     res.body_len = body_copy ? body_len : 0;
+    res.sent = true;
     res.headers = rt_map_new();
     if (!res.headers) {
         free(body_copy);
@@ -878,6 +879,7 @@ static void set_json_error_response(server_res_t *res, int status_code, const ch
             if (written >= 0) {
                 res->body = json;
                 res->body_len = (size_t)written;
+                res->sent = true;
             } else {
                 free(json);
             }
@@ -938,6 +940,8 @@ static void build_route_response(rt_http_server_impl *server,
         binding->dispatch(binding->ctx, req, res);
         if (res->status_code <= 0)
             res->status_code = 200;
+        if (res->body || res->body_len > 0)
+            res->sent = true;
     } else {
         set_json_error_response(res, 404, "Not Found");
     }
@@ -1420,16 +1424,12 @@ rt_string rt_server_req_header(void *obj, rt_string name) {
         lower[i] = (c >= 'A' && c <= 'Z') ? (char)(c + ('a' - 'A')) : c;
     }
 
-    rt_string key = rt_string_from_bytes(lower, len);
+    rt_string header = map_get_lower_header_string(req->headers, lower);
     free(lower);
-    void *val = rt_map_get(req->headers, key);
-    rt_string_unref(key);
-    if (!val)
+    if (!header)
         return rt_string_from_bytes("", 0);
-
-    rt_string header = (rt_string)val;
     const char *header_cstr = rt_string_cstr(header);
-    int64_t header_len = header ? rt_str_len(header) : 0;
+    int64_t header_len = rt_str_len(header);
     return header_cstr && header_len >= 0 ? rt_string_from_bytes(header_cstr, (size_t)header_len)
                                           : rt_string_from_bytes("", 0);
 }

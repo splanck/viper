@@ -1102,7 +1102,7 @@ static uint8_t *gltf_base64_decode(const char *data, size_t len, size_t *out_len
     }
 
     size_t olen = (len / 4) * 3;
-    if (len > 0 && src[len - 1] == '=')
+    if (src[len - 1] == '=')
         olen--;
     if (len > 1 && src[len - 2] == '=')
         olen--;

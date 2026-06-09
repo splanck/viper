@@ -1551,12 +1551,122 @@ static int64_t game3d_stream_radius_slots(double radius, double cell_size) {
     return side * side;
 }
 
-/// @brief Parse a manifest byte-size value (e.g. residency budget) into an int64 (0 if invalid).
+/// @brief Case-insensitive ASCII equality for byte-size suffixes.
+///
+/// Manifest budget strings are ASCII configuration values, so this helper keeps
+/// parsing independent of the process locale and avoids treating non-ASCII
+/// bytes as meaningful suffix characters.
+///
+/// @param text Candidate suffix text.
+/// @param len  Candidate suffix length in bytes.
+/// @param lit  NUL-terminated literal to compare against.
+/// @return Non-zero when @p text equals @p lit ignoring ASCII case.
+static int game3d_ascii_ieq_len(const char *text, size_t len, const char *lit) {
+    size_t lit_len;
+    if (!text || !lit)
+        return 0;
+    lit_len = strlen(lit);
+    if (len != lit_len)
+        return 0;
+    for (size_t i = 0; i < len; i++) {
+        unsigned char a = (unsigned char)text[i];
+        unsigned char b = (unsigned char)lit[i];
+        if (a >= 'A' && a <= 'Z')
+            a = (unsigned char)(a + ('a' - 'A'));
+        if (b >= 'A' && b <= 'Z')
+            b = (unsigned char)(b + ('a' - 'A'));
+        if (a != b)
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Parse a byte-size literal with optional SI/IEC unit suffix.
+///
+/// Accepted examples include `1024`, `1024B`, `8 KB`, `8KiB`, `2MB`, and
+/// `1 GiB`. Invalid text returns -1 so callers can fall back to non-literal
+/// accounting paths such as manifest string storage.
+///
+/// @param text NUL-terminated candidate byte-size text.
+/// @return Parsed byte count clamped to `INT64_MAX`, or -1 when not a literal.
+static int64_t game3d_parse_byte_size_literal(const char *text) {
+    const char *p = text;
+    const char *suffix_start;
+    const char *suffix_end;
+    uint64_t value = 0;
+    uint64_t multiplier = 1;
+    int saw_digit = 0;
+    if (!p)
+        return -1;
+    while (*p && isspace((unsigned char)*p))
+        p++;
+    while (*p && isdigit((unsigned char)*p)) {
+        saw_digit = 1;
+        uint64_t digit = (uint64_t)(*p - '0');
+        if (value > (uint64_t)INT64_MAX / 10u ||
+            (value == (uint64_t)INT64_MAX / 10u && digit > (uint64_t)INT64_MAX % 10u)) {
+            value = (uint64_t)INT64_MAX;
+            while (isdigit((unsigned char)*p))
+                p++;
+            break;
+        }
+        value = value * 10u + digit;
+        p++;
+    }
+    if (!saw_digit)
+        return -1;
+    while (*p && isspace((unsigned char)*p))
+        p++;
+    suffix_start = p;
+    while (*p && !isspace((unsigned char)*p))
+        p++;
+    suffix_end = p;
+    while (*p && isspace((unsigned char)*p))
+        p++;
+    if (*p != '\0')
+        return -1;
+    {
+        size_t suffix_len = (size_t)(suffix_end - suffix_start);
+        if (suffix_len == 0 || game3d_ascii_ieq_len(suffix_start, suffix_len, "b")) {
+            multiplier = 1;
+        } else if (game3d_ascii_ieq_len(suffix_start, suffix_len, "kb")) {
+            multiplier = 1000u;
+        } else if (game3d_ascii_ieq_len(suffix_start, suffix_len, "kib")) {
+            multiplier = 1024u;
+        } else if (game3d_ascii_ieq_len(suffix_start, suffix_len, "mb")) {
+            multiplier = 1000u * 1000u;
+        } else if (game3d_ascii_ieq_len(suffix_start, suffix_len, "mib")) {
+            multiplier = 1024u * 1024u;
+        } else if (game3d_ascii_ieq_len(suffix_start, suffix_len, "gb")) {
+            multiplier = 1000u * 1000u * 1000u;
+        } else if (game3d_ascii_ieq_len(suffix_start, suffix_len, "gib")) {
+            multiplier = 1024u * 1024u * 1024u;
+        } else {
+            return -1;
+        }
+    }
+    if (value > (uint64_t)INT64_MAX / multiplier)
+        return INT64_MAX;
+    return (int64_t)(value * multiplier);
+}
+
+/// @brief Measure a manifest reference or parse a byte-size literal.
+///
+/// Numeric manifest values are parsed as byte counts with optional units. Other
+/// strings are treated as manifest path/reference storage and measured as their
+/// NUL-terminated byte length to preserve existing residency accounting.
+///
+/// @param value Manifest reference/path or byte-size literal.
+/// @return Byte count, clamped to `INT64_MAX`; 0 for NULL/empty strings.
 static int64_t game3d_stream_manifest_bytes(rt_string value) {
     const char *bytes = value ? rt_string_cstr(value) : "";
+    int64_t parsed;
     if (!bytes || bytes[0] == '\0')
         return 0;
-    size_t len = bytes ? strlen(bytes) : 0;
+    parsed = game3d_parse_byte_size_literal(bytes);
+    if (parsed >= 0)
+        return parsed;
+    size_t len = strlen(bytes);
     if (len > (size_t)INT64_MAX - 1u)
         return INT64_MAX;
     return (int64_t)len + 1;

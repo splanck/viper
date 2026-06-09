@@ -783,8 +783,6 @@ static int fbx_anim_append_curve_sample_times(int64_t **times,
         mode = fbx_anim_curve_segment_mode(curve, k);
         if (mode == FBX_ANIM_INTERP_CONSTANT) {
             int64_t step_delta = FBX_TIME_SECOND / 100000LL; /* 10 microseconds */
-            if (step_delta < 1)
-                step_delta = 1;
             if (step_delta >= delta)
                 step_delta = 1;
             if (t1 - step_delta > t0 &&

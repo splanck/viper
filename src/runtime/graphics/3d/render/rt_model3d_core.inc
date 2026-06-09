@@ -902,7 +902,6 @@ static void model_bind_default_animator(rt_model3d *model, rt_scene_node3d *root
             if (strcmp(unique_fallback, name) != 0) {
                 state_name = rt_const_cstr(unique_fallback);
                 state_index = rt_anim_controller3d_add_state(controller, state_name, animation);
-                name = unique_fallback;
             }
         }
         if (state_index >= 0 && !added_any) {

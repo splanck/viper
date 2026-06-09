@@ -1289,7 +1289,7 @@ static void gltf_parse_animations(rt_gltf_asset *asset,
     int32_t anim_count;
     if (!asset || !anims_arr || anim_count64 <= 0 || !skins || skin_count <= 0)
         return;
-    if (anim_count64 <= 0 || anim_count64 > INT32_MAX)
+    if (anim_count64 > INT32_MAX)
         return;
     anim_count = (int32_t)anim_count64;
     if ((int64_t)anim_count * (int64_t)skin_count > INT32_MAX ||

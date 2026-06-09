@@ -864,7 +864,7 @@ static int mp3_decode_frame_internal(mp3_decoder_t *dec,
                         end = MP3_SBLIMIT;
 
                     int sf = scalefac_l[sfb];
-                    if (gi->preflag && sfb < 22)
+                    if (gi->preflag)
                         sf += mp3_pretab[sfb];
                     double sfac_pow = pow(2.0, -0.5 * (double)(sf * sfac_scale));
 

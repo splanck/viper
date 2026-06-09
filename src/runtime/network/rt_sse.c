@@ -576,7 +576,7 @@ static int sse_content_encoding_supported(const char *value) {
         while (*p && *p != ',')
             p++;
     }
-    return saw_token ? 1 : 1;
+    return saw_token ? 1 : 0;
 }
 
 //=============================================================================

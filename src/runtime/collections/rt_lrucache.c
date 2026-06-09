@@ -394,7 +394,6 @@ void rt_lrucache_put(void *obj, rt_string key, void *value) {
     size_t projected_count =
         (cache->max_cap != 0 && cache->count >= cache->max_cap) ? cache->count : cache->count + 1;
     maybe_resize_for_count(cache, projected_count);
-    idx = hash % cache->bucket_count;
 
     if (value)
         rt_obj_retain_maybe(value);

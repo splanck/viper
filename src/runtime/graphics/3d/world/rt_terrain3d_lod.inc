@@ -142,9 +142,7 @@ static void terrain_lod_distances_or(const rt_terrain3d *t, float *out_near, flo
         far_dist = near_dist + 1.0;
         if (far_dist > TERRAIN3D_ABS_MAX) {
             far_dist = TERRAIN3D_ABS_MAX;
-            near_dist = far_dist - 1.0;
-            if (near_dist < 0.0)
-                near_dist = 0.0;
+            near_dist = TERRAIN3D_ABS_MAX > 1.0 ? TERRAIN3D_ABS_MAX - 1.0 : 0.0;
         }
     }
     if (out_near)

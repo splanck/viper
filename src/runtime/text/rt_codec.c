@@ -398,7 +398,7 @@ rt_string rt_codec_base64_dec(rt_string str) {
     }
 
     size_t padding = 0;
-    if (b64_len >= 1 && input[b64_len - 1] == '=') {
+    if (input[b64_len - 1] == '=') {
         padding = 1;
         if (b64_len >= 2 && input[b64_len - 2] == '=')
             padding = 2;

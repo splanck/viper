@@ -327,7 +327,7 @@ static bool build_huffman_tree(huffman_tree_t *tree, const uint8_t *lengths, int
         int len = lengths[i];
         if (len == 0)
             continue;
-        if (len < 0 || len > MAX_BITS)
+        if (len > MAX_BITS)
             return false;
 
         uint16_t sym_code = next_code[len]++;

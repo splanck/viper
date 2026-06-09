@@ -9,8 +9,10 @@
 
 #include "rt_internal.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 // --- Internal structure ---
 
@@ -19,11 +21,34 @@ typedef struct {
     int64_t base_delay_ms;
     int64_t max_delay_ms;
     int64_t current_attempt;
+    uint64_t jitter_rng;
     int8_t exponential;
 } rt_retry_data;
 
 static void retry_finalizer(void *obj) {
     (void)obj;
+}
+
+/// @brief Build a non-zero per-thread seed for retry jitter.
+///
+/// Retry jitter is not cryptographic, but it should avoid identical sequences
+/// across threads that construct retry policies at the same time. The seed mixes
+/// stack/thread-local addresses with wall/CPU time and caller-provided state so
+/// coordinated retries diverge without relying on global `rand()`.
+///
+/// @param salt Additional caller state, usually delay/attempt data.
+/// @return Non-zero xorshift-compatible seed.
+static uint64_t retry_jitter_seed(uint64_t salt) {
+    uint64_t seed = UINT64_C(0x9E3779B97F4A7C15);
+    uintptr_t stack_addr = (uintptr_t)&seed;
+    seed ^= (uint64_t)stack_addr;
+    seed ^= ((uint64_t)(uintptr_t)&salt) << 17;
+    seed ^= (uint64_t)time(NULL) * UINT64_C(0xBF58476D1CE4E5B9);
+    seed ^= (uint64_t)clock() * UINT64_C(0x94D049BB133111EB);
+    seed ^= salt + UINT64_C(0xD1B54A32D192ED03);
+    if (seed == 0)
+        seed = UINT64_C(0xA0761D6478BD642F);
+    return seed;
 }
 
 // --- Public API ---
@@ -39,6 +64,7 @@ void *rt_retry_new(int64_t max_retries, int64_t base_delay_ms) {
     data->base_delay_ms = base;
     data->max_delay_ms = base; // Fixed delay
     data->current_attempt = 0;
+    data->jitter_rng = 0;
     data->exponential = 0;
     rt_obj_set_finalizer(obj, retry_finalizer);
     return obj;
@@ -46,8 +72,8 @@ void *rt_retry_new(int64_t max_retries, int64_t base_delay_ms) {
 
 /// @brief Construct an exponential-backoff retry policy: delays double each attempt
 /// (`base * 2^attempt`), capped at `max_delay_ms`, with 0–25% additive jitter to avoid
-/// thundering-herd retries from coordinated clients. Uses thread-local xorshift PRNG (no global
-/// state) so jitter is independent across threads.
+/// thundering-herd retries from coordinated clients. Uses per-policy xorshift PRNG state so
+/// independent policies do not share global `rand()` state.
 void *rt_retry_exponential(int64_t max_retries, int64_t base_delay_ms, int64_t max_delay_ms) {
     void *obj = rt_obj_new_i64(0, sizeof(rt_retry_data));
     rt_retry_data *data = (rt_retry_data *)obj;
@@ -57,6 +83,7 @@ void *rt_retry_exponential(int64_t max_retries, int64_t base_delay_ms, int64_t m
     data->base_delay_ms = base;
     data->max_delay_ms = max_delay;
     data->current_attempt = 0;
+    data->jitter_rng = retry_jitter_seed((uint64_t)base ^ ((uint64_t)max_delay << 1));
     data->exponential = 1;
     rt_obj_set_finalizer(obj, retry_finalizer);
     return obj;
@@ -86,12 +113,9 @@ int8_t rt_retry_can_retry(void *policy) {
 ///          ...), they synchronize and re-overload the server at every
 ///          retry boundary. Adding a per-call random offset spreads them out.
 ///
-///          The jitter PRNG is a thread-local xorshift seeded from the
-///          address of its own slot — this gives each thread an independent
-///          stream without taking a lock or sharing state, and the seeding
-///          is good enough for jitter (no cryptographic strength needed).
-///          Using the global `rand()` would be a contention point and
-///          would coordinate jitter across threads, defeating the purpose.
+///          The jitter PRNG is per policy, seeded at construction. That keeps
+///          independent retry policies from sharing global `rand()` state or
+///          coordinating their jitter sequence.
 ///
 ///          Returns -1 when retries are exhausted (`current_attempt >=
 ///          max_retries`); the counter is *not* advanced in that case.
@@ -122,16 +146,13 @@ int64_t rt_retry_next_delay(void *policy) {
                 delay = data->max_delay_ms;
         }
 
-        // Add 0-25% additive jitter to prevent thundering-herd on coordinated retries
-        // Uses thread-safe local xorshift PRNG instead of global rand()
+        // Add 0-25% additive jitter to prevent thundering-herd on coordinated retries.
+        // Uses per-policy xorshift PRNG state instead of global rand().
         if (delay > 0) {
-            static _Thread_local uint64_t jitter_rng = 0;
-            if (!jitter_rng)
-                jitter_rng = (uint64_t)(uintptr_t)&jitter_rng ^ 0x5DEECE66DULL;
-            jitter_rng ^= jitter_rng >> 12;
-            jitter_rng ^= jitter_rng << 25;
-            jitter_rng ^= jitter_rng >> 27;
-            uint64_t r = jitter_rng * 0x2545F4914F6CDD1DULL;
+            data->jitter_rng ^= data->jitter_rng >> 12;
+            data->jitter_rng ^= data->jitter_rng << 25;
+            data->jitter_rng ^= data->jitter_rng >> 27;
+            uint64_t r = data->jitter_rng * 0x2545F4914F6CDD1DULL;
             int64_t jitter_range = delay / 4 + 1;
             delay += (int64_t)(r % (uint64_t)jitter_range);
             // Keep within max_delay_ms (jitter may push slightly over)

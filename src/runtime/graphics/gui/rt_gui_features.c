@@ -424,8 +424,7 @@ void rt_commandpalette_set_placeholder(void *palette, rt_string text) {
     if (!data || !data->palette)
         return;
     char *ctext = rt_string_to_gui_cstr(text);
-    if (data->palette)
-        vg_commandpalette_set_placeholder(data->palette, ctext);
+    vg_commandpalette_set_placeholder(data->palette, ctext);
     if (ctext)
         free(ctext);
 }
@@ -932,25 +931,23 @@ int64_t rt_toast_was_dismissed(void *toast) {
         data->dismissal_reported = 1;
         return 1;
     }
-    if (mgr) {
-        bool found = false;
-        for (size_t i = 0; i < mgr->notification_count; i++) {
-            if (mgr->notifications[i] && mgr->notifications[i]->id == data->id) {
-                found = true;
-                if (mgr->notifications[i]->dismissed) {
-                    data->was_dismissed = 1;
-                    data->dismissal_reported = 1;
-                    return 1;
-                }
-                break;
+    bool found = false;
+    for (size_t i = 0; i < mgr->notification_count; i++) {
+        if (mgr->notifications[i] && mgr->notifications[i]->id == data->id) {
+            found = true;
+            if (mgr->notifications[i]->dismissed) {
+                data->was_dismissed = 1;
+                data->dismissal_reported = 1;
+                return 1;
             }
+            break;
         }
-        // If notification is no longer tracked by the manager, it was dismissed
-        if (!found) {
-            data->was_dismissed = 1;
-            data->dismissal_reported = 1;
-            return 1;
-        }
+    }
+    // If notification is no longer tracked by the manager, it was dismissed
+    if (!found) {
+        data->was_dismissed = 1;
+        data->dismissal_reported = 1;
+        return 1;
     }
     return 0;
 }
@@ -1004,19 +1001,47 @@ void rt_toast_dismiss_all(void) {
 // Phase 8: Drag and Drop Implementation
 //=============================================================================
 
-// Drag and drop state per widget (would need to be stored in widget user_data)
+/// @brief Borrowed snapshot of a widget's drag/drop configuration and runtime flags.
+/// @details The fields mirror the drag/drop state stored directly on `vg_widget_t`.
+///          String pointers are borrowed from the widget and must not be freed or
+///          retained after the widget may be destroyed or mutated. The snapshot
+///          keeps public drag/drop accessors consistent without duplicating
+///          ownership rules across each getter.
 typedef struct rt_drag_drop_data {
     int64_t is_draggable;
-    char *drag_type;
-    char *drag_data;
+    const char *drag_type;
+    const char *drag_data;
     int64_t is_drop_target;
-    char *accepted_types;
+    const char *accepted_types;
     int64_t is_being_dragged;
     int64_t is_drag_over;
     int64_t was_dropped;
-    char *drop_type;
-    char *drop_data;
+    const char *drop_type;
+    const char *drop_data;
 } rt_drag_drop_data_t;
+
+/// @brief Capture all drag/drop state from @p widget into a value object.
+/// @details Returns zero/default fields for NULL widgets. The snapshot borrows
+///          all pointer fields from the widget; callers should use it only for
+///          immediate reads on the GUI thread.
+/// @param widget Widget whose drag/drop state should be observed.
+/// @return Borrowed drag/drop state snapshot.
+static rt_drag_drop_data_t rt_widget_drag_drop_snapshot(const vg_widget_t *widget) {
+    rt_drag_drop_data_t data = {0};
+    if (!widget)
+        return data;
+    data.is_draggable = widget->draggable ? 1 : 0;
+    data.drag_type = widget->drag_type;
+    data.drag_data = widget->drag_data;
+    data.is_drop_target = widget->is_drop_target ? 1 : 0;
+    data.accepted_types = widget->accepted_drop_types;
+    data.is_being_dragged = widget->_is_being_dragged ? 1 : 0;
+    data.is_drag_over = widget->_is_drag_over ? 1 : 0;
+    data.was_dropped = widget->_was_dropped ? 1 : 0;
+    data.drop_type = widget->_drop_received_type;
+    data.drop_data = widget->_drop_received_data;
+    return data;
+}
 
 /// @brief Set the draggable of the widget.
 void rt_widget_set_draggable(void *widget, int64_t draggable) {
@@ -1054,7 +1079,8 @@ int64_t rt_widget_is_being_dragged(void *widget) {
     vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (!w)
         return 0;
-    return w->_is_being_dragged ? 1 : 0;
+    rt_drag_drop_data_t data = rt_widget_drag_drop_snapshot(w);
+    return data.is_being_dragged;
 }
 
 /// @brief Get a value from the widget.
@@ -1087,7 +1113,8 @@ int64_t rt_widget_is_drag_over(void *widget) {
     vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (!w)
         return 0;
-    return w->_is_drag_over ? 1 : 0;
+    rt_drag_drop_data_t data = rt_widget_drag_drop_snapshot(w);
+    return data.is_drag_over;
 }
 
 /// @brief Check whether a drop was completed on this widget this frame.
@@ -1096,7 +1123,8 @@ int64_t rt_widget_was_dropped(void *widget) {
     vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (!w)
         return 0;
-    int64_t result = w->_was_dropped ? 1 : 0;
+    rt_drag_drop_data_t data = rt_widget_drag_drop_snapshot(w);
+    int64_t result = data.was_dropped;
     w->_was_dropped = false; // Clear after read (edge-triggered)
     return result;
 }
@@ -1107,8 +1135,9 @@ rt_string rt_widget_get_drop_type(void *widget) {
     vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (!w)
         return rt_str_empty();
-    if (w->_drop_received_type)
-        return rt_string_from_bytes(w->_drop_received_type, strlen(w->_drop_received_type));
+    rt_drag_drop_data_t data = rt_widget_drag_drop_snapshot(w);
+    if (data.drop_type)
+        return rt_string_from_bytes(data.drop_type, strlen(data.drop_type));
     return rt_str_empty();
 }
 
@@ -1118,8 +1147,9 @@ rt_string rt_widget_get_drop_data(void *widget) {
     vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (!w)
         return rt_str_empty();
-    if (w->_drop_received_data)
-        return rt_string_from_bytes(w->_drop_received_data, strlen(w->_drop_received_data));
+    rt_drag_drop_data_t data = rt_widget_drag_drop_snapshot(w);
+    if (data.drop_data)
+        return rt_string_from_bytes(data.drop_data, strlen(data.drop_data));
     return rt_str_empty();
 }
 

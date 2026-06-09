@@ -1180,8 +1180,6 @@ static int loc_register_entry_locked(const rt_locale_data_t *data, int is_baked)
 static void *loc_make_handle_locked(const char *tag) {
     // Use a direct construction path: allocate + set fields + walk registry.
     void *loc = NULL;
-    // Inline parse without registry touch:
-    extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
     rt_locale_t *l = (rt_locale_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_locale_t));
     if (!l) {
         return NULL;

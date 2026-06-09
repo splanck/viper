@@ -157,7 +157,7 @@ static rt_string diff_string_from_bytes_or_trap(const char *bytes, size_t len) {
 ///          short inputs. Note: `O(n*m)` space — fine for source
 ///          files (<10K lines × <10K lines) but would be replaced by
 ///          Hirschberg's algorithm at scale.
-static void compute_lcs_table(line_array *a, line_array *b, int **table) {
+static void compute_lcs_table(const line_array *a, const line_array *b, int **table) {
     int m = a->count;
     int n = b->count;
 
@@ -254,14 +254,43 @@ void *rt_diff_lines(rt_string a, rt_string b) {
 // rt_diff_unified
 // ---------------------------------------------------------------------------
 
+/// @brief Return whether a rendered diff line represents an addition or deletion.
+///
+/// Diff records are strings prefixed with one of `' '`, `'+'`, or `'-'`.
+/// Unified context filtering only treats additions and deletions as anchors;
+/// unchanged lines are included when they are close enough to one of those
+/// anchors.
+///
+/// @param line Rendered diff line from `rt_diff_lines`.
+/// @return Non-zero for added/removed lines.
+static int diff_line_is_change(rt_string line) {
+    const char *cstr = rt_string_cstr(line);
+    return cstr && (cstr[0] == '+' || cstr[0] == '-');
+}
+
+/// @brief Test whether a diff line falls within a context window of a change.
+///
+/// @param diff    Sequence returned by `rt_diff_lines`.
+/// @param len     Number of records in @p diff.
+/// @param index   Candidate line index.
+/// @param context Number of surrounding records to include around changes.
+/// @return Non-zero when the candidate should be rendered.
+static int diff_line_within_context(void *diff, int64_t len, int64_t index, int64_t context) {
+    int64_t start = index > context ? index - context : 0;
+    int64_t end = len - index > context ? index + context : len - 1;
+    for (int64_t i = start; i <= end; i++) {
+        if (diff_line_is_change((rt_string)rt_seq_get(diff, i)))
+            return 1;
+    }
+    return 0;
+}
+
 /// @brief Render an `a → b` diff as a plain unified-diff style string.
 /// @details Emits the canonical `--- a` / `+++ b` header, then dumps
-///          every line from `rt_diff_lines` (each already prefixed
-///          with one of ` `, `+`, `-`) followed by `\n`. The
-///          `context` parameter is parsed (defaults to 3 if negative)
-///          but currently *all* lines are output — this is a
-///          simplified unified format suitable for diagnostics, not
-///          a true patch-applicable hunk format.
+///          changed lines plus up to @p context unchanged records around
+///          those changes. Lines are already prefixed with one of ` `,
+///          `+`, or `-`. This remains a compact diagnostic format rather
+///          than a patch-applicable unified diff with hunk headers.
 rt_string rt_diff_unified(rt_string a, rt_string b, int64_t context) {
     if (context < 0)
         context = 3;
@@ -272,12 +301,14 @@ rt_string rt_diff_unified(rt_string a, rt_string b, int64_t context) {
     rt_string_builder sb;
     rt_sb_init(&sb);
 
-    // Simple unified format: output all lines with proper prefixes
+    // Simple unified format: output selected lines with proper prefixes.
     diff_check_sb(&sb, rt_sb_append_cstr(&sb, "--- a\n"));
     diff_check_sb(&sb, rt_sb_append_cstr(&sb, "+++ b\n"));
 
     for (int64_t i = 0; i < len; i++) {
         rt_string line = (rt_string)rt_seq_get(diff, i);
+        if (!diff_line_is_change(line) && !diff_line_within_context(diff, len, i, context))
+            continue;
         const char *cstr = rt_string_cstr(line);
         if (cstr) {
             diff_check_sb(&sb, rt_sb_append_bytes(&sb, cstr, (size_t)rt_str_len(line)));

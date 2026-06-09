@@ -813,7 +813,7 @@ static void canvas3d_bind_skinning_cmd(rt_canvas3d *c,
 
 /// @brief True if all `count` floats are finite (NULL/empty array returns false).
 static int canvas3d_float_array_finite(const float *values, size_t count) {
-    if (!values || count <= 0)
+    if (!values || count == 0)
         return 0;
     for (size_t i = 0; i < count; i++) {
         if (!isfinite(values[i]))
