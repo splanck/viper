@@ -112,6 +112,7 @@
 #include <unistd.h>
 #else
 #include <pthread.h>
+#include <sys/types.h>
 #include <unistd.h>
 #endif
 

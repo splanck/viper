@@ -229,6 +229,8 @@ static int world3d_reserve_contact_array(rt_contact3d **array, int32_t *capacity
 
 /// @brief Grow w->contacts to hold at least @p needed entries.
 int world3d_reserve_contacts(rt_world3d *w, int32_t needed) {
+    if (!w)
+        return 0;
     return world3d_reserve_contact_array(&w->contacts, &w->contact_capacity, needed);
 }
 
@@ -237,6 +239,8 @@ int world3d_reserve_contacts(rt_world3d *w, int32_t needed) {
 ///          very brief substep contacts still participate in the frame's
 ///          enter/stay/exit event diff.
 int world3d_reserve_frame_contacts(rt_world3d *w, int32_t needed) {
+    if (!w)
+        return 0;
     return world3d_reserve_contact_array(&w->frame_contacts, &w->frame_contact_capacity, needed);
 }
 

@@ -40,6 +40,7 @@
 
 #include "rt_input.h"
 #include "rt_box.h"
+#include "rt_internal.h"
 #include "rt_platform.h"
 #include "rt_seq.h"
 #include "rt_string.h"
@@ -54,6 +55,7 @@
 #include <X11/Xlib.h>
 #endif
 
+#include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -146,16 +148,19 @@ static bool rt_keyboard_codepoint_is_text(int32_t ch) {
 static bool g_key_state[VIPER_KEY_MAX];
 
 // Keys pressed this frame
-static int64_t g_pressed_keys[64];
+static int64_t *g_pressed_keys;
 static int g_pressed_count;
+static int g_pressed_capacity;
 
 // Keys released this frame
-static int64_t g_released_keys[64];
+static int64_t *g_released_keys;
 static int g_released_count;
+static int g_released_capacity;
 
 // Text input buffer
-static char g_text_buffer[256];
+static char *g_text_buffer;
 static int g_text_length;
+static int g_text_capacity;
 static bool g_text_input_enabled;
 
 // Caps lock state
@@ -166,6 +171,76 @@ static void *g_active_canvas;
 
 // Track if initialized
 static bool g_initialized;
+
+/// @brief Ensure a per-frame keyboard edge buffer can hold at least @p needed entries.
+/// @details Buffers grow geometrically from 64 entries and retain their capacity across frames.
+///          This prevents high-churn frames from silently dropping key-down/key-up edges.
+/// @param keys Pointer to the edge-buffer pointer to grow.
+/// @param capacity Pointer to the current capacity field.
+/// @param needed Minimum number of entries required.
+/// @return true when capacity is available, false on allocation overflow/failure.
+static bool rt_keyboard_reserve_key_events(int64_t **keys, int *capacity, int needed) {
+    if (!keys || !capacity || needed < 0)
+        return false;
+    if (*capacity >= needed)
+        return true;
+    int new_capacity = *capacity > 0 ? *capacity : 64;
+    while (new_capacity < needed) {
+        if (new_capacity > INT_MAX / 2)
+            return false;
+        new_capacity *= 2;
+    }
+    if ((size_t)new_capacity > SIZE_MAX / sizeof(**keys))
+        return false;
+    int64_t *grown = (int64_t *)realloc(*keys, (size_t)new_capacity * sizeof(**keys));
+    if (!grown)
+        return false;
+    *keys = grown;
+    *capacity = new_capacity;
+    return true;
+}
+
+/// @brief Append one key edge event to a growable per-frame buffer.
+/// @details On allocation failure the runtime trap is raised and the event is skipped; successful
+///          growth keeps all events for the frame so GetPressed/GetReleased can report full bursts.
+/// @param keys Pointer to the edge-buffer pointer.
+/// @param count Pointer to the active entry count.
+/// @param capacity Pointer to the allocated entry capacity.
+/// @param key Public VIPER_KEY_* code to append.
+static void rt_keyboard_append_key_event(int64_t **keys, int *count, int *capacity, int64_t key) {
+    if (!count || *count < 0)
+        return;
+    if (*count == INT_MAX || !rt_keyboard_reserve_key_events(keys, capacity, *count + 1)) {
+        rt_trap("Keyboard: key event buffer allocation failed");
+        return;
+    }
+    (*keys)[(*count)++] = key;
+}
+
+/// @brief Ensure the UTF-8 text buffer can append @p needed bytes this frame.
+/// @details Text input can arrive in bursts from IME or paste-like platform events. The buffer grows
+///          geometrically and retains capacity across frames while `rt_keyboard_begin_frame` resets
+///          only the active length.
+/// @param needed Minimum active byte capacity required.
+/// @return true when the buffer can hold @p needed bytes, false on overflow/allocation failure.
+static bool rt_keyboard_reserve_text_bytes(int needed) {
+    if (needed < 0)
+        return false;
+    if (g_text_capacity >= needed)
+        return true;
+    int new_capacity = g_text_capacity > 0 ? g_text_capacity : 256;
+    while (new_capacity < needed) {
+        if (new_capacity > INT_MAX / 2)
+            return false;
+        new_capacity *= 2;
+    }
+    char *grown = (char *)realloc(g_text_buffer, (size_t)new_capacity);
+    if (!grown)
+        return false;
+    g_text_buffer = grown;
+    g_text_capacity = new_capacity;
+    return true;
+}
 
 // Test hooks let runtime unit tests verify the platform bridge deterministically
 // without requiring a real focused window or cursor warp.
@@ -313,7 +388,8 @@ void rt_keyboard_init(void) {
     if (g_initialized)
         return;
 
-    memset(g_key_state, 0, sizeof(g_key_state));
+    for (int key = 0; key < VIPER_KEY_MAX; ++key)
+        g_key_state[key] = false;
     g_pressed_count = 0;
     g_released_count = 0;
     g_text_length = 0;
@@ -341,8 +417,8 @@ static void rt_keyboard_record_key_down(int64_t key) {
     if (!g_key_state[key]) {
         g_key_state[key] = true;
 
-        if (g_pressed_count < 64)
-            g_pressed_keys[g_pressed_count++] = key;
+        rt_keyboard_append_key_event(
+            &g_pressed_keys, &g_pressed_count, &g_pressed_capacity, key);
     }
 
     // Caps Lock state is queried from the platform on demand.
@@ -356,8 +432,8 @@ static void rt_keyboard_record_key_up(int64_t key) {
     if (g_key_state[key]) {
         g_key_state[key] = false;
 
-        if (g_released_count < 64)
-            g_released_keys[g_released_count++] = key;
+        rt_keyboard_append_key_event(
+            &g_released_keys, &g_released_count, &g_released_capacity, key);
     }
 }
 
@@ -412,8 +488,12 @@ void rt_keyboard_text_input(int32_t ch) {
         utf8_len = 4;
     }
 
-    if (utf8_len <= 0 || g_text_length + utf8_len >= (int)sizeof(g_text_buffer))
+    if (utf8_len <= 0 || g_text_length > INT_MAX - utf8_len)
         return;
+    if (!rt_keyboard_reserve_text_bytes(g_text_length + utf8_len)) {
+        rt_trap("Keyboard: text input buffer allocation failed");
+        return;
+    }
 
     memcpy(g_text_buffer + g_text_length, utf8, (size_t)utf8_len);
     g_text_length += utf8_len;

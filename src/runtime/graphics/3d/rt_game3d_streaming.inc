@@ -6,6 +6,14 @@
 static int64_t game3d_stream_manifest_bytes(rt_string value);
 static int64_t game3d_i64_saturating_add(int64_t a, int64_t b);
 
+#if defined(_WIN32)
+#define game3d_stream_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
+#define game3d_stream_ftell(fp) _ftelli64((fp))
+#else
+#define game3d_stream_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
+#define game3d_stream_ftell(fp) ftello((fp))
+#endif
+
 /// @brief Whether a parsed JSON value is a map/object.
 static int game3d_json_is_map(void *obj) {
     return obj && rt_obj_class_id(obj) == RT_MAP_CLASS_ID;
@@ -130,19 +138,29 @@ static rt_string game3d_read_text_file_no_trap(rt_string path) {
         rt_string result = NULL;
         if ((uint64_t)asset_size <= RT_GAME3D_STREAM_MANIFEST_MAX_BYTES)
             result = rt_string_from_bytes((const char *)asset_bytes, asset_size);
+        else
+            rt_trap("Game3D.WorldStream3D: manifest asset exceeds byte budget");
         free(asset_bytes);
         return result;
     }
     FILE *file = fopen(cpath, "rb");
     if (!file)
         return NULL;
-    if (fseek(file, 0, SEEK_END) != 0) {
+    if (game3d_stream_fseek(file, 0, SEEK_END) != 0) {
         fclose(file);
         return NULL;
     }
-    long size = ftell(file);
-    if (size < 0 || (uint64_t)size > RT_GAME3D_STREAM_MANIFEST_MAX_BYTES ||
-        fseek(file, 0, SEEK_SET) != 0) {
+    int64_t size = (int64_t)game3d_stream_ftell(file);
+    if (size < 0) {
+        fclose(file);
+        return NULL;
+    }
+    if ((uint64_t)size > RT_GAME3D_STREAM_MANIFEST_MAX_BYTES) {
+        rt_trap("Game3D.WorldStream3D: manifest file exceeds byte budget");
+        fclose(file);
+        return NULL;
+    }
+    if (game3d_stream_fseek(file, 0, SEEK_SET) != 0) {
         fclose(file);
         return NULL;
     }
@@ -157,7 +175,7 @@ static rt_string game3d_read_text_file_no_trap(rt_string path) {
         return NULL;
     }
     fclose(file);
-    bytes[size] = '\0';
+    bytes[(size_t)size] = '\0';
     rt_string result = rt_string_from_bytes(bytes, (size_t)size);
     free(bytes);
     return result;

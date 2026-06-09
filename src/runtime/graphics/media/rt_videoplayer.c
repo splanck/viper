@@ -702,6 +702,27 @@ static void release_owned_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Decode one AVI/MJPEG frame into the stable display buffer.
+/// @details Fetches the requested frame from the AVI index, decodes it through the MJPEG/JPEG path,
+///          copies it into @c frame_display after dimension validation, and releases the temporary
+///          decoded Pixels handle before returning.
+/// @param vp Video player owning the parsed AVI context and display buffer.
+/// @param frame_index Zero-based target frame index.
+/// @return 1 when the frame was decoded and copied, 0 on missing data or decode failure.
+static int videoplayer_decode_avi_frame(rt_videoplayer *vp, int32_t frame_index) {
+    if (!vp || vp->container_type != 0 || frame_index < 0 || frame_index >= vp->total_frames)
+        return 0;
+    uint32_t frame_size = 0;
+    const uint8_t *frame_data = avi_get_video_frame(&vp->avi, frame_index, &frame_size);
+    void *decoded = frame_data ? decode_mjpeg_frame(frame_data, frame_size) : NULL;
+    int copied = videoplayer_copy_decoded_frame(vp->frame_display, decoded);
+    release_owned_ref(&decoded);
+    if (!copied)
+        return 0;
+    vp->current_frame = frame_index;
+    return 1;
+}
+
 static double videoplayer_clamp_seconds(const rt_videoplayer *vp, double seconds) {
     if (!isfinite(seconds)) {
         if (seconds > 0.0 && vp && isfinite(vp->duration) && vp->duration >= 0.0)
@@ -1148,18 +1169,10 @@ void *rt_videoplayer_open(rt_string path) {
     }
 
     /* Decode first frame immediately so get_Frame works before Play */
-    {
-        uint32_t frame_size = 0;
-        const uint8_t *frame_data = avi_get_video_frame(&vp->avi, 0, &frame_size);
-        void *decoded = frame_data ? decode_mjpeg_frame(frame_data, frame_size) : NULL;
-        int copied = videoplayer_copy_decoded_frame(vp->frame_display, decoded);
-        release_owned_ref(&decoded);
-        if (!copied) {
-            if (rt_obj_release_check0(vp))
-                rt_obj_free(vp);
-            return NULL;
-        }
-        vp->current_frame = 0;
+    if (!videoplayer_decode_avi_frame(vp, 0)) {
+        if (rt_obj_release_check0(vp))
+            rt_obj_free(vp);
+        return NULL;
     }
 
     return vp;
@@ -1228,7 +1241,12 @@ void rt_videoplayer_seek(void *obj, double seconds) {
         videoplayer_seek_audio(vp);
 #endif
     } else {
-        vp->current_frame = -1; /* force re-decode on next Update */
+        int32_t target = videoplayer_frame_index_at(vp, vp->position);
+        if (target >= vp->total_frames)
+            target = vp->total_frames > 0 ? vp->total_frames - 1 : -1;
+        vp->current_frame = -1;
+        if (target >= 0)
+            (void)videoplayer_decode_avi_frame(vp, target);
     }
 }
 
@@ -1244,20 +1262,24 @@ void rt_videoplayer_update(void *obj, double dt) {
     if (!vp->playing)
         return;
 
-    if (vp->container_type == 1) {
 #ifdef VIPER_ENABLE_AUDIO
-        if (vp->audio_track && vp->audio_started && rt_music_is_playing(vp->audio_track)) {
-            vp->position = (double)rt_music_get_position(vp->audio_track) / 1000.0;
-        } else
+    if (vp->container_type == 1 && vp->audio_track && vp->audio_started &&
+        rt_music_is_playing(vp->audio_track)) {
+        vp->position = (double)rt_music_get_position(vp->audio_track) / 1000.0;
+    } else
 #endif
-        {
-            vp->position = videoplayer_clamp_seconds(vp, vp->position + dt);
-        }
-    } else {
+    {
         vp->position = videoplayer_clamp_seconds(vp, vp->position + dt);
     }
 
     if (isfinite(vp->duration) && vp->duration > 0.0 && vp->position >= vp->duration) {
+        int32_t final_frame = vp->total_frames > 0 ? vp->total_frames - 1 : -1;
+        if (final_frame >= 0 && final_frame != vp->current_frame) {
+            if (vp->container_type == 1)
+                (void)ogv_decode_until_frame(vp, final_frame);
+            else
+                (void)videoplayer_decode_avi_frame(vp, final_frame);
+        }
         vp->position = vp->duration;
         vp->playing = 0;
 #ifdef VIPER_ENABLE_AUDIO
@@ -1293,16 +1315,10 @@ void rt_videoplayer_update(void *obj, double dt) {
 
     /* Only decode if frame changed */
     if (target != vp->current_frame) {
-        uint32_t frame_size = 0;
-        const uint8_t *frame_data = avi_get_video_frame(&vp->avi, target, &frame_size);
-        void *decoded = frame_data ? decode_mjpeg_frame(frame_data, frame_size) : NULL;
-        int copied = videoplayer_copy_decoded_frame(vp->frame_display, decoded);
-        release_owned_ref(&decoded);
-        if (!copied) {
+        if (!videoplayer_decode_avi_frame(vp, target)) {
             vp->playing = 0;
             return;
         }
-        vp->current_frame = target;
     }
 }
 

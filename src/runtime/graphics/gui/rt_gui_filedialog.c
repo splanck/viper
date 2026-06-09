@@ -312,8 +312,10 @@ rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, r
         return rt_str_empty();
     }
 
-    vg_filedialog_set_title(dlg, ctitle);
-    vg_filedialog_set_initial_path(dlg, cpath);
+    if (ctitle)
+        vg_filedialog_set_title(dlg, ctitle);
+    if (cpath)
+        vg_filedialog_set_initial_path(dlg, cpath);
     vg_filedialog_set_multi_select(dlg, true);
     if (cfilter && cfilter[0]) {
         vg_filedialog_add_filter(dlg, "Files", cfilter);
@@ -722,10 +724,8 @@ void rt_filedialog_set_filter(void *dialog, rt_string name, rt_string pattern) {
     }
     vg_filedialog_clear_filters(data->dialog);
     vg_filedialog_add_filter(data->dialog, cname ? cname : "Files", cpattern);
-    if (cname)
-        free(cname);
-    if (cpattern)
-        free(cpattern);
+    free(cname);
+    free(cpattern);
 }
 
 /// @brief Append an additional (`name`, `pattern`) filter without clearing existing ones. The
@@ -743,10 +743,8 @@ void rt_filedialog_add_filter(void *dialog, rt_string name, rt_string pattern) {
         return;
     }
     vg_filedialog_add_filter(data->dialog, cname ? cname : "Files", cpattern);
-    if (cname)
-        free(cname);
-    if (cpattern)
-        free(cpattern);
+    free(cname);
+    free(cpattern);
 }
 
 /// @brief Pre-fill the filename field (Save dialogs primarily). User can edit before confirming.

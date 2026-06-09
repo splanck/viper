@@ -32,10 +32,10 @@ static void *game3d_world_new_with_camera_impl(rt_string title,
                                                int8_t horizontal_fov) {
     double aspect;
 
-    if (width <= 0 || height <= 0)
+    if (width <= 0 || height <= 0) {
         rt_trap("Game3D.World3D.New: dimensions must be positive");
-    if (width <= 0 || height <= 0)
         return NULL;
+    }
     rt_game3d_world *world =
         (rt_game3d_world *)rt_obj_new_i64(RT_G3D_GAME3D_WORLD_CLASS_ID, (int64_t)sizeof(*world));
     if (!world) {

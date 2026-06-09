@@ -105,13 +105,13 @@ static vg_icon_t rt_codeeditor_icon_from_pixels(void *pixels) {
     }
 
     uint8_t *rgba = (uint8_t *)malloc(pixel_count * 4);
-    if (!rgba)
+    if (!rgba) {
         rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR,
                            Err_RuntimeError,
                            -1,
                            "CodeEditor.SetGutterIcon: allocation failed");
-    if (!rgba)
         return icon;
+    }
 
     for (size_t i = 0; i < pixel_count; i++) {
         uint32_t px = raw[i];
@@ -154,6 +154,8 @@ void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int
     for (int i = 0; i < ce->gutter_icon_count; i++) {
         if (ce->gutter_icons[i].line == line_i && ce->gutter_icons[i].type == type) {
             vg_icon_t new_image = rt_codeeditor_icon_from_pixels(pixels);
+            if (new_image.type == VG_ICON_NONE)
+                return;
             vg_icon_destroy(&ce->gutter_icons[i].image);
             ce->gutter_icons[i].image = new_image;
             ce->base.needs_paint = true;
@@ -165,17 +167,21 @@ void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int
             return;
         int new_cap = ce->gutter_icon_cap ? ce->gutter_icon_cap * 2 : 8;
         void *p = realloc(ce->gutter_icons, (size_t)new_cap * sizeof(*ce->gutter_icons));
-        if (!p)
+        if (!p) {
             rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR,
                                Err_RuntimeError,
                                -1,
                                "CodeEditor.SetGutterIcon: allocation failed");
+            return;
+        }
         ce->gutter_icons = p;
         ce->gutter_icon_cap = new_cap;
     }
     /* Default color per type */
     static const uint32_t s_type_colors[] = {0xFFE81123, 0xFFFFB900, 0xFFE81123, 0xFF0078D4};
     vg_icon_t new_image = rt_codeeditor_icon_from_pixels(pixels);
+    if (new_image.type == VG_ICON_NONE)
+        return;
     struct vg_gutter_icon *icon = &ce->gutter_icons[ce->gutter_icon_count++];
     icon->line = line_i;
     icon->type = type;

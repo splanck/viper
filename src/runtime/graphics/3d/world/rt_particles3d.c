@@ -785,10 +785,10 @@ static void spawn_particle(rt_particles3d *ps) {
     /* Velocity */
     float dir[3];
     random_cone_dir(ps, ps->emit_dir, ps->emit_spread, dir);
-    float speed = rand_range(ps, ps->speed_min, ps->speed_max);
-    p->vel[0] = dir[0] * speed;
-    p->vel[1] = dir[1] * speed;
-    p->vel[2] = dir[2] * speed;
+    double speed = (double)rand_range(ps, ps->speed_min, ps->speed_max);
+    p->vel[0] = (double)dir[0] * speed;
+    p->vel[1] = (double)dir[1] * speed;
+    p->vel[2] = (double)dir[2] * speed;
 
     /* Life */
     p->max_life = rand_range(ps, ps->life_min, ps->life_max);

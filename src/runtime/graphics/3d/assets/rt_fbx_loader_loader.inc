@@ -754,6 +754,15 @@ static int fbx_texture_prop_is_diffuse(const char *prop) {
            fbx_ascii_contains_i(prop, "albedo") || fbx_ascii_contains_i(prop, "diffuse");
 }
 
+/// @brief Assign an FBX texture as the material base-color slot.
+/// @details Explicit diffuse/base-color properties and unrecognized properties both fall back to
+///          the same base-color slot. Keeping this in one helper avoids duplicate branches while
+///          preserving the diffuse predicate for documentation and future slot-specific handling.
+static void fbx_assign_base_color_texture(void *mat, void *pixels, const char *prop_name) {
+    (void)fbx_texture_prop_is_diffuse(prop_name);
+    rt_material3d_set_texture(mat, pixels);
+}
+
 /// @brief Resolve and attach textures to the asset's materials: for each Texture node, load
 ///   its image (external file relative to @p cpath, or embedded Video content) and assign it
 ///   to the connected material's slots per @p material_bindings.
@@ -824,10 +833,8 @@ static void fbx_load_link_textures(rt_fbx_asset *asset,
                     rt_material3d_set_metallic_roughness_map(mat, pixels);
                 else if (fbx_texture_prop_is_ao(prop_name))
                     rt_material3d_set_ao_map(mat, pixels);
-                else if (fbx_texture_prop_is_diffuse(prop_name))
-                    rt_material3d_set_texture(mat, pixels);
                 else
-                    rt_material3d_set_texture(mat, pixels); // default to diffuse
+                    fbx_assign_base_color_texture(mat, pixels, prop_name);
                 break;
             }
             fbx_release_ref(&pixels);

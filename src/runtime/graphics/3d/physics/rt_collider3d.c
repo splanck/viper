@@ -802,26 +802,30 @@ void rt_collider3d_add_child(void *compound_obj, void *child_obj, void *local_tr
             rt_trap("Collider3D.AddChild: allocation overflow");
             return;
         }
-        new_children = (void **)realloc(compound->children, (size_t)new_capacity * sizeof(void *));
+        new_children = (void **)calloc((size_t)new_capacity, sizeof(void *));
         if (!new_children) {
             rt_trap("Collider3D.AddChild: allocation failed");
             return;
         }
-        compound->children = new_children;
-        new_transforms = (rt_collider3d_child *)realloc(
-            compound->child_transforms, (size_t)new_capacity * sizeof(rt_collider3d_child));
+        new_transforms =
+            (rt_collider3d_child *)calloc((size_t)new_capacity, sizeof(rt_collider3d_child));
         if (!new_transforms) {
+            free(new_children);
             rt_trap("Collider3D.AddChild: allocation failed");
             return;
         }
+        if (compound->child_count > 0) {
+            memcpy(new_children,
+                   compound->children,
+                   (size_t)compound->child_count * sizeof(*new_children));
+            memcpy(new_transforms,
+                   compound->child_transforms,
+                   (size_t)compound->child_count * sizeof(*new_transforms));
+        }
+        free(compound->children);
+        free(compound->child_transforms);
+        compound->children = new_children;
         compound->child_transforms = new_transforms;
-        memset(compound->children + compound->child_capacity,
-               0,
-               (size_t)(new_capacity - compound->child_capacity) * sizeof(*compound->children));
-        memset(compound->child_transforms + compound->child_capacity,
-               0,
-               (size_t)(new_capacity - compound->child_capacity) *
-                   sizeof(*compound->child_transforms));
         compound->child_capacity = new_capacity;
     }
     rt_obj_retain_maybe(child_obj);

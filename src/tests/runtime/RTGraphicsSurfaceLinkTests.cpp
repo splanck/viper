@@ -20,6 +20,7 @@
 #include "rt_game3d.h"
 #include "rt_gltf.h"
 #include "rt_graphics.h"
+#include "rt_gui.h"
 #include "rt_iksolver3d.h"
 #include "rt_joints3d.h"
 #include "rt_model3d.h"
@@ -31,6 +32,7 @@
 #include "rt_sound3d.h"
 #include "rt_soundlistener3d.h"
 #include "rt_soundsource3d.h"
+#include "rt_string.h"
 #include "rt_terrain3d.h"
 #include "rt_textureasset3d.h"
 
@@ -45,6 +47,27 @@ template <typename Fn> std::uintptr_t fn_bits(Fn fn) {
     std::uintptr_t bits = 0;
     std::memcpy(&bits, &fn, sizeof(fn));
     return bits;
+}
+
+void test_filedialog_path_list_escaping() {
+    const char *encoded = "alpha\\;semi;back\\\\slash;trailing\\;first;;third;tail\\";
+    rt_string escaped = rt_string_from_bytes(encoded, std::strlen(encoded));
+    assert(rt_filedialog_path_list_count(escaped) == 6);
+
+    rt_string first = rt_filedialog_path_list_get(escaped, 0);
+    rt_string second = rt_filedialog_path_list_get(escaped, 1);
+    rt_string third = rt_filedialog_path_list_get(escaped, 2);
+    rt_string fourth = rt_filedialog_path_list_get(escaped, 3);
+    rt_string fifth = rt_filedialog_path_list_get(escaped, 4);
+    rt_string sixth = rt_filedialog_path_list_get(escaped, 5);
+
+    assert(std::strcmp(rt_string_cstr(first), "alpha;semi") == 0);
+    assert(std::strcmp(rt_string_cstr(second), "back\\slash") == 0);
+    assert(std::strcmp(rt_string_cstr(third), "trailing;first") == 0);
+    assert(std::strcmp(rt_string_cstr(fourth), "") == 0);
+    assert(std::strcmp(rt_string_cstr(fifth), "third") == 0);
+    assert(std::strcmp(rt_string_cstr(sixth), "tail\\") == 0);
+    assert(rt_str_len(rt_filedialog_path_list_get(escaped, 99)) == 0);
 }
 
 } // namespace
@@ -362,6 +385,8 @@ int main() {
     for (std::uintptr_t bits : surface) {
         assert(bits != 0);
     }
+
+    test_filedialog_path_list_escaping();
 
     return 0;
 }

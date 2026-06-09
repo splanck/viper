@@ -982,6 +982,77 @@ static void test_png_subbyte_grayscale_trns_uses_raw_sample() {
     printf("test_png_subbyte_grayscale_trns_uses_raw_sample: PASSED\n");
 }
 
+static void test_png_rejects_trns_for_alpha_color_type() {
+    const char *pngpath = "/tmp/viper_test_rgba_trns_invalid.png";
+    std::vector<uint8_t> png;
+    static const uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+    png.insert(png.end(), signature, signature + 8);
+
+    uint8_t ihdr[13] = {0};
+    ihdr[3] = 1;
+    ihdr[7] = 1;
+    ihdr[8] = 8;
+    ihdr[9] = 6;
+    test_png_append_chunk(png, "IHDR", ihdr, sizeof(ihdr));
+    uint8_t trns[2] = {0, 0};
+    test_png_append_chunk(png, "tRNS", trns, sizeof(trns));
+    test_png_append_chunk(png, "IEND", nullptr, 0);
+    assert(test_write_file(pngpath, png));
+
+    rt_string path = rt_string_from_bytes(pngpath, strlen(pngpath));
+    assert(rt_pixels_load_png(path) == nullptr);
+    unlink(pngpath);
+    printf("test_png_rejects_trns_for_alpha_color_type: PASSED\n");
+}
+
+static void test_png_rejects_wrong_truecolor_trns_length() {
+    const char *pngpath = "/tmp/viper_test_rgb_trns_bad_len.png";
+    std::vector<uint8_t> png;
+    static const uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+    png.insert(png.end(), signature, signature + 8);
+
+    uint8_t ihdr[13] = {0};
+    ihdr[3] = 1;
+    ihdr[7] = 1;
+    ihdr[8] = 8;
+    ihdr[9] = 2;
+    test_png_append_chunk(png, "IHDR", ihdr, sizeof(ihdr));
+    uint8_t trns[7] = {0, 0, 0, 0, 0, 0, 0};
+    test_png_append_chunk(png, "tRNS", trns, sizeof(trns));
+    test_png_append_chunk(png, "IEND", nullptr, 0);
+    assert(test_write_file(pngpath, png));
+
+    rt_string path = rt_string_from_bytes(pngpath, strlen(pngpath));
+    assert(rt_pixels_load_png(path) == nullptr);
+    unlink(pngpath);
+    printf("test_png_rejects_wrong_truecolor_trns_length: PASSED\n");
+}
+
+static void test_png_adam7_invalid_filter_rejected() {
+    const char *pngpath = "/tmp/viper_test_adam7_bad_filter.png";
+    std::vector<uint8_t> png;
+    static const uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+    png.insert(png.end(), signature, signature + 8);
+
+    uint8_t ihdr[13] = {0};
+    ihdr[3] = 1;
+    ihdr[7] = 1;
+    ihdr[8] = 8;
+    ihdr[9] = 2;
+    ihdr[12] = 1; // Adam7
+    test_png_append_chunk(png, "IHDR", ihdr, sizeof(ihdr));
+    uint8_t scanline[4] = {9, 255, 0, 0};
+    std::vector<uint8_t> idat = test_png_stored_idat(scanline, sizeof(scanline));
+    test_png_append_chunk(png, "IDAT", idat.data(), idat.size());
+    test_png_append_chunk(png, "IEND", nullptr, 0);
+    assert(test_write_file(pngpath, png));
+
+    rt_string path = rt_string_from_bytes(pngpath, strlen(pngpath));
+    assert(rt_pixels_load_png(path) == nullptr);
+    unlink(pngpath);
+    printf("test_png_adam7_invalid_filter_rejected: PASSED\n");
+}
+
 // ============================================================================
 // Transform Tests
 // ============================================================================
@@ -1641,6 +1712,9 @@ int main() {
     test_png_indexed_requires_palette();
     test_png_indexed_rejects_palette_index_out_of_range();
     test_png_subbyte_grayscale_trns_uses_raw_sample();
+    test_png_rejects_trns_for_alpha_color_type();
+    test_png_rejects_wrong_truecolor_trns_length();
+    test_png_adam7_invalid_filter_rejected();
 
     // Transforms
     test_flip_h();

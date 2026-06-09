@@ -72,7 +72,7 @@ static int32_t scene3d_count_subtree(const rt_scene_node3d *node) {
             grown = (const rt_scene_node3d **)realloc((void *)stack, new_capacity * sizeof(*stack));
             if (!grown) {
                 free(stack);
-                return 0;
+                return -1;
             }
             stack = grown;
             capacity = new_capacity;
@@ -101,7 +101,7 @@ static int32_t scene3d_count_subtree(const rt_scene_node3d *node) {
                     (const rt_scene_node3d **)realloc((void *)stack, new_capacity * sizeof(*stack));
                 if (!grown) {
                     free(stack);
-                    return 0;
+                    return -1;
                 }
                 stack = grown;
                 capacity = new_capacity;
@@ -1241,6 +1241,14 @@ void *rt_scene3d_load(rt_string path) {
     if (!vscn_load_nodes(scene, nodes_arr, meshes, mesh_count, materials, material_count))
         goto fail;
     scene->node_count = scene3d_count_subtree(scene->root);
+    if (scene->node_count < 0) {
+        rt_trap("Scene3D.LoadVscn: allocation failed while counting nodes");
+        goto fail;
+    }
+    if (scene->node_count == INT32_MAX) {
+        rt_trap("Scene3D.LoadVscn: too many nodes");
+        goto fail;
+    }
     if (scene->node_count <= 0)
         goto fail;
     scene->last_culled_count = 0;

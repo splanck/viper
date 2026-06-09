@@ -45,6 +45,7 @@ extern int64_t rt_unbox_i64(void *box);
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -65,7 +66,7 @@ typedef struct {
     int8_t triggered;
     /* Combo state */
     int64_t combo_index;
-    int64_t last_match_frame;
+    uint64_t last_match_frame;
 } kc_entry;
 
 typedef struct {
@@ -73,7 +74,7 @@ typedef struct {
     kc_entry *entries;
     int64_t count;
     int64_t capacity;
-    int64_t frame_counter;
+    uint64_t frame_counter;
 } rt_keychord_impl;
 
 /// @brief Linear search for a keychord entry by name.
@@ -110,20 +111,47 @@ static void kc_finalizer(void *obj) {
 
 /// @brief Grow the entries array by 2x if it is full.
 /// @details Called before every insertion so callers do not need to check.
-///   Uses realloc for in-place growth where possible; traps on allocation
-///   failure because a half-grown entries array would leave the object
-///   in an inconsistent state.
-static void ensure_capacity(rt_keychord_impl *kc) {
+///   Uses realloc for in-place growth where possible and guards both capacity
+///   multiplication and byte-size conversion.
+/// @return 1 when capacity is available, 0 on allocation overflow/failure.
+static int ensure_capacity(rt_keychord_impl *kc) {
+    if (!kc)
+        return 0;
     if (kc->count < kc->capacity)
-        return;
+        return 1;
+    if (kc->capacity <= 0 || kc->capacity > INT64_MAX / 2 ||
+        (uint64_t)(kc->capacity * 2) > (uint64_t)SIZE_MAX / sizeof(kc_entry)) {
+        rt_trap("KeyChord: too many entries");
+        return 0;
+    }
     int64_t new_cap = kc->capacity * 2;
     kc_entry *new_entries = (kc_entry *)realloc(kc->entries, (size_t)new_cap * sizeof(kc_entry));
     if (!new_entries) {
         rt_trap("KeyChord: memory allocation failed");
-        return;
+        return 0;
     }
     kc->entries = new_entries;
     kc->capacity = new_cap;
+    return 1;
+}
+
+/// @brief Advance the KeyChord frame counter without signed overflow.
+/// @details The counter is monotonic for practical runtimes. If it reaches the uint64 limit, active
+///          combo progress is reset and the counter restarts from one so timeout arithmetic remains
+///          well-defined.
+/// @param kc KeyChord instance to advance.
+static void keychord_advance_frame(rt_keychord_impl *kc) {
+    if (!kc)
+        return;
+    if (kc->frame_counter == UINT64_MAX) {
+        kc->frame_counter = 1;
+        for (int64_t i = 0; i < kc->count; i++) {
+            kc->entries[i].combo_index = 0;
+            kc->entries[i].last_match_frame = 0;
+        }
+        return;
+    }
+    kc->frame_counter++;
 }
 
 /// @brief Add or replace a chord/combo entry in the keychord manager.
@@ -152,7 +180,8 @@ static void add_entry(
         kc->count--;
     }
 
-    ensure_capacity(kc);
+    if (!ensure_capacity(kc))
+        return;
 
     kc_entry *e = &kc->entries[kc->count];
     memset(e, 0, sizeof(kc_entry));
@@ -196,6 +225,8 @@ void *rt_keychord_new(void) {
     kc->entries = (kc_entry *)calloc((size_t)KC_INITIAL_CAPACITY, sizeof(kc_entry));
     if (!kc->entries) {
         rt_trap("KeyChord: memory allocation failed");
+        if (rt_obj_release_check0(kc))
+            rt_obj_free(kc);
         return NULL;
     }
     rt_obj_set_finalizer(kc, kc_finalizer);
@@ -233,7 +264,7 @@ void rt_keychord_update(void *obj) {
     rt_keychord_impl *kc = (rt_keychord_impl *)obj;
     int64_t i;
 
-    kc->frame_counter++;
+    keychord_advance_frame(kc);
 
     for (i = 0; i < kc->count; i++) {
         kc_entry *e = &kc->entries[i];
@@ -262,11 +293,16 @@ void rt_keychord_update(void *obj) {
         } else /* KC_TYPE_COMBO */
         {
             int8_t wrong_order_pressed = 0;
+            e->was_active = e->is_active;
+            e->is_active = 0;
 
             /* Check for timeout */
-            if (e->combo_index > 0 &&
-                (kc->frame_counter - e->last_match_frame) > e->window_frames) {
-                e->combo_index = 0;
+            if (e->combo_index > 0) {
+                uint64_t elapsed = kc->frame_counter >= e->last_match_frame
+                                       ? kc->frame_counter - e->last_match_frame
+                                       : UINT64_MAX;
+                if (elapsed > (uint64_t)e->window_frames)
+                    e->combo_index = 0;
             }
 
             if (e->combo_index < e->key_count) {
@@ -291,6 +327,7 @@ void rt_keychord_update(void *obj) {
 
                     if (e->combo_index >= e->key_count) {
                         e->triggered = 1;
+                        e->is_active = 1;
                         e->combo_index = 0;
                     }
                 }

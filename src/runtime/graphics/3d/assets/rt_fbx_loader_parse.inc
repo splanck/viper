@@ -74,24 +74,27 @@ static void fbx_parent_dir(char *out, size_t out_size, const char *path) {
 }
 
 /// @brief Join a directory and leaf filename using `/`.
-static void fbx_join_path(char *out, size_t out_size, const char *dir, const char *leaf) {
+/// @return Non-zero when the joined path fit in @p out, 0 for empty/overflowing input.
+static int fbx_join_path(char *out, size_t out_size, const char *dir, const char *leaf) {
     size_t dir_len;
     char clean_leaf[1024];
     size_t leaf_len;
     if (!out || out_size == 0)
-        return;
+        return 0;
     out[0] = '\0';
     if (!leaf || !*leaf)
-        return;
-    if (strlen(leaf) >= sizeof(clean_leaf))
-        return;
+        return 0;
+    if (strlen(leaf) >= sizeof(clean_leaf)) {
+        rt_trap("FBX loader: texture filename is too long");
+        return 0;
+    }
     fbx_normalize_path(clean_leaf, sizeof(clean_leaf), leaf);
     leaf_len = strlen(clean_leaf);
     if (leaf_len == 0 || leaf_len >= out_size)
-        return;
+        return 0;
     if (!dir || !*dir) {
         memcpy(out, clean_leaf, leaf_len + 1u);
-        return;
+        return 1;
     }
     fbx_normalize_path(out, out_size, dir);
     dir_len = strlen(out);
@@ -101,9 +104,11 @@ static void fbx_join_path(char *out, size_t out_size, const char *dir, const cha
     }
     if (dir_len + leaf_len >= out_size) {
         out[0] = '\0';
-        return;
+        rt_trap("FBX loader: joined texture path is too long");
+        return 0;
     }
     memcpy(out + dir_len, clean_leaf, leaf_len + 1u);
+    return 1;
 }
 
 /// @brief Sanitize a texture reference into a safe relative path in @p out (path-traversal
@@ -175,6 +180,15 @@ static int fbx_has_uri_scheme(const char *path) {
     return 0;
 }
 
+/// @brief Return whether absolute FBX texture references may be loaded directly.
+/// @details Absolute paths can expose arbitrary local files when loading untrusted FBX assets, so
+///          they are disabled by default. Set VIPER_FBX_ALLOW_ABSOLUTE_TEXTURES=1 to opt in.
+/// @return Non-zero when absolute texture loading is explicitly enabled.
+static int fbx_absolute_texture_paths_allowed(void) {
+    const char *value = getenv("VIPER_FBX_ALLOW_ABSOLUTE_TEXTURES");
+    return value && value[0] == '1' && value[1] == '\0';
+}
+
 /// @brief Try a local texture reference, then fall back to its basename beside the FBX file.
 static void *fbx_try_load_texture_path(const char *fbx_path, const char *texture_ref) {
     char raw_ref[1024];
@@ -187,15 +201,17 @@ static void *fbx_try_load_texture_path(const char *fbx_path, const char *texture
 
     if (!texture_ref || !*texture_ref)
         return NULL;
-    if (strlen(texture_ref) >= sizeof(raw_ref))
+    if (strlen(texture_ref) >= sizeof(raw_ref)) {
+        rt_trap("FBX loader: texture reference is too long");
         return NULL;
+    }
 
     fbx_normalize_path(raw_ref, sizeof(raw_ref), texture_ref);
     if (!*raw_ref || fbx_has_uri_scheme(raw_ref))
         return NULL;
 
     fbx_parent_dir(dir, sizeof(dir), fbx_path);
-    if (fbx_is_absolute_path(raw_ref)) {
+    if (fbx_is_absolute_path(raw_ref) && fbx_absolute_texture_paths_allowed()) {
         pixels = rt_pixels_load(rt_const_cstr(raw_ref));
         if (pixels)
             return pixels;
@@ -204,8 +220,8 @@ static void *fbx_try_load_texture_path(const char *fbx_path, const char *texture
     have_relative = fbx_normalize_relative_texture_ref(raw_ref, normalized_ref, sizeof(normalized_ref));
     if (have_relative) {
         if (*dir) {
-            fbx_join_path(candidate, sizeof(candidate), dir, normalized_ref);
-            pixels = rt_pixels_load(rt_const_cstr(candidate));
+            if (fbx_join_path(candidate, sizeof(candidate), dir, normalized_ref))
+                pixels = rt_pixels_load(rt_const_cstr(candidate));
         } else {
             pixels = rt_pixels_load(rt_const_cstr(normalized_ref));
         }
@@ -219,10 +235,12 @@ static void *fbx_try_load_texture_path(const char *fbx_path, const char *texture
     if (have_relative && strcmp(basename, normalized_ref) == 0 && !*dir)
         return NULL;
 
-    if (*dir)
-        fbx_join_path(candidate, sizeof(candidate), dir, basename);
-    else
+    if (*dir) {
+        if (!fbx_join_path(candidate, sizeof(candidate), dir, basename))
+            return NULL;
+    } else {
         fbx_normalize_path(candidate, sizeof(candidate), basename);
+    }
     return rt_pixels_load(rt_const_cstr(candidate));
 }
 

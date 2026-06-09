@@ -45,6 +45,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef RT_SCENE3D_MAX_ANCESTOR_DEPTH
+#define RT_SCENE3D_MAX_ANCESTOR_DEPTH 1000000
+#endif
+
 /// @brief Release a retained Graphics3D slot only if it still has the expected class.
 static void scene_node_release_class_slot(void **slot, int64_t class_id) {
     if (!slot || !*slot)
@@ -416,15 +420,26 @@ void *rt_scene_node3d_get_world_scale(void *obj) {
  * SceneNode3D — hierarchy
  *=========================================================================*/
 
-/// @brief Reparent `child` under `obj`. Detaches from previous parent first; rejects cycles.
-int8_t rt_scene_node3d_try_add_child(void *obj, void *child_obj) {
-    rt_scene_node3d *parent = scene_node3d_checked(obj);
-    rt_scene_node3d *child = scene_node3d_checked(child_obj);
+/// @brief Shared hierarchy attach implementation for AddChild and TryAddChild.
+/// @details The try-style public API must remain a non-trapping boolean probe for invalid
+///          parent/child relationships, while AddChild should surface programmer errors through
+///          runtime traps. Allocation and overflow failures trap in both modes because they are
+///          runtime failures rather than ordinary relationship rejections.
+/// @param parent Already-validated parent node, or NULL for an invalid parent handle.
+/// @param child Already-validated child node, or NULL for an invalid child handle.
+/// @param trap_on_reject Non-zero to trap for invalid hierarchy relationships.
+/// @return 1 when @p child is attached to @p parent, otherwise 0.
+static int8_t scene_node3d_try_add_child_impl(rt_scene_node3d *parent,
+                                              rt_scene_node3d *child,
+                                              int trap_on_reject) {
     if (!parent || !child || parent == child)
         return 0;
     if (child->owner_scene && child->owner_scene->root == child &&
-        (!parent->owner_scene || parent->owner_scene->root != parent))
+        (!parent->owner_scene || parent->owner_scene->root != parent)) {
+        if (trap_on_reject)
+            rt_trap("SceneNode3D.AddChild: cannot reparent a scene root under an external node");
         return 0;
+    }
     if (child->parent == parent)
         return 1;
 
@@ -433,9 +448,12 @@ int8_t rt_scene_node3d_try_add_child(void *obj, void *child_obj) {
      * scanning every descendant of large child subtrees on reparent. */
     int32_t ancestor_guard = 0;
     for (rt_scene_node3d *ancestor = parent; ancestor;
-         ancestor = scene_node_ref(ancestor->parent)) {
-        if (++ancestor_guard > 100000)
+        ancestor = scene_node_ref(ancestor->parent)) {
+        if (++ancestor_guard > RT_SCENE3D_MAX_ANCESTOR_DEPTH) {
+            if (trap_on_reject)
+                rt_trap("SceneNode3D.AddChild: hierarchy is too deep");
             return 0;
+        }
         if (ancestor == child)
             return 0;
     }
@@ -463,6 +481,9 @@ int8_t rt_scene_node3d_try_add_child(void *obj, void *child_obj) {
             return 0;
         }
         parent->children = nc;
+        memset(parent->children + parent->child_capacity,
+               0,
+               (size_t)(new_cap - parent->child_capacity) * sizeof(parent->children[0]));
         parent->child_capacity = new_cap;
     }
 
@@ -486,11 +507,20 @@ int8_t rt_scene_node3d_try_add_child(void *obj, void *child_obj) {
     return 1;
 }
 
+/// @brief Reparent `child` under `obj`. Detaches from previous parent first; rejects cycles.
+int8_t rt_scene_node3d_try_add_child(void *obj, void *child_obj) {
+    rt_scene_node3d *parent = scene_node3d_checked(obj);
+    rt_scene_node3d *child = scene_node3d_checked(child_obj);
+    return scene_node3d_try_add_child_impl(parent, child, 0);
+}
+
 /// @brief Attach @p child_obj under @p obj, retaining it and propagating owner/dirty state.
 /// @details Updates the child's parent link and owning scene, and marks the spatial index topology
 ///          dirty so the BVH rebuilds. Ignores cycles and invalid handles.
 void rt_scene_node3d_add_child(void *obj, void *child_obj) {
-    (void)rt_scene_node3d_try_add_child(obj, child_obj);
+    rt_scene_node3d *parent = scene_node3d_checked(obj);
+    rt_scene_node3d *child = scene_node3d_checked(child_obj);
+    (void)scene_node3d_try_add_child_impl(parent, child, 1);
 }
 
 /// @brief Detach `child` from `obj`. Decrements the GC refcount. No-op if not actually a child.

@@ -571,12 +571,15 @@ static void platform_pad_vibrate(int64_t index, double left, double right) {
 #include <fcntl.h>
 #include <linux/input.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 typedef struct {
     int fd;
     bool has_rumble;
     int rumble_id;
+    dev_t device_rdev;
+    ino_t device_ino;
     int abs_min[ABS_MAX + 1];
     int abs_max[ABS_MAX + 1];
 } linux_pad;
@@ -628,10 +631,46 @@ static void linux_reset_pad(linux_pad *pad) {
     pad->fd = -1;
     pad->has_rumble = false;
     pad->rumble_id = -1;
+    pad->device_rdev = 0;
+    pad->device_ino = 0;
     for (int i = 0; i <= ABS_MAX; ++i) {
         pad->abs_min[i] = -32768;
         pad->abs_max[i] = 32767;
     }
+}
+
+/// @brief Clear the public logical state for one Linux gamepad slot.
+/// @details Used for initialization and disconnect handling so stale buttons, axes, triggers, and
+///          names do not remain visible after the underlying evdev fd disappears.
+/// @param index Slot index in @c g_pads.
+static void linux_clear_logical_pad(int index) {
+    if (index < 0 || index >= VIPER_PAD_MAX)
+        return;
+    rt_pad_state zero = {0};
+    g_pads[index] = zero;
+}
+
+/// @brief Return whether an evdev device identity is already bound to a slot.
+/// @param rdev Device special-file id from stat/fstat.
+/// @param ino Inode from stat/fstat.
+/// @return true if any open Linux pad slot already owns the same device.
+static bool linux_device_already_bound(dev_t rdev, ino_t ino) {
+    for (int i = 0; i < VIPER_PAD_MAX; ++i) {
+        if (g_linux_pads[i].fd >= 0 && g_linux_pads[i].device_rdev == rdev &&
+            g_linux_pads[i].device_ino == ino)
+            return true;
+    }
+    return false;
+}
+
+/// @brief Find the first unbound Linux gamepad slot.
+/// @return Slot index in [0, VIPER_PAD_MAX), or -1 when all slots are occupied.
+static int linux_find_free_pad_slot(void) {
+    for (int i = 0; i < VIPER_PAD_MAX; ++i) {
+        if (g_linux_pads[i].fd < 0)
+            return i;
+    }
+    return -1;
 }
 
 /// @brief Map a raw evdev axis reading to the [-1, +1] range using its absinfo range.
@@ -666,42 +705,33 @@ static void linux_apply_hat(rt_pad_state *pad, int value, bool is_x) {
     }
 }
 
-/// @brief One-time enumeration of `/dev/input/eventN` to bind up to `VIPER_PAD_MAX` gamepads.
-///
-/// Opens each `event*` device, classifies it via `linux_is_gamepad`,
-/// reads its calibration ranges via `EVIOCGABS`, and probes for
-/// force-feedback rumble support. Stays bound for the lifetime of
-/// the process — hot-plugging is not handled here (re-init would be needed).
-static void linux_pad_init(void) {
-    if (g_linux_initialized)
-        return;
-
-    for (int i = 0; i < VIPER_PAD_MAX; ++i) {
-        g_linux_pads[i].fd = -1;
-        g_linux_pads[i].has_rumble = false;
-        g_linux_pads[i].rumble_id = -1;
-        for (int j = 0; j <= ABS_MAX; ++j) {
-            g_linux_pads[i].abs_min[j] = -32768;
-            g_linux_pads[i].abs_max[j] = 32767;
-        }
-        g_pads[i].connected = false;
-        g_pads[i].name[0] = '\0';
-    }
-
+/// @brief Scan `/dev/input/event*` and bind newly discovered gamepads into free slots.
+/// @details Already-open devices are skipped by comparing their device identity. This makes the
+///          scan safe to call after initialization for hotplug support without duplicating existing
+///          controllers into empty slots.
+static void linux_scan_gamepads(void) {
     DIR *dir = opendir("/dev/input");
-    if (!dir) {
-        g_linux_initialized = true;
+    if (!dir)
         return;
-    }
 
     struct dirent *ent;
-    int pad_index = 0;
-    while ((ent = readdir(dir)) != NULL && pad_index < VIPER_PAD_MAX) {
+    while ((ent = readdir(dir)) != NULL) {
+        int pad_index = linux_find_free_pad_slot();
+        if (pad_index < 0)
+            break;
         if (strncmp(ent->d_name, "event", 5) != 0)
             continue;
 
         char path[256];
-        snprintf(path, sizeof(path), "/dev/input/%s", ent->d_name);
+        int written = snprintf(path, sizeof(path), "/dev/input/%s", ent->d_name);
+        if (written < 0 || (size_t)written >= sizeof(path))
+            continue;
+
+        struct stat path_stat;
+        if (stat(path, &path_stat) != 0)
+            continue;
+        if (linux_device_already_bound(path_stat.st_rdev, path_stat.st_ino))
+            continue;
 
         int fd = open(path, O_RDWR | O_NONBLOCK);
         if (fd < 0)
@@ -709,16 +739,28 @@ static void linux_pad_init(void) {
         if (fd < 0)
             continue;
 
+        struct stat fd_stat;
+        if (fstat(fd, &fd_stat) != 0 ||
+            linux_device_already_bound(fd_stat.st_rdev, fd_stat.st_ino)) {
+            close(fd);
+            continue;
+        }
+
         if (!linux_is_gamepad(fd)) {
             close(fd);
             continue;
         }
 
         linux_pad *pad = &g_linux_pads[pad_index];
+        linux_reset_pad(pad);
         pad->fd = fd;
+        pad->device_rdev = fd_stat.st_rdev;
+        pad->device_ino = fd_stat.st_ino;
+        linux_clear_logical_pad(pad_index);
 
         char name[64];
         if (ioctl(fd, EVIOCGNAME(sizeof(name)), name) >= 0) {
+            name[sizeof(name) - 1u] = '\0';
             snprintf(g_pads[pad_index].name, sizeof(g_pads[pad_index].name), "%s", name);
         } else {
             snprintf(g_pads[pad_index].name,
@@ -744,16 +786,32 @@ static void linux_pad_init(void) {
         }
 
         g_pads[pad_index].connected = true;
-        pad_index++;
     }
 
     closedir(dir);
+}
+
+/// @brief Initialize Linux pad slots and perform the first evdev scan.
+/// @details The expensive state reset happens once. Device scanning is reusable so later polls can
+///          discover hotplugged controllers when slots are available.
+static void linux_pad_init(void) {
+    if (g_linux_initialized)
+        return;
+
+    for (int i = 0; i < VIPER_PAD_MAX; ++i) {
+        g_linux_pads[i].fd = -1;
+        linux_reset_pad(&g_linux_pads[i]);
+        linux_clear_logical_pad(i);
+    }
+
+    linux_scan_gamepads();
     g_linux_initialized = true;
 }
 
 /// @brief Linux evdev implementation of platform_pad_poll.
 /// @details Calls linux_pad_init to ensure /dev/input/event* devices have been
-///   scanned and opened.  For each active pad file descriptor, drains the evdev
+///   scanned and opened, and rescans free slots for hotplugged devices. For each active pad file
+///   descriptor, drains the evdev
 ///   event queue in a non-blocking read loop: EV_KEY events update button state
 ///   (BTN_SOUTH/EAST/WEST/NORTH map to A/B/X/Y; shoulder, stick-click, and
 ///   guide buttons follow), while EV_ABS events update analog axes and triggers
@@ -763,11 +821,14 @@ static void linux_pad_init(void) {
 ///   marked disconnected.
 static void platform_pad_poll(void) {
     linux_pad_init();
+    if (linux_find_free_pad_slot() >= 0)
+        linux_scan_gamepads();
+    bool need_rescan = false;
 
     for (int i = 0; i < VIPER_PAD_MAX; ++i) {
         linux_pad *pad = &g_linux_pads[i];
         if (pad->fd < 0) {
-            g_pads[i].connected = false;
+            linux_clear_logical_pad(i);
             continue;
         }
 
@@ -867,10 +928,13 @@ static void platform_pad_poll(void) {
 
         if (n < 0 && errno == ENODEV) {
             linux_reset_pad(pad);
-            g_pads[i].connected = false;
-            g_pads[i].name[0] = '\0';
+            linux_clear_logical_pad(i);
+            need_rescan = true;
         }
     }
+
+    if (need_rescan && linux_find_free_pad_slot() >= 0)
+        linux_scan_gamepads();
 }
 
 /// @brief Linux evdev FF_RUMBLE implementation of platform_pad_vibrate.

@@ -23,10 +23,22 @@
 
 #include "rt_pixels_internal.h"
 
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if !defined(_WIN32)
+#include <sys/types.h>
+#endif
+
+#if defined(_WIN32)
+#define gif_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
+#define gif_ftell(fp) _ftelli64((fp))
+#else
+#define gif_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
+#define gif_ftell(fp) ftello((fp))
+#endif
 
 //===----------------------------------------------------------------------===//
 // GIF file reader
@@ -39,6 +51,9 @@ typedef struct {
 } gif_reader_t;
 
 #define GIF_MAX_CANVAS_PIXELS ((size_t)64u * 1024u * 1024u)
+#define GIF_MAX_FILE_BYTES (INT64_C(100) * 1024 * 1024)
+#define GIF_MAX_DECODED_FRAME_BYTES ((size_t)512u * 1024u * 1024u)
+#define GIF_MAX_LZW_MIN_CODE_SIZE 8
 
 /// @brief Validate a GIF logical screen size and compute its pixel count.
 /// @details Keeps all GIF decode paths on the same overflow and memory-budget
@@ -76,6 +91,21 @@ static void gif_release_decoded_frames(gif_frame_t *frames, int frame_count) {
             rt_obj_free(frames[i].pixels);
         frames[i].pixels = NULL;
     }
+}
+
+/// @brief Check whether another full-canvas GIF frame snapshot fits the decoded-output budget.
+/// @details Animated GIF frames returned by this decoder are full RGBA canvas snapshots. This
+///          cumulative budget prevents compact LZW streams from expanding into unbounded retained
+///          frame memory while still allowing multi-frame animations under the configured cap.
+/// @param decoded_bytes Bytes already committed to returned frame snapshots.
+/// @param frame_bytes Bytes needed by the next full-canvas snapshot.
+/// @return 1 if the next frame is allowed, 0 on overflow or budget exhaustion.
+static int gif_decoded_frame_budget_allows(size_t decoded_bytes, size_t frame_bytes) {
+    if (frame_bytes == 0 || frame_bytes > GIF_MAX_DECODED_FRAME_BYTES)
+        return 0;
+    if (decoded_bytes > SIZE_MAX - frame_bytes)
+        return 0;
+    return decoded_bytes + frame_bytes <= GIF_MAX_DECODED_FRAME_BYTES;
 }
 
 /// @brief Read `count` bytes from the GIF stream into `buf`; returns 1 on success, 0 on underflow.
@@ -278,7 +308,7 @@ static uint8_t *lzw_decompress(int min_code_size,
                                size_t data_len,
                                size_t expected_pixels,
                                size_t *out_len) {
-    if (min_code_size < 2 || min_code_size > 11)
+    if (min_code_size < 2 || min_code_size > GIF_MAX_LZW_MIN_CODE_SIZE)
         return NULL;
     if (expected_pixels == 0 || expected_pixels > SIZE_MAX - 256)
         return NULL;
@@ -405,16 +435,16 @@ int gif_decode_file(const char *filepath,
     if (!f)
         return 0;
 
-    if (fseek(f, 0, SEEK_END) != 0) {
+    if (gif_fseek(f, 0, SEEK_END) != 0) {
         fclose(f);
         return 0;
     }
-    long file_len = ftell(f);
-    if (file_len < 0 || fseek(f, 0, SEEK_SET) != 0) {
+    int64_t file_len = (int64_t)gif_ftell(f);
+    if (file_len < 0 || gif_fseek(f, 0, SEEK_SET) != 0) {
         fclose(f);
         return 0;
     }
-    if (file_len <= 0 || file_len > 100 * 1024 * 1024) {
+    if (file_len <= 0 || file_len > GIF_MAX_FILE_BYTES) {
         fclose(f);
         return 0;
     }
@@ -480,6 +510,8 @@ int gif_decode_file(const char *filepath,
     int frame_cap = 16;
     int frame_count = 0;
     int decode_failed = 0;
+    size_t decoded_frame_bytes = 0;
+    size_t frame_snapshot_bytes = canvas_size * sizeof(uint32_t);
     gif_frame_t *frames = (gif_frame_t *)calloc((size_t)frame_cap, sizeof(gif_frame_t));
     if (!frames) {
         free(file_data);
@@ -605,8 +637,10 @@ int gif_decode_file(const char *filepath,
 
             // LZW minimum code size
             int min_code_size = gif_read_u8(r);
-            if (min_code_size < 2 || min_code_size > 11)
-                goto skip_image_data;
+            if (min_code_size < 2 || min_code_size > GIF_MAX_LZW_MIN_CODE_SIZE) {
+                decode_failed = 1;
+                break;
+            }
             if (img_w <= 0 || img_h <= 0 || img_left > screen_w - img_w ||
                 img_top > screen_h - img_h)
                 goto skip_image_data;
@@ -690,6 +724,10 @@ int gif_decode_file(const char *filepath,
             free(indices);
 
             // Create Pixels object for this frame (snapshot of current canvas)
+            if (!gif_decoded_frame_budget_allows(decoded_frame_bytes, frame_snapshot_bytes)) {
+                decode_failed = 1;
+                break;
+            }
             rt_pixels_impl *px = pixels_alloc((int64_t)screen_w, (int64_t)screen_h);
             if (px) {
                 memcpy(px->data, canvas, canvas_size * sizeof(uint32_t));
@@ -719,6 +757,7 @@ int gif_decode_file(const char *filepath,
                 frames[frame_count].delay_ms = gce_valid ? gce_delay_ms : 100;
                 frames[frame_count].dispose_method = gce_dispose;
                 frame_count++;
+                decoded_frame_bytes += frame_snapshot_bytes;
             } else {
                 decode_failed = 1;
                 break;
@@ -760,7 +799,9 @@ int gif_decode_file(const char *filepath,
             continue;
         }
 
-        // Unknown block type — skip
+        // Unknown top-level block types have no generic length field; fail closed.
+        decode_failed = 1;
+        break;
     }
 
     free(canvas);

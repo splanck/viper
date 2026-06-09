@@ -192,10 +192,26 @@ static void parse_strf_audio(avi_context_t *ctx, const uint8_t *data, uint32_t s
     if (size < 16)
         return;
     /* WAVEFORMATEX */
-    ctx->audio.channels = (int32_t)read_le16(data + 2);
-    ctx->audio.sample_rate = (int32_t)read_le32(data + 4);
-    ctx->audio.block_align = (int32_t)read_le16(data + 12);
-    ctx->audio.bits_per_sample = (int32_t)read_le16(data + 14);
+    uint16_t format_tag = read_le16(data);
+    int32_t channels = (int32_t)read_le16(data + 2);
+    uint32_t sample_rate_u = read_le32(data + 4);
+    int32_t block_align = (int32_t)read_le16(data + 12);
+    int32_t bits_per_sample = (int32_t)read_le16(data + 14);
+    if ((format_tag != 1u && format_tag != 3u) || channels <= 0 || channels > 8 ||
+        sample_rate_u == 0 || sample_rate_u > 384000u || sample_rate_u > (uint32_t)INT32_MAX ||
+        block_align <= 0 ||
+        (bits_per_sample != 8 && bits_per_sample != 16 && bits_per_sample != 24 &&
+         bits_per_sample != 32 && bits_per_sample != 64)) {
+        ctx->has_audio = 0;
+        ctx->audio_stream_index = -1;
+        memset(&ctx->audio, 0, sizeof(ctx->audio));
+        return;
+    }
+    ctx->audio.channels = channels;
+    ctx->audio.sample_rate = (int32_t)sample_rate_u;
+    ctx->audio.block_align = block_align;
+    ctx->audio.bits_per_sample = bits_per_sample;
+    ctx->has_audio = 1;
 }
 
 /*==========================================================================
@@ -335,12 +351,17 @@ int avi_parse(avi_context_t *ctx, const uint8_t *data, size_t len) {
     /* Validate RIFF header */
     if (read_le32(data) != FOURCC_RIFF)
         return -1;
-    /* uint32_t riff_size = read_le32(data + 4); */
+    uint32_t riff_size = read_le32(data + 4);
+    if (riff_size < 4u || (size_t)riff_size > SIZE_MAX - 8u)
+        return -1;
+    size_t riff_end = (size_t)riff_size + 8u;
+    if (riff_end > len)
+        return -1;
     if (read_le32(data + 8) != FOURCC_AVI)
         return -1;
 
     /* Walk top-level chunks (skip RIFF header: 12 bytes) */
-    walk_chunks(data, len, 12, handle_top, ctx, NULL);
+    walk_chunks(data, riff_end, 12, handle_top, ctx, NULL);
     if (ctx->parse_error) {
         avi_free(ctx);
         return -1;

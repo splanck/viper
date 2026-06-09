@@ -131,6 +131,8 @@ static void rt_material3d_finalize(void *obj) {
 /// a slot to its own contents (or to a shared texture whose only owner is this slot)
 /// can't briefly drop the refcount and trigger a finalize.
 static void material_assign_ref(void **slot, void *value) {
+    if (!slot)
+        return;
     if (*slot == value)
         return;
     rt_obj_retain_maybe(value);
@@ -243,7 +245,11 @@ static int material_texture_ref_valid_or_trap(void *texture, const char *method)
 /// input.
 /// @return 1 on a successful assignment (including clearing with NULL), 0 if validation trapped.
 static int material_assign_texture_ref_checked(void **slot, void *texture, const char *method) {
-    if (slot && *slot && !material_texture_ref_supported(*slot))
+    if (!slot) {
+        rt_trap(method ? method : "Material3D: internal texture slot is null");
+        return 0;
+    }
+    if (*slot && !material_texture_ref_supported(*slot))
         *slot = NULL;
     if (!material_texture_ref_valid_or_trap(texture, method))
         return 0;

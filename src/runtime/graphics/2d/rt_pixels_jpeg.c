@@ -121,6 +121,24 @@ static int jpeg_segment_has(const jpeg_ctx_t *ctx, size_t seg_end, size_t needed
     return ctx && ctx->pos <= seg_end && needed <= seg_end - ctx->pos;
 }
 
+/// @brief Read a TIFF-endian uint16 from an EXIF payload.
+/// @param p Pointer to two bytes inside the TIFF payload.
+/// @param big Non-zero for big-endian TIFF, zero for little-endian TIFF.
+/// @return Decoded unsigned 16-bit value.
+static uint16_t jpeg_tiff_read_u16(const uint8_t *p, int big) {
+    return big ? (uint16_t)((uint16_t)p[0] << 8 | p[1])
+               : (uint16_t)(p[0] | ((uint16_t)p[1] << 8));
+}
+
+/// @brief Read a TIFF-endian uint32 from an EXIF payload.
+/// @param p Pointer to four bytes inside the TIFF payload.
+/// @param big Non-zero for big-endian TIFF, zero for little-endian TIFF.
+/// @return Decoded unsigned 32-bit value.
+static uint32_t jpeg_tiff_read_u32(const uint8_t *p, int big) {
+    return big ? ((uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3])
+               : ((uint32_t)p[3] << 24 | (uint32_t)p[2] << 16 | (uint32_t)p[1] << 8 | p[0]);
+}
+
 /// @brief Pull the next entropy-coded byte, transparent to byte-stuffing & RST markers.
 ///
 /// JPEG escapes literal `0xFF` bytes inside the entropy segment as
@@ -339,97 +357,126 @@ static int jpeg_decode_block(jpeg_ctx_t *ctx,
 // ---------------------------------------------------------------------------
 #define JPEG_FIX_1 4096
 #define JPEG_FIX(x) ((int32_t)((x) * 4096.0 + 0.5))
-#define JPEG_DESCALE(x, n) (((x) + (1 << ((n) - 1))) >> (n))
+
+/// @brief Descale a fixed-point JPEG intermediate with symmetric rounding.
+/// @details Uses 64-bit arithmetic so malicious quantized coefficients cannot overflow during
+///          IDCT multiplication/addition. Negative values are rounded by magnitude to avoid
+///          relying on implementation-defined signed right-shift behavior for the rounding step.
+/// @param value Fixed-point value to descale.
+/// @param shift Number of fractional bits to remove.
+/// @return Rounded integer value after descaling.
+static int64_t jpeg_descale_i64(int64_t value, int shift) {
+    int64_t bias = INT64_C(1) << (shift - 1);
+    if (value == INT64_MIN)
+        return -((INT64_MAX >> shift) + 1);
+    if (value < 0)
+        return -(((-value) + bias) >> shift);
+    return (value + bias) >> shift;
+}
+
+/// @brief Saturate a 64-bit IDCT workspace value to int32_t.
+/// @details The final sample path clamps to 8-bit output later, but the intermediate workspace is
+///          stored in int32_t arrays. Saturating avoids undefined signed overflow while preserving
+///          deterministic decode failure containment for hostile inputs.
+/// @param value IDCT intermediate value.
+/// @return @p value clamped to the int32_t range.
+static int32_t jpeg_saturate_i32(int64_t value) {
+    if (value < INT32_MIN)
+        return INT32_MIN;
+    if (value > INT32_MAX)
+        return INT32_MAX;
+    return (int32_t)value;
+}
 
 /// @brief One-dimensional AAN IDCT applied to an 8-coefficient row, in place.
 static void jpeg_idct_row(int32_t *row) {
-    int32_t x0 = row[0], x1 = row[1], x2 = row[2], x3 = row[3];
-    int32_t x4 = row[4], x5 = row[5], x6 = row[6], x7 = row[7];
+    int64_t x0 = row[0], x1 = row[1], x2 = row[2], x3 = row[3];
+    int64_t x4 = row[4], x5 = row[5], x6 = row[6], x7 = row[7];
 
     // Even part
-    int32_t s0 = x0 + x4;
-    int32_t s1 = x0 - x4;
-    int32_t s2 =
-        JPEG_DESCALE(x2 * JPEG_FIX(0.541196100) + x6 * JPEG_FIX(0.541196100 - 1.847759065), 12);
-    int32_t s3 =
-        JPEG_DESCALE(x2 * JPEG_FIX(0.541196100 + 0.765366865) + x6 * JPEG_FIX(0.541196100), 12);
+    int64_t s0 = x0 + x4;
+    int64_t s1 = x0 - x4;
+    int64_t s2 = jpeg_descale_i64(
+        x2 * JPEG_FIX(0.541196100) + x6 * JPEG_FIX(0.541196100 - 1.847759065), 12);
+    int64_t s3 = jpeg_descale_i64(
+        x2 * JPEG_FIX(0.541196100 + 0.765366865) + x6 * JPEG_FIX(0.541196100), 12);
 
-    int32_t e0 = s0 + s3;
-    int32_t e1 = s1 + s2;
-    int32_t e2 = s1 - s2;
-    int32_t e3 = s0 - s3;
+    int64_t e0 = s0 + s3;
+    int64_t e1 = s1 + s2;
+    int64_t e2 = s1 - s2;
+    int64_t e3 = s0 - s3;
 
     // Odd part
-    int32_t t0 = x1 + x7;
-    int32_t t1 = x5 + x3;
-    int32_t t2 = x1 + x3;
-    int32_t t3 = x5 + x7;
-    int32_t z5 = JPEG_DESCALE((t2 - t3) * JPEG_FIX(1.175875602), 12);
+    int64_t t0 = x1 + x7;
+    int64_t t1 = x5 + x3;
+    int64_t t2 = x1 + x3;
+    int64_t t3 = x5 + x7;
+    int64_t z5 = jpeg_descale_i64((t2 - t3) * JPEG_FIX(1.175875602), 12);
 
-    t0 = JPEG_DESCALE(t0 * JPEG_FIX(-0.899976223), 12);
-    t1 = JPEG_DESCALE(t1 * JPEG_FIX(-2.562915447), 12);
-    t2 = JPEG_DESCALE(t2 * JPEG_FIX(-1.961570560), 12) + z5;
-    t3 = JPEG_DESCALE(t3 * JPEG_FIX(-0.390180644), 12) + z5;
+    t0 = jpeg_descale_i64(t0 * JPEG_FIX(-0.899976223), 12);
+    t1 = jpeg_descale_i64(t1 * JPEG_FIX(-2.562915447), 12);
+    t2 = jpeg_descale_i64(t2 * JPEG_FIX(-1.961570560), 12) + z5;
+    t3 = jpeg_descale_i64(t3 * JPEG_FIX(-0.390180644), 12) + z5;
 
-    int32_t o0 = JPEG_DESCALE(x7 * JPEG_FIX(0.298631336), 12) + t0 + t2;
-    int32_t o1 = JPEG_DESCALE(x5 * JPEG_FIX(2.053119869), 12) + t1 + t3;
-    int32_t o2 = JPEG_DESCALE(x3 * JPEG_FIX(3.072711026), 12) + t1 + t2;
-    int32_t o3 = JPEG_DESCALE(x1 * JPEG_FIX(1.501321110), 12) + t0 + t3;
+    int64_t o0 = jpeg_descale_i64(x7 * JPEG_FIX(0.298631336), 12) + t0 + t2;
+    int64_t o1 = jpeg_descale_i64(x5 * JPEG_FIX(2.053119869), 12) + t1 + t3;
+    int64_t o2 = jpeg_descale_i64(x3 * JPEG_FIX(3.072711026), 12) + t1 + t2;
+    int64_t o3 = jpeg_descale_i64(x1 * JPEG_FIX(1.501321110), 12) + t0 + t3;
 
-    row[0] = e0 + o3;
-    row[1] = e1 + o2;
-    row[2] = e2 + o1;
-    row[3] = e3 + o0;
-    row[4] = e3 - o0;
-    row[5] = e2 - o1;
-    row[6] = e1 - o2;
-    row[7] = e0 - o3;
+    row[0] = jpeg_saturate_i32(e0 + o3);
+    row[1] = jpeg_saturate_i32(e1 + o2);
+    row[2] = jpeg_saturate_i32(e2 + o1);
+    row[3] = jpeg_saturate_i32(e3 + o0);
+    row[4] = jpeg_saturate_i32(e3 - o0);
+    row[5] = jpeg_saturate_i32(e2 - o1);
+    row[6] = jpeg_saturate_i32(e1 - o2);
+    row[7] = jpeg_saturate_i32(e0 - o3);
 }
 
 /// @brief One-dimensional AAN IDCT applied to column `col` of an 8×8 workspace.
 static void jpeg_idct_col(int32_t *workspace, int col) {
-    int32_t x0 = workspace[col + 0 * 8], x1 = workspace[col + 1 * 8];
-    int32_t x2 = workspace[col + 2 * 8], x3 = workspace[col + 3 * 8];
-    int32_t x4 = workspace[col + 4 * 8], x5 = workspace[col + 5 * 8];
-    int32_t x6 = workspace[col + 6 * 8], x7 = workspace[col + 7 * 8];
+    int64_t x0 = workspace[col + 0 * 8], x1 = workspace[col + 1 * 8];
+    int64_t x2 = workspace[col + 2 * 8], x3 = workspace[col + 3 * 8];
+    int64_t x4 = workspace[col + 4 * 8], x5 = workspace[col + 5 * 8];
+    int64_t x6 = workspace[col + 6 * 8], x7 = workspace[col + 7 * 8];
 
-    int32_t s0 = x0 + x4;
-    int32_t s1 = x0 - x4;
-    int32_t s2 =
-        JPEG_DESCALE(x2 * JPEG_FIX(0.541196100) + x6 * JPEG_FIX(0.541196100 - 1.847759065), 12);
-    int32_t s3 =
-        JPEG_DESCALE(x2 * JPEG_FIX(0.541196100 + 0.765366865) + x6 * JPEG_FIX(0.541196100), 12);
+    int64_t s0 = x0 + x4;
+    int64_t s1 = x0 - x4;
+    int64_t s2 = jpeg_descale_i64(
+        x2 * JPEG_FIX(0.541196100) + x6 * JPEG_FIX(0.541196100 - 1.847759065), 12);
+    int64_t s3 = jpeg_descale_i64(
+        x2 * JPEG_FIX(0.541196100 + 0.765366865) + x6 * JPEG_FIX(0.541196100), 12);
 
-    int32_t e0 = s0 + s3;
-    int32_t e1 = s1 + s2;
-    int32_t e2 = s1 - s2;
-    int32_t e3 = s0 - s3;
+    int64_t e0 = s0 + s3;
+    int64_t e1 = s1 + s2;
+    int64_t e2 = s1 - s2;
+    int64_t e3 = s0 - s3;
 
-    int32_t t0 = x1 + x7;
-    int32_t t1 = x5 + x3;
-    int32_t t2 = x1 + x3;
-    int32_t t3 = x5 + x7;
-    int32_t z5 = JPEG_DESCALE((t2 - t3) * JPEG_FIX(1.175875602), 12);
+    int64_t t0 = x1 + x7;
+    int64_t t1 = x5 + x3;
+    int64_t t2 = x1 + x3;
+    int64_t t3 = x5 + x7;
+    int64_t z5 = jpeg_descale_i64((t2 - t3) * JPEG_FIX(1.175875602), 12);
 
-    t0 = JPEG_DESCALE(t0 * JPEG_FIX(-0.899976223), 12);
-    t1 = JPEG_DESCALE(t1 * JPEG_FIX(-2.562915447), 12);
-    t2 = JPEG_DESCALE(t2 * JPEG_FIX(-1.961570560), 12) + z5;
-    t3 = JPEG_DESCALE(t3 * JPEG_FIX(-0.390180644), 12) + z5;
+    t0 = jpeg_descale_i64(t0 * JPEG_FIX(-0.899976223), 12);
+    t1 = jpeg_descale_i64(t1 * JPEG_FIX(-2.562915447), 12);
+    t2 = jpeg_descale_i64(t2 * JPEG_FIX(-1.961570560), 12) + z5;
+    t3 = jpeg_descale_i64(t3 * JPEG_FIX(-0.390180644), 12) + z5;
 
-    int32_t o0 = JPEG_DESCALE(x7 * JPEG_FIX(0.298631336), 12) + t0 + t2;
-    int32_t o1 = JPEG_DESCALE(x5 * JPEG_FIX(2.053119869), 12) + t1 + t3;
-    int32_t o2 = JPEG_DESCALE(x3 * JPEG_FIX(3.072711026), 12) + t1 + t2;
-    int32_t o3 = JPEG_DESCALE(x1 * JPEG_FIX(1.501321110), 12) + t0 + t3;
+    int64_t o0 = jpeg_descale_i64(x7 * JPEG_FIX(0.298631336), 12) + t0 + t2;
+    int64_t o1 = jpeg_descale_i64(x5 * JPEG_FIX(2.053119869), 12) + t1 + t3;
+    int64_t o2 = jpeg_descale_i64(x3 * JPEG_FIX(3.072711026), 12) + t1 + t2;
+    int64_t o3 = jpeg_descale_i64(x1 * JPEG_FIX(1.501321110), 12) + t0 + t3;
 
     // Descale with rounding and shift for final output
-    workspace[col + 0 * 8] = JPEG_DESCALE(e0 + o3, 5);
-    workspace[col + 1 * 8] = JPEG_DESCALE(e1 + o2, 5);
-    workspace[col + 2 * 8] = JPEG_DESCALE(e2 + o1, 5);
-    workspace[col + 3 * 8] = JPEG_DESCALE(e3 + o0, 5);
-    workspace[col + 4 * 8] = JPEG_DESCALE(e3 - o0, 5);
-    workspace[col + 5 * 8] = JPEG_DESCALE(e2 - o1, 5);
-    workspace[col + 6 * 8] = JPEG_DESCALE(e1 - o2, 5);
-    workspace[col + 7 * 8] = JPEG_DESCALE(e0 - o3, 5);
+    workspace[col + 0 * 8] = jpeg_saturate_i32(jpeg_descale_i64(e0 + o3, 5));
+    workspace[col + 1 * 8] = jpeg_saturate_i32(jpeg_descale_i64(e1 + o2, 5));
+    workspace[col + 2 * 8] = jpeg_saturate_i32(jpeg_descale_i64(e2 + o1, 5));
+    workspace[col + 3 * 8] = jpeg_saturate_i32(jpeg_descale_i64(e3 + o0, 5));
+    workspace[col + 4 * 8] = jpeg_saturate_i32(jpeg_descale_i64(e3 - o0, 5));
+    workspace[col + 5 * 8] = jpeg_saturate_i32(jpeg_descale_i64(e2 - o1, 5));
+    workspace[col + 6 * 8] = jpeg_saturate_i32(jpeg_descale_i64(e1 - o2, 5));
+    workspace[col + 7 * 8] = jpeg_saturate_i32(jpeg_descale_i64(e0 - o3, 5));
 }
 
 /// @brief Full 2D IDCT on an 8×8 coefficient block, producing 8-bit samples.
@@ -512,8 +559,8 @@ static int jpeg_rgba_apply_orientation(uint32_t **pixels,
     src = *pixels;
     src_w = *width;
     src_h = *height;
-    dst_w = (orientation >= 5 && orientation <= 8) ? src_h : src_w;
-    dst_h = (orientation >= 5 && orientation <= 8) ? src_w : src_h;
+    dst_w = (orientation >= 5) ? src_h : src_w;
+    dst_h = (orientation >= 5) ? src_w : src_h;
     dst = jpeg_rgba_alloc(dst_w, dst_h);
     if (!dst)
         return 0;
@@ -593,6 +640,8 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
     int exif_orientation = 1; // default: no rotation
     int64_t decoded_width = 0;
     int64_t decoded_height = 0;
+    int saw_scan = 0;
+    int saw_eoi = 0;
 
     // Parse markers
     while (ctx.pos + 1 < ctx.len) {
@@ -611,8 +660,12 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
 
         uint16_t mk = (uint16_t)(0xFF00 | marker);
 
-        if (mk == JPEG_EOI)
+        if (mk == JPEG_EOI) {
+            saw_eoi = 1;
+            if (ctx.pos != ctx.len)
+                goto jpeg_fail;
             break;
+        }
 
         // Markers without length
         if (mk >= JPEG_RST0 && mk <= JPEG_RST0 + 7)
@@ -752,6 +805,9 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
             }
             case JPEG_SOS: {
                 // Start of Scan — decode the entropy-coded data
+                if (saw_scan || pixels || comp_data)
+                    goto jpeg_fail;
+                saw_scan = 1;
                 if (!jpeg_segment_has(&ctx, seg_end, 1))
                     goto jpeg_fail;
                 int ns = jpeg_read_u8(&ctx);
@@ -864,9 +920,9 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                             int dc_idx = ctx.scan_dc_table[si];
                             int ac_idx = ctx.scan_ac_table[si] + 2;
 
-                            if (qt_idx < 0 || qt_idx >= 4 || dc_idx < 0 || dc_idx >= 2 ||
-                                ac_idx < 2 || ac_idx >= 4 || !ctx.qt_valid[qt_idx] ||
-                                !ctx.huff_valid[dc_idx] || !ctx.huff_valid[ac_idx])
+                            if (qt_idx >= 4 || dc_idx >= 2 || ac_idx >= 4 ||
+                                !ctx.qt_valid[qt_idx] || !ctx.huff_valid[dc_idx] ||
+                                !ctx.huff_valid[ac_idx])
                                 goto jpeg_fail;
 
                             // Decode each block in this component's MCU contribution
@@ -921,8 +977,8 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                     int y_stride = mcus_x * ctx.comp_h_samp[0] * 8;
                     int cb_stride = mcus_x * ctx.comp_h_samp[1] * 8;
                     int cr_stride = mcus_x * ctx.comp_h_samp[2] * 8;
-                    if (ctx.comp_h_samp[1] <= 0 || ctx.comp_v_samp[1] <= 0 ||
-                        ctx.comp_h_samp[2] <= 0 || ctx.comp_v_samp[2] <= 0 ||
+                    if (ctx.comp_h_samp[1] == 0 || ctx.comp_v_samp[1] == 0 ||
+                        ctx.comp_h_samp[2] == 0 || ctx.comp_v_samp[2] == 0 ||
                         max_h % ctx.comp_h_samp[1] != 0 || max_v % ctx.comp_v_samp[1] != 0 ||
                         max_h % ctx.comp_h_samp[2] != 0 || max_v % ctx.comp_v_samp[2] != 0)
                         goto jpeg_fail;
@@ -965,41 +1021,33 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                     if (memcmp(exif, "Exif\0\0", 6) == 0) {
                         const uint8_t *tiff = exif + 6;
                         size_t tiff_len = data_len - 6;
-                        if (tiff_len >= 8) {
-                            int big;
-                            uint16_t tiff_magic;
-                            if (tiff[0] == 'M' && tiff[1] == 'M')
-                                big = 1;
-                            else if (tiff[0] == 'I' && tiff[1] == 'I')
-                                big = 0;
-                            else
-                                goto exif_done;
-                            tiff_magic = big ? (uint16_t)((tiff[2] << 8) | tiff[3])
-                                             : (uint16_t)(tiff[2] | (tiff[3] << 8));
-                            if (tiff_magic != 42u)
-                                goto exif_done;
-                            uint32_t ifd_off =
-                                big ? ((uint32_t)tiff[4] << 24 | (uint32_t)tiff[5] << 16 |
-                                       (uint32_t)tiff[6] << 8 | tiff[7])
-                                    : ((uint32_t)tiff[7] << 24 | (uint32_t)tiff[6] << 16 |
-                                       (uint32_t)tiff[5] << 8 | tiff[4]);
-                            if (ifd_off <= tiff_len - 2) {
-                                uint16_t count =
-                                    big ? (uint16_t)((tiff[ifd_off] << 8) | tiff[ifd_off + 1])
-                                        : (uint16_t)(tiff[ifd_off] | (tiff[ifd_off + 1] << 8));
-                                for (int ei = 0; ei < count; ei++) {
-                                    size_t entry = ifd_off + 2 + (size_t)ei * 12;
-                                    if (entry > tiff_len - 12)
-                                        break;
-                                    uint16_t tag =
-                                        big ? (uint16_t)((tiff[entry] << 8) | tiff[entry + 1])
-                                            : (uint16_t)(tiff[entry] | (tiff[entry + 1] << 8));
-                                    if (tag == 0x0112) { // Orientation
+                        int big;
+                        uint16_t tiff_magic;
+                        if (tiff[0] == 'M' && tiff[1] == 'M')
+                            big = 1;
+                        else if (tiff[0] == 'I' && tiff[1] == 'I')
+                            big = 0;
+                        else
+                            goto exif_done;
+                        tiff_magic = jpeg_tiff_read_u16(tiff + 2, big);
+                        if (tiff_magic != 42u)
+                            goto exif_done;
+                        uint32_t ifd_off = jpeg_tiff_read_u32(tiff + 4, big);
+                        if (ifd_off <= tiff_len - 2) {
+                            uint16_t count = jpeg_tiff_read_u16(tiff + ifd_off, big);
+                            for (int ei = 0; ei < count; ei++) {
+                                size_t entry = ifd_off + 2 + (size_t)ei * 12;
+                                if (entry > tiff_len - 12)
+                                    break;
+                                uint16_t tag = jpeg_tiff_read_u16(tiff + entry, big);
+                                if (tag == 0x0112) { // Orientation
+                                    uint16_t field_type = jpeg_tiff_read_u16(tiff + entry + 2, big);
+                                    uint32_t value_count =
+                                        jpeg_tiff_read_u32(tiff + entry + 4, big);
+                                    if (field_type == 3u && value_count == 1u)
                                         exif_orientation =
-                                            big ? (int)((tiff[entry + 8] << 8) | tiff[entry + 9])
-                                                : (int)(tiff[entry + 8] | (tiff[entry + 9] << 8));
-                                        break;
-                                    }
+                                            (int)jpeg_tiff_read_u16(tiff + entry + 8, big);
+                                    break;
                                 }
                             }
                         }
@@ -1010,6 +1058,9 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                 break;
         }
     }
+
+    if (!saw_eoi)
+        goto jpeg_fail;
 
     // Apply EXIF orientation transform without creating GC-managed Pixels.
     if (pixels &&

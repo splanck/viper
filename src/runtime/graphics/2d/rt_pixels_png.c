@@ -134,6 +134,54 @@ static uint8_t paeth_predict(uint8_t a, uint8_t b, uint8_t c) {
     return c;
 }
 
+/// @brief Reconstruct one PNG filtered scanline.
+/// @details Consumes the leading filter byte plus @p row_stride data bytes from @p *src_io,
+///          writing the unfiltered row into @p dst. Returning a status instead of jumping to the
+///          decoder cleanup label lets callers free pass-local buffers before aborting.
+/// @param dst Destination row buffer with at least @p row_stride bytes.
+/// @param src_io In/out pointer to the next compressed-output byte.
+/// @param prev Previous reconstructed row, or NULL for the first row.
+/// @param row_stride Number of encoded data bytes in the row, excluding the filter byte.
+/// @param bpp Bytes per pixel used by PNG's Sub/Average/Paeth filters.
+/// @return 1 on success, 0 when the filter type is invalid or inputs are malformed.
+static int png_filter_row(uint8_t *dst,
+                          const uint8_t **src_io,
+                          const uint8_t *prev,
+                          size_t row_stride,
+                          int bpp) {
+    if (!dst || !src_io || !*src_io || bpp < 1)
+        return 0;
+    const uint8_t *src = *src_io;
+    uint8_t filt = *src++;
+    for (size_t fi = 0; fi < row_stride; fi++) {
+        uint8_t rb = src[fi];
+        uint8_t fa = (fi >= (size_t)bpp) ? dst[fi - (size_t)bpp] : 0;
+        uint8_t fb = prev ? prev[fi] : 0;
+        uint8_t fc = (prev && fi >= (size_t)bpp) ? prev[fi - (size_t)bpp] : 0;
+        switch (filt) {
+            case 0:
+                dst[fi] = rb;
+                break;
+            case 1:
+                dst[fi] = (uint8_t)(rb + fa);
+                break;
+            case 2:
+                dst[fi] = (uint8_t)(rb + fb);
+                break;
+            case 3:
+                dst[fi] = (uint8_t)(rb + (uint8_t)(((int)fa + (int)fb) / 2));
+                break;
+            case 4:
+                dst[fi] = (uint8_t)(rb + paeth_predict(fa, fb, fc));
+                break;
+            default:
+                return 0;
+        }
+    }
+    *src_io = src + row_stride;
+    return 1;
+}
+
 /// @brief Decode a PNG memory buffer into malloc-owned raw RGBA32 pixels.
 ///
 /// Implements a focused PNG reader (RFC 2083): parses the 8-byte
@@ -269,16 +317,19 @@ int rt_png_decode_buffer_rgba32(const uint8_t *file_data,
                 if (trns_count > 256)
                     trns_count = 256;
                 memcpy(trns_alpha, chunk_data, (size_t)trns_count);
-            } else if (color_type == 0 && chunk_len >= 2) {
+            } else if (color_type == 0 && chunk_len == 2) {
                 // Grayscale key color (16-bit, even for 8-bit images)
                 trns_gray = (uint16_t)((chunk_data[0] << 8) | chunk_data[1]);
                 has_trns_gray = 1;
-            } else if (color_type == 2 && chunk_len >= 6) {
+            } else if (color_type == 2 && chunk_len == 6) {
                 // Truecolor key color (16-bit samples, even for 8-bit images)
                 trns_rgb[0] = (uint16_t)((chunk_data[0] << 8) | chunk_data[1]);
                 trns_rgb[1] = (uint16_t)((chunk_data[2] << 8) | chunk_data[3]);
                 trns_rgb[2] = (uint16_t)((chunk_data[4] << 8) | chunk_data[5]);
                 has_trns_rgb = 1;
+            } else {
+                free(idat_buf);
+                return 0;
             }
         } else if (memcmp(chunk_type, "IDAT", 4) == 0) {
             if (color_type == 3 && palette_count <= 0) {
@@ -368,38 +419,6 @@ int rt_png_decode_buffer_rgba32(const uint8_t *file_data,
     if (bpp < 1)
         bpp = 1;
 
-// Helper: reconstruct one filtered row
-#define PNG_FILTER_ROW(dst, src, prev, row_stride)                                                 \
-    do {                                                                                           \
-        uint8_t filt = *(src)++;                                                                   \
-        for (size_t fi = 0; fi < (row_stride); fi++) {                                             \
-            uint8_t rb = (src)[fi];                                                                \
-            uint8_t fa = (fi >= (size_t)bpp) ? (dst)[fi - bpp] : 0;                                \
-            uint8_t fb = (prev) ? (prev)[fi] : 0;                                                  \
-            uint8_t fc = ((prev) && fi >= (size_t)bpp) ? (prev)[fi - bpp] : 0;                     \
-            switch (filt) {                                                                        \
-                case 0:                                                                            \
-                    (dst)[fi] = rb;                                                                \
-                    break;                                                                         \
-                case 1:                                                                            \
-                    (dst)[fi] = rb + fa;                                                           \
-                    break;                                                                         \
-                case 2:                                                                            \
-                    (dst)[fi] = rb + fb;                                                           \
-                    break;                                                                         \
-                case 3:                                                                            \
-                    (dst)[fi] = rb + (uint8_t)(((int)fa + (int)fb) / 2);                           \
-                    break;                                                                         \
-                case 4:                                                                            \
-                    (dst)[fi] = rb + paeth_predict(fa, fb, fc);                                    \
-                    break;                                                                         \
-                default:                                                                           \
-                    goto cleanup;                                                                  \
-            }                                                                                      \
-        }                                                                                          \
-        (src) += (row_stride);                                                                     \
-    } while (0)
-
     size_t stride = 0;
     if (!px_png_stride_checked(width, bit_depth, samples_per_pixel, &stride))
         goto cleanup;
@@ -451,7 +470,10 @@ int rt_png_decode_buffer_rgba32(const uint8_t *file_data,
                 }
                 uint8_t *dst_row = sub_img + sy * sub_stride;
                 const uint8_t *prev_row = (sy > 0) ? sub_img + (sy - 1) * sub_stride : NULL;
-                PNG_FILTER_ROW(dst_row, src_ptr, prev_row, sub_stride);
+                if (!png_filter_row(dst_row, &src_ptr, prev_row, sub_stride, bpp)) {
+                    free(sub_img);
+                    goto cleanup;
+                }
             }
 
             // Scatter sub-image pixels into full image
@@ -513,7 +535,8 @@ int rt_png_decode_buffer_rgba32(const uint8_t *file_data,
         for (uint32_t y = 0; y < height; y++) {
             uint8_t *dst_row = img + y * stride;
             const uint8_t *prev_row = (y > 0) ? img + (y - 1) * stride : NULL;
-            PNG_FILTER_ROW(dst_row, src_ptr, prev_row, stride);
+            if (!png_filter_row(dst_row, &src_ptr, prev_row, stride, bpp))
+                goto cleanup;
         }
     }
 
@@ -651,7 +674,6 @@ cleanup:
     return 1;
 }
 
-#undef PNG_FILTER_ROW
 #undef PNG_DOWN16
 
 /// @brief Decode a PNG file into a Pixels object.

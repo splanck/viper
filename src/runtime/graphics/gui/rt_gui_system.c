@@ -510,9 +510,8 @@ void rt_shortcuts_clear_triggered(rt_gui_app_t *app) {
 /// @details Walks the shortcut table and returns 1 if any enabled shortcut's
 ///          (ctrl, shift, alt, key) tuple matches the incoming event. Several
 ///          normalisations apply before comparison:
-///          - **Cmd/Ctrl intent.** `Cmd` registrations match Super on macOS,
-///            while non-Apple platforms keep `Cmd` usable by mapping it to the
-///            same Ctrl/Super-compatible event bucket as `Ctrl`.
+///          - **Cmd/Ctrl identity.** Ctrl and Super/Cmd are compared as separate
+///            modifiers on every platform so `Ctrl+X` and `Super+X` can coexist.
 ///          - **Modifier requirement.** Plain keys (no Ctrl, no Alt) are
 ///            rejected up front *unless* they're function keys F1–F12, which
 ///            are valid shortcuts on their own. This prevents typing `S` in a
@@ -538,13 +537,8 @@ int8_t rt_shortcuts_check_key(rt_gui_app_t *app, int key, int mods) {
     int has_super = (mods & VG_MOD_SUPER) ? 1 : 0;
     int has_shift = (mods & VG_MOD_SHIFT) ? 1 : 0;
     int has_alt = (mods & VG_MOD_ALT) ? 1 : 0;
-#ifdef __APPLE__
     int event_ctrl = has_ctrl;
     int event_super = has_super;
-#else
-    int event_ctrl = has_ctrl || has_super;
-    int event_super = 0;
-#endif
 
     // Only check if at least one modifier is held (plain keys aren't shortcuts)
     if (!event_ctrl && !event_super && !has_alt && !(key >= VG_KEY_F1 && key <= VG_KEY_F12))
@@ -556,12 +550,8 @@ int8_t rt_shortcuts_check_key(rt_gui_app_t *app, int key, int mods) {
         if (!app->shortcuts[i].enabled || !app->shortcuts[i].parsed_key)
             continue;
 
-        int expected_ctrl = app->shortcuts[i].parsed_ctrl;
-        int expected_super = app->shortcuts[i].parsed_super;
-#ifndef __APPLE__
-        expected_ctrl = expected_ctrl || expected_super;
-        expected_super = 0;
-#endif
+    int expected_ctrl = app->shortcuts[i].parsed_ctrl;
+    int expected_super = app->shortcuts[i].parsed_super;
 
         if (expected_ctrl == event_ctrl && expected_super == event_super &&
             app->shortcuts[i].parsed_shift == has_shift &&

@@ -132,7 +132,7 @@ static int scene3d_spatial_candidate_push(scene3d_spatial_candidate_list_t *list
     int32_t new_capacity;
     rt_scene3d_spatial_entry **grown;
     if (!list || !entry)
-        return 1;
+        return 0;
     if (list->count >= list->capacity) {
         new_capacity = list->capacity < 64 ? 64 : list->capacity * 2;
         if (new_capacity <= list->capacity ||
@@ -155,7 +155,7 @@ static int scene3d_spatial_node_stack_push(scene3d_spatial_node_stack_t *stack,
     int32_t new_capacity;
     int32_t *grown;
     if (!stack || node_index < 0)
-        return 1;
+        return 0;
     if (stack->count >= stack->capacity) {
         new_capacity = stack->capacity < 64 ? 64 : stack->capacity * 2;
         if (new_capacity <= stack->capacity ||
