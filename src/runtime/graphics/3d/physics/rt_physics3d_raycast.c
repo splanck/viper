@@ -52,7 +52,10 @@ static void ray_fill_hit(rt_body3d *body,
                          rt_query_hit3d *out_hit) {
     if (!out_hit)
         return;
-    memset(out_hit, 0, sizeof(*out_hit));
+    {
+        rt_query_hit3d zero = {0};
+        *out_hit = zero;
+    }
     out_hit->body = body;
     out_hit->collider = body ? body->collider : NULL;
     out_hit->distance = query_sanitize_distance(distance);

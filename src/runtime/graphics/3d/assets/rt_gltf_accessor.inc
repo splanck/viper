@@ -178,6 +178,7 @@ static int gltf_accessor_bind_sparse(void *root,
         size_t index_len = 0;
         size_t value_len = 0;
         size_t index_bytes = 0;
+        size_t sparse_elem_size = 0;
         size_t value_bytes = 0;
         size_t index_end = 0;
         size_t value_end = 0;
@@ -198,17 +199,19 @@ static int gltf_accessor_bind_sparse(void *root,
             !gltf_checked_add_size(indices_offset, index_bytes, &index_end) ||
             index_end > index_len)
             return 0;
-        if (!gltf_checked_mul_size(
-                (size_t)sparse_count, (size_t)comp_size * (size_t)comp_count, &value_bytes) ||
+        if (!gltf_checked_mul_size((size_t)comp_size, (size_t)comp_count, &sparse_elem_size) ||
+            !gltf_checked_mul_size((size_t)sparse_count, sparse_elem_size, &value_bytes) ||
             !gltf_checked_add_size(values_offset, value_bytes, &value_end) ||
             value_end > value_len)
+            return 0;
+        if (sparse_elem_size > INT32_MAX)
             return 0;
         out->sparse_indices = index_data + indices_offset;
         out->sparse_values = value_data + values_offset;
         out->sparse_count = sparse_count;
         out->sparse_index_comp_type = index_comp_type;
         out->sparse_index_stride = index_comp_size;
-        out->sparse_value_stride = comp_size * comp_count;
+        out->sparse_value_stride = (int32_t)sparse_elem_size;
         return gltf_validate_sparse_indices(out);
     }
 }
@@ -230,6 +233,8 @@ static int gltf_get_accessor_view(void *root,
     if (!acc)
         return 0;
     if (!gltf_accessor_init_view(acc, out, &bv_idx, &byte_offset_acc, &comp_size))
+        return 0;
+    if (bv_idx < 0 && !jget(acc, "sparse"))
         return 0;
     if (!gltf_accessor_bind_buffer_view(
             root, bv_idx, byte_offset_acc, buffers, buf_count, comp_size, out->comp_count, out))
@@ -325,7 +330,8 @@ static float gltf_decode_component_f32(const uint8_t *src, int comp_type, int no
             return normalized ? (float)((double)value / 4294967295.0) : (float)value;
         }
         case 5126: {
-            return gltf_read_le_f32(src);
+            float value = gltf_read_le_f32(src);
+            return isfinite(value) ? value : 0.0f;
         }
         default:
             return 0.0f;
@@ -336,8 +342,8 @@ static float gltf_decode_component_f32(const uint8_t *src, int comp_type, int no
 /// @details Used for reading index accessors (SCALAR UNSIGNED_INT/SHORT/BYTE) and joint-index
 ///   accessors (UNSIGNED_BYTE, UNSIGNED_SHORT). Signed integer types clamp negative values to 0
 ///   so that malformed data can't produce garbage joint indices or out-of-range triangle indices.
-///   FLOAT is converted by truncation toward zero with negative values clamped to 0. Normalization
-///   is never applied for uint32 reads — the raw integer value is always returned.
+///   FLOAT is intentionally rejected for uint32 reads because glTF indices and joint indices are
+///   integer component streams. Normalization is never applied for uint32 reads.
 /// @param src        Pointer to the first byte of the component.
 /// @param comp_type  glTF component type integer (5120–5126).
 /// @return Raw unsigned integer value, or 0u for unknown component types.
@@ -363,14 +369,6 @@ static uint32_t gltf_decode_component_u32(const uint8_t *src, int comp_type) {
         }
         case 5125: {
             return gltf_read_le_u32(src);
-        }
-        case 5126: {
-            float value = gltf_read_le_f32(src);
-            if (!isfinite(value) || value <= 0.0f)
-                return 0u;
-            if (value >= (float)UINT32_MAX)
-                return UINT32_MAX;
-            return (uint32_t)value;
         }
         default:
             return 0u;

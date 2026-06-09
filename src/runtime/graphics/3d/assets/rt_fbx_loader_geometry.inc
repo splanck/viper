@@ -184,7 +184,8 @@ static int fbx_mesh_material_map_append(fbx_mesh_material_map_t *map,
 
 /// @brief Resolve the material-slot index for polygon @p polygon_index per the FBX mapping
 ///   mode (@p by_polygon → per-polygon lookup, @p all_same → slot 0, else per-index).
-///   Returns 0 for an out-of-range index or a negative slot value.
+///   Returns -1 for an out-of-range index or a negative slot value when a
+///   material map is present; returns 0 when no material map exists.
 static int32_t fbx_material_slot_for_polygon(const int32_t *slots,
                                              uint32_t slot_count,
                                              int by_polygon,
@@ -200,8 +201,8 @@ static int32_t fbx_material_slot_for_polygon(const int32_t *slots,
     else
         src_index = polygon_index;
     if (src_index >= slot_count)
-        return 0;
-    return slots[src_index] < 0 ? 0 : slots[src_index];
+        return -1;
+    return slots[src_index] < 0 ? -1 : slots[src_index];
 }
 
 #include "rt_fbx_triangulation.inc"
@@ -478,8 +479,8 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
         return NULL;
     if (!positions || !indices || pos_count == 0 || idx_count == 0)
         return NULL;
-    if (remap)
-        fbx_mesh_remap_init(remap, fbx_prop_i64(geom_node, 0), (int32_t)pos_count);
+    if (remap && !fbx_mesh_remap_init(remap, fbx_prop_i64(geom_node, 0), (int32_t)pos_count))
+        return NULL;
     if (material_map)
         memset(material_map, 0, sizeof(*material_map));
 
@@ -631,6 +632,8 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
             uint32_t index_before = ((rt_mesh3d *)mesh)->index_count;
             int32_t material_slot = fbx_material_slot_for_polygon(
                 mat.slots, mat.slot_count, mat.by_polygon, mat.all_same, polygon_idx);
+            if (material_slot < 0)
+                return fbx_geom_fail(polygon, polygon_stack, mesh);
             if (!polygon_invalid && !fbx_emit_polygon_triangles(mesh, polygon, poly_count))
                 return fbx_geom_fail(polygon, polygon_stack, mesh);
             if (!polygon_invalid && material_map) {
@@ -647,6 +650,8 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
         }
     }
 
+    if (poly_count != 0 || polygon_invalid)
+        return fbx_geom_fail(polygon, polygon_stack, mesh);
     if (polygon != polygon_stack)
         free(polygon);
     if (((rt_mesh3d *)mesh)->index_count < 3u) {

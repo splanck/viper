@@ -38,9 +38,49 @@ typedef struct {
     size_t pos;
 } gif_reader_t;
 
+#define GIF_MAX_CANVAS_PIXELS ((size_t)64u * 1024u * 1024u)
+
+/// @brief Validate a GIF logical screen size and compute its pixel count.
+/// @details Keeps all GIF decode paths on the same overflow and memory-budget
+///          policy before allocating canvas-sized buffers.
+/// @param screen_w Logical screen width read from the GIF descriptor.
+/// @param screen_h Logical screen height read from the GIF descriptor.
+/// @param out_pixels Receives the checked pixel count on success.
+/// @return 1 when the dimensions are supported, 0 otherwise.
+static int gif_checked_canvas_size(int screen_w, int screen_h, size_t *out_pixels) {
+    size_t pixels;
+    if (!out_pixels)
+        return 0;
+    *out_pixels = 0;
+    if (screen_w <= 0 || screen_h <= 0 || screen_w > 32768 || screen_h > 32768)
+        return 0;
+    if ((size_t)screen_w > SIZE_MAX / (size_t)screen_h)
+        return 0;
+    pixels = (size_t)screen_w * (size_t)screen_h;
+    if (pixels == 0 || pixels > GIF_MAX_CANVAS_PIXELS || pixels > SIZE_MAX / sizeof(uint32_t))
+        return 0;
+    *out_pixels = pixels;
+    return 1;
+}
+
+/// @brief Release the Pixels handles stored in a partially decoded GIF frame array.
+/// @details Used only on decoder failure paths before the caller receives the
+///          frame array. Successfully returned arrays remain caller-owned.
+/// @param frames Frame array allocated by the GIF decoder; may be NULL.
+/// @param frame_count Number of initialized entries in @p frames.
+static void gif_release_decoded_frames(gif_frame_t *frames, int frame_count) {
+    if (!frames || frame_count <= 0)
+        return;
+    for (int i = 0; i < frame_count; i++) {
+        if (frames[i].pixels && rt_obj_release_check0(frames[i].pixels))
+            rt_obj_free(frames[i].pixels);
+        frames[i].pixels = NULL;
+    }
+}
+
 /// @brief Read `count` bytes from the GIF stream into `buf`; returns 1 on success, 0 on underflow.
 static int gif_read(gif_reader_t *r, void *buf, size_t count) {
-    if (r->pos + count > r->len)
+    if (!r || !buf || r->pos > r->len || count > r->len - r->pos)
         return 0;
     memcpy(buf, r->data + r->pos, count);
     r->pos += count;
@@ -56,21 +96,31 @@ static int gif_read_u8(gif_reader_t *r) {
 
 /// @brief Read a little-endian uint16 from the GIF stream; returns -1 on underflow.
 static int gif_read_u16_le(gif_reader_t *r) {
-    if (r->pos + 2 > r->len)
+    if (!r || r->pos > r->len || 2u > r->len - r->pos)
         return -1;
     int val = r->data[r->pos] | (r->data[r->pos + 1] << 8);
     r->pos += 2;
     return val;
 }
 
-/// @brief Skip a sequence of sub-blocks (each prefixed by a length byte).
-static void gif_skip_sub_blocks(gif_reader_t *r) {
+/// @brief Skip a sequence of GIF data sub-blocks.
+/// @details Each sub-block starts with a length byte and the sequence ends
+///          with a zero-length terminator. Truncated payloads fail without
+///          advancing the cursor past the buffer.
+/// @param r Reader positioned at the first sub-block length byte.
+/// @return 1 when a terminator was found, 0 on truncation or invalid input.
+static int gif_skip_sub_blocks(gif_reader_t *r) {
+    if (!r)
+        return 0;
     while (r->pos < r->len) {
         int block_size = gif_read_u8(r);
         if (block_size <= 0)
-            break; // block terminator (0x00)
+            return block_size == 0; // block terminator (0x00)
+        if ((size_t)block_size > r->len - r->pos)
+            return 0;
         r->pos += (size_t)block_size;
     }
+    return 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -108,13 +158,18 @@ typedef struct {
 static uint8_t *gif_read_sub_blocks(gif_reader_t *r, size_t *out_len) {
     size_t cap = 256;
     size_t len = 0;
+    int saw_terminator = 0;
     uint8_t *buf = (uint8_t *)malloc(cap);
     if (!buf)
         return NULL;
 
     while (r->pos < r->len) {
         int block_size = gif_read_u8(r);
-        if (block_size <= 0)
+        if (block_size == 0) {
+            saw_terminator = 1;
+            break;
+        }
+        if (block_size < 0)
             break;
         if ((size_t)block_size > SIZE_MAX - len) {
             free(buf);
@@ -141,6 +196,10 @@ static uint8_t *gif_read_sub_blocks(gif_reader_t *r, size_t *out_len) {
         len += (size_t)block_size;
     }
 
+    if (!saw_terminator) {
+        free(buf);
+        return NULL;
+    }
     *out_len = len;
     return buf;
 }
@@ -188,7 +247,7 @@ static int lzw_emit_string(
     if (code < 0 || code >= s->table_size)
         return -1;
     int len = s->table[code].length;
-    if (*out_pos + (size_t)len > out_cap)
+    if ((size_t)len > out_cap - *out_pos)
         return -1;
     // Write backwards then the order is correct
     size_t pos = *out_pos + (size_t)len - 1;
@@ -234,10 +293,18 @@ static uint8_t *lzw_decompress(int min_code_size,
     size_t pos = 0;
 
     int prev_code = -1;
+    int saw_end = 0;
+    int failed = 0;
     while (1) {
         int code = lzw_read_code(&state);
-        if (code < 0 || code == state.end_code)
+        if (code < 0) {
+            failed = 1;
             break;
+        }
+        if (code == state.end_code) {
+            saw_end = 1;
+            break;
+        }
 
         if (code == state.clear_code) {
             // Reset table
@@ -250,8 +317,10 @@ static uint8_t *lzw_decompress(int min_code_size,
 
         if (code < state.table_size) {
             // Code is in table — emit it
-            if (lzw_emit_string(&state, code, output, cap, &pos) != 0)
+            if (lzw_emit_string(&state, code, output, cap, &pos) != 0) {
+                failed = 1;
                 break;
+            }
 
             // Add new entry: prev_string + first_byte_of_current_string
             if (prev_code >= 0 && state.next_code < LZW_MAX_TABLE_SIZE) {
@@ -267,10 +336,15 @@ static uint8_t *lzw_decompress(int min_code_size,
         } else if (code == state.next_code && prev_code >= 0) {
             // KwKwK special case: code not yet in table
             uint8_t first = lzw_first_byte(&state, prev_code);
-            if (lzw_emit_string(&state, prev_code, output, cap, &pos) != 0)
+            if (lzw_emit_string(&state, prev_code, output, cap, &pos) != 0) {
+                failed = 1;
                 break;
-            if (pos < cap)
-                output[pos++] = first;
+            }
+            if (pos >= cap) {
+                failed = 1;
+                break;
+            }
+            output[pos++] = first;
 
             // Add new entry
             if (state.next_code < LZW_MAX_TABLE_SIZE) {
@@ -283,12 +357,17 @@ static uint8_t *lzw_decompress(int min_code_size,
                     state.code_size++;
             }
         } else {
+            failed = 1;
             break; // invalid code
         }
 
         prev_code = code;
     }
 
+    if (failed || !saw_end || pos < expected_pixels) {
+        free(output);
+        return NULL;
+    }
     *out_len = pos;
     return output;
 }
@@ -326,9 +405,15 @@ int gif_decode_file(const char *filepath,
     if (!f)
         return 0;
 
-    fseek(f, 0, SEEK_END);
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return 0;
+    }
     long file_len = ftell(f);
-    fseek(f, 0, SEEK_SET);
+    if (file_len < 0 || fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        return 0;
+    }
     if (file_len <= 0 || file_len > 100 * 1024 * 1024) {
         fclose(f);
         return 0;
@@ -359,16 +444,25 @@ int gif_decode_file(const char *filepath,
     // Logical screen descriptor
     int screen_w = gif_read_u16_le(r);
     int screen_h = gif_read_u16_le(r);
-    if (screen_w <= 0 || screen_h <= 0 || screen_w > 32768 || screen_h > 32768) {
+    size_t canvas_size = 0;
+    if (!gif_checked_canvas_size(screen_w, screen_h, &canvas_size)) {
         free(file_data);
         return 0;
     }
 
     int packed = gif_read_u8(r);
+    if (packed < 0) {
+        free(file_data);
+        return 0;
+    }
     int has_gct = (packed >> 7) & 1;
     int gct_size_field = packed & 0x07;
     int bg_color_index = gif_read_u8(r);
-    gif_read_u8(r); // pixel aspect ratio (ignored)
+    int aspect = gif_read_u8(r); // pixel aspect ratio (ignored)
+    if (bg_color_index < 0 || aspect < 0) {
+        free(file_data);
+        return 0;
+    }
 
     // Global color table
     uint8_t gct[256 * 3];
@@ -385,6 +479,7 @@ int gif_decode_file(const char *filepath,
     // Allocate frame array (grow as needed)
     int frame_cap = 16;
     int frame_count = 0;
+    int decode_failed = 0;
     gif_frame_t *frames = (gif_frame_t *)calloc((size_t)frame_cap, sizeof(gif_frame_t));
     if (!frames) {
         free(file_data);
@@ -392,7 +487,6 @@ int gif_decode_file(const char *filepath,
     }
 
     // Canvas for frame compositing (RGBA)
-    size_t canvas_size = (size_t)screen_w * (size_t)screen_h;
     uint32_t *canvas = (uint32_t *)calloc(canvas_size, sizeof(uint32_t));
     uint32_t *prev_canvas = (uint32_t *)calloc(canvas_size, sizeof(uint32_t));
     if (!canvas || !prev_canvas) {
@@ -428,26 +522,53 @@ int gif_decode_file(const char *filepath,
         if (block_type == 0x21) {
             // Extension block
             int ext_label = gif_read_u8(r);
+            if (ext_label < 0) {
+                decode_failed = 1;
+                break;
+            }
             if (ext_label == 0xF9) {
                 // Graphics Control Extension
                 int block_size = gif_read_u8(r);
-                if (block_size >= 4) {
-                    int gce_packed = gif_read_u8(r);
-                    gce_dispose = (gce_packed >> 2) & 0x07;
-                    int has_transparent = gce_packed & 0x01;
-                    int delay = gif_read_u16_le(r);
-                    gce_delay_ms = delay * 10; // centiseconds to ms
-                    int trans_idx = gif_read_u8(r);
-                    gce_transparent = has_transparent ? trans_idx : -1;
-                    gce_valid = 1;
-                    // Skip remaining (block terminator)
-                    if (block_size > 4)
-                        r->pos += (size_t)(block_size - 4);
+                if (block_size < 4) {
+                    decode_failed = 1;
+                    break;
                 }
-                gif_read_u8(r); // block terminator
+                int gce_packed = gif_read_u8(r);
+                int delay;
+                int trans_idx;
+                if (gce_packed < 0) {
+                    decode_failed = 1;
+                    break;
+                }
+                gce_dispose = (gce_packed >> 2) & 0x07;
+                int has_transparent = gce_packed & 0x01;
+                delay = gif_read_u16_le(r);
+                gce_delay_ms = delay * 10; // centiseconds to ms
+                trans_idx = gif_read_u8(r);
+                if (delay < 0 || trans_idx < 0) {
+                    decode_failed = 1;
+                    break;
+                }
+                gce_transparent = has_transparent ? trans_idx : -1;
+                gce_valid = 1;
+                // Skip remaining (block terminator)
+                if (block_size > 4) {
+                    if ((size_t)(block_size - 4) > r->len - r->pos) {
+                        decode_failed = 1;
+                        break;
+                    }
+                    r->pos += (size_t)(block_size - 4);
+                }
+                if (gif_read_u8(r) < 0) { // block terminator
+                    decode_failed = 1;
+                    break;
+                }
             } else {
                 // Skip other extensions
-                gif_skip_sub_blocks(r);
+                if (!gif_skip_sub_blocks(r)) {
+                    decode_failed = 1;
+                    break;
+                }
             }
             continue;
         }
@@ -459,8 +580,10 @@ int gif_decode_file(const char *filepath,
             int img_w = gif_read_u16_le(r);
             int img_h = gif_read_u16_le(r);
             int img_packed = gif_read_u8(r);
-            if (img_left < 0 || img_top < 0 || img_w < 0 || img_h < 0 || img_packed < 0)
+            if (img_left < 0 || img_top < 0 || img_w < 0 || img_h < 0 || img_packed < 0) {
+                decode_failed = 1;
                 break;
+            }
             int has_lct = (img_packed >> 7) & 1;
             int interlaced = (img_packed >> 6) & 1;
             int lct_size_field = img_packed & 0x07;
@@ -472,8 +595,10 @@ int gif_decode_file(const char *filepath,
             int color_count = gct_count;
             if (has_lct) {
                 lct_count = 1 << (lct_size_field + 1);
-                if (!gif_read(r, lct, (size_t)lct_count * 3))
+                if (!gif_read(r, lct, (size_t)lct_count * 3)) {
+                    decode_failed = 1;
                     break;
+                }
                 color_table = lct;
                 color_count = lct_count;
             }
@@ -489,21 +614,26 @@ int gif_decode_file(const char *filepath,
             // Read LZW sub-blocks
             size_t lzw_data_len = 0;
             uint8_t *lzw_data = gif_read_sub_blocks(r, &lzw_data_len);
-            if (!lzw_data)
-                continue;
+            if (!lzw_data) {
+                decode_failed = 1;
+                break;
+            }
 
             // Decompress LZW
             if ((size_t)img_w > SIZE_MAX / (size_t)img_h) {
                 free(lzw_data);
-                continue;
+                decode_failed = 1;
+                break;
             }
             size_t pixel_count = (size_t)img_w * (size_t)img_h;
             size_t index_len = 0;
             uint8_t *indices =
                 lzw_decompress(min_code_size, lzw_data, lzw_data_len, pixel_count, &index_len);
             free(lzw_data);
-            if (!indices)
-                continue;
+            if (!indices) {
+                decode_failed = 1;
+                break;
+            }
 
             // Save canvas for dispose method 3 (restore to previous)
             if (gce_dispose == 3)
@@ -566,12 +696,20 @@ int gif_decode_file(const char *filepath,
 
                 // Grow frames array if needed
                 if (frame_count >= frame_cap) {
+                    if (frame_cap > INT32_MAX / 2 ||
+                        (size_t)(frame_cap * 2) > SIZE_MAX / sizeof(gif_frame_t)) {
+                        if (rt_obj_release_check0(px))
+                            rt_obj_free(px);
+                        decode_failed = 1;
+                        break;
+                    }
                     frame_cap *= 2;
                     gif_frame_t *new_frames =
                         (gif_frame_t *)realloc(frames, (size_t)frame_cap * sizeof(gif_frame_t));
                     if (!new_frames) {
                         if (rt_obj_release_check0(px))
                             rt_obj_free(px);
+                        decode_failed = 1;
                         break;
                     }
                     frames = new_frames;
@@ -581,6 +719,9 @@ int gif_decode_file(const char *filepath,
                 frames[frame_count].delay_ms = gce_valid ? gce_delay_ms : 100;
                 frames[frame_count].dispose_method = gce_dispose;
                 frame_count++;
+            } else {
+                decode_failed = 1;
+                break;
             }
 
             // Apply disposal method for next frame
@@ -611,7 +752,10 @@ int gif_decode_file(const char *filepath,
             continue;
 
         skip_image_data:
-            gif_skip_sub_blocks(r);
+            if (!gif_skip_sub_blocks(r)) {
+                decode_failed = 1;
+                break;
+            }
             gce_valid = 0;
             continue;
         }
@@ -623,7 +767,8 @@ int gif_decode_file(const char *filepath,
     free(prev_canvas);
     free(file_data);
 
-    if (frame_count == 0) {
+    if (decode_failed || frame_count == 0) {
+        gif_release_decoded_frames(frames, frame_count);
         free(frames);
         return 0;
     }
@@ -676,12 +821,7 @@ int rt_gif_decode_memory_first_rgba32(
 
     screen_w = gif_read_u16_le(r);
     screen_h = gif_read_u16_le(r);
-    if (screen_w <= 0 || screen_h <= 0 || screen_w > 32768 || screen_h > 32768)
-        return 0;
-    if ((size_t)screen_w > SIZE_MAX / (size_t)screen_h)
-        return 0;
-    canvas_size = (size_t)screen_w * (size_t)screen_h;
-    if (canvas_size > SIZE_MAX / sizeof(uint32_t))
+    if (!gif_checked_canvas_size(screen_w, screen_h, &canvas_size))
         return 0;
 
     packed = gif_read_u8(r);
@@ -719,33 +859,36 @@ int rt_gif_decode_memory_first_rgba32(
 
         if (block_type == 0x21) {
             int ext_label = gif_read_u8(r);
+            if (ext_label < 0)
+                break;
             if (ext_label == 0xF9) {
                 int block_size = gif_read_u8(r);
-                if (block_size >= 4) {
-                    int gce_packed = gif_read_u8(r);
-                    int delay;
-                    int trans_idx;
-                    if (gce_packed < 0)
+                if (block_size < 4)
+                    break;
+                int gce_packed = gif_read_u8(r);
+                int delay;
+                int trans_idx;
+                if (gce_packed < 0)
+                    break;
+                gce_dispose = (gce_packed >> 2) & 0x07;
+                delay = gif_read_u16_le(r);
+                trans_idx = gif_read_u8(r);
+                if (delay < 0 || trans_idx < 0)
+                    break;
+                gce_delay_ms = delay * 10;
+                gce_transparent = (gce_packed & 0x01) ? trans_idx : -1;
+                gce_valid = 1;
+                if (block_size > 4) {
+                    size_t skip = (size_t)(block_size - 4);
+                    if (skip > r->len - r->pos)
                         break;
-                    gce_dispose = (gce_packed >> 2) & 0x07;
-                    delay = gif_read_u16_le(r);
-                    trans_idx = gif_read_u8(r);
-                    if (delay < 0 || trans_idx < 0)
-                        break;
-                    gce_delay_ms = delay * 10;
-                    gce_transparent = (gce_packed & 0x01) ? trans_idx : -1;
-                    gce_valid = 1;
-                    if (block_size > 4) {
-                        size_t skip = (size_t)(block_size - 4);
-                        if (skip > r->len - r->pos)
-                            break;
-                        r->pos += skip;
-                    }
+                    r->pos += skip;
                 }
                 if (gif_read_u8(r) < 0)
                     break;
             } else {
-                gif_skip_sub_blocks(r);
+                if (!gif_skip_sub_blocks(r))
+                    break;
             }
             continue;
         }
@@ -796,13 +939,13 @@ int rt_gif_decode_memory_first_rgba32(
 
             lzw_data = gif_read_sub_blocks(r, &lzw_data_len);
             if (!lzw_data)
-                continue;
+                break;
             pixel_count = (size_t)img_w * (size_t)img_h;
             indices =
                 lzw_decompress(min_code_size, lzw_data, lzw_data_len, pixel_count, &index_len);
             free(lzw_data);
             if (!indices)
-                continue;
+                break;
 
             for (int y = 0; y < img_h && idx < index_len; y++) {
                 int actual_y;
@@ -867,7 +1010,8 @@ int rt_gif_decode_memory_first_rgba32(
             return 1;
 
         skip_image_data:
-            gif_skip_sub_blocks(r);
+            if (!gif_skip_sub_blocks(r))
+                break;
             gce_valid = 0;
             gce_delay_ms = 0;
             gce_dispose = 0;

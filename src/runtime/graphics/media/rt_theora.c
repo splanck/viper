@@ -492,8 +492,6 @@ static int theora_alloc_layout(theora_decoder_t *dec, theora_priv_t *priv) {
                         local_y = by % plane_mb_block_h(dec, plane);
                         if (plane == 0) {
                             int slot = local_y * 2 + local_x;
-                            if (slot == 2)
-                                slot = 2;
                             priv->mbs[priv->blocks[bi].mb].luma[slot] = bi;
                         } else if (dec->pixel_format == 0) {
                             priv->mbs[priv->blocks[bi].mb].chroma[plane - 1][0] = bi;

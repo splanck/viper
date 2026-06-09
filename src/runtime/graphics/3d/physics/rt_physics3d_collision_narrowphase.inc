@@ -127,7 +127,8 @@ int build_simple_proxy(const rt_collider_pose *pose, void *collider, rt_body3d *
     double sx = fabs(pose->scale[0]);
     double sy = fabs(pose->scale[1]);
     double sz = fabs(pose->scale[2]);
-    memset(out, 0, sizeof(*out));
+    rt_body3d zero = {0};
+    *out = zero;
     out->position[0] = pose->position[0];
     out->position[1] = pose->position[1];
     out->position[2] = pose->position[2];
@@ -905,8 +906,7 @@ static int test_meshlike_capsule(rt_mesh3d *mesh,
     samples = capsule_axis_sample_count(half_axis, capsule->radius);
     for (int i = 0; i < samples; ++i) {
         double t = samples == 1 ? 0.5 : (double)i / (double)(samples - 1);
-        rt_body3d sphere;
-        memset(&sphere, 0, sizeof(sphere));
+        rt_body3d sphere = {0};
         sphere.shape = PH3D_SHAPE_SPHERE;
         sphere.position[0] = axis_a[0] + (axis_b[0] - axis_a[0]) * t;
         sphere.position[1] = axis_a[1] + (axis_b[1] - axis_a[1]) * t;

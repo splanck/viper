@@ -14,6 +14,7 @@
 
 #include "rt_pixels_io_internal.h"
 
+#define BMP_MAX_PIXELS ((size_t)64u * 1024u * 1024u)
 
 //=============================================================================
 // BMP Image I/O
@@ -105,6 +106,9 @@ void *rt_pixels_load_bmp(void *path) {
     }
 
     if (width <= 0 || height <= 0 || width > 32768 || height > 32768)
+        goto bmp_cleanup;
+    if ((size_t)width > SIZE_MAX / (size_t)height ||
+        (size_t)width * (size_t)height > BMP_MAX_PIXELS)
         goto bmp_cleanup;
 
     // Calculate row padding (rows must be 4-byte aligned)

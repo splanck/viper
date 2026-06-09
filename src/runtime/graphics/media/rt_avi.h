@@ -57,6 +57,10 @@ typedef struct {
     size_t file_len;
     avi_video_info_t video;
     avi_audio_info_t audio;
+    int32_t stream_count;        ///< Number of stream lists encountered while parsing hdrl.
+    int32_t video_stream_index;  ///< Primary video stream index, or -1 until discovered.
+    int32_t audio_stream_index;  ///< Primary audio stream index, or -1 until discovered.
+    int8_t parse_error;          ///< Internal parse/allocation failure flag.
     int8_t has_audio;
     /* Chunk index: all movi chunks in playback order */
     avi_chunk_t *chunks;

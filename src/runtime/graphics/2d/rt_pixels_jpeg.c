@@ -28,6 +28,7 @@
 #define JPEG_SOS 0xFFDA
 #define JPEG_DRI 0xFFDD
 #define JPEG_RST0 0xFFD0
+#define JPEG_MAX_PIXELS ((size_t)64u * 1024u * 1024u)
 
 // Zigzag order for 8x8 block
 static const uint8_t jpeg_zigzag[64] = {
@@ -60,7 +61,7 @@ typedef struct {
     uint8_t comp_qt[4];     // quantization table index
 
     // Quantization tables (up to 4)
-    int16_t qt[4][64];
+    int32_t qt[4][64];
     int qt_valid[4];
 
     // Huffman tables (DC: 0-1, AC: 2-3)
@@ -81,7 +82,7 @@ typedef struct {
     int bits_left;
 
     // DC prediction per component
-    int16_t dc_pred[4];
+    int32_t dc_pred[4];
 } jpeg_ctx_t;
 
 // ---------------------------------------------------------------------------
@@ -128,24 +129,41 @@ static int jpeg_segment_has(const jpeg_ctx_t *ctx, size_t seg_end, size_t needed
 /// for resetting DC predictors at restart boundaries. Any other
 /// `FF xx` sequence is an unexpected marker (returns -1).
 static int jpeg_next_byte(jpeg_ctx_t *ctx) {
-    if (ctx->pos >= ctx->len)
-        return -1;
-    uint8_t b = ctx->data[ctx->pos++];
-    if (b == 0xFF) {
+    while (ctx->pos < ctx->len) {
+        uint8_t b = ctx->data[ctx->pos++];
+        if (b != 0xFF)
+            return b;
         if (ctx->pos >= ctx->len)
             return -1;
         uint8_t next = ctx->data[ctx->pos];
         if (next == 0x00) {
             ctx->pos++; // skip stuffed zero
-        } else if (next >= 0xD0 && next <= 0xD7) {
-            // RST marker — skip it and return next data byte
-            ctx->pos++;
-            return jpeg_next_byte(ctx);
-        } else {
-            return -1; // unexpected marker
+            return 0xFF;
         }
+        return -1; // unexpected marker inside entropy data
     }
-    return b;
+    return -1;
+}
+
+/// @brief Consume and validate the restart marker expected at an MCU boundary.
+/// @details Restart markers are only legal between restart intervals, after
+///          byte-aligning the entropy bitstream. Handling them here prevents
+///          marker bytes from being silently skipped in the low-level byte reader.
+/// @param ctx JPEG decoder context positioned at the marker prefix.
+/// @param expected_rst Marker sequence number in [0, 7].
+/// @return 1 when the expected marker was consumed, 0 otherwise.
+static int jpeg_consume_restart_marker(jpeg_ctx_t *ctx, int expected_rst) {
+    if (!ctx || expected_rst < 0 || expected_rst > 7)
+        return 0;
+    ctx->bits_left = 0;
+    ctx->bitbuf = 0;
+    if (ctx->pos >= ctx->len || ctx->data[ctx->pos++] != 0xFFu)
+        return 0;
+    while (ctx->pos < ctx->len && ctx->data[ctx->pos] == 0xFFu)
+        ctx->pos++;
+    if (ctx->pos >= ctx->len)
+        return 0;
+    return ctx->data[ctx->pos++] == (uint8_t)(0xD0u + (uint8_t)expected_rst);
 }
 
 /// @brief Extract `count` MSB-first bits from the JPEG bitstream.
@@ -154,6 +172,10 @@ static int jpeg_next_byte(jpeg_ctx_t *ctx) {
 /// until at least `count` bits are available, then shifts them out
 /// of the high end. Returns -1 on EOF/marker error.
 static int jpeg_get_bits(jpeg_ctx_t *ctx, int count) {
+    if (count < 0 || count > 24)
+        return -1;
+    if (count == 0)
+        return 0;
     while (ctx->bits_left < count) {
         int b = jpeg_next_byte(ctx);
         if (b < 0)
@@ -171,10 +193,17 @@ static int jpeg_get_bits(jpeg_ctx_t *ctx, int count) {
 /// (`bits[1..16]`). This expands them into the cumulative
 /// `mincode`/`maxcode` per length used by `jpeg_huff_decode` for
 /// fast symbol lookup.
-static void jpeg_build_huff(jpeg_huff_t *h) {
+/// @return 1 when the table is not over-subscribed and has at least one symbol.
+static int jpeg_build_huff(jpeg_huff_t *h) {
     int code = 0;
     int si = 0;
+    int space = 1;
+    if (!h)
+        return 0;
     for (int i = 1; i <= 16; i++) {
+        space = (space << 1) - h->bits[i];
+        if (space < 0)
+            return 0;
         h->mincode[i] = code;
         h->valptr[i] = si;
         if (h->bits[i] == 0) {
@@ -186,6 +215,7 @@ static void jpeg_build_huff(jpeg_huff_t *h) {
         code = (code + h->bits[i]) << 1;
     }
     h->maxcode[17] = 0x7FFFFFFF;
+    return si > 0;
 }
 
 /// @brief Decode one Huffman symbol from the JPEG bitstream.
@@ -198,6 +228,8 @@ static int jpeg_huff_decode(jpeg_ctx_t *ctx, jpeg_huff_t *h) {
         code = (code << 1) | bit;
         if (h->maxcode[i] >= 0 && code <= h->maxcode[i]) {
             int idx = h->valptr[i] + (code - h->mincode[i]);
+            if (idx < 0 || idx >= 256)
+                return -1;
             return h->huffval[idx];
         }
     }
@@ -229,16 +261,18 @@ static int jpeg_extend(int val, int bits) {
 /// table entry and stores it in natural row order using `jpeg_zigzag`.
 /// @return 0 on success, -1 on bitstream / Huffman decode failure.
 static int jpeg_decode_block(jpeg_ctx_t *ctx,
-                             int16_t block[64],
+                             int32_t block[64],
                              jpeg_huff_t *dc_ht,
                              jpeg_huff_t *ac_ht,
-                             int16_t *dc_pred,
-                             const int16_t qt[64]) {
-    memset(block, 0, sizeof(int16_t) * 64);
+                             int32_t *dc_pred,
+                             const int32_t qt[64]) {
+    memset(block, 0, sizeof(int32_t) * 64);
 
     // DC coefficient
     int s = jpeg_huff_decode(ctx, dc_ht);
     if (s < 0)
+        return -1;
+    if (s > 11)
         return -1;
     int dc_val = 0;
     if (s > 0) {
@@ -247,8 +281,16 @@ static int jpeg_decode_block(jpeg_ctx_t *ctx,
             return -1;
         dc_val = jpeg_extend(dc_val, s);
     }
-    *dc_pred += (int16_t)dc_val;
-    block[0] = *dc_pred * qt[0];
+    if ((dc_val > 0 && *dc_pred > INT32_MAX - dc_val) ||
+        (dc_val < 0 && *dc_pred < INT32_MIN - dc_val))
+        return -1;
+    *dc_pred += dc_val;
+    {
+        int64_t coeff = (int64_t)(*dc_pred) * (int64_t)qt[0];
+        if (coeff < INT32_MIN || coeff > INT32_MAX)
+            return -1;
+        block[0] = (int32_t)coeff;
+    }
 
     // AC coefficients
     for (int k = 1; k < 64; k++) {
@@ -257,6 +299,8 @@ static int jpeg_decode_block(jpeg_ctx_t *ctx,
             return -1;
         int rrrr = (rs >> 4) & 0x0F; // zero run length
         int ssss = rs & 0x0F;        // coefficient size
+        if (ssss > 10)
+            return -1;
 
         if (ssss == 0) {
             if (rrrr == 0)
@@ -265,7 +309,7 @@ static int jpeg_decode_block(jpeg_ctx_t *ctx,
                 k += 15; // ZRL: skip 16 zeros
                 continue;
             }
-            break;
+            return -1;
         }
 
         k += rrrr;
@@ -276,7 +320,12 @@ static int jpeg_decode_block(jpeg_ctx_t *ctx,
         if (ac_val < 0)
             return -1;
         ac_val = jpeg_extend(ac_val, ssss);
-        block[jpeg_zigzag[k]] = (int16_t)(ac_val * qt[jpeg_zigzag[k]]);
+        {
+            int64_t coeff = (int64_t)ac_val * (int64_t)qt[jpeg_zigzag[k]];
+            if (coeff < INT32_MIN || coeff > INT32_MAX)
+                return -1;
+            block[jpeg_zigzag[k]] = (int32_t)coeff;
+        }
     }
 
     return 0;
@@ -388,7 +437,7 @@ static void jpeg_idct_col(int32_t *workspace, int col) {
 /// Applies `jpeg_idct_row` × 8 then `jpeg_idct_col` × 8 with the
 /// AAN-required pre-/post-scale. After descaling and biasing by
 /// 128 (level shift), the samples are clamped to [0, 255].
-static void jpeg_idct_block(int16_t block[64], uint8_t out[64]) {
+static void jpeg_idct_block(const int32_t block[64], uint8_t out[64]) {
     int32_t workspace[64];
     for (int i = 0; i < 64; i++)
         workspace[i] = (int32_t)block[i];
@@ -432,6 +481,10 @@ static int jpeg_rgba_pixel_count_checked(int64_t width, int64_t height, size_t *
     if ((size_t)width > SIZE_MAX / (size_t)height)
         return 0;
     *out_count = (size_t)width * (size_t)height;
+    if (*out_count > JPEG_MAX_PIXELS) {
+        *out_count = 0;
+        return 0;
+    }
     return 1;
 }
 
@@ -586,22 +639,15 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                         goto jpeg_fail;
                     int precision = (info >> 4) & 0x0F; // 0=8bit, 1=16bit
                     int table_id = info & 0x0F;
-                    if (precision > 1 || table_id > 3)
+                    if (precision != 0 || table_id > 3)
                         goto jpeg_fail;
-                    if (!jpeg_segment_has(&ctx, seg_end, (size_t)64 * (precision == 0 ? 1u : 2u)))
+                    if (!jpeg_segment_has(&ctx, seg_end, 64u))
                         goto jpeg_fail;
                     for (int i = 0; i < 64; i++) {
-                        if (precision == 0) {
-                            int v = jpeg_read_u8(&ctx);
-                            if (v < 0)
-                                goto jpeg_fail;
-                            ctx.qt[table_id][jpeg_zigzag[i]] = (int16_t)v;
-                        } else {
-                            int v = jpeg_read_u16(&ctx);
-                            if (v < 0)
-                                goto jpeg_fail;
-                            ctx.qt[table_id][jpeg_zigzag[i]] = (int16_t)v;
-                        }
+                        int v = jpeg_read_u8(&ctx);
+                        if (v < 0)
+                            goto jpeg_fail;
+                        ctx.qt[table_id][jpeg_zigzag[i]] = v;
                     }
                     ctx.qt_valid[table_id] = 1;
                 }
@@ -640,9 +686,16 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                         int v = jpeg_read_u8(&ctx);
                         if (v < 0)
                             goto jpeg_fail;
+                        if (table_class == 0 && v > 11)
+                            goto jpeg_fail;
+                        if (table_class == 1 &&
+                            (((v & 0x0F) > 10) ||
+                             ((v & 0x0F) == 0 && v != 0x00 && v != 0xF0)))
+                            goto jpeg_fail;
                         ht->huffval[i] = (uint8_t)v;
                     }
-                    jpeg_build_huff(ht);
+                    if (!jpeg_build_huff(ht))
+                        goto jpeg_fail;
                     ctx.huff_valid[idx] = 1;
                 }
                 if (ctx.pos != seg_end)
@@ -660,10 +713,13 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                 int w = jpeg_read_u16(&ctx);
                 if (w <= 0 || h <= 0 || w > 32768 || h > 32768)
                     goto jpeg_fail;
+                if ((size_t)w > SIZE_MAX / (size_t)h ||
+                    (size_t)w * (size_t)h > JPEG_MAX_PIXELS)
+                    goto jpeg_fail;
                 ctx.width = (uint16_t)w;
                 ctx.height = (uint16_t)h;
                 int nf = jpeg_read_u8(&ctx);
-                if (nf < 1 || nf > 4)
+                if (nf != 1 && nf != 3)
                     goto jpeg_fail;
                 if ((size_t)nf > (seg_end - ctx.pos) / 3)
                     goto jpeg_fail;
@@ -701,6 +757,10 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                 int ns = jpeg_read_u8(&ctx);
                 if (ns < 1 || ns > 4)
                     goto jpeg_fail;
+                if (ctx.num_components != 1 && ctx.num_components != 3)
+                    goto jpeg_fail;
+                if (ns != ctx.num_components)
+                    goto jpeg_fail;
                 if (!jpeg_segment_has(&ctx, seg_end, 3) ||
                     (size_t)ns > (seg_end - ctx.pos - 3) / 2)
                     goto jpeg_fail;
@@ -720,6 +780,10 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                     }
                     if (ci < 0)
                         goto jpeg_fail;
+                    for (int j = 0; j < i; j++) {
+                        if (ctx.scan_comp_idx[j] == (uint8_t)ci)
+                            goto jpeg_fail;
+                    }
                     ctx.scan_comp_idx[i] = (uint8_t)ci;
                     int dc_table = (td_ta >> 4) & 0x0F;
                     int ac_table = td_ta & 0x0F;
@@ -733,6 +797,8 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                 int se = jpeg_read_u8(&ctx);
                 int ah_al = jpeg_read_u8(&ctx);
                 if (ss < 0 || se < 0 || ah_al < 0)
+                    goto jpeg_fail;
+                if (ss != 0 || se != 63 || ah_al != 0)
                     goto jpeg_fail;
                 if (ctx.pos != seg_end)
                     goto jpeg_fail;
@@ -772,20 +838,20 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                 }
 
                 // Decode MCUs
-                int16_t block[64];
+                int32_t block[64];
                 uint8_t idct_out[64];
                 int restart_count = 0;
+                int expected_rst = 0;
 
                 for (int mcu_y = 0; mcu_y < mcus_y; mcu_y++) {
                     for (int mcu_x = 0; mcu_x < mcus_x; mcu_x++) {
                         // Handle restart markers
                         if (ctx.restart_interval > 0 && restart_count > 0 &&
                             (restart_count % ctx.restart_interval) == 0) {
-                            // Align to byte boundary
-                            ctx.bits_left = 0;
-                            ctx.bitbuf = 0;
+                            if (!jpeg_consume_restart_marker(&ctx, expected_rst))
+                                goto jpeg_fail;
+                            expected_rst = (expected_rst + 1) & 7;
                             memset(ctx.dc_pred, 0, sizeof(ctx.dc_pred));
-                            // Skip any RST marker bytes (handled in jpeg_next_byte)
                         }
                         restart_count++;
 
@@ -850,7 +916,7 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                                                         ((uint32_t)gray << 8) | 0xFF;
                         }
                     }
-                } else if (ctx.num_components >= 3) {
+                } else if (ctx.num_components == 3) {
                     // YCbCr -> RGB with chroma upsampling
                     int y_stride = mcus_x * ctx.comp_h_samp[0] * 8;
                     int cb_stride = mcus_x * ctx.comp_h_samp[1] * 8;
@@ -900,7 +966,18 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                         const uint8_t *tiff = exif + 6;
                         size_t tiff_len = data_len - 6;
                         if (tiff_len >= 8) {
-                            int big = (tiff[0] == 'M' && tiff[1] == 'M');
+                            int big;
+                            uint16_t tiff_magic;
+                            if (tiff[0] == 'M' && tiff[1] == 'M')
+                                big = 1;
+                            else if (tiff[0] == 'I' && tiff[1] == 'I')
+                                big = 0;
+                            else
+                                goto exif_done;
+                            tiff_magic = big ? (uint16_t)((tiff[2] << 8) | tiff[3])
+                                             : (uint16_t)(tiff[2] | (tiff[3] << 8));
+                            if (tiff_magic != 42u)
+                                goto exif_done;
                             uint32_t ifd_off =
                                 big ? ((uint32_t)tiff[4] << 24 | (uint32_t)tiff[5] << 16 |
                                        (uint32_t)tiff[6] << 8 | tiff[7])
@@ -928,6 +1005,7 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                         }
                     }
                 }
+            exif_done:
                 ctx.pos = seg_end;
                 break;
         }

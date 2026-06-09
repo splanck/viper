@@ -584,7 +584,10 @@ void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val
         rt_trap("Camera3D.New: memory allocation failed");
         return NULL;
     }
-    memset(cam, 0, sizeof(*cam));
+    {
+        rt_camera3d zero = {0};
+        *cam = zero;
+    }
     cam->vptr = NULL;
     cam->fov = sanitize_fov(fov);
     cam->aspect = sanitize_aspect(aspect);
@@ -676,7 +679,10 @@ void *rt_camera3d_new_ortho(double size, double aspect, double near_val, double 
         rt_trap("Camera3D.NewOrtho: memory allocation failed");
         return NULL;
     }
-    memset(cam, 0, sizeof(*cam));
+    {
+        rt_camera3d zero = {0};
+        *cam = zero;
+    }
     cam->vptr = NULL;
     cam->fov = 0;
     cam->aspect = sanitize_aspect(aspect);

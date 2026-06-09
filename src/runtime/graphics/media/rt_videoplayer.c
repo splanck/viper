@@ -82,6 +82,46 @@ static int video_pixel_copy_bytes(const px_view *dst, const px_view *src, size_t
     return 1;
 }
 
+/// @brief Build a packed little-endian FOURCC tag from four ASCII bytes.
+/// @param a First FOURCC byte.
+/// @param b Second FOURCC byte.
+/// @param c Third FOURCC byte.
+/// @param d Fourth FOURCC byte.
+/// @return Packed 32-bit FOURCC value.
+static uint32_t video_fourcc(char a, char b, char c, char d) {
+    return (uint32_t)(uint8_t)a | ((uint32_t)(uint8_t)b << 8) |
+           ((uint32_t)(uint8_t)c << 16) | ((uint32_t)(uint8_t)d << 24);
+}
+
+/// @brief Whether an AVI video stream codec can be decoded by this player.
+/// @details The AVI path currently decodes MJPEG frames through the runtime
+///          JPEG decoder. Unsupported codecs are rejected at open time so
+///          playback does not silently produce stale or blank frames.
+/// @param fourcc AVI stream codec FOURCC.
+/// @return 1 for supported MJPEG aliases, otherwise 0.
+static int videoplayer_avi_codec_supported(uint32_t fourcc) {
+    return fourcc == video_fourcc('M', 'J', 'P', 'G') ||
+           fourcc == video_fourcc('m', 'j', 'p', 'g') ||
+           fourcc == video_fourcc('J', 'P', 'E', 'G') ||
+           fourcc == video_fourcc('j', 'p', 'e', 'g');
+}
+
+/// @brief Copy a decoded Pixels object into the player's stable display buffer.
+/// @details Verifies dimensions and byte-count overflow before copying. The
+///          decoded object is not retained or released by this helper.
+/// @param frame_display Destination Pixels object owned by the video player.
+/// @param decoded Source Pixels object returned by the frame decoder.
+/// @return 1 when the copy succeeded, 0 for NULL/mismatched/overflowing views.
+static int videoplayer_copy_decoded_frame(void *frame_display, void *decoded) {
+    px_view *dst = (px_view *)frame_display;
+    px_view *src = (px_view *)decoded;
+    size_t copy_bytes = 0;
+    if (!video_pixel_copy_bytes(dst, src, &copy_bytes))
+        return 0;
+    memcpy(dst->data, src->data, copy_bytes);
+    return 1;
+}
+
 // Keep video file loading large-file safe on platforms where long is 32-bit.
 #if defined(_WIN32)
 #define video_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
@@ -523,36 +563,85 @@ static const uint8_t std_dht[] = {
     0xFA,
 };
 
+/// @brief Whether a JPEG marker has no segment-length payload.
+/// @param marker JPEG marker byte after the 0xFF prefix.
+/// @return 1 for stand-alone markers, 0 for length-prefixed segment markers.
+static int jpeg_marker_has_no_payload(uint8_t marker) {
+    return marker == 0x01 || marker == 0xD8 || marker == 0xD9 ||
+           (marker >= 0xD0 && marker <= 0xD7);
+}
+
+/// @brief Scan a JPEG/MJPEG frame for DHT and SOS markers by walking marker segments.
+/// @details Stops at SOS because entropy-coded data after that point can contain
+///          byte-stuffed marker-like values. This avoids the old fixed-window
+///          scan while still allowing DHT injection immediately before SOS.
+/// @param data JPEG frame bytes.
+/// @param size Byte length of @p data.
+/// @param out_has_dht Receives whether a DHT marker was present before SOS.
+/// @param out_sos_pos Receives the byte offset of SOS, or 0 when not found.
+/// @return 1 when the marker structure scanned cleanly, 0 on malformed segment lengths.
+static int mjpeg_scan_markers(const uint8_t *data,
+                              uint32_t size,
+                              int *out_has_dht,
+                              uint32_t *out_sos_pos) {
+    size_t pos = 0;
+    if (!data || !out_has_dht || !out_sos_pos)
+        return 0;
+    *out_has_dht = 0;
+    *out_sos_pos = 0;
+    while (pos + 1u < (size_t)size) {
+        while (pos < (size_t)size && data[pos] != 0xFFu)
+            pos++;
+        if (pos + 1u >= (size_t)size)
+            return 1;
+        size_t marker_pos = pos;
+        pos++;
+        while (pos < (size_t)size && data[pos] == 0xFFu)
+            pos++;
+        if (pos >= (size_t)size)
+            return 0;
+        uint8_t marker = data[pos++];
+        if (marker == 0x00u)
+            continue;
+        if (marker == 0xC4u)
+            *out_has_dht = 1;
+        if (marker == 0xDAu) {
+            *out_sos_pos = (uint32_t)marker_pos;
+            return 1;
+        }
+        if (jpeg_marker_has_no_payload(marker))
+            continue;
+        if (pos + 2u > (size_t)size)
+            return 0;
+        uint16_t seg_len = (uint16_t)(((uint16_t)data[pos] << 8) | (uint16_t)data[pos + 1u]);
+        if (seg_len < 2u || (size_t)(seg_len - 2u) > (size_t)size - pos - 2u)
+            return 0;
+        pos += (size_t)seg_len;
+    }
+    return 1;
+}
+
 /// @brief Decode an MJPEG frame, injecting standard DHT if missing.
 static void *decode_mjpeg_frame(const uint8_t *data, uint32_t size) {
     if (!data || size < 4)
         return NULL;
 
-    /* Check if DHT marker (0xFFC4) is already present */
     int has_dht = 0;
-    for (uint32_t i = 0; i + 1 < size && i < 1000; i++) {
-        if (data[i] == 0xFF && data[i + 1] == 0xC4) {
-            has_dht = 1;
-            break;
-        }
-    }
+    uint32_t sos_pos = 0;
+    if (!mjpeg_scan_markers(data, size, &has_dht, &sos_pos))
+        return NULL;
 
     if (has_dht)
         return rt_jpeg_decode_buffer(data, size);
 
     /* Find SOS marker (0xFFDA) — insert DHT just before it */
-    uint32_t sos_pos = 0;
-    for (uint32_t i = 0; i + 1 < size; i++) {
-        if (data[i] == 0xFF && data[i + 1] == 0xDA) {
-            sos_pos = i;
-            break;
-        }
-    }
     if (sos_pos == 0)
         return rt_jpeg_decode_buffer(data, size); /* no SOS found, try anyway */
 
     /* Build new buffer: [header...SOS) + DHT + [SOS...end] */
     size_t dht_size = sizeof(std_dht);
+    if ((size_t)size > SIZE_MAX - dht_size)
+        return NULL;
     size_t new_size = size + dht_size;
     uint8_t *buf = (uint8_t *)malloc(new_size);
     if (!buf)
@@ -991,7 +1080,10 @@ void *rt_videoplayer_open(rt_string path) {
         free(data);
         return NULL;
     }
-    memset(vp, 0, sizeof(*vp));
+    {
+        rt_videoplayer zero = {0};
+        *vp = zero;
+    }
     vp->file_data = data;
     vp->file_len = (size_t)file_len;
     vp->playing = 0;
@@ -1037,26 +1129,35 @@ void *rt_videoplayer_open(rt_string path) {
     vp->fps = vp->avi.video.fps;
     vp->duration = vp->avi.video.duration;
     vp->total_frames = vp->avi.video_frame_count;
+    if (!videoplayer_avi_codec_supported(vp->avi.video.fourcc) || vp->width <= 0 ||
+        vp->height <= 0 || vp->total_frames <= 0 || !isfinite(vp->fps) || vp->fps <= 0.0 ||
+        !isfinite(vp->duration) || vp->duration < 0.0) {
+        if (rt_obj_release_check0(vp))
+            rt_obj_free(vp);
+        return NULL;
+    }
 
     /* Stable frame buffer — pre-allocated, content copied in each frame.
      * This prevents GC from collecting the display Pixels mid-frame. */
     vp->frame_display = rt_pixels_new(vp->width, vp->height);
     vp->frame_decode = NULL;
+    if (!vp->frame_display) {
+        if (rt_obj_release_check0(vp))
+            rt_obj_free(vp);
+        return NULL;
+    }
 
     /* Decode first frame immediately so get_Frame works before Play */
-    if (vp->total_frames > 0) {
+    {
         uint32_t frame_size = 0;
         const uint8_t *frame_data = avi_get_video_frame(&vp->avi, 0, &frame_size);
-        if (frame_data) {
-            void *decoded = decode_mjpeg_frame(frame_data, frame_size);
-            if (decoded && vp->frame_display) {
-                px_view *dst = (px_view *)vp->frame_display;
-                px_view *src = (px_view *)decoded;
-                size_t copy_bytes = 0;
-                if (video_pixel_copy_bytes(dst, src, &copy_bytes))
-                    memcpy(dst->data, src->data, copy_bytes);
-            }
-            release_owned_ref(&decoded);
+        void *decoded = frame_data ? decode_mjpeg_frame(frame_data, frame_size) : NULL;
+        int copied = videoplayer_copy_decoded_frame(vp->frame_display, decoded);
+        release_owned_ref(&decoded);
+        if (!copied) {
+            if (rt_obj_release_check0(vp))
+                rt_obj_free(vp);
+            return NULL;
         }
         vp->current_frame = 0;
     }
@@ -1180,7 +1281,7 @@ void rt_videoplayer_update(void *obj, double dt) {
     }
 
     if (vp->container_type == 1) {
-        if (target != vp->current_frame && target >= 0) {
+        if (target != vp->current_frame) {
             if (!ogv_decode_until_frame(vp, target)) {
                 vp->playing = 0;
                 if (vp->duration > 0.0)
@@ -1191,20 +1292,15 @@ void rt_videoplayer_update(void *obj, double dt) {
     }
 
     /* Only decode if frame changed */
-    if (target != vp->current_frame && target >= 0) {
+    if (target != vp->current_frame) {
         uint32_t frame_size = 0;
         const uint8_t *frame_data = avi_get_video_frame(&vp->avi, target, &frame_size);
-        if (frame_data && vp->frame_display) {
-            void *decoded = decode_mjpeg_frame(frame_data, frame_size);
-            if (decoded) {
-                /* Copy decoded pixels into stable frame buffer */
-                px_view *dst = (px_view *)vp->frame_display;
-                px_view *src = (px_view *)decoded;
-                size_t copy_bytes = 0;
-                if (video_pixel_copy_bytes(dst, src, &copy_bytes))
-                    memcpy(dst->data, src->data, copy_bytes);
-                release_owned_ref(&decoded);
-            }
+        void *decoded = frame_data ? decode_mjpeg_frame(frame_data, frame_size) : NULL;
+        int copied = videoplayer_copy_decoded_frame(vp->frame_display, decoded);
+        release_owned_ref(&decoded);
+        if (!copied) {
+            vp->playing = 0;
+            return;
         }
         vp->current_frame = target;
     }

@@ -210,8 +210,7 @@ static int character3d_test_position(rt_character3d *ctrl,
     body->position[1] = test_pos[1];
     body->position[2] = test_pos[2];
 
-    rt_character_hit3d best;
-    memset(&best, 0, sizeof(best));
+    rt_character_hit3d best = {0};
     for (int32_t i = 0; i < ctrl->world->body_count; i++) {
         rt_body3d *other = ctrl->world->bodies[i];
         double normal[3], depth;
@@ -346,8 +345,10 @@ static int character3d_sweep(rt_character3d *ctrl,
     body->position[0] = end[0];
     body->position[1] = end[1];
     body->position[2] = end[2];
-    if (out_hit)
-        memset(out_hit, 0, sizeof(*out_hit));
+    if (out_hit) {
+        rt_character_hit3d zero = {0};
+        *out_hit = zero;
+    }
     return 0;
 }
 
@@ -717,7 +718,10 @@ void *rt_trigger3d_new(double x0, double y0, double z0, double x1, double y1, do
         rt_trap("Trigger3D.New: allocation failed");
         return NULL;
     }
-    memset(t, 0, sizeof(rt_trigger3d));
+    {
+        rt_trigger3d zero = {0};
+        *t = zero;
+    }
     trigger3d_set_bounds_raw(t, x0, y0, z0, x1, y1, z1);
     rt_obj_set_finalizer(t, trigger3d_finalizer);
     return t;

@@ -743,7 +743,10 @@ static int world3d_process_collision_pair(rt_world3d *w, rt_body3d *a, rt_body3d
     }
 
     rt_contact3d *c = &w->contacts[w->contact_count++];
-    memset(c, 0, sizeof(*c));
+    {
+        rt_contact3d zero = {0};
+        *c = zero;
+    }
     c->body_a = a;
     c->body_b = b;
     c->collider_a = leaf_a ? leaf_a : a->collider;

@@ -9,7 +9,8 @@
 /// collision functions without needing to register a permanent body.
 /// Only fields the collision routines read are populated.
 static void make_temp_sphere(rt_body3d *out, const double *center, double radius) {
-    memset(out, 0, sizeof(*out));
+    rt_body3d zero = {0};
+    *out = zero;
     out->shape = PH3D_SHAPE_SPHERE;
     out->position[0] = center[0];
     out->position[1] = center[1];

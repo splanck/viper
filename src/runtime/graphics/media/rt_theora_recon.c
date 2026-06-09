@@ -196,9 +196,8 @@ static void build_residual_block(const theora_decoder_t *dec,
         (int16_t)(((int)priv->coeffs[bi][0] * dec->qmat[qti][b->plane][qi_dc][0] + 15) >> 5);
     for (int zi = 1; zi < priv->ncoeffs[bi] && zi < 64; zi++) {
         int idx = theora_zigzag[zi];
-        int qi = zi == 0 ? qi_dc : qi_ac;
         coeff_block[idx] =
-            (int16_t)(((int)priv->coeffs[bi][zi] * dec->qmat[qti][b->plane][qi][idx] + 15) >> 5);
+            (int16_t)(((int)priv->coeffs[bi][zi] * dec->qmat[qti][b->plane][qi_ac][idx] + 15) >> 5);
     }
     idct_block(coeff_block, out);
 }

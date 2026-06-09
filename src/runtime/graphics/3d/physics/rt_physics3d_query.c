@@ -261,7 +261,8 @@ int query_entry_overlaps_bounds(const ph3d_broadphase_entry *entry,
 /// orientation, and the supplied position. `make_temp_sphere` is the
 /// sphere-only variant used elsewhere; this is the general form.
 static void init_temp_query_body(rt_body3d *body, void *collider, const double *position) {
-    memset(body, 0, sizeof(*body));
+    rt_body3d zero = {0};
+    *body = zero;
     quat_identity(body->orientation);
     vec3_set(body->scale, 1.0, 1.0, 1.0);
     body->motion_mode = PH3D_MODE_STATIC;
@@ -286,7 +287,8 @@ static int overlap_query_body_against_body(rt_body3d *query_body,
     if (!test_collision(query_body, other, normal, &depth, point, NULL, &leaf_other, NULL, NULL))
         return 0;
     if (out_hit) {
-        memset(out_hit, 0, sizeof(*out_hit));
+        rt_query_hit3d zero = {0};
+        *out_hit = zero;
         out_hit->body = other;
         out_hit->collider = leaf_other ? leaf_other : other->collider;
         vec3_copy(out_hit->point, point);
@@ -311,7 +313,10 @@ static void sweep_sphere_fill_hit(rt_body3d *body,
                                   rt_query_hit3d *out_hit) {
     if (!out_hit)
         return;
-    memset(out_hit, 0, sizeof(*out_hit));
+    {
+        rt_query_hit3d zero = {0};
+        *out_hit = zero;
+    }
     out_hit->body = body;
     out_hit->collider = body ? body->collider : NULL;
     out_hit->distance = query_sanitize_distance(distance);

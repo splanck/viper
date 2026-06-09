@@ -30,6 +30,88 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define GLTF_JSON_MAX_DEPTH 512
+
+/// @brief Decode one hexadecimal JSON escape digit.
+/// @param c ASCII character to decode.
+/// @return Value in [0, 15], or -1 if @p c is not a hex digit.
+static int gltf_json_hex_value(char c) {
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
+    if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
+    return -1;
+}
+
+/// @brief Decode a four-hex-digit JSON `\\uXXXX` escape.
+/// @param json Source JSON buffer.
+/// @param len Source buffer byte length.
+/// @param pos Offset of the first hex digit after `\\u`.
+/// @param out_cp Receives the decoded UTF-16 code unit.
+/// @return 1 on success, 0 on truncation or invalid hex.
+static int gltf_json_read_hex4(const char *json, size_t len, size_t pos, uint32_t *out_cp) {
+    uint32_t value = 0;
+    if (!json || !out_cp || pos > len || len - pos < 4u)
+        return 0;
+    for (int i = 0; i < 4; i++) {
+        int digit = gltf_json_hex_value(json[pos + (size_t)i]);
+        if (digit < 0)
+            return 0;
+        value = (value << 4) | (uint32_t)digit;
+    }
+    *out_cp = value;
+    return 1;
+}
+
+/// @brief Append one Unicode scalar value as UTF-8 to an output string buffer.
+/// @param out Destination buffer allocated by the caller.
+/// @param count In/out byte count already written to @p out.
+/// @param cap Capacity of @p out in bytes.
+/// @param cp Unicode scalar value to append.
+/// @return 1 on success, 0 if @p cp is invalid or there is not enough capacity.
+static int gltf_json_append_utf8(char *out, size_t *count, size_t cap, uint32_t cp) {
+    if (!out || !count || cp > 0x10FFFFu || (cp >= 0xD800u && cp <= 0xDFFFu))
+        return 0;
+    if (cp <= 0x7Fu) {
+        if (*count + 1u > cap)
+            return 0;
+        out[(*count)++] = (char)cp;
+    } else if (cp <= 0x7FFu) {
+        if (*count + 2u > cap)
+            return 0;
+        out[(*count)++] = (char)(0xC0u | (cp >> 6));
+        out[(*count)++] = (char)(0x80u | (cp & 0x3Fu));
+    } else if (cp <= 0xFFFFu) {
+        if (*count + 3u > cap)
+            return 0;
+        out[(*count)++] = (char)(0xE0u | (cp >> 12));
+        out[(*count)++] = (char)(0x80u | ((cp >> 6) & 0x3Fu));
+        out[(*count)++] = (char)(0x80u | (cp & 0x3Fu));
+    } else {
+        if (*count + 4u > cap)
+            return 0;
+        out[(*count)++] = (char)(0xF0u | (cp >> 18));
+        out[(*count)++] = (char)(0x80u | ((cp >> 12) & 0x3Fu));
+        out[(*count)++] = (char)(0x80u | ((cp >> 6) & 0x3Fu));
+        out[(*count)++] = (char)(0x80u | (cp & 0x3Fu));
+    }
+    return 1;
+}
+
+/// @brief Check that a JSON literal consumes the entire raw value span after whitespace.
+/// @param json Source JSON buffer.
+/// @param token_end Offset just after the candidate literal.
+/// @param value_end End offset of the raw value span.
+/// @return 1 when only JSON whitespace follows the literal before @p value_end.
+static int gltf_json_literal_ends_cleanly(const char *json, size_t token_end, size_t value_end) {
+    size_t pos = token_end;
+    while (pos < value_end && isspace((unsigned char)json[pos]))
+        pos++;
+    return pos == value_end;
+}
+
 /// @brief Advance @p pos past JSON whitespace (space/tab/CR/LF) in the raw byte scanner.
 size_t gltf_json_skip_ws(const char *json, size_t len, size_t pos) {
     while (pos < len) {
@@ -110,6 +192,33 @@ char *gltf_json_read_string_alloc(const char *json, size_t len, size_t pos, size
                 case 't':
                     c = '\t';
                     break;
+                case 'u': {
+                    uint32_t cp;
+                    if (!gltf_json_read_hex4(json, len, pos, &cp)) {
+                        free(out);
+                        return NULL;
+                    }
+                    pos += 4u;
+                    if (cp >= 0xD800u && cp <= 0xDBFFu) {
+                        uint32_t low;
+                        if (pos + 6u > len || json[pos] != '\\' || json[pos + 1u] != 'u' ||
+                            !gltf_json_read_hex4(json, len, pos + 2u, &low) ||
+                            low < 0xDC00u || low > 0xDFFFu) {
+                            free(out);
+                            return NULL;
+                        }
+                        pos += 6u;
+                        cp = 0x10000u + (((cp - 0xD800u) << 10) | (low - 0xDC00u));
+                    } else if (cp >= 0xDC00u && cp <= 0xDFFFu) {
+                        free(out);
+                        return NULL;
+                    }
+                    if (!gltf_json_append_utf8(out, &count, cap, cp)) {
+                        free(out);
+                        return NULL;
+                    }
+                    continue;
+                }
                 default:
                     free(out);
                     return NULL;
@@ -164,6 +273,9 @@ size_t gltf_json_skip_value(const char *json, size_t len, size_t pos) {
             array_depth++;
         else if (c == ']')
             array_depth--;
+        if (object_depth < 0 || array_depth < 0 ||
+            object_depth + array_depth > GLTF_JSON_MAX_DEPTH)
+            return SIZE_MAX;
         pos++;
     } while (pos < len && (object_depth > 0 || array_depth > 0));
     return object_depth == 0 && array_depth == 0 ? pos : SIZE_MAX;
@@ -192,6 +304,8 @@ size_t gltf_json_find_matching(
             if (depth == 0)
                 return pos + 1u;
         }
+        if (depth < 0 || depth > GLTF_JSON_MAX_DEPTH)
+            return SIZE_MAX;
         pos++;
     }
     return SIZE_MAX;
@@ -375,7 +489,7 @@ int gltf_json_object_get_int(
                 size_t colon = gltf_json_skip_ws(json, len, next);
                 size_t value;
                 int sign = 1;
-                int result = 0;
+                int64_t result = 0;
                 if (colon < obj_end && json[colon] == ':') {
                     value = gltf_json_skip_ws(json, len, colon + 1u);
                     if (value < obj_end && json[value] == '-') {
@@ -383,14 +497,20 @@ int gltf_json_object_get_int(
                         value++;
                     }
                     if (value < obj_end && json[value] >= '0' && json[value] <= '9') {
+                        int64_t limit = sign < 0 ? (int64_t)INT_MAX + 1 : (int64_t)INT_MAX;
                         while (value < obj_end && json[value] >= '0' && json[value] <= '9') {
                             int digit = (int)(json[value] - '0');
-                            if (result > (INT_MAX - digit) / 10)
+                            if (result > (limit - digit) / 10)
                                 return fallback;
                             result = result * 10 + digit;
                             value++;
                         }
-                        return sign * result;
+                        if (sign < 0) {
+                            if (result == (int64_t)INT_MAX + 1)
+                                return INT_MIN;
+                            return (int)(-result);
+                        }
+                        return (int)result;
                     }
                 }
             }
@@ -585,9 +705,11 @@ int gltf_json_object_get_boolish(
     if (!gltf_json_object_find_value(json, len, obj_start, obj_end, key, &value_start, &value_end))
         return fallback;
     value = gltf_json_skip_ws(json, len, value_start);
-    if (value + 4u <= value_end && strncmp(json + value, "true", 4u) == 0)
+    if (value + 4u <= value_end && strncmp(json + value, "true", 4u) == 0 &&
+        gltf_json_literal_ends_cleanly(json, value + 4u, value_end))
         return 1;
-    if (value + 5u <= value_end && strncmp(json + value, "false", 5u) == 0)
+    if (value + 5u <= value_end && strncmp(json + value, "false", 5u) == 0 &&
+        gltf_json_literal_ends_cleanly(json, value + 5u, value_end))
         return 0;
     return gltf_json_object_get_int(json, len, obj_start, obj_end, key, fallback) ? 1 : 0;
 }

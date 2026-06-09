@@ -447,8 +447,12 @@ static void fbx_skip(fbx_reader_t *r, size_t n) {
  * FBX node tree
  *=========================================================================*/
 
-#define FBX_MAX_CHILDREN 256
+#define FBX_MAX_CHILDREN 16384
+#define FBX_MAX_NODE_DEPTH 512
+#define FBX_MAX_NODE_PROPS 4096
+#define FBX_MAX_PROPERTY_BYTES (64u * 1024u * 1024u)
 #define FBX_MAX_COMPRESSED_ARRAY_BYTES (256u * 1024u * 1024u)
+#define FBX_MAX_DECOMPRESSED_ARRAY_BYTES (256u * 1024u * 1024u)
 
 typedef struct {
     char type; /* C/Y/I/L/F/D/S/R/b/i/l/f/d */
@@ -517,9 +521,17 @@ static void *fbx_decompress_array(const uint8_t *data,
                                   uint32_t comp_len,
                                   uint32_t count,
                                   uint32_t elem_size) {
+    size_t expected;
+    uint8_t *inflated = NULL;
+    size_t inflated_len = 0;
     if (comp_len < 6)
         return NULL;
     if (comp_len > FBX_MAX_COMPRESSED_ARRAY_BYTES)
+        return NULL;
+    if (elem_size > 0 && count > SIZE_MAX / elem_size)
+        return NULL;
+    expected = (size_t)count * (size_t)elem_size;
+    if (expected > FBX_MAX_DECOMPRESSED_ARRAY_BYTES)
         return NULL;
     if ((data[0] & 0x0fu) != 8u || (data[0] >> 4) > 7u ||
         ((((uint32_t)data[0] << 8) | (uint32_t)data[1]) % 31u) != 0u ||
@@ -531,54 +543,17 @@ static void *fbx_decompress_array(const uint8_t *data,
                               ((uint32_t)data[comp_len - 2] << 8) |
                               (uint32_t)data[comp_len - 1];
 
-    void *comp_bytes = rt_bytes_new((int64_t)deflate_len);
-    if (!comp_bytes)
+    if (!rt_compress_inflate_raw(data + 2, deflate_len, expected, &inflated, &inflated_len))
         return NULL;
-
-    /* Copy raw DEFLATE payload (skip 2-byte zlib header) */
-    typedef struct {
-        int64_t len;
-        uint8_t *bdata;
-    } bytes_view;
-
-    bytes_view *bv = (bytes_view *)comp_bytes;
-    memcpy(bv->bdata, data + 2, deflate_len);
-
-    void *inflated = rt_compress_inflate(comp_bytes);
-    if (rt_obj_release_check0(comp_bytes))
-        rt_obj_free(comp_bytes);
-    if (!inflated)
-        return NULL;
-
-    bytes_view *iv = (bytes_view *)inflated;
-    if (elem_size > 0 && count > SIZE_MAX / elem_size) {
-        if (rt_obj_release_check0(inflated))
-            rt_obj_free(inflated);
-        return NULL; /* overflow guard for 32-bit platforms */
-    }
-    size_t expected = (size_t)count * elem_size;
-    if ((size_t)iv->len != expected) {
-        if (rt_obj_release_check0(inflated))
-            rt_obj_free(inflated);
+    if (inflated_len != expected) {
+        free(inflated);
         return NULL;
     }
-    if (fbx_adler32(iv->bdata, expected) != expected_adler) {
-        if (rt_obj_release_check0(inflated))
-            rt_obj_free(inflated);
+    if (fbx_adler32(inflated, expected) != expected_adler) {
+        free(inflated);
         return NULL;
     }
-
-    void *result = expected > 0 ? malloc(expected) : NULL;
-    if (expected > 0 && !result) {
-        if (rt_obj_release_check0(inflated))
-            rt_obj_free(inflated);
-        return NULL;
-    }
-    if (expected > 0)
-        memcpy(result, iv->bdata, expected);
-    if (rt_obj_release_check0(inflated))
-        rt_obj_free(inflated);
-    return result;
+    return inflated;
 }
 
 /*==========================================================================
@@ -624,6 +599,8 @@ static int fbx_parse_property(fbx_reader_t *r, fbx_prop_t *prop) {
         case 'S':
         case 'R': {
             uint32_t len = fbx_u32(r);
+            if (len > FBX_MAX_PROPERTY_BYTES)
+                return -1;
             if (!fbx_require(r, len))
                 return -1;
             if (prop->type == 'S') {
@@ -676,15 +653,17 @@ static int fbx_parse_property(fbx_reader_t *r, fbx_prop_t *prop) {
 
             prop->v.array.count = count;
             prop->v.array.elem_type = prop->type;
+            if (elem_size > 0 && count > SIZE_MAX / elem_size)
+                return -1;
+            size_t expected = (size_t)count * (size_t)elem_size;
+            if (expected > FBX_MAX_DECOMPRESSED_ARRAY_BYTES)
+                return -1;
             if (encoding == 1) {
                 prop->v.array.data =
                     fbx_decompress_array(r->data + r->pos, comp_len, count, elem_size);
                 if (count > 0 && !prop->v.array.data)
                     return -1;
             } else if (encoding == 0) {
-                if (elem_size > 0 && count > SIZE_MAX / elem_size)
-                    return -1; /* overflow guard for 32-bit platforms */
-                size_t expected = (size_t)count * elem_size;
                 if (comp_len != expected)
                     return -1;
                 prop->v.array.data = malloc(expected);
@@ -747,12 +726,14 @@ static void fbx_free_node(fbx_node_t *n) {
 /// (an all-zero header). The `is_64bit` flag widens the offset
 /// fields from 4 to 8 bytes for FBX 7500+.
 /// @return 1 on success, 0 if the buffer is malformed.
-static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node) {
+static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node, int depth) {
     uint8_t encoded_name_len;
     uint8_t copy_name_len;
     uint64_t props_start;
     uint64_t props_end;
 
+    if (depth > FBX_MAX_NODE_DEPTH)
+        return -1;
     memset(node, 0, sizeof(fbx_node_t));
 
     uint64_t end_offset = r->is_64bit ? fbx_u64(r) : fbx_u32(r);
@@ -781,7 +762,7 @@ static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node) {
     props_end = props_start + prop_list_len;
     if (props_end > r->len)
         return -1;
-    if (num_props > INT32_MAX || (size_t)num_props > SIZE_MAX / sizeof(fbx_prop_t))
+    if (num_props > FBX_MAX_NODE_PROPS || (size_t)num_props > SIZE_MAX / sizeof(fbx_prop_t))
         return -1;
     if (num_props > 0 && prop_list_len < num_props)
         return -1;
@@ -830,9 +811,13 @@ static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node) {
         }
 
         if (node->child_count >= node->child_capacity) {
+            if (node->child_count >= FBX_MAX_CHILDREN)
+                return -1;
             if (node->child_capacity < 0 || node->child_capacity > INT32_MAX / 2)
                 return -1;
             int32_t new_cap = node->child_capacity == 0 ? 8 : node->child_capacity * 2;
+            if (new_cap > FBX_MAX_CHILDREN)
+                new_cap = FBX_MAX_CHILDREN;
             if ((size_t)new_cap > SIZE_MAX / sizeof(fbx_node_t))
                 return -1;
             fbx_node_t *nc =
@@ -844,7 +829,7 @@ static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node) {
         }
 
         fbx_node_t *child = &node->children[node->child_count];
-        if (fbx_parse_node(r, child) < 0)
+        if (fbx_parse_node(r, child, depth + 1) < 0)
             return -1;
         node->child_count++;
     }
@@ -996,10 +981,11 @@ static fbx_node_t *fbx_find_object_by_id(fbx_node_t *objects, int64_t id);
 /// are encoded as numeric IDs in a separate connections section.
 /// Pre-collecting them lets later passes look up the parent of any
 /// node in O(n) (linear scan — typical scenes have a few hundred connections).
-static void fbx_parse_connections(fbx_node_t *root, fbx_conn_table_t *ct) {
+/// @return 1 on success, 0 when the connection table cannot be grown.
+static int fbx_parse_connections(fbx_node_t *root, fbx_conn_table_t *ct) {
     fbx_node_t *conns_node = fbx_find_child(root, "Connections");
     if (!conns_node)
-        return;
+        return 1;
 
     for (int32_t i = 0; i < conns_node->child_count; i++) {
         fbx_node_t *c = &conns_node->children[i];
@@ -1008,14 +994,14 @@ static void fbx_parse_connections(fbx_node_t *root, fbx_conn_table_t *ct) {
 
         if (ct->count >= ct->capacity) {
             if (ct->capacity < 0 || ct->capacity > INT32_MAX / 2)
-                break;
+                return 0;
             int32_t new_cap = ct->capacity == 0 ? 64 : ct->capacity * 2;
             if ((size_t)new_cap > SIZE_MAX / sizeof(fbx_conn_t))
-                break;
+                return 0;
             fbx_conn_t *nc =
                 (fbx_conn_t *)realloc(ct->entries, (size_t)new_cap * sizeof(fbx_conn_t));
             if (!nc)
-                break;
+                return 0;
             ct->entries = nc;
             ct->capacity = new_cap;
         }
@@ -1033,6 +1019,7 @@ static void fbx_parse_connections(fbx_node_t *root, fbx_conn_table_t *ct) {
             entry->prop[plen] = '\0';
         }
     }
+    return 1;
 }
 
 /// @brief Return the parent ID of `child_id` from the connection table, or 0 if root/missing.

@@ -58,6 +58,26 @@ static uint32_t make_fourcc(char a, char b, char c, char d) {
 #define FOURCC_strf make_fourcc('s', 't', 'r', 'f')
 #define FOURCC_vids make_fourcc('v', 'i', 'd', 's')
 #define FOURCC_auds make_fourcc('a', 'u', 'd', 's')
+#define FOURCC_rec make_fourcc('r', 'e', 'c', ' ')
+
+typedef struct {
+    int stream_type;  ///< -1=unknown, 0=video, 1=audio.
+    int stream_index; ///< Zero-based stream list index from hdrl.
+} avi_stream_parse_state_t;
+
+/// @brief Extract the two-digit stream number encoded at the start of an AVI chunk FOURCC.
+/// @details AVI media chunks conventionally use tags such as `00dc`,
+///          `01wb`, or `02db`. Chunks without two leading ASCII digits
+///          return -1 and are ignored by stream-index filtering.
+/// @param fourcc Packed little-endian chunk tag.
+/// @return Stream index 0-99, or -1 when the tag is not stream-numbered.
+static int avi_stream_index_from_fourcc(uint32_t fourcc) {
+    uint8_t c0 = (uint8_t)(fourcc & 0xFFu);
+    uint8_t c1 = (uint8_t)((fourcc >> 8) & 0xFFu);
+    if (c0 < '0' || c0 > '9' || c1 < '0' || c1 > '9')
+        return -1;
+    return (int)(c0 - '0') * 10 + (int)(c1 - '0');
+}
 
 /*==========================================================================
  * Chunk addition
@@ -121,20 +141,29 @@ static void parse_avih(avi_context_t *ctx, const uint8_t *data, uint32_t size) {
 }
 
 /// @brief Parse a stream header (strh chunk).
-static void parse_strh(avi_context_t *ctx, const uint8_t *data, uint32_t size, int *stream_type) {
+static void parse_strh(avi_context_t *ctx,
+                       const uint8_t *data,
+                       uint32_t size,
+                       avi_stream_parse_state_t *stream) {
     if (size < 48)
         return;
     uint32_t fcc_type = read_le32(data + 0);
     uint32_t fcc_handler = read_le32(data + 4);
 
     if (fcc_type == FOURCC_vids) {
-        *stream_type = 0; /* video */
-        ctx->video.fourcc = fcc_handler;
+        stream->stream_type = 0; /* video */
+        if (ctx->video_stream_index < 0) {
+            ctx->video_stream_index = stream->stream_index;
+            ctx->video.fourcc = fcc_handler;
+        }
     } else if (fcc_type == FOURCC_auds) {
-        *stream_type = 1; /* audio */
-        ctx->has_audio = 1;
+        stream->stream_type = 1; /* audio */
+        if (ctx->audio_stream_index < 0) {
+            ctx->audio_stream_index = stream->stream_index;
+            ctx->has_audio = 1;
+        }
     } else {
-        *stream_type = -1;
+        stream->stream_type = -1;
     }
 }
 
@@ -143,13 +172,17 @@ static void parse_strf_video(avi_context_t *ctx, const uint8_t *data, uint32_t s
     if (size < 40)
         return;
     /* BITMAPINFOHEADER */
-    uint32_t raw_width = read_le32(data + 4);
-    uint32_t raw_height = read_le32(data + 8);
+    int32_t raw_width = (int32_t)read_le32(data + 4);
+    int32_t raw_height = (int32_t)read_le32(data + 8);
     uint32_t bi_compression = read_le32(data + 16);
-    if (raw_width > 0 && raw_width <= INT32_MAX)
+    if (raw_width > 0)
         ctx->video.width = (int32_t)raw_width;
-    if (raw_height > 0 && raw_height <= INT32_MAX)
-        ctx->video.height = (int32_t)raw_height;
+    if (raw_height == INT32_MIN)
+        return;
+    if (raw_height < 0)
+        raw_height = -raw_height;
+    if (raw_height > 0)
+        ctx->video.height = raw_height;
     if (bi_compression != 0)
         ctx->video.fourcc = bi_compression;
 }
@@ -187,6 +220,8 @@ static int walk_chunks(const uint8_t *data,
         if (size > len - pos - 8)
             break;
         handler(ctx, fourcc, data + pos + 8, size, extra);
+        if (ctx && ctx->parse_error)
+            break;
         pos += 8 + size;
         if (size & 1)
             pos++; /* RIFF 2-byte alignment */
@@ -201,13 +236,13 @@ static int walk_chunks(const uint8_t *data,
 /// @brief Handle chunks inside a strl LIST.
 static void handle_strl(
     avi_context_t *ctx, uint32_t fourcc, const uint8_t *payload, uint32_t size, void *extra) {
-    int *stream_type = (int *)extra;
+    avi_stream_parse_state_t *stream = (avi_stream_parse_state_t *)extra;
     if (fourcc == FOURCC_strh)
-        parse_strh(ctx, payload, size, stream_type);
+        parse_strh(ctx, payload, size, stream);
     else if (fourcc == FOURCC_strf) {
-        if (*stream_type == 0)
+        if (stream->stream_type == 0 && stream->stream_index == ctx->video_stream_index)
             parse_strf_video(ctx, payload, size);
-        else if (*stream_type == 1)
+        else if (stream->stream_type == 1 && stream->stream_index == ctx->audio_stream_index)
             parse_strf_audio(ctx, payload, size);
     }
 }
@@ -221,8 +256,10 @@ static void handle_hdrl(
     } else if (fourcc == FOURCC_LIST && size >= 4) {
         uint32_t list_type = read_le32(payload);
         if (list_type == FOURCC_strl) {
-            int stream_type = -1;
-            walk_chunks(payload, size, 4, handle_strl, ctx, &stream_type);
+            avi_stream_parse_state_t stream = {-1, ctx->stream_count};
+            if (ctx->stream_count < INT32_MAX)
+                ctx->stream_count++;
+            walk_chunks(payload, size, 4, handle_strl, ctx, &stream);
         }
     }
 }
@@ -231,16 +268,25 @@ static void handle_hdrl(
 static void handle_movi(
     avi_context_t *ctx, uint32_t fourcc, const uint8_t *payload, uint32_t size, void *extra) {
     (void)extra;
+    if (fourcc == FOURCC_LIST && size >= 4) {
+        uint32_t list_type = read_le32(payload);
+        if (list_type == FOURCC_rec)
+            walk_chunks(payload, size, 4, handle_movi, ctx, NULL);
+        return;
+    }
     /* Check chunk type by last 2 chars of FOURCC:
      * 'dc' or 'db' = compressed/DIB video, 'wb' = wave bytes (audio) */
     uint8_t c2 = (uint8_t)((fourcc >> 16) & 0xFF);
     uint8_t c3 = (uint8_t)((fourcc >> 24) & 0xFF);
+    int stream_index = avi_stream_index_from_fourcc(fourcc);
     if ((c2 == 'd' && (c3 == 'c' || c3 == 'b'))) {
-        add_chunk(ctx, payload, size, 1); /* video */
+        if (stream_index == ctx->video_stream_index && add_chunk(ctx, payload, size, 1) != 0)
+            ctx->parse_error = 1; /* video */
     } else if (c2 == 'w' && c3 == 'b') {
-        add_chunk(ctx, payload, size, 0); /* audio */
+        if (stream_index == ctx->audio_stream_index && add_chunk(ctx, payload, size, 0) != 0)
+            ctx->parse_error = 1; /* audio */
     }
-    /* Skip 'rec ', 'ix##', 'JUNK' and other chunks */
+    /* Skip 'ix##', 'JUNK' and other chunks */
 }
 
 /// @brief Handle top-level RIFF chunks.
@@ -277,9 +323,14 @@ int avi_parse(avi_context_t *ctx, const uint8_t *data, size_t len) {
     if (!ctx || !data || len < 12)
         return -1;
 
-    memset(ctx, 0, sizeof(*ctx));
+    {
+        avi_context_t zero = {0};
+        *ctx = zero;
+    }
     ctx->file_data = data;
     ctx->file_len = len;
+    ctx->video_stream_index = -1;
+    ctx->audio_stream_index = -1;
 
     /* Validate RIFF header */
     if (read_le32(data) != FOURCC_RIFF)
@@ -290,6 +341,10 @@ int avi_parse(avi_context_t *ctx, const uint8_t *data, size_t len) {
 
     /* Walk top-level chunks (skip RIFF header: 12 bytes) */
     walk_chunks(data, len, 12, handle_top, ctx, NULL);
+    if (ctx->parse_error) {
+        avi_free(ctx);
+        return -1;
+    }
 
     /* Build video frame index */
     if (ctx->chunk_count > 0) {
@@ -302,6 +357,9 @@ int avi_parse(avi_context_t *ctx, const uint8_t *data, size_t len) {
                     ctx->video_frame_count++;
                 }
             }
+        } else {
+            avi_free(ctx);
+            return -1;
         }
         /* Update frame count from actual movi data if header was wrong */
         if (ctx->video_frame_count > 0 && ctx->video.frame_count == 0)
@@ -310,7 +368,11 @@ int avi_parse(avi_context_t *ctx, const uint8_t *data, size_t len) {
             ctx->video.duration = (double)ctx->video.frame_count / ctx->video.fps;
     }
 
-    return (ctx->video_frame_count > 0) ? 0 : -1;
+    if (ctx->video_frame_count <= 0) {
+        avi_free(ctx);
+        return -1;
+    }
+    return 0;
 }
 
 /// @brief Free the chunk list and frame index owned by `ctx`.

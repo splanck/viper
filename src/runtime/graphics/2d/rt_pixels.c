@@ -54,10 +54,9 @@
 /// @details Each Pixels allocation receives a non-zero identity value
 ///          here so downstream caches (e.g. canvas-side texture caches) can
 ///          tell two same-dimensions Pixels apart without comparing pointers
-///          (which can repeat after GC). Volatile because it's read across
-///          allocations on potentially different threads; updates use
-///          atomic increment in rt_pixels_new (not shown).
-static volatile uint64_t g_next_pixels_cache_identity = 1;
+///          (which can repeat after GC). Atomic relaxed ordering is sufficient
+///          because the value is only a unique identity, not a synchronization primitive.
+static uint64_t g_next_pixels_cache_identity = 1;
 
 /// @brief Allocate the next non-zero cache identity without signed overflow.
 static uint64_t pixels_next_cache_identity(void) {
@@ -324,15 +323,20 @@ static void rt_pixels_fill_raw_internal(void *pixels, uint32_t color, const char
     if (!p)
         return;
 
-    int64_t count = p->width * p->height;
-    if (count <= 0 || !p->data)
+    size_t size = 0;
+    int64_t pixel_count = 0;
+    if (!pixels_checked_layout(p->width, p->height, &pixel_count, &size, NULL)) {
+        rt_trap("Pixels.Fill: invalid pixels layout");
+        return;
+    }
+    if (pixel_count == 0 || !p->data)
         return;
     if (color == 0) {
-        memset(p->data, 0, (size_t)count * sizeof(uint32_t));
+        memset(p->data, 0, size);
         pixels_touch(p);
         return;
     }
-    for (int64_t i = 0; i < count; i++)
+    for (int64_t i = 0; i < pixel_count; i++)
         p->data[i] = color;
     pixels_touch(p);
 }
@@ -419,7 +423,13 @@ void *rt_pixels_clone(void *pixels) {
     if (!clone)
         return NULL;
     if (p->data && clone->data) {
-        size_t size = (size_t)(p->width * p->height) * sizeof(uint32_t);
+        size_t size = 0;
+        if (!pixels_checked_layout(p->width, p->height, NULL, &size, NULL)) {
+            rt_trap("Pixels.Clone: invalid pixels layout");
+            if (rt_obj_release_check0(clone))
+                rt_obj_free(clone);
+            return NULL;
+        }
         memcpy(clone->data, p->data, size);
     }
     return clone;

@@ -451,12 +451,11 @@ static int gjk_epa_with_support(ph3d_gjk_support_fn support_fn,
                                 const double *seed_direction,
                                 double *normal,
                                 double *depth) {
-    gjk_simplex simplex;
+    gjk_simplex simplex = {0};
     double direction[3];
     gjk_support_point support;
     if (!support_fn || !normal || !depth)
         return 0;
-    memset(&simplex, 0, sizeof(simplex));
     if (seed_direction)
         vec3_copy(direction, seed_direction);
     else
@@ -509,12 +508,11 @@ static int test_convex_hull_gjk_epa(void *a_collider,
                                     const double *b_center,
                                     double *normal,
                                     double *depth) {
-    gjk_simplex simplex;
+    gjk_simplex simplex = {0};
     double direction[3];
     gjk_support_point support;
     if (!a_collider || !a_pose || !b_collider || !b_pose || !normal || !depth)
         return 0;
-    memset(&simplex, 0, sizeof(simplex));
     if (a_center && b_center)
         vec3_sub(b_center, a_center, direction);
     else
@@ -780,10 +778,9 @@ static int test_heightfield_capsule(void *heightfield,
     capsule_axis_endpoints(capsule, axis_a, axis_b);
     for (int i = 0; i < samples; ++i) {
         double t = samples == 1 ? 0.5 : (double)i / (double)(samples - 1);
-        rt_body3d sphere;
+        rt_body3d sphere = {0};
         double cur_normal[3];
         double cur_depth;
-        memset(&sphere, 0, sizeof(sphere));
         sphere.shape = PH3D_SHAPE_SPHERE;
         sphere.position[0] = axis_a[0] + (axis_b[0] - axis_a[0]) * t;
         sphere.position[1] = axis_a[1] + (axis_b[1] - axis_a[1]) * t;

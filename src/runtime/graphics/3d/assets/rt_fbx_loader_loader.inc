@@ -1244,11 +1244,17 @@ void *rt_fbx_load(rt_string path) {
         }
 
         if (root.child_count >= root.child_capacity) {
+            if (root.child_count >= FBX_MAX_CHILDREN) {
+                reader.error = 1;
+                break;
+            }
             if (root.child_capacity < 0 || root.child_capacity > INT32_MAX / 2 ||
                 (size_t)(root.child_capacity == 0 ? 16 : root.child_capacity * 2) >
                     SIZE_MAX / sizeof(fbx_node_t))
                 break;
             int32_t new_cap = root.child_capacity == 0 ? 16 : root.child_capacity * 2;
+            if (new_cap > FBX_MAX_CHILDREN)
+                new_cap = FBX_MAX_CHILDREN;
             fbx_node_t *nc =
                 (fbx_node_t *)realloc(root.children, (size_t)new_cap * sizeof(fbx_node_t));
             if (!nc)
@@ -1258,7 +1264,7 @@ void *rt_fbx_load(rt_string path) {
         }
 
         fbx_node_t *child = &root.children[root.child_count];
-        if (fbx_parse_node(&reader, child) < 0) {
+        if (fbx_parse_node(&reader, child, 0) < 0) {
             reader.error = 1;
             break;
         }
@@ -1275,7 +1281,12 @@ void *rt_fbx_load(rt_string path) {
     /* Build connection table */
     fbx_conn_table_t ct;
     memset(&ct, 0, sizeof(ct));
-    fbx_parse_connections(&root, &ct);
+    if (!fbx_parse_connections(&root, &ct)) {
+        free(ct.entries);
+        fbx_free_node(&root);
+        rt_trap("FBX.Load: connection table allocation failed");
+        return NULL;
+    }
 
     /* Detect coordinate system */
     int z_up = fbx_is_z_up(&root);
