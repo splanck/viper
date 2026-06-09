@@ -69,6 +69,68 @@ typedef struct {
 static void bigint_finalizer(void *obj);
 static void bigint_release_owned(bigint_t *bi);
 
+/// @brief Checked signed 64-bit addition for digit counts.
+/// @details BigInt capacity and length values are stored as int64_t.  Any
+///          arithmetic that computes a new digit count must fail before signed
+///          overflow occurs, otherwise later allocation sizes can wrap or
+///          underallocate.
+/// @param a Left operand.
+/// @param b Right operand.
+/// @param out Receives the sum on success.
+/// @return 1 on success, 0 on overflow.
+static int bigint_checked_add_i64(int64_t a, int64_t b, int64_t *out) {
+    if (!out)
+        return 0;
+    if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b))
+        return 0;
+    *out = a + b;
+    return 1;
+}
+
+/// @brief Checked signed 64-bit multiplication for allocation bounds.
+/// @details Used when estimating output string or byte-buffer sizes from the
+///          number of base-2^32 limbs.
+/// @param a Left operand.
+/// @param b Right operand.
+/// @param out Receives the product on success.
+/// @return 1 on success, 0 on overflow.
+static int bigint_checked_mul_i64(int64_t a, int64_t b, int64_t *out) {
+    if (!out)
+        return 0;
+#if defined(__GNUC__) || defined(__clang__)
+    return !__builtin_mul_overflow(a, b, out);
+#else
+    if (a == 0 || b == 0) {
+        *out = 0;
+        return 1;
+    }
+    if (a > 0) {
+        if (b > 0) {
+            if (a > INT64_MAX / b)
+                return 0;
+        } else if (b < INT64_MIN / a) {
+            return 0;
+        }
+    } else {
+        if (b > 0) {
+            if (a < INT64_MIN / b)
+                return 0;
+        } else if (a < INT64_MAX / b) {
+            return 0;
+        }
+    }
+    *out = a * b;
+    return 1;
+#endif
+}
+
+/// @brief Validate a requested digit capacity before allocating.
+/// @param capacity Number of uint32_t limbs requested.
+/// @return Non-zero when the capacity is positive and fits in size_t bytes.
+static int bigint_capacity_is_allocable(int64_t capacity) {
+    return capacity > 0 && (uint64_t)capacity <= SIZE_MAX / sizeof(uint32_t);
+}
+
 /// @brief Allocate a GC-managed BigInt with the given digit capacity.
 /// @details Creates the BigInt as a runtime object via rt_obj_new_i64 so the
 ///          garbage collector can track it. The digit array is a separate heap
@@ -85,6 +147,11 @@ static bigint_t *bigint_alloc(int64_t capacity) {
 
     bigint_t *bi = (bigint_t *)obj;
     bi->cap = capacity > 0 ? capacity : 4;
+    if (!bigint_capacity_is_allocable(bi->cap)) {
+        rt_trap("bigint: capacity overflow");
+        bigint_release_owned(bi);
+        return NULL;
+    }
     bi->digits = calloc((size_t)bi->cap, sizeof(uint32_t));
     if (!bi->digits) {
         rt_trap("bigint: memory allocation failed");
@@ -378,9 +445,17 @@ void *rt_bigint_from_bytes(void *bytes) {
     }
 
     int64_t significant_len = len - start;
-    int64_t num_digits = (significant_len + 3) / 4;
+    int64_t rounded_significant_len;
+    int64_t num_digits;
+    int64_t alloc_digits;
+    if (!bigint_checked_add_i64(significant_len, 3, &rounded_significant_len) ||
+        (num_digits = rounded_significant_len / 4) < 0 ||
+        !bigint_checked_add_i64(num_digits, 1, &alloc_digits)) {
+        rt_trap("bigint: byte input size overflow");
+        return NULL;
+    }
 
-    bigint_t *bi = bigint_alloc(num_digits + 1);
+    bigint_t *bi = bigint_alloc(alloc_digits);
     if (!bi)
         return NULL;
 
@@ -471,7 +546,12 @@ int64_t rt_bigint_to_i64(void *a) {
         return INT64_MAX;
     }
 
-    return bi->sign ? -(int64_t)val : (int64_t)val;
+    if (bi->sign) {
+        if (val == (uint64_t)INT64_MAX + 1ULL)
+            return INT64_MIN;
+        return -(int64_t)val;
+    }
+    return (int64_t)val;
 }
 
 /// @brief Convert BigInt to its decimal string representation.
@@ -510,7 +590,15 @@ rt_string rt_bigint_to_str_base(void *a, int64_t base) {
         return NULL;
 
     // Estimate size: safe upper bound covering all bases (base 2 = 32 bits/limb)
-    int64_t max_chars = bi->len * 33 + 4;
+    int64_t limb_chars;
+    int64_t max_chars;
+    if (!bigint_checked_mul_i64(bi->len, 33, &limb_chars) ||
+        !bigint_checked_add_i64(limb_chars, 4, &max_chars) ||
+        (uint64_t)max_chars > (uint64_t)SIZE_MAX) {
+        rt_trap("bigint: string size overflow");
+        bigint_release_owned(tmp);
+        return NULL;
+    }
     char *buf = malloc((size_t)max_chars);
     if (!buf) {
         rt_trap("bigint: memory allocation failed");
@@ -548,6 +636,8 @@ rt_string rt_bigint_to_str_base(void *a, int64_t base) {
 void *rt_bigint_to_bytes(void *a) {
     if (!a) {
         void *b = rt_bytes_new(1);
+        if (!b)
+            return NULL;
         rt_bytes_set(b, 0, 0);
         return b;
     }
@@ -556,12 +646,18 @@ void *rt_bigint_to_bytes(void *a) {
 
     if (bi->len == 0) {
         void *b = rt_bytes_new(1);
+        if (!b)
+            return NULL;
         rt_bytes_set(b, 0, 0);
         return b;
     }
 
     // Calculate byte length
-    int64_t byte_len = bi->len * 4;
+    int64_t byte_len;
+    if (!bigint_checked_mul_i64(bi->len, 4, &byte_len)) {
+        rt_trap("bigint: byte size overflow");
+        return NULL;
+    }
     // Trim leading zeros
     while (byte_len > 1) {
         int64_t idx = byte_len - 1;
@@ -590,7 +686,14 @@ void *rt_bigint_to_bytes(void *a) {
             need_sign = 1;
     }
 
-    void *result = rt_bytes_new(byte_len + need_sign);
+    int64_t result_len;
+    if (!bigint_checked_add_i64(byte_len, need_sign, &result_len)) {
+        rt_trap("bigint: byte size overflow");
+        return NULL;
+    }
+    void *result = rt_bytes_new(result_len);
+    if (!result)
+        return NULL;
 
     if (bi->sign) {
         // Two's complement: invert and add 1
@@ -746,6 +849,257 @@ static bigint_t *bigint_sub_mag(bigint_t *a, bigint_t *b) {
     return result;
 }
 
+/// @brief Add one to a non-negative BigInt magnitude in place.
+/// @details Used by arithmetic right shift of negative values. In sign-magnitude
+///          form, `-x >> n` equals `-(floor(x / 2^n) + 1)` when any shifted-out
+///          bit is non-zero. This helper performs the `+ 1` on the magnitude
+///          with carry propagation and capacity growth.
+/// @param bi Non-negative BigInt magnitude to increment.
+/// @return 1 on success, 0 if capacity growth fails.
+static int bigint_add_one_mag_inplace(bigint_t *bi) {
+    if (!bi)
+        return 0;
+    uint64_t carry = 1;
+    int64_t i = 0;
+    while (carry) {
+        if (!bigint_ensure_capacity(bi, i + 1))
+            return 0;
+        uint64_t sum = carry;
+        if (i < bi->len)
+            sum += bi->digits[i];
+        bi->digits[i] = (uint32_t)(sum & 0xFFFFFFFFu);
+        carry = sum >> 32;
+        if (bi->len <= i)
+            bi->len = i + 1;
+        i++;
+    }
+    bigint_normalize(bi);
+    return 1;
+}
+
+/// @brief Compute a fixed limb width for two's-complement bitwise operations.
+/// @details Arbitrary-precision negative integers conceptually have infinite
+///          leading one bits. For a finite operation, using one extra limb beyond
+///          the widest magnitude preserves the sign bit and leaves enough room
+///          to convert the result back to sign-magnitude form unambiguously.
+/// @param a First operand, or NULL for zero.
+/// @param b Second operand, or NULL for zero.
+/// @param out Receives the limb width.
+/// @return 1 on success, 0 if the width would overflow allocation limits.
+static int bigint_twos_width(bigint_t *a, bigint_t *b, int64_t *out) {
+    int64_t a_len = a ? a->len : 0;
+    int64_t b_len = b ? b->len : 0;
+    int64_t max_len = a_len > b_len ? a_len : b_len;
+    if (!bigint_checked_add_i64(max_len, 1, out) || !bigint_capacity_is_allocable(*out))
+        return 0;
+    return 1;
+}
+
+/// @brief Encode a sign-magnitude BigInt into fixed-width two's-complement limbs.
+/// @details Positive values are copied directly and zero-padded. Negative values
+///          are converted by copying their magnitude, inverting every fixed-width
+///          limb, and adding one. The output buffer is little-endian like the
+///          BigInt digit array.
+/// @param bi Source BigInt, or NULL for zero.
+/// @param words Output limb buffer.
+/// @param width Number of limbs available in @p words.
+/// @return 1 on success, 0 if @p bi cannot fit in @p width.
+static int bigint_to_twos_words(bigint_t *bi, uint32_t *words, int64_t width) {
+    if (!words || width <= 0)
+        return 0;
+    memset(words, 0, (size_t)width * sizeof(uint32_t));
+    if (!bi || bi->len == 0)
+        return 1;
+    if (bi->len > width)
+        return 0;
+    memcpy(words, bi->digits, (size_t)bi->len * sizeof(uint32_t));
+    if (!bi->sign)
+        return 1;
+
+    for (int64_t i = 0; i < width; i++)
+        words[i] = ~words[i];
+    uint64_t carry = 1;
+    for (int64_t i = 0; i < width && carry; i++) {
+        uint64_t sum = (uint64_t)words[i] + carry;
+        words[i] = (uint32_t)sum;
+        carry = sum >> 32;
+    }
+    return 1;
+}
+
+/// @brief Decode fixed-width two's-complement limbs into a BigInt.
+/// @details The top bit of the highest fixed-width limb determines whether the
+///          encoded value is negative. Negative values are converted back to
+///          magnitude by inverting all limbs and adding one, then setting the
+///          sign flag after normalization.
+/// @param words Little-endian two's-complement limbs.
+/// @param width Number of limbs in @p words.
+/// @return Newly allocated sign-magnitude BigInt, or NULL on allocation failure.
+static bigint_t *bigint_from_twos_words(const uint32_t *words, int64_t width) {
+    if (!words || width <= 0)
+        return (bigint_t *)rt_bigint_zero();
+
+    int negative = (words[width - 1] & 0x80000000u) != 0;
+    bigint_t *result = bigint_alloc(width);
+    if (!result)
+        return NULL;
+
+    result->len = width;
+    if (!negative) {
+        memcpy(result->digits, words, (size_t)width * sizeof(uint32_t));
+        result->sign = 0;
+        bigint_normalize(result);
+        return result;
+    }
+
+    for (int64_t i = 0; i < width; i++)
+        result->digits[i] = ~words[i];
+    result->sign = 0;
+    if (!bigint_add_one_mag_inplace(result)) {
+        bigint_release_owned(result);
+        return NULL;
+    }
+    if (result->len > 0)
+        result->sign = 1;
+    bigint_normalize(result);
+    return result;
+}
+
+/// @brief Apply a BigInt bitwise operator using arbitrary-width two's-complement semantics.
+/// @details Handles positive and negative operands uniformly by converting both
+///          operands into a sign-preserving fixed-width two's-complement buffer,
+///          applying the requested operation limb-by-limb, then converting the
+///          finite result back to the runtime's sign-magnitude representation.
+/// @param a First operand, or NULL for zero.
+/// @param b Second operand, or NULL for zero.
+/// @param op Operation selector: '&', '|', or '^'.
+/// @return Newly allocated BigInt result, or NULL on failure.
+static bigint_t *bigint_bitwise_twos(bigint_t *a, bigint_t *b, char op) {
+    int64_t width;
+    if (!bigint_twos_width(a, b, &width)) {
+        rt_trap("bigint: bitwise size overflow");
+        return NULL;
+    }
+
+    uint32_t *aw = (uint32_t *)calloc((size_t)width, sizeof(uint32_t));
+    uint32_t *bw = (uint32_t *)calloc((size_t)width, sizeof(uint32_t));
+    if (!aw || !bw) {
+        free(aw);
+        free(bw);
+        rt_trap("bigint: memory allocation failed");
+        return NULL;
+    }
+
+    if (!bigint_to_twos_words(a, aw, width) || !bigint_to_twos_words(b, bw, width)) {
+        free(aw);
+        free(bw);
+        rt_trap("bigint: bitwise conversion failed");
+        return NULL;
+    }
+
+    for (int64_t i = 0; i < width; i++) {
+        if (op == '&')
+            aw[i] &= bw[i];
+        else if (op == '|')
+            aw[i] |= bw[i];
+        else
+            aw[i] ^= bw[i];
+    }
+
+    bigint_t *result = bigint_from_twos_words(aw, width);
+    free(aw);
+    free(bw);
+    return result;
+}
+
+/// @brief Test whether any magnitude bits below @p n are set.
+/// @details Arithmetic right shift of negative values must know whether the
+///          discarded magnitude has a non-zero remainder so it can round toward
+///          negative infinity. This scans only the affected low limbs.
+/// @param bi Source BigInt magnitude.
+/// @param n Number of low bits being discarded.
+/// @return 1 if any discarded bit is set, 0 otherwise.
+static int bigint_magnitude_has_low_bits(bigint_t *bi, int64_t n) {
+    if (!bi || bi->len == 0 || n <= 0)
+        return 0;
+
+    int64_t full_words = n / 32;
+    int bit_count = (int)(n % 32);
+    int64_t limit = full_words < bi->len ? full_words : bi->len;
+    for (int64_t i = 0; i < limit; i++) {
+        if (bi->digits[i] != 0)
+            return 1;
+    }
+    if (bit_count > 0 && full_words < bi->len) {
+        uint32_t mask = (uint32_t)((1ULL << bit_count) - 1ULL);
+        if ((bi->digits[full_words] & mask) != 0)
+            return 1;
+    }
+    return 0;
+}
+
+/// @brief Logical right shift of a BigInt magnitude.
+/// @details Ignores the sign flag and shifts only the absolute-value digit array.
+///          The caller chooses the final sign. Used directly for positive values
+///          and as the quotient part of arithmetic right shift for negatives.
+/// @param bi Source BigInt magnitude.
+/// @param n Number of bits to shift right.
+/// @return Newly allocated non-negative shifted magnitude.
+static bigint_t *bigint_shr_magnitude(bigint_t *bi, int64_t n) {
+    if (!bi || bi->len == 0)
+        return (bigint_t *)rt_bigint_zero();
+
+    int64_t word_shift = n / 32;
+    int bit_shift = (int)(n % 32);
+    if (word_shift >= bi->len)
+        return (bigint_t *)rt_bigint_zero();
+
+    int64_t new_len = bi->len - word_shift;
+    bigint_t *result = bigint_alloc(new_len);
+    if (!result)
+        return NULL;
+
+    result->len = new_len;
+    result->sign = 0;
+    uint32_t carry = 0;
+    for (int64_t i = new_len - 1; i >= 0; i--) {
+        uint64_t val = ((uint64_t)carry << 32) | bi->digits[i + word_shift];
+        result->digits[i] = (uint32_t)(val >> bit_shift);
+        carry = bit_shift ? (uint32_t)(val & ((1ULL << bit_shift) - 1ULL)) : 0;
+    }
+
+    bigint_normalize(result);
+    return result;
+}
+
+/// @brief Build a non-negative BigInt containing exactly bit @p n.
+/// @details Centralizes bounds checks for public bit-manipulation helpers so
+///          huge bit indexes trap before `word + 1` or allocation byte counts
+///          overflow.
+/// @param n Zero-based bit index.
+/// @return A BigInt mask with bit @p n set, or NULL on overflow/allocation failure.
+static bigint_t *bigint_single_bit_mask(int64_t n) {
+    if (n < 0)
+        return (bigint_t *)rt_bigint_zero();
+
+    int64_t word = n / 32;
+    int bit = (int)(n % 32);
+    int64_t new_len;
+    if (!bigint_checked_add_i64(word, 1, &new_len)) {
+        rt_trap("bigint: bit index overflow");
+        return NULL;
+    }
+
+    bigint_t *mask = bigint_alloc(new_len);
+    if (!mask)
+        return NULL;
+    mask->len = new_len;
+    mask->sign = 0;
+    mask->digits[word] = 1U << bit;
+    bigint_normalize(mask);
+    return mask;
+}
+
 //=============================================================================
 // Basic Arithmetic
 //=============================================================================
@@ -835,11 +1189,17 @@ void *rt_bigint_mul(void *a, void *b) {
     if (bi_a->len == 0 || bi_b->len == 0)
         return rt_bigint_zero();
 
-    bigint_t *result = bigint_alloc(bi_a->len + bi_b->len);
+    int64_t result_len;
+    if (!bigint_checked_add_i64(bi_a->len, bi_b->len, &result_len)) {
+        rt_trap("bigint: multiplication size overflow");
+        return NULL;
+    }
+
+    bigint_t *result = bigint_alloc(result_len);
     if (!result)
         return NULL;
 
-    result->len = bi_a->len + bi_b->len;
+    result->len = result_len;
     memset(result->digits, 0, (size_t)result->len * sizeof(uint32_t));
 
     for (int64_t i = 0; i < bi_a->len; i++) {
@@ -1080,7 +1440,7 @@ void *rt_bigint_divmod(void *a, void *b, void **remainder) {
             for (int64_t i = rem->len - 1; i >= 0; i--) {
                 uint64_t val = ((uint64_t)rshift_carry << 32) | rem->digits[i];
                 rem->digits[i] = (uint32_t)(val >> shift);
-                rshift_carry = (uint32_t)(val & ((1 << shift) - 1));
+                rshift_carry = (uint32_t)(val & ((1ULL << shift) - 1ULL));
             }
         }
 
@@ -1214,9 +1574,9 @@ int64_t rt_bigint_cmp(void *a, void *b) {
     if (!a && !b)
         return 0;
     if (!a)
-        return rt_bigint_is_negative(b) ? 1 : -1;
+        return rt_bigint_is_zero(b) ? 0 : (rt_bigint_is_negative(b) ? 1 : -1);
     if (!b)
-        return rt_bigint_is_negative(a) ? -1 : 1;
+        return rt_bigint_is_zero(a) ? 0 : (rt_bigint_is_negative(a) ? -1 : 1);
 
     bigint_t *bi_a = (bigint_t *)a;
     bigint_t *bi_b = (bigint_t *)b;
@@ -1280,108 +1640,23 @@ int64_t rt_bigint_sign(void *a) {
 //=============================================================================
 
 /// @brief Bitwise AND of two BigInts.
-/// @details For non-negative values, ANDs corresponding digit pairs up to the
-///          shorter length (higher digits are implicitly zero, so AND with zero
-///          eliminates them). For negative values, falls back to int64 conversion
-///          when both fit — full arbitrary-precision two's complement AND is not
-///          yet implemented. Returns zero when either input is NULL.
+/// @details Applies arbitrary-precision two's-complement semantics. NULL
+///          operands are treated as zero.
 /// @param a First operand (not consumed).
 /// @param b Second operand (not consumed).
 /// @return New BigInt holding a AND b.
 void *rt_bigint_and(void *a, void *b) {
-    if (!a || !b)
-        return rt_bigint_zero();
-
-    bigint_t *bi_a = (bigint_t *)a;
-    bigint_t *bi_b = (bigint_t *)b;
-
-    // For simplicity, handle non-negative only
-    // Negative numbers would need two's complement representation
-    if (bi_a->sign || bi_b->sign) {
-        if (rt_bigint_fits_i64(a) && rt_bigint_fits_i64(b))
-            return rt_bigint_from_i64(rt_bigint_to_i64(a) & rt_bigint_to_i64(b));
-        return rt_bigint_zero();
-    }
-
-    int64_t min_len = (bi_a->len < bi_b->len) ? bi_a->len : bi_b->len;
-    bigint_t *result = bigint_alloc(min_len);
-    if (!result)
-        return NULL;
-
-    for (int64_t i = 0; i < min_len; i++) {
-        result->digits[i] = bi_a->digits[i] & bi_b->digits[i];
-    }
-    result->len = min_len;
-    result->sign = 0;
-
-    bigint_normalize(result);
-    return result;
+    return bigint_bitwise_twos((bigint_t *)a, (bigint_t *)b, '&');
 }
 
 /// @brief Bitwise OR of two BigInts (two's complement semantics).
 void *rt_bigint_or(void *a, void *b) {
-    if (!a)
-        return b ? bigint_clone((bigint_t *)b) : rt_bigint_zero();
-    if (!b)
-        return bigint_clone((bigint_t *)a);
-
-    bigint_t *bi_a = (bigint_t *)a;
-    bigint_t *bi_b = (bigint_t *)b;
-
-    if (bi_a->sign || bi_b->sign) {
-        if (rt_bigint_fits_i64(a) && rt_bigint_fits_i64(b))
-            return rt_bigint_from_i64(rt_bigint_to_i64(a) | rt_bigint_to_i64(b));
-        return rt_bigint_zero();
-    }
-
-    int64_t max_len = (bi_a->len > bi_b->len) ? bi_a->len : bi_b->len;
-    bigint_t *result = bigint_alloc(max_len);
-    if (!result)
-        return NULL;
-
-    for (int64_t i = 0; i < max_len; i++) {
-        uint32_t da = (i < bi_a->len) ? bi_a->digits[i] : 0;
-        uint32_t db = (i < bi_b->len) ? bi_b->digits[i] : 0;
-        result->digits[i] = da | db;
-    }
-    result->len = max_len;
-    result->sign = 0;
-
-    bigint_normalize(result);
-    return result;
+    return bigint_bitwise_twos((bigint_t *)a, (bigint_t *)b, '|');
 }
 
 /// @brief Bitwise XOR of two BigInts (two's complement semantics).
 void *rt_bigint_xor(void *a, void *b) {
-    if (!a)
-        return b ? bigint_clone((bigint_t *)b) : rt_bigint_zero();
-    if (!b)
-        return bigint_clone((bigint_t *)a);
-
-    bigint_t *bi_a = (bigint_t *)a;
-    bigint_t *bi_b = (bigint_t *)b;
-
-    if (bi_a->sign || bi_b->sign) {
-        if (rt_bigint_fits_i64(a) && rt_bigint_fits_i64(b))
-            return rt_bigint_from_i64(rt_bigint_to_i64(a) ^ rt_bigint_to_i64(b));
-        return rt_bigint_zero();
-    }
-
-    int64_t max_len = (bi_a->len > bi_b->len) ? bi_a->len : bi_b->len;
-    bigint_t *result = bigint_alloc(max_len);
-    if (!result)
-        return NULL;
-
-    for (int64_t i = 0; i < max_len; i++) {
-        uint32_t da = (i < bi_a->len) ? bi_a->digits[i] : 0;
-        uint32_t db = (i < bi_b->len) ? bi_b->digits[i] : 0;
-        result->digits[i] = da ^ db;
-    }
-    result->len = max_len;
-    result->sign = 0;
-
-    bigint_normalize(result);
-    return result;
+    return bigint_bitwise_twos((bigint_t *)a, (bigint_t *)b, '^');
 }
 
 /// @brief Bitwise NOT (one's complement) of a BigInt.
@@ -1415,7 +1690,13 @@ void *rt_bigint_shl(void *a, int64_t n) {
     int64_t word_shift = n / 32;
     int bit_shift = (int)(n % 32);
 
-    int64_t new_len = bi->len + word_shift + 1;
+    int64_t shifted_len;
+    int64_t new_len;
+    if (!bigint_checked_add_i64(bi->len, word_shift, &shifted_len) ||
+        !bigint_checked_add_i64(shifted_len, 1, &new_len)) {
+        rt_trap("bigint: shift size overflow");
+        return NULL;
+    }
     bigint_t *result = bigint_alloc(new_len);
     if (!result)
         return NULL;
@@ -1449,30 +1730,17 @@ void *rt_bigint_shr(void *a, int64_t n) {
     if (bi->len == 0)
         return rt_bigint_zero();
 
-    int64_t word_shift = n / 32;
-    int bit_shift = (int)(n % 32);
-
-    if (word_shift >= bi->len) {
-        // All bits shifted out
-        return bi->sign ? rt_bigint_from_i64(-1) : rt_bigint_zero();
-    }
-
-    int64_t new_len = bi->len - word_shift;
-    bigint_t *result = bigint_alloc(new_len);
+    bigint_t *result = bigint_shr_magnitude(bi, n);
     if (!result)
         return NULL;
-
-    result->len = new_len;
-    result->sign = bi->sign;
-
-    // Bit shift
-    uint32_t carry = 0;
-    for (int64_t i = new_len - 1; i >= 0; i--) {
-        uint64_t val = ((uint64_t)carry << 32) | bi->digits[i + word_shift];
-        result->digits[i] = (uint32_t)(val >> bit_shift);
-        carry = (uint32_t)(val & ((1ULL << bit_shift) - 1));
+    if (bi->sign) {
+        if (bigint_magnitude_has_low_bits(bi, n) && !bigint_add_one_mag_inplace(result)) {
+            bigint_release_owned(result);
+            return NULL;
+        }
+        if (result->len > 0)
+            result->sign = 1;
     }
-
     bigint_normalize(result);
     return result;
 }
@@ -1556,8 +1824,19 @@ void *rt_bigint_pow_mod(void *a, void *n, void *m) {
         return NULL;
     }
 
-    if (!n || rt_bigint_is_zero(n))
-        return rt_bigint_one();
+    if (rt_bigint_is_negative(n)) {
+        rt_trap("BigInt.PowMod: negative exponent");
+        return NULL;
+    }
+
+    if (!n || rt_bigint_is_zero(n)) {
+        void *one = rt_bigint_one();
+        if (!one)
+            return NULL;
+        void *result = rt_bigint_mod(one, m);
+        bigint_release_owned((bigint_t *)one);
+        return result;
+    }
     if (!a || rt_bigint_is_zero(a))
         return rt_bigint_zero();
 
@@ -1727,7 +2006,12 @@ int64_t rt_bigint_bit_length(void *a) {
     if (bi->len == 0)
         return 0;
 
-    int64_t bits = (bi->len - 1) * 32;
+    int64_t base_limbs = bi->len - 1;
+    int64_t bits;
+    if (!bigint_checked_mul_i64(base_limbs, 32, &bits)) {
+        rt_trap("bigint: bit length overflow");
+        return INT64_MAX;
+    }
     uint32_t high = bi->digits[bi->len - 1];
 
     while (high > 0) {
@@ -1754,7 +2038,28 @@ int8_t rt_bigint_test_bit(void *a, int64_t n) {
     int bit = (int)(n % 32);
 
     if (word >= bi->len)
-        return 0;
+        return bi->sign ? 1 : 0;
+
+    if (bi->sign) {
+        int64_t width;
+        if (!bigint_checked_add_i64(bi->len, 1, &width) || !bigint_capacity_is_allocable(width)) {
+            rt_trap("bigint: bit test size overflow");
+            return 0;
+        }
+        uint32_t *words = (uint32_t *)calloc((size_t)width, sizeof(uint32_t));
+        if (!words) {
+            rt_trap("bigint: memory allocation failed");
+            return 0;
+        }
+        if (!bigint_to_twos_words(bi, words, width)) {
+            free(words);
+            rt_trap("bigint: bit test conversion failed");
+            return 0;
+        }
+        int8_t result = (words[word] >> bit) & 1 ? 1 : 0;
+        free(words);
+        return result;
+    }
 
     return (bi->digits[word] >> bit) & 1 ? 1 : 0;
 }
@@ -1764,36 +2069,11 @@ void *rt_bigint_set_bit(void *a, int64_t n) {
     if (n < 0)
         return a ? bigint_clone((bigint_t *)a) : rt_bigint_zero();
 
-    bigint_t *bi = a ? (bigint_t *)a : NULL;
-    int64_t word = n / 32;
-    int bit = (int)(n % 32);
-
-    int64_t new_len = word + 1;
-    if (bi && bi->len > new_len)
-        new_len = bi->len;
-
-    bigint_t *result = bigint_alloc(new_len);
-    if (!result)
+    bigint_t *mask = bigint_single_bit_mask(n);
+    if (!mask)
         return NULL;
-
-    if (bi) {
-        memcpy(result->digits, bi->digits, (size_t)bi->len * sizeof(uint32_t));
-        result->len = bi->len;
-        result->sign = bi->sign;
-    }
-
-    if (!bigint_ensure_capacity(result, word + 1)) {
-        bigint_release_owned(result);
-        return NULL;
-    }
-    if (result->len <= word) {
-        memset(
-            result->digits + result->len, 0, (size_t)(word + 1 - result->len) * sizeof(uint32_t));
-        result->len = word + 1;
-    }
-
-    result->digits[word] |= (1U << bit);
-    bigint_normalize(result);
+    void *result = rt_bigint_or(a, mask);
+    bigint_release_owned(mask);
     return result;
 }
 
@@ -1802,19 +2082,17 @@ void *rt_bigint_clear_bit(void *a, int64_t n) {
     if (!a || n < 0)
         return a ? bigint_clone((bigint_t *)a) : rt_bigint_zero();
 
-    bigint_t *bi = (bigint_t *)a;
-    int64_t word = n / 32;
-    int bit = (int)(n % 32);
-
-    if (word >= bi->len)
-        return bigint_clone(bi);
-
-    bigint_t *result = bigint_clone(bi);
-    if (!result)
+    bigint_t *mask = bigint_single_bit_mask(n);
+    if (!mask)
         return NULL;
-
-    result->digits[word] &= ~(1U << bit);
-    bigint_normalize(result);
+    void *not_mask = rt_bigint_not(mask);
+    if (!not_mask) {
+        bigint_release_owned(mask);
+        return NULL;
+    }
+    void *result = rt_bigint_and(a, not_mask);
+    bigint_release_owned(mask);
+    bigint_release_owned((bigint_t *)not_mask);
     return result;
 }
 

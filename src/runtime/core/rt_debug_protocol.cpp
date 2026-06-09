@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cctype>
 #include <map>
+#include <new>
 #include <set>
 #include <sstream>
 #include <string>
@@ -46,17 +47,26 @@ void releaseObject(void *obj) {
 }
 
 void mapSetStr(void *map, const char *key, const std::string &value) {
+    if (!map)
+        return;
     rt_string k = rt_const_cstr(key);
     rt_string s = makeString(value);
-    rt_map_set_str(map, k, s);
-    rt_string_unref(s);
-    rt_string_unref(k);
+    if (k && s)
+        rt_map_set_str(map, k, s);
+    if (s)
+        rt_string_unref(s);
+    if (k)
+        rt_string_unref(k);
 }
 
 void mapSetInt(void *map, const char *key, int64_t value) {
+    if (!map)
+        return;
     rt_string k = rt_const_cstr(key);
-    rt_map_set_int(map, k, value);
-    rt_string_unref(k);
+    if (k)
+        rt_map_set_int(map, k, value);
+    if (k)
+        rt_string_unref(k);
 }
 
 std::string trim(const std::string &s) {
@@ -126,6 +136,10 @@ void *makeEvent(const std::string &type,
                 const std::string &path,
                 int64_t line) {
     void *event = rt_map_new();
+    if (!event) {
+        rt_trap("Debug.Protocol: event allocation failed");
+        return nullptr;
+    }
     mapSetStr(event, "type", type);
     mapSetStr(event, "reason", reason);
     mapSetStr(event, "path", path);
@@ -134,6 +148,8 @@ void *makeEvent(const std::string &type,
 }
 
 void recordEvent(DebugState &s, void *event) {
+    if (!event)
+        return;
     rt_obj_retain_maybe(event);
     s.events.push_back(event);
 }
@@ -203,23 +219,37 @@ extern "C" {
 void *rt_debug_protocol_session_new(void) {
     auto *h = static_cast<DebugHandle *>(
         rt_obj_new_i64(RT_DEBUG_PROTOCOL_SESSION_CLASS_ID, sizeof(DebugHandle)));
-    h->state = new DebugState();
+    if (!h)
+        return nullptr;
+    h->state = new (std::nothrow) DebugState();
+    if (!h->state) {
+        rt_trap("Debug.Protocol: session allocation failed");
+        releaseObject(h);
+        return nullptr;
+    }
     rt_obj_set_finalizer(h, finalizer);
     return h;
 }
 
 void rt_debug_protocol_set_breakpoint(void *session, rt_string path, int64_t line) {
     auto *h = requireSession(session);
+    if (!h)
+        return;
     if (line > 0)
         h->state->breakpoints[toStd(path)].insert(line);
 }
 
 void rt_debug_protocol_clear_breakpoints(void *session, rt_string path) {
-    requireSession(session)->state->breakpoints.erase(toStd(path));
+    auto *h = requireSession(session);
+    if (!h)
+        return;
+    h->state->breakpoints.erase(toStd(path));
 }
 
 void *rt_debug_protocol_launch(void *session, rt_string path, rt_string source) {
     auto *h = requireSession(session);
+    if (!h)
+        return nullptr;
     DebugState &s = *h->state;
     for (void *event : s.events)
         releaseObject(event);
@@ -237,17 +267,24 @@ void *rt_debug_protocol_launch(void *session, rt_string path, rt_string source) 
 
 void *rt_debug_protocol_continue(void *session) {
     auto *h = requireSession(session);
+    if (!h)
+        return nullptr;
     if (hasBreakpoint(*h->state, h->state->pc))
         h->state->pc++;
     return runUntilStop(*h->state, false);
 }
 
 void *rt_debug_protocol_step_over(void *session) {
-    return runUntilStop(*requireSession(session)->state, true);
+    auto *h = requireSession(session);
+    if (!h)
+        return nullptr;
+    return runUntilStop(*h->state, true);
 }
 
 void *rt_debug_protocol_pause(void *session) {
     auto *h = requireSession(session);
+    if (!h)
+        return nullptr;
     h->state->running = false;
     void *event = makeEvent("stopped", "pause", h->state->path, h->state->pc);
     recordEvent(*h->state, event);
@@ -256,6 +293,8 @@ void *rt_debug_protocol_pause(void *session) {
 
 void *rt_debug_protocol_terminate(void *session) {
     auto *h = requireSession(session);
+    if (!h)
+        return nullptr;
     h->state->running = false;
     h->state->terminated = true;
     void *event = makeEvent("terminated", "terminated", h->state->path, h->state->pc);
@@ -265,8 +304,16 @@ void *rt_debug_protocol_terminate(void *session) {
 
 void *rt_debug_protocol_stack_frames(void *session) {
     auto *h = requireSession(session);
+    if (!h)
+        return nullptr;
     void *seq = rt_seq_new_owned();
+    if (!seq)
+        return nullptr;
     void *frame = rt_map_new();
+    if (!frame) {
+        releaseObject(seq);
+        return nullptr;
+    }
     mapSetInt(frame, "id", 0);
     mapSetStr(frame, "name", "start");
     mapSetStr(frame, "path", h->state->path);
@@ -278,9 +325,17 @@ void *rt_debug_protocol_stack_frames(void *session) {
 
 void *rt_debug_protocol_locals(void *session) {
     auto *h = requireSession(session);
+    if (!h)
+        return nullptr;
     void *seq = rt_seq_new_owned();
+    if (!seq)
+        return nullptr;
     for (const auto &[name, value] : h->state->locals) {
         void *local = rt_map_new();
+        if (!local) {
+            releaseObject(seq);
+            return nullptr;
+        }
         mapSetStr(local, "name", name);
         mapSetStr(local, "value", value);
         mapSetStr(local, "type", "inferred");
@@ -292,14 +347,21 @@ void *rt_debug_protocol_locals(void *session) {
 
 void *rt_debug_protocol_events(void *session) {
     auto *h = requireSession(session);
+    if (!h)
+        return nullptr;
     void *seq = rt_seq_new_owned();
+    if (!seq)
+        return nullptr;
     for (void *event : h->state->events)
         rt_seq_push(seq, event);
     return seq;
 }
 
 int8_t rt_debug_protocol_is_running(void *session) {
-    return requireSession(session)->state->running ? 1 : 0;
+    auto *h = requireSession(session);
+    if (!h)
+        return 0;
+    return h->state->running ? 1 : 0;
 }
 
 } // extern "C"

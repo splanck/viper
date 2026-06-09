@@ -33,6 +33,7 @@
 #include "rt_string_internal.h"
 
 #include <ctype.h>
+#include <limits.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -129,7 +130,11 @@ rt_string rt_str_replace(rt_string haystack, rt_string needle, rt_string replace
     rt_string result = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
 
-    return result ? result : rt_empty_string();
+    if (!result) {
+        rt_trap("rt_str_replace: allocation failed");
+        return NULL;
+    }
+    return result;
 }
 
 /// @brief Check if string starts with prefix.
@@ -216,6 +221,10 @@ int64_t rt_str_count(rt_string str, rt_string needle) {
 
     while (p <= end - needle_len) {
         if (memcmp(p, needle->data, needle_len) == 0) {
+            if (count == INT64_MAX) {
+                rt_trap("String.Count: result too large");
+                return INT64_MAX;
+            }
             count++;
             p += needle_len; // Non-overlapping
         } else {
@@ -237,11 +246,18 @@ rt_string rt_str_pad_left(rt_string str, int64_t width, rt_string pad_str) {
 
     size_t str_len = rt_string_len_bytes(str);
 
-    if (width <= (int64_t)str_len || !pad_str || rt_string_len_bytes(pad_str) == 0)
+    if (width <= 0 || !pad_str || rt_string_len_bytes(pad_str) == 0)
         return rt_string_ref(str);
+    uint64_t requested_width = (uint64_t)width;
+    if (requested_width <= (uint64_t)str_len)
+        return rt_string_ref(str);
+    if (requested_width > (uint64_t)(SIZE_MAX - 1)) {
+        rt_trap("String.PadLeft: width too large");
+        return NULL;
+    }
 
     char pad_char = pad_str->data[0];
-    size_t target = (size_t)width;
+    size_t target = (size_t)requested_width;
     size_t pad_count = target - str_len;
 
     rt_string result = rt_string_alloc(target, target + 1);
@@ -266,11 +282,18 @@ rt_string rt_str_pad_right(rt_string str, int64_t width, rt_string pad_str) {
 
     size_t str_len = rt_string_len_bytes(str);
 
-    if (width <= (int64_t)str_len || !pad_str || rt_string_len_bytes(pad_str) == 0)
+    if (width <= 0 || !pad_str || rt_string_len_bytes(pad_str) == 0)
         return rt_string_ref(str);
+    uint64_t requested_width = (uint64_t)width;
+    if (requested_width <= (uint64_t)str_len)
+        return rt_string_ref(str);
+    if (requested_width > (uint64_t)(SIZE_MAX - 1)) {
+        rt_trap("String.PadRight: width too large");
+        return NULL;
+    }
 
     char pad_char = pad_str->data[0];
-    size_t target = (size_t)width;
+    size_t target = (size_t)requested_width;
     size_t pad_count = target - str_len;
 
     rt_string result = rt_string_alloc(target, target + 1);
@@ -320,8 +343,10 @@ void *rt_str_split(rt_string str, rt_string delim) {
 
         p = match;
         if (memcmp(p, delim->data, delim_len) == 0) {
-            if (count == (size_t)INT64_MAX)
+            if (count == (size_t)INT64_MAX) {
                 rt_trap("String.Split: result too large");
+                return NULL;
+            }
             count++;
             p += delim_len;
         } else {
@@ -459,6 +484,8 @@ rt_string rt_str_repeat(rt_string str, int64_t count) {
 /// @return Byte offset corresponding to the start of the codepoint, or byte_len
 ///         if char_pos is past the end.
 size_t utf8_char_to_byte_offset(const char *data, size_t byte_len, int64_t char_pos) {
+    if (!data || char_pos <= 1)
+        return 0;
     size_t byte_off = 0;
     int64_t cp = 1;
     while (byte_off < byte_len && cp < char_pos) {
@@ -466,12 +493,22 @@ size_t utf8_char_to_byte_offset(const char *data, size_t byte_len, int64_t char_
         size_t clen = 1;
         if ((c & 0x80) == 0)
             clen = 1;
-        else if ((c & 0xE0) == 0xC0)
+        else if ((c & 0xE0) == 0xC0 && byte_off + 1 < byte_len &&
+                 ((unsigned char)data[byte_off + 1] & 0xC0) == 0x80)
             clen = 2;
-        else if ((c & 0xF0) == 0xE0)
+        else if ((c & 0xF0) == 0xE0 && byte_off + 2 < byte_len &&
+                 ((unsigned char)data[byte_off + 1] & 0xC0) == 0x80 &&
+                 ((unsigned char)data[byte_off + 2] & 0xC0) == 0x80)
             clen = 3;
-        else if ((c & 0xF8) == 0xF0)
+        else if ((c & 0xF8) == 0xF0 && byte_off + 3 < byte_len &&
+                 ((unsigned char)data[byte_off + 1] & 0xC0) == 0x80 &&
+                 ((unsigned char)data[byte_off + 2] & 0xC0) == 0x80 &&
+                 ((unsigned char)data[byte_off + 3] & 0xC0) == 0x80)
             clen = 4;
+        else {
+            rt_trap("String: invalid UTF-8 sequence");
+            return byte_len;
+        }
         if (byte_off + clen > byte_len)
             clen = byte_len - byte_off;
         byte_off += clen;
@@ -492,7 +529,8 @@ size_t utf8_char_len(unsigned char c) {
         return 3; // 1110xxxx
     if ((c & 0xF8) == 0xF0)
         return 4; // 11110xxx
-    return 1;     // Invalid, treat as single byte
+    rt_trap("String: invalid UTF-8 lead byte");
+    return 0;
 }
 
 /// @brief Reverse string characters (UTF-8 aware).
@@ -509,8 +547,10 @@ rt_string rt_str_flip(rt_string str) {
     size_t len = rt_string_len_bytes(str);
     if (len == 0)
         return rt_empty_string();
-    if (len == SIZE_MAX)
+    if (len == SIZE_MAX) {
+        rt_trap("String.Flip: string too large");
         return NULL;
+    }
 
     const char *data = str->data;
 
@@ -518,26 +558,41 @@ rt_string rt_str_flip(rt_string str) {
     size_t char_count = 0;
     for (size_t i = 0; i < len;) {
         size_t clen = utf8_char_len((unsigned char)data[i]);
-        if (i + clen > len)
-            clen = len - i; // Handle truncated sequences
+        if (clen == 0)
+            return NULL;
+        if (i + clen > len) {
+            rt_trap("String.Flip: truncated UTF-8 sequence");
+            return NULL;
+        }
         i += clen;
         char_count++;
     }
 
     // Allocate positions array (offsets of each character start)
-    if (char_count > (SIZE_MAX / sizeof(size_t)) - 1)
+    if (char_count > (SIZE_MAX / sizeof(size_t)) - 1) {
+        rt_trap("String.Flip: string too large");
         return NULL;
+    }
     size_t *positions = (size_t *)malloc((char_count + 1) * sizeof(size_t));
-    if (!positions)
+    if (!positions) {
+        rt_trap("String.Flip: allocation failed");
         return NULL;
+    }
 
     // Second pass: record character positions
     size_t idx = 0;
     for (size_t i = 0; i < len;) {
         positions[idx++] = i;
         size_t clen = utf8_char_len((unsigned char)data[i]);
-        if (i + clen > len)
-            clen = len - i;
+        if (clen == 0) {
+            free(positions);
+            return NULL;
+        }
+        if (i + clen > len) {
+            free(positions);
+            rt_trap("String.Flip: truncated UTF-8 sequence");
+            return NULL;
+        }
         i += clen;
     }
     positions[char_count] = len; // End sentinel

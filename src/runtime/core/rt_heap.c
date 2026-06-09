@@ -53,6 +53,12 @@
 #include <sched.h>
 #endif
 
+#if defined(__GNUC__) || defined(__clang__)
+#define RT_HEAP_UNUSED_PRIVATE __attribute__((unused))
+#else
+#define RT_HEAP_UNUSED_PRIVATE
+#endif
+
 //=============================================================================
 // Global shutdown handler
 //=============================================================================
@@ -309,6 +315,30 @@ static int rt_heap_registry_contains_locked_(void *payload) {
     }
 }
 
+/// @brief Validate a payload while the heap registry lock is already held.
+/// @details This helper is used by operations that need to inspect or retain a
+///          heap allocation without allowing a concurrent final release to
+///          remove and free the header between validation and the refcount
+///          operation.  The caller must hold @ref rt_heap_registry_lock_ for
+///          the full duration of the check and any immediate header access.
+/// @param payload Candidate payload pointer.
+/// @param out_hdr Receives the header when validation succeeds; set to NULL on failure.
+/// @return 1 when @p payload is a registered heap allocation with a valid magic tag.
+static int rt_heap_try_get_header_locked_(void *payload, rt_heap_hdr_t **out_hdr) {
+    if (out_hdr)
+        *out_hdr = NULL;
+    if (!payload)
+        return 0;
+    if (!rt_heap_registry_contains_locked_(payload))
+        return 0;
+    rt_heap_hdr_t *hdr = (rt_heap_hdr_t *)((uint8_t *)payload - sizeof(rt_heap_hdr_t));
+    if (!hdr || hdr->magic != RT_MAGIC)
+        return 0;
+    if (out_hdr)
+        *out_hdr = hdr;
+    return 1;
+}
+
 /// @brief Remove `payload` from the registry by stamping a TOMBSTONE in its slot.
 /// @details Open-addressing requires tombstones (rather than just
 ///          re-empty) so that probe sequences past the deleted slot
@@ -339,7 +369,8 @@ static void rt_heap_registry_remove_locked_(void *payload) {
 ///          remember the new one. Implements as remove-old +
 ///          insert-new under the same lock so no thread can observe
 ///          an inconsistent state.
-static int rt_heap_registry_move_locked_(void *old_payload, void *new_payload) {
+static int RT_HEAP_UNUSED_PRIVATE rt_heap_registry_move_locked_(void *old_payload,
+                                                                void *new_payload) {
     if (old_payload == new_payload)
         return 1;
     if (!g_heap_registry_.slots || g_heap_registry_.capacity == 0)
@@ -421,13 +452,8 @@ int8_t rt_heap_try_get_header(void *payload, rt_heap_hdr_t **out_hdr) {
     if (!payload)
         return 0;
     rt_heap_registry_lock_();
-    int found = rt_heap_registry_contains_locked_(payload);
     rt_heap_hdr_t *hdr = NULL;
-    if (found) {
-        hdr = (rt_heap_hdr_t *)((uint8_t *)payload - sizeof(rt_heap_hdr_t));
-        if (hdr->magic != RT_MAGIC)
-            found = 0;
-    }
+    int found = rt_heap_try_get_header_locked_(payload, &hdr);
     rt_heap_registry_unlock_();
     if (!found)
         return 0;
@@ -614,20 +640,28 @@ void rt_heap_retain(void *payload) {
     if (!payload)
         return;
 
-    rt_heap_hdr_t *hdr = rt_heap_checked_header_(payload, "rt_heap_retain");
-    if (!hdr)
+    rt_heap_registry_lock_();
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header_locked_(payload, &hdr) || !hdr) {
+        rt_heap_registry_unlock_();
+        rt_trap("rt_heap_retain: invalid or freed heap payload");
         return;
+    }
     RT_HEAP_VALIDATE(hdr);
     size_t old = __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED);
     size_t next = 0;
     for (;;) {
         if (old == 0) {
+            rt_heap_registry_unlock_();
             rt_trap("rt_heap: retain after release");
             return;
         }
-        if (old >= RT_HEAP_IMMORTAL_REFCNT)
+        if (old >= RT_HEAP_IMMORTAL_REFCNT) {
+            rt_heap_registry_unlock_();
             return;
+        }
         if (old >= RT_HEAP_MAX_MORTAL_REFCNT) {
+            rt_heap_registry_unlock_();
             rt_trap("refcount overflow");
             return;
         }
@@ -641,6 +675,7 @@ void rt_heap_retain(void *payload) {
             break;
         }
     }
+    rt_heap_registry_unlock_();
     (void)next;
 #ifdef VIPER_RC_DEBUG
     fprintf(stderr, "rt_heap_retain(%p) => %zu\n", payload, next);
@@ -651,18 +686,29 @@ void rt_heap_retain(void *payload) {
 /// @return 1 when retained, 2 when live immortal and not retained, 0 when not
 ///         live/managed, and -1 on mortal refcount overflow.
 int32_t rt_heap_try_retain_live(void *payload) {
-    rt_heap_hdr_t *hdr = NULL;
-    if (!payload || !rt_heap_try_get_header(payload, &hdr) || !hdr)
+    if (!payload)
         return 0;
+    rt_heap_registry_lock_();
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header_locked_(payload, &hdr) || !hdr) {
+        rt_heap_registry_unlock_();
+        return 0;
+    }
 
     size_t old = __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED);
     for (;;) {
-        if (old == 0)
+        if (old == 0) {
+            rt_heap_registry_unlock_();
             return 0;
-        if (old >= RT_HEAP_IMMORTAL_REFCNT)
+        }
+        if (old >= RT_HEAP_IMMORTAL_REFCNT) {
+            rt_heap_registry_unlock_();
             return 2;
-        if (old >= RT_HEAP_MAX_MORTAL_REFCNT)
+        }
+        if (old >= RT_HEAP_MAX_MORTAL_REFCNT) {
+            rt_heap_registry_unlock_();
             return -1;
+        }
         size_t next = old + 1;
         if (__atomic_compare_exchange_n(&hdr->refcnt,
                                         &old,
@@ -670,6 +716,7 @@ int32_t rt_heap_try_retain_live(void *payload) {
                                         /*weak=*/0,
                                         __ATOMIC_RELAXED,
                                         __ATOMIC_RELAXED)) {
+            rt_heap_registry_unlock_();
             return 1;
         }
     }
@@ -844,18 +891,17 @@ void *rt_heap_realloc(void *payload, size_t elem_size, size_t new_len, size_t ne
     size_t old_len = hdr->len;
 
     rt_heap_registry_lock_();
-    int registered = rt_heap_registry_contains_locked_(payload);
-    if (!registered) {
+    if (!rt_heap_registry_contains_locked_(payload)) {
         rt_heap_registry_unlock_();
         return NULL;
     }
-    if (!rt_heap_registry_ensure_capacity_locked_()) {
-        rt_heap_registry_unlock_();
-        return NULL;
-    }
+    rt_heap_registry_remove_locked_(payload);
+    rt_heap_registry_unlock_();
 
     rt_heap_hdr_t *resized = (rt_heap_hdr_t *)realloc(hdr, total_bytes);
     if (!resized) {
+        rt_heap_registry_lock_();
+        (void)rt_heap_registry_insert_locked_(payload);
         rt_heap_registry_unlock_();
         return NULL;
     }
@@ -869,7 +915,8 @@ void *rt_heap_realloc(void *payload, size_t elem_size, size_t new_len, size_t ne
     resized->cap = cap;
     resized->alloc_size = total_bytes;
 
-    int moved = rt_heap_registry_move_locked_(payload, new_payload);
+    rt_heap_registry_lock_();
+    int moved = rt_heap_registry_insert_locked_(new_payload);
     rt_heap_registry_unlock_();
     if (!moved) {
         rt_abort("rt_heap_realloc: registry update failed");

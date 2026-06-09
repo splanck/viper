@@ -399,6 +399,7 @@ static rt_string rt_string_wrap(char *payload) {
     rt_string s = (rt_string)rt_alloc(sizeof(*s));
     if (!s) {
         rt_trap("rt_string_wrap: alloc");
+        rt_heap_release(payload);
         return NULL;
     }
     s->magic = RT_STRING_MAGIC;
@@ -471,6 +472,8 @@ rt_string rt_empty_string(void) {
     rt_string candidate = (rt_string)rt_alloc(sizeof(*candidate));
     if (!candidate) {
         rt_trap("rt_empty_string: alloc");
+        __atomic_store_n(&hdr->refcnt, 1, __ATOMIC_RELAXED);
+        rt_heap_release(payload);
         return NULL;
     }
     candidate->magic = RT_STRING_MAGIC;
@@ -510,6 +513,14 @@ rt_string rt_empty_string(void) {
 /// @param len Number of bytes to copy.
 /// @return Newly allocated runtime string containing the copied bytes.
 rt_string rt_string_from_bytes(const char *bytes, size_t len) {
+    if (len >= SIZE_MAX) {
+        rt_trap("rt_string_alloc: length overflow");
+        return NULL;
+    }
+    if (!bytes && len > 0) {
+        rt_trap("rt_string_from_bytes: null source with non-zero length");
+        return NULL;
+    }
     rt_string s = rt_string_alloc(len, len + 1);
     if (!s)
         return NULL;
@@ -741,6 +752,23 @@ rt_string rt_str_concat(rt_string a, rt_string b) {
         return NULL;
     }
 
+    if (a && a == b) {
+        rt_string out = rt_string_alloc(total, total + 1);
+        if (!out) {
+            rt_string_unref(a);
+            rt_string_unref(b);
+            return NULL;
+        }
+        if (len_a > 0)
+            memcpy(out->data, a->data, len_a);
+        if (len_b > 0)
+            memcpy(out->data + len_a, a->data, len_b);
+        out->data[total] = '\0';
+        rt_string_unref(a);
+        rt_string_unref(b);
+        return out;
+    }
+
     // Optimization: append in-place when `a` is uniquely owned with enough capacity
     if (rt_string_can_append_inplace(a, total + 1)) {
         // Append `b` directly into `a`'s buffer
@@ -757,8 +785,13 @@ rt_string rt_str_concat(rt_string a, rt_string b) {
     }
 
     rt_string out = rt_string_alloc(total, total + 1);
-    if (!out)
+    if (!out) {
+        if (a)
+            rt_string_unref(a);
+        if (b)
+            rt_string_unref(b);
         return NULL;
+    }
 
     if (a && a->data && len_a > 0)
         memcpy(out->data, a->data, len_a);
@@ -785,8 +818,10 @@ rt_string rt_str_concat(rt_string a, rt_string b) {
 /// @param len Requested length (negative values treated as zero).
 /// @return Newly allocated substring or shared handles for empty/full slices.
 rt_string rt_str_substr(rt_string s, int64_t start, int64_t len) {
-    if (!s)
+    if (!s) {
         rt_trap("rt_str_substr: null");
+        return rt_empty_string();
+    }
     if (start < 0)
         start = 0;
     if (len < 0)
@@ -815,14 +850,17 @@ rt_string rt_str_substr(rt_string s, int64_t start, int64_t len) {
 /// @param n Number of characters to take from the left.
 /// @return Resulting string.
 rt_string rt_str_left(rt_string s, int64_t n) {
-    if (!s)
+    if (!s) {
         rt_trap("LEFT$: null string");
+        return rt_empty_string();
+    }
     if (n < 0) {
         char buf[64];
         char numbuf[32];
         rt_i64_to_cstr(n, numbuf, sizeof(numbuf));
         snprintf(buf, sizeof(buf), "LEFT$: len must be >= 0 (got %s)", numbuf);
         rt_trap(buf);
+        return rt_empty_string();
     }
     size_t slen = rt_string_len_bytes(s);
     if (n == 0)
@@ -843,14 +881,17 @@ rt_string rt_str_left(rt_string s, int64_t n) {
 /// @param n Number of characters to take from the right.
 /// @return Resulting string.
 rt_string rt_str_right(rt_string s, int64_t n) {
-    if (!s)
+    if (!s) {
         rt_trap("RIGHT$: null string");
+        return rt_empty_string();
+    }
     if (n < 0) {
         char buf[64];
         char numbuf[32];
         rt_i64_to_cstr(n, numbuf, sizeof(numbuf));
         snprintf(buf, sizeof(buf), "RIGHT$: len must be >= 0 (got %s)", numbuf);
         rt_trap(buf);
+        return rt_empty_string();
     }
     size_t len = rt_string_len_bytes(s);
     if (n == 0)
@@ -877,14 +918,17 @@ rt_string rt_str_right(rt_string s, int64_t n) {
 /// @param start One-based codepoint position.
 /// @return Resulting substring.
 rt_string rt_str_mid(rt_string s, int64_t start) {
-    if (!s)
+    if (!s) {
         rt_trap("MID$: null string");
+        return rt_empty_string();
+    }
     if (start < 1) {
         char buf[64];
         char numbuf[32];
         rt_i64_to_cstr(start, numbuf, sizeof(numbuf));
         snprintf(buf, sizeof(buf), "MID$: start must be >= 1 (got %s)", numbuf);
         rt_trap(buf);
+        return rt_empty_string();
     }
     size_t byte_len = rt_string_len_bytes(s);
     if (start == 1)
@@ -906,14 +950,17 @@ rt_string rt_str_mid(rt_string s, int64_t start) {
 /// @param len Requested substring length.
 /// @return Resulting substring.
 rt_string rt_str_mid_len(rt_string s, int64_t start, int64_t len) {
-    if (!s)
+    if (!s) {
         rt_trap("MID$: null string");
+        return rt_empty_string();
+    }
     if (start < 1) {
         char buf[64];
         char numbuf[32];
         rt_i64_to_cstr(start, numbuf, sizeof(numbuf));
         snprintf(buf, sizeof(buf), "MID$: start must be >= 1 (got %s)", numbuf);
         rt_trap(buf);
+        return rt_empty_string();
     }
     if (len < 0) {
         char buf[64];
@@ -921,6 +968,7 @@ rt_string rt_str_mid_len(rt_string s, int64_t start, int64_t len) {
         rt_i64_to_cstr(len, numbuf, sizeof(numbuf));
         snprintf(buf, sizeof(buf), "MID$: len must be >= 0 (got %s)", numbuf);
         rt_trap(buf);
+        return rt_empty_string();
     }
     size_t byte_len = rt_string_len_bytes(s);
     if (len == 0)
@@ -1020,8 +1068,10 @@ int64_t rt_str_instr3(int64_t start, rt_string hay, rt_string needle) {
     return rt_find(hay, pos, needle);
 }
 
-/// @brief Find the first occurrence of `needle` in `hay` starting at `start` (0-based UTF-16
-/// index). Returns -1 if not found, or 0/+ for the matched index.
+/// @brief Find the first occurrence of @p needle in @p hay starting at a one-based position.
+/// @details This is the Viper.String.IndexOfFrom ABI entry point.  It intentionally
+///          preserves BASIC/INSTR semantics: @p start is one-based, successful
+///          matches are one-based, and zero means "not found".
 int64_t rt_str_index_of_from(rt_string hay, int64_t start, rt_string needle) {
     return rt_str_instr3(start, hay, needle);
 }
@@ -1038,8 +1088,10 @@ static int is_trim_ws(char c) {
 /// @param s Source string.
 /// @return Trimmed string handle.
 rt_string rt_str_ltrim(rt_string s) {
-    if (!s)
+    if (!s) {
         rt_trap("rt_str_ltrim: null");
+        return rt_empty_string();
+    }
     size_t slen = rt_string_len_bytes(s);
     size_t i = 0;
     while (i < slen && is_trim_ws(s->data[i]))
@@ -1053,8 +1105,10 @@ rt_string rt_str_ltrim(rt_string s) {
 /// @param s Source string.
 /// @return Trimmed string handle.
 rt_string rt_str_rtrim(rt_string s) {
-    if (!s)
+    if (!s) {
         rt_trap("rt_str_rtrim: null");
+        return rt_empty_string();
+    }
     size_t end = rt_string_len_bytes(s);
     while (end > 0 && is_trim_ws(s->data[end - 1]))
         --end;
@@ -1067,8 +1121,10 @@ rt_string rt_str_rtrim(rt_string s) {
 /// @param s Source string.
 /// @return Trimmed string handle.
 rt_string rt_str_trim(rt_string s) {
-    if (!s)
+    if (!s) {
         rt_trap("rt_str_trim: null");
+        return rt_empty_string();
+    }
     size_t slen = rt_string_len_bytes(s);
     size_t start = 0;
     size_t end = slen;
@@ -1079,22 +1135,15 @@ rt_string rt_str_trim(rt_string s) {
     return rt_str_substr(s, (int64_t)start, (int64_t)(end - start));
 }
 
-/// @brief Convert a single byte to uppercase (ASCII + Latin-1 Supplement).
-/// @details Handles ASCII a-z and Latin-1 lowercase letters (à-ö, ø-ÿ).
-///          Non-letter bytes and other Unicode characters pass through unchanged.
+/// @brief Convert a single ASCII byte to uppercase.
+/// @details Multi-byte UTF-8 data is passed through by callers before this helper
+///          runs, so only ASCII a-z are case-mapped here.
 /// @param c Input byte.
 /// @return Uppercase equivalent or original byte.
 static unsigned char to_upper_latin1(unsigned char c) {
     // ASCII lowercase a-z
     if (c >= 'a' && c <= 'z')
         return (unsigned char)(c - 'a' + 'A');
-    // Latin-1 Supplement lowercase: à-ö (0xE0-0xF6) -> À-Ö (0xC0-0xD6)
-    if (c >= 0xE0 && c <= 0xF6 && c != 0xF7) // 0xF7 is ÷ (division sign)
-        return (unsigned char)(c - 0x20);
-    // Latin-1 Supplement lowercase: ø-þ (0xF8-0xFE) -> Ø-Þ (0xD8-0xDE)
-    if (c >= 0xF8 && c <= 0xFE)
-        return (unsigned char)(c - 0x20);
-    // ÿ (0xFF) -> Ÿ (0x178) - but 0x178 is outside Latin-1, leave as-is
     return c;
 }
 
@@ -1106,10 +1155,14 @@ static unsigned char to_upper_latin1(unsigned char c) {
 /// @param s Source string.
 /// @return Newly allocated uppercase string.
 rt_string rt_str_ucase(rt_string s) {
-    if (!s)
+    if (!s) {
         rt_trap("rt_str_ucase: null");
+        return rt_empty_string();
+    }
     size_t len = rt_string_len_bytes(s);
     rt_string r = rt_string_alloc(len, len + 1);
+    if (!r)
+        return NULL;
     for (size_t i = 0; i < len; ++i) {
         unsigned char c = (unsigned char)s->data[i];
         // Skip UTF-8 continuation bytes (10xxxxxx) and multi-byte lead bytes
@@ -1124,21 +1177,15 @@ rt_string rt_str_ucase(rt_string s) {
     return r;
 }
 
-/// @brief Convert a single byte to lowercase (ASCII + Latin-1 Supplement).
-/// @details Handles ASCII A-Z and Latin-1 uppercase letters (À-Ö, Ø-Þ).
-///          Non-letter bytes and other Unicode characters pass through unchanged.
+/// @brief Convert a single ASCII byte to lowercase.
+/// @details Multi-byte UTF-8 data is passed through by callers before this helper
+///          runs, so only ASCII A-Z are case-mapped here.
 /// @param c Input byte.
 /// @return Lowercase equivalent or original byte.
 static unsigned char to_lower_latin1(unsigned char c) {
     // ASCII uppercase A-Z
     if (c >= 'A' && c <= 'Z')
         return (unsigned char)(c - 'A' + 'a');
-    // Latin-1 Supplement uppercase: À-Ö (0xC0-0xD6) -> à-ö (0xE0-0xF6)
-    if (c >= 0xC0 && c <= 0xD6 && c != 0xD7) // 0xD7 is × (multiplication sign)
-        return (unsigned char)(c + 0x20);
-    // Latin-1 Supplement uppercase: Ø-Þ (0xD8-0xDE) -> ø-þ (0xF8-0xFE)
-    if (c >= 0xD8 && c <= 0xDE)
-        return (unsigned char)(c + 0x20);
     return c;
 }
 
@@ -1150,10 +1197,14 @@ static unsigned char to_lower_latin1(unsigned char c) {
 /// @param s Source string.
 /// @return Newly allocated lowercase string.
 rt_string rt_str_lcase(rt_string s) {
-    if (!s)
+    if (!s) {
         rt_trap("rt_str_lcase: null");
+        return rt_empty_string();
+    }
     size_t len = rt_string_len_bytes(s);
     rt_string r = rt_string_alloc(len, len + 1);
+    if (!r)
+        return NULL;
     for (size_t i = 0; i < len; ++i) {
         unsigned char c = (unsigned char)s->data[i];
         // Skip UTF-8 multi-byte sequences

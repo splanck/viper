@@ -165,6 +165,14 @@ static int date_parse_digits(const char *s, int count) {
     return value;
 }
 
+/// @brief Ensure a DateOnly formatting buffer can hold at least @p needed bytes.
+/// @details Grows the heap buffer geometrically to keep repeated appends amortized
+///          O(n). On allocation failure, frees the old buffer, clears the caller's
+///          state, and traps so callers do not continue with a dangling pointer.
+/// @param buf Pointer to the owned formatting buffer.
+/// @param cap Pointer to the current buffer capacity.
+/// @param needed Required capacity including the trailing NUL.
+/// @return 1 on success, 0 on allocation failure.
 static int dateonly_format_reserve(char **buf, size_t *cap, size_t needed) {
     if (needed <= *cap)
         return 1;
@@ -189,6 +197,16 @@ static int dateonly_format_reserve(char **buf, size_t *cap, size_t needed) {
     return 1;
 }
 
+/// @brief Append raw bytes to a DateOnly formatting buffer.
+/// @details Performs overflow checks before computing the new length and ensures
+///          the buffer remains NUL-terminated after the append. On failure, the
+///          owned buffer is released and the caller's state is reset.
+/// @param buf Pointer to the owned formatting buffer.
+/// @param cap Pointer to the current buffer capacity.
+/// @param len Pointer to the current byte length excluding the trailing NUL.
+/// @param bytes Bytes to append.
+/// @param bytes_len Number of bytes to append.
+/// @return 1 on success, 0 on overflow or allocation failure.
 static int dateonly_format_append_bytes(char **buf,
                                         size_t *cap,
                                         size_t *len,
@@ -213,10 +231,22 @@ static int dateonly_format_append_bytes(char **buf,
     return 1;
 }
 
+/// @brief Append a NUL-terminated C string to a DateOnly formatting buffer.
+/// @param buf Pointer to the owned formatting buffer.
+/// @param cap Pointer to the current buffer capacity.
+/// @param len Pointer to the current byte length excluding the trailing NUL.
+/// @param text C string to append; NULL is treated as empty.
+/// @return 1 on success, 0 on overflow or allocation failure.
 static int dateonly_format_append_cstr(char **buf, size_t *cap, size_t *len, const char *text) {
     return dateonly_format_append_bytes(buf, cap, len, text, text ? strlen(text) : 0);
 }
 
+/// @brief Append one character to a DateOnly formatting buffer.
+/// @param buf Pointer to the owned formatting buffer.
+/// @param cap Pointer to the current buffer capacity.
+/// @param len Pointer to the current byte length excluding the trailing NUL.
+/// @param ch Character to append.
+/// @return 1 on success, 0 on overflow or allocation failure.
 static int dateonly_format_append_char(char **buf, size_t *cap, size_t *len, char ch) {
     return dateonly_format_append_bytes(buf, cap, len, &ch, 1);
 }
@@ -698,13 +728,17 @@ rt_string rt_dateonly_to_string(void *obj) {
 
     DateOnly *d = (DateOnly *)obj;
     char buf[32];
-    snprintf(buf,
-             sizeof(buf),
-             "%04lld-%02lld-%02lld",
-             (long long)d->year,
-             (long long)d->month,
-             (long long)d->day);
-    return rt_string_from_bytes(buf, strlen(buf));
+    int len = snprintf(buf,
+                       sizeof(buf),
+                       "%04lld-%02lld-%02lld",
+                       (long long)d->year,
+                       (long long)d->month,
+                       (long long)d->day);
+    if (len < 0 || (size_t)len >= sizeof(buf)) {
+        rt_trap("DateOnly.ToString: formatted output truncated");
+        return rt_const_cstr("");
+    }
+    return rt_string_from_bytes(buf, (size_t)len);
 }
 
 /// @brief Format the date using a custom format string.
@@ -721,8 +755,14 @@ rt_string rt_dateonly_format(void *obj, rt_string fmt) {
         return rt_const_cstr("");
 
     DateOnly *d = (DateOnly *)obj;
-    const char *fmt_str = rt_string_cstr(fmt);
+    if (!fmt)
+        return rt_const_cstr("");
     int64_t fmt_len = rt_str_len(fmt);
+    if (fmt_len < 0)
+        return rt_const_cstr("");
+    const char *fmt_str = rt_string_cstr(fmt);
+    if (!fmt_str && fmt_len > 0)
+        return rt_const_cstr("");
 
     static const char *month_names[] = {"",
                                         "January",

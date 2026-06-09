@@ -31,6 +31,7 @@
 
 #include "rt_internal.h"
 #include "rt_string.h"
+#include "rt_string_builder.h"
 #include "rt_string_internal.h"
 
 #include <ctype.h>
@@ -183,8 +184,10 @@ rt_string rt_str_slug(rt_string str) {
     }
 
     char *buf = (char *)malloc(len + 1);
-    if (!buf)
-        return rt_string_from_bytes("", 0);
+    if (!buf) {
+        rt_trap("String.Slug: allocation failed");
+        return NULL;
+    }
 
     size_t out = 0;
     int last_was_sep = 1;
@@ -467,25 +470,93 @@ static int split_words(
     return wcount;
 }
 
+/// @brief Append bytes to a casing builder and trap on failure.
+/// @details The case-conversion helpers build their result through
+///          @ref rt_string_builder.  Ignoring append status can return a
+///          silently truncated string after allocation failure or size
+///          overflow.  This helper centralises the status check and emits a
+///          contextual trap while leaving cleanup to the caller.
+/// @param sb Builder receiving bytes.
+/// @param bytes Source byte range; may be NULL only when @p len is zero.
+/// @param len Number of bytes to append.
+/// @param context Operation name used in the trap message.
+/// @return 1 on success, 0 after a trapped append failure.
+static int append_case_bytes(rt_string_builder *sb, const char *bytes, size_t len, const char *context) {
+    rt_sb_status_t status = rt_sb_append_bytes(sb, bytes, len);
+    if (status == RT_SB_OK)
+        return 1;
+    rt_trap(context ? context : "string case conversion: append failed");
+    return 0;
+}
+
+/// @brief Append a single byte to a casing builder.
+/// @param sb Builder receiving the byte.
+/// @param ch Byte value to append.
+/// @param context Operation name used in the trap message.
+/// @return 1 on success, 0 after a trapped append failure.
+static int append_case_char(rt_string_builder *sb, char ch, const char *context) {
+    return append_case_bytes(sb, &ch, 1, context);
+}
+
+/// @brief Return the length of the next UTF-8 codepoint at @p data.
+/// @details Used by SQL LIKE `_` wildcard handling so `_` consumes one
+///          user-visible UTF-8 codepoint rather than one raw byte.  Invalid or
+///          truncated sequences trap and return zero.
+/// @param data Pointer to the current byte.
+/// @param remaining Number of bytes available from @p data.
+/// @return Number of bytes in the next codepoint, or zero on invalid input.
+static size_t like_utf8_step(const char *data, size_t remaining) {
+    if (!data || remaining == 0)
+        return 0;
+    unsigned char c = (unsigned char)data[0];
+    if ((c & 0x80) == 0)
+        return 1;
+    if ((c & 0xE0) == 0xC0 && remaining >= 2 && ((unsigned char)data[1] & 0xC0) == 0x80)
+        return 2;
+    if ((c & 0xF0) == 0xE0 && remaining >= 3 && ((unsigned char)data[1] & 0xC0) == 0x80 &&
+        ((unsigned char)data[2] & 0xC0) == 0x80)
+        return 3;
+    if ((c & 0xF8) == 0xF0 && remaining >= 4 && ((unsigned char)data[1] & 0xC0) == 0x80 &&
+        ((unsigned char)data[2] & 0xC0) == 0x80 && ((unsigned char)data[3] & 0xC0) == 0x80)
+        return 4;
+    rt_trap("String.Like: invalid UTF-8 sequence");
+    return 0;
+}
+
 static int split_words_dynamic(const char *src,
                                size_t len,
                                char **buf_out,
                                const char ***words_out) {
-    if (len > (size_t)INT_MAX || len > SIZE_MAX - 256)
+    if (buf_out)
+        *buf_out = NULL;
+    if (words_out)
+        *words_out = NULL;
+    if (len > (size_t)INT_MAX) {
         rt_trap("string_ops: input too large");
-
-    char *wbuf = (char *)malloc(len + 256);
-    if (!wbuf)
-        rt_trap("string_ops: memory allocation failed");
+        return 0;
+    }
 
     size_t word_cap = len > 0 ? len : 1;
+    if (len > SIZE_MAX - word_cap - 1) {
+        rt_trap("string_ops: input too large");
+        return 0;
+    }
+    size_t buf_cap = len + word_cap + 1;
+
+    char *wbuf = (char *)malloc(buf_cap);
+    if (!wbuf) {
+        rt_trap("string_ops: memory allocation failed");
+        return 0;
+    }
+
     const char **words = (const char **)malloc(word_cap * sizeof(*words));
     if (!words) {
         free(wbuf);
         rt_trap("string_ops: memory allocation failed");
+        return 0;
     }
 
-    int wc = split_words(src, len, wbuf, len + 256, words, (int)word_cap);
+    int wc = split_words(src, len, wbuf, buf_cap, words, (int)word_cap);
     *buf_out = wbuf;
     *words_out = words;
     return wc;
@@ -505,6 +576,8 @@ rt_string rt_str_camel_case(rt_string str) {
     char *wbuf = NULL;
     const char **words = NULL;
     int wc = split_words_dynamic(src, len, &wbuf, &words);
+    if (!wbuf || !words)
+        return NULL;
 
     rt_string_builder sb;
     rt_sb_init(&sb);
@@ -517,10 +590,12 @@ rt_string rt_str_camel_case(rt_string str) {
 
         char first = (w == 0) ? (char)tolower((unsigned char)word[0])
                               : (char)toupper((unsigned char)word[0]);
-        rt_sb_append_bytes(&sb, &first, 1);
+        if (!append_case_char(&sb, first, "String.CamelCase: append failed"))
+            goto camel_fail;
         for (size_t j = 1; j < wlen; ++j) {
             char c = (char)tolower((unsigned char)word[j]);
-            rt_sb_append_bytes(&sb, &c, 1);
+            if (!append_case_char(&sb, c, "String.CamelCase: append failed"))
+                goto camel_fail;
         }
     }
 
@@ -529,6 +604,12 @@ rt_string rt_str_camel_case(rt_string str) {
     free(words);
     free(wbuf);
     return result;
+
+camel_fail:
+    rt_sb_free(&sb);
+    free(words);
+    free(wbuf);
+    return NULL;
 }
 
 /// @brief Convert to "HelloWorld" — like camelCase but the first letter is also capitalized.
@@ -543,6 +624,8 @@ rt_string rt_str_pascal_case(rt_string str) {
     char *wbuf = NULL;
     const char **words = NULL;
     int wc = split_words_dynamic(src, len, &wbuf, &words);
+    if (!wbuf || !words)
+        return NULL;
 
     rt_string_builder sb;
     rt_sb_init(&sb);
@@ -554,10 +637,12 @@ rt_string rt_str_pascal_case(rt_string str) {
             continue;
 
         char first = (char)toupper((unsigned char)word[0]);
-        rt_sb_append_bytes(&sb, &first, 1);
+        if (!append_case_char(&sb, first, "String.PascalCase: append failed"))
+            goto pascal_fail;
         for (size_t j = 1; j < wlen; ++j) {
             char c = (char)tolower((unsigned char)word[j]);
-            rt_sb_append_bytes(&sb, &c, 1);
+            if (!append_case_char(&sb, c, "String.PascalCase: append failed"))
+                goto pascal_fail;
         }
     }
 
@@ -566,6 +651,12 @@ rt_string rt_str_pascal_case(rt_string str) {
     free(words);
     free(wbuf);
     return result;
+
+pascal_fail:
+    rt_sb_free(&sb);
+    free(words);
+    free(wbuf);
+    return NULL;
 }
 
 /// @brief Convert to "hello_world": insert '_' before each capital letter (after the first),
@@ -581,18 +672,21 @@ rt_string rt_str_snake_case(rt_string str) {
     char *wbuf = NULL;
     const char **words = NULL;
     int wc = split_words_dynamic(src, len, &wbuf, &words);
+    if (!wbuf || !words)
+        return NULL;
 
     rt_string_builder sb;
     rt_sb_init(&sb);
 
     for (int w = 0; w < wc; ++w) {
-        if (w > 0)
-            rt_sb_append_bytes(&sb, "_", 1);
+        if (w > 0 && !append_case_bytes(&sb, "_", 1, "String.SnakeCase: append failed"))
+            goto snake_fail;
         const char *word = words[w];
         size_t wlen = strlen(word);
         for (size_t j = 0; j < wlen; ++j) {
             char c = (char)tolower((unsigned char)word[j]);
-            rt_sb_append_bytes(&sb, &c, 1);
+            if (!append_case_char(&sb, c, "String.SnakeCase: append failed"))
+                goto snake_fail;
         }
     }
 
@@ -601,6 +695,12 @@ rt_string rt_str_snake_case(rt_string str) {
     free(words);
     free(wbuf);
     return result;
+
+snake_fail:
+    rt_sb_free(&sb);
+    free(words);
+    free(wbuf);
+    return NULL;
 }
 
 /// @brief Convert to "hello-world": like snake_case but with '-' separators.
@@ -615,18 +715,21 @@ rt_string rt_str_kebab_case(rt_string str) {
     char *wbuf = NULL;
     const char **words = NULL;
     int wc = split_words_dynamic(src, len, &wbuf, &words);
+    if (!wbuf || !words)
+        return NULL;
 
     rt_string_builder sb;
     rt_sb_init(&sb);
 
     for (int w = 0; w < wc; ++w) {
-        if (w > 0)
-            rt_sb_append_bytes(&sb, "-", 1);
+        if (w > 0 && !append_case_bytes(&sb, "-", 1, "String.KebabCase: append failed"))
+            goto kebab_fail;
         const char *word = words[w];
         size_t wlen = strlen(word);
         for (size_t j = 0; j < wlen; ++j) {
             char c = (char)tolower((unsigned char)word[j]);
-            rt_sb_append_bytes(&sb, &c, 1);
+            if (!append_case_char(&sb, c, "String.KebabCase: append failed"))
+                goto kebab_fail;
         }
     }
 
@@ -635,6 +738,12 @@ rt_string rt_str_kebab_case(rt_string str) {
     free(words);
     free(wbuf);
     return result;
+
+kebab_fail:
+    rt_sb_free(&sb);
+    free(words);
+    free(wbuf);
+    return NULL;
 }
 
 /// @brief Convert to "HELLO_WORLD": uppercase snake_case (constant-style identifier).
@@ -649,18 +758,21 @@ rt_string rt_str_screaming_snake(rt_string str) {
     char *wbuf = NULL;
     const char **words = NULL;
     int wc = split_words_dynamic(src, len, &wbuf, &words);
+    if (!wbuf || !words)
+        return NULL;
 
     rt_string_builder sb;
     rt_sb_init(&sb);
 
     for (int w = 0; w < wc; ++w) {
-        if (w > 0)
-            rt_sb_append_bytes(&sb, "_", 1);
+        if (w > 0 && !append_case_bytes(&sb, "_", 1, "String.ScreamingSnake: append failed"))
+            goto screaming_fail;
         const char *word = words[w];
         size_t wlen = strlen(word);
         for (size_t j = 0; j < wlen; ++j) {
             char c = (char)toupper((unsigned char)word[j]);
-            rt_sb_append_bytes(&sb, &c, 1);
+            if (!append_case_char(&sb, c, "String.ScreamingSnake: append failed"))
+                goto screaming_fail;
         }
     }
 
@@ -669,6 +781,12 @@ rt_string rt_str_screaming_snake(rt_string str) {
     free(words);
     free(wbuf);
     return result;
+
+screaming_fail:
+    rt_sb_free(&sb);
+    free(words);
+    free(wbuf);
+    return NULL;
 }
 
 //=============================================================================
@@ -710,8 +828,11 @@ static int8_t like_match(
                 continue;
             }
         } else if (pi < plen && pat[pi] == '_') {
-            // Single character wildcard
-            ti++;
+            // Single UTF-8 codepoint wildcard
+            size_t step = like_utf8_step(text + ti, tlen - ti);
+            if (step == 0)
+                return 0;
+            ti += step;
             pi++;
             continue;
         } else if (pi < plen) {
@@ -731,7 +852,10 @@ static int8_t like_match(
         // No match — backtrack to last %
         if (star_pi != (size_t)-1) {
             pi = star_pi + 1;
-            star_ti++;
+            size_t step = like_utf8_step(text + star_ti, tlen - star_ti);
+            if (step == 0)
+                return 0;
+            star_ti += step;
             ti = star_ti;
             continue;
         }

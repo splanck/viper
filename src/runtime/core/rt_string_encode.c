@@ -57,6 +57,7 @@ rt_string rt_str_chr(int64_t code) {
         rt_i64_to_cstr(code, numbuf, sizeof(numbuf));
         snprintf(buf, sizeof(buf), "CHR$: code must be 0-255 (got %s)", numbuf);
         rt_trap(buf);
+        return rt_str_empty();
     }
     char ch = (char)(unsigned char)code;
     return rt_string_from_bytes(&ch, 1);
@@ -69,10 +70,14 @@ rt_string rt_str_chr(int64_t code) {
 /// @param s Runtime string handle to inspect.
 /// @return Integer value of the first byte, or zero when the string is empty.
 int64_t rt_str_asc(rt_string s) {
-    if (!s)
+    if (!s) {
         rt_trap("rt_str_asc: null");
-    if (!rt_string_is_handle((void *)s))
+        return 0;
+    }
+    if (!rt_string_is_handle((void *)s)) {
         rt_trap("rt_str_asc: invalid string handle");
+        return 0;
+    }
     size_t len = (size_t)rt_str_len(s);
     if (len == 0 || !s->data)
         return 0;

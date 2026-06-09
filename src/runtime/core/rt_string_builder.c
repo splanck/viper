@@ -44,6 +44,7 @@
 #include "rt_sb_bridge.h"
 #include "rt_string.h"
 
+#include <limits.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -138,11 +139,6 @@ static rt_sb_status_t rt_sb_grow(rt_string_builder *sb, size_t new_cap) {
         return RT_SB_ERROR_INVALID;
     if (new_cap <= sb->cap)
         return RT_SB_OK;
-
-    // Defensive: unreachable after the check above, but guards against
-    // unsigned overflow if new_cap wrapped to a value less than sb->cap.
-    if (new_cap < sb->cap)
-        return RT_SB_ERROR_OVERFLOW;
 
     char *new_data = NULL;
     if (rt_sb_is_inline(sb)) {
@@ -451,6 +447,11 @@ int64_t rt_text_sb_get_length(void *sb) {
     rt_string_builder *builder = get_builder(sb);
     if (!builder)
         return 0;
+    if (builder->len > (size_t)INT64_MAX) {
+        rt_trap_raise_kind(
+            RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, "StringBuilder.Length overflow");
+        return INT64_MAX;
+    }
 
     // Return the current string length in bytes
     return (int64_t)builder->len;
@@ -463,6 +464,11 @@ int64_t rt_text_sb_get_capacity(void *sb) {
     rt_string_builder *builder = get_builder(sb);
     if (!builder)
         return 0;
+    if (builder->cap > (size_t)INT64_MAX) {
+        rt_trap_raise_kind(
+            RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, "StringBuilder.Capacity overflow");
+        return INT64_MAX;
+    }
 
     // Return the current allocated capacity in bytes
     return (int64_t)builder->cap;
@@ -476,11 +482,23 @@ void *rt_text_sb_append(void *sb, rt_string s) {
     rt_string_builder *builder = get_builder(sb);
     if (!builder)
         return sb;
-    const char *str_data = s ? s->data : NULL;
-    size_t str_len = s ? rt_str_len(s) : 0;
+    const char *str_data = NULL;
+    size_t str_len = 0;
+    if (s) {
+        int64_t raw_len = rt_str_len(s);
+        if (raw_len < 0) {
+            rt_trap_raise_kind(
+                RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, -1, "StringBuilder.Append");
+            return sb;
+        }
+        str_len = (size_t)raw_len;
+        str_data = rt_string_cstr(s);
+    }
     rt_sb_status_t status = rt_sb_append_bytes(builder, str_data, str_len);
-    if (status != RT_SB_OK)
+    if (status != RT_SB_OK) {
         rt_text_sb_trap_status("StringBuilder.Append failed", status);
+        return sb;
+    }
 
     // Return the receiver for method chaining
     return sb;
@@ -494,8 +512,20 @@ void *rt_text_sb_append_line(void *sb, rt_string s) {
     rt_string_builder *builder = get_builder(sb);
     if (!builder)
         return sb;
-    const char *str_data = s ? s->data : NULL;
-    size_t str_len = s ? (size_t)rt_str_len(s) : 0;
+    const char *str_data = NULL;
+    size_t str_len = 0;
+    if (s) {
+        int64_t raw_len = rt_str_len(s);
+        if (raw_len < 0) {
+            rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION,
+                               Err_InvalidOperation,
+                               -1,
+                               "StringBuilder.AppendLine");
+            return sb;
+        }
+        str_len = (size_t)raw_len;
+        str_data = rt_string_cstr(s);
+    }
 
     // Reserve enough space for string bytes + '\n' + NUL terminator.
     if (str_len > SIZE_MAX - builder->len) {
@@ -512,8 +542,10 @@ void *rt_text_sb_append_line(void *sb, rt_string s) {
     size_t required = content_len + 2;
 
     rt_sb_status_t status = rt_sb_reserve(builder, required);
-    if (status != RT_SB_OK)
+    if (status != RT_SB_OK) {
         rt_text_sb_trap_status("StringBuilder.AppendLine failed", status);
+        return sb;
+    }
 
     if (str_data && str_len > 0) {
         memcpy(builder->data + builder->len, str_data, str_len);

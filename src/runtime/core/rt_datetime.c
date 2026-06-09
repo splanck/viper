@@ -38,6 +38,7 @@
 #include "rt_platform.h"
 #include "rt_trap.h"
 
+#include <errno.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -631,11 +632,11 @@ rt_string rt_datetime_to_iso(int64_t timestamp) {
     if (len < 0) {
         return rt_string_from_bytes("", 0);
     }
-    size_t out_len = (size_t)len;
-    if (out_len >= sizeof(buffer)) {
-        out_len = sizeof(buffer) - 1;
+    if ((size_t)len >= sizeof(buffer)) {
+        rt_trap("DateTime.ToISO: formatted output truncated");
+        return rt_string_from_bytes("", 0);
     }
-    return rt_string_from_bytes(buffer, out_len);
+    return rt_string_from_bytes(buffer, (size_t)len);
 }
 
 /// @brief Converts a timestamp to local ISO 8601 format (no Z suffix).
@@ -669,11 +670,11 @@ rt_string rt_datetime_to_local(int64_t timestamp) {
     if (len < 0) {
         return rt_string_from_bytes("", 0);
     }
-    size_t out_len = (size_t)len;
-    if (out_len >= sizeof(buffer)) {
-        out_len = sizeof(buffer) - 1;
+    if ((size_t)len >= sizeof(buffer)) {
+        rt_trap("DateTime.ToLocal: formatted output truncated");
+        return rt_string_from_bytes("", 0);
     }
-    return rt_string_from_bytes(buffer, out_len);
+    return rt_string_from_bytes(buffer, (size_t)len);
 }
 
 /// @brief Creates a Unix timestamp from date/time components.
@@ -760,7 +761,10 @@ int64_t rt_datetime_create(
     const int orig_tm_min = tm.tm_min;
     const int orig_tm_sec = tm.tm_sec;
 
+    errno = 0;
     time_t t = mktime(&tm);
+    if (t == (time_t)-1 && errno != 0)
+        return -1;
     struct tm check_buf;
     struct tm *check = rt_localtime_r(&t, &check_buf);
     if (!check)
@@ -1053,7 +1057,10 @@ static int dt_make_local_timestamp(
     tm.tm_sec = second;
     tm.tm_isdst = -1;
 
+    errno = 0;
     time_t t = mktime(&tm);
+    if (t == (time_t)-1 && errno != 0)
+        return 0;
     struct tm check_buf;
     struct tm *check = rt_localtime_r(&t, &check_buf);
     if (!check)

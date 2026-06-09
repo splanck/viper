@@ -13,12 +13,14 @@
 //   - Size classes cover 1-64, 65-128, 129-256, and 257-512 byte allocations.
 //   - Allocations larger than 512 bytes fall back to malloc/free.
 //   - Freelist management uses atomic operations; multiple threads may allocate concurrently.
-//   - Pool memory is never returned to the OS; freed blocks stay in the freelist.
+//   - Freed blocks normally stay in the freelist until rt_pool_shutdown releases
+//     all slabs during runtime teardown.
 //
 // Ownership/Lifetime:
 //   - Callers receive a pointer to the allocated block; no header is exposed.
-//   - rt_pool_free must be called with the same size class as rt_pool_alloc.
-//   - The pool is process-global; it is never explicitly destroyed.
+//   - rt_pool_free accepts the original requested size. The implementation
+//     validates the owning slab before returning a block to a size-class freelist.
+//   - The pool is process-global and supports an explicit shutdown path.
 //
 // Links: src/runtime/core/rt_pool.c (implementation)
 //
@@ -52,10 +54,12 @@ typedef enum {
 void *rt_pool_alloc(size_t size);
 
 /// @brief Free memory back to the pool.
-/// @details Returns the block to its size class freelist. For large allocations
+/// @details Returns the block to its owning size-class freelist. The size is
+///          used as a fast path, but the implementation validates the actual
+///          slab owner before linking the block. For large allocations
 ///          (> RT_POOL_MAX_SIZE), delegates to free().
 /// @param ptr Pointer to memory previously allocated by rt_pool_alloc.
-/// @param size Original allocation size (used to determine size class).
+/// @param size Original allocation size, used to select the expected fast path.
 void rt_pool_free(void *ptr, size_t size);
 
 /// @brief Get statistics about pool usage.
@@ -66,9 +70,11 @@ void rt_pool_free(void *ptr, size_t size);
 void rt_pool_stats(rt_pool_class_t class_idx, size_t *out_allocated, size_t *out_free);
 
 /// @brief Release all pool memory back to the system.
-/// @details Frees all slabs in all size classes. Should only be called during
-///          program shutdown when all pool allocations have been freed.
-/// @warning Calling this while allocations are still in use causes undefined behavior.
+/// @details Stops new slab-backed operations, waits for in-flight pool operations
+///          to leave their critical sections, and frees all slabs in all size
+///          classes. A later allocation can rebuild fresh slabs.
+/// @warning Should only be called during runtime teardown. Existing pointers from
+///          freed slabs must not be used after shutdown.
 void rt_pool_shutdown(void);
 
 #ifdef __cplusplus

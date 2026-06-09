@@ -44,6 +44,7 @@
 #include "rt_internal.h"
 #include "rt_output.h"
 #include "rt_seq.h"
+#include "rt_string.h"
 #include "rt_string_builder.h"
 
 #include "rt_platform.h"
@@ -286,6 +287,18 @@ void *rt_native_eh_frame_alloc(void) {
 
 /// @brief Release a native EH frame allocated by `rt_native_eh_frame_alloc`.
 void rt_native_eh_frame_free(void *frame_ptr) {
+    rt_native_eh_frame_t *frame = (rt_native_eh_frame_t *)frame_ptr;
+    if (frame) {
+        rt_trap_recovery_base_t **cursor = &rt_trap_recovery_top_;
+        while (*cursor) {
+            if (*cursor == &frame->base) {
+                *cursor = frame->base.prev;
+                frame->base.prev = NULL;
+                break;
+            }
+            cursor = &(*cursor)->prev;
+        }
+    }
     free(frame_ptr);
 }
 
@@ -335,9 +348,16 @@ int64_t rt_native_eh_get_site(void *frame_ptr) {
 /// @param s Runtime string handle; may be null.
 /// @return Length in bytes, or 0 if s is null or has null data.
 static inline size_t rt_string_safe_len(rt_string s) {
-    if (!s || !s->data)
+    if (!s)
         return 0;
-    return (s->heap && s->heap != RT_SSO_SENTINEL) ? rt_heap_len(s->data) : s->literal_len;
+    if (!rt_string_is_handle(s)) {
+        rt_trap("rt_print_str: invalid string handle");
+        return 0;
+    }
+    int64_t raw_len = rt_str_len(s);
+    if (raw_len <= 0)
+        return 0;
+    return (size_t)raw_len;
 }
 
 /// @brief Handle string builder errors with consistent trap messages.
@@ -378,7 +398,10 @@ void rt_print_str(rt_string s) {
     if (len == 0)
         return;
 
-    rt_output_strn(s->data, len);
+    const char *data = rt_string_cstr(s);
+    if (!data)
+        return;
+    rt_output_strn(data, len);
     rt_output_flush_if_not_batch();
 }
 
@@ -502,6 +525,7 @@ int64_t rt_str_split_fields(rt_string line, rt_string *out_fields, int64_t max_f
         max_fields = 0;
     } else if (!out_fields) {
         rt_trap("rt_str_split_fields: null output");
+        return 0;
     }
 
     const char *data = "";
@@ -572,6 +596,7 @@ int64_t rt_str_split_fields(rt_string line, rt_string *out_fields, int64_t max_f
                         char *tmp = (char *)malloc(unescaped_len);
                         if (!tmp && unescaped_len > 0) {
                             rt_trap("out of memory");
+                            return total;
                         }
 
                         j = field_start;
@@ -661,6 +686,17 @@ int rt_eof_ch(int ch) {
     errno = 0;
     int64_t cur = lseek(fd, 0, SEEK_CUR);
     if (cur >= 0) {
+        struct stat st;
+        if (fstat(fd, &st) == 0 && (S_ISREG(st.st_mode) || S_ISBLK(st.st_mode)) &&
+            st.st_size >= 0) {
+            if ((int64_t)st.st_size <= cur) {
+                rt_file_channel_set_eof(ch, 1);
+                return -1;
+            }
+            rt_file_channel_set_eof(ch, 0);
+            return 0;
+        }
+
         int64_t end = lseek(fd, 0, SEEK_END);
         if (end < 0) {
             (void)lseek(fd, cur, SEEK_SET);
@@ -724,9 +760,6 @@ int64_t rt_lof_ch(int ch) {
 
     if (lseek(fd, cur, SEEK_SET) < 0)
         return -(int64_t)Err_IOError;
-
-    if (end < 0)
-        return 0;
 
     return end;
 }

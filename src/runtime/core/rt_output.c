@@ -38,14 +38,18 @@
 
 #include "rt_atomic_compat.h"
 #include "rt_platform.h"
+#include "rt_trap.h"
 
 #if RT_PLATFORM_WINDOWS
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#elif !RT_PLATFORM_VIPERDOS
+#include <sched.h>
 #endif
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -74,6 +78,35 @@ static int g_output_exit_handler_registered = 0;
 /// @details The runtime output layer is already process-global, so capture uses
 ///          the same scope. The REPL installs this only around one VM execution.
 static rt_output_capture_hook g_output_capture_hook = {NULL, NULL};
+
+/// @brief Spinlock protecting capture-hook replacement and snapshot reads.
+/// @details The callback pointer and opaque context must be observed as one
+///          consistent pair.  A small spinlock is sufficient because hook
+///          changes are rare and snapshot reads copy only two machine words.
+static int g_output_capture_lock;
+
+/// @brief Yield the current thread while waiting for a rare output lock.
+static void rt_output_yield_(void) {
+#if RT_PLATFORM_WINDOWS
+    SwitchToThread();
+#elif !RT_PLATFORM_VIPERDOS
+    sched_yield();
+#endif
+}
+
+/// @brief Acquire the output capture spinlock.
+static void rt_output_capture_lock_(void) {
+    if (__atomic_test_and_set(&g_output_capture_lock, __ATOMIC_ACQUIRE)) {
+        do {
+            rt_output_yield_();
+        } while (__atomic_test_and_set(&g_output_capture_lock, __ATOMIC_ACQUIRE));
+    }
+}
+
+/// @brief Release the output capture spinlock.
+static void rt_output_capture_unlock_(void) {
+    __atomic_clear(&g_output_capture_lock, __ATOMIC_RELEASE);
+}
 
 /// @brief atexit callback: flush buffered stdout at process exit.
 static void rt_output_flush_at_exit_(void) {
@@ -134,9 +167,11 @@ static void rt_output_write_bytes(const char *s, size_t len) {
 ///          not call @ref rt_output_init because capture should also work before
 ///          stdout buffering is initialized.
 rt_output_capture_hook rt_output_set_capture_hook(rt_output_capture_fn fn, void *ctx) {
+    rt_output_capture_lock_();
     rt_output_capture_hook oldHook = g_output_capture_hook;
     g_output_capture_hook.fn = fn;
     g_output_capture_hook.ctx = ctx;
+    rt_output_capture_unlock_();
     return oldHook;
 }
 
@@ -147,7 +182,9 @@ rt_output_capture_hook rt_output_set_capture_hook(rt_output_capture_fn fn, void 
 static int rt_output_try_capture_(const char *s, size_t len) {
     if (!s || len == 0)
         return 1;
+    rt_output_capture_lock_();
     rt_output_capture_hook hook = g_output_capture_hook;
+    rt_output_capture_unlock_();
     if (!hook.fn)
         return 0;
     hook.fn(s, len, hook.ctx);
@@ -182,7 +219,7 @@ void rt_output_init(void) {
 
     // Another thread is initializing; spin until done.
     while (__atomic_load_n(&g_output_init_state, __ATOMIC_ACQUIRE) != 2) {
-        // spin
+        rt_output_yield_();
     }
 }
 
@@ -224,23 +261,45 @@ void rt_output_flush(void) {
 /// @brief Enter batch mode — defer all flushes until the matching end_batch.
 /// @details Increments a reference counter. Nested calls are supported.
 void rt_output_begin_batch(void) {
-    __atomic_fetch_add(&g_batch_mode_depth, 1, __ATOMIC_ACQ_REL);
+    int cur = __atomic_load_n(&g_batch_mode_depth, __ATOMIC_ACQUIRE);
+    for (;;) {
+        if (cur == INT_MAX) {
+            rt_trap("rt_output_begin_batch: batch depth overflow");
+            return;
+        }
+        int next = cur + 1;
+        if (__atomic_compare_exchange_n(&g_batch_mode_depth,
+                                        &cur,
+                                        next,
+                                        /*weak=*/0,
+                                        __ATOMIC_ACQ_REL,
+                                        __ATOMIC_ACQUIRE))
+            return;
+    }
 }
 
 /// @brief Exit batch mode — flush stdout when the outermost batch ends.
 /// @details Decrements the reference counter. Only the outermost end triggers
 ///          a flush. Unbalanced end calls (without matching begin) are no-ops.
 void rt_output_end_batch(void) {
-    // Guard against unbalanced end without begin
     int cur = __atomic_load_n(&g_batch_mode_depth, __ATOMIC_ACQUIRE);
-    if (cur <= 0)
-        return;
-    int prev = __atomic_fetch_sub(&g_batch_mode_depth, 1, __ATOMIC_ACQ_REL);
-    if (prev <= 1) {
-        // Exiting outermost batch mode: flush accumulated output
+    for (;;) {
+        if (cur <= 0)
+            return;
+        int next = cur - 1;
+        if (__atomic_compare_exchange_n(&g_batch_mode_depth,
+                                        &cur,
+                                        next,
+                                        /*weak=*/0,
+                                        __ATOMIC_ACQ_REL,
+                                        __ATOMIC_ACQUIRE)) {
+            if (next == 0) {
 #if !RT_PLATFORM_WINDOWS
-        fflush(stdout);
+                fflush(stdout);
 #endif
+            }
+            return;
+        }
     }
 }
 

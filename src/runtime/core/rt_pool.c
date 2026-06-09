@@ -123,9 +123,23 @@ typedef struct rt_pool_slab {
 #define RT_POOL_PAC_SAFE 0
 #endif
 
-/// @brief Pack a pointer and version into a tagged pointer.
+/// @brief Return non-zero when @p ptr can be represented by the 48-bit tagged-pointer format.
+/// @details The fast freelist format stores a 16-bit ABA counter in the high bits
+///          and the pointer in the low 48 bits.  Systems with 57-bit virtual
+///          addresses can hand out pointers that do not fit.  This guard turns
+///          such a platform mismatch into an immediate allocator failure rather
+///          than silently truncating a live pointer.
+/// @param ptr Pointer candidate to encode in the tagged freelist word.
+/// @return Non-zero when the pointer's high bits are clear and safe to pack.
 #if !RT_POOL_PAC_SAFE
+static inline int ptr_fits_tagged_ptr(void *ptr) {
+    return (((uintptr_t)ptr) & ~(uintptr_t)0x0000FFFFFFFFFFFFULL) == 0;
+}
+
+/// @brief Pack a pointer and version into a tagged pointer.
 static inline uint64_t pack_tagged_ptr(void *ptr, uint16_t version) {
+    if (ptr && !ptr_fits_tagged_ptr(ptr))
+        abort();
     return ((uint64_t)version << 48) | ((uint64_t)(uintptr_t)ptr & 0x0000FFFFFFFFFFFFULL);
 }
 
@@ -214,6 +228,61 @@ typedef struct rt_pool_state {
 /// @brief Global pool state for each size class.
 static rt_pool_state_t g_pools[RT_POOL_COUNT];
 
+/// @brief Lifecycle lock protecting shutdown coordination.
+/// @details Allocation and free operations increment a short-lived active count
+///          while `rt_pool_shutdown` flips a shutdown flag and waits for that
+///          count to drain before releasing slabs.  This prevents shutdown from
+///          freeing a slab while another thread is popping or pushing a block.
+static int g_pool_lifecycle_lock;
+
+/// @brief Number of pool operations currently executing.
+static size_t g_pool_active_ops;
+
+/// @brief Non-zero while shutdown is draining/freeing slabs.
+static int g_pool_shutdown_started;
+
+/// @brief Acquire the pool lifecycle spinlock with yield-on-contention.
+static void rt_pool_lifecycle_lock_(void) {
+    if (__atomic_test_and_set(&g_pool_lifecycle_lock, __ATOMIC_ACQUIRE)) {
+        do {
+#if RT_PLATFORM_WINDOWS
+            SwitchToThread();
+#elif !RT_PLATFORM_VIPERDOS
+            sched_yield();
+#endif
+        } while (__atomic_test_and_set(&g_pool_lifecycle_lock, __ATOMIC_ACQUIRE));
+    }
+}
+
+/// @brief Release the pool lifecycle spinlock.
+static void rt_pool_lifecycle_unlock_(void) {
+    __atomic_clear(&g_pool_lifecycle_lock, __ATOMIC_RELEASE);
+}
+
+/// @brief Enter a pool operation unless shutdown is currently active.
+/// @details Returns zero while shutdown is draining/freeing slabs so callers can
+///          bypass the pools and use malloc/free directly. Successful calls must
+///          be paired with @ref rt_pool_end_op_.
+/// @return 1 when the caller may access pool state, 0 while shutdown is active.
+static int rt_pool_begin_op_(void) {
+    rt_pool_lifecycle_lock_();
+    if (g_pool_shutdown_started) {
+        rt_pool_lifecycle_unlock_();
+        return 0;
+    }
+    ++g_pool_active_ops;
+    rt_pool_lifecycle_unlock_();
+    return 1;
+}
+
+/// @brief Leave a pool operation that was entered by @ref rt_pool_begin_op_.
+static void rt_pool_end_op_(void) {
+    rt_pool_lifecycle_lock_();
+    if (g_pool_active_ops > 0)
+        --g_pool_active_ops;
+    rt_pool_lifecycle_unlock_();
+}
+
 #if RT_POOL_PAC_SAFE
 /// @brief Acquire the PAC-safe freelist spinlock with yield-on-contention.
 /// @details Used only on Pointer-Authentication targets (arm64e on
@@ -269,11 +338,64 @@ static rt_pool_slab_t *allocate_slab(rt_pool_class_t class_idx) {
     slab->block_size = block_size;
     slab->block_count = BLOCKS_PER_SLAB;
     slab->data = (char *)(slab + 1);
+#if !RT_POOL_PAC_SAFE
+    if (!ptr_fits_tagged_ptr(slab->data)) {
+        free(slab);
+        return NULL;
+    }
+#endif
 
     // Zero-initialize all blocks
     memset(slab->data, 0, data_size);
 
     return slab;
+}
+
+/// @brief Atomically load the head slab pointer for a size class.
+/// @param pool Pool state whose slab chain should be read.
+/// @return Current slab-chain head.
+static rt_pool_slab_t *rt_pool_load_slabs_(rt_pool_state_t *pool) {
+#if RT_COMPILER_MSVC
+    return (rt_pool_slab_t *)rt_atomic_load_ptr((void *const volatile *)&pool->slabs,
+                                                __ATOMIC_ACQUIRE);
+#else
+    return __atomic_load_n(&pool->slabs, __ATOMIC_ACQUIRE);
+#endif
+}
+
+/// @brief Determine whether @p ptr is exactly one block inside @p slab.
+/// @details The check validates both range membership and block alignment so a
+///          caller cannot free an interior pointer into the freelist.
+/// @param slab Slab metadata to inspect.
+/// @param ptr Candidate block pointer.
+/// @return Non-zero when @p ptr names a block owned by @p slab.
+static int rt_pool_slab_owns_block_(const rt_pool_slab_t *slab, const void *ptr) {
+    if (!slab || !ptr)
+        return 0;
+    uintptr_t start = (uintptr_t)slab->data;
+    uintptr_t address = (uintptr_t)ptr;
+    size_t bytes = slab->block_size * slab->block_count;
+    if (address < start || address >= start + bytes)
+        return 0;
+    return ((address - start) % slab->block_size) == 0;
+}
+
+/// @brief Find the actual pool size class that owns a pointer.
+/// @details Used by @ref rt_pool_free to prevent a stale or incorrect size
+///          argument from returning a block to the wrong freelist.  Slabs are
+///          never freed while pool operations are active, so walking the chains
+///          is safe after @ref rt_pool_begin_op_ succeeds.
+/// @param ptr Candidate block pointer.
+/// @return Owning class index, or RT_POOL_COUNT when no active slab owns it.
+static rt_pool_class_t rt_pool_find_class_for_ptr_(void *ptr) {
+    for (rt_pool_class_t class_idx = RT_POOL_64; class_idx < RT_POOL_COUNT; ++class_idx) {
+        rt_pool_state_t *pool = &g_pools[class_idx];
+        for (rt_pool_slab_t *slab = rt_pool_load_slabs_(pool); slab; slab = slab->next) {
+            if (rt_pool_slab_owns_block_(slab, ptr))
+                return class_idx;
+        }
+    }
+    return RT_POOL_COUNT;
 }
 
 /// @brief Pop a block from the freelist.
@@ -362,11 +484,17 @@ void *rt_pool_alloc(size_t size) {
     if (size == 0)
         size = 1; // Minimum allocation
 
+    if (!rt_pool_begin_op_())
+        return malloc(size);
+
     rt_pool_class_t class_idx = size_to_class(size);
 
     // Fall back to malloc for large allocations
-    if (class_idx >= RT_POOL_COUNT)
-        return malloc(size);
+    if (class_idx >= RT_POOL_COUNT) {
+        void *ptr = malloc(size);
+        rt_pool_end_op_();
+        return ptr;
+    }
 
     rt_pool_state_t *pool = &g_pools[class_idx];
 
@@ -376,8 +504,10 @@ void *rt_pool_alloc(size_t size) {
     if (!block) {
         // Freelist empty - allocate a new slab
         rt_pool_slab_t *slab = allocate_slab(class_idx);
-        if (!slab)
+        if (!slab) {
+            rt_pool_end_op_();
             return NULL;
+        }
 
         // Reserve the first block for this allocation before pushing the
         // rest to the freelist. This prevents a race where other threads
@@ -423,8 +553,10 @@ void *rt_pool_alloc(size_t size) {
                 last = b;
             }
 
-            if (!first || !last)
+            if (!first || !last) {
+                rt_pool_end_op_();
                 return NULL;
+            }
 
 #if RT_POOL_PAC_SAFE
             rt_pool_lock_(&pool->freelist_lock);
@@ -460,6 +592,7 @@ void *rt_pool_alloc(size_t size) {
     // Zero the block before returning (caller expects zeroed memory)
     memset(block, 0, kClassSizes[class_idx]);
 
+    rt_pool_end_op_();
     return block;
 }
 
@@ -473,11 +606,26 @@ void rt_pool_free(void *ptr, size_t size) {
     if (!ptr)
         return;
 
+    if (!rt_pool_begin_op_()) {
+        free(ptr);
+        return;
+    }
+
     rt_pool_class_t class_idx = size_to_class(size);
+    rt_pool_class_t actual_class = rt_pool_find_class_for_ptr_(ptr);
+
+    if (actual_class < RT_POOL_COUNT) {
+        class_idx = actual_class;
+    } else if (class_idx < RT_POOL_COUNT) {
+        rt_pool_end_op_();
+        free(ptr);
+        return;
+    }
 
     // Large allocations were from malloc
     if (class_idx >= RT_POOL_COUNT) {
         free(ptr);
+        rt_pool_end_op_();
         return;
     }
 
@@ -494,6 +642,7 @@ void rt_pool_free(void *ptr, size_t size) {
 #else
     __atomic_fetch_sub(&pool->allocated, 1, __ATOMIC_RELAXED);
 #endif
+    rt_pool_end_op_();
 }
 
 /// @brief Query per-class allocation statistics for monitoring and diagnostics.
@@ -530,6 +679,23 @@ void rt_pool_stats(rt_pool_class_t class_idx, size_t *out_allocated, size_t *out
 ///          after rt_gc_run_all_finalizers and rt_string_intern_drain have already
 ///          released all live references — calling earlier causes use-after-free.
 void rt_pool_shutdown(void) {
+    rt_pool_lifecycle_lock_();
+    if (g_pool_shutdown_started) {
+        rt_pool_lifecycle_unlock_();
+        return;
+    }
+    g_pool_shutdown_started = 1;
+    while (g_pool_active_ops > 0) {
+        rt_pool_lifecycle_unlock_();
+#if RT_PLATFORM_WINDOWS
+        SwitchToThread();
+#elif !RT_PLATFORM_VIPERDOS
+        sched_yield();
+#endif
+        rt_pool_lifecycle_lock_();
+    }
+    rt_pool_lifecycle_unlock_();
+
     for (int i = 0; i < RT_POOL_COUNT; i++) {
         rt_pool_state_t *pool = &g_pools[i];
 
@@ -557,4 +723,8 @@ void rt_pool_shutdown(void) {
         __atomic_store_n(&pool->free_count, 0, __ATOMIC_RELAXED);
 #endif
     }
+
+    rt_pool_lifecycle_lock_();
+    g_pool_shutdown_started = 0;
+    rt_pool_lifecycle_unlock_();
 }
