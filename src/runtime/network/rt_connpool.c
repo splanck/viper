@@ -253,8 +253,10 @@ static void rt_connpool_finalize(void *obj) {
 void *rt_connpool_new(int64_t max_size) {
     rt_connpool_impl *pool =
         (rt_connpool_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_connpool_impl));
-    if (!pool)
+    if (!pool) {
         rt_trap("ConnectionPool: memory allocation failed");
+        return NULL;
+    }
     memset(pool, 0, sizeof(*pool));
     if (max_size < 1)
         max_size = 1;

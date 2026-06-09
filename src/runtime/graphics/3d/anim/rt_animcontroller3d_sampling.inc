@@ -11,8 +11,8 @@ static int controller_sample_state_global_matrix(const rt_anim_controller3d *con
                                                  float time,
                                                  int32_t bone_index,
                                                  float *out_global) {
-    float globals[VGFX3D_MAX_BONES * 16];
-    float locals[VGFX3D_MAX_BONES * 16];
+    float globals[VGFX3D_MAX_BONES * 16] = {0.0f};
+    float locals[VGFX3D_MAX_BONES * 16] = {0.0f};
     int32_t state_count;
     int32_t bone_count;
     rt_animation3d *animation;

@@ -802,7 +802,8 @@ void *rt_seq_pop(void *obj) {
     }
 
     void *val = seq->items[seq->len - 1];
-    rt_obj_retain_maybe(val);
+    if (seq->owns_elements)
+        rt_obj_retain_maybe(val);
     seq->len--;
     seq->items[seq->len] = NULL; // Clear slot to prevent stale pointer access
     if (seq->owns_elements)
@@ -1080,9 +1081,10 @@ void *rt_seq_remove(void *obj, int64_t idx) {
     }
 
     void *val = seq->items[idx];
-    rt_obj_retain_maybe(val);
-    if (seq->owns_elements)
+    if (seq->owns_elements) {
+        rt_obj_retain_maybe(val);
         seq_release_element(val);
+    }
 
     // Shift elements to the left
     if (idx < seq->len - 1) {

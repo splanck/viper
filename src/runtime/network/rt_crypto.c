@@ -205,6 +205,14 @@ void rt_sha256_update(rt_sha256_ctx *ctx, const void *data, size_t len) {
 /// 64-bit form. The final state words are serialised big-endian
 /// into `digest`.
 void rt_sha256_final(rt_sha256_ctx *ctx, uint8_t digest[32]) {
+    if (!ctx) {
+        rt_trap("SHA256: context is null");
+        return;
+    }
+    if (!digest) {
+        rt_trap("SHA256: digest output is null");
+        return;
+    }
     uint64_t bits = ctx->count;
     uint8_t pad[64];
     size_t idx = (ctx->count / 8) % 64;
@@ -399,6 +407,14 @@ static void sha512_family_update(rt_sha512_ctx_internal *ctx, const void *data, 
 /// by passing the appropriate digest_len; the state words are serialised
 /// big-endian, byte-by-byte.
 static void sha512_family_final(rt_sha512_ctx_internal *ctx, uint8_t *digest, size_t digest_len) {
+    if (!ctx) {
+        rt_trap("SHA512: context is null");
+        return;
+    }
+    if (!digest) {
+        rt_trap("SHA512: digest output is null");
+        return;
+    }
     uint64_t bits_hi = ctx->count_hi;
     uint64_t bits_lo = ctx->count_lo;
     uint8_t pad[128];

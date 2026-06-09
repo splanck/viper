@@ -58,6 +58,30 @@ typedef struct {
     uint32_t *data;
 } px_view;
 
+/// @brief Compute the byte count for a whole-frame RGBA pixel copy.
+/// @details Verifies that both pixel views are non-null, have positive matching dimensions,
+///          and that the width * height * sizeof(uint32_t) calculation fits in size_t before
+///          callers pass the count to memcpy.
+/// @param dst Destination pixel view.
+/// @param src Source pixel view.
+/// @param bytes_out Receives the validated byte count on success.
+/// @return 1 when the views are compatible and the byte count is safe; otherwise 0.
+static int video_pixel_copy_bytes(const px_view *dst, const px_view *src, size_t *bytes_out) {
+    uint64_t pixels;
+    if (!dst || !src || !bytes_out || !dst->data || !src->data)
+        return 0;
+    if (dst->width <= 0 || dst->height <= 0 || dst->width != src->width ||
+        dst->height != src->height)
+        return 0;
+    if ((uint64_t)dst->width > UINT64_MAX / (uint64_t)dst->height)
+        return 0;
+    pixels = (uint64_t)dst->width * (uint64_t)dst->height;
+    if (pixels > (uint64_t)SIZE_MAX / sizeof(uint32_t))
+        return 0;
+    *bytes_out = (size_t)pixels * sizeof(uint32_t);
+    return 1;
+}
+
 // Keep video file loading large-file safe on platforms where long is 32-bit.
 #if defined(_WIN32)
 #define video_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
@@ -1028,11 +1052,9 @@ void *rt_videoplayer_open(rt_string path) {
             if (decoded && vp->frame_display) {
                 px_view *dst = (px_view *)vp->frame_display;
                 px_view *src = (px_view *)decoded;
-                if (dst->data && src->data && dst->width == src->width &&
-                    dst->height == src->height)
-                    memcpy(dst->data,
-                           src->data,
-                           (size_t)(dst->width * dst->height) * sizeof(uint32_t));
+                size_t copy_bytes = 0;
+                if (video_pixel_copy_bytes(dst, src, &copy_bytes))
+                    memcpy(dst->data, src->data, copy_bytes);
             }
             release_owned_ref(&decoded);
         }
@@ -1178,11 +1200,9 @@ void rt_videoplayer_update(void *obj, double dt) {
                 /* Copy decoded pixels into stable frame buffer */
                 px_view *dst = (px_view *)vp->frame_display;
                 px_view *src = (px_view *)decoded;
-                if (dst->data && src->data && dst->width == src->width &&
-                    dst->height == src->height)
-                    memcpy(dst->data,
-                           src->data,
-                           (size_t)(dst->width * dst->height) * sizeof(uint32_t));
+                size_t copy_bytes = 0;
+                if (video_pixel_copy_bytes(dst, src, &copy_bytes))
+                    memcpy(dst->data, src->data, copy_bytes);
                 release_owned_ref(&decoded);
             }
         }

@@ -64,6 +64,15 @@ static void rt_arr_obj_assert_header(rt_heap_hdr_t *hdr) {
     assert(hdr->elem_kind == RT_ELEM_OBJ);
 }
 
+/// @brief Release one object-array element and free it if its refcount reaches zero.
+/// @details Centralizes the retain/release handoff used by resize and teardown paths so
+///          shrink rollback paths can decide exactly when truncated references are released.
+/// @param p Runtime object reference stored in an array slot, or NULL for an empty slot.
+static void rt_arr_obj_release_element(void *p) {
+    if (p && rt_obj_release_check0(p))
+        rt_obj_free(p);
+}
+
 /// @brief Allocate a new object array with logical length @p len.
 /// @details The payload is zero-initialized so all elements start as NULL.
 ///          The returned pointer is the payload (element 0), not the header.
@@ -149,32 +158,45 @@ void **rt_arr_obj_resize(void **arr, size_t len) {
     rt_heap_hdr_t *hdr = rt_arr_obj_hdr(arr);
     rt_arr_obj_assert_header(hdr);
 
-    // Release truncated elements before shrinking
     size_t old_len = hdr->len;
-    if (len < old_len) {
-        for (size_t i = len; i < old_len; i++) {
-            void *p = arr[i];
-            if (p) {
-                if (rt_obj_release_check0(p))
-                    rt_obj_free(p);
-                arr[i] = NULL;
-            }
-        }
-    }
-
     if (len == 0) {
+        for (size_t i = 0; i < old_len; i++) {
+            rt_arr_obj_release_element(arr[i]);
+            arr[i] = NULL;
+        }
         rt_heap_release(arr);
         return NULL;
     }
 
+    void **truncated = NULL;
+    size_t truncated_count = 0;
+    if (len < old_len) {
+        truncated_count = old_len - len;
+        truncated = (void **)malloc(truncated_count * sizeof(void *));
+        if (!truncated)
+            return NULL;
+        memcpy(truncated, arr + len, truncated_count * sizeof(void *));
+    }
+
     size_t new_cap = len;
     // compute total bytes with overflow checks similar to rt_arr_i32
-    if (new_cap > 0 && new_cap > (SIZE_MAX - sizeof(rt_heap_hdr_t)) / sizeof(void *))
+    if (new_cap > 0 && new_cap > (SIZE_MAX - sizeof(rt_heap_hdr_t)) / sizeof(void *)) {
+        free(truncated);
         return NULL;
+    }
 
     void **payload = (void **)rt_heap_realloc(arr, sizeof(void *), len, new_cap);
-    if (!payload)
+    if (!payload) {
+        free(truncated);
         return NULL;
+    }
+
+    if (truncated) {
+        for (size_t i = len; i < old_len; i++) {
+            rt_arr_obj_release_element(truncated[i - len]);
+        }
+        free(truncated);
+    }
 
     return payload;
 }
@@ -193,8 +215,7 @@ void rt_arr_obj_release(void **arr) {
     for (size_t i = 0; i < n; ++i) {
         void *p = arr[i];
         if (p) {
-            if (rt_obj_release_check0(p))
-                rt_obj_free(p);
+            rt_arr_obj_release_element(p);
             arr[i] = NULL;
         }
     }

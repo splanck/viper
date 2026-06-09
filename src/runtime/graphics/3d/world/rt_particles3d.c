@@ -1265,6 +1265,13 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
             ps, canvas, vert_count, idx_count, &verts, &indices, &mat, &canvas_owned_storage)) {
         return;
     }
+    if (!mat) {
+        if (canvas_owned_storage) {
+            free(verts);
+            free(indices);
+        }
+        return;
+    }
 
     for (int32_t i = 0; i < ps->count; i++) {
         int32_t particle_index = sort_keys ? sort_keys[i].index : i;

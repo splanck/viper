@@ -260,6 +260,7 @@ void *rt_stack_to_seq(void *stack) {
     void *clone = rt_stack_clone(stack);
     if (!clone)
         return seq;
+    int8_t pop_returns_owned_refs = rt_stack_owns_elements(clone);
 
     // Pop a clone so conversion never mutates the source stack on traps.
     void **temp = malloc(sizeof(void *) * (size_t)len);
@@ -276,7 +277,8 @@ void *rt_stack_to_seq(void *stack) {
     // Add to seq in reverse order (bottom to top)
     for (int64_t i = count - 1; i >= 0; i--) {
         rt_seq_push(seq, temp[i]);
-        release_temp_obj(temp[i]);
+        if (pop_returns_owned_refs)
+            release_temp_obj(temp[i]);
     }
 
     free(temp);
@@ -314,11 +316,13 @@ void *rt_queue_to_seq(void *queue) {
     void *clone = rt_queue_clone(queue);
     if (!clone)
         return seq;
+    int8_t pop_returns_owned_refs = rt_queue_owns_elements(clone);
 
     while (!rt_queue_is_empty(clone)) {
         void *elem = rt_queue_pop(clone);
         rt_seq_push(seq, elem);
-        release_temp_obj(elem);
+        if (pop_returns_owned_refs)
+            release_temp_obj(elem);
     }
 
     release_temp_obj(clone);

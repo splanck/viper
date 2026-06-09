@@ -64,6 +64,28 @@ typedef struct {
     int8_t supports_auth_login;
 } smtp_caps_t;
 
+/// @brief Overwrite a memory range containing SMTP credentials or authentication material.
+/// @details Uses a volatile byte pointer so the compiler cannot elide the wipe as an unused
+///          store before free. NULL pointers are accepted and treated as no-ops.
+/// @param ptr Start of the memory range to wipe.
+/// @param len Number of bytes to overwrite with zero.
+static void smtp_secure_zero(void *ptr, size_t len) {
+    volatile unsigned char *p = (volatile unsigned char *)ptr;
+    while (p && len-- > 0)
+        *p++ = 0;
+}
+
+/// @brief Wipe and free an owned NUL-terminated secret string.
+/// @details Intended for stored SMTP passwords and transient replacement values. The string is
+///          measured before wiping so the entire current secret is cleared before release.
+/// @param secret Heap-owned secret string, or NULL.
+static void smtp_free_secret(char *secret) {
+    if (!secret)
+        return;
+    smtp_secure_zero(secret, strlen(secret));
+    free(secret);
+}
+
 /// @brief GC finalizer: tear down TLS session (if any), close + release the TCP socket, and free
 /// all heap-owned strings (host, credentials, last error).
 static void rt_smtp_finalize(void *obj) {
@@ -82,7 +104,7 @@ static void rt_smtp_finalize(void *obj) {
     }
     free(s->host);
     free(s->username);
-    free(s->password);
+    smtp_free_secret(s->password);
     free(s->last_error);
 }
 
@@ -491,6 +513,7 @@ static int smtp_send_base64_line(rt_smtp_impl *s, const char *plain, int expecte
     cmd[encoded_len + 2] = '\0';
     rt_string_unref(encoded);
     rc = smtp_command(s, cmd, expected_code);
+    smtp_secure_zero(cmd, encoded_len + 2);
     free(cmd);
     return rc;
 }
@@ -560,6 +583,8 @@ void *rt_smtp_new(rt_string host, int64_t port) {
     memset(s, 0, sizeof(*s));
     s->host = strdup(h);
     if (!s->host) {
+        if (rt_obj_release_check0(s))
+            rt_obj_free(s);
         rt_trap("SmtpClient: host allocation failed");
         return NULL;
     }
@@ -581,12 +606,12 @@ void rt_smtp_set_auth(void *obj, rt_string username, rt_string password) {
     char *new_password = p ? strdup(p) : NULL;
     if ((u && !new_username) || (p && !new_password)) {
         free(new_username);
-        free(new_password);
+        smtp_free_secret(new_password);
         rt_trap("SmtpClient: auth allocation failed");
         return;
     }
     free(s->username);
-    free(s->password);
+    smtp_free_secret(s->password);
     s->username = new_username;
     s->password = new_password;
 }

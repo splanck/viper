@@ -57,21 +57,29 @@ typedef struct {
 // Internal Helpers
 //=============================================================================
 
-/// @brief Fill `buf` (up to 40 chars + NUL) with random alphanumerics for use as a multipart
-/// boundary. Pulls 32 bytes from `rt_crypto_random_bytes` and reduces each modulo the alphabet
-/// size — biased but irrelevant for boundary uniqueness.
+/// @brief Fill @p buf with an unbiased random multipart boundary.
+/// @details Generates at most 40 alphanumeric bytes plus a NUL terminator. Random bytes greater
+///          than or equal to 248 are rejected so modulo reduction into the 62-character alphabet
+///          does not bias boundary character distribution.
+/// @param buf Destination buffer for the boundary string.
+/// @param buf_len Size of @p buf, including space for the NUL terminator.
 static void generate_boundary(char *buf, size_t buf_len) {
     static const char chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    uint8_t random[32];
     if (!buf || buf_len == 0)
         return;
-    rt_crypto_random_bytes(random, sizeof(random));
 
     size_t len = buf_len - 1;
     if (len > 40)
         len = 40;
-    for (size_t i = 0; i < len; i++)
-        buf[i] = chars[random[i % sizeof(random)] % (sizeof(chars) - 1)];
+    for (size_t i = 0; i < len;) {
+        uint8_t random[32];
+        rt_crypto_random_bytes(random, sizeof(random));
+        for (size_t j = 0; j < sizeof(random) && i < len; j++) {
+            if (random[j] >= 248)
+                continue;
+            buf[i++] = chars[random[j] % (sizeof(chars) - 1)];
+        }
+    }
     buf[len] = '\0';
 }
 
@@ -98,6 +106,44 @@ static int multipart_string_has_embedded_nul(rt_string value) {
     if (!cstr || len64 <= 0)
         return 0;
     return memchr(cstr, '\0', (size_t)len64) != NULL;
+}
+
+/// @brief Validate a parsed multipart Content-Disposition parameter value.
+/// @details Rejects controls and DEL so parsed inbound names and filenames cannot inject extra
+///          headers if later reserialized. Quotes, backslashes, and semicolons are allowed after
+///          parsing because they are data bytes from a quoted parameter; the builder escapes them
+///          at serialization time.
+/// @param value NUL-terminated parameter value.
+/// @return 1 when the value is safe to serialize or accept from parsed input; otherwise 0.
+static int multipart_header_param_is_valid(const char *value) {
+    if (!value)
+        return 0;
+    for (const unsigned char *p = (const unsigned char *)value; *p; p++) {
+        if (*p < 0x20 || *p == 0x7f)
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Validate a parsed multipart boundary token.
+/// @details Enforces the runtime boundary buffer limit and RFC-compatible bcharsnospace-style
+///          characters before parser state is allocated for a multipart body.
+/// @param boundary NUL-terminated boundary parameter value.
+/// @return 1 when the boundary is syntactically valid and fits in rt_multipart_impl; otherwise 0.
+static int multipart_boundary_is_valid(const char *boundary) {
+    size_t len = boundary ? strlen(boundary) : 0;
+    if (len == 0 || len >= sizeof(((rt_multipart_impl *)0)->boundary))
+        return 0;
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)boundary[i];
+        if (!(c >= '0' && c <= '9') && !(c >= 'A' && c <= 'Z') &&
+            !(c >= 'a' && c <= 'z') && c != '\'' && c != '(' && c != ')' && c != '+' &&
+            c != '_' && c != ',' && c != '-' && c != '.' && c != '/' && c != ':' &&
+            c != '=' && c != '?') {
+            return 0;
+        }
+    }
+    return 1;
 }
 
 static const char *multipart_header_param_cstr(rt_string value,
@@ -199,7 +245,7 @@ static char *multipart_escape_quoted_value(const char *value) {
     }
     while (*value) {
         char ch = *value++;
-        if (ch == '\r' || ch == '\n')
+        if ((unsigned char)ch < 0x20u || (unsigned char)ch == 0x7fu)
             ch = ' ';
         if (ch == '"' || ch == '\\')
             *out++ = '\\';
@@ -647,13 +693,15 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
     char boundary[128] = {0};
     if (!multipart_extract_param_value(ct, "boundary", boundary, sizeof(boundary)) || !boundary[0])
         return rt_multipart_new();
-    if (strlen(boundary) >= sizeof(((rt_multipart_impl *)0)->boundary))
+    if (!multipart_boundary_is_valid(boundary))
         return rt_multipart_new();
 
     rt_multipart_impl *mp =
         (rt_multipart_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_multipart_impl));
-    if (!mp)
+    if (!mp) {
         rt_trap("Multipart: memory allocation failed");
+        return NULL;
+    }
     memset(mp, 0, sizeof(*mp));
     memcpy(mp->boundary, boundary, sizeof(mp->boundary) - 1);
     rt_obj_set_finalizer(mp, rt_multipart_finalize);
@@ -737,7 +785,8 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
             next = s_end;
 
         size_t data_size = (size_t)(next - data_start);
-        if (!part_name[0]) {
+        if (!part_name[0] || !multipart_header_param_is_valid(part_name) ||
+            (is_file && !multipart_header_param_is_valid(part_filename))) {
             p = next;
             continue;
         }

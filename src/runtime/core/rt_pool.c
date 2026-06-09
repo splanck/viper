@@ -415,14 +415,16 @@ void *rt_pool_alloc(size_t size) {
                 rt_pool_block_t *b = (rt_pool_block_t *)(slab->data + i * slab->block_size);
                 b->next = NULL;
 
-                if (!first) {
+                if (!last) {
                     first = b;
-                    last = b;
                 } else {
                     last->next = b;
-                    last = b;
                 }
+                last = b;
             }
+
+            if (!first || !last)
+                return NULL;
 
 #if RT_POOL_PAC_SAFE
             rt_pool_lock_(&pool->freelist_lock);

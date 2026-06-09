@@ -415,8 +415,11 @@ void rt_map_set(void *obj, rt_string key, void *value) {
         return;
     }
 
-    if (map->count < SIZE_MAX)
-        maybe_resize_for_count(map, map->count + 1);
+    if (map->count == SIZE_MAX) {
+        rt_trap("Map.Set: maximum size reached");
+        return;
+    }
+    maybe_resize_for_count(map, map->count + 1);
     idx = hash % map->capacity;
 
     if (value)
@@ -635,8 +638,11 @@ int8_t rt_map_set_if_missing(void *obj, rt_string key, void *value) {
     if (find_entry(map->buckets[idx], key_data, key_len))
         return 0;
 
-    if (map->count < SIZE_MAX)
-        maybe_resize_for_count(map, map->count + 1);
+    if (map->count == SIZE_MAX) {
+        rt_trap("Map.SetIfMissing: maximum size reached");
+        return 0;
+    }
+    maybe_resize_for_count(map, map->count + 1);
     idx = hash % map->capacity;
 
     if (value)

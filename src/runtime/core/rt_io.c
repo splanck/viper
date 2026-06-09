@@ -772,11 +772,7 @@ int32_t rt_seek_ch_err(int ch, int64_t pos) {
         return status;
 
     errno = 0;
-    int64_t target = pos;
-    if (target < 0)
-        return (int32_t)Err_InvalidOperation;
-
-    int64_t res = lseek(fd, target, SEEK_SET);
+    int64_t res = lseek(fd, pos, SEEK_SET);
     if (res == -1) {
         if (errno == ESPIPE || errno == EINVAL)
             return (int32_t)Err_InvalidOperation;

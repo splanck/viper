@@ -67,12 +67,19 @@ static rt_string csv_value_to_string(void *val, bool *owned) {
 
 /// @brief Get delimiter character from string.
 static char get_delim(rt_string delim) {
-    if (!delim || rt_str_len(delim) <= 0)
+    int64_t len = delim ? rt_str_len(delim) : 0;
+    if (!delim || len <= 0)
         return DEFAULT_DELIMITER;
     const char *s = rt_string_cstr(delim);
+    if (!s || len != 1 || memchr(s, '\0', (size_t)len)) {
+        rt_trap("Csv: delimiter must be exactly one byte");
+        return DEFAULT_DELIMITER;
+    }
     char d = s[0];
-    if (d == '\0' || d == '"' || d == '\r' || d == '\n')
+    if (d == '\0' || d == '"' || d == '\r' || d == '\n') {
         rt_trap("Csv: invalid delimiter");
+        return DEFAULT_DELIMITER;
+    }
     return d;
 }
 
@@ -296,12 +303,20 @@ static rt_string parse_field(csv_parser *p, bool *at_line_end) {
 /// @brief Parse a single row (line) of CSV.
 static void *parse_row(csv_parser *p) {
     void *row = rt_seq_new();
+    if (!row) {
+        rt_trap("Csv.Parse: memory allocation failed");
+        return NULL;
+    }
     rt_seq_set_owns_elements(row, 1);
     bool at_line_end = false;
 
     // Use do-while to ensure we process trailing empty fields after delimiter
     do {
         rt_string field = parse_field(p, &at_line_end);
+        if (!field) {
+            rt_trap("Csv.Parse: memory allocation failed");
+            return row;
+        }
         rt_seq_push(row, (void *)field);
         if (field)
             rt_string_unref(field);

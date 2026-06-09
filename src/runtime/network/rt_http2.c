@@ -140,6 +140,8 @@ static void h2_conn_set_error(rt_http2_conn_t *conn, const char *msg) {
 }
 
 static int h2_conn_fail(rt_http2_conn_t *conn, const char *msg) {
+    if (!conn)
+        return 0;
     h2_conn_set_error(conn, msg);
     conn->closed = 1;
     return 0;

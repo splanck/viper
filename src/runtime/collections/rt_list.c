@@ -44,6 +44,7 @@
 #include "rt_string.h"
 
 #include <assert.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -439,22 +440,39 @@ void rt_list_remove_at(void *list, int64_t index) {
     if (len == 0)
         return;
 
+    void **backup = NULL;
+    if (len - 1 > 0) {
+        if (len > SIZE_MAX / sizeof(void *)) {
+            rt_trap("List.RemoveAt: allocation size overflow");
+            return;
+        }
+        backup = (void **)malloc(len * sizeof(void *));
+        if (!backup) {
+            rt_trap("List.RemoveAt: memory allocation failed");
+            return;
+        }
+        memcpy(backup, L->arr, len * sizeof(void *));
+    }
+
     void *removed = L->arr[index];
     if ((size_t)index + 1 < len) {
         memmove(
             &L->arr[index], &L->arr[(size_t)index + 1], (len - (size_t)index - 1) * sizeof(void *));
     }
     L->arr[len - 1] = NULL;
-    release_temp_obj(removed);
 
     // Shrink storage. Resize-to-zero releases the backing array and returns
     // NULL, which is the empty-list state.
     void **shrunk = rt_arr_obj_resize(L->arr, len - 1);
     if (len - 1 > 0 && !shrunk) {
+        memcpy(L->arr, backup, len * sizeof(void *));
+        free(backup);
         rt_trap("List.RemoveAt: memory allocation failed");
         return;
     }
+    free(backup);
     L->arr = shrunk;
+    release_temp_obj(removed);
 }
 
 /// @brief Finds the first occurrence of an element in the List.
@@ -818,8 +836,10 @@ void *rt_list_pop(void *list) {
     rt_arr_obj_put(L->arr, len - 1, NULL);
     void **shrunk = rt_arr_obj_resize(L->arr, len - 1);
     if (len - 1 > 0 && !shrunk) {
+        rt_arr_obj_put(L->arr, len - 1, elem);
+        release_temp_obj(elem);
         rt_trap("List.Pop: memory allocation failed");
-        return elem;
+        return NULL;
     }
     L->arr = shrunk;
     return elem;

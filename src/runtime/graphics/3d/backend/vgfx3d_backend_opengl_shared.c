@@ -115,8 +115,6 @@ int vgfx3d_opengl_compute_buffer_capacity(size_t current_capacity,
         next_capacity = 1;
     while (next_capacity < needed) {
         if (next_capacity > SIZE_MAX / 2) {
-            if (needed < next_capacity)
-                return 0;
             next_capacity = needed;
             break;
         }

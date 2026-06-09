@@ -562,12 +562,14 @@ rt_string rt_scanner_read_quoted(void *obj, int64_t quote) {
             if (cap > SIZE_MAX / 2) {
                 free(buf);
                 rt_trap("Scanner.ReadQuoted: string length overflow");
+                return rt_string_from_bytes("", 0);
             }
             cap *= 2;
             char *tmp = (char *)realloc(buf, cap);
             if (!tmp) {
                 free(buf);
                 rt_trap("Scanner.ReadQuoted: memory allocation failed");
+                return rt_string_from_bytes("", 0);
             }
             buf = tmp;
         }

@@ -116,14 +116,14 @@ int http_rt_string_has_embedded_nul(rt_string text) {
 static int http_host_is_valid(const char *host) {
     if (!host || !*host || http_contains_ctl_or_space(host))
         return 0;
-    return !http_contains_any_char(host, "/?#");
+    return !http_contains_any_char(host, "/?#@\\");
 }
 
 static int http_request_target_is_valid(const char *target) {
     if (!target || target[0] != '/')
         return 0;
     for (const unsigned char *p = (const unsigned char *)target; *p; ++p) {
-        if (*p <= 0x20 || *p == 0x7Fu)
+        if (*p <= 0x20 || *p == 0x7Fu || *p == '\\')
             return 0;
     }
     return 1;
@@ -143,6 +143,14 @@ static int http_request_target_is_valid(const char *target) {
 /// @brief Maximum response body size (256 MB) — prevents decompression/server DoS (S-09 fix).
 #define HTTP_MAX_BODY_SIZE (256u * 1024u * 1024u)
 
+/// @brief Maximum aggregate bytes accepted in a response header block.
+#define HTTP_MAX_HEADER_BYTES (256u * 1024u)
+
+/// @brief Maximum aggregate bytes accepted in chunked response trailers.
+#define HTTP_MAX_TRAILER_BYTES (64u * 1024u)
+
+/// @brief Maximum chunked response trailer fields.
+#define HTTP_MAX_TRAILER_LINES 64u
 
 /// @brief HTTP connection context (TCP or TLS).
 typedef struct http_conn {
@@ -408,8 +416,10 @@ static void http_conn_pool_finalize(void *obj) {
 void *rt_http_conn_pool_new(int64_t max_size) {
     http_conn_pool_t *pool =
         (http_conn_pool_t *)rt_obj_new_i64(0, (int64_t)sizeof(http_conn_pool_t));
-    if (!pool)
+    if (!pool) {
         rt_trap("HTTP: connection pool allocation failed");
+        return NULL;
+    }
     memset(pool, 0, sizeof(*pool));
     pool->max_size =
         (int)(max_size > 0 && max_size < HTTP_CONN_POOL_MAX_ENTRIES ? max_size
@@ -1763,6 +1773,20 @@ static int parse_status_line(const char *line, int *http_minor_out, char **statu
     return status;
 }
 
+/// @brief Return whether an HTTP response header must not be combined or duplicated.
+/// @details These fields influence framing, redirects, or content interpretation. Rejecting
+///          duplicate instances avoids ambiguous response handling and request-smuggling style
+///          inconsistencies between parsers.
+/// @param lower_name Lowercase response header field name.
+/// @return 1 if duplicates should fail the response parse; otherwise 0.
+static int http_response_header_is_singleton(const char *lower_name) {
+    return lower_name &&
+           (strcmp(lower_name, "content-length") == 0 ||
+            strcmp(lower_name, "transfer-encoding") == 0 ||
+            strcmp(lower_name, "location") == 0 || strcmp(lower_name, "connection") == 0 ||
+            strcmp(lower_name, "content-encoding") == 0);
+}
+
 static int append_response_header_value(void *headers_map, const char *name, const char *value) {
     char *lower_name = NULL;
     rt_string name_str = NULL;
@@ -1793,6 +1817,12 @@ static int append_response_header_value(void *headers_map, const char *name, con
 
     {
         void *existing = rt_map_get(headers_map, name_str);
+        if (existing && http_response_header_is_singleton(lower_name)) {
+            free(lower_name);
+            rt_string_unref(name_str);
+            rt_string_unref(value_str);
+            return 0;
+        }
         if (existing && rt_box_type(existing) == RT_BOX_STR) {
             rt_string existing_str = rt_unbox_str(existing);
             const char *existing_cstr = rt_string_cstr(existing_str);
@@ -1828,25 +1858,36 @@ static int append_response_header_value(void *headers_map, const char *name, con
     return 1;
 }
 
-/// @brief Parse header line into name and value.
-static void parse_header_line(const char *line, void *headers_map) {
+/// @brief Parse a response header line into the header map.
+/// @details Splits on the first colon, validates the field name as an HTTP token, trims leading
+///          optional whitespace from the value, and delegates duplicate/combine rules to
+///          append_response_header_value.
+/// @param line NUL-terminated header line without the trailing CRLF.
+/// @param headers_map Runtime map receiving lowercase header names and boxed string values.
+/// @return 1 if the header was accepted; 0 if malformed or allocation failed.
+static int parse_header_line(const char *line, void *headers_map) {
     const char *colon = strchr(line, ':');
     char *name = NULL;
     if (!colon)
-        return;
+        return 0;
 
     name = (char *)malloc((size_t)(colon - line) + 1);
     if (!name)
-        return;
+        return 0;
     memcpy(name, line, (size_t)(colon - line));
     name[colon - line] = '\0';
+    if (!http_header_field_name_is_token(name)) {
+        free(name);
+        return 0;
+    }
 
     const char *value = colon + 1;
     while (*value == ' ' || *value == '\t')
         value++;
 
-    (void)append_response_header_value(headers_map, name, value);
+    int ok = append_response_header_value(headers_map, name, value);
     free(name);
+    return ok;
 }
 
 /// @brief Read the status line and headers from an HTTP response.
@@ -1875,9 +1916,15 @@ static int read_response_head(http_conn_t *conn,
         char *redirect_location = NULL;
         int status = -1;
         int header_count = 0;
+        size_t header_bytes = 0;
 
         if (!status_line)
             return 0;
+        if (strlen(status_line) + 2u > HTTP_MAX_HEADER_BYTES) {
+            free(status_line);
+            goto fail;
+        }
+        header_bytes = strlen(status_line) + 2u;
 
         status = parse_status_line(status_line, http_minor_out, &status_text);
         free(status_line);
@@ -1897,6 +1944,13 @@ static int read_response_head(http_conn_t *conn,
                 break;
             }
 
+            size_t line_len = strlen(line);
+            if (line_len + 2u > HTTP_MAX_HEADER_BYTES - header_bytes) {
+                free(line);
+                goto fail;
+            }
+            header_bytes += line_len + 2u;
+
             header_count++;
             if (header_count > 256) {
                 free(line);
@@ -1914,7 +1968,10 @@ static int read_response_head(http_conn_t *conn,
                 }
             }
 
-            parse_header_line(line, headers_map);
+            if (!parse_header_line(line, headers_map)) {
+                free(line);
+                goto fail;
+            }
             free(line);
         }
 
@@ -2013,6 +2070,35 @@ static int parse_http_chunk_size_line(const char *size_line, size_t *chunk_size_
     return 1;
 }
 
+/// @brief Drain chunked-transfer trailer fields after the terminating zero-size chunk.
+/// @details Reads trailer lines until the empty line while enforcing aggregate byte and field
+///          count limits. Trailer contents are not exposed to callers, so malformed or oversized
+///          trailers fail the body read.
+/// @param conn Active HTTP connection to read from.
+/// @return 1 when the trailer block is well-formed and fully drained; otherwise 0.
+static int drain_chunk_trailers_conn(http_conn_t *conn) {
+    size_t trailer_bytes = 0;
+    unsigned trailer_count = 0;
+    while (1) {
+        char *trailer = read_line_conn(conn);
+        if (!trailer)
+            return 0;
+        if (trailer[0] == '\0') {
+            free(trailer);
+            return 1;
+        }
+        size_t trailer_len = strlen(trailer);
+        trailer_count++;
+        if (trailer_count > HTTP_MAX_TRAILER_LINES ||
+            trailer_len + 2u > HTTP_MAX_TRAILER_BYTES - trailer_bytes) {
+            free(trailer);
+            return 0;
+        }
+        trailer_bytes += trailer_len + 2u;
+        free(trailer);
+    }
+}
+
 /// @brief Read chunked transfer encoding body.
 static uint8_t *read_body_chunked_conn(http_conn_t *conn, size_t *out_len) {
     size_t body_cap = HTTP_BUFFER_SIZE;
@@ -2043,16 +2129,11 @@ static uint8_t *read_body_chunked_conn(http_conn_t *conn, size_t *out_len) {
 
         if (chunk_size == 0) {
             // Last chunk — drain all trailer headers until empty line (RC-13 / RFC 7230 §4.1.2)
-            char *trailer;
-            while ((trailer = read_line_conn(conn)) != NULL && trailer[0] != '\0')
-                free(trailer);
-            if (!trailer) {
+            if (!drain_chunk_trailers_conn(conn)) {
                 free(body);
                 *out_len = 0;
                 return NULL;
             }
-            if (trailer)
-                free(trailer);
             break;
         }
 
@@ -2229,13 +2310,9 @@ static int write_body_chunked_conn(http_conn_t *conn, FILE *out, size_t *out_len
         }
 
         if (chunk_size == 0) {
-            char *trailer = NULL;
-            while ((trailer = read_line_conn(conn)) != NULL && trailer[0] != '\0')
-                free(trailer);
-            if (trailer)
-                free(trailer);
+            int trailers_ok = drain_chunk_trailers_conn(conn);
             *out_len = total_written;
-            return trailer != NULL;
+            return trailers_ok;
         }
 
         size_t chunk_read = 0;
@@ -2974,18 +3051,18 @@ int do_http_download_request(rt_http_req_t *req, int redirects_remaining, FILE *
         if (!res)
             goto cleanup;
         if (res->status < 200 || res->status >= 300) {
-            if (res && rt_obj_release_check0(res))
+            if (rt_obj_release_check0(res))
                 rt_obj_free(res);
             goto cleanup;
         }
         {
             if (res->body_len > 0 && fwrite(res->body, 1, res->body_len, out) != res->body_len) {
-                if (res && rt_obj_release_check0(res))
+                if (rt_obj_release_check0(res))
                     rt_obj_free(res);
                 goto cleanup;
             }
         }
-        if (res && rt_obj_release_check0(res))
+        if (rt_obj_release_check0(res))
             rt_obj_free(res);
         return 1;
     }

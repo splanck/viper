@@ -59,7 +59,7 @@ void mapSetInt(void *map, const char *key, int64_t value) {
     rt_string_unref(k);
 }
 
-std::string trim(std::string s) {
+std::string trim(const std::string &s) {
     size_t first = 0;
     while (first < s.size() && std::isspace(static_cast<unsigned char>(s[first])))
         first++;

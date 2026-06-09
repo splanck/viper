@@ -67,6 +67,8 @@ static void json_discard_value(void *value) {
 /// for typical-sized JSON inputs and avoids tracking line/col on
 /// every byte advance.
 static void parser_error(json_parser *p, const char *msg) {
+    const char *detail = msg ? msg : "parse error";
+
     // Calculate line and column for error message
     size_t line = 1;
     size_t col = 1;
@@ -80,12 +82,12 @@ static void parser_error(json_parser *p, const char *msg) {
     }
 
     char buf[256];
-    snprintf(buf, sizeof(buf), "Json.Parse: %s at line %zu, column %zu", msg, line, col);
+    snprintf(buf, sizeof(buf), "Json.Parse: %s at line %zu, column %zu", detail, line, col);
     if (!p->trap_errors) {
         p->has_error = 1;
         p->error_line = (int64_t)line;
         p->error_column = (int64_t)col;
-        snprintf(p->error_message, sizeof(p->error_message), "%s", msg ? msg : "parse error");
+        snprintf(p->error_message, sizeof(p->error_message), "%s", detail);
         p->pos = p->len;
         return;
     }

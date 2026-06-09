@@ -23,6 +23,7 @@
 
 #include "rt_avi.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -70,7 +71,11 @@ static uint32_t make_fourcc(char a, char b, char c, char d) {
 /// @return 0 on success; -1 on allocation failure (chunk is dropped).
 static int add_chunk(avi_context_t *ctx, const uint8_t *data, uint32_t size, int8_t is_video) {
     if (ctx->chunk_count >= ctx->chunk_capacity) {
+        if (ctx->chunk_capacity > INT32_MAX / 2)
+            return -1;
         int32_t new_cap = ctx->chunk_capacity < 64 ? 64 : ctx->chunk_capacity * 2;
+        if ((uint64_t)new_cap > (uint64_t)SIZE_MAX / sizeof(avi_chunk_t))
+            return -1;
         avi_chunk_t *new_chunks =
             (avi_chunk_t *)realloc(ctx->chunks, (size_t)new_cap * sizeof(avi_chunk_t));
         if (!new_chunks)
@@ -101,9 +106,12 @@ static void parse_avih(avi_context_t *ctx, const uint8_t *data, uint32_t size) {
     uint32_t width = read_le32(data + 32);
     uint32_t height = read_le32(data + 36);
 
-    ctx->video.width = (int32_t)width;
-    ctx->video.height = (int32_t)height;
-    ctx->video.frame_count = (int32_t)total_frames;
+    if (width <= INT32_MAX)
+        ctx->video.width = (int32_t)width;
+    if (height <= INT32_MAX)
+        ctx->video.height = (int32_t)height;
+    if (total_frames <= INT32_MAX)
+        ctx->video.frame_count = (int32_t)total_frames;
     if (us_per_frame > 0)
         ctx->video.fps = 1000000.0 / (double)us_per_frame;
     else
@@ -135,13 +143,13 @@ static void parse_strf_video(avi_context_t *ctx, const uint8_t *data, uint32_t s
     if (size < 40)
         return;
     /* BITMAPINFOHEADER */
-    int32_t bi_width = (int32_t)read_le32(data + 4);
-    int32_t bi_height = (int32_t)read_le32(data + 8);
+    uint32_t raw_width = read_le32(data + 4);
+    uint32_t raw_height = read_le32(data + 8);
     uint32_t bi_compression = read_le32(data + 16);
-    if (bi_width > 0)
-        ctx->video.width = bi_width;
-    if (bi_height > 0)
-        ctx->video.height = bi_height;
+    if (raw_width > 0 && raw_width <= INT32_MAX)
+        ctx->video.width = (int32_t)raw_width;
+    if (raw_height > 0 && raw_height <= INT32_MAX)
+        ctx->video.height = (int32_t)raw_height;
     if (bi_compression != 0)
         ctx->video.fourcc = bi_compression;
 }
@@ -176,7 +184,7 @@ static int walk_chunks(const uint8_t *data,
     while (pos + 8 <= len) {
         uint32_t fourcc = read_le32(data + pos);
         uint32_t size = read_le32(data + pos + 4);
-        if (pos + 8 + size > len)
+        if (size > len - pos - 8)
             break;
         handler(ctx, fourcc, data + pos + 8, size, extra);
         pos += 8 + size;

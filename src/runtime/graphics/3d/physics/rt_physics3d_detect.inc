@@ -1120,7 +1120,7 @@ static void *world3d_cached_event_from_contact(void ***array,
                                                int64_t index,
                                                const rt_contact3d *contact) {
     void *event;
-    if (!array || !capacity || index < 0 || index > INT32_MAX || !contact)
+    if (!array || !capacity || index < 0 || index >= INT32_MAX || !contact)
         return NULL;
     if (!world3d_reserve_event_object_array(array, capacity, (int32_t)index + 1))
         return collision_event3d_new_from_contact(contact);

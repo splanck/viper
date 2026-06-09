@@ -108,6 +108,18 @@ static int jpeg_read_u16(jpeg_ctx_t *ctx) {
     return val;
 }
 
+/// @brief Check whether the active marker segment has at least @p needed unread bytes.
+/// @details The parser stores the absolute end offset for each JPEG marker segment. This
+///          helper performs subtraction-based bounds checks so malformed length fields cannot
+///          wrap an addition or let DQT/DHT/SOF/SOS readers consume bytes from the next marker.
+/// @param ctx JPEG decoder context with the current stream position.
+/// @param seg_end Absolute stream offset one byte past the current marker segment.
+/// @param needed Number of bytes the caller needs to read from the current position.
+/// @return 1 if the bytes are fully inside the segment; otherwise 0.
+static int jpeg_segment_has(const jpeg_ctx_t *ctx, size_t seg_end, size_t needed) {
+    return ctx && ctx->pos <= seg_end && needed <= seg_end - ctx->pos;
+}
+
 /// @brief Pull the next entropy-coded byte, transparent to byte-stuffing & RST markers.
 ///
 /// JPEG escapes literal `0xFF` bytes inside the entropy segment as
@@ -559,17 +571,24 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
             break;
         size_t data_len = (size_t)(seg_len - 2);
         size_t seg_start = ctx.pos;
+        if (data_len > ctx.len - seg_start)
+            break;
+        size_t seg_end = seg_start + data_len;
 
         switch (mk) {
             case JPEG_DQT: {
                 // Parse quantization table(s)
-                while (ctx.pos < seg_start + data_len) {
+                while (ctx.pos < seg_end) {
+                    if (!jpeg_segment_has(&ctx, seg_end, 1))
+                        goto jpeg_fail;
                     int info = jpeg_read_u8(&ctx);
                     if (info < 0)
                         goto jpeg_fail;
                     int precision = (info >> 4) & 0x0F; // 0=8bit, 1=16bit
                     int table_id = info & 0x0F;
                     if (precision > 1 || table_id > 3)
+                        goto jpeg_fail;
+                    if (!jpeg_segment_has(&ctx, seg_end, (size_t)64 * (precision == 0 ? 1u : 2u)))
                         goto jpeg_fail;
                     for (int i = 0; i < 64; i++) {
                         if (precision == 0) {
@@ -586,11 +605,15 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                     }
                     ctx.qt_valid[table_id] = 1;
                 }
+                if (ctx.pos != seg_end)
+                    goto jpeg_fail;
                 break;
             }
             case JPEG_DHT: {
                 // Parse Huffman table(s)
-                while (ctx.pos < seg_start + data_len) {
+                while (ctx.pos < seg_end) {
+                    if (!jpeg_segment_has(&ctx, seg_end, 17))
+                        goto jpeg_fail;
                     int info = jpeg_read_u8(&ctx);
                     if (info < 0)
                         goto jpeg_fail;
@@ -611,6 +634,8 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                     }
                     if (total > 256)
                         goto jpeg_fail;
+                    if (!jpeg_segment_has(&ctx, seg_end, (size_t)total))
+                        goto jpeg_fail;
                     for (int i = 0; i < total; i++) {
                         int v = jpeg_read_u8(&ctx);
                         if (v < 0)
@@ -620,10 +645,14 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                     jpeg_build_huff(ht);
                     ctx.huff_valid[idx] = 1;
                 }
+                if (ctx.pos != seg_end)
+                    goto jpeg_fail;
                 break;
             }
             case JPEG_SOF0: {
                 // Baseline DCT
+                if (data_len < 6)
+                    goto jpeg_fail;
                 int prec = jpeg_read_u8(&ctx);
                 if (prec != 8)
                     goto jpeg_fail; // Only 8-bit precision
@@ -635,6 +664,8 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                 ctx.height = (uint16_t)h;
                 int nf = jpeg_read_u8(&ctx);
                 if (nf < 1 || nf > 4)
+                    goto jpeg_fail;
+                if ((size_t)nf > (seg_end - ctx.pos) / 3)
                     goto jpeg_fail;
                 ctx.num_components = (uint8_t)nf;
                 for (int i = 0; i < nf; i++) {
@@ -651,9 +682,13 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                     ctx.comp_id[i] = (uint8_t)comp_id;
                     ctx.comp_qt[i] = (uint8_t)qt;
                 }
+                if (ctx.pos != seg_end)
+                    goto jpeg_fail;
                 break;
             }
             case JPEG_DRI: {
+                if (data_len != 2)
+                    goto jpeg_fail;
                 int ri = jpeg_read_u16(&ctx);
                 if (ri >= 0)
                     ctx.restart_interval = (uint16_t)ri;
@@ -661,8 +696,13 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
             }
             case JPEG_SOS: {
                 // Start of Scan — decode the entropy-coded data
+                if (!jpeg_segment_has(&ctx, seg_end, 1))
+                    goto jpeg_fail;
                 int ns = jpeg_read_u8(&ctx);
                 if (ns < 1 || ns > 4)
+                    goto jpeg_fail;
+                if (!jpeg_segment_has(&ctx, seg_end, 3) ||
+                    (size_t)ns > (seg_end - ctx.pos - 3) / 2)
                     goto jpeg_fail;
                 ctx.scan_comp_count = (uint8_t)ns;
                 for (int i = 0; i < ns; i++) {
@@ -693,6 +733,8 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                 int se = jpeg_read_u8(&ctx);
                 int ah_al = jpeg_read_u8(&ctx);
                 if (ss < 0 || se < 0 || ah_al < 0)
+                    goto jpeg_fail;
+                if (ctx.pos != seg_end)
                     goto jpeg_fail;
 
                 // Now at the start of entropy-coded data
@@ -864,13 +906,13 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                                        (uint32_t)tiff[6] << 8 | tiff[7])
                                     : ((uint32_t)tiff[7] << 24 | (uint32_t)tiff[6] << 16 |
                                        (uint32_t)tiff[5] << 8 | tiff[4]);
-                            if (ifd_off + 2 <= tiff_len) {
+                            if (ifd_off <= tiff_len - 2) {
                                 uint16_t count =
                                     big ? (uint16_t)((tiff[ifd_off] << 8) | tiff[ifd_off + 1])
                                         : (uint16_t)(tiff[ifd_off] | (tiff[ifd_off + 1] << 8));
                                 for (int ei = 0; ei < count; ei++) {
                                     size_t entry = ifd_off + 2 + (size_t)ei * 12;
-                                    if (entry + 12 > tiff_len)
+                                    if (entry > tiff_len - 12)
                                         break;
                                     uint16_t tag =
                                         big ? (uint16_t)((tiff[entry] << 8) | tiff[entry + 1])
@@ -886,7 +928,7 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                         }
                     }
                 }
-                ctx.pos = seg_start + data_len;
+                ctx.pos = seg_end;
                 break;
         }
     }

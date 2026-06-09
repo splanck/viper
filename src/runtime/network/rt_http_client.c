@@ -68,10 +68,19 @@ typedef struct rt_http_cookie {
     char *path;
     int8_t secure;
     int8_t host_only;
+    int8_t http_only;
+    int8_t same_site;
     int8_t persistent;
     int64_t expires_at;
     struct rt_http_cookie *next;
 } rt_http_cookie;
+
+enum {
+    HTTP_COOKIE_SAMESITE_UNSPECIFIED = 0,
+    HTTP_COOKIE_SAMESITE_LAX = 1,
+    HTTP_COOKIE_SAMESITE_STRICT = 2,
+    HTTP_COOKIE_SAMESITE_NONE = 3
+};
 
 typedef struct {
     void *default_headers; // Map<String, String>
@@ -104,6 +113,15 @@ static int http_client_string_has_embedded_nul(rt_string value) {
     return memchr(cstr, '\0', (size_t)len64) != NULL;
 }
 
+/// @brief Release a retained runtime object and free it when the reference count reaches zero.
+/// @details Used for short-lived snapshots and client-owned references so lock cleanup paths do
+///          not repeat the release/free sequence or accidentally skip it on early returns.
+/// @param obj Runtime object pointer to release, or NULL.
+static void http_client_release_obj(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 static void free_cookie_list(rt_http_cookie *cookie) {
     while (cookie) {
         rt_http_cookie *next = cookie->next;
@@ -120,10 +138,8 @@ static void rt_http_client_finalize(void *obj) {
     if (!obj)
         return;
     rt_http_client_impl *c = (rt_http_client_impl *)obj;
-    if (c->default_headers && rt_obj_release_check0(c->default_headers))
-        rt_obj_free(c->default_headers);
-    if (c->connection_pool && rt_obj_release_check0(c->connection_pool))
-        rt_obj_free(c->connection_pool);
+    http_client_release_obj(c->default_headers);
+    http_client_release_obj(c->connection_pool);
     free_cookie_list(c->cookies);
     if (c->lock_initialized)
         HTTP_CLIENT_MUTEX_DESTROY(&c->lock);
@@ -134,24 +150,44 @@ static void rt_http_client_finalize(void *obj) {
 //=============================================================================
 
 static void apply_defaults(rt_http_client_impl *c, void *req, int allow_sensitive_headers) {
+    typedef struct {
+        rt_string key;
+        rt_string value;
+    } header_snapshot;
+
     int64_t timeout_ms = 0;
     int8_t keep_alive = 0;
     void *connection_pool = NULL;
+    header_snapshot *headers = NULL;
+    int64_t header_count = 0;
+    int snapshot_failed = 0;
 
     HTTP_CLIENT_MUTEX_LOCK(&c->lock);
-    // Apply default headers
     void *keys = rt_map_keys(c->default_headers);
     int64_t count = rt_seq_len(keys);
+    if (count > 0) {
+        if ((uint64_t)count > (uint64_t)SIZE_MAX / sizeof(*headers)) {
+            snapshot_failed = 1;
+        } else {
+            headers = (header_snapshot *)calloc((size_t)count, sizeof(*headers));
+            if (!headers)
+                snapshot_failed = 1;
+        }
+    }
     for (int64_t i = 0; i < count; i++) {
         rt_string key = (rt_string)rt_seq_get(keys, i);
         void *val = rt_map_get(c->default_headers, key);
-        if (val && (allow_sensitive_headers ||
-                    !rt_http_header_is_sensitive_for_cross_origin_redirect(rt_string_cstr(key)))) {
-            rt_http_req_set_header(req, key, (rt_string)val);
+        if (!snapshot_failed && val && key &&
+            (allow_sensitive_headers ||
+             !rt_http_header_is_sensitive_for_cross_origin_redirect(rt_string_cstr(key)))) {
+            rt_string_ref(key);
+            rt_string_ref((rt_string)val);
+            headers[header_count].key = key;
+            headers[header_count].value = (rt_string)val;
+            header_count++;
         }
     }
-    if (rt_obj_release_check0(keys))
-        rt_obj_free(keys);
+    http_client_release_obj(keys);
 
     timeout_ms = c->timeout_ms;
     keep_alive = c->keep_alive;
@@ -160,13 +196,24 @@ static void apply_defaults(rt_http_client_impl *c, void *req, int allow_sensitiv
         rt_obj_retain_maybe(connection_pool);
     HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
 
+    if (snapshot_failed) {
+        http_client_release_obj(connection_pool);
+        rt_trap("HttpClient: memory allocation failed");
+    }
+
+    for (int64_t i = 0; i < header_count; i++) {
+        rt_http_req_set_header(req, headers[i].key, headers[i].value);
+        rt_string_unref(headers[i].value);
+        rt_string_unref(headers[i].key);
+    }
+    free(headers);
+
     if (timeout_ms > 0)
         rt_http_req_set_timeout(req, timeout_ms);
     rt_http_req_set_follow_redirects(req, 0);
     rt_http_req_set_keep_alive(req, keep_alive);
     rt_http_req_set_connection_pool(req, connection_pool);
-    if (connection_pool && rt_obj_release_check0(connection_pool))
-        rt_obj_free(connection_pool);
+    http_client_release_obj(connection_pool);
 }
 
 static int64_t cookie_now_seconds(void) {
@@ -219,6 +266,136 @@ static char *cookie_strdup_manual_domain(const char *text) {
         out[len - 2] = '\0';
     }
     return out;
+}
+
+/// @brief Validate a cookie name against the HTTP token character set.
+/// @details Rejects empty names, ASCII controls, DEL, whitespace, and RFC token separators so a
+///          Set-Cookie header cannot smuggle additional cookie attributes or response syntax.
+/// @param name NUL-terminated cookie name.
+/// @return 1 if the name is syntactically valid; otherwise 0.
+static int cookie_name_is_valid(const char *name) {
+    static const char *const separators = "()<>@,;:\\\"/[]?={} \t";
+    if (!name || !*name)
+        return 0;
+    for (const unsigned char *p = (const unsigned char *)name; *p; p++) {
+        if (*p < 0x21 || *p == 0x7f || strchr(separators, (int)*p))
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Validate a cookie value against the cookie-octet byte ranges.
+/// @details Allows the visible ASCII ranges permitted for unquoted cookie values while rejecting
+///          quotes, semicolons, commas, backslashes, controls, and non-ASCII bytes that could
+///          alter header parsing.
+/// @param value NUL-terminated cookie value.
+/// @return 1 if the value is safe to store and later emit in a Cookie header; otherwise 0.
+static int cookie_value_is_valid(const char *value) {
+    if (!value)
+        return 0;
+    for (const unsigned char *p = (const unsigned char *)value; *p; p++) {
+        unsigned char c = *p;
+        if (!(c == 0x21 || (c >= 0x23 && c <= 0x2b) || (c >= 0x2d && c <= 0x3a) ||
+              (c >= 0x3c && c <= 0x5b) || (c >= 0x5d && c <= 0x7e))) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/// @brief Validate a cookie Path attribute before storing it in the jar.
+/// @details Requires an absolute path and rejects controls, DEL, and semicolons so path matching
+///          cannot be confused with additional Set-Cookie attributes.
+/// @param path NUL-terminated path attribute.
+/// @return 1 when @p path is a safe cookie path; otherwise 0.
+static int cookie_path_is_valid(const char *path) {
+    if (!path || path[0] != '/')
+        return 0;
+    for (const unsigned char *p = (const unsigned char *)path; *p; p++) {
+        if (*p < 0x20 || *p == 0x7f || *p == ';')
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Validate one DNS label from a cookie Domain attribute.
+/// @details Labels must be 1..63 bytes, alphanumeric or hyphen, and may not begin or end with a
+///          hyphen. The caller supplies lowercase text after leading/trailing dots are stripped.
+/// @param start Pointer to the first byte of the label.
+/// @param len Number of bytes in the label.
+/// @return 1 if the label is valid for cookie domain matching; otherwise 0.
+static int cookie_domain_label_is_valid(const char *start, size_t len) {
+    if (len == 0 || len > 63 || start[0] == '-' || start[len - 1] == '-')
+        return 0;
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)start[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-'))
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Validate the full normalized cookie Domain attribute.
+/// @details Enforces DNS length and label syntax before the domain is compared with the request
+///          host. IP literals and public-suffix-like domains are handled by separate checks.
+/// @param domain Lowercase, NUL-terminated domain string.
+/// @return 1 if the domain is syntactically valid; otherwise 0.
+static int cookie_domain_is_valid(const char *domain) {
+    const char *label = domain;
+    size_t total_len;
+    if (!domain || !*domain)
+        return 0;
+    total_len = strlen(domain);
+    if (total_len > 253 || domain[0] == '.' || domain[total_len - 1] == '.')
+        return 0;
+    for (const char *p = domain;; p++) {
+        if (*p == '.' || *p == '\0') {
+            if (!cookie_domain_label_is_valid(label, (size_t)(p - label)))
+                return 0;
+            if (*p == '\0')
+                break;
+            label = p + 1;
+        }
+    }
+    return 1;
+}
+
+/// @brief Reject domains that are too broad to be accepted into the local cookie jar.
+/// @details This is a conservative built-in deny list for common registry-controlled suffixes,
+///          plus a no-dot guard. It is not a complete Public Suffix List implementation, but it
+///          prevents obvious super-cookie scopes when no PSL dependency is available.
+/// @param domain Lowercase, normalized cookie domain.
+/// @return 1 if the domain should be treated as public-suffix-like; otherwise 0.
+static int cookie_domain_is_public_suffix_like(const char *domain) {
+    static const char *const public_suffixes[] = {
+        "ac.uk", "co.jp", "co.uk", "com", "com.au", "com.br", "com.cn", "com.mx",
+        "com.sg", "de",    "edu",   "fr",    "gov", "io",     "jp",     "net",
+        "org",   "ru",    "uk",    "us"
+    };
+    if (!domain || !strchr(domain, '.'))
+        return 1;
+    for (size_t i = 0; i < sizeof(public_suffixes) / sizeof(public_suffixes[0]); i++) {
+        if (strcasecmp(domain, public_suffixes[i]) == 0)
+            return 1;
+    }
+    return 0;
+}
+
+/// @brief Parse a SameSite attribute value into the cookie jar enum.
+/// @details Unknown or empty values intentionally map to UNSPECIFIED so callers can ignore them
+///          while still enforcing the Secure requirement for explicit SameSite=None.
+/// @param value Attribute value following SameSite=, or NULL.
+/// @return One of HTTP_COOKIE_SAMESITE_*.
+static int cookie_parse_same_site(const char *value) {
+    if (!value || !*value)
+        return HTTP_COOKIE_SAMESITE_UNSPECIFIED;
+    if (strcasecmp(value, "Lax") == 0)
+        return HTTP_COOKIE_SAMESITE_LAX;
+    if (strcasecmp(value, "Strict") == 0)
+        return HTTP_COOKIE_SAMESITE_STRICT;
+    if (strcasecmp(value, "None") == 0)
+        return HTTP_COOKIE_SAMESITE_NONE;
+    return HTTP_COOKIE_SAMESITE_UNSPECIFIED;
 }
 
 static char *cookie_default_path(const char *request_path) {
@@ -423,12 +600,11 @@ static void apply_cookie_header(rt_http_client_impl *c, void *req, rt_string url
     purge_expired_cookies_locked(c);
 
     if (!host_cstr || !*host_cstr) {
+        HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
         rt_string_unref(scheme);
         rt_string_unref(path);
         rt_string_unref(host);
-        if (parsed && rt_obj_release_check0(parsed))
-            rt_obj_free(parsed);
-        HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
+        http_client_release_obj(parsed);
         return;
     }
 
@@ -486,8 +662,7 @@ cookie_header_done:
     rt_string_unref(scheme);
     rt_string_unref(path);
     rt_string_unref(host);
-    if (parsed && rt_obj_release_check0(parsed))
-        rt_obj_free(parsed);
+    http_client_release_obj(parsed);
 }
 
 static void store_cookie_line_locked(rt_http_client_impl *c,
@@ -527,6 +702,10 @@ static void store_cookie_line_locked(rt_http_client_impl *c,
     cookie->path = cookie_default_path(request_path);
     cookie->host_only = 1;
     if (!cookie->name || !cookie->value || !cookie->domain || !cookie->path) {
+        free_cookie_list(cookie);
+        return;
+    }
+    if (!cookie_name_is_valid(cookie->name) || !cookie_value_is_valid(cookie->value)) {
         free_cookie_list(cookie);
         return;
     }
@@ -572,10 +751,21 @@ static void store_cookie_line_locked(rt_http_client_impl *c,
             cookie->domain = domain;
             cookie->host_only = 0;
         } else if (strcasecmp(attr_name, "Path") == 0 && attr_value && attr_value[0] == '/') {
+            char *path = strdup(attr_value);
+            if (!path) {
+                free(attr_value);
+                free(attr_name);
+                free_cookie_list(cookie);
+                return;
+            }
             free(cookie->path);
-            cookie->path = strdup(attr_value);
+            cookie->path = path;
         } else if (strcasecmp(attr_name, "Secure") == 0) {
             cookie->secure = 1;
+        } else if (strcasecmp(attr_name, "HttpOnly") == 0) {
+            cookie->http_only = 1;
+        } else if (strcasecmp(attr_name, "SameSite") == 0 && attr_value) {
+            cookie->same_site = (int8_t)cookie_parse_same_site(attr_value);
         } else if (strcasecmp(attr_name, "Max-Age") == 0 && attr_value) {
             int64_t max_age = 0;
             if (parse_cookie_max_age(attr_value, &max_age) == 0) {
@@ -607,13 +797,19 @@ static void store_cookie_line_locked(rt_http_client_impl *c,
         free_cookie_list(cookie);
         return;
     }
+    if ((cookie->same_site == HTTP_COOKIE_SAMESITE_NONE && !cookie->secure) ||
+        !cookie_path_is_valid(cookie->path)) {
+        free_cookie_list(cookie);
+        return;
+    }
 
     if (!cookie->host_only) {
         rt_string host_str = rt_string_from_bytes(host, strlen(host));
-        int host_is_ip = rt_dns_is_ip(host_str);
+        int host_is_ip = host_str ? rt_dns_is_ip(host_str) : 1;
         rt_string_unref(host_str);
-        if (!cookie->domain || !*cookie->domain || !cookie_domain_matches(cookie, host) ||
-            host_is_ip == 1) {
+        if (!cookie_domain_is_valid(cookie->domain) ||
+            cookie_domain_is_public_suffix_like(cookie->domain) ||
+            !cookie_domain_matches(cookie, host) || host_is_ip == 1) {
             free_cookie_list(cookie);
             return;
         }

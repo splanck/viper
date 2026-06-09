@@ -178,10 +178,8 @@ static rt_string render_internal(const char *tmpl,
         int start = find_at(tmpl, tmpl_len, prefix, prefix_len, pos);
         if (start < 0) {
             // No more placeholders, append rest of template
-            if (pos < tmpl_len) {
-                TEMPLATE_APPEND_OR_TRAP(append_literal_unescaped(
-                    &sb, tmpl + pos, tmpl_len - pos, prefix, prefix_len, suffix, suffix_len));
-            }
+            TEMPLATE_APPEND_OR_TRAP(append_literal_unescaped(
+                &sb, tmpl + pos, tmpl_len - pos, prefix, prefix_len, suffix, suffix_len));
             break;
         }
 

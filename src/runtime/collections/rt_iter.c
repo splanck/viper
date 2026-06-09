@@ -256,6 +256,7 @@ void *rt_iter_from_stack(void *stack) {
         rt_trap("Iterator: stack snapshot too large");
         return NULL;
     }
+    int8_t pop_returns_owned_refs = rt_stack_owns_elements(clone);
     items = (void **)malloc((size_t)len * sizeof(void *));
     if (!items) {
         if (rt_obj_release_check0(clone))
@@ -272,7 +273,8 @@ void *rt_iter_from_stack(void *stack) {
     for (int64_t i = count; i > 0; --i) {
         void *item = items[i - 1];
         rt_seq_push(snapshot, item);
-        release_temp_obj(item);
+        if (pop_returns_owned_refs)
+            release_temp_obj(item);
     }
     if (rt_obj_release_check0(clone))
         rt_obj_free(clone);

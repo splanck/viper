@@ -409,6 +409,10 @@ static const char *const tens[] = {
 static void append_chunk(rt_string_builder *sb, int64_t n, int *has_prev) {
     if (n == 0)
         return;
+    if (n < 0 || n > 999) {
+        rt_trap("NumberFormat.ToWords: internal chunk out of range");
+        return;
+    }
 
     if (*has_prev)
         numfmt_check_sb(rt_sb_append_cstr(sb, " "), "NumberFormat.ToWords: formatting failed");
@@ -426,13 +430,13 @@ static void append_chunk(rt_string_builder *sb, int64_t n, int *has_prev) {
     if (n >= 20) {
         numfmt_check_sb(rt_sb_append_cstr(sb, tens[n / 10]),
                         "NumberFormat.ToWords: formatting failed");
-        n %= 10;
-        if (n > 0) {
+        int ones_idx = (int)(n % 10);
+        if (ones_idx > 0) {
             numfmt_check_sb(rt_sb_append_cstr(sb, "-"), "NumberFormat.ToWords: formatting failed");
-            numfmt_check_sb(rt_sb_append_cstr(sb, ones[n]),
+            numfmt_check_sb(rt_sb_append_cstr(sb, ones[ones_idx]),
                             "NumberFormat.ToWords: formatting failed");
         }
-    } else if (n > 0) {
+    } else if (n > 0 && n < 20) {
         numfmt_check_sb(rt_sb_append_cstr(sb, ones[n]), "NumberFormat.ToWords: formatting failed");
     }
 

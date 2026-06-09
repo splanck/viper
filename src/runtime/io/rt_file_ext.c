@@ -140,9 +140,6 @@ static uint64_t rt_fileext_random_u64(unsigned attempt) {
         }
         close(fd);
     }
-    if (value == 0) {
-        value = (uint64_t)getpid() ^ ((uint64_t)time(NULL) << 32) ^ ((uint64_t)attempt << 48);
-    }
 #endif
     return value;
 }
@@ -166,7 +163,10 @@ static char *rt_fileext_make_parent_temp_path(const char *path,
     }
 
     char nonce[17];
-    snprintf(nonce, sizeof(nonce), "%016llx", (unsigned long long)rt_fileext_random_u64(attempt));
+    uint64_t random_value = rt_fileext_random_u64(attempt);
+    if (random_value == 0)
+        return NULL;
+    snprintf(nonce, sizeof(nonce), "%016llx", (unsigned long long)random_value);
     size_t prefix_len = strlen(prefix);
     size_t nonce_len = strlen(nonce);
     if (parent_len > SIZE_MAX - prefix_len - nonce_len - 48)

@@ -194,8 +194,17 @@ int8_t rt_set_add(void *obj, void *elem) {
     if (!obj)
         return 0;
     rt_set_impl *set = as_set(obj, "Set.Add: invalid Set object");
-    if (!set || set->capacity == 0)
+    if (!set || !set->buckets || set->capacity == 0)
         return 0;
+
+    size_t idx = rt_box_hash(elem) % set->capacity;
+    if (find_entry(set->buckets[idx], elem))
+        return 0; // Already exists
+
+    if (set->count == SIZE_MAX) {
+        rt_trap("Set.Add: maximum size reached");
+        return 0;
+    }
 
     // Check load factor and resize if needed
     if ((long double)set->count * (long double)SET_LOAD_FACTOR_DEN >=
@@ -204,11 +213,7 @@ int8_t rt_set_add(void *obj, void *elem) {
             return 0;
     }
 
-    size_t idx = rt_box_hash(elem) % set->capacity;
-
-    // Check if already present
-    if (find_entry(set->buckets[idx], elem))
-        return 0; // Already exists
+    idx = rt_box_hash(elem) % set->capacity;
 
     rt_obj_retain_maybe(elem);
 
@@ -234,6 +239,8 @@ int8_t rt_set_remove(void *obj, void *elem) {
     if (!obj)
         return 0;
     rt_set_impl *set = as_set(obj, "Set.Remove: invalid Set object");
+    if (!set || !set->buckets || set->capacity == 0)
+        return 0;
 
     size_t idx = rt_box_hash(elem) % set->capacity;
 
@@ -263,6 +270,8 @@ int8_t rt_set_has(void *obj, void *elem) {
     if (!obj)
         return 0;
     rt_set_impl *set = as_set(obj, "Set.Has: invalid Set object");
+    if (!set || !set->buckets || set->capacity == 0)
+        return 0;
 
     size_t idx = rt_box_hash(elem) % set->capacity;
     return find_entry(set->buckets[idx], elem) ? 1 : 0;

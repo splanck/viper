@@ -457,10 +457,13 @@ static int32_t gltf_count_subtree(const rt_scene_node3d *node) {
     if (!node)
         return 0;
     while (count >= capacity) {
-        int32_t next_capacity = capacity == 0 ? 32 : capacity * 2;
         const rt_scene_node3d **grown;
-        if (capacity > INT32_MAX / 2)
+        int64_t next_capacity64 = capacity == 0 ? 32 : (int64_t)capacity * 2;
+        if (next_capacity64 > INT32_MAX) {
+            free(stack);
             return total;
+        }
+        int32_t next_capacity = (int32_t)next_capacity64;
         grown = (const rt_scene_node3d **)realloc(stack, (size_t)next_capacity * sizeof(*stack));
         if (!grown) {
             free(stack);

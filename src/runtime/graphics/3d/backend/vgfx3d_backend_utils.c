@@ -846,14 +846,14 @@ void vgfx3d_copy_linear_rgba32f_to_rgba8(uint8_t *dst_rgba,
 
     for (int32_t y = 0; y < copy_h; y++) {
         uint8_t *dst_row = dst_rgba + (size_t)y * (size_t)dst_stride;
-        const float *src_row =
-            (const float *)((const uint8_t *)src_rgba32f + (size_t)y * (size_t)src_stride_bytes);
+        const uint8_t *src_row = (const uint8_t *)src_rgba32f + (size_t)y * (size_t)src_stride_bytes;
         for (int32_t x = 0; x < copy_w; x++) {
-            dst_row[(size_t)x * 4u + 0u] = vgfx3d_hdr_to_unorm8(src_row[0]);
-            dst_row[(size_t)x * 4u + 1u] = vgfx3d_hdr_to_unorm8(src_row[1]);
-            dst_row[(size_t)x * 4u + 2u] = vgfx3d_hdr_to_unorm8(src_row[2]);
-            dst_row[(size_t)x * 4u + 3u] = vgfx3d_float_to_unorm8(src_row[3]);
-            src_row += 4;
+            float src_px[4];
+            memcpy(src_px, src_row + (size_t)x * sizeof(src_px), sizeof(src_px));
+            dst_row[(size_t)x * 4u + 0u] = vgfx3d_hdr_to_unorm8(src_px[0]);
+            dst_row[(size_t)x * 4u + 1u] = vgfx3d_hdr_to_unorm8(src_px[1]);
+            dst_row[(size_t)x * 4u + 2u] = vgfx3d_hdr_to_unorm8(src_px[2]);
+            dst_row[(size_t)x * 4u + 3u] = vgfx3d_float_to_unorm8(src_px[3]);
         }
     }
 }

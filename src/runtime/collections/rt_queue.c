@@ -413,7 +413,8 @@ void *rt_queue_pop(void *obj) {
     }
 
     void *val = q->items[q->head];
-    rt_obj_retain_maybe(val);
+    if (q->owns_elements)
+        rt_obj_retain_maybe(val);
     q->items[q->head] = NULL;
     q->head = (q->head + 1) % q->cap;
     q->len--;
@@ -538,7 +539,8 @@ void *rt_queue_try_pop(void *obj) {
         return NULL;
 
     void *val = q->items[q->head];
-    rt_obj_retain_maybe(val);
+    if (q->owns_elements)
+        rt_obj_retain_maybe(val);
     q->items[q->head] = NULL;
     q->head = (q->head + 1) % q->cap;
     q->len--;

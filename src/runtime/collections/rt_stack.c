@@ -389,7 +389,8 @@ void *rt_stack_pop(void *obj) {
     }
 
     void *value = stack->items[stack->len - 1];
-    rt_obj_retain_maybe(value);
+    if (stack->owns_elements)
+        rt_obj_retain_maybe(value);
     stack->len--;
     stack->items[stack->len] = NULL;
     if (stack->owns_elements) {
@@ -513,7 +514,8 @@ void *rt_stack_try_pop(void *obj) {
         return NULL;
 
     void *value = stack->items[stack->len - 1];
-    rt_obj_retain_maybe(value);
+    if (stack->owns_elements)
+        rt_obj_retain_maybe(value);
     stack->len--;
     stack->items[stack->len] = NULL;
     if (stack->owns_elements) {

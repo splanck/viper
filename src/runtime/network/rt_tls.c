@@ -107,6 +107,7 @@ struct rt_tls_server_ctx {
 
 static void tls_set_server_last_error_msg(const char *msg);
 static int tls_hostname_is_ip_literal(const char *hostname);
+static int tls_dns_hostname_is_valid(const char *hostname);
 static int tls_parse_client_sni(rt_tls_session_t *session, const uint8_t *data, size_t len);
 static int tls_server_name_matches_leaf_cert(const rt_tls_server_ctx_t *ctx, const char *hostname);
 static int tls_alpn_list_next_token(const char *list,
@@ -664,6 +665,51 @@ static int tls_hostname_is_ip_literal(const char *hostname) {
     return 0;
 }
 
+/// @brief Validate one DNS label for TLS hostname and SNI processing.
+/// @details Accepts only LDH labels: ASCII letters, digits, and hyphen, with a 1..63 byte length
+///          and no leading or trailing hyphen. Wildcards are intentionally not accepted here.
+/// @param start Pointer to the first byte of the label.
+/// @param len Number of bytes in the label.
+/// @return 1 if the label is valid; otherwise 0.
+static int tls_dns_label_is_valid(const char *start, size_t len) {
+    if (len == 0 || len > 63 || start[0] == '-' || start[len - 1] == '-')
+        return 0;
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)start[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+              (c >= '0' && c <= '9') || c == '-')) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/// @brief Validate a full DNS hostname used by TLS client config or ClientHello SNI.
+/// @details Enforces total DNS presentation length, rejects leading/trailing dots, and validates
+///          every label with tls_dns_label_is_valid. IP literals are handled separately and should
+///          not be passed here when they are acceptable.
+/// @param hostname NUL-terminated hostname.
+/// @return 1 if the hostname is a valid DNS name; otherwise 0.
+static int tls_dns_hostname_is_valid(const char *hostname) {
+    const char *label = hostname;
+    size_t total_len;
+    if (!hostname || !*hostname)
+        return 0;
+    total_len = strlen(hostname);
+    if (total_len > 253 || hostname[0] == '.' || hostname[total_len - 1] == '.')
+        return 0;
+    for (const char *p = hostname;; p++) {
+        if (*p == '.' || *p == '\0') {
+            if (!tls_dns_label_is_valid(label, (size_t)(p - label)))
+                return 0;
+            if (*p == '\0')
+                break;
+            label = p + 1;
+        }
+    }
+    return 1;
+}
+
 /// @brief Parse the ServerNameList from a ClientHello server_name extension.
 ///        Stores the first host_name entry (lowercased, NUL-terminated) into
 ///        session->hostname. IP literals are silently cleared so SAN checks skip them.
@@ -711,6 +757,10 @@ static int tls_parse_client_sni(rt_tls_session_t *session, const uint8_t *data, 
                 session->hostname[name_len] = '\0';
                 if (tls_hostname_is_ip_literal(session->hostname))
                     session->hostname[0] = '\0';
+                else if (!tls_dns_hostname_is_valid(session->hostname)) {
+                    session->error = "ClientHello host_name SNI is not a valid DNS name";
+                    return RT_TLS_ERROR_HANDSHAKE;
+                }
                 saw_host_name = 1;
             }
             pos += name_len;
@@ -2772,7 +2822,29 @@ rt_tls_session_t *rt_tls_new(int socket_fd, const rt_tls_config_t *config) {
     transcript_init(session);
 
     if (config && config->hostname) {
-        strncpy(session->hostname, config->hostname, sizeof(session->hostname) - 1);
+        size_t hostname_len = strlen(config->hostname);
+        if (hostname_len >= sizeof(session->hostname)) {
+            session->error = "invalid TLS hostname";
+            session->state = TLS_STATE_ERROR;
+            return session;
+        }
+        for (size_t i = 0; i < hostname_len; i++) {
+            unsigned char ch = (unsigned char)config->hostname[i];
+            if (ch <= 0x20u || ch >= 0x7fu) {
+                session->error = "invalid TLS hostname";
+                session->state = TLS_STATE_ERROR;
+                return session;
+            }
+            session->hostname[i] =
+                (char)((ch >= 'A' && ch <= 'Z') ? (ch + ('a' - 'A')) : ch);
+        }
+        session->hostname[hostname_len] = '\0';
+        if (!tls_hostname_is_ip_literal(session->hostname) &&
+            !tls_dns_hostname_is_valid(session->hostname)) {
+            session->error = "invalid TLS hostname";
+            session->state = TLS_STATE_ERROR;
+            return session;
+        }
     }
     if (config && config->alpn_protocol) {
         size_t wire_len = 0;

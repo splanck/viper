@@ -938,7 +938,7 @@ static int ws_send_frame(rt_ws_impl *ws, uint8_t opcode, const void *data, size_
     // Mask and send data
     if (len > 0) {
         const uint8_t *src = (const uint8_t *)data;
-        uint8_t chunk[4096];
+        uint8_t chunk[4096] = {0};
         size_t offset = 0;
         while (offset < len) {
             size_t part = len - offset;
