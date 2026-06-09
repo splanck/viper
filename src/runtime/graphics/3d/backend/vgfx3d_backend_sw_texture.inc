@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_sw_texture.inc  (#included from vgfx3d_backend_sw.c; not a standalone translation unit)
-// Purpose: Software backend texture sampling
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_sw_texture.inc  (#included from
+// vgfx3d_backend_sw.c; not a standalone translation unit) Purpose: Software backend texture
+// sampling
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Texture sampling
@@ -100,7 +101,7 @@ static int sw_wrap_index(int index, int size, int32_t mode) {
         return index;
     }
     if (mode == RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT) {
-        if (size > INT32_MAX / 2)
+        if (size <= 0 || size > INT32_MAX / 2)
             return index < 0 ? 0 : (index >= size ? size - 1 : index);
         int period = size * 2;
         int wrapped = index % period;

@@ -60,7 +60,6 @@ void *rt_gui_widget_parent_container_checked(void *handle) {
     return rt_gui_widget_parent_container_from_handle(handle);
 }
 
-
 //=============================================================================
 // Font Functions
 //=============================================================================
@@ -541,7 +540,7 @@ void *rt_button_new(void *parent, rt_string text) {
     if (parent && !parent_widget)
         return NULL;
     char *ctext = rt_string_to_gui_cstr(text);
-    vg_button_t *button = vg_button_create(parent_widget, ctext);
+    vg_button_t *button = vg_button_create(parent_widget, rt_gui_cstr_or_empty(ctext));
     free(ctext);
     rt_gui_apply_default_font((vg_widget_t *)button);
     return button;

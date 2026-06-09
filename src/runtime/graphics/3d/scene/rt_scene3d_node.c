@@ -722,7 +722,6 @@ void *rt_scene_node3d_get_aabb_min(void *obj) {
     has_bounds = scene_node_collect_subtree_bounds(n, identity, bounds_min, bounds_max);
     if (!has_bounds) {
         bounds_min[0] = bounds_min[1] = bounds_min[2] = 0.0f;
-        bounds_max[0] = bounds_max[1] = bounds_max[2] = 0.0f;
     }
     return rt_vec3_new(bounds_min[0], bounds_min[1], bounds_min[2]);
 }
@@ -740,7 +739,6 @@ void *rt_scene_node3d_get_aabb_max(void *obj) {
     mat4d_identity(identity);
     has_bounds = scene_node_collect_subtree_bounds(n, identity, bounds_min, bounds_max);
     if (!has_bounds) {
-        bounds_min[0] = bounds_min[1] = bounds_min[2] = 0.0f;
         bounds_max[0] = bounds_max[1] = bounds_max[2] = 0.0f;
     }
     return rt_vec3_new(bounds_max[0], bounds_max[1], bounds_max[2]);

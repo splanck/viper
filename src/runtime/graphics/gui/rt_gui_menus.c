@@ -120,7 +120,6 @@ int rt_statusbar_zone_checked(int64_t zone, vg_statusbar_zone_t *out_zone) {
     return 1;
 }
 
-
 /// @brief Convert a runtime Pixels object (0xRRGGBBAA) into a `vg_icon_t` (RGBA).
 /// @details Repacks the pixels' 0xRRGGBBAA uint32 buffer into the byte-order
 ///          RGBA layout that the GUI library's icon API expects (one byte
@@ -327,7 +326,7 @@ void *rt_menu_add_item(void *menu, rt_string text) {
     if (!m)
         return NULL;
     char *ctext = rt_string_to_gui_cstr(text);
-    vg_menu_item_t *item = vg_menu_add_item(m, ctext, NULL, NULL, NULL);
+    vg_menu_item_t *item = vg_menu_add_item(m, rt_gui_cstr_or_empty(ctext), NULL, NULL, NULL);
     free(ctext);
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu(m));
     return rt_gui_wrap_menu_item(item);
@@ -342,7 +341,8 @@ void *rt_menu_add_item_with_shortcut(void *menu, rt_string text, rt_string short
         return NULL;
     char *ctext = rt_string_to_gui_cstr(text);
     char *cshortcut = rt_string_to_gui_cstr(shortcut);
-    vg_menu_item_t *item = vg_menu_add_item(m, ctext, cshortcut, NULL, NULL);
+    vg_menu_item_t *item = vg_menu_add_item(
+        m, rt_gui_cstr_or_empty(ctext), rt_gui_cstr_or_empty(cshortcut), NULL, NULL);
     free(ctext);
     free(cshortcut);
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu(m));
@@ -685,7 +685,8 @@ void *rt_contextmenu_add_item(void *menu, rt_string text) {
     if (!cm)
         return NULL;
     char *ctext = rt_string_to_gui_cstr(text);
-    vg_menu_item_t *item = vg_contextmenu_add_item(cm, ctext, NULL, NULL, NULL);
+    vg_menu_item_t *item =
+        vg_contextmenu_add_item(cm, rt_gui_cstr_or_empty(ctext), NULL, NULL, NULL);
     free(ctext);
     return rt_gui_wrap_menu_item(item);
 }
@@ -698,7 +699,8 @@ void *rt_contextmenu_add_item_with_shortcut(void *menu, rt_string text, rt_strin
         return NULL;
     char *ctext = rt_string_to_gui_cstr(text);
     char *cshortcut = rt_string_to_gui_cstr(shortcut);
-    vg_menu_item_t *item = vg_contextmenu_add_item(cm, ctext, cshortcut, NULL, NULL);
+    vg_menu_item_t *item = vg_contextmenu_add_item(
+        cm, rt_gui_cstr_or_empty(ctext), rt_gui_cstr_or_empty(cshortcut), NULL, NULL);
     free(ctext);
     free(cshortcut);
     return rt_gui_wrap_menu_item(item);
@@ -790,7 +792,7 @@ void *rt_contextmenu_get_clicked_item(void *menu) {
     return NULL;
 }
 
-#else /* !VIPER_ENABLE_GRAPHICS */
+#else  /* !VIPER_ENABLE_GRAPHICS */
 
 // ===========================================================================
 // Headless stubs — same prototypes as the real implementations above so

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_physics2d_internal.h
+// File: src/runtime/graphics/2d/rt_physics2d_internal.h
 // Purpose: Shared internal types for the 2D physics engine, used by both
 //   rt_physics2d.c and rt_physics2d_joint.c.
 //
@@ -16,7 +16,7 @@
 // Ownership/Lifetime:
 //   - Internal header — not part of public API.
 //
-// Links: rt_physics2d.c, rt_physics2d_joint.c
+// Links: src/runtime/graphics/2d/rt_physics2d.c, src/runtime/graphics/2d/rt_physics2d_joint.c
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -79,6 +79,7 @@ typedef struct {
     } contacts[PH_MAX_CONTACTS];
 
     int32_t contact_count;
+    int8_t contact_overflow; ///< Set when the most recent step produced more than PH_MAX_CONTACTS.
 } rt_world_impl;
 
 /// @brief Joint internal representation.

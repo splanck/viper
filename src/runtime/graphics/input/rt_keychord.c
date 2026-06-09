@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_keychord.c
+// File: src/runtime/graphics/input/rt_keychord.c
 // Purpose: Key chord and sequential combo detection for the Viper input system.
 //   Chords require all specified keys held simultaneously; they trigger on the
 //   frame the last key is pressed (edge detection). Combos require keys pressed
@@ -19,7 +19,7 @@
 //   - Combo progress resets if any key in the sequence is pressed out of order
 //     or if the inter-key gap exceeds the configured window_frames.
 //   - Entry names must be unique within a KeyChord instance; duplicate AddChord/
-//     AddCombo calls with the same name are silently ignored.
+//     AddCombo calls with the same name replace the previous entry.
 //   - KC_MAX_KEYS (16) is the maximum number of keys in a single chord or combo.
 //   - rt_keychord_update() increments the internal frame counter; it must be
 //     called once per frame before querying trigger state.
@@ -29,8 +29,8 @@
 //     array and per-entry name strings are malloc'd and freed in kc_finalizer,
 //     which is registered as the GC finalizer at creation.
 //
-// Links: src/runtime/graphics/rt_keychord.h (public API),
-//        src/runtime/graphics/rt_input.h (keyboard state queries),
+// Links: src/runtime/graphics/input/rt_keychord.h (public API),
+//        src/runtime/graphics/input/rt_input.h (keyboard state queries),
 //        src/runtime/graphics/rt_action.c (action mapping uses BIND_CHORD)
 //
 //===----------------------------------------------------------------------===//
@@ -159,15 +159,32 @@ static void keychord_advance_frame(rt_keychord_impl *kc) {
 ///   (shift-delete) so the new definition replaces it.  Key codes are extracted
 ///   from the Zia Seq[Integer] object via rt_seq_get / rt_unbox_i64 and stored
 ///   in a fixed-size array capped at KC_MAX_KEYS (16).  The entry name is heap-
-///   copied so the caller's string does not need to outlive the call.  Silently
-///   returns if key_count is out of range or the name allocation fails.
+///   copied so the caller's string does not need to outlive the call. Invalid
+///   key counts or allocation failures trap and leave the previous definition
+///   unchanged unless replacement already succeeded.
 static void add_entry(
     rt_keychord_impl *kc, const char *name, kc_type type, void *keys, int64_t window_frames) {
     int64_t key_count = rt_seq_len(keys);
-    if (key_count <= 0 || key_count > KC_MAX_KEYS)
+    if (key_count <= 0 || key_count > KC_MAX_KEYS) {
+        rt_trap("KeyChord: key count must be between 1 and 16");
         return;
+    }
 
-    /* Remove existing entry with same name */
+    char *name_copy = NULL;
+    size_t name_len = strlen(name);
+    name_copy = (char *)malloc(name_len + 1);
+    if (!name_copy) {
+        rt_trap("KeyChord: name allocation failed");
+        return;
+    }
+    memcpy(name_copy, name, name_len + 1);
+
+    if (!ensure_capacity(kc)) {
+        free(name_copy);
+        return;
+    }
+
+    /* Remove existing entry with same name after all failure-prone allocation succeeds. */
     kc_entry *existing = find_entry(kc, name);
     if (existing) {
         free(existing->name);
@@ -178,19 +195,12 @@ static void add_entry(
             kc->entries[i] = kc->entries[i + 1];
         }
         kc->count--;
+        memset(&kc->entries[kc->count], 0, sizeof(kc->entries[kc->count]));
     }
-
-    if (!ensure_capacity(kc))
-        return;
 
     kc_entry *e = &kc->entries[kc->count];
     memset(e, 0, sizeof(kc_entry));
-
-    size_t name_len = strlen(name);
-    e->name = (char *)malloc(name_len + 1);
-    if (!e->name)
-        return;
-    memcpy(e->name, name, name_len + 1);
+    e->name = name_copy;
 
     e->type = type;
     e->key_count = key_count;
@@ -288,7 +298,7 @@ void rt_keychord_update(void *obj) {
             e->is_active = all_down;
 
             /* Trigger on the frame the chord becomes active */
-            if (all_down && (!e->was_active || any_just_pressed))
+            if (all_down && !e->was_active && any_just_pressed)
                 e->triggered = 1;
         } else /* KC_TYPE_COMBO */
         {

@@ -709,6 +709,11 @@ static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
             return 0;
         }
         gl.ReadPixels(0, 0, rt->width, rt->height, GL_RGBA, GL_FLOAT, tmpf);
+        if (!gl_upload_ok()) {
+            free(tmpf);
+            bind_main_framebuffer(ctx);
+            return 0;
+        }
         for (int32_t y = 0; y < rt->height; y++) {
             const float *src_row = tmpf + (size_t)(rt->height - 1 - y) * (size_t)rt->width * 4u;
             float *dst_row = rt->hdr_color_buf + (size_t)y * (size_t)rt->width * 4u;
@@ -724,14 +729,28 @@ static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
         rt->hdr_color_valid = 1;
         free(tmpf);
     } else {
-        tmp = (uint8_t *)malloc(bytes);
+        size_t tight_bytes;
+        if (!gl_checked_mul_size(pixel_count, 4u, &tight_bytes)) {
+            bind_main_framebuffer(ctx);
+            return 0;
+        }
+        tmp = (uint8_t *)malloc(tight_bytes);
         if (!tmp) {
             bind_main_framebuffer(ctx);
             return 0;
         }
         gl.ReadPixels(0, 0, rt->width, rt->height, GL_RGBA, GL_UNSIGNED_BYTE, tmp);
+        if (!gl_upload_ok()) {
+            free(tmp);
+            bind_main_framebuffer(ctx);
+            return 0;
+        }
         vgfx3d_flip_rgba_rows(tmp, rt->width, rt->height);
-        memcpy(rt->color_buf, tmp, bytes);
+        for (int32_t y = 0; y < rt->height; y++) {
+            memcpy(rt->color_buf + (size_t)y * (size_t)rt->stride,
+                   tmp + (size_t)y * (size_t)rt->width * 4u,
+                   (size_t)rt->width * 4u);
+        }
         rt->hdr_color_valid = 0;
         free(tmp);
     }

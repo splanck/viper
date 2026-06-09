@@ -78,6 +78,16 @@ typedef struct {
     double z; ///< Z component (depth axis, positive = toward viewer in RH coords)
 } ViperVec3;
 
+/// @brief Compute a finite, overflow-resistant Vec3 length from raw components.
+/// @details Uses chained `hypot` calls instead of `sqrt(x*x + y*y + z*z)`,
+///          preventing overflow/underflow during normalization, distance, and
+///          angle calculations. Non-finite input returns `INFINITY`.
+static double vec3_safe_len(double x, double y, double z) {
+    if (!isfinite(x) || !isfinite(y) || !isfinite(z))
+        return INFINITY;
+    return hypot(hypot(x, y), z);
+}
+
 /// @brief Allocate and initialize a new Vec3 with the given components.
 ///
 /// This internal helper allocates a Vec3 object through the Viper object
@@ -668,7 +678,12 @@ double rt_vec3_len_sq(void *v) {
 /// @see rt_vec3_len_sq For squared length (faster for comparisons)
 /// @see rt_vec3_norm For getting a unit-length vector
 double rt_vec3_len(void *v) {
-    return sqrt(rt_vec3_len_sq(v));
+    if (!v) {
+        rt_trap("Vec3.Len: null vector");
+        return 0.0;
+    }
+    ViperVec3 *vec = (ViperVec3 *)v;
+    return vec3_safe_len(vec->x, vec->y, vec->z);
 }
 
 /// @brief Computes the Euclidean distance between two points.
@@ -707,7 +722,7 @@ double rt_vec3_dist(void *a, void *b) {
     double dx = vb->x - va->x;
     double dy = vb->y - va->y;
     double dz = vb->z - va->z;
-    return sqrt(dx * dx + dy * dy + dz * dz);
+    return vec3_safe_len(dx, dy, dz);
 }
 
 //=============================================================================
@@ -754,12 +769,12 @@ void *rt_vec3_norm(void *v) {
         rt_trap("Vec3.Norm: null vector");
         return NULL;
     }
-    double len = rt_vec3_len(v);
-    if (len == 0.0) {
+    ViperVec3 *vec = (ViperVec3 *)v;
+    double len = vec3_safe_len(vec->x, vec->y, vec->z);
+    if (len == 0.0 || !isfinite(len)) {
         // Return zero vector for zero-length input
         return vec3_alloc(0.0, 0.0, 0.0);
     }
-    ViperVec3 *vec = (ViperVec3 *)v;
     return vec3_alloc(vec->x / len, vec->y / len, vec->z / len);
 }
 
@@ -817,28 +832,47 @@ void *rt_vec3_lerp(void *a, void *b, double t) {
     return vec3_alloc(x, y, z);
 }
 
-/// @brief Reflect `v` across a surface with the given `normal` (assumed unit length). Used for
-/// bouncing rays/balls — `result = v - 2*(v·n)*n`. Returns the zero vector for null inputs.
+/// @brief Reflect `v` across a surface with the given `normal`.
+/// @details The normal is normalized internally so callers do not need to provide a unit vector.
+///          Non-finite components or a degenerate normal return the zero vector instead of
+///          propagating NaN into later physics or lighting calculations.
 void *rt_vec3_reflect(void *v, void *normal) {
     if (!v || !normal)
         return vec3_alloc(0, 0, 0);
     ViperVec3 *vv = (ViperVec3 *)v;
     ViperVec3 *n = (ViperVec3 *)normal;
-    double d = 2.0 * (vv->x * n->x + vv->y * n->y + vv->z * n->z);
-    return vec3_alloc(vv->x - d * n->x, vv->y - d * n->y, vv->z - d * n->z);
+    double n_len = vec3_safe_len(n->x, n->y, n->z);
+    if (n_len < 1e-12 || !isfinite(n_len) || !isfinite(vv->x) || !isfinite(vv->y) || !isfinite(vv->z))
+        return vec3_alloc(0, 0, 0);
+
+    double nx = n->x / n_len;
+    double ny = n->y / n_len;
+    double nz = n->z / n_len;
+    double d = 2.0 * (vv->x * nx + vv->y * ny + vv->z * nz);
+    if (!isfinite(d))
+        return vec3_alloc(0, 0, 0);
+    return vec3_alloc(vv->x - d * nx, vv->y - d * ny, vv->z - d * nz);
 }
 
-/// @brief Project `v` onto the line spanned by `onto`. Returns `((v·onto)/(onto·onto)) * onto`.
-/// Returns the zero vector if `onto` is degenerate (length² < 1e-12) or for null inputs.
+/// @brief Project `v` onto the line spanned by `onto`.
+/// @details Returns `((v·onto)/(onto·onto)) * onto`. The denominator is computed from an
+///          overflow-resistant length, and any non-finite operand or degenerate target returns
+///          the zero vector.
 void *rt_vec3_project(void *v, void *onto) {
     if (!v || !onto)
         return vec3_alloc(0, 0, 0);
     ViperVec3 *vv = (ViperVec3 *)v;
     ViperVec3 *t = (ViperVec3 *)onto;
-    double dot_vt = vv->x * t->x + vv->y * t->y + vv->z * t->z;
-    double dot_tt = t->x * t->x + t->y * t->y + t->z * t->z;
-    if (dot_tt < 1e-12)
+    if (!isfinite(vv->x) || !isfinite(vv->y) || !isfinite(vv->z))
         return vec3_alloc(0, 0, 0);
+    double t_len = vec3_safe_len(t->x, t->y, t->z);
+    if (t_len < 1e-12 || !isfinite(t_len))
+        return vec3_alloc(0, 0, 0);
+
+    double dot_vt = vv->x * t->x + vv->y * t->y + vv->z * t->z;
+    if (!isfinite(dot_vt))
+        return vec3_alloc(0, 0, 0);
+    double dot_tt = t_len * t_len;
     double s = dot_vt / dot_tt;
     return vec3_alloc(s * t->x, s * t->y, s * t->z);
 }
@@ -847,25 +881,31 @@ void *rt_vec3_project(void *v, void *onto) {
 /// ones are scaled proportionally. Useful for capping speeds. Returns zero for null `v` or
 /// non-positive `max_len`.
 void *rt_vec3_clamp_len(void *v, double max_len) {
-    if (!v || max_len <= 0)
+    if (!v || !isfinite(max_len) || max_len <= 0.0)
         return vec3_alloc(0, 0, 0);
     ViperVec3 *vv = (ViperVec3 *)v;
-    double len_sq = vv->x * vv->x + vv->y * vv->y + vv->z * vv->z;
-    if (len_sq <= max_len * max_len)
+    double len = vec3_safe_len(vv->x, vv->y, vv->z);
+    if (!isfinite(len))
+        return vec3_alloc(0, 0, 0);
+    if (len <= max_len)
         return vec3_alloc(vv->x, vv->y, vv->z);
-    double s = max_len / sqrt(len_sq);
+    double s = max_len / len;
     return vec3_alloc(vv->x * s, vv->y * s, vv->z * s);
 }
 
 /// @brief Step from `current` toward `target` by at most `max_delta` units. Snaps exactly to
-/// `target` when within reach. Useful for AI movement / smoothing without overshoot.
+/// `target` when within reach. Non-finite or negative deltas keep the current position.
 void *rt_vec3_move_towards(void *current, void *target, double max_delta) {
     if (!current || !target)
         return vec3_alloc(0, 0, 0);
     ViperVec3 *c = (ViperVec3 *)current;
     ViperVec3 *t = (ViperVec3 *)target;
+    if (!isfinite(max_delta) || max_delta < 0.0)
+        return vec3_alloc(c->x, c->y, c->z);
     double dx = t->x - c->x, dy = t->y - c->y, dz = t->z - c->z;
-    double dist = sqrt(dx * dx + dy * dy + dz * dz);
+    double dist = vec3_safe_len(dx, dy, dz);
+    if (!isfinite(dist))
+        return vec3_alloc(c->x, c->y, c->z);
     if (dist <= max_delta || dist < 1e-12)
         return vec3_alloc(t->x, t->y, t->z);
     double s = max_delta / dist;
@@ -880,11 +920,17 @@ double rt_vec3_angle(void *a, void *b) {
         return 0.0;
     ViperVec3 *va = (ViperVec3 *)a;
     ViperVec3 *vb = (ViperVec3 *)b;
-    double la = sqrt(va->x * va->x + va->y * va->y + va->z * va->z);
-    double lb = sqrt(vb->x * vb->x + vb->y * vb->y + vb->z * vb->z);
-    if (la < 1e-12 || lb < 1e-12)
+    double la = vec3_safe_len(va->x, va->y, va->z);
+    double lb = vec3_safe_len(vb->x, vb->y, vb->z);
+    if (la < 1e-12 || lb < 1e-12 || !isfinite(la) || !isfinite(lb))
         return 0.0;
-    double cos_a = (va->x * vb->x + va->y * vb->y + va->z * vb->z) / (la * lb);
+    double ax = va->x / la;
+    double ay = va->y / la;
+    double az = va->z / la;
+    double bx = vb->x / lb;
+    double by = vb->y / lb;
+    double bz = vb->z / lb;
+    double cos_a = ax * bx + ay * by + az * bz;
     if (cos_a > 1.0)
         cos_a = 1.0;
     if (cos_a < -1.0)

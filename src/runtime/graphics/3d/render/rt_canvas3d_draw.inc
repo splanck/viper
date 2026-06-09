@@ -390,7 +390,7 @@ int canvas3d_queue_screen_line(rt_canvas3d *c,
 /// scene, postFX, and tonemapping. Pair with `rt_canvas3d_end`
 /// to finish the overlay pass.
 void rt_canvas3d_begin_2d(void *obj) {
-    vgfx3d_camera_params_t params;
+    vgfx3d_camera_params_t params = {0};
 
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     if (!c)

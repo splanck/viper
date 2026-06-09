@@ -261,6 +261,22 @@ static void test_bindings_str() {
     rt_action_clear();
 }
 
+static void test_bindings_str_not_truncated() {
+    rt_action_init();
+    rt_action_clear();
+
+    rt_string action = make_str("long_prompt");
+    assert(rt_action_define(action) == 1);
+    for (int i = 0; i < 220; i++)
+        assert(rt_action_bind_key(make_str("long_prompt"), VIPER_KEY_SPACE) == 1);
+
+    rt_string bindings = rt_action_bindings_str(make_str("long_prompt"));
+    assert(rt_str_len(bindings) > 1024);
+    assert(rt_action_binding_count(make_str("long_prompt")) == 220);
+
+    rt_action_clear();
+}
+
 // Test: Key bound to detection
 static void test_key_bound_to() {
     rt_action_init();
@@ -421,6 +437,7 @@ int main() {
     test_bind_pad_axis();
     test_multiple_bindings();
     test_bindings_str();
+    test_bindings_str_not_truncated();
     test_key_bound_to();
     test_action_edge_state_requires_update();
     test_chord_release_edge_state();

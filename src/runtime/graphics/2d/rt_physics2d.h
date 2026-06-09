@@ -3,7 +3,7 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// File: src/runtime/graphics/rt_physics2d.h
+// File: src/runtime/graphics/2d/rt_physics2d.h
 // Purpose: 2D physics engine for game entities providing AABB/circle rigid-body simulation,
 // impulse-based collision resolution, bitmask collision filtering, and a simple world step loop.
 //
@@ -21,7 +21,7 @@
 //   - Adding a body to a world transfers logical ownership; removing it releases the world's
 //   reference.
 //
-// Links: src/runtime/graphics/rt_physics2d.c (implementation)
+// Links: src/runtime/graphics/2d/rt_physics2d.c (implementation)
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -74,6 +74,14 @@ void rt_physics2d_world_set_gravity(void *world, double gx, double gy);
 /// @brief Number of contacts detected during the most recent world step.
 /// The contact list is cleared at the start of every Step() and when bodies are removed.
 int64_t rt_physics2d_world_contact_count(void *world);
+
+/// @brief Return whether contacts were omitted from the most recent world step.
+/// @details Contact storage is fixed at PH_MAX_CONTACTS. When more contacts are detected than can
+///          be stored, ContactCount returns the capped count and this query returns 1 until the next
+///          step or explicit contact clear caused by body removal.
+/// @param world World handle.
+/// @return 1 if the last contact generation overflowed the fixed contact list, otherwise 0.
+int8_t rt_physics2d_world_contact_overflowed(void *world);
 
 /// @brief Body A for a contact from the most recent world step, or NULL if index is invalid.
 void *rt_physics2d_world_contact_body_a(void *world, int64_t index);

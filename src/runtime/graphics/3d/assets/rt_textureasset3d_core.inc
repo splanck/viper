@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/assets/rt_textureasset3d_core.inc  (#included from rt_textureasset3d.c; not a standalone translation unit)
-// Purpose: TextureAsset3D format info, container lifecycle, mip residency, alpha, and RGBA8 fallback
+// File: src/runtime/graphics/3d/assets/rt_textureasset3d_core.inc  (#included from
+// rt_textureasset3d.c; not a standalone translation unit) Purpose: TextureAsset3D format info,
+// container lifecycle, mip residency, alpha, and RGBA8 fallback
 //===----------------------------------------------------------------------===//
 /// @brief Decoded properties of a Vulkan texture format: runtime name, whether it
 ///        is block-compressed, and its block dimensions/byte size.
@@ -218,10 +219,10 @@ static int textureasset3d_expected_mip_bytes(const textureasset3d_format_info *f
     if (!format || !out_bytes || width == 0 || height == 0 || format->block_width <= 0 ||
         format->block_height <= 0 || format->block_bytes <= 0)
         return 0;
-    blocks_x = ((uint64_t)width + (uint64_t)format->block_width - 1u) /
-               (uint64_t)format->block_width;
-    blocks_y = ((uint64_t)height + (uint64_t)format->block_height - 1u) /
-               (uint64_t)format->block_height;
+    blocks_x =
+        ((uint64_t)width + (uint64_t)format->block_width - 1u) / (uint64_t)format->block_width;
+    blocks_y =
+        ((uint64_t)height + (uint64_t)format->block_height - 1u) / (uint64_t)format->block_height;
     if (blocks_x != 0 && blocks_y > UINT64_MAX / blocks_x)
         return 0;
     if (blocks_x * blocks_y > UINT64_MAX / (uint64_t)format->block_bytes)
@@ -327,6 +328,7 @@ static int textureasset3d_set_resident_mip_range_internal(rt_textureasset3d *ass
     int64_t old_start;
     int64_t old_count;
     int64_t safe_mip_count;
+    int64_t clamped_mip_count;
 
     if (!asset)
         return 0;
@@ -337,9 +339,10 @@ static int textureasset3d_set_resident_mip_range_internal(rt_textureasset3d *ass
         return 0;
     }
     safe_mip_count = textureasset3d_safe_mip_count(asset);
+    clamped_mip_count = safe_mip_count > 0 ? safe_mip_count : 0;
     if (mip_count == 0 || first_mip >= safe_mip_count || safe_mip_count <= 0) {
         asset->resident_mip_start =
-            (safe_mip_count > 0 && first_mip > safe_mip_count) ? safe_mip_count : first_mip;
+            first_mip > clamped_mip_count ? clamped_mip_count : first_mip;
         asset->resident_mip_count = 0;
         asset->resident_bytes = 0;
         asset->pixels = NULL;
@@ -364,8 +367,7 @@ static int textureasset3d_set_resident_mip_range_internal(rt_textureasset3d *ass
     asset->resident_mip_start = first_mip;
     asset->resident_mip_count = mip_count;
     asset->resident_bytes = total > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)total;
-    asset->pixels =
-        (asset->mip_pixels && first_mip < safe_mip_count) ? asset->mip_pixels[first_mip] : NULL;
+    asset->pixels = asset->mip_pixels ? asset->mip_pixels[first_mip] : NULL;
     if (old_start != asset->resident_mip_start || old_count != asset->resident_mip_count)
         textureasset3d_bump_native_revision(asset);
     return 1;
@@ -392,8 +394,8 @@ static int textureasset3d_resident_range_has_native_payload(const rt_textureasse
         int64_t mip = asset->resident_mip_start + i;
         if (mip < 0 || mip >= textureasset3d_safe_mip_count(asset))
             continue;
-        if (asset->mip_payloads[mip] && asset->mips[mip].length > 0 &&
-            asset->mips[mip].width > 0 && asset->mips[mip].height > 0)
+        if (asset->mip_payloads[mip] && asset->mips[mip].length > 0 && asset->mips[mip].width > 0 &&
+            asset->mips[mip].height > 0)
             return 1;
     }
     return 0;
@@ -404,7 +406,7 @@ static int textureasset3d_resident_range_has_native_payload(const rt_textureasse
 /// @return Byte buffer with @p out_size set, or NULL on open/read/size failure.
 static uint8_t *textureasset3d_read_file_bytes(const char *path, size_t *out_size) {
     FILE *file;
-    long file_size;
+    int64_t file_size;
     uint8_t *bytes;
 
     if (out_size)
@@ -414,16 +416,16 @@ static uint8_t *textureasset3d_read_file_bytes(const char *path, size_t *out_siz
     file = fopen(path, "rb");
     if (!file)
         return NULL;
-    if (fseek(file, 0, SEEK_END) != 0) {
+    if (textureasset3d_fseek(file, 0, SEEK_END) != 0) {
         fclose(file);
         return NULL;
     }
-    file_size = ftell(file);
-    if (fseek(file, 0, SEEK_SET) != 0) {
+    file_size = (int64_t)textureasset3d_ftell(file);
+    if (textureasset3d_fseek(file, 0, SEEK_SET) != 0) {
         fclose(file);
         return NULL;
     }
-    if (file_size <= 0 || (unsigned long)file_size > TEXTUREASSET3D_MAX_FILE_BYTES) {
+    if (file_size <= 0 || (uint64_t)file_size > TEXTUREASSET3D_MAX_FILE_BYTES) {
         fclose(file);
         return NULL;
     }

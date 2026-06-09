@@ -99,6 +99,16 @@ typedef struct {
     double y; ///< Y component (vertical axis, positive = up in math, down in screen coords)
 } ViperVec2;
 
+/// @brief Compute a finite, overflow-resistant Vec2 length from raw components.
+/// @details Uses `hypot` instead of `sqrt(x*x + y*y)` so large finite components
+///          do not overflow while squaring. Non-finite inputs return `INFINITY`,
+///          letting normalization callers fall back deterministically.
+static double vec2_safe_len(double x, double y) {
+    if (!isfinite(x) || !isfinite(y))
+        return INFINITY;
+    return hypot(x, y);
+}
+
 /// @brief Allocate and initialize a new Vec2 with the given components.
 ///
 /// This internal helper allocates a Vec2 object through the Viper object
@@ -747,7 +757,12 @@ double rt_vec2_len_sq(void *v) {
 /// @see rt_vec2_len_sq For squared length (faster for comparisons)
 /// @see rt_vec2_norm For getting a unit-length vector
 double rt_vec2_len(void *v) {
-    return sqrt(rt_vec2_len_sq(v));
+    if (!v) {
+        rt_trap("Vec2.Len: null vector");
+        return 0.0;
+    }
+    ViperVec2 *vec = (ViperVec2 *)v;
+    return vec2_safe_len(vec->x, vec->y);
 }
 
 /// @brief Computes the Euclidean distance between two points.
@@ -807,7 +822,7 @@ double rt_vec2_dist(void *a, void *b) {
     ViperVec2 *vb = (ViperVec2 *)b;
     double dx = vb->x - va->x;
     double dy = vb->y - va->y;
-    return sqrt(dx * dx + dy * dy);
+    return vec2_safe_len(dx, dy);
 }
 
 //=============================================================================
@@ -865,12 +880,12 @@ void *rt_vec2_norm(void *v) {
         rt_trap("Vec2.Norm: null vector");
         return NULL;
     }
-    double len = rt_vec2_len(v);
-    if (len == 0.0) {
+    ViperVec2 *vec = (ViperVec2 *)v;
+    double len = vec2_safe_len(vec->x, vec->y);
+    if (len == 0.0 || !isfinite(len)) {
         // Return zero vector for zero-length input
         return vec2_alloc(0.0, 0.0);
     }
-    ViperVec2 *vec = (ViperVec2 *)v;
     return vec2_alloc(vec->x / len, vec->y / len);
 }
 

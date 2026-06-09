@@ -63,6 +63,14 @@
 
 #define RT_FBX_MAX_FILE_BYTES (1024ull * 1024ull * 1024ull)
 
+#if defined(_WIN32)
+#define fbx_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
+#define fbx_ftell(fp) _ftelli64((fp))
+#else
+#define fbx_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
+#define fbx_ftell(fp) ftello((fp))
+#endif
+
 #if defined(_MSC_VER)
 #define RT_FBX_THREAD_LOCAL __declspec(thread)
 #else
@@ -251,9 +259,9 @@ static int fbx_asset_reserve_ref_array(void ***items, int32_t *capacity, int32_t
             return 0;
         new_capacity *= 2;
     }
-    if ((size_t)new_capacity > SIZE_MAX / sizeof(**items))
+    if ((size_t)new_capacity > SIZE_MAX / sizeof(void *))
         return 0;
-    grown = (void **)realloc(*items, (size_t)new_capacity * sizeof(**items));
+    grown = (void **)realloc(*items, (size_t)new_capacity * sizeof(void *));
     if (!grown)
         return 0;
     if (new_capacity > old_capacity)
@@ -267,8 +275,7 @@ static int fbx_asset_reserve_ref_array(void ***items, int32_t *capacity, int32_t
 ///   storage, resetting the count/capacity to zero.
 static void fbx_asset_release_ref_array(void ***items, int32_t *count, int32_t *capacity) {
     void **array = items ? *items : NULL;
-    int32_t safe_count =
-        fbx_asset_safe_count(array, count ? *count : 0, capacity ? *capacity : 0);
+    int32_t safe_count = fbx_asset_safe_count(array, count ? *count : 0, capacity ? *capacity : 0);
     if (array) {
         for (int32_t i = 0; i < safe_count; i++)
             fbx_release_ref(&array[i]);
@@ -288,6 +295,7 @@ static void fbx_asset_release_ref_array(void ***items, int32_t *count, int32_t *
 #include "rt_fbx_loader_skeleton.inc"
 #include "rt_fbx_loader_anim.inc"
 #include "rt_fbx_loader_loader.inc"
+
 /*==========================================================================
  * FBX asset accessors
  *=========================================================================*/
@@ -374,8 +382,7 @@ void *rt_fbx_get_morph_target(void *obj, int64_t mesh_index) {
     rt_fbx_asset *a = (rt_fbx_asset *)rt_g3d_checked_or_null(obj, RT_G3D_FBX_ASSET_CLASS_ID);
     if (!a)
         return NULL;
-    int32_t morph_count =
-        fbx_asset_safe_count(a->morph_targets, a->morph_count, a->morph_capacity);
+    int32_t morph_count = fbx_asset_safe_count(a->morph_targets, a->morph_count, a->morph_capacity);
     if (mesh_index < 0 || mesh_index >= morph_count)
         return NULL;
     return rt_g3d_checked_or_null(a->morph_targets[mesh_index], RT_G3D_MORPHTARGET3D_CLASS_ID);

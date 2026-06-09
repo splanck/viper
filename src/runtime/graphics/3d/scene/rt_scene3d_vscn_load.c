@@ -27,6 +27,15 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+#if !defined(_WIN32)
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#ifndef _DARWIN_C_SOURCE
+#define _DARWIN_C_SOURCE
+#endif
+#endif
+
 #include "rt_box.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
@@ -49,6 +58,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+
+#if defined(_WIN32)
+#define vscn_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
+#define vscn_ftell(fp) _ftelli64((fp))
+#else
+#define vscn_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
+#define vscn_ftell(fp) ftello((fp))
+#endif
 
 /// @brief Count the total number of nodes in the subtree rooted at `node` (inclusive).
 /// @details Iterative so adversarially deep loaded hierarchies cannot overflow the C stack.
@@ -1037,20 +1055,31 @@ static rt_scene_node3d *vscn_parse_node(void *node_obj,
 }
 
 /// @brief Read an entire file into a newly-malloc'd, NUL-terminated buffer.
+///
+/// @details Uses the platform's 64-bit seek/tell API and rejects files larger
+///   than @c VSCN_MAX_FILE_BYTES before allocating. The extra trailing NUL is
+///   for the JSON parser convenience and is not included in @p out_size.
+///
+/// @param filepath Path to the UTF-8 scene file to read.
+/// @param out_size Receives the exact byte length of the file on success.
 /// @return The buffer (caller frees) with its byte length in @p out_size, or NULL on I/O error or
 ///   when the file exceeds VSCN_MAX_FILE_BYTES (256 MiB).
-static char *vscn_read_file(const char *filepath, long *out_size) {
+static char *vscn_read_file(const char *filepath, size_t *out_size) {
     FILE *f = fopen(filepath, "rb");
-    long file_size;
+    int64_t file_size;
     char *json;
+    if (out_size)
+        *out_size = 0;
+    if (!out_size)
+        return NULL;
     if (!f)
         return NULL;
-    if (fseek(f, 0, SEEK_END) != 0) {
+    if (vscn_fseek(f, 0, SEEK_END) != 0) {
         fclose(f);
         return NULL;
     }
-    file_size = ftell(f);
-    if (file_size < 0 || fseek(f, 0, SEEK_SET) != 0) {
+    file_size = (int64_t)vscn_ftell(f);
+    if (file_size < 0 || vscn_fseek(f, 0, SEEK_SET) != 0) {
         fclose(f);
         return NULL;
     }
@@ -1069,8 +1098,8 @@ static char *vscn_read_file(const char *filepath, long *out_size) {
         return NULL;
     }
     fclose(f);
-    json[file_size] = '\0';
-    *out_size = file_size;
+    json[(size_t)file_size] = '\0';
+    *out_size = (size_t)file_size;
     return json;
 }
 
@@ -1113,7 +1142,7 @@ void *rt_scene3d_load(rt_string path) {
     const char *filepath;
     char *json = NULL;
     rt_string json_text = NULL;
-    long file_size;
+    size_t file_size;
     void *root = NULL;
     void *textures_arr;
     void *cubemaps_arr;
@@ -1140,7 +1169,7 @@ void *rt_scene3d_load(rt_string path) {
     if (!json)
         return NULL;
 
-    json_text = rt_string_from_bytes(json, (size_t)file_size);
+    json_text = rt_string_from_bytes(json, file_size);
     free(json);
     json = NULL;
     if (!json_text)

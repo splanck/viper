@@ -82,7 +82,7 @@ int64_t rt_dropdown_add_item(void *dropdown, rt_string text) {
     if (!dd)
         return -1;
     char *ctext = rt_string_to_gui_cstr(text);
-    int64_t index = vg_dropdown_add_item(dd, ctext);
+    int64_t index = vg_dropdown_add_item(dd, rt_gui_cstr_or_empty(ctext));
     free(ctext);
     return index;
 }
@@ -142,7 +142,7 @@ void rt_dropdown_set_placeholder(void *dropdown, rt_string placeholder) {
     if (!dd)
         return;
     char *ctext = rt_string_to_gui_cstr(placeholder);
-    vg_dropdown_set_placeholder(dd, ctext);
+    vg_dropdown_set_placeholder(dd, rt_gui_cstr_or_empty(ctext));
     free(ctext);
 }
 

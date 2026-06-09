@@ -620,6 +620,30 @@ static void test_world_remove_clears_contacts() {
     release_obj(world);
 }
 
+static void test_world_contact_overflow_flag() {
+    void *world = rt_physics2d_world_new(0.0, 0.0);
+    void *a = rt_physics2d_body_new(0.0, 0.0, 10.0, 10.0, 1.0);
+    void *b = rt_physics2d_body_new(5.0, 0.0, 10.0, 10.0, 1.0);
+
+    for (int i = 0; i < PH_MAX_CONTACTS; i++) {
+        world_record_contact((rt_world_impl *)world, (rt_body_impl *)a, (rt_body_impl *)b, 1.0, 0.0, 1.0);
+    }
+    ASSERT(rt_physics2d_world_contact_count(world) == PH_MAX_CONTACTS, "contact count reaches cap");
+    ASSERT(rt_physics2d_world_contact_overflowed(world) == 0, "exact cap does not report overflow");
+
+    world_record_contact((rt_world_impl *)world, (rt_body_impl *)a, (rt_body_impl *)b, 1.0, 0.0, 1.0);
+    ASSERT(rt_physics2d_world_contact_count(world) == PH_MAX_CONTACTS, "overflow keeps capped count");
+    ASSERT(rt_physics2d_world_contact_overflowed(world) == 1, "overflow flag reports omitted contacts");
+
+    rt_physics2d_world_step(world, 0.0);
+    ASSERT(rt_physics2d_world_contact_count(world) == 0, "clear removes capped contacts");
+    ASSERT(rt_physics2d_world_contact_overflowed(world) == 0, "clear resets overflow flag");
+
+    release_obj(a);
+    release_obj(b);
+    release_obj(world);
+}
+
 static void test_extreme_forces_are_sanitized() {
     void *world = rt_physics2d_world_new(0.0, 0.0);
     void *body = rt_physics2d_body_new(0.0, 0.0, 10.0, 10.0, 1.0);
@@ -938,6 +962,7 @@ int main() {
     test_world_records_step_contacts();
     test_world_clears_contacts_on_noop_step();
     test_world_remove_clears_contacts();
+    test_world_contact_overflow_flag();
     test_extreme_forces_are_sanitized();
 
     // Safety tests

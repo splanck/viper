@@ -96,6 +96,39 @@ static int rt2d_normalize_angle_degrees(double *angle_deg) {
     return isfinite(*angle_deg);
 }
 
+/// @brief Convert a finite floor-rounded double to int64_t without UB.
+///
+/// @details Rotated blits compute floating-point bounds before scanning the
+///   destination pixels. C defines out-of-range floating-to-integer casts as
+///   undefined behavior, so this helper rejects non-finite or unrepresentable
+///   values before performing the cast.
+///
+/// @param value Source bound to floor.
+/// @param out Receives the floor-rounded int64_t value on success.
+/// @return 1 on success, 0 if @p value cannot be represented safely.
+static int rt2d_floor_i64_checked(double value, int64_t *out) {
+    if (!out || !isfinite(value) || value <= (double)INT64_MIN || value >= (double)INT64_MAX)
+        return 0;
+    *out = (int64_t)floor(value);
+    return 1;
+}
+
+/// @brief Convert a finite ceil-rounded double to int64_t without UB.
+///
+/// @details Companion to @c rt2d_floor_i64_checked for maximum bounds. The
+///   explicit range check keeps sanitizer/cppcheck builds from seeing undefined
+///   behavior when adversarial dimensions or pivots create enormous bounds.
+///
+/// @param value Source bound to ceil.
+/// @param out Receives the ceil-rounded int64_t value on success.
+/// @return 1 on success, 0 if @p value cannot be represented safely.
+static int rt2d_ceil_i64_checked(double value, int64_t *out) {
+    if (!out || !isfinite(value) || value <= (double)INT64_MIN || value >= (double)INT64_MAX)
+        return 0;
+    *out = (int64_t)ceil(value);
+    return 1;
+}
+
 typedef struct {
     int64_t magic;
     void *pixels;
@@ -166,7 +199,6 @@ typedef struct {
     int64_t offset_y;
 } rt_viewport2d_impl;
 
-
 typedef struct {
     int64_t x;
     int64_t y;
@@ -178,7 +210,6 @@ typedef struct {
     int64_t count;
     int64_t capacity;
 } rt_path2d_impl;
-
 
 //=============================================================================
 // Internal helpers — shared by every class in this file
@@ -590,16 +621,16 @@ static uint32_t blend_pixel(uint32_t dst, uint32_t src, int64_t blend_mode) {
 /// @param alpha Alpha scale in [0, 255].
 /// @param blend_mode One of `RT_GRAPHICS2D_BLEND_*`.
 void blit_pixels(void *dst,
-                        int64_t dx,
-                        int64_t dy,
-                        void *src,
-                        int64_t sx,
-                        int64_t sy,
-                        int64_t width,
-                        int64_t height,
-                        int64_t tint,
-                        int64_t alpha,
-                        int64_t blend_mode) {
+                 int64_t dx,
+                 int64_t dy,
+                 void *src,
+                 int64_t sx,
+                 int64_t sy,
+                 int64_t width,
+                 int64_t height,
+                 int64_t tint,
+                 int64_t alpha,
+                 int64_t blend_mode) {
     if (!dst || !src || width <= 0 || height <= 0)
         return;
 
@@ -984,10 +1015,13 @@ static void blit_pixels_rotated(void *dst,
             max_y = ry;
     }
 
-    int64_t x0 = (int64_t)floor(min_x);
-    int64_t x1 = (int64_t)ceil(max_x);
-    int64_t y0 = (int64_t)floor(min_y);
-    int64_t y1 = (int64_t)ceil(max_y);
+    int64_t x0;
+    int64_t x1;
+    int64_t y0;
+    int64_t y1;
+    if (!rt2d_floor_i64_checked(min_x, &x0) || !rt2d_ceil_i64_checked(max_x, &x1) ||
+        !rt2d_floor_i64_checked(min_y, &y0) || !rt2d_ceil_i64_checked(max_y, &y1))
+        return;
     wrap = wrap == RT_GRAPHICS2D_WRAP_REPEAT ? RT_GRAPHICS2D_WRAP_REPEAT : RT_GRAPHICS2D_WRAP_CLAMP;
     filter = filter == RT_GRAPHICS2D_FILTER_LINEAR ? RT_GRAPHICS2D_FILTER_LINEAR
                                                    : RT_GRAPHICS2D_FILTER_NEAREST;
@@ -1061,8 +1095,7 @@ static void apply_tint_alpha_in_place(void *pixels, int64_t tint, int64_t alpha)
 ///   The source coordinates are NOT clipped — callers that may have out-of-bounds regions
 ///   should call `clip_region_to_source` first. Returns NULL if allocation fails or inputs
 ///   are invalid.
-void *copy_region_pixels(
-    void *pixels, int64_t sx, int64_t sy, int64_t width, int64_t height) {
+void *copy_region_pixels(void *pixels, int64_t sx, int64_t sy, int64_t width, int64_t height) {
     if (!pixels || width <= 0 || height <= 0)
         return NULL;
     void *out = rt_pixels_new(width, height);
@@ -1952,10 +1985,15 @@ void rt_renderer2d_end(void *renderer, void *canvas) {
                     if (ry > max_y)
                         max_y = ry;
                 }
-                int64_t x0 = (int64_t)floor(min_x);
-                int64_t x1 = (int64_t)ceil(max_x);
-                int64_t y0 = (int64_t)floor(min_y);
-                int64_t y1 = (int64_t)ceil(max_y);
+                int64_t x0;
+                int64_t x1;
+                int64_t y0;
+                int64_t y1;
+                if (!rt2d_floor_i64_checked(min_x, &x0) ||
+                    !rt2d_ceil_i64_checked(max_x, &x1) ||
+                    !rt2d_floor_i64_checked(min_y, &y0) ||
+                    !rt2d_ceil_i64_checked(max_y, &y1))
+                    continue;
                 int64_t rw = x1 - x0;
                 int64_t rh = y1 - y0;
                 if (rw <= 0 || rh <= 0 || !checked_count(rw, rh, 4, NULL))
@@ -3135,10 +3173,10 @@ void rt_spriterenderer2d_draw_texture(
     rt_renderer2d_saved_state state;
     renderer2d_save_state(renderer_impl, &state);
     spriterenderer2d_apply_state(impl, renderer);
-    int64_t filter = impl && impl->sampler ? rt_sampler2d_get_filter(impl->sampler)
-                                           : rt_texture2d_get_filter(texture);
-    int64_t wrap = impl && impl->sampler ? rt_sampler2d_get_wrap(impl->sampler)
-                                         : rt_texture2d_get_wrap(texture);
+    int64_t filter =
+        impl->sampler ? rt_sampler2d_get_filter(impl->sampler) : rt_texture2d_get_filter(texture);
+    int64_t wrap =
+        impl->sampler ? rt_sampler2d_get_wrap(impl->sampler) : rt_texture2d_get_wrap(texture);
     renderer2d_queue(renderer_impl,
                      1,
                      texture,

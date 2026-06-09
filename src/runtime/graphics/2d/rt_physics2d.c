@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_physics2d.c
+// File: src/runtime/graphics/2d/rt_physics2d.c
 // Purpose: Simple 2D rigid-body physics engine with AABB/circle collision detection
 //   and impulse-based collision response. Designed for game use cases: enemies,
 //   platforms, bullets, and other simple rectangular entities. Intentionally
@@ -38,7 +38,7 @@
 //   - Callers should call rt_physics2d_world_remove() before dropping a body
 //     handle to avoid dangling references.
 //
-// Links: rt_physics2d.h (public API), docs/viperlib/game.md (usage guide)
+// Links: src/runtime/graphics/2d/rt_physics2d.h (public API), docs/viperlib/game.md (usage guide)
 //
 //===----------------------------------------------------------------------===//
 
@@ -65,18 +65,23 @@ static void world_clear_contacts(rt_world_impl *w) {
     if (!w)
         return;
     w->contact_count = 0;
+    w->contact_overflow = 0;
     memset(w->contacts, 0, sizeof(w->contacts));
 }
 
 /// @brief Append a contact record to the world's per-step contact list.
-/// @details Skips recording when the list is full (PH_MAX_CONTACTS) or when the
-///   manifold values are non-finite, so downstream queries always see a clean
-///   list even in degenerate numerical situations.  Penetration is clamped to
-///   [0, +inf) because negative depth would indicate separation, not contact.
+/// @details Records an overflow flag when the list is full (PH_MAX_CONTACTS), and skips non-finite
+///   manifold values so downstream queries always see a clean list even in degenerate numerical
+///   situations. Penetration is clamped to [0, +inf) because negative depth would indicate
+///   separation, not contact.
 void world_record_contact(
     rt_world_impl *w, rt_body_impl *a, rt_body_impl *b, double nx, double ny, double pen) {
-    if (!w || !a || !b || w->contact_count >= PH_MAX_CONTACTS)
+    if (!w || !a || !b)
         return;
+    if (w->contact_count >= PH_MAX_CONTACTS) {
+        w->contact_overflow = 1;
+        return;
+    }
     if (!isfinite(nx) || !isfinite(ny) || !isfinite(pen))
         return;
     int32_t idx = w->contact_count++;
@@ -348,6 +353,7 @@ void *rt_physics2d_world_new(double gravity_x, double gravity_y) {
     w->body_count = 0;
     w->joint_count = 0;
     w->contact_count = 0;
+    w->contact_overflow = 0;
     memset(w->bodies, 0, sizeof(w->bodies));
     memset(w->joints, 0, sizeof(w->joints));
     memset(w->contacts, 0, sizeof(w->contacts));
@@ -652,13 +658,28 @@ void rt_physics2d_world_set_gravity(void *obj, double gx, double gy) {
 
 /// @brief Number of contact pairs resolved during the most recent world step.
 /// @details The list is rebuilt fresh on every call to rt_physics2d_world_step and
-///   capped at PH_MAX_CONTACTS.  Query it between steps to drive game logic (e.g.
-///   damage on collision, sound effects).
+///   capped at PH_MAX_CONTACTS. If the cap is reached, `rt_physics2d_world_contact_overflowed`
+///   reports that additional contacts were omitted. Query it between steps to drive game logic
+///   (e.g. damage on collision, sound effects).
 int64_t rt_physics2d_world_contact_count(void *obj) {
     if (!obj)
         return 0;
     rt_world_impl *w = checked_world(obj, "Physics2D.World.ContactCount: expected Physics2D.World");
     return w ? w->contact_count : 0;
+}
+
+/// @brief Return whether contacts were omitted from the most recent world step.
+/// @details The fixed contact buffer stores at most PH_MAX_CONTACTS records. This flag is cleared
+///          when contacts are cleared and set the first time a valid contact cannot be appended
+///          because the buffer is full.
+/// @param obj Physics2D world handle.
+/// @return 1 if contact results overflowed during the most recent step, otherwise 0.
+int8_t rt_physics2d_world_contact_overflowed(void *obj) {
+    if (!obj)
+        return 0;
+    rt_world_impl *w =
+        checked_world(obj, "Physics2D.World.ContactOverflowed: expected Physics2D.World");
+    return w && w->contact_overflow ? 1 : 0;
 }
 
 /// @brief Guard for all contact-list accessors — returns 1 only when `index` is in range.

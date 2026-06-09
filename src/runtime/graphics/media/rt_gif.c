@@ -561,7 +561,7 @@ int gif_decode_file(const char *filepath,
             if (ext_label == 0xF9) {
                 // Graphics Control Extension
                 int block_size = gif_read_u8(r);
-                if (block_size < 4) {
+                if (block_size != 4) {
                     decode_failed = 1;
                     break;
                 }
@@ -583,15 +583,7 @@ int gif_decode_file(const char *filepath,
                 }
                 gce_transparent = has_transparent ? trans_idx : -1;
                 gce_valid = 1;
-                // Skip remaining (block terminator)
-                if (block_size > 4) {
-                    if ((size_t)(block_size - 4) > r->len - r->pos) {
-                        decode_failed = 1;
-                        break;
-                    }
-                    r->pos += (size_t)(block_size - 4);
-                }
-                if (gif_read_u8(r) < 0) { // block terminator
+                if (gif_read_u8(r) != 0) { // block terminator
                     decode_failed = 1;
                     break;
                 }
@@ -633,6 +625,10 @@ int gif_decode_file(const char *filepath,
                 }
                 color_table = lct;
                 color_count = lct_count;
+            }
+            if (color_count <= 0) {
+                decode_failed = 1;
+                break;
             }
 
             // LZW minimum code size
@@ -904,7 +900,7 @@ int rt_gif_decode_memory_first_rgba32(
                 break;
             if (ext_label == 0xF9) {
                 int block_size = gif_read_u8(r);
-                if (block_size < 4)
+                if (block_size != 4)
                     break;
                 int gce_packed = gif_read_u8(r);
                 int delay;
@@ -919,13 +915,7 @@ int rt_gif_decode_memory_first_rgba32(
                 gce_delay_ms = delay * 10;
                 gce_transparent = (gce_packed & 0x01) ? trans_idx : -1;
                 gce_valid = 1;
-                if (block_size > 4) {
-                    size_t skip = (size_t)(block_size - 4);
-                    if (skip > r->len - r->pos)
-                        break;
-                    r->pos += skip;
-                }
-                if (gif_read_u8(r) < 0)
+                if (gif_read_u8(r) != 0)
                     break;
             } else {
                 if (!gif_skip_sub_blocks(r))
@@ -968,6 +958,8 @@ int rt_gif_decode_memory_first_rgba32(
                 color_table = lct;
                 color_count = lct_count;
             }
+            if (color_count <= 0)
+                break;
 
             min_code_size = gif_read_u8(r);
             if (min_code_size < 2 || min_code_size > 11)

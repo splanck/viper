@@ -24,6 +24,15 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+#if !defined(_WIN32)
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#ifndef _DARWIN_C_SOURCE
+#define _DARWIN_C_SOURCE
+#endif
+#endif
+
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_mat4.h"
@@ -41,6 +50,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));

@@ -63,22 +63,20 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
         return NULL;
     }
     mip_count = (int64_t)level_count;
-    if (mip_count <= 0 || mip_count > (int64_t)TEXTUREASSET3D_MAX_MIP_COUNT) {
+    if (mip_count > (int64_t)TEXTUREASSET3D_MAX_MIP_COUNT) {
         rt_trap("TextureAsset3D.LoadKTX2: unsupported mip count");
         return NULL;
     }
-    if (level_count > 0) {
-        if ((uint64_t)level_count >
-            (UINT64_MAX - TEXTUREASSET3D_KTX2_HEADER_SIZE) / TEXTUREASSET3D_KTX2_LEVEL_ENTRY_SIZE) {
-            rt_trap("TextureAsset3D.LoadKTX2: level index overflow");
-            return NULL;
-        }
-        level_table_bytes = TEXTUREASSET3D_KTX2_HEADER_SIZE +
-                            (uint64_t)level_count * TEXTUREASSET3D_KTX2_LEVEL_ENTRY_SIZE;
-        if (level_table_bytes > (uint64_t)size) {
-            rt_trap("TextureAsset3D.LoadKTX2: truncated level index");
-            return NULL;
-        }
+    if ((uint64_t)level_count >
+        (UINT64_MAX - TEXTUREASSET3D_KTX2_HEADER_SIZE) / TEXTUREASSET3D_KTX2_LEVEL_ENTRY_SIZE) {
+        rt_trap("TextureAsset3D.LoadKTX2: level index overflow");
+        return NULL;
+    }
+    level_table_bytes = TEXTUREASSET3D_KTX2_HEADER_SIZE +
+                        (uint64_t)level_count * TEXTUREASSET3D_KTX2_LEVEL_ENTRY_SIZE;
+    if (level_table_bytes > (uint64_t)size) {
+        rt_trap("TextureAsset3D.LoadKTX2: truncated level index");
+        return NULL;
     }
 
     format = textureasset3d_format_from_vk(vk_format);
@@ -278,7 +276,7 @@ int64_t rt_textureasset3d_get_resident_mip_start(void *obj) {
     int64_t safe_mip_count = textureasset3d_safe_mip_count(asset);
     if (!asset || safe_mip_count <= 0 || asset->resident_mip_start < 0)
         return 0;
-    if (safe_mip_count > 0 && asset->resident_mip_start > safe_mip_count)
+    if (asset->resident_mip_start > safe_mip_count)
         return safe_mip_count;
     return asset->resident_mip_start;
 }

@@ -660,12 +660,6 @@ void *rt_sprite_from_file(void *path) {
             return NULL;
         }
         int n = gif_count;
-        if (n <= 0) {
-            sprite_release_gif_frames(gif_frames, gif_count);
-            if (rt_obj_release_check0(sprite))
-                rt_obj_free(sprite);
-            return NULL;
-        }
         if (!sprite_ensure_frame_capacity(sprite, n)) {
             sprite_release_gif_frames(gif_frames, gif_count);
             if (rt_obj_release_check0(sprite))

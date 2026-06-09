@@ -40,8 +40,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "fonts/embedded_font.h"
-#include "rt_gui_internal.h"
 #include "rt_gui_app_internal.h"
+#include "rt_gui_internal.h"
 #include "rt_input.h"
 #include "rt_platform.h"
 #include "rt_time.h"
@@ -793,7 +793,6 @@ static void rt_gui_app_resize_render(void *userdata, int32_t w, int32_t h) {
     rt_gui_app_render(userdata);
 }
 
-
 /// @brief Create a new GUI application with a window and root widget container.
 /// @details Allocates the app struct on the GC heap (rt_obj_new_i64), creates a
 ///          platform window via vgfx, sets up a root container widget, registers
@@ -818,13 +817,12 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
     params.width = (int32_t)(width < 1 ? 1 : width > INT32_MAX ? INT32_MAX : width);
     params.height = (int32_t)(height < 1 ? 1 : height > INT32_MAX ? INT32_MAX : height);
     char *ctitle = rt_string_to_gui_cstr(title);
-    if (ctitle) {
-        params.title = ctitle;
-    }
+    const char *window_title = ctitle ? ctitle : "Viper GUI";
+    params.title = window_title;
     params.resizable = 1;
 
     app->window = vgfx_create_window(&params);
-    app->title = ctitle ? strdup(ctitle) : NULL;
+    app->title = strdup(window_title);
     free(ctitle);
 
     if (!app->window) {
@@ -832,6 +830,12 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
         // collector. Zero the struct so the GC finalizer (if any) sees clean state.
         free(app->title);
         app->title = NULL;
+        memset(app, 0, sizeof(rt_gui_app_t));
+        return NULL;
+    }
+    if (!app->title) {
+        vgfx_destroy_window(app->window);
+        app->window = NULL;
         memset(app, 0, sizeof(rt_gui_app_t));
         return NULL;
     }

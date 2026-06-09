@@ -176,8 +176,8 @@ static int ensure_text_capacity(rt_canvas3d *c, int32_t vertex_count, int32_t in
 static int cmp_back_to_front(const void *a, const void *b) {
     const deferred_draw_t *da = (const deferred_draw_t *)a;
     const deferred_draw_t *db = (const deferred_draw_t *)b;
-    float ka = da->sort_key;
-    float kb = db->sort_key;
+    float ka = canvas3d_sanitize_sort_key(da->sort_key, 1);
+    float kb = canvas3d_sanitize_sort_key(db->sort_key, 1);
     if (ka > kb)
         return -1;
     if (ka < kb)
@@ -200,8 +200,8 @@ static int cmp_back_to_front(const void *a, const void *b) {
 static int cmp_front_to_back(const void *a, const void *b) {
     const deferred_draw_t *da = (const deferred_draw_t *)a;
     const deferred_draw_t *db = (const deferred_draw_t *)b;
-    float ka = da->sort_key;
-    float kb = db->sort_key;
+    float ka = canvas3d_sanitize_sort_key(da->sort_key, 0);
+    float kb = canvas3d_sanitize_sort_key(db->sort_key, 0);
     if (ka < kb)
         return -1;
     if (ka > kb)
@@ -231,6 +231,8 @@ static int canvas3d_sort_tuple_after(float key,
                                      int descending) {
     if (previous_enqueue_index < 0)
         return 1;
+    key = canvas3d_sanitize_sort_key(key, descending ? 1 : 0);
+    previous_key = canvas3d_sanitize_sort_key(previous_key, descending ? 1 : 0);
     if (key == previous_key)
         return stable_sort_id == previous_stable_sort_id ? enqueue_index > previous_enqueue_index
                                                          : stable_sort_id > previous_stable_sort_id;
@@ -245,8 +247,10 @@ static int canvas3d_sort_tuple_less(const deferred_draw_t *a,
                                     int descending) {
     if (!a || !b)
         return 0;
-    if (a->sort_key != b->sort_key)
-        return descending ? (a->sort_key > b->sort_key) : (a->sort_key < b->sort_key);
+    float a_key = canvas3d_sanitize_sort_key(a->sort_key, descending ? 1 : 0);
+    float b_key = canvas3d_sanitize_sort_key(b->sort_key, descending ? 1 : 0);
+    if (a_key != b_key)
+        return descending ? (a_key > b_key) : (a_key < b_key);
     if (a->stable_sort_id != b->stable_sort_id)
         return a->stable_sort_id < b->stable_sort_id;
     return a->enqueue_index < b->enqueue_index;

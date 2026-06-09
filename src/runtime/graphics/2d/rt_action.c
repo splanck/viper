@@ -24,6 +24,7 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_string_builder.h"
+#include "rt_trap.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -883,179 +884,164 @@ void *rt_action_list(void) {
     return seq;
 }
 
+/// @brief Append literal text to an action-binding description builder.
+/// @details Wraps `rt_sb_append_cstr` with a boolean return so callers can share one error path.
+///          A NULL literal is treated as an empty string, which keeps fallback names safe when
+///          called from defensive branches.
+/// @param sb   Builder receiving the text.
+/// @param text NUL-terminated text to append.
+/// @return 1 on success, 0 if the builder reports allocation/overflow/invalid input failure.
+static int action_bindings_append_cstr(rt_string_builder *sb, const char *text) {
+    return rt_sb_append_cstr(sb, text ? text : "") == RT_SB_OK;
+}
+
+/// @brief Append the display name for a keyboard key to an action-binding description.
+/// @details Uses `rt_keyboard_key_name` when it returns non-empty text. If the key code has no
+///          known display name, appends @p fallback so callers never lose the binding entirely.
+/// @param sb       Builder receiving the key name.
+/// @param key      Runtime key code.
+/// @param fallback Text used when no key name is available.
+/// @return 1 on success, 0 if appending to the builder failed.
+static int action_bindings_append_key_name(rt_string_builder *sb, int64_t key, const char *fallback) {
+    rt_string key_name = rt_keyboard_key_name(key);
+    int64_t key_len = key_name ? rt_str_len(key_name) : 0;
+    if (key_len > 0)
+        return rt_sb_append_bytes(sb, key_name->data, (size_t)key_len) == RT_SB_OK;
+    return action_bindings_append_cstr(sb, fallback ? fallback : "Key");
+}
+
+/// @brief Append a human-readable description for one action binding.
+/// @details Covers keyboard, mouse, gamepad, axis, and chord bindings. Chord descriptions are
+///          assembled directly into the dynamic builder, so long key names or many bindings no
+///          longer truncate at a fixed stack-buffer boundary.
+/// @param sb Builder receiving the binding text.
+/// @param b  Binding to describe.
+/// @return 1 on success, 0 if appending to the builder failed.
+static int action_bindings_append_desc(rt_string_builder *sb, const Binding *b) {
+    if (!b)
+        return action_bindings_append_cstr(sb, "Unknown");
+
+    switch (b->type) {
+        case BIND_KEY:
+            return action_bindings_append_key_name(sb, b->code, "Key");
+        case BIND_MOUSE_BUTTON:
+            switch (b->code) {
+                case VIPER_MOUSE_BUTTON_LEFT:
+                    return action_bindings_append_cstr(sb, "Mouse Left");
+                case VIPER_MOUSE_BUTTON_RIGHT:
+                    return action_bindings_append_cstr(sb, "Mouse Right");
+                case VIPER_MOUSE_BUTTON_MIDDLE:
+                    return action_bindings_append_cstr(sb, "Mouse Middle");
+                default:
+                    return action_bindings_append_cstr(sb, "Mouse Button");
+            }
+        case BIND_MOUSE_X:
+            return action_bindings_append_cstr(sb, "Mouse X");
+        case BIND_MOUSE_Y:
+            return action_bindings_append_cstr(sb, "Mouse Y");
+        case BIND_SCROLL_X:
+            return action_bindings_append_cstr(sb, "Scroll X");
+        case BIND_SCROLL_Y:
+            return action_bindings_append_cstr(sb, "Scroll Y");
+        case BIND_PAD_BUTTON:
+        case BIND_PAD_BUTTON_AXIS:
+            switch (b->code) {
+                case VIPER_PAD_A:
+                    return action_bindings_append_cstr(sb, "Pad A");
+                case VIPER_PAD_B:
+                    return action_bindings_append_cstr(sb, "Pad B");
+                case VIPER_PAD_X:
+                    return action_bindings_append_cstr(sb, "Pad X");
+                case VIPER_PAD_Y:
+                    return action_bindings_append_cstr(sb, "Pad Y");
+                case VIPER_PAD_LB:
+                    return action_bindings_append_cstr(sb, "Pad LB");
+                case VIPER_PAD_RB:
+                    return action_bindings_append_cstr(sb, "Pad RB");
+                case VIPER_PAD_UP:
+                    return action_bindings_append_cstr(sb, "Pad Up");
+                case VIPER_PAD_DOWN:
+                    return action_bindings_append_cstr(sb, "Pad Down");
+                case VIPER_PAD_LEFT:
+                    return action_bindings_append_cstr(sb, "Pad Left");
+                case VIPER_PAD_RIGHT:
+                    return action_bindings_append_cstr(sb, "Pad Right");
+                case VIPER_PAD_START:
+                    return action_bindings_append_cstr(sb, "Pad Start");
+                case VIPER_PAD_BACK:
+                    return action_bindings_append_cstr(sb, "Pad Back");
+                default:
+                    return action_bindings_append_cstr(sb, "Pad Button");
+            }
+        case BIND_PAD_AXIS:
+            switch (b->code) {
+                case VIPER_AXIS_LEFT_X:
+                    return action_bindings_append_cstr(sb, "Left Stick X");
+                case VIPER_AXIS_LEFT_Y:
+                    return action_bindings_append_cstr(sb, "Left Stick Y");
+                case VIPER_AXIS_RIGHT_X:
+                    return action_bindings_append_cstr(sb, "Right Stick X");
+                case VIPER_AXIS_RIGHT_Y:
+                    return action_bindings_append_cstr(sb, "Right Stick Y");
+                case VIPER_AXIS_LEFT_TRIGGER:
+                    return action_bindings_append_cstr(sb, "Left Trigger");
+                case VIPER_AXIS_RIGHT_TRIGGER:
+                    return action_bindings_append_cstr(sb, "Right Trigger");
+                default:
+                    return action_bindings_append_cstr(sb, "Pad Axis");
+            }
+        case BIND_CHORD: {
+            int32_t chord_len = b->chord_len;
+            if (chord_len <= 0)
+                return action_bindings_append_cstr(sb, "Chord");
+            if (chord_len > MAX_CHORD_KEYS)
+                chord_len = MAX_CHORD_KEYS;
+            for (int32_t ci = 0; ci < chord_len; ci++) {
+                if (ci > 0 && !action_bindings_append_cstr(sb, "+"))
+                    return 0;
+                if (!action_bindings_append_key_name(sb, b->chord_keys[ci], "Key"))
+                    return 0;
+            }
+            return 1;
+        }
+        default:
+            return action_bindings_append_cstr(sb, "Unknown");
+    }
+}
+
 /// @brief `Action.BindingsStr(action)` — human-readable description of all bindings.
 ///
 /// Comma-separated list like "Space, Mouse Left, Pad A, Ctrl+S".
-/// Useful for "press X to jump"-style on-screen prompts. Capped at
-/// a 1024-byte buffer; bindings beyond that are silently truncated.
+/// Useful for "press X to jump"-style on-screen prompts. The result is built
+/// dynamically so long binding lists are returned in full unless allocation fails.
 rt_string rt_action_bindings_str(rt_string action) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a)
         return rt_str_empty();
 
-    // Build a description of all bindings
-    char buffer[1024];
-    buffer[0] = '\0';
-    int pos = 0;
+    rt_string_builder sb;
+    rt_sb_init(&sb);
     int first = 1;
 
     Binding *b = a->bindings;
-    while (b && pos < 1000) {
-        if (!first && pos < 998) {
-            buffer[pos++] = ',';
-            buffer[pos++] = ' ';
-        }
+    while (b) {
+        if (!first && !action_bindings_append_cstr(&sb, ", "))
+            goto failed;
         first = 0;
-
-        const char *desc = "";
-        char temp[64];
-
-        switch (b->type) {
-            case BIND_KEY: {
-                rt_string key_name = rt_keyboard_key_name(b->code);
-                int64_t key_len = rt_str_len(key_name);
-                if (key_len > 0 && key_len < 60) {
-                    memcpy(temp, key_name->data, (size_t)key_len);
-                    temp[key_len] = '\0';
-                    desc = temp;
-                } else {
-                    desc = "Key";
-                }
-                break;
-            }
-            case BIND_MOUSE_BUTTON:
-                switch (b->code) {
-                    case VIPER_MOUSE_BUTTON_LEFT:
-                        desc = "Mouse Left";
-                        break;
-                    case VIPER_MOUSE_BUTTON_RIGHT:
-                        desc = "Mouse Right";
-                        break;
-                    case VIPER_MOUSE_BUTTON_MIDDLE:
-                        desc = "Mouse Middle";
-                        break;
-                    default:
-                        desc = "Mouse Button";
-                        break;
-                }
-                break;
-            case BIND_MOUSE_X:
-                desc = "Mouse X";
-                break;
-            case BIND_MOUSE_Y:
-                desc = "Mouse Y";
-                break;
-            case BIND_SCROLL_X:
-                desc = "Scroll X";
-                break;
-            case BIND_SCROLL_Y:
-                desc = "Scroll Y";
-                break;
-            case BIND_PAD_BUTTON:
-            case BIND_PAD_BUTTON_AXIS:
-                switch (b->code) {
-                    case VIPER_PAD_A:
-                        desc = "Pad A";
-                        break;
-                    case VIPER_PAD_B:
-                        desc = "Pad B";
-                        break;
-                    case VIPER_PAD_X:
-                        desc = "Pad X";
-                        break;
-                    case VIPER_PAD_Y:
-                        desc = "Pad Y";
-                        break;
-                    case VIPER_PAD_LB:
-                        desc = "Pad LB";
-                        break;
-                    case VIPER_PAD_RB:
-                        desc = "Pad RB";
-                        break;
-                    case VIPER_PAD_UP:
-                        desc = "Pad Up";
-                        break;
-                    case VIPER_PAD_DOWN:
-                        desc = "Pad Down";
-                        break;
-                    case VIPER_PAD_LEFT:
-                        desc = "Pad Left";
-                        break;
-                    case VIPER_PAD_RIGHT:
-                        desc = "Pad Right";
-                        break;
-                    case VIPER_PAD_START:
-                        desc = "Pad Start";
-                        break;
-                    case VIPER_PAD_BACK:
-                        desc = "Pad Back";
-                        break;
-                    default:
-                        desc = "Pad Button";
-                        break;
-                }
-                break;
-            case BIND_PAD_AXIS:
-                switch (b->code) {
-                    case VIPER_AXIS_LEFT_X:
-                        desc = "Left Stick X";
-                        break;
-                    case VIPER_AXIS_LEFT_Y:
-                        desc = "Left Stick Y";
-                        break;
-                    case VIPER_AXIS_RIGHT_X:
-                        desc = "Right Stick X";
-                        break;
-                    case VIPER_AXIS_RIGHT_Y:
-                        desc = "Right Stick Y";
-                        break;
-                    case VIPER_AXIS_LEFT_TRIGGER:
-                        desc = "Left Trigger";
-                        break;
-                    case VIPER_AXIS_RIGHT_TRIGGER:
-                        desc = "Right Trigger";
-                        break;
-                    default:
-                        desc = "Pad Axis";
-                        break;
-                }
-                break;
-            case BIND_CHORD: {
-                // Build "Key1+Key2+Key3" style description
-                int ci;
-                int tpos = 0;
-                temp[0] = '\0';
-                for (ci = 0; ci < b->chord_len && tpos < 58; ci++) {
-                    if (ci > 0 && tpos < 57)
-                        temp[tpos++] = '+';
-                    rt_string kn = rt_keyboard_key_name(b->chord_keys[ci]);
-                    int64_t kl = rt_str_len(kn);
-                    if (kl > 0 && tpos + kl < 60) {
-                        memcpy(temp + tpos, kn->data, (size_t)kl);
-                        tpos += (int)kl;
-                    }
-                }
-                temp[tpos] = '\0';
-                desc = temp;
-                break;
-            }
-            default:
-                desc = "Unknown";
-                break;
-        }
-
-        size_t len = strlen(desc);
-        if (pos + (int)len < 1000) {
-            memcpy(buffer + pos, desc, len);
-            pos += (int)len;
-        }
-
+        if (!action_bindings_append_desc(&sb, b))
+            goto failed;
         b = b->next;
     }
-    buffer[pos] = '\0';
 
-    return rt_string_from_bytes(buffer, (size_t)pos);
+    rt_string result = rt_string_from_bytes(sb.data, sb.len);
+    rt_sb_free(&sb);
+    return result ? result : rt_str_empty();
+
+failed:
+    rt_sb_free(&sb);
+    rt_trap("Action.BindingsStr: binding description allocation failed");
+    return rt_str_empty();
 }
 
 /// @brief `Action.BindingCount(action)` — total number of bindings on this action.

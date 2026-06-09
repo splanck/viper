@@ -47,6 +47,141 @@ typedef struct bmp_info_header {
 
 #pragma pack(pop)
 
+/// @brief Read a little-endian unsigned 16-bit integer from a byte buffer.
+///
+/// @param p Pointer to at least two bytes.
+/// @return The decoded host-endian value.
+static uint16_t bmp_read_u16_le(const uint8_t *p) {
+    return (uint16_t)((uint16_t)p[0] | ((uint16_t)p[1] << 8));
+}
+
+/// @brief Read a little-endian unsigned 32-bit integer from a byte buffer.
+///
+/// @param p Pointer to at least four bytes.
+/// @return The decoded host-endian value.
+static uint32_t bmp_read_u32_le(const uint8_t *p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
+           ((uint32_t)p[3] << 24);
+}
+
+/// @brief Read a little-endian signed 32-bit integer from a byte buffer.
+///
+/// @param p Pointer to at least four bytes.
+/// @return The decoded host-endian signed value.
+static int32_t bmp_read_i32_le(const uint8_t *p) {
+    return (int32_t)bmp_read_u32_le(p);
+}
+
+/// @brief Store a 16-bit value in little-endian byte order.
+///
+/// @param p Pointer to at least two output bytes.
+/// @param value Host-endian value to encode.
+static void bmp_write_u16_le(uint8_t *p, uint16_t value) {
+    p[0] = (uint8_t)(value & 0xFFu);
+    p[1] = (uint8_t)((value >> 8) & 0xFFu);
+}
+
+/// @brief Store a 32-bit value in little-endian byte order.
+///
+/// @param p Pointer to at least four output bytes.
+/// @param value Host-endian value to encode.
+static void bmp_write_u32_le(uint8_t *p, uint32_t value) {
+    p[0] = (uint8_t)(value & 0xFFu);
+    p[1] = (uint8_t)((value >> 8) & 0xFFu);
+    p[2] = (uint8_t)((value >> 16) & 0xFFu);
+    p[3] = (uint8_t)((value >> 24) & 0xFFu);
+}
+
+/// @brief Store a signed 32-bit value in little-endian byte order.
+///
+/// @param p Pointer to at least four output bytes.
+/// @param value Host-endian signed value to encode.
+static void bmp_write_i32_le(uint8_t *p, int32_t value) {
+    bmp_write_u32_le(p, (uint32_t)value);
+}
+
+/// @brief Read a BMP file header without depending on host struct layout or endian.
+///
+/// @param f Open binary stream positioned at the file header.
+/// @param out Receives the decoded header on success.
+/// @return 1 on success, 0 on short read or invalid arguments.
+static int bmp_read_file_header(FILE *f, bmp_file_header *out) {
+    uint8_t buf[14];
+    if (!f || !out || fread(buf, 1, sizeof(buf), f) != sizeof(buf))
+        return 0;
+    out->magic[0] = buf[0];
+    out->magic[1] = buf[1];
+    out->file_size = bmp_read_u32_le(buf + 2);
+    out->reserved1 = bmp_read_u16_le(buf + 6);
+    out->reserved2 = bmp_read_u16_le(buf + 8);
+    out->data_offset = bmp_read_u32_le(buf + 10);
+    return 1;
+}
+
+/// @brief Read a BMP BITMAPINFOHEADER without raw-struct deserialization.
+///
+/// @param f Open binary stream positioned at the info header.
+/// @param out Receives the decoded header on success.
+/// @return 1 on success, 0 on short read or invalid arguments.
+static int bmp_read_info_header(FILE *f, bmp_info_header *out) {
+    uint8_t buf[40];
+    if (!f || !out || fread(buf, 1, sizeof(buf), f) != sizeof(buf))
+        return 0;
+    out->header_size = bmp_read_u32_le(buf + 0);
+    out->width = bmp_read_i32_le(buf + 4);
+    out->height = bmp_read_i32_le(buf + 8);
+    out->planes = bmp_read_u16_le(buf + 12);
+    out->bit_count = bmp_read_u16_le(buf + 14);
+    out->compression = bmp_read_u32_le(buf + 16);
+    out->image_size = bmp_read_u32_le(buf + 20);
+    out->x_pels_per_meter = bmp_read_i32_le(buf + 24);
+    out->y_pels_per_meter = bmp_read_i32_le(buf + 28);
+    out->colors_used = bmp_read_u32_le(buf + 32);
+    out->colors_important = bmp_read_u32_le(buf + 36);
+    return 1;
+}
+
+/// @brief Write a BMP file header in canonical little-endian byte order.
+///
+/// @param f Open binary stream positioned where the file header should be written.
+/// @param hdr Header values to encode.
+/// @return 1 on success, 0 on write failure or invalid arguments.
+static int bmp_write_file_header(FILE *f, const bmp_file_header *hdr) {
+    uint8_t buf[14];
+    if (!f || !hdr)
+        return 0;
+    buf[0] = hdr->magic[0];
+    buf[1] = hdr->magic[1];
+    bmp_write_u32_le(buf + 2, hdr->file_size);
+    bmp_write_u16_le(buf + 6, hdr->reserved1);
+    bmp_write_u16_le(buf + 8, hdr->reserved2);
+    bmp_write_u32_le(buf + 10, hdr->data_offset);
+    return fwrite(buf, 1, sizeof(buf), f) == sizeof(buf);
+}
+
+/// @brief Write a BMP BITMAPINFOHEADER in canonical little-endian byte order.
+///
+/// @param f Open binary stream positioned where the info header should be written.
+/// @param hdr Header values to encode.
+/// @return 1 on success, 0 on write failure or invalid arguments.
+static int bmp_write_info_header(FILE *f, const bmp_info_header *hdr) {
+    uint8_t buf[40];
+    if (!f || !hdr)
+        return 0;
+    bmp_write_u32_le(buf + 0, hdr->header_size);
+    bmp_write_i32_le(buf + 4, hdr->width);
+    bmp_write_i32_le(buf + 8, hdr->height);
+    bmp_write_u16_le(buf + 12, hdr->planes);
+    bmp_write_u16_le(buf + 14, hdr->bit_count);
+    bmp_write_u32_le(buf + 16, hdr->compression);
+    bmp_write_u32_le(buf + 20, hdr->image_size);
+    bmp_write_i32_le(buf + 24, hdr->x_pels_per_meter);
+    bmp_write_i32_le(buf + 28, hdr->y_pels_per_meter);
+    bmp_write_u32_le(buf + 32, hdr->colors_used);
+    bmp_write_u32_le(buf + 36, hdr->colors_important);
+    return fwrite(buf, 1, sizeof(buf), f) == sizeof(buf);
+}
+
 /// @brief Decode a 24-bit uncompressed BMP file into a Pixels object.
 ///
 /// Supports the most common BMP variant: BITMAPINFOHEADER, 24bpp,
@@ -76,7 +211,7 @@ void *rt_pixels_load_bmp(void *path) {
 
     // Read file header
     bmp_file_header file_hdr;
-    if (fread(&file_hdr, sizeof(file_hdr), 1, f) != 1)
+    if (!bmp_read_file_header(f, &file_hdr))
         goto bmp_cleanup;
 
     // Check magic
@@ -85,7 +220,7 @@ void *rt_pixels_load_bmp(void *path) {
 
     // Read info header
     bmp_info_header info_hdr;
-    if (fread(&info_hdr, sizeof(info_hdr), 1, f) != 1)
+    if (!bmp_read_info_header(f, &info_hdr))
         goto bmp_cleanup;
 
     // Only support BITMAPINFOHEADER, 24-bit, uncompressed BMP.
@@ -241,7 +376,7 @@ int64_t rt_pixels_save_bmp(void *pixels, void *path) {
         .reserved2 = 0,
         .data_offset = 54,
     };
-    if (fwrite(&file_hdr, sizeof(file_hdr), 1, f) != 1)
+    if (!bmp_write_file_header(f, &file_hdr))
         goto bmp_save_cleanup;
 
     // Write info header
@@ -258,7 +393,7 @@ int64_t rt_pixels_save_bmp(void *pixels, void *path) {
         .colors_used = 0,
         .colors_important = 0,
     };
-    if (fwrite(&info_hdr, sizeof(info_hdr), 1, f) != 1)
+    if (!bmp_write_info_header(f, &info_hdr))
         goto bmp_save_cleanup;
 
     // Allocate row buffer

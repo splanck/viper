@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/assets/rt_gltf_import.inc  (#included from rt_gltf.c; not a standalone translation unit)
-// Purpose: glTF decoded-payload take, scene/camera/light/morph import, path/URI resolution
+// File: src/runtime/graphics/3d/assets/rt_gltf_import.inc  (#included from rt_gltf.c; not a
+// standalone translation unit) Purpose: glTF decoded-payload take, scene/camera/light/morph import,
+// path/URI resolution
 //===----------------------------------------------------------------------===//
 
 /// @brief Unpack a primitive's preloaded "VGMT" morph-target POD blob and attach it to @p mesh_obj.
@@ -602,7 +603,8 @@ static void *gltf_make_camera(void *camera_json) {
     if (strcmp(type, "perspective") == 0) {
         void *persp = jget(camera_json, "perspective");
         double znear = gltf_clamp_double(jvalue_num(jget(persp, "znear"), 0.1), 1e-4, DBL_MAX, 0.1);
-        double zfar = gltf_finite_or(jvalue_num(jget(persp, "zfar"), znear + 1000.0), znear + 1000.0);
+        double zfar =
+            gltf_finite_or(jvalue_num(jget(persp, "zfar"), znear + 1000.0), znear + 1000.0);
         double yfov = gltf_clamp_double(
             jvalue_num(jget(persp, "yfov"), pi / 3.0), pi / 180.0, 179.0 * pi / 180.0, pi / 3.0);
         double aspect =
@@ -616,7 +618,8 @@ static void *gltf_make_camera(void *camera_json) {
         double xmag = fabs(jvalue_num(jget(ortho, "xmag"), 1.0));
         double ymag = fabs(jvalue_num(jget(ortho, "ymag"), 1.0));
         double znear = gltf_clamp_double(jvalue_num(jget(ortho, "znear"), 0.1), 1e-4, DBL_MAX, 0.1);
-        double zfar = gltf_finite_or(jvalue_num(jget(ortho, "zfar"), znear + 1000.0), znear + 1000.0);
+        double zfar =
+            gltf_finite_or(jvalue_num(jget(ortho, "zfar"), znear + 1000.0), znear + 1000.0);
         double aspect;
         if (!isfinite(xmag) || xmag <= 1e-9)
             xmag = 1.0;
@@ -1143,16 +1146,16 @@ static uint8_t *gltf_read_file_bytes(const char *filepath, size_t *out_size) {
     FILE *f = fopen(filepath, "rb");
     if (!f)
         return NULL;
-    if (fseek(f, 0, SEEK_END) != 0) {
+    if (gltf_fseek(f, 0, SEEK_END) != 0) {
         fclose(f);
         return NULL;
     }
-    long fsize = ftell(f);
-    if (fseek(f, 0, SEEK_SET) != 0) {
+    int64_t fsize = (int64_t)gltf_ftell(f);
+    if (gltf_fseek(f, 0, SEEK_SET) != 0) {
         fclose(f);
         return NULL;
     }
-    if (fsize <= 0 || fsize > 256 * 1024 * 1024) {
+    if (fsize <= 0 || fsize > INT64_C(256) * 1024 * 1024) {
         fclose(f);
         return NULL;
     }

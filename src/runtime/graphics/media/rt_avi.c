@@ -149,12 +149,21 @@ static void parse_strh(avi_context_t *ctx,
         return;
     uint32_t fcc_type = read_le32(data + 0);
     uint32_t fcc_handler = read_le32(data + 4);
+    uint32_t scale = read_le32(data + 20);
+    uint32_t rate = read_le32(data + 24);
+    uint32_t length = read_le32(data + 32);
 
     if (fcc_type == FOURCC_vids) {
         stream->stream_type = 0; /* video */
         if (ctx->video_stream_index < 0) {
             ctx->video_stream_index = stream->stream_index;
             ctx->video.fourcc = fcc_handler;
+            if (scale > 0 && rate > 0)
+                ctx->video.fps = (double)rate / (double)scale;
+            if (length > 0 && length <= (uint32_t)INT32_MAX)
+                ctx->video.frame_count = (int32_t)length;
+            if (ctx->video.fps > 0.0 && ctx->video.frame_count > 0)
+                ctx->video.duration = (double)ctx->video.frame_count / ctx->video.fps;
         }
     } else if (fcc_type == FOURCC_auds) {
         stream->stream_type = 1; /* audio */
@@ -233,14 +242,23 @@ static int walk_chunks(const uint8_t *data,
     while (pos + 8 <= len) {
         uint32_t fourcc = read_le32(data + pos);
         uint32_t size = read_le32(data + pos + 4);
-        if (size > len - pos - 8)
-            break;
+        if (size > len - pos - 8) {
+            if (ctx)
+                ctx->parse_error = 1;
+            return -1;
+        }
         handler(ctx, fourcc, data + pos + 8, size, extra);
         if (ctx && ctx->parse_error)
             break;
         pos += 8 + size;
-        if (size & 1)
+        if (size & 1) {
+            if (pos >= len) {
+                if (ctx)
+                    ctx->parse_error = 1;
+                return -1;
+            }
             pos++; /* RIFF 2-byte alignment */
+        }
     }
     return 0;
 }

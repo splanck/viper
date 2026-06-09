@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/assets/rt_fbx_loader_loader.inc  (#included from rt_fbx_loader.c; not a standalone translation unit)
-// Purpose: FBX top-level loader and recoverable load paths
+// File: src/runtime/graphics/3d/assets/rt_fbx_loader_loader.inc  (#included from rt_fbx_loader.c;
+// not a standalone translation unit) Purpose: FBX top-level loader and recoverable load paths
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Top-level FBX loader
@@ -15,11 +15,9 @@ static void rt_fbx_asset_finalize(void *obj) {
         return;
     fbx_asset_release_ref_array(&fbx->meshes, &fbx->mesh_count, &fbx->mesh_capacity);
     fbx_release_ref(&fbx->skeleton);
-    fbx_asset_release_ref_array(
-        &fbx->animations, &fbx->animation_count, &fbx->animation_capacity);
+    fbx_asset_release_ref_array(&fbx->animations, &fbx->animation_count, &fbx->animation_capacity);
     fbx_asset_release_ref_array(&fbx->materials, &fbx->material_count, &fbx->material_capacity);
-    fbx_asset_release_ref_array(
-        &fbx->morph_targets, &fbx->morph_count, &fbx->morph_capacity);
+    fbx_asset_release_ref_array(&fbx->morph_targets, &fbx->morph_count, &fbx->morph_capacity);
     fbx_release_ref(&fbx->scene_root);
 }
 
@@ -459,8 +457,8 @@ static void fbx_ascii_apply_material_properties(const char *text, void *material
     }
     if (fbx_ascii_parse_property_scalar(text, "EmissiveFactor", &scalar) ||
         fbx_ascii_parse_property_scalar(text, "EmissionFactor", &scalar))
-        rt_material3d_set_emissive_intensity(
-            material, fbx_clamp_double(scalar, 0.0, 1000000.0, 0.0));
+        rt_material3d_set_emissive_intensity(material,
+                                             fbx_clamp_double(scalar, 0.0, 1000000.0, 0.0));
     if (fbx_ascii_parse_property_scalar(text, "Metallic", &scalar) ||
         fbx_ascii_parse_property_scalar(text, "Metalness", &scalar))
         rt_material3d_set_metallic(material, fbx_clamp_double(scalar, 0.0, 1.0, 0.0));
@@ -571,8 +569,7 @@ static void *fbx_load_ascii_minimal(const char *text) {
     asset->material_capacity = 1;
     fbx_ascii_apply_material_properties(text, material);
     fbx_ascii_extract_model_name(text, model_name, sizeof(model_name));
-    rt_scene_node3d_set_name(mesh_node,
-                             rt_const_cstr(model_name[0] ? model_name : "mesh_0"));
+    rt_scene_node3d_set_name(mesh_node, rt_const_cstr(model_name[0] ? model_name : "mesh_0"));
     rt_scene_node3d_set_mesh(mesh_node, mesh);
     rt_scene_node3d_set_material(mesh_node, material);
     if (!rt_scene_node3d_try_add_child(scene_root, mesh_node))
@@ -633,18 +630,12 @@ static const uint8_t *fbx_video_content_bytes(fbx_node_t *video, uint32_t *out_l
 /// @param name Candidate property or child node name.
 /// @return Non-zero for known filename/path aliases.
 static int fbx_media_filename_alias(const char *name) {
-    return fbx_ascii_equals_i(name, "RelativeFilename") ||
-           fbx_ascii_equals_i(name, "FileName") ||
-           fbx_ascii_equals_i(name, "Filename") ||
-           fbx_ascii_equals_i(name, "OriginalFilename") ||
-           fbx_ascii_equals_i(name, "OriginalFileName") ||
-           fbx_ascii_equals_i(name, "FullName") ||
-           fbx_ascii_equals_i(name, "Media") ||
-           fbx_ascii_equals_i(name, "Path") ||
-           fbx_ascii_equals_i(name, "URI") ||
-           fbx_ascii_equals_i(name, "URL") ||
-           fbx_ascii_equals_i(name, "Url") ||
-           fbx_ascii_equals_i(name, "TextureName");
+    return fbx_ascii_equals_i(name, "RelativeFilename") || fbx_ascii_equals_i(name, "FileName") ||
+           fbx_ascii_equals_i(name, "Filename") || fbx_ascii_equals_i(name, "OriginalFilename") ||
+           fbx_ascii_equals_i(name, "OriginalFileName") || fbx_ascii_equals_i(name, "FullName") ||
+           fbx_ascii_equals_i(name, "Media") || fbx_ascii_equals_i(name, "Path") ||
+           fbx_ascii_equals_i(name, "URI") || fbx_ascii_equals_i(name, "URL") ||
+           fbx_ascii_equals_i(name, "Url") || fbx_ascii_equals_i(name, "TextureName");
 }
 
 /// @brief Best-effort texture/media filename for an FBX node.
@@ -706,7 +697,8 @@ static void *fbx_try_decode_embedded_texture(fbx_node_t *objects,
         if (!content || content_len == 0)
             continue;
         hint = fbx_node_media_filename_hint(video);
-        pixels = fbx_decode_texture_payload(hint && *hint ? hint : texture_hint, content, content_len);
+        pixels =
+            fbx_decode_texture_payload(hint && *hint ? hint : texture_hint, content, content_len);
         if (!pixels && fallback_hint && fallback_hint != texture_hint)
             pixels = fbx_decode_texture_payload(fallback_hint, content, content_len);
         if (pixels)
@@ -749,9 +741,9 @@ static int fbx_texture_prop_is_diffuse(const char *prop) {
     return !prop || *prop == '\0' || fbx_ascii_streq_ignore_case(prop, "DiffuseColor") ||
            fbx_ascii_streq_ignore_case(prop, "DiffuseFactor") ||
            fbx_ascii_streq_ignore_case(prop, "BaseColor") ||
-           fbx_ascii_streq_ignore_case(prop, "Albedo") ||
-           fbx_ascii_contains_i(prop, "basecolor") || fbx_ascii_contains_i(prop, "base_color") ||
-           fbx_ascii_contains_i(prop, "albedo") || fbx_ascii_contains_i(prop, "diffuse");
+           fbx_ascii_streq_ignore_case(prop, "Albedo") || fbx_ascii_contains_i(prop, "basecolor") ||
+           fbx_ascii_contains_i(prop, "base_color") || fbx_ascii_contains_i(prop, "albedo") ||
+           fbx_ascii_contains_i(prop, "diffuse");
 }
 
 /// @brief Assign an FBX texture as the material base-color slot.
@@ -800,8 +792,8 @@ static void fbx_load_link_textures(rt_fbx_asset *asset,
                 (!rel_filename || !*rel_filename || strcmp(filename, rel_filename) != 0))
                 pixels = fbx_try_load_texture_path(cpath, filename);
             if (!pixels)
-                pixels = fbx_try_decode_embedded_texture(
-                    objects, &ct, tex_id, rel_filename, filename);
+                pixels =
+                    fbx_try_decode_embedded_texture(objects, &ct, tex_id, rel_filename, filename);
             if (!pixels)
                 continue;
 
@@ -1032,8 +1024,8 @@ static int fbx_load_collect_geometry(rt_fbx_asset *asset,
                 memset(&material_map, 0, sizeof(material_map));
                 void *mesh = fbx_extract_geometry(obj, z_up, &remap, &material_map);
                 if (mesh) {
-                    asset->mesh_count =
-                        fbx_asset_safe_count(asset->meshes, asset->mesh_count, asset->mesh_capacity);
+                    asset->mesh_count = fbx_asset_safe_count(
+                        asset->meshes, asset->mesh_count, asset->mesh_capacity);
                     if (asset->mesh_count == INT32_MAX) {
                         fbx_release_ref(&mesh);
                         fbx_mesh_remap_free(&remap);
@@ -1046,8 +1038,7 @@ static int fbx_load_collect_geometry(rt_fbx_asset *asset,
                         fbx_mesh_material_map_free(&material_map);
                         return 0;
                     }
-                    if (!fbx_asset_reserve_ref_array(
-                            &asset->meshes, &asset->mesh_capacity, nc)) {
+                    if (!fbx_asset_reserve_ref_array(&asset->meshes, &asset->mesh_capacity, nc)) {
                         fbx_release_ref(&mesh);
                         fbx_mesh_remap_free(&remap);
                         fbx_mesh_material_map_free(&material_map);
@@ -1134,18 +1125,18 @@ static uint8_t *fbx_read_entire_file(const char *cpath, long *out_size) {
         rt_trap("FBX.Load: cannot open file");
         return NULL;
     }
-    if (fseek(f, 0, SEEK_END) != 0) {
+    if (fbx_fseek(f, 0, SEEK_END) != 0) {
         fclose(f);
         rt_trap("FBX.Load: seek failed");
         return NULL;
     }
-    long fsize = ftell(f);
+    int64_t fsize = (int64_t)fbx_ftell(f);
     if (fsize < 0) {
         fclose(f);
         rt_trap("FBX.Load: tell failed");
         return NULL;
     }
-    if (fseek(f, 0, SEEK_SET) != 0) {
+    if (fbx_fseek(f, 0, SEEK_SET) != 0) {
         fclose(f);
         rt_trap("FBX.Load: seek failed");
         return NULL;
@@ -1175,7 +1166,7 @@ static uint8_t *fbx_read_entire_file(const char *cpath, long *out_size) {
     }
     data[(size_t)fsize] = 0;
     fclose(f);
-    *out_size = fsize;
+    *out_size = (long)fsize;
     return data;
 }
 
@@ -1350,9 +1341,8 @@ void *rt_fbx_load(rt_string path) {
 
     /* Extract textures and link to materials */
     {
-        const char *texture_base = g_fbx_texture_base_override
-                                       ? rt_string_cstr(g_fbx_texture_base_override)
-                                       : NULL;
+        const char *texture_base =
+            g_fbx_texture_base_override ? rt_string_cstr(g_fbx_texture_base_override) : NULL;
         fbx_load_link_textures(asset,
                                objects,
                                texture_base && texture_base[0] ? texture_base : cpath,
@@ -1442,17 +1432,17 @@ static uint8_t *fbx_read_recoverable_file(rt_string path, long *out_size) {
     FILE *f = fopen(cpath, "rb");
     if (!f)
         return NULL;
-    if (fseek(f, 0, SEEK_END) != 0) {
+    if (fbx_fseek(f, 0, SEEK_END) != 0) {
         fclose(f);
         return NULL;
     }
-    long fsize = ftell(f);
+    int64_t fsize = (int64_t)fbx_ftell(f);
     if (fsize < 27 || (uint64_t)fsize > RT_FBX_MAX_FILE_BYTES ||
         (uint64_t)fsize >= (uint64_t)SIZE_MAX) {
         fclose(f);
         return NULL;
     }
-    if (fseek(f, 0, SEEK_SET) != 0) {
+    if (fbx_fseek(f, 0, SEEK_SET) != 0) {
         fclose(f);
         return NULL;
     }
@@ -1470,7 +1460,7 @@ static uint8_t *fbx_read_recoverable_file(rt_string path, long *out_size) {
     }
     data[(size_t)fsize] = 0;
     fclose(f);
-    *out_size = fsize;
+    *out_size = (long)fsize;
     return data;
 }
 

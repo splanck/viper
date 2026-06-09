@@ -4,6 +4,14 @@
 // Purpose: Game3D model-cache lifecycle: keys, residency estimation, victim selection and eviction
 //===----------------------------------------------------------------------===//
 
+#if defined(_WIN32)
+#define game3d_asset_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
+#define game3d_asset_ftell(fp) _ftelli64((fp))
+#else
+#define game3d_asset_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
+#define game3d_asset_ftell(fp) ftello((fp))
+#endif
+
 /// @brief Return the template's loaded Model3D as a class-checked reference, or NULL
 ///   when the template is absent or its model slot holds the wrong type.
 static void *game3d_model_template_model_ref(const rt_game3d_model_template *model_template) {
@@ -140,9 +148,18 @@ static int game3d_path_has_fbx_extension(const char *path) {
 
 /// @brief Read an entire file into a malloc'd buffer (caller frees; @p out_size set). NULL on
 /// failure.
+///
+/// @details Uses 64-bit seek/tell helpers so large-file support is consistent
+///   across Windows and POSIX builds. The root asset byte limit is still
+///   enforced before allocation; this helper does not silently truncate files
+///   whose length does not fit in @c long on 32-bit-long platforms.
+///
+/// @param path File-system path to read.
+/// @param out_size Receives the number of bytes read on success.
+/// @return A malloc-owned byte buffer, or NULL on open/seek/size/read failure.
 static uint8_t *game3d_asset_read_file_bytes(const char *path, size_t *out_size) {
     FILE *file;
-    long len;
+    int64_t len;
     uint8_t *data;
     size_t read_len;
     if (out_size)
@@ -152,11 +169,11 @@ static uint8_t *game3d_asset_read_file_bytes(const char *path, size_t *out_size)
     file = fopen(path, "rb");
     if (!file)
         return NULL;
-    if (fseek(file, 0, SEEK_END) != 0) {
+    if (game3d_asset_fseek(file, 0, SEEK_END) != 0) {
         fclose(file);
         return NULL;
     }
-    len = ftell(file);
+    len = (int64_t)game3d_asset_ftell(file);
     if (len < 0) {
         fclose(file);
         return NULL;
@@ -170,7 +187,7 @@ static uint8_t *game3d_asset_read_file_bytes(const char *path, size_t *out_size)
         fclose(file);
         return data;
     }
-    if (fseek(file, 0, SEEK_SET) != 0) {
+    if (game3d_asset_fseek(file, 0, SEEK_SET) != 0) {
         fclose(file);
         return NULL;
     }

@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_sw_vtable.inc  (#included from vgfx3d_backend_sw.c; not a standalone translation unit)
-// Purpose: Software backend vtable implementation (clear, frame, submit, present)
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_sw_vtable.inc  (#included from
+// vgfx3d_backend_sw.c; not a standalone translation unit) Purpose: Software backend vtable
+// implementation (clear, frame, submit, present)
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Backend vtable implementation
@@ -70,9 +71,11 @@ static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
                 px[2] = cb;
                 px[3] = 0xFF;
             }
-        size_t total = (size_t)rt->width * (size_t)rt->height;
-        for (size_t i = 0; i < total; i++)
-            rt->depth_buf[i] = FLT_MAX;
+        size_t total = 0;
+        if (sw_pixel_count_checked(rt->width, rt->height, &total)) {
+            for (size_t i = 0; i < total; i++)
+                rt->depth_buf[i] = FLT_MAX;
+        }
         rt->hdr_color_valid = 0;
         vgfx3d_rendertarget_clear_sync(rt);
     } else {
@@ -89,9 +92,11 @@ static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
                     px[3] = 0xFF;
                 }
         }
-        size_t total = (size_t)ctx->width * (size_t)ctx->height;
-        for (size_t i = 0; i < total; i++)
-            ctx->zbuf[i] = FLT_MAX;
+        size_t total = 0;
+        if (sw_pixel_count_checked(ctx->width, ctx->height, &total)) {
+            for (size_t i = 0; i < total; i++)
+                ctx->zbuf[i] = FLT_MAX;
+        }
     }
 }
 
@@ -122,14 +127,18 @@ static void sw_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
         if (ctx->render_target) {
             vgfx3d_rendertarget_t *rt = ctx->render_target;
             if (vgfx3d_rendertarget_ensure_depth(rt)) {
-                size_t total = (size_t)rt->width * (size_t)rt->height;
-                for (size_t i = 0; i < total; i++)
-                    rt->depth_buf[i] = FLT_MAX;
+                size_t total = 0;
+                if (sw_pixel_count_checked(rt->width, rt->height, &total)) {
+                    for (size_t i = 0; i < total; i++)
+                        rt->depth_buf[i] = FLT_MAX;
+                }
             }
         } else {
-            size_t total = (size_t)ctx->width * (size_t)ctx->height;
-            for (size_t i = 0; i < total; i++)
-                ctx->zbuf[i] = FLT_MAX;
+            size_t total = 0;
+            if (sw_pixel_count_checked(ctx->width, ctx->height, &total)) {
+                for (size_t i = 0; i < total; i++)
+                    ctx->zbuf[i] = FLT_MAX;
+            }
         }
     }
     /* Reset shadow state — rebuilt if shadows are enabled this frame */
@@ -477,7 +486,7 @@ static void sw_submit_draw(void *ctx_ptr,
                            int32_t light_count,
                            const float *ambient,
                            int8_t wireframe,
-    int8_t backface_cull) {
+                           int8_t backface_cull) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
     static const float zero_ambient[3] = {0.0f, 0.0f, 0.0f};
     uint32_t index_count;

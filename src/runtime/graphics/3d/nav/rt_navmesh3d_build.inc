@@ -1440,7 +1440,8 @@ int8_t rt_navmesh3d_export(void *obj, rt_string path) {
     if (!f)
         return 0;
     int ok = navmesh3d_export_v2(nm, f);
-    fclose(f);
+    if (fclose(f) != 0)
+        ok = 0;
     return ok ? 1 : 0;
 }
 
@@ -1449,8 +1450,9 @@ int8_t rt_navmesh3d_export(void *obj, rt_string path) {
 static rt_navmesh3d *navmesh3d_import_v1_after_magic(FILE *f) {
     double params[3];
     int32_t vc = 0;
-    if (fread(params, sizeof(double), 3u, f) != 3u || fread(&vc, sizeof(int32_t), 1u, f) != 1u ||
-        vc < 0 || vc > NAVMESH3D_IMPORT_MAX_RECORDS)
+    if (!navmesh3d_read_f64(f, &params[0]) || !navmesh3d_read_f64(f, &params[1]) ||
+        !navmesh3d_read_f64(f, &params[2]) || !navmesh3d_read_i32(f, &vc) || vc < 0 ||
+        vc > NAVMESH3D_IMPORT_MAX_RECORDS)
         return NULL;
 
     rt_navmesh3d *nm =
@@ -1467,10 +1469,13 @@ static rt_navmesh3d *navmesh3d_import_v1_after_magic(FILE *f) {
 
     if (vc > 0) {
         nm->vertices = (nav_vertex_t *)malloc((size_t)vc * sizeof(nav_vertex_t));
-        if (!nm->vertices ||
-            fread(nm->vertices, sizeof(nav_vertex_t), (size_t)vc, f) != (size_t)vc)
+        if (!nm->vertices)
             goto fail;
         for (int32_t i = 0; i < vc; i++) {
+            if (!navmesh3d_read_f32(f, &nm->vertices[i].position[0]) ||
+                !navmesh3d_read_f32(f, &nm->vertices[i].position[1]) ||
+                !navmesh3d_read_f32(f, &nm->vertices[i].position[2]))
+                goto fail;
             nm->vertices[i].position[0] =
                 navmesh3d_coordf_or((double)nm->vertices[i].position[0], 0.0);
             nm->vertices[i].position[1] =
@@ -1482,8 +1487,7 @@ static rt_navmesh3d *navmesh3d_import_v1_after_magic(FILE *f) {
     nm->vertex_count = vc;
 
     int32_t tc = 0;
-    if (fread(&tc, sizeof(int32_t), 1u, f) != 1u || tc < 0 ||
-        tc > NAVMESH3D_IMPORT_MAX_RECORDS)
+    if (!navmesh3d_read_i32(f, &tc) || tc < 0 || tc > NAVMESH3D_IMPORT_MAX_RECORDS)
         goto fail;
     if (tc > 0) {
         nm->triangles = (nav_triangle_t *)calloc((size_t)tc, sizeof(nav_triangle_t));
@@ -1494,9 +1498,9 @@ static rt_navmesh3d *navmesh3d_import_v1_after_magic(FILE *f) {
             int32_t idx[3];
             float cost = 1.0f;
             int8_t blocked = 0;
-            if (fread(idx, sizeof(int32_t), 3u, f) != 3u ||
-                fread(&cost, sizeof(float), 1u, f) != 1u ||
-                fread(&blocked, sizeof(int8_t), 1u, f) != 1u)
+            if (!navmesh3d_read_i32(f, &idx[0]) || !navmesh3d_read_i32(f, &idx[1]) ||
+                !navmesh3d_read_i32(f, &idx[2]) || !navmesh3d_read_f32(f, &cost) ||
+                !navmesh3d_io_read(f, &blocked, sizeof(blocked)))
                 goto fail;
             for (int k = 0; k < 3; k++) {
                 if (idx[k] < 0 || idx[k] >= vc)

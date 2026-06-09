@@ -245,756 +245,794 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Woverlength-strings"
 
-static NSString *metal_shader_source = @
+static NSString *
+    metal_shader_source = @
     "#include <metal_stdlib>\n"
-                                        "using namespace metal;\n"
-                                        "\n"
-                                        "struct VertexIn {\n"
-                                        "    float3 position [[attribute(0)]];\n"
-                                        "    float3 normal   [[attribute(1)]];\n"
-                                        "    float2 uv       [[attribute(2)]];\n"
-                                        "    float4 color    [[attribute(3)]];\n"
-                                        "    float4 tangent  [[attribute(4)]];\n"
-                                        "    uchar4 boneIdx  [[attribute(5)]];\n"
-                                        "    float4 boneWt   [[attribute(6)]];\n"
-                                        "    float2 uv1      [[attribute(7)]];\n"
-                                        "};\n"
-                                        "\n"
-                                        "struct InstanceData {\n"
-                                        "    float4x4 modelMatrix;\n"
-                                        "    float4x4 normalMatrix;\n"
-                                        "    float4x4 prevModelMatrix;\n"
-                                        "};\n"
-                                        "\n"
-                                        "struct VertexOut {\n"
-                                        "    float4 position [[position]];\n"
-                                        "    float3 worldPos;\n"
-                                        "    float3 normal;\n"
-                                        "    float4 tangent;\n"
-                                        "    float2 uv;\n"
-                                        "    float2 uv1;\n"
-                                        "    float4 color;\n"
-                                        "    float4 currClip;\n"
-                                        "    float4 prevClip;\n"
-                                        "    float hasObjectHistory;\n"
-                                        "};\n"
-                                        "\n"
-                                        "struct PerObject {\n"
-                                        "    float4x4 modelMatrix;\n"
-                                        "    float4x4 prevModelMatrix;\n"
-                                        "    float4x4 viewProjection;\n"
-                                        "    float4x4 normalMatrix;\n"
-                                        "    int4 flags0;\n"
-                                        "    int4 flags1;\n"
-                                        "};\n"
-                                        "\n"
-                                        "struct Light {\n"
-                                        "    int type;\n"
-                                        "    int shadowIndex;\n"
-                                        "    int shadowCascadeCount;\n"
-                                        "    float _p0;\n"
-                                        "    float4 direction;\n"
-                                        "    float4 position;\n"
-                                        "    float4 color;\n"
-                                        "    float intensity;\n"
-                                        "    float attenuation;\n"
-                                        "    float inner_cos;\n"
-                                        "    float outer_cos;\n"
-                                        "    float4 shadowCascadeSplits;\n"
-                                        "};\n"
-                                        "\n"
-                                        "struct PerScene {\n"
-                                        "    float4 cameraPosition;\n"
-                                        "    float4 ambientColor;\n"
-                                        "    float4 fogColor;\n"
-                                        "    float4 fogParams;\n"
-                                        "    int4 counts;\n"
-                                        "    float4 cameraForward;\n"
-                                        "    float4x4 prevViewProjection;\n"
-                                        "    float4x4 shadowVP[" VGFX3D_STR(
-                                            VGFX3D_MAX_SHADOW_LIGHTS) "];\n"
-                                                                      "};\n"
-                                                                      "\n"
-                                                                      "struct PerMaterial {\n"
-                                                                      "    float4 diffuseColor;\n"
-                                                                      "    float4 specularColor;\n"
-                                                                      "    float4 emissiveColor;\n"
-                                                                      "    float4 scalars;\n"
-                                                                      "    float4 pbrScalars0;\n"
-                                                                      "    float4 pbrScalars1;\n"
-                                                                      "    int4 flags0;\n"
-                                                                      "    int4 flags1;\n"
-                                                                      "    int4 pbrFlags;\n"
-                                                                      "    float4 splatScales;\n"
-                                                                      "    int shadingModel;\n"
-                                                                      "    float customParams[8];\n"
-                                                                      "    int4 textureUvSets0;\n"
-                                                                      "    int4 textureUvSets1;\n"
-                                                                      "    float4 "
-                                                                      "textureUvTransform0"
-                                                                      "[" VGFX3D_STR(
-                                                                          RT_MATERIAL3D_TEXTURE_SLOT_COUNT) "];\n"
-                                                                                                            "    float4 textureUvTransform1[" VGFX3D_STR(
-                                                                                                                RT_MATERIAL3D_TEXTURE_SLOT_COUNT) "];\n"
-                                                                                                                                                  "};\n"
-                                                                                                                                                  "\n"
-                                                                                                                                                  "struct ShadowOut {\n"
-                                                                                                                                                  "    float4 position [[position]];\n"
-                                                                                                                                                  "    float2 uv;\n"
-                                                                                                                                                  "    float2 uv1;\n"
-                                                                                                                                                  "    float4 color;\n"
-                                                                                                                                                  "};\n"
-                                                                                                                                                  "\n"
-                                                                                                                                                  "struct MainOut {\n"
-                                                                                                                                                  "    float4 color [[color(0)]];\n"
-                                                                                                                                                  "    float4 motion [[color(1)]];\n"
-                                                                                                                                                  "};\n"
-                                                                                                                                                  "\n"
-                                                                                                                                                  "float3 applyMorphPosition(float3 pos,\n"
-                                                                                                                                                  "                         constant PerObject &obj,\n"
-                                                                                                                                                  "                         constant float *morphDeltas,\n"
-                                                                                                                                                  "                         constant float *weights,\n"
-                                                                                                                                                  "                         uint vid) {\n"
-                                                                                                                                                  "    int morphShapeCount = obj.flags0.z;\n"
-                                                                                                                                                  "    int vertexCount = obj.flags0.w;\n"
-                                                                                                                                                  "    if (morphShapeCount <= 0 || vertexCount <= 0)\n"
-                                                                                                                                                  "        return pos;\n"
-                                                                                                                                                  "    for (int s = 0; s < morphShapeCount; s++) {\n"
-                                                                                                                                                  "        float w = weights[s];\n"
-                                                                                                                                                  "        if (fabs(w) > 0.0001) {\n"
-                                                                                                                                                  "            int off = (s * vertexCount + int(vid)) * 3;\n"
-                                                                                                                                                  "            pos.x += morphDeltas[off + 0] * w;\n"
-                                                                                                                                                  "            pos.y += morphDeltas[off + 1] * w;\n"
-                                                                                                                                                  "            pos.z += morphDeltas[off + 2] * w;\n"
-                                                                                                                                                  "        }\n"
-                                                                                                                                                  "    }\n"
-                                                                                                                                                  "    return pos;\n"
-                                                                                                                                                  "}\n"
-                                                                                                                                                  "\n"
-                                                                                                                                                  "float3 applyMorphNormal(float3 nrm,\n"
-                                                                                                                                                  "                       constant PerObject &obj,\n"
-                                                                                                                                                  "                       constant float *morphNormalDeltas,\n"
-                                                                                                                                                  "                       constant float *weights,\n"
-                                                                                                                                                  "                       uint vid) {\n"
-                                                                                                                                                  "    int morphShapeCount = obj.flags0.z;\n"
-                                                                                                                                                  "    int vertexCount = obj.flags0.w;\n"
-                                                                                                                                                  "    if (obj.flags1.w == 0 || morphShapeCount <= 0 || vertexCount <= 0)\n"
-                                                                                                                                                  "        return nrm;\n"
-                                                                                                                                                  "    for (int s = 0; s < morphShapeCount; s++) {\n"
-                                                                                                                                                  "        float w = weights[s];\n"
-                                                                                                                                                  "        if (fabs(w) > 0.0001) {\n"
-                                                                                                                                                  "            int off = (s * vertexCount + int(vid)) * 3;\n"
-                                                                                                                                                  "            nrm.x += morphNormalDeltas[off + 0] * w;\n"
-                                                                                                                                                  "            nrm.y += morphNormalDeltas[off + 1] * w;\n"
-                                                                                                                                                  "            nrm.z += morphNormalDeltas[off + 2] * w;\n"
-                                                                                                                                                  "        }\n"
-                                                                                                                                                  "    }\n"
-                                                                                                                                                  "    return nrm;\n"
-                                                                                                                                                  "}\n"
-                                                                                                                                                  "\n"
-                                                                                                                                                  "float3 safe_normalize3(float3 v, float3 fallback) {\n"
-                                                                                                                                                  "    float len2 = dot(v, v);\n"
-                                                                                                                                                  "    return (len2 > 1e-12 && len2 < 1e20) ? v * rsqrt(len2) : fallback;\n"
-                                                                                                                                                  "}\n"
-                                                                                                                                                  "\n"
-                                                                                                                                                  "float3x3 safe_normal_matrix(float4x4 m) {\n"
-                                                                                                                                                  "    float3x3 linear = float3x3(m[0].xyz, m[1].xyz, m[2].xyz);\n"
-                                                                                                                                                  "    float3 c0 = linear[0];\n"
-                                                                                                                                                  "    float3 c1 = linear[1];\n"
-                                                                                                                                                  "    float3 c2 = linear[2];\n"
-                                                                                                                                                  "    float3 cof0 = cross(c1, c2);\n"
-                                                                                                                                                  "    float3 cof1 = cross(c2, c0);\n"
-                                                                                                                                                  "    float3 cof2 = cross(c0, c1);\n"
-                                                                                                                                                  "    float det = dot(c0, cof0);\n"
-                                                                                                                                                  "    if (fabs(det) > 1e-8)\n"
-                                                                                                                                                  "        return float3x3(cof0 / det, cof1 / det, cof2 / det);\n"
-                                                                                                                                                  "    return float3x3(float3(1.0, 0.0, 0.0), float3(0.0, 1.0, 0.0), float3(0.0, 0.0, 1.0));\n"
-                                                                                                                                                  "}\n"
-                                                                                                                                                  "\n"
-                                                                                                                                                  "float4 skinPosition(float4 pos,\n"
-                                                                                                                                                  "                    VertexIn in,\n"
-                                                                                                                                                  "                    constant float4x4 *palette,\n"
-                                                                                                                                                  "                    int enabled) {\n"
-                                                                                                                                                  "    if (enabled == 0)\n"
-                                                                                                                                                  "        return pos;\n"
-                                                                                                                                                  "    float4 skinned = float4(0.0);\n"
-                                                                                                                                                  "    float totalWeight = 0.0;\n"
-                                                                                                                                                  "    for (int i = 0; i < 4; i++) {\n"
-                                                                                                                                                  "        float bw = in.boneWt[i];\n"
-                                                                                                                                                  "        if (bw <= 0.0001)\n"
-                                                                                                                                                  "            continue;\n"
-                                                                                                                                                  "        uint idx = min((uint)in.boneIdx[i], 255u);\n"
-                                                                                                                                                  "        skinned += (palette[idx] * pos) * bw;\n"
-                                                                                                                                                  "        totalWeight += bw;\n"
-                                                                                                                                                  "    }\n"
-                                                                                                                                                  "    return totalWeight > 0.0001 ? skinned / totalWeight : pos;\n"
-                                                                                                                                                  "}\n"
-                                                                                                                                                  "\n"
-                                                                                                                                                  "float4 clipZToBackend(float4 clip) {\n"
-                                                                                                                                                  "    clip.z = clip.z * 0.5 + clip.w * 0.5;\n"
-                                                                                                                                                  "    return clip;\n"
-                                                                                                                                                  "}\n"
-                                                                                                                                                  "\n"
-                                                                                                                                                  "float3 skinVector(float3 vec,\n"
-                                                                                                                                                  "                  VertexIn in,\n"
-                                                                                                                                                  "                  constant float4x4 *palette,\n"
-                                                                                                                                                  "                  int enabled) {\n"
-                                                                                                                                                  "    if (enabled == 0)\n"
-                                                                                                                                                  "        return vec;\n"
-                                                                                                                                                  "    float3 skinned = float3(0.0);\n"
-                                                                                                                                                  "    float totalWeight = 0.0;\n"
-                                                                                                                                                  "    for (int i = 0; i < 4; i++) {\n"
-                                                                                                                                                  "        float bw = in.boneWt[i];\n"
-                                                                                                                                                  "        if (bw <= 0.0001)\n"
-                                                                                                                                                  "            continue;\n"
-                                                                                                                                                  "        uint idx = min((uint)in.boneIdx[i], 255u);\n"
-                                                                                                                                                  "        skinned += (safe_normal_matrix(palette[idx]) * vec) * bw;\n"
-                                                                                                                                                  "        totalWeight += bw;\n"
-                                                                                                                                                  "    }\n"
-                                                                                                                                                  "    return totalWeight > 0.0001 ? skinned / totalWeight : vec;\n"
-                                                                                                                                                  "}\n"
-                                                                                                                                                  "\n"
-                                                                                                                                                  "VertexOut buildVertex(float3 currPos,\n"
-                                                                                                                                                  "                      float3 prevPos,\n"
-                                                                                                                                                  "                      float3 currNormal,\n"
-                                                                                                                                                  "                      float4 currTangent,\n"
-                                                                                                                                                  "                      float2 uv,\n"
-                                                                                                                                                  "                      float2 uv1,\n"
-                                                                                                                                                  "                      float4 color,\n"
-                                                                                                                                                  "                      float4x4 modelMatrix,\n"
-                                                                                                                                                  "                      float4x4 normalMatrix,\n"
-                                                                                                                                                  "                      float4x4 prevModelMatrix,\n"
-                                                                                                                                                  "                      constant PerObject &obj,\n"
-                                                                                                                                                  "                      constant PerScene &scene,\n"
-                                                                                                                                                  "                      float hasHistory) {\n"
-                                                                                                                                                  "    VertexOut out;\n"
-                                                                                                                                                  "    float4 worldPos = modelMatrix * float4(currPos, 1.0);\n"
-                                                                                                                                                  "    float4 prevWorldPos = prevModelMatrix * float4(prevPos, 1.0);\n"
-                                                                                                                                                  "    float4 currClip = obj.viewProjection * worldPos;\n"
-                                                                                                                                                  "    float4 prevClip = scene.prevViewProjection * prevWorldPos;\n"
-                                                                                                                                                  "    out.position = clipZToBackend(currClip);\n"
-                                                                                                                                                  "    out.worldPos = worldPos.xyz;\n"
-                                                                                                                                                  "    out.normal = (normalMatrix * float4(currNormal, 0.0)).xyz;\n"
-                                                                                                                                                  "    out.tangent = float4((normalMatrix * float4(currTangent.xyz, 0.0)).xyz, currTangent.w);\n"
-                                                                                                                                                  "    out.uv = uv;\n"
-                                                                                                                                                  "    out.uv1 = uv1;\n"
-                                                                                                                                                  "    out.color = color;\n"
-                                                                                                                                                  "    out.currClip = currClip;\n"
-                                                                                                                                                  "    out.prevClip = prevClip;\n"
-                                                                                                                                                  "    out.hasObjectHistory = hasHistory;\n"
-                                                                                                                                                  "    return out;\n"
-                                                                                                                                                  "}\n"
-                                                                                                                                                  "\n"
-                                                                                                                                                  "vertex VertexOut vertex_main(\n"
-                                                                                                                                                  "    VertexIn in [[stage_in]],\n"
-                                                                                                                                                  "    constant PerObject &obj [[buffer(1)]],\n"
-                                                                                                                                                  "    constant PerScene &scene [[buffer(2)]],\n"
-                                                                                                                                                  "    constant float4x4 *bonePalette [[buffer(3)]],\n"
-                                                                                                                                                  "    constant float *morphDeltas [[buffer(4)]],\n"
-                                                                                                                                                  "    constant float *morphWeights [[buffer(5)]],\n"
-                                                                                                                                                  "    constant float4x4 *prevBonePalette [[buffer(7)]],\n"
-                                                                                                                                                  "    constant float *prevMorphWeights [[buffer(8)]],\n"
-                                                                                                                                                  "    constant float *morphNormalDeltas [[buffer(9)]],\n"
-                                                                                                                                                  "    uint vid [[vertex_id]]) {\n"
-                                                                                                                                                  "    float3 pos = applyMorphPosition(in.position, obj, morphDeltas, morphWeights, vid);\n"
-                                                                                                                                                  "    float3 prevPos = applyMorphPosition(in.position,\n"
-                                                                                                                                                  "                                       obj,\n"
-                                                                                                                                                  "                                       morphDeltas,\n"
-                                                                                                                                                  "                                       obj.flags1.y != 0 ? prevMorphWeights : morphWeights,\n"
-                                                                                                                                                  "                                       vid);\n"
-                                                                                                                                                  "    float3 currNormal = applyMorphNormal(in.normal, obj, morphNormalDeltas, morphWeights, "
-                                                                                                                                                  "vid);\n"
-                                                                                                                                                  "    float4 currTangent = in.tangent;\n"
-                                                                                                                                                  "    float4 skinnedPos = skinPosition(float4(pos, 1.0), in, bonePalette, obj.flags0.x);\n"
-                                                                                                                                                  "    float4 prevSkinnedPos = skinPosition(float4(prevPos, 1.0),\n"
-                                                                                                                                                  "                                         in,\n"
-                                                                                                                                                  "                                         prevBonePalette,\n"
-                                                                                                                                                  "                                         obj.flags0.y);\n"
-                                                                                                                                                  "    float3 skinnedNormal = skinVector(currNormal, in, bonePalette, obj.flags0.x);\n"
-                                                                                                                                                  "    float3 skinnedTangent = skinVector(currTangent.xyz, in, bonePalette, obj.flags0.x);\n"
-                                                                                                                                                  "    if (obj.flags0.x == 0) {\n"
-                                                                                                                                                  "        skinnedPos = float4(pos, 1.0);\n"
-                                                                                                                                                  "        skinnedNormal = currNormal;\n"
-                                                                                                                                                  "        skinnedTangent = currTangent.xyz;\n"
-                                                                                                                                                  "    }\n"
-                                                                                                                                                  "    if (obj.flags0.y == 0)\n"
-                                                                                                                                                  "        prevSkinnedPos = float4(prevPos, 1.0);\n"
-                                                                                                                                                  "    float4x4 prevModel = obj.flags1.x != 0 ? obj.prevModelMatrix : obj.modelMatrix;\n"
-                                                                                                                                                  "    float hasHistory = (obj.flags1.x != 0 || obj.flags0.y != 0 || obj.flags1.y != 0) ? 1.0 : "
-                                                                                                                                                  "0.0;\n"
-                                                                                                                                                  "    return buildVertex(skinnedPos.xyz,\n"
-                                                                                                                                                  "                       prevSkinnedPos.xyz,\n"
-                                                                                                                                                  "                       safe_normalize3(skinnedNormal, float3(0.0, 0.0, 1.0)),\n"
-                                                                                                                                                  "                       float4(safe_normalize3(skinnedTangent, float3(1.0, 0.0, 0.0)), currTangent.w),\n"
-                                                                                                                                                  "                       in.uv,\n"
-                                                                                                                                                  "                       in.uv1,\n"
-                                                                                                                                                  "                       in.color,\n"
-                                                                                                                                                  "                       obj.modelMatrix,\n"
-                                                                                                                                                  "                       obj.normalMatrix,\n"
-                                                                                                                                                  "                       prevModel,\n"
-                                                                                                                                                  "                       obj,\n"
-                                                                                                                                                  "                       scene,\n"
-                                                                                                                                                  "                       hasHistory);\n"
-                                                                                                                                                  "}\n"
-                                                                                                                                                  "\n"
-                                                                                                                                                  "vertex VertexOut vertex_main_instanced(\n"
-                                                                                                                                                  "    VertexIn in [[stage_in]],\n"
-                                                                                                                                                  "    constant PerObject &obj [[buffer(1)]],\n"
-                                                                                                                                                  "    constant PerScene &scene [[buffer(2)]],\n"
-                                                                                                                                                  "    constant float4x4 *bonePalette [[buffer(3)]],\n"
-                                                                                                                                                  "    constant float *morphDeltas [[buffer(4)]],\n"
-                                                                                                                                                  "    constant float *morphWeights [[buffer(5)]],\n"
-                                                                                                                                                  "    device const InstanceData *instances [[buffer(6)]],\n"
-                                                                                                                                                  "    constant float4x4 *prevBonePalette [[buffer(7)]],\n"
-                                                                                                                                                  "    constant float *prevMorphWeights [[buffer(8)]],\n"
-                                                                                                                                                  "    constant float *morphNormalDeltas [[buffer(9)]],\n"
-                                                                                                                                                  "    uint vid [[vertex_id]],\n"
-                                                                                                                                                  "    uint iid [[instance_id]]) {\n"
-                                                                                                                                                  "    InstanceData inst = instances[iid];\n"
-                                                                                                                                                  "    float3 pos = applyMorphPosition(in.position, obj, morphDeltas, morphWeights, vid);\n"
-                                                                                                                                                  "    float3 prevPos = applyMorphPosition(in.position,\n"
-                                                                                                                                                  "                                       obj,\n"
-                                                                                                                                                  "                                       morphDeltas,\n"
-                                                                                                                                                  "                                       obj.flags1.y != 0 ? prevMorphWeights : morphWeights,\n"
-                                                                                                                                                  "                                       vid);\n"
-                                                                                                                                                  "    float3 currNormal = applyMorphNormal(in.normal, obj, morphNormalDeltas, morphWeights, "
-                                                                                                                                                  "vid);\n"
-                                                                                                                                                  "    float4 currTangent = in.tangent;\n"
-                                                                                                                                                  "    float4 skinnedPos = skinPosition(float4(pos, 1.0), in, bonePalette, obj.flags0.x);\n"
-                                                                                                                                                  "    float4 prevSkinnedPos = skinPosition(float4(prevPos, 1.0),\n"
-                                                                                                                                                  "                                         in,\n"
-                                                                                                                                                  "                                         prevBonePalette,\n"
-                                                                                                                                                  "                                         obj.flags0.y);\n"
-                                                                                                                                                  "    float3 skinnedNormal = skinVector(currNormal, in, bonePalette, obj.flags0.x);\n"
-                                                                                                                                                  "    float3 skinnedTangent = skinVector(currTangent.xyz, in, bonePalette, obj.flags0.x);\n"
-                                                                                                                                                  "    if (obj.flags0.x == 0) {\n"
-                                                                                                                                                  "        skinnedPos = float4(pos, 1.0);\n"
-                                                                                                                                                  "        skinnedNormal = currNormal;\n"
-                                                                                                                                                  "        skinnedTangent = currTangent.xyz;\n"
-                                                                                                                                                  "    }\n"
-                                                                                                                                                  "    if (obj.flags0.y == 0)\n"
-                                                                                                                                                  "        prevSkinnedPos = float4(prevPos, 1.0);\n"
-                                                                                                                                                  "    float4x4 prevModel = obj.flags1.z != 0 ? inst.prevModelMatrix : inst.modelMatrix;\n"
-                                                                                                                                                  "    float hasHistory = (obj.flags1.z != 0 || obj.flags0.y != 0 || obj.flags1.y != 0) ? 1.0 : "
-                                                                                                                                                  "0.0;\n"
-                                                                                                                                                  "    return buildVertex(skinnedPos.xyz,\n"
-                                                                                                                                                  "                       prevSkinnedPos.xyz,\n"
-                                                                                                                                                  "                       safe_normalize3(skinnedNormal, float3(0.0, 0.0, 1.0)),\n"
-                                                                                                                                                  "                       float4(safe_normalize3(skinnedTangent, float3(1.0, 0.0, 0.0)), currTangent.w),\n"
-                                                                                                                                                  "                       in.uv,\n"
-                                                                                                                                                  "                       in.uv1,\n"
-                                                                                                                                                  "                       in.color,\n"
-                                                                                                                                                  "                       inst.modelMatrix,\n"
-                                                                                                                                                  "                       inst.normalMatrix,\n"
-                                                                                                                                                  "                       prevModel,\n"
-                                                                                                                                                  "                       obj,\n"
-                                                                                                                                                  "                       scene,\n"
-                                                                                                                                                  "                       hasHistory);\n"
-                                                                                                                                                  "}\n"
-                                                                                                                                                  "\n"
-                                                                                                                                                  "vertex ShadowOut vertex_shadow(\n"
-                                                                                                                                                  "    VertexIn in [[stage_in]],\n"
-                                                                                                                                                  "    constant PerObject &obj [[buffer(1)]],\n"
-                                                                                                                                                  "    constant float4x4 *bonePalette [[buffer(3)]],\n"
-                                                                                                                                                  "    constant float *morphDeltas [[buffer(4)]],\n"
-                                                                                                                                                  "    constant float *morphWeights [[buffer(5)]],\n"
-                                                                                                                                                  "    uint vid [[vertex_id]]) {\n"
-                                                                                                                                                  "    ShadowOut out;\n"
-                                                                                                                                                  "    float3 pos = applyMorphPosition(in.position, obj, morphDeltas, morphWeights, vid);\n"
-                                                                                                                                                  "    float4 skinnedPos = skinPosition(float4(pos, 1.0), in, bonePalette, obj.flags0.x);\n"
-                                                                                                                                                  "    if (obj.flags0.x == 0)\n"
-                                                                                                                                                  "        skinnedPos = float4(pos, 1.0);\n"
-                                                                                                                                                  "    out.position = clipZToBackend(obj.viewProjection * (obj.modelMatrix * skinnedPos));\n"
-                                                                                                                                                  "    out.uv = in.uv;\n"
-                                                                                                                                                  "    out.uv1 = in.uv1;\n"
-                                                                                                                                                  "    out.color = in.color;\n"
-                                                                                                                                                  "    return out;\n"
-                                                                                                                                                  "}\n"
-                                                                                                                                                  "\n"
-                                                                                                                                                  "float2 shadow_material_uv(ShadowOut in, constant PerMaterial &material, int slot) {\n"
-                                                                                                                                                  "    int uvSet = slot < 4 ? material.textureUvSets0[slot] : "
-                                                                                                                                                  "material.textureUvSets1[slot - 4];\n"
-                                                                                                                                                  "    float2 uv = uvSet != 0 ? in.uv1 : in.uv;\n"
-                                                                                                                                                  "    float4 m = material.textureUvTransform0[slot];\n"
-                                                                                                                                                  "    float4 t = material.textureUvTransform1[slot];\n"
-                                                                                                                                                  "    return float2(uv.x * m.x + uv.y * m.y + t.x,\n"
-                                                                                                                                                  "                  uv.x * m.z + uv.y * m.w + t.y);\n"
-                                                                                                                                                  "}\n"
-                                                                                                                                                  "\n"
-                                                                                                                                                  "fragment void fragment_shadow(\n"
-                                                                                                                                                  "    ShadowOut in [[stage_in]],\n"
-                                                                                                                                                  "    constant PerMaterial &material [[buffer(1)]],\n"
-                                                                                                                                                  "    texture2d<float> diffuseTex [[texture(0)]],\n"
-                                                                                                                                                  "    sampler diffuseSampler [[sampler(0)]]) {\n"
-                                                                                                                                                  "    float alpha = material.diffuseColor.a * material.scalars.x * in.color.a;\n"
-                                                                                                                                                  "    if (material.flags0.x != 0)\n"
-                                                                                                                                                  "        alpha *= diffuseTex.sample(diffuseSampler, shadow_material_uv(in, material, 0)).a;\n"
-                                                                                                                                                  "    if (material.pbrFlags.y == 1 && alpha < material.pbrScalars1.y)\n"
-                                                                                                                                                  "        discard_fragment();\n"
-                                                                                                                                                  "}\n"
-                                                                                                                                                  "\n"
-                                                                                                                                                  "float4 motion_output(VertexOut in) {\n"
-                                                                                                                                                  "    float currW = (in.currClip.w < 0.0 ? -1.0 : 1.0) * max(fabs(in.currClip.w), 0.0001);\n"
-                                                                                                                                                  "    float prevW = (in.prevClip.w < 0.0 ? -1.0 : 1.0) * max(fabs(in.prevClip.w), 0.0001);\n"
-                                                                                                                                                  "    float2 currNdc = in.currClip.xy / currW;\n"
-                                                                                                                                                  "    float2 prevNdc = in.prevClip.xy / prevW;\n"
-                                                                                                                                                  "    float2 velocity = (currNdc - prevNdc) * 0.5;\n"
-                                                                                                                                                  "    return float4(clamp(velocity * 0.5 + 0.5, 0.0, 1.0), in.hasObjectHistory, 1.0);\n"
-                                                                                                                                                  "}\n"
-                                                                                                                                                  "\n"
-                                                                                                                                                  "float distribution_ggx(float NdotH, float roughness) {\n"
-                                                                                                                                                  "    float a = roughness * roughness;\n"
-                                                                                                                                                  "    float a2 = a * a;\n"
-                                                                                                                                                  "    float denom = NdotH * NdotH * (a2 - 1.0) + 1.0;\n"
-                                                                                                                                                  "    return a2 / (3.14159265 * denom * denom + 1e-6);\n"
-                                                                                                                                                  "}\n"
-                                                                                                                                                  "\n"
-                                                                                                                                                  "float geometry_schlick_ggx(float NdotV, float roughness) {\n"
-                                                                                                                                                  "    float r = roughness + 1.0;\n"
-                                                                                                                                                  "    float k = (r * r) / 8.0;\n"
-                                                                                                                                                  "    return NdotV / (NdotV * (1.0 - k) + k + 1e-6);\n"
-                                                                                                                                                  "}\n"
-                                                                                                                                                  "\n"
-                                                                                                                                                  "float geometry_smith(float NdotV, float NdotL, float roughness) {\n"
-                                                                                                                                                  "    return geometry_schlick_ggx(NdotV, roughness) * geometry_schlick_ggx(NdotL, roughness);\n"
-                                                                                                                                                  "}\n"
-                                                                                                                                                  "\n"
-                                                                                                                                                  "float3 fresnel_schlick(float cosTheta, float3 F0) {\n"
-                                                                                                                                                  "    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);\n"
-                                                                                                                                                  "}\n"
-                                                                                                                                                  "\n"
-                                                                                                                                                  "float3 srgb_to_linear(float3 c) {\n"
-                                                                                                                                                  "    float3 low = c / 12.92;\n"
-                                                                                                                                                  "    float3 high = pow((c + float3(0.055)) / 1.055, float3(2.4));\n"
-                                                                                                                                                  "    return mix(low, high, step(float3(0.04045), c));\n"
-                                                                                                                                                  "}\n"
-                                                                                                                                                  "\n"
-                                                                                                                                                  "float3 env_sample(texturecube<float> envTex,\n"
-                                                                                                                                                  "                  sampler envSampler,\n"
-                                                                                                                                                  "                  float3 dir,\n"
-                                                                                                                                                  "                  float roughness,\n"
-                                                                                                                                                  "                  float maxLod) {\n"
-                                                                                                                                                  "    float lod = clamp(roughness, 0.0, 1.0) * max(maxLod, 0.0);\n"
-                                                                                                                                                  "    return envTex.sample(envSampler, safe_normalize3(dir, float3(0.0, 0.0, 1.0)), level(lod)).rgb;\n"
-                                                                                                                                                  "}\n"
-                                                                                                                                                  "\n"
-                                                                                                                                                  "int texture_uv_set_at(constant PerMaterial &material, int slot) {\n"
-                                                                                                                                                  "    return slot < 4 ? material.textureUvSets0[slot] : material.textureUvSets1[slot - 4];\n"
-                                                                                                                                                  "}\n"
-                                                                                                                                                  "\n"
-                                                                                                                                                  "float2 material_uv(VertexOut in, constant PerMaterial &material, int slot) {\n"
-                                                                                                                                                  "    float2 uv = texture_uv_set_at(material, slot) != 0 ? in.uv1 : in.uv;\n"
-                                                                                                                                                  "    float4 m = material.textureUvTransform0[slot];\n"
-                                                                                                                                                  "    float4 t = material.textureUvTransform1[slot];\n"
-                                                                                                                                                  "    return float2(uv.x * m.x + uv.y * m.y + t.x,\n"
-                                                                                                                                                  "                  uv.x * m.z + uv.y * m.w + t.y);\n"
-                                                                                                                                                  "}\n"
-                                                                                                                                                  "\n"
-                                                                                                                                                  "int resolve_shadow_cascade(constant Light &light,\n"
-                                                                                                                                                  "                           float3 worldPos,\n"
-                                                                                                                                                  "                           constant PerScene &scene) {\n"
-                                                                                                                                                  "    int shadowIndex = light.shadowIndex;\n"
-                                                                                                                                                  "    if (shadowIndex < 0 || shadowIndex >= scene.counts.y)\n"
-                                                                                                                                                  "        return -1;\n"
-                                                                                                                                                  "    int cascadeCount = clamp(light.shadowCascadeCount, 1, " VGFX3D_STR(VGFX3D_MAX_SHADOW_LIGHTS) ");\n"
-                                                                                                                                                                                                                                                    "    cascadeCount = min(cascadeCount, scene.counts.y - shadowIndex);\n"
-                                                                                                                                                                                                                                                    "    if (cascadeCount <= 1)\n"
-                                                                                                                                                                                                                                                    "        return shadowIndex;\n"
-                                                                                                                                                                                                                                                    "    float viewDepth = dot(worldPos - scene.cameraPosition.xyz, scene.cameraForward.xyz);\n"
-                                                                                                                                                                                                                                                    "    if (viewDepth <= light.shadowCascadeSplits.x || cascadeCount == 1)\n"
-                                                                                                                                                                                                                                                    "        return shadowIndex;\n"
-                                                                                                                                                                                                                                                    "    if (viewDepth <= light.shadowCascadeSplits.y || cascadeCount == 2)\n"
-                                                                                                                                                                                                                                                    "        return shadowIndex + 1;\n"
-                                                                                                                                                                                                                                                    "    if (viewDepth <= light.shadowCascadeSplits.z || cascadeCount == 3)\n"
-                                                                                                                                                                                                                                                    "        return shadowIndex + 2;\n"
-                                                                                                                                                                                                                                                    "    return shadowIndex + 3;\n"
-                                                                                                                                                                                                                                                    "}\n"
-                                                                                                                                                                                                                                                    "\n"
-                                                                                                                                                                                                                                                    "float sample_shadow_at(int shadowIndex,\n"
-                                                                                                                                                                                                                                                    "                       float2 uv,\n"
-                                                                                                                                                                                                                                                    "                       float depth,\n"
-                                                                                                                                                                                                                                                    "                       constant PerScene &scene,\n"
-                                                                                                                                                                                                                                                    "                       depth2d<float> shadowMap0,\n"
-                                                                                                                                                                                                                                                    "                       depth2d<float> shadowMap1,\n"
-                                                                                                                                                                                                                                                    "                       depth2d<float> shadowMap2,\n"
-                                                                                                                                                                                                                                                    "                       depth2d<float> shadowMap3,\n"
-                                                                                                                                                                                                                                                    "                       sampler shadowSampler) {\n"
-                                                                                                                                                                                                                                                    "    if (shadowIndex == 0)\n"
-                                                                                                                                                                                                                                                    "        return shadowMap0.sample_compare(shadowSampler, uv, depth - scene.fogParams.z);\n"
-                                                                                                                                                                                                                                                    "    if (shadowIndex == 1)\n"
-                                                                                                                                                                                                                                                    "        return shadowMap1.sample_compare(shadowSampler, uv, depth - scene.fogParams.z);\n"
-                                                                                                                                                                                                                                                    "    if (shadowIndex == 2)\n"
-                                                                                                                                                                                                                                                    "        return shadowMap2.sample_compare(shadowSampler, uv, depth - scene.fogParams.z);\n"
-                                                                                                                                                                                                                                                    "    return shadowMap3.sample_compare(shadowSampler, uv, depth - scene.fogParams.z);\n"
-                                                                                                                                                                                                                                                    "}\n"
-                                                                                                                                                                                                                                                    "\n"
-                                                                                                                                                                                                                                                    "float sample_shadow(constant Light &light,\n"
-                                                                                                                                                                                                                                                    "                    float3 worldPos,\n"
-                                                                                                                                                                                                                                                    "                    constant PerScene &scene,\n"
-                                                                                                                                                                                                                                                    "                    depth2d<float> shadowMap0,\n"
-                                                                                                                                                                                                                                                    "                    depth2d<float> shadowMap1,\n"
-                                                                                                                                                                                                                                                    "                    depth2d<float> shadowMap2,\n"
-                                                                                                                                                                                                                                                    "                    depth2d<float> shadowMap3,\n"
-                                                                                                                                                                                                                                                    "                    sampler shadowSampler) {\n"
-                                                                                                                                                                                                                                                    "    int shadowIndex = resolve_shadow_cascade(light, worldPos, scene);\n"
-                                                                                                                                                                                                                                                    "    if (shadowIndex < 0 || shadowIndex >= scene.counts.y)\n"
-                                                                                                                                                                                                                                                    "        return 1.0;\n"
-                                                                                                                                                                                                                                                    "    float4 lc = scene.shadowVP[shadowIndex] * float4(worldPos, 1.0);\n"
-                                                                                                                                                                                                                                                    "    if (lc.w <= 0.0001)\n"
-                                                                                                                                                                                                                                                    "        return 1.0;\n"
-                                                                                                                                                                                                                                                    "    float3 suv = lc.xyz / lc.w;\n"
-                                                                                                                                                                                                                                                    "    suv.xy = suv.xy * 0.5 + 0.5;\n"
-                                                                                                                                                                                                                                                    "    suv.y = 1.0 - suv.y;\n"
-                                                                                                                                                                                                                                                    "    if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0 || suv.z < 0.0 || suv.z > 1.0)\n"
-                                                                                                                                                                                                                                                    "        return 1.0;\n"
-                                                                                                                                                                                                                                                    "    return sample_shadow_at(shadowIndex, suv.xy, suv.z, scene, shadowMap0, shadowMap1, shadowMap2, shadowMap3, shadowSampler);\n"
-                                                                                                                                                                                                                                                    "}\n"
-                                                                                                                                                                                                                                                    "\n"
-                                                                                                                                                                                                                                                    "fragment MainOut fragment_main(\n"
-                                                                                                                                                                                                                                                    "    VertexOut in [[stage_in]],\n"
-                                                                                                                                                                                                                                                    "    constant PerScene &scene [[buffer(0)]],\n"
-                                                                                                                                                                                                                                                    "    constant PerMaterial &material [[buffer(1)]],\n"
-                                                                                                                                                                                                                                                    "    constant Light *lights [[buffer(2)]],\n"
-                                                                                                                                                                                                                                                    "    texture2d<float> diffuseTex [[texture(0)]],\n"
-                                                                                                                                                                                                                                                    "    texture2d<float> normalTex [[texture(1)]],\n"
-                                                                                                                                                                                                                                                    "    texture2d<float> specularTex [[texture(2)]],\n"
-                                                                                                                                                                                                                                                    "    texture2d<float> emissiveTex [[texture(3)]],\n"
-                                                                                                                                                                                                                                                    "    depth2d<float> shadowMap0 [[texture(4)]],\n"
-                                                                                                                                                                                                                                                    "    depth2d<float> shadowMap1 [[texture(5)]],\n"
-                                                                                                                                                                                                                                                    "    depth2d<float> shadowMap2 [[texture(6)]],\n"
-                                                                                                                                                                                                                                                    "    depth2d<float> shadowMap3 [[texture(7)]],\n"
-                                                                                                                                                                                                                                                    "    texture2d<float> splatTex [[texture(8)]],\n"
-                                                                                                                                                                                                                                                    "    texture2d<float> splatLayer0 [[texture(9)]],\n"
-                                                                                                                                                                                                                                                    "    texture2d<float> splatLayer1 [[texture(10)]],\n"
-                                                                                                                                                                                                                                                    "    texture2d<float> splatLayer2 [[texture(11)]],\n"
-                                                                                                                                                                                                                                                    "    texture2d<float> splatLayer3 [[texture(12)]],\n"
-                                                                                                                                                                                                                                                    "    texturecube<float> envTex [[texture(13)]],\n"
-                                                                                                                                                                                                                                                    "    texture2d<float> metallicRoughnessTex [[texture(14)]],\n"
-                                                                                                                                                                                                                                                    "    texture2d<float> aoTex [[texture(15)]],\n"
-                                                                                                                                                                                                                                                    "    sampler diffuseSampler [[sampler(0)]],\n"
-                                                                                                                                                                                                                                                    "    sampler shadowSampler [[sampler(1)]],\n"
-                                                                                                                                                                                                                                                    "    sampler envSampler [[sampler(2)]],\n"
-                                                                                                                                                                                                                                                    "    sampler normalSampler [[sampler(3)]],\n"
-                                                                                                                                                                                                                                                    "    sampler specularSampler [[sampler(4)]],\n"
-                                                                                                                                                                                                                                                    "    sampler emissiveSampler [[sampler(5)]],\n"
-                                                                                                                                                                                                                                                    "    sampler metallicRoughnessSampler [[sampler(6)]],\n"
-                                                                                                                                                                                                                                                    "    sampler aoSampler [[sampler(7)]]\n"
-                                                                                                                                                                                                                                                    ") {\n"
-                                                                                                                                                                                                                                                    "    MainOut out;\n"
-                                                                                                                                                                                                                                                    "    float3 baseColor = material.diffuseColor.rgb * in.color.rgb;\n"
-                                                                                                                                                                                                                                                    "    float texAlpha = 1.0;\n"
-                                                                                                                                                                                                                                                    "    float materialAlpha = material.diffuseColor.a * material.scalars.x * in.color.a;\n"
-                                                                                                                                                                                                                                                    "    if (material.flags0.x != 0) {\n"
-                                                                                                                                                                                                                                                    "        float4 texSample = diffuseTex.sample(diffuseSampler, material_uv(in, material, 0));\n"
-                                                                                                                                                                                                                                                    "        if (material.pbrFlags.x != 0) texSample.rgb = srgb_to_linear(texSample.rgb);\n"
-                                                                                                                                                                                                                                                    "        baseColor *= texSample.rgb;\n"
-                                                                                                                                                                                                                                                    "        texAlpha = texSample.a;\n"
-                                                                                                                                                                                                                                                    "    }\n"
-                                                                                                                                                                                                                                                    "    if (material.flags1.z != 0) {\n"
-                                                                                                                                                                                                                                                    "        float4 sp = splatTex.sample(diffuseSampler, in.uv);\n"
-                                                                                                                                                                                                                                                    "        float wsum = sp.r + sp.g + sp.b + sp.a;\n"
-                                                                                                                                                                                                                                                    "        if (wsum > 0.001) sp /= wsum;\n"
-                                                                                                                                                                                                                                                    "        float3 blended = float3(0);\n"
-                                                                                                                                                                                                                                                    "        if (sp.r > 0.001) blended += splatLayer0.sample(diffuseSampler, in.uv * "
-                                                                                                                                                                                                                                                    "material.splatScales.x).rgb * sp.r;\n"
-                                                                                                                                                                                                                                                    "        if (sp.g > 0.001) blended += splatLayer1.sample(diffuseSampler, in.uv * "
-                                                                                                                                                                                                                                                    "material.splatScales.y).rgb * sp.g;\n"
-                                                                                                                                                                                                                                                    "        if (sp.b > 0.001) blended += splatLayer2.sample(diffuseSampler, in.uv * "
-                                                                                                                                                                                                                                                    "material.splatScales.z).rgb * sp.b;\n"
-                                                                                                                                                                                                                                                    "        if (sp.a > 0.001) blended += splatLayer3.sample(diffuseSampler, in.uv * "
-                                                                                                                                                                                                                                                    "material.splatScales.w).rgb * sp.a;\n"
-                                                                                                                                                                                                                                                    "        baseColor = blended * material.diffuseColor.rgb * in.color.rgb;\n"
-                                                                                                                                                                                                                                                    "    }\n"
-                                                                                                                                                                                                                                                    "    float3 N = safe_normalize3(in.normal, float3(0.0, 0.0, 1.0));\n"
-                                                                                                                                                                                                                                                    "    float3 cameraToWorld = scene.cameraPosition.xyz - in.worldPos;\n"
-                                                                                                                                                                                                                                                    "    float3 V = safe_normalize3(scene.cameraPosition.w > 0.5 ? -scene.cameraForward.xyz : "
-                                                                                                                                                                                                                                                    "cameraToWorld, float3(0.0, 0.0, 1.0));\n"
-                                                                                                                                                                                                                                                    "    float viewDistance = scene.cameraPosition.w > 0.5\n"
-                                                                                                                                                                                                                                                    "        ? abs(dot(in.worldPos - scene.cameraPosition.xyz, scene.cameraForward.xyz))\n"
-                                                                                                                                                                                                                                                    "        : length(cameraToWorld);\n"
-                                                                                                                                                                                                                                                    "    if (material.flags0.z != 0) {\n"
-                                                                                                                                                                                                                                                    "        float3 T = safe_normalize3(in.tangent.xyz, float3(1.0, 0.0, 0.0));\n"
-                                                                                                                                                                                                                                                    "        T = safe_normalize3(T - N * dot(T, N), float3(1.0, 0.0, 0.0));\n"
-                                                                                                                                                                                                                                                    "        float lenT = length(T);\n"
-                                                                                                                                                                                                                                                    "        if (lenT > 0.001) {\n"
-                                                                                                                                                                                                                                                    "            float3 B = safe_normalize3(cross(N, T), float3(0.0, 1.0, 0.0)) * (in.tangent.w < 0.0 ? -1.0 : 1.0);\n"
-                                                                                                                                                                                                                                                    "            float3 mapN = normalTex.sample(normalSampler, material_uv(in, material, 1)).rgb * 2.0 - 1.0;\n"
-                                                                                                                                                                                                                                                    "            mapN.xy *= material.pbrScalars1.x;\n"
-                                                                                                                                                                                                                                                    "            N = safe_normalize3(T * mapN.x + B * mapN.y + N * mapN.z, N);\n"
-                                                                                                                                                                                                                                                    "        }\n"
-                                                                                                                                                                                                                                                    "    }\n"
-                                                                                                                                                                                                                                                    "    float3 emissive = material.emissiveColor.rgb * material.pbrScalars0.w;\n"
-                                                                                                                                                                                                                                                    "    if (material.flags1.x != 0) {\n"
-                                                                                                                                                                                                                                                    "        float3 emissiveSample = emissiveTex.sample(emissiveSampler, material_uv(in, material, 3)).rgb;\n"
-                                                                                                                                                                                                                                                    "        if (material.pbrFlags.x != 0) emissiveSample = srgb_to_linear(emissiveSample);\n"
-                                                                                                                                                                                                                                                    "        emissive *= emissiveSample;\n"
-                                                                                                                                                                                                                                                    "    }\n"
-                                                                                                                                                                                                                                                    "    float4 metallicRoughnessSample = float4(1.0);\n"
-                                                                                                                                                                                                                                                    "    float envRoughness = clamp(material.pbrScalars0.y, 0.0, 1.0);\n"
-                                                                                                                                                                                                                                                    "    if (material.pbrFlags.z != 0) {\n"
-                                                                                                                                                                                                                                                    "        metallicRoughnessSample = metallicRoughnessTex.sample(metallicRoughnessSampler, material_uv(in, material, 4));\n"
-                                                                                                                                                                                                                                                    "        envRoughness = clamp(envRoughness * metallicRoughnessSample.g, 0.045, 1.0);\n"
-                                                                                                                                                                                                                                                    "    }\n"
-                                                                                                                                                                                                                                                    "    float finalAlpha = materialAlpha * texAlpha;\n"
-                                                                                                                                                                                                                                                    "    if (material.pbrFlags.y == 1) {\n"
-                                                                                                                                                                                                                                                    "        if (finalAlpha < material.pbrScalars1.y)\n"
-                                                                                                                                                                                                                                                    "            discard_fragment();\n"
-                                                                                                                                                                                                                                                    "        finalAlpha = 1.0;\n"
-                                                                                                                                                                                                                                                    "    } else if (material.pbrFlags.y == 0) {\n"
-                                                                                                                                                                                                                                                    "        finalAlpha = 1.0;\n"
-                                                                                                                                                                                                                                                    "    }\n"
-                                                                                                                                                                                                                                                    "    if (material.flags0.y != 0) {\n"
-                                                                                                                                                                                                                                                    "        float3 unlitColor = baseColor + emissive;\n"
-                                                                                                                                                                                                                                                    "        if (material.flags1.y != 0) {\n"
-                                                                                                                                                                                                                                                    "            float3 R = reflect(-V, N);\n"
-                                                                                                                                                                                                                                                    "            float3 envColor = env_sample(envTex, envSampler, R, envRoughness, "
-                                                                                                                                                                                                                                                    "material.scalars.z);\n"
-                                                                                                                                                                                                                                                    "            unlitColor = mix(unlitColor, envColor, clamp(material.scalars.y, 0.0, 1.0));\n"
-                                                                                                                                                                                                                                                    "        }\n"
-                                                                                                                                                                                                                                                    "        if (scene.fogColor.a > 0.5) {\n"
-                                                                                                                                                                                                                                                    "            float fogRange = scene.fogParams.y - scene.fogParams.x;\n"
-                                                                                                                                                                                                                                                    "            float fogFactor = clamp((viewDistance - scene.fogParams.x) / max(fogRange, "
-                                                                                                                                                                                                                                                    "0.001), 0.0, 1.0);\n"
-                                                                                                                                                                                                                                                    "            unlitColor = mix(unlitColor, scene.fogColor.rgb, fogFactor);\n"
-                                                                                                                                                                                                                                                    "        }\n"
-                                                                                                                                                                                                                                                    "        out.color = float4(unlitColor, finalAlpha);\n"
-                                                                                                                                                                                                                                                    "        out.motion = motion_output(in);\n"
-                                                                                                                                                                                                                                                    "        return out;\n"
-                                                                                                                                                                                                                                                    "    }\n"
-                                                                                                                                                                                                                                                    "    float3 result = float3(0.0);\n"
-                                                                                                                                                                                                                                                    "    if (material.pbrFlags.x != 0) {\n"
-                                                                                                                                                                                                                                                    "        float metallic = clamp(material.pbrScalars0.x, 0.0, 1.0);\n"
-                                                                                                                                                                                                                                                    "        float roughness = clamp(material.pbrScalars0.y, 0.045, 1.0);\n"
-                                                                                                                                                                                                                                                    "        float ao = clamp(material.pbrScalars0.z, 0.0, 1.0);\n"
-                                                                                                                                                                                                                                                    "        if (material.pbrFlags.z != 0) {\n"
-                                                                                                                                                                                                                                                    "            roughness = clamp(roughness * metallicRoughnessSample.g, 0.045, 1.0);\n"
-                                                                                                                                                                                                                                                    "            metallic = clamp(metallic * metallicRoughnessSample.b, 0.0, 1.0);\n"
-                                                                                                                                                                                                                                                    "            envRoughness = roughness;\n"
-                                                                                                                                                                                                                                                    "        }\n"
-                                                                                                                                                                                                                                                    "        if (material.pbrFlags.w != 0) {\n"
-                                                                                                                                                                                                                                                    "            float4 aoSample = aoTex.sample(aoSampler, material_uv(in, material, 5));\n"
-                                                                                                                                                                                                                                                    "            ao = clamp(ao * aoSample.r, 0.0, 1.0);\n"
-                                                                                                                                                                                                                                                    "        }\n"
-                                                                                                                                                                                                                                                    "        result = scene.ambientColor.rgb * baseColor * ao;\n"
-                                                                                                                                                                                                                                                    "        for (int i = 0; i < scene.counts.x; i++) {\n"
-                                                                                                                                                                                                                                                    "            float3 L; float atten = 1.0;\n"
-                                                                                                                                                                                                                                                    "            if (lights[i].type == 0) {\n"
-                                                                                                                                                                                                                                                    "                L = safe_normalize3(-lights[i].direction.xyz, float3(0.0, -1.0, 0.0));\n"
-                                                                                                                                                                                                                                                    "            } else if (lights[i].type == 1) {\n"
-                                                                                                                                                                                                                                                    "                float3 tl = lights[i].position.xyz - in.worldPos;\n"
-                                                                                                                                                                                                                                                    "                float d = length(tl); L = safe_normalize3(tl, float3(0.0));\n"
-                                                                                                                                                                                                                                                    "                atten = 1.0 / (1.0 + lights[i].attenuation * d * d);\n"
-                                                                                                                                                                                                                                                    "            } else if (lights[i].type == 3) {\n"
-                                                                                                                                                                                                                                                    "                float3 tl = lights[i].position.xyz - in.worldPos;\n"
-                                                                                                                                                                                                                                                    "                float d = length(tl); L = safe_normalize3(tl, float3(0.0));\n"
-                                                                                                                                                                                                                                                    "                atten = 1.0 / (1.0 + lights[i].attenuation * d * d);\n"
-                                                                                                                                                                                                                                                    "                float spotDot = dot(-L, safe_normalize3(lights[i].direction.xyz, float3(0.0, -1.0, 0.0)));\n"
-                                                                                                                                                                                                                                                    "                if (spotDot < lights[i].outer_cos) {\n"
-                                                                                                                                                                                                                                                    "                    atten = 0.0;\n"
-                                                                                                                                                                                                                                                    "                } else if (spotDot < lights[i].inner_cos) {\n"
-                                                                                                                                                                                                                                                    "                    float coneRange = lights[i].inner_cos - lights[i].outer_cos;\n"
-                                                                                                                                                                                                                                                    "                    float t = coneRange > 0.0001 ? clamp((spotDot - lights[i].outer_cos) / coneRange, 0.0, 1.0) : 0.0;\n"
-                                                                                                                                                                                                                                                    "                    atten *= t * t * (3.0 - 2.0 * t);\n"
-                                                                                                                                                                                                                                                    "                }\n"
-                                                                                                                                                                                                                                                    "            } else {\n"
-                                                                                                                                                                                                                                                    "                result += lights[i].color.rgb * lights[i].intensity * baseColor * ao;\n"
-                                                                                                                                                                                                                                                    "                continue;\n"
-                                                                                                                                                                                                                                                    "            }\n"
-                                                                                                                                                                                                                                                    "            float NdotL = max(dot(N, L), 0.0);\n"
-                                                                                                                                                                                                                                                    "            if (lights[i].type == 0)\n"
-                                                                                                                                                                                                                                                    "                atten *= mix(0.15, 1.0, sample_shadow(lights[i], in.worldPos, "
-                                                                                                                                                                                                                                                    "scene, shadowMap0, shadowMap1, shadowMap2, shadowMap3, shadowSampler));\n"
-                                                                                                                                                                                                                                                    "            if (NdotL <= 0.0)\n"
-                                                                                                                                                                                                                                                    "                continue;\n"
-                                                                                                                                                                                                                                                    "            float3 H = safe_normalize3(L + V, N);\n"
-                                                                                                                                                                                                                                                    "            float NdotV = max(dot(N, V), 0.001);\n"
-                                                                                                                                                                                                                                                    "            float NdotH = max(dot(N, H), 0.0);\n"
-                                                                                                                                                                                                                                                    "            float VdotH = max(dot(V, H), 0.0);\n"
-                                                                                                                                                                                                                                                    "            float3 F0 = mix(float3(0.04), baseColor, metallic);\n"
-                                                                                                                                                                                                                                                    "            float3 F = fresnel_schlick(VdotH, F0);\n"
-                                                                                                                                                                                                                                                    "            float D = distribution_ggx(NdotH, roughness);\n"
-                                                                                                                                                                                                                                                    "            float G = geometry_smith(NdotV, NdotL, roughness);\n"
-                                                                                                                                                                                                                                                    "            float3 specular = (D * G * F) / max(4.0 * NdotV * NdotL, 0.0001);\n"
-                                                                                                                                                                                                                                                    "            float3 kS = F;\n"
-                                                                                                                                                                                                                                                    "            float3 kD = (1.0 - kS) * (1.0 - metallic);\n"
-                                                                                                                                                                                                                                                    "            float3 diffuse = kD * baseColor / 3.14159265;\n"
-                                                                                                                                                                                                                                                    "            float3 radiance = lights[i].color.rgb * lights[i].intensity * atten;\n"
-                                                                                                                                                                                                                                                    "            result += (diffuse + specular) * radiance * NdotL;\n"
-                                                                                                                                                                                                                                                    "        }\n"
-                                                                                                                                                                                                                                                    "    } else {\n"
-                                                                                                                                                                                                                                                    "        result = scene.ambientColor.rgb * baseColor;\n"
-                                                                                                                                                                                                                                                    "        float3 specColor = material.specularColor.rgb;\n"
-                                                                                                                                                                                                                                                    "        if (material.flags0.w != 0) {\n"
-                                                                                                                                                                                                                                                    "            specColor *= specularTex.sample(specularSampler, material_uv(in, material, 2)).rgb;\n"
-                                                                                                                                                                                                                                                    "        }\n"
-                                                                                                                                                                                                                                                    "        for (int i = 0; i < scene.counts.x; i++) {\n"
-                                                                                                                                                                                                                                                    "            float3 L; float atten = 1.0;\n"
-                                                                                                                                                                                                                                                    "            if (lights[i].type == 0) {\n"
-                                                                                                                                                                                                                                                    "                L = safe_normalize3(-lights[i].direction.xyz, float3(0.0, -1.0, 0.0));\n"
-                                                                                                                                                                                                                                                    "            } else if (lights[i].type == 1) {\n"
-                                                                                                                                                                                                                                                    "                float3 tl = lights[i].position.xyz - in.worldPos;\n"
-                                                                                                                                                                                                                                                    "                float d = length(tl); L = safe_normalize3(tl, float3(0.0));\n"
-                                                                                                                                                                                                                                                    "                atten = 1.0 / (1.0 + lights[i].attenuation * d * d);\n"
-                                                                                                                                                                                                                                                    "            } else if (lights[i].type == 3) {\n"
-                                                                                                                                                                                                                                                    "                float3 tl = lights[i].position.xyz - in.worldPos;\n"
-                                                                                                                                                                                                                                                    "                float d = length(tl); L = safe_normalize3(tl, float3(0.0));\n"
-                                                                                                                                                                                                                                                    "                atten = 1.0 / (1.0 + lights[i].attenuation * d * d);\n"
-                                                                                                                                                                                                                                                    "                float spotDot = dot(-L, safe_normalize3(lights[i].direction.xyz, float3(0.0, -1.0, 0.0)));\n"
-                                                                                                                                                                                                                                                    "                if (spotDot < lights[i].outer_cos) {\n"
-                                                                                                                                                                                                                                                    "                    atten = 0.0;\n"
-                                                                                                                                                                                                                                                    "                } else if (spotDot < lights[i].inner_cos) {\n"
-                                                                                                                                                                                                                                                    "                    float coneRange = lights[i].inner_cos - lights[i].outer_cos;\n"
-                                                                                                                                                                                                                                                    "                    float t = coneRange > 0.0001 ? clamp((spotDot - lights[i].outer_cos) / coneRange, 0.0, 1.0) : 0.0;\n"
-                                                                                                                                                                                                                                                    "                    atten *= t * t * (3.0 - 2.0 * t);\n"
-                                                                                                                                                                                                                                                    "                }\n"
-                                                                                                                                                                                                                                                    "            } else {\n"
-                                                                                                                                                                                                                                                    "                result += lights[i].color.rgb * lights[i].intensity * baseColor;\n"
-                                                                                                                                                                                                                                                    "                continue;\n"
-                                                                                                                                                                                                                                                    "            }\n"
-                                                                                                                                                                                                                                                    "            float NdotL = max(dot(N, L), 0.0);\n"
-                                                                                                                                                                                                                                                    "            if (lights[i].type == 0)\n"
-                                                                                                                                                                                                                                                    "                atten *= mix(0.15, 1.0, sample_shadow(lights[i], in.worldPos, "
-                                                                                                                                                                                                                                                    "scene, shadowMap0, shadowMap1, shadowMap2, shadowMap3, shadowSampler));\n"
-                                                                                                                                                                                                                                                    "            result += lights[i].color.rgb * lights[i].intensity * NdotL * "
-                                                                                                                                                                                                                                                    "baseColor * atten;\n"
-                                                                                                                                                                                                                                                    "            if (NdotL > 0.0 && material.specularColor.w > 0.0) {\n"
-                                                                                                                                                                                                                                                    "                float3 H = safe_normalize3(L + V, N);\n"
-                                                                                                                                                                                                                                                    "                float spec = pow(max(dot(N, H), 0.0), material.specularColor.w);\n"
-                                                                                                                                                                                                                                                    "                result += lights[i].color.rgb * lights[i].intensity * spec * "
-                                                                                                                                                                                                                                                    "specColor * atten;\n"
-                                                                                                                                                                                                                                                    "            }\n"
-                                                                                                                                                                                                                                                    "        }\n"
-                                                                                                                                                                                                                                                    "    }\n"
-                                                                                                                                                                                                                                                    "    result += emissive;\n"
-                                                                                                                                                                                                                                                    "    if (material.flags1.y != 0) {\n"
-                                                                                                                                                                                                                                                    "        float3 R = reflect(-V, N);\n"
-                                                                                                                                                                                                                                                    "        float3 envColor = env_sample(envTex, envSampler, R, envRoughness, "
-                                                                                                                                                                                                                                                    "material.scalars.z);\n"
-                                                                                                                                                                                                                                                    "        result = mix(result, envColor, clamp(material.scalars.y, 0.0, 1.0));\n"
-                                                                                                                                                                                                                                                    "    }\n"
-                                                                                                                                                                                                                                                    "    if (scene.fogColor.a > 0.5) {\n"
-                                                                                                                                                                                                                                                    "        float fogRange = scene.fogParams.y - scene.fogParams.x;\n"
-                                                                                                                                                                                                                                                    "        float fogFactor = clamp((viewDistance - scene.fogParams.x) / max(fogRange, 0.001), "
-                                                                                                                                                                                                                                                    "0.0, 1.0);\n"
-                                                                                                                                                                                                                                                    "        result = mix(result, scene.fogColor.rgb, fogFactor);\n"
-                                                                                                                                                                                                                                                    "    }\n"
-                                                                                                                                                                                                                                                    "    if (material.shadingModel == 1) {\n"
-                                                                                                                                                                                                                                                    "        float bands = material.customParams[0] > 0.5 ? material.customParams[0] : 4.0;\n"
-                                                                                                                                                                                                                                                    "        result = floor(result * bands) / bands;\n"
-                                                                                                                                                                                                                                                    "    } else if (material.shadingModel == 4) {\n"
-                                                                                                                                                                                                                                                    "        float ndv = max(dot(N, V), 0.0);\n"
-                                                                                                                                                                                                                                                    "        float power = material.customParams[0] > 0.1 ? material.customParams[0] : 3.0;\n"
-                                                                                                                                                                                                                                                    "        float bias = material.customParams[1];\n"
-                                                                                                                                                                                                                                                    "        float fresnel = pow(1.0 - ndv, power) + bias;\n"
-                                                                                                                                                                                                                                                    "        finalAlpha *= clamp(fresnel, 0.0, 1.0);\n"
-                                                                                                                                                                                                                                                    "    } else if (material.shadingModel == 5) {\n"
-                                                                                                                                                                                                                                                    "        float strength = material.customParams[0] > 0.0 ? material.customParams[0] : 2.0;\n"
-                                                                                                                                                                                                                                                    "        result += emissive * (strength - 1.0);\n"
-                                                                                                                                                                                                                                                    "    }\n"
-                                                                                                                                                                                                                                                    "    out.color = float4(result, finalAlpha);\n"
-                                                                                                                                                                                                                                                    "    out.motion = motion_output(in);\n"
-                                                                                                                                                                                                                                                    "    return out;\n"
-                                                                                                                                                                                                                                                    "}\n";
+                           "using namespace metal;\n"
+                           "\n"
+                           "struct VertexIn {\n"
+                           "    float3 position [[attribute(0)]];\n"
+                           "    float3 normal   [[attribute(1)]];\n"
+                           "    float2 uv       [[attribute(2)]];\n"
+                           "    float4 color    [[attribute(3)]];\n"
+                           "    float4 tangent  [[attribute(4)]];\n"
+                           "    uchar4 boneIdx  [[attribute(5)]];\n"
+                           "    float4 boneWt   [[attribute(6)]];\n"
+                           "    float2 uv1      [[attribute(7)]];\n"
+                           "};\n"
+                           "\n"
+                           "struct InstanceData {\n"
+                           "    float4x4 modelMatrix;\n"
+                           "    float4x4 normalMatrix;\n"
+                           "    float4x4 prevModelMatrix;\n"
+                           "};\n"
+                           "\n"
+                           "struct VertexOut {\n"
+                           "    float4 position [[position]];\n"
+                           "    float3 worldPos;\n"
+                           "    float3 normal;\n"
+                           "    float4 tangent;\n"
+                           "    float2 uv;\n"
+                           "    float2 uv1;\n"
+                           "    float4 color;\n"
+                           "    float4 currClip;\n"
+                           "    float4 prevClip;\n"
+                           "    float hasObjectHistory;\n"
+                           "};\n"
+                           "\n"
+                           "struct PerObject {\n"
+                           "    float4x4 modelMatrix;\n"
+                           "    float4x4 prevModelMatrix;\n"
+                           "    float4x4 viewProjection;\n"
+                           "    float4x4 normalMatrix;\n"
+                           "    int4 flags0;\n"
+                           "    int4 flags1;\n"
+                           "};\n"
+                           "\n"
+                           "struct Light {\n"
+                           "    int type;\n"
+                           "    int shadowIndex;\n"
+                           "    int shadowCascadeCount;\n"
+                           "    float _p0;\n"
+                           "    float4 direction;\n"
+                           "    float4 position;\n"
+                           "    float4 color;\n"
+                           "    float intensity;\n"
+                           "    float attenuation;\n"
+                           "    float inner_cos;\n"
+                           "    float outer_cos;\n"
+                           "    float4 shadowCascadeSplits;\n"
+                           "};\n"
+                           "\n"
+                           "struct PerScene {\n"
+                           "    float4 cameraPosition;\n"
+                           "    float4 ambientColor;\n"
+                           "    float4 fogColor;\n"
+                           "    float4 fogParams;\n"
+                           "    int4 counts;\n"
+                           "    float4 cameraForward;\n"
+                           "    float4x4 prevViewProjection;\n"
+                           "    float4x4 shadowVP[" VGFX3D_STR(VGFX3D_MAX_SHADOW_LIGHTS) "];\n"
+                                                                                         "};\n"
+                                                                                         "\n"
+                                                                                         "struct "
+                                                                                         "PerMateri"
+                                                                                         "al {\n"
+                                                                                         "    "
+                                                                                         "float4 "
+                                                                                         "diffuseCo"
+                                                                                         "lor;\n"
+                                                                                         "    "
+                                                                                         "float4 "
+                                                                                         "specularC"
+                                                                                         "olor;\n"
+                                                                                         "    "
+                                                                                         "float4 "
+                                                                                         "emissiveC"
+                                                                                         "olor;\n"
+                                                                                         "    "
+                                                                                         "float4 "
+                                                                                         "scalars;"
+                                                                                         "\n"
+                                                                                         "    "
+                                                                                         "float4 "
+                                                                                         "pbrScalar"
+                                                                                         "s0;\n"
+                                                                                         "    "
+                                                                                         "float4 "
+                                                                                         "pbrScalar"
+                                                                                         "s1;\n"
+                                                                                         "    int4 "
+                                                                                         "flags0;\n"
+                                                                                         "    int4 "
+                                                                                         "flags1;\n"
+                                                                                         "    int4 "
+                                                                                         "pbrFlags;"
+                                                                                         "\n"
+                                                                                         "    "
+                                                                                         "float4 "
+                                                                                         "splatScal"
+                                                                                         "es;\n"
+                                                                                         "    int "
+                                                                                         "shadingMo"
+                                                                                         "del;\n"
+                                                                                         "    "
+                                                                                         "float "
+                                                                                         "customPar"
+                                                                                         "ams[8];\n"
+                                                                                         "    int4 "
+                                                                                         "textureUv"
+                                                                                         "Sets0;\n"
+                                                                                         "    int4 "
+                                                                                         "textureUv"
+                                                                                         "Sets1;\n"
+                                                                                         "    "
+                                                                                         "float4 "
+                                                                                         "textureUv"
+                                                                                         "Transform"
+                                                                                         "0"
+                                                                                         "[" VGFX3D_STR(RT_MATERIAL3D_TEXTURE_SLOT_COUNT) "];\n"
+                                                                                                                                          "    float4 textureUvTransform1[" VGFX3D_STR(RT_MATERIAL3D_TEXTURE_SLOT_COUNT) "];\n"
+                                                                                                                                                                                                                         "};\n"
+                                                                                                                                                                                                                         "\n"
+                                                                                                                                                                                                                         "struct ShadowOut {\n"
+                                                                                                                                                                                                                         "    float4 position [[position]];\n"
+                                                                                                                                                                                                                         "    float2 uv;\n"
+                                                                                                                                                                                                                         "    float2 uv1;\n"
+                                                                                                                                                                                                                         "    float4 color;\n"
+                                                                                                                                                                                                                         "};\n"
+                                                                                                                                                                                                                         "\n"
+                                                                                                                                                                                                                         "struct MainOut {\n"
+                                                                                                                                                                                                                         "    float4 color [[color(0)]];\n"
+                                                                                                                                                                                                                         "    float4 motion [[color(1)]];\n"
+                                                                                                                                                                                                                         "};\n"
+                                                                                                                                                                                                                         "\n"
+                                                                                                                                                                                                                         "float3 applyMorphPosition(float3 pos,\n"
+                                                                                                                                                                                                                         "                         constant PerObject &obj,\n"
+                                                                                                                                                                                                                         "                         constant float *morphDeltas,\n"
+                                                                                                                                                                                                                         "                         constant float *weights,\n"
+                                                                                                                                                                                                                         "                         uint vid) {\n"
+                                                                                                                                                                                                                         "    int morphShapeCount = obj.flags0.z;\n"
+                                                                                                                                                                                                                         "    int vertexCount = obj.flags0.w;\n"
+                                                                                                                                                                                                                         "    if (morphShapeCount <= 0 || vertexCount <= 0)\n"
+                                                                                                                                                                                                                         "        return pos;\n"
+                                                                                                                                                                                                                         "    for (int s = 0; s < morphShapeCount; s++) {\n"
+                                                                                                                                                                                                                         "        float w = weights[s];\n"
+                                                                                                                                                                                                                         "        if (fabs(w) > 0.0001) {\n"
+                                                                                                                                                                                                                         "            int off = (s * vertexCount + int(vid)) * 3;\n"
+                                                                                                                                                                                                                         "            pos.x += morphDeltas[off + 0] * w;\n"
+                                                                                                                                                                                                                         "            pos.y += morphDeltas[off + 1] * w;\n"
+                                                                                                                                                                                                                         "            pos.z += morphDeltas[off + 2] * w;\n"
+                                                                                                                                                                                                                         "        }\n"
+                                                                                                                                                                                                                         "    }\n"
+                                                                                                                                                                                                                         "    return pos;\n"
+                                                                                                                                                                                                                         "}\n"
+                                                                                                                                                                                                                         "\n"
+                                                                                                                                                                                                                         "float3 applyMorphNormal(float3 nrm,\n"
+                                                                                                                                                                                                                         "                       constant PerObject &obj,\n"
+                                                                                                                                                                                                                         "                       constant float *morphNormalDeltas,\n"
+                                                                                                                                                                                                                         "                       constant float *weights,\n"
+                                                                                                                                                                                                                         "                       uint vid) {\n"
+                                                                                                                                                                                                                         "    int morphShapeCount = obj.flags0.z;\n"
+                                                                                                                                                                                                                         "    int vertexCount = obj.flags0.w;\n"
+                                                                                                                                                                                                                         "    if (obj.flags1.w == 0 || morphShapeCount <= 0 || vertexCount <= 0)\n"
+                                                                                                                                                                                                                         "        return nrm;\n"
+                                                                                                                                                                                                                         "    for (int s = 0; s < morphShapeCount; s++) {\n"
+                                                                                                                                                                                                                         "        float w = weights[s];\n"
+                                                                                                                                                                                                                         "        if (fabs(w) > 0.0001) {\n"
+                                                                                                                                                                                                                         "            int off = (s * vertexCount + int(vid)) * 3;\n"
+                                                                                                                                                                                                                         "            nrm.x += morphNormalDeltas[off + 0] * w;\n"
+                                                                                                                                                                                                                         "            nrm.y += morphNormalDeltas[off + 1] * w;\n"
+                                                                                                                                                                                                                         "            nrm.z += morphNormalDeltas[off + 2] * w;\n"
+                                                                                                                                                                                                                         "        }\n"
+                                                                                                                                                                                                                         "    }\n"
+                                                                                                                                                                                                                         "    return nrm;\n"
+                                                                                                                                                                                                                         "}\n"
+                                                                                                                                                                                                                         "\n"
+                                                                                                                                                                                                                         "float3 safe_normalize3(float3 v, float3 fallback) {\n"
+                                                                                                                                                                                                                         "    float len2 = dot(v, v);\n"
+                                                                                                                                                                                                                         "    return (len2 > 1e-12 && len2 < 1e20) ? v * rsqrt(len2) : fallback;\n"
+                                                                                                                                                                                                                         "}\n"
+                                                                                                                                                                                                                         "\n"
+                                                                                                                                                                                                                         "float3x3 safe_normal_matrix(float4x4 m) {\n"
+                                                                                                                                                                                                                         "    float3x3 linear = float3x3(m[0].xyz, m[1].xyz, m[2].xyz);\n"
+                                                                                                                                                                                                                         "    float3 c0 = linear[0];\n"
+                                                                                                                                                                                                                         "    float3 c1 = linear[1];\n"
+                                                                                                                                                                                                                         "    float3 c2 = linear[2];\n"
+                                                                                                                                                                                                                         "    float3 cof0 = cross(c1, c2);\n"
+                                                                                                                                                                                                                         "    float3 cof1 = cross(c2, c0);\n"
+                                                                                                                                                                                                                         "    float3 cof2 = cross(c0, c1);\n"
+                                                                                                                                                                                                                         "    float det = dot(c0, cof0);\n"
+                                                                                                                                                                                                                         "    if (fabs(det) > 1e-8)\n"
+                                                                                                                                                                                                                         "        return float3x3(cof0 / det, cof1 / det, cof2 / det);\n"
+                                                                                                                                                                                                                         "    return float3x3(float3(1.0, 0.0, 0.0), float3(0.0, 1.0, 0.0), float3(0.0, 0.0, 1.0));\n"
+                                                                                                                                                                                                                         "}\n"
+                                                                                                                                                                                                                         "\n"
+                                                                                                                                                                                                                         "float4 skinPosition(float4 pos,\n"
+                                                                                                                                                                                                                         "                    VertexIn in,\n"
+                                                                                                                                                                                                                         "                    constant float4x4 *palette,\n"
+                                                                                                                                                                                                                         "                    int enabled) {\n"
+                                                                                                                                                                                                                         "    if (enabled == 0)\n"
+                                                                                                                                                                                                                         "        return pos;\n"
+                                                                                                                                                                                                                         "    float4 skinned = float4(0.0);\n"
+                                                                                                                                                                                                                         "    float totalWeight = 0.0;\n"
+                                                                                                                                                                                                                         "    for (int i = 0; i < 4; i++) {\n"
+                                                                                                                                                                                                                         "        float bw = in.boneWt[i];\n"
+                                                                                                                                                                                                                         "        if (bw <= 0.0001)\n"
+                                                                                                                                                                                                                         "            continue;\n"
+                                                                                                                                                                                                                         "        uint idx = min((uint)in.boneIdx[i], 255u);\n"
+                                                                                                                                                                                                                         "        skinned += (palette[idx] * pos) * bw;\n"
+                                                                                                                                                                                                                         "        totalWeight += bw;\n"
+                                                                                                                                                                                                                         "    }\n"
+                                                                                                                                                                                                                         "    return totalWeight > 0.0001 ? skinned / totalWeight : pos;\n"
+                                                                                                                                                                                                                         "}\n"
+                                                                                                                                                                                                                         "\n"
+                                                                                                                                                                                                                         "float4 clipZToBackend(float4 clip) {\n"
+                                                                                                                                                                                                                         "    clip.z = clip.z * 0.5 + clip.w * 0.5;\n"
+                                                                                                                                                                                                                         "    return clip;\n"
+                                                                                                                                                                                                                         "}\n"
+                                                                                                                                                                                                                         "\n"
+                                                                                                                                                                                                                         "float3 skinVector(float3 vec,\n"
+                                                                                                                                                                                                                         "                  VertexIn in,\n"
+                                                                                                                                                                                                                         "                  constant float4x4 *palette,\n"
+                                                                                                                                                                                                                         "                  int enabled) {\n"
+                                                                                                                                                                                                                         "    if (enabled == 0)\n"
+                                                                                                                                                                                                                         "        return vec;\n"
+                                                                                                                                                                                                                         "    float3 skinned = float3(0.0);\n"
+                                                                                                                                                                                                                         "    float totalWeight = 0.0;\n"
+                                                                                                                                                                                                                         "    for (int i = 0; i < 4; i++) {\n"
+                                                                                                                                                                                                                         "        float bw = in.boneWt[i];\n"
+                                                                                                                                                                                                                         "        if (bw <= 0.0001)\n"
+                                                                                                                                                                                                                         "            continue;\n"
+                                                                                                                                                                                                                         "        uint idx = min((uint)in.boneIdx[i], 255u);\n"
+                                                                                                                                                                                                                         "        skinned += (safe_normal_matrix(palette[idx]) * vec) * bw;\n"
+                                                                                                                                                                                                                         "        totalWeight += bw;\n"
+                                                                                                                                                                                                                         "    }\n"
+                                                                                                                                                                                                                         "    return totalWeight > 0.0001 ? skinned / totalWeight : vec;\n"
+                                                                                                                                                                                                                         "}\n"
+                                                                                                                                                                                                                         "\n"
+                                                                                                                                                                                                                         "VertexOut buildVertex(float3 currPos,\n"
+                                                                                                                                                                                                                         "                      float3 prevPos,\n"
+                                                                                                                                                                                                                         "                      float3 currNormal,\n"
+                                                                                                                                                                                                                         "                      float4 currTangent,\n"
+                                                                                                                                                                                                                         "                      float2 uv,\n"
+                                                                                                                                                                                                                         "                      float2 uv1,\n"
+                                                                                                                                                                                                                         "                      float4 color,\n"
+                                                                                                                                                                                                                         "                      float4x4 modelMatrix,\n"
+                                                                                                                                                                                                                         "                      float4x4 normalMatrix,\n"
+                                                                                                                                                                                                                         "                      float4x4 prevModelMatrix,\n"
+                                                                                                                                                                                                                         "                      constant PerObject &obj,\n"
+                                                                                                                                                                                                                         "                      constant PerScene &scene,\n"
+                                                                                                                                                                                                                         "                      float hasHistory) {\n"
+                                                                                                                                                                                                                         "    VertexOut out;\n"
+                                                                                                                                                                                                                         "    float4 worldPos = modelMatrix * float4(currPos, 1.0);\n"
+                                                                                                                                                                                                                         "    float4 prevWorldPos = prevModelMatrix * float4(prevPos, 1.0);\n"
+                                                                                                                                                                                                                         "    float4 currClip = obj.viewProjection * worldPos;\n"
+                                                                                                                                                                                                                         "    float4 prevClip = scene.prevViewProjection * prevWorldPos;\n"
+                                                                                                                                                                                                                         "    out.position = clipZToBackend(currClip);\n"
+                                                                                                                                                                                                                         "    out.worldPos = worldPos.xyz;\n"
+                                                                                                                                                                                                                         "    out.normal = (normalMatrix * float4(currNormal, 0.0)).xyz;\n"
+                                                                                                                                                                                                                         "    out.tangent = float4((normalMatrix * float4(currTangent.xyz, 0.0)).xyz, currTangent.w);\n"
+                                                                                                                                                                                                                         "    out.uv = uv;\n"
+                                                                                                                                                                                                                         "    out.uv1 = uv1;\n"
+                                                                                                                                                                                                                         "    out.color = color;\n"
+                                                                                                                                                                                                                         "    out.currClip = currClip;\n"
+                                                                                                                                                                                                                         "    out.prevClip = prevClip;\n"
+                                                                                                                                                                                                                         "    out.hasObjectHistory = hasHistory;\n"
+                                                                                                                                                                                                                         "    return out;\n"
+                                                                                                                                                                                                                         "}\n"
+                                                                                                                                                                                                                         "\n"
+                                                                                                                                                                                                                         "vertex VertexOut vertex_main(\n"
+                                                                                                                                                                                                                         "    VertexIn in [[stage_in]],\n"
+                                                                                                                                                                                                                         "    constant PerObject &obj [[buffer(1)]],\n"
+                                                                                                                                                                                                                         "    constant PerScene &scene [[buffer(2)]],\n"
+                                                                                                                                                                                                                         "    constant float4x4 *bonePalette [[buffer(3)]],\n"
+                                                                                                                                                                                                                         "    constant float *morphDeltas [[buffer(4)]],\n"
+                                                                                                                                                                                                                         "    constant float *morphWeights [[buffer(5)]],\n"
+                                                                                                                                                                                                                         "    constant float4x4 *prevBonePalette [[buffer(7)]],\n"
+                                                                                                                                                                                                                         "    constant float *prevMorphWeights [[buffer(8)]],\n"
+                                                                                                                                                                                                                         "    constant float *morphNormalDeltas [[buffer(9)]],\n"
+                                                                                                                                                                                                                         "    uint vid [[vertex_id]]) {\n"
+                                                                                                                                                                                                                         "    float3 pos = applyMorphPosition(in.position, obj, morphDeltas, morphWeights, vid);\n"
+                                                                                                                                                                                                                         "    float3 prevPos = applyMorphPosition(in.position,\n"
+                                                                                                                                                                                                                         "                                       obj,\n"
+                                                                                                                                                                                                                         "                                       morphDeltas,\n"
+                                                                                                                                                                                                                         "                                       obj.flags1.y != 0 ? prevMorphWeights : morphWeights,\n"
+                                                                                                                                                                                                                         "                                       vid);\n"
+                                                                                                                                                                                                                         "    float3 currNormal = applyMorphNormal(in.normal, obj, morphNormalDeltas, morphWeights, "
+                                                                                                                                                                                                                         "vid);\n"
+                                                                                                                                                                                                                         "    float4 currTangent = in.tangent;\n"
+                                                                                                                                                                                                                         "    float4 skinnedPos = skinPosition(float4(pos, 1.0), in, bonePalette, obj.flags0.x);\n"
+                                                                                                                                                                                                                         "    float4 prevSkinnedPos = skinPosition(float4(prevPos, 1.0),\n"
+                                                                                                                                                                                                                         "                                         in,\n"
+                                                                                                                                                                                                                         "                                         prevBonePalette,\n"
+                                                                                                                                                                                                                         "                                         obj.flags0.y);\n"
+                                                                                                                                                                                                                         "    float3 skinnedNormal = skinVector(currNormal, in, bonePalette, obj.flags0.x);\n"
+                                                                                                                                                                                                                         "    float3 skinnedTangent = skinVector(currTangent.xyz, in, bonePalette, obj.flags0.x);\n"
+                                                                                                                                                                                                                         "    if (obj.flags0.x == 0) {\n"
+                                                                                                                                                                                                                         "        skinnedPos = float4(pos, 1.0);\n"
+                                                                                                                                                                                                                         "        skinnedNormal = currNormal;\n"
+                                                                                                                                                                                                                         "        skinnedTangent = currTangent.xyz;\n"
+                                                                                                                                                                                                                         "    }\n"
+                                                                                                                                                                                                                         "    if (obj.flags0.y == 0)\n"
+                                                                                                                                                                                                                         "        prevSkinnedPos = float4(prevPos, 1.0);\n"
+                                                                                                                                                                                                                         "    float4x4 prevModel = obj.flags1.x != 0 ? obj.prevModelMatrix : obj.modelMatrix;\n"
+                                                                                                                                                                                                                         "    float hasHistory = (obj.flags1.x != 0 || obj.flags0.y != 0 || obj.flags1.y != 0) ? 1.0 : "
+                                                                                                                                                                                                                         "0.0;\n"
+                                                                                                                                                                                                                         "    return buildVertex(skinnedPos.xyz,\n"
+                                                                                                                                                                                                                         "                       prevSkinnedPos.xyz,\n"
+                                                                                                                                                                                                                         "                       safe_normalize3(skinnedNormal, float3(0.0, 0.0, 1.0)),\n"
+                                                                                                                                                                                                                         "                       float4(safe_normalize3(skinnedTangent, float3(1.0, 0.0, 0.0)), currTangent.w),\n"
+                                                                                                                                                                                                                         "                       in.uv,\n"
+                                                                                                                                                                                                                         "                       in.uv1,\n"
+                                                                                                                                                                                                                         "                       in.color,\n"
+                                                                                                                                                                                                                         "                       obj.modelMatrix,\n"
+                                                                                                                                                                                                                         "                       obj.normalMatrix,\n"
+                                                                                                                                                                                                                         "                       prevModel,\n"
+                                                                                                                                                                                                                         "                       obj,\n"
+                                                                                                                                                                                                                         "                       scene,\n"
+                                                                                                                                                                                                                         "                       hasHistory);\n"
+                                                                                                                                                                                                                         "}\n"
+                                                                                                                                                                                                                         "\n"
+                                                                                                                                                                                                                         "vertex VertexOut vertex_main_instanced(\n"
+                                                                                                                                                                                                                         "    VertexIn in [[stage_in]],\n"
+                                                                                                                                                                                                                         "    constant PerObject &obj [[buffer(1)]],\n"
+                                                                                                                                                                                                                         "    constant PerScene &scene [[buffer(2)]],\n"
+                                                                                                                                                                                                                         "    constant float4x4 *bonePalette [[buffer(3)]],\n"
+                                                                                                                                                                                                                         "    constant float *morphDeltas [[buffer(4)]],\n"
+                                                                                                                                                                                                                         "    constant float *morphWeights [[buffer(5)]],\n"
+                                                                                                                                                                                                                         "    device const InstanceData *instances [[buffer(6)]],\n"
+                                                                                                                                                                                                                         "    constant float4x4 *prevBonePalette [[buffer(7)]],\n"
+                                                                                                                                                                                                                         "    constant float *prevMorphWeights [[buffer(8)]],\n"
+                                                                                                                                                                                                                         "    constant float *morphNormalDeltas [[buffer(9)]],\n"
+                                                                                                                                                                                                                         "    uint vid [[vertex_id]],\n"
+                                                                                                                                                                                                                         "    uint iid [[instance_id]]) {\n"
+                                                                                                                                                                                                                         "    InstanceData inst = instances[iid];\n"
+                                                                                                                                                                                                                         "    float3 pos = applyMorphPosition(in.position, obj, morphDeltas, morphWeights, vid);\n"
+                                                                                                                                                                                                                         "    float3 prevPos = applyMorphPosition(in.position,\n"
+                                                                                                                                                                                                                         "                                       obj,\n"
+                                                                                                                                                                                                                         "                                       morphDeltas,\n"
+                                                                                                                                                                                                                         "                                       obj.flags1.y != 0 ? prevMorphWeights : morphWeights,\n"
+                                                                                                                                                                                                                         "                                       vid);\n"
+                                                                                                                                                                                                                         "    float3 currNormal = applyMorphNormal(in.normal, obj, morphNormalDeltas, morphWeights, "
+                                                                                                                                                                                                                         "vid);\n"
+                                                                                                                                                                                                                         "    float4 currTangent = in.tangent;\n"
+                                                                                                                                                                                                                         "    float4 skinnedPos = skinPosition(float4(pos, 1.0), in, bonePalette, obj.flags0.x);\n"
+                                                                                                                                                                                                                         "    float4 prevSkinnedPos = skinPosition(float4(prevPos, 1.0),\n"
+                                                                                                                                                                                                                         "                                         in,\n"
+                                                                                                                                                                                                                         "                                         prevBonePalette,\n"
+                                                                                                                                                                                                                         "                                         obj.flags0.y);\n"
+                                                                                                                                                                                                                         "    float3 skinnedNormal = skinVector(currNormal, in, bonePalette, obj.flags0.x);\n"
+                                                                                                                                                                                                                         "    float3 skinnedTangent = skinVector(currTangent.xyz, in, bonePalette, obj.flags0.x);\n"
+                                                                                                                                                                                                                         "    if (obj.flags0.x == 0) {\n"
+                                                                                                                                                                                                                         "        skinnedPos = float4(pos, 1.0);\n"
+                                                                                                                                                                                                                         "        skinnedNormal = currNormal;\n"
+                                                                                                                                                                                                                         "        skinnedTangent = currTangent.xyz;\n"
+                                                                                                                                                                                                                         "    }\n"
+                                                                                                                                                                                                                         "    if (obj.flags0.y == 0)\n"
+                                                                                                                                                                                                                         "        prevSkinnedPos = float4(prevPos, 1.0);\n"
+                                                                                                                                                                                                                         "    float4x4 prevModel = obj.flags1.z != 0 ? inst.prevModelMatrix : inst.modelMatrix;\n"
+                                                                                                                                                                                                                         "    float hasHistory = (obj.flags1.z != 0 || obj.flags0.y != 0 || obj.flags1.y != 0) ? 1.0 : "
+                                                                                                                                                                                                                         "0.0;\n"
+                                                                                                                                                                                                                         "    return buildVertex(skinnedPos.xyz,\n"
+                                                                                                                                                                                                                         "                       prevSkinnedPos.xyz,\n"
+                                                                                                                                                                                                                         "                       safe_normalize3(skinnedNormal, float3(0.0, 0.0, 1.0)),\n"
+                                                                                                                                                                                                                         "                       float4(safe_normalize3(skinnedTangent, float3(1.0, 0.0, 0.0)), currTangent.w),\n"
+                                                                                                                                                                                                                         "                       in.uv,\n"
+                                                                                                                                                                                                                         "                       in.uv1,\n"
+                                                                                                                                                                                                                         "                       in.color,\n"
+                                                                                                                                                                                                                         "                       inst.modelMatrix,\n"
+                                                                                                                                                                                                                         "                       inst.normalMatrix,\n"
+                                                                                                                                                                                                                         "                       prevModel,\n"
+                                                                                                                                                                                                                         "                       obj,\n"
+                                                                                                                                                                                                                         "                       scene,\n"
+                                                                                                                                                                                                                         "                       hasHistory);\n"
+                                                                                                                                                                                                                         "}\n"
+                                                                                                                                                                                                                         "\n"
+                                                                                                                                                                                                                         "vertex ShadowOut vertex_shadow(\n"
+                                                                                                                                                                                                                         "    VertexIn in [[stage_in]],\n"
+                                                                                                                                                                                                                         "    constant PerObject &obj [[buffer(1)]],\n"
+                                                                                                                                                                                                                         "    constant float4x4 *bonePalette [[buffer(3)]],\n"
+                                                                                                                                                                                                                         "    constant float *morphDeltas [[buffer(4)]],\n"
+                                                                                                                                                                                                                         "    constant float *morphWeights [[buffer(5)]],\n"
+                                                                                                                                                                                                                         "    uint vid [[vertex_id]]) {\n"
+                                                                                                                                                                                                                         "    ShadowOut out;\n"
+                                                                                                                                                                                                                         "    float3 pos = applyMorphPosition(in.position, obj, morphDeltas, morphWeights, vid);\n"
+                                                                                                                                                                                                                         "    float4 skinnedPos = skinPosition(float4(pos, 1.0), in, bonePalette, obj.flags0.x);\n"
+                                                                                                                                                                                                                         "    if (obj.flags0.x == 0)\n"
+                                                                                                                                                                                                                         "        skinnedPos = float4(pos, 1.0);\n"
+                                                                                                                                                                                                                         "    out.position = clipZToBackend(obj.viewProjection * (obj.modelMatrix * skinnedPos));\n"
+                                                                                                                                                                                                                         "    out.uv = in.uv;\n"
+                                                                                                                                                                                                                         "    out.uv1 = in.uv1;\n"
+                                                                                                                                                                                                                         "    out.color = in.color;\n"
+                                                                                                                                                                                                                         "    return out;\n"
+                                                                                                                                                                                                                         "}\n"
+                                                                                                                                                                                                                         "\n"
+                                                                                                                                                                                                                         "float2 shadow_material_uv(ShadowOut in, constant PerMaterial &material, int slot) {\n"
+                                                                                                                                                                                                                         "    int uvSet = slot < 4 ? material.textureUvSets0[slot] : "
+                                                                                                                                                                                                                         "material.textureUvSets1[slot - 4];\n"
+                                                                                                                                                                                                                         "    float2 uv = uvSet != 0 ? in.uv1 : in.uv;\n"
+                                                                                                                                                                                                                         "    float4 m = material.textureUvTransform0[slot];\n"
+                                                                                                                                                                                                                         "    float4 t = material.textureUvTransform1[slot];\n"
+                                                                                                                                                                                                                         "    return float2(uv.x * m.x + uv.y * m.y + t.x,\n"
+                                                                                                                                                                                                                         "                  uv.x * m.z + uv.y * m.w + t.y);\n"
+                                                                                                                                                                                                                         "}\n"
+                                                                                                                                                                                                                         "\n"
+                                                                                                                                                                                                                         "fragment void fragment_shadow(\n"
+                                                                                                                                                                                                                         "    ShadowOut in [[stage_in]],\n"
+                                                                                                                                                                                                                         "    constant PerMaterial &material [[buffer(1)]],\n"
+                                                                                                                                                                                                                         "    texture2d<float> diffuseTex [[texture(0)]],\n"
+                                                                                                                                                                                                                         "    sampler diffuseSampler [[sampler(0)]]) {\n"
+                                                                                                                                                                                                                         "    float alpha = material.diffuseColor.a * material.scalars.x * in.color.a;\n"
+                                                                                                                                                                                                                         "    if (material.flags0.x != 0)\n"
+                                                                                                                                                                                                                         "        alpha *= diffuseTex.sample(diffuseSampler, shadow_material_uv(in, material, 0)).a;\n"
+                                                                                                                                                                                                                         "    if (material.pbrFlags.y == 1 && alpha < material.pbrScalars1.y)\n"
+                                                                                                                                                                                                                         "        discard_fragment();\n"
+                                                                                                                                                                                                                         "}\n"
+                                                                                                                                                                                                                         "\n"
+                                                                                                                                                                                                                         "float4 motion_output(VertexOut in) {\n"
+                                                                                                                                                                                                                         "    float currW = (in.currClip.w < 0.0 ? -1.0 : 1.0) * max(fabs(in.currClip.w), 0.0001);\n"
+                                                                                                                                                                                                                         "    float prevW = (in.prevClip.w < 0.0 ? -1.0 : 1.0) * max(fabs(in.prevClip.w), 0.0001);\n"
+                                                                                                                                                                                                                         "    float2 currNdc = in.currClip.xy / currW;\n"
+                                                                                                                                                                                                                         "    float2 prevNdc = in.prevClip.xy / prevW;\n"
+                                                                                                                                                                                                                         "    float2 velocity = (currNdc - prevNdc) * 0.5;\n"
+                                                                                                                                                                                                                         "    return float4(clamp(velocity * 0.5 + 0.5, 0.0, 1.0), in.hasObjectHistory, 1.0);\n"
+                                                                                                                                                                                                                         "}\n"
+                                                                                                                                                                                                                         "\n"
+                                                                                                                                                                                                                         "float distribution_ggx(float NdotH, float roughness) {\n"
+                                                                                                                                                                                                                         "    float a = roughness * roughness;\n"
+                                                                                                                                                                                                                         "    float a2 = a * a;\n"
+                                                                                                                                                                                                                         "    float denom = NdotH * NdotH * (a2 - 1.0) + 1.0;\n"
+                                                                                                                                                                                                                         "    return a2 / (3.14159265 * denom * denom + 1e-6);\n"
+                                                                                                                                                                                                                         "}\n"
+                                                                                                                                                                                                                         "\n"
+                                                                                                                                                                                                                         "float geometry_schlick_ggx(float NdotV, float roughness) {\n"
+                                                                                                                                                                                                                         "    float r = roughness + 1.0;\n"
+                                                                                                                                                                                                                         "    float k = (r * r) / 8.0;\n"
+                                                                                                                                                                                                                         "    return NdotV / (NdotV * (1.0 - k) + k + 1e-6);\n"
+                                                                                                                                                                                                                         "}\n"
+                                                                                                                                                                                                                         "\n"
+                                                                                                                                                                                                                         "float geometry_smith(float NdotV, float NdotL, float roughness) {\n"
+                                                                                                                                                                                                                         "    return geometry_schlick_ggx(NdotV, roughness) * geometry_schlick_ggx(NdotL, roughness);\n"
+                                                                                                                                                                                                                         "}\n"
+                                                                                                                                                                                                                         "\n"
+                                                                                                                                                                                                                         "float3 fresnel_schlick(float cosTheta, float3 F0) {\n"
+                                                                                                                                                                                                                         "    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);\n"
+                                                                                                                                                                                                                         "}\n"
+                                                                                                                                                                                                                         "\n"
+                                                                                                                                                                                                                         "float3 srgb_to_linear(float3 c) {\n"
+                                                                                                                                                                                                                         "    float3 low = c / 12.92;\n"
+                                                                                                                                                                                                                         "    float3 high = pow((c + float3(0.055)) / 1.055, float3(2.4));\n"
+                                                                                                                                                                                                                         "    return mix(low, high, step(float3(0.04045), c));\n"
+                                                                                                                                                                                                                         "}\n"
+                                                                                                                                                                                                                         "\n"
+                                                                                                                                                                                                                         "float3 env_sample(texturecube<float> envTex,\n"
+                                                                                                                                                                                                                         "                  sampler envSampler,\n"
+                                                                                                                                                                                                                         "                  float3 dir,\n"
+                                                                                                                                                                                                                         "                  float roughness,\n"
+                                                                                                                                                                                                                         "                  float maxLod) {\n"
+                                                                                                                                                                                                                         "    float lod = clamp(roughness, 0.0, 1.0) * max(maxLod, 0.0);\n"
+                                                                                                                                                                                                                         "    return envTex.sample(envSampler, safe_normalize3(dir, float3(0.0, 0.0, 1.0)), level(lod)).rgb;\n"
+                                                                                                                                                                                                                         "}\n"
+                                                                                                                                                                                                                         "\n"
+                                                                                                                                                                                                                         "int texture_uv_set_at(constant PerMaterial &material, int slot) {\n"
+                                                                                                                                                                                                                         "    return slot < 4 ? material.textureUvSets0[slot] : material.textureUvSets1[slot - 4];\n"
+                                                                                                                                                                                                                         "}\n"
+                                                                                                                                                                                                                         "\n"
+                                                                                                                                                                                                                         "float2 material_uv(VertexOut in, constant PerMaterial &material, int slot) {\n"
+                                                                                                                                                                                                                         "    float2 uv = texture_uv_set_at(material, slot) != 0 ? in.uv1 : in.uv;\n"
+                                                                                                                                                                                                                         "    float4 m = material.textureUvTransform0[slot];\n"
+                                                                                                                                                                                                                         "    float4 t = material.textureUvTransform1[slot];\n"
+                                                                                                                                                                                                                         "    return float2(uv.x * m.x + uv.y * m.y + t.x,\n"
+                                                                                                                                                                                                                         "                  uv.x * m.z + uv.y * m.w + t.y);\n"
+                                                                                                                                                                                                                         "}\n"
+                                                                                                                                                                                                                         "\n"
+                                                                                                                                                                                                                         "int resolve_shadow_cascade(constant Light &light,\n"
+                                                                                                                                                                                                                         "                           float3 worldPos,\n"
+                                                                                                                                                                                                                         "                           constant PerScene &scene) {\n"
+                                                                                                                                                                                                                         "    int shadowIndex = light.shadowIndex;\n"
+                                                                                                                                                                                                                         "    if (shadowIndex < 0 || shadowIndex >= scene.counts.y)\n"
+                                                                                                                                                                                                                         "        return -1;\n"
+                                                                                                                                                                                                                         "    int cascadeCount = clamp(light.shadowCascadeCount, 1, " VGFX3D_STR(
+                                                                                                                                                                                                                             VGFX3D_MAX_SHADOW_LIGHTS) ");\n"
+                                                                                                                                                                                                                                                       "    cascadeCount = min(cascadeCount, scene.counts.y - shadowIndex);\n"
+                                                                                                                                                                                                                                                       "    if (cascadeCount <= 1)\n"
+                                                                                                                                                                                                                                                       "        return shadowIndex;\n"
+                                                                                                                                                                                                                                                       "    float viewDepth = dot(worldPos - scene.cameraPosition.xyz, scene.cameraForward.xyz);\n"
+                                                                                                                                                                                                                                                       "    if (viewDepth <= light.shadowCascadeSplits.x || cascadeCount == 1)\n"
+                                                                                                                                                                                                                                                       "        return shadowIndex;\n"
+                                                                                                                                                                                                                                                       "    if (viewDepth <= light.shadowCascadeSplits.y || cascadeCount == 2)\n"
+                                                                                                                                                                                                                                                       "        return shadowIndex + 1;\n"
+                                                                                                                                                                                                                                                       "    if (viewDepth <= light.shadowCascadeSplits.z || cascadeCount == 3)\n"
+                                                                                                                                                                                                                                                       "        return shadowIndex + 2;\n"
+                                                                                                                                                                                                                                                       "    return shadowIndex + 3;\n"
+                                                                                                                                                                                                                                                       "}\n"
+                                                                                                                                                                                                                                                       "\n"
+                                                                                                                                                                                                                                                       "float sample_shadow_at(int shadowIndex,\n"
+                                                                                                                                                                                                                                                       "                       float2 uv,\n"
+                                                                                                                                                                                                                                                       "                       float depth,\n"
+                                                                                                                                                                                                                                                       "                       constant PerScene &scene,\n"
+                                                                                                                                                                                                                                                       "                       depth2d<float> shadowMap0,\n"
+                                                                                                                                                                                                                                                       "                       depth2d<float> shadowMap1,\n"
+                                                                                                                                                                                                                                                       "                       depth2d<float> shadowMap2,\n"
+                                                                                                                                                                                                                                                       "                       depth2d<float> shadowMap3,\n"
+                                                                                                                                                                                                                                                       "                       sampler shadowSampler) {\n"
+                                                                                                                                                                                                                                                       "    if (shadowIndex == 0)\n"
+                                                                                                                                                                                                                                                       "        return shadowMap0.sample_compare(shadowSampler, uv, depth - scene.fogParams.z);\n"
+                                                                                                                                                                                                                                                       "    if (shadowIndex == 1)\n"
+                                                                                                                                                                                                                                                       "        return shadowMap1.sample_compare(shadowSampler, uv, depth - scene.fogParams.z);\n"
+                                                                                                                                                                                                                                                       "    if (shadowIndex == 2)\n"
+                                                                                                                                                                                                                                                       "        return shadowMap2.sample_compare(shadowSampler, uv, depth - scene.fogParams.z);\n"
+                                                                                                                                                                                                                                                       "    return shadowMap3.sample_compare(shadowSampler, uv, depth - scene.fogParams.z);\n"
+                                                                                                                                                                                                                                                       "}\n"
+                                                                                                                                                                                                                                                       "\n"
+                                                                                                                                                                                                                                                       "float sample_shadow(constant Light &light,\n"
+                                                                                                                                                                                                                                                       "                    float3 worldPos,\n"
+                                                                                                                                                                                                                                                       "                    constant PerScene &scene,\n"
+                                                                                                                                                                                                                                                       "                    depth2d<float> shadowMap0,\n"
+                                                                                                                                                                                                                                                       "                    depth2d<float> shadowMap1,\n"
+                                                                                                                                                                                                                                                       "                    depth2d<float> shadowMap2,\n"
+                                                                                                                                                                                                                                                       "                    depth2d<float> shadowMap3,\n"
+                                                                                                                                                                                                                                                       "                    sampler shadowSampler) {\n"
+                                                                                                                                                                                                                                                       "    int shadowIndex = resolve_shadow_cascade(light, worldPos, scene);\n"
+                                                                                                                                                                                                                                                       "    if (shadowIndex < 0 || shadowIndex >= scene.counts.y)\n"
+                                                                                                                                                                                                                                                       "        return 1.0;\n"
+                                                                                                                                                                                                                                                       "    float4 lc = scene.shadowVP[shadowIndex] * float4(worldPos, 1.0);\n"
+                                                                                                                                                                                                                                                       "    if (lc.w <= 0.0001)\n"
+                                                                                                                                                                                                                                                       "        return 1.0;\n"
+                                                                                                                                                                                                                                                       "    float3 suv = lc.xyz / lc.w;\n"
+                                                                                                                                                                                                                                                       "    suv.xy = suv.xy * 0.5 + 0.5;\n"
+                                                                                                                                                                                                                                                       "    suv.y = 1.0 - suv.y;\n"
+                                                                                                                                                                                                                                                       "    if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0 || suv.z < 0.0 || suv.z > 1.0)\n"
+                                                                                                                                                                                                                                                       "        return 1.0;\n"
+                                                                                                                                                                                                                                                       "    return sample_shadow_at(shadowIndex, suv.xy, suv.z, scene, shadowMap0, shadowMap1, shadowMap2, shadowMap3, shadowSampler);\n"
+                                                                                                                                                                                                                                                       "}\n"
+                                                                                                                                                                                                                                                       "\n"
+                                                                                                                                                                                                                                                       "fragment MainOut fragment_main(\n"
+                                                                                                                                                                                                                                                       "    VertexOut in [[stage_in]],\n"
+                                                                                                                                                                                                                                                       "    constant PerScene &scene [[buffer(0)]],\n"
+                                                                                                                                                                                                                                                       "    constant PerMaterial &material [[buffer(1)]],\n"
+                                                                                                                                                                                                                                                       "    constant Light *lights [[buffer(2)]],\n"
+                                                                                                                                                                                                                                                       "    texture2d<float> diffuseTex [[texture(0)]],\n"
+                                                                                                                                                                                                                                                       "    texture2d<float> normalTex [[texture(1)]],\n"
+                                                                                                                                                                                                                                                       "    texture2d<float> specularTex [[texture(2)]],\n"
+                                                                                                                                                                                                                                                       "    texture2d<float> emissiveTex [[texture(3)]],\n"
+                                                                                                                                                                                                                                                       "    depth2d<float> shadowMap0 [[texture(4)]],\n"
+                                                                                                                                                                                                                                                       "    depth2d<float> shadowMap1 [[texture(5)]],\n"
+                                                                                                                                                                                                                                                       "    depth2d<float> shadowMap2 [[texture(6)]],\n"
+                                                                                                                                                                                                                                                       "    depth2d<float> shadowMap3 [[texture(7)]],\n"
+                                                                                                                                                                                                                                                       "    texture2d<float> splatTex [[texture(8)]],\n"
+                                                                                                                                                                                                                                                       "    texture2d<float> splatLayer0 [[texture(9)]],\n"
+                                                                                                                                                                                                                                                       "    texture2d<float> splatLayer1 [[texture(10)]],\n"
+                                                                                                                                                                                                                                                       "    texture2d<float> splatLayer2 [[texture(11)]],\n"
+                                                                                                                                                                                                                                                       "    texture2d<float> splatLayer3 [[texture(12)]],\n"
+                                                                                                                                                                                                                                                       "    texturecube<float> envTex [[texture(13)]],\n"
+                                                                                                                                                                                                                                                       "    texture2d<float> metallicRoughnessTex [[texture(14)]],\n"
+                                                                                                                                                                                                                                                       "    texture2d<float> aoTex [[texture(15)]],\n"
+                                                                                                                                                                                                                                                       "    sampler diffuseSampler [[sampler(0)]],\n"
+                                                                                                                                                                                                                                                       "    sampler shadowSampler [[sampler(1)]],\n"
+                                                                                                                                                                                                                                                       "    sampler envSampler [[sampler(2)]],\n"
+                                                                                                                                                                                                                                                       "    sampler normalSampler [[sampler(3)]],\n"
+                                                                                                                                                                                                                                                       "    sampler specularSampler [[sampler(4)]],\n"
+                                                                                                                                                                                                                                                       "    sampler emissiveSampler [[sampler(5)]],\n"
+                                                                                                                                                                                                                                                       "    sampler metallicRoughnessSampler [[sampler(6)]],\n"
+                                                                                                                                                                                                                                                       "    sampler aoSampler [[sampler(7)]]\n"
+                                                                                                                                                                                                                                                       ") {\n"
+                                                                                                                                                                                                                                                       "    MainOut out;\n"
+                                                                                                                                                                                                                                                       "    float3 baseColor = material.diffuseColor.rgb * in.color.rgb;\n"
+                                                                                                                                                                                                                                                       "    float texAlpha = 1.0;\n"
+                                                                                                                                                                                                                                                       "    float materialAlpha = material.diffuseColor.a * material.scalars.x * in.color.a;\n"
+                                                                                                                                                                                                                                                       "    if (material.flags0.x != 0) {\n"
+                                                                                                                                                                                                                                                       "        float4 texSample = diffuseTex.sample(diffuseSampler, material_uv(in, material, 0));\n"
+                                                                                                                                                                                                                                                       "        if (material.pbrFlags.x != 0) texSample.rgb = srgb_to_linear(texSample.rgb);\n"
+                                                                                                                                                                                                                                                       "        baseColor *= texSample.rgb;\n"
+                                                                                                                                                                                                                                                       "        texAlpha = texSample.a;\n"
+                                                                                                                                                                                                                                                       "    }\n"
+                                                                                                                                                                                                                                                       "    if (material.flags1.z != 0) {\n"
+                                                                                                                                                                                                                                                       "        float4 sp = splatTex.sample(diffuseSampler, in.uv);\n"
+                                                                                                                                                                                                                                                       "        float wsum = sp.r + sp.g + sp.b + sp.a;\n"
+                                                                                                                                                                                                                                                       "        if (wsum > 0.001) sp /= wsum;\n"
+                                                                                                                                                                                                                                                       "        float3 blended = float3(0);\n"
+                                                                                                                                                                                                                                                       "        if (sp.r > 0.001) blended += splatLayer0.sample(diffuseSampler, in.uv * "
+                                                                                                                                                                                                                                                       "material.splatScales.x).rgb * sp.r;\n"
+                                                                                                                                                                                                                                                       "        if (sp.g > 0.001) blended += splatLayer1.sample(diffuseSampler, in.uv * "
+                                                                                                                                                                                                                                                       "material.splatScales.y).rgb * sp.g;\n"
+                                                                                                                                                                                                                                                       "        if (sp.b > 0.001) blended += splatLayer2.sample(diffuseSampler, in.uv * "
+                                                                                                                                                                                                                                                       "material.splatScales.z).rgb * sp.b;\n"
+                                                                                                                                                                                                                                                       "        if (sp.a > 0.001) blended += splatLayer3.sample(diffuseSampler, in.uv * "
+                                                                                                                                                                                                                                                       "material.splatScales.w).rgb * sp.a;\n"
+                                                                                                                                                                                                                                                       "        baseColor = blended * material.diffuseColor.rgb * in.color.rgb;\n"
+                                                                                                                                                                                                                                                       "    }\n"
+                                                                                                                                                                                                                                                       "    float3 N = safe_normalize3(in.normal, float3(0.0, 0.0, 1.0));\n"
+                                                                                                                                                                                                                                                       "    float3 cameraToWorld = scene.cameraPosition.xyz - in.worldPos;\n"
+                                                                                                                                                                                                                                                       "    float3 V = safe_normalize3(scene.cameraPosition.w > 0.5 ? -scene.cameraForward.xyz : "
+                                                                                                                                                                                                                                                       "cameraToWorld, float3(0.0, 0.0, 1.0));\n"
+                                                                                                                                                                                                                                                       "    float viewDistance = scene.cameraPosition.w > 0.5\n"
+                                                                                                                                                                                                                                                       "        ? abs(dot(in.worldPos - scene.cameraPosition.xyz, scene.cameraForward.xyz))\n"
+                                                                                                                                                                                                                                                       "        : length(cameraToWorld);\n"
+                                                                                                                                                                                                                                                       "    if (material.flags0.z != 0) {\n"
+                                                                                                                                                                                                                                                       "        float3 T = safe_normalize3(in.tangent.xyz, float3(1.0, 0.0, 0.0));\n"
+                                                                                                                                                                                                                                                       "        T = safe_normalize3(T - N * dot(T, N), float3(1.0, 0.0, 0.0));\n"
+                                                                                                                                                                                                                                                       "        float lenT = length(T);\n"
+                                                                                                                                                                                                                                                       "        if (lenT > 0.001) {\n"
+                                                                                                                                                                                                                                                       "            float3 B = safe_normalize3(cross(N, T), float3(0.0, 1.0, 0.0)) * (in.tangent.w < 0.0 ? -1.0 : 1.0);\n"
+                                                                                                                                                                                                                                                       "            float3 mapN = normalTex.sample(normalSampler, material_uv(in, material, 1)).rgb * 2.0 - 1.0;\n"
+                                                                                                                                                                                                                                                       "            mapN.xy *= material.pbrScalars1.x;\n"
+                                                                                                                                                                                                                                                       "            N = safe_normalize3(T * mapN.x + B * mapN.y + N * mapN.z, N);\n"
+                                                                                                                                                                                                                                                       "        }\n"
+                                                                                                                                                                                                                                                       "    }\n"
+                                                                                                                                                                                                                                                       "    float3 emissive = material.emissiveColor.rgb * material.pbrScalars0.w;\n"
+                                                                                                                                                                                                                                                       "    if (material.flags1.x != 0) {\n"
+                                                                                                                                                                                                                                                       "        float3 emissiveSample = emissiveTex.sample(emissiveSampler, material_uv(in, material, 3)).rgb;\n"
+                                                                                                                                                                                                                                                       "        if (material.pbrFlags.x != 0) emissiveSample = srgb_to_linear(emissiveSample);\n"
+                                                                                                                                                                                                                                                       "        emissive *= emissiveSample;\n"
+                                                                                                                                                                                                                                                       "    }\n"
+                                                                                                                                                                                                                                                       "    float4 metallicRoughnessSample = float4(1.0);\n"
+                                                                                                                                                                                                                                                       "    float envRoughness = clamp(material.pbrScalars0.y, 0.0, 1.0);\n"
+                                                                                                                                                                                                                                                       "    if (material.pbrFlags.z != 0) {\n"
+                                                                                                                                                                                                                                                       "        metallicRoughnessSample = metallicRoughnessTex.sample(metallicRoughnessSampler, material_uv(in, material, 4));\n"
+                                                                                                                                                                                                                                                       "        envRoughness = clamp(envRoughness * metallicRoughnessSample.g, 0.045, 1.0);\n"
+                                                                                                                                                                                                                                                       "    }\n"
+                                                                                                                                                                                                                                                       "    float finalAlpha = materialAlpha * texAlpha;\n"
+                                                                                                                                                                                                                                                       "    if (material.pbrFlags.y == 1) {\n"
+                                                                                                                                                                                                                                                       "        if (finalAlpha < material.pbrScalars1.y)\n"
+                                                                                                                                                                                                                                                       "            discard_fragment();\n"
+                                                                                                                                                                                                                                                       "        finalAlpha = 1.0;\n"
+                                                                                                                                                                                                                                                       "    } else if (material.pbrFlags.y == 0) {\n"
+                                                                                                                                                                                                                                                       "        finalAlpha = 1.0;\n"
+                                                                                                                                                                                                                                                       "    }\n"
+                                                                                                                                                                                                                                                       "    if (material.flags0.y != 0) {\n"
+                                                                                                                                                                                                                                                       "        float3 unlitColor = baseColor + emissive;\n"
+                                                                                                                                                                                                                                                       "        if (material.flags1.y != 0) {\n"
+                                                                                                                                                                                                                                                       "            float3 R = reflect(-V, N);\n"
+                                                                                                                                                                                                                                                       "            float3 envColor = env_sample(envTex, envSampler, R, envRoughness, "
+                                                                                                                                                                                                                                                       "material.scalars.z);\n"
+                                                                                                                                                                                                                                                       "            unlitColor = mix(unlitColor, envColor, clamp(material.scalars.y, 0.0, 1.0));\n"
+                                                                                                                                                                                                                                                       "        }\n"
+                                                                                                                                                                                                                                                       "        if (scene.fogColor.a > 0.5) {\n"
+                                                                                                                                                                                                                                                       "            float fogRange = scene.fogParams.y - scene.fogParams.x;\n"
+                                                                                                                                                                                                                                                       "            float fogFactor = clamp((viewDistance - scene.fogParams.x) / max(fogRange, "
+                                                                                                                                                                                                                                                       "0.001), 0.0, 1.0);\n"
+                                                                                                                                                                                                                                                       "            unlitColor = mix(unlitColor, scene.fogColor.rgb, fogFactor);\n"
+                                                                                                                                                                                                                                                       "        }\n"
+                                                                                                                                                                                                                                                       "        out.color = float4(unlitColor, finalAlpha);\n"
+                                                                                                                                                                                                                                                       "        out.motion = motion_output(in);\n"
+                                                                                                                                                                                                                                                       "        return out;\n"
+                                                                                                                                                                                                                                                       "    }\n"
+                                                                                                                                                                                                                                                       "    float3 result = float3(0.0);\n"
+                                                                                                                                                                                                                                                       "    if (material.pbrFlags.x != 0) {\n"
+                                                                                                                                                                                                                                                       "        float metallic = clamp(material.pbrScalars0.x, 0.0, 1.0);\n"
+                                                                                                                                                                                                                                                       "        float roughness = clamp(material.pbrScalars0.y, 0.045, 1.0);\n"
+                                                                                                                                                                                                                                                       "        float ao = clamp(material.pbrScalars0.z, 0.0, 1.0);\n"
+                                                                                                                                                                                                                                                       "        if (material.pbrFlags.z != 0) {\n"
+                                                                                                                                                                                                                                                       "            roughness = clamp(roughness * metallicRoughnessSample.g, 0.045, 1.0);\n"
+                                                                                                                                                                                                                                                       "            metallic = clamp(metallic * metallicRoughnessSample.b, 0.0, 1.0);\n"
+                                                                                                                                                                                                                                                       "            envRoughness = roughness;\n"
+                                                                                                                                                                                                                                                       "        }\n"
+                                                                                                                                                                                                                                                       "        if (material.pbrFlags.w != 0) {\n"
+                                                                                                                                                                                                                                                       "            float4 aoSample = aoTex.sample(aoSampler, material_uv(in, material, 5));\n"
+                                                                                                                                                                                                                                                       "            ao = clamp(ao * aoSample.r, 0.0, 1.0);\n"
+                                                                                                                                                                                                                                                       "        }\n"
+                                                                                                                                                                                                                                                       "        result = scene.ambientColor.rgb * baseColor * ao;\n"
+                                                                                                                                                                                                                                                       "        for (int i = 0; i < scene.counts.x; i++) {\n"
+                                                                                                                                                                                                                                                       "            float3 L; float atten = 1.0;\n"
+                                                                                                                                                                                                                                                       "            if (lights[i].type == 0) {\n"
+                                                                                                                                                                                                                                                       "                L = safe_normalize3(-lights[i].direction.xyz, float3(0.0, -1.0, 0.0));\n"
+                                                                                                                                                                                                                                                       "            } else if (lights[i].type == 1) {\n"
+                                                                                                                                                                                                                                                       "                float3 tl = lights[i].position.xyz - in.worldPos;\n"
+                                                                                                                                                                                                                                                       "                float d = length(tl); L = safe_normalize3(tl, float3(0.0));\n"
+                                                                                                                                                                                                                                                       "                atten = 1.0 / (1.0 + lights[i].attenuation * d * d);\n"
+                                                                                                                                                                                                                                                       "            } else if (lights[i].type == 3) {\n"
+                                                                                                                                                                                                                                                       "                float3 tl = lights[i].position.xyz - in.worldPos;\n"
+                                                                                                                                                                                                                                                       "                float d = length(tl); L = safe_normalize3(tl, float3(0.0));\n"
+                                                                                                                                                                                                                                                       "                atten = 1.0 / (1.0 + lights[i].attenuation * d * d);\n"
+                                                                                                                                                                                                                                                       "                float spotDot = dot(-L, safe_normalize3(lights[i].direction.xyz, float3(0.0, -1.0, 0.0)));\n"
+                                                                                                                                                                                                                                                       "                if (spotDot < lights[i].outer_cos) {\n"
+                                                                                                                                                                                                                                                       "                    atten = 0.0;\n"
+                                                                                                                                                                                                                                                       "                } else if (spotDot < lights[i].inner_cos) {\n"
+                                                                                                                                                                                                                                                       "                    float coneRange = lights[i].inner_cos - lights[i].outer_cos;\n"
+                                                                                                                                                                                                                                                       "                    float t = coneRange > 0.0001 ? clamp((spotDot - lights[i].outer_cos) / coneRange, 0.0, 1.0) : 0.0;\n"
+                                                                                                                                                                                                                                                       "                    atten *= t * t * (3.0 - 2.0 * t);\n"
+                                                                                                                                                                                                                                                       "                }\n"
+                                                                                                                                                                                                                                                       "            } else {\n"
+                                                                                                                                                                                                                                                       "                result += lights[i].color.rgb * lights[i].intensity * baseColor * ao;\n"
+                                                                                                                                                                                                                                                       "                continue;\n"
+                                                                                                                                                                                                                                                       "            }\n"
+                                                                                                                                                                                                                                                       "            float NdotL = max(dot(N, L), 0.0);\n"
+                                                                                                                                                                                                                                                       "            if (lights[i].type == 0)\n"
+                                                                                                                                                                                                                                                       "                atten *= mix(0.15, 1.0, sample_shadow(lights[i], in.worldPos, "
+                                                                                                                                                                                                                                                       "scene, shadowMap0, shadowMap1, shadowMap2, shadowMap3, shadowSampler));\n"
+                                                                                                                                                                                                                                                       "            if (NdotL <= 0.0)\n"
+                                                                                                                                                                                                                                                       "                continue;\n"
+                                                                                                                                                                                                                                                       "            float3 H = safe_normalize3(L + V, N);\n"
+                                                                                                                                                                                                                                                       "            float NdotV = max(dot(N, V), 0.001);\n"
+                                                                                                                                                                                                                                                       "            float NdotH = max(dot(N, H), 0.0);\n"
+                                                                                                                                                                                                                                                       "            float VdotH = max(dot(V, H), 0.0);\n"
+                                                                                                                                                                                                                                                       "            float3 F0 = mix(float3(0.04), baseColor, metallic);\n"
+                                                                                                                                                                                                                                                       "            float3 F = fresnel_schlick(VdotH, F0);\n"
+                                                                                                                                                                                                                                                       "            float D = distribution_ggx(NdotH, roughness);\n"
+                                                                                                                                                                                                                                                       "            float G = geometry_smith(NdotV, NdotL, roughness);\n"
+                                                                                                                                                                                                                                                       "            float3 specular = (D * G * F) / max(4.0 * NdotV * NdotL, 0.0001);\n"
+                                                                                                                                                                                                                                                       "            float3 kS = F;\n"
+                                                                                                                                                                                                                                                       "            float3 kD = (1.0 - kS) * (1.0 - metallic);\n"
+                                                                                                                                                                                                                                                       "            float3 diffuse = kD * baseColor / 3.14159265;\n"
+                                                                                                                                                                                                                                                       "            float3 radiance = lights[i].color.rgb * lights[i].intensity * atten;\n"
+                                                                                                                                                                                                                                                       "            result += (diffuse + specular) * radiance * NdotL;\n"
+                                                                                                                                                                                                                                                       "        }\n"
+                                                                                                                                                                                                                                                       "    } else {\n"
+                                                                                                                                                                                                                                                       "        result = scene.ambientColor.rgb * baseColor;\n"
+                                                                                                                                                                                                                                                       "        float3 specColor = material.specularColor.rgb;\n"
+                                                                                                                                                                                                                                                       "        if (material.flags0.w != 0) {\n"
+                                                                                                                                                                                                                                                       "            specColor *= specularTex.sample(specularSampler, material_uv(in, material, 2)).rgb;\n"
+                                                                                                                                                                                                                                                       "        }\n"
+                                                                                                                                                                                                                                                       "        for (int i = 0; i < scene.counts.x; i++) {\n"
+                                                                                                                                                                                                                                                       "            float3 L; float atten = 1.0;\n"
+                                                                                                                                                                                                                                                       "            if (lights[i].type == 0) {\n"
+                                                                                                                                                                                                                                                       "                L = safe_normalize3(-lights[i].direction.xyz, float3(0.0, -1.0, 0.0));\n"
+                                                                                                                                                                                                                                                       "            } else if (lights[i].type == 1) {\n"
+                                                                                                                                                                                                                                                       "                float3 tl = lights[i].position.xyz - in.worldPos;\n"
+                                                                                                                                                                                                                                                       "                float d = length(tl); L = safe_normalize3(tl, float3(0.0));\n"
+                                                                                                                                                                                                                                                       "                atten = 1.0 / (1.0 + lights[i].attenuation * d * d);\n"
+                                                                                                                                                                                                                                                       "            } else if (lights[i].type == 3) {\n"
+                                                                                                                                                                                                                                                       "                float3 tl = lights[i].position.xyz - in.worldPos;\n"
+                                                                                                                                                                                                                                                       "                float d = length(tl); L = safe_normalize3(tl, float3(0.0));\n"
+                                                                                                                                                                                                                                                       "                atten = 1.0 / (1.0 + lights[i].attenuation * d * d);\n"
+                                                                                                                                                                                                                                                       "                float spotDot = dot(-L, safe_normalize3(lights[i].direction.xyz, float3(0.0, -1.0, 0.0)));\n"
+                                                                                                                                                                                                                                                       "                if (spotDot < lights[i].outer_cos) {\n"
+                                                                                                                                                                                                                                                       "                    atten = 0.0;\n"
+                                                                                                                                                                                                                                                       "                } else if (spotDot < lights[i].inner_cos) {\n"
+                                                                                                                                                                                                                                                       "                    float coneRange = lights[i].inner_cos - lights[i].outer_cos;\n"
+                                                                                                                                                                                                                                                       "                    float t = coneRange > 0.0001 ? clamp((spotDot - lights[i].outer_cos) / coneRange, 0.0, 1.0) : 0.0;\n"
+                                                                                                                                                                                                                                                       "                    atten *= t * t * (3.0 - 2.0 * t);\n"
+                                                                                                                                                                                                                                                       "                }\n"
+                                                                                                                                                                                                                                                       "            } else {\n"
+                                                                                                                                                                                                                                                       "                result += lights[i].color.rgb * lights[i].intensity * baseColor;\n"
+                                                                                                                                                                                                                                                       "                continue;\n"
+                                                                                                                                                                                                                                                       "            }\n"
+                                                                                                                                                                                                                                                       "            float NdotL = max(dot(N, L), 0.0);\n"
+                                                                                                                                                                                                                                                       "            if (lights[i].type == 0)\n"
+                                                                                                                                                                                                                                                       "                atten *= mix(0.15, 1.0, sample_shadow(lights[i], in.worldPos, "
+                                                                                                                                                                                                                                                       "scene, shadowMap0, shadowMap1, shadowMap2, shadowMap3, shadowSampler));\n"
+                                                                                                                                                                                                                                                       "            result += lights[i].color.rgb * lights[i].intensity * NdotL * "
+                                                                                                                                                                                                                                                       "baseColor * atten;\n"
+                                                                                                                                                                                                                                                       "            if (NdotL > 0.0 && material.specularColor.w > 0.0) {\n"
+                                                                                                                                                                                                                                                       "                float3 H = safe_normalize3(L + V, N);\n"
+                                                                                                                                                                                                                                                       "                float spec = pow(max(dot(N, H), 0.0), material.specularColor.w);\n"
+                                                                                                                                                                                                                                                       "                result += lights[i].color.rgb * lights[i].intensity * spec * "
+                                                                                                                                                                                                                                                       "specColor * atten;\n"
+                                                                                                                                                                                                                                                       "            }\n"
+                                                                                                                                                                                                                                                       "        }\n"
+                                                                                                                                                                                                                                                       "    }\n"
+                                                                                                                                                                                                                                                       "    result += emissive;\n"
+                                                                                                                                                                                                                                                       "    if (material.flags1.y != 0) {\n"
+                                                                                                                                                                                                                                                       "        float3 R = reflect(-V, N);\n"
+                                                                                                                                                                                                                                                       "        float3 envColor = env_sample(envTex, envSampler, R, envRoughness, "
+                                                                                                                                                                                                                                                       "material.scalars.z);\n"
+                                                                                                                                                                                                                                                       "        result = mix(result, envColor, clamp(material.scalars.y, 0.0, 1.0));\n"
+                                                                                                                                                                                                                                                       "    }\n"
+                                                                                                                                                                                                                                                       "    if (scene.fogColor.a > 0.5) {\n"
+                                                                                                                                                                                                                                                       "        float fogRange = scene.fogParams.y - scene.fogParams.x;\n"
+                                                                                                                                                                                                                                                       "        float fogFactor = clamp((viewDistance - scene.fogParams.x) / max(fogRange, 0.001), "
+                                                                                                                                                                                                                                                       "0.0, 1.0);\n"
+                                                                                                                                                                                                                                                       "        result = mix(result, scene.fogColor.rgb, fogFactor);\n"
+                                                                                                                                                                                                                                                       "    }\n"
+                                                                                                                                                                                                                                                       "    if (material.shadingModel == 1) {\n"
+                                                                                                                                                                                                                                                       "        float bands = material.customParams[0] > 0.5 ? material.customParams[0] : 4.0;\n"
+                                                                                                                                                                                                                                                       "        result = floor(result * bands) / bands;\n"
+                                                                                                                                                                                                                                                       "    } else if (material.shadingModel == 4) {\n"
+                                                                                                                                                                                                                                                       "        float ndv = max(dot(N, V), 0.0);\n"
+                                                                                                                                                                                                                                                       "        float power = material.customParams[0] > 0.1 ? material.customParams[0] : 3.0;\n"
+                                                                                                                                                                                                                                                       "        float bias = material.customParams[1];\n"
+                                                                                                                                                                                                                                                       "        float fresnel = pow(1.0 - ndv, power) + bias;\n"
+                                                                                                                                                                                                                                                       "        finalAlpha *= clamp(fresnel, 0.0, 1.0);\n"
+                                                                                                                                                                                                                                                       "    } else if (material.shadingModel == 5) {\n"
+                                                                                                                                                                                                                                                       "        float strength = material.customParams[0] > 0.0 ? material.customParams[0] : 2.0;\n"
+                                                                                                                                                                                                                                                       "        result += emissive * (strength - 1.0);\n"
+                                                                                                                                                                                                                                                       "    }\n"
+                                                                                                                                                                                                                                                       "    out.color = float4(result, finalAlpha);\n"
+                                                                                                                                                                                                                                                       "    out.motion = motion_output(in);\n"
+                                                                                                                                                                                                                                                       "    return out;\n"
+                                                                                                                                                                                                                                                       "}\n";
 
 #pragma clang diagnostic pop
 
@@ -1274,10 +1312,11 @@ static void metal_prune_morph_cache(VGFXMetalContext *ctx) {
 }
 
 /// @brief Remove stale Metal render-target cache entries.
-/// @details Entries are keyed by RenderTarget3D cache identity and retain GPU textures after a target
-///   is unbound so later readback/rebind is cheap. This periodic prune waits for any pending command
-///   buffer before removal and also drops entries whose borrowed CPU target pointer no longer matches
-///   its identity.
+/// @details Entries are keyed by RenderTarget3D cache identity and retain GPU textures after a
+/// target
+///   is unbound so later readback/rebind is cheap. This periodic prune waits for any pending
+///   command buffer before removal and also drops entries whose borrowed CPU target pointer no
+///   longer matches its identity.
 static void metal_prune_render_target_cache(VGFXMetalContext *ctx) {
     const uint64_t k_render_target_cache_max_age = 120;
     NSMutableArray *keys_to_remove;
@@ -1986,6 +2025,8 @@ static id<MTLBuffer> metal_new_shared_buffer_with_length(VGFXMetalContext *ctx, 
 ///          avoids backend-specific validation edge cases.
 static NSUInteger metal_align_dynamic_offset(NSUInteger value) {
     const NSUInteger align = 256u;
+    if (value > ((NSUInteger)-1) - (align - 1u))
+        return (NSUInteger)-1;
     return (value + align - 1u) & ~(align - 1u);
 }
 
@@ -2013,8 +2054,7 @@ static id<MTLBuffer> metal_upload_dynamic_geometry_buffer(VGFXMetalContext *ctx,
         return nil;
     buffer = vertex_buffer ? ctx.dynamicVertexBuf : ctx.dynamicIndexBuf;
     capacity = vertex_buffer ? ctx.dynamicVertexBufLength : ctx.dynamicIndexBufLength;
-    write_offset =
-        vertex_buffer ? ctx.dynamicVertexWriteOffset : ctx.dynamicIndexWriteOffset;
+    write_offset = vertex_buffer ? ctx.dynamicVertexWriteOffset : ctx.dynamicIndexWriteOffset;
     aligned_offset = metal_align_dynamic_offset(write_offset);
     if (aligned_offset > max_capacity - (NSUInteger)length)
         return nil;
@@ -2068,14 +2108,15 @@ static void metal_cache_evict_if_needed(VGFXMetalContext *ctx) {
 }
 
 /// @brief Get (growing as needed) the per-frame vertex and index buffers for a draw of given size.
-static void metal_get_geometry_buffers(VGFXMetalContext *ctx,
-                                       const vgfx3d_draw_cmd_t *cmd,
-                                       id<MTLBuffer> *outVB,
-                                       id<MTLBuffer> *outIB,
-                                       NSUInteger *outVertexOffset,
-                                       NSUInteger *outIndexOffset) {
+/// @return 1 when both output buffers are valid, 0 when allocation/upload failed.
+static int metal_get_geometry_buffers(VGFXMetalContext *ctx,
+                                      const vgfx3d_draw_cmd_t *cmd,
+                                      id<MTLBuffer> *outVB,
+                                      id<MTLBuffer> *outIB,
+                                      NSUInteger *outVertexOffset,
+                                      NSUInteger *outIndexOffset) {
     if (!outVB || !outIB) {
-        return;
+        return 0;
     }
     *outVB = nil;
     *outIB = nil;
@@ -2085,10 +2126,10 @@ static void metal_get_geometry_buffers(VGFXMetalContext *ctx,
         *outIndexOffset = 0;
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
         cmd->index_count == 0)
-        return;
+        return 0;
     if ((size_t)cmd->vertex_count > SIZE_MAX / sizeof(vgfx3d_vertex_t) ||
         (size_t)cmd->index_count > SIZE_MAX / sizeof(uint32_t))
-        return;
+        return 0;
 
     if (cmd->geometry_key && cmd->geometry_revision != 0) {
         NSValue *key = [NSValue valueWithPointer:cmd->geometry_key];
@@ -2104,7 +2145,7 @@ static void metal_get_geometry_buffers(VGFXMetalContext *ctx,
             new_entry.indexBuffer = metal_new_shared_buffer(
                 ctx, cmd->indices, (size_t)cmd->index_count * sizeof(uint32_t));
             if (!new_entry.vertexBuffer || !new_entry.indexBuffer)
-                return;
+                return 0;
             new_entry.revision = cmd->geometry_revision;
             new_entry.vertexCount = cmd->vertex_count;
             new_entry.indexCount = cmd->index_count;
@@ -2114,20 +2155,18 @@ static void metal_get_geometry_buffers(VGFXMetalContext *ctx,
         entry.lastUsedFrame = ctx.frameSerial;
         *outVB = entry.vertexBuffer;
         *outIB = entry.indexBuffer;
-        return;
+        return (*outVB && *outIB) ? 1 : 0;
     }
 
-    *outVB = metal_upload_dynamic_geometry_buffer(ctx,
-                                                  YES,
-                                                  cmd->vertices,
-                                                  (size_t)cmd->vertex_count *
-                                                      sizeof(vgfx3d_vertex_t),
-                                                  outVertexOffset);
-    *outIB = metal_upload_dynamic_geometry_buffer(ctx,
-                                                  NO,
-                                                  cmd->indices,
-                                                  (size_t)cmd->index_count * sizeof(uint32_t),
-                                                  outIndexOffset);
+    *outVB =
+        metal_upload_dynamic_geometry_buffer(ctx,
+                                             YES,
+                                             cmd->vertices,
+                                             (size_t)cmd->vertex_count * sizeof(vgfx3d_vertex_t),
+                                             outVertexOffset);
+    *outIB = metal_upload_dynamic_geometry_buffer(
+        ctx, NO, cmd->indices, (size_t)cmd->index_count * sizeof(uint32_t), outIndexOffset);
+    return (*outVB && *outIB) ? 1 : 0;
 }
 
 /// @brief The texture that holds the current frame's final image for readback/present.
@@ -2480,8 +2519,8 @@ static BOOL metal_load_main_functions(VGFXMetalContext *ctx, metal_main_function
 
 /// @brief Build all main and instanced pipeline-state variants.
 static BOOL metal_create_main_pipeline_states(VGFXMetalContext *ctx,
-                                             id<MTLDevice> device,
-                                             const metal_main_functions_t *funcs) {
+                                              id<MTLDevice> device,
+                                              const metal_main_functions_t *funcs) {
     NSError *error = nil;
     ctx.pipelineState = metal_create_pipeline_state(device,
                                                     funcs->vertex,
@@ -2523,15 +2562,14 @@ static BOOL metal_create_main_pipeline_states(VGFXMetalContext *ctx,
                                                                   VGFX3D_METAL_BLEND_ALPHA,
                                                                   YES,
                                                                   &error);
-    ctx.pipelineStateColorOnlyAdditive =
-        metal_create_pipeline_state(device,
-                                    funcs->vertex,
-                                    funcs->fragment,
-                                    create_vertex_descriptor(),
-                                    MTLPixelFormatBGRA8Unorm,
-                                    VGFX3D_METAL_BLEND_ADDITIVE,
-                                    YES,
-                                    &error);
+    ctx.pipelineStateColorOnlyAdditive = metal_create_pipeline_state(device,
+                                                                     funcs->vertex,
+                                                                     funcs->fragment,
+                                                                     create_vertex_descriptor(),
+                                                                     MTLPixelFormatBGRA8Unorm,
+                                                                     VGFX3D_METAL_BLEND_ADDITIVE,
+                                                                     YES,
+                                                                     &error);
     ctx.instancedPipelineState = metal_create_pipeline_state(device,
                                                              funcs->vertexInstanced,
                                                              funcs->fragment,
@@ -2548,24 +2586,22 @@ static BOOL metal_create_main_pipeline_states(VGFXMetalContext *ctx,
                                                                   VGFX3D_METAL_BLEND_ALPHA,
                                                                   YES,
                                                                   &error);
-    ctx.instancedPipelineStateAdditive =
-        metal_create_pipeline_state(device,
-                                    funcs->vertexInstanced,
-                                    funcs->fragment,
-                                    create_vertex_descriptor(),
-                                    MTLPixelFormatRGBA16Float,
-                                    VGFX3D_METAL_BLEND_ADDITIVE,
-                                    YES,
-                                    &error);
-    ctx.instancedPipelineStateColorOnly =
-        metal_create_pipeline_state(device,
-                                    funcs->vertexInstanced,
-                                    funcs->fragment,
-                                    create_vertex_descriptor(),
-                                    MTLPixelFormatBGRA8Unorm,
-                                    VGFX3D_METAL_BLEND_OPAQUE,
-                                    NO,
-                                    &error);
+    ctx.instancedPipelineStateAdditive = metal_create_pipeline_state(device,
+                                                                     funcs->vertexInstanced,
+                                                                     funcs->fragment,
+                                                                     create_vertex_descriptor(),
+                                                                     MTLPixelFormatRGBA16Float,
+                                                                     VGFX3D_METAL_BLEND_ADDITIVE,
+                                                                     YES,
+                                                                     &error);
+    ctx.instancedPipelineStateColorOnly = metal_create_pipeline_state(device,
+                                                                      funcs->vertexInstanced,
+                                                                      funcs->fragment,
+                                                                      create_vertex_descriptor(),
+                                                                      MTLPixelFormatBGRA8Unorm,
+                                                                      VGFX3D_METAL_BLEND_OPAQUE,
+                                                                      NO,
+                                                                      &error);
     ctx.instancedPipelineStateColorOnlyAlpha =
         metal_create_pipeline_state(device,
                                     funcs->vertexInstanced,
@@ -2596,7 +2632,8 @@ static BOOL metal_create_main_pipeline_states(VGFXMetalContext *ctx,
     return YES;
 }
 
-/// @brief Create depth-stencil state variants used by opaque, transparent, disabled, and skybox draws.
+/// @brief Create depth-stencil state variants used by opaque, transparent, disabled, and skybox
+/// draws.
 static void metal_create_depth_state_variants(VGFXMetalContext *ctx, id<MTLDevice> device) {
     MTLDepthStencilDescriptor *dd = [[MTLDepthStencilDescriptor alloc] init];
     dd.depthCompareFunction = MTLCompareFunctionLess;
@@ -2695,9 +2732,11 @@ static void metal_create_shadow_resources(VGFXMetalContext *ctx,
     ctx.shadowDepthState = [device newDepthStencilStateWithDescriptor:sdd];
 }
 
-/// @brief Backend vtable entry: create the Metal rendering context for window @p win sized @p w×@p h —
+/// @brief Backend vtable entry: create the Metal rendering context for window @p win sized @p w×@p
+/// h —
 ///   acquires the system default MTLDevice, attaches a CAMetalLayer to the native NSView, and
-///   initializes the per-context resource caches (texture/cubemap/geometry/morph/render-target/sampler).
+///   initializes the per-context resource caches
+///   (texture/cubemap/geometry/morph/render-target/sampler).
 /// @return An opaque VGFXMetalContext* handle (cast to void*), or NULL if no Metal device or native
 ///   view is available.
 static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
@@ -2810,7 +2849,8 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                         "float2 cameraVelocity(constant PostFXParams &p, float2 uv, float3 "
                         "worldPos) {\n"
                         "    float4 prevClip = p.prevViewProjection * float4(worldPos, 1.0);\n"
-                        "    float prevW = (prevClip.w < 0.0 ? -1.0 : 1.0) * max(fabs(prevClip.w), 0.0001);\n"
+                        "    float prevW = (prevClip.w < 0.0 ? -1.0 : 1.0) * max(fabs(prevClip.w), "
+                        "0.0001);\n"
                         "    float2 prevUv = prevClip.xy / prevW * 0.5 + 0.5;\n"
                         "    return uv - prevUv;\n"
                         "}\n"],
@@ -3245,13 +3285,12 @@ static uint64_t metal_texture_pending_bytes(VGFXMetalTextureCacheEntry *entry) {
     if (!entry)
         return 0;
     if (entry.textureAsset)
-        return vgfx3d_textureasset_pending_native_snapshot_bytes(
-            entry.textureAsset,
-            entry.nativeMipStart,
-            entry.nativeMipCount,
-            entry.nativeNextMip,
-            entry.nativeNextBlockRow,
-            entry.uploadInProgress ? 1 : 0);
+        return vgfx3d_textureasset_pending_native_snapshot_bytes(entry.textureAsset,
+                                                                 entry.nativeMipStart,
+                                                                 entry.nativeMipCount,
+                                                                 entry.nativeNextMip,
+                                                                 entry.nativeNextBlockRow,
+                                                                 entry.uploadInProgress ? 1 : 0);
     return vgfx3d_pending_rgba_upload_bytes(
         entry.width, entry.height, entry.uploadNextRow, entry.uploadInProgress ? 1 : 0);
 }
@@ -3324,9 +3363,8 @@ static int metal_continue_native_texture_upload(VGFXMetalContext *ctx,
         if (row_bytes == 0 || row_bytes > (uint64_t)NSUIntegerMax ||
             mip.bytes > (uint64_t)NSUIntegerMax)
             return 0;
-        block_rows =
-            ((uint64_t)(uint32_t)mip.height + (uint64_t)(uint32_t)mip.block_height - 1u) /
-            (uint64_t)(uint32_t)mip.block_height;
+        block_rows = ((uint64_t)(uint32_t)mip.height + (uint64_t)(uint32_t)mip.block_height - 1u) /
+                     (uint64_t)(uint32_t)mip.block_height;
         if (block_rows == 0 || block_rows > (uint64_t)INT32_MAX)
             return 0;
         if (entry.nativeNextBlockRow < 0 ||
@@ -3546,11 +3584,8 @@ static id<MTLTexture> metal_get_cached_texture(VGFXMetalContext *ctx, const void
 /// @brief Get the Metal texture for a native TextureAsset3D, creating/streaming it on a cache miss.
 /// @details Keyed by the asset's native cache key; returns nil while an upload is still in
 /// progress.
-static id<MTLTexture> metal_get_cached_native_texture(VGFXMetalContext *ctx,
-                                                      void *asset,
-                                                      uint64_t cache_key,
-                                                      int64_t mip_start,
-                                                      int64_t mip_count) {
+static id<MTLTexture> metal_get_cached_native_texture(
+    VGFXMetalContext *ctx, void *asset, uint64_t cache_key, int64_t mip_start, int64_t mip_count) {
     NSValue *key;
     VGFXMetalTextureCacheEntry *cached;
 
@@ -3969,13 +4004,12 @@ static void metal_submit_draw(void *ctx_ptr,
             [ctx.encoder setDepthStencilState:ctx.depthState];
         if (fabsf(cmd->depth_bias) > 1e-8f || fabsf(cmd->slope_scaled_depth_bias) > 1e-8f)
             [ctx.encoder setDepthBias:vgfx3d_depth_bias_constant_units(cmd->depth_bias)
-                            slopeScale:cmd->slope_scaled_depth_bias
-                                 clamp:0.0f];
+                           slopeScale:cmd->slope_scaled_depth_bias
+                                clamp:0.0f];
         else
             [ctx.encoder setDepthBias:0.0f slopeScale:0.0f clamp:0.0f];
 
-        metal_get_geometry_buffers(ctx, cmd, &vb, &ib, &vb_offset, &ib_offset);
-        if (!vb || !ib)
+        if (!metal_get_geometry_buffers(ctx, cmd, &vb, &ib, &vb_offset, &ib_offset))
             return;
         [ctx.encoder setVertexBuffer:vb offset:vb_offset atIndex:0];
 
@@ -4140,58 +4174,46 @@ static void metal_submit_draw(void *ctx_ptr,
 
         /* MTL-03: Bind cached textures for each material map slot */
         if (cmd->texture || cmd->texture_asset) {
-            id<MTLTexture> tex =
-                metal_get_material_texture(ctx,
-                                           cmd->texture_asset,
-                                           cmd->texture,
-                                           cmd->texture_asset_cache_key
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
-                                           cmd->texture_asset_mip_start
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
-                                           cmd->texture_asset_mip_count
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR]);
+            id<MTLTexture> tex = metal_get_material_texture(
+                ctx,
+                cmd->texture_asset,
+                cmd->texture,
+                cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+                cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+                cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR]);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:0];
         }
         if (cmd->normal_map || cmd->normal_map_asset) {
-            id<MTLTexture> tex =
-                metal_get_material_texture(ctx,
-                                           cmd->normal_map_asset,
-                                           cmd->normal_map,
-                                           cmd->texture_asset_cache_key
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_NORMAL],
-                                           cmd->texture_asset_mip_start
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_NORMAL],
-                                           cmd->texture_asset_mip_count
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_NORMAL]);
+            id<MTLTexture> tex = metal_get_material_texture(
+                ctx,
+                cmd->normal_map_asset,
+                cmd->normal_map,
+                cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL],
+                cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL],
+                cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL]);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:1];
         }
         if (cmd->specular_map || cmd->specular_map_asset) {
-            id<MTLTexture> tex =
-                metal_get_material_texture(ctx,
-                                           cmd->specular_map_asset,
-                                           cmd->specular_map,
-                                           cmd->texture_asset_cache_key
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR],
-                                           cmd->texture_asset_mip_start
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR],
-                                           cmd->texture_asset_mip_count
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR]);
+            id<MTLTexture> tex = metal_get_material_texture(
+                ctx,
+                cmd->specular_map_asset,
+                cmd->specular_map,
+                cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR],
+                cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR],
+                cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR]);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:2];
         }
         if (cmd->emissive_map || cmd->emissive_map_asset) {
-            id<MTLTexture> tex =
-                metal_get_material_texture(ctx,
-                                           cmd->emissive_map_asset,
-                                           cmd->emissive_map,
-                                           cmd->texture_asset_cache_key
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE],
-                                           cmd->texture_asset_mip_start
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE],
-                                           cmd->texture_asset_mip_count
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE]);
+            id<MTLTexture> tex = metal_get_material_texture(
+                ctx,
+                cmd->emissive_map_asset,
+                cmd->emissive_map,
+                cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE],
+                cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE],
+                cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE]);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:3];
         }
@@ -4207,15 +4229,13 @@ static void metal_submit_draw(void *ctx_ptr,
                 [ctx.encoder setFragmentTexture:tex atIndex:14];
         }
         if (cmd->ao_map || cmd->ao_map_asset) {
-            id<MTLTexture> tex = metal_get_material_texture(ctx,
-                                                            cmd->ao_map_asset,
-                                                            cmd->ao_map,
-                                                            cmd->texture_asset_cache_key
-                                                                [RT_MATERIAL3D_TEXTURE_SLOT_AO],
-                                                            cmd->texture_asset_mip_start
-                                                                [RT_MATERIAL3D_TEXTURE_SLOT_AO],
-                                                            cmd->texture_asset_mip_count
-                                                                [RT_MATERIAL3D_TEXTURE_SLOT_AO]);
+            id<MTLTexture> tex = metal_get_material_texture(
+                ctx,
+                cmd->ao_map_asset,
+                cmd->ao_map,
+                cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_AO],
+                cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_AO],
+                cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_AO]);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:15];
         }
@@ -4553,13 +4573,12 @@ static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         [ctx.encoder setCullMode:cmd->double_sided ? MTLCullModeNone : MTLCullModeBack];
         if (fabsf(cmd->depth_bias) > 1e-8f || fabsf(cmd->slope_scaled_depth_bias) > 1e-8f)
             [ctx.encoder setDepthBias:vgfx3d_depth_bias_constant_units(cmd->depth_bias)
-                            slopeScale:cmd->slope_scaled_depth_bias
-                                 clamp:0.0f];
+                           slopeScale:cmd->slope_scaled_depth_bias
+                                clamp:0.0f];
         else
             [ctx.encoder setDepthBias:0.0f slopeScale:0.0f clamp:0.0f];
 
-        metal_get_geometry_buffers(ctx, cmd, &vb, &ib, &vb_offset, &ib_offset);
-        if (!vb || !ib)
+        if (!metal_get_geometry_buffers(ctx, cmd, &vb, &ib, &vb_offset, &ib_offset))
             return;
         [ctx.encoder setVertexBuffer:vb offset:vb_offset atIndex:0];
         if (ctx.frameBuffers) {
@@ -4585,16 +4604,13 @@ static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         [ctx.encoder setVertexBytes:&obj length:sizeof(obj) atIndex:1];
         {
             mtl_per_material_t mat;
-            id<MTLTexture> diffuse_tex =
-                metal_get_material_texture(ctx,
-                                           cmd->texture_asset,
-                                           cmd->texture,
-                                           cmd->texture_asset_cache_key
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
-                                           cmd->texture_asset_mip_start
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
-                                           cmd->texture_asset_mip_count
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR]);
+            id<MTLTexture> diffuse_tex = metal_get_material_texture(
+                ctx,
+                cmd->texture_asset,
+                cmd->texture,
+                cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+                cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+                cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR]);
             memset(&mat, 0, sizeof(mat));
             memcpy(mat.dc, cmd->diffuse_color, sizeof(float) * 4);
             mat.scalars[0] = cmd->alpha;
@@ -4655,7 +4671,8 @@ static void metal_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
 // MTL-13: Instanced rendering
 //=============================================================================
 
-/// @brief Backend vtable entry: draw @p instance_count copies of the mesh in @p cmd in one instanced
+/// @brief Backend vtable entry: draw @p instance_count copies of the mesh in @p cmd in one
+/// instanced
 ///   call, each positioned by a 4x4 transform from @p instance_matrices and lit by @p lights /
 ///   @p ambient. Honors @p wireframe and @p backface_cull.
 /// @details No-op outside an active frame, on empty geometry, or with no instances. NULL @p ambient
@@ -4721,14 +4738,14 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
             [ctx.encoder setDepthStencilState:ctx.depthState];
         if (fabsf(cmd->depth_bias) > 1e-8f || fabsf(cmd->slope_scaled_depth_bias) > 1e-8f)
             [ctx.encoder setDepthBias:vgfx3d_depth_bias_constant_units(cmd->depth_bias)
-                            slopeScale:cmd->slope_scaled_depth_bias
-                                 clamp:0.0f];
+                           slopeScale:cmd->slope_scaled_depth_bias
+                                clamp:0.0f];
         else
             [ctx.encoder setDepthBias:0.0f slopeScale:0.0f clamp:0.0f];
 
         /* Vertex/index buffers */
-        metal_get_geometry_buffers(ctx, cmd, &vb, &ib, &vb_offset, &ib_offset);
-        if (!vb || !ib || !ctx.instanceBuf)
+        if (!metal_get_geometry_buffers(ctx, cmd, &vb, &ib, &vb_offset, &ib_offset) ||
+            !ctx.instanceBuf)
             return;
         [ctx.encoder setVertexBuffer:vb offset:vb_offset atIndex:0];
         [ctx.encoder setVertexBuffer:ctx.instanceBuf offset:0 atIndex:6];
@@ -4882,58 +4899,46 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
                                                  ctx, cmd, RT_MATERIAL3D_TEXTURE_SLOT_AO)
                                      atIndex:7];
         if (cmd->texture || cmd->texture_asset) {
-            id<MTLTexture> tex =
-                metal_get_material_texture(ctx,
-                                           cmd->texture_asset,
-                                           cmd->texture,
-                                           cmd->texture_asset_cache_key
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
-                                           cmd->texture_asset_mip_start
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
-                                           cmd->texture_asset_mip_count
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR]);
+            id<MTLTexture> tex = metal_get_material_texture(
+                ctx,
+                cmd->texture_asset,
+                cmd->texture,
+                cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+                cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+                cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR]);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:0];
         }
         if (cmd->normal_map || cmd->normal_map_asset) {
-            id<MTLTexture> tex =
-                metal_get_material_texture(ctx,
-                                           cmd->normal_map_asset,
-                                           cmd->normal_map,
-                                           cmd->texture_asset_cache_key
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_NORMAL],
-                                           cmd->texture_asset_mip_start
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_NORMAL],
-                                           cmd->texture_asset_mip_count
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_NORMAL]);
+            id<MTLTexture> tex = metal_get_material_texture(
+                ctx,
+                cmd->normal_map_asset,
+                cmd->normal_map,
+                cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL],
+                cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL],
+                cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL]);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:1];
         }
         if (cmd->specular_map || cmd->specular_map_asset) {
-            id<MTLTexture> tex =
-                metal_get_material_texture(ctx,
-                                           cmd->specular_map_asset,
-                                           cmd->specular_map,
-                                           cmd->texture_asset_cache_key
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR],
-                                           cmd->texture_asset_mip_start
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR],
-                                           cmd->texture_asset_mip_count
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR]);
+            id<MTLTexture> tex = metal_get_material_texture(
+                ctx,
+                cmd->specular_map_asset,
+                cmd->specular_map,
+                cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR],
+                cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR],
+                cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR]);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:2];
         }
         if (cmd->emissive_map || cmd->emissive_map_asset) {
-            id<MTLTexture> tex =
-                metal_get_material_texture(ctx,
-                                           cmd->emissive_map_asset,
-                                           cmd->emissive_map,
-                                           cmd->texture_asset_cache_key
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE],
-                                           cmd->texture_asset_mip_start
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE],
-                                           cmd->texture_asset_mip_count
-                                               [RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE]);
+            id<MTLTexture> tex = metal_get_material_texture(
+                ctx,
+                cmd->emissive_map_asset,
+                cmd->emissive_map,
+                cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE],
+                cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE],
+                cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE]);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:3];
         }
@@ -4949,15 +4954,13 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
                 [ctx.encoder setFragmentTexture:tex atIndex:14];
         }
         if (cmd->ao_map || cmd->ao_map_asset) {
-            id<MTLTexture> tex = metal_get_material_texture(ctx,
-                                                            cmd->ao_map_asset,
-                                                            cmd->ao_map,
-                                                            cmd->texture_asset_cache_key
-                                                                [RT_MATERIAL3D_TEXTURE_SLOT_AO],
-                                                            cmd->texture_asset_mip_start
-                                                                [RT_MATERIAL3D_TEXTURE_SLOT_AO],
-                                                            cmd->texture_asset_mip_count
-                                                                [RT_MATERIAL3D_TEXTURE_SLOT_AO]);
+            id<MTLTexture> tex = metal_get_material_texture(
+                ctx,
+                cmd->ao_map_asset,
+                cmd->ao_map,
+                cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_AO],
+                cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_AO],
+                cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_AO]);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:15];
         }

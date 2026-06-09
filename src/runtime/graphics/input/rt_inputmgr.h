@@ -3,7 +3,7 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// File: src/runtime/graphics/rt_inputmgr.h
+// File: src/runtime/graphics/input/rt_inputmgr.h
 // Purpose: High-level input manager with debouncing and action mapping, providing edge detection,
 // held-state queries, analog readings, and unified directional/confirm/cancel abstractions.
 //
@@ -14,10 +14,9 @@
 //   - Debounce state is per-key and independent of analog input.
 //
 // Ownership/Lifetime:
-//   - Caller owns the rt_inputmgr handle; destroy with rt_inputmgr_destroy.
-//   - No reference counting; explicit destruction is required.
+//   - Input managers are GC-managed runtime objects; rt_inputmgr_destroy is a compatibility no-op.
 //
-// Links: src/runtime/graphics/rt_inputmgr.c (implementation), src/runtime/graphics/rt_input.h
+// Links: src/runtime/graphics/input/rt_inputmgr.c (implementation), src/runtime/graphics/input/rt_input.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -33,11 +32,12 @@ extern "C" {
 typedef struct rt_inputmgr_impl *rt_inputmgr;
 
 /// @brief Allocates and initializes a new InputManager instance.
-/// @return A new InputManager handle, or NULL on allocation failure. The
-///   caller must eventually free it with rt_inputmgr_destroy().
+/// @return A new GC-managed InputManager handle, or NULL on allocation failure.
 rt_inputmgr rt_inputmgr_new(void);
 
-/// @brief Destroys an InputManager and releases all associated memory.
+/// @brief Compatibility no-op for InputManager handles.
+/// @details InputManager instances are GC-managed; this function exists for older callers that
+///          paired construction with an explicit destroy call.
 /// @param mgr The input manager to destroy. Passing NULL is a no-op.
 void rt_inputmgr_destroy(rt_inputmgr mgr);
 

@@ -438,7 +438,7 @@ static void update_world_transform(scene_node_impl *node) {
     while (cur && cur->transform_dirty) {
         if (depth >= capacity) {
             if (capacity > INT64_MAX / 2 ||
-                (uint64_t)(capacity * 2) > (uint64_t)SIZE_MAX / sizeof(*chain)) {
+                (uint64_t)(capacity * 2) > (uint64_t)SIZE_MAX / sizeof(scene_node_impl *)) {
                 free(heap_chain);
                 rt_trap("SceneNode: transform chain too deep");
                 return;
@@ -1323,7 +1323,7 @@ int64_t rt_scene_node_count(void *scene_ptr) {
     scene_impl *scene = scene_checked_or_null(scene_ptr);
     if (!scene || !scene->root)
         return 0;
-    return scene && scene->root ? rt_seq_len(scene->root->children) : 0;
+    return rt_seq_len(scene->root->children);
 }
 
 /// @brief Remove all direct children from the scene root, releasing their references.

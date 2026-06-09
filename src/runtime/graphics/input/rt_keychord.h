@@ -3,7 +3,7 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// File: src/runtime/graphics/rt_keychord.h
+// File: src/runtime/graphics/input/rt_keychord.h
 // Purpose: Key chord (simultaneous) and combo (sequential) detector that recognizes registered
 // named input patterns and reports which pattern fired each frame.
 //
@@ -14,10 +14,9 @@
 //   - Named patterns are unique; registering the same name twice replaces the previous binding.
 //
 // Ownership/Lifetime:
-//   - Detector objects are heap-allocated opaque pointers.
-//   - Caller is responsible for lifetime management.
+//   - Detector objects are GC-managed opaque runtime handles.
 //
-// Links: src/runtime/graphics/rt_keychord.c (implementation), src/runtime/core/rt_string.h
+// Links: src/runtime/graphics/input/rt_keychord.c (implementation), src/runtime/core/rt_string.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -30,7 +29,7 @@ extern "C" {
 #endif
 
 /// @brief Create a new key chord/combo detector.
-/// @return Opaque detector handle.
+/// @return Opaque GC-managed detector handle.
 void *rt_keychord_new(void);
 
 /// @brief Register a chord (simultaneous key press).

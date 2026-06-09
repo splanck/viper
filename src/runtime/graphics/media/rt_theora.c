@@ -289,6 +289,24 @@ static int parse_id_header(theora_decoder_t *dec, const uint8_t *data, size_t le
     dec->pixel_format = (uint8_t)br_read(&br, 2);
     if (br.failed)
         return -1;
+    if (dec->version_major != 3)
+        return -1;
+    if (dec->frame_width == 0 || dec->frame_height == 0 || dec->frame_width > INT32_MAX ||
+        dec->frame_height > INT32_MAX)
+        return -1;
+    if (dec->pic_width == 0 || dec->pic_height == 0 || dec->pic_width > dec->frame_width ||
+        dec->pic_height > dec->frame_height)
+        return -1;
+    if (dec->pic_x > dec->frame_width - dec->pic_width ||
+        dec->pic_y > dec->frame_height - dec->pic_height)
+        return -1;
+    if (dec->fps_num == 0 || dec->fps_den == 0)
+        return -1;
+    if (dec->pixel_format == 1 || dec->pixel_format > 3)
+        return -1;
+    if ((dec->pixel_format == 0 && ((dec->pic_x & 1u) || (dec->pic_y & 1u))) ||
+        (dec->pixel_format == 2 && (dec->pic_x & 1u)))
+        return -1;
 
     dec->block_cols = (int32_t)(dec->frame_width / 8);
     dec->block_rows = (int32_t)(dec->frame_height / 8);
@@ -512,6 +530,33 @@ static int theora_alloc_layout(theora_decoder_t *dec, theora_priv_t *priv) {
     return 0;
 }
 
+/// @brief Free the decoder's reference and current YCbCr frame planes.
+///
+/// @details Header parsing allocates nine plane buffers after the setup header
+///   has been decoded. If one allocation in that group fails, this helper
+///   releases any buffers that were already allocated so callers can return a
+///   setup-header error without leaving transient heap ownership in the decoder.
+///   It does not touch quantization, Huffman, or other private setup data; those
+///   remain owned by @c theora_priv_free.
+///
+/// @param dec Decoder whose frame-plane pointers should be released.
+static void theora_free_frame_planes(theora_decoder_t *dec) {
+    if (!dec)
+        return;
+    free(dec->ref_y);
+    free(dec->ref_cb);
+    free(dec->ref_cr);
+    free(dec->gold_y);
+    free(dec->gold_cb);
+    free(dec->gold_cr);
+    free(dec->cur_y);
+    free(dec->cur_cb);
+    free(dec->cur_cr);
+    dec->ref_y = dec->ref_cb = dec->ref_cr = NULL;
+    dec->gold_y = dec->gold_cb = dec->gold_cr = NULL;
+    dec->cur_y = dec->cur_cb = dec->cur_cr = NULL;
+}
+
 /// @brief Compute the quantization scale for one (qti, plane, qi, coeff) cell.
 ///
 /// Combines the DC/AC base scale, the per-plane base matrix, the
@@ -589,8 +634,10 @@ static int theora_finish_setup(theora_decoder_t *dec, theora_priv_t *priv) {
     dec->cur_cb = (uint8_t *)calloc(c_size, 1);
     dec->cur_cr = (uint8_t *)calloc(c_size, 1);
     if (!dec->ref_y || !dec->ref_cb || !dec->ref_cr || !dec->gold_y || !dec->gold_cb ||
-        !dec->gold_cr || !dec->cur_y || !dec->cur_cb || !dec->cur_cr)
+        !dec->gold_cr || !dec->cur_y || !dec->cur_cb || !dec->cur_cr) {
+        theora_free_frame_planes(dec);
         return -1;
+    }
     dec->headers_complete = 1;
     return 0;
 }
@@ -714,15 +761,7 @@ void theora_decoder_init(theora_decoder_t *dec) {
 void theora_decoder_free(theora_decoder_t *dec) {
     if (!dec)
         return;
-    free(dec->ref_y);
-    free(dec->ref_cb);
-    free(dec->ref_cr);
-    free(dec->gold_y);
-    free(dec->gold_cb);
-    free(dec->gold_cr);
-    free(dec->cur_y);
-    free(dec->cur_cb);
-    free(dec->cur_cr);
+    theora_free_frame_planes(dec);
     theora_priv_free(dec);
     memset(dec, 0, sizeof(*dec));
 }

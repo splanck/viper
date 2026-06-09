@@ -133,6 +133,8 @@ void *rt_mat3_scale_uniform(double s) {
 
 /// @brief Build a 2D rotation matrix (counter-clockwise, angle in radians).
 void *rt_mat3_rotate(double angle) {
+    if (!isfinite(angle))
+        return rt_mat3_identity();
     double c = cos(angle);
     double s = sin(angle);
     return rt_mat3_new(c, -s, 0.0, s, c, 0.0, 0.0, 0.0, 1.0);
@@ -335,7 +337,7 @@ void *rt_mat3_inverse(void *m) {
     mat3_impl *mat = (mat3_impl *)m;
     double det = rt_mat3_det(m);
 
-    if (fabs(det) < 1e-15)
+    if (!isfinite(det) || fabs(det) < 1e-15)
         return rt_mat3_identity(); // Singular matrix
 
     double invDet = 1.0 / det;

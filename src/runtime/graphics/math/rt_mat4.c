@@ -107,6 +107,16 @@ static mat4_impl *mat4_checked(void *m) {
 #endif
 }
 
+/// @brief Compute a finite, overflow-resistant length for a 3D vector.
+/// @details Matrix factory functions normalize axes and basis vectors before using them in
+///          transform construction. Chained `hypot` avoids overflow in `sqrt(x*x + y*y + z*z)`;
+///          non-finite input returns `INFINITY` so callers can fall back to identity.
+static double mat4_safe_len3(double x, double y, double z) {
+    if (!isfinite(x) || !isfinite(y) || !isfinite(z))
+        return INFINITY;
+    return hypot(hypot(x, y), z);
+}
+
 //=============================================================================
 // Construction
 //=============================================================================
@@ -186,6 +196,8 @@ void *rt_mat4_scale_uniform(double s) {
 
 /// @brief Build a 4×4 right-handed rotation matrix about the X axis (angle in radians).
 void *rt_mat4_rotate_x(double angle) {
+    if (!isfinite(angle))
+        return rt_mat4_identity();
     double c = cos(angle);
     double s = sin(angle);
     return rt_mat4_new(1.0, 0.0, 0.0, 0.0, 0.0, c, -s, 0.0, 0.0, s, c, 0.0, 0.0, 0.0, 0.0, 1.0);
@@ -193,6 +205,8 @@ void *rt_mat4_rotate_x(double angle) {
 
 /// @brief Build a 4×4 right-handed rotation matrix about the Y axis (angle in radians).
 void *rt_mat4_rotate_y(double angle) {
+    if (!isfinite(angle))
+        return rt_mat4_identity();
     double c = cos(angle);
     double s = sin(angle);
     return rt_mat4_new(c, 0.0, s, 0.0, 0.0, 1.0, 0.0, 0.0, -s, 0.0, c, 0.0, 0.0, 0.0, 0.0, 1.0);
@@ -200,15 +214,17 @@ void *rt_mat4_rotate_y(double angle) {
 
 /// @brief Build a 4×4 right-handed rotation matrix about the Z axis (angle in radians).
 void *rt_mat4_rotate_z(double angle) {
+    if (!isfinite(angle))
+        return rt_mat4_identity();
     double c = cos(angle);
     double s = sin(angle);
     return rt_mat4_new(c, -s, 0.0, 0.0, s, c, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
 }
 
 /// @brief Build a 4×4 rotation matrix about an arbitrary axis (Rodrigues' rotation formula).
-/// `axis` is normalized internally; degenerate (zero-length) axes return identity.
+/// `axis` is normalized internally; degenerate axes or non-finite angles return identity.
 void *rt_mat4_rotate_axis(void *axis, double angle) {
-    if (!axis)
+    if (!axis || !isfinite(angle))
         return rt_mat4_identity();
 
     double x = rt_vec3_x(axis);
@@ -216,8 +232,8 @@ void *rt_mat4_rotate_axis(void *axis, double angle) {
     double z = rt_vec3_z(axis);
 
     // Normalize axis
-    double len = sqrt(x * x + y * y + z * z);
-    if (len < 1e-15)
+    double len = mat4_safe_len3(x, y, z);
+    if (len < 1e-15 || !isfinite(len))
         return rt_mat4_identity();
     x /= len;
     y /= len;
@@ -253,10 +269,13 @@ void *rt_mat4_rotate_axis(void *axis, double angle) {
 /// `aspect` = width/height. Maps view-space Z to NDC Z in [-1, 1] (OpenGL convention). Returns
 /// identity for invalid params (fov ≤ 0, aspect ≤ 0, or near ≥ far).
 void *rt_mat4_perspective(double fov, double aspect, double near, double far) {
-    if (fov <= 0.0 || aspect <= 0.0 || near >= far)
+    if (!isfinite(fov) || !isfinite(aspect) || !isfinite(near) || !isfinite(far) || fov <= 0.0 ||
+        fov >= 3.14159265358979323846 || aspect <= 0.0 || near <= 0.0 || near >= far)
         return rt_mat4_identity();
 
     double tanHalfFov = tan(fov / 2.0);
+    if (!isfinite(tanHalfFov) || tanHalfFov == 0.0)
+        return rt_mat4_identity();
     double f = 1.0 / tanHalfFov;
     double nf = 1.0 / (near - far);
 
@@ -281,7 +300,8 @@ void *rt_mat4_perspective(double fov, double aspect, double near, double far) {
 /// @brief Build an orthographic projection matrix mapping the box [(left, bottom, near),
 /// (right, top, far)] to NDC. Returns identity if any axis range is degenerate.
 void *rt_mat4_ortho(double left, double right, double bottom, double top, double near, double far) {
-    if (right == left || top == bottom || far == near)
+    if (!isfinite(left) || !isfinite(right) || !isfinite(bottom) || !isfinite(top) ||
+        !isfinite(near) || !isfinite(far) || right == left || top == bottom || far == near)
         return rt_mat4_identity();
 
     double rl = 1.0 / (right - left);
@@ -329,8 +349,8 @@ void *rt_mat4_look_at(void *eye, void *target, void *up) {
     double fX = targetX - eyeX;
     double fY = targetY - eyeY;
     double fZ = targetZ - eyeZ;
-    double fLen = sqrt(fX * fX + fY * fY + fZ * fZ);
-    if (fLen < 1e-15)
+    double fLen = mat4_safe_len3(fX, fY, fZ);
+    if (fLen < 1e-15 || !isfinite(fLen))
         return rt_mat4_identity();
     fX /= fLen;
     fY /= fLen;
@@ -340,8 +360,8 @@ void *rt_mat4_look_at(void *eye, void *target, void *up) {
     double rX = fY * upZ - fZ * upY;
     double rY = fZ * upX - fX * upZ;
     double rZ = fX * upY - fY * upX;
-    double rLen = sqrt(rX * rX + rY * rY + rZ * rZ);
-    if (rLen < 1e-15)
+    double rLen = mat4_safe_len3(rX, rY, rZ);
+    if (rLen < 1e-15 || !isfinite(rLen))
         return rt_mat4_identity();
     rX /= rLen;
     rY /= rLen;
@@ -523,6 +543,8 @@ void *rt_mat4_transform_point(void *m, void *v) {
     double x = rt_vec3_x(v);
     double y = rt_vec3_y(v);
     double z = rt_vec3_z(v);
+    if (!isfinite(x) || !isfinite(y) || !isfinite(z))
+        return rt_vec3_zero();
 
     // Transform as [x, y, z, 1]
     double rx = mat->m[0] * x + mat->m[1] * y + mat->m[2] * z + mat->m[3];
@@ -531,10 +553,14 @@ void *rt_mat4_transform_point(void *m, void *v) {
     double rw = mat->m[12] * x + mat->m[13] * y + mat->m[14] * z + mat->m[15];
 
     // Perspective divide
-    if (fabs(rw) > 1e-15 && fabs(rw - 1.0) > 1e-15) {
+    if (!isfinite(rx) || !isfinite(ry) || !isfinite(rz) || !isfinite(rw) || fabs(rw) <= 1e-15)
+        return rt_vec3_zero();
+    if (fabs(rw - 1.0) > 1e-15) {
         rx /= rw;
         ry /= rw;
         rz /= rw;
+        if (!isfinite(rx) || !isfinite(ry) || !isfinite(rz))
+            return rt_vec3_zero();
     }
 
     return rt_vec3_new(rx, ry, rz);

@@ -999,7 +999,11 @@ static int particle3d_sort_key_desc(const void *a, const void *b) {
         return 1;
     if (ka->view_depth > kb->view_depth)
         return -1;
-    return ka->index - kb->index;
+    if (ka->index < kb->index)
+        return -1;
+    if (ka->index > kb->index)
+        return 1;
+    return 0;
 }
 
 /// @brief Ensure the persistent particle-sort scratch buffer holds @p count keys.

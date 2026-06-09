@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/anim/rt_skeleton3d_skinning.inc  (#included from rt_skeleton3d.c; not a standalone translation unit)
-// Purpose: Mesh3D skinning extensions and Canvas3D DrawMeshSkinned
+// File: src/runtime/graphics/3d/anim/rt_skeleton3d_skinning.inc  (#included from rt_skeleton3d.c;
+// not a standalone translation unit) Purpose: Mesh3D skinning extensions and Canvas3D
+// DrawMeshSkinned
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Mesh3D extensions
@@ -165,7 +166,7 @@ void rt_canvas3d_draw_mesh_matrix_skinned_keyed_bounds(void *canvas,
         return;
     if (rt_heap_is_payload(mesh_obj) && !rt_canvas3d_add_temp_object(canvas, mesh_obj))
         return;
-    if (c && c->backend && vgfx3d_backend_prefers_gpu_skinning(c->backend->name, bone_count)) {
+    if (c->backend && vgfx3d_backend_prefers_gpu_skinning(c->backend->name, bone_count)) {
         rt_mesh3d tmp = *mesh;
         tmp.bone_palette = bone_palette;
         tmp.prev_bone_palette = prev_bone_palette;

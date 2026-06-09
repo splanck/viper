@@ -1058,19 +1058,16 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
         const float *packed_deltas = rt_morphtarget3d_get_packed_deltas(mt);
         const float *packed_normal_deltas = rt_morphtarget3d_get_packed_normal_deltas(mt);
         rt_mesh3d tmp;
-        int mt_tracked = 0;
         if (shape_count > 0 && !packed_deltas)
             return;
         if (!rt_canvas3d_add_temp_object(canvas, mt))
             return;
-        mt_tracked = 1;
         /* The stack mesh copy below aliases the original mesh's vertex/index
          * buffers, so the original mesh object must outlive the deferred draw.
          * Passing the copy to the keyed draw skips that path's payload
          * retention, so retain the original mesh explicitly here. */
         if (rt_heap_is_payload(mesh) && !rt_canvas3d_add_temp_object(canvas, mesh)) {
-            if (mt_tracked)
-                canvas3d_release_tracked_temp_object(c, mt);
+            canvas3d_release_tracked_temp_object(c, mt);
             return;
         }
 

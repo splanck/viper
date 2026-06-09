@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_ycbcr.c
-// Purpose: YCbCr 4:2:0 to RGBA conversion using BT.601 coefficients.
+// Purpose: YCbCr planar to RGBA conversion using BT.601 coefficients.
 //   Integer-only arithmetic for performance (no floating point per pixel).
 //
 // Key invariants:
@@ -15,7 +15,7 @@
 //     G = 1.164*(Y-16) - 0.392*(Cb-128) - 0.813*(Cr-128)
 //     B = 1.164*(Y-16) + 2.017*(Cb-128)
 //   - Fixed-point: multiply by 298/256, 409/256, etc. (8-bit shift).
-//   - Chroma upsampling: nearest-neighbor (each Cb/Cr sample covers 2x2 luma).
+//   - Chroma upsampling: nearest-neighbor for subsampled formats.
 //
 // Links: rt_ycbcr.h
 //
@@ -30,6 +30,73 @@ static inline int32_t clamp255(int32_t v) {
     if (v > 255)
         return 255;
     return v;
+}
+
+/// @brief Convert one limited-range BT.601 YCbCr sample to Viper RGBA.
+///
+/// @param y_sample  Luma sample exactly as stored in the Y plane.
+/// @param cb_sample Blue-difference chroma sample.
+/// @param cr_sample Red-difference chroma sample.
+/// @return Packed 0xRRGGBBAA pixel with fully opaque alpha.
+static uint32_t ycbcr601_sample_to_rgba(uint8_t y_sample, uint8_t cb_sample, uint8_t cr_sample) {
+    int32_t y = (int32_t)y_sample - 16;
+    int32_t cb = (int32_t)cb_sample - 128;
+    int32_t cr = (int32_t)cr_sample - 128;
+
+    /* BT.601 fixed-point conversion (x256, then >>8). */
+    int32_t r = (298 * y + 409 * cr + 128) >> 8;
+    int32_t g = (298 * y - 100 * cb - 208 * cr + 128) >> 8;
+    int32_t b = (298 * y + 516 * cb + 128) >> 8;
+
+    return ((uint32_t)clamp255(r) << 24) | ((uint32_t)clamp255(g) << 16) |
+           ((uint32_t)clamp255(b) << 8) | 0xFFu;
+}
+
+/// @brief Shared planar YCbCr to RGBA converter for supported chroma layouts.
+///
+/// @details @p chroma_x_shift and @p chroma_y_shift describe the subsampling
+///   ratio. 4:2:0 uses (1,1), 4:2:2 uses (1,0), and 4:4:4 uses (0,0).
+///   The caller provides already-cropped plane pointers and visible dimensions.
+///   Invalid pointers or non-positive dimensions are treated as no-ops to match
+///   the historical conversion API.
+///
+/// @param y_plane        Luma plane at the visible crop origin.
+/// @param cb_plane       Cb chroma plane at the visible crop origin.
+/// @param cr_plane       Cr chroma plane at the visible crop origin.
+/// @param width          Visible width in pixels.
+/// @param height         Visible height in pixels.
+/// @param y_stride       Bytes per luma row.
+/// @param c_stride       Bytes per chroma row.
+/// @param chroma_x_shift Horizontal chroma subsampling shift.
+/// @param chroma_y_shift Vertical chroma subsampling shift.
+/// @param rgba_out       Output pixels in packed 0xRRGGBBAA format.
+static void ycbcr_to_rgba_subsampled(const uint8_t *y_plane,
+                                     const uint8_t *cb_plane,
+                                     const uint8_t *cr_plane,
+                                     int32_t width,
+                                     int32_t height,
+                                     int32_t y_stride,
+                                     int32_t c_stride,
+                                     int32_t chroma_x_shift,
+                                     int32_t chroma_y_shift,
+                                     uint32_t *rgba_out) {
+    if (!y_plane || !cb_plane || !cr_plane || !rgba_out)
+        return;
+    if (width <= 0 || height <= 0 || y_stride <= 0 || c_stride <= 0)
+        return;
+
+    for (int32_t row = 0; row < height; row++) {
+        const uint8_t *y_row = y_plane + row * y_stride;
+        const uint8_t *cb_row = cb_plane + (row >> chroma_y_shift) * c_stride;
+        const uint8_t *cr_row = cr_plane + (row >> chroma_y_shift) * c_stride;
+        uint32_t *out_row = rgba_out + row * width;
+
+        for (int32_t col = 0; col < width; col++) {
+            int32_t chroma_col = col >> chroma_x_shift;
+            out_row[col] =
+                ycbcr601_sample_to_rgba(y_row[col], cb_row[chroma_col], cr_row[chroma_col]);
+        }
+    }
 }
 
 /// @brief Convert a YCbCr 4:2:0 planar image to packed RGBA (Viper 0xRRGGBBAA format).
@@ -57,33 +124,30 @@ void ycbcr420_to_rgba(const uint8_t *y_plane,
                       int32_t y_stride,
                       int32_t c_stride,
                       uint32_t *rgba_out) {
-    if (!y_plane || !cb_plane || !cr_plane || !rgba_out)
-        return;
-    if (width <= 0 || height <= 0)
-        return;
+    ycbcr_to_rgba_subsampled(
+        y_plane, cb_plane, cr_plane, width, height, y_stride, c_stride, 1, 1, rgba_out);
+}
 
-    for (int32_t row = 0; row < height; row++) {
-        const uint8_t *y_row = y_plane + row * y_stride;
-        const uint8_t *cb_row = cb_plane + (row / 2) * c_stride;
-        const uint8_t *cr_row = cr_plane + (row / 2) * c_stride;
-        uint32_t *out_row = rgba_out + row * width;
+void ycbcr422_to_rgba(const uint8_t *y_plane,
+                      const uint8_t *cb_plane,
+                      const uint8_t *cr_plane,
+                      int32_t width,
+                      int32_t height,
+                      int32_t y_stride,
+                      int32_t c_stride,
+                      uint32_t *rgba_out) {
+    ycbcr_to_rgba_subsampled(
+        y_plane, cb_plane, cr_plane, width, height, y_stride, c_stride, 1, 0, rgba_out);
+}
 
-        for (int32_t col = 0; col < width; col++) {
-            int32_t y = (int32_t)y_row[col] - 16;
-            int32_t cb = (int32_t)cb_row[col / 2] - 128;
-            int32_t cr = (int32_t)cr_row[col / 2] - 128;
-
-            /* BT.601 fixed-point conversion (×256, then >>8) */
-            int32_t r = (298 * y + 409 * cr + 128) >> 8;
-            int32_t g = (298 * y - 100 * cb - 208 * cr + 128) >> 8;
-            int32_t b = (298 * y + 516 * cb + 128) >> 8;
-
-            r = clamp255(r);
-            g = clamp255(g);
-            b = clamp255(b);
-
-            /* Pack as 0xRRGGBBAA (Viper Pixels format) */
-            out_row[col] = ((uint32_t)r << 24) | ((uint32_t)g << 16) | ((uint32_t)b << 8) | 0xFF;
-        }
-    }
+void ycbcr444_to_rgba(const uint8_t *y_plane,
+                      const uint8_t *cb_plane,
+                      const uint8_t *cr_plane,
+                      int32_t width,
+                      int32_t height,
+                      int32_t y_stride,
+                      int32_t c_stride,
+                      uint32_t *rgba_out) {
+    ycbcr_to_rgba_subsampled(
+        y_plane, cb_plane, cr_plane, width, height, y_stride, c_stride, 0, 0, rgba_out);
 }

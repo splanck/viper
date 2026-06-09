@@ -258,6 +258,8 @@ static int sw_ensure_zbuf_capacity(sw_context_t *ctx, int32_t width, int32_t hei
     if (ctx->zbuf && ctx->width == width && ctx->height == height)
         return 1;
 
+    if ((size_t)width > SIZE_MAX / (size_t)height)
+        return 0;
     size_t pixel_count = (size_t)width * (size_t)height;
     if (pixel_count > SIZE_MAX / sizeof(float))
         return 0;
@@ -290,6 +292,21 @@ static void mat4f_transform4(const float *m, const float *in, float *out) {
     out[1] = m[4] * in[0] + m[5] * in[1] + m[6] * in[2] + m[7] * in[3];
     out[2] = m[8] * in[0] + m[9] * in[1] + m[10] * in[2] + m[11] * in[3];
     out[3] = m[12] * in[0] + m[13] * in[1] + m[14] * in[2] + m[15] * in[3];
+}
+
+/// @brief Compute a positive width*height pixel count without overflowing size_t.
+/// @details Software backend render targets use signed 32-bit dimensions, while
+///          depth/color buffer loops use `size_t`. This helper rejects invalid or
+///          overflowing dimensions before callers clear linear buffers.
+static int sw_pixel_count_checked(int32_t width, int32_t height, size_t *out_count) {
+    if (out_count)
+        *out_count = 0;
+    if (!out_count || width <= 0 || height <= 0)
+        return 0;
+    if ((size_t)width > SIZE_MAX / (size_t)height)
+        return 0;
+    *out_count = (size_t)width * (size_t)height;
+    return 1;
 }
 
 #include "vgfx3d_backend_sw_vertex.inc"

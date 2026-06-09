@@ -130,7 +130,7 @@ static int raycast_aabb_raw(const double *origin,
                             double *out_normal,
                             int *out_started) {
     double tmin = 0.0;
-    double tmax = max_distance;
+    double tmax;
     double n[3] = {0.0, 0.0, 0.0};
     int inside = 1;
     if (!origin || !dir || !mn || !mx || !isfinite(max_distance) || max_distance < 0.0)

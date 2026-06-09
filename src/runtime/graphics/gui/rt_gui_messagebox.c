@@ -85,7 +85,10 @@ int64_t rt_messagebox_info(rt_string title, rt_string message) {
     rt_gui_app_t *app = rt_messagebox_app();
     char *ctitle = rt_string_to_gui_cstr(title);
     char *cmsg = rt_string_to_gui_cstr(message);
-    vg_dialog_t *dlg = vg_dialog_message(ctitle, cmsg, VG_DIALOG_ICON_INFO, VG_DIALOG_BUTTONS_OK);
+    vg_dialog_t *dlg = vg_dialog_message(rt_gui_cstr_or_empty(ctitle),
+                                         rt_gui_cstr_or_empty(cmsg),
+                                         VG_DIALOG_ICON_INFO,
+                                         VG_DIALOG_BUTTONS_OK);
     if (ctitle)
         free(ctitle);
     if (cmsg)
@@ -108,8 +111,10 @@ int64_t rt_messagebox_warning(rt_string title, rt_string message) {
     rt_gui_app_t *app = rt_messagebox_app();
     char *ctitle = rt_string_to_gui_cstr(title);
     char *cmsg = rt_string_to_gui_cstr(message);
-    vg_dialog_t *dlg =
-        vg_dialog_message(ctitle, cmsg, VG_DIALOG_ICON_WARNING, VG_DIALOG_BUTTONS_OK);
+    vg_dialog_t *dlg = vg_dialog_message(rt_gui_cstr_or_empty(ctitle),
+                                         rt_gui_cstr_or_empty(cmsg),
+                                         VG_DIALOG_ICON_WARNING,
+                                         VG_DIALOG_BUTTONS_OK);
     if (ctitle)
         free(ctitle);
     if (cmsg)
@@ -131,7 +136,10 @@ int64_t rt_messagebox_error(rt_string title, rt_string message) {
     rt_gui_app_t *app = rt_messagebox_app();
     char *ctitle = rt_string_to_gui_cstr(title);
     char *cmsg = rt_string_to_gui_cstr(message);
-    vg_dialog_t *dlg = vg_dialog_message(ctitle, cmsg, VG_DIALOG_ICON_ERROR, VG_DIALOG_BUTTONS_OK);
+    vg_dialog_t *dlg = vg_dialog_message(rt_gui_cstr_or_empty(ctitle),
+                                         rt_gui_cstr_or_empty(cmsg),
+                                         VG_DIALOG_ICON_ERROR,
+                                         VG_DIALOG_BUTTONS_OK);
     if (ctitle)
         free(ctitle);
     if (cmsg)
@@ -154,8 +162,10 @@ int64_t rt_messagebox_question(rt_string title, rt_string message) {
     rt_gui_app_t *app = rt_messagebox_app();
     char *ctitle = rt_string_to_gui_cstr(title);
     char *cmsg = rt_string_to_gui_cstr(message);
-    vg_dialog_t *dlg =
-        vg_dialog_message(ctitle, cmsg, VG_DIALOG_ICON_QUESTION, VG_DIALOG_BUTTONS_YES_NO);
+    vg_dialog_t *dlg = vg_dialog_message(rt_gui_cstr_or_empty(ctitle),
+                                         rt_gui_cstr_or_empty(cmsg),
+                                         VG_DIALOG_ICON_QUESTION,
+                                         VG_DIALOG_BUTTONS_YES_NO);
     if (ctitle)
         free(ctitle);
     if (cmsg)
@@ -177,8 +187,10 @@ int64_t rt_messagebox_confirm(rt_string title, rt_string message) {
     rt_gui_app_t *app = rt_messagebox_app();
     char *ctitle = rt_string_to_gui_cstr(title);
     char *cmsg = rt_string_to_gui_cstr(message);
-    vg_dialog_t *dlg =
-        vg_dialog_message(ctitle, cmsg, VG_DIALOG_ICON_QUESTION, VG_DIALOG_BUTTONS_OK_CANCEL);
+    vg_dialog_t *dlg = vg_dialog_message(rt_gui_cstr_or_empty(ctitle),
+                                         rt_gui_cstr_or_empty(cmsg),
+                                         VG_DIALOG_ICON_QUESTION,
+                                         VG_DIALOG_BUTTONS_OK_CANCEL);
     if (ctitle)
         free(ctitle);
     if (cmsg)
@@ -223,7 +235,7 @@ rt_string rt_messagebox_prompt(rt_string title, rt_string message) {
     char *ctitle = rt_string_to_gui_cstr(title);
     char *cmsg = rt_string_to_gui_cstr(message);
 
-    vg_dialog_t *dlg = vg_dialog_create(ctitle);
+    vg_dialog_t *dlg = vg_dialog_create(rt_gui_cstr_or_empty(ctitle));
     if (ctitle)
         free(ctitle);
     if (!dlg) {
@@ -234,7 +246,7 @@ rt_string rt_messagebox_prompt(rt_string title, rt_string message) {
 
     // Show the prompt message above the text input
     if (cmsg) {
-        vg_dialog_set_message(dlg, cmsg);
+        vg_dialog_set_message(dlg, rt_gui_cstr_or_empty(cmsg));
         free(cmsg);
     }
 
@@ -317,9 +329,9 @@ static int rt_messagebox_register_wrapper(rt_messagebox_data_t *data) {
     if (s_messagebox_wrapper_count >= s_messagebox_wrapper_cap) {
         size_t new_cap = s_messagebox_wrapper_cap ? s_messagebox_wrapper_cap * 2 : 8;
         if (new_cap < s_messagebox_wrapper_cap ||
-            new_cap > SIZE_MAX / sizeof(*s_messagebox_wrappers))
+            new_cap > SIZE_MAX / sizeof(rt_messagebox_data_t *))
             return 0;
-        void *p = realloc(s_messagebox_wrappers, new_cap * sizeof(*s_messagebox_wrappers));
+        void *p = realloc(s_messagebox_wrappers, new_cap * sizeof(rt_messagebox_data_t *));
         if (!p)
             return 0;
         s_messagebox_wrappers = (rt_messagebox_data_t **)p;
@@ -413,14 +425,14 @@ static void rt_messagebox_finalize(void *box) {
 void *rt_messagebox_new(rt_string title, rt_string message, int64_t type) {
     RT_ASSERT_MAIN_THREAD();
     char *ctitle = rt_string_to_gui_cstr(title);
-    vg_dialog_t *dlg = vg_dialog_create(ctitle);
+    vg_dialog_t *dlg = vg_dialog_create(rt_gui_cstr_or_empty(ctitle));
     if (ctitle)
         free(ctitle);
     if (!dlg)
         return NULL;
 
     char *cmsg = rt_string_to_gui_cstr(message);
-    vg_dialog_set_message(dlg, cmsg);
+    vg_dialog_set_message(dlg, rt_gui_cstr_or_empty(cmsg));
     if (cmsg)
         free(cmsg);
 

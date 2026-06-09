@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_inputmgr.c
+// File: src/runtime/graphics/input/rt_inputmgr.c
 // Purpose: High-level input manager that aggregates keyboard, mouse, and gamepad
 //   state from the lower-level input layers. Provides per-key debounce filtering
 //   (configurable delay in frames) to suppress rapid re-trigger on held keys.
@@ -15,8 +15,9 @@
 // Key invariants:
 //   - rt_inputmgr_update() must be called once per frame to decrement debounce
 //     timers; failing to call it freezes debounce state.
-//   - Debounce tracking is limited to MAX_DEBOUNCE_KEYS (32) simultaneous keys;
-//     additional debounce requests beyond capacity are silently ignored.
+//   - Debounce tracking is limited to MAX_DEBOUNCE_KEYS (32) simultaneous keys.
+//     When full, the least-protected slot (expired first, otherwise smallest
+//     remaining timer) is reused for the newly queried key.
 //   - Debounce delay defaults to 12 frames (~200 ms at 60 fps); configurable
 //     per instance via rt_inputmgr_set_debounce_delay().
 //   - Non-debounced query methods (key_pressed, key_held, etc.) pass through
@@ -26,7 +27,7 @@
 //   - rt_inputmgr instances are allocated via rt_obj_new_i64 (GC heap);
 //     rt_inputmgr_destroy is a no-op (GC handles reclamation).
 //
-// Links: src/runtime/graphics/rt_inputmgr.h (public API),
+// Links: src/runtime/graphics/input/rt_inputmgr.h (public API),
 //        src/runtime/graphics/rt_input.h (keyboard/mouse global state),
 //        src/runtime/graphics/rt_input_pad.h (gamepad global state)
 //
@@ -102,9 +103,11 @@ int8_t rt_inputmgr_key_held(rt_inputmgr mgr, int64_t key) {
     return rt_keyboard_is_down(key);
 }
 
-/// @brief Find the debounce slot index for `key`, creating a new slot if none exists.
-/// @details Returns -1 if the `MAX_DEBOUNCE_KEYS` table is full and no slot is available.
-///          Called before registering a new key debounce or querying an existing one.
+/// @brief Find the debounce slot index for `key`, creating or reusing a slot if none exists.
+/// @details When the fixed table is full, an expired timer is reused first. If every tracked key
+///          is still debounced, the slot with the smallest remaining timer is reused because it is
+///          closest to becoming eligible again. This makes saturation deterministic and avoids the
+///          older behavior where new keys could be ignored or the most-protected slot was evicted.
 static int64_t find_or_create_debounce_slot(rt_inputmgr mgr, int64_t key) {
     // Look for existing slot
     for (int64_t i = 0; i < mgr->debounce_count; i++) {
@@ -121,18 +124,18 @@ static int64_t find_or_create_debounce_slot(rt_inputmgr mgr, int64_t key) {
         return slot;
     }
 
-    // No space - evict the slot with the oldest (largest) timer
-    int64_t oldest_slot = 0;
-    int64_t oldest_time = mgr->debounce_timers[0];
+    // No space - evict an expired slot, otherwise the one closest to expiry.
+    int64_t reuse_slot = 0;
+    int64_t shortest_time = mgr->debounce_timers[0];
     for (int64_t i = 1; i < mgr->debounce_count; i++) {
-        if (mgr->debounce_timers[i] > oldest_time) {
-            oldest_time = mgr->debounce_timers[i];
-            oldest_slot = i;
+        if (mgr->debounce_timers[i] < shortest_time) {
+            shortest_time = mgr->debounce_timers[i];
+            reuse_slot = i;
         }
     }
-    mgr->debounce_keys[oldest_slot] = key;
-    mgr->debounce_timers[oldest_slot] = 0;
-    return oldest_slot;
+    mgr->debounce_keys[reuse_slot] = key;
+    mgr->debounce_timers[reuse_slot] = 0;
+    return reuse_slot;
 }
 
 /// @brief Check whether a key was pressed with debounce filtering (prevents rapid re-triggers).

@@ -586,6 +586,15 @@ static inline char *rt_string_to_gui_cstr(rt_string str) {
     return result;
 }
 
+/// @brief Return @p text when non-NULL, otherwise the immutable empty C string.
+/// @details GUI wrapper functions often receive converted runtime strings that can
+///          be NULL only after allocation or validation failure. Passing this helper's
+///          result to VG labels/placeholders preserves the established empty-string
+///          fallback without forcing every caller to duplicate the same ternary.
+static inline const char *rt_gui_cstr_or_empty(const char *text) {
+    return text ? text : "";
+}
+
 /// @brief Ensure the default font is loaded (lazy init on first use).
 /// @details Loads the default font from the embedded font data if it has not
 ///          been loaded yet. Defined in rt_gui_app.c.

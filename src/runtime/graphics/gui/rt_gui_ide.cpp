@@ -19,11 +19,22 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <map>
 #include <new>
 #include <set>
 #include <string>
 #include <vector>
+
+#define RT_GUI_IDE_REQUIRE_OR_RETURN(var, expr, value)                                             \
+    auto *var = (expr);                                                                            \
+    if (!var)                                                                                      \
+    return (value)
+
+#define RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(var, expr)                                               \
+    auto *var = (expr);                                                                            \
+    if (!var)                                                                                      \
+    return
 
 namespace {
 
@@ -47,9 +58,54 @@ void releaseObject(void *obj) {
 }
 
 void mapSetStr(void *map, const char *key, const std::string &value) {
+    if (!map || !key)
+        return;
     rt_string s = makeString(value);
+    if (!s)
+        return;
     rt_map_set_str(map, rt_const_cstr(key), s);
     rt_string_unref(s);
+}
+
+/// @brief Add two signed 64-bit integers with saturation instead of undefined overflow.
+/// @details GUI automation helpers accept user-provided coordinates and sizes. Saturating
+///          arithmetic lets range comparisons and area estimates remain deterministic even
+///          for extreme test inputs that would otherwise overflow `int64_t`.
+static int64_t saturatingAddI64(int64_t a, int64_t b) {
+    if (b > 0 && a > INT64_MAX - b)
+        return INT64_MAX;
+    if (b < 0 && a < INT64_MIN - b)
+        return INT64_MIN;
+    return a + b;
+}
+
+/// @brief Multiply two non-negative `int64_t` dimensions, returning zero on invalid/overflow.
+/// @details Used for synthetic snapshot pixel counts. A zero result is a conservative
+///          "unknown/empty" value that avoids reporting wrapped negative pixel counts.
+static int64_t safeAreaI64(int64_t width, int64_t height) {
+    if (width <= 0 || height <= 0 || width > INT64_MAX / height)
+        return 0;
+    return width * height;
+}
+
+/// @brief Return `ceil(numerator / denominator)` for positive dimensions without overflow.
+/// @details Avoids the common `(n + d - 1)` idiom because viewport dimensions can be
+///          externally supplied and may be close to `INT64_MAX`.
+static int64_t ceilDivPositiveI64(int64_t numerator, int64_t denominator) {
+    if (numerator <= 0 || denominator <= 0)
+        return 0;
+    return numerator / denominator + ((numerator % denominator) != 0 ? 1 : 0);
+}
+
+/// @brief Check whether two positive-length integer ranges overlap.
+/// @details End coordinates are computed with saturating addition so very large
+///          rectangles remain well-defined instead of overflowing.
+static bool rangesIntersect(int64_t a, int64_t a_len, int64_t b, int64_t b_len) {
+    if (a_len <= 0 || b_len <= 0)
+        return false;
+    int64_t a_end = saturatingAddI64(a, a_len);
+    int64_t b_end = saturatingAddI64(b, b_len);
+    return a < b_end && b < a_end;
 }
 
 struct WidgetRecord {
@@ -104,6 +160,8 @@ void harnessFinalizer(void *obj) {
 
 void *widgetToMap(const WidgetRecord *w) {
     void *map = rt_map_new();
+    if (!map)
+        return nullptr;
     if (!w) {
         rt_map_set_bool(map, rt_const_cstr("found"), 0);
         return map;
@@ -120,7 +178,7 @@ void *widgetToMap(const WidgetRecord *w) {
 }
 
 bool intersects(const WidgetRecord &w, int64_t x, int64_t y, int64_t width, int64_t height) {
-    return !(w.x + w.w <= x || x + width <= w.x || w.y + w.h <= y || y + height <= w.y);
+    return rangesIntersect(w.x, w.w, x, width) && rangesIntersect(w.y, w.h, y, height);
 }
 
 struct VirtualListState {
@@ -247,6 +305,8 @@ void collectVisible(VirtualTreeState &state, const std::string &id, int64_t dept
         return;
     const TreeNode &node = it->second;
     void *map = rt_map_new();
+    if (!map)
+        return;
     mapSetStr(map, "id", node.id);
     mapSetStr(map, "text", node.text);
     mapSetStr(map, "parentId", node.parent);
@@ -334,14 +394,14 @@ void *rt_gui_test_harness_new(void) {
 }
 
 void rt_gui_test_harness_clear(void *harness) {
-    auto *h = requireHarness(harness);
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireHarness(harness));
     h->state->widgets.clear();
     h->state->events.clear();
     h->state->focus.clear();
 }
 
 int64_t rt_gui_test_harness_tick(void *harness, int64_t frames) {
-    auto *h = requireHarness(harness);
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireHarness(harness), 0);
     if (frames < 1)
         frames = 1;
     h->state->frame += frames;
@@ -356,7 +416,7 @@ void rt_gui_test_harness_register_widget(void *harness,
                                          int64_t y,
                                          int64_t w,
                                          int64_t hgt) {
-    auto *h = requireHarness(harness);
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireHarness(harness));
     try {
         WidgetRecord rec{toStd(id), toStd(type), toStd(name), x, y, w, hgt};
         auto it = std::find_if(h->state->widgets.begin(),
@@ -372,7 +432,7 @@ void rt_gui_test_harness_register_widget(void *harness,
 }
 
 void *rt_gui_test_harness_find_by_id(void *harness, rt_string id) {
-    auto *h = requireHarness(harness);
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireHarness(harness), widgetToMap(nullptr));
     try {
         std::string key = toStd(id);
         auto it = std::find_if(h->state->widgets.begin(),
@@ -385,7 +445,7 @@ void *rt_gui_test_harness_find_by_id(void *harness, rt_string id) {
 }
 
 void *rt_gui_test_harness_find_by_name(void *harness, rt_string name) {
-    auto *h = requireHarness(harness);
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireHarness(harness), widgetToMap(nullptr));
     try {
         std::string key = toStd(name);
         auto it = std::find_if(h->state->widgets.begin(),
@@ -398,7 +458,7 @@ void *rt_gui_test_harness_find_by_name(void *harness, rt_string name) {
 }
 
 void *rt_gui_test_harness_find_by_type(void *harness, rt_string type) {
-    auto *h = requireHarness(harness);
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireHarness(harness), widgetToMap(nullptr));
     try {
         std::string key = toStd(type);
         auto it = std::find_if(h->state->widgets.begin(),
@@ -411,7 +471,7 @@ void *rt_gui_test_harness_find_by_type(void *harness, rt_string type) {
 }
 
 void rt_gui_test_harness_send_key(void *harness, rt_string key, int64_t modifiers) {
-    auto *h = requireHarness(harness);
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireHarness(harness));
     try {
         h->state->events.push_back({"key", toStd(key), 0, 0, 0, modifiers, h->state->frame});
     } catch (const std::bad_alloc &) {
@@ -421,11 +481,11 @@ void rt_gui_test_harness_send_key(void *harness, rt_string key, int64_t modifier
 
 void rt_gui_test_harness_send_mouse(
     void *harness, rt_string event_type, int64_t x, int64_t y, int64_t button) {
-    auto *h = requireHarness(harness);
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireHarness(harness));
     try {
         h->state->events.push_back({toStd(event_type), "", x, y, button, 0, h->state->frame});
         for (auto it = h->state->widgets.rbegin(); it != h->state->widgets.rend(); ++it) {
-            if (x >= it->x && y >= it->y && x < it->x + it->w && y < it->y + it->h) {
+            if (rangesIntersect(it->x, it->w, x, 1) && rangesIntersect(it->y, it->h, y, 1)) {
                 h->state->focus = it->id;
                 break;
             }
@@ -436,25 +496,31 @@ void rt_gui_test_harness_send_mouse(
 }
 
 rt_string rt_gui_test_harness_get_focus(void *harness) {
-    auto *h = requireHarness(harness);
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireHarness(harness), nullptr);
     return makeString(h->state->focus);
 }
 
 void *rt_gui_test_harness_focus_order(void *harness) {
-    auto *h = requireHarness(harness);
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireHarness(harness), nullptr);
     void *seq = rt_seq_new_owned();
+    if (!seq)
+        return nullptr;
     for (const auto &w : h->state->widgets) {
         rt_string id = makeString(w.id);
-        rt_seq_push(seq, id);
-        rt_string_unref(id);
+        if (id) {
+            rt_seq_push(seq, id);
+            rt_string_unref(id);
+        }
     }
     return seq;
 }
 
 void *rt_gui_test_harness_capture_region(
     void *harness, int64_t x, int64_t y, int64_t w, int64_t hgt) {
-    auto *h = requireHarness(harness);
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireHarness(harness), nullptr);
     void *snapshot = rt_map_new();
+    if (!snapshot)
+        return nullptr;
     rt_map_set_int(snapshot, rt_const_cstr("x"), x);
     rt_map_set_int(snapshot, rt_const_cstr("y"), y);
     rt_map_set_int(snapshot, rt_const_cstr("width"), w);
@@ -464,7 +530,7 @@ void *rt_gui_test_harness_capture_region(
         if (intersects(widget, x, y, w, hgt))
             hits++;
     }
-    rt_map_set_int(snapshot, rt_const_cstr("nonBlankPixels"), hits > 0 ? w * hgt : 0);
+    rt_map_set_int(snapshot, rt_const_cstr("nonBlankPixels"), hits > 0 ? safeAreaI64(w, hgt) : 0);
     rt_map_set_bool(snapshot, rt_const_cstr("nonBlank"), hits > 0 ? 1 : 0);
     return snapshot;
 }
@@ -493,12 +559,12 @@ void *rt_virtual_list_new(int64_t row_count, int64_t row_height, int64_t viewpor
 }
 
 void rt_virtual_list_set_count(void *list, int64_t row_count) {
-    auto *h = requireList(list);
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireList(list));
     h->state->rowCount = std::max<int64_t>(0, row_count);
 }
 
 void rt_virtual_list_set_row_id(void *list, int64_t row, rt_string id) {
-    auto *h = requireList(list);
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireList(list));
     try {
         if (row >= 0 && row < h->state->rowCount)
             h->state->rowIds[row] = toStd(id);
@@ -508,15 +574,18 @@ void rt_virtual_list_set_row_id(void *list, int64_t row, rt_string id) {
 }
 
 void *rt_virtual_list_visible_range(void *list, int64_t scroll_y) {
-    auto *h = requireList(list);
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireList(list), nullptr);
     auto &s = *h->state;
     if (scroll_y < 0)
         scroll_y = 0;
     int64_t first = scroll_y / s.rowHeight;
     first = std::max<int64_t>(0, first - s.overscan);
-    int64_t visible = (s.viewportHeight + s.rowHeight - 1) / s.rowHeight + s.overscan * 2;
-    int64_t end = std::min<int64_t>(s.rowCount, first + visible);
+    int64_t visible =
+        saturatingAddI64(ceilDivPositiveI64(s.viewportHeight, s.rowHeight), s.overscan * 2);
+    int64_t end = std::min<int64_t>(s.rowCount, saturatingAddI64(first, visible));
     void *map = rt_map_new();
+    if (!map)
+        return nullptr;
     rt_map_set_int(map, rt_const_cstr("start"), first);
     rt_map_set_int(map, rt_const_cstr("end"), end);
     rt_map_set_int(map, rt_const_cstr("count"), std::max<int64_t>(0, end - first));
@@ -524,7 +593,7 @@ void *rt_virtual_list_visible_range(void *list, int64_t scroll_y) {
 }
 
 void rt_virtual_list_select_id(void *list, rt_string id) {
-    auto *h = requireList(list);
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireList(list));
     try {
         h->state->selectedId = toStd(id);
     } catch (const std::bad_alloc &) {
@@ -533,12 +602,12 @@ void rt_virtual_list_select_id(void *list, rt_string id) {
 }
 
 rt_string rt_virtual_list_get_selected_id(void *list) {
-    auto *h = requireList(list);
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireList(list), nullptr);
     return makeString(h->state->selectedId);
 }
 
 int64_t rt_virtual_list_get_selected_index(void *list) {
-    auto *h = requireList(list);
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireList(list), -1);
     try {
         for (int64_t row = 0; row < h->state->rowCount; row++) {
             if (rowId(*h->state, row) == h->state->selectedId)
@@ -573,7 +642,7 @@ void *rt_virtual_tree_new(void) {
 }
 
 void rt_virtual_tree_add_node(void *tree, rt_string parent_id, rt_string id_s, rt_string text) {
-    auto *h = requireTree(tree);
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireTree(tree));
     try {
         std::string parent = toStd(parent_id);
         std::string id = toStd(id_s);
@@ -622,8 +691,10 @@ void rt_virtual_tree_add_node(void *tree, rt_string parent_id, rt_string id_s, r
 }
 
 void *rt_virtual_tree_expand(void *tree, rt_string id_s) {
-    auto *h = requireTree(tree);
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireTree(tree), nullptr);
     void *map = rt_map_new();
+    if (!map)
+        return nullptr;
     try {
         std::string id = toStd(id_s);
         auto it = h->state->nodes.find(id);
@@ -646,7 +717,7 @@ void *rt_virtual_tree_expand(void *tree, rt_string id_s) {
 }
 
 void rt_virtual_tree_collapse(void *tree, rt_string id_s) {
-    auto *h = requireTree(tree);
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireTree(tree));
     try {
         auto it = h->state->nodes.find(toStd(id_s));
         if (it != h->state->nodes.end())
@@ -657,7 +728,7 @@ void rt_virtual_tree_collapse(void *tree, rt_string id_s) {
 }
 
 void rt_virtual_tree_select_id(void *tree, rt_string id) {
-    auto *h = requireTree(tree);
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireTree(tree));
     try {
         h->state->selectedId = toStd(id);
     } catch (const std::bad_alloc &) {
@@ -666,13 +737,15 @@ void rt_virtual_tree_select_id(void *tree, rt_string id) {
 }
 
 rt_string rt_virtual_tree_get_selected_id(void *tree) {
-    auto *h = requireTree(tree);
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireTree(tree), nullptr);
     return makeString(h->state->selectedId);
 }
 
 void *rt_virtual_tree_visible_rows(void *tree) {
-    auto *h = requireTree(tree);
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireTree(tree), nullptr);
     void *rows = rt_seq_new_owned();
+    if (!rows)
+        return nullptr;
     auto root = h->state->nodes.find("");
     if (root != h->state->nodes.end()) {
         for (const auto &id : root->second.children)
@@ -682,7 +755,7 @@ void *rt_virtual_tree_visible_rows(void *tree) {
 }
 
 void rt_virtual_tree_refresh_subtree(void *tree, rt_string id_s) {
-    auto *h = requireTree(tree);
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireTree(tree));
     try {
         std::string id = toStd(id_s);
         auto it = h->state->nodes.find(id);
@@ -727,23 +800,28 @@ void *rt_command_state_new(rt_string id, rt_string label) {
 }
 
 void rt_command_state_set_enabled(void *state, int8_t enabled) {
-    requireCommandState(state)->state->enabled = enabled != 0;
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireCommandState(state));
+    h->state->enabled = enabled != 0;
 }
 
 int8_t rt_command_state_get_enabled(void *state) {
-    return requireCommandState(state)->state->enabled ? 1 : 0;
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireCommandState(state), 0);
+    return h->state->enabled ? 1 : 0;
 }
 
 void rt_command_state_set_checked(void *state, int8_t checked) {
-    requireCommandState(state)->state->checked = checked != 0;
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireCommandState(state));
+    h->state->checked = checked != 0;
 }
 
 int8_t rt_command_state_get_checked(void *state) {
-    return requireCommandState(state)->state->checked ? 1 : 0;
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireCommandState(state), 0);
+    return h->state->checked ? 1 : 0;
 }
 
 void rt_command_state_set_accessible(void *state, rt_string label, rt_string description) {
-    auto *s = requireCommandState(state)->state;
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireCommandState(state));
+    auto *s = h->state;
     try {
         s->accessibleLabel = toStd(label);
         s->accessibleDescription = toStd(description);
@@ -753,8 +831,11 @@ void rt_command_state_set_accessible(void *state, rt_string label, rt_string des
 }
 
 void *rt_command_state_snapshot(void *state) {
-    auto *s = requireCommandState(state)->state;
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireCommandState(state), nullptr);
+    auto *s = h->state;
     void *map = rt_map_new();
+    if (!map)
+        return nullptr;
     mapSetStr(map, "id", s->id);
     mapSetStr(map, "label", s->label);
     mapSetStr(map, "accessibleLabel", s->accessibleLabel);
@@ -780,6 +861,8 @@ int8_t rt_accessibility_meets_contrast(int64_t fg_rgb, int64_t bg_rgb, double mi
 
 void *rt_accessibility_high_contrast_tokens(void) {
     void *map = rt_map_new();
+    if (!map)
+        return nullptr;
     rt_map_set_int(map, rt_const_cstr("background"), 0x000000);
     rt_map_set_int(map, rt_const_cstr("foreground"), 0xffffff);
     rt_map_set_int(map, rt_const_cstr("accent"), 0x00d7ff);

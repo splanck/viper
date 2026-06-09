@@ -108,9 +108,9 @@ static int videowidget_register_wrapper(rt_videowidget *w) {
                 return 0;
             new_cap *= 2;
         }
-        if (new_cap > SIZE_MAX / sizeof(*s_videowidget_wrappers))
+        if (new_cap > SIZE_MAX / sizeof(rt_videowidget *))
             return 0;
-        void *p = realloc(s_videowidget_wrappers, new_cap * sizeof(*s_videowidget_wrappers));
+        void *p = realloc(s_videowidget_wrappers, new_cap * sizeof(rt_videowidget *));
         if (!p)
             return 0;
         s_videowidget_wrappers = (rt_videowidget **)p;

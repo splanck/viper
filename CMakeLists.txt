@@ -358,12 +358,27 @@ if(CPPCHECK_EXECUTABLE)
             --enable=all
             --inconclusive
             --inline-suppr
+            "--suppressions-list=${CMAKE_SOURCE_DIR}/cppcheck-graphics.supp"
             --suppress=missingIncludeSystem
             --suppress=unusedFunction
             --suppress=unmatchedSuppression
             "--template=gcc"
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     COMMENT "Run cppcheck over src/codegen")
+
+  add_custom_target(cppcheck-graphics
+    COMMAND ${CPPCHECK_EXECUTABLE}
+            --project=${CMAKE_BINARY_DIR}/compile_commands.json
+            "--file-filter=src/runtime/graphics/*"
+            --enable=all
+            --inconclusive
+            --inline-suppr
+            --suppress=missingIncludeSystem
+            --suppress=unusedFunction
+            --suppress=unmatchedSuppression
+            "--template=gcc"
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Run cppcheck over src/runtime/graphics")
 endif()
 
 # Convenience cleanup: clean build tree and remove source-generated artifacts.

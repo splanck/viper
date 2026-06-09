@@ -359,10 +359,10 @@ static NSString *rt_gui_macos_display_shortcut(const char *shortcut) {
 static NSMenuItem *rt_gui_macos_make_bound_item(vg_menu_item_t *item, NSString *title_override) {
     NSString *title = title_override;
     if (!title) {
-        title = item && item->text ? [NSString stringWithUTF8String:item->text] : @ "";
+        title = item && item->text ? [NSString stringWithUTF8String:item->text] : @"";
     }
     if (!title) {
-        title = @ "";
+        title = @"";
     }
 
     NSMenuItem *native_item = [[NSMenuItem alloc] initWithTitle:title action:nil keyEquivalent:@ ""];

@@ -89,6 +89,17 @@ static double g_pad_deadzone = 0.1;
 // Initialization flag
 static bool g_pad_initialized = false;
 
+/// @brief Clear one public gamepad slot to its disconnected zero state.
+/// @details Platform backends call this when an OS device disappears or a slot has no
+///          backing device. Keeping the clear operation shared ensures stale buttons,
+///          axes, names, and vibration values do not survive disconnects.
+static void pad_clear_logical_state(int index) {
+    if (index < 0 || index >= VIPER_PAD_MAX)
+        return;
+    rt_pad_state zero = {0};
+    g_pads[index] = zero;
+}
+
 //=============================================================================
 // Platform-Specific Gamepad Backend
 //=============================================================================
@@ -189,6 +200,15 @@ static CFMutableDictionaryRef mac_make_match(uint32_t usage) {
     int page = kHIDPage_GenericDesktop;
     CFNumberRef page_num = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &page);
     CFNumberRef usage_num = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &usage);
+    if (!dict || !page_num || !usage_num) {
+        if (usage_num)
+            CFRelease(usage_num);
+        if (page_num)
+            CFRelease(page_num);
+        if (dict)
+            CFRelease(dict);
+        return NULL;
+    }
     CFDictionarySetValue(dict, CFSTR(kIOHIDDeviceUsagePageKey), page_num);
     CFDictionarySetValue(dict, CFSTR(kIOHIDDeviceUsageKey), usage_num);
     CFRelease(page_num);
@@ -247,8 +267,7 @@ static int mac_button_index(uint32_t usage) {
 static void mac_scan_devices(void) {
     for (int i = 0; i < VIPER_PAD_MAX; ++i) {
         mac_clear_pad(&g_mac_pads[i]);
-        g_pads[i].connected = false;
-        g_pads[i].name[0] = '\0';
+        pad_clear_logical_state(i);
     }
 
     if (!g_hid_manager)
@@ -383,14 +402,29 @@ static void mac_init_manager(void) {
         matches[1] = mac_make_match(kHIDUsage_GD_Joystick);
         matches[2] = mac_make_match(kHIDUsage_GD_MultiAxisController);
 
-        CFArrayRef match_array = CFArrayCreate(
-            kCFAllocatorDefault, (const void **)(void *)matches, 3, &kCFTypeArrayCallBacks);
-        IOHIDManagerSetDeviceMatchingMultiple(g_hid_manager, match_array);
-        IOHIDManagerOpen(g_hid_manager, kIOHIDOptionsTypeNone);
+        if (matches[0] && matches[1] && matches[2]) {
+            CFArrayRef match_array = CFArrayCreate(
+                kCFAllocatorDefault, (const void **)(void *)matches, 3, &kCFTypeArrayCallBacks);
+            if (match_array) {
+                IOHIDManagerSetDeviceMatchingMultiple(g_hid_manager, match_array);
+                IOReturn open_result = IOHIDManagerOpen(g_hid_manager, kIOHIDOptionsTypeNone);
+                CFRelease(match_array);
+                if (open_result != kIOReturnSuccess) {
+                    CFRelease(g_hid_manager);
+                    g_hid_manager = NULL;
+                }
+            } else {
+                CFRelease(g_hid_manager);
+                g_hid_manager = NULL;
+            }
+        } else {
+            CFRelease(g_hid_manager);
+            g_hid_manager = NULL;
+        }
 
-        CFRelease(match_array);
         for (int i = 0; i < 3; ++i)
-            CFRelease(matches[i]);
+            if (matches[i])
+                CFRelease(matches[i]);
     }
 
     mac_scan_devices();
@@ -497,13 +531,21 @@ static void platform_pad_poll(void) {
     if (!g_hid_manager)
         return;
 
-    if (!g_pads[0].connected)
+    bool has_free_slot = false;
+    for (int i = 0; i < VIPER_PAD_MAX; ++i) {
+        if (!g_mac_pads[i].device) {
+            has_free_slot = true;
+            break;
+        }
+    }
+    if (has_free_slot)
         mac_scan_devices();
 
+    bool need_rescan = false;
     for (int i = 0; i < VIPER_PAD_MAX; ++i) {
         mac_pad *pad = &g_mac_pads[i];
         if (!pad->device) {
-            g_pads[i].connected = false;
+            pad_clear_logical_state(i);
             continue;
         }
 
@@ -518,33 +560,65 @@ static void platform_pad_poll(void) {
         g_pads[i].right_trigger = 0.0;
 
         CFIndex value = 0;
-        if (mac_read_value(pad->device, pad->left_x.element, &value))
-            g_pads[i].left_x = mac_normalize_axis(value, pad->left_x.min, pad->left_x.max);
-        if (mac_read_value(pad->device, pad->left_y.element, &value))
-            g_pads[i].left_y = mac_normalize_axis(value, pad->left_y.min, pad->left_y.max);
-        if (mac_read_value(pad->device, pad->right_x.element, &value))
-            g_pads[i].right_x = mac_normalize_axis(value, pad->right_x.min, pad->right_x.max);
-        if (mac_read_value(pad->device, pad->right_y.element, &value))
-            g_pads[i].right_y = mac_normalize_axis(value, pad->right_y.min, pad->right_y.max);
-        if (mac_read_value(pad->device, pad->left_trigger.element, &value))
-            g_pads[i].left_trigger =
-                mac_normalize_trigger(value, pad->left_trigger.min, pad->left_trigger.max);
-        if (mac_read_value(pad->device, pad->right_trigger.element, &value))
-            g_pads[i].right_trigger =
-                mac_normalize_trigger(value, pad->right_trigger.min, pad->right_trigger.max);
+        int read_attempts = 0;
+        int read_failures = 0;
+#define MAC_READ_AXIS(axis_member, target_expr, normalizer_expr)                                   \
+    do {                                                                                           \
+        if ((axis_member).element) {                                                               \
+            read_attempts++;                                                                       \
+            if (mac_read_value(pad->device, (axis_member).element, &value))                        \
+                (target_expr) = (normalizer_expr);                                                 \
+            else                                                                                   \
+                read_failures++;                                                                   \
+        }                                                                                          \
+    } while (0)
+
+        MAC_READ_AXIS(pad->left_x,
+                      g_pads[i].left_x,
+                      mac_normalize_axis(value, pad->left_x.min, pad->left_x.max));
+        MAC_READ_AXIS(pad->left_y,
+                      g_pads[i].left_y,
+                      mac_normalize_axis(value, pad->left_y.min, pad->left_y.max));
+        MAC_READ_AXIS(pad->right_x,
+                      g_pads[i].right_x,
+                      mac_normalize_axis(value, pad->right_x.min, pad->right_x.max));
+        MAC_READ_AXIS(pad->right_y,
+                      g_pads[i].right_y,
+                      mac_normalize_axis(value, pad->right_y.min, pad->right_y.max));
+        MAC_READ_AXIS(pad->left_trigger,
+                      g_pads[i].left_trigger,
+                      mac_normalize_trigger(value, pad->left_trigger.min, pad->left_trigger.max));
+        MAC_READ_AXIS(pad->right_trigger,
+                      g_pads[i].right_trigger,
+                      mac_normalize_trigger(value, pad->right_trigger.min, pad->right_trigger.max));
+#undef MAC_READ_AXIS
 
         for (int b = 0; b < VIPER_PAD_BUTTON_MAX; ++b) {
             if (!pad->buttons[b])
                 continue;
+            read_attempts++;
             CFIndex btn_value = 0;
             if (mac_read_value(pad->device, pad->buttons[b], &btn_value))
                 g_pads[i].buttons[b] = btn_value != 0;
+            else
+                read_failures++;
         }
 
-        if (pad->hat && mac_read_value(pad->device, pad->hat, &value)) {
-            mac_apply_hat(&g_pads[i], (int)value);
+        if (pad->hat) {
+            read_attempts++;
+            if (mac_read_value(pad->device, pad->hat, &value))
+                mac_apply_hat(&g_pads[i], (int)value);
+            else
+                read_failures++;
+        }
+        if (read_attempts > 0 && read_failures == read_attempts) {
+            mac_clear_pad(pad);
+            pad_clear_logical_state(i);
+            need_rescan = true;
         }
     }
+    if (need_rescan)
+        mac_scan_devices();
 }
 
 /// @brief macOS IOKit HID implementation of platform_pad_vibrate — no-op.
@@ -626,8 +700,11 @@ static bool linux_is_gamepad(int fd) {
 
 /// @brief Close the device fd (if open) and reset the pad's calibration to defaults.
 static void linux_reset_pad(linux_pad *pad) {
-    if (pad->fd >= 0)
+    if (pad->fd >= 0) {
+        if (pad->rumble_id >= 0)
+            (void)ioctl(pad->fd, EVIOCRMFF, pad->rumble_id);
         close(pad->fd);
+    }
     pad->fd = -1;
     pad->has_rumble = false;
     pad->rumble_id = -1;
@@ -644,10 +721,7 @@ static void linux_reset_pad(linux_pad *pad) {
 ///          names do not remain visible after the underlying evdev fd disappears.
 /// @param index Slot index in @c g_pads.
 static void linux_clear_logical_pad(int index) {
-    if (index < 0 || index >= VIPER_PAD_MAX)
-        return;
-    rt_pad_state zero = {0};
-    g_pads[index] = zero;
+    pad_clear_logical_state(index);
 }
 
 /// @brief Return whether an evdev device identity is already bound to a slot.
@@ -985,7 +1059,14 @@ static void platform_pad_vibrate(int64_t index, double left, double right) {
     play.type = EV_FF;
     play.code = effect.id;
     play.value = 1;
-    write(pad->fd, &play, sizeof(play));
+    if (write(pad->fd, &play, sizeof(play)) != (ssize_t)sizeof(play)) {
+        if (pad->rumble_id >= 0)
+            (void)ioctl(pad->fd, EVIOCRMFF, pad->rumble_id);
+        pad->rumble_id = -1;
+        pad->has_rumble = false;
+        g_pads[index].vibration_left = 0.0;
+        g_pads[index].vibration_right = 0.0;
+    }
 }
 
 #elif defined(_WIN32)
@@ -1006,6 +1087,24 @@ static void platform_pad_vibrate(int64_t index, double left, double right) {
 #endif
 #include <Xinput.h>
 #include <windows.h>
+
+/// @brief Normalize a signed XInput thumbstick component with the platform deadzone applied.
+/// @details XInput devices report small noisy values near center. This helper zeroes
+///          values within the SDK-provided deadzone, then rescales the remaining
+///          signed range to preserve full [-1, 1] output at the physical extremes.
+static double xinput_normalize_thumb(SHORT value, SHORT deadzone) {
+    int raw = (int)value;
+    int magnitude = raw < 0 ? -raw : raw;
+    int dz = (int)deadzone;
+    if (magnitude <= dz)
+        return 0.0;
+    int max_magnitude = raw < 0 ? 32768 : 32767;
+    int span = max_magnitude - dz;
+    if (span <= 0)
+        return 0.0;
+    double normalized = (double)(magnitude - dz) / (double)span;
+    return raw < 0 ? -normalized : normalized;
+}
 
 /// @brief Windows XInput implementation of platform_pad_poll.
 /// @details Calls XInputGetState for each pad slot in [0, VIPER_PAD_MAX).
@@ -1052,24 +1151,15 @@ static void platform_pad_poll(void) {
             SHORT rx = state.Gamepad.sThumbRX;
             SHORT ry = state.Gamepad.sThumbRY;
 
-            g_pads[i].left_x = (lx < 0) ? (double)lx / 32768.0 : (double)lx / 32767.0;
-            g_pads[i].left_y = (ly < 0) ? (double)ly / 32768.0 : (double)ly / 32767.0;
-            g_pads[i].right_x = (rx < 0) ? (double)rx / 32768.0 : (double)rx / 32767.0;
-            g_pads[i].right_y = (ry < 0) ? (double)ry / 32768.0 : (double)ry / 32767.0;
+            g_pads[i].left_x = xinput_normalize_thumb(lx, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+            g_pads[i].left_y = xinput_normalize_thumb(ly, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+            g_pads[i].right_x = xinput_normalize_thumb(rx, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
+            g_pads[i].right_y = xinput_normalize_thumb(ry, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
 
             g_pads[i].left_trigger = state.Gamepad.bLeftTrigger / 255.0;
             g_pads[i].right_trigger = state.Gamepad.bRightTrigger / 255.0;
         } else {
-            g_pads[i].connected = false;
-            g_pads[i].name[0] = '\0';
-            for (int b = 0; b < VIPER_PAD_BUTTON_MAX; ++b)
-                g_pads[i].buttons[b] = false;
-            g_pads[i].left_x = 0.0;
-            g_pads[i].left_y = 0.0;
-            g_pads[i].right_x = 0.0;
-            g_pads[i].right_y = 0.0;
-            g_pads[i].left_trigger = 0.0;
-            g_pads[i].right_trigger = 0.0;
+            pad_clear_logical_state((int)i);
         }
     }
 }
@@ -1100,7 +1190,13 @@ static void platform_pad_vibrate(int64_t index, double left, double right) {
     XINPUT_VIBRATION vib;
     vib.wLeftMotorSpeed = (WORD)(left_amp * 65535.0);
     vib.wRightMotorSpeed = (WORD)(right_amp * 65535.0);
-    XInputSetState((DWORD)index, &vib);
+    DWORD result = XInputSetState((DWORD)index, &vib);
+    if (result != ERROR_SUCCESS) {
+        g_pads[index].vibration_left = 0.0;
+        g_pads[index].vibration_right = 0.0;
+        if (result == ERROR_DEVICE_NOT_CONNECTED)
+            pad_clear_logical_state((int)index);
+    }
 }
 
 #else
@@ -1137,6 +1233,8 @@ static void platform_pad_vibrate(int64_t index, double left, double right) {
 static double apply_deadzone(double value) {
     if (g_pad_deadzone <= 0.0)
         return value;
+    if (g_pad_deadzone >= 1.0)
+        return 0.0;
 
     double abs_value = fabs(value);
     if (abs_value < g_pad_deadzone)
@@ -1167,23 +1265,7 @@ void rt_pad_init(void) {
         return;
 
     for (int i = 0; i < VIPER_PAD_MAX; i++) {
-        g_pads[i].connected = false;
-        g_pads[i].name[0] = '\0';
-
-        for (int b = 0; b < VIPER_PAD_BUTTON_MAX; b++) {
-            g_pads[i].buttons[b] = false;
-            g_pads[i].pressed[b] = false;
-            g_pads[i].released[b] = false;
-        }
-
-        g_pads[i].left_x = 0.0;
-        g_pads[i].left_y = 0.0;
-        g_pads[i].right_x = 0.0;
-        g_pads[i].right_y = 0.0;
-        g_pads[i].left_trigger = 0.0;
-        g_pads[i].right_trigger = 0.0;
-        g_pads[i].vibration_left = 0.0;
-        g_pads[i].vibration_right = 0.0;
+        pad_clear_logical_state(i);
     }
 
     g_pad_deadzone = 0.1;
@@ -1221,9 +1303,6 @@ void rt_pad_poll(void) {
 
     // Detect button press/release events
     for (int i = 0; i < VIPER_PAD_MAX; i++) {
-        if (!g_pads[i].connected)
-            continue;
-
         for (int b = 0; b < VIPER_PAD_BUTTON_MAX; b++) {
             bool was_down = prev_buttons[i][b];
             bool is_down = g_pads[i].buttons[b];

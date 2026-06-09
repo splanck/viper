@@ -702,6 +702,63 @@ static void release_owned_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Copy the current display pixels into a malloc-owned rollback buffer.
+///
+/// @details Seeking through a forward-only stream can decode intermediate
+///   frames before discovering that the requested target frame is unavailable.
+///   This helper snapshots the visible `frame_display` buffer before seeking so
+///   failure recovery can restore the exact pixels the caller was seeing. The
+///   returned buffer owns @p out_count uint32_t pixels and must be freed with
+///   @c free by the caller.
+///
+/// @param vp        Video player whose display buffer should be copied.
+/// @param out_count Receives the number of uint32_t pixels in the snapshot.
+/// @return A malloc-owned pixel copy, or NULL if no safe snapshot is possible.
+static uint32_t *videoplayer_snapshot_display(const rt_videoplayer *vp, size_t *out_count) {
+    if (out_count)
+        *out_count = 0;
+    if (!vp || !vp->frame_display || !out_count)
+        return NULL;
+    const px_view *view = (const px_view *)vp->frame_display;
+    if (!view->data || view->width <= 0 || view->height <= 0)
+        return NULL;
+    if ((size_t)view->width > SIZE_MAX / (size_t)view->height)
+        return NULL;
+    size_t count = (size_t)view->width * (size_t)view->height;
+    if (count > SIZE_MAX / sizeof(uint32_t))
+        return NULL;
+    uint32_t *copy = (uint32_t *)malloc(count * sizeof(uint32_t));
+    if (!copy)
+        return NULL;
+    memcpy(copy, view->data, count * sizeof(uint32_t));
+    *out_count = count;
+    return copy;
+}
+
+/// @brief Restore a display-buffer snapshot produced by @c videoplayer_snapshot_display.
+///
+/// @details The restore is intentionally conservative: dimensions are rechecked
+///   against the current display buffer and no write occurs if the target buffer
+///   has been reallocated to a different size. The snapshot remains caller-owned
+///   and is not freed by this helper.
+///
+/// @param vp    Video player whose display buffer should be restored.
+/// @param data  Snapshot pixel buffer, or NULL for a no-op.
+/// @param count Number of uint32_t pixels in @p data.
+static void videoplayer_restore_display(rt_videoplayer *vp, const uint32_t *data, size_t count) {
+    if (!vp || !vp->frame_display || !data || count == 0)
+        return;
+    px_view *view = (px_view *)vp->frame_display;
+    if (!view->data || view->width <= 0 || view->height <= 0)
+        return;
+    if ((size_t)view->width > SIZE_MAX / (size_t)view->height)
+        return;
+    size_t expected = (size_t)view->width * (size_t)view->height;
+    if (expected != count)
+        return;
+    memcpy(view->data, data, count * sizeof(uint32_t));
+}
+
 /// @brief Decode one AVI/MJPEG frame into the stable display buffer.
 /// @details Fetches the requested frame from the AVI index, decodes it through the MJPEG/JPEG path,
 ///          copies it into @c frame_display after dimension validation, and releases the temporary
@@ -767,11 +824,12 @@ static int32_t theora_granule_to_frame_index(const theora_decoder_t *dec, int64_
     return (int32_t)frame;
 }
 
-/// @brief Convert a YCbCr 4:2:0 Theora frame to the player's RGBA display buffer.
+/// @brief Convert a Theora YCbCr frame to the player's RGBA display buffer.
 ///
 /// Crops the decoded picture using `pic_x/pic_y/pic_width/pic_height`
 /// (Theora encodes a slightly larger frame and stores a crop rect),
-/// then runs the YCbCr→RGBA color conversion into `frame_display`.
+/// then runs the appropriate YCbCr-to-RGBA color conversion for the stream's
+/// 4:2:0, 4:2:2, or 4:4:4 pixel format into `frame_display`.
 /// @return 1 on success, 0 if the destination buffer is missing or sizes mismatch.
 static int copy_theora_frame_to_display(rt_videoplayer *vp,
                                         const uint8_t *y,
@@ -792,11 +850,29 @@ static int copy_theora_frame_to_display(rt_videoplayer *vp,
     if (dst->width != pic_w || dst->height != pic_h)
         return 0;
 
+    int32_t chroma_x_shift = dec->pixel_format == 3 ? 0 : 1;
+    int32_t chroma_y_shift = dec->pixel_format == 0 ? 1 : 0;
     const uint8_t *y_plane = y + dec->pic_y * dec->y_stride + dec->pic_x;
-    const uint8_t *cb_plane = cb + (dec->pic_y / 2) * dec->c_stride + (dec->pic_x / 2);
-    const uint8_t *cr_plane = cr + (dec->pic_y / 2) * dec->c_stride + (dec->pic_x / 2);
-    ycbcr420_to_rgba(
-        y_plane, cb_plane, cr_plane, pic_w, pic_h, dec->y_stride, dec->c_stride, dst->data);
+    const uint8_t *cb_plane =
+        cb + (dec->pic_y >> chroma_y_shift) * dec->c_stride + (dec->pic_x >> chroma_x_shift);
+    const uint8_t *cr_plane =
+        cr + (dec->pic_y >> chroma_y_shift) * dec->c_stride + (dec->pic_x >> chroma_x_shift);
+    switch (dec->pixel_format) {
+        case 0:
+            ycbcr420_to_rgba(
+                y_plane, cb_plane, cr_plane, pic_w, pic_h, dec->y_stride, dec->c_stride, dst->data);
+            break;
+        case 2:
+            ycbcr422_to_rgba(
+                y_plane, cb_plane, cr_plane, pic_w, pic_h, dec->y_stride, dec->c_stride, dst->data);
+            break;
+        case 3:
+            ycbcr444_to_rgba(
+                y_plane, cb_plane, cr_plane, pic_w, pic_h, dec->y_stride, dec->c_stride, dst->data);
+            break;
+        default:
+            return 0;
+    }
     return 1;
 }
 
@@ -1218,36 +1294,62 @@ void rt_videoplayer_stop(void *obj) {
 #endif
 }
 
-/// @brief Jump to the frame containing time `seconds`. Decodes catch-up frames silently.
+/// @brief Jump to the frame containing time `seconds`.
 ///
 /// Per Theora's forward-only constraint, seeking backward decodes
 /// from the previous keyframe; seeking forward into a different
 /// keyframe also decodes from that keyframe forward. The audio
-/// track is reseeked to match.
+/// track is reseeked to match. If the target frame cannot be decoded,
+/// the previously displayed frame and playback position are preserved.
 void rt_videoplayer_seek(void *obj, double seconds) {
     rt_videoplayer *vp = videoplayer_checked(obj);
     if (!vp)
         return;
     seconds = videoplayer_clamp_seconds(vp, seconds);
-    vp->position = seconds;
+    size_t snapshot_count = 0;
+    uint32_t *snapshot = videoplayer_snapshot_display(vp, &snapshot_count);
     if (vp->container_type == 1) {
-        int32_t target = videoplayer_frame_index_at(vp, vp->position);
+        double old_position = vp->position;
+        int32_t old_frame = vp->current_frame;
+        int32_t target = videoplayer_frame_index_at(vp, seconds);
         if (target >= vp->total_frames)
             target = vp->total_frames > 0 ? vp->total_frames - 1 : -1;
+        if (target < 0) {
+            free(snapshot);
+            return;
+        }
         vp->current_frame = -1;
-        if (ogv_prepare_playback(vp) && target >= 0)
-            ogv_decode_until_frame(vp, target);
+        if (!(ogv_prepare_playback(vp) && ogv_decode_until_frame(vp, target))) {
+            videoplayer_restore_display(vp, snapshot, snapshot_count);
+            vp->position = old_position;
+            vp->current_frame = old_frame;
+            if (old_frame >= 0) {
+                vp->current_frame = -1;
+                if (!ogv_prepare_playback(vp) || !ogv_decode_until_frame(vp, old_frame))
+                    vp->current_frame = old_frame;
+            }
+            free(snapshot);
+            return;
+        }
+        vp->position = seconds;
 #ifdef VIPER_ENABLE_AUDIO
         videoplayer_seek_audio(vp);
 #endif
     } else {
-        int32_t target = videoplayer_frame_index_at(vp, vp->position);
+        double old_position = vp->position;
+        int32_t old_frame = vp->current_frame;
+        int32_t target = videoplayer_frame_index_at(vp, seconds);
         if (target >= vp->total_frames)
             target = vp->total_frames > 0 ? vp->total_frames - 1 : -1;
-        vp->current_frame = -1;
-        if (target >= 0)
-            (void)videoplayer_decode_avi_frame(vp, target);
+        if (target >= 0 && videoplayer_decode_avi_frame(vp, target)) {
+            vp->position = seconds;
+        } else {
+            videoplayer_restore_display(vp, snapshot, snapshot_count);
+            vp->position = old_position;
+            vp->current_frame = old_frame;
+        }
     }
+    free(snapshot);
 }
 
 /// @brief Advance playback by `dt` seconds, decoding new frames as their timestamps elapse.

@@ -90,9 +90,9 @@ static int rt_commandpalette_register_wrapper(rt_commandpalette_data_t *data) {
                 return 0;
             new_cap *= 2;
         }
-        if (new_cap > SIZE_MAX / sizeof(*s_commandpalette_wrappers))
+        if (new_cap > SIZE_MAX / sizeof(rt_commandpalette_data_t *))
             return 0;
-        void *p = realloc(s_commandpalette_wrappers, new_cap * sizeof(*s_commandpalette_wrappers));
+        void *p = realloc(s_commandpalette_wrappers, new_cap * sizeof(rt_commandpalette_data_t *));
         if (!p)
             return 0;
         s_commandpalette_wrappers = (rt_commandpalette_data_t **)p;
@@ -291,6 +291,12 @@ void rt_commandpalette_add_command(void *palette,
     char *cid = rt_string_to_cstr(id);
     char *clabel = rt_string_to_gui_cstr(label);
     char *ccat = rt_string_to_gui_cstr(category);
+    if (!cid || !clabel || !ccat) {
+        free(ccat);
+        free(cid);
+        free(clabel);
+        return;
+    }
 
     // Prepend category to label if non-empty (e.g. "[File] Open")
     char *display_alloc = rt_commandpalette_format_display_label(ccat, clabel);
@@ -324,6 +330,13 @@ void rt_commandpalette_add_command_with_shortcut(
     char *clabel = rt_string_to_gui_cstr(label);
     char *cshort = rt_string_to_gui_cstr(shortcut);
     char *ccat = rt_string_to_gui_cstr(category);
+    if (!cid || !clabel || !cshort || !ccat) {
+        free(ccat);
+        free(cshort);
+        free(cid);
+        free(clabel);
+        return;
+    }
 
     // Prepend category to label if non-empty
     char *display_alloc = rt_commandpalette_format_display_label(ccat, clabel);
@@ -1397,7 +1410,6 @@ void rt_toast_set_max_visible(int64_t count) {
 
 /// @brief Dismiss the all of the toast.
 void rt_toast_dismiss_all(void) {}
-
 
 /// @brief Set the draggable of the widget.
 void rt_widget_set_draggable(void *widget, int64_t draggable) {

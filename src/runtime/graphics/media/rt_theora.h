@@ -10,10 +10,10 @@
 //   Supports I-frames and P-frames in OGG container.
 //
 // Key invariants:
-//   - Based on VP3: 8x8 DCT blocks, Huffman coding, YCbCr 4:2:0.
+//   - Based on VP3: 8x8 DCT blocks, Huffman coding, planar YCbCr.
 //   - No B-frames (only I and P frames).
 //   - Three headers: identification (0x80), comment (0x81), setup (0x82).
-//   - Output: YCbCr 4:2:0 planes, caller converts via rt_ycbcr.h.
+//   - Output: planar YCbCr planes, caller converts via rt_ycbcr.h.
 //
 // Links: rt_ycbcr.h, rt_videoplayer.h, Theora spec: https://www.theora.org/doc/Theora.pdf
 //
@@ -55,7 +55,7 @@ typedef struct {
     int32_t macro_cols, macro_rows;           /* macroblock grid */
     int32_t block_cols, block_rows;           /* 8x8 block grid */
 
-    /* Reference frames (YCbCr 4:2:0 planes) */
+    /* Reference frames (planar YCbCr planes; chroma layout follows pixel_format) */
     uint8_t *ref_y, *ref_cb, *ref_cr;    /* last decoded reference */
     uint8_t *gold_y, *gold_cb, *gold_cr; /* golden frame reference */
     int32_t y_stride, c_stride;          /* plane strides */

@@ -52,6 +52,14 @@
 #include <string.h>
 #include "rt_gltf_internal.h"
 
+#if defined(_WIN32)
+#define gltf_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
+#define gltf_ftell(fp) _ftelli64((fp))
+#else
+#define gltf_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
+#define gltf_ftell(fp) ftello((fp))
+#endif
+
 // Forward declarations for runtime JSON and collection APIs
 extern void *rt_json_parse_object(rt_string text);
 extern void *rt_map_get(void *map, rt_string key);
@@ -234,8 +242,7 @@ static int32_t gltf_asset_safe_scene_count(const rt_gltf_asset *asset) {
 ///   backing storage, resetting the count/capacity to zero.
 static void gltf_asset_release_ref_array(void ***items, int32_t *count, int32_t *capacity) {
     void **array = items ? *items : NULL;
-    int32_t safe_count =
-        gltf_asset_safe_count(array, count ? *count : 0, capacity ? *capacity : 0);
+    int32_t safe_count = gltf_asset_safe_count(array, count ? *count : 0, capacity ? *capacity : 0);
     if (array) {
         for (int32_t i = 0; i < safe_count; i++) {
             if (array[i] && rt_obj_release_check0(array[i]))
@@ -517,8 +524,7 @@ static int gltf_required_extension_supported(const char *name) {
     return strcmp(name, "KHR_texture_transform") == 0 ||
            strcmp(name, "KHR_materials_emissive_strength") == 0 ||
            strcmp(name, "KHR_materials_unlit") == 0 ||
-           strcmp(name, "KHR_materials_specular") == 0 ||
-           strcmp(name, "KHR_lights_punctual") == 0;
+           strcmp(name, "KHR_materials_specular") == 0 || strcmp(name, "KHR_lights_punctual") == 0;
 }
 
 /// @brief Enforce the glTF `extensionsRequired` contract.
@@ -894,7 +900,6 @@ static int64_t gltf_texture_source_index(void *texture_json) {
     return source_idx;
 }
 
-
 //===----------------------------------------------------------------------===//
 // Implementation split across cohesive .inc units compiled as one translation unit.
 //===----------------------------------------------------------------------===//
@@ -906,7 +911,6 @@ static int64_t gltf_texture_source_index(void *texture_json) {
 #include "rt_gltf_material.inc"
 #include "rt_gltf_mesh.inc"
 #include "rt_gltf_scene.inc"
-
 
 //===----------------------------------------------------------------------===//
 // Main loader
@@ -954,7 +958,8 @@ static int gltf_load_buffer_uri(const char *filepath,
     gltf_resolve_relative_path(filepath, uri, buf_path, sizeof(buf_path));
     if (buf_path[0] == '\0')
         return 0;
-    buffer->data = gltf_load_dependency_bytes(buf_path, load_assets, byte_length, preload_bundle, NULL);
+    buffer->data =
+        gltf_load_dependency_bytes(buf_path, load_assets, byte_length, preload_bundle, NULL);
     if (buffer->data)
         buffer->len = byte_length;
     if (byte_length > 0 && (!buffer->data || buffer->len < byte_length)) {
@@ -1059,8 +1064,8 @@ static int gltf_extract_json_document(uint8_t *file_data,
     *out_bin_chunk = NULL;
     *out_bin_chunk_len = 0;
 
-    if (file_size >= 12 && file_data[0] == 0x67 && file_data[1] == 0x6C &&
-        file_data[2] == 0x54 && file_data[3] == 0x46) {
+    if (file_size >= 12 && file_data[0] == 0x67 && file_data[1] == 0x6C && file_data[2] == 0x54 &&
+        file_data[3] == 0x46) {
         uint32_t version = gltf_read_u32_le(file_data + 4);
         uint32_t declared_len = gltf_read_u32_le(file_data + 8);
         size_t pos = 12;
@@ -1506,13 +1511,11 @@ void *rt_gltf_get_node_animation(void *obj, int64_t index) {
     rt_gltf_asset *a = gltf_asset_checked(obj);
     if (!a)
         return NULL;
-    int32_t node_animation_count =
-        gltf_asset_safe_count(
-            a->node_animations, a->node_animation_count, a->node_animation_capacity);
+    int32_t node_animation_count = gltf_asset_safe_count(
+        a->node_animations, a->node_animation_count, a->node_animation_capacity);
     if (index < 0 || index >= node_animation_count)
         return NULL;
-    return rt_g3d_checked_or_null(a->node_animations[index],
-                                  RT_G3D_NODEANIMATION3D_CLASS_ID);
+    return rt_g3d_checked_or_null(a->node_animations[index], RT_G3D_NODEANIMATION3D_CLASS_ID);
 }
 
 /// @brief Return the number of cameras imported from the active scene.
@@ -1585,8 +1588,7 @@ void *rt_gltf_get_scene_camera(void *obj, int64_t scene_index, int64_t index) {
 /// @brief Number of nodes in the loaded glTF scene tree (0 for NULL).
 int64_t rt_gltf_node_count(void *obj) {
     rt_gltf_asset *a = gltf_asset_checked(obj);
-    if (!a || a->node_count <= 0 ||
-        !rt_g3d_has_class(a->scene_root, RT_G3D_SCENENODE3D_CLASS_ID))
+    if (!a || a->node_count <= 0 || !rt_g3d_has_class(a->scene_root, RT_G3D_SCENENODE3D_CLASS_ID))
         return 0;
     return a->node_count;
 }

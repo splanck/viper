@@ -51,6 +51,27 @@ typedef struct {
     double w;
 } ViperQuat;
 
+/// @brief Compute a finite, overflow-resistant Euclidean norm for quaternion components.
+/// @details Uses `hypot` in a chain so very large finite inputs do not overflow while
+///          squaring and very small inputs do not underflow to zero prematurely. Non-finite
+///          components return `INFINITY`, giving callers a deterministic fallback path
+///          instead of propagating NaN payloads into transform math.
+static double quat_safe_len4(double x, double y, double z, double w) {
+    if (!isfinite(x) || !isfinite(y) || !isfinite(z) || !isfinite(w))
+        return INFINITY;
+    return hypot(hypot(x, y), hypot(z, w));
+}
+
+/// @brief Compute a finite, overflow-resistant Euclidean norm for a 3D axis.
+/// @details This is the axis-specific counterpart to quat_safe_len4 and prevents
+///          `FromAxisAngle` from overflowing while normalizing unusually large but
+///          otherwise valid direction vectors.
+static double quat_safe_len3(double x, double y, double z) {
+    if (!isfinite(x) || !isfinite(y) || !isfinite(z))
+        return INFINITY;
+    return hypot(hypot(x, y), z);
+}
+
 /// @brief Allocate a GC-managed quaternion object and initialize all four components.
 /// @return New ViperQuat with the given (x, y, z, w) components, or NULL on OOM.
 static ViperQuat *quat_alloc(double x, double y, double z, double w) {
@@ -83,17 +104,19 @@ void *rt_quat_identity(void) {
 }
 
 /// @brief Build a unit quaternion representing a rotation of `angle` radians about `axis`. The
-/// axis is normalized internally; a zero-length axis returns identity.
+/// axis is normalized internally; a zero-length axis or non-finite angle returns identity.
 void *rt_quat_from_axis_angle(void *axis, double angle) {
     if (!axis) {
         rt_trap("Quat.FromAxisAngle: null axis");
         return NULL;
     }
+    if (!isfinite(angle))
+        return quat_alloc(0.0, 0.0, 0.0, 1.0);
     double ax = rt_vec3_x(axis);
     double ay = rt_vec3_y(axis);
     double az = rt_vec3_z(axis);
-    double len = sqrt(ax * ax + ay * ay + az * az);
-    if (len == 0.0)
+    double len = quat_safe_len3(ax, ay, az);
+    if (len == 0.0 || !isfinite(len))
         return quat_alloc(0.0, 0.0, 0.0, 1.0);
 
     ax /= len;
@@ -193,18 +216,19 @@ void *rt_quat_conjugate(void *q) {
 }
 
 /// @brief Quaternion inverse (conjugate / |q|²). For unit quaternions matches `_conjugate`
-/// but is safer for general use. Traps on null or zero-length input.
+/// but is safer for general use. Traps on null or zero-length/non-finite input.
 void *rt_quat_inverse(void *q) {
     if (!q) {
         rt_trap("Quat.Inverse: null quaternion");
         return NULL;
     }
     ViperQuat *qv = (ViperQuat *)q;
-    double len_sq = qv->x * qv->x + qv->y * qv->y + qv->z * qv->z + qv->w * qv->w;
-    if (len_sq == 0.0) {
-        rt_trap("Quat.Inverse: zero-length quaternion");
+    double len = quat_safe_len4(qv->x, qv->y, qv->z, qv->w);
+    if (len == 0.0 || !isfinite(len)) {
+        rt_trap("Quat.Inverse: invalid quaternion length");
         return NULL;
     }
+    double len_sq = len * len;
     double inv = 1.0 / len_sq;
     return quat_alloc(-qv->x * inv, -qv->y * inv, -qv->z * inv, qv->w * inv);
 }
@@ -218,8 +242,8 @@ void *rt_quat_norm(void *q) {
         return NULL;
     }
     ViperQuat *qv = (ViperQuat *)q;
-    double len = sqrt(qv->x * qv->x + qv->y * qv->y + qv->z * qv->z + qv->w * qv->w);
-    if (len == 0.0)
+    double len = quat_safe_len4(qv->x, qv->y, qv->z, qv->w);
+    if (len == 0.0 || !isfinite(len))
         return quat_alloc(0.0, 0.0, 0.0, 0.0);
     double inv = 1.0 / len;
     return quat_alloc(qv->x * inv, qv->y * inv, qv->z * inv, qv->w * inv);
@@ -232,7 +256,7 @@ double rt_quat_len(void *q) {
         return 0.0;
     }
     ViperQuat *qv = (ViperQuat *)q;
-    return sqrt(qv->x * qv->x + qv->y * qv->y + qv->z * qv->z + qv->w * qv->w);
+    return quat_safe_len4(qv->x, qv->y, qv->z, qv->w);
 }
 
 /// @brief Len the sq of the quat.
@@ -325,8 +349,8 @@ void *rt_quat_lerp(void *a, void *b, double t) {
     double y = omt * qa->y + t * qb->y;
     double z = omt * qa->z + t * qb->z;
     double w = omt * qa->w + t * qb->w;
-    double len = sqrt(x * x + y * y + z * z + w * w);
-    if (len == 0.0)
+    double len = quat_safe_len4(x, y, z, w);
+    if (len == 0.0 || !isfinite(len))
         return quat_alloc(0.0, 0.0, 0.0, 1.0);
     double inv = 1.0 / len;
     return quat_alloc(x * inv, y * inv, z * inv, w * inv);
