@@ -507,34 +507,46 @@ rt_string rt_html_escape(rt_string str) {
         switch (src[i]) {
             case '<':
             case '>':
-                if (out_len > SIZE_MAX - 4)
+                if (out_len > SIZE_MAX - 4) {
                     rt_trap("Html.Escape: output length overflow");
+                    return rt_string_from_bytes("", 0);
+                }
                 out_len += 4;
                 break; // &lt; &gt;
             case '&':
-                if (out_len > SIZE_MAX - 5)
+                if (out_len > SIZE_MAX - 5) {
                     rt_trap("Html.Escape: output length overflow");
+                    return rt_string_from_bytes("", 0);
+                }
                 out_len += 5;
                 break; // &amp;
             case '"':
-                if (out_len > SIZE_MAX - 6)
+                if (out_len > SIZE_MAX - 6) {
                     rt_trap("Html.Escape: output length overflow");
+                    return rt_string_from_bytes("", 0);
+                }
                 out_len += 6;
                 break; // &quot;
             case '\'':
-                if (out_len > SIZE_MAX - 5)
+                if (out_len > SIZE_MAX - 5) {
                     rt_trap("Html.Escape: output length overflow");
+                    return rt_string_from_bytes("", 0);
+                }
                 out_len += 5;
                 break; // &#39;
             default:
-                if (out_len == SIZE_MAX)
+                if (out_len == SIZE_MAX) {
                     rt_trap("Html.Escape: output length overflow");
+                    return rt_string_from_bytes("", 0);
+                }
                 out_len += 1;
                 break;
         }
     }
-    if (out_len == SIZE_MAX)
+    if (out_len == SIZE_MAX) {
         rt_trap("Html.Escape: output length overflow");
+        return rt_string_from_bytes("", 0);
+    }
 
     char *out = (char *)malloc(out_len + 1);
     if (!out) {

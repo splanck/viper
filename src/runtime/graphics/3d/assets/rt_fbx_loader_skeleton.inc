@@ -152,8 +152,9 @@ static void *fbx_extract_skeleton(fbx_node_t *root,
             bone_cap = new_cap;
         }
 
+        static const fbx_skel_bone_info_t zero_bone_info = {0};
         fbx_skel_bone_info_t *bi = &bones[bone_count++];
-        memset(bi, 0, sizeof(fbx_skel_bone_info_t));
+        *bi = zero_bone_info;
         bi->id = fbx_prop_i64(obj, 0);
         char decoded_name[64];
         const char *nstr;

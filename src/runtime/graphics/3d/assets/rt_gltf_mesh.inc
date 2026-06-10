@@ -243,7 +243,8 @@ typedef struct {
 } gltf_mesh_import_vertex_t;
 
 static void gltf_mesh_import_vertex_init(gltf_mesh_import_vertex_t *vertex) {
-    memset(vertex, 0, sizeof(*vertex));
+    static const gltf_mesh_import_vertex_t zero_vertex = {0};
+    *vertex = zero_vertex;
     vertex->color[0] = 1.0f;
     vertex->color[1] = 1.0f;
     vertex->color[2] = 1.0f;

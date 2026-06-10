@@ -523,8 +523,10 @@ rt_string rt_scanner_read_quoted(void *obj, int64_t quote) {
     size_t cap = 64;
     size_t buf_pos = 0;
     char *buf = (char *)malloc(cap);
-    if (!buf)
+    if (!buf) {
         rt_trap("Scanner.ReadQuoted: memory allocation failed");
+        return rt_string_from_bytes("", 0);
+    }
 
     while (s->pos < s->len && s->data[s->pos] != (char)quote) {
         char actual;
@@ -583,6 +585,7 @@ rt_string rt_scanner_read_quoted(void *obj, int64_t quote) {
         free(buf);
         s->pos = start;
         rt_trap("Scanner.ReadQuoted: unterminated quoted string");
+        return rt_string_from_bytes("", 0);
     }
 
     rt_string result = rt_string_from_bytes(buf, buf_pos);

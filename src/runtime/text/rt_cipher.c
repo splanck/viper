@@ -261,9 +261,17 @@ static uint8_t *combine_aad(const uint8_t *header,
                             void *aad_obj,
                             const uint8_t **aad_out,
                             size_t *aad_len_out) {
+    if (aad_out)
+        *aad_out = NULL;
+    if (aad_len_out)
+        *aad_len_out = 0;
     int64_t user_len64 = aad_obj ? bytes_len(aad_obj) : 0;
-    if (user_len64 < 0)
+    if (user_len64 < 0) {
         rt_trap("Cipher: invalid AAD length");
+        if (aad_len_out)
+            *aad_len_out = SIZE_MAX;
+        return NULL;
+    }
     size_t user_len = (size_t)user_len64;
     const uint8_t *user = user_len > 0 ? bytes_data(aad_obj) : NULL;
 
@@ -272,12 +280,20 @@ static uint8_t *combine_aad(const uint8_t *header,
         *aad_len_out = header_len;
         return NULL;
     }
-    if (header_len > SIZE_MAX - user_len)
+    if (header_len > SIZE_MAX - user_len) {
         rt_trap("Cipher: AAD too large");
+        if (aad_len_out)
+            *aad_len_out = SIZE_MAX;
+        return NULL;
+    }
 
     uint8_t *combined = (uint8_t *)malloc(header_len + user_len);
-    if (!combined)
+    if (!combined) {
         rt_trap("Cipher: memory allocation failed");
+        if (aad_len_out)
+            *aad_len_out = SIZE_MAX;
+        return NULL;
+    }
     if (header_len > 0)
         memcpy(combined, header, header_len);
     memcpy(combined + header_len, user, user_len);
@@ -366,6 +382,12 @@ void *rt_cipher_encrypt_aad(void *plaintext, rt_string password, void *aad) {
     const uint8_t *aad_data;
     size_t aad_len;
     uint8_t *aad_alloc = combine_aad(out_data, CIPHER_PW_HEADER_SIZE, aad, &aad_data, &aad_len);
+    if (aad_len == SIZE_MAX) {
+        cipher_secure_zero(key, sizeof(key));
+        if (result && rt_obj_release_check0(result))
+            rt_obj_free(result);
+        return NULL;
+    }
 
     size_t encrypted_len = approved
                                ? rt_aes256_gcm_encrypt(key,
@@ -478,6 +500,12 @@ void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
         const uint8_t *aad_data;
         size_t aad_len;
         uint8_t *aad_alloc = combine_aad(ct_data, CIPHER_PW_HEADER_SIZE, aad, &aad_data, &aad_len);
+        if (aad_len == SIZE_MAX) {
+            cipher_secure_zero(key, sizeof(key));
+            if (result && rt_obj_release_check0(result))
+                rt_obj_free(result);
+            return NULL;
+        }
 
         long decrypt_result =
             approved_payload
@@ -505,8 +533,10 @@ void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
 
     if (aad) {
         int64_t aad_len = bytes_len(aad);
-        if (aad_len < 0)
+        if (aad_len < 0) {
             rt_trap("Cipher.Decrypt: invalid AAD length");
+            return NULL;
+        }
         if (aad_len > 0)
             return NULL;
     }
@@ -616,6 +646,11 @@ void *rt_cipher_encrypt_with_key_aad(void *plaintext, void *key_bytes, void *aad
     const uint8_t *aad_data;
     size_t aad_len;
     uint8_t *aad_alloc = combine_aad(out_data, CIPHER_KEY_HEADER_SIZE, aad, &aad_data, &aad_len);
+    if (aad_len == SIZE_MAX) {
+        if (result && rt_obj_release_check0(result))
+            rt_obj_free(result);
+        return NULL;
+    }
 
     size_t encrypted_len = approved
                                ? rt_aes256_gcm_encrypt(key,
@@ -697,8 +732,10 @@ void *rt_cipher_decrypt_with_key_aad(void *ciphertext, void *key_bytes, void *aa
     }
     if (!versioned && aad) {
         int64_t aad_len = bytes_len(aad);
-        if (aad_len < 0)
+        if (aad_len < 0) {
             rt_trap("Cipher.DecryptWithKey: invalid AAD length");
+            return NULL;
+        }
         if (aad_len > 0)
             return NULL;
     }
@@ -716,6 +753,11 @@ void *rt_cipher_decrypt_with_key_aad(void *ciphertext, void *key_bytes, void *aa
     uint8_t *aad_alloc = NULL;
     if (versioned)
         aad_alloc = combine_aad(ct_data, CIPHER_KEY_HEADER_SIZE, aad, &aad_data, &aad_len);
+    if (aad_len == SIZE_MAX) {
+        if (result && rt_obj_release_check0(result))
+            rt_obj_free(result);
+        return NULL;
+    }
 
     long decrypt_result =
         approved_payload

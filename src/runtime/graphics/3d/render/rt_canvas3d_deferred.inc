@@ -1280,7 +1280,8 @@ static void canvas3d_fill_deferred_draw(rt_canvas3d *c,
                                         float sort_key,
                                         const float *local_bounds_min,
                                         const float *local_bounds_max) {
-    memset(dd, 0, sizeof(*dd));
+    static const deferred_draw_t zero_draw = {0};
+    *dd = zero_draw;
     dd->kind = kind;
     dd->pass_kind = pass_kind;
     dd->visible = 1;

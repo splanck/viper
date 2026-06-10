@@ -4,6 +4,7 @@ if(POLICY CMP0141)
 endif()
 
 set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>")
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ---- Begin: Viper version wiring (SSOT + snapshots) ----
 # Read SSOT files from repo root
@@ -379,6 +380,20 @@ if(CPPCHECK_EXECUTABLE)
             "--template=gcc"
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     COMMENT "Run cppcheck over src/runtime/graphics")
+
+  add_custom_target(cppcheck-runtime
+    COMMAND ${CPPCHECK_EXECUTABLE}
+            --project=${CMAKE_BINARY_DIR}/compile_commands.json
+            "--file-filter=src/runtime/*"
+            --enable=all
+            --inconclusive
+            --inline-suppr
+            "--suppressions-list=${CMAKE_SOURCE_DIR}/cppcheck-runtime.supp"
+            --suppress=missingIncludeSystem
+            --suppress=unmatchedSuppression
+            "--template=gcc"
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Run cppcheck over src/runtime")
 endif()
 
 # Convenience cleanup: clean build tree and remove source-generated artifacts.

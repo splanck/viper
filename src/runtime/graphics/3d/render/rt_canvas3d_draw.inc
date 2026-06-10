@@ -691,7 +691,7 @@ void rt_canvas3d_draw_text_3d(void *obj, int64_t x, int64_t y, rt_string text, i
 /// @param obj    Canvas handle.
 /// @param camera Camera3D handle providing view and projection matrices.
 void rt_canvas3d_begin(void *obj, void *camera) {
-    vgfx3d_camera_params_t params;
+    vgfx3d_camera_params_t params = {0};
     int32_t output_w = 0;
     int32_t output_h = 0;
     double render_aspect = 0.0;
@@ -970,9 +970,10 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
         }
     }
 
+    static const deferred_draw_t zero_queued_draw = {0};
     deferred_draw_t queued;
     deferred_draw_t *dd = &queued;
-    memset(dd, 0, sizeof(*dd));
+    *dd = zero_queued_draw;
     dd->kind = DEFERRED_DRAW_MESH;
     dd->pass_kind = DEFERRED_PASS_MAIN;
     dd->visible = 1;

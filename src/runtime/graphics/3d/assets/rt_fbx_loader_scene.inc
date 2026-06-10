@@ -52,9 +52,10 @@ typedef struct {
 /// @brief Initialize an FBX transform component record to identity/default values.
 /// @param out Destination component record; ignored when NULL.
 static void fbx_transform_components_init(fbx_transform_components_t *out) {
+    static const fbx_transform_components_t zero_components = {0};
     if (!out)
         return;
-    memset(out, 0, sizeof(*out));
+    *out = zero_components;
     out->scale[0] = 1.0;
     out->scale[1] = 1.0;
     out->scale[2] = 1.0;

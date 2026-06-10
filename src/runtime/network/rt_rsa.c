@@ -14,8 +14,8 @@
 // Key invariants:
 //   - All big integers are stored big-endian (limb[0] = most-significant word).
 //   - Modular exponentiation uses Montgomery form; no division in the hot loop.
-//   - Signature verification is NOT constant-time on the public key / signature
-//     path — only key operations (CRT private key) require constant time.
+//   - Signature verification avoids ordinary memcmp for digest/tag checks so
+//     verification timing does not reveal the first mismatching byte.
 //   - Maximum modulus: RT_RSA_MAX_MOD_BYTES (512) bytes = 4096-bit RSA.
 // Ownership/Lifetime:
 //   - rt_rsa_key_t members (modulus, exponents) are heap-allocated; caller
@@ -67,6 +67,24 @@ static int rsa_be_is_zero(const uint8_t *data, size_t len) {
         return 1;
     for (size_t i = 0; i < len; i++)
         acc |= data[i];
+    return acc == 0;
+}
+
+/// @brief Constant-time equality check for equal-length byte strings.
+/// @details XOR-accumulates every byte pair and returns only after scanning
+///          the full range, preventing timing from revealing the first
+///          mismatching byte. NULL inputs are treated as unequal unless
+///          @p len is zero.
+/// @param a First byte string.
+/// @param b Second byte string.
+/// @param len Number of bytes to compare.
+/// @return 1 when all @p len bytes are equal, 0 otherwise.
+static int rsa_ct_mem_equal(const uint8_t *a, const uint8_t *b, size_t len) {
+    uint8_t acc = 0;
+    if ((!a || !b) && len > 0)
+        return 0;
+    for (size_t i = 0; i < len; i++)
+        acc |= (uint8_t)(a[i] ^ b[i]);
     return acc == 0;
 }
 
@@ -856,11 +874,11 @@ static int rsa_pss_verify_encoded(const rt_rsa_key_t *key,
     if (masked_db_len < h_len + 1)
         return 0;
     ps_len = masked_db_len - h_len - 1;
+    uint8_t padding_bad = 0;
     for (size_t i = 0; i < ps_len; i++) {
-        if (db[i] != 0x00)
-            return 0;
+        padding_bad |= db[i];
     }
-    if (db[ps_len] != 0x01)
+    if (padding_bad != 0 || db[ps_len] != 0x01)
         return 0;
 
     memset(m_prime, 0, 8);
@@ -868,7 +886,7 @@ static int rsa_pss_verify_encoded(const rt_rsa_key_t *key,
     memcpy(m_prime + 8 + h_len, db + ps_len + 1, h_len);
     if (!rsa_hash_buffer(hash_id, m_prime, 8 + h_len + h_len, db_mask))
         return 0;
-    return memcmp(db_mask, h, h_len) == 0 ? 1 : 0;
+    return rsa_ct_mem_equal(db_mask, h, h_len);
 }
 
 /// @brief Return the canonical DigestInfo DER prefix for PKCS#1 v1.5 RSA signatures.
@@ -1326,9 +1344,9 @@ int rt_rsa_pkcs1_v15_verify(const rt_rsa_key_t *key,
     i++;
     if (key->modulus_len - i != prefix_len + digest_len)
         goto done;
-    if (memcmp(em + i, prefix, prefix_len) != 0)
+    if (!rsa_ct_mem_equal(em + i, prefix, prefix_len))
         goto done;
-    ok = memcmp(em + i + prefix_len, digest, digest_len) == 0 ? 1 : 0;
+    ok = rsa_ct_mem_equal(em + i + prefix_len, digest, digest_len);
 
 done:
     rsa_secure_zero(em, sizeof(em));

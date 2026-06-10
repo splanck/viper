@@ -332,33 +332,25 @@ static int ws_server_handshake(void *tcp, const char *required_subprotocol) {
         // Look for Sec-WebSocket-Key
         if (strncasecmp(h, "Sec-WebSocket-Key:", 18) == 0) {
             const char *val = h + 18;
-            while (*val == ' ')
-                val++;
-            strncpy(ws_key, val, sizeof(ws_key) - 1);
+            if (!ws_copy_trimmed_header_value(ws_key, sizeof(ws_key), val)) {
+                rt_string_unref(hdr);
+                return 0;
+            }
         } else if (strncasecmp(h, "Host:", 5) == 0) {
-            char *trimmed = ws_strdup_trimmed(h + 5);
-            if (!trimmed) {
+            if (!ws_copy_trimmed_header_value(host_header, sizeof(host_header), h + 5)) {
                 rt_string_unref(hdr);
                 return 0;
             }
-            snprintf(host_header, sizeof(host_header), "%s", trimmed);
-            free(trimmed);
         } else if (strncasecmp(h, "Origin:", 7) == 0) {
-            char *trimmed = ws_strdup_trimmed(h + 7);
-            if (!trimmed) {
+            if (!ws_copy_trimmed_header_value(origin_header, sizeof(origin_header), h + 7)) {
                 rt_string_unref(hdr);
                 return 0;
             }
-            snprintf(origin_header, sizeof(origin_header), "%s", trimmed);
-            free(trimmed);
         } else if (strncasecmp(h, "Sec-WebSocket-Protocol:", 23) == 0) {
-            char *trimmed = ws_strdup_trimmed(h + 23);
-            if (!trimmed) {
+            if (!ws_copy_trimmed_header_value(protocol_header, sizeof(protocol_header), h + 23)) {
                 rt_string_unref(hdr);
                 return 0;
             }
-            snprintf(protocol_header, sizeof(protocol_header), "%s", trimmed);
-            free(trimmed);
         } else if (strncasecmp(h, "Upgrade:", 8) == 0) {
             const char *val = h + 8;
             while (*val == ' ')
@@ -508,8 +500,10 @@ static void *ws_accept_loop(void *arg)
 /// up front; allocates the impl with mutex + finalizer, but does NOT bind the TCP socket — that
 /// happens on `_start`. Returns a GC-managed handle.
 void *rt_ws_server_new(int64_t port) {
-    if (port < 1 || port > 65535)
+    if (port < 1 || port > 65535) {
         rt_trap("WsServer: invalid port");
+        return NULL;
+    }
 
     rt_ws_server_impl *s =
         (rt_ws_server_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_ws_server_impl));
@@ -536,8 +530,10 @@ void rt_ws_server_start(void *obj) {
         return;
 
     s->tcp_server = rt_tcp_server_listen(s->port);
-    if (!s->tcp_server)
+    if (!s->tcp_server) {
         rt_trap("WsServer: failed to bind listener");
+        return;
+    }
     s->port = rt_tcp_server_port(s->tcp_server);
     s->running = true;
 
@@ -554,6 +550,7 @@ void rt_ws_server_start(void *obj) {
             rt_obj_free(s->tcp_server);
         s->tcp_server = NULL;
         rt_trap("WsServer: failed to start accept thread");
+        return;
     }
 }
 
@@ -600,14 +597,20 @@ void rt_ws_server_set_subprotocol(void *obj, rt_string subprotocol) {
 
     if (!s)
         return;
-    if (s->running)
+    if (s->running) {
         rt_trap("WsServer.SetSubprotocol: cannot change subprotocol while server is running");
+        return;
+    }
     if (protocol && *protocol) {
-        if (!ws_token_is_valid(protocol))
+        if (!ws_token_is_valid(protocol)) {
             rt_trap("WsServer.SetSubprotocol: invalid subprotocol token");
+            return;
+        }
         copy = strdup(protocol);
-        if (!copy)
+        if (!copy) {
             rt_trap("WsServer.SetSubprotocol: memory allocation failed");
+            return;
+        }
     }
 
     free(s->subprotocol);

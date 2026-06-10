@@ -41,6 +41,22 @@ typedef struct {
     int8_t keep_alive;
 } rest_client;
 
+/// @brief Validate and cast an opaque RestClient handle.
+/// @details Public methods use this helper when a NULL receiver is a domain
+///          error instead of a silent no-op. It traps with @p message and then
+///          returns NULL so methods can safely stop local control flow when
+///          trap recovery hooks return.
+/// @param obj Opaque RestClient handle.
+/// @param message Diagnostic used for the trap when @p obj is NULL.
+/// @return Cast RestClient pointer, or NULL after trapping.
+static rest_client *rest_client_checked(void *obj, const char *message) {
+    if (!obj) {
+        rt_trap(message);
+        return NULL;
+    }
+    return (rest_client *)obj;
+}
+
 static int rest_timeout_ms_to_int(int64_t timeout_ms, int *out_timeout_ms) {
     if (timeout_ms < 0 || timeout_ms > INT_MAX)
         return 0;
@@ -59,11 +75,15 @@ static const char *rest_string_bytes(rt_string text,
         return "";
     const char *cstr = rt_string_cstr(text);
     int64_t len64 = rt_str_len(text);
-    if (!cstr || len64 < 0 || (uint64_t)len64 > (uint64_t)SIZE_MAX)
+    if (!cstr || len64 < 0 || (uint64_t)len64 > (uint64_t)SIZE_MAX) {
         rt_trap(context);
+        return "";
+    }
     size_t len = (size_t)len64;
-    if (reject_embedded_nul && len > 0 && memchr(cstr, '\0', len))
+    if (reject_embedded_nul && len > 0 && memchr(cstr, '\0', len)) {
         rt_trap(context);
+        return "";
+    }
     if (len_out)
         *len_out = len;
     return cstr;
@@ -72,8 +92,12 @@ static const char *rest_string_bytes(rt_string text,
 static const char *rest_header_value_bytes(rt_string text, size_t *len_out, const char *context) {
     const char *cstr = rest_string_bytes(text, len_out, context, 1);
     size_t len = len_out ? *len_out : 0;
-    if (len > 0 && (memchr(cstr, '\r', len) || memchr(cstr, '\n', len)))
+    if (len > 0 && (memchr(cstr, '\r', len) || memchr(cstr, '\n', len))) {
         rt_trap(context);
+        if (len_out)
+            *len_out = 0;
+        return "";
+    }
     return cstr;
 }
 
@@ -152,8 +176,10 @@ static rt_string join_url(rt_string base, rt_string path) {
         path_len--;
     }
 
-    if (base_len > SIZE_MAX - path_len - 1)
+    if (base_len > SIZE_MAX - path_len - 1) {
         rt_trap("RestClient: URL length overflow");
+        return NULL;
+    }
     size_t total = base_len + 1 + path_len;
     rt_string_builder sb;
     rt_sb_init(&sb);
@@ -168,12 +194,15 @@ static rt_string join_url(rt_string base, rt_string path) {
     if (status != RT_SB_OK) {
         rt_sb_free(&sb);
         rt_trap("RestClient: memory allocation failed");
+        return NULL;
     }
 
     rt_string out = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
-    if (!out)
+    if (!out) {
         rt_trap("RestClient: memory allocation failed");
+        return NULL;
+    }
     return out;
 }
 
@@ -186,8 +215,14 @@ static void *create_request(rest_client *client, rt_string method, rt_string pat
         return NULL;
     }
     rt_string url = join_url(client->base_url, path);
+    if (!url)
+        return NULL;
     void *req = rt_http_req_new(method, url);
     rt_string_unref(url); // Release after use — req copies the C string
+    if (!req) {
+        rt_trap("RestClient: request allocation failed");
+        return NULL;
+    }
 
     // Apply default headers
     void *keys = rt_map_keys(client->headers);
@@ -221,6 +256,10 @@ static void *execute_request(rest_client *client, void *req) {
         if (req && rt_obj_release_check0(req))
             rt_obj_free(req);
         rt_trap("RestClient: NULL client");
+        return NULL;
+    }
+    if (!req) {
+        rt_trap("RestClient: request allocation failed");
         return NULL;
     }
     void *res = rt_http_req_send(req);
@@ -332,10 +371,15 @@ void rt_restclient_set_auth_bearer(void *obj, rt_string token) {
     if (status != RT_SB_OK) {
         rt_sb_free(&sb);
         rt_trap("RestClient: memory allocation failed");
+        return;
     }
 
     rt_string auth_str = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
+    if (!auth_str) {
+        rt_trap("RestClient: memory allocation failed");
+        return;
+    }
     rt_restclient_set_header(obj, rt_const_cstr("Authorization"), auth_str);
     rt_string_unref(auth_str);
 }
@@ -364,14 +408,28 @@ void rt_restclient_set_auth_basic(void *obj, rt_string username, rt_string passw
     if (status != RT_SB_OK) {
         rt_sb_free(&cred_sb);
         rt_trap("RestClient: memory allocation failed");
+        return;
     }
 
     rt_string cred_str = rt_string_from_bytes(cred_sb.data, cred_sb.len);
     rt_sb_free(&cred_sb);
+    if (!cred_str) {
+        rt_trap("RestClient: memory allocation failed");
+        return;
+    }
     rt_string encoded = rt_codec_base64_enc(cred_str);
     rt_string_unref(cred_str);
+    if (!encoded) {
+        rt_trap("RestClient: memory allocation failed");
+        return;
+    }
 
     const char *enc_str = rt_string_cstr(encoded);
+    if (!enc_str) {
+        rt_string_unref(encoded);
+        rt_trap("RestClient: memory allocation failed");
+        return;
+    }
     size_t enc_len = strlen(enc_str);
     rt_string_builder auth_sb;
     rt_sb_init(&auth_sb);
@@ -383,11 +441,16 @@ void rt_restclient_set_auth_basic(void *obj, rt_string username, rt_string passw
         rt_sb_free(&auth_sb);
         rt_string_unref(encoded);
         rt_trap("RestClient: memory allocation failed");
+        return;
     }
 
     rt_string auth_str = rt_string_from_bytes(auth_sb.data, auth_sb.len);
     rt_sb_free(&auth_sb);
     rt_string_unref(encoded);
+    if (!auth_str) {
+        rt_trap("RestClient: memory allocation failed");
+        return;
+    }
     rt_restclient_set_header(obj, rt_const_cstr("Authorization"), auth_str);
     rt_string_unref(auth_str);
 }
@@ -404,8 +467,10 @@ void rt_restclient_set_timeout(void *obj, int64_t timeout_ms) {
     if (!obj)
         return;
     int timeout_int = 0;
-    if (!rest_timeout_ms_to_int(timeout_ms, &timeout_int))
+    if (!rest_timeout_ms_to_int(timeout_ms, &timeout_int)) {
         rt_trap("RestClient: invalid timeout");
+        return;
+    }
     rest_client *client = (rest_client *)obj;
     client->timeout_ms = timeout_int;
 }
@@ -452,9 +517,9 @@ void rt_restclient_set_pool_size(void *obj, int64_t max_size) {
 
 /// @brief Send a `GET` to `base_url + path`. Returns the raw HttpRes for caller inspection.
 void *rt_restclient_get(void *obj, rt_string path) {
-    if (!obj)
-        rt_trap("RestClient: null client");
-    rest_client *client = (rest_client *)obj;
+    rest_client *client = rest_client_checked(obj, "RestClient: null client");
+    if (!client)
+        return NULL;
 
     void *req = create_request(client, rt_const_cstr("GET"), path);
     return execute_request(client, req);
@@ -462,42 +527,48 @@ void *rt_restclient_get(void *obj, rt_string path) {
 
 /// @brief Send a `POST` with a string body. Caller sets Content-Type via `_set_header` if needed.
 void *rt_restclient_post(void *obj, rt_string path, rt_string body) {
-    if (!obj)
-        rt_trap("RestClient: null client");
-    rest_client *client = (rest_client *)obj;
+    rest_client *client = rest_client_checked(obj, "RestClient: null client");
+    if (!client)
+        return NULL;
 
     void *req = create_request(client, rt_const_cstr("POST"), path);
+    if (!req)
+        return NULL;
     rt_http_req_set_body_str(req, body);
     return execute_request(client, req);
 }
 
 /// @brief Send a `PUT` with a string body.
 void *rt_restclient_put(void *obj, rt_string path, rt_string body) {
-    if (!obj)
-        rt_trap("RestClient: null client");
-    rest_client *client = (rest_client *)obj;
+    rest_client *client = rest_client_checked(obj, "RestClient: null client");
+    if (!client)
+        return NULL;
 
     void *req = create_request(client, rt_const_cstr("PUT"), path);
+    if (!req)
+        return NULL;
     rt_http_req_set_body_str(req, body);
     return execute_request(client, req);
 }
 
 /// @brief Send a `PATCH` with a string body.
 void *rt_restclient_patch(void *obj, rt_string path, rt_string body) {
-    if (!obj)
-        rt_trap("RestClient: null client");
-    rest_client *client = (rest_client *)obj;
+    rest_client *client = rest_client_checked(obj, "RestClient: null client");
+    if (!client)
+        return NULL;
 
     void *req = create_request(client, rt_const_cstr("PATCH"), path);
+    if (!req)
+        return NULL;
     rt_http_req_set_body_str(req, body);
     return execute_request(client, req);
 }
 
 /// @brief Send a `DELETE` to `base_url + path` (no body).
 void *rt_restclient_delete(void *obj, rt_string path) {
-    if (!obj)
-        rt_trap("RestClient: null client");
-    rest_client *client = (rest_client *)obj;
+    rest_client *client = rest_client_checked(obj, "RestClient: null client");
+    if (!client)
+        return NULL;
 
     void *req = create_request(client, rt_const_cstr("DELETE"), path);
     return execute_request(client, req);
@@ -505,9 +576,9 @@ void *rt_restclient_delete(void *obj, rt_string path) {
 
 /// @brief Send a `HEAD` request — useful for checking resource existence/headers without body.
 void *rt_restclient_head(void *obj, rt_string path) {
-    if (!obj)
-        rt_trap("RestClient: null client");
-    rest_client *client = (rest_client *)obj;
+    rest_client *client = rest_client_checked(obj, "RestClient: null client");
+    if (!client)
+        return NULL;
 
     void *req = create_request(client, rt_const_cstr("HEAD"), path);
     return execute_request(client, req);
@@ -521,11 +592,13 @@ void *rt_restclient_head(void *obj, rt_string path) {
 /// Returns the parsed JSON value, or NULL if the response is non-2xx (caller can re-inspect via
 /// `_last_response`/`_last_status`). One-call convenience for typical REST-API consumers.
 void *rt_restclient_get_json(void *obj, rt_string path) {
-    if (!obj)
-        rt_trap("RestClient: null client");
-    rest_client *client = (rest_client *)obj;
+    rest_client *client = rest_client_checked(obj, "RestClient: null client");
+    if (!client)
+        return NULL;
 
     void *req = create_request(client, rt_const_cstr("GET"), path);
+    if (!req)
+        return NULL;
     rt_http_req_set_header(req, rt_const_cstr("Accept"), rt_const_cstr("application/json"));
 
     void *res = execute_request(client, req);
@@ -542,11 +615,13 @@ void *rt_restclient_get_json(void *obj, rt_string path) {
 /// Sets `Accept: application/json` for response, parses the response body as JSON. NULL on
 /// non-2xx OR empty response body.
 void *rt_restclient_post_json(void *obj, rt_string path, void *json_body) {
-    if (!obj)
-        rt_trap("RestClient: null client");
-    rest_client *client = (rest_client *)obj;
+    rest_client *client = rest_client_checked(obj, "RestClient: null client");
+    if (!client)
+        return NULL;
 
     void *req = create_request(client, rt_const_cstr("POST"), path);
+    if (!req)
+        return NULL;
     rt_http_req_set_header(req, rt_const_cstr("Content-Type"), rt_const_cstr("application/json"));
     rt_http_req_set_header(req, rt_const_cstr("Accept"), rt_const_cstr("application/json"));
 
@@ -571,11 +646,13 @@ void *rt_restclient_post_json(void *obj, rt_string path, void *json_body) {
 
 /// @brief `PUT` JSON body and parse response. Same Accept/Content-Type handling as `_post_json`.
 void *rt_restclient_put_json(void *obj, rt_string path, void *json_body) {
-    if (!obj)
-        rt_trap("RestClient: null client");
-    rest_client *client = (rest_client *)obj;
+    rest_client *client = rest_client_checked(obj, "RestClient: null client");
+    if (!client)
+        return NULL;
 
     void *req = create_request(client, rt_const_cstr("PUT"), path);
+    if (!req)
+        return NULL;
     rt_http_req_set_header(req, rt_const_cstr("Content-Type"), rt_const_cstr("application/json"));
     rt_http_req_set_header(req, rt_const_cstr("Accept"), rt_const_cstr("application/json"));
 
@@ -600,11 +677,13 @@ void *rt_restclient_put_json(void *obj, rt_string path, void *json_body) {
 
 /// @brief `PATCH` JSON body and parse response. Used for partial-update REST endpoints.
 void *rt_restclient_patch_json(void *obj, rt_string path, void *json_body) {
-    if (!obj)
-        rt_trap("RestClient: null client");
-    rest_client *client = (rest_client *)obj;
+    rest_client *client = rest_client_checked(obj, "RestClient: null client");
+    if (!client)
+        return NULL;
 
     void *req = create_request(client, rt_const_cstr("PATCH"), path);
+    if (!req)
+        return NULL;
     rt_http_req_set_header(req, rt_const_cstr("Content-Type"), rt_const_cstr("application/json"));
     rt_http_req_set_header(req, rt_const_cstr("Accept"), rt_const_cstr("application/json"));
 
@@ -630,11 +709,13 @@ void *rt_restclient_patch_json(void *obj, rt_string path, void *json_body) {
 /// @brief `DELETE` (no body) and parse the response as JSON. Useful when the API returns a
 /// confirmation envelope on successful deletion.
 void *rt_restclient_delete_json(void *obj, rt_string path) {
-    if (!obj)
-        rt_trap("RestClient: null client");
-    rest_client *client = (rest_client *)obj;
+    rest_client *client = rest_client_checked(obj, "RestClient: null client");
+    if (!client)
+        return NULL;
 
     void *req = create_request(client, rt_const_cstr("DELETE"), path);
+    if (!req)
+        return NULL;
     rt_http_req_set_header(req, rt_const_cstr("Accept"), rt_const_cstr("application/json"));
 
     void *res = execute_request(client, req);

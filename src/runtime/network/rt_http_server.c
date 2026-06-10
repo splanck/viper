@@ -1026,8 +1026,10 @@ static void *accept_loop(void *arg)
 /// @param port TCP port number, 1..65535.
 /// @return GC-managed `HttpServer` handle.
 void *rt_http_server_new(int64_t port) {
-    if (port < 0 || port > 65535)
+    if (port < 0 || port > 65535) {
         rt_trap("HttpServer: invalid port");
+        return NULL;
+    }
 
     rt_http_server_impl *server =
         (rt_http_server_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_http_server_impl));
@@ -1082,13 +1084,20 @@ static void add_route_binding(void *obj,
         return;
 
     rt_http_server_impl *server = (rt_http_server_impl *)obj;
-    if (server_is_running(server))
+    if (server_is_running(server)) {
         rt_trap("HttpServer: cannot add routes while running");
-    adder(server->router, pattern);
+        return;
+    }
+    if (!adder(server->router, pattern)) {
+        rt_trap("HttpServer: failed to register route");
+        return;
+    }
 
     const char *tag = rt_string_cstr(handler_tag);
-    if (!tag || !append_route_entry(server, tag))
+    if (!tag || !append_route_entry(server, tag)) {
         rt_trap("HttpServer: failed to register route");
+        return;
+    }
 }
 
 /// @brief `HttpServer.Get(pattern, handler_tag)` — register a GET route.
@@ -1131,8 +1140,10 @@ void rt_http_server_bind_handler(void *obj, rt_string handler_tag, void *entry) 
     if (!obj || !entry)
         return;
 
-    if (server_is_running((rt_http_server_impl *)obj))
+    if (server_is_running((rt_http_server_impl *)obj)) {
         rt_trap("HttpServer: cannot bind handlers while running");
+        return;
+    }
 
     const char *tag = rt_string_cstr(handler_tag);
     if (!tag)
@@ -1141,6 +1152,7 @@ void rt_http_server_bind_handler(void *obj, rt_string handler_tag, void *entry) 
     if (!set_handler_binding(
             (rt_http_server_impl *)obj, tag, native_handler_dispatch, entry, NULL)) {
         rt_trap("HttpServer: failed to bind handler");
+        return;
     }
 }
 
@@ -1163,8 +1175,10 @@ void rt_http_server_bind_handler_dispatch(
     if (!obj || !dispatch)
         return;
 
-    if (server_is_running((rt_http_server_impl *)obj))
+    if (server_is_running((rt_http_server_impl *)obj)) {
         rt_trap("HttpServer: cannot bind handlers while running");
+        return;
+    }
 
     const char *tag = rt_string_cstr(handler_tag);
     if (!tag)
@@ -1174,8 +1188,9 @@ void rt_http_server_bind_handler_dispatch(
                              tag,
                              (rt_http_server_handler_dispatch_fn)dispatch,
                              ctx,
-                             (rt_http_server_handler_cleanup_fn)cleanup)) {
+        (rt_http_server_handler_cleanup_fn)cleanup)) {
         rt_trap("HttpServer: failed to bind handler");
+        return;
     }
 }
 
@@ -1531,8 +1546,10 @@ rt_string rt_server_req_query(void *obj, rt_string name) {
 void *rt_server_res_status(void *obj, int64_t code) {
     if (!obj)
         return obj;
-    if (code < 100 || code > 599)
+    if (code < 100 || code > 599) {
         rt_trap("HttpServer: invalid status");
+        return obj;
+    }
     server_res_t *res = (server_res_t *)obj;
     res->status_code = (int)code;
     return obj;
@@ -1556,8 +1573,6 @@ void *rt_server_res_header(void *obj, rt_string name, rt_string value) {
     if (!obj)
         return obj;
     server_res_t *res = (server_res_t *)obj;
-    if (!res->headers)
-        res->headers = rt_map_new();
     const char *name_cstr = rt_string_cstr(name);
     const char *value_cstr = rt_string_cstr(value);
     size_t name_len = 0;
@@ -1567,6 +1582,13 @@ void *rt_server_res_header(void *obj, rt_string name, rt_string value) {
         !value_cstr || name_len == 0 || contains_crlf(name_cstr) || contains_crlf(value_cstr) ||
         is_server_managed_header_name(name_cstr))
         return obj;
+    if (!res->headers) {
+        res->headers = rt_map_new();
+        if (!res->headers) {
+            rt_trap("HttpServer: response header allocation failed");
+            return obj;
+        }
+    }
     rt_map_set(res->headers, name, (void *)value);
     return obj;
 }
@@ -1591,8 +1613,11 @@ void rt_server_res_send(void *obj, rt_string body) {
         body_len = 0;
     free(res->body);
     res->body = (b && body_len > 0) ? (char *)malloc((size_t)body_len) : NULL;
-    if (b && body_len > 0 && !res->body)
+    if (b && body_len > 0 && !res->body) {
         rt_trap("HttpServer: response body allocation failed");
+        res->body_len = 0;
+        return;
+    }
     if (res->body)
         memcpy(res->body, b, (size_t)body_len);
     res->body_len = res->body ? (size_t)body_len : 0;
@@ -1612,8 +1637,13 @@ void rt_server_res_json(void *obj, rt_string json_str) {
     if (!obj)
         return;
     server_res_t *res = (server_res_t *)obj;
-    if (!res->headers)
+    if (!res->headers) {
         res->headers = rt_map_new();
+        if (!res->headers) {
+            rt_trap("HttpServer: response header allocation failed");
+            return;
+        }
+    }
     rt_string ct_key = rt_const_cstr("Content-Type");
     rt_string ct_val = rt_const_cstr("application/json");
     rt_map_set(res->headers, ct_key, (void *)ct_val);

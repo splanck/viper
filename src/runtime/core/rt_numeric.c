@@ -364,8 +364,10 @@ static int rt_vsnprintf_c_locale(char *out, size_t cap, const char *fmt, va_list
 ///          null buffers, formatting failures, or truncation.  A dedicated
 ///          helper keeps the exported formatting functions concise.
 static void rt_format(char *out, size_t cap, const char *fmt, ...) {
-    if (!out || cap == 0)
+    if (!out || cap == 0) {
         rt_trap("rt_format: invalid buffer");
+        return;
+    }
 
     va_list args;
     va_start(args, fmt);
@@ -379,10 +381,14 @@ static void rt_format(char *out, size_t cap, const char *fmt, ...) {
 #endif
     va_end(args);
 
-    if (written < 0)
+    if (written < 0) {
         rt_trap("rt_format: format error");
-    if ((size_t)written >= cap)
+        return;
+    }
+    if ((size_t)written >= cap) {
         rt_trap("rt_format: truncated");
+        return;
+    }
 }
 
 /// @brief Serialise a double to text using BASIC's precision rules.

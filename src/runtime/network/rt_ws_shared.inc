@@ -94,6 +94,31 @@ static char *ws_strdup_trimmed(const char *text) {
     return copy;
 }
 
+/// @brief Copy an HTTP header value into a fixed handshake buffer.
+/// @details Trims leading and trailing SP/HTAB before copying. Returns 0 when
+///          the destination is invalid, the source is NULL, or the trimmed
+///          value would not fit including the trailing NUL. Callers reject the
+///          handshake on 0 so security-sensitive header validation never runs
+///          against a truncated value.
+/// @param dst Destination buffer.
+/// @param dst_cap Capacity of @p dst in bytes.
+/// @param text Raw header value after the colon.
+/// @return 1 when the full trimmed value was copied, 0 on invalid input or truncation.
+static int ws_copy_trimmed_header_value(char *dst, size_t dst_cap, const char *text) {
+    if (!dst || dst_cap == 0 || !text)
+        return 0;
+    while (*text == ' ' || *text == '\t')
+        text++;
+    size_t len = strlen(text);
+    while (len > 0 && (text[len - 1] == ' ' || text[len - 1] == '\t'))
+        len--;
+    if (len >= dst_cap)
+        return 0;
+    memcpy(dst, text, len);
+    dst[len] = '\0';
+    return 1;
+}
+
 static int ws_parse_authority(const char *authority, char **host_out, int *port_out) {
     char *trimmed = NULL;
     char *host = NULL;

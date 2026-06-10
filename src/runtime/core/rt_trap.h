@@ -42,6 +42,14 @@ extern "C" {
 /// @param msg Null-terminated trap message, or NULL for a generic trap.
 void rt_trap(const char *msg);
 
+/// @brief Terminate the runtime immediately with a diagnostic message.
+/// @details This is the non-recoverable companion to @ref rt_trap. Use it
+///          only after conditions where continuing would create unsafe or
+///          invalid runtime state even if an embedder's trap hook returns.
+/// @param msg Null-terminated diagnostic message, or NULL for a generic trap.
+/// @return This function does not return.
+void rt_abort(const char *msg);
+
 /// @brief Trap with a managed runtime string message.
 /// @details Validates the string handle before reading it. Control bytes,
 ///          quotes, backslashes, and embedded NUL bytes are escaped so the

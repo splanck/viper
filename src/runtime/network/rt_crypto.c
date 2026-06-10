@@ -55,16 +55,18 @@ void rt_secure_zero(void *ptr, size_t len) {
 /// @brief Validate a buffer pointer against its declared length.
 /// @details Many crypto entry points accept `(NULL, 0)` as a legal no-op but
 ///          must trap when `data == NULL` with a positive length — the latter
-///          would otherwise UB inside @c memcpy. The helper returns a
-///          1-byte empty-string sentinel so callers can pass the result to
-///          unconditional pointer arithmetic without first checking @p len.
+///          would otherwise UB inside @c memcpy. The helper returns NULL after
+///          trapping on an invalid non-empty input so callers can stop local
+///          control flow even when a test trap hook returns.
 /// @param data Caller buffer (may be NULL when @p len is 0).
 /// @param len Declared length in bytes.
 /// @param what Trap message identifying the failing call site.
 /// @return @p data when non-NULL, else a static empty-string sentinel.
 static const uint8_t *rt_crypto_checked_input(const void *data, size_t len, const char *what) {
-    if (!data && len > 0)
+    if (!data && len > 0) {
         rt_trap(what);
+        return NULL;
+    }
     return data ? (const uint8_t *)data : (const uint8_t *)"";
 }
 
@@ -171,15 +173,21 @@ void rt_sha256_init(rt_sha256_ctx *ctx) {
 /// bytes have accumulated. Tracks the cumulative bit count so the
 /// MD-strengthening step in `final()` can append the correct length.
 void rt_sha256_update(rt_sha256_ctx *ctx, const void *data, size_t len) {
-    if (!ctx)
+    if (!ctx) {
         rt_trap("SHA256: context is null");
+        return;
+    }
     if (len == 0)
         return;
     const uint8_t *ptr = rt_crypto_checked_input(data, len, "SHA256: input buffer is null");
+    if (!ptr)
+        return;
     size_t idx = (ctx->count / 8) % 64;
 
-    if (len > (UINT64_MAX - ctx->count) / 8)
+    if (len > (UINT64_MAX - ctx->count) / 8) {
         rt_trap("SHA256: input too large");
+        return;
+    }
     ctx->count += len * 8;
 
     while (len > 0) {
@@ -243,8 +251,10 @@ void rt_sha256_final(rt_sha256_ctx *ctx, uint8_t digest[32]) {
 /// @brief One-shot SHA-256: init → update → final into a fresh context.
 void rt_sha256(const void *data, size_t len, uint8_t digest[32]) {
     rt_sha256_ctx ctx;
-    if (!digest)
+    if (!digest) {
         rt_trap("SHA256: digest output is null");
+        return;
+    }
     rt_sha256_init(&ctx);
     rt_sha256_update(&ctx, data, len);
     rt_sha256_final(&ctx, digest);
@@ -371,11 +381,15 @@ static void sha512_family_init(rt_sha512_ctx_internal *ctx, int is_sha384) {
 /// that SHA-512 supports in theory. In practice `count_hi` carries
 /// overflow from count_lo so the implementation handles files > 2 EiB.
 static void sha512_family_update(rt_sha512_ctx_internal *ctx, const void *data, size_t len) {
-    if (!ctx)
+    if (!ctx) {
         rt_trap("SHA512: context is null");
+        return;
+    }
     if (len == 0)
         return;
     const uint8_t *ptr = rt_crypto_checked_input(data, len, "SHA512: input buffer is null");
+    if (!ptr)
+        return;
     size_t idx = (size_t)((ctx->count_lo >> 3) & 127u);
     uint64_t prev_lo = ctx->count_lo;
 
@@ -452,8 +466,10 @@ static void sha512_family_final(rt_sha512_ctx_internal *ctx, uint8_t *digest, si
 /// @brief One-shot SHA-384: init → update → final → 48-byte digest.
 void rt_sha384(const void *data, size_t len, uint8_t digest[48]) {
     rt_sha512_ctx_internal ctx;
-    if (!digest)
+    if (!digest) {
         rt_trap("SHA384: digest output is null");
+        return;
+    }
     sha512_family_init(&ctx, 1);
     sha512_family_update(&ctx, data, len);
     sha512_family_final(&ctx, digest, 48);
@@ -462,8 +478,10 @@ void rt_sha384(const void *data, size_t len, uint8_t digest[48]) {
 /// @brief One-shot SHA-512: init → update → final → 64-byte digest.
 void rt_sha512(const void *data, size_t len, uint8_t digest[64]) {
     rt_sha512_ctx_internal ctx;
-    if (!digest)
+    if (!digest) {
         rt_trap("SHA512: digest output is null");
+        return;
+    }
     sha512_family_init(&ctx, 0);
     sha512_family_update(&ctx, data, len);
     sha512_family_final(&ctx, digest, 64);
@@ -484,12 +502,18 @@ void rt_hmac_sha256(
     const uint8_t *key, size_t key_len, const void *data, size_t data_len, uint8_t mac[32]) {
     uint8_t k[64], ipad[64], opad[64];
 
-    if (!mac)
+    if (!mac) {
         rt_trap("HMAC-SHA256: output buffer is null");
-    if (!key && key_len > 0)
+        return;
+    }
+    if (!key && key_len > 0) {
         rt_trap("HMAC-SHA256: key buffer is null");
-    if (!data && data_len > 0)
+        return;
+    }
+    if (!data && data_len > 0) {
         rt_trap("HMAC-SHA256: input buffer is null");
+        return;
+    }
     if (!key)
         key = (const uint8_t *)"";
     if (!data)
@@ -550,12 +574,18 @@ static void hmac_sha512_family(const uint8_t *key,
     uint8_t opad[128];
     uint8_t inner[64];
 
-    if (!mac)
+    if (!mac) {
         rt_trap("HMAC-SHA2: output buffer is null");
-    if (!key && key_len > 0)
+        return;
+    }
+    if (!key && key_len > 0) {
         rt_trap("HMAC-SHA2: key buffer is null");
-    if (!data && data_len > 0)
+        return;
+    }
+    if (!data && data_len > 0) {
         rt_trap("HMAC-SHA2: input buffer is null");
+        return;
+    }
     if (!key)
         key = (const uint8_t *)"";
     if (!data)
@@ -1121,8 +1151,10 @@ static void poly1305_blocks(poly1305_ctx *ctx, const uint8_t *data, size_t len, 
 static void poly1305_update(poly1305_ctx *ctx, const void *data, size_t len) {
     if (len == 0)
         return;
-    if (!data)
+    if (!data) {
         rt_trap("Poly1305: input buffer is null");
+        return;
+    }
     const uint8_t *ptr = (const uint8_t *)data;
 
     if (ctx->buffer_len > 0) {
@@ -1973,8 +2005,10 @@ long rt_aes256_gcm_decrypt(const uint8_t key[32],
 /// generator (S-03): a predictable RNG would silently compromise
 /// every key derived from it.
 void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
-    if (!buf && len > 0)
+    if (!buf && len > 0) {
         rt_trap("Crypto: random output buffer is null");
+        return;
+    }
     if (len == 0)
         return;
     if (rt_crypto_module_is_approved_mode()) {
@@ -2003,6 +2037,7 @@ void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
     /* S-03: No cryptographically secure entropy available — abort rather than
      * use a predictable LCG fallback that would compromise key material. */
     rt_trap("Crypto: failed to obtain OS entropy (CryptGenRandom)");
+    rt_abort("Crypto: failed to obtain OS entropy (CryptGenRandom)");
 }
 
 #else
@@ -2022,8 +2057,10 @@ void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
 /// Traps on every-source-failed (S-03) so we never silently fall
 /// back to a non-cryptographic source.
 void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
-    if (!buf && len > 0)
+    if (!buf && len > 0) {
         rt_trap("Crypto: random output buffer is null");
+        return;
+    }
     if (len == 0)
         return;
     if (rt_crypto_module_is_approved_mode()) {
@@ -2043,9 +2080,12 @@ void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
             if (errno == ENOSYS)
                 break;
             rt_trap("Crypto: failed to obtain OS entropy (getrandom)");
+            rt_abort("Crypto: failed to obtain OS entropy (getrandom)");
         }
-        if (n == 0)
+        if (n == 0) {
             rt_trap("Crypto: failed to obtain OS entropy (getrandom returned 0)");
+            rt_abort("Crypto: failed to obtain OS entropy (getrandom returned 0)");
+        }
         off += (size_t)n;
     }
     if (off == len)
@@ -2075,5 +2115,6 @@ void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
     /* S-03: No cryptographically secure entropy available — abort rather than
      * use a predictable LCG fallback that would compromise key material. */
     rt_trap("Crypto: failed to read from /dev/urandom");
+    rt_abort("Crypto: failed to read from /dev/urandom");
 }
 #endif

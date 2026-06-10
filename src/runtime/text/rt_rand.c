@@ -227,6 +227,7 @@ void *rt_crypto_rand_bytes(int64_t count) {
 int64_t rt_crypto_rand_int(int64_t min, int64_t max) {
     if (min > max) {
         rt_trap("Rand.Int: min must not be greater than max");
+        return min;
     }
 
     // Special case: only one possible value
@@ -258,6 +259,7 @@ int64_t rt_crypto_rand_int(int64_t min, int64_t max) {
         uint8_t buf[8];
         if (secure_random_fill(buf, 8) != 0) {
             rt_trap("Rand.Int: failed to generate random bytes");
+            rt_abort("Rand.Int: failed to generate random bytes");
         }
 
         // Convert to uint64 (little-endian)

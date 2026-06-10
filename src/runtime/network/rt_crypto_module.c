@@ -178,8 +178,10 @@ static int module_os_entropy(uint8_t *buf, size_t len) {
 ///          @p seed_len > 0, matching the NIST construction.
 static void drbg_update(rt_hmac_drbg_state_t *st, const uint8_t *seed, size_t seed_len) {
     uint8_t material[32 + 1 + 64];
-    if (seed_len > 64)
+    if (seed_len > 64) {
         rt_trap("Crypto.Module: DRBG seed material too large");
+        return;
+    }
 
     memcpy(material, st->v, 32);
     material[32] = 0x00;
@@ -237,14 +239,22 @@ static int drbg_reseed_from_os(rt_hmac_drbg_state_t *st) {
 ///          @c RT_HMAC_DRBG_MAX_REQUEST and triggers automatic reseed
 ///          when the request counter exceeds the NIST interval.
 static void drbg_generate(rt_hmac_drbg_state_t *st, uint8_t *out, size_t out_len) {
-    if (!st->ready)
+    if (!st->ready) {
         rt_trap("Crypto.Module: DRBG is not instantiated");
-    if (!out && out_len > 0)
+        rt_abort("Crypto.Module: DRBG is not instantiated");
+    }
+    if (!out && out_len > 0) {
         rt_trap("Crypto.Module: random output buffer is null");
-    if (out_len > RT_HMAC_DRBG_MAX_REQUEST)
+        return;
+    }
+    if (out_len > RT_HMAC_DRBG_MAX_REQUEST) {
         rt_trap("Crypto.Module: DRBG request too large");
-    if (st->reseed_counter > RT_HMAC_DRBG_RESEED_INTERVAL && !drbg_reseed_from_os(st))
+        return;
+    }
+    if (st->reseed_counter > RT_HMAC_DRBG_RESEED_INTERVAL && !drbg_reseed_from_os(st)) {
         rt_trap("Crypto.Module: DRBG reseed failed");
+        rt_abort("Crypto.Module: DRBG reseed failed");
+    }
     size_t pos = 0;
     while (pos < out_len) {
         rt_hmac_sha256(st->k, sizeof(st->k), st->v, sizeof(st->v), st->v);
@@ -568,12 +578,16 @@ const char *rt_crypto_module_status_cstr(void) {
 ///          a single 64 KiB+ request still respects the NIST per-call
 ///          ceiling.
 void rt_crypto_module_random_bytes(uint8_t *buf, size_t len) {
-    if (!buf && len > 0)
+    if (!buf && len > 0) {
         rt_trap("Crypto.Module: random output buffer is null");
+        return;
+    }
     if (len == 0)
         return;
-    if (!rt_crypto_module_init())
+    if (!rt_crypto_module_init()) {
         rt_trap(rt_crypto_module_status_cstr());
+        rt_abort(rt_crypto_module_status_cstr());
+    }
     module_lock();
     while (len > 0) {
         size_t chunk = len;

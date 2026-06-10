@@ -368,8 +368,11 @@ static void drain_pipe(HANDLE *read_pipe, process_buffer *buf) {
             close_handle(read_pipe);
             return;
         }
-        if (!buffer_append(buf, chunk, read_count))
+        if (!buffer_append(buf, chunk, read_count)) {
             rt_trap("Process: output buffer allocation failed");
+            close_handle(read_pipe);
+            return;
+        }
     }
 }
 
@@ -524,8 +527,11 @@ static void drain_fd(int *fd, process_buffer *buf) {
         char chunk[4096];
         ssize_t count = read(*fd, chunk, sizeof(chunk));
         if (count > 0) {
-            if (!buffer_append(buf, chunk, (size_t)count))
+            if (!buffer_append(buf, chunk, (size_t)count)) {
                 rt_trap("Process: output buffer allocation failed");
+                close_fd(fd);
+                return;
+            }
             continue;
         }
         if (count == 0) {
