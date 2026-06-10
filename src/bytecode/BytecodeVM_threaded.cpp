@@ -1045,7 +1045,7 @@ L_LOAD_I8_MEM: {
     void *ptr = sp[-1].ptr;
     SYNC_STATE();
     sp_ = sp;
-    if (!ensureMemoryAddress(ptr, "BytecodeVM::LOAD_I8_MEM(threaded)"))
+    if (!ensureMemoryAccess(ptr, sizeof(int8_t), "BytecodeVM::LOAD_I8_MEM(threaded)"))
         RETURN_OR_DISPATCH_TRAP();
     int8_t val;
     std::memcpy(&val, ptr, sizeof(val));
@@ -1057,7 +1057,7 @@ L_LOAD_I16_MEM: {
     void *ptr = sp[-1].ptr;
     SYNC_STATE();
     sp_ = sp;
-    if (!ensureMemoryAddress(ptr, "BytecodeVM::LOAD_I16_MEM(threaded)"))
+    if (!ensureMemoryAccess(ptr, sizeof(int16_t), "BytecodeVM::LOAD_I16_MEM(threaded)"))
         RETURN_OR_DISPATCH_TRAP();
     int16_t val;
     std::memcpy(&val, ptr, sizeof(val));
@@ -1069,7 +1069,7 @@ L_LOAD_I32_MEM: {
     void *ptr = sp[-1].ptr;
     SYNC_STATE();
     sp_ = sp;
-    if (!ensureMemoryAddress(ptr, "BytecodeVM::LOAD_I32_MEM(threaded)"))
+    if (!ensureMemoryAccess(ptr, sizeof(int32_t), "BytecodeVM::LOAD_I32_MEM(threaded)"))
         RETURN_OR_DISPATCH_TRAP();
     int32_t val;
     std::memcpy(&val, ptr, sizeof(val));
@@ -1081,7 +1081,7 @@ L_LOAD_I64_MEM: {
     void *addr = sp[-1].ptr;
     SYNC_STATE();
     sp_ = sp;
-    if (!ensureMemoryAddress(addr, "BytecodeVM::LOAD_I64_MEM(threaded)"))
+    if (!ensureMemoryAccess(addr, sizeof(int64_t), "BytecodeVM::LOAD_I64_MEM(threaded)"))
         RETURN_OR_DISPATCH_TRAP();
     int64_t val;
     std::memcpy(&val, addr, sizeof(val));
@@ -1093,7 +1093,7 @@ L_LOAD_F64_MEM: {
     void *ptr = sp[-1].ptr;
     SYNC_STATE();
     sp_ = sp;
-    if (!ensureMemoryAddress(ptr, "BytecodeVM::LOAD_F64_MEM(threaded)"))
+    if (!ensureMemoryAccess(ptr, sizeof(double), "BytecodeVM::LOAD_F64_MEM(threaded)"))
         RETURN_OR_DISPATCH_TRAP();
     double val;
     std::memcpy(&val, ptr, sizeof(val));
@@ -1105,7 +1105,7 @@ L_LOAD_PTR_MEM: {
     void *addr = sp[-1].ptr;
     SYNC_STATE();
     sp_ = sp;
-    if (!ensureMemoryAddress(addr, "BytecodeVM::LOAD_PTR_MEM(threaded)"))
+    if (!ensureMemoryAccess(addr, sizeof(void *), "BytecodeVM::LOAD_PTR_MEM(threaded)"))
         RETURN_OR_DISPATCH_TRAP();
     void *val;
     std::memcpy(&val, addr, sizeof(val));
@@ -1119,9 +1119,9 @@ L_STORE_I8_MEM: {
     void *ptr = (--sp)->ptr;
     SYNC_STATE();
     sp_ = sp;
-    if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_I8_MEM(threaded)"))
+    if (!ensureMemoryAccess(ptr, sizeof(int8_t), "BytecodeVM::STORE_I8_MEM(threaded)"))
         RETURN_OR_DISPATCH_TRAP();
-    clearGlobalStringOwnershipForRawStore(ptr);
+    clearGlobalStringOwnershipForRawStore(ptr, sizeof(int8_t));
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
 }
@@ -1131,9 +1131,9 @@ L_STORE_I16_MEM: {
     void *ptr = (--sp)->ptr;
     SYNC_STATE();
     sp_ = sp;
-    if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_I16_MEM(threaded)"))
+    if (!ensureMemoryAccess(ptr, sizeof(int16_t), "BytecodeVM::STORE_I16_MEM(threaded)"))
         RETURN_OR_DISPATCH_TRAP();
-    clearGlobalStringOwnershipForRawStore(ptr);
+    clearGlobalStringOwnershipForRawStore(ptr, sizeof(int16_t));
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
 }
@@ -1143,9 +1143,9 @@ L_STORE_I32_MEM: {
     void *ptr = (--sp)->ptr;
     SYNC_STATE();
     sp_ = sp;
-    if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_I32_MEM(threaded)"))
+    if (!ensureMemoryAccess(ptr, sizeof(int32_t), "BytecodeVM::STORE_I32_MEM(threaded)"))
         RETURN_OR_DISPATCH_TRAP();
-    clearGlobalStringOwnershipForRawStore(ptr);
+    clearGlobalStringOwnershipForRawStore(ptr, sizeof(int32_t));
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
 }
@@ -1155,9 +1155,9 @@ L_STORE_I64_MEM: {
     void *ptr = (--sp)->ptr;
     SYNC_STATE();
     sp_ = sp;
-    if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_I64_MEM(threaded)"))
+    if (!ensureMemoryAccess(ptr, sizeof(int64_t), "BytecodeVM::STORE_I64_MEM(threaded)"))
         RETURN_OR_DISPATCH_TRAP();
-    clearGlobalStringOwnershipForRawStore(ptr);
+    clearGlobalStringOwnershipForRawStore(ptr, sizeof(int64_t));
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
 }
@@ -1167,9 +1167,9 @@ L_STORE_F64_MEM: {
     void *ptr = (--sp)->ptr;
     SYNC_STATE();
     sp_ = sp;
-    if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_F64_MEM(threaded)"))
+    if (!ensureMemoryAccess(ptr, sizeof(double), "BytecodeVM::STORE_F64_MEM(threaded)"))
         RETURN_OR_DISPATCH_TRAP();
-    clearGlobalStringOwnershipForRawStore(ptr);
+    clearGlobalStringOwnershipForRawStore(ptr, sizeof(double));
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
 }
@@ -1179,9 +1179,9 @@ L_STORE_PTR_MEM: {
     void *ptr = (--sp)->ptr;
     SYNC_STATE();
     sp_ = sp;
-    if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_PTR_MEM(threaded)"))
+    if (!ensureMemoryAccess(ptr, sizeof(void *), "BytecodeVM::STORE_PTR_MEM(threaded)"))
         RETURN_OR_DISPATCH_TRAP();
-    clearGlobalStringOwnershipForRawStore(ptr);
+    clearGlobalStringOwnershipForRawStore(ptr, sizeof(void *));
     std::memcpy(ptr, &val, sizeof(val));
     setSlotOwnsString(sp, false);
     setSlotOwnsString(sp + 1, false);
@@ -1193,7 +1193,7 @@ L_LOAD_STR_MEM: {
     void *ptr = sp[-1].ptr;
     SYNC_STATE();
     sp_ = sp;
-    if (!ensureMemoryAddress(ptr, "BytecodeVM::LOAD_STR_MEM(threaded)"))
+    if (!ensureMemoryAccess(ptr, sizeof(rt_string), "BytecodeVM::LOAD_STR_MEM(threaded)"))
         RETURN_OR_DISPATCH_TRAP();
     std::memcpy(&val, ptr, sizeof(val));
     sp[-1].ptr = val;
@@ -1217,7 +1217,7 @@ L_STORE_STR_MEM: {
     void *ptr = (--sp)->ptr;
     SYNC_STATE();
     sp_ = sp;
-    if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_STR_MEM(threaded)"))
+    if (!ensureMemoryAccess(ptr, sizeof(rt_string), "BytecodeVM::STORE_STR_MEM(threaded)"))
         RETURN_OR_DISPATCH_TRAP();
     rt_string current = nullptr;
     std::memcpy(&current, ptr, sizeof(current));
@@ -1241,8 +1241,7 @@ L_STORE_STR_MEM: {
 
     // Control Flow
 L_JUMP:
-    pc += decodeArgI16(instr);
-    if (!ensureBranchTarget(*fp_->func, pc, "BytecodeVM::JUMP(threaded)")) {
+    if (!computeRelativeTarget(*fp_->func, pc, decodeArgI16(instr), pc, "BytecodeVM::JUMP(threaded)")) {
         SYNC_STATE();
         return;
     }
@@ -1250,8 +1249,8 @@ L_JUMP:
 
 L_JUMP_IF_TRUE:
     if ((--sp)->i64 != 0) {
-        pc += decodeArgI16(instr);
-        if (!ensureBranchTarget(*fp_->func, pc, "BytecodeVM::JUMP_IF_TRUE(threaded)")) {
+        if (!computeRelativeTarget(
+                *fp_->func, pc, decodeArgI16(instr), pc, "BytecodeVM::JUMP_IF_TRUE(threaded)")) {
             SYNC_STATE();
             return;
         }
@@ -1260,8 +1259,8 @@ L_JUMP_IF_TRUE:
 
 L_JUMP_IF_FALSE:
     if ((--sp)->i64 == 0) {
-        pc += decodeArgI16(instr);
-        if (!ensureBranchTarget(*fp_->func, pc, "BytecodeVM::JUMP_IF_FALSE(threaded)")) {
+        if (!computeRelativeTarget(
+                *fp_->func, pc, decodeArgI16(instr), pc, "BytecodeVM::JUMP_IF_FALSE(threaded)")) {
             SYNC_STATE();
             return;
         }
@@ -1269,8 +1268,8 @@ L_JUMP_IF_FALSE:
     DISPATCH();
 
 L_JUMP_LONG:
-    pc += decodeArgI24(instr);
-    if (!ensureBranchTarget(*fp_->func, pc, "BytecodeVM::JUMP_LONG(threaded)")) {
+    if (!computeRelativeTarget(
+            *fp_->func, pc, decodeArgI24(instr), pc, "BytecodeVM::JUMP_LONG(threaded)")) {
         SYNC_STATE();
         return;
     }
@@ -1310,8 +1309,11 @@ L_SWITCH: {
             // Found matching case - jump to its target
             // Offset is relative to the offset word position (same as EH_PUSH)
             int32_t caseOffset = static_cast<int32_t>(code[caseOffsetPos]);
-            pc = caseOffsetPos + caseOffset;
-            if (!ensureBranchTarget(*fp_->func, pc, "BytecodeVM::SWITCH(case, threaded)")) {
+            if (!computeRelativeTarget(*fp_->func,
+                                       caseOffsetPos,
+                                       caseOffset,
+                                       pc,
+                                       "BytecodeVM::SWITCH(case, threaded)")) {
                 SYNC_STATE();
                 return;
             }
@@ -1323,8 +1325,11 @@ L_SWITCH: {
     if (!found) {
         // No match - use default offset
         int32_t defaultOffset = static_cast<int32_t>(code[defaultOffsetPos]);
-        pc = defaultOffsetPos + defaultOffset;
-        if (!ensureBranchTarget(*fp_->func, pc, "BytecodeVM::SWITCH(default, threaded)")) {
+        if (!computeRelativeTarget(*fp_->func,
+                                   defaultOffsetPos,
+                                   defaultOffset,
+                                   pc,
+                                   "BytecodeVM::SWITCH(default, threaded)")) {
             SYNC_STATE();
             return;
         }
@@ -1417,8 +1422,16 @@ L_ARR_I32_GET_FAST: {
     BCSlot *idxSlot = --sp;
     const size_t idx = static_cast<size_t>(idxSlot->i64);
     setSlotOwnsString(idxSlot, false);
-    auto *arr = static_cast<int32_t *>(arrSlot->ptr);
-    arrSlot->i64 = static_cast<int64_t>(arr[idx]);
+    const uintptr_t base = reinterpret_cast<uintptr_t>(arrSlot->ptr);
+    if (idx > std::numeric_limits<uintptr_t>::max() / sizeof(int32_t) ||
+        idx * sizeof(int32_t) > std::numeric_limits<uintptr_t>::max() - base)
+        THREAD_TRAP_OR_DISPATCH(TrapKind::Bounds, "ARR_I32_GET_FAST index address overflow");
+    auto *element = reinterpret_cast<int32_t *>(base + idx * sizeof(int32_t));
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureMemoryAccess(element, sizeof(int32_t), "BytecodeVM::ARR_I32_GET_FAST(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
+    arrSlot->i64 = static_cast<int64_t>(*element);
     setSlotOwnsString(arrSlot, false);
     DISPATCH();
 }
@@ -1434,9 +1447,17 @@ L_ARR_I32_SET_FAST: {
     const size_t idx = static_cast<size_t>(idxSlot->i64);
     setSlotOwnsString(idxSlot, false);
     --sp;
-    auto *arr = static_cast<int32_t *>(arrSlot->ptr);
+    const uintptr_t base = reinterpret_cast<uintptr_t>(arrSlot->ptr);
+    if (idx > std::numeric_limits<uintptr_t>::max() / sizeof(int32_t) ||
+        idx * sizeof(int32_t) > std::numeric_limits<uintptr_t>::max() - base)
+        THREAD_TRAP_OR_DISPATCH(TrapKind::Bounds, "ARR_I32_SET_FAST index address overflow");
+    auto *element = reinterpret_cast<int32_t *>(base + idx * sizeof(int32_t));
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureMemoryAccess(element, sizeof(int32_t), "BytecodeVM::ARR_I32_SET_FAST(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
     setSlotOwnsString(arrSlot, false);
-    arr[idx] = value;
+    *element = value;
     DISPATCH();
 }
 
@@ -1447,8 +1468,16 @@ L_ARR_I64_GET_FAST: {
     BCSlot *idxSlot = --sp;
     const size_t idx = static_cast<size_t>(idxSlot->i64);
     setSlotOwnsString(idxSlot, false);
-    auto *arr = static_cast<int64_t *>(arrSlot->ptr);
-    arrSlot->i64 = arr[idx];
+    const uintptr_t base = reinterpret_cast<uintptr_t>(arrSlot->ptr);
+    if (idx > std::numeric_limits<uintptr_t>::max() / sizeof(int64_t) ||
+        idx * sizeof(int64_t) > std::numeric_limits<uintptr_t>::max() - base)
+        THREAD_TRAP_OR_DISPATCH(TrapKind::Bounds, "ARR_I64_GET_FAST index address overflow");
+    auto *element = reinterpret_cast<int64_t *>(base + idx * sizeof(int64_t));
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureMemoryAccess(element, sizeof(int64_t), "BytecodeVM::ARR_I64_GET_FAST(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
+    arrSlot->i64 = *element;
     setSlotOwnsString(arrSlot, false);
     DISPATCH();
 }
@@ -1464,9 +1493,17 @@ L_ARR_I64_SET_FAST: {
     const size_t idx = static_cast<size_t>(idxSlot->i64);
     setSlotOwnsString(idxSlot, false);
     --sp;
-    auto *arr = static_cast<int64_t *>(arrSlot->ptr);
+    const uintptr_t base = reinterpret_cast<uintptr_t>(arrSlot->ptr);
+    if (idx > std::numeric_limits<uintptr_t>::max() / sizeof(int64_t) ||
+        idx * sizeof(int64_t) > std::numeric_limits<uintptr_t>::max() - base)
+        THREAD_TRAP_OR_DISPATCH(TrapKind::Bounds, "ARR_I64_SET_FAST index address overflow");
+    auto *element = reinterpret_cast<int64_t *>(base + idx * sizeof(int64_t));
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureMemoryAccess(element, sizeof(int64_t), "BytecodeVM::ARR_I64_SET_FAST(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
     setSlotOwnsString(arrSlot, false);
-    arr[idx] = value;
+    *element = value;
     DISPATCH();
 }
 
@@ -1477,8 +1514,16 @@ L_ARR_F64_GET_FAST: {
     BCSlot *idxSlot = --sp;
     const size_t idx = static_cast<size_t>(idxSlot->i64);
     setSlotOwnsString(idxSlot, false);
-    auto *arr = static_cast<double *>(arrSlot->ptr);
-    arrSlot->f64 = arr[idx];
+    const uintptr_t base = reinterpret_cast<uintptr_t>(arrSlot->ptr);
+    if (idx > std::numeric_limits<uintptr_t>::max() / sizeof(double) ||
+        idx * sizeof(double) > std::numeric_limits<uintptr_t>::max() - base)
+        THREAD_TRAP_OR_DISPATCH(TrapKind::Bounds, "ARR_F64_GET_FAST index address overflow");
+    auto *element = reinterpret_cast<double *>(base + idx * sizeof(double));
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureMemoryAccess(element, sizeof(double), "BytecodeVM::ARR_F64_GET_FAST(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
+    arrSlot->f64 = *element;
     setSlotOwnsString(arrSlot, false);
     DISPATCH();
 }
@@ -1494,9 +1539,17 @@ L_ARR_F64_SET_FAST: {
     const size_t idx = static_cast<size_t>(idxSlot->i64);
     setSlotOwnsString(idxSlot, false);
     --sp;
-    auto *arr = static_cast<double *>(arrSlot->ptr);
+    const uintptr_t base = reinterpret_cast<uintptr_t>(arrSlot->ptr);
+    if (idx > std::numeric_limits<uintptr_t>::max() / sizeof(double) ||
+        idx * sizeof(double) > std::numeric_limits<uintptr_t>::max() - base)
+        THREAD_TRAP_OR_DISPATCH(TrapKind::Bounds, "ARR_F64_SET_FAST index address overflow");
+    auto *element = reinterpret_cast<double *>(base + idx * sizeof(double));
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureMemoryAccess(element, sizeof(double), "BytecodeVM::ARR_F64_SET_FAST(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
     setSlotOwnsString(arrSlot, false);
-    arr[idx] = value;
+    *element = value;
     DISPATCH();
 }
 
@@ -1521,6 +1574,12 @@ L_CALL_INDIRECT: {
             trap(TrapKind::RuntimeError, "Invalid indirect function index");
             return;
         }
+        const BytecodeFunction &targetFunc = module_->functions[funcIdx];
+        if (argCount != targetFunc.numParams) {
+            SYNC_STATE();
+            trap(TrapKind::RuntimeError, "Indirect call arity mismatch");
+            return;
+        }
 
         // Shift arguments down to overwrite the callee slot
         // This is needed because call() expects args at the top of stack
@@ -1535,7 +1594,7 @@ L_CALL_INDIRECT: {
         SYNC_STATE();
         sp_ = sp;
         fp_->pc = pc;
-        call(&module_->functions[funcIdx]);
+        call(&targetFunc);
         if (state_ != VMState::Running || !fp_)
             return;
         RELOAD_STATE();
@@ -1610,9 +1669,11 @@ L_EH_PUSH: {
         SYNC_STATE();
         return;
     }
+    const uint32_t offsetPc = pc;
     int32_t offset = static_cast<int32_t>(code[pc++]);
-    uint32_t handlerPc = static_cast<uint32_t>(static_cast<int32_t>(pc - 1) + offset);
-    if (!ensureBranchTarget(*fp_->func, handlerPc, "BytecodeVM::EH_PUSH(threaded)")) {
+    uint32_t handlerPc = 0;
+    if (!computeRelativeTarget(
+            *fp_->func, offsetPc, offset, handlerPc, "BytecodeVM::EH_PUSH(threaded)")) {
         SYNC_STATE();
         return;
     }
@@ -1637,6 +1698,7 @@ L_EH_ENTRY: {
 L_ERR_GET_KIND: {
     // The error token already carries the trap discriminator; replace-in-place
     // is therefore a no-op with the correct consume-one / produce-one shape.
+    setSlotOwnsString(sp - 1, false);
     DISPATCH();
 }
 
@@ -1724,9 +1786,10 @@ L_RESUME_LABEL: {
         SYNC_STATE();
         return;
     }
+    const uint32_t offsetPc = pc;
     int32_t offset = static_cast<int32_t>(code[pc++]);
-    pc = static_cast<uint32_t>(static_cast<int32_t>(pc - 1) + offset);
-    if (!ensureBranchTarget(*fp_->func, pc, "BytecodeVM::RESUME_LABEL(threaded)")) {
+    if (!computeRelativeTarget(
+            *fp_->func, offsetPc, offset, pc, "BytecodeVM::RESUME_LABEL(threaded)")) {
         SYNC_STATE();
         return;
     }

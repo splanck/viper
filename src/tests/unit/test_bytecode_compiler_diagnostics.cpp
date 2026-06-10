@@ -210,6 +210,54 @@ TEST(BytecodeCompilerDiagnostics, TrapErrWithoutResultIsCompileDiagnostic) {
     EXPECT_CONTAINS(result.error().message, "trap.err must produce an error value");
 }
 
+TEST(BytecodeCompilerDiagnostics, ImportDeclarationsAreSkippedInBytecodeFunctionTable) {
+    using namespace il::core;
+    using namespace viper::bytecode;
+
+    Module module;
+
+    Function imported;
+    imported.name = "hostValue";
+    imported.retType = Type(Type::Kind::I64);
+    imported.linkage = Linkage::Import;
+    module.functions.push_back(std::move(imported));
+
+    Function main;
+    main.name = "main";
+    main.retType = Type(Type::Kind::Void);
+
+    BasicBlock entry;
+    entry.label = "entry";
+
+    Instr call;
+    call.result = 0;
+    call.op = Opcode::Call;
+    call.callee = "hostValue";
+    call.type = Type(Type::Kind::I64);
+    entry.instructions.push_back(call);
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    entry.instructions.push_back(ret);
+    entry.terminated = true;
+
+    main.blocks.push_back(std::move(entry));
+    module.functions.push_back(std::move(main));
+
+    BytecodeCompiler compiler;
+    auto result = compiler.compileChecked(module, nullptr, true);
+
+    ASSERT_TRUE(result.hasValue());
+    const auto &bcModule = result.value();
+    ASSERT_EQ(bcModule.functions.size(), 1u);
+    EXPECT_EQ(bcModule.functions[0].name, "main");
+    EXPECT_TRUE(bcModule.functionIndex.find("hostValue") == bcModule.functionIndex.end());
+    ASSERT_EQ(bcModule.nativeFuncs.size(), 1u);
+    EXPECT_EQ(bcModule.nativeFuncs[0].name, "hostValue");
+    EXPECT_TRUE(containsOpcode(bcModule.functions[0], BCOpcode::CALL_NATIVE));
+}
+
 TEST(BytecodeCompilerDiagnostics, PreflightRejectsInvalidILBeforeLowering) {
     using namespace il::core;
 

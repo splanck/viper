@@ -172,7 +172,7 @@ class BytecodeCompiler {
     ///          immediately follows its predecessor, minimizing jump instructions.
     /// @param fn The IL function whose blocks are to be linearized.
     /// @return An ordered vector of basic block pointers for sequential emission.
-    std::vector<const il::core::BasicBlock *> linearizeBlocks(const il::core::Function &fn);
+    static std::vector<const il::core::BasicBlock *> linearizeBlocks(const il::core::Function &fn);
 
     /// @brief Compile all instructions in a basic block.
     /// @details Records the block's bytecode offset, emits code for each
@@ -184,12 +184,12 @@ class BytecodeCompiler {
     /// @param instr The IL instruction to compile.
     void compileInstr(const il::core::Instr &instr);
 
-    [[noreturn]] void fail(il::support::SourceLoc loc, std::string code, std::string message);
+    [[noreturn]] void fail(il::support::SourceLoc loc, std::string code, std::string message) const;
 
-    [[noreturn]] void failCurrent(std::string code, std::string message);
+    [[noreturn]] void failCurrent(std::string code, std::string message) const;
 
     /// @brief Fail the compile unless @p instr has at least @p minCount operands.
-    void requireOperandCount(const il::core::Instr &instr, size_t minCount);
+    void requireOperandCount(const il::core::Instr &instr, size_t minCount) const;
 
     /// @brief Emit bytecode to push an IL value onto the operand stack.
     /// @details Handles constants (immediates), SSA references (local loads),

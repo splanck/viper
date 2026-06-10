@@ -24,6 +24,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_layout.h"
+#include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
 #include <limits.h>
 #include <math.h>
@@ -135,6 +136,48 @@ static void clear_paint_flag_recursive(vg_widget_t *root) {
     }
 }
 
+/// @brief Move @p cur toward @p target by one frame's worth of easing.
+static float vg__advance(float cur, float target, float dt_ms, float dur_ms) {
+    if (dur_ms <= 0.0f)
+        return target;
+    float step = dt_ms / dur_ms;
+    if (cur < target) {
+        cur += step;
+        if (cur > target)
+            cur = target;
+    } else if (cur > target) {
+        cur -= step;
+        if (cur < target)
+            cur = target;
+    }
+    return cur;
+}
+
+void vg_widget_anim_tick(vg_widget_t *widget, void *canvas) {
+    if (!widget)
+        return;
+    float hover_t = (widget->state & VG_STATE_HOVERED) ? 1.0f : 0.0f;
+    float press_t = (widget->state & VG_STATE_PRESSED) ? 1.0f : 0.0f;
+    float focus_t = (widget->state & VG_STATE_FOCUSED) ? 1.0f : 0.0f;
+
+    vg_theme_t *theme = vg_theme_get_current();
+    if (!theme || !theme->motion.enabled) {
+        widget->anim_hover = hover_t;
+        widget->anim_press = press_t;
+        widget->anim_focus = focus_t;
+        return;
+    }
+
+    // Advance by a nominal per-frame step (~60fps). We deliberately do NOT poll
+    // vgfx_frame_time_ms here: paint may run against a non-window canvas (e.g.
+    // headless widget tests), and dereferencing it as a window would crash.
+    (void)canvas;
+    float dt = 16.0f;
+    widget->anim_hover = vg__advance(widget->anim_hover, hover_t, dt, theme->motion.hover_ms);
+    widget->anim_press = vg__advance(widget->anim_press, press_t, dt, theme->motion.press_ms);
+    widget->anim_focus = vg__advance(widget->anim_focus, focus_t, dt, theme->motion.focus_ms);
+}
+
 /// @brief Recursively paints the widget tree in pre-order, converting each widget's position to
 /// screen space before calling its paint vtable.
 static void paint_widget_normal_tree(vg_widget_t *root, void *canvas) {
@@ -142,6 +185,7 @@ static void paint_widget_normal_tree(vg_widget_t *root, void *canvas) {
         return;
 
     if (root->vtable && root->vtable->paint) {
+        vg_widget_anim_tick(root, canvas);
         float rel_x = root->x;
         float rel_y = root->y;
         float screen_x = rel_x;

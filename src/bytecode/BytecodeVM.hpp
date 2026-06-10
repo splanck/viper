@@ -410,6 +410,7 @@ class BytecodeVM {
     bool trustedDispatch_;      ///< Whether verified bytecode skips hot-path guards.
     bool trustedDispatchRequested_ = false; ///< User-requested trusted dispatch preference.
     bool moduleDispatchValidated_ = false;  ///< True once load() validates module headers/tables.
+    bool loadFailed_ = false; ///< True when the most recent load() rejected the module.
     std::unordered_map<std::string, NativeHandler> nativeHandlers_; ///< Registered native handlers.
 
     /// @brief Exception handler stack (pushed by EH_PUSH, popped by EH_POP).
@@ -490,11 +491,14 @@ class BytecodeVM {
     /// @brief Return the global index for an exact pointer to a global slot, or SIZE_MAX.
     [[nodiscard]] size_t globalIndexForAddress(const void *ptr) const;
 
+    /// @brief Return the global index overlapped by an address range, or SIZE_MAX.
+    [[nodiscard]] size_t globalIndexForAddressRange(const void *ptr, size_t bytes) const;
+
     /// @brief Release a string owned by a single global slot.
     void releaseOwnedGlobalString(size_t idx);
 
     /// @brief Clear global string ownership before writing raw non-string data through a pointer.
-    void clearGlobalStringOwnershipForRawStore(void *ptr);
+    void clearGlobalStringOwnershipForRawStore(void *ptr, size_t bytes);
 
     /// @brief Record string ownership when STORE_STR_MEM writes directly to a global slot.
     void setGlobalStringOwnershipForAddress(void *ptr, bool owns);
@@ -511,11 +515,29 @@ class BytecodeVM {
     /// @brief Validate that @p pc is a valid instruction fetch location.
     bool ensurePcInRange(const BytecodeFunction &func, uint32_t pc, const char *site);
 
-    /// @brief Validate bytecode module header and index-table consistency.
+    /// @brief Detailed reason for rejecting a bytecode module during load().
+    struct ModuleValidationFailure {
+        TrapKind kind = TrapKind::InvalidOpcode; ///< Trap kind reported to the caller.
+        std::string message;                     ///< Human-readable validation failure.
+    };
+
+    /// @brief Validate bytecode module header, indexes, functions, and code tables.
     /// @details Trusted dispatch is enabled only after this check succeeds.
     /// @param module Candidate module passed to @ref load.
+    /// @param failure Populated with the first validation failure.
     /// @return True when the module can be safely bound to this VM.
-    bool validateModuleForLoad(const BytecodeModule *module);
+    bool validateModuleForLoad(const BytecodeModule *module, ModuleValidationFailure &failure) const;
+
+    /// @brief Validate one function's metadata and bytecode instruction stream.
+    /// @param module Candidate module that owns @p func.
+    /// @param func Function to validate.
+    /// @param functionIndex Index of @p func within @p module.
+    /// @param failure Populated with the first validation failure.
+    /// @return True when the function metadata and instruction stream are well-formed.
+    bool validateFunctionForLoad(const BytecodeModule &module,
+                                 const BytecodeFunction &func,
+                                 size_t functionIndex,
+                                 ModuleValidationFailure &failure) const;
 
     /// @brief Return whether @p func is one of the loaded module's functions.
     /// @details Protects the pointer-based exec overload from being handed a
@@ -678,8 +700,21 @@ class BytecodeVM {
 
     /// @brief Validate bytecode metadata and unsafe operands before touching host memory.
     bool ensureLocalIndex(uint32_t idx, const char *site);
-    bool ensureMemoryAddress(const void *ptr, const char *site);
+    bool ensureMemoryAccess(const void *ptr, size_t bytes, const char *site);
     bool allocateAlloca(int64_t requestedSize, void *&ptr, const char *site);
+
+    /// @brief Compute and validate a relative branch target without unsigned wraparound.
+    /// @param func Function containing the branch.
+    /// @param basePc PC used as the origin for @p offset.
+    /// @param offset Signed relative offset.
+    /// @param target [out] Absolute target PC on success.
+    /// @param site Diagnostic site name.
+    /// @return True on success; false after raising an InvalidOpcode trap.
+    bool computeRelativeTarget(const BytecodeFunction &func,
+                               uint32_t basePc,
+                               int32_t offset,
+                               uint32_t &target,
+                               const char *site);
 
     /// @brief Add a signed byte offset to a pointer with overflow/null checks.
     /// @param base Base pointer operand.

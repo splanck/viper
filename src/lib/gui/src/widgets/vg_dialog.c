@@ -770,12 +770,23 @@ static void dialog_arrange(vg_widget_t *widget, float x, float y, float width, f
         float remaining_h = body_y + body_h - content_y;
         if (remaining_h < 0.0f)
             remaining_h = 0.0f;
-        float desired_h =
+        float full_h =
             dlg->content->measured_height > 0.0f ? dlg->content->measured_height : remaining_h;
-        if (desired_h > remaining_h)
-            desired_h = remaining_h;
-
-        vg_widget_arrange(dlg->content, body_x, content_y, body_w, desired_h);
+        if (full_h <= remaining_h) {
+            // Fits: no scrolling.
+            dlg->content_scroll_y = 0.0f;
+            vg_widget_arrange(dlg->content, body_x, content_y, body_w, full_h);
+        } else {
+            // Overflows: arrange at full height and offset by the scroll amount;
+            // the paint pass clips the content to the body region.
+            float max_scroll = full_h - remaining_h;
+            if (dlg->content_scroll_y < 0.0f)
+                dlg->content_scroll_y = 0.0f;
+            if (dlg->content_scroll_y > max_scroll)
+                dlg->content_scroll_y = max_scroll;
+            vg_widget_arrange(
+                dlg->content, body_x, content_y - dlg->content_scroll_y, body_w, full_h);
+        }
     }
 }
 
@@ -1196,6 +1207,16 @@ static bool dialog_handle_event(vg_widget_t *widget, vg_event_t *event) {
         return false;
 
     switch (event->type) {
+        case VG_EVENT_MOUSE_WHEEL: {
+            // Scroll the content area when it is taller than the body region.
+            if (dlg->content) {
+                dlg->content_scroll_y -= event->wheel.delta_y * 24.0f;
+                widget->needs_layout = true;
+                widget->needs_paint = true;
+                return true;
+            }
+            return false;
+        }
         case VG_EVENT_MOUSE_MOVE: {
             float px = event->mouse.x;
             float py = event->mouse.y;

@@ -208,22 +208,32 @@ il::support::Expected<BytecodeModule> BytecodeCompiler::compileChecked(
             }
         }
 
-        // Pre-register all function names to support recursive and forward calls.
-        for (size_t i = 0; i < ilModule.functions.size(); ++i) {
-            if (i > std::numeric_limits<uint32_t>::max()) {
+        // Pre-register executable functions to support recursive and forward
+        // calls. Import-linkage functions are declarations; calls to unresolved
+        // imports lower through the native/runtime path instead of becoming
+        // empty bytecode functions.
+        uint32_t functionIndex = 0;
+        for (const auto &fn : ilModule.functions) {
+            if (fn.linkage == il::core::Linkage::Import)
+                continue;
+            if (functionIndex == std::numeric_limits<uint32_t>::max()) {
                 fail({}, "V-BC-FUNCTION-TABLE", "bytecode supports at most 2^32 functions");
             }
-            const std::string &name = ilModule.functions[i].name;
+            const std::string &name = fn.name;
             if (module_.functionIndex.find(name) != module_.functionIndex.end()) {
                 fail({}, "V-BC-DUPLICATE-FUNCTION", "duplicate function @" + name);
             }
-            module_.functionIndex[ilModule.functions[i].name] = static_cast<uint32_t>(i);
+            module_.functionIndex[name] = functionIndex++;
         }
 
         registerGlobals(ilModule);
 
-        // Compile each function.
+        // Compile each executable function. Import-linkage functions are
+        // declarations with no body and are represented by native call entries
+        // only if a call site references them.
         for (const auto &fn : ilModule.functions) {
+            if (fn.linkage == il::core::Linkage::Import)
+                continue;
             compileFunction(fn);
         }
     } catch (const BytecodeCompileFailure &failure) {
@@ -429,6 +439,7 @@ void BytecodeCompiler::compileFunction(const il::core::Function &fn) {
 void BytecodeCompiler::buildSSAToLocalsMap(const il::core::Function &fn) {
     nextLocal_ = 0;
     localIsString_.clear();
+    std::unordered_set<std::string> blockLabels;
 
     auto markLocalType = [this](uint32_t local, const il::core::Type &type) {
         if (local >= localIsString_.size())
@@ -448,6 +459,9 @@ void BytecodeCompiler::buildSSAToLocalsMap(const il::core::Function &fn) {
     blockParamIds_.clear();
     bool isEntryBlock = true;
     for (const auto &block : fn.blocks) {
+        if (!blockLabels.insert(block.label).second) {
+            fail({}, "V-BC-DUPLICATE-BLOCK", "duplicate block label ^" + block.label);
+        }
         std::vector<uint32_t> paramIds;
         for (size_t i = 0; i < block.params.size(); ++i) {
             const auto &param = block.params[i];
@@ -720,7 +734,6 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr) {
             pushValue(instr.operands[1]);
             pushValue(instr.operands[2]);
             emit(BCOpcode::IDX_CHK);
-            /// @brief Pop Stack.
             popStack(2); // Consumes 3, produces 1
             storeResult(instr);
             break;
@@ -732,7 +745,6 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr) {
             if (!instr.labels.empty()) {
                 // Record fixup for handler label
                 uint32_t offsetPos = static_cast<uint32_t>(currentFunc_->code.size());
-                /// @brief Emit.
                 emit(0u); // Placeholder for handler PC
                 // isRaw=true because the offset is in a separate word, not encoded in the
                 // instruction
@@ -757,7 +769,6 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr) {
             }
             emit(BCOpcode::ERR_GET_KIND);
             if (instr.operands.empty()) {
-                /// @brief Push Stack.
                 pushStack(); // Result pushed
             }
             // else: consumed input, pushed output (net 0)
@@ -800,7 +811,6 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr) {
         case Opcode::ResumeSame:
             // Resume at the faulting instruction
             if (!instr.operands.empty()) {
-                /// @brief Push Value.
                 pushValue(instr.operands[0]); // Push resume token
             }
             emit(BCOpcode::RESUME_SAME);
@@ -823,7 +833,6 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr) {
         case Opcode::ResumeLabel:
             // Resume at a specific label
             if (!instr.operands.empty()) {
-                /// @brief Push Value.
                 pushValue(instr.operands[0]); // Push resume token
             }
             emit(BCOpcode::RESUME_LABEL);
@@ -833,7 +842,6 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr) {
             // Emit branch to the label
             if (!instr.labels.empty()) {
                 uint32_t offsetPos = static_cast<uint32_t>(currentFunc_->code.size());
-                /// @brief Emit.
                 emit(0u); // Placeholder
                 pendingBranches_.push_back({offsetPos, instr.labels[0], false, true, instr.loc});
             }
@@ -882,7 +890,9 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr) {
 /// @details Prefixes the message with the current function name and packages
 ///          @p code / @p loc into an error Diag; never returns. Caught at the
 ///          compileChecked boundary and surfaced as the Expected error.
-void BytecodeCompiler::fail(il::support::SourceLoc loc, std::string code, std::string message) {
+void BytecodeCompiler::fail(il::support::SourceLoc loc,
+                            std::string code,
+                            std::string message) const {
     if (!currentFunctionName_.empty())
         message = "bytecode compile failed in @" + currentFunctionName_ + ": " + message;
     throw BytecodeCompileFailure(
@@ -891,13 +901,13 @@ void BytecodeCompiler::fail(il::support::SourceLoc loc, std::string code, std::s
 
 /// @brief @ref fail using the instruction currently being compiled as the
 ///        source location.
-void BytecodeCompiler::failCurrent(std::string code, std::string message) {
+void BytecodeCompiler::failCurrent(std::string code, std::string message) const {
     fail(currentLoc_, std::move(code), std::move(message));
 }
 
 /// @brief Fail (V-BC-MALFORMED-INSTR) unless @p instr has at least @p minCount
 ///        operands — a guard against malformed IL reaching a category compiler.
-void BytecodeCompiler::requireOperandCount(const il::core::Instr &instr, size_t minCount) {
+void BytecodeCompiler::requireOperandCount(const il::core::Instr &instr, size_t minCount) const {
     if (instr.operands.size() < minCount) {
         std::ostringstream oss;
         oss << "opcode '" << il::core::toString(instr.op) << "' requires at least " << minCount
@@ -1090,7 +1100,6 @@ void BytecodeCompiler::emitBranch(BCOpcode op, const std::string &label) {
         false, // isRaw
         currentLoc_
     });
-    /// @brief Emit.
     emit(encodeOp16(op, 0)); // Placeholder offset
 }
 
@@ -1104,7 +1113,6 @@ void BytecodeCompiler::emitBranchLong(BCOpcode op, const std::string &label) {
         false, // isRaw
         currentLoc_
     });
-    /// @brief Emit.
     emit(encodeOp24(op, 0)); // Placeholder offset
 }
 
@@ -1412,11 +1420,9 @@ void BytecodeCompiler::compileArithmetic(const il::core::Instr &instr) {
                     break;
             }
             BCOpcode op = (instr.op == Opcode::IAddOvf) ? BCOpcode::ADD_I64_OVF
-                          /// @brief :.
                           : (instr.op == Opcode::ISubOvf) ? BCOpcode::SUB_I64_OVF
                                                           : BCOpcode::MUL_I64_OVF;
             emit8(op, targetType);
-            /// @brief Pop Stack.
             popStack(); // Binary ops: consume 2, produce 1
             storeResult(instr);
             return; // Early return
@@ -1453,7 +1459,6 @@ void BytecodeCompiler::compileArithmetic(const il::core::Instr &instr) {
     }
 
     emit(bcOp);
-    /// @brief Pop Stack.
     popStack(); // Binary ops: consume 2, produce 1
     storeResult(instr);
 }
@@ -1528,7 +1533,6 @@ void BytecodeCompiler::compileComparison(const il::core::Instr &instr) {
     }
 
     emit(bcOp);
-    /// @brief Pop Stack.
     popStack(); // Binary ops: consume 2, produce 1
     storeResult(instr);
 }
@@ -1643,7 +1647,6 @@ void BytecodeCompiler::compileBitwise(const il::core::Instr &instr) {
     }
 
     emit(bcOp);
-    /// @brief Pop Stack.
     popStack(); // Binary ops: consume 2, produce 1
     storeResult(instr);
 }
@@ -1675,12 +1678,14 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr) {
                 } else if (op.kind == il::core::Value::Kind::GlobalAddr) {
                     // Reference to a global string constant - look it up
                     if (ilModule_) {
-                        for (const auto &g : ilModule_->globals) {
-                            if (g.name == op.str) {
-                                strValue = g.init;
-                                found = true;
-                                break;
-                            }
+                        auto it = std::find_if(ilModule_->globals.begin(),
+                                               ilModule_->globals.end(),
+                                               [&op](const il::core::Global &global) {
+                                                   return global.name == op.str;
+                                               });
+                        if (it != ilModule_->globals.end()) {
+                            strValue = it->init;
+                            found = true;
                         }
                     }
                 }
@@ -1701,7 +1706,6 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr) {
             break;
 
         case Opcode::Alloca:
-            /// @brief Push Value.
             requireOperandCount(instr, 1);
             recordAllocaSize(instr.operands[0]);
             pushValue(instr.operands[0]); // Size
@@ -1711,13 +1715,10 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr) {
             break;
 
         case Opcode::GEP:
-            /// @brief Push Value.
             requireOperandCount(instr, 2);
             pushValue(instr.operands[0]); // Base pointer
-                                          /// @brief Push Value.
             pushValue(instr.operands[1]); // Offset
             emit(BCOpcode::GEP);
-            /// @brief Pop Stack.
             popStack(); // Consume 2, produce 1
             storeResult(instr);
             break;
@@ -1758,7 +1759,6 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr) {
             // store type, ptr, val -> operands[0] is ptr, operands[1] is val
             requireOperandCount(instr, 2);
             pushValue(instr.operands[0]); // Pointer
-                                          /// @brief Push Value.
             pushValue(instr.operands[1]); // Value
             // Emit appropriate store based on type
             switch (instr.type.kind) {
@@ -1784,7 +1784,6 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr) {
                     emit(BCOpcode::STORE_I64_MEM);
                     break;
             }
-            /// @brief Pop Stack.
             popStack(2); // Consume 2, produce 0
             break;
 
@@ -1974,6 +1973,20 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr) {
             return !args.empty();
         return !it->second.empty() || !args.empty();
     };
+    std::unordered_set<std::string> syntheticLabels;
+    auto makeSyntheticLabel = [this, &syntheticLabels](std::string_view prefix) {
+        for (uint32_t attempt = 0; attempt < 1024; ++attempt) {
+            std::string label = std::string(prefix) + std::to_string(currentFunc_->code.size()) +
+                                "_" + std::to_string(attempt);
+            if (blockOffsets_.find(label) == blockOffsets_.end() &&
+                blockParamIds_.find(label) == blockParamIds_.end() &&
+                syntheticLabels.find(label) == syntheticLabels.end()) {
+                syntheticLabels.insert(label);
+                return label;
+            }
+        }
+        failCurrent("V-BC-SYNTHETIC-LABEL", "could not allocate unique bytecode setup label");
+    };
 
     switch (instr.op) {
         case Opcode::Br: {
@@ -2003,8 +2016,7 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr) {
 
             // Keep the conditional branch itself short by targeting generated
             // setup code, then use long unconditional jumps to real blocks.
-            std::string elseArgsLabel =
-                "__else_args_" + std::to_string(currentFunc_->code.size());
+            std::string elseArgsLabel = makeSyntheticLabel("__else_args_");
 
             emitBranch(BCOpcode::JUMP_IF_FALSE, elseArgsLabel);
             popStack();
@@ -2034,6 +2046,9 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr) {
             pushValue(il::core::switchScrutinee(instr));
 
             const size_t numCases = il::core::switchCaseCount(instr);
+            if (numCases > std::numeric_limits<uint32_t>::max()) {
+                fail(instr.loc, "V-BC-SWITCH-CASE", "switch.i32 has too many cases");
+            }
             if (instr.operands.size() != numCases + 1) {
                 fail(instr.loc, "V-BC-MALFORMED-INSTR", "switch.i32 operands mismatch cases");
             }
@@ -2048,7 +2063,6 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr) {
 
             // Remember position for default offset and emit placeholder
             uint32_t defaultOffsetPos = static_cast<uint32_t>(currentFunc_->code.size());
-            /// @brief Emit.
             emit(0u); // placeholder for default offset
 
             struct SwitchTarget {
@@ -2060,8 +2074,6 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr) {
 
             std::vector<SwitchTarget> switchTargets;
             switchTargets.reserve(numCases + 1);
-            const std::string setupPrefix =
-                "__switch_args_" + std::to_string(currentFunc_->code.size()) + "_";
             auto makeSwitchTarget = [&](size_t index, const std::string &realLabel) {
                 const auto &args = branchArgsAt(index);
                 SwitchTarget target;
@@ -2069,7 +2081,9 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr) {
                 target.args = &args;
                 target.needsSetup = targetNeedsSetup(realLabel, args);
                 target.tableLabel =
-                    target.needsSetup ? setupPrefix + std::to_string(index) : realLabel;
+                    target.needsSetup ? makeSyntheticLabel("__switch_args_" + std::to_string(index) +
+                                                           "_")
+                                      : realLabel;
                 return target;
             };
 
@@ -2077,6 +2091,8 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr) {
 
             // Remember positions for case offsets
             std::vector<std::pair<int32_t, uint32_t>> casePositions; // (caseValue, offsetPos)
+            casePositions.reserve(numCases);
+            std::unordered_set<int32_t> seenCases;
             for (size_t i = 0; i < numCases; ++i) {
                 const auto &caseVal = il::core::switchCaseValue(instr, i);
                 if (caseVal.kind != il::core::Value::Kind::ConstInt) {
@@ -2087,11 +2103,12 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr) {
                     fail(instr.loc, "V-BC-SWITCH-CASE", "switch.i32 case out of i32 range");
                 }
                 int32_t caseInt = static_cast<int32_t>(caseVal.i64);
-                /// @brief Emit.
+                if (!seenCases.insert(caseInt).second) {
+                    fail(instr.loc, "V-BC-SWITCH-CASE", "switch.i32 has duplicate case value");
+                }
                 emit(static_cast<uint32_t>(caseInt)); // case value
                 casePositions.push_back(
                     {caseInt, static_cast<uint32_t>(currentFunc_->code.size())});
-                /// @brief Emit.
                 emit(0u); // placeholder for target offset
                 switchTargets.push_back(makeSwitchTarget(i + 1, il::core::switchCaseLabel(instr, i)));
             }

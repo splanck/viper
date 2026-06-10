@@ -206,11 +206,17 @@ static void button_paint(vg_widget_t *widget, void *canvas) {
         bg_color = theme->colors.bg_disabled;
         fg_color = theme->colors.fg_disabled;
         border_color = theme->colors.border_secondary;
-    } else if (widget->state & VG_STATE_PRESSED) {
-        bg_color = vg_color_darken(bg_color, button->style == VG_BUTTON_STYLE_TEXT ? 0.04f : 0.10f);
-    } else if (widget->state & VG_STATE_HOVERED) {
-        bg_color =
-            vg_color_lighten(bg_color, button->style == VG_BUTTON_STYLE_TEXT ? 0.03f : 0.05f);
+    } else {
+        // Hover/press tints scale with the eased animation amounts so the
+        // button fades between states instead of snapping.
+        float hover_amt =
+            (button->style == VG_BUTTON_STYLE_TEXT ? 0.03f : 0.05f) * widget->anim_hover;
+        float press_amt =
+            (button->style == VG_BUTTON_STYLE_TEXT ? 0.04f : 0.10f) * widget->anim_press;
+        if (hover_amt > 0.001f)
+            bg_color = vg_color_lighten(bg_color, hover_amt);
+        if (press_amt > 0.001f)
+            bg_color = vg_color_darken(bg_color, press_amt);
     }
 
     // Refined Depth rendering: a soft accent glow when focused (or a resting
@@ -219,13 +225,15 @@ static void button_paint(vg_widget_t *widget, void *canvas) {
     bool is_text_style = (button->style == VG_BUTTON_STYLE_TEXT);
     bool disabled = (widget->state & VG_STATE_DISABLED) != 0;
     bool pressed = (widget->state & VG_STATE_PRESSED) != 0;
-    bool focused = (widget->state & VG_STATE_FOCUSED) != 0;
     float fx = widget->x, fy = widget->y, fw = widget->width, fh = widget->height;
     float frad = (float)radius;
 
-    if (focused && !disabled && !is_text_style) {
+    // Focus glow fades in/out with the eased focus amount; otherwise a resting
+    // elevation lift (skipped while pressed for a tactile "pushed in" feel).
+    if (widget->anim_focus > 0.01f && !disabled && !is_text_style) {
+        uint8_t glow_a = (uint8_t)((float)theme->focus.glow_alpha * widget->anim_focus);
         vg_draw_round_rect_shadow(win, fx, fy, fw, fh, frad, theme->focus.glow_width * 2.5f, 0, 0,
-                                  theme->focus.glow_alpha, theme->focus.glow_color);
+                                  glow_a, theme->focus.glow_color);
     } else if (!pressed && !disabled && !is_text_style) {
         vg_elevation_t el = theme->elevation.level1;
         vg_draw_round_rect_shadow(win, fx, fy, fw, fh, frad, el.blur, el.dx, el.dy, el.alpha,

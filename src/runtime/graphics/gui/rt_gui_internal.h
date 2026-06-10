@@ -308,6 +308,7 @@ static inline int rt_gui_widget_type_accepts_runtime_children(vg_widget_type_t t
         case VG_WIDGET_SPLITPANE:
         case VG_WIDGET_DIALOG:
         case VG_WIDGET_LISTVIEW:
+        case VG_WIDGET_GROUPBOX:
         case VG_WIDGET_CUSTOM:
             return 1;
         case VG_WIDGET_LABEL:

@@ -124,6 +124,7 @@ typedef struct vg_dialog {
     int drag_offset_y;         ///< Drag offset Y
     int hovered_button;        ///< Currently hovered button (-1 = none)
     bool closing_in_progress;  ///< Re-entrancy guard for vg_dialog_close
+    float content_scroll_y;    ///< Scroll offset for content taller than the body region.
 
     // Callbacks
     void *user_data;           ///< Legacy user data (= on_result_user_data; kept for ABI)

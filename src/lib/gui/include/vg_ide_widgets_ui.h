@@ -900,6 +900,38 @@ void vg_floatingpanel_add_child(vg_floatingpanel_t *panel, vg_widget_t *child);
 /// @brief Returns true when @p panel is a live floating-panel widget.
 bool vg_floatingpanel_is_live(const vg_floatingpanel_t *panel);
 
+//==========================================================================
+// Group Box — titled "card" container for grouping related controls
+//==========================================================================
+
+/// @brief Titled card container. Stacks its children vertically below a title
+///        and paints an elevated, rounded card background through the shared
+///        anti-aliased drawing core (Refined Depth).
+typedef struct vg_groupbox {
+    vg_widget_t base;      ///< Base widget.
+    char *title;           ///< Title text (heap-owned; never NULL).
+    uint32_t bg_color;     ///< Card background (0 = theme bg_secondary).
+    uint32_t border_color; ///< Border colour (0 = theme border_primary).
+    uint32_t title_color;  ///< Title text colour (0 = theme fg_primary).
+    float corner_radius;   ///< Corner radius in pixels.
+    float padding;         ///< Inner padding in pixels.
+    float spacing;         ///< Gap between stacked children.
+    vg_font_t *font;       ///< Title font.
+    float font_size;       ///< Title font size.
+} vg_groupbox_t;
+
+/// @brief Create a titled card container attached to @p parent (may be NULL).
+vg_groupbox_t *vg_groupbox_create(vg_widget_t *parent, const char *title);
+
+/// @brief Destroy a group box and all its children.
+void vg_groupbox_destroy(vg_groupbox_t *gb);
+
+/// @brief Replace the group box title text (copied internally).
+void vg_groupbox_set_title(vg_groupbox_t *gb, const char *title);
+
+/// @brief Add a control as a child of the group box.
+void vg_groupbox_add_child(vg_groupbox_t *gb, vg_widget_t *child);
+
 #ifdef __cplusplus
 }
 #endif

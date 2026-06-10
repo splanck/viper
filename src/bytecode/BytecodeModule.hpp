@@ -30,8 +30,11 @@
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <limits>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace viper {
@@ -42,6 +45,7 @@ namespace detail {
 /// @details Performs a linear scan for an existing match. If found, returns
 ///          its index; otherwise appends the value and returns the new index.
 ///          This ensures the same constant value always maps to the same pool index.
+///          Throws when the pool would exceed the module's 32-bit index model.
 /// @tparam T Element type stored in the pool.
 /// @tparam Eq Equality predicate type for comparing elements.
 /// @param pool  The pool vector to search and potentially append to.
@@ -55,6 +59,8 @@ inline uint32_t findOrAddToPool(std::vector<T> &pool, const T &value, Eq eq) {
             return static_cast<uint32_t>(i);
         }
     }
+    if (pool.size() > std::numeric_limits<uint32_t>::max())
+        throw std::length_error("bytecode constant pool exceeds 32-bit index width");
     uint32_t idx = static_cast<uint32_t>(pool.size());
     pool.push_back(value);
     return idx;
@@ -215,7 +221,8 @@ struct BytecodeModule {
     /// @return Pointer to the BytecodeFunction if found; nullptr otherwise.
     const BytecodeFunction *findFunction(const std::string &name) const {
         auto it = functionIndex.find(name);
-        if (it != functionIndex.end() && it->second < functions.size()) {
+        if (it != functionIndex.end() && it->second < functions.size() &&
+            functions[it->second].name == name) {
             return &functions[it->second];
         }
         return nullptr;
@@ -226,9 +233,12 @@ struct BytecodeModule {
     /// @return The index of the newly added function in the functions vector.
     uint32_t addFunction(BytecodeFunction fn) {
         auto existing = functionIndex.find(fn.name);
-        if (existing != functionIndex.end() && existing->second < functions.size()) {
+        if (existing != functionIndex.end() && existing->second < functions.size() &&
+            functions[existing->second].name == fn.name) {
             return existing->second;
         }
+        if (functions.size() > std::numeric_limits<uint32_t>::max())
+            throw std::length_error("bytecode function table exceeds 32-bit index width");
         uint32_t idx = static_cast<uint32_t>(functions.size());
         functionIndex[fn.name] = idx;
         functions.push_back(std::move(fn));
@@ -281,6 +291,8 @@ struct BytecodeModule {
         if (it != nativeFuncIndex.end()) {
             return it->second;
         }
+        if (nativeFuncs.size() > std::numeric_limits<uint32_t>::max())
+            throw std::length_error("bytecode native table exceeds 32-bit index width");
         uint32_t idx = static_cast<uint32_t>(nativeFuncs.size());
         nativeFuncIndex[key] = idx;
         NativeFuncRef ref;
@@ -304,9 +316,12 @@ struct BytecodeModule {
     /// @return The index of the global descriptor.
     uint32_t addGlobal(GlobalInfo global) {
         auto it = globalIndex.find(global.name);
-        if (it != globalIndex.end())
+        if (it != globalIndex.end() && it->second < globals.size() &&
+            globals[it->second].name == global.name)
             return it->second;
 
+        if (globals.size() > std::numeric_limits<uint32_t>::max())
+            throw std::length_error("bytecode global table exceeds 32-bit index width");
         uint32_t idx = static_cast<uint32_t>(globals.size());
         globalIndex[global.name] = idx;
         globals.push_back(std::move(global));

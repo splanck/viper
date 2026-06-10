@@ -2762,6 +2762,10 @@ RT_FUNC(GuiFloatingPanelSetPosition, rt_floatingpanel_set_position,"Viper.GUI.Fl
 RT_FUNC(GuiFloatingPanelSetSize,     rt_floatingpanel_set_size,    "Viper.GUI.FloatingPanel.SetSize",     "void(obj,f64,f64)")
 RT_FUNC(GuiFloatingPanelSetVisible,  rt_floatingpanel_set_visible, "Viper.GUI.FloatingPanel.SetVisible",  "void(obj,i64)")
 RT_FUNC(GuiFloatingPanelAddChild,    rt_floatingpanel_add_child,   "Viper.GUI.FloatingPanel.AddChild",    "void(obj,obj)")
+RT_FUNC(GuiGroupBoxNew,      rt_groupbox_new,       "Viper.GUI.GroupBox.New",      "obj(obj,str)")
+RT_FUNC(GuiGroupBoxDestroy,  rt_groupbox_destroy,   "Viper.GUI.GroupBox.Destroy",  "void(obj)")
+RT_FUNC(GuiGroupBoxSetTitle, rt_groupbox_set_title, "Viper.GUI.GroupBox.SetTitle", "void(obj,str)")
+RT_FUNC(GuiGroupBoxAddChild, rt_groupbox_add_child, "Viper.GUI.GroupBox.AddChild", "void(obj,obj)")
 
 //=============================================================================
 // GUI - MESSAGEBOX (Phase 5)
@@ -13041,6 +13045,19 @@ RT_CLASS_BEGIN("Viper.Zia.ProjectIndex", ZiaProjectIndex, "none", none)
 RT_CLASS_END()
 
 RT_CLASS_BEGIN("Viper.Zia.ProjectIndex.Handle", ZiaProjectIndexHandle, "obj", none)
+RT_CLASS_END()
+
+// Viper.GUI.GroupBox - titled "card" container for grouping related controls
+RT_CLASS_BEGIN("Viper.GUI.GroupBox", GuiGroupBox, "obj", GuiGroupBoxNew)
+    RT_METHOD("Destroy",     "void()",        GuiGroupBoxDestroy)
+    RT_METHOD("SetTitle",    "void(str)",     GuiGroupBoxSetTitle)
+    RT_METHOD("AddChild",    "void(obj)",     GuiGroupBoxAddChild)
+    RT_METHOD("SetEnabled",  "void(i64)",     GuiWidgetSetEnabled)
+    RT_METHOD("SetPreferredSize", "void(f64,f64)", GuiWidgetSetPreferredSize)
+    RT_METHOD("SetMaxSize",  "void(f64,f64)", GuiWidgetSetMaxSize)
+    RT_METHOD("SetFlex",     "void(f64)",     GuiWidgetSetFlex)
+    RT_METHOD("SetMargin",   "void(i64)",     GuiWidgetSetMargin)
+    RT_METHOD("IsVisible",   "i64()",         GuiWidgetIsVisible)
 RT_CLASS_END()
 
 // Viper.GUI.FloatingPanel - floating overlay panel for popups/IntelliSense

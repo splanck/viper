@@ -267,6 +267,55 @@ void rt_floatingpanel_add_child(void *panel, void *child) {
     }
 }
 
+/// @brief Create a titled "card" group box attached to @p parent.
+void *rt_groupbox_new(void *parent, rt_string title) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *parent_widget = rt_gui_widget_parent_container_from_handle(parent);
+    if (parent && !parent_widget)
+        return NULL;
+    char *ctitle = rt_string_to_gui_cstr(title);
+    vg_groupbox_t *gb = vg_groupbox_create(parent_widget, ctitle);
+    free(ctitle);
+    if (gb)
+        rt_gui_apply_default_font(&gb->base);
+    return gb;
+}
+
+/// @brief Destroy a group box and its children.
+void rt_groupbox_destroy(void *gb) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_groupbox_t *g = (vg_groupbox_t *)rt_gui_widget_handle_checked_type(gb, VG_WIDGET_GROUPBOX);
+    if (g)
+        rt_widget_destroy(&g->base);
+}
+
+/// @brief Replace the group box title text.
+void rt_groupbox_set_title(void *gb, rt_string title) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_groupbox_t *g = (vg_groupbox_t *)rt_gui_widget_handle_checked_type(gb, VG_WIDGET_GROUPBOX);
+    if (!g)
+        return;
+    char *ctitle = rt_string_to_gui_cstr(title);
+    vg_groupbox_set_title(g, ctitle);
+    free(ctitle);
+}
+
+/// @brief Add a control as a child of the group box.
+void rt_groupbox_add_child(void *gb, void *child) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_groupbox_t *g = (vg_groupbox_t *)rt_gui_widget_handle_checked_type(gb, VG_WIDGET_GROUPBOX);
+    vg_widget_t *child_widget = rt_gui_widget_handle_checked(child);
+    if (g && child_widget) {
+        rt_gui_app_t *old_app = rt_gui_app_from_widget(child_widget);
+        rt_gui_app_t *new_app = rt_gui_app_from_widget(&g->base);
+        if (old_app && old_app != new_app)
+            rt_widget_forget_runtime_refs(old_app, child_widget);
+        vg_groupbox_add_child(g, child_widget);
+        if (new_app && old_app != new_app)
+            rt_gui_apply_default_font(child_widget);
+    }
+}
+
 #else /* !VIPER_ENABLE_GRAPHICS */
 
 /// @brief Stub: graphics disabled — returns NULL; no image widget is created.
@@ -341,6 +390,30 @@ void rt_floatingpanel_set_visible(void *panel, int64_t visible) {
 /// @brief Add a child widget to a floating panel's content area.
 void rt_floatingpanel_add_child(void *panel, void *child) {
     (void)panel;
+    (void)child;
+}
+
+/// @brief Stub: graphics disabled — no group box is created.
+void *rt_groupbox_new(void *parent, rt_string title) {
+    (void)parent;
+    (void)title;
+    return NULL;
+}
+
+/// @brief Destroy group box stub (graphics disabled).
+void rt_groupbox_destroy(void *gb) {
+    (void)gb;
+}
+
+/// @brief Set group box title stub (graphics disabled).
+void rt_groupbox_set_title(void *gb, rt_string title) {
+    (void)gb;
+    (void)title;
+}
+
+/// @brief Add child to group box stub (graphics disabled).
+void rt_groupbox_add_child(void *gb, void *child) {
+    (void)gb;
     (void)child;
 }
 

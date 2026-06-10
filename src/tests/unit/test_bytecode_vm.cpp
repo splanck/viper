@@ -2062,6 +2062,82 @@ static void test_truncated_extended_instruction() {
     std::cout << "PASSED\n";
 }
 
+static void test_branch_target_rejects_inline_word() {
+    std::cout << "  test_branch_target_rejects_inline_word: ";
+
+    BytecodeModule bcModule;
+    BytecodeFunction func;
+    func.name = "main";
+    func.numParams = 0;
+    func.numLocals = 0;
+    func.maxStack = 1;
+    func.hasReturn = true;
+    func.code.push_back(encodeOpI16(BCOpcode::JUMP, 1));
+    func.code.push_back(encodeOp(BCOpcode::LOAD_I32));
+    func.code.push_back(123u);
+    func.code.push_back(encodeOp(BCOpcode::RETURN));
+    bcModule.addFunction(std::move(func));
+
+    for (bool threaded : {false, true})
+        expectMainTrap(bcModule, threaded, TrapKind::InvalidOpcode);
+
+    std::cout << "PASSED\n";
+}
+
+static void test_alloca_typed_memory_range_check() {
+    std::cout << "  test_alloca_typed_memory_range_check: ";
+
+    BytecodeModule module = createDirectBytecodeModule({encodeOpI8(BCOpcode::LOAD_I8, 1),
+                                                        encodeOp(BCOpcode::ALLOCA),
+                                                        encodeOpI8(BCOpcode::LOAD_I8, 1),
+                                                        encodeOp(BCOpcode::GEP),
+                                                        encodeOp8(BCOpcode::LOAD_I8, 42),
+                                                        encodeOp(BCOpcode::STORE_I64_MEM),
+                                                        encodeOp(BCOpcode::LOAD_ONE),
+                                                        encodeOp(BCOpcode::RETURN)},
+                                                       0,
+                                                       2);
+
+    for (bool threaded : {false, true})
+        expectMainTrap(module, threaded, TrapKind::Bounds);
+
+    std::cout << "PASSED\n";
+}
+
+static void test_indirect_call_arity_mismatch_traps() {
+    std::cout << "  test_indirect_call_arity_mismatch_traps: ";
+
+    BytecodeModule module;
+
+    BytecodeFunction callee;
+    callee.name = "callee";
+    callee.numParams = 1;
+    callee.numLocals = 1;
+    callee.maxStack = 1;
+    callee.hasReturn = true;
+    callee.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 0));
+    callee.code.push_back(encodeOp(BCOpcode::RETURN));
+    module.addFunction(std::move(callee));
+
+    const uint16_t calleePtr = addI64(module, std::numeric_limits<int64_t>::min());
+
+    BytecodeFunction mainFunc;
+    mainFunc.name = "main";
+    mainFunc.numParams = 0;
+    mainFunc.numLocals = 0;
+    mainFunc.maxStack = 1;
+    mainFunc.hasReturn = true;
+    mainFunc.code.push_back(encodeOp16(BCOpcode::LOAD_I64, calleePtr));
+    mainFunc.code.push_back(encodeOp8(BCOpcode::CALL_INDIRECT, 0));
+    mainFunc.code.push_back(encodeOp(BCOpcode::RETURN));
+    module.addFunction(std::move(mainFunc));
+
+    for (bool threaded : {false, true})
+        expectMainTrap(module, threaded, TrapKind::RuntimeError);
+
+    std::cout << "PASSED\n";
+}
+
 static void test_trusted_dispatch_toggle() {
     std::cout << "  test_trusted_dispatch_toggle: ";
 
@@ -2484,6 +2560,9 @@ int main() {
     test_entry_arity_mismatch();
     test_invalid_branch_target();
     test_truncated_extended_instruction();
+    test_branch_target_rejects_inline_word();
+    test_alloca_typed_memory_range_check();
+    test_indirect_call_arity_mismatch_traps();
     test_trusted_dispatch_toggle();
     test_native_refs_cache_runtime_metadata();
     test_array_fast_path_bytecode_ops();

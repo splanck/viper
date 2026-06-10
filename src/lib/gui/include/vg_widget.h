@@ -108,6 +108,7 @@ typedef enum vg_widget_type {
     VG_WIDGET_COLORSWATCH,  ///< Single-color preview swatch.
     VG_WIDGET_COLORPALETTE, ///< Grid of color swatches for quick selection.
     VG_WIDGET_COLORPICKER,  ///< Full RGB(A) color picker with sliders.
+    VG_WIDGET_GROUPBOX,     ///< Titled "card" container grouping related controls.
     VG_WIDGET_CUSTOM,       ///< Application-defined custom widget.
 } vg_widget_type_t;
 
@@ -307,6 +308,13 @@ struct vg_widget {
     bool needs_paint;         ///< Dirty flag: widget must be repainted.
     bool manual_position;     ///< Runtime: parent layout should not overwrite x/y.
     bool _paint_screen_space; ///< Runtime: x/y are temporarily absolute during paint.
+
+    // Animation: eased 0..1 state amounts, advanced each paint by
+    // vg_widget_anim_tick() and read by widget paint code for smooth
+    // hover/press/focus transitions. Snap to target when motion is disabled.
+    float anim_hover; ///< Eased hover amount (0 = idle, 1 = hovered).
+    float anim_press; ///< Eased press amount.
+    float anim_focus; ///< Eased focus amount.
 
     // Tab order
     int tab_index; ///< Explicit tab-stop position. Widgets with tab_index >= 0 are visited in
@@ -718,6 +726,14 @@ void vg_widget_layout(vg_widget_t *root, float available_width, float available_
 /// @param root   The root of the widget subtree to paint.
 /// @param canvas Opaque canvas handle (platform-specific renderer).
 void vg_widget_paint(vg_widget_t *root, void *canvas);
+
+/// @brief Advance a widget's eased animation amounts toward its current state.
+/// @details Called once per widget per frame by the paint pass. Uses the active
+///          theme's motion durations and the canvas frame time. When motion is
+///          disabled the amounts snap to their targets (no animation).
+/// @param widget The widget whose anim_hover/press/focus to advance.
+/// @param canvas Canvas handle, used to read the last frame duration.
+void vg_widget_anim_tick(vg_widget_t *widget, void *canvas);
 
 /// @brief Mark a widget as needing to be repainted.
 ///

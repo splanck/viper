@@ -58,6 +58,7 @@ set(VG_GUI_IDE_WIDGET_SOURCES
         src/widgets/vg_minimap.c
         src/widgets/vg_notification.c
         src/widgets/vg_floatingpanel.c
+        src/widgets/vg_groupbox.c
 )
 
 # Platform-specific native dialogs

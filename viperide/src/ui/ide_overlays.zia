@@ -402,15 +402,12 @@ class IdeOverlays {
         body.SetSpacing(20.0);
         bodyScroll.AddChild(body);
 
-        var appearanceTitle = GUI.Label.New(body, "Appearance");
-        appearanceTitle.SetMargin(1);
-        GUI.Label.New(
-            body,
-            "Choose the editor font and overall color scheme.");
+        var appCard = GUI.GroupBox.New(body, "Appearance");
+        appCard.SetMargin(2);
 
         var fontPathRow = GUI.HBox.New();
         fontPathRow.SetSpacing(16.0);
-        body.AddChild(fontPathRow);
+        appCard.AddChild(fontPathRow);
         var fontPathMeta = GUI.VBox.New();
         fontPathMeta.SetSpacing(4.0);
         fontPathMeta.SetSize(FIELD_LABEL_WIDTH, 0);
@@ -436,7 +433,7 @@ class IdeOverlays {
 
         var fontSizeRow = GUI.HBox.New();
         fontSizeRow.SetSpacing(16.0);
-        body.AddChild(fontSizeRow);
+        appCard.AddChild(fontSizeRow);
         var fontSizeMeta = GUI.VBox.New();
         fontSizeMeta.SetSpacing(4.0);
         fontSizeMeta.SetSize(FIELD_LABEL_WIDTH, 0);
@@ -457,7 +454,7 @@ class IdeOverlays {
 
         var tabWidthRow = GUI.HBox.New();
         tabWidthRow.SetSpacing(16.0);
-        body.AddChild(tabWidthRow);
+        appCard.AddChild(tabWidthRow);
         var tabWidthMeta = GUI.VBox.New();
         tabWidthMeta.SetSpacing(4.0);
         tabWidthMeta.SetSize(FIELD_LABEL_WIDTH, 0);
@@ -476,7 +473,7 @@ class IdeOverlays {
 
         var themeRow = GUI.HBox.New();
         themeRow.SetSpacing(16.0);
-        body.AddChild(themeRow);
+        appCard.AddChild(themeRow);
         var themeMeta = GUI.VBox.New();
         themeMeta.SetSpacing(4.0);
         themeMeta.SetSize(FIELD_LABEL_WIDTH, 0);
@@ -487,36 +484,30 @@ class IdeOverlays {
         themeDropdown.SetFlex(1.0);
         themeDropdown.AddItem("Dark");
         themeDropdown.AddItem("Light");
-        resetAppearanceButton = GUI.Button.New(body, "Restore Appearance Defaults");
+        resetAppearanceButton = GUI.Button.New(appCard, "Restore Appearance Defaults");
         resetAppearanceButton.SetStyle(2);
 
-        var togglesTitle = GUI.Label.New(body, "Editing");
-        togglesTitle.SetMargin(1);
-        GUI.Label.New(
-            body,
-            "These options control navigation, diagnostics, and code structure aids.");
+        var editCard = GUI.GroupBox.New(body, "Editing");
+        editCard.SetMargin(2);
 
-        minimapCheck = GUI.Checkbox.New(body, "Show the minimap");
-        autoCheckCheck = GUI.Checkbox.New(body, "Run diagnostics while typing");
-        codeFoldingCheck = GUI.Checkbox.New(body, "Enable code folding");
-        wordWrapCheck = GUI.Checkbox.New(body, "Wrap long lines");
-        lineNumbersCheck = GUI.Checkbox.New(body, "Show line numbers");
-        insertSpacesCheck = GUI.Checkbox.New(body, "Insert spaces for Tab");
-        trimWhitespaceCheck = GUI.Checkbox.New(body, "Trim trailing whitespace on save");
-        finalNewlineCheck = GUI.Checkbox.New(body, "Ensure final newline on save");
-        autoSaveCheck = GUI.Checkbox.New(body, "Auto-save named files after idle");
-        resetEditingButton = GUI.Button.New(body, "Restore Editing Defaults");
+        minimapCheck = GUI.Checkbox.New(editCard, "Show the minimap");
+        autoCheckCheck = GUI.Checkbox.New(editCard, "Run diagnostics while typing");
+        codeFoldingCheck = GUI.Checkbox.New(editCard, "Enable code folding");
+        wordWrapCheck = GUI.Checkbox.New(editCard, "Wrap long lines");
+        lineNumbersCheck = GUI.Checkbox.New(editCard, "Show line numbers");
+        insertSpacesCheck = GUI.Checkbox.New(editCard, "Insert spaces for Tab");
+        trimWhitespaceCheck = GUI.Checkbox.New(editCard, "Trim trailing whitespace on save");
+        finalNewlineCheck = GUI.Checkbox.New(editCard, "Ensure final newline on save");
+        autoSaveCheck = GUI.Checkbox.New(editCard, "Auto-save named files after idle");
+        resetEditingButton = GUI.Button.New(editCard, "Restore Editing Defaults");
         resetEditingButton.SetStyle(2);
 
-        var intelliTitle = GUI.Label.New(body, "IntelliSense");
-        intelliTitle.SetMargin(1);
-        GUI.Label.New(
-            body,
-            "Tune background editor work without changing project language settings.");
+        var intelliCard = GUI.GroupBox.New(body, "IntelliSense");
+        intelliCard.SetMargin(2);
 
         var diagnosticsDelayRow = GUI.HBox.New();
         diagnosticsDelayRow.SetSpacing(16.0);
-        body.AddChild(diagnosticsDelayRow);
+        intelliCard.AddChild(diagnosticsDelayRow);
         var diagnosticsDelayMeta = GUI.VBox.New();
         diagnosticsDelayMeta.SetSpacing(4.0);
         diagnosticsDelayMeta.SetSize(FIELD_LABEL_WIDTH, 0);
@@ -531,7 +522,7 @@ class IdeOverlays {
 
         var completionDelayRow = GUI.HBox.New();
         completionDelayRow.SetSpacing(16.0);
-        body.AddChild(completionDelayRow);
+        intelliCard.AddChild(completionDelayRow);
         var completionDelayMeta = GUI.VBox.New();
         completionDelayMeta.SetSpacing(4.0);
         completionDelayMeta.SetSize(FIELD_LABEL_WIDTH, 0);
@@ -543,19 +534,17 @@ class IdeOverlays {
         completionDelaySpinner.SetStep(25.0);
         completionDelaySpinner.SetDecimals(0);
         completionDelaySpinner.SetSize(130, 0);
-        resetIntelliSenseButton = GUI.Button.New(body, "Restore IntelliSense Defaults");
+        resetIntelliSenseButton = GUI.Button.New(intelliCard, "Restore IntelliSense Defaults");
         resetIntelliSenseButton.SetStyle(2);
 
-        var startupTitle = GUI.Label.New(body, "Startup and safety");
-        startupTitle.SetMargin(1);
-        GUI.Label.New(
-            body,
-            "These options control restore behavior and destructive close prompts.");
+        var startupCard = GUI.GroupBox.New(body, "Startup and safety");
+        startupCard.SetMargin(2);
 
-        restoreSessionCheck = GUI.Checkbox.New(body, "Restore open files on launch");
-        restoreLastProjectCheck = GUI.Checkbox.New(body, "Restore the last project on launch");
-        confirmCloseCheck = GUI.Checkbox.New(body, "Confirm before closing unsaved files");
-        resetStartupButton = GUI.Button.New(body, "Restore Startup Defaults");
+        restoreSessionCheck = GUI.Checkbox.New(startupCard, "Restore open files on launch");
+        restoreLastProjectCheck =
+            GUI.Checkbox.New(startupCard, "Restore the last project on launch");
+        confirmCloseCheck = GUI.Checkbox.New(startupCard, "Confirm before closing unsaved files");
+        resetStartupButton = GUI.Button.New(startupCard, "Restore Startup Defaults");
         resetStartupButton.SetStyle(2);
 
         var footer = GUI.HBox.New();

@@ -3181,6 +3181,16 @@ void rt_floatingpanel_set_visible(void *panel, int64_t visible);
 /// @brief Add a widget as a private (overlay-only) child.
 void rt_floatingpanel_add_child(void *panel, void *child);
 
+// GroupBox — titled "card" container for grouping related controls.
+/// @brief Create a titled card group box attached to a parent container.
+void *rt_groupbox_new(void *parent, rt_string title);
+/// @brief Destroy a group box and its children.
+void rt_groupbox_destroy(void *gb);
+/// @brief Replace the group box title text.
+void rt_groupbox_set_title(void *gb, rt_string title);
+/// @brief Add a control as a child of the group box.
+void rt_groupbox_add_child(void *gb, void *child);
+
 #ifdef __cplusplus
 }
 #endif

@@ -32,6 +32,7 @@
 #include <span>
 #include <sstream>
 #include <string_view>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -420,51 +421,337 @@ void BytecodeVM::copyExecutionEnvironmentFrom(const BytecodeVM &other) {
     applyExecutionEnvironment(other.captureExecutionEnvironment());
 }
 
-/// @brief Validate module header and name-index tables before binding it.
-/// @details This is intentionally structural rather than a full verifier: it
-///          checks the invariants the VM uses for trusted dispatch and direct
-///          lookup safety, while preserving support for modules constructed
-///          programmatically in tests.
-bool BytecodeVM::validateModuleForLoad(const BytecodeModule *module) {
-    if (!module) {
-        trap(TrapKind::RuntimeError, "No bytecode module supplied");
+/// @brief Validate module header, lookup tables, function metadata, and bytecode.
+/// @details This is stronger than the hot-path interpreter guards: it walks
+///          every instruction, validates inline-word payloads, verifies branch
+///          targets land on instruction boundaries, and checks side-table
+///          indices before trusted dispatch can be enabled.
+bool BytecodeVM::validateModuleForLoad(const BytecodeModule *module,
+                                       ModuleValidationFailure &failure) const {
+    auto fail = [&failure](TrapKind kind, std::string message) {
+        failure.kind = kind;
+        failure.message = std::move(message);
         return false;
-    }
-    if (module->magic != kBytecodeModuleMagic) {
-        trap(TrapKind::InvalidOpcode, "Invalid bytecode module magic");
-        return false;
-    }
-    if (module->version != kBytecodeVersion) {
-        trap(TrapKind::InvalidOpcode, "Unsupported bytecode module version");
-        return false;
+    };
+
+    if (!module)
+        return fail(TrapKind::RuntimeError, "No bytecode module supplied");
+    if (module->magic != kBytecodeModuleMagic)
+        return fail(TrapKind::InvalidOpcode, "Invalid bytecode module magic");
+    if (module->version != kBytecodeVersion)
+        return fail(TrapKind::InvalidOpcode, "Unsupported bytecode module version");
+    if (module->functions.size() > std::numeric_limits<uint32_t>::max())
+        return fail(TrapKind::InvalidOpcode, "Function table exceeds bytecode index width");
+    if (module->nativeFuncs.size() > std::numeric_limits<uint16_t>::max())
+        return fail(TrapKind::InvalidOpcode, "Native function table exceeds bytecode index width");
+    if (module->globals.size() > std::numeric_limits<uint16_t>::max())
+        return fail(TrapKind::InvalidOpcode, "Global table exceeds bytecode index width");
+    if (module->i64Pool.size() > std::numeric_limits<uint16_t>::max() ||
+        module->f64Pool.size() > std::numeric_limits<uint16_t>::max() ||
+        module->stringPool.size() > std::numeric_limits<uint16_t>::max()) {
+        return fail(TrapKind::InvalidOpcode, "Constant pool exceeds bytecode index width");
     }
 
     for (const auto &entry : module->functionIndex) {
-        if (entry.second >= module->functions.size()) {
-            trap(TrapKind::InvalidOpcode, "Function index table out of range");
-            return false;
-        }
-        if (module->functions[entry.second].name != entry.first) {
-            trap(TrapKind::InvalidOpcode, "Function index table name mismatch");
-            return false;
-        }
+        if (entry.second >= module->functions.size())
+            return fail(TrapKind::InvalidOpcode, "Function index table out of range");
+        if (module->functions[entry.second].name != entry.first)
+            return fail(TrapKind::InvalidOpcode, "Function index table name mismatch");
     }
+    for (size_t i = 0; i < module->functions.size(); ++i) {
+        const auto &fn = module->functions[i];
+        auto it = module->functionIndex.find(fn.name);
+        if (fn.name.empty())
+            return fail(TrapKind::InvalidOpcode, "Function name must not be empty");
+        if (it == module->functionIndex.end() || it->second != i)
+            return fail(TrapKind::InvalidOpcode, "Function table missing name index entry");
+    }
+
     for (const auto &entry : module->nativeFuncIndex) {
-        if (entry.second >= module->nativeFuncs.size()) {
-            trap(TrapKind::InvalidOpcode, "Native function index table out of range");
-            return false;
-        }
+        if (entry.second >= module->nativeFuncs.size())
+            return fail(TrapKind::InvalidOpcode, "Native function index table out of range");
     }
+    for (size_t i = 0; i < module->nativeFuncs.size(); ++i) {
+        const NativeFuncRef &ref = module->nativeFuncs[i];
+        if (ref.name.empty())
+            return fail(TrapKind::InvalidOpcode, "Native function name must not be empty");
+        if (ref.paramCount > std::numeric_limits<uint8_t>::max())
+            return fail(TrapKind::InvalidOpcode, "Native function arity exceeds bytecode width");
+        const std::string key = detail::nativeFunctionKey(ref.name, ref.paramCount, ref.hasReturn);
+        auto found = module->nativeFuncIndex.find(key);
+        if (found == module->nativeFuncIndex.end() || found->second != i)
+            return fail(TrapKind::InvalidOpcode, "Native function table missing signature key");
+    }
+
     for (const auto &entry : module->globalIndex) {
-        if (entry.second >= module->globals.size()) {
-            trap(TrapKind::InvalidOpcode, "Global index table out of range");
+        if (entry.second >= module->globals.size())
+            return fail(TrapKind::InvalidOpcode, "Global index table out of range");
+        if (module->globals[entry.second].name != entry.first)
+            return fail(TrapKind::InvalidOpcode, "Global index table name mismatch");
+    }
+    for (size_t i = 0; i < module->globals.size(); ++i) {
+        const GlobalInfo &global = module->globals[i];
+        auto found = module->globalIndex.find(global.name);
+        if (global.name.empty())
+            return fail(TrapKind::InvalidOpcode, "Global name must not be empty");
+        if (found == module->globalIndex.end() || found->second != i)
+            return fail(TrapKind::InvalidOpcode, "Global table missing name index entry");
+        if (global.initData.size() > sizeof(BCSlot))
+            return fail(TrapKind::InvalidOpcode, "Global initializer exceeds slot width");
+    }
+
+    for (size_t i = 0; i < module->functions.size(); ++i) {
+        if (!validateFunctionForLoad(*module, module->functions[i], i, failure))
             return false;
+    }
+    return true;
+}
+
+/// @brief Validate one bytecode function before load() publishes the module.
+/// @details The scan records all instruction-start PCs, validates operands
+///          that index module tables, checks variable-length instruction
+///          payloads, then verifies every branch/EH/switch target points to a
+///          valid instruction boundary rather than into an inline data word.
+bool BytecodeVM::validateFunctionForLoad(const BytecodeModule &module,
+                                         const BytecodeFunction &func,
+                                         size_t functionIndex,
+                                         ModuleValidationFailure &failure) const {
+    auto fail = [&failure, &func](std::string message) {
+        failure.kind = TrapKind::InvalidOpcode;
+        failure.message = "Invalid bytecode function @" + func.name + ": " + std::move(message);
+        return false;
+    };
+
+    if (functionIndex > std::numeric_limits<uint32_t>::max())
+        return fail("function index exceeds bytecode width");
+    if (func.numLocals < func.numParams)
+        return fail("parameter count exceeds local count");
+    if (func.localIsString.size() > func.numLocals)
+        return fail("string-local bitmap exceeds local count");
+    if (func.code.empty())
+        return fail("function has no bytecode");
+    if (func.code.size() > std::numeric_limits<uint32_t>::max())
+        return fail("code stream exceeds bytecode PC width");
+    if (!func.lineTable.empty() && func.lineTable.size() != func.code.size())
+        return fail("line table size does not match code size");
+    if (!func.sourceFileTable.empty() && func.sourceFileTable.size() != func.code.size())
+        return fail("source file table size does not match code size");
+    if (!func.blockLabelTable.empty() && func.blockLabelTable.size() != func.code.size())
+        return fail("block label table size does not match code size");
+    if ((func.sourceFileIdx != 0 || !module.sourceFiles.empty()) &&
+        func.sourceFileIdx >= module.sourceFiles.size()) {
+        return fail("default source file index out of range");
+    }
+    for (uint32_t sourceEntry : func.sourceFileTable) {
+        if (sourceEntry > module.sourceFiles.size())
+            return fail("per-PC source file index out of range");
+    }
+    for (const LocalVarInfo &local : func.localVars) {
+        if (local.localIdx >= func.numLocals)
+            return fail("local variable debug metadata local index out of range");
+        if (local.startPc > local.endPc || local.endPc > func.code.size())
+            return fail("local variable debug metadata PC range out of range");
+    }
+
+    std::vector<uint8_t> instructionStarts(func.code.size(), 0);
+    struct TargetCheck {
+        uint32_t target = 0;
+        const char *site = nullptr;
+    };
+    std::vector<TargetCheck> targets;
+
+    auto relativeTarget = [](uint32_t basePc, int32_t offset, uint32_t &target) {
+        const int64_t absolute = static_cast<int64_t>(basePc) + static_cast<int64_t>(offset);
+        if (absolute < 0 || absolute > std::numeric_limits<uint32_t>::max())
+            return false;
+        target = static_cast<uint32_t>(absolute);
+        return true;
+    };
+    auto addTarget = [&](uint32_t target, const char *site) {
+        targets.push_back(TargetCheck{target, site});
+    };
+    auto addRelativeTarget = [&](uint32_t basePc, int32_t offset, const char *site) {
+        uint32_t target = 0;
+        if (!relativeTarget(basePc, offset, target))
+            return false;
+        addTarget(target, site);
+        return true;
+    };
+    auto requireLocal = [&](uint32_t idx, const char *site) {
+        if (idx >= func.numLocals)
+            return fail(std::string(site) + " local index out of range");
+        return true;
+    };
+
+    for (uint32_t pc = 0; pc < func.code.size();) {
+        instructionStarts[pc] = 1;
+        const uint32_t instr = func.code[pc];
+        const uint8_t rawOpcode = static_cast<uint8_t>(instr & 0xFFu);
+        if (!isKnownOpcode(rawOpcode))
+            return fail("unknown opcode byte at pc " + std::to_string(pc));
+
+        const BCOpcode op = decodeOpcode(instr);
+        switch (op) {
+            case BCOpcode::OPCODE_COUNT:
+            case BCOpcode::TAIL_CALL:
+            case BCOpcode::MAKE_ERROR:
+                return fail(std::string(opcodeName(op)) + " is not executable bytecode");
+
+            case BCOpcode::LOAD_I32:
+                if (pc + 1 >= func.code.size())
+                    return fail("LOAD_I32 missing inline value word");
+                pc += 2;
+                continue;
+
+            case BCOpcode::LOAD_I64:
+                if (decodeArg16(instr) >= module.i64Pool.size())
+                    return fail("LOAD_I64 constant index out of range");
+                break;
+            case BCOpcode::LOAD_F64:
+                if (decodeArg16(instr) >= module.f64Pool.size())
+                    return fail("LOAD_F64 constant index out of range");
+                break;
+            case BCOpcode::LOAD_STR:
+                if (decodeArg16(instr) >= module.stringPool.size())
+                    return fail("LOAD_STR constant index out of range");
+                break;
+
+            case BCOpcode::LOAD_LOCAL:
+            case BCOpcode::STORE_LOCAL:
+            case BCOpcode::INC_LOCAL:
+            case BCOpcode::DEC_LOCAL:
+                if (!requireLocal(decodeArg8_0(instr), opcodeName(op)))
+                    return false;
+                break;
+            case BCOpcode::LOAD_LOCAL_W:
+            case BCOpcode::STORE_LOCAL_W:
+                if (!requireLocal(decodeArg16(instr), opcodeName(op)))
+                    return false;
+                break;
+
+            case BCOpcode::LOAD_GLOBAL:
+            case BCOpcode::STORE_GLOBAL:
+            case BCOpcode::LOAD_GLOBAL_ADDR:
+                if (decodeArg16(instr) >= module.globals.size())
+                    return fail(std::string(opcodeName(op)) + " global index out of range");
+                break;
+
+            case BCOpcode::CALL:
+                if (decodeArg16(instr) >= module.functions.size())
+                    return fail("CALL function index out of range");
+                break;
+            case BCOpcode::CALL_NATIVE: {
+                const uint8_t argCount = decodeArg8_0(instr);
+                const uint16_t nativeIdx = decodeArg16_1(instr);
+                if (nativeIdx >= module.nativeFuncs.size())
+                    return fail("CALL_NATIVE native index out of range");
+                if (argCount != module.nativeFuncs[nativeIdx].paramCount)
+                    return fail("CALL_NATIVE encoded arity mismatch");
+                break;
+            }
+
+            case BCOpcode::JUMP:
+            case BCOpcode::JUMP_IF_TRUE:
+            case BCOpcode::JUMP_IF_FALSE:
+                if (!addRelativeTarget(pc + 1, decodeArgI16(instr), opcodeName(op)))
+                    return fail(std::string(opcodeName(op)) + " target under/overflows PC range");
+                break;
+            case BCOpcode::JUMP_LONG:
+                if (!addRelativeTarget(pc + 1, decodeArgI24(instr), "JUMP_LONG"))
+                    return fail("JUMP_LONG target under/overflows PC range");
+                break;
+
+            case BCOpcode::EH_PUSH: {
+                if (pc + 1 >= func.code.size())
+                    return fail("EH_PUSH missing handler offset word");
+                if (!addRelativeTarget(pc + 1,
+                                       static_cast<int32_t>(func.code[pc + 1]),
+                                       "EH_PUSH")) {
+                    return fail("EH_PUSH handler target under/overflows PC range");
+                }
+                pc += 2;
+                continue;
+            }
+
+            case BCOpcode::RESUME_LABEL: {
+                if (pc + 1 >= func.code.size())
+                    return fail("RESUME_LABEL missing target offset word");
+                if (!addRelativeTarget(pc + 1,
+                                       static_cast<int32_t>(func.code[pc + 1]),
+                                       "RESUME_LABEL")) {
+                    return fail("RESUME_LABEL target under/overflows PC range");
+                }
+                pc += 2;
+                continue;
+            }
+
+            case BCOpcode::SWITCH: {
+                if (pc + 2 >= func.code.size())
+                    return fail("SWITCH missing header words");
+                const uint32_t numCases = func.code[pc + 1];
+                const uint64_t caseWords = static_cast<uint64_t>(numCases) * 2u;
+                const uint64_t endPc = static_cast<uint64_t>(pc) + 3u + caseWords;
+                if (endPc > func.code.size())
+                    return fail("SWITCH case table extends past function code");
+                if (!addRelativeTarget(pc + 2,
+                                       static_cast<int32_t>(func.code[pc + 2]),
+                                       "SWITCH default")) {
+                    return fail("SWITCH default target under/overflows PC range");
+                }
+                std::unordered_set<int32_t> seenCases;
+                uint32_t cursor = pc + 3;
+                for (uint32_t i = 0; i < numCases; ++i) {
+                    const int32_t caseValue = static_cast<int32_t>(func.code[cursor++]);
+                    if (!seenCases.insert(caseValue).second)
+                        return fail("SWITCH contains duplicate case value");
+                    const uint32_t offsetPc = cursor++;
+                    if (!addRelativeTarget(offsetPc,
+                                           static_cast<int32_t>(func.code[offsetPc]),
+                                           "SWITCH case")) {
+                        return fail("SWITCH case target under/overflows PC range");
+                    }
+                }
+                pc = static_cast<uint32_t>(endPc);
+                continue;
+            }
+
+            default:
+                break;
         }
-        if (module->globals[entry.second].name != entry.first) {
-            trap(TrapKind::InvalidOpcode, "Global index table name mismatch");
-            return false;
+        ++pc;
+    }
+
+    for (const TargetCheck &target : targets) {
+        if (target.target >= instructionStarts.size() || instructionStarts[target.target] == 0) {
+            return fail(std::string(target.site) +
+                        " target does not land on an instruction boundary");
         }
     }
+
+    for (const ExceptionRange &range : func.exceptionRanges) {
+        if (range.startPc > range.endPc || range.endPc > func.code.size() ||
+            range.handlerPc >= instructionStarts.size() || instructionStarts[range.handlerPc] == 0) {
+            return fail("exception range metadata is out of range");
+        }
+        if (range.startPc < instructionStarts.size() && instructionStarts[range.startPc] == 0)
+            return fail("exception range start is not an instruction boundary");
+        if (range.endPc < instructionStarts.size() && instructionStarts[range.endPc] == 0)
+            return fail("exception range end is not an instruction boundary");
+    }
+    for (const SwitchTable &table : func.switchTables) {
+        if (table.defaultPc >= instructionStarts.size() || instructionStarts[table.defaultPc] == 0)
+            return fail("switch metadata default target is out of range");
+        std::unordered_set<int64_t> seenCases;
+        for (const SwitchEntry &entry : table.entries) {
+            if (!seenCases.insert(entry.value).second)
+                return fail("switch metadata contains duplicate case value");
+            if (entry.targetPc >= instructionStarts.size() ||
+                instructionStarts[entry.targetPc] == 0) {
+                return fail("switch metadata case target is out of range");
+            }
+        }
+    }
+
     return true;
 }
 
@@ -491,6 +778,7 @@ void BytecodeVM::load(const BytecodeModule *module) {
     clearTrapRecord();
 
     module_ = nullptr;
+    loadFailed_ = false;
     moduleDispatchValidated_ = false;
     trustedDispatch_ = false;
     state_ = VMState::Ready;
@@ -499,12 +787,17 @@ void BytecodeVM::load(const BytecodeModule *module) {
     pendingTrapErrorCode_ = false;
     trapMessage_.clear();
 
-    if (!validateModuleForLoad(module))
+    ModuleValidationFailure validationFailure;
+    if (!validateModuleForLoad(module, validationFailure)) {
+        loadFailed_ = true;
+        trap(validationFailure.kind, validationFailure.message.c_str());
         return;
+    }
 
     module_ = module;
     moduleDispatchValidated_ = true;
     trustedDispatch_ = trustedDispatchRequested_;
+    loadFailed_ = false;
 
     // Initialize global variable storage
     globals_.clear();
@@ -697,10 +990,31 @@ void BytecodeVM::releaseOwnedGlobalString(size_t idx) {
     globalsStringOwned_[idx] = 0;
 }
 
+/// @brief Return the first global slot overlapped by @p ptr plus @p bytes.
+/// @details Raw memory stores can target an interior byte of a global BCSlot via
+///          GEP. Ownership bookkeeping must therefore detect overlap, not only
+///          exact slot-address equality.
+size_t BytecodeVM::globalIndexForAddressRange(const void *ptr, size_t bytes) const {
+    if (!ptr || globals_.empty())
+        return SIZE_MAX;
+    const uintptr_t addr = reinterpret_cast<uintptr_t>(ptr);
+    const size_t width = bytes == 0 ? 1 : bytes;
+    if (width > std::numeric_limits<uintptr_t>::max() - addr)
+        return SIZE_MAX;
+    const uintptr_t end = addr + width;
+    for (size_t i = 0; i < globals_.size(); ++i) {
+        const uintptr_t slotBegin = reinterpret_cast<uintptr_t>(&globals_[i]);
+        const uintptr_t slotEnd = slotBegin + sizeof(BCSlot);
+        if (addr < slotEnd && end > slotBegin)
+            return i;
+    }
+    return SIZE_MAX;
+}
+
 /// @brief Before a raw (untyped) store through a pointer that aliases a string
 ///        global, release the global's old reference so it isn't leaked.
-void BytecodeVM::clearGlobalStringOwnershipForRawStore(void *ptr) {
-    const size_t idx = globalIndexForAddress(ptr);
+void BytecodeVM::clearGlobalStringOwnershipForRawStore(void *ptr, size_t bytes) {
+    const size_t idx = globalIndexForAddressRange(ptr, bytes);
     if (idx == SIZE_MAX)
         return;
     releaseOwnedGlobalString(idx);
@@ -1070,6 +1384,8 @@ bool BytecodeVM::ensureFrameFootprint(const BytecodeFunction *func,
 /// @return The function's return slot (default-constructed on trap).
 BCSlot BytecodeVM::exec(const std::string &funcName, const std::vector<BCSlot> &args) {
     if (!module_) {
+        if (loadFailed_ && state_ == VMState::Trapped)
+            return BCSlot{};
         trap(TrapKind::RuntimeError, "No module loaded");
         return BCSlot{};
     }
@@ -1092,6 +1408,8 @@ BCSlot BytecodeVM::exec(const std::string &funcName, const std::vector<BCSlot> &
 BCSlot BytecodeVM::exec(const BytecodeFunction *func, const std::vector<BCSlot> &args) {
     registerUnifiedVmRuntimeHandlers();
     if (!module_) {
+        if (loadFailed_ && state_ == VMState::Trapped)
+            return BCSlot{};
         trap(TrapKind::RuntimeError, "No module loaded");
         return BCSlot{};
     }
@@ -1917,18 +2235,21 @@ void BytecodeVM::run() {
             //==================================================================
             case BCOpcode::JUMP: {
                 int16_t offset = decodeArgI16(instr);
-                fp_->pc += offset;
-                if (!ensureBranchTarget(*fp_->func, fp_->pc, "BytecodeVM::JUMP"))
+                uint32_t target = 0;
+                if (!computeRelativeTarget(*fp_->func, fp_->pc, offset, target, "BytecodeVM::JUMP"))
                     return;
+                fp_->pc = target;
                 break;
             }
 
             case BCOpcode::JUMP_IF_TRUE: {
                 int16_t offset = decodeArgI16(instr);
                 if ((--sp_)->i64 != 0) {
-                    fp_->pc += offset;
-                    if (!ensureBranchTarget(*fp_->func, fp_->pc, "BytecodeVM::JUMP_IF_TRUE"))
+                    uint32_t target = 0;
+                    if (!computeRelativeTarget(
+                            *fp_->func, fp_->pc, offset, target, "BytecodeVM::JUMP_IF_TRUE"))
                         return;
+                    fp_->pc = target;
                 }
                 break;
             }
@@ -1936,18 +2257,22 @@ void BytecodeVM::run() {
             case BCOpcode::JUMP_IF_FALSE: {
                 int16_t offset = decodeArgI16(instr);
                 if ((--sp_)->i64 == 0) {
-                    fp_->pc += offset;
-                    if (!ensureBranchTarget(*fp_->func, fp_->pc, "BytecodeVM::JUMP_IF_FALSE"))
+                    uint32_t target = 0;
+                    if (!computeRelativeTarget(
+                            *fp_->func, fp_->pc, offset, target, "BytecodeVM::JUMP_IF_FALSE"))
                         return;
+                    fp_->pc = target;
                 }
                 break;
             }
 
             case BCOpcode::JUMP_LONG: {
                 int32_t offset = decodeArgI24(instr);
-                fp_->pc += offset;
-                if (!ensureBranchTarget(*fp_->func, fp_->pc, "BytecodeVM::JUMP_LONG"))
+                uint32_t target = 0;
+                if (!computeRelativeTarget(
+                        *fp_->func, fp_->pc, offset, target, "BytecodeVM::JUMP_LONG"))
                     return;
+                fp_->pc = target;
                 break;
             }
 
@@ -1983,9 +2308,14 @@ void BytecodeVM::run() {
                         // Found matching case - jump to its target
                         // Offset is relative to the offset word position
                         int32_t caseOffset = static_cast<int32_t>(code[caseOffsetPos]);
-                        fp_->pc = caseOffsetPos + caseOffset;
-                        if (!ensureBranchTarget(*fp_->func, fp_->pc, "BytecodeVM::SWITCH(case)"))
+                        uint32_t target = 0;
+                        if (!computeRelativeTarget(*fp_->func,
+                                                   caseOffsetPos,
+                                                   caseOffset,
+                                                   target,
+                                                   "BytecodeVM::SWITCH(case)"))
                             return;
+                        fp_->pc = target;
                         found = true;
                         break;
                     }
@@ -1994,9 +2324,14 @@ void BytecodeVM::run() {
                 if (!found) {
                     // No match - use default offset
                     int32_t defaultOffset = static_cast<int32_t>(code[defaultOffsetPos]);
-                    fp_->pc = defaultOffsetPos + defaultOffset;
-                    if (!ensureBranchTarget(*fp_->func, fp_->pc, "BytecodeVM::SWITCH(default)"))
+                    uint32_t target = 0;
+                    if (!computeRelativeTarget(*fp_->func,
+                                               defaultOffsetPos,
+                                               defaultOffset,
+                                               target,
+                                               "BytecodeVM::SWITCH(default)"))
                         return;
+                    fp_->pc = target;
                 }
                 break;
             }
@@ -2097,8 +2432,16 @@ void BytecodeVM::run() {
                 BCSlot *idxSlot = --sp_;
                 const size_t idx = static_cast<size_t>(idxSlot->i64);
                 setSlotOwnsString(idxSlot, false);
-                auto *arr = static_cast<int32_t *>(arrSlot->ptr);
-                arrSlot->i64 = static_cast<int64_t>(arr[idx]);
+                const uintptr_t base = reinterpret_cast<uintptr_t>(arrSlot->ptr);
+                if (idx > std::numeric_limits<uintptr_t>::max() / sizeof(int32_t) ||
+                    idx * sizeof(int32_t) > std::numeric_limits<uintptr_t>::max() - base) {
+                    trapOrDispatch(TrapKind::Bounds, "ARR_I32_GET_FAST index address overflow");
+                    break;
+                }
+                auto *element = reinterpret_cast<int32_t *>(base + idx * sizeof(int32_t));
+                if (!ensureMemoryAccess(element, sizeof(int32_t), "BytecodeVM::ARR_I32_GET_FAST"))
+                    break;
+                arrSlot->i64 = static_cast<int64_t>(*element);
                 setSlotOwnsString(arrSlot, false);
                 break;
             }
@@ -2116,9 +2459,17 @@ void BytecodeVM::run() {
                 const size_t idx = static_cast<size_t>(idxSlot->i64);
                 setSlotOwnsString(idxSlot, false);
                 --sp_;
-                auto *arr = static_cast<int32_t *>(arrSlot->ptr);
+                const uintptr_t base = reinterpret_cast<uintptr_t>(arrSlot->ptr);
+                if (idx > std::numeric_limits<uintptr_t>::max() / sizeof(int32_t) ||
+                    idx * sizeof(int32_t) > std::numeric_limits<uintptr_t>::max() - base) {
+                    trapOrDispatch(TrapKind::Bounds, "ARR_I32_SET_FAST index address overflow");
+                    break;
+                }
+                auto *element = reinterpret_cast<int32_t *>(base + idx * sizeof(int32_t));
+                if (!ensureMemoryAccess(element, sizeof(int32_t), "BytecodeVM::ARR_I32_SET_FAST"))
+                    break;
                 setSlotOwnsString(arrSlot, false);
-                arr[idx] = value;
+                *element = value;
                 break;
             }
 
@@ -2131,8 +2482,16 @@ void BytecodeVM::run() {
                 BCSlot *idxSlot = --sp_;
                 const size_t idx = static_cast<size_t>(idxSlot->i64);
                 setSlotOwnsString(idxSlot, false);
-                auto *arr = static_cast<int64_t *>(arrSlot->ptr);
-                arrSlot->i64 = arr[idx];
+                const uintptr_t base = reinterpret_cast<uintptr_t>(arrSlot->ptr);
+                if (idx > std::numeric_limits<uintptr_t>::max() / sizeof(int64_t) ||
+                    idx * sizeof(int64_t) > std::numeric_limits<uintptr_t>::max() - base) {
+                    trapOrDispatch(TrapKind::Bounds, "ARR_I64_GET_FAST index address overflow");
+                    break;
+                }
+                auto *element = reinterpret_cast<int64_t *>(base + idx * sizeof(int64_t));
+                if (!ensureMemoryAccess(element, sizeof(int64_t), "BytecodeVM::ARR_I64_GET_FAST"))
+                    break;
+                arrSlot->i64 = *element;
                 setSlotOwnsString(arrSlot, false);
                 break;
             }
@@ -2150,9 +2509,17 @@ void BytecodeVM::run() {
                 const size_t idx = static_cast<size_t>(idxSlot->i64);
                 setSlotOwnsString(idxSlot, false);
                 --sp_;
-                auto *arr = static_cast<int64_t *>(arrSlot->ptr);
+                const uintptr_t base = reinterpret_cast<uintptr_t>(arrSlot->ptr);
+                if (idx > std::numeric_limits<uintptr_t>::max() / sizeof(int64_t) ||
+                    idx * sizeof(int64_t) > std::numeric_limits<uintptr_t>::max() - base) {
+                    trapOrDispatch(TrapKind::Bounds, "ARR_I64_SET_FAST index address overflow");
+                    break;
+                }
+                auto *element = reinterpret_cast<int64_t *>(base + idx * sizeof(int64_t));
+                if (!ensureMemoryAccess(element, sizeof(int64_t), "BytecodeVM::ARR_I64_SET_FAST"))
+                    break;
                 setSlotOwnsString(arrSlot, false);
-                arr[idx] = value;
+                *element = value;
                 break;
             }
 
@@ -2165,8 +2532,16 @@ void BytecodeVM::run() {
                 BCSlot *idxSlot = --sp_;
                 const size_t idx = static_cast<size_t>(idxSlot->i64);
                 setSlotOwnsString(idxSlot, false);
-                auto *arr = static_cast<double *>(arrSlot->ptr);
-                arrSlot->f64 = arr[idx];
+                const uintptr_t base = reinterpret_cast<uintptr_t>(arrSlot->ptr);
+                if (idx > std::numeric_limits<uintptr_t>::max() / sizeof(double) ||
+                    idx * sizeof(double) > std::numeric_limits<uintptr_t>::max() - base) {
+                    trapOrDispatch(TrapKind::Bounds, "ARR_F64_GET_FAST index address overflow");
+                    break;
+                }
+                auto *element = reinterpret_cast<double *>(base + idx * sizeof(double));
+                if (!ensureMemoryAccess(element, sizeof(double), "BytecodeVM::ARR_F64_GET_FAST"))
+                    break;
+                arrSlot->f64 = *element;
                 setSlotOwnsString(arrSlot, false);
                 break;
             }
@@ -2184,9 +2559,17 @@ void BytecodeVM::run() {
                 const size_t idx = static_cast<size_t>(idxSlot->i64);
                 setSlotOwnsString(idxSlot, false);
                 --sp_;
-                auto *arr = static_cast<double *>(arrSlot->ptr);
+                const uintptr_t base = reinterpret_cast<uintptr_t>(arrSlot->ptr);
+                if (idx > std::numeric_limits<uintptr_t>::max() / sizeof(double) ||
+                    idx * sizeof(double) > std::numeric_limits<uintptr_t>::max() - base) {
+                    trapOrDispatch(TrapKind::Bounds, "ARR_F64_SET_FAST index address overflow");
+                    break;
+                }
+                auto *element = reinterpret_cast<double *>(base + idx * sizeof(double));
+                if (!ensureMemoryAccess(element, sizeof(double), "BytecodeVM::ARR_F64_SET_FAST"))
+                    break;
                 setSlotOwnsString(arrSlot, false);
-                arr[idx] = value;
+                *element = value;
                 break;
             }
 
@@ -2210,6 +2593,11 @@ void BytecodeVM::run() {
                         trap(TrapKind::RuntimeError, "Invalid indirect function index");
                         break;
                     }
+                    const BytecodeFunction &targetFunc = module_->functions[funcIdx];
+                    if (argCount != targetFunc.numParams) {
+                        trap(TrapKind::RuntimeError, "Indirect call arity mismatch");
+                        break;
+                    }
 
                     // Shift arguments down to overwrite the callee slot
                     for (int i = 0; i < argCount; ++i) {
@@ -2220,7 +2608,7 @@ void BytecodeVM::run() {
                     }
                     sp_ = callee + argCount; // Adjust stack pointer
 
-                    call(&module_->functions[funcIdx]);
+                    call(&targetFunc);
                 } else if (calleeVal == 0) {
                     // Null function pointer
                     trap(TrapKind::NullPointer, "Null indirect callee");
@@ -2260,7 +2648,7 @@ void BytecodeVM::run() {
 
             case BCOpcode::LOAD_I64_MEM: {
                 void *ptr = sp_[-1].ptr;
-                if (!ensureMemoryAddress(ptr, "BytecodeVM::LOAD_I64_MEM"))
+                if (!ensureMemoryAccess(ptr, sizeof(int64_t), "BytecodeVM::LOAD_I64_MEM"))
                     break;
                 int64_t val;
                 std::memcpy(&val, ptr, sizeof(val));
@@ -2271,16 +2659,16 @@ void BytecodeVM::run() {
             case BCOpcode::STORE_I64_MEM: {
                 int64_t val = (--sp_)->i64;
                 void *ptr = (--sp_)->ptr;
-                if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_I64_MEM"))
+                if (!ensureMemoryAccess(ptr, sizeof(int64_t), "BytecodeVM::STORE_I64_MEM"))
                     break;
-                clearGlobalStringOwnershipForRawStore(ptr);
+                clearGlobalStringOwnershipForRawStore(ptr, sizeof(int64_t));
                 std::memcpy(ptr, &val, sizeof(val));
                 break;
             }
 
             case BCOpcode::LOAD_I8_MEM: {
                 void *ptr = sp_[-1].ptr;
-                if (!ensureMemoryAddress(ptr, "BytecodeVM::LOAD_I8_MEM"))
+                if (!ensureMemoryAccess(ptr, sizeof(int8_t), "BytecodeVM::LOAD_I8_MEM"))
                     break;
                 int8_t val;
                 std::memcpy(&val, ptr, sizeof(val));
@@ -2290,7 +2678,7 @@ void BytecodeVM::run() {
 
             case BCOpcode::LOAD_I16_MEM: {
                 void *ptr = sp_[-1].ptr;
-                if (!ensureMemoryAddress(ptr, "BytecodeVM::LOAD_I16_MEM"))
+                if (!ensureMemoryAccess(ptr, sizeof(int16_t), "BytecodeVM::LOAD_I16_MEM"))
                     break;
                 int16_t val;
                 std::memcpy(&val, ptr, sizeof(val));
@@ -2300,7 +2688,7 @@ void BytecodeVM::run() {
 
             case BCOpcode::LOAD_I32_MEM: {
                 void *ptr = sp_[-1].ptr;
-                if (!ensureMemoryAddress(ptr, "BytecodeVM::LOAD_I32_MEM"))
+                if (!ensureMemoryAccess(ptr, sizeof(int32_t), "BytecodeVM::LOAD_I32_MEM"))
                     break;
                 int32_t val;
                 std::memcpy(&val, ptr, sizeof(val));
@@ -2310,7 +2698,7 @@ void BytecodeVM::run() {
 
             case BCOpcode::LOAD_F64_MEM: {
                 void *ptr = sp_[-1].ptr;
-                if (!ensureMemoryAddress(ptr, "BytecodeVM::LOAD_F64_MEM"))
+                if (!ensureMemoryAccess(ptr, sizeof(double), "BytecodeVM::LOAD_F64_MEM"))
                     break;
                 double val;
                 std::memcpy(&val, ptr, sizeof(val));
@@ -2320,7 +2708,7 @@ void BytecodeVM::run() {
 
             case BCOpcode::LOAD_PTR_MEM: {
                 void *val;
-                if (!ensureMemoryAddress(sp_[-1].ptr, "BytecodeVM::LOAD_PTR_MEM"))
+                if (!ensureMemoryAccess(sp_[-1].ptr, sizeof(void *), "BytecodeVM::LOAD_PTR_MEM"))
                     break;
                 std::memcpy(&val, sp_[-1].ptr, sizeof(val));
                 sp_[-1].ptr = val;
@@ -2330,7 +2718,7 @@ void BytecodeVM::run() {
 
             case BCOpcode::LOAD_STR_MEM: {
                 rt_string val = nullptr;
-                if (!ensureMemoryAddress(sp_[-1].ptr, "BytecodeVM::LOAD_STR_MEM"))
+                if (!ensureMemoryAccess(sp_[-1].ptr, sizeof(rt_string), "BytecodeVM::LOAD_STR_MEM"))
                     break;
                 std::memcpy(&val, sp_[-1].ptr, sizeof(val));
                 sp_[-1].ptr = val;
@@ -2348,9 +2736,9 @@ void BytecodeVM::run() {
             case BCOpcode::STORE_I8_MEM: {
                 int8_t val = static_cast<int8_t>((--sp_)->i64);
                 void *ptr = (--sp_)->ptr;
-                if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_I8_MEM"))
+                if (!ensureMemoryAccess(ptr, sizeof(int8_t), "BytecodeVM::STORE_I8_MEM"))
                     break;
-                clearGlobalStringOwnershipForRawStore(ptr);
+                clearGlobalStringOwnershipForRawStore(ptr, sizeof(int8_t));
                 std::memcpy(ptr, &val, sizeof(val));
                 break;
             }
@@ -2358,9 +2746,9 @@ void BytecodeVM::run() {
             case BCOpcode::STORE_I16_MEM: {
                 int16_t val = static_cast<int16_t>((--sp_)->i64);
                 void *ptr = (--sp_)->ptr;
-                if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_I16_MEM"))
+                if (!ensureMemoryAccess(ptr, sizeof(int16_t), "BytecodeVM::STORE_I16_MEM"))
                     break;
-                clearGlobalStringOwnershipForRawStore(ptr);
+                clearGlobalStringOwnershipForRawStore(ptr, sizeof(int16_t));
                 std::memcpy(ptr, &val, sizeof(val));
                 break;
             }
@@ -2368,9 +2756,9 @@ void BytecodeVM::run() {
             case BCOpcode::STORE_I32_MEM: {
                 int32_t val = static_cast<int32_t>((--sp_)->i64);
                 void *ptr = (--sp_)->ptr;
-                if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_I32_MEM"))
+                if (!ensureMemoryAccess(ptr, sizeof(int32_t), "BytecodeVM::STORE_I32_MEM"))
                     break;
-                clearGlobalStringOwnershipForRawStore(ptr);
+                clearGlobalStringOwnershipForRawStore(ptr, sizeof(int32_t));
                 std::memcpy(ptr, &val, sizeof(val));
                 break;
             }
@@ -2378,9 +2766,9 @@ void BytecodeVM::run() {
             case BCOpcode::STORE_F64_MEM: {
                 double val = (--sp_)->f64;
                 void *ptr = (--sp_)->ptr;
-                if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_F64_MEM"))
+                if (!ensureMemoryAccess(ptr, sizeof(double), "BytecodeVM::STORE_F64_MEM"))
                     break;
-                clearGlobalStringOwnershipForRawStore(ptr);
+                clearGlobalStringOwnershipForRawStore(ptr, sizeof(double));
                 std::memcpy(ptr, &val, sizeof(val));
                 break;
             }
@@ -2388,9 +2776,9 @@ void BytecodeVM::run() {
             case BCOpcode::STORE_PTR_MEM: {
                 void *val = (--sp_)->ptr;
                 void *ptr = (--sp_)->ptr;
-                if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_PTR_MEM"))
+                if (!ensureMemoryAccess(ptr, sizeof(void *), "BytecodeVM::STORE_PTR_MEM"))
                     break;
-                clearGlobalStringOwnershipForRawStore(ptr);
+                clearGlobalStringOwnershipForRawStore(ptr, sizeof(void *));
                 std::memcpy(ptr, &val, sizeof(val));
                 setSlotOwnsString(sp_, false);
                 setSlotOwnsString(sp_ + 1, false);
@@ -2402,7 +2790,7 @@ void BytecodeVM::run() {
                 rt_string incoming = static_cast<rt_string>(valueSlot->ptr);
                 const bool incomingOwns = slotOwnsString(valueSlot);
                 void *ptr = (--sp_)->ptr;
-                if (!ensureMemoryAddress(ptr, "BytecodeVM::STORE_STR_MEM"))
+                if (!ensureMemoryAccess(ptr, sizeof(rt_string), "BytecodeVM::STORE_STR_MEM"))
                     break;
                 rt_string current = nullptr;
                 std::memcpy(&current, ptr, sizeof(current));
@@ -2519,10 +2907,11 @@ void BytecodeVM::run() {
                 const uint32_t *code = fp_->func->code.data();
                 if (!ensureWordsAvailable(*fp_->func, fp_->pc, 1, "BytecodeVM::EH_PUSH"))
                     return;
+                const uint32_t offsetPc = fp_->pc;
                 int32_t offset = static_cast<int32_t>(code[fp_->pc++]);
-                uint32_t handlerPc =
-                    static_cast<uint32_t>(static_cast<int32_t>(fp_->pc - 1) + offset);
-                if (!ensureBranchTarget(*fp_->func, handlerPc, "BytecodeVM::EH_PUSH"))
+                uint32_t handlerPc = 0;
+                if (!computeRelativeTarget(
+                        *fp_->func, offsetPc, offset, handlerPc, "BytecodeVM::EH_PUSH"))
                     return;
                 pushExceptionHandler(handlerPc);
                 break;
@@ -2606,10 +2995,13 @@ void BytecodeVM::run() {
                 const uint32_t *code = fp_->func->code.data();
                 if (!ensureWordsAvailable(*fp_->func, fp_->pc, 1, "BytecodeVM::RESUME_LABEL"))
                     return;
+                const uint32_t offsetPc = fp_->pc;
                 int32_t offset = static_cast<int32_t>(code[fp_->pc++]);
-                fp_->pc = static_cast<uint32_t>(static_cast<int32_t>(fp_->pc - 1) + offset);
-                if (!ensureBranchTarget(*fp_->func, fp_->pc, "BytecodeVM::RESUME_LABEL"))
+                uint32_t target = 0;
+                if (!computeRelativeTarget(
+                        *fp_->func, offsetPc, offset, target, "BytecodeVM::RESUME_LABEL"))
                     return;
+                fp_->pc = target;
                 break;
             }
 
@@ -3008,33 +3400,72 @@ bool BytecodeVM::ensureLocalIndex(uint32_t idx, const char *site) {
     return false;
 }
 
-/// @brief Reject a null or low (< first 4 KiB page) pointer before a
-///        load/store; raises NullPointer via @ref trapOrDispatch on failure.
-bool BytecodeVM::ensureMemoryAddress(const void *ptr, const char *site) {
-    if (ptr && reinterpret_cast<uintptr_t>(ptr) >= 4096) {
-        const uintptr_t addr = reinterpret_cast<uintptr_t>(ptr);
-        if (!globals_.empty()) {
-            const uintptr_t begin = reinterpret_cast<uintptr_t>(globals_.data());
-            const uintptr_t end = begin + globals_.size() * sizeof(BCSlot);
-            if (addr >= begin && addr < end)
-                return true;
-        }
-        if (!allocaBuffer_.empty()) {
-            const uintptr_t begin = reinterpret_cast<uintptr_t>(allocaBuffer_.data());
-            const uintptr_t allocatedEnd = begin + allocaTop_;
-            const uintptr_t reservedEnd = begin + allocaBuffer_.size();
-            if (addr >= begin && addr < allocatedEnd)
-                return true;
-            if (addr >= begin && addr < reservedEnd) {
-                trapOrDispatch(TrapKind::Bounds,
-                               (std::string(site) + ": alloca address outside live range").c_str());
-                return false;
-            }
-        }
-        return true;
+/// @brief Validate that a memory access range is usable before touching it.
+/// @details External host pointers are still permitted after the low-page/null
+///          guard because bytecode can interoperate with runtime objects. VM-owned
+///          storage is stricter: accesses overlapping global slots or the alloca
+///          arena must fit completely inside the corresponding live range.
+bool BytecodeVM::ensureMemoryAccess(const void *ptr, size_t bytes, const char *site) {
+    if (!ptr || reinterpret_cast<uintptr_t>(ptr) < 4096) {
+        trapOrDispatch(TrapKind::NullPointer,
+                       (std::string(site) + ": null or invalid memory address").c_str());
+        return false;
     }
-    trapOrDispatch(TrapKind::NullPointer,
-                   (std::string(site) + ": null or invalid memory address").c_str());
+
+    const uintptr_t addr = reinterpret_cast<uintptr_t>(ptr);
+    const size_t width = bytes == 0 ? 1 : bytes;
+    if (width > std::numeric_limits<uintptr_t>::max() - addr) {
+        trapOrDispatch(TrapKind::Bounds,
+                       (std::string(site) + ": memory access range overflows address space").c_str());
+        return false;
+    }
+    const uintptr_t end = addr + width;
+
+    if (!globals_.empty()) {
+        const uintptr_t begin = reinterpret_cast<uintptr_t>(globals_.data());
+        const uintptr_t globalsEnd = begin + globals_.size() * sizeof(BCSlot);
+        if (addr < globalsEnd && end > begin) {
+            if (addr >= begin && end <= globalsEnd)
+                return true;
+            trapOrDispatch(TrapKind::Bounds,
+                           (std::string(site) + ": global memory access crosses bounds").c_str());
+            return false;
+        }
+    }
+
+    if (!allocaBuffer_.empty()) {
+        const uintptr_t begin = reinterpret_cast<uintptr_t>(allocaBuffer_.data());
+        const uintptr_t allocatedEnd = begin + allocaTop_;
+        const uintptr_t reservedEnd = begin + allocaBuffer_.size();
+        if (addr < reservedEnd && end > begin) {
+            if (addr >= begin && end <= allocatedEnd)
+                return true;
+            trapOrDispatch(TrapKind::Bounds,
+                           (std::string(site) + ": alloca address outside live range").c_str());
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/// @brief Compute a relative branch target without wrapping unsigned PCs.
+/// @details The compiler uses origins that are already at the post-opcode PC for
+///          compact branches and at the offset-word PC for raw offset operands.
+bool BytecodeVM::computeRelativeTarget(const BytecodeFunction &func,
+                                       uint32_t basePc,
+                                       int32_t offset,
+                                       uint32_t &target,
+                                       const char *site) {
+    const int64_t computed = static_cast<int64_t>(basePc) + static_cast<int64_t>(offset);
+    if (computed < 0 || computed > static_cast<int64_t>(std::numeric_limits<uint32_t>::max())) {
+        trapOrDispatch(TrapKind::InvalidOpcode,
+                       (std::string(site) + ": relative target under/overflows PC range").c_str());
+        return false;
+    }
+    target = static_cast<uint32_t>(computed);
+    if (ensureBranchTarget(func, target, site))
+        return true;
     return false;
 }
 
