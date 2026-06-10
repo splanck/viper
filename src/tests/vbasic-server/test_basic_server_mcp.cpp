@@ -46,6 +46,15 @@ static JsonValue parseResponse(const std::string &resp) {
     return JsonValue::parse(resp);
 }
 
+/// Helper: drive the handler through the MCP lifecycle until tools may be used.
+/// The shared MCP handler gates `tools/list` and `tools/call` until it has
+/// received the post-initialize `initialized` notification, matching the
+/// protocol sequence used by real clients.
+static void startMcpSession(McpHandler &handler) {
+    (void)handler.handleRequest(makeReq("initialize"));
+    (void)handler.handleRequest({"initialized", JsonValue::object({}), JsonValue()});
+}
+
 // ===== Lifecycle =====
 
 TEST(BasicMcp, Initialize) {
@@ -75,7 +84,7 @@ TEST(BasicMcp, InitializedNotification) {
 TEST(BasicMcp, Ping) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
-    handler.handleRequest(makeReq("initialize"));
+    startMcpSession(handler);
 
     auto resp = parseResponse(handler.handleRequest(makeReq("ping")));
     EXPECT_EQ(resp["id"].asInt(), 1);
@@ -85,7 +94,7 @@ TEST(BasicMcp, Ping) {
 TEST(BasicMcp, UnknownMethod) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
-    handler.handleRequest(makeReq("initialize"));
+    startMcpSession(handler);
 
     auto resp = parseResponse(handler.handleRequest(makeReq("nonexistent/method")));
     EXPECT_TRUE(resp.has("error"));
@@ -97,7 +106,7 @@ TEST(BasicMcp, UnknownMethod) {
 TEST(BasicMcp, ToolsListReturns11Tools) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
-    handler.handleRequest(makeReq("initialize"));
+    startMcpSession(handler);
 
     auto resp = parseResponse(handler.handleRequest(makeReq("tools/list")));
     auto tools = resp["result"]["tools"];
@@ -107,7 +116,7 @@ TEST(BasicMcp, ToolsListReturns11Tools) {
 TEST(BasicMcp, ToolsListHasAllBasicTools) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
-    handler.handleRequest(makeReq("initialize"));
+    startMcpSession(handler);
 
     auto resp = parseResponse(handler.handleRequest(makeReq("tools/list")));
     auto tools = resp["result"]["tools"].asArray();
@@ -139,7 +148,7 @@ TEST(BasicMcp, ToolsListHasAllBasicTools) {
 TEST(BasicMcp, ToolsListDescriptionsUseBasicLabel) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
-    handler.handleRequest(makeReq("initialize"));
+    startMcpSession(handler);
 
     auto resp = parseResponse(handler.handleRequest(makeReq("tools/list")));
     auto tools = resp["result"]["tools"].asArray();
@@ -158,7 +167,7 @@ TEST(BasicMcp, ToolsListDescriptionsUseBasicLabel) {
 TEST(BasicMcp, ToolsCallCheck) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
-    handler.handleRequest(makeReq("initialize"));
+    startMcpSession(handler);
 
     auto params = JsonValue::object({
         {"name", JsonValue("basic/check")},
@@ -177,7 +186,7 @@ TEST(BasicMcp, ToolsCallCheck) {
 TEST(BasicMcp, ToolsCallCompile) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
-    handler.handleRequest(makeReq("initialize"));
+    startMcpSession(handler);
 
     auto params = JsonValue::object({
         {"name", JsonValue("basic/compile")},
@@ -195,7 +204,7 @@ TEST(BasicMcp, ToolsCallCompile) {
 TEST(BasicMcp, ToolsCallDumpTokens) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
-    handler.handleRequest(makeReq("initialize"));
+    startMcpSession(handler);
 
     auto params = JsonValue::object({
         {"name", JsonValue("basic/dump-tokens")},
@@ -212,7 +221,7 @@ TEST(BasicMcp, ToolsCallDumpTokens) {
 TEST(BasicMcp, ToolsCallRuntimeClasses) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
-    handler.handleRequest(makeReq("initialize"));
+    startMcpSession(handler);
 
     auto params = JsonValue::object({
         {"name", JsonValue("basic/runtime-classes")},
@@ -227,7 +236,7 @@ TEST(BasicMcp, ToolsCallRuntimeClasses) {
 TEST(BasicMcp, ToolsCallUnknownTool) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
-    handler.handleRequest(makeReq("initialize"));
+    startMcpSession(handler);
 
     auto params = JsonValue::object({
         {"name", JsonValue("nonexistent/tool")},
@@ -240,7 +249,7 @@ TEST(BasicMcp, ToolsCallUnknownTool) {
 TEST(BasicMcp, ToolsCallMissingName) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
-    handler.handleRequest(makeReq("initialize"));
+    startMcpSession(handler);
 
     auto resp = parseResponse(handler.handleRequest(makeReq("tools/call", JsonValue::object({}))));
     EXPECT_TRUE(resp.has("error"));

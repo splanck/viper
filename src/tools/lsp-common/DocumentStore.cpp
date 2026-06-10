@@ -51,6 +51,29 @@ std::size_t uriSchemeLength(std::string_view text) {
     return std::string_view::npos;
 }
 
+/// @brief Compare two ASCII tokens case-insensitively.
+/// @details URI schemes are ASCII and case-insensitive. This helper is scoped to
+///          protocol tokens and intentionally does not attempt locale-aware or
+///          Unicode case folding.
+bool asciiEqualsIgnoreCase(std::string_view lhs, std::string_view rhs) {
+    if (lhs.size() != rhs.size())
+        return false;
+    for (std::size_t i = 0; i < lhs.size(); ++i) {
+        const auto lc = static_cast<unsigned char>(lhs[i]);
+        const auto rc = static_cast<unsigned char>(rhs[i]);
+        if (std::tolower(lc) != std::tolower(rc))
+            return false;
+    }
+    return true;
+}
+
+/// @brief Return true when @p text starts with a case-insensitive `file://` prefix.
+/// @details `file`, like all URI schemes, is case-insensitive even though most
+///          clients send it in lowercase.
+bool startsWithFileUriPrefix(std::string_view text) {
+    return text.size() >= 7 && asciiEqualsIgnoreCase(text.substr(0, 7), "file://");
+}
+
 /// @brief Return true when @p c is forbidden in a decoded filesystem path from the client.
 bool isForbiddenUriPathChar(char c) {
     const auto uc = static_cast<unsigned char>(c);
@@ -101,12 +124,12 @@ bool DocumentStore::tryUriToPath(const std::string &uri, std::string &outPath, s
     std::string_view sv = uri;
     const std::size_t schemeLen = uriSchemeLength(sv);
     if (schemeLen != std::string_view::npos) {
-        if (sv.substr(0, schemeLen) != "file") {
+        if (!asciiEqualsIgnoreCase(sv.substr(0, schemeLen), "file")) {
             if (err)
                 *err = "unsupported document URI scheme: " + uri.substr(0, schemeLen);
             return false;
         }
-        if (sv.substr(0, 7) != "file://") {
+        if (!startsWithFileUriPrefix(sv)) {
             if (err)
                 *err = "file URI must use file:// form: " + uri;
             return false;
@@ -114,7 +137,7 @@ bool DocumentStore::tryUriToPath(const std::string &uri, std::string &outPath, s
     }
 
     // Strip file:// prefix and handle the URI authority component.
-    if (sv.substr(0, 7) == "file://") {
+    if (startsWithFileUriPrefix(sv)) {
         sv.remove_prefix(7);
         std::string_view authority;
         if (!sv.empty() && sv.front() != '/') {
@@ -196,7 +219,7 @@ bool DocumentStore::tryUriToPath(const std::string &uri, std::string &outPath, s
 bool DocumentStore::tryFileUriToPath(const std::string &uri,
                                      std::string &outPath,
                                      std::string *err) {
-    if (uri.rfind("file://", 0) != 0) {
+    if (!startsWithFileUriPrefix(uri)) {
         outPath.clear();
         if (err)
             *err = "LSP document URI must use file:// form: " + uri;

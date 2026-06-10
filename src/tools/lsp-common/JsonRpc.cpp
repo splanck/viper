@@ -22,6 +22,7 @@
 namespace viper::server {
 
 bool parseRequest(const JsonValue &msg, JsonRpcRequest &out) {
+    out = JsonRpcRequest{};
     if (msg.type() != JsonType::Object)
         return false;
 
@@ -34,6 +35,8 @@ bool parseRequest(const JsonValue &msg, JsonRpcRequest &out) {
     if (!method || method->type() != JsonType::String)
         return false;
     out.method = method->asString();
+    if (out.method.empty())
+        return false;
 
     // Params is optional (default to null)
     const auto *params = msg.get("params");

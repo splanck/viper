@@ -41,6 +41,9 @@ namespace viper::pkg {
 
 namespace {
 
+/// @brief Return true if any path component begins with "._" (AppleDouble sidecar).
+bool hasAppleDoubleComponent(const std::string &path);
+
 /// @brief Read a little-endian uint16_t from an unaligned byte pointer.
 uint16_t rdLE16(const uint8_t *p) {
     return static_cast<uint16_t>(p[0] | (p[1] << 8));
@@ -311,6 +314,10 @@ bool verifyTarBytes(const std::vector<uint8_t> &data,
                     sanitizePackageRelativePath(name, isDir ? "tar directory path" : "tar path");
                 if (clean.empty() && !isDir) {
                     err << "TAR: empty file path at offset " << pos << "\n";
+                    return false;
+                }
+                if (hasAppleDoubleComponent(clean)) {
+                    err << "TAR: AppleDouble sidecar path is not allowed: '" << clean << "'\n";
                     return false;
                 }
                 if (!clean.empty() && !seenNames.insert(clean).second) {

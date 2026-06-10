@@ -54,6 +54,7 @@ class McpHandler {
   private:
     ICompilerBridge &bridge_;
     ServerConfig config_;
+    bool initializeResponded_{false};
     bool initialized_{false};
 
     /// @brief Handle `initialize`: return protocol version and server capabilities.

@@ -1407,15 +1407,17 @@ inline void safeDirectoryIterateResolved(
 }
 
 /// @brief Compatibility wrapper for callers that only need a directory_entry-shaped object.
-/// @details The wrapper intentionally exposes the validated resolved path rather than the logical
-///          traversal path so legacy callbacks do not accidentally re-stat or read an unchecked
-///          symlink after safeDirectoryIterateResolved() has already made a containment decision.
+/// @details Preserves the legacy logical traversal path exposed by the original
+///          directory iterator API. Callers that need the validated filesystem
+///          location for stat/read/copy operations should use
+///          safeDirectoryIterateResolved(), which provides both the logical
+///          archive path and the resolved path that passed containment checks.
 inline void safeDirectoryIterate(
     const std::filesystem::path &root,
     const std::filesystem::path &projectRoot,
     const std::function<void(const std::filesystem::directory_entry &)> &callback) {
     safeDirectoryIterateResolved(root, projectRoot, [&](const SafeDirectoryEntry &entry) {
-        callback(std::filesystem::directory_entry(entry.resolvedPath));
+        callback(std::filesystem::directory_entry(entry.logicalPath));
     });
 }
 

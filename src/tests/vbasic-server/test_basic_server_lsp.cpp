@@ -70,6 +70,14 @@ static JsonValue parseResponse(const std::string &resp) {
     return JsonValue::parse(resp);
 }
 
+/// Helper: drive an LSP handler through initialize and initialized.
+/// Feature tests call this before document or request operations so they
+/// exercise normal LSP-ready behavior instead of pre-initialization rejection.
+static void startLspSession(LspHandler &handler) {
+    (void)handler.handleRequest(makeReq("initialize"));
+    (void)handler.handleRequest(makeNotif("initialized"));
+}
+
 /// Standard valid BASIC source for testing.
 static const char *kValidSource = "DIM x AS INTEGER\nPRINT x\nEND\n";
 
@@ -109,6 +117,7 @@ TEST(BasicLsp, DidOpenPublishesDiagnostics) {
     BasicCompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, kBasicConfig);
+    startLspSession(handler);
 
     auto params = JsonValue::object({
         {"textDocument",
@@ -132,6 +141,7 @@ TEST(BasicLsp, DidChangeUpdatesDiagnostics) {
     BasicCompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, kBasicConfig);
+    startLspSession(handler);
 
     // Open document
     auto openParams = JsonValue::object({
@@ -168,6 +178,7 @@ TEST(BasicLsp, DidCloseClearsDiagnostics) {
     BasicCompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, kBasicConfig);
+    startLspSession(handler);
 
     auto openParams = JsonValue::object({
         {"textDocument",
@@ -197,6 +208,7 @@ TEST(BasicLsp, CompletionReturnsItems) {
     BasicCompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, kBasicConfig);
+    startLspSession(handler);
 
     std::string source = "DIM x AS INTEGER\nPRI\n";
     auto openParams = JsonValue::object({
@@ -227,6 +239,7 @@ TEST(BasicLsp, CompletionOnClosedDoc) {
     BasicCompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, kBasicConfig);
+    startLspSession(handler);
 
     auto compParams = JsonValue::object({
         {"textDocument", JsonValue::object({{"uri", JsonValue("file:///nonexistent.bas")}})},
@@ -243,6 +256,7 @@ TEST(BasicLsp, HoverOnVariable) {
     BasicCompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, kBasicConfig);
+    startLspSession(handler);
 
     std::string source = "DIM x AS INTEGER\nPRINT x\nEND\n";
     auto openParams = JsonValue::object({
@@ -277,6 +291,7 @@ TEST(BasicLsp, HoverOnWhitespaceReturnsNull) {
     BasicCompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, kBasicConfig);
+    startLspSession(handler);
 
     std::string source = "    DIM x AS INTEGER\nEND\n";
     auto openParams = JsonValue::object({
@@ -307,6 +322,7 @@ TEST(BasicLsp, DocumentSymbolsListsVariables) {
     BasicCompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, kBasicConfig);
+    startLspSession(handler);
 
     auto openParams = JsonValue::object({
         {"textDocument",

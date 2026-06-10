@@ -381,20 +381,24 @@ ExecutableInfo inspectExecutable(const std::string &path) {
 }
 
 /// @brief Verify a prebuilt executable matches the requested target and arch.
-/// @details Checks the container format against the target (skipped for tarball)
-///          and the architecture against @p archStr (universal binaries match any).
+/// @details Checks the container format against the target and the architecture
+///          against @p archStr (universal binaries match any). Tarball packages
+///          are portable archives, so prebuilt payloads are only required to be
+///          readable by the tarball builder and are not inspected as native
+///          Mach-O/ELF/PE executables here.
 /// @throws std::runtime_error describing the mismatch.
 void validateExecutableForPackageTarget(const std::string &path,
                                         PackageTarget target,
                                         const std::string &archStr) {
+    if (target == PackageTarget::Tarball)
+        return;
+
     const ExecutableInfo info = inspectExecutable(path);
-    if (target != PackageTarget::Tarball) {
-        const ExecutableFormat expected = expectedExecutableFormat(target);
-        if (info.format != expected) {
-            throw std::runtime_error("executable format " + formatName(info.format) +
-                                     " does not match package target " + platformName(target) +
-                                     " (expected " + formatName(expected) + ")");
-        }
+    const ExecutableFormat expected = expectedExecutableFormat(target);
+    if (info.format != expected) {
+        throw std::runtime_error("executable format " + formatName(info.format) +
+                                 " does not match package target " + platformName(target) +
+                                 " (expected " + formatName(expected) + ")");
     }
     if (info.arch != "universal" && info.arch != archStr) {
         throw std::runtime_error("executable architecture '" + info.arch +
@@ -1196,22 +1200,9 @@ int cmdPackage(int argc, char **argv) {
         // Step 1: Compile to native binary (using build pipeline)
         std::cerr << "Compiling " << proj.name << "...\n";
 
-        // We need to compile the project to IL first, then to native.
-        // Reuse the same approach as cmdBuild: compile → serialize IL → compileToNative
-        SourceManager sm;
-
-        // We need to include the compilation infrastructure. For now, use the
-        // external compileToNative pathway: serialize IL to temp, then codegen.
-        // This requires the compile pipeline. Since cmd_run.cpp has internal
-        // compile functions, we instead build the native binary via a temp IL file
-        // by calling the run/build pipeline.
-
-        // The simplest approach: use viper build -o <tempBinary> <target>
-        // But that requires forking ourselves. Instead, compile IL and use
-        // compileToNative directly.
-
-        // For the initial implementation, we compile using the existing build
-        // pathway by writing a temporary binary.
+        // Build through the same in-process path as `viper build` so packaging
+        // observes project manifests, frontend options, assets, and native
+        // backend flags consistently.
         std::string tempBinaryExt;
 #ifdef _WIN32
         tempBinaryExt = ".exe";

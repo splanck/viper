@@ -116,6 +116,16 @@ std::optional<std::string> validatePositionArgs(const JsonValue &args) {
     return requireIntInRange(args, "col", 1, std::numeric_limits<int>::max());
 }
 
+/// @brief Return true for MCP methods that are defined as request/response calls.
+/// @details JSON-RPC notifications do not receive responses even when they use a
+///          request method name. Dispatch uses this helper to avoid returning
+///          `id: null` responses for notification-shaped initialize, ping, and
+///          tool calls.
+bool isRequestMethod(const std::string &method) {
+    return method == "initialize" || method == "tools/list" || method == "tools/call" ||
+           method == "ping";
+}
+
 } // namespace
 
 McpHandler::McpHandler(ICompilerBridge &bridge, const ServerConfig &config)
@@ -124,11 +134,15 @@ McpHandler::McpHandler(ICompilerBridge &bridge, const ServerConfig &config)
 // --- Request dispatch ---
 
 std::string McpHandler::handleRequest(const JsonRpcRequest &req) {
+    if (req.isNotification() && isRequestMethod(req.method))
+        return {};
+
     if (req.method == "initialize")
         return handleInitialize(req);
 
     if (req.method == "initialized") {
-        initialized_ = true;
+        if (initializeResponded_)
+            initialized_ = true;
         return {}; // Notification — no response
     }
 
@@ -154,6 +168,7 @@ std::string McpHandler::handleRequest(const JsonRpcRequest &req) {
 // --- Lifecycle ---
 
 std::string McpHandler::handleInitialize(const JsonRpcRequest &req) {
+    initializeResponded_ = true;
     auto result = JsonValue::object({
         {"protocolVersion", JsonValue("2024-11-05")},
         {"capabilities", JsonValue::object({{"tools", JsonValue::object({})}})},

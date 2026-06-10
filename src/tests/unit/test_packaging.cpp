@@ -1072,6 +1072,17 @@ TEST(Tar, RejectsDuplicateEntryPath) {
     EXPECT_THROWS(tar.addFileString("dup.txt", "two"), std::runtime_error);
 }
 
+TEST(Tar, VerifierRejectsAppleDoubleEntryPath) {
+    TarWriter tar;
+    tar.addFileString("payload/._metadata", "sidecar");
+    const auto tarBytes = tar.finish();
+    const auto tarGz = gzip(tarBytes.data(), tarBytes.size());
+
+    std::ostringstream err;
+    EXPECT_FALSE(verifyTarGzPayload(tarGz, {}, err));
+    EXPECT_TRUE(err.str().find("AppleDouble") != std::string::npos);
+}
+
 TEST(Tar, SupportsZeroByteNullDataFile) {
     TarWriter tar;
     tar.addFile("./empty", nullptr, 0);

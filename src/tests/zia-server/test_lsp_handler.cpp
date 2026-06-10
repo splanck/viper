@@ -67,6 +67,14 @@ static JsonValue parseResponse(const std::string &resp) {
     return JsonValue::parse(resp);
 }
 
+/// Helper: drive an LSP handler through initialize and initialized.
+/// Feature tests call this before document or request operations so they
+/// exercise normal LSP-ready behavior instead of pre-initialization rejection.
+static void startLspSession(LspHandler &handler) {
+    (void)handler.handleRequest(makeReq("initialize"));
+    (void)handler.handleRequest(makeNotif("initialized"));
+}
+
 /// Standard valid Zia source for testing.
 static const char *kValidSource =
     "module Test;\nfunc start() {\n    var x = 42;\n    Viper.Terminal.SayInt(x);\n}\n";
@@ -126,6 +134,7 @@ TEST(LspHandler, DidOpenPublishesDiagnostics) {
     CompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    startLspSession(handler);
 
     auto params = JsonValue::object({
         {"textDocument",
@@ -149,6 +158,7 @@ TEST(LspHandler, DidChangeUpdatesDiagnostics) {
     CompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    startLspSession(handler);
 
     // First open the document
     auto openParams = JsonValue::object({
@@ -192,6 +202,7 @@ TEST(LspHandler, DidCloseClearsDiagnostics) {
     CompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    startLspSession(handler);
 
     // Open
     auto openParams = JsonValue::object({
@@ -224,6 +235,7 @@ TEST(LspHandler, CompletionAfterDot) {
     CompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    startLspSession(handler);
 
     // Open document with "Viper." to trigger completions
     std::string source = "module Test;\nfunc start() {\n    Viper.\n}\n";
@@ -256,6 +268,7 @@ TEST(LspHandler, CompletionOnClosedDoc) {
     CompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    startLspSession(handler);
 
     // Request completions without opening — should return empty
     auto compParams = JsonValue::object({
@@ -271,6 +284,7 @@ TEST(LspHandler, CompletionInvalidParamsReturnsError) {
     CompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    startLspSession(handler);
 
     auto params = JsonValue::object({
         {"textDocument", JsonValue::object({{"uri", JsonValue("file:///x.zia")}})},
@@ -286,6 +300,7 @@ TEST(LspHandler, HoverOnClosedDoc) {
     CompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    startLspSession(handler);
 
     auto hoverParams = JsonValue::object({
         {"textDocument", JsonValue::object({{"uri", JsonValue("file:///nonexistent.zia")}})},
@@ -301,6 +316,7 @@ TEST(LspHandler, HoverReturnsMarkdownContent) {
     CompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    startLspSession(handler);
 
     std::string source = "module Test;\nfunc start() {\n    var x = 42;\n}\n";
     auto openParams = JsonValue::object({
@@ -332,6 +348,7 @@ TEST(LspHandler, HoverOnLocalVariableViaLsp) {
     CompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    startLspSession(handler);
 
     std::string source = "module Test;\nfunc start() {\n    var x = 42;\n}\n";
     auto openParams = JsonValue::object({
@@ -363,6 +380,7 @@ TEST(LspHandler, HoverOnWhitespaceReturnsNull) {
     CompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    startLspSession(handler);
 
     std::string source = "module Test;\nfunc start() {\n    var x = 42;\n}\n";
     auto openParams = JsonValue::object({
@@ -393,6 +411,7 @@ TEST(LspHandler, DocumentSymbolsListsFunctions) {
     CompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    startLspSession(handler);
 
     // Open document
     auto openParams = JsonValue::object({
@@ -431,6 +450,15 @@ TEST(LspHandler, DocumentSymbolsListsFunctions) {
 TEST(DocumentStore, UriToPathUnix) {
     auto path = DocumentStore::uriToPath("file:///Users/test/file.zia");
     EXPECT_EQ(path, "/Users/test/file.zia");
+}
+
+TEST(DocumentStore, UriToPathFileSchemeIsCaseInsensitive) {
+    auto path = DocumentStore::uriToPath("FILE:///Users/test/file.zia");
+    EXPECT_EQ(path, "/Users/test/file.zia");
+
+    std::string parsed;
+    EXPECT_TRUE(DocumentStore::tryFileUriToPath("FiLe:///Users/test/other.zia", parsed));
+    EXPECT_EQ(parsed, "/Users/test/other.zia");
 }
 
 TEST(DocumentStore, UriToPathWindowsDrive) {

@@ -74,6 +74,20 @@ void testNativeCompilerTempPathsAreUnique() {
     assert(std::filesystem::path(assetA).extension() == ".vpa");
 }
 
+/// @brief Verify IL output detection is case-insensitive.
+/// @details Filesystems and editor save dialogs often preserve uppercase
+///          extensions. The frontends should treat `-o OUT.IL` the same as
+///          `-o out.il` and avoid accidentally invoking native code generation.
+void testNativeCompilerIlExtensionIsCaseInsensitive() {
+    using namespace viper::tools;
+
+    assert(!isNativeOutputPath("out.il"));
+    assert(!isNativeOutputPath("OUT.IL"));
+    assert(!isNativeOutputPath("module.Il"));
+    assert(isNativeOutputPath("app"));
+    assert(isNativeOutputPath("app.exe"));
+}
+
 void testX64CodegenAcceptsAssetBlobAndExtraObjectFlags() {
     char input[] = "missing.il";
     char assetFlag[] = "--asset-blob";
@@ -172,6 +186,39 @@ void testProjectProfilesMapToOptimizationLevels() {
     std::filesystem::remove_all(dir);
 }
 
+/// @brief Verify manifest booleans accept numeric forms.
+/// @details CLI on/off parsing accepts `1` and `0`; project manifests should
+///          accept the same values for boolean build and packaging directives so
+///          users do not hit inconsistent configuration grammars.
+void testProjectManifestBooleanNumericForms() {
+    using namespace il::tools::common;
+    using namespace viper::tools;
+
+    std::filesystem::path dir = std::filesystem::path(generateTempIlPath()).replace_extension("");
+    std::filesystem::create_directories(dir);
+    writeText(dir / "main.zia", "module main;\nfunc start() {}\n");
+    writeText(dir / "viper.project",
+              "project boolproj\n"
+              "version 0.1.0\n"
+              "lang zia\n"
+              "entry main.zia\n"
+              "bounds-checks 0\n"
+              "overflow-checks 1\n"
+              "null-checks 0\n"
+              "shortcut-menu 1\n"
+              "shortcut-desktop 0\n");
+
+    auto resolved = resolveProject(dir.string());
+    assert(resolved);
+    assert(!resolved.value().boundsChecks);
+    assert(resolved.value().overflowChecks);
+    assert(!resolved.value().nullChecks);
+    assert(resolved.value().packageConfig.shortcutMenu);
+    assert(!resolved.value().packageConfig.shortcutDesktop);
+
+    std::filesystem::remove_all(dir);
+}
+
 void testProjectManifestAcceptsUtf8Bom() {
     using namespace il::tools::common;
     using namespace viper::tools;
@@ -225,10 +272,12 @@ void testConventionDiscoverySkipsGeneratedAndVendorTrees() {
 int main() {
     testFrontendDoubleDashSeparatesProgramArgs();
     testNativeCompilerTempPathsAreUnique();
+    testNativeCompilerIlExtensionIsCaseInsensitive();
     testX64CodegenAcceptsAssetBlobAndExtraObjectFlags();
     testX64CodegenAcceptsDebugLineFlags();
     testProjectDefaultsUseBalancedOptimization();
     testProjectProfilesMapToOptimizationLevels();
+    testProjectManifestBooleanNumericForms();
     testProjectManifestAcceptsUtf8Bom();
     testConventionDiscoverySkipsGeneratedAndVendorTrees();
     return 0;

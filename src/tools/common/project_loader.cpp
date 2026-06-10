@@ -602,13 +602,14 @@ il::support::Expected<bool> parseBool(const std::string &val,
                                       const std::string &manifestPath,
                                       int line,
                                       const std::string &directive) {
-    if (val == "on" || val == "true" || val == "yes")
+    if (val == "on" || val == "true" || val == "yes" || val == "1")
         return true;
-    if (val == "off" || val == "false" || val == "no")
+    if (val == "off" || val == "false" || val == "no" || val == "0")
         return false;
     return makeManifestErr(manifestPath,
                            line,
-                           "invalid value '" + val + "' for " + directive + "; expected on or off");
+                           "invalid value '" + val + "' for " + directive +
+                               "; expected on/off, true/false, yes/no, or 1/0");
 }
 
 /// @brief Map a build profile name to its default optimization level.
@@ -1561,13 +1562,21 @@ il::support::Expected<ProjectConfig> resolveProject(const std::string &target) {
         targetPath = cwd / targetPath;
     }
 
-    if (!fs::exists(targetPath, ec))
+    if (!fs::exists(targetPath, ec)) {
+        if (ec)
+            return makeErr("cannot inspect target '" + target + "': " + ec.message());
         return makeErr("target not found: " + target);
+    }
+    ec.clear();
 
     // Case 1: Single .zia file
     const std::string targetExt = lowerAscii(targetPath.extension().string());
+    const bool targetIsRegularFile = fs::is_regular_file(targetPath, ec);
+    if (ec)
+        return makeErr("cannot inspect target '" + target + "': " + ec.message());
+    ec.clear();
 
-    if (fs::is_regular_file(targetPath, ec) && targetExt == ".zia") {
+    if (targetIsRegularFile && targetExt == ".zia") {
         ProjectConfig config;
         auto canonical = fs::canonical(targetPath, ec);
         if (ec)
@@ -1581,7 +1590,7 @@ il::support::Expected<ProjectConfig> resolveProject(const std::string &target) {
     }
 
     // Case 2: Single .bas file
-    if (fs::is_regular_file(targetPath, ec) && targetExt == ".bas") {
+    if (targetIsRegularFile && targetExt == ".bas") {
         ProjectConfig config;
         auto canonical = fs::canonical(targetPath, ec);
         if (ec)
@@ -1595,7 +1604,7 @@ il::support::Expected<ProjectConfig> resolveProject(const std::string &target) {
     }
 
     // Case 3: Explicit manifest file
-    if (fs::is_regular_file(targetPath, ec)) {
+    if (targetIsRegularFile) {
         auto filename = targetPath.filename().string();
         if (filename == "viper.project" || targetPath.extension() == ".project") {
             auto canonical = fs::canonical(targetPath, ec);
@@ -1607,7 +1616,11 @@ il::support::Expected<ProjectConfig> resolveProject(const std::string &target) {
     }
 
     // Case 4: Directory
-    if (fs::is_directory(targetPath, ec)) {
+    const bool targetIsDirectory = fs::is_directory(targetPath, ec);
+    if (ec)
+        return makeErr("cannot inspect target '" + target + "': " + ec.message());
+    ec.clear();
+    if (targetIsDirectory) {
         auto canonical = fs::canonical(targetPath, ec);
         if (ec)
             return makeErr("cannot resolve project directory: " + target);
@@ -1616,6 +1629,9 @@ il::support::Expected<ProjectConfig> resolveProject(const std::string &target) {
         auto manifestPath = canonical / "viper.project";
         if (fs::exists(manifestPath, ec))
             return parseManifest(manifestPath.string());
+        if (ec)
+            return makeErr("cannot inspect project manifest '" + manifestPath.string() +
+                           "': " + ec.message());
 
         // Convention discovery
         return discoverConvention(canonical, {});

@@ -37,6 +37,7 @@
 #include "support/source_manager.hpp"
 
 #include <atomic>
+#include <cctype>
 #include <cerrno>
 #include <chrono>
 #include <cstring>
@@ -96,21 +97,30 @@ std::string generateUniqueTempPath(const char *prefix, const char *extension) {
 /// @details Opens the file with O_CREAT|O_EXCL (the Windows equivalent), so the
 ///          call fails if the path already exists; this closes the TOCTOU window
 ///          between generating a unique temp name and actually using it.
-/// @throws std::runtime_error if the exclusive create fails.
-void reserveTempPath(const std::string &path) {
+/// @return True when the path was reserved; false when it already existed.
+/// @throws std::runtime_error for non-collision failures such as permission or
+///         filesystem errors.
+bool reserveTempPath(const std::string &path) {
 #ifdef _WIN32
     const int fd = _open(path.c_str(), _O_CREAT | _O_EXCL | _O_WRONLY | _O_BINARY, _S_IREAD | _S_IWRITE);
-    if (fd < 0)
+    if (fd < 0) {
+        if (errno == EEXIST)
+            return false;
         throw std::runtime_error("failed to reserve temporary file: " + path + ": " +
                                  std::strerror(errno));
+    }
     _close(fd);
 #else
     const int fd = open(path.c_str(), O_CREAT | O_EXCL | O_WRONLY, S_IRUSR | S_IWUSR);
-    if (fd < 0)
+    if (fd < 0) {
+        if (errno == EEXIST)
+            return false;
         throw std::runtime_error("failed to reserve temporary file: " + path + ": " +
                                  std::strerror(errno));
+    }
     close(fd);
 #endif
+    return true;
 }
 
 } // namespace
@@ -122,7 +132,10 @@ void reserveTempPath(const std::string &path) {
 /// @param path Output path supplied on the command line.
 /// @return True when @p path does not end in ".il".
 bool isNativeOutputPath(const std::string &path) {
-    return std::filesystem::path(path).extension() != ".il";
+    std::string ext = std::filesystem::path(path).extension().string();
+    for (char &ch : ext)
+        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    return ext != ".il";
 }
 
 /// @brief Generate a unique temporary path for serialized IL text.
@@ -135,13 +148,8 @@ std::string generateTempIlPath() {
 std::string generateTempFilePath(const char *prefix, const char *extension) {
     for (int attempt = 0; attempt < 64; ++attempt) {
         std::string path = generateUniqueTempPath(prefix, extension);
-        try {
-            reserveTempPath(path);
+        if (reserveTempPath(path))
             return path;
-        } catch (const std::runtime_error &) {
-            if (attempt == 63)
-                throw;
-        }
     }
     throw std::runtime_error("failed to reserve temporary file");
 }
@@ -251,9 +259,7 @@ int compileModuleToNative(il::core::Module module,
                           bool timePasses,
                           bool fastLink,
                           std::optional<bool> windowsDebugRuntime) {
-    const std::string syntheticInputPath = generateTempIlPath();
-    std::error_code syntheticEc;
-    std::filesystem::remove(syntheticInputPath, syntheticEc);
+    const std::string syntheticInputPath = generateUniqueTempPath("viper_build", ".il");
 
     if (arch == TargetArch::ARM64) {
         viper::codegen::aarch64::CodegenPipeline::Options opts;

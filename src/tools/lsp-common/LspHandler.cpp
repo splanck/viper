@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <exception>
 #include <limits>
 #include <optional>
 #include <string_view>
@@ -558,7 +559,11 @@ void LspHandler::logMessage(int type, const std::string &message) {
         {"type", JsonValue(static_cast<int64_t>(type))},
         {"message", JsonValue(message)},
     });
-    transport_.writeMessage(buildNotification("window/logMessage", params));
+    try {
+        transport_.writeMessage(buildNotification("window/logMessage", params));
+    } catch (const std::exception &) {
+        // Logging must not fail the request/notification that triggered it.
+    }
 }
 
 // --- Document sync ---
@@ -568,14 +573,17 @@ void LspHandler::handleDidOpen(const JsonRpcRequest &req) {
     const auto *uriValue = textDoc ? stringMember(*textDoc, "uri") : nullptr;
     const auto *versionValue = textDoc ? intMember(*textDoc, "version") : nullptr;
     const auto *textValue = textDoc ? stringMember(*textDoc, "text") : nullptr;
-    if (!uriValue || !versionValue || !textValue)
+    if (!uriValue || !versionValue || !textValue) {
+        logMessage(2, "Ignoring malformed textDocument/didOpen notification");
         return;
+    }
     std::string uri = uriValue->asString();
     int version = 0;
     if (!checkedJsonIntToInt(versionValue,
                              std::numeric_limits<int>::min(),
                              std::numeric_limits<int>::max(),
                              version)) {
+        logMessage(2, "Ignoring textDocument/didOpen with out-of-range document version: " + uri);
         return;
     }
     std::string text = textValue->asString();
@@ -596,8 +604,10 @@ void LspHandler::handleDidChange(const JsonRpcRequest &req) {
     std::string uri;
     int version = 0;
     if (!extractTextDocumentUri(req.params, uri) ||
-        !extractTextDocumentVersion(req.params, version))
+        !extractTextDocumentVersion(req.params, version)) {
+        logMessage(2, "Ignoring malformed textDocument/didChange notification");
         return;
+    }
     std::string path;
     std::string pathErr;
     if (!DocumentStore::tryFileUriToPath(uri, path, &pathErr)) {
@@ -619,8 +629,10 @@ void LspHandler::handleDidChange(const JsonRpcRequest &req) {
 
     // Full sync: every accepted content change must be a complete document body.
     const auto &changes = req.params["contentChanges"];
-    if (changes.type() != JsonType::Array || changes.size() == 0)
+    if (changes.type() != JsonType::Array || changes.size() == 0) {
+        logMessage(2, "Ignoring textDocument/didChange without full document content");
         return;
+    }
     const auto &lastChange = changes.at(changes.size() - 1);
     if (lastChange.type() != JsonType::Object || lastChange.has("range") ||
         lastChange.has("rangeLength")) {
@@ -628,8 +640,10 @@ void LspHandler::handleDidChange(const JsonRpcRequest &req) {
         return;
     }
     const auto *textValue = stringMember(lastChange, "text");
-    if (!textValue)
+    if (!textValue) {
+        logMessage(2, "Ignoring textDocument/didChange content item without text");
         return;
+    }
     std::string text = textValue->asString();
     store_.update(uri, version, std::move(text));
 
