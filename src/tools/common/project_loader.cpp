@@ -58,6 +58,7 @@ namespace basic = il::frontends::basic;
 namespace zia = il::frontends::zia;
 
 inline constexpr std::uint64_t kMaxManifestHookScriptBytes = 1024u * 1024u;
+inline constexpr std::streamoff kMaxConventionScanBytes = 1024 * 1024;
 
 /// @brief Make a diagnostic error with a message.
 il::support::Diag makeErr(const std::string &msg) {
@@ -243,12 +244,19 @@ bool startsWithKeywordLine(std::string_view line,
 /// @brief Read a source file as text for convention-based lexical scans.
 /// @details Convention discovery should not report I/O diagnostics for every
 ///          unreadable candidate; callers receive an empty optional and treat it
-///          as "no convention signal". Manifest-directed paths still use the
-///          stricter source loader later in the pipeline.
+///          as "no convention signal". Files larger than the bounded scan limit
+///          are skipped for the same reason. Manifest-directed paths still use
+///          the stricter source loader later in the pipeline.
 /// @param path Source file path to read.
 /// @return File contents, or std::nullopt if the file could not be opened/read.
 std::optional<std::string> readConventionScanText(const std::string &path) {
-    std::ifstream in(path, std::ios::binary);
+    std::ifstream in(path, std::ios::binary | std::ios::ate);
+    if (!in)
+        return std::nullopt;
+    const std::streamoff size = in.tellg();
+    if (size < 0 || size > kMaxConventionScanBytes)
+        return std::nullopt;
+    in.seekg(0, std::ios::beg);
     if (!in)
         return std::nullopt;
     std::ostringstream contents;
@@ -1498,6 +1506,12 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
     std::sort(config.sourceFiles.begin(), config.sourceFiles.end());
     config.sourceFiles.erase(std::unique(config.sourceFiles.begin(), config.sourceFiles.end()),
                              config.sourceFiles.end());
+    std::sort(config.ziaFiles.begin(), config.ziaFiles.end());
+    config.ziaFiles.erase(std::unique(config.ziaFiles.begin(), config.ziaFiles.end()),
+                          config.ziaFiles.end());
+    std::sort(config.basicFiles.begin(), config.basicFiles.end());
+    config.basicFiles.erase(std::unique(config.basicFiles.begin(), config.basicFiles.end()),
+                            config.basicFiles.end());
 
     if (config.sourceFiles.empty())
         return makeErr("no source files found in project directories");
@@ -1516,8 +1530,12 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
     } else {
         // Verify entry file exists
         std::error_code entryEc;
-        if (!fs::exists(config.entryFile, entryEc))
+        if (!fs::is_regular_file(config.entryFile, entryEc))
             return makeErr("entry file not found: " + config.entryFile);
+        if (std::find(config.sourceFiles.begin(), config.sourceFiles.end(), config.entryFile) ==
+            config.sourceFiles.end()) {
+            return makeErr("entry file is not included by project sources: " + config.entryFile);
+        }
     }
 
     return config;

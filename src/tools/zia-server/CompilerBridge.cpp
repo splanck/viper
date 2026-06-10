@@ -34,7 +34,9 @@
 #include "support/source_manager.hpp"
 
 #include <cstdio>
+#include <mutex>
 #include <sstream>
+#include <string_view>
 
 namespace viper::server {
 
@@ -402,56 +404,77 @@ static HoverResult resolveHoverTarget(
     return result;
 }
 
+/// @brief Escape text before inserting it into generated Markdown code spans or fences.
+/// @details Compiler-provided identifiers and type strings should be well-formed, but hover text is
+///          still user-visible markdown. Escaping backticks and replacing control characters keeps
+///          a malformed or adversarial symbol spelling from closing a fence or corrupting the LSP
+///          hover payload.
+static std::string escapeMarkdownCodeText(std::string_view text) {
+    std::string out;
+    out.reserve(text.size());
+    for (char c : text) {
+        if (c == '`') {
+            out += "\\`";
+        } else if (static_cast<unsigned char>(c) < 0x20 && c != '\t') {
+            out.push_back(' ');
+        } else {
+            out.push_back(c);
+        }
+    }
+    return out;
+}
+
 /// @brief Format hover info as rich markdown.
 static std::string formatHoverMarkdown(const HoverResult &info) {
     std::string md;
 
     if (info.kind == "function") {
-        md += "```zia\nfunc " + info.name;
+        md += "```zia\nfunc " + escapeMarkdownCodeText(info.name);
         if (!info.signature.empty())
-            md += info.signature;
+            md += escapeMarkdownCodeText(info.signature);
         md += "\n```";
     } else if (info.kind == "method") {
-        md += "```zia\nmethod " + info.name;
+        md += "```zia\nmethod " + escapeMarkdownCodeText(info.name);
         if (!info.signature.empty())
-            md += info.signature;
+            md += escapeMarkdownCodeText(info.signature);
         md += "\n```";
         if (!info.ownerName.empty())
-            md += "\n\n*Member of `" + info.ownerName + "`*";
+            md += "\n\n*Member of `" + escapeMarkdownCodeText(info.ownerName) + "`*";
     } else if (info.kind == "variable") {
         md += "```zia\n";
         if (info.isFinal)
             md += "final ";
         else
             md += "var ";
-        md += info.name;
+        md += escapeMarkdownCodeText(info.name);
         if (!info.type.empty())
-            md += ": " + info.type;
+            md += ": " + escapeMarkdownCodeText(info.type);
         md += "\n```";
     } else if (info.kind == "parameter") {
-        md += "```zia\n" + info.name;
+        md += "```zia\n" + escapeMarkdownCodeText(info.name);
         if (!info.type.empty())
-            md += ": " + info.type;
+            md += ": " + escapeMarkdownCodeText(info.type);
         md += "\n```\n\n*Parameter*";
     } else if (info.kind == "field") {
-        md += "```zia\nfield " + info.name;
+        md += "```zia\nfield " + escapeMarkdownCodeText(info.name);
         if (!info.type.empty())
-            md += ": " + info.type;
+            md += ": " + escapeMarkdownCodeText(info.type);
         md += "\n```";
         if (!info.ownerName.empty())
-            md += "\n\n*Member of `" + info.ownerName + "`*";
+            md += "\n\n*Member of `" + escapeMarkdownCodeText(info.ownerName) + "`*";
     } else if (info.kind == "type") {
-        md += "```zia\nclass " + info.name + "\n```";
+        md += "```zia\nclass " + escapeMarkdownCodeText(info.name) + "\n```";
     } else if (info.kind == "module") {
-        md += "```zia\nbind " + info.name + " = " + info.type + "\n```\n\n*Module namespace*";
+        md += "```zia\nbind " + escapeMarkdownCodeText(info.name) + " = " +
+              escapeMarkdownCodeText(info.type) + "\n```\n\n*Module namespace*";
     } else if (info.kind == "runtime-class") {
-        md += "```zia\nclass " + info.name + "\n```";
+        md += "```zia\nclass " + escapeMarkdownCodeText(info.name) + "\n```";
         if (!info.signature.empty())
-            md += "\n\n*Runtime class — " + info.signature + "*";
+            md += "\n\n*Runtime class — " + escapeMarkdownCodeText(info.signature) + "*";
     } else {
-        md += "```zia\n" + info.name;
+        md += "```zia\n" + escapeMarkdownCodeText(info.name);
         if (!info.type.empty())
-            md += ": " + info.type;
+            md += ": " + escapeMarkdownCodeText(info.type);
         md += "\n```";
     }
 
@@ -464,6 +487,7 @@ std::vector<CompletionInfo> CompilerBridge::completions(const std::string &sourc
                                                         int line,
                                                         int col,
                                                         const std::string &path) {
+    std::lock_guard<std::mutex> lock(completionMutex_);
     auto items = completionEngine_->complete(source, line, col, path);
     std::vector<CompletionInfo> result;
     result.reserve(items.size());
@@ -528,7 +552,20 @@ std::vector<SymbolInfo> CompilerBridge::symbols(const std::string &source,
 
     auto types = result->sema->getTypeNames();
     for (const auto &tn : types) {
-        out.push_back({tn, "type", tn, false, false});
+        const size_t pos = source.find(tn);
+        if (pos == std::string::npos)
+            continue;
+        uint32_t typeLine = 1;
+        uint32_t typeColumn = 1;
+        for (size_t i = 0; i < pos; ++i) {
+            if (source[i] == '\n') {
+                ++typeLine;
+                typeColumn = 1;
+            } else {
+                ++typeColumn;
+            }
+        }
+        out.push_back({tn, "type", tn, false, false, typeLine, typeColumn});
     }
 
     return out;

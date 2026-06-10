@@ -28,6 +28,7 @@
 
 #include "VpaWriter.hpp"
 #include "codegen/common/objfile/ObjectFileWriter.hpp"
+#include "tools/common/packaging/PkgHash.hpp"
 #include "tools/common/packaging/PkgUtils.hpp"
 #include "tools/common/project_loader.hpp"
 
@@ -35,21 +36,41 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <mutex>
 #include <sstream>
 #include <unordered_map>
+#include <vector>
 
 namespace fs = std::filesystem;
 
 namespace viper::asset {
 namespace {
 constexpr std::uintmax_t kMaxAssetFileBytes = 256ULL * 1024ULL * 1024ULL;
+constexpr std::size_t kMaxAssetCacheEntries = 64;
 
+/// @brief Hash the full contents of @p path for cache invalidation.
+/// @details Asset cache keys must change even when a filesystem preserves size and
+///          coarse modification timestamps across an edit. The helper is used only
+///          after source validation has enforced the asset size cap, so reading the
+///          file here does not introduce an unbounded allocation.
+static std::string contentHashForFile(const fs::path &path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in)
+        return "?";
+    std::vector<uint8_t> data((std::istreambuf_iterator<char>(in)),
+                              std::istreambuf_iterator<char>());
+    if (!in.good() && !in.eof())
+        return "?";
+    return data.empty() ? viper::pkg::sha256Hex(nullptr, 0)
+                        : viper::pkg::sha256Hex(data.data(), data.size());
+}
 
 /// @brief Append a single file's identity fingerprint to a cache key.
 /// @details Folds the normalized path, byte size, and last-write-time ticks of
-///          @p path into @p key (using "?" placeholders when stat calls fail) so
-///          a change to any of those invalidates the asset build cache.
+///          @p path into @p key (using "?" placeholders when stat calls fail), then
+///          includes a SHA-256 content hash so edits with unchanged size/mtime still
+///          invalidate the asset build cache.
 /// @param path File to fingerprint.
 /// @param key Cache-key string accumulated in place.
 static void appendFileFingerprint(const fs::path &path, std::string &key) {
@@ -65,6 +86,8 @@ static void appendFileFingerprint(const fs::path &path, std::string &key) {
         if (!ec)
             key += std::to_string(static_cast<long long>(ticks));
     }
+    key.push_back('|');
+    key += contentHashForFile(path);
     key.push_back('\n');
 }
 
@@ -185,7 +208,7 @@ static bool enumerateDir(const fs::path &dir,
                 if (!entry.regularFile)
                     return;
                 std::error_code ec;
-                fs::path relPath = fs::relative(entry.logicalPath, rootDir, ec);
+                fs::path relPath = fs::relative(entry.logicalPath, dir, ec);
                 if (ec) {
                     throw std::runtime_error("cannot compute relative path for: " +
                                              entry.logicalPath.string());
@@ -425,6 +448,8 @@ std::optional<AssetBundle> compileAssets(const il::tools::common::ProjectConfig 
 
     {
         std::lock_guard<std::mutex> lock(cacheMutex);
+        if (cache.size() >= kMaxAssetCacheEntries && cache.find(cacheKey) == cache.end())
+            cache.erase(cache.begin());
         cache[cacheKey] = bundle;
     }
     return bundle;

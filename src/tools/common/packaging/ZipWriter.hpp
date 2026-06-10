@@ -136,6 +136,11 @@ class ZipWriter {
     /// @brief Throw if value > maxValue; prevents central-directory integer overflow on large
     /// archives.
     void validateArchiveLimit(size_t value, size_t maxValue, const char *what) const;
+    /// @brief Throw if appending @p additionalBytes would exceed ZIP32 archive-size fields.
+    /// @details Local data offsets and central-directory records use 32-bit byte offsets. This
+    ///          helper validates projected sizes before a local header or payload is appended so
+    ///          casts to uint32_t remain exact.
+    void validateProjectedArchiveSize(size_t additionalBytes, const char *what) const;
     /// @brief Append len bytes of data to buffer_.
     void writeBytes(const uint8_t *data, size_t len);
     /// @brief Append a 16-bit little-endian integer to buffer_.

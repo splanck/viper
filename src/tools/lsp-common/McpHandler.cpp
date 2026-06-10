@@ -154,7 +154,6 @@ std::string McpHandler::handleRequest(const JsonRpcRequest &req) {
 // --- Lifecycle ---
 
 std::string McpHandler::handleInitialize(const JsonRpcRequest &req) {
-    initialized_ = true;
     auto result = JsonValue::object({
         {"protocolVersion", JsonValue("2024-11-05")},
         {"capabilities", JsonValue::object({{"tools", JsonValue::object({})}})},
@@ -395,6 +394,8 @@ std::string McpHandler::handleToolsCall(const JsonRpcRequest &req) {
             return buildError(req.id, kInvalidParams, *argError);
         content = callDumpTokens(args);
     } else if (name == p + "/runtime-classes") {
+        if (args.size() != 0)
+            return buildError(req.id, kInvalidParams, "runtime-classes does not accept arguments");
         content = callRuntimeClasses(args);
     } else if (name == p + "/runtime-methods") {
         argError = requireString(args, "className");
@@ -451,6 +452,7 @@ JsonValue McpHandler::callCompile(const JsonValue &args) {
             {"message", JsonValue(d.message)},
             {"line", JsonValue(static_cast<int64_t>(d.line))},
             {"column", JsonValue(static_cast<int64_t>(d.column))},
+            {"code", JsonValue(d.code)},
         }));
     }
 
@@ -506,6 +508,8 @@ JsonValue McpHandler::callSymbols(const JsonValue &args) {
             {"name", JsonValue(s.name)},
             {"kind", JsonValue(s.kind)},
             {"type", JsonValue(s.type)},
+            {"line", JsonValue(static_cast<int64_t>(s.line))},
+            {"column", JsonValue(static_cast<int64_t>(s.column))},
         }));
     }
 

@@ -52,6 +52,19 @@ bool verifyMacOSAppZip(const std::vector<uint8_t> &data,
                        const std::string &executableName,
                        std::ostream &err);
 
+/// @brief Verify a macOS .app ZIP contains the standard bundle files plus extra payload files.
+/// @param data ZIP file bytes.
+/// @param appBundleName Expected `.app` bundle directory name inside the ZIP.
+/// @param executableName Expected executable name under `Contents/MacOS`.
+/// @param requiredResourcePaths Paths that must exist under `Contents/Resources`.
+/// @param err Stream for error messages.
+/// @return true if the ZIP is valid and contains every required bundle/resource file.
+bool verifyMacOSAppZipPayload(const std::vector<uint8_t> &data,
+                              const std::string &appBundleName,
+                              const std::string &executableName,
+                              const std::vector<std::string> &requiredResourcePaths,
+                              std::ostream &err);
+
 /// @brief Verify structural correctness of a .deb (ar) archive.
 ///
 /// Checks:

@@ -37,7 +37,9 @@
 #include "support/source_manager.hpp"
 
 #include <atomic>
+#include <cerrno>
 #include <chrono>
+#include <cstring>
 #include <exception>
 #include <filesystem>
 #include <iostream>
@@ -74,7 +76,10 @@ namespace {
 std::string generateUniqueTempPath(const char *prefix, const char *extension) {
     static std::atomic<uint64_t> counter{0};
 
-    const auto dir = std::filesystem::temp_directory_path();
+    std::error_code ec;
+    const auto dir = std::filesystem::temp_directory_path(ec);
+    if (ec)
+        throw std::runtime_error("failed to locate temporary directory: " + ec.message());
     const auto tick = std::chrono::steady_clock::now().time_since_epoch().count();
 #ifdef _WIN32
     const auto pid = static_cast<uint64_t>(_getpid());
@@ -96,12 +101,14 @@ void reserveTempPath(const std::string &path) {
 #ifdef _WIN32
     const int fd = _open(path.c_str(), _O_CREAT | _O_EXCL | _O_WRONLY | _O_BINARY, _S_IREAD | _S_IWRITE);
     if (fd < 0)
-        throw std::runtime_error("failed to reserve temporary file: " + path);
+        throw std::runtime_error("failed to reserve temporary file: " + path + ": " +
+                                 std::strerror(errno));
     _close(fd);
 #else
     const int fd = open(path.c_str(), O_CREAT | O_EXCL | O_WRONLY, S_IRUSR | S_IWUSR);
     if (fd < 0)
-        throw std::runtime_error("failed to reserve temporary file: " + path);
+        throw std::runtime_error("failed to reserve temporary file: " + path + ": " +
+                                 std::strerror(errno));
     close(fd);
 #endif
 }

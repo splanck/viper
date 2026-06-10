@@ -522,6 +522,14 @@ void rt_label_set_color(void *label, int64_t color) {
         vg_label_set_color(lbl, (uint32_t)color);
 }
 
+/// @brief Enable or disable word wrapping on a label.
+void rt_label_set_word_wrap(void *label, int64_t enabled) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_label_t *lbl = (vg_label_t *)rt_gui_widget_handle_checked_type(label, VG_WIDGET_LABEL);
+    if (lbl)
+        vg_label_set_word_wrap(lbl, enabled != 0);
+}
+
 //=============================================================================
 // Button Widget
 //=============================================================================
@@ -1208,6 +1216,12 @@ void rt_label_set_font(void *label, void *font, double size) {
 void rt_label_set_color(void *label, int64_t color) {
     (void)label;
     (void)color;
+}
+
+/// @brief Set word wrap stub (graphics disabled).
+void rt_label_set_word_wrap(void *label, int64_t enabled) {
+    (void)label;
+    (void)enabled;
 }
 
 /// @brief Stub: graphics disabled — returns NULL; no button widget is created.

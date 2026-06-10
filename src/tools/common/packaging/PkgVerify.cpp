@@ -1414,12 +1414,26 @@ bool verifyMacOSAppZip(const std::vector<uint8_t> &data,
                        const std::string &appBundleName,
                        const std::string &executableName,
                        std::ostream &err) {
-    return verifyZipPayload(data,
-                            {appBundleName + "/Contents/Info.plist",
-                             appBundleName + "/Contents/PkgInfo",
-                             appBundleName + "/Contents/MacOS/" + executableName},
-                            "macOS app ZIP",
-                            err);
+    return verifyMacOSAppZipPayload(data, appBundleName, executableName, {}, err);
+}
+
+/// @brief Verify a macOS app ZIP and assert additional resource payload paths.
+/// @details Builds the standard required bundle path set, prefixes each caller
+///          supplied resource path with `<bundle>/Contents/Resources`, and then
+///          delegates to the shared ZIP payload verifier.
+bool verifyMacOSAppZipPayload(const std::vector<uint8_t> &data,
+                              const std::string &appBundleName,
+                              const std::string &executableName,
+                              const std::vector<std::string> &requiredResourcePaths,
+                              std::ostream &err) {
+    std::vector<std::string> required = {appBundleName + "/Contents/Info.plist",
+                                         appBundleName + "/Contents/PkgInfo",
+                                         appBundleName + "/Contents/MacOS/" + executableName};
+    required.reserve(required.size() + requiredResourcePaths.size());
+    const std::string resourcesPrefix = appBundleName + "/Contents/Resources";
+    for (const auto &path : requiredResourcePaths)
+        required.push_back(joinPackageRelativePath(resourcesPrefix, path, "macOS app ZIP path"));
+    return verifyZipPayload(data, required, "macOS app ZIP", err);
 }
 
 // ============================================================================

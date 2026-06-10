@@ -135,18 +135,32 @@ void copyPackageAssetToResources(const fs::path &srcPath,
     const fs::path targetRoot = resourcesDir / fs::path(targetDir);
     const std::string sourceRel = sanitizePackageRelativePath(sourceText, "asset source path");
     const fs::path sourceLeaf = fs::path(sourceRel).filename();
-    if (!fs::exists(srcPath))
+    std::error_code ec;
+    if (!fs::exists(srcPath, ec)) {
+        if (ec)
+            throw std::runtime_error("cannot stat asset '" + sourceText + "': " + ec.message());
         throw std::runtime_error("asset not found: " + sourceText);
+    }
 
-    if (fs::is_directory(srcPath)) {
-        if (!targetDir.empty())
-            fs::create_directories(targetRoot);
+    if (fs::is_directory(srcPath, ec)) {
+        if (ec)
+            throw std::runtime_error("cannot inspect asset '" + sourceText + "': " + ec.message());
+        if (!targetDir.empty()) {
+            fs::create_directories(targetRoot, ec);
+            if (ec)
+                throw std::runtime_error("cannot create asset resource directory '" +
+                                         targetRoot.string() + "': " + ec.message());
+        }
         safeDirectoryIterateResolved(srcPath, projectRoot, [&](const SafeDirectoryEntry &entry) {
             const auto relPath = sanitizePackageRelativePath(
                 entry.logicalPath.lexically_relative(srcPath).generic_string(), "asset path");
             const fs::path dst = targetRoot / fs::path(relPath);
             if (entry.directory) {
-                fs::create_directories(dst);
+                std::error_code createEc;
+                fs::create_directories(dst, createEc);
+                if (createEc)
+                    throw std::runtime_error("cannot create asset directory '" + dst.string() +
+                                             "': " + createEc.message());
             } else if (entry.regularFile) {
                 writeFileBytes(dst,
                                readFile(entry.resolvedPath.string()),
@@ -154,7 +168,9 @@ void copyPackageAssetToResources(const fs::path &srcPath,
                                    fs::perms::group_read | fs::perms::others_read);
             }
         });
-    } else if (fs::is_regular_file(srcPath)) {
+    } else if (fs::is_regular_file(srcPath, ec)) {
+        if (ec)
+            throw std::runtime_error("cannot inspect asset '" + sourceText + "': " + ec.message());
         writeFileBytes(targetRoot / sourceLeaf,
                        readFile(srcPath.string()),
                        fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read |
@@ -389,24 +405,26 @@ std::vector<std::string> macOSManPagePaths(const ToolchainInstallManifest &manif
 
 /// @brief Append the sorted, de-duplicated leaf filenames directly under @p dir.
 /// @details Non-recursive; includes regular files and symlinks only. Permission
-///          errors are skipped silently. Used to enumerate expected install
-///          payloads when verifying the produced package.
+///          errors are treated as package-build failures so verification expectations
+///          cannot silently omit files.
 void appendLeafNamesFromDirectory(std::vector<std::string> &names, const fs::path &dir) {
     std::error_code ec;
-    if (!fs::is_directory(dir, ec))
+    if (!fs::is_directory(dir, ec)) {
+        if (ec)
+            throw std::runtime_error("cannot inspect directory '" + dir.string() + "': " +
+                                     ec.message());
         return;
+    }
     for (fs::directory_iterator it(dir, fs::directory_options::skip_permission_denied, ec);
          it != fs::directory_iterator();
          it.increment(ec)) {
-        if (ec) {
-            ec.clear();
-            continue;
-        }
+        if (ec)
+            throw std::runtime_error("cannot iterate directory '" + dir.string() + "': " +
+                                     ec.message());
         const auto status = it->symlink_status(ec);
-        if (ec) {
-            ec.clear();
-            continue;
-        }
+        if (ec)
+            throw std::runtime_error("cannot stat directory entry '" + it->path().string() +
+                                     "': " + ec.message());
         if (!fs::is_regular_file(status) && !fs::is_symlink(status))
             continue;
         names.push_back(it->path().filename().generic_string());
@@ -417,25 +435,27 @@ void appendLeafNamesFromDirectory(std::vector<std::string> &names, const fs::pat
 
 /// @brief Append every regular file/symlink under @p dir as a path relative to @p dir.
 /// @details Recursive companion to appendLeafNamesFromDirectory; permission
-///          errors are skipped silently. Used to build the expected payload-path
-///          set for post-build package verification.
+///          errors are treated as package-build failures so post-build verification
+///          cannot silently accept an incomplete expected payload set.
 void appendRelativeFilePathsFromDirectory(std::vector<std::string> &paths, const fs::path &dir) {
     std::error_code ec;
-    if (!fs::is_directory(dir, ec))
+    if (!fs::is_directory(dir, ec)) {
+        if (ec)
+            throw std::runtime_error("cannot inspect directory '" + dir.string() + "': " +
+                                     ec.message());
         return;
+    }
     for (fs::recursive_directory_iterator it(
              dir, fs::directory_options::skip_permission_denied, ec);
          it != fs::recursive_directory_iterator();
          it.increment(ec)) {
-        if (ec) {
-            ec.clear();
-            continue;
-        }
+        if (ec)
+            throw std::runtime_error("cannot iterate directory '" + dir.string() + "': " +
+                                     ec.message());
         const auto status = it->symlink_status(ec);
-        if (ec) {
-            ec.clear();
-            continue;
-        }
+        if (ec)
+            throw std::runtime_error("cannot stat directory entry '" + it->path().string() +
+                                     "': " + ec.message());
         if (!fs::is_regular_file(status) && !fs::is_symlink(status))
             continue;
         const fs::path rel = it->path().lexically_relative(dir);
@@ -1059,6 +1079,9 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
     const std::string pkgVersion =
         resolveMacOSToolchainPackageVersion(version, params.packageVersion);
     validateMacOSBundleIdentifier(params.identifier, "macOS package identifier");
+    if (!params.manifest.fileAssociations.empty() && params.identifier.empty())
+        throw std::runtime_error(
+            "macOS file associations require a non-empty macOS package identifier");
     validateDebVersion(version, "macOS toolchain manifest version");
 
     const fs::path tmpRoot = uniqueTempPackagingDir("viper-macos-toolchain-" + version);

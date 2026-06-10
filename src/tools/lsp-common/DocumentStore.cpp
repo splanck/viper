@@ -59,12 +59,12 @@ bool isForbiddenUriPathChar(char c) {
 
 } // namespace
 
-void DocumentStore::open(const std::string &uri, int version, std::string content) {
-    docs_[uri] = {version, std::move(content)};
+void DocumentStore::open(const std::string &uri, int documentVersion, std::string content) {
+    docs_[uri] = {documentVersion, std::move(content)};
 }
 
-void DocumentStore::update(const std::string &uri, int version, std::string content) {
-    docs_[uri] = {version, std::move(content)};
+void DocumentStore::update(const std::string &uri, int documentVersion, std::string content) {
+    docs_[uri] = {documentVersion, std::move(content)};
 }
 
 void DocumentStore::close(const std::string &uri) {
@@ -80,6 +80,13 @@ const std::string *DocumentStore::getContent(const std::string &uri) const {
 
 bool DocumentStore::isOpen(const std::string &uri) const {
     return docs_.find(uri) != docs_.end();
+}
+
+std::optional<int> DocumentStore::version(const std::string &uri) const {
+    const auto it = docs_.find(uri);
+    if (it == docs_.end())
+        return std::nullopt;
+    return it->second.version;
 }
 
 bool DocumentStore::tryUriToPath(const std::string &uri, std::string &outPath, std::string *err) {
@@ -184,6 +191,18 @@ bool DocumentStore::tryUriToPath(const std::string &uri, std::string &outPath, s
 
     outPath = std::move(path);
     return true;
+}
+
+bool DocumentStore::tryFileUriToPath(const std::string &uri,
+                                     std::string &outPath,
+                                     std::string *err) {
+    if (uri.rfind("file://", 0) != 0) {
+        outPath.clear();
+        if (err)
+            *err = "LSP document URI must use file:// form: " + uri;
+        return false;
+    }
+    return tryUriToPath(uri, outPath, err);
 }
 
 std::string DocumentStore::uriToPath(const std::string &uri) {

@@ -374,11 +374,18 @@ static void scrollview_arrange(vg_widget_t *widget, float x, float y, float widt
         float child_y = flow_y + child->layout.margin_top - scroll->scroll_y;
         float child_w = child->measured_width;
         float child_h = child->measured_height;
-        if (child_w <= 0.0f) {
-            child_w = content_area_width - child->layout.margin_left - child->layout.margin_right;
-            if (child_w < 0.0f)
-                child_w = 0.0f;
-        }
+        // Stretch content to AT LEAST the viewport width so vertical-scroll
+        // content fills across (settings panels, lists); content that is
+        // intrinsically wider keeps its width so it can scroll horizontally.
+        // This MUST match the width used when the content was measured in
+        // calculate_content_size() (= content_area_width), otherwise
+        // word-wrapped children wrap to a different line count between measure
+        // and arrange, producing overlapping text and a wrong content height.
+        float fill_w = content_area_width - child->layout.margin_left - child->layout.margin_right;
+        if (fill_w < 0.0f)
+            fill_w = 0.0f;
+        if (child_w < fill_w)
+            child_w = fill_w;
         vg_widget_arrange(child, child_x, child_y, child_w, child_h);
         flow_y += child->layout.margin_top + child_h + child->layout.margin_bottom;
     }

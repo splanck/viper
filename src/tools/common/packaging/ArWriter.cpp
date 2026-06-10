@@ -25,9 +25,23 @@
 
 #include <cstring>
 #include <fstream>
+#include <limits>
 #include <stdexcept>
 
 namespace viper::pkg {
+
+namespace {
+
+/// @brief Add @p value to @p total while checking for size_t overflow.
+/// @details The ar writer stores all output in memory. Guarding the pre-reserve estimate keeps
+///          pathological member sets from wrapping the requested capacity before serialization.
+void checkedAddEstimate(size_t &total, size_t value) {
+    if (value > std::numeric_limits<size_t>::max() - total)
+        throw std::runtime_error("ArWriter: archive size estimate overflow");
+    total += value;
+}
+
+} // namespace
 
 /// @brief Store one archive member. Copies `data` into an internal buffer along
 /// with the name, mtime, and mode; the member is appended to the output on finish().
@@ -95,8 +109,11 @@ std::vector<uint8_t> ArWriter::finish() const {
 
     // Estimate size: 8 (magic) + per member (60 header + data + pad)
     size_t est = 8;
-    for (const auto &m : members_)
-        est += 60 + m.data.size() + (m.data.size() & 1);
+    for (const auto &m : members_) {
+        checkedAddEstimate(est, 60);
+        checkedAddEstimate(est, m.data.size());
+        checkedAddEstimate(est, m.data.size() & 1);
+    }
     out.reserve(est);
 
     // Global header

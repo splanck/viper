@@ -642,6 +642,109 @@ std::string debMaintainerFor(const PackageConfig &pkg, const std::string &displa
     return maintainer + " <noreply@example.invalid>";
 }
 
+/// @brief Return @p value as a POSIX shell single-quoted literal.
+/// @details Escapes embedded single quotes using the standard close/escape/reopen
+///          sequence. Used for package-generated maintainer scripts where
+///          normalized package names are still embedded as data, not syntax.
+std::string shellSingleQuote(std::string_view value) {
+    std::string out;
+    out.reserve(value.size() + 2);
+    out.push_back('\'');
+    for (char c : value) {
+        if (c == '\'')
+            out += "'\\''";
+        else
+            out.push_back(c);
+    }
+    out.push_back('\'');
+    return out;
+}
+
+/// @brief Append the opt-in Linux desktop-shortcut install snippet.
+/// @details Copies the packaged .desktop launcher into existing root/home
+///          Desktop directories and then restores ownership to the directory's
+///          owner when `stat` is available. Failures remain non-fatal because
+///          per-user desktop folders vary widely across Linux systems.
+void appendHomeDesktopShortcutInstallScript(std::ostream &script, const std::string &pkgName) {
+    const std::string desktopName = shellSingleQuote(pkgName + ".desktop");
+    const std::string source = shellSingleQuote("/usr/share/applications/" + pkgName + ".desktop");
+    script << "for d in /root/Desktop /home/*/Desktop; do\n"
+              "    [ -d \"$d\" ] || continue\n"
+              "    target=\"$d/\""
+           << desktopName
+           << "\n"
+              "    owner=$(stat -c %U \"$d\" 2>/dev/null || printf '')\n"
+              "    group=$(stat -c %G \"$d\" 2>/dev/null || printf '')\n"
+              "    cp "
+           << source
+           << " \"$target\" || continue\n"
+              "    chmod 755 \"$target\" || true\n"
+              "    if [ -n \"$owner\" ] && [ \"$owner\" != \"UNKNOWN\" ]; then\n"
+              "        if [ -n \"$group\" ] && [ \"$group\" != \"UNKNOWN\" ]; then\n"
+              "            chown \"$owner:$group\" \"$target\" || true\n"
+              "        else\n"
+              "            chown \"$owner\" \"$target\" || true\n"
+              "        fi\n"
+              "    fi\n"
+              "done\n";
+}
+
+/// @brief Append the opt-in Linux desktop-shortcut removal snippet.
+/// @details Removes only the exact launcher filename emitted by the matching
+///          install script, ignoring missing or inaccessible user Desktop
+///          directories so package removal does not fail on home-directory
+///          permission edge cases.
+void appendHomeDesktopShortcutRemovalScript(std::ostream &script, const std::string &pkgName) {
+    const std::string desktopName = shellSingleQuote(pkgName + ".desktop");
+    script << "for d in /root/Desktop /home/*/Desktop; do\n"
+              "    [ -e \"$d/\""
+           << desktopName
+           << " ] && rm -f \"$d/\""
+           << desktopName
+           << " || true\n"
+              "done\n";
+}
+
+/// @brief Return README text bundled in portable application tarballs.
+/// @details The tarball layout is intentionally self-contained; this text tells
+///          users where the executable and optional asset payloads live without
+///          requiring an installer script.
+std::string appTarballReadme(const std::string &displayName,
+                             const std::string &version,
+                             const std::string &exeName,
+                             const PackageConfig &pkg) {
+    std::ostringstream out;
+    out << displayName << " " << version << "\n\n";
+    if (!pkg.description.empty())
+        out << pkg.description << "\n\n";
+    out << "Run:\n  ./" << exeName << "\n";
+    if (!pkg.assets.empty())
+        out << "\nBundled assets are stored alongside the executable under their configured "
+               "relative paths.\n";
+    if (!pkg.homepage.empty())
+        out << "\nHomepage: " << pkg.homepage << "\n";
+    if (!pkg.author.empty())
+        out << "Author: " << pkg.author << "\n";
+    if (!pkg.license.empty())
+        out << "License: " << pkg.license << "\n";
+    return out.str();
+}
+
+/// @brief Return the license metadata text bundled in portable application tarballs.
+/// @details Project manifests currently carry an SPDX-style license identifier,
+///          not full license body text, so the packaged file records the declared
+///          identifier and points consumers back to the project distribution for
+///          complete terms when needed.
+std::string appTarballLicenseText(const std::string &displayName, const PackageConfig &pkg) {
+    std::ostringstream out;
+    out << displayName << "\n";
+    if (!pkg.license.empty())
+        out << "SPDX-License-Identifier: " << pkg.license << "\n";
+    else
+        out << "SPDX-License-Identifier: NOASSERTION\n";
+    return out.str();
+}
+
 /// @brief Validate all install paths in `dataFiles` are normalized and unique.
 /// Throws on path traversal, duplicate paths, or non-normalized separators.
 void validateDataFilePaths(const std::vector<DataFile> &dataFiles) {
@@ -985,13 +1088,8 @@ void buildDebPackage(const LinuxBuildParams &params) {
         if (needDesktopEntry)
             pi << "if command -v update-desktop-database >/dev/null 2>&1; then "
                   "update-desktop-database /usr/share/applications; fi\n";
-        if (pkg.shortcutDesktop && pkg.allowHomeDesktopShortcuts) {
-            pi << "for d in /root/Desktop /home/*/Desktop; do "
-                  "[ -d \"$d\" ] || continue; "
-                  "(cp /usr/share/applications/"
-               << pkgName << ".desktop \"$d/" << pkgName << ".desktop\" && chmod 755 \"$d/"
-               << pkgName << ".desktop\") || true; done\n";
-        }
+        if (pkg.shortcutDesktop && pkg.allowHomeDesktopShortcuts)
+            appendHomeDesktopShortcutInstallScript(pi, pkgName);
         if (!pkg.postInstallScript.empty())
             pi << normalizePackageHookScript(pkg.postInstallScript, "post-install script") << "\n";
         controlTar.addFileString("./postinst", pi.str(), 0755);
@@ -1006,12 +1104,8 @@ void buildDebPackage(const LinuxBuildParams &params) {
         if (!pkg.preUninstallScript.empty())
             pr << normalizePackageHookScript(pkg.preUninstallScript, "pre-uninstall script")
                << "\n";
-        if (pkg.shortcutDesktop && pkg.allowHomeDesktopShortcuts) {
-            pr << "for d in /root/Desktop /home/*/Desktop; do "
-                  "[ -e \"$d/"
-               << pkgName << ".desktop\" ] && rm -f \"$d/" << pkgName
-               << ".desktop\" || true; done\n";
-        }
+        if (pkg.shortcutDesktop && pkg.allowHomeDesktopShortcuts)
+            appendHomeDesktopShortcutRemovalScript(pr, pkgName);
         controlTar.addFileString("./prerm", pr.str(), 0755);
     }
 
@@ -1123,7 +1217,17 @@ void buildTarball(const LinuxBuildParams &params) {
         }
     }
 
-    // README / LICENSE
+    const std::string readme = appTarballReadme(displayName, version, exeName, pkg);
+    tar.addFile(topDir + "README.install",
+                reinterpret_cast<const uint8_t *>(readme.data()),
+                readme.size(),
+                0644);
+    const std::string licenseText = appTarballLicenseText(displayName, pkg);
+    tar.addFile(topDir + "LICENSE",
+                reinterpret_cast<const uint8_t *>(licenseText.data()),
+                licenseText.size(),
+                0644);
+
     auto tarBytes = tar.finish();
     auto tarGz = gzip(tarBytes.data(), tarBytes.size());
 

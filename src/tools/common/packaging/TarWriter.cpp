@@ -29,11 +29,22 @@
 #include <cctype>
 #include <cstring>
 #include <filesystem>
+#include <limits>
 #include <stdexcept>
 
 namespace viper::pkg {
 
 namespace {
+
+/// @brief Add @p value to @p total while checking for size_t overflow.
+/// @details Archive writers pre-reserve their final output buffers. A wrapped estimate would cause
+///          under-reservation and potentially mask pathological inputs, so overflow is reported as a
+///          package-construction error before serialization begins.
+void checkedAddEstimate(size_t &total, size_t value, const char *archiveKind) {
+    if (value > std::numeric_limits<size_t>::max() - total)
+        throw std::runtime_error(std::string(archiveKind) + ": archive size estimate overflow");
+    total += value;
+}
 
 /// @brief Normalize a tar entry path: strips the leading "./" prefix (emitted by some
 /// tools), removes trailing slashes, sanitizes via sanitizePackageRelativePath,
@@ -259,9 +270,12 @@ std::vector<uint8_t> TarWriter::finish() const {
     // Estimate: per entry (512 header + data padded to 512) + 1024 end
     size_t est = 1024;
     for (const auto &e : entries_) {
-        est += 512;
-        if (!e.data.empty())
-            est += ((e.data.size() + 511) / 512) * 512;
+        checkedAddEstimate(est, 512, "TarWriter");
+        if (!e.data.empty()) {
+            if (e.data.size() > std::numeric_limits<size_t>::max() - 511)
+                throw std::runtime_error("TarWriter: archive size estimate overflow");
+            checkedAddEstimate(est, ((e.data.size() + 511) / 512) * 512, "TarWriter");
+        }
     }
     out.reserve(est);
 

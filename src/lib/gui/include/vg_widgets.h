@@ -74,6 +74,11 @@ vg_label_t *vg_label_create(vg_widget_t *parent, const char *text);
 /// @param text New text (copied internally)
 void vg_label_set_text(vg_label_t *label, const char *text);
 
+/// @brief Enable or disable word wrapping for a label.
+/// @param label   Label widget
+/// @param enabled true to wrap text to the laid-out width; false for single line
+void vg_label_set_word_wrap(vg_label_t *label, bool enabled);
+
 /// @brief Get label text
 /// @param label Label widget
 /// @return Current text (read-only)

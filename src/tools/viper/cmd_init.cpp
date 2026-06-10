@@ -28,6 +28,10 @@ static bool writeFile(const fs::path &path, const std::string &content) {
         return false;
     }
     out << content;
+    if (!out) {
+        std::cerr << "error: failed while writing " << path.string() << "\n";
+        return false;
+    }
     return true;
 }
 
@@ -136,6 +140,7 @@ int cmdInit(int argc, char **argv) {
                            "optimize O1\n";
 
     if (!writeFile(projectDir / "viper.project", manifest)) {
+        fs::remove_all(projectDir, ec);
         return 1;
     }
 
@@ -156,6 +161,7 @@ int cmdInit(int argc, char **argv) {
     }
 
     if (!writeFile(projectDir / entryFile, source)) {
+        fs::remove_all(projectDir, ec);
         return 1;
     }
 

@@ -405,45 +405,28 @@ class IdeOverlays {
         var appCard = GUI.GroupBox.New(body, "Appearance");
         appCard.SetMargin(2);
 
-        var fontPathRow = GUI.HBox.New();
-        fontPathRow.SetSpacing(16.0);
-        appCard.AddChild(fontPathRow);
-        var fontPathMeta = GUI.VBox.New();
-        fontPathMeta.SetSpacing(4.0);
-        fontPathMeta.SetSize(FIELD_LABEL_WIDTH, 0);
-        fontPathRow.AddChild(fontPathMeta);
-        GUI.Label.New(fontPathMeta, "Editor font");
-        GUI.Label.New(
-            fontPathMeta,
-            "Optional .ttf or .ttc file for the code editor.");
-        var fontPathControls = GUI.VBox.New();
-        fontPathControls.SetSpacing(8.0);
-        fontPathControls.SetFlex(1.0);
-        fontPathRow.AddChild(fontPathControls);
-        fontPathInput = GUI.TextInput.New(fontPathControls);
-        fontPathInput.SetFlex(1.0);
+        // Editor font — label/description stacked above the control (full width).
+        GUI.Label.New(appCard, "Editor font");
+        var fontPathDesc =
+            GUI.Label.New(appCard, "Optional .ttf or .ttc file for the code editor.");
+        fontPathDesc.SetWordWrap(1);
+        fontPathInput = GUI.TextInput.New(appCard);
         fontPathInput.SetPlaceholder("Built-in editor font");
         var fontPathButtons = GUI.HBox.New();
         fontPathButtons.SetSpacing(10.0);
-        fontPathControls.AddChild(fontPathButtons);
+        appCard.AddChild(fontPathButtons);
         browseFontButton = GUI.Button.New(fontPathButtons, "Choose Font...");
         browseFontButton.SetStyle(2);
         useSystemFontButton = GUI.Button.New(fontPathButtons, "Use Default");
         useSystemFontButton.SetStyle(2);
 
-        var fontSizeRow = GUI.HBox.New();
-        fontSizeRow.SetSpacing(16.0);
-        appCard.AddChild(fontSizeRow);
-        var fontSizeMeta = GUI.VBox.New();
-        fontSizeMeta.SetSpacing(4.0);
-        fontSizeMeta.SetSize(FIELD_LABEL_WIDTH, 0);
-        fontSizeRow.AddChild(fontSizeMeta);
-        GUI.Label.New(fontSizeMeta, "Font size");
-        GUI.Label.New(fontSizeMeta, "Point size used by labels and editors.");
+        // Font size
+        GUI.Label.New(appCard, "Font size");
+        var fontSizeDesc = GUI.Label.New(appCard, "Point size used by labels and editors.");
+        fontSizeDesc.SetWordWrap(1);
         var fontSizeControls = GUI.HBox.New();
         fontSizeControls.SetSpacing(10.0);
-        fontSizeControls.SetFlex(1.0);
-        fontSizeRow.AddChild(fontSizeControls);
+        appCard.AddChild(fontSizeControls);
         fontSizeSpinner = GUI.Spinner.New(fontSizeControls);
         fontSizeSpinner.SetRange(12.0, 36.0);
         fontSizeSpinner.SetStep(1.0);
@@ -452,36 +435,25 @@ class IdeOverlays {
         resetFontSizeButton = GUI.Button.New(fontSizeControls, "Restore Default");
         resetFontSizeButton.SetStyle(2);
 
-        var tabWidthRow = GUI.HBox.New();
-        tabWidthRow.SetSpacing(16.0);
-        appCard.AddChild(tabWidthRow);
-        var tabWidthMeta = GUI.VBox.New();
-        tabWidthMeta.SetSpacing(4.0);
-        tabWidthMeta.SetSize(FIELD_LABEL_WIDTH, 0);
-        tabWidthRow.AddChild(tabWidthMeta);
-        GUI.Label.New(tabWidthMeta, "Tab size");
-        GUI.Label.New(tabWidthMeta, "How many columns a hard tab should occupy.");
+        // Tab size
+        GUI.Label.New(appCard, "Tab size");
+        var tabWidthDesc = GUI.Label.New(appCard, "How many columns a hard tab should occupy.");
+        tabWidthDesc.SetWordWrap(1);
         var tabWidthControls = GUI.HBox.New();
         tabWidthControls.SetSpacing(10.0);
-        tabWidthControls.SetFlex(1.0);
-        tabWidthRow.AddChild(tabWidthControls);
+        appCard.AddChild(tabWidthControls);
         tabWidthSpinner = GUI.Spinner.New(tabWidthControls);
         tabWidthSpinner.SetRange(2.0, 8.0);
         tabWidthSpinner.SetStep(1.0);
         tabWidthSpinner.SetDecimals(0);
         tabWidthSpinner.SetSize(110, 0);
 
-        var themeRow = GUI.HBox.New();
-        themeRow.SetSpacing(16.0);
-        appCard.AddChild(themeRow);
-        var themeMeta = GUI.VBox.New();
-        themeMeta.SetSpacing(4.0);
-        themeMeta.SetSize(FIELD_LABEL_WIDTH, 0);
-        themeRow.AddChild(themeMeta);
-        GUI.Label.New(themeMeta, "Color theme");
-        GUI.Label.New(themeMeta, "Switch the shell between dark and light surfaces.");
-        themeDropdown = GUI.Dropdown.New(themeRow);
-        themeDropdown.SetFlex(1.0);
+        // Color theme
+        GUI.Label.New(appCard, "Color theme");
+        var themeDesc =
+            GUI.Label.New(appCard, "Switch the shell between dark and light surfaces.");
+        themeDesc.SetWordWrap(1);
+        themeDropdown = GUI.Dropdown.New(appCard);
         themeDropdown.AddItem("Dark");
         themeDropdown.AddItem("Light");
         resetAppearanceButton = GUI.Button.New(appCard, "Restore Appearance Defaults");
@@ -505,31 +477,28 @@ class IdeOverlays {
         var intelliCard = GUI.GroupBox.New(body, "IntelliSense");
         intelliCard.SetMargin(2);
 
-        var diagnosticsDelayRow = GUI.HBox.New();
-        diagnosticsDelayRow.SetSpacing(16.0);
-        intelliCard.AddChild(diagnosticsDelayRow);
-        var diagnosticsDelayMeta = GUI.VBox.New();
-        diagnosticsDelayMeta.SetSpacing(4.0);
-        diagnosticsDelayMeta.SetSize(FIELD_LABEL_WIDTH, 0);
-        diagnosticsDelayRow.AddChild(diagnosticsDelayMeta);
-        GUI.Label.New(diagnosticsDelayMeta, "Diagnostics delay");
-        GUI.Label.New(diagnosticsDelayMeta, "Idle time before live checks run.");
-        diagnosticsDelaySpinner = GUI.Spinner.New(diagnosticsDelayRow);
+        // Diagnostics delay
+        GUI.Label.New(intelliCard, "Diagnostics delay");
+        var diagnosticsDelayDesc = GUI.Label.New(intelliCard, "Idle time before live checks run.");
+        diagnosticsDelayDesc.SetWordWrap(1);
+        var diagnosticsDelayControls = GUI.HBox.New();
+        diagnosticsDelayControls.SetSpacing(10.0);
+        intelliCard.AddChild(diagnosticsDelayControls);
+        diagnosticsDelaySpinner = GUI.Spinner.New(diagnosticsDelayControls);
         diagnosticsDelaySpinner.SetRange(100.0, 5000.0);
         diagnosticsDelaySpinner.SetStep(50.0);
         diagnosticsDelaySpinner.SetDecimals(0);
         diagnosticsDelaySpinner.SetSize(130, 0);
 
-        var completionDelayRow = GUI.HBox.New();
-        completionDelayRow.SetSpacing(16.0);
-        intelliCard.AddChild(completionDelayRow);
-        var completionDelayMeta = GUI.VBox.New();
-        completionDelayMeta.SetSpacing(4.0);
-        completionDelayMeta.SetSize(FIELD_LABEL_WIDTH, 0);
-        completionDelayRow.AddChild(completionDelayMeta);
-        GUI.Label.New(completionDelayMeta, "Completion delay");
-        GUI.Label.New(completionDelayMeta, "Debounce time for identifier completions.");
-        completionDelaySpinner = GUI.Spinner.New(completionDelayRow);
+        // Completion delay
+        GUI.Label.New(intelliCard, "Completion delay");
+        var completionDelayDesc =
+            GUI.Label.New(intelliCard, "Debounce time for identifier completions.");
+        completionDelayDesc.SetWordWrap(1);
+        var completionDelayControls = GUI.HBox.New();
+        completionDelayControls.SetSpacing(10.0);
+        intelliCard.AddChild(completionDelayControls);
+        completionDelaySpinner = GUI.Spinner.New(completionDelayControls);
         completionDelaySpinner.SetRange(0.0, 2000.0);
         completionDelaySpinner.SetStep(25.0);
         completionDelaySpinner.SetDecimals(0);
@@ -571,15 +540,18 @@ class IdeOverlays {
         var title = GUI.Label.New(root, "About ViperIDE");
         title.SetMargin(1);
 
-        GUI.Label.New(
+        var aboutLine1 = GUI.Label.New(
             root,
             "A native IDE for Zia and Viper BASIC with live diagnostics, hover info, project search, and an integrated editor.");
-        GUI.Label.New(
+        aboutLine1.SetWordWrap(1);
+        var aboutLine2 = GUI.Label.New(
             root,
             "This build now uses inline settings controls instead of the old stacked dialog flow.");
-        GUI.Label.New(
+        aboutLine2.SetWordWrap(1);
+        var aboutLine3 = GUI.Label.New(
             root,
             "Shortcuts: Ctrl+B sidebar, Ctrl+Shift+P palette, Ctrl+, settings, F5 build and run.");
+        aboutLine3.SetWordWrap(1);
 
         var footer = GUI.HBox.New();
         footer.SetSpacing(10.0);

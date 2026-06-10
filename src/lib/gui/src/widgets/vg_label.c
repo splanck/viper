@@ -404,6 +404,17 @@ void vg_label_set_text(vg_label_t *label, const char *text) {
     label->base.needs_paint = true;
 }
 
+/// @brief Enable or disable word wrapping. When enabled, the label wraps its
+///        text to the width it is laid out at and reports a multi-line height.
+void vg_label_set_word_wrap(vg_label_t *label, bool enabled) {
+    if (!label || label->word_wrap == enabled)
+        return;
+    label->word_wrap = enabled;
+    label_free_wrap_cache(label); /* wrap mode changed — cache stale */
+    label->base.needs_layout = true;
+    label->base.needs_paint = true;
+}
+
 /// @brief Return the label's current display text.
 ///
 /// @param label The label to query.

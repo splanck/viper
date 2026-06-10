@@ -917,6 +917,14 @@ inline void validatePackageUrl(const std::string &url, const char *fieldName) {
             throw std::runtime_error(std::string(fieldName) + " contains an invalid URL scheme: '" +
                                      url + "'");
     }
+    std::string scheme = url.substr(0, schemePos);
+    std::transform(scheme.begin(), scheme.end(), scheme.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    if (scheme != "http" && scheme != "https") {
+        throw std::runtime_error(std::string(fieldName) +
+                                 " must use http:// or https:// URL scheme: '" + url + "'");
+    }
 
     const std::size_t authorityStart = schemePos + 3;
     const std::size_t authorityEnd = url.find_first_of("/?#", authorityStart);
@@ -944,20 +952,44 @@ inline void validatePackageUrl(const std::string &url, const char *fieldName) {
                                          " URL host has invalid suffix: '" + url + "'");
             port = authority.substr(close + 2);
         }
-        bool sawHex = false;
         for (char c : host) {
-            if (std::isxdigit(static_cast<unsigned char>(c))) {
-                sawHex = true;
-                continue;
-            }
-            if (c != ':')
+            if (c != ':' && !std::isxdigit(static_cast<unsigned char>(c))) {
                 throw std::runtime_error(std::string(fieldName) +
                                          " URL IPv6 host contains an invalid character: '" + url +
                                          "'");
+            }
         }
-        if (!sawHex)
+        const std::size_t doubleColon = host.find("::");
+        if (doubleColon != std::string::npos && host.find("::", doubleColon + 2) != std::string::npos)
             throw std::runtime_error(std::string(fieldName) +
-                                     " URL IPv6 host must contain address digits: '" + url + "'");
+                                     " URL IPv6 host has multiple '::' elisions: '" + url + "'");
+        if (host.find(":::") != std::string::npos)
+            throw std::runtime_error(std::string(fieldName) +
+                                     " URL IPv6 host is malformed: '" + url + "'");
+
+        int groups = 0;
+        std::size_t groupStart = 0;
+        while (groupStart <= host.size()) {
+            const std::size_t colon = host.find(':', groupStart);
+            const std::string_view group =
+                colon == std::string::npos
+                    ? std::string_view(host).substr(groupStart)
+                    : std::string_view(host).substr(groupStart, colon - groupStart);
+            if (!group.empty()) {
+                if (group.size() > 4)
+                    throw std::runtime_error(std::string(fieldName) +
+                                             " URL IPv6 host group is too long: '" + url + "'");
+                ++groups;
+            }
+            if (colon == std::string::npos)
+                break;
+            groupStart = colon + 1;
+        }
+        const bool hasDoubleColon = doubleColon != std::string::npos;
+        if (groups > 8 || (!hasDoubleColon && groups != 8) || (hasDoubleColon && groups >= 8)) {
+            throw std::runtime_error(std::string(fieldName) +
+                                     " URL IPv6 host is malformed: '" + url + "'");
+        }
     } else {
         const std::size_t colon = authority.rfind(':');
         if (colon != std::string::npos) {
@@ -1374,13 +1406,16 @@ inline void safeDirectoryIterateResolved(
     walk(canonicalIterRoot, root);
 }
 
-/// @brief Compatibility wrapper for callers that only need the logical entry.
+/// @brief Compatibility wrapper for callers that only need a directory_entry-shaped object.
+/// @details The wrapper intentionally exposes the validated resolved path rather than the logical
+///          traversal path so legacy callbacks do not accidentally re-stat or read an unchecked
+///          symlink after safeDirectoryIterateResolved() has already made a containment decision.
 inline void safeDirectoryIterate(
     const std::filesystem::path &root,
     const std::filesystem::path &projectRoot,
     const std::function<void(const std::filesystem::directory_entry &)> &callback) {
     safeDirectoryIterateResolved(root, projectRoot, [&](const SafeDirectoryEntry &entry) {
-        callback(std::filesystem::directory_entry(entry.logicalPath));
+        callback(std::filesystem::directory_entry(entry.resolvedPath));
     });
 }
 

@@ -106,6 +106,12 @@ void ZipWriter::validateArchiveLimit(size_t value, size_t maxValue, const char *
     }
 }
 
+void ZipWriter::validateProjectedArchiveSize(size_t additionalBytes, const char *what) const {
+    if (additionalBytes > 0xFFFFFFFFu || buffer_.size() > 0xFFFFFFFFu - additionalBytes) {
+        throw std::runtime_error(std::string("ZipWriter: ZIP64 is not supported for ") + what);
+    }
+}
+
 /// @brief Normalize and validate a ZIP entry name: convert backslashes to forward
 /// slashes, strip trailing slashes (then re-append for directories), and run
 /// sanitizePackageRelativePath to reject absolute paths and ".." components.
@@ -309,6 +315,8 @@ void ZipWriter::addFile(const std::string &name,
         }
     }
     validateArchiveLimit(writeLen, 0xFFFFFFFFu, "compressed files larger than 4 GiB");
+    validateProjectedArchiveSize(kLocalHeaderSize + entryName.size() + writeLen,
+                                 "archives larger than 4 GiB");
 
     // Record entry
     Entry e;
@@ -376,6 +384,7 @@ void ZipWriter::addDirectory(const std::string &name, uint32_t unixMode) {
         throw std::runtime_error("ZipWriter: duplicate entry name: " + key);
     validateArchiveLimit(entries_.size() + 1, 0xFFFFu, "more than 65535 entries");
     validateArchiveLimit(buffer_.size(), 0xFFFFFFFFu, "archives larger than 4 GiB");
+    validateProjectedArchiveSize(kLocalHeaderSize + dirName.size(), "archives larger than 4 GiB");
 
     Entry e;
     e.name = dirName;
@@ -427,6 +436,8 @@ void ZipWriter::addSymlink(const std::string &name, const std::string &target) {
     const std::string normalizedTarget = normalizeSymlinkTarget(entryName, target);
     validateArchiveLimit(entries_.size() + 1, 0xFFFFu, "more than 65535 entries");
     validateArchiveLimit(buffer_.size(), 0xFFFFFFFFu, "archives larger than 4 GiB");
+    validateProjectedArchiveSize(kLocalHeaderSize + entryName.size() + normalizedTarget.size(),
+                                 "archives larger than 4 GiB");
 
     // Symlinks store the target path as file data
     auto *data = reinterpret_cast<const uint8_t *>(normalizedTarget.data());
@@ -512,6 +523,7 @@ void ZipWriter::appendCentralDirectory(std::vector<uint8_t> &archive) const {
     }
 
     validateArchiveLimit(archive.size(), 0xFFFFFFFFu, "archives larger than 4 GiB");
+    validateArchiveLimit(archive.size() + kEndRecordSize, 0xFFFFFFFFu, "archives larger than 4 GiB");
     uint32_t cdSize = static_cast<uint32_t>(archive.size()) - cdOffset;
 
     // End of central directory record

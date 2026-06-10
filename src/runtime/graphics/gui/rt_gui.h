@@ -240,6 +240,9 @@ void rt_label_set_font(void *label, void *font, double size);
 /// @param color ARGB color (0xAARRGGBB).
 void rt_label_set_color(void *label, int64_t color);
 
+/// @brief Enable (1) or disable (0) word wrapping on a label.
+void rt_label_set_word_wrap(void *label, int64_t enabled);
+
 //=========================================================================
 // Button Widget
 //=========================================================================

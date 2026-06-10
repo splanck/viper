@@ -24,6 +24,7 @@
 #include "tools/lsp-common/ICompilerBridge.hpp"
 
 #include <memory>
+#include <mutex>
 
 namespace il::frontends::basic {
 class BasicCompletionEngine;
@@ -61,6 +62,10 @@ class BasicCompilerBridge : public ICompilerBridge {
     std::string dumpTokens(const std::string &source, const std::string &path) override;
 
   private:
+    /// @brief Guards access to the shared BASIC completion engine cache.
+    /// @details The bridge otherwise creates fresh compiler state per request. This mutex keeps the
+    ///          documented thread-safe contract valid if server request handling becomes concurrent.
+    mutable std::mutex completionMutex_;
     std::unique_ptr<il::frontends::basic::BasicCompletionEngine> completionEngine_;
 };
 

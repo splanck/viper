@@ -36,6 +36,7 @@
 
 #include <cctype>
 #include <cstdio>
+#include <mutex>
 #include <unordered_map>
 
 namespace viper::server {
@@ -63,28 +64,48 @@ static std::string stripBasicTypeSuffix(std::string text) {
     return text;
 }
 
-/// @brief Build a case-folded map from BASIC identifier spellings to their first token location.
+/// @brief Build a case-folded map from BASIC identifier spellings to source locations.
 /// @details The BASIC semantic model exposes symbol names without declaration locations. This
-/// helper lexes the source once and records each identifier's first source position so LSP
-/// document symbols can report a concrete range.
+/// helper lexes the source once, prefers identifiers immediately following declaration leaders
+/// such as DIM, CONST, SUB, FUNCTION, and CLASS, and then falls back to each identifier's first
+/// source position so LSP document symbols always have a concrete range.
 static std::unordered_map<std::string, il::support::SourceLoc> indexBasicIdentifierLocations(
     const std::string &source, uint32_t fileId) {
     std::unordered_map<std::string, il::support::SourceLoc> locations;
+    std::unordered_map<std::string, il::support::SourceLoc> fallbackLocations;
     Lexer lexer(source, fileId);
+    bool nextIdentifierIsDeclaration = false;
     while (true) {
         Token tok = lexer.next();
         if (tok.kind == TokenKind::EndOfFile)
             break;
-        if (tok.kind != TokenKind::Identifier || tok.lexeme.empty())
+        if (tok.kind == TokenKind::KeywordDim || tok.kind == TokenKind::KeywordConst ||
+            tok.kind == TokenKind::KeywordSub || tok.kind == TokenKind::KeywordFunction ||
+            tok.kind == TokenKind::KeywordClass) {
+            nextIdentifierIsDeclaration = true;
             continue;
+        }
+        if (tok.kind != TokenKind::Identifier || tok.lexeme.empty()) {
+            if (tok.kind == TokenKind::EndOfLine || tok.kind == TokenKind::Colon)
+                nextIdentifierIsDeclaration = false;
+            continue;
+        }
 
         const std::string key = toUpperStr(tok.lexeme);
-        locations.emplace(key, tok.loc);
+        fallbackLocations.emplace(key, tok.loc);
 
         const std::string stripped = toUpperStr(stripBasicTypeSuffix(tok.lexeme));
         if (!stripped.empty())
-            locations.emplace(stripped, tok.loc);
+            fallbackLocations.emplace(stripped, tok.loc);
+        if (nextIdentifierIsDeclaration) {
+            locations.emplace(key, tok.loc);
+            if (!stripped.empty())
+                locations.emplace(stripped, tok.loc);
+            nextIdentifierIsDeclaration = false;
+        }
     }
+    for (const auto &[name, loc] : fallbackLocations)
+        locations.emplace(name, loc);
     return locations;
 }
 
@@ -182,6 +203,7 @@ std::vector<CompletionInfo> BasicCompilerBridge::completions(const std::string &
                                                              int line,
                                                              int col,
                                                              const std::string &path) {
+    std::lock_guard<std::mutex> lock(completionMutex_);
     auto items = completionEngine_->complete(source, line, col, path);
     std::vector<CompletionInfo> result;
     result.reserve(items.size());

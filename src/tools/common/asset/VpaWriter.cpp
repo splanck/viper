@@ -155,13 +155,15 @@ void VpaWriter::addEntry(const std::string &name, const uint8_t *data, size_t si
                 entry.storedData = std::move(deflated);
                 entry.compressed = true;
             } else {
-                entry.storedData.assign(data, data + size);
+                if (size > 0)
+                    entry.storedData.assign(data, data + size);
             }
         } catch (const viper::pkg::DeflateError &ex) {
             throw std::runtime_error("VPA compression failed for '" + name + "': " + ex.what());
         }
     } else {
-        entry.storedData.assign(data, data + size);
+        if (size > 0)
+            entry.storedData.assign(data, data + size);
     }
 
     entries_.push_back(std::move(entry));

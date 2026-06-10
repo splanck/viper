@@ -23,8 +23,10 @@
 #include "tools/lsp-common/Transport.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <string_view>
 
 namespace viper::server {
@@ -222,41 +224,85 @@ void byteOffsetToLspPosition(const std::string &content,
         std::string_view(content).substr(lineStart, limit - lineStart), limit - lineStart);
 }
 
-/// @brief Build an LSP `Range` covering the first occurrence of @p name in @p content.
-/// @details Scans @p content for @p name, translating byte offsets into
-///          zero-based LSP UTF-16 line/character positions. Falls back to
-///          (0,0)-(0,1) when the name is empty or not found.
-JsonValue rangeForFirstName(const std::string &content, const std::string &name) {
-    const size_t pos = name.empty() ? std::string::npos : content.find(name);
-    if (pos == std::string::npos)
-        return makeRange(0, 0, 0, 1);
+/// @brief Return true when @p c is an ASCII identifier byte used by the frontends.
+bool isIdentifierByte(char c) {
+    const auto uc = static_cast<unsigned char>(c);
+    return std::isalnum(uc) || c == '_';
+}
 
+/// @brief Return true when @p pos can begin or end an identifier occurrence.
+/// @details This treats the source as a byte string because compiler columns are
+///          currently byte-based. Non-ASCII bytes therefore act as boundaries, which
+///          is consistent with the current ASCII identifier scanner.
+bool isIdentifierBoundary(const std::string &content, size_t pos) {
+    return pos == 0 || pos >= content.size() || !isIdentifierByte(content[pos - 1]);
+}
+
+/// @brief Find @p name within [begin,end) as a whole identifier token.
+/// @details Plain substring search can select occurrences inside comments, strings, or longer
+///          identifiers. This helper at least enforces ASCII identifier boundaries so fallback
+///          document-symbol ranges do not point into unrelated words.
+std::optional<size_t> findIdentifierInRange(const std::string &content,
+                                            const std::string &name,
+                                            size_t begin,
+                                            size_t end) {
+    if (name.empty() || begin > end || begin >= content.size())
+        return std::nullopt;
+    end = std::min(end, content.size());
+    size_t pos = content.find(name, begin);
+    while (pos != std::string::npos && pos + name.size() <= end) {
+        if (isIdentifierBoundary(content, pos) &&
+            (pos + name.size() == content.size() || !isIdentifierByte(content[pos + name.size()]))) {
+            return pos;
+        }
+        pos = content.find(name, pos + 1);
+    }
+    return std::nullopt;
+}
+
+/// @brief Build an LSP `Range` from byte offsets in @p content.
+/// @details Converts byte positions into zero-based LSP UTF-16 line/character positions.
+JsonValue rangeForByteSpan(const std::string &content, size_t start, size_t end) {
+    start = std::min(start, content.size());
+    end = std::min(std::max(end, start + 1), content.size());
     int startLine = 0;
     int startCharacter = 0;
     int endLine = 0;
     int endCharacter = 0;
-    byteOffsetToLspPosition(content, pos, startLine, startCharacter);
-    byteOffsetToLspPosition(content, pos + name.size(), endLine, endCharacter);
+    byteOffsetToLspPosition(content, start, startLine, startCharacter);
+    byteOffsetToLspPosition(content, end, endLine, endCharacter);
     return makeRange(startLine, startCharacter, endLine, endCharacter);
+}
+
+/// @brief Build an LSP `Range` covering a likely declaration occurrence of @p name.
+/// @details Used only when semantic source coordinates are unavailable. It prefers
+///          whole-token matches and otherwise falls back to a small range at the
+///          top of the document so the result is deterministic instead of selecting
+///          an arbitrary substring.
+JsonValue rangeForFallbackName(const std::string &content, const std::string &name) {
+    const auto pos = findIdentifierInRange(content, name, 0, content.size());
+    if (!pos)
+        return makeRange(0, 0, 0, 1);
+    return rangeForByteSpan(content, *pos, *pos + name.size());
 }
 
 /// @brief Build an LSP range from a 1-based compiler source location.
 /// @details The compiler location points at the declaration token. The helper clamps malformed
 /// coordinates to the source line, verifies the expected symbol spelling when possible, and falls
-/// back to a same-line search before using rangeForFirstName().
+/// back to a same-line whole-token search before using rangeForFallbackName().
 JsonValue rangeForSourceLocation(const std::string &content,
                                  const std::string &name,
                                  uint32_t line,
                                  uint32_t column) {
     if (line == 0 || column == 0)
-        return rangeForFirstName(content, name);
+        return rangeForFallbackName(content, name);
 
     std::size_t lineStart = 0;
     std::size_t currentLine = 1;
     while (currentLine < line && lineStart < content.size()) {
         const std::size_t next = content.find('\n', lineStart);
         if (next == std::string::npos)
-            return rangeForFirstName(content, name);
+            return rangeForFallbackName(content, name);
         lineStart = next + 1;
         ++currentLine;
     }
@@ -271,20 +317,12 @@ JsonValue rangeForSourceLocation(const std::string &content,
 
     if (!name.empty() &&
         (start + name.size() > content.size() || content.compare(start, name.size(), name) != 0)) {
-        const std::size_t sameLine = content.find(name, lineStart);
-        if (sameLine != std::string::npos && sameLine < lineEnd) {
-            start = sameLine;
-        }
+        if (const auto sameLine = findIdentifierInRange(content, name, lineStart, lineEnd))
+            start = *sameLine;
     }
 
     const std::size_t end = std::min(content.size(), start + std::max<std::size_t>(name.size(), 1));
-    int startLine = 0;
-    int startCharacter = 0;
-    int endLine = 0;
-    int endCharacter = 0;
-    byteOffsetToLspPosition(content, start, startLine, startCharacter);
-    byteOffsetToLspPosition(content, end, endLine, endCharacter);
-    return makeRange(startLine, startCharacter, endLine, endCharacter);
+    return rangeForByteSpan(content, start, end);
 }
 
 /// @brief Find the byte span for an existing zero-based source line.
@@ -315,9 +353,51 @@ bool sourceLineByteSpan(const std::string &content,
     return true;
 }
 
+/// @brief Convert a one-based LSP position to one-based compiler byte coordinates.
+/// @details LSP `character` values are UTF-16 code units, while the frontends currently consume
+///          byte columns. The conversion walks the target source line as UTF-8, clamps past-line
+///          positions to the line end, and returns byte columns suitable for hover/completion.
+/// @param content Full document text.
+/// @param lspOneBasedLine LSP line converted to one-based form.
+/// @param lspOneBasedCharacter LSP UTF-16 character converted to one-based form.
+/// @param compilerLine Receives the one-based source line.
+/// @param compilerColumn Receives the one-based byte column.
+/// @return True when the requested line exists in @p content.
+bool lspPositionToCompilerPosition(const std::string &content,
+                                   int lspOneBasedLine,
+                                   int lspOneBasedCharacter,
+                                   int &compilerLine,
+                                   int &compilerColumn) {
+    if (lspOneBasedLine <= 0 || lspOneBasedCharacter <= 0)
+        return false;
+    size_t lineStart = 0;
+    size_t lineEnd = 0;
+    const int zeroBasedLine = lspOneBasedLine - 1;
+    if (!sourceLineByteSpan(content, zeroBasedLine, lineStart, lineEnd))
+        return false;
+
+    const int targetUnits = lspOneBasedCharacter - 1;
+    int consumedUnits = 0;
+    size_t byteOffset = lineStart;
+    while (byteOffset < lineEnd && consumedUnits < targetUnits) {
+        size_t consumedBytes = 1;
+        const int units = utf16UnitsForUtf8Lead(
+            std::string_view(content).substr(byteOffset, lineEnd - byteOffset), consumedBytes);
+        if (consumedUnits + units > targetUnits)
+            break;
+        consumedUnits += units;
+        byteOffset += std::min(consumedBytes, lineEnd - byteOffset);
+    }
+
+    compilerLine = lspOneBasedLine;
+    compilerColumn = static_cast<int>(byteOffset - lineStart) + 1;
+    return true;
+}
+
 /// @brief Convert a one-based compiler diagnostic location into an LSP range.
 /// @details Diagnostic columns are interpreted as byte columns. The generated
-///          range is converted to UTF-16 units and clamped to the target line.
+///          range is converted to UTF-16 units and clamped to the target line. Identifier tokens
+///          are expanded so diagnostics highlight the relevant word instead of a single code unit.
 /// @param content Full document text.
 /// @param oneBasedLine Compiler diagnostic line number.
 /// @param oneBasedColumn Compiler diagnostic column number.
@@ -338,9 +418,21 @@ JsonValue diagnosticRangeForLocation(const std::string &content,
     const size_t byteOffset = std::min(lineStart + byteColumn, lineEnd);
     int lspLine = 0;
     int lspCol = 0;
-    byteOffsetToLspPosition(content, byteOffset, lspLine, lspCol);
-    const int endCol = lspCol == std::numeric_limits<int>::max() ? lspCol : lspCol + 1;
-    return makeRange(lspLine, lspCol, lspLine, endCol);
+    size_t tokenStart = byteOffset;
+    size_t tokenEnd = byteOffset;
+    if (tokenStart < lineEnd && isIdentifierByte(content[tokenStart])) {
+        while (tokenStart > lineStart && isIdentifierByte(content[tokenStart - 1]))
+            --tokenStart;
+        while (tokenEnd < lineEnd && isIdentifierByte(content[tokenEnd]))
+            ++tokenEnd;
+    } else {
+        tokenEnd = std::min(lineEnd, byteOffset + 1);
+    }
+    byteOffsetToLspPosition(content, tokenStart, lspLine, lspCol);
+    int endLine = 0;
+    int endCol = 0;
+    byteOffsetToLspPosition(content, tokenEnd, endLine, endCol);
+    return makeRange(lspLine, lspCol, endLine, endCol);
 }
 
 /// @brief Return true for methods that are request/response-shaped in LSP.
@@ -375,11 +467,25 @@ std::string LspHandler::handleRequest(const JsonRpcRequest &req) {
     if (req.method == "initialize")
         return handleInitialize(req);
 
-    if (req.method == "initialized")
+    if (req.method == "initialized") {
+        if (!initializeResponded_) {
+            logMessage(2, "Ignoring initialized notification before initialize");
+            return {};
+        }
+        clientInitialized_ = true;
         return {}; // Notification
+    }
 
     if (req.method == "shutdown")
         return handleShutdown(req);
+
+    if (!clientInitialized_) {
+        if (req.isNotification()) {
+            logMessage(2, "Ignoring notification before LSP initialization completed: " + req.method);
+            return {};
+        }
+        return buildError(req.id, kInvalidRequest, "Server has not been initialized");
+    }
 
     // Document sync notifications
     if (req.method == "textDocument/didOpen") {
@@ -414,6 +520,9 @@ std::string LspHandler::handleRequest(const JsonRpcRequest &req) {
 // --- Lifecycle ---
 
 std::string LspHandler::handleInitialize(const JsonRpcRequest &req) {
+    if (initializeResponded_)
+        return buildError(req.id, kInvalidRequest, "Server has already been initialized");
+
     auto capabilities = JsonValue::object({
         {"textDocumentSync", JsonValue(1)}, // Full sync
         {"completionProvider",
@@ -431,12 +540,25 @@ std::string LspHandler::handleInitialize(const JsonRpcRequest &req) {
              {{"name", JsonValue(config_.serverName)}, {"version", JsonValue(config_.version)}})},
     });
 
+    initializeResponded_ = true;
     return buildResponse(req.id, result);
 }
 
 std::string LspHandler::handleShutdown(const JsonRpcRequest &req) {
     shutdownRequested_ = true;
     return buildResponse(req.id, JsonValue());
+}
+
+/// @brief Emit an LSP log-message notification without affecting request flow.
+/// @details Notification handlers cannot return JSON-RPC errors, so malformed client notifications
+///          are surfaced through the editor log. Transport write failures are handled by the
+///          transport layer in the same way as diagnostic notifications.
+void LspHandler::logMessage(int type, const std::string &message) {
+    auto params = JsonValue::object({
+        {"type", JsonValue(static_cast<int64_t>(type))},
+        {"message", JsonValue(message)},
+    });
+    transport_.writeMessage(buildNotification("window/logMessage", params));
 }
 
 // --- Document sync ---
@@ -458,6 +580,14 @@ void LspHandler::handleDidOpen(const JsonRpcRequest &req) {
     }
     std::string text = textValue->asString();
 
+    std::string path;
+    std::string pathErr;
+    if (!DocumentStore::tryFileUriToPath(uri, path, &pathErr)) {
+        logMessage(2, pathErr);
+        return;
+    }
+    (void)path;
+
     store_.open(uri, version, std::move(text));
     publishDiagnostics(uri);
 }
@@ -468,6 +598,24 @@ void LspHandler::handleDidChange(const JsonRpcRequest &req) {
     if (!extractTextDocumentUri(req.params, uri) ||
         !extractTextDocumentVersion(req.params, version))
         return;
+    std::string path;
+    std::string pathErr;
+    if (!DocumentStore::tryFileUriToPath(uri, path, &pathErr)) {
+        logMessage(2, pathErr);
+        return;
+    }
+    (void)path;
+    const auto currentVersion = store_.version(uri);
+    if (!currentVersion) {
+        logMessage(2, "Ignoring textDocument/didChange for unopened document: " + uri);
+        return;
+    }
+    if (version <= *currentVersion) {
+        logMessage(4,
+                   "Ignoring stale textDocument/didChange for " + uri + " version " +
+                       std::to_string(version));
+        return;
+    }
 
     // Full sync: every accepted content change must be a complete document body.
     const auto &changes = req.params["contentChanges"];
@@ -476,6 +624,7 @@ void LspHandler::handleDidChange(const JsonRpcRequest &req) {
     const auto &lastChange = changes.at(changes.size() - 1);
     if (lastChange.type() != JsonType::Object || lastChange.has("range") ||
         lastChange.has("rangeLength")) {
+        logMessage(2, "Ignoring incremental textDocument/didChange; server only supports full sync");
         return;
     }
     const auto *textValue = stringMember(lastChange, "text");
@@ -516,9 +665,13 @@ std::string LspHandler::handleCompletion(const JsonRpcRequest &req) {
 
     std::string path;
     std::string pathErr;
-    if (!DocumentStore::tryUriToPath(uri, path, &pathErr))
+    if (!DocumentStore::tryFileUriToPath(uri, path, &pathErr))
         return buildError(req.id, kInvalidParams, pathErr);
-    auto items = bridge_.completions(*content, line, col, path);
+    int compilerLine = 0;
+    int compilerCol = 0;
+    if (!lspPositionToCompilerPosition(*content, line, col, compilerLine, compilerCol))
+        return buildError(req.id, kInvalidParams, "Invalid textDocument/completion position");
+    auto items = bridge_.completions(*content, compilerLine, compilerCol, path);
 
     JsonValue::ArrayType arr;
     arr.reserve(items.size());
@@ -550,9 +703,13 @@ std::string LspHandler::handleHover(const JsonRpcRequest &req) {
 
     std::string path;
     std::string pathErr;
-    if (!DocumentStore::tryUriToPath(uri, path, &pathErr))
+    if (!DocumentStore::tryFileUriToPath(uri, path, &pathErr))
         return buildError(req.id, kInvalidParams, pathErr);
-    auto result = bridge_.hover(*content, line, col, path);
+    int compilerLine = 0;
+    int compilerCol = 0;
+    if (!lspPositionToCompilerPosition(*content, line, col, compilerLine, compilerCol))
+        return buildError(req.id, kInvalidParams, "Invalid textDocument/hover position");
+    auto result = bridge_.hover(*content, compilerLine, compilerCol, path);
 
     if (result.empty())
         return buildResponse(req.id, JsonValue());
@@ -580,7 +737,7 @@ std::string LspHandler::handleDocumentSymbol(const JsonRpcRequest &req) {
 
     std::string path;
     std::string pathErr;
-    if (!DocumentStore::tryUriToPath(uri, path, &pathErr))
+    if (!DocumentStore::tryFileUriToPath(uri, path, &pathErr))
         return buildError(req.id, kInvalidParams, pathErr);
     auto syms = bridge_.symbols(*content, path);
 
@@ -609,7 +766,7 @@ void LspHandler::publishDiagnostics(const std::string &uri) {
         return;
 
     std::string path;
-    if (!DocumentStore::tryUriToPath(uri, path))
+    if (!DocumentStore::tryFileUriToPath(uri, path))
         return;
     auto diags = bridge_.check(*content, path);
 

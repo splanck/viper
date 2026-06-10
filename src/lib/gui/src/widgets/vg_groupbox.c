@@ -67,9 +67,12 @@ static void groupbox_measure(vg_widget_t *widget, float available_width, float a
     if (n > 1)
         content_h += gb->spacing * (float)(n - 1);
 
+    // Report the INTRINSIC width only. Do NOT inflate to available_width here:
+    // the parent VBox stretches us to its width, and inflating made our measured
+    // width exceed the viewport, so the scroll view arranged children at a
+    // different width than they were measured at (word-wrap then wrapped
+    // differently → overlapping text and wrong card heights).
     float w = max_cw + pad * 2.0f;
-    if (available_width > w)
-        w = available_width; // prefer to fill the offered width
     float h = groupbox_title_height(gb) + content_h + pad;
 
     widget->measured_width = w;

@@ -23,6 +23,7 @@
 #include "PkgMD5.hpp"
 
 #include <cstring>
+#include <stdexcept>
 
 namespace viper::pkg {
 namespace {
@@ -171,6 +172,11 @@ void md5Init(MD5Context &ctx) {
 /// data into the 64-byte internal buffer, and flushes complete blocks via
 /// md5Transform. Partial blocks remain in ctx.buffer for the next Update or Final.
 void md5Update(MD5Context &ctx, const uint8_t *data, size_t len) {
+    if (len == 0)
+        return;
+    if (data == nullptr)
+        throw std::runtime_error("MD5: null input buffer for non-empty update");
+
     size_t index = static_cast<size_t>((ctx.count[0] >> 3) & 0x3F);
 
     if ((ctx.count[0] += (static_cast<uint32_t>(len) << 3)) < (static_cast<uint32_t>(len) << 3))

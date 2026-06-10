@@ -20,6 +20,7 @@
 #include "bytecode/BytecodeVM.hpp"
 #include "cli.hpp"
 #include "il/core/Module.hpp"
+#include "runtime/core/rt_args.h"
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
 #include "tools/common/module_loader.hpp"
@@ -35,6 +36,7 @@
 #include <iomanip>
 #include <iostream>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -48,6 +50,11 @@
 /// @note The overwrite flag is ignored; _putenv_s always overwrites.
 inline int setenv(const char *name, const char *value, int /*overwrite*/) {
     return _putenv_s(name, value);
+}
+
+/// @brief POSIX unsetenv shim for Windows, implemented by clearing the environment value.
+inline int unsetenv(const char *name) {
+    return _putenv_s(name, "");
 }
 #endif
 
@@ -85,6 +92,53 @@ struct BenchResult {
     double insnsPerSec = 0.0;
     int64_t returnValue = 0;
     bool success = true;
+    std::string errorMessage;
+};
+
+/// @brief Temporarily override a process environment variable for one benchmark iteration.
+/// @details The standard VM selects dispatch through VIPER_DISPATCH. This guard restores the prior
+///          value, or clears the variable when it was previously absent, so one strategy does not
+///          leak into later strategies or files.
+class ScopedEnvVar {
+  public:
+    ScopedEnvVar(const char *name, const char *value) : name_(name) {
+        if (const char *old = std::getenv(name_.c_str())) {
+            oldValue_ = old;
+        }
+        setenv(name_.c_str(), value, 1);
+    }
+
+    ~ScopedEnvVar() {
+        if (oldValue_)
+            setenv(name_.c_str(), oldValue_->c_str(), 1);
+        else
+            unsetenv(name_.c_str());
+    }
+
+    ScopedEnvVar(const ScopedEnvVar &) = delete;
+    ScopedEnvVar &operator=(const ScopedEnvVar &) = delete;
+
+  private:
+    std::string name_;
+    std::optional<std::string> oldValue_;
+};
+
+/// @brief Clear runtime argv state for the duration of a benchmark iteration.
+/// @details Benchmarks do not forward program arguments. Clearing the runtime bridge before and
+///          after each run prevents ambient host-process argv state from changing benchmark
+///          behavior or carrying over between VM implementations.
+class RuntimeArgsScope {
+  public:
+    RuntimeArgsScope() {
+        rt_args_clear();
+    }
+
+    ~RuntimeArgsScope() {
+        rt_args_clear();
+    }
+
+    RuntimeArgsScope(const RuntimeArgsScope &) = delete;
+    RuntimeArgsScope &operator=(const RuntimeArgsScope &) = delete;
 };
 
 /// @brief Print usage information for the bench subcommand.
@@ -241,8 +295,8 @@ BenchResult runBenchmarkIteration(const core::Module &mod,
     BenchResult result;
     result.strategy = strategy;
 
-    // Set dispatch strategy via environment variable
-    setenv("VIPER_DISPATCH", strategy.c_str(), 1);
+    RuntimeArgsScope runtimeArgs;
+    ScopedEnvVar dispatchOverride("VIPER_DISPATCH", strategy.c_str());
 
     // Create Runner with minimal configuration
     vm::RunConfig runCfg;
@@ -254,8 +308,9 @@ BenchResult runBenchmarkIteration(const core::Module &mod,
         vm::Runner runner(mod, std::move(runCfg));
         result.returnValue = runner.run();
         result.instructions = runner.instructionCount();
-    } catch (const std::exception &) {
+    } catch (const std::exception &ex) {
         result.success = false;
+        result.errorMessage = ex.what();
         return result;
     }
 
@@ -283,6 +338,7 @@ BenchResult runBytecodeBenchmarkIteration(const core::Module &mod,
     result.strategy = strategy;
 
     bool useThreaded = (strategy == "bc-threaded");
+    RuntimeArgsScope runtimeArgs;
 
     auto start = std::chrono::steady_clock::now();
 
@@ -299,10 +355,12 @@ BenchResult runBytecodeBenchmarkIteration(const core::Module &mod,
 
         if (vm.state() == viper::bytecode::VMState::Trapped) {
             result.success = false;
+            result.errorMessage = vm.trapMessage();
             return result;
         }
-    } catch (const std::exception &) {
+    } catch (const std::exception &ex) {
         result.success = false;
+        result.errorMessage = ex.what();
         return result;
     }
 
@@ -365,6 +423,7 @@ bool benchmarkFile(const std::string &file,
         uint64_t instructions = 0;
         int64_t returnValue = 0;
         bool allSuccess = true;
+        std::string errorMessage;
 
         if (config.verbose) {
             std::cerr << "Running " << file << " with " << strategy << " (" << config.iterations
@@ -375,6 +434,7 @@ bool benchmarkFile(const std::string &file,
             auto iterResult = runBenchmarkIteration(mod, strategy, config.maxSteps);
             if (!iterResult.success) {
                 allSuccess = false;
+                errorMessage = iterResult.errorMessage;
                 break;
             }
             times.push_back(iterResult.timeMs);
@@ -389,6 +449,7 @@ bool benchmarkFile(const std::string &file,
         result.success = allSuccess;
         result.instructions = instructions;
         result.returnValue = returnValue;
+        result.errorMessage = std::move(errorMessage);
 
         if (allSuccess && !times.empty()) {
             result.timeMs = computeMedian(times);
@@ -421,6 +482,7 @@ bool benchmarkFile(const std::string &file,
             uint64_t instructions = 0;
             int64_t returnValue = 0;
             bool allSuccess = true;
+            std::string errorMessage;
 
             if (config.verbose) {
                 std::cerr << "Running " << file << " with " << strategy << " (" << config.iterations
@@ -432,6 +494,7 @@ bool benchmarkFile(const std::string &file,
                     runBytecodeBenchmarkIteration(mod, bcModule, strategy, config.maxSteps);
                 if (!iterResult.success) {
                     allSuccess = false;
+                    errorMessage = iterResult.errorMessage;
                     break;
                 }
                 times.push_back(iterResult.timeMs);
@@ -446,6 +509,7 @@ bool benchmarkFile(const std::string &file,
             result.success = allSuccess;
             result.instructions = instructions;
             result.returnValue = returnValue;
+            result.errorMessage = std::move(errorMessage);
 
             if (allSuccess && !times.empty()) {
                 result.timeMs = computeMedian(times);
@@ -463,7 +527,10 @@ bool benchmarkFile(const std::string &file,
 void printTextResults(const std::vector<BenchResult> &results) {
     for (const auto &r : results) {
         if (!r.success) {
-            std::cout << "BENCH " << r.file << " " << r.strategy << " FAILED\n";
+            std::cout << "BENCH " << r.file << " " << r.strategy << " FAILED";
+            if (!r.errorMessage.empty())
+                std::cout << " error=\"" << r.errorMessage << "\"";
+            std::cout << "\n";
             continue;
         }
         std::cout << std::fixed << std::setprecision(2);
@@ -527,7 +594,8 @@ void printJsonResults(const std::vector<BenchResult> &results) {
         std::cout << "    \"time_ms\": " << r.timeMs << ",\n";
         std::cout << std::setprecision(0);
         std::cout << "    \"insns_per_sec\": " << r.insnsPerSec << ",\n";
-        std::cout << "    \"return_value\": " << r.returnValue << "\n";
+        std::cout << "    \"return_value\": " << r.returnValue << ",\n";
+        std::cout << "    \"error\": \"" << escapeJson(r.errorMessage) << "\"\n";
         std::cout << "  }" << (i + 1 < results.size() ? "," : "") << "\n";
     }
     std::cout << "]\n";

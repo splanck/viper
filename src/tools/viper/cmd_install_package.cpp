@@ -668,8 +668,10 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
         std::cerr << "error: require exactly one of --stage-dir, --build-dir, or --verify-only\n";
         return false;
     }
-    if (!args.buildDir.empty() && args.buildConfig.empty() && hostPlatformName() == "windows")
+#if defined(_WIN32)
+    if (!args.buildDir.empty() && args.buildConfig.empty())
         args.buildConfig = "Release";
+#endif
     try {
         viper::pkg::validatePackageUrl(args.windowsTimestampUrl, "Windows timestamp URL");
         viper::pkg::validateSingleLineField(args.windowsSigntoolPath, "Windows signtool path");

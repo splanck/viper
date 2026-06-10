@@ -896,11 +896,11 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     const std::string exec = normalizeExecName(params.projectName);
     const std::string installDir =
         pkg.windowsInstallDir.empty() ? displayName : pkg.windowsInstallDir;
+    const std::string version = params.version.empty() ? "0.0.0" : params.version;
     validateWindowsFileName(displayName, "Windows display name");
     validateWindowsFileName(installDir, "Windows install directory");
     validateWindowsProgIdBase(pkg.identifier, "Windows package identifier");
-    validateSingleLineField(params.version.empty() ? "0.0.0" : params.version,
-                            "Windows package version");
+    validateSingleLineField(version, "Windows package version");
     if (!pkg.minOsWindows.empty())
         validateDottedNumericVersion(pkg.minOsWindows, "minimum Windows version");
     validateSingleLineField(pkg.author, "Windows package author");
@@ -915,7 +915,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     WindowsPackageLayout layout;
     layout.displayName = displayName;
     layout.installDirName = installDir;
-    layout.version = params.version;
+    layout.version = version;
     layout.identifier = pkg.identifier;
     layout.publisher = pkg.author;
     layout.executableName = exec + ".exe";

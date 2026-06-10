@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -34,12 +35,12 @@ class DocumentStore {
   public:
     /// @brief Open or update a document.
     /// @param uri Document URI (e.g., "file:///path/to/file.zia").
-    /// @param version Version number from the client.
+    /// @param documentVersion Version number from the client.
     /// @param content Full text content of the document.
-    void open(const std::string &uri, int version, std::string content);
+    void open(const std::string &uri, int documentVersion, std::string content);
 
     /// @brief Update a document's content and version.
-    void update(const std::string &uri, int version, std::string content);
+    void update(const std::string &uri, int documentVersion, std::string content);
 
     /// @brief Close a document (remove from store).
     void close(const std::string &uri);
@@ -50,6 +51,11 @@ class DocumentStore {
 
     /// @brief Check if a document is open.
     bool isOpen(const std::string &uri) const;
+
+    /// @brief Return the last client-provided document version for @p uri.
+    /// @param uri Document URI exactly as supplied by the LSP client.
+    /// @return The stored version, or std::nullopt when the document is not open.
+    std::optional<int> version(const std::string &uri) const;
 
     /// @brief Extract a file path from a URI.
     /// @details Strips "file://" prefix and URL-decodes valid %XX sequences.
@@ -67,6 +73,19 @@ class DocumentStore {
     static bool tryUriToPath(const std::string &uri,
                              std::string &outPath,
                              std::string *err = nullptr);
+
+    /// @brief Try to extract a filesystem path from an LSP file URI without throwing.
+    /// @details This stricter wrapper is intended for LSP document state, where the protocol
+    ///          requires document identifiers to be URI-shaped. It rejects plain paths before
+    ///          delegating to tryUriToPath(), preserving the broader helper for MCP and tests that
+    ///          intentionally operate on raw filesystem paths.
+    /// @param uri Client-provided LSP document URI.
+    /// @param outPath Receives the decoded filesystem path on success.
+    /// @param err Receives a human-readable failure reason when non-null.
+    /// @return True when @p uri used file:// form and decoded successfully.
+    static bool tryFileUriToPath(const std::string &uri,
+                                 std::string &outPath,
+                                 std::string *err = nullptr);
 
   private:
     /// @brief Stored state for one open document.

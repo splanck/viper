@@ -62,6 +62,8 @@ class LspHandler {
     Transport &transport_;
     ServerConfig config_;
     DocumentStore store_;
+    bool initializeResponded_{false};
+    bool clientInitialized_{false};
     bool shutdownRequested_{false};
 
     // Lifecycle
@@ -89,6 +91,11 @@ class LspHandler {
     // Helpers
     /// @brief Compile the document for @p uri and publish its diagnostics notification.
     void publishDiagnostics(const std::string &uri);
+
+    /// @brief Send a best-effort `window/logMessage` notification to the client.
+    /// @param type LSP MessageType value: 1 error, 2 warning, 3 info, 4 log.
+    /// @param message Human-readable text for the editor log.
+    void logMessage(int type, const std::string &message);
 
     /// @brief Map CompletionInfo kind → LSP CompletionItemKind.
     static int completionKindToLsp(int kind);

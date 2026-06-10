@@ -2187,6 +2187,7 @@ RT_FUNC(GuiLabelNew,      rt_label_new,       "Viper.GUI.Label.New",      "obj(o
 RT_FUNC(GuiLabelSetText,  rt_label_set_text,  "Viper.GUI.Label.SetText",  "void(obj,str)")
 RT_FUNC(GuiLabelSetFont,  rt_label_set_font,  "Viper.GUI.Label.SetFont",  "void(obj,obj,f64)")
 RT_FUNC(GuiLabelSetColor, rt_label_set_color, "Viper.GUI.Label.SetColor", "void(obj,i64)")
+RT_FUNC(GuiLabelSetWordWrap, rt_label_set_word_wrap, "Viper.GUI.Label.SetWordWrap", "void(obj,i64)")
 
 //=============================================================================
 // GUI - BUTTON
@@ -8601,6 +8602,7 @@ RT_CLASS_BEGIN("Viper.GUI.Label", GuiLabel, "obj", GuiLabelNew)
     RT_METHOD("SetText", "void(str)", GuiLabelSetText)
     RT_METHOD("SetFont", "void(obj,f64)", GuiLabelSetFont)
     RT_METHOD("SetColor", "void(i64)", GuiLabelSetColor)
+    RT_METHOD("SetWordWrap", "void(i64)", GuiLabelSetWordWrap)
     RT_METHOD("Destroy", "void()", GuiWidgetDestroy)
     RT_METHOD("SetVisible", "void(i64)", GuiWidgetSetVisible)
     RT_METHOD("SetEnabled", "void(i64)", GuiWidgetSetEnabled)

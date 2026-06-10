@@ -31,7 +31,9 @@
 #include "viper/il/Verify.hpp"
 #include "viper/vm/VM.hpp"
 
+#include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -63,6 +65,32 @@ using namespace il::tools::common;
 namespace {
 
 enum class RunMode { Run, Build };
+
+/// @brief Return an ASCII-lowercased copy of @p value.
+/// @details Project entry extension checks are command-line syntax, so ASCII folding is enough and
+///          avoids locale-sensitive surprises when users write uppercase `.ZIA` or `.BAS` paths.
+std::string lowerAscii(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return value;
+}
+
+/// @brief Pick a deterministic entry source for the non-entry side of a mixed project.
+/// @details Mixed-language manifests have one true executable entry. The other language may still
+///          need a file to seed frontend compilation. This helper keeps the historical behavior of
+///          compiling that side while avoiding dependence on insertion order by sorting and then
+///          preferring conventional `main` filenames.
+std::string selectMixedLibraryEntry(std::vector<std::string> files, ProjectLang lang) {
+    if (files.empty())
+        return {};
+    std::sort(files.begin(), files.end());
+    const char *mainName = lang == ProjectLang::Zia ? "main.zia" : "main.bas";
+    const auto it = std::find_if(files.begin(), files.end(), [&](const std::string &path) {
+        return std::filesystem::path(path).filename() == mainName;
+    });
+    return it != files.end() ? *it : files.front();
+}
 
 /// @brief Temporarily sets or clears a process environment variable and restores it later.
 /// @details This is used around compiler invocations that depend on legacy environment toggles,
@@ -656,7 +684,7 @@ il::support::Expected<CompiledProjectModule> compileMixedProject(
     // Determine entry language from file extension.
     std::string entryExt;
     if (project.entryFile.size() >= 4)
-        entryExt = project.entryFile.substr(project.entryFile.size() - 4);
+        entryExt = lowerAscii(project.entryFile.substr(project.entryFile.size() - 4));
 
     bool entryIsZia = (entryExt == ".zia");
 
@@ -682,7 +710,9 @@ il::support::Expected<CompiledProjectModule> compileMixedProject(
     if (libProject.sourceFiles.empty())
         return entryResult; // No library files, just return the entry module.
 
-    libProject.entryFile = libProject.sourceFiles[0];
+    libProject.entryFile = selectMixedLibraryEntry(libProject.sourceFiles, libProject.lang);
+    if (libProject.entryFile.empty())
+        return entryResult;
     il::support::Expected<CompiledProjectModule> libResult =
         entryIsZia ? compileBasicProject(libProject, noRuntimeNamespaces, shared, sm, false)
                    : compileZiaProject(libProject, shared, sm, false);
@@ -816,6 +846,16 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
 
         // -o path ends in .il: emit IL text (backwards compat)
         if (!viper::tools::isNativeOutputPath(config.outputPath)) {
+            const auto outputParent = std::filesystem::path(config.outputPath).parent_path();
+            if (!outputParent.empty()) {
+                std::error_code ec;
+                std::filesystem::create_directories(outputParent, ec);
+                if (ec) {
+                    std::cerr << "error: cannot create output directory: " << outputParent.string()
+                              << ": " << ec.message() << "\n";
+                    return 1;
+                }
+            }
             std::ofstream outFile(config.outputPath);
             if (!outFile.is_open()) {
                 std::cerr << "error: cannot open output file: " << config.outputPath << "\n";

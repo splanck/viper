@@ -19,6 +19,8 @@
 
 #include "tools/common/native_compiler.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <functional>
 #include <iostream>
@@ -35,6 +37,27 @@
 #endif
 
 namespace viper::tools {
+
+/// @brief Return a lowercased ASCII copy of @p value.
+/// @details Frontend tool file-extension parsing should behave predictably across
+///          case-insensitive and case-sensitive filesystems. Only ASCII is folded
+///          because source extensions are ASCII command-line syntax.
+inline std::string lowerAscii(std::string_view value) {
+    std::string lowered(value);
+    std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return lowered;
+}
+
+/// @brief Test whether @p path ends with @p extension using ASCII case folding.
+/// @details This keeps wrapper tools from rejecting valid source paths such as
+///          `MAIN.ZIA` on platforms and editors that preserve uppercase suffixes.
+inline bool endsWithExtensionInsensitive(std::string_view path, std::string_view extension) {
+    if (path.size() < extension.size())
+        return false;
+    return lowerAscii(path.substr(path.size() - extension.size())) == lowerAscii(extension);
+}
 
 /// @brief Configuration parsed from frontend tool command-line arguments.
 struct FrontendToolConfig {
@@ -160,7 +183,7 @@ inline FrontendToolConfig parseArgs(int argc, char **argv, const FrontendToolCal
                     std::exit(1);
                 }
             }
-        } else if (arg.ends_with(callbacks.fileExtension)) {
+        } else if (endsWithExtensionInsensitive(arg, callbacks.fileExtension)) {
             if (!config.sourcePath.empty()) {
                 std::cerr << "error: multiple source files not supported\n\n";
                 callbacks.printUsage();
@@ -300,6 +323,24 @@ inline int runFrontendTool(int argc, char **argv, const FrontendToolCallbacks &c
 #else
         savedStdoutFd = dup(fileno(stdout));
 #endif
+        const std::filesystem::path outputParent =
+            std::filesystem::path(config.outputPath).parent_path();
+        if (!outputParent.empty()) {
+            std::error_code ec;
+            std::filesystem::create_directories(outputParent, ec);
+            if (ec) {
+                std::cerr << "error: failed to create output directory: " << outputParent.string()
+                          << ": " << ec.message() << "\n";
+                if (savedStdoutFd >= 0) {
+#ifdef _WIN32
+                    _close(savedStdoutFd);
+#else
+                    close(savedStdoutFd);
+#endif
+                }
+                return 1;
+            }
+        }
         outputFile = std::freopen(config.outputPath.c_str(), "w", stdout);
         if (!outputFile) {
             std::cerr << "error: failed to open output file: " << config.outputPath << "\n";
@@ -319,17 +360,29 @@ inline int runFrontendTool(int argc, char **argv, const FrontendToolCallbacks &c
 
     // Restore stdout if we redirected it
     if (outputFile) {
-        std::fflush(stdout);
+        if (std::fflush(stdout) != 0 && result == 0) {
+            std::cerr << "error: failed to flush output file: " << config.outputPath << "\n";
+            result = 1;
+        }
         if (savedStdoutFd >= 0) {
 #ifdef _WIN32
-            _dup2(savedStdoutFd, _fileno(stdout));
+            if (_dup2(savedStdoutFd, _fileno(stdout)) < 0 && result == 0) {
+                std::cerr << "error: failed to restore stdout\n";
+                result = 1;
+            }
             _close(savedStdoutFd);
 #else
-            dup2(savedStdoutFd, fileno(stdout));
+            if (dup2(savedStdoutFd, fileno(stdout)) < 0 && result == 0) {
+                std::cerr << "error: failed to restore stdout\n";
+                result = 1;
+            }
             close(savedStdoutFd);
 #endif
         } else {
-            std::fclose(outputFile);
+            if (std::fclose(outputFile) != 0 && result == 0) {
+                std::cerr << "error: failed to close output file: " << config.outputPath << "\n";
+                result = 1;
+            }
         }
     }
 

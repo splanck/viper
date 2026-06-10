@@ -687,11 +687,30 @@ bool validatePackageSourcePathExists(const ProjectConfig &proj,
                                      const char *fieldName,
                                      bool allowDirectory = true) {
     fs::path resolved = viper::pkg::resolvePackageSourcePath(proj.rootDir, path, fieldName);
-    if (!fs::exists(resolved)) {
-        std::cerr << "error: " << fieldName << " not found: " << path << "\n";
+    std::error_code ec;
+    if (!fs::exists(resolved, ec)) {
+        if (ec)
+            std::cerr << "error: cannot inspect " << fieldName << " '" << path
+                      << "': " << ec.message() << "\n";
+        else
+            std::cerr << "error: " << fieldName << " not found: " << path << "\n";
         return false;
     }
-    if (!fs::is_regular_file(resolved) && !(allowDirectory && fs::is_directory(resolved))) {
+    ec.clear();
+    const bool regular = fs::is_regular_file(resolved, ec);
+    if (ec) {
+        std::cerr << "error: cannot inspect " << fieldName << " '" << path
+                  << "': " << ec.message() << "\n";
+        return false;
+    }
+    ec.clear();
+    const bool directory = fs::is_directory(resolved, ec);
+    if (ec) {
+        std::cerr << "error: cannot inspect " << fieldName << " '" << path
+                  << "': " << ec.message() << "\n";
+        return false;
+    }
+    if (!regular && !(allowDirectory && directory)) {
         std::cerr << "error: " << fieldName
                   << (allowDirectory ? " is not a regular file or directory: "
                                      : " is not a regular file: ")
@@ -853,6 +872,74 @@ void applyPackageCliOverrides(ProjectConfig &proj, const PackageArgs &args) {
         proj.packageConfig.windowsSigntoolPath = args.windowsSigntoolPath;
     if (args.windowsSignNoVerifySet)
         proj.packageConfig.windowsSignNoVerify = args.windowsSignNoVerify;
+}
+
+/// @brief Append one required payload path for package verification.
+/// @details Joins @p payloadPrefix, @p targetDir, and @p leaf through the shared
+///          packaging path sanitizer so verification expects the same normalized
+///          layout that the builders emit.
+void appendRequiredPayloadPath(std::vector<std::string> &paths,
+                               const std::string &payloadPrefix,
+                               const std::string &targetDir,
+                               const std::string &leaf) {
+    const std::string underTarget =
+        viper::pkg::joinPackageRelativePath(targetDir, leaf, "asset path");
+    paths.push_back(
+        viper::pkg::joinPackageRelativePath(payloadPrefix, underTarget, "asset payload path"));
+}
+
+/// @brief Return required payload paths for configured package assets.
+/// @details Mirrors the package builders' asset layout: regular-file assets are
+///          installed under their target directory using the source leaf name,
+///          and directory assets install each regular file at its relative path
+///          beneath the configured target directory. Directories themselves are
+///          not required so empty-directory handling remains platform-specific.
+std::vector<std::string> requiredAssetPayloadPaths(const ProjectConfig &proj,
+                                                   const std::string &payloadPrefix) {
+    std::vector<std::string> paths;
+    for (const auto &asset : proj.packageConfig.assets) {
+        const std::string sourceRel =
+            viper::pkg::sanitizePackageRelativePath(asset.sourcePath, "asset source path");
+        const std::string sourceLeaf = fs::path(sourceRel).filename().generic_string();
+        const std::string targetDir =
+            viper::pkg::sanitizePackageRelativePath(asset.targetPath, "asset target path");
+        const fs::path srcPath = viper::pkg::resolvePackageSourcePath(
+            proj.rootDir, asset.sourcePath, "asset source path");
+
+        std::error_code ec;
+        if (fs::is_directory(srcPath, ec)) {
+            if (ec)
+                throw std::runtime_error("cannot inspect asset source path '" + asset.sourcePath +
+                                         "': " + ec.message());
+            viper::pkg::safeDirectoryIterateResolved(
+                srcPath, proj.rootDir, [&](const viper::pkg::SafeDirectoryEntry &entry) {
+                    if (!entry.regularFile)
+                        return;
+                    const std::string relPath = viper::pkg::sanitizePackageRelativePath(
+                        entry.logicalPath.lexically_relative(srcPath).generic_string(),
+                        "asset path");
+                    appendRequiredPayloadPath(paths, payloadPrefix, targetDir, relPath);
+                });
+            continue;
+        }
+        if (ec)
+            throw std::runtime_error("cannot inspect asset source path '" + asset.sourcePath +
+                                     "': " + ec.message());
+
+        ec.clear();
+        if (fs::is_regular_file(srcPath, ec)) {
+            if (ec)
+                throw std::runtime_error("cannot inspect asset source path '" + asset.sourcePath +
+                                         "': " + ec.message());
+            appendRequiredPayloadPath(paths, payloadPrefix, targetDir, sourceLeaf);
+            continue;
+        }
+        if (ec)
+            throw std::runtime_error("cannot inspect asset source path '" + asset.sourcePath +
+                                     "': " + ec.message());
+        throw std::runtime_error("asset is not a regular file or directory: " + asset.sourcePath);
+    }
+    return paths;
 }
 
 } // namespace
@@ -1079,10 +1166,21 @@ int cmdPackage(int argc, char **argv) {
         packageBinaryPath = (exeEc ? exePath.lexically_normal() : canonicalExe).string();
         exeEc.clear();
         if (!fs::exists(packageBinaryPath, exeEc)) {
+            if (exeEc) {
+                std::cerr << "error: cannot inspect prebuilt executable at " << packageBinaryPath
+                          << ": " << exeEc.message() << "\n";
+                return 1;
+            }
             std::cerr << "error: prebuilt executable not found at " << packageBinaryPath << "\n";
             return 1;
         }
+        exeEc.clear();
         if (!fs::is_regular_file(packageBinaryPath, exeEc)) {
+            if (exeEc) {
+                std::cerr << "error: cannot inspect prebuilt executable at " << packageBinaryPath
+                          << ": " << exeEc.message() << "\n";
+                return 1;
+            }
             std::cerr << "error: prebuilt executable is not a regular file at " << packageBinaryPath
                       << "\n";
             return 1;
@@ -1143,7 +1241,15 @@ int cmdPackage(int argc, char **argv) {
             }
         }
 
-        if (!fs::exists(packageBinaryPath)) {
+        std::error_code compiledEc;
+        if (!fs::exists(packageBinaryPath, compiledEc)) {
+            if (compiledEc) {
+                std::cerr << "error: cannot inspect compiled binary at " << packageBinaryPath
+                          << ": " << compiledEc.message() << "\n";
+                std::error_code cleanupEc;
+                fs::remove(packageBinaryPath, cleanupEc);
+                return 1;
+            }
             std::cerr << "error: compiled binary not found at " << packageBinaryPath << "\n";
             std::error_code ec;
             fs::remove(packageBinaryPath, ec);
@@ -1165,8 +1271,14 @@ int cmdPackage(int argc, char **argv) {
               << archStr << ")...\n";
 
     if (args.verbose) {
-        auto binSize = fs::file_size(packageBinaryPath);
-        std::cerr << "  Binary: " << packageBinaryPath << " (" << binSize << " bytes)\n";
+        std::error_code sizeEc;
+        auto binSize = fs::file_size(packageBinaryPath, sizeEc);
+        std::cerr << "  Binary: " << packageBinaryPath;
+        if (!sizeEc)
+            std::cerr << " (" << binSize << " bytes)";
+        else
+            std::cerr << " (size unavailable: " << sizeEc.message() << ")";
+        std::cerr << "\n";
         std::cerr << "  Output: " << args.outputPath << "\n";
         if (!proj.packageConfig.iconPath.empty())
             std::cerr << "  Icon: " << proj.packageConfig.iconPath << "\n";
@@ -1241,8 +1353,11 @@ int cmdPackage(int argc, char **argv) {
     // Step 4: Verify the generated package
     std::error_code ec;
     if (!fs::exists(args.outputPath, ec)) {
-        std::cerr << "error: package builder did not create output file: " << args.outputPath
-                  << "\n";
+        if (ec)
+            std::cerr << "error: cannot inspect generated package: " << ec.message() << "\n";
+        else
+            std::cerr << "error: package builder did not create output file: " << args.outputPath
+                      << "\n";
         if (cleanupPackagedBinary)
             fs::remove(packageBinaryPath, ec);
         return 1;
@@ -1269,30 +1384,54 @@ int cmdPackage(int argc, char **argv) {
     std::ostringstream verifyErr;
     bool valid = true;
     const std::string execName = viper::pkg::normalizeExecName(proj.name);
-    switch (args.platformTarget) {
-        case PackageTarget::MacOS:
-            valid =
-                viper::pkg::verifyMacOSAppZip(pkgData, displayName + ".app", execName, verifyErr);
-            break;
-        case PackageTarget::Linux:
-            valid = viper::pkg::verifyDebPayload(pkgData, {"usr/bin/" + execName}, verifyErr);
-            break;
-        case PackageTarget::Windows:
-            valid = viper::pkg::verifyPEZipOverlayNestedPayload(
-                pkgData,
-                {"meta/payload.zip", "meta/install_manifest.next", "meta/manifest.sha256"},
-                "meta/payload.zip",
-                {execName + ".exe", "uninstall.exe", ".viper-install-manifest.txt"},
-                verifyErr);
-            break;
-        case PackageTarget::Tarball: {
-            const std::string topDir = viper::pkg::normalizeDebName(proj.name) + "-" +
-                                       portableArchiveVersionComponent(resolvedVersion);
-            valid = viper::pkg::verifyTarGzPayload(pkgData, {topDir + "/" + execName}, verifyErr);
-            break;
+    try {
+        switch (args.platformTarget) {
+            case PackageTarget::MacOS: {
+                const auto requiredResources = requiredAssetPayloadPaths(proj, "");
+                valid = viper::pkg::verifyMacOSAppZipPayload(
+                    pkgData, displayName + ".app", execName, requiredResources, verifyErr);
+                break;
+            }
+            case PackageTarget::Linux: {
+                std::vector<std::string> required = {"usr/bin/" + execName};
+                auto assetPaths = requiredAssetPayloadPaths(
+                    proj, "usr/share/" + viper::pkg::normalizeDebName(proj.name));
+                required.insert(required.end(), assetPaths.begin(), assetPaths.end());
+                valid = viper::pkg::verifyDebPayload(pkgData, required, verifyErr);
+                break;
+            }
+            case PackageTarget::Windows: {
+                std::vector<std::string> requiredInner = {
+                    execName + ".exe", "uninstall.exe", ".viper-install-manifest.txt"};
+                auto assetPaths = requiredAssetPayloadPaths(proj, "");
+                requiredInner.insert(requiredInner.end(), assetPaths.begin(), assetPaths.end());
+                valid = viper::pkg::verifyPEZipOverlayNestedPayload(
+                    pkgData,
+                    {"meta/payload.zip", "meta/install_manifest.next", "meta/manifest.sha256"},
+                    "meta/payload.zip",
+                    requiredInner,
+                    verifyErr);
+                break;
+            }
+            case PackageTarget::Tarball: {
+                const std::string topDir = viper::pkg::normalizeDebName(proj.name) + "-" +
+                                           portableArchiveVersionComponent(resolvedVersion);
+                std::vector<std::string> required = {
+                    topDir + "/" + execName, topDir + "/README.install", topDir + "/LICENSE"};
+                auto assetPaths = requiredAssetPayloadPaths(proj, topDir);
+                required.insert(required.end(), assetPaths.begin(), assetPaths.end());
+                valid = viper::pkg::verifyTarGzPayload(pkgData, required, verifyErr);
+                break;
+            }
+            default:
+                break;
         }
-        default:
-            break;
+    } catch (const std::exception &ex) {
+        std::cerr << "error: cannot prepare package verification: " << ex.what() << "\n";
+        fs::remove(args.outputPath, ec);
+        if (cleanupPackagedBinary)
+            fs::remove(packageBinaryPath, ec);
+        return 1;
     }
     if (!valid) {
         std::cerr << "error: package verification failed:\n" << verifyErr.str();

@@ -113,28 +113,24 @@ int cmdILOpt(int argc, char **argv) {
     bool passStats = false;
     bool bisectPipeline = false;
     std::string pipelineName;
-    auto trimToken = [](const std::string &token) {
-        auto begin = token.begin();
-        auto end = token.end();
-        while (begin != end && std::isspace(static_cast<unsigned char>(*begin))) {
-            ++begin;
-        }
-        while (end != begin && std::isspace(static_cast<unsigned char>(*(end - 1)))) {
-            --end;
-        }
-        return std::string(begin, end);
+    auto trimToken = [](std::string_view token) {
+        while (!token.empty() && std::isspace(static_cast<unsigned char>(token.front())))
+            token.remove_prefix(1);
+        while (!token.empty() && std::isspace(static_cast<unsigned char>(token.back())))
+            token.remove_suffix(1);
+        return token;
     };
-    auto parsePassList = [&](std::string passes) -> bool {
+    auto parsePassList = [&](std::string_view passes) -> bool {
         size_t pos = 0;
         passesExplicit = true;
         while (pos != std::string::npos) {
             size_t comma = passes.find(',', pos);
-            std::string token = trimToken(passes.substr(pos, comma - pos));
+            std::string_view token = trimToken(passes.substr(pos, comma - pos));
             if (token.empty()) {
                 ilOptUsage();
                 return false;
             }
-            passList.push_back(std::move(token));
+            passList.emplace_back(token);
             if (comma == std::string::npos)
                 break;
             pos = comma + 1;

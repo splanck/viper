@@ -1384,6 +1384,39 @@ static bool toolbar_draw_vector_icon(vgfx_window_t win, uint32_t cp, float bx, f
 #undef ITRI
 }
 
+/// @brief If @p s is exactly one UTF-8 codepoint, return it; otherwise return 0.
+/// @details ViperIDE passes single Unicode glyphs (e.g. "▶") in a button's text
+///          slot; we use this to detect them and substitute a vector icon. Real
+///          multi-character labels return 0 and render as text.
+static uint32_t toolbar_label_single_codepoint(const char *s) {
+    if (!s || !s[0])
+        return 0;
+    const unsigned char *p = (const unsigned char *)s;
+    uint32_t cp;
+    int len;
+    if (p[0] < 0x80) {
+        cp = p[0];
+        len = 1;
+    } else if ((p[0] & 0xE0) == 0xC0) {
+        cp = p[0] & 0x1Fu;
+        len = 2;
+    } else if ((p[0] & 0xF0) == 0xE0) {
+        cp = p[0] & 0x0Fu;
+        len = 3;
+    } else if ((p[0] & 0xF8) == 0xF0) {
+        cp = p[0] & 0x07u;
+        len = 4;
+    } else {
+        return 0;
+    }
+    for (int i = 1; i < len; ++i) {
+        if ((p[i] & 0xC0) != 0x80)
+            return 0;
+        cp = (cp << 6) | (uint32_t)(p[i] & 0x3F);
+    }
+    return p[len] == '\0' ? cp : 0; // 0 if more than one codepoint
+}
+
 /// @brief vtable paint — draw background, all visible items (icons, labels, separators, overflow
 /// button), and focus rings.
 static void toolbar_paint(vg_widget_t *widget, void *canvas) {
@@ -1531,17 +1564,30 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas) {
                         break;
                 }
 
-                // Draw label if shown
+                // Draw label if shown. A single-glyph "label" with no real icon
+                // (how ViperIDE supplies toolbar icons) is rendered as a crisp
+                // centred vector icon; everything else draws as text.
                 if (item->show_label && item->label && tb->font) {
-                    float label_x = (item->icon.type == VG_ICON_NONE)
-                                        ? item_x + tb->item_padding
-                                        : icon_x + icon_px + tb->item_padding;
-                    vg_font_metrics_t font_metrics;
-                    vg_font_get_metrics(tb->font, tb->font_size, &font_metrics);
-                    float label_y =
-                        item_y + (item_height + font_metrics.ascent + font_metrics.descent) / 2.0f;
-                    vg_font_draw_text(
-                        canvas, tb->font, tb->font_size, label_x, label_y, item->label, txt_color);
+                    uint32_t label_cp = (item->icon.type == VG_ICON_NONE)
+                                            ? toolbar_label_single_codepoint(item->label)
+                                            : 0;
+                    float centred_x = item_x + (item_width - icon_px) / 2.0f;
+                    if (label_cp != 0 &&
+                        toolbar_draw_vector_icon(win, label_cp, centred_x, icon_y, icon_px,
+                                                 txt_color)) {
+                        // Drawn as a vector icon — skip the text.
+                    } else {
+                        float label_x = (item->icon.type == VG_ICON_NONE)
+                                            ? item_x + tb->item_padding
+                                            : icon_x + icon_px + tb->item_padding;
+                        vg_font_metrics_t font_metrics;
+                        vg_font_get_metrics(tb->font, tb->font_size, &font_metrics);
+                        float label_y = item_y + (item_height + font_metrics.ascent +
+                                                  font_metrics.descent) /
+                                                     2.0f;
+                        vg_font_draw_text(canvas, tb->font, tb->font_size, label_x, label_y,
+                                          item->label, txt_color);
+                    }
                 }
 
                 // Draw dropdown arrow

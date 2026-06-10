@@ -94,8 +94,9 @@ std::optional<std::uint32_t> loadBasicSource(const char *path,
         return std::nullopt;
     }
 
-    std::string contents(static_cast<std::size_t>(fileSize), '\0');
+    std::string contents;
     try {
+        contents.assign(static_cast<std::size_t>(fileSize), '\0');
         if (!contents.empty()) {
             in.read(contents.data(), static_cast<std::streamsize>(contents.size()));
             if (!in || in.gcount() != static_cast<std::streamsize>(contents.size())) {

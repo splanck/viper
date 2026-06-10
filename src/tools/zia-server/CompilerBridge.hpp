@@ -24,6 +24,7 @@
 #include "tools/lsp-common/ICompilerBridge.hpp"
 
 #include <memory>
+#include <mutex>
 
 namespace il::frontends::zia {
 class CompletionEngine;
@@ -64,6 +65,11 @@ class CompilerBridge : public ICompilerBridge {
     std::string dumpTokens(const std::string &source, const std::string &path) override;
 
   private:
+    /// @brief Guards access to the shared completion engine cache.
+    /// @details Other bridge operations build fresh compiler state per call, but completions reuse a
+    ///          long-lived engine for cache locality. The mutex preserves the documented thread-safe
+    ///          bridge contract if the server dispatch model becomes concurrent.
+    mutable std::mutex completionMutex_;
     std::unique_ptr<il::frontends::zia::CompletionEngine> completionEngine_;
 };
 

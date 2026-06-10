@@ -16,6 +16,8 @@
 #include <cstring>
 #include <iomanip>
 #include <sstream>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace viper::pkg {
@@ -45,6 +47,15 @@ void writeBE32(uint8_t *p, uint32_t value) {
     p[3] = static_cast<uint8_t>(value & 0xffu);
 }
 
+/// @brief Validate the common digest input buffer contract.
+/// @details The hashing APIs allow a null data pointer only for empty inputs. This guard turns
+///          accidental non-empty null buffers into deterministic exceptions instead of undefined
+///          pointer arithmetic or reads in the block-processing loops.
+void validateDigestInput(const uint8_t *data, size_t len, const char *algorithm) {
+    if (len != 0 && data == nullptr)
+        throw std::runtime_error(std::string(algorithm) + ": null input buffer for non-empty hash");
+}
+
 /// @brief Render a fixed-size digest array as a lowercase hex string.
 template <size_t N> std::string hexDigest(const std::array<uint8_t, N> &digest) {
     std::ostringstream os;
@@ -72,6 +83,7 @@ void appendShaPadding(std::vector<uint8_t> &tail, uint64_t bitLen) {
 
 /// @brief SHA-1 implementation: hash full 64-byte blocks, then the padded tail.
 std::array<uint8_t, 20> sha1Bytes(const uint8_t *data, size_t len) {
+    validateDigestInput(data, len, "SHA-1");
     uint32_t h0 = 0x67452301u;
     uint32_t h1 = 0xefcdab89u;
     uint32_t h2 = 0x98badcfeu;
@@ -148,6 +160,7 @@ std::string sha1Hex(const uint8_t *data, size_t len) {
 
 /// @brief SHA-256 implementation: hash full 64-byte blocks, then the padded tail.
 std::array<uint8_t, 32> sha256Bytes(const uint8_t *data, size_t len) {
+    validateDigestInput(data, len, "SHA-256");
     static constexpr std::array<uint32_t, 64> k = {
         0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u, 0x3956c25bu, 0x59f111f1u, 0x923f82a4u,
         0xab1c5ed5u, 0xd807aa98u, 0x12835b01u, 0x243185beu, 0x550c7dc3u, 0x72be5d74u, 0x80deb1feu,
