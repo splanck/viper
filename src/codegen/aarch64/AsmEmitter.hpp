@@ -393,7 +393,7 @@ class AsmEmitter {
     /// @param os Output stream to write assembly text.
     /// @param reg Register to test.
     /// @param label Branch target label.
-    void emitCbz(std::ostream &os, PhysReg reg, const std::string &label) const;
+    [[maybe_unused]] void emitCbz(std::ostream &os, PhysReg reg, const std::string &label) const;
 
     //=========================================================================
     // Wide Immediate Materialization
@@ -432,7 +432,7 @@ class AsmEmitter {
 
     /// @brief Emit return instruction: `ret`.
     /// @param os Output stream to write assembly text.
-    void emitRet(std::ostream &os) const;
+    [[maybe_unused]] void emitRet(std::ostream &os) const;
 
     //=========================================================================
     // Stack Pointer Operations

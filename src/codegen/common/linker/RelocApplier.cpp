@@ -85,7 +85,7 @@ static bool aarch64UnsignedLdStOffsetShift(uint32_t insn, uint32_t &shift) {
     return viper::codegen::a64UnsignedLdStOffsetShift(insn, shift);
 }
 
-static bool isAArch64UnsignedLdStOffset(uint32_t insn) {
+[[maybe_unused]] static bool isAArch64UnsignedLdStOffset(uint32_t insn) {
     uint32_t ignored = 0;
     return aarch64UnsignedLdStOffsetShift(insn, ignored);
 }

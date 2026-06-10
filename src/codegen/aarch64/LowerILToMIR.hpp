@@ -64,7 +64,8 @@ class LowerILToMIR {
 
     /// @brief Look up the known named-argument count for @p callee, if registered.
     /// @return The named-arg count, or nullopt if @p callee is not a known vararg callee.
-    [[nodiscard]] std::optional<std::size_t> knownVarArgNamedArgs(std::string_view callee) const;
+    [[maybe_unused]] [[nodiscard]] std::optional<std::size_t>
+    knownVarArgNamedArgs(std::string_view callee) const;
 
     /// @brief Lower an IL function to MIR.
     /// @param fn The IL function to lower.

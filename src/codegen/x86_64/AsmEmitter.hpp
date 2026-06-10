@@ -120,10 +120,10 @@ class AsmEmitter {
     void emitRoData(std::ostream &os) const;
 
     /// \brief Access the underlying rodata pool.
-    [[nodiscard]] RoDataPool &roDataPool() noexcept;
+    [[maybe_unused]] [[nodiscard]] RoDataPool &roDataPool() noexcept;
 
     /// \brief Access the underlying rodata pool (const overload).
-    [[nodiscard]] const RoDataPool &roDataPool() const noexcept;
+    [[maybe_unused]] [[nodiscard]] const RoDataPool &roDataPool() const noexcept;
 
   private:
     RoDataPool *pool_{nullptr};
@@ -187,7 +187,7 @@ class AsmEmitter {
     /// \brief Format an immediate operand.
     /// \param imm Immediate operand containing integer value.
     /// \return AT&T format immediate (e.g., "$42", "$-1").
-    [[nodiscard]] static std::string formatImm(const OpImm &imm);
+    [[maybe_unused]] [[nodiscard]] static std::string formatImm(const OpImm &imm);
 
     /// \brief Format a memory operand with base+displacement addressing.
     /// \param mem Memory operand containing base, index, scale, and displacement.
@@ -198,7 +198,8 @@ class AsmEmitter {
     /// \brief Format a symbolic label operand.
     /// \param label Label operand containing symbol name.
     /// \return Label string for use in jumps/calls.
-    [[nodiscard]] static std::string formatLabel(const OpLabel &label, objfile::ObjFormat format);
+    [[maybe_unused]] [[nodiscard]] static std::string formatLabel(const OpLabel &label,
+                                                                  objfile::ObjFormat format);
 
     /// \brief Format a RIP-relative label operand.
     /// \param label RIP-relative label operand.

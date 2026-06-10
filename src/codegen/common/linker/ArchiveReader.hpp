@@ -64,7 +64,8 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err);
 /// @param ar     The parsed archive.
 /// @param member The member to extract.
 /// @return A vector of the member's raw bytes.
-std::vector<uint8_t> extractMember(const Archive &ar, const ArchiveMember &member);
+[[maybe_unused]] std::vector<uint8_t> extractMember(const Archive &ar,
+                                                    const ArchiveMember &member);
 
 /// Return a non-copying view of a specific member's raw bytes.
 ArchiveMemberView memberDataView(const Archive &ar, const ArchiveMember &member);

@@ -99,7 +99,9 @@ std::optional<std::filesystem::path> installedLibraryPathInDir(
 
 /// @brief Resolve the installed-layout path for a runtime/support library, if any.
 /// @return std::nullopt when no installed lib directory has been discovered.
-std::optional<std::filesystem::path> installedLibraryPath(std::string_view libBaseName) {
+[[maybe_unused]] std::optional<std::filesystem::path>
+// cppcheck-suppress unusedFunction
+installedLibraryPath(std::string_view libBaseName) {
     if (const auto installedLibDir = findInstalledLibDir())
         return *installedLibDir / archiveFileName(libBaseName);
     return std::nullopt;
@@ -820,7 +822,7 @@ std::vector<std::string> defaultGraphicsFrameworks() {
 #endif
 }
 
-void appendSystemLinkInputs(const LinkContext &ctx, std::vector<std::string> &cmd) {
+[[maybe_unused]] void appendSystemLinkInputs(const LinkContext &ctx, std::vector<std::string> &cmd) {
     appendArchives(ctx, cmd);
     appendGraphicsLibs(ctx, cmd, defaultGraphicsFrameworks());
     appendAudioLibs(ctx, cmd);
@@ -829,11 +831,11 @@ void appendSystemLinkInputs(const LinkContext &ctx, std::vector<std::string> &cm
         cmd.push_back("-lc++");
 }
 
-void appendSystemLinkFlags(const LinkContext &ctx,
-                           std::vector<std::string> &cmd,
-                           std::size_t stackSize,
-                           bool useElfPie,
-                           bool useElfMath) {
+[[maybe_unused]] void appendSystemLinkFlags(const LinkContext &ctx,
+                                            std::vector<std::string> &cmd,
+                                            std::size_t stackSize,
+                                            bool useElfPie,
+                                            bool useElfMath) {
 #if defined(__APPLE__)
     cmd.push_back("-Wl,-dead_strip");
     if (stackSize > 0) {

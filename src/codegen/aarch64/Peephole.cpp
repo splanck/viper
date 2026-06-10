@@ -387,7 +387,8 @@ static void removeForwardedJoinLoads(MBasicBlock &block,
 
 /// @brief Add all registers defined (clobbered) by @p instr to @p clobbered.
 /// @details Calls clobber all caller-saved GPRs and FPRs; LDP clobbers both result regs.
-static void markInstructionDefs(const MInstr &instr, std::unordered_set<std::uint32_t> &clobbered) {
+[[maybe_unused]] static void markInstructionDefs(const MInstr &instr,
+                                                 std::unordered_set<std::uint32_t> &clobbered) {
     if (instr.opc == MOpcode::LdpRegFpImm || instr.opc == MOpcode::LdpFprFpImm) {
         if (instr.ops.size() >= 1 && ph::isPhysReg(instr.ops[0]))
             clobbered.insert(regKey(instr.ops[0]));

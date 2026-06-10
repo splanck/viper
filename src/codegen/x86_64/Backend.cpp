@@ -243,7 +243,7 @@ void lowerPendingCalls(MFunction &func,
     for (auto &block : func.blocks) {
         std::size_t instrIndex = 0;
         while (instrIndex < block.instructions.size()) {
-            auto &instr = block.instructions[instrIndex];
+            const auto &instr = block.instructions[instrIndex];
             if (instr.opcode != MOpcode::CALL) {
                 ++instrIndex;
                 continue;
@@ -367,6 +367,20 @@ static void seedDebugFiles(DebugLineTable &table,
         table.addFileSlot(filePath);
 }
 
+/// @brief Throw a legalization diagnostic through legacy emit facades.
+///
+/// @details The pass pipeline calls @ref legalizeModuleToMIR directly and consumes
+///          its boolean result plus diagnostic string. The public `emit*` helpers
+///          historically let invalid-IL legalization exceptions escape as
+///          `std::runtime_error`; this helper preserves that API behavior while
+///          keeping the pass-facing legalization contract explicit.
+///
+/// @param errors Diagnostic text produced by @ref legalizeModuleToMIR.
+/// @throws std::runtime_error Always, with @p errors or a fallback message.
+[[noreturn]] void throwLegalizationDiagnostic(const std::string &errors) {
+    throw std::runtime_error(errors.empty() ? "x86-64 legalization failed" : errors);
+}
+
 } // namespace
 
 const TargetInfo &selectTarget(CodegenOptions::TargetABI abi) noexcept {
@@ -393,25 +407,37 @@ bool legalizeModuleToMIR(const ILModule &mod,
     frames.clear();
     errors.clear();
 
-    LowerILToMIR lowering{target, roData};
-    std::unordered_set<std::string> knownVarArgCallees;
-    knownVarArgCallees.reserve(mod.funcs.size());
-    for (const auto &fn : mod.funcs) {
-        if (fn.isVarArg) {
-            knownVarArgCallees.insert(fn.name);
+    try {
+        LowerILToMIR lowering{target, roData};
+        std::unordered_set<std::string> knownVarArgCallees;
+        knownVarArgCallees.reserve(mod.funcs.size());
+        for (const auto &fn : mod.funcs) {
+            if (fn.isVarArg) {
+                knownVarArgCallees.insert(fn.name);
+            }
         }
-    }
-    lowering.setKnownVarArgCallees(std::move(knownVarArgCallees));
-    mir.reserve(mod.funcs.size());
-    frames.reserve(mod.funcs.size());
+        lowering.setKnownVarArgCallees(std::move(knownVarArgCallees));
+        mir.reserve(mod.funcs.size());
+        frames.reserve(mod.funcs.size());
 
-    for (std::size_t fi = 0; fi < mod.funcs.size(); ++fi) {
-        const auto &func = mod.funcs[fi];
-        FrameInfo frame{};
-        MFunction machineFunc{};
-        legalizeFunctionPipeline(func, lowering, target, frame, machineFunc);
-        mir.push_back(std::move(machineFunc));
-        frames.push_back(frame);
+        for (std::size_t fi = 0; fi < mod.funcs.size(); ++fi) {
+            const auto &func = mod.funcs[fi];
+            FrameInfo frame{};
+            MFunction machineFunc{};
+            legalizeFunctionPipeline(func, lowering, target, frame, machineFunc);
+            mir.push_back(std::move(machineFunc));
+            frames.push_back(frame);
+        }
+    } catch (const std::exception &ex) {
+        mir.clear();
+        frames.clear();
+        errors = std::string("x86-64 legalization failed: ") + ex.what();
+        return false;
+    } catch (...) {
+        mir.clear();
+        frames.clear();
+        errors = "x86-64 legalization failed: unknown exception";
+        return false;
     }
     return true;
 }
@@ -609,25 +635,25 @@ CodegenResult emitMIRToAssembly(const std::vector<MFunction> &mir,
 ///          single-element vector so the main implementation can be reused.
 ///
 /// @param func IL function to translate.
-/// @param options Backend configuration to honour.
+/// @param opt Backend configuration to honour.
 /// @return Assembly text and diagnostics for the provided function.
-CodegenResult emitFunctionToAssembly(const ILFunction &func, const CodegenOptions &options) {
-    const TargetInfo &target = selectTarget(options.targetABI);
+CodegenResult emitFunctionToAssembly(const ILFunction &func, const CodegenOptions &opt) {
+    const TargetInfo &target = selectTarget(opt.targetABI);
     AsmEmitter::RoDataPool roData{};
     std::vector<MFunction> mir;
     std::vector<FrameInfo> frames;
     std::string errors;
     ILModule module{};
     module.funcs.push_back(func);
-    if (!legalizeModuleToMIR(module, target, options, roData, mir, frames, errors))
+    if (!legalizeModuleToMIR(module, target, opt, roData, mir, frames, errors))
+        throwLegalizationDiagnostic(errors);
+    if (!allocateModuleMIR(mir, frames, target, opt, errors))
         return CodegenResult{{}, errors};
-    if (!allocateModuleMIR(mir, frames, target, options, errors))
+    if (!scheduleModuleMIR(mir, opt, errors))
         return CodegenResult{{}, errors};
-    if (!scheduleModuleMIR(mir, options, errors))
+    if (!optimizeModuleMIR(mir, opt, errors))
         return CodegenResult{{}, errors};
-    if (!optimizeModuleMIR(mir, options, errors))
-        return CodegenResult{{}, errors};
-    return emitMIRToAssembly(mir, roData, target, options);
+    return emitMIRToAssembly(mir, roData, target, opt);
 }
 
 /// @brief Emit assembly for every function in an IL module.
@@ -636,43 +662,43 @@ CodegenResult emitFunctionToAssembly(const ILFunction &func, const CodegenOption
 ///          functions so they can be processed as a contiguous list.
 ///
 /// @param mod IL module containing the functions to translate.
-/// @param options Backend configuration supplied by the caller.
+/// @param opt Backend configuration supplied by the caller.
 /// @return Assembly text and diagnostics for the entire module.
-CodegenResult emitModuleToAssembly(const ILModule &mod, const CodegenOptions &options) {
-    const TargetInfo &target = selectTarget(options.targetABI);
+CodegenResult emitModuleToAssembly(const ILModule &mod, const CodegenOptions &opt) {
+    const TargetInfo &target = selectTarget(opt.targetABI);
     AsmEmitter::RoDataPool roData{};
     std::vector<MFunction> mir;
     std::vector<FrameInfo> frames;
     std::string errors;
-    if (!legalizeModuleToMIR(mod, target, options, roData, mir, frames, errors))
+    if (!legalizeModuleToMIR(mod, target, opt, roData, mir, frames, errors))
+        throwLegalizationDiagnostic(errors);
+    if (!allocateModuleMIR(mir, frames, target, opt, errors))
         return CodegenResult{{}, errors};
-    if (!allocateModuleMIR(mir, frames, target, options, errors))
+    if (!scheduleModuleMIR(mir, opt, errors))
         return CodegenResult{{}, errors};
-    if (!scheduleModuleMIR(mir, options, errors))
+    if (!optimizeModuleMIR(mir, opt, errors))
         return CodegenResult{{}, errors};
-    if (!optimizeModuleMIR(mir, options, errors))
-        return CodegenResult{{}, errors};
-    return emitMIRToAssembly(mir, roData, target, options);
+    return emitMIRToAssembly(mir, roData, target, opt);
 }
 
 BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
                                  const std::vector<FrameInfo> &frames,
                                  const AsmEmitter::RoDataPool &roData,
                                  const TargetInfo &target,
-                                 const CodegenOptions &opt) {
+                                 const CodegenOptions &options) {
     BinaryEmitResult result{};
     std::ostringstream errorStream{};
-    const objfile::ObjFormat format = targetObjectFormat(opt.targetPlatform);
+    const objfile::ObjFormat format = targetObjectFormat(options.targetPlatform);
     const bool emitWin64Unwind = format == objfile::ObjFormat::COFF;
-    const bool emitDebugLines = opt.emitDebugLines && format != objfile::ObjFormat::COFF;
+    const bool emitDebugLines = options.emitDebugLines && format != objfile::ObjFormat::COFF;
 
-    if (const auto warning = syntaxWarning(opt); !warning.empty()) {
+    if (const auto warning = syntaxWarning(options); !warning.empty()) {
         // Syntax warnings don't apply to binary emission, but keep parity.
     }
 
     DebugLineTable debugLines;
     if (emitDebugLines)
-        seedDebugFiles(debugLines, mir, opt.debugSourcePath);
+        seedDebugFiles(debugLines, mir, options.debugSourcePath);
 
     if (mir.size() != frames.size()) {
         result.errors = "frame/MIR count mismatch prior to binary emission";
@@ -737,7 +763,7 @@ BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
         for (std::size_t i = 0; i < mir.size(); ++i) {
             objfile::CodeSection funcText;
             DebugLineTable funcDebugLines;
-            seedDebugFiles(funcDebugLines, mir[i], opt.debugSourcePath);
+            seedDebugFiles(funcDebugLines, mir[i], options.debugSourcePath);
 
             if (std::string error = encodeOne(i, funcText, &funcDebugLines); !error.empty()) {
                 BinaryEmitResult failure{};
@@ -776,7 +802,7 @@ BinaryEmitResult emitModuleToBinary(const ILModule &mod, const CodegenOptions &o
     std::vector<FrameInfo> frames;
     std::string errors;
     if (!legalizeModuleToMIR(mod, target, opt, roData, mir, frames, errors))
-        return BinaryEmitResult{{}, {}, errors};
+        throwLegalizationDiagnostic(errors);
     if (!allocateModuleMIR(mir, frames, target, opt, errors))
         return BinaryEmitResult{{}, {}, errors};
     if (!scheduleModuleMIR(mir, opt, errors))

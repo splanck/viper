@@ -587,9 +587,9 @@ bool hasSideEffects(const MInstr &instr) noexcept {
             if (dst.kind != MOperand::Kind::Reg || !dst.reg.isPhys)
                 return false;
             auto pr = static_cast<PhysReg>(dst.reg.idOrPhys);
-            if (pr >= PhysReg::X0 && pr <= PhysReg::X7)
+            if (dst.reg.cls == RegClass::GPR && pr <= PhysReg::X7)
                 return true;
-            if (pr >= PhysReg::V0 && pr <= PhysReg::V7)
+            if (dst.reg.cls == RegClass::FPR && pr >= PhysReg::V0 && pr <= PhysReg::V7)
                 return true;
             return false;
         }

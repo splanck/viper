@@ -192,7 +192,7 @@ constexpr EncodingFlag operator|(EncodingFlag lhs, EncodingFlag rhs) noexcept {
     return found;
 }
 
-[[nodiscard]] bool isConditionOperand(const Operand &operand) noexcept {
+[[maybe_unused]] [[nodiscard]] bool isConditionOperand(const Operand &operand) noexcept {
     return std::holds_alternative<OpImm>(operand);
 }
 
@@ -605,13 +605,13 @@ void AsmEmitter::emitRoData(std::ostream &os) const {
 
 /// @brief Access the underlying literal pool.
 /// @return Mutable reference to the associated pool.
-AsmEmitter::RoDataPool &AsmEmitter::roDataPool() noexcept {
+[[maybe_unused]] AsmEmitter::RoDataPool &AsmEmitter::roDataPool() noexcept {
     return *pool_;
 }
 
 /// @brief Access the underlying literal pool (const overload).
 /// @return Const reference to the associated pool.
-const AsmEmitter::RoDataPool &AsmEmitter::roDataPool() const noexcept {
+[[maybe_unused]] const AsmEmitter::RoDataPool &AsmEmitter::roDataPool() const noexcept {
     return *pool_;
 }
 
@@ -1005,7 +1005,7 @@ std::string AsmEmitter::formatReg32(const OpReg &reg, const TargetInfo &target) 
 /// @brief Format an immediate operand using AT&T syntax.
 /// @param imm Immediate operand to print.
 /// @return Assembly string beginning with '$'.
-std::string AsmEmitter::formatImm(const OpImm &imm) {
+[[maybe_unused]] std::string AsmEmitter::formatImm(const OpImm &imm) {
     return asmfmt::format_imm(imm.val);
 }
 
@@ -1031,7 +1031,8 @@ std::string AsmEmitter::formatMem(const OpMem &mem, const TargetInfo &target) {
 /// @brief Format a label operand.
 /// @param label Label operand to print.
 /// @return Raw label text.
-std::string AsmEmitter::formatLabel(const OpLabel &label, objfile::ObjFormat format) {
+[[maybe_unused]] std::string AsmEmitter::formatLabel(const OpLabel &label,
+                                                     objfile::ObjFormat format) {
     return formatSymbolReference(label.name, format);
 }
 

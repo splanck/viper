@@ -55,6 +55,49 @@ static const char *condForOpcode(il::core::Opcode op) {
     return lookupAnyCondition(op);
 }
 
+/// @brief Compute an aligned call-stack adjustment without integer overflow.
+/// @details AArch64 call arguments consume 8-byte stack slots and SP must remain
+///          16-byte aligned. The checked result is suitable for encoding as the
+///          immediate payload of the pseudo stack-adjustment instructions used
+///          by the backend.
+/// @param stackSlots Number of outgoing stack slots required by call planning.
+/// @param bytesOut Receives the 16-byte aligned byte count on success.
+/// @return True when the byte count can be represented by backend immediates.
+[[nodiscard]] static bool checkedCallStackBytes(std::size_t stackSlots,
+                                                std::size_t &bytesOut) noexcept {
+    constexpr std::size_t kSlotBytes = 8;
+    constexpr std::size_t kSpAlign = 16;
+    const std::size_t max = std::numeric_limits<std::size_t>::max();
+    if (stackSlots > (max - (kSpAlign - 1U)) / kSlotBytes) {
+        return false;
+    }
+    const std::size_t rawBytes = stackSlots * kSlotBytes;
+    const std::size_t alignedBytes = ((rawBytes + (kSpAlign - 1U)) / kSpAlign) * kSpAlign;
+    if (alignedBytes > static_cast<std::size_t>(std::numeric_limits<long long>::max())) {
+        return false;
+    }
+    bytesOut = alignedBytes;
+    return true;
+}
+
+/// @brief Compute the byte offset for one outgoing stack argument slot.
+/// @details Stack argument locations are expressed as 8-byte slot indices by
+///          the shared call planner. This helper verifies that converting a slot
+///          index into a signed MIR immediate cannot overflow.
+/// @param stackSlotIndex Zero-based outgoing stack slot index.
+/// @param bytesOut Receives the byte offset from SP on success.
+/// @return True when the slot offset is representable as a backend immediate.
+[[nodiscard]] static bool checkedCallStackSlotOffset(std::size_t stackSlotIndex,
+                                                     std::size_t &bytesOut) noexcept {
+    constexpr std::size_t kSlotBytes = 8;
+    if (stackSlotIndex >
+        static_cast<std::size_t>(std::numeric_limits<long long>::max()) / kSlotBytes) {
+        return false;
+    }
+    bytesOut = stackSlotIndex * kSlotBytes;
+    return true;
+}
+
 /// @brief Recursively resolve whether @p value is a frame-relative address.
 /// @details Checks if @p value is a temp with a known frame offset, or an AddrOf/GEP
 ///          whose base ultimately resolves to a frame slot. On success, @p offsetOut is
@@ -267,7 +310,10 @@ bool marshalCallArgs(const std::vector<MaterializedCallArg> &args,
                                          .variadicTailOnStack = variadicTailOnStack,
                                          .numNamedArgs = numNamedArgs});
 
-    const std::size_t stackBytes = ((layout.stackSlotsUsed * 8 + 15) / 16) * 16;
+    std::size_t stackBytes = 0;
+    if (!checkedCallStackBytes(layout.stackSlotsUsed, stackBytes)) {
+        return false;
+    }
     if (stackBytes > 0) {
         seq.prefix.push_back(
             MInstr{MOpcode::SubSpImm, {MOperand::immOp(static_cast<long long>(stackBytes))}});
@@ -288,7 +334,11 @@ bool marshalCallArgs(const std::vector<MaterializedCallArg> &args,
                            {MOperand::regOp(dst), MOperand::vregOp(RegClass::GPR, arg.vreg)}});
             }
         } else {
-            const long long stackOffset = static_cast<long long>(loc.stackSlotIndex * 8);
+            std::size_t stackOffsetBytes = 0;
+            if (!checkedCallStackSlotOffset(loc.stackSlotIndex, stackOffsetBytes)) {
+                return false;
+            }
+            const long long stackOffset = static_cast<long long>(stackOffsetBytes);
             const MOpcode storeOpc =
                 (loc.cls == CallArgClass::FPR) ? MOpcode::StrFprSpImm : MOpcode::StrRegSpImm;
             seq.prefix.push_back(
@@ -1856,10 +1906,10 @@ bool lowerFptosi(const il::core::Instr &ins,
 // Zext1/Trunc1 (Boolean conversion)
 //===----------------------------------------------------------------------===//
 
-bool lowerZext1Trunc1(const il::core::Instr &ins,
-                      const il::core::BasicBlock &bb,
-                      LoweringContext &ctx,
-                      MBasicBlock &out) {
+[[maybe_unused]] bool lowerZext1Trunc1(const il::core::Instr &ins,
+                                       const il::core::BasicBlock &bb,
+                                       LoweringContext &ctx,
+                                       MBasicBlock &out) {
     if (!ins.result || ins.operands.empty())
         return false;
 
@@ -1896,10 +1946,10 @@ bool lowerZext1Trunc1(const il::core::Instr &ins,
 // Narrowing casts (CastSiNarrowChk, CastUiNarrowChk)
 //===----------------------------------------------------------------------===//
 
-bool lowerNarrowingCast(const il::core::Instr &ins,
-                        const il::core::BasicBlock &bb,
-                        LoweringContext &ctx,
-                        MBasicBlock &out) {
+[[maybe_unused]] bool lowerNarrowingCast(const il::core::Instr &ins,
+                                         const il::core::BasicBlock &bb,
+                                         LoweringContext &ctx,
+                                         MBasicBlock &out) {
     if (!ins.result || ins.operands.empty())
         return false;
 

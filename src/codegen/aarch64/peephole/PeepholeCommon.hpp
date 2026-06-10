@@ -58,7 +58,7 @@ using viper::codegen::common::removeMarkedInstructions;
     if (!isPhysReg(reg) || reg.reg.cls != RegClass::GPR)
         return false;
     const auto pr = static_cast<PhysReg>(reg.reg.idOrPhys);
-    return pr >= PhysReg::X0 && pr <= PhysReg::X7;
+    return pr <= PhysReg::X7;
 }
 
 /// @brief Check if a register is an ABI register (GPR x0-x7 or FPR v0-v7).
@@ -67,7 +67,7 @@ using viper::codegen::common::removeMarkedInstructions;
         return false;
     const auto pr = static_cast<PhysReg>(reg.reg.idOrPhys);
     if (reg.reg.cls == RegClass::GPR)
-        return pr >= PhysReg::X0 && pr <= PhysReg::X7;
+        return pr <= PhysReg::X7;
     if (reg.reg.cls == RegClass::FPR)
         return pr >= PhysReg::V0 && pr <= PhysReg::V7;
     return false;

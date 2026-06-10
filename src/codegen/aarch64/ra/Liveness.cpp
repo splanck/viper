@@ -127,9 +127,9 @@ void LivenessAnalysis::computeLiveOutSets(const MFunction &func) {
                     continue;
 
                 const uint16_t vid = op.reg.idOrPhys;
-                const bool isFPR = (op.reg.cls == RegClass::FPR);
-                auto &genSet = isFPR ? genFPR[i] : genGPR[i];
-                auto &killSet = isFPR ? killFPR[i] : killGPR[i];
+                const bool fprClass = (op.reg.cls == RegClass::FPR);
+                auto &genSet = fprClass ? genFPR[i] : genGPR[i];
+                auto &killSet = fprClass ? killFPR[i] : killGPR[i];
 
                 auto [isUse, isDef] = operandRoles(mi, k);
 

@@ -230,7 +230,7 @@ struct RegSet {
             insertBit(32u + (phys - v0));
     }
 
-    void eraseKey(uint32_t key) noexcept {
+    [[maybe_unused]] void eraseKey(uint32_t key) noexcept {
         const uint32_t cls = key >> 16;
         const uint32_t phys = key & 0xFFFFu;
         unsigned bit = 64;
@@ -246,7 +246,7 @@ struct RegSet {
             bits &= ~(uint64_t{1} << bit);
     }
 
-    [[nodiscard]] bool containsKey(uint32_t key) const noexcept {
+    [[maybe_unused]] [[nodiscard]] bool containsKey(uint32_t key) const noexcept {
         const uint32_t cls = key >> 16;
         const uint32_t phys = key & 0xFFFFu;
         unsigned bit = 64;

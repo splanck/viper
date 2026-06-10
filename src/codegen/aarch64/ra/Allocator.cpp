@@ -78,14 +78,14 @@ PhysReg chooseFromScratchSet(std::initializer_list<PhysReg> candidates,
 }
 
 /// @brief Select an emergency scratch register when the normal pool is exhausted.
-/// @param isFPR            True to pick an FPR scratch; false for GPR.
+/// @param fprClass         True to pick an FPR scratch; false for GPR.
 /// @param canReuseDefScratch True when the spilled operand is def-only (safe to reuse).
 /// @param scratch          Registers already acquired this instruction.
 /// @return A reserved scratch register suitable for the operand class.
-PhysReg chooseEmergencyScratch(bool isFPR,
+PhysReg chooseEmergencyScratch(bool fprClass,
                                bool canReuseDefScratch,
                                const std::vector<PhysReg> &scratch) {
-    if (isFPR)
+    if (fprClass)
         return chooseFromScratchSet({kScratchFPR, kScratchFPR2}, canReuseDefScratch, scratch);
     return chooseFromScratchSet(
         {kScratchGPR, kScratchGPR2, kScratchGPR3}, canReuseDefScratch, scratch);
@@ -383,19 +383,19 @@ void LinearAllocator::materialize(MReg &r,
         return;
     }
 
-    const bool isFPR = (r.cls == RegClass::FPR);
-    auto &st = isFPR ? fprStates_[r.idOrPhys] : gprStates_[r.idOrPhys];
+    const bool fprClass = (r.cls == RegClass::FPR);
+    auto &st = fprClass ? fprStates_[r.idOrPhys] : gprStates_[r.idOrPhys];
 
     if (isUse || isDef)
         st.lastUse = currentInstrIdx_;
 
     if (st.spilled) {
-        handleSpilledOperand(r, isFPR, isUse, isDef, prefix, suffix, scratch);
+        handleSpilledOperand(r, fprClass, isUse, isDef, prefix, suffix, scratch);
         return;
     }
 
     if (!st.hasPhys) {
-        assignNewPhysReg(st, r.idOrPhys, isFPR);
+        assignNewPhysReg(st, r.idOrPhys, fprClass);
     }
 
     if (isDef)
@@ -406,7 +406,7 @@ void LinearAllocator::materialize(MReg &r,
 }
 
 void LinearAllocator::handleSpilledOperand(MReg &r,
-                                           bool isFPR,
+                                           bool fprClass,
                                            bool isUse,
                                            bool isDef,
                                            std::vector<MInstr> &prefix,
@@ -414,16 +414,16 @@ void LinearAllocator::handleSpilledOperand(MReg &r,
                                            std::vector<PhysReg> &scratch) {
     PhysReg tmp{};
     try {
-        tmp = isFPR ? pools_.takeFPR() : pools_.takeGPR();
+        tmp = fprClass ? pools_.takeFPR() : pools_.takeGPR();
     } catch (const std::runtime_error &) {
-        tmp = chooseEmergencyScratch(isFPR, isDef && !isUse, scratch);
+        tmp = chooseEmergencyScratch(fprClass, isDef && !isUse, scratch);
     }
-    auto &st = isFPR ? fprStates_[r.idOrPhys] : gprStates_[r.idOrPhys];
+    auto &st = fprClass ? fprStates_[r.idOrPhys] : gprStates_[r.idOrPhys];
     const int off = st.fpOffset != 0 ? st.fpOffset : fb_.ensureSpill(r.idOrPhys);
     st.fpOffset = off;
 
     if (isUse) {
-        if (isFPR)
+        if (fprClass)
             prefix.push_back(
                 MInstr{MOpcode::LdrFprFpImm, {MOperand::regOp(tmp), MOperand::immOp(off)}});
         else
@@ -431,7 +431,7 @@ void LinearAllocator::handleSpilledOperand(MReg &r,
     }
 
     if (isDef) {
-        if (isFPR)
+        if (fprClass)
             suffix.push_back(
                 MInstr{MOpcode::StrFprFpImm, {MOperand::regOp(tmp), MOperand::immOp(off)}});
         else
@@ -443,9 +443,9 @@ void LinearAllocator::handleSpilledOperand(MReg &r,
     scratch.push_back(tmp);
 }
 
-void LinearAllocator::assignNewPhysReg(VState &st, uint16_t vregId, bool isFPR) {
+void LinearAllocator::assignNewPhysReg(VState &st, uint16_t vregId, bool fprClass) {
     PhysReg phys;
-    if (isFPR) {
+    if (fprClass) {
         if (!fn_.isLeaf && nextUseAfterCall(vregId, RegClass::FPR))
             phys = pools_.takeFPRPreferCalleeSaved(ti_);
         else
@@ -460,7 +460,7 @@ void LinearAllocator::assignNewPhysReg(VState &st, uint16_t vregId, bool isFPR) 
     st.hasPhys = true;
     st.phys = phys;
 
-    if (!isFPR) {
+    if (!fprClass) {
         if (std::find(ti_.calleeSavedGPR.begin(), ti_.calleeSavedGPR.end(), phys) !=
             ti_.calleeSavedGPR.end()) {
             pools_.calleeUsed[static_cast<std::size_t>(phys)] = true;

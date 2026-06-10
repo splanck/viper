@@ -180,7 +180,7 @@ std::vector<std::string> defaultGraphicsFrameworks();
 /// @brief Append runtime archives, optional gfx/audio libs, and C++ runtime flags.
 /// @param ctx The resolved link context.
 /// @param cmd The command-line vector to append to.
-void appendSystemLinkInputs(const LinkContext &ctx, std::vector<std::string> &cmd);
+[[maybe_unused]] void appendSystemLinkInputs(const LinkContext &ctx, std::vector<std::string> &cmd);
 
 /// @brief Append platform-specific system-linker flags shared by native backends.
 /// @param ctx The resolved link context.
@@ -188,11 +188,11 @@ void appendSystemLinkInputs(const LinkContext &ctx, std::vector<std::string> &cm
 /// @param stackSize Requested stack size in bytes; 0 omits explicit stack flags.
 /// @param useElfPie Whether to force PIE on ELF targets.
 /// @param useElfMath Whether to link libm on ELF targets.
-void appendSystemLinkFlags(const LinkContext &ctx,
-                           std::vector<std::string> &cmd,
-                           std::size_t stackSize,
-                           bool useElfPie,
-                           bool useElfMath);
+[[maybe_unused]] void appendSystemLinkFlags(const LinkContext &ctx,
+                                            std::vector<std::string> &cmd,
+                                            std::size_t stackSize,
+                                            bool useElfPie,
+                                            bool useElfMath);
 
 // =========================================================================
 // Tool invocation

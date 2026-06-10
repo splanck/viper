@@ -964,7 +964,7 @@ bool MachOWriter::write(const std::string &path,
                             lastDataEnd))
             return false;
         size_t segFileSize = lastDataEnd - textFileOff;
-        size_t segVmSize = lastDataEnd - textFileOff;
+        size_t segVmSize = segFileSize;
 
         // Relocations go after all section data
         size_t textRelocOff = lastDataEnd;

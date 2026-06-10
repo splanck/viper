@@ -138,14 +138,14 @@ class LinearAllocator {
                      std::vector<PhysReg> &scratch);
     /// @brief Handle a spilled operand: reload from its slot before use, store after def.
     void handleSpilledOperand(MReg &r,
-                              bool isFPR,
+                              bool fprClass,
                               bool isUse,
                               bool isDef,
                               std::vector<MInstr> &prefix,
                               std::vector<MInstr> &suffix,
                               std::vector<PhysReg> &scratch);
     /// @brief Assign a fresh physical register to virtual register @p vregId.
-    void assignNewPhysReg(VState &st, uint16_t vregId, bool isFPR);
+    void assignNewPhysReg(VState &st, uint16_t vregId, bool fprClass);
     /// @brief Record that @p pr (a callee-saved register) has been used in this function.
     void trackCalleeSavedPhys(PhysReg pr);
     /// @brief Return true if @p pr is callee-saved under AAPCS64 for the given @p cls.

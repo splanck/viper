@@ -55,7 +55,7 @@ namespace viper::codegen::aarch64 {
 }
 
 /// @brief Return true if @p block ends in a known no-return runtime call.
-[[nodiscard]] inline bool endsInNoReturnCall(const MBasicBlock &block) {
+[[maybe_unused]] [[nodiscard]] inline bool endsInNoReturnCall(const MBasicBlock &block) {
     return !block.instrs.empty() && isNoReturnCall(block.instrs.back());
 }
 

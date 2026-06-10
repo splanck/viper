@@ -379,7 +379,9 @@ static PhiAssignment allocatePhiSlots(const il::core::Function &fn, FrameBuilder
 
 } // namespace
 
-std::optional<std::size_t> LowerILToMIR::knownVarArgNamedArgs(std::string_view callee) const {
+[[maybe_unused]] std::optional<std::size_t>
+// cppcheck-suppress unusedFunction
+LowerILToMIR::knownVarArgNamedArgs(std::string_view callee) const {
     const auto it = knownVarArgNamedArgCounts_.find(std::string(callee));
     if (it == knownVarArgNamedArgCounts_.end())
         return std::nullopt;

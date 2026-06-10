@@ -566,13 +566,13 @@ bool buildDynamicInfo(const LinkLayout &layout,
     uint64_t maxAllocEnd = 0;
     if (!maxAllocEndAddr(layout, maxAllocEnd, err))
         return false;
-    size_t maxAllocEndSize = 0;
     if (maxAllocEnd > std::numeric_limits<size_t>::max()) {
         err << "error: ELF dynamic section placement exceeds addressable size\n";
         return false;
     }
+    const size_t maxAllocEndSize = static_cast<size_t>(maxAllocEnd);
     size_t roBaseSize = 0;
-    if (!checkedAlignUpSize(static_cast<size_t>(maxAllocEnd),
+    if (!checkedAlignUpSize(maxAllocEndSize,
                             pageSize,
                             "dynamic section placement",
                             err,

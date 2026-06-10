@@ -335,12 +335,11 @@ void LinearScanAllocator::removeActive(RegClass cls, uint16_t id) {
 PhysReg LinearScanAllocator::takeRegister(RegClass cls, std::vector<MInstr> &prefix) {
     auto &pool = poolFor(cls);
     if (pool.empty()) {
-        spillOne(cls, prefix);
-    }
-    if (pool.empty()) {
-        throw std::runtime_error(std::string("x86 register allocator: ") + regClassName(cls) +
-                                 " register pool exhausted; all active values are pinned or "
-                                 "unspillable for the current instruction");
+        if (!spillOne(cls, prefix)) {
+            throw std::runtime_error(std::string("x86 register allocator: ") + regClassName(cls) +
+                                     " register pool exhausted; all active values are pinned or "
+                                     "unspillable for the current instruction");
+        }
     }
     const PhysReg reg = pool.front();
     pool.pop_front(); // O(1) instead of O(n) erase(begin())
@@ -365,11 +364,11 @@ void LinearScanAllocator::releaseRegister(PhysReg phys, RegClass cls) {
 ///          info is available to reduce stack frame size.
 /// @param cls Register class experiencing pressure.
 /// @param prefix Instruction list capturing generated spill code.
-void LinearScanAllocator::spillOne(RegClass cls, std::vector<MInstr> &prefix) {
+/// @return True when spilling made a register available.
+bool LinearScanAllocator::spillOne(RegClass cls, std::vector<MInstr> &prefix) {
     auto &active = activeFor(cls);
     if (active.empty()) {
-        throw std::runtime_error(std::string("x86 register allocator: cannot spill from empty ") +
-                                 regClassName(cls) + " active set");
+        return false;
     }
     // Deterministic victim selection with two-pass Belady-style heuristic:
     // Pass 1: Prefer evicting non-cached vregs (those not loaded this block) to
@@ -418,19 +417,19 @@ void LinearScanAllocator::spillOne(RegClass cls, std::vector<MInstr> &prefix) {
         }
     }
     if (!found) {
-        throw std::runtime_error(std::string("x86 register allocator: no unpinned ") +
-                                 regClassName(cls) + " spill victim is available");
+        return false;
     }
     active.erase(victimId);
     auto it = states_.find(victimId);
     if (it == states_.end()) {
-        return;
+        return false;
     }
     auto &victim = it->second;
     if (!victim.hasPhys) {
-        return;
+        return false;
     }
     spillActiveValue(victimId, victim, prefix);
+    return !poolFor(cls).empty();
 }
 
 void LinearScanAllocator::spillActiveValue(uint16_t vreg,
@@ -450,6 +449,21 @@ void LinearScanAllocator::spillActiveValue(uint16_t vreg,
     }
 
     spiller_.spillValue(state.cls, vreg, state, poolFor(state.cls), out, result_);
+}
+
+bool LinearScanAllocator::canUseScratchReload(uint16_t vreg, const OperandRole &role) const {
+    if (!role.isUse || role.isDef) {
+        return false;
+    }
+    const auto *interval = intervals_.lookup(vreg);
+    if (!interval || interval->end > currentInstrIdx_ + 1U) {
+        return false;
+    }
+    if (currentBlockIdx_ < liveness_.numBlocks() &&
+        liveness_.liveOut(currentBlockIdx_).contains(vreg)) {
+        return false;
+    }
+    return true;
 }
 
 void LinearScanAllocator::pinInstructionVRegs(const MInstr &instr) {
@@ -897,6 +911,11 @@ void LinearScanAllocator::processRegOperand(OpReg &reg,
         }
         if (role.isDef) {
             suffix.push_back(spiller_.makeStore(state.cls, state.spill, phys));
+        }
+        if (canUseScratchReload(reg.idOrPhys, role)) {
+            scratch.push_back(ScratchRelease{phys, state.cls});
+            reg = makePhysReg(state.cls, static_cast<uint16_t>(phys));
+            return;
         }
         state.hasPhys = true;
         state.phys = phys;

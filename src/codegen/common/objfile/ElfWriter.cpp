@@ -288,19 +288,6 @@ bool ElfWriter::write(const std::string &path,
         StringTable strtab;
         std::vector<uint8_t> symtabBytes;
 
-        // Collect symbols from both text and rodata sections.
-        // We need a unified symbol table.
-        struct ElfSym {
-            uint32_t strOffset;
-            uint8_t info;
-            uint16_t shndx;
-            uint64_t value;
-            uint64_t size;
-            bool isLocal;
-        };
-
-        std::vector<ElfSym> locals, globals;
-
         // Symbol index 0: null symbol (always first).
         writeSym(symtabBytes, 0, 0, 0, 0, 0, 0);
 
@@ -837,7 +824,7 @@ bool ElfWriter::write(const std::string &path,
         auto secText = [](size_t i) -> uint16_t { return static_cast<uint16_t>(i + 1); };
         const uint16_t secRodata = static_cast<uint16_t>(N + 1);
         auto secRelaText = [&](size_t i) -> uint16_t { return static_cast<uint16_t>(N + 2 + i); };
-        const uint16_t secRelaRodata = static_cast<uint16_t>(2 * N + 2);
+        [[maybe_unused]] const uint16_t secRelaRodata = static_cast<uint16_t>(2 * N + 2);
         const uint16_t secSymtab = static_cast<uint16_t>(2 * N + 3);
         const uint16_t secStrtab = static_cast<uint16_t>(2 * N + 4);
         const uint16_t secShstrtab = static_cast<uint16_t>(2 * N + 5);

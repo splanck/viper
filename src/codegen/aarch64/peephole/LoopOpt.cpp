@@ -553,7 +553,7 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
             return false;
         const auto phys = static_cast<PhysReg>(reg.reg.idOrPhys);
         if (reg.reg.cls == RegClass::GPR)
-            return phys >= PhysReg::X0 && phys <= PhysReg::X17;
+            return phys <= PhysReg::X17;
         return (phys >= PhysReg::V0 && phys <= PhysReg::V7) ||
                (phys >= PhysReg::V16 && phys <= PhysReg::V31);
     };

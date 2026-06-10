@@ -182,13 +182,13 @@ class A64BinaryEncoder {
     /// @param base   5-bit base register hardware encoding.
     /// @param offset Byte offset from @p base (may be negative).
     /// @param isLoad True to emit `LDR`, false to emit `STR`.
-    /// @param isFPR  True if @p rt names an FPR (selects `Dt` view); false for GPR.
+    /// @param fprOperand True if @p rt names an FPR (selects `Dt` view); false for GPR.
     /// @param cs     Code section to append the emitted bytes to.
     void encodeLargeOffsetLdSt(uint32_t rt,
                                uint32_t base,
                                int64_t offset,
                                bool isLoad,
-                               bool isFPR,
+                               bool fprOperand,
                                unsigned accessBytes,
                                objfile::CodeSection &cs);
 
@@ -197,7 +197,7 @@ class A64BinaryEncoder {
                           uint32_t base,
                           int64_t offset,
                           bool isLoad,
-                          bool isFPR,
+                          bool fprOperand,
                           unsigned accessBytes,
                           objfile::CodeSection &cs);
 
@@ -207,9 +207,12 @@ class A64BinaryEncoder {
     ///          effective address into a scratch base and stores via that base.
     /// @param rt     5-bit transfer register hardware encoding.
     /// @param offset Byte offset from `SP` of the destination slot.
-    /// @param isFPR  True if @p rt names an FPR; false for GPR.
+    /// @param fprOperand True if @p rt names an FPR; false for GPR.
     /// @param cs     Code section to append the emitted bytes to.
-    void encodeSpOffsetStore(uint32_t rt, int64_t offset, bool isFPR, objfile::CodeSection &cs);
+    void encodeSpOffsetStore(uint32_t rt,
+                             int64_t offset,
+                             bool fprOperand,
+                             objfile::CodeSection &cs);
 
     /// Emit a single 32-bit instruction word.
     void emit32(uint32_t word, objfile::CodeSection &cs) {

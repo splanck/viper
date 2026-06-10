@@ -114,7 +114,8 @@ void registerSyntheticSymbols(const ObjFile &obj,
 }
 
 /// @brief Drop @p name from the dynamic-symbol set when a static definition resolves it.
-void removeDynamicSymbol(const char *name, std::unordered_set<std::string> &dynamicSyms) {
+[[maybe_unused]] void removeDynamicSymbol(const char *name,
+                                          std::unordered_set<std::string> &dynamicSyms) {
     dynamicSyms.erase(name);
 }
 

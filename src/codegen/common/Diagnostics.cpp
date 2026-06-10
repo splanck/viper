@@ -47,19 +47,22 @@ bool Diagnostics::hasErrors() const noexcept {
     return !errors_.empty();
 }
 
-bool Diagnostics::hasWarnings() const noexcept {
+[[maybe_unused]] bool Diagnostics::hasWarnings() const noexcept {
     return !warnings_.empty();
 }
 
-const std::vector<std::string> &Diagnostics::errors() const noexcept {
+// cppcheck-suppress unusedFunction
+[[maybe_unused]] const std::vector<std::string> &Diagnostics::errors() const noexcept {
     return errors_;
 }
 
-const std::vector<std::string> &Diagnostics::warnings() const noexcept {
+// cppcheck-suppress unusedFunction
+[[maybe_unused]] const std::vector<std::string> &Diagnostics::warnings() const noexcept {
     return warnings_;
 }
 
-const std::vector<il::support::Diagnostic> &Diagnostics::diagnostics() const noexcept {
+[[maybe_unused]] const std::vector<il::support::Diagnostic> &
+Diagnostics::diagnostics() const noexcept {
     return diagnostics_;
 }
 

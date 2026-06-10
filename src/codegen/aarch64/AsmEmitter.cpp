@@ -366,7 +366,10 @@ void AsmEmitter::emitMSubRRRR(
     os << "  msub " << rn(dst) << ", " << rn(mul1) << ", " << rn(mul2) << ", " << rn(sub) << "\n";
 }
 
-void AsmEmitter::emitCbz(std::ostream &os, PhysReg reg, const std::string &label) const {
+// cppcheck-suppress functionStatic
+[[maybe_unused]] void AsmEmitter::emitCbz(std::ostream &os,
+                                          PhysReg reg,
+                                          const std::string &label) const {
     // AArch64 compare and branch if zero: cbz xn, label
     os << "  cbz " << rn(reg) << ", " << label << "\n";
 }
@@ -955,7 +958,8 @@ void AsmEmitter::emitMovImm64(std::ostream &os, PhysReg dst, unsigned long long 
     });
 }
 
-void AsmEmitter::emitRet(std::ostream &os) const {
+// cppcheck-suppress functionStatic
+[[maybe_unused]] void AsmEmitter::emitRet(std::ostream &os) const {
     os << "  ret\n";
 }
 

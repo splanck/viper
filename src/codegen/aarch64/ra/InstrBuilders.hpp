@@ -27,7 +27,7 @@
 namespace viper::codegen::aarch64::ra {
 
 /// @brief Build a GPR-to-GPR register move: `mov dst, src`.
-inline MInstr makeMovRR(PhysReg dst, PhysReg src) {
+[[maybe_unused]] inline MInstr makeMovRR(PhysReg dst, PhysReg src) {
     return MInstr{MOpcode::MovRR, {MOperand::regOp(dst), MOperand::regOp(src)}};
 }
 

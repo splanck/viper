@@ -520,13 +520,19 @@ bool readCoffObj(
         // Parse section name (may reference string table if starts with '/').
         if (sh->Name[0] == '/') {
             size_t off = 0;
-            int c = 1;
-            if (c >= 8 || sh->Name[c] < '0' || sh->Name[c] > '9') {
+            if (sh->Name[1] < '0' || sh->Name[1] > '9') {
                 err << "error: " << name << ": malformed COFF long section name reference\n";
                 return false;
             }
-            for (; c < 8 && sh->Name[c] >= '0' && sh->Name[c] <= '9'; ++c)
-                off = off * 10 + (sh->Name[c] - '0');
+            int c = 1;
+            for (; c < 8 && sh->Name[c] >= '0' && sh->Name[c] <= '9'; ++c) {
+                const size_t digit = static_cast<size_t>(sh->Name[c] - '0');
+                if (off > (std::numeric_limits<size_t>::max() - digit) / 10U) {
+                    err << "error: " << name << ": COFF long section name reference overflow\n";
+                    return false;
+                }
+                off = off * 10U + digit;
+            }
             for (; c < 8; ++c) {
                 if (sh->Name[c] != '\0') {
                     err << "error: " << name << ": malformed COFF long section name reference\n";

@@ -295,7 +295,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
                 const bool bCrt = isWindowsCrtSubsection(b.name);
                 if (aCrt != bCrt)
                     return aCrt;
-                if (aCrt && bCrt) {
+                if (aCrt) {
                     if (a.name != b.name)
                         return a.name < b.name;
                     return a.alignment > b.alignment;

@@ -105,7 +105,7 @@ static size_t parseSize(const uint8_t *header) {
     std::string name(raw, 16);
 
     // BSD long name: "#1/N" — N bytes of name follow the header.
-    if (name.size() >= 3 && name[0] == '#' && name[1] == '1' && name[2] == '/') {
+    if (name[0] == '#' && name[1] == '1' && name[2] == '/') {
         size_t nameLen = 0;
         for (size_t i = 3; i < name.size() && name[i] >= '0' && name[i] <= '9'; ++i)
             nameLen = nameLen * 10 + (name[i] - '0');
@@ -177,12 +177,6 @@ static void parseBsdSymbolTable(const uint8_t *data,
                                 std::vector<std::pair<std::string, size_t>> &symbols) {
     if (size < 4)
         return;
-    // Little-endian 4-byte: byte size of ranlib array.
-    auto readLE32 = [](const uint8_t *p) -> uint32_t {
-        return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
-               (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
-    };
-
     const uint32_t ranlibSize = readLE32(data);
     if ((ranlibSize % 8) != 0)
         return;
@@ -512,7 +506,9 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
     return true;
 }
 
-std::vector<uint8_t> extractMember(const Archive &ar, const ArchiveMember &member) {
+// cppcheck-suppress unusedFunction
+[[maybe_unused]] std::vector<uint8_t> extractMember(const Archive &ar,
+                                                    const ArchiveMember &member) {
     if (!checkedRange(member.dataOffset, member.dataSize, ar.data.size()))
         return {};
     return std::vector<uint8_t>(

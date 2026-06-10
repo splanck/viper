@@ -47,7 +47,7 @@ bool tryLdpStpMerge(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats 
 
     MOpcode pairOpc;
     bool isLoad = false;
-    bool isFPR = false;
+    bool fprPair = false;
 
     if (first.opc == MOpcode::LdrRegFpImm && second.opc == MOpcode::LdrRegFpImm) {
         pairOpc = MOpcode::LdpRegFpImm;
@@ -57,10 +57,10 @@ bool tryLdpStpMerge(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats 
     } else if (first.opc == MOpcode::LdrFprFpImm && second.opc == MOpcode::LdrFprFpImm) {
         pairOpc = MOpcode::LdpFprFpImm;
         isLoad = true;
-        isFPR = true;
+        fprPair = true;
     } else if (first.opc == MOpcode::StrFprFpImm && second.opc == MOpcode::StrFprFpImm) {
         pairOpc = MOpcode::StpFprFpImm;
-        isFPR = true;
+        fprPair = true;
     } else {
         return false;
     }
@@ -89,7 +89,7 @@ bool tryLdpStpMerge(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats 
             return false;
     }
 
-    (void)isFPR;
+    (void)fprPair;
 
     first.opc = pairOpc;
     MOperand reg1 = ascending ? first.ops[0] : second.ops[0];
@@ -144,9 +144,9 @@ static bool rangesOverlap(int64_t lhsStart, int64_t lhsEnd, int64_t rhsStart, in
 std::size_t forwardStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &stats) {
     std::size_t forwarded = 0;
     for (std::size_t i = 0; i < instrs.size(); ++i) {
-        const bool isGPR = instrs[i].opc == MOpcode::StrRegFpImm;
-        const bool isFPR = instrs[i].opc == MOpcode::StrFprFpImm;
-        if (!isGPR && !isFPR)
+        const bool gprStore = instrs[i].opc == MOpcode::StrRegFpImm;
+        const bool isFprStore = instrs[i].opc == MOpcode::StrFprFpImm;
+        if (!gprStore && !isFprStore)
             continue;
         if (instrs[i].ops.size() < 2)
             continue;
@@ -158,9 +158,9 @@ std::size_t forwardStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &stats)
         const int64_t storeOff = instrs[i].ops[1].imm;
         const int64_t storeEnd = storeOff + 8;
         const MOperand storeReg = instrs[i].ops[0];
-        const MOpcode matchLoad = isGPR ? MOpcode::LdrRegFpImm : MOpcode::LdrFprFpImm;
-        const MOpcode matchStore = isGPR ? MOpcode::StrRegFpImm : MOpcode::StrFprFpImm;
-        const MOpcode movOpc = isGPR ? MOpcode::MovRR : MOpcode::FMovRR;
+        const MOpcode matchLoad = gprStore ? MOpcode::LdrRegFpImm : MOpcode::LdrFprFpImm;
+        const MOpcode matchStore = gprStore ? MOpcode::StrRegFpImm : MOpcode::StrFprFpImm;
+        const MOpcode movOpc = gprStore ? MOpcode::MovRR : MOpcode::FMovRR;
 
         for (std::size_t j = i + 1; j < instrs.size(); ++j) {
             const auto &next = instrs[j];

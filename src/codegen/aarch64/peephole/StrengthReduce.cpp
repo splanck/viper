@@ -466,8 +466,8 @@ bool tryImmediateFolding(MInstr &instr, const RegConstMap &knownConsts, Peephole
     return true;
 }
 
-bool tryFPArithmeticIdentity([[maybe_unused]] MInstr &instr,
-                             [[maybe_unused]] PeepholeStats &stats) {
+[[maybe_unused]] bool tryFPArithmeticIdentity([[maybe_unused]] MInstr &instr,
+                                              [[maybe_unused]] PeepholeStats &stats) {
     return false;
 }
 

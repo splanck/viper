@@ -283,9 +283,6 @@ void emitIdxChk(const ILInstr &instr, MIRBuilder &builder) {
             lower = emit.materialiseGpr(std::move(lower));
             builder.append(MInstr::make(MOpcode::CMPrr, std::vector<Operand>{index, lower}));
         }
-    }
-
-    if (!loIsZero) {
         builder.append(MInstr::make(
             MOpcode::JCC,
             std::vector<Operand>{makeImmOperand(5), makeLabelOperand(passLowerLabel)})); // JGE

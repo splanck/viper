@@ -168,7 +168,18 @@ class LinearScanAllocator {
     /// @details Selects a victim live range in @p cls, emits the necessary spill code into
     ///          @p prefix, updates state bookkeeping, and frees the associated physical register
     ///          for reuse.
-    void spillOne(RegClass cls, std::vector<MInstr> &prefix);
+    /// @return True when a register was made available in the free pool.
+    [[nodiscard]] bool spillOne(RegClass cls, std::vector<MInstr> &prefix);
+
+    /// @brief Decide whether a spilled operand can be reloaded as scratch-only.
+    /// @details Use-only operands whose live interval ends at the current instruction and that
+    ///          are not live-out of the current block do not need to be cached in allocator
+    ///          state. Reloading them as scratch avoids extending a dead spilled value's active
+    ///          lifetime and gives the existing scratch-release path a real purpose.
+    /// @param vreg Virtual register being rewritten.
+    /// @param role Classified use/def role for the current operand.
+    /// @return True when the reload can be released immediately after the instruction.
+    [[nodiscard]] bool canUseScratchReload(uint16_t vreg, const OperandRole &role) const;
 
     /// @brief Spill an active virtual register, reusing stack slots when safe.
     /// @details Cross-block values receive dedicated spill homes, while

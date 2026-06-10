@@ -98,6 +98,6 @@ namespace viper::codegen::aarch64::peephole {
                                        PeepholeStats &stats);
 
 /// @brief Rewrite FP arithmetic identity operations (placeholder for future enhancement).
-[[nodiscard]] bool tryFPArithmeticIdentity(MInstr &instr, PeepholeStats &stats);
+[[maybe_unused]] [[nodiscard]] bool tryFPArithmeticIdentity(MInstr &instr, PeepholeStats &stats);
 
 } // namespace viper::codegen::aarch64::peephole

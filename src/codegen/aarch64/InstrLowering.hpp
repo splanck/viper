@@ -239,10 +239,10 @@ bool lowerURem(const il::core::Instr &ins,
 /// @param ctx Lowering context for register allocation and frame state.
 /// @param out The output MIR basic block receiving the lowered sequence.
 /// @return True on success, false on lowering failure.
-bool lowerZext1Trunc1(const il::core::Instr &ins,
-                      const il::core::BasicBlock &bb,
-                      LoweringContext &ctx,
-                      MBasicBlock &out);
+[[maybe_unused]] bool lowerZext1Trunc1(const il::core::Instr &ins,
+                                       const il::core::BasicBlock &bb,
+                                       LoweringContext &ctx,
+                                       MBasicBlock &out);
 
 /// @brief Lower cast.si_narrow.chk / cast.ui_narrow.chk.
 /// @param ins The IL narrowing cast instruction to lower.
@@ -250,10 +250,10 @@ bool lowerZext1Trunc1(const il::core::Instr &ins,
 /// @param ctx Lowering context for register allocation and frame state.
 /// @param out The output MIR basic block receiving the lowered sequence.
 /// @return True on success, false on lowering failure.
-bool lowerNarrowingCast(const il::core::Instr &ins,
-                        const il::core::BasicBlock &bb,
-                        LoweringContext &ctx,
-                        MBasicBlock &out);
+[[maybe_unused]] bool lowerNarrowingCast(const il::core::Instr &ins,
+                                         const il::core::BasicBlock &bb,
+                                         LoweringContext &ctx,
+                                         MBasicBlock &out);
 
 /// @brief Lower sitofp (signed int to float).
 /// @param ins The IL sitofp instruction to lower.

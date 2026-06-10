@@ -295,8 +295,6 @@ bool writeMachOExe(const std::string &path,
     std::vector<uint8_t> bindData;
     std::vector<uint8_t> rebaseData;
 
-    size_t linkeditDataSize = symtabData.size() + strtabData.size();
-
     // =======================================================================
     // Phase 3: Compute file layout.
     //
@@ -502,7 +500,8 @@ bool writeMachOExe(const std::string &path,
         while (bindData.size() % 8 != 0)
             bindData.push_back(0);
     }
-    linkeditDataSize = symtabData.size() + strtabData.size() + rebaseData.size() + bindData.size();
+    const size_t linkeditDataSize =
+        symtabData.size() + strtabData.size() + rebaseData.size() + bindData.size();
 
     // __DWARF segment (non-alloc debug sections, placed before __LINKEDIT).
     size_t dwarfFileOff = 0;

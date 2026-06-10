@@ -211,7 +211,7 @@ class CodeSection {
     }
 
     /// Reserve total symbol capacity ahead of time.
-    void reserveSymbols(size_t totalSymbols) {
+    [[maybe_unused]] void reserveSymbols(size_t totalSymbols) {
         symbols_.reserve(totalSymbols);
     }
 
@@ -228,7 +228,7 @@ class CodeSection {
     }
 
     /// Append 2 bytes, little-endian.
-    void emit16LE(uint16_t val) {
+    [[maybe_unused]] void emit16LE(uint16_t val) {
         bytes_.push_back(static_cast<uint8_t>(val));
         bytes_.push_back(static_cast<uint8_t>(val >> 8));
     }
@@ -289,10 +289,11 @@ class CodeSection {
     // === Relocation tracking ===
 
     /// Record a relocation at the current offset.
-    void addRelocation(RelocKind kind,
-                       uint32_t symbolIndex,
-                       int64_t addend = 0,
-                       SymbolSection targetSection = SymbolSection::Undefined) {
+    [[maybe_unused]] void addRelocation(
+        RelocKind kind,
+        uint32_t symbolIndex,
+        int64_t addend = 0,
+        SymbolSection targetSection = SymbolSection::Undefined) {
         if (symbolIndex >= symbols_.count())
             throw std::out_of_range("CodeSection relocation symbol index is out of range");
         relocations_.push_back(
@@ -422,7 +423,7 @@ class CodeSection {
     }
 
     /// Overwrite 1 byte at the given offset.
-    void patch8(size_t offset, uint8_t val) {
+    [[maybe_unused]] void patch8(size_t offset, uint8_t val) {
         if (!containsOffsetRange(offset, 1))
             throw std::out_of_range("CodeSection patch8 offset is out of range");
         bytes_[offset - offsetBias_] = val;
@@ -435,7 +436,7 @@ class CodeSection {
     ///          any range that would extend beyond emitted bytes.
     /// @param offset Logical section offset at which @p data should be written.
     /// @param data Replacement bytes. Empty ranges are accepted as no-ops.
-    void patchBytes(size_t offset, const std::vector<uint8_t> &data) {
+    [[maybe_unused]] void patchBytes(size_t offset, const std::vector<uint8_t> &data) {
         if (data.empty())
             return;
         if (!containsOffsetRange(offset, data.size()))

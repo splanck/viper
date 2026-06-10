@@ -1512,7 +1512,7 @@ void A64BinaryEncoder::encodeLargeOffsetLdSt(uint32_t rt,
                                              uint32_t base,
                                              int64_t offset,
                                              bool isLoad,
-                                             bool isFPR,
+                                             bool fprOperand,
                                              unsigned accessBytes,
                                              objfile::CodeSection &cs) {
     if (base == hwGPR(PhysReg::SP)) {
@@ -1520,12 +1520,13 @@ void A64BinaryEncoder::encodeLargeOffsetLdSt(uint32_t rt,
                                  "materialize SP base with ADD (register)");
     }
     const uint32_t scratch =
-        chooseGprScratch(base, (!isLoad && !isFPR) ? std::optional<uint32_t>(rt) : std::nullopt);
+        chooseGprScratch(
+            base, (!isLoad && !fprOperand) ? std::optional<uint32_t>(rt) : std::nullopt);
     encodeMovImm64(scratch, static_cast<uint64_t>(offset), cs);
     // add scratch, base, scratch
     emit32(encode3Reg(kAddRRR, scratch, base, scratch), cs);
     // ldr/str rt, [x9]  (offset 0)
-    if (isFPR)
+    if (fprOperand)
         emit32((isLoad ? kLdrFpr : kStrFpr) | (0 << 10) | (scratch << 5) | rt, cs);
     else
         emit32(scaledGprLdStTemplate(isLoad, accessBytes) | (0 << 10) | (scratch << 5) | rt, cs);
@@ -1535,11 +1536,11 @@ void A64BinaryEncoder::encodeScalarLdSt(uint32_t rt,
                                         uint32_t base,
                                         int64_t offset,
                                         bool isLoad,
-                                        bool isFPR,
+                                        bool fprOperand,
                                         unsigned accessBytes,
                                         objfile::CodeSection &cs) {
     if (isInSignedImmRange(offset)) {
-        if (isFPR)
+        if (fprOperand)
             emit32((isLoad ? kLdurFpr : kSturFpr) |
                        ((static_cast<uint32_t>(offset) & 0x1FF) << 12) | (base << 5) | rt,
                    cs);
@@ -1552,7 +1553,7 @@ void A64BinaryEncoder::encodeScalarLdSt(uint32_t rt,
 
     if (isLegalScaledUImm(offset, accessBytes)) {
         const auto scaled = static_cast<uint32_t>(offset / static_cast<long long>(accessBytes));
-        if (isFPR)
+        if (fprOperand)
             emit32((isLoad ? kLdrFpr : kStrFpr) | (scaled << 10) | (base << 5) | rt, cs);
         else
             emit32(scaledGprLdStTemplate(isLoad, accessBytes) | (scaled << 10) | (base << 5) | rt,
@@ -1560,22 +1561,22 @@ void A64BinaryEncoder::encodeScalarLdSt(uint32_t rt,
         return;
     }
 
-    encodeLargeOffsetLdSt(rt, base, offset, isLoad, isFPR, accessBytes, cs);
+    encodeLargeOffsetLdSt(rt, base, offset, isLoad, fprOperand, accessBytes, cs);
 }
 
 void A64BinaryEncoder::encodeSpOffsetStore(uint32_t rt,
                                            int64_t offset,
-                                           bool isFPR,
+                                           bool fprOperand,
                                            objfile::CodeSection &cs) {
     const uint32_t sp = hwGPR(PhysReg::SP);
     if (isLegalScaledUImm64(offset)) {
         const uint32_t scaled = static_cast<uint32_t>(offset / 8);
-        emit32((isFPR ? kStrFpr : kStrGpr) | (scaled << 10) | (sp << 5) | rt, cs);
+        emit32((fprOperand ? kStrFpr : kStrGpr) | (scaled << 10) | (sp << 5) | rt, cs);
         return;
     }
 
     const uint32_t scratch =
-        chooseGprScratch(sp, (!isFPR) ? std::optional<uint32_t>(rt) : std::nullopt);
+        chooseGprScratch(sp, (!fprOperand) ? std::optional<uint32_t>(rt) : std::nullopt);
     emit32(encodeAddSubImm(kAddRI, scratch, sp, 0), cs);
     if (offset > 0)
         emitAddSubImmSmart(
@@ -1584,7 +1585,7 @@ void A64BinaryEncoder::encodeSpOffsetStore(uint32_t rt,
         emitAddSubImmSmart(
             kSubRI, scratch, scratch, checkedU32Magnitude(offset, "SP store offset"), cs);
 
-    emit32((isFPR ? kStrFpr : kStrGpr) | (0 << 10) | (scratch << 5) | rt, cs);
+    emit32((fprOperand ? kStrFpr : kStrGpr) | (0 << 10) | (scratch << 5) | rt, cs);
 }
 
 // =============================================================================
