@@ -33,6 +33,7 @@
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
 #include "../../../graphics/src/vgfx_internal.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
@@ -642,19 +643,13 @@ static void contextmenu_paint(vg_widget_t *widget, void *canvas) {
     float w = widget->width;
     float h = widget->height;
 
-    // Draw shadow (layered offset dark rectangles, approximating drop shadow)
-    for (int i = 1; i <= 3; i++) {
-        uint32_t shadow_color = (i == 1) ? 0x505050u : (i == 2) ? 0x404040u : 0x303030u;
-        vgfx_fill_rect(
-            win, (int32_t)(x + i), (int32_t)(y + i), (int32_t)w, (int32_t)h, shadow_color);
-    }
-
-    // Draw background
-    vgfx_fill_rect(win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, menu->bg_color);
-
-    // Draw border
-    vgfx_rect(win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, menu->border_color);
-    (void)theme;
+    // Real soft drop shadow + anti-aliased rounded panel (Refined Depth).
+    float crad = theme->radius.md;
+    vg_elevation_t el = theme->elevation.level2;
+    vg_draw_round_rect_shadow(win, x, y, w, h, crad, el.blur, el.dx, el.dy, el.alpha,
+                              theme->elevation.shadow_rgb);
+    vg_draw_round_rect_fill(win, x, y, w, h, crad, menu->bg_color);
+    vg_draw_round_rect_stroke(win, x, y, w, h, crad, 1.0f, menu->border_color);
 
     // Draw items
     bool has_leading_column = menu_uses_leading_column(menu);

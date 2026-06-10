@@ -19,6 +19,7 @@
 //
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
 #include <math.h>
@@ -95,19 +96,7 @@ static void progressbar_arrange(vg_widget_t *widget, float x, float y, float w, 
 /// radius is zero or the rect is too small.
 static void progressbar_fill_round_rect(
     vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
-    if (w <= 0 || h <= 0)
-        return;
-    if (radius <= 0 || w <= radius * 2 || h <= radius * 2) {
-        vgfx_fill_rect(win, x, y, w, h, color);
-        return;
-    }
-    vgfx_fill_rect(win, x + radius, y, w - radius * 2, h, color);
-    vgfx_fill_rect(win, x, y + radius, radius, h - radius * 2, color);
-    vgfx_fill_rect(win, x + w - radius, y + radius, radius, h - radius * 2, color);
-    vgfx_fill_circle(win, x + radius, y + radius, radius, color);
-    vgfx_fill_circle(win, x + w - radius - 1, y + radius, radius, color);
-    vgfx_fill_circle(win, x + radius, y + h - radius - 1, radius, color);
-    vgfx_fill_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
+    vg_draw_round_rect_fill(win, (float)x, (float)y, (float)w, (float)h, (float)radius, color);
 }
 
 /// @brief VTable paint: draws the track, then the fill (determinate bar or indeterminate sliding

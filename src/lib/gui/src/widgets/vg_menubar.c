@@ -30,6 +30,7 @@
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widget.h"
@@ -490,12 +491,9 @@ static void menubar_paint(vg_widget_t *widget, void *canvas) {
 
         // Draw highlight if this menu is open
         if (menu == menubar->open_menu) {
-            vgfx_fill_rect(win,
-                           (int32_t)menu_x,
-                           (int32_t)widget->y,
-                           (int32_t)menu_width,
-                           (int32_t)widget->height,
-                           menubar->highlight_bg);
+            vg_draw_round_rect_fill(win, menu_x + 2.0f, widget->y + 3.0f, menu_width - 4.0f,
+                                    widget->height - 6.0f, vg_theme_get_current()->radius.sm,
+                                    menubar->highlight_bg);
         }
 
         // Draw menu title

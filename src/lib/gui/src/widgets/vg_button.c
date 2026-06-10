@@ -21,6 +21,7 @@
 //
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
@@ -61,62 +62,6 @@ static int button_corner_radius(const vg_button_t *button, const vg_theme_t *the
     if (radius < 2.0f)
         radius = 2.0f;
     return (int)radius;
-}
-
-/// @brief Fill a rounded rectangle by decomposing it into a centre rect and four
-///        corner discs drawn via vgfx primitives.
-static void button_fill_round_rect(
-    vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
-    if (w <= 0 || h <= 0)
-        return;
-
-    int32_t max_radius = w < h ? w / 2 : h / 2;
-    if (radius <= 0 || max_radius <= 0) {
-        vgfx_fill_rect(win, x, y, w, h, color);
-        return;
-    }
-    if (radius > max_radius)
-        radius = max_radius;
-    if (w <= radius * 2 || h <= radius * 2) {
-        vgfx_fill_rect(win, x, y, w, h, color);
-        return;
-    }
-
-    vgfx_fill_rect(win, x + radius, y, w - radius * 2, h, color);
-    vgfx_fill_rect(win, x, y + radius, radius, h - radius * 2, color);
-    vgfx_fill_rect(win, x + w - radius, y + radius, radius, h - radius * 2, color);
-    vgfx_fill_circle(win, x + radius, y + radius, radius, color);
-    vgfx_fill_circle(win, x + w - radius - 1, y + radius, radius, color);
-    vgfx_fill_circle(win, x + radius, y + h - radius - 1, radius, color);
-    vgfx_fill_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
-}
-
-/// @brief Stroke a rounded rectangle border using vgfx line primitives.
-static void button_stroke_round_rect(
-    vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
-    if (w <= 1 || h <= 1)
-        return;
-
-    int32_t max_radius = w < h ? w / 2 : h / 2;
-    if (radius <= 0 || max_radius <= 0) {
-        vgfx_rect(win, x, y, w, h, color);
-        return;
-    }
-    if (radius > max_radius)
-        radius = max_radius;
-    if (w <= radius * 2 || h <= radius * 2) {
-        vgfx_rect(win, x, y, w, h, color);
-        return;
-    }
-
-    vgfx_line(win, x + radius, y, x + w - radius - 1, y, color);
-    vgfx_line(win, x + radius, y + h - 1, x + w - radius - 1, y + h - 1, color);
-    vgfx_line(win, x, y + radius, x, y + h - radius - 1, color);
-    vgfx_line(win, x + w - 1, y + radius, x + w - 1, y + h - radius - 1, color);
-    vgfx_circle(win, x + radius, y + radius, radius, color);
-    vgfx_circle(win, x + w - radius - 1, y + radius, radius, color);
-    vgfx_circle(win, x + radius, y + h - radius - 1, radius, color);
-    vgfx_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
 }
 
 //=============================================================================
@@ -268,34 +213,42 @@ static void button_paint(vg_widget_t *widget, void *canvas) {
             vg_color_lighten(bg_color, button->style == VG_BUTTON_STYLE_TEXT ? 0.03f : 0.05f);
     }
 
-    button_fill_round_rect(win,
-                           (int32_t)widget->x,
-                           (int32_t)widget->y,
-                           (int32_t)widget->width,
-                           (int32_t)widget->height,
-                           radius,
-                           bg_color);
-    if (button->style != VG_BUTTON_STYLE_TEXT) {
-        vgfx_fill_rect(win,
-                       (int32_t)widget->x + radius,
-                       (int32_t)widget->y + 1,
-                       (int32_t)widget->width - radius * 2,
-                       1,
-                       vg_color_lighten(bg_color, 0.08f));
+    // Refined Depth rendering: a soft accent glow when focused (or a resting
+    // elevation lift otherwise), a subtle vertical gradient body, a 1px top
+    // sheen, and an anti-aliased border — all via the shared vg_draw core.
+    bool is_text_style = (button->style == VG_BUTTON_STYLE_TEXT);
+    bool disabled = (widget->state & VG_STATE_DISABLED) != 0;
+    bool pressed = (widget->state & VG_STATE_PRESSED) != 0;
+    bool focused = (widget->state & VG_STATE_FOCUSED) != 0;
+    float fx = widget->x, fy = widget->y, fw = widget->width, fh = widget->height;
+    float frad = (float)radius;
+
+    if (focused && !disabled && !is_text_style) {
+        vg_draw_round_rect_shadow(win, fx, fy, fw, fh, frad, theme->focus.glow_width * 2.5f, 0, 0,
+                                  theme->focus.glow_alpha, theme->focus.glow_color);
+    } else if (!pressed && !disabled && !is_text_style) {
+        vg_elevation_t el = theme->elevation.level1;
+        vg_draw_round_rect_shadow(win, fx, fy, fw, fh, frad, el.blur, el.dx, el.dy, el.alpha,
+                                  theme->elevation.shadow_rgb);
     }
+
+    if (!is_text_style && theme->gradient.enabled) {
+        uint32_t top = vg_color_lighten(bg_color, theme->gradient.strength * 0.5f);
+        uint32_t bot = vg_color_darken(bg_color, theme->gradient.strength * 0.5f);
+        vg_draw_round_rect_gradient_v(win, fx, fy, fw, fh, frad, top, bot);
+    } else {
+        vg_draw_round_rect_fill(win, fx, fy, fw, fh, frad, bg_color);
+    }
+
+    if (!is_text_style && !disabled)
+        vg_draw_inner_highlight_top(win, fx, fy + 1.0f, fw, frad, vg_color_lighten(bg_color, 0.10f));
 
     if (widget->state & VG_STATE_FOCUSED) {
         border_color = theme->colors.border_focus;
     }
-    if (button->style != VG_BUTTON_STYLE_TEXT ||
-        (widget->state & (VG_STATE_HOVERED | VG_STATE_FOCUSED))) {
-        button_stroke_round_rect(win,
-                                 (int32_t)widget->x,
-                                 (int32_t)widget->y,
-                                 (int32_t)widget->width,
-                                 (int32_t)widget->height,
-                                 radius,
-                                 border_color);
+    if (!is_text_style || (widget->state & (VG_STATE_HOVERED | VG_STATE_FOCUSED))) {
+        float bw = theme->button.border_width > 0.0f ? theme->button.border_width : 1.0f;
+        vg_draw_round_rect_stroke(win, fx, fy, fw, fh, frad, bw, border_color);
     }
 
     if (button->font) {

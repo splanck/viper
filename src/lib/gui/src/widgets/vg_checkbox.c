@@ -21,6 +21,7 @@
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
 #include <stdlib.h>
@@ -166,9 +167,11 @@ static void checkbox_paint(vg_widget_t *widget, void *canvas) {
     int32_t by = (int32_t)box_y;
     int32_t bs = (int32_t)checkbox->box_size;
 
-    // Draw box background and border
-    vgfx_fill_rect(win, bx, by, bs, bs, box_color);
-    vgfx_rect(win, bx, by, bs, bs, theme->colors.border_primary);
+    // Draw box background and border (anti-aliased rounded square)
+    float cb_rad = theme->radius.sm;
+    vg_draw_round_rect_fill(win, (float)bx, (float)by, (float)bs, (float)bs, cb_rad, box_color);
+    vg_draw_round_rect_stroke(win, (float)bx, (float)by, (float)bs, (float)bs, cb_rad, 1.0f,
+                              theme->colors.border_primary);
 
     // Draw check mark or indeterminate mark
     if (checkbox->checked || checkbox->indeterminate) {
@@ -176,15 +179,18 @@ static void checkbox_paint(vg_widget_t *widget, void *canvas) {
             // Dash for indeterminate
             vgfx_fill_rect(win, bx + 3, by + bs / 2 - 1, bs - 6, 2, check_color);
         } else {
-            // Two-segment tick mark (✓): short leg then long leg
-            vgfx_line(win, bx + 2, by + bs / 2, bx + bs / 2 - 1, by + bs - 3, check_color);
-            vgfx_line(win, bx + bs / 2 - 1, by + bs - 3, bx + bs - 2, by + 2, check_color);
+            // Two-segment tick mark (✓): short leg then long leg, anti-aliased.
+            vg_draw_line_aa(win, bx + 2.0f, by + bs / 2.0f, bx + bs / 2.0f - 1.0f, by + bs - 3.0f,
+                            1.8f, check_color);
+            vg_draw_line_aa(win, bx + bs / 2.0f - 1.0f, by + bs - 3.0f, bx + bs - 2.0f, by + 2.0f,
+                            1.8f, check_color);
         }
     }
 
     // Draw focus ring
     if (widget->state & VG_STATE_FOCUSED) {
-        vgfx_rect(win, bx - 2, by - 2, bs + 4, bs + 4, theme->colors.border_focus);
+        vg_draw_round_rect_stroke(win, (float)(bx - 2), (float)(by - 2), (float)(bs + 4),
+                                  (float)(bs + 4), cb_rad + 2.0f, 1.5f, theme->colors.border_focus);
     }
 
     // Draw label text

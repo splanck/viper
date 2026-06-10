@@ -28,6 +28,7 @@
 #include "il/core/Type.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <string>
 #include <unordered_map>
@@ -58,6 +59,18 @@ inline uint32_t findOrAddToPool(std::vector<T> &pool, const T &value, Eq eq) {
     pool.push_back(value);
     return idx;
 }
+
+/// @brief Build the deduplication key for a native function reference.
+/// @details Native calls are encoded with both a name and call-site shape.
+///          Using all signature-affecting fields avoids reusing a native-table
+///          entry created by a different overload or malformed call site.
+/// @param name Native/runtime function name.
+/// @param paramCount Number of arguments encoded at the call site.
+/// @param hasReturn Whether the call site expects a return value.
+/// @return Stable key suitable for @ref BytecodeModule::nativeFuncIndex.
+inline std::string nativeFunctionKey(const std::string &name, uint32_t paramCount, bool hasReturn) {
+    return name + "#" + std::to_string(paramCount) + "#" + (hasReturn ? "ret" : "void");
+}
 } // namespace detail
 
 /// @brief Debug information about a local variable within a bytecode function.
@@ -65,9 +78,9 @@ inline uint32_t findOrAddToPool(std::vector<T> &pool, const T &value, Eq eq) {
 ///          the PC range during which it is live (for debugger display).
 struct LocalVarInfo {
     std::string name;  ///< Original source-level variable name.
-    uint32_t localIdx; ///< Index in the function's locals array.
-    uint32_t startPc;  ///< First PC where the variable is live (inclusive).
-    uint32_t endPc;    ///< Last PC where the variable is live (exclusive).
+    uint32_t localIdx = 0; ///< Index in the function's locals array.
+    uint32_t startPc = 0;  ///< First PC where the variable is live (inclusive).
+    uint32_t endPc = 0;    ///< Last PC where the variable is live (exclusive).
 };
 
 /// @brief An exception handler range within a bytecode function.
@@ -90,7 +103,7 @@ struct SwitchEntry {
 ///          performs a linear scan or binary search over entries to find
 ///          a matching case value.
 struct SwitchTable {
-    uint32_t defaultPc;               ///< Default target PC when no case matches.
+    uint32_t defaultPc = 0;           ///< Default target PC when no case matches.
     std::vector<SwitchEntry> entries; ///< Ordered list of case entries.
 };
 
@@ -143,8 +156,8 @@ struct NativeFuncRef {
 ///          describes the name, size, alignment, and optional initial data.
 struct GlobalInfo {
     std::string name; ///< Fully qualified global variable name.
-    uint32_t size;    ///< Size of the global in bytes.
-    uint32_t align;   ///< Alignment requirement in bytes.
+    uint32_t size = 0;  ///< Size of the global in bytes.
+    uint32_t align = 0; ///< Alignment requirement in bytes.
     il::core::Type type = il::core::Type(il::core::Type::Kind::I64); ///< IL storage type.
     std::vector<uint8_t> initData; ///< Initial data bytes (empty means zero-initialized).
     std::string initString;        ///< Initial string payload for Str globals.
@@ -153,7 +166,7 @@ struct GlobalInfo {
 /// @brief Source file reference for debug information.
 struct SourceFileInfo {
     std::string path;  ///< File path of the source file.
-    uint32_t checksum; ///< Optional checksum for validation (0 if unused).
+    uint32_t checksum = 0; ///< Optional checksum for validation (0 if unused).
 };
 
 /// @brief A compiled bytecode module containing all data needed for execution.
@@ -183,7 +196,7 @@ struct BytecodeModule {
     // Native function references
     std::vector<NativeFuncRef> nativeFuncs; ///< Native function descriptors.
     std::unordered_map<std::string, uint32_t>
-        nativeFuncIndex; ///< Native function name to index mapping.
+        nativeFuncIndex; ///< Native function signature key to index mapping.
 
     // Globals
     std::vector<GlobalInfo> globals;                       ///< Global variable descriptors.
@@ -202,7 +215,7 @@ struct BytecodeModule {
     /// @return Pointer to the BytecodeFunction if found; nullptr otherwise.
     const BytecodeFunction *findFunction(const std::string &name) const {
         auto it = functionIndex.find(name);
-        if (it != functionIndex.end()) {
+        if (it != functionIndex.end() && it->second < functions.size()) {
             return &functions[it->second];
         }
         return nullptr;
@@ -212,6 +225,10 @@ struct BytecodeModule {
     /// @param fn The BytecodeFunction to add (moved into the module).
     /// @return The index of the newly added function in the functions vector.
     uint32_t addFunction(BytecodeFunction fn) {
+        auto existing = functionIndex.find(fn.name);
+        if (existing != functionIndex.end() && existing->second < functions.size()) {
+            return existing->second;
+        }
         uint32_t idx = static_cast<uint32_t>(functions.size());
         functionIndex[fn.name] = idx;
         functions.push_back(std::move(fn));
@@ -233,9 +250,11 @@ struct BytecodeModule {
     /// @return The pool index of the (possibly pre-existing) constant.
     uint32_t addF64(double value) {
         auto bitwiseEq = [](double a, double b) {
-            uint64_t *pa = reinterpret_cast<uint64_t *>(&a);
-            uint64_t *pb = reinterpret_cast<uint64_t *>(&b);
-            return *pa == *pb;
+            uint64_t pa = 0;
+            uint64_t pb = 0;
+            std::memcpy(&pa, &a, sizeof(pa));
+            std::memcpy(&pb, &b, sizeof(pb));
+            return pa == pb;
         };
         return detail::findOrAddToPool(f64Pool, value, bitwiseEq);
     }
@@ -247,20 +266,23 @@ struct BytecodeModule {
         return detail::findOrAddToPool(stringPool, value, std::equal_to<std::string>{});
     }
 
-    /// @brief Add a native function reference, deduplicating by name.
-    /// @details If a native function with the same name is already registered,
-    ///          returns the existing index without creating a duplicate.
+    /// @brief Add a native function reference, deduplicating by call signature.
+    /// @details If a native function with the same name and call-site shape is
+    ///          already registered, returns the existing index. The same name
+    ///          with a different arity or return expectation receives a distinct
+    ///          entry so CALL_NATIVE arity validation cannot reuse stale metadata.
     /// @param name       The fully qualified native function name.
     /// @param paramCount Number of parameters the function expects.
     /// @param hasReturn  True if the function returns a value.
     /// @return The index of the native function reference.
     uint32_t addNativeFunc(const std::string &name, uint32_t paramCount, bool hasReturn) {
-        auto it = nativeFuncIndex.find(name);
+        const std::string key = detail::nativeFunctionKey(name, paramCount, hasReturn);
+        auto it = nativeFuncIndex.find(key);
         if (it != nativeFuncIndex.end()) {
             return it->second;
         }
         uint32_t idx = static_cast<uint32_t>(nativeFuncs.size());
-        nativeFuncIndex[name] = idx;
+        nativeFuncIndex[key] = idx;
         NativeFuncRef ref;
         ref.name = name;
         ref.paramCount = paramCount;

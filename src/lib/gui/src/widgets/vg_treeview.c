@@ -33,6 +33,7 @@
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
 #include <limits.h>
@@ -646,38 +647,38 @@ static void paint_node(
             float icon_x = arrow_slot_x + tree->indent_size;
             float text_x = icon_x + tree->icon_size + tree->icon_gap;
             float arrow_size = 8.0f * treeview_scale();
-            uint32_t row_bg =
+            uint32_t zebra_bg =
                 ((row_index & 1) == 0)
                     ? theme->colors.bg_primary
                     : vg_color_blend(theme->colors.bg_primary, theme->colors.bg_secondary, 0.35f);
             uint32_t row_fg = tree->text_color;
-
-            if (child == tree->selected) {
-                row_bg = tree->selected_bg;
+            bool row_sel = (child == tree->selected);
+            bool row_hov = (child == tree->hovered);
+            if (row_sel)
                 row_fg = theme->colors.fg_primary;
-            } else if (child == tree->hovered) {
-                row_bg = tree->hover_bg;
-            }
+
+            // Flat zebra base, then a modern rounded selection/hover pill inset
+            // from the edges (replaces the old flat full-width highlight bar).
             vgfx_fill_rect((vgfx_window_t)canvas,
                            (int32_t)tree->base.x,
                            (int32_t)display_y,
                            (int32_t)width,
                            (int32_t)tree->row_height,
-                           row_bg);
-            if (child == tree->selected) {
-                vgfx_fill_rect((vgfx_window_t)canvas,
-                               (int32_t)tree->base.x,
-                               (int32_t)display_y,
-                               3,
-                               (int32_t)tree->row_height,
-                               theme->colors.accent_primary);
+                           zebra_bg);
+            if (row_sel || row_hov) {
+                // Clearly inset, rounded "pill". Selected rows are brightened
+                // toward the accent so the highlight reads at a glance.
+                uint32_t pill =
+                    row_sel ? vg_color_blend(tree->selected_bg, theme->colors.accent_primary, 0.28f)
+                            : tree->hover_bg;
+                vg_draw_round_rect_fill((vgfx_window_t)canvas, tree->base.x + 8.0f, display_y + 2.0f,
+                                        width - 16.0f, tree->row_height - 4.0f, theme->radius.lg,
+                                        pill);
+                if (row_sel)
+                    vg_draw_round_rect_fill((vgfx_window_t)canvas, tree->base.x + 11.0f,
+                                            display_y + 6.0f, 3.0f, tree->row_height - 12.0f, 1.5f,
+                                            theme->colors.accent_primary);
             }
-            vgfx_fill_rect((vgfx_window_t)canvas,
-                           (int32_t)tree->base.x,
-                           (int32_t)(display_y + tree->row_height - 1.0f),
-                           (int32_t)width,
-                           1,
-                           theme->colors.border_secondary);
 
             // Draw expand/collapse arrow if has children
             if (child->has_children || child->first_child) {

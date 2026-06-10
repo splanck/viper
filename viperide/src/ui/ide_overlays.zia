@@ -24,7 +24,9 @@ final SETTINGS_DOCK_MAX_WIDTH = 520;
 final SETTINGS_DOCK_MIN_WIDTH = 320;
 final ABOUT_PANEL_WIDTH = 520;
 final ABOUT_PANEL_HEIGHT = 270;
-final FIELD_LABEL_WIDTH = 200;
+// Narrower label column gives the control column ~24% more room within the
+// dock, easing the previous cramping without changing the tested dock width.
+final FIELD_LABEL_WIDTH = 160;
 final PANEL_SCREEN_MARGIN = 28;
 
 /// @brief Docked Preferences surface plus the floating About panel.

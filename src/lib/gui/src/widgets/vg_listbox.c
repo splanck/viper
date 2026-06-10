@@ -25,6 +25,7 @@
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
 #include <stdint.h>
@@ -639,21 +640,26 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
             if (item_y >= widget->y + widget->height)
                 break;
 
-            uint32_t bg = ((index & 1u) == 0u)
-                              ? lb->item_bg
-                              : vg_color_blend(lb->item_bg, theme->colors.bg_secondary, 0.35f);
+            uint32_t zebra = ((index & 1u) == 0u)
+                                 ? lb->item_bg
+                                 : vg_color_blend(lb->item_bg, theme->colors.bg_secondary, 0.35f);
             bool is_selected = index < lb->selection_bitmap_size && lb->selection_bitmap[index];
-            if (is_selected)
-                bg = lb->selected_bg;
-            else if (index == lb->hovered_index)
-                bg = lb->hover_bg;
+            bool is_hover = (index == lb->hovered_index);
 
             int32_t iy = (int32_t)item_y;
             int32_t ih32 = (int32_t)ih;
-            vgfx_fill_rect(win, x + 1, iy, w - 2, ih32, bg);
-            if (is_selected)
-                vgfx_fill_rect(win, x + 1, iy, 3, ih32, theme->colors.accent_primary);
-            vgfx_fill_rect(win, x + 1, iy + ih32 - 1, w - 2, 1, theme->colors.border_secondary);
+            vgfx_fill_rect(win, x + 1, iy, w - 2, ih32, zebra);
+            if (is_selected || is_hover) {
+                uint32_t pill =
+                    is_selected
+                        ? vg_color_blend(lb->selected_bg, theme->colors.accent_primary, 0.28f)
+                        : lb->hover_bg;
+                vg_draw_round_rect_fill(win, (float)(x + 6), (float)(iy + 2), (float)(w - 12),
+                                        (float)(ih32 - 4), theme->radius.lg, pill);
+                if (is_selected)
+                    vg_draw_round_rect_fill(win, (float)(x + 9), (float)(iy + 6), 3.0f,
+                                            (float)(ih32 - 12), 1.5f, theme->colors.accent_primary);
+            }
 
             if (lb->visible_cache[i].text && lb->font) {
                 if (text_clip_w > 0 && text_clip_h > 0)
@@ -683,22 +689,26 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
             if (item_y > widget->y + widget->height)
                 break;
 
-            uint32_t bg;
-            if (item->selected)
-                bg = lb->selected_bg;
-            else if (item == lb->hovered)
-                bg = lb->hover_bg;
-            else
-                bg = (row_index & 1) == 0
-                         ? lb->item_bg
-                         : vg_color_blend(lb->item_bg, theme->colors.bg_secondary, 0.35f);
+            uint32_t zebra = (row_index & 1) == 0
+                                 ? lb->item_bg
+                                 : vg_color_blend(lb->item_bg, theme->colors.bg_secondary, 0.35f);
+            bool is_selected = item->selected;
+            bool is_hover = (item == lb->hovered);
 
             int32_t iy = (int32_t)item_y;
             int32_t ih32 = (int32_t)ih;
-            vgfx_fill_rect(win, x + 1, iy, w - 2, ih32, bg);
-            if (item->selected)
-                vgfx_fill_rect(win, x + 1, iy, 3, ih32, theme->colors.accent_primary);
-            vgfx_fill_rect(win, x + 1, iy + ih32 - 1, w - 2, 1, theme->colors.border_secondary);
+            vgfx_fill_rect(win, x + 1, iy, w - 2, ih32, zebra);
+            if (is_selected || is_hover) {
+                uint32_t pill =
+                    is_selected
+                        ? vg_color_blend(lb->selected_bg, theme->colors.accent_primary, 0.28f)
+                        : lb->hover_bg;
+                vg_draw_round_rect_fill(win, (float)(x + 6), (float)(iy + 2), (float)(w - 12),
+                                        (float)(ih32 - 4), theme->radius.lg, pill);
+                if (is_selected)
+                    vg_draw_round_rect_fill(win, (float)(x + 9), (float)(iy + 6), 3.0f,
+                                            (float)(ih32 - 12), 1.5f, theme->colors.accent_primary);
+            }
 
             if (item->text && lb->font) {
                 if (text_clip_w > 0 && text_clip_h > 0)

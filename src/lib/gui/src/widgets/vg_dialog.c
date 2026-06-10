@@ -33,6 +33,7 @@
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widget.h"
 #include <stdint.h>
@@ -172,65 +173,17 @@ static int dialog_corner_radius(void) {
     return radius;
 }
 
-/// @brief Fill a rounded rectangle using four corner circles and three fill rects.
+/// @brief Fill a rounded rectangle via the shared anti-aliased core (Refined Depth).
 static void dialog_fill_round_rect(
     vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
-    if (!win || w <= 0 || h <= 0) {
-        return;
-    }
-
-    int32_t max_radius = w < h ? w / 2 : h / 2;
-    if (radius <= 0 || max_radius <= 0) {
-        vgfx_fill_rect(win, x, y, w, h, color);
-        return;
-    }
-
-    if (radius > max_radius)
-        radius = max_radius;
-
-    if (w <= radius * 2 || h <= radius * 2) {
-        vgfx_fill_rect(win, x, y, w, h, color);
-        return;
-    }
-
-    vgfx_fill_rect(win, x + radius, y, w - radius * 2, h, color);
-    vgfx_fill_rect(win, x, y + radius, radius, h - radius * 2, color);
-    vgfx_fill_rect(win, x + w - radius, y + radius, radius, h - radius * 2, color);
-    vgfx_fill_circle(win, x + radius, y + radius, radius, color);
-    vgfx_fill_circle(win, x + w - radius - 1, y + radius, radius, color);
-    vgfx_fill_circle(win, x + radius, y + h - radius - 1, radius, color);
-    vgfx_fill_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
+    vg_draw_round_rect_fill(win, (float)x, (float)y, (float)w, (float)h, (float)radius, color);
 }
 
-/// @brief Stroke a rounded rectangle outline using four edge lines and four corner circles.
+/// @brief Stroke a rounded rectangle outline via the shared anti-aliased core.
 static void dialog_stroke_round_rect(
     vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
-    if (!win || w <= 1 || h <= 1) {
-        return;
-    }
-
-    int32_t max_radius = w < h ? w / 2 : h / 2;
-    if (radius <= 0 || max_radius <= 0) {
-        vgfx_rect(win, x, y, w, h, color);
-        return;
-    }
-
-    if (radius > max_radius)
-        radius = max_radius;
-
-    if (w <= radius * 2 || h <= radius * 2) {
-        vgfx_rect(win, x, y, w, h, color);
-        return;
-    }
-
-    vgfx_line(win, x + radius, y, x + w - radius - 1, y, color);
-    vgfx_line(win, x + radius, y + h - 1, x + w - radius - 1, y + h - 1, color);
-    vgfx_line(win, x, y + radius, x, y + h - radius - 1, color);
-    vgfx_line(win, x + w - 1, y + radius, x + w - 1, y + h - radius - 1, color);
-    vgfx_circle(win, x + radius, y + radius, radius, color);
-    vgfx_circle(win, x + w - radius - 1, y + radius, radius, color);
-    vgfx_circle(win, x + radius, y + h - radius - 1, radius, color);
-    vgfx_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
+    vg_draw_round_rect_stroke(win, (float)x, (float)y, (float)w, (float)h, (float)radius, 1.0f,
+                              color);
 }
 
 /// @brief Heap-allocate a NUL-terminated copy of the first len bytes of text.
@@ -864,11 +817,12 @@ static void dialog_paint(vg_widget_t *widget, void *canvas) {
                              ? dlg->title_bg_color
                              : vg_color_blend(panel_bg, theme->colors.bg_secondary, 0.65f);
     uint32_t border_color = theme->colors.border_primary;
-    uint32_t shadow_color = vg_color_darken(panel_bg, 0.65f);
     uint32_t highlight = vg_color_lighten(panel_bg, 0.06f);
 
-    dialog_fill_round_rect(win, x + 4, y + 6, w, h, radius, shadow_color);
-    dialog_fill_round_rect(win, x + 2, y + 3, w, h, radius, vg_color_darken(panel_bg, 0.45f));
+    // Real soft drop shadow (floating elevation) beneath the dialog panel.
+    vg_elevation_t el = theme->elevation.level3;
+    vg_draw_round_rect_shadow(win, (float)x, (float)y, (float)w, (float)h, (float)radius, el.blur,
+                              el.dx, el.dy, el.alpha, theme->elevation.shadow_rgb);
     dialog_fill_round_rect(win, x, y, w, h, radius, panel_bg);
     vgfx_fill_rect(win, x + 1, y + 1, w - 2, (int32_t)title_h, header_bg);
     vgfx_fill_rect(win, x + 1, y + 1, w - 2, 1, highlight);

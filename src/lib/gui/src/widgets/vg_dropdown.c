@@ -23,6 +23,7 @@
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_widgets.h"
 #include <limits.h>
 #include <stdlib.h>
@@ -499,8 +500,10 @@ static void dropdown_paint_overlay(vg_widget_t *widget, void *canvas) {
 
     dropdown_clamp_scroll(dd, panel_h);
 
-    vgfx_fill_rect(win, px + 4, py + 5, pw, ph, vg_color_darken(dd->dropdown_bg, 0.72f));
-    vgfx_fill_rect(win, px + 2, py + 2, pw, ph, vg_color_darken(dd->dropdown_bg, 0.55f));
+    // Real soft drop shadow beneath the floating list (Refined Depth elevation).
+    vg_elevation_t el = theme->elevation.level2;
+    vg_draw_round_rect_shadow(win, (float)px, (float)py, (float)pw, (float)ph, 0.0f, el.blur, el.dx,
+                              el.dy, el.alpha, theme->elevation.shadow_rgb);
     vgfx_fill_rect(win, px, py, pw, ph, dd->dropdown_bg);
     vgfx_rect(win, px, py, pw, ph, dd->border_color);
     if (pw > 2)

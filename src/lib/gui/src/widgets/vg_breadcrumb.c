@@ -29,6 +29,7 @@
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_theme.h"
 #include <stdint.h>
 #include <stdlib.h>
@@ -90,56 +91,14 @@ static void free_breadcrumb_item(vg_breadcrumb_item_t *item) {
 /// @brief Fill a rectangle with rounded corners using four corner circles and three fill rects.
 static void breadcrumb_fill_round_rect(
     vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
-    if (w <= 0 || h <= 0)
-        return;
-
-    int32_t max_radius = w < h ? w / 2 : h / 2;
-    if (radius <= 0 || max_radius <= 0) {
-        vgfx_fill_rect(win, x, y, w, h, color);
-        return;
-    }
-    if (radius > max_radius)
-        radius = max_radius;
-    if (w <= radius * 2 || h <= radius * 2) {
-        vgfx_fill_rect(win, x, y, w, h, color);
-        return;
-    }
-
-    vgfx_fill_rect(win, x + radius, y, w - radius * 2, h, color);
-    vgfx_fill_rect(win, x, y + radius, radius, h - radius * 2, color);
-    vgfx_fill_rect(win, x + w - radius, y + radius, radius, h - radius * 2, color);
-    vgfx_fill_circle(win, x + radius, y + radius, radius, color);
-    vgfx_fill_circle(win, x + w - radius - 1, y + radius, radius, color);
-    vgfx_fill_circle(win, x + radius, y + h - radius - 1, radius, color);
-    vgfx_fill_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
+    vg_draw_round_rect_fill(win, (float)x, (float)y, (float)w, (float)h, (float)radius, color);
 }
 
 /// @brief Stroke a rounded rectangle border using four edge lines and four corner circles.
 static void breadcrumb_stroke_round_rect(
     vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
-    if (w <= 1 || h <= 1)
-        return;
-
-    int32_t max_radius = w < h ? w / 2 : h / 2;
-    if (radius <= 0 || max_radius <= 0) {
-        vgfx_rect(win, x, y, w, h, color);
-        return;
-    }
-    if (radius > max_radius)
-        radius = max_radius;
-    if (w <= radius * 2 || h <= radius * 2) {
-        vgfx_rect(win, x, y, w, h, color);
-        return;
-    }
-
-    vgfx_line(win, x + radius, y, x + w - radius - 1, y, color);
-    vgfx_line(win, x + radius, y + h - 1, x + w - radius - 1, y + h - 1, color);
-    vgfx_line(win, x, y + radius, x, y + h - radius - 1, color);
-    vgfx_line(win, x + w - 1, y + radius, x + w - 1, y + h - radius - 1, color);
-    vgfx_circle(win, x + radius, y + radius, radius, color);
-    vgfx_circle(win, x + w - radius - 1, y + radius, radius, color);
-    vgfx_circle(win, x + radius, y + h - radius - 1, radius, color);
-    vgfx_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
+    vg_draw_round_rect_stroke(win, (float)x, (float)y, (float)w, (float)h, (float)radius, 1.0f,
+                              color);
 }
 
 /// @brief Return the outer horizontal padding used between the widget edge and the first item.

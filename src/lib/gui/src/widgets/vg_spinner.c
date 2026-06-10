@@ -25,6 +25,7 @@
 //
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
@@ -283,10 +284,15 @@ static void spinner_paint(vg_widget_t *widget, void *canvas) {
 
     const uint32_t glyph =
         (widget->state & VG_STATE_DISABLED) ? theme->colors.fg_disabled : theme->colors.fg_primary;
-    vgfx_line((vgfx_window_t)canvas, up_mid_x - 4, up_mid_y + 2, up_mid_x, up_mid_y - 2, glyph);
-    vgfx_line((vgfx_window_t)canvas, up_mid_x, up_mid_y - 2, up_mid_x + 4, up_mid_y + 2, glyph);
-    vgfx_line((vgfx_window_t)canvas, up_mid_x - 4, down_mid_y - 2, up_mid_x, down_mid_y + 2, glyph);
-    vgfx_line((vgfx_window_t)canvas, up_mid_x, down_mid_y + 2, up_mid_x + 4, down_mid_y - 2, glyph);
+    // Anti-aliased up/down chevrons.
+    vg_draw_line_aa((vgfx_window_t)canvas, up_mid_x - 4, up_mid_y + 2, up_mid_x, up_mid_y - 2, 1.4f,
+                    glyph);
+    vg_draw_line_aa((vgfx_window_t)canvas, up_mid_x, up_mid_y - 2, up_mid_x + 4, up_mid_y + 2, 1.4f,
+                    glyph);
+    vg_draw_line_aa((vgfx_window_t)canvas, up_mid_x - 4, down_mid_y - 2, up_mid_x, down_mid_y + 2,
+                    1.4f, glyph);
+    vg_draw_line_aa((vgfx_window_t)canvas, up_mid_x, down_mid_y + 2, up_mid_x + 4, down_mid_y - 2,
+                    1.4f, glyph);
 }
 
 /// @brief VTable handle_event: handles click on up/down arrow buttons, mouse-wheel

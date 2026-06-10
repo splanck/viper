@@ -29,6 +29,7 @@
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
 #include <math.h>
@@ -605,32 +606,27 @@ static void tabbar_paint(vg_widget_t *widget, void *canvas) {
         uint32_t text_color =
             (tab == tabbar->active_tab) ? tabbar->text_color : theme->colors.fg_secondary;
 
-        // Draw tab background
-        vgfx_fill_rect(win,
-                       (int32_t)tab_x,
-                       (int32_t)widget->y,
-                       (int32_t)width,
-                       (int32_t)widget->height - 1,
-                       bg);
-        vgfx_fill_rect(win,
-                       (int32_t)(tab_x + width - 1.0f),
-                       (int32_t)widget->y + 4,
-                       1,
-                       (int32_t)widget->height - 8,
-                       theme->colors.border_secondary);
+        // Draw tab background — active tab as a raised rounded pill with an
+        // accent underline; hovered tabs get a subtle rounded highlight;
+        // inactive tabs are separated by a faint divider.
         if (tab == tabbar->active_tab) {
+            vg_draw_round_rect_fill(win, tab_x + 2.0f, widget->y + 3.0f, width - 4.0f,
+                                    widget->height - 3.0f, theme->radius.md, bg);
+            vg_draw_inner_highlight_top(win, tab_x + 2.0f, widget->y + 4.0f, width - 4.0f,
+                                        theme->radius.md, vg_color_lighten(bg, 0.07f));
+            vg_draw_round_rect_fill(win, tab_x + 10.0f, widget->y + widget->height - 5.0f,
+                                    width - 20.0f, 3.0f, 1.5f, theme->colors.accent_primary);
+        } else {
+            if (tab == tabbar->hovered_tab) {
+                vg_draw_round_rect_fill(win, tab_x + 2.0f, widget->y + 4.0f, width - 4.0f,
+                                        widget->height - 8.0f, theme->radius.sm, bg);
+            }
             vgfx_fill_rect(win,
-                           (int32_t)tab_x + 1,
-                           (int32_t)(widget->y + widget->height - 3.0f),
-                           (int32_t)width - 2,
-                           3,
-                           theme->colors.accent_primary);
-            vgfx_fill_rect(win,
-                           (int32_t)tab_x + 1,
-                           (int32_t)widget->y + 1,
-                           (int32_t)width - 2,
+                           (int32_t)(tab_x + width - 1.0f),
+                           (int32_t)widget->y + 6,
                            1,
-                           vg_color_lighten(bg, 0.07f));
+                           (int32_t)widget->height - 12,
+                           theme->colors.border_secondary);
         }
 
         // Draw tab title

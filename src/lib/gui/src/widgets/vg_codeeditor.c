@@ -2553,7 +2553,10 @@ vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent) {
     editor->text_color = theme->colors.fg_primary;
     editor->cursor_color = theme->colors.fg_primary;
     editor->selection_color = theme->colors.bg_selected;
-    editor->current_line_bg = theme->colors.bg_tertiary;
+    // A clearly visible blue-tinted active-line band (bg_tertiary was almost
+    // indistinguishable from the editor background).
+    editor->current_line_bg =
+        vg_color_blend(theme->colors.bg_primary, theme->colors.accent_primary, 0.18f);
 
     // Syntax highlighting
     editor->syntax_highlighter = NULL;
@@ -2960,6 +2963,13 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                                (int32_t)content_width,
                                (int32_t)editor->line_height,
                                editor->current_line_bg);
+                // Bright accent bar down the left edge of the active line.
+                vgfx_fill_rect((vgfx_window_t)canvas,
+                               (int32_t)content_x,
+                               (int32_t)line_y,
+                               3,
+                               (int32_t)editor->line_height,
+                               vg_theme_get_current()->colors.accent_primary);
             }
 
             codeeditor_paint_highlights_for_line(editor,

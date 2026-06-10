@@ -27,6 +27,7 @@
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
 #include <stdint.h>
@@ -318,8 +319,8 @@ static void statusbar_draw_item(vg_statusbar_t *sb,
 
     // Draw hover background for buttons
     if (item->type == VG_STATUSBAR_ITEM_BUTTON && item == sb->hovered_item) {
-        vgfx_fill_rect(
-            win, (int32_t)x, (int32_t)wy, (int32_t)item_width, (int32_t)wh, sb->hover_color);
+        vg_draw_round_rect_fill(win, x + 1.0f, wy + 2.0f, item_width - 2.0f, wh - 4.0f,
+                                vg_theme_get_current()->radius.sm, sb->hover_color);
     }
 
     switch (item->type) {

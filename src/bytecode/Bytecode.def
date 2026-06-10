@@ -24,7 +24,7 @@
 //   (BytecodeVM_threaded.cpp): every slot defaults to L_DEFAULT and BC_OPCODE
 //   entries override it with &&L_<NAME>. Opcodes with no handler label use
 //   BC_OPCODE_TRAP (below) and stay routed to L_DEFAULT — TAIL_CALL (TCO gated
-//   by VIPER_VM_TAILCALL), MAKE_ERROR / LINE / BREAKPOINT / WATCH_VAR, and the
+//   by VIPER_VM_TAILCALL), MAKE_ERROR, and the
 //   OPCODE_COUNT sentinel. The classification is compiler-enforced: a missing
 //   handler label or an over-marked trap fails the build.
 // The handler BODIES (the `L_<NAME>:` code in BytecodeVM_threaded.cpp and the
@@ -187,10 +187,10 @@ BC_OPCODE(RESUME_NEXT, 0xCB)   // Resume execution at the instruction after the 
 BC_OPCODE(RESUME_LABEL, 0xCC)  // Resume execution at a labelled target.
 BC_OPCODE(TRAP_KIND, 0xCD)     // Push the current trap kind (no operands).
 
-// Debug Operations (0xD0-0xDF) — no threaded handler labels (route to default).
-BC_OPCODE_TRAP(LINE, 0xD0)       // Source line marker for debug info.
-BC_OPCODE_TRAP(BREAKPOINT, 0xD1) // Debug breakpoint trap.
-BC_OPCODE_TRAP(WATCH_VAR, 0xD2)  // Variable watch trigger for the debugger.
+// Debug Operations (0xD0-0xDF)
+BC_OPCODE(LINE, 0xD0)       // Source line marker for debug info.
+BC_OPCODE(BREAKPOINT, 0xD1) // Debug breakpoint trap.
+BC_OPCODE(WATCH_VAR, 0xD2)  // Variable watch trigger for the debugger.
 
 // Runtime Fast-Path Operations (0xD8-0xDF)
 BC_OPCODE(ARR_I32_GET_FAST, 0xD8) // Direct unchecked i32 array load: arr, idx -> value.

@@ -111,6 +111,26 @@ double parseF64Initializer(const il::core::Global &global) {
     return value;
 }
 
+/// @brief Align an alloca byte count to the VM's 8-byte allocation granularity.
+/// @param size Non-negative requested byte count.
+/// @return Aligned size, saturated to uint32_t max on overflow.
+uint32_t alignAllocaByteCount(uint64_t size) {
+    constexpr uint64_t kMaxU32 = std::numeric_limits<uint32_t>::max();
+    if (size > kMaxU32 - 7u)
+        return std::numeric_limits<uint32_t>::max();
+    return static_cast<uint32_t>((size + 7u) & ~uint64_t{7u});
+}
+
+/// @brief Compute a raw-offset target used by EH and SWITCH metadata.
+/// @details Raw branch offsets are stored in a separate 32-bit word and are
+///          relative to the offset word itself, matching the VM dispatch logic.
+/// @param offsetWordPc PC of the raw offset word.
+/// @param encodedOffset Raw signed offset stored in the code stream.
+/// @return Absolute target PC as a 64-bit signed value for range validation.
+int64_t rawOffsetTarget(uint32_t offsetWordPc, uint32_t encodedOffset) {
+    return static_cast<int64_t>(offsetWordPc) + static_cast<int32_t>(encodedOffset);
+}
+
 struct ArrayFastOpcode {
     BCOpcode opcode;
     uint32_t expectedArgs;
@@ -193,6 +213,10 @@ il::support::Expected<BytecodeModule> BytecodeCompiler::compileChecked(
             if (i > std::numeric_limits<uint32_t>::max()) {
                 fail({}, "V-BC-FUNCTION-TABLE", "bytecode supports at most 2^32 functions");
             }
+            const std::string &name = ilModule.functions[i].name;
+            if (module_.functionIndex.find(name) != module_.functionIndex.end()) {
+                fail({}, "V-BC-DUPLICATE-FUNCTION", "duplicate function @" + name);
+            }
             module_.functionIndex[ilModule.functions[i].name] = static_cast<uint32_t>(i);
         }
 
@@ -204,6 +228,18 @@ il::support::Expected<BytecodeModule> BytecodeCompiler::compileChecked(
         }
     } catch (const BytecodeCompileFailure &failure) {
         return il::support::Expected<BytecodeModule>(failure.diag());
+    } catch (const std::exception &ex) {
+        return il::support::Expected<BytecodeModule>(il::support::Diag{
+            il::support::Severity::Error,
+            std::string("bytecode compile failed: internal compiler error: ") + ex.what(),
+            {},
+            "V-BC-INTERNAL"});
+    } catch (...) {
+        return il::support::Expected<BytecodeModule>(il::support::Diag{
+            il::support::Severity::Error,
+            "bytecode compile failed: internal compiler error",
+            {},
+            "V-BC-INTERNAL"});
     }
 
     return il::support::Expected<BytecodeModule>(std::move(module_));
@@ -240,17 +276,28 @@ void BytecodeCompiler::registerGlobals(const il::core::Module &module) {
             try {
                 switch (global.type.kind) {
                     case il::core::Type::Kind::I1: {
-                        int8_t value = parseI64Initializer(global) != 0 ? 1 : 0;
+                        const int64_t parsed = parseI64Initializer(global);
+                        if (parsed != 0 && parsed != 1)
+                            throw std::out_of_range("i1 initializer");
+                        int8_t value = static_cast<int8_t>(parsed);
                         storeGlobalInitializer(info.initData, value);
                         break;
                     }
                     case il::core::Type::Kind::I16: {
-                        int16_t value = static_cast<int16_t>(parseI64Initializer(global));
+                        const int64_t parsed = parseI64Initializer(global);
+                        if (parsed < std::numeric_limits<int16_t>::min() ||
+                            parsed > std::numeric_limits<int16_t>::max())
+                            throw std::out_of_range("i16 initializer");
+                        int16_t value = static_cast<int16_t>(parsed);
                         storeGlobalInitializer(info.initData, value);
                         break;
                     }
                     case il::core::Type::Kind::I32: {
-                        int32_t value = static_cast<int32_t>(parseI64Initializer(global));
+                        const int64_t parsed = parseI64Initializer(global);
+                        if (parsed < std::numeric_limits<int32_t>::min() ||
+                            parsed > std::numeric_limits<int32_t>::max())
+                            throw std::out_of_range("i32 initializer");
+                        int32_t value = static_cast<int32_t>(parsed);
                         storeGlobalInitializer(info.initData, value);
                         break;
                     }
@@ -267,9 +314,17 @@ void BytecodeCompiler::registerGlobals(const il::core::Module &module) {
                         break;
                     }
                     case il::core::Type::Kind::Ptr: {
-                        uintptr_t value = global.init == "null"
-                                              ? 0
-                                              : static_cast<uintptr_t>(parseI64Initializer(global));
+                        uintptr_t value = 0;
+                        if (global.init != "null") {
+                            const int64_t parsed = parseI64Initializer(global);
+                            if (parsed < 0 ||
+                                static_cast<uint64_t>(parsed) >
+                                    static_cast<uint64_t>(
+                                        std::numeric_limits<uintptr_t>::max())) {
+                                throw std::out_of_range("ptr initializer");
+                            }
+                            value = static_cast<uintptr_t>(parsed);
+                        }
                         storeGlobalInitializer(info.initData, value);
                         break;
                     }
@@ -325,6 +380,7 @@ void BytecodeCompiler::compileFunction(const il::core::Function &fn) {
     ehPushTargets_.clear();
     currentStackDepth_ = 0;
     maxStackDepth_ = 0;
+    maxAllocaSize_ = 0;
 
     // Collect eh.push target labels so we can distinguish real handler blocks
     // (entered via dispatchTrap) from forwarding handler blocks (entered via CBr).
@@ -351,9 +407,11 @@ void BytecodeCompiler::compileFunction(const il::core::Function &fn) {
 
     // Resolve branch offsets
     resolveBranches();
+    rebuildDerivedMetadata();
 
     // Record max stack depth
     bcFunc.maxStack = static_cast<uint32_t>(maxStackDepth_);
+    bcFunc.allocaSize = maxAllocaSize_;
 
     // Add function to module
     module_.addFunction(std::move(bcFunc));
@@ -519,6 +577,12 @@ void BytecodeCompiler::compileBlock(const il::core::BasicBlock &block) {
     }
 
     if (isHandlerBlock) {
+        if (block.params.size() != 2) {
+            fail(currentLoc_,
+                 "V-BC-HANDLER-SIGNATURE",
+                 "exception handler block ^" + block.label +
+                     " must declare exactly two params (error, resume_token)");
+        }
         // Handler blocks receive values on the stack (error, resume_token)
         // pushed by dispatchTrap. Store them in reverse order (LIFO).
         auto it = blockParamIds_.find(block.label);
@@ -672,7 +736,7 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr) {
                 emit(0u); // Placeholder for handler PC
                 // isRaw=true because the offset is in a separate word, not encoded in the
                 // instruction
-                pendingBranches_.push_back({offsetPos, instr.labels[0], false, true});
+                pendingBranches_.push_back({offsetPos, instr.labels[0], false, true, instr.loc});
             }
             break;
 
@@ -771,7 +835,7 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr) {
                 uint32_t offsetPos = static_cast<uint32_t>(currentFunc_->code.size());
                 /// @brief Emit.
                 emit(0u); // Placeholder
-                pendingBranches_.push_back({offsetPos, instr.labels[0], false, true});
+                pendingBranches_.push_back({offsetPos, instr.labels[0], false, true, instr.loc});
             }
             break;
 
@@ -1009,6 +1073,8 @@ void BytecodeCompiler::emitPoolLoad(BCOpcode op, uint32_t index, std::string_vie
 }
 
 /// @brief Emit an opcode with two packed unsigned 8-bit inline operands.
+// cppcheck-suppress unusedPrivateFunction
+// cppcheck-suppress unusedFunction
 void BytecodeCompiler::emit88(BCOpcode op, uint8_t arg0, uint8_t arg1) {
     emit(encodeOp88(op, arg0, arg1));
 }
@@ -1021,7 +1087,8 @@ void BytecodeCompiler::emitBranch(BCOpcode op, const std::string &label) {
         static_cast<uint32_t>(currentFunc_->code.size()),
         label,
         false, // isLong
-        false  // isRaw
+        false, // isRaw
+        currentLoc_
     });
     /// @brief Emit.
     emit(encodeOp16(op, 0)); // Placeholder offset
@@ -1034,7 +1101,8 @@ void BytecodeCompiler::emitBranchLong(BCOpcode op, const std::string &label) {
         static_cast<uint32_t>(currentFunc_->code.size()),
         label,
         true, // isLong
-        false // isRaw
+        false, // isRaw
+        currentLoc_
     });
     /// @brief Emit.
     emit(encodeOp24(op, 0)); // Placeholder offset
@@ -1050,8 +1118,12 @@ void BytecodeCompiler::resolveBranches() {
     for (const auto &fixup : pendingBranches_) {
         auto it = blockOffsets_.find(fixup.targetLabel);
         if (it == blockOffsets_.end()) {
-            failCurrent("V-BC-UNRESOLVED-BRANCH",
-                        "unresolved bytecode branch target ^" + fixup.targetLabel);
+            fail(fixup.loc,
+                 "V-BC-UNRESOLVED-BRANCH",
+                 "unresolved bytecode branch target ^" + fixup.targetLabel);
+        }
+        if (fixup.codeOffset >= currentFunc_->code.size()) {
+            fail(fixup.loc, "V-BC-BRANCH-FIXUP", "bytecode branch fixup offset out of range");
         }
 
         // For regular branches (opcode+offset encoded together), after DISPATCH
@@ -1059,35 +1131,169 @@ void BytecodeCompiler::resolveBranches() {
         // For raw offsets (separate word), after reading the offset word,
         // pc - 1 points to the offset word, so: handlerPc = offset_pos + offset
         // Therefore for raw offsets: offset = target - offset_pos (no -1)
-        int32_t offset = static_cast<int32_t>(it->second) - static_cast<int32_t>(fixup.codeOffset);
+        int64_t offset =
+            static_cast<int64_t>(it->second) - static_cast<int64_t>(fixup.codeOffset);
         if (!fixup.isRaw) {
             offset -= 1; // Regular branches need -1 adjustment
         }
 
         if (fixup.isRaw) {
+            if (offset < std::numeric_limits<int32_t>::min() ||
+                offset > std::numeric_limits<int32_t>::max()) {
+                fail(fixup.loc,
+                     "V-BC-BRANCH-RANGE",
+                     "bytecode raw branch target is out of 32-bit range");
+            }
             // Raw offset: store offset directly in the word
-            currentFunc_->code[fixup.codeOffset] = static_cast<uint32_t>(offset);
+            currentFunc_->code[fixup.codeOffset] =
+                static_cast<uint32_t>(static_cast<int32_t>(offset));
         } else {
             uint32_t instr = currentFunc_->code[fixup.codeOffset];
             BCOpcode op = decodeOpcode(instr);
 
             if (fixup.isLong) {
                 if (offset < -0x800000 || offset > 0x7FFFFF) {
-                    failCurrent("V-BC-BRANCH-RANGE",
-                                "bytecode long branch target is out of 24-bit range");
+                    fail(fixup.loc,
+                         "V-BC-BRANCH-RANGE",
+                         "bytecode long branch target is out of 24-bit range");
                 }
-                currentFunc_->code[fixup.codeOffset] = encodeOpI24(op, offset);
+                currentFunc_->code[fixup.codeOffset] =
+                    encodeOpI24(op, static_cast<int32_t>(offset));
             } else {
                 if (offset < std::numeric_limits<int16_t>::min() ||
                     offset > std::numeric_limits<int16_t>::max()) {
-                    failCurrent("V-BC-BRANCH-RANGE",
-                                "bytecode branch target is out of 16-bit range");
+                    fail(fixup.loc,
+                         "V-BC-BRANCH-RANGE",
+                         "bytecode branch target is out of 16-bit range");
                 }
                 currentFunc_->code[fixup.codeOffset] =
                     encodeOpI16(op, static_cast<int16_t>(offset));
             }
         }
     }
+}
+
+/// @brief Reconstruct derived exception and switch metadata from finalized code.
+/// @details Branch resolution must run first because EH_PUSH and SWITCH store
+///          raw relative offsets in their inline data. The scan validates that
+///          those inline words exist and resolve inside the function before
+///          publishing metadata to the BytecodeFunction.
+void BytecodeCompiler::rebuildDerivedMetadata() {
+    if (!currentFunc_)
+        return;
+
+    currentFunc_->exceptionRanges.clear();
+    currentFunc_->switchTables.clear();
+
+    struct PendingHandler {
+        uint32_t startPc = 0;
+        uint32_t handlerPc = 0;
+    };
+    std::vector<PendingHandler> handlerStack;
+
+    const auto &code = currentFunc_->code;
+    for (uint32_t pc = 0; pc < code.size(); ++pc) {
+        const BCOpcode op = decodeOpcode(code[pc]);
+        switch (op) {
+            case BCOpcode::LOAD_I32:
+                if (pc + 1 >= code.size())
+                    failCurrent("V-BC-METADATA", "LOAD_I32 is missing its inline value word");
+                ++pc;
+                break;
+
+            case BCOpcode::EH_PUSH: {
+                if (pc + 1 >= code.size())
+                    failCurrent("V-BC-METADATA", "EH_PUSH is missing its handler offset word");
+                const uint32_t offsetPc = pc + 1;
+                const int64_t target = rawOffsetTarget(offsetPc, code[offsetPc]);
+                if (target < 0 || target >= static_cast<int64_t>(code.size())) {
+                    failCurrent("V-BC-METADATA", "EH_PUSH handler target is out of range");
+                }
+                handlerStack.push_back(
+                    PendingHandler{pc + 2, static_cast<uint32_t>(target)});
+                pc = offsetPc;
+                break;
+            }
+
+            case BCOpcode::EH_POP:
+                if (!handlerStack.empty()) {
+                    PendingHandler pending = handlerStack.back();
+                    handlerStack.pop_back();
+                    currentFunc_->exceptionRanges.push_back(
+                        ExceptionRange{pending.startPc, pc, pending.handlerPc});
+                }
+                break;
+
+            case BCOpcode::SWITCH: {
+                if (pc + 2 >= code.size())
+                    failCurrent("V-BC-METADATA", "SWITCH is missing its header words");
+                const uint32_t numCases = code[pc + 1];
+                const uint32_t defaultOffsetPc = pc + 2;
+                const uint64_t caseWords = static_cast<uint64_t>(numCases) * 2u;
+                const uint64_t endPc = static_cast<uint64_t>(pc) + 3u + caseWords;
+                if (endPc > code.size()) {
+                    failCurrent("V-BC-METADATA", "SWITCH case table extends past function code");
+                }
+
+                const int64_t defaultTarget = rawOffsetTarget(defaultOffsetPc, code[defaultOffsetPc]);
+                if (defaultTarget < 0 || defaultTarget >= static_cast<int64_t>(code.size())) {
+                    failCurrent("V-BC-METADATA", "SWITCH default target is out of range");
+                }
+
+                SwitchTable table;
+                table.defaultPc = static_cast<uint32_t>(defaultTarget);
+                uint32_t cursor = pc + 3;
+                for (uint32_t i = 0; i < numCases; ++i) {
+                    const int32_t caseValue = static_cast<int32_t>(code[cursor++]);
+                    const uint32_t offsetPc = cursor++;
+                    const int64_t target = rawOffsetTarget(offsetPc, code[offsetPc]);
+                    if (target < 0 || target >= static_cast<int64_t>(code.size())) {
+                        failCurrent("V-BC-METADATA", "SWITCH case target is out of range");
+                    }
+                    table.entries.push_back(
+                        SwitchEntry{static_cast<int64_t>(caseValue), static_cast<uint32_t>(target)});
+                }
+                currentFunc_->switchTables.push_back(std::move(table));
+                pc = static_cast<uint32_t>(endPc - 1u);
+                break;
+            }
+
+            case BCOpcode::RESUME_LABEL:
+                if (pc + 1 >= code.size())
+                    failCurrent("V-BC-METADATA", "RESUME_LABEL is missing its target offset word");
+                ++pc;
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    for (const PendingHandler &pending : handlerStack) {
+        currentFunc_->exceptionRanges.push_back(
+            ExceptionRange{pending.startPc, static_cast<uint32_t>(code.size()), pending.handlerPc});
+    }
+}
+
+/// @brief Track a function's statically known alloca use.
+/// @details The VM rounds every alloca to 8 bytes and caps the alloca arena at
+///          16 MiB. Constant alloca sizes are accumulated with saturation;
+///          dynamic sizes mark the function as potentially using the full cap.
+void BytecodeCompiler::recordAllocaSize(const il::core::Value &sizeOperand) {
+    constexpr uint32_t kMaxAllocaBytes = 16u * 1024u * 1024u;
+    if (sizeOperand.kind != il::core::Value::Kind::ConstInt) {
+        maxAllocaSize_ = kMaxAllocaBytes;
+        return;
+    }
+    if (sizeOperand.i64 < 0)
+        return;
+
+    const uint32_t aligned = alignAllocaByteCount(static_cast<uint64_t>(sizeOperand.i64));
+    if (maxAllocaSize_ > std::numeric_limits<uint32_t>::max() - aligned) {
+        maxAllocaSize_ = std::numeric_limits<uint32_t>::max();
+        return;
+    }
+    maxAllocaSize_ = std::min<uint32_t>(kMaxAllocaBytes, maxAllocaSize_ + aligned);
 }
 
 /// @brief Account for @p count slots pushed onto the operand stack at compile
@@ -1100,12 +1306,15 @@ void BytecodeCompiler::pushStack(int32_t count) {
 }
 
 /// @brief Account for @p count slots popped from the operand stack at compile
-///        time (clamped at 0 defensively).
+///        time and fail if lowering attempts to underflow the stack.
 void BytecodeCompiler::popStack(int32_t count) {
-    currentStackDepth_ -= count;
-    if (currentStackDepth_ < 0) {
-        currentStackDepth_ = 0; // Shouldn't happen, but be safe
+    if (count < 0) {
+        failCurrent("V-BC-STACK-ACCOUNTING", "negative bytecode stack pop requested");
     }
+    if (currentStackDepth_ < count) {
+        failCurrent("V-BC-STACK-UNDERFLOW", "bytecode stack accounting underflow");
+    }
+    currentStackDepth_ -= count;
 }
 
 /// @brief Resolve an SSA value id to its assigned local slot; fails the
@@ -1494,6 +1703,7 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr) {
         case Opcode::Alloca:
             /// @brief Push Value.
             requireOperandCount(instr, 1);
+            recordAllocaSize(instr.operands[0]);
             pushValue(instr.operands[0]); // Size
             emit(BCOpcode::ALLOCA);
             // Alloca consumes 1, produces 1 - no stack change
@@ -1717,27 +1927,52 @@ void BytecodeCompiler::compileCall(const il::core::Instr &instr) {
 void BytecodeCompiler::compileBranch(const il::core::Instr &instr) {
     using Opcode = il::core::Opcode;
 
+    static const std::vector<il::core::Value> kNoBranchArgs;
+
+    auto branchArgsAt = [&instr](size_t idx) -> const std::vector<il::core::Value> & {
+        if (idx < instr.brArgs.size())
+            return instr.brArgs[idx];
+        return kNoBranchArgs;
+    };
+
     // Helper to emit stores for branch arguments to block parameter locals
     auto storeBranchArgs = [this](const std::string &label,
                                   const std::vector<il::core::Value> &args) {
         auto it = blockParamIds_.find(label);
-        if (it == blockParamIds_.end() || args.empty()) {
+        if (it == blockParamIds_.end()) {
+            if (!args.empty()) {
+                failCurrent("V-BC-UNKNOWN-BRANCH-TARGET",
+                            "branch arguments target unknown block ^" + label);
+            }
             return;
         }
         const auto &paramIds = it->second;
-        const size_t argCount = std::min(args.size(), paramIds.size());
+        if (args.size() != paramIds.size()) {
+            failCurrent("V-BC-BRANCH-ARGS",
+                        "branch to ^" + label + " passes " + std::to_string(args.size()) +
+                            " argument(s) for " + std::to_string(paramIds.size()) +
+                            " block parameter(s)");
+        }
 
         // Branch arguments are phi-edge values. Evaluate all sources before
         // assigning any target parameter so backedges can swap/reuse params
         // without clobbering a later source read.
-        for (size_t i = 0; i < argCount; ++i) {
+        for (size_t i = 0; i < args.size(); ++i) {
             pushValue(args[i]);
         }
-        for (size_t i = argCount; i > 0; --i) {
+        for (size_t i = args.size(); i > 0; --i) {
             uint32_t local = getLocal(paramIds[i - 1]);
             emitStoreLocal(local);
             popStack();
         }
+    };
+
+    auto targetNeedsSetup = [this](const std::string &label,
+                                   const std::vector<il::core::Value> &args) {
+        auto it = blockParamIds_.find(label);
+        if (it == blockParamIds_.end())
+            return !args.empty();
+        return !it->second.empty() || !args.empty();
     };
 
     switch (instr.op) {
@@ -1745,12 +1980,13 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr) {
             if (instr.labels.empty()) {
                 fail(instr.loc, "V-BC-MALFORMED-INSTR", "br requires a target label");
             }
+            if (instr.brArgs.size() > 1) {
+                fail(instr.loc, "V-BC-BRANCH-ARGS", "br has too many branch argument lists");
+            }
             // Unconditional branch
             // Store branch arguments to target block's parameter locals
-            if (!instr.labels.empty() && !instr.brArgs.empty() && !instr.brArgs[0].empty()) {
-                storeBranchArgs(instr.labels[0], instr.brArgs[0]);
-            }
-            emitBranch(BCOpcode::JUMP, instr.labels[0]);
+            storeBranchArgs(instr.labels[0], branchArgsAt(0));
+            emitBranchLong(BCOpcode::JUMP_LONG, instr.labels[0]);
             break;
         }
 
@@ -1759,71 +1995,48 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr) {
             if (instr.labels.size() < 2) {
                 fail(instr.loc, "V-BC-MALFORMED-INSTR", "cbr requires true and false labels");
             }
+            if (!instr.brArgs.empty() && instr.brArgs.size() != 2) {
+                fail(instr.loc, "V-BC-BRANCH-ARGS", "cbr branch argument lists must match labels");
+            }
             // Conditional branch: cbr %cond, thenLabel(args), elseLabel(args)
-            // We need to handle both branches' arguments
             pushValue(instr.operands[0]); // Condition
 
-            // If false, jump to else block
-            // But first we need to decide how to handle arguments for both branches
-            // Since both branches might have arguments, we emit:
-            //   JUMP_IF_FALSE else_setup
-            //   <then args stores>
-            //   JUMP then_block
-            // else_setup:
-            //   <else args stores>
-            //   JUMP else_block
+            // Keep the conditional branch itself short by targeting generated
+            // setup code, then use long unconditional jumps to real blocks.
+            std::string elseArgsLabel =
+                "__else_args_" + std::to_string(currentFunc_->code.size());
 
-            // For simplicity, we emit separate code paths
-            // First check if either branch has arguments
-            bool hasThenArgs = instr.brArgs.size() > 0 && !instr.brArgs[0].empty();
-            bool hasElseArgs = instr.brArgs.size() > 1 && !instr.brArgs[1].empty();
+            emitBranch(BCOpcode::JUMP_IF_FALSE, elseArgsLabel);
+            popStack();
 
-            if (!hasThenArgs && !hasElseArgs) {
-                // No arguments, simple branch
-                emitBranch(BCOpcode::JUMP_IF_FALSE, instr.labels[1]);
-                popStack();
-                emitBranch(BCOpcode::JUMP, instr.labels[0]);
-            } else {
-                // Complex case with branch arguments
-                // JUMP_IF_FALSE to else_args_label
-                // Store then args
-                // JUMP to then block
-                // else_args_label:
-                // Store else args
-                // JUMP to else block
+            storeBranchArgs(instr.labels[0], branchArgsAt(0));
+            emitBranchLong(BCOpcode::JUMP_LONG, instr.labels[0]);
 
-                // Create internal label for else args setup
-                std::string elseArgsLabel =
-                    "__else_args_" + std::to_string(currentFunc_->code.size());
+            blockOffsets_[elseArgsLabel] = static_cast<uint32_t>(currentFunc_->code.size());
 
-                emitBranch(BCOpcode::JUMP_IF_FALSE, elseArgsLabel);
-                popStack();
-
-                // Then branch arguments
-                if (hasThenArgs) {
-                    storeBranchArgs(instr.labels[0], instr.brArgs[0]);
-                }
-                emitBranch(BCOpcode::JUMP, instr.labels[0]);
-
-                // Record offset for else args label
-                blockOffsets_[elseArgsLabel] = static_cast<uint32_t>(currentFunc_->code.size());
-
-                // Else branch arguments
-                if (hasElseArgs) {
-                    storeBranchArgs(instr.labels[1], instr.brArgs[1]);
-                }
-                emitBranch(BCOpcode::JUMP, instr.labels[1]);
-            }
+            storeBranchArgs(instr.labels[1], branchArgsAt(1));
+            emitBranchLong(BCOpcode::JUMP_LONG, instr.labels[1]);
             break;
         }
 
         case Opcode::SwitchI32: {
             requireOperandCount(instr, 1);
+            if (instr.labels.empty()) {
+                fail(instr.loc, "V-BC-MALFORMED-INSTR", "switch.i32 requires a default label");
+            }
+            if (!instr.brArgs.empty() && instr.brArgs.size() != instr.labels.size()) {
+                fail(instr.loc,
+                     "V-BC-BRANCH-ARGS",
+                     "switch.i32 branch argument lists must match labels");
+            }
             // Switch statement
             // Push the scrutinee value onto the stack
             pushValue(il::core::switchScrutinee(instr));
 
             const size_t numCases = il::core::switchCaseCount(instr);
+            if (instr.operands.size() != numCases + 1) {
+                fail(instr.loc, "V-BC-MALFORMED-INSTR", "switch.i32 operands mismatch cases");
+            }
             const std::string &defaultLabel = il::core::switchDefaultLabel(instr);
 
             // Emit SWITCH opcode
@@ -1838,28 +2051,70 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr) {
             /// @brief Emit.
             emit(0u); // placeholder for default offset
 
+            struct SwitchTarget {
+                std::string realLabel;
+                std::string tableLabel;
+                const std::vector<il::core::Value> *args = nullptr;
+                bool needsSetup = false;
+            };
+
+            std::vector<SwitchTarget> switchTargets;
+            switchTargets.reserve(numCases + 1);
+            const std::string setupPrefix =
+                "__switch_args_" + std::to_string(currentFunc_->code.size()) + "_";
+            auto makeSwitchTarget = [&](size_t index, const std::string &realLabel) {
+                const auto &args = branchArgsAt(index);
+                SwitchTarget target;
+                target.realLabel = realLabel;
+                target.args = &args;
+                target.needsSetup = targetNeedsSetup(realLabel, args);
+                target.tableLabel =
+                    target.needsSetup ? setupPrefix + std::to_string(index) : realLabel;
+                return target;
+            };
+
+            switchTargets.push_back(makeSwitchTarget(0, defaultLabel));
+
             // Remember positions for case offsets
             std::vector<std::pair<int32_t, uint32_t>> casePositions; // (caseValue, offsetPos)
             for (size_t i = 0; i < numCases; ++i) {
                 const auto &caseVal = il::core::switchCaseValue(instr, i);
-                int32_t caseInt = 0;
-                if (caseVal.kind == il::core::Value::Kind::ConstInt) {
-                    caseInt = static_cast<int32_t>(caseVal.i64);
+                if (caseVal.kind != il::core::Value::Kind::ConstInt) {
+                    fail(instr.loc, "V-BC-SWITCH-CASE", "switch.i32 case must be const int");
                 }
+                if (caseVal.i64 < std::numeric_limits<int32_t>::min() ||
+                    caseVal.i64 > std::numeric_limits<int32_t>::max()) {
+                    fail(instr.loc, "V-BC-SWITCH-CASE", "switch.i32 case out of i32 range");
+                }
+                int32_t caseInt = static_cast<int32_t>(caseVal.i64);
                 /// @brief Emit.
                 emit(static_cast<uint32_t>(caseInt)); // case value
                 casePositions.push_back(
                     {caseInt, static_cast<uint32_t>(currentFunc_->code.size())});
                 /// @brief Emit.
                 emit(0u); // placeholder for target offset
+                switchTargets.push_back(makeSwitchTarget(i + 1, il::core::switchCaseLabel(instr, i)));
             }
 
             // Mark these as branch targets for later patching (using raw offsets)
-            pendingBranches_.push_back({defaultOffsetPos, defaultLabel, false, true});
+            pendingBranches_.push_back(
+                {defaultOffsetPos, switchTargets[0].tableLabel, false, true, instr.loc});
 
             for (size_t i = 0; i < numCases; ++i) {
-                const std::string &caseLabel = il::core::switchCaseLabel(instr, i);
-                pendingBranches_.push_back({casePositions[i].second, caseLabel, false, true});
+                pendingBranches_.push_back({casePositions[i].second,
+                                            switchTargets[i + 1].tableLabel,
+                                            false,
+                                            true,
+                                            instr.loc});
+            }
+
+            for (const SwitchTarget &target : switchTargets) {
+                if (!target.needsSetup)
+                    continue;
+                blockOffsets_[target.tableLabel] =
+                    static_cast<uint32_t>(currentFunc_->code.size());
+                storeBranchArgs(target.realLabel, *target.args);
+                emitBranchLong(BCOpcode::JUMP_LONG, target.realLabel);
             }
             break;
         }
@@ -1872,11 +2127,20 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr) {
 /// @brief Lower a return: push the value and emit RETURN, or emit
 ///        RETURN_VOID when the function returns nothing.
 void BytecodeCompiler::compileReturn(const il::core::Instr &instr) {
+    if (instr.operands.size() > 1) {
+        fail(instr.loc, "V-BC-RETURN", "return instruction has too many operands");
+    }
     if (!instr.operands.empty()) {
+        if (!currentFunc_ || !currentFunc_->hasReturn) {
+            fail(instr.loc, "V-BC-RETURN", "void function cannot return a value");
+        }
         pushValue(instr.operands[0]);
         emit(BCOpcode::RETURN);
         popStack();
     } else {
+        if (currentFunc_ && currentFunc_->hasReturn) {
+            fail(instr.loc, "V-BC-RETURN", "non-void function must return a value");
+        }
         emit(BCOpcode::RETURN_VOID);
     }
 }

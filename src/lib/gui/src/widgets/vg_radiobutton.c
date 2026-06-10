@@ -25,6 +25,7 @@
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
 #include <stdint.h>
@@ -102,19 +103,15 @@ static void radio_paint(vg_widget_t *widget, void *canvas) {
     uint32_t text_col =
         (widget->state & VG_STATE_DISABLED) ? theme->colors.fg_disabled : radio->text_color;
 
-    // Outer circle (border)
-    vgfx_fill_circle(win, (int32_t)cx, (int32_t)cy, (int32_t)r, border_col);
-
-    // Inner background (slightly smaller)
-    vgfx_fill_circle(win, (int32_t)cx, (int32_t)cy, (int32_t)(r - 1), theme->colors.bg_primary);
-
-    // Fill dot when selected
+    // Outer ring, inner background, and selected dot — all anti-aliased discs.
+    vg_draw_disc_fill(win, cx, cy, r, border_col);
+    vg_draw_disc_fill(win, cx, cy, r - 1.0f, theme->colors.bg_primary);
     if (radio->selected)
-        vgfx_fill_circle(win, (int32_t)cx, (int32_t)cy, (int32_t)(r * 0.5f), radio->fill_color);
+        vg_draw_disc_fill(win, cx, cy, r * 0.5f, radio->fill_color);
 
     // Focus ring
     if (widget->state & VG_STATE_FOCUSED)
-        vgfx_circle(win, (int32_t)cx, (int32_t)cy, (int32_t)(r + 2), theme->colors.border_focus);
+        vg_draw_circle_stroke(win, cx, cy, r + 2.0f, 1.5f, theme->colors.border_focus);
 
     // Label text
     if (radio->text && radio->font) {

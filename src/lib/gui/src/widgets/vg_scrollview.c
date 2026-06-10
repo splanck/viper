@@ -22,6 +22,7 @@
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_widgets.h"
 #include <stdlib.h>
 #include <string.h>
@@ -446,12 +447,9 @@ static void scrollview_paint(vg_widget_t *widget, void *canvas) {
         uint32_t thumb_color = scroll->v_scrollbar_hovered || scroll->v_scrollbar_dragging
                                    ? scroll->thumb_hover_color
                                    : scroll->thumb_color;
-        vgfx_fill_rect(win,
-                       (int32_t)(track_x + inset),
-                       (int32_t)thumb_y,
-                       (int32_t)(scroll->scrollbar_width - inset * 2.0f),
-                       (int32_t)thumb_height,
-                       thumb_color);
+        float thumb_w = scroll->scrollbar_width - inset * 2.0f;
+        vg_draw_round_rect_fill(win, track_x + inset, thumb_y, thumb_w, thumb_height,
+                                thumb_w * 0.5f, thumb_color);
     }
 
     // Horizontal scrollbar
@@ -486,12 +484,9 @@ static void scrollview_paint(vg_widget_t *widget, void *canvas) {
         uint32_t thumb_color = scroll->h_scrollbar_hovered || scroll->h_scrollbar_dragging
                                    ? scroll->thumb_hover_color
                                    : scroll->thumb_color;
-        vgfx_fill_rect(win_h,
-                       (int32_t)thumb_x,
-                       (int32_t)(track_y + inset),
-                       (int32_t)thumb_width,
-                       (int32_t)(scroll->scrollbar_width - inset * 2.0f),
-                       thumb_color);
+        float thumb_h = scroll->scrollbar_width - inset * 2.0f;
+        vg_draw_round_rect_fill(win_h, thumb_x, track_y + inset, thumb_width, thumb_h,
+                                thumb_h * 0.5f, thumb_color);
     }
 }
 

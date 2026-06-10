@@ -116,6 +116,20 @@ static vg_theme_t g_dark_theme = {
             .min_thumb_size = 32.0f,
             .border_radius = 6.0f,
         },
+    // Refined Depth visual tokens (dark): subtle gradients + real soft shadows,
+    // tuned so depth reads clearly without lowering text/background contrast.
+    .radius = {.none = 0.0f, .sm = 3.0f, .md = 6.0f, .lg = 10.0f, .xl = 16.0f, .pill = 9999.0f},
+    .elevation =
+        {
+            .shadow_rgb = 0x000000,
+            .level0 = {.blur = 0.0f, .dx = 0, .dy = 0, .alpha = 0},
+            .level1 = {.blur = 4.0f, .dx = 0, .dy = 1, .alpha = 40},
+            .level2 = {.blur = 10.0f, .dx = 0, .dy = 4, .alpha = 64},
+            .level3 = {.blur = 20.0f, .dx = 0, .dy = 8, .alpha = 90},
+        },
+    .gradient = {.enabled = true, .strength = 0.06f},
+    .focus = {.glow_color = 0x49A6FF, .glow_width = 2.0f, .glow_alpha = 120},
+    .motion = {.enabled = true, .hover_ms = 90.0f, .press_ms = 60.0f, .focus_ms = 120.0f},
 };
 
 //=============================================================================
@@ -206,6 +220,19 @@ static vg_theme_t g_light_theme = {
             .min_thumb_size = 32.0f,
             .border_radius = 6.0f,
         },
+    // Refined Depth visual tokens (light): softer, cooler shadows on bright bg.
+    .radius = {.none = 0.0f, .sm = 3.0f, .md = 6.0f, .lg = 10.0f, .xl = 16.0f, .pill = 9999.0f},
+    .elevation =
+        {
+            .shadow_rgb = 0x0A1A2F,
+            .level0 = {.blur = 0.0f, .dx = 0, .dy = 0, .alpha = 0},
+            .level1 = {.blur = 6.0f, .dx = 0, .dy = 1, .alpha = 28},
+            .level2 = {.blur = 14.0f, .dx = 0, .dy = 4, .alpha = 40},
+            .level3 = {.blur = 26.0f, .dx = 0, .dy = 10, .alpha = 56},
+        },
+    .gradient = {.enabled = true, .strength = 0.04f},
+    .focus = {.glow_color = 0x1877F2, .glow_width = 2.0f, .glow_alpha = 110},
+    .motion = {.enabled = true, .hover_ms = 90.0f, .press_ms = 60.0f, .focus_ms = 120.0f},
 };
 
 //=============================================================================

@@ -18,6 +18,7 @@ set(VG_GUI_CORE_SOURCES
         src/core/vg_layout.c
         src/core/vg_event.c
         src/core/vg_theme.c
+        src/core/vg_draw.c
 )
 
 set(VG_GUI_WIDGET_SOURCES
@@ -191,6 +192,26 @@ if (VIPER_BUILD_TESTING)
     )
     add_test(NAME test_vg_codeeditor_perf COMMAND test_vg_codeeditor_perf)
     set_tests_properties(test_vg_codeeditor_perf PROPERTIES LABELS "gui;viperide;perf" TIMEOUT 15)
+
+    # Anti-aliased drawing core. Built self-contained against the mock backend so
+    # the pixel-exact and determinism assertions run headless on every platform.
+    add_executable(test_vg_draw
+            tests/test_vg_draw.c
+            src/core/vg_draw.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/../graphics/src/vgfx.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/../graphics/src/vgfx_draw.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/../graphics/src/vgfx_platform_mock.c
+    )
+    target_include_directories(test_vg_draw PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../graphics/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../graphics/src
+    )
+    if (UNIX AND NOT APPLE)
+        target_compile_definitions(test_vg_draw PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE)
+    endif ()
+    add_test(NAME test_vg_draw COMMAND test_vg_draw)
+    set_tests_properties(test_vg_draw PROPERTIES LABELS "gui" TIMEOUT 15)
 
     if (UNIX AND NOT APPLE)
         foreach (vg_gui_test_target

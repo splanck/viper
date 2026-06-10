@@ -232,7 +232,8 @@ class BytecodeVM {
     ///          validation in the interpreter loop. Use only for modules
     ///          produced by BytecodeCompiler::compileChecked after IL verification.
     void setTrustedDispatch(bool enabled) {
-        trustedDispatch_ = enabled;
+        trustedDispatchRequested_ = enabled;
+        trustedDispatch_ = enabled && moduleDispatchValidated_;
     }
 
     /// @brief Check whether trusted dispatch is enabled.
@@ -407,6 +408,8 @@ class BytecodeVM {
     bool runtimeBridgeEnabled_; ///< Whether CALL_NATIVE routes through RuntimeBridge.
     bool useThreadedDispatch_;  ///< Whether to use computed-goto dispatch.
     bool trustedDispatch_;      ///< Whether verified bytecode skips hot-path guards.
+    bool trustedDispatchRequested_ = false; ///< User-requested trusted dispatch preference.
+    bool moduleDispatchValidated_ = false;  ///< True once load() validates module headers/tables.
     std::unordered_map<std::string, NativeHandler> nativeHandlers_; ///< Registered native handlers.
 
     /// @brief Exception handler stack (pushed by EH_PUSH, popped by EH_POP).
@@ -507,6 +510,17 @@ class BytecodeVM {
 
     /// @brief Validate that @p pc is a valid instruction fetch location.
     bool ensurePcInRange(const BytecodeFunction &func, uint32_t pc, const char *site);
+
+    /// @brief Validate bytecode module header and index-table consistency.
+    /// @details Trusted dispatch is enabled only after this check succeeds.
+    /// @param module Candidate module passed to @ref load.
+    /// @return True when the module can be safely bound to this VM.
+    bool validateModuleForLoad(const BytecodeModule *module);
+
+    /// @brief Return whether @p func is one of the loaded module's functions.
+    /// @details Protects the pointer-based exec overload from being handed a
+    ///          stale or foreign function pointer.
+    [[nodiscard]] bool functionBelongsToModule(const BytecodeFunction *func) const;
 
     /// @brief Validate that @p words extra code words can be read from @p pc.
     bool ensureWordsAvailable(const BytecodeFunction &func,
@@ -667,6 +681,14 @@ class BytecodeVM {
     bool ensureMemoryAddress(const void *ptr, const char *site);
     bool allocateAlloca(int64_t requestedSize, void *&ptr, const char *site);
 
+    /// @brief Add a signed byte offset to a pointer with overflow/null checks.
+    /// @param base Base pointer operand.
+    /// @param offset Signed byte offset operand.
+    /// @param result [out] Adjusted pointer when the operation succeeds.
+    /// @param site Diagnostic site name.
+    /// @return True on success; false after raising or dispatching a trap.
+    bool addPointerOffset(void *base, int64_t offset, void *&result, const char *site);
+
     /// @brief Push an exception handler onto the handler stack.
     /// @param handlerPc The PC of the handler entry point.
     void pushExceptionHandler(uint32_t handlerPc);
@@ -689,6 +711,12 @@ class BytecodeVM {
     /// @brief Check whether the current PC matches a breakpoint.
     /// @return True if the debugger should pause; false otherwise.
     bool checkBreakpoint();
+
+    /// @brief Notify the debugger and report whether execution should pause.
+    /// @param isBreakpoint True for breakpoint events; false for single-step.
+    /// @param pc Program counter to report to the debugger callback.
+    /// @return True when execution should pause.
+    bool requestDebugPause(bool isBreakpoint, uint32_t pc);
 };
 
 /// @brief Get the currently active BytecodeVM on this thread.

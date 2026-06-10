@@ -26,11 +26,13 @@
 #include <cstring>
 #include <exception>
 #include <limits>
+#include <memory>
 #include <mutex>
 #include <new>
 #include <span>
 #include <sstream>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace viper {
@@ -144,6 +146,35 @@ const BytecodeModule *activeBytecodeModule() {
     return tlsActiveBytecodeModule;
 }
 
+namespace {
+
+/// @brief RAII guard for the active bytecode module thread-local.
+/// @details Runtime shims use the active module to resolve tagged bytecode
+///          function pointers when spawning threads, async workers, or HTTP
+///          handlers. The guard restores any previous module for re-entrant
+///          bytecode execution.
+class ActiveBytecodeModuleGuard final {
+  public:
+    /// @brief Publish @p module as the active bytecode module for this thread.
+    explicit ActiveBytecodeModuleGuard(const BytecodeModule *module)
+        : previous_(tlsActiveBytecodeModule) {
+        tlsActiveBytecodeModule = module;
+    }
+
+    /// @brief Restore the module that was active before construction.
+    ~ActiveBytecodeModuleGuard() {
+        tlsActiveBytecodeModule = previous_;
+    }
+
+    ActiveBytecodeModuleGuard(const ActiveBytecodeModuleGuard &) = delete;
+    ActiveBytecodeModuleGuard &operator=(const ActiveBytecodeModuleGuard &) = delete;
+
+  private:
+    const BytecodeModule *previous_ = nullptr; ///< Previous thread-local module.
+};
+
+} // namespace
+
 /// @brief RAII: make @p vm the thread-active VM for the guard's lifetime,
 ///        restoring the previous one on scope exit (supports re-entrant
 ///        bytecode execution, e.g. a runtime callback into bytecode).
@@ -256,7 +287,7 @@ std::vector<BCSlot> BytecodeVM::cloneRuntimeStringArgs(const NativeFuncRef &ref,
                                                        size_t argCount) const {
     if (!args || argCount == 0)
         return {};
-    if (!ref.consumesClonedStringArgs)
+    if (!ref.consumesClonedStringArgs && !runtimeCallConsumesClonedStringArgs(ref.name))
         return {};
 
     const auto *sig = ref.runtimeSignature;
@@ -277,7 +308,7 @@ void BytecodeVM::releaseRuntimeStringArgs(const NativeFuncRef &ref,
                                           std::vector<BCSlot> &args) const {
     if (args.empty())
         return;
-    if (!ref.consumesClonedStringArgs)
+    if (!ref.consumesClonedStringArgs && !runtimeCallConsumesClonedStringArgs(ref.name))
         return;
 
     const auto *sig = ref.runtimeSignature;
@@ -342,7 +373,7 @@ void BytecodeVM::dismissConsumedStringArgs(const NativeFuncRef &ref,
                                            uint8_t argCount) {
     if (!args || argCount == 0)
         return;
-    if (!ref.consumesOwnedStringArgs)
+    if (!ref.consumesOwnedStringArgs && !runtimeCallConsumesOwnedStringArgs(ref.name))
         return;
 
     const auto *sig = ref.runtimeSignature;
@@ -377,7 +408,8 @@ BytecodeVM::ExecutionEnvironment BytecodeVM::captureExecutionEnvironment() const
 void BytecodeVM::applyExecutionEnvironment(const ExecutionEnvironment &env) {
     runtimeBridgeEnabled_ = env.runtimeBridgeEnabled;
     useThreadedDispatch_ = env.useThreadedDispatch;
-    trustedDispatch_ = env.trustedDispatch;
+    trustedDispatchRequested_ = env.trustedDispatch;
+    trustedDispatch_ = trustedDispatchRequested_ && moduleDispatchValidated_;
     maxInstrCount_ = env.maxInstructions;
     nativeHandlers_ = env.nativeHandlers;
 }
@@ -386,6 +418,65 @@ void BytecodeVM::applyExecutionEnvironment(const ExecutionEnvironment &env) {
 ///        (used when a spawned worker VM should mirror its parent's config).
 void BytecodeVM::copyExecutionEnvironmentFrom(const BytecodeVM &other) {
     applyExecutionEnvironment(other.captureExecutionEnvironment());
+}
+
+/// @brief Validate module header and name-index tables before binding it.
+/// @details This is intentionally structural rather than a full verifier: it
+///          checks the invariants the VM uses for trusted dispatch and direct
+///          lookup safety, while preserving support for modules constructed
+///          programmatically in tests.
+bool BytecodeVM::validateModuleForLoad(const BytecodeModule *module) {
+    if (!module) {
+        trap(TrapKind::RuntimeError, "No bytecode module supplied");
+        return false;
+    }
+    if (module->magic != kBytecodeModuleMagic) {
+        trap(TrapKind::InvalidOpcode, "Invalid bytecode module magic");
+        return false;
+    }
+    if (module->version != kBytecodeVersion) {
+        trap(TrapKind::InvalidOpcode, "Unsupported bytecode module version");
+        return false;
+    }
+
+    for (const auto &entry : module->functionIndex) {
+        if (entry.second >= module->functions.size()) {
+            trap(TrapKind::InvalidOpcode, "Function index table out of range");
+            return false;
+        }
+        if (module->functions[entry.second].name != entry.first) {
+            trap(TrapKind::InvalidOpcode, "Function index table name mismatch");
+            return false;
+        }
+    }
+    for (const auto &entry : module->nativeFuncIndex) {
+        if (entry.second >= module->nativeFuncs.size()) {
+            trap(TrapKind::InvalidOpcode, "Native function index table out of range");
+            return false;
+        }
+    }
+    for (const auto &entry : module->globalIndex) {
+        if (entry.second >= module->globals.size()) {
+            trap(TrapKind::InvalidOpcode, "Global index table out of range");
+            return false;
+        }
+        if (module->globals[entry.second].name != entry.first) {
+            trap(TrapKind::InvalidOpcode, "Global index table name mismatch");
+            return false;
+        }
+    }
+    return true;
+}
+
+/// @brief Check whether a function pointer belongs to the currently loaded module.
+bool BytecodeVM::functionBelongsToModule(const BytecodeFunction *func) const {
+    if (!module_ || !func)
+        return false;
+    for (const BytecodeFunction &candidate : module_->functions) {
+        if (&candidate == func)
+            return true;
+    }
+    return false;
 }
 
 /// @brief Bind @p module for execution: install unified runtime handlers,
@@ -399,12 +490,21 @@ void BytecodeVM::load(const BytecodeModule *module) {
     releaseOwnedGlobals();
     clearTrapRecord();
 
-    module_ = module;
+    module_ = nullptr;
+    moduleDispatchValidated_ = false;
+    trustedDispatch_ = false;
     state_ = VMState::Ready;
     trapKind_ = TrapKind::None;
     currentErrorCode_ = 0;
     pendingTrapErrorCode_ = false;
     trapMessage_.clear();
+
+    if (!validateModuleForLoad(module))
+        return;
+
+    module_ = module;
+    moduleDispatchValidated_ = true;
+    trustedDispatch_ = trustedDispatchRequested_;
 
     // Initialize global variable storage
     globals_.clear();
@@ -866,12 +966,17 @@ bool BytecodeVM::ensureStackForInstruction(const BCFrame &frame,
             break;
         }
         case BCOpcode::CALL_NATIVE: {
+            const uint8_t encodedArgCount = decodeArg8_0(instr);
             const uint16_t nativeIdx = decodeArg16_1(instr);
             if (nativeIdx >= module_->nativeFuncs.size()) {
                 trap(TrapKind::RuntimeError, "Invalid native function index");
                 return false;
             }
             const NativeFuncRef &ref = module_->nativeFuncs[nativeIdx];
+            if (encodedArgCount != ref.paramCount) {
+                trap(TrapKind::RuntimeError, "CALL_NATIVE encoded arity mismatch");
+                return false;
+            }
             required = ref.paramCount;
             delta = ref.hasReturn ? (1 - static_cast<int32_t>(required))
                                   : -static_cast<int32_t>(required);
@@ -994,6 +1099,10 @@ BCSlot BytecodeVM::exec(const BytecodeFunction *func, const std::vector<BCSlot> 
         trap(TrapKind::RuntimeError, "Null function entry");
         return BCSlot{};
     }
+    if (!functionBelongsToModule(func)) {
+        trap(TrapKind::RuntimeError, "Function entry does not belong to loaded module");
+        return BCSlot{};
+    }
     if (args.size() != func->numParams) {
         trap(TrapKind::RuntimeError, "Function entry arity mismatch");
         return BCSlot{};
@@ -1001,8 +1110,7 @@ BCSlot BytecodeVM::exec(const BytecodeFunction *func, const std::vector<BCSlot> 
 
     // Set up thread-local context so Thread.Start handler can find us
     ActiveBytecodeVMGuard vmGuard(this);
-    const BytecodeModule *prevModule = tlsActiveBytecodeModule;
-    tlsActiveBytecodeModule = module_;
+    ActiveBytecodeModuleGuard moduleGuard(module_);
 
     // Reset state
     state_ = VMState::Ready;
@@ -1026,7 +1134,6 @@ BCSlot BytecodeVM::exec(const BytecodeFunction *func, const std::vector<BCSlot> 
         if (!fp_ && state_ != VMState::Trapped) {
             trap(TrapKind::RuntimeError, "Frame setup failed");
         }
-        tlsActiveBytecodeModule = prevModule;
         return BCSlot{};
     }
 
@@ -1040,9 +1147,6 @@ BCSlot BytecodeVM::exec(const BytecodeFunction *func, const std::vector<BCSlot> 
 #else
     run();
 #endif
-
-    // Restore module thread-local
-    tlsActiveBytecodeModule = prevModule;
 
     // Return result. Void functions do not leave a meaningful result slot.
     if (state_ == VMState::Halted && !func->hasReturn) {
@@ -1067,15 +1171,21 @@ void BytecodeVM::run() {
         if (!fp_ || !fp_->func)
             return;
 
-        if (!trustedDispatch_) {
-            if (!ensurePcInRange(*fp_->func, fp_->pc, "BytecodeVM::run(fetch)"))
-                return;
-            if (!ensureStackForInstruction(*fp_, sp_, fp_->func->code[fp_->pc], "BytecodeVM::run"))
-                return;
+        if (!trustedDispatch_ &&
+            !ensurePcInRange(*fp_->func, fp_->pc, "BytecodeVM::run(fetch)")) {
+            return;
+        }
+
+        if (checkBreakpoint()) {
+            state_ = VMState::Halted;
+            return;
         }
 
         // Fetch instruction
-        uint32_t instr = fp_->func->code[fp_->pc++];
+        uint32_t instr = fp_->func->code[fp_->pc];
+        if (!trustedDispatch_ && !ensureStackForInstruction(*fp_, sp_, instr, "BytecodeVM::run"))
+            return;
+        fp_->pc++;
         BCOpcode op = decodeOpcode(instr);
 
         ++instrCount_;
@@ -1937,6 +2047,10 @@ void BytecodeVM::run() {
                 }
 
                 const NativeFuncRef &ref = module_->nativeFuncs[nativeIdx];
+                if (argCount != ref.paramCount) {
+                    trap(TrapKind::RuntimeError, "CALL_NATIVE encoded arity mismatch");
+                    break;
+                }
 
                 // Set up arguments (they're on the stack)
                 BCSlot *args = sp_ - argCount;
@@ -1975,10 +2089,14 @@ void BytecodeVM::run() {
             }
 
             case BCOpcode::ARR_I32_GET_FAST: {
+                BCSlot *arrSlot = sp_ - 2;
+                if (!arrSlot->ptr) {
+                    trapOrDispatch(TrapKind::NullPointer, "ARR_I32_GET_FAST on null array");
+                    break;
+                }
                 BCSlot *idxSlot = --sp_;
                 const size_t idx = static_cast<size_t>(idxSlot->i64);
                 setSlotOwnsString(idxSlot, false);
-                BCSlot *arrSlot = sp_ - 1;
                 auto *arr = static_cast<int32_t *>(arrSlot->ptr);
                 arrSlot->i64 = static_cast<int64_t>(arr[idx]);
                 setSlotOwnsString(arrSlot, false);
@@ -1986,13 +2104,18 @@ void BytecodeVM::run() {
             }
 
             case BCOpcode::ARR_I32_SET_FAST: {
+                BCSlot *arrSlot = sp_ - 3;
+                if (!arrSlot->ptr) {
+                    trapOrDispatch(TrapKind::NullPointer, "ARR_I32_SET_FAST on null array");
+                    break;
+                }
                 BCSlot *valueSlot = --sp_;
                 const int32_t value = static_cast<int32_t>(valueSlot->i64);
                 setSlotOwnsString(valueSlot, false);
                 BCSlot *idxSlot = --sp_;
                 const size_t idx = static_cast<size_t>(idxSlot->i64);
                 setSlotOwnsString(idxSlot, false);
-                BCSlot *arrSlot = --sp_;
+                --sp_;
                 auto *arr = static_cast<int32_t *>(arrSlot->ptr);
                 setSlotOwnsString(arrSlot, false);
                 arr[idx] = value;
@@ -2000,10 +2123,14 @@ void BytecodeVM::run() {
             }
 
             case BCOpcode::ARR_I64_GET_FAST: {
+                BCSlot *arrSlot = sp_ - 2;
+                if (!arrSlot->ptr) {
+                    trapOrDispatch(TrapKind::NullPointer, "ARR_I64_GET_FAST on null array");
+                    break;
+                }
                 BCSlot *idxSlot = --sp_;
                 const size_t idx = static_cast<size_t>(idxSlot->i64);
                 setSlotOwnsString(idxSlot, false);
-                BCSlot *arrSlot = sp_ - 1;
                 auto *arr = static_cast<int64_t *>(arrSlot->ptr);
                 arrSlot->i64 = arr[idx];
                 setSlotOwnsString(arrSlot, false);
@@ -2011,13 +2138,18 @@ void BytecodeVM::run() {
             }
 
             case BCOpcode::ARR_I64_SET_FAST: {
+                BCSlot *arrSlot = sp_ - 3;
+                if (!arrSlot->ptr) {
+                    trapOrDispatch(TrapKind::NullPointer, "ARR_I64_SET_FAST on null array");
+                    break;
+                }
                 BCSlot *valueSlot = --sp_;
                 const int64_t value = valueSlot->i64;
                 setSlotOwnsString(valueSlot, false);
                 BCSlot *idxSlot = --sp_;
                 const size_t idx = static_cast<size_t>(idxSlot->i64);
                 setSlotOwnsString(idxSlot, false);
-                BCSlot *arrSlot = --sp_;
+                --sp_;
                 auto *arr = static_cast<int64_t *>(arrSlot->ptr);
                 setSlotOwnsString(arrSlot, false);
                 arr[idx] = value;
@@ -2025,10 +2157,14 @@ void BytecodeVM::run() {
             }
 
             case BCOpcode::ARR_F64_GET_FAST: {
+                BCSlot *arrSlot = sp_ - 2;
+                if (!arrSlot->ptr) {
+                    trapOrDispatch(TrapKind::NullPointer, "ARR_F64_GET_FAST on null array");
+                    break;
+                }
                 BCSlot *idxSlot = --sp_;
                 const size_t idx = static_cast<size_t>(idxSlot->i64);
                 setSlotOwnsString(idxSlot, false);
-                BCSlot *arrSlot = sp_ - 1;
                 auto *arr = static_cast<double *>(arrSlot->ptr);
                 arrSlot->f64 = arr[idx];
                 setSlotOwnsString(arrSlot, false);
@@ -2036,13 +2172,18 @@ void BytecodeVM::run() {
             }
 
             case BCOpcode::ARR_F64_SET_FAST: {
+                BCSlot *arrSlot = sp_ - 3;
+                if (!arrSlot->ptr) {
+                    trapOrDispatch(TrapKind::NullPointer, "ARR_F64_SET_FAST on null array");
+                    break;
+                }
                 BCSlot *valueSlot = --sp_;
                 const double value = valueSlot->f64;
                 setSlotOwnsString(valueSlot, false);
                 BCSlot *idxSlot = --sp_;
                 const size_t idx = static_cast<size_t>(idxSlot->i64);
                 setSlotOwnsString(idxSlot, false);
-                BCSlot *arrSlot = --sp_;
+                --sp_;
                 auto *arr = static_cast<double *>(arrSlot->ptr);
                 setSlotOwnsString(arrSlot, false);
                 arr[idx] = value;
@@ -2110,14 +2251,10 @@ void BytecodeVM::run() {
 
             case BCOpcode::GEP: {
                 int64_t offset = (--sp_)->i64;
-                uint8_t *ptr = static_cast<uint8_t *>(sp_[-1].ptr);
-                if (!ptr) {
-                    if (offset != 0)
-                        trapOrDispatch(TrapKind::NullPointer, "GEP on null pointer");
-                    sp_[-1].ptr = nullptr;
+                void *adjusted = nullptr;
+                if (!addPointerOffset(sp_[-1].ptr, offset, adjusted, "BytecodeVM::GEP"))
                     break;
-                }
-                sp_[-1].ptr = ptr + offset;
+                sp_[-1].ptr = adjusted;
                 break;
             }
 
@@ -2271,11 +2408,11 @@ void BytecodeVM::run() {
                 std::memcpy(&current, ptr, sizeof(current));
                 if (current && !validateStringHandle(current, "BytecodeVM::STORE_STR_MEM(current)"))
                     break;
-                rt_str_release_maybe(current);
                 if (incoming && !validateStringHandle(incoming, "BytecodeVM::STORE_STR_MEM"))
                     break;
-                if (incoming && !incomingOwns)
+                if (incoming && (!incomingOwns || incoming == current))
                     rt_str_retain_maybe(incoming);
+                rt_str_release_maybe(current);
                 std::memcpy(ptr, &incoming, sizeof(incoming));
                 setGlobalStringOwnershipForAddress(ptr, incoming != nullptr);
                 setSlotOwnsString(valueSlot, false);
@@ -2343,6 +2480,10 @@ void BytecodeVM::run() {
             //==================================================================
             case BCOpcode::LOAD_STR: {
                 uint16_t idx = decodeArg16(instr);
+                if (!module_ || idx >= module_->stringPool.size()) {
+                    trap(TrapKind::InvalidOpcode, "LOAD_STR constant index out of range");
+                    break;
+                }
                 sp_->ptr = getStringLiteral(idx);
                 if (sp_->ptr) {
                     if (!validateStringHandle(sp_->ptr, "BytecodeVM::LOAD_STR"))
@@ -2397,9 +2538,9 @@ void BytecodeVM::run() {
 
             case BCOpcode::TRAP: {
                 uint8_t kind = decodeArg8_0(instr);
-                TrapKind trapKind = static_cast<TrapKind>(kind);
-                if (!dispatchTrap(trapKind)) {
-                    trap(trapKind, "Unhandled trap");
+                TrapKind decodedTrapKind = static_cast<TrapKind>(kind);
+                if (!dispatchTrap(decodedTrapKind)) {
+                    trap(decodedTrapKind, "Unhandled trap");
                 }
                 break;
             }
@@ -2410,9 +2551,10 @@ void BytecodeVM::run() {
                 int64_t code = (--sp_)->i64;
                 const il::vm::TrapKind vmTrapKind =
                     il::vm::map_err_to_trap(static_cast<int32_t>(code));
-                TrapKind trapKind = static_cast<TrapKind>(static_cast<int32_t>(vmTrapKind));
-                if (!dispatchTrap(trapKind, static_cast<int32_t>(code))) {
-                    trap(trapKind, "Unhandled trap from error");
+                TrapKind decodedTrapKind =
+                    static_cast<TrapKind>(static_cast<int32_t>(vmTrapKind));
+                if (!dispatchTrap(decodedTrapKind, static_cast<int32_t>(code))) {
+                    trap(decodedTrapKind, "Unhandled trap from error");
                 }
                 break;
             }
@@ -2421,7 +2563,7 @@ void BytecodeVM::run() {
                 // Replace the error token with its trap discriminator.
                 // The IL form always provides one Error operand, so this is a
                 // consume-one / produce-one transform rather than an extra push.
-                sp_[-1].i64 = sp_[-1].i64;
+                setSlotOwnsString(sp_ - 1, false);
                 break;
             }
 
@@ -2478,7 +2620,21 @@ void BytecodeVM::run() {
                 uint8_t raw = static_cast<uint8_t>(trapKind_);
                 int64_t ilKind = (raw <= 11) ? static_cast<int64_t>(raw) : 9;
                 sp_->i64 = ilKind;
+                setSlotOwnsString(sp_, false);
                 sp_++;
+                break;
+            }
+
+            case BCOpcode::LINE:
+            case BCOpcode::WATCH_VAR:
+                break;
+
+            case BCOpcode::BREAKPOINT: {
+                const uint32_t breakpointPc = currentFaultPc();
+                if (requestDebugPause(true, breakpointPc)) {
+                    state_ = VMState::Halted;
+                    return;
+                }
                 break;
             }
 
@@ -2491,9 +2647,6 @@ void BytecodeVM::run() {
             //==================================================================
             case BCOpcode::TAIL_CALL:
             case BCOpcode::MAKE_ERROR:
-            case BCOpcode::LINE:
-            case BCOpcode::BREAKPOINT:
-            case BCOpcode::WATCH_VAR:
             case BCOpcode::OPCODE_COUNT:
                 trap(TrapKind::InvalidOpcode, "Unknown opcode");
                 break;
@@ -2858,11 +3011,70 @@ bool BytecodeVM::ensureLocalIndex(uint32_t idx, const char *site) {
 /// @brief Reject a null or low (< first 4 KiB page) pointer before a
 ///        load/store; raises NullPointer via @ref trapOrDispatch on failure.
 bool BytecodeVM::ensureMemoryAddress(const void *ptr, const char *site) {
-    if (ptr && reinterpret_cast<uintptr_t>(ptr) >= 4096)
+    if (ptr && reinterpret_cast<uintptr_t>(ptr) >= 4096) {
+        const uintptr_t addr = reinterpret_cast<uintptr_t>(ptr);
+        if (!globals_.empty()) {
+            const uintptr_t begin = reinterpret_cast<uintptr_t>(globals_.data());
+            const uintptr_t end = begin + globals_.size() * sizeof(BCSlot);
+            if (addr >= begin && addr < end)
+                return true;
+        }
+        if (!allocaBuffer_.empty()) {
+            const uintptr_t begin = reinterpret_cast<uintptr_t>(allocaBuffer_.data());
+            const uintptr_t allocatedEnd = begin + allocaTop_;
+            const uintptr_t reservedEnd = begin + allocaBuffer_.size();
+            if (addr >= begin && addr < allocatedEnd)
+                return true;
+            if (addr >= begin && addr < reservedEnd) {
+                trapOrDispatch(TrapKind::Bounds,
+                               (std::string(site) + ": alloca address outside live range").c_str());
+                return false;
+            }
+        }
         return true;
+    }
     trapOrDispatch(TrapKind::NullPointer,
                    (std::string(site) + ": null or invalid memory address").c_str());
     return false;
+}
+
+/// @brief Add a signed byte offset to @p base with null and wraparound checks.
+bool BytecodeVM::addPointerOffset(void *base, int64_t offset, void *&result, const char *site) {
+    result = nullptr;
+    if (!base) {
+        if (offset != 0) {
+            trapOrDispatch(TrapKind::NullPointer,
+                           (std::string(site) + ": GEP on null pointer").c_str());
+            return false;
+        }
+        return true;
+    }
+
+    const uintptr_t baseAddr = reinterpret_cast<uintptr_t>(base);
+    uintptr_t adjusted;
+    if (offset >= 0) {
+        const uint64_t positive = static_cast<uint64_t>(offset);
+        if (positive > static_cast<uint64_t>(std::numeric_limits<uintptr_t>::max() - baseAddr)) {
+            trapOrDispatch(TrapKind::Bounds,
+                           (std::string(site) + ": pointer offset overflow").c_str());
+            return false;
+        }
+        adjusted = baseAddr + static_cast<uintptr_t>(positive);
+    } else {
+        const uint64_t magnitude =
+            offset == std::numeric_limits<int64_t>::min()
+                ? (uint64_t{1} << 63)
+                : static_cast<uint64_t>(-offset);
+        if (magnitude > static_cast<uint64_t>(baseAddr)) {
+            trapOrDispatch(TrapKind::Bounds,
+                           (std::string(site) + ": pointer offset underflow").c_str());
+            return false;
+        }
+        adjusted = baseAddr - static_cast<uintptr_t>(magnitude);
+    }
+
+    result = reinterpret_cast<void *>(adjusted);
+    return true;
 }
 
 /// @brief Bump-allocate @p requestedSize bytes (8-byte aligned) from the
@@ -2920,7 +3132,8 @@ bool BytecodeVM::allocateAlloca(int64_t requestedSize, void *&ptr, const char *s
 uint32_t BytecodeVM::currentSourceLine() const {
     if (!fp_ || !fp_->func)
         return 0;
-    return getSourceLine(fp_->func, fp_->pc);
+    uint32_t pc = state_ == VMState::Trapped ? currentFaultPc() : fp_->pc;
+    return getSourceLine(fp_->func, pc);
 }
 
 /// @brief Get the source line number for a specific PC in a function.
@@ -3122,6 +3335,7 @@ bool BytecodeVM::dispatchTrap(TrapKind kind, int32_t errorCode, const char *mess
 
             // Push trap kind onto stack for handler to inspect (as error token)
             sp_->i64 = static_cast<int64_t>(kind);
+            setSlotOwnsString(sp_, false);
             sp_++;
             // Push an opaque resume token pointing at the retained trap record.
             sp_->ptr = &trapRecord_;
@@ -3238,12 +3452,21 @@ bool BytecodeVM::checkBreakpoint() {
 
     // Check if we should pause (breakpoint hit or single-stepping)
     if (isBreakpoint || singleStep_) {
-        if (debugCallback_) {
-            return !debugCallback_(*this, fp_->func, fp_->pc, isBreakpoint);
-        }
-        return true; // Pause if no callback but breakpoint/step triggered
+        return requestDebugPause(isBreakpoint, fp_->pc);
     }
     return false;
+}
+
+/// @brief Invoke the debugger callback for a pause event.
+/// @details The callback contract returns true to continue and false to pause.
+///          Without a callback, a breakpoint or single-step request pauses by
+///          default; VMState::Halted is used as the current pause state.
+bool BytecodeVM::requestDebugPause(bool isBreakpoint, uint32_t pc) {
+    if (!fp_ || !fp_->func)
+        return false;
+    if (debugCallback_)
+        return !debugCallback_(*this, fp_->func, pc, isBreakpoint);
+    return true;
 }
 
 //===----------------------------------------------------------------------===//
@@ -3254,21 +3477,23 @@ namespace {
 
 /// Payload for spawning a new bytecode VM thread.
 struct BytecodeThreadPayload {
-    const BytecodeModule *module;
-    const BytecodeFunction *entry;
-    void *arg;
-    bool ownsArg;
+    std::shared_ptr<const BytecodeModule> moduleOwner{};
+    const BytecodeModule *module = nullptr;
+    const BytecodeFunction *entry = nullptr;
+    void *arg = nullptr;
+    bool ownsArg = false;
     BytecodeVM::ExecutionEnvironment environment;
 };
 
 /// Payload for bytecode-backed Async.Run.
 struct BytecodeAsyncPayload {
-    const BytecodeModule *module;
-    const BytecodeFunction *entry;
-    void *arg;
-    bool ownsArg;
+    std::shared_ptr<const BytecodeModule> moduleOwner{};
+    const BytecodeModule *module = nullptr;
+    const BytecodeFunction *entry = nullptr;
+    void *arg = nullptr;
+    bool ownsArg = false;
     BytecodeVM::ExecutionEnvironment environment;
-    void *promise;
+    void *promise = nullptr;
 };
 
 /// @brief Drop a worker thread/async payload's owned argument object (no-op
@@ -3316,6 +3541,21 @@ static void completeAsyncPromiseWithError(void *promise,
     rt_promise_set_error(promise, error);
 }
 
+/// @brief Publish or release an Async.Run future returned by a runtime shim.
+/// @details Runtime calls normally provide @p result for return values. If a
+///          malformed/direct call path invokes the shim with no result slot,
+///          the future must be released here because no caller can receive it.
+/// @param result Optional runtime result slot.
+/// @param future Future object returned by the promise.
+static void publishAsyncFutureResult(void *result, void *future) {
+    if (result) {
+        *reinterpret_cast<void **>(result) = future;
+        return;
+    }
+    if (future && rt_obj_release_check0(future))
+        rt_obj_free(future);
+}
+
 /// @brief Run a spawned bytecode thread's entry function on a fresh worker VM.
 /// @details Builds a worker BytecodeVM, mirrors the parent's execution
 ///          environment, installs the active-VM/module thread context, and
@@ -3327,6 +3567,8 @@ static bool runBytecodeThreadPayload(BytecodeThreadPayload *payload,
                                      size_t errorBufSize) {
     if (errorBuf && errorBufSize > 0)
         errorBuf[0] = '\0';
+    if (payload && payload->moduleOwner)
+        payload->module = payload->moduleOwner.get();
     if (!payload || !payload->module || !payload->entry) {
         if (errorBuf && errorBufSize > 0)
             std::snprintf(errorBuf, errorBufSize, "%s", "Thread.StartSafe: invalid bytecode entry");
@@ -3440,10 +3682,44 @@ struct VmHttpHandlerPayload {
 };
 
 struct BytecodeHttpHandlerPayload {
+    std::shared_ptr<const BytecodeModule> moduleOwner{};
     const BytecodeModule *module = nullptr;
     const BytecodeFunction *entry = nullptr;
     BytecodeVM::ExecutionEnvironment environment;
 };
+
+/// @brief Clone a bytecode module for work that may outlive the caller VM.
+/// @details Runtime payloads for threads, async tasks, and HTTP handlers cannot
+///          safely borrow the active module because many CLI paths keep it on
+///          the stack. A shared snapshot gives those payloads stable function
+///          and constant-pool storage.
+/// @param module Active bytecode module to snapshot.
+/// @return Shared immutable snapshot, or empty on allocation failure/null input.
+static std::shared_ptr<const BytecodeModule> cloneBytecodeModuleForWorker(
+    const BytecodeModule *module) noexcept {
+    if (!module)
+        return {};
+    try {
+        return std::make_shared<BytecodeModule>(*module);
+    } catch (...) {
+        return {};
+    }
+}
+
+/// @brief Resolve an entry function inside a cloned bytecode module.
+/// @details Function pointers from the caller module cannot be used with a
+///          cloned module, so payload construction re-resolves by stable
+///          function name.
+/// @param module Cloned module snapshot.
+/// @param originalEntry Entry function resolved in the caller module.
+/// @return Matching function in @p module, or null when unavailable.
+static const BytecodeFunction *resolveClonedBytecodeEntry(
+    const std::shared_ptr<const BytecodeModule> &module,
+    const BytecodeFunction *originalEntry) {
+    if (!module || !originalEntry)
+        return nullptr;
+    return module->findFunction(originalEntry->name);
+}
 
 /// Standard VM thread entry trampoline
 extern "C" void vm_thread_entry_trampoline_bc(void *raw) {
@@ -3572,24 +3848,30 @@ static const il::core::Function *resolveILEntry(const il::core::Module &module, 
 /// Validate thread entry signature for standard VM
 static void validateEntrySignature(const il::core::Function &fn) {
     using Kind = il::core::Type::Kind;
-    if (fn.retType.kind != Kind::Void)
+    if (fn.retType.kind != Kind::Void) {
         rt_trap("Thread.Start: invalid entry signature");
+        return;
+    }
     if (fn.params.empty())
         return;
     if (fn.params.size() == 1 && fn.params[0].type.kind == Kind::Ptr)
         return;
     rt_trap("Thread.Start: invalid entry signature");
+    return;
 }
 
 /// @brief Trap unless IL function @p fn matches the Async.Run entry shape
 ///        (ptr return, single ptr parameter).
 static void validateAsyncEntrySignature(const il::core::Function &fn) {
     using Kind = il::core::Type::Kind;
-    if (fn.retType.kind != Kind::Ptr)
+    if (fn.retType.kind != Kind::Ptr) {
         rt_trap("Async.Run: invalid entry signature");
+        return;
+    }
     if (fn.params.size() == 1 && fn.params[0].type.kind == Kind::Ptr)
         return;
     rt_trap("Async.Run: invalid entry signature");
+    return;
 }
 
 /// @brief Trap unless IL function @p fn matches the HttpServer.BindHandler
@@ -3599,31 +3881,59 @@ static void validateHttpHandlerSignature(const il::core::Function &fn) {
     if (fn.retType.kind != Kind::Void || fn.params.size() != 2 ||
         fn.params[0].type.kind != Kind::Ptr || fn.params[1].type.kind != Kind::Ptr) {
         rt_trap("HttpServer.BindHandler: invalid entry signature");
+        return;
+    }
+}
+
+/// @brief Trap unless IL function @p fn matches the HttpsServer.BindHandler
+///        entry shape (void return, two ptr parameters).
+static void validateHttpsHandlerSignature(const il::core::Function &fn) {
+    using Kind = il::core::Type::Kind;
+    if (fn.retType.kind != Kind::Void || fn.params.size() != 2 ||
+        fn.params[0].type.kind != Kind::Ptr || fn.params[1].type.kind != Kind::Ptr) {
+        rt_trap("HttpsServer.BindHandler: invalid entry signature");
+        return;
     }
 }
 
 /// @brief Trap unless bytecode function @p fn is a valid Thread.Start entry
 ///        (no return value; zero or one parameter).
 static void validateBytecodeThreadEntrySignature(const BytecodeFunction &fn) {
-    if (fn.hasReturn)
+    if (fn.hasReturn) {
         rt_trap("Thread.Start: invalid bytecode entry signature");
+        return;
+    }
     if (fn.numParams == 0 || fn.numParams == 1)
         return;
     rt_trap("Thread.Start: invalid bytecode entry signature");
+    return;
 }
 
 /// @brief Trap unless bytecode function @p fn is a valid Async.Run entry
 ///        (returns a value; exactly one parameter).
 static void validateBytecodeAsyncEntrySignature(const BytecodeFunction &fn) {
-    if (!fn.hasReturn || fn.numParams != 1)
+    if (!fn.hasReturn || fn.numParams != 1) {
         rt_trap("Async.Run: invalid bytecode entry signature");
+        return;
+    }
 }
 
 /// @brief Trap unless bytecode function @p fn is a valid HttpServer
 ///        BindHandler entry (no return value; exactly two parameters).
 static void validateBytecodeHttpHandlerSignature(const BytecodeFunction &fn) {
-    if (fn.hasReturn || fn.numParams != 2)
+    if (fn.hasReturn || fn.numParams != 2) {
         rt_trap("HttpServer.BindHandler: invalid bytecode entry signature");
+        return;
+    }
+}
+
+/// @brief Trap unless bytecode function @p fn is a valid HttpsServer
+///        BindHandler entry (no return value; exactly two parameters).
+static void validateBytecodeHttpsHandlerSignature(const BytecodeFunction &fn) {
+    if (fn.hasReturn || fn.numParams != 2) {
+        rt_trap("HttpsServer.BindHandler: invalid bytecode entry signature");
+        return;
+    }
 }
 
 /// Handler for Viper.Threads.Thread.Start - handles both standard VM and BytecodeVM.
@@ -3635,26 +3945,34 @@ static void unified_thread_start_handler(void **args, void *result) {
     if (args && args[1])
         arg = *reinterpret_cast<void **>(args[1]);
 
-    if (!entry)
+    if (!entry) {
         rt_trap("Thread.Start: null entry");
+        return;
+    }
 
     // Check for standard VM first
     il::vm::VM *stdVm = il::vm::activeVMInstance();
     if (stdVm) {
         std::shared_ptr<il::vm::VM::ProgramState> program = stdVm->programState();
-        if (!program)
+        if (!program) {
             rt_trap("Thread.Start: invalid runtime state");
+            return;
+        }
 
         const il::core::Module &module = stdVm->module();
         const il::core::Function *entryFn = resolveILEntry(module, entry);
-        if (!entryFn)
+        if (!entryFn) {
             rt_trap("Thread.Start: invalid entry");
+            return;
+        }
         validateEntrySignature(*entryFn);
 
         auto *payload = new (std::nothrow) VmThreadStartPayload{
             &module, std::move(program), stdVm->externRegistry(), entryFn, arg, false};
-        if (!payload)
+        if (!payload) {
             rt_trap("Thread.Start: payload allocation failed");
+            return;
+        }
         il::vm::retainExternRegistry(payload->externRegistry);
         void *thread =
             rt_thread_start(reinterpret_cast<void *>(&vm_thread_entry_trampoline_bc), payload);
@@ -3663,6 +3981,7 @@ static void unified_thread_start_handler(void **args, void *result) {
             il::vm::releaseExternRegistry(payload->externRegistry);
             delete payload;
             rt_trap("Thread.Start: failed to create thread");
+            return;
         }
         if (result)
             *reinterpret_cast<void **>(result) = thread;
@@ -3674,20 +3993,31 @@ static void unified_thread_start_handler(void **args, void *result) {
     const BytecodeModule *bcModule = activeBytecodeModule();
     if (bcVm && bcModule) {
         const BytecodeFunction *entryFn = resolveBytecodeEntry(bcModule, entry);
-        if (!entryFn)
+        if (!entryFn) {
             rt_trap("Thread.Start: invalid bytecode entry");
+            return;
+        }
         validateBytecodeThreadEntrySignature(*entryFn);
 
+        auto moduleOwner = cloneBytecodeModuleForWorker(bcModule);
+        const BytecodeFunction *ownedEntryFn = resolveClonedBytecodeEntry(moduleOwner, entryFn);
+        if (!ownedEntryFn) {
+            rt_trap("Thread.Start: bytecode module snapshot failed");
+            return;
+        }
         auto *payload = new (std::nothrow) BytecodeThreadPayload{
-            bcModule, entryFn, arg, false, bcVm->captureExecutionEnvironment()};
-        if (!payload)
+            moduleOwner, moduleOwner.get(), ownedEntryFn, arg, false, bcVm->captureExecutionEnvironment()};
+        if (!payload) {
             rt_trap("Thread.Start: payload allocation failed");
+            return;
+        }
         void *thread =
             rt_thread_start(reinterpret_cast<void *>(&bytecode_thread_entry_trampoline), payload);
         if (!thread) {
             releaseWorkerArg(payload->arg, payload->ownsArg);
             delete payload;
             rt_trap("Thread.Start: failed to create thread");
+            return;
         }
         if (result)
             *reinterpret_cast<void **>(result) = thread;
@@ -3713,26 +4043,34 @@ static void unified_thread_start_owned_handler(void **args, void *result) {
     if (args && args[1])
         arg = *reinterpret_cast<void **>(args[1]);
 
-    if (!entry)
+    if (!entry) {
         rt_trap("Thread.StartOwned: null entry");
+        return;
+    }
 
     // Check for standard VM first
     il::vm::VM *stdVm = il::vm::activeVMInstance();
     if (stdVm) {
         std::shared_ptr<il::vm::VM::ProgramState> program = stdVm->programState();
-        if (!program)
+        if (!program) {
             rt_trap("Thread.StartOwned: invalid runtime state");
+            return;
+        }
 
         const il::core::Module &module = stdVm->module();
         const il::core::Function *entryFn = resolveILEntry(module, entry);
-        if (!entryFn)
+        if (!entryFn) {
             rt_trap("Thread.StartOwned: invalid entry");
+            return;
+        }
         validateEntrySignature(*entryFn);
 
         auto *payload = new (std::nothrow) VmThreadStartPayload{
             &module, std::move(program), stdVm->externRegistry(), entryFn, arg, arg != nullptr};
-        if (!payload)
+        if (!payload) {
             rt_trap("Thread.StartOwned: payload allocation failed");
+            return;
+        }
         if (payload->ownsArg)
             rt_obj_retain_maybe(arg);
         il::vm::retainExternRegistry(payload->externRegistry);
@@ -3743,6 +4081,7 @@ static void unified_thread_start_owned_handler(void **args, void *result) {
             il::vm::releaseExternRegistry(payload->externRegistry);
             delete payload;
             rt_trap("Thread.StartOwned: failed to create thread");
+            return;
         }
         if (result)
             *reinterpret_cast<void **>(result) = thread;
@@ -3754,14 +4093,29 @@ static void unified_thread_start_owned_handler(void **args, void *result) {
     const BytecodeModule *bcModule = activeBytecodeModule();
     if (bcVm && bcModule) {
         const BytecodeFunction *entryFn = resolveBytecodeEntry(bcModule, entry);
-        if (!entryFn)
+        if (!entryFn) {
             rt_trap("Thread.StartOwned: invalid bytecode entry");
+            return;
+        }
         validateBytecodeThreadEntrySignature(*entryFn);
 
+        auto moduleOwner = cloneBytecodeModuleForWorker(bcModule);
+        const BytecodeFunction *ownedEntryFn = resolveClonedBytecodeEntry(moduleOwner, entryFn);
+        if (!ownedEntryFn) {
+            rt_trap("Thread.StartOwned: bytecode module snapshot failed");
+            return;
+        }
         auto *payload = new (std::nothrow) BytecodeThreadPayload{
-            bcModule, entryFn, arg, arg != nullptr, bcVm->captureExecutionEnvironment()};
-        if (!payload)
+            moduleOwner,
+            moduleOwner.get(),
+            ownedEntryFn,
+            arg,
+            arg != nullptr,
+            bcVm->captureExecutionEnvironment()};
+        if (!payload) {
             rt_trap("Thread.StartOwned: payload allocation failed");
+            return;
+        }
         if (payload->ownsArg)
             rt_obj_retain_maybe(arg);
         void *thread =
@@ -3770,6 +4124,7 @@ static void unified_thread_start_owned_handler(void **args, void *result) {
             releaseWorkerArg(payload->arg, payload->ownsArg);
             delete payload;
             rt_trap("Thread.StartOwned: failed to create thread");
+            return;
         }
         if (result)
             *reinterpret_cast<void **>(result) = thread;
@@ -3796,26 +4151,34 @@ static void unified_thread_start_safe_handler(void **args, void *result) {
     if (args && args[1])
         arg = *reinterpret_cast<void **>(args[1]);
 
-    if (!entry)
+    if (!entry) {
         rt_trap("Thread.StartSafe: null entry");
+        return;
+    }
 
     // Check for standard VM first
     il::vm::VM *stdVm = il::vm::activeVMInstance();
     if (stdVm) {
         std::shared_ptr<il::vm::VM::ProgramState> program = stdVm->programState();
-        if (!program)
+        if (!program) {
             rt_trap("Thread.StartSafe: invalid runtime state");
+            return;
+        }
 
         const il::core::Module &module = stdVm->module();
         const il::core::Function *entryFn = resolveILEntry(module, entry);
-        if (!entryFn)
+        if (!entryFn) {
             rt_trap("Thread.StartSafe: invalid entry");
+            return;
+        }
         validateEntrySignature(*entryFn);
 
         auto *payload = new (std::nothrow) VmThreadStartPayload{
             &module, std::move(program), stdVm->externRegistry(), entryFn, arg, false};
-        if (!payload)
+        if (!payload) {
             rt_trap("Thread.StartSafe: payload allocation failed");
+            return;
+        }
         il::vm::retainExternRegistry(payload->externRegistry);
         void *thread = rt_thread_start_safe(
             reinterpret_cast<void *>(&vm_thread_safe_entry_trampoline_bc), payload);
@@ -3824,6 +4187,7 @@ static void unified_thread_start_safe_handler(void **args, void *result) {
             il::vm::releaseExternRegistry(payload->externRegistry);
             delete payload;
             rt_trap("Thread.StartSafe: failed to create thread");
+            return;
         }
         if (result)
             *reinterpret_cast<void **>(result) = thread;
@@ -3835,20 +4199,31 @@ static void unified_thread_start_safe_handler(void **args, void *result) {
     const BytecodeModule *bcModule = activeBytecodeModule();
     if (bcVm && bcModule) {
         const BytecodeFunction *entryFn = resolveBytecodeEntry(bcModule, entry);
-        if (!entryFn)
+        if (!entryFn) {
             rt_trap("Thread.StartSafe: invalid bytecode entry");
+            return;
+        }
         validateBytecodeThreadEntrySignature(*entryFn);
 
+        auto moduleOwner = cloneBytecodeModuleForWorker(bcModule);
+        const BytecodeFunction *ownedEntryFn = resolveClonedBytecodeEntry(moduleOwner, entryFn);
+        if (!ownedEntryFn) {
+            rt_trap("Thread.StartSafe: bytecode module snapshot failed");
+            return;
+        }
         auto *payload = new (std::nothrow) BytecodeThreadPayload{
-            bcModule, entryFn, arg, false, bcVm->captureExecutionEnvironment()};
-        if (!payload)
+            moduleOwner, moduleOwner.get(), ownedEntryFn, arg, false, bcVm->captureExecutionEnvironment()};
+        if (!payload) {
             rt_trap("Thread.StartSafe: payload allocation failed");
+            return;
+        }
         void *thread = rt_thread_start_safe(
             reinterpret_cast<void *>(&bytecode_thread_safe_entry_trampoline), payload);
         if (!thread) {
             releaseWorkerArg(payload->arg, payload->ownsArg);
             delete payload;
             rt_trap("Thread.StartSafe: failed to create thread");
+            return;
         }
         if (result)
             *reinterpret_cast<void **>(result) = thread;
@@ -3874,26 +4249,34 @@ static void unified_thread_start_safe_owned_handler(void **args, void *result) {
     if (args && args[1])
         arg = *reinterpret_cast<void **>(args[1]);
 
-    if (!entry)
+    if (!entry) {
         rt_trap("Thread.StartSafeOwned: null entry");
+        return;
+    }
 
     // Check for standard VM first
     il::vm::VM *stdVm = il::vm::activeVMInstance();
     if (stdVm) {
         std::shared_ptr<il::vm::VM::ProgramState> program = stdVm->programState();
-        if (!program)
+        if (!program) {
             rt_trap("Thread.StartSafeOwned: invalid runtime state");
+            return;
+        }
 
         const il::core::Module &module = stdVm->module();
         const il::core::Function *entryFn = resolveILEntry(module, entry);
-        if (!entryFn)
+        if (!entryFn) {
             rt_trap("Thread.StartSafeOwned: invalid entry");
+            return;
+        }
         validateEntrySignature(*entryFn);
 
         auto *payload = new (std::nothrow) VmThreadStartPayload{
             &module, std::move(program), stdVm->externRegistry(), entryFn, arg, arg != nullptr};
-        if (!payload)
+        if (!payload) {
             rt_trap("Thread.StartSafeOwned: payload allocation failed");
+            return;
+        }
         if (payload->ownsArg)
             rt_obj_retain_maybe(arg);
         il::vm::retainExternRegistry(payload->externRegistry);
@@ -3904,6 +4287,7 @@ static void unified_thread_start_safe_owned_handler(void **args, void *result) {
             il::vm::releaseExternRegistry(payload->externRegistry);
             delete payload;
             rt_trap("Thread.StartSafeOwned: failed to create thread");
+            return;
         }
         if (result)
             *reinterpret_cast<void **>(result) = thread;
@@ -3915,14 +4299,29 @@ static void unified_thread_start_safe_owned_handler(void **args, void *result) {
     const BytecodeModule *bcModule = activeBytecodeModule();
     if (bcVm && bcModule) {
         const BytecodeFunction *entryFn = resolveBytecodeEntry(bcModule, entry);
-        if (!entryFn)
+        if (!entryFn) {
             rt_trap("Thread.StartSafeOwned: invalid bytecode entry");
+            return;
+        }
         validateBytecodeThreadEntrySignature(*entryFn);
 
+        auto moduleOwner = cloneBytecodeModuleForWorker(bcModule);
+        const BytecodeFunction *ownedEntryFn = resolveClonedBytecodeEntry(moduleOwner, entryFn);
+        if (!ownedEntryFn) {
+            rt_trap("Thread.StartSafeOwned: bytecode module snapshot failed");
+            return;
+        }
         auto *payload = new (std::nothrow) BytecodeThreadPayload{
-            bcModule, entryFn, arg, arg != nullptr, bcVm->captureExecutionEnvironment()};
-        if (!payload)
+            moduleOwner,
+            moduleOwner.get(),
+            ownedEntryFn,
+            arg,
+            arg != nullptr,
+            bcVm->captureExecutionEnvironment()};
+        if (!payload) {
             rt_trap("Thread.StartSafeOwned: payload allocation failed");
+            return;
+        }
         if (payload->ownsArg)
             rt_obj_retain_maybe(arg);
         void *thread = rt_thread_start_safe(
@@ -3931,6 +4330,7 @@ static void unified_thread_start_safe_owned_handler(void **args, void *result) {
             releaseWorkerArg(payload->arg, payload->ownsArg);
             delete payload;
             rt_trap("Thread.StartSafeOwned: failed to create thread");
+            return;
         }
         if (result)
             *reinterpret_cast<void **>(result) = thread;
@@ -4007,6 +4407,8 @@ extern "C" void vm_async_run_entry_trampoline_bc(void *raw) {
 ///        releasing the payload.
 extern "C" void bytecode_async_entry_trampoline(void *raw) {
     BytecodeAsyncPayload *payload = static_cast<BytecodeAsyncPayload *>(raw);
+    if (payload && payload->moduleOwner)
+        payload->module = payload->moduleOwner.get();
     if (!payload || !payload->module || !payload->entry || !payload->promise) {
         if (payload)
             releaseWorkerArg(payload->arg, payload->ownsArg);
@@ -4082,6 +4484,8 @@ extern "C" void vm_http_handler_dispatch_bc(void *raw, void *req, void *res) {
 ///        request/response pair.
 extern "C" void bytecode_http_handler_dispatch(void *raw, void *req, void *res) {
     auto *payload = static_cast<BytecodeHttpHandlerPayload *>(raw);
+    if (payload && payload->moduleOwner)
+        payload->module = payload->moduleOwner.get();
     if (!payload || !payload->module || !payload->entry) {
         rt_abort("HttpServer.BindHandler: invalid bytecode entry");
         return;
@@ -4138,19 +4542,25 @@ static void unified_http_server_bind_handler(void **args, void *result) {
     if (args && args[2])
         entry = *reinterpret_cast<void **>(args[2]);
 
-    if (!entry)
+    if (!entry) {
         rt_trap("HttpServer.BindHandler: null entry");
+        return;
+    }
 
     il::vm::VM *stdVm = il::vm::activeVMInstance();
     if (stdVm) {
         std::shared_ptr<il::vm::VM::ProgramState> program = stdVm->programState();
-        if (!program)
+        if (!program) {
             rt_trap("HttpServer.BindHandler: invalid runtime state");
+            return;
+        }
 
         const il::core::Module &module = stdVm->module();
         const il::core::Function *entryFn = resolveILEntry(module, entry);
-        if (!entryFn)
+        if (!entryFn) {
             rt_trap("HttpServer.BindHandler: invalid entry");
+            return;
+        }
         validateHttpHandlerSignature(*entryFn);
 
         auto *payload =
@@ -4169,12 +4579,21 @@ static void unified_http_server_bind_handler(void **args, void *result) {
     const BytecodeModule *bcModule = activeBytecodeModule();
     if (bcVm && bcModule) {
         const BytecodeFunction *entryFn = resolveBytecodeEntry(bcModule, entry);
-        if (!entryFn)
+        if (!entryFn) {
             rt_trap("HttpServer.BindHandler: invalid bytecode entry");
+            return;
+        }
         validateBytecodeHttpHandlerSignature(*entryFn);
 
+        auto moduleOwner = cloneBytecodeModuleForWorker(bcModule);
+        const BytecodeFunction *ownedEntryFn = resolveClonedBytecodeEntry(moduleOwner, entryFn);
+        if (!ownedEntryFn) {
+            rt_trap("HttpServer.BindHandler: bytecode module snapshot failed");
+            return;
+        }
         auto *payload =
-            new BytecodeHttpHandlerPayload{bcModule, entryFn, bcVm->captureExecutionEnvironment()};
+            new BytecodeHttpHandlerPayload{
+                moduleOwner, moduleOwner.get(), ownedEntryFn, bcVm->captureExecutionEnvironment()};
         rt_http_server_bind_handler_dispatch(
             server,
             tag,
@@ -4206,20 +4625,26 @@ static void unified_https_server_bind_handler(void **args, void *result) {
     if (args && args[2])
         entry = *reinterpret_cast<void **>(args[2]);
 
-    if (!entry)
+    if (!entry) {
         rt_trap("HttpsServer.BindHandler: null entry");
+        return;
+    }
 
     il::vm::VM *stdVm = il::vm::activeVMInstance();
     if (stdVm) {
         std::shared_ptr<il::vm::VM::ProgramState> program = stdVm->programState();
-        if (!program)
-            rt_trap("HttpServer.BindHandler: invalid runtime state");
+        if (!program) {
+            rt_trap("HttpsServer.BindHandler: invalid runtime state");
+            return;
+        }
 
         const il::core::Module &module = stdVm->module();
         const il::core::Function *entryFn = resolveILEntry(module, entry);
-        if (!entryFn)
-            rt_trap("HttpServer.BindHandler: invalid entry");
-        validateHttpHandlerSignature(*entryFn);
+        if (!entryFn) {
+            rt_trap("HttpsServer.BindHandler: invalid entry");
+            return;
+        }
+        validateHttpsHandlerSignature(*entryFn);
 
         auto *payload =
             new VmHttpHandlerPayload{&module, std::move(program), stdVm->externRegistry(), entryFn};
@@ -4237,12 +4662,21 @@ static void unified_https_server_bind_handler(void **args, void *result) {
     const BytecodeModule *bcModule = activeBytecodeModule();
     if (bcVm && bcModule) {
         const BytecodeFunction *entryFn = resolveBytecodeEntry(bcModule, entry);
-        if (!entryFn)
-            rt_trap("HttpServer.BindHandler: invalid bytecode entry");
-        validateBytecodeHttpHandlerSignature(*entryFn);
+        if (!entryFn) {
+            rt_trap("HttpsServer.BindHandler: invalid bytecode entry");
+            return;
+        }
+        validateBytecodeHttpsHandlerSignature(*entryFn);
 
+        auto moduleOwner = cloneBytecodeModuleForWorker(bcModule);
+        const BytecodeFunction *ownedEntryFn = resolveClonedBytecodeEntry(moduleOwner, entryFn);
+        if (!ownedEntryFn) {
+            rt_trap("HttpsServer.BindHandler: bytecode module snapshot failed");
+            return;
+        }
         auto *payload =
-            new BytecodeHttpHandlerPayload{bcModule, entryFn, bcVm->captureExecutionEnvironment()};
+            new BytecodeHttpHandlerPayload{
+                moduleOwner, moduleOwner.get(), ownedEntryFn, bcVm->captureExecutionEnvironment()};
         rt_https_server_bind_handler_dispatch(
             server,
             tag,
@@ -4270,24 +4704,40 @@ static void unified_async_run_handler(void **args, void *result) {
     if (args && args[1])
         arg = *reinterpret_cast<void **>(args[1]);
 
-    if (!entry)
+    if (!entry) {
         rt_trap("Async.Run: null entry");
+        return;
+    }
 
     // Standard VM path
     il::vm::VM *stdVm = il::vm::activeVMInstance();
     if (stdVm) {
         std::shared_ptr<il::vm::VM::ProgramState> program = stdVm->programState();
-        if (!program)
+        if (!program) {
             rt_trap("Async.Run: invalid runtime state");
+            return;
+        }
 
         const il::core::Module &module = stdVm->module();
         const il::core::Function *entryFn = resolveILEntry(module, entry);
-        if (!entryFn)
+        if (!entryFn) {
             rt_trap("Async.Run: invalid entry");
+            return;
+        }
         validateAsyncEntrySignature(*entryFn);
 
         void *promise = rt_promise_new();
+        if (!promise) {
+            rt_trap("Async.Run: promise allocation failed");
+            return;
+        }
         void *future = rt_promise_get_future(promise);
+        if (!future) {
+            if (rt_obj_release_check0(promise))
+                rt_obj_free(promise);
+            rt_trap("Async.Run: future allocation failed");
+            return;
+        }
         auto *payload = new (std::nothrow) VmAsyncRunPayload{&module,
                                                              std::move(program),
                                                              stdVm->externRegistry(),
@@ -4299,8 +4749,7 @@ static void unified_async_run_handler(void **args, void *result) {
             rt_promise_set_error(promise, rt_const_cstr("Async.Run: payload allocation failed"));
             if (rt_obj_release_check0(promise))
                 rt_obj_free(promise);
-            if (result)
-                *reinterpret_cast<void **>(result) = future;
+            publishAsyncFutureResult(result, future);
             return;
         }
         if (payload->ownsArg)
@@ -4315,15 +4764,13 @@ static void unified_async_run_handler(void **args, void *result) {
             rt_promise_set_error(promise, rt_const_cstr("Async.Run: failed to create thread"));
             if (rt_obj_release_check0(promise))
                 rt_obj_free(promise);
-            if (result)
-                *reinterpret_cast<void **>(result) = future;
+            publishAsyncFutureResult(result, future);
             return;
         }
 
         if (rt_obj_release_check0(thread))
             rt_obj_free(thread);
-        if (result)
-            *reinterpret_cast<void **>(result) = future;
+        publishAsyncFutureResult(result, future);
         return;
     }
 
@@ -4332,20 +4779,43 @@ static void unified_async_run_handler(void **args, void *result) {
     const BytecodeModule *bcModule = activeBytecodeModule();
     if (bcVm && bcModule) {
         const BytecodeFunction *entryFn = resolveBytecodeEntry(bcModule, entry);
-        if (!entryFn)
+        if (!entryFn) {
             rt_trap("Async.Run: invalid bytecode entry");
+            return;
+        }
         validateBytecodeAsyncEntrySignature(*entryFn);
 
+        auto moduleOwner = cloneBytecodeModuleForWorker(bcModule);
+        const BytecodeFunction *ownedEntryFn = resolveClonedBytecodeEntry(moduleOwner, entryFn);
+        if (!ownedEntryFn) {
+            rt_trap("Async.Run: bytecode module snapshot failed");
+            return;
+        }
         void *promise = rt_promise_new();
+        if (!promise) {
+            rt_trap("Async.Run: promise allocation failed");
+            return;
+        }
         void *future = rt_promise_get_future(promise);
+        if (!future) {
+            if (rt_obj_release_check0(promise))
+                rt_obj_free(promise);
+            rt_trap("Async.Run: future allocation failed");
+            return;
+        }
         auto *payload = new (std::nothrow) BytecodeAsyncPayload{
-            bcModule, entryFn, arg, arg != nullptr, bcVm->captureExecutionEnvironment(), promise};
+            moduleOwner,
+            moduleOwner.get(),
+            ownedEntryFn,
+            arg,
+            arg != nullptr,
+            bcVm->captureExecutionEnvironment(),
+            promise};
         if (!payload) {
             rt_promise_set_error(promise, rt_const_cstr("Async.Run: payload allocation failed"));
             if (rt_obj_release_check0(promise))
                 rt_obj_free(promise);
-            if (result)
-                *reinterpret_cast<void **>(result) = future;
+            publishAsyncFutureResult(result, future);
             return;
         }
         if (payload->ownsArg)
@@ -4358,15 +4828,13 @@ static void unified_async_run_handler(void **args, void *result) {
             rt_promise_set_error(promise, rt_const_cstr("Async.Run: failed to create thread"));
             if (rt_obj_release_check0(promise))
                 rt_obj_free(promise);
-            if (result)
-                *reinterpret_cast<void **>(result) = future;
+            publishAsyncFutureResult(result, future);
             return;
         }
 
         if (rt_obj_release_check0(thread))
             rt_obj_free(thread);
-        if (result)
-            *reinterpret_cast<void **>(result) = future;
+        publishAsyncFutureResult(result, future);
         return;
     }
 
@@ -4375,8 +4843,7 @@ static void unified_async_run_handler(void **args, void *result) {
         return;
     }
     void *future = rt_async_run(entry, arg);
-    if (result)
-        *reinterpret_cast<void **>(result) = future;
+    publishAsyncFutureResult(result, future);
 }
 
 /// @brief Install the dual-engine runtime handlers (Thread.Start, Async.Run,

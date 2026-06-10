@@ -30,9 +30,11 @@
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
 #include "../../../graphics/src/vgfx_internal.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1259,6 +1261,129 @@ static void toolbar_arrange(vg_widget_t *widget, float x, float y, float width, 
         toolbar_rebuild_overflow_popup(tb);
 }
 
+//=============================================================================
+// Vector toolbar icons
+//
+// ViperIDE passes Unicode glyphs as button "icons" (e.g. U+25B6 for Run), which
+// render as inconsistent, mismatched font symbols. We map the known codepoints
+// to crisp, uniform vector icons drawn through the shared anti-aliased core.
+//=============================================================================
+
+/// @brief Scanline-fill a triangle (used for play/continue glyphs).
+static void toolbar_fill_tri(vgfx_window_t win, float ax, float ay, float bx, float by, float cx,
+                             float cy, uint32_t color) {
+    uint32_t rgb = color & 0x00FFFFFFu;
+    int minx = (int)floorf(fminf(ax, fminf(bx, cx)));
+    int maxx = (int)ceilf(fmaxf(ax, fmaxf(bx, cx)));
+    int miny = (int)floorf(fminf(ay, fminf(by, cy)));
+    int maxy = (int)ceilf(fmaxf(ay, fmaxf(by, cy)));
+    float area = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+    if (area == 0.0f)
+        return;
+    for (int py = miny; py <= maxy; ++py) {
+        for (int px = minx; px <= maxx; ++px) {
+            float fx = (float)px + 0.5f, fy = (float)py + 0.5f;
+            float w0 = (bx - ax) * (fy - ay) - (by - ay) * (fx - ax);
+            float w1 = (cx - bx) * (fy - by) - (cy - by) * (fx - bx);
+            float w2 = (ax - cx) * (fy - cy) - (ay - cy) * (fx - cx);
+            bool inside = (w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0);
+            if (inside)
+                vgfx_pset(win, px, py, rgb);
+        }
+    }
+}
+
+/// @brief Draw a recognisable vector icon for a known toolbar codepoint.
+/// @return true if handled (caller skips the font glyph); false to fall back.
+static bool toolbar_draw_vector_icon(vgfx_window_t win, uint32_t cp, float bx, float by, float sz,
+                                     uint32_t color) {
+    float sw = sz * 0.10f;
+    if (sw < 1.4f)
+        sw = 1.4f;
+#define IX(fx) (bx + (fx) * sz)
+#define IY(fy) (by + (fy) * sz)
+#define ILINE(x0, y0, x1, y1) vg_draw_line_aa(win, IX(x0), IY(y0), IX(x1), IY(y1), sw, color)
+#define IRING(cx, cy, r) vg_draw_circle_stroke(win, IX(cx), IY(cy), (r) * sz, sw, color)
+#define IDISC(cx, cy, r) vg_draw_disc_fill(win, IX(cx), IY(cy), (r) * sz, color)
+#define IRRS(x0, y0, w, h, rad)                                                                    \
+    vg_draw_round_rect_stroke(win, IX(x0), IY(y0), (w) * sz, (h) * sz, (rad) * sz, sw, color)
+#define IRRF(x0, y0, w, h, rad)                                                                    \
+    vg_draw_round_rect_fill(win, IX(x0), IY(y0), (w) * sz, (h) * sz, (rad) * sz, color)
+#define ITRI(x0, y0, x1, y1, x2, y2)                                                               \
+    toolbar_fill_tri(win, IX(x0), IY(y0), IX(x1), IY(y1), IX(x2), IY(y2), color)
+
+    switch (cp) {
+        case 0x2B: // New file (document with text lines)
+            IRRS(0.28f, 0.14f, 0.42f, 0.72f, 0.08f);
+            ILINE(0.37f, 0.42f, 0.61f, 0.42f);
+            ILINE(0.37f, 0.55f, 0.61f, 0.55f);
+            ILINE(0.37f, 0.68f, 0.54f, 0.68f);
+            return true;
+        case 0x25A4: // Open (folder)
+            IRRS(0.18f, 0.26f, 0.26f, 0.12f, 0.04f);
+            IRRS(0.16f, 0.34f, 0.68f, 0.44f, 0.06f);
+            return true;
+        case 0x25BC: // Save (down arrow onto a tray line)
+            ILINE(0.5f, 0.18f, 0.5f, 0.6f);
+            ILINE(0.34f, 0.44f, 0.5f, 0.62f);
+            ILINE(0.66f, 0.44f, 0.5f, 0.62f);
+            ILINE(0.26f, 0.78f, 0.74f, 0.78f);
+            return true;
+        case 0x21D3: // Save all (double chevron down onto a line)
+            ILINE(0.36f, 0.3f, 0.5f, 0.44f);
+            ILINE(0.64f, 0.3f, 0.5f, 0.44f);
+            ILINE(0.36f, 0.48f, 0.5f, 0.62f);
+            ILINE(0.64f, 0.48f, 0.5f, 0.62f);
+            ILINE(0.26f, 0.78f, 0.74f, 0.78f);
+            return true;
+        case 0x25A3: // Build (stacked diamond layers)
+            ILINE(0.5f, 0.16f, 0.8f, 0.34f);
+            ILINE(0.8f, 0.34f, 0.5f, 0.52f);
+            ILINE(0.5f, 0.52f, 0.2f, 0.34f);
+            ILINE(0.2f, 0.34f, 0.5f, 0.16f);
+            ILINE(0.2f, 0.5f, 0.5f, 0.68f);
+            ILINE(0.8f, 0.5f, 0.5f, 0.68f);
+            return true;
+        case 0x25B6: // Run (play triangle)
+            ITRI(0.32f, 0.2f, 0.32f, 0.8f, 0.8f, 0.5f);
+            return true;
+        case 0x25A0: // Stop (rounded square)
+            IRRF(0.26f, 0.26f, 0.48f, 0.48f, 0.1f);
+            return true;
+        case 0x25C7: // Debug (bug)
+            IDISC(0.5f, 0.54f, 0.2f);
+            IDISC(0.5f, 0.3f, 0.1f);
+            ILINE(0.3f, 0.46f, 0.4f, 0.52f);
+            ILINE(0.3f, 0.64f, 0.41f, 0.6f);
+            ILINE(0.7f, 0.46f, 0.6f, 0.52f);
+            ILINE(0.7f, 0.64f, 0.59f, 0.6f);
+            return true;
+        case 0x25B7: // Continue (play + bar)
+            ITRI(0.26f, 0.22f, 0.26f, 0.78f, 0.62f, 0.5f);
+            IRRF(0.66f, 0.22f, 0.1f, 0.56f, 0.03f);
+            return true;
+        case 0x2192: // Step over (right arrow)
+            ILINE(0.22f, 0.5f, 0.72f, 0.5f);
+            ILINE(0.56f, 0.36f, 0.74f, 0.5f);
+            ILINE(0.56f, 0.64f, 0.74f, 0.5f);
+            return true;
+        case 0x3F: // Find (magnifying glass)
+            IRING(0.44f, 0.42f, 0.2f);
+            ILINE(0.6f, 0.58f, 0.78f, 0.76f);
+            return true;
+        default:
+            return false;
+    }
+#undef IX
+#undef IY
+#undef ILINE
+#undef IRING
+#undef IDISC
+#undef IRRS
+#undef IRRF
+#undef ITRI
+}
+
 /// @brief vtable paint — draw background, all visible items (icons, labels, separators, overflow
 /// button), and focus rings.
 static void toolbar_paint(vg_widget_t *widget, void *canvas) {
@@ -1340,12 +1465,9 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas) {
                 }
 
                 if (btn_bg != 0) {
-                    vgfx_fill_rect(win,
-                                   (int32_t)item_x,
-                                   (int32_t)item_y,
-                                   (int32_t)item_width,
-                                   (int32_t)item_height,
-                                   btn_bg);
+                    vg_draw_round_rect_fill(win, item_x + 1.0f, item_y + 1.0f, item_width - 2.0f,
+                                            item_height - 2.0f, vg_theme_get_current()->radius.sm,
+                                            btn_bg);
                 }
 
                 // Determine text color
@@ -1362,6 +1484,12 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas) {
 
                 switch (item->icon.type) {
                     case VG_ICON_GLYPH:
+                        // Prefer a crisp vector icon for known codepoints; fall
+                        // back to the font glyph for anything unmapped.
+                        if (toolbar_draw_vector_icon(
+                                win, item->icon.data.glyph, icon_x, icon_y, icon_px, txt_color)) {
+                            break;
+                        }
                         // Draw glyph using font
                         if (tb->font) {
                             char buf[8] = {0};

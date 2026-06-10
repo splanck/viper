@@ -21,6 +21,7 @@
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
 #include <math.h>
@@ -145,29 +146,21 @@ static void slider_paint(vg_widget_t *widget, void *canvas) {
         int32_t track_y = (int32_t)(y + (h - track_th) / 2.0f);
         int32_t track_h = (int32_t)track_th;
 
-        vgfx_fill_rect(win, (int32_t)track_xf, track_y, (int32_t)track_wf, track_h, track_color);
-        vgfx_fill_rect(win,
-                       (int32_t)track_xf,
-                       track_y,
-                       (int32_t)track_wf,
-                       1,
-                       vg_color_lighten(track_color, 0.08f));
+        float track_rad = track_th * 0.5f;
+        vg_draw_round_rect_fill(win, track_xf, (float)track_y, track_wf, (float)track_h, track_rad,
+                                track_color);
 
-        int32_t fill_w = (int32_t)(norm * track_wf);
-        if (fill_w > 0)
-            vgfx_fill_rect(win, (int32_t)track_xf, track_y, fill_w, track_h, fill_color);
+        float fill_wf = norm * track_wf;
+        if (fill_wf > 0.5f)
+            vg_draw_round_rect_fill(win, track_xf, (float)track_y, fill_wf, (float)track_h,
+                                    track_rad, fill_color);
 
         float thumb_cx = track_xf + norm * track_wf;
         float thumb_cy = y + h / 2.0f;
-        int32_t thumb_ri = (int32_t)(slider->thumb_size / 2.0f);
-        vgfx_fill_circle(
-            win, (int32_t)thumb_cx, (int32_t)thumb_cy, thumb_ri + 1, theme->colors.border_primary);
-        vgfx_fill_circle(win, (int32_t)thumb_cx, (int32_t)thumb_cy, thumb_ri, thumb_color);
-        vgfx_circle(win,
-                    (int32_t)thumb_cx,
-                    (int32_t)thumb_cy,
-                    thumb_ri,
-                    vg_color_darken(thumb_color, 0.18f));
+        vg_draw_disc_fill(win, thumb_cx, thumb_cy, thumb_rf + 1.0f, theme->colors.border_primary);
+        vg_draw_disc_fill(win, thumb_cx, thumb_cy, thumb_rf, thumb_color);
+        vg_draw_circle_stroke(win, thumb_cx, thumb_cy, thumb_rf, 1.0f,
+                              vg_color_darken(thumb_color, 0.18f));
     } else {
         float track_th = slider->track_thickness > 0 ? slider->track_thickness : 4.0f;
         float thumb_rf = slider->thumb_size * 0.5f;
@@ -178,34 +171,27 @@ static void slider_paint(vg_widget_t *widget, void *canvas) {
         int32_t track_x = (int32_t)(x + (w - track_th) / 2.0f);
         int32_t track_w = (int32_t)track_th;
 
-        vgfx_fill_rect(win, track_x, (int32_t)track_yf, track_w, (int32_t)track_hf, track_color);
-        vgfx_fill_rect(win,
-                       track_x,
-                       (int32_t)track_yf,
-                       1,
-                       (int32_t)track_hf,
-                       vg_color_lighten(track_color, 0.08f));
+        float track_rad = track_th * 0.5f;
+        vg_draw_round_rect_fill(win, (float)track_x, track_yf, (float)track_w, track_hf, track_rad,
+                                track_color);
 
-        int32_t fill_h = (int32_t)(norm * track_hf);
-        int32_t fill_y = (int32_t)(track_yf + track_hf - fill_h);
-        if (fill_h > 0)
-            vgfx_fill_rect(win, track_x, fill_y, track_w, fill_h, fill_color);
+        float fill_hf = norm * track_hf;
+        float fill_yf = track_yf + track_hf - fill_hf;
+        if (fill_hf > 0.5f)
+            vg_draw_round_rect_fill(win, (float)track_x, fill_yf, (float)track_w, fill_hf, track_rad,
+                                    fill_color);
 
         float thumb_cx = x + w / 2.0f;
         float thumb_cy = track_yf + track_hf - norm * track_hf;
-        int32_t thumb_ri = (int32_t)(slider->thumb_size / 2.0f);
-        vgfx_fill_circle(
-            win, (int32_t)thumb_cx, (int32_t)thumb_cy, thumb_ri + 1, theme->colors.border_primary);
-        vgfx_fill_circle(win, (int32_t)thumb_cx, (int32_t)thumb_cy, thumb_ri, thumb_color);
-        vgfx_circle(win,
-                    (int32_t)thumb_cx,
-                    (int32_t)thumb_cy,
-                    thumb_ri,
-                    vg_color_darken(thumb_color, 0.18f));
+        vg_draw_disc_fill(win, thumb_cx, thumb_cy, thumb_rf + 1.0f, theme->colors.border_primary);
+        vg_draw_disc_fill(win, thumb_cx, thumb_cy, thumb_rf, thumb_color);
+        vg_draw_circle_stroke(win, thumb_cx, thumb_cy, thumb_rf, 1.0f,
+                              vg_color_darken(thumb_color, 0.18f));
     }
 
     if (widget->state & VG_STATE_FOCUSED) {
-        vgfx_rect(win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, theme->colors.border_focus);
+        vg_draw_round_rect_stroke(win, x, y, w, h, theme->radius.sm, 1.5f,
+                                  theme->colors.border_focus);
     }
 }
 

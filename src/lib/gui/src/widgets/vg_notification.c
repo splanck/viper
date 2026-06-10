@@ -30,6 +30,7 @@
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_theme.h"
 #include <stdlib.h>
 #include <string.h>
@@ -123,45 +124,14 @@ static uint32_t notification_fade_color(uint32_t color, uint32_t backdrop, float
 /// @brief Fill a rounded rectangle, falling back to a plain rect when radius is zero or too large.
 static void notification_fill_round_rect(
     vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
-    if (w <= 0 || h <= 0)
-        return;
-    int32_t max_radius = w < h ? w / 2 : h / 2;
-    if (radius <= 0 || max_radius <= 0 || w <= radius * 2 || h <= radius * 2) {
-        vgfx_fill_rect(win, x, y, w, h, color);
-        return;
-    }
-    if (radius > max_radius)
-        radius = max_radius;
-    vgfx_fill_rect(win, x + radius, y, w - radius * 2, h, color);
-    vgfx_fill_rect(win, x, y + radius, radius, h - radius * 2, color);
-    vgfx_fill_rect(win, x + w - radius, y + radius, radius, h - radius * 2, color);
-    vgfx_fill_circle(win, x + radius, y + radius, radius, color);
-    vgfx_fill_circle(win, x + w - radius - 1, y + radius, radius, color);
-    vgfx_fill_circle(win, x + radius, y + h - radius - 1, radius, color);
-    vgfx_fill_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
+    vg_draw_round_rect_fill(win, (float)x, (float)y, (float)w, (float)h, (float)radius, color);
 }
 
-/// @brief Stroke the border of a rounded rectangle, falling back to a plain rect when radius is
-/// zero or too large.
+/// @brief Stroke a rounded-rectangle border via the shared anti-aliased core.
 static void notification_stroke_round_rect(
     vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
-    if (w <= 1 || h <= 1)
-        return;
-    int32_t max_radius = w < h ? w / 2 : h / 2;
-    if (radius <= 0 || max_radius <= 0 || w <= radius * 2 || h <= radius * 2) {
-        vgfx_rect(win, x, y, w, h, color);
-        return;
-    }
-    if (radius > max_radius)
-        radius = max_radius;
-    vgfx_line(win, x + radius, y, x + w - radius - 1, y, color);
-    vgfx_line(win, x + radius, y + h - 1, x + w - radius - 1, y + h - 1, color);
-    vgfx_line(win, x, y + radius, x, y + h - radius - 1, color);
-    vgfx_line(win, x + w - 1, y + radius, x + w - 1, y + h - radius - 1, color);
-    vgfx_circle(win, x + radius, y + radius, radius, color);
-    vgfx_circle(win, x + w - radius - 1, y + radius, radius, color);
-    vgfx_circle(win, x + radius, y + h - radius - 1, radius, color);
-    vgfx_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
+    vg_draw_round_rect_stroke(win, (float)x, (float)y, (float)w, (float)h, (float)radius, 1.0f,
+                              color);
 }
 
 /// @brief Heap-allocate a NUL-terminated copy of the first len bytes of text.
@@ -580,7 +550,6 @@ static void notification_manager_paint(vg_widget_t *widget, void *canvas) {
         uint32_t title_color =
             notification_fade_color(vg_color_lighten(mgr->text_color, 0.08f), backdrop, opacity);
         uint32_t body_color = notification_fade_color(mgr->text_color, backdrop, opacity);
-        uint32_t shadow_color = notification_fade_color(0x000000u, backdrop, opacity * 0.24f);
         uint32_t action_bg = notification_fade_color(
             vg_color_blend(type_color, mgr->bg_color, 0.78f), backdrop, opacity);
         uint32_t action_border = notification_fade_color(
@@ -595,7 +564,10 @@ static void notification_manager_paint(vg_widget_t *widget, void *canvas) {
         int32_t radius = 10;
         int32_t accent_w = 5;
 
-        notification_fill_round_rect(win, x + 2, y + 4, w, h, radius, shadow_color);
+        vg_elevation_t nel = theme->elevation.level2;
+        uint8_t nshadow_a = (uint8_t)((float)nel.alpha * opacity);
+        vg_draw_round_rect_shadow(win, (float)x, (float)y, (float)w, (float)h, (float)radius,
+                                  nel.blur, nel.dx, nel.dy, nshadow_a, theme->elevation.shadow_rgb);
         notification_fill_round_rect(win, x, y, w, h, radius, card_bg);
         notification_stroke_round_rect(win, x, y, w, h, radius, card_border);
         notification_fill_round_rect(win, x, y, accent_w, h, radius / 2, accent_color);

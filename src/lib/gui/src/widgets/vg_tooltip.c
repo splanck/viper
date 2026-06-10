@@ -33,6 +33,7 @@
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_theme.h"
 #include <stdint.h>
 #ifdef _WIN32
@@ -231,45 +232,14 @@ static uint32_t tooltip_apply_alpha(uint32_t color, uint32_t backdrop) {
 /// @brief Fill a rounded rectangle, falling back to a plain rect when radius is zero or too large.
 static void tooltip_fill_round_rect(
     vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
-    if (w <= 0 || h <= 0)
-        return;
-    int32_t max_radius = w < h ? w / 2 : h / 2;
-    if (radius <= 0 || max_radius <= 0 || w <= radius * 2 || h <= radius * 2) {
-        vgfx_fill_rect(win, x, y, w, h, color);
-        return;
-    }
-    if (radius > max_radius)
-        radius = max_radius;
-    vgfx_fill_rect(win, x + radius, y, w - radius * 2, h, color);
-    vgfx_fill_rect(win, x, y + radius, radius, h - radius * 2, color);
-    vgfx_fill_rect(win, x + w - radius, y + radius, radius, h - radius * 2, color);
-    vgfx_fill_circle(win, x + radius, y + radius, radius, color);
-    vgfx_fill_circle(win, x + w - radius - 1, y + radius, radius, color);
-    vgfx_fill_circle(win, x + radius, y + h - radius - 1, radius, color);
-    vgfx_fill_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
+    vg_draw_round_rect_fill(win, (float)x, (float)y, (float)w, (float)h, (float)radius, color);
 }
 
-/// @brief Stroke the border of a rounded rectangle, falling back to a plain rect when radius is
-/// zero or too large.
+/// @brief Stroke a rounded-rectangle border via the shared anti-aliased core.
 static void tooltip_stroke_round_rect(
     vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
-    if (w <= 1 || h <= 1)
-        return;
-    int32_t max_radius = w < h ? w / 2 : h / 2;
-    if (radius <= 0 || max_radius <= 0 || w <= radius * 2 || h <= radius * 2) {
-        vgfx_rect(win, x, y, w, h, color);
-        return;
-    }
-    if (radius > max_radius)
-        radius = max_radius;
-    vgfx_line(win, x + radius, y, x + w - radius - 1, y, color);
-    vgfx_line(win, x + radius, y + h - 1, x + w - radius - 1, y + h - 1, color);
-    vgfx_line(win, x, y + radius, x, y + h - radius - 1, color);
-    vgfx_line(win, x + w - 1, y + radius, x + w - 1, y + h - radius - 1, color);
-    vgfx_circle(win, x + radius, y + radius, radius, color);
-    vgfx_circle(win, x + w - radius - 1, y + radius, radius, color);
-    vgfx_circle(win, x + radius, y + h - radius - 1, radius, color);
-    vgfx_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
+    vg_draw_round_rect_stroke(win, (float)x, (float)y, (float)w, (float)h, (float)radius, 1.0f,
+                              color);
 }
 
 //=============================================================================
@@ -407,7 +377,10 @@ static void tooltip_paint(vg_widget_t *widget, void *canvas) {
     uint32_t border = tooltip_apply_alpha(tooltip->border_color,
                                           theme ? theme->colors.border_primary : 0x00555555u);
 
-    tooltip_fill_round_rect(win, x + 3, y + 4, w, h, radius, vg_color_darken(bg, 0.68f));
+    vg_elevation_t tt_el = theme ? theme->elevation.level2 : (vg_elevation_t){10.0f, 0, 4, 64};
+    vg_draw_round_rect_shadow(win, (float)x, (float)y, (float)w, (float)h, (float)radius, tt_el.blur,
+                              tt_el.dx, tt_el.dy, tt_el.alpha,
+                              theme ? theme->elevation.shadow_rgb : 0x000000u);
     tooltip_fill_round_rect(win, x, y, w, h, radius, bg);
     if (w > radius * 2)
         vgfx_fill_rect(win, x + radius, y + 1, w - radius * 2, 1, vg_color_lighten(bg, 0.08f));

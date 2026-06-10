@@ -53,7 +53,7 @@ void BytecodeVM::runThreaded() {
     // The opcode -> handler-label mapping is generated from bytecode/Bytecode.def
     // (single source of truth). Every slot defaults to &&L_DEFAULT; opcodes with a
     // real handler override it. BC_OPCODE_TRAP opcodes (TAIL_CALL, MAKE_ERROR,
-    // LINE, BREAKPOINT, WATCH_VAR, OPCODE_COUNT) have no handler label and stay
+    // OPCODE_COUNT) have no handler label and stay
     // routed to L_DEFAULT. The compiler enforces this classification: a missing
     // label triggers an "undefined label" error and an over-marked one triggers
     // -Wunused-label -Werror, so the table can never silently drift from the enum.
@@ -88,6 +88,13 @@ void BytecodeVM::runThreaded() {
                 SYNC_STATE();                                                                      \
                 return;                                                                            \
             }                                                                                      \
+        }                                                                                          \
+        SYNC_STATE();                                                                              \
+        if (checkBreakpoint()) {                                                                   \
+            state_ = VMState::Halted;                                                              \
+            return;                                                                                \
+        }                                                                                          \
+        if (!trustedDispatch_) {                                                                   \
             instr = code[pc];                                                                      \
             if (!ensureStackForInstruction(*fp_, sp, instr, "BytecodeVM::runThreaded")) {          \
                 SYNC_STATE();                                                                      \
@@ -110,7 +117,8 @@ void BytecodeVM::runThreaded() {
 
 #define SYNC_STATE()                                                                               \
     do {                                                                                           \
-        fp_->pc = pc;                                                                              \
+        if (fp_)                                                                                   \
+            fp_->pc = pc;                                                                          \
         sp_ = sp;                                                                                  \
     } while (0)
 
@@ -391,6 +399,11 @@ L_LOAD_F64:
 
 L_LOAD_STR: {
     uint16_t idx = decodeArg16(instr);
+    if (!module_ || idx >= module_->stringPool.size()) {
+        SYNC_STATE();
+        trap(TrapKind::InvalidOpcode, "LOAD_STR constant index out of range");
+        return;
+    }
     sp->ptr = getStringLiteral(idx);
     if (sp->ptr) {
         if (!validateStringHandle(sp->ptr, "BytecodeVM::LOAD_STR(threaded)")) {
@@ -1019,33 +1032,12 @@ L_ALLOCA: {
 
 L_GEP: {
     int64_t offset = (--sp)->i64;
-    uint8_t *ptr = static_cast<uint8_t *>(sp[-1].ptr);
-    // Null pointer check for debugging field access
-    if (ptr == nullptr && offset != 0) {
-        SYNC_STATE();
-        fprintf(stderr, "*** NULL POINTER DEREFERENCE ***\n");
-        fprintf(stderr,
-                "Attempting to access field at offset %lld on null object\n",
-                (long long)offset);
-        fprintf(stderr,
-                "PC: %u, Function: %s\n",
-                pc - 1,
-                fp_->func->name.empty() ? "<unknown>" : fp_->func->name.c_str());
-        // Print call stack
-        fprintf(stderr, "Call stack:\n");
-        for (size_t i = 0; i < callStack_.size(); i++) {
-            const auto &frame = callStack_[i];
-            fprintf(stderr,
-                    "  [%zu] %s (PC: %u)\n",
-                    i,
-                    frame.func->name.empty() ? "<unknown>" : frame.func->name.c_str(),
-                    frame.pc);
-        }
-        fflush(stderr);
-        trapOrDispatch(TrapKind::NullPointer, "GEP on null pointer");
+    void *adjusted = nullptr;
+    SYNC_STATE();
+    sp_ = sp;
+    if (!addPointerOffset(sp[-1].ptr, offset, adjusted, "BytecodeVM::GEP(threaded)"))
         RETURN_OR_DISPATCH_TRAP();
-    }
-    sp[-1].ptr = ptr ? ptr + offset : nullptr;
+    sp[-1].ptr = adjusted;
     DISPATCH();
 }
 
@@ -1233,13 +1225,13 @@ L_STORE_STR_MEM: {
         SYNC_STATE();
         return;
     }
-    rt_str_release_maybe(current);
     if (incoming && !validateStringHandle(incoming, "BytecodeVM::STORE_STR_MEM(threaded)")) {
         SYNC_STATE();
         return;
     }
-    if (incoming && !incomingOwns)
+    if (incoming && (!incomingOwns || incoming == current))
         rt_str_retain_maybe(incoming);
+    rt_str_release_maybe(current);
     std::memcpy(ptr, &incoming, sizeof(incoming));
     setGlobalStringOwnershipForAddress(ptr, incoming != nullptr);
     setSlotOwnsString(valueSlot, false);
@@ -1369,6 +1361,11 @@ L_CALL_NATIVE: {
     }
 
     const NativeFuncRef &ref = module_->nativeFuncs[nativeIdx];
+    if (argCount != ref.paramCount) {
+        SYNC_STATE();
+        trap(TrapKind::RuntimeError, "CALL_NATIVE encoded arity mismatch");
+        return;
+    }
     BCSlot *args = sp - argCount;
     BCSlot result{};
 
@@ -1389,7 +1386,13 @@ L_CALL_NATIVE: {
             trap(TrapKind::RuntimeError, "Native function not registered");
             return;
         }
+        SYNC_STATE();
+        sp_ = sp;
         it->second(args, argCount, &result);
+        if (state_ != VMState::Running || !fp_)
+            return;
+        RELOAD_STATE();
+        args = sp - argCount;
     }
 
     dismissConsumedStringArgs(ref, args, argCount);
@@ -1408,10 +1411,12 @@ L_CALL_NATIVE: {
 }
 
 L_ARR_I32_GET_FAST: {
+    BCSlot *arrSlot = sp - 2;
+    if (!arrSlot->ptr)
+        THREAD_TRAP_OR_DISPATCH(TrapKind::NullPointer, "ARR_I32_GET_FAST on null array");
     BCSlot *idxSlot = --sp;
     const size_t idx = static_cast<size_t>(idxSlot->i64);
     setSlotOwnsString(idxSlot, false);
-    BCSlot *arrSlot = sp - 1;
     auto *arr = static_cast<int32_t *>(arrSlot->ptr);
     arrSlot->i64 = static_cast<int64_t>(arr[idx]);
     setSlotOwnsString(arrSlot, false);
@@ -1419,13 +1424,16 @@ L_ARR_I32_GET_FAST: {
 }
 
 L_ARR_I32_SET_FAST: {
+    BCSlot *arrSlot = sp - 3;
+    if (!arrSlot->ptr)
+        THREAD_TRAP_OR_DISPATCH(TrapKind::NullPointer, "ARR_I32_SET_FAST on null array");
     BCSlot *valueSlot = --sp;
     const int32_t value = static_cast<int32_t>(valueSlot->i64);
     setSlotOwnsString(valueSlot, false);
     BCSlot *idxSlot = --sp;
     const size_t idx = static_cast<size_t>(idxSlot->i64);
     setSlotOwnsString(idxSlot, false);
-    BCSlot *arrSlot = --sp;
+    --sp;
     auto *arr = static_cast<int32_t *>(arrSlot->ptr);
     setSlotOwnsString(arrSlot, false);
     arr[idx] = value;
@@ -1433,10 +1441,12 @@ L_ARR_I32_SET_FAST: {
 }
 
 L_ARR_I64_GET_FAST: {
+    BCSlot *arrSlot = sp - 2;
+    if (!arrSlot->ptr)
+        THREAD_TRAP_OR_DISPATCH(TrapKind::NullPointer, "ARR_I64_GET_FAST on null array");
     BCSlot *idxSlot = --sp;
     const size_t idx = static_cast<size_t>(idxSlot->i64);
     setSlotOwnsString(idxSlot, false);
-    BCSlot *arrSlot = sp - 1;
     auto *arr = static_cast<int64_t *>(arrSlot->ptr);
     arrSlot->i64 = arr[idx];
     setSlotOwnsString(arrSlot, false);
@@ -1444,13 +1454,16 @@ L_ARR_I64_GET_FAST: {
 }
 
 L_ARR_I64_SET_FAST: {
+    BCSlot *arrSlot = sp - 3;
+    if (!arrSlot->ptr)
+        THREAD_TRAP_OR_DISPATCH(TrapKind::NullPointer, "ARR_I64_SET_FAST on null array");
     BCSlot *valueSlot = --sp;
     const int64_t value = valueSlot->i64;
     setSlotOwnsString(valueSlot, false);
     BCSlot *idxSlot = --sp;
     const size_t idx = static_cast<size_t>(idxSlot->i64);
     setSlotOwnsString(idxSlot, false);
-    BCSlot *arrSlot = --sp;
+    --sp;
     auto *arr = static_cast<int64_t *>(arrSlot->ptr);
     setSlotOwnsString(arrSlot, false);
     arr[idx] = value;
@@ -1458,10 +1471,12 @@ L_ARR_I64_SET_FAST: {
 }
 
 L_ARR_F64_GET_FAST: {
+    BCSlot *arrSlot = sp - 2;
+    if (!arrSlot->ptr)
+        THREAD_TRAP_OR_DISPATCH(TrapKind::NullPointer, "ARR_F64_GET_FAST on null array");
     BCSlot *idxSlot = --sp;
     const size_t idx = static_cast<size_t>(idxSlot->i64);
     setSlotOwnsString(idxSlot, false);
-    BCSlot *arrSlot = sp - 1;
     auto *arr = static_cast<double *>(arrSlot->ptr);
     arrSlot->f64 = arr[idx];
     setSlotOwnsString(arrSlot, false);
@@ -1469,13 +1484,16 @@ L_ARR_F64_GET_FAST: {
 }
 
 L_ARR_F64_SET_FAST: {
+    BCSlot *arrSlot = sp - 3;
+    if (!arrSlot->ptr)
+        THREAD_TRAP_OR_DISPATCH(TrapKind::NullPointer, "ARR_F64_SET_FAST on null array");
     BCSlot *valueSlot = --sp;
     const double value = valueSlot->f64;
     setSlotOwnsString(valueSlot, false);
     BCSlot *idxSlot = --sp;
     const size_t idx = static_cast<size_t>(idxSlot->i64);
     setSlotOwnsString(idxSlot, false);
-    BCSlot *arrSlot = --sp;
+    --sp;
     auto *arr = static_cast<double *>(arrSlot->ptr);
     setSlotOwnsString(arrSlot, false);
     arr[idx] = value;
@@ -1722,7 +1740,24 @@ L_TRAP_KIND: {
     uint8_t raw = static_cast<uint8_t>(trapKind_);
     int64_t ilKind = (raw <= 11) ? static_cast<int64_t>(raw) : 9;
     sp->i64 = ilKind;
+    setSlotOwnsString(sp, false);
     sp++;
+    DISPATCH();
+}
+
+L_LINE:
+    DISPATCH();
+
+L_WATCH_VAR:
+    DISPATCH();
+
+L_BREAKPOINT: {
+    SYNC_STATE();
+    const uint32_t breakpointPc = pc > 0 ? pc - 1 : 0;
+    if (requestDebugPause(true, breakpointPc)) {
+        state_ = VMState::Halted;
+        return;
+    }
     DISPATCH();
 }
 

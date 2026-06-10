@@ -31,6 +31,7 @@
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widget.h"
 #include <stdlib.h>
@@ -83,57 +84,15 @@ static vg_widget_vtable_t g_floatingpanel_vtable = {
 /// @brief Fill a rounded rectangle, falling back to a plain rect when radius is zero or too large.
 static void floatingpanel_fill_round_rect(
     vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
-    if (w <= 0 || h <= 0)
-        return;
-
-    int32_t max_radius = w < h ? w / 2 : h / 2;
-    if (radius <= 0 || max_radius <= 0) {
-        vgfx_fill_rect(win, x, y, w, h, color);
-        return;
-    }
-    if (radius > max_radius)
-        radius = max_radius;
-    if (w <= radius * 2 || h <= radius * 2) {
-        vgfx_fill_rect(win, x, y, w, h, color);
-        return;
-    }
-
-    vgfx_fill_rect(win, x + radius, y, w - radius * 2, h, color);
-    vgfx_fill_rect(win, x, y + radius, radius, h - radius * 2, color);
-    vgfx_fill_rect(win, x + w - radius, y + radius, radius, h - radius * 2, color);
-    vgfx_fill_circle(win, x + radius, y + radius, radius, color);
-    vgfx_fill_circle(win, x + w - radius - 1, y + radius, radius, color);
-    vgfx_fill_circle(win, x + radius, y + h - radius - 1, radius, color);
-    vgfx_fill_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
+    // Delegated to the shared anti-aliased core (Refined Depth).
+    vg_draw_round_rect_fill(win, (float)x, (float)y, (float)w, (float)h, (float)radius, color);
 }
 
-/// @brief Stroke the border of a rounded rectangle, falling back to a plain rect when radius is
-/// zero or too large.
+/// @brief Stroke the border of a rounded rectangle via the shared AA core.
 static void floatingpanel_stroke_round_rect(
     vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
-    if (w <= 1 || h <= 1)
-        return;
-
-    int32_t max_radius = w < h ? w / 2 : h / 2;
-    if (radius <= 0 || max_radius <= 0) {
-        vgfx_rect(win, x, y, w, h, color);
-        return;
-    }
-    if (radius > max_radius)
-        radius = max_radius;
-    if (w <= radius * 2 || h <= radius * 2) {
-        vgfx_rect(win, x, y, w, h, color);
-        return;
-    }
-
-    vgfx_line(win, x + radius, y, x + w - radius - 1, y, color);
-    vgfx_line(win, x + radius, y + h - 1, x + w - radius - 1, y + h - 1, color);
-    vgfx_line(win, x, y + radius, x, y + h - radius - 1, color);
-    vgfx_line(win, x + w - 1, y + radius, x + w - 1, y + h - radius - 1, color);
-    vgfx_circle(win, x + radius, y + radius, radius, color);
-    vgfx_circle(win, x + w - radius - 1, y + radius, radius, color);
-    vgfx_circle(win, x + radius, y + h - radius - 1, radius, color);
-    vgfx_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
+    vg_draw_round_rect_stroke(win, (float)x, (float)y, (float)w, (float)h, (float)radius, 1.0f,
+                              color);
 }
 
 /// @brief Create a floating panel widget and optionally attach it to a root widget.
@@ -275,13 +234,14 @@ static void floatingpanel_paint_overlay(vg_widget_t *widget, void *canvas) {
     uint32_t border_color = panel->border_color
                                 ? panel->border_color
                                 : (theme ? theme->colors.border_primary : 0x334156u);
-    uint32_t shadow_color = vg_color_darken(bg_color, 0.65f);
-    uint32_t inner_shadow = vg_color_darken(bg_color, 0.45f);
     uint32_t highlight = vg_color_lighten(bg_color, 0.06f);
     uint32_t accent = theme ? theme->colors.accent_primary : border_color;
 
-    floatingpanel_fill_round_rect(win, px + 4, py + 6, pw, ph, radius, shadow_color);
-    floatingpanel_fill_round_rect(win, px + 2, py + 3, pw, ph, radius, inner_shadow);
+    // Real soft drop shadow (floating elevation) + anti-aliased panel body.
+    vg_elevation_t el = theme ? theme->elevation.level3 : (vg_elevation_t){20.0f, 0, 8, 90};
+    uint32_t shadow_rgb = theme ? theme->elevation.shadow_rgb : 0x000000u;
+    vg_draw_round_rect_shadow(win, (float)px, (float)py, (float)pw, (float)ph, (float)radius,
+                              el.blur, el.dx, el.dy, el.alpha, shadow_rgb);
     floatingpanel_fill_round_rect(win, px, py, pw, ph, radius, bg_color);
     if (pw > radius * 2)
         vgfx_fill_rect(win, px + radius, py + 1, pw - radius * 2, 1, highlight);

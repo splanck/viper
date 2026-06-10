@@ -74,10 +74,10 @@ class BytecodeCompiler {
     BytecodeModule module_;
 
     /// @brief The IL module being compiled (used for global lookups).
-    const il::core::Module *ilModule_;
+    const il::core::Module *ilModule_ = nullptr;
 
     /// @brief Pointer to the BytecodeFunction currently being compiled.
-    BytecodeFunction *currentFunc_;
+    BytecodeFunction *currentFunc_ = nullptr;
 
     /// @brief Name of the function currently being compiled.
     std::string currentFunctionName_;
@@ -99,7 +99,7 @@ class BytecodeCompiler {
     std::unordered_map<uint32_t, uint32_t> ssaToLocal_;
 
     /// @brief Next available local slot index for the current function.
-    uint32_t nextLocal_;
+    uint32_t nextLocal_ = 0;
 
     /// @brief Per-local string classification for the current function.
     /// @details Indexed by bytecode local slot. A value of 1 means the slot
@@ -124,20 +124,27 @@ class BytecodeCompiler {
     /// @brief A pending branch fixup requiring offset resolution after all blocks
     ///        have been emitted.
     struct BranchFixup {
-        uint32_t codeOffset;     ///< Index into the code vector where the offset is stored.
+        uint32_t codeOffset = 0; ///< Index into the code vector where the offset is stored.
         std::string targetLabel; ///< Target block label to resolve.
-        bool isLong;             ///< True if the offset is 24-bit; false for 16-bit.
-        bool isRaw; ///< True if the offset is stored as a raw i32 (not encoded in opcode).
+        bool isLong = false;     ///< True if the offset is 24-bit; false for 16-bit.
+        bool isRaw = false; ///< True if the offset is stored as a raw i32 (not encoded in opcode).
+        il::support::SourceLoc loc{}; ///< Source location of the branch instruction.
     };
 
     /// @brief List of branch fixups accumulated during function compilation.
     std::vector<BranchFixup> pendingBranches_;
 
     /// @brief Current operand stack depth during emission (for max stack calculation).
-    int32_t currentStackDepth_;
+    int32_t currentStackDepth_ = 0;
 
     /// @brief Maximum operand stack depth observed during compilation of the current function.
-    int32_t maxStackDepth_;
+    int32_t maxStackDepth_ = 0;
+
+    /// @brief Maximum statically known alloca usage in the current function.
+    /// @details Constant alloca sizes are summed conservatively into this
+    ///          field. A dynamic size records the VM's current alloca arena cap
+    ///          so consumers know the function may use the full runtime budget.
+    uint32_t maxAllocaSize_ = 0;
 
     /// @brief Compile a single IL function into a BytecodeFunction.
     /// @details Builds the SSA-to-locals map, linearizes blocks, emits bytecode
@@ -254,6 +261,22 @@ class BytecodeCompiler {
     ///          signed offset from the branch instruction to the target block
     ///          and encodes it into the previously emitted placeholder.
     void resolveBranches();
+
+    /// @brief Rebuild function metadata derived from the emitted bytecode.
+    /// @details Scans the finalized instruction stream after branch offsets
+    ///          have been resolved and populates switch table metadata and
+    ///          exception handler ranges. This keeps the metadata vectors in
+    ///          sync with the executable bytecode without changing instruction
+    ///          encoding.
+    void rebuildDerivedMetadata();
+
+    /// @brief Record a compile-time alloca size contribution.
+    /// @details Constant non-negative sizes are aligned to the VM's alloca
+    ///          granularity and contribute to @ref maxAllocaSize_. Dynamic
+    ///          sizes conservatively mark the function as potentially using
+    ///          the full alloca arena.
+    /// @param sizeOperand Operand passed to the IL alloca instruction.
+    void recordAllocaSize(const il::core::Value &sizeOperand);
 
     /// @brief Record that the operand stack grows by @p count entries.
     /// @details Updates currentStackDepth_ and maxStackDepth_ for accurate

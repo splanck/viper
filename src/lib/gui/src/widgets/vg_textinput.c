@@ -24,6 +24,7 @@
 //
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
@@ -857,36 +858,23 @@ static void textinput_paint(vg_widget_t *widget, void *canvas) {
         }
     }
 
-    vgfx_fill_rect(win,
-                   (int32_t)widget->x,
-                   (int32_t)widget->y,
-                   (int32_t)widget->width,
-                   (int32_t)widget->height,
-                   bg_color);
-    if (widget->width > 2.0f) {
-        vgfx_fill_rect(win,
-                       (int32_t)widget->x + 1,
-                       (int32_t)widget->y + 1,
-                       (int32_t)widget->width - 2,
-                       1,
-                       vg_color_lighten(bg_color, 0.06f));
+    // Refined Depth: a recessed rounded field with a soft accent glow on focus
+    // and an anti-aliased border, all via the shared vg_draw core.
+    float ix = widget->x, iy = widget->y, iw = widget->width, ih = widget->height;
+    float irad = theme->input.border_radius > 0.0f ? theme->input.border_radius : 4.0f;
+    bool ti_focused = (widget->state & VG_STATE_FOCUSED) != 0;
+    bool ti_disabled = (widget->state & VG_STATE_DISABLED) != 0;
+
+    if (ti_focused && !ti_disabled) {
+        vg_draw_round_rect_shadow(win, ix, iy, iw, ih, irad, theme->focus.glow_width * 2.5f, 0, 0,
+                                  theme->focus.glow_alpha, theme->focus.glow_color);
     }
-    vgfx_rect(win,
-              (int32_t)widget->x,
-              (int32_t)widget->y,
-              (int32_t)widget->width,
-              (int32_t)widget->height,
-              border_color);
-    if (widget->width > 2.0f) {
-        uint32_t accent = (widget->state & VG_STATE_FOCUSED) ? theme->colors.accent_primary
-                                                             : vg_color_darken(border_color, 0.15f);
-        vgfx_fill_rect(win,
-                       (int32_t)widget->x + 1,
-                       (int32_t)(widget->y + widget->height - 2.0f),
-                       (int32_t)widget->width - 2,
-                       2,
-                       accent);
-    }
+    vg_draw_round_rect_fill(win, ix, iy, iw, ih, irad, bg_color);
+    if (iw > 2.0f && !ti_disabled)
+        vg_draw_inner_highlight_top(win, ix, iy + 1.0f, iw, irad,
+                                    vg_color_lighten(bg_color, 0.06f));
+    float ti_bw = theme->input.border_width > 0.0f ? theme->input.border_width : 1.0f;
+    vg_draw_round_rect_stroke(win, ix, iy, iw, ih, irad, ti_bw, border_color);
 
     // Calculate text area
     float padding = theme->input.padding_h;

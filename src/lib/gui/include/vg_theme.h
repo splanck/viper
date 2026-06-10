@@ -154,6 +154,60 @@ typedef struct vg_scrollbar_theme {
 } vg_scrollbar_theme_t;
 
 //=============================================================================
+// Refined Depth visual tokens
+//=============================================================================
+
+/// @brief Named corner-radius presets (px) giving the UI one rounding language.
+typedef struct vg_radius_scale {
+    float none; ///< Square corners (0).
+    float sm;   ///< Small radius (chips, tags, inline controls).
+    float md;   ///< Medium radius (buttons, inputs, tabs).
+    float lg;   ///< Large radius (cards, dialogs, popovers).
+    float xl;   ///< Extra-large radius (hero panels).
+    float pill; ///< Fully rounded; the renderer clamps to half the short side.
+} vg_radius_scale_t;
+
+/// @brief One elevation level: a soft drop shadow described by blur, offset and
+///        peak opacity over the shared shadow colour.
+typedef struct vg_elevation {
+    float blur;    ///< Blur radius in pixels (0 disables the shadow).
+    int dx;        ///< Horizontal shadow offset in pixels.
+    int dy;        ///< Vertical shadow offset in pixels.
+    uint8_t alpha; ///< Peak shadow opacity (0-255).
+} vg_elevation_t;
+
+/// @brief The elevation scale: shared shadow colour plus four depth levels.
+typedef struct vg_elevation_scale {
+    uint32_t shadow_rgb;   ///< Shadow colour (0x00RRGGBB), usually near-black.
+    vg_elevation_t level0; ///< Flush with the surface (no shadow).
+    vg_elevation_t level1; ///< Subtle lift (buttons, inputs).
+    vg_elevation_t level2; ///< Raised (dropdowns, menus, tooltips).
+    vg_elevation_t level3; ///< Floating (dialogs, floating panels).
+} vg_elevation_scale_t;
+
+/// @brief Subtle top-to-bottom gradient applied to raised surfaces.
+typedef struct vg_gradient_theme {
+    bool enabled;   ///< Master switch; false => flat fills everywhere.
+    float strength; ///< Top/bottom lightness delta in [0,1] (e.g. 0.06 subtle).
+} vg_gradient_theme_t;
+
+/// @brief Appearance of the keyboard-focus glow drawn around focused widgets.
+typedef struct vg_focus_theme {
+    uint32_t glow_color; ///< Glow colour (0x00RRGGBB), usually accent_primary.
+    float glow_width;    ///< Glow ring stroke width in pixels.
+    uint8_t glow_alpha;  ///< Peak glow opacity (0-255).
+} vg_focus_theme_t;
+
+/// @brief Durations for state-change animations (hover/press/focus). When
+///        disabled, widgets snap instantly — a built-in "reduce motion" path.
+typedef struct vg_motion_theme {
+    bool enabled;   ///< When false, no tweening (instant state changes).
+    float hover_ms; ///< Hover fade duration in milliseconds.
+    float press_ms; ///< Press feedback duration in milliseconds.
+    float focus_ms; ///< Focus-ring fade duration in milliseconds.
+} vg_motion_theme_t;
+
+//=============================================================================
 // Complete Theme
 //=============================================================================
 
@@ -171,6 +225,12 @@ typedef struct vg_theme {
     vg_scrollbar_theme_t scrollbar; ///< Scrollbar style overrides.
     float ui_scale;                 ///< HiDPI pixel scale factor (1.0 = standard, 2.0 = Retina).
                     ///< Set by the app after vg_theme_set_current; treat 0.0 as 1.0.
+    // Refined Depth visual tokens (appended; zero-safe for legacy initializers).
+    vg_radius_scale_t radius;       ///< Corner-radius scale.
+    vg_elevation_scale_t elevation; ///< Soft-shadow elevation levels.
+    vg_gradient_theme_t gradient;   ///< Subtle surface gradient.
+    vg_focus_theme_t focus;         ///< Focus-ring glow.
+    vg_motion_theme_t motion;       ///< State-change animation timings.
 } vg_theme_t;
 
 //=============================================================================
