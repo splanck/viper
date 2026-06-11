@@ -39,6 +39,7 @@
 #include <iterator>
 #include <mutex>
 #include <sstream>
+#include <stdexcept>
 #include <unordered_map>
 #include <vector>
 
@@ -57,15 +58,17 @@ constexpr std::size_t kMaxAssetCacheEntries = 64;
 static std::string contentHashForFile(const fs::path &path) {
     std::error_code ec;
     const auto size = fs::file_size(path, ec);
-    if (ec || size > kMaxAssetFileBytes)
-        return "?";
+    if (ec)
+        throw std::runtime_error("cannot stat asset for cache key: " + path.string());
+    if (size > kMaxAssetFileBytes)
+        throw std::runtime_error("asset file too large for cache key: " + path.string());
     std::ifstream in(path, std::ios::binary);
     if (!in)
-        return "?";
+        throw std::runtime_error("cannot read asset for cache key: " + path.string());
     std::vector<uint8_t> data((std::istreambuf_iterator<char>(in)),
                               std::istreambuf_iterator<char>());
     if (!in.good() && !in.eof())
-        return "?";
+        throw std::runtime_error("failed while reading asset for cache key: " + path.string());
     return data.empty() ? viper::pkg::sha256Hex(nullptr, 0)
                         : viper::pkg::sha256Hex(data.data(), data.size());
 }
@@ -452,8 +455,14 @@ std::optional<AssetBundle> compileAssets(const il::tools::common::ProjectConfig 
 
     {
         std::lock_guard<std::mutex> lock(cacheMutex);
-        if (cache.size() >= kMaxAssetCacheEntries && cache.find(cacheKey) == cache.end())
-            cache.erase(cache.begin());
+        if (cache.size() >= kMaxAssetCacheEntries && cache.find(cacheKey) == cache.end()) {
+            auto victim = std::min_element(
+                cache.begin(), cache.end(), [](const auto &lhs, const auto &rhs) {
+                    return lhs.first < rhs.first;
+                });
+            if (victim != cache.end())
+                cache.erase(victim);
+        }
         cache[cacheKey] = bundle;
     }
     return bundle;

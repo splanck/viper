@@ -94,6 +94,13 @@ func main() {
                   and diag!.code == "W123",
                   "problem matcher preserves colon and space path") == false { return; }
 
+    if assertTrue(buildSys.FormatDuration(850) == "850ms"
+                  and buildSys.FormatDuration(0) == "0ms"
+                  and buildSys.FormatDuration(1000) == "1.0s"
+                  and buildSys.FormatDuration(1234) == "1.2s"
+                  and buildSys.FormatDuration(12340) == "12.3s",
+                  "build duration formats sub-second as ms and longer as seconds") == false { return; }
+
     var ziaBin = ArgValue("--zia-bin");
     if assertTrue(ziaBin != "", "zia binary argument provided") == false { return; }
     var viperBin = ArgValue("--viper-bin");

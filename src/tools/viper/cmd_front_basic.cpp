@@ -27,6 +27,7 @@
 #include "il/verify/Verifier.hpp"
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
+#include "tools/common/ScopedProcess.hpp"
 #include "tools/common/source_loader.hpp"
 #include "tools/common/vm_executor.hpp"
 #include "viper/il/IO.hpp"
@@ -38,14 +39,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-
-#ifdef _WIN32
-/// @brief POSIX setenv shim for Windows, implemented via _putenv_s.
-/// @note The overwrite flag is ignored; _putenv_s always overwrites.
-inline int setenv(const char *name, const char *value, int /*overwrite*/) {
-    return _putenv_s(name, value);
-}
-#endif
 
 using namespace il;
 using namespace il::frontends::basic;
@@ -156,7 +149,7 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
                     continue;
                 case ilc::SharedOptionParseResult::Error:
                     return il::support::Expected<FrontBasicConfig>(il::support::Diagnostic{
-                        il::support::Severity::Error, "failed to parse shared option", {}, {}});
+                        il::support::Severity::Error, ilc::lastSharedOptionError(), {}, {}});
                 case ilc::SharedOptionParseResult::NotMatched:
                     return il::support::Expected<FrontBasicConfig>(il::support::Diagnostic{
                         il::support::Severity::Error, "unknown flag", {}, {}});
@@ -203,9 +196,13 @@ int runFrontBasic(const FrontBasicConfig &config,
     BasicCompilerInput compilerInput{source, config.sourcePath};
     compilerInput.fileId = config.sourceFileId;
 
-    // Feature control: default ON; allow disabling via CLI for debugging/tests via env var.
+    std::optional<viper::tools::ScopedEnvVar> noRuntimeNamespacesEnv;
     if (config.noRuntimeNamespaces) {
-        setenv("VIPER_NO_RUNTIME_NAMESPACES", "1", 1);
+        noRuntimeNamespacesEnv.emplace("VIPER_NO_RUNTIME_NAMESPACES", "1");
+        if (!noRuntimeNamespacesEnv->ok()) {
+            std::cerr << "error: " << noRuntimeNamespacesEnv->errorMessage() << "\n";
+            return 1;
+        }
     }
 
     auto result = compileBasic(compilerInput, compilerOpts, sm);
@@ -294,9 +291,11 @@ int runFrontBasic(const FrontBasicConfig &config,
         return 1;
     }
 
+    std::optional<viper::tools::ScopedStdinRedirect> stdinRedirect;
     if (!config.shared.stdinPath.empty()) {
-        if (!freopen(config.shared.stdinPath.c_str(), "r", stdin)) {
-            std::cerr << "unable to open stdin file\n";
+        stdinRedirect.emplace(config.shared.stdinPath);
+        if (!stdinRedirect->ok()) {
+            std::cerr << "unable to open stdin file: " << stdinRedirect->errorMessage() << "\n";
             return 1;
         }
     }

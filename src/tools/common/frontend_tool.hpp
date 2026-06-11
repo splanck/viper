@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include "tools/common/ScopedProcess.hpp"
 #include "tools/common/native_compiler.hpp"
 
 #include <algorithm>
@@ -28,13 +29,6 @@
 #include <string>
 #include <string_view>
 #include <vector>
-
-#ifdef _WIN32
-#include <io.h>
-#include <process.h>
-#else
-#include <unistd.h>
-#endif
 
 namespace viper::tools {
 
@@ -147,13 +141,17 @@ inline FrontendToolConfig parseArgs(int argc, char **argv, const FrontendToolCal
             }
             config.outputPath = argv[++i];
             config.emitIl = true; // -o implies emit-il
-        } else if (arg == "--arch") {
-            if (i + 1 >= argc) {
+        } else if (arg == "--arch" || arg.starts_with("--arch=")) {
+            std::string_view val;
+            if (arg.starts_with("--arch=")) {
+                val = arg.substr(std::string_view("--arch=").size());
+            } else if (i + 1 >= argc) {
                 std::cerr << "error: --arch requires arm64 or x64\n\n";
                 callbacks.printUsage();
                 std::exit(1);
+            } else {
+                val = argv[++i];
             }
-            std::string_view val = argv[++i];
             if (val == "arm64")
                 config.archOverride = TargetArch::ARM64;
             else if (val == "x64")
@@ -175,13 +173,12 @@ inline FrontendToolConfig parseArgs(int argc, char **argv, const FrontendToolCal
             // Check if this flag takes an argument
             if (arg == "--stdin-from" || arg == "--max-steps" || arg == "--diagnostic-format" ||
                 arg == "--build-profile") {
-                if (i + 1 < argc && argv[i + 1][0] != '-') {
-                    config.forwardedArgs.push_back(argv[++i]);
-                } else {
+                if (i + 1 >= argc) {
                     std::cerr << "error: " << arg << " requires an argument\n\n";
                     callbacks.printUsage();
                     std::exit(1);
                 }
+                config.forwardedArgs.push_back(argv[++i]);
             }
         } else if (endsWithExtensionInsensitive(arg, callbacks.fileExtension)) {
             if (!config.sourcePath.empty()) {
@@ -274,10 +271,10 @@ inline std::vector<char *> buildIlcArgs(const FrontendToolConfig &config,
 ///          1. Parse arguments via @ref parseArgs.
 ///          2. Detect whether `-o` requests a native binary (a non-`.il` output
 ///             extension); if so, redirect IL emission to a temporary file so the
-///             native code generator can consume it afterwards.
-///          3. When an output path is set, redirect @c stdout to that file with
-///             @c freopen (saving and later restoring the original descriptor so
-///             native codegen can still write to the terminal).
+    ///             native code generator can consume it afterwards.
+    ///          3. When an output path is set, redirect @c stdout with
+    ///             @ref ScopedStdoutRedirect so the descriptor is restored before
+    ///             native codegen writes to the terminal.
 ///          4. Delegate to @ref FrontendToolCallbacks::frontendCommand to emit IL
 ///             or run the program.
 ///          5. On success with native output, invoke @ref compileToNative using
@@ -314,15 +311,8 @@ inline int runFrontendTool(int argc, char **argv, const FrontendToolCallbacks &c
     std::vector<char *> ilcArgs = buildIlcArgs(config, argStorage);
 
     // Handle -o output redirection (either to real file or temp file for native)
-    FILE *outputFile = nullptr;
-    int savedStdoutFd = -1;
+    std::optional<ScopedStdoutRedirect> stdoutRedirect;
     if (!config.outputPath.empty()) {
-        // Save stdout so we can restore it after IL emission (needed for native codegen output)
-#ifdef _WIN32
-        savedStdoutFd = _dup(_fileno(stdout));
-#else
-        savedStdoutFd = dup(fileno(stdout));
-#endif
         const std::filesystem::path outputParent =
             std::filesystem::path(config.outputPath).parent_path();
         if (!outputParent.empty()) {
@@ -331,26 +321,12 @@ inline int runFrontendTool(int argc, char **argv, const FrontendToolCallbacks &c
             if (ec) {
                 std::cerr << "error: failed to create output directory: " << outputParent.string()
                           << ": " << ec.message() << "\n";
-                if (savedStdoutFd >= 0) {
-#ifdef _WIN32
-                    _close(savedStdoutFd);
-#else
-                    close(savedStdoutFd);
-#endif
-                }
                 return 1;
             }
         }
-        outputFile = std::freopen(config.outputPath.c_str(), "w", stdout);
-        if (!outputFile) {
-            std::cerr << "error: failed to open output file: " << config.outputPath << "\n";
-            if (savedStdoutFd >= 0) {
-#ifdef _WIN32
-                _close(savedStdoutFd);
-#else
-                close(savedStdoutFd);
-#endif
-            }
+        stdoutRedirect.emplace(config.outputPath);
+        if (!stdoutRedirect->ok()) {
+            std::cerr << "error: " << stdoutRedirect->errorMessage() << "\n";
             return 1;
         }
     }
@@ -359,30 +335,10 @@ inline int runFrontendTool(int argc, char **argv, const FrontendToolCallbacks &c
     int result = callbacks.frontendCommand(static_cast<int>(ilcArgs.size()), ilcArgs.data());
 
     // Restore stdout if we redirected it
-    if (outputFile) {
-        if (std::fflush(stdout) != 0 && result == 0) {
-            std::cerr << "error: failed to flush output file: " << config.outputPath << "\n";
+    if (stdoutRedirect) {
+        if (!stdoutRedirect->finish() && result == 0) {
+            std::cerr << "error: " << stdoutRedirect->errorMessage() << "\n";
             result = 1;
-        }
-        if (savedStdoutFd >= 0) {
-#ifdef _WIN32
-            if (_dup2(savedStdoutFd, _fileno(stdout)) < 0 && result == 0) {
-                std::cerr << "error: failed to restore stdout\n";
-                result = 1;
-            }
-            _close(savedStdoutFd);
-#else
-            if (dup2(savedStdoutFd, fileno(stdout)) < 0 && result == 0) {
-                std::cerr << "error: failed to restore stdout\n";
-                result = 1;
-            }
-            close(savedStdoutFd);
-#endif
-        } else {
-            if (std::fclose(outputFile) != 0 && result == 0) {
-                std::cerr << "error: failed to close output file: " << config.outputPath << "\n";
-                result = 1;
-            }
         }
     }
 

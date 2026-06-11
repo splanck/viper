@@ -23,6 +23,7 @@
 #include "runtime/core/rt_args.h"
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
+#include "tools/common/ScopedProcess.hpp"
 #include "tools/common/module_loader.hpp"
 #include "viper/vm/VM.hpp"
 
@@ -42,21 +43,6 @@
 #include <system_error>
 #include <utility>
 #include <vector>
-
-#ifdef _WIN32
-#include <stdlib.h>
-
-/// @brief POSIX setenv shim for Windows, implemented via _putenv_s.
-/// @note The overwrite flag is ignored; _putenv_s always overwrites.
-inline int setenv(const char *name, const char *value, int /*overwrite*/) {
-    return _putenv_s(name, value);
-}
-
-/// @brief POSIX unsetenv shim for Windows, implemented by clearing the environment value.
-inline int unsetenv(const char *name) {
-    return _putenv_s(name, "");
-}
-#endif
 
 using namespace il;
 
@@ -93,34 +79,6 @@ struct BenchResult {
     int64_t returnValue = 0;
     bool success = true;
     std::string errorMessage;
-};
-
-/// @brief Temporarily override a process environment variable for one benchmark iteration.
-/// @details The standard VM selects dispatch through VIPER_DISPATCH. This guard restores the prior
-///          value, or clears the variable when it was previously absent, so one strategy does not
-///          leak into later strategies or files.
-class ScopedEnvVar {
-  public:
-    ScopedEnvVar(const char *name, const char *value) : name_(name) {
-        if (const char *old = std::getenv(name_.c_str())) {
-            oldValue_ = old;
-        }
-        setenv(name_.c_str(), value, 1);
-    }
-
-    ~ScopedEnvVar() {
-        if (oldValue_)
-            setenv(name_.c_str(), oldValue_->c_str(), 1);
-        else
-            unsetenv(name_.c_str());
-    }
-
-    ScopedEnvVar(const ScopedEnvVar &) = delete;
-    ScopedEnvVar &operator=(const ScopedEnvVar &) = delete;
-
-  private:
-    std::string name_;
-    std::optional<std::string> oldValue_;
 };
 
 /// @brief Clear runtime argv state for the duration of a benchmark iteration.
@@ -296,7 +254,12 @@ BenchResult runBenchmarkIteration(const core::Module &mod,
     result.strategy = strategy;
 
     RuntimeArgsScope runtimeArgs;
-    ScopedEnvVar dispatchOverride("VIPER_DISPATCH", strategy.c_str());
+    viper::tools::ScopedEnvVar dispatchOverride("VIPER_DISPATCH", strategy.c_str());
+    if (!dispatchOverride.ok()) {
+        result.success = false;
+        result.errorMessage = dispatchOverride.errorMessage();
+        return result;
+    }
 
     // Create Runner with minimal configuration
     vm::RunConfig runCfg;
@@ -308,6 +271,11 @@ BenchResult runBenchmarkIteration(const core::Module &mod,
         vm::Runner runner(mod, std::move(runCfg));
         result.returnValue = runner.run();
         result.instructions = runner.instructionCount();
+        if (const auto trap = runner.lastTrapMessage()) {
+            result.success = false;
+            result.errorMessage = *trap;
+            return result;
+        }
     } catch (const std::exception &ex) {
         result.success = false;
         result.errorMessage = ex.what();
@@ -523,18 +491,59 @@ bool benchmarkFile(const std::string &file,
     return true;
 }
 
-/// @brief Print results in text format.
+/// @brief Quote one benchmark text field using JSON-style escapes.
+/// @details Text output is meant to be parseable even when file paths or error
+///          messages contain whitespace, quotes, or control characters. This
+///          helper returns a double-quoted token with common C escapes.
+std::string quoteBenchField(std::string_view input) {
+    std::string out = "\"";
+    for (char c : input) {
+        switch (c) {
+            case '"':
+                out += "\\\"";
+                break;
+            case '\\':
+                out += "\\\\";
+                break;
+            case '\n':
+                out += "\\n";
+                break;
+            case '\r':
+                out += "\\r";
+                break;
+            case '\t':
+                out += "\\t";
+                break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    out += "\\u00";
+                    constexpr char hex[] = "0123456789abcdef";
+                    out.push_back(hex[(static_cast<unsigned char>(c) >> 4) & 0xF]);
+                    out.push_back(hex[static_cast<unsigned char>(c) & 0xF]);
+                } else {
+                    out.push_back(c);
+                }
+                break;
+        }
+    }
+    out.push_back('"');
+    return out;
+}
+
+/// @brief Print benchmark results in a parse-friendly text format.
 void printTextResults(const std::vector<BenchResult> &results) {
     for (const auto &r : results) {
         if (!r.success) {
-            std::cout << "BENCH " << r.file << " " << r.strategy << " FAILED";
+            std::cout << "BENCH file=" << quoteBenchField(r.file)
+                      << " strategy=" << quoteBenchField(r.strategy) << " FAILED";
             if (!r.errorMessage.empty())
-                std::cout << " error=\"" << r.errorMessage << "\"";
+                std::cout << " error=" << quoteBenchField(r.errorMessage);
             std::cout << "\n";
             continue;
         }
         std::cout << std::fixed << std::setprecision(2);
-        std::cout << "BENCH " << r.file << " " << r.strategy << " instr=" << r.instructions
+        std::cout << "BENCH file=" << quoteBenchField(r.file)
+                  << " strategy=" << quoteBenchField(r.strategy) << " instr=" << r.instructions
                   << " time_ms=" << r.timeMs << " insns_per_sec=" << std::setprecision(0)
                   << r.insnsPerSec << "\n";
     }

@@ -152,11 +152,26 @@ func UpdateJob(shell: app_shell.AppShell,
         }
         if buildSys.IsActive() == false {
             shell.SetBuildJobActive(false, "");
+            var errs = buildSys.GetErrorCount();
+            var warns = buildSys.GetWarningCount();
             if buildSys.lastBuildSuccess {
-                shell.SetStatusLeft(buildSys.activeName + " succeeded in " + buildSys.GetBuildTime());
-                GUI.Toast.Success(buildSys.activeName + " succeeded");
+                var okMsg = buildSys.activeName + " succeeded in " + buildSys.GetBuildTime();
+                if warns > 0 {
+                    okMsg = okMsg + " — " + countLabel(warns, "warning");
+                    GUI.Toast.Warning(buildSys.activeName + " succeeded with " + countLabel(warns, "warning"));
+                } else {
+                    GUI.Toast.Success(buildSys.activeName + " succeeded");
+                }
+                shell.SetStatusLeft(okMsg);
             } else {
-                shell.SetStatusLeft(buildSys.activeName + " failed: exit " + buildSys.exitCode);
+                var detail = problemSummary(errs, warns);
+                var failMsg = buildSys.activeName + " failed in " + buildSys.GetBuildTime();
+                if detail != "" {
+                    failMsg = failMsg + " — " + detail;
+                } else {
+                    failMsg = failMsg + " (exit " + buildSys.exitCode + ")";
+                }
+                shell.SetStatusLeft(failMsg);
                 GUI.Toast.Error(buildSys.activeName + " failed");
             }
             UpdateDiagnostics(shell, buildSys, locStore);
@@ -205,6 +220,11 @@ func UpdateDiagnostics(shell: app_shell.AppShell,
     shell.FinishProblems(diagCount);
 
     PopulateBuildOutput(shell, buildSys, locStore);
+    // Land on the Problems tab when there is something to triage — those rows are
+    // click-to-navigate — while a clean build stays on the Output log.
+    if diagCount > 0 {
+        shell.ShowProblemsPanel();
+    }
 }
 
 func PopulateBuildOutput(shell: app_shell.AppShell,
@@ -256,6 +276,23 @@ func FormatCommand(cfg: run_config.RunConfig) -> String {
         i = i + 1;
     }
     return text;
+}
+
+/// @brief Pluralize a count for status text ("1 error" / "3 errors").
+func countLabel(n: Integer, noun: String) -> String {
+    if n == 1 { return "1 " + noun; }
+    return "" + n + " " + noun + "s";
+}
+
+/// @brief Combine error and warning counts into a readable summary, or "" when
+///        the build produced no parsed diagnostics (a raw exit-code failure).
+func problemSummary(errors: Integer, warnings: Integer) -> String {
+    if errors > 0 and warnings > 0 {
+        return countLabel(errors, "error") + ", " + countLabel(warnings, "warning");
+    }
+    if errors > 0 { return countLabel(errors, "error"); }
+    if warnings > 0 { return countLabel(warnings, "warning"); }
+    return "";
 }
 
 func EnsureNoActiveJob(shell: app_shell.AppShell,

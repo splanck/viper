@@ -26,9 +26,25 @@
 #include <iostream>
 #include <string_view>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 namespace ilc {
+
+namespace {
+
+thread_local std::string g_lastSharedOptionError;
+
+/// @brief Store a parse error and return the shared parser's error sentinel.
+/// @details The parser intentionally returns a compact enum so existing callers
+///          stay simple; this helper records the detailed user-facing message for
+///          callers that want to surface it.
+SharedOptionParseResult failSharedOption(std::string message) {
+    g_lastSharedOptionError = std::move(message);
+    return SharedOptionParseResult::Error;
+}
+
+} // namespace
 
 /// @brief Parse a viper global option and update the shared options structure.
 ///
@@ -53,6 +69,7 @@ SharedOptionParseResult parseSharedOption(int &index,
                                           int argc,
                                           char **argv,
                                           SharedCliOptions &opts) {
+    g_lastSharedOptionError.clear();
     const std::string_view arg = argv[index];
     if (arg == "--trace" || arg == "--trace=il") {
         opts.trace.mode = il::vm::TraceConfig::IL;
@@ -64,14 +81,14 @@ SharedOptionParseResult parseSharedOption(int &index,
     }
     if (arg == "--stdin-from") {
         if (index + 1 >= argc) {
-            return SharedOptionParseResult::Error;
+            return failSharedOption("--stdin-from requires a file path");
         }
         opts.stdinPath = argv[++index];
         return SharedOptionParseResult::Parsed;
     }
     if (arg == "--max-steps") {
         if (index + 1 >= argc) {
-            return SharedOptionParseResult::Error;
+            return failSharedOption("--max-steps requires a non-negative integer");
         }
         std::string_view value(argv[index + 1]);
         std::uint64_t parsed = 0;
@@ -79,9 +96,21 @@ SharedOptionParseResult parseSharedOption(int &index,
         const char *const end = begin + value.size();
         const auto fc = std::from_chars(begin, end, parsed);
         if (fc.ec != std::errc() || fc.ptr != end) {
-            return SharedOptionParseResult::Error;
+            return failSharedOption("--max-steps must be a non-negative integer");
         }
         ++index;
+        opts.maxSteps = parsed;
+        return SharedOptionParseResult::Parsed;
+    }
+    constexpr std::string_view maxStepsPrefix = "--max-steps=";
+    if (arg.substr(0, maxStepsPrefix.size()) == maxStepsPrefix) {
+        std::string_view value = arg.substr(maxStepsPrefix.size());
+        std::uint64_t parsed = 0;
+        const char *const begin = value.data();
+        const char *const end = begin + value.size();
+        const auto fc = std::from_chars(begin, end, parsed);
+        if (value.empty() || fc.ec != std::errc() || fc.ptr != end)
+            return failSharedOption("--max-steps must be a non-negative integer");
         opts.maxSteps = parsed;
         return SharedOptionParseResult::Parsed;
     }
@@ -93,6 +122,14 @@ SharedOptionParseResult parseSharedOption(int &index,
     if (arg == "--no-bounds-checks") {
         opts.boundsChecks = false;
         opts.boundsChecksSpecified = true;
+        return SharedOptionParseResult::Parsed;
+    }
+    if (arg == "--allow-unsafe-pointers") {
+        opts.allowUnsafePointers = true;
+        return SharedOptionParseResult::Parsed;
+    }
+    if (arg == "--no-unsafe-pointers") {
+        opts.allowUnsafePointers = false;
         return SharedOptionParseResult::Parsed;
     }
     if (arg == "--dump-trap") {
@@ -165,7 +202,7 @@ SharedOptionParseResult parseSharedOption(int &index,
     }
     if (arg == "--diagnostic-format") {
         if (index + 1 >= argc) {
-            return SharedOptionParseResult::Error;
+            return failSharedOption("--diagnostic-format requires text or json");
         }
         std::string_view value(argv[++index]);
         if (value == "text") {
@@ -173,7 +210,7 @@ SharedOptionParseResult parseSharedOption(int &index,
         } else if (value == "json") {
             opts.diagnosticFormat = DiagnosticFormat::Json;
         } else {
-            return SharedOptionParseResult::Error;
+            return failSharedOption("--diagnostic-format must be 'text' or 'json'");
         }
         return SharedOptionParseResult::Parsed;
     }
@@ -185,7 +222,7 @@ SharedOptionParseResult parseSharedOption(int &index,
         } else if (value == "json") {
             opts.diagnosticFormat = DiagnosticFormat::Json;
         } else {
-            return SharedOptionParseResult::Error;
+            return failSharedOption("--diagnostic-format must be 'text' or 'json'");
         }
         return SharedOptionParseResult::Parsed;
     }
@@ -198,6 +235,10 @@ SharedOptionParseResult parseSharedOption(int &index,
         return SharedOptionParseResult::Parsed;
     }
     return SharedOptionParseResult::NotMatched;
+}
+
+const std::string &lastSharedOptionError() {
+    return g_lastSharedOptionError;
 }
 
 void printDiagnostic(const il::support::Diagnostic &diag,

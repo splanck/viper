@@ -260,8 +260,20 @@ class BuildSystem {
         isBuilding = false;
         isRunning = false;
         lastBuildSuccess = code == 0;
-        lastBuildTime = "" + (Viper.Time.GetTickCount() - startMs) + "ms";
+        lastBuildTime = FormatDuration(Viper.Time.GetTickCount() - startMs);
         ParseBuildOutput();
+    }
+
+    /// @brief Format an elapsed millisecond count as a readable duration: "850ms"
+    ///        under a second, "1.2s" at or above one second (rounded to a tenth).
+    expose func FormatDuration(ms: Integer) -> String {
+        var millis = ms;
+        if millis < 0 { millis = 0; }
+        if millis < 1000 { return "" + millis + "ms"; }
+        var tenths = (millis + 50) / 100;
+        var whole = tenths / 10;
+        var frac = tenths - whole * 10;
+        return "" + whole + "." + frac + "s";
     }
 
     // Parse build output for diagnostics (error/warning lines).

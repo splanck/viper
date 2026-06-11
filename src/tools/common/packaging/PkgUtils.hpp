@@ -23,8 +23,10 @@
 #pragma once
 
 #include <algorithm>
+#include <cerrno>
 #include <cctype>
 #include <chrono>
+#include <cstring>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -40,6 +42,15 @@
 #include <vector>
 
 #include "PackageConfig.hpp"
+
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#include <sys/stat.h>
+#else
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 namespace viper::pkg {
 
@@ -125,11 +136,163 @@ inline std::filesystem::path createUniqueTempDirectory(const std::filesystem::pa
     throw std::runtime_error("cannot create a unique temp directory under " + parent.string());
 }
 
-/// @brief Write bytes to @p path via a same-directory temporary file and rename.
-/// @details Parent directories are created as needed. On POSIX this gives an atomic
-///          replacement when the final rename succeeds. On platforms where replacing an
-///          existing file is not atomic through std::filesystem, the function still avoids
-///          exposing a partially-written target file and reports write/rename failures.
+namespace detail {
+
+#ifdef _WIN32
+inline int openExclusiveTempFile(const std::filesystem::path &path) {
+    return _wopen(path.native().c_str(),
+                  _O_WRONLY | _O_CREAT | _O_EXCL | _O_BINARY,
+                  _S_IREAD | _S_IWRITE);
+}
+
+inline int writeTempFileBytes(int fd, const uint8_t *data, size_t size) {
+    size_t written = 0;
+    while (written < size) {
+        const unsigned chunk =
+            static_cast<unsigned>(std::min<size_t>(size - written, 1u << 20));
+        const int n = _write(fd, data + written, chunk);
+        if (n <= 0)
+            return -1;
+        written += static_cast<size_t>(n);
+    }
+    return 0;
+}
+
+inline int syncTempFile(int fd) {
+    return _commit(fd);
+}
+
+inline int closeTempFile(int fd) {
+    return _close(fd);
+}
+
+inline std::string lastIoError() {
+    return std::strerror(errno);
+}
+
+#else
+inline int openExclusiveTempFile(const std::filesystem::path &path) {
+    return open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0666);
+}
+
+inline int writeTempFileBytes(int fd, const uint8_t *data, size_t size) {
+    size_t written = 0;
+    while (written < size) {
+        const ssize_t n = write(fd, data + written, size - written);
+        if (n < 0) {
+            if (errno == EINTR)
+                continue;
+            return -1;
+        }
+        if (n == 0)
+            return -1;
+        written += static_cast<size_t>(n);
+    }
+    return 0;
+}
+
+inline int syncTempFile(int fd) {
+    return fsync(fd);
+}
+
+inline int closeTempFile(int fd) {
+    return close(fd);
+}
+
+inline void syncParentDirectoryBestEffort(const std::filesystem::path &parent) {
+    const int fd = open(parent.c_str(), O_RDONLY);
+    if (fd < 0)
+        return;
+    (void)fsync(fd);
+    (void)close(fd);
+}
+
+inline std::string lastIoError() {
+    return std::strerror(errno);
+}
+#endif
+
+/// @brief Same-directory temporary file reserved with O_EXCL.
+/// @details The descriptor is closed and the path is removed on destruction unless
+///          release() is called after the final rename succeeds.
+class ExclusiveTempFile {
+  public:
+    /// @brief Reserve a unique hidden temp file next to @p finalPath.
+    explicit ExclusiveTempFile(const std::filesystem::path &finalPath) {
+        namespace fs = std::filesystem;
+        const fs::path parent =
+            finalPath.parent_path().empty() ? fs::current_path() : finalPath.parent_path();
+        for (unsigned attempt = 0; attempt < 100; ++attempt) {
+            path_ = parent / ("." + finalPath.filename().string() + ".tmp-" +
+                              uniqueTempSuffix(attempt));
+            fd_ = openExclusiveTempFile(path_);
+            if (fd_ >= 0)
+                return;
+            if (errno != EEXIST) {
+                throw std::runtime_error("cannot create temporary output file '" + path_.string() +
+                                         "': " + lastIoError());
+            }
+        }
+        throw std::runtime_error("cannot find a unique temporary output path for " +
+                                 finalPath.string());
+    }
+
+    /// @brief Close and remove the temp file unless ownership was released.
+    ~ExclusiveTempFile() {
+        if (fd_ >= 0)
+            (void)closeTempFile(fd_);
+        if (!released_ && !path_.empty()) {
+            std::error_code ec;
+            std::filesystem::remove(path_, ec);
+        }
+    }
+
+    ExclusiveTempFile(const ExclusiveTempFile &) = delete;
+    ExclusiveTempFile &operator=(const ExclusiveTempFile &) = delete;
+
+    /// @brief Return the reserved path.
+    [[nodiscard]] const std::filesystem::path &path() const {
+        return path_;
+    }
+
+    /// @brief Return the writable file descriptor.
+    [[nodiscard]] int fd() const {
+        return fd_;
+    }
+
+    /// @brief Close the descriptor after forcing file contents to stable storage.
+    void flushAndClose() {
+        if (fd_ < 0)
+            return;
+        if (syncTempFile(fd_) != 0)
+            throw std::runtime_error("failed to flush temporary output file '" + path_.string() +
+                                     "': " + lastIoError());
+        if (closeTempFile(fd_) != 0) {
+            fd_ = -1;
+            throw std::runtime_error("failed to close temporary output file '" + path_.string() +
+                                     "': " + lastIoError());
+        }
+        fd_ = -1;
+    }
+
+    /// @brief Prevent destructor cleanup after the temp file has been renamed.
+    void release() {
+        released_ = true;
+    }
+
+  private:
+    std::filesystem::path path_;
+    int fd_{-1};
+    bool released_{false};
+};
+
+} // namespace detail
+
+/// @brief Write bytes to @p path via an exclusive same-directory temporary file and rename.
+/// @details Parent directories are created as needed. The temporary path is opened
+///          with exclusive-create semantics to avoid TOCTOU races, data is flushed
+///          before rename, and the destination is never removed as a fallback. On
+///          POSIX, the parent directory is fsync'd best-effort after rename.
 /// @param path Final output path.
 /// @param data Bytes to write.
 /// @throws std::runtime_error on directory creation, file open, write, close, or rename failure.
@@ -142,49 +305,36 @@ inline void writeFileAtomic(const std::filesystem::path &path, const std::vector
         throw std::runtime_error("cannot create output directory '" + parent.string() +
                                  "': " + ec.message());
 
-    fs::path tempPath;
-    for (unsigned attempt = 0; attempt < 100; ++attempt) {
-        tempPath = parent / ("." + path.filename().string() + ".tmp-" + uniqueTempSuffix(attempt));
-        ec.clear();
-        const bool exists = fs::exists(tempPath, ec);
-        if (ec)
-            throw std::runtime_error("cannot inspect temporary output path '" + tempPath.string() +
-                                     "': " + ec.message());
-        if (!exists)
-            break;
-        if (attempt == 99)
-            throw std::runtime_error("cannot find a unique temporary output path for " +
-                                     path.string());
-    }
+    detail::ExclusiveTempFile temp(path);
+    if (!data.empty() && detail::writeTempFileBytes(temp.fd(), data.data(), data.size()) != 0)
+        throw std::runtime_error("failed to write temporary output file '" + temp.path().string() +
+                                 "': " + detail::lastIoError());
+    temp.flushAndClose();
 
-    {
-        std::ofstream out(tempPath, std::ios::binary | std::ios::trunc);
-        if (!out)
-            throw std::runtime_error("cannot write temporary output file: " + tempPath.string());
-        if (!data.empty())
-            out.write(reinterpret_cast<const char *>(data.data()),
-                      static_cast<std::streamsize>(data.size()));
-        if (!out)
-            throw std::runtime_error("failed to write temporary output file: " + tempPath.string());
-        out.close();
-        if (!out)
-            throw std::runtime_error("failed to close temporary output file: " + tempPath.string());
-    }
-
-    ec.clear();
-    fs::rename(tempPath, path, ec);
+    fs::rename(temp.path(), path, ec);
     if (ec) {
-        std::error_code removeEc;
-        fs::remove(path, removeEc);
-        ec.clear();
-        fs::rename(tempPath, path, ec);
-    }
-    if (ec) {
-        std::error_code cleanupEc;
-        fs::remove(tempPath, cleanupEc);
         throw std::runtime_error("cannot move temporary output into place at '" + path.string() +
                                  "': " + ec.message());
     }
+#ifndef _WIN32
+    detail::syncParentDirectoryBestEffort(parent);
+#endif
+    temp.release();
+}
+
+/// @brief Write UTF-8/text content atomically using the package byte writer.
+/// @details Converts @p text to bytes without adding or removing newlines, then
+///          delegates to writeFileAtomic() so text outputs get the same exclusive
+///          temp-file and rename behavior as binary package artifacts.
+/// @param path Final output path.
+/// @param text Complete file contents.
+/// @throws std::runtime_error on directory creation, write, close, or rename failure.
+inline void writeTextFileAtomic(const std::filesystem::path &path, std::string_view text) {
+    const auto *begin = reinterpret_cast<const uint8_t *>(text.data());
+    std::vector<uint8_t> bytes;
+    if (!text.empty())
+        bytes.assign(begin, begin + text.size());
+    writeFileAtomic(path, bytes);
 }
 
 /// @brief Read a file into a byte vector.

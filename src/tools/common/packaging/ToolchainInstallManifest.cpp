@@ -31,11 +31,13 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <fstream>
 #include <limits>
 #include <set>
 #include <sstream>
 #include <stdexcept>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -204,33 +206,107 @@ std::string detectManifestVersion(const fs::path &stagePrefix) {
     return {};
 }
 
-/// @brief Return the canonical architecture string for the host CPU. Used when no
-/// explicit arch is recorded in the staged manifest. Throws for unsupported CPUs
-/// so callers get an early diagnostic rather than silently packaging the wrong arch.
-std::string detectHostArch() {
-#if defined(__aarch64__) || defined(_M_ARM64)
-    return "arm64";
-#elif defined(__x86_64__) || defined(_M_X64) || defined(_M_AMD64)
-    return "x64";
-#else
-    throw std::runtime_error("unsupported host CPU for toolchain packaging; use a staged "
-                             "toolchain with a recognized native viper binary");
-#endif
+/// @brief Platform/architecture identity read from a staged executable.
+/// @details Toolchain packages may be built from cross-staged trees, so host CPU
+///          and OS are not reliable. This structure captures the payload identity
+///          detected from the staged `viper` binary instead.
+struct StagedToolchainIdentity {
+    std::string platform; ///< Canonical package platform: windows, macos, or linux.
+    std::string arch;     ///< Canonical package architecture: x64, arm64, or universal.
+};
+
+/// @brief Read up to @p maxBytes from @p path for executable header inspection.
+/// @return A byte vector containing the prefix; empty only for an empty file.
+std::vector<uint8_t> readBinaryPrefix(const fs::path &path, std::size_t maxBytes) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in)
+        throw std::runtime_error("cannot read staged executable header: " + path.string());
+    std::vector<uint8_t> bytes(maxBytes);
+    in.read(reinterpret_cast<char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    const std::streamsize got = in.gcount();
+    if (got < 0)
+        throw std::runtime_error("cannot read staged executable header: " + path.string());
+    bytes.resize(static_cast<std::size_t>(got));
+    return bytes;
 }
 
-/// @brief Return the canonical platform string for the host OS ("windows", "macos",
-/// or "linux"). Like detectHostArch, throws immediately for unrecognized hosts.
-std::string detectHostPlatform() {
-#if defined(_WIN32)
-    return "windows";
-#elif defined(__APPLE__)
-    return "macos";
-#elif defined(__linux__)
-    return "linux";
-#else
-    throw std::runtime_error("unsupported host platform for toolchain packaging; use a staged "
-                             "toolchain with a recognized native viper binary");
-#endif
+/// @brief Read a little-endian 16-bit value from @p bytes at @p offset.
+uint16_t readLe16(const std::vector<uint8_t> &bytes, std::size_t offset) {
+    if (offset + 2 > bytes.size())
+        throw std::runtime_error("truncated staged executable header");
+    return static_cast<uint16_t>(bytes[offset] | (bytes[offset + 1] << 8));
+}
+
+/// @brief Read a little-endian 32-bit value from @p bytes at @p offset.
+uint32_t readLe32(const std::vector<uint8_t> &bytes, std::size_t offset) {
+    if (offset + 4 > bytes.size())
+        throw std::runtime_error("truncated staged executable header");
+    return static_cast<uint32_t>(bytes[offset]) | (static_cast<uint32_t>(bytes[offset + 1]) << 8) |
+           (static_cast<uint32_t>(bytes[offset + 2]) << 16) |
+           (static_cast<uint32_t>(bytes[offset + 3]) << 24);
+}
+
+/// @brief Detect payload platform and architecture from the staged `viper` binary.
+/// @details Supports PE (Windows), ELF (Linux), thin Mach-O, and universal Mach-O
+///          headers. Throws when the executable format or CPU is unsupported so
+///          cross-packaging cannot silently inherit the build host identity.
+StagedToolchainIdentity detectStagedExecutableIdentity(const fs::path &path) {
+    const std::vector<uint8_t> bytes = readBinaryPrefix(path, 4096);
+    if (bytes.size() >= 64 && bytes[0] == 'M' && bytes[1] == 'Z') {
+        const uint32_t peOffset = readLe32(bytes, 0x3c);
+        if (peOffset + 6 <= bytes.size() && bytes[peOffset] == 'P' && bytes[peOffset + 1] == 'E' &&
+            bytes[peOffset + 2] == 0 && bytes[peOffset + 3] == 0) {
+            const uint16_t machine = readLe16(bytes, peOffset + 4);
+            if (machine == 0x8664)
+                return {"windows", "x64"};
+            if (machine == 0xAA64)
+                return {"windows", "arm64"};
+        }
+        throw std::runtime_error("unsupported Windows viper executable architecture: " +
+                                 path.string());
+    }
+    if (bytes.size() >= 20 && bytes[0] == 0x7f && bytes[1] == 'E' && bytes[2] == 'L' &&
+        bytes[3] == 'F') {
+        const uint16_t machine = readLe16(bytes, 18);
+        if (machine == 62)
+            return {"linux", "x64"};
+        if (machine == 183)
+            return {"linux", "arm64"};
+        throw std::runtime_error("unsupported ELF viper executable architecture: " + path.string());
+    }
+    if (bytes.size() >= 8) {
+        const uint32_t magic = readLe32(bytes, 0);
+        if (magic == 0xfeedfacf || magic == 0xcffaedfe) {
+            const uint32_t cpuType = readLe32(bytes, 4);
+            if (cpuType == 0x01000007)
+                return {"macos", "x64"};
+            if (cpuType == 0x0100000c)
+                return {"macos", "arm64"};
+            throw std::runtime_error("unsupported Mach-O viper executable architecture: " +
+                                     path.string());
+        }
+        if (magic == 0xbebafeca || magic == 0xcafebabe)
+            return {"macos", "universal"};
+    }
+    throw std::runtime_error("cannot determine staged viper executable platform: " + path.string());
+}
+
+/// @brief Find the staged `viper` executable and return its payload identity.
+/// @param stagePrefix Canonical staging root.
+/// @param files Files gathered from the stage or install manifest.
+/// @return Platform and architecture detected from the executable header.
+StagedToolchainIdentity detectStagedToolchainIdentity(const fs::path &stagePrefix,
+                                                      const std::vector<fs::path> &files) {
+    for (const auto &file : files) {
+        const fs::path rel = stagedLexicalRelativePath(stagePrefix, file);
+        const std::string relText = lowerCopy(toForwardSlashes(rel.generic_string()));
+        const std::string filename = lowerCopy(file.filename().string());
+        if (relText == "bin/viper" || relText == "bin/viper.exe" || filename == "viper" ||
+            filename == "viper.exe") {
+            return detectStagedExecutableIdentity(file);
+        }
+    }
+    throw std::runtime_error("staged toolchain is missing a detectable viper executable");
 }
 
 /// @brief Map a staged relative path to a ToolchainFileKind by inspecting its directory
@@ -307,15 +383,13 @@ std::vector<fs::path> gatherFromInstallManifest(const fs::path &stagePrefix,
         }
         filePath = filePath.lexically_normal();
         std::error_code ec;
-        if (!fs::is_regular_file(filePath, ec) && !fs::is_symlink(filePath, ec))
-            continue;
+        if (!fs::is_regular_file(filePath, ec) && !fs::is_symlink(filePath, ec)) {
+            throw std::runtime_error("install manifest lists a missing or unsupported path: " +
+                                     filePath.string());
+        }
         validateStagedPathDoesNotEscape(normalizedStage, filePath);
         fs::path rel;
-        try {
-            rel = stagedLexicalRelativePath(normalizedStage, filePath);
-        } catch (const std::runtime_error &) {
-            continue;
-        }
+        rel = stagedLexicalRelativePath(normalizedStage, filePath);
         const std::string relKey = sanitizePackageRelativePath(
             toForwardSlashes(rel.generic_string()), "staged install path");
         if (seen.insert(relKey).second)
@@ -455,9 +529,13 @@ bool stagedCMakeMetadataMentions(const ToolchainInstallManifest &manifest,
             continue;
         std::ifstream in(entry.stagedAbsolutePath, std::ios::binary);
         if (!in)
-            continue;
+            throw std::runtime_error("cannot read staged CMake metadata: " +
+                                     entry.stagedAbsolutePath.string());
         std::ostringstream ss;
         ss << in.rdbuf();
+        if (!in.good() && !in.eof())
+            throw std::runtime_error("failed while reading staged CMake metadata: " +
+                                     entry.stagedAbsolutePath.string());
         if (lowerCopy(ss.str()).find(lowerNeedle) != std::string::npos)
             return true;
     }
@@ -603,9 +681,10 @@ ToolchainInstallManifest gatherToolchainInstallManifest(
         files = gatherFromStageWalk(stage);
 
     ToolchainInstallManifest manifest;
+    const StagedToolchainIdentity identity = detectStagedToolchainIdentity(stage, files);
     manifest.version = detectManifestVersion(stage);
-    manifest.arch = detectHostArch();
-    manifest.platform = detectHostPlatform();
+    manifest.arch = identity.arch;
+    manifest.platform = identity.platform;
     manifest.fileAssociations = defaultToolchainFileAssociations();
     manifest.files.reserve(files.size());
     for (const auto &file : files)

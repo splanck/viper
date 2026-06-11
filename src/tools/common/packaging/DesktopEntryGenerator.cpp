@@ -24,6 +24,8 @@
 
 #include <cctype>
 #include <sstream>
+#include <utility>
+#include <vector>
 
 namespace viper::pkg {
 
@@ -86,9 +88,55 @@ std::string desktopEscapeExecToken(const std::string &token, const char *fieldNa
     return escaped;
 }
 
+/// @brief Split an Exec argument string into literal argument tokens.
+/// @details This parser accepts whitespace-separated tokens plus double-quoted
+///          groups with backslash escapes. The resulting tokens are escaped again
+///          by desktopEscapeExecToken(), so callers never append raw command text
+///          into an Exec= field.
+/// @param text Manifest-provided argument string.
+/// @param fieldName Name used in diagnostics.
+/// @return Parsed argument tokens.
+std::vector<std::string> parseExecArgumentTokens(const std::string &text, const char *fieldName) {
+    validateSingleLineField(text, fieldName);
+    std::vector<std::string> tokens;
+    std::string cur;
+    bool inQuote = false;
+    bool escaping = false;
+    for (char c : text) {
+        if (escaping) {
+            cur.push_back(c);
+            escaping = false;
+            continue;
+        }
+        if (c == '\\' && inQuote) {
+            escaping = true;
+            continue;
+        }
+        if (c == '"') {
+            inQuote = !inQuote;
+            continue;
+        }
+        if (!inQuote && std::isspace(static_cast<unsigned char>(c))) {
+            if (!cur.empty()) {
+                tokens.push_back(std::move(cur));
+                cur.clear();
+            }
+            continue;
+        }
+        cur.push_back(c);
+    }
+    if (escaping)
+        cur.push_back('\\');
+    if (inQuote)
+        throw std::runtime_error(std::string(fieldName) + " contains an unterminated quote");
+    if (!cur.empty())
+        tokens.push_back(std::move(cur));
+    return tokens;
+}
+
 /// @brief Escape a string for safe embedding in XML attribute values and text content.
-/// Replaces the five predefined XML entities: & → &amp;, < → &lt;, > → &gt;,
-/// " → &quot;, ' → &apos;.
+/// Replaces the five predefined XML entities: & with &amp;, < with &lt;, > with &gt;,
+/// " with &quot;, and ' with &apos;.
 std::string xmlEscape(const std::string &s) {
     std::string out;
     out.reserve(s.size());
@@ -142,8 +190,8 @@ std::string generateDesktopEntry(const DesktopEntryParams &params) {
         os << "Comment=" << desktopEscape(params.comment) << "\n";
     os << "Exec=" << desktopEscapeExecToken(params.execPath, "desktop Exec path");
     if (!params.execArguments.empty()) {
-        validateSingleLineField(params.execArguments, "desktop Exec arguments");
-        os << " " << params.execArguments;
+        for (const auto &arg : parseExecArgumentTokens(params.execArguments, "desktop Exec arguments"))
+            os << " " << desktopEscapeExecToken(arg, "desktop Exec argument");
     }
     if (params.acceptsFileArgument || !params.fileAssociations.empty())
         os << " %f";

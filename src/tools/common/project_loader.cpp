@@ -47,6 +47,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace fs = std::filesystem;
 
@@ -155,8 +156,10 @@ std::vector<std::string> collectFiles(const fs::path &dir,
         if (it->is_directory(entryEc) && !entryEc) {
             auto rel = fs::relative(it->path(), dir, entryEc);
             if (entryEc) {
-                it.increment(ec);
-                continue;
+                if (err)
+                    *err = "cannot compute relative source directory path for " +
+                           it->path().string() + ": " + entryEc.message();
+                return {};
             }
             for (const auto &ex : effectiveExcludes) {
                 if (relativePathMatchesExclude(rel, ex)) {
@@ -479,7 +482,7 @@ bool hasBasicTopLevelCode(const std::string &path) {
 il::support::Expected<std::string> findZiaEntry(const std::vector<std::string> &files) {
     // Priority 1: file named main.zia
     for (const auto &f : files) {
-        if (fs::path(f).filename() == "main.zia")
+        if (lowerAscii(fs::path(f).filename().string()) == "main.zia")
             return f;
     }
 
@@ -508,7 +511,7 @@ il::support::Expected<std::string> findZiaEntry(const std::vector<std::string> &
 il::support::Expected<std::string> findBasicEntry(const std::vector<std::string> &files) {
     // Priority 1: file named main.bas
     for (const auto &f : files) {
-        if (fs::path(f).filename() == "main.bas")
+        if (lowerAscii(fs::path(f).filename().string()) == "main.bas")
             return f;
     }
 
@@ -538,6 +541,13 @@ il::support::Expected<std::string> findBasicEntry(const std::vector<std::string>
 
     if (execFiles.size() == 1)
         return execFiles[0];
+    if (execFiles.size() > 1) {
+        std::string msg = "multiple BASIC files contain top-level statements:";
+        for (const auto &f : execFiles)
+            msg += " " + fs::path(f).filename().string();
+        msg += "; specify entry in viper.project";
+        return makeErr(msg);
+    }
 
     if (files.size() == 1)
         return files[0];
@@ -595,6 +605,41 @@ il::support::Expected<ProjectConfig> discoverConvention(const fs::path &dir,
     }
 
     return config;
+}
+
+/// @brief Strip an inline `#` manifest comment while respecting quoted strings.
+/// @details The manifest grammar treats `#` as a comment only outside double
+///          quotes. Backslash escapes inside quotes are skipped so an escaped quote
+///          does not accidentally terminate the string while looking for comments.
+/// @param line One already-trimmed manifest line.
+/// @return The line prefix before the comment marker, with trailing whitespace removed.
+std::string stripInlineManifestComment(std::string line) {
+    bool inQuote = false;
+    bool escaping = false;
+    for (std::size_t i = 0; i < line.size(); ++i) {
+        const char c = line[i];
+        if (escaping) {
+            escaping = false;
+            continue;
+        }
+        if (inQuote && c == '\\') {
+            escaping = true;
+            continue;
+        }
+        if (c == '"') {
+            inQuote = !inQuote;
+            continue;
+        }
+        if (!inQuote && c == '#') {
+            line.resize(i);
+            break;
+        }
+    }
+    const auto end = line.find_last_not_of(" \t\r\n");
+    if (end == std::string::npos)
+        return {};
+    line.resize(end + 1);
+    return line;
 }
 
 /// @brief Parse an on/off boolean value.
@@ -723,6 +768,24 @@ il::support::Expected<std::vector<std::string>> requireManifestTokenCount(
                                    (count == 1 ? "" : "s"));
     }
     return tokens;
+}
+
+/// @brief Parse a core manifest directive as exactly one scalar token.
+/// @details Core directives use the same tokenizer as package directives so
+///          values containing whitespace must be quoted consistently.
+/// @param value Raw directive value after inline comment stripping.
+/// @param manifestPath Manifest path, used for error context.
+/// @param line 1-based line number, used for error context.
+/// @param directive Directive name, used for error context.
+/// @return The single scalar token, or a manifest diagnostic.
+il::support::Expected<std::string> parseCoreScalar(const std::string &value,
+                                                   const std::string &manifestPath,
+                                                   int line,
+                                                   const std::string &directive) {
+    auto tokens = requireManifestTokenCount(value, manifestPath, line, directive, 1);
+    if (!tokens)
+        return il::support::Expected<std::string>(tokens.error());
+    return tokens.value()[0];
 }
 
 /// @brief Resolve a project-relative manifest path to an absolute, in-root path.
@@ -1066,7 +1129,17 @@ il::support::Expected<bool> parsePackageDirective(ProjectConfig &config,
         if (tokens.value().size() != 2)
             return makeManifestErr(
                 manifestPath, lineNum, "asset requires <source> <target>; got '" + value + "'");
-        config.packageConfig.assets.push_back({tokens.value()[0], tokens.value()[1]});
+        try {
+            std::string source =
+                viper::pkg::sanitizePackageRelativePath(tokens.value()[0], "asset source path");
+            if (source.empty())
+                return makeManifestErr(manifestPath, lineNum, "asset source path must not be empty");
+            std::string target =
+                viper::pkg::sanitizePackageRelativePath(tokens.value()[1], "asset target path");
+            config.packageConfig.assets.push_back({std::move(source), std::move(target)});
+        } catch (const std::exception &ex) {
+            return makeManifestErr(manifestPath, lineNum, ex.what());
+        }
     } else if (directive == "embed") {
         // Format: embed <source-path>
         auto tokens = requireManifestTokenCount(value, manifestPath, lineNum, directive, 1);
@@ -1165,12 +1238,21 @@ il::support::Expected<bool> parsePackageDirective(ProjectConfig &config,
             return il::support::Expected<bool>(scalar.error());
         config.packageConfig.minOsMacos = scalar.value();
     } else if (directive == "target-arch") {
-        if (value != "x64" && value != "arm64")
+        auto scalar = parseCoreScalar(value, manifestPath, lineNum, directive);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        const std::string arch = scalar.value();
+        if (arch != "x64" && arch != "arm64")
             return makeManifestErr(manifestPath,
                                    lineNum,
-                                   "invalid target-arch '" + value +
+                                   "invalid target-arch '" + arch +
                                        "'; expected 'x64' or 'arm64'");
-        config.packageConfig.targetArchitectures.push_back(value);
+        if (std::find(config.packageConfig.targetArchitectures.begin(),
+                      config.packageConfig.targetArchitectures.end(),
+                      arch) != config.packageConfig.targetArchitectures.end()) {
+            return makeManifestErr(manifestPath, lineNum, "duplicate target-arch '" + arch + "'");
+        }
+        config.packageConfig.targetArchitectures.push_back(arch);
     } else if (directive == "package-category") {
         auto scalar =
             parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
@@ -1180,23 +1262,40 @@ il::support::Expected<bool> parsePackageDirective(ProjectConfig &config,
     } else if (directive == "package-depends") {
         // Comma-separated list: "libc6, libx11-6, libssl3"
         std::string depToken;
+        std::set<std::string> seenDeps(config.packageConfig.depends.begin(),
+                                       config.packageConfig.depends.end());
+        auto appendDependency = [&](const std::string &raw)
+            -> il::support::Expected<bool> {
+            size_t ds = raw.find_first_not_of(" \t");
+            size_t de = raw.find_last_not_of(" \t");
+            if (ds == std::string::npos)
+                return makeManifestErr(
+                    manifestPath, lineNum, "package-depends contains an empty dependency");
+            std::string dep = raw.substr(ds, de - ds + 1);
+            try {
+                viper::pkg::validateDebDependency(dep);
+            } catch (const std::exception &ex) {
+                return makeManifestErr(manifestPath, lineNum, ex.what());
+            }
+            if (!seenDeps.insert(dep).second)
+                return makeManifestErr(
+                    manifestPath, lineNum, "duplicate package dependency '" + dep + "'");
+            config.packageConfig.depends.push_back(std::move(dep));
+            return true;
+        };
         for (char c : value) {
             if (c == ',') {
-                // Trim whitespace
-                size_t ds = depToken.find_first_not_of(" \t");
-                size_t de = depToken.find_last_not_of(" \t");
-                if (ds != std::string::npos)
-                    config.packageConfig.depends.push_back(depToken.substr(ds, de - ds + 1));
+                auto added = appendDependency(depToken);
+                if (!added)
+                    return il::support::Expected<bool>(added.error());
                 depToken.clear();
             } else {
                 depToken.push_back(c);
             }
         }
-        // Last element
-        size_t ds = depToken.find_first_not_of(" \t");
-        size_t de = depToken.find_last_not_of(" \t");
-        if (ds != std::string::npos)
-            config.packageConfig.depends.push_back(depToken.substr(ds, de - ds + 1));
+        auto added = appendDependency(depToken);
+        if (!added)
+            return il::support::Expected<bool>(added.error());
     } else if (directive == "post-install") {
         auto seen = markPackageScalar(packageScalarDirectives, directive, manifestPath, lineNum);
         if (!seen)
@@ -1290,6 +1389,7 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
         auto end = line.find_last_not_of(" \t\r\n");
         if (end != std::string::npos)
             line.resize(end + 1);
+        line = stripInlineManifestComment(std::move(line));
 
         // Skip comments
         if (line.empty() || line[0] == '#')
@@ -1312,26 +1412,36 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
             if (hasProject)
                 return makeManifestErr(manifestPath, lineNum, "duplicate directive 'project'");
             hasProject = true;
-            config.name = value;
+            auto scalar = parseCoreScalar(value, manifestPath, lineNum, directive);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            config.name = scalar.value();
         } else if (directive == "version") {
             if (hasVersion)
                 return makeManifestErr(manifestPath, lineNum, "duplicate directive 'version'");
             hasVersion = true;
-            config.version = value;
+            auto scalar = parseCoreScalar(value, manifestPath, lineNum, directive);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            config.version = scalar.value();
         } else if (directive == "lang") {
             if (hasLang)
                 return makeManifestErr(manifestPath, lineNum, "duplicate directive 'lang'");
             hasLang = true;
-            if (value == "zia")
+            auto scalar = parseCoreScalar(value, manifestPath, lineNum, directive);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            const std::string lang = scalar.value();
+            if (lang == "zia")
                 config.lang = ProjectLang::Zia;
-            else if (value == "basic")
+            else if (lang == "basic")
                 config.lang = ProjectLang::Basic;
-            else if (value == "mixed")
+            else if (lang == "mixed")
                 config.lang = ProjectLang::Mixed;
             else
                 return makeManifestErr(manifestPath,
                                        lineNum,
-                                       "invalid language '" + value +
+                                       "invalid language '" + lang +
                                            "'; expected 'zia', 'basic', or 'mixed'");
         } else if (directive == "entry") {
             if (hasEntry)
@@ -1365,10 +1475,13 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
             if (hasProfile)
                 return makeManifestErr(manifestPath, lineNum, "duplicate directive 'profile'");
             hasProfile = true;
-            auto mapped = optimizeForBuildProfile(value, manifestPath, lineNum);
+            auto scalar = parseCoreScalar(value, manifestPath, lineNum, directive);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            auto mapped = optimizeForBuildProfile(scalar.value(), manifestPath, lineNum);
             if (!mapped)
                 return il::support::Expected<ProjectConfig>(mapped.error());
-            config.buildProfile = value;
+            config.buildProfile = scalar.value();
             config.buildProfileExplicit = true;
             if (!hasOptimize)
                 config.optimizeLevel = mapped.value();
@@ -1376,19 +1489,25 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
             if (hasOptimize)
                 return makeManifestErr(manifestPath, lineNum, "duplicate directive 'optimize'");
             hasOptimize = true;
-            if (value != "O0" && value != "O1" && value != "O2")
+            auto scalar = parseCoreScalar(value, manifestPath, lineNum, directive);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            if (scalar.value() != "O0" && scalar.value() != "O1" && scalar.value() != "O2")
                 return makeManifestErr(manifestPath,
                                        lineNum,
-                                       "invalid optimize level '" + value +
+                                       "invalid optimize level '" + scalar.value() +
                                            "'; expected O0, O1, or O2");
-            config.optimizeLevel = value;
+            config.optimizeLevel = scalar.value();
             config.optimizeLevelExplicit = true;
         } else if (directive == "bounds-checks") {
             if (hasBoundsChecks)
                 return makeManifestErr(
                     manifestPath, lineNum, "duplicate directive 'bounds-checks'");
             hasBoundsChecks = true;
-            auto b = parseBool(value, manifestPath, lineNum, "bounds-checks");
+            auto scalar = parseCoreScalar(value, manifestPath, lineNum, directive);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            auto b = parseBool(scalar.value(), manifestPath, lineNum, "bounds-checks");
             if (!b)
                 return il::support::Expected<ProjectConfig>(b.error());
             config.boundsChecks = b.value();
@@ -1397,7 +1516,10 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
                 return makeManifestErr(
                     manifestPath, lineNum, "duplicate directive 'overflow-checks'");
             hasOverflowChecks = true;
-            auto b = parseBool(value, manifestPath, lineNum, "overflow-checks");
+            auto scalar = parseCoreScalar(value, manifestPath, lineNum, directive);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            auto b = parseBool(scalar.value(), manifestPath, lineNum, "overflow-checks");
             if (!b)
                 return il::support::Expected<ProjectConfig>(b.error());
             config.overflowChecks = b.value();
@@ -1405,7 +1527,10 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
             if (hasNullChecks)
                 return makeManifestErr(manifestPath, lineNum, "duplicate directive 'null-checks'");
             hasNullChecks = true;
-            auto b = parseBool(value, manifestPath, lineNum, "null-checks");
+            auto scalar = parseCoreScalar(value, manifestPath, lineNum, directive);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            auto b = parseBool(scalar.value(), manifestPath, lineNum, "null-checks");
             if (!b)
                 return il::support::Expected<ProjectConfig>(b.error());
             config.nullChecks = b.value();

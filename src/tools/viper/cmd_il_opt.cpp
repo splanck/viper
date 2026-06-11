@@ -24,12 +24,13 @@
 #include "il/transform/PassManager.hpp"
 #include "il/transform/Peephole.hpp"
 #include "tools/common/module_loader.hpp"
+#include "tools/common/packaging/PkgUtils.hpp"
 #include "viper/il/IO.hpp"
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
-#include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -246,16 +247,13 @@ int cmdILOpt(int argc, char **argv) {
         }
     }
 
-    // If mem2reg stats are requested, run mem2reg explicitly with stats and
-    // remove it from the pass list to avoid double-running it.
     if (mem2regStats) {
-        selectedPipeline.erase(
-            std::remove(selectedPipeline.begin(), selectedPipeline.end(), "mem2reg"),
-            selectedPipeline.end());
-        viper::passes::Mem2RegStats stats{};
-        viper::passes::mem2reg(m, &stats);
-        std::cout << "mem2reg: promoted " << stats.promotedVars << ", removed loads "
-                  << stats.removedLoads << ", removed stores " << stats.removedStores << "\n";
+        if (std::find(selectedPipeline.begin(), selectedPipeline.end(), "mem2reg") ==
+            selectedPipeline.end()) {
+            std::cerr << "error: --mem2reg-stats requires mem2reg in the selected pipeline\n";
+            return 1;
+        }
+        pm.setReportPassStatistics(true);
     }
 
     if (bisectPipeline) {
@@ -278,14 +276,20 @@ int cmdILOpt(int argc, char **argv) {
 
     if (!pm.run(m, selectedPipeline))
         return 1;
-    std::ofstream ofs(outFile);
-    if (!ofs) {
-        std::cerr << "unable to open " << outFile << "\n";
+    if (!verifyEach && !il::tools::common::verifyModule(m, std::cerr, nullptr)) {
+        std::cerr << "error: optimized module failed final verification\n";
         return 1;
     }
-    io::Serializer::write(m, ofs, io::Serializer::Mode::Canonical);
-    if (!ofs) {
-        std::cerr << "error: failed to write IL to " << outFile << "\n";
+    std::ostringstream output;
+    io::Serializer::write(m, output, io::Serializer::Mode::Canonical);
+    if (!output) {
+        std::cerr << "error: failed to serialize optimized IL\n";
+        return 1;
+    }
+    try {
+        viper::pkg::writeTextFileAtomic(outFile, output.str());
+    } catch (const std::exception &ex) {
+        std::cerr << "error: failed to write IL to " << outFile << ": " << ex.what() << "\n";
         return 1;
     }
     return 0;

@@ -209,10 +209,14 @@ void validateWindowsLayoutFitsStub(const WindowsPackageLayout &layout) {
     for (const auto &assoc : layout.fileAssociations) {
         validateSingleLineField(assoc.openCommandArguments,
                                 "Windows file association command arguments");
-        if (assoc.openCommandArguments.find('"') != std::string::npos) {
-            throw std::runtime_error("Windows file association command arguments must not "
-                                     "contain quotes: " +
-                                     assoc.openCommandArguments);
+        for (char c : assoc.openCommandArguments) {
+            const unsigned char uc = static_cast<unsigned char>(c);
+            if (uc < 0x20 || c == '"' || c == '&' || c == '|' || c == '<' || c == '>' ||
+                c == '^' || c == '%') {
+                throw std::runtime_error("Windows file association command arguments contain "
+                                         "unsafe command-line syntax: " +
+                                         assoc.openCommandArguments);
+            }
         }
     }
 }

@@ -135,10 +135,8 @@ void VpaWriter::addEntry(const std::string &name, const uint8_t *data, size_t si
     if (hasUnsafePathSegment(name))
         throw std::invalid_argument("VPA entry name must not contain empty, '.' or '..' segments: " +
                                     name);
-    for (const auto &existing : entries_) {
-        if (existing.name == name)
-            throw std::invalid_argument("duplicate VPA entry: " + name);
-    }
+    if (!seenNames_.insert(name).second)
+        throw std::invalid_argument("duplicate VPA entry: " + name);
 
     Entry entry;
     entry.name = name;

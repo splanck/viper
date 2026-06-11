@@ -22,8 +22,10 @@
 #include "il/transform/PassManager.hpp"
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
+#include "tools/common/ScopedProcess.hpp"
 #include "tools/common/asset/AssetCompiler.hpp"
 #include "tools/common/native_compiler.hpp"
+#include "tools/common/packaging/PkgUtils.hpp"
 #include "tools/common/project_loader.hpp"
 #include "tools/common/source_loader.hpp"
 #include "tools/common/vm_executor.hpp"
@@ -41,22 +43,10 @@
 #include <iostream>
 #include <limits>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
-
-#ifdef _WIN32
-/// @brief POSIX setenv shim for Windows, implemented via _putenv_s.
-/// @note The overwrite flag is ignored; _putenv_s always overwrites.
-inline int setenv(const char *name, const char *value, int) {
-    return _putenv_s(name, value);
-}
-
-/// @brief POSIX unsetenv shim for Windows, implemented via _putenv_s with an empty value.
-inline int unsetenv(const char *name) {
-    return _putenv_s(name, "");
-}
-#endif
 
 using namespace il;
 using namespace il::support;
@@ -91,38 +81,6 @@ std::string selectMixedLibraryEntry(std::vector<std::string> files, ProjectLang 
     });
     return it != files.end() ? *it : files.front();
 }
-
-/// @brief Temporarily sets or clears a process environment variable and restores it later.
-/// @details This is used around compiler invocations that depend on legacy environment toggles,
-/// preventing one `viper` subcommand from leaking that setting into later work in the same process.
-class ScopedEnvVar {
-  public:
-    ScopedEnvVar(const char *name, const char *value) : name_(name) {
-        if (const char *current = std::getenv(name_.c_str())) {
-            oldValue_ = current;
-        }
-        if (value) {
-            setenv(name_.c_str(), value, 1);
-        } else {
-            unsetenv(name_.c_str());
-        }
-    }
-
-    ~ScopedEnvVar() {
-        if (oldValue_) {
-            setenv(name_.c_str(), oldValue_->c_str(), 1);
-        } else {
-            unsetenv(name_.c_str());
-        }
-    }
-
-    ScopedEnvVar(const ScopedEnvVar &) = delete;
-    ScopedEnvVar &operator=(const ScopedEnvVar &) = delete;
-
-  private:
-    std::string name_;
-    std::optional<std::string> oldValue_;
-};
 
 /// @brief Removes a temporary file on scope exit unless no path was assigned.
 /// @details Native builds create temporary asset blobs for linker input. This guard ensures those
@@ -307,6 +265,13 @@ il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, 
         std::string_view arg = argv[i];
 
         if (arg == "--") {
+            if (mode == RunMode::Build) {
+                return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
+                    il::support::Severity::Error,
+                    "program arguments after -- are only valid with 'run'",
+                    {},
+                    {}});
+            }
             for (int j = i + 1; j < argc; ++j)
                 config.programArgs.emplace_back(argv[j]);
             break;
@@ -420,7 +385,7 @@ il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, 
                     continue;
                 case ilc::SharedOptionParseResult::Error:
                     return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
-                        il::support::Severity::Error, "failed to parse shared option", {}, {}});
+                        il::support::Severity::Error, ilc::lastSharedOptionError(), {}, {}});
                 case ilc::SharedOptionParseResult::NotMatched:
                     if (!arg.empty() && arg[0] != '-' && !hasTarget) {
                         config.target = std::string(arg);
@@ -453,9 +418,11 @@ int verifyAndExecute(il::core::Module &module,
         return 1;
     }
 
+    std::optional<viper::tools::ScopedStdinRedirect> stdinRedirect;
     if (!shared.stdinPath.empty()) {
-        if (!freopen(shared.stdinPath.c_str(), "r", stdin)) {
-            std::cerr << "unable to open stdin file\n";
+        stdinRedirect.emplace(shared.stdinPath);
+        if (!stdinRedirect->ok()) {
+            std::cerr << "unable to open stdin file: " << stdinRedirect->errorMessage() << "\n";
             return 1;
         }
     }
@@ -595,9 +562,17 @@ il::support::Expected<CompiledProjectModule> compileBasicProject(
     }
     printCompileTime(shared, "basic.read", readStart);
 
-    std::optional<ScopedEnvVar> noRuntimeNamespacesEnv;
-    if (noRuntimeNamespaces)
+    std::optional<viper::tools::ScopedEnvVar> noRuntimeNamespacesEnv;
+    if (noRuntimeNamespaces) {
         noRuntimeNamespacesEnv.emplace("VIPER_NO_RUNTIME_NAMESPACES", "1");
+        if (!noRuntimeNamespacesEnv->ok()) {
+            return il::support::Expected<CompiledProjectModule>(il::support::Diagnostic{
+                il::support::Severity::Error,
+                noRuntimeNamespacesEnv->errorMessage(),
+                {},
+                {}});
+        }
+    }
 
     il::frontends::basic::BasicCompilerOptions opts;
     opts.boundsChecks = project.boundsChecks;
@@ -856,14 +831,17 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
                     return 1;
                 }
             }
-            std::ofstream outFile(config.outputPath);
-            if (!outFile.is_open()) {
-                std::cerr << "error: cannot open output file: " << config.outputPath << "\n";
+            std::ostringstream ilText;
+            io::Serializer::write(module, ilText);
+            if (!ilText) {
+                std::cerr << "error: failed to serialize IL for " << config.outputPath << "\n";
                 return 1;
             }
-            io::Serializer::write(module, outFile);
-            if (!outFile) {
-                std::cerr << "error: failed to write IL to " << config.outputPath << "\n";
+            try {
+                viper::pkg::writeTextFileAtomic(config.outputPath, ilText.str());
+            } catch (const std::exception &ex) {
+                std::cerr << "error: failed to write IL to " << config.outputPath << ": "
+                          << ex.what() << "\n";
                 return 1;
             }
             return 0;
@@ -897,17 +875,11 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
             if (!bundle->embeddedBlob.empty()) {
                 assetBlobTemp.reset(viper::tools::generateTempAssetPath());
                 assetBlobPath = assetBlobTemp.path();
-                std::ofstream blobOut(assetBlobPath, std::ios::binary | std::ios::trunc);
-                if (!blobOut) {
-                    std::cerr << "error: cannot open temporary asset blob: " << assetBlobPath
-                              << "\n";
-                    return 1;
-                }
-                blobOut.write(reinterpret_cast<const char *>(bundle->embeddedBlob.data()),
-                              static_cast<std::streamsize>(bundle->embeddedBlob.size()));
-                if (!blobOut) {
+                try {
+                    viper::pkg::writeFileAtomic(assetBlobPath, bundle->embeddedBlob);
+                } catch (const std::exception &ex) {
                     std::cerr << "error: failed to write temporary asset blob: " << assetBlobPath
-                              << "\n";
+                              << ": " << ex.what() << "\n";
                     return 1;
                 }
             }

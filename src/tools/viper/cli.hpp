@@ -126,6 +126,12 @@ SharedOptionParseResult parseSharedOption(int &index,
                                           char **argv,
                                           SharedCliOptions &opts);
 
+/// @brief Return the diagnostic from the most recent shared-option parse error.
+/// @details parseSharedOption() preserves its historical enum return value for
+///          callers, while this accessor lets subcommands print the specific
+///          missing-value or invalid-value reason instead of a generic failure.
+[[nodiscard]] const std::string &lastSharedOptionError();
+
 /// @brief Print one diagnostic according to the requested format.
 void printDiagnostic(const il::support::Diagnostic &diag,
                      std::ostream &os,

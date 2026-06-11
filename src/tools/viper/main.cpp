@@ -30,7 +30,6 @@
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <vector>
 
 #ifdef _WIN32
@@ -68,31 +67,37 @@ int dumpRuntimeDescriptors() {
 
     const auto &reg = runtimeRegistry();
 
-    struct Key {
+    struct DescriptorGroup {
         std::optional<il::runtime::RtSig> sig{};
         il::runtime::RuntimeHandler handler{nullptr};
+        std::vector<const RuntimeDescriptor *> descriptors;
+        size_t firstIndex{0};
 
-        bool operator==(const Key &o) const noexcept {
-            return sig == o.sig && handler == o.handler;
+        bool matches(std::optional<il::runtime::RtSig> otherSig,
+                     il::runtime::RuntimeHandler otherHandler) const noexcept {
+            return sig == otherSig && handler == otherHandler;
         }
     };
 
-    struct KeyHash {
-        std::size_t operator()(const Key &k) const noexcept {
-            const std::size_t h1 = k.sig ? static_cast<std::size_t>(*k.sig) : 0x9E3779B97F4A7C15ull;
-            const std::size_t h2 = reinterpret_cast<std::size_t>(k.handler);
-            return h1 ^ (h2 + 0x9E3779B97F4A7C15ull + (h1 << 6) + (h1 >> 2));
-        }
-    };
-
-    std::unordered_map<Key, std::vector<const RuntimeDescriptor *>, KeyHash> groups;
+    std::vector<DescriptorGroup> groups;
     groups.reserve(reg.size());
 
-    for (const auto &d : reg) {
-        Key k;
-        k.sig = findRuntimeSignatureId(d.name);
-        k.handler = d.handler;
-        groups[k].push_back(&d);
+    for (size_t i = 0; i < reg.size(); ++i) {
+        const auto &d = reg[i];
+        const auto sig = findRuntimeSignatureId(d.name);
+        auto it = std::find_if(groups.begin(), groups.end(), [&](const DescriptorGroup &group) {
+            return group.matches(sig, d.handler);
+        });
+        if (it == groups.end()) {
+            DescriptorGroup group;
+            group.sig = sig;
+            group.handler = d.handler;
+            group.firstIndex = i;
+            group.descriptors.push_back(&d);
+            groups.push_back(std::move(group));
+        } else {
+            it->descriptors.push_back(&d);
+        }
     }
 
     auto typeListToString = [](const std::vector<il::core::Type> &ts) -> std::string {
@@ -134,28 +139,12 @@ int dumpRuntimeDescriptors() {
         return os.str();
     };
 
-    // Stable output: iterate groups in registry order by the first appearance index
-    // Build an index map for first descriptor pointer order
-    std::unordered_map<const RuntimeDescriptor *, size_t> order;
-    order.reserve(reg.size());
-    for (size_t i = 0; i < reg.size(); ++i)
-        order[&reg[i]] = i;
-
-    std::vector<std::pair<size_t, std::vector<const RuntimeDescriptor *>>> orderedGroups;
-    orderedGroups.reserve(groups.size());
-    for (auto &kv : groups) {
-        // sort entries in group by registry order for deterministic alias listing
-        auto &vec = kv.second;
-        std::sort(vec.begin(), vec.end(), [&](auto *a, auto *b) { return order[a] < order[b]; });
-        size_t firstIdx = order[vec.front()];
-        orderedGroups.emplace_back(firstIdx, vec);
-    }
-    std::sort(orderedGroups.begin(), orderedGroups.end(), [](auto &a, auto &b) {
-        return a.first < b.first;
+    std::sort(groups.begin(), groups.end(), [](const auto &a, const auto &b) {
+        return a.firstIndex < b.firstIndex;
     });
 
-    for (const auto &entry : orderedGroups) {
-        const auto &vec = entry.second;
+    for (const auto &entry : groups) {
+        const auto &vec = entry.descriptors;
         // choose canonical: prefer Viper.* else first
         const RuntimeDescriptor *canonical = vec.front();
         for (const auto *d : vec) {
@@ -356,7 +345,7 @@ int main(int argc, char **argv) {
     if (cmd == "help") {
         if (argc < 3) {
             usage();
-            return 0;
+            return 1;
         }
         const std::string_view topic = argv[2];
         if (topic == "run")
@@ -384,7 +373,7 @@ int main(int argc, char **argv) {
                 return invokeHelp(cmdFrontBasic);
             std::cerr << "Usage: viper front zia|basic ...\n"
                       << "Use 'viper help front zia' or 'viper help front basic'.\n";
-            return 0;
+            return 1;
         }
         if (topic == "codegen") {
             if (argc >= 4 && std::string_view(argv[3]) == "x64")
@@ -392,11 +381,11 @@ int main(int argc, char **argv) {
             if (argc >= 4 && std::string_view(argv[3]) == "arm64")
                 return invokeHelp(viper::tools::ilc::cmd_codegen_arm64);
             codegenUsage();
-            return 0;
+            return 1;
         }
         std::cerr << "unknown help topic: " << topic << "\n";
         usage();
-        return 0;
+        return 1;
     }
     if (cmd == "-run") {
         return cmdRunIL(argc - 2, argv + 2);
@@ -421,7 +410,7 @@ int main(int argc, char **argv) {
                 return viper::tools::ilc::cmd_codegen_arm64(argc - 3, argv + 3);
             }
         }
-        usage();
+        codegenUsage();
         return 1;
     }
     if (cmd == "front" && argc >= 3 && std::string(argv[2]) == "basic") {

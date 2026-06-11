@@ -24,9 +24,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "../common/packaging/PkgUtils.hpp"
+
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -45,6 +48,8 @@
 #include <vector>
 
 namespace fs = std::filesystem;
+
+static constexpr std::uintmax_t kMaxRtgenTextFileBytes = 16ULL * 1024ULL * 1024ULL;
 
 //===----------------------------------------------------------------------===//
 // Data Structures
@@ -174,8 +179,7 @@ struct ParseState {
 
     /// @brief Print a file:line error to stderr and terminate the process.
     void error(const std::string &msg) const {
-        std::cerr << filename << ":" << line_num << ": error: " << msg << "\n";
-        std::exit(1);
+        throw std::runtime_error(filename + ":" + std::to_string(line_num) + ": error: " + msg);
     }
 
     /// @brief Print a non-fatal file:line warning to stderr.
@@ -213,8 +217,11 @@ static std::vector<std::string> split(std::string_view sv, char delim) {
                 in_quotes = !in_quotes;
             else if (!in_quotes && sv[i] == '(')
                 paren_depth++;
-            else if (!in_quotes && sv[i] == ')')
+            else if (!in_quotes && sv[i] == ')') {
                 paren_depth--;
+                if (paren_depth < 0)
+                    throw std::runtime_error("unbalanced ')' in comma-separated field");
+            }
         }
 
         if (i == sv.size() || (!in_quotes && paren_depth == 0 && sv[i] == delim)) {
@@ -223,6 +230,10 @@ static std::vector<std::string> split(std::string_view sv, char delim) {
             start = i + 1;
         }
     }
+    if (in_quotes)
+        throw std::runtime_error("unterminated quote in comma-separated field");
+    if (paren_depth != 0)
+        throw std::runtime_error("unbalanced parentheses in comma-separated field");
     return result;
 }
 
@@ -681,8 +692,7 @@ static ParseState parseFile(const fs::path &path) {
 
     std::ifstream in(path);
     if (!in) {
-        std::cerr << "error: cannot open " << path << "\n";
-        std::exit(1);
+        throw std::runtime_error("cannot open " + path.string());
     }
 
     std::string line;
@@ -831,8 +841,7 @@ static bool signatureExposesRawPointer(const std::string &sig) {
 static std::vector<std::string> parseRtSigNames(const fs::path &path) {
     std::ifstream in(path);
     if (!in) {
-        std::cerr << "error: cannot read " << path << "\n";
-        std::exit(1);
+        throw std::runtime_error("cannot read " + path.string());
     }
 
     std::vector<std::string> names;
@@ -860,8 +869,7 @@ static std::vector<std::string> parseRtSigNames(const fs::path &path) {
 static std::vector<std::string> parseRtSigSymbols(const fs::path &path) {
     std::ifstream in(path);
     if (!in) {
-        std::cerr << "error: cannot read " << path << "\n";
-        std::exit(1);
+        throw std::runtime_error("cannot read " + path.string());
     }
 
     std::string contents((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -908,8 +916,7 @@ static std::unordered_map<std::string, std::string> buildRtSigMap(const fs::path
     std::vector<std::string> sigSymbols = parseRtSigSymbols(dataPath);
 
     if (sigNames.size() != sigSymbols.size()) {
-        std::cerr << "error: RuntimeSigs.def and RuntimeSignaturesData.hpp mismatch\n";
-        std::exit(1);
+        throw std::runtime_error("RuntimeSigs.def and RuntimeSignaturesData.hpp mismatch");
     }
 
     std::unordered_map<std::string, std::string> result;
@@ -999,14 +1006,30 @@ static std::string stripPreprocessor(const std::string &input) {
     return out.str();
 }
 
-/// @brief Read an entire text file into a string (fatal error if it can't open).
+/// @brief Read an entire text file into a string with a generator-local size cap.
+/// @details Runtime definition and header scans are expected to be small source
+///          files. The cap prevents accidental reads of huge generated artifacts
+///          or device files when an input path is wrong.
 static std::string readTextFile(const fs::path &path) {
+    std::error_code ec;
+    const auto size = fs::file_size(path, ec);
+    if (ec)
+        throw std::runtime_error("cannot stat " + path.string() + ": " + ec.message());
+    if (size > kMaxRtgenTextFileBytes)
+        throw std::runtime_error("rtgen input file is too large: " + path.string());
     std::ifstream in(path);
     if (!in) {
-        std::cerr << "error: cannot read " << path << "\n";
-        std::exit(1);
+        throw std::runtime_error("cannot read " + path.string());
     }
     return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+}
+
+/// @brief Atomically write one generated rtgen output file.
+/// @details All generator functions build complete text in memory and call this
+///          helper once. That keeps stale output intact if a later write fails and
+///          avoids consumers observing partially-generated include files.
+static void writeGeneratedTextFile(const fs::path &path, const std::ostringstream &contents) {
+    viper::pkg::writeTextFileAtomic(path, contents.str());
 }
 
 /// @brief Normalize @p path and return it with forward slashes.
@@ -1513,9 +1536,8 @@ static void scanMacroCalls(const std::string &text,
             }
         }
         if (depth != 0) {
-            std::cerr << "error: unterminated " << macroName
-                      << " macro in runtime surface policy\n";
-            std::exit(1);
+            throw std::runtime_error("unterminated " + std::string(macroName) +
+                                     " macro in runtime surface policy");
         }
 
         handler(std::string_view(text).substr(argsStart, cursor - argsStart - 1));
@@ -1537,8 +1559,7 @@ static RuntimeSurfacePolicy parseRuntimeSurfacePolicy(const fs::path &policyPath
     scanMacroCalls(text, "RUNTIME_SURFACE_INTERNAL_HEADER", [&](std::string_view argsView) {
         auto parts = split(argsView, ',');
         if (parts.size() != 1) {
-            std::cerr << "error: RUNTIME_SURFACE_INTERNAL_HEADER requires 1 argument\n";
-            std::exit(1);
+            throw std::runtime_error("RUNTIME_SURFACE_INTERNAL_HEADER requires 1 argument");
         }
         policy.internalHeaders.insert(pathToGenericString(stripQuotes(parts[0])));
     });
@@ -1546,8 +1567,7 @@ static RuntimeSurfacePolicy parseRuntimeSurfacePolicy(const fs::path &policyPath
     scanMacroCalls(text, "RUNTIME_SURFACE_INTERNAL_SYMBOL", [&](std::string_view argsView) {
         auto parts = split(argsView, ',');
         if (parts.size() != 1) {
-            std::cerr << "error: RUNTIME_SURFACE_INTERNAL_SYMBOL requires 1 argument\n";
-            std::exit(1);
+            throw std::runtime_error("RUNTIME_SURFACE_INTERNAL_SYMBOL requires 1 argument");
         }
         policy.internalSymbols.insert(stripQuotes(parts[0]));
     });
@@ -1555,8 +1575,7 @@ static RuntimeSurfacePolicy parseRuntimeSurfacePolicy(const fs::path &policyPath
     scanMacroCalls(text, "RUNTIME_SURFACE_EXPECT_FUNCTION", [&](std::string_view argsView) {
         auto parts = split(argsView, ',');
         if (parts.size() != 2) {
-            std::cerr << "error: RUNTIME_SURFACE_EXPECT_FUNCTION requires 2 arguments\n";
-            std::exit(1);
+            throw std::runtime_error("RUNTIME_SURFACE_EXPECT_FUNCTION requires 2 arguments");
         }
         policy.expectedFunctions.emplace(stripQuotes(parts[0]), stripQuotes(parts[1]));
     });
@@ -1564,8 +1583,7 @@ static RuntimeSurfacePolicy parseRuntimeSurfacePolicy(const fs::path &policyPath
     scanMacroCalls(text, "RUNTIME_SURFACE_EXPECT_METHOD", [&](std::string_view argsView) {
         auto parts = split(argsView, ',');
         if (parts.size() != 3) {
-            std::cerr << "error: RUNTIME_SURFACE_EXPECT_METHOD requires 3 arguments\n";
-            std::exit(1);
+            throw std::runtime_error("RUNTIME_SURFACE_EXPECT_METHOD requires 3 arguments");
         }
         ResolvedRuntimeMethod method;
         method.name = stripQuotes(parts[1]);
@@ -1577,8 +1595,7 @@ static RuntimeSurfacePolicy parseRuntimeSurfacePolicy(const fs::path &policyPath
     scanMacroCalls(text, "RUNTIME_SURFACE_EXPECT_PROPERTY", [&](std::string_view argsView) {
         auto parts = split(argsView, ',');
         if (parts.size() != 3) {
-            std::cerr << "error: RUNTIME_SURFACE_EXPECT_PROPERTY requires 3 arguments\n";
-            std::exit(1);
+            throw std::runtime_error("RUNTIME_SURFACE_EXPECT_PROPERTY requires 3 arguments");
         }
         ResolvedRuntimeProperty prop;
         prop.name = stripQuotes(parts[1]);
@@ -1703,11 +1720,7 @@ static void emitDescriptorRow(std::ostream &out,
 ///          failure.
 static void generateNameMap(const ParseState &state, const fs::path &outDir) {
     fs::path outPath = outDir / "RuntimeNameMap.inc";
-    std::ofstream out(outPath);
-    if (!out) {
-        std::cerr << "error: cannot write " << outPath << "\n";
-        std::exit(1);
-    }
+    std::ostringstream out;
 
     out << fileHeader("RuntimeNameMap.inc",
                       "Canonical Viper.* to C rt_* symbol mapping for native codegen.");
@@ -1728,6 +1741,7 @@ static void generateNameMap(const ParseState &state, const fs::path &outDir) {
         }
     }
 
+    writeGeneratedTextFile(outPath, out);
     std::cout << "  Generated " << outPath << "\n";
 }
 
@@ -1737,11 +1751,7 @@ static void generateNameMap(const ParseState &state, const fs::path &outDir) {
 ///          Fatal error on write failure.
 static void generateClasses(const ParseState &state, const fs::path &outDir) {
     fs::path outPath = outDir / "RuntimeClasses.inc";
-    std::ofstream out(outPath);
-    if (!out) {
-        std::cerr << "error: cannot write " << outPath << "\n";
-        std::exit(1);
-    }
+    std::ostringstream out;
 
     out << fileHeader("RuntimeClasses.inc", "Runtime class catalog with properties and methods.");
 
@@ -1788,6 +1798,7 @@ static void generateClasses(const ParseState &state, const fs::path &outDir) {
         out << "))\n\n";
     }
 
+    writeGeneratedTextFile(outPath, out);
     std::cout << "  Generated " << outPath << "\n";
 }
 
@@ -1804,11 +1815,7 @@ static void generateSignatures(const ParseState &state,
     fs::path outPath = outDir / "RuntimeSignatures.inc";
     const fs::path runtimeDir = inputPath.parent_path();
 
-    std::ofstream out(outPath);
-    if (!out) {
-        std::cerr << "error: cannot write " << outPath << "\n";
-        std::exit(1);
-    }
+    std::ostringstream out;
 
     out << fileHeader("RuntimeSignatures.inc",
                       "Runtime descriptor rows for all runtime functions.");
@@ -1857,6 +1864,7 @@ static void generateSignatures(const ParseState &state,
         emitDescriptorRow(out, name, fields);
     }
 
+    writeGeneratedTextFile(outPath, out);
     std::cout << "  Generated " << outPath << "\n";
 }
 
@@ -2112,11 +2120,7 @@ static void generateZiaExterns(const ParseState &state,
         knownClassNames.insert(cls.name);
 
     fs::path outPath = outDir / "ZiaRuntimeExterns.inc";
-    std::ofstream out(outPath);
-    if (!out) {
-        std::cerr << "error: cannot write " << outPath << "\n";
-        std::exit(1);
-    }
+    std::ostringstream out;
 
     out << fileHeader("ZiaRuntimeExterns.inc",
                       "Zia frontend extern function definitions generated from runtime.def.");
@@ -2224,6 +2228,7 @@ static void generateZiaExterns(const ParseState &state,
         out << "\n";
     }
 
+    writeGeneratedTextFile(outPath, out);
     std::cout << "  Generated " << outPath << "\n";
 }
 
@@ -2263,11 +2268,7 @@ static std::string canonicalToIdentifier(const std::string &canonical) {
 ///        frontends. Fatal error on write failure.
 static void generateFrontendNames(const ParseState &state, const fs::path &outDir) {
     fs::path outPath = outDir / "RuntimeNames.hpp";
-    std::ofstream out(outPath);
-    if (!out) {
-        std::cerr << "error: cannot write " << outPath << "\n";
-        std::exit(1);
-    }
+    std::ostringstream out;
 
     out << "//===----------------------------------------------------------------------===//\n";
     out << "//\n";
@@ -2348,6 +2349,7 @@ static void generateFrontendNames(const ParseState &state, const fs::path &outDi
 
     out << "} // namespace il::runtime::names\n";
 
+    writeGeneratedTextFile(outPath, out);
     std::cout << "  Generated " << outPath << "\n";
 }
 

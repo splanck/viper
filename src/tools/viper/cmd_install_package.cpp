@@ -221,6 +221,15 @@ bool signWindowsInstallerArtifact(const InstallPackageArgs &args,
             err << "error: Windows PFX signing requires VIPER_WINDOWS_SIGN_PASSWORD\n";
             return false;
         }
+        const std::string allowPasswordArgv =
+            getenvOrEmpty("VIPER_WINDOWS_SIGN_PASSWORD_ARGV_OK");
+        if (allowPasswordArgv != "1" && allowPasswordArgv != "true" &&
+            allowPasswordArgv != "TRUE") {
+            err << "error: PFX password signing passes the password to signtool argv; use "
+                   "certificate-store thumbprint signing or set "
+                   "VIPER_WINDOWS_SIGN_PASSWORD_ARGV_OK=1 to acknowledge the exposure\n";
+            return false;
+        }
         signCmd.push_back("/f");
         signCmd.push_back(pfxPath);
         signCmd.push_back("/p");
@@ -286,24 +295,27 @@ bool signMacOSPackageArtifact(const InstallPackageArgs &args,
     (void)artifactPath;
     return false;
 #else
-    const fs::path signedPath = artifactPath.string() + ".signed.tmp";
+    const fs::path signedParent =
+        artifactPath.parent_path().empty() ? fs::current_path() : artifactPath.parent_path();
+    const fs::path signedDir = viper::pkg::createUniqueTempDirectory(signedParent, "signed-pkg");
+    const fs::path signedPath = signedDir / artifactPath.filename();
     std::error_code ec;
-    fs::remove(signedPath, ec);
     const RunResult signResult = run_process(
         {"productsign", "--sign", identity, artifactPath.string(), signedPath.string()});
     if (signResult.exit_code != 0) {
         err << "error: productsign failed with exit code " << signResult.exit_code << "\n"
             << signResult.out << signResult.err;
-        fs::remove(signedPath, ec);
+        fs::remove_all(signedDir, ec);
         return false;
     }
     fs::rename(signedPath, artifactPath, ec);
     if (ec) {
         err << "error: cannot replace unsigned macOS package with signed artifact: " << ec.message()
             << "\n";
-        fs::remove(signedPath, ec);
+        fs::remove_all(signedDir, ec);
         return false;
     }
+    fs::remove_all(signedDir, ec);
 
     const RunResult verifyResult =
         run_process({"pkgutil", "--check-signature", artifactPath.string()});

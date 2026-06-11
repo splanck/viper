@@ -24,6 +24,7 @@
 #include "ZipReader.hpp"
 #include "PkgDeflate.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <set>
 #include <string>
@@ -76,6 +77,16 @@ bool isUnsafeZipName(const std::string &name) {
         pos = slash + 1;
     }
     return false;
+}
+
+/// @brief Return the duplicate-detection key for a ZIP entry name.
+/// @details Directory markers such as `foo/` and file entries such as `foo`
+///          address the same extraction path. The reader rejects both by trimming
+///          trailing slashes before inserting the name in the seen set.
+std::string normalizedZipDuplicateKey(std::string name) {
+    while (!name.empty() && name.back() == '/')
+        name.pop_back();
+    return name;
 }
 
 } // namespace
@@ -189,20 +200,22 @@ void ZipReader::parseCentralDirectory() {
         if (dataEnd64 > cdOffset)
             throw ZipReadError("ZIP: entry payload overlaps central directory");
         const size_t localEnd = static_cast<size_t>(dataEnd64);
-        for (const auto &[begin, end] : occupiedLocalRanges) {
-            if (lhOff < end && begin < localEnd)
-                throw ZipReadError("ZIP: local file records overlap");
-        }
         occupiedLocalRanges.emplace_back(lhOff, localEnd);
 
         entry.name.assign(reinterpret_cast<const char *>(data_ + pos + 46), nameLen);
         if (isUnsafeZipName(entry.name))
             throw ZipReadError("ZIP: unsafe entry path: " + entry.name);
-        if (!seenNames.insert(entry.name).second)
+        const std::string duplicateKey = normalizedZipDuplicateKey(entry.name);
+        if (!seenNames.insert(duplicateKey).second)
             throw ZipReadError("ZIP: duplicate entry name: " + entry.name);
         entries_.push_back(std::move(entry));
 
         pos = centralEnd;
+    }
+    std::sort(occupiedLocalRanges.begin(), occupiedLocalRanges.end());
+    for (size_t i = 1; i < occupiedLocalRanges.size(); ++i) {
+        if (occupiedLocalRanges[i].first < occupiedLocalRanges[i - 1].second)
+            throw ZipReadError("ZIP: local file records overlap");
     }
     if (pos != static_cast<size_t>(cdOffset) + cdSize)
         throw ZipReadError("ZIP: central directory size does not match EOCD");

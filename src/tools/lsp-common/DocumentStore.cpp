@@ -154,8 +154,9 @@ bool DocumentStore::tryUriToPath(const std::string &uri, std::string &outPath, s
         }
 
         if (!authority.empty() && !asciiEqualsIgnoreCase(authority, "localhost")) {
-            path = "//";
-            path.append(authority);
+            if (err)
+                *err = "file URI authority must be empty or localhost: " + uri;
+            return false;
         } else if (sv.size() >= 3 && sv[0] == '/' && sv[2] == ':') {
             // Windows drive letter: /C:/path -> C:/path
             sv.remove_prefix(1);
@@ -213,6 +214,11 @@ bool DocumentStore::tryUriToPath(const std::string &uri, std::string &outPath, s
             path += decoded;
             i += 2;
             continue;
+        }
+        if (isUri && sv[i] == '\\') {
+            if (err)
+                *err = "file URI path must use forward slashes: " + uri;
+            return false;
         }
         if (isForbiddenUriPathChar(sv[i])) {
             if (err)

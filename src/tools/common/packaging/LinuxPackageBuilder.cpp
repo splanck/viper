@@ -730,23 +730,26 @@ void appendHomeDesktopShortcutInstallScript(std::ostream &script, const std::str
     const std::string desktopName = shellSingleQuote(pkgName + ".desktop");
     const std::string source = shellSingleQuote("/usr/share/applications/" + pkgName + ".desktop");
     script << "for d in /root/Desktop /home/*/Desktop; do\n"
-              "    [ -d \"$d\" ] || continue\n"
+              "    [ -d \"$d\" ] && [ ! -L \"$d\" ] || continue\n"
               "    target=\"$d/\""
            << desktopName
            << "\n"
+              "    [ ! -L \"$target\" ] || continue\n"
+              "    tmp=$(mktemp \"$d/.viper-desktop.XXXXXX\" 2>/dev/null) || continue\n"
               "    owner=$(stat -c %U \"$d\" 2>/dev/null || printf '')\n"
               "    group=$(stat -c %G \"$d\" 2>/dev/null || printf '')\n"
               "    cp "
            << source
-           << " \"$target\" || continue\n"
-              "    chmod 755 \"$target\" || true\n"
+           << " \"$tmp\" || { rm -f \"$tmp\"; continue; }\n"
+              "    chmod 755 \"$tmp\" || true\n"
               "    if [ -n \"$owner\" ] && [ \"$owner\" != \"UNKNOWN\" ]; then\n"
               "        if [ -n \"$group\" ] && [ \"$group\" != \"UNKNOWN\" ]; then\n"
-              "            chown \"$owner:$group\" \"$target\" || true\n"
+              "            chown \"$owner:$group\" \"$tmp\" || true\n"
               "        else\n"
-              "            chown \"$owner\" \"$target\" || true\n"
+              "            chown \"$owner\" \"$tmp\" || true\n"
               "        fi\n"
               "    fi\n"
+              "    mv -f \"$tmp\" \"$target\" || rm -f \"$tmp\"\n"
               "done\n";
 }
 
@@ -758,11 +761,11 @@ void appendHomeDesktopShortcutInstallScript(std::ostream &script, const std::str
 void appendHomeDesktopShortcutRemovalScript(std::ostream &script, const std::string &pkgName) {
     const std::string desktopName = shellSingleQuote(pkgName + ".desktop");
     script << "for d in /root/Desktop /home/*/Desktop; do\n"
-              "    [ -e \"$d/\""
+              "    [ -d \"$d\" ] && [ ! -L \"$d\" ] || continue\n"
+              "    target=\"$d/\""
            << desktopName
-           << " ] && rm -f \"$d/\""
-           << desktopName
-           << " || true\n"
+           << "\n"
+              "    [ -f \"$target\" ] && [ ! -L \"$target\" ] && rm -f \"$target\" || true\n"
               "done\n";
 }
 
@@ -1136,8 +1139,11 @@ void buildDebPackage(const LinuxBuildParams &params) {
                   "update-desktop-database /usr/share/applications; fi\n";
         if (pkg.shortcutDesktop && pkg.allowHomeDesktopShortcuts)
             appendHomeDesktopShortcutInstallScript(pi, pkgName);
-        if (!pkg.postInstallScript.empty())
+        if (!pkg.postInstallScript.empty()) {
+            pi << "# viper user post-install hook begin\n";
             pi << normalizePackageHookScript(pkg.postInstallScript, "post-install script") << "\n";
+            pi << "# viper user post-install hook end\n";
+        }
         controlTar.addFileString("./postinst", pi.str(), 0755);
     }
 
@@ -1147,9 +1153,12 @@ void buildDebPackage(const LinuxBuildParams &params) {
         std::ostringstream pr;
         pr << "#!/bin/sh\n";
         pr << "set -e\n";
-        if (!pkg.preUninstallScript.empty())
+        if (!pkg.preUninstallScript.empty()) {
+            pr << "# viper user pre-uninstall hook begin\n";
             pr << normalizePackageHookScript(pkg.preUninstallScript, "pre-uninstall script")
                << "\n";
+            pr << "# viper user pre-uninstall hook end\n";
+        }
         if (pkg.shortcutDesktop && pkg.allowHomeDesktopShortcuts)
             appendHomeDesktopShortcutRemovalScript(pr, pkgName);
         controlTar.addFileString("./prerm", pr.str(), 0755);

@@ -91,7 +91,9 @@ class JsonValue {
 
     /// @brief Return the boolean value, or @p def when not a Bool.
     [[nodiscard]] bool asBool(bool def = false) const;
-    /// @brief Return the integer value, or @p def when not an Int.
+    /// @brief Return the integer value, or @p def when not integral.
+    /// @details Int values are returned directly. Double values are accepted only
+    ///          when finite, exactly whole-numbered, and within int64_t range.
     [[nodiscard]] int64_t asInt(int64_t def = 0) const;
     /// @brief Return the double value, or @p def when not a Double.
     [[nodiscard]] double asDouble(double def = 0.0) const;

@@ -28,6 +28,7 @@
 #include "runtime/core/rt_args.h"
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
+#include "tools/common/ScopedProcess.hpp"
 #include "tools/common/module_loader.hpp"
 #include "viper/vm/VM.hpp"
 #include "viper/vm/debug/Debug.hpp"
@@ -40,6 +41,7 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -299,6 +301,8 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config) {
                 case ilc::SharedOptionParseResult::Parsed:
                     continue;
                 case ilc::SharedOptionParseResult::Error:
+                    if (!ilc::lastSharedOptionError().empty())
+                        std::cerr << "error: " << ilc::lastSharedOptionError() << "\n";
                     usage();
                     return false;
                 case ilc::SharedOptionParseResult::NotMatched:
@@ -312,8 +316,7 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config) {
         config.stepFlag = false;
     }
 
-    config.boundsChecksRequested =
-        config.sharedOpts.boundsChecksSpecified && config.sharedOpts.boundsChecks;
+    config.boundsChecksRequested = config.sharedOpts.boundsChecksSpecified;
 
     // --profile enables both instruction counting and wall-clock timing.
     if (config.sharedOpts.profile) {
@@ -375,8 +378,15 @@ void configureDebugger(const RunILConfig &config,
 /// @return Process-style exit status; zero indicates success.
 int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm) {
     if (config.boundsChecksRequested) {
-        std::cerr << "error: --bounds-checks is not supported when running existing IL modules;";
-        std::cerr << " recompile the source with bounds checks enabled and rerun.\n";
+        std::cerr << "error: bounds-check toggles are not supported when running existing IL modules;";
+        std::cerr << " recompile the source with the desired bounds-check setting and rerun.\n";
+        return 1;
+    }
+    if (config.useBytecode &&
+        (!config.breakLabels.empty() || !config.breakSrcLines.empty() ||
+         !config.watchSymbols.empty() || !config.debugScriptPath.empty() || config.stepFlag ||
+         config.continueFlag)) {
+        std::cerr << "error: debugger flags are not supported with --bytecode/--bc-threaded\n";
         return 1;
     }
 
@@ -407,9 +417,11 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm) {
         return 1;
     }
 
+    std::optional<viper::tools::ScopedStdinRedirect> stdinRedirect;
     if (!config.sharedOpts.stdinPath.empty()) {
-        if (!freopen(config.sharedOpts.stdinPath.c_str(), "r", stdin)) {
-            std::cerr << "unable to open stdin file\n";
+        stdinRedirect.emplace(config.sharedOpts.stdinPath);
+        if (!stdinRedirect->ok()) {
+            std::cerr << "unable to open stdin file: " << stdinRedirect->errorMessage() << "\n";
             return 1;
         }
     }
@@ -564,7 +576,12 @@ int cmdRunILWithSourceManager(int argc, char **argv, il::support::SourceManager 
         return 0;
     }
 
-    configureDebugger(config, config.debugCtrl, config.debugScript);
+    try {
+        configureDebugger(config, config.debugCtrl, config.debugScript);
+    } catch (const std::exception &ex) {
+        std::cerr << "error: failed to configure debugger: " << ex.what() << "\n";
+        return 1;
+    }
     return executeRunIL(config, sm);
 }
 

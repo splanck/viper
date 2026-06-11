@@ -21,6 +21,7 @@
 #include "il/verify/Verifier.hpp"
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
+#include "tools/common/ScopedProcess.hpp"
 #include "tools/common/source_loader.hpp"
 #include "tools/common/vm_executor.hpp"
 #include "viper/il/IO.hpp"
@@ -28,6 +29,7 @@
 #include "viper/vm/VM.hpp"
 #include <cstdio>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -121,7 +123,7 @@ il::support::Expected<FrontZiaConfig> parseFrontZiaArgs(int argc, char **argv) {
                     continue;
                 case ilc::SharedOptionParseResult::Error:
                     return il::support::Expected<FrontZiaConfig>(il::support::Diagnostic{
-                        il::support::Severity::Error, "failed to parse shared option", {}, {}});
+                        il::support::Severity::Error, ilc::lastSharedOptionError(), {}, {}});
                 case ilc::SharedOptionParseResult::NotMatched:
                     if (!arg.empty() && arg[0] != '-') {
                         if (!config.sourcePath.empty()) {
@@ -205,6 +207,10 @@ int runFrontZia(const FrontZiaConfig &config,
     core::Module module = std::move(result.module);
 
     if (config.emitIl) {
+        if (!reportVerifierDiagnostics(
+                module, std::cerr, sm, config.shared.diagnosticFormat, config.shared.showWarnings)) {
+            return 1;
+        }
         io::Serializer::write(module, std::cout);
         return 0;
     }
@@ -213,9 +219,11 @@ int runFrontZia(const FrontZiaConfig &config,
         return 1;
     }
 
+    std::optional<viper::tools::ScopedStdinRedirect> stdinRedirect;
     if (!config.shared.stdinPath.empty()) {
-        if (!freopen(config.shared.stdinPath.c_str(), "r", stdin)) {
-            std::cerr << "unable to open stdin file\n";
+        stdinRedirect.emplace(config.shared.stdinPath);
+        if (!stdinRedirect->ok()) {
+            std::cerr << "unable to open stdin file: " << stdinRedirect->errorMessage() << "\n";
             return 1;
         }
     }

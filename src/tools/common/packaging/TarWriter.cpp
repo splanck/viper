@@ -240,6 +240,28 @@ std::string paxHeaderPath(size_t index) {
     return "PaxHeaders.X/viper-" + std::to_string(index);
 }
 
+/// @brief Return the short fallback USTAR path for an entry covered by PAX metadata.
+/// @details The real archive path is supplied by a preceding PAX `path` record.
+///          This fallback is only for legacy readers that ignore PAX and must fit
+///          in the basic USTAR name field.
+std::string paxPayloadFallbackPath(size_t index) {
+    return "PaxPayloads.X/viper-" + std::to_string(index);
+}
+
+void splitUstarPath(const std::string &path, std::string &prefix, std::string &name);
+
+/// @brief Test whether @p path can be represented in USTAR name/prefix fields.
+bool pathNeedsPaxRecord(const std::string &path) {
+    std::string prefix;
+    std::string name;
+    try {
+        splitUstarPath(path, prefix, name);
+        return false;
+    } catch (const std::runtime_error &) {
+        return true;
+    }
+}
+
 /// @brief Compute the USTAR checksum for a 512-byte header.
 /// The checksum field (offset 148, 8 bytes) is treated as spaces.
 uint32_t computeChecksum(const uint8_t header[512]) {
@@ -391,17 +413,24 @@ std::vector<uint8_t> TarWriter::finish() const {
     };
 
     for (const auto &e : entries_) {
-        if (e.typeflag == '2' && e.linkTarget.size() > 100) {
+        std::string records;
+        Entry emitted = e;
+        if (pathNeedsPaxRecord(e.path)) {
+            records += buildPaxRecord("path", e.path);
+            emitted.path = paxPayloadFallbackPath(paxIndex);
+        }
+        if (e.typeflag == '2' && e.linkTarget.size() > 100)
+            records += buildPaxRecord("linkpath", e.linkTarget);
+        if (!records.empty()) {
             Entry pax;
             pax.path = paxHeaderPath(paxIndex++);
-            const std::string record = buildPaxRecord("linkpath", e.linkTarget);
-            pax.data.assign(record.begin(), record.end());
+            pax.data.assign(records.begin(), records.end());
             pax.mode = 0644;
             pax.mtime = e.mtime;
             pax.typeflag = 'x';
             appendEntry(pax);
         }
-        appendEntry(e);
+        appendEntry(emitted);
     }
 
     // Two zero-filled 512-byte end-of-archive blocks

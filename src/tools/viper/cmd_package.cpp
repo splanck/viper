@@ -472,6 +472,15 @@ bool signWindowsInstallerArtifact(const ProjectConfig &proj,
             err << "error: Windows PFX signing requires VIPER_WINDOWS_SIGN_PASSWORD\n";
             return false;
         }
+        const std::string allowPasswordArgv =
+            getenvOrEmpty("VIPER_WINDOWS_SIGN_PASSWORD_ARGV_OK");
+        if (allowPasswordArgv != "1" && allowPasswordArgv != "true" &&
+            allowPasswordArgv != "TRUE") {
+            err << "error: PFX password signing passes the password to signtool argv; use "
+                   "certificate-store thumbprint signing or set "
+                   "VIPER_WINDOWS_SIGN_PASSWORD_ARGV_OK=1 to acknowledge the exposure\n";
+            return false;
+        }
     }
 
     std::string timestampUrl = pkg.windowsTimestampUrl;

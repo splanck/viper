@@ -30,6 +30,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace viper::asset {
@@ -89,6 +90,7 @@ class VpaWriter {
     };
 
     std::vector<Entry> entries_;
+    std::unordered_set<std::string> seenNames_; ///< Names already added, for duplicate rejection.
 };
 
 } // namespace viper::asset

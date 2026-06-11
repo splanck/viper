@@ -633,18 +633,21 @@ void LspHandler::handleDidChange(const JsonRpcRequest &req) {
         logMessage(2, "Ignoring textDocument/didChange without full document content");
         return;
     }
-    const auto &lastChange = changes.at(changes.size() - 1);
-    if (lastChange.type() != JsonType::Object || lastChange.has("range") ||
-        lastChange.has("rangeLength")) {
-        logMessage(2, "Ignoring incremental textDocument/didChange; server only supports full sync");
-        return;
+    std::string text;
+    for (size_t i = 0; i < changes.size(); ++i) {
+        const auto &change = changes.at(i);
+        if (change.type() != JsonType::Object || change.has("range") || change.has("rangeLength")) {
+            logMessage(2,
+                       "Ignoring incremental textDocument/didChange; server only supports full sync");
+            return;
+        }
+        const auto *textValue = stringMember(change, "text");
+        if (!textValue) {
+            logMessage(2, "Ignoring textDocument/didChange content item without text");
+            return;
+        }
+        text = textValue->asString();
     }
-    const auto *textValue = stringMember(lastChange, "text");
-    if (!textValue) {
-        logMessage(2, "Ignoring textDocument/didChange content item without text");
-        return;
-    }
-    std::string text = textValue->asString();
     store_.update(uri, version, std::move(text));
 
     publishDiagnostics(uri);
@@ -654,6 +657,12 @@ void LspHandler::handleDidClose(const JsonRpcRequest &req) {
     std::string uri;
     if (!extractTextDocumentUri(req.params, uri))
         return;
+    std::string path;
+    std::string pathErr;
+    if (!DocumentStore::tryFileUriToPath(uri, path, &pathErr)) {
+        logMessage(2, pathErr);
+        return;
+    }
     store_.close(uri);
 
     // Clear diagnostics for the closed document
@@ -661,7 +670,11 @@ void LspHandler::handleDidClose(const JsonRpcRequest &req) {
         {"uri", JsonValue(uri)},
         {"diagnostics", JsonValue::array({})},
     });
-    transport_.writeMessage(buildNotification("textDocument/publishDiagnostics", params));
+    try {
+        transport_.writeMessage(buildNotification("textDocument/publishDiagnostics", params));
+    } catch (const std::exception &) {
+        // Diagnostic clearing is best-effort during shutdown/connection loss.
+    }
 }
 
 // --- Completion ---
@@ -825,7 +838,11 @@ void LspHandler::publishDiagnostics(const std::string &uri) {
         {"uri", JsonValue(uri)},
         {"diagnostics", JsonValue(std::move(diagArr))},
     });
-    transport_.writeMessage(buildNotification("textDocument/publishDiagnostics", params));
+    try {
+        transport_.writeMessage(buildNotification("textDocument/publishDiagnostics", params));
+    } catch (const std::exception &) {
+        // Diagnostics are a notification; transport loss should not crash request handling.
+    }
 }
 
 // --- Kind mapping ---
