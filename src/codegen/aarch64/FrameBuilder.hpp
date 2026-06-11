@@ -30,6 +30,8 @@
 #include "codegen/common/FrameLayout.hpp"
 #include "codegen/common/FrameLayoutUtils.hpp"
 
+#include <optional>
+
 namespace viper::codegen::aarch64 {
 
 /// @brief Centralizes AArch64 stack frame layout construction for codegen.
@@ -73,6 +75,16 @@ class FrameBuilder : public common::FrameLayout {
     /// @param tempId The IL temporary identifier.
     /// @return Negative offset from the frame pointer.
     int localOffset(unsigned tempId) const override;
+
+    /// @brief Look up the assigned FP-relative offset for a local variable.
+    /// @details Unlike localOffset(), this method does not rely on 0 as a
+    ///          missing-value sentinel. It lets lowering code distinguish a
+    ///          present stack slot from an absent local even if frame layout rules
+    ///          change in the future.
+    /// @param tempId The IL temporary identifier to search for.
+    /// @return The local's signed FP-relative offset, or std::nullopt when no
+    ///         slot has been allocated for @p tempId.
+    [[nodiscard]] std::optional<int> tryLocalOffset(unsigned tempId) const;
 
     /// @brief Ensure a spill slot exists for a virtual register.
     /// @param vreg Virtual register identifier.

@@ -25,6 +25,7 @@
 #include "Spiller.hpp"
 
 #include <algorithm>
+#include <stdexcept>
 
 /// @file
 /// @brief Lowers PX_COPY pseudo instructions into executable move sequences.
@@ -97,6 +98,24 @@ struct CopyLocation {
            task.src.slot == location.slot;
 }
 
+/// @brief Return true when @p reg is one of the fixed GPR scratch registers.
+/// @details R10/R11 are deliberately excluded from the allocator pool and used
+///          by PX_COPY lowering for cycle breaking and memory-to-memory copies.
+///          A PX_COPY bundle that explicitly names either register cannot be
+///          lowered with those fixed scratch assumptions intact.
+[[nodiscard]] bool isFixedGprScratch(PhysReg reg) noexcept {
+    return reg == PhysReg::R10 || reg == PhysReg::R11;
+}
+
+/// @brief Validate a physical PX_COPY operand against fixed scratch registers.
+/// @throws std::runtime_error if a GPR copy operand explicitly names R10 or R11.
+void rejectFixedScratchOperand(RegClass cls, PhysReg reg) {
+    if (cls == RegClass::GPR && isFixedGprScratch(reg)) {
+        throw std::runtime_error(
+            "x86 PX_COPY lowering: R10/R11 cannot appear as explicit copy operands");
+    }
+}
+
 } // namespace
 
 /// @brief Construct a coalescer tied to a specific allocator and spiller.
@@ -128,6 +147,10 @@ void Coalescer::lower(const MInstr &instr, std::vector<MInstr> &out) {
     std::vector<ScratchRelease> scratch{};
     std::vector<CopyTask> tasks{};
 
+    if ((instr.operands.size() % 2U) != 0U) {
+        throw std::runtime_error("x86 PX_COPY lowering: operand count must be even");
+    }
+
     for (std::size_t i = 0; i + 1 < instr.operands.size(); i += 2) {
         const auto &dstOp = instr.operands[i];
         const auto &srcOp = instr.operands[i + 1];
@@ -135,7 +158,10 @@ void Coalescer::lower(const MInstr &instr, std::vector<MInstr> &out) {
         const auto *dstReg = std::get_if<OpReg>(&dstOp);
         const auto *srcReg = std::get_if<OpReg>(&srcOp);
         if (!dstReg || !srcReg) {
-            continue; // Phase A: expect register pairs only.
+            throw std::runtime_error("x86 PX_COPY lowering: expected register operand pairs");
+        }
+        if (dstReg->cls != srcReg->cls) {
+            throw std::runtime_error("x86 PX_COPY lowering: source and destination classes differ");
         }
 
         CopyTask task{};
@@ -145,6 +171,7 @@ void Coalescer::lower(const MInstr &instr, std::vector<MInstr> &out) {
         if (dstReg->isPhys) {
             task.destKind = CopyTask::DestKind::Reg;
             task.destReg = static_cast<PhysReg>(dstReg->idOrPhys);
+            rejectFixedScratchOperand(task.cls, task.destReg);
         } else {
             auto &dstState = allocator_.stateFor(dstReg->cls, dstReg->idOrPhys);
             task.destVReg = dstReg->idOrPhys;
@@ -168,6 +195,7 @@ void Coalescer::lower(const MInstr &instr, std::vector<MInstr> &out) {
         if (srcReg->isPhys) {
             task.src.kind = CopySource::Kind::Reg;
             task.src.reg = static_cast<PhysReg>(srcReg->idOrPhys);
+            rejectFixedScratchOperand(task.cls, task.src.reg);
         } else {
             auto &srcState = allocator_.stateFor(srcReg->cls, srcReg->idOrPhys);
             if (srcState.spill.needsSpill) {
@@ -222,7 +250,8 @@ void Coalescer::lower(const MInstr &instr, std::vector<MInstr> &out) {
                 continue;
             }
 
-            emitCopyTask(task, generated);
+            if (!sameLocation(dst, src))
+                emitCopyTask(task, generated);
             tasks.erase(tasks.begin() + static_cast<long>(i));
             progress = true;
             break;

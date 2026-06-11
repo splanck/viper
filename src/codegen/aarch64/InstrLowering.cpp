@@ -117,9 +117,11 @@ static bool resolveFrameAddress(const il::core::Value &value,
     if (value.kind != Value::Kind::Temp)
         return false;
 
-    const int localOffset = fb.localOffset(value.id);
-    if (localOffset != 0) {
-        offsetOut += localOffset;
+    if (const auto localOffset = fb.tryLocalOffset(value.id)) {
+        if ((*localOffset > 0 && offsetOut > std::numeric_limits<long long>::max() - *localOffset) ||
+            (*localOffset < 0 && offsetOut < std::numeric_limits<long long>::min() - *localOffset))
+            return false;
+        offsetOut += *localOffset;
         return true;
     }
 
@@ -133,15 +135,20 @@ static bool resolveFrameAddress(const il::core::Value &value,
                 return false;
             return resolveFrameAddress(producer->operands[0], fn, fb, offsetOut);
 
-        case Opcode::GEP:
+        case Opcode::GEP: {
             if (producer->operands.size() < 2 ||
                 producer->operands[1].kind != Value::Kind::ConstInt) {
                 return false;
             }
             if (!resolveFrameAddress(producer->operands[0], fn, fb, offsetOut))
                 return false;
-            offsetOut += producer->operands[1].i64;
+            const long long gepOffset = producer->operands[1].i64;
+            if ((gepOffset > 0 && offsetOut > std::numeric_limits<long long>::max() - gepOffset) ||
+                (gepOffset < 0 && offsetOut < std::numeric_limits<long long>::min() - gepOffset))
+                return false;
+            offsetOut += gepOffset;
             return true;
+        }
 
         default:
             return false;
@@ -254,6 +261,7 @@ void emitTrapRaiseError(MBasicBlock &bb, int code) {
     bb.instrs.push_back(
         MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(code)}});
     bb.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_raise_error")}});
+    bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
 }
 
 /// @brief Materialise a 64-bit FP value via the integer bit-pattern + FMOV GPR→FPR.
@@ -1128,8 +1136,8 @@ bool lowerCallWithArgs(
 
     // First pass: materialize all arguments and collect them
     struct ArgInfo {
-        uint16_t vreg;
-        viper::codegen::common::CallArgClass cls;
+        uint16_t vreg{0};
+        viper::codegen::common::CallArgClass cls{viper::codegen::common::CallArgClass::GPR};
     };
 
     std::vector<ArgInfo> args;

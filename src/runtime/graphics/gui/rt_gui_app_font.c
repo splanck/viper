@@ -213,7 +213,12 @@ void rt_gui_apply_font_to_widget(vg_widget_t *widget, vg_font_t *font, float siz
             vg_dialog_set_font((vg_dialog_t *)widget, font, size);
             break;
         case VG_WIDGET_CODEEDITOR:
-            vg_codeeditor_set_font((vg_codeeditor_t *)widget, font, size);
+            // A code editor needs a monospace font: char_width forms a fixed grid
+            // that must match the rendered glyph advances. Once a caller has set the
+            // editor's font explicitly, do not overwrite it with the app-wide
+            // (typically proportional) chrome font.
+            if (!((vg_codeeditor_t *)widget)->font_pinned)
+                vg_codeeditor_set_font((vg_codeeditor_t *)widget, font, size);
             break;
         case VG_WIDGET_OUTPUTPANE:
             vg_outputpane_set_font((vg_outputpane_t *)widget, font, size);
@@ -451,12 +456,17 @@ static void rt_gui_inherit_font_to_widget(vg_widget_t *widget, vg_font_t *font, 
         }
         case VG_WIDGET_CODEEDITOR: {
             vg_codeeditor_t *editor = (vg_codeeditor_t *)widget;
-            editor->font = font;
-            editor->font_size = size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
-            if (editor->char_width <= 0.0f)
-                editor->char_width = editor->font_size * 0.6f;
-            if (editor->line_height <= 0.0f)
-                editor->line_height = editor->font_size * 1.35f;
+            // Skip editors whose font was pinned by an explicit SetFont: the
+            // monospace grid (char_width) must stay matched to the rendered font.
+            if (!editor->font_pinned) {
+                editor->font = font;
+                editor->font_size =
+                    size > 0 ? size : (theme ? theme->typography.size_normal : 14.0f);
+                if (editor->char_width <= 0.0f)
+                    editor->char_width = editor->font_size * 0.6f;
+                if (editor->line_height <= 0.0f)
+                    editor->line_height = editor->font_size * 1.35f;
+            }
             break;
         }
         case VG_WIDGET_OUTPUTPANE: {

@@ -103,6 +103,14 @@ int FrameBuilder::localOffset(unsigned tempId) const {
     return fn_->frame.getLocalOffset(tempId);
 }
 
+std::optional<int> FrameBuilder::tryLocalOffset(unsigned tempId) const {
+    for (const auto &local : fn_->frame.locals) {
+        if (local.tempId == tempId)
+            return local.offset;
+    }
+    return std::nullopt;
+}
+
 int FrameBuilder::ensureSpill(uint32_t vreg, int sizeBytes, int alignBytes) {
     validateStackObjectSpec("spill", sizeBytes, alignBytes);
     if (const auto *slot = findLatestSpillSlot(vreg))

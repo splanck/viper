@@ -395,6 +395,10 @@ static bool rt_gui_app_overlays_need_paint(const rt_gui_app_t *app) {
     }
     if (app->manual_tooltip && rt_gui_widget_tree_needs_paint(&app->manual_tooltip->base))
         return true;
+    // A visible standalone context menu forces repaint for the duration it is open so
+    // its hover/selection state always reaches the screen (it is not in app->root).
+    if (app->active_context_menu && app->active_context_menu->is_visible)
+        return true;
     return false;
 }
 
@@ -1478,6 +1482,28 @@ void rt_gui_app_poll(void *app_ptr) {
                 }
             }
 
+            // Active context menu (standalone right-click overlay). Route input to it
+            // first and let contextmenu_handle_event manage hover, item clicks (which set
+            // item->was_clicked for the poll-based WasClicked API), outside-click
+            // dismissal, and Escape. It is not in app->root's tree, so the normal
+            // dispatch below can never reach it.
+            if (app->active_context_menu && app->active_context_menu->is_visible) {
+                int menu_mouse =
+                    gui_event.type == VG_EVENT_MOUSE_MOVE ||
+                    gui_event.type == VG_EVENT_MOUSE_DOWN || gui_event.type == VG_EVENT_MOUSE_UP ||
+                    gui_event.type == VG_EVENT_CLICK || gui_event.type == VG_EVENT_DOUBLE_CLICK;
+                int menu_key = gui_event.type == VG_EVENT_KEY_DOWN ||
+                               gui_event.type == VG_EVENT_KEY_UP ||
+                               gui_event.type == VG_EVENT_KEY_CHAR;
+                if (menu_mouse || menu_key) {
+                    rt_gui_send_event_to_widget(&app->active_context_menu->base, &gui_event);
+                    rt_gui_capture_reported_click(app, &gui_event);
+                    if (!app->active_context_menu->is_visible)
+                        app->active_context_menu = NULL;
+                    continue;
+                }
+            }
+
             if (top_palette && top_palette->is_visible) {
                 int is_mouse_event =
                     gui_event.type == VG_EVENT_MOUSE_MOVE ||
@@ -1719,6 +1745,16 @@ void rt_gui_app_render(void *app_ptr) {
             continue;
         if (dlg->base.vtable && dlg->base.vtable->paint) {
             dlg->base.vtable->paint(&dlg->base, (void *)app->window);
+        }
+    }
+
+    // Standalone context menu overlay (e.g. file-tree right-click), above palettes and
+    // dialogs. It is not in app->root, so the overlay tree walk never reaches it;
+    // contextmenu_paint clamps its position to the window.
+    if (app->active_context_menu && app->active_context_menu->is_visible) {
+        vg_widget_t *menu_widget = &app->active_context_menu->base;
+        if (menu_widget->vtable && menu_widget->vtable->paint) {
+            menu_widget->vtable->paint(menu_widget, (void *)app->window);
         }
     }
 

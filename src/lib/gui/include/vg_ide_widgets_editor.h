@@ -139,6 +139,9 @@ typedef struct vg_codeeditor {
     float font_size;   ///< Font size
     float char_width;  ///< Character width (monospace)
     float line_height; ///< Line height
+    bool font_pinned;  ///< True once a caller set the font explicitly; suppresses
+                       ///< app-wide default/chrome font propagation so the editor
+                       ///< keeps its monospace font (see rt_gui_apply_font_to_widget).
 
     // Gutter
     bool show_line_numbers;           ///< Show line number gutter

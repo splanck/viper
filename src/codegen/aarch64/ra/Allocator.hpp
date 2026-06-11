@@ -79,6 +79,10 @@ class LinearAllocator {
         protectedOperandGPR_; ///< Current-instruction GPR operands that must not be evicted.
     std::unordered_set<uint16_t>
         protectedOperandFPR_; ///< Current-instruction FPR operands that must not be evicted.
+    std::unordered_set<PhysReg>
+        protectedPhysGPR_; ///< Explicit physical GPR operands that scratch/spills must not clobber.
+    std::unordered_set<PhysReg>
+        protectedPhysFPR_; ///< Explicit physical FPR operands that scratch/spills must not clobber.
 
     // CFG + liveness (extracted to shared-solver-backed LivenessAnalysis).
     LivenessAnalysis liveness_;
@@ -114,6 +118,8 @@ class LinearAllocator {
     int ensureCurrentSpillSlot(uint16_t vreg, RegClass cls, bool forceLiveOut = false);
     /// @brief Return true if @p vreg appears as an operand in the current instruction.
     [[nodiscard]] bool isProtectedOperand(uint16_t vreg, RegClass cls) const;
+    /// @brief Return true if @p phys appears as an explicit physical operand in the current instruction.
+    [[nodiscard]] bool isProtectedPhys(PhysReg phys, RegClass cls) const;
     /// @brief Return true if @p vreg is live at the exit of the current block.
     [[nodiscard]] bool isLiveOut(uint16_t vreg, RegClass cls) const;
 
@@ -156,6 +162,8 @@ class LinearAllocator {
     void allocateBlock(MBasicBlock &bb);
     /// @brief Spill caller-saved physical registers around the call in @p ins.
     void handleCall(MInstr &ins, std::vector<MInstr> &rewritten);
+    /// @brief Retire a virtual call operand whose assigned register is clobbered by the call.
+    void retireCallOperandAfterCall(uint16_t vreg, RegClass cls);
     /// @brief Materialize all operands of @p ins and append to @p rewritten.
     void allocateInstruction(MInstr &ins, std::vector<MInstr> &rewritten);
 

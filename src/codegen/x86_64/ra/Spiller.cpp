@@ -27,6 +27,7 @@
 
 #include <deque>
 #include <limits>
+#include <stdexcept>
 
 /// @file
 /// @brief Provides stack spill management utilities for linear-scan allocation.
@@ -257,8 +258,18 @@ void Spiller::spillValueWithReuse(RegClass cls,
 /// @param slot Zero-based slot index to reference.
 /// @return Memory operand pointing to the spill slot.
 Operand Spiller::makeFrameOperand(int slot) const {
+    if (slot < 0) {
+        throw std::out_of_range("x86 spiller: negative spill slot index");
+    }
+    if (slot > std::numeric_limits<int>::max() - kSpillSlotOffset - 1) {
+        throw std::overflow_error("x86 spiller: spill slot placeholder index overflows int");
+    }
+    const int placeholderSlot = slot + kSpillSlotOffset + 1;
+    if (placeholderSlot > std::numeric_limits<int32_t>::max() / kSlotSizeBytes) {
+        throw std::overflow_error("x86 spiller: spill slot placeholder displacement overflows int32");
+    }
     const auto base = makePhysReg(RegClass::GPR, static_cast<uint16_t>(PhysReg::RBP));
-    const int32_t offset = -static_cast<int32_t>((slot + kSpillSlotOffset + 1) * kSlotSizeBytes);
+    const int32_t offset = -static_cast<int32_t>(placeholderSlot * kSlotSizeBytes);
     return makeMemOperand(base, offset);
 }
 

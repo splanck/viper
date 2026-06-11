@@ -62,9 +62,13 @@ void *rt_statusbar_new(void *parent) {
     if (sb) {
         if (app)
             rt_gui_activate_app(app);
-        rt_gui_ensure_default_font();
-        if (app && app->default_font)
-            vg_statusbar_set_font(sb, app->default_font, app->default_font_size);
+        // Apply the active app's default font regardless of whether `parent` was an
+        // app handle or a layout container. rt_gui_app_from_handle() returns NULL for
+        // container parents (the IDE parents its status bar to a VBox), so the old
+        // `if (app && app->default_font)` path was skipped and sb->font stayed NULL —
+        // which made statusbar_paint early-return and the whole strip invisible. This
+        // resolves the font via the active app, matching every other widget constructor.
+        rt_gui_apply_default_font((vg_widget_t *)sb);
     }
     return sb;
 }

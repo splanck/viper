@@ -439,12 +439,12 @@ static vgfx_key_t translate_keycode(unsigned short keycode,
         }
 
         unichar c = [[chars uppercaseString] characterAtIndex:0];
-        if (c >= 'A' && c <= 'Z')
+        // Any printable ASCII key maps to its ASCII value — vgfx_key_t is ASCII-based
+        // (VGFX_KEY_A == 'A', VGFX_KEY_SPACE == ' '). This covers letters, digits, and
+        // crucially punctuation such as '=' and '-' that back keyboard shortcuts (zoom
+        // in/out). `c` derives from charactersIgnoringModifiers, so Shift+'=' is '='.
+        if (c >= 0x20 && c <= 0x7E)
             return (vgfx_key_t)c;
-        if (c >= '0' && c <= '9')
-            return (vgfx_key_t)c;
-        if (c == ' ')
-            return VGFX_KEY_SPACE;
     }
 
     /* Special keys by keycode (macOS-specific virtual key codes) */

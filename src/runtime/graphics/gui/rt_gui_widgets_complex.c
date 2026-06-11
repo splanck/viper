@@ -224,7 +224,6 @@ static vg_spinner_t *rt_spinner_checked(void *handle) {
     return (vg_spinner_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_SPINNER);
 }
 
-
 /// @brief Resolve a parent-container handle to its widget.
 /// @details Three-state contract: a NULL handle returns NULL (legitimate top-level
 ///          placement); a valid handle returns its container widget; a non-NULL
@@ -684,6 +683,10 @@ void rt_codeeditor_set_font(void *editor, void *font, double size) {
         if (!checked_font)
             return;
         vg_codeeditor_set_font(ce, checked_font, (float)rt_gui_sanitize_font_size(size, 14.0));
+        // Pin the editor's font so a later app-wide SetFont (which propagates the
+        // proportional chrome font to the whole widget tree) cannot replace it and
+        // desync char_width from the rendered glyph advances.
+        ce->font_pinned = true;
     }
 }
 
@@ -704,6 +707,9 @@ void rt_codeeditor_set_font_size(void *editor, double size) {
         return;
     if (rt_gui_double_is_finite(size) && size > 0.0) {
         vg_codeeditor_set_font(ed, ed->font, (float)rt_gui_sanitize_font_size(size, 14.0));
+        // Explicit size change is an editor-owned font decision; pin it so the
+        // app-wide chrome font cannot override it (see rt_codeeditor_set_font).
+        ed->font_pinned = true;
     }
 }
 

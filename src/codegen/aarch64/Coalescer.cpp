@@ -38,11 +38,11 @@ struct LiveInterval {
 
 /// @brief Candidate move instruction eligible for coalescing.
 struct CoalesceCandidate {
-    std::size_t blockIdx; ///< Block containing the move.
-    std::size_t instrIdx; ///< Index within the block's instruction list.
-    uint16_t dstVReg;     ///< Destination virtual register ID.
-    uint16_t srcVReg;     ///< Source virtual register ID.
-    RegClass cls;         ///< Register class (GPR or FPR).
+    std::size_t blockIdx{0};      ///< Block containing the move.
+    std::size_t instrIdx{0};      ///< Index within the block's instruction list.
+    uint16_t dstVReg{0};          ///< Destination virtual register ID.
+    uint16_t srcVReg{0};          ///< Source virtual register ID.
+    RegClass cls{RegClass::GPR};  ///< Register class (GPR or FPR).
 };
 
 /// @brief Check if an opcode is a virtual-to-virtual register move.
@@ -247,37 +247,14 @@ static unsigned coalesceClass(MFunction &fn, RegClass cls) {
             LiveInterval srcRange = srcIt->second;
             LiveInterval dstRange = dstIt->second;
 
-            // If dst is only defined at the move and used afterwards, and src
-            // is defined before and last used at the move, there is no
-            // interference. More generally: check that the intervals only share
-            // the move point.
-
-            // Quick interference check: if the src's range ends at or before
-            // the dst's range starts (at the move), they don't interfere.
-            // Similarly if dst ends before src starts. Otherwise, check if
-            // the overlap is strictly at the move point.
-
-            // Conservative: if removing the move point from consideration,
-            // do the intervals still overlap?
-            bool safeToCoalesce = false;
-
-            if (srcRange.end <= movePos + 1 && dstRange.start >= movePos) {
-                // src ends at or right after the move, dst starts at the move.
-                // No conflict after removing the move.
-                safeToCoalesce = true;
-            } else if (!interferes(srcRange, dstRange)) {
-                // No overlap at all.
-                safeToCoalesce = true;
-            } else {
-                // Overlap exists beyond the move point. Check if the overlap
-                // region is exactly [movePos, movePos+1).
-                unsigned overlapStart = std::max(srcRange.start, dstRange.start);
-                unsigned overlapEnd = std::min(srcRange.end, dstRange.end);
-                if (overlapStart == movePos && overlapEnd == movePos + 1)
-                    safeToCoalesce = true;
-            }
-
-            if (!safeToCoalesce)
+            // Only coalesce the defensible copy-elimination shape:
+            // the source's last touch is the move, and the destination's first
+            // touch is the same move.  This preserves the optimization for
+            // SSA-style copy handoff while avoiding whole-function rewrites for
+            // values that are live on unrelated CFG paths.
+            if (srcRange.end != movePos + 1 || dstRange.start != movePos)
+                continue;
+            if (interferes(LiveInterval{srcRange.start, movePos}, LiveInterval{movePos + 1, dstRange.end}))
                 continue;
 
             // Coalesce: rewrite all dstVReg references to srcVReg.

@@ -557,8 +557,8 @@ class ModuleAdapter {
     ///          untouched and tells the dispatcher to keep matching.
     bool tryAdaptArithLike(const il::core::Instr &source, ILInstr &out) {
         struct Entry {
-            il::core::Opcode op;
-            const char *name;
+            il::core::Opcode op{};
+            const char *name{nullptr};
         };
 
         static constexpr std::array<Entry, 9> kArith = {{
@@ -640,8 +640,8 @@ class ModuleAdapter {
             }
 
         struct FpEntry {
-            il::core::Opcode op;
-            const char *name;
+            il::core::Opcode op{};
+            const char *name{nullptr};
         };
 
         static constexpr std::array<FpEntry, 8> kFpCmp = {{

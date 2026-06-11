@@ -239,6 +239,15 @@ static vgfx_key_t translate_keysym(KeySym keysym) {
         return (vgfx_key_t)keysym;
     }
 
+    /* Other printable ASCII (punctuation/symbols): X11 Latin-1 keysyms equal their
+       ASCII codes, so '=' (XK_equal) and '-' (XK_minus) — which back the zoom
+       shortcuts — map straight through. Placed after the a-z block above so lowercase
+       letters are still folded to uppercase; special keys live in the 0xff00+ range
+       and are unaffected by this check. */
+    if (keysym >= 0x20 && keysym <= 0x7e) {
+        return (vgfx_key_t)keysym;
+    }
+
     /* Special keys */
     switch (keysym) {
         case XK_space:
@@ -506,11 +515,8 @@ static int x11_recreate_ximage(struct vgfx_window *win) {
     return 1;
 }
 
-static int x11_resize_backing_store(struct vgfx_window *win,
-                                    int32_t new_w,
-                                    int32_t new_h,
-                                    int64_t timestamp,
-                                    int emit_event) {
+static int x11_resize_backing_store(
+    struct vgfx_window *win, int32_t new_w, int32_t new_h, int64_t timestamp, int emit_event) {
     if (!win || !win->platform_data)
         return 0;
     if (new_w <= 0 || new_h <= 0 || new_w > VGFX_MAX_WIDTH || new_h > VGFX_MAX_HEIGHT ||
@@ -2054,10 +2060,7 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
     if (physical_w <= 0 || physical_h <= 0)
         return;
     (void)x11_resize_backing_store(win, physical_w, physical_h, vgfx_platform_now_ms(), 1);
-    XResizeWindow(x11->display,
-                  x11->window,
-                  (unsigned int)physical_w,
-                  (unsigned int)physical_h);
+    XResizeWindow(x11->display, x11->window, (unsigned int)physical_w, (unsigned int)physical_h);
     XFlush(x11->display);
 }
 

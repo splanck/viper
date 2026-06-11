@@ -673,6 +673,11 @@ void rt_contextmenu_destroy(void *menu) {
     RT_ASSERT_MAIN_THREAD();
     vg_contextmenu_t *cm = rt_contextmenu_checked(menu);
     if (cm) {
+        // Clear the active-overlay pointer first so the main loop never dereferences a
+        // freed menu.
+        rt_gui_app_t *app = rt_gui_get_active_app();
+        if (app && app->active_context_menu == cm)
+            app->active_context_menu = NULL;
         rt_gui_invalidate_contextmenu_tree(cm);
         vg_contextmenu_destroy(cm);
     }
@@ -756,6 +761,12 @@ void rt_contextmenu_show(void *menu, int64_t x, int64_t y) {
         vg_contextmenu_show_at(cm,
                                rt_gui_clamp_i64_to_i32(x, INT32_MIN, INT32_MAX),
                                rt_gui_clamp_i64_to_i32(y, INT32_MIN, INT32_MAX));
+        // Register as the active app's overlay so the main loop paints it and routes
+        // input to it. A standalone context menu is not parented into app->root, so
+        // without this it would be marked visible but never drawn or clicked.
+        rt_gui_app_t *app = rt_gui_get_active_app();
+        if (app)
+            app->active_context_menu = cm;
     }
 }
 
@@ -763,8 +774,12 @@ void rt_contextmenu_show(void *menu, int64_t x, int64_t y) {
 void rt_contextmenu_hide(void *menu) {
     RT_ASSERT_MAIN_THREAD();
     vg_contextmenu_t *cm = rt_contextmenu_checked(menu);
-    if (cm)
+    if (cm) {
         vg_contextmenu_dismiss(cm);
+        rt_gui_app_t *app = rt_gui_get_active_app();
+        if (app && app->active_context_menu == cm)
+            app->active_context_menu = NULL;
+    }
 }
 
 /// @brief Check whether a context menu is currently visible on screen.

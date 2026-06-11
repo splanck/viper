@@ -85,11 +85,10 @@ struct WinArm64UnwindEntry {
 };
 
 /// @brief Return the encoded fixup width for a relocation kind.
-/// @details CodeSection uses this construction-time check to reject relocation
-///          records whose source window cannot fit inside the section byte
-///          buffer. Object writers still perform architecture-specific
-///          validation before serializing, but invalid offsets now fail at the
-///          point where the relocation is recorded.
+/// @details Object writers use this information when validating and patching
+///          relocation payloads. Relocations may be recorded before their
+///          placeholder bytes are emitted, so CodeSection validates the source
+///          offset itself and leaves full-width checks to serialization.
 /// @param kind Architecture-independent relocation kind.
 /// @return Number of bytes occupied by the fixup field.
 inline size_t codeSectionRelocationFixupWidth(RelocKind kind) {
@@ -296,6 +295,7 @@ class CodeSection {
         SymbolSection targetSection = SymbolSection::Undefined) {
         if (symbolIndex >= symbols_.count())
             throw std::out_of_range("CodeSection relocation symbol index is out of range");
+        validateRelocationSourceRange(currentOffset(), kind);
         relocations_.push_back(
             Relocation{currentOffset(), kind, symbolIndex, addend, targetSection});
     }
@@ -310,6 +310,7 @@ class CodeSection {
             throw std::out_of_range("CodeSection relocation offset is out of range");
         if (symbolIndex >= symbols_.count())
             throw std::out_of_range("CodeSection relocation symbol index is out of range");
+        validateRelocationSourceRange(offset, kind);
         relocations_.push_back(Relocation{offset, kind, symbolIndex, addend, targetSection});
     }
 
@@ -324,6 +325,7 @@ class CodeSection {
         if (targetSection == SymbolSection::Undefined)
             throw std::invalid_argument(
                 "CodeSection section-offset relocation requires a target section");
+        validateRelocationSourceRange(currentOffset(), kind);
         Relocation rel{currentOffset(), kind, 0, addend, targetSection};
         rel.targetOffsetValid = true;
         rel.targetOffset = targetOffset;
@@ -341,6 +343,7 @@ class CodeSection {
                 "CodeSection section-offset relocation requires a target section");
         if (!target.containsOffsetRange(targetOffset, 0))
             throw std::out_of_range("CodeSection relocation target offset is out of range");
+        validateRelocationSourceRange(currentOffset(), kind);
         Relocation rel{currentOffset(), kind, 0, addend, targetSection};
         rel.targetOffsetValid = true;
         rel.targetOffset = targetOffset;
@@ -360,6 +363,7 @@ class CodeSection {
                 "CodeSection section-offset relocation requires a target section");
         if (offset < offsetBias_ || offset - offsetBias_ > bytes_.size())
             throw std::out_of_range("CodeSection relocation offset is out of range");
+        validateRelocationSourceRange(offset, kind);
         Relocation rel{offset, kind, 0, addend, targetSection};
         rel.targetOffsetValid = true;
         rel.targetOffset = targetOffset;
@@ -380,6 +384,7 @@ class CodeSection {
             throw std::out_of_range("CodeSection relocation offset is out of range");
         if (!target.containsOffsetRange(targetOffset, 0))
             throw std::out_of_range("CodeSection relocation target offset is out of range");
+        validateRelocationSourceRange(offset, kind);
         Relocation rel{offset, kind, 0, addend, targetSection};
         rel.targetOffsetValid = true;
         rel.targetOffset = targetOffset;
@@ -568,7 +573,7 @@ class CodeSection {
             rebased.symbolIndex = symbolRemap[reloc.symbolIndex];
             const bool targetsAppendedIdentity =
                 rebased.targetSectionIdentityValid &&
-                rebased.targetSectionIdentity == other.sectionIdentity();
+                other.matchesSectionIdentity(rebased.targetSectionIdentity);
             if (rebased.targetOffsetValid && !rebased.targetSectionIdentityValid) {
                 throw std::logic_error(
                     "CodeSection append requires section identity for section-offset relocation");
@@ -662,6 +667,21 @@ class CodeSection {
             if (rel.targetSectionIdentityValid && rel.targetSectionIdentity == oldIdentity)
                 rel.targetSectionIdentity = newIdentity;
         }
+    }
+
+    /// @brief Validate that a relocation source offset is within this section.
+    /// @details Relocation offsets are recorded as logical section offsets, which
+    ///          may include an offset bias during dry-run encoding. Relocations
+    ///          are often registered before the placeholder bytes are emitted, so
+    ///          this check intentionally accepts the current end offset and leaves
+    ///          architecture-specific fixup-width validation to object writers.
+    /// @param offset Logical section offset of the fixup field.
+    /// @param kind Relocation kind; retained for call-site clarity and future diagnostics.
+    /// @throws std::out_of_range if the source offset is outside emitted bytes.
+    void validateRelocationSourceRange(size_t offset, RelocKind kind) const {
+        (void)kind;
+        if (offset < offsetBias_ || offset - offsetBias_ > bytes_.size())
+            throw std::out_of_range("CodeSection relocation source range is out of bounds");
     }
 
     static uint64_t allocateSectionIdentity() {

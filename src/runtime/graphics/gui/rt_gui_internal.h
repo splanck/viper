@@ -137,6 +137,8 @@ typedef struct {
     vg_commandpalette_t **command_palettes;
     int command_palette_count;
     int command_palette_cap;
+    vg_contextmenu_t *active_context_menu; ///< Standalone right-click menu overlay (not parented
+                                           ///< into app->root); painted and routed input directly.
     vg_notification_manager_t *notification_manager;
     vg_tooltip_manager_t tooltip_manager_state;
     vg_tooltip_t *manual_tooltip;

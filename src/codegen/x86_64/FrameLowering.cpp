@@ -27,6 +27,7 @@
 #include <cassert>
 #include <cstddef>
 #include <limits>
+#include <optional>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -173,15 +174,16 @@ void markUsedCalleeSaved(const OpReg &reg,
     }
 }
 
-/// @brief Guess the register class used by a memory operand.
+/// @brief Infer the register class used by a memory operand when a physical hint is present.
 /// @details Scans all other operands in the instruction looking for physical
 ///          registers to infer whether the memory slot stores GPR or XMM state.
-///          Falls back to @ref RegClass::GPR when no hint is found, which keeps
-///          stack layout deterministic for scalar spills.
+///          Returning nullopt means the instruction provides no reliable class
+///          evidence; callers handling spill placeholders should reject that
+///          ambiguity instead of assigning the slot to the wrong spill area.
 /// @param instr Machine instruction containing the operand.
 /// @param memIndex Index of the memory operand within the instruction.
-/// @return Register class used to model the memory payload.
-[[nodiscard]] RegClass deduceMemClass(const MInstr &instr, std::size_t memIndex) {
+/// @return Register class used to model the memory payload, if it can be inferred.
+[[nodiscard]] std::optional<RegClass> deduceMemClass(const MInstr &instr, std::size_t memIndex) {
     for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
         if (idx == memIndex) {
             continue;
@@ -199,7 +201,22 @@ void markUsedCalleeSaved(const OpReg &reg,
             }
         }
     }
-    return RegClass::GPR;
+    return std::nullopt;
+}
+
+/// @brief Require a reliable register class for a spill-slot memory operand.
+/// @details Spill placeholders are partitioned into GPR and XMM frame areas. If the
+///          payload class cannot be inferred from a neighbouring physical register,
+///          remapping the slot would be unsafe, so this helper reports a hard
+///          diagnostic rather than silently falling back to a scalar slot.
+/// @param instr Instruction containing the spill memory operand.
+/// @param memIndex Index of the memory operand inside @p instr.
+/// @return Inferred spill payload register class.
+[[nodiscard]] RegClass requireSpillMemClass(const MInstr &instr, std::size_t memIndex) {
+    if (const auto cls = deduceMemClass(instr, memIndex)) {
+        return *cls;
+    }
+    throw std::runtime_error("x86 frame lowering: spill slot lacks a physical register class hint");
 }
 
 /// @brief Byte size needed to spill one callee-saved register.
@@ -302,7 +319,7 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
                 // Distinguish between alloca slots (< 1000) and spill slots (>= 1000)
                 if (slotIndex >= kSpillSlotOffset) {
                     // This is a spill slot - collect for remapping
-                    const RegClass cls = deduceMemClass(instr, idx);
+                    const RegClass cls = requireSpillMemClass(instr, idx);
                     if (cls == RegClass::XMM) {
                         xmmSpillSlots.insert(slotIndex);
                     } else {
@@ -400,8 +417,9 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
                 if (!decodeFrameSlotPlaceholder(mem->disp, slotIndex, false)) {
                     continue;
                 }
-                const RegClass cls =
-                    slotIndex >= kSpillSlotOffset ? deduceMemClass(instr, idx) : RegClass::GPR;
+                const RegClass cls = slotIndex >= kSpillSlotOffset
+                                         ? requireSpillMemClass(instr, idx)
+                                         : RegClass::GPR;
                 const SlotKey key{cls, slotIndex};
                 auto it = slotOffsets.find(key);
                 if (it != slotOffsets.end()) {

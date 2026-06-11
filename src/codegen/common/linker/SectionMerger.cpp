@@ -298,7 +298,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
                 if (aCrt) {
                     if (a.name != b.name)
                         return a.name < b.name;
-                    return a.alignment > b.alignment;
+                    return a.inputOrder < b.inputOrder;
                 }
 
                 const bool aTls = isWindowsTlsSubsection(a.name);
@@ -586,7 +586,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
                     continue;
                 if (sec.alloc)
                     continue;
-                if (sec.data.empty())
+                if (sec.data.empty() && sec.relocs.empty() && !sectionHasLiveSymbol(obj, si))
                     continue;
                 debugGroups[sec.name].push_back({oi, si});
             }
@@ -651,7 +651,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
                          if (aClass != bClass)
                              return aClass < bClass;
 
-                         return a.name < b.name;
+                         return false;
                      });
 
     if (!assignSectionVirtualAddresses(layout, platform, err))

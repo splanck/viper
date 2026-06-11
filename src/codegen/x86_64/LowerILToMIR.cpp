@@ -164,6 +164,16 @@ Operand MIRBuilder::makeOperandForValue(const ILValue &value, RegClass cls) {
     return lower_->makeOperandForValue(*block_, value, cls);
 }
 
+/// @brief Try to convert an IL value into a machine operand without side effects.
+/// @param value IL value to inspect.
+/// @param cls Required register class for a register result.
+/// @return Existing operand representation, or nullopt if conversion would mutate lowering state.
+std::optional<Operand> MIRBuilder::tryGetOperandForValue(const ILValue &value,
+                                                         RegClass cls) const {
+    assert(lower_);
+    return lower_->tryGetOperandForValue(value, cls);
+}
+
 /// @brief Translate a label IL value into a machine operand.
 /// @param value IL label value.
 /// @return Machine operand referencing the label.
@@ -481,6 +491,50 @@ Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &val
             break;
     }
     return makeImmOperand(0);
+}
+
+/// @brief Look up an operand for @p value without allocating vregs or emitting instructions.
+/// @details This mirrors the side-effect-free subset of @ref makeOperandForValue. It is safe to
+///          call from speculative optimizations because it never extends @c valueToVReg_, never
+///          adds rodata entries, and never appends to a machine block.
+/// @param value IL value to inspect.
+/// @param cls Expected register class for any existing SSA register operand.
+/// @return Operand when representation is already available, otherwise nullopt.
+std::optional<Operand> LowerILToMIR::tryGetOperandForValue(const ILValue &value,
+                                                           RegClass cls) const {
+    if (value.kind == ILValue::Kind::LABEL) {
+        if (cls != RegClass::GPR) {
+            return std::nullopt;
+        }
+        return makeLabelOperand(value);
+    }
+
+    if (!isImmediate(value)) {
+        const auto it = valueToVReg_.find(value.id);
+        if (it == valueToVReg_.end()) {
+            return std::nullopt;
+        }
+        if (it->second.cls != regClassFor(value.kind) || it->second.cls != cls) {
+            phaseAUnsupported("SSA id reused with incompatible value type");
+        }
+        return makeVRegOperand(it->second.cls, it->second.id);
+    }
+
+    switch (value.kind) {
+        case ILValue::Kind::I64:
+        case ILValue::Kind::I1:
+        case ILValue::Kind::PTR:
+            if (cls != RegClass::GPR) {
+                return std::nullopt;
+            }
+            return makeImmOperand(canonicalIntegerImmediate(value));
+        case ILValue::Kind::F64:
+        case ILValue::Kind::STR:
+            return std::nullopt;
+        case ILValue::Kind::LABEL:
+            break;
+    }
+    return std::nullopt;
 }
 
 /// @brief Materialize block-parameter copies on a dedicated outgoing edge block.

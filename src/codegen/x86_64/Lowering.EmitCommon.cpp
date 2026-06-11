@@ -227,8 +227,7 @@ Operand EmitCommon::materialise(Operand operand, RegClass cls) {
         builder().append(MInstr::make(cls == RegClass::XMM ? MOpcode::MOVSDmr : MOpcode::MOVmr,
                                       std::vector<Operand>{clone(tmpOp), clone(operand)}));
     } else {
-        builder().append(
-            MInstr::make(MOpcode::MOVrr, std::vector<Operand>{clone(tmpOp), clone(operand)}));
+        phaseAUnsupported("cannot materialise unsupported operand kind");
     }
 
     return tmpOp;
@@ -254,8 +253,13 @@ std::optional<Operand> EmitCommon::tryMakeIndexedMem(const ILInstr &addrProducer
         return std::nullopt;
     }
 
-    Operand addrOp = builder().makeOperandForValue(addrProducer.ops[0], RegClass::GPR);
-    const auto *addrReg = std::get_if<OpReg>(&addrOp);
+    const std::optional<Operand> addrOp =
+        builder().tryGetOperandForValue(addrProducer.ops[0], RegClass::GPR);
+    if (!addrOp) {
+        return std::nullopt;
+    }
+
+    const auto *addrReg = std::get_if<OpReg>(&*addrOp);
     if (!addrReg || addrReg->isPhys) {
         return std::nullopt;
     }
@@ -392,6 +396,11 @@ Operand EmitCommon::materialiseGpr(Operand operand) {
 Operand EmitCommon::materialiseDisplacement(const Operand &baseOp, int64_t &disp) {
     if (fitsImm32(disp))
         return clone(baseOp);
+
+    const auto *baseReg = std::get_if<OpReg>(&baseOp);
+    if (!baseReg || baseReg->cls != RegClass::GPR) {
+        phaseAUnsupported("large displacement requires a GPR base register");
+    }
 
     const VReg offsetReg = builder().makeTempVReg(RegClass::GPR);
     const Operand offset = makeVRegOperand(offsetReg.cls, offsetReg.id);

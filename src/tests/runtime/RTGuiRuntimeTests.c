@@ -321,6 +321,80 @@ static void test_default_font_is_applied_to_complex_text_widgets(void) {
     printf("test_default_font_is_applied_to_complex_text_widgets: PASSED\n");
 }
 
+// Regression: the IDE parents its status bar to a layout container (a VBox), not to the
+// app handle. rt_gui_app_from_handle() does not resolve a container to its owning app,
+// so rt_statusbar_new must apply the default font via the active app
+// (rt_gui_apply_default_font). Without it, sb->font stays NULL, statusbar_paint
+// early-returns before drawing anything, and the whole strip is invisible.
+static void test_statusbar_runtime_applies_font_with_container_parent(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.default_font = (vg_font_t *)0x1;
+    app.default_font_size = 13.0f;
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    vg_widget_t *container = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(container);
+    vg_widget_add_child(app.root, container);
+
+    vg_statusbar_t *statusbar = (vg_statusbar_t *)rt_statusbar_new(container);
+    assert(statusbar);
+    assert(statusbar->font == app.default_font);
+    assert(statusbar->font_size == app.default_font_size);
+
+    cleanup_fake_app(&app);
+    printf("test_statusbar_runtime_applies_font_with_container_parent: PASSED\n");
+}
+
+// Regression: a code editor renders text on a fixed char_width grid that must
+// match the rendered glyph advances, so it needs a monospace font. The IDE sets
+// a proportional chrome font app-wide via App.SetFont, which re-propagates the
+// default font across the whole widget tree. An editor that already had its
+// (monospace) font set explicitly must be skipped, or its grid desyncs from the
+// glyphs and tokens spread apart. Once font_pinned is set, propagation is a no-op
+// for that editor; un-pinned editors still follow the app font.
+static void test_codeeditor_pinned_font_survives_app_font_propagation(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.default_font = (vg_font_t *)0x1;
+    app.default_font_size = 17.0f;
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    vg_codeeditor_t *pinned = (vg_codeeditor_t *)rt_codeeditor_new(app.root);
+    vg_codeeditor_t *unpinned = (vg_codeeditor_t *)rt_codeeditor_new(app.root);
+    assert(pinned && unpinned);
+    // At creation both inherit the app default font and neither is pinned yet.
+    assert(pinned->font == app.default_font && !pinned->font_pinned);
+
+    // Simulate an explicit monospace SetFont on the first editor: a distinct font
+    // handle, size, and char_width grid, marked as editor-owned.
+    vg_font_t *mono = (vg_font_t *)0x2;
+    pinned->font = mono;
+    pinned->font_size = 13.0f;
+    pinned->char_width = 7.5f;
+    pinned->font_pinned = true;
+
+    // App-wide font change (the IDE's proportional chrome font) re-propagates.
+    app.default_font = (vg_font_t *)0x3;
+    app.default_font_size = 21.0f;
+    rt_gui_reapply_default_font(&app);
+
+    // The pinned editor keeps its monospace font and grid untouched…
+    assert(pinned->font == mono);
+    assert(pinned->font_size == 13.0f);
+    assert(pinned->char_width == 7.5f);
+    // …while an un-pinned editor still follows the new app font.
+    assert(unpinned->font == app.default_font && unpinned->font_pinned == false);
+
+    cleanup_fake_app(&app);
+    printf("test_codeeditor_pinned_font_survives_app_font_propagation: PASSED\n");
+}
+
 static void test_widget_set_font_rejects_stale_font_handles(void) {
     vg_font_t *sentinel = (vg_font_t *)(uintptr_t)0x1000;
     void *stale = (void *)(uintptr_t)0x12345678;
@@ -1449,6 +1523,38 @@ static void test_contextmenu_item_click_updates_menuitem_was_clicked(void) {
     assert(raw_item == NULL || raw_item->was_clicked == false);
     rt_contextmenu_destroy(menu_handle);
     printf("test_contextmenu_item_click_updates_menuitem_was_clicked: PASSED\n");
+}
+
+// Regression: a standalone right-click menu (GUI.ContextMenu.New) is not parented into
+// app->root, so the main loop only paints it and routes input to it if rt_contextmenu_show
+// registers it as the app's active overlay. rt_contextmenu_hide must clear that
+// registration. Without this the menu is marked visible but never appears on screen.
+static void test_contextmenu_show_registers_and_clears_active_overlay(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.default_font = (vg_font_t *)0x1;
+    app.default_font_size = 14.0f;
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    void *menu = rt_contextmenu_new();
+    assert(menu);
+    assert(rt_contextmenu_add_item(menu, rt_const_cstr("Open")));
+    assert(app.active_context_menu == NULL);
+
+    rt_contextmenu_show(menu, 10, 20);
+    assert(app.active_context_menu == rt_gui_contextmenu_from_handle(menu));
+    assert(rt_contextmenu_is_visible(menu) == 1);
+
+    rt_contextmenu_hide(menu);
+    assert(app.active_context_menu == NULL);
+    assert(rt_contextmenu_is_visible(menu) == 0);
+
+    rt_contextmenu_destroy(menu);
+    cleanup_fake_app(&app);
+    printf("test_contextmenu_show_registers_and_clears_active_overlay: PASSED\n");
 }
 
 static void test_filedialog_show_without_active_window_returns_zero(void) {
@@ -2657,6 +2763,8 @@ int main(void) {
     test_statusbar_runtime_button_wires_click_polling();
     test_default_font_is_applied_to_text_widgets();
     test_default_font_is_applied_to_complex_text_widgets();
+    test_statusbar_runtime_applies_font_with_container_parent();
+    test_codeeditor_pinned_font_survives_app_font_propagation();
     test_widget_set_font_rejects_stale_font_handles();
     test_dropdown_placeholder_is_copied();
     test_dialog_content_is_parented();
@@ -2698,6 +2806,7 @@ int main(void) {
     test_listbox_and_treeview_reject_foreign_child_handles();
     test_contextmenu_separator_returns_item_handle();
     test_contextmenu_item_click_updates_menuitem_was_clicked();
+    test_contextmenu_show_registers_and_clears_active_overlay();
     test_filedialog_show_without_active_window_returns_zero();
     test_filedialog_show_uses_original_owner_app();
     test_filedialog_path_list_helpers_decode_escaped_paths();

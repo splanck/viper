@@ -352,7 +352,11 @@ PhysReg LinearScanAllocator::takeRegister(RegClass cls, std::vector<MInstr> &pre
 /// @param phys Register being released.
 /// @param cls Class of @p phys.
 void LinearScanAllocator::releaseRegister(PhysReg phys, RegClass cls) {
-    poolFor(cls).push_back(phys);
+    auto &pool = poolFor(cls);
+    if (std::find(pool.begin(), pool.end(), phys) != pool.end()) {
+        throw std::runtime_error("x86 register allocator: duplicate physical register release");
+    }
+    pool.push_back(phys);
 }
 
 /// @brief Spill one active virtual register to free a physical register.

@@ -261,7 +261,7 @@ static bool computeRelocPatchSite(const OutputSection &outSec,
             << "' has no file-backed bytes to patch\n";
         return false;
     }
-    if (patchOff > outSec.data.size()) {
+    if (patchOff >= outSec.data.size()) {
         err << "error: relocation at offset " << patchOff << " out of bounds in '" << outSec.name
             << "' (size=" << outSec.data.size() << ")\n";
         return false;
@@ -1022,25 +1022,30 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                             // The template spans all non-.tdata TLS sections including
                             // any alignment gaps between them.
                             uint64_t templateStartVA = 0;
+                            bool templateStartValid = false;
                             for (const auto &ls : layout.sections) {
                                 if (ls.tls && ls.name != ".tdata") {
                                     templateStartVA = ls.virtualAddr;
+                                    templateStartValid = true;
                                     break;
                                 }
                             }
                             bool tlvMatch = false;
-                            for (const auto &ls : layout.sections) {
-                                if (!ls.tls || ls.name == ".tdata")
-                                    continue; // Skip the descriptor section itself.
-                                uint64_t tlsEnd = 0;
-                                if (!checkedAddU64(ls.virtualAddr,
-                                                   static_cast<uint64_t>(outputSectionMemSize(ls)),
-                                                   tlsEnd))
-                                    return false;
-                                if (val >= ls.virtualAddr && val < tlsEnd) {
-                                    val -= templateStartVA;
-                                    tlvMatch = true;
-                                    break;
+                            if (templateStartValid) {
+                                for (const auto &ls : layout.sections) {
+                                    if (!ls.tls || ls.name == ".tdata")
+                                        continue; // Skip the descriptor section itself.
+                                    uint64_t tlsEnd = 0;
+                                    if (!checkedAddU64(
+                                            ls.virtualAddr,
+                                            static_cast<uint64_t>(outputSectionMemSize(ls)),
+                                            tlsEnd))
+                                        return false;
+                                    if (val >= ls.virtualAddr && val < tlsEnd) {
+                                        val -= templateStartVA;
+                                        tlvMatch = true;
+                                        break;
+                                    }
                                 }
                             }
                             if (!tlvMatch && val != 0) {

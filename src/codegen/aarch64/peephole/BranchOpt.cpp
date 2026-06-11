@@ -27,17 +27,41 @@
 
 #include <algorithm>
 #include <cstring>
+#include <string_view>
 
 namespace viper::codegen::aarch64::peephole {
 namespace {
 
+/// @brief Return true if @p text contains @p marker as a label-like token.
+/// @details Cold-block matching remains name-based for compatibility with the
+///          existing MIR, but it now requires token boundaries so unrelated labels
+///          such as "stereotype" do not become cold just because they contain
+///          "error" or "trap" as a substring.
+/// @param text Label or symbol text to inspect.
+/// @param marker Cold marker token such as "trap", "panic", or "error".
+/// @return True when @p marker appears at a label-token boundary.
+[[nodiscard]] bool hasColdMarkerToken(const std::string &text, std::string_view marker) noexcept {
+    std::size_t pos = text.find(marker);
+    while (pos != std::string::npos) {
+        const bool beforeOk =
+            pos == 0 || text[pos - 1] == '_' || text[pos - 1] == '.' || text[pos - 1] == '$';
+        const std::size_t after = pos + marker.size();
+        const bool afterOk =
+            after == text.size() || text[after] == '_' || text[after] == '.' || text[after] == '$';
+        if (beforeOk && afterOk)
+            return true;
+        pos = text.find(marker, pos + 1);
+    }
+    return false;
+}
+
 /// @brief Check if a block is a cold block (trap handler, error block).
 [[nodiscard]] bool isColdBlock(const MBasicBlock &block) noexcept {
-    if (block.name.find("trap") != std::string::npos)
+    if (hasColdMarkerToken(block.name, "trap"))
         return true;
-    if (block.name.find("error") != std::string::npos)
+    if (hasColdMarkerToken(block.name, "error"))
         return true;
-    if (block.name.find("panic") != std::string::npos)
+    if (hasColdMarkerToken(block.name, "panic"))
         return true;
 
     if (block.instrs.size() == 1) {
@@ -45,13 +69,37 @@ namespace {
         if (instr.opc == MOpcode::Bl) {
             if (!instr.ops.empty() && instr.ops[0].kind == MOperand::Kind::Label) {
                 const auto &label = instr.ops[0].label;
-                if (label.find("trap") != std::string::npos ||
-                    label.find("panic") != std::string::npos)
+                if (hasColdMarkerToken(label, "trap") || hasColdMarkerToken(label, "panic"))
                     return true;
             }
         }
     }
     return false;
+}
+
+/// @brief Return true if @p opc is a control-transfer boundary for local scans.
+/// @details CSET-to-branch fusion cannot cross instructions that may leave the
+///          block, call into unknown code, or otherwise make condition flags
+///          unavailable to the fused branch.
+[[nodiscard]] bool isControlBarrier(MOpcode opc) noexcept {
+    return opc == MOpcode::Br || opc == MOpcode::BCond || opc == MOpcode::Cbz ||
+           opc == MOpcode::Cbnz || opc == MOpcode::Ret || opc == MOpcode::Bl ||
+           opc == MOpcode::Blr;
+}
+
+/// @brief Return true if moving block @p idx to the end preserves implicit fallthrough.
+/// @details The layout optimizer can only move a cold block when the preceding
+///          block cannot implicitly fall through into it. Conditional branches
+///          are deliberately rejected because their not-taken path is layout
+///          dependent in this MIR.
+[[nodiscard]] bool canMoveColdBlock(const MFunction &fn, std::size_t idx) noexcept {
+    if (idx == 0 || idx >= fn.blocks.size())
+        return false;
+    const auto &prev = fn.blocks[idx - 1];
+    if (prev.instrs.empty())
+        return false;
+    const MOpcode last = prev.instrs.back().opc;
+    return last == MOpcode::Br || last == MOpcode::Ret;
 }
 
 } // namespace
@@ -207,9 +255,7 @@ bool tryCsetBranchFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeS
             bool regDead = true;
             for (std::size_t k = j + 1; k < instrs.size(); ++k) {
                 const auto &later = instrs[k];
-                if (later.opc == MOpcode::Br || later.opc == MOpcode::BCond ||
-                    later.opc == MOpcode::Ret || later.opc == MOpcode::Cbz ||
-                    later.opc == MOpcode::Cbnz)
+                if (isControlBarrier(later.opc))
                     break;
                 for (std::size_t oi = 0; oi < later.ops.size(); ++oi) {
                     if (oi == 0 && definesReg(later, csetReg)) {
@@ -242,6 +288,8 @@ bool tryCsetBranchFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeS
             case MOpcode::AddsRI:
             case MOpcode::SubsRI:
             case MOpcode::Cset:
+            case MOpcode::Bl:
+            case MOpcode::Blr:
                 return false;
             default:
                 break;
@@ -252,8 +300,7 @@ bool tryCsetBranchFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeS
                 return false;
         }
 
-        if (next.opc == MOpcode::Br || next.opc == MOpcode::BCond || next.opc == MOpcode::Cbz ||
-            next.opc == MOpcode::Cbnz || next.opc == MOpcode::Ret)
+        if (isControlBarrier(next.opc))
             return false;
     }
     return false;
@@ -265,7 +312,7 @@ std::size_t reorderBlocks(MFunction &fn) {
 
     std::vector<std::size_t> coldIndices;
     for (std::size_t i = 0; i < fn.blocks.size(); ++i) {
-        if (isColdBlock(fn.blocks[i]))
+        if (isColdBlock(fn.blocks[i]) && canMoveColdBlock(fn, i))
             coldIndices.push_back(i);
     }
 

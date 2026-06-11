@@ -145,6 +145,15 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx);
 struct SingleBlockFastPathSetup {
     const il::core::BasicBlock &bb; ///< Reference to the single block.
     MBasicBlock &bbMir;             ///< Reference to the output MIR block.
+
+    /// @brief Construct a validated single-block fast-path setup.
+    /// @details The references are borrowed from the fast-path context and remain valid for
+    ///          the duration of the current lowering attempt. Keeping construction explicit
+    ///          prevents accidental default-initialization of the reference members.
+    /// @param bb Single IL basic block matched by the fast-path validator.
+    /// @param bbMir Corresponding MIR basic block receiving fast-path output.
+    SingleBlockFastPathSetup(const il::core::BasicBlock &bb, MBasicBlock &bbMir) noexcept
+        : bb(bb), bbMir(bbMir) {}
 };
 
 /// @brief Validate context for single-block fast-path patterns.

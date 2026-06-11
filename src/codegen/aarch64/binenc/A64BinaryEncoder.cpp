@@ -1598,8 +1598,8 @@ void A64BinaryEncoder::encodeSpOffsetStore(uint32_t rt,
 namespace {
 
 struct Reg3GprEntry {
-    MOpcode op;
-    uint32_t tmpl;
+    MOpcode op{};
+    uint32_t tmpl{0};
 };
 
 constexpr Reg3GprEntry kReg3GprTable[] = {
@@ -1621,8 +1621,8 @@ constexpr Reg3GprEntry kReg3GprTable[] = {
 };
 
 struct Reg4GprEntry {
-    MOpcode op;
-    uint32_t tmpl;
+    MOpcode op{};
+    uint32_t tmpl{0};
 };
 
 constexpr Reg4GprEntry kReg4GprTable[] = {
@@ -1631,8 +1631,8 @@ constexpr Reg4GprEntry kReg4GprTable[] = {
 };
 
 struct Reg3FprEntry {
-    MOpcode op;
-    uint32_t tmpl;
+    MOpcode op{};
+    uint32_t tmpl{0};
 };
 
 constexpr Reg3FprEntry kReg3FprTable[] = {
@@ -1643,10 +1643,10 @@ constexpr Reg3FprEntry kReg3FprTable[] = {
 };
 
 struct Conv2RegEntry {
-    MOpcode op;
-    uint32_t tmpl;
-    bool dstIsGpr; ///< true: dst uses hwGPR, false: hwFPR
-    bool srcIsGpr; ///< true: src uses hwGPR, false: hwFPR
+    MOpcode op{};
+    uint32_t tmpl{0};
+    bool dstIsGpr{false}; ///< true: dst uses hwGPR, false: hwFPR
+    bool srcIsGpr{false}; ///< true: src uses hwGPR, false: hwFPR
 };
 
 constexpr Conv2RegEntry kConv2RegTable[] = {

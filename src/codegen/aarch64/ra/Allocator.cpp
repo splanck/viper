@@ -37,6 +37,7 @@
 #include <climits>
 #include <initializer_list>
 #include <stdexcept>
+#include <utility>
 
 namespace viper::codegen::aarch64::ra {
 
@@ -57,19 +58,22 @@ bool scratchAlreadyUsed(const std::vector<PhysReg> &scratch, PhysReg pr) {
 /// @brief Pick the first available scratch register from @p candidates.
 /// @details If @p canReuseDefScratch is true, prefers a register already in @p scratch
 ///          (safe when the use and def are the same operand slot). Otherwise picks one
-///          not yet in @p scratch. Throws if all candidates conflict.
+///          not yet in @p scratch. Registers listed in @p blocked are never selected,
+///          which prevents emergency scratch reloads from clobbering explicit physical
+///          operands on the current instruction. Throws if all candidates conflict.
 PhysReg chooseFromScratchSet(std::initializer_list<PhysReg> candidates,
                              bool canReuseDefScratch,
-                             const std::vector<PhysReg> &scratch) {
+                             const std::vector<PhysReg> &scratch,
+                             const std::unordered_set<PhysReg> &blocked) {
     if (canReuseDefScratch) {
         for (PhysReg candidate : candidates) {
-            if (scratchAlreadyUsed(scratch, candidate)) {
+            if (blocked.find(candidate) == blocked.end() && scratchAlreadyUsed(scratch, candidate)) {
                 return candidate;
             }
         }
     }
     for (PhysReg candidate : candidates) {
-        if (!scratchAlreadyUsed(scratch, candidate)) {
+        if (blocked.find(candidate) == blocked.end() && !scratchAlreadyUsed(scratch, candidate)) {
             return candidate;
         }
     }
@@ -81,14 +85,16 @@ PhysReg chooseFromScratchSet(std::initializer_list<PhysReg> candidates,
 /// @param fprClass         True to pick an FPR scratch; false for GPR.
 /// @param canReuseDefScratch True when the spilled operand is def-only (safe to reuse).
 /// @param scratch          Registers already acquired this instruction.
+/// @param blocked          Explicit physical operands that must not be clobbered.
 /// @return A reserved scratch register suitable for the operand class.
 PhysReg chooseEmergencyScratch(bool fprClass,
                                bool canReuseDefScratch,
-                               const std::vector<PhysReg> &scratch) {
+                               const std::vector<PhysReg> &scratch,
+                               const std::unordered_set<PhysReg> &blocked) {
     if (fprClass)
-        return chooseFromScratchSet({kScratchFPR, kScratchFPR2}, canReuseDefScratch, scratch);
+        return chooseFromScratchSet({kScratchFPR, kScratchFPR2}, canReuseDefScratch, scratch, blocked);
     return chooseFromScratchSet(
-        {kScratchGPR, kScratchGPR2, kScratchGPR3}, canReuseDefScratch, scratch);
+        {kScratchGPR, kScratchGPR2, kScratchGPR3}, canReuseDefScratch, scratch, blocked);
 }
 
 } // namespace
@@ -146,8 +152,12 @@ void LinearAllocator::restoreFromPredecessor(std::size_t bi) {
         const PhysReg phys = kv.second;
 
         auto it = std::find(pools_.gprFree.begin(), pools_.gprFree.end(), phys);
-        if (it == pools_.gprFree.end())
+        if (it == pools_.gprFree.end()) {
+            auto &st = gprStates_[vid];
+            st.hasPhys = false;
+            st.spilled = true;
             continue;
+        }
         pools_.gprFree.erase(it);
 
         auto &st = gprStates_[vid];
@@ -162,8 +172,12 @@ void LinearAllocator::restoreFromPredecessor(std::size_t bi) {
         const PhysReg phys = kv.second;
 
         auto it = std::find(pools_.fprFree.begin(), pools_.fprFree.end(), phys);
-        if (it == pools_.fprFree.end())
+        if (it == pools_.fprFree.end()) {
+            auto &st = fprStates_[vid];
+            st.hasPhys = false;
+            st.spilled = true;
             continue;
+        }
         pools_.fprFree.erase(it);
 
         auto &st = fprStates_[vid];
@@ -209,6 +223,12 @@ bool LinearAllocator::isProtectedOperand(uint16_t vreg, RegClass cls) const {
     if (cls == RegClass::GPR)
         return protectedOperandGPR_.find(vreg) != protectedOperandGPR_.end();
     return protectedOperandFPR_.find(vreg) != protectedOperandFPR_.end();
+}
+
+bool LinearAllocator::isProtectedPhys(PhysReg phys, RegClass cls) const {
+    if (cls == RegClass::GPR)
+        return protectedPhysGPR_.find(phys) != protectedPhysGPR_.end();
+    return protectedPhysFPR_.find(phys) != protectedPhysFPR_.end();
 }
 
 bool LinearAllocator::isLiveOut(uint16_t vreg, RegClass cls) const {
@@ -320,6 +340,8 @@ uint16_t LinearAllocator::selectLRUVictim(RegClass cls) {
     for (auto &kv : states) {
         if (isProtectedOperand(kv.first, cls))
             continue;
+        if (kv.second.hasPhys && isProtectedPhys(kv.second.phys, cls))
+            continue;
         if (kv.second.hasPhys && kv.second.lastUse < oldestUse) {
             oldestUse = kv.second.lastUse;
             victim = kv.first;
@@ -337,6 +359,8 @@ uint16_t LinearAllocator::selectFurthestVictim(RegClass cls) {
         if (!kv.second.hasPhys)
             continue;
         if (isProtectedOperand(kv.first, cls))
+            continue;
+        if (isProtectedPhys(kv.second.phys, cls))
             continue;
 
         unsigned dist = getNextUseDistance(kv.first, cls);
@@ -416,7 +440,8 @@ void LinearAllocator::handleSpilledOperand(MReg &r,
     try {
         tmp = fprClass ? pools_.takeFPR() : pools_.takeGPR();
     } catch (const std::runtime_error &) {
-        tmp = chooseEmergencyScratch(fprClass, isDef && !isUse, scratch);
+        const auto &blocked = fprClass ? protectedPhysFPR_ : protectedPhysGPR_;
+        tmp = chooseEmergencyScratch(fprClass, isDef && !isUse, scratch, blocked);
     }
     auto &st = fprClass ? fprStates_[r.idOrPhys] : gprStates_[r.idOrPhys];
     const int off = st.fpOffset != 0 ? st.fpOffset : fb_.ensureSpill(r.idOrPhys);
@@ -629,9 +654,99 @@ void LinearAllocator::handleCall(MInstr &ins, std::vector<MInstr> &rewritten) {
     }
     for (auto &mi : preCall)
         rewritten.push_back(std::move(mi));
+
+    std::vector<MInstr> callPrefix;
+    std::vector<MInstr> callSuffix;
+    std::vector<PhysReg> callScratch;
+    std::vector<std::pair<uint16_t, RegClass>> virtualCallOperands;
+
+    protectedOperandGPR_.clear();
+    protectedOperandFPR_.clear();
+    protectedPhysGPR_.clear();
+    protectedPhysFPR_.clear();
+    for (std::size_t i = 0; i < ins.ops.size(); ++i) {
+        auto &op = ins.ops[i];
+        const auto [isUse, isDef] = operandRoles(ins, i);
+        if ((!isUse && !isDef) || op.kind != MOperand::Kind::Reg)
+            continue;
+        if (op.reg.isPhys) {
+            const PhysReg phys = static_cast<PhysReg>(op.reg.idOrPhys);
+            if (op.reg.cls == RegClass::GPR)
+                protectedPhysGPR_.insert(phys);
+            else
+                protectedPhysFPR_.insert(phys);
+            trackCalleeSavedPhys(phys);
+            continue;
+        }
+
+        virtualCallOperands.push_back({op.reg.idOrPhys, op.reg.cls});
+        if (op.reg.cls == RegClass::GPR)
+            protectedOperandGPR_.insert(op.reg.idOrPhys);
+        else
+            protectedOperandFPR_.insert(op.reg.idOrPhys);
+    }
+
+    for (std::size_t i = 0; i < ins.ops.size(); ++i) {
+        auto &op = ins.ops[i];
+        const auto [isUse, isDef] = operandRoles(ins, i);
+        if (op.kind == MOperand::Kind::Reg && !op.reg.isPhys) {
+            maybeSpillForPressure(op.reg.cls, callPrefix);
+            materialize(op.reg, isUse, isDef, callPrefix, callSuffix, callScratch);
+        }
+    }
+    for (const auto &[vreg, cls] : virtualCallOperands) {
+        auto &states = cls == RegClass::GPR ? gprStates_ : fprStates_;
+        auto it = states.find(vreg);
+        if (it == states.end() || !it->second.hasPhys || isCalleeSaved(it->second.phys, cls))
+            continue;
+        const bool neededLater = isLiveOut(vreg, cls) || getNextUseDistance(vreg, cls) != UINT_MAX;
+        if (!neededLater)
+            continue;
+        if (it->second.fpOffset == 0 || it->second.dirty) {
+            const int off = ensureCurrentSpillSlot(vreg, cls);
+            it->second.fpOffset = off;
+            if (cls == RegClass::GPR)
+                callPrefix.push_back(makeStrFp(it->second.phys, off));
+            else
+                callPrefix.push_back(MInstr{
+                    MOpcode::StrFprFpImm, {MOperand::regOp(it->second.phys), MOperand::immOp(off)}});
+            it->second.dirty = false;
+        }
+    }
+    for (auto &mi : callPrefix)
+        rewritten.push_back(std::move(mi));
     rewritten.push_back(ins);
+    for (auto &mi : callSuffix)
+        rewritten.push_back(std::move(mi));
+    for (const auto &[vreg, cls] : virtualCallOperands)
+        retireCallOperandAfterCall(vreg, cls);
+    releaseScratch(callScratch);
+    protectedOperandGPR_.clear();
+    protectedOperandFPR_.clear();
+    protectedPhysGPR_.clear();
+    protectedPhysFPR_.clear();
     if (isArrayObjGet)
         pendingGetBarrier_ = true;
+}
+
+void LinearAllocator::retireCallOperandAfterCall(uint16_t vreg, RegClass cls) {
+    auto &states = cls == RegClass::GPR ? gprStates_ : fprStates_;
+    auto it = states.find(vreg);
+    if (it == states.end() || !it->second.hasPhys)
+        return;
+
+    auto &st = it->second;
+    if (isCalleeSaved(st.phys, cls))
+        return;
+
+    const bool neededLater = isLiveOut(vreg, cls) || getNextUseDistance(vreg, cls) != UINT_MAX;
+    if (cls == RegClass::GPR)
+        pools_.releaseGPR(st.phys, ti_);
+    else
+        pools_.releaseFPR(st.phys, ti_);
+    st.hasPhys = false;
+    st.spilled = neededLater;
+    st.dirty = false;
 }
 
 void LinearAllocator::allocateInstruction(MInstr &ins, std::vector<MInstr> &rewritten) {
@@ -664,11 +779,21 @@ void LinearAllocator::allocateInstruction(MInstr &ins, std::vector<MInstr> &rewr
 
     protectedOperandGPR_.clear();
     protectedOperandFPR_.clear();
+    protectedPhysGPR_.clear();
+    protectedPhysFPR_.clear();
     for (std::size_t i = 0; i < ins.ops.size(); ++i) {
         const auto &op = ins.ops[i];
         const auto [isUse, isDef] = operandRoles(ins, i);
-        if ((!isUse && !isDef) || op.kind != MOperand::Kind::Reg || op.reg.isPhys)
+        if ((!isUse && !isDef) || op.kind != MOperand::Kind::Reg)
             continue;
+        if (op.reg.isPhys) {
+            const PhysReg phys = static_cast<PhysReg>(op.reg.idOrPhys);
+            if (op.reg.cls == RegClass::GPR)
+                protectedPhysGPR_.insert(phys);
+            else
+                protectedPhysFPR_.insert(phys);
+            continue;
+        }
         if (op.reg.cls == RegClass::GPR)
             protectedOperandGPR_.insert(op.reg.idOrPhys);
         else
@@ -679,6 +804,10 @@ void LinearAllocator::allocateInstruction(MInstr &ins, std::vector<MInstr> &rewr
         auto &op = ins.ops[i];
         auto [isUse, isDef] = operandRoles(ins, i);
         if (op.kind == MOperand::Kind::Reg) {
+            if (op.reg.isPhys) {
+                materialize(op.reg, isUse, isDef, prefix, suffix, scratch);
+                continue;
+            }
             maybeSpillForPressure(op.reg.cls, prefix);
             materialize(op.reg, isUse, isDef, prefix, suffix, scratch);
         }
@@ -713,6 +842,8 @@ void LinearAllocator::allocateInstruction(MInstr &ins, std::vector<MInstr> &rewr
     releaseScratch(scratch);
     protectedOperandGPR_.clear();
     protectedOperandFPR_.clear();
+    protectedPhysGPR_.clear();
+    protectedPhysFPR_.clear();
 }
 
 // =========================================================================
@@ -763,6 +894,8 @@ void LinearAllocator::releaseBlockState() {
 }
 
 void LinearAllocator::recordCalleeSavedUsage() {
+    fn_.savedGPRs.clear();
+    fn_.savedFPRs.clear();
     for (auto r : ti_.calleeSavedGPR) {
         if (pools_.calleeUsed[static_cast<std::size_t>(r)])
             fn_.savedGPRs.push_back(r);

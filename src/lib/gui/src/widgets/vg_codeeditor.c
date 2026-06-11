@@ -2538,6 +2538,8 @@ vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent) {
     editor->font_size = theme->typography.size_normal;
     editor->char_width = 8.0f; // Default, updated when font is set
     editor->line_height = 18.0f;
+    editor->font_pinned = false; // Until a caller sets the font explicitly, the
+                                 // editor follows the app default font.
 
     // Gutter
     editor->show_line_numbers = true;

@@ -391,6 +391,38 @@ static vgfx_key_t translate_vk(WPARAM vk) {
             return VGFX_KEY_UP;
         case VK_DOWN:
             return VGFX_KEY_DOWN;
+        /* Punctuation / OEM keys. Win32 delivers these as VK_OEM_* virtual codes that
+           are NOT their ASCII values, so map each to the ASCII of its unshifted
+           character — vgfx_key_t is ASCII-based. This makes symbol-based shortcuts
+           (e.g. Ctrl+'=' / Ctrl+'-' for zoom in/out) work. */
+        case VK_OEM_PLUS:
+            return (vgfx_key_t)'=';
+        case VK_OEM_MINUS:
+            return (vgfx_key_t)'-';
+        case VK_OEM_COMMA:
+            return (vgfx_key_t)',';
+        case VK_OEM_PERIOD:
+            return (vgfx_key_t)'.';
+        case VK_OEM_1:
+            return (vgfx_key_t)';';
+        case VK_OEM_2:
+            return (vgfx_key_t)'/';
+        case VK_OEM_3:
+            return (vgfx_key_t)'`';
+        case VK_OEM_4:
+            return (vgfx_key_t)'[';
+        case VK_OEM_5:
+            return (vgfx_key_t)'\\';
+        case VK_OEM_6:
+            return (vgfx_key_t)']';
+        case VK_OEM_7:
+            return (vgfx_key_t)'\'';
+        /* Numpad +/- map to the zoom shortcut keys ('='/'-') as a convenience,
+           matching the common editor/browser behaviour for Ctrl+numpad zoom. */
+        case VK_ADD:
+            return (vgfx_key_t)'=';
+        case VK_SUBTRACT:
+            return (vgfx_key_t)'-';
         default:
             return VGFX_KEY_UNKNOWN;
     }

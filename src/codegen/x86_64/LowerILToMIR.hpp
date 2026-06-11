@@ -28,6 +28,7 @@
 #include "TargetX64.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -155,6 +156,17 @@ class MIRBuilder {
     /// @return The MIR operand representing this value.
     [[nodiscard]] Operand makeOperandForValue(const ILValue &value, RegClass cls);
 
+    /// @brief Try to convert an IL value to a MIR operand without mutating lowering state.
+    /// @details This read-only variant is intended for speculative optimizations. It returns
+    ///          existing SSA register mappings and literal operands that need no materialization,
+    ///          but declines values that would allocate vregs, update literal pools, or append
+    ///          helper instructions to the active block.
+    /// @param value The IL value to inspect.
+    /// @param cls The expected register class for any returned register operand.
+    /// @return Operand when the value can be represented without side effects, otherwise nullopt.
+    [[nodiscard]] std::optional<Operand> tryGetOperandForValue(const ILValue &value,
+                                                               RegClass cls) const;
+
     /// @brief Convert an IL label value to a MIR label operand.
     /// @param value The IL value (must have kind == LABEL).
     /// @return A label operand referencing the named block.
@@ -274,6 +286,14 @@ class LowerILToMIR {
     [[nodiscard]] Operand makeOperandForValue(MBasicBlock &block,
                                               const ILValue &value,
                                               RegClass cls);
+
+    /// @brief Look up a MIR operand for @p value without allocating or emitting.
+    /// @details Used by speculative folds that must be side-effect free. Existing SSA
+    ///          mappings and integer immediates are returned directly; string/floating
+    ///          literals and unknown SSA ids return nullopt because representing them would
+    ///          mutate the lowering adapter or current block.
+    [[nodiscard]] std::optional<Operand> tryGetOperandForValue(const ILValue &value,
+                                                               RegClass cls) const;
 
     /// @brief Convert an IL label value to a MIR label operand.
     /// @param value The IL value (must be a LABEL kind).

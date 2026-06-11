@@ -25,7 +25,48 @@
 
 #include "PeepholeCommon.hpp"
 
+#include <limits>
+
 namespace viper::codegen::aarch64::peephole {
+
+namespace {
+
+/// @brief Add two signed byte offsets while rejecting int64 overflow.
+/// @param lhs Base offset, usually FP-relative.
+/// @param rhs Width or adjacency delta to add.
+/// @param out Receives the sum when representable.
+/// @return True if the addition was representable.
+[[nodiscard]] bool checkedOffsetAdd(int64_t lhs, int64_t rhs, int64_t &out) noexcept {
+    if ((rhs > 0 && lhs > std::numeric_limits<int64_t>::max() - rhs) ||
+        (rhs < 0 && lhs < std::numeric_limits<int64_t>::min() - rhs))
+        return false;
+    out = lhs + rhs;
+    return true;
+}
+
+/// @brief Return true when @p opcode may access memory through a non-FP base.
+/// @details Store-load forwarding for FP-relative slots cannot prove these
+///          accesses do not alias an address-taken stack object, so they act as
+///          conservative scan barriers.
+[[nodiscard]] bool isBaseRelativeMemory(MOpcode opcode) noexcept {
+    switch (opcode) {
+        case MOpcode::LdrRegBaseImm:
+        case MOpcode::Ldr8RegBaseImm:
+        case MOpcode::Ldr16RegBaseImm:
+        case MOpcode::Ldr32RegBaseImm:
+        case MOpcode::LdrFprBaseImm:
+        case MOpcode::StrRegBaseImm:
+        case MOpcode::Str8RegBaseImm:
+        case MOpcode::Str16RegBaseImm:
+        case MOpcode::Str32RegBaseImm:
+        case MOpcode::StrFprBaseImm:
+            return true;
+        default:
+            return false;
+    }
+}
+
+} // namespace
 
 /// @brief Merge two adjacent `LDR`/`STR` instructions into a single `LDP`/`STP`.
 /// @details Recognises four candidate pairs: GPR FP-relative load, GPR FP-relative store,
@@ -83,6 +124,8 @@ bool tryLdpStpMerge(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats 
     const long long pairOffset = ascending ? off1 : off2;
     if (pairOffset < -512 || pairOffset > 504)
         return false;
+    if ((pairOffset % 8) != 0)
+        return false;
 
     if (isLoad) {
         if (samePhysReg(first.ops[0], second.ops[0]))
@@ -131,7 +174,8 @@ static bool fpStoreRange(const MInstr &ins, int64_t &start, int64_t &end) {
     if (ins.ops.size() <= offIndex || ins.ops[offIndex].kind != MOperand::Kind::Imm)
         return false;
     start = ins.ops[offIndex].imm;
-    end = start + width;
+    if (!checkedOffsetAdd(start, width, end))
+        return false;
     return true;
 }
 
@@ -156,7 +200,9 @@ std::size_t forwardStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &stats)
             continue;
 
         const int64_t storeOff = instrs[i].ops[1].imm;
-        const int64_t storeEnd = storeOff + 8;
+        int64_t storeEnd = 0;
+        if (!checkedOffsetAdd(storeOff, 8, storeEnd))
+            continue;
         const MOperand storeReg = instrs[i].ops[0];
         const MOpcode matchLoad = gprStore ? MOpcode::LdrRegFpImm : MOpcode::LdrFprFpImm;
         const MOpcode matchStore = gprStore ? MOpcode::StrRegFpImm : MOpcode::StrFprFpImm;
@@ -192,6 +238,9 @@ std::size_t forwardStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &stats)
 
             if (next.opc == MOpcode::Br || next.opc == MOpcode::BCond || next.opc == MOpcode::Ret ||
                 next.opc == MOpcode::Cbz || next.opc == MOpcode::Cbnz)
+                break;
+
+            if (isBaseRelativeMemory(next.opc))
                 break;
         }
     }

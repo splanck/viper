@@ -69,10 +69,10 @@ namespace viper::codegen::aarch64 {
 /// - If supportsImmediate=true, emit: `ADD Xr, Xa, #5`
 /// - If supportsImmediate=false, emit: `MOV Xtmp, #5; ADD Xr, Xa, Xtmp`
 struct BinaryOpMapping {
-    il::core::Opcode ilOp;  ///< The IL opcode this mapping applies to.
-    MOpcode mirOp;          ///< The register-register-register MIR opcode (e.g., ADD Xd, Xn, Xm).
-    bool supportsImmediate; ///< True if this operation has an immediate variant.
-    MOpcode immOp;          ///< The register-immediate MIR opcode (e.g., ADD Xd, Xn, #imm).
+    il::core::Opcode ilOp{};      ///< The IL opcode this mapping applies to.
+    MOpcode mirOp{};              ///< The register-register-register MIR opcode (e.g., ADD Xd, Xn, Xm).
+    bool supportsImmediate{false}; ///< True if this operation has an immediate variant.
+    MOpcode immOp{};              ///< The register-immediate MIR opcode (e.g., ADD Xd, Xn, #imm).
 };
 
 /// @brief Mapping entry for IL comparison operations to AArch64 condition codes.
@@ -91,8 +91,8 @@ struct BinaryOpMapping {
 /// For IL `%r = scmp_lt %a, %b` (signed less than):
 /// - Emit: `CMP Xa, Xb; CSET Xr, lt`
 struct CompareMapping {
-    il::core::Opcode ilOp; ///< The IL comparison opcode.
-    const char *condition; ///< The AArch64 condition code string (e.g., "eq", "lt").
+    il::core::Opcode ilOp{};       ///< The IL comparison opcode.
+    const char *condition{nullptr}; ///< The AArch64 condition code string (e.g., "eq", "lt").
 };
 
 /// @brief Mapping entry for unary IL operations to AArch64 instructions.
@@ -100,8 +100,8 @@ struct CompareMapping {
 /// Maps single-operand IL operations (like negation, bitwise NOT) to their
 /// corresponding AArch64 machine instructions.
 struct UnaryOpMapping {
-    il::core::Opcode ilOp; ///< The IL unary opcode.
-    MOpcode mirOp;         ///< The MIR opcode for this unary operation.
+    il::core::Opcode ilOp{}; ///< The IL unary opcode.
+    MOpcode mirOp{};         ///< The MIR opcode for this unary operation.
 };
 
 /// @brief Mapping table for integer binary arithmetic operations.

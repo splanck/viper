@@ -28,11 +28,62 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 namespace viper::codegen::aarch64::peephole {
+
+namespace {
+
+/// @brief Return true for instructions that end or escape the local straight-line scan.
+/// @details Copy propagation and dead-store tracking are only valid within a
+///          single fallthrough-free instruction range. Calls, traps, and branches
+///          clear all local facts so later malformed or unreachable instructions
+///          cannot inherit state from before a control-flow edge.
+[[nodiscard]] bool isControlBoundary(MOpcode opc) noexcept {
+    return opc == MOpcode::Br || opc == MOpcode::BCond || opc == MOpcode::Ret ||
+           opc == MOpcode::Bl || opc == MOpcode::Blr || opc == MOpcode::Cbz ||
+           opc == MOpcode::Cbnz;
+}
+
+/// @brief Return true if @p opc is a memory access through an arbitrary base register.
+/// @details FP-relative dead-store optimizations cannot prove that a base-relative
+///          access does not alias an address-taken local or spill slot, so these
+///          opcodes act as barriers for frame-slot store facts.
+[[nodiscard]] bool isBaseRelativeMemory(MOpcode opc) noexcept {
+    switch (opc) {
+        case MOpcode::LdrRegBaseImm:
+        case MOpcode::Ldr8RegBaseImm:
+        case MOpcode::Ldr16RegBaseImm:
+        case MOpcode::Ldr32RegBaseImm:
+        case MOpcode::LdrFprBaseImm:
+        case MOpcode::StrRegBaseImm:
+        case MOpcode::Str8RegBaseImm:
+        case MOpcode::Str16RegBaseImm:
+        case MOpcode::Str32RegBaseImm:
+        case MOpcode::StrFprBaseImm:
+            return true;
+        default:
+            return false;
+    }
+}
+
+/// @brief Add @p rhs to @p lhs while rejecting signed overflow.
+/// @param lhs Base FP-relative byte offset.
+/// @param rhs Positive access width or adjacent-slot delta.
+/// @param out Receives the sum when it is representable.
+/// @return True when the addition was representable in int64_t.
+[[nodiscard]] bool checkedOffsetAdd(int64_t lhs, int64_t rhs, int64_t &out) noexcept {
+    if ((rhs > 0 && lhs > std::numeric_limits<int64_t>::max() - rhs) ||
+        (rhs < 0 && lhs < std::numeric_limits<int64_t>::min() - rhs))
+        return false;
+    out = lhs + rhs;
+    return true;
+}
+
+} // namespace
 
 std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats) {
     std::unordered_map<uint32_t, MOperand> copyOrigin;
@@ -49,10 +100,8 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats) {
     };
 
     for (auto &instr : instrs) {
-        if (instr.opc == MOpcode::Br || instr.opc == MOpcode::BCond || instr.opc == MOpcode::Ret ||
-            instr.opc == MOpcode::Bl || instr.opc == MOpcode::Blr) {
-            if (instr.opc == MOpcode::Bl || instr.opc == MOpcode::Blr)
-                copyOrigin.clear();
+        if (isControlBoundary(instr.opc)) {
+            copyOrigin.clear();
             continue;
         }
 
@@ -595,23 +644,27 @@ std::size_t eliminateDeadFpStores(std::vector<MInstr> &instrs, PeepholeStats &st
             instr.ops.size() >= 3 && instr.ops[2].kind == MOperand::Kind::Imm) {
             const int64_t off = instr.ops[2].imm;
             lastStore.erase(off);
-            lastStore.erase(off + 8);
+            int64_t highOff = 0;
+            if (!checkedOffsetAdd(off, 8, highOff)) {
+                lastStore.clear();
+                continue;
+            }
+            lastStore.erase(highOff);
             continue;
         }
         if ((instr.opc == MOpcode::LdpRegFpImm || instr.opc == MOpcode::LdpFprFpImm) &&
             instr.ops.size() >= 3 && instr.ops[2].kind == MOperand::Kind::Imm) {
             lastStore.erase(instr.ops[2].imm);
-            lastStore.erase(instr.ops[2].imm + 8);
+            int64_t highOff = 0;
+            if (!checkedOffsetAdd(instr.ops[2].imm, 8, highOff)) {
+                lastStore.clear();
+                continue;
+            }
+            lastStore.erase(highOff);
             continue;
         }
 
-        if (instr.opc == MOpcode::Bl || instr.opc == MOpcode::Blr) {
-            lastStore.clear();
-            continue;
-        }
-
-        if (instr.opc == MOpcode::Br || instr.opc == MOpcode::BCond || instr.opc == MOpcode::Ret ||
-            instr.opc == MOpcode::Cbz || instr.opc == MOpcode::Cbnz) {
+        if (isControlBoundary(instr.opc) || isBaseRelativeMemory(instr.opc)) {
             lastStore.clear();
             continue;
         }
@@ -661,6 +714,8 @@ std::size_t removeDeadFlagSetters(std::vector<MInstr> &instrs, PeepholeStats &st
 
         bool isDead = false;
         for (std::size_t j = i + 1; j < instrs.size(); ++j) {
+            if (isControlBoundary(instrs[j].opc))
+                break;
             if (readsFlags(instrs[j].opc))
                 break;
             if (setsFlags(instrs[j].opc)) {
@@ -743,6 +798,8 @@ std::size_t foldComputeIntoTarget(std::vector<MInstr> &instrs, PeepholeStats &st
 
         bool aluDstDead = true;
         for (std::size_t j = movIdx + 1; j < instrs.size(); ++j) {
+            if (isControlBoundary(instrs[j].opc))
+                break;
             if (usesReg(instrs[j], aluDst)) {
                 aluDstDead = false;
                 break;

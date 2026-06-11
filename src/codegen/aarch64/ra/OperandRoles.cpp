@@ -24,6 +24,9 @@
 
 #include "OpcodeClassify.hpp"
 
+#include <stdexcept>
+#include <string>
+
 namespace viper::codegen::aarch64::ra {
 
 std::pair<bool, bool> operandRoles(const MInstr &ins, std::size_t idx) {
@@ -38,6 +41,8 @@ std::pair<bool, bool> operandRoles(const MInstr &ins, std::size_t idx) {
         case MOpcode::FMovRI:
             return {false, idx == 0};
         case MOpcode::FMovGR:
+            return {idx == 1, idx == 0};
+        case MOpcode::FRintN:
             return {idx == 1, idx == 0};
         default:
             break;
@@ -73,7 +78,7 @@ std::pair<bool, bool> operandRoles(const MInstr &ins, std::size_t idx) {
         return {idx == 1, idx == 0};
     }
 
-    if (isCmpRR(ins.opc) || ins.opc == MOpcode::FCmpRR)
+    if (isCmpRR(ins.opc) || ins.opc == MOpcode::TstRR || ins.opc == MOpcode::FCmpRR)
         return {true, false};
 
     if (isCmpRI(ins.opc) && idx == 0)
@@ -82,11 +87,27 @@ std::pair<bool, bool> operandRoles(const MInstr &ins, std::size_t idx) {
     if (isCset(ins.opc))
         return {false, idx == 0};
 
-    if (isMemLd(ins.opc) && idx == 0)
-        return {false, true};
+    if (isMemLd(ins.opc)) {
+        if (idx == 0)
+            return {false, true};
+        if ((ins.opc == MOpcode::LdrRegBaseImm || ins.opc == MOpcode::Ldr8RegBaseImm ||
+             ins.opc == MOpcode::Ldr16RegBaseImm || ins.opc == MOpcode::Ldr32RegBaseImm ||
+             ins.opc == MOpcode::LdrFprBaseImm) &&
+            idx == 1)
+            return {true, false};
+        return {false, false};
+    }
 
-    if (isMemSt(ins.opc) && idx == 0)
-        return {true, false};
+    if (isMemSt(ins.opc)) {
+        if (idx == 0)
+            return {true, false};
+        if ((ins.opc == MOpcode::StrRegBaseImm || ins.opc == MOpcode::Str8RegBaseImm ||
+             ins.opc == MOpcode::Str16RegBaseImm || ins.opc == MOpcode::Str32RegBaseImm ||
+             ins.opc == MOpcode::StrFprBaseImm) &&
+            idx == 1)
+            return {true, false};
+        return {false, false};
+    }
 
     if (ins.opc == MOpcode::LdrFprFpImm)
         return {false, idx == 0};
@@ -133,6 +154,10 @@ std::pair<bool, bool> operandRoles(const MInstr &ins, std::size_t idx) {
         return {false, false};    // label is neither
     }
 
+    // Blr reads a register call target. Direct Bl carries only a label operand.
+    if (ins.opc == MOpcode::Blr)
+        return {idx == 0, false};
+
     // Csel: csel dst, trueReg, falseReg, cond
     // Operands: [0]=dst (def), [1]=trueReg (use), [2]=falseReg (use), [3]=cond
     if (ins.opc == MOpcode::Csel) {
@@ -159,7 +184,11 @@ std::pair<bool, bool> operandRoles(const MInstr &ins, std::size_t idx) {
         return {false, false};    // offset
     }
 
-    return {true, false};
+    if (idx < ins.ops.size() && ins.ops[idx].kind != MOperand::Kind::Reg)
+        return {false, false};
+
+    throw std::logic_error("AArch64 register allocator: unclassified MIR register operand role for " +
+                           std::string(opcodeName(ins.opc)));
 }
 
 } // namespace viper::codegen::aarch64::ra
