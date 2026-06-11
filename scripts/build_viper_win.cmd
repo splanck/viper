@@ -31,6 +31,7 @@ if "%VIPER_SKIP_LINT%"=="" set "VIPER_SKIP_LINT=0"
 if "%VIPER_SKIP_AUDIT%"=="" set "VIPER_SKIP_AUDIT=0"
 if "%VIPER_LINT_CHANGED_ONLY%"=="" set "VIPER_LINT_CHANGED_ONLY=1"
 if "%VIPER_SKIP_SMOKE%"=="" set "VIPER_SKIP_SMOKE=0"
+if "%VIPER_SKIP_CLEAN%"=="" set "VIPER_SKIP_CLEAN=0"
 
 set "CONFIG_ARGS="
 if not "%VIPER_CMAKE_GENERATOR%"=="" (
@@ -74,7 +75,9 @@ call :reset_stale_compiler_cache
 if errorlevel 1 exit /b 1
 
 REM --- Clean previous build ---------------------------------------------------
-if "%CACHE_RESET%"=="0" (
+if "%VIPER_SKIP_CLEAN%"=="1" (
+    echo Skipping clean ^(VIPER_SKIP_CLEAN=1^); incremental rebuild
+) else if "%CACHE_RESET%"=="0" (
     cmake --build "%VIPER_BUILD_DIR%" --target clean-all 2>nul
     if errorlevel 1 (
         REM clean-all target may not exist on first build; ignore
@@ -115,7 +118,12 @@ if "%VIPER_SKIP_TESTS%"=="1" (
 )
 
 echo Running tests...
-ctest --test-dir "%VIPER_BUILD_DIR%" -C %VIPER_BUILD_TYPE% --output-on-failure -j %JOBS%
+set "CTEST_LABEL_ARGS="
+if not "%VIPER_TEST_LABEL%"=="" (
+    echo Running only tests labeled "%VIPER_TEST_LABEL%" ^(VIPER_TEST_LABEL^)
+    set "CTEST_LABEL_ARGS=-L %VIPER_TEST_LABEL%"
+)
+ctest --test-dir "%VIPER_BUILD_DIR%" -C %VIPER_BUILD_TYPE% --output-on-failure -j %JOBS% %CTEST_LABEL_ARGS%
 if errorlevel 1 (
     set TESTS_FAILED=1
     echo.

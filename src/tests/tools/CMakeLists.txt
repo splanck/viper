@@ -46,6 +46,13 @@ function(viper_add_tools_tests)
             -P ${_VIPER_TOOLS_DIR}/CliHelpTests.cmake)
     viper_add_test_labels(cli_help tools)
 
+    viper_add_ctest(agent_cli
+            ${CMAKE_COMMAND}
+            -DVIPER_EXE=$<TARGET_FILE:viper>
+            -DTEST_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/agent_cli
+            -P ${_VIPER_TOOLS_DIR}/AgentCliTests.cmake)
+    viper_add_test_labels(agent_cli tools zia)
+
     viper_add_test(test_tools_frontend_native_compiler
             ${_VIPER_TOOLS_DIR}/FrontendToolAndNativeCompilerTests.cpp
             ${CMAKE_SOURCE_DIR}/src/tools/viper/cmd_codegen_x64.cpp)

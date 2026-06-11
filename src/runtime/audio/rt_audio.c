@@ -131,6 +131,7 @@ static void audio_group_copy_name(char *dst, size_t cap, rt_string name) {
     dst[len] = '\0';
 }
 
+#ifdef VIPER_ENABLE_AUDIO
 static const char *audio_path_cstr(rt_string path) {
     if (!path)
         return NULL;
@@ -142,6 +143,7 @@ static const char *audio_path_cstr(rt_string path) {
         return NULL;
     return path_str;
 }
+#endif /* VIPER_ENABLE_AUDIO */
 
 /// @brief Find an in-use mix group by name. @return its group id, or -1 if
 ///        no such group (empty/NULL name yields -1). Caller holds the lock.
@@ -189,6 +191,7 @@ static int8_t audio_group_id_valid_unlocked(int64_t group) {
 
 /// @brief Convert a fade/duration in seconds to whole milliseconds, saturating
 ///        at INT64_MAX; non-finite or non-positive input yields 0.
+#ifdef VIPER_ENABLE_AUDIO
 static int64_t seconds_to_ms_i64(float seconds) {
     if (!isfinite(seconds) || seconds <= 0.0f)
         return 0;
@@ -197,6 +200,7 @@ static int64_t seconds_to_ms_i64(float seconds) {
         return INT64_MAX;
     return (int64_t)(ms + 0.5);
 }
+#endif /* VIPER_ENABLE_AUDIO */
 
 #ifdef VIPER_ENABLE_AUDIO
 #include "vaud.h"

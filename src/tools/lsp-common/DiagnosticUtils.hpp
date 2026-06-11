@@ -24,16 +24,21 @@
 
 namespace il::support {
 class DiagnosticEngine;
-}
+class SourceManager;
+} // namespace il::support
 
 namespace viper::server {
 
 /// @brief Extract structured diagnostics from a DiagnosticEngine.
 /// @details Converts each engine diagnostic into a server-agnostic DiagnosticInfo
-///          (message, severity, and 0-based line/column range) suitable for LSP or
-///          MCP responses, independent of any particular frontend.
+///          (message, severity, 1-based location and optional end range, code,
+///          stage, help, related notes, and fix-its) suitable for LSP or MCP
+///          responses, independent of any particular frontend.
 /// @param diag Diagnostic engine holding the collected frontend diagnostics.
+/// @param sm Optional source manager used to resolve file paths for the primary
+///           location and related notes; pass nullptr when unavailable.
 /// @return One DiagnosticInfo per diagnostic, in engine order.
-std::vector<DiagnosticInfo> extractDiagnostics(const il::support::DiagnosticEngine &diag);
+std::vector<DiagnosticInfo> extractDiagnostics(const il::support::DiagnosticEngine &diag,
+                                               const il::support::SourceManager *sm = nullptr);
 
 } // namespace viper::server

@@ -432,6 +432,50 @@ std::string McpHandler::handleToolsCall(const JsonRpcRequest &req) {
 
 // --- Tool implementations ---
 
+/// @brief Serialize one DiagnosticInfo into the MCP diagnostic JSON shape.
+/// @details The shape is stable for machine consumers: endLine/endColumn are 0
+///          when no concrete range is known, and notes/fixits are always
+///          present (possibly empty arrays).
+static JsonValue diagnosticToJson(const DiagnosticInfo &d) {
+    JsonValue::ArrayType noteArr;
+    noteArr.reserve(d.notes.size());
+    for (const auto &n : d.notes) {
+        noteArr.push_back(JsonValue::object({
+            {"message", JsonValue(n.message)},
+            {"file", JsonValue(n.file)},
+            {"line", JsonValue(static_cast<int64_t>(n.line))},
+            {"column", JsonValue(static_cast<int64_t>(n.column))},
+        }));
+    }
+
+    JsonValue::ArrayType fixArr;
+    fixArr.reserve(d.fixits.size());
+    for (const auto &f : d.fixits) {
+        fixArr.push_back(JsonValue::object({
+            {"message", JsonValue(f.message)},
+            {"replacement", JsonValue(f.replacement)},
+            {"line", JsonValue(static_cast<int64_t>(f.line))},
+            {"column", JsonValue(static_cast<int64_t>(f.column))},
+            {"endLine", JsonValue(static_cast<int64_t>(f.endLine))},
+            {"endColumn", JsonValue(static_cast<int64_t>(f.endColumn))},
+        }));
+    }
+
+    return JsonValue::object({
+        {"severity", JsonValue(d.severity)},
+        {"message", JsonValue(d.message)},
+        {"line", JsonValue(static_cast<int64_t>(d.line))},
+        {"column", JsonValue(static_cast<int64_t>(d.column))},
+        {"code", JsonValue(d.code)},
+        {"endLine", JsonValue(static_cast<int64_t>(d.endLine))},
+        {"endColumn", JsonValue(static_cast<int64_t>(d.endColumn))},
+        {"stage", JsonValue(d.stage)},
+        {"help", JsonValue(d.help)},
+        {"notes", JsonValue(std::move(noteArr))},
+        {"fixits", JsonValue(std::move(fixArr))},
+    });
+}
+
 JsonValue McpHandler::callCheck(const JsonValue &args) {
     std::string source = args["source"].asString();
     std::string path = args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
@@ -440,15 +484,8 @@ JsonValue McpHandler::callCheck(const JsonValue &args) {
 
     JsonValue::ArrayType diagArr;
     diagArr.reserve(diags.size());
-    for (const auto &d : diags) {
-        diagArr.push_back(JsonValue::object({
-            {"severity", JsonValue(d.severity)},
-            {"message", JsonValue(d.message)},
-            {"line", JsonValue(static_cast<int64_t>(d.line))},
-            {"column", JsonValue(static_cast<int64_t>(d.column))},
-            {"code", JsonValue(d.code)},
-        }));
-    }
+    for (const auto &d : diags)
+        diagArr.push_back(diagnosticToJson(d));
 
     return textContent(JsonValue(std::move(diagArr)).toCompactString());
 }
@@ -461,15 +498,8 @@ JsonValue McpHandler::callCompile(const JsonValue &args) {
 
     JsonValue::ArrayType diagArr;
     diagArr.reserve(result.diagnostics.size());
-    for (const auto &d : result.diagnostics) {
-        diagArr.push_back(JsonValue::object({
-            {"severity", JsonValue(d.severity)},
-            {"message", JsonValue(d.message)},
-            {"line", JsonValue(static_cast<int64_t>(d.line))},
-            {"column", JsonValue(static_cast<int64_t>(d.column))},
-            {"code", JsonValue(d.code)},
-        }));
-    }
+    for (const auto &d : result.diagnostics)
+        diagArr.push_back(diagnosticToJson(d));
 
     auto obj = JsonValue::object({
         {"succeeded", JsonValue(result.succeeded)},

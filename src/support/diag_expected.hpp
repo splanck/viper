@@ -24,6 +24,7 @@
 #include <optional>
 #include <ostream>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -165,4 +166,11 @@ void printDiagnosticsJson(const std::vector<Diag> &diagnostics,
 /// @param os Output stream receiving JSON.
 /// @param sm Optional source manager used to resolve file paths.
 void printDiagJson(const Diag &diag, std::ostream &os, const SourceManager *sm = nullptr);
+
+/// @brief Emit @p text as a JSON-escaped, double-quoted string literal.
+/// @details Shared by tools that hand-build small JSON documents (eval,
+///          explain, runtime API dumps) so escaping rules stay in one place.
+/// @param os Output stream receiving the quoted literal.
+/// @param text Raw text to escape and quote.
+void printJsonStringEscaped(std::ostream &os, std::string_view text);
 } // namespace il::support

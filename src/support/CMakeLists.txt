@@ -7,6 +7,7 @@ add_library(viper_support STATIC
         arena.cpp
         diag_expected.cpp
         diag_capture.cpp
+        diag_catalog.cpp
 )
 
 target_include_directories(viper_support PUBLIC

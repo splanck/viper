@@ -461,6 +461,8 @@ set(VIPER_CLI_SOURCES
         tools/viper/cmd_package.cpp
         tools/viper/cmd_install_package.cpp
         tools/viper/cmd_repl.cpp
+        tools/viper/cmd_eval.cpp
+        tools/viper/cmd_explain.cpp
         tools/viper/cli.cpp
         tools/viper/break_spec.cpp)
 

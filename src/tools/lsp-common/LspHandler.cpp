@@ -436,6 +436,51 @@ JsonValue diagnosticRangeForLocation(const std::string &content,
     return makeRange(lspLine, lspCol, endLine, endCol);
 }
 
+/// @brief Convert a 1-based compiler diagnostic span into an LSP range.
+/// @details Used when the frontend supplied a concrete end position. Both
+///          endpoints are interpreted as byte columns and converted to UTF-16
+///          code units. Falls back to diagnosticRangeForLocation when the end
+///          position is missing, malformed, or precedes the start.
+JsonValue diagnosticRangeForSpan(const std::string &content,
+                                 uint32_t beginLine,
+                                 uint32_t beginColumn,
+                                 uint32_t endLine,
+                                 uint32_t endColumn) {
+    if (endLine == 0 || endColumn == 0 || endLine < beginLine ||
+        (endLine == beginLine && endColumn <= beginColumn))
+        return diagnosticRangeForLocation(content, beginLine, beginColumn);
+
+    auto byteOffsetFor =
+        [&content](uint32_t oneBasedLine, uint32_t oneBasedColumn, size_t &offset) -> bool {
+        const int line = oneBasedLine > 0 && oneBasedLine <= static_cast<uint32_t>(
+                                                                 std::numeric_limits<int>::max())
+                             ? static_cast<int>(oneBasedLine) - 1
+                             : 0;
+        size_t lineStart = 0;
+        size_t lineEnd = 0;
+        if (!sourceLineByteSpan(content, line, lineStart, lineEnd))
+            return false;
+        const size_t byteColumn =
+            oneBasedColumn > 0 ? static_cast<size_t>(oneBasedColumn - 1u) : 0u;
+        offset = std::min(lineStart + byteColumn, lineEnd);
+        return true;
+    };
+
+    size_t beginOffset = 0;
+    size_t endOffset = 0;
+    if (!byteOffsetFor(beginLine, beginColumn, beginOffset) ||
+        !byteOffsetFor(endLine, endColumn, endOffset) || endOffset < beginOffset)
+        return diagnosticRangeForLocation(content, beginLine, beginColumn);
+
+    int startLspLine = 0;
+    int startLspCol = 0;
+    int endLspLine = 0;
+    int endLspCol = 0;
+    byteOffsetToLspPosition(content, beginOffset, startLspLine, startLspCol);
+    byteOffsetToLspPosition(content, endOffset, endLspLine, endLspCol);
+    return makeRange(startLspLine, startLspCol, endLspLine, endLspCol);
+}
+
 /// @brief Return true for methods that are request/response-shaped in LSP.
 /// @details Notifications must not receive responses. Dispatch uses this helper
 ///          to suppress accidental responses for missing-id calls to request
@@ -816,7 +861,7 @@ void LspHandler::publishDiagnostics(const std::string &uri) {
                 break;
         }
 
-        auto range = diagnosticRangeForLocation(*content, d.line, d.column);
+        auto range = diagnosticRangeForSpan(*content, d.line, d.column, d.endLine, d.endColumn);
 
         auto diag = JsonValue::object({
             {"range", std::move(range)},
@@ -828,6 +873,37 @@ void LspHandler::publishDiagnostics(const std::string &uri) {
         if (!d.code.empty()) {
             auto diagObj = diag.asObject();
             diagObj.push_back({"code", JsonValue(d.code)});
+            diag = JsonValue(std::move(diagObj));
+        }
+
+        if (!d.notes.empty()) {
+            // The single-document server only knows this document's URI. Notes
+            // anchored in this document point at their own range; notes from
+            // other files (or without a location) anchor at the primary range
+            // with the original path preserved in the message text.
+            JsonValue::ArrayType related;
+            related.reserve(d.notes.size());
+            for (const auto &n : d.notes) {
+                const bool sameFile = n.file.empty() || n.file == path;
+                const bool hasLoc = n.line > 0;
+                JsonValue noteRange =
+                    (sameFile && hasLoc)
+                        ? diagnosticRangeForLocation(*content, n.line, n.column)
+                        : diagnosticRangeForSpan(*content, d.line, d.column, d.endLine,
+                                                 d.endColumn);
+                std::string noteMessage = n.message;
+                if (!sameFile && hasLoc) {
+                    noteMessage = n.file + ":" + std::to_string(n.line) + ":" +
+                                  std::to_string(n.column) + ": " + noteMessage;
+                }
+                related.push_back(JsonValue::object({
+                    {"location",
+                     JsonValue::object({{"uri", JsonValue(uri)}, {"range", std::move(noteRange)}})},
+                    {"message", JsonValue(std::move(noteMessage))},
+                }));
+            }
+            auto diagObj = diag.asObject();
+            diagObj.push_back({"relatedInformation", JsonValue(std::move(related))});
             diag = JsonValue(std::move(diagObj));
         }
 

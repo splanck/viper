@@ -55,7 +55,7 @@ using namespace il::tools::common;
 
 namespace {
 
-enum class RunMode { Run, Build };
+enum class RunMode { Run, Build, Check };
 
 /// @brief Return an ASCII-lowercased copy of @p value.
 /// @details Project entry extension checks are command-line syntax, so ASCII folding is enough and
@@ -159,8 +159,27 @@ struct RunBuildConfig {
     std::optional<bool> windowsDebugRuntimeOverride;      ///< Windows debug/release runtime.
 };
 
-/// @brief Print usage for the `viper run` or `viper build` subcommand to stderr.
+/// @brief Print usage for the `viper run`, `viper build`, or `viper check` subcommand to stderr.
 void printRunBuildUsage(RunMode mode) {
+    if (mode == RunMode::Check) {
+        std::cerr
+            << "Usage: viper check [target] [options]\n"
+            << "\n"
+            << "Type-check and verify a .zia file, .bas file, project directory, or\n"
+            << "viper.project without running or emitting anything.\n"
+            << "\n"
+            << "Check options:\n"
+            << "  --diagnostic-format text|json Diagnostic output format (stderr)\n"
+            << "  --no-strict-diagnostics       Keep safety warnings as warnings\n"
+            << "  --quiet-warnings              Suppress warning output\n"
+            << "  -h, --help                    Show this help\n"
+            << "\n"
+            << "Exit codes:\n"
+            << "  0  no errors (warnings allowed)\n"
+            << "  1  usage error or target could not be resolved\n"
+            << "  2  compile or verification errors\n";
+        return;
+    }
     if (mode == RunMode::Run) {
         std::cerr << "Usage: viper run [target] [options] [-- program-args...]\n"
                   << "\n"
@@ -267,7 +286,7 @@ il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, 
         std::string_view arg = argv[i];
 
         if (arg == "--") {
-            if (mode == RunMode::Build) {
+            if (mode != RunMode::Run) {
                 return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
                     il::support::Severity::Error,
                     "program arguments after -- are only valid with 'run'",
@@ -794,8 +813,9 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
     }
     if (config.optimizeLevelOverride)
         proj.optimizeLevel = *config.optimizeLevelOverride;
-    if (mode == RunMode::Run && !config.buildProfileOverride && !config.optimizeLevelOverride &&
+    if (mode != RunMode::Build && !config.buildProfileOverride && !config.optimizeLevelOverride &&
         !proj.buildProfileExplicit && !proj.optimizeLevelExplicit) {
+        // run: keep instruction-to-source mapping; check: fastest path to diagnostics.
         proj.buildProfile = "debug";
         proj.optimizeLevel = "O0";
     }
@@ -812,11 +832,25 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
     printCompileTime(config.shared, "source-to-il", compileStart);
 
     if (!moduleResult)
-        return 1; // diagnostics already printed
+        return mode == RunMode::Check ? 2 : 1; // diagnostics already printed
 
     CompiledProjectModule compiled = std::move(moduleResult.value());
     il::core::Module module = std::move(compiled.module);
     bool moduleVerified = compiled.verified;
+
+    // Check mode: verify and stop without emitting or executing.
+    if (mode == RunMode::Check) {
+        const auto verifyStart = std::chrono::steady_clock::now();
+        if (!moduleVerified && !reportVerifierDiagnostics(module,
+                                                          std::cerr,
+                                                          sm,
+                                                          config.shared.diagnosticFormat,
+                                                          config.shared.showWarnings)) {
+            return 2;
+        }
+        printCompileTime(config.shared, "final-verify", verifyStart);
+        return 0;
+    }
 
     // Build mode: emit IL or compile to native binary
     if (mode == RunMode::Build) {
@@ -942,4 +976,8 @@ int cmdRun(int argc, char **argv) {
 
 int cmdBuild(int argc, char **argv) {
     return runOrBuild(RunMode::Build, argc, argv);
+}
+
+int cmdCheck(int argc, char **argv) {
+    return runOrBuild(RunMode::Check, argc, argv);
 }
