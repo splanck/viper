@@ -69,3 +69,8 @@ TEST(DiagCatalog, FamilyFallbackCoversKnownPrefixes) {
     EXPECT_FALSE(diagCodeFamily("XYZZY").has_value());
     EXPECT_FALSE(diagCodeFamily("B12X4").has_value());
 }
+
+int main(int argc, char **argv) {
+    viper_test::init(&argc, argv);
+    return viper_test::run_all_tests();
+}

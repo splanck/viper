@@ -110,11 +110,13 @@ BASIC language server (reuses lsp-common infrastructure).
 | `cmd_front_basic.cpp`   | BASIC frontend subcommand           |
 | `cmd_front_zia.cpp`     | Zia frontend subcommand             |
 | `cmd_il_opt.cpp`        | IL optimization subcommand          |
+| `cmd_eval.cpp`          | One-shot snippet evaluation subcommand |
+| `cmd_explain.cpp`       | Diagnostic-code catalog subcommand  |
 | `cmd_init.cpp`          | Init subcommand implementation      |
 | `cmd_install_package.cpp` | Toolchain installer packaging CLI |
 | `cmd_package.cpp`       | Package subcommand (VAPS)           |
 | `cmd_repl.cpp`          | Interactive REPL subcommand         |
-| `cmd_run.cpp`           | Run subcommand implementation       |
+| `cmd_run.cpp`           | Run/build/check subcommand implementation |
 | `cmd_run_il.cpp`        | IL execution subcommand             |
 | `main.cpp`              | Unified compiler driver entry point |
 

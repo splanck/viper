@@ -265,6 +265,11 @@ Diagnostic codes are prefixed by subsystem:
 
 Use `--diagnostic-format=json` on `viper` subcommands for machine-readable output. The JSON form writes a compact object with a `diagnostics` array and includes severity, code, message, stage, location, range, source line, help text, fix-its, and notes when available.
 
+Diagnostic codes are documented in a central catalog: `viper explain <code>`
+describes one code (`--json` for structured output), and
+`viper --print-error-codes --json` dumps the whole catalog. Codes not yet
+cataloged still resolve to their subsystem family by prefix.
+
 ### Source Snippets
 
 When a source manager is available, diagnostics include the offending source line with a caret (`^`) pointing to the error column. Frontends cache in-memory source text, so diagnostics still render snippets when the source came from the CLI, REPL, import resolver, or another non-file buffer. Same-line ranges are underlined with `^~~~`, and related locations can appear as `note:` entries below the primary error.

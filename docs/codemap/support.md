@@ -35,6 +35,9 @@ Last updated: 2026-05-31
 |---------------------|-----------------------------------------------------|
 | `diag_capture.cpp`  | Diagnostic buffer capture implementation            |
 | `diag_capture.hpp`  | Diagnostic buffer capture for tests                 |
+| `diag_catalog.cpp`  | Diagnostic-code catalog lookup implementation       |
+| `diag_catalog.def`  | Central diagnostic-code catalog (X-macro entries)   |
+| `diag_catalog.hpp`  | Diagnostic-code catalog for viper explain           |
 | `diag_expected.cpp` | Expected/diagnostic wrapper implementation          |
 | `diag_expected.hpp` | Expected/diagnostic wrapper for result-style errors |
 | `diagnostics.cpp`   | Diagnostic engine implementation                    |

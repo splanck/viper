@@ -197,6 +197,29 @@ void rebuildRequiredArchives(LinkContext &ctx) {
     }
 }
 
+/// @brief Check whether the build tree was configured with the viperaud backend.
+/// @details The audio support library only exists when configure found a
+///          platform backend (ALSA/CoreAudio/WASAPI). `src/lib/audio` records
+///          the decision as VIPERAUD_AVAILABLE in CMakeCache.txt; when it is
+///          OFF, the `viperaud` target does not exist and must not be requested
+///          from `cmake --build`. Missing cache information defaults to
+///          available so configured trees keep their historical behavior.
+/// @param buildDir CMake build directory backing the link context.
+/// @return False only when the cache explicitly records the backend as absent.
+static bool viperaudAvailable(const std::filesystem::path &buildDir) {
+    if (buildDir.empty())
+        return true;
+    std::ifstream cache(buildDir / "CMakeCache.txt");
+    if (!cache.is_open())
+        return true;
+    std::string line;
+    while (std::getline(cache, line)) {
+        if (line.rfind("VIPERAUD_AVAILABLE:", 0) == 0)
+            return line.find("=OFF") == std::string::npos;
+    }
+    return true;
+}
+
 /// @brief Build any required runtime/support archives that are missing from disk.
 /// @details Drives `cmake --build <dir> --target <missing...>` for every
 ///          required archive plus the appropriate gfx/gui/audio support libs.
@@ -220,7 +243,10 @@ bool ensureRequiredTargetsBuilt(const LinkContext &ctx, std::ostream &out, std::
     }
     if (hasComponent(ctx, RtComponent::Audio)) {
         const std::filesystem::path audLib = supportLibraryPath(ctx.buildDir, "viperaud");
-        if (!fileExists(audLib))
+        // Only request the target when the configure step found an audio
+        // backend; otherwise the target does not exist and the runtime's
+        // audio stubs satisfy the link without it.
+        if (!fileExists(audLib) && viperaudAvailable(ctx.buildDir))
             missingTargets.push_back("viperaud");
     }
     if (ctx.needsZiaFrontend) {
@@ -796,15 +822,18 @@ void appendAudioLibs(const LinkContext &ctx, std::vector<std::string> &cmd) {
     if (!hasComponent(ctx, RtComponent::Audio))
         return;
     const std::filesystem::path audLib = supportLibraryPath(ctx.buildDir, "viperaud");
-    if (fileExists(audLib))
+    const bool haveAudLib = fileExists(audLib);
+    if (haveAudLib)
         cmd.push_back(audLib.string());
 
 #if defined(__APPLE__)
     cmd.push_back("-framework");
     cmd.push_back("AudioToolbox");
 #elif !defined(_WIN32)
-    // Linux: ALSA
-    cmd.push_back("-lasound");
+    // Linux: ALSA backs viperaud; without the backend library the runtime's
+    // audio stubs are linked instead and no system dependency is needed.
+    if (haveAudLib)
+        cmd.push_back("-lasound");
 #endif
 }
 

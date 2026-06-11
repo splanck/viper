@@ -179,4 +179,4 @@ Diagnostics are published automatically when a document is opened or changed. Th
 
 **Windows stdio issues:** The server sets binary mode on stdin/stdout automatically. If you see corrupted output, ensure your client isn't adding extra CR/LF conversion.
 
-**Empty hover results:** The current hover implementation checks global symbols by line number. Hover on local variables may return empty — this is a known limitation that will improve with AST-cursor-walking support.
+**Empty hover results:** Hover resolves locals, parameters, fields, globals, types, module aliases, and runtime members via position-based symbol lookup. An empty result usually means the cursor is on whitespace, an operator, or a symbol in code that failed to parse.
