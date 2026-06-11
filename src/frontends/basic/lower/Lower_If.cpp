@@ -47,7 +47,7 @@ Lowerer::IfBlocks Lowerer::emitIfBlocks(size_t conds) {
     Function *func = ctx.function();
     assert(func && ctx.current());
     BlockNamer *blockNamer = ctx.blockNames().namer();
-    size_t curIdx = static_cast<size_t>(ctx.current() - &func->blocks[0]);
+    size_t curIdx = ctx.currentIndex();
     size_t start = func->blocks.size();
     unsigned firstId = 0;
     for (size_t i = 0; i < conds; ++i) {

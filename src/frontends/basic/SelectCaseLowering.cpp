@@ -135,7 +135,7 @@ SelectCaseLowering::Blocks SelectCaseLowering::prepareBlocks(const SelectCaseStm
     auto *current = ctx.current();
     assert(func && current);
 
-    size_t curIdx = static_cast<size_t>(current - &func->blocks[0]);
+    size_t curIdx = ctx.blockIndex(current);
     auto *blockNamer = ctx.blockNames().namer();
 
     // BUG-072 fix: Use addBlock to append SELECT blocks at the end of the function.

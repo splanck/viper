@@ -84,7 +84,7 @@ void Lowerer::lowerDelete(const DeleteStmt &stmt, OopLoweringContext &oopCtx) {
     if (!func || !origin)
         return;
 
-    std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
+    std::size_t originIdx = ctx.blockIndex(origin);
     BlockNamer *blockNamer = ctx.blockNames().namer();
 
     std::string destroyLbl =

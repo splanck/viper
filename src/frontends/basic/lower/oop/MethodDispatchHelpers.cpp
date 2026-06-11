@@ -345,7 +345,7 @@ void BoundsCheckEmitter::emitBoundsCheck(il::core::Value arrHandle,
     // Create ok/oob blocks
     ProcedureContext &ctx = lowerer_.context();
     il::core::Function *func = ctx.function();
-    std::size_t curIdx = static_cast<std::size_t>(ctx.current() - &func->blocks[0]);
+    std::size_t curIdx = ctx.currentIndex();
     unsigned bcId = ctx.consumeBoundsCheckId();
     BlockNamer *blockNamer = ctx.blockNames().namer();
 

@@ -321,7 +321,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
 
     Function *func = ctx.function();
     assert(func && ctx.current());
-    size_t curIdx = static_cast<size_t>(ctx.current() - &func->blocks[0]);
+    size_t curIdx = ctx.currentIndex();
     unsigned bcId = ctx.consumeBoundsCheckId();
     BlockNamer *blockNamer = ctx.blockNames().namer();
     size_t okIdx = func->blocks.size();

@@ -154,7 +154,7 @@ Lowerer::RVal BuiltinExprLowering::emitLofBuiltin(Lowerer &lowerer, const Builti
     Function *func = ctx.function();
     BasicBlock *origin = ctx.current();
     if (func && origin) {
-        std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
+        std::size_t originIdx = ctx.blockIndex(origin);
         Lowerer::BlockNamer *blockNamer = ctx.blockNames().namer();
         std::string failLbl =
             blockNamer ? blockNamer->generic("lof_err") : lowerer.mangler.block("lof_err");
@@ -242,7 +242,7 @@ Lowerer::RVal BuiltinExprLowering::emitEofBuiltin(Lowerer &lowerer, const Builti
     Function *func = ctx.function();
     BasicBlock *origin = ctx.current();
     if (func && origin) {
-        std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
+        std::size_t originIdx = ctx.blockIndex(origin);
         Lowerer::BlockNamer *blockNamer = ctx.blockNames().namer();
         std::string failLbl =
             blockNamer ? blockNamer->generic("eof_err") : lowerer.mangler.block("eof_err");
@@ -334,7 +334,7 @@ Lowerer::RVal BuiltinExprLowering::emitLocBuiltin(Lowerer &lowerer, const Builti
     Function *func = ctx.function();
     BasicBlock *origin = ctx.current();
     if (func && origin) {
-        std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
+        std::size_t originIdx = ctx.blockIndex(origin);
         Lowerer::BlockNamer *blockNamer = ctx.blockNames().namer();
         std::string failLbl =
             blockNamer ? blockNamer->generic("loc_err") : lowerer.mangler.block("loc_err");

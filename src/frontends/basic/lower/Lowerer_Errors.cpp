@@ -151,7 +151,7 @@ void Lowerer::emitRuntimeErrCheck(Value err,
     if (!func || !original)
         return;
 
-    size_t curIdx = static_cast<size_t>(original - &func->blocks[0]);
+    size_t curIdx = ctx.blockIndex(original);
     BlockNamer *blockNamer = ctx.blockNames().namer();
     std::string stem(labelStem);
     std::string failLbl =

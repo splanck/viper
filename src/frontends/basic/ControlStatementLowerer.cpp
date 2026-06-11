@@ -73,7 +73,7 @@ void ControlStatementLowerer::lowerGosub(const GosubStmt &stmt) {
     std::string pushLbl =
         blockNamer ? blockNamer->generic("gosub_push") : lowerer_.mangler.block("gosub_push");
 
-    size_t curIdx = static_cast<size_t>(current - &func->blocks[0]);
+    size_t curIdx = ctx.blockIndex(current);
     size_t overflowIdx = func->blocks.size();
     lowerer_.builder->addBlock(*func, overflowLbl);
     size_t pushIdx = func->blocks.size();
@@ -165,7 +165,7 @@ void ControlStatementLowerer::lowerGosubReturn(const ReturnStmt &stmt) {
     std::string contLbl = blockNamer ? blockNamer->generic("gosub_ret_cont")
                                      : lowerer_.mangler.block("gosub_ret_cont");
 
-    size_t curIdx = static_cast<size_t>(current - &func->blocks[0]);
+    size_t curIdx = ctx.blockIndex(current);
     size_t emptyIdx = func->blocks.size();
     lowerer_.builder->addBlock(*func, emptyLbl);
     size_t contIdx = func->blocks.size();

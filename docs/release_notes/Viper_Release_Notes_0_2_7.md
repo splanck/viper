@@ -8,7 +8,7 @@
 
 ### What this release is about
 
-A short hardening cycle continuing v0.2.6. The headline new work ends per-frame Graphics3D rendering flicker, closes the open-world ("3D Next Level") streaming gaps, adds node-animation playback over a substantially upgraded glTF/FBX importer, and gives ViperIDE a real VM-backed debugger. Around it, a repo-wide sweep makes recoverable runtime traps fail closed, promotes IL and codegen invariants from debug asserts to release-mode validation, re-skins the GUI toolkit through a shared anti-aliased drawing core, and modularizes the runtime into focused translation units — while the Linux and Windows/MSVC builds both return to green.
+A short hardening cycle continuing v0.2.6. The headline new work ends per-frame Graphics3D rendering flicker, closes the open-world ("3D Next Level") streaming gaps, adds node-animation playback over a substantially upgraded glTF/FBX importer, and gives ViperIDE a real VM-backed debugger. Around it, a repo-wide sweep makes recoverable runtime traps fail closed, promotes IL and codegen invariants from debug asserts to release-mode validation, unifies scalar instruction semantics across the tree-walking VM and both bytecode engines, re-skins the GUI toolkit through a shared anti-aliased drawing core, and modularizes the runtime into focused translation units — while the Linux and Windows/MSVC builds both return to green.
 
 - **Graphics3D flicker stabilized.** Queue-order-independent occlusion history with covered-streak gating, camera-depth-fitted shadow cascades, per-camera LOD/impostor hysteresis, and conservative terrain-horizon culling; every backend validates draw-command index ranges and shares one depth-bias scale.
 - **glTF/FBX import & node animation (new).** `NodeAnimation3D`/`NodeAnimator3D` play node, object, camera, and morph-weight clips, and `Model3D`/`Assets3D` can pull a single clip from an external file; the FBX importer gains full transforms, cubic curves, PBR routing, and async loading.
@@ -17,6 +17,7 @@ A short hardening cycle continuing v0.2.6. The headline new work ends per-frame 
 - **3D runtime & Game3D fail closed.** Non-finite pose/playback inputs clamp or revert to the bind pose, scene/transform/raycast/physics/navigation entry points reject bad handles, stored references are class-checked, and screenshot/render-target capture finalizes with no present side effect.
 - **Runtime fails closed (repo-wide).** A cppcheck-driven audit makes every recoverable `rt_trap` return a safe sentinel and free its locals; unrecoverable entropy/DRBG failures route through a new non-returning `rt_abort`, so no path proceeds with predictable key material when a trap hook returns.
 - **IL, codegen & linker hardening.** The IL builder promotes its debug-only invariants to release-mode validation and shares one checked-range implementation with CheckOpt (which now demotes proven-safe overflow-checked arithmetic); codegen and the native linker surface diagnostics instead of asserting, atop the frame-layout fix that closes the O1 miscompiles.
+- **Unified scalar semantics & stable IL storage (new).** A shared, VM-neutral kernel makes the tree-walking VM and both bytecode engines yield identical values and trap kinds for one IL module, and block/instruction storage moves to stable-address containers with interned identifiers so references survive insertion and erasure.
 - **Bytecode VM hardening.** The VM validates memory ranges and indirect callees before dereference, traps instead of asserting on bad branch/switch targets, and bounds runaway programs via `BytecodeVM.setMaxInstructions` and a signal-safe interrupt.
 - **GUI refined-depth visual pass.** A shared anti-aliased `vg_draw` core and new radius/elevation/gradient/focus/motion theme tokens route the whole widget set through one rounded, elevated style; ViperIDE draws vector toolbar icons and a `GUI.GroupBox` card rebuilds the settings panel.
 - **ViperIDE debugging, build feedback & zoom (new).** A VM-backed debug adapter (`viper run --debug-adapter`) replaces v0.2.6's non-executing placeholder with pause, continue, step, source breakpoints, call stacks, and locals over JSON; the editor adds persistent UI zoom, build-duration and error/warning status, and absolute `viper` path resolution.
@@ -30,12 +31,12 @@ A short hardening cycle continuing v0.2.6. The headline new work ends per-frame 
 | Metric | v0.2.6 | v0.2.7 | Delta |
 |---|---|---|---|
 | Commits | — | 62 | +62 |
-| Source files | 3,096 | 3,282 | +186 |
-| Production SLOC | 669K | 715K | +46K |
-| Test SLOC | 278K | 293K | +15K |
+| Source files | 3,096 | 3,284 | +188 |
+| Production SLOC | 669K | 716K | +47K |
+| Test SLOC | 278K | 294K | +16K |
 | Demo SLOC | 192K | 193K | +1K |
 
-Counts via `scripts/count_sloc.sh` (production 715,258 / test 293,389 / demo 193,428 / source files 3,282); commits since the v0.2.6 release (2026-06-01).
+Counts via `scripts/count_sloc.sh` (production 715,823 / test 293,647 / demo 193,428 / source files 3,284); commits since the v0.2.6 release (2026-06-01).
 
 ---
 
@@ -66,6 +67,7 @@ Counts via `scripts/count_sloc.sh` (production 715,258 / test 293,389 / demo 193
 ### IL, codegen, and the native linker
 
 - **IL builder & verifier.** Debug-only invariants — name uniqueness, operand and block-parameter bounds, branch-argument counts, terminated-block appends — promote to release-mode validation, the parser rolls back cleanly on a partial instruction parse, and a new verifier dataflow catches double-release and use-after-release across the CFG (loops included) while preserving the entry-stack-address dominance contract that frontend cleanup blocks rely on.
+- **Cross-engine determinism & stable storage.** A VM-neutral `ScalarOps` kernel — checked add/sub/mul, signed/unsigned div-rem, masked shifts, two's-complement wrapping, checked narrowing, half-open `idx.chk` normalization, and round-to-even f64→int casts — now backs the tree-walking VM and both bytecode dispatch engines, so one IL module yields identical values and trap kinds across every execution mode (bytecode format bumped to v3 to carry explicit result widths). `Function::blocks` and `BasicBlock::instructions` move to a stable-address `StableList`, and a module-owned `StringInterner` carries interned `Symbol` handles on functions, blocks, instructions, branch targets, and direct callees so analyses compare compact handles instead of rehashing strings.
 - **Optimizer & analysis.** Shared `AllocaRoots` helpers make BasicAA conservative for raw and unknown-indirect calls, MemorySSA and DSE fix same-block-overwrite handling, ConstFold/SCCP/Peephole normalize integer folds to i16/i32/i64 result widths, and CheckOpt shares one checked-range implementation with the builder — now demoting proven-safe overflow-checked i64 arithmetic to plain ops. Pass invalidation became state-based and Mem2Reg transactional.
 - **Codegen & linker.** x86-64/AArch64 selection, encoding, Win64 unwind slots, register-allocation operand protection, and AArch64 relocations surface diagnostics instead of asserting — atop the shared frame-layout fix that closes the O1 miscompiles — the object writers bound their fixed-width name fields, and the native linker hardens relocation ordering, symbol resolution, and PE-image writing.
 
@@ -102,7 +104,7 @@ Counts via `scripts/count_sloc.sh` (production 715,258 / test 293,389 / demo 193
 
 ### Tests
 
-- New tests close the vegetation, billboard, navmesh round-trip, reference-repair, texture-atlas, FBX/node-animation import, D3D11 mip-validation, media/pixel-decode, BASIC parsing, and Text/Time/IO gaps, plus IL release-lifetime and alias-analysis precision, AArch64 register-allocation, and GUI overlay/font-propagation regressions.
+- New tests close the vegetation, billboard, navmesh round-trip, reference-repair, texture-atlas, FBX/node-animation import, D3D11 mip-validation, media/pixel-decode, BASIC parsing, and Text/Time/IO gaps, plus IL release-lifetime and alias-analysis precision, cross-engine (VM vs. bytecode) scalar-semantics equivalence, AArch64 register-allocation, and GUI overlay/font-propagation regressions.
 
 ---
 

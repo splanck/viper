@@ -22,6 +22,7 @@
 #include "il/core/Function.hpp"
 #include "il/core/Value.hpp"
 
+#include <cassert>
 #include <cstddef>
 #include <memory>
 #include <optional>
@@ -290,13 +291,13 @@ struct ProcedureContext {
     };
 
     /// @brief Tracks nested loop exit targets for EXIT statement lowering.
-    /// @details Maintains a stack of exit-block indices so that EXIT FOR/DO/WHILE
+    /// @details Maintains a stack of exit-block pointers so that EXIT FOR/DO/WHILE
     ///          can resolve the correct branch target at any nesting depth.
     struct LoopState {
         /// @brief Reset loop state for a new procedure.
         void reset() noexcept {
             function_ = nullptr;
-            exitTargetIdx_.clear();
+            exitTargets_.clear();
             exitTaken_.clear();
         }
 
@@ -304,39 +305,31 @@ struct ProcedureContext {
         /// @param function The IL function being lowered.
         void setFunction(Function *function) noexcept {
             function_ = function;
-            exitTargetIdx_.clear();
+            exitTargets_.clear();
             exitTaken_.clear();
         }
 
         /// @brief Push a new loop exit target onto the stack.
         /// @param exitBlock Pointer to the exit basic block for the loop.
         void push(BasicBlock *exitBlock) {
-            if (function_) {
-                auto base = &function_->blocks[0];
-                exitTargetIdx_.push_back(static_cast<size_t>(exitBlock - base));
-            } else {
-                exitTargetIdx_.push_back(0);
-            }
+            exitTargets_.push_back(exitBlock);
             exitTaken_.push_back(false);
         }
 
         /// @brief Pop the innermost loop exit target from the stack.
         void pop() {
-            if (exitTargetIdx_.empty())
+            if (exitTargets_.empty())
                 return;
-            exitTargetIdx_.pop_back();
+            exitTargets_.pop_back();
             exitTaken_.pop_back();
         }
 
         /// @brief Get the exit block for the innermost active loop.
         /// @return Pointer to the exit basic block, or nullptr when no loop is active.
         [[nodiscard]] BasicBlock *current() const {
-            if (exitTargetIdx_.empty() || !function_)
+            if (exitTargets_.empty() || !function_)
                 return nullptr;
-            size_t idx = exitTargetIdx_.back();
-            if (idx >= function_->blocks.size())
-                return nullptr;
-            return &function_->blocks[idx];
+            return exitTargets_.back();
         }
 
         /// @brief Mark the innermost loop exit as having been taken.
@@ -348,10 +341,9 @@ struct ProcedureContext {
         /// @brief Update the exit block for the innermost loop (after block reallocation).
         /// @param exitBlock New pointer to the exit basic block.
         void refresh(BasicBlock *exitBlock) {
-            if (exitTargetIdx_.empty() || !function_)
+            if (exitTargets_.empty() || !function_)
                 return;
-            auto base = &function_->blocks[0];
-            exitTargetIdx_.back() = static_cast<size_t>(exitBlock - base);
+            exitTargets_.back() = exitBlock;
         }
 
         /// @brief Check if the innermost loop exit has been taken.
@@ -362,7 +354,7 @@ struct ProcedureContext {
 
       private:
         Function *function_{nullptr};
-        std::vector<size_t> exitTargetIdx_;
+        std::vector<BasicBlock *> exitTargets_;
         std::vector<bool> exitTaken_;
     };
 
@@ -577,8 +569,24 @@ struct ProcedureContext {
     /// @brief Get the index of the current basic block within the function.
     /// @return Zero-based block index.
     [[nodiscard]] size_t currentIndex() const noexcept {
+        return blockIndex(current_);
+    }
+
+    /// @brief Get the index of a basic block within the active function.
+    /// @param block Basic block owned by the active function.
+    /// @return Zero-based block index.
+    [[nodiscard]] size_t blockIndex(BasicBlock *block) const noexcept {
         auto *f = function();
-        return static_cast<size_t>(current_ - &f->blocks.front());
+        assert(f && "blockIndex requires an active function");
+        assert(block && "blockIndex requires a non-null block");
+        if (!f || !block)
+            return 0;
+        for (size_t i = 0; i < f->blocks.size(); ++i) {
+            if (&f->blocks[i] == block)
+                return i;
+        }
+        assert(false && "block does not belong to active function");
+        return f->blocks.size();
     }
 
     /// @brief Set the current basic block by its index within the function.

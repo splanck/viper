@@ -94,7 +94,7 @@ void RuntimeStatementLowerer::assignScalarSlot(const Lowerer::SlotType &slotInfo
         Function *func = ctx.function();
         BasicBlock *origin = ctx.current();
         if (func && origin) {
-            std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
+            std::size_t originIdx = ctx.blockIndex(origin);
             BlockNamer *blockNamer = ctx.blockNames().namer();
             std::string base = "obj_assign";
             std::string destroyLbl = blockNamer ? blockNamer->generic(base + "_dtor")

@@ -60,7 +60,7 @@ void Lowerer::lowerOnErrorGoto(const OnErrorGoto &stmt) {
     BasicBlock *handler = ensureErrorHandlerBlock(stmt.target);
     emitEhPush(handler);
 
-    size_t idx = static_cast<size_t>(handler - &func->blocks[0]);
+    size_t idx = ctx.blockIndex(handler);
     ctx.errorHandlers().setActive(true);
     ctx.errorHandlers().setActiveIndex(idx);
     ctx.errorHandlers().setActiveLine(stmt.target);

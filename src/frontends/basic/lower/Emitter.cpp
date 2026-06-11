@@ -465,7 +465,7 @@ void Emitter::releaseDeferredTemps() {
         auto *func = ctx2.function();
         if (!func || !ctx2.current())
             continue;
-        std::size_t originIdx = static_cast<std::size_t>(ctx2.current() - &func->blocks[0]);
+        std::size_t originIdx = ctx2.currentIndex();
 
         // Create destroy and continue blocks.
         std::string destroyLabel;
@@ -538,7 +538,7 @@ void Emitter::releaseObjectSlot(SymbolInfo &info) {
     if (!func || !origin)
         return;
 
-    std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
+    std::size_t originIdx = ctx.blockIndex(origin);
     Value slot = Value::temp(*info.slotId);
 
     lowerer_.curLoc = {};
@@ -775,7 +775,7 @@ Emitter::BasicBlock *Emitter::ensureErrorHandlerBlock(int targetLine) {
     entry.loc = {};
     bb.instructions.push_back(entry);
 
-    size_t idx = static_cast<size_t>(&bb - &func->blocks[0]);
+    size_t idx = ctx.blockIndex(&bb);
     handlers[targetLine] = idx;
     ctx.errorHandlers().handlerTargets()[idx] = targetLine;
     return &bb;

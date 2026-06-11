@@ -99,7 +99,7 @@ void Lowerer::lowerCondBranch(const Expr &expr,
 
             auto indexOf = [&](BasicBlock *bb) {
                 assert(bb && "lowerCondBranch requires non-null block");
-                return static_cast<size_t>(bb - &func->blocks[0]);
+                return ctx.blockIndex(bb);
             };
 
             size_t curIdx = indexOf(ctx.current());
@@ -142,7 +142,7 @@ void Lowerer::lowerCondBranch(const Expr &expr,
     Function *func = ctx.function();
     auto indexOf = [&](BasicBlock *bb) {
         assert(bb && "lowerCondBranch requires non-null block");
-        return static_cast<size_t>(bb - &func->blocks[0]);
+        return ctx.blockIndex(bb);
     };
     size_t trueIdx = indexOf(trueBlk);
     size_t falseIdx = indexOf(falseBlk);

@@ -370,7 +370,7 @@ void RuntimeStatementLowerer::lowerLetToMethodCall(const LetStmt &stmt,
 
                             ProcedureContext &ctx = lowerer_.context();
                             Function *func = ctx.function();
-                            size_t curIdx = static_cast<size_t>(ctx.current() - &func->blocks[0]);
+                            size_t curIdx = ctx.currentIndex();
                             unsigned bcId = ctx.consumeBoundsCheckId();
                             BlockNamer *blockNamer = ctx.blockNames().namer();
                             size_t okIdx = func->blocks.size();
@@ -509,7 +509,7 @@ void RuntimeStatementLowerer::lowerLetToCall(const LetStmt &stmt,
 
                             ProcedureContext &ctx = lowerer_.context();
                             Function *func = ctx.function();
-                            size_t curIdx = static_cast<size_t>(ctx.current() - &func->blocks[0]);
+                            size_t curIdx = ctx.currentIndex();
                             unsigned bcId = ctx.consumeBoundsCheckId();
                             BlockNamer *blockNamer = ctx.blockNames().namer();
                             size_t okIdx = func->blocks.size();
