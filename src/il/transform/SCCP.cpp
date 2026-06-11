@@ -1533,9 +1533,7 @@ class SCCPSolver {
         changed_ = true;
         instr.op = Opcode::Br;
         instr.operands.clear();
-        instr.labels.clear();
-        instr.labels.push_back(std::move(label));
-        instr.brArgs = std::move(args);
+        instr.setBranchTargets({std::move(label)}, std::move(args));
         instr.type = Type(Type::Kind::Void);
     }
 
@@ -1571,6 +1569,7 @@ bool sccp(Function &function) {
 void sccp(Module &module) {
     for (auto &function : module.functions)
         sccp(function);
+    module.internOwnedIdentifiers();
 }
 
 } // namespace il::transform

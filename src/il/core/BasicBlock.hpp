@@ -15,9 +15,9 @@
 //   - Parameter count and types must match incoming branch arguments.
 //   - If terminated is true, the last instruction must be a terminator opcode.
 //   - All instructions except the last must be non-terminator opcodes.
-// Ownership/Lifetime: Function owns BasicBlocks by value in a std::vector.
-//          BasicBlock owns all Instructions and Params by value. Labels are
-//          stored as std::string values owned by the block.
+// Ownership/Lifetime: Function owns BasicBlocks in stable storage. BasicBlock
+//          owns all Instructions in stable storage and Params by value. Labels
+//          are stored as std::string values owned by the block.
 // Links: docs/il-guide.md#reference, il/core/Instr.hpp, il/core/Param.hpp
 //
 //===----------------------------------------------------------------------===//
@@ -26,6 +26,8 @@
 
 #include "il/core/Instr.hpp"
 #include "il/core/Param.hpp"
+#include "il/core/StableList.hpp"
+#include "support/symbol.hpp"
 #include <string>
 #include <vector>
 
@@ -46,12 +48,18 @@ struct BasicBlock {
     /// Ordered list of IL instructions belonging to this block.
     ///
     /// @invariant If @c terminated is true, the last instruction must be a terminator.
-    std::vector<Instr> instructions;
+    StableList<Instr> instructions;
 
     /// Indicates whether the block ends with a control-flow instruction.
     ///
     /// @invariant Reflects whether the last instruction is a terminator.
     bool terminated = false;
+
+    /// Interned handle for @ref label within the owning Module.
+    ///
+    /// Invalid until populated by a Module helper or by construction paths that
+    /// have access to the parent Module.
+    il::support::Symbol labelSymbol{};
 };
 
 } // namespace il::core

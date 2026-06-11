@@ -16,9 +16,10 @@
 //   - Branch labels must correspond to basic blocks in the same function.
 //   - brArgs outer vector size must match labels vector size.
 //   - Source location {0,0} denotes unknown.
-// Ownership/Lifetime: BasicBlock owns Instructions by value in a std::vector.
+// Ownership/Lifetime: BasicBlock owns Instructions in stable storage.
 //          Instruction owns all operands, labels, and branch arguments. String
-//          fields (callee, labels) use std::string value semantics.
+//          fields (callee, labels) use std::string value semantics and may be
+//          paired with Module-owned interned symbols.
 // Links: docs/il-guide.md#reference, il/core/Opcode.hpp, il/core/Type.hpp,
 //        il/core/Value.hpp
 //
@@ -30,11 +31,14 @@
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
 #include "support/source_location.hpp"
+#include "support/symbol.hpp"
 #include <optional>
 #include <string>
 #include <vector>
 
 namespace il::core {
+
+struct Module;
 
 /// @brief Attribute container for call-like instructions capturing semantic hints.
 /// @details Stored on every instruction but only meaningful when
@@ -108,6 +112,105 @@ struct Instr {
 
     /// @brief True when an explicitly-typed call.indirect accepts a variadic tail.
     bool indirectIsVarArg = false;
+
+    /// @brief Interned handle for @ref callee within the owning Module.
+    /// @details Valid for direct call instructions after Module identifier
+    ///          interning. Invalid for non-call instructions and for IR built
+    ///          outside a Module interning pass.
+    il::support::Symbol calleeSymbol{};
+
+    /// @brief Interned handles for @ref labels within the owning Module.
+    /// @details When populated, this vector has the same size and order as
+    ///          @ref labels so passes can compare branch targets by Symbol
+    ///          instead of hashing strings.
+    std::vector<il::support::Symbol> labelSymbols;
+
+    /// @brief Check whether the opcode carries call metadata.
+    /// @return True for direct and indirect call opcodes.
+    [[nodiscard]] bool isCallLike() const noexcept;
+
+    /// @brief Check whether the instruction has branch target metadata.
+    /// @return True when at least one successor label is stored.
+    [[nodiscard]] bool hasBranchTargets() const noexcept;
+
+    /// @brief Check whether an explicit indirect-call signature is present.
+    /// @return True when call.indirect signature fields are active.
+    [[nodiscard]] bool hasIndirectCallSignature() const noexcept;
+
+    /// @brief Set a direct callee name and clear its stale symbol sidecar.
+    /// @param name Direct callee identifier without an `@` prefix.
+    /// @post @ref callee equals @p name and @ref calleeSymbol is invalid.
+    void setDirectCallee(std::string name);
+
+    /// @brief Set a direct callee name and intern it in @p module.
+    /// @param module Module whose interner owns the callee symbol.
+    /// @param name Direct callee identifier without an `@` prefix.
+    /// @post @ref callee equals @p name and @ref calleeSymbol is valid when
+    ///       @p name is non-empty and interning succeeds.
+    void setDirectCallee(Module &module, std::string name);
+
+    /// @brief Remove direct-call metadata from the instruction.
+    /// @post @ref callee is empty and @ref calleeSymbol is invalid.
+    void clearDirectCallee();
+
+    /// @brief Replace all branch targets and branch argument lists.
+    /// @param targets Successor labels in terminator order.
+    /// @param args Optional per-target block arguments. Empty means no branch
+    ///        argument lists are present; otherwise its size must match
+    ///        @p targets.
+    /// @throws std::invalid_argument if @p args is non-empty and its size does
+    ///         not match @p targets.
+    /// @post @ref labels and @ref brArgs mirror the supplied values and
+    ///       @ref labelSymbols is cleared.
+    void setBranchTargets(std::vector<std::string> targets,
+                          std::vector<std::vector<Value>> args = {});
+
+    /// @brief Replace all branch targets and intern them in @p module.
+    /// @param module Module whose interner owns target label symbols.
+    /// @param targets Successor labels in terminator order.
+    /// @param args Optional per-target block arguments. Empty means no branch
+    ///        argument lists are present; otherwise its size must match
+    ///        @p targets.
+    /// @throws std::invalid_argument if @p args is non-empty and its size does
+    ///         not match @p targets.
+    /// @post @ref labelSymbols has the same size and order as @ref labels.
+    void setBranchTargets(Module &module,
+                          std::vector<std::string> targets,
+                          std::vector<std::vector<Value>> args = {});
+
+    /// @brief Append one branch target and optional argument list.
+    /// @param target Successor label to append.
+    /// @param args Values passed to the target block parameters.
+    /// @post @ref labelSymbols is cleared because the new target has not been
+    ///       interned.
+    void addBranchTarget(std::string target, std::vector<Value> args = {});
+
+    /// @brief Append one branch target and intern it in @p module.
+    /// @param module Module whose interner owns the target label symbol.
+    /// @param target Successor label to append.
+    /// @param args Values passed to the target block parameters.
+    /// @post @ref labelSymbols stays aligned with @ref labels.
+    void addBranchTarget(Module &module, std::string target, std::vector<Value> args = {});
+
+    /// @brief Remove all branch target metadata.
+    /// @post @ref labels, @ref brArgs, and @ref labelSymbols are empty.
+    void clearBranchTargets();
+
+    /// @brief Store an explicit signature for call.indirect.
+    /// @param retType Declared return type.
+    /// @param paramTypes Declared parameter types.
+    /// @param isVarArg True when the signature accepts variadic arguments.
+    /// @post Signature fields are active and own the supplied values.
+    void setIndirectSignature(Type retType, std::vector<Type> paramTypes, bool isVarArg);
+
+    /// @brief Remove explicit call.indirect signature metadata.
+    /// @post Indirect signature fields are reset to their default inactive state.
+    void clearIndirectSignature();
+
+    /// @brief Clear every call-only metadata field.
+    /// @details Removes direct callee data, call attributes, and indirect-call
+    ///          signature data. Operands and result/type fields are untouched.
+    void clearCallMetadata();
 };
 
 /// @brief Access the scrutinee operand of a switch instruction.

@@ -463,6 +463,16 @@ class BytecodeVM {
     /// @brief Release an owned string slot and clear its ownership flag.
     void releaseOwnedString(BCSlot *slot);
 
+    /// @brief Retain a string slot and mark it as owning the retained handle.
+    /// @details Used by STR_RETAIN and string-producing helpers to apply the
+    ///          same validation, reference-count increment, and ownership-flag
+    ///          update in every bytecode dispatch engine.
+    /// @param slot Stack/local slot containing the string handle to retain.
+    /// @param site Diagnostic site passed to string-handle validation.
+    /// @return True when the slot was null or retained successfully; false when
+    ///         validation trapped.
+    bool retainStringSlot(BCSlot *slot, const char *site);
+
     /// @brief Push a local value onto the operand stack, retaining strings.
     void pushLocal(uint32_t idx);
 

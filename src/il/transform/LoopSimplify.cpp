@@ -207,8 +207,7 @@ bool ensurePreheader(Function &function, const Loop &loop) {
     Instr branch;
     branch.op = Opcode::Br;
     branch.type = Type(Type::Kind::Void);
-    branch.labels.push_back(headerLabel);
-    branch.brArgs.emplace_back();
+    branch.addBranchTarget(headerLabel);
     auto &forwardArgs = branch.brArgs.back();
     forwardArgs.reserve(preheader.params.size());
     for (const auto &param : preheader.params)
@@ -301,8 +300,7 @@ bool mergeTrivialLatches(Function &function, const Loop &loop) {
     Instr branch;
     branch.op = Opcode::Br;
     branch.type = Type(Type::Kind::Void);
-    branch.labels.push_back(headerLabel);
-    branch.brArgs.emplace_back();
+    branch.addBranchTarget(headerLabel);
     auto &forwardArgs = branch.brArgs.back();
     forwardArgs.reserve(newLatch.params.size());
     for (const auto &param : newLatch.params)

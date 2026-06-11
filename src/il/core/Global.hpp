@@ -25,6 +25,7 @@
 
 #include "il/core/Linkage.hpp"
 #include "il/core/Type.hpp"
+#include "support/symbol.hpp"
 #include <string>
 
 namespace il::core {
@@ -63,6 +64,11 @@ struct Global {
     /// @details An empty string initializer is distinct from an omitted
     ///          initializer for textual round-tripping.
     bool hasInitializer = false;
+
+    /// @brief Interned handle for @ref name within the owning Module.
+    /// @details Invalid until populated by a Module helper or a construction
+    ///          path such as the parser or IRBuilder.
+    il::support::Symbol nameSymbol{};
 };
 
 } // namespace il::core

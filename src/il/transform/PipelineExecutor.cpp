@@ -217,6 +217,7 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                 if (!executed)
                     return false;
                 passChanged = moduleStateSnapshot(module) != beforeState;
+                module.internOwnedIdentifiers();
 
                 if (collectMetrics)
                     passEndTime = std::chrono::steady_clock::now();

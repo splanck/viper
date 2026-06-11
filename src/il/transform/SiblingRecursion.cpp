@@ -386,15 +386,11 @@ PreservedAnalyses SiblingRecursion::run(Function &fn, AnalysisManager &) {
         std::vector<Value> doneArgs; // No args — done block uses temps directly.
 
         if (pat.baseCaseIsTrue) {
-            cbrInstr.labels.push_back(doneLabel);
-            cbrInstr.labels.push_back(recurseLabel);
-            cbrInstr.brArgs.push_back(std::move(doneArgs));
-            cbrInstr.brArgs.push_back(std::move(loopArgs));
+            cbrInstr.addBranchTarget(doneLabel, std::move(doneArgs));
+            cbrInstr.addBranchTarget(recurseLabel, std::move(loopArgs));
         } else {
-            cbrInstr.labels.push_back(recurseLabel);
-            cbrInstr.labels.push_back(doneLabel);
-            cbrInstr.brArgs.push_back(std::move(loopArgs));
-            cbrInstr.brArgs.push_back(std::move(doneArgs));
+            cbrInstr.addBranchTarget(recurseLabel, std::move(loopArgs));
+            cbrInstr.addBranchTarget(doneLabel, std::move(doneArgs));
         }
 
         newInstrs.push_back(std::move(cbrInstr));

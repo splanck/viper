@@ -333,42 +333,17 @@ VM::ExecResult handleIdxChk(VM &vm,
     const Slot loSlot = VMAccess::eval(vm, fr, in.operands[1]);
     const Slot hiSlot = VMAccess::eval(vm, fr, in.operands[2]);
 
-    auto trapBounds = []() { vm_raise(TrapKind::Bounds); };
-
-    Slot out{};
-    switch (in.type.kind) {
-        case il::core::Type::Kind::I16: {
-            const auto [inBounds, normalized] =
-                performBoundsCheck<int16_t>(idxSlot, loSlot, hiSlot);
-            if (!inBounds) {
-                trapBounds();
-                return {};
-            }
-            out.i64 = normalized;
-            break;
-        }
-        case il::core::Type::Kind::I32: {
-            const auto [inBounds, normalized] =
-                performBoundsCheck<int32_t>(idxSlot, loSlot, hiSlot);
-            if (!inBounds) {
-                trapBounds();
-                return {};
-            }
-            out.i64 = normalized;
-            break;
-        }
-        default: {
-            const auto [inBounds, normalized] =
-                performBoundsCheck<int64_t>(idxSlot, loSlot, hiSlot);
-            if (!inBounds) {
-                trapBounds();
-                return {};
-            }
-            out.i64 = normalized;
-            break;
-        }
+    const auto checked = il::semantics::boundsCheck(idxSlot.i64,
+                                                    loSlot.i64,
+                                                    hiSlot.i64,
+                                                    semanticWidthForType(in.type.kind));
+    if (!checked.ok()) {
+        emitTrap(TrapKind::Bounds, "index out of bounds", in, fr, bb);
+        return {};
     }
 
+    Slot out{};
+    out.i64 = checked.value;
     ops::storeResult(fr, in, out);
     return {};
 }

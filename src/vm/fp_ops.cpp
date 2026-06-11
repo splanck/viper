@@ -18,6 +18,7 @@
 #include "il/core/FPCast.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
+#include "il/semantics/ScalarOps.hpp"
 #include "viper/vm/internal/OpHelpers.hpp"
 #include "vm/OpHandlerUtils.hpp"
 #include "vm/RuntimeBridge.hpp"
@@ -52,6 +53,28 @@ namespace {
     }
 }
 
+/// @brief Convert a shared scalar trap kind to the IL VM floating handler trap kind.
+/// @param trap Shared semantic trap category produced by checked FP casts.
+/// @return IL VM trap kind used for RuntimeBridge diagnostics.
+[[nodiscard]] TrapKind fpSemanticTrapToVmTrap(il::semantics::TrapKind trap) {
+    switch (trap) {
+        case il::semantics::TrapKind::InvalidCast:
+            return TrapKind::InvalidCast;
+        case il::semantics::TrapKind::Overflow:
+            return TrapKind::Overflow;
+        case il::semantics::TrapKind::DivideByZero:
+            return TrapKind::DivideByZero;
+        case il::semantics::TrapKind::Bounds:
+            return TrapKind::Bounds;
+        case il::semantics::TrapKind::InvalidOperation:
+            return TrapKind::InvalidOperation;
+        case il::semantics::TrapKind::None:
+        case il::semantics::TrapKind::DomainError:
+        default:
+            return TrapKind::DomainError;
+    }
+}
+
 /// @brief Round @p operand to the nearest unsigned 64-bit integer or raise a trap.
 /// @details Implements the semantics of `cast.fp_to_ui.rte.chk` in four stages:
 ///          1. Validate that the operand is finite and non-negative, trapping
@@ -82,12 +105,12 @@ namespace {
                             bb ? bb->label : std::string());
     };
 
-    const auto result = checkedFpToUiRte(operand, resultBits);
-    if (result.failure == CheckedFPCastFailure::Invalid) {
-        trap(TrapKind::InvalidCast, kInvalidOperandMessage);
-    }
-    if (result.failure == CheckedFPCastFailure::Overflow) {
-        trap(TrapKind::Overflow, kOverflowMessage);
+    const auto result =
+        il::semantics::fpToUiRte(operand, il::semantics::widthFromBits(resultBits));
+    if (!result.ok()) {
+        trap(fpSemanticTrapToVmTrap(result.trap),
+             result.trap == il::semantics::TrapKind::InvalidCast ? kInvalidOperandMessage
+                                                                 : kOverflowMessage);
     }
     return static_cast<uint64_t>(result.value);
 }
@@ -519,16 +542,18 @@ VM::ExecResult handleCastFpToSiRteChk(VM &vm,
     (void)ip;
     const Slot value = VMAccess::eval(vm, fr, in.operands[0]);
     const double operand = value.f64;
-    const auto result = checkedFpToSiRte(operand, integerTypeBits(in.type.kind));
-    if (result.failure == CheckedFPCastFailure::Invalid) {
-        RuntimeBridge::trap(TrapKind::InvalidCast,
+    const auto result =
+        il::semantics::fpToSiRte(operand,
+                                 il::semantics::widthFromBits(integerTypeBits(in.type.kind)));
+    if (result.trap == il::semantics::TrapKind::InvalidCast) {
+        RuntimeBridge::trap(fpSemanticTrapToVmTrap(result.trap),
                             "invalid fp operand in cast.fp_to_si.rte.chk",
                             in.loc,
                             fr.func ? fr.func->name : std::string(),
                             bb ? bb->label : std::string());
     }
-    if (result.failure == CheckedFPCastFailure::Overflow) {
-        RuntimeBridge::trap(TrapKind::Overflow,
+    if (result.trap == il::semantics::TrapKind::Overflow) {
+        RuntimeBridge::trap(fpSemanticTrapToVmTrap(result.trap),
                             "fp overflow in cast.fp_to_si.rte.chk",
                             in.loc,
                             fr.func ? fr.func->name : std::string(),
@@ -536,7 +561,7 @@ VM::ExecResult handleCastFpToSiRteChk(VM &vm,
     }
 
     Slot out{};
-    out.i64 = result.value;
+    out.i64 = result.ok() ? result.value : 0;
     ops::storeResult(fr, in, out);
     return {};
 }

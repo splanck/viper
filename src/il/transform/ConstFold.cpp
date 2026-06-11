@@ -772,6 +772,7 @@ void constFold(Module &m) {
             }
         }
     }
+    m.internOwnedIdentifiers();
 }
 
 } // namespace il::transform

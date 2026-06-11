@@ -549,15 +549,13 @@ void SelectCaseLowering::emitSwitchJumpTable(const SelectCaseStmt &stmt,
         blocks.elseIdx ? &func->blocks[*blocks.elseIdx] : &func->blocks[blocks.endIdx];
     if (caseElseBlk->label.empty())
         caseElseBlk->label = lowerer_.nextFallbackBlockLabel();
-    sw.labels.push_back(caseElseBlk->label);
-    sw.brArgs.emplace_back();
+    sw.addBranchTarget(caseElseBlk->label);
 
     for (const auto &[value, target] : caseTargets) {
         if (target->label.empty())
             target->label = lowerer_.nextFallbackBlockLabel();
         sw.operands.push_back(il::core::Value::constInt(static_cast<long long>(value)));
-        sw.labels.push_back(target->label);
-        sw.brArgs.emplace_back();
+        sw.addBranchTarget(target->label);
     }
     sw.loc = stmt.loc;
 

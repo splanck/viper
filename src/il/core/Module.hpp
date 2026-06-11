@@ -26,9 +26,11 @@
 #include "il/core/Extern.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Global.hpp"
+#include "support/string_interner.hpp"
 #include "viper/version.hpp"
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace il::core {
@@ -61,6 +63,41 @@ struct Module {
     ///
     /// Begins empty and receives entries as functions are defined or parsed.
     std::vector<Function> functions;
+
+    /// @brief Module-owned storage for interned IR identifiers.
+    /// @details Symbols are only meaningful in the context of the Module that
+    ///          created them. The interner owns stable copies of function names,
+    ///          extern names, global names, block labels, callees, and branch
+    ///          target labels so analyses can compare compact handles instead
+    ///          of repeatedly hashing strings.
+    il::support::StringInterner symbols{};
+
+    /// @brief Intern an identifier in this module's symbol table.
+    /// @param text Identifier text to intern. Empty input returns an invalid
+    ///        symbol.
+    /// @return Stable symbol handle owned by @ref symbols, or an invalid symbol
+    ///         if @p text is empty or the interner is full.
+    [[nodiscard]] il::support::Symbol internIdentifier(std::string_view text);
+
+    /// @brief Look up the text for a module-owned symbol.
+    /// @param symbol Symbol previously returned by @ref internIdentifier.
+    /// @return Interned text, or an empty view when @p symbol is invalid for
+    ///         this module.
+    [[nodiscard]] std::string_view lookupIdentifier(il::support::Symbol symbol) const;
+
+    /// @brief Test whether a symbol belongs to this module's interner.
+    /// @param symbol Symbol handle to validate.
+    /// @return True when @p symbol is nonzero and names an interned string in
+    ///         this module.
+    [[nodiscard]] bool containsIdentifier(il::support::Symbol symbol) const noexcept;
+
+    /// @brief Populate every identifier sidecar from the current string fields.
+    /// @details This pass is idempotent and safe after manual IR construction,
+    ///          parsing, linking, or transformations that rewrite names. It
+    ///          interns module declarations, function names, block labels,
+    ///          direct callees, and branch target labels while preserving the
+    ///          existing string fields for diagnostics and serialization.
+    void internOwnedIdentifiers();
 };
 
 } // namespace il::core

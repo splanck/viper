@@ -158,40 +158,10 @@ VM::ExecResult handleCastNarrowChkImpl(const Slot &value,
                                        Frame &fr,
                                        const il::core::Instr &in,
                                        const il::core::BasicBlock *bb) {
-    using Wide = typename Traits::WideType;
-    const Wide operand = Traits::toWide(value.i64);
-
-    auto trapOutOfRange = [&]() {
-        emitTrap(TrapKind::InvalidCast, Traits::kOutOfRangeMessage, in, fr, bb);
-    };
-
-    int64_t narrowed = Traits::toStorage(operand);
-    bool inRange = true;
     switch (in.type.kind) {
-        case il::core::Type::Kind::I16: {
-            using NarrowT = std::
-                conditional_t<std::is_same_v<Traits, UnsignedNarrowCastTraits>, uint16_t, int16_t>;
-            inRange = Traits::template fits<NarrowT>(operand);
-            if (inRange) {
-                narrowed = Traits::template narrow<NarrowT>(operand);
-            }
-            break;
-        }
-        case il::core::Type::Kind::I32: {
-            using NarrowT = std::
-                conditional_t<std::is_same_v<Traits, UnsignedNarrowCastTraits>, uint32_t, int32_t>;
-            inRange = Traits::template fits<NarrowT>(operand);
-            if (inRange) {
-                narrowed = Traits::template narrow<NarrowT>(operand);
-            }
-            break;
-        }
         case il::core::Type::Kind::I1:
-            inRange = Traits::checkBoolean(operand);
-            if (inRange) {
-                narrowed = Traits::booleanValue(operand);
-            }
-            break;
+        case il::core::Type::Kind::I16:
+        case il::core::Type::Kind::I32:
         case il::core::Type::Kind::I64:
             break;
         default:
@@ -199,13 +169,23 @@ VM::ExecResult handleCastNarrowChkImpl(const Slot &value,
             return {};
     }
 
-    if (!inRange) {
-        trapOutOfRange();
+    const auto result =
+        [&]() -> il::semantics::SemanticResult<int64_t> {
+        if constexpr (std::is_same_v<Traits, UnsignedNarrowCastTraits>) {
+            return il::semantics::unsignedNarrow(static_cast<uint64_t>(value.i64),
+                                                 semanticWidthForType(in.type.kind));
+        } else {
+            return il::semantics::signedNarrow(value.i64, semanticWidthForType(in.type.kind));
+        }
+    }();
+
+    if (!result.ok()) {
+        emitTrap(TrapKind::InvalidCast, Traits::kOutOfRangeMessage, in, fr, bb);
         return {};
     }
 
     Slot out{};
-    out.i64 = narrowed;
+    out.i64 = result.value;
     ops::storeResult(fr, in, out);
     return {};
 }

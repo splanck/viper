@@ -38,18 +38,12 @@ namespace {
 void rewriteToUnconditionalBranch(il::core::Instr &instr, size_t successorIndex) {
     assert(successorIndex < instr.labels.size());
     const std::string target = instr.labels[successorIndex];
+    std::vector<std::vector<il::core::Value>> newArgs;
+    if (!instr.brArgs.empty() && successorIndex < instr.brArgs.size())
+        newArgs.push_back(instr.brArgs[successorIndex]);
     instr.op = il::core::Opcode::Br;
     instr.operands.clear();
-    instr.labels.clear();
-    instr.labels.push_back(target);
-
-    if (instr.brArgs.empty())
-        return;
-
-    std::vector<std::vector<il::core::Value>> newArgs;
-    if (successorIndex < instr.brArgs.size())
-        newArgs.push_back(instr.brArgs[successorIndex]);
-    instr.brArgs = std::move(newArgs);
+    instr.setBranchTargets({target}, std::move(newArgs));
 }
 
 } // namespace

@@ -464,6 +464,7 @@ void dce(Module &M) {
             }
         }
     }
+    M.internOwnedIdentifiers();
 }
 
 } // namespace il::transform

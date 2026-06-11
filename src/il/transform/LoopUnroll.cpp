@@ -593,9 +593,8 @@ bool fullyUnrollLoop(Function &function,
     // Update preheader terminator to branch to exit
     Instr &newTerm = preheader->instructions.back();
     newTerm.op = Opcode::Br;
-    newTerm.labels = {exitLabel};
     newTerm.operands.clear();
-    newTerm.brArgs = {exitArgs};
+    newTerm.setBranchTargets({exitLabel}, {exitArgs});
 
     // Remove original loop blocks from function
     std::unordered_set<std::string> loopBlockLabels(loop.blockLabels.begin(),

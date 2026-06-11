@@ -98,6 +98,7 @@ void reassociate(Module &M) {
             }
         }
     }
+    M.internOwnedIdentifiers();
 }
 
 } // namespace il::transform

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-31
+last-verified: 2026-06-11
 ---
 
 # Viper Arithmetic Semantics Reference
@@ -10,6 +10,25 @@ This document specifies the exact arithmetic semantics that Viper guarantees acr
 all execution layers (VM, AArch64 native, x86-64 native) and both frontends
 (Zia, BASIC). These guarantees are tested by the conformance test suite in
 `src/tests/conformance/`.
+
+## Shared Implementation Contract
+
+The IL VM and BytecodeVM consume the shared scalar semantic kernel in
+`src/il/semantics/ScalarOps.hpp` for checked integer arithmetic, division and
+remainder traps, shift masking, `idx.chk` normalization, narrowing conversions,
+and checked FP-to-integer casts. Bytecode-specific width decoding and trap
+translation live in `src/bytecode/BytecodeSemantics.hpp`.
+
+Bytecode format version 3 carries explicit width metadata for checked scalar
+operations whose IL semantics depend on result type: `.ovf` arithmetic,
+checked signed division and remainder, `idx.chk`, and checked FP-to-integer
+casts. The compiler emits that metadata from the IL instruction type, and the
+loader validates the compact width fields before a module can execute.
+
+The structural guard `scripts/check_vm_semantics_duplication.sh` and the
+conformance target `test_vm_bytecode_scalar_semantics` are intended to catch
+future divergence between the tree-walking VM, bytecode switch dispatch, and
+bytecode threaded dispatch.
 
 ## Integer Arithmetic
 

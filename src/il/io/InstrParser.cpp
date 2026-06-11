@@ -502,6 +502,13 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st) {
     if (!shape)
         return shape;
     const bool isTerm = il::core::getOpcodeInfo(in.op).isTerminator;
+    in.calleeSymbol = in.callee.empty() ? il::support::Symbol{} : st.m.internIdentifier(in.callee);
+    in.labelSymbols.clear();
+    in.labelSymbols.reserve(in.labels.size());
+    for (const auto &label : in.labels) {
+        in.labelSymbols.push_back(label.empty() ? il::support::Symbol{}
+                                                : st.m.internIdentifier(label));
+    }
     st.curBB->instructions.push_back(std::move(in));
     if (isTerm)
         st.curBB->terminated = true;

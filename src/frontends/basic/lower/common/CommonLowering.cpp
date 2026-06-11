@@ -279,7 +279,7 @@ void CommonLowering::emitBr(BasicBlock *target) {
     in.type = Type(Type::Kind::Void);
     if (target->label.empty())
         target->label = lowerer_->nextFallbackBlockLabel();
-    in.labels.push_back(target->label);
+    in.addBranchTarget(target->label);
     in.loc = lowerer_->curLoc;
     block->instructions.push_back(in);
     block->terminated = true;
@@ -301,8 +301,8 @@ void CommonLowering::emitCBr(Value cond, BasicBlock *t, BasicBlock *f) {
         t->label = lowerer_->nextFallbackBlockLabel();
     if (f->label.empty())
         f->label = lowerer_->nextFallbackBlockLabel();
-    in.labels.push_back(t->label);
-    in.labels.push_back(f->label);
+    in.addBranchTarget(t->label);
+    in.addBranchTarget(f->label);
     in.loc = lowerer_->curLoc;
     BasicBlock *block = lowerer_->context().current();
     assert(block && "emitCBr requires an active block");
@@ -326,7 +326,7 @@ CommonLowering::Value CommonLowering::emitCallRet(Type ty,
     in.result = id;
     in.op = Opcode::Call;
     in.type = ty;
-    in.callee = callee;
+    in.setDirectCallee(callee);
     in.operands = args;
     in.loc = lowerer_->curLoc;
     BasicBlock *block = lowerer_->context().current();
@@ -344,7 +344,7 @@ void CommonLowering::emitCall(const std::string &callee, const std::vector<Value
     Instr in;
     in.op = Opcode::Call;
     in.type = Type(Type::Kind::Void);
-    in.callee = callee;
+    in.setDirectCallee(callee);
     in.operands = args;
     in.loc = lowerer_->curLoc;
     BasicBlock *block = lowerer_->context().current();
@@ -360,9 +360,7 @@ CommonLowering::Value CommonLowering::emitCallIndirectRet(Type ty,
     in.result = id;
     in.op = Opcode::CallIndirect;
     in.type = ty;
-    in.hasIndirectSignature = true;
-    in.indirectRetType = ty;
-    in.indirectIsVarArg = true;
+    in.setIndirectSignature(ty, {}, true);
     in.operands.reserve(1 + args.size());
     in.operands.push_back(callee);
     for (const auto &a : args)
@@ -378,9 +376,7 @@ void CommonLowering::emitCallIndirect(Value callee, const std::vector<Value> &ar
     Instr in;
     in.op = Opcode::CallIndirect;
     in.type = Type(Type::Kind::Void);
-    in.hasIndirectSignature = true;
-    in.indirectRetType = Type(Type::Kind::Void);
-    in.indirectIsVarArg = true;
+    in.setIndirectSignature(Type(Type::Kind::Void), {}, true);
     in.operands.reserve(1 + args.size());
     in.operands.push_back(callee);
     for (const auto &a : args)

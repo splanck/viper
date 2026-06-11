@@ -15,9 +15,9 @@
 //   - Parameter types and count must match the function signature.
 //   - All control flow paths must terminate with proper terminators.
 // Ownership/Lifetime: Module owns Functions by value in a std::vector.
-//          Function owns all BasicBlocks, Params, and metadata. Functions can
-//          be moved efficiently but are expensive to copy (deep copy of all
-//          blocks).
+//          Function owns BasicBlocks in stable storage plus Params and metadata.
+//          Functions can be moved efficiently but are expensive to copy (deep
+//          copy of all blocks).
 // Links: docs/il-guide.md#reference, il/core/BasicBlock.hpp,
 //        il/core/Param.hpp, il/core/Type.hpp
 //
@@ -30,6 +30,7 @@
 #include "il/core/Linkage.hpp"
 #include "il/core/Param.hpp"
 #include "il/core/Type.hpp"
+#include "support/symbol.hpp"
 #include <string>
 #include <vector>
 
@@ -71,7 +72,7 @@ struct Function {
     /// Basic blocks comprising the function body.
     /// @ownership Function owns all blocks; each block's parent is this function.
     /// @constraint Contains at least one block; labels unique within the function.
-    std::vector<BasicBlock> blocks;
+    StableList<BasicBlock> blocks;
 
     /// Mapping from SSA value IDs to their original names for diagnostics.
     /// @ownership Function owns this vector.
@@ -99,6 +100,11 @@ struct Function {
     [[nodiscard]] const FunctionAttrs &attrs() const {
         return Attrs;
     }
+
+    /// @brief Interned handle for @ref name within the owning Module.
+    /// @details Invalid until populated by a Module helper or by construction
+    ///          paths that have access to the parent Module.
+    il::support::Symbol nameSymbol{};
 };
 
 } // namespace il::core

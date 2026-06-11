@@ -28,7 +28,7 @@
 #include <string>
 
 using namespace il::frontends::zia;
-using namespace il::support;
+using il::support::SourceManager;
 
 namespace {
 

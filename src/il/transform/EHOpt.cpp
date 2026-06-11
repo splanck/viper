@@ -116,6 +116,8 @@ bool ehOpt(Module &module) {
     bool changed = false;
     for (auto &fn : module.functions)
         changed |= ehOptFunction(fn);
+    if (changed)
+        module.internOwnedIdentifiers();
     return changed;
 }
 

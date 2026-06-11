@@ -187,8 +187,7 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
         il::core::Instr brInstr;
         brInstr.op = Opcode::Br;
         brInstr.type = Type(Type::Kind::Void);
-        brInstr.labels.push_back(currentFunc_->blocks[targetIdx].label);
-        brInstr.brArgs.push_back(args);
+        brInstr.addBranchTarget(currentFunc_->blocks[targetIdx].label, args);
         brInstr.loc = curLoc_;
         blockMgr_.currentBlock()->instructions.push_back(std::move(brInstr));
         blockMgr_.currentBlock()->terminated = true;
@@ -203,10 +202,8 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
         cbrInstr.op = Opcode::CBr;
         cbrInstr.type = Type(Type::Kind::Void);
         cbrInstr.operands.push_back(cond);
-        cbrInstr.labels.push_back(currentFunc_->blocks[trueIdx].label);
-        cbrInstr.labels.push_back(currentFunc_->blocks[falseIdx].label);
-        cbrInstr.brArgs.push_back(trueArgs);
-        cbrInstr.brArgs.push_back(falseArgs);
+        cbrInstr.addBranchTarget(currentFunc_->blocks[trueIdx].label, trueArgs);
+        cbrInstr.addBranchTarget(currentFunc_->blocks[falseIdx].label, falseArgs);
         cbrInstr.loc = curLoc_;
         blockMgr_.currentBlock()->instructions.push_back(std::move(cbrInstr));
         blockMgr_.currentBlock()->terminated = true;
@@ -269,7 +266,7 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
         resumeInstr.op = Opcode::ResumeLabel;
         resumeInstr.type = Type(Type::Kind::Void);
         resumeInstr.operands.push_back(resumeTok);
-        resumeInstr.labels.push_back(currentFunc_->blocks[afterIdx].label);
+        resumeInstr.addBranchTarget(currentFunc_->blocks[afterIdx].label);
         resumeInstr.loc = curLoc_;
         blockMgr_.currentBlock()->instructions.push_back(std::move(resumeInstr));
         blockMgr_.currentBlock()->terminated = true;
@@ -324,7 +321,7 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
         il::core::Instr ehPushInstr;
         ehPushInstr.op = Opcode::EhPush;
         ehPushInstr.type = Type(Type::Kind::Void);
-        ehPushInstr.labels.push_back(currentFunc_->blocks[handlerIdx].label);
+        ehPushInstr.addBranchTarget(currentFunc_->blocks[handlerIdx].label);
         ehPushInstr.loc = curLoc_;
         blockMgr_.currentBlock()->instructions.push_back(std::move(ehPushInstr));
     }

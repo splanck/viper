@@ -322,10 +322,7 @@ Expected<void> parseIndirectSignature(ParserState &state, Instr &instr, const st
         params.push_back(paramType);
     }
 
-    instr.hasIndirectSignature = true;
-    instr.indirectRetType = retType;
-    instr.indirectParamTypes = std::move(params);
-    instr.indirectIsVarArg = isVarArg;
+    instr.setIndirectSignature(retType, std::move(params), isVarArg);
     if (instr.result && retType.kind != Type::Kind::Void)
         instr.type = retType;
     return {};
@@ -396,7 +393,7 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text) {
     const size_t lp = parens.value().first;
     const size_t rp = parens.value().second;
 
-    instr_.callee = trim(text.substr(at + 1, lp - at - 1));
+    instr_.setDirectCallee(state_.m, trim(text.substr(at + 1, lp - at - 1)));
     if (!isValidILIdentifier(instr_.callee)) {
         return Expected<void>{
             il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "malformed call name")};
@@ -789,8 +786,7 @@ Expected<void> OperandParser::validateCaseArity(std::string label, std::vector<V
     auto check = checkBranchArgCount(label, argCount);
     if (!check)
         return check;
-    instr_.labels.push_back(std::move(label));
-    instr_.brArgs.push_back(std::move(args));
+    instr_.addBranchTarget(state_.m, std::move(label), std::move(args));
     return {};
 }
 

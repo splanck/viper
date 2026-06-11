@@ -130,10 +130,8 @@ Value RuntimeStatementLowerer::emitArrayLengthCheck(Value bound,
         cbr.op = Opcode::CBr;
         cbr.type = il::core::Type(il::core::Type::Kind::Void);
         cbr.operands.push_back(isNeg);
-        cbr.labels.push_back(failLbl);
-        cbr.labels.push_back(contLbl);
-        cbr.brArgs.push_back({});       // failBlk has no parameters
-        cbr.brArgs.push_back({length}); // contBlk receives length
+        cbr.addBranchTarget(failLbl);        // failBlk has no parameters
+        cbr.addBranchTarget(contLbl, {length}); // contBlk receives length
         cbr.loc = lowerer_.curLoc;
         BasicBlock *curBlock = ctx.current();
         curBlock->instructions.push_back(cbr);

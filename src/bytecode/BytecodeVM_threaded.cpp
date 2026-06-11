@@ -19,6 +19,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "bytecode/BytecodeVM.hpp"
+#include "bytecode/BytecodeSemantics.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VMContext.hpp"
@@ -605,96 +606,60 @@ L_NEG_I64: {
     DISPATCH();
 
 L_ADD_I64_OVF: {
-    // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
-    uint8_t targetType = decodeArg8_0(instr);
-    int64_t a = sp[-2].i64, b = sp[-1].i64;
-    int64_t result = 0;
-    bool overflow = false;
-    switch (targetType) {
-        case 1: // I16
-            overflow = addOverflow(a, b, result) || result < INT16_MIN || result > INT16_MAX;
-            break;
-        case 2: // I32
-            overflow = addOverflow(a, b, result) || result < INT32_MIN || result > INT32_MAX;
-            break;
-        default: // I64
-            overflow = addOverflow(a, b, result);
-            break;
+    const auto result = il::semantics::checkedAdd(
+        sp[-2].i64,
+        sp[-1].i64,
+        detail::decodeArithmeticWidthArg(decodeArg8_0(instr)));
+    if (!result.ok()) {
+        THREAD_TRAP_OR_DISPATCH(detail::toBytecodeTrap(result.trap),
+                                "Overflow: integer overflow in add");
     }
-    if (overflow) {
-        THREAD_TRAP_OR_DISPATCH(TrapKind::Overflow, "Overflow: integer overflow in add");
-    }
-    sp[-2].i64 = result;
+    sp[-2].i64 = result.value;
     sp--;
     DISPATCH();
 }
 
 L_SUB_I64_OVF: {
-    // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
-    uint8_t targetType = decodeArg8_0(instr);
-    int64_t a = sp[-2].i64, b = sp[-1].i64;
-    int64_t result = 0;
-    bool overflow = false;
-    switch (targetType) {
-        case 1: // I16
-            overflow = subOverflow(a, b, result) || result < INT16_MIN || result > INT16_MAX;
-            break;
-        case 2: // I32
-            overflow = subOverflow(a, b, result) || result < INT32_MIN || result > INT32_MAX;
-            break;
-        default: // I64
-            overflow = subOverflow(a, b, result);
-            break;
+    const auto result = il::semantics::checkedSub(
+        sp[-2].i64,
+        sp[-1].i64,
+        detail::decodeArithmeticWidthArg(decodeArg8_0(instr)));
+    if (!result.ok()) {
+        THREAD_TRAP_OR_DISPATCH(detail::toBytecodeTrap(result.trap),
+                                "Overflow: integer overflow in sub");
     }
-    if (overflow) {
-        THREAD_TRAP_OR_DISPATCH(TrapKind::Overflow, "Overflow: integer overflow in sub");
-    }
-    sp[-2].i64 = result;
+    sp[-2].i64 = result.value;
     sp--;
     DISPATCH();
 }
 
 L_MUL_I64_OVF: {
-    // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
-    uint8_t targetType = decodeArg8_0(instr);
-    int64_t a = sp[-2].i64, b = sp[-1].i64;
-    int64_t result = 0;
-    bool overflow = false;
-    switch (targetType) {
-        case 1: // I16
-            overflow = mulOverflow(a, b, result) || result < INT16_MIN || result > INT16_MAX;
-            break;
-        case 2: // I32
-            overflow = mulOverflow(a, b, result) || result < INT32_MIN || result > INT32_MAX;
-            break;
-        default: // I64
-            overflow = mulOverflow(a, b, result);
-            break;
+    const auto result = il::semantics::checkedMul(
+        sp[-2].i64,
+        sp[-1].i64,
+        detail::decodeArithmeticWidthArg(decodeArg8_0(instr)));
+    if (!result.ok()) {
+        THREAD_TRAP_OR_DISPATCH(detail::toBytecodeTrap(result.trap),
+                                "Overflow: integer overflow in mul");
     }
-    if (overflow) {
-        THREAD_TRAP_OR_DISPATCH(TrapKind::Overflow, "Overflow: integer overflow in mul");
-    }
-    sp[-2].i64 = result;
+    sp[-2].i64 = result.value;
     sp--;
     DISPATCH();
 }
 
 L_SDIV_I64_CHK: {
-    int64_t result = 0;
-    TrapKind fault = TrapKind::None;
-    if (!safeSignedDiv(sp[-2].i64, sp[-1].i64, result, fault)) {
-        SYNC_STATE();
-        sp_ = sp;
-        if (!dispatchTrap(fault)) {
-            trap(fault,
-                 fault == TrapKind::DivideByZero ? "division by zero"
-                                                 : "Overflow: integer division overflow");
-            return;
-        }
-        RELOAD_STATE();
-        DISPATCH();
+    const auto result = il::semantics::signedDiv(
+        sp[-2].i64,
+        sp[-1].i64,
+        detail::decodeArithmeticWidthArg(decodeArg8_0(instr)));
+    if (!result.ok()) {
+        const TrapKind fault = detail::toBytecodeTrap(result.trap);
+        THREAD_TRAP_OR_DISPATCH(fault,
+                                fault == TrapKind::DivideByZero
+                                    ? "division by zero"
+                                    : "Overflow: integer division overflow");
     }
-    sp[-2].i64 = result;
+    sp[-2].i64 = result.value;
 }
     sp--;
     DISPATCH();
@@ -718,21 +683,18 @@ L_UDIV_I64_CHK: {
     DISPATCH();
 
 L_SREM_I64_CHK: {
-    int64_t result = 0;
-    TrapKind fault = TrapKind::None;
-    if (!safeSignedRem(sp[-2].i64, sp[-1].i64, result, fault)) {
-        SYNC_STATE();
-        sp_ = sp;
-        if (!dispatchTrap(fault)) {
-            trap(fault,
-                 fault == TrapKind::DivideByZero ? "division by zero"
-                                                 : "Overflow: integer remainder overflow");
-            return;
-        }
-        RELOAD_STATE();
-        DISPATCH();
+    const auto result = il::semantics::signedRem(
+        sp[-2].i64,
+        sp[-1].i64,
+        detail::decodeArithmeticWidthArg(decodeArg8_0(instr)));
+    if (!result.ok()) {
+        const TrapKind fault = detail::toBytecodeTrap(result.trap);
+        THREAD_TRAP_OR_DISPATCH(fault,
+                                fault == TrapKind::DivideByZero
+                                    ? "division by zero"
+                                    : "Overflow: integer remainder overflow");
     }
-    sp[-2].i64 = result;
+    sp[-2].i64 = result.value;
 }
     sp--;
     DISPATCH();
@@ -756,12 +718,15 @@ L_UREM_I64_CHK: {
     DISPATCH();
 
 L_IDX_CHK: {
-    int64_t hi = sp[-1].i64;
-    int64_t lo = sp[-2].i64;
-    int64_t idx = sp[-3].i64;
-    if (idx < lo || idx >= hi) {
-        THREAD_TRAP_OR_DISPATCH(TrapKind::Bounds, "index out of bounds");
+    const auto result = il::semantics::boundsCheck(
+        sp[-3].i64,
+        sp[-2].i64,
+        sp[-1].i64,
+        detail::decodeArithmeticWidthArg(decodeArg8_0(instr)));
+    if (!result.ok()) {
+        THREAD_TRAP_OR_DISPATCH(detail::toBytecodeTrap(result.trap), "index out of bounds");
     }
+    sp[-3].i64 = result.value;
     sp -= 2;
     DISPATCH();
 }
@@ -817,7 +782,7 @@ L_SHL_I64:
     DISPATCH();
 
 L_LSHR_I64:
-    sp[-2].i64 = static_cast<int64_t>(static_cast<uint64_t>(sp[-2].i64) >> (sp[-1].i64 & 63));
+    sp[-2].i64 = il::semantics::logicalShiftRight(sp[-2].i64, sp[-1].i64);
     sp--;
     DISPATCH();
 
@@ -937,81 +902,56 @@ L_I64_TO_BOOL:
     DISPATCH();
 
 L_I64_NARROW_CHK: {
-    // Signed narrow conversion with overflow check
-    // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
-    uint8_t targetType = decodeArg8_0(instr);
-    int64_t val = sp[-1].i64;
-    bool inRange = true;
-    switch (targetType) {
-        case 0: // I1 (boolean)
-            inRange = (val == 0 || val == 1);
-            break;
-        case 1: // I16
-            inRange = (val >= INT16_MIN && val <= INT16_MAX);
-            break;
-        case 2: // I32
-            inRange = (val >= INT32_MIN && val <= INT32_MAX);
-            break;
-        default: // I64 - always in range
-            break;
+    const auto result = il::semantics::signedNarrow(
+        sp[-1].i64,
+        detail::decodeNarrowWidthArg(decodeArg8_0(instr)));
+    if (!result.ok()) {
+        THREAD_TRAP_OR_DISPATCH(detail::toBytecodeTrap(result.trap),
+                                "InvalidCast: signed narrow conversion out of range");
     }
-    if (!inRange) {
-        THREAD_TRAP_OR_DISPATCH(TrapKind::Overflow, "Overflow: signed narrow conversion overflow");
-    }
-    // Value stays the same (already narrowed semantically)
+    sp[-1].i64 = result.value;
     DISPATCH();
 }
 
 L_U64_NARROW_CHK: {
-    // Unsigned narrow conversion with overflow check
-    // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
-    uint8_t targetType = decodeArg8_0(instr);
-    uint64_t val = static_cast<uint64_t>(sp[-1].i64);
-    bool inRange = true;
-    switch (targetType) {
-        case 0: // I1 (boolean)
-            inRange = (val <= 1);
-            break;
-        case 1: // I16
-            inRange = (val <= UINT16_MAX);
-            break;
-        case 2: // I32
-            inRange = (val <= UINT32_MAX);
-            break;
-        default: // I64 - always in range
-            break;
+    const auto result = il::semantics::unsignedNarrow(
+        static_cast<uint64_t>(sp[-1].i64),
+        detail::decodeNarrowWidthArg(decodeArg8_0(instr)));
+    if (!result.ok()) {
+        THREAD_TRAP_OR_DISPATCH(detail::toBytecodeTrap(result.trap),
+                                "InvalidCast: unsigned narrow conversion out of range");
     }
-    if (!inRange) {
-        THREAD_TRAP_OR_DISPATCH(TrapKind::Overflow,
-                                "Overflow: unsigned narrow conversion overflow");
-    }
-    // Value stays the same (already narrowed semantically)
+    sp[-1].i64 = result.value;
     DISPATCH();
 }
 
 L_F64_TO_I64_CHK: {
-    // Float to signed int64 with overflow check and round-to-even
-    int64_t converted = 0;
-    TrapKind fault = TrapKind::None;
-    if (!roundF64ToI64(sp[-1].f64, converted, fault))
+    const auto result = il::semantics::fpToSiRte(
+        sp[-1].f64,
+        detail::decodeArithmeticWidthArg(decodeArg8_0(instr)));
+    if (!result.ok()) {
+        const TrapKind fault = detail::toBytecodeTrap(result.trap);
         THREAD_TRAP_OR_DISPATCH(fault,
                                 fault == TrapKind::InvalidCast
                                     ? "InvalidCast: invalid float to int conversion"
                                     : "Overflow: float to int conversion overflow");
-    sp[-1].i64 = converted;
+    }
+    sp[-1].i64 = result.value;
     DISPATCH();
 }
 
 L_F64_TO_U64_CHK: {
-    // Float to unsigned int64 with overflow check and round-to-even
-    int64_t converted = 0;
-    TrapKind fault = TrapKind::None;
-    if (!roundF64ToU64Bits(sp[-1].f64, converted, fault))
+    const auto result = il::semantics::fpToUiRte(
+        sp[-1].f64,
+        detail::decodeArithmeticWidthArg(decodeArg8_0(instr)));
+    if (!result.ok()) {
+        const TrapKind fault = detail::toBytecodeTrap(result.trap);
         THREAD_TRAP_OR_DISPATCH(fault,
                                 fault == TrapKind::InvalidCast
                                     ? "InvalidCast: invalid float to uint conversion"
                                     : "Overflow: float to uint conversion overflow");
-    sp[-1].i64 = converted;
+    }
+    sp[-1].i64 = result.value;
     DISPATCH();
 }
 
@@ -1644,13 +1584,9 @@ L_RETURN_VOID: {
 }
 
 L_STR_RETAIN:
-    if (sp[-1].ptr) {
-        if (!validateStringHandle(sp[-1].ptr, "BytecodeVM::STR_RETAIN(threaded)")) {
-            SYNC_STATE();
-            return;
-        }
-        rt_str_retain_maybe(static_cast<rt_string>(sp[-1].ptr));
-        setSlotOwnsString(sp - 1, true);
+    if (!retainStringSlot(sp - 1, "BytecodeVM::STR_RETAIN(threaded)")) {
+        SYNC_STATE();
+        return;
     }
     DISPATCH();
 

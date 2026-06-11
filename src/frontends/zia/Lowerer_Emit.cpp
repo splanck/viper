@@ -280,7 +280,7 @@ Lowerer::Value Lowerer::emitCallRet(Type retTy,
     instr.result = id;
     instr.op = Opcode::Call;
     instr.type = retTy;
-    instr.callee = callee;
+    instr.setDirectCallee(callee);
     instr.operands = args;
     instr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(instr);
@@ -300,7 +300,7 @@ void Lowerer::emitCall(const std::string &callee, const std::vector<Value> &args
     il::core::Instr instr;
     instr.op = Opcode::Call;
     instr.type = Type(Type::Kind::Void);
-    instr.callee = callee;
+    instr.setDirectCallee(callee);
     instr.operands = args;
     instr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(instr);
@@ -310,9 +310,7 @@ void Lowerer::emitCallIndirect(Value funcPtr, const std::vector<Value> &args) {
     il::core::Instr instr;
     instr.op = Opcode::CallIndirect;
     instr.type = Type(Type::Kind::Void);
-    instr.hasIndirectSignature = true;
-    instr.indirectRetType = Type(Type::Kind::Void);
-    instr.indirectIsVarArg = true;
+    instr.setIndirectSignature(Type(Type::Kind::Void), {}, true);
     // For call.indirect, the function pointer is the first operand
     instr.operands.push_back(funcPtr);
     for (const auto &arg : args) {
@@ -330,9 +328,7 @@ Lowerer::Value Lowerer::emitCallIndirectRet(Type retTy,
     instr.result = id;
     instr.op = Opcode::CallIndirect;
     instr.type = retTy;
-    instr.hasIndirectSignature = true;
-    instr.indirectRetType = retTy;
-    instr.indirectIsVarArg = true;
+    instr.setIndirectSignature(retTy, {}, true);
     // For call.indirect, the function pointer is the first operand
     instr.operands.push_back(funcPtr);
     for (const auto &arg : args) {
@@ -379,8 +375,7 @@ void Lowerer::emitBr(size_t targetIdx) {
     il::core::Instr instr;
     instr.op = Opcode::Br;
     instr.type = Type(Type::Kind::Void);
-    instr.labels.push_back(currentFunc_->blocks[targetIdx].label);
-    instr.brArgs.push_back({});
+    instr.addBranchTarget(currentFunc_->blocks[targetIdx].label);
     instr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(std::move(instr));
     blockMgr_.currentBlock()->terminated = true;
@@ -392,10 +387,8 @@ void Lowerer::emitCBr(Value cond, size_t trueIdx, size_t falseIdx) {
     instr.op = Opcode::CBr;
     instr.type = Type(Type::Kind::Void);
     instr.operands.push_back(cond);
-    instr.labels.push_back(currentFunc_->blocks[trueIdx].label);
-    instr.labels.push_back(currentFunc_->blocks[falseIdx].label);
-    instr.brArgs.push_back({});
-    instr.brArgs.push_back({});
+    instr.addBranchTarget(currentFunc_->blocks[trueIdx].label);
+    instr.addBranchTarget(currentFunc_->blocks[falseIdx].label);
     instr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(std::move(instr));
     blockMgr_.currentBlock()->terminated = true;

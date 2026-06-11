@@ -203,7 +203,7 @@ class InstructionEmitter {
         instr.result = id;
         instr.op = Opcode::Call;
         instr.type = retTy;
-        instr.callee = callee;
+        instr.setDirectCallee(callee);
         instr.operands = args;
         instr.loc = currentLoc_;
         block()->instructions.push_back(std::move(instr));
@@ -217,7 +217,7 @@ class InstructionEmitter {
         il::core::Instr instr;
         instr.op = Opcode::Call;
         instr.type = Type(Type::Kind::Void);
-        instr.callee = callee;
+        instr.setDirectCallee(callee);
         instr.operands = args;
         instr.loc = currentLoc_;
         block()->instructions.push_back(std::move(instr));
@@ -232,9 +232,7 @@ class InstructionEmitter {
         instr.result = id;
         instr.op = Opcode::CallIndirect;
         instr.type = retTy;
-        instr.hasIndirectSignature = true;
-        instr.indirectRetType = retTy;
-        instr.indirectIsVarArg = true;
+        instr.setIndirectSignature(retTy, {}, true);
         instr.operands.push_back(callee);
         for (const auto &arg : args)
             instr.operands.push_back(arg);
@@ -248,9 +246,7 @@ class InstructionEmitter {
         il::core::Instr instr;
         instr.op = Opcode::CallIndirect;
         instr.type = Type(Type::Kind::Void);
-        instr.hasIndirectSignature = true;
-        instr.indirectRetType = Type(Type::Kind::Void);
-        instr.indirectIsVarArg = true;
+        instr.setIndirectSignature(Type(Type::Kind::Void), {}, true);
         instr.operands.push_back(callee);
         for (const auto &arg : args)
             instr.operands.push_back(arg);
@@ -268,8 +264,7 @@ class InstructionEmitter {
         il::core::Instr instr;
         instr.op = Opcode::Br;
         instr.type = Type(Type::Kind::Void);
-        instr.labels.push_back(currentFunc_->blocks[targetIdx].label);
-        instr.brArgs.push_back({});
+        instr.addBranchTarget(currentFunc_->blocks[targetIdx].label);
         instr.loc = currentLoc_;
         block()->instructions.push_back(std::move(instr));
         block()->terminated = true;
@@ -281,8 +276,7 @@ class InstructionEmitter {
         il::core::Instr instr;
         instr.op = Opcode::Br;
         instr.type = Type(Type::Kind::Void);
-        instr.labels.push_back(target->label);
-        instr.brArgs.push_back({});
+        instr.addBranchTarget(target->label);
         instr.loc = currentLoc_;
         block()->instructions.push_back(std::move(instr));
         block()->terminated = true;
@@ -297,10 +291,8 @@ class InstructionEmitter {
         instr.op = Opcode::CBr;
         instr.type = Type(Type::Kind::Void);
         instr.operands.push_back(cond);
-        instr.labels.push_back(currentFunc_->blocks[trueIdx].label);
-        instr.labels.push_back(currentFunc_->blocks[falseIdx].label);
-        instr.brArgs.push_back({});
-        instr.brArgs.push_back({});
+        instr.addBranchTarget(currentFunc_->blocks[trueIdx].label);
+        instr.addBranchTarget(currentFunc_->blocks[falseIdx].label);
         instr.loc = currentLoc_;
         block()->instructions.push_back(std::move(instr));
         block()->terminated = true;
@@ -315,10 +307,8 @@ class InstructionEmitter {
         instr.op = Opcode::CBr;
         instr.type = Type(Type::Kind::Void);
         instr.operands.push_back(cond);
-        instr.labels.push_back(trueTarget->label);
-        instr.labels.push_back(falseTarget->label);
-        instr.brArgs.push_back({});
-        instr.brArgs.push_back({});
+        instr.addBranchTarget(trueTarget->label);
+        instr.addBranchTarget(falseTarget->label);
         instr.loc = currentLoc_;
         block()->instructions.push_back(std::move(instr));
         block()->terminated = true;
@@ -395,7 +385,7 @@ class InstructionEmitter {
         il::core::Instr instr;
         instr.op = Opcode::EhPush;
         instr.type = Type(Type::Kind::Void);
-        instr.labels.push_back(currentFunc_->blocks[handlerBlockIdx].label);
+        instr.addBranchTarget(currentFunc_->blocks[handlerBlockIdx].label);
         instr.loc = currentLoc_;
         block()->instructions.push_back(std::move(instr));
     }
@@ -406,7 +396,7 @@ class InstructionEmitter {
         il::core::Instr instr;
         instr.op = Opcode::EhPush;
         instr.type = Type(Type::Kind::Void);
-        instr.labels.push_back(handler->label);
+        instr.addBranchTarget(handler->label);
         instr.loc = currentLoc_;
         block()->instructions.push_back(std::move(instr));
     }
@@ -440,7 +430,7 @@ class InstructionEmitter {
         instr.op = Opcode::ResumeLabel;
         instr.type = Type(Type::Kind::Void);
         instr.operands.push_back(resumeTok);
-        instr.labels.push_back(currentFunc_->blocks[targetBlockIdx].label);
+        instr.addBranchTarget(currentFunc_->blocks[targetBlockIdx].label);
         instr.loc = currentLoc_;
         block()->instructions.push_back(std::move(instr));
         block()->terminated = true;

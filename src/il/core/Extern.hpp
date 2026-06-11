@@ -24,6 +24,7 @@
 
 #include "il/core/EffectAttrs.hpp"
 #include "il/core/Type.hpp"
+#include "support/symbol.hpp"
 #include <string>
 #include <vector>
 
@@ -58,6 +59,12 @@ struct Extern {
     [[nodiscard]] const EffectAttrs &attrs() const {
         return Attrs;
     }
+
+    /// @brief Interned handle for @ref name within the owning Module.
+    /// @details Invalid when the extern was constructed without a Module
+    ///          interning pass. Call Module::internOwnedIdentifiers() to
+    ///          populate it for directly-created IR.
+    il::support::Symbol nameSymbol{};
 };
 
 } // namespace il::core

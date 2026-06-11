@@ -76,6 +76,15 @@ endforeach ()
 find_package(Threads REQUIRED)
 find_program(VIPER_BASH_EXECUTABLE NAMES bash)
 
+if (VIPER_BASH_EXECUTABLE)
+    add_test(NAME check_vm_semantics_duplication
+            COMMAND ${VIPER_BASH_EXECUTABLE}
+            ${CMAKE_SOURCE_DIR}/scripts/check_vm_semantics_duplication.sh
+            ${CMAKE_SOURCE_DIR})
+    set_tests_properties(check_vm_semantics_duplication PROPERTIES
+            LABELS "conformance;vm;bytecode;requires_posix_shell")
+endif ()
+
 add_library(viper_testing INTERFACE)
 target_link_libraries(viper_testing INTERFACE viper_common_opts viper::il_full)
 

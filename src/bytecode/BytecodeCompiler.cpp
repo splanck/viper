@@ -2,6 +2,7 @@
 // See LICENSE for license information.
 
 #include "bytecode/BytecodeCompiler.hpp"
+#include "bytecode/BytecodeSemantics.hpp"
 #include "bytecode/BytecodeVM.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -733,7 +734,7 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr) {
             pushValue(instr.operands[0]);
             pushValue(instr.operands[1]);
             pushValue(instr.operands[2]);
-            emit(BCOpcode::IDX_CHK);
+            emit8(BCOpcode::IDX_CHK, detail::encodeArithmeticWidthArg(instr.type.kind));
             popStack(2); // Consumes 3, produces 1
             storeResult(instr);
             break;
@@ -1403,22 +1404,7 @@ void BytecodeCompiler::compileArithmetic(const il::core::Instr &instr) {
         case Opcode::IAddOvf:
         case Opcode::ISubOvf:
         case Opcode::IMulOvf: {
-            // Encode target type: 0=I1, 1=I16, 2=I32, 3=I64
-            uint8_t targetType = 3; // default to I64
-            switch (instr.type.kind) {
-                case il::core::Type::Kind::I1:
-                    targetType = 0;
-                    break;
-                case il::core::Type::Kind::I16:
-                    targetType = 1;
-                    break;
-                case il::core::Type::Kind::I32:
-                    targetType = 2;
-                    break;
-                default:
-                    targetType = 3;
-                    break;
-            }
+            const uint8_t targetType = detail::encodeArithmeticWidthArg(instr.type.kind);
             BCOpcode op = (instr.op == Opcode::IAddOvf) ? BCOpcode::ADD_I64_OVF
                           : (instr.op == Opcode::ISubOvf) ? BCOpcode::SUB_I64_OVF
                                                           : BCOpcode::MUL_I64_OVF;
@@ -1428,17 +1414,18 @@ void BytecodeCompiler::compileArithmetic(const il::core::Instr &instr) {
             return; // Early return
         }
         case Opcode::SDivChk0:
-            bcOp = BCOpcode::SDIV_I64_CHK;
-            break;
         case Opcode::UDivChk0:
-            bcOp = BCOpcode::UDIV_I64_CHK;
-            break;
         case Opcode::SRemChk0:
-            bcOp = BCOpcode::SREM_I64_CHK;
-            break;
-        case Opcode::URemChk0:
-            bcOp = BCOpcode::UREM_I64_CHK;
-            break;
+        case Opcode::URemChk0: {
+            BCOpcode op = (instr.op == Opcode::SDivChk0) ? BCOpcode::SDIV_I64_CHK
+                          : (instr.op == Opcode::UDivChk0) ? BCOpcode::UDIV_I64_CHK
+                          : (instr.op == Opcode::SRemChk0) ? BCOpcode::SREM_I64_CHK
+                                                           : BCOpcode::UREM_I64_CHK;
+            emit8(op, detail::encodeArithmeticWidthArg(instr.type.kind));
+            popStack(); // Binary ops: consume 2, produce 1
+            storeResult(instr);
+            return;
+        }
         case Opcode::FAdd:
             bcOp = BCOpcode::ADD_F64;
             break;
@@ -1561,29 +1548,16 @@ void BytecodeCompiler::compileConversion(const il::core::Instr &instr) {
             bcOp = BCOpcode::F64_TO_I64;
             break;
         case Opcode::CastFpToSiRteChk:
-            bcOp = BCOpcode::F64_TO_I64_CHK;
-            break;
+            emit8(BCOpcode::F64_TO_I64_CHK, detail::encodeArithmeticWidthArg(instr.type.kind));
+            storeResult(instr);
+            return;
         case Opcode::CastFpToUiRteChk:
-            bcOp = BCOpcode::F64_TO_U64_CHK;
-            break;
+            emit8(BCOpcode::F64_TO_U64_CHK, detail::encodeArithmeticWidthArg(instr.type.kind));
+            storeResult(instr);
+            return;
         case Opcode::CastSiNarrowChk:
         case Opcode::CastUiNarrowChk: {
-            // Encode target type: 0=I1, 1=I16, 2=I32, 3=I64
-            uint8_t targetType = 3; // default to I64 (no-op)
-            switch (instr.type.kind) {
-                case il::core::Type::Kind::I1:
-                    targetType = 0;
-                    break;
-                case il::core::Type::Kind::I16:
-                    targetType = 1;
-                    break;
-                case il::core::Type::Kind::I32:
-                    targetType = 2;
-                    break;
-                default:
-                    targetType = 3;
-                    break;
-            }
+            const uint8_t targetType = detail::encodeNarrowWidthArg(instr.type.kind);
             bcOp = (instr.op == Opcode::CastSiNarrowChk) ? BCOpcode::I64_NARROW_CHK
                                                          : BCOpcode::U64_NARROW_CHK;
             emit8(bcOp, targetType);

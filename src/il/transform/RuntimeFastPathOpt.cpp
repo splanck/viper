@@ -72,10 +72,10 @@ PreservedAnalyses RuntimeFastPathOpt::run(Function &function, AnalysisManager & 
                 continue;
 
             if (instr.callee == "rt_obj_retain_maybe") {
-                instr.callee = "rt_obj_retain_known";
+                instr.setDirectCallee("rt_obj_retain_known");
                 changed = true;
             } else if (instr.callee == "rt_obj_release_check0") {
-                instr.callee = "rt_obj_release_known_check0";
+                instr.setDirectCallee("rt_obj_release_known_check0");
                 changed = true;
             }
         }

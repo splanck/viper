@@ -126,7 +126,7 @@ Function generateThunk(const Function &importDecl,
 
     Instr call;
     call.op = Opcode::Call;
-    call.callee = exportDef.name;
+    call.setDirectCallee(exportDef.name);
     call.type = exportDef.retType; // Call with the export's return type.
     call.operands = std::move(callArgs);
 

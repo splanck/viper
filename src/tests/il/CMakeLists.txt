@@ -46,6 +46,13 @@ function(viper_add_il_core_tests)
     target_link_libraries(test_il_core_memory_effects PRIVATE ${VIPER_IL_CORE_IO_LIBS})
     viper_add_ctest(test_il_core_memory_effects test_il_core_memory_effects)
 
+    viper_add_test(
+            test_il_core_structures
+            ${_VIPER_IL_UNIT_DIR}/il/core/test_IRCoreStructures.cpp)
+    target_link_libraries(
+            test_il_core_structures PRIVATE il_build il_analysis ${VIPER_IL_CORE_IO_LIBS})
+    viper_add_ctest(test_il_core_structures test_il_core_structures)
+
     viper_add_test(test_irbuilder_call_unknown ${_VIPER_IL_UNIT_DIR}/test_irbuilder_call_unknown.cpp)
     target_link_libraries(test_irbuilder_call_unknown PRIVATE il_build ${VIPER_IL_CORE_IO_LIBS})
     viper_add_ctest(test_irbuilder_call_unknown test_irbuilder_call_unknown)

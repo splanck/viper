@@ -24,6 +24,8 @@
 
 #pragma once
 
+#include "support/symbol.hpp"
+
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -52,6 +54,13 @@ struct CFGContext {
     /// @brief Cache mapping function pointers to their blocks indexed by label.
     std::unordered_map<il::core::Function *, std::unordered_map<std::string, il::core::Block *>>
         functionLabelToBlock;
+    /// @brief Cache mapping function pointers to their blocks indexed by interned label.
+    /// @details Populated from BasicBlock::labelSymbol when the module has been
+    ///          interned. Consumers use this for hot successor resolution while
+    ///          retaining string fallback for manually constructed unsymbolized IR.
+    std::unordered_map<il::core::Function *,
+                       std::unordered_map<il::support::Symbol, il::core::Block *>>
+        functionLabelSymbolToBlock;
     /// @brief Cached successor edge targets per block constructed eagerly.
     /// @details Duplicate target blocks are preserved because branch arguments
     ///          are edge-specific in IL.

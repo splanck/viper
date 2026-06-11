@@ -260,7 +260,7 @@ PreservedAnalyses ArrayFastPathOpt::run(Function &function, AnalysisManager & /*
                 const std::string_view fast = fastArrayHelper(instr.callee);
                 if (!fast.empty() && instr.operands.size() >= 2 &&
                     hasFact(activeFacts, instr.operands[0], instr.operands[1])) {
-                    instr.callee = std::string(fast);
+                    instr.setDirectCallee(std::string(fast));
                     changed = true;
                 }
             }

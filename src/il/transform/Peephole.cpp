@@ -594,6 +594,7 @@ std::string findOrCreateStringGlobal(Module &module, const std::string &value) {
     global.init = value;
     global.isConst = true;
     global.hasInitializer = true;
+    global.nameSymbol = module.internIdentifier(name);
     module.globals.push_back(std::move(global));
     return name;
 }
@@ -737,10 +738,11 @@ static void runPeephole(Module &m) {
                         }
                         if (argsMatch) {
                             in.op = Opcode::Br;
-                            in.labels = {in.labels[0]};
                             in.operands.clear();
-                            if (in.brArgs.size() > 1)
-                                in.brArgs.resize(1);
+                            std::vector<std::vector<Value>> args;
+                            if (!in.brArgs.empty())
+                                args.push_back(in.brArgs.front());
+                            in.setBranchTargets({in.labels[0]}, std::move(args));
                             refreshUseCounts();
                         }
                         continue;
@@ -794,18 +796,18 @@ static void runPeephole(Module &m) {
                     if (known) {
                         in.op = Opcode::Br;
                         const bool takeTrue = (v != 0);
-                        in.labels = {takeTrue ? in.labels[0] : in.labels[1]};
+                        std::string target = takeTrue ? in.labels[0] : in.labels[1];
 
                         // Preserve the correct branch arguments
+                        std::vector<std::vector<Value>> args;
                         if (!in.brArgs.empty()) {
                             if (takeTrue) {
-                                in.brArgs = std::vector<std::vector<Value>>{in.brArgs.front()};
+                                args.push_back(in.brArgs.front());
                             } else if (in.brArgs.size() > 1) {
-                                in.brArgs = std::vector<std::vector<Value>>{in.brArgs[1]};
-                            } else {
-                                in.brArgs.clear();
+                                args.push_back(in.brArgs[1]);
                             }
                         }
+                        in.setBranchTargets({std::move(target)}, std::move(args));
                         in.operands.clear();
 
                         // Remove the dead comparison if it was single-use
@@ -883,6 +885,7 @@ static void runPeephole(Module &m) {
 
 void peephole(Module &m) {
     runPeephole(m);
+    m.internOwnedIdentifiers();
 }
 
 } // namespace il::transform

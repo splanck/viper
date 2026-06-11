@@ -193,7 +193,7 @@ void rewriteFunctionRefs(Function &fn,
             if (!instr.callee.empty()) {
                 auto it = functionRenameMap.find(instr.callee);
                 if (it != functionRenameMap.end())
-                    instr.callee = it->second;
+                    instr.setDirectCallee(it->second);
             }
             for (auto &operand : instr.operands)
                 rewriteSymbolValue(operand, functionRenameMap, globalRenameMap);
@@ -441,7 +441,7 @@ LinkResult linkModules(std::vector<Module> modules) {
                     il::core::Instr callInstr;
                     callInstr.op = il::core::Opcode::Call;
                     callInstr.type = il::core::Type(il::core::Type::Kind::Void);
-                    callInstr.callee = initName;
+                    callInstr.setDirectCallee(initName);
                     initInstrs.push_back(std::move(callInstr));
                 }
                 entry.instructions.insert(
@@ -451,6 +451,7 @@ LinkResult linkModules(std::vector<Module> modules) {
         }
     }
 
+    merged.internOwnedIdentifiers();
     return result;
 }
 

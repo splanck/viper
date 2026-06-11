@@ -66,11 +66,9 @@ PreservedAnalyses Devirtualize::run(Function &function, AnalysisManager & /*anal
                 continue;
 
             instr.op = Opcode::Call;
-            instr.callee = std::move(callee);
+            instr.setDirectCallee(std::move(callee));
             instr.operands.erase(instr.operands.begin());
-            instr.hasIndirectSignature = false;
-            instr.indirectParamTypes.clear();
-            instr.indirectIsVarArg = false;
+            instr.clearIndirectSignature();
             changed = true;
         }
     }

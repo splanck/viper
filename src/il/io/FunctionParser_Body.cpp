@@ -385,6 +385,7 @@ Expected<void> parseBlockHeader(const std::string &header, ParserState &st) {
 
     st.curFn->blocks.push_back({label, bparams, {}, false});
     st.curBB = &st.curFn->blocks.back();
+    st.curBB->labelSymbol = st.m.internIdentifier(label);
     st.blockParamCount[label] = bparams.size();
 
     return {};

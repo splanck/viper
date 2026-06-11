@@ -161,6 +161,7 @@ static void ensureExtern(Module &module, std::string name, Type retType, std::ve
             return;
     }
     module.externs.push_back(Extern{std::move(name), retType, std::move(params)});
+    module.externs.back().nameSymbol = module.internIdentifier(module.externs.back().name);
 }
 
 static void ensureRuntimeExterns(Module &module) {
@@ -177,7 +178,7 @@ static Instr makeCallVoid(const char *callee, std::vector<Value> operands = {}) 
     Instr instr;
     instr.op = Opcode::Call;
     instr.type = voidTy();
-    instr.callee = callee;
+    instr.setDirectCallee(callee);
     instr.operands = std::move(operands);
     return instr;
 }
@@ -190,7 +191,7 @@ static Instr makeCallResult(unsigned result,
     instr.result = result;
     instr.op = Opcode::Call;
     instr.type = type;
-    instr.callee = callee;
+    instr.setDirectCallee(callee);
     instr.operands = std::move(operands);
     return instr;
 }
@@ -226,8 +227,7 @@ static Instr makeBr(const std::string &label, std::vector<Value> args = {}) {
     Instr instr;
     instr.op = Opcode::Br;
     instr.type = voidTy();
-    instr.labels.push_back(label);
-    instr.brArgs.push_back(std::move(args));
+    instr.addBranchTarget(label, std::move(args));
     return instr;
 }
 
@@ -236,10 +236,8 @@ static Instr makeCBr(Value cond, const std::string &trueLabel, const std::string
     instr.op = Opcode::CBr;
     instr.type = voidTy();
     instr.operands.push_back(std::move(cond));
-    instr.labels.push_back(trueLabel);
-    instr.labels.push_back(falseLabel);
-    instr.brArgs.push_back({});
-    instr.brArgs.push_back({});
+    instr.addBranchTarget(trueLabel);
+    instr.addBranchTarget(falseLabel);
     return instr;
 }
 

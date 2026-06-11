@@ -23,6 +23,7 @@
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Type.hpp"
+#include "il/semantics/ScalarOps.hpp"
 
 #include <cstdint>
 #include <limits>
@@ -52,6 +53,74 @@ inline void emitTrap(TrapKind kind,
                         in.loc,
                         fr.func ? fr.func->name : std::string(),
                         bb ? bb->label : std::string());
+}
+
+/// @brief Convert an IL type kind to the shared scalar integer width tag.
+/// @details Non-integer or unsupported kinds conservatively select I64 so the
+///          semantic fallback matches the historical VM dispatch behavior.
+/// @param kind Instruction result type kind.
+/// @return Shared integer width used by the scalar semantics kernel.
+[[nodiscard]] constexpr il::semantics::IntWidth semanticWidthForType(
+    il::core::Type::Kind kind) noexcept {
+    switch (kind) {
+        case il::core::Type::Kind::I1:
+            return il::semantics::IntWidth::I1;
+        case il::core::Type::Kind::I16:
+            return il::semantics::IntWidth::I16;
+        case il::core::Type::Kind::I32:
+            return il::semantics::IntWidth::I32;
+        case il::core::Type::Kind::I64:
+        default:
+            return il::semantics::IntWidth::I64;
+    }
+}
+
+/// @brief Convert a shared semantic trap kind to the IL VM trap kind.
+/// @param trap Shared semantic trap category.
+/// @return IL VM trap kind used by RuntimeBridge diagnostics.
+[[nodiscard]] constexpr TrapKind toVmTrapKind(il::semantics::TrapKind trap) noexcept {
+    switch (trap) {
+        case il::semantics::TrapKind::None:
+            return TrapKind::DomainError;
+        case il::semantics::TrapKind::DivideByZero:
+            return TrapKind::DivideByZero;
+        case il::semantics::TrapKind::Overflow:
+            return TrapKind::Overflow;
+        case il::semantics::TrapKind::InvalidCast:
+            return TrapKind::InvalidCast;
+        case il::semantics::TrapKind::Bounds:
+            return TrapKind::Bounds;
+        case il::semantics::TrapKind::InvalidOperation:
+            return TrapKind::InvalidOperation;
+        case il::semantics::TrapKind::DomainError:
+        default:
+            return TrapKind::DomainError;
+    }
+}
+
+/// @brief Store a semantic integer result or emit the corresponding trap.
+/// @details The operand dispatcher stores the output slot after a compute functor
+///          returns.  On trap this helper writes a deterministic zero placeholder
+///          after raising the trap so no uninitialized slot data is observed while
+///          the VM unwinds or dispatches a handler.
+/// @param result Shared semantic result to apply.
+/// @param out Output slot written on success, or zeroed after a trap.
+/// @param in Instruction that triggered the operation.
+/// @param fr Active frame used for trap diagnostics.
+/// @param bb Current basic block pointer, may be null.
+/// @param trapMessage Human-readable message emitted when @p result traps.
+inline void storeSemanticResultOrTrap(const il::semantics::SemanticResult<int64_t> &result,
+                                      Slot &out,
+                                      const il::core::Instr &in,
+                                      Frame &fr,
+                                      const il::core::BasicBlock *bb,
+                                      const char *trapMessage) {
+    if (!result.ok()) {
+        out.i64 = 0;
+        emitTrap(toVmTrapKind(result.trap), trapMessage, in, fr, bb);
+        return;
+    }
+    out.i64 = result.value;
 }
 
 /// @brief Apply an overflow-checking binary operation for a specific integer type.
@@ -460,10 +529,13 @@ struct OverflowAddOp {
     /// @param lhsVal Left operand slot.
     /// @param rhsVal Right operand slot.
     void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const {
-        dispatchOverflowingBinaryDirect<&overflowAdd<int16_t>,
-                                        &overflowAdd<int32_t>,
-                                        &overflowAdd<int64_t>>(
-            in, fr, bb, out, lhsVal, rhsVal, trapMessage);
+        storeSemanticResultOrTrap(
+            il::semantics::checkedAdd(lhsVal.i64, rhsVal.i64, semanticWidthForType(in.type.kind)),
+            out,
+            in,
+            fr,
+            bb,
+            trapMessage);
     }
 };
 
@@ -479,10 +551,13 @@ struct OverflowSubOp {
     /// @param lhsVal Left operand slot.
     /// @param rhsVal Right operand slot.
     void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const {
-        dispatchOverflowingBinaryDirect<&overflowSub<int16_t>,
-                                        &overflowSub<int32_t>,
-                                        &overflowSub<int64_t>>(
-            in, fr, bb, out, lhsVal, rhsVal, trapMessage);
+        storeSemanticResultOrTrap(
+            il::semantics::checkedSub(lhsVal.i64, rhsVal.i64, semanticWidthForType(in.type.kind)),
+            out,
+            in,
+            fr,
+            bb,
+            trapMessage);
     }
 };
 
@@ -498,10 +573,13 @@ struct OverflowMulOp {
     /// @param lhsVal Left operand slot.
     /// @param rhsVal Right operand slot.
     void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const {
-        dispatchOverflowingBinaryDirect<&overflowMul<int16_t>,
-                                        &overflowMul<int32_t>,
-                                        &overflowMul<int64_t>>(
-            in, fr, bb, out, lhsVal, rhsVal, trapMessage);
+        storeSemanticResultOrTrap(
+            il::semantics::checkedMul(lhsVal.i64, rhsVal.i64, semanticWidthForType(in.type.kind)),
+            out,
+            in,
+            fr,
+            bb,
+            trapMessage);
     }
 };
 
@@ -650,7 +728,8 @@ struct UnsignedDivWithCheck {
     /// @param lhsVal Left operand (dividend) slot.
     /// @param rhsVal Right operand (divisor) slot.
     void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const {
-        applyUnsignedDivOrRemDirect<UnsignedDivOp>(in, fr, bb, out, lhsVal, rhsVal, trapMessage);
+        storeSemanticResultOrTrap(
+            il::semantics::unsignedDiv(lhsVal.i64, rhsVal.i64), out, in, fr, bb, trapMessage);
     }
 };
 
@@ -666,7 +745,8 @@ struct UnsignedRemWithCheck {
     /// @param lhsVal Left operand (dividend) slot.
     /// @param rhsVal Right operand (divisor) slot.
     void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const {
-        applyUnsignedDivOrRemDirect<UnsignedRemOp>(in, fr, bb, out, lhsVal, rhsVal, trapMessage);
+        storeSemanticResultOrTrap(
+            il::semantics::unsignedRem(lhsVal.i64, rhsVal.i64), out, in, fr, bb, trapMessage);
     }
 };
 
@@ -681,9 +761,16 @@ struct SignedDivWithDispatch {
     /// @param lhsVal Left operand (dividend) slot.
     /// @param rhsVal Right operand (divisor) slot.
     void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const {
-        dispatchCheckedSignedBinary<&applySignedDiv<int16_t>,
-                                    &applySignedDiv<int32_t>,
-                                    &applySignedDiv<int64_t>>(in, fr, bb, out, lhsVal, rhsVal);
+        const auto result =
+            il::semantics::signedDiv(lhsVal.i64, rhsVal.i64, semanticWidthForType(in.type.kind));
+        storeSemanticResultOrTrap(result,
+                                  out,
+                                  in,
+                                  fr,
+                                  bb,
+                                  result.trap == il::semantics::TrapKind::Overflow
+                                      ? "integer overflow in sdiv"
+                                      : "divide by zero in sdiv");
     }
 };
 
@@ -698,9 +785,13 @@ struct SignedRemWithDispatch {
     /// @param lhsVal Left operand (dividend) slot.
     /// @param rhsVal Right operand (divisor) slot.
     void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const {
-        dispatchCheckedSignedBinary<&applySignedRem<int16_t>,
-                                    &applySignedRem<int32_t>,
-                                    &applySignedRem<int64_t>>(in, fr, bb, out, lhsVal, rhsVal);
+        storeSemanticResultOrTrap(
+            il::semantics::signedRem(lhsVal.i64, rhsVal.i64, semanticWidthForType(in.type.kind)),
+            out,
+            in,
+            fr,
+            bb,
+            "divide by zero in srem");
     }
 };
 
@@ -715,9 +806,16 @@ struct CheckedSignedDivWithDispatch {
     /// @param lhsVal Left operand (dividend) slot.
     /// @param rhsVal Right operand (divisor) slot.
     void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const {
-        dispatchCheckedSignedBinary<&applyCheckedDiv<int16_t>,
-                                    &applyCheckedDiv<int32_t>,
-                                    &applyCheckedDiv<int64_t>>(in, fr, bb, out, lhsVal, rhsVal);
+        const auto result =
+            il::semantics::signedDiv(lhsVal.i64, rhsVal.i64, semanticWidthForType(in.type.kind));
+        storeSemanticResultOrTrap(result,
+                                  out,
+                                  in,
+                                  fr,
+                                  bb,
+                                  result.trap == il::semantics::TrapKind::Overflow
+                                      ? "integer overflow in sdiv.chk0"
+                                      : "divide by zero in sdiv.chk0");
     }
 };
 
@@ -732,9 +830,13 @@ struct CheckedSignedRemWithDispatch {
     /// @param lhsVal Left operand (dividend) slot.
     /// @param rhsVal Right operand (divisor) slot.
     void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const {
-        dispatchCheckedSignedBinary<&applyCheckedRem<int16_t>,
-                                    &applyCheckedRem<int32_t>,
-                                    &applyCheckedRem<int64_t>>(in, fr, bb, out, lhsVal, rhsVal);
+        storeSemanticResultOrTrap(
+            il::semantics::signedRem(lhsVal.i64, rhsVal.i64, semanticWidthForType(in.type.kind)),
+            out,
+            in,
+            fr,
+            bb,
+            "divide by zero in srem.chk0");
     }
 };
 

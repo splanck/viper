@@ -194,6 +194,7 @@ static void validateBranchArgs(const BasicBlock &target,
 /// @param m Module that will be extended by this builder.
 /// @note Populates callee metadata so emitCall can validate future calls.
 IRBuilder::IRBuilder(il::core::Module &m) : mod(m) {
+    mod.internOwnedIdentifiers();
     for (const auto &fn : mod.functions) {
         calleeReturnTypes[fn.name] = fn.retType;
 #ifndef NDEBUG
@@ -230,6 +231,7 @@ il::core::Extern &IRBuilder::addExtern(const std::string &name,
 #endif
 
     mod.externs.push_back({name, ret, params});
+    mod.externs.back().nameSymbol = mod.internIdentifier(name);
     calleeReturnTypes[name] = ret;
     return mod.externs.back();
 }
@@ -250,6 +252,7 @@ il::core::Global &IRBuilder::addGlobal(const std::string &name,
 
     mod.globals.push_back({name, type, init});
     mod.globals.back().hasInitializer = !init.empty();
+    mod.globals.back().nameSymbol = mod.internIdentifier(name);
     return mod.globals.back();
 }
 
@@ -292,6 +295,7 @@ il::core::Function &IRBuilder::startFunction(const std::string &name,
 
     il::core::Function fn;
     fn.name = name;
+    fn.nameSymbol = mod.internIdentifier(name);
     fn.retType = ret;
     mod.functions.push_back(std::move(fn));
     calleeReturnTypes[name] = ret;
@@ -352,6 +356,7 @@ il::core::BasicBlock &IRBuilder::createBlock(il::core::Function &fn,
 
     fn.blocks.push_back({label, {}, {}, false});
     il::core::BasicBlock &bb = fn.blocks.back();
+    bb.labelSymbol = mod.internIdentifier(label);
     for (auto p : params) {
         il::core::Param np = p;
         np.id = nextTemp++;
@@ -393,8 +398,10 @@ il::core::BasicBlock &IRBuilder::insertBlock(il::core::Function &fn,
 
     if (idx > fn.blocks.size())
         idx = fn.blocks.size();
+    il::core::BasicBlock block{label, {}, {}, false};
+    block.labelSymbol = mod.internIdentifier(label);
     auto it = fn.blocks.insert(fn.blocks.begin() + static_cast<std::ptrdiff_t>(idx),
-                               il::core::BasicBlock{label, {}, {}, false});
+                               std::move(block));
     return *it;
 }
 
@@ -433,8 +440,7 @@ void IRBuilder::br(il::core::BasicBlock &dst, const std::vector<il::core::Value>
     il::core::Instr instr;
     instr.op = il::core::Opcode::Br;
     instr.type = il::core::Type(il::core::Type::Kind::Void);
-    instr.labels.push_back(dst.label);
-    instr.brArgs.push_back(args);
+    instr.addBranchTarget(mod, dst.label, args);
     append(std::move(instr));
 }
 
@@ -484,10 +490,8 @@ void IRBuilder::cbr(const il::core::Value &cond,
     instr.op = il::core::Opcode::CBr;
     instr.type = il::core::Type(il::core::Type::Kind::Void);
     instr.operands.push_back(cond);
-    instr.labels.push_back(t.label);
-    instr.labels.push_back(f.label);
-    instr.brArgs.push_back(targs);
-    instr.brArgs.push_back(fargs);
+    instr.addBranchTarget(mod, t.label, targs);
+    instr.addBranchTarget(mod, f.label, fargs);
     append(std::move(instr));
 }
 
@@ -590,6 +594,14 @@ il::core::Instr &IRBuilder::append(il::core::Instr instr) {
     const bool appendedTerminator = isTerminator(instr.op);
     if (appendedTerminator)
         assert(!curBlock.terminated && "block already terminated");
+    instr.calleeSymbol =
+        instr.callee.empty() ? il::support::Symbol{} : mod.internIdentifier(instr.callee);
+    instr.labelSymbols.clear();
+    instr.labelSymbols.reserve(instr.labels.size());
+    for (const auto &label : instr.labels) {
+        instr.labelSymbols.push_back(label.empty() ? il::support::Symbol{}
+                                                   : mod.internIdentifier(label));
+    }
     curBlock.instructions.push_back(std::move(instr));
     curBlock.terminated = appendedTerminator;
     return curBlock.instructions.back();
@@ -657,7 +669,7 @@ void IRBuilder::emitCall(const std::string &callee,
     if (it == calleeReturnTypes.end())
         throw std::logic_error("emitCall: unknown callee '" + callee + "'");
     instr.type = it->second;
-    instr.callee = callee;
+    instr.setDirectCallee(mod, callee);
     instr.operands = args;
     std::optional<unsigned> committedDst;
     if (dst) {
@@ -777,7 +789,7 @@ void IRBuilder::emitResumeLabel(const il::core::Value &token,
     instr.op = il::core::Opcode::ResumeLabel;
     instr.type = il::core::Type(il::core::Type::Kind::Void);
     instr.operands.push_back(token);
-    instr.labels.push_back(target.label);
+    instr.addBranchTarget(mod, target.label);
     instr.loc = loc;
     append(std::move(instr));
 }

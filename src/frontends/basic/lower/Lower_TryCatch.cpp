@@ -123,7 +123,7 @@ void Lowerer::lowerResume(const Resume &stmt) {
             size_t targetIdx = targetIt->second;
             if (targetIdx >= func->blocks.size())
                 return;
-            instr.labels.push_back(func->blocks[targetIdx].label);
+            instr.addBranchTarget(func->blocks[targetIdx].label);
             break;
         }
     }
@@ -257,7 +257,7 @@ void Lowerer::lowerTryCatch(const TryCatchStmt &stmt) {
         Instr in;
         in.op = Opcode::EhPush;
         in.type = Type(Type::Kind::Void);
-        in.labels.push_back(handlerLabel);
+        in.addBranchTarget(handlerLabel);
         in.loc = curLoc;
         BasicBlock *block = ctx.current();
         if (block)
@@ -510,8 +510,7 @@ void Lowerer::lowerUsingStmt(const UsingStmt &stmt) {
         Instr br;
         br.op = Opcode::Br;
         br.type = Type(Type::Kind::Void);
-        br.labels.push_back(target->label);
-        br.brArgs.push_back(std::move(args));
+        br.addBranchTarget(target->label, std::move(args));
         br.loc = stmt.loc;
         block->instructions.push_back(std::move(br));
         block->terminated = true;
@@ -529,10 +528,8 @@ void Lowerer::lowerUsingStmt(const UsingStmt &stmt) {
         cbr.op = Opcode::CBr;
         cbr.type = Type(Type::Kind::Void);
         cbr.operands.push_back(cond);
-        cbr.labels.push_back(trueTarget->label);
-        cbr.labels.push_back(falseTarget->label);
-        cbr.brArgs.push_back(std::move(trueArgs));
-        cbr.brArgs.push_back(std::move(falseArgs));
+        cbr.addBranchTarget(trueTarget->label, std::move(trueArgs));
+        cbr.addBranchTarget(falseTarget->label, std::move(falseArgs));
         cbr.loc = stmt.loc;
         block->instructions.push_back(std::move(cbr));
         block->terminated = true;
@@ -601,7 +598,7 @@ void Lowerer::lowerUsingStmt(const UsingStmt &stmt) {
         Instr in;
         in.op = Opcode::EhPush;
         in.type = Type(Type::Kind::Void);
-        in.labels.push_back(handlerLabel);
+        in.addBranchTarget(handlerLabel);
         in.loc = stmt.loc;
         BasicBlock *block = ctx.current();
         if (block)

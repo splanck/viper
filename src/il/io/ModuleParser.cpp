@@ -221,6 +221,7 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st) {
 
     il::core::Extern ext{name, retTy, params};
     ext.attrs() = attrs;
+    ext.nameSymbol = st.m.internIdentifier(name);
     st.m.externs.push_back(std::move(ext));
     return {};
 }
@@ -343,6 +344,7 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st) {
     }
 
     st.m.globals.push_back({name, globalType, decoded, globalLinkage, isConst, hasInitializer});
+    st.m.globals.back().nameSymbol = st.m.internIdentifier(name);
     return {};
 }
 

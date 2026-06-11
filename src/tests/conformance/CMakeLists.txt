@@ -18,6 +18,13 @@ target_link_libraries(test_subwidth_arith PRIVATE
         il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
 viper_add_ctest(test_subwidth_arith test_subwidth_arith)
 
+# ── VM/Bytecode shared scalar semantics ──────────────────────────────────
+viper_add_test(test_vm_bytecode_scalar_semantics
+        ${_VIPER_CONFORMANCE_DIR}/VMBytecodeScalarSemanticsTests.cpp)
+target_link_libraries(test_vm_bytecode_scalar_semantics PRIVATE
+        il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_bytecode viper_test_common)
+viper_add_ctest(test_vm_bytecode_scalar_semantics test_vm_bytecode_scalar_semantics)
+
 # ── Zia arithmetic conformance (opcode verification) ─────────────────────
 viper_add_test(test_zia_arith_conformance
         ${_VIPER_CONFORMANCE_DIR}/ZiaArithConformanceTests.cpp)

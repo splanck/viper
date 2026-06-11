@@ -44,9 +44,10 @@ namespace viper::bytecode {
 constexpr uint32_t kBytecodeModuleMagic = 0x01434256;
 
 /// @brief Current bytecode format version.
-/// @details Incremented whenever the instruction encoding, constant pool
-///          layout, or module structure changes in an incompatible way.
-constexpr uint32_t kBytecodeVersion = 2;
+/// @details Version 3 adds explicit scalar-width metadata to checked arithmetic,
+///          checked division/remainder, bounds checks, and checked f64-to-int
+///          conversions so bytecode execution can share IL VM scalar semantics.
+constexpr uint32_t kBytecodeVersion = 3;
 
 /// @brief Maximum call stack depth before a StackOverflow trap is raised.
 constexpr uint32_t kMaxCallDepth = 4096;

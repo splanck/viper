@@ -571,14 +571,12 @@ LowerResult Lowerer::lowerMatchExpr(MatchExpr *expr) {
                 sw.operands.push_back(scrutineeI32);
 
                 // Default target.
-                sw.labels.push_back(currentFunc_->blocks[defaultTarget].label);
-                sw.brArgs.push_back({});
+                sw.addBranchTarget(currentFunc_->blocks[defaultTarget].label);
 
                 // Cases.
                 for (const auto &[val, armIdx] : caseValues) {
                     sw.operands.push_back(Value::constInt(static_cast<int64_t>(val)));
-                    sw.labels.push_back(currentFunc_->blocks[armBlocks[armIdx]].label);
-                    sw.brArgs.push_back({});
+                    sw.addBranchTarget(currentFunc_->blocks[armBlocks[armIdx]].label);
                 }
 
                 sw.loc = curLoc_;

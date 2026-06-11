@@ -1077,6 +1077,7 @@ void mem2reg(Module &M, Mem2RegStats *stats, bool enableParallel) {
     if (workerCount <= 1) {
         for (auto &F : M.functions)
             processFunction(F, stats);
+        M.internOwnedIdentifiers();
         return;
     }
 
@@ -1104,6 +1105,7 @@ void mem2reg(Module &M, Mem2RegStats *stats, bool enableParallel) {
             stats->removedStores += local.removedStores;
         }
     }
+    M.internOwnedIdentifiers();
 }
 
 } // namespace viper::passes

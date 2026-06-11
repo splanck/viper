@@ -219,8 +219,7 @@ void ControlStatementLowerer::lowerGosubReturn(const ReturnStmt &stmt) {
     sw.operands.push_back(idxVal);
     if (invalidBlk->label.empty())
         invalidBlk->label = lowerer_.nextFallbackBlockLabel();
-    sw.labels.push_back(invalidBlk->label);
-    sw.brArgs.push_back({});
+    sw.addBranchTarget(invalidBlk->label);
 
     const auto &continuations = gosubState.continuations();
     for (unsigned i = 0; i < continuations.size(); ++i) {
@@ -228,8 +227,7 @@ void ControlStatementLowerer::lowerGosubReturn(const ReturnStmt &stmt) {
         Lowerer::BasicBlock *target = &func->blocks[continuations[i]];
         if (target->label.empty())
             target->label = lowerer_.nextFallbackBlockLabel();
-        sw.labels.push_back(target->label);
-        sw.brArgs.emplace_back();
+        sw.addBranchTarget(target->label);
     }
     sw.loc = stmt.loc;
     contBlk->instructions.push_back(std::move(sw));

@@ -29,13 +29,13 @@ A short hardening cycle continuing v0.2.6. The headline new work ends per-frame 
 
 | Metric | v0.2.6 | v0.2.7 | Delta |
 |---|---|---|---|
-| Commits | — | 60 | +60 |
-| Source files | 3,096 | 3,279 | +183 |
-| Production SLOC | 669K | 714K | +45K |
+| Commits | — | 62 | +62 |
+| Source files | 3,096 | 3,282 | +186 |
+| Production SLOC | 669K | 715K | +46K |
 | Test SLOC | 278K | 293K | +15K |
 | Demo SLOC | 192K | 193K | +1K |
 
-Counts via `scripts/count_sloc.sh` (production 714,298 / test 293,097 / demo 193,428 / source files 3,279); commits since the v0.2.6 release (2026-06-01).
+Counts via `scripts/count_sloc.sh` (production 715,258 / test 293,389 / demo 193,428 / source files 3,282); commits since the v0.2.6 release (2026-06-01).
 
 ---
 
@@ -65,13 +65,14 @@ Counts via `scripts/count_sloc.sh` (production 714,298 / test 293,097 / demo 193
 
 ### IL, codegen, and the native linker
 
-- **IL builder & optimizer.** The IL builder promotes its debug-only invariants — name uniqueness, operand and block-parameter bounds, branch-argument counts, terminated-block appends — to release-mode validation, shares one checked-integer-range implementation with CheckOpt (which now demotes overflow-checked i64 arithmetic to plain ops once range analysis proves it safe), and reports mistyped analysis lookups as actionable errors.
-- **Codegen & linker.** x86-64/AArch64 selection, encoding, Win64 unwind slots, and AArch64 relocations surface diagnostics instead of asserting — atop the shared frame-layout fix that closes the O1 miscompiles — the object writers bound their fixed-width name fields, and the native linker hardens relocation, symbol resolution, and PE-image writing.
+- **IL builder & verifier.** Debug-only invariants — name uniqueness, operand and block-parameter bounds, branch-argument counts, terminated-block appends — promote to release-mode validation, the parser rolls back cleanly on a partial instruction parse, and a new verifier dataflow catches double-release and use-after-release across the CFG (loops included) while preserving the entry-stack-address dominance contract that frontend cleanup blocks rely on.
+- **Optimizer & analysis.** Shared `AllocaRoots` helpers make BasicAA conservative for raw and unknown-indirect calls, MemorySSA and DSE fix same-block-overwrite handling, ConstFold/SCCP/Peephole normalize integer folds to i16/i32/i64 result widths, and CheckOpt shares one checked-range implementation with the builder — now demoting proven-safe overflow-checked i64 arithmetic to plain ops. Pass invalidation became state-based and Mem2Reg transactional.
+- **Codegen & linker.** x86-64/AArch64 selection, encoding, Win64 unwind slots, register-allocation operand protection, and AArch64 relocations surface diagnostics instead of asserting — atop the shared frame-layout fix that closes the O1 miscompiles — the object writers bound their fixed-width name fields, and the native linker hardens relocation ordering, symbol resolution, and PE-image writing.
 
 ### Bytecode VM and support libraries
 
 - **Bytecode VM.** The bytecode VM validates memory ranges and indirect callees before dereference, traps instead of asserting on bad branch/switch targets, and bounds runaway programs via `BytecodeVM.setMaxInstructions` and a signal-safe interrupt; the arena and SmallVector guard size and pointer math.
-- **Audio/graphics/GUI audit.** Sound attach-state synchronizes under the context lock, ALSA recovers from short writes, FIFO event-queue overflow becomes a priority policy that drops transient motion events before close/key-up/focus-lost, and glyph caches, file dialogs, and the code editor overflow-guard.
+- **Audio/graphics/GUI audit.** Sound attach-state synchronizes under the context lock, ALSA recovers from short writes, and FIFO event-queue overflow becomes a priority policy that drops transient motion events before close/key-up/focus-lost. Standalone context menus register as active app overlays so right-click menus paint and take input, editor monospace fonts survive later app-wide font propagation, printable-punctuation shortcuts (zoom in/out) reach the GUI layer on all three platforms, and glyph caches, file dialogs, and the code editor overflow-guard.
 
 ### GUI refined-depth visual pass
 
@@ -101,7 +102,7 @@ Counts via `scripts/count_sloc.sh` (production 714,298 / test 293,097 / demo 193
 
 ### Tests
 
-- New tests close the vegetation, billboard, navmesh round-trip, reference-repair, texture-atlas, FBX/node-animation import, D3D11 mip-validation, media/pixel-decode, BASIC parsing, and Text/Time/IO gaps.
+- New tests close the vegetation, billboard, navmesh round-trip, reference-repair, texture-atlas, FBX/node-animation import, D3D11 mip-validation, media/pixel-decode, BASIC parsing, and Text/Time/IO gaps, plus IL release-lifetime and alias-analysis precision, AArch64 register-allocation, and GUI overlay/font-propagation regressions.
 
 ---
 

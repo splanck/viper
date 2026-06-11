@@ -52,11 +52,15 @@ const std::vector<il::core::Block *> &emptyBlockList() {
 /// relationships efficiently.
 /// @param module IL module whose functions and blocks seed the CFG caches.
 CFGContext::CFGContext(il::core::Module &module) : module(&module) {
+    module.internOwnedIdentifiers();
     for (auto &fn : module.functions) {
         auto &labelMap = functionLabelToBlock[&fn];
+        auto &symbolMap = functionLabelSymbolToBlock[&fn];
         for (auto &blk : fn.blocks) {
             blockToFunction[&blk] = &fn;
             labelMap.emplace(blk.label, &blk);
+            if (blk.labelSymbol)
+                symbolMap.emplace(blk.labelSymbol, &blk);
             blockSuccessors[&blk];
             blockPredecessors[&blk];
         }
@@ -64,6 +68,7 @@ CFGContext::CFGContext(il::core::Module &module) : module(&module) {
 
     for (auto &fn : module.functions) {
         auto &labelMap = functionLabelToBlock[&fn];
+        auto &symbolMap = functionLabelSymbolToBlock[&fn];
         for (auto &blk : fn.blocks) {
             auto &succ = blockSuccessors[&blk];
             if (blk.instructions.empty())
@@ -85,7 +90,16 @@ CFGContext::CFGContext(il::core::Module &module) : module(&module) {
             if (!isBranchTerminator)
                 continue;
 
-            auto appendLabel = [&](const std::string &label) {
+            auto appendLabel = [&](std::size_t labelIndex, const std::string &label) {
+                if (labelIndex < term.labelSymbols.size() && term.labelSymbols[labelIndex]) {
+                    auto symbolIt = symbolMap.find(term.labelSymbols[labelIndex]);
+                    if (symbolIt == symbolMap.end()) {
+                        throw std::invalid_argument("CFGContext: unknown label '" + label +
+                                                    "' in function @" + fn.name);
+                    }
+                    succ.push_back(symbolIt->second);
+                    return;
+                }
                 auto it = labelMap.find(label);
                 if (it == labelMap.end()) {
                     throw std::invalid_argument("CFGContext: unknown label '" + label +
@@ -96,14 +110,14 @@ CFGContext::CFGContext(il::core::Module &module) : module(&module) {
 
             if (term.op == il::core::Opcode::SwitchI32) {
                 if (!term.labels.empty()) {
-                    appendLabel(il::core::switchDefaultLabel(term));
+                    appendLabel(0, il::core::switchDefaultLabel(term));
                     const std::size_t caseCount = il::core::switchCaseCount(term);
                     for (std::size_t idx = 0; idx < caseCount; ++idx)
-                        appendLabel(il::core::switchCaseLabel(term, idx));
+                        appendLabel(idx + 1, il::core::switchCaseLabel(term, idx));
                 }
             } else {
-                for (const auto &lbl : term.labels)
-                    appendLabel(lbl);
+                for (std::size_t idx = 0; idx < term.labels.size(); ++idx)
+                    appendLabel(idx, term.labels[idx]);
             }
 
             for (auto *target : succ) {

@@ -428,6 +428,7 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st) {
 
     il::core::Function fn;
     fn.name = fh.name;
+    fn.nameSymbol = st.m.internIdentifier(fh.name);
     fn.retType = fh.proto.retType;
     fn.params = std::move(fh.proto.params);
     fn.isVarArg = fh.proto.isVarArg;

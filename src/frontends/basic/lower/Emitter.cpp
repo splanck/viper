@@ -693,7 +693,7 @@ void Emitter::emitEhPush(BasicBlock *handler) {
     Instr in;
     in.op = Opcode::EhPush;
     in.type = Type(Type::Kind::Void);
-    in.labels.push_back(handler->label);
+    in.addBranchTarget(handler->label);
     in.loc = lowerer_.curLoc;
     BasicBlock *block = lowerer_.context().current();
     assert(block && "emitEhPush requires an active block");

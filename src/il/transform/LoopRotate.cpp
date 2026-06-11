@@ -202,7 +202,8 @@ bool rotateLoop(Function &function, const Loop &loop) {
     // Capture header state before modifications
     const std::string headerLabel = function.blocks[headerIdx].label;
     const std::vector<Param> headerParams = function.blocks[headerIdx].params;
-    const std::vector<Instr> headerInstrs = function.blocks[headerIdx].instructions;
+    const auto &headerBlockInstrs = function.blocks[headerIdx].instructions;
+    const std::vector<Instr> headerInstrs(headerBlockInstrs.begin(), headerBlockInstrs.end());
     const Instr &headerTerm = headerInstrs.back();
 
     // Identify the body successor (inside loop) and exit successor (outside loop)

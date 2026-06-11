@@ -732,10 +732,9 @@ bool inlineCallSite(Function &caller,
                 Instr bridge;
                 bridge.op = Opcode::Br;
                 bridge.type = Type(Type::Kind::Void);
-                bridge.labels.push_back(continuation.label);
+                bridge.addBranchTarget(continuation.label);
 
                 if (!continuation.params.empty()) {
-                    bridge.brArgs.emplace_back();
                     auto &bridgeArgs = bridge.brArgs.back();
                     // Pass the return value as the continuation block's first parameter.
                     // Always emit a return value arg when the callee is non-void,
@@ -759,25 +758,26 @@ bool inlineCallSite(Function &caller,
 
             Instr cloned = CI;
             cloned.operands.clear();
-            cloned.labels.clear();
-            cloned.brArgs.clear();
+            cloned.clearBranchTargets();
 
             cloned.operands.reserve(CI.operands.size());
             for (const auto &op : CI.operands)
                 cloned.operands.push_back(remapValue(op, valueMap));
 
-            cloned.labels.reserve(CI.labels.size());
+            std::vector<std::string> remappedLabels;
+            remappedLabels.reserve(CI.labels.size());
             for (const auto &lab : CI.labels)
-                cloned.labels.push_back(labelMap.at(lab));
-
-            cloned.brArgs.reserve(CI.brArgs.size());
+                remappedLabels.push_back(labelMap.at(lab));
+            std::vector<std::vector<Value>> remappedArgs;
+            remappedArgs.reserve(CI.brArgs.size());
             for (const auto &argList : CI.brArgs) {
                 std::vector<Value> remapped;
                 remapped.reserve(argList.size());
                 for (const auto &arg : argList)
                     remapped.push_back(remapValue(arg, valueMap));
-                cloned.brArgs.push_back(std::move(remapped));
+                remappedArgs.push_back(std::move(remapped));
             }
+            cloned.setBranchTargets(std::move(remappedLabels), std::move(remappedArgs));
 
             if (CI.result) {
                 cloned.result = nextId;
@@ -803,7 +803,7 @@ bool inlineCallSite(Function &caller,
     Instr jump;
     jump.op = Opcode::Br;
     jump.type = Type(Type::Kind::Void);
-    jump.labels.push_back(labelMap.at(callee.blocks.front().label));
+    jump.addBranchTarget(labelMap.at(callee.blocks.front().label));
 
     // Pass call arguments as branch args when the entry block has params.
     const auto &origEntryParams = callee.blocks.front().params;
@@ -815,7 +815,7 @@ bool inlineCallSite(Function &caller,
                 return false;
             args.push_back(callInstr.operands[mappedIndex]);
         }
-        jump.brArgs.push_back(std::move(args));
+        jump.brArgs.back() = std::move(args);
     }
 
     callBlock.instructions.push_back(std::move(jump));
@@ -954,6 +954,7 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &) {
             break;
     }
 
+    module.internOwnedIdentifiers();
     if (!changed)
         return PreservedAnalyses::all();
     PreservedAnalyses preserved;

@@ -138,14 +138,12 @@ LowerResult Lowerer::lowerVirtualMethodCall(const ClassTypeInfo &entityInfo,
         sw.operands.push_back(classIdI32);
 
         // Default case → last call block (fallback for unknown class IDs).
-        sw.labels.push_back(currentFunc_->blocks[callBlocks.back()].label);
-        sw.brArgs.push_back({});
+        sw.addBranchTarget(currentFunc_->blocks[callBlocks.back()].label);
 
         // One case per dispatch entry.
         for (size_t i = 0; i < dispatchTable.size(); ++i) {
             sw.operands.push_back(Value::constInt(static_cast<int64_t>(dispatchTable[i].first)));
-            sw.labels.push_back(currentFunc_->blocks[callBlocks[i]].label);
-            sw.brArgs.push_back({});
+            sw.addBranchTarget(currentFunc_->blocks[callBlocks[i]].label);
         }
 
         sw.loc = curLoc_;

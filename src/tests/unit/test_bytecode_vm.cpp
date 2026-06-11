@@ -816,7 +816,14 @@ static void test_vm_numeric_edge_regressions() {
             assert(runMain(module, threaded).i64 == i64Max);
         }
         {
-            BytecodeModule module = binaryI64(BCOpcode::SREM_I64_CHK, i64Min, -1);
+            BytecodeModule module;
+            const uint16_t lhsIdx = addI64(module, i64Min);
+            const uint16_t rhsIdx = addI64(module, -1);
+            addDirectBytecodeMain(module,
+                                  {encodeOp16(BCOpcode::LOAD_I64, lhsIdx),
+                                   encodeOp16(BCOpcode::LOAD_I64, rhsIdx),
+                                   encodeOp8(BCOpcode::SREM_I64_CHK, 3),
+                                   encodeOp(BCOpcode::RETURN)});
             assert(runMain(module, threaded).i64 == 0);
         }
     }
@@ -832,7 +839,8 @@ static void test_vm_safety_trap_regressions() {
         const uint16_t valueIdx = addF64(module, value);
         addDirectBytecodeMain(
             module,
-            {encodeOp16(BCOpcode::LOAD_F64, valueIdx), encodeOp(op), encodeOp(BCOpcode::RETURN)},
+            {encodeOp16(BCOpcode::LOAD_F64, valueIdx), encodeOp8(op, 3),
+             encodeOp(BCOpcode::RETURN)},
             0,
             1);
         return module;
@@ -1743,7 +1751,7 @@ static void test_resume_next_and_trap_metadata() {
     resumeFunc.code.push_back(static_cast<uint32_t>(6)); // handler at pc 7
     resumeFunc.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 10));
     resumeFunc.code.push_back(encodeOp(BCOpcode::LOAD_ZERO));
-    resumeFunc.code.push_back(encodeOp(BCOpcode::SDIV_I64_CHK));
+    resumeFunc.code.push_back(encodeOp8(BCOpcode::SDIV_I64_CHK, 3));
     resumeFunc.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 7));
     resumeFunc.code.push_back(encodeOp(BCOpcode::RETURN));
     resumeFunc.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 1));
@@ -1764,7 +1772,7 @@ static void test_resume_next_and_trap_metadata() {
     metaFunc.code.push_back(static_cast<uint32_t>(6)); // handler at pc 7
     metaFunc.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 10));
     metaFunc.code.push_back(encodeOp(BCOpcode::LOAD_ZERO));
-    metaFunc.code.push_back(encodeOp(BCOpcode::SDIV_I64_CHK));
+    metaFunc.code.push_back(encodeOp8(BCOpcode::SDIV_I64_CHK, 3));
     metaFunc.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 0));
     metaFunc.code.push_back(encodeOp(BCOpcode::RETURN));
     metaFunc.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 1));
@@ -1824,7 +1832,7 @@ static void test_resume_label_consumes_token() {
     fn.code.push_back(static_cast<uint32_t>(9)); // handler at pc 12
     fn.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 1));
     fn.code.push_back(encodeOp(BCOpcode::LOAD_ZERO));
-    fn.code.push_back(encodeOp(BCOpcode::SDIV_I64_CHK));
+    fn.code.push_back(encodeOp8(BCOpcode::SDIV_I64_CHK, 3));
     fn.code.push_back(encodeOp(BCOpcode::EH_POP));
     fn.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 99));
     fn.code.push_back(encodeOp(BCOpcode::RETURN));
