@@ -408,7 +408,7 @@ ToolchainFileEntry makeEntry(const fs::path &stagePrefix, const fs::path &filePa
     } else {
         entry.sizeBytes = static_cast<uint64_t>(fs::file_size(filePath, ec));
         if (ec)
-            entry.sizeBytes = 0;
+            throw std::runtime_error("cannot determine staged file size: " + filePath.string());
     }
     const std::string lower = lowerCopy(entry.stagedRelativePath);
     entry.executable = entry.kind == ToolchainFileKind::Binary ||
@@ -462,6 +462,95 @@ bool stagedCMakeMetadataMentions(const ToolchainInstallManifest &manifest,
             return true;
     }
     return false;
+}
+
+/// @brief Validate the per-file invariants every package builder depends on.
+/// @details Checks normalized unique relative paths, absolute staged source paths,
+///          file/symlink existence, symlink target safety, and size consistency for
+///          regular files. This catches hand-built or stale manifests before a
+///          platform builder copies or dereferences their entries.
+/// @param manifest Manifest whose file entries should be validated.
+void validateManifestFileEntries(const ToolchainInstallManifest &manifest) {
+    std::set<std::string> seenPaths;
+    for (const auto &entry : manifest.files) {
+        const std::string clean =
+            sanitizePackageRelativePath(entry.stagedRelativePath, "staged install path");
+        if (clean.empty())
+            throw std::runtime_error("toolchain manifest contains an empty file path");
+        if (clean != entry.stagedRelativePath) {
+            throw std::runtime_error("toolchain manifest path is not normalized: " +
+                                     entry.stagedRelativePath);
+        }
+        if (!seenPaths.insert(clean).second)
+            throw std::runtime_error("duplicate toolchain manifest path: " + clean);
+        if (entry.stagedAbsolutePath.empty() || !entry.stagedAbsolutePath.is_absolute()) {
+            throw std::runtime_error("toolchain manifest source path must be absolute for " +
+                                     clean);
+        }
+
+        std::error_code ec;
+        const fs::file_status symlinkStatus = fs::symlink_status(entry.stagedAbsolutePath, ec);
+        if (ec)
+            throw std::runtime_error("cannot stat staged manifest path '" +
+                                     entry.stagedAbsolutePath.string() + "': " + ec.message());
+        if (entry.symlink) {
+            if (!fs::is_symlink(symlinkStatus)) {
+                throw std::runtime_error("toolchain manifest marks a non-symlink as symlink: " +
+                                         clean);
+            }
+            if (entry.sizeBytes != 0)
+                throw std::runtime_error("toolchain manifest symlink size must be zero: " + clean);
+            validateSingleLineField(entry.symlinkTarget, "staged symlink target");
+            if (entry.symlinkTarget.empty())
+                throw std::runtime_error("toolchain manifest symlink target is empty: " + clean);
+            const std::string normalizedTarget =
+                toForwardSlashes(fs::path(entry.symlinkTarget).generic_string());
+            if (normalizedTarget.front() == '/' ||
+                (normalizedTarget.size() >= 2 &&
+                 std::isalpha(static_cast<unsigned char>(normalizedTarget[0])) &&
+                 normalizedTarget[1] == ':')) {
+                throw std::runtime_error("toolchain manifest symlink target must be relative: " +
+                                         clean);
+            }
+            const fs::path resolved =
+                (fs::path(clean).parent_path() / normalizedTarget).lexically_normal();
+            const std::string resolvedText = resolved.generic_string();
+            if (resolvedText.empty() || resolvedText == "." || resolvedText == ".." ||
+                resolvedText.rfind("../", 0) == 0) {
+                throw std::runtime_error("toolchain manifest symlink target escapes install root: " +
+                                         clean);
+            }
+            ec.clear();
+            const fs::path canonicalTarget = fs::canonical(entry.stagedAbsolutePath, ec);
+            if (ec) {
+                throw std::runtime_error("toolchain manifest symlink target cannot be resolved: " +
+                                         clean);
+            }
+            ec.clear();
+            const fs::file_status targetStatus = fs::status(canonicalTarget, ec);
+            if (ec || (!fs::is_regular_file(targetStatus) && !fs::is_directory(targetStatus))) {
+                throw std::runtime_error(
+                    "toolchain manifest symlink must resolve to a file or directory: " + clean);
+            }
+            continue;
+        }
+
+        if (!fs::is_regular_file(symlinkStatus)) {
+            throw std::runtime_error("toolchain manifest entry is not a regular file: " + clean);
+        }
+        if (!entry.symlinkTarget.empty())
+            throw std::runtime_error("toolchain manifest regular file has a symlink target: " +
+                                     clean);
+        ec.clear();
+        const uint64_t actualSize = static_cast<uint64_t>(fs::file_size(entry.stagedAbsolutePath, ec));
+        if (ec) {
+            throw std::runtime_error("cannot determine staged file size for '" + clean +
+                                     "': " + ec.message());
+        }
+        if (actualSize != entry.sizeBytes) {
+            throw std::runtime_error("toolchain manifest file size mismatch for '" + clean + "'");
+        }
+    }
 }
 
 } // namespace
@@ -548,6 +637,7 @@ void validateToolchainInstallManifest(const ToolchainInstallManifest &manifest) 
     }
     validateDebVersion(manifest.version, "toolchain package version");
     validatePackageFileAssociations(manifest.fileAssociations);
+    validateManifestFileEntries(manifest);
 
     auto hasBinary = [&](const char *nameNoExt) {
         return std::any_of(

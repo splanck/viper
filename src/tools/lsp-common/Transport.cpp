@@ -180,8 +180,7 @@ bool LspTransport::readMessage(RawMessage &out) {
                 const char *begin = line.data() + valStart;
                 const char *end = line.data() + line.size();
                 auto [ptr, ec] = std::from_chars(begin, end, parsed);
-                if (ec != std::errc{} || ptr != end || parsed == 0 ||
-                    parsed > kMaxProtocolMessageBytes) {
+                if (ec != std::errc{} || ptr != end || parsed > kMaxProtocolMessageBytes) {
                     lastReadHadError_ = true;
                     return false;
                 }
@@ -199,7 +198,9 @@ bool LspTransport::readMessage(RawMessage &out) {
 
     // Read exactly contentLength bytes
     out.content.resize(contentLength);
-    size_t bytesRead = std::fread(&out.content[0], 1, contentLength, in_);
+    if (contentLength == 0)
+        return true;
+    size_t bytesRead = std::fread(out.content.data(), 1, contentLength, in_);
     if (bytesRead != contentLength) {
         lastReadHadError_ = true;
         return false;

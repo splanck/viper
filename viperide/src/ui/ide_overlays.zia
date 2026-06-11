@@ -83,8 +83,12 @@ class IdeOverlays {
     expose func OpenSettings(shell: app_shell.AppShell,
                              appSettings: settings.SettingsManager) {
         SyncSettings(appSettings);
-        layoutSettingsPanel(shell);
         settingsPanel.SetVisible(1);
+        // Force the dock to re-measure/arrange now that it is visible so the
+        // body scrolls and the footer (Cancel / Save Changes) lands within the
+        // workbench height instead of below it.
+        settingsDockWidth = 0;
+        layoutSettingsPanel(shell);
         aboutPanel.SetVisible(0);
         settingsVisible = true;
         aboutVisible = false;

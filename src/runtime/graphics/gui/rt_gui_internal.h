@@ -114,6 +114,7 @@ typedef struct {
     vg_theme_t *theme;
     const vg_theme_t *theme_base;
     float theme_scale;
+    float user_scale; ///< User UI zoom multiplier applied atop the HiDPI scale (1.0 = default).
     rt_gui_theme_kind_t theme_kind;
     char *title; ///< Window title (owned, heap-allocated).
     vg_dialog_t **dialog_stack;

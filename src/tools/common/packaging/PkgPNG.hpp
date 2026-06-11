@@ -47,13 +47,19 @@ struct PkgImage {
     /// @brief Get a mutable pointer to the RGBA pixel at (x, y).
     /// @note No bounds checking; (x, y) must lie within width/height.
     uint8_t *at(uint32_t x, uint32_t y) {
-        return pixels.data() + (y * width + x) * 4;
+        const size_t index = (static_cast<size_t>(y) * static_cast<size_t>(width) +
+                              static_cast<size_t>(x)) *
+                             4u;
+        return pixels.data() + index;
     }
 
     /// @brief Get a const pointer to the RGBA pixel at (x, y).
     /// @note No bounds checking; (x, y) must lie within width/height.
     const uint8_t *at(uint32_t x, uint32_t y) const {
-        return pixels.data() + (y * width + x) * 4;
+        const size_t index = (static_cast<size_t>(y) * static_cast<size_t>(width) +
+                              static_cast<size_t>(x)) *
+                             4u;
+        return pixels.data() + index;
     }
 };
 

@@ -34,37 +34,29 @@
 #include "common/RunProcess.hpp"
 
 #include <algorithm>
-#include <chrono>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <set>
 #include <sstream>
 #include <string_view>
 
-#if defined(_WIN32)
-#include <process.h>
-#else
-#include <unistd.h>
-#endif
-
 namespace fs = std::filesystem;
 
 namespace viper::pkg {
 namespace {
 
-/// @brief Generate a unique temp directory path combining `stem`, PID, and steady-clock tick.
-/// Avoids collisions between concurrent packaging invocations.
+constexpr std::string_view kMacOSToolchainInstallRoot = "/usr/local/viper";
+constexpr std::string_view kMacOSLocalBinDir = "/usr/local/bin";
+constexpr std::string_view kMacOSLocalCMakeViperDir = "/usr/local/lib/cmake/Viper";
+constexpr std::string_view kMacOSLocalManDir = "/usr/local/share/man";
+constexpr std::string_view kMacOSToolchainAppPath = "/Applications/Viper Toolchain.app";
+
+/// @brief Create a unique temporary packaging directory under the system temp directory.
+/// @details Uses exclusive directory creation with a randomized suffix and never removes
+///          a pre-existing path before creation.
 fs::path uniqueTempPackagingDir(std::string_view stem) {
-    const auto tick = static_cast<unsigned long long>(
-        std::chrono::steady_clock::now().time_since_epoch().count());
-    const auto pid =
-#if defined(_WIN32)
-        static_cast<unsigned long long>(_getpid());
-#else
-        static_cast<unsigned long long>(::getpid());
-#endif
-    return fs::temp_directory_path() /
-           (std::string(stem) + "-" + std::to_string(pid) + "-" + std::to_string(tick));
+    return createUniqueTempDirectory(fs::temp_directory_path(), stem);
 }
 
 /// @brief RAII guard that removes the directory tree at `path_` on destruction.
@@ -499,14 +491,23 @@ std::string fileAssociationExtensionWithoutDot(const FileAssoc &assoc) {
 /// @details Uses well-known UTIs for the built-in zia/bas/il types and a
 ///          generic "org.viper.<ext>" for anything else.
 std::string macOSFileAssociationUTI(const FileAssoc &assoc) {
-    const std::string ext = fileAssociationExtensionWithoutDot(assoc);
+    std::string ext = fileAssociationExtensionWithoutDot(assoc);
+    for (char &c : ext)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     if (ext == "zia")
         return "org.viper.zia-source";
     if (ext == "bas")
         return "org.viper.basic-source";
     if (ext == "il")
         return "org.viper.il-module";
-    return "org.viper." + ext;
+    for (char &c : ext) {
+        const unsigned char uc = static_cast<unsigned char>(c);
+        if (!std::isalnum(uc) && c != '-')
+            c = '-';
+    }
+    const std::string uti = "org.viper." + ext;
+    validateMacOSBundleIdentifier(uti, "macOS file association UTI");
+    return uti;
 }
 
 /// @brief Locate the staged `libexec/viper/viper-file-handler` entry, if present.
@@ -617,9 +618,9 @@ std::string generateMacOSUninstallScript(const std::string &packageIdentifier) {
     std::ostringstream sh;
     sh << "#!/bin/sh\n";
     sh << "set -eu\n";
-    sh << "ROOT=/usr/local/viper\n";
+    sh << "ROOT=" << shQuote(std::string(kMacOSToolchainInstallRoot)) << "\n";
     sh << "MANIFEST=\"$ROOT/share/viper/install_manifest.txt\"\n";
-    sh << "APP=\"/Applications/Viper Toolchain.app\"\n";
+    sh << "APP=" << shQuote(std::string(kMacOSToolchainAppPath)) << "\n";
     sh << "LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/"
           "LaunchServices.framework/Support/lsregister\n";
     sh << "if [ \"$(id -u)\" != \"0\" ]; then echo \"Run with sudo to remove Viper Toolchain\" "
@@ -632,29 +633,37 @@ std::string generateMacOSUninstallScript(const std::string &packageIdentifier) {
     sh << "    case \"$rel\" in /*|..|../*|*/../*|*/..) echo \"Unsafe manifest path: $rel\" >&2; "
           "exit 2 ;; esac\n";
     sh << "    case \"$rel\" in\n";
-    sh << "      bin/*) link=\"/usr/local/bin/${rel#bin/}\"; if [ -L \"$link\" ]; then "
+    sh << "      bin/*) link=" << shQuote(std::string(kMacOSLocalBinDir))
+       << "/${rel#bin/}; if [ -L \"$link\" ]; then "
           "target=$(readlink \"$link\" || true); case \"$target\" in "
-          "../viper/bin/*|/usr/local/viper/bin/*) rm -f \"$link\" ;; esac; fi ;;\n";
-    sh << "      share/man/*) link=\"/usr/local/share/man/${rel#share/man/}\"; if [ -L \"$link\" "
+          "../viper/bin/*|";
+    sh << std::string(kMacOSToolchainInstallRoot) << "/bin/*) rm -f \"$link\" ;; esac; fi ;;\n";
+    sh << "      share/man/*) link=" << shQuote(std::string(kMacOSLocalManDir))
+       << "/${rel#share/man/}; if [ -L \"$link\" "
           "]; then target=$(readlink \"$link\" || true); case \"$target\" in "
-          "*../viper/share/man/*|/usr/local/viper/share/man/*) rm -f \"$link\" ;; esac; fi ;;\n";
+          "*../viper/share/man/*|";
+    sh << std::string(kMacOSToolchainInstallRoot)
+       << "/share/man/*) rm -f \"$link\" ;; esac; fi ;;\n";
     sh << "    esac\n";
     sh << "    rm -f \"$ROOT/$rel\"\n";
     sh << "  done < \"$MANIFEST\"\n";
     sh << "fi\n";
     sh << "rm -rf \"$APP\"\n";
-    sh << "rm -f /usr/local/lib/cmake/Viper/ViperConfig.cmake "
-          "/usr/local/lib/cmake/Viper/ViperConfigVersion.cmake\n";
+    sh << "rm -f " << shQuote(std::string(kMacOSLocalCMakeViperDir) + "/ViperConfig.cmake")
+       << " " << shQuote(std::string(kMacOSLocalCMakeViperDir) + "/ViperConfigVersion.cmake")
+       << "\n";
     sh << "if [ -d \"$ROOT\" ]; then find \"$ROOT\" -depth -type d -empty -delete 2>/dev/null || "
           "true; fi\n";
-    sh << "for dir in /usr/local/lib/cmake/Viper /usr/local/share/man/man1 "
-          "/usr/local/share/man/man7 /usr/local/viper; do rmdir \"$dir\" 2>/dev/null || true; "
-          "done\n";
+    sh << "for dir in " << shQuote(std::string(kMacOSLocalCMakeViperDir)) << " "
+       << shQuote(std::string(kMacOSLocalManDir) + "/man1") << " "
+       << shQuote(std::string(kMacOSLocalManDir) + "/man7") << " "
+       << shQuote(std::string(kMacOSToolchainInstallRoot))
+       << "; do rmdir \"$dir\" 2>/dev/null || true; done\n";
     sh << "pkgutil --forget " << shQuote(packageIdentifier) << " >/dev/null 2>&1 || true\n";
-    sh << "if command -v mandb >/dev/null 2>&1; then mandb -q /usr/local/share/man >/dev/null 2>&1 "
-          "|| true; fi\n";
-    sh << "if command -v makewhatis >/dev/null 2>&1; then makewhatis /usr/local/share/man "
-          ">/dev/null 2>&1 || true; fi\n";
+    sh << "if command -v mandb >/dev/null 2>&1; then mandb -q "
+       << shQuote(std::string(kMacOSLocalManDir)) << " >/dev/null 2>&1 || true; fi\n";
+    sh << "if command -v makewhatis >/dev/null 2>&1; then makewhatis "
+       << shQuote(std::string(kMacOSLocalManDir)) << " >/dev/null 2>&1 || true; fi\n";
     sh << "exit 0\n";
     return sh.str();
 }
@@ -666,7 +675,7 @@ std::string generateMacOSPreinstallScript(const std::vector<std::string> &toolNa
     std::ostringstream sh;
     sh << "#!/bin/sh\n";
     sh << "set -eu\n";
-    sh << "ROOT=/usr/local/viper\n";
+    sh << "ROOT=" << shQuote(std::string(kMacOSToolchainInstallRoot)) << "\n";
     sh << "OLD=\"$ROOT/share/viper/install_manifest.txt\"\n";
     sh << "SCRIPT_DIR=$(cd \"$(dirname \"$0\")\" && pwd)\n";
     sh << "NEW=\"$SCRIPT_DIR/install_manifest.txt\"\n";
@@ -678,19 +687,21 @@ std::string generateMacOSPreinstallScript(const std::vector<std::string> &toolNa
     sh << "    if ! grep -F -x -- \"$rel\" \"$NEW\" >/dev/null 2>&1; then\n";
     sh << "      case \"$rel\" in\n";
     sh << "        bin/*)\n";
-    sh << "          link=\"/usr/local/bin/${rel#bin/}\"\n";
+    sh << "          link=" << shQuote(std::string(kMacOSLocalBinDir)) << "/${rel#bin/}\n";
     sh << "          if [ -L \"$link\" ]; then\n";
     sh << "            target=$(readlink \"$link\" || true)\n";
-    sh << "            case \"$target\" in ../viper/bin/*|/usr/local/viper/bin/*) rm -f \"$link\" "
-          ";; esac\n";
+    sh << "            case \"$target\" in ../viper/bin/*|"
+       << std::string(kMacOSToolchainInstallRoot) << "/bin/*) rm -f \"$link\" ;; esac\n";
     sh << "          fi\n";
     sh << "          ;;\n";
     sh << "        share/man/*)\n";
-    sh << "          link=\"/usr/local/share/man/${rel#share/man/}\"\n";
+    sh << "          link=" << shQuote(std::string(kMacOSLocalManDir))
+       << "/${rel#share/man/}\n";
     sh << "          if [ -L \"$link\" ]; then\n";
     sh << "            target=$(readlink \"$link\" || true)\n";
-    sh << "            case \"$target\" in *../viper/share/man/*|/usr/local/viper/share/man/*) rm "
-          "-f \"$link\" ;; esac\n";
+    sh << "            case \"$target\" in *../viper/share/man/*|"
+       << std::string(kMacOSToolchainInstallRoot)
+       << "/share/man/*) rm -f \"$link\" ;; esac\n";
     sh << "          fi\n";
     sh << "          ;;\n";
     sh << "      esac\n";
@@ -699,14 +710,16 @@ std::string generateMacOSPreinstallScript(const std::vector<std::string> &toolNa
     sh << "  done < \"$OLD\"\n";
     sh << "fi\n";
     for (const auto &name : toolNames) {
-        sh << "link=/usr/local/bin/" << shQuote(name) << "\n";
+        sh << "link=" << shQuote(std::string(kMacOSLocalBinDir) + "/" + name) << "\n";
         sh << "if [ -L \"$link\" ]; then\n";
         sh << "  target=$(readlink \"$link\" || true)\n";
-        sh << "  case \"$target\" in ../viper/bin/*|/usr/local/viper/bin/*) rm -f \"$link\" ;; "
-              "esac\n";
+        sh << "  case \"$target\" in ../viper/bin/*|"
+           << std::string(kMacOSToolchainInstallRoot)
+           << "/bin/*) rm -f \"$link\" ;; esac\n";
         sh << "fi\n";
     }
-    sh << "if [ -L /usr/local/lib/cmake/Viper ]; then rm -f /usr/local/lib/cmake/Viper; fi\n";
+    sh << "if [ -L " << shQuote(std::string(kMacOSLocalCMakeViperDir)) << " ]; then rm -f "
+       << shQuote(std::string(kMacOSLocalCMakeViperDir)) << "; fi\n";
     sh << "exit 0\n";
     return sh.str();
 }
@@ -721,18 +734,21 @@ std::string generateMacOSPostinstallScript(const std::vector<std::string> &toolN
     std::ostringstream sh;
     sh << "#!/bin/sh\n";
     sh << "set -eu\n";
-    sh << "mkdir -p /usr/local/bin /usr/local/lib/cmake/Viper /usr/local/share/man\n";
+    sh << "mkdir -p " << shQuote(std::string(kMacOSLocalBinDir)) << " "
+       << shQuote(std::string(kMacOSLocalCMakeViperDir)) << " "
+       << shQuote(std::string(kMacOSLocalManDir)) << "\n";
     for (const auto &name : toolNames) {
-        sh << "if [ -e /usr/local/viper/bin/" << shQuote(name) << " ]; then\n";
-        sh << "  link=/usr/local/bin/" << shQuote(name) << "\n";
+        sh << "if [ -e " << shQuote(std::string(kMacOSToolchainInstallRoot) + "/bin/" + name)
+           << " ]; then\n";
+        sh << "  link=" << shQuote(std::string(kMacOSLocalBinDir) + "/" + name) << "\n";
         sh << "  if [ ! -e \"$link\" ] || [ -L \"$link\" ]; then\n";
         sh << "    ln -sfn ../viper/bin/" << shQuote(name) << " \"$link\"\n";
         sh << "  fi\n";
         sh << "fi\n";
     }
     for (const auto &page : manPagePaths) {
-        const std::string source = "/usr/local/viper/share/man/" + page;
-        const std::string link = "/usr/local/share/man/" + page;
+        const std::string source = std::string(kMacOSToolchainInstallRoot) + "/share/man/" + page;
+        const std::string link = std::string(kMacOSLocalManDir) + "/" + page;
         const std::string parent = fs::path(link).parent_path().generic_string();
         sh << "if [ -e " << shQuote(source) << " ]; then\n";
         sh << "  mkdir -p " << shQuote(parent) << "\n";
@@ -743,17 +759,18 @@ std::string generateMacOSPostinstallScript(const std::vector<std::string> &toolN
         sh << "fi\n";
     }
     if (registerFileAssociationApp) {
-        sh << "APP=\"/Applications/Viper Toolchain.app\"\n";
+        sh << "APP=" << shQuote(std::string(kMacOSToolchainAppPath)) << "\n";
         sh << "LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/"
               "LaunchServices.framework/Support/lsregister\n";
         sh << "if [ -x \"$LSREGISTER\" ] && [ -d \"$APP\" ]; then \"$LSREGISTER\" -f \"$APP\" "
               ">/dev/null 2>&1 || true; fi\n";
     }
-    sh << "if command -v mandb >/dev/null 2>&1; then mandb -q /usr/local/share/man >/dev/null 2>&1 "
-          "|| true; fi\n";
-    sh << "if command -v makewhatis >/dev/null 2>&1; then makewhatis /usr/local/share/man "
-          ">/dev/null 2>&1 || true; fi\n";
-    sh << "find /usr/local/viper -type d -empty -delete 2>/dev/null || true\n";
+    sh << "if command -v mandb >/dev/null 2>&1; then mandb -q "
+       << shQuote(std::string(kMacOSLocalManDir)) << " >/dev/null 2>&1 || true; fi\n";
+    sh << "if command -v makewhatis >/dev/null 2>&1; then makewhatis "
+       << shQuote(std::string(kMacOSLocalManDir)) << " >/dev/null 2>&1 || true; fi\n";
+    sh << "find " << shQuote(std::string(kMacOSToolchainInstallRoot))
+       << " -type d -empty -delete 2>/dev/null || true\n";
     sh << "exit 0\n";
     return sh.str();
 }
@@ -1000,7 +1017,6 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
     std::string appName = displayName + ".app";
     const fs::path stageRoot = uniqueTempPackagingDir("viper-macos-app-" + execName);
     TempDirGuard cleanup(stageRoot);
-    fs::remove_all(stageRoot);
 
     const fs::path appPath = stageRoot / appName;
     const fs::path contentsDir = appPath / "Contents";
@@ -1078,15 +1094,13 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
     const std::string version = params.manifest.version;
     const std::string pkgVersion =
         resolveMacOSToolchainPackageVersion(version, params.packageVersion);
+    if (params.identifier.empty())
+        throw std::runtime_error("macOS toolchain package identifier is required");
     validateMacOSBundleIdentifier(params.identifier, "macOS package identifier");
-    if (!params.manifest.fileAssociations.empty() && params.identifier.empty())
-        throw std::runtime_error(
-            "macOS file associations require a non-empty macOS package identifier");
     validateDebVersion(version, "macOS toolchain manifest version");
 
     const fs::path tmpRoot = uniqueTempPackagingDir("viper-macos-toolchain-" + version);
     TempDirGuard cleanup(tmpRoot);
-    fs::remove_all(tmpRoot);
 
     const fs::path payloadRoot = tmpRoot / "root";
     const fs::path installRoot = payloadRoot / "usr" / "local" / "viper";
@@ -1094,7 +1108,13 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
     fs::create_directories(payloadRoot / "usr" / "local" / "bin");
 
     for (const auto &file : params.manifest.files) {
-        const fs::path dst = installRoot / fs::path(file.stagedRelativePath);
+        const fs::path cleanRel =
+            fs::path(sanitizePackageRelativePath(file.stagedRelativePath, "macOS staged path"));
+        const fs::path dst = (installRoot / cleanRel).lexically_normal();
+        if (!isPathWithin(installRoot, dst)) {
+            throw std::runtime_error("macOS staged path escapes install root: " +
+                                     file.stagedRelativePath);
+        }
         fs::create_directories(dst.parent_path());
         if (file.symlink) {
             std::error_code ec;
@@ -1128,12 +1148,14 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
                              fs::path("../viper/bin") / name);
 
     writeFileString(payloadRoot / "usr" / "local" / "lib" / "cmake" / "Viper" / "ViperConfig.cmake",
-                    "include(\"/usr/local/viper/lib/cmake/Viper/ViperConfig.cmake\")\n",
+                    "include(\"" + std::string(kMacOSToolchainInstallRoot) +
+                        "/lib/cmake/Viper/ViperConfig.cmake\")\n",
                     fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read |
                         fs::perms::others_read);
     writeFileString(payloadRoot / "usr" / "local" / "lib" / "cmake" / "Viper" /
                         "ViperConfigVersion.cmake",
-                    "include(\"/usr/local/viper/lib/cmake/Viper/ViperConfigVersion.cmake\")\n",
+                    "include(\"" + std::string(kMacOSToolchainInstallRoot) +
+                        "/lib/cmake/Viper/ViperConfigVersion.cmake\")\n",
                     fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read |
                         fs::perms::others_read);
 
@@ -1150,8 +1172,9 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
             throw std::runtime_error("macOS toolchain file associations require staged "
                                      "libexec/viper/viper-file-handler");
         }
-        const fs::path appContents =
-            payloadRoot / "Applications" / "Viper Toolchain.app" / "Contents";
+        const fs::path appContents = payloadRoot / fs::path(std::string(kMacOSToolchainAppPath))
+                                                       .relative_path() /
+                                    "Contents";
         const fs::path appMacOS = appContents / "MacOS";
         fs::create_directories(appMacOS);
         writeFileString(appContents / "Info.plist",
@@ -1206,7 +1229,8 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
     const auto scriptsGzip = gzip(scriptsArchive.data(), scriptsArchive.size());
 
     const size_t payloadEntryCount = sortedTreeEntries(payloadRoot).size();
-    const uint64_t installKBytes = (params.manifest.totalSizeBytes() + 1023u) / 1024u;
+    const uint64_t installKBytes =
+        roundedKiB(params.manifest.totalSizeBytes(), "macOS toolchain package");
     const std::string packageInfo =
         generateMacOSToolchainPackageInfo(params, pkgVersion, payloadEntryCount);
     const std::string distribution =

@@ -37,7 +37,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -46,12 +45,6 @@
 #include <sstream>
 #include <string_view>
 #include <utility>
-
-#if defined(_WIN32)
-#include <process.h>
-#else
-#include <unistd.h>
-#endif
 
 namespace fs = std::filesystem;
 
@@ -128,17 +121,32 @@ uint32_t permissionBitsForFilesystemPath(const fs::path &path) {
     return executable ? 0755u : 0644u;
 }
 
+/// @brief Validate a version string that will be normalized into a portable archive name.
+/// @details Portable tarballs preserve existing support for Debian epoch versions
+///          such as `2:1.0` by accepting `:` here, then mapping it to `_` in the
+///          filename component. Path separators and special path components remain rejected.
+/// @param version Version text from project metadata or a toolchain manifest.
+void validatePortableTarballVersion(const std::string &version) {
+    if (version.empty())
+        throw std::runtime_error("package version must not be empty");
+    validateSingleLineField(version, "package version");
+    if (version == "." || version == "..")
+        throw std::runtime_error("package version must not be a special path segment");
+    if (version.find('/') != std::string::npos || version.find('\\') != std::string::npos)
+        throw std::runtime_error("package version must not contain path separators: " + version);
+}
+
 /// @brief Sanitize a package version into a portable filename component.
-/// @details Validates the Debian version, keeps alphanumerics and `.+~-`, and
-///          replaces anything else with `_` so the version can appear safely in
-///          a tarball filename. Throws if the result is empty or "."/"..".
+/// @details Keeps alphanumerics and `._+~-`, and replaces other safe metadata
+///          separators such as Debian epoch `:` with `_` so the version can
+///          appear safely in a tarball filename.
 std::string portableArchiveVersionComponent(const std::string &version) {
-    validateDebVersion(version, "package version");
+    validatePortableTarballVersion(version);
     std::string out;
     out.reserve(version.size());
     for (char c : version) {
         const unsigned char uc = static_cast<unsigned char>(c);
-        if (std::isalnum(uc) || c == '.' || c == '+' || c == '~' || c == '-')
+        if (std::isalnum(uc) || c == '.' || c == '_' || c == '+' || c == '~' || c == '-')
             out.push_back(c);
         else
             out.push_back('_');
@@ -154,6 +162,7 @@ std::string portableArchiveVersionComponent(const std::string &version) {
 void addToolchainDesktopMetadata(std::vector<DataFile> &dataFiles,
                                  const std::string &desktopName,
                                  const std::string &execPath,
+                                 const std::string &execArguments,
                                  const std::vector<FileAssoc> &associations) {
     if (associations.empty())
         return;
@@ -162,6 +171,7 @@ void addToolchainDesktopMetadata(std::vector<DataFile> &dataFiles,
     desktop.name = "Viper Toolchain";
     desktop.comment = "Viper source and IL tools";
     desktop.execPath = execPath;
+    desktop.execArguments = execArguments;
     desktop.iconName = "viper";
     desktop.categories = "Development;";
     desktop.terminal = true;
@@ -195,9 +205,9 @@ void addToolchainFileAssociationMetadata(std::vector<DataFile> &dataFiles,
     }
 
     addToolchainDesktopMetadata(
-        dataFiles, packageName + "-source.desktop", viperExecPath + " run", sourceAssociations);
+        dataFiles, packageName + "-source.desktop", viperExecPath, "run", sourceAssociations);
     addToolchainDesktopMetadata(
-        dataFiles, packageName + "-il.desktop", viperExecPath + " -run", ilAssociations);
+        dataFiles, packageName + "-il.desktop", viperExecPath, "-run", ilAssociations);
 
     const std::string mimeXml = generateMimeTypeXml(packageName, manifest.fileAssociations);
     dataFiles.emplace_back("usr/share/mime/packages/" + packageName + ".xml",
@@ -328,6 +338,25 @@ std::string toolchainDebDepends(const ToolchainInstallManifest &manifest) {
     return joinCommaSeparated(deps);
 }
 
+/// @brief Build the Debian `Depends:` list for application packages.
+/// @details Adds conservative base runtime dependencies for generated native
+///          applications, then appends validated user-specified dependencies
+///          without duplicating exact entries.
+/// @param pkg Package configuration containing any additional dependency terms.
+/// @return Ordered dependency list suitable for a Debian control file.
+std::vector<std::string> appDebDepends(const PackageConfig &pkg) {
+    std::vector<std::string> deps = {
+        "libc6",
+        "libstdc++6 | libc++1",
+    };
+    for (const auto &dep : pkg.depends) {
+        validateDebDependency(dep);
+        if (std::find(deps.begin(), deps.end(), dep) == deps.end())
+            deps.push_back(dep);
+    }
+    return deps;
+}
+
 /// @brief Build the RPM "Requires" list for a toolchain package.
 /// @details Always requires the base C/C++ runtime and build tools, and adds
 ///          libX11 / alsa-lib when the manifest stages the graphics/audio support
@@ -391,6 +420,32 @@ install_root=${destdir%/}$prefix
 old_manifest="$install_root/share/viper/install_manifest.txt"
 new_manifest="$root/share/viper/install_manifest.txt"
 
+check_no_symlink_path() {
+    path=$1
+    case "$path" in
+        /*) current=/; rest=${path#/} ;;
+        *) current=.; rest=$path ;;
+    esac
+    while [ -n "$rest" ]; do
+        component=${rest%%/*}
+        if [ "$component" = "$rest" ]; then
+            rest=
+        else
+            rest=${rest#*/}
+        fi
+        [ -z "$component" ] && continue
+        if [ "$current" = "/" ]; then
+            current="/$component"
+        else
+            current="$current/$component"
+        fi
+        if [ -L "$current" ]; then
+            echo "Refusing to install through symlink path component: $current" >&2
+            exit 2
+        fi
+    done
+}
+
 set --
 for dir in bin include lib share; do
     if [ -e "$root/$dir" ]; then
@@ -410,10 +465,16 @@ if [ -f "$old_manifest" ] && [ -f "$new_manifest" ] && [ "$old_manifest" != "$ne
             /*|..|../*|*/../*|*/..) echo "Unsafe old manifest path: $rel" >&2; exit 2 ;;
         esac
         if ! grep -F -x -- "$rel" "$new_manifest" >/dev/null 2>&1; then
+            check_no_symlink_path "$install_root/$rel"
             rm -f "$install_root/$rel"
         fi
     done < "$old_manifest"
 fi
+
+check_no_symlink_path "$install_root"
+for dir do
+    check_no_symlink_path "$install_root/$dir"
+done
 
 mkdir -p "$install_root"
 (cd "$root" && tar cf - "$@") | (cd "$install_root" && tar xpf -)
@@ -620,7 +681,7 @@ void validatePortableMetadata(const PackageConfig &pkg,
                               const std::string &displayName,
                               const std::string &version) {
     validateSingleLineField(displayName, "package display name");
-    validateDebVersion(version, "package version");
+    validatePortableTarballVersion(version);
     validateSingleLineField(pkg.author, "package author");
     validateSingleLineField(pkg.description, "package description");
     validatePackageUrl(pkg.homepage, "package homepage");
@@ -817,19 +878,13 @@ std::string portableArchivePlatformName() {
 #endif
 }
 
-/// @brief Generate a unique temp directory path combining `stem`, PID, and steady-clock tick.
-/// The PID+tick combination avoids collisions between concurrent packaging invocations.
+/// @brief Create a unique temporary packaging directory under the system temp root.
+/// @details Delegates to the shared exclusive-creation helper so concurrent packaging
+///          invocations never remove or reuse another process's workspace.
+/// @param stem Prefix to use for the generated directory name.
+/// @return Path to the newly-created directory.
 fs::path uniqueTempPackagingDir(std::string_view stem) {
-    const auto tick = static_cast<unsigned long long>(
-        std::chrono::steady_clock::now().time_since_epoch().count());
-    const auto pid =
-#if defined(_WIN32)
-        static_cast<unsigned long long>(_getpid());
-#else
-        static_cast<unsigned long long>(::getpid());
-#endif
-    return fs::temp_directory_path() /
-           (std::string(stem) + "-" + std::to_string(pid) + "-" + std::to_string(tick));
+    return createUniqueTempDirectory(fs::temp_directory_path(), stem);
 }
 
 /// @brief RAII guard that removes the given directory tree on destruction.
@@ -1033,22 +1088,13 @@ void buildDebPackage(const LinuxBuildParams &params) {
         // Installed-Size in KiB
         uint64_t totalBytes = 0;
         for (const auto &df : dataFiles) {
-            if (df.data.size() > std::numeric_limits<uint64_t>::max() - totalBytes)
-                throw std::runtime_error("Debian package installed size overflow");
-            totalBytes += static_cast<uint64_t>(df.data.size());
+            checkedAddU64(totalBytes, static_cast<uint64_t>(df.data.size()),
+                          "Debian package installed size");
         }
-        ctl << "Installed-Size: " << ((totalBytes + 1023) / 1024) << "\n";
+        ctl << "Installed-Size: " << roundedKiB(totalBytes, "Debian package") << "\n";
 
         // Dependencies
-        if (!pkg.depends.empty()) {
-            ctl << "Depends: ";
-            for (size_t i = 0; i < pkg.depends.size(); ++i) {
-                if (i > 0)
-                    ctl << ", ";
-                ctl << pkg.depends[i];
-            }
-            ctl << "\n";
-        }
+        ctl << "Depends: " << joinCommaSeparated(appDebDepends(pkg)) << "\n";
 
         ctl << "Description: ";
         if (!pkg.description.empty())
@@ -1231,13 +1277,7 @@ void buildTarball(const LinuxBuildParams &params) {
     auto tarBytes = tar.finish();
     auto tarGz = gzip(tarBytes.data(), tarBytes.size());
 
-    std::ofstream f(params.outputPath, std::ios::binary);
-    if (!f)
-        throw std::runtime_error("cannot write tarball: " + params.outputPath);
-    f.write(reinterpret_cast<const char *>(tarGz.data()),
-            static_cast<std::streamsize>(tarGz.size()));
-    if (!f)
-        throw std::runtime_error("failed to write tarball: " + params.outputPath);
+    writeFileAtomic(params.outputPath, tarGz);
 }
 
 /// @brief Build a Debian .deb toolchain package from a staged install manifest.
@@ -1283,11 +1323,10 @@ void buildToolchainDebPackage(const LinuxToolchainBuildParams &params) {
         ctl << "Depends: " << toolchainDebDepends(manifest) << "\n";
         uint64_t totalBytes = 0;
         for (const auto &df : dataFiles) {
-            if (df.data.size() > std::numeric_limits<uint64_t>::max() - totalBytes)
-                throw std::runtime_error("Debian toolchain package installed size overflow");
-            totalBytes += static_cast<uint64_t>(df.data.size());
+            checkedAddU64(totalBytes, static_cast<uint64_t>(df.data.size()),
+                          "Debian toolchain package installed size");
         }
-        ctl << "Installed-Size: " << ((totalBytes + 1023) / 1024) << "\n";
+        ctl << "Installed-Size: " << roundedKiB(totalBytes, "Debian toolchain package") << "\n";
         ctl << "Description: Viper compiler toolchain\n";
         controlTar.addFileString("./control", ctl.str(), 0644);
     }
@@ -1421,13 +1460,7 @@ void buildToolchainTarball(const LinuxToolchainBuildParams &params) {
 
     const auto tarBytes = tar.finish();
     const auto tarGz = gzip(tarBytes.data(), tarBytes.size());
-    std::ofstream out(params.outputPath, std::ios::binary);
-    if (!out)
-        throw std::runtime_error("cannot write toolchain tarball: " + params.outputPath);
-    out.write(reinterpret_cast<const char *>(tarGz.data()),
-              static_cast<std::streamsize>(tarGz.size()));
-    if (!out)
-        throw std::runtime_error("failed to write toolchain tarball: " + params.outputPath);
+    writeFileAtomic(params.outputPath, tarGz);
 }
 
 /// @brief Build an RPM toolchain package from a staged install manifest using rpmbuild.
@@ -1455,7 +1488,6 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params) {
 
     const fs::path tmpRoot = uniqueTempPackagingDir("viper-rpm-" + version + "-" + arch);
     TempDirGuard cleanup(tmpRoot);
-    fs::remove_all(tmpRoot);
     fs::create_directories(tmpRoot / "BUILD");
     fs::create_directories(tmpRoot / "BUILDROOT");
     fs::create_directories(tmpRoot / "RPMS");
@@ -1480,15 +1512,7 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params) {
     const auto tarBytes = tar.finish();
     const auto tarGz = gzip(tarBytes.data(), tarBytes.size());
     const fs::path sourceTar = tmpRoot / "SOURCES" / (packageName + "-" + version + ".tar.gz");
-    {
-        std::ofstream out(sourceTar, std::ios::binary);
-        if (!out)
-            throw std::runtime_error("cannot write rpm source tarball: " + sourceTar.string());
-        out.write(reinterpret_cast<const char *>(tarGz.data()),
-                  static_cast<std::streamsize>(tarGz.size()));
-        if (!out)
-            throw std::runtime_error("failed to write rpm source tarball: " + sourceTar.string());
-    }
+    writeFileAtomic(sourceTar, tarGz);
 
     std::ostringstream spec;
     spec << "Name: " << packageName << "\n";

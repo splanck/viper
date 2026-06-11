@@ -142,7 +142,6 @@ std::vector<uint8_t> generateLnk(const LnkParams &params) {
 
     // LinkFlags (4 bytes)
     uint32_t linkFlags = 0;
-    linkFlags |= 0x00000002; // HasLinkInfo
     linkFlags |= 0x00000004; // HasName (NAME_STRING = description)
     linkFlags |= 0x00000008; // HasRelativePath
     linkFlags |= 0x00000080; // IsUnicode
@@ -151,7 +150,10 @@ std::vector<uint8_t> generateLnk(const LnkParams &params) {
     bool hasArguments = !params.arguments.empty();
     bool hasIcon = !params.iconPath.empty();
     const bool hasEnvTarget = containsEnvironmentVariableReference(params.targetPath);
+    const bool hasLinkInfo = !hasEnvTarget;
 
+    if (hasLinkInfo)
+        linkFlags |= 0x00000002; // HasLinkInfo
     if (hasWorkDir)
         linkFlags |= 0x00000010; // HasWorkingDir
     if (hasArguments)
@@ -207,7 +209,7 @@ std::vector<uint8_t> generateLnk(const LnkParams &params) {
     //          + VolumeIDOffset(4) + LocalBasePathOffset(4)
     //          + CommonNetworkRelativeLinkOffset(4) + CommonPathSuffixOffset(4)
     //          + VolumeID + LocalBasePath(NUL) + CommonPathSuffix(NUL)
-    {
+    if (hasLinkInfo) {
         // Build LinkInfo in a temporary buffer, then append
         std::vector<uint8_t> li;
 

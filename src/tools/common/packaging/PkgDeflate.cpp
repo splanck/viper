@@ -150,6 +150,10 @@ struct BitWriter {
 
     /// @brief Allocate the initial backing buffer (minimum 256 bytes). Throws on OOM.
     void init(size_t initialCap) {
+        constexpr size_t kMaxInitialReserve = 1024u * 1024u;
+        if (initialCap > std::numeric_limits<size_t>::max() - 256u)
+            throw DeflateError("deflate: output buffer size overflow");
+        initialCap = std::min(initialCap, kMaxInitialReserve);
         capacity = initialCap > 256 ? initialCap : 256;
         data = static_cast<uint8_t *>(std::malloc(capacity));
         if (!data)
@@ -161,10 +165,18 @@ struct BitWriter {
 
     /// @brief Grow the backing buffer to accommodate at least `need` more bytes.
     void ensure(size_t need) {
-        if (len + need > capacity) {
+        if (need > std::numeric_limits<size_t>::max() - len)
+            throw DeflateError("deflate: output buffer size overflow");
+        const size_t required = len + need;
+        if (required > capacity) {
             size_t newCap = capacity * 2;
-            if (newCap < len + need)
-                newCap = len + need + 256;
+            if (newCap < capacity)
+                throw DeflateError("deflate: output buffer size overflow");
+            if (newCap < required) {
+                if (required > std::numeric_limits<size_t>::max() - 256u)
+                    throw DeflateError("deflate: output buffer size overflow");
+                newCap = required + 256u;
+            }
             auto *newData = static_cast<uint8_t *>(std::realloc(data, newCap));
             if (!newData)
                 throw DeflateError("deflate: out of memory");
@@ -922,7 +934,10 @@ static std::vector<uint8_t> deflateData(const uint8_t *data, size_t len, int lev
         level = kMaxLevel;
 
     BitWriter bw;
-    bw.init(len);
+    constexpr size_t kMaxInitialReserve = 1024u * 1024u;
+    const size_t initialReserve =
+        len <= 64 ? 256u : std::min<size_t>(len, kMaxInitialReserve);
+    bw.init(initialReserve);
 
     if (len > static_cast<size_t>(std::numeric_limits<int>::max())) {
         // The LZ77 accelerator stores window positions in int slots. Very large

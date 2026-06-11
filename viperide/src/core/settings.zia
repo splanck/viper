@@ -72,6 +72,7 @@ class SettingsManager {
     expose Integer diagnosticsDelayMs; // Live diagnostics idle delay.
     expose Integer completionDelayMs;  // Completion debounce delay.
     expose Integer tabWidth;       // Tab width in spaces (2..8).
+    expose Integer uiZoomPercent;  // Whole-UI zoom percentage (50..300; 100 = default).
     expose String  settingsDir;    // ~/.viperide (resolved at SetupPath).
     expose String  settingsPath;   // settingsDir/settings.ini.
 
@@ -99,6 +100,7 @@ class SettingsManager {
         diagnosticsDelayMs = 500;
         completionDelayMs = 180;
         tabWidth       = 4;
+        uiZoomPercent  = 100;
         settingsDir    = "";
         settingsPath   = "";
     }
@@ -228,6 +230,12 @@ class SettingsManager {
             var completionDelay = Convert.ToInt(completionDelayStr);
             if completionDelay >= 0 and completionDelay <= 2000 { completionDelayMs = completionDelay; }
         }
+
+        var uiZoomStr = Ini.Get(ini, "settings", "uiZoomPercent");
+        if uiZoomStr != "" {
+            var uiZoom = Convert.ToInt(uiZoomStr);
+            if uiZoom >= 50 and uiZoom <= 300 { uiZoomPercent = uiZoom; }
+        }
     }
 
     /// @brief Persist settings to disk. Creates `~/.viperide/` if needed.
@@ -310,6 +318,7 @@ class SettingsManager {
         Ini.Set(ini, "settings", "tabWidth", "" + tabWidth);
         Ini.Set(ini, "settings", "diagnosticsDelayMs", "" + diagnosticsDelayMs);
         Ini.Set(ini, "settings", "completionDelayMs", "" + completionDelayMs);
+        Ini.Set(ini, "settings", "uiZoomPercent", "" + uiZoomPercent);
         var content = Ini.Format(ini);
         IO.File.WriteAllText(settingsPath, content);
     }

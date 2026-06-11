@@ -33,7 +33,6 @@
 #include <cstring>
 #include <ctime>
 #include <filesystem>
-#include <fstream>
 #include <limits>
 #include <stdexcept>
 
@@ -555,16 +554,9 @@ void ZipWriter::writeCentralDirectory() {
 void ZipWriter::finish(const std::string &path) {
     ensureOpen();
 
-    std::ofstream out(path, std::ios::binary);
-    if (!out)
-        throw std::runtime_error("ZipWriter: failed to create " + path);
-
     std::vector<uint8_t> complete = buffer_;
     appendCentralDirectory(complete);
-    out.write(reinterpret_cast<const char *>(complete.data()),
-              static_cast<std::streamsize>(complete.size()));
-    if (!out)
-        throw std::runtime_error("ZipWriter: failed to write " + path);
+    writeFileAtomic(path, complete);
     buffer_ = std::move(complete);
     finalized_ = true;
 }

@@ -28,7 +28,7 @@
 #include "PkgZlib.hpp"
 
 #include <filesystem>
-#include <fstream>
+#include <limits>
 #include <map>
 #include <memory>
 #include <sstream>
@@ -317,6 +317,8 @@ std::vector<uint8_t> XarWriter::finish() const {
         out.compressed = entry.compress;
         out.mode = entry.mode;
         out.offset = heapOffset;
+        if (out.archived.size() > std::numeric_limits<uint64_t>::max() - heapOffset)
+            throw std::runtime_error("XarWriter: heap offset overflow");
         heapOffset += out.archived.size();
         prepared.push_back(std::move(out));
     }
@@ -350,7 +352,12 @@ std::vector<uint8_t> XarWriter::finish() const {
     const auto tocChecksum = sha1Bytes(tocCompressed.data(), tocCompressed.size());
 
     std::vector<uint8_t> out;
-    out.reserve(28 + tocCompressed.size() + static_cast<size_t>(heapOffset));
+    if (heapOffset > static_cast<uint64_t>(std::numeric_limits<size_t>::max()))
+        throw std::runtime_error("XarWriter: archive is too large");
+    size_t reserveBytes = 28;
+    checkedAddSize(reserveBytes, tocCompressed.size(), "XarWriter");
+    checkedAddSize(reserveBytes, static_cast<size_t>(heapOffset), "XarWriter");
+    out.reserve(reserveBytes);
     appendBE32(out, 0x78617221u); // "xar!"
     appendBE16(out, 28);
     appendBE16(out, 1);
@@ -366,13 +373,7 @@ std::vector<uint8_t> XarWriter::finish() const {
 
 void XarWriter::finishToFile(const std::string &path) const {
     auto data = finish();
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out)
-        throw std::runtime_error("cannot write xar archive: " + path);
-    out.write(reinterpret_cast<const char *>(data.data()),
-              static_cast<std::streamsize>(data.size()));
-    if (!out)
-        throw std::runtime_error("failed to write xar archive: " + path);
+    writeFileAtomic(path, data);
 }
 
 } // namespace viper::pkg

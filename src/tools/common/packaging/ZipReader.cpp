@@ -27,6 +27,7 @@
 #include <cstring>
 #include <set>
 #include <string>
+#include <utility>
 
 extern "C" {
 uint32_t rt_crc32_compute(const uint8_t *data, size_t len);
@@ -134,6 +135,7 @@ void ZipReader::parseCentralDirectory() {
     // Parse central directory entries
     size_t pos = cdOffset;
     std::set<std::string> seenNames;
+    std::vector<std::pair<size_t, size_t>> occupiedLocalRanges;
     for (uint16_t i = 0; i < totalEntries; ++i) {
         if (pos + 46 > len_)
             throw ZipReadError("ZIP: central directory entry truncated");
@@ -171,6 +173,27 @@ void ZipReader::parseCentralDirectory() {
         if (entry.localHeaderOffset == 0xFFFFFFFFu || entry.compressedSize == 0xFFFFFFFFu ||
             entry.uncompressedSize == 0xFFFFFFFFu)
             throw ZipReadError("ZIP: ZIP64 entry fields are not supported");
+        const size_t lhOff = entry.localHeaderOffset;
+        if (lhOff + 30 > cdOffset)
+            throw ZipReadError("ZIP: local file header points into the central directory");
+        if (rdLE32(data_ + lhOff) != 0x04034B50)
+            throw ZipReadError("ZIP: invalid local file header signature");
+        const uint16_t lhNameLen = rdLE16(data_ + lhOff + 26);
+        const uint16_t lhExtraLen = rdLE16(data_ + lhOff + 28);
+        if (static_cast<uint64_t>(lhOff) + 30u + lhNameLen + lhExtraLen >
+            static_cast<uint64_t>(cdOffset)) {
+            throw ZipReadError("ZIP: local file header extends into central directory");
+        }
+        const size_t dataOff = lhOff + 30u + lhNameLen + lhExtraLen;
+        const uint64_t dataEnd64 = static_cast<uint64_t>(dataOff) + entry.compressedSize;
+        if (dataEnd64 > cdOffset)
+            throw ZipReadError("ZIP: entry payload overlaps central directory");
+        const size_t localEnd = static_cast<size_t>(dataEnd64);
+        for (const auto &[begin, end] : occupiedLocalRanges) {
+            if (lhOff < end && begin < localEnd)
+                throw ZipReadError("ZIP: local file records overlap");
+        }
+        occupiedLocalRanges.emplace_back(lhOff, localEnd);
 
         entry.name.assign(reinterpret_cast<const char *>(data_ + pos + 46), nameLen);
         if (isUnsafeZipName(entry.name))

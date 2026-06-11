@@ -776,6 +776,35 @@ double rt_app_get_scale(void *app) {
     return (double)rt_app_window_scale(gui_app);
 }
 
+/// @brief Set the user UI zoom multiplier applied on top of the HiDPI scale.
+/// @details Scales typography, spacing, and control metrics together so the whole
+///          UI grows or shrinks as one. Clamped to a legible range; the next
+///          per-frame theme refresh applies it.
+void rt_app_set_ui_scale(void *app, double scale) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
+        return;
+    if (!(scale > 0.0))
+        scale = 1.0;
+    if (scale < 0.5)
+        scale = 0.5;
+    if (scale > 3.0)
+        scale = 3.0;
+    gui_app->user_scale = (float)scale;
+}
+
+/// @brief Get the current user UI zoom multiplier (1.0 = default).
+double rt_app_get_ui_scale(void *app) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
+        return 1.0;
+    if (!(gui_app->user_scale > 0.0f))
+        return 1.0;
+    return (double)gui_app->user_scale;
+}
+
 /// @brief Move the app window to a specific screen position.
 void rt_app_set_position(void *app, int64_t x, int64_t y) {
     RT_ASSERT_MAIN_THREAD();
@@ -1155,6 +1184,18 @@ int64_t rt_app_get_height(void *app) {
 
 /// @brief Stub: graphics disabled — no HiDPI scaling, returns 1.0.
 double rt_app_get_scale(void *app) {
+    (void)app;
+    return 1.0;
+}
+
+/// @brief Stub: graphics disabled — UI zoom has no effect.
+void rt_app_set_ui_scale(void *app, double scale) {
+    (void)app;
+    (void)scale;
+}
+
+/// @brief Stub: graphics disabled — returns 1.0.
+double rt_app_get_ui_scale(void *app) {
     (void)app;
     return 1.0;
 }

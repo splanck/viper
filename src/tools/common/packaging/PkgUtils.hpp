@@ -24,16 +24,19 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <iostream>
 #include <limits>
+#include <random>
 #include <set>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <vector>
 
 #include "PackageConfig.hpp"
@@ -41,6 +44,148 @@
 namespace viper::pkg {
 
 inline constexpr uint64_t kMaxPackageFileBytes = 0xFFFFFFFFull;
+
+/// @brief Add @p value to @p total, throwing if the result would overflow size_t.
+/// @details Package writers commonly pre-compute buffer capacities before serializing archives.
+///          This helper keeps those estimates from wrapping on pathological inputs, which would
+///          otherwise turn a size validation failure into an under-sized allocation.
+/// @param total Accumulator to update in place.
+/// @param value Amount to add.
+/// @param context Human-readable component name used in diagnostics.
+inline void checkedAddSize(size_t &total, size_t value, const char *context) {
+    if (value > std::numeric_limits<size_t>::max() - total)
+        throw std::runtime_error(std::string(context) + ": size overflow");
+    total += value;
+}
+
+/// @brief Add @p value to @p total, throwing if the result would overflow uint64_t.
+/// @details Used for installed-size accounting where the source byte counts may be
+///          platform-sized but the emitted package metadata is computed in 64-bit space.
+/// @param total Accumulator to update in place.
+/// @param value Amount to add.
+/// @param context Human-readable component name used in diagnostics.
+inline void checkedAddU64(uint64_t &total, uint64_t value, const char *context) {
+    if (value > std::numeric_limits<uint64_t>::max() - total)
+        throw std::runtime_error(std::string(context) + ": size overflow");
+    total += value;
+}
+
+/// @brief Return @p bytes rounded up to KiB, throwing when adding the rounding bias would overflow.
+/// @details Debian and macOS metadata store installed size in KiB. This helper keeps
+///          "(bytes + 1023) / 1024" from wrapping for maximal byte totals.
+/// @param bytes Byte count to round.
+/// @param context Human-readable component name used in diagnostics.
+/// @return KiB count rounded toward positive infinity.
+inline uint64_t roundedKiB(uint64_t bytes, const char *context) {
+    if (bytes > std::numeric_limits<uint64_t>::max() - 1023u)
+        throw std::runtime_error(std::string(context) + ": installed size overflow");
+    return (bytes + 1023u) / 1024u;
+}
+
+/// @brief Build a best-effort unique suffix for temporary files and directories.
+/// @details Combines a steady-clock tick, a random_device sample, and an attempt counter.
+///          Callers must still create the path exclusively and retry on collisions.
+/// @param attempt Retry counter included in the suffix.
+/// @return A filesystem-friendly ASCII suffix.
+inline std::string uniqueTempSuffix(unsigned attempt) {
+    const auto tick = static_cast<unsigned long long>(
+        std::chrono::steady_clock::now().time_since_epoch().count());
+    std::random_device rd;
+    const unsigned random = rd();
+    return std::to_string(tick) + "-" + std::to_string(random) + "-" + std::to_string(attempt);
+}
+
+/// @brief Create a new unique directory under @p parent using an exclusive create_directory loop.
+/// @details The returned directory already exists. The function never removes a pre-existing path;
+///          it retries with a different randomized suffix until creation succeeds or the attempt
+///          budget is exhausted.
+/// @param parent Directory in which to create the temporary child.
+/// @param stem Prefix for the generated child name.
+/// @return Path to the newly-created directory.
+/// @throws std::runtime_error when @p parent cannot be created or no unique child can be made.
+inline std::filesystem::path createUniqueTempDirectory(const std::filesystem::path &parent,
+                                                       std::string_view stem) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::create_directories(parent, ec);
+    if (ec)
+        throw std::runtime_error("cannot create temp directory parent '" + parent.string() +
+                                 "': " + ec.message());
+    for (unsigned attempt = 0; attempt < 100; ++attempt) {
+        const fs::path candidate =
+            parent / (std::string(stem) + "-" + uniqueTempSuffix(attempt));
+        ec.clear();
+        if (fs::create_directory(candidate, ec))
+            return candidate;
+        if (ec && ec != std::errc::file_exists) {
+            throw std::runtime_error("cannot create temp directory '" + candidate.string() +
+                                     "': " + ec.message());
+        }
+    }
+    throw std::runtime_error("cannot create a unique temp directory under " + parent.string());
+}
+
+/// @brief Write bytes to @p path via a same-directory temporary file and rename.
+/// @details Parent directories are created as needed. On POSIX this gives an atomic
+///          replacement when the final rename succeeds. On platforms where replacing an
+///          existing file is not atomic through std::filesystem, the function still avoids
+///          exposing a partially-written target file and reports write/rename failures.
+/// @param path Final output path.
+/// @param data Bytes to write.
+/// @throws std::runtime_error on directory creation, file open, write, close, or rename failure.
+inline void writeFileAtomic(const std::filesystem::path &path, const std::vector<uint8_t> &data) {
+    namespace fs = std::filesystem;
+    const fs::path parent = path.parent_path().empty() ? fs::current_path() : path.parent_path();
+    std::error_code ec;
+    fs::create_directories(parent, ec);
+    if (ec)
+        throw std::runtime_error("cannot create output directory '" + parent.string() +
+                                 "': " + ec.message());
+
+    fs::path tempPath;
+    for (unsigned attempt = 0; attempt < 100; ++attempt) {
+        tempPath = parent / ("." + path.filename().string() + ".tmp-" + uniqueTempSuffix(attempt));
+        ec.clear();
+        const bool exists = fs::exists(tempPath, ec);
+        if (ec)
+            throw std::runtime_error("cannot inspect temporary output path '" + tempPath.string() +
+                                     "': " + ec.message());
+        if (!exists)
+            break;
+        if (attempt == 99)
+            throw std::runtime_error("cannot find a unique temporary output path for " +
+                                     path.string());
+    }
+
+    {
+        std::ofstream out(tempPath, std::ios::binary | std::ios::trunc);
+        if (!out)
+            throw std::runtime_error("cannot write temporary output file: " + tempPath.string());
+        if (!data.empty())
+            out.write(reinterpret_cast<const char *>(data.data()),
+                      static_cast<std::streamsize>(data.size()));
+        if (!out)
+            throw std::runtime_error("failed to write temporary output file: " + tempPath.string());
+        out.close();
+        if (!out)
+            throw std::runtime_error("failed to close temporary output file: " + tempPath.string());
+    }
+
+    ec.clear();
+    fs::rename(tempPath, path, ec);
+    if (ec) {
+        std::error_code removeEc;
+        fs::remove(path, removeEc);
+        ec.clear();
+        fs::rename(tempPath, path, ec);
+    }
+    if (ec) {
+        std::error_code cleanupEc;
+        fs::remove(tempPath, cleanupEc);
+        throw std::runtime_error("cannot move temporary output into place at '" + path.string() +
+                                 "': " + ec.message());
+    }
+}
 
 /// @brief Read a file into a byte vector.
 /// @throws std::runtime_error on open or read failure.
@@ -159,6 +304,29 @@ inline void rejectLineBreaks(const std::string &value, const char *fieldName) {
 inline void validateSingleLineField(const std::string &value, const char *fieldName) {
     rejectLineBreaks(value, fieldName);
     rejectControlChars(value, fieldName);
+}
+
+/// @brief Validate a portable archive version string.
+/// @details Portable tarball names do not need Debian package-version syntax. This
+///          accepts a non-empty single-line string made of alphanumerics plus '.', '_',
+///          '+', '~', and '-', while rejecting special "."/".." path components.
+/// @param version Version text from project metadata.
+/// @param fieldName Name used in diagnostics.
+inline void validatePortableArchiveVersion(const std::string &version,
+                                           const char *fieldName = "package version") {
+    if (version.empty())
+        throw std::runtime_error(std::string(fieldName) + " must not be empty");
+    validateSingleLineField(version, fieldName);
+    if (version == "." || version == "..")
+        throw std::runtime_error(std::string(fieldName) + " must not be a special path segment");
+    for (char c : version) {
+        const unsigned char uc = static_cast<unsigned char>(c);
+        if (!std::isalnum(uc) && c != '.' && c != '_' && c != '+' && c != '~' && c != '-') {
+            throw std::runtime_error(std::string(fieldName) +
+                                     " contains a character invalid for portable archives: '" +
+                                     version + "'");
+        }
+    }
 }
 
 /// @brief Validate that arch is one of the two supported Viper target architectures ("x64",
@@ -687,6 +855,11 @@ inline void validateWindowsProgIdBase(const std::string &identifier,
     if (identifier.empty())
         return;
     rejectLineBreaks(identifier, fieldName);
+    if (identifier.size() > 39) {
+        throw std::runtime_error(std::string(fieldName) +
+                                 " must not exceed 39 characters for a Windows ProgID: '" +
+                                 identifier + "'");
+    }
     bool sawDot = false;
     bool lastWasDot = true;
     for (char c : identifier) {
@@ -1002,9 +1175,14 @@ inline void validatePackageUrl(const std::string &url, const char *fieldName) {
             host.back() == '-')
             throw std::runtime_error(std::string(fieldName) + " URL host is malformed: '" + url +
                                      "'");
+        if (host.size() > 253)
+            throw std::runtime_error(std::string(fieldName) + " URL host is too long: '" + url +
+                                     "'");
         bool sawHostChar = false;
         bool lastWasDot = false;
-        for (char c : host) {
+        std::size_t labelStart = 0;
+        for (std::size_t i = 0; i < host.size(); ++i) {
+            const char c = host[i];
             unsigned char uc = static_cast<unsigned char>(c);
             if (std::isalnum(uc)) {
                 sawHostChar = true;
@@ -1019,21 +1197,41 @@ inline void validatePackageUrl(const std::string &url, const char *fieldName) {
                 if (lastWasDot)
                     throw std::runtime_error(std::string(fieldName) +
                                              " URL host has an empty label: '" + url + "'");
+                const std::size_t labelLen = i - labelStart;
+                if (labelLen > 63) {
+                    throw std::runtime_error(std::string(fieldName) +
+                                             " URL host has a label longer than 63 characters: '" +
+                                             url + "'");
+                }
+                labelStart = i + 1;
                 lastWasDot = true;
                 continue;
             }
             throw std::runtime_error(std::string(fieldName) +
                                      " URL host contains an invalid character: '" + url + "'");
         }
+        const std::size_t finalLabelLen = host.size() - labelStart;
+        if (finalLabelLen > 63) {
+            throw std::runtime_error(std::string(fieldName) +
+                                     " URL host has a label longer than 63 characters: '" + url +
+                                     "'");
+        }
         if (!sawHostChar)
             throw std::runtime_error(std::string(fieldName) +
                                      " URL host must contain letters or digits: '" + url + "'");
     }
     if (!port.empty()) {
+        uint32_t portValue = 0;
         for (char c : port) {
             if (!std::isdigit(static_cast<unsigned char>(c)))
                 throw std::runtime_error(std::string(fieldName) + " URL port must be numeric: '" +
                                          url + "'");
+            const uint32_t digit = static_cast<uint32_t>(c - '0');
+            if (portValue > (65535u - digit) / 10u) {
+                throw std::runtime_error(std::string(fieldName) +
+                                         " URL port must be between 0 and 65535: '" + url + "'");
+            }
+            portValue = portValue * 10u + digit;
         }
     } else if (authority.back() == ':') {
         throw std::runtime_error(std::string(fieldName) + " URL port must not be empty: '" + url +

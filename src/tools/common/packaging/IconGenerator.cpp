@@ -88,7 +88,10 @@ static const uint32_t kIcoSizes[] = {16, 24, 32, 48, 64, 128, 256};
 void validateSourceImage(const PkgImage &srcImage) {
     if (srcImage.width == 0 || srcImage.height == 0)
         throw PNGError("icon: source image is empty");
-    const size_t expectedPixels = static_cast<size_t>(srcImage.width) * srcImage.height * 4;
+    const uint64_t pixels = static_cast<uint64_t>(srcImage.width) * srcImage.height;
+    if (pixels > std::numeric_limits<size_t>::max() / 4u)
+        throw PNGError("icon: source image dimensions overflow");
+    const size_t expectedPixels = static_cast<size_t>(pixels) * 4u;
     if (srcImage.pixels.size() != expectedPixels)
         throw PNGError("icon: RGBA pixel buffer size does not match dimensions");
 }

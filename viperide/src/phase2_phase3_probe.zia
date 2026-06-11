@@ -98,6 +98,21 @@ func main() {
     if assertTrue(ziaBin != "", "zia binary argument provided") == false { return; }
     var viperBin = ArgValue("--viper-bin");
     if assertTrue(viperBin != "", "viper binary argument provided") == false { return; }
+
+    // Compiler resolution: the IDE spawns through Process/execve(), which neither
+    // searches PATH nor resolves a bare name, so a bare "viper" never starts a
+    // build. ResolveCompiler must turn the default into an existing absolute path,
+    // and report "" for a program that is nowhere to be found.
+    var expectedViper = Path.Abs(viperBin);
+    Env.SetVariable("VIPER_BINARY", viperBin);
+    var resolvedViper = buildSys.ResolveCompiler("viper");
+    if assertTrue(resolvedViper == expectedViper
+                  and Path.IsAbs(resolvedViper)
+                  and File.Exists(resolvedViper),
+                  "default viper resolves to an existing absolute path") == false { return; }
+    if assertTrue(buildSys.ResolveCompiler("viper_missing_binary_zzz_404") == "",
+                  "an unfindable program resolves to empty") == false { return; }
+
     var procCfg = new run_config.RunConfig();
     procCfg.name = "Probe Run";
     procCfg.action = run_config.ACTION_RUN;

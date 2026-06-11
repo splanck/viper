@@ -26,10 +26,10 @@
 #include "VpaWriter.hpp"
 
 #include "PkgDeflate.hpp"
+#include "tools/common/packaging/PkgUtils.hpp"
 
 #include <algorithm>
 #include <cstring>
-#include <fstream>
 #include <limits>
 #include <stdexcept>
 #include <string_view>
@@ -311,19 +311,12 @@ std::vector<uint8_t> VpaWriter::writeToMemory() const {
 ///          for the parameter and return contract.
 bool VpaWriter::writeToFile(const std::string &path, std::string &err) const {
     auto blob = writeToMemory();
-
-    std::ofstream f(path, std::ios::binary | std::ios::trunc);
-    if (!f.is_open()) {
-        err = "cannot open file for writing: " + path;
+    try {
+        viper::pkg::writeFileAtomic(path, blob);
+    } catch (const std::exception &ex) {
+        err = ex.what();
         return false;
     }
-
-    f.write(reinterpret_cast<const char *>(blob.data()), static_cast<std::streamsize>(blob.size()));
-    if (!f) {
-        err = "failed to write VPA data to: " + path;
-        return false;
-    }
-
     return true;
 }
 

@@ -22,6 +22,7 @@
 #include "DesktopEntryGenerator.hpp"
 #include "PkgUtils.hpp"
 
+#include <cctype>
 #include <sstream>
 
 namespace viper::pkg {
@@ -43,6 +44,46 @@ std::string desktopEscape(const std::string &s) {
             out.push_back(c);
     }
     return out;
+}
+
+/// @brief Escape one executable or argument token for a freedesktop Exec= field.
+/// @details The Desktop Entry specification treats whitespace and shell-like
+///          metacharacters as token separators unless the token is quoted. This
+///          helper quotes tokens when needed, escapes characters with special
+///          meaning inside quoted strings, and doubles literal percent signs so
+///          they are not parsed as field codes.
+/// @param token Literal executable path or argument token.
+/// @param fieldName Name used in diagnostics.
+/// @return Token text safe for direct inclusion in Exec=.
+std::string desktopEscapeExecToken(const std::string &token, const char *fieldName) {
+    validateSingleLineField(token, fieldName);
+    if (token.empty())
+        throw std::runtime_error(std::string(fieldName) + " must not be empty");
+    bool needsQuote = false;
+    for (unsigned char c : token) {
+        if (std::isspace(c) || c == '"' || c == '\'' || c == '\\' || c == '>' || c == '<' ||
+            c == '~' || c == '|' || c == '&' || c == ';' || c == '$' || c == '*' || c == '?' ||
+            c == '#' || c == '(' || c == ')' || c == '`') {
+            needsQuote = true;
+            break;
+        }
+    }
+    std::string escaped;
+    escaped.reserve(token.size() + 2u);
+    if (needsQuote)
+        escaped.push_back('"');
+    for (char c : token) {
+        if (c == '%') {
+            escaped += "%%";
+            continue;
+        }
+        if (needsQuote && (c == '"' || c == '\\' || c == '$' || c == '`'))
+            escaped.push_back('\\');
+        escaped.push_back(c);
+    }
+    if (needsQuote)
+        escaped.push_back('"');
+    return escaped;
 }
 
 /// @brief Escape a string for safe embedding in XML attribute values and text content.
@@ -99,8 +140,11 @@ std::string generateDesktopEntry(const DesktopEntryParams &params) {
     os << "Name=" << desktopEscape(params.name) << "\n";
     if (!params.comment.empty())
         os << "Comment=" << desktopEscape(params.comment) << "\n";
-    validateSingleLineField(params.execPath, "desktop Exec path");
-    os << "Exec=" << params.execPath;
+    os << "Exec=" << desktopEscapeExecToken(params.execPath, "desktop Exec path");
+    if (!params.execArguments.empty()) {
+        validateSingleLineField(params.execArguments, "desktop Exec arguments");
+        os << " " << params.execArguments;
+    }
     if (params.acceptsFileArgument || !params.fileAssociations.empty())
         os << " %f";
     os << "\n";

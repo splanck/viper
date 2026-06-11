@@ -123,6 +123,7 @@ bool DocumentStore::tryUriToPath(const std::string &uri, std::string &outPath, s
     std::string path;
     std::string_view sv = uri;
     const std::size_t schemeLen = uriSchemeLength(sv);
+    const bool isUri = schemeLen != std::string_view::npos;
     if (schemeLen != std::string_view::npos) {
         if (!asciiEqualsIgnoreCase(sv.substr(0, schemeLen), "file")) {
             if (err)
@@ -139,6 +140,12 @@ bool DocumentStore::tryUriToPath(const std::string &uri, std::string &outPath, s
     // Strip file:// prefix and handle the URI authority component.
     if (startsWithFileUriPrefix(sv)) {
         sv.remove_prefix(7);
+        const std::size_t uriSuffix = sv.find_first_of("?#");
+        if (uriSuffix != std::string_view::npos) {
+            if (err)
+                *err = "file URI query and fragment components are not supported: " + uri;
+            return false;
+        }
         std::string_view authority;
         if (!sv.empty() && sv.front() != '/') {
             const std::size_t slash = sv.find('/');
@@ -146,12 +153,21 @@ bool DocumentStore::tryUriToPath(const std::string &uri, std::string &outPath, s
             sv = slash == std::string_view::npos ? std::string_view{} : sv.substr(slash);
         }
 
-        if (!authority.empty() && authority != "localhost") {
+        if (!authority.empty() && !asciiEqualsIgnoreCase(authority, "localhost")) {
             path = "//";
             path.append(authority);
         } else if (sv.size() >= 3 && sv[0] == '/' && sv[2] == ':') {
             // Windows drive letter: /C:/path -> C:/path
             sv.remove_prefix(1);
+        }
+    }
+
+    if (isUri) {
+        const std::size_t suffix = sv.find_first_of("?#");
+        if (suffix != std::string_view::npos) {
+            if (err)
+                *err = "file URI query and fragment components are not supported: " + uri;
+            return false;
         }
     }
 

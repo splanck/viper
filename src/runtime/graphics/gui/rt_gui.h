@@ -1155,6 +1155,16 @@ int64_t rt_app_get_height(void *app);
 ///         logical (point) dimensions.
 double rt_app_get_scale(void *app);
 
+/// @brief Set a user UI zoom multiplier applied on top of the HiDPI scale.
+/// @param app   GUI application handle.
+/// @param scale Zoom factor; clamped to [0.5, 3.0]. 1.0 is the default.
+void rt_app_set_ui_scale(void *app, double scale);
+
+/// @brief Get the current user UI zoom multiplier.
+/// @param app GUI application handle.
+/// @return Zoom factor (1.0 = default).
+double rt_app_get_ui_scale(void *app);
+
 /// @brief Set the window position.
 /// @param app GUI application handle.
 /// @param x X position in screen coordinates.

@@ -17,7 +17,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -29,12 +28,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-
-#if defined(_WIN32)
-#include <process.h>
-#else
-#include <unistd.h>
-#endif
 
 namespace fs = std::filesystem;
 
@@ -1234,25 +1227,8 @@ fs::path ensureStageDir(const InstallPackageArgs &args) {
     if (!args.stageDir.empty())
         return args.stageDir;
 
-    const auto pid =
-#if defined(_WIN32)
-        static_cast<unsigned long>(_getpid());
-#else
-        static_cast<unsigned long>(::getpid());
-#endif
-    const auto tick = static_cast<unsigned long long>(
-        std::chrono::steady_clock::now().time_since_epoch().count());
-    fs::path stageDir;
-    for (unsigned attempt = 0; attempt < 100; ++attempt) {
-        stageDir = args.buildDir / ("install-toolchain-stage-" + std::to_string(pid) + "-" +
-                                    std::to_string(tick) + "-" + std::to_string(attempt));
-        std::error_code ec;
-        if (fs::create_directory(stageDir, ec))
-            break;
-        if (attempt == 99)
-            throw std::runtime_error("cannot create a unique staging directory under " +
-                                     args.buildDir.string());
-    }
+    fs::path stageDir =
+        viper::pkg::createUniqueTempDirectory(args.buildDir, "install-toolchain-stage");
     AutoStageCleanup cleanup(stageDir, !args.keepStageDir);
 
     if (!args.skipBuild) {

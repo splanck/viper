@@ -121,6 +121,9 @@ class AppShell {
     expose GUI.MenuItem miZoomIn;
     expose GUI.MenuItem miZoomOut;
     expose GUI.MenuItem miZoomReset;
+    expose GUI.MenuItem miUiZoomIn;
+    expose GUI.MenuItem miUiZoomOut;
+    expose GUI.MenuItem miUiZoomReset;
     expose GUI.MenuItem miToggleTheme;
     expose GUI.MenuItem miFullscreen;
     expose GUI.MenuItem miToggleMinimap;
@@ -371,6 +374,12 @@ class AppShell {
         miZoomOut.SetShortcut("Ctrl+-");
         miZoomReset = viewMenu.AddItem("Reset Zoom");
         miZoomReset.SetShortcut("Ctrl+0");
+        miUiZoomIn = viewMenu.AddItem("UI Zoom In");
+        miUiZoomIn.SetShortcut("Ctrl+Shift+=");
+        miUiZoomOut = viewMenu.AddItem("UI Zoom Out");
+        miUiZoomOut.SetShortcut("Ctrl+Shift+-");
+        miUiZoomReset = viewMenu.AddItem("Reset UI Zoom");
+        miUiZoomReset.SetShortcut("Ctrl+Shift+0");
         viewMenu.AddSeparator();
         miToggleTheme = viewMenu.AddItem("Toggle Theme");
         miToggleTheme.SetShortcut("Ctrl+Shift+T");
@@ -390,7 +399,7 @@ class AppShell {
         miStop = buildMenu.AddItem("Stop");
         miStop.SetShortcut("Shift+F5");
         buildMenu.AddSeparator();
-        miDebugStart = buildMenu.AddItem("Start Debugging");
+        miDebugStart = buildMenu.AddItem("Start Debug Preview");
         miDebugStart.SetShortcut("F6");
         miDebugContinue = buildMenu.AddItem("Continue Debugging");
         miDebugContinue.SetShortcut("F7");
@@ -424,7 +433,7 @@ class AppShell {
         tbBuild   = toolbar.AddButtonWithText("", "▣",  "Build (Ctrl+Shift+B)");
         tbRun     = toolbar.AddButtonWithText("", "▶",  "Build & Run (F5)");
         tbStop    = toolbar.AddButtonWithText("", "■",  "Stop Running Job (Shift+F5)");
-        tbDebug   = toolbar.AddButtonWithText("", "◇",  "Start Debugging (F6)");
+        tbDebug   = toolbar.AddButtonWithText("", "◇",  "Start Debug Preview (F6) — steps source, does not execute yet");
         tbDebugContinue = toolbar.AddButtonWithText("", "▷", "Continue Debugging (F7)");
         tbDebugStep = toolbar.AddButtonWithText("", "→", "Step Over (F10)");
         toolbar.AddSeparator();

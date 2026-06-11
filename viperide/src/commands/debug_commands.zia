@@ -95,6 +95,11 @@ func handleDebugStart(shell: app_shell.AppShell,
 
     if session.Launch(doc.filePath, doc.content, store) {
         Publish(shell, docMgr, engine, tabs, session);
+        // The current adapter steps through source lines and honours breakpoints
+        // but does not execute the program, so values and output are not real yet.
+        // Say so plainly instead of letting it look like a broken debugger.
+        shell.SetStatusLeft("Debug preview: steps source lines and stops at breakpoints; does not run the program yet");
+        GUI.Toast.Info("Debug preview started (source stepping only)");
     } else {
         shell.SetStatusLeft("Debug session did not start");
         GUI.Toast.Warning("Debug session did not start");

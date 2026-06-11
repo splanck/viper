@@ -22,9 +22,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "ArWriter.hpp"
+#include "PkgUtils.hpp"
 
 #include <cstring>
-#include <fstream>
 #include <limits>
 #include <stdexcept>
 
@@ -161,16 +161,11 @@ std::vector<uint8_t> ArWriter::finish() const {
 }
 
 /// @brief Finalize the archive and write it atomically to `path`.
-/// Calls finish() to build the byte stream, then opens the file in binary mode
-/// and writes the entire buffer; throws on open or write failure.
+/// Calls finish() to build the byte stream, then delegates to the shared
+/// same-directory temporary-file writer.
 void ArWriter::finishToFile(const std::string &path) const {
     auto data = finish();
-    std::ofstream f(path, std::ios::binary);
-    if (!f)
-        throw std::runtime_error("cannot write ar archive: " + path);
-    f.write(reinterpret_cast<const char *>(data.data()), static_cast<std::streamsize>(data.size()));
-    if (!f)
-        throw std::runtime_error("failed to write ar archive: " + path);
+    writeFileAtomic(path, data);
 }
 
 } // namespace viper::pkg

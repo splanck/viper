@@ -7,6 +7,10 @@ bind Viper.Core.Convert as Convert;
 bind Viper.Collections.Seq as Seq;
 bind Viper.Core.Object as Obj;
 bind Viper.System.Process as Process;
+bind Viper.System.Environment as Env;
+bind Viper.System.Machine as Machine;
+bind Viper.IO.Path as Path;
+bind Viper.IO as IO;
 
 // ============================================================================
 // BuildSystem — compile and run Zia/BASIC programs from the IDE
@@ -76,6 +80,19 @@ class BuildSystem {
         lastBuildTime = "";
         startMs = Viper.Time.GetTickCount();
 
+        // The Process runtime spawns via execve(), which neither searches PATH nor
+        // resolves a bare name against anything except the child's working directory
+        // (the edited file's folder). Resolve an absolute path up front so a build
+        // actually starts, and report a precise error instead of a silent exit 127.
+        var resolved = ResolveCompiler(cfg.program);
+        if resolved == "" {
+            buildOutput = CompilerNotFoundMessage(cfg.program);
+            Finish(-1);
+            return false;
+        }
+        cfg.program = resolved;
+        compilerPath = resolved;
+
         if cfg.action == run_config.ACTION_BUILD {
             isBuilding = true;
             isRunning = false;
@@ -91,6 +108,111 @@ class BuildSystem {
             return false;
         }
         return true;
+    }
+
+    // ----------------------------------------------------------------------
+    // Compiler resolution
+    // ----------------------------------------------------------------------
+
+    /// @brief Resolve a runnable absolute path for the requested program.
+    /// @details For the default "viper" compiler, searches an explicit override,
+    ///          the IDE's own folder (installed layout), the developer build tree,
+    ///          and finally PATH. Returns "" when nothing is found. Custom
+    ///          project-supplied programs are resolved on their own merits and are
+    ///          never silently replaced by viper.
+    expose func ResolveCompiler(preferred: String) -> String {
+        var name = preferred;
+        if name == "" { name = "viper"; }
+
+        if name != "viper" {
+            return ResolveBinary(name);
+        }
+
+        var exe = ExeName();
+
+        // 1. Explicit override wins. Absolutise it: execve resolves a relative
+        //    path against the child's working directory (the edited file's folder),
+        //    not the IDE's, so a relative override would point at the wrong place.
+        var envBin = EnvValue("VIPER_BINARY");
+        if envBin != "" and IO.File.Exists(envBin) {
+            return Path.Abs(envBin);
+        }
+
+        // 2. Installed layout: viper ships next to the IDE binary.
+        var exeDir = Path.ExeDir();
+        if exeDir != "" {
+            var colocated = Path.Join(exeDir, exe);
+            if IO.File.Exists(colocated) {
+                return colocated;
+            }
+            // 3. Developer build tree (viperide/bin -> build/src/tools/viper).
+            var devA = Path.Norm(Path.Join(exeDir, Path.Join("../../build/src/tools/viper", exe)));
+            if IO.File.Exists(devA) {
+                return devA;
+            }
+            var devB = Path.Norm(Path.Join(exeDir, Path.Join("../build/src/tools/viper", exe)));
+            if IO.File.Exists(devB) {
+                return devB;
+            }
+        }
+
+        // 4. Explicit build directory (honours the build scripts' VIPER_BUILD_DIR).
+        var buildDir = EnvValue("VIPER_BUILD_DIR");
+        if buildDir != "" {
+            var fromBuild = Path.Norm(Path.Join(buildDir, Path.Join("src/tools/viper", exe)));
+            if IO.File.Exists(fromBuild) {
+                return fromBuild;
+            }
+        }
+
+        // 5. Manual PATH scan (execve won't do it for us).
+        return ResolveBinary(exe);
+    }
+
+    /// @brief Resolve a single binary name to an absolute path: an absolute path is
+    ///        used as-is when it exists; a bare name is searched on PATH.
+    func ResolveBinary(name: String) -> String {
+        if name == "" { return ""; }
+        if Path.IsAbs(name) {
+            if IO.File.Exists(name) { return name; }
+            return "";
+        }
+        var pathVar = EnvValue("PATH");
+        if pathVar == "" { return ""; }
+        var entries = Str.Split(pathVar, ListSep());
+        var i = 0;
+        while i < Seq.get_Length(entries) {
+            var entry = Obj.ToString(Seq.Get(entries, i));
+            if entry != "" {
+                var cand = Path.Join(entry, name);
+                if IO.File.Exists(cand) { return Path.Abs(cand); }
+            }
+            i = i + 1;
+        }
+        return "";
+    }
+
+    func EnvValue(key: String) -> String {
+        if Env.HasVariable(key) == false { return ""; }
+        return Env.GetVariable(key);
+    }
+
+    func ExeName() -> String {
+        if Machine.OS == "windows" { return "viper.exe"; }
+        return "viper";
+    }
+
+    func ListSep() -> String {
+        if Machine.OS == "windows" { return ";"; }
+        return ":";
+    }
+
+    func CompilerNotFoundMessage(requested: String) -> String {
+        var name = requested;
+        if name == "" { name = "viper"; }
+        return "Could not find the '" + name + "' compiler.\n"
+            + "Searched VIPER_BINARY, the IDE folder, the build tree, and PATH.\n"
+            + "Fix: add viper to your PATH, or set VIPER_BINARY=/full/path/to/viper.";
     }
 
     expose func Update() -> Boolean {

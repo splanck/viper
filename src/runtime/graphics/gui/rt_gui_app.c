@@ -471,6 +471,14 @@ void rt_gui_refresh_theme(rt_gui_app_t *app) {
     float scale = app->window ? vgfx_window_get_scale(app->window) : 1.0f;
     if (!isfinite(scale) || scale <= 0.0f)
         scale = 1.0f;
+    // Fold the user's UI zoom into the HiDPI scale so one multiply in
+    // rt_gui_scale_theme grows the whole UI (typography, spacing, control
+    // metrics) together. The cache key below embeds it, so changing the zoom
+    // rebuilds the theme on the next frame.
+    float zoom = app->user_scale;
+    if (!isfinite(zoom) || zoom <= 0.0f)
+        zoom = 1.0f;
+    scale *= zoom;
 
     if (app->theme && app->theme_base == base && app->theme_scale == scale) {
         if (s_active_app == app)
@@ -860,6 +868,7 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
     }
 
     app->theme_kind = RT_GUI_THEME_DARK;
+    app->user_scale = 1.0f;
     app->root->user_data = app;
     app->shortcuts_global_enabled = 1;
     app->manual_tooltip_delay_ms = 500;

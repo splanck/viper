@@ -77,6 +77,81 @@ bool hasRange(size_t offset, size_t length, size_t size) {
     return offset <= size && length <= size - offset;
 }
 
+/// @brief Decode the XML entity references that can appear in XAR text nodes.
+/// @details XAR stores paths inside XML. Sanitizing the raw `<name>` text would
+///          miss traversal names encoded as entities (for example `..&#x2f;`).
+///          This decoder handles the five named XML entities and decimal/hex
+///          numeric references for ASCII code points.
+/// @param text Raw XML text-node content.
+/// @param out Receives decoded text when the function succeeds.
+/// @param err Receives a short parse error when the function fails.
+/// @return true when every entity was recognized and decoded.
+bool xmlUnescapeText(std::string_view text, std::string &out, std::string &err) {
+    out.clear();
+    out.reserve(text.size());
+    for (size_t i = 0; i < text.size(); ++i) {
+        const char c = text[i];
+        if (c != '&') {
+            out.push_back(c);
+            continue;
+        }
+        const size_t semi = text.find(';', i + 1);
+        if (semi == std::string_view::npos) {
+            err = "unterminated XML entity";
+            return false;
+        }
+        const std::string_view entity = text.substr(i + 1, semi - (i + 1));
+        if (entity == "amp")
+            out.push_back('&');
+        else if (entity == "lt")
+            out.push_back('<');
+        else if (entity == "gt")
+            out.push_back('>');
+        else if (entity == "quot")
+            out.push_back('"');
+        else if (entity == "apos")
+            out.push_back('\'');
+        else if (!entity.empty() && entity[0] == '#') {
+            const bool hex = entity.size() >= 2 && (entity[1] == 'x' || entity[1] == 'X');
+            const size_t begin = hex ? 2 : 1;
+            if (begin >= entity.size()) {
+                err = "empty numeric XML entity";
+                return false;
+            }
+            uint32_t value = 0;
+            for (size_t j = begin; j < entity.size(); ++j) {
+                const unsigned char ch = static_cast<unsigned char>(entity[j]);
+                uint32_t digit = 0;
+                if (hex && std::isxdigit(ch)) {
+                    digit = std::isdigit(ch) ? static_cast<uint32_t>(ch - '0')
+                                             : static_cast<uint32_t>(std::tolower(ch) - 'a' + 10);
+                } else if (!hex && std::isdigit(ch)) {
+                    digit = static_cast<uint32_t>(ch - '0');
+                } else {
+                    err = "invalid numeric XML entity";
+                    return false;
+                }
+                const uint32_t base = hex ? 16u : 10u;
+                if (value > (0x7fu - digit) / base) {
+                    err = "non-ASCII XML entity in path";
+                    return false;
+                }
+                value = value * base + digit;
+            }
+            if (value == 0) {
+                err = "NUL XML entity in path";
+                return false;
+            }
+            out.push_back(static_cast<char>(value));
+        } else {
+            err = "unknown XML entity";
+            return false;
+        }
+        i = semi;
+    }
+    return true;
+}
+
 /// @brief Rotate a 32-bit value right by @p bits (SHA-256 round operation).
 uint32_t rotr32(uint32_t value, unsigned bits) {
     return (value >> bits) | (value << (32u - bits));
@@ -238,6 +313,72 @@ std::string tarFieldString(const uint8_t *field, size_t width) {
     return std::string(reinterpret_cast<const char *>(field), len);
 }
 
+/// @brief Parse POSIX PAX extended header records from a tar entry payload.
+/// @details Supports the per-file keys needed by this packaging library:
+///          `path` for long entry paths and `linkpath` for long symlink targets.
+///          Unknown keys are ignored, but malformed record lengths fail the
+///          archive verification.
+/// @param payload Pointer to the first byte of the PAX payload.
+/// @param size PAX payload length from the tar header.
+/// @param err Stream for diagnostics.
+/// @param out Map receiving supported PAX key/value records.
+/// @return true when all PAX records are well formed.
+bool parsePaxRecords(const uint8_t *payload,
+                     uint64_t size,
+                     std::ostream &err,
+                     std::map<std::string, std::string> &out) {
+    if (size > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
+        err << "TAR: PAX payload too large\n";
+        return false;
+    }
+    const size_t payloadSize = static_cast<size_t>(size);
+    size_t pos = 0;
+    while (pos < payloadSize) {
+        size_t len = 0;
+        bool sawDigit = false;
+        const size_t recordStart = pos;
+        while (pos < payloadSize && payload[pos] != ' ') {
+            const unsigned char ch = payload[pos++];
+            if (!std::isdigit(ch)) {
+                err << "TAR: invalid PAX record length\n";
+                return false;
+            }
+            sawDigit = true;
+            if (len > (std::numeric_limits<size_t>::max() - static_cast<size_t>(ch - '0')) / 10u) {
+                err << "TAR: PAX record length overflow\n";
+                return false;
+            }
+            len = len * 10u + static_cast<size_t>(ch - '0');
+        }
+        if (!sawDigit || pos >= payloadSize || payload[pos] != ' ') {
+            err << "TAR: malformed PAX record prefix\n";
+            return false;
+        }
+        if (len == 0 || len > payloadSize - recordStart) {
+            err << "TAR: PAX record extends past payload\n";
+            return false;
+        }
+        const size_t recordEnd = recordStart + len;
+        if (payload[recordEnd - 1] != '\n') {
+            err << "TAR: PAX record is missing newline terminator\n";
+            return false;
+        }
+        ++pos;
+        const size_t bodyLen = recordEnd - pos - 1u;
+        const std::string body(reinterpret_cast<const char *>(payload + pos), bodyLen);
+        const size_t eq = body.find('=');
+        if (eq == std::string::npos || eq == 0) {
+            err << "TAR: malformed PAX key/value record\n";
+            return false;
+        }
+        const std::string key = body.substr(0, eq);
+        if (key == "path" || key == "linkpath")
+            out[key] = body.substr(eq + 1);
+        pos = recordEnd;
+    }
+    return true;
+}
+
 /// @brief Compute the POSIX USTAR header checksum: sum all 512 bytes treating the
 /// checksum field at bytes 148-155 as if they were spaces (0x20).
 /// The stored octal value must equal this sum for the header to be valid.
@@ -263,6 +404,7 @@ bool verifyTarBytes(const std::vector<uint8_t> &data,
     size_t pos = 0;
     bool sawEnd = false;
     std::set<std::string> seenNames;
+    std::map<std::string, std::string> pendingPax;
     while (pos + 512 <= data.size()) {
         const uint8_t *hdr = data.data() + pos;
         if (isAllZeroBlock(hdr)) {
@@ -301,18 +443,39 @@ bool verifyTarBytes(const std::vector<uint8_t> &data,
             return false;
         }
 
+        const char type = hdr[156] == '\0' ? '0' : static_cast<char>(hdr[156]);
+        if (type != '0' && type != '5' && type != '2' && type != 'x') {
+            err << "TAR: unsupported entry type '" << type << "' at offset " << pos << "\n";
+            return false;
+        }
+
+        if (fileSize > std::numeric_limits<uint64_t>::max() - 511u) {
+            err << "TAR: entry size overflows block padding at offset " << pos << "\n";
+            return false;
+        }
+        const size_t paddedSize =
+            static_cast<size_t>((fileSize + 511u) & ~static_cast<uint64_t>(511u));
+        if (fileSize > static_cast<uint64_t>(data.size() - pos - 512) ||
+            paddedSize > data.size() - pos - 512) {
+            err << "TAR: entry data extends past end of archive\n";
+            return false;
+        }
+
         std::string name = tarFieldString(hdr, 100);
         const std::string prefix = tarFieldString(hdr + 345, 155);
         if (!prefix.empty())
             name = prefix + "/" + name;
+        const auto paxPathIt = pendingPax.find("path");
+        if (type != 'x' && paxPathIt != pendingPax.end())
+            name = paxPathIt->second;
         if (name.rfind("./", 0) == 0)
             name = name.substr(2);
         if (!name.empty()) {
             try {
-                const bool isDir = hdr[156] == '5';
+                const bool isDir = type == '5';
                 const std::string clean =
                     sanitizePackageRelativePath(name, isDir ? "tar directory path" : "tar path");
-                if (clean.empty() && !isDir) {
+                if (clean.empty() && !isDir && type != 'x') {
                     err << "TAR: empty file path at offset " << pos << "\n";
                     return false;
                 }
@@ -320,11 +483,11 @@ bool verifyTarBytes(const std::vector<uint8_t> &data,
                     err << "TAR: AppleDouble sidecar path is not allowed: '" << clean << "'\n";
                     return false;
                 }
-                if (!clean.empty() && !seenNames.insert(clean).second) {
+                if (type != 'x' && !clean.empty() && !seenNames.insert(clean).second) {
                     err << "TAR: duplicate entry '" << clean << "' at offset " << pos << "\n";
                     return false;
                 }
-                if (outNames)
+                if (type != 'x' && outNames)
                     outNames->insert(clean);
             } catch (const std::exception &ex) {
                 err << "TAR: unsafe path '" << name << "': " << ex.what() << "\n";
@@ -332,17 +495,15 @@ bool verifyTarBytes(const std::vector<uint8_t> &data,
             }
         }
 
-        const char type = hdr[156] == '\0' ? '0' : static_cast<char>(hdr[156]);
         if (name.empty() && type != '5') {
             err << "TAR: empty entry path at offset " << pos << "\n";
             return false;
         }
-        if (type != '0' && type != '5' && type != '2') {
-            err << "TAR: unsupported entry type '" << type << "' at offset " << pos << "\n";
-            return false;
-        }
         if (type == '2') {
             std::string target = tarFieldString(hdr + 157, 100);
+            const auto paxLinkIt = pendingPax.find("linkpath");
+            if (paxLinkIt != pendingPax.end())
+                target = paxLinkIt->second;
             if (target.empty()) {
                 err << "TAR: empty symlink target at offset " << pos << "\n";
                 return false;
@@ -373,17 +534,16 @@ bool verifyTarBytes(const std::vector<uint8_t> &data,
                 return false;
             }
         }
-        if (type != '0' && fileSize != 0) {
+        if (type != '0' && type != 'x' && fileSize != 0) {
             err << "TAR: non-file entry carries data at offset " << pos << "\n";
             return false;
         }
-
-        const size_t paddedSize =
-            static_cast<size_t>((fileSize + 511u) & ~static_cast<uint64_t>(511u));
-        if (fileSize > static_cast<uint64_t>(data.size() - pos - 512) ||
-            paddedSize > data.size() - pos - 512) {
-            err << "TAR: entry data extends past end of archive\n";
-            return false;
+        if (type == 'x') {
+            pendingPax.clear();
+            if (!parsePaxRecords(data.data() + pos + 512, fileSize, err, pendingPax))
+                return false;
+        } else if (!pendingPax.empty()) {
+            pendingPax.clear();
         }
         pos += 512 + paddedSize;
     }
@@ -955,9 +1115,19 @@ bool extractXarFileElements(const std::string &tocText,
             return false;
         }
         const std::string block = tocText.substr(filePos, fileEnd - filePos);
-        const std::string leaf = extractXmlTagText(block, "<name>", "</name>");
-        if (leaf.empty()) {
+        const std::string encodedLeaf = extractXmlTagText(block, "<name>", "</name>");
+        if (encodedLeaf.empty()) {
             err << "XAR: file element is missing a name\n";
+            return false;
+        }
+        std::string leaf;
+        std::string xmlErr;
+        if (!xmlUnescapeText(encodedLeaf, leaf, xmlErr)) {
+            err << "XAR: invalid XML path name: " << xmlErr << "\n";
+            return false;
+        }
+        if (leaf.empty()) {
+            err << "XAR: file element has an empty decoded name\n";
             return false;
         }
         std::string name = prefix.empty() ? leaf : prefix + "/" + leaf;
@@ -1219,9 +1389,31 @@ bool parsePeOverlayRange(const std::vector<uint8_t> &data,
     overlayOff = maxRawEnd;
     overlayEnd = data.size();
 
-    if (optHdrSize >= 152 && rdLE16(data.data() + optOff) == 0x020B) {
-        const size_t certDirOff = optOff + 112 + 4u * 8u;
-        if (hasRange(certDirOff, 8, data.size())) {
+    constexpr size_t kPe32PlusDataDirectoryOffset = 112;
+    constexpr size_t kPeSecurityDirectoryIndex = 4;
+    const uint16_t optMagic = rdLE16(data.data() + optOff);
+    if (optMagic != 0x020B) {
+        err << "PE: expected PE32+ magic before overlay, got 0x" << std::hex << optMagic
+            << std::dec << "\n";
+        return false;
+    }
+    if (optHdrSize < kPe32PlusDataDirectoryOffset) {
+        err << "PE: PE32+ optional header is too small for data directories\n";
+        return false;
+    }
+    if (optHdrSize >= kPe32PlusDataDirectoryOffset + 4) {
+        const uint32_t numberOfRvaAndSizes = rdLE32(data.data() + optOff + 108);
+        const uint64_t declaredDataDirBytes =
+            static_cast<uint64_t>(numberOfRvaAndSizes) * 8u;
+        if (numberOfRvaAndSizes > 16 ||
+            declaredDataDirBytes >
+                static_cast<uint64_t>(optHdrSize - kPe32PlusDataDirectoryOffset)) {
+            err << "PE: invalid data directory count in optional header\n";
+            return false;
+        }
+        if (numberOfRvaAndSizes > kPeSecurityDirectoryIndex) {
+            const size_t certDirOff =
+                optOff + kPe32PlusDataDirectoryOffset + kPeSecurityDirectoryIndex * 8u;
             const uint32_t certFileOff = rdLE32(data.data() + certDirOff);
             const uint32_t certSize = rdLE32(data.data() + certDirOff + 4);
             if (certFileOff != 0 || certSize != 0) {
@@ -1295,6 +1487,10 @@ bool verifyZipStructure(const std::vector<uint8_t> &data, std::ostream &err) {
             }
             if (clean.empty()) {
                 err << "ZIP: empty entry path\n";
+                return false;
+            }
+            if (hasAppleDoubleComponent(clean)) {
+                err << "ZIP: AppleDouble sidecar path is not allowed: '" << clean << "'\n";
                 return false;
             }
             if (!seen.insert(clean).second) {
@@ -1706,12 +1902,23 @@ bool verifyPE(const std::vector<uint8_t> &data, std::ostream &err) {
         err << "PE: optional header truncated\n";
         return false;
     }
+    if (optHdrSize < 112) {
+        err << "PE: PE32+ optional header is too small\n";
+        return false;
+    }
 
     // PE32+ magic = 0x020B
     uint16_t optMagic = rdLE16(data.data() + optOff);
     if (optMagic != 0x020B) {
         err << "PE: expected PE32+ magic 0x020B, got 0x" << std::hex << optMagic << std::dec
             << "\n";
+        return false;
+    }
+    const uint32_t numberOfRvaAndSizes = rdLE32(data.data() + optOff + 108);
+    if (numberOfRvaAndSizes > 16 ||
+        static_cast<uint64_t>(numberOfRvaAndSizes) * 8u >
+            static_cast<uint64_t>(optHdrSize - 112)) {
+        err << "PE: invalid data directory count in optional header\n";
         return false;
     }
 

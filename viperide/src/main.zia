@@ -755,6 +755,9 @@ func main() {
         if triggered("zoomin", shell.miZoomIn, null, cpSelected)               { view_commands.handleZoomIn(shell, engine, appSettings); }
         if triggered("zoomout", shell.miZoomOut, null, cpSelected)             { view_commands.handleZoomOut(shell, engine, appSettings); }
         if triggered("zoomreset", shell.miZoomReset, null, cpSelected)         { view_commands.handleZoomReset(shell, engine, appSettings); }
+        if triggered("uizoomin", shell.miUiZoomIn, null, cpSelected)           { view_commands.handleUiZoomIn(shell, appSettings); }
+        if triggered("uizoomout", shell.miUiZoomOut, null, cpSelected)         { view_commands.handleUiZoomOut(shell, appSettings); }
+        if triggered("uizoomreset", shell.miUiZoomReset, null, cpSelected)     { view_commands.handleUiZoomReset(shell, appSettings); }
         if triggered("toggletheme", shell.miToggleTheme, null, cpSelected)     { view_commands.handleToggleTheme(appSettings); }
         if triggered("fullscreen", shell.miFullscreen, null, cpSelected)       { view_commands.handleFullscreen(shell); }
         if triggered("minimap", shell.miToggleMinimap, null, cpSelected)       { minimapVisible = view_commands.handleToggleMinimap(shell, appSettings); }
@@ -911,6 +914,7 @@ func main() {
                     minimapVisible = appSettings.minimapVisible;
                     shell.SetStatusLeft("Settings applied");
                     GUI.Toast.Success("Settings updated");
+                    overlays.CloseSettings();
                 }
             } else {
                 appSettings.fontPath = "";
@@ -941,6 +945,7 @@ func main() {
                 minimapVisible = appSettings.minimapVisible;
                 shell.SetStatusLeft("Settings applied");
                 GUI.Toast.Success("Settings updated");
+                overlays.CloseSettings();
             }
         }
         if overlayAction == ide_overlays.ACTION_CLOSE_SETTINGS {

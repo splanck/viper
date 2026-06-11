@@ -78,6 +78,9 @@ class CommandRegistry {
         Add("zoomin", "Zoom In", "Increase editor font size", "Ctrl+=", "", true);
         Add("zoomout", "Zoom Out", "Decrease editor font size", "Ctrl+-", "", true);
         Add("zoomreset", "Reset Zoom", "Reset editor font size to default", "Ctrl+0", "", true);
+        Add("uizoomin", "UI Zoom In", "Enlarge the whole interface", "Ctrl+Shift+=", "", true);
+        Add("uizoomout", "UI Zoom Out", "Shrink the whole interface", "Ctrl+Shift+-", "", true);
+        Add("uizoomreset", "Reset UI Zoom", "Reset the interface scale to 100%", "Ctrl+Shift+0", "", true);
         Add("toggletheme", "Toggle Theme", "Switch between dark and light theme", "Ctrl+Shift+T", "", true);
         Add("fullscreen", "Toggle Fullscreen", "Enter or exit fullscreen mode", "F11", "", true);
         Add("minimap", "Toggle Minimap", "Show or hide the minimap panel", "Ctrl+Shift+M", "", true);

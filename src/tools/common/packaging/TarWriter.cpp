@@ -204,11 +204,40 @@ void writeOctal(uint8_t *field, size_t width, uint64_t value) {
 
 /// @brief Write a NUL-terminated string into a fixed-width field.
 void writeString(uint8_t *field, size_t width, const std::string &s) {
-    if (s.size() >= width)
+    if (s.size() > width)
         throw std::runtime_error("tar string field too long: " + s);
     size_t len = s.size();
     std::memcpy(field, s.data(), len);
-    field[len] = '\0';
+}
+
+/// @brief Build one POSIX PAX key/value record with a stable length prefix.
+/// @details PAX records encode their own decimal byte length, including the
+///          length digits, the following space, the key/value payload, and the
+///          trailing newline. The length can grow when more digits are needed,
+///          so this helper iterates until the prefix length is stable.
+/// @param key PAX key, such as `linkpath`.
+/// @param value PAX value to emit verbatim.
+/// @return One complete `LEN key=value\n` record.
+std::string buildPaxRecord(const std::string &key, const std::string &value) {
+    std::string payload = key + "=" + value + "\n";
+    size_t len = payload.size() + 2u;
+    while (true) {
+        const std::string prefix = std::to_string(len);
+        const size_t actualLen = prefix.size() + 1u + payload.size();
+        if (actualLen == len)
+            return prefix + " " + payload;
+        len = actualLen;
+    }
+}
+
+/// @brief Return the short synthetic USTAR path used for an extended PAX header.
+/// @details PAX headers are metadata records and should not collide with payload
+///          entries. The generated name is kept below the 100-byte USTAR name
+///          limit so it never requires another extension header.
+/// @param index Monotonic index of the generated PAX header in the archive.
+/// @return Archive path for the PAX header.
+std::string paxHeaderPath(size_t index) {
+    return "PaxHeaders.X/viper-" + std::to_string(index);
 }
 
 /// @brief Compute the USTAR checksum for a 512-byte header.
@@ -279,7 +308,8 @@ std::vector<uint8_t> TarWriter::finish() const {
     }
     out.reserve(est);
 
-    for (const auto &e : entries_) {
+    size_t paxIndex = 0;
+    auto appendEntry = [&](const Entry &e) {
         // Build 512-byte USTAR header
         uint8_t hdr[512];
         std::memset(hdr, 0, 512);
@@ -299,7 +329,7 @@ std::vector<uint8_t> TarWriter::finish() const {
         writeOctal(hdr + 116, 8, 0);
 
         // size[12]
-        writeOctal(hdr + 124, 12, (e.typeflag == '0') ? e.data.size() : 0);
+        writeOctal(hdr + 124, 12, (e.typeflag == '0' || e.typeflag == 'x') ? e.data.size() : 0);
 
         // mtime[12]
         writeOctal(hdr + 136, 12, e.mtime);
@@ -312,9 +342,8 @@ std::vector<uint8_t> TarWriter::finish() const {
 
         // linkname[100]
         if (e.typeflag == '2') {
-            if (e.linkTarget.size() > 100)
-                throw std::runtime_error("tar symlink target too long: " + e.linkTarget);
-            writeString(hdr + 157, 100, e.linkTarget);
+            if (e.linkTarget.size() <= 100)
+                writeString(hdr + 157, 100, e.linkTarget);
         }
 
         // magic[6] = "ustar\0"
@@ -350,7 +379,7 @@ std::vector<uint8_t> TarWriter::finish() const {
         out.insert(out.end(), hdr, hdr + 512);
 
         // Write data blocks (padded to 512-byte boundary)
-        if (e.typeflag == '0' && !e.data.empty()) {
+        if ((e.typeflag == '0' || e.typeflag == 'x') && !e.data.empty()) {
             out.insert(out.end(), e.data.begin(), e.data.end());
             // Pad to 512-byte boundary
             size_t remainder = e.data.size() % 512;
@@ -359,6 +388,20 @@ std::vector<uint8_t> TarWriter::finish() const {
                 out.resize(out.size() + padBytes, 0);
             }
         }
+    };
+
+    for (const auto &e : entries_) {
+        if (e.typeflag == '2' && e.linkTarget.size() > 100) {
+            Entry pax;
+            pax.path = paxHeaderPath(paxIndex++);
+            const std::string record = buildPaxRecord("linkpath", e.linkTarget);
+            pax.data.assign(record.begin(), record.end());
+            pax.mode = 0644;
+            pax.mtime = e.mtime;
+            pax.typeflag = 'x';
+            appendEntry(pax);
+        }
+        appendEntry(e);
     }
 
     // Two zero-filled 512-byte end-of-archive blocks

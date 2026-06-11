@@ -54,6 +54,16 @@ func clampFontSize(size: Integer) -> Integer {
     return size;
 }
 
+/// @brief Base chrome font size (15pt) scaled by the current whole-UI zoom so the
+///        menus, toolbar, and panels grow together with View > UI Zoom. The theme
+///        typography and control metrics are scaled by the same factor in the GUI
+///        runtime, so the chrome stays proportional.
+func chromeFontSize(shell: app_shell.AppShell) -> Number {
+    var zoom = shell.app.GetUiScale();
+    if zoom <= 0.0 { zoom = 1.0; }
+    return 15.0 * zoom;
+}
+
 /// @brief Set the shell's chrome font from the OS-conventional UI font.
 /// @details Tries SFNS / HelveticaNeue / Helvetica on macOS, Segoe UI /
 ///          Arial on Windows, DejaVu Sans on Linux. Falls back to
@@ -78,12 +88,13 @@ func applyShellFont(shell: app_shell.AppShell) {
         if font == null { font = GUI.Font.Load("/usr/share/fonts/TTF/DejaVuSans.ttf"); }
     }
 
+    var chromeSize = chromeFontSize(shell);
     if font != null {
-        shell.app.SetFont(font, 15);
+        shell.app.SetFont(font, chromeSize);
         return;
     }
 
-    shell.app.SetFontSize(15);
+    shell.app.SetFontSize(chromeSize);
 }
 
 /// @brief Set the editor's monospace font from settings + OS fallback.
@@ -182,6 +193,8 @@ func applyPersistentSettings(shell: app_shell.AppShell,
     } else {
         shell.minimap.SetVisible(0);
     }
+
+    applyUiZoom(shell, appSettings);
 }
 
 /// @brief Toggle the file-tree sidebar visibility.
@@ -226,6 +239,51 @@ func handleZoomReset(shell: app_shell.AppShell,
     applyEditorFont(shell, engine, appSettings);
     appSettings.Save();
     shell.SetStatusLeft("Font size reset to " + settings.DEFAULT_FONT_SIZE);
+}
+
+/// @brief Clamp the whole-UI zoom percentage to the legible range [50, 300].
+func clampUiZoom(percent: Integer) -> Integer {
+    if percent < 50 { return 50; }
+    if percent > 300 { return 300; }
+    return percent;
+}
+
+/// @brief Apply the persisted whole-UI zoom to the GUI runtime and chrome font.
+/// @details SetUiScale folds the zoom into the HiDPI scale so typography, spacing,
+///          and control metrics all grow together; re-applying the shell font picks
+///          up the matching chrome size.
+func applyUiZoom(shell: app_shell.AppShell,
+                 appSettings: settings.SettingsManager) {
+    appSettings.uiZoomPercent = clampUiZoom(appSettings.uiZoomPercent);
+    shell.app.SetUiScale(appSettings.uiZoomPercent / 100.0);
+    applyShellFont(shell);
+}
+
+/// @brief Enlarge the whole interface by 10%; persist setting.
+func handleUiZoomIn(shell: app_shell.AppShell,
+                    appSettings: settings.SettingsManager) {
+    appSettings.uiZoomPercent = clampUiZoom(appSettings.uiZoomPercent + 10);
+    applyUiZoom(shell, appSettings);
+    appSettings.Save();
+    shell.SetStatusLeft("UI zoom: " + appSettings.uiZoomPercent + "%");
+}
+
+/// @brief Shrink the whole interface by 10%; persist setting.
+func handleUiZoomOut(shell: app_shell.AppShell,
+                     appSettings: settings.SettingsManager) {
+    appSettings.uiZoomPercent = clampUiZoom(appSettings.uiZoomPercent - 10);
+    applyUiZoom(shell, appSettings);
+    appSettings.Save();
+    shell.SetStatusLeft("UI zoom: " + appSettings.uiZoomPercent + "%");
+}
+
+/// @brief Reset the whole-UI zoom to 100%; persist setting.
+func handleUiZoomReset(shell: app_shell.AppShell,
+                       appSettings: settings.SettingsManager) {
+    appSettings.uiZoomPercent = 100;
+    applyUiZoom(shell, appSettings);
+    appSettings.Save();
+    shell.SetStatusLeft("UI zoom reset to 100%");
 }
 
 /// @brief Switch between dark and light themes; persist setting.

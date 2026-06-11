@@ -32,6 +32,7 @@ struct DesktopEntryParams {
     std::string name;       ///< Display name (e.g. "ViperIDE")
     std::string comment;    ///< Short description
     std::string execPath;   ///< Path to executable (e.g. "/usr/bin/viperide")
+    std::string execArguments; ///< Additional literal Exec= arguments after the executable token.
     std::string iconName;   ///< Icon name (e.g. "viperide")
     std::string categories; ///< freedesktop.org categories (e.g. "Development;TextEditor;")
     bool terminal{false};   ///< Whether to run in a terminal

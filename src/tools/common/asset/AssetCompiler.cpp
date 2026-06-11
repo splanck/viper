@@ -55,6 +55,10 @@ constexpr std::size_t kMaxAssetCacheEntries = 64;
 ///          after source validation has enforced the asset size cap, so reading the
 ///          file here does not introduce an unbounded allocation.
 static std::string contentHashForFile(const fs::path &path) {
+    std::error_code ec;
+    const auto size = fs::file_size(path, ec);
+    if (ec || size > kMaxAssetFileBytes)
+        return "?";
     std::ifstream in(path, std::ios::binary);
     if (!in)
         return "?";

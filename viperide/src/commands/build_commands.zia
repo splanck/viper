@@ -71,8 +71,9 @@ func handleBuild(shell: app_shell.AppShell,
                 shell.SetBuildOutput("Started: " + FormatCommand(cfg));
             } else {
                 shell.SetBuildJobActive(false, "");
-                shell.SetStatusLeft("Build already active or failed to start");
-                GUI.Toast.Warning("Build job did not start");
+                shell.SetStatusLeft("Build failed to start");
+                GUI.Toast.Error("Build did not start");
+                PopulateBuildOutput(shell, buildSys, locStore);
             }
         } else {
             shell.SetStatusLeft("Save file before building");
@@ -102,8 +103,9 @@ func handleBuildAndRun(shell: app_shell.AppShell,
                 shell.SetBuildOutput("Started: " + FormatCommand(cfg));
             } else {
                 shell.SetBuildJobActive(false, "");
-                shell.SetStatusLeft("Run already active or failed to start");
-                GUI.Toast.Warning("Run job did not start");
+                shell.SetStatusLeft("Run failed to start");
+                GUI.Toast.Error("Run did not start");
+                PopulateBuildOutput(shell, buildSys, locStore);
             }
         } else {
             shell.SetStatusLeft("Save file before running");

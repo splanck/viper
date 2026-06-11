@@ -68,10 +68,10 @@ uint32_t crc32Bytes(const uint8_t *data, size_t len) {
 std::vector<uint8_t> gzip(const uint8_t *data, size_t len, int level) {
     if (len > 0 && data == nullptr)
         throw std::runtime_error("gzip: null data pointer for non-empty input");
-    // Compress with raw DEFLATE
-    auto deflated = deflate(data, len, level);
     if (len > 0xFFFFFFFFull)
         throw std::runtime_error("gzip: input too large for gzip ISIZE field");
+    // Compress with raw DEFLATE
+    auto deflated = deflate(data, len, level);
     if (deflated.size() > kGzipMaxOutput - 18)
         throw std::runtime_error("gzip: compressed output is too large");
 

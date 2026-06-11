@@ -94,6 +94,56 @@ void validateWindowsRelativePath(const std::string &relativePath, const char *fi
     }
 }
 
+/// @brief Return a conservative environment-expanded probe for a Windows install root.
+/// @details The installer resolves known folders at runtime. These probes mirror
+///          the longest common expanded locations closely enough for preflight
+///          buffer checks, including Desktop and Start Menu entries that are not
+///          under the package install directory.
+/// @param layout Package layout determining per-user versus machine roots.
+/// @param root Root anchor to probe.
+/// @return Representative absolute path prefix for @p root.
+std::string windowsRootProbeFor(const WindowsPackageLayout &layout, WindowsInstallRoot root) {
+    const std::string installDir =
+        layout.installDirName.empty() ? layout.displayName : layout.installDirName;
+    switch (root) {
+        case WindowsInstallRoot::DesktopDir:
+            return layout.perUserInstall ? "%UserProfile%\\Desktop" : "%Public%\\Desktop";
+        case WindowsInstallRoot::StartMenuDir:
+            return layout.perUserInstall
+                       ? "%AppData%\\Microsoft\\Windows\\Start Menu\\Programs"
+                       : "%ProgramData%\\Microsoft\\Windows\\Start Menu\\Programs";
+        case WindowsInstallRoot::InstallDir:
+        default:
+            return (layout.perUserInstall ? "%LocalAppData%\\" : "%ProgramFiles%\\") + installDir;
+    }
+}
+
+/// @brief Add a path to a case-insensitive collision set for a Windows root.
+/// @details Windows destination paths are case-insensitive on normal NTFS
+///          installs. This catches `Readme.txt` vs `README.TXT` collisions
+///          before the overlay is built and one entry overwrites another.
+/// @param seen Root-qualified normalized path set.
+/// @param root Destination root anchor.
+/// @param relativePath Root-relative path to validate and insert.
+/// @param fieldName Diagnostic field name.
+void addWindowsCaseFoldedPath(std::set<std::string> &seen,
+                              WindowsInstallRoot root,
+                              const std::string &relativePath,
+                              const char *fieldName) {
+    const std::string clean = sanitizePackageRelativePath(relativePath, fieldName);
+    if (clean.empty())
+        return;
+    std::string folded = clean;
+    for (char &c : folded)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    const std::string key =
+        std::to_string(static_cast<unsigned long long>(root)) + ":" + folded;
+    if (!seen.insert(key).second)
+        throw std::runtime_error(std::string(fieldName) +
+                                 " collides with another path on case-insensitive Windows: " +
+                                 clean);
+}
+
 /// @brief Ensure that an absolute-expanded Windows path (e.g. %ProgramFiles%\App\bin\viper.exe)
 /// fits within the installer stub's fixed-size WCHAR path buffer (32768 code units).
 /// The check uses UTF-16 unit count so multi-byte UTF-8 characters are counted correctly.
@@ -112,15 +162,29 @@ void validateWindowsLayoutFitsStub(const WindowsPackageLayout &layout) {
         layout.installDirName.empty() ? layout.displayName : layout.installDirName;
     validateWindowsFileName(installDir, "Windows install directory");
     const std::string rootProbe =
-        (layout.perUserInstall ? "%LocalAppData%\\" : "%ProgramFiles%\\") + installDir;
+        windowsRootProbeFor(layout, WindowsInstallRoot::InstallDir);
     validateStubPathFits(rootProbe, "Windows install directory");
+    std::set<std::string> caseFoldedPaths;
     for (const auto &dir : layout.installDirectories) {
         validateWindowsRelativePath(dir.relativePath, "Windows install directory path");
-        validateStubPathFits(rootProbe + "\\" + dir.relativePath, "Windows install directory path");
+        validateStubPathFits(windowsRootProbeFor(layout, dir.root) + "\\" + dir.relativePath,
+                             "Windows install directory path");
+        addWindowsCaseFoldedPath(caseFoldedPaths, dir.root, dir.relativePath,
+                                 "Windows install directory path");
     }
     for (const auto &file : layout.installFiles) {
         validateWindowsRelativePath(file.relativePath, "Windows install file path");
-        validateStubPathFits(rootProbe + "\\" + file.relativePath, "Windows install file path");
+        validateStubPathFits(windowsRootProbeFor(layout, file.root) + "\\" + file.relativePath,
+                             "Windows install file path");
+        addWindowsCaseFoldedPath(caseFoldedPaths, file.root, file.relativePath,
+                                 "Windows install file path");
+    }
+    for (const auto &file : layout.installedFiles) {
+        validateWindowsRelativePath(file.relativePath, "Windows installed file path");
+        validateStubPathFits(windowsRootProbeFor(layout, file.root) + "\\" + file.relativePath,
+                             "Windows installed file path");
+        addWindowsCaseFoldedPath(caseFoldedPaths, file.root, file.relativePath,
+                                 "Windows installed file path");
     }
     if (layout.addToPath && !layout.pathRelativePath.empty()) {
         validateWindowsRelativePath(layout.pathRelativePath, "Windows PATH entry path");
@@ -137,8 +201,11 @@ void validateWindowsLayoutFitsStub(const WindowsPackageLayout &layout) {
         validateStubPathFits(rootProbe + "\\" + layout.displayIconRelativePath,
                              "Windows display icon path");
     }
-    for (const auto &file : layout.uninstallFiles)
+    for (const auto &file : layout.uninstallFiles) {
         validateWindowsRelativePath(file.relativePath, "Windows uninstall file path");
+        validateStubPathFits(windowsRootProbeFor(layout, file.root) + "\\" + file.relativePath,
+                             "Windows uninstall file path");
+    }
     for (const auto &assoc : layout.fileAssociations) {
         validateSingleLineField(assoc.openCommandArguments,
                                 "Windows file association command arguments");
@@ -374,7 +441,7 @@ std::vector<std::string> importedDllNamesFromPeImpl(const std::vector<uint8_t> &
     const uint16_t numSections = rd16(data, coffOff + 2);
     const uint16_t optSize = rd16(data, coffOff + 16);
     const size_t optOff = coffOff + 20;
-    if (!hasBytes(data, optOff, optSize) || rd16(data, optOff) != 0x020B || optSize < 120)
+    if (!hasBytes(data, optOff, optSize) || rd16(data, optOff) != 0x020B || optSize < 128)
         return {};
     const uint32_t importRva = rd32(data, optOff + 112 + 8);
     const uint32_t importSize = rd32(data, optOff + 112 + 12);
@@ -416,8 +483,9 @@ std::vector<std::string> importedDllNamesFromPeImpl(const std::vector<uint8_t> &
         if (!nameOff)
             return {};
         std::string dll = lowerAscii(readPeAsciiZ(data, *nameOff));
-        if (!dll.empty())
-            names.push_back(std::move(dll));
+        if (dll.empty())
+            return {};
+        names.push_back(std::move(dll));
     }
     if (!sawTerminator)
         return {};
@@ -476,11 +544,13 @@ bool isKnownWindowsRedistributableDll(const std::string &dll) {
     return dll.rfind("api-ms-win-", 0) == 0 || dll.rfind("ext-ms-win-", 0) == 0;
 }
 
-/// @brief Find @p filename in @p dir, trying an exact path first then a
-///        case-insensitive directory scan.
+/// @brief Find @p filename under @p dir, trying exact, adjacent, then bounded recursive search.
+/// @details Windows applications often stage plugin or delay-load DLLs in subdirectories.
+///          The recursive pass is capped so an accidental large project tree does not make
+///          packaging unbounded.
 /// @return The matching path, or std::nullopt when no file matches.
-std::optional<fs::path> findAdjacentFileCaseInsensitive(const fs::path &dir,
-                                                        const std::string &filename) {
+std::optional<fs::path> findLocalDllCaseInsensitive(const fs::path &dir,
+                                                    const std::string &filename) {
     const fs::path direct = dir / filename;
     std::error_code directEc;
     if (fs::is_regular_file(direct, directEc))
@@ -494,6 +564,21 @@ std::optional<fs::path> findAdjacentFileCaseInsensitive(const fs::path &dir,
             continue;
         if (lowerAscii(entry.path().filename().generic_string()) == filename)
             return entry.path();
+    }
+    constexpr size_t kMaxRecursiveDllSearchEntries = 4096;
+    size_t visited = 0;
+    ec.clear();
+    fs::recursive_directory_iterator it(
+        dir, fs::directory_options::skip_permission_denied, ec);
+    fs::recursive_directory_iterator end;
+    while (!ec && it != end && visited++ < kMaxRecursiveDllSearchEntries) {
+        const fs::path candidate = it->path();
+        std::error_code statusEc;
+        if (fs::is_regular_file(candidate, statusEc) &&
+            lowerAscii(candidate.filename().generic_string()) == filename) {
+            return candidate;
+        }
+        it.increment(ec);
     }
     return std::nullopt;
 }
@@ -515,7 +600,7 @@ std::vector<fs::path> discoverAdjacentDllDependencies(const fs::path &exePath) {
                 continue;
             if (isKnownWindowsRedistributableDll(dll))
                 continue;
-            const auto local = findAdjacentFileCaseInsensitive(dir, dll);
+            const auto local = findLocalDllCaseInsensitive(dir, dll);
             if (local) {
                 deps.push_back(*local);
                 queue.push_back(*local);
@@ -528,19 +613,39 @@ std::vector<fs::path> discoverAdjacentDllDependencies(const fs::path &exePath) {
     return deps;
 }
 
+/// @brief Convert a file association extension into a ProgID-safe component.
+/// @details Windows ProgIDs allow alphanumerics plus '.', '_', and '-' as
+///          separators/components. File extensions can contain characters such
+///          as '+', so this helper preserves the association while replacing
+///          unsupported ProgID component characters with '_'.
+/// @param assoc File association whose extension has already passed package validation.
+/// @return Non-empty identifier component without a leading dot.
+std::string windowsProgIdExtensionComponent(const FileAssoc &assoc) {
+    std::string ext = assoc.extension;
+    while (!ext.empty() && ext.front() == '.')
+        ext.erase(ext.begin());
+    if (ext.empty())
+        throw std::runtime_error("Windows file association extension must not be empty");
+    for (char &c : ext) {
+        const unsigned char uc = static_cast<unsigned char>(c);
+        if (!std::isalnum(uc) && c != '_' && c != '-')
+            c = '_';
+    }
+    return ext;
+}
+
 /// @brief Build the Windows ProgID string for a file association in app packages.
 /// Format: "<pkg.identifier>.<ext>" — e.g. "com.example.myapp.zia".
 /// ProgIDs are registered in HKEY_CLASSES_ROOT and link the extension to the app.
 std::string windowsProgIdFor(const PackageConfig &pkg,
                              const std::string &exec,
                              const FileAssoc &assoc) {
-    std::string ext = assoc.extension;
-    if (!ext.empty() && ext.front() == '.')
-        ext.erase(ext.begin());
     std::string base = pkg.identifier.empty() ? ("viper." + exec) : pkg.identifier;
     validateWindowsProgIdBase(base, "Windows file association ProgID base");
     validateFileAssociation(assoc.extension, assoc.description, assoc.mimeType);
-    return base + "." + ext;
+    const std::string progId = base + "." + windowsProgIdExtensionComponent(assoc);
+    validateWindowsProgIdBase(progId, "Windows file association ProgID");
+    return progId;
 }
 
 /// @brief Build a %ProgramFiles%\<installDir>[\<leaf>] path string for use in .lnk
@@ -637,9 +742,9 @@ uint32_t estimatedInstalledSizeKb(const WindowsPackageLayout &layout) {
     const auto &files = layout.installedFiles.empty() ? layout.installFiles : layout.installedFiles;
     for (const auto &file : files) {
         if (file.root == WindowsInstallRoot::InstallDir)
-            total += file.sizeBytes;
+            checkedAddU64(total, file.sizeBytes, "Windows installed size");
     }
-    const uint64_t kb = (total + 1023u) / 1024u;
+    const uint64_t kb = roundedKiB(total, "Windows installed size");
     return kb > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(kb);
 }
 
@@ -651,29 +756,71 @@ std::string windowsManifestForLayout(const WindowsPackageLayout &layout,
                                  : generateUacManifest(minOsWindows);
 }
 
-/// @brief Parse up to four leading numeric components of @p version into a
-///        VERSIONINFO {a,b,c,d} array (missing components default to 0).
+/// @brief Parse a Windows VERSIONINFO numeric core into a {a,b,c,d} array.
+/// @details Package versions may include a semver-style suffix such as
+///          `1.2.3-beta`; the PE VERSIONINFO numeric fields can only store the
+///          leading dotted numeric core. This parser accepts one to four numeric
+///          components followed either by end-of-string or by `-`/`+` suffix
+///          metadata. Other malformed versions are rejected instead of being
+///          silently truncated.
 std::array<uint16_t, 4> windowsVersionPartsForResource(const std::string &version) {
     std::array<uint16_t, 4> parts{0, 0, 0, 0};
-    size_t partIndex = 0;
+    if (version.empty())
+        throw std::runtime_error("Windows VERSIONINFO version must not be empty");
+    std::vector<uint32_t> parsed;
     size_t pos = 0;
-    while (pos < version.size() && partIndex < parts.size()) {
-        if (!std::isdigit(static_cast<unsigned char>(version[pos])))
-            break;
+    while (pos < version.size()) {
+        if (parsed.size() == parts.size()) {
+            if (version[pos] == '-' || version[pos] == '+')
+                break;
+            throw std::runtime_error("Windows VERSIONINFO version must have at most 4 numeric "
+                                     "components: " +
+                                     version);
+        }
+        if (!std::isdigit(static_cast<unsigned char>(version[pos]))) {
+            if (!parsed.empty() && (version[pos] == '-' || version[pos] == '+'))
+                break;
+            throw std::runtime_error("Windows VERSIONINFO version must start with a dotted "
+                                     "numeric core: " +
+                                     version);
+        }
         uint32_t value = 0;
         while (pos < version.size() && std::isdigit(static_cast<unsigned char>(version[pos]))) {
-            value = value * 10u + static_cast<uint32_t>(version[pos] - '0');
-            if (value > 65535u)
-                throw std::runtime_error("Windows VERSIONINFO numeric version component "
-                                         "exceeds 65535: " +
+            const uint32_t digit = static_cast<uint32_t>(version[pos] - '0');
+            if (value > (65535u - digit) / 10u) {
+                throw std::runtime_error("Windows VERSIONINFO version component exceeds 65535: " +
                                          version);
+            }
+            value = value * 10u + digit;
             ++pos;
         }
-        parts[partIndex++] = static_cast<uint16_t>(value);
-        if (pos >= version.size() || version[pos] != '.')
+        parsed.push_back(value);
+        if (pos >= version.size())
             break;
-        ++pos;
+        if (version[pos] == '.') {
+            ++pos;
+            if (pos >= version.size() || !std::isdigit(static_cast<unsigned char>(version[pos]))) {
+                throw std::runtime_error("Windows VERSIONINFO version has an empty numeric "
+                                         "component: " +
+                                         version);
+            }
+            continue;
+        }
+        if (version[pos] == '-' || version[pos] == '+')
+            break;
+        throw std::runtime_error("Windows VERSIONINFO version has invalid suffix: " + version);
     }
+    if (parsed.empty()) {
+        throw std::runtime_error("Windows VERSIONINFO version must start with a numeric core: " +
+                                 version);
+    }
+    if (parsed.size() > parts.size()) {
+        throw std::runtime_error("Windows VERSIONINFO version must have at most 4 numeric "
+                                 "components: " +
+                                 version);
+    }
+    for (size_t i = 0; i < parsed.size(); ++i)
+        parts[i] = static_cast<uint16_t>(parsed[i]);
     return parts;
 }
 
@@ -712,10 +859,9 @@ std::string toolchainProgIdFor(const std::string &identifier, const FileAssoc &a
     if (identifier.empty())
         throw std::runtime_error("Windows file association ProgID base must not be empty");
     validateFileAssociation(assoc.extension, assoc.description, assoc.mimeType);
-    std::string ext = assoc.extension;
-    if (!ext.empty() && ext.front() == '.')
-        ext.erase(ext.begin());
-    return identifier + "." + ext;
+    const std::string progId = identifier + "." + windowsProgIdExtensionComponent(assoc);
+    validateWindowsProgIdBase(progId, "Windows file association ProgID");
+    return progId;
 }
 
 /// @brief Return the command-line arguments the viper binary uses to open files of
@@ -901,6 +1047,10 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     validateWindowsFileName(installDir, "Windows install directory");
     validateWindowsProgIdBase(pkg.identifier, "Windows package identifier");
     validateSingleLineField(version, "Windows package version");
+    if (!pkg.windowsInstallScope.empty() && pkg.windowsInstallScope != "user" &&
+        pkg.windowsInstallScope != "machine") {
+        throw std::runtime_error("Windows install scope must be 'user' or 'machine'");
+    }
     if (!pkg.minOsWindows.empty())
         validateDottedNumericVersion(pkg.minOsWindows, "minimum Windows version");
     validateSingleLineField(pkg.author, "Windows package author");

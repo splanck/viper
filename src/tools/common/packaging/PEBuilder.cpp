@@ -31,7 +31,6 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
-#include <fstream>
 #include <initializer_list>
 #include <limits>
 #include <stdexcept>
@@ -953,12 +952,7 @@ std::vector<uint8_t> buildPE(const PEBuildParams &params) {
 /// @brief Write a PE image to `path`. Throws `std::runtime_error` if the file cannot
 /// be created or if the write fails partway through.
 void writePEToFile(const std::vector<uint8_t> &pe, const std::string &path) {
-    std::ofstream f(path, std::ios::binary);
-    if (!f)
-        throw std::runtime_error("cannot write PE: " + path);
-    f.write(reinterpret_cast<const char *>(pe.data()), static_cast<std::streamsize>(pe.size()));
-    if (!f)
-        throw std::runtime_error("failed to write PE: " + path);
+    writeFileAtomic(path, pe);
 }
 
 namespace {
