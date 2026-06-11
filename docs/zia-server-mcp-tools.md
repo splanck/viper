@@ -43,7 +43,14 @@ Type-check Zia source code and return diagnostics (no code generation).
 - `message`: Human-readable message
 - `line`: 1-based line number
 - `column`: 1-based column number
-- `code`: Warning/error code (e.g., `"W001"`)
+- `code`: Warning/error code (e.g., `"W001"`, `"V-ZIA-UNDEFINED"`)
+- `endLine` / `endColumn`: 1-based exclusive end of the underlined range; `0` when no concrete range is known
+- `stage`: pipeline stage that emitted the diagnostic (`parse`, `sema`, `lower`, `verify`, ...); may be empty
+- `help`: optional help text for the code; may be empty
+- `notes`: array of related locations `{message, file, line, column}` (e.g., "previous definition is here")
+- `fixits`: array of machine-applicable replacements `{message, replacement, line, column, endLine, endColumn}` over half-open 1-based ranges; `endLine`/`endColumn` of `0` means insertion at the start position. Did-you-mean suggestions for undefined identifiers arrive here.
+
+Use `viper explain <code>` (or `viper --print-error-codes --json`) to resolve diagnostic codes to descriptions.
 
 **Example:**
 ```jsonl

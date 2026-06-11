@@ -173,6 +173,39 @@ When responding to a task:
 clang-format -i <files>
 ```
 
+### Fast Iteration Loop (Agent-Optimized)
+
+The build scripts accept environment variables to shorten the edit-build-test
+cycle. ccache is auto-detected (opt out with `VIPER_NO_CCACHE=1`).
+
+```sh
+# Incremental build only (no clean, no tests) — seconds, not minutes
+VIPER_SKIP_CLEAN=1 VIPER_SKIP_TESTS=1 VIPER_SKIP_LINT=1 VIPER_SKIP_AUDIT=1 \
+VIPER_SKIP_SMOKE=1 VIPER_SKIP_INSTALL=1 ./scripts/build_viper.sh
+
+# Incremental build + one test label
+VIPER_SKIP_CLEAN=1 VIPER_TEST_LABEL=tools VIPER_SKIP_LINT=1 VIPER_SKIP_AUDIT=1 \
+VIPER_SKIP_SMOKE=1 VIPER_SKIP_INSTALL=1 ./scripts/build_viper.sh
+
+# Then run targeted tests directly
+ctest --test-dir build -R test_zia_lexer --output-on-failure
+ctest --test-dir build -L golden --output-on-failure
+```
+
+Always finish with a full build + test run (no skip flags) before reporting done.
+
+### Agent-Facing CLI
+
+- `viper check <target> --diagnostic-format=json` — fast type-check/verify gate
+  (exit 0 clean / 1 usage / 2 compile errors; JSON carries code, stage, range,
+  notes, and applicable fixits)
+- `viper eval 'expr' [--json --type --il]` — one-shot snippet evaluation
+  (exit 3 = runtime trap)
+- `viper explain <CODE> [--json]` / `viper --print-error-codes --json` —
+  diagnostic-code catalog
+- `viper --dump-runtime-api` / `viper --dump-opcodes` — machine-readable
+  registry inventories (never drift; generated from the live binary)
+
 ### Conventional Commits
 ```
 <type>(<scope>): <summary>

@@ -103,6 +103,9 @@ The CLI is organized around primary entry points:
 - `viper init <name> [--lang zia|basic]` — Scaffold a new project
 - `viper run <file|dir>` — Build and run a source file or project
 - `viper build <file|dir> [-o out]` — Emit IL or build a native binary
+- `viper check <file|dir>` — Type-check and verify without running or emitting
+- `viper eval [code]` — Evaluate a one-line snippet and print the result
+- `viper explain <code>` — Describe a diagnostic code from the central catalog
 - `viper -run <file.il>` — Execute an IL module
 - `viper front zia -emit-il <file.zia>` — Legacy low-level Zia frontend entry point
 - `viper front zia -run <file.zia>` — Legacy low-level Zia frontend execution path
@@ -171,6 +174,90 @@ Both Zia and BASIC source paths print successful warnings by default. Zia O0/deb
 `viper build` defaults to the `balanced` profile and `O1` optimization when no explicit directive is present. `viper run` defaults to `debug`/`O0` for convention projects and manifests that do not set `profile`, `build-profile`, or `optimize`, keeping edit-run cycles fast. An explicit manifest profile, explicit manifest optimization level, `--build-profile`, or `-O*` flag is respected by both commands.
 
 Native builds hand the already-verified, already-optimized frontend IL module directly to the backend and pass the selected optimization level to MIR/codegen passes such as pre-regalloc cleanup, block layout, scheduling, and peephole optimization. Safe per-function IL optimizer passes, x86-64 peephole work, and arm64 binary function emission may run in parallel unless a diagnostic dump or `--verify-each` requires strict serial instrumentation.
+
+### viper check
+
+Type-check and verify a source file or project without executing or emitting
+anything. This is the fast verification gate for editors, scripts, and AI
+coding agents: it runs the same frontend + IL verifier pipeline as `viper run`
+(at `O0` by default for speed) and stops.
+
+```bash
+viper check program.zia
+viper check my-project/ --diagnostic-format=json
+```
+
+| Flag | Description |
+|------|-------------|
+| `--diagnostic-format text\|json` | Select text or machine-readable JSON diagnostics (stderr) |
+| `--strict-diagnostics` / `--no-strict-diagnostics` | Control safety-warning promotion (strict by default) |
+| `--quiet-warnings`, `--no-warnings` | Suppress warning output |
+| `--build-profile`, `-O0/-O1/-O2`, `--bounds-checks`, `--no-bounds-checks` | Same meaning as `viper run` |
+
+Exit codes are differentiated so callers can branch without parsing output:
+
+| Code | Meaning |
+|------|---------|
+| `0` | No errors (warnings allowed) |
+| `1` | Usage error, or the target could not be resolved |
+| `2` | Compile or verification errors (diagnostics printed) |
+
+JSON diagnostics include the stable `code`, pipeline `stage`, the underlined
+`range`, related `notes`, and machine-applicable `fixits` (for example,
+did-you-mean replacements for undefined identifiers).
+
+### viper eval
+
+Evaluate a single Zia or BASIC snippet through a fresh REPL session and print
+the result. Reads the snippet from stdin when no code argument is given.
+
+```bash
+viper eval '2 + 3 * 4'                       # prints 14
+viper eval --json --type 'Viper.Math.Sqrt(2.0)'
+echo 'Say("hi")' | viper eval
+viper eval --lang basic 'PRINT 2+2'
+```
+
+| Flag | Description |
+|------|-------------|
+| `--lang zia\|basic` | Snippet language (default `zia`) |
+| `--json` | Emit one JSON object on stdout: `{success, trapped, resultType, output, error, type?, il?}` |
+| `--type` | Include the inferred expression type (Zia only) |
+| `--il` | Include the generated IL (Zia only) |
+
+Exit codes: `0` success, `1` usage error, `2` compile/eval error, `3` runtime
+trap. The snippet is evaluated as a single REPL input with expression
+auto-printing, so `viper eval` behaves exactly like typing the snippet into
+`viper repl`.
+
+### viper explain
+
+Describe a diagnostic code from the central catalog.
+
+```bash
+viper explain V-ZIA-UNDEFINED
+viper explain B2001 --json
+viper explain --list --json      # full catalog as a JSON array
+viper --print-error-codes --json # same catalog via a driver flag
+```
+
+Cataloged codes print their subsystem and a one-sentence summary. Codes that
+are not yet cataloged but match a known prefix family (e.g., `B21xx`,
+`V-BC-*`) still resolve to their subsystem description; completely unknown
+codes exit `1`.
+
+### Machine-readable registry dumps
+
+Two driver flags emit JSON inventories generated from the live in-process
+registries, so they can never drift from the binary:
+
+```bash
+viper --dump-runtime-api   # {version, functions:[{name,signature}], classes:[{name,constructor,properties,methods}]}
+viper --dump-opcodes       # {ilVersion, opcodes:[{mnemonic,resultArity,resultType,operandsMin,operandsMax,operandTypes,sideEffects,successors,terminator}]}
+```
+
+These complement the human-oriented `--dump-runtime-descriptors` and
+`--dump-runtime-classes` text dumps.
 
 ### viper -run
 
@@ -397,6 +484,10 @@ The macOS GUI's Destination Select step chooses the destination volume; the inst
 | `0`  | Program completed successfully            |
 | `10` | Halted at breakpoint with no debug script |
 | `>0` | Trap or error                             |
+
+`viper check` and `viper eval` define differentiated exit codes for
+programmatic callers: see their sections above (`0` ok, `1` usage, `2`
+compile error, and `3` runtime trap for `eval`).
 
 ---
 

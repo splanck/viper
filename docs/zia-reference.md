@@ -6,7 +6,7 @@ last-verified: 2026-05-16
 
 # Zia — Reference
 
-Complete language reference for Zia. This document describes **syntax**, **types**, **statements**, **expressions**, **declarations**, and **runtime integration**. For a tutorial introduction, see **[Zia Getting Started](zia-getting-started.md)**.
+Complete language reference for Zia. This document describes **syntax**, **types**, **statements**, **expressions**, **declarations**, and **runtime integration**. For a tutorial introduction, see **[Zia Getting Started](zia-getting-started.md)**. For the formal EBNF grammar, see **[Zia Grammar](zia-grammar.md)**.
 
 ---
 

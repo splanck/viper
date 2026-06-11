@@ -38,6 +38,20 @@ Fuzz Tests (src/tests/fuzz/)
 # Build and run all tests
 ./scripts/build_viper_linux.sh   # Linux
 ./scripts/build_viper_mac.sh     # macOS
+```
+
+The build scripts honor environment variables for faster iteration on all
+platforms (ccache is auto-detected; disable with `VIPER_NO_CCACHE=1`):
+
+| Variable | Effect |
+|----------|--------|
+| `VIPER_SKIP_CLEAN=1` | Skip the clean-all step (incremental rebuild) |
+| `VIPER_SKIP_TESTS=1` | Build without running ctest |
+| `VIPER_TEST_LABEL=<label>` | Run only tests with the given ctest label |
+| `VIPER_RUN_SLOW_TESTS=1` | Include tests labeled `slow` |
+| `VIPER_SKIP_LINT=1`, `VIPER_SKIP_AUDIT=1`, `VIPER_SKIP_SMOKE=1`, `VIPER_SKIP_INSTALL=1` | Skip the corresponding post-build stages |
+
+```bash
 
 # Run all tests (after building)
 ctest --test-dir build
