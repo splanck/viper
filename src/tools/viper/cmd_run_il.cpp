@@ -378,7 +378,7 @@ void configureDebugger(const RunILConfig &config,
 /// @return Process-style exit status; zero indicates success.
 int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm) {
     if (config.boundsChecksRequested) {
-        std::cerr << "error: bounds-check toggles are not supported when running existing IL modules;";
+        std::cerr << "error: --bounds-checks is not supported when running existing IL modules;";
         std::cerr << " recompile the source with the desired bounds-check setting and rerun.\n";
         return 1;
     }

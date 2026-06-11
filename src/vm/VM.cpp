@@ -295,7 +295,8 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver {
     do {                                                                                           \
         if (state.ip < state.bb->instructions.size()) [[likely]] {                                 \
             if (vm.tracingActive_ || vm.stepBudget > 0 ||                                          \
-                vm.debugStepMode_ != VM::DebugStepMode::None) [[unlikely]]                         \
+                vm.debugStepMode_ != VM::DebugStepMode::None ||                                    \
+                vm.debugBreakActive_) [[unlikely]]                                                 \
                 goto LBL_SLOW_PATH;                                                                \
             ++vm.instrCount;                                                                       \
             currentInstr = &state.bb->instructions[state.ip];                                      \
@@ -1084,6 +1085,10 @@ bool VM::prepareTrap(VmError &error) {
         faultLoc = currentContext.loc;
     }
 
+    // Remember the original fault site: the search loop below rewrites faultLoc to
+    // each caller's call site while looking for a handler.
+    const il::support::SourceLoc trapLoc = faultLoc;
+
     // Use index-based iteration to avoid potential iterator invalidation
     // if exception handling modifies the execution stack
     const size_t stackSize = execStack.size();
@@ -1176,6 +1181,13 @@ bool VM::prepareTrap(VmError &error) {
         faultIp = st->callSiteIp;
         faultLoc = st->callSiteLoc;
     }
+
+    // Unhandled trap: let an interactive debugger inspect the crash site (the call
+    // stack and locals are still intact) before the program unwinds and exits. The
+    // returned action is ignored — execution cannot resume past an unhandled trap.
+    if (frontend_)
+        (void)frontend_->onStop(buildStopInfo("exception", trapLoc));
+
     return false;
 }
 

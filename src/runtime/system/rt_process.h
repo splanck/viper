@@ -55,6 +55,13 @@ rt_string rt_process_read_stdout(void *handle);
 /// @brief Read currently buffered stderr plus any immediately available bytes.
 rt_string rt_process_read_stderr(void *handle);
 
+/// @brief Write bytes to the child's stdin pipe.
+/// @param handle Process handle.
+/// @param data Bytes to write (runtime string; may contain newlines).
+/// @return Number of bytes written, or -1 when the handle is invalid, the child
+///         has no stdin pipe, or the write failed (e.g. the child closed stdin).
+int64_t rt_process_write_stdin(void *handle, rt_string data);
+
 /// @brief Return the exit code, or -1 if the process has not exited or the handle is invalid.
 int64_t rt_process_exit_code(void *handle);
 

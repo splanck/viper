@@ -6,6 +6,7 @@ bind "../editor/editor_engine";
 bind "../editor/editor_tabs";
 bind "../build/breakpoints";
 bind "../build/debug_session";
+bind "../build/build_system";
 bind "../commands/file_commands";
 
 bind Viper.GUI;
@@ -72,8 +73,13 @@ func handleDebugStart(shell: app_shell.AppShell,
                       docMgr: document_manager.DocumentManager,
                       engine: editor_engine.EditorEngine,
                       tabs: editor_tabs.EditorTabs,
+                      buildSys: build_system.BuildSystem,
                       store: breakpoints.BreakpointStore,
                       session: debug_session.DebugSession) {
+    if session.IsActive() {
+        shell.SetStatusLeft("A debug session is already running");
+        return;
+    }
     file_commands.SaveEditorState(docMgr, engine);
     var maybeDoc = docMgr.GetActive();
     if maybeDoc == null {
@@ -93,16 +99,50 @@ func handleDebugStart(shell: app_shell.AppShell,
     doc = maybeDoc!;
     if doc.isNew { return; }
 
-    if session.Launch(doc.filePath, doc.content, store) {
-        Publish(shell, docMgr, engine, tabs, session);
-        // The current adapter steps through source lines and honours breakpoints
-        // but does not execute the program, so values and output are not real yet.
-        // Say so plainly instead of letting it look like a broken debugger.
-        shell.SetStatusLeft("Debug preview: steps source lines and stops at breakpoints; does not run the program yet");
-        GUI.Toast.Info("Debug preview started (source stepping only)");
+    var viperBin = buildSys.ResolveCompiler("viper");
+    if viperBin == "" {
+        shell.SetDebugOutput("Cannot debug: the viper compiler was not found.\n"
+            + "Add viper to your PATH or set VIPER_BINARY=/full/path/to/viper.");
+        shell.SetStatusLeft("Debug failed: viper not found");
+        GUI.Toast.Error("viper compiler not found");
+        return;
+    }
+
+    if session.Launch(viperBin, doc.filePath, store) {
+        shell.SetDebugOutput("[debug] launched " + doc.filePath
+            + " — running to the first breakpoint...");
+        shell.SetStatusLeft("Debugging " + doc.filePath);
+        GUI.Toast.Info("Debugger started");
     } else {
         shell.SetStatusLeft("Debug session did not start");
         GUI.Toast.Warning("Debug session did not start");
+    }
+}
+
+/// @brief Restart: terminate any active session, then relaunch the active file
+///        with the current breakpoints.
+func handleDebugRestart(shell: app_shell.AppShell,
+                        docMgr: document_manager.DocumentManager,
+                        engine: editor_engine.EditorEngine,
+                        tabs: editor_tabs.EditorTabs,
+                        buildSys: build_system.BuildSystem,
+                        store: breakpoints.BreakpointStore,
+                        session: debug_session.DebugSession) {
+    if session.IsActive() {
+        session.Terminate();
+    }
+    handleDebugStart(shell, docMgr, engine, tabs, buildSys, store, session);
+}
+
+/// @brief Per-frame pump: drain adapter events and refresh the UI on change.
+func DebugUpdate(shell: app_shell.AppShell,
+                 docMgr: document_manager.DocumentManager,
+                 engine: editor_engine.EditorEngine,
+                 tabs: editor_tabs.EditorTabs,
+                 session: debug_session.DebugSession) {
+    if session == null or session.processHandle == null { return; }
+    if session.Poll() {
+        Publish(shell, docMgr, engine, tabs, session);
     }
 }
 
@@ -112,9 +152,9 @@ func handleDebugContinue(shell: app_shell.AppShell,
                          tabs: editor_tabs.EditorTabs,
                          session: debug_session.DebugSession) {
     if session.Continue() {
-        Publish(shell, docMgr, engine, tabs, session);
+        shell.SetStatusLeft("Running...");
     } else {
-        shell.SetStatusLeft("No paused debug session");
+        shell.SetStatusLeft("Not paused — nothing to continue");
     }
 }
 
@@ -124,9 +164,9 @@ func handleDebugStepOver(shell: app_shell.AppShell,
                          tabs: editor_tabs.EditorTabs,
                          session: debug_session.DebugSession) {
     if session.StepOver() {
-        Publish(shell, docMgr, engine, tabs, session);
+        shell.SetStatusLeft("Stepping...");
     } else {
-        shell.SetStatusLeft("No paused debug session");
+        shell.SetStatusLeft("Not paused — nothing to step");
     }
 }
 
@@ -136,9 +176,9 @@ func handleDebugPause(shell: app_shell.AppShell,
                       tabs: editor_tabs.EditorTabs,
                       session: debug_session.DebugSession) {
     if session.Pause() {
-        Publish(shell, docMgr, engine, tabs, session);
+        shell.SetStatusLeft("Pausing...");
     } else {
-        shell.SetStatusLeft("No active debug session");
+        shell.SetStatusLeft("Nothing running to pause");
     }
 }
 
@@ -148,7 +188,9 @@ func handleDebugStop(shell: app_shell.AppShell,
                      tabs: editor_tabs.EditorTabs,
                      session: debug_session.DebugSession) {
     if session.Terminate() {
-        Publish(shell, docMgr, engine, tabs, session);
+        shell.SetDebugOutput("[debug] terminated");
+        shell.SetStatusLeft("Debugging stopped");
+        GUI.Toast.Info("Debugging stopped");
     } else {
         shell.SetStatusLeft("No active debug session");
     }
@@ -159,14 +201,20 @@ func Publish(shell: app_shell.AppShell,
              engine: editor_engine.EditorEngine,
              tabs: editor_tabs.EditorTabs,
              session: debug_session.DebugSession) {
-    shell.SetDebugOutput(session.FormatConsole());
+    var console = session.programOutput;
+    var stopInfo = session.FormatConsole();
+    if stopInfo != "" {
+        if console != "" { console = console + "\n"; }
+        console = console + stopInfo;
+    }
+    shell.SetDebugOutput(console);
     if session.lastType == "stopped" {
-        shell.SetStatusLeft("Debug stopped: " + session.lastReason);
+        shell.SetStatusLeft("Stopped at " + session.activePath + ":" + session.lastLine
+            + " (" + session.lastReason + ")");
         OpenStopLocation(shell, docMgr, engine, tabs, session);
     } else if session.lastType == "terminated" {
-        shell.SetStatusLeft("Debug terminated: " + session.lastReason);
-    } else {
-        shell.SetStatusLeft("Debug: " + session.lastReason);
+        shell.SetStatusLeft("Program exited (" + session.lastReason + ", code "
+            + session.exitCode + ")");
     }
 }
 

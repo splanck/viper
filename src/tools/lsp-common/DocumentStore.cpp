@@ -154,9 +154,10 @@ bool DocumentStore::tryUriToPath(const std::string &uri, std::string &outPath, s
         }
 
         if (!authority.empty() && !asciiEqualsIgnoreCase(authority, "localhost")) {
-            if (err)
-                *err = "file URI authority must be empty or localhost: " + uri;
-            return false;
+            path.append("//");
+            path.append(authority);
+            if (!sv.empty() && sv.front() != '/')
+                path.push_back('/');
         } else if (sv.size() >= 3 && sv[0] == '/' && sv[2] == ':') {
             // Windows drive letter: /C:/path -> C:/path
             sv.remove_prefix(1);

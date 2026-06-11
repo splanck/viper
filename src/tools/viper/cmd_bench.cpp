@@ -534,16 +534,15 @@ std::string quoteBenchField(std::string_view input) {
 void printTextResults(const std::vector<BenchResult> &results) {
     for (const auto &r : results) {
         if (!r.success) {
-            std::cout << "BENCH file=" << quoteBenchField(r.file)
-                      << " strategy=" << quoteBenchField(r.strategy) << " FAILED";
+            std::cout << "BENCH " << quoteBenchField(r.file) << " " << r.strategy << " FAILED";
             if (!r.errorMessage.empty())
                 std::cout << " error=" << quoteBenchField(r.errorMessage);
             std::cout << "\n";
             continue;
         }
         std::cout << std::fixed << std::setprecision(2);
-        std::cout << "BENCH file=" << quoteBenchField(r.file)
-                  << " strategy=" << quoteBenchField(r.strategy) << " instr=" << r.instructions
+        std::cout << "BENCH " << quoteBenchField(r.file) << " " << r.strategy
+                  << " instr=" << r.instructions
                   << " time_ms=" << r.timeMs << " insns_per_sec=" << std::setprecision(0)
                   << r.insnsPerSec << "\n";
     }

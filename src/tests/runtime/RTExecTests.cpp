@@ -403,6 +403,35 @@ static void test_process_kill() {
     rt_process_destroy(handle);
 }
 
+static void test_process_write_stdin() {
+    // A child that reads one line from stdin and echoes it back proves the new
+    // WriteStdin pipe carries data into the child.
+    void *handle = start_shell_process("read line; echo \"got:$line\"");
+    assert(handle != nullptr);
+    assert(rt_process_is_valid(handle) == 1);
+
+    rt_string payload = make_string("ping\n");
+    int64_t written = rt_process_write_stdin(handle, payload);
+    assert(written == 5);
+
+    std::string out;
+    for (int i = 0; i < 400 && rt_process_is_running(handle); i++) {
+        append_runtime_string(out, rt_process_read_stdout(handle));
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    int64_t code = rt_process_wait(handle);
+    append_runtime_string(out, rt_process_read_stdout(handle));
+    assert(code == 0);
+    assert(out.find("got:ping") != std::string::npos);
+
+    // Writing after the child exited must fail gracefully (no SIGPIPE crash).
+    rt_string late = make_string("late\n");
+    int64_t late_write = rt_process_write_stdin(handle, late);
+    assert(late_write <= 0);
+
+    rt_process_destroy(handle);
+}
+
 int main() {
 #ifdef _WIN32
     // Skip on Windows: test uses POSIX shell commands (true, false, /bin/echo)
@@ -435,6 +464,7 @@ int main() {
 
     // Streaming Process handle coverage.
     test_process_streams_stdout_stderr();
+    test_process_write_stdin();
     test_process_cwd_and_env();
     test_process_accepts_boxed_args_from_object_abi();
     test_process_empty_incremental_read();

@@ -71,6 +71,7 @@ class CommandRegistry {
         Add("debugcontinue", "Continue Debugging", "Continue a paused debug session", "F7", "", true);
         Add("debugstepover", "Step Over", "Step over the current debug line", "F10", "", true);
         Add("debugpause", "Pause Debugging", "Pause the active debug session", "", "", true);
+        Add("debugrestart", "Restart Debugging", "Terminate and relaunch the active debug session", "Ctrl+Shift+F5", "", true);
         Add("debugstop", "Stop Debugging", "Terminate the active debug session", "", "", true);
         Add("togglebreakpoint", "Toggle Breakpoint", "Set or clear a breakpoint at the cursor", "F9", "", true);
         Add("togglesidebar", "Toggle Sidebar", "Show or hide the file tree", "Ctrl+B", "", true);

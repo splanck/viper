@@ -53,6 +53,7 @@
 #include "rt.hpp"
 #include "support/source_location.hpp"
 #include "viper/vm/debug/Debug.hpp"
+#include "viper/vm/debug/DebugFrontend.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/Trap.hpp"
 #include "vm/VMConfig.hpp"
@@ -718,6 +719,25 @@ class VM {
     /// @return Vector of FrameInfo, most-recent first.
     std::vector<FrameInfo> buildBacktrace() const;
 
+    /// @brief Install an interactive debug frontend driving breakpoints and steps.
+    /// @param frontend Non-owning driver, or nullptr to restore script/halt behavior.
+    void setDebugFrontend(DebugFrontend *frontend) {
+        frontend_ = frontend;
+        refreshDebugFlags();
+    }
+
+    /// @brief Ask the interactive debug frontend to stop at the next instruction
+    ///        (interactive Pause). Unlike requestPause(), execution can resume.
+    ///        Safe to call from a poll callback on the VM thread.
+    void requestDebugPause() { debugPauseRequested_ = true; }
+
+    /// @brief Build a plain stop descriptor (reason, top source location, backtrace,
+    ///        and named locals of the top frame) for a DebugFrontend to serialize.
+    /// @param reason Why execution paused ("breakpoint", "step", ...).
+    /// @param loc Source location of the instruction execution is paused at.
+    DebugStopInfo buildStopInfo(std::string_view reason,
+                                const il::support::SourceLoc &loc) const;
+
     /// @brief Format and print a backtrace to stderr.
     /// @param frames Backtrace frames to print.
     static void printBacktrace(const std::vector<FrameInfo> &frames);
@@ -790,6 +810,10 @@ class VM {
     /// @ownership Non-owning pointer; may be @c nullptr.
     DebugScript *script;
 
+    /// @brief Optional interactive debug driver (takes priority over @c script).
+    /// @ownership Non-owning pointer; may be @c nullptr.
+    DebugFrontend *frontend_ = nullptr;
+
     // =========================================================================
     // Fast-path flags for debug hooks in hot paths
     // =========================================================================
@@ -810,6 +834,19 @@ class VM {
     /// @brief True when any variable watches are installed.
     /// @details Cached to enable fast-path bypass for onStore callbacks.
     bool varWatchActive_ = false;
+
+    /// @brief True when source-line breakpoints or an interactive frontend are
+    ///        active, forcing the dispatch loop onto the slow path so every
+    ///        instruction is checked for a breakpoint (not just block leaders).
+    bool debugBreakActive_ = false;
+
+    /// @brief Set by requestDebugPause() (e.g. from a poll callback) to make the
+    ///        debug frontend stop at the next instruction without ending the run.
+    bool debugPauseRequested_ = false;
+
+    /// @brief Per-instruction counter used to drive the poll callback from the
+    ///        debug slow path (the dispatch driver's own poll does not run there).
+    uint64_t debugPollTick_ = 0;
 
     /// @brief Step limit; @c 0 means unlimited.
     uint64_t maxSteps;

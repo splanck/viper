@@ -339,6 +339,7 @@ func main() {
         perfMon.AddDiagnostics(perfSpan);
         perfSpan = perfMon.StartSpan();
         build_commands.UpdateJob(shell, buildSys, locStore);
+        debug_commands.DebugUpdate(shell, docMgr, engine, tabs, dbgSession);
         perfMon.AddBuild(perfSpan);
         perfSpan = perfMon.StartSpan();
         searcher.Pump(shell, docMgr, locStore);
@@ -790,7 +791,7 @@ func main() {
         if triggered("run", shell.miRun, null, cpSelected)                      { build_commands.handleRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore); }
         if triggered("stopjob", shell.miStop, shell.tbStop, cpSelected)         { build_commands.handleStop(shell, buildSys); }
         if triggered("debugstart", shell.miDebugStart, shell.tbDebug, cpSelected) {
-            debug_commands.handleDebugStart(shell, docMgr, engine, tabs, breakpointStore, dbgSession);
+            debug_commands.handleDebugStart(shell, docMgr, engine, tabs, buildSys, breakpointStore, dbgSession);
         }
         if triggered("debugcontinue", shell.miDebugContinue, shell.tbDebugContinue, cpSelected) {
             debug_commands.handleDebugContinue(shell, docMgr, engine, tabs, dbgSession);
@@ -800,6 +801,9 @@ func main() {
         }
         if triggered("debugpause", shell.miDebugPause, null, cpSelected) {
             debug_commands.handleDebugPause(shell, docMgr, engine, tabs, dbgSession);
+        }
+        if triggered("debugrestart", shell.miDebugRestart, null, cpSelected) {
+            debug_commands.handleDebugRestart(shell, docMgr, engine, tabs, buildSys, breakpointStore, dbgSession);
         }
         if triggered("debugstop", shell.miDebugStop, null, cpSelected) {
             debug_commands.handleDebugStop(shell, docMgr, engine, tabs, dbgSession);

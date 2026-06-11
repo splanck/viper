@@ -171,7 +171,7 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         starts("rt_numeric_") || starts("rt_bigint_") || starts("rt_debug_") || starts("rt_fmt_") ||
         starts("rt_format_") || starts("rt_int_format_") || starts("rt_printf_") ||
         starts("rt_term_") || starts("rt_time_") || starts("rt_datetime_") ||
-        starts("rt_debug_protocol_") || starts("rt_dateonly_") || starts("rt_daterange_") ||
+        starts("rt_dateonly_") || starts("rt_daterange_") ||
         starts("rt_duration_") || starts("rt_reltime_") || starts("rt_stopwatch_") ||
         starts("rt_countdown_") || starts("rt_easing_") || starts("rt_modvar_") ||
         starts("rt_args_") || starts("rt_log_") || starts("rt_msgbus_") || starts("rt_heap_") ||

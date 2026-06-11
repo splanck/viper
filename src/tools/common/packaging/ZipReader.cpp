@@ -207,7 +207,7 @@ void ZipReader::parseCentralDirectory() {
             throw ZipReadError("ZIP: unsafe entry path: " + entry.name);
         const std::string duplicateKey = normalizedZipDuplicateKey(entry.name);
         if (!seenNames.insert(duplicateKey).second)
-            throw ZipReadError("ZIP: duplicate entry name: " + entry.name);
+            throw ZipReadError("ZIP: duplicate normalized entry: " + entry.name);
         entries_.push_back(std::move(entry));
 
         pos = centralEnd;

@@ -61,6 +61,7 @@ class Runner::Impl {
             }
         }
         detail::VMAccess::setPollConfig(vm, everyN, std::move(config.pollCallback));
+        vm.setDebugFrontend(config.frontend);
         for (const auto &ext : config.externs)
             il::vm::RuntimeBridge::registerExtern(ext);
 

@@ -450,6 +450,7 @@ target_link_libraries(viper_repl
 set(VIPER_CLI_SOURCES
         tools/viper/main.cpp
         tools/viper/cmd_run.cpp
+        tools/viper/DebugAdapter.cpp
         tools/viper/cmd_run_il.cpp
         tools/viper/cmd_front_basic.cpp
         tools/viper/cmd_front_zia.cpp
@@ -477,7 +478,8 @@ set(VIPER_CLI_LINK_LIBS
         viper_cmd_arm64
         viper_bytecode
         viper_packaging
-        viper_repl)
+        viper_repl
+        lsp_common_lib)
 
 add_executable(viper ${VIPER_CLI_SOURCES})
 if (WIN32)

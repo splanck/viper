@@ -79,7 +79,6 @@ func RuntimeBindTargetForIdentifier(name: String) -> String {
     if name == "FileIndex" { return "Viper.Workspace.FileIndex"; }
     if name == "WorkspaceEdit" { return "Viper.Workspace.Edit"; }
     if name == "Scene" { return "Viper.Game.Scene"; }
-    if name == "Debug" { return "Viper.Debug.Protocol"; }
     return "";
 }
 

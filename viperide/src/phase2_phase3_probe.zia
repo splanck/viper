@@ -146,7 +146,7 @@ func main() {
     Dir.MakeAll(projectSrc);
     var entryPath = Path.Join(projectSrc, "main.zia");
     File.WriteAllText(Path.Join(projectRoot, "viper.project"),
-        "project Probe Project\n"
+        "project ProbeProject\n"
         + "entry src/main.zia\n"
         + "lang zia\n");
     File.WriteAllText(entryPath,
@@ -238,27 +238,48 @@ func main() {
     if assertTrue(emptyBps.Count() == 0,
                   "breakpoint load tolerates settings file without breakpoint section") == false { return; }
 
+    // Real VM debug adapter: launch a program, stop at a breakpoint with a call
+    // stack and locals, then continue to exit. Drives the same DebugSession the IDE
+    // uses, so the out-of-process protocol is exercised end-to-end without a GUI.
+    var dbgFile = Path.Join(spacedDir, "debuggee.zia");
+    File.WriteAllText(dbgFile,
+        "module Debuggee;\n"
+        + "bind Viper.Terminal as Terminal;\n"
+        + "func main() {\n"
+        + "    var total = 7;\n"
+        + "    Terminal.Say(\"before-bp\");\n"
+        + "    Terminal.Say(\"after-bp=\" + total);\n"
+        + "}\n");
+    var dbgStore = new breakpoints.BreakpointStore();
+    dbgStore.Setup(Path.Join(root, "debuggee-bp.ini"));
+    dbgStore.Toggle(dbgFile, 5);
+
     var dbg = new debug_session.DebugSession();
-    if assertTrue(dbg.Launch(sourcePath, "var a = 1;\nvar b = 2;\n", loadedBps)
-                  and dbg.lastType == "stopped"
-                  and dbg.lastReason == "breakpoint"
-                  and dbg.lastLine == 2,
-                  "debug protocol stops at persisted breakpoint") == false { return; }
-    if assertTrue(Str.IndexOf(dbg.FormatConsole(), "a = 1") != 0,
-                  "debug console includes locals") == false { return; }
-    dbg.StepOver();
-    if assertTrue(dbg.lastType == "stopped"
-                  and dbg.lastReason == "step"
-                  and dbg.lastLine == 3
-                  and Str.IndexOf(dbg.FormatConsole(), "b = 2") != 0,
-                  "debug protocol steps and updates locals") == false { return; }
-    dbg.Terminate();
-    if assertTrue(dbg.lastType == "terminated",
-                  "debug protocol terminates") == false { return; }
-    var crashDbg = new debug_session.DebugSession();
-    crashDbg.Launch(sourcePath, "var a = 1;\ncrash\n", null);
-    if assertTrue(crashDbg.lastType == "terminated" and crashDbg.lastReason == "crash",
-                  "debug protocol reports target crash without IDE crash") == false { return; }
+    if assertTrue(dbg.Launch(viperBin, dbgFile, dbgStore),
+                  "debug adapter launches") == false { return; }
+    var dspins = 0;
+    while dbg.IsActive() and dbg.stopped == false and dspins < 6000 {
+        dbg.Poll();
+        Clock.Sleep(1);
+        dspins = dspins + 1;
+    }
+    if assertTrue(dbg.stopped and dbg.lastLine == 5 and dbg.lastReason == "breakpoint",
+                  "debug adapter stops at the breakpoint line") == false { return; }
+    if assertTrue(Str.IndexOf(dbg.FormatConsole(), "Call stack") != 0
+                  and Str.IndexOf(dbg.FormatConsole(), "total = 7") != 0,
+                  "debug stop reports a call stack and locals") == false { return; }
+
+    dbg.Continue();
+    dspins = 0;
+    while dbg.IsActive() and dspins < 6000 {
+        dbg.Poll();
+        Clock.Sleep(1);
+        dspins = dspins + 1;
+    }
+    if assertTrue(dbg.terminated
+                  and Str.IndexOf(dbg.programOutput, "before-bp") != 0
+                  and Str.IndexOf(dbg.programOutput, "after-bp") != 0,
+                  "debug adapter runs the program and terminates after continue") == false { return; }
 
     var scene = Scene.New(3, 2, 16, 16);
     scene.SetStr("theme", "cavern");

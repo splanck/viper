@@ -138,6 +138,7 @@ class AppShell {
     expose GUI.MenuItem miDebugContinue;
     expose GUI.MenuItem miDebugStepOver;
     expose GUI.MenuItem miDebugPause;
+    expose GUI.MenuItem miDebugRestart;
     expose GUI.MenuItem miDebugStop;
     expose GUI.MenuItem miToggleBreakpoint;
 
@@ -399,13 +400,15 @@ class AppShell {
         miStop = buildMenu.AddItem("Stop");
         miStop.SetShortcut("Shift+F5");
         buildMenu.AddSeparator();
-        miDebugStart = buildMenu.AddItem("Start Debug Preview");
+        miDebugStart = buildMenu.AddItem("Start Debugging");
         miDebugStart.SetShortcut("F6");
         miDebugContinue = buildMenu.AddItem("Continue Debugging");
         miDebugContinue.SetShortcut("F7");
         miDebugStepOver = buildMenu.AddItem("Step Over");
         miDebugStepOver.SetShortcut("F10");
         miDebugPause = buildMenu.AddItem("Pause Debugging");
+        miDebugRestart = buildMenu.AddItem("Restart Debugging");
+        miDebugRestart.SetShortcut("Ctrl+Shift+F5");
         miDebugStop = buildMenu.AddItem("Stop Debugging");
         miToggleBreakpoint = buildMenu.AddItem("Toggle Breakpoint");
         miToggleBreakpoint.SetShortcut("F9");
@@ -433,7 +436,7 @@ class AppShell {
         tbBuild   = toolbar.AddButtonWithText("", "▣",  "Build (Ctrl+Shift+B)");
         tbRun     = toolbar.AddButtonWithText("", "▶",  "Build & Run (F5)");
         tbStop    = toolbar.AddButtonWithText("", "■",  "Stop Running Job (Shift+F5)");
-        tbDebug   = toolbar.AddButtonWithText("", "◇",  "Start Debug Preview (F6) — steps source, does not execute yet");
+        tbDebug   = toolbar.AddButtonWithText("", "◇",  "Start Debugging (F6)");
         tbDebugContinue = toolbar.AddButtonWithText("", "▷", "Continue Debugging (F7)");
         tbDebugStep = toolbar.AddButtonWithText("", "→", "Step Over (F10)");
         toolbar.AddSeparator();

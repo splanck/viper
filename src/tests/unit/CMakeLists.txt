@@ -1359,10 +1359,6 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_diag PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_diag test_rt_diag)
 
-    viper_add_test(test_rt_debug_protocol ${VIPER_TESTS_DIR}/runtime/RTDebugProtocolTests.cpp)
-    target_link_libraries(test_rt_debug_protocol PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-    viper_add_ctest(test_rt_debug_protocol test_rt_debug_protocol)
-
     viper_add_test(test_rt_fmt ${VIPER_TESTS_DIR}/runtime/RTFmtTests.cpp)
     target_link_libraries(test_rt_fmt PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_fmt test_rt_fmt)

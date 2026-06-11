@@ -564,8 +564,6 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_WorkspaceWatcher,
     RTCLS_ProjectManifest,
     RTCLS_WorkspaceEdit,
-    RTCLS_DebugProtocol,
-    RTCLS_DebugProtocolSession,
     RTCLS_FuzzyMatch,
     RTCLS_GameScene,
     RTCLS_Game3DAssetHandle3D,

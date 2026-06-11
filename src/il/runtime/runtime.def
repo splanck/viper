@@ -1193,22 +1193,6 @@ RT_FUNC(MsgBusTopics,           rt_msgbus_topics,             "Viper.Core.Messag
 RT_FUNC(MsgBusClearTopic,       rt_msgbus_clear_topic,        "Viper.Core.MessageBus.ClearTopic",       "void(obj,str)")
 RT_FUNC(MsgBusClear,            rt_msgbus_clear,              "Viper.Core.MessageBus.Clear",            "void(obj)")
 
-//=============================================================================
-// DEBUG - Protocol
-//=============================================================================
-
-RT_FUNC(DebugProtocolNew,              rt_debug_protocol_session_new,       "Viper.Debug.Protocol.New", "obj<Viper.Debug.Protocol.Session>()")
-RT_FUNC(DebugProtocolSetBreakpoint,    rt_debug_protocol_set_breakpoint,    "Viper.Debug.Protocol.SetBreakpoint", "void(obj,str,i64)")
-RT_FUNC(DebugProtocolClearBreakpoints, rt_debug_protocol_clear_breakpoints, "Viper.Debug.Protocol.ClearBreakpoints", "void(obj,str)")
-RT_FUNC(DebugProtocolLaunch,           rt_debug_protocol_launch,            "Viper.Debug.Protocol.Launch", "obj<Viper.Collections.Map>(obj,str,str)")
-RT_FUNC(DebugProtocolContinue,         rt_debug_protocol_continue,          "Viper.Debug.Protocol.Continue", "obj<Viper.Collections.Map>(obj)")
-RT_FUNC(DebugProtocolStepOver,         rt_debug_protocol_step_over,         "Viper.Debug.Protocol.StepOver", "obj<Viper.Collections.Map>(obj)")
-RT_FUNC(DebugProtocolPause,            rt_debug_protocol_pause,             "Viper.Debug.Protocol.Pause", "obj<Viper.Collections.Map>(obj)")
-RT_FUNC(DebugProtocolTerminate,        rt_debug_protocol_terminate,         "Viper.Debug.Protocol.Terminate", "obj<Viper.Collections.Map>(obj)")
-RT_FUNC(DebugProtocolStackFrames,      rt_debug_protocol_stack_frames,      "Viper.Debug.Protocol.StackFrames", "obj<Viper.Collections.Seq>(obj)")
-RT_FUNC(DebugProtocolLocals,           rt_debug_protocol_locals,            "Viper.Debug.Protocol.Locals", "obj<Viper.Collections.Seq>(obj)")
-RT_FUNC(DebugProtocolEvents,           rt_debug_protocol_events,            "Viper.Debug.Protocol.Events", "obj<Viper.Collections.Seq>(obj)")
-RT_FUNC(DebugProtocolIsRunning,        rt_debug_protocol_is_running,        "Viper.Debug.Protocol.IsRunning", "i1(obj)")
 
 //=============================================================================
 // DIAGNOSTICS - ASSERT
@@ -1301,6 +1285,7 @@ RT_FUNC(ProcessPoll,         rt_process_poll,          "Viper.System.Process.Han
 RT_FUNC(ProcessIsRunning,    rt_process_is_running,    "Viper.System.Process.Handle.IsRunning",      "i1(obj)")
 RT_FUNC(ProcessReadStdout,   rt_process_read_stdout,   "Viper.System.Process.Handle.ReadStdout",     "str(obj)")
 RT_FUNC(ProcessReadStderr,   rt_process_read_stderr,   "Viper.System.Process.Handle.ReadStderr",     "str(obj)")
+RT_FUNC(ProcessWriteStdin,   rt_process_write_stdin,   "Viper.System.Process.Handle.WriteStdin",     "i64(obj,str)")
 RT_FUNC(ProcessExitCode,     rt_process_exit_code,     "Viper.System.Process.Handle.ExitCode",       "i64(obj)")
 RT_FUNC(ProcessKill,         rt_process_kill,          "Viper.System.Process.Handle.Kill",           "i1(obj)")
 RT_FUNC(ProcessWait,         rt_process_wait,          "Viper.System.Process.Handle.Wait",           "i64(obj)")
@@ -7636,25 +7621,6 @@ RT_CLASS_BEGIN("Viper.Core.MessageBus", MessageBus, "obj", MsgBusNew)
     RT_METHOD("Unsubscribe", "i1(i64)", MsgBusUnsubscribe)
 RT_CLASS_END()
 
-// Viper.Debug.Protocol - headless debugger command/event boundary
-RT_CLASS_BEGIN("Viper.Debug.Protocol", DebugProtocol, "none", none)
-    RT_METHOD("New",              "obj<Viper.Debug.Protocol.Session>()", DebugProtocolNew)
-    RT_METHOD("SetBreakpoint",    "void(obj,str,i64)",                  DebugProtocolSetBreakpoint)
-    RT_METHOD("ClearBreakpoints", "void(obj,str)",                      DebugProtocolClearBreakpoints)
-    RT_METHOD("Launch",           "obj<Viper.Collections.Map>(obj,str,str)", DebugProtocolLaunch)
-    RT_METHOD("Continue",         "obj<Viper.Collections.Map>(obj)",    DebugProtocolContinue)
-    RT_METHOD("StepOver",         "obj<Viper.Collections.Map>(obj)",    DebugProtocolStepOver)
-    RT_METHOD("Pause",            "obj<Viper.Collections.Map>(obj)",    DebugProtocolPause)
-    RT_METHOD("Terminate",        "obj<Viper.Collections.Map>(obj)",    DebugProtocolTerminate)
-    RT_METHOD("StackFrames",      "obj<Viper.Collections.Seq>(obj)",    DebugProtocolStackFrames)
-    RT_METHOD("Locals",           "obj<Viper.Collections.Seq>(obj)",    DebugProtocolLocals)
-    RT_METHOD("Events",           "obj<Viper.Collections.Seq>(obj)",    DebugProtocolEvents)
-    RT_METHOD("IsRunning",        "i1(obj)",                            DebugProtocolIsRunning)
-RT_CLASS_END()
-
-RT_CLASS_BEGIN("Viper.Debug.Protocol.Session", DebugProtocolSession, "obj", none)
-RT_CLASS_END()
-
 // Viper.System.Environment - static utility class
 RT_CLASS_BEGIN("Viper.System.Environment", Environment, "obj", none)
     RT_METHOD("EndProgram", "void(i64)", EnvExit)
@@ -7705,6 +7671,7 @@ RT_CLASS_BEGIN("Viper.System.Process.Handle", ProcessHandle, "obj", none)
     RT_METHOD("IsRunning", "i1()", ProcessIsRunning)
     RT_METHOD("ReadStdout", "str()", ProcessReadStdout)
     RT_METHOD("ReadStderr", "str()", ProcessReadStderr)
+    RT_METHOD("WriteStdin", "i64(str)", ProcessWriteStdin)
     RT_METHOD("ExitCode", "i64()", ProcessExitCode)
     RT_METHOD("Kill", "i1()", ProcessKill)
     RT_METHOD("Wait", "i64()", ProcessWait)

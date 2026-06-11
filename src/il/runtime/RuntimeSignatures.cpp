@@ -99,7 +99,6 @@
 #include "rt_datetime.h"
 #include "rt_debounce.h"
 #include "rt_debug.h"
-#include "rt_debug_protocol.h"
 #include "rt_debugoverlay.h"
 #include "rt_decal3d.h"
 #include "rt_defaultmap.h"

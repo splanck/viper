@@ -111,6 +111,49 @@ static void writeTestWindowsPe(const std::filesystem::path &path,
     writeBytes(path, buildPE(pe));
 }
 
+static std::vector<uint8_t> makeMockNativeExecutableHeader() {
+#if defined(_WIN32)
+    std::vector<uint8_t> bytes(128, 0);
+    bytes[0] = 'M';
+    bytes[1] = 'Z';
+    writeLE32(bytes.data() + 0x3c, 0x40);
+    bytes[0x40] = 'P';
+    bytes[0x41] = 'E';
+#if defined(_M_ARM64)
+    bytes[0x44] = 0x64;
+    bytes[0x45] = 0xAA;
+#else
+    bytes[0x44] = 0x64;
+    bytes[0x45] = 0x86;
+#endif
+    return bytes;
+#elif defined(__APPLE__)
+    std::vector<uint8_t> bytes(32, 0);
+    bytes[0] = 0xcf;
+    bytes[1] = 0xfa;
+    bytes[2] = 0xed;
+    bytes[3] = 0xfe;
+#if defined(__aarch64__) || defined(__arm64__)
+    writeLE32(bytes.data() + 4, 0x0100000c);
+#else
+    writeLE32(bytes.data() + 4, 0x01000007);
+#endif
+    return bytes;
+#else
+    std::vector<uint8_t> bytes(64, 0);
+    bytes[0] = 0x7f;
+    bytes[1] = 'E';
+    bytes[2] = 'L';
+    bytes[3] = 'F';
+#if defined(__aarch64__) || defined(__arm64__)
+    bytes[18] = 183;
+#else
+    bytes[18] = 62;
+#endif
+    return bytes;
+#endif
+}
+
 static uint32_t readBE32(const uint8_t *p) {
     return (static_cast<uint32_t>(p[0]) << 24) | (static_cast<uint32_t>(p[1]) << 16) |
            (static_cast<uint32_t>(p[2]) << 8) | static_cast<uint32_t>(p[3]);
@@ -509,9 +552,7 @@ static std::filesystem::path createMockToolchainStage(const std::filesystem::pat
 #endif
     {
         const fs::path exePath = stage / "bin" / exeName;
-        std::ofstream out(exePath, std::ios::binary);
-        out << "stub";
-        out.close();
+        writeBytes(exePath, makeMockNativeExecutableHeader());
         fs::permissions(exePath,
                         fs::perms::owner_read | fs::perms::owner_write | fs::perms::owner_exec |
                             fs::perms::group_read | fs::perms::group_exec | fs::perms::others_read |
@@ -1055,10 +1096,15 @@ TEST(Tar, DirectoryTypeflag) {
     EXPECT_EQ(data[156], '5');
 }
 
-TEST(Tar, RejectsOversizedPath) {
+TEST(Tar, SupportsPaxOversizedPath) {
     TarWriter tar;
-    tar.addFileString(std::string("./") + std::string(180, 'a'), "data");
-    EXPECT_THROWS(tar.finish(), std::runtime_error);
+    const std::string path = std::string(180, 'a');
+    tar.addFileString(std::string("./") + path, "data");
+    auto data = tar.finish();
+
+    std::ostringstream err;
+    auto gz = gzip(data.data(), data.size());
+    EXPECT_TRUE(verifyTarGzPayload(gz, {path}, err));
 }
 
 TEST(Tar, RejectsUnsafePath) {

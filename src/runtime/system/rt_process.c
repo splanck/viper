@@ -80,12 +80,14 @@ typedef struct rt_process_impl {
     HANDLE thread;
     HANDLE stdout_read;
     HANDLE stderr_read;
+    HANDLE stdin_write;
 #elif defined(__viperdos__)
     int reserved;
 #else
     pid_t pid;
     int stdout_fd;
     int stderr_fd;
+    int stdin_fd;
 #endif
 } rt_process_impl;
 
@@ -215,10 +217,12 @@ static rt_process_impl *process_alloc(void) {
     proc->thread = NULL;
     proc->stdout_read = NULL;
     proc->stderr_read = NULL;
+    proc->stdin_write = NULL;
 #elif !defined(__viperdos__)
     proc->pid = -1;
     proc->stdout_fd = -1;
     proc->stderr_fd = -1;
+    proc->stdin_fd = -1;
 #endif
     rt_obj_set_finalizer(proc, process_finalize);
     return proc;
@@ -341,6 +345,26 @@ static int create_child_pipe(HANDLE *read_pipe, HANDLE *write_pipe) {
     return 1;
 }
 
+/// @brief Create a pipe whose READ end the child inherits (its stdin) and whose
+///        WRITE end stays private to the parent. Mirror of create_child_pipe.
+static int create_parent_write_pipe(HANDLE *read_pipe, HANDLE *write_pipe) {
+    SECURITY_ATTRIBUTES sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.nLength = sizeof(sa);
+    sa.bInheritHandle = TRUE;
+
+    if (!CreatePipe(read_pipe, write_pipe, &sa, 0))
+        return 0;
+    if (!SetHandleInformation(*write_pipe, HANDLE_FLAG_INHERIT, 0)) {
+        CloseHandle(*read_pipe);
+        CloseHandle(*write_pipe);
+        *read_pipe = NULL;
+        *write_pipe = NULL;
+        return 0;
+    }
+    return 1;
+}
+
 static void close_handle(HANDLE *handle) {
     if (handle && *handle) {
         CloseHandle(*handle);
@@ -430,12 +454,17 @@ static rt_process_impl *process_start_impl(rt_string program,
     HANDLE stdout_write = NULL;
     HANDLE stderr_read = NULL;
     HANDLE stderr_write = NULL;
+    HANDLE stdin_read = NULL;
+    HANDLE stdin_write = NULL;
     if (!create_child_pipe(&stdout_read, &stdout_write) ||
-        !create_child_pipe(&stderr_read, &stderr_write)) {
+        !create_child_pipe(&stderr_read, &stderr_write) ||
+        !create_parent_write_pipe(&stdin_read, &stdin_write)) {
         close_handle(&stdout_read);
         close_handle(&stdout_write);
         close_handle(&stderr_read);
         close_handle(&stderr_write);
+        close_handle(&stdin_read);
+        close_handle(&stdin_write);
         free(env_block);
         free(cmdline);
         return NULL;
@@ -447,7 +476,7 @@ static rt_process_impl *process_start_impl(rt_string program,
     memset(&pi, 0, sizeof(pi));
     si.cb = sizeof(si);
     si.dwFlags = STARTF_USESTDHANDLES;
-    si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+    si.hStdInput = stdin_read;
     si.hStdOutput = stdout_write;
     si.hStdError = stderr_write;
 
@@ -456,12 +485,14 @@ static rt_process_impl *process_start_impl(rt_string program,
 
     close_handle(&stdout_write);
     close_handle(&stderr_write);
+    close_handle(&stdin_read);
     free(env_block);
     free(cmdline);
 
     if (!ok) {
         close_handle(&stdout_read);
         close_handle(&stderr_read);
+        close_handle(&stdin_write);
         return NULL;
     }
 
@@ -469,6 +500,7 @@ static rt_process_impl *process_start_impl(rt_string program,
     if (!proc) {
         close_handle(&stdout_read);
         close_handle(&stderr_read);
+        close_handle(&stdin_write);
         close_handle(&pi.hProcess);
         close_handle(&pi.hThread);
         return NULL;
@@ -479,6 +511,7 @@ static rt_process_impl *process_start_impl(rt_string program,
     proc->thread = pi.hThread;
     proc->stdout_read = stdout_read;
     proc->stderr_read = stderr_read;
+    proc->stdin_write = stdin_write;
     return proc;
 }
 
@@ -614,11 +647,14 @@ static rt_process_impl *process_start_impl(rt_string program,
 
     int stdout_pipe[2] = {-1, -1};
     int stderr_pipe[2] = {-1, -1};
-    if (pipe(stdout_pipe) != 0 || pipe(stderr_pipe) != 0) {
+    int stdin_pipe[2] = {-1, -1};
+    if (pipe(stdout_pipe) != 0 || pipe(stderr_pipe) != 0 || pipe(stdin_pipe) != 0) {
         close_fd(&stdout_pipe[0]);
         close_fd(&stdout_pipe[1]);
         close_fd(&stderr_pipe[0]);
         close_fd(&stderr_pipe[1]);
+        close_fd(&stdin_pipe[0]);
+        close_fd(&stdin_pipe[1]);
         free_string_vector(&envp);
         free_string_vector(&argv);
         return NULL;
@@ -630,6 +666,8 @@ static rt_process_impl *process_start_impl(rt_string program,
         close_fd(&stdout_pipe[1]);
         close_fd(&stderr_pipe[0]);
         close_fd(&stderr_pipe[1]);
+        close_fd(&stdin_pipe[0]);
+        close_fd(&stdin_pipe[1]);
         free_string_vector(&envp);
         free_string_vector(&argv);
         return NULL;
@@ -638,13 +676,17 @@ static rt_process_impl *process_start_impl(rt_string program,
     if (pid == 0) {
         close(stdout_pipe[0]);
         close(stderr_pipe[0]);
+        close(stdin_pipe[1]);
 
         if (dup2(stdout_pipe[1], STDOUT_FILENO) < 0)
             _exit(127);
         if (dup2(stderr_pipe[1], STDERR_FILENO) < 0)
             _exit(127);
+        if (dup2(stdin_pipe[0], STDIN_FILENO) < 0)
+            _exit(127);
         close(stdout_pipe[1]);
         close(stderr_pipe[1]);
+        close(stdin_pipe[0]);
 
         if (cwd_text) {
             if (chdir(cwd_text) != 0)
@@ -657,6 +699,7 @@ static rt_process_impl *process_start_impl(rt_string program,
 
     close_fd(&stdout_pipe[1]);
     close_fd(&stderr_pipe[1]);
+    close_fd(&stdin_pipe[0]);
     set_nonblocking(stdout_pipe[0]);
     set_nonblocking(stderr_pipe[0]);
     free_string_vector(&envp);
@@ -666,6 +709,7 @@ static rt_process_impl *process_start_impl(rt_string program,
     if (!proc) {
         close_fd(&stdout_pipe[0]);
         close_fd(&stderr_pipe[0]);
+        close_fd(&stdin_pipe[1]);
         return NULL;
     }
     proc->started = 1;
@@ -673,6 +717,7 @@ static rt_process_impl *process_start_impl(rt_string program,
     proc->pid = pid;
     proc->stdout_fd = stdout_pipe[0];
     proc->stderr_fd = stderr_pipe[0];
+    proc->stdin_fd = stdin_pipe[1];
     return proc;
 }
 
@@ -692,6 +737,7 @@ static void process_close(rt_process_impl *proc) {
     process_drain(proc);
     close_handle(&proc->stdout_read);
     close_handle(&proc->stderr_read);
+    close_handle(&proc->stdin_write);
     close_handle(&proc->thread);
     close_handle(&proc->process);
 #elif defined(__viperdos__)
@@ -710,6 +756,7 @@ static void process_close(rt_process_impl *proc) {
     process_drain(proc);
     close_fd(&proc->stdout_fd);
     close_fd(&proc->stderr_fd);
+    close_fd(&proc->stdin_fd);
 #endif
 
     buffer_free(&proc->stdout_buf);
@@ -766,6 +813,56 @@ rt_string rt_process_read_stderr(void *handle) {
         return empty_string();
     process_drain(proc);
     return buffer_take(&proc->stderr_buf);
+}
+
+int64_t rt_process_write_stdin(void *handle, rt_string data) {
+    rt_process_impl *proc = process_checked(handle);
+    if (!proc || !proc->started || proc->destroyed)
+        return -1;
+
+    const char *bytes = data ? rt_string_cstr(data) : "";
+    size_t len = data ? (size_t)rt_str_len(data) : 0;
+    if (len == 0)
+        return 0;
+
+#if defined(_WIN32)
+    if (!proc->stdin_write)
+        return -1;
+    size_t off = 0;
+    while (off < len) {
+        size_t remaining = len - off;
+        DWORD chunk = remaining > 0x40000000u ? 0x40000000u : (DWORD)remaining;
+        DWORD written = 0;
+        if (!WriteFile(proc->stdin_write, bytes + off, chunk, &written, NULL) || written == 0)
+            return off > 0 ? (int64_t)off : -1;
+        off += written;
+    }
+    return (int64_t)off;
+#elif defined(__viperdos__)
+    (void)bytes;
+    return -1;
+#else
+    if (proc->stdin_fd < 0)
+        return -1;
+    // Writing to a child that has closed stdin raises SIGPIPE, which would kill
+    // this process; ignore it once so the write fails with EPIPE instead.
+    static int sigpipe_ignored = 0;
+    if (!sigpipe_ignored) {
+        signal(SIGPIPE, SIG_IGN);
+        sigpipe_ignored = 1;
+    }
+    size_t off = 0;
+    while (off < len) {
+        ssize_t n = write(proc->stdin_fd, bytes + off, len - off);
+        if (n < 0) {
+            if (errno == EINTR)
+                continue;
+            return off > 0 ? (int64_t)off : -1;
+        }
+        off += (size_t)n;
+    }
+    return (int64_t)off;
+#endif
 }
 
 int64_t rt_process_exit_code(void *handle) {

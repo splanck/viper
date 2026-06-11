@@ -176,6 +176,51 @@ commands, and asserts the `stopped` lines, frames, and locals. Add VM-level unit
 - **Scope is a refactor + adapter + async client + one runtime primitive**, not a new engine —
   materially smaller than a from-scratch debugger because the VM is already debug-aware.
 
+## AS-BUILT (phases 3a–3e implemented)
+
+Built and verified overnight; a few deliberate deviations from the design above:
+
+- **Transport** = control events on the child's **stderr**, each line prefixed `@@VDBG@@ `;
+  the debuggee's stdout/stderr pass through untouched (shown as program output). Simpler and
+  more robust than the doc's stdout-capture (no fd redirection); commands on stdin via the new
+  `rt_process_write_stdin` (`Process.WriteStdin`).
+- **The decisive VM fix:** the fast-dispatch loop skipped `shouldPause` within a block, so
+  breakpoints only fired on block-leading lines. Added `debugBreakActive_` to the existing
+  fast-path gate (`VM.cpp` `DISPATCH_NEXT_FAST`, set in `refreshDebugFlags`) → breakpoints now hit
+  **any** source line. This also fixes the limitation for the pre-existing DebugScript feature.
+- **Seam:** `DebugFrontend`/`DebugStopInfo` (include/viper/vm/debug/DebugFrontend.hpp); the VM
+  builds plain stop data (`VM::buildStopInfo`), the tools-layer `AdapterFrontend`
+  (src/tools/viper/DebugAdapter.cpp) serializes it — the adapter never touches VM internals.
+- **Source-line stepping** is layered on the VM's instruction stepping in `AdapterFrontend`
+  (auto-step while the line is unchanged). **Locals** load mutable variables through their
+  frame-stack allocas with bounds-checked reads, deduped by name. **Debug builds at -O0**
+  (`--debug-adapter` forces it) so lines/locals survive.
+- **IDE:** `debug_session.zia` rewritten to spawn `viper run --debug-adapter` and drive the JSON
+  protocol; `debug_commands.DebugUpdate` polls each frame (in `main.zia`, beside the build job);
+  "Debug Preview" labels reverted to "Debug".
+- **Verified:** VM frontend + adapter via CLI; the IDE client (`DebugSession`) end-to-end via the
+  `phase2_phase3` probe (launch → breakpoint → call stack + `total=7` local → continue → exit);
+  ViperIDE suite green. GUI glue (toolbar/menu → handlers) is build-verified — **needs a manual
+  click-through in the IDE**.
+- **Follow-up refinements (all implemented + verified):**
+  - **Stop-on-trap:** an unhandled trap now interactively stops at the failing line —
+    `VM::prepareTrap` calls `frontend_->onStop(buildStopInfo("exception", trapLoc))` before
+    unwinding — instead of only reporting `terminated/crash`.
+  - **Async Pause:** a free-running program pauses at the next instruction. The adapter runs a
+    stdin **reader thread**; while the VM runs, a `pollCallback` (every 20 000 instrs, invoked
+    from `processDebugControl`) drains commands and calls `requestDebugPause(vm)`, which sets a
+    flag the next `processDebugControl` converts into an `onStop("pause")`. The poll **stops
+    draining on `pause`** so the stop materializes before any queued follow-up (e.g. `terminate`).
+  - **String locals:** mutable string variables surface their value, validated with
+    `rt_string_is_handle` before dereferencing the handle (non-handles render `""`).
+  - **Restart:** `handleDebugRestart` = `Terminate` + relaunch with the current breakpoints;
+    wired to a Build-menu item + `debugrestart` command (`Ctrl+Shift+F5`).
+  - **Retired the `rt_debug_protocol` placeholder:** the old source-interpreting fake debugger
+    (12 `Viper.Debug.Protocol.*` bindings, both `RT_FUNC` and `RT_CLASS` halves of `runtime.def`,
+    `rt_debug_protocol.{cpp,h}`, its `RTDebugProtocolTests` unit test, and the
+    `RTCLS_DebugProtocol*` class IDs) is fully removed now that the real VM-backed adapter
+    supersedes it. Full build + `check_runtime_completeness.sh` + ctest all green.
+
 ## Critical files
 
 VM: `src/vm/debug/VMDebug.cpp` (seam), `Debug.cpp`/`Debug.hpp` (breakpoints), `DebugScript.*`

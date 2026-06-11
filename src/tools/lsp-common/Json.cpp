@@ -84,8 +84,6 @@ int64_t JsonValue::asInt(int64_t def) const {
             return def;
         const long double raw = static_cast<long double>(*p);
         const long double value = std::trunc(raw);
-        if (value != raw)
-            return def;
         if (value < static_cast<long double>(std::numeric_limits<int64_t>::min()) ||
             value > static_cast<long double>(std::numeric_limits<int64_t>::max())) {
             return def;

@@ -29,6 +29,7 @@
 #include "tools/common/project_loader.hpp"
 #include "tools/common/source_loader.hpp"
 #include "tools/common/vm_executor.hpp"
+#include "tools/viper/DebugAdapter.hpp"
 #include "viper/il/IO.hpp"
 #include "viper/il/Verify.hpp"
 #include "viper/vm/VM.hpp"
@@ -146,6 +147,7 @@ struct RunBuildConfig {
     ilc::SharedCliOptions shared;         ///< Shared CLI settings (trace, dumps, etc.).
     std::vector<std::string> programArgs; ///< Args forwarded to the program after '--'.
     bool debugVm{false};                  ///< Use the standard VM for debugging (run only).
+    bool debugAdapter{false};             ///< Run as an interactive debug adapter (run only).
     bool helpRequested{false};            ///< True when help was requested.
     bool noRuntimeNamespaces{false};      ///< Disable runtime namespace binding.
 
@@ -323,6 +325,19 @@ il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, 
                     il::support::Severity::Error, "--debug-vm is only valid with 'run'", {}, {}});
             }
             config.debugVm = true;
+        } else if (arg == "--debug-adapter") {
+            if (mode != RunMode::Run) {
+                return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
+                    il::support::Severity::Error,
+                    "--debug-adapter is only valid with 'run'",
+                    {},
+                    {}});
+            }
+            config.debugAdapter = true;
+            // Debug unoptimized code so every source line and local survives for
+            // breakpoints and variable inspection (unless the user overrode -O).
+            if (!config.optimizeLevelOverride)
+                config.optimizeLevelOverride = std::string("O0");
         } else if (arg == "--fast-link") {
             if (mode != RunMode::Build) {
                 return il::support::Expected<RunBuildConfig>(
@@ -410,6 +425,7 @@ int verifyAndExecute(il::core::Module &module,
                      const ilc::SharedCliOptions &shared,
                      const std::vector<std::string> &programArgs,
                      bool debugVm,
+                     bool debugAdapter,
                      bool moduleAlreadyVerified,
                      il::support::SourceManager &sm) {
     if (!moduleAlreadyVerified &&
@@ -417,6 +433,9 @@ int verifyAndExecute(il::core::Module &module,
             module, std::cerr, sm, shared.diagnosticFormat, shared.showWarnings)) {
         return 1;
     }
+
+    if (debugAdapter)
+        return il::tools::debug::runDebugAdapter(module, programArgs, shared.maxSteps, sm);
 
     std::optional<viper::tools::ScopedStdinRedirect> stdinRedirect;
     if (!shared.stdinPath.empty()) {
@@ -906,8 +925,13 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
     }
 
     // Run mode: verify and execute
-    return verifyAndExecute(
-        module, config.shared, config.programArgs, config.debugVm, moduleVerified, sm);
+    return verifyAndExecute(module,
+                            config.shared,
+                            config.programArgs,
+                            config.debugVm,
+                            config.debugAdapter,
+                            moduleVerified,
+                            sm);
 }
 
 } // namespace

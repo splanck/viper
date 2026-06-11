@@ -532,6 +532,7 @@ void VM::refreshDebugFlags() {
     tracingActive_ = tracer.isEnabled();
     memWatchActive_ = debug.hasMemWatches();
     varWatchActive_ = debug.hasVarWatches();
+    debugBreakActive_ = debug.hasSrcLineBPs() || frontend_ != nullptr;
 }
 
 //===----------------------------------------------------------------------===//

@@ -33,11 +33,5 @@ func start() {
     list.SelectId("target");
     SayInt(list.GetSelectedIndex());
 
-    var debug = Viper.Debug.Protocol.New();
-    Viper.Debug.Protocol.SetBreakpoint(debug, "main.zia", 2);
-    var event = Viper.Debug.Protocol.Launch(debug, "main.zia", "var a = 1;\nvar b = 2;\n");
-    Say(event.GetStr("type"));
-    Say(event.GetStr("reason"));
-
     Say("done");
 }

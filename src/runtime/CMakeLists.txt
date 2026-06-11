@@ -44,7 +44,6 @@ set(RT_BASE_SOURCES
         core/rt_log.c
         core/rt_msgbus.c
         core/rt_gc.c
-        core/rt_debug_protocol.cpp
         core/rt_zia_completion_stub.c
         core/rt_zia_highlight_stub.c
 )
@@ -588,7 +587,6 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/core/rt_modvar.h
         ${CMAKE_CURRENT_SOURCE_DIR}/core/rt_args.h
         ${CMAKE_CURRENT_SOURCE_DIR}/oop/rt_sb_bridge.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/rt_debug_protocol.h
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/text/rt_font.h
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/common/rt_graphics.h
         ${CMAKE_CURRENT_SOURCE_DIR}/graphics/gui/rt_gui.h

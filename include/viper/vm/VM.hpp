@@ -65,6 +65,13 @@ struct Module;
 namespace il::vm
 {
 class VM; // forward declaration for callbacks in RunConfig
+class DebugFrontend; // forward declaration for the interactive debug driver
+
+/// @brief Ask @p vm's interactive debug frontend to stop at the next instruction
+///        (resumable Pause). Safe to call from a RunConfig poll callback; a no-op
+///        when no frontend is attached. Defined in the VM so callers need only the
+///        forward declaration above.
+void requestDebugPause(VM &vm);
 
 /// @brief Configuration parameters for executing an IL module.
 struct RunConfig
@@ -73,6 +80,7 @@ struct RunConfig
     uint64_t maxSteps = 0;              ///< Step limit; zero disables the limit.
     DebugCtrl debug;                    ///< Debug controller copied into the VM.
     DebugScript *debugScript = nullptr; ///< Optional script pointer; not owned.
+    DebugFrontend *frontend = nullptr;  ///< Optional interactive driver; not owned.
     std::vector<ExternDesc> externs;    ///< Pre-registered extern helpers.
     /// @brief Per-frame operand stack size in bytes.
     /// @details Controls the amount of stack storage available for @c alloca

@@ -2,80 +2,152 @@ module debug_session;
 
 bind "breakpoints";
 
-bind Debug = Viper.Debug.Protocol;
-bind Seq = Viper.Collections.Seq;
+bind Process = Viper.System.Process;
+bind Json = Viper.Text.Json;
 bind Map = Viper.Collections.Map;
+bind Seq = Viper.Collections.Seq;
+bind Str = Viper.String;
+bind Path = Viper.IO.Path;
+
+// ============================================================================
+// DebugSession — drives the out-of-process VM debug adapter.
+// ============================================================================
+// Spawns `viper run --debug-adapter <file>`, sends breakpoints + commands on the
+// child's stdin as newline JSON, and consumes newline-JSON control events from the
+// child's stderr (each prefixed with the "@@VDBG@@ " sentinel). The debuggee's own
+// stdout flows through normally and is surfaced as program output.
+//
+// Poll() is called every frame (like the build job) so the IDE stays responsive
+// while the program runs to a breakpoint. Stepping/continue are asynchronous: the
+// command is written now and the matching `stopped` event arrives in a later Poll.
+// ============================================================================
+
+final SENTINEL = "@@VDBG@@ ";
 
 class DebugSession {
-    expose Any protocol;
+    expose Process.Handle processHandle;
     expose Boolean hasSession;
     expose Boolean stopped;
     expose Boolean terminated;
     expose String activePath;
+    expose Integer lastLine;
     expose String lastType;
     expose String lastReason;
-    expose Integer lastLine;
-    expose Any lastEvent;
+    expose String consoleText;
+    expose String programOutput;
+    expose Integer exitCode;
+
+    // Accumulator for partial control-channel lines.
+    hide String ctrlBuf;
+    // True when Poll observed a state change worth refreshing the UI for.
+    expose Boolean dirty;
 
     expose func init() {
-        protocol = null;
+        processHandle = null;
         hasSession = false;
         stopped = false;
         terminated = false;
         activePath = "";
+        lastLine = 0;
         lastType = "";
         lastReason = "";
-        lastLine = 0;
-        lastEvent = null;
+        consoleText = "";
+        programOutput = "";
+        exitCode = -1;
+        ctrlBuf = "";
+        dirty = false;
     }
 
-    expose func Launch(path: String,
-                       source: String,
+    /// @brief Launch the adapter for @p path and install its breakpoints.
+    expose func Launch(viperBin: String,
+                       path: String,
                        store: breakpoints.BreakpointStore) -> Boolean {
-        if path == "" { return false; }
-        protocol = Debug.New();
-        activePath = path;
+        if viperBin == "" or path == "" { return false; }
+
+        var args = Seq.New();
+        Seq.Push(args, "run");
+        Seq.Push(args, "--debug-adapter");
+        Seq.Push(args, path);
+        processHandle = Process.StartWithEnv(viperBin, args, Path.Dir(path), null);
+        if processHandle == null or processHandle.IsValid() == false {
+            processHandle = null;
+            return false;
+        }
+
         hasSession = true;
         stopped = false;
         terminated = false;
+        activePath = path;
+        lastLine = 0;
+        lastType = "";
+        lastReason = "";
+        consoleText = "";
+        programOutput = "";
+        exitCode = -1;
+        ctrlBuf = "";
+        dirty = true;
 
+        processHandle.WriteStdin(buildSetBreakpoints(path, store) + "\n");
+        processHandle.WriteStdin("{\"type\":\"launch\"}\n");
+        return true;
+    }
+
+    hide func buildSetBreakpoints(path: String,
+                                  store: breakpoints.BreakpointStore) -> String {
+        var lines = "";
+        var count = 0;
         if store != null {
             var i = 0;
             while i < store.Count() {
                 if store.GetPath(i) == path {
-                    Debug.SetBreakpoint(protocol, path, store.GetLine(i));
+                    if count > 0 { lines = lines + ","; }
+                    lines = lines + store.GetLine(i);
+                    count = count + 1;
                 }
                 i = i + 1;
             }
         }
+        return "{\"type\":\"setBreakpoints\",\"path\":\"" + jsonEscape(path)
+            + "\",\"lines\":[" + lines + "]}";
+    }
 
-        Capture(Debug.Launch(protocol, path, source));
+    hide func jsonEscape(s: String) -> String {
+        var out = Str.Replace(s, "\\", "\\\\");
+        out = Str.Replace(out, "\"", "\\\"");
+        return out;
+    }
+
+    expose func Continue() -> Boolean { return sendStep("continue"); }
+    expose func StepOver() -> Boolean { return sendStep("stepOver"); }
+    expose func StepIn() -> Boolean { return sendStep("stepIn"); }
+    expose func StepOut() -> Boolean { return sendStep("stepOut"); }
+
+    hide func sendStep(kind: String) -> Boolean {
+        if hasSession == false or terminated or processHandle == null { return false; }
+        if stopped == false { return false; }
+        stopped = false;
+        dirty = true;
+        processHandle.WriteStdin("{\"type\":\"" + kind + "\"}\n");
         return true;
     }
 
-    expose func Continue() -> Boolean {
-        if hasSession == false or terminated { return false; }
-        Capture(Debug.Continue(protocol));
-        return true;
-    }
-
-    expose func StepOver() -> Boolean {
-        if hasSession == false or terminated { return false; }
-        Capture(Debug.StepOver(protocol));
-        return true;
-    }
-
+    /// @brief Pause a freely-running program at the next instruction.
     expose func Pause() -> Boolean {
-        if hasSession == false or terminated { return false; }
-        Capture(Debug.Pause(protocol));
+        if hasSession == false or terminated or processHandle == null { return false; }
+        if stopped { return false; }
+        processHandle.WriteStdin("{\"type\":\"pause\"}\n");
         return true;
     }
 
     expose func Terminate() -> Boolean {
-        if hasSession == false { return false; }
-        Capture(Debug.Terminate(protocol));
+        if processHandle == null { return false; }
+        processHandle.WriteStdin("{\"type\":\"terminate\"}\n");
+        processHandle.Kill();
         terminated = true;
         stopped = false;
+        hasSession = false;
+        lastType = "terminated";
+        dirty = true;
         return true;
     }
 
@@ -83,59 +155,121 @@ class DebugSession {
         return hasSession and terminated == false;
     }
 
-    expose func FormatConsole() -> String {
-        if hasSession == false {
-            return "";
-        }
-        var text = "[debug] " + lastType + " " + lastReason;
-        if activePath != "" and lastLine > 0 {
-            text = text + " at " + activePath + ":" + lastLine;
-        }
-        text = text + "\n";
+    /// @brief Drain program output + control events. Returns true on a state change.
+    expose func Poll() -> Boolean {
+        if processHandle == null { return false; }
+        dirty = false;
 
-        var frames = Debug.StackFrames(protocol);
-        if Seq.get_Length(frames) > 0 {
-            text = text + "\nStack:\n";
+        var out = processHandle.ReadStdout();
+        if out != "" {
+            programOutput = programOutput + out;
+            dirty = true;
+        }
+
+        var err = processHandle.ReadStderr();
+        if err != "" {
+            ctrlBuf = ctrlBuf + err;
+            drainControlLines();
+        }
+
+        if terminated == false and processHandle.IsRunning() == false {
+            // Final drain after the child exited.
+            var tailOut = processHandle.ReadStdout();
+            if tailOut != "" { programOutput = programOutput + tailOut; }
+            var tailErr = processHandle.ReadStderr();
+            if tailErr != "" { ctrlBuf = ctrlBuf + tailErr; drainControlLines(); }
+            if terminated == false {
+                exitCode = processHandle.ExitCode();
+                terminated = true;
+                stopped = false;
+                hasSession = false;
+                lastType = "terminated";
+                if lastReason == "" { lastReason = "exit"; }
+                dirty = true;
+            }
+        }
+        return dirty;
+    }
+
+    hide func drainControlLines() {
+        var nl = Str.IndexOf(ctrlBuf, "\n");
+        while nl != 0 {
+            var line = Str.Left(ctrlBuf, nl - 1);
+            ctrlBuf = Str.Mid(ctrlBuf, nl + 1);
+            handleLine(line);
+            nl = Str.IndexOf(ctrlBuf, "\n");
+        }
+    }
+
+    hide func handleLine(line: String) {
+        if line == "" { return; }
+        if Str.StartsWith(line, SENTINEL) {
+            handleEvent(Str.Mid(line, Str.Length(SENTINEL) + 1));
+        } else {
+            // Raw program stderr or trap text: show it as output.
+            programOutput = programOutput + line + "\n";
+            dirty = true;
+        }
+    }
+
+    hide func handleEvent(jsonText: String) {
+        if Json.IsValid(jsonText) == false { return; }
+        var ev = Json.Parse(jsonText);
+        var evType = Json.GetStr(ev, "type");
+        if evType == "stopped" {
+            stopped = true;
+            lastType = "stopped";
+            lastReason = Json.GetStr(ev, "reason");
+            activePath = Json.GetStr(ev, "path");
+            lastLine = Json.GetInt(ev, "line");
+            consoleText = formatStopped(ev);
+            dirty = true;
+        } else if evType == "terminated" {
+            terminated = true;
+            stopped = false;
+            hasSession = false;
+            lastType = "terminated";
+            lastReason = Json.GetStr(ev, "reason");
+            exitCode = Json.GetInt(ev, "exitCode");
+            dirty = true;
+        } else if evType == "initialized" {
+            dirty = true;
+        }
+    }
+
+    expose func FormatConsole() -> String {
+        if hasSession == false and terminated == false { return ""; }
+        if consoleText != "" { return consoleText; }
+        return "[debug] " + lastType + " " + lastReason;
+    }
+
+    hide func formatStopped(ev: Any) -> String {
+        var text = "[debug] stopped (" + lastReason + ") at "
+            + activePath + ":" + lastLine + "\n";
+
+        var frames = Map.Get(ev, "frames");
+        if frames != null and Seq.get_Length(frames) > 0 {
+            text = text + "\nCall stack:\n";
             var i = 0;
             while i < Seq.get_Length(frames) {
-                var frame = Seq.Get(frames, i);
-                text = text + "  #" + i + " " + Map.GetStr(frame, "name") + " "
-                    + Map.GetStr(frame, "path") + ":" + Map.GetInt(frame, "line") + "\n";
+                var f = Seq.Get(frames, i);
+                text = text + "  #" + i + " " + Json.GetStr(f, "function")
+                    + " " + Json.GetStr(f, "path") + ":" + Json.GetInt(f, "line") + "\n";
                 i = i + 1;
             }
         }
 
-        var locals = Debug.Locals(protocol);
-        if Seq.get_Length(locals) > 0 {
+        var locals = Map.Get(ev, "locals");
+        if locals != null and Seq.get_Length(locals) > 0 {
             text = text + "\nLocals:\n";
             var j = 0;
             while j < Seq.get_Length(locals) {
-                var local = Seq.Get(locals, j);
-                text = text + "  " + Map.GetStr(local, "name") + " = "
-                    + Map.GetStr(local, "value") + " : " + Map.GetStr(local, "type") + "\n";
+                var l = Seq.Get(locals, j);
+                text = text + "  " + Json.GetStr(l, "name") + " = "
+                    + Json.GetStr(l, "value") + " : " + Json.GetStr(l, "type") + "\n";
                 j = j + 1;
             }
         }
         return text;
-    }
-
-    hide func Capture(event: Any) {
-        lastEvent = event;
-        if event == null {
-            lastType = "";
-            lastReason = "";
-            lastLine = 0;
-            stopped = false;
-            return;
-        }
-        lastType = Map.GetStr(event, "type");
-        lastReason = Map.GetStr(event, "reason");
-        lastLine = Map.GetInt(event, "line");
-        activePath = Map.GetStr(event, "path");
-        stopped = lastType == "stopped";
-        if lastType == "terminated" {
-            terminated = true;
-            stopped = false;
-        }
     }
 }

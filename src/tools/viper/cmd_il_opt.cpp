@@ -253,7 +253,16 @@ int cmdILOpt(int argc, char **argv) {
             std::cerr << "error: --mem2reg-stats requires mem2reg in the selected pipeline\n";
             return 1;
         }
-        pm.setReportPassStatistics(true);
+    }
+
+    viper::passes::Mem2RegStats mem2regStatsData;
+    if (mem2regStats) {
+        pm.registerModulePass("mem2reg",
+                              [&mem2regStatsData](core::Module &module,
+                                                   transform::AnalysisManager &) {
+                                  viper::passes::mem2reg(module, &mem2regStatsData);
+                                  return transform::PreservedAnalyses::none();
+                              });
     }
 
     if (bisectPipeline) {
@@ -279,6 +288,11 @@ int cmdILOpt(int argc, char **argv) {
     if (!verifyEach && !il::tools::common::verifyModule(m, std::cerr, nullptr)) {
         std::cerr << "error: optimized module failed final verification\n";
         return 1;
+    }
+    if (mem2regStats) {
+        std::cout << "mem2reg: promoted " << mem2regStatsData.promotedVars
+                  << ", removed loads " << mem2regStatsData.removedLoads << ", removed stores "
+                  << mem2regStatsData.removedStores << "\n";
     }
     std::ostringstream output;
     io::Serializer::write(m, output, io::Serializer::Mode::Canonical);
