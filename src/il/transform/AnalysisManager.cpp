@@ -144,19 +144,8 @@ class AnalysisCacheInvalidator {
                     else
                         ++it;
                 }
-            };
-        if (!preserved_.hasFunctionPreservations()) {
-            if (preserved_.hasChangedFunctions()) {
-                for (auto it = manager_.functionCache_.begin();
-                     it != manager_.functionCache_.end();) {
-                    eraseChangedFunctions(it->second);
-                    if (it->second.empty())
-                        it = manager_.functionCache_.erase(it);
-                    else
-                        ++it;
-                }
-                return;
-            }
+        };
+        if (!preserved_.hasFunctionPreservations() && !preserved_.hasChangedFunctions()) {
             manager_.functionCache_.clear();
             return;
         }

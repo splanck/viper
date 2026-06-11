@@ -535,6 +535,11 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
         blockMap.emplace(std::string_view{bb.label}, &bb);
     }
 
+    for (const auto &bb : fn.blocks) {
+        if (auto result = checkBlockTerminators_E(fn, bb); !result)
+            return result;
+    }
+
     handlerInfo_.clear();
 
     std::unordered_map<unsigned, Type> temps;
@@ -912,6 +917,14 @@ Expected<void> FunctionVerifier::verifyDominanceAndEscapes(
         };
 
         const auto stackDerivedForDominance = computeStackDerivedTemps(fn, blockMap);
+        auto isEntryStackAddress = [&](const Value &op) {
+            if (op.kind != Value::Kind::Temp || !stackDerivedForDominance.contains(op.id))
+                return false;
+            auto defIt = definingBlock.find(op.id);
+            auto typeIt = temps.find(op.id);
+            return defIt != definingBlock.end() && defIt->second == entry &&
+                   typeIt != temps.end() && typeIt->second.kind == Type::Kind::Ptr;
+        };
 
         // Check every operand use: the defining block must dominate the using block.
         for (const auto &blk : fn.blocks) {
@@ -923,11 +936,7 @@ Expected<void> FunctionVerifier::verifyDominanceAndEscapes(
                     if (defIt == definingBlock.end())
                         return {};
 
-                    const bool entryStackAddress =
-                        defIt->second == entry && stackDerivedForDominance.contains(op.id) &&
-                        temps.find(op.id) != temps.end() &&
-                        temps.find(op.id)->second.kind == Type::Kind::Ptr;
-                    if (defIt->second != &blk && !entryStackAddress &&
+                    if (defIt->second != &blk && !isEntryStackAddress(op) &&
                         !dominates(defIt->second, &blk)) {
                         std::ostringstream msg;
                         msg << "use of %" << op.id << " in ^" << blk.label
@@ -1059,6 +1068,118 @@ Expected<void> FunctionVerifier::verifyDominanceAndEscapes(
                     use.instr->loc, formatInstrDiag(fn, *use.block, *use.instr, message.str()))};
             }
         }
+
+        std::vector<std::vector<size_t>> successors(blocks.size());
+        for (size_t index = 0; index < blocks.size(); ++index) {
+            const BasicBlock *block = blocks[index];
+            for (const Instr &instr : block->instructions) {
+                if (!isTerminator(instr.op))
+                    continue;
+                for (const std::string &label : instr.labels) {
+                    auto blockIt = blockMap.find(label);
+                    if (blockIt == blockMap.end())
+                        continue;
+                    auto indexIt = blockIndex.find(blockIt->second);
+                    if (indexIt != blockIndex.end())
+                        successors[index].push_back(indexIt->second);
+                }
+                break;
+            }
+        }
+
+        std::vector<std::unordered_set<unsigned>> releaseIn(blocks.size());
+        std::vector<std::unordered_set<unsigned>> releaseOut(blocks.size());
+        std::queue<size_t> worklist;
+        std::vector<unsigned char> queued(blocks.size(), 1);
+        for (size_t index = 0; index < blocks.size(); ++index)
+            worklist.push(index);
+
+        auto makeReleaseDiag = [&](const BasicBlock &block,
+                                   const Instr &instr,
+                                   unsigned id,
+                                   std::string_view action) {
+            std::ostringstream message;
+            message << action << " of %" << id;
+            return makeError(instr.loc, formatInstrDiag(fn, block, instr, message.str()));
+        };
+
+        auto transferReleases =
+            [&](const BasicBlock &block,
+                std::unordered_set<unsigned> released) -> Expected<std::unordered_set<unsigned>> {
+            for (const Instr &instr : block.instructions) {
+                if (isRuntimeExplicitRelease(instr)) {
+                    if (!instr.operands.empty() && instr.operands[0].kind == Value::Kind::Temp) {
+                        const unsigned id = instr.operands[0].id;
+                        if (released.contains(id))
+                            return Expected<std::unordered_set<unsigned>>{
+                                makeReleaseDiag(block, instr, id, "double release")};
+                        released.insert(id);
+                    }
+                    continue;
+                }
+
+                if (isRuntimeArrayRetain(instr) && !instr.operands.empty() &&
+                    instr.operands[0].kind == Value::Kind::Temp) {
+                    released.erase(instr.operands[0].id);
+                    continue;
+                }
+
+                if (!isRuntimeObjectFinalizerCall(instr)) {
+                    auto checkUse = [&](const Value &value) -> Expected<void> {
+                        if (value.kind == Value::Kind::Temp && released.contains(value.id))
+                            return Expected<void>{
+                                makeReleaseDiag(block, instr, value.id, "use after release")};
+                        return {};
+                    };
+                    for (const Value &operand : instr.operands)
+                        if (auto result = checkUse(operand); !result)
+                            return Expected<std::unordered_set<unsigned>>{result.error()};
+                    for (const auto &bundle : instr.brArgs)
+                        for (const Value &arg : bundle)
+                            if (auto result = checkUse(arg); !result)
+                                return Expected<std::unordered_set<unsigned>>{result.error()};
+
+                    // A result temp denotes a fresh dynamic value each time the
+                    // instruction executes.  If a loop backedge carries a prior
+                    // release state for the same SSA id, the new definition
+                    // supersedes that state after its operands have been checked.
+                    if (instr.result)
+                        released.erase(*instr.result);
+                }
+
+                if (isTerminator(instr.op))
+                    break;
+            }
+            return released;
+        };
+
+        auto mergeReleaseSet = [](std::unordered_set<unsigned> &dst,
+                                  const std::unordered_set<unsigned> &src) {
+            bool changed = false;
+            for (unsigned id : src)
+                changed |= dst.insert(id).second;
+            return changed;
+        };
+
+        while (!worklist.empty()) {
+            const size_t index = worklist.front();
+            worklist.pop();
+            queued[index] = 0;
+
+            auto transferred = transferReleases(*blocks[index], releaseIn[index]);
+            if (!transferred)
+                return Expected<void>{transferred.error()};
+            if (transferred.value() == releaseOut[index])
+                continue;
+
+            releaseOut[index] = std::move(transferred.value());
+            for (size_t succ : successors[index]) {
+                if (mergeReleaseSet(releaseIn[succ], releaseOut[index]) && !queued[succ]) {
+                    worklist.push(succ);
+                    queued[succ] = 1;
+                }
+            }
+        }
     }
 
     // ===== PASS 4: Alloca escape verification =====
@@ -1099,9 +1220,6 @@ Expected<void> FunctionVerifier::verifyDominanceAndEscapes(
                                 return result;
                         }
                     }
-
-                    if (instr.op == Opcode::Call)
-                        continue;
 
                     if (instr.op == Opcode::CallIndirect) {
                         for (const auto &op : instr.operands)

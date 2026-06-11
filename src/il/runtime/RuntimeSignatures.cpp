@@ -319,6 +319,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <mutex>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -2481,15 +2482,14 @@ std::vector<signatures::SigParam::Kind> makeReturnKinds(const RuntimeSignature &
 ///          runs so later checks can compare descriptors against the whitelist
 ///          emitted by the dedicated signature modules.
 void ensureSignatureWhitelist() {
-    static const bool registered = [] {
+    static std::once_flag registered;
+    std::call_once(registered, [] {
         signatures::register_fileio_signatures();
         signatures::register_string_signatures();
         signatures::register_math_signatures();
         signatures::register_array_signatures();
         signatures::register_oop_signatures();
-        return true;
-    }();
-    (void)registered;
+    });
 }
 
 /// @brief Compare generated descriptors against the debug whitelist.

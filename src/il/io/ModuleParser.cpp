@@ -59,6 +59,20 @@ bool isIgnorableDirectiveTrailing(std::string_view text) {
     return trimmed.empty() || trimmed.rfind("//", 0) == 0 || trimmed.front() == ';';
 }
 
+/// @brief Check whether any module-level declaration already owns @p name.
+/// @details The parser uses a single textual symbol namespace for functions,
+///          externs, and globals. Rejecting collisions at parse time gives a
+///          direct diagnostic before later verifier passes run.
+/// @param module Module currently being populated.
+/// @param name Symbol name without its leading sigil.
+/// @return True if @p name is already declared anywhere in @p module.
+bool moduleHasSymbol(const il::core::Module &module, std::string_view name) {
+    const auto matches = [&](const auto &decl) { return decl.name == name; };
+    return std::any_of(module.functions.begin(), module.functions.end(), matches) ||
+           std::any_of(module.externs.begin(), module.externs.end(), matches) ||
+           std::any_of(module.globals.begin(), module.globals.end(), matches);
+}
+
 Expected<il::core::EffectAttrs> parseEffectAttrsSuffix(std::string_view text, unsigned lineNo) {
     il::core::EffectAttrs attrs;
     std::string trimmedText = trim(std::string{text});
@@ -199,12 +213,9 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st) {
         oss << "unknown type '" << retStr << "'";
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, oss.str())};
     }
-    auto hasDuplicate = std::any_of(st.m.externs.begin(),
-                                    st.m.externs.end(),
-                                    [&](const il::core::Extern &ext) { return ext.name == name; });
-    if (hasDuplicate) {
+    if (moduleHasSymbol(st.m, name)) {
         std::ostringstream oss;
-        oss << "duplicate extern '" << name << "'";
+        oss << "duplicate module symbol '" << name << "'";
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, oss.str())};
     }
 
@@ -274,7 +285,8 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st) {
     }
 
     size_t eq = line.find('=', at);
-    if (globalType.kind == Type::Kind::Str && eq == std::string::npos) {
+    if (globalType.kind == Type::Kind::Str && eq == std::string::npos &&
+        globalLinkage != il::core::Linkage::Import) {
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing '='")};
     }
     const size_t nameEnd = eq == std::string::npos ? line.size() : eq;
@@ -285,10 +297,15 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st) {
     if (!isValidILIdentifier(name)) {
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "malformed global name")};
     }
+    if (moduleHasSymbol(st.m, name)) {
+        std::ostringstream oss;
+        oss << "duplicate module symbol '" << name << "'";
+        return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, oss.str())};
+    }
 
     std::string decoded;
     bool hasInitializer = eq != std::string::npos;
-    if (globalType.kind == Type::Kind::Str) {
+    if (globalType.kind == Type::Kind::Str && hasInitializer) {
         size_t q1 = line.find('"', eq);
         if (q1 == std::string::npos) {
             return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing opening '\"'")};
@@ -314,6 +331,8 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st) {
         if (!il::io::decodeEscapedString(init, decoded, &errMsg)) {
             return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, errMsg)};
         }
+        isConst = true;
+    } else if (globalType.kind == Type::Kind::Str) {
         isConst = true;
     } else if (eq != std::string::npos) {
         decoded = trim(line.substr(eq + 1));

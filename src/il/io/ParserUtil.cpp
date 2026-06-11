@@ -18,6 +18,7 @@
 
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <exception>
 #include <limits>
 #include <locale>
@@ -202,6 +203,8 @@ std::string readToken(std::istringstream &stream) {
 /// that would collide with IL delimiters or sigils.
 bool isValidILIdentifier(std::string_view text) {
     if (text.empty())
+        return false;
+    if (text == "." || text == "..")
         return false;
 
     for (size_t index = 0; index < text.size(); ++index) {
@@ -396,6 +399,8 @@ bool parseFloatLiteral(const std::string &token, double &value) {
         return false;
     stream >> std::ws;
     if (!stream.eof())
+        return false;
+    if (!std::isfinite(parsed))
         return false;
     value = parsed;
     return true;

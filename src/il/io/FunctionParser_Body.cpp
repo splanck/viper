@@ -19,6 +19,7 @@
 #include "il/internal/io/InstrParser.hpp"
 #include "il/internal/io/TypeParser.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <sstream>
@@ -275,6 +276,14 @@ Expected<Param> parseBlockParam(const std::string &paramText,
         // This is the entry block - check if this param shadows a function param
         auto it = st.tempIds.find(nm);
         if (it != st.tempIds.end()) {
+            const auto fnParamIt = std::find_if(
+                st.curFn->params.begin(), st.curFn->params.end(), [&](const Param &param) {
+                    return param.id == it->second;
+                });
+            if (fnParamIt != st.curFn->params.end() && fnParamIt->type.kind != ty.kind) {
+                return lineError<Param>(
+                    st.lineNo, "entry block parameter type differs from function parameter");
+            }
             // Reuse the function param ID
             return Param{nm, ty, it->second};
         }
@@ -370,21 +379,28 @@ Expected<void> parseBlockHeader(const std::string &header, ParserState &st) {
             return paramsResult;
     }
 
+    auto resolvedBranches = resolvePendingBranches(label, bparams.size(), st);
+    if (!resolvedBranches)
+        return resolvedBranches;
+
     st.curFn->blocks.push_back({label, bparams, {}, false});
     st.curBB = &st.curFn->blocks.back();
     st.blockParamCount[label] = bparams.size();
 
-    return resolvePendingBranches(label, bparams.size(), st);
+    return {};
 }
 
 Expected<void> parseFunction(std::istream &is, std::string &header, ParserState &st) {
+    ParserSnapshot snapshot{st};
     auto headerResult = parseFunctionHeader(header, st);
     if (!headerResult)
         return headerResult;
 
     // Import-linkage functions have no body; skip body parsing.
-    if (st.curFn && st.curFn->linkage == il::core::Linkage::Import)
+    if (st.curFn && st.curFn->linkage == il::core::Linkage::Import) {
+        snapshot.discard();
         return {};
+    }
 
     TokenStream tokens(is, st);
     parser_impl::ParserState local{};
@@ -396,6 +412,7 @@ Expected<void> parseFunction(std::istream &is, std::string &header, ParserState 
     if (!bodyResult)
         return bodyResult;
 
+    snapshot.discard();
     return {};
 }
 

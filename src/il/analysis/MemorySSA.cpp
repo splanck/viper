@@ -46,6 +46,7 @@
 
 #include "il/analysis/MemorySSA.hpp"
 
+#include "il/analysis/AllocaRoots.hpp"
 #include "il/analysis/BasicAA.hpp"
 #include "il/analysis/CFG.hpp"
 #include "il/core/Function.hpp"
@@ -117,127 +118,10 @@ inline bool isUse(const Instr &I, viper::analysis::BasicAA &AA) {
     return false;
 }
 
-/// True if this alloca's address is passed to a call or stored elsewhere.
-struct DefInfo {
-    Opcode op{Opcode::Count};
-    std::vector<Value> operands;
-};
-
-using RootMap = std::unordered_map<unsigned, std::unordered_set<unsigned>>;
-
-std::unordered_map<unsigned, DefInfo> collectDefs(const Function &F) {
-    std::unordered_map<unsigned, DefInfo> defs;
-    for (const auto &B : F.blocks) {
-        for (const auto &I : B.instructions) {
-            if (I.result)
-                defs.emplace(*I.result, DefInfo{I.op, I.operands});
-        }
-    }
-    return defs;
-}
-
-RootMap computeAllocaRoots(const Function &F, const std::unordered_map<unsigned, DefInfo> &defs) {
-    RootMap roots;
-    roots.reserve(defs.size());
-    for (const auto &[id, def] : defs)
-        if (def.op == Opcode::Alloca)
-            roots[id].insert(id);
-
-    std::unordered_map<std::string, const BasicBlock *> blocksByLabel;
-    blocksByLabel.reserve(F.blocks.size());
-    for (const auto &B : F.blocks)
-        blocksByLabel.emplace(B.label, &B);
-
-    auto mergeRoots = [&](unsigned dst, const Value &src) {
-        if (src.kind != Value::Kind::Temp)
-            return false;
-        auto srcIt = roots.find(src.id);
-        if (srcIt == roots.end())
-            return false;
-        auto &dstRoots = roots[dst];
-        bool changed = false;
-        for (unsigned root : srcIt->second)
-            changed |= dstRoots.insert(root).second;
-        return changed;
-    };
-
-    bool changed = true;
-    while (changed) {
-        changed = false;
-        for (const auto &[id, def] : defs)
-            if (def.op == Opcode::GEP && !def.operands.empty())
-                changed |= mergeRoots(id, def.operands[0]);
-
-        for (const auto &B : F.blocks) {
-            for (const auto &I : B.instructions) {
-                for (size_t edge = 0; edge < I.labels.size() && edge < I.brArgs.size(); ++edge) {
-                    auto targetIt = blocksByLabel.find(I.labels[edge]);
-                    if (targetIt == blocksByLabel.end())
-                        continue;
-                    const auto *target = targetIt->second;
-                    const auto &args = I.brArgs[edge];
-                    const size_t count = std::min(args.size(), target->params.size());
-                    for (size_t idx = 0; idx < count; ++idx)
-                        changed |= mergeRoots(target->params[idx].id, args[idx]);
-                }
-            }
-        }
-    }
-
-    return roots;
-}
-
-/// True if this alloca's address is passed to a call or stored elsewhere.
-bool allocaEscapes(const Function &F, unsigned allocaId, const RootMap &roots) {
-    auto containsAlloca = [&](const Value &value) {
-        if (value.kind != Value::Kind::Temp)
-            return false;
-        auto rootIt = roots.find(value.id);
-        return rootIt != roots.end() && rootIt->second.count(allocaId) != 0;
-    };
-
-    for (const auto &B : F.blocks) {
-        for (const auto &I : B.instructions) {
-            if (I.op == Opcode::Call || I.op == Opcode::CallIndirect) {
-                for (const auto &op : I.operands)
-                    if (containsAlloca(op))
-                        return true;
-            }
-            if (I.op == Opcode::Store && I.operands.size() >= 2) {
-                const auto &val = I.operands[1];
-                if (containsAlloca(val))
-                    return true;
-            }
-            if (I.op == Opcode::Ret) {
-                for (const auto &op : I.operands)
-                    if (containsAlloca(op))
-                        return true;
-            }
-        }
-    }
-    return false;
-}
-
-/// Compute the set of non-escaping alloca ids in @p F.
-std::unordered_set<unsigned> nonEscapingAllocas(const Function &F,
-                                                const std::unordered_map<unsigned, DefInfo> &defs,
-                                                const RootMap &roots) {
-    std::unordered_set<unsigned> result;
-    for (const auto &B : F.blocks) {
-        for (const auto &I : B.instructions) {
-            if (I.op == Opcode::Alloca && I.result) {
-                if (!allocaEscapes(F, *I.result, roots))
-                    result.insert(*I.result);
-            }
-        }
-    }
-    return result;
-}
-
 /// True if @p ptr refers to a non-escaping alloca, directly or via GEP.
 inline bool isNonEscapingAlloca(const Value &ptr,
                                 const std::unordered_set<unsigned> &nonEsc,
-                                const RootMap &roots) {
+                                const AllocaRootMap &roots) {
     if (ptr.kind != Value::Kind::Temp)
         return false;
     auto rootIt = roots.find(ptr.id);
@@ -350,7 +234,7 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
         return std::nullopt;
     };
 
-    const auto defs = collectDefs(F);
+    const auto defs = collectAllocaRootDefs(F);
     const auto roots = computeAllocaRoots(F, defs);
 
     // Collect non-escaping allocas — calls are transparent for these.
@@ -607,6 +491,7 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
             bool isDead = true;
 
             // Intra-block check: scan instructions AFTER the store in same block.
+            bool killedInSameBlock = false;
             for (size_t j = i + 1; j < B.instructions.size(); ++j) {
                 const Instr &next = B.instructions[j];
 
@@ -622,6 +507,7 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
                     auto nextSize = BasicAA::typeSizeBytes(next.type);
                     if (fullyOverwrites(next.operands[0], nextSize, ptr, storeSize, AA)) {
                         // Fully overwritten before any read in this block.
+                        killedInSameBlock = true;
                         break;
                     }
                 }
@@ -632,6 +518,15 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
 
             if (!isDead)
                 continue;
+            if (killedInSameBlock) {
+                auto bit = mssa.instrToAccess_.find(&B);
+                if (bit != mssa.instrToAccess_.end()) {
+                    auto ait = bit->second.find(i);
+                    if (ait != bit->second.end())
+                        mssa.deadStoreIds_.insert(ait->second);
+                }
+                continue;
+            }
 
             std::unordered_map<std::string, bool> livePathMemo;
             std::unordered_set<std::string> visiting;
@@ -670,13 +565,14 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
                 }
 
                 if (succ->instructions.empty())
-                    return finish(true);
+                    return finish(false);
 
                 const Instr &term = succ->instructions.back();
-                if (term.op == Opcode::Ret)
+                if (term.op == Opcode::Ret || term.op == Opcode::Trap ||
+                    term.op == Opcode::TrapFromErr)
                     return finish(true);
                 if (term.labels.empty())
-                    return finish(true);
+                    return finish(false);
 
                 for (const auto &succLabel : term.labels)
                     if (!allLivePathsKillOrExit(succLabel))

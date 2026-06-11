@@ -471,12 +471,14 @@ Expected<void> OperandParser::parseCallIndirectOperands(const std::string &text)
             return Expected<void>{
                 il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "malformed call.indirect")};
         }
-        if (!fnTok.empty()) {
-            auto fnVal = parseValueToken(fnTok);
-            if (!fnVal)
-                return Expected<void>{fnVal.error()};
-            instr_.operands.push_back(std::move(fnVal.value()));
+        if (fnTok.empty()) {
+            return Expected<void>{
+                il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "call.indirect missing callee")};
         }
+        auto fnVal = parseValueToken(fnTok);
+        if (!fnVal)
+            return Expected<void>{fnVal.error()};
+        instr_.operands.push_back(std::move(fnVal.value()));
         return {};
     }
     auto parens = findTopLevelParenRange(state_, instr_, work, 0, "call.indirect");
@@ -763,7 +765,6 @@ Expected<void> OperandParser::parseCaseSegment(const std::string &segment, const
     auto caseValue = parseValueToken(valueText);
     if (!caseValue)
         return Expected<void>{caseValue.error()};
-    instr_.operands.push_back(std::move(caseValue.value()));
 
     std::vector<Value> args;
     std::string label;
@@ -771,7 +772,11 @@ Expected<void> OperandParser::parseCaseSegment(const std::string &segment, const
     if (!parsed)
         return parsed;
 
-    return validateCaseArity(std::move(label), std::move(args));
+    auto validated = validateCaseArity(label, args);
+    if (!validated)
+        return validated;
+    instr_.operands.push_back(std::move(caseValue.value()));
+    return {};
 }
 
 /// @brief Record a branch label and verify its argument arity for switch targets.
@@ -781,11 +786,11 @@ Expected<void> OperandParser::parseCaseSegment(const std::string &segment, const
 /// @return Success or an error diagnostic indicating an argument mismatch.
 Expected<void> OperandParser::validateCaseArity(std::string label, std::vector<Value> args) {
     const size_t argCount = args.size();
-    instr_.labels.push_back(std::move(label));
-    instr_.brArgs.push_back(std::move(args));
-    auto check = checkBranchArgCount(instr_.labels.back(), argCount);
+    auto check = checkBranchArgCount(label, argCount);
     if (!check)
         return check;
+    instr_.labels.push_back(std::move(label));
+    instr_.brArgs.push_back(std::move(args));
     return {};
 }
 

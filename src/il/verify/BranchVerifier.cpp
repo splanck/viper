@@ -44,8 +44,13 @@ namespace {
 bool valueCompatibleWithType(const Value &value, const Type &actualType, const Type &expectedType) {
     if (actualType.kind == expectedType.kind)
         return true;
-    if (value.kind == Value::Kind::ConstInt)
+    if (value.kind == Value::Kind::ConstInt) {
+        if (value.isBool)
+            return expectedType.kind == Type::Kind::I1;
+        if (expectedType.kind == Type::Kind::I1)
+            return false;
         return detail::fitsInIntegerKind(value.i64, expectedType.kind);
+    }
     return false;
 }
 

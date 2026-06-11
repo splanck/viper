@@ -57,6 +57,7 @@ class SignatureController {
         panel.SetSize(680.0, 92.0);
         panel.SetVisible(0);
         label = GUI.Label.New(null, "");
+        label.SetWordWrap(1);
         panel.AddChild(label);
     }
 

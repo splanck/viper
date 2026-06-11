@@ -775,6 +775,7 @@ func main() {
         if triggeredNoMenu("treerename", cpSelected)                           { TreeRename(shell, projMgr, docMgr, engine, tabs, indexer, locStore); }
         if triggeredNoMenu("treedelete", cpSelected)                           { TreeDelete(shell, projMgr, docMgr, engine, tabs, indexer, locStore); }
         if triggeredNoMenu("treerefresh", cpSelected)                          { projMgr.RefreshTree(); indexer.EnsureProject(projMgr, docMgr); shell.SetStatusLeft("Project tree refreshed"); }
+        if shell.miKeyboardShortcuts.WasClicked() != 0                          { view_commands.handleKeybindings(shell, commandRegistry); }
         if shell.miAbout.WasClicked() != 0                                     { overlays.OpenAbout(shell); }
         if triggeredMenu("quickopen", shell.miQuickOpen, cpSelected) {
             if search_commands.ShowQuickOpenPalette(shell, projMgr) {
@@ -905,6 +906,7 @@ func main() {
                     appSettings.autoSave = overlays.ReadAutoSave();
                     appSettings.diagnosticsDelayMs = overlays.ReadDiagnosticsDelayMs();
                     appSettings.completionDelayMs = overlays.ReadCompletionDelayMs();
+                    appSettings.uiZoomPercent = overlays.ReadUiZoom();
                     appSettings.restoreSession = overlays.ReadRestoreSession();
                     appSettings.restoreLastProject = overlays.ReadRestoreLastProject();
                     appSettings.confirmOnExitWithUnsavedChanges = overlays.ReadConfirmClose();
@@ -936,6 +938,7 @@ func main() {
                 appSettings.autoSave = overlays.ReadAutoSave();
                 appSettings.diagnosticsDelayMs = overlays.ReadDiagnosticsDelayMs();
                 appSettings.completionDelayMs = overlays.ReadCompletionDelayMs();
+                appSettings.uiZoomPercent = overlays.ReadUiZoom();
                 appSettings.restoreSession = overlays.ReadRestoreSession();
                 appSettings.restoreLastProject = overlays.ReadRestoreLastProject();
                 appSettings.confirmOnExitWithUnsavedChanges = overlays.ReadConfirmClose();

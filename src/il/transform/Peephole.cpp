@@ -127,6 +127,25 @@ static bool isPositivePowerOfTwo(long long value, unsigned &shift) {
     return true;
 }
 
+/// @brief Return the bit width of an integer type used by peephole rewrites.
+/// @details The signed divide/remainder expansion must preserve the source
+///          instruction width because arithmetic shift and mask constants are
+///          width-sensitive for negative values.
+/// @param kind IL type kind carried by the original instruction.
+/// @return Bit width for supported integer types, or zero for unsupported types.
+static unsigned integerBitWidth(Type::Kind kind) {
+    switch (kind) {
+        case Type::Kind::I16:
+            return 16;
+        case Type::Kind::I32:
+            return 32;
+        case Type::Kind::I64:
+            return 64;
+        default:
+            return 0;
+    }
+}
+
 /// @brief Compare floating constants without losing signed-zero identity.
 static bool sameFloatConstant(double value, double target) {
     if (value != target)
@@ -467,9 +486,13 @@ static bool tryExpandSignedPowerOfTwoDivRem(Function &function,
     if (!isConstInt(in.operands[1], divisor) || !isPositivePowerOfTwo(divisor, shift) || shift == 0)
         return false;
 
+    const unsigned bitWidth = integerBitWidth(in.type.kind);
+    if (bitWidth == 0)
+        return false;
+
     const Value dividend = in.operands[0];
     const unsigned originalResult = *in.result;
-    const Type i64(Type::Kind::I64);
+    const Type resultType = in.type;
 
     const unsigned signId = nextId++;
     const unsigned biasId = nextId++;
@@ -478,19 +501,19 @@ static bool tryExpandSignedPowerOfTwoDivRem(Function &function,
     Instr sign;
     sign.op = Opcode::AShr;
     sign.result = signId;
-    sign.type = i64;
-    sign.operands = {dividend, Value::constInt(63)};
+    sign.type = resultType;
+    sign.operands = {dividend, Value::constInt(static_cast<long long>(bitWidth - 1))};
 
     Instr bias;
     bias.op = Opcode::And;
     bias.result = biasId;
-    bias.type = i64;
+    bias.type = resultType;
     bias.operands = {Value::temp(signId), Value::constInt(divisor - 1)};
 
     Instr biased;
     biased.op = Opcode::IAddOvf;
     biased.result = biasedId;
-    biased.type = i64;
+    biased.type = resultType;
     biased.operands = {dividend, Value::temp(biasId)};
 
     std::vector<Instr> replacement;
@@ -503,7 +526,7 @@ static bool tryExpandSignedPowerOfTwoDivRem(Function &function,
         Instr quotient;
         quotient.op = Opcode::AShr;
         quotient.result = originalResult;
-        quotient.type = i64;
+        quotient.type = resultType;
         quotient.operands = {Value::temp(biasedId), Value::constInt(static_cast<long long>(shift))};
         replacement.push_back(std::move(quotient));
     } else {
@@ -512,13 +535,13 @@ static bool tryExpandSignedPowerOfTwoDivRem(Function &function,
         Instr rounded;
         rounded.op = Opcode::And;
         rounded.result = roundedId;
-        rounded.type = i64;
+        rounded.type = resultType;
         rounded.operands = {Value::temp(biasedId), Value::constInt(~(divisor - 1))};
 
         Instr rem;
         rem.op = Opcode::ISubOvf;
         rem.result = originalResult;
-        rem.type = i64;
+        rem.type = resultType;
         rem.operands = {dividend, Value::temp(roundedId)};
 
         replacement.push_back(std::move(rounded));
@@ -531,8 +554,8 @@ static bool tryExpandSignedPowerOfTwoDivRem(Function &function,
                               std::make_move_iterator(replacement.begin()),
                               std::make_move_iterator(replacement.end()));
 
-    if (function.valueNames.size() <= nextId)
-        function.valueNames.resize(nextId + 1);
+    if (function.valueNames.size() < nextId)
+        function.valueNames.resize(nextId);
     idx += replacement.size() - 1;
     return true;
 }
@@ -551,9 +574,13 @@ std::string findOrCreateStringGlobal(Module &module, const std::string &value) {
     }
 
     std::unordered_set<std::string> usedNames;
-    usedNames.reserve(module.globals.size());
+    usedNames.reserve(module.globals.size() + module.functions.size() + module.externs.size());
     for (const auto &global : module.globals)
         usedNames.insert(global.name);
+    for (const auto &function : module.functions)
+        usedNames.insert(function.name);
+    for (const auto &ext : module.externs)
+        usedNames.insert(ext.name);
 
     std::string name;
     unsigned suffix = 0;
@@ -720,6 +747,8 @@ static void runPeephole(Module &m) {
                     }
 
                     // Try to determine the branch condition value
+                    if (in.operands.empty())
+                        continue;
                     long long v;
                     bool known = false;
                     size_t defIdx = static_cast<size_t>(-1);

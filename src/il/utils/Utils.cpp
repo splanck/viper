@@ -24,6 +24,7 @@
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
+#include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
 
 #include <algorithm>
@@ -76,21 +77,7 @@ Instruction *terminator(Block &B) {
 /// @param I Instruction to inspect.
 /// @return True when @p I.op is a terminating opcode; false otherwise.
 bool isTerminator(const Instruction &I) {
-    using ::il::core::Opcode;
-    switch (I.op) {
-        case Opcode::Br:
-        case Opcode::CBr:
-        case Opcode::SwitchI32:
-        case Opcode::Ret:
-        case Opcode::Trap:
-        case Opcode::TrapFromErr:
-        case Opcode::ResumeSame:
-        case Opcode::ResumeNext:
-        case Opcode::ResumeLabel:
-            return true;
-        default:
-            return false;
-    }
+    return ::il::core::getOpcodeInfo(I.op).isTerminator;
 }
 
 bool isTerminated(const Block &B) {

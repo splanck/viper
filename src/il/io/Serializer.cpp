@@ -656,7 +656,7 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode) {
         if (g.isConst || g.type.kind == Type::Kind::Str)
             os << "const ";
         os << g.type.toString() << " @" << checkedIdentifier("global", g.name);
-        if (g.type.kind == Type::Kind::Str) {
+        if (g.type.kind == Type::Kind::Str && g.linkage != Linkage::Import) {
             os << " = \"" << encodeEscapedString(g.init) << "\"";
         } else if (g.hasInitializer || !g.init.empty()) {
             os << " = " << g.init;

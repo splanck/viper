@@ -489,6 +489,23 @@ static void sealBlocks(Function &F,
     BS.sealed = true;
 }
 
+/// @brief Decide whether a branch-argument slot still needs a promoted value.
+/// @details Resizing a branch-argument vector default-constructs missing slots
+///          as null pointer values.  For non-pointer block parameters that null
+///          is never a valid argument, so repair must overwrite it instead of
+///          treating vector size alone as proof that the slot is populated.
+/// @param args Existing argument bundle for one CFG edge.
+/// @param paramIdx Destination block parameter index.
+/// @param paramType Type of the destination block parameter.
+/// @return True when the promoted value should be written into the slot.
+static bool needsPromotedBranchArgRepair(const std::vector<Value> &args,
+                                         unsigned paramIdx,
+                                         Type paramType) {
+    if (args.size() <= paramIdx)
+        return true;
+    return args[paramIdx].kind == Value::Kind::NullPtr && paramType.kind != Type::Kind::Ptr;
+}
+
 /// @brief Fill branch arguments for parameters introduced by mem2reg.
 /// @details The rename algorithm wires most edges while reading predecessor
 ///          values.  A final deterministic repair pass closes any remaining
@@ -537,7 +554,7 @@ static void repairPromotedBranchArgs(Function &F,
 
             auto &args = term.brArgs[targetIndex];
             for (const auto &[paramIdx, varId] : slots) {
-                if (args.size() > paramIdx)
+                if (!needsPromotedBranchArgRepair(args, paramIdx, target->params[paramIdx].type))
                     continue;
                 Value arg = renameUses(F, &Pred, varId, vars, blocks, nextId, ctx, ok);
                 if (!ok)
@@ -559,8 +576,11 @@ static void repairPromotedBranchArgs(Function &F,
 /// @param F Function to optimize.
 /// @param infos Metadata about allocas gathered by @ref collectAllocas.
 /// @param stats Optional statistics accumulator.
-/// @sideeffect Mutates blocks and instructions in @p F and updates @p stats.
-static void promoteVariables(Function &F,
+/// @return True if promotion completed and all branch arguments were repaired;
+///         false if the caller should discard the partially rewritten function.
+/// @sideeffect Mutates blocks and instructions in @p F and updates @p stats only
+///             for a completed promotion.
+static bool promoteVariables(Function &F,
                              const AllocaMap &infos,
                              Mem2RegStats *stats,
                              const analysis::CFGContext &ctx) {
@@ -590,7 +610,7 @@ static void promoteVariables(Function &F,
         stats->promotedVars += vars.size();
 
     if (vars.empty())
-        return;
+        return true;
 
     unsigned nextId = viper::il::nextTempId(F);
 
@@ -628,7 +648,7 @@ static void promoteVariables(Function &F,
 
     while (!work.empty()) {
         if (!ok)
-            return;
+            return false;
         BasicBlock *B = work.front();
         work.pop();
 
@@ -644,7 +664,7 @@ static void promoteVariables(Function &F,
                 unsigned varId = I.operands[0].id;
                 Value v = renameUses(F, B, varId, vars, blocks, nextId, ctx, ok);
                 if (!ok)
-                    return;
+                    return false;
                 if (I.result)
                     replacements[*I.result] = resolveReplacementValue(replacements, v);
                 if (stats)
@@ -674,14 +694,15 @@ static void promoteVariables(Function &F,
             if (SS.seenPreds == SS.totalPreds)
                 sealBlocks(F, S, vars, blocks, nextId, ctx, ok);
             if (!ok)
-                return;
+                return false;
         }
     }
 
     repairPromotedBranchArgs(F, vars, blocks, nextId, ctx, ok);
     if (!ok)
-        return;
+        return false;
     applyReplacements(F, replacements);
+    return true;
 }
 
 /// @brief Return true when @p block can be reached from a predecessor it dominates.
@@ -983,8 +1004,10 @@ static bool runSROA(Function &F) {
 /// @param M Module to transform.
 /// @param stats Optional statistics collector receiving totals for promoted
 ///              variables and removed loads/stores.
+/// @param enableParallel Allow per-function workers for callers that explicitly
+///                       accept parallel transform semantics.
 /// @sideeffect Mutates functions within the module.
-void mem2reg(Module &M, Mem2RegStats *stats) {
+void mem2reg(Module &M, Mem2RegStats *stats, bool enableParallel) {
     analysis::CFGContext cfg(M);
     auto processFunction = [&](Function &F, Mem2RegStats *localStats) {
         if (hasExceptionHandling(F))
@@ -1033,13 +1056,23 @@ void mem2reg(Module &M, Mem2RegStats *stats) {
             }
             promotable.emplace(id, info);
         }
-        promoteVariables(F, promotable, localStats, cfg);
+        Function beforePromotion = F;
+        Mem2RegStats promotionStats;
+        if (!promoteVariables(F, promotable, &promotionStats, cfg)) {
+            F = std::move(beforePromotion);
+            return;
+        }
+        if (localStats) {
+            localStats->promotedVars += promotionStats.promotedVars;
+            localStats->removedLoads += promotionStats.removedLoads;
+            localStats->removedStores += promotionStats.removedStores;
+        }
     };
 
     const std::size_t functionCount = M.functions.size();
     const std::size_t hardwareThreads =
         std::max<std::size_t>(1, static_cast<std::size_t>(std::thread::hardware_concurrency()));
-    const std::size_t workerCount = std::min(functionCount, hardwareThreads);
+    const std::size_t workerCount = enableParallel ? std::min(functionCount, hardwareThreads) : 1;
 
     if (workerCount <= 1) {
         for (auto &F : M.functions)

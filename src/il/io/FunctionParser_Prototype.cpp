@@ -32,7 +32,12 @@ namespace il::io::detail {
 namespace {
 
 /// @brief Parse a single parameter from "type %name" or "%name: type" syntax.
-Expected<Param> parseParameterToken(const std::string &rawParam, unsigned lineNo) {
+/// @param rawParam Raw comma-delimited parameter text.
+/// @param lineNo Source line used for diagnostics.
+/// @param allowInternalTypes True when `error` and `resumetok` are valid in this prototype.
+Expected<Param> parseParameterToken(const std::string &rawParam,
+                                    unsigned lineNo,
+                                    bool allowInternalTypes) {
     std::string trimmed = trim(rawParam);
     if (trimmed.empty()) {
         std::ostringstream oss;
@@ -58,6 +63,9 @@ Expected<Param> parseParameterToken(const std::string &rawParam, unsigned lineNo
     } else {
         std::stringstream ps(trimmed);
         ps >> ty >> nm;
+        std::string trailing;
+        if (ps >> trailing)
+            return lineError<Param>(lineNo, "unexpected tokens after parameter name");
     }
 
     if (ty.empty() || nm.empty())
@@ -71,7 +79,9 @@ Expected<Param> parseParameterToken(const std::string &rawParam, unsigned lineNo
 
     bool ok = true;
     Type parsedTy = parseType(ty, &ok);
-    if (!ok || parsedTy.kind == Type::Kind::Void)
+    if (!ok || parsedTy.kind == Type::Kind::Void ||
+        (!allowInternalTypes &&
+         (parsedTy.kind == Type::Kind::Error || parsedTy.kind == Type::Kind::ResumeTok)))
         return lineError<Param>(lineNo, "unknown param type");
 
     return Param{nm.substr(1), parsedTy};
@@ -146,7 +156,7 @@ Expected<PrototypeParseResult> parsePrototype(Cursor &cur, bool isImport = false
                 return Expected<PrototypeParseResult>{
                     makeSyntaxError(cursorPos(cur), "variadic marker must appear last", {})};
             }
-            auto param = parseParameterToken(rawPieces[i], cur.line());
+            auto param = parseParameterToken(rawPieces[i], cur.line(), !isImport);
             if (!param)
                 return Expected<PrototypeParseResult>{param.error()};
             params.push_back(std::move(param.value()));
@@ -378,6 +388,20 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st) {
         if (fn.name == fh.name) {
             std::ostringstream oss;
             oss << "duplicate function '@" << fh.name << "'";
+            return lineError<void>(st.lineNo, oss.str());
+        }
+    }
+    for (const auto &ext : st.m.externs) {
+        if (ext.name == fh.name) {
+            std::ostringstream oss;
+            oss << "function '@" << fh.name << "' collides with extern";
+            return lineError<void>(st.lineNo, oss.str());
+        }
+    }
+    for (const auto &global : st.m.globals) {
+        if (global.name == fh.name) {
+            std::ostringstream oss;
+            oss << "function '@" << fh.name << "' collides with global";
             return lineError<void>(st.lineNo, oss.str());
         }
     }

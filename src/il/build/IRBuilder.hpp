@@ -190,9 +190,10 @@ class IRBuilder {
     }
 
     /// @brief Restore a previously saved temp ID counter.
-    void restoreTempId(unsigned saved) {
-        nextTemp = saved;
-    }
+    /// @param saved Previously saved first-available temporary identifier.
+    /// @throws std::logic_error if live IR in the active function already uses a
+    ///         temporary at or above @p saved.
+    void restoreTempId(unsigned saved);
 
     /// @brief Restore the current function pointer (for lambda context switching).
     void restoreFunction(il::core::Function *fn) {

@@ -39,6 +39,8 @@ struct Mem2RegStats {
 /// \brief Promote simple allocas to SSA form.
 /// \param M Module to transform in place.
 /// \param stats Optional statistics output.
-void mem2reg(il::core::Module &M, Mem2RegStats *stats = nullptr);
+/// \param enableParallel Allow function-level parallel promotion. Defaults to
+///        false so standalone calls follow the pass manager's deterministic policy.
+void mem2reg(il::core::Module &M, Mem2RegStats *stats = nullptr, bool enableParallel = false);
 
 } // namespace viper::passes

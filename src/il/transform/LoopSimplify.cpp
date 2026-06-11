@@ -33,6 +33,7 @@
 
 #include <algorithm>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 using namespace il::core;
@@ -89,6 +90,44 @@ std::string makeUniqueLabel(const Function &function, const std::string &base) {
     while (labelExists(candidate)) {
         candidate = base + "." + std::to_string(++suffix);
     }
+    return candidate;
+}
+
+/// @brief Collect value names already present in a function.
+/// @details Includes the explicit value-name table and parameter names because
+///          serializers and diagnostics may consult either source.
+/// @param function Function whose names form the reservation set.
+/// @return Set of non-empty names already used in @p function.
+std::unordered_set<std::string> collectUsedValueNames(const Function &function) {
+    std::unordered_set<std::string> used;
+    for (const auto &name : function.valueNames)
+        if (!name.empty())
+            used.insert(name);
+    for (const auto &param : function.params)
+        if (!param.name.empty())
+            used.insert(param.name);
+    for (const auto &block : function.blocks)
+        for (const auto &param : block.params)
+            if (!param.name.empty())
+                used.insert(param.name);
+    return used;
+}
+
+/// @brief Reserve a unique value name derived from @p base.
+/// @param used Mutable set of names already reserved.
+/// @param base Preferred name, or "tmp" if empty.
+/// @return A unique name inserted into @p used.
+std::string reserveUniqueValueName(std::unordered_set<std::string> &used, std::string base) {
+    if (base.empty())
+        base = "tmp";
+    if (used.insert(base).second)
+        return base;
+
+    unsigned suffix = 0;
+    std::string candidate;
+    do {
+        candidate = base + "." + std::to_string(++suffix);
+    } while (!used.insert(candidate).second);
     return candidate;
 }
 
@@ -152,10 +191,12 @@ bool ensurePreheader(Function &function, const Loop &loop) {
     preheader.label = preheaderLabel;
 
     unsigned id = nextTempId(function);
+    auto usedValueNames = collectUsedValueNames(function);
     preheader.params.reserve(headerParams.size());
     for (const auto &param : headerParams) {
         Param clone = param;
         clone.id = id++;
+        clone.name = reserveUniqueValueName(usedValueNames, clone.name + ".preheader");
         preheader.params.push_back(clone);
         if (function.valueNames.size() <= clone.id)
             function.valueNames.resize(clone.id + 1);
@@ -244,10 +285,12 @@ bool mergeTrivialLatches(Function &function, const Loop &loop) {
     newLatch.label = newLatchLabel;
 
     unsigned id = nextTempId(function);
+    auto usedValueNames = collectUsedValueNames(function);
     newLatch.params.reserve(headerParams.size());
     for (const auto &param : headerParams) {
         Param clone = param;
         clone.id = id++;
+        clone.name = reserveUniqueValueName(usedValueNames, clone.name + ".latch");
         newLatch.params.push_back(clone);
         if (function.valueNames.size() <= clone.id)
             function.valueNames.resize(clone.id + 1);

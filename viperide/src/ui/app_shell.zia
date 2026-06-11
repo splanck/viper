@@ -143,6 +143,7 @@ class AppShell {
     expose GUI.MenuItem miToggleBreakpoint;
 
     // Help menu
+    expose GUI.MenuItem miKeyboardShortcuts;
     expose GUI.MenuItem miAbout;
 
     // Toolbar + items
@@ -415,6 +416,8 @@ class AppShell {
 
         // Help menu
         helpMenu = menuBar.AddMenu("Help");
+        miKeyboardShortcuts = helpMenu.AddItem("Keyboard Shortcuts");
+        miKeyboardShortcuts.SetShortcut("Ctrl+K Ctrl+S");
         miAbout = helpMenu.AddItem("About ViperIDE");
 
         // ====================================================================

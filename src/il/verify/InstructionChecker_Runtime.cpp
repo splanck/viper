@@ -776,8 +776,9 @@ Expected<void> checkCall(const VerifyCtx &ctx) {
         isVarArg = runtimeSig->isVarArg;
     }
 
-    const size_t providedArgs =
-        (ctx.instr.operands.size() >= argStart) ? (ctx.instr.operands.size() - argStart) : 0;
+    if (ctx.instr.operands.size() < argStart)
+        return fail(ctx, "call operand slice starts past operand list");
+    const size_t providedArgs = ctx.instr.operands.size() - argStart;
     const bool badArgCount = isVarArg ? (providedArgs < paramCount) : (providedArgs != paramCount);
     if (badArgCount) {
         std::ostringstream ss;

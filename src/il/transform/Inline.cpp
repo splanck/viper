@@ -286,15 +286,7 @@ InlineCost evaluateInlineCost(const Function &fn, const viper::analysis::CallGra
     if (callIt != cg.callCounts.end())
         cost.callSites = callIt->second;
 
-    auto edgeIt = cg.edges.find(fn.name);
-    if (edgeIt != cg.edges.end()) {
-        for (const auto &target : edgeIt->second) {
-            if (target == fn.name) {
-                cost.recursive = true;
-                break;
-            }
-        }
-    }
+    cost.recursive = cg.isRecursive(fn.name);
 
     if (fn.blocks.empty()) {
         cost.unsupportedCFG = true;

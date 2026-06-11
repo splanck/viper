@@ -21,6 +21,7 @@
 #include "il/core/OpcodeInfo.hpp"
 
 #include <cassert>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -114,7 +115,7 @@ const OpcodeInfo &getOpcodeInfo(Opcode op) {
     const size_t index = static_cast<size_t>(op);
     assert(index < kOpcodeTable.size() && "invalid opcode");
     if (index >= kOpcodeTable.size())
-        return kOpcodeTable.front();
+        throw std::out_of_range("invalid IL opcode");
     return kOpcodeTable[index];
 }
 

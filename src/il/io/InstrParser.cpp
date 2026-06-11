@@ -39,6 +39,7 @@
 #include <optional>
 #include <sstream>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -57,6 +58,49 @@ using il::core::Value;
 using il::support::Expected;
 using il::support::makeError;
 using il::support::printDiag;
+
+/// @brief Roll back parser state when one instruction fails to parse.
+/// @details Operand parsers may reserve temporary IDs, record forward
+///          references, update value names, or add pending branch checks before
+///          the full instruction shape is known. This guard keeps those side
+///          effects transactional until the completed instruction is appended.
+class InstructionParseGuard {
+  public:
+    /// @brief Capture the mutable parser fields affected by instruction parsing.
+    /// @param state Parser state that will be restored unless @ref commit is called.
+    explicit InstructionParseGuard(ParserState &state)
+        : state_(state), tempIds_(state.tempIds), forwardTempNames_(state.forwardTempNames),
+          nextTemp_(state.nextTemp), pendingBrs_(state.pendingBrs) {
+        if (state_.curFn)
+            valueNames_ = state_.curFn->valueNames;
+    }
+
+    /// @brief Mark the parse as successful and keep all mutations.
+    void commit() noexcept {
+        committed_ = true;
+    }
+
+    /// @brief Restore the captured parser state when parsing exits early.
+    ~InstructionParseGuard() {
+        if (committed_)
+            return;
+        state_.tempIds = std::move(tempIds_);
+        state_.forwardTempNames = std::move(forwardTempNames_);
+        state_.nextTemp = nextTemp_;
+        state_.pendingBrs = std::move(pendingBrs_);
+        if (state_.curFn && valueNames_)
+            state_.curFn->valueNames = std::move(*valueNames_);
+    }
+
+  private:
+    ParserState &state_;                                      ///< Parser state being guarded.
+    std::unordered_map<std::string, unsigned> tempIds_;       ///< Saved temp-name mapping.
+    std::unordered_set<std::string> forwardTempNames_;        ///< Saved forward refs.
+    unsigned nextTemp_{0};                                    ///< Saved next temp id.
+    std::vector<ParserState::PendingBr> pendingBrs_;          ///< Saved pending branches.
+    std::optional<std::vector<std::string>> valueNames_;      ///< Saved value-name table.
+    bool committed_{false};                                   ///< True after successful append.
+};
 
 /// @brief Ensures an instruction matches the arity described by its opcode.
 ///
@@ -361,11 +405,16 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st) {
         return Expected<void>{il::io::makeLineErrorDiag(
             st.curLoc, st.lineNo, "instruction appears outside a function block")};
     }
-    if (st.curBB && st.curBB->terminated) {
+    const bool blockTerminated =
+        st.curBB && !st.curBB->instructions.empty() &&
+        il::core::getOpcodeInfo(st.curBB->instructions.back().op).isTerminator;
+    if (st.curBB && blockTerminated) {
+        st.curBB->terminated = true;
         return Expected<void>{il::io::makeLineErrorDiag(
             st.curLoc, st.lineNo, "instruction appears after block terminator")};
     }
 
+    InstructionParseGuard guard{st};
     Instr in;
     in.loc = st.curLoc;
     std::string work = line;
@@ -456,6 +505,7 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st) {
     st.curBB->instructions.push_back(std::move(in));
     if (isTerm)
         st.curBB->terminated = true;
+    guard.commit();
     return {};
 }
 

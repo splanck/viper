@@ -210,7 +210,7 @@ class PassManager {
     bool printAfterEach_ = false;
     std::ostream *instrumentationStream_ = nullptr;
     bool reportPassStatistics_ = false;
-    bool parallelFunctionPasses_ = true;
+    bool parallelFunctionPasses_ = false;
 };
 
 } // namespace il::transform

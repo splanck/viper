@@ -97,6 +97,7 @@ class HoverController {
 
         // Create unattached, then reparent it into the FloatingPanel via AddChild.
         tooltipLabel = GUI.Label.New(null, "");
+        tooltipLabel.SetWordWrap(1);
         tooltip.AddChild(tooltipLabel);
     }
 

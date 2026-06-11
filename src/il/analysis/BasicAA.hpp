@@ -26,6 +26,7 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include "il/analysis/AllocaRoots.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
@@ -113,10 +114,7 @@ class BasicAA {
     std::unordered_set<unsigned> noaliasParams_;
     std::unordered_set<unsigned> params_;
 
-    struct DefInfo {
-        il::core::Opcode op{il::core::Opcode::Count};
-        std::vector<il::core::Value> operands;
-    };
+    using DefInfo = AllocaRootDefInfo;
 
     std::unordered_map<unsigned, DefInfo> defs_;
 
@@ -178,83 +176,10 @@ inline void BasicAA::collectFunctionInfo(const il::core::Function &function) {
                 allocas_.insert(*instr.result);
         }
 
-    std::unordered_map<std::string_view, const il::core::BasicBlock *> blocksByLabel;
-    blocksByLabel.reserve(function.blocks.size());
-    for (const auto &block : function.blocks)
-        blocksByLabel.emplace(std::string_view{block.label}, &block);
-
-    std::unordered_map<unsigned, std::unordered_set<unsigned>> allocaRoots;
-    allocaRoots.reserve(defs_.size() + function.params.size());
-    for (unsigned allocaId : allocas_)
-        allocaRoots[allocaId].insert(allocaId);
-
-    auto mergeRoots = [&](unsigned dst, const il::core::Value &src) {
-        if (src.kind != il::core::Value::Kind::Temp)
-            return false;
-        auto srcIt = allocaRoots.find(src.id);
-        if (srcIt == allocaRoots.end())
-            return false;
-        auto &dstRoots = allocaRoots[dst];
-        bool changed = false;
-        for (unsigned root : srcIt->second)
-            changed |= dstRoots.insert(root).second;
-        return changed;
-    };
-
-    bool rootsChanged = true;
-    while (rootsChanged) {
-        rootsChanged = false;
-        for (const auto &[id, def] : defs_) {
-            if (def.op == il::core::Opcode::GEP && !def.operands.empty())
-                rootsChanged |= mergeRoots(id, def.operands[0]);
-        }
-        for (const auto &block : function.blocks) {
-            for (const auto &instr : block.instructions) {
-                for (size_t edge = 0; edge < instr.labels.size() && edge < instr.brArgs.size();
-                     ++edge) {
-                    auto targetIt = blocksByLabel.find(instr.labels[edge]);
-                    if (targetIt == blocksByLabel.end())
-                        continue;
-                    const auto *target = targetIt->second;
-                    const auto &args = instr.brArgs[edge];
-                    const size_t count = std::min(args.size(), target->params.size());
-                    for (size_t idx = 0; idx < count; ++idx)
-                        rootsChanged |= mergeRoots(target->params[idx].id, args[idx]);
-                }
-            }
-        }
-    }
-
-    std::unordered_set<unsigned> escapedAllocas;
-    auto seedEscape = [&](const il::core::Value &value) {
-        if (value.kind != il::core::Value::Kind::Temp)
-            return;
-        auto rootIt = allocaRoots.find(value.id);
-        if (rootIt == allocaRoots.end())
-            return;
-        escapedAllocas.insert(rootIt->second.begin(), rootIt->second.end());
-    };
-
-    for (const auto &block : function.blocks) {
-        for (const auto &instr : block.instructions) {
-            if (instr.op == il::core::Opcode::Call || instr.op == il::core::Opcode::CallIndirect) {
-                for (const auto &op : instr.operands)
-                    seedEscape(op);
-                continue;
-            }
-            if (instr.op == il::core::Opcode::Store && instr.operands.size() >= 2 &&
-                instr.operands[1].kind == il::core::Value::Kind::Temp) {
-                // operand[1] is the stored value; storing the address itself makes it escape.
-                seedEscape(instr.operands[1]);
-            }
-            if (instr.op == il::core::Opcode::Ret)
-                for (const auto &op : instr.operands)
-                    seedEscape(op);
-        }
-    }
+    const AllocaRootMap allocaRoots = computeAllocaRoots(function, defs_);
 
     for (unsigned allocaId : allocas_)
-        if (!escapedAllocas.count(allocaId))
+        if (!allocaEscapes(function, allocaId, allocaRoots))
             nonEscapingAllocas_.insert(allocaId);
 }
 
@@ -340,7 +265,9 @@ inline BasicAA::CallEffect BasicAA::queryExternEffect(std::string_view name) con
     for (const auto &ext : module_->externs) {
         if (ext.name != name)
             continue;
-        if (ext.attrs().pure || ext.attrs().readonly || ext.attrs().nothrow)
+        // `nothrow` is control-flow metadata, not a memory-effect promise.
+        // Only pure/readonly extern attributes can refine ModRef.
+        if (ext.attrs().pure || ext.attrs().readonly)
             return CallEffect{ext.attrs().pure, ext.attrs().readonly, true};
         return {};
     }
@@ -542,7 +469,10 @@ inline AliasResult BasicAA::alias(const il::core::Value &lhs,
 }
 
 inline ModRefResult BasicAA::modRef(const il::core::Instr &instr) const {
-    if (instr.op != il::core::Opcode::Call)
+    if (instr.op != il::core::Opcode::Call && instr.op != il::core::Opcode::CallIndirect)
+        return ModRefResult::ModRef;
+
+    if (instr.op == il::core::Opcode::CallIndirect)
         return ModRefResult::ModRef;
 
     const CallEffect callee = computeCalleeEffect(instr.callee);

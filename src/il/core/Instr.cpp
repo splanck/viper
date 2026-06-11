@@ -20,6 +20,7 @@
 #include "il/core/Instr.hpp"
 
 #include <cassert>
+#include <stdexcept>
 
 namespace il::core {
 namespace {
@@ -28,7 +29,9 @@ namespace {
 /// @pre instr.op must be Opcode::SwitchI32.
 bool requireSwitch(const Instr &instr) {
     assert(instr.op == Opcode::SwitchI32 && "expected switch instruction");
-    return instr.op == Opcode::SwitchI32;
+    if (instr.op != Opcode::SwitchI32)
+        throw std::logic_error("expected switch instruction");
+    return true;
 }
 
 /// @brief Returns the branch arguments vector for a switch target.
@@ -43,7 +46,7 @@ const std::vector<Value> &argsOrEmpty(const Instr &instr, size_t index) {
     if (!requireSwitch(instr))
         return kEmptyArgs;
     if (index >= instr.labels.size() || index >= instr.brArgs.size())
-        return kEmptyArgs;
+        throw std::out_of_range("switch branch argument index out of range");
     assert(index < instr.labels.size());
     assert(index < instr.brArgs.size());
     return instr.brArgs[index];
@@ -61,7 +64,7 @@ const Value &switchScrutinee(const Instr &instr) {
         return kInvalidValue;
     assert(!instr.operands.empty());
     if (instr.operands.empty())
-        return kInvalidValue;
+        throw std::logic_error("switch instruction is missing scrutinee");
     return instr.operands.front();
 }
 
@@ -76,7 +79,7 @@ const std::string &switchDefaultLabel(const Instr &instr) {
         return kEmptyLabel;
     assert(!instr.labels.empty());
     if (instr.labels.empty())
-        return kEmptyLabel;
+        throw std::logic_error("switch instruction is missing default label");
     return instr.labels.front();
 }
 
@@ -96,7 +99,7 @@ size_t switchCaseCount(const Instr &instr) {
     if (!requireSwitch(instr))
         return 0;
     if (instr.labels.empty())
-        return 0;
+        throw std::logic_error("switch instruction is missing default label");
     return instr.labels.size() - 1;
 }
 
@@ -112,7 +115,7 @@ const Value &switchCaseValue(const Instr &instr, size_t index) {
     if (!requireSwitch(instr))
         return kInvalidValue;
     if (index >= switchCaseCount(instr) || instr.operands.size() <= index + 1)
-        return kInvalidValue;
+        throw std::out_of_range("switch case value index out of range");
     assert(index < switchCaseCount(instr));
     assert(instr.operands.size() > index + 1);
     return instr.operands[index + 1];
@@ -129,7 +132,7 @@ const std::string &switchCaseLabel(const Instr &instr, size_t index) {
     if (!requireSwitch(instr))
         return kEmptyLabel;
     if (index >= switchCaseCount(instr) || instr.labels.size() <= index + 1)
-        return kEmptyLabel;
+        throw std::out_of_range("switch case label index out of range");
     assert(index < switchCaseCount(instr));
     return instr.labels[index + 1];
 }

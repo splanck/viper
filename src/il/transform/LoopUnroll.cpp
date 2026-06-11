@@ -635,16 +635,18 @@ PreservedAnalyses LoopUnroll::run(Function &function, AnalysisManager &analysis)
             if (!loop.childHeaders.empty())
                 continue;
 
-            BasicBlock *header = blockMap[loop.headerLabel];
-            if (!header)
+            auto headerIt = blockMap.find(loop.headerLabel);
+            if (headerIt == blockMap.end())
                 continue;
+            BasicBlock *header = headerIt->second;
 
             if (loop.latchLabels.size() != 1)
                 continue;
 
-            BasicBlock *latch = blockMap[loop.latchLabels[0]];
-            if (!latch)
+            auto latchIt = blockMap.find(loop.latchLabels[0]);
+            if (latchIt == blockMap.end())
                 continue;
+            BasicBlock *latch = latchIt->second;
 
             BasicBlock *preheader = findPreheader(function, loop, *header, cfg, blockMap);
             if (!preheader)

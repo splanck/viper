@@ -41,6 +41,7 @@ class IdeOverlays {
     expose GUI.Spinner tabWidthSpinner;
     expose GUI.Spinner diagnosticsDelaySpinner;
     expose GUI.Spinner completionDelaySpinner;
+    expose GUI.Spinner uiZoomSpinner;
     expose GUI.Dropdown themeDropdown;
     expose GUI.Checkbox minimapCheck;
     expose GUI.Checkbox autoCheckCheck;
@@ -129,6 +130,9 @@ class IdeOverlays {
         }
         if completionDelaySpinner != null {
             completionDelaySpinner.SetValue(appSettings.completionDelayMs);
+        }
+        if uiZoomSpinner != null {
+            uiZoomSpinner.SetValue(appSettings.uiZoomPercent);
         }
         if themeDropdown != null {
             if appSettings.theme == "light" {
@@ -276,6 +280,10 @@ class IdeOverlays {
         return Convert.ToInt("" + completionDelaySpinner.Value);
     }
 
+    expose func ReadUiZoom() -> Integer {
+        return Convert.ToInt("" + uiZoomSpinner.Value);
+    }
+
     expose func ReadTheme() -> String {
         if themeDropdown.Selected == 1 {
             return "light";
@@ -347,6 +355,7 @@ class IdeOverlays {
     expose func ResetAppearanceDefaults() {
         fontPathInput.SetText("");
         fontSizeSpinner.SetValue(settings.DEFAULT_FONT_SIZE);
+        uiZoomSpinner.SetValue(100.0);
         themeDropdown.SetSelected(0);
         minimapCheck.SetChecked(0);
     }
@@ -438,6 +447,21 @@ class IdeOverlays {
         fontSizeSpinner.SetSize(110, 0);
         resetFontSizeButton = GUI.Button.New(fontSizeControls, "Restore Default");
         resetFontSizeButton.SetStyle(2);
+
+        // Interface zoom
+        GUI.Label.New(appCard, "Interface zoom");
+        var uiZoomDesc =
+            GUI.Label.New(appCard, "Scale the entire UI — menus, panels, and editor. Shortcut: Ctrl+Shift+= / - / 0.");
+        uiZoomDesc.SetWordWrap(1);
+        var uiZoomControls = GUI.HBox.New();
+        uiZoomControls.SetSpacing(10.0);
+        appCard.AddChild(uiZoomControls);
+        uiZoomSpinner = GUI.Spinner.New(uiZoomControls);
+        uiZoomSpinner.SetRange(50.0, 300.0);
+        uiZoomSpinner.SetStep(10.0);
+        uiZoomSpinner.SetDecimals(0);
+        uiZoomSpinner.SetSize(110, 0);
+        GUI.Label.New(uiZoomControls, "percent");
 
         // Tab size
         GUI.Label.New(appCard, "Tab size");

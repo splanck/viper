@@ -116,6 +116,54 @@ static void validateTempValues(const std::vector<Value> &values,
         validateTempValue(value, nextTemp, context);
 }
 
+/// @brief Record the largest temporary identifier referenced by @p value.
+/// @details Ignores constants and globals because only SSA temporaries
+///          participate in the builder's `nextTemp` collision checks.
+/// @param value Operand to inspect.
+/// @param nextRequired Updated to at least one greater than @p value's temp id.
+static void noteLiveTemp(const Value &value, unsigned &nextRequired) {
+    if (value.kind != Value::Kind::Temp)
+        return;
+    if (value.id == std::numeric_limits<unsigned>::max())
+        throw std::overflow_error("IRBuilder: live temp ID overflows");
+    nextRequired = std::max(nextRequired, value.id + 1);
+}
+
+/// @brief Compute the first safe temporary identifier for a function.
+/// @details Scans parameters, block parameters, instruction results, operands,
+///          and branch arguments so restoring the builder counter cannot reuse a
+///          temporary that already appears in live IR.
+/// @param fn Function whose live temporary namespace is being scanned.
+/// @return One greater than the largest temporary id referenced by @p fn.
+static unsigned firstUnusedTempId(const Function &fn) {
+    unsigned nextRequired = 0;
+    for (const auto &param : fn.params) {
+        if (param.id == std::numeric_limits<unsigned>::max())
+            throw std::overflow_error("IRBuilder: function parameter temp ID overflows");
+        nextRequired = std::max(nextRequired, param.id + 1);
+    }
+    for (const auto &block : fn.blocks) {
+        for (const auto &param : block.params) {
+            if (param.id == std::numeric_limits<unsigned>::max())
+                throw std::overflow_error("IRBuilder: block parameter temp ID overflows");
+            nextRequired = std::max(nextRequired, param.id + 1);
+        }
+        for (const auto &instr : block.instructions) {
+            if (instr.result) {
+                if (*instr.result == std::numeric_limits<unsigned>::max())
+                    throw std::overflow_error("IRBuilder: instruction result temp ID overflows");
+                nextRequired = std::max(nextRequired, *instr.result + 1);
+            }
+            for (const auto &operand : instr.operands)
+                noteLiveTemp(operand, nextRequired);
+            for (const auto &argList : instr.brArgs)
+                for (const auto &arg : argList)
+                    noteLiveTemp(arg, nextRequired);
+        }
+    }
+    return nextRequired;
+}
+
 /// @brief Validate edge arguments against a target block's parameter list.
 /// @details Branch argument count mismatches make SSA block parameters
 ///          ill-formed. The builder reports them before appending terminators so
@@ -259,6 +307,22 @@ il::core::Function &IRBuilder::startFunction(const std::string &name,
     for (const auto &p : curFunc->params)
         curFunc->valueNames[p.id] = p.name;
     return *curFunc;
+}
+
+/// @brief Restore a saved temporary counter after validating the active namespace.
+/// @details Frontends sometimes save the current counter while temporarily
+///          switching contexts.  Restoring below a live temp would allow the next
+///          emission to reuse an existing SSA identifier, so the function scans
+///          the active function before committing the counter.
+/// @param saved Previously saved first-available temporary identifier.
+/// @throws std::logic_error when @p saved would collide with existing IR.
+void IRBuilder::restoreTempId(unsigned saved) {
+    if (curFunc) {
+        const unsigned required = firstUnusedTempId(*curFunc);
+        if (saved < required)
+            throw std::logic_error("IRBuilder: restoreTempId would reuse a live temporary");
+    }
+    nextTemp = saved;
 }
 
 /// @brief Create a basic block in @p fn with optional block parameters.
@@ -480,7 +544,10 @@ il::core::Instr &IRBuilder::append(il::core::Instr instr) {
         throw std::logic_error("IRBuilder: instruction opcode was not initialized");
 
     il::core::BasicBlock &curBlock = curFunc->blocks[*curBlockIdx];
-    if (curBlock.terminated)
+    const bool alreadyTerminated =
+        !curBlock.instructions.empty() && isTerminator(curBlock.instructions.back().op);
+    curBlock.terminated = alreadyTerminated;
+    if (alreadyTerminated)
         throw std::logic_error("IRBuilder: cannot append instruction to terminated block");
     validateTempValues(instr.operands, nextTemp, "instruction operand");
     for (const auto &argList : instr.brArgs)
@@ -520,11 +587,11 @@ il::core::Instr &IRBuilder::append(il::core::Instr instr) {
     }
 #endif
 
-    if (isTerminator(instr.op)) {
+    const bool appendedTerminator = isTerminator(instr.op);
+    if (appendedTerminator)
         assert(!curBlock.terminated && "block already terminated");
-        curBlock.terminated = true;
-    }
     curBlock.instructions.push_back(std::move(instr));
+    curBlock.terminated = appendedTerminator;
     return curBlock.instructions.back();
 }
 
@@ -546,7 +613,7 @@ bool IRBuilder::isTerminator(il::core::Opcode op) const {
 /// @return SSA temporary containing the string value.
 /// @post nextTemp advances to include the new temporary identifier.
 il::core::Value IRBuilder::emitConstStr(const std::string &globalName, il::support::SourceLoc loc) {
-    unsigned id = nextTemp++;
+    unsigned id = nextTemp;
     il::core::Instr instr;
     instr.result = id;
     instr.op = il::core::Opcode::ConstStr;
@@ -554,6 +621,9 @@ il::core::Value IRBuilder::emitConstStr(const std::string &globalName, il::suppo
     instr.operands.push_back(il::core::Value::global(globalName));
     instr.loc = loc;
     append(std::move(instr));
+    ++nextTemp;
+    if (curFunc && curFunc->valueNames.size() <= id)
+        curFunc->valueNames.resize(id + 1);
     return il::core::Value::temp(id);
 }
 
@@ -589,6 +659,7 @@ void IRBuilder::emitCall(const std::string &callee,
     instr.type = it->second;
     instr.callee = callee;
     instr.operands = args;
+    std::optional<unsigned> committedDst;
     if (dst) {
         instr.result = dst->id;
         if (dst->id >= nextTemp) {
@@ -596,13 +667,16 @@ void IRBuilder::emitCall(const std::string &callee,
                 throw std::logic_error("IRBuilder: call destination requires an active function");
             if (dst->id == std::numeric_limits<unsigned>::max())
                 throw std::overflow_error("IRBuilder: call destination temp ID overflows");
-            nextTemp = dst->id + 1;
-            if (curFunc->valueNames.size() <= dst->id)
-                curFunc->valueNames.resize(dst->id + 1);
+            committedDst = dst->id;
         }
     }
     instr.loc = loc;
     append(std::move(instr));
+    if (committedDst) {
+        nextTemp = *committedDst + 1;
+        if (curFunc->valueNames.size() <= *committedDst)
+            curFunc->valueNames.resize(*committedDst + 1);
+    }
 }
 
 /// @brief Emit a return from the current function.

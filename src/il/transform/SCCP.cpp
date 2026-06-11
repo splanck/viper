@@ -256,26 +256,14 @@ bool getConstFloat(const Value &value, double &out) {
     return false;
 }
 
-/// @brief Extract a boolean from a constant value.
-/// @details Handles ConstInt, ConstFloat, NullPtr, ConstStr, GlobalAddr.
+/// @brief Extract a branch boolean from a constant value.
+/// @details Conditional branches are verified as i1, so SCCP only treats
+///          boolean-tagged integer literals as compile-time branch conditions.
 bool getConstBool(const Value &value, bool &out) {
-    switch (value.kind) {
-        case Value::Kind::ConstInt:
-            out = value.i64 != 0;
-            return true;
-        case Value::Kind::ConstFloat:
-            out = value.f64 != 0.0;
-            return true;
-        case Value::Kind::NullPtr:
-            out = false;
-            return true;
-        case Value::Kind::ConstStr:
-        case Value::Kind::GlobalAddr:
-            out = true;
-            return true;
-        default:
-            return false;
-    }
+    if (value.kind != Value::Kind::ConstInt || !value.isBool)
+        return false;
+    out = value.i64 != 0;
+    return true;
 }
 
 //===----------------------------------------------------------------------===//
@@ -333,6 +321,70 @@ long long arithmeticShiftRight(long long value, unsigned shift) {
     if ((bits & (1ULL << 63U)) != 0)
         shifted |= (~0ULL) << (64U - shift);
     return static_cast<long long>(shifted);
+}
+
+/// @brief Return the integer bit width encoded by an IL integer type.
+/// @details Non-integer callers conservatively receive 64 bits, matching the
+///          historical SCCP folding behavior for opcodes without a narrower
+///          result type.
+static int integerTypeBits(Type::Kind kind) {
+    switch (kind) {
+        case Type::Kind::I16:
+            return 16;
+        case Type::Kind::I32:
+            return 32;
+        case Type::Kind::I64:
+            return 64;
+        default:
+            return 64;
+    }
+}
+
+/// @brief Truncate an unsigned integer constant to the IL result width.
+/// @param value Full-width unsigned value produced by a fold.
+/// @param kind Result type that determines the target width.
+/// @return Unsigned value with all bits above the target width cleared.
+static unsigned long long normalizeUnsignedForType(unsigned long long value, Type::Kind kind) {
+    const int bits = integerTypeBits(kind);
+    if (bits >= 64)
+        return value;
+    const auto mask = (1ULL << bits) - 1ULL;
+    return value & mask;
+}
+
+/// @brief Truncate and sign-extend an integer constant to the IL result width.
+/// @param value Full-width signed value produced by a fold.
+/// @param kind Result type that determines truncation and sign extension.
+/// @return A canonical signed integer payload for @p kind.
+static long long normalizeIntegerForType(long long value, Type::Kind kind) {
+    const int bits = integerTypeBits(kind);
+    if (bits >= 64)
+        return value;
+
+    const auto mask = (1ULL << bits) - 1ULL;
+    auto truncated = static_cast<unsigned long long>(value) & mask;
+    const auto signBit = 1ULL << (bits - 1);
+    if ((truncated & signBit) != 0)
+        truncated |= ~mask;
+    return static_cast<long long>(truncated);
+}
+
+/// @brief Return the minimum signed integer representable by an IL integer type.
+static long long signedMinForType(Type::Kind kind) {
+    const int bits = integerTypeBits(kind);
+    if (bits >= 64)
+        return std::numeric_limits<long long>::min();
+    return -(1LL << (bits - 1));
+}
+
+/// @brief Return true if @p value fits in the signed IL integer type @p kind.
+static bool fitsSignedIntegerType(long long value, Type::Kind kind) {
+    const int bits = integerTypeBits(kind);
+    if (bits >= 64)
+        return true;
+    const long long min = -(1LL << (bits - 1));
+    const long long max = (1LL << (bits - 1)) - 1LL;
+    return value >= min && value <= max;
 }
 
 //===----------------------------------------------------------------------===//
@@ -404,52 +456,61 @@ static FoldResult foldIntegerArithmetic(Opcode op, const FoldContext &ctx) {
     if (!ctx.getConstIntOperand(0, lhs) || !ctx.getConstIntOperand(1, rhs))
         return FoldResult::unknown();
 
+    const Type::Kind resultKind = ctx.instr.type.kind;
+    const auto foldedInt = [resultKind](long long value) {
+        return FoldResult::constant(Value::constInt(normalizeIntegerForType(value, resultKind)));
+    };
+    const int bits = integerTypeBits(resultKind);
+    const auto shiftMask = static_cast<unsigned long long>(bits - 1);
+    lhs = normalizeIntegerForType(lhs, resultKind);
+    rhs = normalizeIntegerForType(rhs, resultKind);
+
     switch (op) {
         case Opcode::Add:
-            return FoldResult::constant(Value::constInt(wrappingAdd(lhs, rhs)));
+            return foldedInt(wrappingAdd(lhs, rhs));
         case Opcode::Sub:
-            return FoldResult::constant(Value::constInt(wrappingSub(lhs, rhs)));
+            return foldedInt(wrappingSub(lhs, rhs));
         case Opcode::Mul:
-            return FoldResult::constant(Value::constInt(wrappingMul(lhs, rhs)));
+            return foldedInt(wrappingMul(lhs, rhs));
         case Opcode::And:
-            return FoldResult::constant(Value::constInt(lhs & rhs));
+            return foldedInt(lhs & rhs);
         case Opcode::Or:
-            return FoldResult::constant(Value::constInt(lhs | rhs));
+            return foldedInt(lhs | rhs);
         case Opcode::Xor:
-            return FoldResult::constant(Value::constInt(lhs ^ rhs));
+            return foldedInt(lhs ^ rhs);
         case Opcode::SDiv:
-            if (rhs == 0 || (lhs == std::numeric_limits<long long>::min() && rhs == -1))
+            if (rhs == 0 || (lhs == signedMinForType(resultKind) && rhs == -1))
                 return FoldResult::trap();
-            return FoldResult::constant(Value::constInt(lhs / rhs));
+            return foldedInt(lhs / rhs);
         case Opcode::UDiv: {
-            auto ulhs = static_cast<unsigned long long>(lhs);
-            auto urhs = static_cast<unsigned long long>(rhs);
+            auto ulhs = normalizeUnsignedForType(static_cast<unsigned long long>(lhs), resultKind);
+            auto urhs = normalizeUnsignedForType(static_cast<unsigned long long>(rhs), resultKind);
             if (urhs == 0)
                 return FoldResult::trap();
-            return FoldResult::constant(Value::constInt(static_cast<long long>(ulhs / urhs)));
+            return foldedInt(static_cast<long long>(ulhs / urhs));
         }
         case Opcode::SRem:
-            if (rhs == 0 || (lhs == std::numeric_limits<long long>::min() && rhs == -1))
+            if (rhs == 0 || (lhs == signedMinForType(resultKind) && rhs == -1))
                 return FoldResult::trap();
-            return FoldResult::constant(Value::constInt(lhs % rhs));
+            return foldedInt(lhs % rhs);
         case Opcode::URem: {
-            auto ulhs = static_cast<unsigned long long>(lhs);
-            auto urhs = static_cast<unsigned long long>(rhs);
+            auto ulhs = normalizeUnsignedForType(static_cast<unsigned long long>(lhs), resultKind);
+            auto urhs = normalizeUnsignedForType(static_cast<unsigned long long>(rhs), resultKind);
             if (urhs == 0)
                 return FoldResult::trap();
-            return FoldResult::constant(Value::constInt(static_cast<long long>(ulhs % urhs)));
+            return foldedInt(static_cast<long long>(ulhs % urhs));
         }
         case Opcode::Shl:
-            return FoldResult::constant(Value::constInt(
-                static_cast<long long>(static_cast<unsigned long long>(lhs)
-                                       << (static_cast<unsigned long long>(rhs) & 63ULL))));
+            return foldedInt(static_cast<long long>(
+                normalizeUnsignedForType(static_cast<unsigned long long>(lhs), resultKind)
+                << (static_cast<unsigned long long>(rhs) & shiftMask)));
         case Opcode::LShr:
-            return FoldResult::constant(Value::constInt(
-                static_cast<long long>(static_cast<unsigned long long>(lhs) >>
-                                       (static_cast<unsigned long long>(rhs) & 63ULL))));
+            return foldedInt(static_cast<long long>(
+                normalizeUnsignedForType(static_cast<unsigned long long>(lhs), resultKind) >>
+                (static_cast<unsigned long long>(rhs) & shiftMask)));
         case Opcode::AShr:
-            return FoldResult::constant(Value::constInt(arithmeticShiftRight(
-                lhs, static_cast<unsigned>(static_cast<unsigned long long>(rhs) & 63ULL))));
+            return foldedInt(arithmeticShiftRight(
+                lhs, static_cast<unsigned>(static_cast<unsigned long long>(rhs) & shiftMask)));
         default:
             return FoldResult::unknown();
     }
@@ -466,18 +527,34 @@ static FoldResult foldOverflowArithmetic(Opcode op, const FoldContext &ctx) {
     if (!ctx.getConstIntOperand(0, lhs) || !ctx.getConstIntOperand(1, rhs))
         return FoldResult::unknown();
 
+    lhs = normalizeIntegerForType(lhs, ctx.instr.type.kind);
+    rhs = normalizeIntegerForType(rhs, ctx.instr.type.kind);
+    const auto foldedInt = [&ctx](long long value) {
+        return FoldResult::constant(
+            Value::constInt(normalizeIntegerForType(value, ctx.instr.type.kind)));
+    };
+
     switch (op) {
         case Opcode::IAddOvf:
-            if (auto sum = checkedAdd(lhs, rhs))
-                return FoldResult::constant(Value::constInt(*sum));
+            if (auto sum = checkedAdd(lhs, rhs)) {
+                if (!fitsSignedIntegerType(*sum, ctx.instr.type.kind))
+                    return FoldResult::trap();
+                return foldedInt(*sum);
+            }
             return FoldResult::trap();
         case Opcode::ISubOvf:
-            if (auto diff = checkedSub(lhs, rhs))
-                return FoldResult::constant(Value::constInt(*diff));
+            if (auto diff = checkedSub(lhs, rhs)) {
+                if (!fitsSignedIntegerType(*diff, ctx.instr.type.kind))
+                    return FoldResult::trap();
+                return foldedInt(*diff);
+            }
             return FoldResult::trap();
         case Opcode::IMulOvf:
-            if (auto prod = checkedMul(lhs, rhs))
-                return FoldResult::constant(Value::constInt(*prod));
+            if (auto prod = checkedMul(lhs, rhs)) {
+                if (!fitsSignedIntegerType(*prod, ctx.instr.type.kind))
+                    return FoldResult::trap();
+                return foldedInt(*prod);
+            }
             return FoldResult::trap();
         default:
             break;
@@ -496,13 +573,18 @@ static FoldResult foldSignedDivRem(Opcode op, const FoldContext &ctx) {
     if (!ctx.getConstIntOperand(0, lhs) || !ctx.getConstIntOperand(1, rhs))
         return FoldResult::unknown();
 
+    lhs = normalizeIntegerForType(lhs, ctx.instr.type.kind);
+    rhs = normalizeIntegerForType(rhs, ctx.instr.type.kind);
+
     // Check for divide-by-zero and signed overflow (MIN / -1)
-    if (rhs == 0 || (lhs == std::numeric_limits<long long>::min() && rhs == -1))
+    if (rhs == 0 || (lhs == signedMinForType(ctx.instr.type.kind) && rhs == -1))
         return FoldResult::trap();
 
     if (op == Opcode::SDivChk0)
-        return FoldResult::constant(Value::constInt(lhs / rhs));
-    return FoldResult::constant(Value::constInt(lhs % rhs));
+        return FoldResult::constant(
+            Value::constInt(normalizeIntegerForType(lhs / rhs, ctx.instr.type.kind)));
+    return FoldResult::constant(
+        Value::constInt(normalizeIntegerForType(lhs % rhs, ctx.instr.type.kind)));
 }
 
 /// @brief Fold unsigned division/remainder with zero-check.
@@ -511,12 +593,17 @@ static FoldResult foldUnsignedDivRem(Opcode op, const FoldContext &ctx) {
     if (!ctx.getConstUIntOperand(0, lhs) || !ctx.getConstUIntOperand(1, rhs))
         return FoldResult::unknown();
 
+    lhs = normalizeUnsignedForType(lhs, ctx.instr.type.kind);
+    rhs = normalizeUnsignedForType(rhs, ctx.instr.type.kind);
+
     if (rhs == 0)
         return FoldResult::trap();
 
     if (op == Opcode::UDivChk0)
-        return FoldResult::constant(Value::constInt(static_cast<long long>(lhs / rhs)));
-    return FoldResult::constant(Value::constInt(static_cast<long long>(lhs % rhs)));
+        return FoldResult::constant(Value::constInt(
+            normalizeIntegerForType(static_cast<long long>(lhs / rhs), ctx.instr.type.kind)));
+    return FoldResult::constant(Value::constInt(
+        normalizeIntegerForType(static_cast<long long>(lhs % rhs), ctx.instr.type.kind)));
 }
 
 //===----------------------------------------------------------------------===//
@@ -674,19 +761,6 @@ static FoldResult foldCastUiToFp(const FoldContext &ctx) {
     if (!ctx.getConstUIntOperand(0, operand))
         return FoldResult::unknown();
     return FoldResult::constant(Value::constFloat(static_cast<double>(operand)));
-}
-
-static int integerTypeBits(Type::Kind kind) {
-    switch (kind) {
-        case Type::Kind::I16:
-            return 16;
-        case Type::Kind::I32:
-            return 32;
-        case Type::Kind::I64:
-            return 64;
-        default:
-            return 64;
-    }
 }
 
 /// @brief Fold floating-point to signed integer conversion with range check.

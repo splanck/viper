@@ -17,6 +17,7 @@
 
 #include "il/transform/DSE.hpp"
 
+#include "il/analysis/AllocaRoots.hpp"
 #include "il/analysis/BasicAA.hpp"
 #include "il/analysis/Dominators.hpp"
 #include "il/analysis/MemorySSA.hpp"
@@ -233,20 +234,16 @@ bool runDSE(Function &F, AnalysisManager &AM) {
 
 namespace {
 
-/// Represents a store that might be dead
+/// @brief Describes a store proven removable by cross-block DSE.
+/// @details The block/index pair identifies the instruction to erase while the
+///          pointer and access size preserve the alias fact that justified
+///          staging the removal.
 struct PendingStore {
     BasicBlock *block{nullptr};
     size_t instrIdx{0};
     Value ptr;
     std::optional<unsigned> size;
 };
-
-struct DefInfo {
-    Opcode op{Opcode::Count};
-    std::vector<Value> operands;
-};
-
-using RootMap = std::unordered_map<unsigned, std::unordered_set<unsigned>>;
 
 bool hasExceptionHandling(const Function &F) {
     for (const auto &B : F.blocks) {
@@ -261,122 +258,6 @@ bool hasExceptionHandling(const Function &F) {
                     return true;
                 default:
                     break;
-            }
-        }
-    }
-    return false;
-}
-
-std::unordered_map<unsigned, DefInfo> collectDefs(const Function &F) {
-    std::unordered_map<unsigned, DefInfo> defs;
-    for (const auto &B : F.blocks) {
-        for (const auto &I : B.instructions) {
-            if (I.result)
-                defs.emplace(*I.result, DefInfo{I.op, I.operands});
-        }
-    }
-    return defs;
-}
-
-RootMap computeAllocaRoots(const Function &F, const std::unordered_map<unsigned, DefInfo> &defs) {
-    RootMap roots;
-    roots.reserve(defs.size());
-    for (const auto &[id, def] : defs)
-        if (def.op == Opcode::Alloca)
-            roots[id].insert(id);
-
-    std::unordered_map<std::string, const BasicBlock *> blocksByLabel;
-    blocksByLabel.reserve(F.blocks.size());
-    for (const auto &B : F.blocks)
-        blocksByLabel.emplace(B.label, &B);
-
-    auto mergeRoots = [&](unsigned dst, const Value &src) {
-        if (src.kind != Value::Kind::Temp)
-            return false;
-        auto srcIt = roots.find(src.id);
-        if (srcIt == roots.end())
-            return false;
-        auto &dstRoots = roots[dst];
-        bool changed = false;
-        for (unsigned root : srcIt->second)
-            changed |= dstRoots.insert(root).second;
-        return changed;
-    };
-
-    bool changed = true;
-    while (changed) {
-        changed = false;
-        for (const auto &[id, def] : defs)
-            if (def.op == Opcode::GEP && !def.operands.empty())
-                changed |= mergeRoots(id, def.operands[0]);
-
-        for (const auto &B : F.blocks) {
-            for (const auto &I : B.instructions) {
-                for (size_t edge = 0; edge < I.labels.size() && edge < I.brArgs.size(); ++edge) {
-                    auto targetIt = blocksByLabel.find(I.labels[edge]);
-                    if (targetIt == blocksByLabel.end())
-                        continue;
-                    const auto *target = targetIt->second;
-                    const auto &args = I.brArgs[edge];
-                    const size_t count = std::min(args.size(), target->params.size());
-                    for (size_t idx = 0; idx < count; ++idx)
-                        changed |= mergeRoots(target->params[idx].id, args[idx]);
-                }
-            }
-        }
-    }
-
-    return roots;
-}
-
-/// Find the root alloca ID if this pointer is an alloca or a GEP derived from one.
-std::optional<unsigned> getAllocaId(const Value &ptr,
-                                    const std::unordered_map<unsigned, DefInfo> &defs,
-                                    unsigned depth = 0) {
-    if (ptr.kind != Value::Kind::Temp || depth > 8)
-        return std::nullopt;
-
-    auto it = defs.find(ptr.id);
-    if (it == defs.end())
-        return std::nullopt;
-
-    if (it->second.op == Opcode::Alloca)
-        return ptr.id;
-
-    if (it->second.op == Opcode::GEP && !it->second.operands.empty())
-        return getAllocaId(it->second.operands[0], defs, depth + 1);
-
-    return std::nullopt;
-}
-
-/// Check if an alloca escapes, including through GEP-derived pointer values.
-bool allocaEscapes(const Function &F, unsigned allocaId, const RootMap &roots) {
-    auto containsAlloca = [&](const Value &value) {
-        if (value.kind != Value::Kind::Temp)
-            return false;
-        auto rootIt = roots.find(value.id);
-        return rootIt != roots.end() && rootIt->second.count(allocaId) != 0;
-    };
-
-    for (const auto &B : F.blocks) {
-        for (const auto &I : B.instructions) {
-            // Check if alloca is used in a call
-            if (I.op == Opcode::Call || I.op == Opcode::CallIndirect) {
-                for (const auto &op : I.operands)
-                    if (containsAlloca(op))
-                        return true;
-            }
-            // Check if address is stored somewhere
-            if (I.op == Opcode::Store && I.operands.size() >= 2) {
-                // operands[0] is dst ptr, operands[1] is value
-                const auto &val = I.operands[1];
-                if (containsAlloca(val))
-                    return true;
-            }
-            if (I.op == Opcode::Ret) {
-                for (const auto &op : I.operands)
-                    if (containsAlloca(op))
-                        return true;
             }
         }
     }
@@ -435,9 +316,9 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM) {
     }
 
     bool changed = false;
-    std::vector<std::pair<BasicBlock *, size_t>> toRemove;
-    const auto defs = collectDefs(F);
-    const auto roots = computeAllocaRoots(F, defs);
+    std::vector<PendingStore> pendingStores;
+    const auto defs = viper::analysis::collectAllocaRootDefs(F);
+    const auto roots = viper::analysis::computeAllocaRoots(F, defs);
 
     // For each block, look for stores to non-escaping allocas
     for (auto &B : F.blocks) {
@@ -451,12 +332,12 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM) {
                 continue;
 
             // Only consider stores to allocas (stack allocations)
-            auto allocaId = getAllocaId(ptr, defs);
+            auto allocaId = viper::analysis::getAllocaId(ptr, defs);
             if (!allocaId)
                 continue;
 
             // Skip if the alloca escapes
-            if (allocaEscapes(F, *allocaId, roots))
+            if (viper::analysis::allocaEscapes(F, *allocaId, roots))
                 continue;
 
             auto storeSize = viper::analysis::BasicAA::typeSizeBytes(I.type);
@@ -566,10 +447,15 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM) {
             }
 
             if (allPathsKill) {
-                toRemove.emplace_back(&B, i);
+                pendingStores.push_back(PendingStore{&B, i, ptr, storeSize});
             }
         }
     }
+
+    std::vector<InstructionSite> toRemove;
+    toRemove.reserve(pendingStores.size());
+    for (const PendingStore &store : pendingStores)
+        toRemove.emplace_back(store.block, store.instrIdx);
 
     changed = eraseInstructionSites(F, toRemove) != 0;
 

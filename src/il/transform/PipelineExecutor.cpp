@@ -21,12 +21,14 @@
 #include "il/transform/PipelineExecutor.hpp"
 
 #include "il/core/Module.hpp"
+#include "il/io/Serializer.hpp"
 #include "viper/pass/PassManager.hpp"
 
 #include <atomic>
 #include <cassert>
 #include <chrono>
 #include <iostream>
+#include <string>
 #include <string_view>
 #include <thread>
 #include <unordered_set>
@@ -46,6 +48,16 @@ PipelineExecutor::PassMetrics::IRSize computeIRSize(const core::Module &module) 
 
 bool isCleanupPass(std::string_view passId) {
     return passId == "dce" || passId == "simplify-cfg" || passId == "late-cleanup";
+}
+
+/// @brief Capture a deterministic textual snapshot of a module's semantic IR.
+/// @details The pass executor uses this to distinguish actual IR mutation from
+///          analysis invalidation metadata. Canonical serialization is chosen so
+///          the comparison is stable across equivalent output formatting choices.
+/// @param module Module to snapshot before or after a pass.
+/// @return Canonical textual IL for exact before/after comparison.
+std::string moduleStateSnapshot(const core::Module &module) {
+    return il::io::Serializer::toString(module, il::io::Serializer::Mode::Canonical);
 }
 } // namespace
 
@@ -116,6 +128,7 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                 if (!factory)
                     return false;
 
+                const std::string beforeState = moduleStateSnapshot(module);
                 bool executed = false;
                 bool passChanged = false;
                 AnalysisCounts parallelAnalysisCounts{};
@@ -127,7 +140,6 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                         if (!pass)
                             return false;
                         PreservedAnalyses preserved = pass->run(module, analysis);
-                        passChanged = !preserved.preservesAllAnalyses();
                         analysis.invalidateAfterModulePass(preserved);
                         executed = true;
                         break;
@@ -143,7 +155,7 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                             if (!pass)
                                 return false;
                             PreservedAnalyses preserved = pass->run(fn, functionAnalysis);
-                            functionChanged = !preserved.preservesAllAnalyses();
+                            functionChanged = false;
                             functionAnalysis.invalidateAfterFunctionPass(preserved, fn);
                             return true;
                         };
@@ -204,6 +216,7 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
 
                 if (!executed)
                     return false;
+                passChanged = moduleStateSnapshot(module) != beforeState;
 
                 if (collectMetrics)
                     passEndTime = std::chrono::steady_clock::now();

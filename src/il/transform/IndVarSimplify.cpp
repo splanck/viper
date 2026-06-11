@@ -457,9 +457,6 @@ PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analy
     auto &dom = analysis.getFunctionResult<viper::analysis::DomTree>(kAnalysisDominators, function);
     (void)dom;
 
-    // Build initial use-count info for safe temp replacement.
-    viper::il::UseDefInfo useInfo(function);
-
     bool changed = false;
 
     for (const Loop &loop : loopInfo.loops()) {
@@ -600,6 +597,7 @@ PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analy
         latch->instructions.insert(latch->instructions.begin() + latchInsert, std::move(addInc));
 
         // Inside header, replace uses of computed addr with header param and erase the instructions
+        viper::il::UseDefInfo useInfo(function);
         useInfo.replaceAllUses(addrExpr->addrId, Value::temp(addrParamId));
         // Erase the add and its mul if dead (single-use guaranteed earlier)
         // Remove add first

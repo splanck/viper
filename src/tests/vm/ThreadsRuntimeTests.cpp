@@ -132,7 +132,6 @@ int main() {
     trapInstr.type = Type(Type::Kind::Void);
     trapInstr.loc = {1, 1, 5};
     workerTrapEntry.instructions.push_back(trapInstr);
-    b.emitRet(std::optional<Value>{}, {1, 1, 5});
 
     // worker_async(ptr) -> ptr: g = g + 1; return null
     auto &workerAsync =

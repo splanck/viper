@@ -550,31 +550,8 @@ void registerSCCPPass(PassRegistry &registry) {
         PreservedAnalyses preserved;
         const std::size_t functionCount = module.functions.size();
         std::vector<unsigned char> changedFunctions(functionCount, 0);
-        const std::size_t workerCount =
-            std::min(functionCount,
-                     std::max<std::size_t>(
-                         1, static_cast<std::size_t>(std::thread::hardware_concurrency())));
-
-        if (workerCount <= 1) {
-            for (std::size_t i = 0; i < functionCount; ++i)
-                changedFunctions[i] = sccp(module.functions[i]) ? 1 : 0;
-        } else {
-            std::atomic_size_t nextIndex{0};
-            std::vector<std::thread> workers;
-            workers.reserve(workerCount);
-            for (std::size_t worker = 0; worker < workerCount; ++worker) {
-                workers.emplace_back([&]() {
-                    for (;;) {
-                        const std::size_t index = nextIndex.fetch_add(1, std::memory_order_relaxed);
-                        if (index >= functionCount)
-                            break;
-                        changedFunctions[index] = sccp(module.functions[index]) ? 1 : 0;
-                    }
-                });
-            }
-            for (auto &worker : workers)
-                worker.join();
-        }
+        for (std::size_t i = 0; i < functionCount; ++i)
+            changedFunctions[i] = sccp(module.functions[i]) ? 1 : 0;
 
         bool changed = false;
         for (std::size_t i = 0; i < functionCount; ++i) {
