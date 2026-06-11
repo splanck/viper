@@ -237,6 +237,49 @@ TEST(McpHandler, ToolsCallCheck) {
     EXPECT_EQ(content.at(0)["type"].asString(), "text");
 }
 
+TEST(McpHandler, ToolsCallCheckEmitsStructuredDiagnostics) {
+    CompilerBridge bridge;
+    McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    startMcpSession(handler);
+
+    auto params = JsonValue::object({
+        {"name", JsonValue("zia/check")},
+        {"arguments",
+         JsonValue::object({
+             {"source",
+              JsonValue("module Test;\nfunc start() {\n    var count = 1;\n    var x = cout;\n"
+                        "    Viper.Terminal.SayInt(x + count);\n}\n")},
+         })},
+    });
+    auto resp = parseResponse(handler.handleRequest(makeReq("tools/call", std::move(params))));
+    auto text = resp["result"]["content"].at(0)["text"].asString();
+    auto parsed = JsonValue::parse(text);
+    EXPECT_TRUE(parsed.size() > 0u);
+
+    // Locate the undefined-identifier diagnostic and verify the structured shape.
+    bool found = false;
+    for (const auto &d : parsed.asArray()) {
+        if (d["code"].asString() != "V-ZIA-UNDEFINED")
+            continue;
+        found = true;
+        EXPECT_EQ(d["severity"].asInt(), 2);
+        EXPECT_TRUE(d["line"].asInt() > 0);
+        EXPECT_TRUE(d["column"].asInt() > 0);
+        EXPECT_EQ(d["endLine"].asInt(), d["line"].asInt());
+        EXPECT_TRUE(d["endColumn"].asInt() > d["column"].asInt());
+        EXPECT_EQ(d["stage"].asString(), "sema");
+        EXPECT_TRUE(!d["help"].asString().empty());
+        EXPECT_TRUE(d["notes"].size() > 0u);
+        EXPECT_TRUE(d["fixits"].size() > 0u);
+        if (d["fixits"].size() > 0u) {
+            auto fix = d["fixits"].at(0);
+            EXPECT_EQ(fix["replacement"].asString(), "count");
+            EXPECT_TRUE(fix["endColumn"].asInt() > fix["column"].asInt());
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
 TEST(McpHandler, ToolsCallCompile) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});

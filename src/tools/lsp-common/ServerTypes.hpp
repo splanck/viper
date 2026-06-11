@@ -25,14 +25,40 @@
 
 namespace viper::server {
 
+/// @brief Related location attached to a diagnostic (e.g., "previous definition is here").
+struct DiagnosticNoteInfo {
+    std::string message; ///< Human-readable note text.
+    std::string file;    ///< Source file the note refers to; empty when unknown.
+    uint32_t line{0};    ///< 1-based line number; 0 when unknown.
+    uint32_t column{0};  ///< 1-based column number; 0 when unknown.
+};
+
+/// @brief Machine-applicable replacement attached to a diagnostic.
+/// @details The range is half-open: [line:column, endLine:endColumn). When
+///          endLine/endColumn are 0 the fix-it is an insertion at line:column.
+struct DiagnosticFixItInfo {
+    std::string message;     ///< Human-readable description of the fix.
+    std::string replacement; ///< Replacement text for the range.
+    uint32_t line{0};        ///< 1-based begin line.
+    uint32_t column{0};      ///< 1-based begin column.
+    uint32_t endLine{0};     ///< 1-based end line (exclusive); 0 for insertions.
+    uint32_t endColumn{0};   ///< 1-based end column (exclusive); 0 for insertions.
+};
+
 /// @brief Structured diagnostic from a compiler frontend.
 struct DiagnosticInfo {
-    int severity{0};     ///< 0 = note, 1 = warning, 2 = error
-    std::string message; ///< Human-readable diagnostic text.
-    std::string file;    ///< Source file the diagnostic refers to.
-    uint32_t line{0};    ///< 1-based line number.
-    uint32_t column{0};  ///< 1-based column number.
-    std::string code;    ///< Warning/error code (e.g., "W001", "B1001")
+    int severity{0};       ///< 0 = note, 1 = warning, 2 = error
+    std::string message;   ///< Human-readable diagnostic text.
+    std::string file;      ///< Source file the diagnostic refers to.
+    uint32_t line{0};      ///< 1-based line number.
+    uint32_t column{0};    ///< 1-based column number.
+    std::string code;      ///< Warning/error code (e.g., "W001", "B1001")
+    uint32_t endLine{0};   ///< 1-based end line of the underlined range; 0 when unknown.
+    uint32_t endColumn{0}; ///< 1-based end column (exclusive); 0 when unknown.
+    std::string stage;     ///< Pipeline stage (parse, sema, lower, verify, runtime); may be empty.
+    std::string help;      ///< Help text or URL for this diagnostic code; may be empty.
+    std::vector<DiagnosticNoteInfo> notes;   ///< Related locations, in engine order.
+    std::vector<DiagnosticFixItInfo> fixits; ///< Machine-applicable fixes, in engine order.
 };
 
 /// @brief Symbol information from semantic analysis.

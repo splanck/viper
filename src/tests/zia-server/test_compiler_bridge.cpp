@@ -77,6 +77,59 @@ func start() {
     EXPECT_TRUE(diags[0].line > 0u);
 }
 
+TEST(CompilerBridge, CheckPopulatesRangeStageHelpNotesAndFixits) {
+    CompilerBridge bridge;
+    // "cout" is one edit away from "count", so Sema emits a did-you-mean
+    // suggestion with a related note and a machine-applicable fix-it.
+    auto diags = bridge.check(R"(
+module Test;
+func start() {
+    var count = 1;
+    var x = cout;
+    Viper.Terminal.SayInt(x + count);
+}
+)",
+                              "test.zia");
+    const DiagnosticInfo *undef = nullptr;
+    for (const auto &d : diags) {
+        if (d.code == "V-ZIA-UNDEFINED") {
+            undef = &d;
+            break;
+        }
+    }
+    EXPECT_TRUE(undef != nullptr);
+    if (!undef)
+        return;
+
+    EXPECT_EQ(undef->severity, 2);
+    EXPECT_EQ(undef->file, std::string("test.zia"));
+    EXPECT_TRUE(undef->line > 0u);
+    EXPECT_TRUE(undef->column > 0u);
+    // Concrete same-line range covering the identifier "cout".
+    EXPECT_EQ(undef->endLine, undef->line);
+    EXPECT_EQ(undef->endColumn, undef->column + 4u);
+    EXPECT_EQ(undef->stage, std::string("sema"));
+    EXPECT_TRUE(!undef->help.empty());
+
+    // Did-you-mean note points at the candidate symbol.
+    EXPECT_TRUE(undef->notes.size() > 0u);
+    if (!undef->notes.empty()) {
+        EXPECT_CONTAINS(undef->notes[0].message, "count");
+        EXPECT_TRUE(undef->notes[0].line > 0u);
+        EXPECT_EQ(undef->notes[0].file, std::string("test.zia"));
+    }
+
+    // Fix-it replaces the bad identifier with the suggestion.
+    EXPECT_TRUE(undef->fixits.size() > 0u);
+    if (!undef->fixits.empty()) {
+        EXPECT_EQ(undef->fixits[0].replacement, std::string("count"));
+        EXPECT_EQ(undef->fixits[0].line, undef->line);
+        EXPECT_EQ(undef->fixits[0].column, undef->column);
+        EXPECT_EQ(undef->fixits[0].endLine, undef->line);
+        EXPECT_EQ(undef->fixits[0].endColumn, undef->column + 4u);
+    }
+}
+
 // ===== compile() =====
 
 TEST(CompilerBridge, CompileValidSource) {
@@ -140,6 +193,33 @@ TEST(CompilerBridge, HoverOnLocalVariable) {
     EXPECT_FALSE(result.empty());
     EXPECT_TRUE(result.find("var x") != std::string::npos);
     EXPECT_TRUE(result.find("Integer") != std::string::npos);
+}
+
+TEST(CompilerBridge, HoverOnLocalVariableUseSite) {
+    CompilerBridge bridge;
+    // Line 4: "    Viper.Terminal.SayInt(x);" — cursor on the use of 'x' at col 27
+    std::string source =
+        "module Test;\nfunc start() {\n    var x = 42;\n    Viper.Terminal.SayInt(x);\n}\n";
+    auto result = bridge.hover(source, 4, 27, "test.zia");
+    EXPECT_FALSE(result.empty());
+    EXPECT_CONTAINS(result, "x");
+    EXPECT_CONTAINS(result, "Integer");
+}
+
+TEST(CompilerBridge, HoverOnLocalInsideNestedBlock) {
+    CompilerBridge bridge;
+    // Line 5: "        Viper.Terminal.SayInt(total);" — cursor on 'total' at col 31
+    std::string source = "module Test;\n"
+                         "func start() {\n"
+                         "    var total = 0;\n"
+                         "    if total == 0 {\n"
+                         "        Viper.Terminal.SayInt(total);\n"
+                         "    }\n"
+                         "}\n";
+    auto result = bridge.hover(source, 5, 31, "test.zia");
+    EXPECT_FALSE(result.empty());
+    EXPECT_CONTAINS(result, "total");
+    EXPECT_CONTAINS(result, "Integer");
 }
 
 TEST(CompilerBridge, HoverOnFunctionParameter) {

@@ -21,8 +21,10 @@
 #include "cmd_codegen_arm64.hpp"
 #include "cmd_codegen_x64.hpp"
 #include "il/core/Module.hpp"
+#include "il/core/OpcodeInfo.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
+#include "support/diag_expected.hpp"
 #include "viper/version.hpp"
 #include <algorithm>
 #include <iostream>
@@ -188,6 +190,172 @@ int dumpRuntimeDescriptors() {
 } // namespace
 
 namespace {
+/// @brief Map an opcode TypeCategory to its stable JSON name.
+const char *typeCategoryName(il::core::TypeCategory category) {
+    using il::core::TypeCategory;
+    switch (category) {
+        case TypeCategory::None:
+            return "none";
+        case TypeCategory::Void:
+            return "void";
+        case TypeCategory::I1:
+            return "i1";
+        case TypeCategory::I16:
+            return "i16";
+        case TypeCategory::I32:
+            return "i32";
+        case TypeCategory::I64:
+            return "i64";
+        case TypeCategory::F64:
+            return "f64";
+        case TypeCategory::Ptr:
+            return "ptr";
+        case TypeCategory::Str:
+            return "str";
+        case TypeCategory::Error:
+            return "error";
+        case TypeCategory::ResumeTok:
+            return "resume_tok";
+        case TypeCategory::Any:
+            return "any";
+        case TypeCategory::InstrType:
+            return "instr_type";
+        case TypeCategory::Dynamic:
+            return "dynamic";
+    }
+    return "none";
+}
+
+/// @brief Implement `--dump-opcodes`: print the IL opcode registry as a JSON
+///        array on stdout, generated from the live opcode metadata table so it
+///        cannot drift from Opcode.def.
+/// @return 0 on success.
+int dumpOpcodes() {
+    using il::core::ResultArity;
+    using il::support::printJsonStringEscaped;
+    std::ostream &os = std::cout;
+
+    os << "{\"ilVersion\":\"0.2.0\",\"opcodes\":[";
+    bool first = true;
+    for (const auto op : il::core::all_opcodes()) {
+        const auto &info = il::core::getOpcodeInfo(op);
+        if (!first)
+            os << ",";
+        first = false;
+        os << "{\"mnemonic\":";
+        printJsonStringEscaped(os, info.name);
+        os << ",\"resultArity\":\""
+           << (info.resultArity == ResultArity::None
+                   ? "none"
+                   : (info.resultArity == ResultArity::One ? "one" : "optional"))
+           << "\"";
+        os << ",\"resultType\":\"" << typeCategoryName(info.resultType) << "\"";
+        os << ",\"operandsMin\":" << static_cast<int>(info.numOperandsMin);
+        if (info.numOperandsMax == il::core::kVariadicOperandCount)
+            os << ",\"operandsMax\":-1";
+        else
+            os << ",\"operandsMax\":" << static_cast<int>(info.numOperandsMax);
+        os << ",\"operandTypes\":[";
+        for (size_t i = 0; i < info.operandTypes.size(); ++i) {
+            if (i)
+                os << ",";
+            os << "\"" << typeCategoryName(info.operandTypes[i]) << "\"";
+        }
+        os << "]";
+        os << ",\"sideEffects\":" << (info.hasSideEffects ? "true" : "false");
+        os << ",\"successors\":" << static_cast<int>(info.numSuccessors);
+        os << ",\"terminator\":" << (info.isTerminator ? "true" : "false");
+        os << "}";
+    }
+    os << "]}\n";
+    return 0;
+}
+
+/// @brief Implement `--dump-runtime-api`: print the full runtime surface
+///        (global functions and classes with members) as one JSON document on
+///        stdout. The document is generated from the live registry, so it can
+///        never drift from the binary.
+/// @return 0 on success.
+int dumpRuntimeApi() {
+    using il::support::printJsonStringEscaped;
+    std::ostream &os = std::cout;
+
+    os << "{\"version\":";
+    printJsonStringEscaped(os, VIPER_VERSION_STR);
+
+    // Global runtime functions with canonical Viper.* names.
+    os << ",\"functions\":[";
+    {
+        const auto &reg = il::runtime::runtimeRegistry();
+        bool first = true;
+        for (const auto &d : reg) {
+            if (d.name.rfind("Viper.", 0) != 0)
+                continue; // skip rt_* aliases; canonical names carry the API
+            if (!first)
+                os << ",";
+            first = false;
+            const auto &sig = d.signature;
+            std::string sigText = sig.retType.toString();
+            sigText += '(';
+            for (size_t i = 0; i < sig.paramTypes.size(); ++i) {
+                if (i)
+                    sigText += ',';
+                sigText += sig.paramTypes[i].toString();
+            }
+            sigText += ')';
+            os << "{\"name\":";
+            printJsonStringEscaped(os, d.name);
+            os << ",\"signature\":";
+            printJsonStringEscaped(os, sigText);
+            os << "}";
+        }
+    }
+    os << "]";
+
+    // Runtime classes with properties and methods.
+    os << ",\"classes\":[";
+    {
+        const auto &classes = il::runtime::runtimeClassCatalog();
+        bool firstClass = true;
+        for (const auto &c : classes) {
+            if (!firstClass)
+                os << ",";
+            firstClass = false;
+            os << "{\"name\":";
+            printJsonStringEscaped(os, c.qname ? c.qname : "");
+            os << ",\"constructor\":";
+            printJsonStringEscaped(os, c.ctor ? c.ctor : "");
+            os << ",\"properties\":[";
+            bool firstProp = true;
+            for (const auto &p : c.properties) {
+                if (!firstProp)
+                    os << ",";
+                firstProp = false;
+                os << "{\"name\":";
+                printJsonStringEscaped(os, p.name ? p.name : "");
+                os << ",\"type\":";
+                printJsonStringEscaped(os, p.type ? p.type : "");
+                os << ",\"readonly\":" << (p.readonly ? "true" : "false") << "}";
+            }
+            os << "],\"methods\":[";
+            bool firstMethod = true;
+            for (const auto &m : c.methods) {
+                if (!firstMethod)
+                    os << ",";
+                firstMethod = false;
+                os << "{\"name\":";
+                printJsonStringEscaped(os, m.name ? m.name : "");
+                os << ",\"signature\":";
+                printJsonStringEscaped(os, m.signature ? m.signature : "");
+                os << "}";
+            }
+            os << "]}";
+        }
+    }
+    os << "]}\n";
+    return 0;
+}
+
 /// @brief Implement `--dump-runtime-classes`: print the runtime class catalog
 ///        (properties, methods, constructors) in a stable format to stdout.
 /// @return 0 on success.
@@ -226,8 +394,11 @@ void usage() {
         << "Common commands:\n"
         << "       viper run [target] [options] [-- program-args...]\n"
         << "       viper build [target] [-o output] [options]\n"
+        << "       viper check [target] [options]\n"
         << "       viper init <project-name> [--lang zia|basic]\n"
         << "       viper repl [zia|basic]\n"
+        << "       viper eval [options] [code]\n"
+        << "       viper explain <diagnostic-code>\n"
         << "       viper package [target] [--target macos|linux|windows|tarball] [-o output]\n"
         << "\n"
         << "Developer commands:\n"
@@ -324,11 +495,24 @@ int main(int argc, char **argv) {
     if (cmd == "--dump-runtime-classes") {
         return dumpRuntimeClasses();
     }
+    if (cmd == "--dump-runtime-api") {
+        return dumpRuntimeApi();
+    }
+    if (cmd == "--dump-opcodes") {
+        return dumpOpcodes();
+    }
+    if (cmd == "--print-error-codes") {
+        const bool json = argc >= 3 && std::string_view(argv[2]) == "--json";
+        return printErrorCodes(json);
+    }
     if (cmd == "run") {
         return cmdRun(argc - 2, argv + 2);
     }
     if (cmd == "build") {
         return cmdBuild(argc - 2, argv + 2);
+    }
+    if (cmd == "check") {
+        return cmdCheck(argc - 2, argv + 2);
     }
     if (cmd == "init") {
         return cmdInit(argc - 2, argv + 2);
@@ -342,6 +526,12 @@ int main(int argc, char **argv) {
     if (cmd == "repl") {
         return cmdRepl(argc - 2, argv + 2);
     }
+    if (cmd == "eval") {
+        return cmdEval(argc - 2, argv + 2);
+    }
+    if (cmd == "explain") {
+        return cmdExplain(argc - 2, argv + 2);
+    }
     if (cmd == "help") {
         if (argc < 3) {
             usage();
@@ -352,6 +542,8 @@ int main(int argc, char **argv) {
             return invokeHelp(cmdRun);
         if (topic == "build")
             return invokeHelp(cmdBuild);
+        if (topic == "check")
+            return invokeHelp(cmdCheck);
         if (topic == "init")
             return invokeHelp(cmdInit);
         if (topic == "package")
@@ -360,6 +552,10 @@ int main(int argc, char **argv) {
             return invokeHelp(cmdInstallPackage);
         if (topic == "repl")
             return invokeHelp(cmdRepl);
+        if (topic == "eval")
+            return invokeHelp(cmdEval);
+        if (topic == "explain")
+            return invokeHelp(cmdExplain);
         if (topic == "-run")
             return invokeHelp(cmdRunIL);
         if (topic == "il-opt")

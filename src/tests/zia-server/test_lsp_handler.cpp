@@ -154,6 +154,53 @@ TEST(LspHandler, DidOpenPublishesDiagnostics) {
     EXPECT_EQ(diag["params"]["uri"].asString(), "file:///test.zia");
 }
 
+TEST(LspHandler, DiagnosticsCarryRangeCodeAndRelatedInformation) {
+    CompilerBridge bridge;
+    MockTransport transport;
+    LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
+    startLspSession(handler);
+
+    // "cout" triggers an undefined-identifier error with a did-you-mean note.
+    auto params = JsonValue::object({
+        {"textDocument",
+         JsonValue::object({
+             {"uri", JsonValue("file:///test.zia")},
+             {"languageId", JsonValue("zia")},
+             {"version", JsonValue(1)},
+             {"text",
+              JsonValue("module Test;\nfunc start() {\n    var count = 1;\n    var x = cout;\n"
+                        "    Viper.Terminal.SayInt(x + count);\n}\n")},
+         })},
+    });
+    handler.handleRequest(makeNotif("textDocument/didOpen", std::move(params)));
+
+    EXPECT_TRUE(transport.written.size() > 0u);
+    auto notif = JsonValue::parse(transport.written[0]);
+    EXPECT_EQ(notif["method"].asString(), "textDocument/publishDiagnostics");
+
+    bool found = false;
+    for (const auto &d : notif["params"]["diagnostics"].asArray()) {
+        if (!d.has("code") || d["code"].asString() != "V-ZIA-UNDEFINED")
+            continue;
+        found = true;
+        EXPECT_EQ(d["severity"].asInt(), 1); // LSP Error
+        // Range derived from the compiler's concrete span: "cout" is 4 chars.
+        auto range = d["range"];
+        EXPECT_EQ(range["start"]["line"].asInt(), 3); // 0-based line 3
+        EXPECT_EQ(range["end"]["line"].asInt(), 3);
+        EXPECT_EQ(range["end"]["character"].asInt() - range["start"]["character"].asInt(), 4);
+        // Did-you-mean note arrives as relatedInformation in this document.
+        EXPECT_TRUE(d.has("relatedInformation"));
+        if (d.has("relatedInformation")) {
+            EXPECT_TRUE(d["relatedInformation"].size() > 0u);
+            auto rel = d["relatedInformation"].at(0);
+            EXPECT_EQ(rel["location"]["uri"].asString(), "file:///test.zia");
+            EXPECT_TRUE(!rel["message"].asString().empty());
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
 TEST(LspHandler, DidChangeUpdatesDiagnostics) {
     CompilerBridge bridge;
     MockTransport transport;

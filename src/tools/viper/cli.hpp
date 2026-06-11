@@ -244,6 +244,17 @@ int cmdRun(int argc, char **argv);
 /// @return `0` on success, non-zero on failure.
 int cmdBuild(int argc, char **argv);
 
+/// @brief Handle `viper check` subcommand.
+///
+/// Compiles and verifies a Viper project without executing or emitting output.
+/// Diagnostics honor --diagnostic-format for machine-readable JSON.
+///
+/// @param argc Number of arguments following `check`.
+/// @param argv Array of argument strings.
+/// @return `0` when no errors, `1` on usage/target-resolution errors, `2` on
+///         compile or verification errors.
+int cmdCheck(int argc, char **argv);
+
 /// @brief Handle `viper init` subcommand.
 ///
 /// Scaffolds a new Viper project with a viper.project manifest and an
@@ -277,6 +288,33 @@ int cmdInstallPackage(int argc, char **argv);
 /// @param argv Array of argument strings.
 /// @return `0` on success, non-zero on failure.
 int cmdRepl(int argc, char **argv);
+
+/// @brief Handle `viper eval` subcommand.
+///
+/// Evaluates a single Zia or BASIC snippet through a fresh REPL session and
+/// prints the result, optionally as a structured JSON object (--json).
+///
+/// @param argc Number of arguments following `eval`.
+/// @param argv Array of argument strings.
+/// @return `0` on success, `1` on usage errors, `2` on compile/eval errors,
+///         `3` on runtime traps.
+int cmdEval(int argc, char **argv);
+
+/// @brief Handle `viper explain` subcommand.
+///
+/// Describes a diagnostic code from the central catalog, or lists the whole
+/// catalog with `--list`. Supports `--json` for machine-readable output.
+///
+/// @param argc Number of arguments following `explain`.
+/// @param argv Array of argument strings.
+/// @return `0` when the code resolves, `1` on usage error or unknown code.
+int cmdExplain(int argc, char **argv);
+
+/// @brief Implement the `--print-error-codes [--json]` driver flag.
+///
+/// @param json True to emit the catalog as a JSON array.
+/// @return `0` on success.
+int printErrorCodes(bool json);
 
 /// @brief Print usage information for viper.
 ///

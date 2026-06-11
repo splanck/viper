@@ -115,14 +115,15 @@ std::vector<DiagnosticInfo> CompilerBridge::check(const std::string &source,
     CompilerOptions opts{};
 
     auto result = parseAndAnalyze(input, opts, sm);
-    if (!result)
-        return {{2,
-                 "internal error: Zia analysis did not produce a result",
-                 path,
-                 0,
-                 0,
-                 "V-LSP-ANALYSIS"}};
-    return extractDiagnostics(result->diagnostics);
+    if (!result) {
+        DiagnosticInfo info;
+        info.severity = 2;
+        info.message = "internal error: Zia analysis did not produce a result";
+        info.file = path;
+        info.code = "V-LSP-ANALYSIS";
+        return {info};
+    }
+    return extractDiagnostics(result->diagnostics, &sm);
 }
 
 CompileResult CompilerBridge::compile(const std::string &source, const std::string &path) {
@@ -131,7 +132,7 @@ CompileResult CompilerBridge::compile(const std::string &source, const std::stri
     CompilerOptions opts{};
 
     auto result = il::frontends::zia::compile(input, opts, sm);
-    return {result.succeeded(), extractDiagnostics(result.diagnostics)};
+    return {result.succeeded(), extractDiagnostics(result.diagnostics, &sm)};
 }
 
 // --- Hover helpers ---

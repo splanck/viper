@@ -73,6 +73,10 @@ function(viper_add_unit_support_tests)
     viper_add_test(test_support ${VIPER_TESTS_DIR}/unit/test_support.cpp)
     target_link_libraries(test_support PRIVATE ${VIPER_UNIT_SUPPORT_LIBS})
     viper_add_ctest(test_support test_support)
+
+    viper_add_test(test_diag_catalog ${VIPER_TESTS_DIR}/unit/test_diag_catalog.cpp)
+    target_link_libraries(test_diag_catalog PRIVATE ${VIPER_UNIT_SUPPORT_LIBS})
+    viper_add_ctest(test_diag_catalog test_diag_catalog)
 endfunction()
 
 if (NOT TARGET test_basic_terminal_scan)

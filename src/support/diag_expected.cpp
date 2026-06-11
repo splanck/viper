@@ -573,6 +573,10 @@ void printJsonDiagObject(const Diag &diag, std::ostream &os, const SourceManager
 }
 } // namespace
 
+void printJsonStringEscaped(std::ostream &os, std::string_view text) {
+    printJsonEscaped(os, text);
+}
+
 /// @brief Construct an Expected<void> that stores a diagnostic error state.
 ///
 /// @details The constructor moves the provided diagnostic into the optional

@@ -30,6 +30,10 @@ SKIP_AUDIT="${VIPER_SKIP_AUDIT:-0}"
 SKIP_LINT="${VIPER_SKIP_LINT:-0}"
 LINT_CHANGED_ONLY="${VIPER_LINT_CHANGED_ONLY:-1}"
 SKIP_SMOKE="${VIPER_SKIP_SMOKE:-0}"
+SKIP_TESTS="${VIPER_SKIP_TESTS:-0}"
+SKIP_CLEAN="${VIPER_SKIP_CLEAN:-0}"
+TEST_LABEL="${VIPER_TEST_LABEL:-}"
+NO_CCACHE="${VIPER_NO_CCACHE:-0}"
 RUN_SLOW_TESTS="${VIPER_RUN_SLOW_TESTS:-0}"
 CTEST_TIMEOUT="${VIPER_CTEST_TIMEOUT:-}"
 INSTALL_PREFIX="${VIPER_INSTALL_PREFIX:-/usr/local}"
@@ -49,13 +53,24 @@ elif command -v gcc >/dev/null 2>&1; then
     CONFIGURE_ARGS+=(-DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++)
 fi
 
+# Compiler cache: speeds up rebuilds after clean or branch switches.
+# Auto-detected; set VIPER_NO_CCACHE=1 to disable.
+if [[ "$NO_CCACHE" != "1" ]] && command -v ccache >/dev/null 2>&1; then
+    echo "[build_viper] ccache detected; enabling compiler launcher (set VIPER_NO_CCACHE=1 to disable)"
+    CONFIGURE_ARGS+=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
+fi
+
 if [[ -n "${VIPER_EXTRA_CMAKE_ARGS:-}" ]]; then
     # shellcheck disable=SC2206
     EXTRA_ARGS=( ${VIPER_EXTRA_CMAKE_ARGS} )
     CONFIGURE_ARGS+=("${EXTRA_ARGS[@]}")
 fi
 
-cmake --build "$BUILD_DIR" --target clean-all 2>/dev/null || true
+if [[ "$SKIP_CLEAN" != "1" ]]; then
+    cmake --build "$BUILD_DIR" --target clean-all 2>/dev/null || true
+else
+    echo "[build_viper] Skipping clean (VIPER_SKIP_CLEAN=1); incremental rebuild"
+fi
 cmake "${CONFIGURE_ARGS[@]}"
 cmake --build "$BUILD_DIR" -j"$JOBS"
 
@@ -66,18 +81,29 @@ else
     cmake -E sleep 1
 fi
 
-rm -rf "$BUILD_DIR/Testing"
-echo "[build_viper] Running full test suite..."
-CTEST_ARGS=(--test-dir "$BUILD_DIR" --output-on-failure -j"$JOBS")
-if [[ -n "$CTEST_TIMEOUT" ]]; then
-    CTEST_ARGS+=(--timeout "$CTEST_TIMEOUT")
+if [[ "$SKIP_TESTS" == "1" ]]; then
+    echo "[build_viper] Skipping tests (VIPER_SKIP_TESTS=1)"
+else
+    rm -rf "$BUILD_DIR/Testing"
+    if [[ -n "$TEST_LABEL" ]]; then
+        echo "[build_viper] Running tests labeled '$TEST_LABEL' (VIPER_TEST_LABEL)..."
+    else
+        echo "[build_viper] Running full test suite..."
+    fi
+    CTEST_ARGS=(--test-dir "$BUILD_DIR" --output-on-failure -j"$JOBS")
+    if [[ -n "$TEST_LABEL" ]]; then
+        CTEST_ARGS+=(-L "$TEST_LABEL")
+    fi
+    if [[ -n "$CTEST_TIMEOUT" ]]; then
+        CTEST_ARGS+=(--timeout "$CTEST_TIMEOUT")
+    fi
+    if [[ "$RUN_SLOW_TESTS" != "1" ]]; then
+        echo "[build_viper] Skipping tests labeled slow (set VIPER_RUN_SLOW_TESTS=1 to include them)"
+        CTEST_ARGS+=(-LE slow)
+    fi
+    ctest "${CTEST_ARGS[@]}"
+    echo "[build_viper] Test run complete"
 fi
-if [[ "$RUN_SLOW_TESTS" != "1" ]]; then
-    echo "[build_viper] Skipping tests labeled slow (set VIPER_RUN_SLOW_TESTS=1 to include them)"
-    CTEST_ARGS+=(-LE slow)
-fi
-ctest "${CTEST_ARGS[@]}"
-echo "[build_viper] Full test suite complete"
 
 if [[ "$SKIP_LINT" != "1" && -x "$SCRIPT_DIR/lint_platform_policy.sh" ]]; then
     echo "[build_viper] Running platform policy lint..."

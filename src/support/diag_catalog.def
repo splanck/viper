@@ -1,0 +1,188 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: support/diag_catalog.def
+// Purpose: Central catalog of diagnostic codes for `viper explain` and
+//          `viper --print-error-codes`. X-macro consumers define
+//          DIAG_CODE(code, subsystem, summary) before including this file.
+// Key invariants:
+//   - Codes are unique and sorted by subsystem then code.
+//   - Summaries are one sentence, present tense, no trailing period.
+//   - Codes not listed here still resolve through prefix-family fallback in
+//     diag_catalog.cpp; add entries here as codes stabilize.
+// Ownership/Lifetime:
+//   - Static data compiled into viper_support.
+// Links: support/diag_catalog.hpp, docs/debugging.md
+//
+//===----------------------------------------------------------------------===//
+
+// ===== Zia lexer (V-ZIA-LEX*) =====
+DIAG_CODE("V-ZIA-LEX", "zia-lexer", "Generic lexical error in Zia source")
+DIAG_CODE("V-ZIA-LEX-ESCAPE", "zia-lexer", "Invalid escape sequence in a string or character literal")
+DIAG_CODE("V-ZIA-LEX-IDENTIFIER", "zia-lexer", "Malformed identifier token")
+DIAG_CODE("V-ZIA-LEX-LITERAL", "zia-lexer", "Malformed numeric or character literal")
+DIAG_CODE("V-ZIA-LEX-UNTERMINATED-COMMENT", "zia-lexer", "Block comment is missing its closing delimiter")
+DIAG_CODE("V-ZIA-LEX-UNTERMINATED-STRING", "zia-lexer", "String literal is missing its closing quote")
+
+// ===== Zia parser (V-ZIA-PARSE*) =====
+DIAG_CODE("V-ZIA-PARSE", "zia-parser", "Generic syntax error in Zia source")
+DIAG_CODE("V-ZIA-PARSE-ASSIGNMENT", "zia-parser", "Invalid assignment target or malformed assignment statement")
+DIAG_CODE("V-ZIA-PARSE-DECL", "zia-parser", "Malformed declaration (module, func, class, var, or bind)")
+DIAG_CODE("V-ZIA-PARSE-DEPTH", "zia-parser", "Expression or statement nesting exceeds the parser depth limit")
+DIAG_CODE("V-ZIA-PARSE-EXPECTED", "zia-parser", "A specific token was expected at this position")
+DIAG_CODE("V-ZIA-PARSE-EXPR", "zia-parser", "Malformed expression")
+DIAG_CODE("V-ZIA-PARSE-LAMBDA", "zia-parser", "Malformed lambda expression or lambda parameter list")
+DIAG_CODE("V-ZIA-PARSE-LITERAL", "zia-parser", "Literal value is out of range or malformed")
+DIAG_CODE("V-ZIA-PARSE-PATTERN", "zia-parser", "Malformed pattern in a match arm")
+DIAG_CODE("V-ZIA-PARSE-STRING", "zia-parser", "Malformed string interpolation or string literal expression")
+DIAG_CODE("V-ZIA-PARSE-TYPE", "zia-parser", "Malformed type annotation or generic argument list")
+DIAG_CODE("V-ZIA-PARSE-UNEXPECTED", "zia-parser", "Unexpected token at this position")
+
+// ===== Zia semantic analysis (V-ZIA-*) =====
+DIAG_CODE("V-ZIA-BOUNDS", "zia-sema", "Array or fixed-size collection index is out of bounds at compile time")
+DIAG_CODE("V-ZIA-DUPLICATE", "zia-sema", "Duplicate definition of a symbol in the same scope")
+DIAG_CODE("V-ZIA-INDEX", "zia-sema", "Invalid index expression for this collection type")
+DIAG_CODE("V-ZIA-OPTIONAL", "zia-sema", "Optional value used without a null check or unwrap")
+DIAG_CODE("V-ZIA-RETURN", "zia-sema", "Function is missing a return value on some control path")
+DIAG_CODE("V-ZIA-SEMA", "zia-sema", "Generic semantic error in Zia source")
+DIAG_CODE("V-ZIA-TYPE-MISMATCH", "zia-sema", "Expression type does not match the expected type")
+DIAG_CODE("V-ZIA-UNDEFINED", "zia-sema", "Use of an undefined identifier; may include a did-you-mean fix-it")
+
+// ===== Zia lowering invariants (V-ZIA-LOWER*) =====
+DIAG_CODE("V-ZIA-LOWER-DEPTH", "zia-lower", "Lowering recursion depth limit exceeded")
+DIAG_CODE("V-ZIA-LOWER-MISSING-RUNTIME", "zia-lower", "Required runtime function is not registered")
+DIAG_CODE("V-ZIA-LOWER-MISSING-TYPE", "zia-lower", "Internal lowering error: expression has no resolved type")
+DIAG_CODE("V-ZIA-LOWER-NULL-EXPR", "zia-lower", "Internal lowering error: null expression node")
+DIAG_CODE("V-ZIA-LOWER-NULL-STMT", "zia-lower", "Internal lowering error: null statement node")
+DIAG_CODE("V-ZIA-LOWER-TUPLE-DESTRUCTURE", "zia-lower", "Invalid tuple destructuring target")
+DIAG_CODE("V-ZIA-LOWER-TUPLE-DESTRUCTURE-ARITY", "zia-lower", "Tuple destructuring arity does not match the tuple size")
+DIAG_CODE("V-ZIA-LOWER-UNKNOWN-EXPR", "zia-lower", "Internal lowering error: unknown expression kind")
+DIAG_CODE("V-ZIA-LOWER-UNRESOLVED-TYPE", "zia-lower", "Internal lowering error: unresolved semantic type")
+
+// ===== Zia warnings (W001..W019) =====
+DIAG_CODE("W001", "zia-warning", "Variable is declared but never used")
+DIAG_CODE("W002", "zia-warning", "Code is unreachable")
+DIAG_CODE("W003", "zia-warning", "Implicit narrowing conversion may lose information")
+DIAG_CODE("W004", "zia-warning", "Variable shadows a declaration from an outer scope")
+DIAG_CODE("W005", "zia-warning", "Floating-point values compared with == or !=")
+DIAG_CODE("W006", "zia-warning", "Loop body is empty")
+DIAG_CODE("W007", "zia-warning", "Assignment used inside a condition; did you mean ==")
+DIAG_CODE("W008", "zia-warning", "Function may exit without returning a value (promoted to error under strict diagnostics)")
+DIAG_CODE("W009", "zia-warning", "Value is assigned to itself")
+DIAG_CODE("W010", "zia-warning", "Constant division by zero (promoted to error under strict diagnostics)")
+DIAG_CODE("W011", "zia-warning", "Redundant comparison against a boolean literal")
+DIAG_CODE("W012", "zia-warning", "Duplicate bind of the same module or namespace")
+DIAG_CODE("W013", "zia-warning", "Declaration body is empty")
+DIAG_CODE("W014", "zia-warning", "Expression result is computed but never used")
+DIAG_CODE("W015", "zia-warning", "Variable may be read before initialization (promoted to error under strict diagnostics)")
+DIAG_CODE("W016", "zia-warning", "Optional accessed without a null check (promoted to error under strict diagnostics)")
+DIAG_CODE("W017", "zia-warning", "'^' is bitwise xor in Zia; use Viper.Math.Pow for exponentiation")
+DIAG_CODE("W018", "zia-warning", "'&' is bitwise and; did you mean logical 'and'")
+DIAG_CODE("W019", "zia-warning", "Match expression does not cover all cases (promoted to error under strict diagnostics)")
+
+// ===== Shared source loading (V-SRC-*) =====
+DIAG_CODE("V-SRC-FILE-ID", "source", "Source file could not be registered or resolved by the source manager")
+
+// ===== Language server bridge (V-LSP-*) =====
+DIAG_CODE("V-LSP-ANALYSIS", "language-server", "Internal error: analysis did not produce a result")
+
+// ===== IL verification (V-IL-*) =====
+DIAG_CODE("V-IL-VERIFY", "il-verify", "IL module failed verification (type, control-flow, or EH invariants)")
+DIAG_CODE("V-IL-WARN", "il-verify", "IL verifier warning; the module is valid but suspicious")
+
+// ===== Optimizer pipeline (V-OPT-*) =====
+DIAG_CODE("V-OPT-PIPELINE", "il-optimizer", "Optimization pipeline failed to run to completion")
+DIAG_CODE("V-OPT-VERIFY", "il-optimizer", "IL failed verification after an optimization pass (use --verify-each to isolate)")
+
+// ===== Bytecode compiler (V-BC-*) =====
+DIAG_CODE("V-BC-BRANCH-ARGS", "bytecode", "Branch instruction has malformed block arguments")
+DIAG_CODE("V-BC-BRANCH-FIXUP", "bytecode", "Branch target could not be patched during bytecode emission")
+DIAG_CODE("V-BC-BRANCH-RANGE", "bytecode", "Branch offset exceeds the encodable range")
+DIAG_CODE("V-BC-CALL-ARGS", "bytecode", "Call instruction has malformed arguments")
+DIAG_CODE("V-BC-DUPLICATE-BLOCK", "bytecode", "Duplicate basic block label in a function")
+DIAG_CODE("V-BC-DUPLICATE-FUNCTION", "bytecode", "Duplicate function name in the module")
+DIAG_CODE("V-BC-DUPLICATE-GLOBAL", "bytecode", "Duplicate global definition in the module")
+DIAG_CODE("V-BC-FAST-ARRAY-ARGS", "bytecode", "Fast-path array opcode has malformed arguments")
+DIAG_CODE("V-BC-FAST-ARRAY-RESULT", "bytecode", "Fast-path array opcode has a malformed result")
+DIAG_CODE("V-BC-FUNCTION-TABLE", "bytecode", "Function table construction failed")
+DIAG_CODE("V-BC-GLOBAL-INIT", "bytecode", "Global initializer is unsupported or malformed")
+DIAG_CODE("V-BC-GLOBAL-TABLE", "bytecode", "Global table construction failed")
+DIAG_CODE("V-BC-HANDLER-SIGNATURE", "bytecode", "Exception handler block has a malformed parameter signature")
+DIAG_CODE("V-BC-IL-VERIFY", "bytecode", "IL failed verification before bytecode compilation")
+DIAG_CODE("V-BC-INTERNAL", "bytecode", "Internal bytecode compiler error")
+DIAG_CODE("V-BC-LOCAL-OVERFLOW", "bytecode", "Function exceeds the bytecode local-slot limit")
+DIAG_CODE("V-BC-MALFORMED-INSTR", "bytecode", "IL instruction is malformed for bytecode lowering")
+DIAG_CODE("V-BC-METADATA", "bytecode", "Bytecode metadata table is malformed")
+DIAG_CODE("V-BC-NATIVE-TABLE", "bytecode", "Native call table construction failed")
+DIAG_CODE("V-BC-POOL-OVERFLOW", "bytecode", "Constant pool exceeds the encodable size")
+DIAG_CODE("V-BC-RETURN", "bytecode", "Return instruction is inconsistent with the function signature")
+DIAG_CODE("V-BC-STACK-ACCOUNTING", "bytecode", "Operand stack accounting mismatch during bytecode emission")
+DIAG_CODE("V-BC-STACK-UNDERFLOW", "bytecode", "Operand stack underflow during bytecode emission")
+DIAG_CODE("V-BC-SWITCH-CASE", "bytecode", "Switch instruction has malformed cases")
+DIAG_CODE("V-BC-SYNTHETIC-LABEL", "bytecode", "Synthetic label generation failed")
+DIAG_CODE("V-BC-UNKNOWN-BRANCH-TARGET", "bytecode", "Branch references an unknown block label")
+DIAG_CODE("V-BC-UNKNOWN-GLOBAL", "bytecode", "Reference to an unknown global")
+DIAG_CODE("V-BC-UNKNOWN-SSA", "bytecode", "Reference to an undefined SSA value")
+DIAG_CODE("V-BC-UNKNOWN-STRING-GLOBAL", "bytecode", "Reference to an unknown string global")
+DIAG_CODE("V-BC-UNRESOLVED-BRANCH", "bytecode", "Branch target was never resolved")
+DIAG_CODE("V-BC-UNSUPPORTED-GLOBAL-TYPE", "bytecode", "Global has a type the bytecode VM cannot represent")
+DIAG_CODE("V-BC-UNSUPPORTED-OP", "bytecode", "IL opcode is not supported by the bytecode VM")
+
+// ===== Native codegen (V-CG-*) =====
+DIAG_CODE("V-CG-AARCH64-REGALLOC", "codegen", "AArch64 register allocation failed")
+DIAG_CODE("V-CG-ERROR", "codegen", "Native code generation failed")
+DIAG_CODE("V-CG-PASS-EXCEPTION", "codegen", "A backend pass raised an internal exception")
+DIAG_CODE("V-CG-WARN", "codegen", "Native code generation warning")
+
+// ===== BASIC parser (B0xxx) =====
+DIAG_CODE("B0000", "basic-parser", "Generic BASIC parse error")
+DIAG_CODE("B0001", "basic-parser", "Label is already defined")
+DIAG_CODE("B0002", "basic-parser", "GOTO/GOSUB target label is not defined")
+DIAG_CODE("B0003", "basic-parser", "Invalid escape sequence in a string literal")
+DIAG_CODE("B0004", "basic-parser", "Unexpected token at this position")
+DIAG_CODE("B0005", "basic-parser", "Identifier expected at this position")
+DIAG_CODE("B0006", "basic-parser", "Duplicate variable declaration")
+DIAG_CODE("B0007", "basic-parser", "Invalid type suffix on an identifier")
+DIAG_CODE("B0008", "basic-parser", "Expression expected at this position")
+DIAG_CODE("B0009", "basic-parser", "String literal is missing its closing quote")
+DIAG_CODE("B0010", "basic-parser", "Malformed numeric literal")
+DIAG_CODE("B0801", "basic-parser", "TRY requires CATCH, FINALLY, or both")
+
+// ===== BASIC semantic analysis (B1xxx) =====
+DIAG_CODE("B1000", "basic-sema", "Type mismatch between expression and expected type")
+DIAG_CODE("B1001", "basic-sema", "Use of an undefined variable")
+DIAG_CODE("B1002", "basic-sema", "Call to an undefined function or procedure")
+DIAG_CODE("B1003", "basic-sema", "Wrong number of arguments in call")
+DIAG_CODE("B1004", "basic-sema", "Operand type is invalid for this operator")
+DIAG_CODE("B1005", "basic-sema", "Value cannot be converted to the target type")
+DIAG_CODE("B1006", "basic-sema", "Array dimension is invalid")
+DIAG_CODE("B1007", "basic-sema", "FOR loop variable is invalid")
+DIAG_CODE("B1008", "basic-sema", "EXIT/BREAK used outside a loop")
+DIAG_CODE("B1009", "basic-sema", "CONTINUE used outside a loop")
+DIAG_CODE("B1010", "basic-sema", "RETURN value type does not match the function declaration")
+DIAG_CODE("B1011", "basic-sema", "Call matches more than one overload")
+DIAG_CODE("B1012", "basic-sema", "RESUME requires an active error handler")
+
+// ===== BASIC lowering (B2xxx core) =====
+DIAG_CODE("B2000", "basic-lower", "Expression cannot be lowered to IL")
+DIAG_CODE("B2001", "basic-lower", "Statement cannot be lowered to IL (includes assignment/operator type mismatches)")
+DIAG_CODE("B2002", "basic-lower", "Language feature is not supported by the lowering pipeline")
+DIAG_CODE("B2003", "basic-lower", "Internal compiler error during lowering")
+
+// ===== BASIC warnings (B9xxx) =====
+DIAG_CODE("B9000", "basic-warning", "Variable is declared but never used")
+DIAG_CODE("B9001", "basic-warning", "Variable shadows an outer declaration")
+DIAG_CODE("B9002", "basic-warning", "Code is unreachable")
+DIAG_CODE("B9003", "basic-warning", "Implicit conversion may lose information")
+
+// ===== BASIC semantic analyzer (E1xxx) =====
+DIAG_CODE("E1001", "basic-sema", "Conditional expression is not boolean")
+DIAG_CODE("E1002", "basic-sema", "Logical operator operand is not boolean")
+DIAG_CODE("E1003", "basic-sema", "NOT operand is not boolean")
+
+// ===== IL parse/serialize (ILxxx) =====
+DIAG_CODE("IL001", "il-parse", "Malformed textual IL input")

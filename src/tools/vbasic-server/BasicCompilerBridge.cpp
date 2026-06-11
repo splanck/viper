@@ -178,14 +178,15 @@ std::vector<DiagnosticInfo> BasicCompilerBridge::check(const std::string &source
     il::support::SourceManager sm;
     BasicCompilerInput input{.source = source, .path = path};
     auto result = parseAndAnalyzeBasic(input, sm);
-    if (!result)
-        return {{2,
-                 "internal error: BASIC analysis did not produce a result",
-                 path,
-                 0,
-                 0,
-                 "V-LSP-ANALYSIS"}};
-    return extractDiagnostics(result->diagnostics);
+    if (!result) {
+        DiagnosticInfo info;
+        info.severity = 2;
+        info.message = "internal error: BASIC analysis did not produce a result";
+        info.file = path;
+        info.code = "V-LSP-ANALYSIS";
+        return {info};
+    }
+    return extractDiagnostics(result->diagnostics, &sm);
 }
 
 CompileResult BasicCompilerBridge::compile(const std::string &source, const std::string &path) {
@@ -194,7 +195,7 @@ CompileResult BasicCompilerBridge::compile(const std::string &source, const std:
     BasicCompilerOptions opts{};
 
     auto result = compileBasic(input, opts, sm);
-    return {result.succeeded(), extractDiagnostics(result.diagnostics)};
+    return {result.succeeded(), extractDiagnostics(result.diagnostics, &sm)};
 }
 
 // --- IDE Features ---
