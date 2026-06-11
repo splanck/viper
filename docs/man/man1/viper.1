@@ -9,10 +9,19 @@ viper \- Viper project driver, IL tool, and native build frontend
 \fBbuild\fR [\fItarget\fR] [\fB-o\fR \fIoutput\fR] [\fIoptions\fR] [\fB--verify-each\fR] [\fB--time-compile\fR]
 .br
 .B viper
+\fBcheck\fR [\fItarget\fR] [\fIoptions\fR]
+.br
+.B viper
 \fBinit\fR \fIproject-name\fR [\fB--lang\fR zia|basic]
 .br
 .B viper
 \fBrepl\fR [zia|basic]
+.br
+.B viper
+\fBeval\fR [\fB--lang\fR zia|basic] [\fB--json\fR] [\fB--type\fR] [\fB--il\fR] [\fIcode\fR]
+.br
+.B viper
+\fBexplain\fR \fIdiagnostic-code\fR [\fB--json\fR] | \fBexplain --list\fR [\fB--json\fR]
 .br
 .B viper
 \fBpackage\fR [\fItarget\fR] [\fB--target\fR macos|linux|windows|tarball]
@@ -53,6 +62,12 @@ viper \- Viper project driver, IL tool, and native build frontend
 [\fB--pass-stats\fR]
 .br
 .B viper
+\fB--print-error-codes\fR [\fB--json\fR]
+.br
+.B viper
+\fB--dump-runtime-api\fR | \fB--dump-opcodes\fR
+.br
+.B viper
 \fB--version\fR
 .SH DESCRIPTION
 \fBviper\fR is the main user-facing driver for Zia, BASIC, textual IL, and native
@@ -67,6 +82,22 @@ it builds a native executable.
 .PP
 \fBrun\fR builds and runs a Zia or BASIC target. Legacy IL, Zia, and BASIC entry
 points remain available through \fB-run\fR, \fBfront zia\fR, and \fBfront basic\fR.
+.PP
+\fBcheck\fR type-checks and verifies a target without running or emitting
+anything. Exit codes: 0 no errors, 1 usage/target error, 2 compile or
+verification errors. Combine with \fB--diagnostic-format json\fR for
+machine-readable diagnostics including fix-its.
+.PP
+\fBeval\fR evaluates a single Zia or BASIC snippet through a fresh REPL session
+(stdin is read when no code argument is given). \fB--json\fR emits a structured
+result object; \fB--type\fR and \fB--il\fR add the inferred type and generated
+IL for Zia snippets. Exit codes: 0 success, 1 usage, 2 compile/eval error,
+3 runtime trap.
+.PP
+\fBexplain\fR describes a diagnostic code from the central catalog
+(\fB--list\fR prints everything; \fB--print-error-codes\fR is the flag form).
+\fB--dump-runtime-api\fR and \fB--dump-opcodes\fR emit JSON inventories of the
+runtime surface and IL opcode set generated from the live registries.
 .PP
 \fBpackage\fR builds native app artifacts. Manifest paths are project-relative,
 while \fB--executable\fR paths are resolved from the current working directory
