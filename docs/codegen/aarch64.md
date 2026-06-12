@@ -195,7 +195,6 @@ Usage: `viper codegen arm64 <input.il> -S <out.s>`
 | `src/codegen/common/Diagnostics.hpp`/`.cpp` | Diagnostic sink |
 | `src/codegen/common/LabelUtil.hpp` | Assembler-safe label sanitization (hyphens → underscores) |
 | `src/codegen/common/LinkerSupport.hpp`/`.cpp` | Shared linker invocation, runtime archive selection |
-| `src/codegen/common/ParallelCopyResolver.hpp` | Target-independent parallel-copy resolution |
 | `src/codegen/common/PassManager.hpp` | Generic `Pass<M>` / `PassManager<M>` templates |
 | `src/codegen/common/RuntimeComponents.hpp` | Runtime component classification for selective linking |
 | `src/codegen/common/TargetInfoBase.hpp` | Shared base for `TargetInfo` structs |

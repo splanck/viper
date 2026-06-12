@@ -101,9 +101,21 @@ class LinearAllocator {
     // Set when the previous instruction was a call to rt_arr_obj_get
     bool pendingGetBarrier_{false};
 
+    /// Argument registers removed from the free pools because call marshalling
+    /// has already written them; returned to the pools after the next call.
+    std::vector<PhysReg> reservedForCall_;
+
     // ---- Cross-block ----
     /// @brief Seed the current block's register state from the single predecessor's exit state.
     void restoreFromPredecessor(std::size_t bi);
+
+    // ---- Physical-register clobbers ----
+    /// @brief Evict any vreg resident in a physical register that @p ins defines,
+    ///        spilling it first when its value is still needed. Argument registers
+    ///        written here are additionally reserved until the next call.
+    void evictPhysDefClobbers(const MInstr &ins, std::vector<MInstr> &prefix);
+    /// @brief Return argument registers reserved during call marshalling to the pools.
+    void releaseCallReserved();
 
     // ---- Next-use analysis ----
     /// @brief Build per-vreg use-position maps for @p bb to guide eviction decisions.

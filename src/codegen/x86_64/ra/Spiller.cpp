@@ -170,9 +170,10 @@ void Spiller::releaseSlot(RegClass cls, int slot) {
 MInstr Spiller::makeLoad(RegClass cls, PhysReg dst, const SpillPlan &plan) const {
     if (cls == RegClass::GPR) {
         return MInstr::make(MOpcode::MOVmr,
-                            {makePhysOperand(cls, dst), makeFrameOperand(plan.slot)});
+                            {makePhysOperand(cls, dst), makeFrameOperand(cls, plan.slot)});
     }
-    return MInstr::make(MOpcode::MOVSDmr, {makePhysOperand(cls, dst), makeFrameOperand(plan.slot)});
+    return MInstr::make(MOpcode::MOVSDmr,
+                        {makePhysOperand(cls, dst), makeFrameOperand(cls, plan.slot)});
 }
 
 /// @brief Emit a store instruction from a register into a spill slot.
@@ -186,9 +187,10 @@ MInstr Spiller::makeLoad(RegClass cls, PhysReg dst, const SpillPlan &plan) const
 MInstr Spiller::makeStore(RegClass cls, const SpillPlan &plan, PhysReg src) const {
     if (cls == RegClass::GPR) {
         return MInstr::make(MOpcode::MOVrm,
-                            {makeFrameOperand(plan.slot), makePhysOperand(cls, src)});
+                            {makeFrameOperand(cls, plan.slot), makePhysOperand(cls, src)});
     }
-    return MInstr::make(MOpcode::MOVSDrm, {makeFrameOperand(plan.slot), makePhysOperand(cls, src)});
+    return MInstr::make(MOpcode::MOVSDrm,
+                        {makeFrameOperand(cls, plan.slot), makePhysOperand(cls, src)});
 }
 
 /// @brief Materialise a spill for a live virtual register.
@@ -251,26 +253,27 @@ void Spiller::spillValueWithReuse(RegClass cls,
 
 /// @brief Create a memory operand referencing a spill slot.
 /// @details Spill slots live at negative offsets from @c %rbp in units of eight
-///          bytes.  The helper computes the byte displacement for @p slot and
-///          returns a Machine operand that can be consumed by loads and stores.
-///          We offset spill slots by 1000 to avoid collision with alloca
-///          placeholders which use -(resultId + 1) * 8.
-/// @param slot Zero-based slot index to reference.
+///          bytes. Each register class owns a disjoint placeholder index range
+///          (kSpillSlotOffsetGPR / kSpillSlotOffsetXMM) so frame lowering can
+///          classify slots purely from the displacement — no guessing from
+///          neighbouring operands — and alloca placeholders (small indices)
+///          can never collide with spill placeholders.
+/// @param cls  Register class owning the slot.
+/// @param slot Zero-based per-class slot index to reference.
 /// @return Memory operand pointing to the spill slot.
-Operand Spiller::makeFrameOperand(int slot) const {
+Operand Spiller::makeFrameOperand(RegClass cls, int slot) const {
     if (slot < 0) {
         throw std::out_of_range("x86 spiller: negative spill slot index");
     }
-    if (slot > std::numeric_limits<int>::max() - kSpillSlotOffset - 1) {
-        throw std::overflow_error("x86 spiller: spill slot placeholder index overflows int");
+    const int base = cls == RegClass::GPR ? kSpillSlotOffsetGPR : kSpillSlotOffsetXMM;
+    const int rangeEnd = cls == RegClass::GPR ? kSpillSlotOffsetXMM : kMaxFramePlaceholderIndex;
+    if (slot >= rangeEnd - base - 1) {
+        throw std::overflow_error("x86 spiller: spill slot index exceeds its placeholder range");
     }
-    const int placeholderSlot = slot + kSpillSlotOffset + 1;
-    if (placeholderSlot > std::numeric_limits<int32_t>::max() / kSlotSizeBytes) {
-        throw std::overflow_error("x86 spiller: spill slot placeholder displacement overflows int32");
-    }
-    const auto base = makePhysReg(RegClass::GPR, static_cast<uint16_t>(PhysReg::RBP));
+    const int placeholderSlot = slot + base + 1;
+    const auto baseReg = makePhysReg(RegClass::GPR, static_cast<uint16_t>(PhysReg::RBP));
     const int32_t offset = -static_cast<int32_t>(placeholderSlot * kSlotSizeBytes);
-    return makeMemOperand(base, offset);
+    return makeMemOperand(baseReg, offset);
 }
 
 } // namespace viper::codegen::x64::ra

@@ -867,6 +867,56 @@ TEST(X86Scheduler, PrioritizesLoadUseChainWithinBlock) {
     EXPECT_EQ(fn.blocks[0].instructions[0].opcode, MOpcode::MOVmr);
 }
 
+TEST(X86Scheduler, HoistsLoadAboveStoreToDisjointFrameSlot) {
+    // A long-latency load from rbp-16 feeding an add may hoist above a store
+    // to the DIFFERENT slot rbp-8: 8-byte frame slots with distinct
+    // displacements are provably disjoint.
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::MOVrm, {mem(PhysReg::RBP, -8), gpr(PhysReg::RBX)}},
+                           MInstr{MOpcode::MOVmr, {gpr(PhysReg::RAX), mem(PhysReg::RBP, -16)}},
+                           MInstr{MOpcode::ADDrr, {gpr(PhysReg::RAX), gpr(PhysReg::RDX)}},
+                           MInstr{MOpcode::RET, {}},
+                       });
+
+    const auto changed = scheduleFunction(fn);
+    EXPECT_TRUE(changed > 0U);
+    ASSERT_FALSE(fn.blocks[0].instructions.empty());
+    EXPECT_EQ(fn.blocks[0].instructions[0].opcode, MOpcode::MOVmr);
+}
+
+TEST(X86Scheduler, KeepsStoreLoadOrderOnSameFrameSlot) {
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::MOVrm, {mem(PhysReg::RBP, -8), gpr(PhysReg::RBX)}},
+                           MInstr{MOpcode::MOVmr, {gpr(PhysReg::RAX), mem(PhysReg::RBP, -8)}},
+                           MInstr{MOpcode::RET, {}},
+                       });
+
+    scheduleFunction(fn);
+    const auto &instrs = fn.blocks[0].instructions;
+    ASSERT_EQ(instrs.size(), 3U);
+    EXPECT_EQ(instrs[0].opcode, MOpcode::MOVrm);
+    EXPECT_EQ(instrs[1].opcode, MOpcode::MOVmr);
+}
+
+TEST(X86Scheduler, KeepsStoreOrderOnUnknownMemory) {
+    // Stores through arbitrary registers may alias: order must be preserved.
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::MOVrm, {mem(PhysReg::RDI, 0), gpr(PhysReg::RBX)}},
+                           MInstr{MOpcode::MOVrm, {mem(PhysReg::RSI, 0), gpr(PhysReg::RCX)}},
+                           MInstr{MOpcode::RET, {}},
+                       });
+
+    scheduleFunction(fn);
+    const auto &instrs = fn.blocks[0].instructions;
+    ASSERT_EQ(instrs.size(), 3U);
+    const auto *firstMem = std::get_if<OpMem>(&instrs[0].operands[0]);
+    ASSERT_TRUE(firstMem != nullptr);
+    EXPECT_EQ(static_cast<PhysReg>(firstMem->base.idOrPhys), PhysReg::RDI);
+}
+
 TEST(X86Peephole, DeadCodeEliminatesWholeUnusedMoveChainInOneRun) {
     auto fn = makeFunc(".Lentry",
                        {
@@ -895,6 +945,36 @@ TEST(X86Peephole, LinearMoveFoldingHandlesChainedAdjacentMoves) {
     EXPECT_EQ(stats.consecutiveMovsFolded, 2U);
     ASSERT_EQ(instrs[2].operands.size(), 2U);
     EXPECT_TRUE(sameRegOperand(instrs[2].operands[1], gpr(PhysReg::RAX)));
+}
+
+TEST(X86Peephole, FrameStoreForwardingContinuesAcrossLea) {
+    // LEA computes an address without touching memory; it must not act as a
+    // memory barrier for store-to-load forwarding. Any later dereference of
+    // the leaked address carries its own memory operand and barriers there.
+    std::vector<MInstr> instrs = {
+        MInstr{MOpcode::MOVrm, {mem(PhysReg::RBP, -8), gpr(PhysReg::RAX)}},
+        MInstr{MOpcode::LEA, {gpr(PhysReg::RDX), mem(PhysReg::RBP, -8)}},
+        MInstr{MOpcode::MOVmr, {gpr(PhysReg::RBX), mem(PhysReg::RBP, -8)}},
+    };
+
+    peephole::PeepholeStats stats{};
+    EXPECT_EQ(peephole::forwardFrameStoreLoads(instrs, stats), 1U);
+    EXPECT_EQ(instrs[2].opcode, MOpcode::MOVrr);
+}
+
+TEST(X86Peephole, FrameStoreForwardingBarriersAtDereferenceAfterLea) {
+    // Writing through the LEA-derived pointer is an unknown memory access and
+    // must clear the tracked forwarding state.
+    std::vector<MInstr> instrs = {
+        MInstr{MOpcode::MOVrm, {mem(PhysReg::RBP, -8), gpr(PhysReg::RAX)}},
+        MInstr{MOpcode::LEA, {gpr(PhysReg::RDX), mem(PhysReg::RBP, -8)}},
+        MInstr{MOpcode::MOVrm, {mem(PhysReg::RDX, 0), gpr(PhysReg::RCX)}},
+        MInstr{MOpcode::MOVmr, {gpr(PhysReg::RBX), mem(PhysReg::RBP, -8)}},
+    };
+
+    peephole::PeepholeStats stats{};
+    EXPECT_EQ(peephole::forwardFrameStoreLoads(instrs, stats), 0U);
+    EXPECT_EQ(instrs[3].opcode, MOpcode::MOVmr);
 }
 
 TEST(X86Peephole, FrameStoreForwardingInvalidatesWhenStoredRegisterIsClobbered) {

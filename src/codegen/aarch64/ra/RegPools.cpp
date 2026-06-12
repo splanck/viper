@@ -30,13 +30,14 @@
 
 namespace viper::codegen::aarch64::ra {
 
-void RegPools::build(const TargetInfo &ti) {
+void RegPools::build(const TargetInfo &ti, const std::array<bool, 64> &excluded) {
     gprFree.clear();
     fprFree.clear();
     calleeUsed = {};
     calleeUsedFPR = {};
     calleeSavedGPRSet = {};
     calleeSavedFPRSet = {};
+    poolEligible = {};
 
     // Pre-compute callee-saved GPR set for O(1) lookup in takeGPRPreferCalleeSaved()
     for (auto r : ti.calleeSavedGPR)
@@ -44,25 +45,31 @@ void RegPools::build(const TargetInfo &ti) {
     for (auto r : ti.calleeSavedFPR)
         calleeSavedFPRSet[static_cast<std::size_t>(r)] = true;
 
-    // Prefer caller-saved first, exclude argument registers
-    for (auto r : ti.callerSavedGPR) {
-        if (isAllocatableGPR(r) && !isArgRegister(r, ti))
-            gprFree.push_back(r);
-    }
-    for (auto r : ti.calleeSavedGPR) {
-        if (isAllocatableGPR(r))
-            gprFree.push_back(r);
-    }
+    const auto admitGPR = [&](PhysReg r) {
+        if (!isAllocatableGPR(r) || excluded[static_cast<std::size_t>(r)])
+            return;
+        gprFree.push_back(r);
+        poolEligible[static_cast<std::size_t>(r)] = true;
+    };
+    const auto admitFPR = [&](PhysReg r) {
+        if (r == kScratchFPR || r == kScratchFPR2 || excluded[static_cast<std::size_t>(r)])
+            return;
+        fprFree.push_back(r);
+        poolEligible[static_cast<std::size_t>(r)] = true;
+    };
 
-    // FPR: also exclude argument registers V0-V7
-    for (auto r : ti.callerSavedFPR) {
-        if (!isArgRegister(r, ti) && r != kScratchFPR && r != kScratchFPR2)
-            fprFree.push_back(r);
-    }
-    for (auto r : ti.calleeSavedFPR) {
-        if (r != kScratchFPR && r != kScratchFPR2)
-            fprFree.push_back(r);
-    }
+    // Prefer caller-saved first. Argument registers participate unless the
+    // caller marked them excluded (ABI live-ins read before any def); the
+    // allocator evicts and reserves them around call marshalling.
+    for (auto r : ti.callerSavedGPR)
+        admitGPR(r);
+    for (auto r : ti.calleeSavedGPR)
+        admitGPR(r);
+
+    for (auto r : ti.callerSavedFPR)
+        admitFPR(r);
+    for (auto r : ti.calleeSavedFPR)
+        admitFPR(r);
 }
 
 PhysReg RegPools::takeGPR() {
@@ -109,7 +116,8 @@ PhysReg RegPools::takeGPRPreferCalleeSaved(const TargetInfo & /*ti*/) {
 }
 
 void RegPools::releaseGPR(PhysReg r, const TargetInfo &ti) {
-    if (!isAllocatableGPR(r) || isArgRegister(r, ti))
+    (void)ti;
+    if (!poolEligible[static_cast<std::size_t>(r)])
         throw std::runtime_error(
             "AArch64 register allocator: attempted to release non-allocatable GPR");
     if (std::find(gprFree.begin(), gprFree.end(), r) != gprFree.end())
@@ -146,7 +154,8 @@ PhysReg RegPools::takeFPRPreferCalleeSaved(const TargetInfo & /*ti*/) {
 }
 
 void RegPools::releaseFPR(PhysReg r, const TargetInfo &ti) {
-    if (!isFPR(r) || isArgRegister(r, ti) || r == kScratchFPR || r == kScratchFPR2)
+    (void)ti;
+    if (!isFPR(r) || !poolEligible[static_cast<std::size_t>(r)])
         throw std::runtime_error(
             "AArch64 register allocator: attempted to release non-allocatable FPR");
     if (std::find(fprFree.begin(), fprFree.end(), r) != fprFree.end())

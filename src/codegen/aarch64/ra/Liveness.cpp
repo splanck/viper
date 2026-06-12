@@ -29,6 +29,7 @@
 
 #include "OperandRoles.hpp"
 #include "codegen/aarch64/Noreturn.hpp"
+#include "codegen/common/ra/CfgExtract.hpp"
 #include "codegen/common/ra/DataflowLiveness.hpp"
 
 #include <algorithm>
@@ -54,62 +55,35 @@ void LivenessAnalysis::buildBlockIndex(const MFunction &func) {
 }
 
 void LivenessAnalysis::buildCFG(const MFunction &func) {
-    for (std::size_t i = 0; i < func.blocks.size(); ++i) {
-        const auto &bb = func.blocks[i];
-        bool sawTerminator = false;
-        bool needsFallthrough = bb.instrs.empty();
-        for (const auto &mi : bb.instrs) {
-            if (mi.opc == MOpcode::Br) {
-                if (!mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Label) {
-                    auto it = blockIndex_.find(mi.ops[0].label);
-                    if (it != blockIndex_.end())
-                        succs_[i].push_back(it->second);
-                }
-                sawTerminator = true;
-                needsFallthrough = false;
-                break;
-            } else if (mi.opc == MOpcode::BCond) {
-                if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label) {
-                    auto it = blockIndex_.find(mi.ops[1].label);
-                    if (it != blockIndex_.end())
-                        succs_[i].push_back(it->second);
-                }
-                sawTerminator = true;
-                needsFallthrough = true;
-            } else if (mi.opc == MOpcode::Cbz) {
-                if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label) {
-                    auto it = blockIndex_.find(mi.ops[1].label);
-                    if (it != blockIndex_.end())
-                        succs_[i].push_back(it->second);
-                }
-                sawTerminator = true;
-                needsFallthrough = true;
-            } else if (mi.opc == MOpcode::Cbnz) {
-                if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label) {
-                    auto it = blockIndex_.find(mi.ops[1].label);
-                    if (it != blockIndex_.end())
-                        succs_[i].push_back(it->second);
-                }
-                sawTerminator = true;
-                needsFallthrough = true;
-            } else if (mi.opc == MOpcode::Ret) {
-                sawTerminator = true;
-                needsFallthrough = false;
-                break;
-            } else if (isNoReturnCall(mi)) {
-                sawTerminator = true;
-                needsFallthrough = false;
-                break;
+    const auto condTarget = [](const MInstr &mi) -> const std::string * {
+        if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label)
+            return &mi.ops[1].label;
+        return nullptr;
+    };
+
+    succs_ = viper::codegen::ra::extractSuccessors(
+        func.blocks,
+        blockIndex_,
+        [](const MBasicBlock &bb) -> const std::vector<MInstr> & { return bb.instrs; },
+        [&](const MInstr &mi) {
+            using Desc = viper::codegen::ra::BranchDesc;
+            switch (mi.opc) {
+                case MOpcode::Br:
+                    if (!mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Label)
+                        return Desc{Desc::Kind::Uncond, &mi.ops[0].label};
+                    return Desc{Desc::Kind::Uncond, nullptr};
+                case MOpcode::BCond:
+                case MOpcode::Cbz:
+                case MOpcode::Cbnz:
+                    return Desc{Desc::Kind::Cond, condTarget(mi)};
+                case MOpcode::Ret:
+                    return Desc{Desc::Kind::Return, nullptr};
+                default:
+                    if (isNoReturnCall(mi))
+                        return Desc{Desc::Kind::NoReturn, nullptr};
+                    return Desc{Desc::Kind::None, nullptr};
             }
-        }
-
-        if ((!sawTerminator || needsFallthrough) && i + 1 < func.blocks.size())
-            succs_[i].push_back(i + 1);
-
-        auto &succs = succs_[i];
-        std::sort(succs.begin(), succs.end());
-        succs.erase(std::unique(succs.begin(), succs.end()), succs.end());
-    }
+        });
 }
 
 void LivenessAnalysis::computeLiveOutSets(const MFunction &func) {

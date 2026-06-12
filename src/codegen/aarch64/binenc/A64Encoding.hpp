@@ -286,6 +286,19 @@ inline constexpr uint32_t kAutiasp = 0xD50323BF; // HINT #29 — verify LR with 
 inline constexpr uint32_t kBtiC = 0xD503245F;    // HINT #34 — valid indirect call target
 
 // =============================================================================
+// Mach-O Compact Unwind Encodings (Darwin only)
+// =============================================================================
+// Layout per Apple's compact_unwind_encoding.h: bits [27:24] carry the mode.
+// MODE_FRAME additionally defines saved-register pair FLAGS in bits [8:0] and
+// MODE_FRAMELESS a stack size in bits [23:12]; we emit neither because the
+// Viper prologue stores callee-saved pairs below the locals area (not at the
+// canonical compact-unwind slots) and frameless functions always have a zero
+// local frame.
+
+inline constexpr uint32_t kUnwindArm64ModeFrameless = 0x02000000; // fp-less leaf, stack size 0
+inline constexpr uint32_t kUnwindArm64ModeFrame = 0x04000000;     // fp/lr frame chain
+
+// =============================================================================
 // Instruction Templates — Address Materialization
 // =============================================================================
 

@@ -38,10 +38,12 @@
 #include "TargetAArch64.hpp"
 #include "TerminatorLowering.hpp"
 #include "codegen/common/CallArgLayout.hpp"
+#include "codegen/common/ICE.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/Type.hpp"
 
+#include <algorithm>
 #include <limits>
 #include <optional>
 #include <stdexcept>
@@ -227,11 +229,6 @@ static bool cbrConsumesTemp(const il::core::BasicBlock &bb, unsigned tempId) {
            term.operands[0].kind == Value::Kind::Temp && term.operands[0].id == tempId;
 }
 
-/// @brief Counter for generating unique trap labels within a function.
-/// @details Reset at the start of each lowerFunction() call to ensure unique
-///          labels per function (combined with the function name prefix).
-static thread_local unsigned trapLabelCounter;
-
 /// @brief Spill the entry-block parameters (function arguments) into stack slots
 ///        and create vregs reloaded from those slots.
 /// @details Why spill immediately: ABI registers (x0-x7 / v0-v7) are caller-saved
@@ -390,12 +387,22 @@ LowerILToMIR::knownVarArgNamedArgs(std::string_view callee) const {
 MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
     MFunction mf{};
     mf.name = fn.name;
-    // Reserve extra capacity for any helper/trap blocks we may append during lowering
-    // to avoid std::vector reallocation which would invalidate references held by
-    // in-flight lowering helpers. Over-reserving keeps references stable.
-    mf.blocks.reserve(fn.blocks.size() + 1024);
-    // Reset trap label counter for unique labels within this function
-    trapLabelCounter = 0;
+
+    // Lowering helpers hold MBasicBlock references while appending auxiliary
+    // blocks (switch-tree nodes, phi edge blocks), so MFunction::blocks must
+    // never reallocate mid-lowering. Compute an upper bound on the number of
+    // auxiliary blocks instead of guessing: every terminator may split at most
+    // two edges plus, for switches, three blocks per branch target; shared
+    // trap blocks add a small per-function constant. The capacity is verified
+    // after lowering (see the ICE check at the end of this function).
+    std::size_t auxBlockBudget = 8; // shared trap blocks + slack
+    for (const auto &bbIn : fn.blocks) {
+        for (const auto &ins : bbIn.instructions) {
+            if (!ins.labels.empty())
+                auxBlockBudget += 2 + 3 * ins.labels.size();
+        }
+    }
+    mf.blocks.reserve(fn.blocks.size() + auxBlockBudget);
 
     // Pre-create MIR blocks with labels to mirror IL CFG shape.
     for (const auto &bb : fn.blocks) {
@@ -445,6 +452,14 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
 
     // Map function parameter IDs to their spill offsets (for entry block params)
     std::unordered_map<unsigned, int> funcParamSpillOffset;
+
+    // Shared trap-block requests for this function (materialised after the
+    // main lowering loops so block references stay valid; one block per kind).
+    std::unordered_map<std::string, TrapBlockRequest> sharedTrapBlocks;
+
+    // Record the reserved capacity so the no-reallocation invariant can be
+    // verified once lowering completes.
+    const std::size_t reservedBlockCapacity = mf.blocks.capacity();
 
     // Save per-block tempVReg snapshots so terminator loop can use the correct vreg mappings.
     // This is needed because cross-block temp reloading in later blocks can overwrite tempVReg
@@ -595,7 +610,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
                             liveness.crossBlockTemps,
                             stringLiteralByteLengths_,
                             &knownVarArgNamedArgCounts_,
-                            trapLabelCounter};
+                            sharedTrapBlocks};
 
         for (const auto &ins : bbIn.instructions) {
             // Record instruction count so we can stamp source loc on new MInstrs.
@@ -842,6 +857,46 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
                      blockTempVRegSnapshot,
                      tempRegClass,
                      nextVRegId);
+
+    // Materialise the shared trap blocks requested during lowering. Sort by
+    // label so emission order is deterministic across STL implementations.
+    {
+        std::vector<const TrapBlockRequest *> requests;
+        requests.reserve(sharedTrapBlocks.size());
+        for (const auto &entry : sharedTrapBlocks)
+            requests.push_back(&entry.second);
+        std::sort(requests.begin(),
+                  requests.end(),
+                  [](const TrapBlockRequest *lhs, const TrapBlockRequest *rhs) {
+                      return lhs->label < rhs->label;
+                  });
+        for (const TrapBlockRequest *request : requests) {
+            mf.blocks.emplace_back();
+            MBasicBlock &trapBlock = mf.blocks.back();
+            trapBlock.name = request->label;
+            if (!request->callee.empty()) {
+                trapBlock.instrs.push_back(
+                    MInstr{MOpcode::Bl, {MOperand::labelOp(request->callee)}});
+            } else {
+                trapBlock.instrs.push_back(
+                    MInstr{MOpcode::MovRI,
+                           {MOperand::regOp(PhysReg::X0), MOperand::immOp(request->raiseCode)}});
+                trapBlock.instrs.push_back(
+                    MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_raise_error")}});
+                trapBlock.instrs.push_back(MInstr{MOpcode::Ret, {}});
+            }
+        }
+    }
+
+    // The auxiliary-block budget above must cover everything lowering
+    // appended; a reallocation would have invalidated MBasicBlock references
+    // held by lowering helpers (silent UB). Fail loudly instead.
+    if (mf.blocks.capacity() != reservedBlockCapacity) {
+        VIPER_ICE("AArch64 lowering: MFunction::blocks reallocated while lowering '" + fn.name +
+                  "' (reserved " + std::to_string(reservedBlockCapacity) + ", now " +
+                  std::to_string(mf.blocks.size()) +
+                  " blocks); auxiliary block budget is too small");
+    }
 
     fb.finalize();
     return mf;

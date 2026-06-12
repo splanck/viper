@@ -7,7 +7,10 @@
 //
 // File: codegen/aarch64/PreRegAllocOpt.cpp
 // Purpose: Conservative AArch64 MIR cleanup before register allocation:
-//          identity-copy removal, single-use copy forwarding.
+//          identity-copy removal, single-use copy forwarding. The traversal
+//          and safety conditions live in the shared PreRAForwardCopy
+//          template; this file supplies the AArch64 MIR queries (copy
+//          shapes, def positions, boundary opcodes).
 //
 // Key invariants:
 //   - Operates on virtual registers only; no physical register assignment.
@@ -17,26 +20,18 @@
 // Ownership/Lifetime:
 //   - Borrows MFunction for the duration of the call; no persistent state.
 //
-// Links: codegen/aarch64/PreRegAllocOpt.hpp,
+// Links: codegen/common/PreRAForwardCopy.hpp,
+//        codegen/aarch64/PreRegAllocOpt.hpp,
 //        codegen/aarch64/passes/PreRegAllocOptPass.cpp
 //
 //===----------------------------------------------------------------------===//
 
 #include "codegen/aarch64/PreRegAllocOpt.hpp"
 
-#include <algorithm>
-#include <optional>
-#include <utility>
-#include <vector>
+#include "codegen/common/PreRAForwardCopy.hpp"
 
 namespace viper::codegen::aarch64 {
 namespace {
-
-/// @brief Location of a single register use within a basic block.
-struct UseSite {
-    std::size_t instrIndex{0};   ///< Index of the instruction that uses the register.
-    std::size_t operandIndex{0}; ///< Operand slot index of the use within that instruction.
-};
 
 /// @brief Return true if @p lhs and @p rhs refer to the same physical or virtual register.
 [[nodiscard]] bool sameReg(const MReg &lhs, const MReg &rhs) noexcept {
@@ -48,16 +43,13 @@ struct UseSite {
     return opcode == MOpcode::MovRR || opcode == MOpcode::FMovRR;
 }
 
-/// @brief Return true if @p opcode is a control-flow instruction that ends or suspends
-///        sequential flow within a basic block (branches, calls, return).
-[[nodiscard]] bool isBlockBoundary(MOpcode opcode) noexcept {
+/// @brief Return true if @p opcode ends sequential flow within a block (calls excluded).
+[[nodiscard]] bool isNonCallBoundaryOpcode(MOpcode opcode) noexcept {
     switch (opcode) {
         case MOpcode::Br:
         case MOpcode::BCond:
         case MOpcode::Cbz:
         case MOpcode::Cbnz:
-        case MOpcode::Bl:
-        case MOpcode::Blr:
         case MOpcode::Ret:
             return true;
         default:
@@ -153,136 +145,86 @@ struct UseSite {
     return true;
 }
 
-/// @brief Return true if @p instr writes to @p reg (covers both scalar and LDP pair defs).
-[[nodiscard]] bool definesReg(const MInstr &instr, const MReg &reg) noexcept {
-    if (definesFirstOperand(instr.opc) && !instr.ops.empty() && operandIsReg(instr.ops[0], reg))
-        return true;
-    if ((instr.opc == MOpcode::LdpRegFpImm || instr.opc == MOpcode::LdpFprFpImm) &&
-        instr.ops.size() >= 2) {
-        return operandIsReg(instr.ops[0], reg) || operandIsReg(instr.ops[1], reg);
+/// @brief AArch64 traits for the shared pre-RA copy forwarding template.
+struct A64PreRATraits {
+    using BlockT = MBasicBlock;
+    using InstrT = MInstr;
+    using RegT = MReg;
+
+    static std::vector<MInstr> &instrs(MBasicBlock &block) {
+        return block.instrs;
     }
-    return false;
-}
 
-/// @brief Return true if @p instr is a copy where source and destination are the same register.
-[[nodiscard]] bool isIdentityCopy(const MInstr &instr) noexcept {
-    if (!isCopyOpcode(instr.opc) || instr.ops.size() != 2)
+    static const std::vector<MInstr> &instrs(const MBasicBlock &block) {
+        return block.instrs;
+    }
+
+    static bool isIdentityCopy(const MInstr &instr) {
+        if (!isCopyOpcode(instr.opc) || instr.ops.size() != 2)
+            return false;
+        if (instr.ops[0].kind != MOperand::Kind::Reg || instr.ops[1].kind != MOperand::Kind::Reg)
+            return false;
+        return sameReg(instr.ops[0].reg, instr.ops[1].reg);
+    }
+
+    static bool isForwardableCopy(const MInstr &instr, MReg &dst, MReg &src) {
+        if (!isCopyOpcode(instr.opc) || instr.ops.size() != 2)
+            return false;
+        if (instr.ops[0].kind != MOperand::Kind::Reg || instr.ops[1].kind != MOperand::Kind::Reg)
+            return false;
+        const MReg &dstReg = instr.ops[0].reg;
+        const MReg &srcReg = instr.ops[1].reg;
+        // Physical sources such as ABI return registers are not tracked as
+        // live ranges here. Forwarding them would let register allocation
+        // reuse that physical register before the forwarded use.
+        if (dstReg.isPhys || srcReg.isPhys || dstReg.cls != srcReg.cls || sameReg(dstReg, srcReg))
+            return false;
+        dst = dstReg;
+        src = srcReg;
+        return true;
+    }
+
+    static bool definesReg(const MInstr &instr, const MReg &reg) {
+        if (definesFirstOperand(instr.opc) && !instr.ops.empty() && operandIsReg(instr.ops[0], reg))
+            return true;
+        if ((instr.opc == MOpcode::LdpRegFpImm || instr.opc == MOpcode::LdpFprFpImm) &&
+            instr.ops.size() >= 2) {
+            return operandIsReg(instr.ops[0], reg) || operandIsReg(instr.ops[1], reg);
+        }
         return false;
-    if (instr.ops[0].kind != MOperand::Kind::Reg || instr.ops[1].kind != MOperand::Kind::Reg)
-        return false;
-    return sameReg(instr.ops[0].reg, instr.ops[1].reg);
-}
+    }
 
-/// @brief Find the single use of @p dst after the copy at @p copyIndex, if one exists.
-/// @details Returns nullopt if dst is used more than once, used across a call boundary
-///          where the source is also live, or if the use is itself a def.
-/// @param block      The basic block containing the copy and its potential uses.
-/// @param copyIndex  Index of the copy instruction whose destination we are tracking.
-/// @param dst        The register defined by the copy (to track uses of).
-/// @param src        The source register of the copy (to check for re-definition).
-/// @return The single use site if exactly one safe forwarding candidate exists; nullopt otherwise.
-[[nodiscard]] std::optional<UseSite> findSingleDirectUse(const MBasicBlock &block,
-                                                         std::size_t copyIndex,
-                                                         const MReg &dst,
-                                                         const MReg &src) {
-    std::optional<UseSite> site;
+    static bool isCall(const MInstr &instr) {
+        return instr.opc == MOpcode::Bl || instr.opc == MOpcode::Blr;
+    }
 
-    bool crossedCall = false;
-    for (std::size_t idx = copyIndex + 1; idx < block.instrs.size(); ++idx) {
-        const auto &instr = block.instrs[idx];
+    static bool isNonCallBoundary(const MInstr &instr) {
+        return isNonCallBoundaryOpcode(instr.opc);
+    }
 
-        if (definesReg(instr, src) && !site)
-            return std::nullopt;
-
-        std::size_t useCount = 0;
-        std::size_t directOperand = 0;
+    static common::PreRAUseScan scanUses(const MInstr &instr, const MReg &dst) {
+        common::PreRAUseScan scan{};
         for (std::size_t opIdx = 0; opIdx < instr.ops.size(); ++opIdx) {
             if (!operandIsUse(instr, opIdx))
                 continue;
             if (!operandIsReg(instr.ops[opIdx], dst))
                 continue;
-            ++useCount;
-            directOperand = opIdx;
+            ++scan.useCount;
+            ++scan.directUseCount;
+            scan.directOperand = opIdx;
         }
-
-        if (useCount != 0) {
-            if (crossedCall)
-                return std::nullopt;
-            if (useCount != 1 || definesReg(instr, dst))
-                return std::nullopt;
-            if (site)
-                return std::nullopt;
-            site = UseSite{idx, directOperand};
-        }
-
-        if (definesReg(instr, dst))
-            break;
-        if (instr.opc == MOpcode::Bl || instr.opc == MOpcode::Blr)
-            crossedCall = true;
-        if (isBlockBoundary(instr.opc) && instr.opc != MOpcode::Bl && instr.opc != MOpcode::Blr)
-            break;
+        return scan;
     }
 
-    return site;
-}
-
-/// @brief Eliminate single-use virtual register copies by forwarding the source directly.
-/// @details For each copy `dst = src`, if dst has exactly one use before it is
-///          redefined, the use is replaced with src and the copy is erased.
-/// @return Number of copy instructions removed.
-std::size_t rewriteSingleUseCopies(MBasicBlock &block) {
-    std::vector<bool> erase(block.instrs.size(), false);
-    std::size_t removed = 0;
-
-    for (std::size_t idx = 0; idx < block.instrs.size(); ++idx) {
-        auto &instr = block.instrs[idx];
-        if (!isCopyOpcode(instr.opc) || instr.ops.size() != 2)
-            continue;
-        if (instr.ops[0].kind != MOperand::Kind::Reg || instr.ops[1].kind != MOperand::Kind::Reg)
-            continue;
-
-        const MReg dst = instr.ops[0].reg;
-        const MReg src = instr.ops[1].reg;
-        // Physical sources such as ABI return registers are not tracked as
-        // live ranges here. Forwarding them would let register allocation
-        // reuse that physical register before the forwarded use.
-        if (dst.isPhys || src.isPhys || dst.cls != src.cls || sameReg(dst, src))
-            continue;
-
-        auto site = findSingleDirectUse(block, idx, dst, src);
-        if (!site)
-            continue;
-
-        block.instrs[site->instrIndex].ops[site->operandIndex] = instr.ops[1];
-        erase[idx] = true;
-        ++removed;
+    static void forwardUse(MInstr &use, std::size_t operandIndex, const MInstr &copy) {
+        use.ops[operandIndex] = copy.ops[1];
     }
-
-    if (removed == 0)
-        return 0;
-
-    std::vector<MInstr> kept;
-    kept.reserve(block.instrs.size() - removed);
-    for (std::size_t idx = 0; idx < block.instrs.size(); ++idx) {
-        if (!erase[idx])
-            kept.push_back(std::move(block.instrs[idx]));
-    }
-    block.instrs = std::move(kept);
-    return removed;
-}
+};
 
 } // namespace
 
 std::size_t runPreRegAllocOpt(MFunction &fn) {
-    std::size_t removed = 0;
-    for (auto &block : fn.blocks) {
-        const auto oldSize = block.instrs.size();
-        block.instrs.erase(std::remove_if(block.instrs.begin(), block.instrs.end(), isIdentityCopy),
-                           block.instrs.end());
-        removed += oldSize - block.instrs.size();
-        removed += rewriteSingleUseCopies(block);
-    }
-    return removed;
+    return common::runPreRAForwardCopy<A64PreRATraits>(fn);
 }
 
 } // namespace viper::codegen::aarch64

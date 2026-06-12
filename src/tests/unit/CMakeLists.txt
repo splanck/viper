@@ -583,6 +583,14 @@ if (NOT TARGET test_dataflow_liveness)
     viper_add_ctest(test_dataflow_liveness test_dataflow_liveness)
 endif ()
 
+if (NOT TARGET test_codegen_cfg_extract)
+    viper_add_test(
+            test_codegen_cfg_extract
+            ${VIPER_TESTS_DIR}/unit/codegen/test_codegen_cfg_extract.cpp)
+    target_link_libraries(test_codegen_cfg_extract PRIVATE viper_codegen_x86_64 il_codegen_aarch64)
+    viper_add_ctest(test_codegen_cfg_extract test_codegen_cfg_extract)
+endif ()
+
 if (NOT TARGET test_aarch64_pac_bti)
     viper_add_test(
             test_aarch64_pac_bti
@@ -621,6 +629,22 @@ if (NOT TARGET test_aarch64_vararg)
             ${VIPER_TESTS_DIR}/unit/codegen/test_aarch64_vararg.cpp)
     target_link_libraries(test_aarch64_vararg PRIVATE il_codegen_aarch64 il_runtime)
     viper_add_ctest(test_aarch64_vararg test_aarch64_vararg)
+endif ()
+
+if (NOT TARGET test_aarch64_fp_compare_lowering)
+    viper_add_test(
+            test_aarch64_fp_compare_lowering
+            ${VIPER_TESTS_DIR}/unit/codegen/test_aarch64_fp_compare_lowering.cpp)
+    target_link_libraries(test_aarch64_fp_compare_lowering PRIVATE il_codegen_aarch64)
+    viper_add_ctest(test_aarch64_fp_compare_lowering test_aarch64_fp_compare_lowering)
+endif ()
+
+if (NOT TARGET test_aarch64_trap_blocks)
+    viper_add_test(
+            test_aarch64_trap_blocks
+            ${VIPER_TESTS_DIR}/unit/codegen/test_aarch64_trap_blocks.cpp)
+    target_link_libraries(test_aarch64_trap_blocks PRIVATE il_codegen_aarch64)
+    viper_add_ctest(test_aarch64_trap_blocks test_aarch64_trap_blocks)
 endif ()
 
 if (NOT TARGET test_aarch64_cross_block_reload)

@@ -215,8 +215,8 @@ TEST(Arm64FP, PlainFptosiChecksNaNAndRange) {
     const std::string &asmText = module.assembly;
 
     EXPECT_NE(asmText.find("fcmp d"), std::string::npos);
-    EXPECT_NE(asmText.find("b.vs L.Ltrap_fptosi_invalid_"), std::string::npos);
-    EXPECT_NE(asmText.find("L.Ltrap_fptosi_ovf_"), std::string::npos);
+    EXPECT_NE(asmText.find("b.vs L.Ltrap_fp_invalid"), std::string::npos);
+    EXPECT_NE(asmText.find("L.Ltrap_fp_ovf"), std::string::npos);
     EXPECT_NE(asmText.find("fcvtzs x"), std::string::npos);
 }
 

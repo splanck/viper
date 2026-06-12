@@ -103,6 +103,13 @@ bool isMemoryBarrier(const MInstr &instr) {
         instr.opcode == MOpcode::LABEL || instr.opcode == MOpcode::UD2)
         return true;
 
+    // LEA only computes an address: its OpMem operand never touches memory.
+    // If the computed address is later dereferenced, that dereference is a
+    // separate instruction with its own memory operand and acts as the
+    // barrier, so tracking can safely continue across the LEA itself.
+    if (instr.opcode == MOpcode::LEA)
+        return false;
+
     const bool knownFrameLoad = frameLoad(instr).has_value();
     const bool knownFrameStore = frameStore(instr).has_value();
     if (knownFrameLoad || knownFrameStore)

@@ -94,6 +94,21 @@ inline uint16_t coerceScalarOperandToFpr(uint16_t vreg,
     return converted;
 }
 
+/// @brief Deferred request for a per-function shared trap block.
+/// @details Trap-guard lowering registers the trap kinds it branches to;
+///          the blocks themselves are materialised once per function after
+///          all instruction and terminator lowering has finished. Deferring
+///          creation means opcode handlers never append to MFunction::blocks
+///          while holding MBasicBlock references (vector growth would
+///          invalidate them), and each trap kind costs one block per function
+///          instead of one per guarded instruction.
+struct TrapBlockRequest {
+    std::string label{};  ///< Block label the guard branches to.
+    std::string callee{}; ///< Non-empty: body is `bl <callee>` (no-return).
+    int raiseCode{0};     ///< Used when @ref callee is empty: body raises
+                          ///< rt_trap_raise_error with this error code.
+};
+
 /// @brief Encapsulates all mutable state needed during IL->MIR lowering.
 ///
 /// This context is passed to opcode handlers to avoid long parameter lists.
@@ -145,8 +160,9 @@ struct LoweringContext {
     /// @brief Optional map from direct callee names to their named-argument counts.
     const std::unordered_map<std::string, std::size_t> *knownVarArgNamedArgCounts = nullptr;
 
-    /// @brief Counter used to generate unique trap label names.
-    unsigned &trapLabelCounter;
+    /// @brief Per-function shared trap-block requests, keyed by trap kind.
+    /// @details Materialised at the end of lowerFunction; see TrapBlockRequest.
+    std::unordered_map<std::string, TrapBlockRequest> &sharedTrapBlocks;
 
     /// @brief Construct a lowering context with every borrowed state object bound explicitly.
     /// @details The context stores references into the surrounding lowering pass and must never
@@ -168,7 +184,7 @@ struct LoweringContext {
     /// @param crossBlockLiveTemps Temps proven live across basic blocks.
     /// @param stringLiteralLengths Optional global string literal byte-length table.
     /// @param varArgNamedArgCounts Optional direct-callee named-argument count table.
-    /// @param trapCounter Counter for unique trap label generation.
+    /// @param trapBlockRequests Per-function shared trap-block request registry.
     LoweringContext(const il::core::Function &function,
                     const TargetInfo &targetInfo,
                     FrameBuilder &frameBuilder,
@@ -184,13 +200,13 @@ struct LoweringContext {
                     std::unordered_set<unsigned> &crossBlockLiveTemps,
                     const std::unordered_map<std::string, std::size_t> *stringLiteralLengths,
                     const std::unordered_map<std::string, std::size_t> *varArgNamedArgCounts,
-                    unsigned &trapCounter)
+                    std::unordered_map<std::string, TrapBlockRequest> &trapBlockRequests)
         : fn(function), ti(targetInfo), fb(frameBuilder), mf(machineFunction),
           nextVRegId(nextVirtualRegId), tempVReg(tempVirtualRegs), tempRegClass(tempClasses),
           phiVregId(phiVirtualRegs), phiRegClass(phiClasses), phiSpillOffset(phiSpillOffsets),
           crossBlockSpillOffset(crossBlockSpillOffsets), tempDefBlock(tempDefinitionBlocks),
           crossBlockTemps(crossBlockLiveTemps), stringLiteralByteLengths(stringLiteralLengths),
-          knownVarArgNamedArgCounts(varArgNamedArgCounts), trapLabelCounter(trapCounter) {}
+          knownVarArgNamedArgCounts(varArgNamedArgCounts), sharedTrapBlocks(trapBlockRequests) {}
 
     /// @brief Retrieve the MIR basic block at the given index.
     /// @param idx Zero-based index into the function's block list.
@@ -199,6 +215,33 @@ struct LoweringContext {
         return mf.blocks[idx];
     }
 };
+
+/// @brief Register (or look up) the per-function shared trap block for @p kind.
+/// @details Returns the label a trap guard should branch to. The block itself
+///          is materialised once after lowering finishes, so calling this never
+///          touches MFunction::blocks and is safe while MBasicBlock references
+///          are live. Kinds with identical bodies share one block per function.
+/// @param ctx       Active lowering context.
+/// @param kind      Stable trap kind key (e.g. "div0", "ovf", "bounds").
+/// @param callee    No-return runtime entry point for `bl`-style bodies, or
+///                  nullptr to emit a rt_trap_raise_error body instead.
+/// @param raiseCode Error code for rt_trap_raise_error bodies (ignored when
+///                  @p callee is non-null).
+/// @return Label of the shared trap block for @p kind.
+inline const std::string &requestSharedTrapBlock(LoweringContext &ctx,
+                                                 const char *kind,
+                                                 const char *callee,
+                                                 int raiseCode = 0) {
+    auto it = ctx.sharedTrapBlocks.find(kind);
+    if (it == ctx.sharedTrapBlocks.end()) {
+        TrapBlockRequest request{};
+        request.label = std::string(".Ltrap_") + kind;
+        request.callee = callee != nullptr ? callee : "";
+        request.raiseCode = raiseCode;
+        it = ctx.sharedTrapBlocks.emplace(kind, std::move(request)).first;
+    }
+    return it->second.label;
+}
 
 /// @brief Find the index of a parameter in a basic block by temp ID.
 /// @param bb     The basic block whose parameter list is searched.

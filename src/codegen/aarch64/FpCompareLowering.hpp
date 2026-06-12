@@ -8,13 +8,14 @@
 // File: codegen/aarch64/FpCompareLowering.hpp
 // Purpose: Shared AArch64 FCMP result-materialization helpers. Maps each IL
 //          floating-point compare opcode to an AArch64 condition code and
-//          emits the instruction sequence that lands a 0/1 boolean in a GPR,
-//          applying the NaN/unordered masking the ISA requires.
+//          emits the instruction sequence that lands a 0/1 boolean in a GPR.
 // Key invariants:
-//   - AArch64 FCMP reports unordered (NaN) operands as Z=1, C=1, V=1. Ordered
-//     predicates must therefore be AND-masked with `vc` (no-overflow ==
-//     ordered); FCmpNE is intentionally unordered-true (OR with `vs`) to
-//     match the existing IL FCmpNE / FCmpOrd / FCmpUno semantics.
+//   - AArch64 FCMP sets NZCV = 0011 (N=0, Z=0, C=1, V=1) for unordered (NaN)
+//     operands. The condition codes chosen here (eq, mi, ls, gt, ge) all
+//     evaluate FALSE under that flag state, so ordered predicates need no
+//     extra unordered masking — a single CSET is exact. FCmpNE uses `ne`,
+//     which is intentionally unordered-TRUE (Z=0), matching IL FCmpNE
+//     semantics; FCmpOrd/FCmpUno map directly to `vc`/`vs`.
 //   - Helpers are pure with respect to control flow: they only append MInstrs
 //     to the supplied MBasicBlock; they never remove or reorder instructions.
 //   - Temporary booleans are allocated through the caller-owned vreg counter
@@ -63,46 +64,21 @@ inline const char *fpCondCode(il::core::Opcode op) {
 }
 
 /// @brief Materialize an IL FP-comparison result into a 0/1 GPR vreg.
-/// @details AArch64 FCMP reports unordered operands as Z=1, C=1, V=1. Ordered
-///          predicates must therefore mask with `vc`; `ne` is intentionally
-///          unordered-true to match the existing IL behavior alongside `ord/uno`.
+/// @details After FCMP, unordered operands set NZCV = 0011 (N=0, Z=0, C=1,
+///          V=1). Every condition code returned by fpCondCode() for the
+///          ordered predicates — eq (Z), mi (N), ls (!C || Z), gt (Z==0 &&
+///          N==V), ge (N==V) — evaluates FALSE under that state, so a single
+///          CSET captures the exact IL semantics; no unordered masking is
+///          needed. `ne` is unordered-true by construction (Z=0), which is
+///          the documented IL FCmpNE behaviour, and `vc`/`vs` directly encode
+///          FCmpOrd/FCmpUno.
 inline void emitFpCompareResult(MBasicBlock &out,
                                 il::core::Opcode op,
                                 uint16_t dst,
                                 uint16_t &nextVRegId) {
-    const auto csetInto = [&](const char *cond) {
-        const uint16_t tmp = allocateNextVReg(nextVRegId);
-        out.instrs.push_back(
-            MInstr{MOpcode::Cset, {MOperand::vregOp(RegClass::GPR, tmp), MOperand::condOp(cond)}});
-        return tmp;
-    };
-
-    switch (op) {
-        case il::core::Opcode::FCmpNE: {
-            const uint16_t ne = csetInto("ne");
-            const uint16_t uno = csetInto("vs");
-            out.instrs.push_back(MInstr{MOpcode::OrrRRR,
-                                        {MOperand::vregOp(RegClass::GPR, dst),
-                                         MOperand::vregOp(RegClass::GPR, ne),
-                                         MOperand::vregOp(RegClass::GPR, uno)}});
-            return;
-        }
-        case il::core::Opcode::FCmpOrd:
-        case il::core::Opcode::FCmpUno:
-            out.instrs.push_back(
-                MInstr{MOpcode::Cset,
-                       {MOperand::vregOp(RegClass::GPR, dst), MOperand::condOp(fpCondCode(op))}});
-            return;
-        default: {
-            const uint16_t pred = csetInto(fpCondCode(op));
-            const uint16_t ord = csetInto("vc");
-            out.instrs.push_back(MInstr{MOpcode::AndRRR,
-                                        {MOperand::vregOp(RegClass::GPR, dst),
-                                         MOperand::vregOp(RegClass::GPR, pred),
-                                         MOperand::vregOp(RegClass::GPR, ord)}});
-            return;
-        }
-    }
+    (void)nextVRegId;
+    out.instrs.push_back(MInstr{
+        MOpcode::Cset, {MOperand::vregOp(RegClass::GPR, dst), MOperand::condOp(fpCondCode(op))}});
 }
 
 } // namespace viper::codegen::aarch64
