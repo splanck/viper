@@ -775,9 +775,13 @@ void LinearScanAllocator::releaseActiveForBlock(MBasicBlock &block, std::size_t 
             continue;
         }
 
-        // If this vreg is live across the block boundary, ensure its current
-        // value is stored to the spill slot.
-        if (liveOutSet.count(vreg)) {
+        // Live across the boundary: the value must be in its spill slot. For
+        // vregs already marked needsSpill the slot is necessarily current —
+        // every def of such a vreg appends a suffix store — so emitting
+        // another store here only duplicated the last one. The store remains
+        // as a defensive path for vregs the cross-block pre-pass somehow
+        // missed (it marks every liveOut vreg of non-carry blocks).
+        if (liveOutSet.count(vreg) && !state.spill.needsSpill) {
             spiller_.ensureSpillSlot(RegClass::GPR, state.spill);
             state.spill.needsSpill = true;
             spills.push_back(spiller_.makeStore(RegClass::GPR, state.spill, state.phys));
@@ -805,7 +809,7 @@ void LinearScanAllocator::releaseActiveForBlock(MBasicBlock &block, std::size_t 
             continue;
         }
 
-        if (liveOutSet.count(vreg)) {
+        if (liveOutSet.count(vreg) && !state.spill.needsSpill) {
             spiller_.ensureSpillSlot(RegClass::XMM, state.spill);
             state.spill.needsSpill = true;
             spills.push_back(spiller_.makeStore(RegClass::XMM, state.spill, state.phys));
