@@ -583,6 +583,14 @@ if (NOT TARGET test_dataflow_liveness)
     viper_add_ctest(test_dataflow_liveness test_dataflow_liveness)
 endif ()
 
+if (NOT TARGET test_codegen_cfg_extract)
+    viper_add_test(
+            test_codegen_cfg_extract
+            ${VIPER_TESTS_DIR}/unit/codegen/test_codegen_cfg_extract.cpp)
+    target_link_libraries(test_codegen_cfg_extract PRIVATE viper_codegen_x86_64 il_codegen_aarch64)
+    viper_add_ctest(test_codegen_cfg_extract test_codegen_cfg_extract)
+endif ()
+
 if (NOT TARGET test_aarch64_pac_bti)
     viper_add_test(
             test_aarch64_pac_bti
