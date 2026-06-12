@@ -17,6 +17,7 @@
 #include <sstream>
 #include <string>
 
+#include <cstdio>
 #include "codegen/aarch64/AsmEmitter.hpp"
 #include "codegen/aarch64/FrameBuilder.hpp"
 #include "codegen/aarch64/LowerOvf.hpp"
@@ -154,6 +155,110 @@ TEST(Arm64RegAlloc, LiveOutSpillsStayAfterInternalOverflowBranch) {
             return instr.opc == MOpcode::StrRegFpImm || instr.opc == MOpcode::StrFprFpImm;
         });
     EXPECT_TRUE(hasSpillBeforeTrailingTerm);
+}
+
+TEST(Arm64RegAlloc, SpilledVregReloadsOnceAndIsCached) {
+    // A spilled vreg used by several later instructions must be reloaded into
+    // an adopted home register once and reused, not re-loaded through scratch
+    // at every use. Build pressure with 40 long-lived defs, then read v0 three
+    // times in a row.
+    auto &ti = darwinTarget();
+    MFunction fn{};
+    fn.name = "ra_reload_cache";
+    fn.blocks.push_back(MBasicBlock{});
+    auto &bb = fn.blocks.back();
+    bb.name = "entry";
+
+    const int N = 40;
+    for (int i = 0; i < N; ++i) {
+        bb.instrs.push_back(MInstr{
+            MOpcode::MovRI,
+            {MOperand::vregOp(RegClass::GPR, static_cast<uint16_t>(i)), MOperand::immOp(i)}});
+    }
+
+    // Consume v1..v39 first so v0's next use is the furthest and pressure
+    // evicts it to its spill slot.
+    uint16_t next = static_cast<uint16_t>(N);
+    uint16_t acc = 1;
+    for (int i = 2; i < N; ++i) {
+        const uint16_t dst = next++;
+        bb.instrs.push_back(MInstr{MOpcode::AddRRR,
+                                   {MOperand::vregOp(RegClass::GPR, dst),
+                                    MOperand::vregOp(RegClass::GPR, acc),
+                                    MOperand::vregOp(RegClass::GPR, static_cast<uint16_t>(i))}});
+        acc = dst;
+    }
+    // Three consecutive reads of the (by now spilled) v0.
+    for (int k = 0; k < 3; ++k) {
+        const uint16_t dst = next++;
+        bb.instrs.push_back(MInstr{MOpcode::AddRRR,
+                                   {MOperand::vregOp(RegClass::GPR, dst),
+                                    MOperand::vregOp(RegClass::GPR, 0),
+                                    MOperand::vregOp(RegClass::GPR, 0)}});
+    }
+    bb.instrs.push_back(MInstr{
+        MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, acc)}});
+
+    (void)allocate(fn, ti);
+
+    // Count frame reloads feeding the three v0 reads: locate the AddRRR run
+    // whose source operands are equal registers, then count LdrRegFpImm into
+    // that register. Exactly one reload of v0 must remain (the adopted-home
+    // load); the historical behaviour reloaded per use (three loads).
+    int selfAddCount = 0;
+    PhysReg selfAddSrc{};
+    for (const auto &mi : fn.blocks[0].instrs) {
+        if (mi.opc == MOpcode::AddRRR && mi.ops.size() == 3 &&
+            mi.ops[1].kind == MOperand::Kind::Reg && mi.ops[2].kind == MOperand::Kind::Reg &&
+            mi.ops[1].reg.isPhys && mi.ops[2].reg.isPhys &&
+            mi.ops[1].reg.idOrPhys == mi.ops[2].reg.idOrPhys) {
+            ++selfAddCount;
+            selfAddSrc = static_cast<PhysReg>(mi.ops[1].reg.idOrPhys);
+        }
+    }
+    ASSERT_EQ(selfAddCount, 3);
+
+    // Between the first and last self-add there must be NO reloads of the
+    // source register: the single adopted-home load happens before the first
+    // read and is reused by the following two. (The historical behaviour
+    // emitted one scratch reload per read.)
+    std::size_t firstSelfAdd = 0;
+    std::size_t lastSelfAdd = 0;
+    bool seenSelfAdd = false;
+    const auto &instrs = fn.blocks[0].instrs;
+    for (std::size_t i = 0; i < instrs.size(); ++i) {
+        const auto &mi = instrs[i];
+        if (mi.opc == MOpcode::AddRRR && mi.ops.size() == 3 &&
+            mi.ops[1].kind == MOperand::Kind::Reg && mi.ops[2].kind == MOperand::Kind::Reg &&
+            mi.ops[1].reg.isPhys && mi.ops[2].reg.isPhys &&
+            mi.ops[1].reg.idOrPhys == mi.ops[2].reg.idOrPhys) {
+            if (!seenSelfAdd)
+                firstSelfAdd = i;
+            lastSelfAdd = i;
+            seenSelfAdd = true;
+        }
+    }
+    ASSERT_TRUE(seenSelfAdd);
+
+    int reloadsBetweenReads = 0;
+    for (std::size_t i = firstSelfAdd; i <= lastSelfAdd; ++i) {
+        if (instrs[i].opc == MOpcode::LdrRegFpImm)
+            ++reloadsBetweenReads;
+    }
+    EXPECT_EQ(reloadsBetweenReads, 0);
+
+    // And at least one load into the adopted register feeds the first read
+    // (the same physical register may have served other reloads earlier).
+    int loadsBeforeFirstRead = 0;
+    for (std::size_t i = 0; i < firstSelfAdd; ++i) {
+        const auto &mi = instrs[i];
+        if (mi.opc == MOpcode::LdrRegFpImm && !mi.ops.empty() &&
+            mi.ops[0].kind == MOperand::Kind::Reg && mi.ops[0].reg.isPhys &&
+            static_cast<PhysReg>(mi.ops[0].reg.idOrPhys) == selfAddSrc) {
+            ++loadsBeforeFirstRead;
+        }
+    }
+    EXPECT_GE(loadsBeforeFirstRead, 1);
 }
 
 int main(int argc, char **argv) {

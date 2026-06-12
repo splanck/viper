@@ -454,16 +454,41 @@ void LinearAllocator::handleSpilledOperand(MReg &r,
                                            std::vector<MInstr> &prefix,
                                            std::vector<MInstr> &suffix,
                                            std::vector<PhysReg> &scratch) {
-    PhysReg tmp{};
-    try {
-        tmp = fprClass ? pools_.takeFPR() : pools_.takeGPR();
-    } catch (const std::runtime_error &) {
-        const auto &blocked = fprClass ? protectedPhysFPR_ : protectedPhysGPR_;
-        tmp = chooseEmergencyScratch(fprClass, isDef && !isUse, scratch, blocked);
-    }
     auto &st = fprClass ? fprStates_[r.idOrPhys] : gprStates_[r.idOrPhys];
     const int off = st.fpOffset != 0 ? st.fpOffset : fb_.ensureSpill(r.idOrPhys);
     st.fpOffset = off;
+
+    // Preferred path: adopt a free pool register as the vreg's home so later
+    // uses in this block reuse it instead of reloading through scratch every
+    // time. assignNewPhysReg keeps the callee-saved-across-calls preference
+    // and the calleeUsed bookkeeping. Eviction is not attempted here — the
+    // caller's maybeSpillForPressure already ran per operand — so an empty
+    // pool falls back to the reserved emergency scratch registers exactly as
+    // before (one-shot load/store, register released after the instruction).
+    const RegClass cls = fprClass ? RegClass::FPR : RegClass::GPR;
+    const bool poolHasFree = fprClass ? !pools_.fprFree.empty() : !pools_.gprFree.empty();
+    if (poolHasFree) {
+        assignNewPhysReg(st, r.idOrPhys, fprClass);
+        st.spilled = false;
+        st.dirty = isDef;
+
+        if (isUse) {
+            if (fprClass)
+                prefix.push_back(
+                    MInstr{MOpcode::LdrFprFpImm, {MOperand::regOp(st.phys), MOperand::immOp(off)}});
+            else
+                prefix.push_back(makeLdrFp(st.phys, off));
+        }
+
+        r.isPhys = true;
+        r.idOrPhys = static_cast<uint16_t>(st.phys);
+        return;
+    }
+    (void)cls;
+
+    PhysReg tmp{};
+    const auto &blocked = fprClass ? protectedPhysFPR_ : protectedPhysGPR_;
+    tmp = chooseEmergencyScratch(fprClass, isDef && !isUse, scratch, blocked);
 
     if (isUse) {
         if (fprClass)
