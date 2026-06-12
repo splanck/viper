@@ -25,6 +25,8 @@
 
 #include "Liveness.hpp"
 
+#include "codegen/common/ICE.hpp"
+#include "codegen/common/ra/CfgExtract.hpp"
 #include "codegen/common/ra/DataflowLiveness.hpp"
 #include "codegen/x86_64/OperandRoles.hpp"
 
@@ -45,39 +47,34 @@ const std::string *getLabel(const Operand &op) {
     return nullptr;
 }
 
-/// @brief Append the successor index for each label operand of @p instr.
-/// @details Used by CFG construction: every label-typed operand that names
-///          a known block becomes a successor of the block whose terminator
-///          we are analysing. Returns true if at least one successor was
-///          appended so the caller can detect dead-end terminators.
-/// @param blockIndex Map from block label to block index.
-/// @param succs Successor list being appended to.
-/// @param instr Terminator instruction supplying labels.
-/// @return True if any successor was appended.
-bool addLabelSuccessor(const std::unordered_map<std::string, std::size_t> &blockIndex,
-                       std::vector<std::size_t> &succs,
-                       const MInstr &instr) {
-    bool added = false;
+/// @brief Return the first label operand of @p instr, or nullptr.
+const std::string *firstLabelOperand(const MInstr &instr) {
     for (const auto &op : instr.operands) {
-        if (const auto *lbl = getLabel(op)) {
-            auto it = blockIndex.find(*lbl);
-            if (it != blockIndex.end()) {
-                succs.push_back(it->second);
-                added = true;
-            }
-        }
+        if (const auto *lbl = getLabel(op))
+            return lbl;
     }
-    return added;
+    return nullptr;
 }
 
-/// @brief Predicate: does @p opcode terminate control flow for a block?
-/// @details The four MIR opcodes that may end a block — direct/conditional
-///          jumps, returns, and the trap instruction used for unreachable
-///          paths. Anything else (CALL, ALU ops) is treated as falling
-///          through to the next block.
-bool isControlTerminator(MOpcode opcode) {
-    return opcode == MOpcode::JMP || opcode == MOpcode::JCC || opcode == MOpcode::RET ||
-           opcode == MOpcode::UD2;
+/// @brief Classify @p instr for shared CFG extraction.
+/// @details JCC contributes a conditional edge and keeps scanning (a block may
+///          legally contain several JCCs before its final JMP, e.g. switch
+///          compare cascades); JMP/RET/UD2 end the scan. CALL label operands
+///          are deliberately NOT treated as branch targets.
+viper::codegen::ra::BranchDesc classifyControlFlow(const MInstr &instr) {
+    using Desc = viper::codegen::ra::BranchDesc;
+    switch (instr.opcode) {
+        case MOpcode::JCC:
+            return Desc{Desc::Kind::Cond, firstLabelOperand(instr)};
+        case MOpcode::JMP:
+            return Desc{Desc::Kind::Uncond, firstLabelOperand(instr)};
+        case MOpcode::RET:
+            return Desc{Desc::Kind::Return, nullptr};
+        case MOpcode::UD2:
+            return Desc{Desc::Kind::NoReturn, nullptr};
+        default:
+            return Desc{Desc::Kind::None, nullptr};
+    }
 }
 
 } // namespace
@@ -116,58 +113,34 @@ void LivenessAnalysis::buildBlockIndex(const MFunction &func) {
 }
 
 /// @brief Compute the successor list for every block in @p func.
-/// @details Handles three terminator patterns:
-///          - @c JMP after a @c JCC: both labels are successors (the JCC
-///            two-way fork plus the following unconditional jump),
-///          - @c JMP alone: the jump label is the sole successor,
-///          - @c JCC alone: the explicit label plus the next physical block
-///            (the JCC's implicit fall-through).
-///          @c RET / @c UD2 leave the successor list empty (no exit).
+/// @details Delegates to the shared forward-scanning extractor so that every
+///          conditional branch in a block contributes an edge (the previous
+///          backward scan honored only the JCC nearest the final JMP, which
+///          silently dropped switch-cascade successors). RET/UD2 produce no
+///          successors; blocks without an unconditional terminator fall
+///          through to the next block in layout order.
+///
+///          The allocator's per-block state machine assumes straight-line
+///          execution between block boundaries, so in-block LABEL pseudos
+///          must have been promoted to real blocks (splitInternalLabelBlocks)
+///          before liveness runs. Enforce that here — a leaked LABEL would
+///          mean the CFG below is wrong in ways that miscompile silently.
 void LivenessAnalysis::buildCFG(const MFunction &func) {
-    for (std::size_t bi = 0; bi < func.blocks.size(); ++bi) {
-        const auto &block = func.blocks[bi];
-        auto termIt =
-            std::find_if(block.instructions.rbegin(),
-                         block.instructions.rend(),
-                         [](const MInstr &instr) { return isControlTerminator(instr.opcode); });
-        if (termIt == block.instructions.rend()) {
-            if (bi + 1 < func.blocks.size()) {
-                succs_[bi].push_back(bi + 1);
-            }
-            continue;
-        }
-
-        const auto termIndex =
-            static_cast<std::size_t>(std::distance(termIt, block.instructions.rend()) - 1);
-        const MInstr &term = *termIt;
-        if (term.opcode == MOpcode::RET) {
-            continue;
-        }
-
-        if (term.opcode == MOpcode::JMP) {
-            for (std::size_t scan = termIndex; scan > 0; --scan) {
-                const MInstr &candidate = block.instructions[scan - 1];
-                if (candidate.opcode == MOpcode::JCC) {
-                    addLabelSuccessor(blockIndex_, succs_[bi], candidate);
-                    break;
-                }
-                if (candidate.opcode == MOpcode::JMP || candidate.opcode == MOpcode::RET ||
-                    candidate.opcode == MOpcode::UD2) {
-                    break;
-                }
-            }
-            addLabelSuccessor(blockIndex_, succs_[bi], term);
-        } else if (term.opcode == MOpcode::JCC) {
-            addLabelSuccessor(blockIndex_, succs_[bi], term);
-            if (bi + 1 < func.blocks.size()) {
-                succs_[bi].push_back(bi + 1);
+    for (const auto &block : func.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.opcode == MOpcode::LABEL) {
+                VIPER_ICE("x86-64 liveness: in-block LABEL '" + toString(instr) + "' in block '" +
+                          block.label +
+                          "' reached register allocation; splitInternalLabelBlocks must run first");
             }
         }
-
-        auto &succs = succs_[bi];
-        std::sort(succs.begin(), succs.end());
-        succs.erase(std::unique(succs.begin(), succs.end()), succs.end());
     }
+
+    succs_ = viper::codegen::ra::extractSuccessors(
+        func.blocks,
+        blockIndex_,
+        [](const MBasicBlock &block) -> const std::vector<MInstr> & { return block.instructions; },
+        [](const MInstr &instr) { return classifyControlFlow(instr); });
 }
 
 /// @brief Decompose an instruction's operands into use/def vreg lists.

@@ -143,7 +143,7 @@ class Spiller {
                                        std::size_t start,
                                        std::size_t end) const;
 
-    [[nodiscard]] Operand makeFrameOperand(int slot) const;
+    [[nodiscard]] Operand makeFrameOperand(RegClass cls, int slot) const;
 };
 
 } // namespace viper::codegen::x64::ra

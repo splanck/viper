@@ -35,7 +35,12 @@ struct InstrDeps {
     std::unordered_set<uint16_t> defs{};
     bool usesFlags{false};
     bool defsFlags{false};
-    bool memory{false};
+    bool memRead{false};
+    bool memWrite{false};
+    /// Set when the only memory access is a pure RBP+disp frame slot, enabling
+    /// exact disambiguation against other frame-slot accesses.
+    bool memIsFrameSlot{false};
+    int32_t frameDisp{0};
     unsigned latency{1};
 };
 
@@ -138,17 +143,56 @@ void addMemRegs(const OpMem &mem, InstrDeps &deps) {
     return std::any_of(instr.operands.begin(), instr.operands.end(), isVirtualOperand);
 }
 
+/// @brief Predicate: does this opcode READ from its memory operand?
+/// @details MOVmr-family opcodes load; MOVrm-family opcodes store. LEA only
+///          computes an address. Everything else with a memory operand is
+///          conservatively treated as both reading and writing.
+[[nodiscard]] bool opcodeReadsMem(MOpcode opcode) noexcept {
+    switch (opcode) {
+        case MOpcode::MOVmr:
+        case MOpcode::MOVSDmr:
+        case MOpcode::MOVUPSmr:
+            return true;
+        case MOpcode::MOVrm:
+        case MOpcode::MOVSDrm:
+        case MOpcode::MOVUPSrm:
+        case MOpcode::LEA:
+            return false;
+        default:
+            return true;
+    }
+}
+
+/// @brief Predicate: does this opcode WRITE to its memory operand?
+[[nodiscard]] bool opcodeWritesMem(MOpcode opcode) noexcept {
+    switch (opcode) {
+        case MOpcode::MOVrm:
+        case MOpcode::MOVSDrm:
+        case MOpcode::MOVUPSrm:
+            return true;
+        case MOpcode::MOVmr:
+        case MOpcode::MOVSDmr:
+        case MOpcode::MOVUPSmr:
+        case MOpcode::LEA:
+            return false;
+        default:
+            return true;
+    }
+}
+
 /// @brief Build the dependency descriptor for @p instr.
 /// @details Walks each operand and records physical register uses/defs,
-///          whether the instruction reads/writes EFLAGS, whether it
-///          accesses memory, and the assumed latency. The result feeds
-///          the dependency graph constructed by @ref scheduleSegment.
+///          whether the instruction reads/writes EFLAGS, the kind of memory
+///          access performed (read/write, frame-slot precision), and the
+///          assumed latency. The result feeds the dependency graph
+///          constructed by @ref scheduleSegment.
 [[nodiscard]] InstrDeps analyseInstr(const MInstr &instr) {
     InstrDeps deps{};
     deps.usesFlags = usesEFlags(instr.opcode);
     deps.defsFlags = definesEFlags(instr.opcode);
     deps.latency = opcodeLatency(instr.opcode);
 
+    std::size_t memOperands = 0;
     for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
         const auto [isUse, isDef] = operandRoles(instr, idx);
         const Operand &op = instr.operands[idx];
@@ -164,14 +208,40 @@ void addMemRegs(const OpMem &mem, InstrDeps &deps) {
         }
 
         if (const auto *mem = std::get_if<OpMem>(&op)) {
-            deps.memory = true;
+            // LEA's memory operand is an address computation, not an access:
+            // record only the register reads.
             addMemRegs(*mem, deps);
+            if (instr.opcode == MOpcode::LEA)
+                continue;
+
+            ++memOperands;
+            deps.memRead = deps.memRead || opcodeReadsMem(instr.opcode);
+            deps.memWrite = deps.memWrite || opcodeWritesMem(instr.opcode);
+            // Frame-slot precision applies only to the 8-byte scalar moves:
+            // wider accesses (MOVUPS saves 16 bytes) span multiple slots and
+            // unknown opcodes have unknown widths.
+            const bool eightByteMov =
+                instr.opcode == MOpcode::MOVrm || instr.opcode == MOpcode::MOVmr ||
+                instr.opcode == MOpcode::MOVSDrm || instr.opcode == MOpcode::MOVSDmr;
+            if (eightByteMov && !mem->hasIndex && mem->base.isPhys &&
+                static_cast<PhysReg>(mem->base.idOrPhys) == PhysReg::RBP) {
+                deps.memIsFrameSlot = true;
+                deps.frameDisp = mem->disp;
+            }
             continue;
         }
 
-        if (std::holds_alternative<OpRipLabel>(op))
-            deps.memory = true;
+        if (std::holds_alternative<OpRipLabel>(op)) {
+            // RIP-relative references load constants/rodata: model as a read.
+            ++memOperands;
+            deps.memRead = true;
+        }
     }
+
+    // Frame-slot precision is only valid when the instruction touches exactly
+    // one memory location.
+    if (memOperands != 1)
+        deps.memIsFrameSlot = false;
 
     return deps;
 }
@@ -192,7 +262,11 @@ void addMemRegs(const OpMem &mem, InstrDeps &deps) {
 ///          - one instruction's def aliases another's use (data dep),
 ///          - they both define the same register (output dep),
 ///          - one defines EFLAGS while the other reads or redefines it,
-///          - or both perform memory accesses (conservative aliasing).
+///          - or their memory accesses may conflict. Two loads never
+///            conflict, and two pure RBP+disp frame-slot accesses with
+///            different displacements are provably disjoint (slots are
+///            8-byte stepped and non-overlapping by frame construction);
+///            anything else involving at least one write is ordered.
 [[nodiscard]] bool dependsOn(const InstrDeps &first, const InstrDeps &second) {
     if (intersects(first.defs, second.uses))
         return true;
@@ -206,7 +280,20 @@ void addMemRegs(const OpMem &mem, InstrDeps &deps) {
     if (first.usesFlags && second.defsFlags)
         return true;
 
-    return first.memory && second.memory;
+    const bool firstAccesses = first.memRead || first.memWrite;
+    const bool secondAccesses = second.memRead || second.memWrite;
+    if (!firstAccesses || !secondAccesses)
+        return false;
+
+    // Read-read pairs can always reorder.
+    if (!first.memWrite && !second.memWrite)
+        return false;
+
+    // Distinct frame slots cannot alias each other.
+    if (first.memIsFrameSlot && second.memIsFrameSlot && first.frameDisp != second.frameDisp)
+        return false;
+
+    return true;
 }
 
 /// @brief Compute the critical-path height of each instruction.

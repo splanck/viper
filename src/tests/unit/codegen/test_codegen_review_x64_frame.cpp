@@ -11,6 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 #include "codegen/x86_64/FrameLowering.hpp"
+#include "codegen/x86_64/ra/Spiller.hpp"
 #include "codegen/x86_64/LowerILToMIR.hpp"
 #include "codegen/x86_64/MachineIR.hpp"
 #include "tests/TestHarness.hpp"
@@ -343,6 +344,56 @@ TEST(X64FrameLowering, MixedAllocaSizesDoNotOverlap) {
     EXPECT_EQ(disps[0], -32);
     EXPECT_EQ(disps[1], -24);
     EXPECT_EQ(frame.frameSize, 32);
+}
+
+// ---------------------------------------------------------------------------
+// Fix: GPR and XMM spill placeholders use disjoint index ranges, so frame
+// lowering classifies slots from the displacement alone. Previously GPR slot
+// N and XMM slot N shared one placeholder displacement, disambiguated by
+// guessing the class from a neighbouring register operand.
+// ---------------------------------------------------------------------------
+
+TEST(X64FrameLowering, GprAndXmmSpillPlaceholdersAreDisjoint) {
+    viper::codegen::x64::ra::Spiller spiller;
+
+    viper::codegen::x64::ra::SpillPlan gprPlan{true, 0};
+    viper::codegen::x64::ra::SpillPlan xmmPlan{true, 0};
+
+    const MInstr gprStore = spiller.makeStore(RegClass::GPR, gprPlan, PhysReg::RAX);
+    const MInstr xmmStore = spiller.makeStore(RegClass::XMM, xmmPlan, PhysReg::XMM0);
+
+    const auto *gprMem = std::get_if<OpMem>(&gprStore.operands[0]);
+    const auto *xmmMem = std::get_if<OpMem>(&xmmStore.operands[0]);
+    ASSERT_TRUE(gprMem != nullptr);
+    ASSERT_TRUE(xmmMem != nullptr);
+
+    // Same per-class slot index, different placeholder displacement.
+    EXPECT_NE(gprMem->disp, xmmMem->disp);
+
+    // Frame lowering must keep them as distinct frame slots even though the
+    // instructions carry matching slot indices.
+    MFunction func;
+    func.name = "disjoint_spills";
+    MBasicBlock block;
+    block.label = "entry";
+    block.instructions.push_back(gprStore);
+    block.instructions.push_back(xmmStore);
+    block.instructions.push_back(MInstr::make(MOpcode::RET, {}));
+    func.blocks.push_back(std::move(block));
+
+    FrameInfo frame;
+    assignSpillSlots(func, sysvTarget(), frame);
+
+    const auto *finalGpr = std::get_if<OpMem>(&func.blocks[0].instructions[0].operands[0]);
+    const auto *finalXmm = std::get_if<OpMem>(&func.blocks[0].instructions[1].operands[0]);
+    ASSERT_TRUE(finalGpr != nullptr);
+    ASSERT_TRUE(finalXmm != nullptr);
+
+    EXPECT_LT(finalGpr->disp, 0);
+    EXPECT_LT(finalXmm->disp, 0);
+    EXPECT_NE(finalGpr->disp, finalXmm->disp);
+    EXPECT_EQ(frame.spillAreaGPR, 8);
+    EXPECT_EQ(frame.spillAreaXMM, 8);
 }
 
 int main(int argc, char **argv) {

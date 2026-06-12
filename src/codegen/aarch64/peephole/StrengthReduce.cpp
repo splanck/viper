@@ -32,6 +32,7 @@
 #include "../TargetAArch64.hpp"
 #include "PeepholeCommon.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <limits>
@@ -145,14 +146,25 @@ struct UnsignedMagicNumber {
 
 /// @brief Return true if @p reg is used by any instruction after @p idx before being redefined.
 /// @details Scans forward from idx+1; stops early when a definition is found.
-[[nodiscard]] bool regUsedAfterBeforeRedef(const std::vector<MInstr> &instrs,
-                                           std::size_t idx,
-                                           const MOperand &reg) noexcept {
+///          When the scan reaches the end of the block without a redefinition,
+///          the register may still be live: the allocator can carry values to
+///          a single-predecessor successor in registers with no in-block use
+///          marking the carry. @p carriedExitRegs (MBasicBlock::carriedExitRegs,
+///          sorted) supplies that invisible live-out set.
+[[nodiscard]] bool regUsedAfterBeforeRedef(
+    const std::vector<MInstr> &instrs,
+    std::size_t idx,
+    const MOperand &reg,
+    const std::vector<uint16_t> *carriedExitRegs = nullptr) noexcept {
     for (std::size_t i = idx + 1; i < instrs.size(); ++i) {
         if (usesReg(instrs[i], reg))
             return true;
         if (definesReg(instrs[i], reg))
             return false;
+    }
+    if (carriedExitRegs != nullptr && reg.kind == MOperand::Kind::Reg && reg.reg.isPhys) {
+        return std::binary_search(
+            carriedExitRegs->begin(), carriedExitRegs->end(), reg.reg.idOrPhys);
     }
     return false;
 }
@@ -368,7 +380,8 @@ bool tryDivStrengthReduction(MInstr &instr, const RegConstMap &knownConsts, Peep
 bool tryUDivStrengthReduction(std::vector<MInstr> &instrs,
                               std::size_t idx,
                               const RegConstMap &knownConsts,
-                              PeepholeStats &stats) {
+                              PeepholeStats &stats,
+                              const std::vector<uint16_t> *carriedExitRegs) {
     if (idx >= instrs.size())
         return false;
 
@@ -394,7 +407,7 @@ bool tryUDivStrengthReduction(std::vector<MInstr> &instrs,
     const MOperand lhs = divInstr.ops[1];
     const MOperand rhsReg = divInstr.ops[2];
 
-    const bool rhsLiveAfter = regUsedAfterBeforeRedef(instrs, idx, rhsReg);
+    const bool rhsLiveAfter = regUsedAfterBeforeRedef(instrs, idx, rhsReg, carriedExitRegs);
     if (rhsLiveAfter)
         return false;
 
@@ -474,7 +487,8 @@ bool tryImmediateFolding(MInstr &instr, const RegConstMap &knownConsts, Peephole
 bool trySDivStrengthReduction(std::vector<MInstr> &instrs,
                               std::size_t idx,
                               const RegConstMap &knownConsts,
-                              PeepholeStats &stats) {
+                              PeepholeStats &stats,
+                              const std::vector<uint16_t> *carriedExitRegs) {
     if (idx >= instrs.size())
         return false;
 
@@ -502,7 +516,7 @@ bool trySDivStrengthReduction(std::vector<MInstr> &instrs,
 
     if (divisor == -1) {
         const PhysReg rhsPhys = static_cast<PhysReg>(rhsReg.reg.idOrPhys);
-        const bool rhsLiveAfter = regUsedAfterBeforeRedef(instrs, idx, rhsReg);
+        const bool rhsLiveAfter = regUsedAfterBeforeRedef(instrs, idx, rhsReg, carriedExitRegs);
         if (rhsLiveAfter)
             return false;
 
@@ -523,7 +537,7 @@ bool trySDivStrengthReduction(std::vector<MInstr> &instrs,
     const bool positiveDivisor = divisor > 0;
     const int log = positiveDivisor ? log2IfPowerOf2(divisor) : -1;
     if (log >= 1 && log <= 63) {
-        const bool rhsLiveAfter = regUsedAfterBeforeRedef(instrs, idx, rhsReg);
+        const bool rhsLiveAfter = regUsedAfterBeforeRedef(instrs, idx, rhsReg, carriedExitRegs);
         if (rhsLiveAfter)
             return false;
 
@@ -571,7 +585,7 @@ bool trySDivStrengthReduction(std::vector<MInstr> &instrs,
     if (magic.multiplier == 0)
         return false;
 
-    const bool rhsLiveAfter = regUsedAfterBeforeRedef(instrs, idx, rhsReg);
+    const bool rhsLiveAfter = regUsedAfterBeforeRedef(instrs, idx, rhsReg, carriedExitRegs);
     if (rhsLiveAfter)
         return false;
 
@@ -616,7 +630,8 @@ bool trySDivStrengthReduction(std::vector<MInstr> &instrs,
 bool tryRemainderFusion(std::vector<MInstr> &instrs,
                         std::size_t idx,
                         const RegConstMap &knownConsts,
-                        PeepholeStats &stats) {
+                        PeepholeStats &stats,
+                        const std::vector<uint16_t> *carriedExitRegs) {
     // Match the pattern: [SU]DivRRR tmp, lhs, rhs; MSubRRRR dst, tmp, rhs, lhs
     // where rhs is a known power-of-2 constant.
     //

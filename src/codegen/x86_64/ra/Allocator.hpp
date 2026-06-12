@@ -52,6 +52,11 @@ struct VirtualAllocation {
     SpillPlan spill{};
     bool cachedInBlock{
         false}; ///< True when a cross-block vreg has been loaded into a register this block.
+    /// Cached LiveIntervals lookup. Intervals are immutable during allocation,
+    /// so the per-instruction expiry scan can reuse one lookup per vreg
+    /// instead of re-hashing on every instruction.
+    const LiveInterval *interval{nullptr};
+    bool intervalCached{false};
 };
 
 /// @brief Core linear-scan allocator working over Machine IR.
@@ -138,6 +143,9 @@ class LinearScanAllocator {
     ///          when the register is observed for the first time so state mutations remain
     ///          centralised.
     [[nodiscard]] VirtualAllocation &stateFor(RegClass cls, uint16_t id);
+
+    /// @brief Look up (once) and cache the live interval for @p vreg on its state.
+    const LiveInterval *cachedInterval(uint16_t vreg, VirtualAllocation &state);
 
     /// @brief Mark a virtual register as active within its class list.
     /// @details Inserts the identifier into the appropriate active set so future spill decisions

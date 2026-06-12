@@ -11,13 +11,17 @@ last-verified: 2026-05-31
 - AArch64: Validated end‑to‑end on Apple Silicon across all demo games.
 - x86_64: Validated on Windows with full codegen test suite passing. Supports System V AMD64 and Windows x64 ABIs.
 
-Native code generation backends for x86_64 and AArch64.
+Native code generation backends for x86_64 and AArch64. For the roadmap of
+remaining cross-backend unification work (register-based phi copies on
+AArch64, shared scheduler core, shared spill-slot allocator), see
+[backend-consolidation-plan.md](../codegen/backend-consolidation-plan.md).
 
 ## Common Utilities (`src/codegen/common/`)
 
 | File                       | Purpose                                             |
 |----------------------------|-----------------------------------------------------|
 | `CallArgLayout.hpp/cpp`    | Shared call argument classification (SysV/Win64)    |
+| `PreRAForwardCopy.hpp`     | Shared pre-RA identity/single-use copy forwarding   |
 | `CallLoweringPlan.hpp`     | Call lowering plan data structure                    |
 | `Diagnostics.hpp/cpp`      | Codegen-specific diagnostic reporting               |
 | `FrameLayout.hpp`          | Stack frame layout data structure                   |
@@ -26,7 +30,6 @@ Native code generation backends for x86_64 and AArch64.
 | `LabelUtil.hpp`            | Deterministic label generation for blocks and jumps |
 | `LinkerSupport.hpp/cpp`    | Platform linker invocation and object file support  |
 | `NativeEHLowering.hpp/cpp` | Structured EH to runtime call lowering              |
-| `ParallelCopyResolver.hpp` | Parallel copy resolution for SSA deconstruction     |
 | `PassManager.hpp`          | Codegen pass manager interface                      |
 | `PeepholeCopyProp.hpp`     | Shared peephole copy propagation patterns           |
 | `PeepholeDCE.hpp`          | Shared peephole dead code elimination patterns      |
@@ -40,6 +43,7 @@ Native code generation backends for x86_64 and AArch64.
 | File                  | Purpose                                         |
 |-----------------------|-------------------------------------------------|
 | `ArchTraits.hpp`      | Architecture trait definitions for register alloc |
+| `CfgExtract.hpp`      | Shared MIR successor extraction for RA liveness  |
 | `DataflowLiveness.hpp`| Dataflow-based liveness analysis                |
 
 ### Object File Writers (`src/codegen/common/objfile/`)
@@ -247,7 +251,6 @@ Targeting System V AMD64 ABI (Linux/macOS) and Windows x64 ABI.
 |----------------------------|--------------------------------------|
 | `ISel.hpp/cpp`             | Instruction selection and legalization|
 | `OperandUtils.hpp`         | Operand manipulation utilities       |
-| `ParallelCopyResolver.hpp` | Parallel copy resolution for SSA     |
 | `Peephole.hpp/cpp`         | Peephole optimizations               |
 | `OperandRoles.hpp/cpp`     | Per-operand use/def role classification |
 | `PreRegAllocOpt.hpp/cpp`   | Pre-register-allocation optimization |

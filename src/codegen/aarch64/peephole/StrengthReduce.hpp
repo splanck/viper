@@ -51,10 +51,15 @@ namespace viper::codegen::aarch64::peephole {
 /// Handles unsigned division by arbitrary non-power-of-2 constants using
 /// `umulh` plus an optional correction/add sequence. Power-of-2 divisors stay
 /// on the single-instruction path above so they can collapse directly to `lsr`.
+/// @param carriedExitRegs Optional sorted list of physical registers the
+///        allocator carries live across the enclosing block's exit without any
+///        in-block use (MBasicBlock::carriedExitRegs); clobber analysis treats
+///        them as live at block end.
 [[nodiscard]] bool tryUDivStrengthReduction(std::vector<MInstr> &instrs,
                                             std::size_t idx,
                                             const RegConstMap &knownConsts,
-                                            PeepholeStats &stats);
+                                            PeepholeStats &stats,
+                                            const std::vector<uint16_t> *carriedExitRegs = nullptr);
 
 /// @brief Apply strength reduction: signed division by constant.
 ///
@@ -71,7 +76,8 @@ namespace viper::codegen::aarch64::peephole {
 [[nodiscard]] bool trySDivStrengthReduction(std::vector<MInstr> &instrs,
                                             std::size_t idx,
                                             const RegConstMap &knownConsts,
-                                            PeepholeStats &stats);
+                                            PeepholeStats &stats,
+                                            const std::vector<uint16_t> *carriedExitRegs = nullptr);
 
 /// @brief Fuse [SU]DIV+MSUB remainder pattern into cheaper operations.
 ///
@@ -90,7 +96,8 @@ namespace viper::codegen::aarch64::peephole {
 [[nodiscard]] bool tryRemainderFusion(std::vector<MInstr> &instrs,
                                       std::size_t idx,
                                       const RegConstMap &knownConsts,
-                                      PeepholeStats &stats);
+                                      PeepholeStats &stats,
+                                      const std::vector<uint16_t> *carriedExitRegs = nullptr);
 
 /// @brief Try to fold an RRR operation into RI when one operand is a known constant.
 [[nodiscard]] bool tryImmediateFolding(MInstr &instr,

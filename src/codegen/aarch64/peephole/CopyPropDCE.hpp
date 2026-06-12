@@ -35,7 +35,12 @@ namespace viper::codegen::aarch64::peephole {
 std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats);
 
 /// @brief Perform dead code elimination within a basic block.
-std::size_t removeDeadInstructions(std::vector<MInstr> &instrs, PeepholeStats &stats);
+/// @param carriedExitRegs Optional sorted list of physical registers carried
+///        live across the enclosing block's exit without any in-block use
+///        (MBasicBlock::carriedExitRegs); seeded into the live-at-exit set.
+std::size_t removeDeadInstructions(std::vector<MInstr> &instrs,
+                                   PeepholeStats &stats,
+                                   const std::vector<uint16_t> *carriedExitRegs = nullptr);
 
 /// @brief Perform CFG-aware physical-register dead code elimination.
 std::size_t removeDeadInstructionsCFG(MFunction &fn,

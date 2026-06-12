@@ -1137,40 +1137,24 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
         if (abi == ABIFormat::Darwin) {
             // Mach-O compact unwind is Darwin-specific. ELF and COFF object
             // writers must not inherit these entries.
-            if (!skipFrame_) {
-                uint32_t encoding = 0x04000000u; // UNWIND_ARM64_MODE_FRAME
-
-                // Encode callee-saved GPR pair count (bits [23:20], max 5 pairs: X19-X28)
-                uint32_t gprPairs = static_cast<uint32_t>(fn.savedGPRs.size() + 1) / 2;
-                if (gprPairs > 5)
-                    gprPairs = 5;
-                encoding |= (gprPairs << 20);
-
-                // Encode callee-saved FPR pair count (bits [27:24], max 4 pairs: D8-D15)
-                uint32_t fprPairs = static_cast<uint32_t>(fn.savedFPRs.size() + 1) / 2;
-                if (fprPairs > 4)
-                    fprPairs = 4;
-                encoding |= (fprPairs << 24);
-
-                const uint32_t funcLen =
-                    checkedFunctionLength(text.currentOffset() - funcStartOffset, fn.name);
-
-                objfile::CompactUnwindEntry entry{};
-                entry.symbolIndex = funcSymIdx;
-                entry.functionLength = funcLen;
-                entry.encoding = encoding;
-                text.addUnwindEntry(entry);
-            } else {
-                // Frameless leaf function — UNWIND_ARM64_MODE_FRAMELESS with zero encoding.
-                const uint32_t funcLen =
-                    checkedFunctionLength(text.currentOffset() - funcStartOffset, fn.name);
-
-                objfile::CompactUnwindEntry entry{};
-                entry.symbolIndex = funcSymIdx;
-                entry.functionLength = funcLen;
-                entry.encoding = 0x02000000u; // UNWIND_ARM64_MODE_FRAMELESS, stack size 0
-                text.addUnwindEntry(entry);
-            }
+            //
+            // Apple's compact-unwind format (compact_unwind_encoding.h) keeps
+            // the mode in bits [27:24] and, for UNWIND_ARM64_MODE_FRAME,
+            // describes saved callee-saved registers as per-pair FLAG bits in
+            // bits [8:0] (X19/X20=0x1 ... X27/X28=0x10, D8/D9=0x100 ...
+            // D14/D15=0x800) stored at canonical slots immediately below the
+            // FP/LR pair. Our prologue stores callee-saved pairs below the
+            // locals area instead, so those flags would point the unwinder at
+            // the wrong stack slots. Emit plain MODE_FRAME with no pair flags:
+            // the unwinder restores FP/LR and walks the frame chain correctly
+            // and simply skips callee-saved register recovery.
+            const uint32_t funcLen =
+                checkedFunctionLength(text.currentOffset() - funcStartOffset, fn.name);
+            objfile::CompactUnwindEntry entry{};
+            entry.symbolIndex = funcSymIdx;
+            entry.functionLength = funcLen;
+            entry.encoding = skipFrame_ ? kUnwindArm64ModeFrameless : kUnwindArm64ModeFrame;
+            text.addUnwindEntry(entry);
         } else if (abi == ABIFormat::Windows && !skipFrame_) {
             const uint32_t funcLen =
                 checkedFunctionLength(text.currentOffset() - funcStartOffset, fn.name);

@@ -27,6 +27,8 @@
 
 #include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/Peephole.hpp"
+#include "codegen/aarch64/peephole/BranchOpt.hpp"
+#include "codegen/aarch64/peephole/CopyPropDCE.hpp"
 #include "codegen/aarch64/peephole/MemoryOpt.hpp"
 
 using namespace viper::codegen::aarch64;
@@ -38,7 +40,7 @@ TEST(AArch64PeepholeSubpasses, MulByPowerOf2ToShift) {
     // strength reduction should convert it to a shift.
     MFunction fn{};
     fn.name = "mul_pow2";
-    fn.blocks.push_back(MBasicBlock{"entry", {}});
+    fn.blocks.push_back(MBasicBlock{"entry", {}, {}});
     auto &bb = fn.blocks.back();
 
     // mov x1, #8
@@ -60,7 +62,7 @@ TEST(AArch64PeepholeSubpasses, AddFpImmZeroIdentity) {
     // fadd d0, d0, #0.0 should be eliminated as identity
     MFunction fn{};
     fn.name = "fadd_zero";
-    fn.blocks.push_back(MBasicBlock{"entry", {}});
+    fn.blocks.push_back(MBasicBlock{"entry", {}, {}});
     auto &bb = fn.blocks.back();
 
     bb.instrs.push_back(MInstr{MOpcode::FAddRRR,
@@ -81,8 +83,8 @@ TEST(AArch64PeepholeSubpasses, AddFpImmZeroIdentity) {
 TEST(AArch64PeepholeSubpasses, RemoveRedundantBranchToFallthrough) {
     MFunction fn{};
     fn.name = "branch_fallthrough";
-    fn.blocks.push_back(MBasicBlock{"entry", {}});
-    fn.blocks.push_back(MBasicBlock{"next", {}});
+    fn.blocks.push_back(MBasicBlock{"entry", {}, {}});
+    fn.blocks.push_back(MBasicBlock{"next", {}, {}});
     auto &entry = fn.blocks[0];
     auto &next = fn.blocks[1];
 
@@ -109,7 +111,7 @@ TEST(AArch64PeepholeSubpasses, RemoveRedundantBranchToFallthrough) {
 TEST(AArch64PeepholeSubpasses, DeadMovRemovedAfterLastUse) {
     MFunction fn{};
     fn.name = "dead_mov";
-    fn.blocks.push_back(MBasicBlock{"entry", {}});
+    fn.blocks.push_back(MBasicBlock{"entry", {}, {}});
     auto &bb = fn.blocks.back();
 
     // mov x1, x0  (only use)
@@ -134,7 +136,7 @@ TEST(AArch64PeepholeSubpasses, ImmThenMoveFolding) {
     // mov x1, #42; mov x2, x1 → mov x1, x1; mov x2, #42  (when x1 dead after)
     MFunction fn{};
     fn.name = "imm_then_move";
-    fn.blocks.push_back(MBasicBlock{"entry", {}});
+    fn.blocks.push_back(MBasicBlock{"entry", {}, {}});
     auto &bb = fn.blocks.back();
 
     bb.instrs.push_back(
@@ -186,8 +188,8 @@ TEST(AArch64PeepholeSubpasses, StoreLoadForwardingStopsAtOverlappingPairStore) {
 TEST(AArch64PeepholeSubpasses, MultiplePassesInteract) {
     MFunction fn{};
     fn.name = "multi_pass";
-    fn.blocks.push_back(MBasicBlock{"entry", {}});
-    fn.blocks.push_back(MBasicBlock{"target", {}});
+    fn.blocks.push_back(MBasicBlock{"entry", {}, {}});
+    fn.blocks.push_back(MBasicBlock{"target", {}, {}});
     auto &entry = fn.blocks[0];
     auto &target = fn.blocks[1];
 
@@ -213,11 +215,11 @@ TEST(AArch64PeepholeSubpasses, MultiplePassesInteract) {
 TEST(AArch64PeepholeSubpasses, LoopPhiEdgeMovesPreserveOverlappingSources) {
     MFunction fn{};
     fn.name = "loop_phi_overlap";
-    fn.blocks.push_back(MBasicBlock{"entry", {}});
-    fn.blocks.push_back(MBasicBlock{"loop", {}});
-    fn.blocks.push_back(MBasicBlock{"body", {}});
-    fn.blocks.push_back(MBasicBlock{"latch", {}});
-    fn.blocks.push_back(MBasicBlock{"exit", {}});
+    fn.blocks.push_back(MBasicBlock{"entry", {}, {}});
+    fn.blocks.push_back(MBasicBlock{"loop", {}, {}});
+    fn.blocks.push_back(MBasicBlock{"body", {}, {}});
+    fn.blocks.push_back(MBasicBlock{"latch", {}, {}});
+    fn.blocks.push_back(MBasicBlock{"exit", {}, {}});
 
     auto &entry = fn.blocks[0];
     auto &loop = fn.blocks[1];
@@ -276,10 +278,10 @@ TEST(AArch64PeepholeSubpasses, LoopPhiEdgeMovesPreserveOverlappingSources) {
 TEST(AArch64PeepholeSubpasses, LoopPhiRejectsRedefinedEdgeSource) {
     MFunction fn{};
     fn.name = "loop_phi_redefined_source";
-    fn.blocks.push_back(MBasicBlock{"entry", {}});
-    fn.blocks.push_back(MBasicBlock{"loop", {}});
-    fn.blocks.push_back(MBasicBlock{"latch", {}});
-    fn.blocks.push_back(MBasicBlock{"exit", {}});
+    fn.blocks.push_back(MBasicBlock{"entry", {}, {}});
+    fn.blocks.push_back(MBasicBlock{"loop", {}, {}});
+    fn.blocks.push_back(MBasicBlock{"latch", {}, {}});
+    fn.blocks.push_back(MBasicBlock{"exit", {}, {}});
 
     auto &entry = fn.blocks[0];
     auto &loop = fn.blocks[1];
@@ -324,10 +326,10 @@ TEST(AArch64PeepholeSubpasses, LoopPhiRejectsRedefinedEdgeSource) {
 TEST(AArch64PeepholeSubpasses, LoopPhiRejectsLoopsContainingCalls) {
     MFunction fn{};
     fn.name = "loop_phi_call_body";
-    fn.blocks.push_back(MBasicBlock{"entry", {}});
-    fn.blocks.push_back(MBasicBlock{"loop", {}});
-    fn.blocks.push_back(MBasicBlock{"latch", {}});
-    fn.blocks.push_back(MBasicBlock{"exit", {}});
+    fn.blocks.push_back(MBasicBlock{"entry", {}, {}});
+    fn.blocks.push_back(MBasicBlock{"loop", {}, {}});
+    fn.blocks.push_back(MBasicBlock{"latch", {}, {}});
+    fn.blocks.push_back(MBasicBlock{"exit", {}, {}});
 
     auto &entry = fn.blocks[0];
     auto &loop = fn.blocks[1];
@@ -368,11 +370,11 @@ TEST(AArch64PeepholeSubpasses, LoopPhiRejectsLoopsContainingCalls) {
 TEST(AArch64PeepholeSubpasses, LoopPhiRejectsBackwardJoinEdge) {
     MFunction fn{};
     fn.name = "loop_phi_backward_join";
-    fn.blocks.push_back(MBasicBlock{"entry", {}});
-    fn.blocks.push_back(MBasicBlock{"else_path", {}});
-    fn.blocks.push_back(MBasicBlock{"join", {}});
-    fn.blocks.push_back(MBasicBlock{"then_path", {}});
-    fn.blocks.push_back(MBasicBlock{"exit", {}});
+    fn.blocks.push_back(MBasicBlock{"entry", {}, {}});
+    fn.blocks.push_back(MBasicBlock{"else_path", {}, {}});
+    fn.blocks.push_back(MBasicBlock{"join", {}, {}});
+    fn.blocks.push_back(MBasicBlock{"then_path", {}, {}});
+    fn.blocks.push_back(MBasicBlock{"exit", {}, {}});
 
     auto &entry = fn.blocks[0];
     auto &elsePath = fn.blocks[1];
@@ -420,11 +422,11 @@ TEST(AArch64PeepholeSubpasses, LoopPhiRejectsBackwardJoinEdge) {
 TEST(AArch64PeepholeSubpasses, JoinPhiCoalescerSkipsLoopHeaderBackedgeWithCalls) {
     MFunction fn{};
     fn.name = "join_phi_coalescer_loop_header";
-    fn.blocks.push_back(MBasicBlock{"entry", {}});
-    fn.blocks.push_back(MBasicBlock{"loop", {}});
-    fn.blocks.push_back(MBasicBlock{"body", {}});
-    fn.blocks.push_back(MBasicBlock{"exit", {}});
-    fn.blocks.push_back(MBasicBlock{"trap", {}});
+    fn.blocks.push_back(MBasicBlock{"entry", {}, {}});
+    fn.blocks.push_back(MBasicBlock{"loop", {}, {}});
+    fn.blocks.push_back(MBasicBlock{"body", {}, {}});
+    fn.blocks.push_back(MBasicBlock{"exit", {}, {}});
+    fn.blocks.push_back(MBasicBlock{"trap", {}, {}});
 
     auto &entry = fn.blocks[0];
     auto &loop = fn.blocks[1];
@@ -483,11 +485,11 @@ TEST(AArch64PeepholeSubpasses, JoinPhiCoalescerSkipsLoopHeaderBackedgeWithCalls)
 TEST(AArch64PeepholeSubpasses, LoopConstHoistRejectsBackwardJoinEdge) {
     MFunction fn{};
     fn.name = "backward_join_not_loop";
-    fn.blocks.push_back(MBasicBlock{"entry", {}});
-    fn.blocks.push_back(MBasicBlock{"else_path", {}});
-    fn.blocks.push_back(MBasicBlock{"join", {}});
-    fn.blocks.push_back(MBasicBlock{"then_path", {}});
-    fn.blocks.push_back(MBasicBlock{"exit", {}});
+    fn.blocks.push_back(MBasicBlock{"entry", {}, {}});
+    fn.blocks.push_back(MBasicBlock{"else_path", {}, {}});
+    fn.blocks.push_back(MBasicBlock{"join", {}, {}});
+    fn.blocks.push_back(MBasicBlock{"then_path", {}, {}});
+    fn.blocks.push_back(MBasicBlock{"exit", {}, {}});
 
     auto &entry = fn.blocks[0];
     auto &elsePath = fn.blocks[1];
@@ -531,6 +533,123 @@ TEST(AArch64PeepholeSubpasses, LoopConstHoistRejectsBackwardJoinEdge) {
                    instr.ops[1].kind == MOperand::Kind::Imm && instr.ops[1].imm == 6;
         });
     EXPECT_TRUE(joinStillDefinesScale);
+}
+
+// ─── Carried exit registers: invisible cross-block liveness ─────────────────
+
+TEST(AArch64PeepholeSubpasses, StrengthReductionRespectsCarriedDivisorRegister) {
+    // The allocator may carry x1 (the divisor) live into a single-predecessor
+    // successor without any in-block use marking the carry. Reusing it as a
+    // scratch register in the magic-number expansion would clobber the carried
+    // value, so the rewrite must decline.
+    MFunction fn{};
+    fn.name = "carried_divisor";
+    fn.blocks.push_back(MBasicBlock{"entry", {}, {}});
+    auto &bb = fn.blocks.back();
+    bb.carriedExitRegs = {static_cast<uint16_t>(PhysReg::X1)};
+
+    bb.instrs.push_back(MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X1), MOperand::immOp(7)}});
+    bb.instrs.push_back(MInstr{MOpcode::UDivRRR,
+                               {MOperand::regOp(PhysReg::X2),
+                                MOperand::regOp(PhysReg::X0),
+                                MOperand::regOp(PhysReg::X1)}});
+    bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    auto stats = runPeephole(fn);
+    (void)stats;
+
+    const bool divSurvives =
+        std::any_of(fn.blocks[0].instrs.begin(),
+                    fn.blocks[0].instrs.end(),
+                    [](const MInstr &mi) { return mi.opc == MOpcode::UDivRRR; });
+    EXPECT_TRUE(divSurvives);
+}
+
+TEST(AArch64PeepholeSubpasses, BlockLocalDceKeepsCarriedRegisterDef) {
+    // x10 has no in-block reader, but it is carried across the exit; the
+    // block-local DCE fallback must treat it as live.
+    MFunction fn{};
+    fn.name = "carried_def";
+    fn.blocks.push_back(MBasicBlock{"entry", {}, {}});
+    auto &bb = fn.blocks.back();
+    bb.carriedExitRegs = {static_cast<uint16_t>(PhysReg::X10)};
+
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X10), MOperand::immOp(42)}});
+    bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    PeepholeStats stats{};
+    peephole::removeDeadInstructions(fn.blocks[0].instrs, stats, &fn.blocks[0].carriedExitRegs);
+
+    const bool defSurvives =
+        std::any_of(fn.blocks[0].instrs.begin(),
+                    fn.blocks[0].instrs.end(),
+                    [](const MInstr &mi) { return mi.opc == MOpcode::MovRI; });
+    EXPECT_TRUE(defSurvives);
+
+    // Sanity: without the carried set, the same def is removable.
+    MFunction fn2{};
+    fn2.blocks.push_back(MBasicBlock{"entry", {}, {}});
+    fn2.blocks[0].instrs.push_back(
+        MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X10), MOperand::immOp(42)}});
+    fn2.blocks[0].instrs.push_back(MInstr{MOpcode::Ret, {}});
+    PeepholeStats stats2{};
+    peephole::removeDeadInstructions(fn2.blocks[0].instrs, stats2, nullptr);
+    const bool removedWithoutCarry =
+        std::none_of(fn2.blocks[0].instrs.begin(),
+                     fn2.blocks[0].instrs.end(),
+                     [](const MInstr &mi) { return mi.opc == MOpcode::MovRI; });
+    EXPECT_TRUE(removedWithoutCarry);
+}
+
+// ─── BranchOpt: cold-block reordering and fallthrough safety ────────────────
+
+TEST(AArch64PeepholeSubpasses, ColdBlockWithFallthroughIsNotMoved) {
+    // A block matched as "cold" purely by its name token must not be moved to
+    // the end of the function when it can fall through into the next block —
+    // relocation would silently re-target the implicit fallthrough edge.
+    MFunction fn{};
+    fn.name = "cold_ft";
+
+    MBasicBlock entry{"entry", {}, {}};
+    entry.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("user_error_path")}});
+
+    MBasicBlock coldFallthrough{"user_error_path", {}, {}};
+    // Ends in a conditional branch: not-taken path falls through to "after".
+    coldFallthrough.instrs.push_back(
+        MInstr{MOpcode::Cbz, {MOperand::regOp(PhysReg::X0), MOperand::labelOp("entry")}});
+
+    MBasicBlock after{"after", {}, {}};
+    after.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    fn.blocks = {entry, coldFallthrough, after};
+
+    const std::size_t moved = peephole::reorderBlocks(fn);
+    EXPECT_EQ(moved, 0u);
+    ASSERT_EQ(fn.blocks.size(), 3u);
+    EXPECT_EQ(fn.blocks[1].name, "user_error_path");
+    EXPECT_EQ(fn.blocks[2].name, "after");
+}
+
+TEST(AArch64PeepholeSubpasses, TerminatedColdBlockIsMovedToEnd) {
+    MFunction fn{};
+    fn.name = "cold_term";
+
+    MBasicBlock entry{"entry", {}, {}};
+    entry.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("hot")}});
+
+    MBasicBlock cold{"check_error_exit", {}, {}};
+    cold.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("hot")}});
+
+    MBasicBlock hot{"hot", {}, {}};
+    hot.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    fn.blocks = {entry, cold, hot};
+
+    const std::size_t moved = peephole::reorderBlocks(fn);
+    EXPECT_EQ(moved, 1u);
+    ASSERT_EQ(fn.blocks.size(), 3u);
+    EXPECT_EQ(fn.blocks.back().name, "check_error_exit");
 }
 
 int main(int argc, char **argv) {

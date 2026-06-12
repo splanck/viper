@@ -174,49 +174,21 @@ void markUsedCalleeSaved(const OpReg &reg,
     }
 }
 
-/// @brief Infer the register class used by a memory operand when a physical hint is present.
-/// @details Scans all other operands in the instruction looking for physical
-///          registers to infer whether the memory slot stores GPR or XMM state.
-///          Returning nullopt means the instruction provides no reliable class
-///          evidence; callers handling spill placeholders should reject that
-///          ambiguity instead of assigning the slot to the wrong spill area.
-/// @param instr Machine instruction containing the operand.
-/// @param memIndex Index of the memory operand within the instruction.
-/// @return Register class used to model the memory payload, if it can be inferred.
-[[nodiscard]] std::optional<RegClass> deduceMemClass(const MInstr &instr, std::size_t memIndex) {
-    for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
-        if (idx == memIndex) {
-            continue;
-        }
-        if (const auto *reg = std::get_if<OpReg>(&instr.operands[idx])) {
-            if (!reg->isPhys) {
-                continue;
-            }
-            const auto phys = static_cast<PhysReg>(reg->idOrPhys);
-            if (isXMM(phys)) {
-                return RegClass::XMM;
-            }
-            if (isGPR(phys)) {
-                return RegClass::GPR;
-            }
-        }
-    }
-    return std::nullopt;
-}
+/// @brief Classify a decoded placeholder slot index into its frame-slot kind.
+/// @details Placeholder index ranges are disjoint by construction
+///          (TargetX64.hpp): alloca slots sit below kSpillSlotOffsetGPR, GPR
+///          spill slots in [kSpillSlotOffsetGPR, kSpillSlotOffsetXMM), and XMM
+///          spill slots above. Classification therefore needs no guessing from
+///          neighbouring operands, which previously misfiled slots whenever an
+///          instruction mixed register classes.
+enum class FrameSlotKind { Alloca, SpillGPR, SpillXMM };
 
-/// @brief Require a reliable register class for a spill-slot memory operand.
-/// @details Spill placeholders are partitioned into GPR and XMM frame areas. If the
-///          payload class cannot be inferred from a neighbouring physical register,
-///          remapping the slot would be unsafe, so this helper reports a hard
-///          diagnostic rather than silently falling back to a scalar slot.
-/// @param instr Instruction containing the spill memory operand.
-/// @param memIndex Index of the memory operand inside @p instr.
-/// @return Inferred spill payload register class.
-[[nodiscard]] RegClass requireSpillMemClass(const MInstr &instr, std::size_t memIndex) {
-    if (const auto cls = deduceMemClass(instr, memIndex)) {
-        return *cls;
-    }
-    throw std::runtime_error("x86 frame lowering: spill slot lacks a physical register class hint");
+[[nodiscard]] FrameSlotKind classifyFrameSlot(int slotIndex) noexcept {
+    if (slotIndex >= kSpillSlotOffsetXMM)
+        return FrameSlotKind::SpillXMM;
+    if (slotIndex >= kSpillSlotOffsetGPR)
+        return FrameSlotKind::SpillGPR;
+    return FrameSlotKind::Alloca;
 }
 
 /// @brief Byte size needed to spill one callee-saved register.
@@ -285,8 +257,9 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
     int maxAllocaSlotIndex = -1; // Track the highest alloca slot index
     bool hasCall = false;
 
-    // Alloca slots use indices 0..N; spill slots use kSpillSlotOffset+0, kSpillSlotOffset+1, ...
-    // (kSpillSlotOffset is defined in TargetX64.hpp)
+    // Alloca slots use indices 0..N; spill slots use the disjoint per-class
+    // placeholder ranges starting at kSpillSlotOffsetGPR / kSpillSlotOffsetXMM
+    // (defined in TargetX64.hpp).
 
     for (auto &block : func.blocks) {
         for (auto &instr : block.instructions) {
@@ -316,19 +289,18 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
                     continue;
                 }
 
-                // Distinguish between alloca slots (< 1000) and spill slots (>= 1000)
-                if (slotIndex >= kSpillSlotOffset) {
-                    // This is a spill slot - collect for remapping
-                    const RegClass cls = requireSpillMemClass(instr, idx);
-                    if (cls == RegClass::XMM) {
+                switch (classifyFrameSlot(slotIndex)) {
+                    case FrameSlotKind::SpillXMM:
                         xmmSpillSlots.insert(slotIndex);
-                    } else {
+                        break;
+                    case FrameSlotKind::SpillGPR:
                         gprSpillSlots.insert(slotIndex);
-                    }
-                } else {
-                    // This is an alloca slot - track the max for frame layout
-                    // Alloca slots also need remapping to come after callee-saved area
-                    maxAllocaSlotIndex = std::max(maxAllocaSlotIndex, slotIndex);
+                        break;
+                    case FrameSlotKind::Alloca:
+                        // Alloca slots also need remapping to come after the
+                        // callee-saved area; track the max for frame layout.
+                        maxAllocaSlotIndex = std::max(maxAllocaSlotIndex, slotIndex);
+                        break;
                 }
             }
         }
@@ -417,9 +389,9 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
                 if (!decodeFrameSlotPlaceholder(mem->disp, slotIndex, false)) {
                     continue;
                 }
-                const RegClass cls = slotIndex >= kSpillSlotOffset
-                                         ? requireSpillMemClass(instr, idx)
-                                         : RegClass::GPR;
+                const RegClass cls =
+                    classifyFrameSlot(slotIndex) == FrameSlotKind::SpillXMM ? RegClass::XMM
+                                                                            : RegClass::GPR;
                 const SlotKey key{cls, slotIndex};
                 auto it = slotOffsets.find(key);
                 if (it != slotOffsets.end()) {

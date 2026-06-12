@@ -895,7 +895,8 @@ static void runPerBlockRewrites(MFunction &fn, PeepholeStats &stats, const Targe
                 changed = false;
                 ph::RegConstMap divConsts;
                 for (std::size_t i = 0; i + 1 < instrs.size(); ++i) {
-                    if (ph::tryRemainderFusion(instrs, i, divConsts, stats)) {
+                    if (ph::tryRemainderFusion(instrs, i, divConsts, stats,
+                                               &block.carriedExitRegs)) {
                         changed = true;
                         break;
                     }
@@ -910,9 +911,11 @@ static void runPerBlockRewrites(MFunction &fn, PeepholeStats &stats, const Targe
                 for (std::size_t i = 0; i < instrs.size(); ++i) {
                     bool localChange = false;
                     if (instrs[i].opc == MOpcode::UDivRRR)
-                        localChange = ph::tryUDivStrengthReduction(instrs, i, divConsts, stats);
+                        localChange = ph::tryUDivStrengthReduction(instrs, i, divConsts, stats,
+                                                                   &block.carriedExitRegs);
                     else if (instrs[i].opc == MOpcode::SDivRRR)
-                        localChange = ph::trySDivStrengthReduction(instrs, i, divConsts, stats);
+                        localChange = ph::trySDivStrengthReduction(instrs, i, divConsts, stats,
+                                                                   &block.carriedExitRegs);
 
                     if (localChange) {
                         changed = true;
@@ -945,7 +948,7 @@ static void runPerBlockRewrites(MFunction &fn, PeepholeStats &stats, const Targe
                 --i;
         }
         for (std::size_t i = 0; i < instrs.size(); ++i) {
-            if (ph::tryCsetBranchFusion(instrs, i, stats) && i > 0)
+            if (ph::tryCsetBranchFusion(instrs, i, stats, &block.carriedExitRegs) && i > 0)
                 --i;
         }
         for (std::size_t i = 0; i + 1 < instrs.size(); ++i) {
@@ -985,7 +988,7 @@ static void runPerBlockRewrites(MFunction &fn, PeepholeStats &stats, const Targe
         // Pass 4.5: Local DCE. The modular pipeline runs the CFG-aware variant
         // post-block; direct unit tests (no target) keep the legacy per-block path.
         if (target == nullptr)
-            ph::removeDeadInstructions(instrs, stats);
+            ph::removeDeadInstructions(instrs, stats, &block.carriedExitRegs);
 
         // Pass 4.6: Dead flag-setter elimination AFTER DCE so dead readers of
         // flags are gone before we judge a flag-setter unused.
@@ -1135,7 +1138,7 @@ PeepholeStats runPostSchedulePeephole(MFunction &fn, const TargetInfo *target) {
             ph::removeMarkedInstructions(instrs, toRemove);
 
         if (target == nullptr)
-            ph::removeDeadInstructions(instrs, stats);
+            ph::removeDeadInstructions(instrs, stats, &block.carriedExitRegs);
         ph::removeDeadFlagSetters(instrs, stats);
     }
 

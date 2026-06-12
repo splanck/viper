@@ -24,6 +24,7 @@
 #include "BranchOpt.hpp"
 
 #include "PeepholeCommon.hpp"
+#include "codegen/aarch64/Noreturn.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -88,18 +89,31 @@ namespace {
 }
 
 /// @brief Return true if moving block @p idx to the end preserves implicit fallthrough.
-/// @details The layout optimizer can only move a cold block when the preceding
-///          block cannot implicitly fall through into it. Conditional branches
-///          are deliberately rejected because their not-taken path is layout
-///          dependent in this MIR.
+/// @details Two conditions must hold. First, the preceding block must not be
+///          able to fall through INTO the cold block (its last instruction is
+///          an unconditional transfer; conditional branches are rejected
+///          because their not-taken path is layout dependent in this MIR).
+///          Second, the cold block itself must not fall through OUT into the
+///          next layout block — moving a block that ends in a conditional
+///          branch or plain computation would re-target its implicit
+///          fallthrough edge. Cold-block matching is name-token based, so a
+///          user block merely named "error" can carry any terminator shape.
 [[nodiscard]] bool canMoveColdBlock(const MFunction &fn, std::size_t idx) noexcept {
     if (idx == 0 || idx >= fn.blocks.size())
         return false;
     const auto &prev = fn.blocks[idx - 1];
     if (prev.instrs.empty())
         return false;
-    const MOpcode last = prev.instrs.back().opc;
-    return last == MOpcode::Br || last == MOpcode::Ret;
+    const MOpcode prevLast = prev.instrs.back().opc;
+    if (prevLast != MOpcode::Br && prevLast != MOpcode::Ret)
+        return false;
+
+    const auto &cold = fn.blocks[idx];
+    if (cold.instrs.empty())
+        return false;
+    const MInstr &coldLast = cold.instrs.back();
+    return coldLast.opc == MOpcode::Br || coldLast.opc == MOpcode::Ret ||
+           isNoReturnCall(coldLast);
 }
 
 } // namespace
@@ -223,7 +237,10 @@ bool tryCbzCbnzFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStat
 /// @param idx    Index of the `CSET` to consider.
 /// @param stats  Peephole statistics counter (incremented on success).
 /// @return True if the fusion was applied at @p idx.
-bool tryCsetBranchFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats) {
+bool tryCsetBranchFusion(std::vector<MInstr> &instrs,
+                         std::size_t idx,
+                         PeepholeStats &stats,
+                         const std::vector<uint16_t> *carriedExitRegs) {
     if (idx >= instrs.size())
         return false;
 
@@ -237,6 +254,15 @@ bool tryCsetBranchFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeS
     const MOperand csetReg = csetInstr.ops[0];
     const char *cond = csetInstr.ops[1].cond;
     if (!cond)
+        return false;
+
+    // A CSET whose destination is carried live across the block's exit has an
+    // invisible consumer in a successor; the in-block deadness scan below
+    // cannot see it, so refuse the fusion outright.
+    if (carriedExitRegs != nullptr && csetReg.kind == MOperand::Kind::Reg && csetReg.reg.isPhys &&
+        std::binary_search(carriedExitRegs->begin(),
+                           carriedExitRegs->end(),
+                           csetReg.reg.idOrPhys))
         return false;
 
     for (std::size_t j = idx + 1; j < instrs.size(); ++j) {

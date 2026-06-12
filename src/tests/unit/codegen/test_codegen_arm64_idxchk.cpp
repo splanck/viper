@@ -191,8 +191,8 @@ TEST(Arm64IdxChk, SubWidthOperandsAreSignExtendedBeforeCheck) {
     ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     EXPECT_NE(asmText.find("#48"), std::string::npos);
-    EXPECT_NE(asmText.find("b.lt L.Ltrap_bounds_"), std::string::npos);
-    EXPECT_NE(asmText.find("b.ge L.Ltrap_bounds_"), std::string::npos);
+    EXPECT_NE(asmText.find("b.lt L.Ltrap_bounds"), std::string::npos);
+    EXPECT_NE(asmText.find("b.ge L.Ltrap_bounds"), std::string::npos);
 }
 
 int main(int argc, char **argv) {
