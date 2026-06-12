@@ -10,8 +10,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#if !defined(_WIN32)
+#ifndef _DARWIN_C_SOURCE
 #define _DARWIN_C_SOURCE 1
+#endif
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE 1
 #endif
 
@@ -33,7 +35,7 @@
 #include <string.h>
 #include <time.h>
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
 #define strcasecmp _stricmp
 #define strncasecmp _strnicmp
 typedef CRITICAL_SECTION http_pool_mutex_t;
@@ -41,15 +43,14 @@ typedef CRITICAL_SECTION http_pool_mutex_t;
 #define HTTP_POOL_MUTEX_LOCK(m) EnterCriticalSection(m)
 #define HTTP_POOL_MUTEX_UNLOCK(m) LeaveCriticalSection(m)
 #define HTTP_POOL_MUTEX_DESTROY(m) DeleteCriticalSection(m)
-#define HTTP_THREAD_LOCAL __declspec(thread)
 #else
 #include <pthread.h>
+#include <strings.h>
 typedef pthread_mutex_t http_pool_mutex_t;
 #define HTTP_POOL_MUTEX_INIT(m) pthread_mutex_init(m, NULL)
 #define HTTP_POOL_MUTEX_LOCK(m) pthread_mutex_lock(m)
 #define HTTP_POOL_MUTEX_UNLOCK(m) pthread_mutex_unlock(m)
 #define HTTP_POOL_MUTEX_DESTROY(m) pthread_mutex_destroy(m)
-#define HTTP_THREAD_LOCAL __thread
 #endif
 
 #include "rt_trap.h"
@@ -371,11 +372,7 @@ static int http_conn_is_healthy(http_conn_t *conn) {
             return 0;
     }
 
-#ifdef _WIN32
-    return GET_LAST_ERROR() == WSAEWOULDBLOCK ? 1 : 0;
-#else
-    return errno == EAGAIN || errno == EWOULDBLOCK ? 1 : 0;
-#endif
+    return WOULD_BLOCK ? 1 : 0;
 }
 
 static void http_conn_pool_entry_reset(http_conn_pool_entry_t *entry) {
@@ -589,7 +586,7 @@ static void http_conn_pool_release(http_conn_t *conn, int reusable) {
 }
 
 
-static HTTP_THREAD_LOCAL char g_http_tls_open_error[256];
+static RT_THREAD_LOCAL char g_http_tls_open_error[256];
 
 static void http_set_tls_open_error(const char *msg) {
     if (!msg || !*msg) {
@@ -898,16 +895,7 @@ static void http_set_nodelay(socket_t sock) {
 
 /// @brief Set or clear non-blocking mode for connect-with-timeout.
 static bool http_set_nonblocking(socket_t sock, bool nonblocking) {
-#ifdef _WIN32
-    u_long mode = nonblocking ? 1 : 0;
-    return ioctlsocket(sock, FIONBIO, &mode) == 0;
-#else
-    int flags = fcntl(sock, F_GETFL, 0);
-    if (flags < 0)
-        return false;
-    int new_flags = nonblocking ? (flags | O_NONBLOCK) : (flags & ~O_NONBLOCK);
-    return fcntl(sock, F_SETFL, new_flags) == 0;
-#endif
+    return rt_socket_set_nonblocking(sock, nonblocking);
 }
 
 /// @brief Connect a socket with an optional timeout in milliseconds.
@@ -926,12 +914,7 @@ static bool http_connect_socket_with_timeout(
         int connect_result = connect(sock, addr, addrlen);
         if (connect_result == SOCK_ERROR) {
             int err = GET_LAST_ERROR();
-#ifdef _WIN32
-            if (err == WSAEWOULDBLOCK)
-#else
-            if (err == EINPROGRESS)
-#endif
-            {
+            if (rt_socket_error_is_in_progress(err)) {
                 int ready = wait_socket(sock, timeout_ms, true);
                 if (ready <= 0) {
                     if (err_out)
@@ -1015,11 +998,7 @@ static socket_t http_create_tcp_socket(const char *host, int port, int timeout_m
         if (err_code) {
             if (last_err == CONN_REFUSED)
                 *err_code = Err_ConnectionRefused;
-#ifdef _WIN32
-            else if (last_err == WSAETIMEDOUT)
-#else
-            else if (last_err == ETIMEDOUT)
-#endif
+            else if (rt_socket_error_is_timeout(last_err))
                 *err_code = Err_Timeout;
             else
                 *err_code = Err_NetworkError;

@@ -58,7 +58,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
 #include <windows.h>
 
 LONG *parallel_win_remaining_new(int64_t count) {
@@ -74,7 +74,7 @@ void parallel_win_complete_one(LONG *remaining, HANDLE event) {
 }
 #else
 #include <pthread.h>
-#ifdef __APPLE__
+#if RT_PLATFORM_MACOS
 #include <sys/types.h>
 // Forward declare sysctlbyname to avoid header issues
 int sysctlbyname(const char *, void *, size_t *, void *, size_t);
@@ -89,7 +89,7 @@ int sysctlbyname(const char *, void *, size_t *, void *, size_t);
 //=============================================================================
 
 
-#ifndef _WIN32
+#if !RT_PLATFORM_WINDOWS
 
 /// @brief Allocate a heap-resident batch synchronization block (POSIX path).
 /// @details Used to coordinate completion across N parallel tasks. The block lives on the heap
@@ -149,7 +149,7 @@ void parallel_sync_complete(parallel_sync *s) {
 //=============================================================================
 
 static void *g_default_pool = NULL;
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
 static INIT_ONCE g_pool_lock_once = INIT_ONCE_STATIC_INIT;
 static CRITICAL_SECTION g_pool_lock;
 
@@ -172,11 +172,11 @@ static pthread_mutex_t g_pool_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /// @brief Get the default number of worker threads (= number of CPU cores).
 int64_t rt_parallel_default_workers(void) {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     SYSTEM_INFO si;
     GetSystemInfo(&si);
     int64_t count = si.dwNumberOfProcessors;
-#elif defined(__APPLE__)
+#elif RT_PLATFORM_MACOS
     int ncpu = 0;
     size_t len = sizeof(ncpu);
     sysctlbyname("hw.ncpu", &ncpu, &len, NULL, 0);
@@ -189,7 +189,7 @@ int64_t rt_parallel_default_workers(void) {
 
 /// @brief Get (or lazily create) the shared default thread pool for parallel operations.
 void *rt_parallel_default_pool(void) {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     InitOnceExecuteOnce(&g_pool_lock_once, pool_lock_init_callback, NULL, NULL);
     EnterCriticalSection(&g_pool_lock);
 #else
@@ -213,7 +213,7 @@ void *rt_parallel_default_pool(void) {
     if (result)
         rt_obj_retain_maybe(result);
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     LeaveCriticalSection(&g_pool_lock);
 #else
     pthread_mutex_unlock(&g_pool_lock);

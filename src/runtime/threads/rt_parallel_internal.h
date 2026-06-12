@@ -12,7 +12,7 @@
 //
 // Key invariants:
 //   - Engine-internal; included only by the threads/ parallel translation units.
-//   - Platform sync uses Win32 events/Interlocked on _WIN32, pthread mutex/cond
+//   - Platform sync uses Win32 events/Interlocked on Windows, pthread mutex/cond
 //     otherwise; the per-task contexts carry the matching field set.
 //   - The first worker to trap captures its message into the per-batch error
 //     slot; helpers here marshal that slot and the completion counters.
@@ -30,7 +30,9 @@
 #include <stdint.h>
 #include <string.h>
 
-#ifdef _WIN32
+#include "rt_platform.h"
+
+#if RT_PLATFORM_WINDOWS
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -48,7 +50,7 @@ typedef struct {
     int64_t start;
     int64_t end;
     void (*func)(void *);
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     LONG *remaining;
     LONG *failed;
     HANDLE event;
@@ -70,7 +72,7 @@ typedef struct {
     void *(*func)(void *);
     int64_t start;
     int64_t end;
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     LONG *remaining;
     LONG *failed;
     HANDLE event;
@@ -88,7 +90,7 @@ typedef struct {
 // Task context for invoke
 typedef struct {
     void (*func)(void);
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     LONG *remaining;
     LONG *failed;
     HANDLE event;
@@ -111,7 +113,7 @@ typedef struct {
     void *(*func)(void *, void *);
     void *identity;
     void *result;
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     LONG *remaining;
     LONG *failed;
     HANDLE event;
@@ -131,7 +133,7 @@ typedef struct {
     int64_t start;
     int64_t end;
     void (*func)(int64_t);
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     LONG *remaining;
     LONG *failed;
     HANDLE event;
@@ -146,7 +148,7 @@ typedef struct {
     size_t error_size;
 } for_task;
 
-#ifndef _WIN32
+#if !RT_PLATFORM_WINDOWS
 /* Heap-allocated synchronisation state shared across all tasks in one batch. */
 typedef struct {
     int remaining;
@@ -159,7 +161,7 @@ typedef struct {
 // Shared pool / sync / error helpers (defined in rt_parallel.c)
 //=============================================================================
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
 LONG *parallel_win_remaining_new(int64_t count);
 void parallel_win_complete_one(LONG *remaining, HANDLE event);
 #endif
@@ -173,7 +175,7 @@ static inline void *fnptr_to_voidptr(void (*fn)(void *)) {
     return p;
 }
 
-#ifndef _WIN32
+#if !RT_PLATFORM_WINDOWS
 parallel_sync *parallel_sync_new(int initial);
 void parallel_sync_wait_and_free(parallel_sync *s);
 void parallel_sync_destroy(parallel_sync *s);

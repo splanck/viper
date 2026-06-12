@@ -107,7 +107,7 @@ void rt_parallel_foreach_pool(void *seq, void *func, void *pool) {
         return;
     }
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     LONG *remaining = parallel_win_remaining_new(task_count);
     if (!remaining) {
         free(items);
@@ -141,7 +141,7 @@ void rt_parallel_foreach_pool(void *seq, void *func, void *pool) {
 
     // Allocate task array
     if (!parallel_count_fits_array(task_count, sizeof(foreach_task))) {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
         CloseHandle(event);
         DeleteCriticalSection(&error_lock);
         free(remaining);
@@ -155,7 +155,7 @@ void rt_parallel_foreach_pool(void *seq, void *func, void *pool) {
     }
     foreach_task *tasks = (foreach_task *)malloc((size_t)task_count * sizeof(foreach_task));
     if (!tasks) {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
         CloseHandle(event);
         DeleteCriticalSection(&error_lock);
         free(remaining);
@@ -175,7 +175,7 @@ void rt_parallel_foreach_pool(void *seq, void *func, void *pool) {
         tasks[i].items = items;
         parallel_split_range(count, task_count, i, &tasks[i].start, &tasks[i].end);
         tasks[i].func = (void (*)(void *))func;
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
         tasks[i].remaining = remaining;
         tasks[i].failed = &task_failed;
         tasks[i].event = event;
@@ -190,7 +190,7 @@ void rt_parallel_foreach_pool(void *seq, void *func, void *pool) {
         tasks[i].error_size = sizeof(task_error);
         if (!rt_threadpool_submit(actual_pool, fnptr_to_voidptr(foreach_callback), &tasks[i])) {
             submit_failed = 1;
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
             parallel_win_complete_one(remaining, event);
 #else
             parallel_sync_complete(sync);
@@ -199,7 +199,7 @@ void rt_parallel_foreach_pool(void *seq, void *func, void *pool) {
     }
 
     // Wait for completion
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     WaitForSingleObject(event, INFINITE);
     CloseHandle(event);
     DeleteCriticalSection(&error_lock);
@@ -298,7 +298,7 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool) {
         return NULL;
     }
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     LONG *remaining = parallel_win_remaining_new(task_count);
     if (!remaining) {
         free(items);
@@ -335,7 +335,7 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool) {
 
     // Allocate task array
     if (!parallel_count_fits_array(task_count, sizeof(map_task))) {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
         CloseHandle(event);
         DeleteCriticalSection(&error_lock);
         free(remaining);
@@ -350,7 +350,7 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool) {
     }
     map_task *tasks = (map_task *)malloc((size_t)task_count * sizeof(map_task));
     if (!tasks) {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
         CloseHandle(event);
         DeleteCriticalSection(&error_lock);
         free(remaining);
@@ -372,7 +372,7 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool) {
         tasks[i].results = results;
         tasks[i].func = (void *(*)(void *))func;
         parallel_split_range(count, task_count, i, &tasks[i].start, &tasks[i].end);
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
         tasks[i].remaining = remaining;
         tasks[i].failed = &task_failed;
         tasks[i].event = event;
@@ -387,7 +387,7 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool) {
         tasks[i].error_size = sizeof(task_error);
         if (!rt_threadpool_submit(actual_pool, fnptr_to_voidptr(map_callback), &tasks[i])) {
             submit_failed = 1;
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
             parallel_win_complete_one(remaining, event);
 #else
             parallel_sync_complete(sync);
@@ -396,7 +396,7 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool) {
     }
 
     // Wait for completion
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     WaitForSingleObject(event, INFINITE);
     CloseHandle(event);
     DeleteCriticalSection(&error_lock);
@@ -489,7 +489,7 @@ void rt_parallel_invoke_pool(void *funcs, void *pool) {
         return;
     }
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     LONG *remaining = parallel_win_remaining_new(count);
     if (!remaining) {
         parallel_release_default_pool(pool, actual_pool);
@@ -520,7 +520,7 @@ void rt_parallel_invoke_pool(void *funcs, void *pool) {
 
     // Allocate task array
     if (!parallel_count_fits_array(count, sizeof(invoke_task))) {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
         CloseHandle(event);
         DeleteCriticalSection(&error_lock);
         free(remaining);
@@ -533,7 +533,7 @@ void rt_parallel_invoke_pool(void *funcs, void *pool) {
     }
     invoke_task *tasks = (invoke_task *)malloc((size_t)count * sizeof(invoke_task));
     if (!tasks) {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
         CloseHandle(event);
         DeleteCriticalSection(&error_lock);
         free(remaining);
@@ -550,7 +550,7 @@ void rt_parallel_invoke_pool(void *funcs, void *pool) {
     // Submit all tasks
     for (int64_t i = 0; i < count; i++) {
         tasks[i].func = (void (*)(void))rt_seq_get(funcs, i);
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
         tasks[i].remaining = remaining;
         tasks[i].failed = &task_failed;
         tasks[i].event = event;
@@ -565,7 +565,7 @@ void rt_parallel_invoke_pool(void *funcs, void *pool) {
         tasks[i].error_size = sizeof(task_error);
         if (!rt_threadpool_submit(actual_pool, fnptr_to_voidptr(invoke_callback), &tasks[i])) {
             submit_failed = 1;
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
             parallel_win_complete_one(remaining, event);
 #else
             parallel_sync_complete(sync);
@@ -574,7 +574,7 @@ void rt_parallel_invoke_pool(void *funcs, void *pool) {
     }
 
     // Wait for completion
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     WaitForSingleObject(event, INFINITE);
     CloseHandle(event);
     DeleteCriticalSection(&error_lock);
@@ -671,7 +671,7 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
         items[i] = rt_seq_get(seq, i);
     }
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     LONG *remaining = parallel_win_remaining_new(nworkers);
     if (!remaining) {
         free(items);
@@ -704,7 +704,7 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
     task_error[0] = '\0';
 
     if (!parallel_count_fits_array(nworkers, sizeof(reduce_task))) {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
         CloseHandle(event);
         DeleteCriticalSection(&error_lock);
         free(remaining);
@@ -718,7 +718,7 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
     }
     reduce_task *tasks = (reduce_task *)malloc((size_t)nworkers * sizeof(reduce_task));
     if (!tasks) {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
         CloseHandle(event);
         DeleteCriticalSection(&error_lock);
         free(remaining);
@@ -744,7 +744,7 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
         tasks[i].func = combine;
         tasks[i].identity = identity;
         tasks[i].result = identity;
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
         tasks[i].remaining = remaining;
         tasks[i].failed = &task_failed;
         tasks[i].event = event;
@@ -759,7 +759,7 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
         tasks[i].error_size = sizeof(task_error);
         if (!rt_threadpool_submit(actual_pool, fnptr_to_voidptr(reduce_callback), &tasks[i])) {
             submit_failed = 1;
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
             parallel_win_complete_one(remaining, event);
 #else
             parallel_sync_complete(sync);
@@ -769,7 +769,7 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
     }
 
     /* Wait for completion. */
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     WaitForSingleObject(event, INFINITE);
     CloseHandle(event);
     DeleteCriticalSection(&error_lock);
@@ -863,7 +863,7 @@ void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool) {
         return;
     }
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     LONG *remaining = parallel_win_remaining_new(task_count);
     if (!remaining) {
         parallel_release_default_pool(pool, actual_pool);
@@ -894,7 +894,7 @@ void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool) {
 
     // Allocate task array
     if (!parallel_count_fits_array(task_count, sizeof(for_task))) {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
         CloseHandle(event);
         DeleteCriticalSection(&error_lock);
         free(remaining);
@@ -907,7 +907,7 @@ void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool) {
     }
     for_task *tasks = (for_task *)malloc((size_t)task_count * sizeof(for_task));
     if (!tasks) {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
         CloseHandle(event);
         DeleteCriticalSection(&error_lock);
         free(remaining);
@@ -929,7 +929,7 @@ void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool) {
         tasks[i].start = start + local_start;
         tasks[i].end = start + local_end;
         tasks[i].func = (void (*)(int64_t))func;
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
         tasks[i].remaining = remaining;
         tasks[i].failed = &task_failed;
         tasks[i].event = event;
@@ -944,7 +944,7 @@ void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool) {
         tasks[i].error_size = sizeof(task_error);
         if (!rt_threadpool_submit(actual_pool, fnptr_to_voidptr(for_callback), &tasks[i])) {
             submit_failed = 1;
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
             parallel_win_complete_one(remaining, event);
 #else
             parallel_sync_complete(sync);
@@ -953,7 +953,7 @@ void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool) {
     }
 
     // Wait for completion
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     WaitForSingleObject(event, INFINITE);
     CloseHandle(event);
     DeleteCriticalSection(&error_lock);
@@ -1002,7 +1002,7 @@ static void foreach_callback(void *arg) {
     }
     rt_trap_clear_recovery();
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     if (task_failed) {
         EnterCriticalSection(task->error_lock);
         if (task->error && task->error_size > 0 && task->error[0] == '\0') {
@@ -1060,7 +1060,7 @@ static void map_callback(void *arg) {
     }
     rt_trap_clear_recovery();
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     if (task_failed) {
         EnterCriticalSection(task->error_lock);
         if (task->error && task->error_size > 0 && task->error[0] == '\0') {
@@ -1111,7 +1111,7 @@ static void invoke_callback(void *arg) {
     }
     rt_trap_clear_recovery();
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     if (task_failed) {
         EnterCriticalSection(task->error_lock);
         if (task->error && task->error_size > 0 && task->error[0] == '\0') {
@@ -1173,7 +1173,7 @@ static void reduce_callback(void *arg) {
     }
     rt_trap_clear_recovery();
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     if (task_failed) {
         EnterCriticalSection(task->error_lock);
         if (task->error && task->error_size > 0 && task->error[0] == '\0') {
@@ -1225,7 +1225,7 @@ static void for_callback(void *arg) {
     }
     rt_trap_clear_recovery();
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     if (task_failed) {
         EnterCriticalSection(task->error_lock);
         if (task->error && task->error_size > 0 && task->error[0] == '\0') {

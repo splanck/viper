@@ -133,6 +133,11 @@ echo "[build_viper] Installing to $INSTALL_PREFIX..."
 if [[ "$(id -u)" -eq 0 ]]; then
     cmake --install "$BUILD_DIR" --prefix "$INSTALL_PREFIX"
 else
+    if { [[ -d "$INSTALL_PREFIX" ]] || mkdir -p "$INSTALL_PREFIX" 2>/dev/null; } && [[ -w "$INSTALL_PREFIX" ]]; then
+        cmake --install "$BUILD_DIR" --prefix "$INSTALL_PREFIX"
+        echo "[build_viper] Install complete"
+        exit 0
+    fi
     if [[ ! -t 0 ]]; then
         echo "error: install to $INSTALL_PREFIX requires sudo, but stdin is not a terminal" >&2
         echo "Set VIPER_SKIP_INSTALL=1 to build and test only, or set VIPER_INSTALL_PREFIX to a writable prefix." >&2

@@ -44,13 +44,13 @@
 #include <sys/types.h>
 
 // Platform-specific includes
-#if defined(__linux__)
+#if RT_PLATFORM_LINUX
 #include <fcntl.h>
 #include <limits.h>
 #include <poll.h>
 #include <sys/inotify.h>
 #include <unistd.h>
-#elif defined(__APPLE__)
+#elif RT_PLATFORM_MACOS
 #include <fcntl.h>
 #include <sys/event.h>
 #include <sys/time.h>
@@ -58,9 +58,9 @@
 #ifndef O_EVTONLY
 #define O_EVTONLY 0x8000
 #endif
-#elif defined(_WIN32)
+#elif RT_PLATFORM_WINDOWS
 #include <windows.h>
-#elif defined(__viperdos__)
+#elif RT_PLATFORM_VIPERDOS
 // ViperDOS: file watching deferred until kernel inotify-like support exists.
 #else
 // Stub platform
@@ -107,13 +107,13 @@ typedef struct rt_watcher_impl {
     void *last_event_path;
     int8_t has_last_event;
 
-#if defined(__linux__)
+#if RT_PLATFORM_LINUX
     int inotify_fd;       ///< inotify file descriptor
     int watch_descriptor; ///< Watch descriptor for the path
-#elif defined(__APPLE__)
+#elif RT_PLATFORM_MACOS
     int kqueue_fd;  ///< kqueue file descriptor
     int watched_fd; ///< File descriptor of watched path
-#elif defined(_WIN32)
+#elif RT_PLATFORM_WINDOWS
     HANDLE dir_handle;     ///< Directory handle
     OVERLAPPED overlapped; ///< Overlapped I/O structure
     char buffer[4096];     ///< Buffer for change notifications
@@ -161,17 +161,17 @@ static void rt_watcher_finalize(void *obj) {
 
     // Stop watching if active
     if (w->is_watching) {
-#if defined(__linux__)
+#if RT_PLATFORM_LINUX
         if (w->watch_descriptor >= 0)
             inotify_rm_watch(w->inotify_fd, w->watch_descriptor);
         if (w->inotify_fd >= 0)
             close(w->inotify_fd);
-#elif defined(__APPLE__)
+#elif RT_PLATFORM_MACOS
         if (w->watched_fd >= 0)
             close(w->watched_fd);
         if (w->kqueue_fd >= 0)
             close(w->kqueue_fd);
-#elif defined(_WIN32)
+#elif RT_PLATFORM_WINDOWS
         if (w->dir_handle != INVALID_HANDLE_VALUE) {
             CancelIo(w->dir_handle);
             if (w->overlapped.hEvent)
@@ -196,7 +196,7 @@ static void rt_watcher_finalize(void *obj) {
     }
 }
 
-#if defined(__linux__) || defined(_WIN32)
+#if RT_PLATFORM_LINUX || RT_PLATFORM_WINDOWS
 /// @brief Convert a relative name from an OS event into a full path string.
 ///
 /// inotify and ReadDirectoryChangesW report names relative to the
@@ -274,7 +274,7 @@ static int watcher_dequeue_event(rt_watcher_impl *w, watcher_event *out) {
     return 1;
 }
 
-#if defined(__linux__)
+#if RT_PLATFORM_LINUX
 /// @brief Drain pending inotify events from the kernel and translate to RT_WATCH_EVENT_*.
 ///
 /// A single `read` can return multiple packed `struct inotify_event`
@@ -317,7 +317,7 @@ static void watcher_read_inotify_events(rt_watcher_impl *w) {
 }
 #endif
 
-#if defined(__APPLE__)
+#if RT_PLATFORM_MACOS
 /// @brief Wait up to `timeout_ms` for a kqueue EVFILT_VNODE event and queue it.
 ///
 /// Unlike inotify/ReadDirectoryChangesW, kqueue reports vnode changes
@@ -355,7 +355,7 @@ static void watcher_read_kqueue_events(rt_watcher_impl *w, int timeout_ms) {
 }
 #endif
 
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
 static BOOL watcher_start_windows_read(rt_watcher_impl *w) {
     if (!w || w->dir_handle == INVALID_HANDLE_VALUE)
         return FALSE;
@@ -474,7 +474,7 @@ void *rt_watcher_new(rt_string path) {
     }
 
     // Check if path exists
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     wchar_t *wide_path = rt_file_path_utf8_to_wide(cpath);
     if (!wide_path) {
         rt_trap("Watcher.New: invalid path");
@@ -516,13 +516,13 @@ void *rt_watcher_new(rt_string path) {
     w->is_watching = 0;
     watcher_clear_events(w);
 
-#if defined(__linux__)
+#if RT_PLATFORM_LINUX
     w->inotify_fd = -1;
     w->watch_descriptor = -1;
-#elif defined(__APPLE__)
+#elif RT_PLATFORM_MACOS
     w->kqueue_fd = -1;
     w->watched_fd = -1;
-#elif defined(_WIN32)
+#elif RT_PLATFORM_WINDOWS
     w->dir_handle = INVALID_HANDLE_VALUE;
     w->pending_read = FALSE;
 #endif
@@ -570,7 +570,7 @@ void rt_watcher_start(void *obj) {
         return;
     }
 
-#if defined(__linux__)
+#if RT_PLATFORM_LINUX
     w->inotify_fd = inotify_init1(IN_NONBLOCK
 #ifdef IN_CLOEXEC
                                   | IN_CLOEXEC
@@ -597,7 +597,7 @@ void rt_watcher_start(void *obj) {
         rt_trap("Watcher.Start: failed to add watch");
     }
 
-#elif defined(__APPLE__)
+#elif RT_PLATFORM_MACOS
     const char *cpath = rt_string_cstr(w->watch_path);
     w->kqueue_fd = kqueue();
     if (w->kqueue_fd < 0)
@@ -641,7 +641,7 @@ void rt_watcher_start(void *obj) {
         rt_trap("Watcher.Start: failed to register kevent");
     }
 
-#elif defined(_WIN32)
+#elif RT_PLATFORM_WINDOWS
     // For Windows, we need to watch the directory (or parent directory for files)
     const char *watch_dir =
         rt_string_cstr(w->is_directory ? (rt_string)w->watch_path : (rt_string)w->watch_dir_path);
@@ -699,7 +699,7 @@ void rt_watcher_stop(void *obj) {
     if (!w->is_watching)
         return;
 
-#if defined(__linux__)
+#if RT_PLATFORM_LINUX
     if (w->watch_descriptor >= 0) {
         inotify_rm_watch(w->inotify_fd, w->watch_descriptor);
         w->watch_descriptor = -1;
@@ -708,7 +708,7 @@ void rt_watcher_stop(void *obj) {
         close(w->inotify_fd);
         w->inotify_fd = -1;
     }
-#elif defined(__APPLE__)
+#elif RT_PLATFORM_MACOS
     if (w->watched_fd >= 0) {
         close(w->watched_fd);
         w->watched_fd = -1;
@@ -717,7 +717,7 @@ void rt_watcher_stop(void *obj) {
         close(w->kqueue_fd);
         w->kqueue_fd = -1;
     }
-#elif defined(_WIN32)
+#elif RT_PLATFORM_WINDOWS
     if (w->dir_handle != INVALID_HANDLE_VALUE) {
         CancelIo(w->dir_handle);
         if (w->overlapped.hEvent) {
@@ -765,7 +765,7 @@ int64_t rt_watcher_poll_for(void *obj, int64_t ms) {
     }
 
     // Read new events from OS
-#if defined(__linux__)
+#if RT_PLATFORM_LINUX
     struct pollfd pfd;
     pfd.fd = w->inotify_fd;
     pfd.events = POLLIN;
@@ -773,9 +773,9 @@ int64_t rt_watcher_poll_for(void *obj, int64_t ms) {
     if (poll(&pfd, 1, timeout) > 0 && (pfd.revents & POLLIN)) {
         watcher_read_inotify_events(w);
     }
-#elif defined(__APPLE__)
+#elif RT_PLATFORM_MACOS
     watcher_read_kqueue_events(w, watcher_timeout_to_int(ms));
-#elif defined(_WIN32)
+#elif RT_PLATFORM_WINDOWS
     if (w->pending_read) {
         DWORD timeout = ms < 0 ? INFINITE : (ms > (int64_t)0xFFFFFFFEu ? 0xFFFFFFFEu : (DWORD)ms);
         DWORD wait_result = WaitForSingleObject(w->overlapped.hEvent, timeout);

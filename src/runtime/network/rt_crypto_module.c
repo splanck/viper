@@ -26,38 +26,13 @@
 #include "rt_crypto_module.h"
 
 #include "rt_crypto.h"
+#include "rt_entropy_platform.h"
 #include "rt_platform.h"
 #include "rt_string.h"
 #include "rt_trap.h"
 
-#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
-
-#if defined(__APPLE__)
-extern void arc4random_buf(void *buf, size_t nbytes);
-#endif
-
-#ifdef _WIN32
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#include <bcrypt.h>
-#ifndef NT_SUCCESS
-#define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
-#endif
-#elif defined(__linux__)
-#include <fcntl.h>
-#include <sys/random.h>
-#include <unistd.h>
-#else
-#include <fcntl.h>
-#include <unistd.h>
-#endif
 
 typedef struct rt_hmac_drbg_state {
     uint8_t k[32];
@@ -100,75 +75,12 @@ static void module_secure_zero(void *ptr, size_t len) {
 }
 
 /// @brief Pull @p len bytes of OS entropy into @p buf.
-/// @details Tries the strongest source per platform: BCryptGenRandom on
-///          Windows, arc4random_buf on macOS, getrandom() on Linux,
-///          /dev/urandom as the universal fallback. Returns -1 on every
-///          source failing; the caller traps in that case so we never
-///          fall back to a non-cryptographic seed for the DRBG.
+/// @details Delegates to the shared entropy adapter. The caller traps when
+///          this returns failure so the DRBG is never seeded from predictable
+///          data.
 /// @return 0 on success, -1 on entropy failure.
 static int module_os_entropy(uint8_t *buf, size_t len) {
-    if (len == 0)
-        return 0;
-#ifdef _WIN32
-    size_t off = 0;
-    while (off < len) {
-        size_t chunk = len - off;
-        if (chunk > UINT32_MAX)
-            chunk = UINT32_MAX;
-        NTSTATUS status =
-            BCryptGenRandom(NULL, buf + off, (ULONG)chunk, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
-        if (!NT_SUCCESS(status))
-            return -1;
-        off += chunk;
-    }
-    return 0;
-#else
-    size_t got = 0;
-#if defined(__APPLE__)
-    arc4random_buf(buf, len);
-    return 0;
-#elif defined(__linux__)
-    while (got < len) {
-        ssize_t n = getrandom(buf + got, len - got, 0);
-        if (n < 0) {
-            if (errno == EINTR)
-                continue;
-            if (errno == ENOSYS)
-                break;
-            return -1;
-        }
-        if (n == 0)
-            return -1;
-        got += (size_t)n;
-    }
-    if (got == len)
-        return 0;
-    got = 0;
-#endif
-#ifdef O_CLOEXEC
-    int fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
-#else
-    int fd = open("/dev/urandom", O_RDONLY);
-#endif
-    if (fd < 0)
-        return -1;
-    while (got < len) {
-        ssize_t n = read(fd, buf + got, len - got);
-        if (n < 0) {
-            if (errno == EINTR)
-                continue;
-            close(fd);
-            return -1;
-        }
-        if (n == 0) {
-            close(fd);
-            return -1;
-        }
-        got += (size_t)n;
-    }
-    close(fd);
-    return 0;
-#endif
+    return rt_entropy_platform_random_bytes(buf, len);
 }
 
 /// @brief HMAC-DRBG Update (NIST SP 800-90A §10.1.2.2).

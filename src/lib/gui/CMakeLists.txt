@@ -61,6 +61,12 @@ set(VG_GUI_IDE_WIDGET_SOURCES
         src/widgets/vg_groupbox.c
 )
 
+if (WIN32)
+    list(APPEND VG_GUI_IDE_WIDGET_SOURCES src/widgets/vg_filedialog_platform_win32.c)
+else ()
+    list(APPEND VG_GUI_IDE_WIDGET_SOURCES src/widgets/vg_filedialog_platform_posix.c)
+endif ()
+
 # Platform-specific native dialogs
 if (APPLE)
     set(VG_GUI_NATIVE_DIALOG_SOURCES

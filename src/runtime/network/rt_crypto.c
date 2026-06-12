@@ -26,18 +26,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_crypto.h"
+#include "rt_entropy_platform.h"
 #include "rt_crypto_module.h"
 #include "rt_trap.h"
 
-#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include "rt_crypto_internal.h"
-
-#if defined(__APPLE__)
-/// @brief BSD/macOS RNG. Declared here when no system header provides it.
-extern void arc4random_buf(void *buf, size_t nbytes);
-#endif
 
 #define RT_HKDF_MAX_OKM_LEN (255u * 32u)
 #define RT_CHACHA20_MAX_BYTES (((UINT64_C(1) << 32) - 1u) * 64u)
@@ -1983,27 +1978,13 @@ long rt_aes256_gcm_decrypt(const uint8_t key[32],
 //=============================================================================
 
 
-//=============================================================================
-// Random Number Generation (Platform-specific)
-//=============================================================================
-
-#ifdef _WIN32
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <windows.h>
-#ifndef _WINDOWS_
-#error "windows.h must be included before wincrypt.h"
-#endif
-#include <wincrypt.h>
-
 /// @brief Fill `buf` with `len` cryptographically secure random bytes.
-///
-/// Windows path — uses Wincrypt's CryptGenRandom (still available
-/// on every supported Windows version). On any failure to obtain
-/// real OS entropy we trap rather than fall back to a predictable
-/// generator (S-03): a predictable RNG would silently compromise
-/// every key derived from it.
+/// @details Delegates operating-system entropy to rt_entropy_platform_random_bytes().
+///          In approved mode the crypto module's DRBG supplies the bytes.
+///          On any OS entropy failure this function traps and aborts rather
+///          than falling back to predictable data.
+/// @param buf Destination buffer. May be NULL only when @p len is zero.
+/// @param len Number of random bytes requested.
 void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
     if (!buf && len > 0) {
         rt_trap("Crypto: random output buffer is null");
@@ -2015,106 +1996,8 @@ void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
         rt_crypto_module_random_bytes(buf, len);
         return;
     }
-    HCRYPTPROV hProv;
-    if (CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
-        size_t off = 0;
-        int ok = 1;
-        while (off < len) {
-            size_t chunk = len - off;
-            if (chunk > (size_t)UINT32_MAX)
-                chunk = (size_t)UINT32_MAX;
-            if (!CryptGenRandom(hProv, (DWORD)chunk, buf + off)) {
-                ok = 0;
-                break;
-            }
-            off += chunk;
-        }
-        CryptReleaseContext(hProv, 0);
-        if (ok)
-            return;
-    }
-
-    /* S-03: No cryptographically secure entropy available — abort rather than
-     * use a predictable LCG fallback that would compromise key material. */
-    rt_trap("Crypto: failed to obtain OS entropy (CryptGenRandom)");
-    rt_abort("Crypto: failed to obtain OS entropy (CryptGenRandom)");
+    if (rt_entropy_platform_random_bytes(buf, len) == 0)
+        return;
+    rt_trap("Crypto: failed to obtain OS entropy");
+    rt_abort("Crypto: failed to obtain OS entropy");
 }
-
-#else
-#if defined(__linux__)
-#include <sys/random.h>
-#endif
-#include <fcntl.h>
-#include <unistd.h>
-
-/// @brief Fill `buf` with `len` cryptographically secure random bytes.
-///
-/// POSIX path. Tries the best-quality interface available and
-/// falls back through:
-///   1. macOS: `arc4random_buf` (always succeeds).
-///   2. Linux: `getrandom(2)` (no fd, blocks if pool not seeded).
-///   3. Universal: `/dev/urandom` (best-effort).
-/// Traps on every-source-failed (S-03) so we never silently fall
-/// back to a non-cryptographic source.
-void rt_crypto_random_bytes(uint8_t *buf, size_t len) {
-    if (!buf && len > 0) {
-        rt_trap("Crypto: random output buffer is null");
-        return;
-    }
-    if (len == 0)
-        return;
-    if (rt_crypto_module_is_approved_mode()) {
-        rt_crypto_module_random_bytes(buf, len);
-        return;
-    }
-#if defined(__APPLE__)
-    arc4random_buf(buf, len);
-    return;
-#elif defined(__linux__)
-    size_t off = 0;
-    while (off < len) {
-        ssize_t n = getrandom(buf + off, len - off, 0);
-        if (n < 0) {
-            if (errno == EINTR)
-                continue;
-            if (errno == ENOSYS)
-                break;
-            rt_trap("Crypto: failed to obtain OS entropy (getrandom)");
-            rt_abort("Crypto: failed to obtain OS entropy (getrandom)");
-        }
-        if (n == 0) {
-            rt_trap("Crypto: failed to obtain OS entropy (getrandom returned 0)");
-            rt_abort("Crypto: failed to obtain OS entropy (getrandom returned 0)");
-        }
-        off += (size_t)n;
-    }
-    if (off == len)
-        return;
-#endif
-
-#ifdef O_CLOEXEC
-    int fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
-#else
-    int fd = open("/dev/urandom", O_RDONLY);
-#endif
-    if (fd >= 0) {
-        size_t urandom_off = 0;
-        while (urandom_off < len) {
-            ssize_t n = read(fd, buf + urandom_off, len - urandom_off);
-            if (n < 0 && errno == EINTR)
-                continue;
-            if (n <= 0)
-                break;
-            urandom_off += (size_t)n;
-        }
-        close(fd);
-        if (urandom_off == len)
-            return;
-    }
-
-    /* S-03: No cryptographically secure entropy available — abort rather than
-     * use a predictable LCG fallback that would compromise key material. */
-    rt_trap("Crypto: failed to read from /dev/urandom");
-    rt_abort("Crypto: failed to read from /dev/urandom");
-}
-#endif

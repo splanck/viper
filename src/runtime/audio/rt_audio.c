@@ -238,7 +238,7 @@ static int8_t g_audio_paused = 0;
 /// yield hint added to reduce CPU waste under contention.
 static volatile int g_audio_init_lock = 0;
 
-#if !defined(_WIN32)
+#if !RT_PLATFORM_WINDOWS
 #include <sched.h>
 #endif
 
@@ -257,7 +257,7 @@ static void audio_state_lock(void) {
     while (__atomic_test_and_set(&g_audio_init_lock, __ATOMIC_ACQUIRE))
 #endif
     {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
         SwitchToThread();
 #else
         sched_yield();
@@ -497,7 +497,7 @@ static int ensure_audio_init(void) {
     while (__atomic_test_and_set(&g_audio_init_lock, __ATOMIC_ACQUIRE))
 #endif
     {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
         SwitchToThread();
 #else
         sched_yield();

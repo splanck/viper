@@ -35,6 +35,7 @@
 #include "rt_future.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_string_internal.h"
 #include "rt_threads.h"
 
@@ -45,12 +46,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
 #include <windows.h>
 #else
 #include <pthread.h>
 #include <time.h>
-#if defined(__APPLE__)
+#if RT_PLATFORM_MACOS
 extern int pthread_cond_timedwait_relative_np(pthread_cond_t *cond,
                                               pthread_mutex_t *mutex,
                                               const struct timespec *rel_time);
@@ -66,7 +67,7 @@ const char *rt_trap_get_error(void);
 //=============================================================================
 
 typedef struct {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     CRITICAL_SECTION mutex;
     CONDITION_VARIABLE cond;
 #else
@@ -96,7 +97,7 @@ typedef struct future_listener {
 } future_listener;
 
 static void promise_lock(promise_impl *p) {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
 #else
     pthread_mutex_lock(&p->mutex);
@@ -104,7 +105,7 @@ static void promise_lock(promise_impl *p) {
 }
 
 static void promise_unlock(promise_impl *p) {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     LeaveCriticalSection(&p->mutex);
 #else
     pthread_mutex_unlock(&p->mutex);
@@ -223,7 +224,7 @@ static void future_retain_cached_future_locked(promise_impl *p,
     rt_trap_clear_recovery();
 }
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
 /// @brief Win32: compute an absolute monotonic deadline in `GetTickCount64` units.
 /// @details Replaces the older relative `future_deadline_ms_from_now` (which clamped to a
 ///          DWORD and forced re-computation each loop iteration). Computing the deadline
@@ -252,7 +253,7 @@ typedef struct {
 static int future_cond_init(pthread_cond_t *cond, int8_t *uses_monotonic) {
     if (uses_monotonic)
         *uses_monotonic = 0;
-#if defined(__APPLE__)
+#if RT_PLATFORM_MACOS
     if (uses_monotonic)
         *uses_monotonic = 1;
     return pthread_cond_init(cond, NULL);
@@ -318,7 +319,7 @@ static future_deadline_t future_deadline_abs_from_now(int64_t ms, int8_t use_mon
     return d;
 }
 
-#if defined(__APPLE__)
+#if RT_PLATFORM_MACOS
 /// @brief macOS-only: compute remaining ms until `deadline` for the relative-wait API. Returns 0
 /// once the deadline has passed (signalling immediate timeout to the caller).
 static int64_t future_remaining_ms(future_deadline_t deadline, int8_t use_monotonic) {
@@ -344,7 +345,7 @@ static int future_cond_timedwait_deadline(pthread_cond_t *cond,
                                           pthread_mutex_t *mutex,
                                           future_deadline_t deadline,
                                           int8_t use_monotonic) {
-#if defined(__APPLE__)
+#if RT_PLATFORM_MACOS
     int64_t remaining = future_remaining_ms(deadline, use_monotonic);
     if (remaining <= 0)
         return ETIMEDOUT;
@@ -419,7 +420,7 @@ static void promise_finalizer(void *obj) {
     int8_t owns_value = 0;
     future_listener *listeners = NULL;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
 #else
     pthread_mutex_lock(&p->mutex);
@@ -434,7 +435,7 @@ static void promise_finalizer(void *obj) {
     p->listeners = NULL;
     p->done = 1;
     p->is_error = 1;
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     WakeAllConditionVariable(&p->cond);
     LeaveCriticalSection(&p->mutex);
 #else
@@ -447,7 +448,7 @@ static void promise_finalizer(void *obj) {
     if (error)
         rt_str_release_maybe(error);
     future_notify_listeners(listeners);
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     DeleteCriticalSection(&p->mutex);
 #else
     pthread_mutex_destroy(&p->mutex);
@@ -464,7 +465,7 @@ void *rt_promise_new(void) {
         return NULL;
     }
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     InitializeCriticalSection(&p->mutex);
     InitializeConditionVariable(&p->cond);
 #else
@@ -561,14 +562,14 @@ static void future_finalizer(void *obj) {
         return;
 
     promise_impl *p = f->promise;
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
 #else
     pthread_mutex_lock(&p->mutex);
 #endif
     if (p->future == obj)
         p->future = NULL;
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     LeaveCriticalSection(&p->mutex);
 #else
     pthread_mutex_unlock(&p->mutex);
@@ -604,7 +605,7 @@ void rt_promise_set(void *obj, void *value) {
     future_listener *listeners = p->listeners;
     p->listeners = NULL;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     WakeAllConditionVariable(&p->cond);
 #else
     pthread_cond_broadcast(&p->cond);
@@ -642,7 +643,7 @@ void rt_promise_set_owned(void *obj, void *value) {
     future_listener *listeners = p->listeners;
     p->listeners = NULL;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     WakeAllConditionVariable(&p->cond);
 #else
     pthread_cond_broadcast(&p->cond);
@@ -679,7 +680,7 @@ void rt_promise_set_transferred(void *obj, void *value) {
     future_listener *listeners = p->listeners;
     p->listeners = NULL;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     WakeAllConditionVariable(&p->cond);
 #else
     pthread_cond_broadcast(&p->cond);
@@ -737,7 +738,7 @@ void rt_promise_set_error(void *obj, rt_string error) {
     future_listener *listeners = p->listeners;
     p->listeners = NULL;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     WakeAllConditionVariable(&p->cond);
 #else
     pthread_cond_broadcast(&p->cond);
@@ -755,7 +756,7 @@ int8_t rt_promise_is_done(void *obj) {
         return 0;
     rt_obj_retain_maybe(obj);
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
     int8_t result = p->done;
     LeaveCriticalSection(&p->mutex);
@@ -786,7 +787,7 @@ void *rt_future_get(void *obj) {
     int8_t is_error = 0;
     int8_t owns_value = 0;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
     while (!p->done) {
         SleepConditionVariableCS(&p->cond, &p->mutex, INFINITE);
@@ -862,7 +863,7 @@ int8_t rt_future_get_for(void *obj, int64_t ms, void **out) {
     void *result = NULL;
     int8_t owns_value = 0;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
     ULONGLONG deadline = future_deadline_tick_from_now(ms);
     while (!p->done) {
@@ -916,7 +917,7 @@ int8_t rt_future_is_done(void *obj) {
 
     promise_impl *p = f->promise;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
     int8_t result = p->done;
     LeaveCriticalSection(&p->mutex);
@@ -939,7 +940,7 @@ int8_t rt_future_is_error(void *obj) {
 
     promise_impl *p = f->promise;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
     int8_t result = p->done && p->is_error;
     LeaveCriticalSection(&p->mutex);
@@ -964,7 +965,7 @@ rt_string rt_future_get_error(void *obj) {
     rt_string error = NULL;
     int8_t has_error = 0;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
     if (p->done && p->is_error && p->error) {
         error = p->error;
@@ -1000,7 +1001,7 @@ int8_t rt_future_try_get(void *obj, void **out) {
     void *result = NULL;
     int8_t owns_value = 0;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
     int8_t success = p->done && !p->is_error;
     if (success && out) {
@@ -1040,7 +1041,7 @@ void *rt_future_try_get_val(void *obj) {
     void *result = NULL;
     int8_t owns_value = 0;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
     if (p->done && !p->is_error) {
         result = p->value;
@@ -1079,7 +1080,7 @@ void *rt_future_get_for_val(void *obj, int64_t ms) {
     void *result = NULL;
     int8_t owns_value = 0;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
     ULONGLONG deadline = future_deadline_tick_from_now(ms);
     while (!p->done) {
@@ -1128,7 +1129,7 @@ void rt_future_wait(void *obj) {
 
     promise_impl *p = f->promise;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
     while (!p->done) {
         SleepConditionVariableCS(&p->cond, &p->mutex, INFINITE);
@@ -1159,7 +1160,7 @@ int8_t rt_future_wait_for(void *obj, int64_t ms) {
 
     promise_impl *p = f->promise;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
     ULONGLONG deadline = future_deadline_tick_from_now(ms);
     while (!p->done) {
@@ -1220,14 +1221,14 @@ int8_t rt_future_on_complete_ex(void *obj,
     listener->ctx = ctx;
     listener->future_obj = obj;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
 #else
     pthread_mutex_lock(&p->mutex);
 #endif
 
     if (p->done) {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
         LeaveCriticalSection(&p->mutex);
 #else
         pthread_mutex_unlock(&p->mutex);
@@ -1245,7 +1246,7 @@ int8_t rt_future_on_complete_ex(void *obj,
         tail = &(*tail)->next;
     *tail = listener;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     LeaveCriticalSection(&p->mutex);
 #else
     pthread_mutex_unlock(&p->mutex);
@@ -1274,7 +1275,7 @@ int8_t rt_future_cancel_listener(void *obj, void (*callback)(void *future, void 
     promise_impl *p = f->promise;
     future_listener *removed = NULL;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
 #else
     pthread_mutex_lock(&p->mutex);
@@ -1291,7 +1292,7 @@ int8_t rt_future_cancel_listener(void *obj, void (*callback)(void *future, void 
         link = &cur->next;
     }
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     LeaveCriticalSection(&p->mutex);
 #else
     pthread_mutex_unlock(&p->mutex);
@@ -1330,7 +1331,7 @@ void *rt_future_peek_value(void *obj) {
     void *result = NULL;
     int8_t owns_value = 0;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
     if (p->done && !p->is_error) {
         result = p->value;
@@ -1364,7 +1365,7 @@ int8_t rt_future_value_is_owned(void *obj) {
     promise_impl *p = f->promise;
     int8_t owned = 0;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
     if (p->done && !p->is_error)
         owned = p->owns_value;

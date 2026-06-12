@@ -19,6 +19,7 @@
 #include "rt_netutils.h"
 
 #include "rt_internal.h"
+#include "rt_socket_platform.h"
 #include "rt_string.h"
 
 #include <limits.h>
@@ -27,39 +28,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <winsock2.h>
-#include <ws2tcpip.h>
-typedef SOCKET socket_t;
-#define CLOSE_SOCKET(s) closesocket(s)
-#else
-#include <arpa/inet.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <poll.h>
-#include <sys/select.h>
-#include <sys/socket.h>
-#include <unistd.h>
-typedef int socket_t;
-#define CLOSE_SOCKET(s) close(s)
-#endif
-
-#ifdef _WIN32
-extern void rt_net_init_wsa(void);
-#else
-static inline void rt_net_init_wsa(void) {}
-#endif
-
 //=============================================================================
 // Port Checking
 //=============================================================================
 
 /// @brief TCP port-scan probe: returns 1 if `(host, port)` accepts a connection within
 /// `timeout_ms`. Walks every address `getaddrinfo` returns (so IPv6 hosts get IPv6 attempts).
-/// Uses non-blocking connect + `select(write_fds)` for the timeout (cross-platform pattern).
+/// Uses non-blocking connect plus the shared socket readiness adapter for the timeout.
 /// Default timeout 1000 ms if non-positive supplied. Useful for service health-checks and
 /// "wait for port to come up" patterns during testing.
 int8_t rt_netutils_is_port_open(rt_string host, int64_t port, int64_t timeout_ms) {
@@ -87,22 +62,11 @@ int8_t rt_netutils_is_port_open(rt_string host, int64_t port, int64_t timeout_ms
 
     for (rp = res; rp != NULL; rp = rp->ai_next) {
         socket_t sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-#ifdef _WIN32
-        if (sock == INVALID_SOCKET)
-#else
-        if (sock < 0)
-#endif
+        if (sock == INVALID_SOCK)
             continue;
 
         // Set non-blocking for timeout
-#ifdef _WIN32
-        u_long mode = 1;
-        ioctlsocket(sock, FIONBIO, &mode);
-#else
-        int flags = fcntl(sock, F_GETFL, 0);
-        if (flags >= 0)
-            fcntl(sock, F_SETFL, flags | O_NONBLOCK);
-#endif
+        rt_socket_set_nonblocking(sock, true);
 
         int result = connect(sock, rp->ai_addr, (int)rp->ai_addrlen);
         if (result == 0) {
@@ -111,26 +75,7 @@ int8_t rt_netutils_is_port_open(rt_string host, int64_t port, int64_t timeout_ms
             return 1;
         }
 
-#ifdef _WIN32
-        fd_set write_fds;
-        FD_ZERO(&write_fds);
-        FD_SET(sock, &write_fds);
-
-        struct timeval tv;
-        tv.tv_sec = (long)(timeout_int / 1000);
-        tv.tv_usec = (long)((timeout_int % 1000) * 1000);
-
-        int ready = select((int)(sock + 1), NULL, &write_fds, NULL, &tv);
-#else
-        struct pollfd pfd;
-        pfd.fd = sock;
-        pfd.events = POLLOUT;
-        pfd.revents = 0;
-        int ready;
-        do {
-            ready = poll(&pfd, 1, timeout_int);
-        } while (ready < 0 && errno == EINTR);
-#endif
+        int ready = wait_socket(sock, timeout_int, true);
         if (ready > 0) {
             int so_error = 0;
             socklen_t len = sizeof(so_error);
@@ -157,13 +102,8 @@ int64_t rt_netutils_get_free_port(void) {
     rt_net_init_wsa();
 
     socket_t sock = socket(AF_INET, SOCK_STREAM, 0);
-#ifdef _WIN32
-    if (sock == INVALID_SOCKET)
+    if (sock == INVALID_SOCK)
         return 0;
-#else
-    if (sock < 0)
-        return 0;
-#endif
 
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
@@ -284,13 +224,8 @@ rt_string rt_netutils_local_ipv4(void) {
     // Create a UDP socket and "connect" to a public IP to determine
     // which local interface would be used (no actual traffic sent).
     socket_t sock = socket(AF_INET, SOCK_DGRAM, 0);
-#ifdef _WIN32
-    if (sock == INVALID_SOCKET)
+    if (sock == INVALID_SOCK)
         return rt_string_from_bytes("127.0.0.1", 9);
-#else
-    if (sock < 0)
-        return rt_string_from_bytes("127.0.0.1", 9);
-#endif
 
     struct sockaddr_in dest;
     memset(&dest, 0, sizeof(dest));

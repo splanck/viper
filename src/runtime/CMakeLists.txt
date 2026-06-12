@@ -551,6 +551,16 @@ set(RT_NETWORK_SOURCES
         network/rt_async_socket.c
 )
 
+if (WIN32)
+    list(APPEND RT_NETWORK_SOURCES
+            network/rt_entropy_platform_win.c
+            network/rt_socket_platform_win.c)
+else ()
+    list(APPEND RT_NETWORK_SOURCES
+            network/rt_entropy_platform_posix.c
+            network/rt_socket_platform_posix.c)
+endif ()
+
 # TLS certificate verification is split by platform: CryptoAPI trust store on
 # Windows, native Security.framework / manual verification elsewhere. The common
 # DER/SAN/hostname parsing (rt_tls_verify_common.c) is compiled everywhere.

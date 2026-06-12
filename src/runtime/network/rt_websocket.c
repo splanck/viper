@@ -59,8 +59,8 @@ typedef int socklen_t;
 
 #include "rt_websocket_internal.h"
 
-// SIGPIPE suppression (same approach as rt_network.c).
-#if defined(__linux__) || defined(__viperdos__)
+// SIGPIPE suppression for platforms that expose per-send suppression.
+#ifdef MSG_NOSIGNAL
 #define SEND_FLAGS MSG_NOSIGNAL
 #else
 #define SEND_FLAGS 0

@@ -20,14 +20,10 @@
 
 #include "rt_crypto.h"
 #include "rt_rsa.h"
+#include "rt_socket_platform.h"
 #include "rt_tls.h"
 #include <stddef.h>
 #include <stdint.h>
-
-// Platform socket type (needed for struct layout)
-#ifdef _WIN32
-#include <winsock2.h>
-#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -68,12 +64,8 @@ typedef struct {
 
 // TLS session structure
 struct rt_tls_session {
-    // Socket (platform-specific type stored as int-compatible)
-#ifdef _WIN32
-    SOCKET socket_fd;
-#else
-    int socket_fd;
-#endif
+    // Socket handle owned by the TLS session.
+    socket_t socket_fd;
     tls_state_t state;
     const char *error;
     int is_server;

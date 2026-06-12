@@ -36,6 +36,7 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_rsa.h"
+#include "rt_socket_platform.h"
 #include "rt_tls_internal.h"
 #include "rt_tls_server_internal.h"
 
@@ -44,53 +45,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#ifdef _WIN32
-#define strcasecmp _stricmp
-#else
-#include <strings.h>
-#endif
 
-// Platform-specific socket includes
-#ifdef _WIN32
-#include <winsock2.h>
-#include <ws2tcpip.h>
-typedef SOCKET socket_t;
-#define CLOSE_SOCKET(s) closesocket(s)
-#define RT_TLS_INVALID_SOCKET INVALID_SOCKET
-#define SOCKET_ERRNO WSAGetLastError()
-#define EINTR_CHECK (SOCKET_ERRNO == WSAEINTR)
-#define EAGAIN_CHECK (SOCKET_ERRNO == WSAEWOULDBLOCK)
-#else
-#include <arpa/inet.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <poll.h>
-#include <sys/select.h>
-#include <sys/socket.h>
-#include <unistd.h>
-typedef int socket_t;
-#define CLOSE_SOCKET(s) close(s)
-#define RT_TLS_INVALID_SOCKET (-1)
-#define SOCKET_ERRNO errno
-#define EINTR_CHECK (errno == EINTR)
-#define EAGAIN_CHECK (errno == EAGAIN || errno == EWOULDBLOCK)
-#endif
-
-#ifdef _WIN32
-// Forward declaration (must be at file scope for MSVC)
-extern void rt_net_init_wsa(void);
-#endif
-
-#ifdef _WIN32
-#define TLS_THREAD_LOCAL __declspec(thread)
-#else
-#define TLS_THREAD_LOCAL __thread
-#endif
-
-static TLS_THREAD_LOCAL char g_tls_last_error[256];
-static TLS_THREAD_LOCAL char g_tls_server_last_error[256];
+static RT_THREAD_LOCAL char g_tls_last_error[256];
+static RT_THREAD_LOCAL char g_tls_server_last_error[256];
 
 struct rt_tls_server_ctx {
     uint8_t *cert_list_entries;
@@ -124,105 +81,6 @@ static int tls_select_alpn_from_wire_list(const char *preferred_list,
                                           const uint8_t *wire_list,
                                           size_t wire_list_len,
                                           char selected_out[64]);
-
-// SIGPIPE suppression.
-#if defined(__linux__) || defined(__viperdos__)
-#define SEND_FLAGS MSG_NOSIGNAL
-#else
-#define SEND_FLAGS 0
-#endif
-
-/// @brief Stop SIGPIPE from killing the process when writing to a closed socket.
-///
-/// macOS uses the per-socket `SO_NOSIGPIPE` option (set once at
-/// socket creation). Linux uses the per-call `MSG_NOSIGNAL` flag
-/// (see `SEND_FLAGS`). Other platforms have nothing to do here.
-static void suppress_sigpipe(socket_t sock) {
-#if defined(__APPLE__) && defined(SO_NOSIGPIPE)
-    int val = 1;
-    setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(val));
-#endif
-    (void)sock;
-}
-/// @brief Wait for a socket to become readable or writable within `timeout_ms`.
-///
-/// Wraps `select(2)` so the TLS state machine can convert non-blocking
-/// `EAGAIN`/`EWOULDBLOCK` returns into a bounded blocking wait.
-/// @param sock        Socket to wait on.
-/// @param timeout_ms  Maximum wait in milliseconds.
-/// @param for_write   Non-zero waits for write-readiness, zero waits for read-readiness.
-/// @return >0 if ready, 0 on timeout, -1 on error (caller checks `errno`).
-static int tls_wait_socket(socket_t sock, int timeout_ms, int for_write) {
-    if (timeout_ms < 0)
-        return -1;
-#if !defined(_WIN32) && !defined(__viperdos__)
-    struct pollfd pfd;
-    int result;
-    if (sock < 0)
-        return -1;
-    pfd.fd = sock;
-    pfd.events = for_write ? POLLOUT : POLLIN;
-    pfd.revents = 0;
-    do {
-        result = poll(&pfd, 1, timeout_ms);
-    } while (result < 0 && errno == EINTR);
-    return result;
-#else
-    fd_set fds;
-#ifndef _WIN32
-    if (sock < 0 || sock >= FD_SETSIZE)
-        return -1;
-#endif
-    FD_ZERO(&fds);
-    FD_SET(sock, &fds);
-
-    struct timeval tv;
-    tv.tv_sec = timeout_ms / 1000;
-    tv.tv_usec = (timeout_ms % 1000) * 1000;
-
-    if (for_write)
-        return select((int)sock + 1, NULL, &fds, NULL, &tv);
-    return select((int)sock + 1, &fds, NULL, NULL, &tv);
-#endif
-}
-
-/// @brief Toggle a socket between blocking and non-blocking I/O.
-///
-/// Uses `ioctlsocket(FIONBIO)` on Windows and `fcntl(O_NONBLOCK)`
-/// elsewhere. Silently no-ops if `fcntl(F_GETFL)` fails.
-static void tls_set_nonblocking(socket_t sock, int nonblocking) {
-#ifdef _WIN32
-    u_long mode = nonblocking ? 1 : 0;
-    ioctlsocket(sock, FIONBIO, &mode);
-#else
-    int flags = fcntl(sock, F_GETFL, 0);
-    if (flags < 0)
-        return;
-    if (nonblocking)
-        fcntl(sock, F_SETFL, flags | O_NONBLOCK);
-    else
-        fcntl(sock, F_SETFL, flags & ~O_NONBLOCK);
-#endif
-}
-
-/// @brief Apply a recv or send timeout to a socket.
-///
-/// Sets `SO_RCVTIMEO` or `SO_SNDTIMEO` (chosen by `is_recv`).
-/// Windows takes a `DWORD` of milliseconds; POSIX takes a `struct timeval`.
-static void tls_set_socket_timeout(socket_t sock, int timeout_ms, int is_recv) {
-    if (timeout_ms < 0)
-        timeout_ms = 0;
-#ifdef _WIN32
-    DWORD tv = (DWORD)timeout_ms;
-    setsockopt(
-        sock, SOL_SOCKET, is_recv ? SO_RCVTIMEO : SO_SNDTIMEO, (const char *)&tv, sizeof(tv));
-#else
-    struct timeval tv;
-    tv.tv_sec = timeout_ms / 1000;
-    tv.tv_usec = (timeout_ms % 1000) * 1000;
-    setsockopt(sock, SOL_SOCKET, is_recv ? SO_RCVTIMEO : SO_SNDTIMEO, &tv, sizeof(tv));
-#endif
-}
 
 /// @brief Free heap-allocated handshake scratch space hanging off a session.
 ///
@@ -1205,10 +1063,11 @@ static int send_record(rt_tls_session_t *session,
                      (int)(record_len - sent),
                      SEND_FLAGS);
         if (n < 0) {
-            if (EINTR_CHECK)
+            int err = GET_LAST_ERROR();
+            if (rt_socket_error_is_interrupted(err))
                 continue;
-            if (EAGAIN_CHECK) {
-                int ready = tls_wait_socket((socket_t)session->socket_fd, session->timeout_ms, 1);
+            if (rt_socket_error_is_would_block(err)) {
+                int ready = wait_socket(session->socket_fd, session->timeout_ms, true);
                 if (ready > 0)
                     continue;
                 session->error = ready == 0 ? "TLS: send timeout" : "send failed";
@@ -1271,10 +1130,11 @@ static int recv_record(rt_tls_session_t *session,
     while (pos < 5) {
         int n = recv(session->socket_fd, (char *)(header + pos), (int)(5 - pos), 0);
         if (n < 0) {
-            if (EINTR_CHECK)
+            int err = GET_LAST_ERROR();
+            if (rt_socket_error_is_interrupted(err))
                 continue;
-            if (EAGAIN_CHECK) {
-                int ready = tls_wait_socket((socket_t)session->socket_fd, session->timeout_ms, 0);
+            if (rt_socket_error_is_would_block(err)) {
+                int ready = wait_socket(session->socket_fd, session->timeout_ms, false);
                 if (ready > 0)
                     continue;
                 session->error = ready == 0 ? "TLS: recv timeout" : "recv header failed";
@@ -1304,10 +1164,11 @@ static int recv_record(rt_tls_session_t *session,
     while (pos < length) {
         int n = recv(session->socket_fd, (char *)(payload + pos), (int)(length - pos), 0);
         if (n < 0) {
-            if (EINTR_CHECK)
+            int err = GET_LAST_ERROR();
+            if (rt_socket_error_is_interrupted(err))
                 continue;
-            if (EAGAIN_CHECK) {
-                int ready = tls_wait_socket((socket_t)session->socket_fd, session->timeout_ms, 0);
+            if (rt_socket_error_is_would_block(err)) {
+                int ready = wait_socket(session->socket_fd, session->timeout_ms, false);
                 if (ready > 0)
                     continue;
                 session->error = ready == 0 ? "TLS: recv timeout" : "recv payload failed";
@@ -2693,8 +2554,8 @@ rt_tls_session_t *rt_tls_server_accept_socket(int socket_fd, const rt_tls_server
     session->timeout_ms = ctx->timeout_ms > 0 ? ctx->timeout_ms : 30000;
     if (ctx->alpn_protocols[0] != '\0')
         strncpy(session->alpn_protocols, ctx->alpn_protocols, sizeof(session->alpn_protocols) - 1);
-    tls_set_socket_timeout((socket_t)session->socket_fd, session->timeout_ms, 1);
-    tls_set_socket_timeout((socket_t)session->socket_fd, session->timeout_ms, 0);
+    set_socket_timeout(session->socket_fd, session->timeout_ms, true);
+    set_socket_timeout(session->socket_fd, session->timeout_ms, false);
 
     while (1) {
         size_t pos = 0;
@@ -3180,9 +3041,9 @@ void rt_tls_close(rt_tls_session_t *session) {
         const int close_timeout_ms =
             (session->timeout_ms > 0 && session->timeout_ms < 100) ? session->timeout_ms : 100;
         session->timeout_ms = close_timeout_ms;
-        if (session->socket_fd >= 0) {
-            tls_set_socket_timeout((socket_t)session->socket_fd, close_timeout_ms, 1);
-            tls_set_socket_timeout((socket_t)session->socket_fd, close_timeout_ms, 0);
+        if (session->socket_fd != INVALID_SOCK) {
+            set_socket_timeout(session->socket_fd, close_timeout_ms, true);
+            set_socket_timeout(session->socket_fd, close_timeout_ms, false);
         }
 
         // Send close_notify alert
@@ -3207,9 +3068,9 @@ void rt_tls_close(rt_tls_session_t *session) {
     }
 
     tls_release_dynamic_state(session);
-    if ((socket_t)session->socket_fd != (socket_t)RT_TLS_INVALID_SOCKET) {
-        CLOSE_SOCKET((socket_t)session->socket_fd);
-        session->socket_fd = (socket_t)RT_TLS_INVALID_SOCKET;
+    if (session->socket_fd != INVALID_SOCK) {
+        CLOSE_SOCKET(session->socket_fd);
+        session->socket_fd = INVALID_SOCK;
     }
     session->state = TLS_STATE_CLOSED;
 
@@ -3262,10 +3123,7 @@ int rt_tls_get_socket(rt_tls_session_t *session) {
 /// @return Connected `rt_tls_session_t*` on success, NULL on
 ///         resolution / connect / handshake failure.
 rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_config_t *config) {
-#ifdef _WIN32
-    // Initialize Winsock
     rt_net_init_wsa();
-#endif
 
     rt_tls_config_t cfg;
     if (config) {
@@ -3293,37 +3151,22 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
         return NULL;
     }
 
-#ifdef _WIN32
-    socket_t sock = INVALID_SOCKET;
-#else
-    socket_t sock = -1;
-#endif
+    socket_t sock = INVALID_SOCK;
     for (struct addrinfo *p = res; p; p = p->ai_next) {
         sock = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-#ifdef _WIN32
-        if (sock == INVALID_SOCKET)
+        if (sock == INVALID_SOCK)
             continue;
-#else
-        if (sock < 0)
-            continue;
-#endif
         suppress_sigpipe(sock);
 
         int connected = 0;
         if (cfg.timeout_ms > 0) {
-            tls_set_nonblocking(sock, 1);
+            rt_socket_set_nonblocking(sock, true);
             if (connect(sock, p->ai_addr, (int)p->ai_addrlen) == 0) {
                 connected = 1;
             } else {
-#ifdef _WIN32
-                int err = WSAGetLastError();
-                if (err == WSAEWOULDBLOCK)
-#else
-                int err = errno;
-                if (err == EINPROGRESS)
-#endif
-                {
-                    int ready = tls_wait_socket(sock, cfg.timeout_ms, 1);
+                int err = GET_LAST_ERROR();
+                if (rt_socket_error_is_in_progress(err)) {
+                    int ready = wait_socket(sock, cfg.timeout_ms, true);
                     if (ready > 0) {
                         int so_error = 0;
                         socklen_t so_error_len = sizeof(so_error);
@@ -3332,7 +3175,7 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
                     }
                 }
             }
-            tls_set_nonblocking(sock, 0);
+            rt_socket_set_nonblocking(sock, false);
         } else {
             connected = (connect(sock, p->ai_addr, (int)p->ai_addrlen) == 0);
         }
@@ -3341,27 +3184,18 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
             break;
 
         CLOSE_SOCKET(sock);
-#ifdef _WIN32
-        sock = INVALID_SOCKET;
-#else
-        sock = -1;
-#endif
+        sock = INVALID_SOCK;
     }
 
     freeaddrinfo(res);
-#ifdef _WIN32
-    if (sock == INVALID_SOCKET)
-#else
-    if (sock < 0)
-#endif
-    {
+    if (sock == INVALID_SOCK) {
         tls_set_last_error_msg("TLS: TCP connect failed");
         return NULL;
     }
 
     if (cfg.timeout_ms > 0) {
-        tls_set_socket_timeout(sock, cfg.timeout_ms, 1);
-        tls_set_socket_timeout(sock, cfg.timeout_ms, 0);
+        set_socket_timeout(sock, cfg.timeout_ms, true);
+        set_socket_timeout(sock, cfg.timeout_ms, false);
     }
 
     rt_tls_session_t *session = rt_tls_new((int)sock, &cfg);

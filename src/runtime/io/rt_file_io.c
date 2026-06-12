@@ -32,6 +32,7 @@
 
 #include "rt_file_path.h"
 #include "rt_internal.h"
+#include "rt_platform.h"
 #include "rt_string_internal.h"
 
 #include <errno.h>
@@ -42,7 +43,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
 #include <io.h>
 #include <share.h>
 #include <sys/stat.h>
@@ -90,7 +91,7 @@ typedef SSIZE_T ssize_t;
 #endif
 // mode_t for Windows (off_t is defined in sys/types.h as _off_t)
 typedef unsigned short mode_t;
-#elif defined(__viperdos__)
+#elif RT_PLATFORM_VIPERDOS
 // ViperDOS provides POSIX-compatible file I/O via libc.
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -331,7 +332,7 @@ int8_t rt_file_open(
 
     mode_t perms = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
     errno = 0;
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     flags |= O_NOINHERIT;
     wchar_t *wide_path = rt_file_path_utf8_to_wide(path);
     if (!wide_path) {
@@ -598,12 +599,12 @@ int8_t rt_file_write(RtFile *file, const uint8_t *data, size_t len, RtError *out
     while (written < len) {
         errno = 0;
         size_t chunk = len - written;
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
         // Windows _write takes unsigned int, clamp to avoid overflow
         if (chunk > UINT_MAX)
             chunk = UINT_MAX;
 #endif
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
         ssize_t n = write(file->fd, data + written, (unsigned int)chunk);
 #else
         ssize_t n = write(file->fd, data + written, chunk);

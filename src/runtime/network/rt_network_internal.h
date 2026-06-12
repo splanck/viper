@@ -36,6 +36,7 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
+#include "rt_socket_platform.h"
 #include "rt_string.h"
 
 #include <limits.h>
@@ -46,101 +47,6 @@
 #include <string.h>
 
 //=============================================================================
-// Platform-Specific Includes and Definitions
-//=============================================================================
-
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#pragma comment(lib, "ws2_32.lib")
-#include <iphlpapi.h>
-#pragma comment(lib, "iphlpapi.lib")
-
-typedef SOCKET socket_t;
-#define INVALID_SOCK INVALID_SOCKET
-#define SOCK_ERROR SOCKET_ERROR
-#define CLOSE_SOCKET(s) closesocket(s)
-#define GET_LAST_ERROR() WSAGetLastError()
-#define WOULD_BLOCK (WSAGetLastError() == WSAEWOULDBLOCK)
-#define EINPROGRESS_VAL WSAEWOULDBLOCK
-#define CONN_REFUSED WSAECONNREFUSED
-#define ADDR_IN_USE WSAEADDRINUSE
-#define PERM_DENIED WSAEACCES
-
-#elif defined(__viperdos__)
-#include <arpa/inet.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#if !defined(__viperdos__)
-#include <poll.h>
-#endif
-#include <sys/select.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <unistd.h>
-
-typedef int socket_t;
-#define INVALID_SOCK (-1)
-#define SOCK_ERROR (-1)
-#define CLOSE_SOCKET(s) close(s)
-#define GET_LAST_ERROR() errno
-#define WOULD_BLOCK (errno == EAGAIN || errno == EWOULDBLOCK)
-#define EINPROGRESS_VAL EINPROGRESS
-#define CONN_REFUSED ECONNREFUSED
-#define ADDR_IN_USE EADDRINUSE
-#define PERM_DENIED EACCES
-
-#else
-#include <arpa/inet.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <ifaddrs.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <poll.h>
-#include <sys/ioctl.h>
-#include <sys/select.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <unistd.h>
-
-typedef int socket_t;
-#define INVALID_SOCK (-1)
-#define SOCK_ERROR (-1)
-#define CLOSE_SOCKET(s) close(s)
-#define GET_LAST_ERROR() errno
-#define WOULD_BLOCK (errno == EAGAIN || errno == EWOULDBLOCK)
-#define EINPROGRESS_VAL EINPROGRESS
-#define CONN_REFUSED ECONNREFUSED
-#define ADDR_IN_USE EADDRINUSE
-#define PERM_DENIED EACCES
-#endif
-
-//=============================================================================
-// SIGPIPE Suppression
-//=============================================================================
-
-#if defined(__linux__) || defined(__viperdos__)
-#define SEND_FLAGS MSG_NOSIGNAL
-#else
-#define SEND_FLAGS 0
-#endif
-
-/// @brief Suppress SIGPIPE for a socket (macOS only; no-op elsewhere).
-static inline void suppress_sigpipe(socket_t sock) {
-#ifdef __APPLE__
-    int val = 1;
-    setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(val));
-#endif
-    (void)sock;
-}
-
-//=============================================================================
 // Typed Network Trap
 //=============================================================================
 
@@ -149,7 +55,7 @@ extern void rt_trap_net(const char *msg, int err_code);
 /// @brief Map platform errno / WSAGetLastError() to an Err_* network code.
 static inline int net_classify_errno(void) {
     int e = GET_LAST_ERROR();
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     switch (e) {
         case WSAECONNREFUSED:
             return Err_ConnectionRefused;
@@ -215,18 +121,8 @@ static inline int64_t bytes_len(void *obj) {
 int rt_net_cstr_no_embedded_nul(rt_string value, const char **out, size_t *len_out);
 
 //=============================================================================
-// WSA Initialization
-//=============================================================================
-
-/// @brief Initialize Windows Sockets (thread-safe, idempotent). No-op on Unix.
-void rt_net_init_wsa(void);
-
-//=============================================================================
 // Socket Helpers (defined in rt_network.c, used by UDP too)
 //=============================================================================
-
-/// @brief Set socket timeout for send or receive.
-void set_socket_timeout(socket_t sock, int timeout_ms, bool is_recv);
 
 /// @brief Convert a public int64 millisecond timeout to the socket helper range.
 /// @return 1 on success, 0 if negative or larger than INT_MAX.

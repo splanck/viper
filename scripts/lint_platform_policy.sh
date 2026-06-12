@@ -6,6 +6,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 ALLOWLIST_FILE="$SCRIPT_DIR/platform_policy_allowlist.txt"
+BASELINE_FILE="$SCRIPT_DIR/platform_policy_migration_baseline.txt"
 STRICT=0
 CHANGED_ONLY=0
 declare -a PATH_FILTERS=()
@@ -59,6 +60,16 @@ while IFS= read -r line; do
     ALLOWLIST+=("$line")
 done < <(grep -v '^[[:space:]]*#' "$ALLOWLIST_FILE" | sed '/^[[:space:]]*$/d')
 
+declare -a BASELINE_PATHS=()
+declare -a BASELINE_COUNTS=()
+if [[ -f "$BASELINE_FILE" ]]; then
+    while read -r path count; do
+        [[ -n "$path" && -n "$count" ]] || continue
+        BASELINE_PATHS+=("$path")
+        BASELINE_COUNTS+=("$count")
+    done < <(grep -v '^[[:space:]]*#' "$BASELINE_FILE" | sed '/^[[:space:]]*$/d')
+fi
+
 is_allowlisted() {
     local path="$1"
     # macOS still ships Bash 3.2; under `set -u`, expanding an empty array
@@ -75,6 +86,22 @@ is_allowlisted() {
         esac
     done
     return 1
+}
+
+baseline_count_for() {
+    local path="$1"
+    local i
+    if [[ ${#BASELINE_PATHS[@]} -eq 0 ]]; then
+        printf '0\n'
+        return
+    fi
+    for ((i = 0; i < ${#BASELINE_PATHS[@]}; i++)); do
+        if [[ "${BASELINE_PATHS[$i]}" == "$path" ]]; then
+            printf '%s\n' "${BASELINE_COUNTS[$i]}"
+            return
+        fi
+    done
+    printf '0\n'
 }
 
 matches_filter() {
@@ -133,6 +160,29 @@ search_raw_platform_macros() {
     (cd "$ROOT_DIR" && grep -nEH "(^|[^[:alnum:]_])(${RAW_PATTERN})([^[:alnum:]_]|$)" "$path" || true)
 }
 
+record_raw_macro_violations() {
+    local path="$1"
+    local baseline_count
+    local hit
+    local -a hits=()
+
+    while IFS= read -r hit; do
+        hits+=("$hit")
+    done < <(search_raw_platform_macros "$path")
+
+    baseline_count="$(baseline_count_for "$path")"
+    if [[ ${#hits[@]} -le $baseline_count ]]; then
+        return
+    fi
+
+    if [[ $baseline_count -gt 0 ]]; then
+        VIOLATIONS+=("$path: raw host/compiler macro count ${#hits[@]} exceeds migration baseline $baseline_count")
+    fi
+    for hit in "${hits[@]}"; do
+        VIOLATIONS+=("$hit")
+    done
+}
+
 declare -a CANDIDATES=()
 while IFS= read -r line; do
     CANDIDATES+=("$line")
@@ -145,9 +195,7 @@ if [[ ${#CANDIDATES[@]} -gt 0 ]]; then
         matches_filter "$path" || continue
 
         if ! is_allowlisted "$path"; then
-            while IFS= read -r hit; do
-                VIOLATIONS+=("$hit")
-            done < <(search_raw_platform_macros "$path")
+            record_raw_macro_violations "$path"
         fi
 
         case "$path" in

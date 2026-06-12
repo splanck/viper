@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-06-12
 ---
 
 # Cross-Platform Developer Checklist
@@ -54,7 +54,10 @@ Important rule:
   or other low-level OS/toolchain boundaries
 - shared code should use the repo’s capability headers and explicit capability
   names
-- `scripts/lint_platform_policy.sh` enforces this boundary
+- `scripts/lint_platform_policy.sh --strict` enforces this boundary
+- existing raw-macro debt outside approved adapters is capped by
+  `scripts/platform_policy_migration_baseline.txt`; when a file is migrated,
+  lower or remove its baseline row
 
 ---
 
@@ -67,8 +70,9 @@ Important rule:
 | File | Reason |
 |------|--------|
 | `src/runtime/io/rt_file_io.c` | File open/read/write/seek — Windows uses `_open`/`_close`/`_read`/`_write`/`_lseeki64`; POSIX uses native APIs. Permission macros differ (`_S_IREAD` vs `S_IRUSR`). Missing errno values shimmed on Windows. |
+| `src/runtime/io/rt_archive_fs.c` + `rt_archive_internal.h` | Approved archive filesystem adapter — UTF-8 path opening, exact reads, atomic write/rename, directory creation, and symlink/reparse-point rejection. |
 | `src/runtime/io/rt_dir.c` | Directory listing/creation/removal — Windows uses `FindFirstFileA`/`FindNextFileA`/`_mkdir`/`_rmdir`; POSIX uses `opendir`/`readdir`/`mkdir`/`rmdir`. Path separator: `\\` on Windows, `/` on Unix. |
-| `src/runtime/io/rt_watcher.c` | Filesystem watching — three completely separate backends: **Linux** (inotify + poll), **macOS** (kqueue + kevent), **Windows** (ReadDirectoryChangesW + overlapped I/O). |
+| `src/runtime/io/rt_watcher.c` | Filesystem watching — three backends selected with `RT_PLATFORM_*`: **Linux** (inotify + poll), **macOS** (kqueue + kevent), **Windows** (ReadDirectoryChangesW + overlapped I/O). |
 | `src/runtime/rt_platform.h` | Path separator macro, POSIX compat shims for Windows, `mode_t` typedef. |
 
 **[GAP]** ViperDOS file watcher is a stub — no kernel inotify support yet.
@@ -83,6 +87,7 @@ Important rule:
 | File | Reason |
 |------|--------|
 | `src/runtime/threads/rt_threads.c` | Thread create/join/sync — Windows uses `CreateThread`/`CRITICAL_SECTION`/`CONDITION_VARIABLE`; POSIX uses `pthread_create`/`pthread_mutex_t`/`pthread_cond_t`. Timed join uses `GetTickCount64()` on Windows vs `clock_gettime()` + absolute timespec on POSIX. |
+| `src/runtime/threads/rt_future.c`, `rt_parallel.c`, `rt_parallel_ops.c`, `rt_parallel_internal.h` | Higher-level thread primitives and data-parallel combinators use `RT_PLATFORM_*` branches for their native sync objects while sharing common task and error propagation logic. |
 | `src/runtime/rt_platform.h` | TLS macro (`__declspec(thread)` vs `_Thread_local` vs `__thread`), atomic operations (MSVC `_InterlockedExchange*` vs GCC `__atomic_*`), memory barriers. |
 | `src/runtime/core/rt_atomic_compat.h` | GCC/Clang `__atomic_*` builtin compatibility layer for MSVC — maps to Interlocked intrinsics via C11 `_Generic` dispatch. |
 | `src/runtime/core/rt_context.c` | Per-thread context storage via `RT_THREAD_LOCAL`. |
@@ -95,9 +100,11 @@ Important rule:
 
 | File | Reason |
 |------|--------|
-| `src/runtime/network/rt_network.c` | ~15 platform-conditional blocks. Windows: `<winsock2.h>`, `WSAStartup`, `closesocket()`, `WSAGetLastError()`. POSIX: `<sys/socket.h>`, `close()`, `errno`. SIGPIPE suppression differs: Linux uses `MSG_NOSIGNAL` per-send; macOS uses `SO_NOSIGPIPE` socket option; Windows needs neither. |
-| `src/runtime/network/rt_tls.c` | TLS/SSL — fully in-tree TLS 1.3, X.509, and HTTPS runtime. Windows uses CryptoAPI for trust-store integration; macOS/Linux use the built-in PEM-bundle verifier and native RSA/ECDSA helpers. No external TLS library or platform TLS framework is required on macOS/Linux. |
-| `src/runtime/CMakeLists.txt` | Windows links `ws2_32`; macOS networking no longer links Security.framework for TLS. |
+| `src/runtime/network/rt_socket_platform.h` + `rt_socket_platform_win.c` / `rt_socket_platform_posix.c` | Approved socket adapter — native socket type, WinSock startup/cleanup, close/error helpers, SIGPIPE policy, non-blocking mode, socket timeouts, readiness waits, and queued-byte queries. |
+| `src/runtime/network/rt_entropy_platform.h` + `rt_entropy_platform_win.c` / `rt_entropy_platform_posix.c` | Approved entropy adapter for crypto and DRBG seeding — BCrypt on Windows, `arc4random_buf` on macOS, `getrandom` then `/dev/urandom` on Linux/POSIX. |
+| `src/runtime/network/rt_network.c`, `rt_tls.c`, `rt_netutils.c`, `rt_network_http.c` | Shared networking logic should call the socket/entropy adapters and use `RT_PLATFORM_*` only for non-adapter capability decisions. |
+| `src/runtime/network/rt_tls_verify_win.c` / `rt_tls_verify_posix.c` | Certificate verification backend split — CryptoAPI trust store on Windows, native/common verifier path elsewhere. |
+| `src/runtime/CMakeLists.txt` | Selects socket, entropy, and TLS verification backend sources per platform. |
 | `CMakeLists.txt` | Feature flag `VIPER_ENABLE_NETWORK` and `VIPER_ENABLE_TLS`. |
 
 ---
@@ -247,12 +254,13 @@ src/lib/<feature>/
     <feature>.h           # Public API (platform-agnostic)
 ```
 
-For features that use `#ifdef` blocks within a single file (used by runtime):
+For features that use platform branches within a single runtime file, use
+`rt_platform.h` macros rather than raw host macros:
 
 ```text
-#ifdef RT_PLATFORM_WINDOWS
+#if RT_PLATFORM_WINDOWS
     // Windows implementation
-#elif defined(RT_PLATFORM_MACOS)
+#elif RT_PLATFORM_MACOS
     // macOS-specific (kqueue, mach_*, etc.)
 #else
     // POSIX fallback (Linux + ViperDOS)

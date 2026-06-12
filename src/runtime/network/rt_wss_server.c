@@ -75,13 +75,6 @@ typedef pthread_mutex_t ws_mutex_t;
 #define WS_MUTEX_DESTROY(m) pthread_mutex_destroy(m)
 #endif
 
-// SIGPIPE suppression
-#if defined(__linux__) || defined(__viperdos__)
-#define SEND_FLAGS MSG_NOSIGNAL
-#else
-#define SEND_FLAGS 0
-#endif
-
 #include "rt_trap.h"
 extern char *rt_ws_compute_accept_key(const char *key_cstr); // from rt_websocket.c
 

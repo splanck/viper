@@ -5,10 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Platform feature macros must appear before ANY includes
-#if !defined(_WIN32)
+// Platform feature macros must appear before ANY includes.
+#ifndef _DARWIN_C_SOURCE
 #define _DARWIN_C_SOURCE 1 // macOS: expose BSD extensions
-#define _GNU_SOURCE 1      // Linux/ViperDOS: expose ip_mreq
+#endif
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1 // Linux/ViperDOS: expose ip_mreq
 #endif
 
 //
@@ -107,92 +109,13 @@ static void rt_tcp_server_finalize(void *obj) {
 }
 
 //=============================================================================
-// Windows WSA Initialization
-//=============================================================================
-
-#ifdef _WIN32
-static volatile LONG wsa_init_state = 0; // 0=uninit, 1=in-progress, 2=done
-
-/// @brief atexit handler — calls `WSACleanup` so Windows releases its socket subsystem.
-static void rt_net_cleanup_wsa(void) {
-    WSACleanup();
-}
-
-/// @brief Lazily initialise WinSock 2.2 (Windows only — POSIX is a no-op).
-///
-/// Three-state machine (`uninit/in-progress/done`) makes initialisation
-/// idempotent and thread-safe without a heavyweight mutex. Multiple
-/// threads racing to first-call this function will see exactly one
-/// `WSAStartup`; all others spin briefly until it completes.
-void rt_net_init_wsa(void) {
-    // Fast path: already done.
-    if (wsa_init_state == 2)
-        return;
-
-    // Try to claim the init slot (0→1). Losers spin until 2.
-    LONG prev = InterlockedCompareExchange(&wsa_init_state, 1, 0);
-    if (prev == 2)
-        return;
-    if (prev == 1) {
-        while (wsa_init_state != 2)
-            Sleep(0);
-        return;
-    }
-
-    // We won (prev == 0, state is now 1). Do the actual init.
-    WSADATA wsa_data;
-    int result = WSAStartup(MAKEWORD(2, 2), &wsa_data);
-    if (result != 0) {
-        InterlockedExchange(&wsa_init_state, 0);
-        rt_trap("Network: WSAStartup failed");
-    }
-    // Ensure WSACleanup is called on process exit.
-    atexit(rt_net_cleanup_wsa);
-    InterlockedExchange(&wsa_init_state, 2);
-}
-#else
-void rt_net_init_wsa(void) {}
-#endif
-
-//=============================================================================
 // Socket Helpers
 //=============================================================================
-
-/// @brief Set socket to non-blocking mode.
-/// @return true on success, false if the syscall failed.
-static bool set_nonblocking(socket_t sock, bool nonblocking) {
-#ifdef _WIN32
-    u_long mode = nonblocking ? 1 : 0;
-    return ioctlsocket(sock, FIONBIO, &mode) == 0;
-#else
-    int flags = fcntl(sock, F_GETFL, 0);
-    if (flags < 0)
-        return false;
-    int new_flags = nonblocking ? (flags | O_NONBLOCK) : (flags & ~O_NONBLOCK);
-    return fcntl(sock, F_SETFL, new_flags) == 0;
-#endif
-}
 
 /// @brief Enable TCP_NODELAY on socket.
 static void set_nodelay(socket_t sock) {
     int flag = 1;
     setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (const char *)&flag, sizeof(flag));
-}
-
-/// @brief Set socket timeout.
-void set_socket_timeout(socket_t sock, int timeout_ms, bool is_recv) {
-    if (timeout_ms < 0)
-        timeout_ms = 0;
-#ifdef _WIN32
-    DWORD tv = (DWORD)timeout_ms;
-    setsockopt(
-        sock, SOL_SOCKET, is_recv ? SO_RCVTIMEO : SO_SNDTIMEO, (const char *)&tv, sizeof(tv));
-#else
-    struct timeval tv;
-    tv.tv_sec = timeout_ms / 1000;
-    tv.tv_usec = (timeout_ms % 1000) * 1000;
-    setsockopt(sock, SOL_SOCKET, is_recv ? SO_RCVTIMEO : SO_SNDTIMEO, &tv, sizeof(tv));
-#endif
 }
 
 /// @brief Convert an int64 timeout argument to the range supported by socket helpers.
@@ -211,48 +134,6 @@ int rt_net_i64_len_to_int(int64_t byte_count, int *out_len) {
     return 1;
 }
 
-/// @brief Wait for socket to become readable/writable with timeout.
-/// @return 1 if ready, 0 if timeout, -1 on error.
-int wait_socket(socket_t sock, int timeout_ms, bool for_write) {
-    if (timeout_ms < 0)
-        return -1;
-#if !defined(_WIN32) && !defined(__viperdos__)
-    struct pollfd pfd;
-    pfd.fd = sock;
-    pfd.events = for_write ? POLLOUT : POLLIN;
-    pfd.revents = 0;
-    int result;
-    do {
-        result = poll(&pfd, 1, timeout_ms);
-    } while (result < 0 && errno == EINTR);
-    return result;
-#else
-    fd_set fds;
-    FD_ZERO(&fds);
-    if (sock == INVALID_SOCK)
-        return -1;
-#if !defined(_WIN32)
-    if (sock < 0 || sock >= FD_SETSIZE) {
-        errno = EINVAL;
-        return -1;
-    }
-#endif
-    FD_SET(sock, &fds);
-
-    struct timeval tv;
-    tv.tv_sec = timeout_ms / 1000;
-    tv.tv_usec = (timeout_ms % 1000) * 1000;
-
-    int result;
-    if (for_write)
-        result = select((int)(sock + 1), NULL, &fds, NULL, &tv);
-    else
-        result = select((int)(sock + 1), &fds, NULL, NULL, &tv);
-
-    return result;
-#endif
-}
-
 /// @brief Get local port from socket.
 static int get_local_port(socket_t sock) {
     struct sockaddr_storage addr;
@@ -264,24 +145,6 @@ static int get_local_port(socket_t sock) {
             return ntohs(((struct sockaddr_in6 *)&addr)->sin6_port);
     }
     return 0;
-}
-
-/// @brief Cross-platform check: did the last socket op fail because of a timeout / would-block?
-static bool socket_recv_timed_out(void) {
-#ifdef _WIN32
-    int err = WSAGetLastError();
-    return err == WSAETIMEDOUT || err == WSAEWOULDBLOCK;
-#else
-    return errno == EAGAIN || errno == EWOULDBLOCK || errno == ETIMEDOUT;
-#endif
-}
-
-static bool socket_accept_interrupted_by_close(int err) {
-#ifdef _WIN32
-    return err == WSAENOTSOCK || err == WSAEINVAL || err == WSAEINTR || err == WSAECONNABORTED;
-#else
-    return err == EBADF || err == EINVAL || err == EINTR || err == ECONNABORTED;
-#endif
 }
 
 /// @brief Connect to `addr`, optionally with a timeout in `timeout_ms` (0 = blocking).
@@ -298,7 +161,7 @@ static bool connect_socket_with_timeout(
         *err_out = 0;
 
     if (timeout_ms > 0) {
-        if (!set_nonblocking(sock, true)) {
+        if (!rt_socket_set_nonblocking(sock, true)) {
             if (err_out)
                 *err_out = GET_LAST_ERROR();
             return false;
@@ -307,12 +170,7 @@ static bool connect_socket_with_timeout(
         int connect_result = connect(sock, addr, addrlen);
         if (connect_result == SOCK_ERROR) {
             int err = GET_LAST_ERROR();
-#ifdef _WIN32
-            if (err == WSAEWOULDBLOCK)
-#else
-            if (err == EINPROGRESS)
-#endif
-            {
+            if (rt_socket_error_is_in_progress(err)) {
                 int ready = wait_socket(sock, timeout_ms, true);
                 if (ready <= 0) {
                     if (err_out)
@@ -335,7 +193,7 @@ static bool connect_socket_with_timeout(
             }
         }
 
-        if (!set_nonblocking(sock, false)) {
+        if (!rt_socket_set_nonblocking(sock, false)) {
             if (err_out)
                 *err_out = GET_LAST_ERROR();
             return false;
@@ -450,11 +308,7 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
             rt_trap_net("Network: connection refused", Err_ConnectionRefused);
             return NULL;
         }
-#ifdef _WIN32
-        if (last_err == WSAETIMEDOUT)
-#else
-        if (last_err == ETIMEDOUT)
-#endif
+        if (rt_socket_error_is_timeout(last_err))
             rt_trap_net("Network: connection timeout", Err_Timeout);
         rt_trap_net("Network: connection failed", Err_NetworkError);
         return NULL;
@@ -550,15 +404,10 @@ int64_t rt_tcp_available(void *obj) {
     if (!tcp->is_open)
         return 0;
 
-#ifdef _WIN32
-    u_long bytes_available = 0;
-    ioctlsocket(tcp->sock, FIONREAD, &bytes_available);
-    return (int64_t)bytes_available;
-#else
-    int bytes_available = 0;
-    ioctl(tcp->sock, FIONREAD, &bytes_available);
-    return (int64_t)bytes_available;
-#endif
+    int64_t bytes_available = 0;
+    if (!rt_socket_available_bytes(tcp->sock, &bytes_available))
+        return 0;
+    return bytes_available;
 }
 
 //=============================================================================
@@ -756,7 +605,7 @@ void *rt_tcp_recv(void *obj, int64_t max_bytes) {
 
     int received = recv(tcp->sock, (char *)buf, recv_len, 0);
     if (received == SOCK_ERROR) {
-        if (socket_recv_timed_out()) {
+        if (rt_socket_recv_timed_out()) {
             // Timeout - release over-allocated buffer and return empty bytes
             if (rt_obj_release_check0(result))
                 rt_obj_free(result);
@@ -835,7 +684,7 @@ void *rt_tcp_recv_exact(void *obj, int64_t count) {
         if (received == SOCK_ERROR) {
             if (rt_obj_release_check0(result))
                 rt_obj_free(result);
-            if (socket_recv_timed_out()) {
+            if (rt_socket_recv_timed_out()) {
                 rt_trap_net("Network: receive timeout", Err_Timeout);
                 return NULL;
             }
@@ -887,7 +736,7 @@ rt_string rt_tcp_recv_line(void *obj) {
         int received = recv(tcp->sock, &c, 1, 0);
         if (received == SOCK_ERROR) {
             free(line);
-            if (socket_recv_timed_out()) {
+            if (rt_socket_recv_timed_out()) {
                 rt_trap_net("Network: receive timeout", Err_Timeout);
                 return rt_str_empty();
             }
@@ -1209,7 +1058,7 @@ void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms) {
         }
         if (ready < 0) {
             int err = GET_LAST_ERROR();
-            if (!server->is_listening || socket_accept_interrupted_by_close(err))
+            if (!server->is_listening || rt_socket_accept_interrupted_by_close(err))
                 return NULL;
             rt_trap_net("Network: accept failed", Err_NetworkError);
             return NULL;
@@ -1224,7 +1073,7 @@ void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms) {
     if (client_sock == INVALID_SOCK) {
         int err = GET_LAST_ERROR();
         // Check if server was closed
-        if (!server->is_listening || socket_accept_interrupted_by_close(err))
+        if (!server->is_listening || rt_socket_accept_interrupted_by_close(err))
             return NULL;
         rt_trap_net("Network: accept failed", Err_NetworkError);
         return NULL;

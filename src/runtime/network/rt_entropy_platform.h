@@ -1,0 +1,45 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/network/rt_entropy_platform.h
+// Purpose: Shared OS entropy adapter for runtime cryptography.
+//
+// Key invariants:
+//   - Entropy is sourced only from operating-system CSPRNG APIs.
+//   - Callers decide whether an entropy failure traps, aborts, or propagates.
+//   - No deterministic fallback is provided by this layer.
+//
+// Ownership/Lifetime:
+//   - The caller owns the output buffer.
+//   - The adapter allocates no long-lived state.
+//
+// Links: src/runtime/network/rt_crypto.c,
+//        src/runtime/network/rt_crypto_module.c
+//
+//===----------------------------------------------------------------------===//
+#pragma once
+
+#include <stddef.h>
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/// @brief Fill a caller-owned buffer with operating-system entropy.
+/// @details Uses the strongest platform CSPRNG available to the adapter
+///          implementation. The function never falls back to deterministic
+///          bytes; failure is reported to the caller.
+/// @param buf Destination buffer. May be NULL only when @p len is zero.
+/// @param len Number of bytes to write.
+/// @return 0 on success, -1 if the platform entropy source fails or @p buf is
+///         NULL with a non-zero length.
+int rt_entropy_platform_random_bytes(uint8_t *buf, size_t len);
+
+#ifdef __cplusplus
+}
+#endif

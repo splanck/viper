@@ -25,6 +25,7 @@
 #include "rt_internal.h"
 #include "rt_network.h"
 #include "rt_object.h"
+#include "rt_socket_platform.h"
 #include "rt_string.h"
 
 #include <limits.h>
@@ -66,13 +67,6 @@ typedef pthread_mutex_t ws_mutex_t;
 #define WS_MUTEX_LOCK(m) pthread_mutex_lock(m)
 #define WS_MUTEX_UNLOCK(m) pthread_mutex_unlock(m)
 #define WS_MUTEX_DESTROY(m) pthread_mutex_destroy(m)
-#endif
-
-// SIGPIPE suppression
-#if defined(__linux__) || defined(__viperdos__)
-#define SEND_FLAGS MSG_NOSIGNAL
-#else
-#define SEND_FLAGS 0
 #endif
 
 #include "rt_trap.h"
