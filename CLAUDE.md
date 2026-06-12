@@ -152,14 +152,15 @@ When responding to a task:
 **IMPORTANT:** Always use the provided build scripts. Never use raw `cmake` commands directly.
 
 ```sh
-# Build and test Viper
-./scripts/build_viper.sh
+# Build and test Viper (canonical POSIX script; build_viper_linux.sh /
+# build_viper_mac.sh are thin wrappers around it)
+./scripts/build_viper_unix.sh
 
 # Build all demos
 ./scripts/build_demos.sh
 
 # Build and test Viper on Windows
-.\scripts\build_viper.cmd
+.\scripts\build_viper_win.cmd
 
 # Build all demos on Windows
 .\scripts\build_demos_win.cmd
@@ -181,11 +182,11 @@ cycle. ccache is auto-detected (opt out with `VIPER_NO_CCACHE=1`).
 ```sh
 # Incremental build only (no clean, no tests) — seconds, not minutes
 VIPER_SKIP_CLEAN=1 VIPER_SKIP_TESTS=1 VIPER_SKIP_LINT=1 VIPER_SKIP_AUDIT=1 \
-VIPER_SKIP_SMOKE=1 VIPER_SKIP_INSTALL=1 ./scripts/build_viper.sh
+VIPER_SKIP_SMOKE=1 VIPER_SKIP_INSTALL=1 ./scripts/build_viper_unix.sh
 
 # Incremental build + one test label
 VIPER_SKIP_CLEAN=1 VIPER_TEST_LABEL=tools VIPER_SKIP_LINT=1 VIPER_SKIP_AUDIT=1 \
-VIPER_SKIP_SMOKE=1 VIPER_SKIP_INSTALL=1 ./scripts/build_viper.sh
+VIPER_SKIP_SMOKE=1 VIPER_SKIP_INSTALL=1 ./scripts/build_viper_unix.sh
 
 # Then run targeted tests directly
 ctest --test-dir build -R test_zia_lexer --output-on-failure

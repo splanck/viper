@@ -993,7 +993,6 @@ src/codegen/
 │   ├── Diagnostics.hpp/cpp        # Codegen diagnostic reporting
 │   ├── LabelUtil.hpp              # Label sanitization helpers
 │   ├── LinkerSupport.hpp/cpp      # Runtime symbol resolution for linking
-│   ├── ParallelCopyResolver.hpp   # Parallel copy resolution (phi lowering)
 │   ├── PassManager.hpp            # Abstract pass manager interface
 │   ├── RuntimeComponents.hpp      # Runtime component dependency tracking
 │   └── TargetInfoBase.hpp         # Base template for target register info
@@ -1020,7 +1019,6 @@ src/codegen/
     ├── LoweringRuleTable.hpp/cpp  # Rule table generator
     ├── MachineIR.hpp/cpp          # MIR data structures
     ├── OperandUtils.hpp           # Operand utilities
-    ├── ParallelCopyResolver.hpp   # Parallel copy resolution
     ├── Peephole.hpp/cpp           # Peephole optimization
     ├── RegAllocLinear.hpp/cpp     # Register allocation (top-level driver)
     ├── TargetX64.hpp/cpp          # x86-64 target description

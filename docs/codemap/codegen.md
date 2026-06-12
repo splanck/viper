@@ -26,7 +26,6 @@ Native code generation backends for x86_64 and AArch64.
 | `LabelUtil.hpp`            | Deterministic label generation for blocks and jumps |
 | `LinkerSupport.hpp/cpp`    | Platform linker invocation and object file support  |
 | `NativeEHLowering.hpp/cpp` | Structured EH to runtime call lowering              |
-| `ParallelCopyResolver.hpp` | Parallel copy resolution for SSA deconstruction     |
 | `PassManager.hpp`          | Codegen pass manager interface                      |
 | `PeepholeCopyProp.hpp`     | Shared peephole copy propagation patterns           |
 | `PeepholeDCE.hpp`          | Shared peephole dead code elimination patterns      |
@@ -247,7 +246,6 @@ Targeting System V AMD64 ABI (Linux/macOS) and Windows x64 ABI.
 |----------------------------|--------------------------------------|
 | `ISel.hpp/cpp`             | Instruction selection and legalization|
 | `OperandUtils.hpp`         | Operand manipulation utilities       |
-| `ParallelCopyResolver.hpp` | Parallel copy resolution for SSA     |
 | `Peephole.hpp/cpp`         | Peephole optimizations               |
 | `OperandRoles.hpp/cpp`     | Per-operand use/def role classification |
 | `PreRegAllocOpt.hpp/cpp`   | Pre-register-allocation optimization |
