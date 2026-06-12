@@ -522,7 +522,7 @@ static void scrollview_get_viewport_screen_bounds(
     float sy = 0.0f;
     float sw = 0.0f;
     float sh = 0.0f;
-    vg_widget_get_screen_bounds((vg_widget_t *)&scroll->base, &sx, &sy, &sw, &sh);
+    vg_widget_get_screen_bounds(&scroll->base, &sx, &sy, &sw, &sh);
     if (scroll->show_v_scrollbar)
         sw -= scroll->scrollbar_width;
     if (scroll->show_h_scrollbar)
@@ -555,7 +555,7 @@ static bool widget_point_within_ancestor_clips(const vg_widget_t *widget, float 
             scrollview_get_viewport_screen_bounds(
                 (const vg_scrollview_t *)ancestor, &sx, &sy, &sw, &sh);
         } else {
-            vg_widget_get_screen_bounds((vg_widget_t *)ancestor, &sx, &sy, &sw, &sh);
+            vg_widget_get_screen_bounds(ancestor, &sx, &sy, &sw, &sh);
         }
         if (!point_in_rect(x, y, sx, sy, sw, sh))
             return false;
@@ -1043,7 +1043,7 @@ void vg_widget_get_bounds(vg_widget_t *widget, float *x, float *y, float *width,
 /// @brief Returns the widget's bounds in screen (root-relative) coordinates by summing ancestor
 /// positions.
 void vg_widget_get_screen_bounds(
-    vg_widget_t *widget, float *x, float *y, float *width, float *height) {
+    const vg_widget_t *widget, float *x, float *y, float *width, float *height) {
     if (!widget)
         return;
 
@@ -1053,7 +1053,7 @@ void vg_widget_get_screen_bounds(
     if (!widget->_paint_screen_space) {
         // Child x/y are already stored relative to the arranged content origin of
         // their parent, so screen conversion only adds ancestor positions.
-        vg_widget_t *p = widget->parent;
+        const vg_widget_t *p = widget->parent;
         while (p) {
             sx += p->x;
             sy += p->y;

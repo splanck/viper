@@ -47,7 +47,7 @@ extern "C" {
 typedef struct vg_label {
     vg_widget_t base;
 
-    const char *text;     ///< Text content (owned, null-terminated)
+    char *text;           ///< Text content (owned, null-terminated)
     vg_font_t *font;      ///< Font for rendering
     float font_size;      ///< Font size in pixels
     uint32_t text_color;  ///< Text color (ARGB)
@@ -122,7 +122,7 @@ typedef enum vg_button_style {
 typedef struct vg_button {
     vg_widget_t base;
 
-    const char *text;              ///< Button text (owned)
+    char *text;                    ///< Button text (owned)
     vg_font_t *font;               ///< Font for text
     float font_size;               ///< Font size
     vg_button_style_t style;       ///< Button style
@@ -206,9 +206,9 @@ typedef struct vg_textinput {
     size_t selection_start; ///< Selection start position (UTF-8 codepoint index)
     size_t selection_end;   ///< Selection end position (UTF-8 codepoint index)
 
-    const char *placeholder; ///< Placeholder text (owned)
-    vg_font_t *font;         ///< Font for rendering
-    float font_size;         ///< Font size
+    char *placeholder; ///< Placeholder text (owned)
+    vg_font_t *font;   ///< Font for rendering
+    float font_size;   ///< Font size
 
     int max_length;     ///< Maximum text length (0 = unlimited)
     bool password_mode; ///< Show dots instead of characters
@@ -334,7 +334,7 @@ typedef void (*vg_checkbox_callback_t)(vg_widget_t *checkbox, bool checked, void
 typedef struct vg_checkbox {
     vg_widget_t base;
 
-    const char *text;   ///< Label text (owned)
+    char *text;         ///< Label text (owned)
     vg_font_t *font;    ///< Font for label
     float font_size;    ///< Font size
     bool checked;       ///< Checked state
@@ -950,7 +950,7 @@ typedef void (*vg_radio_callback_t)(vg_widget_t *radio, bool selected, void *use
 typedef struct vg_radiobutton {
     vg_widget_t base;
 
-    const char *text;       ///< Label text (owned)
+    char *text;             ///< Label text (owned)
     vg_font_t *font;        ///< Font for label
     float font_size;        ///< Font size
     bool selected;          ///< Is this button selected

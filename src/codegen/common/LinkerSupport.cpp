@@ -109,14 +109,20 @@ installedLibraryPath(std::string_view libBaseName) {
 
 /// @brief Source/build-tree sub-directory that produces a given support lib.
 /// @details Most companion libs land under `lib/`, but a few live where their
-///          sources are: GUI under src/lib/gui, Zia frontend/editor archives
-///          under src/frontends/zia, and the Zia static-link closure (the IL
-///          build/verify/transform/runtime/core/support archives pulled when
-///          IntelliSense is embedded in a codegen'd binary) directly under src/
-///          (viper_support under src/support).
+///          sources are: GUI under src/lib/gui, shared text under
+///          src/common/text, frontend-common under src/frontends/common, Zia
+///          frontend/editor archives under src/frontends/zia, and the Zia
+///          static-link closure (the IL build/verify/transform/runtime/core/
+///          support archives pulled when IntelliSense is embedded in a
+///          codegen'd binary) directly under src/ (viper_support under
+///          src/support).
 std::filesystem::path supportLibBuildSubdir(std::string_view libBaseName) {
     if (libBaseName == "vipergui")
         return std::filesystem::path("src") / "lib" / "gui";
+    if (libBaseName == "viper_text_core")
+        return std::filesystem::path("src") / "common" / "text";
+    if (libBaseName == "fe_common")
+        return std::filesystem::path("src") / "frontends" / "common";
     if (libBaseName == "fe_zia" || libBaseName == "zia_editor_services")
         return std::filesystem::path("src") / "frontends" / "zia";
     if (libBaseName == "viper_support")
@@ -240,6 +246,10 @@ bool ensureRequiredTargetsBuilt(const LinkContext &ctx, std::ostream &out, std::
         const std::filesystem::path guiLib = supportLibraryPath(ctx.buildDir, "vipergui");
         if (!fileExists(guiLib))
             missingTargets.push_back("vipergui");
+        const std::filesystem::path textCoreLib =
+            supportLibraryPath(ctx.buildDir, "viper_text_core");
+        if (!fileExists(textCoreLib))
+            missingTargets.push_back("viper_text_core");
     }
     if (hasComponent(ctx, RtComponent::Audio)) {
         const std::filesystem::path audLib = supportLibraryPath(ctx.buildDir, "viperaud");
@@ -683,6 +693,7 @@ std::filesystem::path supportLibraryPath(const std::filesystem::path &buildDir,
 const std::vector<std::string> &ziaFrontendClosureLibs() {
     static const std::vector<std::string> kLibs = {
         "fe_zia",
+        "fe_common",
         "il_build",
         "il_transform",
         "il_runtime",
@@ -799,13 +810,16 @@ void appendGraphicsLibs(const LinkContext &ctx,
     if (!hasComponent(ctx, RtComponent::Graphics))
         return;
 
-    // vipergui (widget implementations) must come before vipergfx (primitives)
-    // because libviper_rt_graphics calls vg_* from vipergui, which in turn
-    // calls the lower-level drawing APIs in vipergfx.
+    // vipergui (widget implementations) must come before viper_text_core and
+    // vipergfx because libviper_rt_graphics calls vg_* from vipergui, while
+    // vipergui calls both the shared text C ABI and lower-level drawing APIs.
     const std::filesystem::path guiLib = supportLibraryPath(ctx.buildDir, "vipergui");
+    const std::filesystem::path textCoreLib = supportLibraryPath(ctx.buildDir, "viper_text_core");
     const std::filesystem::path gfxLib = supportLibraryPath(ctx.buildDir, "vipergfx");
     if (fileExists(guiLib))
         cmd.push_back(guiLib.string());
+    if (fileExists(textCoreLib))
+        cmd.push_back(textCoreLib.string());
     if (fileExists(gfxLib))
         cmd.push_back(gfxLib.string());
 

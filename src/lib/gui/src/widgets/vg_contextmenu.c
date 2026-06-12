@@ -180,8 +180,8 @@ static void free_menu_item(vg_menu_item_t *item) {
             }
             vg_contextmenu_destroy(submenu);
         }
-        free((void *)item->text);
-        free((void *)item->shortcut);
+        free(item->text);
+        free(item->shortcut);
         vg_icon_destroy(&item->icon);
         free(item);
     }
@@ -221,9 +221,9 @@ static void retire_menu_item(vg_contextmenu_t *menu, vg_menu_item_t *item) {
         }
         vg_contextmenu_destroy(submenu);
     }
-    free((void *)item->text);
+    free(item->text);
     item->text = NULL;
-    free((void *)item->shortcut);
+    free(item->shortcut);
     item->shortcut = NULL;
     vg_icon_destroy(&item->icon);
     item->action = NULL;
@@ -646,8 +646,8 @@ static void contextmenu_paint(vg_widget_t *widget, void *canvas) {
     // Real soft drop shadow + anti-aliased rounded panel (Refined Depth).
     float crad = theme->radius.md;
     vg_elevation_t el = theme->elevation.level2;
-    vg_draw_round_rect_shadow(win, x, y, w, h, crad, el.blur, el.dx, el.dy, el.alpha,
-                              theme->elevation.shadow_rgb);
+    vg_draw_round_rect_shadow(
+        win, x, y, w, h, crad, el.blur, el.dx, el.dy, el.alpha, theme->elevation.shadow_rgb);
     vg_draw_round_rect_fill(win, x, y, w, h, crad, menu->bg_color);
     vg_draw_round_rect_stroke(win, x, y, w, h, crad, 1.0f, menu->border_color);
 

@@ -485,8 +485,10 @@ static int filedialog_ascii_casecmp(const char *a, const char *b) {
 
 /// @brief qsort comparator — directories before files, then case-insensitive alphabetical.
 static int compare_entries(const void *a, const void *b) {
-    const vg_file_entry_t *ea = *(const vg_file_entry_t **)a;
-    const vg_file_entry_t *eb = *(const vg_file_entry_t **)b;
+    const vg_file_entry_t *const *entry_a = (const vg_file_entry_t *const *)a;
+    const vg_file_entry_t *const *entry_b = (const vg_file_entry_t *const *)b;
+    const vg_file_entry_t *ea = *entry_a;
+    const vg_file_entry_t *eb = *entry_b;
 
     // Directories first
     if (ea->is_directory && !eb->is_directory)
@@ -948,8 +950,8 @@ static void filedialog_destroy(vg_widget_t *widget) {
     }
 
     // Free base dialog fields
-    free((void *)dialog->base.title);
-    free((void *)dialog->base.message);
+    free(dialog->base.title);
+    free(dialog->base.message);
 }
 
 /// @brief VTable measure: sizes the dialog to its configured minimum width and height (full measure
@@ -1711,7 +1713,7 @@ void vg_filedialog_set_title(vg_filedialog_t *dialog, const char *title) {
     char *new_title = title ? filedialog_strdup(title) : NULL;
     if (title && !new_title)
         return;
-    free((void *)dialog->base.title);
+    free(dialog->base.title);
     dialog->base.title = new_title;
     dialog->base.base.needs_paint = true;
 }

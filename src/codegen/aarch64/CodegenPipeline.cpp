@@ -191,7 +191,9 @@ static int linkToExe(const std::string &asmPath,
 ///          Windows, always pulls in Oop/Arrays/Collections/Threads/Text/IoFs
 ///          alongside the Base archive because the Windows CRT startup expects
 ///          them to be present. Graphics and Audio support libraries are
-///          appended when the link context declares those components.
+///          appended when the link context declares those components. The GUI
+///          support library also pulls in viper_text_core because CodeEditor
+///          uses the shared text-buffer C ABI.
 /// @param ctx Link context produced by prepareLinkContext/prepareLinkContextFromSymbols.
 /// @param targetPlatform Requested OS platform; Host is resolved through targetLinkPlatform().
 /// @param archives Output list; entries are absolute paths appended in dependency order.
@@ -227,6 +229,7 @@ static void collectNativeLinkArchives(const common::LinkContext &ctx,
 
     if (common::hasComponent(ctx, RtComponent::Graphics)) {
         appendIfExists(common::supportLibraryPath(ctx.buildDir, "vipergui"));
+        appendIfExists(common::supportLibraryPath(ctx.buildDir, "viper_text_core"));
         appendIfExists(common::supportLibraryPath(ctx.buildDir, "vipergfx"));
     }
 

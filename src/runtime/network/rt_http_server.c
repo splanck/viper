@@ -847,106 +847,6 @@ static void handle_connection_task(void *arg) {
     free(task);
 }
 
-/// @brief Replace the response body with a JSON error object.
-///
-/// Used when the route lookup fails (404) or the handler crashes (500)
-/// to produce a structured error response instead of the bare status
-/// line. The body is `{"error":"<message>"}`; the `Content-Type` header
-/// is set (creating the headers map if needed) so clients see the JSON
-/// MIME type.
-///
-/// Idempotent: clears any pre-existing body before writing the new one.
-/// Allocation failures result in a status-code-only response (no body).
-///
-/// @param res         Response struct to overwrite.
-/// @param status_code HTTP status code to set.
-/// @param message     Human-readable error text; embedded into the JSON
-///                    body literally (no escaping). NULL means no body.
-static void set_json_error_response(server_res_t *res, int status_code, const char *message) {
-    if (!res)
-        return;
-
-    res->status_code = status_code;
-    free(res->body);
-    res->body = NULL;
-    res->body_len = 0;
-
-    if (message) {
-        size_t cap = strlen(message) + 32;
-        char *json = (char *)malloc(cap);
-        if (json) {
-            int written = snprintf(json, cap, "{\"error\":\"%s\"}", message);
-            if (written >= 0) {
-                res->body = json;
-                res->body_len = (size_t)written;
-                res->sent = true;
-            } else {
-                free(json);
-            }
-        }
-    }
-
-    if (!res->headers)
-        res->headers = rt_map_new();
-    if (res->headers) {
-        rt_string ct_key = rt_const_cstr("Content-Type");
-        rt_string ct_val = rt_const_cstr("application/json");
-        rt_map_set(res->headers, ct_key, (void *)ct_val);
-    }
-}
-
-/// @brief Dispatch a parsed request to its registered handler and
-///        populate the response.
-///
-/// Looks up the route via `rt_http_router_match` (which also extracts
-/// path parameters), records the params on the request, then resolves
-/// the handler binding via `find_handler_binding` and calls its
-/// dispatch callback. On lookup failure produces a JSON error response
-/// (500 for missing handler, 404 for no matching route).
-///
-/// Defaults the response status to 200 if the handler didn't set one.
-///
-/// @param server Server impl owning the routes/bindings.
-/// @param req    Parsed request; `params` is populated on success.
-/// @param res    Response struct to populate (status, headers, body).
-static void build_route_response(rt_http_server_impl *server,
-                                 server_req_t *req,
-                                 server_res_t *res) {
-    rt_string method_str = rt_string_from_bytes(req->method, strlen(req->method));
-    rt_string path_str = rt_string_from_bytes(req->path, strlen(req->path));
-    void *match = rt_http_router_match(server->router, method_str, path_str);
-    rt_string_unref(method_str);
-    rt_string_unref(path_str);
-
-    res->headers = rt_map_new();
-
-    if (match) {
-        req->params = match; // Transfer ownership
-        res->status_code = 200;
-
-        int64_t route_idx = rt_route_match_index(match);
-        if (route_idx < 0 || route_idx >= server->route_count) {
-            set_json_error_response(res, 500, "Route metadata missing");
-            return;
-        }
-
-        const char *tag = server->routes[route_idx].tag;
-        handler_binding_t *binding = find_handler_binding(server, tag);
-        if (!binding || !binding->dispatch) {
-            set_json_error_response(res, 500, "Handler not registered");
-            return;
-        }
-
-        binding->dispatch(binding->ctx, req, res);
-        if (res->status_code <= 0)
-            res->status_code = 200;
-        if (res->body || res->body_len > 0)
-            res->sent = true;
-    } else {
-        set_json_error_response(res, 404, "Not Found");
-    }
-}
-
 //=============================================================================
 // Accept Loop
 //=============================================================================
@@ -1188,7 +1088,7 @@ void rt_http_server_bind_handler_dispatch(
                              tag,
                              (rt_http_server_handler_dispatch_fn)dispatch,
                              ctx,
-        (rt_http_server_handler_cleanup_fn)cleanup)) {
+                             (rt_http_server_handler_cleanup_fn)cleanup)) {
         rt_trap("HttpServer: failed to bind handler");
         return;
     }

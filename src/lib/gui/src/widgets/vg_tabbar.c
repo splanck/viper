@@ -28,8 +28,8 @@
 //
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
-#include "../../include/vg_event.h"
 #include "../../include/vg_draw.h"
+#include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
 #include <math.h>
@@ -87,8 +87,8 @@ bool vg_tab_is_live(const vg_tab_t *tab) {
 static void free_tab(vg_tab_t *tab) {
     if (!tab)
         return;
-    free((void *)tab->title);
-    free((void *)tab->tooltip);
+    free(tab->title);
+    free(tab->tooltip);
     free(tab);
 }
 
@@ -98,9 +98,9 @@ static void free_tab(vg_tab_t *tab) {
 static void retire_tab(vg_tabbar_t *tabbar, vg_tab_t *tab) {
     if (!tabbar || !tab)
         return;
-    free((void *)tab->title);
+    free(tab->title);
     tab->title = NULL;
-    free((void *)tab->tooltip);
+    free(tab->tooltip);
     tab->tooltip = NULL;
     tab->owner = NULL;
     tab->user_data = NULL;
@@ -610,16 +610,35 @@ static void tabbar_paint(vg_widget_t *widget, void *canvas) {
         // accent underline; hovered tabs get a subtle rounded highlight;
         // inactive tabs are separated by a faint divider.
         if (tab == tabbar->active_tab) {
-            vg_draw_round_rect_fill(win, tab_x + 2.0f, widget->y + 3.0f, width - 4.0f,
-                                    widget->height - 3.0f, theme->radius.md, bg);
-            vg_draw_inner_highlight_top(win, tab_x + 2.0f, widget->y + 4.0f, width - 4.0f,
-                                        theme->radius.md, vg_color_lighten(bg, 0.07f));
-            vg_draw_round_rect_fill(win, tab_x + 10.0f, widget->y + widget->height - 5.0f,
-                                    width - 20.0f, 3.0f, 1.5f, theme->colors.accent_primary);
+            vg_draw_round_rect_fill(win,
+                                    tab_x + 2.0f,
+                                    widget->y + 3.0f,
+                                    width - 4.0f,
+                                    widget->height - 3.0f,
+                                    theme->radius.md,
+                                    bg);
+            vg_draw_inner_highlight_top(win,
+                                        tab_x + 2.0f,
+                                        widget->y + 4.0f,
+                                        width - 4.0f,
+                                        theme->radius.md,
+                                        vg_color_lighten(bg, 0.07f));
+            vg_draw_round_rect_fill(win,
+                                    tab_x + 10.0f,
+                                    widget->y + widget->height - 5.0f,
+                                    width - 20.0f,
+                                    3.0f,
+                                    1.5f,
+                                    theme->colors.accent_primary);
         } else {
             if (tab == tabbar->hovered_tab) {
-                vg_draw_round_rect_fill(win, tab_x + 2.0f, widget->y + 4.0f, width - 4.0f,
-                                        widget->height - 8.0f, theme->radius.sm, bg);
+                vg_draw_round_rect_fill(win,
+                                        tab_x + 2.0f,
+                                        widget->y + 4.0f,
+                                        width - 4.0f,
+                                        widget->height - 8.0f,
+                                        theme->radius.sm,
+                                        bg);
             }
             vgfx_fill_rect(win,
                            (int32_t)(tab_x + width - 1.0f),
@@ -1150,12 +1169,12 @@ void vg_tab_set_title(vg_tab_t *tab, const char *title) {
     }
 
     if (tab->title)
-        free((void *)tab->title);
+        free(tab->title);
     tab->title = new_title;
 
     if (tooltip_tracks_title) {
         if (tab->tooltip)
-            free((void *)tab->tooltip);
+            free(tab->tooltip);
         tab->tooltip = new_tooltip;
     }
     if (tab->owner) {
@@ -1192,7 +1211,7 @@ void vg_tab_set_tooltip(vg_tab_t *tab, const char *tooltip) {
     if (tooltip && !copy)
         return;
     if (tab->tooltip)
-        free((void *)tab->tooltip);
+        free(tab->tooltip);
     tab->tooltip = copy;
     if (tab->owner) {
         if (tab->owner->hovered_tab == tab)

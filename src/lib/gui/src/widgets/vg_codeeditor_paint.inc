@@ -460,14 +460,14 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                                                        editor->extra_cursors[c].col);
                 float cursor_x = content_x + editor->extra_cursors[c].col * editor->char_width -
                                  editor->scroll_x;
-                float cursor_y =
+                float extra_cursor_y =
                     widget->y + (float)visible_extra_line * editor->line_height - editor->scroll_y;
-                if (cursor_y + editor->line_height <= widget->y ||
-                    cursor_y >= widget->y + widget->height)
+                if (extra_cursor_y + editor->line_height <= widget->y ||
+                    extra_cursor_y >= widget->y + widget->height)
                     continue;
                 vgfx_fill_rect((vgfx_window_t)canvas,
                                (int32_t)cursor_x,
-                               (int32_t)cursor_y,
+                               (int32_t)extra_cursor_y,
                                2,
                                (int32_t)editor->line_height,
                                editor->cursor_color);
@@ -475,11 +475,12 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
         }
     } else {
         int chars_per_row = codeeditor_chars_per_row(editor, content_width);
-        int first_visual_row = (int)(editor->scroll_y / editor->line_height);
-        float row_offset = editor->scroll_y - (float)first_visual_row * editor->line_height;
+        int wrapped_first_visual_row = (int)(editor->scroll_y / editor->line_height);
+        float row_offset = editor->scroll_y - (float)wrapped_first_visual_row * editor->line_height;
         int line = 0;
         int row_in_line = 0;
-        codeeditor_locate_visual_row(editor, content_width, first_visual_row, &line, &row_in_line);
+        codeeditor_locate_visual_row(
+            editor, content_width, wrapped_first_visual_row, &line, &row_in_line);
 
         float row_y = widget->y - row_offset;
         while (line < editor->line_count && row_y < widget->y + widget->height) {

@@ -1270,8 +1270,8 @@ static void toolbar_arrange(vg_widget_t *widget, float x, float y, float width, 
 //=============================================================================
 
 /// @brief Scanline-fill a triangle (used for play/continue glyphs).
-static void toolbar_fill_tri(vgfx_window_t win, float ax, float ay, float bx, float by, float cx,
-                             float cy, uint32_t color) {
+static void toolbar_fill_tri(
+    vgfx_window_t win, float ax, float ay, float bx, float by, float cx, float cy, uint32_t color) {
     uint32_t rgb = color & 0x00FFFFFFu;
     int minx = (int)floorf(fminf(ax, fminf(bx, cx)));
     int maxx = (int)ceilf(fmaxf(ax, fmaxf(bx, cx)));
@@ -1295,8 +1295,8 @@ static void toolbar_fill_tri(vgfx_window_t win, float ax, float ay, float bx, fl
 
 /// @brief Draw a recognisable vector icon for a known toolbar codepoint.
 /// @return true if handled (caller skips the font glyph); false to fall back.
-static bool toolbar_draw_vector_icon(vgfx_window_t win, uint32_t cp, float bx, float by, float sz,
-                                     uint32_t color) {
+static bool toolbar_draw_vector_icon(
+    vgfx_window_t win, uint32_t cp, float bx, float by, float sz, uint32_t color) {
     float sw = sz * 0.10f;
     if (sw < 1.4f)
         sw = 1.4f;
@@ -1460,7 +1460,6 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas) {
         switch (item->type) {
             case VG_TOOLBAR_ITEM_SEPARATOR: {
                 // Draw vertical or horizontal line
-                vg_theme_t *theme = vg_theme_get_current();
                 uint32_t sep_color = theme->colors.border_primary;
                 if (tb->orientation == VG_TOOLBAR_HORIZONTAL) {
                     int32_t sep_x = (int32_t)(item_x + item_width / 2);
@@ -1498,8 +1497,12 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas) {
                 }
 
                 if (btn_bg != 0) {
-                    vg_draw_round_rect_fill(win, item_x + 1.0f, item_y + 1.0f, item_width - 2.0f,
-                                            item_height - 2.0f, vg_theme_get_current()->radius.sm,
+                    vg_draw_round_rect_fill(win,
+                                            item_x + 1.0f,
+                                            item_y + 1.0f,
+                                            item_width - 2.0f,
+                                            item_height - 2.0f,
+                                            vg_theme_get_current()->radius.sm,
                                             btn_bg);
                 }
 
@@ -1573,8 +1576,8 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas) {
                                             : 0;
                     float centred_x = item_x + (item_width - icon_px) / 2.0f;
                     if (label_cp != 0 &&
-                        toolbar_draw_vector_icon(win, label_cp, centred_x, icon_y, icon_px,
-                                                 txt_color)) {
+                        toolbar_draw_vector_icon(
+                            win, label_cp, centred_x, icon_y, icon_px, txt_color)) {
                         // Drawn as a vector icon — skip the text.
                     } else {
                         float label_x = (item->icon.type == VG_ICON_NONE)
@@ -1582,11 +1585,16 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas) {
                                             : icon_x + icon_px + tb->item_padding;
                         vg_font_metrics_t font_metrics;
                         vg_font_get_metrics(tb->font, tb->font_size, &font_metrics);
-                        float label_y = item_y + (item_height + font_metrics.ascent +
-                                                  font_metrics.descent) /
-                                                     2.0f;
-                        vg_font_draw_text(canvas, tb->font, tb->font_size, label_x, label_y,
-                                          item->label, txt_color);
+                        float label_y =
+                            item_y +
+                            (item_height + font_metrics.ascent + font_metrics.descent) / 2.0f;
+                        vg_font_draw_text(canvas,
+                                          tb->font,
+                                          tb->font_size,
+                                          label_x,
+                                          label_y,
+                                          item->label,
+                                          txt_color);
                     }
                 }
 

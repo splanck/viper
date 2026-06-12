@@ -32,8 +32,8 @@
 //
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
-#include "../../include/vg_event.h"
 #include "../../include/vg_draw.h"
+#include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
 #include <limits.h>
@@ -137,7 +137,7 @@ static vg_tree_node_t *tree_node_stack_pop(tree_node_stack_t *stack) {
 static void free_node_payload(vg_tree_node_t *node) {
     if (!node)
         return;
-    free((void *)node->text);
+    free(node->text);
     node->text = NULL;
     node->text_len = 0;
     if (node->owns_user_data && node->user_data) {
@@ -671,12 +671,20 @@ static void paint_node(
                 uint32_t pill =
                     row_sel ? vg_color_blend(tree->selected_bg, theme->colors.accent_primary, 0.28f)
                             : tree->hover_bg;
-                vg_draw_round_rect_fill((vgfx_window_t)canvas, tree->base.x + 8.0f, display_y + 2.0f,
-                                        width - 16.0f, tree->row_height - 4.0f, theme->radius.lg,
+                vg_draw_round_rect_fill((vgfx_window_t)canvas,
+                                        tree->base.x + 8.0f,
+                                        display_y + 2.0f,
+                                        width - 16.0f,
+                                        tree->row_height - 4.0f,
+                                        theme->radius.lg,
                                         pill);
                 if (row_sel)
-                    vg_draw_round_rect_fill((vgfx_window_t)canvas, tree->base.x + 11.0f,
-                                            display_y + 6.0f, 3.0f, tree->row_height - 12.0f, 1.5f,
+                    vg_draw_round_rect_fill((vgfx_window_t)canvas,
+                                            tree->base.x + 11.0f,
+                                            display_y + 6.0f,
+                                            3.0f,
+                                            tree->row_height - 12.0f,
+                                            1.5f,
                                             theme->colors.accent_primary);
             }
 

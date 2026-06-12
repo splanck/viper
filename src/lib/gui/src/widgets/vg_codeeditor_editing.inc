@@ -126,6 +126,75 @@ static char *copy_text_range(
     return copy_text_range_len(editor, start_line, start_col, end_line, end_col, NULL);
 }
 
+/// @brief Materialize the editor's native line array as a newline-joined byte string.
+///
+/// @details This helper is intentionally separate from vg_codeeditor_get_text so
+///          internal mirror synchronization does not affect public performance
+///          counters. Embedded NUL bytes stored in individual line buffers are
+///          copied verbatim; @p out_len receives the byte count excluding the
+///          terminating NUL byte.
+///
+/// @param editor Editor whose native line array should be joined.
+/// @param out_len Optional output for the byte length excluding the terminator.
+/// @return Caller-owned NUL-terminated buffer, or NULL on allocation failure.
+static char *codeeditor_materialize_lines(const vg_codeeditor_t *editor, size_t *out_len) {
+    if (out_len)
+        *out_len = 0;
+    if (!editor)
+        return NULL;
+
+    size_t total = 1;
+    for (int i = 0; i < editor->line_count; i++) {
+        size_t add = editor->lines[i].length;
+        if (i < editor->line_count - 1) {
+            if (add == SIZE_MAX)
+                return NULL;
+            add++;
+        }
+        if (add > SIZE_MAX - total)
+            return NULL;
+        total += add;
+    }
+
+    char *result = malloc(total);
+    if (!result)
+        return NULL;
+
+    char *p = result;
+    for (int i = 0; i < editor->line_count; i++) {
+        memcpy(p, editor->lines[i].text, editor->lines[i].length);
+        p += editor->lines[i].length;
+        if (i < editor->line_count - 1)
+            *p++ = '\n';
+    }
+    *p = '\0';
+    if (out_len)
+        *out_len = total > 0 ? total - 1 : 0;
+    return result;
+}
+
+/// @brief Reload the shared text-engine mirror from the editor's native line array.
+///
+/// @details The GUI editor still uses its established line array for cursor,
+///          folding, syntax, and paint behavior. This bridge keeps the shared
+///          piece-table buffer synchronized at mutation boundaries so public
+///          full-text operations can use the common engine without changing
+///          existing editing semantics.
+///
+/// @param editor Editor whose shared text mirror should be refreshed.
+static void codeeditor_sync_document_buffer_from_lines(vg_codeeditor_t *editor) {
+    if (!editor || !editor->document_buffer)
+        return;
+
+    size_t len = 0;
+    char *text = codeeditor_materialize_lines(editor, &len);
+    if (!text)
+        return;
+
+    (void)viper_text_buffer_load_bytes((viper_text_buffer_t *)editor->document_buffer, text, len);
+    free(text);
+}
+
 /// @brief Clears the has_selection flag on all extra (non-primary) cursors.
 static void clear_extra_cursor_selections(vg_codeeditor_t *editor) {
     if (!editor)
@@ -488,6 +557,7 @@ cleanup:
     free(has_old_texts);
     if (!changed)
         return;
+    codeeditor_sync_document_buffer_from_lines(editor);
     codeeditor_bump_revision(editor);
     if (syntax_global_dirty)
         codeeditor_invalidate_all_highlights(editor);

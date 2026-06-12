@@ -957,10 +957,9 @@ TEST(tooltip_wrap_terminates_on_whitespace_only_text) {
     tip->max_width = 12;             // very narrow to force wrap
     tip->padding = 1;
 
-// The post-fix progress guard ensures tooltip_measure returns in bounded
-// time even for pathological whitespace input. If the guard is missing,
-// this call loops forever and the test times out.
-tooltip_measure:;
+    // The post-fix progress guard ensures measurement returns in bounded time
+    // even for pathological whitespace input. If the guard is missing, this
+    // call loops forever and the test times out.
     // Exercise measure via the widget vtable (the internal wrap is called).
     if (tip->base.vtable && tip->base.vtable->measure)
         tip->base.vtable->measure(&tip->base, 0.0f, 0.0f);
@@ -3937,8 +3936,8 @@ static bool filedialog_modal_test_runner(vg_filedialog_t *dialog, void *user_dat
 }
 
 TEST(filedialog_convenience_uses_installed_modal_runner) {
-    const char *expected = "/tmp/viper-gui-test.txt";
-    vg_filedialog_set_modal_runner(filedialog_modal_test_runner, (void *)expected);
+    char expected[] = "/tmp/viper-gui-test.txt";
+    vg_filedialog_set_modal_runner(filedialog_modal_test_runner, expected);
     char *result = vg_filedialog_open_file("Open", NULL, "Text", "*.txt");
     ASSERT_NOT_NULL(result);
     ASSERT(strcmp(result, expected) == 0);

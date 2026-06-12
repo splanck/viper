@@ -255,7 +255,9 @@ int runExecutable(const std::filesystem::path &exePath, std::ostream &out, std::
 ///          is required, also pulls in Oop/Arrays/Collections/Threads/Text/IoFs
 ///          because Windows CRT startup expects them. Graphics and Audio
 ///          support libraries are appended when the corresponding runtime
-///          components are present in the link context.
+///          components are present in the link context. The GUI support library
+///          also pulls in viper_text_core because CodeEditor uses the shared
+///          text-buffer C ABI.
 void collectNativeLinkArchives(const common::LinkContext &ctx, std::vector<std::string> &archives) {
     std::unordered_set<std::string> seenArchives;
 
@@ -291,8 +293,10 @@ void collectNativeLinkArchives(const common::LinkContext &ctx, std::vector<std::
 
     if (common::hasComponent(ctx, RtComponent::Graphics)) {
         const auto guiLib = common::supportLibraryPath(ctx.buildDir, "vipergui");
+        const auto textCoreLib = common::supportLibraryPath(ctx.buildDir, "viper_text_core");
         const auto gfxLib = common::supportLibraryPath(ctx.buildDir, "vipergfx");
         appendIfExists(guiLib);
+        appendIfExists(textCoreLib);
         appendIfExists(gfxLib);
     }
 

@@ -112,6 +112,16 @@ void vg_codeeditor_set_text_bytes(vg_codeeditor_t *editor, const char *text, siz
         }
     }
 
+    if (editor->document_buffer) {
+        const char *buffer_text = text ? text : "";
+        size_t buffer_len = text ? len : 0;
+        if (!viper_text_buffer_load_bytes(
+                (viper_text_buffer_t *)editor->document_buffer, buffer_text, buffer_len)) {
+            free_line_array(new_lines, new_count);
+            return;
+        }
+    }
+
     codeeditor_clear_highlight_spans(editor);
     codeeditor_free_inlay_hint_storage(editor);
     free_line_array(editor->lines, editor->line_count);
@@ -200,6 +210,17 @@ int vg_codeeditor_get_inlay_hint_count(const vg_codeeditor_t *editor) {
 char *vg_codeeditor_get_text(vg_codeeditor_t *editor) {
     if (!editor)
         return NULL;
+
+    if (editor->document_buffer) {
+        size_t len = 0;
+        char *result =
+            viper_text_buffer_text_dup((const viper_text_buffer_t *)editor->document_buffer, &len);
+        if (result) {
+            codeeditor_perf_add(&editor->perf_stats.full_text_copies, 1);
+            codeeditor_perf_add(&editor->perf_stats.full_text_copy_bytes, len);
+            return result;
+        }
+    }
 
     // Calculate total size, including one final NUL byte.
     size_t total = 1;
@@ -762,6 +783,7 @@ void vg_codeeditor_undo(vg_codeeditor_t *editor) {
 
     editor->has_selection = false;
     clear_extra_cursor_selections(editor);
+    codeeditor_sync_document_buffer_from_lines(editor);
     codeeditor_bump_revision(editor);
     codeeditor_invalidate_all_highlights(editor);
     editor->base.needs_paint = true;
@@ -829,6 +851,7 @@ void vg_codeeditor_redo(vg_codeeditor_t *editor) {
 
     editor->has_selection = false;
     clear_extra_cursor_selections(editor);
+    codeeditor_sync_document_buffer_from_lines(editor);
     codeeditor_bump_revision(editor);
     codeeditor_invalidate_all_highlights(editor);
     editor->base.needs_paint = true;

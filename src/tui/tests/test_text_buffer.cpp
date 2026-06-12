@@ -5,18 +5,26 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tui/tests/test_text_buffer.cpp
-// Purpose: Test suite for this component.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// File: src/tui/tests/test_text_buffer.cpp
+// Purpose: Characterization coverage for the shared TUI text buffer and its C
+//          ABI facade.
+// Key invariants: Piece-table edits preserve line-index metadata, transaction
+//                 undo/redo semantics, and embedded NUL bytes exposed through
+//                 the shared C ABI.
+// Ownership/Lifetime: Test-owned C ABI buffers and duplicated strings are
+//                     released through viper_text_buffer_free and
+//                     viper_text_buffer_free_string.
+// Links: src/tui/include/tui/text/text_buffer.hpp,
+//        src/common/text/viper_text_buffer.h
 //
 //===----------------------------------------------------------------------===//
 
 #include "tui/text/text_buffer.hpp"
+#include "viper_text_buffer.h"
 
 #include "tests/TestHarness.hpp"
 
+#include <cstring>
 #include <string>
 #include <string_view>
 
@@ -97,6 +105,55 @@ TEST(TUI, TextBuffer) {
         return false;
     });
     ASSERT_EQ(segmentVisits, 1);
+}
+
+TEST(TUI, SharedTextBufferCAbi) {
+    viper_text_buffer_t *buf = viper_text_buffer_new();
+    ASSERT_TRUE(buf != nullptr);
+
+    const char seed[] = {'a', '\0', 'b', '\n', 'c'};
+    ASSERT_TRUE(viper_text_buffer_load_bytes(buf, seed, sizeof(seed)));
+    ASSERT_EQ(viper_text_buffer_size(buf), sizeof(seed));
+    ASSERT_EQ(viper_text_buffer_line_count(buf), 2);
+    ASSERT_EQ(viper_text_buffer_line_start(buf, 1), 4);
+    ASSERT_EQ(viper_text_buffer_line_length(buf, 0), 3);
+
+    size_t len = 0;
+    char *text = viper_text_buffer_text_dup(buf, &len);
+    ASSERT_TRUE(text != nullptr);
+    ASSERT_EQ(len, sizeof(seed));
+    ASSERT_EQ(std::memcmp(text, seed, sizeof(seed)), 0);
+    viper_text_buffer_free_string(text);
+
+    viper_text_buffer_begin_transaction(buf);
+    ASSERT_TRUE(viper_text_buffer_insert_bytes(buf, 1, "XX", 2));
+    ASSERT_TRUE(viper_text_buffer_erase(buf, 3, 1));
+    viper_text_buffer_end_transaction(buf);
+
+    text = viper_text_buffer_text_dup(buf, &len);
+    ASSERT_TRUE(text != nullptr);
+    ASSERT_EQ(std::string(text, len), std::string("aXXb\nc", 6));
+    viper_text_buffer_free_string(text);
+
+    ASSERT_TRUE(viper_text_buffer_undo(buf));
+    text = viper_text_buffer_text_dup(buf, &len);
+    ASSERT_TRUE(text != nullptr);
+    ASSERT_EQ(len, sizeof(seed));
+    ASSERT_EQ(std::memcmp(text, seed, sizeof(seed)), 0);
+    viper_text_buffer_free_string(text);
+
+    ASSERT_TRUE(viper_text_buffer_redo(buf));
+    text = viper_text_buffer_text_dup(buf, &len);
+    ASSERT_TRUE(text != nullptr);
+    ASSERT_EQ(std::string(text, len), std::string("aXXb\nc", 6));
+    viper_text_buffer_free_string(text);
+
+    char *line = viper_text_buffer_line_dup(buf, 1, &len);
+    ASSERT_TRUE(line != nullptr);
+    ASSERT_EQ(std::string(line, len), "c");
+    viper_text_buffer_free_string(line);
+
+    viper_text_buffer_free(buf);
 }
 
 int main(int argc, char **argv) {

@@ -496,6 +496,11 @@ if(VIPER_BUILD_TESTING)
   endif()
 endif()
 
+# ---- Shared Text Engine ----
+# (Must be added before GUI and TUI so both editors link the same implementation)
+add_subdirectory(src/common/text)
+viper_assert_no_directory_link_libraries("src/common/text" "src/common/text")
+
 # ---- ViperGFX library ----
 # (Must be added before runtime so rt_graphics can link to it)
 add_subdirectory(src/lib/graphics)
@@ -803,6 +808,7 @@ list(APPEND VIPER_PUBLIC_LIB_TARGETS
   il_transform
   il_utils
   il_vm
+  viper_text_core
   fe_common
   fe_basic
   il_api
@@ -854,6 +860,9 @@ if (TARGET viper_il_verify)
 endif ()
 if (TARGET viper_il_full)
   set_target_properties(viper_il_full PROPERTIES EXPORT_NAME il_full)
+endif ()
+if (TARGET viper_text_core)
+  set_target_properties(viper_text_core PROPERTIES EXPORT_NAME text_core)
 endif ()
 
 install(TARGETS ${VIPER_PUBLIC_LIB_TARGETS}

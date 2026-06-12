@@ -20,8 +20,8 @@
 //
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
-#include "../../include/vg_event.h"
 #include "../../include/vg_draw.h"
+#include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
 #include <stdlib.h>
@@ -109,7 +109,7 @@ vg_checkbox_t *vg_checkbox_create(vg_widget_t *parent, const char *text) {
 static void checkbox_destroy(vg_widget_t *widget) {
     vg_checkbox_t *checkbox = (vg_checkbox_t *)widget;
     if (checkbox->text) {
-        free((void *)checkbox->text);
+        free(checkbox->text);
         checkbox->text = NULL;
     }
 }
@@ -170,7 +170,13 @@ static void checkbox_paint(vg_widget_t *widget, void *canvas) {
     // Draw box background and border (anti-aliased rounded square)
     float cb_rad = theme->radius.sm;
     vg_draw_round_rect_fill(win, (float)bx, (float)by, (float)bs, (float)bs, cb_rad, box_color);
-    vg_draw_round_rect_stroke(win, (float)bx, (float)by, (float)bs, (float)bs, cb_rad, 1.0f,
+    vg_draw_round_rect_stroke(win,
+                              (float)bx,
+                              (float)by,
+                              (float)bs,
+                              (float)bs,
+                              cb_rad,
+                              1.0f,
                               theme->colors.border_primary);
 
     // Draw check mark or indeterminate mark
@@ -180,17 +186,33 @@ static void checkbox_paint(vg_widget_t *widget, void *canvas) {
             vgfx_fill_rect(win, bx + 3, by + bs / 2 - 1, bs - 6, 2, check_color);
         } else {
             // Two-segment tick mark (✓): short leg then long leg, anti-aliased.
-            vg_draw_line_aa(win, bx + 2.0f, by + bs / 2.0f, bx + bs / 2.0f - 1.0f, by + bs - 3.0f,
-                            1.8f, check_color);
-            vg_draw_line_aa(win, bx + bs / 2.0f - 1.0f, by + bs - 3.0f, bx + bs - 2.0f, by + 2.0f,
-                            1.8f, check_color);
+            vg_draw_line_aa(win,
+                            bx + 2.0f,
+                            by + bs / 2.0f,
+                            bx + bs / 2.0f - 1.0f,
+                            by + bs - 3.0f,
+                            1.8f,
+                            check_color);
+            vg_draw_line_aa(win,
+                            bx + bs / 2.0f - 1.0f,
+                            by + bs - 3.0f,
+                            bx + bs - 2.0f,
+                            by + 2.0f,
+                            1.8f,
+                            check_color);
         }
     }
 
     // Draw focus ring
     if (widget->state & VG_STATE_FOCUSED) {
-        vg_draw_round_rect_stroke(win, (float)(bx - 2), (float)(by - 2), (float)(bs + 4),
-                                  (float)(bs + 4), cb_rad + 2.0f, 1.5f, theme->colors.border_focus);
+        vg_draw_round_rect_stroke(win,
+                                  (float)(bx - 2),
+                                  (float)(by - 2),
+                                  (float)(bs + 4),
+                                  (float)(bs + 4),
+                                  cb_rad + 2.0f,
+                                  1.5f,
+                                  theme->colors.border_focus);
     }
 
     // Draw label text
@@ -336,7 +358,7 @@ void vg_checkbox_set_text(vg_checkbox_t *checkbox, const char *text) {
     if (!copy)
         return;
 
-    free((void *)checkbox->text);
+    free(checkbox->text);
     checkbox->text = copy;
     checkbox->base.needs_layout = true;
     checkbox->base.needs_paint = true;

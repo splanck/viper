@@ -14,6 +14,7 @@
 ///
 //===----------------------------------------------------------------------===//
 
+#include "frontends/common/CollectionMethodCatalog.hpp"
 #include "frontends/zia/Lowerer.hpp"
 #include "frontends/zia/RuntimeNames.hpp"
 #include <algorithm>
@@ -23,64 +24,9 @@
 namespace il::frontends::zia {
 
 using namespace runtime;
-
-//=============================================================================
-// Method Dispatch Table
-//=============================================================================
-// O(1) lookup using hash map instead of sequential string comparisons.
-// This provides 40-60% speedup for collection-heavy code.
-
-/// @brief Enumeration of collection method identifiers for fast dispatch.
-enum class CollectionMethod {
-    Unknown = 0,
-    // List methods
-    Get,
-    First,
-    Last,
-    Set,
-    Add,
-    Push,
-    Remove,
-    RemoveAt,
-    Insert,
-    Find,
-    IndexOf,
-    Has,
-    Contains,
-    IsEmpty,
-    Size,
-    Count,
-    Length,
-    Len,
-    Clear,
-    Pop,
-    Sort,
-    SortDesc,
-    Reverse,
-    Shuffle,
-    // Map methods
-    Put,
-    GetOr,
-    ContainsKey,
-    HasKey,
-    SetIfMissing,
-    Keys,
-    Values
-};
+using CollectionMethod = il::frontends::common::CollectionMethodId;
 
 namespace {
-
-/// @brief Convert a method name to lowercase for case-insensitive lookup.
-/// @param name Input method name.
-/// @return Lowercase copy of the method name.
-std::string toLowerStr(const std::string &name) {
-    std::string lower;
-    lower.reserve(name.size());
-    for (char c : name) {
-        lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    }
-    return lower;
-}
 
 /// @brief Append @p typeName's field declarations (base-class fields first,
 ///        then this class's) to @p out — gives the in-memory field order used
@@ -117,57 +63,6 @@ std::vector<const FieldDecl *> collectStructFieldDecls(Sema &sema, const std::st
     return out;
 }
 
-/// @brief Static dispatch table mapping lowercase method names to CollectionMethod enum.
-const std::unordered_map<std::string, CollectionMethod> &getMethodDispatchTable() {
-    static const std::unordered_map<std::string, CollectionMethod> table = {
-        // List/common methods
-        {"get", CollectionMethod::Get},
-        {"first", CollectionMethod::First},
-        {"last", CollectionMethod::Last},
-        {"set", CollectionMethod::Set},
-        {"add", CollectionMethod::Add},
-        {"push", CollectionMethod::Push},
-        {"pop", CollectionMethod::Pop},
-        {"remove", CollectionMethod::Remove},
-        {"removeat", CollectionMethod::RemoveAt},
-        {"insert", CollectionMethod::Insert},
-        {"find", CollectionMethod::Find},
-        {"indexof", CollectionMethod::IndexOf},
-        {"has", CollectionMethod::Has},
-        {"contains", CollectionMethod::Contains},
-        {"isempty", CollectionMethod::IsEmpty},
-        {"size", CollectionMethod::Size},
-        {"count", CollectionMethod::Count},
-        {"length", CollectionMethod::Length},
-        {"len", CollectionMethod::Len},
-        {"clear", CollectionMethod::Clear},
-        {"sort", CollectionMethod::Sort},
-        {"sortdesc", CollectionMethod::SortDesc},
-        {"reverse", CollectionMethod::Reverse},
-        {"shuffle", CollectionMethod::Shuffle},
-        // Map-specific methods
-        {"put", CollectionMethod::Put},
-        {"getor", CollectionMethod::GetOr},
-        {"containskey", CollectionMethod::ContainsKey},
-        {"haskey", CollectionMethod::HasKey},
-        {"setifmissing", CollectionMethod::SetIfMissing},
-        {"keys", CollectionMethod::Keys},
-        {"values", CollectionMethod::Values}};
-    return table;
-}
-
-/// @brief Look up a method name in the dispatch table.
-/// @param methodName Method name to look up (case-insensitive).
-/// @return The corresponding CollectionMethod enum value, or Unknown if not found.
-CollectionMethod lookupMethod(const std::string &methodName) {
-    const auto &table = getMethodDispatchTable();
-    auto it = table.find(toLowerStr(methodName));
-    if (it != table.end()) {
-        return it->second;
-    }
-    return CollectionMethod::Unknown;
-}
-
 } // namespace
 
 //=============================================================================
@@ -179,7 +74,7 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
                                                         const std::string &methodName,
                                                         CallExpr *expr) {
     // Use O(1) dispatch table lookup instead of sequential string comparisons
-    const CollectionMethod method = lookupMethod(methodName);
+    const CollectionMethod method = il::frontends::common::lookupCollectionMethod(methodName);
 
     switch (method) {
         case CollectionMethod::Get:
@@ -356,7 +251,7 @@ std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
     TypeRef valType = baseType->typeArgs.size() > 1 ? baseType->typeArgs[1] : nullptr;
 
     // Use O(1) dispatch table lookup instead of sequential string comparisons
-    const CollectionMethod method = lookupMethod(methodName);
+    const CollectionMethod method = il::frontends::common::lookupCollectionMethod(methodName);
 
     switch (method) {
         case CollectionMethod::Set:
@@ -482,7 +377,7 @@ std::optional<LowerResult> Lowerer::lowerSetMethodCall(Value baseValue,
                                                        TypeRef baseType,
                                                        const std::string &methodName,
                                                        CallExpr *expr) {
-    const CollectionMethod method = lookupMethod(methodName);
+    const CollectionMethod method = il::frontends::common::lookupCollectionMethod(methodName);
 
     switch (method) {
         case CollectionMethod::Has:

@@ -11,6 +11,7 @@
 ///
 //===----------------------------------------------------------------------===//
 
+#include "frontends/common/CollectionMethodCatalog.hpp"
 #include "frontends/common/StringUtils.hpp"
 #include "frontends/zia/RuntimeAdapter.hpp"
 #include "frontends/zia/RuntimeNames.hpp"
@@ -40,147 +41,33 @@ std::string capitalizedRuntimeMember(std::string_view name) {
     return out;
 }
 
-/// @brief Return type categories for collection methods.
-enum class MethodReturnKind {
-    ElementType,       ///< Returns the collection's element type
-    KeyType,           ///< Returns the map's key type
-    ValueType,         ///< Returns the map's struct type
-    OptionalValueType, ///< Returns an optional map value type
-    KeySeqType,        ///< Returns a typed sequence of map keys
-    ValueSeqType,      ///< Returns a typed sequence of map values
-    Integer,           ///< Returns Integer
-    Boolean,           ///< Returns Boolean
-    Void,              ///< Returns Void
-    Unknown            ///< Returns Unknown (fallback)
-};
-
-/// @brief Descriptor for a collection method's return type.
-struct CollectionMethodInfo {
-    std::string_view name{};
-    MethodReturnKind returnKind{MethodReturnKind::Unknown};
-};
-
-/// @brief List methods and their return types.
-const CollectionMethodInfo listMethods[] = {
-    // Methods returning element type
-    {"get", MethodReturnKind::ElementType},
-    {"first", MethodReturnKind::ElementType},
-    {"last", MethodReturnKind::ElementType},
-    {"pop", MethodReturnKind::ElementType},
-    // Methods returning Integer
-    {"len", MethodReturnKind::Integer},
-    {"count", MethodReturnKind::Integer},
-    {"size", MethodReturnKind::Integer},
-    {"length", MethodReturnKind::Integer},
-    {"find", MethodReturnKind::Integer},
-    {"indexOf", MethodReturnKind::Integer},
-    // Methods returning Boolean
-    {"isEmpty", MethodReturnKind::Boolean},
-    {"contains", MethodReturnKind::Boolean},
-    {"has", MethodReturnKind::Boolean},
-    {"remove", MethodReturnKind::Boolean},
-    // Methods returning Void
-    {"push", MethodReturnKind::Void},
-    {"add", MethodReturnKind::Void},
-    {"insert", MethodReturnKind::Void},
-    {"set", MethodReturnKind::Void},
-    {"clear", MethodReturnKind::Void},
-    {"reverse", MethodReturnKind::Void},
-    {"sort", MethodReturnKind::Void},
-    {"sortDesc", MethodReturnKind::Void},
-    {"shuffle", MethodReturnKind::Void},
-    {"removeAt", MethodReturnKind::Void},
-};
-
-/// @brief Map methods and their return types.
-const CollectionMethodInfo mapMethods[] = {
-    // Methods returning struct type
-    {"get", MethodReturnKind::OptionalValueType},
-    {"getOr", MethodReturnKind::ValueType},
-    // Methods returning Void
-    {"set", MethodReturnKind::Void},
-    {"put", MethodReturnKind::Void},
-    {"clear", MethodReturnKind::Void},
-    // Methods returning Boolean
-    {"setIfMissing", MethodReturnKind::Boolean},
-    {"containsKey", MethodReturnKind::Boolean},
-    {"hasKey", MethodReturnKind::Boolean},
-    {"has", MethodReturnKind::Boolean},
-    {"remove", MethodReturnKind::Boolean},
-    // Methods returning Integer
-    {"len", MethodReturnKind::Integer},
-    {"size", MethodReturnKind::Integer},
-    {"count", MethodReturnKind::Integer},
-    {"length", MethodReturnKind::Integer},
-    // Methods returning typed sequences
-    {"keys", MethodReturnKind::KeySeqType},
-    {"values", MethodReturnKind::ValueSeqType},
-};
-
-/// @brief Set methods and their return types.
-const CollectionMethodInfo setMethods[] = {
-    // Methods returning Boolean
-    {"contains", MethodReturnKind::Boolean},
-    {"has", MethodReturnKind::Boolean},
-    {"add", MethodReturnKind::Boolean},
-    {"remove", MethodReturnKind::Boolean},
-    // Methods returning Integer
-    {"len", MethodReturnKind::Integer},
-    {"size", MethodReturnKind::Integer},
-    {"count", MethodReturnKind::Integer},
-    {"length", MethodReturnKind::Integer},
-    // Methods returning Void
-    {"clear", MethodReturnKind::Void},
-};
-
-/// @brief String methods and their return types.
-const CollectionMethodInfo stringMethods[] = {
-    {"length", MethodReturnKind::Integer},
-    {"count", MethodReturnKind::Integer},
-    {"size", MethodReturnKind::Integer},
-    {"isEmpty", MethodReturnKind::Boolean},
-};
-
-/// @brief Look up a method in a method table.
-/// @param methods The method table to search.
-/// @param methodName The method name to find.
-/// @return The method info if found, nullptr otherwise.
-template <std::size_t N>
-const CollectionMethodInfo *findMethod(const CollectionMethodInfo (&methods)[N],
-                                       std::string_view methodName) {
-    for (const auto &m : methods) {
-        if (iequals(m.name, methodName))
-            return &m;
-    }
-    return nullptr;
-}
-
-/// @brief Resolve a return type from a MethodReturnKind.
+/// @brief Resolve a return type from a collection method return category.
 /// @param kind The return kind.
 /// @param baseType The collection type (for element/key/struct type resolution).
 /// @return The resolved type.
-TypeRef resolveMethodReturnType(MethodReturnKind kind, TypeRef baseType) {
+TypeRef resolveMethodReturnType(common::CollectionReturnKind kind, TypeRef baseType) {
+    using common::CollectionReturnKind;
     switch (kind) {
-        case MethodReturnKind::ElementType:
+        case CollectionReturnKind::ElementType:
             return baseType->elementType() ? baseType->elementType() : types::unknown();
-        case MethodReturnKind::KeyType:
+        case CollectionReturnKind::KeyType:
             return baseType->keyType() ? baseType->keyType() : types::unknown();
-        case MethodReturnKind::ValueType:
+        case CollectionReturnKind::ValueType:
             return baseType->valueType() ? baseType->valueType() : types::unknown();
-        case MethodReturnKind::OptionalValueType:
+        case CollectionReturnKind::OptionalValueType:
             return baseType->valueType() ? types::optional(baseType->valueType())
                                          : types::optional(types::unknown());
-        case MethodReturnKind::KeySeqType:
+        case CollectionReturnKind::KeySeqType:
             return types::seqOf(baseType->keyType() ? baseType->keyType() : types::string());
-        case MethodReturnKind::ValueSeqType:
+        case CollectionReturnKind::ValueSeqType:
             return types::seqOf(baseType->valueType() ? baseType->valueType() : types::unknown());
-        case MethodReturnKind::Integer:
+        case CollectionReturnKind::Integer:
             return types::integer();
-        case MethodReturnKind::Boolean:
+        case CollectionReturnKind::Boolean:
             return types::boolean();
-        case MethodReturnKind::Void:
+        case CollectionReturnKind::Void:
             return types::voidType();
-        case MethodReturnKind::Unknown:
+        case CollectionReturnKind::Unknown:
         default:
             return types::unknown();
     }
@@ -1543,7 +1430,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 }
                 return baseType;
             }
-            if (auto *method = findMethod(listMethods, fieldExpr->field)) {
+            if (auto method =
+                    common::findCollectionMethod(common::CollectionKind::List, fieldExpr->field)) {
                 TypeRef elemType =
                     baseType->elementType() ? baseType->elementType() : types::unknown();
                 if (fieldExpr->field == "get") {
@@ -1591,7 +1479,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
 
         // Handle Map methods using lookup table
         if (baseType && baseType->kind == TypeKindSem::Map) {
-            if (auto *method = findMethod(mapMethods, fieldExpr->field)) {
+            if (auto method =
+                    common::findCollectionMethod(common::CollectionKind::Map, fieldExpr->field)) {
                 TypeRef valueType =
                     baseType->valueType() ? baseType->valueType() : types::unknown();
                 if (fieldExpr->field == "get") {
@@ -1626,7 +1515,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
 
         // Handle Set methods using lookup table
         if (baseType && baseType->kind == TypeKindSem::Set) {
-            if (auto *method = findMethod(setMethods, fieldExpr->field)) {
+            if (auto method =
+                    common::findCollectionMethod(common::CollectionKind::Set, fieldExpr->field)) {
                 TypeRef elemType =
                     baseType->elementType() ? baseType->elementType() : types::unknown();
                 if (fieldExpr->field == "contains" || fieldExpr->field == "has" ||
@@ -1690,7 +1580,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
 
         // Handle String methods using lookup table
         if (baseType && baseType->kind == TypeKindSem::String) {
-            if (auto *method = findMethod(stringMethods, fieldExpr->field)) {
+            if (auto method = common::findCollectionMethod(common::CollectionKind::String,
+                                                           fieldExpr->field)) {
                 checkArgCount(0, fieldExpr->field);
                 return resolveMethodReturnType(method->returnKind, baseType);
             }

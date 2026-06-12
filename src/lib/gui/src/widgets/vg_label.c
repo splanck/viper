@@ -105,7 +105,7 @@ static void label_free_wrap_cache(vg_label_t *label) {
 static void label_destroy(vg_widget_t *widget) {
     vg_label_t *label = (vg_label_t *)widget;
     if (label->text) {
-        free((void *)label->text);
+        free(label->text);
         label->text = NULL;
     }
     label_free_wrap_cache(label);
@@ -397,7 +397,7 @@ void vg_label_set_text(vg_label_t *label, const char *text) {
     if (!copy)
         return;
 
-    free((void *)label->text);
+    free(label->text);
     label->text = copy;
     label_free_wrap_cache(label); /* text changed — cache stale */
     label->base.needs_layout = true;

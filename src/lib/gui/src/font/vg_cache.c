@@ -203,8 +203,10 @@ static bool cache_resize(vg_glyph_cache_t *cache) {
 
 /// @brief qsort comparator: ascending by access_tick (oldest first).
 static int compare_ticks(const void *a, const void *b) {
-    uint64_t ta = (*(const vg_cache_entry_t **)a)->access_tick;
-    uint64_t tb = (*(const vg_cache_entry_t **)b)->access_tick;
+    const vg_cache_entry_t *const *entry_a = (const vg_cache_entry_t *const *)a;
+    const vg_cache_entry_t *const *entry_b = (const vg_cache_entry_t *const *)b;
+    uint64_t ta = (*entry_a)->access_tick;
+    uint64_t tb = (*entry_b)->access_tick;
     return (ta < tb) ? -1 : (ta > tb) ? 1 : 0;
 }
 
@@ -247,7 +249,8 @@ static void cache_evict_some(vg_glyph_cache_t *cache) {
             *prev = victim->next;
 
         size_t victim_memory = 0;
-        if (glyph_bitmap_size(&victim->glyph, &victim_memory) && victim_memory <= cache->memory_used)
+        if (glyph_bitmap_size(&victim->glyph, &victim_memory) &&
+            victim_memory <= cache->memory_used)
             cache->memory_used -= victim_memory;
         else
             cache->memory_used = 0;

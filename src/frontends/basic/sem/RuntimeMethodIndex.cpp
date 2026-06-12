@@ -44,78 +44,47 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/sem/RuntimeMethodIndex.hpp"
-#include "frontends/basic/StringUtils.hpp"
-#include "il/runtime/RuntimeSignatures.hpp"
-
-#include <limits>
+#include "frontends/common/RuntimeMethodResolver.hpp"
 
 namespace il::frontends::basic {
 
 namespace {
 
-RuntimeMethodInfo makeRuntimeMethodInfo(std::string_view classQName,
-                                        std::string_view method,
-                                        const il::runtime::ParsedMethod &parsed) {
+RuntimeMethodInfo makeRuntimeMethodInfo(const il::frontends::common::RuntimeMethodInfo &resolved) {
     RuntimeMethodInfo info;
 
-    info.target = parsed.target ? parsed.target : "";
-    if (!info.target.empty() && !il::runtime::findRuntimeDescriptor(info.target)) {
-        std::string qualifiedTarget = std::string(classQName) + "." + std::string(method);
-        if (il::runtime::findRuntimeDescriptor(qualifiedTarget))
-            info.target = qualifiedTarget;
-    }
+    info.target = resolved.target;
+    info.ret = toBasicType(resolved.ret);
+    info.returnClassQName = resolved.returnClassQName;
+    info.rawPointerReturn = resolved.rawPointerReturn;
+    info.rawPointerParams = resolved.rawPointerParams;
+    info.hasReceiver = resolved.hasReceiver;
 
-    info.ret = toBasicType(parsed.signature.returnType);
-    info.returnClassQName = il::runtime::concreteRuntimeReturnClassQName(parsed.signature);
-    info.rawPointerReturn = parsed.signature.rawPointerReturn;
-    info.rawPointerParams = parsed.signature.rawPointerParams;
-
-    info.args.reserve(parsed.signature.params.size());
-    for (auto p : parsed.signature.params)
+    info.args.reserve(resolved.args.size());
+    for (auto p : resolved.args)
         info.args.push_back(toBasicType(p));
-
-    if (const auto *descriptor = il::runtime::findRuntimeDescriptor(info.target)) {
-        const auto runtimeParamCount = descriptor->signature.paramTypes.size();
-        const auto explicitParamCount = parsed.signature.params.size();
-        if (runtimeParamCount == explicitParamCount)
-            info.hasReceiver = false;
-        else if (runtimeParamCount == explicitParamCount + 1U)
-            info.hasReceiver = true;
-    }
 
     return info;
 }
 
-std::optional<int> scoreArgMatch(BasicType expected, BasicType actual) {
-    if (expected == actual)
-        return 0;
-    if (expected == BasicType::Object) {
-        if (actual == BasicType::Void)
-            return std::nullopt;
-        return actual == BasicType::Unknown ? 2 : 1;
+il::runtime::ILScalarType toILScalarType(BasicType t) {
+    switch (t) {
+        case BasicType::Int:
+            return il::runtime::ILScalarType::I64;
+        case BasicType::Float:
+            return il::runtime::ILScalarType::F64;
+        case BasicType::Bool:
+            return il::runtime::ILScalarType::Bool;
+        case BasicType::String:
+            return il::runtime::ILScalarType::String;
+        case BasicType::Void:
+            return il::runtime::ILScalarType::Void;
+        case BasicType::Object:
+            return il::runtime::ILScalarType::Object;
+        case BasicType::Unknown:
+        default:
+            return il::runtime::ILScalarType::Unknown;
     }
-    if (actual == BasicType::Unknown)
-        return 2;
-    if (expected == BasicType::Float && actual == BasicType::Int)
-        return 1;
-    if (expected == BasicType::Bool && actual == BasicType::Int)
-        return 1;
-    return std::nullopt;
-}
-
-std::optional<int> scoreSignature(const std::vector<BasicType> &expected,
-                                  const std::vector<BasicType> &actual) {
-    if (expected.size() != actual.size())
-        return std::nullopt;
-
-    int score = 0;
-    for (size_t i = 0; i < expected.size(); ++i) {
-        auto argScore = scoreArgMatch(expected[i], actual[i]);
-        if (!argScore)
-            return std::nullopt;
-        score += *argScore;
-    }
-    return score;
 }
 
 } // namespace
@@ -211,57 +180,29 @@ void RuntimeMethodIndex::seed() {
 std::optional<RuntimeMethodInfo> RuntimeMethodIndex::find(std::string_view classQName,
                                                           std::string_view method,
                                                           std::size_t arity) const {
-    // Delegate to the IL-layer RuntimeRegistry
-    const auto &registry = il::runtime::RuntimeRegistry::instance();
-    auto parsed = registry.findMethod(classQName, method, arity);
-
-    if (!parsed)
+    auto resolved =
+        il::frontends::common::RuntimeMethodResolver::instance().find(classQName, method, arity);
+    if (!resolved)
         return std::nullopt;
 
-    return makeRuntimeMethodInfo(classQName, method, *parsed);
+    return makeRuntimeMethodInfo(*resolved);
 }
 
 std::optional<RuntimeMethodInfo> RuntimeMethodIndex::find(
     std::string_view classQName,
     std::string_view method,
     const std::vector<BasicType> &argTypes) const {
-    const auto &registry = il::runtime::RuntimeRegistry::instance();
-    std::optional<RuntimeMethodInfo> best;
-    int bestScore = std::numeric_limits<int>::max();
-    bool ambiguous = false;
+    std::vector<il::runtime::ILScalarType> ilArgTypes;
+    ilArgTypes.reserve(argTypes.size());
+    for (auto argType : argTypes)
+        ilArgTypes.push_back(toILScalarType(argType));
 
-    for (const auto &klass : registry.rawCatalog()) {
-        if (!klass.qname || !string_utils::iequals(klass.qname, classQName))
-            continue;
-
-        for (const auto &candidate : klass.methods) {
-            if (!candidate.name || !string_utils::iequals(candidate.name, method))
-                continue;
-
-            auto sig =
-                il::runtime::parseRuntimeSignature(candidate.signature ? candidate.signature : "");
-            if (!sig.isValid() || sig.params.size() != argTypes.size())
-                continue;
-
-            il::runtime::ParsedMethod parsed{candidate.name, candidate.target, sig};
-            RuntimeMethodInfo info = makeRuntimeMethodInfo(klass.qname, candidate.name, parsed);
-            auto score = scoreSignature(info.args, argTypes);
-            if (!score)
-                continue;
-
-            if (*score < bestScore) {
-                best = std::move(info);
-                bestScore = *score;
-                ambiguous = false;
-            } else if (*score == bestScore) {
-                ambiguous = true;
-            }
-        }
-    }
-
-    if (ambiguous)
+    auto resolved = il::frontends::common::RuntimeMethodResolver::instance().find(
+        classQName, method, ilArgTypes);
+    if (!resolved)
         return std::nullopt;
-    return best;
+
+    return makeRuntimeMethodInfo(*resolved);
 }
 
 /// @brief Lists available method overloads for error messages.
@@ -272,8 +213,7 @@ std::optional<RuntimeMethodInfo> RuntimeMethodIndex::find(
 ///
 std::vector<std::string> RuntimeMethodIndex::candidates(std::string_view classQName,
                                                         std::string_view method) const {
-    const auto &registry = il::runtime::RuntimeRegistry::instance();
-    return registry.methodCandidates(classQName, method);
+    return il::frontends::common::RuntimeMethodResolver::instance().candidates(classQName, method);
 }
 
 //===----------------------------------------------------------------------===//

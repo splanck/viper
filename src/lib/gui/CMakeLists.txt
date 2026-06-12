@@ -95,6 +95,7 @@ target_include_directories(vipergui
 target_link_libraries(vipergui
         PUBLIC
         vipergfx
+        viper_text_core
 )
 
 # Link math library on Unix

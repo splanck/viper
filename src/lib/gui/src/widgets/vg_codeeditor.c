@@ -36,6 +36,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
+#include "viper_text_buffer.h"
 #include <limits.h>
 #include <stdint.h>
 #include <stdio.h>

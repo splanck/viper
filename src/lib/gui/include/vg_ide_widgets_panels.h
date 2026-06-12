@@ -34,8 +34,8 @@ extern "C" {
 typedef struct vg_tab {
     uint64_t magic;          ///< Live-tab sentinel for stale handle detection
     struct vg_tabbar *owner; ///< Owning tab bar for invalidation/reorder
-    const char *title;       ///< Tab title (owned)
-    const char *tooltip;     ///< Tab tooltip (owned)
+    char *title;             ///< Tab title (owned)
+    char *tooltip;           ///< Tab tooltip (owned)
     void *user_data;         ///< User data
     bool closable;           ///< Can tab be closed
     bool modified;           ///< Show modified indicator

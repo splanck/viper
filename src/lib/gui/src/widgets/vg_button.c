@@ -118,7 +118,7 @@ vg_button_t *vg_button_create(vg_widget_t *parent, const char *text) {
 static void button_destroy(vg_widget_t *widget) {
     vg_button_t *button = (vg_button_t *)widget;
     if (button->text) {
-        free((void *)button->text);
+        free(button->text);
         button->text = NULL;
     }
     free(button->icon_text);
@@ -232,11 +232,29 @@ static void button_paint(vg_widget_t *widget, void *canvas) {
     // elevation lift (skipped while pressed for a tactile "pushed in" feel).
     if (widget->anim_focus > 0.01f && !disabled && !is_text_style) {
         uint8_t glow_a = (uint8_t)((float)theme->focus.glow_alpha * widget->anim_focus);
-        vg_draw_round_rect_shadow(win, fx, fy, fw, fh, frad, theme->focus.glow_width * 2.5f, 0, 0,
-                                  glow_a, theme->focus.glow_color);
+        vg_draw_round_rect_shadow(win,
+                                  fx,
+                                  fy,
+                                  fw,
+                                  fh,
+                                  frad,
+                                  theme->focus.glow_width * 2.5f,
+                                  0,
+                                  0,
+                                  glow_a,
+                                  theme->focus.glow_color);
     } else if (!pressed && !disabled && !is_text_style) {
         vg_elevation_t el = theme->elevation.level1;
-        vg_draw_round_rect_shadow(win, fx, fy, fw, fh, frad, el.blur, el.dx, el.dy, el.alpha,
+        vg_draw_round_rect_shadow(win,
+                                  fx,
+                                  fy,
+                                  fw,
+                                  fh,
+                                  frad,
+                                  el.blur,
+                                  el.dx,
+                                  el.dy,
+                                  el.alpha,
                                   theme->elevation.shadow_rgb);
     }
 
@@ -249,7 +267,8 @@ static void button_paint(vg_widget_t *widget, void *canvas) {
     }
 
     if (!is_text_style && !disabled)
-        vg_draw_inner_highlight_top(win, fx, fy + 1.0f, fw, frad, vg_color_lighten(bg_color, 0.10f));
+        vg_draw_inner_highlight_top(
+            win, fx, fy + 1.0f, fw, frad, vg_color_lighten(bg_color, 0.10f));
 
     if (widget->state & VG_STATE_FOCUSED) {
         border_color = theme->colors.border_focus;
@@ -412,7 +431,7 @@ void vg_button_set_text(vg_button_t *button, const char *text) {
     if (!copy)
         return;
 
-    free((void *)button->text);
+    free(button->text);
     button->text = copy;
     button->base.needs_layout = true;
     button->base.needs_paint = true;

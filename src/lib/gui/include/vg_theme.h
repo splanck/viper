@@ -216,7 +216,7 @@ typedef struct vg_motion_theme {
 /// @details Widget paint code reads from the current theme to decide colours,
 ///          sizes, fonts, and spacing without hard-coding any values.
 typedef struct vg_theme {
-    const char *name;               ///< Human-readable theme name (e.g. "Viper Dark").
+    char *name;                     ///< Human-readable theme name; owned for custom themes.
     vg_color_scheme_t colors;       ///< Full colour palette.
     vg_typography_t typography;     ///< Font and size presets.
     vg_spacing_t spacing;           ///< Named spacing values.

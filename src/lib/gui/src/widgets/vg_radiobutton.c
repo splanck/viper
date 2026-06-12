@@ -24,8 +24,8 @@
 //
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
-#include "../../include/vg_event.h"
 #include "../../include/vg_draw.h"
+#include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
 #include <stdint.h>
@@ -61,7 +61,7 @@ static void radio_destroy(vg_widget_t *widget) {
     vg_radiobutton_t *radio = (vg_radiobutton_t *)widget;
     if (radio->group)
         radiogroup_unregister(radio->group, radio);
-    free((void *)radio->text);
+    free(radio->text);
     radio->text = NULL;
 }
 

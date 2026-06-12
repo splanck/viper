@@ -121,6 +121,7 @@ typedef struct vg_codeeditor {
     vg_code_line_t *lines; ///< Array of lines
     int line_count;        ///< Number of lines
     int line_capacity;     ///< Allocated capacity
+    void *document_buffer; ///< Shared text-engine mirror used for full-document queries
 
     // Cursor and selection
     int cursor_line;          ///< Cursor line (0-based)

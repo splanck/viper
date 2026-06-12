@@ -75,6 +75,14 @@ vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent) {
     editor->lines[0].length = 0;
     editor->lines[0].capacity = INITIAL_TEXT_CAPACITY;
 
+    // Create shared text-engine mirror.
+    editor->document_buffer = viper_text_buffer_new();
+    if (!editor->document_buffer ||
+        !viper_text_buffer_load_bytes((viper_text_buffer_t *)editor->document_buffer, "", 0)) {
+        vg_widget_destroy(&editor->base);
+        return NULL;
+    }
+
     // Cursor and selection
     editor->cursor_line = 0;
     editor->cursor_col = 0;
@@ -180,6 +188,9 @@ static void codeeditor_destroy(vg_widget_t *widget) {
     editor->lines = NULL;
     editor->line_count = 0;
     editor->line_capacity = 0;
+
+    viper_text_buffer_free((viper_text_buffer_t *)editor->document_buffer);
+    editor->document_buffer = NULL;
 
     // Free undo/redo history
     edit_history_destroy(editor->history);

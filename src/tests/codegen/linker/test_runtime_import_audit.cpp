@@ -74,6 +74,7 @@ std::vector<std::filesystem::path> collectAuditArchives(const std::filesystem::p
     }
 
     appendIfExists(supportLibraryPath(buildDir, "vipergui"));
+    appendIfExists(supportLibraryPath(buildDir, "viper_text_core"));
     appendIfExists(supportLibraryPath(buildDir, "vipergfx"));
     appendIfExists(supportLibraryPath(buildDir, "viperaud"));
     return paths;

@@ -1279,11 +1279,11 @@ static int codeeditor_visual_rows_for_line(const vg_codeeditor_t *editor,
     return codeeditor_wrapped_rows_for_line(editor, line, content_width);
 }
 
-static bool codeeditor_layout_cache_ensure(const vg_codeeditor_t *editor, float content_width) {
+static bool codeeditor_layout_cache_ensure(vg_codeeditor_t *editor, float content_width) {
     if (!editor)
         return false;
 
-    vg_codeeditor_t *mutable_editor = (vg_codeeditor_t *)editor;
+    vg_codeeditor_t *mutable_editor = editor;
     if (mutable_editor->layout_cache_valid &&
         mutable_editor->layout_cache_generation == mutable_editor->layout_generation &&
         mutable_editor->layout_cache_content_width == content_width &&
@@ -1329,7 +1329,7 @@ static bool codeeditor_layout_cache_ensure(const vg_codeeditor_t *editor, float 
     return true;
 }
 
-static int codeeditor_cached_row_count_for_line(const vg_codeeditor_t *editor,
+static int codeeditor_cached_row_count_for_line(vg_codeeditor_t *editor,
                                                 float content_width,
                                                 int line) {
     if (!editor || line < 0 || line >= editor->line_count)
@@ -1339,8 +1339,7 @@ static int codeeditor_cached_row_count_for_line(const vg_codeeditor_t *editor,
     return editor->layout_cache_prefix_rows[line + 1] - editor->layout_cache_prefix_rows[line];
 }
 
-static int codeeditor_last_visible_line_from_cache(const vg_codeeditor_t *editor,
-                                                   float content_width) {
+static int codeeditor_last_visible_line_from_cache(vg_codeeditor_t *editor, float content_width) {
     if (!editor || editor->line_count <= 0)
         return 0;
     if (!codeeditor_layout_cache_ensure(editor, content_width))
@@ -1354,7 +1353,7 @@ static int codeeditor_last_visible_line_from_cache(const vg_codeeditor_t *editor
 
 /// @brief Returns the total document height in pixels for the given @p content_width (sums all
 /// visual rows).
-static float codeeditor_total_content_height_for_width(const vg_codeeditor_t *editor,
+static float codeeditor_total_content_height_for_width(vg_codeeditor_t *editor,
                                                        float content_width) {
     if (!editor)
         return 0.0f;
@@ -1367,7 +1366,7 @@ static float codeeditor_total_content_height_for_width(const vg_codeeditor_t *ed
 
     float total_rows = 0.0f;
     for (int i = 0; i < editor->line_count; i++) {
-        codeeditor_perf_add(&((vg_codeeditor_t *)editor)->perf_stats.total_height_linear_scans, 1);
+        codeeditor_perf_add(&editor->perf_stats.total_height_linear_scans, 1);
         total_rows += (float)codeeditor_visual_rows_for_line(editor, i, content_width);
     }
     return total_rows * editor->line_height;
@@ -1393,16 +1392,14 @@ static float codeeditor_content_draw_width(const vg_codeeditor_t *editor,
 
 /// @brief Returns total document height using the resolved content draw width for the given widget
 /// bounds.
-static float codeeditor_total_content_height(const vg_codeeditor_t *editor,
-                                             const vg_widget_t *widget) {
+static float codeeditor_total_content_height(vg_codeeditor_t *editor, const vg_widget_t *widget) {
     return codeeditor_total_content_height_for_width(editor,
                                                      codeeditor_content_draw_width(editor, widget));
 }
 
 /// @brief Returns the total count of visual rows across all lines for @p content_width (used for
 /// scroll math).
-static int codeeditor_total_visual_rows_for_width(const vg_codeeditor_t *editor,
-                                                  float content_width) {
+static int codeeditor_total_visual_rows_for_width(vg_codeeditor_t *editor, float content_width) {
     if (!editor)
         return 0;
 
@@ -1414,8 +1411,7 @@ static int codeeditor_total_visual_rows_for_width(const vg_codeeditor_t *editor,
 
     int total_rows = 0;
     for (int i = 0; i < editor->line_count; i++) {
-        codeeditor_perf_add(&((vg_codeeditor_t *)editor)->perf_stats.total_visual_row_linear_scans,
-                            1);
+        codeeditor_perf_add(&editor->perf_stats.total_visual_row_linear_scans, 1);
         total_rows += codeeditor_visual_rows_for_line(editor, i, content_width);
     }
     return total_rows;
@@ -1430,7 +1426,7 @@ static int codeeditor_total_visual_rows_for_width(const vg_codeeditor_t *editor,
 ///
 ///        Padding is half the viewport, with a minimum of one line so single-
 ///        line viewports don't lose any scroll allowance.
-static float codeeditor_max_scroll_y(const vg_codeeditor_t *editor, const vg_widget_t *widget) {
+static float codeeditor_max_scroll_y(vg_codeeditor_t *editor, const vg_widget_t *widget) {
     if (!editor || !widget)
         return 0.0f;
     float padding = widget->height * 0.5f;
@@ -1478,7 +1474,7 @@ static void codeeditor_visual_offset_for_position(const vg_codeeditor_t *editor,
 
 /// @brief Returns the absolute visual row index (across all lines) for document position (line,
 /// col).
-static int codeeditor_visual_row_for_position(const vg_codeeditor_t *editor,
+static int codeeditor_visual_row_for_position(vg_codeeditor_t *editor,
                                               float content_width,
                                               int line,
                                               int col) {
@@ -1501,7 +1497,7 @@ static int codeeditor_visual_row_for_position(const vg_codeeditor_t *editor,
 
     int visual_row = 0;
     for (int i = 0; i < line; i++) {
-        codeeditor_perf_add(&((vg_codeeditor_t *)editor)->perf_stats.visual_row_linear_scans, 1);
+        codeeditor_perf_add(&editor->perf_stats.visual_row_linear_scans, 1);
         visual_row += codeeditor_visual_rows_for_line(editor, i, content_width);
     }
 
@@ -1513,7 +1509,7 @@ static int codeeditor_visual_row_for_position(const vg_codeeditor_t *editor,
 
 /// @brief Resolves an absolute @p visual_row index to the source line and wrap-row offset within
 /// that line.
-static void codeeditor_locate_visual_row(const vg_codeeditor_t *editor,
+static void codeeditor_locate_visual_row(vg_codeeditor_t *editor,
                                          float content_width,
                                          int visual_row,
                                          int *out_line,
@@ -1573,8 +1569,7 @@ static void codeeditor_locate_visual_row(const vg_codeeditor_t *editor,
 
     int accumulated = 0;
     for (int line = 0; line < editor->line_count; line++) {
-        codeeditor_perf_add(&((vg_codeeditor_t *)editor)->perf_stats.locate_visual_row_linear_scans,
-                            1);
+        codeeditor_perf_add(&editor->perf_stats.locate_visual_row_linear_scans, 1);
         int row_count = codeeditor_visual_rows_for_line(editor, line, content_width);
         if (row_count == 0)
             continue;
@@ -1611,7 +1606,7 @@ static void codeeditor_clamp_scroll(vg_codeeditor_t *editor, const vg_widget_t *
 }
 
 /// @brief Computes scrollbar thumb geometry; returns false if content fits without scrolling.
-static bool codeeditor_get_scrollbar_metrics(const vg_codeeditor_t *editor,
+static bool codeeditor_get_scrollbar_metrics(vg_codeeditor_t *editor,
                                              const vg_widget_t *widget,
                                              float *out_track_x,
                                              float *out_thumb_y,
@@ -1667,7 +1662,7 @@ static bool codeeditor_get_scrollbar_metrics(const vg_codeeditor_t *editor,
 }
 
 /// @brief Converts a local-space click point (local_x, local_y) to a document (line, col) position.
-static void codeeditor_local_point_to_position(const vg_codeeditor_t *editor,
+static void codeeditor_local_point_to_position(vg_codeeditor_t *editor,
                                                const vg_widget_t *widget,
                                                float local_x,
                                                float local_y,

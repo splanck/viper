@@ -573,7 +573,7 @@ void vg_widget_get_bounds(vg_widget_t *widget, float *x, float *y, float *width,
 /// @param[out] width  Receives the width.
 /// @param[out] height Receives the height.
 void vg_widget_get_screen_bounds(
-    vg_widget_t *widget, float *x, float *y, float *width, float *height);
+    const vg_widget_t *widget, float *x, float *y, float *width, float *height);
 
 //=============================================================================
 // Layout Parameters

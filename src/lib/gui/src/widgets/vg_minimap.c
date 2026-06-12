@@ -39,7 +39,7 @@ static void minimap_destroy(vg_widget_t *widget);
 static void minimap_measure(vg_widget_t *widget, float available_width, float available_height);
 static void minimap_paint(vg_widget_t *widget, void *canvas);
 static bool minimap_handle_event(vg_widget_t *widget, vg_event_t *event);
-static int minimap_document_line_count(const vg_minimap_t *minimap);
+static int minimap_document_line_count(vg_minimap_t *minimap);
 static int minimap_line_from_local_y(vg_minimap_t *minimap, float local_y);
 static void minimap_scroll_editor_to_line(vg_minimap_t *minimap, int line);
 static int minimap_trimmed_line_bounds(const char *text,
@@ -149,8 +149,8 @@ static vg_codeeditor_t *minimap_live_editor(vg_minimap_t *minimap) {
 
 /// @brief Returns the line count of the linked editor, or 1 if no editor is attached or the editor
 /// is empty.
-static int minimap_document_line_count(const vg_minimap_t *minimap) {
-    vg_codeeditor_t *editor = minimap_live_editor((vg_minimap_t *)minimap);
+static int minimap_document_line_count(vg_minimap_t *minimap) {
+    vg_codeeditor_t *editor = minimap_live_editor(minimap);
     if (!editor || editor->line_count <= 0)
         return 1;
     return editor->line_count;

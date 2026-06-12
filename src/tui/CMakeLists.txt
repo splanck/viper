@@ -34,10 +34,6 @@ add_library(tui STATIC
         src/widgets/list_view.cpp
         src/widgets/tree_view.cpp
         src/syntax/rules.cpp
-        src/text/EditHistory.cpp
-        src/text/LineIndex.cpp
-        src/text/PieceTable.cpp
-        src/text/text_buffer.cpp
         src/text/search.cpp
         src/views/text_view_cursor.cpp
         src/views/text_view_input.cpp
@@ -54,6 +50,7 @@ target_include_directories(tui PUBLIC
 target_link_libraries(tui
         PUBLIC
         viper_common_opts
+        viper_text_core
 )
 
 if (VIPER_INSTALL_TUI)

@@ -787,7 +787,7 @@ static void textinput_destroy(vg_widget_t *widget) {
         input->text = NULL;
     }
     if (input->placeholder) {
-        free((void *)input->placeholder);
+        free(input->placeholder);
         input->placeholder = NULL;
     }
 
@@ -866,13 +866,22 @@ static void textinput_paint(vg_widget_t *widget, void *canvas) {
     bool ti_disabled = (widget->state & VG_STATE_DISABLED) != 0;
 
     if (ti_focused && !ti_disabled) {
-        vg_draw_round_rect_shadow(win, ix, iy, iw, ih, irad, theme->focus.glow_width * 2.5f, 0, 0,
-                                  theme->focus.glow_alpha, theme->focus.glow_color);
+        vg_draw_round_rect_shadow(win,
+                                  ix,
+                                  iy,
+                                  iw,
+                                  ih,
+                                  irad,
+                                  theme->focus.glow_width * 2.5f,
+                                  0,
+                                  0,
+                                  theme->focus.glow_alpha,
+                                  theme->focus.glow_color);
     }
     vg_draw_round_rect_fill(win, ix, iy, iw, ih, irad, bg_color);
     if (iw > 2.0f && !ti_disabled)
-        vg_draw_inner_highlight_top(win, ix, iy + 1.0f, iw, irad,
-                                    vg_color_lighten(bg_color, 0.06f));
+        vg_draw_inner_highlight_top(
+            win, ix, iy + 1.0f, iw, irad, vg_color_lighten(bg_color, 0.06f));
     float ti_bw = theme->input.border_width > 0.0f ? theme->input.border_width : 1.0f;
     vg_draw_round_rect_stroke(win, ix, iy, iw, ih, irad, ti_bw, border_color);
 
@@ -1039,8 +1048,8 @@ static void textinput_paint(vg_widget_t *widget, void *canvas) {
             vg_font_get_cursor_x(input->font, input->font_size, input->text, (int)sel_end);
 
         // Draw selection rectangle
-        float padding = theme->input.padding_h;
-        float sel_abs_x = widget->x + padding + start_x - input->scroll_x;
+        float selection_padding = theme->input.padding_h;
+        float sel_abs_x = widget->x + selection_padding + start_x - input->scroll_x;
         float sel_w = end_x - start_x;
         vgfx_fill_rect(win,
                        (int32_t)sel_abs_x,
@@ -1774,7 +1783,7 @@ void vg_textinput_set_placeholder(vg_textinput_t *input, const char *placeholder
     if (placeholder && !copy)
         return;
 
-    free((void *)input->placeholder);
+    free(input->placeholder);
     input->placeholder = copy;
     input->base.needs_paint = true;
 }

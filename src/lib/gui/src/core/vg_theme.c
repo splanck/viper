@@ -297,9 +297,7 @@ void vg_theme_destroy(vg_theme_t *theme) {
     if (g_current_theme == theme)
         g_current_theme = &g_dark_theme;
 
-    if (theme->name) {
-        free((void *)theme->name);
-    }
+    free(theme->name);
 
     free(theme);
 }
