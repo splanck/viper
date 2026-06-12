@@ -1,0 +1,173 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/common/PreRAForwardCopy.hpp
+// Purpose: Shared pre-register-allocation copy cleanup used by both backends:
+//          removes identity copies and forwards virtual-to-virtual copies
+//          whose destination has exactly one direct use before redefinition.
+//          The traversal, safety conditions, and compaction are identical on
+//          x86-64 and AArch64; backends supply the MIR-specific queries
+//          through a traits type.
+// Key invariants:
+//   - Forwarding never crosses block boundaries or call clobbers: a use found
+//     after a call, or any redefinition of the copy source before the use,
+//     cancels the rewrite.
+//   - Only direct register operands are substituted; uses embedded in memory
+//     operands (base/index) count as uses but are never rewritten.
+//   - Physical registers are never forwarded (their live ranges are not
+//     tracked at this stage).
+// Ownership/Lifetime:
+//   - Header-only function templates; no state.
+// Links: codegen/x86_64/PreRegAllocOpt.cpp,
+//        codegen/aarch64/PreRegAllocOpt.cpp
+//
+//===----------------------------------------------------------------------===//
+
+#pragma once
+
+#include <algorithm>
+#include <cstddef>
+#include <optional>
+#include <utility>
+#include <vector>
+
+namespace viper::codegen::common {
+
+/// @brief Position of a single register use within a basic block.
+struct PreRAUseSite {
+    std::size_t instrIndex{0};   ///< Index of the consuming instruction.
+    std::size_t operandIndex{0}; ///< Operand index within that instruction.
+};
+
+/// @brief Result of scanning one instruction for uses of a tracked register.
+struct PreRAUseScan {
+    std::size_t useCount{0};       ///< All reads, including memory base/index.
+    std::size_t directUseCount{0}; ///< Reads as plain register operands only.
+    std::size_t directOperand{0};  ///< Operand index of the last direct read.
+};
+
+/// @brief Traits contract for @ref runPreRAForwardCopy (documentation only).
+///
+/// Backends provide a struct with:
+///   using BlockT / InstrT / RegT;
+///   static std::vector<InstrT>       &instrs(BlockT &block);
+///   static const std::vector<InstrT> &instrs(const BlockT &block);
+///   static bool isIdentityCopy(const InstrT &instr);
+///   static bool isForwardableCopy(const InstrT &instr, RegT &dst, RegT &src);
+///       // true for virtual->virtual same-class non-identity reg copies;
+///       // fills dst/src on success.
+///   static bool definesReg(const InstrT &instr, const RegT &reg);
+///   static bool isCall(const InstrT &instr);
+///   static bool isNonCallBoundary(const InstrT &instr);
+///   static PreRAUseScan scanUses(const InstrT &instr, const RegT &dst);
+///   static void forwardUse(InstrT &use, std::size_t operandIndex, const InstrT &copy);
+///       // rewrite the direct use to read the copy's source operand.
+
+namespace detail {
+
+/// @brief Locate the unique direct use of a copy's destination.
+/// @details Walks forward from @p copyIndex looking for the single instruction
+///          that reads @p dst as a plain register operand. Bails out when the
+///          copy source is redefined before the use, when more than one use
+///          exists, when the use sits behind a call (caller-saved clobbers),
+///          or at non-call block boundaries.
+template <typename Traits>
+std::optional<PreRAUseSite> findSingleDirectUse(const typename Traits::BlockT &block,
+                                                std::size_t copyIndex,
+                                                const typename Traits::RegT &dst,
+                                                const typename Traits::RegT &src) {
+    std::optional<PreRAUseSite> site;
+    const auto &instrs = Traits::instrs(block);
+
+    bool crossedCall = false;
+    for (std::size_t idx = copyIndex + 1; idx < instrs.size(); ++idx) {
+        const auto &instr = instrs[idx];
+
+        if (Traits::definesReg(instr, src) && !site)
+            return std::nullopt;
+
+        const PreRAUseScan scan = Traits::scanUses(instr, dst);
+        if (scan.useCount != 0) {
+            if (crossedCall)
+                return std::nullopt;
+            if (scan.useCount != 1 || scan.directUseCount != 1 || Traits::definesReg(instr, dst))
+                return std::nullopt;
+            if (site)
+                return std::nullopt;
+            site = PreRAUseSite{idx, scan.directOperand};
+        }
+
+        if (Traits::definesReg(instr, dst))
+            break;
+        if (Traits::isCall(instr))
+            crossedCall = true;
+        if (Traits::isNonCallBoundary(instr))
+            break;
+    }
+
+    return site;
+}
+
+/// @brief Forward each virtual-to-virtual copy whose destination has one use.
+template <typename Traits> std::size_t rewriteSingleUseCopies(typename Traits::BlockT &block) {
+    auto &instrs = Traits::instrs(block);
+    std::vector<bool> erase(instrs.size(), false);
+    std::size_t removed = 0;
+
+    for (std::size_t idx = 0; idx < instrs.size(); ++idx) {
+        typename Traits::RegT dst{};
+        typename Traits::RegT src{};
+        if (!Traits::isForwardableCopy(instrs[idx], dst, src))
+            continue;
+
+        auto site = findSingleDirectUse<Traits>(block, idx, dst, src);
+        if (!site)
+            continue;
+
+        Traits::forwardUse(instrs[site->instrIndex], site->operandIndex, instrs[idx]);
+        erase[idx] = true;
+        ++removed;
+    }
+
+    if (removed == 0)
+        return 0;
+
+    std::vector<typename Traits::InstrT> kept;
+    kept.reserve(instrs.size() - removed);
+    for (std::size_t idx = 0; idx < instrs.size(); ++idx) {
+        if (!erase[idx])
+            kept.push_back(std::move(instrs[idx]));
+    }
+    instrs = std::move(kept);
+    return removed;
+}
+
+} // namespace detail
+
+/// @brief Run identity-copy removal and single-use copy forwarding over @p fn.
+/// @tparam Traits Backend trait type (see the contract above).
+/// @tparam FunctionT Deduced backend MFunction type exposing @c blocks.
+/// @param fn Function rewritten in place.
+/// @return Number of MIR instructions removed.
+template <typename Traits, typename FunctionT> std::size_t runPreRAForwardCopy(FunctionT &fn) {
+    std::size_t removed = 0;
+    for (auto &block : fn.blocks) {
+        auto &instrs = Traits::instrs(block);
+        const auto oldSize = instrs.size();
+        instrs.erase(std::remove_if(instrs.begin(),
+                                    instrs.end(),
+                                    [](const typename Traits::InstrT &instr) {
+                                        return Traits::isIdentityCopy(instr);
+                                    }),
+                     instrs.end());
+        removed += oldSize - instrs.size();
+        removed += detail::rewriteSingleUseCopies<Traits>(block);
+    }
+    return removed;
+}
+
+} // namespace viper::codegen::common
