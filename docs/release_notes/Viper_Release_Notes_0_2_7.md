@@ -16,7 +16,7 @@ A short hardening cycle continuing v0.2.6. The headline new work ends per-frame 
 - **Open-world streaming & navmesh tooling (new).** `WorldStream3D` cells load binary sidecars into a resident-byte budget, `NavMesh3D.Export`/`Import` round-trip versioned `VNAVMSH2`, compressed textures drain large mips across frames, and stream manifests resolve `asset://` sidecars.
 - **3D runtime & Game3D fail closed.** Non-finite pose/playback inputs clamp or revert to the bind pose, scene/transform/raycast/physics/navigation entry points reject bad handles, stored references are class-checked, and screenshot/render-target capture finalizes with no present side effect.
 - **Runtime fails closed (repo-wide).** A cppcheck-driven audit makes every recoverable `rt_trap` return a safe sentinel and free its locals; unrecoverable entropy/DRBG failures route through a new non-returning `rt_abort`, so no path proceeds with predictable key material when a trap hook returns.
-- **IL, codegen & linker hardening.** The IL builder promotes its debug-only invariants to release-mode validation and shares one checked-range implementation with CheckOpt (which now demotes proven-safe overflow-checked arithmetic); codegen and the native linker surface diagnostics instead of asserting, atop the frame-layout fix that closes the O1 miscompiles.
+- **IL, codegen & linker hardening.** The IL builder promotes its debug-only invariants to release-mode validation and shares one checked-range implementation with CheckOpt (which now demotes proven-safe overflow-checked arithmetic), the verifier makes the EH `resumetok` a linear handler-provenance capability that only exception dispatch can mint (ADR 0005), and codegen and the native linker surface diagnostics instead of asserting, atop the frame-layout fix that closes the O1 miscompiles.
 - **Unified scalar semantics & stable IL storage (new).** A shared, VM-neutral kernel makes the tree-walking VM and both bytecode engines yield identical values and trap kinds for one IL module, and block/instruction storage moves to stable-address containers with interned identifiers so references survive insertion and erasure.
 - **Bytecode VM hardening.** The VM validates memory ranges and indirect callees before dereference, traps instead of asserting on bad branch/switch targets, and bounds runaway programs via `BytecodeVM.setMaxInstructions` and a signal-safe interrupt.
 - **GUI refined-depth visual pass.** A shared anti-aliased `vg_draw` core and new radius/elevation/gradient/focus/motion theme tokens route the whole widget set through one rounded, elevated style; ViperIDE draws vector toolbar icons and a `GUI.GroupBox` card rebuilds the settings panel.
@@ -31,13 +31,13 @@ A short hardening cycle continuing v0.2.6. The headline new work ends per-frame 
 
 | Metric | v0.2.6 | v0.2.7 | Delta |
 |---|---|---|---|
-| Commits | — | 73 | +73 |
+| Commits | — | 74 | +74 |
 | Source files | 3,096 | 3,293 | +197 |
 | Production SLOC | 669K | 717K | +48K |
 | Test SLOC | 278K | 294K | +16K |
 | Demo SLOC | 192K | 193K | +1K |
 
-Counts via `scripts/count_sloc.sh` (production 717,033 / test 294,258 / demo 193,428 / source files 3,293); commits since the v0.2.6 release (2026-06-01).
+Counts via `scripts/count_sloc.sh` (production 717,487 / test 294,423 / demo 193,428 / source files 3,293); commits since the v0.2.6 release (2026-06-01).
 
 ---
 
@@ -68,6 +68,7 @@ Counts via `scripts/count_sloc.sh` (production 717,033 / test 294,258 / demo 193
 ### IL, codegen, and the native linker
 
 - Debug-only IL-builder invariants — name uniqueness, operand and block-parameter bounds, branch-argument counts, terminated-block appends — promote to release-mode validation, the parser rolls back cleanly on a partial instruction parse, and a new verifier dataflow catches double-release and use-after-release across the CFG (loops included) while preserving the entry-stack-address dominance contract that frontend cleanup blocks rely on.
+- The EH `resumetok` becomes a linear handler-provenance capability (ADR 0005): exception dispatch is its sole producer, forwarding is validated edge by edge, and `resume.*` may consume only the active token that reached its block — new `resume_token_mismatch`, `handler_invalid_entry`, and `resume_token_escape` diagnostics reject forged or stale tokens at verify time instead of leaving them for a backend or VM check. Native EH lowering seeds each pushed handler with its post-dispatch stack so a trap inside a typed-catch, finally, or rethrow helper resolves to a concrete outer native frame, and `resume.label` validates its site token before branching, diverting an invalid edge to a synthetic failure block.
 - A VM-neutral `ScalarOps` kernel — checked add/sub/mul, signed/unsigned div-rem, masked shifts, two's-complement wrapping, checked narrowing, half-open `idx.chk` normalization, and round-to-even f64→int casts — now backs the tree-walking VM and both bytecode dispatch engines, so one IL module yields identical values and trap kinds across every execution mode (bytecode format bumped to v3 to carry explicit result widths). `Function::blocks` and `BasicBlock::instructions` move to a stable-address `StableList`, and a module-owned `StringInterner` carries interned `Symbol` handles on functions, blocks, instructions, branch targets, and direct callees so analyses compare compact handles instead of rehashing strings — and the BASIC lowerer drops its now-undefined `block - &blocks[0]` pointer arithmetic for the shared stable-address index helpers.
 - Shared `AllocaRoots` helpers make BasicAA conservative for raw and unknown-indirect calls, MemorySSA and DSE fix same-block-overwrite handling, ConstFold/SCCP/Peephole normalize integer folds to i16/i32/i64 result widths, and CheckOpt shares one checked-range implementation with the builder — now demoting proven-safe overflow-checked i64 arithmetic to plain ops. Pass invalidation became state-based and Mem2Reg transactional.
 - x86-64/AArch64 selection, encoding, Win64 unwind slots, register-allocation operand protection, and AArch64 relocations surface diagnostics instead of asserting — atop the shared frame-layout fix that closes the O1 miscompiles — the object writers bound their fixed-width name fields, and the native linker hardens relocation ordering, symbol resolution, and PE-image writing.

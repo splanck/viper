@@ -88,9 +88,11 @@ TypeRef Sema::analyzeIndex(IndexExpr *expr) {
         } else if (auto *literal = dynamic_cast<IntLiteralExpr *>(expr->index.get())) {
             if (literal->value < 0 ||
                 static_cast<size_t>(literal->value) >= baseType->elementCount) {
-                error(expr->index->loc,
-                      "fixed array index " + std::to_string(literal->value) +
-                          " is out of bounds for length " + std::to_string(baseType->elementCount));
+                errorWithCode(expr->index->loc,
+                              "V-ZIA-BOUNDS",
+                              "fixed array index " + std::to_string(literal->value) +
+                                  " is out of bounds for length " +
+                                  std::to_string(baseType->elementCount));
             }
         }
         return baseType->elementType() ? baseType->elementType() : types::unknown();
@@ -1439,9 +1441,10 @@ TypeRef Sema::analyzeTupleIndex(TupleIndexExpr *expr) {
     }
 
     if (expr->index >= tupleType->tupleElementTypes().size()) {
-        error(expr->loc,
-              "tuple index " + std::to_string(expr->index) + " is out of bounds for " +
-                  tupleType->toDisplayString());
+        errorWithCode(expr->loc,
+                      "V-ZIA-BOUNDS",
+                      "tuple index " + std::to_string(expr->index) + " is out of bounds for " +
+                          tupleType->toDisplayString());
         return types::unknown();
     }
 

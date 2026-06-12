@@ -426,7 +426,14 @@ set(RT_GRAPHICS_DISABLED_SOURCES
         graphics/3d/backend/vgfx3d_backend_d3d11_shared.c
         graphics/3d/backend/vgfx3d_backend_metal_shared.c
         graphics/3d/backend/vgfx3d_backend_opengl_shared.c
-        graphics/common/rt_graphics_stubs.c
+        graphics/common/rt_canvas_stubs.c
+        graphics/common/rt_graphics_helper_stubs.c
+        graphics/common/rt_canvas3d_stubs.c
+        graphics/common/rt_3d_asset_stubs.c
+        graphics/common/rt_3d_scene_stubs.c
+        graphics/common/rt_3d_physics_stubs.c
+        graphics/common/rt_3d_world_stubs.c
+        graphics/common/rt_graphics_media_stubs.c
 )
 
 # GPU backends (platform-conditional)

@@ -1,0 +1,2754 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+///
+/// @file rt_3d_physics_stubs.c
+/// @brief Graphics-disabled 3D physics, colliders, raycast, and joint stubs.
+///
+/// @details This split source groups physics-family unavailable-backend entry
+/// points so the trap-only implementation remains easy to audit without
+/// interleaving unrelated graphics subsystems.
+///
+// File: src/runtime/graphics/common/rt_3d_physics_stubs.c
+// Purpose: Graphics-disabled 3D physics, collision, raycast, and body entry points.
+//
+// Key invariants:
+//   - Compiled only for graphics-disabled runtime builds.
+//   - Stateful graphics APIs fail with the shared InvalidOperation trap.
+//   - Backend-independent query helpers keep their documented fallback values.
+//
+// Ownership/Lifetime:
+//   - Stub entry points allocate no graphics resources and retain no handles.
+//
+// Links: src/runtime/graphics/common/rt_graphics_stubs_internal.h
+//
+//===----------------------------------------------------------------------===//
+
+#include "rt_graphics_stubs_internal.h"
+
+/* Ray3D / AABB3D / RayHit3D stubs */
+
+/// @brief Stub for `Ray3D.IntersectTriangle` — Möller-Trumbore ray-vs-
+///        single-triangle intersection. Returns the parametric distance `t`
+///        along the ray to the hit, or `-1` for no hit / behind origin.
+///
+/// Silent stub returning `-1.0`.
+///
+/// @param o  Vec3 ray origin (ignored).
+/// @param d  Vec3 ray direction (must be normalized) (ignored).
+/// @param v0 Vec3 triangle vertex 0 (ignored).
+/// @param v1 Vec3 triangle vertex 1 (ignored).
+/// @param v2 Vec3 triangle vertex 2 (ignored).
+///
+/// @return `-1.0`.
+double rt_ray3d_intersect_triangle(void *o, void *d, void *v0, void *v1, void *v2) {
+    (void)o;
+    (void)d;
+    (void)v0;
+    (void)v1;
+    (void)v2;
+    return -1.0;
+}
+
+/// @brief Stub for `Ray3D.IntersectMesh` — would normally test a ray
+///        against every triangle of `m` (after applying transform `t`)
+///        and return the closest hit as a RayHit3D, or NULL for no hit.
+///
+/// Silent stub returning NULL.
+///
+/// @param o Vec3 ray origin (ignored).
+/// @param d Vec3 ray direction (ignored).
+/// @param m Mesh3D handle (ignored).
+/// @param t Transform3D handle (ignored).
+///
+/// @return `NULL`.
+void *rt_ray3d_intersect_mesh(void *o, void *d, void *m, void *t) {
+    (void)o;
+    (void)d;
+    (void)m;
+    (void)t;
+    return NULL;
+}
+
+/// @brief Stub for `Ray3D.IntersectAABB` — slab-method ray-vs-AABB
+///        intersection. Returns the parametric distance to the entry
+///        face, or `-1` for no hit.
+///
+/// Silent stub returning `-1.0`.
+///
+/// @param o  Vec3 ray origin (ignored).
+/// @param d  Vec3 ray direction (ignored).
+/// @param mn Vec3 AABB min corner (ignored).
+/// @param mx Vec3 AABB max corner (ignored).
+///
+/// @return `-1.0`.
+double rt_ray3d_intersect_aabb(void *o, void *d, void *mn, void *mx) {
+    (void)o;
+    (void)d;
+    (void)mn;
+    (void)mx;
+    return -1.0;
+}
+
+/// @brief Stub for `Ray3D.IntersectSphere` — analytic ray-vs-sphere
+///        intersection (quadratic discriminant). Returns the parametric
+///        distance to the entry point, or `-1` for no hit.
+///
+/// Silent stub returning `-1.0`.
+///
+/// @param o Vec3 ray origin (ignored).
+/// @param d Vec3 ray direction (ignored).
+/// @param c Vec3 sphere center (ignored).
+/// @param r Sphere radius (ignored).
+///
+/// @return `-1.0`.
+double rt_ray3d_intersect_sphere(void *o, void *d, void *c, double r) {
+    (void)o;
+    (void)d;
+    (void)c;
+    (void)r;
+    return -1.0;
+}
+
+/// @brief Stub for `AABB3D.Overlaps` — boolean AABB-vs-AABB overlap
+///        test. Each AABB is given as `(min, max)` Vec3 pairs.
+///
+/// Silent stub returning `0` (no overlap).
+///
+/// @param a0 Vec3 AABB A min corner (ignored).
+/// @param a1 Vec3 AABB A max corner (ignored).
+/// @param b0 Vec3 AABB B min corner (ignored).
+/// @param b1 Vec3 AABB B max corner (ignored).
+///
+/// @return `0`.
+int8_t rt_aabb3d_overlaps(void *a0, void *a1, void *b0, void *b1) {
+    (void)a0;
+    (void)a1;
+    (void)b0;
+    (void)b1;
+    return 0;
+}
+
+/// @brief Stub for `AABB3D.Penetration` — would normally return a Vec3
+///        representing the minimum-translation vector to separate the
+///        two AABBs along the axis of least overlap.
+///
+/// Silent stub returning NULL.
+///
+/// @param a0 Vec3 AABB A min corner (ignored).
+/// @param a1 Vec3 AABB A max corner (ignored).
+/// @param b0 Vec3 AABB B min corner (ignored).
+/// @param b1 Vec3 AABB B max corner (ignored).
+///
+/// @return `NULL`.
+void *rt_aabb3d_penetration(void *a0, void *a1, void *b0, void *b1) {
+    (void)a0;
+    (void)a1;
+    (void)b0;
+    (void)b1;
+    return NULL;
+}
+
+/// @brief Stub for `Ray3D.HitDistance` — get the parametric distance
+///        stored in a RayHit3D record (`-1` for no hit).
+///
+/// Silent stub returning `-1.0`.
+///
+/// @param h RayHit3D handle (ignored).
+///
+/// @return `-1.0`.
+double rt_ray3d_hit_distance(void *h) {
+    (void)h;
+    return -1.0;
+}
+
+/// @brief Stub for `Ray3D.HitPoint` — get the world-space hit point
+///        stored in a RayHit3D record as a Vec3.
+///
+/// Silent stub returning NULL.
+///
+/// @param h RayHit3D handle (ignored).
+///
+/// @return `NULL`.
+void *rt_ray3d_hit_point(void *h) {
+    (void)h;
+    return NULL;
+}
+
+/// @brief Stub for `Ray3D.HitNormal` — get the surface normal at the
+///        hit point as a Vec3 (always points back along the ray).
+///
+/// Silent stub returning NULL.
+///
+/// @param h RayHit3D handle (ignored).
+///
+/// @return `NULL`.
+void *rt_ray3d_hit_normal(void *h) {
+    (void)h;
+    return NULL;
+}
+
+/// @brief Stub for `Ray3D.HitTriangle` — get the triangle index of a
+///        ray-vs-mesh hit record (`-1` if no hit / opaque hit type).
+///
+/// Silent stub returning `-1` (no hit).
+///
+/// @param h Hit record handle (ignored).
+///
+/// @return `-1`.
+int64_t rt_ray3d_hit_triangle(void *h) {
+    (void)h;
+    return -1;
+}
+
+/// @brief Stub for `Sphere3D.Overlaps` — boolean sphere-vs-sphere overlap
+///        test (centers `a` and `b`, radii `ra` and `rb`).
+///
+/// Silent stub returning `0` (no overlap). The real implementation does a
+/// distance-vs-sum-of-radii comparison.
+///
+/// @param a  Vec3 center of sphere A (ignored).
+/// @param ra Radius of sphere A (ignored).
+/// @param b  Vec3 center of sphere B (ignored).
+/// @param rb Radius of sphere B (ignored).
+///
+/// @return `0`.
+int8_t rt_sphere3d_overlaps(void *a, double ra, void *b, double rb) {
+    (void)a;
+    (void)ra;
+    (void)b;
+    (void)rb;
+    return 0;
+}
+
+/// @brief Stub for `Sphere3D.Penetration` — would normally return a Vec3
+///        representing the minimum-translation vector to separate the two
+///        spheres (zero magnitude when not overlapping).
+///
+/// Silent stub returning NULL.
+///
+/// @param a  Vec3 center of sphere A (ignored).
+/// @param ra Radius of sphere A (ignored).
+/// @param b  Vec3 center of sphere B (ignored).
+/// @param rb Radius of sphere B (ignored).
+///
+/// @return `NULL`.
+void *rt_sphere3d_penetration(void *a, double ra, void *b, double rb) {
+    (void)a;
+    (void)ra;
+    (void)b;
+    (void)rb;
+    return NULL;
+}
+
+/// @brief Stub for `AABB3D.ClosestPoint` — would normally return the
+///        point on the AABB surface closest to `p`. Used by sphere-vs-AABB
+///        narrow-phase collision.
+///
+/// Silent stub returning NULL.
+///
+/// @param mn Vec3 AABB min corner (ignored).
+/// @param mx Vec3 AABB max corner (ignored).
+/// @param p  Vec3 query point (ignored).
+///
+/// @return `NULL`.
+void *rt_aabb3d_closest_point(void *mn, void *mx, void *p) {
+    (void)mn;
+    (void)mx;
+    (void)p;
+    return NULL;
+}
+
+/// @brief Stub for `AABB3D.SphereOverlaps` — boolean AABB-vs-sphere
+///        overlap test.
+///
+/// Silent stub returning `0` (no overlap).
+///
+/// @param mn Vec3 AABB min corner (ignored).
+/// @param mx Vec3 AABB max corner (ignored).
+/// @param c  Vec3 sphere center (ignored).
+/// @param r  Sphere radius (ignored).
+///
+/// @return `0`.
+int8_t rt_aabb3d_sphere_overlaps(void *mn, void *mx, void *c, double r) {
+    (void)mn;
+    (void)mx;
+    (void)c;
+    (void)r;
+    return 0;
+}
+
+/// @brief Stub for `Segment3D.ClosestPoint` — would normally return the
+///        point on the segment `[a, b]` closest to `p`. Used by capsule
+///        narrow-phase collision.
+///
+/// Silent stub returning NULL.
+///
+/// @param a Vec3 segment start (ignored).
+/// @param b Vec3 segment end (ignored).
+/// @param p Vec3 query point (ignored).
+///
+/// @return `NULL`.
+void *rt_segment3d_closest_point(void *a, void *b, void *p) {
+    (void)a;
+    (void)b;
+    (void)p;
+    return NULL;
+}
+
+/// @brief Stub for `Capsule3D.SphereOverlaps` — boolean capsule-vs-sphere
+///        overlap test. Capsule is the swept volume of a sphere of radius
+///        `cr` from `a` to `b`.
+///
+/// Silent stub returning `0`.
+///
+/// @param a  Vec3 capsule axis start (ignored).
+/// @param b  Vec3 capsule axis end (ignored).
+/// @param cr Capsule radius (ignored).
+/// @param c  Vec3 sphere center (ignored).
+/// @param sr Sphere radius (ignored).
+///
+/// @return `0`.
+int8_t rt_capsule3d_sphere_overlaps(void *a, void *b, double cr, void *c, double sr) {
+    (void)a;
+    (void)b;
+    (void)cr;
+    (void)c;
+    (void)sr;
+    return 0;
+}
+
+/// @brief Stub for `Capsule3D.AABBOverlaps` — boolean capsule-vs-AABB
+///        overlap test.
+///
+/// Silent stub returning `0`.
+///
+/// @param a  Vec3 capsule axis start (ignored).
+/// @param b  Vec3 capsule axis end (ignored).
+/// @param r  Capsule radius (ignored).
+/// @param mn Vec3 AABB min corner (ignored).
+/// @param mx Vec3 AABB max corner (ignored).
+///
+/// @return `0`.
+int8_t rt_capsule3d_aabb_overlaps(void *a, void *b, double r, void *mn, void *mx) {
+    (void)a;
+    (void)b;
+    (void)r;
+    (void)mn;
+    (void)mx;
+    return 0;
+}
+
+/* Physics3D World stubs */
+
+/// @brief Stub for `Physics3DWorld.New` — would normally create an
+///        empty physics world with the given gravity vector. Bodies are
+///        added via `Add`; the simulation is advanced one step at a time
+///        via `Step`.
+///
+/// Trapping stub: callers expect a usable handle for body management.
+///
+/// @param gx Gravity x in world units / second² (ignored).
+/// @param gy Gravity y; typically `-9.81` for Earth-like (ignored).
+/// @param gz Gravity z (ignored).
+///
+/// @return Never returns normally.
+void *rt_world3d_new(double gx, double gy, double gz) {
+    (void)gx;
+    (void)gy;
+    (void)gz;
+    rt_graphics_unavailable_("Physics3DWorld.New: graphics support not compiled in");
+    return NULL;
+}
+
+/// @brief Step the world3d.
+void rt_world3d_step(void *w, double dt) {
+    (void)w;
+    (void)dt;
+}
+
+/// @brief Add an element to the world3d.
+void rt_world3d_add(void *w, void *b) {
+    (void)w;
+    (void)b;
+}
+
+int8_t rt_world3d_try_add(void *w, void *b) {
+    (void)w;
+    (void)b;
+    return 0;
+}
+
+/// @brief Remove an entry from the world3d.
+void rt_world3d_remove(void *w, void *b) {
+    (void)w;
+    (void)b;
+}
+
+/// @brief Return the count of elements in the world3d.
+int64_t rt_world3d_body_count(void *w) {
+    (void)w;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.LastCCDRequestedSubsteps`.
+int64_t rt_world3d_get_last_ccd_requested_substeps(void *w) {
+    (void)w;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.LastCCDSubsteps`.
+int64_t rt_world3d_get_last_ccd_substeps(void *w) {
+    (void)w;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.CCDSubstepClampedCount`.
+int64_t rt_world3d_get_ccd_substep_clamped_count(void *w) {
+    (void)w;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.SolverIterations`.
+int64_t rt_world3d_get_solver_iterations(void *w) {
+    (void)w;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.SetSolverIterations`.
+void rt_world3d_set_solver_iterations(void *w, int64_t iterations) {
+    (void)w;
+    (void)iterations;
+}
+
+/// @brief Stub for `Physics3DWorld.LastSolverIslandCount`.
+int64_t rt_world3d_get_last_solver_island_count(void *w) {
+    (void)w;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.LastSolverActiveBodyCount`.
+int64_t rt_world3d_get_last_solver_active_body_count(void *w) {
+    (void)w;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.LastSolverContactCount`.
+int64_t rt_world3d_get_last_solver_contact_count(void *w) {
+    (void)w;
+    return 0;
+}
+
+/// @brief Set the gravity of the world3d.
+void rt_world3d_set_gravity(void *w, double gx, double gy, double gz) {
+    (void)w;
+    (void)gx;
+    (void)gy;
+    (void)gz;
+}
+
+/// @brief Stub for `Physics3DWorld.AddJoint` — register a joint
+///        constraint with the world's solver. `jt` distinguishes the
+///        joint type (Distance / Spring / future kinds) so the world
+///        can dispatch to the correct solver code.
+///
+/// Silent no-op stub.
+///
+/// @param w  Physics3DWorld handle (ignored).
+/// @param j  Joint handle (ignored).
+/// @param jt Joint type tag (ignored).
+void rt_world3d_add_joint(void *w, void *j, int64_t jt) {
+    (void)w;
+    (void)j;
+    (void)jt;
+}
+
+/// @brief Stub for `Physics3DWorld.RemoveJoint` — unregister a joint
+///        from the world. The joint object is left intact for re-add.
+///
+/// Silent no-op stub.
+///
+/// @param w Physics3DWorld handle (ignored).
+/// @param j Joint handle (ignored).
+void rt_world3d_remove_joint(void *w, void *j) {
+    (void)w;
+    (void)j;
+}
+
+/// @brief Stub for `Physics3DWorld.JointCount` — number of joints
+///        currently registered in the world.
+///
+/// Silent stub returning `0`.
+///
+/// @param w Physics3DWorld handle (ignored).
+///
+/// @return `0`.
+int64_t rt_world3d_joint_count(void *w) {
+    (void)w;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.CollisionCount` — number of contact
+///        pairs the most recent `Step` produced. Use as a queue length
+///        for iterating with the indexed accessors below.
+///
+/// Silent stub returning `0`.
+///
+/// @param w Physics3DWorld handle (ignored).
+///
+/// @return `0`.
+int64_t rt_world3d_get_collision_count(void *w) {
+    (void)w;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.CollisionBodyA(i)` — first body in
+///        the `i`th contact pair.
+///
+/// Silent stub returning NULL.
+///
+/// @param w Physics3DWorld handle (ignored).
+/// @param i Contact pair index, 0..CollisionCount-1 (ignored).
+///
+/// @return `NULL`.
+void *rt_world3d_get_collision_body_a(void *w, int64_t i) {
+    (void)w;
+    (void)i;
+    return NULL;
+}
+
+/// @brief Stub for `Physics3DWorld.CollisionBodyB(i)` — second body in
+///        the `i`th contact pair.
+///
+/// Silent stub returning NULL.
+///
+/// @param w Physics3DWorld handle (ignored).
+/// @param i Contact pair index (ignored).
+///
+/// @return `NULL`.
+void *rt_world3d_get_collision_body_b(void *w, int64_t i) {
+    (void)w;
+    (void)i;
+    return NULL;
+}
+
+/// @brief Stub for `Physics3DWorld.CollisionNormal(i)` — contact normal
+///        for the `i`th contact pair as a Vec3 (points from body A
+///        toward body B).
+///
+/// Silent stub returning NULL.
+///
+/// @param w Physics3DWorld handle (ignored).
+/// @param i Contact pair index (ignored).
+///
+/// @return `NULL`.
+void *rt_world3d_get_collision_normal(void *w, int64_t i) {
+    (void)w;
+    (void)i;
+    return NULL;
+}
+
+/// @brief Stub for `Physics3DWorld.CollisionDepth(i)` — penetration
+///        depth for the `i`th contact pair (positive = bodies overlap).
+///
+/// Silent stub returning `0.0`.
+///
+/// @param w Physics3DWorld handle (ignored).
+/// @param i Contact pair index (ignored).
+///
+/// @return `0.0`.
+double rt_world3d_get_collision_depth(void *w, int64_t i) {
+    (void)w;
+    (void)i;
+    return 0.0;
+}
+
+/// @brief Stub for `Physics3DWorld.CollisionEventCount` — number of
+///        rich CollisionEvent3D records produced by the most recent
+///        `Step`. Distinct from `CollisionCount` (which exposes raw
+///        contact pairs); events carry contact-manifold detail.
+///
+/// Silent stub returning `0`.
+///
+/// @param w Physics3DWorld handle (ignored).
+///
+/// @return `0`.
+int64_t rt_world3d_get_collision_event_count(void *w) {
+    (void)w;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.CollisionEvent(i)` — get the `i`th
+///        rich CollisionEvent3D from the world's event queue.
+///
+/// Silent stub returning NULL.
+///
+/// @param w Physics3DWorld handle (ignored).
+/// @param i Event index, 0..CollisionEventCount-1 (ignored).
+///
+/// @return `NULL`.
+void *rt_world3d_get_collision_event(void *w, int64_t i) {
+    (void)w;
+    (void)i;
+    return NULL;
+}
+
+/// @brief Stub for `Physics3DWorld.EnterEventCount` — number of
+///        contact-enter events from the most recent `Step` (pairs that
+///        started touching this tick).
+///
+/// Silent stub returning `0`.
+///
+/// @param w Physics3DWorld handle (ignored).
+///
+/// @return `0`.
+int64_t rt_world3d_get_enter_event_count(void *w) {
+    (void)w;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.EnterEvent(i)` — get the `i`th
+///        contact-enter CollisionEvent3D from this tick's queue.
+///
+/// Silent stub returning NULL.
+///
+/// @param w Physics3DWorld handle (ignored).
+/// @param i Enter-event index (ignored).
+///
+/// @return `NULL`.
+void *rt_world3d_get_enter_event(void *w, int64_t i) {
+    (void)w;
+    (void)i;
+    return NULL;
+}
+
+/// @brief Stub for `Physics3DWorld.StayEventCount` — number of
+///        contact-stay events from the most recent `Step` (pairs still
+///        touching from a previous tick).
+///
+/// Silent stub returning `0`.
+///
+/// @param w Physics3DWorld handle (ignored).
+///
+/// @return `0`.
+int64_t rt_world3d_get_stay_event_count(void *w) {
+    (void)w;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.StayEvent(i)` — get the `i`th
+///        contact-stay CollisionEvent3D from this tick's queue.
+///
+/// Silent stub returning NULL.
+///
+/// @param w Physics3DWorld handle (ignored).
+/// @param i Stay-event index (ignored).
+///
+/// @return `NULL`.
+void *rt_world3d_get_stay_event(void *w, int64_t i) {
+    (void)w;
+    (void)i;
+    return NULL;
+}
+
+/// @brief Stub for `Physics3DWorld.ExitEventCount` — number of
+///        contact-exit events from the most recent `Step` (pairs that
+///        stopped touching this tick).
+///
+/// Silent stub returning `0`.
+///
+/// @param w Physics3DWorld handle (ignored).
+///
+/// @return `0`.
+int64_t rt_world3d_get_exit_event_count(void *w) {
+    (void)w;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.ExitEvent(i)` — get the `i`th
+///        contact-exit CollisionEvent3D from this tick's queue.
+///
+/// Silent stub returning NULL.
+///
+/// @param w Physics3DWorld handle (ignored).
+/// @param i Exit-event index (ignored).
+///
+/// @return `NULL`.
+void *rt_world3d_get_exit_event(void *w, int64_t i) {
+    (void)w;
+    (void)i;
+    return NULL;
+}
+
+/// @brief Stub for `Physics3DWorld.ClearCollisionEvents`.
+///
+/// Silent no-op stub.
+void rt_world3d_clear_collision_events(void *w) {
+    (void)w;
+}
+
+/// @brief Stub for `Physics3DWorld.Raycast` — single-hit raycast
+///        against the world. Returns the closest Physics3DHit, or NULL
+///        if no body was hit within `max_distance` along the ray (also
+///        filtered by `mask`).
+///
+/// Silent stub returning NULL.
+///
+/// @param w            Physics3DWorld handle (ignored).
+/// @param origin       Vec3 ray origin (ignored).
+/// @param direction    Vec3 ray direction (must be normalized) (ignored).
+/// @param max_distance Maximum hit distance in world units (ignored).
+/// @param mask         Layer-bitmask filter (ignored).
+///
+/// @return `NULL`.
+void *rt_world3d_raycast(
+    void *w, void *origin, void *direction, double max_distance, int64_t mask) {
+    (void)w;
+    (void)origin;
+    (void)direction;
+    (void)max_distance;
+    (void)mask;
+    return NULL;
+}
+
+/// @brief Stub for `Physics3DWorld.RaycastAll` — multi-hit raycast
+///        that returns every body the ray passes through (up to the
+///        max distance), as a Physics3DHitList.
+///
+/// Silent stub returning NULL.
+///
+/// @param w            Physics3DWorld handle (ignored).
+/// @param origin       Vec3 ray origin (ignored).
+/// @param direction    Vec3 ray direction (ignored).
+/// @param max_distance Maximum hit distance in world units (ignored).
+/// @param mask         Layer-bitmask filter (ignored).
+///
+/// @return `NULL`.
+void *rt_world3d_raycast_all(
+    void *w, void *origin, void *direction, double max_distance, int64_t mask) {
+    (void)w;
+    (void)origin;
+    (void)direction;
+    (void)max_distance;
+    (void)mask;
+    return NULL;
+}
+
+/// @brief Stub for `Physics3DWorld.SweepSphere` — sweep a sphere of
+///        the given radius along the displacement vector `delta`,
+///        returning the first contact (Physics3DHit) or NULL if none.
+///
+/// Silent stub returning NULL.
+///
+/// @param w      Physics3DWorld handle (ignored).
+/// @param center Vec3 sphere starting center (ignored).
+/// @param radius Sphere radius (ignored).
+/// @param delta  Vec3 sweep displacement (ignored).
+/// @param mask   Layer-bitmask filter (ignored).
+///
+/// @return `NULL`.
+void *rt_world3d_sweep_sphere(void *w, void *center, double radius, void *delta, int64_t mask) {
+    (void)w;
+    (void)center;
+    (void)radius;
+    (void)delta;
+    (void)mask;
+    return NULL;
+}
+
+/// @brief Stub for `Physics3DWorld.SweepCapsule` — sweep a capsule
+///        (axis from `a` to `b`, radius `radius`) along displacement
+///        `delta`, returning the first contact or NULL.
+///
+/// Silent stub returning NULL.
+///
+/// @param w      Physics3DWorld handle (ignored).
+/// @param a      Vec3 capsule axis start (ignored).
+/// @param b      Vec3 capsule axis end (ignored).
+/// @param radius Capsule cross-sectional radius (ignored).
+/// @param delta  Vec3 sweep displacement (ignored).
+/// @param mask   Layer-bitmask filter (ignored).
+///
+/// @return `NULL`.
+void *rt_world3d_sweep_capsule(
+    void *w, void *a, void *b, double radius, void *delta, int64_t mask) {
+    (void)w;
+    (void)a;
+    (void)b;
+    (void)radius;
+    (void)delta;
+    (void)mask;
+    return NULL;
+}
+
+/// @brief Stub for `Physics3DWorld.OverlapSphere` — return every body
+///        whose collider overlaps a static sphere centered at `center`
+///        with the given `radius`. Useful for AOE damage queries and
+///        proximity sensors.
+///
+/// Silent stub returning NULL.
+///
+/// @param w      Physics3DWorld handle (ignored).
+/// @param center Vec3 sphere center (ignored).
+/// @param radius Sphere radius (ignored).
+/// @param mask   Layer-bitmask filter (ignored).
+///
+/// @return `NULL`.
+void *rt_world3d_overlap_sphere(void *w, void *center, double radius, int64_t mask) {
+    (void)w;
+    (void)center;
+    (void)radius;
+    (void)mask;
+    return NULL;
+}
+
+/// @brief Stub for `Physics3DWorld.OverlapAABB` — return every body
+///        whose collider overlaps a static axis-aligned box `(min_corner,
+///        max_corner)`. Useful for box triggers and selection regions.
+///
+/// Silent stub returning NULL.
+///
+/// @param w          Physics3DWorld handle (ignored).
+/// @param min_corner Vec3 AABB min corner (ignored).
+/// @param max_corner Vec3 AABB max corner (ignored).
+/// @param mask       Layer-bitmask filter (ignored).
+///
+/// @return `NULL`.
+void *rt_world3d_overlap_aabb(void *w, void *min_corner, void *max_corner, int64_t mask) {
+    (void)w;
+    (void)min_corner;
+    (void)max_corner;
+    (void)mask;
+    return NULL;
+}
+
+/// @brief Stub for `Physics3DHit.Distance` — get the distance from the
+///        ray/sweep origin to the hit point.
+///
+/// Silent stub returning `0.0`.
+///
+/// @param h Hit record handle (ignored).
+///
+/// @return `0.0`.
+double rt_physics_hit3d_get_distance(void *h) {
+    (void)h;
+    return 0.0;
+}
+
+/// @brief Stub for `Physics3DHit.Body` — get the Body3D that was hit.
+///
+/// Silent stub returning NULL.
+///
+/// @param h Hit record handle (ignored).
+///
+/// @return `NULL`.
+void *rt_physics_hit3d_get_body(void *h) {
+    (void)h;
+    return NULL;
+}
+
+/// @brief Stub for `Physics3DHit.Collider` — get the Collider3D shape
+///        that was hit (a body may have multiple compound child colliders).
+///
+/// Silent stub returning NULL.
+///
+/// @param h Hit record handle (ignored).
+///
+/// @return `NULL`.
+void *rt_physics_hit3d_get_collider(void *h) {
+    (void)h;
+    return NULL;
+}
+
+/// @brief Stub for `Physics3DHit.Point` — get the world-space hit point
+///        as a Vec3.
+///
+/// Silent stub returning NULL.
+///
+/// @param h Hit record handle (ignored).
+///
+/// @return `NULL`.
+void *rt_physics_hit3d_get_point(void *h) {
+    (void)h;
+    return NULL;
+}
+
+/// @brief Stub for `Physics3DHit.Normal` — get the surface normal at the
+///        hit point as a Vec3 (always points away from the hit body).
+///
+/// Silent stub returning NULL.
+///
+/// @param h Hit record handle (ignored).
+///
+/// @return `NULL`.
+void *rt_physics_hit3d_get_normal(void *h) {
+    (void)h;
+    return NULL;
+}
+
+/// @brief Stub for `Physics3DHit.Fraction` — for sweep tests, get the
+///        fraction along the swept path (0..1) at which contact occurred.
+///
+/// Silent stub returning `0.0`.
+///
+/// @param h Hit record handle (ignored).
+///
+/// @return `0.0`.
+double rt_physics_hit3d_get_fraction(void *h) {
+    (void)h;
+    return 0.0;
+}
+
+/// @brief Stub for `Physics3DHit.StartedPenetrating` — for sweep tests,
+///        true when the swept shape was already overlapping the target at
+///        the start of the sweep.
+///
+/// Silent stub returning `0`.
+///
+/// @param h Hit record handle (ignored).
+///
+/// @return `0`.
+int8_t rt_physics_hit3d_get_started_penetrating(void *h) {
+    (void)h;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DHit.IsTrigger` — true if the hit body's
+///        collider is a sensor/trigger (no impulse exchange, just an
+///        overlap notification).
+///
+/// Silent stub returning `0`.
+///
+/// @param h Hit record handle (ignored).
+///
+/// @return `0`.
+int8_t rt_physics_hit3d_get_is_trigger(void *h) {
+    (void)h;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DHitList.Count` — number of hits in a multi-hit
+///        query result (e.g. raycast all, overlap query).
+///
+/// Silent stub returning `0`.
+///
+/// @param list Hit-list handle (ignored).
+///
+/// @return `0`.
+int64_t rt_physics_hit_list3d_get_count(void *list) {
+    (void)list;
+    return 0;
+}
+
+int64_t rt_physics_hit_list3d_get_total_count(void *list) {
+    (void)list;
+    return 0;
+}
+
+int8_t rt_physics_hit_list3d_get_truncated(void *list) {
+    (void)list;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DHitList.Get(i)` — access the `i`th hit
+///        record in a multi-hit query result.
+///
+/// Silent stub returning NULL.
+///
+/// @param list  Hit-list handle (ignored).
+/// @param index Hit index, 0..Count-1 (ignored).
+///
+/// @return `NULL`.
+void *rt_physics_hit_list3d_get(void *list, int64_t index) {
+    (void)list;
+    (void)index;
+    return NULL;
+}
+
+/// @brief Stub for `CollisionEvent3D.BodyA` — first body involved in the
+///        collision pair.
+///
+/// Silent stub returning NULL.
+///
+/// @param event CollisionEvent3D handle (ignored).
+///
+/// @return `NULL`.
+void *rt_collision_event3d_get_body_a(void *event) {
+    (void)event;
+    return NULL;
+}
+
+/// @brief Stub for `CollisionEvent3D.BodyB` — second body involved in the
+///        collision pair.
+///
+/// Silent stub returning NULL.
+///
+/// @param event CollisionEvent3D handle (ignored).
+///
+/// @return `NULL`.
+void *rt_collision_event3d_get_body_b(void *event) {
+    (void)event;
+    return NULL;
+}
+
+/// @brief Stub for `CollisionEvent3D.ColliderA` — specific Collider3D
+///        shape on body A that was contacted (relevant for compound
+///        colliders).
+///
+/// Silent stub returning NULL.
+///
+/// @param event CollisionEvent3D handle (ignored).
+///
+/// @return `NULL`.
+void *rt_collision_event3d_get_collider_a(void *event) {
+    (void)event;
+    return NULL;
+}
+
+/// @brief Stub for `CollisionEvent3D.ColliderB` — specific Collider3D
+///        shape on body B that was contacted.
+///
+/// Silent stub returning NULL.
+///
+/// @param event CollisionEvent3D handle (ignored).
+///
+/// @return `NULL`.
+void *rt_collision_event3d_get_collider_b(void *event) {
+    (void)event;
+    return NULL;
+}
+
+/// @brief Stub for `CollisionEvent3D.IsTrigger` — true when at least one
+///        collider in the pair is a sensor/trigger.
+///
+/// Silent stub returning `0`.
+///
+/// @param event CollisionEvent3D handle (ignored).
+///
+/// @return `0`.
+int8_t rt_collision_event3d_get_is_trigger(void *event) {
+    (void)event;
+    return 0;
+}
+
+/// @brief Stub for `CollisionEvent3D.ContactCount` — number of contact
+///        manifold points generated for this collision (typically 1..4).
+///
+/// Silent stub returning `0`.
+///
+/// @param event CollisionEvent3D handle (ignored).
+///
+/// @return `0`.
+int64_t rt_collision_event3d_get_contact_count(void *event) {
+    (void)event;
+    return 0;
+}
+
+/// @brief Stub for `CollisionEvent3D.RelativeSpeed` — magnitude of the
+///        relative velocity between the bodies along the contact normal at
+///        the moment of contact. Useful for impact-strength SFX.
+///
+/// Silent stub returning `0.0`.
+///
+/// @param event CollisionEvent3D handle (ignored).
+///
+/// @return `0.0`.
+double rt_collision_event3d_get_relative_speed(void *event) {
+    (void)event;
+    return 0.0;
+}
+
+/// @brief Stub for `CollisionEvent3D.NormalImpulse` — magnitude of the
+///        impulse the constraint solver applied along the contact normal.
+///
+/// Silent stub returning `0.0`.
+///
+/// @param event CollisionEvent3D handle (ignored).
+///
+/// @return `0.0`.
+double rt_collision_event3d_get_normal_impulse(void *event) {
+    (void)event;
+    return 0.0;
+}
+
+/// @brief Stub for `CollisionEvent3D.Contact(i)` — get the `i`th contact
+///        manifold point as an opaque ContactPoint3D handle.
+///
+/// Silent stub returning NULL.
+///
+/// @param event CollisionEvent3D handle (ignored).
+/// @param index Contact index, 0..ContactCount-1 (ignored).
+///
+/// @return `NULL`.
+void *rt_collision_event3d_get_contact(void *event, int64_t index) {
+    (void)event;
+    (void)index;
+    return NULL;
+}
+
+/// @brief Stub for `CollisionEvent3D.ContactPoint(i)` — convenience: get
+///        the world-space position of the `i`th contact directly as a
+///        Vec3 (skips the ContactPoint3D wrapper).
+///
+/// Silent stub returning NULL.
+///
+/// @param event CollisionEvent3D handle (ignored).
+/// @param index Contact index (ignored).
+///
+/// @return `NULL`.
+void *rt_collision_event3d_get_contact_point(void *event, int64_t index) {
+    (void)event;
+    (void)index;
+    return NULL;
+}
+
+/// @brief Stub for `CollisionEvent3D.ContactNormal(i)` — convenience: get
+///        the world-space normal at the `i`th contact directly as a Vec3.
+///
+/// Silent stub returning NULL.
+///
+/// @param event CollisionEvent3D handle (ignored).
+/// @param index Contact index (ignored).
+///
+/// @return `NULL`.
+void *rt_collision_event3d_get_contact_normal(void *event, int64_t index) {
+    (void)event;
+    (void)index;
+    return NULL;
+}
+
+/// @brief Stub for `CollisionEvent3D.ContactSeparation(i)` — penetration
+///        depth at the `i`th contact (negative = bodies overlap).
+///
+/// Silent stub returning `0.0`.
+///
+/// @param event CollisionEvent3D handle (ignored).
+/// @param index Contact index (ignored).
+///
+/// @return `0.0`.
+double rt_collision_event3d_get_contact_separation(void *event, int64_t index) {
+    (void)event;
+    (void)index;
+    return 0.0;
+}
+
+/// @brief Stub for `ContactPoint3D.Point` — world-space position of the
+///        contact as a Vec3.
+///
+/// Silent stub returning NULL.
+///
+/// @param contact ContactPoint3D handle (ignored).
+///
+/// @return `NULL`.
+void *rt_contact_point3d_get_point(void *contact) {
+    (void)contact;
+    return NULL;
+}
+
+/// @brief Stub for `ContactPoint3D.Normal` — world-space contact normal
+///        as a Vec3 (points from body A toward body B by convention).
+///
+/// Silent stub returning NULL.
+///
+/// @param contact ContactPoint3D handle (ignored).
+///
+/// @return `NULL`.
+void *rt_contact_point3d_get_normal(void *contact) {
+    (void)contact;
+    return NULL;
+}
+
+/// @brief Stub for `ContactPoint3D.Separation` — penetration depth at
+///        this contact (negative = bodies overlap).
+///
+/// Silent stub returning `0.0`.
+///
+/// @param contact ContactPoint3D handle (ignored).
+///
+/// @return `0.0`.
+double rt_contact_point3d_get_separation(void *contact) {
+    (void)contact;
+    return 0.0;
+}
+
+/* Physics3D Joint stubs */
+
+/// @brief Stub for `DistanceJoint3D.New` — would normally create a
+///        rigid distance constraint between bodies `a` and `b` keeping
+///        them exactly `d` apart (a stiff invisible rod). Solved with
+///        sequential impulses (6 iterations).
+///
+/// Trapping stub: joints are referenced by the Physics3DWorld step
+/// loop — a NULL return would crash later.
+///
+/// @param a First body handle (ignored).
+/// @param b Second body handle (ignored).
+/// @param d Target separation distance in world units (ignored).
+///
+/// @return Never returns normally.
+void *rt_distance_joint3d_new(void *a, void *b, double d) {
+    (void)a;
+    (void)b;
+    (void)d;
+    rt_graphics_unavailable_("DistanceJoint3D.New: graphics support not compiled in");
+    return NULL;
+}
+
+/// @brief Stub for `DistanceJoint3D.Distance` — get the joint's target
+///        separation distance.
+///
+/// Silent stub returning `0.0`.
+///
+/// @param j DistanceJoint3D handle (ignored).
+///
+/// @return `0.0`.
+double rt_distance_joint3d_get_distance(void *j) {
+    (void)j;
+    return 0.0;
+}
+
+/// @brief Stub for `DistanceJoint3D.SetDistance` — adjust the target
+///        separation. Connected bodies will be pulled / pushed back to
+///        the new distance over the next few simulation steps.
+///
+/// Silent no-op stub.
+///
+/// @param j DistanceJoint3D handle (ignored).
+/// @param d New target distance (ignored).
+void rt_distance_joint3d_set_distance(void *j, double d) {
+    (void)j;
+    (void)d;
+}
+
+/// @brief Stub for `SpringJoint3D.New` — would normally create a
+///        damped-spring constraint between bodies `a` and `b` with rest
+///        length `rl`, spring stiffness `s`, and damping coefficient `d`.
+///        Implements Hooke's law with viscous damping.
+///
+/// Trapping stub.
+///
+/// @param a  First body handle (ignored).
+/// @param b  Second body handle (ignored).
+/// @param rl Spring rest length (ignored).
+/// @param s  Spring stiffness (force per unit displacement) (ignored).
+/// @param d  Damping coefficient (force per unit relative velocity) (ignored).
+///
+/// @return Never returns normally.
+void *rt_spring_joint3d_new(void *a, void *b, double rl, double s, double d) {
+    (void)a;
+    (void)b;
+    (void)rl;
+    (void)s;
+    (void)d;
+    rt_graphics_unavailable_("SpringJoint3D.New: graphics support not compiled in");
+    return NULL;
+}
+
+/// @brief Stub for `SpringJoint3D.Stiffness` — get the spring stiffness
+///        coefficient.
+///
+/// Silent stub returning `0.0`.
+///
+/// @param j SpringJoint3D handle (ignored).
+///
+/// @return `0.0`.
+double rt_spring_joint3d_get_stiffness(void *j) {
+    (void)j;
+    return 0.0;
+}
+
+/// @brief Stub for `SpringJoint3D.SetStiffness` — adjust the spring
+///        stiffness coefficient. Higher = snappier oscillation.
+///
+/// Silent no-op stub.
+///
+/// @param j SpringJoint3D handle (ignored).
+/// @param s New stiffness (ignored).
+void rt_spring_joint3d_set_stiffness(void *j, double s) {
+    (void)j;
+    (void)s;
+}
+
+/// @brief Stub for `SpringJoint3D.Damping` — get the damping coefficient.
+///
+/// Silent stub returning `0.0`.
+///
+/// @param j SpringJoint3D handle (ignored).
+///
+/// @return `0.0`.
+double rt_spring_joint3d_get_damping(void *j) {
+    (void)j;
+    return 0.0;
+}
+
+/// @brief Stub for `SpringJoint3D.SetDamping` — adjust the damping
+///        coefficient. Higher = quicker oscillation decay (overdamped at
+///        very high values).
+///
+/// Silent no-op stub.
+///
+/// @param j SpringJoint3D handle (ignored).
+/// @param d New damping coefficient (ignored).
+void rt_spring_joint3d_set_damping(void *j, double d) {
+    (void)j;
+    (void)d;
+}
+
+/// @brief Stub for `SpringJoint3D.RestLength` — get the spring's rest
+///        length (the separation at which net force is zero).
+///
+/// Silent stub returning `0.0`.
+///
+/// @param j SpringJoint3D handle (ignored).
+///
+/// @return `0.0`.
+double rt_spring_joint3d_get_rest_length(void *j) {
+    (void)j;
+    return 0.0;
+}
+
+/// @brief Stub for `HingeJoint3D.New` — would normally create an anchor
+///        constraint that allows relative angular motion around `axis`.
+///
+/// Trapping stub.
+void *rt_hinge_joint3d_new(void *a, void *b, void *anchor, void *axis) {
+    (void)a;
+    (void)b;
+    (void)anchor;
+    (void)axis;
+    rt_graphics_unavailable_("HingeJoint3D.New: graphics support not compiled in");
+    return NULL;
+}
+
+void rt_hinge_joint3d_set_motor(void *joint,
+                                int8_t enabled,
+                                double target_velocity,
+                                double max_impulse) {
+    (void)joint;
+    (void)enabled;
+    (void)target_velocity;
+    (void)max_impulse;
+}
+
+double rt_hinge_joint3d_get_angle(void *joint) {
+    (void)joint;
+    return 0.0;
+}
+
+void rt_hinge_joint3d_set_limits(void *joint, double min_angle, double max_angle) {
+    (void)joint;
+    (void)min_angle;
+    (void)max_angle;
+}
+
+/// @brief Stub for `RopeJoint3D.New` — would normally create a maximum-distance
+///        constraint between bodies `a` and `b`.
+///
+/// Trapping stub.
+void *rt_rope_joint3d_new(void *a, void *b, double max_length) {
+    (void)a;
+    (void)b;
+    (void)max_length;
+    rt_graphics_unavailable_("RopeJoint3D.New: graphics support not compiled in");
+    return NULL;
+}
+
+/// @brief Stub for `RopeJoint3D.MaxLength`.
+double rt_rope_joint3d_get_max_length(void *j) {
+    (void)j;
+    return 0.0;
+}
+
+/// @brief Stub for `RopeJoint3D.MaxLength` setter.
+void rt_rope_joint3d_set_max_length(void *j, double max_length) {
+    (void)j;
+    (void)max_length;
+}
+
+/// @brief Stub for `SixDofJoint3D.New` — would normally create a configurable
+///        frame constraint between two bodies.
+///
+/// Trapping stub.
+void *rt_sixdof_joint3d_new(void *a, void *b, void *frame_a, void *frame_b) {
+    (void)a;
+    (void)b;
+    (void)frame_a;
+    (void)frame_b;
+    rt_graphics_unavailable_("SixDofJoint3D.New: graphics support not compiled in");
+    return NULL;
+}
+
+/// @brief Stub for `SixDofJoint3D.SetLinearLimits`.
+void rt_sixdof_joint3d_set_linear_limits(void *j, void *min, void *max) {
+    (void)j;
+    (void)min;
+    (void)max;
+}
+
+/// @brief Stub for `SixDofJoint3D.SetAngularLimits`.
+void rt_sixdof_joint3d_set_angular_limits(void *j, void *min, void *max) {
+    (void)j;
+    (void)min;
+    (void)max;
+}
+
+void rt_sixdof_joint3d_set_linear_motor(void *j,
+                                        int8_t enabled,
+                                        void *velocity,
+                                        double max_impulse) {
+    (void)j;
+    (void)enabled;
+    (void)velocity;
+    (void)max_impulse;
+}
+
+/* Collider3D stubs */
+
+/// @brief Stub for `Collider3D.NewBox` — would normally allocate an
+///        axis-aligned box collider with the given half-extents (so the
+///        full size is `2 * h` along each axis). Centered at the body's
+///        local origin.
+///
+/// Silent stub returning NULL.
+///
+/// @param hx Half-extent along X (ignored).
+/// @param hy Half-extent along Y (ignored).
+/// @param hz Half-extent along Z (ignored).
+///
+/// @return `NULL`.
+void *rt_collider3d_new_box(double hx, double hy, double hz) {
+    (void)hx;
+    (void)hy;
+    (void)hz;
+    return NULL;
+}
+
+/// @brief Stub for `Collider3D.NewSphere` — would normally allocate a
+///        sphere collider with the given radius. Cheapest narrow-phase
+///        shape (analytic sphere-vs-sphere is O(1)).
+///
+/// Silent stub returning NULL.
+///
+/// @param radius Sphere radius in world units (ignored).
+///
+/// @return `NULL`.
+void *rt_collider3d_new_sphere(double radius) {
+    (void)radius;
+    return NULL;
+}
+
+/// @brief Stub for `Collider3D.NewCapsule` — would normally allocate a
+///        Y-axis-aligned capsule collider (cylinder with hemispherical
+///        end-caps). Total height along Y is `height`, including caps.
+///        Used for character controllers and humanoid bodies.
+///
+/// Silent stub returning NULL.
+///
+/// @param radius Capsule cross-sectional radius (ignored).
+/// @param height Total capsule height including caps (ignored).
+///
+/// @return `NULL`.
+void *rt_collider3d_new_capsule(double radius, double height) {
+    (void)radius;
+    (void)height;
+    return NULL;
+}
+
+/// @brief Stub for `Collider3D.NewConvexHull` — would normally compute
+///        the convex hull of the given Mesh3D's vertex set and use it as
+///        collision geometry. Convex hulls are cheap to test against
+///        (GJK / EPA narrow-phase).
+///
+/// Silent stub returning NULL.
+///
+/// @param mesh Source Mesh3D handle (ignored).
+///
+/// @return `NULL`.
+void *rt_collider3d_new_convex_hull(void *mesh) {
+    (void)mesh;
+    return NULL;
+}
+
+/// @brief Stub for `Collider3D.NewMesh` — would normally use the given
+///        Mesh3D's triangles directly as collision geometry. Triangle-mesh
+///        colliders are static-only (no inertia tensor); typically used
+///        for level geometry.
+///
+/// Silent stub returning NULL.
+///
+/// @param mesh Source Mesh3D handle (ignored).
+///
+/// @return `NULL`.
+void *rt_collider3d_new_mesh(void *mesh) {
+    (void)mesh;
+    return NULL;
+}
+
+/// @brief Stub for `Collider3D.NewHeightfield` — would normally allocate
+///        a heightfield collider sampling the given heightmap (Pixels
+///        surface; red channel = height) at world dimensions
+///        `(sx, sy, sz)`. Static-only; used for terrain.
+///
+/// Silent stub returning NULL.
+///
+/// @param heightmap Pixels handle providing height samples (ignored).
+/// @param sx        World extent along X (ignored).
+/// @param sy        Vertical scale (height range) (ignored).
+/// @param sz        World extent along Z (ignored).
+///
+/// @return `NULL`.
+void *rt_collider3d_new_heightfield(void *heightmap, double sx, double sy, double sz) {
+    (void)heightmap;
+    (void)sx;
+    (void)sy;
+    (void)sz;
+    return NULL;
+}
+
+/// @brief Stub for `Collider3D.NewCompound` — would normally allocate
+///        an empty compound collider. Children added via `AddChild` are
+///        each tested individually during narrow-phase but share a
+///        single body-vs-collider attachment. Used for non-convex
+///        collision shapes.
+///
+/// Silent stub returning NULL.
+///
+/// @return `NULL`.
+void *rt_collider3d_new_compound(void) {
+    return NULL;
+}
+
+/// @brief Stub for `Collider3D.AddChild` — attach a child collider to a
+///        compound parent at the given local-space transform. The child
+///        moves rigidly with the compound during simulation.
+///
+/// Silent no-op stub.
+///
+/// @param compound        Compound Collider3D handle (ignored).
+/// @param child           Child Collider3D handle (ignored).
+/// @param local_transform Transform3D positioning child within compound (ignored).
+void rt_collider3d_add_child(void *compound, void *child, void *local_transform) {
+    (void)compound;
+    (void)child;
+    (void)local_transform;
+}
+
+/// @brief Stub for `Collider3D.Type` — get the shape type of the collider:
+///        0=Box, 1=Sphere, 2=Capsule, 3=Hull, 4=Mesh, 5=Heightfield, 6=Compound.
+///
+/// Silent stub returning `-1` (invalid / no collider).
+///
+/// @param collider Collider3D handle (ignored).
+///
+/// @return `-1`.
+int64_t rt_collider3d_get_type(void *collider) {
+    (void)collider;
+    return -1;
+}
+
+/// @brief Stub for `Collider3D.LocalBoundsMin` — get the min corner of
+///        the collider's local-space AABB as a Vec3 (before world transform).
+///
+/// Silent stub returning NULL.
+///
+/// @param collider Collider3D handle (ignored).
+///
+/// @return `NULL`.
+void *rt_collider3d_get_local_bounds_min(void *collider) {
+    (void)collider;
+    return NULL;
+}
+
+/// @brief Stub for `Collider3D.LocalBoundsMax` — get the max corner of
+///        the collider's local-space AABB as a Vec3.
+///
+/// Silent stub returning NULL.
+///
+/// @param collider Collider3D handle (ignored).
+///
+/// @return `NULL`.
+void *rt_collider3d_get_local_bounds_max(void *collider) {
+    (void)collider;
+    return NULL;
+}
+
+/// @brief Stub for the raw out-parameter form of `Collider3D` local-bounds
+///        query. Used by C callers that want to avoid Vec3 wrapper allocation.
+///
+/// Silent stub: zeros both out-parameters when non-NULL.
+///
+/// @param collider Collider3D handle (ignored).
+/// @param min_out  `double[3]` to receive the local-AABB min, or NULL (zeroed if non-NULL).
+/// @param max_out  `double[3]` to receive the local-AABB max, or NULL (zeroed if non-NULL).
+void rt_collider3d_get_local_bounds_raw(void *collider, double *min_out, double *max_out) {
+    (void)collider;
+    if (min_out) {
+        min_out[0] = min_out[1] = min_out[2] = 0.0;
+    }
+    if (max_out) {
+        max_out[0] = max_out[1] = max_out[2] = 0.0;
+    }
+}
+
+/// @brief Stub for the raw form of `Collider3D.WorldAABB(transform)` —
+///        would normally apply the body's `(position, rotation, scale)` to
+///        the local bounds and write the resulting world AABB to out-params.
+///
+/// Silent stub: zeros both out-parameters when non-NULL.
+///
+/// @param collider Collider3D handle (ignored).
+/// @param position `double[3]` body world position (ignored).
+/// @param rotation `double[4]` body orientation quaternion (ignored).
+/// @param scale    `double[3]` body local scale (ignored).
+/// @param min_out  `double[3]` receives world-AABB min, or NULL (zeroed if non-NULL).
+/// @param max_out  `double[3]` receives world-AABB max, or NULL (zeroed if non-NULL).
+void rt_collider3d_compute_world_aabb_raw(void *collider,
+                                          const double *position,
+                                          const double *rotation,
+                                          const double *scale,
+                                          double *min_out,
+                                          double *max_out) {
+    (void)collider;
+    (void)position;
+    (void)rotation;
+    (void)scale;
+    if (min_out) {
+        min_out[0] = min_out[1] = min_out[2] = 0.0;
+    }
+    if (max_out) {
+        max_out[0] = max_out[1] = max_out[2] = 0.0;
+    }
+}
+
+/// @brief Stub for `Collider3D.IsStaticOnly` — true for collider shapes
+///        that can only be attached to static (non-moving) bodies — e.g.
+///        triangle meshes and heightfields, which lack inertia tensors.
+///
+/// Silent stub returning `0`.
+///
+/// @param collider Collider3D handle (ignored).
+///
+/// @return `0`.
+int8_t rt_collider3d_is_static_only_raw(void *collider) {
+    (void)collider;
+    return 0;
+}
+
+/// @brief Stub for `Collider3D.BoxHalfExtents` raw query — for box
+///        colliders, write the half-extents (so full size is `2 * he` along
+///        each axis) to `half_extents_out[0..2]`.
+///
+/// Silent stub: zeros the out-parameter when non-NULL. Meaningless for
+/// non-box colliders even in the real implementation.
+///
+/// @param collider          Collider3D handle (ignored).
+/// @param half_extents_out  `double[3]` receives half-extents, or NULL.
+void rt_collider3d_get_box_half_extents_raw(void *collider, double *half_extents_out) {
+    (void)collider;
+    if (half_extents_out) {
+        half_extents_out[0] = half_extents_out[1] = half_extents_out[2] = 0.0;
+    }
+}
+
+/// @brief Stub for `Collider3D.Radius` raw query — for sphere and capsule
+///        colliders, get the cross-sectional radius.
+///
+/// Silent stub returning `0.0`. Meaningless for non-radial shapes even in
+/// the real implementation.
+///
+/// @param collider Collider3D handle (ignored).
+///
+/// @return `0.0`.
+double rt_collider3d_get_radius_raw(void *collider) {
+    (void)collider;
+    return 0.0;
+}
+
+/// @brief Stub for `Collider3D.Height` raw query — for capsule colliders,
+///        get the total capsule height including both hemispherical caps.
+///
+/// Silent stub returning `0.0`.
+///
+/// @param collider Collider3D handle (ignored).
+///
+/// @return `0.0`.
+double rt_collider3d_get_height_raw(void *collider) {
+    (void)collider;
+    return 0.0;
+}
+
+/// @brief Stub for `Collider3D.Mesh` raw query — for hull and triangle-mesh
+///        colliders, get the underlying Mesh3D used as collision geometry.
+///
+/// Silent stub returning NULL.
+///
+/// @param collider Collider3D handle (ignored).
+///
+/// @return `NULL`.
+void *rt_collider3d_get_mesh_raw(void *collider) {
+    (void)collider;
+    return NULL;
+}
+
+/// @brief Stub for `Collider3D.ChildCount` raw query — for compound
+///        colliders, the number of attached child colliders.
+///
+/// Silent stub returning `0`.
+///
+/// @param collider Collider3D handle (ignored).
+///
+/// @return `0`.
+int64_t rt_collider3d_get_child_count_raw(void *collider) {
+    (void)collider;
+    return 0;
+}
+
+/// @brief Stub for `Collider3D.Child(i)` raw query — for compound
+///        colliders, get the `i`th child collider.
+///
+/// Silent stub returning NULL.
+///
+/// @param collider Compound Collider3D handle (ignored).
+/// @param index    Child index, 0..ChildCount-1 (ignored).
+///
+/// @return `NULL`.
+void *rt_collider3d_get_child_raw(void *collider, int64_t index) {
+    (void)collider;
+    (void)index;
+    return NULL;
+}
+
+/// @brief Stub for `Collider3D.ChildTransform(i)` raw query — for compound
+///        colliders, write the `i`th child's local-space transform
+///        (relative to the compound parent) to the out-parameters.
+///
+/// Silent stub: writes identity transform (zero translation, identity
+/// quaternion, unit scale) when out-params are non-NULL. The identity is
+/// meaningful — defensive callers can use the result without further checks.
+///
+/// @param compound      Compound Collider3D handle (ignored).
+/// @param index         Child index (ignored).
+/// @param position_out  `double[3]` receives local position; defaults to zero.
+/// @param rotation_out  `double[4]` receives local rotation quaternion `(x,y,z,w)`;
+///                      defaults to identity `(0, 0, 0, 1)`.
+/// @param scale_out     `double[3]` receives local scale; defaults to `(1, 1, 1)`.
+void rt_collider3d_get_child_transform_raw(
+    void *compound, int64_t index, double *position_out, double *rotation_out, double *scale_out) {
+    (void)compound;
+    (void)index;
+    if (position_out) {
+        position_out[0] = position_out[1] = position_out[2] = 0.0;
+    }
+    if (rotation_out) {
+        rotation_out[0] = rotation_out[1] = rotation_out[2] = 0.0;
+        rotation_out[3] = 1.0;
+    }
+    if (scale_out) {
+        scale_out[0] = scale_out[1] = scale_out[2] = 1.0;
+    }
+}
+
+/// @brief Stub for `Collider3D.SampleHeightfield(x, z)` raw query — for
+///        heightfield colliders, would normally sample the surface height
+///        and surface normal at the local-space `(x, z)` point.
+///
+/// Silent stub: writes a flat ground default (height 0, normal +Y) to the
+/// out-parameters and returns `0` (no hit). The flat default lets callers
+/// use the values for layout math without further checks.
+///
+/// @param collider   Heightfield Collider3D handle (ignored).
+/// @param local_x    Local-space X to sample (ignored).
+/// @param local_z    Local-space Z to sample (ignored).
+/// @param height_out Receives surface height (defaults to `0.0`).
+/// @param normal_out `double[3]` receives surface normal (defaults to +Y).
+///
+/// @return `0` (sample missed / outside heightfield bounds).
+int8_t rt_collider3d_sample_heightfield_raw(
+    void *collider, double local_x, double local_z, double *height_out, double *normal_out) {
+    (void)collider;
+    (void)local_x;
+    (void)local_z;
+    if (height_out)
+        *height_out = 0.0;
+    if (normal_out) {
+        normal_out[0] = 0.0;
+        normal_out[1] = 1.0;
+        normal_out[2] = 0.0;
+    }
+    return 0;
+}
+
+/* Physics3D Body stubs */
+
+/// @brief Stub for `Body3D.New` — would normally allocate a rigid body
+///        with the given mass and no collider attached. Use `SetCollider`
+///        to bind a Collider3D shape, or use the convenience constructors
+///        below (`NewAABB`, `NewSphere`, `NewCapsule`) that pre-attach a
+///        primitive shape.
+///
+/// Silent stub returning NULL.
+///
+/// @param mass Body mass in kilograms; `0` for static (infinite mass) (ignored).
+///
+/// @return `NULL`.
+void *rt_body3d_new(double mass) {
+    (void)mass;
+    return NULL;
+}
+
+/// @brief Stub for `Body3D.NewAABB` — convenience constructor that
+///        creates a body with an axis-aligned box collider of half-extents
+///        `(hx, hy, hz)` and the given mass. Pre-attaches the collider so
+///        the body is ready to add to a Physics3DWorld.
+///
+/// Silent stub returning NULL.
+///
+/// @param hx   Half-extent along X (ignored).
+/// @param hy   Half-extent along Y (ignored).
+/// @param hz   Half-extent along Z (ignored).
+/// @param mass Body mass in kilograms (ignored).
+///
+/// @return `NULL`.
+void *rt_body3d_new_aabb(double hx, double hy, double hz, double mass) {
+    (void)hx;
+    (void)hy;
+    (void)hz;
+    (void)mass;
+    return NULL;
+}
+
+/// @brief Stub for `Body3D.NewSphere` — convenience constructor that
+///        creates a body with a sphere collider of the given radius and
+///        the given mass. Cheapest pairwise narrow-phase shape.
+///
+/// Silent stub returning NULL.
+///
+/// @param radius Sphere radius (ignored).
+/// @param mass   Body mass in kilograms (ignored).
+///
+/// @return `NULL`.
+void *rt_body3d_new_sphere(double radius, double mass) {
+    (void)radius;
+    (void)mass;
+    return NULL;
+}
+
+/// @brief Stub for `Body3D.NewCapsule` — convenience constructor that
+///        creates a body with a Y-axis capsule collider and the given
+///        mass. Standard shape for character controllers.
+///
+/// Silent stub returning NULL.
+///
+/// @param radius Capsule cross-sectional radius (ignored).
+/// @param height Total capsule height including caps (ignored).
+/// @param mass   Body mass in kilograms (ignored).
+///
+/// @return `NULL`.
+void *rt_body3d_new_capsule(double radius, double height, double mass) {
+    (void)radius;
+    (void)height;
+    (void)mass;
+    return NULL;
+}
+
+/// @brief Stub for `Body3D.SetCollider` — attach a Collider3D shape to
+///        this body. A body without a collider participates in the
+///        simulation (gets integrated) but cannot generate contacts and
+///        will pass through everything.
+///
+/// Silent no-op stub.
+///
+/// @param o        Body3D handle (ignored).
+/// @param collider Collider3D handle, or NULL to detach (ignored).
+void rt_body3d_set_collider(void *o, void *collider) {
+    (void)o;
+    (void)collider;
+}
+
+/// @brief Stub for `Body3D.Collider` — get the attached Collider3D, or
+///        NULL if the body has no shape.
+///
+/// Silent stub returning NULL.
+///
+/// @param o Body3D handle (ignored).
+///
+/// @return `NULL`.
+void *rt_body3d_get_collider(void *o) {
+    (void)o;
+    return NULL;
+}
+
+/// @brief Stub for `Body3D.SetPosition` — teleport the body to the
+///        given world-space position. Use for spawn / respawn / portals
+///        — for normal motion let the simulation integrate forces.
+///
+/// Silent no-op stub. Wakes the body if it was sleeping.
+///
+/// @param o Body3D handle (ignored).
+/// @param x World x (ignored).
+/// @param y World y (ignored).
+/// @param z World z (ignored).
+void rt_body3d_set_position(void *o, double x, double y, double z) {
+    (void)o;
+    (void)x;
+    (void)y;
+    (void)z;
+}
+
+/// @brief Stub for `Body3D.Position` — get the body's current world-
+///        space position as a Vec3 (post-integration this tick).
+///
+/// Silent stub returning NULL.
+///
+/// @param o Body3D handle (ignored).
+///
+/// @return `NULL`.
+void *rt_body3d_get_position(void *o) {
+    (void)o;
+    return NULL;
+}
+
+void rt_body3d_set_scale(void *o, double x, double y, double z) {
+    (void)o;
+    (void)x;
+    (void)y;
+    (void)z;
+}
+
+void *rt_body3d_get_scale(void *o) {
+    (void)o;
+    return NULL;
+}
+
+/// @brief Stub for `Body3D.SetOrientation` — set the body's rotation
+///        from a Quaternion handle. As with `SetPosition`, this is
+///        teleportation and wakes the body.
+///
+/// Silent no-op stub.
+///
+/// @param o Body3D handle (ignored).
+/// @param q Quaternion handle (ignored).
+void rt_body3d_set_orientation(void *o, void *q) {
+    (void)o;
+    (void)q;
+}
+
+/// @brief Stub for `Body3D.Orientation` — get the body's current
+///        rotation as a Quaternion handle.
+///
+/// Silent stub returning NULL.
+///
+/// @param o Body3D handle (ignored).
+///
+/// @return `NULL`.
+void *rt_body3d_get_orientation(void *o) {
+    (void)o;
+    return NULL;
+}
+
+void rt_body3d_get_pose_raw(void *o,
+                            double *position_out,
+                            double *rotation_out,
+                            double *scale_out) {
+    (void)o;
+    if (position_out) {
+        position_out[0] = 0.0;
+        position_out[1] = 0.0;
+        position_out[2] = 0.0;
+    }
+    if (rotation_out) {
+        rotation_out[0] = 0.0;
+        rotation_out[1] = 0.0;
+        rotation_out[2] = 0.0;
+        rotation_out[3] = 1.0;
+    }
+    if (scale_out) {
+        scale_out[0] = 1.0;
+        scale_out[1] = 1.0;
+        scale_out[2] = 1.0;
+    }
+}
+
+/// @brief Stub for `Body3D.SetVelocity` — set the body's linear velocity
+///        directly. Useful for character locomotion (where solver-driven
+///        forces feel mushy) and one-shot launches.
+///
+/// Silent no-op stub.
+///
+/// @param o  Body3D handle (ignored).
+/// @param vx Velocity x (ignored).
+/// @param vy Velocity y (ignored).
+/// @param vz Velocity z (ignored).
+void rt_body3d_set_velocity(void *o, double vx, double vy, double vz) {
+    (void)o;
+    (void)vx;
+    (void)vy;
+    (void)vz;
+}
+
+/// @brief Stub for `Body3D.Velocity` — get the body's current linear
+///        velocity as a Vec3 (world units / second).
+///
+/// Silent stub returning NULL.
+///
+/// @param o Body3D handle (ignored).
+///
+/// @return `NULL`.
+void *rt_body3d_get_velocity(void *o) {
+    (void)o;
+    return NULL;
+}
+
+/// @brief Stub for `Body3D.SetAngularVelocity` — set the body's angular
+///        velocity directly. Each axis is rotation rate in radians /
+///        second around that axis.
+///
+/// Silent no-op stub.
+///
+/// @param o  Body3D handle (ignored).
+/// @param wx Angular velocity x (ignored).
+/// @param wy Angular velocity y (ignored).
+/// @param wz Angular velocity z (ignored).
+void rt_body3d_set_angular_velocity(void *o, double wx, double wy, double wz) {
+    (void)o;
+    (void)wx;
+    (void)wy;
+    (void)wz;
+}
+
+/// @brief Stub for `Body3D.AngularVelocity` — get the body's current
+///        angular velocity as a Vec3 (radians per second around each axis).
+///
+/// Silent stub returning NULL.
+///
+/// @param o Body3D handle (ignored).
+///
+/// @return `NULL`.
+void *rt_body3d_get_angular_velocity(void *o) {
+    (void)o;
+    return NULL;
+}
+
+/// @brief Stub for `Body3D.ApplyForce` — apply a continuous force this
+///        tick, integrated by the simulation step over `dt`.
+///
+/// Silent no-op stub. Force is in world-space; for repeated forces (gravity,
+/// thrust) call once per tick rather than once per frame.
+///
+/// @param o  Body3D handle (ignored).
+/// @param fx Force x component (ignored).
+/// @param fy Force y component (ignored).
+/// @param fz Force z component (ignored).
+void rt_body3d_apply_force(void *o, double fx, double fy, double fz) {
+    (void)o;
+    (void)fx;
+    (void)fy;
+    (void)fz;
+}
+
+void rt_body3d_apply_force_at_point(
+    void *o, double fx, double fy, double fz, double px, double py, double pz) {
+    (void)o;
+    (void)fx;
+    (void)fy;
+    (void)fz;
+    (void)px;
+    (void)py;
+    (void)pz;
+}
+
+/// @brief Stub for `Body3D.ApplyImpulse` — apply an instantaneous
+///        velocity change (no `dt` integration). Use for one-shot events:
+///        jumps, knockbacks, recoil.
+///
+/// Silent no-op stub.
+///
+/// @param o  Body3D handle (ignored).
+/// @param ix Impulse x component (ignored).
+/// @param iy Impulse y component (ignored).
+/// @param iz Impulse z component (ignored).
+void rt_body3d_apply_impulse(void *o, double ix, double iy, double iz) {
+    (void)o;
+    (void)ix;
+    (void)iy;
+    (void)iz;
+}
+
+void rt_body3d_apply_impulse_at_point(
+    void *o, double ix, double iy, double iz, double px, double py, double pz) {
+    (void)o;
+    (void)ix;
+    (void)iy;
+    (void)iz;
+    (void)px;
+    (void)py;
+    (void)pz;
+}
+
+/// @brief Stub for `Body3D.ApplyTorque` — apply a continuous torque this
+///        tick, integrated over `dt`. World-space.
+///
+/// Silent no-op stub.
+///
+/// @param o  Body3D handle (ignored).
+/// @param tx Torque x component (ignored).
+/// @param ty Torque y component (ignored).
+/// @param tz Torque z component (ignored).
+void rt_body3d_apply_torque(void *o, double tx, double ty, double tz) {
+    (void)o;
+    (void)tx;
+    (void)ty;
+    (void)tz;
+}
+
+/// @brief Stub for `Body3D.ApplyAngularImpulse` — apply an instantaneous
+///        angular velocity change (no `dt` integration). Use for spin-up
+///        events.
+///
+/// Silent no-op stub.
+///
+/// @param o  Body3D handle (ignored).
+/// @param ix Angular impulse x component (ignored).
+/// @param iy Angular impulse y component (ignored).
+/// @param iz Angular impulse z component (ignored).
+void rt_body3d_apply_angular_impulse(void *o, double ix, double iy, double iz) {
+    (void)o;
+    (void)ix;
+    (void)iy;
+    (void)iz;
+}
+
+/// @brief Stub for `Body3D.SetRestitution` — coefficient of restitution
+///        (bounciness). 0 = inelastic, 1 = perfectly elastic.
+///
+/// Silent no-op stub.
+///
+/// @param o Body3D handle (ignored).
+/// @param r Restitution, 0..1 (ignored).
+void rt_body3d_set_restitution(void *o, double r) {
+    (void)o;
+    (void)r;
+}
+
+/// @brief Stub for `Body3D.Restitution` — get the current restitution
+///        coefficient.
+///
+/// Silent stub returning `0.0`.
+///
+/// @param o Body3D handle (ignored).
+///
+/// @return `0.0`.
+double rt_body3d_get_restitution(void *o) {
+    (void)o;
+    return 0.0;
+}
+
+/// @brief Stub for `Body3D.SetFriction` — coefficient of friction
+///        applied at contact points. 0 = frictionless, 1 = high friction.
+///
+/// Silent no-op stub.
+///
+/// @param o Body3D handle (ignored).
+/// @param f Friction, 0..1+ (ignored).
+void rt_body3d_set_friction(void *o, double f) {
+    (void)o;
+    (void)f;
+}
+
+/// @brief Stub for `Body3D.Friction` — get the current friction
+///        coefficient.
+///
+/// Silent stub returning `0.0`.
+///
+/// @param o Body3D handle (ignored).
+///
+/// @return `0.0`.
+double rt_body3d_get_friction(void *o) {
+    (void)o;
+    return 0.0;
+}
+
+/// @brief Stub for `Body3D.SetLinearDamping` — fraction of linear velocity
+///        bled off per second (0 = no damping, simulates air resistance /
+///        viscosity).
+///
+/// Silent no-op stub.
+///
+/// @param o Body3D handle (ignored).
+/// @param d Damping per second, 0..1 (ignored).
+void rt_body3d_set_linear_damping(void *o, double d) {
+    (void)o;
+    (void)d;
+}
+
+/// @brief Stub for `Body3D.LinearDamping` — get the current linear
+///        damping factor.
+///
+/// Silent stub returning `0.0`.
+///
+/// @param o Body3D handle (ignored).
+///
+/// @return `0.0`.
+double rt_body3d_get_linear_damping(void *o) {
+    (void)o;
+    return 0.0;
+}
+
+/// @brief Stub for `Body3D.SetAngularDamping` — fraction of angular
+///        velocity bled off per second.
+///
+/// Silent no-op stub.
+///
+/// @param o Body3D handle (ignored).
+/// @param d Damping per second, 0..1 (ignored).
+void rt_body3d_set_angular_damping(void *o, double d) {
+    (void)o;
+    (void)d;
+}
+
+/// @brief Stub for `Body3D.AngularDamping` — get the current angular
+///        damping factor.
+///
+/// Silent stub returning `0.0`.
+///
+/// @param o Body3D handle (ignored).
+///
+/// @return `0.0`.
+double rt_body3d_get_angular_damping(void *o) {
+    (void)o;
+    return 0.0;
+}
+
+/// @brief Stub for `Body3D.SetCollisionLayer` — bitmask of which layer(s)
+///        this body belongs to. Pairs only generate contacts when
+///        `(BodyA.layer & BodyB.mask) != 0` and vice versa.
+///
+/// Silent no-op stub.
+///
+/// @param o Body3D handle (ignored).
+/// @param l Layer bitmask (ignored).
+void rt_body3d_set_collision_layer(void *o, int64_t l) {
+    (void)o;
+    (void)l;
+}
+
+/// @brief Stub for `Body3D.CollisionLayer` — get the body's collision
+///        layer bitmask.
+///
+/// Silent stub returning `0`.
+///
+/// @param o Body3D handle (ignored).
+///
+/// @return `0`.
+int64_t rt_body3d_get_collision_layer(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Body3D.SetCollisionMask` — bitmask of which layers
+///        this body collides with. See `SetCollisionLayer` for the pair-
+///        evaluation rule.
+///
+/// Silent no-op stub.
+///
+/// @param o Body3D handle (ignored).
+/// @param m Mask bitmask (ignored).
+void rt_body3d_set_collision_mask(void *o, int64_t m) {
+    (void)o;
+    (void)m;
+}
+
+/// @brief Stub for `Body3D.CollisionMask` — get the body's collision
+///        mask bitmask.
+///
+/// Silent stub returning `0`.
+///
+/// @param o Body3D handle (ignored).
+///
+/// @return `0`.
+int64_t rt_body3d_get_collision_mask(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Body3D.SetStatic` — when true, the body has infinite
+///        mass and never moves; other bodies collide against it but it
+///        receives no forces in return. Cheaper than dynamic bodies.
+///
+/// Silent no-op stub.
+///
+/// @param o Body3D handle (ignored).
+/// @param s Non-zero for static (ignored).
+void rt_body3d_set_static(void *o, int8_t s) {
+    (void)o;
+    (void)s;
+}
+
+/// @brief Stub for `Body3D.IsStatic` — true if the body is in static mode.
+///
+/// Silent stub returning `0`.
+///
+/// @param o Body3D handle (ignored).
+///
+/// @return `0`.
+int8_t rt_body3d_is_static(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Body3D.SetKinematic` — when true, the body's
+///        position/orientation are driven externally (typically by gameplay
+///        code or an animation), but it still pushes dynamic bodies during
+///        contact. Used for moving platforms and animated characters.
+///
+/// Silent no-op stub.
+///
+/// @param o Body3D handle (ignored).
+/// @param k Non-zero for kinematic (ignored).
+void rt_body3d_set_kinematic(void *o, int8_t k) {
+    (void)o;
+    (void)k;
+}
+
+/// @brief Stub for `Body3D.IsKinematic` — true if the body is in
+///        kinematic mode.
+///
+/// Silent stub returning `0`.
+///
+/// @param o Body3D handle (ignored).
+///
+/// @return `0`.
+int8_t rt_body3d_is_kinematic(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Body3D.SetTrigger` — when true, the body becomes a
+///        sensor: it generates collision events but exchanges no impulses
+///        with other bodies. Used for AOE volumes, item pickups, kill
+///        floors.
+///
+/// Silent no-op stub.
+///
+/// @param o Body3D handle (ignored).
+/// @param t Non-zero to make this body a trigger (ignored).
+void rt_body3d_set_trigger(void *o, int8_t t) {
+    (void)o;
+    (void)t;
+}
+
+/// @brief Stub for `Body3D.IsTrigger` — true if this body is in trigger
+///        (sensor) mode.
+///
+/// Silent stub returning `0`.
+///
+/// @param o Body3D handle (ignored).
+///
+/// @return `0`.
+int8_t rt_body3d_is_trigger(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Body3D.SetCanSleep` — enable or disable the
+///        sleep-eligibility flag. Bodies that should never sleep (e.g.
+///        the player character) need `can_sleep = 0`; otherwise they may
+///        freeze when stationary and stop responding to player input.
+///
+/// Silent no-op stub.
+///
+/// @param o         Body3D handle (ignored).
+/// @param can_sleep Non-zero to allow this body to enter sleep state (ignored).
+void rt_body3d_set_can_sleep(void *o, int8_t can_sleep) {
+    (void)o;
+    (void)can_sleep;
+}
+
+/// @brief Stub for `Body3D.CanSleep` — get the sleep-eligibility flag.
+///        Distinct from `IsSleeping`: `CanSleep` is a configuration flag,
+///        `IsSleeping` is current state.
+///
+/// Silent stub returning `0`.
+///
+/// @param o Body3D handle (ignored).
+///
+/// @return `0`.
+int8_t rt_body3d_can_sleep(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Body3D.IsSleeping` — true while the body is in the
+///        sleep state (skipped during simulation to save CPU).
+///
+/// Silent stub returning `0`.
+///
+/// @param o Body3D handle (ignored).
+///
+/// @return `0`.
+int8_t rt_body3d_is_sleeping(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Body3D.Wake` — manually wake a sleeping body. Used
+///        when external state changes invalidate the sleep assumption
+///        (e.g. teleporting a body, removing supporting geometry).
+///
+/// Silent no-op stub.
+///
+/// @param o Body3D handle (ignored).
+void rt_body3d_wake(void *o) {
+    (void)o;
+}
+
+/// @brief Stub for `Body3D.Sleep` — manually put a body to sleep. The
+///        sleep system would normally do this automatically when the
+///        body's velocity has been below threshold for `PH3D_SLEEP_DELAY`
+///        seconds.
+///
+/// Silent no-op stub.
+///
+/// @param o Body3D handle (ignored).
+void rt_body3d_sleep(void *o) {
+    (void)o;
+}
+
+/// @brief Stub for `Body3D.SetUseCCD` — enable Continuous Collision
+///        Detection: fast-moving bodies are advanced in `PH3D_MAX_CCD_
+///        SUBSTEPS = 16` substeps to detect tunneling through thin
+///        geometry. More expensive than discrete collision.
+///
+/// Silent no-op stub.
+///
+/// @param o       Body3D handle (ignored).
+/// @param use_ccd Non-zero to enable CCD (ignored).
+void rt_body3d_set_use_ccd(void *o, int8_t use_ccd) {
+    (void)o;
+    (void)use_ccd;
+}
+
+/// @brief Stub for `Body3D.UseCCD` — get the CCD flag.
+///
+/// Silent stub returning `0`.
+///
+/// @param o Body3D handle (ignored).
+///
+/// @return `0`.
+int8_t rt_body3d_get_use_ccd(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Body3D.IsGrounded` — convenience query: true when
+///        the body is in contact with a surface in the gravity-down
+///        direction. Updated each simulation step.
+///
+/// Silent stub returning `0`.
+///
+/// @param o Body3D handle (ignored).
+///
+/// @return `0`.
+int8_t rt_body3d_is_grounded(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Body3D.GroundNormal` — get the surface normal of
+///        the ground contact, as a Vec3. Useful for slope traversal.
+///
+/// Silent stub returning NULL.
+///
+/// @param o Body3D handle (ignored).
+///
+/// @return `NULL`.
+void *rt_body3d_get_ground_normal(void *o) {
+    (void)o;
+    return NULL;
+}
+
+/// @brief Stub for `Body3D.Mass` — get the body's mass in kilograms.
+///        Static bodies report `0.0` (representing infinite mass).
+///
+/// Silent stub returning `0.0`.
+///
+/// @param o Body3D handle (ignored).
+///
+/// @return `0.0`.
+double rt_body3d_get_mass(void *o) {
+    (void)o;
+    return 0.0;
+}
+
+/* Character3D stubs */
+
+/// @brief Stub for `Character3D.New` — would normally create a kinematic
+///        character controller (capsule shape) for player/NPC movement.
+///        Distinct from `Body3D` in that it uses slide-and-step movement
+///        instead of pure rigid-body integration.
+///
+/// Silent stub returning NULL.
+///
+/// @param radius Capsule radius in world units (ignored).
+/// @param height Capsule total height (ignored).
+/// @param mass   Mass for impulse exchange with dynamic bodies (ignored).
+///
+/// @return `NULL`.
+void *rt_character3d_new(double radius, double height, double mass) {
+    (void)radius;
+    (void)height;
+    (void)mass;
+    return NULL;
+}
+
+/// @brief Stub for `Character3D.Move` — apply the given velocity for
+///        `dt` seconds with slide-and-step collision response. The
+///        controller will slide along walls, step up small obstacles
+///        (configurable via `SetStepHeight`), and stop at slopes steeper
+///        than `SetSlopeLimit`.
+///
+/// Silent no-op stub.
+///
+/// @param c  Character3D handle (ignored).
+/// @param v  Vec3 desired velocity in world units / second (ignored).
+/// @param dt Delta time in seconds (ignored).
+void rt_character3d_move(void *c, void *v, double dt) {
+    (void)c;
+    (void)v;
+    (void)dt;
+}
+
+/// @brief Stub for `Character3D.SetStepHeight` — maximum vertical
+///        obstacle the character can step up onto without jumping.
+///        Typical values: 0.3 (humanoid) to 0.5 (heavy mech).
+///
+/// Silent no-op stub.
+///
+/// @param c Character3D handle (ignored).
+/// @param h Step height in world units (ignored).
+void rt_character3d_set_step_height(void *c, double h) {
+    (void)c;
+    (void)h;
+}
+
+/// @brief Stub for `Character3D.StepHeight` — get the configured step
+///        height.
+///
+/// Silent stub returning `0.3` (the default value used in the real
+/// implementation, so callers querying this for layout math get a usable
+/// answer rather than `0`).
+///
+/// @param c Character3D handle (ignored).
+///
+/// @return `0.3`.
+double rt_character3d_get_step_height(void *c) {
+    (void)c;
+    return 0.3;
+}
+
+/// @brief Stub for `Character3D.SetSlopeLimit` — maximum slope (in
+///        radians) the character can climb. Steeper slopes cause the
+///        character to slide back down.
+///
+/// Silent no-op stub.
+///
+/// @param c Character3D handle (ignored).
+/// @param d Slope limit in radians (ignored).
+void rt_character3d_set_slope_limit(void *c, double d) {
+    (void)c;
+    (void)d;
+}
+
+/// @brief Stub for `Character3D.SetWorld` — bind the character to a
+///        Physics3DWorld so its movement queries hit the right collision
+///        geometry.
+///
+/// Silent no-op stub.
+///
+/// @param c Character3D handle (ignored).
+/// @param w Physics3DWorld handle (ignored).
+void rt_character3d_set_world(void *c, void *w) {
+    (void)c;
+    (void)w;
+}
+
+/// @brief Stub for `Character3D.World` — get the bound Physics3DWorld.
+///
+/// Silent stub returning NULL.
+///
+/// @param c Character3D handle (ignored).
+///
+/// @return `NULL`.
+void *rt_character3d_get_world(void *c) {
+    (void)c;
+    return NULL;
+}
+
+/// @brief Stub for `Character3D.IsGrounded` — true when the character
+///        is in contact with a walkable surface below. Updated during
+///        each `Move` call.
+///
+/// Silent stub returning `0`.
+///
+/// @param c Character3D handle (ignored).
+///
+/// @return `0`.
+int8_t rt_character3d_is_grounded(void *c) {
+    (void)c;
+    return 0;
+}
+
+/// @brief Stub for `Character3D.JustLanded` — single-tick edge: true
+///        on the frame the character transitioned from airborne to
+///        grounded. Useful for landing FX / SFX.
+///
+/// Silent stub returning `0`.
+///
+/// @param c Character3D handle (ignored).
+///
+/// @return `0`.
+int8_t rt_character3d_just_landed(void *c) {
+    (void)c;
+    return 0;
+}
+
+/// @brief Stub for `Character3D.Position` — get the character's current
+///        world-space position as a Vec3.
+///
+/// Silent stub returning NULL.
+///
+/// @param c Character3D handle (ignored).
+///
+/// @return `NULL`.
+void *rt_character3d_get_position(void *c) {
+    (void)c;
+    return NULL;
+}
+
+/// @brief Stub for `Character3D.SetPosition` — teleport the character
+///        to the given world-space position. Use for spawn / respawn /
+///        portals — for normal locomotion use `Move`.
+///
+/// Silent no-op stub.
+///
+/// @param c Character3D handle (ignored).
+/// @param x World x (ignored).
+/// @param y World y (ignored).
+/// @param z World z (ignored).
+void rt_character3d_set_position(void *c, double x, double y, double z) {
+    (void)c;
+    (void)x;
+    (void)y;
+    (void)z;
+}
+
+/* Trigger3D stubs */
+
+/// @brief Stub for `Trigger3D.New` — would normally create an axis-
+///        aligned trigger volume defined by min corner `(x0, y0, z0)`
+///        and max corner `(x1, y1, z1)`. Triggers detect entry/exit but
+///        do not exchange impulses with bodies passing through.
+///
+/// Silent stub returning NULL.
+///
+/// @param x0 Min corner x (ignored).
+/// @param y0 Min corner y (ignored).
+/// @param z0 Min corner z (ignored).
+/// @param x1 Max corner x (ignored).
+/// @param y1 Max corner y (ignored).
+/// @param z1 Max corner z (ignored).
+///
+/// @return `NULL`.
+void *rt_trigger3d_new(double x0, double y0, double z0, double x1, double y1, double z1) {
+    (void)x0;
+    (void)y0;
+    (void)z0;
+    (void)x1;
+    (void)y1;
+    (void)z1;
+    return NULL;
+}
+
+/// @brief Stub for `Trigger3D.Contains` — boolean test for whether the
+///        Vec3 point `p` lies inside the trigger volume.
+///
+/// Silent stub returning `0`.
+///
+/// @param t Trigger3D handle (ignored).
+/// @param p Vec3 query point (ignored).
+///
+/// @return `0`.
+int8_t rt_trigger3d_contains(void *t, void *p) {
+    (void)t;
+    (void)p;
+    return 0;
+}
+
+/// @brief Stub for `Trigger3D.Update` — refresh the enter/exit counts
+///        for this tick by testing every body in the world against the
+///        trigger volume.
+///
+/// Silent no-op stub.
+///
+/// @param t Trigger3D handle (ignored).
+/// @param w Physics3DWorld handle (ignored).
+void rt_trigger3d_update(void *t, void *w) {
+    (void)t;
+    (void)w;
+}
+
+/// @brief Stub for `Trigger3D.EnterCount` — number of bodies that
+///        crossed into the trigger volume during the most recent `Update`.
+///        Use for one-shot pickups, area transitions.
+///
+/// Silent stub returning `0`.
+///
+/// @param t Trigger3D handle (ignored).
+///
+/// @return `0`.
+int64_t rt_trigger3d_get_enter_count(void *t) {
+    (void)t;
+    return 0;
+}
+
+/// @brief Stub for `Trigger3D.ExitCount` — number of bodies that
+///        crossed out of the trigger volume during the most recent
+///        `Update`.
+///
+/// Silent stub returning `0`.
+///
+/// @param t Trigger3D handle (ignored).
+///
+/// @return `0`.
+int64_t rt_trigger3d_get_exit_count(void *t) {
+    (void)t;
+    return 0;
+}
+
+/// @brief Stub for `Trigger3D.SetBounds` — reposition / resize the
+///        trigger volume after creation. Useful for triggers that move
+///        with a moving platform or scaling AOE.
+///
+/// Silent no-op stub.
+///
+/// @param t  Trigger3D handle (ignored).
+/// @param x0 New min corner x (ignored).
+/// @param y0 New min corner y (ignored).
+/// @param z0 New min corner z (ignored).
+/// @param x1 New max corner x (ignored).
+/// @param y1 New max corner y (ignored).
+/// @param z1 New max corner z (ignored).
+void rt_trigger3d_set_bounds(
+    void *t, double x0, double y0, double z0, double x1, double y1, double z1) {
+    (void)t;
+    (void)x0;
+    (void)y0;
+    (void)z0;
+    (void)x1;
+    (void)y1;
+    (void)z1;
+}

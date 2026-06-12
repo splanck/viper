@@ -11,7 +11,11 @@ set(ZIA_SOURCES
         Parser_Decl.cpp
         Types.cpp
         RuntimeAdapter.cpp
+        sema/SemaTypes.cpp
         Sema.cpp
+        Sema_Scope.cpp
+        Sema_Diagnostics.cpp
+        Sema_Module.cpp
         Sema_Generics.cpp
         Sema_TypeResolution.cpp
         Sema_Runtime.cpp
