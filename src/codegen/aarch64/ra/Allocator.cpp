@@ -147,9 +147,19 @@ void LinearAllocator::restoreFromPredecessor(std::size_t bi) {
 
     const auto &es = blockExitStates_[pred];
 
-    for (const auto &kv : es.gpr) {
-        const uint16_t vid = kv.first;
-        const PhysReg phys = kv.second;
+    // Restore in sorted vreg order so register-pool mutation order is
+    // independent of hash-map iteration order (deterministic codegen).
+    const auto sortedKeys = [](const std::unordered_map<uint16_t, PhysReg> &map) {
+        std::vector<uint16_t> keys;
+        keys.reserve(map.size());
+        for (const auto &kv : map)
+            keys.push_back(kv.first);
+        std::sort(keys.begin(), keys.end());
+        return keys;
+    };
+
+    for (const uint16_t vid : sortedKeys(es.gpr)) {
+        const PhysReg phys = es.gpr.at(vid);
 
         auto it = std::find(pools_.gprFree.begin(), pools_.gprFree.end(), phys);
         if (it == pools_.gprFree.end()) {
@@ -167,9 +177,8 @@ void LinearAllocator::restoreFromPredecessor(std::size_t bi) {
         st.dirty = false;
     }
 
-    for (const auto &kv : es.fpr) {
-        const uint16_t vid = kv.first;
-        const PhysReg phys = kv.second;
+    for (const uint16_t vid : sortedKeys(es.fpr)) {
+        const PhysReg phys = es.fpr.at(vid);
 
         auto it = std::find(pools_.fprFree.begin(), pools_.fprFree.end(), phys);
         if (it == pools_.fprFree.end()) {
@@ -337,12 +346,18 @@ uint16_t LinearAllocator::selectLRUVictim(RegClass cls) {
     uint16_t victim = UINT16_MAX;
     unsigned oldestUse = UINT_MAX;
 
+    // Tie-break equal lastUse values on the smaller vreg id: hash-map
+    // iteration order differs between STL implementations, and the victim
+    // choice must not (deterministic codegen across platforms).
     for (auto &kv : states) {
         if (isProtectedOperand(kv.first, cls))
             continue;
         if (kv.second.hasPhys && isProtectedPhys(kv.second.phys, cls))
             continue;
-        if (kv.second.hasPhys && kv.second.lastUse < oldestUse) {
+        if (!kv.second.hasPhys)
+            continue;
+        if (kv.second.lastUse < oldestUse ||
+            (kv.second.lastUse == oldestUse && kv.first < victim)) {
             oldestUse = kv.second.lastUse;
             victim = kv.first;
         }
@@ -355,6 +370,8 @@ uint16_t LinearAllocator::selectFurthestVictim(RegClass cls) {
     uint16_t victim = UINT16_MAX;
     unsigned furthestDist = 0;
 
+    // Tie-break equal next-use distances on the smaller vreg id so the
+    // selection is independent of hash-map iteration order.
     for (auto &kv : states) {
         if (!kv.second.hasPhys)
             continue;
@@ -364,7 +381,8 @@ uint16_t LinearAllocator::selectFurthestVictim(RegClass cls) {
             continue;
 
         unsigned dist = getNextUseDistance(kv.first, cls);
-        if (dist > furthestDist) {
+        if (dist > furthestDist ||
+            (dist == furthestDist && victim != UINT16_MAX && kv.first < victim)) {
             furthestDist = dist;
             victim = kv.first;
         }
@@ -556,8 +574,17 @@ void LinearAllocator::allocateBlock(MBasicBlock &bb) {
     if (!rewritten.empty()) {
         std::vector<MInstr> endSpills;
         const std::size_t bi = currentBlockIdx_;
-        const auto &loGPR = liveness_.liveOutGPR(bi);
-        const auto &loFPR = liveness_.liveOutFPR(bi);
+
+        // liveOut sets are unordered; process them in sorted vreg order so the
+        // emitted spill sequence and the register-pool release order do not
+        // depend on the STL implementation's hash iteration order.
+        const auto sortedLiveOut = [](const std::unordered_set<uint16_t> &set) {
+            std::vector<uint16_t> sorted(set.begin(), set.end());
+            std::sort(sorted.begin(), sorted.end());
+            return sorted;
+        };
+        const std::vector<uint16_t> loGPR = sortedLiveOut(liveness_.liveOutGPR(bi));
+        const std::vector<uint16_t> loFPR = sortedLiveOut(liveness_.liveOutFPR(bi));
 
         if (bi < blockExitStates_.size()) {
             auto &es = blockExitStates_[bi];
@@ -627,31 +654,37 @@ void LinearAllocator::handleCall(MInstr &ins, std::vector<MInstr> &rewritten) {
             isArrayObjGet = true;
     }
 
+    // Spill order is part of the emitted instruction stream, so iterate vregs
+    // in sorted order rather than hash-map order: iteration order differs
+    // between STL implementations and codegen must stay byte-identical
+    // across platforms.
     std::vector<MInstr> preCall;
-    for (auto &kv : gprStates_) {
-        if (kv.second.hasPhys && !isCalleeSaved(kv.second.phys, RegClass::GPR)) {
-            const bool liveOut = isLiveOut(kv.first, RegClass::GPR);
-            const unsigned dist = getNextUseDistance(kv.first, RegClass::GPR);
+    const auto spillCallerSavedResidents = [&](RegClass cls) {
+        auto &states = (cls == RegClass::GPR) ? gprStates_ : fprStates_;
+        std::vector<uint16_t> resident;
+        resident.reserve(states.size());
+        for (auto &kv : states) {
+            if (kv.second.hasPhys && !isCalleeSaved(kv.second.phys, cls))
+                resident.push_back(kv.first);
+        }
+        std::sort(resident.begin(), resident.end());
+        for (uint16_t vid : resident) {
+            auto &st = states[vid];
+            const bool liveOut = isLiveOut(vid, cls);
+            const unsigned dist = getNextUseDistance(vid, cls);
             if (dist == UINT_MAX && !liveOut) {
-                pools_.releaseGPR(kv.second.phys, ti_);
-                kv.second.hasPhys = false;
+                if (cls == RegClass::GPR)
+                    pools_.releaseGPR(st.phys, ti_);
+                else
+                    pools_.releaseFPR(st.phys, ti_);
+                st.hasPhys = false;
             } else {
-                spillVictim(RegClass::GPR, kv.first, preCall);
+                spillVictim(cls, vid, preCall);
             }
         }
-    }
-    for (auto &kv : fprStates_) {
-        if (kv.second.hasPhys && !isCalleeSaved(kv.second.phys, RegClass::FPR)) {
-            const bool liveOut = isLiveOut(kv.first, RegClass::FPR);
-            const unsigned dist = getNextUseDistance(kv.first, RegClass::FPR);
-            if (dist == UINT_MAX && !liveOut) {
-                pools_.releaseFPR(kv.second.phys, ti_);
-                kv.second.hasPhys = false;
-            } else {
-                spillVictim(RegClass::FPR, kv.first, preCall);
-            }
-        }
-    }
+    };
+    spillCallerSavedResidents(RegClass::GPR);
+    spillCallerSavedResidents(RegClass::FPR);
     for (auto &mi : preCall)
         rewritten.push_back(std::move(mi));
 
@@ -751,13 +784,7 @@ void LinearAllocator::retireCallOperandAfterCall(uint16_t vreg, RegClass cls) {
 
 void LinearAllocator::allocateInstruction(MInstr &ins, std::vector<MInstr> &rewritten) {
     const bool isPhiStore = (ins.opc == MOpcode::PhiStoreGPR || ins.opc == MOpcode::PhiStoreFPR);
-    uint16_t phiSrcVreg = 0;
-    bool phiSrcIsFPR = false;
-    if (isPhiStore && !ins.ops.empty() && ins.ops[0].kind == MOperand::Kind::Reg &&
-        !ins.ops[0].reg.isPhys) {
-        phiSrcVreg = ins.ops[0].reg.idOrPhys;
-        phiSrcIsFPR = (ins.ops[0].reg.cls == RegClass::FPR);
-    }
+    const bool phiSrcIsFPR = (ins.opc == MOpcode::PhiStoreFPR);
 
     std::vector<MInstr> prefix;
     bool applyGetBarrier = false;
@@ -826,10 +853,12 @@ void LinearAllocator::allocateInstruction(MInstr &ins, std::vector<MInstr> &rewr
     }
 
     if (isPhiStore) {
-        auto &states = phiSrcIsFPR ? fprStates_ : gprStates_;
-        auto it = states.find(phiSrcVreg);
-        if (it != states.end())
-            it->second.dirty = false;
+        // PhiStore writes the source register into the phi DESTINATION's
+        // slot. It says nothing about the source vreg's own spill slot, so
+        // the source's dirty bit must be left untouched: clearing it here
+        // would let a later spill skip the store and leave the source's slot
+        // stale. (Today lowering mints single-def per-block vregs, which
+        // masks the hazard, but the invariant should not depend on that.)
         ins.opc = phiSrcIsFPR ? MOpcode::StrFprFpImm : MOpcode::StrRegFpImm;
     }
 
@@ -869,28 +898,34 @@ void LinearAllocator::releaseScratch(std::vector<PhysReg> &scratch) {
 }
 
 void LinearAllocator::releaseBlockState() {
-    for (auto &kv : gprStates_) {
-        if (kv.second.hasPhys) {
-            pools_.releaseGPR(kv.second.phys, ti_);
-            kv.second.hasPhys = false;
-            if (kv.second.dirty) {
-                kv.second.spilled = false;
-            } else if (kv.second.fpOffset != 0) {
-                kv.second.spilled = true;
+    // Release in sorted vreg order: the pool is a FIFO, so the order registers
+    // return to it shapes every later allocation. Hash-map iteration order
+    // would make the emitted code differ between STL implementations.
+    const auto releaseAll = [&](RegClass cls) {
+        auto &states = (cls == RegClass::GPR) ? gprStates_ : fprStates_;
+        std::vector<uint16_t> resident;
+        resident.reserve(states.size());
+        for (auto &kv : states) {
+            if (kv.second.hasPhys)
+                resident.push_back(kv.first);
+        }
+        std::sort(resident.begin(), resident.end());
+        for (uint16_t vid : resident) {
+            auto &st = states[vid];
+            if (cls == RegClass::GPR)
+                pools_.releaseGPR(st.phys, ti_);
+            else
+                pools_.releaseFPR(st.phys, ti_);
+            st.hasPhys = false;
+            if (st.dirty) {
+                st.spilled = false;
+            } else if (st.fpOffset != 0) {
+                st.spilled = true;
             }
         }
-    }
-    for (auto &kv : fprStates_) {
-        if (kv.second.hasPhys) {
-            pools_.releaseFPR(kv.second.phys, ti_);
-            kv.second.hasPhys = false;
-            if (kv.second.dirty) {
-                kv.second.spilled = false;
-            } else if (kv.second.fpOffset != 0) {
-                kv.second.spilled = true;
-            }
-        }
-    }
+    };
+    releaseAll(RegClass::GPR);
+    releaseAll(RegClass::FPR);
 }
 
 void LinearAllocator::recordCalleeSavedUsage() {

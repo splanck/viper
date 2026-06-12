@@ -27,6 +27,7 @@
 
 #include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/Peephole.hpp"
+#include "codegen/aarch64/peephole/BranchOpt.hpp"
 #include "codegen/aarch64/peephole/MemoryOpt.hpp"
 
 using namespace viper::codegen::aarch64;
@@ -531,6 +532,56 @@ TEST(AArch64PeepholeSubpasses, LoopConstHoistRejectsBackwardJoinEdge) {
                    instr.ops[1].kind == MOperand::Kind::Imm && instr.ops[1].imm == 6;
         });
     EXPECT_TRUE(joinStillDefinesScale);
+}
+
+// ─── BranchOpt: cold-block reordering and fallthrough safety ────────────────
+
+TEST(AArch64PeepholeSubpasses, ColdBlockWithFallthroughIsNotMoved) {
+    // A block matched as "cold" purely by its name token must not be moved to
+    // the end of the function when it can fall through into the next block —
+    // relocation would silently re-target the implicit fallthrough edge.
+    MFunction fn{};
+    fn.name = "cold_ft";
+
+    MBasicBlock entry{"entry", {}};
+    entry.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("user_error_path")}});
+
+    MBasicBlock coldFallthrough{"user_error_path", {}};
+    // Ends in a conditional branch: not-taken path falls through to "after".
+    coldFallthrough.instrs.push_back(
+        MInstr{MOpcode::Cbz, {MOperand::regOp(PhysReg::X0), MOperand::labelOp("entry")}});
+
+    MBasicBlock after{"after", {}};
+    after.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    fn.blocks = {entry, coldFallthrough, after};
+
+    const std::size_t moved = peephole::reorderBlocks(fn);
+    EXPECT_EQ(moved, 0u);
+    ASSERT_EQ(fn.blocks.size(), 3u);
+    EXPECT_EQ(fn.blocks[1].name, "user_error_path");
+    EXPECT_EQ(fn.blocks[2].name, "after");
+}
+
+TEST(AArch64PeepholeSubpasses, TerminatedColdBlockIsMovedToEnd) {
+    MFunction fn{};
+    fn.name = "cold_term";
+
+    MBasicBlock entry{"entry", {}};
+    entry.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("hot")}});
+
+    MBasicBlock cold{"check_error_exit", {}};
+    cold.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("hot")}});
+
+    MBasicBlock hot{"hot", {}};
+    hot.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    fn.blocks = {entry, cold, hot};
+
+    const std::size_t moved = peephole::reorderBlocks(fn);
+    EXPECT_EQ(moved, 1u);
+    ASSERT_EQ(fn.blocks.size(), 3u);
+    EXPECT_EQ(fn.blocks.back().name, "check_error_exit");
 }
 
 int main(int argc, char **argv) {
