@@ -1,1 +1,1 @@
-error[verify.eh.resume_token_missing]: resume_next_without_token:handler: resume.next %t3: [checkUnreachableAfterThrow] resume.* requires active resume token; path: entry -> handler
+error[verify.eh.handler_invalid_entry]: resume_next_without_token:entry: br label handler: [checkHandlerEntryTokenFlow] handler block entry requires active resume token forwarding; path: entry

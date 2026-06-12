@@ -28,6 +28,7 @@
 #include "il/verify/ControlFlowChecker.hpp"
 
 #include <algorithm>
+#include <cstddef>
 
 using namespace il::core;
 
@@ -48,8 +49,11 @@ EhModel::EhModel(const Function &function) : fn(&function) {
         // Use emplace with string_view key referencing block.label.
         // The Function must outlive this EhModel for the view to remain valid.
         blocks.emplace(std::string_view{block.label}, &block);
+    }
+
+    for (const auto &block : function.blocks) {
         if (hasEh)
-            continue;
+            break;
 
         for (const auto &instr : block.instructions) {
             switch (instr.op) {
@@ -68,6 +72,21 @@ EhModel::EhModel(const Function &function) : fn(&function) {
             }
             if (hasEh)
                 break;
+        }
+    }
+
+    for (const auto &block : function.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.op != Opcode::EhPush || instr.labels.empty())
+                continue;
+
+            EhHandlerPushSite site;
+            site.id = handlerPushSites.size();
+            site.block = &block;
+            site.instr = &instr;
+            site.handler = findBlock(instr.labels[0]);
+            pushSiteByInstr.emplace(&instr, site.id);
+            handlerPushSites.push_back(site);
         }
     }
 }
@@ -96,25 +115,37 @@ const BasicBlock *EhModel::findBlock(std::string_view label) const {
 /// @return Vector containing zero or more successor block pointers.
 std::vector<const BasicBlock *> EhModel::gatherSuccessors(const Instr &terminator) const {
     std::vector<const BasicBlock *> successors;
+    for (const EhSuccessorEdge &edge : gatherSuccessorEdges(terminator)) {
+        if (edge.target)
+            successors.push_back(edge.target);
+    }
+    return successors;
+}
+
+/// @brief Enumerate resolved EH-aware successor edges for @p terminator.
+/// @details This variant preserves the label index so callers can inspect the
+///          corresponding branch argument bundle and distinguish ordinary
+///          control flow from `resume.label` transfers.
+std::vector<EhSuccessorEdge> EhModel::gatherSuccessorEdges(const Instr &terminator) const {
+    std::vector<EhSuccessorEdge> successors;
+    auto addEdge = [&](std::size_t labelIndex, EhEdgeKind kind) {
+        if (labelIndex >= terminator.labels.size())
+            return;
+        if (const BasicBlock *target = findBlock(terminator.labels[labelIndex]))
+            successors.push_back(EhSuccessorEdge{target, labelIndex, kind});
+    };
+
     switch (terminator.op) {
         case Opcode::Br:
-            if (!terminator.labels.empty()) {
-                if (const BasicBlock *target = findBlock(terminator.labels[0]))
-                    successors.push_back(target);
-            }
+            addEdge(0, EhEdgeKind::Normal);
             break;
         case Opcode::CBr:
         case Opcode::SwitchI32:
-            for (const std::string &label : terminator.labels) {
-                if (const BasicBlock *target = findBlock(label))
-                    successors.push_back(target);
-            }
+            for (std::size_t labelIndex = 0; labelIndex < terminator.labels.size(); ++labelIndex)
+                addEdge(labelIndex, EhEdgeKind::Normal);
             break;
         case Opcode::ResumeLabel:
-            if (!terminator.labels.empty()) {
-                if (const BasicBlock *target = findBlock(terminator.labels[0]))
-                    successors.push_back(target);
-            }
+            addEdge(0, EhEdgeKind::Resume);
             break;
         default:
             break;
@@ -135,6 +166,37 @@ const Instr *EhModel::findTerminator(const BasicBlock &block) const {
             return &instr;
     }
     return nullptr;
+}
+
+/// @brief Identify handler-shaped blocks by their leading marker.
+/// @details Signature validation is performed elsewhere; this helper is a
+///          lightweight CFG classifier for EH provenance and edge checks.
+bool EhModel::isHandlerBlock(const BasicBlock &block) const noexcept {
+    return !block.instructions.empty() && block.instructions.front().op == Opcode::EhEntry;
+}
+
+/// @brief Return the resume-token parameter id for canonical handlers.
+/// @details Only the standard two-parameter `Error`/`ResumeTok` handler ABI
+///          produces an id. Helper-shaped or malformed blocks return no value
+///          so callers can defer to existing structural diagnostics.
+std::optional<unsigned> EhModel::handlerResumeTokenParam(const BasicBlock &block) const noexcept {
+    if (!isHandlerBlock(block) || block.params.size() < 2)
+        return std::nullopt;
+    if (block.params[0].type.kind != Type::Kind::Error ||
+        block.params[1].type.kind != Type::Kind::ResumeTok)
+        return std::nullopt;
+    return block.params[1].id;
+}
+
+/// @brief Look up push-site metadata for a known instruction address.
+/// @details The model indexes `eh.push` instructions during construction using
+///          addresses from the borrowed function. A missing entry means the
+///          instruction was not a well-formed push in this model.
+const EhHandlerPushSite *EhModel::findPushSite(const Instr &instr) const noexcept {
+    auto it = pushSiteByInstr.find(&instr);
+    if (it == pushSiteByInstr.end() || it->second >= handlerPushSites.size())
+        return nullptr;
+    return &handlerPushSites[it->second];
 }
 
 } // namespace il::verify

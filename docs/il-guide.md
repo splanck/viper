@@ -828,6 +828,14 @@ handler(%err:Error, %tok:ResumeTok):
 
 Error-handler blocks must declare `(%err:Error, %tok:ResumeTok)` parameters; the runtime passes the captured error
 value and a resume token into the handler so it can inspect or resume the faulting operation.
+Per [ADR 0005](adr/0005-resume-token-provenance.md), `resumetok` values are
+handler-provenance capabilities. A token is produced only when EH dispatch enters
+the selected handler. Handler continuations may forward that exact active token
+through block parameters, but `resume.*` must consume a token that reached the
+resume site by EH dispatch or verified forwarding. Ordinary value uses such as
+calls, stores, returns, or arithmetic on `resumetok` are invalid, and
+`resume.label` may not target a handler block because it consumes the token
+before transferring control.
 
 #### Runtime ABI
 
@@ -924,6 +932,10 @@ wired directly to runtime contracts. Passes can also observe the
 * Temporaries are defined exactly once and every reachable cross-block use is dominated by its definition.
 * Function and block parameters have unique names/ids, non-void types, and each predecessor passes matching arguments.
 * Branch arguments must match each destination block's parameters and must reference defined, non-void values. Trailing empty successor bundles may be omitted.
+* Handler blocks may be entered by EH dispatch, or by verified handler-continuation
+  control flow that forwards the currently active `resumetok` unchanged. A
+  `resume.*` instruction requires the active token for that path, and
+  `resume.label` targets must not be handler blocks.
 * Returning an `alloca`-derived pointer, including through `gep` or block parameters, is invalid. Direct calls may borrow
   stack-derived pointers under the current IL ABI; stores into non-stack storage and pointer-based indirect calls are
   treated as escapes.

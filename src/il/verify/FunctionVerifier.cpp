@@ -32,6 +32,7 @@
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "il/verify/ControlFlowChecker.hpp"
 #include "il/verify/DiagFormat.hpp"
+#include "il/verify/DiagSink.hpp"
 #include "il/verify/ExceptionHandlerAnalysis.hpp"
 #include "il/verify/InstructionChecker.hpp"
 #include "il/verify/InstructionStrategies.hpp"
@@ -148,6 +149,98 @@ bool isRuntimeObjectFinalizerCall(const Instr &instr) {
 
 bool isPureControlTerminator(Opcode op) {
     return op == Opcode::Br || op == Opcode::CBr || op == Opcode::SwitchI32 || op == Opcode::Ret;
+}
+
+/// @brief Classify branch-like opcodes that may forward block parameters.
+/// @details Resume tokens are allowed to move across these instructions only as
+///          branch arguments. The EH verifier separately proves that any
+///          forwarded token is the currently active handler token.
+/// @param op Opcode under inspection.
+/// @return True when @p op owns branch argument bundles.
+bool mayForwardBlockArguments(Opcode op) {
+    return op == Opcode::Br || op == Opcode::CBr || op == Opcode::SwitchI32 ||
+           op == Opcode::ResumeLabel;
+}
+
+/// @brief Determine whether a value is statically known to be `resumetok`.
+/// @details Missing temporaries are ignored here because the normal operand
+///          definition checks emit clearer diagnostics for that condition.
+/// @param value Operand or branch argument to inspect.
+/// @param types Current type inference environment.
+/// @return True when @p value has the `ResumeTok` type.
+bool isResumeTokenValue(const Value &value, TypeInference &types) {
+    bool missing = false;
+    const Type type = types.valueType(value, &missing);
+    return !missing && type.kind == Type::Kind::ResumeTok;
+}
+
+/// @brief Enforce the non-ordinary-value rule for `resumetok` operands.
+/// @details A resume token may be consumed by `resume.*`, or forwarded through
+///          block-argument bundles for EH continuations. It must not be used as
+///          a call argument, stored to memory, returned, compared, or otherwise
+///          treated as data. `resume.label` consumes its token before entering
+///          the destination, so it may not forward a `resumetok` branch argument.
+/// @param fn Function containing @p instr.
+/// @param bb Block containing @p instr.
+/// @param instr Instruction whose value uses are checked.
+/// @param blockMap Label map used to inspect branch destination parameters.
+/// @param types Type inference environment for operand type queries.
+/// @return Success when all token uses are legal; diagnostic otherwise.
+Expected<void> verifyResumeTokenValueUses(const Function &fn,
+                                          const BasicBlock &bb,
+                                          const Instr &instr,
+                                          const BlockMap &blockMap,
+                                          TypeInference &types) {
+    const auto fail = [&]() -> Expected<void> {
+        return Expected<void>{makeVerifierError(
+            VerifyDiagCode::EhResumeTokenEscape,
+            instr.loc,
+            formatInstrDiag(
+                fn,
+                bb,
+                instr,
+                "resumetok may only be forwarded as active EH state or consumed by resume.*"))};
+    };
+
+    for (std::size_t i = 0; i < instr.operands.size(); ++i) {
+        if (!isResumeTokenValue(instr.operands[i], types))
+            continue;
+        if (isResumeOpcode(instr.op) && i == 0)
+            continue;
+        return fail();
+    }
+
+    if (!mayForwardBlockArguments(instr.op)) {
+        for (const auto &bundle : instr.brArgs) {
+            for (const Value &arg : bundle) {
+                if (isResumeTokenValue(arg, types))
+                    return fail();
+            }
+        }
+        return {};
+    }
+
+    for (std::size_t edge = 0; edge < instr.brArgs.size(); ++edge) {
+        const std::vector<Value> &args = instr.brArgs[edge];
+        const BasicBlock *target = nullptr;
+        if (edge < instr.labels.size()) {
+            auto targetIt = blockMap.find(instr.labels[edge]);
+            if (targetIt != blockMap.end())
+                target = targetIt->second;
+        }
+        for (std::size_t argIndex = 0; argIndex < args.size(); ++argIndex) {
+            if (!isResumeTokenValue(args[argIndex], types))
+                continue;
+            if (instr.op == Opcode::ResumeLabel)
+                return fail();
+            if (!target || argIndex >= target->params.size() ||
+                target->params[argIndex].type.kind != Type::Kind::ResumeTok) {
+                return fail();
+            }
+        }
+    }
+
+    return {};
 }
 
 bool opcodeMayThrowOrTrap(Opcode op) {
@@ -1094,14 +1187,12 @@ Expected<void> FunctionVerifier::verifyDominanceAndEscapes(
         for (size_t index = 0; index < blocks.size(); ++index)
             worklist.push(index);
 
-        auto makeReleaseDiag = [&](const BasicBlock &block,
-                                   const Instr &instr,
-                                   unsigned id,
-                                   std::string_view action) {
-            std::ostringstream message;
-            message << action << " of %" << id;
-            return makeError(instr.loc, formatInstrDiag(fn, block, instr, message.str()));
-        };
+        auto makeReleaseDiag =
+            [&](const BasicBlock &block, const Instr &instr, unsigned id, std::string_view action) {
+                std::ostringstream message;
+                message << action << " of %" << id;
+                return makeError(instr.loc, formatInstrDiag(fn, block, instr, message.str()));
+            };
 
         auto transferReleases =
             [&](const BasicBlock &block,
@@ -1317,6 +1408,9 @@ Expected<void> FunctionVerifier::verifyBlock(
                     formatInstrDiag(fn, bb, instr, "err.get_* only allowed in handler block"))};
             }
         }
+
+        if (auto result = verifyResumeTokenValueUses(fn, bb, instr, blockMap, types); !result)
+            return result;
 
         if (isRuntimeExplicitRelease(instr)) {
             if (!instr.operands.empty() && instr.operands[0].kind == Value::Kind::Temp) {
