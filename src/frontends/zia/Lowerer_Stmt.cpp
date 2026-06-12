@@ -33,18 +33,18 @@ bool isInlineAggregateType(TypeRef type) {
 const char *runtimeCollectionToSeqCallee(TypeRef type) {
     if (!type || type->kind != TypeKindSem::Ptr || !type->elementType())
         return nullptr;
-    if (type->name == "Viper.Collections.Queue")
-        return "Viper.Collections.Queue.ToSeq";
-    if (type->name == "Viper.Collections.Stack")
-        return "Viper.Collections.Stack.ToSeq";
-    if (type->name == "Viper.Collections.Deque")
-        return "Viper.Collections.Deque.ToSeq";
-    if (type->name == "Viper.Collections.List")
-        return "Viper.Collections.List.ToSeq";
-    if (type->name == "Viper.Collections.Ring")
-        return "Viper.Collections.Ring.ToSeq";
-    if (type->name == "Viper.Collections.Heap")
-        return "Viper.Collections.Heap.ToSeq";
+    if (type->name == kRuntimeClassCollectionsQueue)
+        return kCollectionsQueueToSeq;
+    if (type->name == kRuntimeClassCollectionsStack)
+        return kCollectionsStackToSeq;
+    if (type->name == kRuntimeClassCollectionsDeque)
+        return kCollectionsDequeToSeq;
+    if (type->name == kRuntimeClassCollectionsList)
+        return kCollectionsListToSeq;
+    if (type->name == kRuntimeClassCollectionsRing)
+        return kCollectionsRingToSeq;
+    if (type->name == kRuntimeClassCollectionsHeap)
+        return kCollectionsHeapToSeq;
     return nullptr;
 }
 
@@ -436,7 +436,7 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt) {
         } else if (iterableType->kind == TypeKindSem::Map) {
             lowerForInMap(stmt, iterableType);
         } else if (iterableType->kind == TypeKindSem::Ptr &&
-                   iterableType->name == "Viper.Collections.Seq" &&
+                   iterableType->name == kRuntimeClassCollectionsSeq &&
                    !iterableType->typeArgs.empty()) {
             lowerForInSeq(lowerExpr(stmt->iterable.get()),
                           stmt,

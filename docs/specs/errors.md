@@ -47,6 +47,14 @@ The IL exposes structured primitives for raising and handling traps:
   execution after a trap using the supplied resume token.
 
 Handlers receive their parameters in SSA form and must not forge resume tokens.
+`ResumeTok` is a handler-provenance capability, not an ordinary pointer-like
+value. A token is produced only by EH dispatch into the selected handler. It may
+be forwarded unchanged through block parameters for typed-catch or rethrow helper
+blocks, but every path to a `resume.*` must carry an active token that originated
+from a dispatched handler. The token may be consumed only by `resume.*`; calls,
+stores, returns, arithmetic, and other ordinary value uses are invalid. Because
+`resume.label` consumes the token before entering its target, its destination
+must not be a handler block.
 
 ## Trap Flow and Handler Control
 
@@ -72,7 +80,10 @@ handler. Control then jumps into the handler block with two parameters:
 
 The `Error` record contains `{ kind:i32, code:i32, ip:u64, line:i32 }` where
 `line` is `-1` when no source line is available. The resume token is opaque and
-must be passed unchanged to `resume.*` instructions.
+must be passed unchanged to `resume.*` instructions. Verifiers must reject
+handler entry by ordinary control-flow edges unless the edge forwards the
+currently active resume token into the destination block's `ResumeTok`
+parameter.
 
 ### Resume Modes
 

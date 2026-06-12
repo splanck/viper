@@ -14,6 +14,9 @@
 //     BlockLayout → Peephole → Scheduler → Peephole → Emit.
 //   - Host/native-link availability, runtime archive composition, and system
 //     tool invocation are selected at runtime based on TargetPlatform.
+// Cross-platform touchpoints:
+//   - Native-link archive discovery and platform-specific linker options are
+//     routed through codegen/common/LinkerSupport and NativeLinker.
 // Ownership/Lifetime:
 //   - CodegenPipeline owns the Options struct; all other objects are
 //     stack-local or owned by the caller-supplied AArch64Module.
@@ -282,11 +285,12 @@ static int linkObjToExe(const std::string &objPath,
     linkOpts.extraObjPaths = extraObjects;
     collectNativeLinkArchives(ctx, targetPlatform, linkOpts.archivePaths);
     if (ctx.needsZiaFrontend) {
-        const auto ziaLib = common::supportLibraryPath(ctx.buildDir, "fe_zia");
-        if (common::fileExists(ziaLib))
-            linkOpts.forceLoadArchivePaths.push_back(ziaLib.lexically_normal().string());
-        // fe_zia's static-link closure (IL build/verify/transform/runtime/core/
-        // support). Demand-driven: only referenced members are extracted.
+        const auto ziaEditorLib = common::supportLibraryPath(ctx.buildDir, "zia_editor_services");
+        if (common::fileExists(ziaEditorLib))
+            linkOpts.forceLoadArchivePaths.push_back(ziaEditorLib.lexically_normal().string());
+        // zia_editor_services' static-link closure (fe_zia plus IL
+        // build/verify/transform/runtime/core/support). Demand-driven: only
+        // referenced members are extracted.
         for (const auto &lib : common::ziaFrontendClosureLibs()) {
             const auto p = common::supportLibraryPath(ctx.buildDir, lib);
             if (common::fileExists(p))

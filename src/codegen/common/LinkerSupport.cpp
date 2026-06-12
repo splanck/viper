@@ -109,15 +109,15 @@ installedLibraryPath(std::string_view libBaseName) {
 
 /// @brief Source/build-tree sub-directory that produces a given support lib.
 /// @details Most companion libs land under `lib/`, but a few live where their
-///          sources are: GUI under src/lib/gui, the Zia frontend under
-///          src/frontends/zia, and the Zia-frontend static-link closure (the
-///          IL build/verify/transform/runtime/core/support archives that
-///          fe_zia pulls when IntelliSense is embedded in a codegen'd binary)
-///          directly under src/ (viper_support under src/support).
+///          sources are: GUI under src/lib/gui, Zia frontend/editor archives
+///          under src/frontends/zia, and the Zia static-link closure (the IL
+///          build/verify/transform/runtime/core/support archives pulled when
+///          IntelliSense is embedded in a codegen'd binary) directly under src/
+///          (viper_support under src/support).
 std::filesystem::path supportLibBuildSubdir(std::string_view libBaseName) {
     if (libBaseName == "vipergui")
         return std::filesystem::path("src") / "lib" / "gui";
-    if (libBaseName == "fe_zia")
+    if (libBaseName == "fe_zia" || libBaseName == "zia_editor_services")
         return std::filesystem::path("src") / "frontends" / "zia";
     if (libBaseName == "viper_support")
         return std::filesystem::path("src") / "support";
@@ -250,8 +250,8 @@ bool ensureRequiredTargetsBuilt(const LinkContext &ctx, std::ostream &out, std::
             missingTargets.push_back("viperaud");
     }
     if (ctx.needsZiaFrontend) {
-        if (!fileExists(supportLibraryPath(ctx.buildDir, "fe_zia")))
-            missingTargets.push_back("fe_zia");
+        if (!fileExists(supportLibraryPath(ctx.buildDir, "zia_editor_services")))
+            missingTargets.push_back("zia_editor_services");
         for (const auto &lib : ziaFrontendClosureLibs()) {
             if (!fileExists(supportLibraryPath(ctx.buildDir, lib)))
                 missingTargets.push_back(lib);
@@ -682,6 +682,7 @@ std::filesystem::path supportLibraryPath(const std::filesystem::path &buildDir,
 
 const std::vector<std::string> &ziaFrontendClosureLibs() {
     static const std::vector<std::string> kLibs = {
+        "fe_zia",
         "il_build",
         "il_transform",
         "il_runtime",
@@ -851,7 +852,8 @@ std::vector<std::string> defaultGraphicsFrameworks() {
 #endif
 }
 
-[[maybe_unused]] void appendSystemLinkInputs(const LinkContext &ctx, std::vector<std::string> &cmd) {
+[[maybe_unused]] void appendSystemLinkInputs(const LinkContext &ctx,
+                                             std::vector<std::string> &cmd) {
     appendArchives(ctx, cmd);
     appendGraphicsLibs(ctx, cmd, defaultGraphicsFrameworks());
     appendAudioLibs(ctx, cmd);

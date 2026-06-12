@@ -202,6 +202,94 @@ TEST(NativeEHLowering, RewritesTypedCatchHelperBlocks) {
     }
 }
 
+TEST(NativeEHLowering, ResumeLabelValidatesSiteTokenBeforeBranch) {
+    const std::string il = "il 0.1\n"
+                           "func @f() -> void {\n"
+                           "entry:\n"
+                           "  eh.push ^handler\n"
+                           "  trap\n"
+                           "after:\n"
+                           "  ret\n"
+                           "handler ^handler(%err:Error, %tok:ResumeTok):\n"
+                           "  eh.entry\n"
+                           "  resume.label %tok, ^after\n"
+                           "}\n";
+
+    il::core::Module mod = parseModule(il);
+    ASSERT_TRUE(viper::codegen::common::lowerNativeEh(mod));
+    auto verify = il::api::v2::verify_module_expected(mod);
+    ASSERT_TRUE(verify.hasValue());
+
+    const auto &fn = mod.functions.front();
+    bool sawInvalidResume = false;
+    bool sawResumeLabelGuard = false;
+    for (const auto &bb : fn.blocks) {
+        if (bb.label.find(".__neh.invalid_resume") != std::string::npos)
+            sawInvalidResume = true;
+        for (const auto &instr : bb.instructions) {
+            if (instr.op != il::core::Opcode::CBr)
+                continue;
+            bool branchesToAfter = false;
+            bool branchesToInvalid = false;
+            for (const auto &label : instr.labels) {
+                branchesToAfter = branchesToAfter || label == "after";
+                branchesToInvalid =
+                    branchesToInvalid || label.find(".__neh.invalid_resume") != std::string::npos;
+            }
+            sawResumeLabelGuard = sawResumeLabelGuard || (branchesToAfter && branchesToInvalid);
+        }
+    }
+
+    EXPECT_TRUE(sawInvalidResume);
+    EXPECT_TRUE(sawResumeLabelGuard);
+}
+
+TEST(NativeEHLowering, HandlerHelperTrapFromErrUsesOuterNativeSite) {
+    const std::string il = "il 0.2.0\n"
+                           "extern @may_throw() -> void\n"
+                           "func @f() -> void {\n"
+                           "entry:\n"
+                           "  eh.push ^outer\n"
+                           "  eh.push ^inner\n"
+                           "  call @may_throw()\n"
+                           "  eh.pop\n"
+                           "  eh.pop\n"
+                           "  br ^after\n"
+                           "after:\n"
+                           "  ret\n"
+                           "handler ^outer(%err:Error, %tok:ResumeTok):\n"
+                           "  eh.entry\n"
+                           "  br ^outer_catch(%err, %tok)\n"
+                           "handler ^outer_catch(%err:Error, %tok:ResumeTok):\n"
+                           "  eh.entry\n"
+                           "  resume.label %tok, ^after\n"
+                           "handler ^inner(%err:Error, %tok:ResumeTok):\n"
+                           "  eh.entry\n"
+                           "  br ^inner_rethrow(%err, %tok)\n"
+                           "handler ^inner_rethrow(%err:Error, %tok:ResumeTok):\n"
+                           "  eh.entry\n"
+                           "  trap.from_err i32 9\n"
+                           "}\n";
+
+    il::core::Module mod = parseModule(il);
+    ASSERT_TRUE(viper::codegen::common::lowerNativeEh(mod));
+    auto verify = il::api::v2::verify_module_expected(mod);
+    ASSERT_TRUE(verify.hasValue());
+
+    const auto &fn = mod.functions.front();
+    bool sawWrappedHelperTrap = false;
+    for (const auto &bb : fn.blocks) {
+        if (bb.label.find(".__neh.site.") == std::string::npos)
+            continue;
+        for (const auto &instr : bb.instructions) {
+            if (instr.op == il::core::Opcode::TrapFromErr)
+                sawWrappedHelperTrap = true;
+        }
+    }
+
+    EXPECT_TRUE(sawWrappedHelperTrap);
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();

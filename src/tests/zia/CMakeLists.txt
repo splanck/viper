@@ -170,12 +170,12 @@ function(viper_add_zia_tests)
 
     # Project language index runtime bridge tests (definition/reference/rename)
     viper_add_test(test_zia_project_index ${_VIPER_ZIA_DIR}/test_zia_project_index.cpp)
-    target_link_libraries(test_zia_project_index PRIVATE ${VIPER_ZIA_LIBS} viper_runtime)
+    target_link_libraries(test_zia_project_index PRIVATE zia_editor_services viper_runtime)
     viper_add_ctest(test_zia_project_index test_zia_project_index)
 
     # Phase 2 completion engine tests (CompletionEngine, context extraction, providers)
     viper_add_test(test_zia_completion_engine ${_VIPER_ZIA_DIR}/test_zia_completion_engine.cpp)
-    target_link_libraries(test_zia_completion_engine PRIVATE ${VIPER_ZIA_LIBS})
+    target_link_libraries(test_zia_completion_engine PRIVATE zia_editor_services)
     viper_add_ctest(test_zia_completion_engine test_zia_completion_engine)
 
     # Recursion depth limit tests

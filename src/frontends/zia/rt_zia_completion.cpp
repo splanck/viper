@@ -9,13 +9,16 @@
 /// @brief extern "C" bridge between the Zia CompletionEngine and the Viper
 ///        runtime string API (rt_string).
 ///
-/// Lives in fe_zia so it has access to ZiaCompletion.hpp.  The rt_string
-/// functions (rt_string_cstr, rt_str_len, rt_string_from_bytes) are declared
-/// via rt_string.h but implemented in viper_runtime; symbols resolve at final
-/// link time when the executable links both fe_zia and viper_runtime.
+/// Lives in zia_editor_services so it has access to ZiaCompletion.hpp without
+/// placing editor entry points in the core compiler frontend archive. The
+/// rt_string functions (rt_string_cstr, rt_str_len, rt_string_from_bytes) are
+/// declared via rt_string.h but implemented in viper_runtime; symbols resolve
+/// at final link time when the executable links both zia_editor_services and
+/// viper_runtime.
 ///
 //===----------------------------------------------------------------------===//
 
+#include "common/PlatformCapabilities.hpp"
 #include "frontends/zia/Lexer.hpp"
 #include "frontends/zia/Token.hpp"
 #include "frontends/zia/ZiaAnalysis.hpp"
@@ -46,11 +49,11 @@
 using namespace il::frontends::zia;
 
 namespace {
-// s_engine: Only accessed from the compiler thread. No synchronization needed.
 // One singleton CompletionEngine per process.  The engine maintains a single-
 // entry LRU parse cache keyed by source hash, so repeated calls for the same
 // file content do not re-parse.
 CompletionEngine s_engine;
+std::mutex s_engineMutex;
 
 constexpr int kMaxSemanticWorkerJobs = 2;
 std::atomic<int> g_activeSemanticWorkerJobs{0};
@@ -433,11 +436,11 @@ std::string normalizeProjectPath(const ProjectIndex &index, std::string path) {
 
 std::string projectPathLookupKey(std::string path) {
     std::replace(path.begin(), path.end(), '\\', '/');
-#ifdef _WIN32
-    std::transform(path.begin(), path.end(), path.begin(), [](unsigned char ch) {
-        return static_cast<char>(std::tolower(ch));
-    });
-#endif
+    if (viper::platform::kHostWindows) {
+        std::transform(path.begin(), path.end(), path.begin(), [](unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+    }
     return path;
 }
 
@@ -1748,7 +1751,11 @@ void *rt_zia_project_index_rename_edits(void *handle,
 rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col) {
     std::string sourceStr = toStdString(source);
 
-    auto items = s_engine.complete(sourceStr, (int)line, (int)col);
+    std::vector<CompletionItem> items;
+    {
+        std::lock_guard<std::mutex> lock(s_engineMutex);
+        items = s_engine.complete(sourceStr, (int)line, (int)col);
+    }
     std::string result = serialize(items);
 
     return rt_string_from_bytes(result.c_str(), result.size());
@@ -1763,7 +1770,11 @@ rt_string rt_zia_complete_for_file(rt_string source,
     std::string sourceStr = toStdString(source);
     std::string pathStr = editorPathOrDefault(file_path);
 
-    auto items = s_engine.complete(sourceStr, (int)line, (int)col, pathStr);
+    std::vector<CompletionItem> items;
+    {
+        std::lock_guard<std::mutex> lock(s_engineMutex);
+        items = s_engine.complete(sourceStr, (int)line, (int)col, pathStr);
+    }
     std::string result = serialize(items);
 
     return rt_string_from_bytes(result.c_str(), result.size());
@@ -1773,7 +1784,11 @@ rt_string rt_zia_complete_for_file(rt_string source,
 ///        in @p source. Returns a Seq<Map> with stable item fields.
 void *rt_zia_completion_items(rt_string source, int64_t line, int64_t col) {
     std::string sourceStr = toStdString(source);
-    auto items = s_engine.complete(sourceStr, (int)line, (int)col);
+    std::vector<CompletionItem> items;
+    {
+        std::lock_guard<std::mutex> lock(s_engineMutex);
+        items = s_engine.complete(sourceStr, (int)line, (int)col);
+    }
     return completionItemsToSeq(items);
 }
 
@@ -1786,7 +1801,11 @@ void *rt_zia_completion_items_for_file(rt_string source,
     std::string sourceStr = toStdString(source);
     std::string pathStr = editorPathOrDefault(file_path);
 
-    auto items = s_engine.complete(sourceStr, (int)line, (int)col, pathStr);
+    std::vector<CompletionItem> items;
+    {
+        std::lock_guard<std::mutex> lock(s_engineMutex);
+        items = s_engine.complete(sourceStr, (int)line, (int)col, pathStr);
+    }
     return completionItemsToSeq(items);
 }
 
@@ -1805,7 +1824,11 @@ rt_string rt_zia_signature_help_for_file(rt_string source,
     std::string sourceStr = toStdString(source);
     std::string pathStr = editorPathOrDefault(file_path);
 
-    std::string result = s_engine.signatureHelp(sourceStr, (int)line, (int)col, pathStr);
+    std::string result;
+    {
+        std::lock_guard<std::mutex> lock(s_engineMutex);
+        result = s_engine.signatureHelp(sourceStr, (int)line, (int)col, pathStr);
+    }
     return rt_string_from_bytes(result.c_str(), result.size());
 }
 
@@ -1823,13 +1846,18 @@ void *rt_zia_signature_info_for_file(rt_string source,
                                      int64_t col) {
     std::string sourceStr = toStdString(source);
     std::string pathStr = editorPathOrDefault(file_path);
-    std::string result = s_engine.signatureHelp(sourceStr, (int)line, (int)col, pathStr);
+    std::string result;
+    {
+        std::lock_guard<std::mutex> lock(s_engineMutex);
+        result = s_engine.signatureHelp(sourceStr, (int)line, (int)col, pathStr);
+    }
     return signatureInfoMap(result, sourceStr, (int)line, (int)col, "", true);
 }
 
 /// @brief Runtime entry point: drop the completion engine's cached analysis
 ///        (call after the project/files change materially).
 void rt_zia_completion_clear_cache(void) {
+    std::lock_guard<std::mutex> lock(s_engineMutex);
     s_engine.clearCache();
 }
 

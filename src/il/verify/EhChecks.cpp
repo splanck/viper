@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <deque>
 #include <functional>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -44,21 +45,56 @@ using namespace il::core;
 namespace il::verify {
 namespace {
 
+constexpr std::size_t kNoPushSite = std::numeric_limits<std::size_t>::max();
+
+/// @brief Concrete handler frame currently installed on the simulated EH stack.
+/// @details The frame keeps both the handler block and the concrete `eh.push`
+///          site that installed it. A single handler block can be shared by
+///          multiple lexical scopes, so the push-site id is part of resume-token
+///          provenance.
+struct HandlerFrame {
+    const BasicBlock *handler = nullptr;
+    std::size_t pushSiteId = kNoPushSite;
+};
+
+/// @brief Provenance for the active resume token on a simulated path.
+/// @details The verifier treats `ResumeTok` as a capability produced by EH
+///          dispatch. The current temp id changes when the token is forwarded
+///          through a block parameter, while the origin handler and push site
+///          remain fixed until a resume instruction consumes the token.
+struct ResumeTokenState {
+    const BasicBlock *originHandler = nullptr;
+    std::size_t pushSiteId = kNoPushSite;
+    unsigned currentTemp = 0;
+    bool active = false;
+};
+
 /// @brief Encode an exception-handler stack snapshot into a stable cache key.
-/// @details Serialises the handler stack into a semicolon-separated string and
-///          prefixes a bit that records whether a resume token is active.  The
-///          resulting key uniquely identifies the execution state so traversals
-///          can detect revisits and avoid infinite loops when exploring
-///          recursive handler graphs.
-/// @param stack Ordered list of handler blocks currently on the stack.
-/// @param hasResumeToken Flag indicating whether a resume token is present.
+/// @details Serialises the handler stack and active resume-token provenance into
+///          a semicolon-separated string. The resulting key uniquely identifies
+///          the execution state so traversals can detect revisits and avoid
+///          infinite loops when exploring recursive handler graphs.
+/// @param stack Ordered list of handler frames currently on the stack.
+/// @param token Active resume-token provenance, if any.
 /// @return Deterministic key suitable for hash-table lookups.
-std::string encodeStateKey(const std::vector<const BasicBlock *> &stack, bool hasResumeToken) {
+std::string encodeStateKey(const std::vector<HandlerFrame> &stack, const ResumeTokenState &token) {
     std::string key;
-    key.reserve(stack.size() * 8 + 4);
-    key.append(hasResumeToken ? "1|" : "0|");
-    for (const BasicBlock *handler : stack) {
-        key.append(handler ? handler->label : "<null>");
+    key.reserve(stack.size() * 24 + 48);
+    if (token.active) {
+        key.append("1:");
+        key.append(token.originHandler ? token.originHandler->label : "<null>");
+        key.push_back(':');
+        key.append(std::to_string(token.pushSiteId));
+        key.push_back(':');
+        key.append(std::to_string(token.currentTemp));
+        key.push_back('|');
+    } else {
+        key.append("0|");
+    }
+    for (const HandlerFrame &frame : stack) {
+        key.append(frame.handler ? frame.handler->label : "<null>");
+        key.push_back('@');
+        key.append(std::to_string(frame.pushSiteId));
         key.push_back(';');
     }
     return key;
@@ -66,8 +102,8 @@ std::string encodeStateKey(const std::vector<const BasicBlock *> &stack, bool ha
 
 struct StackState {
     const BasicBlock *block = nullptr;
-    std::vector<const BasicBlock *> handlerStack;
-    bool hasResumeToken = false;
+    std::vector<HandlerFrame> handlerStack;
+    ResumeTokenState resumeToken;
     int parent = -1;
     int depth = 0;
 };
@@ -153,6 +189,15 @@ void emitInvariantFailure(Diagnostics &diags,
         case VerifyDiagCode::EhResumeTokenMissing:
             suffix += "resume.* requires active resume token";
             break;
+        case VerifyDiagCode::EhResumeTokenMismatch:
+            suffix += "resume token does not match active handler provenance";
+            break;
+        case VerifyDiagCode::EhHandlerInvalidEntry:
+            suffix += "handler block entry requires active resume token forwarding";
+            break;
+        case VerifyDiagCode::EhResumeTokenEscape:
+            suffix += "resumetok may only be forwarded as the active token or consumed by resume.*";
+            break;
         default:
             break;
     }
@@ -167,8 +212,8 @@ void emitInvariantFailure(Diagnostics &diags,
 bool checkNoHandlerCrossing(const EhModel &model,
                             const BasicBlock &bb,
                             const Instr &instr,
-                            std::vector<const BasicBlock *> &handlerStack,
-                            bool hasResumeToken,
+                            std::vector<HandlerFrame> &handlerStack,
+                            const ResumeTokenState &resumeToken,
                             Diagnostics &diags,
                             const std::vector<StackState> &states,
                             int stateIndex) {
@@ -182,7 +227,7 @@ bool checkNoHandlerCrossing(const EhModel &model,
     // a cleanup guard, and the VM treats that as a no-op when a resume token is
     // active. Keep verifier stack simulation aligned with that runtime contract
     // while still rejecting ordinary eh.pop underflow.
-    if (hasResumeToken)
+    if (resumeToken.active)
         return true;
 
     emitInvariantFailure(diags,
@@ -200,12 +245,12 @@ bool checkNoHandlerCrossing(const EhModel &model,
 bool checkUnreachableAfterThrow(const EhModel &model,
                                 const BasicBlock &bb,
                                 const Instr &instr,
-                                std::vector<const BasicBlock *> &handlerStack,
-                                bool &hasResumeToken,
+                                const std::vector<HandlerFrame> &handlerStack,
+                                ResumeTokenState &resumeToken,
                                 Diagnostics &diags,
                                 const std::vector<StackState> &states,
                                 int stateIndex) {
-    if (!hasResumeToken) {
+    if (!resumeToken.active) {
         emitInvariantFailure(diags,
                              "checkUnreachableAfterThrow",
                              VerifyDiagCode::EhResumeTokenMissing,
@@ -218,13 +263,42 @@ bool checkUnreachableAfterThrow(const EhModel &model,
         return false;
     }
 
-    hasResumeToken = false;
+    if (instr.operands.empty() || instr.operands[0].kind != Value::Kind::Temp ||
+        instr.operands[0].id != resumeToken.currentTemp) {
+        emitInvariantFailure(diags,
+                             "checkUnreachableAfterThrow",
+                             VerifyDiagCode::EhResumeTokenMismatch,
+                             model,
+                             bb,
+                             instr,
+                             states,
+                             stateIndex,
+                             static_cast<int>(handlerStack.size()));
+        return false;
+    }
+
+    if (instr.op == Opcode::ResumeLabel && !instr.labels.empty()) {
+        if (const BasicBlock *target = model.findBlock(instr.labels[0]);
+            target && model.isHandlerBlock(*target)) {
+            emitInvariantFailure(diags,
+                                 "checkUnreachableAfterThrow",
+                                 VerifyDiagCode::EhHandlerInvalidEntry,
+                                 model,
+                                 bb,
+                                 instr,
+                                 states,
+                                 stateIndex,
+                                 static_cast<int>(handlerStack.size()));
+            return false;
+        }
+    }
+
+    resumeToken = {};
     return true;
 }
 
-std::vector<const BasicBlock *> handlerStackAfterDispatch(
-    const std::vector<const BasicBlock *> &handlerStack) {
-    std::vector<const BasicBlock *> nextStack = handlerStack;
+std::vector<HandlerFrame> handlerStackAfterDispatch(const std::vector<HandlerFrame> &handlerStack) {
+    std::vector<HandlerFrame> nextStack = handlerStack;
     if (!nextStack.empty())
         nextStack.pop_back();
     return nextStack;
@@ -233,7 +307,7 @@ std::vector<const BasicBlock *> handlerStackAfterDispatch(
 bool checkAllPathsCloseTry(const EhModel &model,
                            const BasicBlock &bb,
                            const Instr &terminator,
-                           const std::vector<const BasicBlock *> &handlerStack,
+                           const std::vector<HandlerFrame> &handlerStack,
                            Diagnostics &diags,
                            const std::vector<StackState> &states,
                            int stateIndex) {
@@ -250,6 +324,121 @@ bool checkAllPathsCloseTry(const EhModel &model,
                          stateIndex,
                          static_cast<int>(handlerStack.size()));
     return false;
+}
+
+/// @brief Retrieve the argument bundle for a resolved successor edge.
+/// @details The verifier runs after structural branch checks, but malformed
+///          modules can still reach EH checks when callers collect multiple
+///          diagnostics. Returning null lets callers skip provenance checks
+///          already covered by branch-argument diagnostics.
+/// @param terminator Terminator instruction that owns branch arguments.
+/// @param edge Resolved successor edge whose label index should be inspected.
+/// @return Pointer to the matching argument vector, or null when unavailable.
+const std::vector<Value> *branchArgsForEdge(const Instr &terminator, const EhSuccessorEdge &edge) {
+    if (edge.labelIndex >= terminator.brArgs.size())
+        return nullptr;
+    return &terminator.brArgs[edge.labelIndex];
+}
+
+/// @brief Validate and propagate resume-token provenance across one CFG edge.
+/// @details Normal edges into handler-shaped blocks must forward the active
+///          resume token into the destination `%tok` parameter. This preserves
+///          typed-catch helper blocks while rejecting forged or stale tokens.
+///          `resume.label` edges consume the token before transfer, so their
+///          state always arrives without an active token and may not enter a
+///          handler block.
+/// @param model EH model used for handler classification.
+/// @param sourceBlock Block containing @p terminator.
+/// @param terminator Terminator producing @p edge.
+/// @param edge Resolved successor edge.
+/// @param token Active token state before taking the edge.
+/// @param handlerStack Simulated handler stack for diagnostic depth.
+/// @param diags Diagnostic accumulator.
+/// @param states Traversal state arena for path reconstruction.
+/// @param stateIndex Current state index in @p states.
+/// @return Propagated token state on success, or no value after reporting a diagnostic.
+std::optional<ResumeTokenState> transitionResumeTokenForEdge(
+    const EhModel &model,
+    const BasicBlock &sourceBlock,
+    const Instr &terminator,
+    const EhSuccessorEdge &edge,
+    const ResumeTokenState &token,
+    const std::vector<HandlerFrame> &handlerStack,
+    Diagnostics &diags,
+    const std::vector<StackState> &states,
+    int stateIndex) {
+    ResumeTokenState nextToken = edge.kind == EhEdgeKind::Resume ? ResumeTokenState{} : token;
+    if (!edge.target)
+        return nextToken;
+
+    const bool targetIsHandler = model.isHandlerBlock(*edge.target);
+    if (edge.kind == EhEdgeKind::Resume) {
+        if (targetIsHandler) {
+            emitInvariantFailure(diags,
+                                 "checkHandlerEntryTokenFlow",
+                                 VerifyDiagCode::EhHandlerInvalidEntry,
+                                 model,
+                                 sourceBlock,
+                                 terminator,
+                                 states,
+                                 stateIndex,
+                                 static_cast<int>(handlerStack.size()));
+            return std::nullopt;
+        }
+        return nextToken;
+    }
+
+    const auto tokenParam = model.handlerResumeTokenParam(*edge.target);
+    if (!targetIsHandler && !tokenParam)
+        return nextToken;
+
+    if (!token.active) {
+        emitInvariantFailure(diags,
+                             "checkHandlerEntryTokenFlow",
+                             targetIsHandler ? VerifyDiagCode::EhHandlerInvalidEntry
+                                             : VerifyDiagCode::EhResumeTokenMissing,
+                             model,
+                             sourceBlock,
+                             terminator,
+                             states,
+                             stateIndex,
+                             static_cast<int>(handlerStack.size()));
+        return std::nullopt;
+    }
+
+    if (!tokenParam)
+        return nextToken;
+
+    const std::vector<Value> *args = branchArgsForEdge(terminator, edge);
+    if (!args)
+        return nextToken;
+
+    std::optional<std::size_t> tokenParamIndex;
+    for (std::size_t i = 0; i < edge.target->params.size(); ++i) {
+        if (edge.target->params[i].id == *tokenParam) {
+            tokenParamIndex = i;
+            break;
+        }
+    }
+    if (!tokenParamIndex || *tokenParamIndex >= args->size())
+        return nextToken;
+
+    const Value &forwarded = (*args)[*tokenParamIndex];
+    if (forwarded.kind != Value::Kind::Temp || forwarded.id != token.currentTemp) {
+        emitInvariantFailure(diags,
+                             "checkHandlerEntryTokenFlow",
+                             VerifyDiagCode::EhResumeTokenMismatch,
+                             model,
+                             sourceBlock,
+                             terminator,
+                             states,
+                             stateIndex,
+                             static_cast<int>(handlerStack.size()));
+        return std::nullopt;
+    }
+
+    nextToken.currentTemp = *tokenParam;
+    return nextToken;
 }
 
 class EhStackTraversal {
@@ -281,7 +470,7 @@ class EhStackTraversal {
         if (!state.block)
             return;
 
-        const std::string key = encodeStateKey(state.handlerStack, state.hasResumeToken);
+        const std::string key = encodeStateKey(state.handlerStack, state.resumeToken);
         if (!visited[state.block].insert(key).second)
             return;
 
@@ -296,24 +485,28 @@ class EhStackTraversal {
             return true;
 
         const BasicBlock &bb = *snapshot.block;
-        std::vector<const BasicBlock *> handlerStack = snapshot.handlerStack;
-        bool hasResumeToken = snapshot.hasResumeToken;
+        std::vector<HandlerFrame> handlerStack = snapshot.handlerStack;
+        ResumeTokenState resumeToken = snapshot.resumeToken;
 
         const Instr *terminator = nullptr;
         for (const auto &instr : bb.instructions) {
             if (instr.op == Opcode::EhPush) {
-                const BasicBlock *handlerBlock = nullptr;
-                if (!instr.labels.empty())
-                    handlerBlock = model.findBlock(instr.labels[0]);
-                handlerStack.push_back(handlerBlock);
+                HandlerFrame frame;
+                if (const EhHandlerPushSite *site = model.findPushSite(instr)) {
+                    frame.handler = site->handler;
+                    frame.pushSiteId = site->id;
+                } else if (!instr.labels.empty()) {
+                    frame.handler = model.findBlock(instr.labels[0]);
+                }
+                handlerStack.push_back(frame);
             } else if (instr.op == Opcode::EhPop) {
                 if (!checkNoHandlerCrossing(
-                        model, bb, instr, handlerStack, hasResumeToken, diags, states, stateIndex))
+                        model, bb, instr, handlerStack, resumeToken, diags, states, stateIndex))
                     return false;
             } else if (instr.op == Opcode::ResumeSame || instr.op == Opcode::ResumeNext ||
                        instr.op == Opcode::ResumeLabel) {
                 if (!checkUnreachableAfterThrow(
-                        model, bb, instr, handlerStack, hasResumeToken, diags, states, stateIndex))
+                        model, bb, instr, handlerStack, resumeToken, diags, states, stateIndex))
                     return false;
             }
 
@@ -327,7 +520,7 @@ class EhStackTraversal {
             return true;
 
         states[stateIndex].handlerStack = handlerStack;
-        states[stateIndex].hasResumeToken = hasResumeToken;
+        states[stateIndex].resumeToken = resumeToken;
         states[stateIndex].depth = static_cast<int>(handlerStack.size());
 
         if (!checkAllPathsCloseTry(model, bb, *terminator, handlerStack, diags, states, stateIndex))
@@ -338,38 +531,58 @@ class EhStackTraversal {
             return true;
         }
 
-        enqueueSuccessors(*terminator, stateIndex, handlerStack, hasResumeToken);
+        enqueueSuccessors(bb, *terminator, stateIndex, handlerStack, resumeToken);
         return true;
     }
 
-    void enqueueTrapHandler(int stateIndex, const std::vector<const BasicBlock *> &handlerStack) {
+    void enqueueTrapHandler(int stateIndex, const std::vector<HandlerFrame> &handlerStack) {
         if (handlerStack.empty())
             return;
 
-        const BasicBlock *handlerBlock = handlerStack.back();
+        const HandlerFrame &frame = handlerStack.back();
+        const BasicBlock *handlerBlock = frame.handler;
         if (!handlerBlock)
+            return;
+
+        const auto tokenParam = model.handlerResumeTokenParam(*handlerBlock);
+        if (!tokenParam)
             return;
 
         StackState nextState;
         nextState.block = handlerBlock;
         nextState.handlerStack = handlerStackAfterDispatch(handlerStack);
-        nextState.hasResumeToken = true;
+        nextState.resumeToken.originHandler = handlerBlock;
+        nextState.resumeToken.pushSiteId = frame.pushSiteId;
+        nextState.resumeToken.currentTemp = *tokenParam;
+        nextState.resumeToken.active = true;
         nextState.parent = stateIndex;
         nextState.depth = static_cast<int>(nextState.handlerStack.size());
         enqueueState(std::move(nextState));
     }
 
-    void enqueueSuccessors(const Instr &terminator,
+    void enqueueSuccessors(const BasicBlock &sourceBlock,
+                           const Instr &terminator,
                            int stateIndex,
-                           const std::vector<const BasicBlock *> &handlerStack,
-                           bool hasResumeToken) {
-        const std::vector<const BasicBlock *> successors = model.gatherSuccessors(terminator);
-        for (const BasicBlock *succ : successors) {
+                           const std::vector<HandlerFrame> &handlerStack,
+                           const ResumeTokenState &resumeToken) {
+        const std::vector<EhSuccessorEdge> successors = model.gatherSuccessorEdges(terminator);
+        for (const EhSuccessorEdge &edge : successors) {
+            auto nextToken = transitionResumeTokenForEdge(model,
+                                                          sourceBlock,
+                                                          terminator,
+                                                          edge,
+                                                          resumeToken,
+                                                          handlerStack,
+                                                          diags,
+                                                          states,
+                                                          stateIndex);
+            if (!nextToken)
+                return;
+
             StackState nextState;
-            nextState.block = succ;
+            nextState.block = edge.target;
             nextState.handlerStack = handlerStack;
-            nextState.hasResumeToken =
-                terminator.op == Opcode::ResumeLabel ? false : hasResumeToken;
+            nextState.resumeToken = *nextToken;
             nextState.parent = stateIndex;
             nextState.depth = static_cast<int>(handlerStack.size());
             enqueueState(std::move(nextState));
@@ -468,8 +681,8 @@ class HandlerCoverageTraversal {
   private:
     struct State {
         const BasicBlock *block = nullptr;
-        std::vector<const BasicBlock *> handlerStack;
-        bool hasResumeToken = false;
+        std::vector<HandlerFrame> handlerStack;
+        ResumeTokenState resumeToken;
     };
 
     /// @brief Update traversal state in response to an EH-related instruction.
@@ -482,9 +695,9 @@ class HandlerCoverageTraversal {
     /// @param state Mutable traversal snapshot describing the active handlers.
     /// @return Pointer to the instruction when it terminates the block; null otherwise.
     const Instr *processEhInstruction(const Instr &instr, const BasicBlock &bb, State &state) {
-        if (!state.hasResumeToken && !state.handlerStack.empty() &&
+        if (!state.resumeToken.active && !state.handlerStack.empty() &&
             isPotentialFaultingOpcode(instr.op)) {
-            if (const BasicBlock *handlerBlock = state.handlerStack.back()) {
+            if (const BasicBlock *handlerBlock = state.handlerStack.back().handler) {
                 // Heuristic: when the current block immediately branches to a trap block,
                 // attribute coverage to the trap successor instead of the current block.
                 if (const Instr *term = model.findTerminator(bb)) {
@@ -510,16 +723,20 @@ class HandlerCoverageTraversal {
         }
 
         if (instr.op == Opcode::EhPush) {
-            const BasicBlock *handlerBlock = nullptr;
-            if (!instr.labels.empty())
-                handlerBlock = model.findBlock(instr.labels[0]);
-            state.handlerStack.push_back(handlerBlock);
+            HandlerFrame frame;
+            if (const EhHandlerPushSite *site = model.findPushSite(instr)) {
+                frame.handler = site->handler;
+                frame.pushSiteId = site->id;
+            } else if (!instr.labels.empty()) {
+                frame.handler = model.findBlock(instr.labels[0]);
+            }
+            state.handlerStack.push_back(frame);
         } else if (instr.op == Opcode::EhPop) {
             if (!state.handlerStack.empty())
                 state.handlerStack.pop_back();
         } else if (instr.op == Opcode::ResumeSame || instr.op == Opcode::ResumeNext ||
                    instr.op == Opcode::ResumeLabel) {
-            state.hasResumeToken = false;
+            state.resumeToken = {};
         }
 
         if (isTerminator(instr.op))
@@ -542,17 +759,25 @@ class HandlerCoverageTraversal {
         if (state.handlerStack.empty())
             return;
 
-        const BasicBlock *handlerBlock = state.handlerStack.back();
+        const HandlerFrame &frame = state.handlerStack.back();
+        const BasicBlock *handlerBlock = frame.handler;
         if (!handlerBlock)
             return;
 
-        if (!state.hasResumeToken)
+        if (!state.resumeToken.active)
             coverage[handlerBlock].insert(&bb);
+
+        const auto tokenParam = model.handlerResumeTokenParam(*handlerBlock);
+        if (!tokenParam)
+            return;
 
         State nextState;
         nextState.block = handlerBlock;
         nextState.handlerStack = handlerStackAfterDispatch(state.handlerStack);
-        nextState.hasResumeToken = true;
+        nextState.resumeToken.originHandler = handlerBlock;
+        nextState.resumeToken.pushSiteId = frame.pushSiteId;
+        nextState.resumeToken.currentTemp = *tokenParam;
+        nextState.resumeToken.active = true;
         enqueueState(nextState, worklist);
     }
 
@@ -566,12 +791,28 @@ class HandlerCoverageTraversal {
     void enqueueSuccessors(const Instr &terminator,
                            const State &state,
                            std::deque<State> &worklist) {
-        const std::vector<const BasicBlock *> successors = model.gatherSuccessors(terminator);
-        for (const BasicBlock *succ : successors) {
+        const std::vector<EhSuccessorEdge> successors = model.gatherSuccessorEdges(terminator);
+        for (const EhSuccessorEdge &edge : successors) {
             State nextState = state;
-            nextState.block = succ;
-            if (terminator.op == Opcode::ResumeLabel)
-                nextState.hasResumeToken = false;
+            nextState.block = edge.target;
+            if (edge.kind == EhEdgeKind::Resume) {
+                nextState.resumeToken = {};
+            } else if (edge.target) {
+                if (auto tokenParam = model.handlerResumeTokenParam(*edge.target);
+                    tokenParam && state.resumeToken.active) {
+                    if (const std::vector<Value> *args = branchArgsForEdge(terminator, edge)) {
+                        for (std::size_t i = 0; i < edge.target->params.size() && i < args->size();
+                             ++i) {
+                            if (edge.target->params[i].id == *tokenParam &&
+                                (*args)[i].kind == Value::Kind::Temp &&
+                                (*args)[i].id == state.resumeToken.currentTemp) {
+                                nextState.resumeToken.currentTemp = *tokenParam;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
             enqueueState(nextState, worklist);
         }
     }
@@ -586,7 +827,7 @@ class HandlerCoverageTraversal {
         if (!state.block)
             return;
 
-        const std::string key = encodeStateKey(state.handlerStack, state.hasResumeToken);
+        const std::string key = encodeStateKey(state.handlerStack, state.resumeToken);
         if (!visited[state.block].insert(key).second)
             return;
 
@@ -602,7 +843,7 @@ class HandlerCoverageTraversal {
         if (!state.block)
             return;
 
-        const std::string key = encodeStateKey(state.handlerStack, state.hasResumeToken);
+        const std::string key = encodeStateKey(state.handlerStack, state.resumeToken);
         if (!visited[state.block].insert(key).second)
             return;
 
@@ -1014,13 +1255,9 @@ il::support::Expected<void> checkUnreachableHandlers(const EhModel &model) {
 
     // Collect all handler blocks referenced by eh.push instructions
     std::unordered_set<const BasicBlock *> handlerBlocks;
-    for (const auto &bb : model.function().blocks) {
-        for (const auto &instr : bb.instructions) {
-            if (instr.op == Opcode::EhPush && !instr.labels.empty()) {
-                if (const BasicBlock *handlerBlock = model.findBlock(instr.labels[0]))
-                    handlerBlocks.insert(handlerBlock);
-            }
-        }
+    for (const EhHandlerPushSite &site : model.pushSites()) {
+        if (site.handler)
+            handlerBlocks.insert(site.handler);
     }
 
     if (handlerBlocks.empty())
@@ -1034,7 +1271,7 @@ il::support::Expected<void> checkUnreachableHandlers(const EhModel &model) {
     reachable.insert(model.entry());
 
     // Track which handlers are on the EH stack at each block for trap edges
-    std::unordered_map<const BasicBlock *, std::vector<const BasicBlock *>> blockHandlerStack;
+    std::unordered_map<const BasicBlock *, std::vector<HandlerFrame>> blockHandlerStack;
     blockHandlerStack[model.entry()] = {};
 
     // Track handlers that SHOULD be reachable (have faulting instructions in protected region)
@@ -1044,13 +1281,19 @@ il::support::Expected<void> checkUnreachableHandlers(const EhModel &model) {
         const BasicBlock *bb = worklist.front();
         worklist.pop_front();
 
-        std::vector<const BasicBlock *> currentStack = blockHandlerStack[bb];
+        std::vector<HandlerFrame> currentStack = blockHandlerStack[bb];
 
         // Process instructions to track EH stack and detect potential faults
         for (const auto &instr : bb->instructions) {
             if (instr.op == Opcode::EhPush && !instr.labels.empty()) {
-                if (const BasicBlock *handlerBlock = model.findBlock(instr.labels[0]))
-                    currentStack.push_back(handlerBlock);
+                HandlerFrame frame;
+                if (const EhHandlerPushSite *site = model.findPushSite(instr)) {
+                    frame.handler = site->handler;
+                    frame.pushSiteId = site->id;
+                } else {
+                    frame.handler = model.findBlock(instr.labels[0]);
+                }
+                currentStack.push_back(frame);
             } else if (instr.op == Opcode::EhPop) {
                 if (!currentStack.empty())
                     currentStack.pop_back();
@@ -1058,7 +1301,7 @@ il::support::Expected<void> checkUnreachableHandlers(const EhModel &model) {
             // Any potentially faulting instruction marks the current handler as
             // "should be reachable" since it could trap at runtime
             else if (!currentStack.empty() && isPotentialFaultingOpcode(instr.op)) {
-                const BasicBlock *handlerBlock = currentStack.back();
+                const BasicBlock *handlerBlock = currentStack.back().handler;
                 if (handlerBlock) {
                     shouldBeReachable.insert(handlerBlock);
                     if (reachable.insert(handlerBlock).second) {
@@ -1082,7 +1325,7 @@ il::support::Expected<void> checkUnreachableHandlers(const EhModel &model) {
             // Exception edge: trap/trap_from_err can transfer to handler
             if (terminator->op == Opcode::Trap || terminator->op == Opcode::TrapFromErr) {
                 if (!currentStack.empty()) {
-                    const BasicBlock *handlerBlock = currentStack.back();
+                    const BasicBlock *handlerBlock = currentStack.back().handler;
                     if (handlerBlock) {
                         shouldBeReachable.insert(handlerBlock);
                         if (reachable.insert(handlerBlock).second) {

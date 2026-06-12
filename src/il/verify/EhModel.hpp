@@ -32,10 +32,43 @@
 #include "il/core/Instr.hpp"
 #include "il/verify/BlockMap.hpp"
 
+#include <cstddef>
+#include <optional>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace il::verify {
+
+/// @brief Classifies the semantic kind of an EH-aware successor edge.
+/// @details Normal edges are ordinary branch-like transfers (`br`, `cbr`, and
+///          `switch.i32`). Resume edges are produced by `resume.label` after the
+///          resume token has been consumed.
+enum class EhEdgeKind {
+    Normal, ///< Ordinary control-flow transfer that preserves active EH state.
+    Resume  ///< `resume.label` transfer after consuming the active resume token.
+};
+
+/// @brief Resolved successor edge for an EH-aware control transfer.
+/// @details Stores both the target block and the index of the label on the
+///          source instruction so callers can inspect the matching branch
+///          argument bundle. Missing labels are omitted by @ref EhModel.
+struct EhSuccessorEdge {
+    const il::core::BasicBlock *target = nullptr; ///< Resolved destination block.
+    std::size_t labelIndex = 0;                   ///< Index into Instr::labels/brArgs.
+    EhEdgeKind kind = EhEdgeKind::Normal;         ///< Semantic transfer kind.
+};
+
+/// @brief Metadata describing one concrete `eh.push` instruction.
+/// @details A handler label may be pushed from multiple dynamic scopes. Keeping
+///          a stable push-site id lets verifier traversals distinguish those
+///          scopes even when they share the same handler block.
+struct EhHandlerPushSite {
+    std::size_t id = 0;                            ///< Stable ordinal within the function.
+    const il::core::BasicBlock *block = nullptr;   ///< Block containing the push.
+    const il::core::Instr *instr = nullptr;        ///< `eh.push` instruction.
+    const il::core::BasicBlock *handler = nullptr; ///< Resolved handler target.
+};
 
 /// @brief Canonical representation of a function's exception-handling graph.
 class EhModel {
@@ -78,6 +111,52 @@ class EhModel {
     /// @return Pointer to the terminator or nullptr when absent.
     [[nodiscard]] const il::core::Instr *findTerminator(const il::core::BasicBlock &block) const;
 
+    /// @brief Determine whether @p block is handler-shaped.
+    /// @details A handler-shaped block is one whose first instruction is
+    ///          `eh.entry`. Signature correctness is enforced by
+    ///          ExceptionHandlerAnalysis before EH checks run; this query only
+    ///          classifies the CFG shape.
+    /// @param block Candidate basic block.
+    /// @return True when the block begins with `eh.entry`.
+    [[nodiscard]] bool isHandlerBlock(const il::core::BasicBlock &block) const noexcept;
+
+    /// @brief Return the canonical resume-token parameter id for a handler block.
+    /// @details The helper returns a value only for blocks with the standard
+    ///          `(%err:Error, %tok:ResumeTok)` shape. It is used by EH
+    ///          provenance checks to confirm that a branch forwards the active
+    ///          token into the destination's `%tok` parameter.
+    /// @param block Handler-shaped block to inspect.
+    /// @return Parameter id for `%tok`, or no value when the block is not a
+    ///         canonical handler block.
+    [[nodiscard]] std::optional<unsigned> handlerResumeTokenParam(
+        const il::core::BasicBlock &block) const noexcept;
+
+    /// @brief Enumerate resolved successor edges for a terminator.
+    /// @details Unlike @ref gatherSuccessors, this preserves the label index and
+    ///          distinguishes normal branch edges from `resume.label` edges.
+    ///          Malformed or unknown labels are ignored so structural verifier
+    ///          diagnostics can be emitted by their existing checks.
+    /// @param terminator Terminator instruction whose outgoing edges are requested.
+    /// @return Resolved successor edge records in label order.
+    [[nodiscard]] std::vector<EhSuccessorEdge> gatherSuccessorEdges(
+        const il::core::Instr &terminator) const;
+
+    /// @brief Find the push-site metadata for a concrete `eh.push` instruction.
+    /// @details The instruction address must come from the function used to
+    ///          construct this model. Unknown instructions return null, which
+    ///          allows callers to ignore malformed pushes already diagnosed by
+    ///          structural verification.
+    /// @param instr Candidate instruction.
+    /// @return Push-site metadata when @p instr is an `eh.push` known to this model.
+    [[nodiscard]] const EhHandlerPushSite *findPushSite(
+        const il::core::Instr &instr) const noexcept;
+
+    /// @brief Access all concrete handler push sites in declaration order.
+    /// @return Immutable vector of push-site metadata.
+    [[nodiscard]] const std::vector<EhHandlerPushSite> &pushSites() const noexcept {
+        return handlerPushSites;
+    }
+
     /// @brief Access the internal label-to-block table.
     /// @return Reference to the label map.
     /// @note The returned map uses string_view keys referencing BasicBlock::label
@@ -93,6 +172,8 @@ class EhModel {
     /// @note Keys reference BasicBlock::label strings owned by the Function.
     ///       This map must not outlive the Function passed to the constructor.
     BlockMap blocks;
+    std::vector<EhHandlerPushSite> handlerPushSites;
+    std::unordered_map<const il::core::Instr *, std::size_t> pushSiteByInstr;
     bool hasEh = false;
 };
 

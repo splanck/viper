@@ -13,6 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "il/api/expected_api.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
@@ -103,6 +104,20 @@ Module buildEhFixture() {
     return module;
 }
 
+/// @brief Parse a textual IL module for verifier regression tests.
+/// @details The helper asserts that parsing succeeds so individual test cases
+///          can focus on verifier behaviour. Verification is intentionally left
+///          to the caller because both positive and negative cases use it.
+/// @param source Complete textual IL module.
+/// @return Parsed module ready for verification.
+Module parseModuleOrDie(const std::string &source) {
+    std::istringstream input(source);
+    Module module;
+    auto parse = il::api::v2::parse_text_expected(input, module);
+    assert(parse && "test IL should parse");
+    return module;
+}
+
 std::string verifyAndCaptureMessage(Module &module) {
     auto result = il::verify::Verifier::verify(module);
     assert(!result && "verification should fail for negative cases");
@@ -156,6 +171,73 @@ int main() {
             std::fprintf(stderr, "%s\n", message.c_str());
         }
         assert(message.find("expected 1 successor") != std::string::npos);
+    }
+
+    {
+        Module module = parseModuleOrDie("il 0.2.0\n"
+                                         "func @typed_catch_continuation() -> void {\n"
+                                         "entry:\n"
+                                         "  eh.push ^dispatch\n"
+                                         "  trap\n"
+                                         "handler ^dispatch(%err:Error, %tok:ResumeTok):\n"
+                                         "  eh.entry\n"
+                                         "  br ^catch(%err, %tok)\n"
+                                         "handler ^catch(%err:Error, %tok:ResumeTok):\n"
+                                         "  eh.entry\n"
+                                         "  resume.label %tok, ^done\n"
+                                         "done:\n"
+                                         "  ret\n"
+                                         "}\n");
+        auto result = il::verify::Verifier::verify(module);
+        assert(result && "forwarding the active token to a handler continuation should verify");
+    }
+
+    {
+        Module module = parseModuleOrDie("il 0.2.0\n"
+                                         "func @direct_handler_entry(Error %err, ResumeTok %fake) "
+                                         "-> void {\n"
+                                         "entry:\n"
+                                         "  br ^handler(%err, %fake)\n"
+                                         "handler ^handler(%err:Error, %tok:ResumeTok):\n"
+                                         "  eh.entry\n"
+                                         "  resume.same %tok\n"
+                                         "}\n");
+        const std::string message = verifyAndCaptureMessage(module);
+        assert(message.find("handler block entry requires active resume token forwarding") !=
+               std::string::npos);
+    }
+
+    {
+        Module module = parseModuleOrDie("il 0.2.0\n"
+                                         "func @mismatched_handler_token(Error %outerErr, "
+                                         "ResumeTok %fake) -> void {\n"
+                                         "entry:\n"
+                                         "  eh.push ^dispatch\n"
+                                         "  trap\n"
+                                         "handler ^dispatch(%err:Error, %tok:ResumeTok):\n"
+                                         "  eh.entry\n"
+                                         "  br ^catch(%err, %fake)\n"
+                                         "handler ^catch(%err:Error, %tok:ResumeTok):\n"
+                                         "  eh.entry\n"
+                                         "  resume.same %tok\n"
+                                         "}\n");
+        const std::string message = verifyAndCaptureMessage(module);
+        assert(message.find("resume token does not match active handler provenance") !=
+               std::string::npos);
+    }
+
+    {
+        Module module = parseModuleOrDie("il 0.2.0\n"
+                                         "func @resume_token_escape() -> ResumeTok {\n"
+                                         "entry:\n"
+                                         "  eh.push ^handler\n"
+                                         "  trap\n"
+                                         "handler ^handler(%err:Error, %tok:ResumeTok):\n"
+                                         "  eh.entry\n"
+                                         "  ret %tok\n"
+                                         "}\n");
+        const std::string message = verifyAndCaptureMessage(module);
+        assert(message.find("resumetok may only be forwarded") != std::string::npos);
     }
 
     return 0;

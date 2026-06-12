@@ -26,8 +26,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_gui_codeeditor_internal.h"
 #include "rt_error.h"
+#include "rt_gui_codeeditor_internal.h"
 #include "rt_gui_internal.h"
 #include "rt_pixels.h"
 #include "rt_platform.h"
@@ -274,11 +274,11 @@ static int syn_is_keyword_ci(const char *word, size_t wlen, const char *const *t
 
 // ─── Zia language tokenizer ────────────────────────────────────────────────
 
-// Bridge into fe_zia's authoritative kKeywordTable (52 entries).
+// Bridge into zia_editor_services' authoritative kKeywordTable (52 entries).
 // Strong impl in src/frontends/zia/rt_zia_highlight.cpp; weak fallback in
-// src/runtime/core/rt_zia_highlight_stub.c returns 0 (no keyword) when fe_zia
-// is not linked. The zia binary force-loads fe_zia (see src/CMakeLists.txt)
-// so the strong implementation always wins for the IDE.
+// src/runtime/core/rt_zia_highlight_stub.c returns 0 (no keyword) when editor
+// services are not linked. The zia binary force-loads zia_editor_services
+// (see src/CMakeLists.txt) so the strong implementation always wins for the IDE.
 extern int rt_zia_is_keyword(const char *name, int64_t len);
 
 // Type names highlighted as types (teal). The real lexer doesn't separate

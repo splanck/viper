@@ -4,14 +4,16 @@
 // See LICENSE for license information.
 //
 // File: src/runtime/graphics/rt_zia_completion.h
-// Purpose: Runtime bridge declarations for the Zia language completion engine, provided by fe_zia
-// at link time via weak/strong symbol resolution.
+// Purpose: Runtime bridge declarations for the Zia language completion engine, provided by
+// zia_editor_services at link time via weak/strong symbol resolution.
 //
 // Key invariants:
-//   - Strong implementations live in src/frontends/zia/rt_zia_completion.cpp (fe_zia).
-//   - Weak stub implementations in viper_runtime allow linking without fe_zia and return
-//     protocol-shaped "completion unavailable" payloads.
-//   - Symbols are resolved at final link time when both fe_zia and viper_runtime are linked.
+//   - Strong implementations live in src/frontends/zia/rt_zia_completion.cpp
+//     (zia_editor_services).
+//   - Weak stub implementations in viper_runtime allow linking without zia_editor_services
+//     and return protocol-shaped "completion unavailable" payloads.
+//   - Symbols are resolved at final link time when both zia_editor_services and
+//     viper_runtime are linked.
 //   - Completion API takes source text, cursor line (1-based), and column (0-based).
 //
 // Ownership/Lifetime:
@@ -97,7 +99,8 @@ void *rt_zia_completion_begin_signature_info_for_file(rt_string source,
 /// @brief Run semantic analysis and return serialized diagnostics for editor tooling.
 /// @param source Zia source text (full file contents).
 /// @return One diagnostic per line encoded as severity\tline\tcol\tcode\tmessage.
-///         The weak runtime stub returns a warning diagnostic explaining that fe_zia is absent.
+///         The weak runtime stub returns a warning diagnostic explaining that editor services are
+///         absent.
 rt_string rt_zia_check(rt_string source);
 
 /// @brief Run semantic analysis with the real source file path for relative bind resolution.
@@ -121,7 +124,8 @@ void *rt_zia_toolchain_compile(rt_string source);
 void *rt_zia_toolchain_compile_for_file(rt_string source, rt_string file_path);
 
 /// @brief Create a project language index rooted at @p root.
-/// @return Opaque Viper.Zia.ProjectIndex.Handle object, or null when fe_zia is unavailable.
+/// @return Opaque Viper.Zia.ProjectIndex.Handle object, or null when editor services are
+///         unavailable.
 void *rt_zia_project_index_new(rt_string root);
 
 /// @brief Check whether @p handle is a live ProjectIndex handle.

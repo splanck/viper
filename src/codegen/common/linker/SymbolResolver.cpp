@@ -500,9 +500,9 @@ static bool preferArchiveDefinition(const std::string &name, LinkPlatform platfo
         return false;
 
     // The Zia completion bridge (rt_zia_*) ships a non-weak stub in
-    // viper_rt_base on MSVC (RT_WEAK expands to nothing). When the fe_zia
-    // frontend is force-loaded its strong definitions are added first; treat a
-    // later duplicate strong stub definition as the same "runtime archive
+    // viper_rt_base on MSVC (RT_WEAK expands to nothing). When
+    // zia_editor_services is force-loaded its strong definitions are added
+    // first; treat a later duplicate strong stub definition as the same "runtime archive
     // provides an overridable shim" case the CRT names below already use, so it
     // is preferred-away rather than reported as multiply defined.
     if (name.rfind("rt_zia_", 0) == 0)

@@ -40,6 +40,12 @@ std::string_view diagCodeToPrefix(il::verify::VerifyDiagCode code) {
             return "verify.eh.unreleased";
         case VerifyDiagCode::EhResumeTokenMissing:
             return "verify.eh.resume_token_missing";
+        case VerifyDiagCode::EhResumeTokenMismatch:
+            return "verify.eh.resume_token_mismatch";
+        case VerifyDiagCode::EhHandlerInvalidEntry:
+            return "verify.eh.handler_invalid_entry";
+        case VerifyDiagCode::EhResumeTokenEscape:
+            return "verify.eh.resume_token_escape";
         case VerifyDiagCode::EhResumeLabelInvalidTarget:
             return "verify.eh.resume_label_target";
         case VerifyDiagCode::EhHandlerNotDominant:

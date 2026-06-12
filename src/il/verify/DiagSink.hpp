@@ -37,6 +37,9 @@ enum class VerifyDiagCode {
     EhStackUnderflow,           ///< Encountered eh.pop with an empty handler stack.
     EhStackLeak,                ///< Execution left a function with handlers still active.
     EhResumeTokenMissing,       ///< Resume.* executed without an active resume token.
+    EhResumeTokenMismatch,      ///< Resume token does not match active EH provenance.
+    EhHandlerInvalidEntry,      ///< Handler block entered without verified token forwarding.
+    EhResumeTokenEscape,        ///< Resume token used outside allowed EH control flow.
     EhResumeLabelInvalidTarget, ///< resume.label target does not postdominate the faulting block.
     EhHandlerNotDominant,       ///< Handler block does not dominate a protected faulting block.
     EhHandlerUnreachable        ///< Handler block is not reachable from function entry.

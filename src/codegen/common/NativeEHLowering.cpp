@@ -78,6 +78,7 @@ struct ScopeInfo {
     std::string handlerLabel;
     unsigned slotTemp = 0;
     std::vector<int> outerStack;
+    bool hasOuterStack = false;
     std::vector<SiteInfo> sites;
 };
 
@@ -241,6 +242,28 @@ static Instr makeCBr(Value cond, const std::string &trueLabel, const std::string
     return instr;
 }
 
+/// @brief Build a conditional branch whose true edge forwards block arguments.
+/// @details Native EH resume validation may need to guard a `resume.label`
+///          target that itself expects block parameters. The false edge always
+///          transfers to a synthetic dispatch/failure block without arguments.
+/// @param cond Condition value deciding whether validation succeeded.
+/// @param trueLabel Destination reached when @p cond is true.
+/// @param trueArgs Branch arguments forwarded to @p trueLabel.
+/// @param falseLabel Destination reached when validation fails.
+/// @return Conditional branch instruction with explicit branch argument bundles.
+static Instr makeCBrWithTrueArgs(Value cond,
+                                 const std::string &trueLabel,
+                                 std::vector<Value> trueArgs,
+                                 const std::string &falseLabel) {
+    Instr instr;
+    instr.op = Opcode::CBr;
+    instr.type = voidTy();
+    instr.operands.push_back(std::move(cond));
+    instr.addBranchTarget(trueLabel, std::move(trueArgs));
+    instr.addBranchTarget(falseLabel);
+    return instr;
+}
+
 static Instr makeTrapFromErr(int32_t code) {
     Instr instr;
     instr.op = Opcode::TrapFromErr;
@@ -301,10 +324,82 @@ static bool rewriteErrGetterForHandlerToken(
 static std::vector<int> handlerEntryStackFor(const std::vector<ScopeInfo> &scopes,
                                              const std::string &handlerLabel) {
     for (const auto &scope : scopes) {
-        if (scope.handlerLabel == handlerLabel)
+        if (scope.handlerLabel == handlerLabel && scope.hasOuterStack)
             return scope.outerStack;
     }
     return {};
+}
+
+/// @brief Seed a block with the first EH stack known at entry.
+/// @details The native lowering currently represents one EH stack per block.
+///          Valid structured IL reaches ordinary joins with the same stack, and
+///          handler helper blocks are seeded through the handler that dispatched
+///          to them. If an already-seeded block is seen again, the first stack
+///          is kept to preserve deterministic lowering.
+/// @param entryStacks Per-block entry stack table being populated.
+/// @param worklist Blocks whose outgoing edges still need propagation.
+/// @param blockIndex Index of the block being seeded.
+/// @param stack EH stack at the beginning of the block.
+static void seedEntryStack(std::vector<std::optional<std::vector<int>>> &entryStacks,
+                           std::deque<std::size_t> &worklist,
+                           std::size_t blockIndex,
+                           const std::vector<int> &stack) {
+    if (entryStacks[blockIndex].has_value())
+        return;
+    entryStacks[blockIndex] = stack;
+    worklist.push_back(blockIndex);
+}
+
+/// @brief Propagate native EH stack state across ordinary CFG edges.
+/// @details The first pass starts at function entry and records each `eh.push`
+///          scope's outer stack. A second pass seeds pushed handlers with that
+///          post-dispatch stack, then carries it through typed-catch, finally,
+///          and rethrow helper blocks. This gives trapping instructions inside
+///          handler helper blocks a concrete outer native frame site.
+/// @param fn Function whose blocks are being analysed.
+/// @param blockIndex Label-to-index map for successor resolution.
+/// @param pushToScope Map from concrete `eh.push` instructions to scope ids.
+/// @param scopes Mutable native EH scopes; outer stacks are filled in place.
+/// @param entryStacks Per-block entry stacks populated by the traversal.
+/// @param worklist Initial blocks to process, consumed by the traversal.
+static void propagateEntryStacks(const Function &fn,
+                                 const std::unordered_map<std::string, std::size_t> &blockIndex,
+                                 const std::unordered_map<PushKey, int, PushKeyHash> &pushToScope,
+                                 std::vector<ScopeInfo> &scopes,
+                                 std::vector<std::optional<std::vector<int>>> &entryStacks,
+                                 std::deque<std::size_t> &worklist) {
+    while (!worklist.empty()) {
+        const std::size_t bi = worklist.front();
+        worklist.pop_front();
+        if (!entryStacks[bi].has_value())
+            continue;
+
+        auto state = *entryStacks[bi];
+        const auto &bb = fn.blocks[bi];
+        for (std::size_t ii = 0; ii < bb.instructions.size(); ++ii) {
+            const auto &instr = bb.instructions[ii];
+            if (instr.op == Opcode::EhPush) {
+                auto it = pushToScope.find(PushKey{bi, ii});
+                if (it != pushToScope.end()) {
+                    auto &scope = scopes[static_cast<std::size_t>(it->second)];
+                    if (!scope.hasOuterStack) {
+                        scope.outerStack = state;
+                        scope.hasOuterStack = true;
+                    }
+                    state.push_back(it->second);
+                }
+            } else if (instr.op == Opcode::EhPop) {
+                if (!state.empty())
+                    state.pop_back();
+            }
+        }
+
+        if (bb.instructions.empty())
+            continue;
+        const auto &term = bb.instructions.back();
+        for (const std::size_t succ : normalSuccessors(term, blockIndex))
+            seedEntryStack(entryStacks, worklist, succ, state);
+    }
 }
 
 static RewrittenFunction rewriteFunction(Module &module, Function &fn) {
@@ -346,42 +441,18 @@ static RewrittenFunction rewriteFunction(Module &module, Function &fn) {
     ensureRuntimeExterns(module);
 
     std::vector<std::optional<std::vector<int>>> entryStacks(fn.blocks.size());
-    entryStacks[0] = std::vector<int>{};
     std::deque<std::size_t> worklist;
-    worklist.push_back(0);
+    seedEntryStack(entryStacks, worklist, 0, {});
+    propagateEntryStacks(fn, blockIndex, pushToScope, scopes, entryStacks, worklist);
 
-    while (!worklist.empty()) {
-        const std::size_t bi = worklist.front();
-        worklist.pop_front();
-        auto state = *entryStacks[bi];
-
-        const auto &bb = fn.blocks[bi];
-        for (std::size_t ii = 0; ii < bb.instructions.size(); ++ii) {
-            const auto &instr = bb.instructions[ii];
-            if (instr.op == Opcode::EhPush) {
-                auto it = pushToScope.find(PushKey{bi, ii});
-                if (it != pushToScope.end()) {
-                    auto &scope = scopes[static_cast<std::size_t>(it->second)];
-                    if (scope.outerStack.empty())
-                        scope.outerStack = state;
-                    state.push_back(it->second);
-                }
-            } else if (instr.op == Opcode::EhPop) {
-                if (!state.empty())
-                    state.pop_back();
-            }
-        }
-
-        if (bb.instructions.empty())
+    for (const auto &scope : scopes) {
+        if (!scope.hasOuterStack)
             continue;
-        const auto &term = bb.instructions.back();
-        for (const std::size_t succ : normalSuccessors(term, blockIndex)) {
-            if (!entryStacks[succ].has_value()) {
-                entryStacks[succ] = state;
-                worklist.push_back(succ);
-            }
-        }
+        auto handlerIt = blockIndex.find(scope.handlerLabel);
+        if (handlerIt != blockIndex.end())
+            seedEntryStack(entryStacks, worklist, handlerIt->second, scope.outerStack);
     }
+    propagateEntryStacks(fn, blockIndex, pushToScope, scopes, entryStacks, worklist);
 
     const std::string invalidResumeLabel = fn.name + ".__neh.invalid_resume";
     int64_t nextSyntheticSiteId = 1;
@@ -575,12 +646,53 @@ static RewrittenFunction rewriteFunction(Module &module, Function &fn) {
                 handlerSiteParam.find(orig.label) != handlerSiteParam.end()) {
                 rewritten.changed = true;
                 if (instr.op == Opcode::ResumeLabel) {
-                    current.instructions.push_back(
-                        makeBr(instr.labels.empty() ? invalidResumeLabel : instr.labels[0],
-                               instr.brArgs.empty() ? std::vector<Value>{} : instr.brArgs[0]));
-                    current.terminated = true;
-                    appendBlock(std::move(current));
-                    current = {};
+                    const auto tokIt = handlerSiteParam.find(orig.label);
+                    const std::string targetLabel =
+                        instr.labels.empty() ? invalidResumeLabel : instr.labels[0];
+                    const std::vector<Value> targetArgs =
+                        (!instr.labels.empty() && !instr.brArgs.empty()) ? instr.brArgs[0]
+                                                                         : std::vector<Value>{};
+                    const auto siteListIt = handlerSites.find(orig.label);
+                    const std::vector<SiteInfo> &siteList =
+                        (siteListIt != handlerSites.end() && !siteListIt->second.empty())
+                            ? siteListIt->second
+                            : allSites;
+                    needsInvalidResume = true;
+                    if (tokIt == handlerSiteParam.end() || siteList.empty()) {
+                        current.instructions.push_back(makeBr(invalidResumeLabel));
+                        current.terminated = true;
+                        appendBlock(std::move(current));
+                        current = {};
+                    } else {
+                        std::string nextDispatchLabel = invalidResumeLabel;
+                        for (std::size_t si = 0; si < siteList.size(); ++si) {
+                            const auto &site = siteList[si];
+                            const std::string fallback = (si + 1 < siteList.size())
+                                                             ? newLabel("resume_label_dispatch")
+                                                             : invalidResumeLabel;
+                            BasicBlock dispatch;
+                            if (si == 0) {
+                                dispatch = std::move(current);
+                            } else {
+                                dispatch.label = nextDispatchLabel;
+                            }
+                            const unsigned cmpTemp =
+                                reserveTemp(fn, "__neh.resume.label.cmp." + std::to_string(si));
+                            Instr cmp;
+                            cmp.result = cmpTemp;
+                            cmp.op = Opcode::ICmpEq;
+                            cmp.type = i1Ty();
+                            cmp.operands.push_back(Value::temp(tokIt->second));
+                            cmp.operands.push_back(Value::constInt(site.siteId));
+                            dispatch.instructions.push_back(std::move(cmp));
+                            dispatch.instructions.push_back(makeCBrWithTrueArgs(
+                                Value::temp(cmpTemp), targetLabel, targetArgs, fallback));
+                            dispatch.terminated = true;
+                            appendBlock(std::move(dispatch));
+                            nextDispatchLabel = fallback;
+                        }
+                        current = {};
+                    }
                 } else {
                     const auto tokIt = handlerSiteParam.find(orig.label);
                     needsInvalidResume = true;

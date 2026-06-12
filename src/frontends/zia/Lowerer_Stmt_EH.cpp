@@ -98,9 +98,6 @@ static int trapKindFromName(const std::string &name) {
 }
 
 static constexpr int kErrRuntimeError = 9;
-static constexpr const char *kErrorRaiseKind = "Viper.Error.RaiseKind";
-static constexpr const char *kErrorGetThrowMsg = "Viper.Error.GetThrowMsg";
-static constexpr const char *kErrorClearThrowMsg = "Viper.Error.ClearThrowMsg";
 
 void Lowerer::emitEhPop() {
     il::core::Instr ehPopInstr;
@@ -476,7 +473,7 @@ void Lowerer::lowerThrowStmt(ThrowStmt *stmt) {
         Value msgStr = emitToString(result.value, throwType);
 
         // Store the message via rt_throw_msg_set for catch(e) retrieval.
-        emitCall("Viper.Error.SetThrowMsg", {msgStr});
+        emitCall(kErrorSetThrowMsg, {msgStr});
     }
 
     // Emit a RuntimeError trap for user-visible throw statements. Plain IL

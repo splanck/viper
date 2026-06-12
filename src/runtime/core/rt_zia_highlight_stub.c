@@ -8,20 +8,21 @@
 // File: src/runtime/core/rt_zia_highlight_stub.c
 // Purpose: Weak-symbol stub for the Zia syntax-highlight keyword bridge. The
 //          real implementation lives in src/frontends/zia/rt_zia_highlight.cpp
-//          (part of fe_zia) and consults the authoritative kKeywordTable.
+//          (part of zia_editor_services) and consults the authoritative kKeywordTable.
 //          When a test binary or other consumer links viper_runtime without
-//          fe_zia, the linker falls back to this stub which conservatively
-//          reports "not a keyword" for every identifier.
+//          editor services, the linker falls back to this stub which
+//          conservatively reports "not a keyword" for every identifier.
 //
 // Key invariants:
 //   - The stub uses __attribute__((weak)) on Clang/GCC (macOS, Linux); on
 //     MSVC the macro expands to nothing because production Windows builds
-//     always link fe_zia. (Mirrors the pattern in rt_zia_completion_stub.c.)
+//     always link zia_editor_services. (Mirrors the pattern in
+//     rt_zia_completion_stub.c.)
 //   - rt_zia_is_keyword stub returns 0 unconditionally. The highlighter
 //     gracefully degrades to "no keyword coloring" rather than failing to
 //     link or crashing.
-//   - If fe_zia is linked, this stub is overridden; the strong symbol in
-//     rt_zia_highlight.cpp takes precedence.
+//   - If zia_editor_services is linked, this stub is overridden; the strong
+//     symbol in rt_zia_highlight.cpp takes precedence.
 //
 // Ownership/Lifetime:
 //   - No allocation, no state. Pure function.
@@ -36,13 +37,13 @@
 #ifndef _MSC_VER
 #define RT_WEAK __attribute__((weak))
 #else
-// MSVC: production Windows builds always link fe_zia, so no weak fallback
-// is needed. A duplicate-symbol error here is louder than a silent stub.
+// MSVC: production Windows builds always link zia_editor_services, so no weak
+// fallback is needed. A duplicate-symbol error here is louder than a silent stub.
 #define RT_WEAK
 #endif
 
 /// @brief Weak stub: report no identifier as a keyword.
-/// Overridden by rt_zia_highlight.cpp when fe_zia is linked.
+/// Overridden by rt_zia_highlight.cpp when zia_editor_services is linked.
 RT_WEAK int rt_zia_is_keyword(const char *name, int64_t len) {
     (void)name;
     (void)len;

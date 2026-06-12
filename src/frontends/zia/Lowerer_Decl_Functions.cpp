@@ -1212,7 +1212,7 @@ void Lowerer::lowerDestructorDecl(DestructorDecl &decl, const std::string &typeN
             if (field.isWeak) {
                 Value fieldAddr = emitGEP(selfPtr, static_cast<int64_t>(field.offset));
                 Value fieldValue = emitLoad(fieldAddr, Type(Type::Kind::Ptr));
-                emitCall("Viper.Memory.WeakRef.Free", {fieldValue});
+                emitCall(kMemoryWeakRefFree, {fieldValue});
                 continue;
             }
             Type ilFieldType = mapType(field.type);

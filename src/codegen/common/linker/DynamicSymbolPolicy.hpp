@@ -86,15 +86,16 @@ inline bool isKnownCppRuntimeDynamicSymbol(const std::string &name) {
         "ZTVSt",
         "ZTTSt",
         // libc++abi base RTTI vtables / type-infos (__cxxabiv1::*). Pulled in
-        // by C++ frontend code embedded via fe_zia; supplied by libc++abi,
-        // which libc++.1.dylib re-exports on macOS.
+        // by embedded C++ editor services; supplied by libc++abi, which
+        // libc++.1.dylib re-exports on macOS.
         "ZTVN10__cxxabiv",
         "ZTIN10__cxxabiv",
         "ZTSN10__cxxabiv",
         // Fundamental-type RTTI (typeinfo for void/int/double/...) emitted by
-        // C++ frontend code; supplied by libc++abi. The single trailing
+        // C++ editor-service code; supplied by libc++abi. The single trailing
         // builtin-code letter keeps these from matching class type-infos
-        // (`ZTIN...` / `ZTI<len>...`), which fe_zia defines itself.
+        // (`ZTIN...` / `ZTI<len>...`), which the editor-service closure defines
+        // itself.
         "ZTIv",
         "ZTIb",
         "ZTIc",

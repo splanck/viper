@@ -40,7 +40,8 @@ TEST(IL, InvalidEhTests) {
     const std::array<InvalidCase, 3> cases = {{
         {"unbalanced_push_pop.il", {"verify.eh.unreleased", "unmatched eh.push depth"}},
         {"resume_without_token.il",
-         {"verify.eh.resume_token_missing", "resume.* requires active resume token"}},
+         {"verify.eh.handler_invalid_entry",
+          "handler block entry requires active resume token forwarding"}},
         {"resume_label_not_postdom.il",
          {"verify.eh.resume_label_target", "must postdominate block"}},
     }};

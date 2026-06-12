@@ -493,23 +493,23 @@ LowerResult Lowerer::lowerTry(TryExpr *expr) {
 
         auto resultUnwrapCallee = [](TypeRef type) -> const char * {
             if (!type)
-                return "Viper.Result.Unwrap";
+                return kResultUnwrap;
             switch (type->kind) {
                 case TypeKindSem::String:
-                    return "Viper.Result.UnwrapStr";
+                    return kResultUnwrapStr;
                 case TypeKindSem::Integer:
                 case TypeKindSem::Enum:
-                    return "Viper.Result.UnwrapI64";
+                    return kResultUnwrapI64;
                 case TypeKindSem::Number:
-                    return "Viper.Result.UnwrapF64";
+                    return kResultUnwrapF64;
                 default:
-                    return "Viper.Result.Unwrap";
+                    return kResultUnwrap;
             }
         };
 
         size_t okIdx = createBlock("try.result_ok");
         size_t errIdx = createBlock("try.result_err");
-        Value isOk = emitCallRet(Type(Type::Kind::I1), "Viper.Result.get_IsOk", {operand.value});
+        Value isOk = emitCallRet(Type(Type::Kind::I1), kResultGetIsOk, {operand.value});
         emitCBr(isOk, okIdx, errIdx);
 
         setBlock(errIdx);
@@ -519,7 +519,7 @@ LowerResult Lowerer::lowerTry(TryExpr *expr) {
         Type ilSuccessType = mapType(successType);
         const char *callee = resultUnwrapCallee(successType);
         Type runtimeReturn =
-            std::string(callee) == "Viper.Result.Unwrap" ? Type(Type::Kind::Ptr) : ilSuccessType;
+            std::string_view(callee) == kResultUnwrap ? Type(Type::Kind::Ptr) : ilSuccessType;
         Value raw = emitCallRet(runtimeReturn, callee, {operand.value});
         if (runtimeReturn.kind == ilSuccessType.kind)
             return {raw, ilSuccessType};
