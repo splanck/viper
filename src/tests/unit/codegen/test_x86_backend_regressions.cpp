@@ -1652,7 +1652,12 @@ TEST(X86BackendRegressions, RegAllocPreservesCallerSavedLiveOutAcrossCall) {
     EXPECT_TRUE(preservedBeforeCall);
 }
 
-TEST(X86BackendRegressions, LivenessCfgIgnoresInternalSelectLabels) {
+TEST(X86BackendRegressions, LivenessCfgResolvesSplitLocalSelectLabels) {
+    // splitInternalLabelBlocks promotes in-block select/local labels to real
+    // blocks before register allocation; liveness then sees explicit edges.
+    // (Feeding liveness an in-block LABEL is now an internal compiler error —
+    // the per-block allocator state machine cannot model in-block control
+    // flow, so a leaked LABEL must fail loudly rather than miscompile.)
     MFunction fn{};
     fn.name = "local_branch_cfg";
 
@@ -1660,7 +1665,11 @@ TEST(X86BackendRegressions, LivenessCfgIgnoresInternalSelectLabels) {
     entry.label = ".L_local_branch_cfg_entry";
     entry.instructions = {
         MInstr::make(MOpcode::JCC, {makeImmOperand(1), makeLabelOperand(".Llocal_false")}),
-        MInstr::make(MOpcode::LABEL, {makeLabelOperand(".Llocal_false")}),
+        MInstr::make(MOpcode::JMP, {makeLabelOperand(".Llocal_false")})};
+
+    MBasicBlock localFalse{};
+    localFalse.label = ".Llocal_false";
+    localFalse.instructions = {
         MInstr::make(MOpcode::JMP, {makeLabelOperand(".L_local_branch_cfg_done")})};
 
     MBasicBlock accidental{};
@@ -1671,13 +1680,17 @@ TEST(X86BackendRegressions, LivenessCfgIgnoresInternalSelectLabels) {
     done.label = ".L_local_branch_cfg_done";
     done.instructions = {MInstr::make(MOpcode::RET)};
 
-    fn.blocks = {entry, accidental, done};
+    fn.blocks = {entry, localFalse, accidental, done};
 
     ra::LivenessAnalysis liveness;
     liveness.run(fn);
-    const auto &succs = liveness.successors(0);
-    ASSERT_EQ(succs.size(), 1u);
-    EXPECT_EQ(succs.front(), 2u);
+    const auto &entrySuccs = liveness.successors(0);
+    ASSERT_EQ(entrySuccs.size(), 1u);
+    EXPECT_EQ(entrySuccs.front(), 1u);
+
+    const auto &falseSuccs = liveness.successors(1);
+    ASSERT_EQ(falseSuccs.size(), 1u);
+    EXPECT_EQ(falseSuccs.front(), 3u);
 }
 
 TEST(X86BackendRegressions, InvalidConditionCodeThrowsDiagnosticException) {

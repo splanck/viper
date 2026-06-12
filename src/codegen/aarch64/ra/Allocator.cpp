@@ -598,6 +598,18 @@ void LinearAllocator::allocateBlock(MBasicBlock &bb) {
                 if (it != fprStates_.end() && it->second.hasPhys)
                     es.fpr[vid] = it->second.phys;
             }
+
+            // Publish the carried registers on the block itself: a
+            // single-predecessor successor may re-adopt these values straight
+            // from the registers without any instruction marking the carry,
+            // so post-RA block-local rewrites must treat them as live-out.
+            bb.carriedExitRegs.clear();
+            bb.carriedExitRegs.reserve(es.gpr.size() + es.fpr.size());
+            for (const auto &kv : es.gpr)
+                bb.carriedExitRegs.push_back(static_cast<uint16_t>(kv.second));
+            for (const auto &kv : es.fpr)
+                bb.carriedExitRegs.push_back(static_cast<uint16_t>(kv.second));
+            std::sort(bb.carriedExitRegs.begin(), bb.carriedExitRegs.end());
         }
 
         for (auto vid : loGPR) {

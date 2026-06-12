@@ -145,6 +145,14 @@ struct MInstr {
 struct MBasicBlock {
     std::string name;           ///< Block label (used for branches).
     std::vector<MInstr> instrs; ///< Instructions in program order.
+
+    /// Physical registers (PhysReg values) the register allocator may carry
+    /// live across this block's exit WITHOUT any instruction in this block
+    /// referencing them: a single-predecessor successor can re-adopt a value
+    /// directly from the register it occupied at this block's end. Post-RA
+    /// block-local rewrites must treat these registers as live-out — no
+    /// instruction marks their liveness. Populated during allocation; sorted.
+    std::vector<uint16_t> carriedExitRegs;
 };
 
 /// @brief A function in machine IR form.

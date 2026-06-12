@@ -181,7 +181,9 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats) {
     return propagated;
 }
 
-std::size_t removeDeadInstructions(std::vector<MInstr> &instrs, PeepholeStats &stats) {
+std::size_t removeDeadInstructions(std::vector<MInstr> &instrs,
+                                   PeepholeStats &stats,
+                                   const std::vector<uint16_t> *carriedExitRegs) {
     if (instrs.empty())
         return 0;
 
@@ -201,6 +203,16 @@ std::size_t removeDeadInstructions(std::vector<MInstr> &instrs, PeepholeStats &s
     for (uint32_t r = static_cast<uint32_t>(PhysReg::X19); r <= static_cast<uint32_t>(PhysReg::X28);
          ++r) {
         liveRegs.insert((static_cast<uint32_t>(RegClass::GPR) << 16) | r);
+    }
+
+    // Registers carried across the block exit by the allocator have no
+    // in-block use marking their liveness; treat them as live at exit.
+    if (carriedExitRegs != nullptr) {
+        for (uint16_t phys : *carriedExitRegs) {
+            const RegClass cls =
+                isGPR(static_cast<PhysReg>(phys)) ? RegClass::GPR : RegClass::FPR;
+            liveRegs.insert((static_cast<uint32_t>(cls) << 16) | phys);
+        }
     }
 
     std::vector<bool> toRemove(instrs.size(), false);

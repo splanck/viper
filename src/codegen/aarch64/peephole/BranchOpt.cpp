@@ -237,7 +237,10 @@ bool tryCbzCbnzFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStat
 /// @param idx    Index of the `CSET` to consider.
 /// @param stats  Peephole statistics counter (incremented on success).
 /// @return True if the fusion was applied at @p idx.
-bool tryCsetBranchFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats) {
+bool tryCsetBranchFusion(std::vector<MInstr> &instrs,
+                         std::size_t idx,
+                         PeepholeStats &stats,
+                         const std::vector<uint16_t> *carriedExitRegs) {
     if (idx >= instrs.size())
         return false;
 
@@ -251,6 +254,15 @@ bool tryCsetBranchFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeS
     const MOperand csetReg = csetInstr.ops[0];
     const char *cond = csetInstr.ops[1].cond;
     if (!cond)
+        return false;
+
+    // A CSET whose destination is carried live across the block's exit has an
+    // invisible consumer in a successor; the in-block deadness scan below
+    // cannot see it, so refuse the fusion outright.
+    if (carriedExitRegs != nullptr && csetReg.kind == MOperand::Kind::Reg && csetReg.reg.isPhys &&
+        std::binary_search(carriedExitRegs->begin(),
+                           carriedExitRegs->end(),
+                           csetReg.reg.idOrPhys))
         return false;
 
     for (std::size_t j = idx + 1; j < instrs.size(); ++j) {
