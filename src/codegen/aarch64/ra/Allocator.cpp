@@ -29,10 +29,12 @@
 
 #include "InstrBuilders.hpp"
 #include "OpcodeClassify.hpp"
+#include "RegClassify.hpp"
 #include "OperandRoles.hpp"
 #include "il/runtime/RuntimeNameMap.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <climits>
 #include <initializer_list>
@@ -104,7 +106,33 @@ PhysReg chooseEmergencyScratch(bool fprClass,
 // =========================================================================
 
 LinearAllocator::LinearAllocator(MFunction &fn, const TargetInfo &ti) : fn_(fn), ti_(ti), fb_(fn) {
-    pools_.build(ti);
+    // Argument registers are allocatable, except those whose INCOMING value is
+    // still consumed by the lowered code: a physical-register USE that is not
+    // preceded by a def in the same block reads ABI state (entry parameters,
+    // fast-path bodies), so handing that register to a vreg would clobber it.
+    // The scan is conservative (function-wide exclusion) but cheap and safe.
+    std::array<bool, 64> abiLiveIn{};
+    for (const auto &bb : fn.blocks) {
+        std::array<bool, 64> definedInBlock{};
+        for (const auto &mi : bb.instrs) {
+            for (std::size_t opIdx = 0; opIdx < mi.ops.size(); ++opIdx) {
+                const auto &op = mi.ops[opIdx];
+                if (op.kind != MOperand::Kind::Reg || !op.reg.isPhys)
+                    continue;
+                const auto ordinal = static_cast<std::size_t>(op.reg.idOrPhys);
+                if (ordinal >= abiLiveIn.size())
+                    continue;
+                const auto [isUse, isDef] = operandRoles(mi, opIdx);
+                if (isUse && !definedInBlock[ordinal] &&
+                    isArgRegister(static_cast<PhysReg>(op.reg.idOrPhys), ti))
+                    abiLiveIn[ordinal] = true;
+                if (isDef)
+                    definedInBlock[ordinal] = true;
+            }
+        }
+    }
+
+    pools_.build(ti, abiLiveIn);
     liveness_.run(fn);
 }
 
@@ -790,6 +818,9 @@ void LinearAllocator::handleCall(MInstr &ins, std::vector<MInstr> &rewritten) {
         rewritten.push_back(std::move(mi));
     for (const auto &[vreg, cls] : virtualCallOperands)
         retireCallOperandAfterCall(vreg, cls);
+    // Marshalled argument registers were held out of the pools while the call
+    // was in flight; the call has consumed them now.
+    releaseCallReserved();
     releaseScratch(callScratch);
     protectedOperandGPR_.clear();
     protectedOperandFPR_.clear();
@@ -797,6 +828,66 @@ void LinearAllocator::handleCall(MInstr &ins, std::vector<MInstr> &rewritten) {
     protectedPhysFPR_.clear();
     if (isArrayObjGet)
         pendingGetBarrier_ = true;
+}
+
+void LinearAllocator::evictPhysDefClobbers(const MInstr &ins, std::vector<MInstr> &prefix) {
+    for (std::size_t opIdx = 0; opIdx < ins.ops.size(); ++opIdx) {
+        const auto &op = ins.ops[opIdx];
+        if (op.kind != MOperand::Kind::Reg || !op.reg.isPhys)
+            continue;
+        const auto [isUse, isDef] = operandRoles(ins, opIdx);
+        (void)isUse;
+        if (!isDef)
+            continue;
+
+        const auto phys = static_cast<PhysReg>(op.reg.idOrPhys);
+        const bool fprClass = isFPR(phys);
+        auto &states = fprClass ? fprStates_ : gprStates_;
+        const RegClass cls = fprClass ? RegClass::FPR : RegClass::GPR;
+
+        // Evict a resident vreg before its register is overwritten. Spill when
+        // the value is still needed; otherwise just release.
+        for (auto &kv : states) {
+            if (!kv.second.hasPhys || kv.second.phys != phys)
+                continue;
+            const bool liveOut = isLiveOut(kv.first, cls);
+            const unsigned dist = getNextUseDistance(kv.first, cls);
+            if (dist == UINT_MAX && !liveOut) {
+                if (fprClass)
+                    pools_.releaseFPR(kv.second.phys, ti_);
+                else
+                    pools_.releaseGPR(kv.second.phys, ti_);
+                kv.second.hasPhys = false;
+            } else {
+                spillVictim(cls, kv.first, prefix);
+            }
+            break;
+        }
+
+        // A def of an argument register is call marshalling in flight: keep the
+        // register out of the free pool until the call consumes it so reloads
+        // and fresh allocations cannot clobber the marshalled value.
+        if (isArgRegister(phys, ti_)) {
+            auto &pool = fprClass ? pools_.fprFree : pools_.gprFree;
+            auto it = std::find(pool.begin(), pool.end(), phys);
+            if (it != pool.end() &&
+                std::find(reservedForCall_.begin(), reservedForCall_.end(), phys) ==
+                    reservedForCall_.end()) {
+                pool.erase(it);
+                reservedForCall_.push_back(phys);
+            }
+        }
+    }
+}
+
+void LinearAllocator::releaseCallReserved() {
+    for (PhysReg phys : reservedForCall_) {
+        if (isFPR(phys))
+            pools_.releaseFPR(phys, ti_);
+        else
+            pools_.releaseGPR(phys, ti_);
+    }
+    reservedForCall_.clear();
 }
 
 void LinearAllocator::retireCallOperandAfterCall(uint16_t vreg, RegClass cls) {
@@ -824,6 +915,7 @@ void LinearAllocator::allocateInstruction(MInstr &ins, std::vector<MInstr> &rewr
     const bool phiSrcIsFPR = (ins.opc == MOpcode::PhiStoreFPR);
 
     std::vector<MInstr> prefix;
+    evictPhysDefClobbers(ins, prefix);
     bool applyGetBarrier = false;
     uint16_t getBarrierDstVreg = 0;
     if (pendingGetBarrier_ && ins.opc == MOpcode::MovRR && ins.ops.size() >= 2) {
@@ -935,6 +1027,10 @@ void LinearAllocator::releaseScratch(std::vector<PhysReg> &scratch) {
 }
 
 void LinearAllocator::releaseBlockState() {
+    // Defensive: a marshalling def without a following call in the same block
+    // must not leak reserved argument registers into the next block.
+    releaseCallReserved();
+
     // Release in sorted vreg order: the pool is a FIFO, so the order registers
     // return to it shapes every later allocation. Hash-map iteration order
     // would make the emitted code differ between STL implementations.

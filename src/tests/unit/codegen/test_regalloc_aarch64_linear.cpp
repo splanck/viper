@@ -23,6 +23,7 @@
 #include "codegen/aarch64/LowerOvf.hpp"
 #include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/RegAllocLinear.hpp"
+#include "codegen/aarch64/ra/RegPools.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
 
 using namespace viper::codegen::aarch64;
@@ -259,6 +260,192 @@ TEST(Arm64RegAlloc, SpilledVregReloadsOnceAndIsCached) {
         }
     }
     EXPECT_GE(loadsBeforeFirstRead, 1);
+}
+
+TEST(Arm64RegAlloc, PhysDefEvictsResidentVreg) {
+    // An instruction that writes a physical register must evict any vreg the
+    // allocator parked there: spill it when still needed, and reload it for
+    // later uses. Target the first pool register so the test is independent
+    // of pool ordering details.
+    auto &ti = darwinTarget();
+
+    // Determine the first register the pool will hand out.
+    ra::RegPools probe;
+    probe.build(ti);
+    const PhysReg firstPool = probe.takeGPR();
+
+    MFunction fn{};
+    fn.name = "phys_def_evict";
+    fn.blocks.push_back(MBasicBlock{});
+    auto &bb = fn.blocks.back();
+    bb.name = "entry";
+
+    // v1 := 7  (lands in firstPool)
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, 1), MOperand::immOp(7)}});
+    // firstPool := 99 (explicit physical def — clobbers v1's home)
+    bb.instrs.push_back(MInstr{MOpcode::MovRI, {MOperand::regOp(firstPool), MOperand::immOp(99)}});
+    // v2 := v1 + v1 (v1 must have been preserved across the clobber)
+    bb.instrs.push_back(MInstr{MOpcode::AddRRR,
+                               {MOperand::vregOp(RegClass::GPR, 2),
+                                MOperand::vregOp(RegClass::GPR, 1),
+                                MOperand::vregOp(RegClass::GPR, 1)}});
+    bb.instrs.push_back(MInstr{
+        MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, 2)}});
+    bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    (void)allocate(fn, ti);
+
+    // After allocation no instruction may read firstPool between the explicit
+    // def and a store/reload pair: concretely, the AddRRR's sources must not
+    // be firstPool, OR a spill store of firstPool must precede the clobber.
+    const auto &instrs = fn.blocks[0].instrs;
+    std::size_t clobberIdx = instrs.size();
+    for (std::size_t i = 0; i < instrs.size(); ++i) {
+        const auto &mi = instrs[i];
+        if (mi.opc == MOpcode::MovRI && mi.ops.size() == 2 &&
+            mi.ops[0].kind == MOperand::Kind::Reg && mi.ops[0].reg.isPhys &&
+            static_cast<PhysReg>(mi.ops[0].reg.idOrPhys) == firstPool &&
+            mi.ops[1].kind == MOperand::Kind::Imm && mi.ops[1].imm == 99) {
+            clobberIdx = i;
+            break;
+        }
+    }
+    ASSERT_LT(clobberIdx, instrs.size());
+
+    bool spilledBeforeClobber = false;
+    for (std::size_t i = 0; i < clobberIdx; ++i) {
+        if (instrs[i].opc == MOpcode::StrRegFpImm && !instrs[i].ops.empty() &&
+            instrs[i].ops[0].kind == MOperand::Kind::Reg &&
+            static_cast<PhysReg>(instrs[i].ops[0].reg.idOrPhys) == firstPool)
+            spilledBeforeClobber = true;
+    }
+
+    bool addReadsClobberedReg = false;
+    for (std::size_t i = clobberIdx + 1; i < instrs.size(); ++i) {
+        const auto &mi = instrs[i];
+        if (mi.opc != MOpcode::AddRRR || mi.ops.size() != 3)
+            continue;
+        // A reload may legitimately re-adopt firstPool AFTER loading the
+        // spilled value back, so only flag reads without a preceding reload.
+        bool reloadedBetween = false;
+        for (std::size_t j = clobberIdx + 1; j < i; ++j) {
+            if (instrs[j].opc == MOpcode::LdrRegFpImm && !instrs[j].ops.empty() &&
+                instrs[j].ops[0].kind == MOperand::Kind::Reg &&
+                static_cast<PhysReg>(instrs[j].ops[0].reg.idOrPhys) ==
+                    static_cast<PhysReg>(mi.ops[1].reg.idOrPhys))
+                reloadedBetween = true;
+        }
+        if (!reloadedBetween &&
+            static_cast<PhysReg>(mi.ops[1].reg.idOrPhys) == firstPool)
+            addReadsClobberedReg = true;
+    }
+
+    EXPECT_TRUE(spilledBeforeClobber);
+    EXPECT_FALSE(addReadsClobberedReg);
+}
+
+TEST(Arm64RegAlloc, MarshalledArgRegisterNotReassignedBeforeCall) {
+    // Once call marshalling writes an argument register, fresh allocations
+    // must not receive that register until the call has consumed it.
+    auto &ti = darwinTarget();
+
+    MFunction fn{};
+    fn.name = "arg_reserved";
+    fn.isLeaf = false;
+    fn.blocks.push_back(MBasicBlock{});
+    auto &bb = fn.blocks.back();
+    bb.name = "entry";
+
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, 1), MOperand::immOp(7)}});
+    // Marshal the argument: x0 := v1
+    bb.instrs.push_back(MInstr{
+        MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, 1)}});
+    // Fresh def between marshalling and the call must not take x0.
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, 2), MOperand::immOp(5)}});
+    bb.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("callee")}});
+    // Keep v2 alive past the call.
+    bb.instrs.push_back(MInstr{
+        MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, 2)}});
+    bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    (void)allocate(fn, ti);
+
+    // Find the rewritten "v2 := 5" def (immediate 5) between marshalling and
+    // the call and verify it did not land in x0.
+    const auto &instrs = fn.blocks[0].instrs;
+    bool checked = false;
+    for (std::size_t i = 0; i < instrs.size(); ++i) {
+        const auto &mi = instrs[i];
+        if (mi.opc == MOpcode::Bl)
+            break;
+        if (mi.opc == MOpcode::MovRI && mi.ops.size() == 2 &&
+            mi.ops[1].kind == MOperand::Kind::Imm && mi.ops[1].imm == 5 &&
+            mi.ops[0].kind == MOperand::Kind::Reg && mi.ops[0].reg.isPhys) {
+            EXPECT_TRUE(static_cast<PhysReg>(mi.ops[0].reg.idOrPhys) != PhysReg::X0);
+            checked = true;
+        }
+    }
+    EXPECT_TRUE(checked);
+}
+
+TEST(Arm64RegAlloc, AbiLiveInArgRegisterIsNeverAllocated) {
+    // A function whose entry reads x0 before any def (parameter spill) must
+    // keep x0 out of the pools for the whole function, while other argument
+    // registers remain allocatable.
+    auto &ti = darwinTarget();
+
+    MFunction fn{};
+    fn.name = "live_in_excluded";
+    fn.blocks.push_back(MBasicBlock{});
+    auto &bb = fn.blocks.back();
+    bb.name = "entry";
+
+    FrameBuilder fb{fn};
+    fb.addLocal(1, 8, 8);
+
+    // Entry parameter spill: read of live-in x0.
+    bb.instrs.push_back(
+        MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(PhysReg::X0), MOperand::immOp(-8)}});
+    // Plenty of fresh vregs afterwards.
+    for (uint16_t v = 1; v <= 20; ++v) {
+        bb.instrs.push_back(MInstr{
+            MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, v), MOperand::immOp(v)}});
+    }
+    uint16_t acc = 1;
+    uint16_t next = 21;
+    for (uint16_t v = 2; v <= 20; ++v) {
+        bb.instrs.push_back(MInstr{MOpcode::AddRRR,
+                                   {MOperand::vregOp(RegClass::GPR, next),
+                                    MOperand::vregOp(RegClass::GPR, acc),
+                                    MOperand::vregOp(RegClass::GPR, v)}});
+        acc = next++;
+    }
+    bb.instrs.push_back(MInstr{
+        MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, acc)}});
+    bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    (void)allocate(fn, ti);
+
+    // No vreg def (MovRI with positive immediate) may have been assigned x0;
+    // x1 (not a live-in here) should appear as some def's destination.
+    bool x0Assigned = false;
+    bool x1Assigned = false;
+    for (const auto &mi : fn.blocks[0].instrs) {
+        if (mi.opc != MOpcode::MovRI || mi.ops.size() != 2)
+            continue;
+        if (mi.ops[0].kind != MOperand::Kind::Reg || !mi.ops[0].reg.isPhys)
+            continue;
+        if (mi.ops[1].kind != MOperand::Kind::Imm || mi.ops[1].imm < 1 || mi.ops[1].imm > 20)
+            continue;
+        const auto dst = static_cast<PhysReg>(mi.ops[0].reg.idOrPhys);
+        x0Assigned = x0Assigned || dst == PhysReg::X0;
+        x1Assigned = x1Assigned || dst == PhysReg::X1;
+    }
+    EXPECT_FALSE(x0Assigned);
+    EXPECT_TRUE(x1Assigned);
 }
 
 int main(int argc, char **argv) {

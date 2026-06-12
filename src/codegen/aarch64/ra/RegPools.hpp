@@ -51,8 +51,17 @@ struct RegPools {
     /// Pre-computed set of callee-saved FPRs for O(1) lookup in takeFPRPreferCalleeSaved().
     std::array<bool, 64> calleeSavedFPRSet{};
 
+    /// Registers eligible for this function's pools. Release validation is
+    /// membership-based so argument registers (allocatable unless they are
+    /// ABI live-ins for the function) round-trip correctly.
+    std::array<bool, 64> poolEligible{};
+
     /// @brief Initialize free lists from target info.
-    void build(const TargetInfo &ti);
+    /// @param ti Target ABI description.
+    /// @param excluded Per-function exclusions (e.g. ABI live-in argument
+    ///        registers whose incoming values are read before being defined);
+    ///        indexed by PhysReg ordinal.
+    void build(const TargetInfo &ti, const std::array<bool, 64> &excluded = {});
 
     /// @brief Take any available GPR from the free pool.
     PhysReg takeGPR();
