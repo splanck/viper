@@ -8,16 +8,17 @@
 // File: src/runtime/core/rt_zia_completion_stub.c
 // Purpose: Provides weak-symbol stub implementations for the Zia IntelliSense
 //          completion bridge. The real implementations live in
-//          src/frontends/zia/rt_zia_completion.cpp (part of fe_zia). When
-//          fe_zia is linked the linker prefers those strong symbols; test
-//          binaries that omit fe_zia fall back to these stubs, which return
-//          protocol-shaped "unavailable" payloads for interactive tooling.
+//          src/frontends/zia/rt_zia_completion.cpp (part of
+//          zia_editor_services). When zia_editor_services is linked the linker
+//          prefers those strong symbols; test binaries that omit editor
+//          services fall back to these stubs, which return protocol-shaped
+//          "unavailable" payloads for interactive tooling.
 //          Diagnostic checks are the exception: they return an empty diagnostic
 //          stream so generated apps do not show false editor warnings.
 //
 // Key invariants:
 //   - Stubs use __attribute__((weak)) on Clang/GCC (macOS, Linux); on MSVC
-//     the define expands to nothing (MSVC builds always link fe_zia).
+//     the define expands to nothing (MSVC builds always link zia_editor_services).
 //   - rt_zia_complete/hover/symbols stubs return valid payloads in the same
 //     wire formats as the real completion bridge, with an explicit unavailable
 //     message.
@@ -25,8 +26,8 @@
 //     toolchain diagnostics return empty Seq/Map-shaped payloads. A missing
 //     analyzer is not a source diagnostic and must not paint editor warnings.
 //   - rt_zia_completion_clear_cache stub is a no-op.
-//   - If fe_zia is linked, none of these functions are called; the overriding
-//     strong symbols in rt_zia_completion.cpp take precedence.
+//   - If zia_editor_services is linked, none of these functions are called; the
+//     overriding strong symbols in rt_zia_completion.cpp take precedence.
 //
 // Ownership/Lifetime:
 //   - The string-returning stubs return newly allocated protocol payloads; the
@@ -50,7 +51,7 @@
 #define RT_WEAK __attribute__((weak))
 #else
 // MSVC: accept a duplicate-symbol link error rather than silently stub out;
-// production Windows builds always link fe_zia so the issue never arises.
+// production Windows builds always link zia_editor_services so the issue never arises.
 #define RT_WEAK
 #endif
 
@@ -58,7 +59,7 @@
 /// @details Helper used by every weak stub in this file to wrap the shared
 ///          `kUnavailableMessage` (or any caller-provided literal) in a fresh `rt_string`
 ///          so the IDE's completion / hover / diagnostics tooling receives a well-formed
-///          handle even when fe_zia isn't linked into this binary. The caller owns the
+///          handle even when editor services are not linked into this binary. The caller owns the
 ///          returned reference.
 static rt_string zia_completion_unavailable_string(const char *payload) {
     return rt_string_from_bytes(payload, strlen(payload));
@@ -68,7 +69,7 @@ static const char *const kUnavailableMessage =
     "Zia completion engine unavailable: link fe_zia to enable editor tooling";
 
 /// @brief Weak stub: returns an unavailable completion item.
-/// Overridden by rt_zia_completion.cpp when fe_zia is linked.
+/// Overridden by rt_zia_completion.cpp when zia_editor_services is linked.
 RT_WEAK rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col) {
     (void)source;
     (void)line;
@@ -78,7 +79,7 @@ RT_WEAK rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col) {
 }
 
 /// @brief Weak stub: returns an unavailable completion item.
-/// Overridden by rt_zia_completion.cpp when fe_zia is linked.
+/// Overridden by rt_zia_completion.cpp when zia_editor_services is linked.
 RT_WEAK rt_string rt_zia_complete_for_file(rt_string source,
                                            rt_string file_path,
                                            int64_t line,
@@ -330,13 +331,13 @@ static void *zia_stub_rename_failure_map(const char *reason) {
     return result;
 }
 
-/// @brief Weak stub: project indexes require fe_zia.
+/// @brief Weak stub: project indexes require editor services.
 RT_WEAK void *rt_zia_project_index_new(rt_string root) {
     (void)root;
     return NULL;
 }
 
-/// @brief Weak stub: no project index handle is valid without fe_zia.
+/// @brief Weak stub: no project index handle is valid without editor services.
 RT_WEAK int8_t rt_zia_project_index_is_valid(void *handle) {
     (void)handle;
     return 0;
@@ -359,12 +360,12 @@ RT_WEAK int8_t rt_zia_project_index_remove_file(void *handle, rt_string file_pat
     return 0;
 }
 
-/// @brief Weak stub: no-op without fe_zia.
+/// @brief Weak stub: no-op without editor services.
 RT_WEAK void rt_zia_project_index_clear(void *handle) {
     (void)handle;
 }
 
-/// @brief Weak stub: no-op without fe_zia.
+/// @brief Weak stub: no-op without editor services.
 RT_WEAK void rt_zia_project_index_destroy(void *handle) {
     (void)handle;
 }

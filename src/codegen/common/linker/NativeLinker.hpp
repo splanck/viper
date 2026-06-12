@@ -39,9 +39,9 @@ struct NativeLinkerOptions {
     std::string exePath;                   ///< Output executable path.
     std::vector<std::string> archivePaths; ///< Runtime archive .a paths (in dependency order).
     /// Archives whose every member is loaded unconditionally (whole-archive /
-    /// -force_load semantics). Used so a frontend lib (e.g. fe_zia) can override
-    /// weak runtime stubs that demand-driven extraction would otherwise satisfy
-    /// first. Members participate in resolution as if they were initial objects.
+    /// -force_load semantics). Used so editor-service bridges can override weak
+    /// runtime stubs that demand-driven extraction would otherwise satisfy first.
+    /// Members participate in resolution as if they were initial objects.
     std::vector<std::string> forceLoadArchivePaths;
     LinkPlatform platform = detectLinkPlatform();
     LinkArch arch = detectLinkArch();

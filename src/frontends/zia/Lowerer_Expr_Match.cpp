@@ -250,8 +250,8 @@ void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
 
             if (scrutinee.type->kind == TypeKindSem::Result) {
                 if (pattern.binding == "Ok") {
-                    Value isOk = emitCallRet(
-                        Type(Type::Kind::I1), "Viper.Result.get_IsOk", {scrutinee.value});
+                    Value isOk =
+                        emitCallRet(Type(Type::Kind::I1), kResultGetIsOk, {scrutinee.value});
                     if (pattern.subpatterns.empty()) {
                         emitCBr(isOk, successBlock, failureBlock);
                         return;
@@ -263,17 +263,17 @@ void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
                                               ? scrutinee.type->typeArgs[0]
                                               : types::unknown();
                     Type ilSuccessType = mapType(successType);
-                    const char *callee = "Viper.Result.Unwrap";
+                    const char *callee = kResultUnwrap;
                     Type runtimeReturn = Type(Type::Kind::Ptr);
                     if (successType && successType->kind == TypeKindSem::String) {
-                        callee = "Viper.Result.UnwrapStr";
+                        callee = kResultUnwrapStr;
                         runtimeReturn = Type(Type::Kind::Str);
                     } else if (successType && (successType->kind == TypeKindSem::Integer ||
                                                successType->kind == TypeKindSem::Enum)) {
-                        callee = "Viper.Result.UnwrapI64";
+                        callee = kResultUnwrapI64;
                         runtimeReturn = Type(Type::Kind::I64);
                     } else if (successType && successType->kind == TypeKindSem::Number) {
-                        callee = "Viper.Result.UnwrapF64";
+                        callee = kResultUnwrapF64;
                         runtimeReturn = Type(Type::Kind::F64);
                     }
                     Value raw = emitCallRet(runtimeReturn, callee, {scrutinee.value});
@@ -286,8 +286,8 @@ void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
                     return;
                 }
                 if (pattern.binding == "Err") {
-                    Value isErr = emitCallRet(
-                        Type(Type::Kind::I1), "Viper.Result.get_IsErr", {scrutinee.value});
+                    Value isErr =
+                        emitCallRet(Type(Type::Kind::I1), kResultGetIsErr, {scrutinee.value});
                     if (pattern.subpatterns.empty()) {
                         emitCBr(isErr, successBlock, failureBlock);
                         return;
@@ -295,8 +295,8 @@ void Lowerer::emitPatternTest(const MatchArm::Pattern &pattern,
                     size_t errBlock = createBlock("match_result_err");
                     emitCBr(isErr, errBlock, failureBlock);
                     setBlock(errBlock);
-                    Value err = emitCallRet(
-                        Type(Type::Kind::Str), "Viper.Result.UnwrapErrStr", {scrutinee.value});
+                    Value err =
+                        emitCallRet(Type(Type::Kind::Str), kResultUnwrapErrStr, {scrutinee.value});
                     PatternValue errValue{err, types::string()};
                     emitPatternTest(pattern.subpatterns[0], errValue, successBlock, failureBlock);
                     return;
@@ -401,17 +401,17 @@ void Lowerer::emitPatternBindings(const MatchArm::Pattern &pattern, const Patter
                                               ? scrutinee.type->typeArgs[0]
                                               : types::unknown();
                     Type ilSuccessType = mapType(successType);
-                    const char *callee = "Viper.Result.Unwrap";
+                    const char *callee = kResultUnwrap;
                     Type runtimeReturn = Type(Type::Kind::Ptr);
                     if (successType && successType->kind == TypeKindSem::String) {
-                        callee = "Viper.Result.UnwrapStr";
+                        callee = kResultUnwrapStr;
                         runtimeReturn = Type(Type::Kind::Str);
                     } else if (successType && (successType->kind == TypeKindSem::Integer ||
                                                successType->kind == TypeKindSem::Enum)) {
-                        callee = "Viper.Result.UnwrapI64";
+                        callee = kResultUnwrapI64;
                         runtimeReturn = Type(Type::Kind::I64);
                     } else if (successType && successType->kind == TypeKindSem::Number) {
-                        callee = "Viper.Result.UnwrapF64";
+                        callee = kResultUnwrapF64;
                         runtimeReturn = Type(Type::Kind::F64);
                     }
                     Value raw = emitCallRet(runtimeReturn, callee, {scrutinee.value});
@@ -424,8 +424,8 @@ void Lowerer::emitPatternBindings(const MatchArm::Pattern &pattern, const Patter
                     return;
                 }
                 if (pattern.binding == "Err" && !pattern.subpatterns.empty()) {
-                    Value err = emitCallRet(
-                        Type(Type::Kind::Str), "Viper.Result.UnwrapErrStr", {scrutinee.value});
+                    Value err =
+                        emitCallRet(Type(Type::Kind::Str), kResultUnwrapErrStr, {scrutinee.value});
                     PatternValue errValue{err, types::string()};
                     emitPatternBindings(pattern.subpatterns[0], errValue);
                     return;

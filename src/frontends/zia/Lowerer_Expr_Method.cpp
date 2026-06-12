@@ -197,8 +197,8 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
 
         case CollectionMethod::First:
         case CollectionMethod::Last: {
-            const char *callee = method == CollectionMethod::First ? "Viper.Collections.List.First"
-                                                                   : "Viper.Collections.List.Last";
+            const char *callee =
+                method == CollectionMethod::First ? kCollectionsListFirst : kCollectionsListLast;
             Value boxed = emitCallRet(Type(Type::Kind::Ptr), callee, {baseValue});
             TypeRef elemType = baseType ? baseType->elementType() : nullptr;
             if (!elemType)
@@ -264,8 +264,8 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
             break;
 
         case CollectionMethod::IsEmpty: {
-            Value result = emitCallRet(
-                Type(Type::Kind::I1), "Viper.Collections.List.get_IsEmpty", {baseValue});
+            Value result =
+                emitCallRet(Type(Type::Kind::I1), kCollectionsListGetIsEmpty, {baseValue});
             return LowerResult{result, Type(Type::Kind::I1)};
         }
 

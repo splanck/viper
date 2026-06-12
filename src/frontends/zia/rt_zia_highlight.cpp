@@ -16,8 +16,8 @@
 //
 // Key invariants:
 //   - Strong-symbol implementation. Wins over the weak fallback in
-//     viper_runtime/core/rt_zia_highlight_stub.c when fe_zia is linked
-//     (which Phase B's force_load guarantees for the zia binary).
+//     viper_runtime/core/rt_zia_highlight_stub.c when zia_editor_services is
+//     linked and force-loaded by the zia binary.
 //   - Pure read-only lookup. No state, no allocation; safe to call from any
 //     thread.
 //

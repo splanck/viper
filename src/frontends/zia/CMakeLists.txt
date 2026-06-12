@@ -40,6 +40,7 @@ set(ZIA_SOURCES
         LowererBinaryOperatorLowerer.cpp
         LowererCallArgumentLowerer.cpp
         LowererCollectionLowerer.cpp
+        LowererRuntimeCallBuilder.cpp
         Lowerer_Expr_Match.cpp
         Lowerer_Dispatch.cpp
         Lowerer_Emit.cpp
@@ -47,9 +48,6 @@ set(ZIA_SOURCES
         ZiaLocationScope.cpp
         Compiler.cpp
         ZiaAstPrinter.cpp
-        ZiaCompletion.cpp
-        rt_zia_completion.cpp
-        rt_zia_highlight.cpp
 )
 
 add_library(fe_zia ${ZIA_SOURCES})
@@ -75,3 +73,32 @@ target_link_libraries(fe_zia PUBLIC
         viper_common_opts
 )
 add_dependencies(fe_zia generate_runtime_registry)
+
+add_library(zia_editor_services
+        ZiaCompletion.cpp
+        rt_zia_completion.cpp
+        rt_zia_highlight.cpp
+)
+
+target_compile_options(zia_editor_services PRIVATE
+        $<$<CXX_COMPILER_ID:MSVC>:/bigobj>
+)
+
+target_include_directories(zia_editor_services PUBLIC
+        ${CMAKE_BINARY_DIR}/generated
+        ${PROJECT_SOURCE_DIR}/src
+        ${PROJECT_SOURCE_DIR}/include
+)
+
+target_link_libraries(zia_editor_services PUBLIC
+        fe_zia
+        viper_support
+        viper_il_core
+        il_build
+        il_runtime
+        il_transform
+        fe_common
+        PRIVATE
+        viper_common_opts
+)
+add_dependencies(zia_editor_services generate_runtime_registry)

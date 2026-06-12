@@ -18,8 +18,10 @@
 
 #include "frontends/zia/Lowerer.hpp"
 #include "frontends/zia/LowererCallArgumentLowerer.hpp"
+#include "frontends/zia/LowererRuntimeCallBuilder.hpp"
 #include "frontends/zia/RuntimeNames.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 
 namespace il::frontends::zia {
 
@@ -30,26 +32,33 @@ using namespace runtime;
 
 namespace {
 
+/// @brief Return @p expr as @p T when its AST tag is @p kind.
+/// @tparam T Concrete expression type paired with @p kind.
+/// @param expr Expression pointer to inspect.
+/// @param kind Expected AST expression kind.
+/// @return Cast pointer when the tag matches; nullptr otherwise.
+template <typename T> T *exprAs(Expr *expr, ExprKind kind) {
+    return expr && expr->kind == kind ? static_cast<T *>(expr) : nullptr;
+}
+
 /// @brief True if @p callee is an HttpServer route registration runtime call
 ///        (Get/Post/Put/Delete) needing handler-binding lowering.
 bool isHttpServerRouteRuntime(std::string_view callee) {
-    return callee == "Viper.Network.HttpServer.Get" || callee == "Viper.Network.HttpServer.Post" ||
-           callee == "Viper.Network.HttpServer.Put" || callee == "Viper.Network.HttpServer.Delete";
+    return callee == kNetworkHttpServerGet || callee == kNetworkHttpServerPost ||
+           callee == kNetworkHttpServerPut || callee == kNetworkHttpServerDelete;
 }
 
 /// @brief True if @p callee is an HttpsServer route registration runtime call.
 bool isHttpsServerRouteRuntime(std::string_view callee) {
-    return callee == "Viper.Network.HttpsServer.Get" ||
-           callee == "Viper.Network.HttpsServer.Post" ||
-           callee == "Viper.Network.HttpsServer.Put" ||
-           callee == "Viper.Network.HttpsServer.Delete";
+    return callee == kNetworkHttpsServerGet || callee == kNetworkHttpsServerPost ||
+           callee == kNetworkHttpsServerPut || callee == kNetworkHttpsServerDelete;
 }
 
 /// @brief Runtime BindHandler callee matching @p callee's server flavor
 ///        (HTTPS vs HTTP).
 const char *httpServerBindHandlerTarget(std::string_view callee) {
-    return isHttpsServerRouteRuntime(callee) ? "Viper.Network.HttpsServer.BindHandler"
-                                             : "Viper.Network.HttpServer.BindHandler";
+    return isHttpsServerRouteRuntime(callee) ? kNetworkHttpsServerBindHandler
+                                             : kNetworkHttpServerBindHandler;
 }
 
 /// @brief True if @p callee is a Terminal text-output runtime (Say/Print).
@@ -74,28 +83,28 @@ std::string specializedRuntimeReturnCallee(std::string_view callee, TypeRef surf
     if (!surfaceType)
         return {};
 
-    if (callee == "Viper.Collections.Seq.Get" && surfaceType->kind == TypeKindSem::String)
+    if (callee == kCollectionsSeqGet && surfaceType->kind == TypeKindSem::String)
         return kSeqGetStr;
 
-    if (callee == "Viper.Collections.Map.Get") {
+    if (callee == kCollectionsMapGet) {
         switch (surfaceType->kind) {
             case TypeKindSem::String:
-                return "Viper.Collections.Map.GetStr";
+                return kCollectionsMapGetStr;
             case TypeKindSem::Integer:
-                return "Viper.Collections.Map.GetInt";
+                return kCollectionsMapGetInt;
             case TypeKindSem::Number:
-                return "Viper.Collections.Map.GetFloat";
+                return kCollectionsMapGetFloat;
             default:
                 break;
         }
     }
 
-    if (callee == "Viper.Collections.Map.GetOr") {
+    if (callee == kCollectionsMapGetOr) {
         switch (surfaceType->kind) {
             case TypeKindSem::Integer:
-                return "Viper.Collections.Map.GetIntOr";
+                return kCollectionsMapGetIntOr;
             case TypeKindSem::Number:
-                return "Viper.Collections.Map.GetFloatOr";
+                return kCollectionsMapGetFloatOr;
             default:
                 break;
         }
@@ -155,52 +164,85 @@ std::string httpHandlerTargetName(Sema &sema, const std::string &tag) {
 /// @brief Pick the type-specialised `Viper.Result.Ok*` callee for @p type.
 const char *resultOkCalleeFor(TypeRef type) {
     if (!type)
-        return "Viper.Result.Ok";
+        return kResultOk;
     switch (type->kind) {
         case TypeKindSem::String:
-            return "Viper.Result.OkStr";
+            return kResultOkStr;
         case TypeKindSem::Integer:
         case TypeKindSem::Enum:
-            return "Viper.Result.OkI64";
+            return kResultOkI64;
         case TypeKindSem::Number:
-            return "Viper.Result.OkF64";
+            return kResultOkF64;
         default:
-            return "Viper.Result.Ok";
+            return kResultOk;
     }
 }
 
 /// @brief Pick the type-specialised `Viper.Result.Unwrap*` callee.
 const char *resultUnwrapCalleeFor(TypeRef type) {
     if (!type)
-        return "Viper.Result.Unwrap";
+        return kResultUnwrap;
     switch (type->kind) {
         case TypeKindSem::String:
-            return "Viper.Result.UnwrapStr";
+            return kResultUnwrapStr;
         case TypeKindSem::Integer:
         case TypeKindSem::Enum:
-            return "Viper.Result.UnwrapI64";
+            return kResultUnwrapI64;
         case TypeKindSem::Number:
-            return "Viper.Result.UnwrapF64";
+            return kResultUnwrapF64;
         default:
-            return "Viper.Result.Unwrap";
+            return kResultUnwrap;
     }
 }
 
 /// @brief Pick the type-specialised `Viper.Result.UnwrapOr*` callee.
 const char *resultUnwrapOrCalleeFor(TypeRef type) {
     if (!type)
-        return "Viper.Result.UnwrapOr";
+        return kResultUnwrapOr;
     switch (type->kind) {
         case TypeKindSem::String:
-            return "Viper.Result.UnwrapOrStr";
+            return kResultUnwrapOrStr;
         case TypeKindSem::Integer:
         case TypeKindSem::Enum:
-            return "Viper.Result.UnwrapOrI64";
+            return kResultUnwrapOrI64;
         case TypeKindSem::Number:
-            return "Viper.Result.UnwrapOrF64";
+            return kResultUnwrapOrF64;
         default:
-            return "Viper.Result.UnwrapOr";
+            return kResultUnwrapOr;
     }
+}
+
+/// @brief True when @p typeName belongs to the generated runtime namespace.
+bool hasRuntimeNamespacePrefix(const std::string &typeName) {
+    std::string_view prefix{kRuntimeNamespacePrefix};
+    return typeName.size() >= prefix.size() &&
+           std::string_view(typeName).substr(0, prefix.size()) == prefix;
+}
+
+/// @brief True when @p type can be a receiver for runtime member syntax.
+bool isRuntimeReceiverSurfaceType(TypeRef type) {
+    if (!type)
+        return false;
+    if (type->kind == TypeKindSem::Set || type->kind == TypeKindSem::List ||
+        type->kind == TypeKindSem::Map || type->kind == TypeKindSem::String)
+        return true;
+    return !type->name.empty() && (il::runtime::findRuntimeClassByQName(type->name) != nullptr ||
+                                   hasRuntimeNamespacePrefix(type->name));
+}
+
+/// @brief True when the resolved runtime ABI has one implicit receiver parameter.
+bool runtimeCallExpectsImplicitReceiver(const il::runtime::RuntimeDescriptor *rtDesc,
+                                        const Sema::CallArgBinding *binding,
+                                        size_t explicitArgCount) {
+    if (!rtDesc)
+        return false;
+
+    size_t exposedParamCount = explicitArgCount;
+    if (binding)
+        exposedParamCount = binding->fixedParamSources.size() + binding->variadicSources.size();
+
+    const size_t abiParamCount = rtDesc->signature.paramTypes.size();
+    return abiParamCount == exposedParamCount + 1;
 }
 
 } // namespace
@@ -310,7 +352,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
     if (collectRangeModifierChain(expr, rangeInfo) && rangeInfo.range)
         return lowerRangeWithModifiers(rangeInfo.range, rangeInfo.reversed, rangeInfo.stepArg);
 
-    if (auto *ident = dynamic_cast<IdentExpr *>(expr->callee.get())) {
+    if (auto *ident = exprAs<IdentExpr>(expr->callee.get(), ExprKind::Ident)) {
         if (ident->name == "Ok" || ident->name == "Err") {
             if (expr->args.empty())
                 return {Value::null(), Type(Type::Kind::Ptr)};
@@ -320,13 +362,13 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
             std::string callee;
             if (ident->name == "Ok") {
                 callee = resultOkCalleeFor(payloadType);
-                if (callee == "Viper.Result.Ok" && payload.type.kind != Type::Kind::Ptr)
+                if (callee == kResultOk && payload.type.kind != Type::Kind::Ptr)
                     argValue = emitBoxValue(payload.value, payload.type, payloadType);
             } else {
                 if (payloadType && payloadType->kind == TypeKindSem::String) {
-                    callee = "Viper.Result.ErrStr";
+                    callee = kResultErrStr;
                 } else {
-                    callee = "Viper.Result.Err";
+                    callee = kResultErr;
                     if (payload.type.kind != Type::Kind::Ptr)
                         argValue = emitBoxValue(payload.value, payload.type, payloadType);
                 }
@@ -346,13 +388,14 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
         std::string ownerType = sema_.resolvedMethodOwnerType(expr);
         std::string slotKey = sema_.resolvedMethodSlotKey(expr);
 
-        if (auto *optionalCallee = dynamic_cast<OptionalChainExpr *>(expr->callee.get()))
+        if (auto *optionalCallee =
+                exprAs<OptionalChainExpr>(expr->callee.get(), ExprKind::OptionalChain))
             return lowerOptionalMethodCall(optionalCallee, expr);
 
-        FieldExpr *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get());
+        FieldExpr *fieldExpr = exprAs<FieldExpr>(expr->callee.get(), ExprKind::Field);
         if (!fieldExpr) {
-            if (auto *indexExpr = dynamic_cast<IndexExpr *>(expr->callee.get()))
-                fieldExpr = dynamic_cast<FieldExpr *>(indexExpr->base.get());
+            if (auto *indexExpr = exprAs<IndexExpr>(expr->callee.get(), ExprKind::Index))
+                fieldExpr = exprAs<FieldExpr>(indexExpr->base.get(), ExprKind::Field);
         }
         if (fieldExpr) {
             if (fieldExpr->base->kind == ExprKind::SuperExpr) {
@@ -495,7 +538,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
     }
 
     // Check for method call on value or class type: obj.method()
-    if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get())) {
+    if (auto *fieldExpr = exprAs<FieldExpr>(expr->callee.get(), ExprKind::Field)) {
         // Check for super.method() call - dispatch to parent class method
         if (fieldExpr->base->kind == ExprKind::SuperExpr) {
             Value selfPtr;
@@ -526,20 +569,20 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
                 auto baseResult = lowerExpr(fieldExpr->base.get());
 
                 if (fieldExpr->field == "isOk") {
-                    Value result = emitCallRet(
-                        Type(Type::Kind::I1), "Viper.Result.get_IsOk", {baseResult.value});
+                    Value result =
+                        emitCallRet(Type(Type::Kind::I1), kResultGetIsOk, {baseResult.value});
                     return {result, Type(Type::Kind::I1)};
                 }
                 if (fieldExpr->field == "isErr") {
-                    Value result = emitCallRet(
-                        Type(Type::Kind::I1), "Viper.Result.get_IsErr", {baseResult.value});
+                    Value result =
+                        emitCallRet(Type(Type::Kind::I1), kResultGetIsErr, {baseResult.value});
                     return {result, Type(Type::Kind::I1)};
                 }
                 if (fieldExpr->field == "unwrap") {
                     Type ilSuccessType = mapType(successType);
                     const char *callee = resultUnwrapCalleeFor(successType);
                     Type runtimeReturn = ilSuccessType;
-                    if (std::string_view(callee) == "Viper.Result.Unwrap")
+                    if (std::string_view(callee) == kResultUnwrap)
                         runtimeReturn = Type(Type::Kind::Ptr);
                     Value raw = emitCallRet(runtimeReturn, callee, {baseResult.value});
                     if (runtimeReturn.kind == ilSuccessType.kind)
@@ -554,7 +597,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
                     const char *callee = resultUnwrapOrCalleeFor(successType);
                     Type ilSuccessType = mapType(successType);
                     Type runtimeReturn = ilSuccessType;
-                    if (std::string_view(callee) == "Viper.Result.UnwrapOr") {
+                    if (std::string_view(callee) == kResultUnwrapOr) {
                         runtimeReturn = Type(Type::Kind::Ptr);
                         if (coerced.type.kind != Type::Kind::Ptr)
                             defaultValue = emitBoxValue(coerced.value, coerced.type, successType);
@@ -566,8 +609,8 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
                     return emitUnboxValue(raw, ilSuccessType, successType);
                 }
                 if (fieldExpr->field == "unwrapErr") {
-                    Value result = emitCallRet(
-                        Type(Type::Kind::Str), "Viper.Result.UnwrapErrStr", {baseResult.value});
+                    Value result =
+                        emitCallRet(Type(Type::Kind::Str), kResultUnwrapErrStr, {baseResult.value});
                     return {result, Type(Type::Kind::Str)};
                 }
             }
@@ -658,42 +701,11 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
                         funcName = fieldExpr->field; // user-defined module function
                 }
 
-                std::vector<Value> args;
-
-                // Look up runtime signature for auto-boxing/coercion
                 const auto *rtDesc = il::runtime::findRuntimeDescriptor(funcName);
-                const std::vector<il::core::Type> *expectedParamTypes = nullptr;
-                if (rtDesc)
-                    expectedParamTypes = &rtDesc->signature.paramTypes;
-
-                for (size_t i = 0; i < expr->args.size(); ++i) {
-                    auto result = lowerExpr(expr->args[i].value.get());
-                    Value argValue = result.value;
-                    if (result.type.kind == Type::Kind::I32)
-                        argValue = widenByteToInteger(argValue);
-
-                    // Auto-box primitives or coerce i64→f64 when expected by runtime
-                    if (expectedParamTypes && i < expectedParamTypes->size()) {
-                        Type expectedType = (*expectedParamTypes)[i];
-                        if (expectedType.kind == Type::Kind::Ptr &&
-                            result.type.kind != Type::Kind::Ptr &&
-                            result.type.kind != Type::Kind::Void) {
-                            argValue = emitBox(argValue, result.type);
-                        } else if (expectedType.kind == Type::Kind::F64 &&
-                                   result.type.kind == Type::Kind::I64) {
-                            unsigned convId = nextTempId();
-                            il::core::Instr convInstr;
-                            convInstr.result = convId;
-                            convInstr.op = Opcode::Sitofp;
-                            convInstr.type = Type(Type::Kind::F64);
-                            convInstr.operands = {argValue};
-                            convInstr.loc = curLoc_;
-                            blockMgr_.currentBlock()->instructions.push_back(convInstr);
-                            argValue = Value::temp(convId);
-                        }
-                    }
-                    args.push_back(argValue);
-                }
+                const auto *binding = sema_.callArgBinding(expr);
+                std::vector<int> orderedSources = orderedArgSources(expr->args, binding);
+                std::vector<Value> args = RuntimeCallBuilder(*this).lowerExplicitArgs(
+                    expr->args, orderedSources, 0, rtDesc);
 
                 TypeRef exprType = sema_.typeOf(expr);
                 Type ilReturnType = exprType ? mapType(exprType) : Type(Type::Kind::Void);
@@ -825,70 +837,32 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
             }
         }
 
+        const auto *rtDesc = il::runtime::findRuntimeDescriptor(runtimeCallee);
+        const auto *binding = sema_.callArgBinding(expr);
+        std::vector<int> orderedSources = orderedArgSources(expr->args, binding);
+
         std::vector<Value> args;
 
-        if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get())) {
+        if (auto *fieldExpr = exprAs<FieldExpr>(expr->callee.get(), ExprKind::Field)) {
             TypeRef baseType = sema_.typeOf(fieldExpr->base.get());
-            if (baseType &&
-                (baseType->name.find("Viper.") == 0 || baseType->kind == TypeKindSem::Set ||
-                 baseType->kind == TypeKindSem::List || baseType->kind == TypeKindSem::Map ||
-                 baseType->kind == TypeKindSem::String)) {
+            if (isRuntimeReceiverSurfaceType(baseType) &&
+                runtimeCallExpectsImplicitReceiver(rtDesc, binding, orderedSources.size())) {
                 auto baseResult = lowerExpr(fieldExpr->base.get());
                 args.push_back(baseResult.value);
             }
         }
 
-        // BUG-008 fix: Look up runtime signature to auto-box primitives when expected type is ptr
-        const auto *rtDesc = il::runtime::findRuntimeDescriptor(runtimeCallee);
-        const std::vector<il::core::Type> *expectedParamTypes = nullptr;
-        if (rtDesc) {
-            expectedParamTypes = &rtDesc->signature.paramTypes;
-        }
-
-        const auto *binding = sema_.callArgBinding(expr);
-        std::vector<int> orderedSources = orderedArgSources(expr->args, binding);
-
         args.reserve(args.size() + orderedSources.size());
         size_t paramOffset = args.size(); // Account for implicit self parameter if present
-        for (size_t i = 0; i < orderedSources.size(); ++i) {
-            size_t sourceIndex = static_cast<size_t>(orderedSources[i]);
-            auto result = lowerExpr(expr->args[sourceIndex].value.get());
-            Value argValue = result.value;
-            if (result.type.kind == Type::Kind::I32) {
-                argValue = widenByteToInteger(argValue);
-            }
-
-            // BUG-008 fix: Auto-box primitive if expected type is Ptr
-            // BUG-013 fix: Implicit i64→f64 coercion when expected type is F64
-            if (expectedParamTypes && (paramOffset + i) < expectedParamTypes->size()) {
-                Type expectedType = (*expectedParamTypes)[paramOffset + i];
-                if (expectedType.kind == Type::Kind::Ptr && result.type.kind != Type::Kind::Ptr &&
-                    result.type.kind != Type::Kind::Void) {
-                    // Primitive passed where object expected - auto-box
-                    argValue = emitBox(argValue, result.type);
-                } else if (expectedType.kind == Type::Kind::F64 &&
-                           result.type.kind == Type::Kind::I64) {
-                    // Integer passed where f64 expected - emit sitofp
-                    unsigned convId = nextTempId();
-                    il::core::Instr convInstr;
-                    convInstr.result = convId;
-                    convInstr.op = Opcode::Sitofp;
-                    convInstr.type = Type(Type::Kind::F64);
-                    convInstr.operands = {argValue};
-                    convInstr.loc = curLoc_;
-                    blockMgr_.currentBlock()->instructions.push_back(convInstr);
-                    argValue = Value::temp(convId);
-                }
-            }
-
-            args.push_back(argValue);
-        }
+        std::vector<Value> explicitArgs = RuntimeCallBuilder(*this).lowerExplicitArgs(
+            expr->args, orderedSources, paramOffset, rtDesc);
+        args.insert(args.end(), explicitArgs.begin(), explicitArgs.end());
 
         if ((isHttpServerRouteRuntime(runtimeCallee) || isHttpsServerRouteRuntime(runtimeCallee)) &&
             orderedSources.size() == 2 && args.size() >= 3) {
             size_t tagSourceIndex = static_cast<size_t>(orderedSources[1]);
-            if (auto *tagExpr =
-                    dynamic_cast<StringLiteralExpr *>(expr->args[tagSourceIndex].value.get())) {
+            if (auto *tagExpr = exprAs<StringLiteralExpr>(expr->args[tagSourceIndex].value.get(),
+                                                          ExprKind::StringLiteral)) {
                 std::string handlerTarget = httpHandlerTargetName(sema_, tagExpr->value);
                 if (!handlerTarget.empty()) {
                     emitCall(httpServerBindHandlerTarget(runtimeCallee),
@@ -918,7 +892,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
     }
 
     // Check for built-in functions
-    if (auto *ident = dynamic_cast<IdentExpr *>(expr->callee.get())) {
+    if (auto *ident = exprAs<IdentExpr>(expr->callee.get(), ExprKind::Ident)) {
         auto builtinResult = lowerBuiltinCall(ident->name, expr);
         if (builtinResult)
             return *builtinResult;
@@ -932,7 +906,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
     TypeRef calleeType = sema_.typeOf(expr->callee.get());
     bool isLambdaClosure = calleeType && calleeType->isCallable();
 
-    if (auto *ident = dynamic_cast<IdentExpr *>(expr->callee.get())) {
+    if (auto *ident = exprAs<IdentExpr>(expr->callee.get(), ExprKind::Ident)) {
         // Check for implicit method call
         if (currentClassType_) {
             if (auto *method = currentClassType_->findMethod(ident->name)) {
@@ -969,16 +943,16 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
         if (!isIndirectCall) {
             calleeName = mangleFunctionName(ident->name);
         }
-    } else if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get())) {
+    } else if (auto *fieldExpr = exprAs<FieldExpr>(expr->callee.get(), ExprKind::Field)) {
         // Check if this is a namespace-qualified function call (e.g., Math.add or
         // Outer.Inner.getValue) Recursively build the qualified name from nested FieldExpr nodes
         std::string qualifiedName;
         std::function<bool(Expr *)> buildQualifiedName = [&](Expr *e) -> bool {
-            if (auto *ident = dynamic_cast<IdentExpr *>(e)) {
+            if (auto *ident = exprAs<IdentExpr>(e, ExprKind::Ident)) {
                 qualifiedName = ident->name;
                 return true;
             }
-            if (auto *field = dynamic_cast<FieldExpr *>(e)) {
+            if (auto *field = exprAs<FieldExpr>(e, ExprKind::Field)) {
                 if (buildQualifiedName(field->base.get())) {
                     qualifiedName += "." + field->field;
                     return true;

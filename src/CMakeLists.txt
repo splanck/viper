@@ -441,7 +441,7 @@ target_link_libraries(viper_repl
         PUBLIC
         viper_common_opts
         tui
-        fe_zia
+        zia_editor_services
         fe_basic
         viper::il_full
         viper_bytecode)
@@ -558,22 +558,20 @@ target_link_libraries(zia
         viper_cmd_arm64
         viper_common
         viper_bytecode)
-if (APPLE OR WIN32)
-    target_link_libraries(zia PRIVATE fe_zia)
-endif ()
-# Force-load fe_zia so its strong-symbol implementations of rt_zia_complete /
+target_link_libraries(zia PRIVATE zia_editor_services)
+# Force-load zia_editor_services so its strong-symbol implementations of rt_zia_complete /
 # rt_zia_check / rt_zia_hover / rt_zia_symbols win over the weak fallbacks in
 # viper_runtime/core/rt_zia_completion_stub.c. Without force-loading, the static
 # linker resolves every rt_zia_* symbol from the stubs (which appear first) and
-# never pulls in the strong-symbol object from fe_zia, so editor IntelliSense
+# never pulls in the strong-symbol object from zia_editor_services, so editor IntelliSense
 # silently returns "Zia completion unavailable" payloads.
 if (APPLE)
-    target_link_options(zia PRIVATE LINKER:-force_load,$<TARGET_FILE:fe_zia>)
+    target_link_options(zia PRIVATE LINKER:-force_load,$<TARGET_FILE:zia_editor_services>)
 elseif (MSVC)
-    target_link_options(zia PRIVATE "/WHOLEARCHIVE:$<TARGET_FILE:fe_zia>")
+    target_link_options(zia PRIVATE "/WHOLEARCHIVE:$<TARGET_FILE:zia_editor_services>")
 elseif (UNIX)
     target_link_libraries(zia PRIVATE
-            -Wl,--whole-archive $<TARGET_FILE:fe_zia> -Wl,--no-whole-archive
+            -Wl,--whole-archive $<TARGET_FILE:zia_editor_services> -Wl,--no-whole-archive
             il_build)
 endif ()
 if (MSVC)
@@ -608,7 +606,7 @@ target_include_directories(zia_server_lib PUBLIC
 target_link_libraries(zia_server_lib
         PUBLIC
         lsp_common_lib
-        fe_zia
+        zia_editor_services
         viper::il_full
         il_transform)
 

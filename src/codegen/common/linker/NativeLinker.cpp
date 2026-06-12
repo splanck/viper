@@ -649,8 +649,7 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
         sym.sectionIndex = 1;
         sym.offset = off;
         obj.symbols.push_back(std::move(sym));
-        const uint32_t idx =
-            checkedSyntheticSymbolIndex(obj.symbols.size() - 1, "__chkstk");
+        const uint32_t idx = checkedSyntheticSymbolIndex(obj.symbols.size() - 1, "__chkstk");
         addImportAlias("__chkstk", idx);
     }
     if (needsHelper("rt_audio_shutdown")) {
@@ -1209,7 +1208,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     // definitions participate in resolution unconditionally. Step 3's
     // demand-driven extraction would otherwise let weak runtime stubs (e.g.
     // rt_zia_* in viper_rt_base) satisfy the symbols first, so the strong
-    // frontend definitions in fe_zia would never be pulled. Loading them as
+    // editor-service definitions would never be pulled. Loading them as
     // initial objects lets SymbolResolver's "Strong overrides Weak" rule make
     // them win. Special members (symbol/string tables) are already excluded
     // from Archive::members by the archive reader.
@@ -1229,9 +1228,8 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
         initialObjects.push_back(std::move(extra));
     if (!opts.entrySymbol.empty())
         initialObjects.push_back(makeUndefinedRootObject(userObj, opts.entrySymbol));
-    // Embedding the C++ frontend (force-loaded fe_zia) pulls in libc++ atexit
-    // code that references `__dso_handle`; crt-less Viper binaries must define
-    // it themselves.
+    // Embedding C++ editor services pulls in libc++ atexit code that references
+    // `__dso_handle`; crt-less Viper binaries must define it themselves.
     if (!opts.forceLoadArchivePaths.empty())
         initialObjects.push_back(makeDsoHandleObject(userObj));
     std::unordered_map<std::string, GlobalSymEntry> globalSyms;

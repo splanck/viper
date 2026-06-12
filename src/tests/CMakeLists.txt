@@ -83,6 +83,13 @@ if (VIPER_BASH_EXECUTABLE)
             ${CMAKE_SOURCE_DIR})
     set_tests_properties(check_vm_semantics_duplication PROPERTIES
             LABELS "conformance;vm;bytecode;requires_posix_shell")
+
+    add_test(NAME zia_runtime_name_literal_lint
+            COMMAND ${VIPER_BASH_EXECUTABLE}
+            ${CMAKE_SOURCE_DIR}/scripts/lint_zia_runtime_names.sh
+            ${CMAKE_SOURCE_DIR})
+    set_tests_properties(zia_runtime_name_literal_lint PROPERTIES
+            LABELS "tools;zia;requires_posix_shell")
 endif ()
 
 add_library(viper_testing INTERFACE)
@@ -1372,7 +1379,7 @@ if (APPLE AND VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|
             TIMEOUT 120)
 
     # Regression gate for the ViperIDE IntelliSense fix: a codegen'd native
-    # binary must force-load fe_zia so rt_zia_* resolve to the real engine
+    # binary must force-load zia_editor_services so rt_zia_* resolve to the real engine
     # rather than the weak "unavailable" stubs. Fails before the fix.
     add_test(NAME native_smoke_viperide_completion_arm64
             COMMAND "${VIPER_BASH_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_viperide_completion_native.sh"

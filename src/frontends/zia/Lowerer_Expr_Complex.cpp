@@ -228,17 +228,17 @@ LowerResult Lowerer::lowerField(FieldExpr *expr) {
         }
 
         if (expr->field == "kind" || expr->field == "type") {
-            Value result = emitCallRet(Type(Type::Kind::Str), "Viper.Error.KindName", {errKind});
+            Value result = emitCallRet(Type(Type::Kind::Str), kErrorKindName, {errKind});
             return {result, Type(Type::Kind::Str)};
         }
         if (expr->field == "message") {
-            Value result = emitCallRet(
-                Type(Type::Kind::Str), "Viper.Error.Message", {errKind, errCode, errLine});
+            Value result =
+                emitCallRet(Type(Type::Kind::Str), kErrorMessage, {errKind, errCode, errLine});
             return {result, Type(Type::Kind::Str)};
         }
         if (expr->field == "location") {
-            Value result = emitCallRet(
-                Type(Type::Kind::Str), "Viper.Error.Location", {errKind, errCode, errLine});
+            Value result =
+                emitCallRet(Type(Type::Kind::Str), kErrorLocation, {errKind, errCode, errLine});
             return {result, Type(Type::Kind::Str)};
         }
         if (expr->field == "code") {
@@ -313,7 +313,7 @@ LowerResult Lowerer::lowerField(FieldExpr *expr) {
     }
 
     // Handle runtime class property access (e.g., app.ShouldClose, editor.LineCount)
-    // Runtime classes are Ptr types with a non-empty name like "Viper.GUI.App"
+    // Runtime classes are Ptr types with a non-empty generated runtime class name.
     if (baseType->kind == TypeKindSem::Ptr && !baseType->name.empty()) {
         // Construct getter function name: {ClassName}.get_{PropertyName}
         std::string rtGetterName = baseType->name + ".get_" + expr->field;

@@ -93,7 +93,7 @@ inline constexpr const char *kBoxStr = kCoreBoxStr;
 /// @brief Query the struct type tag stored in a Box object.
 inline constexpr const char *kBoxValueType = kCoreBoxValueType;
 /// @brief Register an owned field inside a boxed value-type object.
-inline constexpr const char *kBoxValueTypeAddField = "Viper.Core.Box.ValueTypeAddField";
+inline constexpr const char *kBoxValueTypeAddField = kCoreBoxValueTypeAddField;
 /// @brief Unbox a Box object to extract the i64 value.
 inline constexpr const char *kUnboxI64 = kCoreBoxToI64;
 /// @brief Unbox a Box object to extract the f64 value.
@@ -196,7 +196,7 @@ inline constexpr const char *kMapSet = kCollectionsMapSet;
 /// @brief Get the value for a given key. Traps if key is absent.
 inline constexpr const char *kMapGet = kCollectionsMapGet;
 /// @brief Get an optional string value for a given key; missing keys return null.
-inline constexpr const char *kMapGetOptStr = "Viper.Collections.Map.GetOptStr";
+inline constexpr const char *kMapGetOptStr = kCollectionsMapGetOptStr;
 /// @brief Get the value for a given key, or a default if absent.
 inline constexpr const char *kMapGetOr = kCollectionsMapGetOr;
 /// @brief Check if the map contains a given key. O(1) average.
@@ -228,7 +228,7 @@ inline constexpr const char *kSeqGet = kCollectionsSeqGet;
 /// @brief Get a string element at a given index in a seq<str> Seq. Returns Str directly.
 /// @details seq<str> sequences store raw rt_string pointers (not boxed). This function
 ///          casts the void* element to rt_string without boxing/unboxing overhead.
-inline constexpr const char *kSeqGetStr = "Viper.Collections.Seq.GetStr";
+inline constexpr const char *kSeqGetStr = kCollectionsSeqGetStr;
 /// @}
 
 //=============================================================================

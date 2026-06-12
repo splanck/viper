@@ -688,7 +688,7 @@ Lowerer::Value Lowerer::emitFieldLoad(const FieldLayout *field, Value selfPtr) {
     Value fieldAddr = emitGEP(selfPtr, static_cast<int64_t>(field->offset));
     if (field->isWeak) {
         Value weakHandle = emitLoad(fieldAddr, Type(Type::Kind::Ptr));
-        return emitCallRet(Type(Type::Kind::Ptr), "Viper.Memory.WeakRef.Get", {weakHandle});
+        return emitCallRet(Type(Type::Kind::Ptr), runtime::kMemoryWeakRefGet, {weakHandle});
     }
     // Inline aggregates live directly inside the containing value. Loading them
     // as a pointer-sized scalar would read the first bytes of the aggregate.
@@ -708,9 +708,9 @@ void Lowerer::emitFieldStore(const FieldLayout *field, Value selfPtr, Value val)
     Value fieldAddr = emitGEP(selfPtr, static_cast<int64_t>(field->offset));
     if (field->isWeak) {
         Value oldHandle = emitLoad(fieldAddr, Type(Type::Kind::Ptr));
-        Value newHandle = emitCallRet(Type(Type::Kind::Ptr), "Viper.Memory.WeakRef.New", {val});
+        Value newHandle = emitCallRet(Type(Type::Kind::Ptr), runtime::kMemoryWeakRefNew, {val});
         emitStore(fieldAddr, newHandle, Type(Type::Kind::Ptr));
-        emitCall("Viper.Memory.WeakRef.Free", {oldHandle});
+        emitCall(runtime::kMemoryWeakRefFree, {oldHandle});
         return;
     }
     emitInlineValueStore(field->type, fieldAddr, val, true);

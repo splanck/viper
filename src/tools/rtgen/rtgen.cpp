@@ -2264,6 +2264,19 @@ static std::string canonicalToIdentifier(const std::string &canonical) {
     return result;
 }
 
+/// @brief Convert a runtime class qualified name to a distinct C++ identifier.
+/// @details Class identifiers deliberately use a `kRuntimeClass` prefix so
+///          that `Viper.Collections.List` cannot collide with runtime function
+///          constants such as `Viper.Collections.List.New`.
+/// @param qname Fully qualified runtime class name from an RT_CLASS block.
+/// @return Constant identifier such as `kRuntimeClassCollectionsList`.
+static std::string runtimeClassToIdentifier(const std::string &qname) {
+    std::string functionLikeId = canonicalToIdentifier(qname);
+    if (!functionLikeId.empty() && functionLikeId.front() == 'k')
+        functionLikeId.erase(functionLikeId.begin());
+    return "kRuntimeClass" + functionLikeId;
+}
+
 /// @brief Generate RuntimeNames.hpp: C++ constants exposing canonical names to the
 ///        frontends. Fatal error on write failure.
 static void generateFrontendNames(const ParseState &state, const fs::path &outDir) {
@@ -2278,15 +2291,52 @@ static void generateFrontendNames(const ParseState &state, const fs::path &outDi
     out << "//===----------------------------------------------------------------------===//\n";
     out << "//\n";
     out << "// File: RuntimeNames.hpp\n";
-    out << "// Purpose: Canonical runtime function name constants for all frontends.\n";
+    out << "// Purpose: Canonical runtime function and class name constants for all frontends.\n";
     out << "//\n";
     out << "// Usage: #include \"il/runtime/RuntimeNames.hpp\"\n";
-    out << "//        Then use il::runtime::names::kStringConcat etc.\n";
+    out << "//        Then use il::runtime::names::kStringConcat,\n";
+    out << "//        il::runtime::names::kRuntimeClassString, etc.\n";
     out << "//\n";
     out << "//===----------------------------------------------------------------------===//\n\n";
 
     out << "#pragma once\n\n";
     out << "namespace il::runtime::names {\n\n";
+    out << "/// @brief Canonical prefix shared by all runtime functions and classes.\n";
+    out << "inline constexpr const char *kRuntimeNamespacePrefix = \"Viper.\";\n\n";
+
+    if (!state.classes.empty()) {
+        out << "// " << std::string(75, '=') << "\n";
+        out << "// RUNTIME CLASSES\n";
+        out << "// " << std::string(75, '=') << "\n\n";
+
+        std::map<std::string, std::vector<const RuntimeClass *>> classesByNamespace;
+        std::set<std::string> emittedClassIdentifiers;
+        for (const auto &cls : state.classes) {
+            size_t lastDot = cls.name.rfind('.');
+            std::string ns = "Other";
+            if (lastDot != std::string::npos)
+                ns = cls.name.substr(0, lastDot);
+            classesByNamespace[ns].push_back(&cls);
+        }
+
+        for (const auto &[ns, classes] : classesByNamespace) {
+            out << "// " << ns << "\n\n";
+            for (const auto *cls : classes) {
+                std::string id = runtimeClassToIdentifier(cls->name);
+
+                std::string uniqueId = id;
+                int suffix = 2;
+                while (emittedClassIdentifiers.count(uniqueId)) {
+                    uniqueId = id + std::to_string(suffix++);
+                }
+                emittedClassIdentifiers.insert(uniqueId);
+
+                out << "/// @brief Runtime class " << cls->name << "\n";
+                out << "inline constexpr const char *" << uniqueId << " = "
+                    << cppStringLiteral(cls->name) << ";\n\n";
+            }
+        }
+    }
 
     // Group functions by namespace for readability
     std::map<std::string, std::vector<const RuntimeFunc *>> byNamespace;
