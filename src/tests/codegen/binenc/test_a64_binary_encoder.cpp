@@ -1173,6 +1173,57 @@ static void testWindowsArm64UnwindEntryRecorded() {
     CHECK(entry.unwindCodes.back() == 0xE4);
 }
 
+static void testDarwinCompactUnwindFrameEncodingHasNoStrayBits() {
+    // A framed function with saved GPR and FPR pairs must emit a clean
+    // UNWIND_ARM64_MODE_FRAME encoding. The compact-unwind mode lives in bits
+    // [27:24]; saved-pair flags live in bits [8:0] and describe canonical
+    // slots our prologue does not use, so no flag bits may be set either.
+    MFunction fn;
+    fn.name = "darwin_unwind_frame";
+    fn.isLeaf = false;
+    fn.savedGPRs = {PhysReg::X19, PhysReg::X20, PhysReg::X21};
+    fn.savedFPRs = {PhysReg::V8, PhysReg::V9};
+    fn.localFrameSize = 48;
+
+    MBasicBlock bb;
+    bb.name = "entry";
+    bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
+    fn.blocks.push_back(std::move(bb));
+
+    CodeSection text, rodata;
+    A64BinaryEncoder enc;
+    enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
+
+    CHECK(text.unwindEntries().size() == 1);
+    const auto &entry = text.unwindEntries().front();
+    CHECK(entry.encoding == 0x04000000u); // UNWIND_ARM64_MODE_FRAME, no extras
+    // The mode nibble must survive masking — the old encoding ORed pair
+    // counts into bits 24+ which corrupted the mode for any saved FPR pair.
+    CHECK((entry.encoding & 0x0F000000u) == 0x04000000u);
+    CHECK((entry.encoding & 0x00FFFFFFu) == 0u);
+    CHECK(entry.functionLength == text.bytes().size());
+}
+
+static void testDarwinCompactUnwindFramelessEncoding() {
+    MFunction fn;
+    fn.name = "darwin_unwind_leaf";
+    fn.isLeaf = true;
+    fn.localFrameSize = 0;
+
+    MBasicBlock bb;
+    bb.name = "entry";
+    bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
+    fn.blocks.push_back(std::move(bb));
+
+    CodeSection text, rodata;
+    A64BinaryEncoder enc;
+    enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
+
+    CHECK(text.unwindEntries().size() == 1);
+    const auto &entry = text.unwindEntries().front();
+    CHECK(entry.encoding == 0x02000000u); // UNWIND_ARM64_MODE_FRAMELESS, size 0
+}
+
 static void testBranchRejectsMissingTarget() {
     MFunction fn;
     fn.name = "missing_target";
@@ -1384,6 +1435,8 @@ int main() {
     testStrRegSpImm_largeOffsetAvoidsX16Source();
     testAddSubRI_acceptsNegativeImmediateByFlippingOpcode();
     testWindowsArm64UnwindEntryRecorded();
+    testDarwinCompactUnwindFrameEncodingHasNoStrayBits();
+    testDarwinCompactUnwindFramelessEncoding();
     testBranchRejectsMissingTarget();
     testFunctionMetadataValidation();
     testAssemblerCorrectnessValidation();
