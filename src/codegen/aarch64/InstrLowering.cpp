@@ -271,14 +271,6 @@ bool isKnownVarArgCallee(
     return lookupKnownVarArgNamedArgs(callee, knownVarArgNamedArgCounts).has_value();
 }
 
-/// @brief Emit `mov x0, #code; bl rt_trap_raise_error` to raise a runtime trap.
-void emitTrapRaiseError(MBasicBlock &bb, int code) {
-    bb.instrs.push_back(
-        MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(code)}});
-    bb.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_raise_error")}});
-    bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
-}
-
 /// @brief Materialise a 64-bit FP value via the integer bit-pattern + FMOV GPR→FPR.
 /// @details Used when the FP immediate doesn't fit AArch64's FMOV immediate encoding.
 void emitF64BitsToVReg(MBasicBlock &out, uint16_t dstVReg, uint64_t bits, uint16_t &nextVRegId) {
@@ -1228,7 +1220,7 @@ static bool lowerDivisionChk0(const il::core::Instr &ins,
         return false;
 
     // Generate divide-by-zero check: cmp rhs, #0; b.eq trap_label
-    const std::string trapLabel = ".Ltrap_div0_" + std::to_string(ctx.trapLabelCounter++);
+    const std::string trapLabel = requestSharedTrapBlock(ctx, "div0", "rt_trap_div0");
     out.instrs.push_back(
         MInstr{MOpcode::CmpRI, {MOperand::vregOp(RegClass::GPR, rhs), MOperand::immOp(0)}});
     out.instrs.push_back(
@@ -1261,16 +1253,12 @@ static bool lowerDivisionChk0(const il::core::Instr &ins,
                                      MOperand::vregOp(RegClass::GPR, rhsIsNegOne)}});
 
         if (!isRemainder) {
-            const std::string trapOvfLabel = ".Ltrap_ovf_" + std::to_string(ctx.trapLabelCounter++);
+            const std::string trapOvfLabel = requestSharedTrapBlock(ctx, "ovf", "rt_trap_ovf");
             out.instrs.push_back(
                 MInstr{MOpcode::CmpRI,
                        {MOperand::vregOp(RegClass::GPR, overflowFlag), MOperand::immOp(0)}});
             out.instrs.push_back(
                 MInstr{MOpcode::BCond, {MOperand::condOp("ne"), MOperand::labelOp(trapOvfLabel)}});
-            ctx.mf.blocks.emplace_back();
-            ctx.mf.blocks.back().name = trapOvfLabel;
-            ctx.mf.blocks.back().instrs.push_back(
-                MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_ovf")}});
         }
     }
 
@@ -1315,12 +1303,6 @@ static bool lowerDivisionChk0(const il::core::Instr &ins,
                                      MOperand::vregOp(RegClass::GPR, lhs),
                                      MOperand::vregOp(RegClass::GPR, rhs)}});
     }
-
-    // Create trap block AFTER all uses of `out` — emplace_back may reallocate
-    // the blocks vector, invalidating the `out` reference.
-    ctx.mf.blocks.emplace_back();
-    ctx.mf.blocks.back().name = trapLabel;
-    ctx.mf.blocks.back().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_div0")}});
 
     return true;
 }
@@ -1500,7 +1482,7 @@ bool lowerIdxChk(const il::core::Instr &ins,
         loV = signExtendVRegToWidth(loV, widthBits, ctx, out);
     hiV = signExtendVRegToWidth(hiV, widthBits, ctx, out);
 
-    const std::string trapLabel = ".Ltrap_bounds_" + std::to_string(ctx.trapLabelCounter++);
+    const std::string trapLabel = requestSharedTrapBlock(ctx, "bounds", nullptr, 7);
 
     if (loIsZero) {
         // Check idx < 0 or idx >= hi using signed comparisons.
@@ -1545,12 +1527,6 @@ bool lowerIdxChk(const il::core::Instr &ins,
                                      MOperand::vregOp(RegClass::GPR, idxV),
                                      MOperand::vregOp(RegClass::GPR, loV)}});
     }
-
-    // Create trap block AFTER all uses of `out` — emplace_back may reallocate
-    // the blocks vector, invalidating the `out` reference.
-    ctx.mf.blocks.emplace_back();
-    ctx.mf.blocks.back().name = trapLabel;
-    emitTrapRaiseError(ctx.mf.blocks.back(), 7);
 
     return true;
 }
@@ -1856,9 +1832,8 @@ bool lowerFptosi(const il::core::Instr &ins,
     ctx.tempVReg[*ins.result] = dst;
     ctx.tempRegClass[*ins.result] = RegClass::GPR;
 
-    const std::string invalidLabel =
-        ".Ltrap_fptosi_invalid_" + std::to_string(ctx.trapLabelCounter++);
-    const std::string overflowLabel = ".Ltrap_fptosi_ovf_" + std::to_string(ctx.trapLabelCounter++);
+    const std::string invalidLabel = requestSharedTrapBlock(ctx, "fp_invalid", nullptr, 5);
+    const std::string overflowLabel = requestSharedTrapBlock(ctx, "fp_ovf", nullptr, 4);
 
     out.instrs.push_back(
         MInstr{MOpcode::FCmpRR,
@@ -1893,13 +1868,6 @@ bool lowerFptosi(const il::core::Instr &ins,
         MInstr{MOpcode::FCvtZS,
                {MOperand::vregOp(RegClass::GPR, dst), MOperand::vregOp(RegClass::FPR, fv)}});
 
-    ctx.mf.blocks.emplace_back();
-    ctx.mf.blocks.back().name = invalidLabel;
-    emitTrapRaiseError(ctx.mf.blocks.back(), 5);
-
-    ctx.mf.blocks.emplace_back();
-    ctx.mf.blocks.back().name = overflowLabel;
-    emitTrapRaiseError(ctx.mf.blocks.back(), 4);
     return true;
 }
 
@@ -2012,13 +1980,10 @@ bool lowerFptosi(const il::core::Instr &ins,
     out.instrs.push_back(
         MInstr{MOpcode::CmpRR,
                {MOperand::vregOp(RegClass::GPR, vt), MOperand::vregOp(RegClass::GPR, sv)}});
-    const std::string trapLabel = ".Ltrap_cast_" + std::to_string(ctx.trapLabelCounter++);
+    const std::string trapLabel = requestSharedTrapBlock(ctx, "ovf", "rt_trap_ovf");
     out.instrs.push_back(
         MInstr{MOpcode::BCond, {MOperand::condOp("ne"), MOperand::labelOp(trapLabel)}});
     ctx.tempRegClass[*ins.result] = RegClass::GPR;
-    ctx.mf.blocks.emplace_back();
-    ctx.mf.blocks.back().name = trapLabel;
-    ctx.mf.blocks.back().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_ovf")}});
     return true;
 }
 

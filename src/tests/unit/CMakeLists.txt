@@ -631,6 +631,14 @@ if (NOT TARGET test_aarch64_vararg)
     viper_add_ctest(test_aarch64_vararg test_aarch64_vararg)
 endif ()
 
+if (NOT TARGET test_aarch64_trap_blocks)
+    viper_add_test(
+            test_aarch64_trap_blocks
+            ${VIPER_TESTS_DIR}/unit/codegen/test_aarch64_trap_blocks.cpp)
+    target_link_libraries(test_aarch64_trap_blocks PRIVATE il_codegen_aarch64)
+    viper_add_ctest(test_aarch64_trap_blocks test_aarch64_trap_blocks)
+endif ()
+
 if (NOT TARGET test_aarch64_cross_block_reload)
     viper_add_test(
             test_aarch64_cross_block_reload

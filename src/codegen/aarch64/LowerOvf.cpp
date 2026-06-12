@@ -60,10 +60,28 @@ namespace {
 } // namespace
 
 void lowerOverflowOps(MFunction &fn) {
-    // Darwin assembly with .subsections_via_symbols requires conditional branch
-    // targets to be assembler-local labels.  `L...` is local on Mach-O and also
-    // resolves as a normal non-exported label on ELF.
-    const std::string trapLabel = "Ltrap_ovf_" + fn.name;
+    // Reuse the per-function shared overflow trap block created during IL->MIR
+    // lowering when one exists (a single `bl rt_trap_ovf` body — matched
+    // semantically because LoweringPass sanitizes block labels after
+    // lowering), so a function pays for at most one overflow trap block.
+    // Otherwise fall back to a fresh assembler-local label: `L...` stays out
+    // of the symbol table on Mach-O (.subsections_via_symbols) and resolves
+    // as a normal non-exported label on ELF.
+    auto findExistingOvfTrap = [&fn]() -> std::optional<std::size_t> {
+        for (std::size_t i = 0; i < fn.blocks.size(); ++i) {
+            const auto &candidate = fn.blocks[i];
+            if (candidate.instrs.size() == 1 && candidate.instrs[0].opc == MOpcode::Bl &&
+                !candidate.instrs[0].ops.empty() &&
+                candidate.instrs[0].ops[0].kind == MOperand::Kind::Label &&
+                candidate.instrs[0].ops[0].label == "rt_trap_ovf")
+                return i;
+        }
+        return std::nullopt;
+    };
+
+    const auto existingOvfTrap = findExistingOvfTrap();
+    const std::string trapLabel =
+        existingOvfTrap ? fn.blocks[*existingOvfTrap].name : "Ltrap_ovf_" + fn.name;
     std::optional<std::size_t> trapIndex{};
 
     auto ensureTrapBlock = [&]() -> std::size_t {

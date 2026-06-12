@@ -166,18 +166,6 @@ static double unsignedUpperExclusiveForBits(int bits) {
     }
 }
 
-/// @brief Append a trap block that loads @p code into x0 and calls rt_trap_raise_error.
-/// @param label Assembly label for the block (must be unique within the function).
-/// @param code  Error code passed as first argument to the runtime helper.
-static void emitTrapRaiseErrorBlock(MFunction &mf, std::string label, int code) {
-    mf.blocks.emplace_back();
-    auto &trapBlock = mf.blocks.back();
-    trapBlock.name = std::move(label);
-    trapBlock.instrs.push_back(
-        MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(code)}});
-    trapBlock.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_raise_error")}});
-}
-
 // Handles integer/float conversion and narrowing opcodes. Returns false (so the
 // main dispatch can continue) for any opcode it does not own.
 static bool lowerCastOpcodes(const il::core::Instr &ins,
@@ -266,13 +254,9 @@ static bool lowerCastOpcodes(const il::core::Instr &ins,
             bbOut().instrs.push_back(
                 MInstr{MOpcode::CmpRR,
                        {MOperand::vregOp(RegClass::GPR, vt), MOperand::vregOp(RegClass::GPR, sv)}});
-            const std::string trapLabel = ".Ltrap_cast_" + std::to_string(ctx.trapLabelCounter++);
+            const std::string trapLabel = requestSharedTrapBlock(ctx, "ovf", "rt_trap_ovf");
             bbOut().instrs.push_back(
                 MInstr{MOpcode::BCond, {MOperand::condOp("ne"), MOperand::labelOp(trapLabel)}});
-            ctx.mf.blocks.emplace_back();
-            ctx.mf.blocks.back().name = trapLabel;
-            ctx.mf.blocks.back().instrs.push_back(
-                MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_ovf")}});
             const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
             ctx.tempVReg[*ins.result] = dst;
             bbOut().instrs.push_back(MInstr{
@@ -305,10 +289,8 @@ static bool lowerCastOpcodes(const il::core::Instr &ins,
                 MOpcode::FRintN,
                 {MOperand::vregOp(RegClass::FPR, rounded), MOperand::vregOp(RegClass::FPR, fv)}});
 
-            const std::string trapLabel =
-                ".Ltrap_fpcast_invalid_" + std::to_string(ctx.trapLabelCounter++);
-            const std::string overflowLabel =
-                ".Ltrap_fpcast_ovf_" + std::to_string(ctx.trapLabelCounter++);
+            const std::string trapLabel = requestSharedTrapBlock(ctx, "fp_invalid", nullptr, 5);
+            const std::string overflowLabel = requestSharedTrapBlock(ctx, "fp_ovf", nullptr, 4);
 
             // NaN becomes unordered; trap before any range comparisons.
             bbOut().instrs.push_back(MInstr{MOpcode::FCmpRR,
@@ -361,8 +343,6 @@ static bool lowerCastOpcodes(const il::core::Instr &ins,
                                                 {MOperand::vregOp(RegClass::GPR, dst),
                                                  MOperand::vregOp(RegClass::FPR, rounded)}});
             }
-            emitTrapRaiseErrorBlock(ctx.mf, trapLabel, 5);
-            emitTrapRaiseErrorBlock(ctx.mf, overflowLabel, 4);
             return true;
         }
         case Opcode::CastSiToFp:
