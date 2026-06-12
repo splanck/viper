@@ -867,6 +867,56 @@ TEST(X86Scheduler, PrioritizesLoadUseChainWithinBlock) {
     EXPECT_EQ(fn.blocks[0].instructions[0].opcode, MOpcode::MOVmr);
 }
 
+TEST(X86Scheduler, HoistsLoadAboveStoreToDisjointFrameSlot) {
+    // A long-latency load from rbp-16 feeding an add may hoist above a store
+    // to the DIFFERENT slot rbp-8: 8-byte frame slots with distinct
+    // displacements are provably disjoint.
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::MOVrm, {mem(PhysReg::RBP, -8), gpr(PhysReg::RBX)}},
+                           MInstr{MOpcode::MOVmr, {gpr(PhysReg::RAX), mem(PhysReg::RBP, -16)}},
+                           MInstr{MOpcode::ADDrr, {gpr(PhysReg::RAX), gpr(PhysReg::RDX)}},
+                           MInstr{MOpcode::RET, {}},
+                       });
+
+    const auto changed = scheduleFunction(fn);
+    EXPECT_TRUE(changed > 0U);
+    ASSERT_FALSE(fn.blocks[0].instructions.empty());
+    EXPECT_EQ(fn.blocks[0].instructions[0].opcode, MOpcode::MOVmr);
+}
+
+TEST(X86Scheduler, KeepsStoreLoadOrderOnSameFrameSlot) {
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::MOVrm, {mem(PhysReg::RBP, -8), gpr(PhysReg::RBX)}},
+                           MInstr{MOpcode::MOVmr, {gpr(PhysReg::RAX), mem(PhysReg::RBP, -8)}},
+                           MInstr{MOpcode::RET, {}},
+                       });
+
+    scheduleFunction(fn);
+    const auto &instrs = fn.blocks[0].instructions;
+    ASSERT_EQ(instrs.size(), 3U);
+    EXPECT_EQ(instrs[0].opcode, MOpcode::MOVrm);
+    EXPECT_EQ(instrs[1].opcode, MOpcode::MOVmr);
+}
+
+TEST(X86Scheduler, KeepsStoreOrderOnUnknownMemory) {
+    // Stores through arbitrary registers may alias: order must be preserved.
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::MOVrm, {mem(PhysReg::RDI, 0), gpr(PhysReg::RBX)}},
+                           MInstr{MOpcode::MOVrm, {mem(PhysReg::RSI, 0), gpr(PhysReg::RCX)}},
+                           MInstr{MOpcode::RET, {}},
+                       });
+
+    scheduleFunction(fn);
+    const auto &instrs = fn.blocks[0].instructions;
+    ASSERT_EQ(instrs.size(), 3U);
+    const auto *firstMem = std::get_if<OpMem>(&instrs[0].operands[0]);
+    ASSERT_TRUE(firstMem != nullptr);
+    EXPECT_EQ(static_cast<PhysReg>(firstMem->base.idOrPhys), PhysReg::RDI);
+}
+
 TEST(X86Peephole, DeadCodeEliminatesWholeUnusedMoveChainInOneRun) {
     auto fn = makeFunc(".Lentry",
                        {
