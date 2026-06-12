@@ -855,12 +855,12 @@ size_t BytecodeVM::slotIndex(const BCSlot *slot) const {
 /// @brief True if @p slot currently holds an owned string reference (the VM
 ///        is responsible for releasing it).
 bool BytecodeVM::slotOwnsString(const BCSlot *slot) const {
-    return valueStackStringOwned_[slotIndex(slot)] != 0;
+    return valueStackStringOwned_.owns(slotIndex(slot));
 }
 
 /// @brief Set/clear @p slot's "owns string reference" flag.
 void BytecodeVM::setSlotOwnsString(const BCSlot *slot, bool owns) {
-    valueStackStringOwned_[slotIndex(slot)] = owns ? 1 : 0;
+    valueStackStringOwned_.set(slotIndex(slot), owns);
 }
 
 /// @brief True if local slot @p idx of @p frame is typed as a string (so its
@@ -919,28 +919,105 @@ bool BytecodeVM::retainStringSlot(BCSlot *slot, const char *site) {
     return true;
 }
 
+/// @brief Copy @p src into @p dst and duplicate owned string lifetime if needed.
+/// @details The destination is first marked non-owning so any early trap cannot
+///          accidentally release an alias. When @p src owns a non-null runtime
+///          string handle, the copied handle is validated and retained before
+///          @p dst becomes owning.
+bool BytecodeVM::copyStackSlotRetainingString(BCSlot *dst,
+                                              const BCSlot *src,
+                                              const char *site) {
+    *dst = *src;
+    setSlotOwnsString(dst, false);
+    if (!slotOwnsString(src) || !dst->ptr)
+        return true;
+    if (!validateStringHandle(dst->ptr, site)) {
+        dst->ptr = nullptr;
+        return false;
+    }
+    rt_str_retain_maybe(static_cast<rt_string>(dst->ptr));
+    setSlotOwnsString(dst, true);
+    return true;
+}
+
+/// @brief Duplicate the top operand stack slot, preserving string ownership.
+bool BytecodeVM::duplicateTopSlot(const char *site) {
+    if (!copyStackSlotRetainingString(sp_, sp_ - 1, site))
+        return false;
+    ++sp_;
+    return true;
+}
+
+/// @brief Duplicate the top two operand stack slots, preserving string ownership.
+bool BytecodeVM::duplicateTopTwoSlots(const char *site) {
+    BCSlot *dst0 = sp_;
+    BCSlot *dst1 = sp_ + 1;
+    const BCSlot *src0 = sp_ - 2;
+    const BCSlot *src1 = sp_ - 1;
+    if (!copyStackSlotRetainingString(dst0, src0, site))
+        return false;
+    if (!copyStackSlotRetainingString(dst1, src1, site)) {
+        releaseOwnedString(dst0);
+        return false;
+    }
+    sp_ += 2;
+    return true;
+}
+
+/// @brief Release @p count owned operand stack slots and move the stack pointer down.
+void BytecodeVM::popOwnedSlots(size_t count) {
+    for (size_t i = 0; i < count; ++i)
+        releaseOwnedString(--sp_);
+}
+
+/// @brief Swap the top two operand slots together with their ownership flags.
+void BytecodeVM::swapTopTwoSlots() {
+    BCSlot tmp = sp_[-1];
+    const bool topOwns = slotOwnsString(sp_ - 1);
+    const bool lowerOwns = slotOwnsString(sp_ - 2);
+    sp_[-1] = sp_[-2];
+    sp_[-2] = tmp;
+    setSlotOwnsString(sp_ - 1, lowerOwns);
+    setSlotOwnsString(sp_ - 2, topOwns);
+}
+
+/// @brief Rotate the top three operand slots together with their ownership flags.
+void BytecodeVM::rotateTopThreeSlots() {
+    BCSlot tmp = sp_[-1];
+    const bool topOwns = slotOwnsString(sp_ - 1);
+    const bool secondOwns = slotOwnsString(sp_ - 2);
+    const bool firstOwns = slotOwnsString(sp_ - 3);
+    sp_[-1] = sp_[-2];
+    sp_[-2] = sp_[-3];
+    sp_[-3] = tmp;
+    setSlotOwnsString(sp_ - 1, secondOwns);
+    setSlotOwnsString(sp_ - 2, firstOwns);
+    setSlotOwnsString(sp_ - 3, topOwns);
+}
+
 /// @brief Push local slot @p idx onto the operand stack; if the local is a
 ///        string, retain the reference and mark the new slot as owning it.
-void BytecodeVM::pushLocal(uint32_t idx) {
+bool BytecodeVM::pushLocal(uint32_t idx, const char *site) {
     BCSlot *dst = sp_++;
     *dst = fp_->locals[idx];
     if (localIsString(*fp_, idx) && dst->ptr) {
-        if (!validateStringHandle(dst->ptr, "BytecodeVM::pushLocal")) {
+        if (!validateStringHandle(dst->ptr, site)) {
             sp_--;
-            return;
+            return false;
         }
         rt_str_retain_maybe(static_cast<rt_string>(dst->ptr));
         setSlotOwnsString(dst, true);
     } else {
         setSlotOwnsString(dst, false);
     }
+    return true;
 }
 
 /// @brief Pop the operand stack into local slot @p idx. For string locals,
 ///        releases the old value, then transfers the stack slot's reference
 ///        (retaining only if the source did not already own it) so the net
 ///        reference count stays balanced.
-void BytecodeVM::storeLocal(uint32_t idx) {
+bool BytecodeVM::storeLocal(uint32_t idx, const char *site) {
     BCSlot *src = --sp_;
     BCSlot *dst = fp_->locals + idx;
     const bool srcOwns = slotOwnsString(src);
@@ -950,10 +1027,10 @@ void BytecodeVM::storeLocal(uint32_t idx) {
         releaseOwnedString(dst);
         *dst = value;
         if (value.ptr) {
-            if (!validateStringHandle(value.ptr, "BytecodeVM::storeLocal")) {
+            if (!validateStringHandle(value.ptr, site)) {
                 setSlotOwnsString(src, false);
                 setSlotOwnsString(dst, false);
-                return;
+                return false;
             }
             if (!srcOwns)
                 rt_str_retain_maybe(static_cast<rt_string>(value.ptr));
@@ -967,6 +1044,82 @@ void BytecodeVM::storeLocal(uint32_t idx) {
     }
 
     setSlotOwnsString(src, false);
+    return true;
+}
+
+/// @brief Pop a return value, unwind the current frame, and push the value to the caller.
+bool BytecodeVM::returnValueFromFrame() {
+    BCSlot *resultSlot = --sp_;
+    BCSlot result = *resultSlot;
+    const bool resultOwnsString = slotOwnsString(resultSlot);
+    setSlotOwnsString(resultSlot, false);
+    if (!popFrame()) {
+        *sp_++ = result;
+        setSlotOwnsString(sp_ - 1, resultOwnsString);
+        state_ = VMState::Halted;
+        return false;
+    }
+    *sp_++ = result;
+    setSlotOwnsString(sp_ - 1, resultOwnsString);
+    return true;
+}
+
+/// @brief Unwind a void-returning frame and halt when it was the entry frame.
+bool BytecodeVM::returnVoidFromFrame() {
+    if (!popFrame()) {
+        state_ = VMState::Halted;
+        return false;
+    }
+    return true;
+}
+
+/// @brief Push global slot @p idx onto the operand stack with string retain semantics.
+bool BytecodeVM::loadGlobal(uint16_t idx, const char *site) {
+    if (idx >= globals_.size()) {
+        trap(TrapKind::InvalidOpcode, "LOAD_GLOBAL index out of range");
+        return false;
+    }
+
+    *sp_++ = globals_[idx];
+    if (idx < globalsStringOwned_.size() && globalsStringOwned_[idx] && globals_[idx].ptr) {
+        if (!validateStringHandle(globals_[idx].ptr, site)) {
+            --sp_;
+            setSlotOwnsString(sp_, false);
+            return false;
+        }
+        rt_str_retain_maybe(static_cast<rt_string>(globals_[idx].ptr));
+        setSlotOwnsString(sp_ - 1, true);
+    } else {
+        setSlotOwnsString(sp_ - 1, false);
+    }
+    return true;
+}
+
+/// @brief Pop the operand stack into global slot @p idx, transferring string ownership.
+bool BytecodeVM::storeGlobal(uint16_t idx, const char *site) {
+    BCSlot *src = --sp_;
+    BCSlot value = *src;
+    const bool valueOwnsString = slotOwnsString(src);
+
+    if (idx >= globals_.size()) {
+        releaseOwnedString(src);
+        trap(TrapKind::InvalidOpcode, "STORE_GLOBAL index out of range");
+        return false;
+    }
+
+    if (idx < globalsStringOwned_.size() && globalsStringOwned_[idx] && globals_[idx].ptr) {
+        if (!validateStringHandle(globals_[idx].ptr, site)) {
+            releaseOwnedString(src);
+            return false;
+        }
+        rt_str_release_maybe(static_cast<rt_string>(globals_[idx].ptr));
+    }
+
+    globals_[idx] = value;
+    if (idx < globalsStringOwned_.size())
+        globalsStringOwned_[idx] = valueOwnsString ? 1 : 0;
+    setSlotOwnsString(src, false);
+    return true;
 }
 
 /// @brief Release any owned string references held in a call's argument slots.
@@ -990,7 +1143,7 @@ void BytecodeVM::releaseFrameLocals(const BCFrame &frame) {
 ///        during teardown/unwind so a trap can't leak operand-stack strings.
 void BytecodeVM::releaseOwnedValueStack() {
     for (size_t i = 0; i < valueStack_.size(); ++i) {
-        if (valueStackStringOwned_[i] == 0)
+        if (!valueStackStringOwned_.owns(i))
             continue;
         releaseOwnedString(valueStack_.data() + i);
     }
@@ -1096,7 +1249,7 @@ void BytecodeVM::resetExecutionState() {
     fp_ = nullptr;
     allocaTop_ = 0;
     pendingTrapErrorCode_ = false;
-    std::fill(valueStackStringOwned_.begin(), valueStackStringOwned_.end(), 0);
+    valueStackStringOwned_.clearAll();
 }
 
 /// @brief Current operand-stack depth of @p frame given stack pointer @p sp
@@ -1567,64 +1720,28 @@ void BytecodeVM::run() {
                 break;
 
             case BCOpcode::DUP:
-                *sp_ = *(sp_ - 1);
-                setSlotOwnsString(sp_, false);
-                if (slotOwnsString(sp_ - 1) && sp_->ptr) {
-                    rt_str_retain_maybe(static_cast<rt_string>(sp_->ptr));
-                    setSlotOwnsString(sp_, true);
-                }
-                sp_++;
+                duplicateTopSlot("BytecodeVM::DUP");
                 break;
 
             case BCOpcode::DUP2:
-                sp_[0] = sp_[-2];
-                sp_[1] = sp_[-1];
-                setSlotOwnsString(sp_, false);
-                setSlotOwnsString(sp_ + 1, false);
-                if (slotOwnsString(sp_ - 2) && sp_[0].ptr) {
-                    rt_str_retain_maybe(static_cast<rt_string>(sp_[0].ptr));
-                    setSlotOwnsString(sp_, true);
-                }
-                if (slotOwnsString(sp_ - 1) && sp_[1].ptr) {
-                    rt_str_retain_maybe(static_cast<rt_string>(sp_[1].ptr));
-                    setSlotOwnsString(sp_ + 1, true);
-                }
-                sp_ += 2;
+                duplicateTopTwoSlots("BytecodeVM::DUP2");
                 break;
 
             case BCOpcode::POP:
-                releaseOwnedString(sp_ - 1);
-                sp_--;
+                popOwnedSlots(1);
                 break;
 
             case BCOpcode::POP2:
-                releaseOwnedString(sp_ - 1);
-                releaseOwnedString(sp_ - 2);
-                sp_ -= 2;
+                popOwnedSlots(2);
                 break;
 
             case BCOpcode::SWAP: {
-                BCSlot tmp = sp_[-1];
-                const bool tmpOwns = slotOwnsString(sp_ - 1);
-                sp_[-1] = sp_[-2];
-                sp_[-2] = tmp;
-                const bool lowerOwns = slotOwnsString(sp_ - 2);
-                setSlotOwnsString(sp_ - 1, lowerOwns);
-                setSlotOwnsString(sp_ - 2, tmpOwns);
+                swapTopTwoSlots();
                 break;
             }
 
             case BCOpcode::ROT3: {
-                BCSlot tmp = sp_[-1];
-                const bool tmpOwns = slotOwnsString(sp_ - 1);
-                sp_[-1] = sp_[-2];
-                sp_[-2] = sp_[-3];
-                sp_[-3] = tmp;
-                const bool secondOwns = slotOwnsString(sp_ - 2);
-                const bool firstOwns = slotOwnsString(sp_ - 3);
-                setSlotOwnsString(sp_ - 1, secondOwns);
-                setSlotOwnsString(sp_ - 2, firstOwns);
-                setSlotOwnsString(sp_ - 3, tmpOwns);
+                rotateTopThreeSlots();
                 break;
             }
 
@@ -1635,7 +1752,7 @@ void BytecodeVM::run() {
                 uint8_t idx = decodeArg8_0(instr);
                 if (!ensureLocalIndex(idx, "BytecodeVM::LOAD_LOCAL"))
                     break;
-                pushLocal(idx);
+                pushLocal(idx, "BytecodeVM::LOAD_LOCAL");
                 break;
             }
 
@@ -1643,7 +1760,7 @@ void BytecodeVM::run() {
                 uint8_t idx = decodeArg8_0(instr);
                 if (!ensureLocalIndex(idx, "BytecodeVM::STORE_LOCAL"))
                     break;
-                storeLocal(idx);
+                storeLocal(idx, "BytecodeVM::STORE_LOCAL");
                 break;
             }
 
@@ -1651,7 +1768,7 @@ void BytecodeVM::run() {
                 uint16_t idx = decodeArg16(instr);
                 if (!ensureLocalIndex(idx, "BytecodeVM::LOAD_LOCAL_W"))
                     break;
-                pushLocal(idx);
+                pushLocal(idx, "BytecodeVM::LOAD_LOCAL_W");
                 break;
             }
 
@@ -1659,7 +1776,7 @@ void BytecodeVM::run() {
                 uint16_t idx = decodeArg16(instr);
                 if (!ensureLocalIndex(idx, "BytecodeVM::STORE_LOCAL_W"))
                     break;
-                storeLocal(idx);
+                storeLocal(idx, "BytecodeVM::STORE_LOCAL_W");
                 break;
             }
 
@@ -2338,27 +2455,14 @@ void BytecodeVM::run() {
             }
 
             case BCOpcode::RETURN: {
-                BCSlot *resultSlot = --sp_;
-                BCSlot result = *resultSlot;
-                const bool resultOwnsString = slotOwnsString(resultSlot);
-                setSlotOwnsString(resultSlot, false);
-                if (!popFrame()) {
-                    // Return from main function
-                    *sp_++ = result;
-                    setSlotOwnsString(sp_ - 1, resultOwnsString);
-                    state_ = VMState::Halted;
+                if (!returnValueFromFrame())
                     return;
-                }
-                *sp_++ = result;
-                setSlotOwnsString(sp_ - 1, resultOwnsString);
                 break;
             }
 
             case BCOpcode::RETURN_VOID: {
-                if (!popFrame()) {
-                    state_ = VMState::Halted;
+                if (!returnVoidFromFrame())
                     return;
-                }
                 break;
             }
 
@@ -2423,14 +2527,12 @@ void BytecodeVM::run() {
                 BCSlot *idxSlot = --sp_;
                 const size_t idx = static_cast<size_t>(idxSlot->i64);
                 setSlotOwnsString(idxSlot, false);
-                const uintptr_t base = reinterpret_cast<uintptr_t>(arrSlot->ptr);
-                if (idx > std::numeric_limits<uintptr_t>::max() / sizeof(int32_t) ||
-                    idx * sizeof(int32_t) > std::numeric_limits<uintptr_t>::max() - base) {
-                    trapOrDispatch(TrapKind::Bounds, "ARR_I32_GET_FAST index address overflow");
-                    break;
-                }
-                auto *element = reinterpret_cast<int32_t *>(base + idx * sizeof(int32_t));
-                if (!ensureMemoryAccess(element, sizeof(int32_t), "BytecodeVM::ARR_I32_GET_FAST"))
+                int32_t *element = nullptr;
+                if (!resolveArrayFastElement<int32_t>(arrSlot->ptr,
+                                                       idx,
+                                                       element,
+                                                       "ARR_I32_GET_FAST index address overflow",
+                                                       "BytecodeVM::ARR_I32_GET_FAST"))
                     break;
                 arrSlot->i64 = static_cast<int64_t>(*element);
                 setSlotOwnsString(arrSlot, false);
@@ -2450,14 +2552,12 @@ void BytecodeVM::run() {
                 const size_t idx = static_cast<size_t>(idxSlot->i64);
                 setSlotOwnsString(idxSlot, false);
                 --sp_;
-                const uintptr_t base = reinterpret_cast<uintptr_t>(arrSlot->ptr);
-                if (idx > std::numeric_limits<uintptr_t>::max() / sizeof(int32_t) ||
-                    idx * sizeof(int32_t) > std::numeric_limits<uintptr_t>::max() - base) {
-                    trapOrDispatch(TrapKind::Bounds, "ARR_I32_SET_FAST index address overflow");
-                    break;
-                }
-                auto *element = reinterpret_cast<int32_t *>(base + idx * sizeof(int32_t));
-                if (!ensureMemoryAccess(element, sizeof(int32_t), "BytecodeVM::ARR_I32_SET_FAST"))
+                int32_t *element = nullptr;
+                if (!resolveArrayFastElement<int32_t>(arrSlot->ptr,
+                                                       idx,
+                                                       element,
+                                                       "ARR_I32_SET_FAST index address overflow",
+                                                       "BytecodeVM::ARR_I32_SET_FAST"))
                     break;
                 setSlotOwnsString(arrSlot, false);
                 *element = value;
@@ -2473,14 +2573,12 @@ void BytecodeVM::run() {
                 BCSlot *idxSlot = --sp_;
                 const size_t idx = static_cast<size_t>(idxSlot->i64);
                 setSlotOwnsString(idxSlot, false);
-                const uintptr_t base = reinterpret_cast<uintptr_t>(arrSlot->ptr);
-                if (idx > std::numeric_limits<uintptr_t>::max() / sizeof(int64_t) ||
-                    idx * sizeof(int64_t) > std::numeric_limits<uintptr_t>::max() - base) {
-                    trapOrDispatch(TrapKind::Bounds, "ARR_I64_GET_FAST index address overflow");
-                    break;
-                }
-                auto *element = reinterpret_cast<int64_t *>(base + idx * sizeof(int64_t));
-                if (!ensureMemoryAccess(element, sizeof(int64_t), "BytecodeVM::ARR_I64_GET_FAST"))
+                int64_t *element = nullptr;
+                if (!resolveArrayFastElement<int64_t>(arrSlot->ptr,
+                                                       idx,
+                                                       element,
+                                                       "ARR_I64_GET_FAST index address overflow",
+                                                       "BytecodeVM::ARR_I64_GET_FAST"))
                     break;
                 arrSlot->i64 = *element;
                 setSlotOwnsString(arrSlot, false);
@@ -2500,14 +2598,12 @@ void BytecodeVM::run() {
                 const size_t idx = static_cast<size_t>(idxSlot->i64);
                 setSlotOwnsString(idxSlot, false);
                 --sp_;
-                const uintptr_t base = reinterpret_cast<uintptr_t>(arrSlot->ptr);
-                if (idx > std::numeric_limits<uintptr_t>::max() / sizeof(int64_t) ||
-                    idx * sizeof(int64_t) > std::numeric_limits<uintptr_t>::max() - base) {
-                    trapOrDispatch(TrapKind::Bounds, "ARR_I64_SET_FAST index address overflow");
-                    break;
-                }
-                auto *element = reinterpret_cast<int64_t *>(base + idx * sizeof(int64_t));
-                if (!ensureMemoryAccess(element, sizeof(int64_t), "BytecodeVM::ARR_I64_SET_FAST"))
+                int64_t *element = nullptr;
+                if (!resolveArrayFastElement<int64_t>(arrSlot->ptr,
+                                                       idx,
+                                                       element,
+                                                       "ARR_I64_SET_FAST index address overflow",
+                                                       "BytecodeVM::ARR_I64_SET_FAST"))
                     break;
                 setSlotOwnsString(arrSlot, false);
                 *element = value;
@@ -2523,14 +2619,12 @@ void BytecodeVM::run() {
                 BCSlot *idxSlot = --sp_;
                 const size_t idx = static_cast<size_t>(idxSlot->i64);
                 setSlotOwnsString(idxSlot, false);
-                const uintptr_t base = reinterpret_cast<uintptr_t>(arrSlot->ptr);
-                if (idx > std::numeric_limits<uintptr_t>::max() / sizeof(double) ||
-                    idx * sizeof(double) > std::numeric_limits<uintptr_t>::max() - base) {
-                    trapOrDispatch(TrapKind::Bounds, "ARR_F64_GET_FAST index address overflow");
-                    break;
-                }
-                auto *element = reinterpret_cast<double *>(base + idx * sizeof(double));
-                if (!ensureMemoryAccess(element, sizeof(double), "BytecodeVM::ARR_F64_GET_FAST"))
+                double *element = nullptr;
+                if (!resolveArrayFastElement<double>(arrSlot->ptr,
+                                                     idx,
+                                                     element,
+                                                     "ARR_F64_GET_FAST index address overflow",
+                                                     "BytecodeVM::ARR_F64_GET_FAST"))
                     break;
                 arrSlot->f64 = *element;
                 setSlotOwnsString(arrSlot, false);
@@ -2550,14 +2644,12 @@ void BytecodeVM::run() {
                 const size_t idx = static_cast<size_t>(idxSlot->i64);
                 setSlotOwnsString(idxSlot, false);
                 --sp_;
-                const uintptr_t base = reinterpret_cast<uintptr_t>(arrSlot->ptr);
-                if (idx > std::numeric_limits<uintptr_t>::max() / sizeof(double) ||
-                    idx * sizeof(double) > std::numeric_limits<uintptr_t>::max() - base) {
-                    trapOrDispatch(TrapKind::Bounds, "ARR_F64_SET_FAST index address overflow");
-                    break;
-                }
-                auto *element = reinterpret_cast<double *>(base + idx * sizeof(double));
-                if (!ensureMemoryAccess(element, sizeof(double), "BytecodeVM::ARR_F64_SET_FAST"))
+                double *element = nullptr;
+                if (!resolveArrayFastElement<double>(arrSlot->ptr,
+                                                     idx,
+                                                     element,
+                                                     "ARR_F64_SET_FAST index address overflow",
+                                                     "BytecodeVM::ARR_F64_SET_FAST"))
                     break;
                 setSlotOwnsString(arrSlot, false);
                 *element = value;
@@ -2804,41 +2896,15 @@ void BytecodeVM::run() {
             //==================================================================
             case BCOpcode::LOAD_GLOBAL: {
                 uint16_t idx = decodeArg16(instr);
-                if (idx >= globals_.size()) {
-                    trap(TrapKind::InvalidOpcode, "LOAD_GLOBAL index out of range");
+                if (!loadGlobal(idx, "BytecodeVM::LOAD_GLOBAL"))
                     break;
-                }
-                *sp_++ = globals_[idx];
-                if (idx < globalsStringOwned_.size() && globalsStringOwned_[idx] &&
-                    globals_[idx].ptr) {
-                    if (!validateStringHandle(globals_[idx].ptr, "BytecodeVM::LOAD_GLOBAL"))
-                        return;
-                    rt_str_retain_maybe(static_cast<rt_string>(globals_[idx].ptr));
-                    setSlotOwnsString(sp_ - 1, true);
-                } else {
-                    setSlotOwnsString(sp_ - 1, false);
-                }
                 break;
             }
 
             case BCOpcode::STORE_GLOBAL: {
                 uint16_t idx = decodeArg16(instr);
-                BCSlot val = *--sp_;
-                if (idx >= globals_.size()) {
-                    setSlotOwnsString(sp_, false);
-                    trap(TrapKind::InvalidOpcode, "STORE_GLOBAL index out of range");
+                if (!storeGlobal(idx, "BytecodeVM::STORE_GLOBAL"))
                     break;
-                }
-                if (idx < globalsStringOwned_.size() && globalsStringOwned_[idx] &&
-                    globals_[idx].ptr) {
-                    if (validateStringHandle(globals_[idx].ptr, "BytecodeVM::STORE_GLOBAL"))
-                        rt_str_release_maybe(static_cast<rt_string>(globals_[idx].ptr));
-                }
-                globals_[idx] = val;
-                if (idx < globalsStringOwned_.size()) {
-                    globalsStringOwned_[idx] = slotOwnsString(sp_) ? 1 : 0;
-                }
-                setSlotOwnsString(sp_, false);
                 break;
             }
 
@@ -3644,8 +3710,7 @@ bool BytecodeVM::dispatchTrap(TrapKind kind, int32_t errorCode, const char *mess
             static_cast<size_t>(eh.stackPointer - valueStack_.data());
         trapRecord_.valueSlots.assign(valueStack_.begin(),
                                       valueStack_.begin() + trapRecord_.valueCount);
-        trapRecord_.valueOwned.assign(valueStackStringOwned_.begin(),
-                                      valueStackStringOwned_.begin() + trapRecord_.valueCount);
+        trapRecord_.valueOwned = valueStackStringOwned_.snapshotPrefix(trapRecord_.valueCount);
         for (size_t i = 0; i < trapRecord_.valueCount; ++i) {
             if (trapRecord_.valueOwned[i] == 0 || !trapRecord_.valueSlots[i].ptr)
                 continue;
@@ -3720,19 +3785,17 @@ bool BytecodeVM::resumeTrap(bool useNextPc) {
     releaseOwnedValueStack();
     callStack_.clear();
     ehStack_.clear();
-    std::fill(valueStackStringOwned_.begin(), valueStackStringOwned_.end(), 0);
+    valueStackStringOwned_.clearAll();
 
     const size_t restoredCount =
         useNextPc ? trapRecord_.resumeStackPointerIndex : trapRecord_.stackPointerIndex;
     if (trapRecord_.valueCount > valueStack_.size() || restoredCount > trapRecord_.valueCount)
         return false;
-    std::fill(valueStackStringOwned_.begin(), valueStackStringOwned_.end(), 0);
+    valueStackStringOwned_.clearAll();
     std::copy(trapRecord_.valueSlots.begin(),
               trapRecord_.valueSlots.begin() + restoredCount,
               valueStack_.begin());
-    std::copy(trapRecord_.valueOwned.begin(),
-              trapRecord_.valueOwned.begin() + restoredCount,
-              valueStackStringOwned_.begin());
+    valueStackStringOwned_.restorePrefix(trapRecord_.valueOwned, restoredCount);
     sp_ = valueStack_.data() + restoredCount;
 
     callStack_ = trapRecord_.callStack;

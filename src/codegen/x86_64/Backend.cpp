@@ -34,6 +34,7 @@
 #include "Scheduler.hpp"
 #include "TargetX64.hpp"
 #include "binenc/X64BinaryEncoder.hpp"
+#include "codegen/common/ScalarBits.hpp"
 #include "codegen/common/objfile/DebugLineTable.hpp"
 #include "peephole/PeepholeCommon.hpp"
 
@@ -43,7 +44,6 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdlib>
-#include <cstring>
 #include <exception>
 #include <filesystem>
 #include <iostream>
@@ -721,10 +721,7 @@ BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
         std::string label = roData.f64Label(i);
         result.rodata.defineSymbol(
             label, objfile::SymbolBinding::Local, objfile::SymbolSection::Rodata);
-        double val = roData.f64Value(i);
-        uint64_t bits;
-        std::memcpy(&bits, &val, sizeof(bits));
-        result.rodata.emit64LE(bits);
+        result.rodata.emit64LE(viper::codegen::common::f64Bits(roData.f64Value(i)));
     }
 
     auto encodeOne = [&](std::size_t i,

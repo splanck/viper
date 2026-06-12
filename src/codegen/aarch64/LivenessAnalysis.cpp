@@ -102,7 +102,7 @@ LivenessInfo analyzeCrossBlockLiveness(const il::core::Function &fn,
     // Step 3: Allocate spill slots for cross-block temps
     // ===========================================================================
     for (unsigned tempId : info.crossBlockTemps) {
-        int offset = fb.ensureSpill(spillKeyForCrossBlockTemp(tempId));
+        int offset = ensureCrossBlockSpill(fb, tempId);
         info.crossBlockSpillOffset[tempId] = offset;
     }
 

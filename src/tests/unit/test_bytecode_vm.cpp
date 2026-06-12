@@ -382,32 +382,108 @@ static Module createWideNativeIndexModule() {
     return m;
 }
 
-static Module createArrayFastPathModule() {
+/// @brief Element families covered by the dedicated numeric array fast-path opcodes.
+enum class ArrayFastElementKind { I32, I64, F64 };
+
+/// @brief Return the IL value type used by an array fast-path family.
+/// @param kind Numeric array element family under test.
+/// @return `f64` for floating arrays and `i64` for integer array runtime accessors.
+static Type arrayFastValueType(ArrayFastElementKind kind) {
+    return kind == ArrayFastElementKind::F64 ? Type(Type::Kind::F64) : Type(Type::Kind::I64);
+}
+
+/// @brief Return the runtime getter helper name that should compile to an `ARR_*_GET_FAST` opcode.
+/// @param kind Numeric array element family under test.
+/// @return Runtime helper name recognized by the bytecode compiler fast-path lowering.
+static const char *arrayFastGetCallee(ArrayFastElementKind kind) {
+    switch (kind) {
+        case ArrayFastElementKind::I32:
+            return "rt_arr_i32_get_fast";
+        case ArrayFastElementKind::I64:
+            return "rt_arr_i64_get_fast";
+        case ArrayFastElementKind::F64:
+            return "rt_arr_f64_get_fast";
+    }
+    return "";
+}
+
+/// @brief Return the runtime setter helper name that should compile to an `ARR_*_SET_FAST` opcode.
+/// @param kind Numeric array element family under test.
+/// @return Runtime helper name recognized by the bytecode compiler fast-path lowering.
+static const char *arrayFastSetCallee(ArrayFastElementKind kind) {
+    switch (kind) {
+        case ArrayFastElementKind::I32:
+            return "rt_arr_i32_set_fast";
+        case ArrayFastElementKind::I64:
+            return "rt_arr_i64_set_fast";
+        case ArrayFastElementKind::F64:
+            return "rt_arr_f64_set_fast";
+    }
+    return "";
+}
+
+/// @brief Return the bytecode getter opcode expected for an array fast-path family.
+/// @param kind Numeric array element family under test.
+/// @return Dedicated bytecode load opcode emitted for the runtime helper.
+static BCOpcode arrayFastGetOpcode(ArrayFastElementKind kind) {
+    switch (kind) {
+        case ArrayFastElementKind::I32:
+            return BCOpcode::ARR_I32_GET_FAST;
+        case ArrayFastElementKind::I64:
+            return BCOpcode::ARR_I64_GET_FAST;
+        case ArrayFastElementKind::F64:
+            return BCOpcode::ARR_F64_GET_FAST;
+    }
+    return BCOpcode::NOP;
+}
+
+/// @brief Return the bytecode setter opcode expected for an array fast-path family.
+/// @param kind Numeric array element family under test.
+/// @return Dedicated bytecode store opcode emitted for the runtime helper.
+static BCOpcode arrayFastSetOpcode(ArrayFastElementKind kind) {
+    switch (kind) {
+        case ArrayFastElementKind::I32:
+            return BCOpcode::ARR_I32_SET_FAST;
+        case ArrayFastElementKind::I64:
+            return BCOpcode::ARR_I64_SET_FAST;
+        case ArrayFastElementKind::F64:
+            return BCOpcode::ARR_F64_SET_FAST;
+    }
+    return BCOpcode::NOP;
+}
+
+/// @brief Build a typed IL module that stores to and loads from one fast array element.
+/// @param kind Numeric array element family under test.
+/// @return Module whose calls should lower to the matching `ARR_*_FAST` opcode pair.
+static Module createArrayFastPathModule(ArrayFastElementKind kind) {
     Module m;
     IRBuilder b(m);
 
-    auto &fn =
-        b.startFunction("main", Type(Type::Kind::I64), {Param{"arr", Type(Type::Kind::Ptr), 0}});
+    auto &fn = b.startFunction("main", arrayFastValueType(kind), {Param{"arr", Type(Type::Kind::Ptr), 0}});
     auto &entry = b.addBlock(fn, "entry");
     b.setInsertPoint(entry);
 
     Instr set;
     set.op = Opcode::Call;
     set.type = Type(Type::Kind::Void);
-    set.callee = "rt_arr_i64_set_fast";
+    set.callee = arrayFastSetCallee(kind);
     set.operands.push_back(Value::temp(0));
-    set.operands.push_back(Value::constInt(0));
-    set.operands.push_back(Value::constInt(123));
+    set.operands.push_back(Value::constInt(1));
+    if (kind == ArrayFastElementKind::F64) {
+        set.operands.push_back(Value::constFloat(123.5));
+    } else {
+        set.operands.push_back(Value::constInt(kind == ArrayFastElementKind::I32 ? 123 : 1234567890123LL));
+    }
     set.loc = {1, 1, 1};
     entry.instructions.push_back(set);
 
     Instr get;
     get.result = b.reserveTempId();
     get.op = Opcode::Call;
-    get.type = Type(Type::Kind::I64);
-    get.callee = "rt_arr_i64_get_fast";
+    get.type = arrayFastValueType(kind);
+    get.callee = arrayFastGetCallee(kind);
     get.operands.push_back(Value::temp(0));
-    get.operands.push_back(Value::constInt(0));
+    get.operands.push_back(Value::constInt(1));
     get.loc = {1, 1, 1};
     entry.instructions.push_back(get);
 
@@ -419,6 +495,121 @@ static Module createArrayFastPathModule() {
     entry.instructions.push_back(ret);
 
     return m;
+}
+
+/// @brief Build direct bytecode that forces an `ARR_*_GET_FAST` address overflow.
+/// @param kind Numeric array element family under test.
+/// @return Bytecode module that traps before dereferencing the supplied array pointer.
+static BytecodeModule createArrayFastOverflowModule(ArrayFastElementKind kind) {
+    BytecodeModule bcModule;
+    bcModule.magic = kBytecodeModuleMagic;
+    bcModule.version = kBytecodeVersion;
+    bcModule.flags = 0;
+
+    BytecodeFunction fn;
+    fn.name = "main";
+    fn.numParams = 1;
+    fn.numLocals = 1;
+    fn.maxStack = 2;
+    fn.hasReturn = true;
+    fn.localIsString = {0};
+    fn.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 0));
+    fn.code.push_back(encodeOp8(BCOpcode::LOAD_I8, -1));
+    fn.code.push_back(encodeOp(arrayFastGetOpcode(kind)));
+    fn.code.push_back(encodeOp(BCOpcode::RETURN));
+
+    bcModule.addFunction(std::move(fn));
+    return bcModule;
+}
+
+/// @brief Assert that a compiled function contains both typed array fast opcodes.
+/// @param function Function whose bytecode stream will be scanned.
+/// @param kind Numeric array element family expected in the bytecode stream.
+static void assertArrayFastOpcodesPresent(const BytecodeFunction &function, ArrayFastElementKind kind) {
+    bool sawSet = false;
+    bool sawGet = false;
+    for (uint32_t word : function.code) {
+        sawSet = sawSet || decodeOpcode(word) == arrayFastSetOpcode(kind);
+        sawGet = sawGet || decodeOpcode(word) == arrayFastGetOpcode(kind);
+    }
+    assert(sawSet);
+    assert(sawGet);
+}
+
+/// @brief Build a bytecode-only module that exercises owned string stack operations.
+/// @details Each function leaves an `i1` result from `Viper.String.Equals`; this
+///          keeps returned runtime strings inside the VM so argument release and
+///          stack-helper ownership transfers must balance correctly before the
+///          test can halt.
+/// @return Module containing one function for each string-owning stack opcode family.
+static BytecodeModule createStringStackOpsModule() {
+    BytecodeModule bcModule;
+    bcModule.magic = kBytecodeModuleMagic;
+    bcModule.version = kBytecodeVersion;
+    bcModule.flags = 0;
+
+    const uint16_t aIdx = static_cast<uint16_t>(bcModule.addString("A"));
+    const uint16_t bIdx = static_cast<uint16_t>(bcModule.addString("B"));
+    const uint16_t cIdx = static_cast<uint16_t>(bcModule.addString("C"));
+    const uint16_t aaIdx = static_cast<uint16_t>(bcModule.addString("AA"));
+    const uint16_t baIdx = static_cast<uint16_t>(bcModule.addString("BA"));
+    const uint16_t cabIdx = static_cast<uint16_t>(bcModule.addString("CAB"));
+    const uint16_t ababIdx = static_cast<uint16_t>(bcModule.addString("ABAB"));
+    const uint16_t concatIdx =
+        static_cast<uint16_t>(bcModule.addNativeFunc("Viper.String.Concat", 2, true));
+    const uint16_t equalsIdx =
+        static_cast<uint16_t>(bcModule.addNativeFunc("Viper.String.Equals", 2, true));
+
+    auto appendEqualsReturn = [&](BytecodeFunction &fn, uint16_t expectedIdx) {
+        fn.code.push_back(encodeOp16(BCOpcode::LOAD_STR, expectedIdx));
+        fn.code.push_back(encodeOp8_16(BCOpcode::CALL_NATIVE, 2, equalsIdx));
+        fn.code.push_back(encodeOp(BCOpcode::RETURN));
+    };
+
+    auto addCase = [&](std::string name, std::vector<uint32_t> code, uint16_t expectedIdx) {
+        BytecodeFunction fn;
+        fn.name = std::move(name);
+        fn.numParams = 0;
+        fn.numLocals = 0;
+        fn.maxStack = 6;
+        fn.hasReturn = true;
+        fn.code = std::move(code);
+        appendEqualsReturn(fn, expectedIdx);
+        bcModule.addFunction(std::move(fn));
+    };
+
+    addCase("dup_string",
+            {encodeOp16(BCOpcode::LOAD_STR, aIdx),
+             encodeOp(BCOpcode::DUP),
+             encodeOp8_16(BCOpcode::CALL_NATIVE, 2, concatIdx)},
+            aaIdx);
+
+    addCase("dup2_string",
+            {encodeOp16(BCOpcode::LOAD_STR, aIdx),
+             encodeOp16(BCOpcode::LOAD_STR, bIdx),
+             encodeOp(BCOpcode::DUP2),
+             encodeOp8_16(BCOpcode::CALL_NATIVE, 2, concatIdx),
+             encodeOp8_16(BCOpcode::CALL_NATIVE, 2, concatIdx),
+             encodeOp8_16(BCOpcode::CALL_NATIVE, 2, concatIdx)},
+            ababIdx);
+
+    addCase("swap_string",
+            {encodeOp16(BCOpcode::LOAD_STR, aIdx),
+             encodeOp16(BCOpcode::LOAD_STR, bIdx),
+             encodeOp(BCOpcode::SWAP),
+             encodeOp8_16(BCOpcode::CALL_NATIVE, 2, concatIdx)},
+            baIdx);
+
+    addCase("rot3_string",
+            {encodeOp16(BCOpcode::LOAD_STR, aIdx),
+             encodeOp16(BCOpcode::LOAD_STR, bIdx),
+             encodeOp16(BCOpcode::LOAD_STR, cIdx),
+             encodeOp(BCOpcode::ROT3),
+             encodeOp8_16(BCOpcode::CALL_NATIVE, 2, concatIdx),
+             encodeOp8_16(BCOpcode::CALL_NATIVE, 2, concatIdx)},
+            cabIdx);
+
+    return bcModule;
 }
 
 static Module createBranchArgumentSwapModule() {
@@ -1326,6 +1517,27 @@ static void test_string_release_call_lifetime() {
     std::cout << "PASSED\n";
 }
 
+/// Test that owned string stack shuffles retain and release exactly once.
+static void test_string_stack_op_lifetime() {
+    std::cout << "  test_string_stack_op_lifetime: ";
+
+    BytecodeModule bcModule = createStringStackOpsModule();
+    for (bool threaded : {false, true}) {
+        for (const char *functionName : {"dup_string", "dup2_string", "swap_string", "rot3_string"}) {
+            BytecodeVM vm;
+            vm.setRuntimeBridgeEnabled(true);
+            vm.setThreadedDispatch(threaded);
+            vm.load(&bcModule);
+
+            BCSlot result = vm.exec(functionName, {});
+            assert(vm.state() == VMState::Halted);
+            assert(result.i64 == 1);
+        }
+    }
+
+    std::cout << "PASSED\n";
+}
+
 /// Benchmark comparing switch vs threaded dispatch
 static void test_dispatch_benchmark() {
     std::cout << "  test_dispatch_benchmark:\n";
@@ -2189,31 +2401,56 @@ static void test_native_refs_cache_runtime_metadata() {
 static void test_array_fast_path_bytecode_ops() {
     std::cout << "  test_array_fast_path_bytecode_ops: ";
 
-    BytecodeModule bcModule = compileAssumingVerified(createArrayFastPathModule());
-    assert(bcModule.nativeFuncs.empty());
+    for (ArrayFastElementKind kind :
+         {ArrayFastElementKind::I32, ArrayFastElementKind::I64, ArrayFastElementKind::F64}) {
+        BytecodeModule bcModule = compileAssumingVerified(createArrayFastPathModule(kind));
+        assert(bcModule.nativeFuncs.empty());
 
-    const BytecodeFunction *main = bcModule.findFunction("main");
-    assert(main != nullptr);
-    bool sawSet = false;
-    bool sawGet = false;
-    for (uint32_t word : main->code) {
-        sawSet = sawSet || decodeOpcode(word) == BCOpcode::ARR_I64_SET_FAST;
-        sawGet = sawGet || decodeOpcode(word) == BCOpcode::ARR_I64_GET_FAST;
-    }
-    assert(sawSet);
-    assert(sawGet);
+        const BytecodeFunction *main = bcModule.findFunction("main");
+        assert(main != nullptr);
+        assertArrayFastOpcodesPresent(*main, kind);
 
-    for (bool threaded : {false, true}) {
-        for (bool trusted : {false, true}) {
-            int64_t storage[1] = {0};
-            BytecodeVM vm;
-            vm.setThreadedDispatch(threaded);
-            vm.setTrustedDispatch(trusted);
-            vm.load(&bcModule);
-            BCSlot result = vm.exec("main", {BCSlot::fromPtr(storage)});
-            assert(vm.state() == VMState::Halted);
-            assert(result.i64 == 123);
-            assert(storage[0] == 123);
+        for (bool threaded : {false, true}) {
+            for (bool trusted : {false, true}) {
+                BytecodeVM vm;
+                vm.setThreadedDispatch(threaded);
+                vm.setTrustedDispatch(trusted);
+                vm.load(&bcModule);
+
+                if (kind == ArrayFastElementKind::I32) {
+                    int32_t storage[2] = {0, 0};
+                    BCSlot result = vm.exec("main", {BCSlot::fromPtr(storage)});
+                    assert(vm.state() == VMState::Halted);
+                    assert(result.i64 == 123);
+                    assert(storage[1] == 123);
+                } else if (kind == ArrayFastElementKind::I64) {
+                    int64_t storage[2] = {0, 0};
+                    BCSlot result = vm.exec("main", {BCSlot::fromPtr(storage)});
+                    assert(vm.state() == VMState::Halted);
+                    assert(result.i64 == 1234567890123LL);
+                    assert(storage[1] == 1234567890123LL);
+                } else {
+                    double storage[2] = {0.0, 0.0};
+                    BCSlot result = vm.exec("main", {BCSlot::fromPtr(storage)});
+                    assert(vm.state() == VMState::Halted);
+                    assert(result.f64 == 123.5);
+                    assert(storage[1] == 123.5);
+                }
+            }
+        }
+
+        BytecodeModule overflowModule = createArrayFastOverflowModule(kind);
+        for (bool threaded : {false, true}) {
+            for (bool trusted : {false, true}) {
+                int64_t storage[2] = {0, 0};
+                BytecodeVM vm;
+                vm.setThreadedDispatch(threaded);
+                vm.setTrustedDispatch(trusted);
+                vm.load(&overflowModule);
+                (void)vm.exec("main", {BCSlot::fromPtr(storage)});
+                assert(vm.state() == VMState::Trapped);
+                assert(vm.trapKind() == TrapKind::Bounds);
+            }
         }
     }
 
@@ -2551,6 +2788,7 @@ int main() {
     test_runtime_bridge_string_aliasing();
     test_string_memory_lifetime();
     test_string_release_call_lifetime();
+    test_string_stack_op_lifetime();
     test_global_address_storage();
     test_vm_numeric_edge_regressions();
     test_vm_safety_trap_regressions();

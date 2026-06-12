@@ -536,6 +536,59 @@ TEST(X64CallABI, SetccCallArgIsByteZeroExtendedBeforeArgumentMove) {
     EXPECT_TRUE(movzxIt != block.instructions.end());
 }
 
+TEST(X64CallABI, DirectAggregateArgumentCopiesEightbyteChunks) {
+    MBasicBlock block{};
+    block.label = "entry";
+
+    CallLoweringPlan plan{};
+    plan.callee = "consume_pair";
+    plan.numNamedArgs = 1;
+    plan.args.push_back(CallArg{.cls = CallArgClass::GPR,
+                                .vreg = 5,
+                                .isImm = false,
+                                .imm = 0,
+                                .kind = CallArgKind::AggregateMemory,
+                                .aggregatePass = AggregatePassKind::Direct,
+                                .sizeBytes = 16,
+                                .alignBytes = 8});
+
+    FrameInfo frame{};
+    lowerCall(block, 0, plan, sysvTarget(), frame);
+
+    ASSERT_GE(block.instructions.size(), 4u);
+
+    ASSERT_EQ(block.instructions[0].opcode, MOpcode::MOVmr);
+    const auto *load0Dst = asReg(block.instructions[0].operands[0]);
+    const auto *load0Src = asMem(block.instructions[0].operands[1]);
+    ASSERT_NE(load0Dst, nullptr);
+    ASSERT_NE(load0Src, nullptr);
+    EXPECT_TRUE(load0Dst->isPhys);
+    EXPECT_EQ(static_cast<PhysReg>(load0Dst->idOrPhys), PhysReg::R11);
+    EXPECT_FALSE(load0Src->base.isPhys);
+    EXPECT_EQ(load0Src->base.idOrPhys, 5);
+    EXPECT_EQ(load0Src->disp, 0);
+
+    ASSERT_EQ(block.instructions[1].opcode, MOpcode::MOVrr);
+    const auto *chunk0Dst = asReg(block.instructions[1].operands[0]);
+    ASSERT_NE(chunk0Dst, nullptr);
+    EXPECT_TRUE(chunk0Dst->isPhys);
+    EXPECT_EQ(static_cast<PhysReg>(chunk0Dst->idOrPhys), PhysReg::RDI);
+
+    ASSERT_EQ(block.instructions[2].opcode, MOpcode::MOVmr);
+    const auto *load1Src = asMem(block.instructions[2].operands[1]);
+    ASSERT_NE(load1Src, nullptr);
+    EXPECT_FALSE(load1Src->base.isPhys);
+    EXPECT_EQ(load1Src->base.idOrPhys, 5);
+    EXPECT_EQ(load1Src->disp, 8);
+
+    ASSERT_EQ(block.instructions[3].opcode, MOpcode::MOVrr);
+    const auto *chunk1Dst = asReg(block.instructions[3].operands[0]);
+    ASSERT_NE(chunk1Dst, nullptr);
+    EXPECT_TRUE(chunk1Dst->isPhys);
+    EXPECT_EQ(static_cast<PhysReg>(chunk1Dst->idOrPhys), PhysReg::RSI);
+    EXPECT_EQ(frame.outgoingArgArea, 0);
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

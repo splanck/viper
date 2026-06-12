@@ -30,13 +30,13 @@
 #include "FrameBuilder.hpp"
 #include "OpcodeMappings.hpp"
 #include "codegen/common/CallArgLayout.hpp"
+#include "codegen/common/ScalarBits.hpp"
 
 #include "il/runtime/RuntimeNameMap.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
 #include <algorithm>
 #include <cmath>
-#include <cstring>
 #include <limits>
 #include <optional>
 #include <stdexcept>
@@ -95,6 +95,16 @@ static const char *condForOpcode(il::core::Opcode op) {
         return false;
     }
     bytesOut = stackSlotIndex * kSlotBytes;
+    return true;
+}
+
+/// @brief Validate an aggregate chunk byte offset for use as a MIR immediate.
+[[nodiscard]] static bool checkedAggregateChunkOffset(std::size_t byteOffset,
+                                                      long long &offsetOut) noexcept {
+    if (byteOffset > static_cast<std::size_t>(std::numeric_limits<long long>::max())) {
+        return false;
+    }
+    offsetOut = static_cast<long long>(byteOffset);
     return true;
 }
 
@@ -164,6 +174,11 @@ struct MaterializedCallArg {
     uint16_t vreg{0}; ///< Virtual register holding the materialized argument value.
     viper::codegen::common::CallArgClass cls{
         viper::codegen::common::CallArgClass::GPR}; ///< ABI register class of the argument.
+    viper::codegen::common::CallArgKind kind{viper::codegen::common::CallArgKind::Scalar};
+    viper::codegen::common::AggregatePassKind aggregatePass{
+        viper::codegen::common::AggregatePassKind::Direct};
+    std::size_t sizeBytes{8};
+    std::size_t alignBytes{8};
 };
 
 /// @brief Map canonical runtime names to the concrete linker symbol, preserving user symbols.
@@ -276,28 +291,24 @@ void emitF64BitsToVReg(MBasicBlock &out, uint16_t dstVReg, uint64_t bits, uint16
         {MOperand::vregOp(RegClass::FPR, dstVReg), MOperand::vregOp(RegClass::GPR, bitsGpr)}});
 }
 
-uint64_t f64Bits(double value) {
-    uint64_t bits = 0;
-    std::memcpy(&bits, &value, sizeof(bits));
-    return bits;
-}
-
 /// @brief Place each materialised call argument in its ABI-required home.
 /// @details Calls into the shared planCallArgs() allocator to decide register
-///          vs. stack placement, then emits a MovRR/FMovRR per register arg and
-///          an STR per stack arg into @p seq.prefix. Inserts the SP adjustment
-///          pair (SubSpImm / AddSpImm) around the call when there are stack args.
+///          vs. stack placement, then emits aggregate chunk loads, MovRR/FMovRR
+///          register moves, and STR stack stores into @p seq.prefix. Inserts the
+///          SP adjustment pair (SubSpImm / AddSpImm) around stack arguments.
 /// @param args                Argument vregs and their register classes.
 /// @param numNamedArgs        Number of named (non-variadic) args for tail-on-stack.
 /// @param variadicTailOnStack True when the variadic tail must spill to the stack
 ///                            (Darwin AArch64 calling convention).
 /// @param ti                  Target info supplying the AAPCS64 arg-register order.
+/// @param nextVRegId          Counter for aggregate chunk temporary vregs.
 /// @param seq                 Output sequence: prefix loads + postfix SP cleanup.
-/// @return Currently always true (failure paths happen earlier in materialisation).
+/// @return True on success; false when the planned stack or aggregate offsets overflow.
 bool marshalCallArgs(const std::vector<MaterializedCallArg> &args,
                      std::size_t numNamedArgs,
                      bool variadicTailOnStack,
                      const TargetInfo &ti,
+                     uint16_t &nextVRegId,
                      LoweredCall &seq) {
     using namespace viper::codegen::common;
 
@@ -307,6 +318,10 @@ bool marshalCallArgs(const std::vector<MaterializedCallArg> &args,
         CallArg planArg{};
         planArg.cls = arg.cls;
         planArg.vreg = arg.vreg;
+        planArg.kind = arg.kind;
+        planArg.aggregatePass = arg.aggregatePass;
+        planArg.sizeBytes = arg.sizeBytes;
+        planArg.alignBytes = arg.alignBytes;
         planArgs.push_back(planArg);
     }
 
@@ -329,17 +344,33 @@ bool marshalCallArgs(const std::vector<MaterializedCallArg> &args,
 
     for (const auto &loc : layout.locations) {
         const auto &arg = args[loc.argIndex];
+        uint16_t valueVReg = arg.vreg;
+        RegClass valueClass = (loc.cls == CallArgClass::FPR) ? RegClass::FPR : RegClass::GPR;
+
+        if (loc.isAggregatePart) {
+            long long byteOffset = 0;
+            if (!checkedAggregateChunkOffset(loc.byteOffset, byteOffset)) {
+                return false;
+            }
+            valueVReg = allocateNextVReg(nextVRegId);
+            valueClass = RegClass::GPR;
+            seq.prefix.push_back(MInstr{MOpcode::LdrRegBaseImm,
+                                        {MOperand::vregOp(RegClass::GPR, valueVReg),
+                                         MOperand::vregOp(RegClass::GPR, arg.vreg),
+                                         MOperand::immOp(byteOffset)}});
+        }
+
         if (loc.inRegister) {
             if (loc.cls == CallArgClass::FPR) {
                 const PhysReg dst = ti.f64ArgOrder[loc.regIndex];
                 seq.prefix.push_back(
                     MInstr{MOpcode::FMovRR,
-                           {MOperand::regOp(dst), MOperand::vregOp(RegClass::FPR, arg.vreg)}});
+                           {MOperand::regOp(dst), MOperand::vregOp(RegClass::FPR, valueVReg)}});
             } else {
                 const PhysReg dst = ti.intArgOrder[loc.regIndex];
                 seq.prefix.push_back(
                     MInstr{MOpcode::MovRR,
-                           {MOperand::regOp(dst), MOperand::vregOp(RegClass::GPR, arg.vreg)}});
+                           {MOperand::regOp(dst), MOperand::vregOp(RegClass::GPR, valueVReg)}});
             }
         } else {
             std::size_t stackOffsetBytes = 0;
@@ -351,9 +382,7 @@ bool marshalCallArgs(const std::vector<MaterializedCallArg> &args,
                 (loc.cls == CallArgClass::FPR) ? MOpcode::StrFprSpImm : MOpcode::StrRegSpImm;
             seq.prefix.push_back(
                 MInstr{storeOpc,
-                       {(loc.cls == CallArgClass::FPR) ? MOperand::vregOp(RegClass::FPR, arg.vreg)
-                                                       : MOperand::vregOp(RegClass::GPR, arg.vreg),
-                        MOperand::immOp(stackOffset)}});
+                       {MOperand::vregOp(valueClass, valueVReg), MOperand::immOp(stackOffset)}});
         }
     }
 
@@ -496,9 +525,7 @@ static bool materializeImmediateValue(const il::core::Value &v,
     }
     if (v.kind == Kind::ConstFloat) {
         // Materialize FP constant by moving its bit-pattern via a GPR into an FPR.
-        long long bits;
-        static_assert(sizeof(double) == sizeof(long long), "size");
-        std::memcpy(&bits, &v.f64, sizeof(double));
+        const auto bits = static_cast<long long>(viper::codegen::common::f64Bits(v.f64));
         const uint16_t tmpG = allocateNextVReg(nextVRegId);
         out.instrs.push_back(
             MInstr{MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, tmpG), MOperand::immOp(bits)}});
@@ -651,22 +678,8 @@ static bool materializeFromProducer(
         const bool isFP = (opc == MOpcode::FAddRRR || opc == MOpcode::FSubRRR ||
                            opc == MOpcode::FMulRRR || opc == MOpcode::FDivRRR);
         if (isFP) {
-            if (ca != RegClass::FPR) {
-                const uint16_t converted = allocateNextVReg(nextVRegId);
-                out.instrs.push_back(MInstr{MOpcode::SCvtF,
-                                            {MOperand::vregOp(RegClass::FPR, converted),
-                                             MOperand::vregOp(RegClass::GPR, va)}});
-                va = converted;
-                ca = RegClass::FPR;
-            }
-            if (cb != RegClass::FPR) {
-                const uint16_t converted = allocateNextVReg(nextVRegId);
-                out.instrs.push_back(MInstr{MOpcode::SCvtF,
-                                            {MOperand::vregOp(RegClass::FPR, converted),
-                                             MOperand::vregOp(RegClass::GPR, vb)}});
-                vb = converted;
-                cb = RegClass::FPR;
-            }
+            va = coerceScalarOperandToFpr(va, ca, nextVRegId, out);
+            vb = coerceScalarOperandToFpr(vb, cb, nextVRegId, out);
         } else if (ca != RegClass::GPR || cb != RegClass::GPR) {
             return false;
         }
@@ -899,8 +912,8 @@ static bool materializeFromProducer(
                                                 cb))
                         return false;
                     if (isFloatingPointCompareOp(prod.op)) {
-                        if (ca != RegClass::FPR || cb != RegClass::FPR)
-                            return false;
+                        va = coerceScalarOperandToFpr(va, ca, nextVRegId, out);
+                        vb = coerceScalarOperandToFpr(vb, cb, nextVRegId, out);
                         out.instrs.push_back(MInstr{MOpcode::FCmpRR,
                                                     {MOperand::vregOp(RegClass::FPR, va),
                                                      MOperand::vregOp(RegClass::FPR, vb)}});
@@ -1160,7 +1173,7 @@ bool lowerCallWithArgs(
         materialized.push_back({arg.vreg, arg.cls});
 
     return marshalCallArgs(
-        materialized, namedArgCount, isVarArg && ti.usesStackVariadicTail(), ti, seq);
+        materialized, namedArgCount, isVarArg && ti.usesStackVariadicTail(), ti, nextVRegId, seq);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1658,27 +1671,6 @@ bool lowerURem(const il::core::Instr &ins,
 // FP Arithmetic (fadd, fsub, fmul, fdiv)
 //===----------------------------------------------------------------------===//
 
-/// @brief Ensure @p vreg is in an FPR; emit SCvtF if it is currently a GPR integer.
-/// @details When an integer operand feeds an FP operation (e.g. sitofp implicit conversion),
-///          this helper emits a SCvtF (signed int → double) instruction and returns the new
-///          FPR vreg. If @p vreg is already an FPR, returns it unchanged.
-/// @param vreg Source vreg; may be GPR or FPR.
-/// @param cls  Register class of @p vreg; updated to FPR on conversion.
-/// @param ctx  Lowering context for vreg allocation.
-/// @param out  Output MIR block; SCvtF is appended if conversion is needed.
-/// @return Vreg in FPR class holding the (possibly converted) value.
-static uint16_t ensureFpr(uint16_t vreg, RegClass &cls, LoweringContext &ctx, MBasicBlock &out) {
-    if (cls != RegClass::GPR)
-        return vreg;
-
-    const uint16_t converted = allocateNextVReg(ctx.nextVRegId);
-    out.instrs.push_back(MInstr{
-        MOpcode::SCvtF,
-        {MOperand::vregOp(RegClass::FPR, converted), MOperand::vregOp(RegClass::GPR, vreg)}});
-    cls = RegClass::FPR;
-    return converted;
-}
-
 bool lowerFpArithmetic(const il::core::Instr &ins,
                        const il::core::BasicBlock &bb,
                        LoweringContext &ctx,
@@ -1712,10 +1704,8 @@ bool lowerFpArithmetic(const il::core::Instr &ins,
                                 rhsCls))
         return false;
 
-    // BUG-007 fix: If operands are GPR (integer constants), convert them to FPR.
-    // This handles cases like `fmul %t4, 2` where the literal 2 is an integer.
-    lhs = ensureFpr(lhs, lhsCls, ctx, out);
-    rhs = ensureFpr(rhs, rhsCls, ctx, out);
+    lhs = coerceScalarOperandToFpr(lhs, lhsCls, ctx.nextVRegId, out);
+    rhs = coerceScalarOperandToFpr(rhs, rhsCls, ctx.nextVRegId, out);
 
     const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
     ctx.tempVReg[*ins.result] = dst;
@@ -1783,9 +1773,8 @@ bool lowerFpCompare(const il::core::Instr &ins,
                                 rhsCls))
         return false;
 
-    // BUG-007 fix: If operands are GPR (integer constants), convert them to FPR.
-    lhs = ensureFpr(lhs, lhsCls, ctx, out);
-    rhs = ensureFpr(rhs, rhsCls, ctx, out);
+    lhs = coerceScalarOperandToFpr(lhs, lhsCls, ctx.nextVRegId, out);
+    rhs = coerceScalarOperandToFpr(rhs, rhsCls, ctx.nextVRegId, out);
 
     // Emit fcmp
     out.instrs.push_back(
@@ -1879,11 +1868,15 @@ bool lowerFptosi(const il::core::Instr &ins,
 
     const int resultBits = integerTypeBits(ins.type.kind);
     const uint16_t lowerBound = allocateNextVReg(ctx.nextVRegId);
-    emitF64BitsToVReg(
-        out, lowerBound, f64Bits(signedLowerBoundForBits(resultBits)), ctx.nextVRegId);
+    emitF64BitsToVReg(out,
+                      lowerBound,
+                      viper::codegen::common::f64Bits(signedLowerBoundForBits(resultBits)),
+                      ctx.nextVRegId);
     const uint16_t upperBound = allocateNextVReg(ctx.nextVRegId);
-    emitF64BitsToVReg(
-        out, upperBound, f64Bits(signedUpperExclusiveForBits(resultBits)), ctx.nextVRegId);
+    emitF64BitsToVReg(out,
+                      upperBound,
+                      viper::codegen::common::f64Bits(signedUpperExclusiveForBits(resultBits)),
+                      ctx.nextVRegId);
 
     out.instrs.push_back(
         MInstr{MOpcode::FCmpRR,
@@ -2304,7 +2297,7 @@ bool lowerCallIndirect(const il::core::Instr &ins,
     }
 
     LoweredCall seq{};
-    if (!marshalCallArgs(args, args.size(), false, ctx.ti, seq))
+    if (!marshalCallArgs(args, args.size(), false, ctx.ti, ctx.nextVRegId, seq))
         return false;
     seq.prefix.push_back(MInstr{
         MOpcode::MovRR, {MOperand::regOp(PhysReg::X9), MOperand::vregOp(RegClass::GPR, vFuncPtr)}});

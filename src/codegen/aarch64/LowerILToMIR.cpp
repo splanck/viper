@@ -272,10 +272,9 @@ static void spillEntryBlockParams(const il::core::Function &fn,
         const RegClass cls =
             (loc.cls == viper::codegen::common::CallArgClass::FPR) ? RegClass::FPR : RegClass::GPR;
 
-        // Use param.id (not pi) for the spill key so it matches LivenessAnalysis's
-        // cross-block spill keys — otherwise entry-block and later-block reloads
-        // would point at different stack slots for the same parameter (BUG-005).
-        const int spillOffset = fb.ensureSpill(spillKeyForCrossBlockTemp(param.id));
+        // Entry parameters share the cross-block temp spill namespace so reloads
+        // and entry saves use one slot per IL temp.
+        const int spillOffset = ensureCrossBlockSpill(fb, param.id);
         funcParamSpillOffset[param.id] = spillOffset;
 
         if (loc.inRegister) {
@@ -681,24 +680,10 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
                                 const bool fpBinary = binOp && isFloatingPointOp(ins.op);
                                 const bool fpCompare = !binOp && isFloatingPointCompareOp(ins.op);
                                 if (fpBinary || fpCompare) {
-                                    if (lcls != RegClass::FPR) {
-                                        const uint16_t converted = allocateNextVReg(nextVRegId);
-                                        bbOutFn().instrs.push_back(
-                                            MInstr{MOpcode::SCvtF,
-                                                   {MOperand::vregOp(RegClass::FPR, converted),
-                                                    MOperand::vregOp(RegClass::GPR, lhs)}});
-                                        lhs = converted;
-                                        lcls = RegClass::FPR;
-                                    }
-                                    if (rcls != RegClass::FPR) {
-                                        const uint16_t converted = allocateNextVReg(nextVRegId);
-                                        bbOutFn().instrs.push_back(
-                                            MInstr{MOpcode::SCvtF,
-                                                   {MOperand::vregOp(RegClass::FPR, converted),
-                                                    MOperand::vregOp(RegClass::GPR, rhs)}});
-                                        rhs = converted;
-                                        rcls = RegClass::FPR;
-                                    }
+                                    lhs = coerceScalarOperandToFpr(
+                                        lhs, lcls, nextVRegId, bbOutFn());
+                                    rhs = coerceScalarOperandToFpr(
+                                        rhs, rcls, nextVRegId, bbOutFn());
                                 } else if (lcls != RegClass::GPR || rcls != RegClass::GPR) {
                                     throw std::runtime_error("AArch64 codegen: register class "
                                                              "mismatch in binary lowering");

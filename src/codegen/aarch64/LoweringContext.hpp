@@ -69,6 +69,31 @@ inline uint32_t spillKeyForCrossBlockTemp(unsigned tempId) {
     return kCrossBlockSpillKeyStart + tempId;
 }
 
+/// @brief Allocate or retrieve the frame spill slot for a cross-block IL temp.
+/// @details All entry saves, liveness allocation, and cross-block reloads share
+///          this helper so every IL temp maps to one stable spill slot.
+inline int ensureCrossBlockSpill(FrameBuilder &fb, unsigned tempId) {
+    return fb.ensureSpill(spillKeyForCrossBlockTemp(tempId));
+}
+
+/// @brief Ensure a materialized scalar operand is available in an FPR.
+/// @details Integer operands feeding FP operations are converted with SCvtF;
+///          existing FPR operands pass through unchanged.
+inline uint16_t coerceScalarOperandToFpr(uint16_t vreg,
+                                         RegClass &cls,
+                                         uint16_t &nextVRegId,
+                                         MBasicBlock &out) {
+    if (cls != RegClass::GPR)
+        return vreg;
+
+    const uint16_t converted = allocateNextVReg(nextVRegId);
+    out.instrs.push_back(MInstr{
+        MOpcode::SCvtF,
+        {MOperand::vregOp(RegClass::FPR, converted), MOperand::vregOp(RegClass::GPR, vreg)}});
+    cls = RegClass::FPR;
+    return converted;
+}
+
 /// @brief Encapsulates all mutable state needed during IL->MIR lowering.
 ///
 /// This context is passed to opcode handlers to avoid long parameter lists.

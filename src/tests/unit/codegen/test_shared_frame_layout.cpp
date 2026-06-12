@@ -287,6 +287,140 @@ TEST(SharedCallLayout, VariadicTailCanBeForcedOntoTheStack) {
     EXPECT_EQ(layout.stackSlotsUsed, 2u);
 }
 
+TEST(SharedCallLayout, DirectAggregateSplitsIntoRegisterChunks) {
+    std::vector<CallArg> args;
+    args.push_back(CallArg{.cls = CallArgClass::GPR,
+                           .vreg = 7,
+                           .isImm = false,
+                           .imm = 0,
+                           .kind = CallArgKind::AggregateMemory,
+                           .aggregatePass = AggregatePassKind::Direct,
+                           .sizeBytes = 16,
+                           .alignBytes = 8});
+
+    const CallArgLayout layout =
+        planCallArgs(args,
+                     CallArgLayoutConfig{.maxGPRArgs = 8,
+                                         .maxFPRArgs = 8,
+                                         .slotModel = CallSlotModel::IndependentRegisterBanks,
+                                         .variadicTailOnStack = false,
+                                         .numNamedArgs = args.size()});
+
+    ASSERT_EQ(layout.locations.size(), 2u);
+    EXPECT_TRUE(layout.locations[0].inRegister);
+    EXPECT_TRUE(layout.locations[0].isAggregatePart);
+    EXPECT_EQ(layout.locations[0].regIndex, 0u);
+    EXPECT_EQ(layout.locations[0].partIndex, 0u);
+    EXPECT_EQ(layout.locations[0].byteOffset, 0u);
+    EXPECT_EQ(layout.locations[0].byteSize, 8u);
+
+    EXPECT_TRUE(layout.locations[1].inRegister);
+    EXPECT_TRUE(layout.locations[1].isAggregatePart);
+    EXPECT_EQ(layout.locations[1].regIndex, 1u);
+    EXPECT_EQ(layout.locations[1].partIndex, 1u);
+    EXPECT_EQ(layout.locations[1].byteOffset, 8u);
+    EXPECT_EQ(layout.locations[1].byteSize, 8u);
+    EXPECT_EQ(layout.gprRegsUsed, 2u);
+    EXPECT_EQ(layout.stackSlotsUsed, 0u);
+}
+
+TEST(SharedCallLayout, LargeDirectAggregateIsStackOnly) {
+    std::vector<CallArg> args;
+    args.push_back(CallArg{.cls = CallArgClass::GPR,
+                           .vreg = 9,
+                           .isImm = false,
+                           .imm = 0,
+                           .kind = CallArgKind::AggregateMemory,
+                           .aggregatePass = AggregatePassKind::Direct,
+                           .sizeBytes = 20,
+                           .alignBytes = 8});
+
+    const CallArgLayout layout =
+        planCallArgs(args,
+                     CallArgLayoutConfig{.maxGPRArgs = 8,
+                                         .maxFPRArgs = 8,
+                                         .slotModel = CallSlotModel::IndependentRegisterBanks,
+                                         .variadicTailOnStack = false,
+                                         .numNamedArgs = args.size(),
+                                         .maxDirectAggregateRegisterBytes = 16});
+
+    ASSERT_EQ(layout.locations.size(), 3u);
+    for (std::size_t i = 0; i < layout.locations.size(); ++i) {
+        EXPECT_FALSE(layout.locations[i].inRegister);
+        EXPECT_TRUE(layout.locations[i].isAggregatePart);
+        EXPECT_EQ(layout.locations[i].stackSlotIndex, i);
+        EXPECT_EQ(layout.locations[i].partIndex, i);
+        EXPECT_EQ(layout.locations[i].byteOffset, i * 8u);
+    }
+    EXPECT_EQ(layout.locations[2].byteSize, 4u);
+    EXPECT_EQ(layout.gprRegsUsed, 0u);
+    EXPECT_EQ(layout.stackSlotsUsed, 3u);
+}
+
+TEST(SharedCallLayout, DirectAggregateFallsBackToStackWhenRegisterGroupDoesNotFit) {
+    std::vector<CallArg> args;
+    args.push_back(CallArg{.cls = CallArgClass::GPR,
+                           .vreg = 1,
+                           .isImm = false,
+                           .imm = 0});
+    args.push_back(CallArg{.cls = CallArgClass::GPR,
+                           .vreg = 2,
+                           .isImm = false,
+                           .imm = 0,
+                           .kind = CallArgKind::AggregateMemory,
+                           .aggregatePass = AggregatePassKind::Direct,
+                           .sizeBytes = 16,
+                           .alignBytes = 8});
+
+    const CallArgLayout layout =
+        planCallArgs(args,
+                     CallArgLayoutConfig{.maxGPRArgs = 2,
+                                         .maxFPRArgs = 8,
+                                         .slotModel = CallSlotModel::IndependentRegisterBanks,
+                                         .variadicTailOnStack = false,
+                                         .numNamedArgs = args.size()});
+
+    ASSERT_EQ(layout.locations.size(), 3u);
+    EXPECT_TRUE(layout.locations[0].inRegister);
+    EXPECT_EQ(layout.locations[0].regIndex, 0u);
+    EXPECT_FALSE(layout.locations[1].inRegister);
+    EXPECT_FALSE(layout.locations[2].inRegister);
+    EXPECT_TRUE(layout.locations[1].isAggregatePart);
+    EXPECT_TRUE(layout.locations[2].isAggregatePart);
+    EXPECT_EQ(layout.locations[1].stackSlotIndex, 0u);
+    EXPECT_EQ(layout.locations[2].stackSlotIndex, 1u);
+    EXPECT_EQ(layout.gprRegsUsed, 1u);
+    EXPECT_EQ(layout.stackSlotsUsed, 2u);
+}
+
+TEST(SharedCallLayout, IndirectAggregateUsesOneGprSlot) {
+    std::vector<CallArg> args;
+    args.push_back(CallArg{.cls = CallArgClass::GPR,
+                           .vreg = 11,
+                           .isImm = false,
+                           .imm = 0,
+                           .kind = CallArgKind::AggregateMemory,
+                           .aggregatePass = AggregatePassKind::Indirect,
+                           .sizeBytes = 64,
+                           .alignBytes = 16});
+
+    const CallArgLayout layout =
+        planCallArgs(args,
+                     CallArgLayoutConfig{.maxGPRArgs = 8,
+                                         .maxFPRArgs = 8,
+                                         .slotModel = CallSlotModel::IndependentRegisterBanks,
+                                         .variadicTailOnStack = false,
+                                         .numNamedArgs = args.size()});
+
+    ASSERT_EQ(layout.locations.size(), 1u);
+    EXPECT_TRUE(layout.locations[0].inRegister);
+    EXPECT_EQ(layout.locations[0].cls, CallArgClass::GPR);
+    EXPECT_FALSE(layout.locations[0].isAggregatePart);
+    EXPECT_EQ(layout.locations[0].regIndex, 0u);
+    EXPECT_EQ(layout.gprRegsUsed, 1u);
+    EXPECT_EQ(layout.stackSlotsUsed, 0u);
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

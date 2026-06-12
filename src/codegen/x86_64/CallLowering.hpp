@@ -36,11 +36,13 @@ struct FrameInfo;
 
 using CallArg = viper::codegen::common::CallArg;
 using CallArgClass = viper::codegen::common::CallArgClass;
+using CallArgKind = viper::codegen::common::CallArgKind;
 using CallArgLayout = viper::codegen::common::CallArgLayout;
 using CallArgLocation = viper::codegen::common::CallArgLocation;
 using CallArgLayoutConfig = viper::codegen::common::CallArgLayoutConfig;
 using CallLoweringPlan = viper::codegen::common::CallLoweringPlan;
 using CallSlotModel = viper::codegen::common::CallSlotModel;
+using AggregatePassKind = viper::codegen::common::AggregatePassKind;
 
 /// \brief Emit Machine IR that prepares arguments and issues a call instruction.
 ///

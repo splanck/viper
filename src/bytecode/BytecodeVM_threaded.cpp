@@ -155,64 +155,48 @@ L_NOP:
     DISPATCH();
 
 L_DUP:
-    *sp = *(sp - 1);
-    setSlotOwnsString(sp, false);
-    if (slotOwnsString(sp - 1) && sp->ptr) {
-        rt_str_retain_maybe(static_cast<rt_string>(sp->ptr));
-        setSlotOwnsString(sp, true);
-    }
-    sp++;
+    SYNC_STATE();
+    sp_ = sp;
+    if (!duplicateTopSlot("BytecodeVM::DUP(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
+    RELOAD_STATE();
     DISPATCH();
 
 L_DUP2:
-    sp[0] = sp[-2];
-    sp[1] = sp[-1];
-    setSlotOwnsString(sp, false);
-    setSlotOwnsString(sp + 1, false);
-    if (slotOwnsString(sp - 2) && sp[0].ptr) {
-        rt_str_retain_maybe(static_cast<rt_string>(sp[0].ptr));
-        setSlotOwnsString(sp, true);
-    }
-    if (slotOwnsString(sp - 1) && sp[1].ptr) {
-        rt_str_retain_maybe(static_cast<rt_string>(sp[1].ptr));
-        setSlotOwnsString(sp + 1, true);
-    }
-    sp += 2;
+    SYNC_STATE();
+    sp_ = sp;
+    if (!duplicateTopTwoSlots("BytecodeVM::DUP2(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
+    RELOAD_STATE();
     DISPATCH();
 
 L_POP:
-    releaseOwnedString(sp - 1);
-    sp--;
+    SYNC_STATE();
+    sp_ = sp;
+    popOwnedSlots(1);
+    RELOAD_STATE();
     DISPATCH();
 
 L_POP2:
-    releaseOwnedString(sp - 1);
-    releaseOwnedString(sp - 2);
-    sp -= 2;
+    SYNC_STATE();
+    sp_ = sp;
+    popOwnedSlots(2);
+    RELOAD_STATE();
     DISPATCH();
 
 L_SWAP: {
-    BCSlot tmp = sp[-1];
-    const bool tmpOwns = slotOwnsString(sp - 1);
-    sp[-1] = sp[-2];
-    sp[-2] = tmp;
-    const bool lowerOwns = slotOwnsString(sp - 2);
-    setSlotOwnsString(sp - 1, lowerOwns);
-    setSlotOwnsString(sp - 2, tmpOwns);
+    SYNC_STATE();
+    sp_ = sp;
+    swapTopTwoSlots();
+    RELOAD_STATE();
     DISPATCH();
 }
 
 L_ROT3: {
-    BCSlot tmp = sp[-1];
-    const bool tmpOwns = slotOwnsString(sp - 1);
-    sp[-1] = sp[-2];
-    sp[-2] = sp[-3];
-    sp[-3] = tmp;
-    const bool secondOwns = slotOwnsString(sp - 2);
-    const bool firstOwns = slotOwnsString(sp - 3);
-    setSlotOwnsString(sp - 1, secondOwns);
-    setSlotOwnsString(sp - 2, firstOwns);
-    setSlotOwnsString(sp - 3, tmpOwns);
+    SYNC_STATE();
+    sp_ = sp;
+    rotateTopThreeSlots();
+    RELOAD_STATE();
     DISPATCH();
 }
 
@@ -223,18 +207,9 @@ L_LOAD_LOCAL: {
     sp_ = sp;
     if (!ensureLocalIndex(slot, "BytecodeVM::LOAD_LOCAL(threaded)"))
         RETURN_OR_DISPATCH_TRAP();
-    *sp = locals[slot];
-    if (localIsString(*fp_, slot) && sp->ptr) {
-        if (!validateStringHandle(sp->ptr, "BytecodeVM::pushLocal(threaded)")) {
-            SYNC_STATE();
-            return;
-        }
-        rt_str_retain_maybe(static_cast<rt_string>(sp->ptr));
-        setSlotOwnsString(sp, true);
-    } else {
-        setSlotOwnsString(sp, false);
-    }
-    sp++;
+    if (!pushLocal(slot, "BytecodeVM::LOAD_LOCAL(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
+    RELOAD_STATE();
     DISPATCH();
 }
 
@@ -244,32 +219,9 @@ L_STORE_LOCAL: {
     sp_ = sp;
     if (!ensureLocalIndex(slot, "BytecodeVM::STORE_LOCAL(threaded)"))
         RETURN_OR_DISPATCH_TRAP();
-    --sp;
-    BCSlot *src = sp;
-    BCSlot *dst = locals + slot;
-    const bool srcOwns = slotOwnsString(src);
-    const BCSlot value = *src;
-    if (localIsString(*fp_, slot)) {
-        releaseOwnedString(dst);
-        *dst = value;
-        if (value.ptr) {
-            if (!validateStringHandle(value.ptr, "BytecodeVM::storeLocal(threaded)")) {
-                setSlotOwnsString(src, false);
-                setSlotOwnsString(dst, false);
-                SYNC_STATE();
-                return;
-            }
-            if (!srcOwns)
-                rt_str_retain_maybe(static_cast<rt_string>(value.ptr));
-            setSlotOwnsString(dst, true);
-        } else {
-            setSlotOwnsString(dst, false);
-        }
-    } else {
-        *dst = value;
-        setSlotOwnsString(dst, false);
-    }
-    setSlotOwnsString(src, false);
+    if (!storeLocal(slot, "BytecodeVM::STORE_LOCAL(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
+    RELOAD_STATE();
     DISPATCH();
 }
 
@@ -279,56 +231,23 @@ L_LOAD_LOCAL_W: {
     sp_ = sp;
     if (!ensureLocalIndex(slot, "BytecodeVM::LOAD_LOCAL_W(threaded)"))
         RETURN_OR_DISPATCH_TRAP();
-    *sp = locals[slot];
-    if (localIsString(*fp_, slot) && sp->ptr) {
-        if (!validateStringHandle(sp->ptr, "BytecodeVM::pushLocalW(threaded)")) {
-            SYNC_STATE();
-            return;
-        }
-        rt_str_retain_maybe(static_cast<rt_string>(sp->ptr));
-        setSlotOwnsString(sp, true);
-    } else {
-        setSlotOwnsString(sp, false);
-    }
-    sp++;
+    if (!pushLocal(slot, "BytecodeVM::LOAD_LOCAL_W(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
+    RELOAD_STATE();
     DISPATCH();
 }
 
-L_STORE_LOCAL_W:
-    --sp;
-    {
-        uint16_t slot = decodeArg16(instr);
-        SYNC_STATE();
-        sp_ = sp;
-        if (!ensureLocalIndex(slot, "BytecodeVM::STORE_LOCAL_W(threaded)"))
-            RETURN_OR_DISPATCH_TRAP();
-        BCSlot *src = sp;
-        BCSlot *dst = locals + slot;
-        const bool srcOwns = slotOwnsString(src);
-        const BCSlot value = *src;
-        if (localIsString(*fp_, slot)) {
-            releaseOwnedString(dst);
-            *dst = value;
-            if (value.ptr) {
-                if (!validateStringHandle(value.ptr, "BytecodeVM::storeLocalW(threaded)")) {
-                    setSlotOwnsString(src, false);
-                    setSlotOwnsString(dst, false);
-                    SYNC_STATE();
-                    return;
-                }
-                if (!srcOwns)
-                    rt_str_retain_maybe(static_cast<rt_string>(value.ptr));
-                setSlotOwnsString(dst, true);
-            } else {
-                setSlotOwnsString(dst, false);
-            }
-        } else {
-            *dst = value;
-            setSlotOwnsString(dst, false);
-        }
-        setSlotOwnsString(src, false);
-    }
+L_STORE_LOCAL_W: {
+    uint16_t slot = decodeArg16(instr);
+    SYNC_STATE();
+    sp_ = sp;
+    if (!ensureLocalIndex(slot, "BytecodeVM::STORE_LOCAL_W(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
+    if (!storeLocal(slot, "BytecodeVM::STORE_LOCAL_W(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
+    RELOAD_STATE();
     DISPATCH();
+}
 
 L_INC_LOCAL: {
     uint8_t slot = decodeArg8_0(instr);
@@ -440,46 +359,21 @@ L_LOAD_ONE:
 
 L_LOAD_GLOBAL: {
     uint16_t gIdx = decodeArg16(instr);
-    if (gIdx >= globals_.size()) {
-        SYNC_STATE();
-        trap(TrapKind::InvalidOpcode, "LOAD_GLOBAL index out of range");
-        return;
-    }
-    *sp = globals_[gIdx];
-    if (gIdx < globalsStringOwned_.size() && globalsStringOwned_[gIdx] && globals_[gIdx].ptr) {
-        if (!validateStringHandle(globals_[gIdx].ptr, "BytecodeVM::LOAD_GLOBAL(threaded)")) {
-            SYNC_STATE();
-            return;
-        }
-        rt_str_retain_maybe(static_cast<rt_string>(globals_[gIdx].ptr));
-        setSlotOwnsString(sp, true);
-    } else {
-        setSlotOwnsString(sp, false);
-    }
-    sp++;
+    SYNC_STATE();
+    sp_ = sp;
+    if (!loadGlobal(gIdx, "BytecodeVM::LOAD_GLOBAL(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
+    RELOAD_STATE();
     DISPATCH();
 }
 
 L_STORE_GLOBAL: {
-    sp--;
     uint16_t gIdx = decodeArg16(instr);
-    if (gIdx >= globals_.size()) {
-        setSlotOwnsString(sp, false);
-        SYNC_STATE();
-        trap(TrapKind::InvalidOpcode, "STORE_GLOBAL index out of range");
-        return;
-    }
-    if (gIdx < globalsStringOwned_.size() && globalsStringOwned_[gIdx] && globals_[gIdx].ptr) {
-        if (!validateStringHandle(globals_[gIdx].ptr, "BytecodeVM::STORE_GLOBAL(threaded)")) {
-            SYNC_STATE();
-            return;
-        }
-        rt_str_release_maybe(static_cast<rt_string>(globals_[gIdx].ptr));
-    }
-    globals_[gIdx] = *sp;
-    if (gIdx < globalsStringOwned_.size())
-        globalsStringOwned_[gIdx] = slotOwnsString(sp) ? 1 : 0;
-    setSlotOwnsString(sp, false);
+    SYNC_STATE();
+    sp_ = sp;
+    if (!storeGlobal(gIdx, "BytecodeVM::STORE_GLOBAL(threaded)"))
+        RETURN_OR_DISPATCH_TRAP();
+    RELOAD_STATE();
     DISPATCH();
 }
 
@@ -1362,14 +1256,14 @@ L_ARR_I32_GET_FAST: {
     BCSlot *idxSlot = --sp;
     const size_t idx = static_cast<size_t>(idxSlot->i64);
     setSlotOwnsString(idxSlot, false);
-    const uintptr_t base = reinterpret_cast<uintptr_t>(arrSlot->ptr);
-    if (idx > std::numeric_limits<uintptr_t>::max() / sizeof(int32_t) ||
-        idx * sizeof(int32_t) > std::numeric_limits<uintptr_t>::max() - base)
-        THREAD_TRAP_OR_DISPATCH(TrapKind::Bounds, "ARR_I32_GET_FAST index address overflow");
-    auto *element = reinterpret_cast<int32_t *>(base + idx * sizeof(int32_t));
+    int32_t *element = nullptr;
     SYNC_STATE();
     sp_ = sp;
-    if (!ensureMemoryAccess(element, sizeof(int32_t), "BytecodeVM::ARR_I32_GET_FAST(threaded)"))
+    if (!resolveArrayFastElement<int32_t>(arrSlot->ptr,
+                                          idx,
+                                          element,
+                                          "ARR_I32_GET_FAST index address overflow",
+                                          "BytecodeVM::ARR_I32_GET_FAST(threaded)"))
         RETURN_OR_DISPATCH_TRAP();
     arrSlot->i64 = static_cast<int64_t>(*element);
     setSlotOwnsString(arrSlot, false);
@@ -1387,14 +1281,14 @@ L_ARR_I32_SET_FAST: {
     const size_t idx = static_cast<size_t>(idxSlot->i64);
     setSlotOwnsString(idxSlot, false);
     --sp;
-    const uintptr_t base = reinterpret_cast<uintptr_t>(arrSlot->ptr);
-    if (idx > std::numeric_limits<uintptr_t>::max() / sizeof(int32_t) ||
-        idx * sizeof(int32_t) > std::numeric_limits<uintptr_t>::max() - base)
-        THREAD_TRAP_OR_DISPATCH(TrapKind::Bounds, "ARR_I32_SET_FAST index address overflow");
-    auto *element = reinterpret_cast<int32_t *>(base + idx * sizeof(int32_t));
+    int32_t *element = nullptr;
     SYNC_STATE();
     sp_ = sp;
-    if (!ensureMemoryAccess(element, sizeof(int32_t), "BytecodeVM::ARR_I32_SET_FAST(threaded)"))
+    if (!resolveArrayFastElement<int32_t>(arrSlot->ptr,
+                                          idx,
+                                          element,
+                                          "ARR_I32_SET_FAST index address overflow",
+                                          "BytecodeVM::ARR_I32_SET_FAST(threaded)"))
         RETURN_OR_DISPATCH_TRAP();
     setSlotOwnsString(arrSlot, false);
     *element = value;
@@ -1408,14 +1302,14 @@ L_ARR_I64_GET_FAST: {
     BCSlot *idxSlot = --sp;
     const size_t idx = static_cast<size_t>(idxSlot->i64);
     setSlotOwnsString(idxSlot, false);
-    const uintptr_t base = reinterpret_cast<uintptr_t>(arrSlot->ptr);
-    if (idx > std::numeric_limits<uintptr_t>::max() / sizeof(int64_t) ||
-        idx * sizeof(int64_t) > std::numeric_limits<uintptr_t>::max() - base)
-        THREAD_TRAP_OR_DISPATCH(TrapKind::Bounds, "ARR_I64_GET_FAST index address overflow");
-    auto *element = reinterpret_cast<int64_t *>(base + idx * sizeof(int64_t));
+    int64_t *element = nullptr;
     SYNC_STATE();
     sp_ = sp;
-    if (!ensureMemoryAccess(element, sizeof(int64_t), "BytecodeVM::ARR_I64_GET_FAST(threaded)"))
+    if (!resolveArrayFastElement<int64_t>(arrSlot->ptr,
+                                          idx,
+                                          element,
+                                          "ARR_I64_GET_FAST index address overflow",
+                                          "BytecodeVM::ARR_I64_GET_FAST(threaded)"))
         RETURN_OR_DISPATCH_TRAP();
     arrSlot->i64 = *element;
     setSlotOwnsString(arrSlot, false);
@@ -1433,14 +1327,14 @@ L_ARR_I64_SET_FAST: {
     const size_t idx = static_cast<size_t>(idxSlot->i64);
     setSlotOwnsString(idxSlot, false);
     --sp;
-    const uintptr_t base = reinterpret_cast<uintptr_t>(arrSlot->ptr);
-    if (idx > std::numeric_limits<uintptr_t>::max() / sizeof(int64_t) ||
-        idx * sizeof(int64_t) > std::numeric_limits<uintptr_t>::max() - base)
-        THREAD_TRAP_OR_DISPATCH(TrapKind::Bounds, "ARR_I64_SET_FAST index address overflow");
-    auto *element = reinterpret_cast<int64_t *>(base + idx * sizeof(int64_t));
+    int64_t *element = nullptr;
     SYNC_STATE();
     sp_ = sp;
-    if (!ensureMemoryAccess(element, sizeof(int64_t), "BytecodeVM::ARR_I64_SET_FAST(threaded)"))
+    if (!resolveArrayFastElement<int64_t>(arrSlot->ptr,
+                                          idx,
+                                          element,
+                                          "ARR_I64_SET_FAST index address overflow",
+                                          "BytecodeVM::ARR_I64_SET_FAST(threaded)"))
         RETURN_OR_DISPATCH_TRAP();
     setSlotOwnsString(arrSlot, false);
     *element = value;
@@ -1454,14 +1348,14 @@ L_ARR_F64_GET_FAST: {
     BCSlot *idxSlot = --sp;
     const size_t idx = static_cast<size_t>(idxSlot->i64);
     setSlotOwnsString(idxSlot, false);
-    const uintptr_t base = reinterpret_cast<uintptr_t>(arrSlot->ptr);
-    if (idx > std::numeric_limits<uintptr_t>::max() / sizeof(double) ||
-        idx * sizeof(double) > std::numeric_limits<uintptr_t>::max() - base)
-        THREAD_TRAP_OR_DISPATCH(TrapKind::Bounds, "ARR_F64_GET_FAST index address overflow");
-    auto *element = reinterpret_cast<double *>(base + idx * sizeof(double));
+    double *element = nullptr;
     SYNC_STATE();
     sp_ = sp;
-    if (!ensureMemoryAccess(element, sizeof(double), "BytecodeVM::ARR_F64_GET_FAST(threaded)"))
+    if (!resolveArrayFastElement<double>(arrSlot->ptr,
+                                         idx,
+                                         element,
+                                         "ARR_F64_GET_FAST index address overflow",
+                                         "BytecodeVM::ARR_F64_GET_FAST(threaded)"))
         RETURN_OR_DISPATCH_TRAP();
     arrSlot->f64 = *element;
     setSlotOwnsString(arrSlot, false);
@@ -1479,14 +1373,14 @@ L_ARR_F64_SET_FAST: {
     const size_t idx = static_cast<size_t>(idxSlot->i64);
     setSlotOwnsString(idxSlot, false);
     --sp;
-    const uintptr_t base = reinterpret_cast<uintptr_t>(arrSlot->ptr);
-    if (idx > std::numeric_limits<uintptr_t>::max() / sizeof(double) ||
-        idx * sizeof(double) > std::numeric_limits<uintptr_t>::max() - base)
-        THREAD_TRAP_OR_DISPATCH(TrapKind::Bounds, "ARR_F64_SET_FAST index address overflow");
-    auto *element = reinterpret_cast<double *>(base + idx * sizeof(double));
+    double *element = nullptr;
     SYNC_STATE();
     sp_ = sp;
-    if (!ensureMemoryAccess(element, sizeof(double), "BytecodeVM::ARR_F64_SET_FAST(threaded)"))
+    if (!resolveArrayFastElement<double>(arrSlot->ptr,
+                                         idx,
+                                         element,
+                                         "ARR_F64_SET_FAST index address overflow",
+                                         "BytecodeVM::ARR_F64_SET_FAST(threaded)"))
         RETURN_OR_DISPATCH_TRAP();
     setSlotOwnsString(arrSlot, false);
     *element = value;
@@ -1554,31 +1448,19 @@ L_CALL_INDIRECT: {
 }
 
 L_RETURN: {
-    BCSlot *resultSlot = --sp;
-    BCSlot result = *resultSlot;
-    const bool resultOwnsString = slotOwnsString(resultSlot);
-    setSlotOwnsString(resultSlot, false);
     SYNC_STATE();
     sp_ = sp;
-    if (!popFrame()) {
-        *sp_++ = result;
-        setSlotOwnsString(sp_ - 1, resultOwnsString);
-        state_ = VMState::Halted;
+    if (!returnValueFromFrame())
         return;
-    }
     RELOAD_STATE();
-    *sp++ = result;
-    setSlotOwnsString(sp - 1, resultOwnsString);
     DISPATCH();
 }
 
 L_RETURN_VOID: {
     SYNC_STATE();
     sp_ = sp;
-    if (!popFrame()) {
-        state_ = VMState::Halted;
+    if (!returnVoidFromFrame())
         return;
-    }
     RELOAD_STATE();
     DISPATCH();
 }

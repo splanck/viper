@@ -28,12 +28,12 @@
 #include "InstrLowering.hpp"
 #include "Noreturn.hpp"
 #include "OpcodeMappings.hpp"
+#include "codegen/common/ScalarBits.hpp"
 
 #include "il/core/Opcode.hpp"
 #include "il/runtime/RuntimeNameMap.hpp"
 
 #include <algorithm>
-#include <cstring>
 #include <stdexcept>
 #include <string_view>
 
@@ -77,13 +77,6 @@ static void captureGprCallResult(const il::core::Instr &ins,
         MOpcode::MovRR, {MOperand::vregOp(RegClass::GPR, dst), MOperand::regOp(PhysReg::X0)}});
 }
 
-/// @brief Return the IEEE-754 bit pattern of @p value as a uint64_t.
-static uint64_t f64Bits(double value) {
-    uint64_t bits = 0;
-    std::memcpy(&bits, &value, sizeof(bits));
-    return bits;
-}
-
 /// @brief Map a canonical runtime name to its concrete linker symbol, preserving user symbols.
 /// @details Returns the mapped runtime symbol when @p name is a known canonical
 ///          runtime alias, otherwise returns @p name unchanged.
@@ -100,7 +93,8 @@ static uint16_t materializeF64Constant(double value, LoweringContext &ctx, MBasi
     const uint16_t bitsGpr = allocateNextVReg(ctx.nextVRegId);
     out.instrs.push_back(MInstr{MOpcode::MovRI,
                                 {MOperand::vregOp(RegClass::GPR, bitsGpr),
-                                 MOperand::immOp(static_cast<long long>(f64Bits(value)))}});
+                                 MOperand::immOp(static_cast<long long>(
+                                     viper::codegen::common::f64Bits(value)))}});
     out.instrs.push_back(
         MInstr{MOpcode::FMovGR,
                {MOperand::vregOp(RegClass::FPR, dst), MOperand::vregOp(RegClass::GPR, bitsGpr)}});
@@ -467,8 +461,7 @@ bool lowerInstruction(const il::core::Instr &ins,
 
             uint64_t bits = 0;
             if (ins.operands[0].kind == il::core::Value::Kind::ConstFloat) {
-                const double fval = ins.operands[0].f64;
-                std::memcpy(&bits, &fval, sizeof(bits));
+                bits = viper::codegen::common::f64Bits(ins.operands[0].f64);
             } else if (ins.operands[0].kind == il::core::Value::Kind::ConstInt) {
                 // Integer operand holds IEEE-754 bit pattern directly.
                 bits = static_cast<uint64_t>(ins.operands[0].i64);

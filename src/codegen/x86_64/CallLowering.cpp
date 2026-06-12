@@ -69,6 +69,13 @@ static int32_t checkedStackSlotOffset(std::size_t shadowSpace, std::size_t stack
     return static_cast<int32_t>(offset);
 }
 
+/// @brief Narrow an aggregate byte offset to the memory-operand displacement type.
+static int32_t checkedAggregateChunkOffset(std::size_t byteOffset) {
+    if (byteOffset > static_cast<std::size_t>(std::numeric_limits<int32_t>::max()))
+        throw std::length_error("x86-64 call lowering: aggregate chunk offset exceeds int32_t");
+    return static_cast<int32_t>(byteOffset);
+}
+
 /// @brief Round and narrow outgoing-call frame bytes to FrameInfo's int field.
 /// @details FrameInfo stores byte counts as signed ints, so this helper rejects
 ///          valid size_t layouts that would not survive the existing field type.
@@ -241,10 +248,32 @@ void lowerCall(MBasicBlock &block,
     // Pass 1: Handle all vreg (non-immediate) arguments first
     for (const auto &loc : layout.locations) {
         const auto &arg = plan.args[loc.argIndex];
+        if (loc.isAggregatePart && arg.isImm)
+            throw std::invalid_argument("x86-64 call lowering: aggregate argument cannot be immediate");
         if (arg.isImm)
             continue;
         const auto currentIdx =
             static_cast<std::size_t>(std::distance(block.instructions.begin(), insertIt));
+
+        if (loc.isAggregatePart) {
+            const Operand base = makeVRegOperand(RegClass::GPR, arg.vreg);
+            const Operand scratch = makePhysOperand(RegClass::GPR, kScratchGPR);
+            insertInstr(MInstr::make(
+                MOpcode::MOVmr,
+                {scratch, makeMemOperand(std::get<OpReg>(base),
+                                         checkedAggregateChunkOffset(loc.byteOffset))}));
+
+            if (loc.inRegister) {
+                const PhysReg destReg = target.intArgOrder[loc.regIndex];
+                insertInstr(MInstr::make(MOpcode::MOVrr,
+                                         {makePhysOperand(RegClass::GPR, destReg), scratch}));
+            } else {
+                const auto slotOffset =
+                    checkedStackSlotOffset(target.shadowSpace, loc.stackSlotIndex);
+                insertInstr(MInstr::make(MOpcode::MOVrm, {makeStackSlot(slotOffset), scratch}));
+            }
+            continue;
+        }
 
         if (loc.cls == CallArgClass::GPR) {
             const Operand src = makeVRegOperand(RegClass::GPR, arg.vreg);
@@ -286,6 +315,8 @@ void lowerCall(MBasicBlock &block,
     // Pass 2: Handle all immediate arguments (now safe to overwrite registers)
     for (const auto &loc : layout.locations) {
         const auto &arg = plan.args[loc.argIndex];
+        if (loc.isAggregatePart)
+            continue;
         if (!arg.isImm)
             continue;
 

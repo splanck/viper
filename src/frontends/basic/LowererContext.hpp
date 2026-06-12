@@ -585,6 +585,7 @@ struct ProcedureContext {
             if (&f->blocks[i] == block)
                 return i;
         }
+        assert(!block && "block does not belong to active function");
         // Foreign blocks resolve to the one-past-the-end sentinel; callers
         // must treat it as "not found" rather than indexing blindly.
         return f->blocks.size();

@@ -34,6 +34,8 @@ struct CallArgLayoutConfig {
     CallSlotModel slotModel{CallSlotModel::IndependentRegisterBanks};
     bool variadicTailOnStack{false}; ///< True when variadic args must spill to the stack.
     std::size_t numNamedArgs{0};     ///< Number of non-variadic arguments.
+    std::size_t maxDirectAggregateRegisterBytes{
+        16}; ///< Direct aggregate byte limit eligible for register chunks.
 };
 
 /// @brief Placement for one source-order argument after ABI assignment.
@@ -44,6 +46,10 @@ struct CallArgLocation {
     bool inRegister{false};        ///< True when the argument is passed in a register.
     std::size_t regIndex{0};       ///< Class-specific or positional register slot index.
     std::size_t stackSlotIndex{0}; ///< 0-based stack slot index among spilled arguments.
+    bool isAggregatePart{false};   ///< True when this location copies one aggregate chunk.
+    std::size_t partIndex{0};      ///< 0-based aggregate chunk index, or 0 for scalars.
+    std::size_t byteOffset{0};     ///< Byte offset within aggregate storage.
+    std::size_t byteSize{8};       ///< Number of bytes represented by this ABI location.
 };
 
 /// @brief Aggregate ABI placement summary for a call or function entry.

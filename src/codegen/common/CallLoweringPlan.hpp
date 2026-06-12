@@ -33,12 +33,24 @@
 
 namespace viper::codegen::common {
 
-/// @brief Register class for a call argument.
+/// @brief Register class for a call argument or aggregate eightbyte.
 /// @details Target-independent classification used before register assignment.
 ///          Both backends map this to their target-specific RegClass enum.
 enum class CallArgClass : uint8_t {
     GPR, ///< General-purpose (integer/pointer) argument.
     FPR, ///< Floating-point argument.
+};
+
+/// @brief Storage model for a source call argument.
+enum class CallArgKind : uint8_t {
+    Scalar,          ///< Argument value is already a scalar register/immediate.
+    AggregateMemory, ///< Argument value is an address of by-value aggregate storage.
+};
+
+/// @brief ABI policy for aggregate-memory arguments.
+enum class AggregatePassKind : uint8_t {
+    Direct,  ///< Copy aggregate bytes into ABI argument homes.
+    Indirect ///< Pass the aggregate storage address as a pointer scalar.
 };
 
 /// @brief Describes a single argument in a call lowering plan.
@@ -47,6 +59,10 @@ struct CallArg {
     uint16_t vreg{0};                    ///< Virtual register holding the value (when !isImm).
     bool isImm{false};                   ///< True when the argument is a compile-time constant.
     int64_t imm{0};                      ///< Immediate value (when isImm == true).
+    CallArgKind kind{CallArgKind::Scalar};
+    AggregatePassKind aggregatePass{AggregatePassKind::Direct};
+    std::size_t sizeBytes{8};  ///< Scalar slot size or aggregate byte size.
+    std::size_t alignBytes{8}; ///< Preferred aggregate alignment in bytes.
 };
 
 /// @brief Target-independent description of a function call to be lowered.

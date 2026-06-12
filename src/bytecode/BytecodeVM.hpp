@@ -25,12 +25,15 @@
 
 #include "bytecode/Bytecode.hpp"
 #include "bytecode/BytecodeModule.hpp"
+#include "bytecode/ValueStackStringOwnership.hpp"
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <set>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -389,7 +392,7 @@ class BytecodeVM {
     std::vector<BCSlot> valueStack_;
 
     /// @brief Per-slot ownership flags for managed string values in @ref valueStack_.
-    std::vector<uint8_t> valueStackStringOwned_;
+    ValueStackStringOwnership valueStackStringOwned_;
 
     /// @brief Call stack of active function frames.
     std::vector<BCFrame> callStack_;
@@ -473,11 +476,65 @@ class BytecodeVM {
     ///         validation trapped.
     bool retainStringSlot(BCSlot *slot, const char *site);
 
+    /// @brief Copy one stack slot and retain its string handle when ownership is duplicated.
+    /// @param dst Destination value-stack slot that receives the copied value.
+    /// @param src Source value-stack slot to duplicate.
+    /// @param site Diagnostic site passed to string-handle validation.
+    /// @return True when the copy is complete; false after raising a runtime trap.
+    bool copyStackSlotRetainingString(BCSlot *dst, const BCSlot *src, const char *site);
+
+    /// @brief Implement the ownership-aware `DUP` stack opcode.
+    /// @param site Diagnostic site passed to string-handle validation.
+    /// @return True when the top slot was duplicated; false after raising a runtime trap.
+    bool duplicateTopSlot(const char *site);
+
+    /// @brief Implement the ownership-aware `DUP2` stack opcode.
+    /// @param site Diagnostic site passed to string-handle validation.
+    /// @return True when the top two slots were duplicated; false after raising a runtime trap.
+    bool duplicateTopTwoSlots(const char *site);
+
+    /// @brief Release and pop one or more slots from the operand stack.
+    /// @param count Number of topmost operand slots to release and remove.
+    void popOwnedSlots(size_t count);
+
+    /// @brief Implement the ownership-aware `SWAP` stack opcode.
+    void swapTopTwoSlots();
+
+    /// @brief Implement the ownership-aware `ROT3` stack opcode.
+    void rotateTopThreeSlots();
+
     /// @brief Push a local value onto the operand stack, retaining strings.
-    void pushLocal(uint32_t idx);
+    /// @param idx Local slot index to push.
+    /// @param site Diagnostic site passed to string-handle validation.
+    /// @return True when the value was pushed; false after raising a runtime trap.
+    bool pushLocal(uint32_t idx, const char *site);
 
     /// @brief Pop the operand stack into a local slot with string ownership transfer.
-    void storeLocal(uint32_t idx);
+    /// @param idx Local slot index to receive the popped value.
+    /// @param site Diagnostic site passed to string-handle validation.
+    /// @return True when the value was stored; false after raising a runtime trap.
+    bool storeLocal(uint32_t idx, const char *site);
+
+    /// @brief Return the top operand value from the current frame.
+    /// @return True when execution should continue in the caller; false when the entry frame halted
+    ///         or a trap was raised while unwinding.
+    bool returnValueFromFrame();
+
+    /// @brief Return void from the current frame.
+    /// @return True when execution should continue in the caller; false when the entry frame halted.
+    bool returnVoidFromFrame();
+
+    /// @brief Push a global value onto the operand stack, retaining strings.
+    /// @param idx Global slot index to load.
+    /// @param site Diagnostic site passed to string-handle validation.
+    /// @return True when the global was loaded; false after raising a runtime trap.
+    bool loadGlobal(uint16_t idx, const char *site);
+
+    /// @brief Pop the operand stack into a global slot with string ownership transfer.
+    /// @param idx Global slot index to store.
+    /// @param site Diagnostic site passed to string-handle validation.
+    /// @return True when the global was stored; false after raising a runtime trap.
+    bool storeGlobal(uint16_t idx, const char *site);
 
     /// @brief Release owned string arguments about to be popped after a native call.
     void releaseCallArgs(BCSlot *args, uint8_t argCount);
@@ -733,6 +790,43 @@ class BytecodeVM {
     /// @param site Diagnostic site name.
     /// @return True on success; false after raising or dispatching a trap.
     bool addPointerOffset(void *base, int64_t offset, void *&result, const char *site);
+
+    /// @brief Resolve an unchecked numeric-array fast-path element address safely.
+    /// @details The `ARR_*_FAST` opcodes intentionally skip logical length checks because the
+    ///          optimizer only emits them after a dominating bounds proof. They still must not
+    ///          overflow host address arithmetic or access memory outside VM-owned ranges. This
+    ///          helper centralizes the common `base + index * sizeof(T)` computation for both
+    ///          switch and threaded dispatch engines.
+    /// @tparam Element Numeric element type stored by the runtime array payload.
+    /// @param arrayPayload Non-null runtime array payload pointer. Callers perform the null trap
+    ///        before stack mutation so trap snapshots preserve existing opcode semantics.
+    /// @param idx Zero-based element index already popped or read from the bytecode stack.
+    /// @param element [out] Pointer to the resolved element on success.
+    /// @param overflowMessage Trap message used when pointer arithmetic would overflow.
+    /// @param site Diagnostic site name passed to memory-access validation.
+    /// @return True when @p element is safe to read/write; false after raising or dispatching a
+    ///         bounds/null-style trap.
+    template <typename Element>
+    bool resolveArrayFastElement(void *arrayPayload,
+                                 size_t idx,
+                                 Element *&element,
+                                 const char *overflowMessage,
+                                 const char *site) {
+        static_assert(std::is_same_v<Element, int32_t> || std::is_same_v<Element, int64_t> ||
+                          std::is_same_v<Element, double>,
+                      "ARR_*_FAST supports only i32, i64, and f64 payloads");
+
+        const uintptr_t base = reinterpret_cast<uintptr_t>(arrayPayload);
+        constexpr size_t elementSize = sizeof(Element);
+        if (idx > std::numeric_limits<uintptr_t>::max() / elementSize ||
+            idx * elementSize > std::numeric_limits<uintptr_t>::max() - base) {
+            trapOrDispatch(TrapKind::Bounds, overflowMessage);
+            return false;
+        }
+
+        element = reinterpret_cast<Element *>(base + idx * elementSize);
+        return ensureMemoryAccess(element, elementSize, site);
+    }
 
     /// @brief Push an exception handler onto the handler stack.
     /// @param handlerPc The PC of the handler entry point.
