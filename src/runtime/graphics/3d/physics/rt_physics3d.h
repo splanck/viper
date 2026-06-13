@@ -61,6 +61,12 @@ typedef struct {
 void *rt_world3d_new(double gx, double gy, double gz);
 /// @brief Integrate one simulation step of @p dt seconds (resolves contacts and updates events).
 void rt_world3d_step(void *world, double dt);
+/// @brief Accumulate @p dt and run fixed-size physics steps, returning steps actually run.
+int64_t rt_world3d_step_fixed(void *world, double dt, double fixed_dt, int64_t max_steps);
+/// @brief Render interpolation alpha from the fixed-step accumulator remainder.
+double rt_world3d_get_fixed_step_alpha(void *world);
+/// @brief Count fixed physics steps dropped by the max-step spiral guard.
+int64_t rt_world3d_get_dropped_fixed_steps(void *world);
 /// @brief Add a Body3D to the world, growing storage as needed.
 void rt_world3d_add(void *world, void *body);
 /// @brief Add a Body3D to the world and return whether it is present afterward.
@@ -99,6 +105,18 @@ int64_t rt_world3d_joint_count(void *world);
 int64_t rt_world3d_get_solver_iterations(void *world);
 /// @brief Set iterative solver passes; clamped to the runtime-supported range.
 void rt_world3d_set_solver_iterations(void *world, int64_t iterations);
+/// @brief Number of positional correction passes used for contacts.
+int64_t rt_world3d_get_position_iterations(void *world);
+/// @brief Set positional correction passes; clamped to the runtime-supported range.
+void rt_world3d_set_position_iterations(void *world, int64_t iterations);
+/// @brief Baumgarte contact position-correction fraction.
+double rt_world3d_get_contact_beta(void *world);
+/// @brief Set contact position-correction fraction; clamped to [0, 1].
+void rt_world3d_set_contact_beta(void *world, double beta);
+/// @brief Minimum impact speed that applies restitution.
+double rt_world3d_get_restitution_threshold(void *world);
+/// @brief Set the minimum impact speed that applies restitution.
+void rt_world3d_set_restitution_threshold(void *world, double threshold);
 /// @brief Max active contact islands scheduled by the most recent Step.
 int64_t rt_world3d_get_last_solver_island_count(void *world);
 /// @brief Max awake dynamic bodies included in contact islands by the most recent Step.

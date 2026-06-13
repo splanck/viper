@@ -79,6 +79,9 @@ extern double rt_quat_w(void *q);
 #define PH3D_SLEEP_ANGULAR_THRESHOLD 0.05
 #define PH3D_SLEEP_DELAY 0.5
 #define PH3D_DEFAULT_SOLVER_ITERATIONS 6
+#define PH3D_DEFAULT_POSITION_ITERATIONS 1
+#define PH3D_DEFAULT_CONTACT_BETA 0.8
+#define PH3D_DEFAULT_RESTITUTION_THRESHOLD 0.5
 #define PH3D_MAX_SOLVER_ITERATIONS 64
 #define PH3D_MAX_CCD_SUBSTEPS 64
 #define PH3D_MAX_SWEEP_STEPS 512
@@ -160,7 +163,7 @@ typedef struct {
 typedef struct ph3d_broadphase_entry ph3d_broadphase_entry;
 
 /// @brief Physics world: body/contact/event arrays, joint list, sweep-and-prune
-///   broad-phase cache, solver tuning, and per-frame diagnostics.
+///   broad-phase cache, fixed-step state, solver tuning, and per-frame diagnostics.
 struct rt_world3d {
     void *vptr;
     double gravity[3];
@@ -209,6 +212,12 @@ struct rt_world3d {
     int32_t last_ccd_clamped_body_count;
     int64_t ccd_substep_clamped_body_count;
     int32_t solver_iterations;
+    int32_t position_iterations;
+    double contact_beta;
+    double restitution_threshold;
+    double fixed_step_accumulator;
+    double fixed_step_alpha;
+    int64_t dropped_fixed_steps;
     int32_t last_solver_island_count;
     int32_t last_solver_active_body_count;
     int32_t last_solver_contact_count;

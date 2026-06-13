@@ -120,6 +120,7 @@ Constant classes are runtime-backed too: `Layers`, `BodyShape`, `SyncMode`,
 | `effects` | `Viper.Game3D.EffectRegistry3D` with a `PostFX3D` chain and particle/decal registry |
 | `stream` | Lazily created `Viper.Game3D.WorldStream3D` owned by the world |
 | `droppedFixedSteps` | Integer counter for fixed-step updates discarded by the spiral-of-death guard |
+| `fixedInterpolationAlpha` | Fixed-step accumulator fraction for render interpolation |
 | `entityCount` | Spawned `Entity3D` objects currently owned by the world |
 | `bodyCount` | Physics bodies currently registered through spawned entities |
 | `drawCount` | Main 3D draw submissions queued by the latest ended frame |
@@ -139,6 +140,19 @@ setup code.
 `World3D.runFixed` caps the number of simulation steps processed by one rendered
 frame. If a long frame would require more work than the cap, the dropped step
 count is exposed through `World3D.droppedFixedSteps` for telemetry and tuning.
+Raw `Viper.Graphics3D.Physics3DWorld` users can use the same fixed-step pattern
+without the Game3D facade through `Physics3DWorld.StepFixed(dt, fixedDt,
+maxSteps)`, `FixedStepAlpha`, and `DroppedFixedSteps`. `fixedDt` should be
+positive (commonly `1.0 / 60.0`) and `maxSteps` should be a positive spiral
+guard; `StepFixed` returns the fixed steps actually run and carries the
+remainder on the world.
+
+`Physics3DWorld` solver tuning is per-world: `SolverIterations` defaults to `6`
+for velocity contacts and joints, `PositionIterations` defaults to `1`,
+`ContactBeta` defaults to `0.8` and clamps to `0.0..1.0`, and
+`RestitutionThreshold` defaults to `0.5` m/s and clamps to finite non-negative
+values. Safe iteration ranges are `1..64`; higher values can improve stacked
+contacts and constraints at additional CPU cost.
 The editor/perf counters (`entityCount`, `bodyCount`, `drawCount`,
 `visibleNodeCount`, `occludedDrawCount`, and `streamResidentBytes`) are
 read-only wrappers over the owned scene, canvas, physics world, and stream, so a

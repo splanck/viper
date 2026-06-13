@@ -39,7 +39,12 @@ and joint integration.
 | `LastCCDRequestedSubsteps` | Integer | Read | Unclamped CCD substep demand from the most recent `Step()` |
 | `LastCCDSubsteps` | Integer | Read | Actual CCD substeps used after applying the runtime cap |
 | `CCDSubstepClampedCount` | Integer | Read | Number of steps whose CCD demand exceeded the cap |
-| `SolverIterations` | Integer | Read | Iterative constraint-solver passes used by `Step()` |
+| `SolverIterations` | Integer | Read/Write | Velocity/contact/joint solver passes used by `Step()`; default `6`, clamped to `1..64` |
+| `PositionIterations` | Integer | Read/Write | Contact position-correction passes; default `1`, clamped to `1..64` |
+| `ContactBeta` | Double | Read/Write | Baumgarte contact recovery fraction; default `0.8`, clamped to `0.0..1.0` |
+| `RestitutionThreshold` | Double | Read/Write | Minimum approach speed in m/s that applies bounce; default `0.5`, clamped to non-negative finite values |
+| `FixedStepAlpha` | Double | Read | Fixed-step accumulator remainder divided by `fixedDt`, for render interpolation |
+| `DroppedFixedSteps` | Integer | Read | Fixed steps discarded by `StepFixed()` when `maxSteps` caps a long frame |
 | `LastSolverIslandCount` | Integer | Read | Max active contact islands scheduled by the most recent `Step()` |
 | `LastSolverActiveBodyCount` | Integer | Read | Max awake dynamic bodies included in contact islands by the most recent `Step()` |
 | `LastSolverContactCount` | Integer | Read | Max non-trigger contacts scheduled through contact islands by the most recent `Step()` |
@@ -49,6 +54,7 @@ and joint integration.
 | Method                    | Signature             | Description |
 |---------------------------|-----------------------|-------------|
 | `Step(dt)`                | `Void(Double)`        | Advance simulation by `dt` seconds |
+| `StepFixed(dt, fixedDt, maxSteps)` | `Integer(Double, Double, Integer)` | Accumulate variable frame time and run up to `maxSteps` fixed `fixedDt` steps, returning steps actually run |
 | `Add(body)`               | `Void(Object)`        | Add a `Physics3DBody` to the world |
 | `TryAdd(body)`            | `Boolean(Object)`     | Add a body and report allocation/validation failure without changing the world |
 | `Remove(body)`            | `Void(Object)`        | Remove a body from the world |
@@ -105,9 +111,19 @@ and joint integration.
   tile's per-mesh BVH.
 - Sphere sweeps use analytic tests against primitive spheres and boxes before falling back to adaptive sampling. Capsule sweeps use adaptive sampling, so small-radius sweeps and long capsules can hit thin geometry without a fixed world-unit step floor.
 - `LastCCDRequestedSubsteps`, `LastCCDSubsteps`, and `CCDSubstepClampedCount` are diagnostics for fast-body tuning; clamping is expected when very high velocity would require more substeps than the engine's safety cap.
-- `SolverIterations` defaults to `6` and drives both contact-resolution passes and joint
-  constraint passes. `SetSolverIterations()` clamps to `1..64`; higher values can reduce
+- `SolverIterations` defaults to `6` and drives velocity contact solving plus joint
+  constraint passes. `PositionIterations` defaults to `1` and controls the split
+  contact position-correction pass. Both clamp to `1..64`; higher values can reduce
   penetration and make constraints stiffer at additional CPU cost.
+- `ContactBeta` defaults to `0.8` and is clamped to `0.0..1.0`; lower values soften
+  positional recovery and `0.0` disables it. `RestitutionThreshold` defaults to
+  `0.5` m/s and is clamped to finite non-negative values; raising it suppresses bounce
+  for slower impacts and helps resting stacks stay quiet.
+- `StepFixed(dt, fixedDt, maxSteps)` is the raw `Physics3DWorld` fixed-step helper.
+  Use a positive `fixedDt` such as `1.0 / 60.0` and a positive `maxSteps` guard.
+  The world carries the accumulator remainder between calls, returns the number of
+  fixed steps actually run, reports `FixedStepAlpha` for visual interpolation, and
+  increments `DroppedFixedSteps` when a long frame overflows the `maxSteps` guard.
 
 ---
 

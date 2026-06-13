@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tests/unit/test_graphics3d_abi_surface.cpp
+// File: src/tests/unit/test_graphics3d_abi_surface.cpp
 // Purpose: Source-level guardrails for Viper.Graphics3D / Viper.Game3D public
 //   ABI naming and class-id sentinels.
 //
@@ -966,6 +966,44 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_SolverIterations\""),
                  "Physics3DWorld.SolverIterations getter must use Graphics3D PascalCase naming") &&
          ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.set_SolverIterations\""),
+                 "Physics3DWorld.SolverIterations setter must use get_/set_ property naming") &&
+         ok;
+    ok =
+        require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_PositionIterations\""),
+                "Physics3DWorld.PositionIterations getter must use Graphics3D PascalCase "
+                "naming") &&
+        ok;
+    ok =
+        require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.set_PositionIterations\""),
+                "Physics3DWorld.PositionIterations setter must use get_/set_ property naming") &&
+        ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_ContactBeta\""),
+                 "Physics3DWorld.ContactBeta getter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.set_ContactBeta\""),
+                 "Physics3DWorld.ContactBeta setter must use get_/set_ property naming") &&
+         ok;
+    ok = require(
+             contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_RestitutionThreshold\""),
+             "Physics3DWorld.RestitutionThreshold getter must use Graphics3D PascalCase "
+             "naming") &&
+         ok;
+    ok = require(
+             contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.set_RestitutionThreshold\""),
+             "Physics3DWorld.RestitutionThreshold setter must use get_/set_ property "
+             "naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.StepFixed\""),
+                 "Physics3DWorld.StepFixed must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_FixedStepAlpha\""),
+                 "Physics3DWorld.FixedStepAlpha getter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_DroppedFixedSteps\""),
+                 "Physics3DWorld.DroppedFixedSteps getter must use Graphics3D PascalCase "
+                 "naming") &&
+         ok;
     ok = require(
              contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_LastSolverIslandCount\""),
              "Physics3DWorld.LastSolverIslandCount getter must use Graphics3D PascalCase naming") &&
@@ -1029,6 +1067,21 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_PROP(\"SolverIterations\""),
                  "Physics3DWorld.SolverIterations property missing") &&
          ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"PositionIterations\""),
+                 "Physics3DWorld.PositionIterations property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"ContactBeta\""),
+                 "Physics3DWorld.ContactBeta property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"RestitutionThreshold\""),
+                 "Physics3DWorld.RestitutionThreshold property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"FixedStepAlpha\""),
+                 "Physics3DWorld.FixedStepAlpha property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"DroppedFixedSteps\""),
+                 "Physics3DWorld.DroppedFixedSteps property missing") &&
+         ok;
     ok = require(contains(runtime_def, "RT_PROP(\"LastSolverIslandCount\""),
                  "Physics3DWorld.LastSolverIslandCount property missing") &&
          ok;
@@ -1040,6 +1093,9 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetSolverIterations\""),
                  "Physics3DWorld.SetSolverIterations method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"StepFixed\", \"i64(f64,f64,i64)\""),
+                 "Physics3DWorld.StepFixed method missing") &&
          ok;
     ok = require(contains(runtime_def,
                           "RT_METHOD(\"RebaseOrigin\", \"void(f64,f64,f64)\", "
@@ -1373,6 +1429,15 @@ bool check_runtime_surface_names() {
         "Viper.Graphics3D.Physics3DWorld.get_lastSolverContactCount",
         "Viper.Graphics3D.Physics3DWorld.get_last_solver_contact_count",
         "Viper.Graphics3D.Physics3DWorld.setSolverIterations",
+        "Viper.Graphics3D.Physics3DWorld.get_positionIterations",
+        "Viper.Graphics3D.Physics3DWorld.setPositionIterations",
+        "Viper.Graphics3D.Physics3DWorld.get_contactBeta",
+        "Viper.Graphics3D.Physics3DWorld.setContactBeta",
+        "Viper.Graphics3D.Physics3DWorld.get_restitutionThreshold",
+        "Viper.Graphics3D.Physics3DWorld.setRestitutionThreshold",
+        "Viper.Graphics3D.Physics3DWorld.stepFixed",
+        "Viper.Graphics3D.Physics3DWorld.get_fixedStepAlpha",
+        "Viper.Graphics3D.Physics3DWorld.get_droppedFixedSteps",
         "Viper.Graphics3D.HingeJoint3D.new",
         "Viper.Graphics3D.RopeJoint3D.get_maxLength",
         "Viper.Graphics3D.SixDofJoint3D.setLinearLimits",

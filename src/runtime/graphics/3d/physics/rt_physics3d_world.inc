@@ -155,6 +155,12 @@ void *rt_world3d_new(double gx, double gy, double gz) {
     w->joint_types = NULL;
     w->broadphase_entries = NULL;
     w->solver_iterations = PH3D_DEFAULT_SOLVER_ITERATIONS;
+    w->position_iterations = PH3D_DEFAULT_POSITION_ITERATIONS;
+    w->contact_beta = PH3D_DEFAULT_CONTACT_BETA;
+    w->restitution_threshold = PH3D_DEFAULT_RESTITUTION_THRESHOLD;
+    w->fixed_step_accumulator = 0.0;
+    w->fixed_step_alpha = 0.0;
+    w->dropped_fixed_steps = 0;
     if (!world3d_reserve_body_capacity(w, PH3D_INITIAL_BODIES) ||
         !world3d_reserve_contacts(w, PH3D_INITIAL_CONTACTS) ||
         !world3d_reserve_frame_contacts(w, PH3D_INITIAL_CONTACTS) ||
@@ -362,6 +368,7 @@ void rt_world3d_step(void *obj, double dt) {
          * impulses accumulate and warm-start across frames, which is what makes
          * stacks rest stably. Joints are interleaved with the velocity iterations. */
         int32_t solver_iterations = ph3d_clamp_solver_iterations(w->solver_iterations);
+        int32_t position_iterations = ph3d_clamp_solver_iterations(w->position_iterations);
         ph3d_solver_island_batch solver_batch;
         if (!world3d_detect_contacts(w))
             goto cleanup;
@@ -381,7 +388,8 @@ void rt_world3d_step(void *obj, double dt) {
                     rt_joint3d_solve(w->joints[j], w->joint_types[j], sub_dt);
             }
         }
-        world3d_solve_position_solver_islands(&solver_batch, w);
+        for (int32_t iter = 0; iter < position_iterations; iter++)
+            world3d_solve_position_solver_islands(&solver_batch, w);
         ph3d_solver_island_batch_free(&solver_batch);
         world3d_finalize_contacts(w);
         world3d_update_sleep(w, sub_dt);
@@ -402,6 +410,65 @@ cleanup:
         world3d_clear_visible_collision_events(w);
     world3d_invalidate_query_broadphase(w);
     world3d_clear_body_accumulators(w);
+}
+
+/// @brief `World3D.StepFixed(dt, fixedDt, maxSteps)` — run accumulated fixed steps.
+int64_t rt_world3d_step_fixed(void *obj, double dt, double fixed_dt, int64_t max_steps) {
+    rt_world3d *w = world3d_checked(obj);
+    double frame_dt = ph3d_sanitize_step_dt(dt);
+    double fixed = ph3d_sanitize_fixed_dt(fixed_dt);
+    int32_t max_step_count = ph3d_clamp_fixed_step_limit(max_steps);
+    int64_t steps = 0;
+    if (!w || frame_dt <= 0.0 || fixed <= 0.0 || max_step_count <= 0) {
+        ph3d_update_fixed_step_alpha(w, fixed);
+        return 0;
+    }
+
+    w->fixed_step_accumulator += frame_dt;
+    if (!isfinite(w->fixed_step_accumulator) || w->fixed_step_accumulator < 0.0)
+        w->fixed_step_accumulator = 0.0;
+    {
+        double max_accumulator = fixed * (double)max_step_count;
+        if (isfinite(max_accumulator) && max_accumulator > 0.0 &&
+            w->fixed_step_accumulator > max_accumulator) {
+            double dropped_time = w->fixed_step_accumulator - max_accumulator;
+            if (dropped_time >= fixed)
+                ph3d_add_dropped_fixed_steps(w, (int64_t)floor(dropped_time / fixed));
+            w->fixed_step_accumulator = max_accumulator;
+        }
+    }
+
+    while (w->fixed_step_accumulator + 1e-12 >= fixed && steps < max_step_count) {
+        rt_world3d_step(w, fixed);
+        w->fixed_step_accumulator -= fixed;
+        if (w->fixed_step_accumulator < 0.0 && w->fixed_step_accumulator > -1e-9)
+            w->fixed_step_accumulator = 0.0;
+        steps++;
+    }
+    if (steps >= max_step_count && w->fixed_step_accumulator >= fixed) {
+        ph3d_add_dropped_fixed_steps(w, (int64_t)floor(w->fixed_step_accumulator / fixed));
+        w->fixed_step_accumulator = 0.0;
+    }
+    ph3d_update_fixed_step_alpha(w, fixed);
+    return steps;
+}
+
+/// @brief `World3D.FixedStepAlpha` — fixed-step accumulator interpolation fraction.
+double rt_world3d_get_fixed_step_alpha(void *obj) {
+    rt_world3d *w = world3d_checked(obj);
+    if (!w || !isfinite(w->fixed_step_alpha))
+        return 0.0;
+    if (w->fixed_step_alpha < 0.0)
+        return 0.0;
+    if (w->fixed_step_alpha >= 1.0)
+        return 0.999999;
+    return w->fixed_step_alpha;
+}
+
+/// @brief `World3D.DroppedFixedSteps` — fixed-step updates discarded by the spiral guard.
+int64_t rt_world3d_get_dropped_fixed_steps(void *obj) {
+    rt_world3d *w = world3d_checked(obj);
+    return w && w->dropped_fixed_steps > 0 ? w->dropped_fixed_steps : 0;
 }
 
 /// @brief Return whether @p body is registered in @p w, using owner-index metadata first.
@@ -559,6 +626,47 @@ void rt_world3d_set_solver_iterations(void *obj, int64_t iterations) {
     rt_world3d *w = world3d_checked(obj);
     if (w)
         w->solver_iterations = ph3d_clamp_solver_iterations(iterations);
+}
+
+/// @brief `World3D.PositionIterations` — positional correction pass count.
+int64_t rt_world3d_get_position_iterations(void *obj) {
+    rt_world3d *w = world3d_checked(obj);
+    return w ? ph3d_clamp_solver_iterations(w->position_iterations) : 0;
+}
+
+/// @brief `World3D.PositionIterations` setter — tune positional correction passes.
+void rt_world3d_set_position_iterations(void *obj, int64_t iterations) {
+    rt_world3d *w = world3d_checked(obj);
+    if (w)
+        w->position_iterations = ph3d_clamp_solver_iterations(iterations);
+}
+
+/// @brief `World3D.ContactBeta` — Baumgarte positional recovery fraction.
+double rt_world3d_get_contact_beta(void *obj) {
+    rt_world3d *w = world3d_checked(obj);
+    return w ? ph3d_clamp_unit_finite(w->contact_beta, PH3D_DEFAULT_CONTACT_BETA) : 0.0;
+}
+
+/// @brief `World3D.ContactBeta` setter — clamp positional recovery to [0, 1].
+void rt_world3d_set_contact_beta(void *obj, double beta) {
+    rt_world3d *w = world3d_checked(obj);
+    if (w)
+        w->contact_beta = ph3d_clamp_unit_finite(beta, 0.0);
+}
+
+/// @brief `World3D.RestitutionThreshold` — minimum approach speed that bounces.
+double rt_world3d_get_restitution_threshold(void *obj) {
+    rt_world3d *w = world3d_checked(obj);
+    return w ? ph3d_clamp_nonnegative_finite(w->restitution_threshold,
+                                             PH3D_DEFAULT_RESTITUTION_THRESHOLD)
+             : 0.0;
+}
+
+/// @brief `World3D.RestitutionThreshold` setter — clamp to a finite non-negative speed.
+void rt_world3d_set_restitution_threshold(void *obj, double threshold) {
+    rt_world3d *w = world3d_checked(obj);
+    if (w)
+        w->restitution_threshold = ph3d_clamp_nonnegative_finite(threshold, 0.0);
 }
 
 /// @brief `World3D.LastSolverIslandCount` — max active contact islands in the last Step.

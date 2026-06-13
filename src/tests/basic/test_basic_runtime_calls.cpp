@@ -5,10 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Tests for BASIC runtime class calls that previously failed due to
-// missing RT_FUNC entries, RuntimeMethodIndex name resolution, or
-// RT_MAGIC heap crashes.
-// Fixes bugs A-014, A-036, A-037, A-038, A-044, A-052.
+// File: src/tests/basic/test_basic_runtime_calls.cpp
+// Purpose: Compile-time coverage for BASIC calls into Viper runtime classes.
+//
+// Key invariants:
+//   - Runtime class methods and properties resolve through runtime.def metadata.
+//   - Surface additions remain visible to BASIC without hand-written aliases.
+//
+// Ownership/Lifetime:
+//   - Tests construct transient compiler inputs and discard generated modules.
+//   - No runtime objects are executed or retained by this compile-only suite.
+//
+// Links: src/il/runtime/runtime.def, src/frontends/basic/BasicCompiler.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -334,6 +342,29 @@ count = Viper.Graphics3D.PhysicsHitList3D.get_Count(hits)
 hit = Viper.Graphics3D.PhysicsHitList3D.Get(hits, 0)
 frac = Viper.Graphics3D.PhysicsHit3D.get_Fraction(hit)
 PRINT count
+)"));
+}
+
+TEST(BasicRuntimeCalls, Physics3DWorldSolverAndFixedStepSurface) {
+    ASSERT_TRUE(compileOk(R"(
+DIM world AS OBJECT
+DIM steps AS INTEGER
+DIM alpha AS DOUBLE
+DIM beta AS DOUBLE
+DIM threshold AS DOUBLE
+DIM dropped AS INTEGER
+world = Viper.Graphics3D.Physics3DWorld.New(0.0, -9.8, 0.0)
+world.SolverIterations = 4
+world.PositionIterations = 5
+world.ContactBeta = 0.35
+world.RestitutionThreshold = 1.25
+steps = world.StepFixed(0.007, 0.0166666666666667, 8)
+steps = steps + world.StepFixed(0.013, 0.0166666666666667, 8)
+alpha = world.FixedStepAlpha
+dropped = world.DroppedFixedSteps
+beta = world.ContactBeta
+threshold = world.RestitutionThreshold
+PRINT steps
 )"));
 }
 

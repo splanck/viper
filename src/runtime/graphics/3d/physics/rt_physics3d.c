@@ -14,7 +14,7 @@
 //   - Bodies in topological order not required (flat array, sweep-and-prune broad phase).
 //   - Integration: forces→velocity, velocity→position (symplectic Euler).
 //   - Collision response: contact-point impulse updates linear and angular velocity.
-//   - Baumgarte stabilization: 40% excess penetration correction, 1% slop.
+//   - Baumgarte stabilization: per-world recovery fraction with fixed penetration slop.
 //   - Character controller: up to 3 slide iterations per move.
 //   - Quaternion orientations are renormalized after every integration step.
 //   - Sweep-and-prune broad-phase sorts entries by min-X for early-out.
@@ -364,6 +364,57 @@ static int32_t ph3d_clamp_solver_iterations(int64_t value) {
     if (value > PH3D_MAX_SOLVER_ITERATIONS)
         return PH3D_MAX_SOLVER_ITERATIONS;
     return (int32_t)value;
+}
+
+/// @brief Clamp a public [0, 1] solver tuning scalar, replacing non-finite input.
+static double ph3d_clamp_unit_finite(double value, double fallback) {
+    if (!isfinite(value))
+        value = fallback;
+    if (value < 0.0)
+        return 0.0;
+    if (value > 1.0)
+        return 1.0;
+    return value;
+}
+
+/// @brief Sanitize a fixed-step size: invalid inputs fall back to the 60 Hz default.
+static double ph3d_sanitize_fixed_dt(double dt) {
+    if (!isfinite(dt) || dt <= 0.0)
+        return 1.0 / 60.0;
+    return dt > PH3D_STEP_DT_MAX ? PH3D_STEP_DT_MAX : dt;
+}
+
+/// @brief Clamp max fixed steps to the non-negative int32 range used by the loop.
+static int32_t ph3d_clamp_fixed_step_limit(int64_t max_steps) {
+    if (max_steps <= 0)
+        return 0;
+    if (max_steps > INT32_MAX)
+        return INT32_MAX;
+    return (int32_t)max_steps;
+}
+
+/// @brief Add dropped fixed steps using saturating i64 arithmetic.
+static void ph3d_add_dropped_fixed_steps(rt_world3d *w, int64_t dropped) {
+    if (!w || dropped <= 0)
+        return;
+    if (w->dropped_fixed_steps > INT64_MAX - dropped)
+        w->dropped_fixed_steps = INT64_MAX;
+    else
+        w->dropped_fixed_steps += dropped;
+}
+
+/// @brief Publish the fixed-step interpolation alpha from accumulator/fixed_dt.
+static void ph3d_update_fixed_step_alpha(rt_world3d *w, double fixed_dt) {
+    if (!w || !isfinite(fixed_dt) || fixed_dt <= 0.0) {
+        if (w)
+            w->fixed_step_alpha = 0.0;
+        return;
+    }
+    w->fixed_step_alpha = w->fixed_step_accumulator / fixed_dt;
+    if (!isfinite(w->fixed_step_alpha) || w->fixed_step_alpha < 0.0)
+        w->fixed_step_alpha = 0.0;
+    if (w->fixed_step_alpha >= 1.0)
+        w->fixed_step_alpha = 0.999999;
 }
 
 /// @brief Clamp a physics state scalar to ±PH3D_STATE_ABS_MAX, mapping NaN/inf to 0.

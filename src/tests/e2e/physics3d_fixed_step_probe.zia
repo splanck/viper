@@ -1,0 +1,64 @@
+module physics3d_fixed_step_probe;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal as Terminal;
+
+func near(a: Float, b: Float) -> Boolean {
+    var d = a - b;
+    if (d < 0.0) { d = 0.0 - d; }
+    return d <= 0.000001;
+}
+
+func fail(label: String) {
+    Terminal.Say("RESULT: fail " + label);
+}
+
+func start() {
+    var world = Physics3DWorld.New(0.0, -9.8, 0.0);
+    if (Physics3DWorld.get_SolverIterations(world) != 6) { fail("solver default"); return; }
+    if (Physics3DWorld.get_PositionIterations(world) != 1) { fail("position default"); return; }
+    if (near(Physics3DWorld.get_ContactBeta(world), 0.8) == false) {
+        fail("beta default");
+        return;
+    }
+    if (near(Physics3DWorld.get_RestitutionThreshold(world), 0.5) == false) {
+        fail("restitution threshold default");
+        return;
+    }
+
+    Physics3DWorld.set_SolverIterations(world, 4);
+    Physics3DWorld.set_PositionIterations(world, 5);
+    Physics3DWorld.set_ContactBeta(world, 2.0);
+    Physics3DWorld.set_RestitutionThreshold(world, 1.25);
+    if (Physics3DWorld.get_SolverIterations(world) != 4) { fail("solver set"); return; }
+    if (Physics3DWorld.get_PositionIterations(world) != 5) { fail("position set"); return; }
+    if (near(Physics3DWorld.get_ContactBeta(world), 1.0) == false) { fail("beta clamp"); return; }
+    if (near(Physics3DWorld.get_RestitutionThreshold(world), 1.25) == false) {
+        fail("threshold set");
+        return;
+    }
+
+    var floor = Physics3DBody.NewAABB(10.0, 0.5, 10.0, 0.0);
+    Physics3DBody.SetPosition(floor, 0.0, -0.5, 0.0);
+    Physics3DWorld.Add(world, floor);
+    var box = Physics3DBody.NewAABB(0.5, 0.5, 0.5, 1.0);
+    Physics3DBody.SetPosition(box, 0.0, 2.0, 0.0);
+    Physics3DWorld.Add(world, box);
+
+    var steps = Physics3DWorld.StepFixed(world, 0.007, 1.0 / 60.0, 8);
+    if (steps != 0) { fail("partial step"); return; }
+    if (near(Physics3DWorld.get_FixedStepAlpha(world), 0.42) == false) {
+        fail("partial alpha");
+        return;
+    }
+    steps = Physics3DWorld.StepFixed(world, 0.013, 1.0 / 60.0, 8);
+    if (steps != 1) { fail("accumulated step"); return; }
+    if (Physics3DWorld.get_DroppedFixedSteps(world) != 0) { fail("unexpected drop"); return; }
+
+    steps = Physics3DWorld.StepFixed(world, 0.25, 0.015625, 8);
+    if (steps != 8) { fail("max steps"); return; }
+    if (Physics3DWorld.get_DroppedFixedSteps(world) != 8) { fail("dropped steps"); return; }
+
+    Terminal.Say("RESULT: ok");
+}

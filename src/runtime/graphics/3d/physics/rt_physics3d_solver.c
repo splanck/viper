@@ -51,9 +51,7 @@
  * box stacks and piles rest stably instead of jittering and sinking.
  * ====================================================================== */
 
-#define PH3D_RESTITUTION_THRESHOLD 0.5 /* min approach speed (m/s) to bounce */
 #define PH3D_PENETRATION_SLOP 0.005
-#define PH3D_BAUMGARTE_BETA 0.8          /* positional recovery fraction per step */
 #define PH3D_MAX_POSITION_CORRECTION 0.2 /* clamp on per-step positional push (m) */
 /* Carry <100% of the prior impulse so an uneven manifold (Gauss-Seidel tends to
  * load the first-solved point) cannot compound its torque frame-over-frame into
@@ -468,8 +466,11 @@ static void world3d_warm_start_contact(rt_world3d *w, rt_contact3d *c) {
          * frame of a contact (no warm-start seed). A persistent/resting
          * contact gets zero restitution bias, so a stack cannot bounce
          * itself apart if a body momentarily speeds up. */
-        c->restitution_bias[k] =
-            (seed_n == 0.0 && vn0 < -PH3D_RESTITUTION_THRESHOLD) ? -e * vn0 : 0.0;
+        {
+            double threshold = ph3d_clamp_nonnegative_finite(w->restitution_threshold,
+                                                             PH3D_DEFAULT_RESTITUTION_THRESHOLD);
+            c->restitution_bias[k] = (seed_n == 0.0 && vn0 < -threshold) ? -e * vn0 : 0.0;
+        }
 
         ph3d_apply_contact_axis_impulse(a, r_a, b, r_b, n, seed_n);
         ph3d_apply_contact_axis_impulse(a, r_a, b, r_b, t1, seed_t0);
@@ -544,7 +545,7 @@ static void world3d_solve_velocity_contact(rt_contact3d *c) {
 /// @brief Split positional (Baumgarte) correction using each manifold's deepest
 ///   point, weighted by inverse mass. Runs after the velocity solve so it never
 ///   injects energy into the velocity state.
-static void world3d_solve_position_contact(rt_contact3d *c) {
+static void world3d_solve_position_contact(rt_contact3d *c, double beta) {
     rt_body3d *a;
     rt_body3d *b;
     const double *n;
@@ -573,7 +574,7 @@ static void world3d_solve_position_contact(rt_contact3d *c) {
      * a body (which would otherwise inject huge separation and explode a
      * stack). Mirrors Box2D's b2_maxLinearCorrection. */
     pen = fmin(pen, PH3D_MAX_POSITION_CORRECTION);
-    corr = PH3D_BAUMGARTE_BETA * pen / inv_sum;
+    corr = beta * pen / inv_sum;
     n = c->normals[deepest];
     a->position[0] -= corr * a->inv_mass * n[0];
     a->position[1] -= corr * a->inv_mass * n[1];
@@ -613,13 +614,15 @@ void world3d_solve_velocity_solver_islands(const ph3d_solver_island_batch *batch
 
 /// @brief Run one position-correction pass over every solvable contact, island by island.
 void world3d_solve_position_solver_islands(const ph3d_solver_island_batch *batch, rt_world3d *w) {
+    double beta;
     if (!batch || !w)
         return;
+    beta = clampd(ph3d_finite_or(w->contact_beta, PH3D_DEFAULT_CONTACT_BETA), 0.0, 1.0);
     for (int32_t island = 0; island < batch->island_count; ++island) {
         int32_t begin = batch->island_offsets[island];
         int32_t end = batch->island_offsets[island + 1];
         for (int32_t i = begin; i < end; ++i)
-            world3d_solve_position_contact(&w->contacts[batch->contact_indices[i]]);
+            world3d_solve_position_contact(&w->contacts[batch->contact_indices[i]], beta);
     }
 }
 

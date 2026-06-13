@@ -395,6 +395,27 @@ int64_t rt_world3d_body_count(void *w) {
     return 0;
 }
 
+/// @brief Stub for `Physics3DWorld.StepFixed`.
+int64_t rt_world3d_step_fixed(void *w, double dt, double fixed_dt, int64_t max_steps) {
+    (void)w;
+    (void)dt;
+    (void)fixed_dt;
+    (void)max_steps;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.FixedStepAlpha`.
+double rt_world3d_get_fixed_step_alpha(void *w) {
+    (void)w;
+    return 0.0;
+}
+
+/// @brief Stub for `Physics3DWorld.DroppedFixedSteps`.
+int64_t rt_world3d_get_dropped_fixed_steps(void *w) {
+    (void)w;
+    return 0;
+}
+
 /// @brief Stub for `Physics3DWorld.LastCCDRequestedSubsteps`.
 int64_t rt_world3d_get_last_ccd_requested_substeps(void *w) {
     (void)w;
@@ -423,6 +444,42 @@ int64_t rt_world3d_get_solver_iterations(void *w) {
 void rt_world3d_set_solver_iterations(void *w, int64_t iterations) {
     (void)w;
     (void)iterations;
+}
+
+/// @brief Stub for `Physics3DWorld.PositionIterations`.
+int64_t rt_world3d_get_position_iterations(void *w) {
+    (void)w;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.PositionIterations` setter.
+void rt_world3d_set_position_iterations(void *w, int64_t iterations) {
+    (void)w;
+    (void)iterations;
+}
+
+/// @brief Stub for `Physics3DWorld.ContactBeta`.
+double rt_world3d_get_contact_beta(void *w) {
+    (void)w;
+    return 0.0;
+}
+
+/// @brief Stub for `Physics3DWorld.ContactBeta` setter.
+void rt_world3d_set_contact_beta(void *w, double beta) {
+    (void)w;
+    (void)beta;
+}
+
+/// @brief Stub for `Physics3DWorld.RestitutionThreshold`.
+double rt_world3d_get_restitution_threshold(void *w) {
+    (void)w;
+    return 0.0;
+}
+
+/// @brief Stub for `Physics3DWorld.RestitutionThreshold` setter.
+void rt_world3d_set_restitution_threshold(void *w, double threshold) {
+    (void)w;
+    (void)threshold;
 }
 
 /// @brief Stub for `Physics3DWorld.LastSolverIslandCount`.

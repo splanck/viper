@@ -5,9 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tests/unit/test_rt_physics3d.cpp
+// File: src/tests/unit/test_rt_physics3d.cpp
 // Purpose: Unit tests for Physics3D — world step, body creation, collision
 //   detection, impulse response, collision layers, character controller.
+//
+// Key invariants:
+//   - Physics3D runtime defaults remain stable and deterministic.
+//   - Contact, joint, and fixed-step behavior are validated through the C ABI.
+//
+// Ownership/Lifetime:
+//   - Tests allocate runtime objects through GC-managed constructors.
+//   - Test process lifetime owns intentionally leaked handles until exit.
 //
 // Links: rt_physics3d.h
 //
@@ -1137,6 +1145,57 @@ static void test_box_stack_rests_stably() {
     /* Stack stays ordered and separated (no box sinks through its neighbour). */
     for (int i = 1; i < count; ++i)
         EXPECT_TRUE(y1[i] > y1[i - 1] + 0.85, "Box stack: boxes stay separated and ordered");
+}
+
+static double vec3_handle_len(void *v) {
+    double x = rt_vec3_x(v);
+    double y = rt_vec3_y(v);
+    double z = rt_vec3_z(v);
+    return sqrt(x * x + y * y + z * z);
+}
+
+static void test_ten_box_tower_stacking_regression() {
+    const int count = 10;
+    const double fixed_dt = 1.0 / 60.0;
+    void *world = rt_world3d_new(0.0, -9.8, 0.0);
+    void *floor = rt_body3d_new_aabb(20.0, 0.5, 20.0, 0.0);
+    void *boxes[count];
+    double start_x[count];
+    double start_z[count];
+    int64_t fixed_steps = 0;
+
+    /* A ten-box tower is a high-stack case; cover the new per-world solver
+     * budget without changing the default tuning for simpler scenes. */
+    rt_world3d_set_solver_iterations(world, 32);
+    rt_body3d_set_position(floor, 0.0, -0.5, 0.0);
+    rt_world3d_add(world, floor);
+    for (int i = 0; i < count; ++i) {
+        boxes[i] = rt_body3d_new_aabb(0.5, 0.5, 0.5, 1.0);
+        start_x[i] = 0.0;
+        start_z[i] = 0.0;
+        rt_body3d_set_position(boxes[i], start_x[i], 0.5 + (double)i, start_z[i]);
+        rt_world3d_add(world, boxes[i]);
+    }
+
+    for (int step = 0; step < 600; ++step)
+        fixed_steps += rt_world3d_step_fixed(world, fixed_dt, fixed_dt, 1);
+    EXPECT_TRUE(fixed_steps == 600, "10-box tower: StepFixed runs every fixed step");
+
+    for (int i = 0; i < count; ++i) {
+        void *pos = rt_body3d_get_position(boxes[i]);
+        void *vel = rt_body3d_get_velocity(boxes[i]);
+        void *ang = rt_body3d_get_angular_velocity(boxes[i]);
+        double dx = rt_vec3_x(pos) - start_x[i];
+        double dz = rt_vec3_z(pos) - start_z[i];
+        double horizontal_drift = sqrt(dx * dx + dz * dz);
+        double linear_speed = vec3_handle_len(vel);
+        double angular_speed = vec3_handle_len(ang);
+        int sleeping_or_slow =
+            rt_body3d_is_sleeping(boxes[i]) != 0 || (linear_speed <= 0.05 && angular_speed <= 0.05);
+        EXPECT_TRUE(horizontal_drift <= 0.1,
+                    "10-box tower: box stays within 0.1m horizontal drift");
+        EXPECT_TRUE(sleeping_or_slow, "10-box tower: box is sleeping or low velocity");
+    }
 }
 
 static void test_world_solver_island_batches_resting_pile_target() {
@@ -3068,10 +3127,107 @@ static double stack_top_height_after_solver_iterations(int64_t iterations) {
     return rt_vec3_y(rt_body3d_get_position(boxes[2])); /* top box */
 }
 
+typedef struct {
+    double position[3];
+    double velocity[3];
+    int64_t steps;
+    int64_t dropped_steps;
+    double alpha;
+} StepFixedSnapshot;
+
+static StepFixedSnapshot run_step_fixed_sequence(const double *frames,
+                                                 int frame_count,
+                                                 int cycles) {
+    StepFixedSnapshot snapshot = {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, 0, 0, 0.0};
+    const double fixed_dt = 1.0 / 60.0;
+    void *world = rt_world3d_new(0.0, -9.8, 0.0);
+    void *floor = rt_body3d_new_aabb(20.0, 0.5, 20.0, 0.0);
+    void *body = rt_body3d_new_aabb(0.5, 0.5, 0.5, 1.0);
+    rt_body3d_set_position(floor, 0.0, -0.5, 0.0);
+    rt_world3d_add(world, floor);
+    rt_body3d_set_position(body, 0.0, 4.0, 0.0);
+    rt_body3d_set_velocity(body, 0.15, 0.0, -0.05);
+    rt_world3d_add(world, body);
+
+    for (int c = 0; c < cycles; ++c) {
+        for (int i = 0; i < frame_count; ++i)
+            snapshot.steps += rt_world3d_step_fixed(world, frames[i], fixed_dt, 8);
+    }
+
+    void *pos = rt_body3d_get_position(body);
+    void *vel = rt_body3d_get_velocity(body);
+    snapshot.position[0] = rt_vec3_x(pos);
+    snapshot.position[1] = rt_vec3_y(pos);
+    snapshot.position[2] = rt_vec3_z(pos);
+    snapshot.velocity[0] = rt_vec3_x(vel);
+    snapshot.velocity[1] = rt_vec3_y(vel);
+    snapshot.velocity[2] = rt_vec3_z(vel);
+    snapshot.dropped_steps = rt_world3d_get_dropped_fixed_steps(world);
+    snapshot.alpha = rt_world3d_get_fixed_step_alpha(world);
+    return snapshot;
+}
+
+static void test_world_step_fixed_accumulator_and_determinism() {
+    const double uniform_frame = 1.0 / 60.0;
+    const double variable_frames[] = {0.007, 0.013, 0.016};
+    StepFixedSnapshot uniform = run_step_fixed_sequence(&uniform_frame, 1, 108);
+    StepFixedSnapshot variable = run_step_fixed_sequence(variable_frames, 3, 50);
+
+    EXPECT_TRUE(uniform.steps == 108, "StepFixed: uniform frames run expected fixed steps");
+    EXPECT_TRUE(variable.steps == 108, "StepFixed: 7/13/16ms frames run expected fixed steps");
+    EXPECT_TRUE(uniform.dropped_steps == 0 && variable.dropped_steps == 0,
+                "StepFixed: normal frame slices do not drop steps");
+    EXPECT_NEAR(uniform.alpha, 0.0, 0.000001, "StepFixed: uniform sequence has no remainder");
+    EXPECT_NEAR(variable.alpha, 0.0, 0.000001, "StepFixed: variable sequence has no remainder");
+    for (int i = 0; i < 3; ++i) {
+        EXPECT_NEAR(variable.position[i],
+                    uniform.position[i],
+                    1e-9,
+                    "StepFixed: variable and uniform final positions match");
+        EXPECT_NEAR(variable.velocity[i],
+                    uniform.velocity[i],
+                    1e-9,
+                    "StepFixed: variable and uniform final velocities match");
+    }
+
+    void *world = rt_world3d_new(0.0, 0.0, 0.0);
+    int64_t steps = rt_world3d_step_fixed(world, 0.007, 0.01, 8);
+    EXPECT_TRUE(steps == 0, "StepFixed: sub-fixed frame carries remainder");
+    EXPECT_NEAR(rt_world3d_get_fixed_step_alpha(world),
+                0.7,
+                0.000001,
+                "StepFixed: alpha reports carried remainder");
+    steps = rt_world3d_step_fixed(world, 0.003, 0.01, 8);
+    EXPECT_TRUE(steps == 1, "StepFixed: accumulated remainder completes one step");
+    EXPECT_NEAR(rt_world3d_get_fixed_step_alpha(world),
+                0.0,
+                0.000001,
+                "StepFixed: alpha resets after exact fixed step");
+
+    steps = rt_world3d_step_fixed(world, 0.25, 0.015625, 8);
+    EXPECT_TRUE(steps == 8, "StepFixed: maxSteps caps a large frame");
+    EXPECT_TRUE(rt_world3d_get_dropped_fixed_steps(world) == 8,
+                "StepFixed: maxSteps increments dropped fixed step counter");
+    EXPECT_NEAR(rt_world3d_get_fixed_step_alpha(world),
+                0.0,
+                0.000001,
+                "StepFixed: dropped overflow clears remainder after capped frame");
+}
+
 static void test_world_solver_iteration_controls() {
     void *world = rt_world3d_new(0, 0, 0);
     EXPECT_TRUE(rt_world3d_get_solver_iterations(world) == 6,
                 "World: SolverIterations defaults to historical six passes");
+    EXPECT_TRUE(rt_world3d_get_position_iterations(world) == 1,
+                "World: PositionIterations defaults to historical single pass");
+    EXPECT_NEAR(rt_world3d_get_contact_beta(world),
+                0.8,
+                0.000001,
+                "World: ContactBeta defaults to historical beta");
+    EXPECT_NEAR(rt_world3d_get_restitution_threshold(world),
+                0.5,
+                0.000001,
+                "World: RestitutionThreshold defaults to historical threshold");
     rt_world3d_set_solver_iterations(world, 0);
     EXPECT_TRUE(rt_world3d_get_solver_iterations(world) == 1,
                 "World: SetSolverIterations clamps low values to one");
@@ -3081,6 +3237,36 @@ static void test_world_solver_iteration_controls() {
     rt_world3d_set_solver_iterations(world, 4);
     EXPECT_TRUE(rt_world3d_get_solver_iterations(world) == 4,
                 "World: SetSolverIterations stores valid values");
+    rt_world3d_set_position_iterations(world, 0);
+    EXPECT_TRUE(rt_world3d_get_position_iterations(world) == 1,
+                "World: PositionIterations clamps low values to one");
+    rt_world3d_set_position_iterations(world, 999);
+    EXPECT_TRUE(rt_world3d_get_position_iterations(world) == 64,
+                "World: PositionIterations clamps high values to max");
+    rt_world3d_set_position_iterations(world, 5);
+    EXPECT_TRUE(rt_world3d_get_position_iterations(world) == 5,
+                "World: PositionIterations stores valid values");
+    rt_world3d_set_contact_beta(world, -1.0);
+    EXPECT_NEAR(
+        rt_world3d_get_contact_beta(world), 0.0, 0.000001, "World: ContactBeta clamps low to zero");
+    rt_world3d_set_contact_beta(world, 2.0);
+    EXPECT_NEAR(
+        rt_world3d_get_contact_beta(world), 1.0, 0.000001, "World: ContactBeta clamps high to one");
+    rt_world3d_set_contact_beta(world, 0.35);
+    EXPECT_NEAR(rt_world3d_get_contact_beta(world),
+                0.35,
+                0.000001,
+                "World: ContactBeta stores valid values");
+    rt_world3d_set_restitution_threshold(world, -1.0);
+    EXPECT_NEAR(rt_world3d_get_restitution_threshold(world),
+                0.0,
+                0.000001,
+                "World: RestitutionThreshold clamps low to zero");
+    rt_world3d_set_restitution_threshold(world, 1.25);
+    EXPECT_NEAR(rt_world3d_get_restitution_threshold(world),
+                1.25,
+                0.000001,
+                "World: RestitutionThreshold stores valid values");
 
     double one_iter_velocity = spring_velocity_after_solver_iterations(1);
     double four_iter_velocity = spring_velocity_after_solver_iterations(4);
@@ -3161,6 +3347,7 @@ int main() {
     test_trigger_no_push();
     test_ground_detection();
     test_box_stack_rests_stably();
+    test_ten_box_tower_stacking_regression();
     test_world_solver_island_batches_resting_pile_target();
 
     /* Character controller */
@@ -3244,6 +3431,7 @@ int main() {
     test_sixdof_joint_linear_motor_preserves_angular_pose_limits();
     test_sixdof_joint_linear_motor();
     test_joint_type_validation_for_new_joint_classes();
+    test_world_step_fixed_accumulator_and_determinism();
     test_world_solver_iteration_controls();
     test_world_joint_management();
 

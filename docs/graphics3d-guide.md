@@ -2039,7 +2039,12 @@ World storage for bodies, contacts, contact events, and joints grows on demand f
 | `LastCCDRequestedSubsteps` | Integer | read | Unclamped CCD substeps requested by the last step |
 | `LastCCDSubsteps` | Integer | read | CCD substeps actually used after capping |
 | `CCDSubstepClampedCount` | Integer | read | Number of steps that exceeded the CCD cap |
-| `SolverIterations` | Integer | read | Iterative contact/joint solver passes used by `Step()` |
+| `SolverIterations` | Integer | read/write | Velocity contact/joint solver passes used by `Step()`; default `6`, clamped to `1..64` |
+| `PositionIterations` | Integer | read/write | Contact position-correction passes; default `1`, clamped to `1..64` |
+| `ContactBeta` | Float | read/write | Baumgarte contact recovery fraction; default `0.8`, clamped to `0..1` |
+| `RestitutionThreshold` | Float | read/write | Minimum impact speed in m/s that bounces; default `0.5`, clamped non-negative |
+| `FixedStepAlpha` | Float | read | Fixed-step accumulator interpolation fraction |
+| `DroppedFixedSteps` | Integer | read | Fixed steps discarded by `StepFixed()` under the max-step guard |
 | `LastSolverIslandCount` | Integer | read | Max active contact islands scheduled by the most recent `Step()` |
 | `LastSolverActiveBodyCount` | Integer | read | Max awake dynamic bodies included in contact islands by the most recent `Step()` |
 | `LastSolverContactCount` | Integer | read | Max non-trigger contacts scheduled through contact islands by the most recent `Step()` |
@@ -2047,6 +2052,7 @@ World storage for bodies, contacts, contact events, and joints grows on demand f
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `Step(dt)` | `void(f64)` | Advance simulation by dt seconds |
+| `StepFixed(dt, fixedDt, maxSteps)` | `i64(f64, f64, i64)` | Accumulate variable frame time and run up to `maxSteps` fixed `fixedDt` steps |
 | `Add(body)` | `void(obj)` | Add body to world |
 | `TryAdd(body)` | `i1(obj)` | Add body and return whether it is present afterward |
 | `Remove(body)` | `void(obj)` | Remove body from world |
