@@ -1117,6 +1117,24 @@ static void test_backend_select_platform_override() {
     PASS();
 }
 
+static void test_backend_default_policy_names() {
+    TEST("Backend selection - default policy names");
+    EXPECT_TRUE(strcmp(vgfx3d_default_backend_name_for_platform(VGFX3D_BACKEND_PLATFORM_LINUX),
+                       "opengl") == 0,
+                "Linux defaults to OpenGL");
+    EXPECT_TRUE(
+        strcmp(vgfx3d_default_backend_name_for_platform(VGFX3D_BACKEND_PLATFORM_WINDOWS_ARM64),
+               "software") == 0,
+        "Windows ARM64 keeps the software default");
+    EXPECT_TRUE(strcmp(vgfx3d_default_backend_name_for_platform(VGFX3D_BACKEND_PLATFORM_MACOS),
+                       "metal") == 0,
+                "macOS defaults to Metal");
+    EXPECT_TRUE(strcmp(vgfx3d_default_backend_name_for_platform(VGFX3D_BACKEND_PLATFORM_WINDOWS),
+                       "d3d11") == 0,
+                "Windows x64 defaults to D3D11");
+    PASS();
+}
+
 //=============================================================================
 // Camera3D tests
 //=============================================================================
@@ -7499,6 +7517,7 @@ int main() {
     test_backend_select();
     test_backend_select_software_override();
     test_backend_select_platform_override();
+    test_backend_default_policy_names();
 
     /* New Canvas3D bindings (wind sway + window-control NULL-safety) */
     test_wind_deform_base_fixed_canopy_sways();

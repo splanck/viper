@@ -390,6 +390,31 @@ static void test_gpu_backend_native_texture_capability_hook() {
     EXPECT_TRUE(backend_supports(&canvas, "etc2"), "BackendSupports reports hooked ETC2 support");
 }
 
+static void test_backend_runtime_fallback_is_queryable() {
+    rt_canvas3d canvas = {};
+    canvas.backend = &vgfx3d_software_backend;
+
+    EXPECT_TRUE(!rt_canvas3d_get_backend_fallback(&canvas),
+                "BackendFallback defaults false for a directly selected software backend");
+    EXPECT_TRUE(!backend_supports(&canvas, "runtime-fallback"),
+                "BackendSupports runtime-fallback defaults false");
+    EXPECT_TRUE(!backend_supports(&canvas, "backend_fallback"),
+                "BackendSupports backend_fallback alias defaults false");
+
+    canvas.backend_requested_name = "opengl";
+    canvas.backend_fallback = 1;
+    EXPECT_TRUE(rt_canvas3d_get_backend_fallback(&canvas),
+                "BackendFallback reports runtime software fallback");
+    EXPECT_TRUE(backend_supports(&canvas, "runtime-fallback"),
+                "BackendSupports accepts runtime-fallback alias");
+    EXPECT_TRUE(backend_supports(&canvas, "backend_fallback"),
+                "BackendSupports accepts backend_fallback alias");
+    EXPECT_TRUE(backend_supports(&canvas, "software-fallback"),
+                "BackendSupports accepts software-fallback alias");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_canvas3d_get_backend(&canvas)), "software") == 0,
+                "Backend reports the active renderer after fallback");
+}
+
 static void test_frustum_culling_aliases_share_state() {
     rt_canvas3d canvas = {};
 
@@ -570,6 +595,7 @@ int main() {
     test_software_backend_reports_canvas_fallback_features();
     test_gpu_backend_capability_bits_and_names();
     test_gpu_backend_native_texture_capability_hook();
+    test_backend_runtime_fallback_is_queryable();
     test_frustum_culling_aliases_share_state();
     test_canvas_render_state_sanitizes_inputs();
     test_software_spot_light_shadow_render_is_stable();

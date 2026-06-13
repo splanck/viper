@@ -1196,6 +1196,12 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_FrameGpuTimeUs\""),
                  "Canvas3D.FrameGpuTimeUs getter must use Graphics3D PascalCase naming") &&
          ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_BackendName\""),
+                 "Canvas3D.BackendName getter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_BackendFallback\""),
+                 "Canvas3D.BackendFallback getter must use Graphics3D PascalCase naming") &&
+         ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.SetTextureUploadBudget\""),
                  "Canvas3D.SetTextureUploadBudget must use Graphics3D PascalCase naming") &&
          ok;

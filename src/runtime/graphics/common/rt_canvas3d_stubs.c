@@ -598,6 +598,19 @@ rt_string rt_canvas3d_get_backend(void *o) {
     return NULL;
 }
 
+/// @brief Stub for `Canvas3D.BackendFallback` — would normally report
+///        whether runtime backend creation fell back to software.
+///
+/// Silent stub returning false.
+///
+/// @param o Canvas3D handle (ignored).
+///
+/// @return `0`.
+int8_t rt_canvas3d_get_backend_fallback(void *o) {
+    (void)o;
+    return 0;
+}
+
 /// @brief Stub for `Canvas3D.BackendCapabilities` — would normally return
 ///        a bitmask describing backend feature hooks.
 ///

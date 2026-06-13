@@ -179,6 +179,8 @@ The rendering surface. Creates a window and manages the render loop.
 | `DeltaTimeMs` | Integer | read | Explicit millisecond alias for `DeltaTime` |
 | `DeltaTimeSec` | Number | read | Seconds since last Flip or synthetic frame, using the same clamp as `DeltaTime` |
 | `Backend` | String | read | Active renderer: "software", "metal", "d3d11", "opengl" |
+| `BackendName` | String | read | Alias for `Backend` for explicit backend-name queries |
+| `BackendFallback` | Boolean | read | True when Canvas3D fell back from the selected GPU backend to software at creation |
 | `BackendCapabilities` | Integer | read | Bitmask of `Canvas3D` backend capabilities |
 | `QualityRequested` | Integer | read | Last requested quality profile (`0` performance, `1` balanced, `2` cinematic) |
 | `QualityActive` | Integer | read | Active quality profile after backend fallback |
@@ -210,7 +212,7 @@ The rendering surface. Creates a window and manages the render loop.
 | `Flip()` | `void()` | Finalize if needed, present frame to screen, compute DeltaTime |
 | `Poll()` | `i64()` | Process window events and update `Keyboard`/`Mouse`/actions; returns `1` while open, `0` when closed/unavailable |
 | `PollEvent()` | `i64()` | Dequeue the next raw canvas event type, or `0` when none are pending |
-| `BackendSupports(capability)` | `i1(str)` | Test a named backend capability such as `shadows`, `skybox`, `render_target`, `window_readback`, `hardware_instancing`, `postfx`, `gpu_postfx`, `postfx-overlay`, `final-screenshot`, or `gpu-postfx-overlay` |
+| `BackendSupports(capability)` | `i1(str)` | Test a named backend capability such as `shadows`, `skybox`, `render_target`, `window_readback`, `hardware_instancing`, `postfx`, `gpu_postfx`, `postfx-overlay`, `final-screenshot`, or `gpu-postfx-overlay`; `runtime-fallback`, `backend-fallback`, and `software-fallback` report `BackendFallback` |
 
 ### Drawing Methods
 
@@ -3471,9 +3473,9 @@ The GPU backend is selected automatically at startup:
 | Windows | Direct3D 11 | Software |
 | Linux | OpenGL 3.3 | Software |
 
-If the GPU backend fails to initialize (no GPU, driver issue), the software rasterizer is used automatically. Check `canvas.Backend` to see which renderer is active.
+If the GPU backend fails to initialize (no GPU, driver issue), the software rasterizer is used automatically and Canvas3D emits one stderr notice for the process. Check `canvas.Backend` or `canvas.BackendName` to see which renderer is active, and `canvas.BackendFallback` or `canvas.BackendSupports("runtime-fallback")` to detect a runtime software fallback.
 
-For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSupports(name)` over string comparisons against `canvas.Backend`. Capability names currently include `software`, `gpu`, `render_target`, `window_readback`, `shadows`, `skybox`, `hardware_instancing`, `postfx`, `gpu_postfx`, `postfx-overlay`, `final-screenshot`, `gpu-postfx-overlay`, `clustered-lighting`, `shadow-csm`, `occlusion`, `hlod`, `bc7`, `astc`, and `etc2`. The bitmask values are:
+For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSupports(name)` over string comparisons against `canvas.Backend`. Capability names currently include `software`, `gpu`, `render_target`, `window_readback`, `shadows`, `skybox`, `hardware_instancing`, `postfx`, `gpu_postfx`, `postfx-overlay`, `final-screenshot`, `gpu-postfx-overlay`, `clustered-lighting`, `shadow-csm`, `occlusion`, `hlod`, `bc7`, `astc`, and `etc2`; fallback-state aliases include `runtime-fallback`, `backend-fallback`, and `software-fallback`. The bitmask values are:
 
 | Bit | Capability |
 |-----|------------|

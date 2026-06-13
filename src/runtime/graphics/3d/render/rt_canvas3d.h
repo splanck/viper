@@ -159,6 +159,8 @@ void rt_canvas3d_draw_line3d_raw(void *obj, const double *from, const double *to
 void rt_canvas3d_draw_point3d(void *obj, void *pos, int64_t color, int64_t size);
 /// @brief Get the active backend name ("d3d11", "metal", "opengl", or "software").
 rt_string rt_canvas3d_get_backend(void *obj);
+/// @brief Return true when Canvas3D fell back from the selected GPU backend to software.
+int8_t rt_canvas3d_get_backend_fallback(void *obj);
 
 #define RT_CANVAS3D_BACKEND_CAP_SOFTWARE 0x0001LL
 #define RT_CANVAS3D_BACKEND_CAP_GPU 0x0002LL

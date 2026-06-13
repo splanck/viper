@@ -336,6 +336,24 @@ const vgfx3d_backend_t vgfx3d_software_backend = {
     .hide_gpu_layer = NULL,
 };
 
+static const vgfx3d_backend_t *vgfx3d_backend_from_name(const char *name) {
+    if (!name)
+        return NULL;
+    if (strcmp(name, "software") == 0)
+        return &vgfx3d_software_backend;
+#if defined(__APPLE__)
+    if (strcmp(name, "metal") == 0)
+        return &vgfx3d_metal_backend;
+#elif defined(_WIN32)
+    if (strcmp(name, "d3d11") == 0)
+        return &vgfx3d_d3d11_backend;
+#elif defined(__linux__)
+    if (strcmp(name, "opengl") == 0)
+        return &vgfx3d_opengl_backend;
+#endif
+    return NULL;
+}
+
 /// @brief Public: pick the best 3D backend at startup.
 ///
 /// Tries each compiled-in backend in priority order (D3D11 on
@@ -343,40 +361,37 @@ const vgfx3d_backend_t vgfx3d_software_backend = {
 /// software backend when no GPU backend is available. Called once
 /// at canvas-create time and the choice is cached.
 const vgfx3d_backend_t *vgfx3d_select_backend(void) {
+    vgfx3d_backend_platform_t platform = VGFX3D_BACKEND_PLATFORM_OTHER;
+    const vgfx3d_backend_t *backend;
+
     /* Only honor overrides for backends compiled on this platform. */
     const char *env = getenv("VIPER_3D_BACKEND");
     if (env) {
-        if (strcmp(env, "software") == 0)
-            return &vgfx3d_software_backend;
-#if defined(__APPLE__)
-        if (strcmp(env, "metal") == 0)
-            return &vgfx3d_metal_backend;
-#elif defined(_WIN32)
-        if (strcmp(env, "d3d11") == 0)
-            return &vgfx3d_d3d11_backend;
-#elif defined(__linux__)
-        if (strcmp(env, "opengl") == 0)
-            return &vgfx3d_opengl_backend;
-#endif
+        backend = vgfx3d_backend_from_name(env);
+        if (backend)
+            return backend;
     }
 
-    /* Linux OpenGL is still under active bring-up, so prefer the software
-     * backend by default there until the GL path is stable across frames. */
+    /* Prefer platform GPU backends by default; Canvas3D falls back to the
+     * software backend at context creation when the GPU path is unavailable. */
 #if defined(__APPLE__)
-    return &vgfx3d_metal_backend;
-#elif defined(_WIN32) && (defined(_M_ARM64) || defined(__aarch64__))
+    platform = VGFX3D_BACKEND_PLATFORM_MACOS;
+#elif defined(_WIN32)
+#if defined(_M_ARM64) || defined(__aarch64__)
     /* Several Windows-on-ARM GPU stacks expose D3D11 but crash inside the
      * display driver during Present. Keep x64 on D3D11, but default ARM64 to
      * the portable backend so Canvas3D demos launch reliably. Users can still
      * opt into D3D11 with VIPER_3D_BACKEND=d3d11. */
-    return &vgfx3d_software_backend;
-#elif defined(_WIN32)
-    return &vgfx3d_d3d11_backend;
-#elif defined(__linux__)
-    return &vgfx3d_software_backend;
+    platform = VGFX3D_BACKEND_PLATFORM_WINDOWS_ARM64;
 #else
-    return &vgfx3d_software_backend;
+    platform = VGFX3D_BACKEND_PLATFORM_WINDOWS;
 #endif
+#elif defined(__linux__)
+    platform = VGFX3D_BACKEND_PLATFORM_LINUX;
+#endif
+
+    backend = vgfx3d_backend_from_name(vgfx3d_default_backend_name_for_platform(platform));
+    return backend ? backend : &vgfx3d_software_backend;
 }
 
 #else

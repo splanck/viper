@@ -49,6 +49,7 @@
 #include <limits.h>
 #include <math.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -56,6 +57,8 @@
 // (not in rt_canvas3d_internal.h) because vgfx3d_light_params_t needs vgfx3d_backend.h,
 // included above — keeping the type-less TUs that share the internal header clean.
 int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t max);
+
+static volatile int g_canvas3d_backend_fallback_notice_emitted = 0;
 
 #define CANVAS3D_MAX_INSTANCES 1048576
 #define CANVAS3D_MAX_FALLBACK_INSTANCES 65536
@@ -85,6 +88,21 @@ static void canvas3d_release_synthetic_input(rt_canvas3d *c);
 static void canvas3d_release_synthetic_state(rt_canvas3d *c);
 int32_t canvas3d_active_light_limit(rt_canvas3d *c);
 int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t max);
+
+static void canvas3d_emit_backend_fallback_notice_once(const char *requested, const char *active) {
+    int expected = 0;
+    if (!__atomic_compare_exchange_n(&g_canvas3d_backend_fallback_notice_emitted,
+                                     &expected,
+                                     1,
+                                     0,
+                                     __ATOMIC_ACQ_REL,
+                                     __ATOMIC_ACQUIRE))
+        return;
+    fprintf(stderr,
+            "Canvas3D.New: %s backend initialization failed; falling back to %s\n",
+            (requested && *requested) ? requested : "selected",
+            (active && *active) ? active : "software");
+}
 
 /// @brief Atomically swap the global synthetic-input owner to @p c, returning the previous owner.
 /// @details Only one canvas may drive synthetic (test/replay) input at a time; this enforces it
@@ -1441,6 +1459,8 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
 
     /* Select and initialize the platform-default backend, with software fallback. */
     c->backend = vgfx3d_select_backend();
+    c->backend_requested_name = (c->backend && c->backend->name) ? c->backend->name : "unknown";
+    c->backend_fallback = 0;
     if (!c->backend || !c->backend->create_ctx)
         c->backend = &vgfx3d_software_backend;
     if (!c->backend || !c->backend->create_ctx) {
@@ -1452,6 +1472,9 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     c->backend_ctx =
         c->backend->create_ctx(c->gfx_win, initial_framebuffer_width, initial_framebuffer_height);
     if (!c->backend_ctx) {
+        const vgfx3d_backend_t *failed_backend = c->backend;
+        const char *failed_backend_name =
+            (failed_backend && failed_backend->name) ? failed_backend->name : "unknown";
         /* Selected backend failed — fall back to software. */
         c->backend = &vgfx3d_software_backend;
         c->backend_ctx = c->backend->create_ctx(
@@ -1461,6 +1484,12 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
                 rt_obj_free(c);
             rt_trap("Canvas3D.New: backend initialization failed");
             return NULL;
+        }
+        if (failed_backend != &vgfx3d_software_backend &&
+            strcmp(failed_backend_name, "software") != 0) {
+            c->backend_requested_name = failed_backend_name;
+            c->backend_fallback = 1;
+            canvas3d_emit_backend_fallback_notice_once(failed_backend_name, c->backend->name);
         }
     }
     vgfx_set_gpu_present(c->gfx_win, c->backend != &vgfx3d_software_backend);

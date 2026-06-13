@@ -386,6 +386,32 @@ extern const vgfx3d_backend_t vgfx3d_d3d11_backend;
 extern const vgfx3d_backend_t vgfx3d_opengl_backend;
 #endif
 
+typedef enum {
+    VGFX3D_BACKEND_PLATFORM_OTHER = 0,
+    VGFX3D_BACKEND_PLATFORM_MACOS = 1,
+    VGFX3D_BACKEND_PLATFORM_WINDOWS = 2,
+    VGFX3D_BACKEND_PLATFORM_WINDOWS_ARM64 = 3,
+    VGFX3D_BACKEND_PLATFORM_LINUX = 4,
+} vgfx3d_backend_platform_t;
+
+/// @brief Return the default backend name for a platform policy bucket.
+static inline const char *vgfx3d_default_backend_name_for_platform(
+    vgfx3d_backend_platform_t platform) {
+    switch (platform) {
+        case VGFX3D_BACKEND_PLATFORM_MACOS:
+            return "metal";
+        case VGFX3D_BACKEND_PLATFORM_WINDOWS:
+            return "d3d11";
+        case VGFX3D_BACKEND_PLATFORM_WINDOWS_ARM64:
+            return "software";
+        case VGFX3D_BACKEND_PLATFORM_LINUX:
+            return "opengl";
+        case VGFX3D_BACKEND_PLATFORM_OTHER:
+        default:
+            return "software";
+    }
+}
+
 /// @brief Select the best available backend: try the platform GPU backend first, then
 ///   fall back to the software backend. Returns a borrowed pointer to a static vtable.
 const vgfx3d_backend_t *vgfx3d_select_backend(void);

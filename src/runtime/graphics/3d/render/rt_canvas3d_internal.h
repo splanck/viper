@@ -88,12 +88,12 @@ typedef struct {
     float aabb_max[3];
     float bsphere_radius;
     int8_t bounds_dirty;
-    int8_t build_failed;        /* set when a construction/load append fails */
-    void *skeleton_ref;         /* attached Skeleton3D (or NULL) */
-    void *morph_targets_ref;    /* attached MorphTarget3D (or NULL) */
-    uint32_t geometry_revision; /* increments when CPU geometry changes */
-    uint32_t tangent_revision;  /* geometry_revision for cached tangent readiness */
-    int8_t tangents_ready;      /* true once tangent presence/generation was resolved */
+    int8_t build_failed;               /* set when a construction/load append fails */
+    void *skeleton_ref;                /* attached Skeleton3D (or NULL) */
+    void *morph_targets_ref;           /* attached MorphTarget3D (or NULL) */
+    uint32_t geometry_revision;        /* increments when CPU geometry changes */
+    uint32_t tangent_revision;         /* geometry_revision for cached tangent readiness */
+    int8_t tangents_ready;             /* true once tangent presence/generation was resolved */
     uint32_t validated_index_revision; /* geometry_revision for cached index validation */
     uint32_t validated_index_count;    /* complete in-range triangle-list count, 0 = invalid */
     uint32_t
@@ -701,7 +701,8 @@ static inline void vgfx3d_rendertarget_clear_sync(vgfx3d_rendertarget_t *target)
 }
 
 /// @brief Detach the backend sync callback while preserving the current dirty bit.
-/// @details Used when a backend resource is about to be destroyed or reused after a failed readback.
+/// @details Used when a backend resource is about to be destroyed or reused after a failed
+/// readback.
 ///   The CPU mirror is no longer trustworthy, but clearing `color_dirty` would make `AsPixels`
 ///   return stale bytes. Leaving dirty set with no callback makes readback fail explicitly.
 static inline void vgfx3d_rendertarget_detach_sync_preserve_dirty(vgfx3d_rendertarget_t *target) {
@@ -737,8 +738,10 @@ typedef struct {
     int32_t framebuffer_height; /* physical backing-pixel height */
 
     /* Backend dispatch */
-    const vgfx3d_backend_t *backend; /* vtable (software, metal, d3d11, opengl) */
-    void *backend_ctx;               /* opaque backend state */
+    const vgfx3d_backend_t *backend;    /* vtable (software, metal, d3d11, opengl) */
+    void *backend_ctx;                  /* opaque backend state */
+    const char *backend_requested_name; /* backend selected before runtime fallback */
+    int8_t backend_fallback;            /* 1 when Canvas3D fell back to software at creation */
 
     /* Frame state */
     int8_t in_frame;                /* 1 = between Begin/End */

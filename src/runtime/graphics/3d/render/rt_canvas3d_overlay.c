@@ -387,6 +387,12 @@ rt_string rt_canvas3d_get_backend(void *obj) {
     return rt_const_cstr(c->backend ? c->backend->name : "unknown");
 }
 
+/// @brief Return whether the active canvas fell back from a selected GPU backend to software.
+int8_t rt_canvas3d_get_backend_fallback(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return (c && c->backend_fallback) ? 1 : 0;
+}
+
 /// @brief True when the active backend has the GPU many-light shader/upload path.
 /// @details Keep this tied to the real backend vtables, not backend-name strings, so
 ///          stack/fake unit-test backends do not accidentally advertise production
@@ -548,10 +554,18 @@ static int64_t canvas3d_capability_from_name(const char *name) {
 /// @brief Return whether the active backend supports a named capability.
 int8_t rt_canvas3d_backend_supports(void *obj, rt_string capability) {
     int64_t flag;
+    const char *name;
 
     if (!obj || !capability)
         return 0;
-    flag = canvas3d_capability_from_name(rt_string_cstr(capability));
+    name = rt_string_cstr(capability);
+    if (!name)
+        return 0;
+    if (strcmp(name, "runtime-fallback") == 0 || strcmp(name, "runtime_fallback") == 0 ||
+        strcmp(name, "backend-fallback") == 0 || strcmp(name, "backend_fallback") == 0 ||
+        strcmp(name, "software-fallback") == 0 || strcmp(name, "software_fallback") == 0)
+        return rt_canvas3d_get_backend_fallback(obj);
+    flag = canvas3d_capability_from_name(name);
     if (!flag)
         return 0;
     return (rt_canvas3d_get_backend_capabilities(obj) & flag) ? 1 : 0;

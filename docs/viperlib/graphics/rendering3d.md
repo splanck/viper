@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-29
+last-verified: 2026-06-12
 ---
 
 # 3D Rendering, Animation, and Environment
@@ -122,6 +122,26 @@ output aspect without mutating the camera's stored projection.
 
 `PollEvent()` drains the per-canvas event queue in FIFO order and returns `0`
 when no queued event remains.
+
+### Canvas3D Backend Selection
+
+`Canvas3D.New(title, width, height)` selects the platform GPU backend by
+default: Metal on macOS, Direct3D 11 on Windows, and OpenGL 3.3 on Linux. If
+the selected GPU backend cannot create its context, Canvas3D automatically
+creates the software backend instead and emits one stderr notice for the process.
+Windows on ARM64 defaults to software because affected drivers can fail during
+presentation; users can still opt into D3D11 with `VIPER_3D_BACKEND=d3d11`.
+
+| Property / Method | Type | Description |
+|-------------------|------|-------------|
+| `Backend` | `String` | Active renderer name: `software`, `metal`, `d3d11`, or `opengl` |
+| `BackendName` | `String` | Alias for `Backend` for code that wants an explicit name getter |
+| `BackendFallback` | `Boolean` | True when Canvas3D fell back from the selected GPU backend to software at creation |
+| `BackendSupports(name)` | `Boolean` | Tests backend capabilities; `runtime-fallback`, `backend-fallback`, and `software-fallback` report the `BackendFallback` state |
+
+Use `BackendSupports("gpu")`, `BackendSupports("software")`, or
+`BackendFallback` for control flow. String comparisons against `Backend` or
+`BackendName` should be reserved for logs and diagnostics.
 
 ### Canvas3D Quality Profiles
 

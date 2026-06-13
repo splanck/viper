@@ -8,7 +8,7 @@
 
 ### What this release is about
 
-A short hardening cycle continuing v0.2.6. The headline new work ends per-frame Graphics3D rendering flicker, closes the open-world ("3D Next Level") streaming gaps, adds node-animation playback over a substantially upgraded glTF/FBX importer, gives ViperIDE a real VM-backed debugger, and opens a machine-readable agent-facing CLI. Around it, a repo-wide sweep makes recoverable runtime traps fail closed, promotes IL and codegen invariants from debug asserts to release-mode validation, unifies scalar instruction semantics across the tree-walking VM and both bytecode engines, re-skins the GUI toolkit through a shared anti-aliased drawing core, and modularizes the runtime into focused translation units — while the Linux and Windows/MSVC builds both return to green.
+A hardening cycle continuing v0.2.6. The headline new work ends per-frame Graphics3D rendering flicker, closes the open-world ("3D Next Level") streaming gaps, adds node-animation playback over a substantially upgraded glTF/FBX importer, gives ViperIDE a real VM-backed debugger, and opens a machine-readable agent-facing CLI. A late codegen performance round unlocks the full AArch64 argument-register pool and tightens x86-64 and AArch64 allocator overheads, spot light shadow maps join the directional-light cascade budget, and shared platform adapters consolidate all host-specific socket, entropy, and file-dialog logic. Around it, a repo-wide sweep makes recoverable runtime traps fail closed, promotes IL and codegen invariants from debug asserts to release-mode validation, unifies scalar instruction semantics across the tree-walking VM and both bytecode engines, re-skins the GUI toolkit through a shared anti-aliased drawing core, and modularizes the runtime into focused translation units — while the Linux and Windows/MSVC builds both return to green.
 
 - **Graphics3D flicker stabilized.** Queue-order-independent occlusion history with covered-streak gating, camera-depth-fitted shadow cascades, per-camera LOD/impostor hysteresis, and conservative terrain-horizon culling; every backend validates draw-command index ranges and shares one depth-bias scale.
 - **glTF/FBX import & node animation (new).** `NodeAnimation3D`/`NodeAnimator3D` play node, object, camera, and morph-weight clips, and `Model3D`/`Assets3D` can pull a single clip from an external file; the FBX importer gains full transforms, cubic curves, PBR routing, and async loading.
@@ -26,18 +26,21 @@ A short hardening cycle continuing v0.2.6. The headline new work ends per-frame 
 - **Cross-platform utilities, language servers & CLI.** The Text/Time/IO surface closes documented edge cases, the BASIC/Zia LSP/MCP servers compute UTF-16 ranges and enforce a strict initialize-before-use lifecycle, and the CLI rejects mismatched run/build/ABI combinations behind atomic, descriptor-safe tool outputs.
 - **Project loading & packaging.** Convention detection scans real BASIC/Zia tokens and rejects symlink escapes; package writers stage through same-directory temp files and hash assets with SHA-256; staged toolchain binaries detect their own OS and architecture from the object header rather than the host.
 - **Windows and Linux builds back to green.** Windows restores the BASIC-VM, installer, ViperIDE, and x86-64 suites (NOMINMAX, extended MSVC atomics, an 8-job parallelism cap) and closes its D3D11 sign-off gaps; Linux returns to a full green suite — 1,670 passing.
+- **Spot light shadow maps.** Shadow-casting spot lights join the shared directional shadow budget, built from a single perspective light view-projection; all four backends (software/OpenGL/Metal/D3D11) sample with a perspective divide and cone-angle suppression while the directional cascade path stays orthographic.
+- **Codegen performance round.** The AArch64 allocator gains clobber-aware argument-register eviction (sixteen previously excluded registers re-enter the pool), spilled-operand reload caching (N reloads per block collapse to one resident-register home), shared pre-RA copy-forwarding between backends, and an FPCMP→CSET one-instruction materialization. The x86-64 allocator eliminates duplicated end-of-block spill stores and per-instruction CQO re-scans and deep copies; the scheduler models memory dependences precisely instead of treating LEA as a memory barrier. Six additional correctness fixes land: allocator carries visible to post-RA peepholes, disjoint GPR/XMM spill-placeholder index ranges, deterministic AArch64 phi/cold-block handling, shared per-function AArch64 trap blocks, complete conditional-branch successor liveness, and valid Mach-O arm64 compact-unwind encodings.
+- **Shared platform adapters.** Socket setup/teardown/flags, CSPRNG selection, and file-dialog directory enumeration each move into dedicated `rt_*_platform_{win,posix}.c` adapters behind `rt_*_platform.h` headers; a ratcheting lint baseline ensures the remaining raw-macro count in shared TUs can only decrease.
 
 ### By the Numbers
 
 | Metric | v0.2.6 | v0.2.7 | Delta |
 |---|---|---|---|
-| Commits | — | 74 | +74 |
-| Source files | 3,096 | 3,293 | +197 |
-| Production SLOC | 669K | 717K | +48K |
-| Test SLOC | 278K | 294K | +16K |
+| Commits | — | 101 | +101 |
+| Source files | 3,096 | 3,337 | +241 |
+| Production SLOC | 669K | 719K | +50K |
+| Test SLOC | 278K | 296K | +18K |
 | Demo SLOC | 192K | 193K | +1K |
 
-Counts via `scripts/count_sloc.sh` (production 717,487 / test 294,423 / demo 193,428 / source files 3,293); commits since the v0.2.6 release (2026-06-01).
+Counts via `scripts/count_sloc.sh` (production 719,038 / test 295,880 / demo 193,428 / source files 3,337); commits since the v0.2.6 release (2026-06-01).
 
 ---
 
@@ -45,6 +48,7 @@ Counts via `scripts/count_sloc.sh` (production 717,487 / test 294,423 / demo 193
 
 - A sustained pass ends per-frame visible-triangle flicker: queue-order-independent occlusion history with covered-streak gating, camera-depth-fitted shadow cascades, per-camera LOD/impostor hysteresis, and conservative terrain-horizon culling.
 - Every backend (software/OpenGL/Metal/D3D11) validates draw-command index ranges and shares one depth-bias scale; D3D11 closes its remaining sign-off gaps and hardens compressed-texture lifetime.
+- Shadow-casting spot lights join the shared directional shadow budget: directional lights consume slots first by cascade count, then spot lights fill remaining slots ranked by intensity and camera distance. Spot lights build a single perspective view-projection from position, direction, outer cone angle, and range; all four shader languages (GLSL/HLSL/MSL/software) perspective-divide spot shadow coordinates and suppress contributions outside the cone angle while keeping directional paths orthographic and cascaded.
 
 ### 3D assets, animation, and Canvas3D (new)
 
@@ -72,6 +76,7 @@ Counts via `scripts/count_sloc.sh` (production 717,487 / test 294,423 / demo 193
 - A VM-neutral `ScalarOps` kernel — checked add/sub/mul, signed/unsigned div-rem, masked shifts, two's-complement wrapping, checked narrowing, half-open `idx.chk` normalization, and round-to-even f64→int casts — now backs the tree-walking VM and both bytecode dispatch engines, so one IL module yields identical values and trap kinds across every execution mode (bytecode format bumped to v3 to carry explicit result widths). `Function::blocks` and `BasicBlock::instructions` move to a stable-address `StableList`, and a module-owned `StringInterner` carries interned `Symbol` handles on functions, blocks, instructions, branch targets, and direct callees so analyses compare compact handles instead of rehashing strings — and the BASIC lowerer drops its now-undefined `block - &blocks[0]` pointer arithmetic for the shared stable-address index helpers.
 - Shared `AllocaRoots` helpers make BasicAA conservative for raw and unknown-indirect calls, MemorySSA and DSE fix same-block-overwrite handling, ConstFold/SCCP/Peephole normalize integer folds to i16/i32/i64 result widths, and CheckOpt shares one checked-range implementation with the builder — now demoting proven-safe overflow-checked i64 arithmetic to plain ops. Pass invalidation became state-based and Mem2Reg transactional.
 - x86-64/AArch64 selection, encoding, Win64 unwind slots, register-allocation operand protection, and AArch64 relocations surface diagnostics instead of asserting — atop the shared frame-layout fix that closes the O1 miscompiles — the object writers bound their fixed-width name fields, and the native linker hardens relocation ordering, symbol resolution, and PE-image writing.
+- **Codegen performance.** A focused pass reduces allocator and scheduler overheads across both backends. AArch64: clobber-aware argument-register eviction unlocks all sixteen previously excluded argument registers (x0-x7/v0-v7) for allocation; spilled-operand reload caching assigns a resident physical register to the first use and reuses it within the block (N frame reloads → 1); a shared pre-RA copy-forwarding pass runs before register allocation on both pipelines. x86-64: duplicated end-of-block spill stores eliminated (the def's suffix store already keeps the slot current), redundant CQO re-scans and per-instruction instruction deep-copies removed. Scheduler: LEA no longer treated as a memory barrier in MemoryOpt (unblocks dependent instruction scheduling), and per-instruction memory-dependence edges modeled precisely. AArch64: FPCMP + branch sequences collapse to a single CSET where the flag consumer is a conditional branch. Six correctness fixes accompany the perf work: allocator-register carries are now visible to post-RA peepholes, GPR and XMM spill-placeholder index ranges are disjoint, the AArch64 allocator is made deterministic across phi-node and cold-block orderings, AArch64 trap blocks are shared per function (bounding block growth), every conditional-branch successor is included in RA liveness, and Mach-O arm64 compact-unwind encodings are valid.
 
 ### Bytecode VM and support libraries
 
@@ -107,15 +112,15 @@ Counts via `scripts/count_sloc.sh` (production 717,487 / test 294,423 / demo 193
 
 ### Tests
 
-~16K new test SLOC.
+~18K new test SLOC.
 
-- **3D rendering, assets, and animation** — vegetation sway, billboard batching, versioned navmesh round-trip, reference repair, texture-atlas, FBX/node-animation import, and D3D11 mip-validation coverage.
-- **IL, codegen, and cross-engine** — IL release-lifetime and alias-analysis precision, VM-vs-bytecode scalar-semantics equivalence, and AArch64 register-allocation regressions.
+- **3D rendering, assets, and animation** — spot-shadow perspective/orthographic coordinate and budget-ordering coverage, vegetation sway, billboard batching, versioned navmesh round-trip, reference repair, texture-atlas, FBX/node-animation import, and D3D11 mip-validation coverage.
+- **IL, codegen, and cross-engine** — IL release-lifetime and alias-analysis precision, VM-vs-bytecode scalar-semantics equivalence, AArch64 register-allocation regressions, spilled-operand reload-caching pin test (zero inter-use reloads), and duplicate-spill-store elimination verification.
 - **Agent CLI and diagnostics** — the `agent_cli` suite, the diagnostic-code catalog, and structured bridge/MCP/LSP diagnostic and hover coverage.
 - **Runtime, frontends, and GUI** — media/pixel decode, BASIC parsing, Text/Time/IO edge cases, and GUI overlay/font-propagation regressions.
 
 ---
 
-Demos and docs tracked the work: the `game3d-showcase` gained an F11 fullscreen toggle, wind-swayed foliage, a render-to-image minimap, physics props, and wandering sentinels, while the Graphics3D guides and Viper library docs picked up KTX2, glTF-extension, streaming, navmesh-export, spatial-index, and window/image/foliage/skinned-draw entries, the man pages and codemap documented the new agent-facing CLI, diagnostics-code schema, and Zia grammar, and `TextWrap`, JSON depth, file-vs-directory moves, and date parsing were clarified. Structurally, the runtime's largest translation units — input/action, JSON, directory, audio decode, 2D pixels, GameUI, GUI, network, TLS, and regex among them — split into focused per-feature files behind internal headers; the Zia editor/IntelliSense services (completion, highlight) moved out of `fe_zia` into a dedicated `zia_editor_services` archive, and the Zia lowerer's runtime-call coercions and canonical names moved behind a generated, lint-gated facade. Native linking now tolerates audio-disabled hosts by falling back to the runtime audio stubs.
+Demos and docs tracked the work: the `game3d-showcase` gained an F11 fullscreen toggle, wind-swayed foliage, a render-to-image minimap, physics props, wandering sentinels, and spot-shadow coverage; the Graphics3D guides picked up spot-shadow, KTX2, glTF-extension, streaming, navmesh-export, spatial-index, and window/image/foliage/skinned-draw entries; the man pages and codemap documented the agent-facing CLI, diagnostics-code schema, and Zia grammar; and `TextWrap`, JSON depth, file-vs-directory moves, and date parsing were clarified. Structurally: the runtime's largest translation units — input/action, JSON, directory, audio decode, 2D pixels, GameUI, GUI, network, TLS, and regex — split into focused per-feature files behind internal headers; the Zia editor/IntelliSense services moved out of `fe_zia` into `zia_editor_services`; the Zia lowerer's runtime-call coercions and canonical names moved behind a generated, lint-gated facade; a new `viper_text_core` static library and `fe_common` `CollectionMethodCatalog`/`RuntimeMethodResolver` extract the GUI/TUI piece-table text engine and the collection/overload-scoring code shared by both frontends; platform-specific socket, entropy, and file-dialog logic consolidated into `rt_*_platform_{win,posix}.c` adapters with a ratcheting lint baseline; and a codegen backend-consolidation design record and shared utilities archive lay groundwork for merging the x86-64 and AArch64 backend scaffolding. Native linking now tolerates audio-disabled hosts by falling back to the runtime audio stubs.
 
 <!-- END DRAFT -->
