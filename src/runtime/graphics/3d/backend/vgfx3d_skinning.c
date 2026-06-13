@@ -9,6 +9,13 @@
 // Purpose: CPU-side skeletal vertex skinning. Transforms each vertex's
 //   position and normal by up to 4 weighted bone matrices from the palette.
 //
+// Key invariants:
+//   - Bone indices are clamped to the 8-bit palette range used by runtime vertices.
+//   - Normal matrices are precomputed once per bone when caller scratch is available.
+//   - Non-finite inputs are sanitized or skipped before writing destination vertices.
+// Ownership/Lifetime:
+//   - Source, destination, and palette storage are caller-owned.
+//   - Optional scratch storage is caller-owned and grows without per-frame frees.
 // Links: vgfx3d_skinning.h, plans/3d/14-skeletal-animation.md
 //
 //===----------------------------------------------------------------------===//
@@ -26,11 +33,40 @@
 #define VGFX3D_SKIN_WEIGHT_MAX 1000000.0
 #define VGFX3D_SKIN_INDEX_RANGE 256
 
+/// @brief Release all owned skinning scratch buffers.
+void vgfx3d_skinning_scratch_free(vgfx3d_skinning_scratch_t *scratch) {
+    if (!scratch)
+        return;
+    free(scratch->normal_palette);
+    scratch->normal_palette = NULL;
+    scratch->normal_palette_capacity = 0;
+    scratch->normal_palette_grow_count = 0;
+}
+
 /// @brief Clamp a bone count to the usable skinning range [0, VGFX3D_SKIN_INDEX_RANGE].
 static int32_t skin_effective_bone_count(int32_t bone_count) {
     if (bone_count <= 0)
         return 0;
     return bone_count < VGFX3D_SKIN_INDEX_RANGE ? bone_count : VGFX3D_SKIN_INDEX_RANGE;
+}
+
+/// @brief Ensure @p scratch can hold one normal matrix per effective bone.
+static float *skin_ensure_normal_palette_scratch(vgfx3d_skinning_scratch_t *scratch,
+                                                 int32_t bone_count) {
+    float *grown;
+    if (!scratch || bone_count <= 0)
+        return NULL;
+    if (scratch->normal_palette && scratch->normal_palette_capacity >= bone_count)
+        return scratch->normal_palette;
+    if ((size_t)bone_count > SIZE_MAX / (16u * sizeof(float)))
+        return NULL;
+    grown = (float *)realloc(scratch->normal_palette, (size_t)bone_count * 16u * sizeof(float));
+    if (!grown)
+        return NULL;
+    scratch->normal_palette = grown;
+    scratch->normal_palette_capacity = bone_count;
+    scratch->normal_palette_grow_count++;
+    return scratch->normal_palette;
 }
 
 /// @brief True only if all 16 elements of a 4×4 matrix are finite (NULL matrix returns false).
@@ -136,7 +172,8 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
                           vgfx3d_vertex_t *dst,
                           uint32_t vertex_count,
                           const float *palette,
-                          int32_t bone_count) {
+                          int32_t bone_count,
+                          vgfx3d_skinning_scratch_t *scratch) {
     if (!src || !dst || vertex_count == 0)
         return;
     if (!palette || bone_count <= 0) {
@@ -151,11 +188,9 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
     /* A bone's normal matrix (inverse-transpose of its skinning matrix) depends
      * only on the bone, not the vertex, so precompute the whole palette once
      * rather than recomputing it per vertex per influence. Falls back to inline
-     * per-influence computation if the scratch allocation fails. */
+     * per-influence computation if caller scratch is unavailable or cannot grow. */
     int32_t normal_bone_count = bone_count;
-    float *normal_palette = NULL;
-    if ((size_t)normal_bone_count <= SIZE_MAX / (16u * sizeof(float)))
-        normal_palette = (float *)malloc((size_t)normal_bone_count * 16u * sizeof(float));
+    float *normal_palette = skin_ensure_normal_palette_scratch(scratch, normal_bone_count);
     if (normal_palette) {
         for (int32_t b = 0; b < normal_bone_count; b++)
             vgfx3d_compute_normal_matrix4(&palette[(size_t)b * 16u],
@@ -194,21 +229,18 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
             }
             /* pos += w * (M * src_pos) — row-major multiply */
             for (int i = 0; i < 3; i++) {
-                pos[i] +=
-                    w * ((double)m[i * 4 + 0] * (double)base.pos[0] +
-                         (double)m[i * 4 + 1] * (double)base.pos[1] +
-                         (double)m[i * 4 + 2] * (double)base.pos[2] + (double)m[i * 4 + 3]);
+                pos[i] += w * ((double)m[i * 4 + 0] * (double)base.pos[0] +
+                               (double)m[i * 4 + 1] * (double)base.pos[1] +
+                               (double)m[i * 4 + 2] * (double)base.pos[2] + (double)m[i * 4 + 3]);
             }
             if (skin_matrix4_is_finite(nm)) {
                 for (int i = 0; i < 3; i++) {
-                    nrm[i] +=
-                        w * ((double)nm[i * 4 + 0] * (double)base.normal[0] +
-                             (double)nm[i * 4 + 1] * (double)base.normal[1] +
-                             (double)nm[i * 4 + 2] * (double)base.normal[2]);
-                    tan[i] +=
-                        w * ((double)nm[i * 4 + 0] * (double)base.tangent[0] +
-                             (double)nm[i * 4 + 1] * (double)base.tangent[1] +
-                             (double)nm[i * 4 + 2] * (double)base.tangent[2]);
+                    nrm[i] += w * ((double)nm[i * 4 + 0] * (double)base.normal[0] +
+                                   (double)nm[i * 4 + 1] * (double)base.normal[1] +
+                                   (double)nm[i * 4 + 2] * (double)base.normal[2]);
+                    tan[i] += w * ((double)nm[i * 4 + 0] * (double)base.tangent[0] +
+                                   (double)nm[i * 4 + 1] * (double)base.tangent[1] +
+                                   (double)nm[i * 4 + 2] * (double)base.tangent[2]);
                 }
                 normal_influences++;
                 tangent_influences++;
@@ -244,8 +276,8 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
                 skin_store_normalized_vec3(nrm, dst[v].normal);
             if (tangent_influences > 0) {
                 double tangent_vec[3] = {tan[0], tan[1], tan[2]};
-                double normal_vec[3] = {(double)dst[v].normal[0], (double)dst[v].normal[1],
-                                        (double)dst[v].normal[2]};
+                double normal_vec[3] = {
+                    (double)dst[v].normal[0], (double)dst[v].normal[1], (double)dst[v].normal[2]};
                 double n_len2 = normal_vec[0] * normal_vec[0] + normal_vec[1] * normal_vec[1] +
                                 normal_vec[2] * normal_vec[2];
                 if (isfinite(n_len2) && n_len2 > 1e-16) {
@@ -262,8 +294,6 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
             }
         }
     }
-
-    free(normal_palette);
 }
 
 #else

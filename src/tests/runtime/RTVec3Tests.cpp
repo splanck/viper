@@ -7,6 +7,13 @@
 //
 // File: src/tests/runtime/RTVec3Tests.cpp
 // Purpose: Tests for Viper.Vec3 3D vector math utilities.
+// Key invariants:
+//   - Pure Vec3 operations return new objects and leave receivers unchanged.
+//   - Explicit Set*/CopyFrom mutators update receivers in place.
+// Ownership/Lifetime:
+//   - Test-created Vec3 objects are runtime-managed for the duration of the process.
+//   - Tests do not manually free pooled Vec3 objects.
+// Links: src/runtime/graphics/math/rt_vec3.c
 //
 //===----------------------------------------------------------------------===//
 
@@ -56,6 +63,36 @@ static void test_one() {
     assert(approx_eq(rt_vec3_y(v), 1.0));
     assert(approx_eq(rt_vec3_z(v), 1.0));
     printf("test_one: PASSED\n");
+}
+
+static void test_mutators_update_receiver_in_place() {
+    void *v = rt_vec3_new(1.0, 2.0, 3.0);
+    void *other = rt_vec3_new(-4.0, -5.0, -6.0);
+    assert(v != nullptr);
+    assert(other != nullptr);
+
+    rt_vec3_set_x(v, 10.0);
+    rt_vec3_set_y(v, 20.0);
+    rt_vec3_set_z(v, 30.0);
+    assert(approx_eq(rt_vec3_x(v), 10.0));
+    assert(approx_eq(rt_vec3_y(v), 20.0));
+    assert(approx_eq(rt_vec3_z(v), 30.0));
+
+    rt_vec3_set(v, 7.0, 8.0, 9.0);
+    assert(approx_eq(rt_vec3_x(v), 7.0));
+    assert(approx_eq(rt_vec3_y(v), 8.0));
+    assert(approx_eq(rt_vec3_z(v), 9.0));
+
+    rt_vec3_copy_from(v, other);
+    assert(approx_eq(rt_vec3_x(v), -4.0));
+    assert(approx_eq(rt_vec3_y(v), -5.0));
+    assert(approx_eq(rt_vec3_z(v), -6.0));
+
+    void *sum = rt_vec3_add(v, rt_vec3_one());
+    assert(sum != v);
+    assert(approx_eq(rt_vec3_x(v), -4.0));
+    assert(approx_eq(rt_vec3_x(sum), -3.0));
+    printf("test_mutators_update_receiver_in_place: PASSED\n");
 }
 
 // ============================================================================
@@ -274,6 +311,7 @@ int main() {
     test_new();
     test_zero();
     test_one();
+    test_mutators_update_receiver_in_place();
 
     // Arithmetic
     test_add();

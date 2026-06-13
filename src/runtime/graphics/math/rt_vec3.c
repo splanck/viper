@@ -7,10 +7,10 @@
 //
 // File: src/runtime/graphics/rt_vec3.c
 // Purpose: 3D vector mathematics (x, y, z doubles) for Viper graphics and
-//   simulation. Provides immutable Vec3 objects with arithmetic (+,-,×,÷), dot
-//   product, cross product, length/normalize, distance, linear interpolation,
-//   reflection, and angle operations. Used for 3D positions, surface normals,
-//   lighting directions, and RGB color triples (r=x, g=y, b=z).
+//   simulation. Provides pure Vec3 arithmetic (+,-,×,÷), dot product, cross
+//   product, length/normalize, distance, linear interpolation, reflection, angle
+//   operations, and explicit in-place mutators. Used for 3D positions, surface
+//   normals, lighting directions, and RGB color triples (r=x, g=y, b=z).
 //
 // Key invariants:
 //   - Vec3 stores three doubles (x, y, z); 24 bytes, no padding.
@@ -20,8 +20,8 @@
 //     right-hand rule: curl fingers from v to w, thumb points in result direction.
 //   - Normalize returns a unit vector (length 1). Normalizing a zero vector
 //     returns Vec3(0,0,0) — no trap or NaN.
-//   - All operations return new Vec3 objects (no mutation), making Vec3 safe
-//     for concurrent reads without locking.
+//   - Pure arithmetic operations return new Vec3 objects.
+//   - Set*/CopyFrom are the only in-place mutators and update the receiver directly.
 //   - Vec3 uses a thread-local LIFO free-list pool (VEC3_POOL_CAPACITY = 32)
 //     identical in design to the Vec2 pool, to amortize GC pressure in
 //     lighting and physics inner loops.
@@ -71,7 +71,6 @@ static void vec3_pool_return(void *p) {
 /// floating-point values. The structure is allocated as a Viper object
 /// with reference counting support.
 ///
-/// @note Vec3 is immutable - all operations create new instances.
 typedef struct {
     double x; ///< X component (horizontal axis, positive = right)
     double y; ///< Y component (vertical axis, positive = up)
@@ -305,6 +304,58 @@ double rt_vec3_z(void *v) {
         return 0.0;
     }
     return ((ViperVec3 *)v)->z;
+}
+
+/// @brief Set the X component in place.
+void rt_vec3_set_x(void *v, double x) {
+    if (!v) {
+        rt_trap("Vec3.set_X: null vector");
+        return;
+    }
+    ((ViperVec3 *)v)->x = x;
+}
+
+/// @brief Set the Y component in place.
+void rt_vec3_set_y(void *v, double y) {
+    if (!v) {
+        rt_trap("Vec3.set_Y: null vector");
+        return;
+    }
+    ((ViperVec3 *)v)->y = y;
+}
+
+/// @brief Set the Z component in place.
+void rt_vec3_set_z(void *v, double z) {
+    if (!v) {
+        rt_trap("Vec3.set_Z: null vector");
+        return;
+    }
+    ((ViperVec3 *)v)->z = z;
+}
+
+/// @brief Set all components in place.
+void rt_vec3_set(void *v, double x, double y, double z) {
+    if (!v) {
+        rt_trap("Vec3.Set: null vector");
+        return;
+    }
+    ViperVec3 *vec = (ViperVec3 *)v;
+    vec->x = x;
+    vec->y = y;
+    vec->z = z;
+}
+
+/// @brief Copy all components from @p other into @p v.
+void rt_vec3_copy_from(void *v, void *other) {
+    if (!v || !other) {
+        rt_trap("Vec3.CopyFrom: null vector");
+        return;
+    }
+    ViperVec3 *dst = (ViperVec3 *)v;
+    ViperVec3 *src = (ViperVec3 *)other;
+    dst->x = src->x;
+    dst->y = src->y;
+    dst->z = src->z;
 }
 
 //=============================================================================
@@ -842,7 +893,8 @@ void *rt_vec3_reflect(void *v, void *normal) {
     ViperVec3 *vv = (ViperVec3 *)v;
     ViperVec3 *n = (ViperVec3 *)normal;
     double n_len = vec3_safe_len(n->x, n->y, n->z);
-    if (n_len < 1e-12 || !isfinite(n_len) || !isfinite(vv->x) || !isfinite(vv->y) || !isfinite(vv->z))
+    if (n_len < 1e-12 || !isfinite(n_len) || !isfinite(vv->x) || !isfinite(vv->y) ||
+        !isfinite(vv->z))
         return vec3_alloc(0, 0, 0);
 
     double nx = n->x / n_len;

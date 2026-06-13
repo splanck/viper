@@ -4,6 +4,18 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/tests/runtime/RTParticles3DContractTests.cpp
+// Purpose: Isolated contract tests for the 3D particle runtime.
+// Key invariants:
+//   - Particle draw ordering is deterministic for alpha-blended billboards.
+//   - Persistent draw and sort scratch buffers grow predictably and are reused.
+// Ownership/Lifetime:
+//   - Runtime objects are allocated through local test stubs and freed by process exit.
+//   - Captured draw data is copied into test-owned globals before each assertion.
+// Links: src/runtime/graphics/3d/world/rt_particles3d.c
+//
+//===----------------------------------------------------------------------===//
 
 extern "C" {
 #include "rt_canvas3d_internal.h"
@@ -36,6 +48,7 @@ int g_keyed_draw_additive[16] = {0};
 double g_last_draw_alpha = 0.0;
 int g_last_draw_additive = 0;
 int g_last_draw_alpha_mode = 0;
+uint64_t g_last_mesh_signature = 0;
 
 struct StubMaterial {
     void *vptr = nullptr;
@@ -97,7 +110,20 @@ struct ParticlesView {
     void *cached_material;
 };
 
+static uint64_t hash_bytes(uint64_t seed, const void *data, size_t size) {
+    const auto *bytes = static_cast<const unsigned char *>(data);
+    uint64_t hash = seed ? seed : 1469598103934665603ull;
+    for (size_t i = 0; i < size; ++i) {
+        hash ^= static_cast<uint64_t>(bytes[i]);
+        hash *= 1099511628211ull;
+    }
+    return hash;
+}
+
 } // namespace
+
+extern "C" int64_t rt_particles3d_test_sort_key_capacity(void *o);
+extern "C" uint64_t rt_particles3d_test_sort_key_grow_count(void *o);
 
 extern "C" void *rt_obj_new_i64(int64_t, int64_t byte_size) {
     return std::calloc(1, static_cast<size_t>(byte_size));
@@ -183,13 +209,28 @@ extern "C" void rt_canvas3d_draw_mesh(void *, void *mesh, void *, void *material
     g_draw_mesh_calls++;
     g_last_mesh_vertex_count = m ? (int)m->vertex_count : 0;
     g_last_mesh_index_count = m ? (int)m->index_count : 0;
+    g_last_mesh_signature = 1469598103934665603ull;
+    g_last_mesh_signature = hash_bytes(
+        g_last_mesh_signature, &g_last_mesh_vertex_count, sizeof(g_last_mesh_vertex_count));
+    g_last_mesh_signature = hash_bytes(
+        g_last_mesh_signature, &g_last_mesh_index_count, sizeof(g_last_mesh_index_count));
     std::memset(g_last_mesh_quad_z, 0, sizeof(g_last_mesh_quad_z));
     if (m && m->vertices) {
+        g_last_mesh_signature =
+            hash_bytes(g_last_mesh_signature,
+                       m->vertices,
+                       static_cast<size_t>(m->vertex_count) * sizeof(*m->vertices));
         int quad_count = m->vertex_count / 4;
         if (quad_count > (int)(sizeof(g_last_mesh_quad_z) / sizeof(g_last_mesh_quad_z[0])))
             quad_count = (int)(sizeof(g_last_mesh_quad_z) / sizeof(g_last_mesh_quad_z[0]));
         for (int i = 0; i < quad_count; ++i)
             g_last_mesh_quad_z[i] = m->vertices[i * 4].pos[2];
+    }
+    if (m && m->indices) {
+        g_last_mesh_signature =
+            hash_bytes(g_last_mesh_signature,
+                       m->indices,
+                       static_cast<size_t>(m->index_count) * sizeof(*m->indices));
     }
     g_last_draw_alpha = material ? static_cast<StubMaterial *>(material)->alpha : 0.0;
     g_last_draw_additive = material ? static_cast<StubMaterial *>(material)->additive_blend : 0;
@@ -405,6 +446,7 @@ static void reset_draw_records() {
     g_last_draw_alpha = 0.0;
     g_last_draw_additive = 0;
     g_last_draw_alpha_mode = 0;
+    g_last_mesh_signature = 0;
     std::memset(g_last_mesh_quad_z, 0, sizeof(g_last_mesh_quad_z));
     std::memset(g_keyed_draw_z, 0, sizeof(g_keyed_draw_z));
     std::memset(g_keyed_draw_alpha, 0, sizeof(g_keyed_draw_alpha));
@@ -468,6 +510,73 @@ static void test_draw_batches_additive_and_alpha_particles() {
     assert(g_last_draw_alpha_mode == kAlphaModeBlend);
 }
 
+static void fill_particle_line(void *ps, double z_start, double z_step, int count) {
+    rt_particles3d_set_speed(ps, 0.0, 0.0);
+    rt_particles3d_set_lifetime(ps, 10.0, 10.0);
+    rt_particles3d_set_size(ps, 1.0, 1.0);
+    rt_particles3d_set_alpha(ps, 1.0, 1.0);
+    for (int i = 0; i < count; ++i) {
+        rt_particles3d_set_position(ps, 0.0, 0.0, z_start + z_step * static_cast<double>(i));
+        rt_particles3d_burst(ps, 1);
+    }
+    assert(rt_particles3d_get_count(ps) == count);
+}
+
+static uint64_t draw_particle_signature(void *ps, rt_canvas3d *canvas, rt_camera3d *cam) {
+    reset_draw_records();
+    rt_particles3d_draw(ps, canvas, cam);
+    assert(g_draw_mesh_calls == 1);
+    assert(g_last_mesh_vertex_count == 4000);
+    assert(g_last_mesh_index_count == 6000);
+    return g_last_mesh_signature;
+}
+
+static void test_alpha_sort_scratch_grows_to_capacity_and_reuses_for_repeated_draws() {
+    void *partial = rt_particles3d_new(1000);
+    void *front_to_back = rt_particles3d_new(1000);
+    void *back_to_front = rt_particles3d_new(1000);
+    rt_canvas3d canvas = {};
+    rt_camera3d cam = make_test_camera();
+    assert(partial != nullptr);
+    assert(front_to_back != nullptr);
+    assert(back_to_front != nullptr);
+
+    rt_particles3d_set_additive(partial, 0);
+    fill_particle_line(partial, 0.0, 1.0, 16);
+    reset_draw_records();
+    rt_particles3d_draw(partial, &canvas, &cam);
+    assert(g_draw_mesh_calls == 1);
+    assert(rt_particles3d_test_sort_key_capacity(partial) == 1000);
+    assert(rt_particles3d_test_sort_key_grow_count(partial) == 1);
+
+    rt_particles3d_set_additive(front_to_back, 0);
+    rt_particles3d_set_additive(back_to_front, 0);
+    fill_particle_line(front_to_back, 0.0, 0.01, 1000);
+    fill_particle_line(back_to_front, 9.99, -0.01, 1000);
+
+    canvas.frame_serial = 1;
+    uint64_t front_sig = draw_particle_signature(front_to_back, &canvas, &cam);
+    uint64_t front_grows = rt_particles3d_test_sort_key_grow_count(front_to_back);
+    assert(rt_particles3d_test_sort_key_capacity(front_to_back) == 1000);
+    assert(front_grows == 1);
+
+    canvas.frame_serial = 1;
+    uint64_t back_sig = draw_particle_signature(back_to_front, &canvas, &cam);
+    uint64_t back_grows = rt_particles3d_test_sort_key_grow_count(back_to_front);
+    assert(rt_particles3d_test_sort_key_capacity(back_to_front) == 1000);
+    assert(back_grows == 1);
+
+    for (int frame = 2; frame <= 20; ++frame) {
+        canvas.frame_serial = frame;
+        assert(draw_particle_signature(front_to_back, &canvas, &cam) == front_sig);
+        assert(rt_particles3d_test_sort_key_grow_count(front_to_back) == front_grows);
+
+        canvas.frame_serial = frame;
+        assert(draw_particle_signature(back_to_front, &canvas, &cam) == back_sig);
+        assert(rt_particles3d_test_sort_key_grow_count(back_to_front) == back_grows);
+    }
+}
+
 int main() {
     expect_trap_on_invalid_capacity();
     test_burst_and_clear();
@@ -478,6 +587,7 @@ int main() {
     test_setters_sanitize_nonfinite_ranges();
     test_rebase_origin_shifts_emitter_and_live_particles();
     test_draw_batches_additive_and_alpha_particles();
+    test_alpha_sort_scratch_grows_to_capacity_and_reuses_for_repeated_draws();
     std::printf("RTParticles3DContractTests passed.\n");
     return 0;
 }

@@ -1,0 +1,44 @@
+module vec3_mutators_probe;
+
+bind Viper.Math;
+bind Viper.Terminal as Terminal;
+
+func near(a: Float, b: Float) -> Boolean {
+    var d = a - b;
+    if (d < 0.0) { d = 0.0 - d; }
+    return d <= 0.000001;
+}
+
+func check3(label: String, v: Vec3, x: Float, y: Float, z: Float) -> Boolean {
+    if (near(v.X, x) == false || near(v.Y, y) == false || near(v.Z, z) == false) {
+        Terminal.Say("RESULT: fail " + label);
+        return false;
+    }
+    return true;
+}
+
+func start() {
+    var v = Vec3.New(1.0, 2.0, 3.0);
+    v.Set(4.0, 5.0, 6.0);
+    if (check3("set", v, 4.0, 5.0, 6.0) == false) { return; }
+
+    v.X = 7.0;
+    v.Y = 8.0;
+    v.Z = 9.0;
+    if (check3("props", v, 7.0, 8.0, 9.0) == false) { return; }
+
+    v.SetX(10.0);
+    v.SetY(11.0);
+    v.SetZ(12.0);
+    if (check3("set-axis", v, 10.0, 11.0, 12.0) == false) { return; }
+
+    var other = Vec3.New(-1.0, -2.0, -3.0);
+    v.CopyFrom(other);
+    if (check3("copy", v, -1.0, -2.0, -3.0) == false) { return; }
+
+    var pure = v.Add(Vec3.One());
+    if (check3("pure-source", v, -1.0, -2.0, -3.0) == false) { return; }
+    if (check3("pure-result", pure, 0.0, -1.0, -2.0) == false) { return; }
+
+    Terminal.Say("RESULT: ok");
+}

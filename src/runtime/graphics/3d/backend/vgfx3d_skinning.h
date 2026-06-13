@@ -15,6 +15,10 @@
 //   - Skinned normals are re-normalized after blending.
 //   - src and dst may alias (in-place skinning).
 //
+// Ownership/Lifetime:
+//   - Source, destination, and palette storage remain caller-owned.
+//   - Optional scratch storage is caller-owned and reused across draws.
+//
 // Links: rt_canvas3d_internal.h (vgfx3d_vertex_t), plans/3d/14-skeletal-animation.md
 //
 //===----------------------------------------------------------------------===//
@@ -23,6 +27,7 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "rt_canvas3d_internal.h"
+#include "vgfx3d_skinning_scratch.h"
 #include <stdint.h>
 
 /// @brief Apply skeletal skinning on the CPU.
@@ -31,6 +36,7 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
                           vgfx3d_vertex_t *dst,
                           uint32_t vertex_count,
                           const float *bone_palette,
-                          int32_t bone_count);
+                          int32_t bone_count,
+                          vgfx3d_skinning_scratch_t *scratch);
 
 #endif /* VIPER_ENABLE_GRAPHICS */

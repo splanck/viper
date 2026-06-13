@@ -535,11 +535,11 @@ END IF
 
 ### Properties
 
-| Property | Type  | Description             |
-|----------|-------|-------------------------|
-| `X`      | `f64` | X component (read-only) |
-| `Y`      | `f64` | Y component (read-only) |
-| `Z`      | `f64` | Z component (read-only) |
+| Property | Type  | Description          |
+|----------|-------|----------------------|
+| `X`      | `f64` | X component (read/write) |
+| `Y`      | `f64` | Y component (read/write) |
+| `Z`      | `f64` | Z component (read/write) |
 
 ### Methods
 
@@ -557,10 +557,17 @@ END IF
 | `Norm()`         | `obj()`         | Normalize to unit length                                   |
 | `Dist(other)`    | `f64(obj)`      | Distance to another point                                  |
 | `Lerp(other, t)` | `obj(obj, f64)` | Linear interpolation (t=0 returns self, t=1 returns other) |
+| `Set(x, y, z)`   | `void(f64, f64, f64)` | Replace all components in place                      |
+| `SetX(x)`        | `void(f64)`     | Replace X in place; equivalent to assigning `X`            |
+| `SetY(y)`        | `void(f64)`     | Replace Y in place; equivalent to assigning `Y`            |
+| `SetZ(z)`        | `void(f64)`     | Replace Z in place; equivalent to assigning `Z`            |
+| `CopyFrom(other)` | `void(obj)`    | Copy another Vec3's components in place                    |
 
 ### Notes
 
-- Vectors are immutable - all operations return new vectors
+- Arithmetic operations are pure and return new vectors.
+- Use `Set`, `SetX`/`SetY`/`SetZ`, `CopyFrom`, or writable `X`/`Y`/`Z`
+  properties when a per-frame script path needs to reuse an existing vector.
 - `Norm()` returns zero vector if input has zero length
 - `Div()` traps on division by zero
 - `Cross()` returns a Vec3 perpendicular to both input vectors (right-hand rule)

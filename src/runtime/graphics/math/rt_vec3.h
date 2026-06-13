@@ -4,13 +4,14 @@
 // See LICENSE for license information.
 //
 // File: src/runtime/graphics/rt_vec3.h
-// Purpose: 3D vector math utilities for Viper.Vec3 with immutable value semantics, providing
-// arithmetic, dot product, cross product, magnitude, normalization, and lerp.
+// Purpose: 3D vector math utilities for Viper.Vec3 with pure arithmetic helpers and explicit
+// in-place mutators for hot script paths.
 //
 // Key invariants:
-//   - Vec3 objects are immutable; all operations return new Vec3 objects.
+//   - Pure arithmetic operations return new Vec3 objects.
+//   - Mutator functions are explicitly named Set*/CopyFrom and update the receiver in place.
 //   - All operations are done in double-precision floating point.
-//   - Normalize traps on zero-length vectors.
+//   - Normalize returns Vec3(0,0,0) for zero-length vectors.
 //   - Cross product follows the right-hand rule.
 //
 // Ownership/Lifetime:
@@ -57,6 +58,33 @@ double rt_vec3_y(void *v);
 /// @param v The Vec3 object.
 /// @return The z component of the vector.
 double rt_vec3_z(void *v);
+
+/// @brief Set the X component in place.
+/// @param v The Vec3 object.
+/// @param x New X component.
+void rt_vec3_set_x(void *v, double x);
+
+/// @brief Set the Y component in place.
+/// @param v The Vec3 object.
+/// @param y New Y component.
+void rt_vec3_set_y(void *v, double y);
+
+/// @brief Set the Z component in place.
+/// @param v The Vec3 object.
+/// @param z New Z component.
+void rt_vec3_set_z(void *v, double z);
+
+/// @brief Set all components in place.
+/// @param v The Vec3 object.
+/// @param x New X component.
+/// @param y New Y component.
+/// @param z New Z component.
+void rt_vec3_set(void *v, double x, double y, double z);
+
+/// @brief Copy all components from another Vec3 into @p v.
+/// @param v Destination Vec3 object.
+/// @param other Source Vec3 object.
+void rt_vec3_copy_from(void *v, void *other);
 
 /// @brief Add two vectors: a + b.
 /// @param a The first Vec3 operand.

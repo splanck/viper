@@ -411,7 +411,7 @@ target_include_directories(il_codegen_x86_64 PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>)
 target_link_libraries(il_codegen_x86_64 PRIVATE viper_common_opts)
-add_dependencies(il_codegen_x86_64 generate_runtime_registry)
+add_dependencies(il_codegen_x86_64 gen_x86_64_encodings generate_runtime_registry)
 
 add_library(viper_cmd_arm64 STATIC
         tools/viper/cmd_codegen_arm64.cpp)

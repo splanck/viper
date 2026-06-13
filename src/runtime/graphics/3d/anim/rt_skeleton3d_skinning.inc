@@ -193,7 +193,12 @@ void rt_canvas3d_draw_mesh_matrix_skinned_keyed_bounds(void *canvas,
     if (!skinned)
         return;
 
-    vgfx3d_skin_vertices(mesh->vertices, skinned, mesh->vertex_count, bone_palette, bone_count);
+    vgfx3d_skin_vertices(mesh->vertices,
+                         skinned,
+                         mesh->vertex_count,
+                         bone_palette,
+                         bone_count,
+                         &c->skinning_scratch);
 
     rt_mesh3d tmp = *mesh;
     tmp.vertices = skinned;

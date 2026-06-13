@@ -1,3 +1,23 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/tests/unit/test_vgfx3d_backend_utils.c
+// Purpose: Unit tests for Graphics3D backend utility helpers and CPU skinning.
+// Key invariants:
+//   - Tests run headless and do not create a real graphics backend.
+//   - CPU skinning output remains stable across scratch allocation paths.
+// Ownership/Lifetime:
+//   - Test-local buffers are stack-owned unless explicitly freed in the same case.
+//   - Runtime scratch structs are initialized to zero and released before return.
+// Links: src/runtime/graphics/3d/backend/vgfx3d_backend_utils.c,
+//        src/runtime/graphics/3d/backend/vgfx3d_skinning.c
+//
+//===----------------------------------------------------------------------===//
+
 #ifndef VIPER_ENABLE_GRAPHICS
 #define VIPER_ENABLE_GRAPHICS 1
 #endif
@@ -760,6 +780,7 @@ static void test_skinning_normalizes_weights_and_copies_without_palette(void) {
     vgfx3d_vertex_t src[1];
     vgfx3d_vertex_t dst[1];
     float palette[32];
+    vgfx3d_skinning_scratch_t scratch = {0};
 
     memset(src, 0, sizeof(src));
     set_identity4x4(&palette[0]);
@@ -773,7 +794,7 @@ static void test_skinning_normalizes_weights_and_copies_without_palette(void) {
     src[0].bone_weights[1] = 0.25f;
 
     memset(dst, 0, sizeof(dst));
-    vgfx3d_skin_vertices(src, dst, 1, palette, 2);
+    vgfx3d_skin_vertices(src, dst, 1, palette, 2, &scratch);
     EXPECT_NEAR(dst[0].pos[0],
                 3.0f,
                 1e-6f,
@@ -784,17 +805,19 @@ static void test_skinning_normalizes_weights_and_copies_without_palette(void) {
                 "CPU skinning preserves normalized normals after weight normalization");
 
     memset(dst, 0, sizeof(dst));
-    vgfx3d_skin_vertices(src, dst, 1, NULL, 0);
+    vgfx3d_skin_vertices(src, dst, 1, NULL, 0, &scratch);
     EXPECT_NEAR(dst[0].pos[0],
                 src[0].pos[0],
                 1e-6f,
                 "CPU skinning copies vertices through when no palette is available");
+    vgfx3d_skinning_scratch_free(&scratch);
 }
 
 static void test_skinning_uses_inverse_transpose_normals(void) {
     vgfx3d_vertex_t src[1];
     vgfx3d_vertex_t dst[1];
     float palette[16];
+    vgfx3d_skinning_scratch_t scratch = {0};
 
     memset(src, 0, sizeof(src));
     set_identity4x4(palette);
@@ -806,7 +829,7 @@ static void test_skinning_uses_inverse_transpose_normals(void) {
     src[0].bone_weights[0] = 1.0f;
 
     memset(dst, 0, sizeof(dst));
-    vgfx3d_skin_vertices(src, dst, 1, palette, 1);
+    vgfx3d_skin_vertices(src, dst, 1, palette, 1, &scratch);
 
     EXPECT_NEAR(dst[0].normal[0],
                 0.24253564f,
@@ -816,6 +839,7 @@ static void test_skinning_uses_inverse_transpose_normals(void) {
                 0.97014254f,
                 1e-5f,
                 "CPU skinning applies inverse-transpose Z scale to normals");
+    vgfx3d_skinning_scratch_free(&scratch);
 }
 
 static void test_frustum_and_mesh_aabb_reject_invalid_inputs_conservatively(void) {
@@ -897,6 +921,7 @@ static void test_skinning_multibone_reuses_normal_palette(void) {
     vgfx3d_vertex_t src[3];
     vgfx3d_vertex_t dst[3];
     float palette[32]; /* two bones */
+    vgfx3d_skinning_scratch_t scratch = {0};
 
     memset(src, 0, sizeof(src));
     set_identity4x4(&palette[0]);
@@ -916,7 +941,7 @@ static void test_skinning_multibone_reuses_normal_palette(void) {
     src[2].bone_indices[0] = 0;
 
     memset(dst, 0, sizeof(dst));
-    vgfx3d_skin_vertices(src, dst, 3, palette, 2);
+    vgfx3d_skin_vertices(src, dst, 3, palette, 2, &scratch);
 
     /* Bone 0's inverse-transpose of diag(2,1,0.5) is diag(0.5,1,2); applied to
      * (0.707,0,0.707) and renormalized gives (0.2425, 0, 0.9701). */
@@ -936,12 +961,14 @@ static void test_skinning_multibone_reuses_normal_palette(void) {
                 0.70710677f,
                 1e-5f,
                 "A distinct identity bone leaves vertex 1's normal unchanged");
+    vgfx3d_skinning_scratch_free(&scratch);
 }
 
 static void test_skinning_clamps_corrupt_oversized_bone_count(void) {
     vgfx3d_vertex_t src[1];
     vgfx3d_vertex_t dst[1];
     float palette[256 * 16];
+    vgfx3d_skinning_scratch_t scratch = {0};
 
     memset(src, 0, sizeof(src));
     for (int i = 0; i < 256; i++)
@@ -956,7 +983,7 @@ static void test_skinning_clamps_corrupt_oversized_bone_count(void) {
     src[0].bone_weights[0] = 1.0f;
 
     memset(dst, 0, sizeof(dst));
-    vgfx3d_skin_vertices(src, dst, 1, palette, INT32_MAX);
+    vgfx3d_skin_vertices(src, dst, 1, palette, INT32_MAX, &scratch);
 
     EXPECT_NEAR(dst[0].pos[0],
                 9.0f,
@@ -970,6 +997,76 @@ static void test_skinning_clamps_corrupt_oversized_bone_count(void) {
                 1.0f,
                 1e-6f,
                 "CPU skinning keeps tangents valid when clamping oversized bone counts");
+    vgfx3d_skinning_scratch_free(&scratch);
+}
+
+static void test_skinning_scratch_reuses_normal_palette_without_output_drift(void) {
+    enum { VERTEX_COUNT = 8, BONE_COUNT = 4 };
+
+    vgfx3d_vertex_t src[VERTEX_COUNT];
+    vgfx3d_vertex_t reference[VERTEX_COUNT];
+    vgfx3d_vertex_t warmed[VERTEX_COUNT];
+    float palette[BONE_COUNT * 16];
+    vgfx3d_skinning_scratch_t scratch = {0};
+
+    memset(src, 0, sizeof(src));
+    for (int b = 0; b < BONE_COUNT; b++)
+        set_identity4x4(&palette[b * 16]);
+    palette[0] = 1.25f;
+    palette[5] = 0.75f;
+    palette[10] = 1.5f;
+    palette[16 + 3] = 2.0f;
+    palette[16 + 7] = -1.0f;
+    palette[32 + 0] = 0.5f;
+    palette[32 + 10] = 2.0f;
+    palette[48 + 3] = -3.0f;
+    palette[48 + 7] = 0.5f;
+    palette[48 + 11] = 1.0f;
+
+    for (int i = 0; i < VERTEX_COUNT; i++) {
+        src[i].pos[0] = (float)i * 0.25f + 1.0f;
+        src[i].pos[1] = (float)(i % 3) - 1.0f;
+        src[i].pos[2] = (float)(i % 5) * 0.5f;
+        src[i].normal[0] = 0.25f;
+        src[i].normal[1] = 0.5f;
+        src[i].normal[2] = 0.75f;
+        src[i].tangent[0] = 1.0f;
+        src[i].tangent[1] = 0.25f;
+        src[i].tangent[2] = 0.0f;
+        src[i].tangent[3] = 1.0f;
+        src[i].uv[0] = (float)i * 0.1f;
+        src[i].uv[1] = (float)i * 0.2f;
+        src[i].color[0] = 1.0f;
+        src[i].color[1] = 0.5f;
+        src[i].color[2] = 0.25f;
+        src[i].color[3] = 1.0f;
+        src[i].bone_indices[0] = (uint8_t)(i % BONE_COUNT);
+        src[i].bone_indices[1] = (uint8_t)((i + 1) % BONE_COUNT);
+        src[i].bone_indices[2] = (uint8_t)((i + 2) % BONE_COUNT);
+        src[i].bone_weights[0] = 0.2f;
+        src[i].bone_weights[1] = 0.3f;
+        src[i].bone_weights[2] = 0.5f;
+    }
+
+    memset(reference, 0, sizeof(reference));
+    vgfx3d_skin_vertices(src, reference, VERTEX_COUNT, palette, BONE_COUNT, NULL);
+    memset(warmed, 0, sizeof(warmed));
+    vgfx3d_skin_vertices(src, warmed, VERTEX_COUNT, palette, BONE_COUNT, &scratch);
+    EXPECT_TRUE(memcmp(reference, warmed, sizeof(reference)) == 0,
+                "Scratch-backed CPU skinning is byte-identical to the no-scratch fallback");
+    EXPECT_TRUE(scratch.normal_palette_grow_count == 1,
+                "CPU skinning scratch grows once during warmup");
+
+    uint64_t grow_count_after_warmup = scratch.normal_palette_grow_count;
+    for (int draw = 0; draw < 100; draw++) {
+        memset(warmed, 0, sizeof(warmed));
+        vgfx3d_skin_vertices(src, warmed, VERTEX_COUNT, palette, BONE_COUNT, &scratch);
+        EXPECT_TRUE(memcmp(reference, warmed, sizeof(reference)) == 0,
+                    "Warm CPU skinning scratch preserves byte-identical output");
+    }
+    EXPECT_TRUE(scratch.normal_palette_grow_count == grow_count_after_warmup,
+                "CPU skinning performs zero scratch allocations in a 100-draw warm loop");
+    vgfx3d_skinning_scratch_free(&scratch);
 }
 
 static void test_frustum_valid_classifies_volumes(void) {
@@ -1046,6 +1143,7 @@ int main(void) {
     test_transform_aabb_orders_inverted_extents();
     test_skinning_multibone_reuses_normal_palette();
     test_skinning_clamps_corrupt_oversized_bone_count();
+    test_skinning_scratch_reuses_normal_palette_without_output_drift();
     test_frustum_valid_classifies_volumes();
     test_compute_normal_matrix_small_scale();
 

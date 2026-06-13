@@ -1348,6 +1348,7 @@ static void rt_canvas3d_finalize(void *obj) {
     free(c->mesh_snapshot_hash);
     c->mesh_snapshot_hash = NULL;
     c->mesh_snapshot_hash_capacity = 0;
+    vgfx3d_skinning_scratch_free(&c->skinning_scratch);
     canvas3d_clear_temp_objects(c);
     free(c->temp_objects);
     c->temp_objects = NULL;

@@ -1327,7 +1327,23 @@ if (VIPER_BASH_EXECUTABLE)
             TIMEOUT 30)
 endif ()
 
+set(VEC3_MUTATORS_PROBE "${CMAKE_SOURCE_DIR}/src/tests/e2e/vec3_mutators_probe.zia")
+add_test(NAME zia_smoke_vec3_mutators
+        COMMAND $<TARGET_FILE:viper> run "${VEC3_MUTATORS_PROBE}")
+set_tests_properties(zia_smoke_vec3_mutators PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;runtime"
+        TIMEOUT 30)
+
 if (APPLE AND VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
+    add_test(NAME native_smoke_vec3_mutators_arm64
+            COMMAND "${VIPER_BASH_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_vec3_mutators_native.sh"
+            $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(native_smoke_vec3_mutators_arm64 PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "zia;smoke;native-link"
+            TIMEOUT 60)
+
     add_test(NAME native_smoke_3dbowling_build_arm64
             COMMAND "${VIPER_BASH_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_3dbowling_native_build.sh"
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")

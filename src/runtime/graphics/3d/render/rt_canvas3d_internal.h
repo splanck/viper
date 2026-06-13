@@ -14,6 +14,10 @@
 //   - All object pointers received from user code must be cast to these types.
 //   - vgfx3d_vertex_t is internal and may evolve with renderer/importer needs.
 //
+// Ownership/Lifetime:
+//   - Runtime objects are GC-managed unless explicitly described as stack fixtures.
+//   - Internal scratch buffers are owned by their containing runtime object.
+//
 // Links: rt_canvas3d.h, plans/3d/01-software-renderer.md
 //
 //===----------------------------------------------------------------------===//
@@ -28,6 +32,7 @@
 #include "rt_string.h"
 #include "vgfx.h"
 #include "vgfx3d_frustum.h"
+#include "vgfx3d_skinning_scratch.h"
 #include <float.h>
 #include <math.h>
 #include <stdint.h>
@@ -822,6 +827,7 @@ typedef struct {
     int32_t *mesh_snapshot_hash;
     int32_t mesh_snapshot_hash_capacity;
     size_t mesh_snapshot_bytes;
+    vgfx3d_skinning_scratch_t skinning_scratch;
 
     /* Temporary runtime objects retained until end of frame */
     void **temp_objects;

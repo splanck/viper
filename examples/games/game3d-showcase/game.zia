@@ -45,6 +45,15 @@ class Game3DShowcase {
     hide Light3D skyFill;
     hide List[Light3D] beaconLights;
     hide Light3D playerLight;
+    hide Vec3 cameraEye;
+    hide Vec3 cameraTarget;
+    hide Vec3 cameraUp;
+    hide Vec3 sunDirection;
+    hide Vec3 ambientSoundPos;
+    hide Vec3 objectiveProbePos;
+    hide Vec3 footfallPos;
+    hide Vec3 beaconSoundPos;
+    hide Vec3 playerLightPos;
 
     // Recommendation #6 — particles + decals.
     hide Particles3D fireflies;
@@ -129,6 +138,15 @@ class Game3DShowcase {
         canvas = World3D.get_canvas(world);
         camera = World3D.get_camera(world);
         input = World3D.get_input(world);
+        cameraEye = new Vec3(0.0, 0.0, 0.0);
+        cameraTarget = new Vec3(0.0, 0.0, 0.0);
+        cameraUp = new Vec3(0.0, 1.0, 0.0);
+        sunDirection = new Vec3(-0.36, -1.0, -0.22);
+        ambientSoundPos = new Vec3(0.0, 0.0, 0.0);
+        objectiveProbePos = new Vec3(0.0, 0.0, 0.0);
+        footfallPos = new Vec3(0.0, 0.0, 0.0);
+        beaconSoundPos = new Vec3(0.0, 0.0, 0.0);
+        playerLightPos = new Vec3(0.0, 0.0, 0.0);
         Input3D.set_lookSensitivity(input, config.CAMERA_MOUSE_SENS);
         Canvas3D.SetDTMax(canvas, config.DT_MAX_MS);
 
@@ -705,13 +723,12 @@ class Game3DShowcase {
             eyeY = eyeGround + config.CAMERA_MIN_CLEARANCE;
         }
 
-        var eye = new Vec3(eyeX, eyeY, eyeZ);
-        var target =
-            new Vec3(
-                pivotX + flatX * config.CAMERA_LOOK_AHEAD,
-                pivotY + Sin(cameraPitch) * config.CAMERA_LOOK_AHEAD,
-                pivotZ + flatZ * config.CAMERA_LOOK_AHEAD);
-        Camera3D.LookAt(camera, eye, target, new Vec3(0.0, 1.0, 0.0));
+        cameraEye.Set(eyeX, eyeY, eyeZ);
+        cameraTarget.Set(
+            pivotX + flatX * config.CAMERA_LOOK_AHEAD,
+            pivotY + Sin(cameraPitch) * config.CAMERA_LOOK_AHEAD,
+            pivotZ + flatZ * config.CAMERA_LOOK_AHEAD);
+        Camera3D.LookAt(camera, cameraEye, cameraTarget, cameraUp);
     }
 
     hide func drawBeacons() {
@@ -1320,7 +1337,8 @@ class Game3DShowcase {
         // bias, so terrain and trees always show a clear lit/shadowed side and cast
         // real shadows. A near-overhead sun gives flat, shadowless shading.
         var sunDirY = 0.0 - (0.40 + 0.30 * day);
-        Light3D.set_Direction(sunLight, new Vec3(Cos(ang) * 0.55 - 0.40, sunDirY, -0.42));
+        sunDirection.Set(Cos(ang) * 0.55 - 0.40, sunDirY, -0.42);
+        Light3D.set_Direction(sunLight, sunDirection);
         Light3D.SetColor(sunLight, 1.0, lerpFloat(0.60, 0.96, day), lerpFloat(0.34, 0.88, day));
         Light3D.SetIntensity(sunLight, 0.05 + day * config.SUN_INTENSITY_DAY);
 
@@ -1373,11 +1391,15 @@ class Game3DShowcase {
         ambientTimer = ambientTimer - dt;
         if (ambientTimer <= 0.0 && audio != null) {
             ambientTimer = 5.5;
-            Sound3D.playAt(audio, gustClip,
-                new Vec3(terrainWorldMaxX() * 0.5, config.WATER_HEIGHT + 1.5, terrainWorldMaxZ() * 0.5));
+            ambientSoundPos.Set(
+                terrainWorldMaxX() * 0.5,
+                config.WATER_HEIGHT + 1.5,
+                terrainWorldMaxZ() * 0.5);
+            Sound3D.playAt(audio, gustClip, ambientSoundPos);
         }
         if (sanctuaryDone == false && homeTrigger != null && beaconsLit >= beaconXs.count()) {
-            if (Trigger3D.Contains(homeTrigger, new Vec3(playerX, playerY + 1.0, playerZ))) {
+            objectiveProbePos.Set(playerX, playerY + 1.0, playerZ);
+            if (Trigger3D.Contains(homeTrigger, objectiveProbePos)) {
                 sanctuaryDone = true;
                 if (audio != null) { Sound3D.play2D(audio, victoryClip); }
                 Camera3D.Shake(camera, config.SHAKE_ALL, 1.0, 3.0);
@@ -1387,7 +1409,8 @@ class Game3DShowcase {
 
     hide func onFootfall(sprinting: Boolean) {
         if (audio != null) {
-            Sound3D.playAt(audio, stepClip, new Vec3(playerX, playerY, playerZ));
+            footfallPos.Set(playerX, playerY, playerZ);
+            Sound3D.playAt(audio, stepClip, footfallPos);
         }
         if (sprinting && sprintDust != null) {
             Particles3D.SetPosition(sprintDust, playerX, playerY + 0.1, playerZ);
@@ -1418,8 +1441,8 @@ class Game3DShowcase {
         }
         stampScorch(beaconXs.get(i), beaconYs.get(i), beaconZs.get(i));
         if (audio != null) {
-            Sound3D.playAt(audio, chimeClip,
-                new Vec3(beaconXs.get(i), beaconYs.get(i) + 2.0, beaconZs.get(i)));
+            beaconSoundPos.Set(beaconXs.get(i), beaconYs.get(i) + 2.0, beaconZs.get(i));
+            Sound3D.playAt(audio, chimeClip, beaconSoundPos);
         }
         Camera3D.Shake(camera, config.SHAKE_BEACON, 0.35, 4.0);
     }
@@ -1433,7 +1456,8 @@ class Game3DShowcase {
 
     hide func updateDynamicLights() {
         if (playerLight != null) {
-            Light3D.set_Position(playerLight, new Vec3(playerX, playerY + 1.5, playerZ));
+            playerLightPos.Set(playerX, playerY + 1.5, playerZ);
+            Light3D.set_Position(playerLight, playerLightPos);
         }
     }
 

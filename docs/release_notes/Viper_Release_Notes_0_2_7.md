@@ -18,7 +18,7 @@ A hardening cycle continuing v0.2.6. The headline new work ends per-frame Graphi
 - **3D runtime & Game3D fail closed.** Non-finite pose/playback inputs clamp or revert to the bind pose, scene/transform/raycast/physics/navigation entry points reject bad handles, stored references are class-checked, and screenshot/render-target capture finalizes with no present side effect.
 - **Runtime fails closed (repo-wide).** A cppcheck-driven audit makes every recoverable `rt_trap` return a safe sentinel and free its locals; unrecoverable entropy/DRBG failures route through a new non-returning `rt_abort`, so no path proceeds with predictable key material when a trap hook returns.
 - **Asset loaders fail closed (new).** Corrupt, truncated, wrong-magic, unsupported, or oversized PNG/JPEG/BMP/GIF/OBJ/STL/FBX/glTF/`.vscn` content now returns `null` and records queryable diagnostics on `Viper.Graphics3D.Assets3D` instead of trapping; traps stay reserved for programmer errors, and partial degradation such as a missing material texture records a warning rather than failing the whole load. A shared count guard rejects any element count larger than the bytes that back it — so a tiny file can no longer drive a huge allocation — degenerate imported geometry is dropped rather than trapped, and libFuzzer harnesses keep the parsers crash-free.
-- **Game3D degradation diagnostics (new).** A process-wide `Viper.Game3D.Diagnostics` surface counts the rare runtime fallbacks that keep execution correct but signal resource pressure or lost fidelity — brute-force broadphase, clamped CCD substeps, dropped animation events, evicted audio voices, and navmesh-grid fallback — so smoke probes and tools can assert a clean run, with the per-world physics counters also exposed on `Physics3DWorld`.
+- **Game3D degradation diagnostics (new).** A process-wide `Viper.Game3D.Diagnostics` surface counts the rare runtime fallbacks that keep execution correct but signal resource pressure or lost fidelity — brute-force broadphase, clamped CCD substeps, dropped animation events, evicted audio voices, navmesh-grid fallback, and stale-entity touches — so smoke probes and tools can assert a clean run. A despawned or world-destroyed `Entity3D` handle now fails soft (neutral reads, no-op writes, a counted touch) instead of trapping, and the per-world physics counters are also exposed on `Physics3DWorld`.
 - **IL, codegen & linker hardening.** The IL builder promotes its debug-only invariants to release-mode validation and shares one checked-range implementation with CheckOpt (which now demotes proven-safe overflow-checked arithmetic), the verifier makes the EH `resumetok` a linear handler-provenance capability that only exception dispatch can mint (ADR 0005), and codegen and the native linker surface diagnostics instead of asserting, atop the frame-layout fix that closes the O1 miscompiles.
 - **Codegen performance round.** The AArch64 allocator unlocks all sixteen argument registers via clobber-aware eviction, caches spilled-operand reloads to one resident-register home, and shares pre-RA copy-forwarding with x86-64; x86-64 drops duplicated end-of-block spill stores and per-instruction overheads and models memory dependences precisely. Six accompanying correctness fixes harden allocator register carries, spill-slot ranges, AArch64 determinism, and Mach-O arm64 compact-unwind encodings.
 - **Unified scalar semantics & stable IL storage (new).** A shared, VM-neutral kernel makes the tree-walking VM and both bytecode engines yield identical values and trap kinds for one IL module, and block/instruction storage moves to stable-address containers with interned identifiers so references survive insertion and erasure.
@@ -36,13 +36,13 @@ A hardening cycle continuing v0.2.6. The headline new work ends per-frame Graphi
 
 | Metric | v0.2.6 | v0.2.7 | Delta |
 |---|---|---|---|
-| Commits | — | 102 | +102 |
+| Commits | — | 103 | +103 |
 | Source files | 3,096 | 3,351 | +255 |
 | Production SLOC | 669K | 720K | +51K |
 | Test SLOC | 278K | 297K | +19K |
-| Demo SLOC | 192K | 193K | +1K |
+| Demo SLOC | 192K | 194K | +2K |
 
-Counts via `scripts/count_sloc.sh` (production 720,173 / test 297,233 / demo 193,474 / source files 3,351); commits since the `v0.2.6-dev` tag (2026-06-01).
+Counts via `scripts/count_sloc.sh` (production 720,265 / test 297,275 / demo 193,512 / source files 3,351); commits since the `v0.2.6-dev` tag (2026-06-01).
 
 ---
 
@@ -67,7 +67,8 @@ Counts via `scripts/count_sloc.sh` (production 720,173 / test 297,233 / demo 193
 - `WorldStream3D` cells load a binary sidecar into a resident-byte budget, and `NavMesh3D.Export`/`Import` round-trip versioned `VNAVMSH2` assets — geometry, traversal costs, areas, off-mesh links, obstacles, and agent params — while still reading legacy `VNAVMSH1`. Compressed `TextureAsset3D` uploads drain large mips across frames with KTX2 length validation, and stream manifests resolve `asset://` sidecars through the asset manager.
 - Non-finite interpolation, playback, and bone inputs across Skeleton3D/AnimController3D/BlendTree3D/IKSolver3D and CPU skinning clamp or revert to the bind pose, and scene, transform, raycast, navigation, physics, and terrain entry points reject bad handles; stored camera/node/character/navmesh references are class-checked, so a reused slot is nulled rather than dereferenced.
 - Game3D async loads read worker-safe request snapshots, rebuild the world's body/name indices on detected corruption, keep tree spawn/despawn roll-back-exact, and finalize `ScreenshotFinal`/render-target capture with no present side effect, leaked post-FX state, or stale-identity cache hit. The Scene3D spatial index records a ~1,800× indexed-vs-flat cull speedup on a 10k-node fixture.
-- Fallbacks that keep a frame correct but quietly shed fidelity are now observable: a process-wide `Viper.Game3D.Diagnostics` static class exposes saturating i64 counters for brute-force broadphase, clamped-CCD frames and bodies, dropped `AnimController3D` events, evicted spatial-audio voices, and unallocatable navmesh query grids, plus `Reset()` and a `Summary()` that omits zero counters, so a smoke probe can assert a clean run. `Physics3DWorld` surfaces the same physics counts per world (`BroadphaseFallbackCount`, `CCDSubstepClampedBodyCount`, `LastCCDClampedBodyCount`).
+- Fallbacks that keep a frame correct but quietly shed fidelity are now observable: a process-wide `Viper.Game3D.Diagnostics` static class exposes saturating i64 counters for brute-force broadphase, clamped-CCD frames and bodies, dropped `AnimController3D` events, evicted spatial-audio voices, unallocatable navmesh query grids, and stale-`Entity3D` touches, plus `Reset()` and a `Summary()` that omits zero counters, so a smoke probe can assert a clean run. `Physics3DWorld` surfaces the same physics counts per world (`BroadphaseFallbackCount`, `CCDSubstepClampedBodyCount`, `LastCCDClampedBodyCount`).
+- A retained `Entity3D` whose entity was despawned, or whose `World3D` was destroyed, now degrades predictably rather than trapping: getters return neutral values, mutators and animator attachment no-op, and each touch increments `StaleEntityCalls`; genuinely invalid (null or wrong-class) handles still trap.
 
 ### Runtime hardening (fails closed)
 
@@ -118,9 +119,9 @@ Counts via `scripts/count_sloc.sh` (production 720,173 / test 297,233 / demo 193
 
 ### Tests
 
-~18K new test SLOC.
+~19K new test SLOC.
 
-- **3D rendering, assets, and animation** — spot-shadow perspective/orthographic coordinate and budget-ordering coverage, vegetation sway, billboard batching, versioned navmesh round-trip, reference repair, texture-atlas, FBX/node-animation import, D3D11 mip-validation, fail-closed content-loader diagnostics (corrupt/missing/wrong-magic inputs and optional-texture warnings), untrusted-count guard and parser fuzz harnesses, and `Game3D.Diagnostics` fallback-counter coverage.
+- **3D rendering, assets, and animation** — spot-shadow perspective/orthographic coordinate and budget-ordering coverage, vegetation sway, billboard batching, versioned navmesh round-trip, reference repair, texture-atlas, FBX/node-animation import, D3D11 mip-validation, fail-closed content-loader diagnostics (corrupt/missing/wrong-magic inputs and optional-texture warnings), untrusted-count guard and parser fuzz harnesses, and `Game3D.Diagnostics` fallback- and stale-entity no-op counter coverage.
 - **IL, codegen, and cross-engine** — IL release-lifetime and alias-analysis precision, VM-vs-bytecode scalar-semantics equivalence, AArch64 register-allocation regressions, spilled-operand reload-caching pin test (zero inter-use reloads), and duplicate-spill-store elimination verification.
 - **Agent CLI and diagnostics** — the `agent_cli` suite, the diagnostic-code catalog, and structured bridge/MCP/LSP diagnostic and hover coverage.
 - **Runtime, frontends, and GUI** — media/pixel decode, BASIC parsing, Text/Time/IO edge cases, and GUI overlay/font-propagation regressions.

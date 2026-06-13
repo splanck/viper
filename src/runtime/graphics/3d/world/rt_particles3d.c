@@ -103,6 +103,7 @@ typedef struct {
     void *draw_materials[PARTICLES3D_DRAW_SLOT_COUNT];
     void *sort_keys;
     int32_t sort_key_capacity;
+    uint64_t sort_key_grow_count;
     int64_t draw_frame_serial;
     int32_t draw_slots_used;
 } rt_particles3d;
@@ -163,8 +164,7 @@ static void particles3d_repair_refs(rt_particles3d *ps) {
         return;
     if (ps->texture && !particles3d_texture_valid(ps->texture))
         particles3d_release_texture_slot(&ps->texture);
-    if (ps->cached_material &&
-        !rt_g3d_has_class(ps->cached_material, RT_G3D_MATERIAL3D_CLASS_ID))
+    if (ps->cached_material && !rt_g3d_has_class(ps->cached_material, RT_G3D_MATERIAL3D_CLASS_ID))
         particles3d_release_material_slot(&ps->cached_material);
     for (int i = 0; i < PARTICLES3D_DRAW_SLOT_COUNT; ++i) {
         if (ps->draw_materials[i] &&
@@ -384,8 +384,7 @@ static int particle_state_is_finite(const vgfx3d_particle_t *p) {
     for (int i = 0; i < 3; i++) {
         if (!isfinite(p->pos[i]) || !isfinite(p->vel[i]) || !isfinite(p->color[i]))
             return 0;
-        if (fabs(p->pos[i]) > PARTICLES3D_WORLD_ABS_MAX ||
-            fabs(p->vel[i]) > PARTICLES3D_PARAM_MAX)
+        if (fabs(p->pos[i]) > PARTICLES3D_WORLD_ABS_MAX || fabs(p->vel[i]) > PARTICLES3D_PARAM_MAX)
             return 0;
         if (p->color[i] < 0.0f || p->color[i] > 1.0f)
             return 0;
@@ -419,6 +418,7 @@ static void rt_particles3d_finalize(void *obj) {
     free(ps->sort_keys);
     ps->sort_keys = NULL;
     ps->sort_key_capacity = 0;
+    ps->sort_key_grow_count = 0;
     particles3d_release_texture_slot(&ps->texture);
     particles3d_release_material_slot(&ps->cached_material);
 }
@@ -848,9 +848,8 @@ void rt_particles3d_rebase_origin(void *o, double dx, double dy, double dz) {
         double x = ps->particles[i].pos[0] - delta[0];
         double y = ps->particles[i].pos[1] - delta[1];
         double z = ps->particles[i].pos[2] - delta[2];
-        if (!isfinite(x) || !isfinite(y) || !isfinite(z) ||
-            fabs(x) > PARTICLES3D_WORLD_ABS_MAX || fabs(y) > PARTICLES3D_WORLD_ABS_MAX ||
-            fabs(z) > PARTICLES3D_WORLD_ABS_MAX) {
+        if (!isfinite(x) || !isfinite(y) || !isfinite(z) || fabs(x) > PARTICLES3D_WORLD_ABS_MAX ||
+            fabs(y) > PARTICLES3D_WORLD_ABS_MAX || fabs(z) > PARTICLES3D_WORLD_ABS_MAX) {
             ps->particles[i] = ps->particles[--ps->count];
             continue;
         }
@@ -1011,22 +1010,39 @@ static int particle3d_sort_key_desc(const void *a, const void *b) {
 ///   falling back to unsorted transparent quads, because that fallback causes obvious flicker.
 static int particles3d_ensure_sort_keys(rt_particles3d *ps, int32_t count) {
     void *grown;
+    int32_t target_capacity;
     if (!ps || count <= 0)
         return 0;
-    if (ps->sort_key_capacity >= count && ps->sort_keys)
+    target_capacity = ps->max_particles > count ? ps->max_particles : count;
+    if (target_capacity <= 0)
+        return 0;
+    if (ps->sort_key_capacity >= target_capacity && ps->sort_keys)
         return 1;
-    if ((size_t)count > SIZE_MAX / sizeof(particle3d_sort_key)) {
+    if ((size_t)target_capacity > SIZE_MAX / sizeof(particle3d_sort_key)) {
         rt_trap("Particles3D.Draw: sort key allocation overflow");
         return 0;
     }
-    grown = realloc(ps->sort_keys, (size_t)count * sizeof(particle3d_sort_key));
+    grown = realloc(ps->sort_keys, (size_t)target_capacity * sizeof(particle3d_sort_key));
     if (!grown) {
         rt_trap("Particles3D.Draw: sort key allocation failed");
         return 0;
     }
     ps->sort_keys = grown;
-    ps->sort_key_capacity = count;
+    ps->sort_key_capacity = target_capacity;
+    ps->sort_key_grow_count++;
     return 1;
+}
+
+/// @brief Test hook: current persistent alpha-sort key capacity.
+int64_t rt_particles3d_test_sort_key_capacity(void *o) {
+    rt_particles3d *ps = particles3d_checked(o);
+    return ps ? ps->sort_key_capacity : 0;
+}
+
+/// @brief Test hook: number of persistent alpha-sort key buffer growth operations.
+uint64_t rt_particles3d_test_sort_key_grow_count(void *o) {
+    rt_particles3d *ps = particles3d_checked(o);
+    return ps ? ps->sort_key_grow_count : 0;
 }
 
 /// @brief Lazily create the system's shared unlit white particle material in @p *slot.
@@ -1239,9 +1255,12 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
                 double eye_x = particles_clamp_abs_or(cam->eye[0], 0.0, PARTICLES3D_WORLD_ABS_MAX);
                 double eye_y = particles_clamp_abs_or(cam->eye[1], 0.0, PARTICLES3D_WORLD_ABS_MAX);
                 double eye_z = particles_clamp_abs_or(cam->eye[2], 0.0, PARTICLES3D_WORLD_ABS_MAX);
-                double dx = particles_clamp_abs_or(p->pos[0] - eye_x, 0.0, PARTICLES3D_WORLD_ABS_MAX);
-                double dy = particles_clamp_abs_or(p->pos[1] - eye_y, 0.0, PARTICLES3D_WORLD_ABS_MAX);
-                double dz = particles_clamp_abs_or(p->pos[2] - eye_z, 0.0, PARTICLES3D_WORLD_ABS_MAX);
+                double dx =
+                    particles_clamp_abs_or(p->pos[0] - eye_x, 0.0, PARTICLES3D_WORLD_ABS_MAX);
+                double dy =
+                    particles_clamp_abs_or(p->pos[1] - eye_y, 0.0, PARTICLES3D_WORLD_ABS_MAX);
+                double dz =
+                    particles_clamp_abs_or(p->pos[2] - eye_z, 0.0, PARTICLES3D_WORLD_ABS_MAX);
                 sort_keys[i].index = i;
                 sort_keys[i].view_depth =
                     dx * (double)forward[0] + dy * (double)forward[1] + dz * (double)forward[2];

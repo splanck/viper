@@ -463,6 +463,11 @@ proxy, so it works on the same draw path as other meshes.
 Camera positions and FPS-style movement inputs are clamped to the runtime's safe world range before
 view/projection matrices are generated. Non-finite position components fall back to `0.0`.
 `SmoothFollow` and `SmoothLookAt` keep FPS-style yaw/pitch state synchronized with the resulting view.
+For per-frame camera, listener, light, and particle update paths, reuse `Vec3`
+instances with `Set(x, y, z)`, `SetX/Y/Z`, `CopyFrom(other)`, or writable
+`X`/`Y`/`Z` properties before passing them to runtime setters. The runtime
+setters copy component values; the pure `Vec3` arithmetic methods still return
+new vectors.
 
 ```rust
 bind Viper.Graphics3D.Camera3D as Camera3D;
