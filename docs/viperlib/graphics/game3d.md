@@ -18,6 +18,11 @@ Game3D composes the lower-level `Viper.Graphics3D`, `Viper.Input`, physics, and
 audio surfaces so simple games do not need to hand-wire canvases, cameras,
 scenes, physics worlds, final-frame capture, layer masks, and common input.
 
+Writable `Viper.Game3D` properties expose both property accessors and
+method-call setters. A writable lower-camel property such as `speed` or
+`lookSensitivity` has a `set_speed`/`set_lookSensitivity` runtime accessor and a
+matching `setSpeed(...)`/`setLookSensitivity(...)` class method.
+
 ---
 
 ## Quick Start

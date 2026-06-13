@@ -18,6 +18,11 @@ For the higher-level code-first game workflow, see [Game3D](game3d.md).
 level rendering, physics, input, audio, and final-frame contracts documented
 here.
 
+Writable `Viper.Graphics3D` properties expose both property accessors and
+method-call setters. A writable property named `X` has a `set_X` runtime
+accessor and a matching `SetX(...)` class method, such as
+`Material3D.SetRoughness(material, value)` or `material.SetRoughness(value)`.
+
 ---
 
 ## Camera And Rendering
