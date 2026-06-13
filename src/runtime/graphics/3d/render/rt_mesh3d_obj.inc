@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/render/rt_mesh3d_obj.inc  (#included from rt_mesh3d.c; not a standalone translation unit)
-// Purpose: Mesh3D Wavefront OBJ loader and tangent computation
+// File: src/runtime/graphics/3d/render/rt_mesh3d_obj.inc  (#included from rt_mesh3d.c; not a
+// standalone translation unit) Purpose: Mesh3D Wavefront OBJ loader and tangent computation
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Wavefront OBJ loader (~300 LOC)
@@ -1044,17 +1044,23 @@ static void obj_parse_into_mesh(FILE *f,
 /// @param path File path to the .obj file (runtime string).
 /// @return Mesh handle, or NULL on parse/load failure.
 void *rt_mesh3d_from_obj(rt_string path) {
+    rt_asset_error_begin_load();
     if (!path) {
+        rt_asset_error_end_load_failure();
         rt_trap("Mesh3D.FromOBJ: path must not be null");
         return NULL;
     }
     const char *filepath = rt_string_cstr(path);
-    if (!filepath)
+    if (!filepath) {
+        rt_asset_error_end_load_failure();
+        rt_trap("Mesh3D.FromOBJ: invalid path");
         return NULL;
+    }
 
     FILE *f = fopen(filepath, "r");
     if (!f) {
-        rt_trap("Mesh3D.FromOBJ: failed to open file");
+        rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND, "Mesh3D.FromOBJ: '%s' not found", filepath);
+        rt_asset_error_end_load_failure();
         return NULL;
     }
 
@@ -1080,6 +1086,7 @@ void *rt_mesh3d_from_obj(rt_string path) {
         obj_vertex_cache_free(&vertex_cache);
         if (mesh && rt_obj_release_check0(mesh))
             rt_obj_free(mesh);
+        rt_asset_error_end_load_failure();
         return NULL;
     }
     rt_mesh3d_begin_geometry_batch((rt_mesh3d *)mesh);
@@ -1110,8 +1117,10 @@ void *rt_mesh3d_from_obj(rt_string path) {
         rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
         if (rt_obj_release_check0(mesh))
             rt_obj_free(mesh);
-        rt_trap(line_too_long ? "Mesh3D.FromOBJ: line exceeds 1 MiB limit"
-                              : "Mesh3D.FromOBJ: invalid or unsupported geometry");
+        rt_asset_error_set(line_too_long ? RT_ASSET_ERROR_TOO_LARGE : RT_ASSET_ERROR_CORRUPT,
+                           line_too_long ? "Mesh3D.FromOBJ: line exceeds 1 MiB limit"
+                                         : "Mesh3D.FromOBJ: invalid or unsupported geometry");
+        rt_asset_error_end_load_failure();
         return NULL;
     }
 
@@ -1119,17 +1128,25 @@ void *rt_mesh3d_from_obj(rt_string path) {
         rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
         if (rt_obj_release_check0(mesh))
             rt_obj_free(mesh);
-        rt_trap("Mesh3D.FromOBJ: invalid or unsupported geometry");
+        rt_asset_error_set(RT_ASSET_ERROR_UNSUPPORTED,
+                           "Mesh3D.FromOBJ: no supported triangle geometry");
+        rt_asset_error_end_load_failure();
         return NULL;
     }
 
     rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
 
-    if (cnt_n == 0 && ((rt_mesh3d *)mesh)->vertex_count > 0)
-        rt_mesh3d_recalc_normals(mesh);
-    else if (missing_normals && ((rt_mesh3d *)mesh)->vertex_count > 0)
-        mesh3d_fill_missing_normals((rt_mesh3d *)mesh);
+    if ((cnt_n == 0 || missing_normals) && ((rt_mesh3d *)mesh)->vertex_count > 0 &&
+        !mesh3d_fill_missing_normals((rt_mesh3d *)mesh)) {
+        if (rt_obj_release_check0(mesh))
+            rt_obj_free(mesh);
+        rt_asset_error_set_if_empty(RT_ASSET_ERROR_TOO_LARGE,
+                                    "Mesh3D.FromOBJ: failed to fill missing normals");
+        rt_asset_error_end_load_failure();
+        return NULL;
+    }
 
+    rt_asset_error_end_load_success();
     return mesh;
 }
 
@@ -1456,10 +1473,9 @@ static int32_t obj_finalize_groups(obj_group_builder_t *groups,
             groups[i].group.mesh = NULL;
             continue;
         }
-        if (!parse_failed && cnt_n == 0 && mesh->vertex_count > 0)
-            rt_mesh3d_recalc_normals(mesh);
-        else if (!parse_failed && groups[i].missing_normals && mesh->vertex_count > 0)
-            mesh3d_fill_missing_normals(mesh);
+        if (!parse_failed && (cnt_n == 0 || groups[i].missing_normals) && mesh->vertex_count > 0 &&
+            !mesh3d_fill_missing_normals(mesh))
+            parse_failed = 1;
         if (write_count != i) {
             groups[write_count] = groups[i];
             memset(&groups[i], 0, sizeof(groups[i]));
@@ -1502,11 +1518,13 @@ int rt_mesh3d_from_obj_groups(rt_string path,
         return 0;
     }
     filepath = rt_string_cstr(path);
-    if (!filepath)
+    if (!filepath) {
+        rt_trap("Mesh3D.FromOBJ: invalid path");
         return 0;
+    }
     f = fopen(filepath, "r");
     if (!f) {
-        rt_trap("Mesh3D.FromOBJ: failed to open file");
+        rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND, "Mesh3D.FromOBJ: '%s' not found", filepath);
         return 0;
     }
     positions = (float *)malloc((size_t)cap_p * 3u * sizeof(float));
@@ -1588,8 +1606,9 @@ done_reading:
 
     if (parse_failed || group_count <= 0) {
         obj_group_builders_free(groups, group_count);
-        rt_trap(line_too_long ? "Mesh3D.FromOBJ: line exceeds 1 MiB limit"
-                              : "Mesh3D.FromOBJ: invalid or unsupported geometry");
+        rt_asset_error_set(line_too_long ? RT_ASSET_ERROR_TOO_LARGE : RT_ASSET_ERROR_CORRUPT,
+                           line_too_long ? "Mesh3D.FromOBJ: line exceeds 1 MiB limit"
+                                         : "Mesh3D.FromOBJ: invalid or unsupported geometry");
         return 0;
     }
     if (!obj_groups_transfer(groups, group_count, out_groups, out_count)) {

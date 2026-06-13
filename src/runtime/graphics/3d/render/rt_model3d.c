@@ -35,6 +35,7 @@
 #include "rt_model3d.h"
 
 #include "rt_animcontroller3d.h"
+#include "rt_asset_error.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_asset.h"

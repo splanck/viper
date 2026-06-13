@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tests/unit/test_rt_canvas3d.cpp
+// File: src/tests/unit/test_rt_canvas3d.cpp
 // Purpose: Unit tests for Viper.Graphics3D types — Mesh3D, Camera3D,
 //   Material3D, Light3D. Tests construction, properties, procedural mesh
 //   generation, OBJ loading, and camera math.
@@ -16,7 +16,9 @@
 //   - Mesh generators produce expected vertex/triangle counts
 //   - Camera matrices produce correct transforms
 //
-// Links: src/runtime/graphics/rt_canvas3d.h
+// Ownership/Lifetime:
+//   - Test-scoped runtime objects are retained only for the duration of each case.
+// Links: src/runtime/graphics/3d/render/rt_mesh3d.c
 //
 //===----------------------------------------------------------------------===//
 
@@ -25,6 +27,7 @@
 #endif
 
 #include "rt.hpp"
+#include "rt_asset_error.h"
 #include "rt_canvas3d.h"
 #include "rt_internal.h"
 #include "rt_morphtarget3d.h"
@@ -829,8 +832,8 @@ static void test_mesh_recalc_normals_uses_double_accumulation() {
 static void test_mesh_obj_loader() {
     TEST("Mesh3D.FromOBJ — loads test cube");
     /* Try multiple paths since ctest working directory may differ.
-     * We must check with fopen BEFORE calling FromOBJ because FromOBJ
-     * traps (kills process) if the file doesn't exist. */
+     * We must check with fopen BEFORE calling FromOBJ so missing fixtures
+     * produce an actionable test failure instead of a recoverable loader error. */
     const char *found = NULL;
     const char *paths[] = {"tests/runtime/test_cube.obj",
                            "../tests/runtime/test_cube.obj",
@@ -988,13 +991,11 @@ static void test_mesh_obj_loader_rejects_invalid_indices() {
           f);
     fclose(f);
 
-    EXPECT_TRUE(expect_trap_contains(
-                    [path] {
-                        rt_string obj_path = rt_string_from_bytes(path, (int64_t)strlen(path));
-                        rt_mesh3d_from_obj(obj_path);
-                    },
-                    "FromOBJ"),
-                "FromOBJ traps instead of emitting origin-collapsed triangles");
+    rt_string obj_path = rt_string_from_bytes(path, (int64_t)strlen(path));
+    void *mesh = rt_mesh3d_from_obj(obj_path);
+    EXPECT_TRUE(mesh == nullptr, "FromOBJ rejects invalid indices without emitting a mesh");
+    EXPECT_TRUE(rt_asset_error_get_code() != RT_ASSET_ERROR_NONE,
+                "FromOBJ records an error for invalid indices");
     PASS();
 }
 
@@ -1010,13 +1011,11 @@ static void test_mesh_obj_loader_rejects_invalid_numeric_tokens() {
           f);
     fclose(f);
 
-    EXPECT_TRUE(expect_trap_contains(
-                    [path] {
-                        rt_string obj_path = rt_string_from_bytes(path, (int64_t)strlen(path));
-                        rt_mesh3d_from_obj(obj_path);
-                    },
-                    "FromOBJ"),
-                "FromOBJ traps on NaN vertex positions");
+    rt_string obj_path = rt_string_from_bytes(path, (int64_t)strlen(path));
+    void *mesh = rt_mesh3d_from_obj(obj_path);
+    EXPECT_TRUE(mesh == nullptr, "FromOBJ rejects NaN vertex positions without trapping");
+    EXPECT_TRUE(rt_asset_error_get_code() != RT_ASSET_ERROR_NONE,
+                "FromOBJ records an error for NaN vertex positions");
 
     f = fopen(path, "w");
     assert(f);
@@ -1026,13 +1025,11 @@ static void test_mesh_obj_loader_rejects_invalid_numeric_tokens() {
           "f 1 2 999999999999999999999999999999\n",
           f);
     fclose(f);
-    EXPECT_TRUE(expect_trap_contains(
-                    [path] {
-                        rt_string obj_path = rt_string_from_bytes(path, (int64_t)strlen(path));
-                        rt_mesh3d_from_obj(obj_path);
-                    },
-                    "FromOBJ"),
-                "FromOBJ traps on overflowing face indices");
+    obj_path = rt_string_from_bytes(path, (int64_t)strlen(path));
+    mesh = rt_mesh3d_from_obj(obj_path);
+    EXPECT_TRUE(mesh == nullptr, "FromOBJ rejects overflowing face indices without trapping");
+    EXPECT_TRUE(rt_asset_error_get_code() != RT_ASSET_ERROR_NONE,
+                "FromOBJ records an error for overflowing face indices");
     PASS();
 }
 
@@ -1047,13 +1044,11 @@ static void test_mesh_obj_loader_rejects_empty_geometry() {
           f);
     fclose(f);
 
-    EXPECT_TRUE(expect_trap_contains(
-                    [path] {
-                        rt_string obj_path = rt_string_from_bytes(path, (int64_t)strlen(path));
-                        rt_mesh3d_from_obj(obj_path);
-                    },
-                    "FromOBJ"),
-                "FromOBJ traps when no triangles were emitted");
+    rt_string obj_path = rt_string_from_bytes(path, (int64_t)strlen(path));
+    void *mesh = rt_mesh3d_from_obj(obj_path);
+    EXPECT_TRUE(mesh == nullptr, "FromOBJ rejects empty geometry without trapping");
+    EXPECT_TRUE(rt_asset_error_get_code() != RT_ASSET_ERROR_NONE,
+                "FromOBJ records an error for empty geometry");
     PASS();
 }
 

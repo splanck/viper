@@ -4,6 +4,7 @@ module game;
 bind Viper.Game3D;
 bind Viper.Graphics.Pixels as Pixels;
 bind Viper.Graphics3D;
+bind Viper.Graphics3D.Assets3D as Assets3D;
 bind Viper.Core.Convert as Convert;
 bind Viper.Math;
 bind Viper.Terminal as Terminal;
@@ -912,7 +913,7 @@ class Game3DShowcase {
         if (treeBad(model)) { model = Model3D.Load(config.TREE_MODEL_PATH); }
         if (treeBad(model)) { model = Model3D.Load(config.TREE_MODEL_PATH_ALT); }
         if (treeBad(model)) {
-            Terminal.Say("Forest: MapleTree_1.fbx could not be resolved (embedded or on disk); skipping trees.");
+            Terminal.Say("Forest: MapleTree_1.fbx could not be resolved (embedded or on disk); skipping trees. Last loader error: " + Assets3D.get_LastLoadError());
             return;
         }
 

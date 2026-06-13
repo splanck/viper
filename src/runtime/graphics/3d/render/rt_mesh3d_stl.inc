@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/render/rt_mesh3d_stl.inc  (#included from rt_mesh3d.c; not a standalone translation unit)
-// Purpose: Mesh3D STL loader (binary + ASCII)
+// File: src/runtime/graphics/3d/render/rt_mesh3d_stl.inc  (#included from rt_mesh3d.c; not a
+// standalone translation unit) Purpose: Mesh3D STL loader (binary + ASCII)
 //===----------------------------------------------------------------------===//
 //=============================================================================
 // STL Loading (Binary + ASCII)
@@ -268,8 +268,7 @@ static const char *stl_skip_horizontal_ws(const char *p, const char *end) {
 
 /// @brief Trim trailing spaces, tabs, LF, and CR from a line span, returning the new end pointer.
 static const char *stl_trim_line_end(const char *start, const char *end) {
-    while (end > start &&
-           (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\n' || end[-1] == '\r'))
+    while (end > start && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\n' || end[-1] == '\r'))
         end--;
     return end;
 }
@@ -548,7 +547,7 @@ static void *stl_load_ascii_stream(FILE *f) {
     }
     if (line_status == -2) {
         parse_failed = 1;
-        rt_trap("Mesh3D.FromSTL: line exceeds 1 MiB limit");
+        rt_asset_error_set(RT_ASSET_ERROR_TOO_LARGE, "Mesh3D.FromSTL: line exceeds 1 MiB limit");
     } else if (line_status < 0) {
         parse_failed = 1;
     }
@@ -558,6 +557,8 @@ static void *stl_load_ascii_stream(FILE *f) {
         rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
         if (rt_obj_release_check0(mesh))
             rt_obj_free(mesh);
+        rt_asset_error_set_if_empty(RT_ASSET_ERROR_CORRUPT,
+                                    "Mesh3D.FromSTL: invalid ASCII STL geometry");
         return NULL;
     }
     rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
@@ -572,28 +573,49 @@ static void *stl_load_ascii_stream(FILE *f) {
 /// @param path File path to the .stl file (runtime string).
 /// @return Mesh handle, or NULL on load failure.
 void *rt_mesh3d_from_stl(rt_string path) {
-    if (!path)
+    rt_asset_error_begin_load();
+    if (!path) {
+        rt_asset_error_end_load_failure();
+        rt_trap("Mesh3D.FromSTL: path must not be null");
         return NULL;
+    }
     const char *filepath = rt_string_cstr(path);
-    if (!filepath)
+    if (!filepath) {
+        rt_asset_error_end_load_failure();
+        rt_trap("Mesh3D.FromSTL: invalid path");
         return NULL;
+    }
 
     FILE *f = fopen(filepath, "rb");
-    if (!f)
+    if (!f) {
+        rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND, "Mesh3D.FromSTL: '%s' not found", filepath);
+        rt_asset_error_end_load_failure();
         return NULL;
+    }
 
     if (stl_fseek(f, 0, SEEK_END) != 0) {
         fclose(f);
+        rt_asset_error_setf(
+            RT_ASSET_ERROR_UNREADABLE, "Mesh3D.FromSTL: failed to seek '%s'", filepath);
+        rt_asset_error_end_load_failure();
         return NULL;
     }
     int64_t file_len = (int64_t)stl_ftell(f);
     if (file_len < 0 || file_len > STL_MAX_FILE_BYTES || stl_fseek(f, 0, SEEK_SET) != 0) {
         fclose(f);
+        rt_asset_error_setf(file_len > STL_MAX_FILE_BYTES ? RT_ASSET_ERROR_TOO_LARGE
+                                                          : RT_ASSET_ERROR_UNREADABLE,
+                            "Mesh3D.FromSTL: failed to read '%s'",
+                            filepath);
+        rt_asset_error_end_load_failure();
         return NULL;
     }
 
     if (file_len <= 0) {
         fclose(f);
+        rt_asset_error_setf(
+            RT_ASSET_ERROR_BAD_MAGIC, "Mesh3D.FromSTL: '%s' is not a supported STL", filepath);
+        rt_asset_error_end_load_failure();
         return NULL;
     }
 
@@ -602,6 +624,9 @@ void *rt_mesh3d_from_stl(rt_string path) {
         uint8_t header[84];
         if (fread(header, 1, sizeof(header), f) != sizeof(header)) {
             fclose(f);
+            rt_asset_error_setf(
+                RT_ASSET_ERROR_UNREADABLE, "Mesh3D.FromSTL: failed to read '%s'", filepath);
+            rt_asset_error_end_load_failure();
             return NULL;
         }
         uint32_t tri_count = stl_read_u32_le(header + 80);
@@ -611,10 +636,21 @@ void *rt_mesh3d_from_stl(rt_string path) {
         if (expected_binary != 0 && (size_t)file_len == expected_binary && tri_count > 0) {
             mesh = stl_load_binary_stream(f, tri_count);
             fclose(f);
+            if (mesh)
+                rt_asset_error_end_load_success();
+            else {
+                rt_asset_error_setf(RT_ASSET_ERROR_CORRUPT,
+                                    "Mesh3D.FromSTL: '%s' is not a supported binary STL",
+                                    filepath);
+                rt_asset_error_end_load_failure();
+            }
             return mesh;
         }
         if (stl_fseek(f, 0, SEEK_SET) != 0) {
             fclose(f);
+            rt_asset_error_setf(
+                RT_ASSET_ERROR_UNREADABLE, "Mesh3D.FromSTL: failed to seek '%s'", filepath);
+            rt_asset_error_end_load_failure();
             return NULL;
         }
     }
@@ -624,29 +660,46 @@ void *rt_mesh3d_from_stl(rt_string path) {
         if (fread(magic, 1, sizeof(magic), f) == sizeof(magic) && memcmp(magic, "solid", 5) == 0) {
             if (stl_fseek(f, 0, SEEK_SET) != 0) {
                 fclose(f);
+                rt_asset_error_setf(
+                    RT_ASSET_ERROR_UNREADABLE, "Mesh3D.FromSTL: failed to seek '%s'", filepath);
+                rt_asset_error_end_load_failure();
                 return NULL;
             }
             mesh = stl_load_ascii_stream(f);
             if (mesh) {
                 fclose(f);
+                rt_asset_error_end_load_success();
                 return mesh;
             }
         }
         if (stl_fseek(f, 0, SEEK_SET) != 0) {
             fclose(f);
+            rt_asset_error_setf(
+                RT_ASSET_ERROR_UNREADABLE, "Mesh3D.FromSTL: failed to seek '%s'", filepath);
+            rt_asset_error_end_load_failure();
             return NULL;
         }
     }
 
     if (file_len >= 84 && ((file_len - 84) % 50) == 0) {
         uint64_t tri_count64 = (uint64_t)(file_len - 84) / 50u;
-        if (tri_count64 > 0 && tri_count64 <= UINT32_MAX / 3u &&
-            stl_fseek(f, 84, SEEK_SET) == 0) {
+        if (tri_count64 > 0 && tri_count64 <= UINT32_MAX / 3u && stl_fseek(f, 84, SEEK_SET) == 0) {
             mesh = stl_load_binary_stream(f, (uint32_t)tri_count64);
             fclose(f);
+            if (mesh)
+                rt_asset_error_end_load_success();
+            else {
+                rt_asset_error_setf(RT_ASSET_ERROR_CORRUPT,
+                                    "Mesh3D.FromSTL: '%s' is not a supported binary STL",
+                                    filepath);
+                rt_asset_error_end_load_failure();
+            }
             return mesh;
         }
     }
     fclose(f);
+    rt_asset_error_setf(
+        RT_ASSET_ERROR_BAD_MAGIC, "Mesh3D.FromSTL: '%s' is not a supported STL", filepath);
+    rt_asset_error_end_load_failure();
     return NULL;
 }

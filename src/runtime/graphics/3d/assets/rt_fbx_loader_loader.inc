@@ -794,8 +794,16 @@ static void fbx_load_link_textures(rt_fbx_asset *asset,
             if (!pixels)
                 pixels =
                     fbx_try_decode_embedded_texture(objects, &ct, tex_id, rel_filename, filename);
-            if (!pixels)
+            if (!pixels) {
+                const char *texture_name =
+                    (rel_filename && *rel_filename) ? rel_filename : filename;
+                rt_asset_error_add_warningf("FBX texture '%s' not loaded: %s",
+                                            texture_name ? texture_name : "(embedded)",
+                                            rt_asset_error_get_message()[0]
+                                                ? rt_asset_error_get_message()
+                                                : "content unavailable");
                 continue;
+            }
 
             // Find which material this texture connects to via Connections
             for (int32_t ci = 0; ci < ct.count; ci++) {
@@ -1117,38 +1125,39 @@ static int fbx_load_collect_geometry(rt_fbx_asset *asset,
     return 1;
 }
 
-/// @brief Read an entire FBX file into a NUL-padded malloc buffer; traps with an FBX.Load
-///        diagnostic and returns NULL on any open/seek/size/alloc/read failure.
+/// @brief Read an entire FBX file into a NUL-padded malloc buffer.
+/// @details Content and I/O failures set asset diagnostics and return NULL. Allocation failure
+///          still traps because it is a runtime resource failure, not bad content.
 static uint8_t *fbx_read_entire_file(const char *cpath, long *out_size) {
     FILE *f = fopen(cpath, "rb");
     if (!f) {
-        rt_trap("FBX.Load: cannot open file");
+        rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND, "FBX.Load: '%s' not found", cpath);
         return NULL;
     }
     if (fbx_fseek(f, 0, SEEK_END) != 0) {
         fclose(f);
-        rt_trap("FBX.Load: seek failed");
+        rt_asset_error_setf(RT_ASSET_ERROR_UNREADABLE, "FBX.Load: failed to seek '%s'", cpath);
         return NULL;
     }
     int64_t fsize = (int64_t)fbx_ftell(f);
     if (fsize < 0) {
         fclose(f);
-        rt_trap("FBX.Load: tell failed");
+        rt_asset_error_setf(RT_ASSET_ERROR_UNREADABLE, "FBX.Load: failed to tell '%s'", cpath);
         return NULL;
     }
     if (fbx_fseek(f, 0, SEEK_SET) != 0) {
         fclose(f);
-        rt_trap("FBX.Load: seek failed");
+        rt_asset_error_setf(RT_ASSET_ERROR_UNREADABLE, "FBX.Load: failed to seek '%s'", cpath);
         return NULL;
     }
     if (fsize < 27) {
         fclose(f);
-        rt_trap("FBX.Load: file too small");
+        rt_asset_error_setf(RT_ASSET_ERROR_BAD_MAGIC, "FBX.Load: '%s' is too small", cpath);
         return NULL;
     }
     if ((uint64_t)fsize > RT_FBX_MAX_FILE_BYTES || (uint64_t)fsize >= (uint64_t)SIZE_MAX) {
         fclose(f);
-        rt_trap("FBX.Load: file too large");
+        rt_asset_error_setf(RT_ASSET_ERROR_TOO_LARGE, "FBX.Load: '%s' is too large", cpath);
         return NULL;
     }
 
@@ -1161,7 +1170,7 @@ static uint8_t *fbx_read_entire_file(const char *cpath, long *out_size) {
     if (fread(data, 1, (size_t)fsize, f) != (size_t)fsize) {
         fclose(f);
         free(data);
-        rt_trap("FBX.Load: read error");
+        rt_asset_error_setf(RT_ASSET_ERROR_UNREADABLE, "FBX.Load: failed to read '%s'", cpath);
         return NULL;
     }
     data[(size_t)fsize] = 0;
@@ -1177,7 +1186,7 @@ static uint8_t *fbx_read_entire_file(const char *cpath, long *out_size) {
 ///          corrected to Y-up. Supports FBX versions 7.1–7.5 (most common).
 /// @param path File path to the .fbx file (runtime string).
 /// @return Opaque FBX asset handle containing meshes/skeleton/animations, or NULL.
-void *rt_fbx_load(rt_string path) {
+static void *fbx_load_impl(rt_string path) {
     fbx_mesh_binding_t *mesh_bindings = NULL;
     int32_t mesh_binding_count = 0;
     fbx_mesh_remap_t *mesh_remaps = NULL;
@@ -1209,7 +1218,7 @@ void *rt_fbx_load(rt_string path) {
         free(data);
         if (ascii_asset)
             return ascii_asset;
-        rt_trap("FBX.Load: not a supported FBX file");
+        rt_asset_error_set(RT_ASSET_ERROR_BAD_MAGIC, "FBX.Load: not a supported FBX file");
         return NULL;
     }
 
@@ -1272,7 +1281,7 @@ void *rt_fbx_load(rt_string path) {
     free(data);
     if (reader.error) {
         fbx_free_node(&root);
-        rt_trap("FBX.Load: malformed or truncated binary FBX");
+        rt_asset_error_set(RT_ASSET_ERROR_CORRUPT, "FBX.Load: malformed or truncated binary FBX");
         return NULL;
     }
 
@@ -1282,7 +1291,8 @@ void *rt_fbx_load(rt_string path) {
     if (!fbx_parse_connections(&root, &ct)) {
         free(ct.entries);
         fbx_free_node(&root);
-        rt_trap("FBX.Load: connection table allocation failed");
+        rt_asset_error_set(RT_ASSET_ERROR_CORRUPT,
+                           "FBX.Load: failed to parse the connection table");
         return NULL;
     }
 
@@ -1335,7 +1345,8 @@ void *rt_fbx_load(rt_string path) {
         free(ct.entries);
         fbx_free_node(&root);
         fbx_release_ref((void **)&asset);
-        rt_trap("FBX.Load: failed to collect geometry/material bindings");
+        rt_asset_error_set(RT_ASSET_ERROR_CORRUPT,
+                           "FBX.Load: failed to collect geometry/material bindings");
         return NULL;
     }
 
@@ -1395,7 +1406,7 @@ void *rt_fbx_load(rt_string path) {
             free(bone_bindings);
             fbx_free_node(&root);
             fbx_release_ref((void **)&asset);
-            rt_trap("FBX.Load: failed to build scene hierarchy");
+            rt_asset_error_set(RT_ASSET_ERROR_CORRUPT, "FBX.Load: failed to build scene hierarchy");
             return NULL;
         }
     }
@@ -1408,6 +1419,28 @@ void *rt_fbx_load(rt_string path) {
     free(bone_bindings);
     fbx_free_node(&root);
 
+    return asset;
+}
+
+void *rt_fbx_load(rt_string path) {
+    rt_asset_error_begin_load();
+    if (!path) {
+        rt_asset_error_end_load_failure();
+        rt_trap("FBX.Load: null path");
+        return NULL;
+    }
+    if (!rt_string_cstr(path)) {
+        rt_asset_error_end_load_failure();
+        rt_trap("FBX.Load: invalid path");
+        return NULL;
+    }
+    void *asset = fbx_load_impl(path);
+    if (asset) {
+        rt_asset_error_end_load_success();
+    } else {
+        rt_asset_error_set_if_empty(RT_ASSET_ERROR_CORRUPT, "FBX.Load: failed to load FBX");
+        rt_asset_error_end_load_failure();
+    }
     return asset;
 }
 
@@ -1430,20 +1463,28 @@ static uint8_t *fbx_read_recoverable_file(rt_string path, long *out_size) {
         return NULL;
 
     FILE *f = fopen(cpath, "rb");
-    if (!f)
+    if (!f) {
+        rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND, "FBX.Load: '%s' not found", cpath);
         return NULL;
+    }
     if (fbx_fseek(f, 0, SEEK_END) != 0) {
         fclose(f);
+        rt_asset_error_setf(RT_ASSET_ERROR_UNREADABLE, "FBX.Load: failed to seek '%s'", cpath);
         return NULL;
     }
     int64_t fsize = (int64_t)fbx_ftell(f);
     if (fsize < 27 || (uint64_t)fsize > RT_FBX_MAX_FILE_BYTES ||
         (uint64_t)fsize >= (uint64_t)SIZE_MAX) {
         fclose(f);
+        rt_asset_error_setf(fsize > (int64_t)RT_FBX_MAX_FILE_BYTES ? RT_ASSET_ERROR_TOO_LARGE
+                                                                   : RT_ASSET_ERROR_BAD_MAGIC,
+                            "FBX.Load: '%s' is not a supported FBX",
+                            cpath);
         return NULL;
     }
     if (fbx_fseek(f, 0, SEEK_SET) != 0) {
         fclose(f);
+        rt_asset_error_setf(RT_ASSET_ERROR_UNREADABLE, "FBX.Load: failed to seek '%s'", cpath);
         return NULL;
     }
 
@@ -1456,6 +1497,7 @@ static uint8_t *fbx_read_recoverable_file(rt_string path, long *out_size) {
     if (fread(data, 1, (size_t)fsize, f) != (size_t)fsize) {
         fclose(f);
         free(data);
+        rt_asset_error_setf(RT_ASSET_ERROR_UNREADABLE, "FBX.Load: failed to read '%s'", cpath);
         return NULL;
     }
     data[(size_t)fsize] = 0;
@@ -1486,6 +1528,8 @@ void *rt_fbx_load_recoverable(rt_string path) {
 
     void *ascii_asset = fbx_load_ascii_minimal((const char *)data);
     free(data);
+    if (!ascii_asset)
+        rt_asset_error_set(RT_ASSET_ERROR_BAD_MAGIC, "FBX.Load: not a supported FBX file");
     return ascii_asset;
 }
 

@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/assets/rt_fbx_loader_parse.inc  (#included from rt_fbx_loader.c; not a standalone translation unit)
-// Purpose: FBX binary reader, node tree, array decompression, property/node parsing, queries, connections
+// File: src/runtime/graphics/3d/assets/rt_fbx_loader_parse.inc  (#included from rt_fbx_loader.c;
+// not a standalone translation unit) Purpose: FBX binary reader, node tree, array decompression,
+// property/node parsing, queries, connections
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Binary reader helpers
@@ -85,7 +86,7 @@ static int fbx_join_path(char *out, size_t out_size, const char *dir, const char
     if (!leaf || !*leaf)
         return 0;
     if (strlen(leaf) >= sizeof(clean_leaf)) {
-        rt_trap("FBX loader: texture filename is too long");
+        rt_asset_error_add_warning("FBX.Load: texture filename is too long; texture skipped");
         return 0;
     }
     fbx_normalize_path(clean_leaf, sizeof(clean_leaf), leaf);
@@ -104,7 +105,7 @@ static int fbx_join_path(char *out, size_t out_size, const char *dir, const char
     }
     if (dir_len + leaf_len >= out_size) {
         out[0] = '\0';
-        rt_trap("FBX loader: joined texture path is too long");
+        rt_asset_error_add_warning("FBX.Load: joined texture path is too long; texture skipped");
         return 0;
     }
     memcpy(out + dir_len, clean_leaf, leaf_len + 1u);
@@ -202,7 +203,7 @@ static void *fbx_try_load_texture_path(const char *fbx_path, const char *texture
     if (!texture_ref || !*texture_ref)
         return NULL;
     if (strlen(texture_ref) >= sizeof(raw_ref)) {
-        rt_trap("FBX loader: texture reference is too long");
+        rt_asset_error_add_warning("FBX.Load: texture reference is too long; texture skipped");
         return NULL;
     }
 
@@ -217,7 +218,8 @@ static void *fbx_try_load_texture_path(const char *fbx_path, const char *texture
             return pixels;
     }
 
-    have_relative = fbx_normalize_relative_texture_ref(raw_ref, normalized_ref, sizeof(normalized_ref));
+    have_relative =
+        fbx_normalize_relative_texture_ref(raw_ref, normalized_ref, sizeof(normalized_ref));
     if (have_relative) {
         if (*dir) {
             if (fbx_join_path(candidate, sizeof(candidate), dir, normalized_ref))
@@ -332,8 +334,7 @@ static int fbx_payload_looks_jpeg(const uint8_t *data, size_t len) {
 
 /// @brief Sniff a GIF payload by its "GIF87a"/"GIF89a" header.
 static int fbx_payload_looks_gif(const uint8_t *data, size_t len) {
-    return data && len >= 6u &&
-           (memcmp(data, "GIF87a", 6) == 0 || memcmp(data, "GIF89a", 6) == 0);
+    return data && len >= 6u && (memcmp(data, "GIF87a", 6) == 0 || memcmp(data, "GIF89a", 6) == 0);
 }
 
 /// @brief Decode an embedded texture payload into a Pixels object, selecting the codec by
@@ -552,14 +553,12 @@ static void *fbx_decompress_array(const uint8_t *data,
     if (expected > FBX_MAX_DECOMPRESSED_ARRAY_BYTES)
         return NULL;
     if ((data[0] & 0x0fu) != 8u || (data[0] >> 4) > 7u ||
-        ((((uint32_t)data[0] << 8) | (uint32_t)data[1]) % 31u) != 0u ||
-        (data[1] & 0x20u) != 0u)
+        ((((uint32_t)data[0] << 8) | (uint32_t)data[1]) % 31u) != 0u || (data[1] & 0x20u) != 0u)
         return NULL;
     uint32_t deflate_len = comp_len - 6; /* strip 2-byte header + 4-byte adler32 */
     uint32_t expected_adler = ((uint32_t)data[comp_len - 4] << 24) |
                               ((uint32_t)data[comp_len - 3] << 16) |
-                              ((uint32_t)data[comp_len - 2] << 8) |
-                              (uint32_t)data[comp_len - 1];
+                              ((uint32_t)data[comp_len - 2] << 8) | (uint32_t)data[comp_len - 1];
 
     if (!rt_compress_inflate_raw(data + 2, deflate_len, expected, &inflated, &inflated_len))
         return NULL;

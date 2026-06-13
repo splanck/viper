@@ -7,6 +7,12 @@
 //
 // File: src/tests/unit/runtime/TestStlLoad.cpp
 // Purpose: Unit tests for the STL (Binary + ASCII) mesh loader.
+// Key invariants:
+//   - Content failures return NULL and populate asset-load diagnostics.
+//   - Invalid programmer arguments still trap.
+// Ownership/Lifetime:
+//   - Test-scoped meshes are released before the case exits.
+// Links: src/runtime/graphics/3d/render/rt_mesh3d_stl.inc
 //
 //===----------------------------------------------------------------------===//
 
@@ -17,6 +23,7 @@
 #include "tests/TestHarness.hpp"
 
 #include <cmath>
+#include <csetjmp>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -24,6 +31,7 @@
 #include <limits>
 
 extern "C" {
+#include "rt_asset_error.h"
 #include "rt_canvas3d_internal.h"
 void *rt_mesh3d_from_stl(void *path);
 int64_t rt_mesh3d_get_vertex_count(void *obj);
@@ -32,6 +40,33 @@ rt_string rt_const_cstr(const char *str);
 int64_t rt_obj_release_check0(void *obj);
 void rt_obj_free(void *obj);
 }
+
+namespace {
+std::jmp_buf g_trap_jmp;
+const char *g_last_trap = nullptr;
+bool g_expect_trap = false;
+} // namespace
+
+extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_expect_trap)
+        std::longjmp(g_trap_jmp, 1);
+    std::abort();
+}
+
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_last_trap = nullptr;                                                                     \
+        g_expect_trap = true;                                                                      \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
+            expr;                                                                                  \
+            g_expect_trap = false;                                                                 \
+            EXPECT_TRUE(false);                                                                    \
+        } else {                                                                                   \
+            g_expect_trap = false;                                                                 \
+            EXPECT_TRUE(g_last_trap != nullptr);                                                   \
+        }                                                                                          \
+    } while (0)
 
 static void free_mesh(void *m) {
     if (m && rt_obj_release_check0(m))
@@ -88,14 +123,14 @@ static double first_triangle_normal_dot(const rt_mesh3d *mesh, const float expec
 }
 
 TEST(StlLoadTest, RejectNull) {
-    void *mesh = rt_mesh3d_from_stl(nullptr);
-    EXPECT_EQ(mesh, nullptr);
+    EXPECT_TRAP((void)rt_mesh3d_from_stl(nullptr));
 }
 
 TEST(StlLoadTest, RejectNonExistent) {
     void *rts = rt_const_cstr("/tmp/nonexistent_stl.stl");
     void *mesh = rt_mesh3d_from_stl(rts);
     EXPECT_EQ(mesh, nullptr);
+    EXPECT_NE(rt_asset_error_get_code(), RT_ASSET_ERROR_NONE);
 }
 
 TEST(StlLoadTest, RejectGarbage) {
@@ -104,6 +139,7 @@ TEST(StlLoadTest, RejectGarbage) {
     void *rts = rt_const_cstr(path);
     void *mesh = rt_mesh3d_from_stl(rts);
     EXPECT_EQ(mesh, nullptr);
+    EXPECT_NE(rt_asset_error_get_code(), RT_ASSET_ERROR_NONE);
     remove(path);
 }
 

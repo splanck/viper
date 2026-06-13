@@ -825,6 +825,11 @@ function(viper_add_runtime_tests)
     viper_add_ctest(test_rt_gltf test_rt_gltf)
     viper_add_test_labels(test_rt_gltf graphics3d unit)
 
+    viper_add_test(test_rt_asset_load_errors ${VIPER_TESTS_DIR}/unit/test_rt_asset_load_errors.cpp)
+    target_link_libraries(test_rt_asset_load_errors PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_asset_load_errors test_rt_asset_load_errors)
+    viper_add_test_labels(test_rt_asset_load_errors graphics3d unit)
+
     viper_add_test(test_rt_model3d ${VIPER_TESTS_DIR}/unit/test_rt_model3d.cpp)
     target_link_libraries(test_rt_model3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS} viper_packaging)
     target_compile_definitions(test_rt_model3d PRIVATE VIPER_SOURCE_DIR="${CMAKE_SOURCE_DIR}")

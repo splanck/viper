@@ -36,6 +36,7 @@
 #endif
 #endif
 
+#include "rt_asset_error.h"
 #include "rt_box.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
@@ -48,8 +49,8 @@
 #include "rt_scene3d_internal.h"
 #include "rt_scene3d_vscn_internal.h"
 #include "rt_seq.h"
-#include "rt_string.h"
 #include "rt_skeleton3d_internal.h"
+#include "rt_string.h"
 #include "rt_trap.h"
 
 #include <math.h>
@@ -106,8 +107,7 @@ static int32_t scene3d_count_subtree(const rt_scene_node3d *node) {
             return INT32_MAX;
         }
         total++;
-        for (int32_t i = 0, child_count = scene3d_node_child_count(current); i < child_count;
-             i++) {
+        for (int32_t i = 0, child_count = scene3d_node_child_count(current); i < child_count; i++) {
             if (count >= capacity) {
                 size_t new_capacity = capacity > 0 ? capacity * 2u : 64u;
                 const rt_scene_node3d **grown;
@@ -125,9 +125,8 @@ static int32_t scene3d_count_subtree(const rt_scene_node3d *node) {
                 capacity = new_capacity;
             }
             {
-                const rt_scene_node3d *child =
-                    (const rt_scene_node3d *)rt_g3d_checked_or_null(
-                        current->children[i], RT_G3D_SCENENODE3D_CLASS_ID);
+                const rt_scene_node3d *child = (const rt_scene_node3d *)rt_g3d_checked_or_null(
+                    current->children[i], RT_G3D_SCENENODE3D_CLASS_ID);
                 if (child)
                     stack[count++] = child;
             }
@@ -155,15 +154,12 @@ static int vscn_base64_digit_value(char c) {
     return -1;
 }
 
-/// @brief Raise a Scene3D.Load trap reporting invalid base64 in @p field at byte @p offset.
-static void vscn_trap_base64_error(const char *field, size_t offset) {
-    char msg[160];
-    snprintf(msg,
-             sizeof(msg),
-             "Scene3D.Load: invalid base64 in %s at byte offset %zu",
-             field ? field : "data",
-             offset);
-    rt_trap(msg);
+/// @brief Record invalid base64 in @p field at byte @p offset.
+static void vscn_set_base64_error(const char *field, size_t offset) {
+    rt_asset_error_setf(RT_ASSET_ERROR_CORRUPT,
+                        "Scene3D.Load: invalid base64 in %s at byte offset %zu",
+                        field ? field : "data",
+                        offset);
 }
 
 /// @brief Decode a base64 string of `len` characters into raw bytes.
@@ -502,7 +498,7 @@ static rt_pixels_impl *vscn_parse_texture(void *texture_obj) {
     rgba = vscn_base64_decode_ex(rgba_b64, strlen(rgba_b64), &rgba_len, &rgba_error);
     if (!rgba) {
         if (rgba_error != SIZE_MAX)
-            vscn_trap_base64_error("texture.rgbaBase64", rgba_error);
+            vscn_set_base64_error("texture.rgbaBase64", rgba_error);
         return NULL;
     }
     if (rgba_len != (size_t)width * (size_t)height * 4) {
@@ -666,9 +662,9 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
         vscn_base64_decode_ex(indices_b64, strlen(indices_b64), &indices_len, &indices_error);
     if (!vertices_raw || !indices_raw) {
         if (!vertices_raw && vertices_error != SIZE_MAX)
-            vscn_trap_base64_error("mesh.verticesBase64", vertices_error);
+            vscn_set_base64_error("mesh.verticesBase64", vertices_error);
         else if (!indices_raw && indices_error != SIZE_MAX)
-            vscn_trap_base64_error("mesh.indicesBase64", indices_error);
+            vscn_set_base64_error("mesh.indicesBase64", indices_error);
         free(vertices_raw);
         free(indices_raw);
         return NULL;
@@ -1071,19 +1067,26 @@ static char *vscn_read_file(const char *filepath, size_t *out_size) {
     int64_t file_size;
     char *json;
     *out_size = 0;
-    if (!f)
+    if (!f) {
+        rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND, "Scene3D.Load: '%s' not found", filepath);
         return NULL;
+    }
     if (vscn_fseek(f, 0, SEEK_END) != 0) {
         fclose(f);
+        rt_asset_error_setf(
+            RT_ASSET_ERROR_UNREADABLE, "Scene3D.Load: failed to seek '%s'", filepath);
         return NULL;
     }
     file_size = (int64_t)vscn_ftell(f);
     if (file_size < 0 || vscn_fseek(f, 0, SEEK_SET) != 0) {
         fclose(f);
+        rt_asset_error_setf(
+            RT_ASSET_ERROR_UNREADABLE, "Scene3D.Load: failed to read '%s'", filepath);
         return NULL;
     }
     if ((uint64_t)file_size > VSCN_MAX_FILE_BYTES || (uint64_t)file_size > SIZE_MAX - 1) {
         fclose(f);
+        rt_asset_error_setf(RT_ASSET_ERROR_TOO_LARGE, "Scene3D.Load: '%s' is too large", filepath);
         return NULL;
     }
     json = (char *)malloc((size_t)file_size + 1);
@@ -1094,6 +1097,8 @@ static char *vscn_read_file(const char *filepath, size_t *out_size) {
     if (file_size > 0 && fread(json, 1, (size_t)file_size, f) != (size_t)file_size) {
         fclose(f);
         free(json);
+        rt_asset_error_setf(
+            RT_ASSET_ERROR_UNREADABLE, "Scene3D.Load: failed to read '%s'", filepath);
         return NULL;
     }
     fclose(f);
@@ -1114,8 +1119,13 @@ static int vscn_load_nodes(rt_scene3d *scene,
         return 1;
     for (int64_t i = 0; i < vjson_len(nodes_arr); i++) {
         int parse_error = 0;
-        rt_scene_node3d *node = vscn_parse_node(
-            rt_seq_get(nodes_arr, i), meshes, mesh_count, materials, material_count, &parse_error, 0);
+        rt_scene_node3d *node = vscn_parse_node(rt_seq_get(nodes_arr, i),
+                                                meshes,
+                                                mesh_count,
+                                                materials,
+                                                material_count,
+                                                &parse_error,
+                                                0);
         if (parse_error || !node) {
             scene3d_release_ref((void **)&node);
             return 0;
@@ -1137,7 +1147,7 @@ static int vscn_load_nodes(rt_scene3d *scene,
 ///   dependency order (textures, then cubemaps, then materials, then meshes), and finally walks the
 ///   node tree wiring index references back to the freshly-loaded objects. All partially-loaded
 ///   refs are released on any failure. glTF/FBX scenes load through rt_gltf_load / rt_fbx_load.
-void *rt_scene3d_load(rt_string path) {
+static void *rt_scene3d_load_impl(rt_string path) {
     const char *filepath;
     char *json = NULL;
     rt_string json_text = NULL;
@@ -1180,11 +1190,15 @@ void *rt_scene3d_load(rt_string path) {
             json_cstr++;
         if (!json_cstr || *json_cstr != '{') {
             rt_string_unref(json_text);
+            rt_asset_error_setf(
+                RT_ASSET_ERROR_BAD_MAGIC, "Scene3D.Load: '%s' is not a .vscn JSON file", filepath);
             return NULL;
         }
     }
     if (rt_json_is_valid(json_text) != 1) {
         rt_string_unref(json_text);
+        rt_asset_error_setf(
+            RT_ASSET_ERROR_CORRUPT, "Scene3D.Load: '%s' has invalid JSON", filepath);
         return NULL;
     }
     root = rt_json_parse_object(json_text);
@@ -1270,11 +1284,12 @@ void *rt_scene3d_load(rt_string path) {
         goto fail;
     scene->node_count = scene3d_count_subtree(scene->root);
     if (scene->node_count < 0) {
-        rt_trap("Scene3D.LoadVscn: allocation failed while counting nodes");
+        rt_asset_error_set(RT_ASSET_ERROR_TOO_LARGE,
+                           "Scene3D.Load: scene node hierarchy is too large");
         goto fail;
     }
     if (scene->node_count == INT32_MAX) {
-        rt_trap("Scene3D.LoadVscn: too many nodes");
+        rt_asset_error_set(RT_ASSET_ERROR_TOO_LARGE, "Scene3D.Load: too many nodes");
         goto fail;
     }
     if (scene->node_count <= 0)
@@ -1299,6 +1314,28 @@ fail:
     scene3d_release_ref((void **)&scene);
     scene3d_release_ref(&root);
     return NULL;
+}
+
+void *rt_scene3d_load(rt_string path) {
+    rt_asset_error_begin_load();
+    if (!path) {
+        rt_asset_error_end_load_failure();
+        rt_trap("Scene3D.Load: path must not be null");
+        return NULL;
+    }
+    if (!rt_string_cstr(path)) {
+        rt_asset_error_end_load_failure();
+        rt_trap("Scene3D.Load: invalid path");
+        return NULL;
+    }
+    void *scene = rt_scene3d_load_impl(path);
+    if (scene) {
+        rt_asset_error_end_load_success();
+    } else {
+        rt_asset_error_set_if_empty(RT_ASSET_ERROR_CORRUPT, "Scene3D.Load: failed to load scene");
+        rt_asset_error_end_load_failure();
+    }
+    return scene;
 }
 
 #endif // VIPER_ENABLE_GRAPHICS

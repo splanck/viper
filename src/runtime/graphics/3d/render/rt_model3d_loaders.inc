@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/render/rt_model3d_loaders.inc  (#included from rt_model3d.c; not a standalone translation unit)
-// Purpose: Model3D OBJ/glTF/FBX import bridges
+// File: src/runtime/graphics/3d/render/rt_model3d_loaders.inc  (#included from rt_model3d.c; not a
+// standalone translation unit) Purpose: Model3D OBJ/glTF/FBX import bridges
 //===----------------------------------------------------------------------===//
 
 /// @brief Extract the next token from *@p cursor — honoring single/double quotes so paths or
@@ -52,17 +52,27 @@ static void model_obj_set_texture_from_map(void *material,
     if (!map_ref)
         return;
     if (!model_normalize_relative_asset_ref(map_ref, safe_ref, sizeof(safe_ref))) {
+        rt_asset_error_add_warningf("material texture '%s' ignored: unsafe relative path", map_ref);
         free(map_ref);
         return;
     }
     free(map_ref);
     path = model_join_path_alloc(mtl_dir, safe_ref);
-    if (!path)
+    if (!path) {
+        rt_asset_error_add_warningf("material texture '%s' ignored: path allocation failed",
+                                    safe_ref);
         return;
+    }
     pixels = rt_pixels_load(rt_const_cstr(path));
-    free(path);
-    if (!pixels)
+    if (!pixels) {
+        rt_asset_error_add_warningf("material texture '%s' not loaded: %s",
+                                    safe_ref,
+                                    rt_asset_error_get_message()[0] ? rt_asset_error_get_message()
+                                                                    : "content unavailable");
+        free(path);
         return;
+    }
+    free(path);
     switch (slot) {
         case RT_MATERIAL3D_TEXTURE_SLOT_NORMAL:
             rt_material3d_set_normal_map(material, pixels);
@@ -101,11 +111,14 @@ static void model_obj_parse_mtl_file(model_obj_material_table *table,
         return;
     model_parent_dir(mtl_dir, sizeof(mtl_dir), path);
     f = fopen(path, "r");
-    free(path);
-    if (!f)
+    if (!f) {
+        rt_asset_error_add_warningf("material library '%s' not found", safe_ref);
+        free(path);
         return;
-    while ((line_status = model_read_text_line(
-                f, &line, &line_cap, MODEL3D_OBJ_MAX_LINE_BYTES)) > 0) {
+    }
+    free(path);
+    while ((line_status = model_read_text_line(f, &line, &line_cap, MODEL3D_OBJ_MAX_LINE_BYTES)) >
+           0) {
         const char *p = line;
         while (*p == ' ' || *p == '\t')
             p++;
@@ -180,9 +193,10 @@ static void model_obj_parse_mtl_file(model_obj_material_table *table,
         free(current_name);
         model_release_local(current_material);
     }
-    if (line_status < 0)
-        rt_trap(line_status == -2 ? "Model3D.Load OBJ: MTL line too long"
-                                  : "Model3D.Load OBJ: MTL line allocation failed");
+    if (line_status < 0) {
+        rt_asset_error_add_warning(line_status == -2 ? "OBJ material library ignored: line too long"
+                                                     : "OBJ material library ignored: read failed");
+    }
     free(line);
 }
 
@@ -201,8 +215,8 @@ static void model_obj_load_material_libraries(const char *obj_path,
     f = fopen(obj_path, "r");
     if (!f)
         return;
-    while ((line_status = model_read_text_line(
-                f, &line, &line_cap, MODEL3D_OBJ_MAX_LINE_BYTES)) > 0) {
+    while ((line_status = model_read_text_line(f, &line, &line_cap, MODEL3D_OBJ_MAX_LINE_BYTES)) >
+           0) {
         const char *p = line;
         while (*p == ' ' || *p == '\t')
             p++;
@@ -219,9 +233,10 @@ static void model_obj_load_material_libraries(const char *obj_path,
             }
         }
     }
-    if (line_status < 0)
-        rt_trap(line_status == -2 ? "Model3D.Load OBJ: mtllib line too long"
-                                  : "Model3D.Load OBJ: mtllib line allocation failed");
+    if (line_status < 0) {
+        rt_asset_error_add_warning(line_status == -2 ? "OBJ mtllib directive ignored: line too long"
+                                                     : "OBJ mtllib directive ignored: read failed");
+    }
     free(line);
     fclose(f);
 }
@@ -486,7 +501,9 @@ static int model3d_load_from_gltf(rt_model3d *model,
 ///   packed assets are spilled to a temp file, decoded with the recoverable loader, and
 ///   unlinked — mirroring the asset-decode tempfile bridge used for path-only image formats.
 /// @return FBX asset handle on success, or NULL on any failure.
-static void *model3d_fbx_from_asset_bytes(rt_string original_path, const uint8_t *bytes, size_t size) {
+static void *model3d_fbx_from_asset_bytes(rt_string original_path,
+                                          const uint8_t *bytes,
+                                          size_t size) {
     if (!bytes || size == 0)
         return NULL;
     rt_string tmp = rt_tempfile_path_with_ext(rt_const_cstr("viper_fbx_"), rt_const_cstr(".fbx"));
@@ -720,9 +737,7 @@ static void *rt_model3d_load_impl(rt_string path,
         if (!model_build_synth_mesh_nodes(model))
             goto fail;
     } else {
-        char msg[160];
-        snprintf(msg, sizeof(msg), "%s: unsupported file extension", api_name);
-        rt_trap(msg);
+        rt_asset_error_setf(RT_ASSET_ERROR_UNSUPPORTED, "%s: unsupported file extension", api_name);
         goto fail;
     }
 

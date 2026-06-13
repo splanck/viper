@@ -265,6 +265,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/2d/rt_pixels_transform.c
         graphics/2d/rt_pixels_draw.c
         graphics/media/rt_gif.c
+        graphics/3d/assets/rt_asset_error.c
         graphics/3d/assets/rt_gltf.c
         graphics/3d/assets/rt_gltf_trs.c
         graphics/3d/assets/rt_gltf_json.c
@@ -403,6 +404,7 @@ set(RT_GRAPHICS_DISABLED_SOURCES
         graphics/2d/rt_pixels_transform.c
         graphics/2d/rt_pixels_draw.c
         graphics/media/rt_gif.c
+        graphics/3d/assets/rt_asset_error.c
         graphics/2d/rt_sprite.c
         graphics/2d/rt_spritesheet.c
         graphics/2d/rt_camera.c

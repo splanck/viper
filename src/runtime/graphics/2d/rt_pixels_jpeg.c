@@ -6,14 +6,21 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/2d/rt_pixels_jpeg.c
-// Purpose: Baseline JPEG decode: Huffman tables, IDCT, MCU reconstruction, EXIF orientation, RGBA32 output.
-//
-// Links: rt_pixels.h (public API), rt_pixels_io_internal.h (shared helpers)
+// Purpose: Baseline JPEG decode with Huffman tables, IDCT, MCU reconstruction, and RGBA32 output.
+// Key invariants:
+//   - JPEG decode failures return NULL and report asset diagnostics.
+//   - Decoding remains dependency-free and bounded by JPEG_MAX_PIXELS.
+// Ownership/Lifetime:
+//   - Loaded Pixels objects are GC-managed and owned by the caller.
+//   - Temporary file/decode buffers are released before return.
+// Links: rt_pixels.h, rt_pixels_io_internal.h, rt_asset_error.h
 //
 //===----------------------------------------------------------------------===//
 
 #include "rt_pixels_io_internal.h"
 
+#include "rt_asset_error.h"
+#include "rt_trap.h"
 
 //=============================================================================
 // JPEG Decoder (Baseline DCT, Huffman-coded)
@@ -126,8 +133,7 @@ static int jpeg_segment_has(const jpeg_ctx_t *ctx, size_t seg_end, size_t needed
 /// @param big Non-zero for big-endian TIFF, zero for little-endian TIFF.
 /// @return Decoded unsigned 16-bit value.
 static uint16_t jpeg_tiff_read_u16(const uint8_t *p, int big) {
-    return big ? (uint16_t)((uint16_t)p[0] << 8 | p[1])
-               : (uint16_t)(p[0] | ((uint16_t)p[1] << 8));
+    return big ? (uint16_t)((uint16_t)p[0] << 8 | p[1]) : (uint16_t)(p[0] | ((uint16_t)p[1] << 8));
 }
 
 /// @brief Read a TIFF-endian uint32 from an EXIF payload.
@@ -396,10 +402,10 @@ static void jpeg_idct_row(int32_t *row) {
     // Even part
     int64_t s0 = x0 + x4;
     int64_t s1 = x0 - x4;
-    int64_t s2 = jpeg_descale_i64(
-        x2 * JPEG_FIX(0.541196100) + x6 * JPEG_FIX(0.541196100 - 1.847759065), 12);
-    int64_t s3 = jpeg_descale_i64(
-        x2 * JPEG_FIX(0.541196100 + 0.765366865) + x6 * JPEG_FIX(0.541196100), 12);
+    int64_t s2 =
+        jpeg_descale_i64(x2 * JPEG_FIX(0.541196100) + x6 * JPEG_FIX(0.541196100 - 1.847759065), 12);
+    int64_t s3 =
+        jpeg_descale_i64(x2 * JPEG_FIX(0.541196100 + 0.765366865) + x6 * JPEG_FIX(0.541196100), 12);
 
     int64_t e0 = s0 + s3;
     int64_t e1 = s1 + s2;
@@ -442,10 +448,10 @@ static void jpeg_idct_col(int32_t *workspace, int col) {
 
     int64_t s0 = x0 + x4;
     int64_t s1 = x0 - x4;
-    int64_t s2 = jpeg_descale_i64(
-        x2 * JPEG_FIX(0.541196100) + x6 * JPEG_FIX(0.541196100 - 1.847759065), 12);
-    int64_t s3 = jpeg_descale_i64(
-        x2 * JPEG_FIX(0.541196100 + 0.765366865) + x6 * JPEG_FIX(0.541196100), 12);
+    int64_t s2 =
+        jpeg_descale_i64(x2 * JPEG_FIX(0.541196100) + x6 * JPEG_FIX(0.541196100 - 1.847759065), 12);
+    int64_t s3 =
+        jpeg_descale_i64(x2 * JPEG_FIX(0.541196100 + 0.765366865) + x6 * JPEG_FIX(0.541196100), 12);
 
     int64_t e0 = s0 + s3;
     int64_t e1 = s1 + s2;
@@ -742,8 +748,7 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                         if (table_class == 0 && v > 11)
                             goto jpeg_fail;
                         if (table_class == 1 &&
-                            (((v & 0x0F) > 10) ||
-                             ((v & 0x0F) == 0 && v != 0x00 && v != 0xF0)))
+                            (((v & 0x0F) > 10) || ((v & 0x0F) == 0 && v != 0x00 && v != 0xF0)))
                             goto jpeg_fail;
                         ht->huffval[i] = (uint8_t)v;
                     }
@@ -766,8 +771,7 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                 int w = jpeg_read_u16(&ctx);
                 if (w <= 0 || h <= 0 || w > 32768 || h > 32768)
                     goto jpeg_fail;
-                if ((size_t)w > SIZE_MAX / (size_t)h ||
-                    (size_t)w * (size_t)h > JPEG_MAX_PIXELS)
+                if ((size_t)w > SIZE_MAX / (size_t)h || (size_t)w * (size_t)h > JPEG_MAX_PIXELS)
                     goto jpeg_fail;
                 ctx.width = (uint16_t)w;
                 ctx.height = (uint16_t)h;
@@ -817,8 +821,7 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                     goto jpeg_fail;
                 if (ns != ctx.num_components)
                     goto jpeg_fail;
-                if (!jpeg_segment_has(&ctx, seg_end, 3) ||
-                    (size_t)ns > (seg_end - ctx.pos - 3) / 2)
+                if (!jpeg_segment_has(&ctx, seg_end, 3) || (size_t)ns > (seg_end - ctx.pos - 3) / 2)
                     goto jpeg_fail;
                 ctx.scan_comp_count = (uint8_t)ns;
                 for (int i = 0; i < ns; i++) {
@@ -1121,45 +1124,77 @@ void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
 
 /// @brief Load a JPEG image from a file path (wrapper around rt_jpeg_decode_buffer).
 void *rt_pixels_load_jpeg(void *path) {
-    if (!path)
+    rt_asset_error_begin_load();
+    if (!path) {
+        rt_asset_error_end_load_failure();
+        rt_trap("Pixels.LoadJpeg: path must not be null");
         return NULL;
+    }
 
     const char *filepath = rt_string_cstr((rt_string)path);
-    if (!filepath)
+    if (!filepath) {
+        rt_asset_error_end_load_failure();
+        rt_trap("Pixels.LoadJpeg: invalid path");
         return NULL;
+    }
 
     FILE *f = fopen(filepath, "rb");
-    if (!f)
+    if (!f) {
+        rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND, "Pixels.LoadJpeg: '%s' not found", filepath);
+        rt_asset_error_end_load_failure();
         return NULL;
+    }
 
     if (px_fseek(f, 0, SEEK_END) != 0) {
         fclose(f);
+        rt_asset_error_setf(
+            RT_ASSET_ERROR_UNREADABLE, "Pixels.LoadJpeg: failed to seek '%s'", filepath);
+        rt_asset_error_end_load_failure();
         return NULL;
     }
     int64_t file_len = px_ftell(f);
     if (px_fseek(f, 0, SEEK_SET) != 0) {
         fclose(f);
+        rt_asset_error_setf(
+            RT_ASSET_ERROR_UNREADABLE, "Pixels.LoadJpeg: failed to seek '%s'", filepath);
+        rt_asset_error_end_load_failure();
         return NULL;
     }
 
     if (file_len <= 0 || file_len > INT64_C(256) * 1024 * 1024) {
         fclose(f);
+        rt_asset_error_setf(file_len > INT64_C(256) * 1024 * 1024 ? RT_ASSET_ERROR_TOO_LARGE
+                                                                  : RT_ASSET_ERROR_BAD_MAGIC,
+                            "Pixels.LoadJpeg: '%s' is not a supported JPEG",
+                            filepath);
+        rt_asset_error_end_load_failure();
         return NULL;
     }
 
     uint8_t *file_data = (uint8_t *)malloc((size_t)file_len);
     if (!file_data) {
         fclose(f);
+        rt_asset_error_end_load_failure();
         return NULL;
     }
     if (fread(file_data, 1, (size_t)file_len, f) != (size_t)file_len) {
         free(file_data);
         fclose(f);
+        rt_asset_error_setf(
+            RT_ASSET_ERROR_UNREADABLE, "Pixels.LoadJpeg: failed to read '%s'", filepath);
+        rt_asset_error_end_load_failure();
         return NULL;
     }
     fclose(f);
 
     void *result = rt_jpeg_decode_buffer(file_data, (size_t)file_len);
     free(file_data);
+    if (result) {
+        rt_asset_error_end_load_success();
+    } else {
+        rt_asset_error_setf(
+            RT_ASSET_ERROR_CORRUPT, "Pixels.LoadJpeg: '%s' is not a supported JPEG", filepath);
+        rt_asset_error_end_load_failure();
+    }
     return result;
 }

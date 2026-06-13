@@ -13874,6 +13874,12 @@ RT_FUNC(FBXMaterialCount, rt_fbx_material_count,    "Viper.Graphics3D.FBX.get_Ma
 RT_FUNC(FBXGetMaterial,   rt_fbx_get_material,      "Viper.Graphics3D.FBX.GetMaterial",       "obj(obj,i64)")
 RT_FUNC(FBXGetMorph,     rt_fbx_get_morph_target,  "Viper.Graphics3D.FBX.GetMorphTarget",   "obj(obj,i64)")
 
+RT_FUNC(Assets3DLastLoadError, rt_assets3d_get_last_load_error, "Viper.Graphics3D.Assets3D.get_LastLoadError", "str()")
+RT_FUNC(Assets3DLastLoadErrorCode, rt_assets3d_get_last_load_error_code, "Viper.Graphics3D.Assets3D.get_LastLoadErrorCode", "i64()")
+RT_FUNC(Assets3DLoadWarningCount, rt_assets3d_get_load_warning_count, "Viper.Graphics3D.Assets3D.get_LoadWarningCount", "i64()")
+RT_FUNC(Assets3DGetLoadWarning, rt_assets3d_get_load_warning, "Viper.Graphics3D.Assets3D.GetLoadWarning", "str(i64)")
+RT_FUNC(Assets3DGetLoadWarnings, rt_assets3d_get_load_warnings, "Viper.Graphics3D.Assets3D.GetLoadWarnings", "str()")
+
 RT_FUNC(GLTFLoad,        rt_gltf_load,             "Viper.Graphics3D.GLTF.Load",            "obj(str)")
 RT_FUNC(GLTFLoadAsset,   rt_gltf_load_asset,       "Viper.Graphics3D.GLTF.LoadAsset",       "obj(str)")
 RT_FUNC(GLTFMeshCount,   rt_gltf_mesh_count,       "Viper.Graphics3D.GLTF.get_MeshCount",   "i64(obj)")
@@ -13907,6 +13913,14 @@ RT_FUNC(Model3DLoadAnimation, rt_model3d_load_animation, "Viper.Graphics3D.Model
 RT_FUNC(Model3DLoadAnimationAsset, rt_model3d_load_animation_asset, "Viper.Graphics3D.Model3D.LoadAnimationAsset", "obj<Viper.Graphics3D.Animation3D>(str,i64)")
 RT_FUNC(Model3DLoadNodeAnimation, rt_model3d_load_node_animation, "Viper.Graphics3D.Model3D.LoadNodeAnimation", "obj<Viper.Graphics3D.NodeAnimation3D>(str,i64)")
 RT_FUNC(Model3DLoadNodeAnimationAsset, rt_model3d_load_node_animation_asset, "Viper.Graphics3D.Model3D.LoadNodeAnimationAsset", "obj<Viper.Graphics3D.NodeAnimation3D>(str,i64)")
+
+RT_CLASS_BEGIN("Viper.Graphics3D.Assets3D", Assets3D, "none", none)
+    RT_PROP("LastLoadError", "str", Assets3DLastLoadError, none)
+    RT_PROP("LastLoadErrorCode", "i64", Assets3DLastLoadErrorCode, none)
+    RT_PROP("LoadWarningCount", "i64", Assets3DLoadWarningCount, none)
+    RT_METHOD("GetLoadWarning", "str(i64)", Assets3DGetLoadWarning)
+    RT_METHOD("GetLoadWarnings", "str()", Assets3DGetLoadWarnings)
+RT_CLASS_END()
 
 RT_CLASS_BEGIN("Viper.Graphics3D.GLTF", GLTF, "obj", GLTFLoad)
     RT_PROP("MeshCount", "i64", GLTFMeshCount, none)

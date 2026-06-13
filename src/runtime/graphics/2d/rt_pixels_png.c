@@ -6,13 +6,21 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/2d/rt_pixels_png.c
-// Purpose: PNG image decode/encode (RFC 2083): zlib inflate, unfilter, RGBA32 decode, and PNG save.
-//
-// Links: rt_pixels.h (public API), rt_pixels_io_internal.h (shared helpers)
+// Purpose: PNG image decode/encode, including zlib inflate, unfilter, and RGBA32 conversion.
+// Key invariants:
+//   - PNG decode failures return NULL and report asset diagnostics.
+//   - PNG save retains its integer success/failure contract.
+// Ownership/Lifetime:
+//   - Loaded Pixels objects are GC-managed and owned by the caller.
+//   - Temporary file/decode buffers are released before return.
+// Links: rt_pixels.h, rt_pixels_io_internal.h, rt_asset_error.h
 //
 //===----------------------------------------------------------------------===//
 
 #include "rt_pixels_io_internal.h"
+
+#include "rt_asset_error.h"
+#include "rt_trap.h"
 
 #define PNG_MAX_PIXELS ((size_t)64u * 1024u * 1024u)
 
@@ -144,11 +152,8 @@ static uint8_t paeth_predict(uint8_t a, uint8_t b, uint8_t c) {
 /// @param row_stride Number of encoded data bytes in the row, excluding the filter byte.
 /// @param bpp Bytes per pixel used by PNG's Sub/Average/Paeth filters.
 /// @return 1 on success, 0 when the filter type is invalid or inputs are malformed.
-static int png_filter_row(uint8_t *dst,
-                          const uint8_t **src_io,
-                          const uint8_t *prev,
-                          size_t row_stride,
-                          int bpp) {
+static int png_filter_row(
+    uint8_t *dst, const uint8_t **src_io, const uint8_t *prev, size_t row_stride, int bpp) {
     if (!dst || !src_io || !*src_io || bpp < 1)
         return 0;
     const uint8_t *src = *src_io;
@@ -679,39 +684,64 @@ cleanup:
 /// @brief Decode a PNG file into a Pixels object.
 /// @return GC-managed `rt_pixels_impl*` on success, NULL on any decode failure.
 void *rt_pixels_load_png(void *path) {
-    if (!path)
+    rt_asset_error_begin_load();
+    if (!path) {
+        rt_asset_error_end_load_failure();
+        rt_trap("Pixels.LoadPng: path must not be null");
         return NULL;
+    }
 
     const char *filepath = rt_string_cstr((rt_string)path);
-    if (!filepath)
+    if (!filepath) {
+        rt_asset_error_end_load_failure();
+        rt_trap("Pixels.LoadPng: invalid path");
         return NULL;
+    }
 
     FILE *f = fopen(filepath, "rb");
-    if (!f)
+    if (!f) {
+        rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND, "Pixels.LoadPng: '%s' not found", filepath);
+        rt_asset_error_end_load_failure();
         return NULL;
+    }
 
     if (px_fseek(f, 0, SEEK_END) != 0) {
         fclose(f);
+        rt_asset_error_setf(
+            RT_ASSET_ERROR_UNREADABLE, "Pixels.LoadPng: failed to seek '%s'", filepath);
+        rt_asset_error_end_load_failure();
         return NULL;
     }
     int64_t file_len = px_ftell(f);
     if (px_fseek(f, 0, SEEK_SET) != 0) {
         fclose(f);
+        rt_asset_error_setf(
+            RT_ASSET_ERROR_UNREADABLE, "Pixels.LoadPng: failed to seek '%s'", filepath);
+        rt_asset_error_end_load_failure();
         return NULL;
     }
     if (file_len < 8 || file_len > 256 * 1024 * 1024) {
         fclose(f);
+        rt_asset_error_setf(file_len > 256 * 1024 * 1024 ? RT_ASSET_ERROR_TOO_LARGE
+                                                         : RT_ASSET_ERROR_BAD_MAGIC,
+                            "Pixels.LoadPng: '%s' is not a supported PNG",
+                            filepath);
+        rt_asset_error_end_load_failure();
         return NULL;
     }
 
     uint8_t *file_data = (uint8_t *)malloc((size_t)file_len);
     if (!file_data) {
         fclose(f);
+        rt_asset_error_end_load_failure();
         return NULL;
     }
     if (fread(file_data, 1, (size_t)file_len, f) != (size_t)file_len) {
         free(file_data);
         fclose(f);
+        rt_asset_error_setf(
+            RT_ASSET_ERROR_UNREADABLE, "Pixels.LoadPng: failed to read '%s'", filepath);
+        rt_asset_error_end_load_failure();
         return NULL;
     }
     fclose(f);
@@ -721,6 +751,9 @@ void *rt_pixels_load_png(void *path) {
     int64_t height = 0;
     if (!rt_png_decode_buffer_rgba32(file_data, (size_t)file_len, &raw_pixels, &width, &height)) {
         free(file_data);
+        rt_asset_error_setf(
+            RT_ASSET_ERROR_CORRUPT, "Pixels.LoadPng: '%s' is not a supported PNG", filepath);
+        rt_asset_error_end_load_failure();
         return NULL;
     }
     free(file_data);
@@ -728,6 +761,7 @@ void *rt_pixels_load_png(void *path) {
     rt_pixels_impl *pixels = pixels_alloc(width, height);
     if (!pixels) {
         free(raw_pixels);
+        rt_asset_error_end_load_failure();
         return NULL;
     }
     size_t pixel_count = 0;
@@ -737,10 +771,14 @@ void *rt_pixels_load_png(void *path) {
         free(raw_pixels);
         if (rt_obj_release_check0(pixels))
             rt_obj_free(pixels);
+        rt_asset_error_setf(
+            RT_ASSET_ERROR_TOO_LARGE, "Pixels.LoadPng: '%s' dimensions are too large", filepath);
+        rt_asset_error_end_load_failure();
         return NULL;
     }
     memcpy(pixels->data, raw_pixels, pixel_bytes);
     free(raw_pixels);
+    rt_asset_error_end_load_success();
     return pixels;
 }
 

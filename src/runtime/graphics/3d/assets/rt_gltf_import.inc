@@ -1175,21 +1175,6 @@ static uint8_t *gltf_read_file_bytes(const char *filepath, size_t *out_size) {
     return file_data;
 }
 
-/// @brief Trap with a formatted message reporting that a model's @p kind dependency
-///   (buffer/image) at @p dependency_path could not be loaded.
-static void gltf_trap_asset_dependency(const char *model_path,
-                                       const char *dependency_path,
-                                       const char *kind) {
-    char msg[2048];
-    snprintf(msg,
-             sizeof(msg),
-             "GLTF.LoadAsset: failed to load %s dependency '%s' for model '%s'",
-             kind ? kind : "asset",
-             dependency_path ? dependency_path : "",
-             model_path ? model_path : "");
-    rt_trap(msg);
-}
-
 /// @brief Load the root .gltf/.glb bytes: when @p load_assets, try the asset manager
 ///   first (and stop there for `asset://` URIs), otherwise fall back to the filesystem.
 static uint8_t *gltf_load_root_bytes(rt_string path,

@@ -36,6 +36,7 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "rt_fbx_loader.h"
+#include "rt_asset_error.h"
 #include "rt_bytes.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
@@ -289,12 +290,14 @@ static void fbx_asset_release_ref_array(void ***items, int32_t *count, int32_t *
         *capacity = 0;
 }
 
+// clang-format off
 #include "rt_fbx_loader_parse.inc"
 #include "rt_fbx_loader_geometry.inc"
 #include "rt_fbx_loader_scene.inc"
 #include "rt_fbx_loader_skeleton.inc"
 #include "rt_fbx_loader_anim.inc"
 #include "rt_fbx_loader_loader.inc"
+// clang-format on
 
 /*==========================================================================
  * FBX asset accessors

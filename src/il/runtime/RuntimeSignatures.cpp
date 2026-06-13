@@ -57,6 +57,7 @@
 #include "rt_array_obj.h"
 #include "rt_array_str.h"
 #include "rt_asset.h"
+#include "rt_asset_error.h"
 #include "rt_async.h"
 #include "rt_audio.h"
 #include "rt_bag.h"

@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/assets/rt_gltf_material.inc  (#included from rt_gltf.c; not a standalone translation unit)
-// Purpose: glTF image loading and PBR material/extension application
+// File: src/runtime/graphics/3d/assets/rt_gltf_material.inc  (#included from rt_gltf.c; not a
+// standalone translation unit) Purpose: glTF image loading and PBR material/extension application
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
@@ -90,16 +90,21 @@ static int gltf_load_inline_image_data(void **image_slot,
             state->mime_type = state->parsed_mime;
         return 1;
     }
-    if (gltf_parse_data_uri(
-            uri, state->parsed_mime, sizeof(state->parsed_mime), &state->owned_data, &state->image_len)) {
+    if (gltf_parse_data_uri(uri,
+                            state->parsed_mime,
+                            sizeof(state->parsed_mime),
+                            &state->owned_data,
+                            &state->image_len)) {
         state->image_data = state->owned_data;
         if (!state->mime_type && state->parsed_mime[0] != '\0')
             state->mime_type = state->parsed_mime;
         return 1;
     }
-    return !required_image ||
-           !gltf_preload_image_is_supported_format(
-               state->mime_type ? state->mime_type : state->parsed_mime);
+    if (!required_image || !gltf_preload_image_is_supported_format(
+                               state->mime_type ? state->mime_type : state->parsed_mime))
+        return 1;
+    rt_asset_error_add_warning("glTF inline texture not loaded: data URI decode failed");
+    return 1;
 }
 
 static int gltf_load_external_image_ref(void **image_slot,
@@ -114,9 +119,11 @@ static int gltf_load_external_image_ref(void **image_slot,
         *image_slot = gltf_load_dependency_image(image_path, load_assets, preload_bundle);
     if (!*image_slot && required_image &&
         gltf_preload_image_is_supported_format(image_path[0] != '\0' ? image_path : uri)) {
-        if (load_assets)
-            gltf_trap_asset_dependency(filepath, image_path, "image");
-        return 0;
+        rt_asset_error_add_warningf("glTF texture '%s' not loaded: %s",
+                                    image_path[0] != '\0' ? image_path : uri,
+                                    rt_asset_error_get_message()[0] ? rt_asset_error_get_message()
+                                                                    : "content unavailable");
+        return 1;
     }
     return 1;
 }
@@ -143,8 +150,11 @@ static int gltf_load_buffer_view_image_data(void **image_slot,
             state->image_data =
                 gltf_get_buffer_view_data(root, view_idx, buffers, buf_count, &state->image_len);
     }
-    return *image_slot || (state->image_data && state->image_len > 0) || !required_image ||
-           !gltf_preload_image_is_supported_format(state->mime_type);
+    if (*image_slot || (state->image_data && state->image_len > 0) || !required_image ||
+        !gltf_preload_image_is_supported_format(state->mime_type))
+        return 1;
+    rt_asset_error_add_warning("glTF embedded texture not loaded: image payload missing");
+    return 1;
 }
 
 static int gltf_decode_loaded_image(void **image_slot,
@@ -158,7 +168,10 @@ static int gltf_decode_loaded_image(void **image_slot,
     image_type = state->mime_type ? state->mime_type : image_name;
     if (gltf_image_is_ktx2(image_type)) {
         *image_slot = gltf_decode_ktx2_payload(state->image_data, state->image_len);
-        return *image_slot || !required_image;
+        if (*image_slot || !required_image)
+            return 1;
+        rt_asset_error_add_warning("glTF embedded KTX2 texture not loaded: decode failed");
+        return 1;
     }
     if (gltf_preload_image_is_supported_format(image_type)) {
         uint8_t *rgba_blob = NULL;
@@ -169,7 +182,9 @@ static int gltf_decode_loaded_image(void **image_slot,
             free(rgba_blob);
             return *image_slot || !required_image;
         }
-        return !required_image;
+        if (required_image)
+            rt_asset_error_add_warning("glTF embedded texture not loaded: image decode failed");
+        return 1;
     }
     *image_slot = rt_asset_decode_typed(image_name, state->image_data, state->image_len);
     return 1;
@@ -314,12 +329,8 @@ static void gltf_load_images_and_textures(void *root,
     void *textures_arr = jarr(root, "textures");
     int texture_count = 0;
     uint8_t *image_required = NULL;
-    if (!gltf_prepare_image_arrays(images_arr,
-                                   textures_arr,
-                                   &image_count,
-                                   &texture_count,
-                                   &images,
-                                   &image_required)) {
+    if (!gltf_prepare_image_arrays(
+            images_arr, textures_arr, &image_count, &texture_count, &images, &image_required)) {
         load_failed = 1;
         goto finish;
     }
@@ -395,7 +406,8 @@ static int gltf_material_bind_texture(void *texture_json,
             setter(material, texture_images[tex_idx]);
     } else if (gltf_texture_index_missing_supported_payload(
                    tex_idx, texture_count, texture_images, texture_supported)) {
-        return 1;
+        rt_asset_error_add_warning("glTF material texture left untextured: image payload missing");
+        return 0;
     }
     gltf_apply_texture_slot(texture_samplers, texture_count, tex_idx, material, slot, slot_info);
     return 0;
@@ -412,8 +424,7 @@ static void gltf_material_read_pbr_base_color(void *pbr, double rgba[4]) {
         rgba[1] = gltf_clamp_double(jvalue_num(rt_seq_get(bcf, 1), rgba[1]), 0.0, 1.0, rgba[1]);
         rgba[2] = gltf_clamp_double(jvalue_num(rt_seq_get(bcf, 2), rgba[2]), 0.0, 1.0, rgba[2]);
         if (jarr_len(bcf) >= 4)
-            rgba[3] =
-                gltf_clamp_double(jvalue_num(rt_seq_get(bcf, 3), rgba[3]), 0.0, 1.0, rgba[3]);
+            rgba[3] = gltf_clamp_double(jvalue_num(rt_seq_get(bcf, 3), rgba[3]), 0.0, 1.0, rgba[3]);
     }
 }
 
@@ -465,7 +476,8 @@ static int gltf_material_apply_pbr_textures(void *pbr,
         texture_supported,
         texture_samplers,
         texture_count,
-        gltf_material_slot_info(material_infos, material_index, RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR),
+        gltf_material_slot_info(
+            material_infos, material_index, RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR),
         rt_material3d_set_texture);
     load_failed |= gltf_material_bind_texture(
         mr_tex,
@@ -509,11 +521,11 @@ static int gltf_material_apply_specular_extension(void *specular,
     spec_tex = jget(specular, "specularTexture");
     spec_color_tex = jget(specular, "specularColorTexture");
     chosen_spec_tex = spec_color_tex ? spec_color_tex : spec_tex;
-    ((rt_material3d *)material)->specular[0] =
-        gltf_clamp_double(jnum(specular, "specularFactor", ((rt_material3d *)material)->specular[0]),
-                          0.0,
-                          1.0,
-                          ((rt_material3d *)material)->specular[0]);
+    ((rt_material3d *)material)->specular[0] = gltf_clamp_double(
+        jnum(specular, "specularFactor", ((rt_material3d *)material)->specular[0]),
+        0.0,
+        1.0,
+        ((rt_material3d *)material)->specular[0]);
     ((rt_material3d *)material)->specular[1] = ((rt_material3d *)material)->specular[0];
     ((rt_material3d *)material)->specular[2] = ((rt_material3d *)material)->specular[0];
     if (spec_color && jarr_len(spec_color) >= 3) {
@@ -533,16 +545,17 @@ static int gltf_material_apply_specular_extension(void *specular,
             1.0,
             ((rt_material3d *)material)->specular[2]);
     }
-    return gltf_material_bind_texture(
-        chosen_spec_tex,
-        material,
-        RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR,
-        texture_images,
-        texture_supported,
-        texture_samplers,
-        texture_count,
-        gltf_material_slot_info(material_infos, material_index, RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR),
-        rt_material3d_set_specular_map);
+    return gltf_material_bind_texture(chosen_spec_tex,
+                                      material,
+                                      RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR,
+                                      texture_images,
+                                      texture_supported,
+                                      texture_samplers,
+                                      texture_count,
+                                      gltf_material_slot_info(material_infos,
+                                                              material_index,
+                                                              RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR),
+                                      rt_material3d_set_specular_map);
 }
 
 static int gltf_material_validate_extension_texture(void *texture_json,
@@ -573,10 +586,9 @@ static int gltf_material_apply_clearcoat_extension(void *clearcoat,
     int load_failed = 0;
     if (!clearcoat || !material)
         return 0;
-    clearcoat_factor =
-        gltf_clamp_double(jnum(clearcoat, "clearcoatFactor", 0.0), 0.0, 1.0, 0.0);
-    clearcoat_roughness = gltf_clamp_double(
-        jnum(clearcoat, "clearcoatRoughnessFactor", 0.0), 0.0, 1.0, 0.0);
+    clearcoat_factor = gltf_clamp_double(jnum(clearcoat, "clearcoatFactor", 0.0), 0.0, 1.0, 0.0);
+    clearcoat_roughness =
+        gltf_clamp_double(jnum(clearcoat, "clearcoatRoughnessFactor", 0.0), 0.0, 1.0, 0.0);
     if (clearcoat_factor > ((rt_material3d *)material)->reflectivity)
         rt_material3d_set_reflectivity(material, clearcoat_factor);
     rt_material3d_set_custom_param(material, 1, clearcoat_factor);
@@ -587,19 +599,20 @@ static int gltf_material_apply_clearcoat_extension(void *clearcoat,
                                                             texture_supported,
                                                             texture_samplers,
                                                             texture_count);
-    load_failed |= gltf_material_validate_extension_texture(
-        jget(clearcoat, "clearcoatRoughnessTexture"),
-        material,
-        texture_images,
-        texture_supported,
-        texture_samplers,
-        texture_count);
-    load_failed |= gltf_material_validate_extension_texture(jget(clearcoat, "clearcoatNormalTexture"),
-                                                            material,
-                                                            texture_images,
-                                                            texture_supported,
-                                                            texture_samplers,
-                                                            texture_count);
+    load_failed |=
+        gltf_material_validate_extension_texture(jget(clearcoat, "clearcoatRoughnessTexture"),
+                                                 material,
+                                                 texture_images,
+                                                 texture_supported,
+                                                 texture_samplers,
+                                                 texture_count);
+    load_failed |=
+        gltf_material_validate_extension_texture(jget(clearcoat, "clearcoatNormalTexture"),
+                                                 material,
+                                                 texture_images,
+                                                 texture_supported,
+                                                 texture_samplers,
+                                                 texture_count);
     return load_failed;
 }
 
@@ -636,7 +649,8 @@ static int gltf_material_apply_extensions(void *mat_json,
                                           int32_t texture_count,
                                           gltf_material_info_t *material_infos) {
     void *extensions = jget(mat_json, "extensions");
-    void *emissive_strength = extensions ? jget(extensions, "KHR_materials_emissive_strength") : NULL;
+    void *emissive_strength =
+        extensions ? jget(extensions, "KHR_materials_emissive_strength") : NULL;
     void *unlit = extensions ? jget(extensions, "KHR_materials_unlit") : NULL;
     void *specular = extensions ? jget(extensions, "KHR_materials_specular") : NULL;
     void *clearcoat = extensions ? jget(extensions, "KHR_materials_clearcoat") : NULL;
@@ -658,18 +672,10 @@ static int gltf_material_apply_extensions(void *mat_json,
                                                           texture_samplers,
                                                           texture_count,
                                                           material_infos);
-    load_failed |= gltf_material_apply_clearcoat_extension(clearcoat,
-                                                           material,
-                                                           texture_images,
-                                                           texture_supported,
-                                                           texture_samplers,
-                                                           texture_count);
-    load_failed |= gltf_material_apply_transmission_extension(transmission,
-                                                              material,
-                                                              texture_images,
-                                                              texture_supported,
-                                                              texture_samplers,
-                                                              texture_count);
+    load_failed |= gltf_material_apply_clearcoat_extension(
+        clearcoat, material, texture_images, texture_supported, texture_samplers, texture_count);
+    load_failed |= gltf_material_apply_transmission_extension(
+        transmission, material, texture_images, texture_supported, texture_samplers, texture_count);
     return load_failed;
 }
 
@@ -696,7 +702,8 @@ static int gltf_material_apply_standard_textures(void *mat_json,
         gltf_material_slot_info(material_infos, material_index, RT_MATERIAL3D_TEXTURE_SLOT_NORMAL),
         rt_material3d_set_normal_map);
     if (normal_tex)
-        rt_material3d_set_normal_scale(material, gltf_finite_or(jnum(normal_tex, "scale", 1.0), 1.0));
+        rt_material3d_set_normal_scale(material,
+                                       gltf_finite_or(jnum(normal_tex, "scale", 1.0), 1.0));
 
     load_failed |= gltf_material_bind_texture(
         occlusion_tex,
@@ -720,7 +727,8 @@ static int gltf_material_apply_standard_textures(void *mat_json,
         texture_supported,
         texture_samplers,
         texture_count,
-        gltf_material_slot_info(material_infos, material_index, RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE),
+        gltf_material_slot_info(
+            material_infos, material_index, RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE),
         rt_material3d_set_emissive_map);
     return load_failed;
 }

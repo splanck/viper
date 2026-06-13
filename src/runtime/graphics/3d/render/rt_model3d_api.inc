@@ -1,16 +1,33 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/render/rt_model3d_api.inc  (#included from rt_model3d.c; not a standalone translation unit)
-// Purpose: Model3D public load API, accessors, and instantiation
+// File: src/runtime/graphics/3d/render/rt_model3d_api.inc  (#included from rt_model3d.c; not a
+// standalone translation unit) Purpose: Model3D public load API, accessors, and instantiation
 //===----------------------------------------------------------------------===//
 /// @brief Load a model from the filesystem (no asset-manager resolution). See header.
 void *rt_model3d_load(rt_string path) {
-    return rt_model3d_load_impl(path, 0, NULL, 0, NULL, NULL, 0);
+    rt_asset_error_begin_load();
+    void *model = rt_model3d_load_impl(path, 0, NULL, 0, NULL, NULL, 0);
+    if (model) {
+        rt_asset_error_end_load_success();
+    } else {
+        rt_asset_error_set_if_empty(RT_ASSET_ERROR_CORRUPT, "Model3D.Load: failed to load model");
+        rt_asset_error_end_load_failure();
+    }
+    return model;
 }
 
 /// @brief Load a model through the asset manager (mounted/embedded + dev fallback). See header.
 void *rt_model3d_load_asset(rt_string path) {
-    return rt_model3d_load_impl(path, 1, NULL, 0, NULL, NULL, 0);
+    rt_asset_error_begin_load();
+    void *model = rt_model3d_load_impl(path, 1, NULL, 0, NULL, NULL, 0);
+    if (model) {
+        rt_asset_error_end_load_success();
+    } else {
+        rt_asset_error_set_if_empty(RT_ASSET_ERROR_CORRUPT,
+                                    "Model3D.LoadAsset: failed to load model");
+        rt_asset_error_end_load_failure();
+    }
+    return model;
 }
 
 /// @brief Internal async path: build a glTF/GLB Model3D from worker-staged root bytes.

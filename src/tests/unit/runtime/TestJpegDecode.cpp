@@ -19,12 +19,14 @@
 
 #include "tests/TestHarness.hpp"
 
+#include <csetjmp>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
 extern "C" {
+const char *rt_asset_error_get_message(void);
 void *rt_pixels_load_jpeg(void *path);
 void *rt_pixels_load_bmp(void *path);
 void *rt_pixels_load_png(void *path);
@@ -37,6 +39,33 @@ void *rt_const_cstr(const char *s);
 int64_t rt_obj_release_check0(void *obj);
 void rt_obj_free(void *obj);
 }
+
+namespace {
+std::jmp_buf g_trap_jmp;
+const char *g_last_trap = nullptr;
+bool g_expect_trap = false;
+} // namespace
+
+extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_expect_trap)
+        std::longjmp(g_trap_jmp, 1);
+    std::abort();
+}
+
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_last_trap = nullptr;                                                                     \
+        g_expect_trap = true;                                                                      \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
+            expr;                                                                                  \
+            g_expect_trap = false;                                                                 \
+            EXPECT_TRUE(false);                                                                    \
+        } else {                                                                                   \
+            g_expect_trap = false;                                                                 \
+            EXPECT_TRUE(g_last_trap != nullptr);                                                   \
+        }                                                                                          \
+    } while (0)
 
 // Helper to load JPEG from a C string path
 static void *load_jpeg(const char *path) {
@@ -62,13 +91,12 @@ static void free_pixels(void *p) {
 }
 
 TEST(JpegDecodeTest, RejectNonJpeg) {
-    // NULL path should return NULL
-    void *result = rt_pixels_load_jpeg(nullptr);
-    EXPECT_EQ(result, nullptr);
+    EXPECT_TRAP((void)rt_pixels_load_jpeg(nullptr));
 
     // Non-existent file
-    result = load_jpeg("/tmp/nonexistent_jpeg_test_file.jpg");
+    void *result = load_jpeg("/tmp/nonexistent_jpeg_test_file.jpg");
     EXPECT_EQ(result, nullptr);
+    EXPECT_TRUE(std::strlen(rt_asset_error_get_message()) > 0);
 }
 
 TEST(JpegDecodeTest, RejectInvalidData) {
@@ -82,6 +110,7 @@ TEST(JpegDecodeTest, RejectInvalidData) {
 
     void *result = load_jpeg(path);
     EXPECT_EQ(result, nullptr);
+    EXPECT_TRUE(std::strlen(rt_asset_error_get_message()) > 0);
     remove(path);
 }
 

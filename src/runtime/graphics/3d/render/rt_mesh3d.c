@@ -33,6 +33,7 @@
 #endif
 #endif
 
+#include "rt_asset_error.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_mat4.h"
@@ -136,8 +137,7 @@ static int64_t mesh3d_estimate_payload_bytes(const rt_mesh3d *m) {
     uint64_t total;
     if (!m)
         return 0;
-    vertex_bytes =
-        (uint64_t)rt_mesh3d_safe_vertex_count(m) * (uint64_t)sizeof(vgfx3d_vertex_t);
+    vertex_bytes = (uint64_t)rt_mesh3d_safe_vertex_count(m) * (uint64_t)sizeof(vgfx3d_vertex_t);
     index_bytes = (uint64_t)rt_mesh3d_safe_index_count(m) * (uint64_t)sizeof(uint32_t);
     total = vertex_bytes + index_bytes;
     if (total < vertex_bytes)
@@ -149,8 +149,9 @@ static int64_t mesh3d_estimate_payload_bytes(const rt_mesh3d *m) {
 /// @details Programmatic AddTriangle already enforces in-range indices, but tests and internal
 ///          repair paths intentionally tolerate corrupt private counts. When a count repair exposes
 ///          unused capacity slots as real indices, clamp any out-of-range slot to zero so the clone
-///          cannot later feed undefined vertex fetches to GPU backends. Existing public count-repair
-///          semantics are preserved; draw submission still rejects incomplete triangle-list tails.
+///          cannot later feed undefined vertex fetches to GPU backends. Existing public
+///          count-repair semantics are preserved; draw submission still rejects incomplete
+///          triangle-list tails.
 static int mesh3d_sanitize_triangle_indices(rt_mesh3d *m, const char *op) {
     uint32_t vertex_count;
     uint32_t index_count;
@@ -1077,17 +1078,17 @@ void rt_mesh3d_recalc_normals(void *obj) {
 /// @brief Compute per-vertex normals from the mesh's triangle faces when the source provided
 ///   none, accumulating area-weighted face normals and normalizing. Traps on accumulator
 ///   allocation overflow.
-static void mesh3d_fill_missing_normals(rt_mesh3d *m) {
+static int mesh3d_fill_missing_normals(rt_mesh3d *m) {
     if (!m || m->index_count < 3u)
-        return;
+        return 1;
     if ((size_t)m->vertex_count > SIZE_MAX / (3u * sizeof(double))) {
-        rt_trap("Mesh3D.FromOBJ: normal accumulator allocation overflow");
-        return;
+        rt_asset_error_set(RT_ASSET_ERROR_TOO_LARGE,
+                           "Mesh3D.FromOBJ: normal accumulator allocation overflow");
+        return 0;
     }
     double *accum = (double *)calloc((size_t)m->vertex_count * 3u, sizeof(double));
     if (m->vertex_count > 0 && !accum) {
-        rt_trap("Mesh3D.FromOBJ: memory allocation failed");
-        return;
+        return 0;
     }
     for (uint32_t i = 0; i + 2 < m->index_count; i += 3) {
         uint32_t i0 = m->indices[i], i1 = m->indices[i + 1], i2 = m->indices[i + 2];
@@ -1140,6 +1141,7 @@ static void mesh3d_fill_missing_normals(rt_mesh3d *m) {
     }
     free(accum);
     mesh3d_bump_vertex_revision(m, 1);
+    return 1;
 }
 
 /// @brief Create a deep copy of a mesh (independent vertex/index arrays).
@@ -1407,8 +1409,7 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
         }
 
         float *t = m->vertices[i].tangent;
-        float handedness =
-            (!isfinite(t[3]) || t[3] == 0.0f) ? 1.0f : (t[3] < 0.0f ? -1.0f : 1.0f);
+        float handedness = (!isfinite(t[3]) || t[3] == 0.0f) ? 1.0f : (t[3] < 0.0f ? -1.0f : 1.0f);
         float tx = t[0];
         float ty = t[1];
         float tz = t[2];
@@ -1436,8 +1437,8 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
     rt_mesh3d_refresh_bounds(m);
 }
 
-#include "rt_mesh3d_procedural.inc"
 #include "rt_mesh3d_obj.inc"
+#include "rt_mesh3d_procedural.inc"
 #include "rt_mesh3d_stl.inc"
 #else
 typedef int rt_graphics_disabled_tu_guard;

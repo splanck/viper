@@ -72,7 +72,7 @@ function(viper_add_e2e_vm_suite)
     viper_add_ctest(vm_trace_src
             ${CMAKE_COMMAND}
             -DILC=$<TARGET_FILE:viper>
-            -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/trace_src.bas
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/vbasic/trace_src.bas
             -DGOLDEN=${CMAKE_SOURCE_DIR}/src/tests/e2e/TraceSrcTests.bas.out
             -P ${_VIPER_E2E_DIR}/test_trace_src.cmake)
     viper_set_test_labels(vm_trace_src vm)

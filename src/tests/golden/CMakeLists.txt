@@ -78,12 +78,12 @@ function(viper_add_golden_suite_tests)
     # ------------------------------------------------------------------
     viper_add_ctest(example_basic_addfile
             ${CMAKE_COMMAND} -DILC=${BASIC_ILC}
-            -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/addfile_main.bas -DEXPECT_EXIT_ZERO=TRUE
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/vbasic/addfile_main.bas -DEXPECT_EXIT_ZERO=TRUE
             -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 
     viper_add_ctest(example_basic_addfile_ns
             ${CMAKE_COMMAND} -DILC=${BASIC_ILC}
-            -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/addfile_ns_main.bas -DEXPECT_EXIT_ZERO=TRUE
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/vbasic/addfile_ns_main.bas -DEXPECT_EXIT_ZERO=TRUE
             -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 
     # ------------------------------------------------------------------

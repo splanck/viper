@@ -5,12 +5,25 @@
 //
 //===----------------------------------------------------------------------===//
 
+// File: src/tests/unit/test_rt_model3d.cpp
+// Purpose: Unit tests for Model3D, FBX, and glTF asset import/runtime accessors.
+// Key invariants:
+//   - Imported asset handles expose stable meshes/materials/animations/scenes.
+//   - Recoverable content failures return NULL with asset diagnostics.
+// Ownership/Lifetime:
+//   - Tests release GC-managed runtime objects they allocate or load.
+//   - Temporary fixture files are removed by their owning tests.
+// Links: rt_model3d.h, rt_fbx_loader.h, rt_gltf.h, rt_asset_error.h
+//
+//===----------------------------------------------------------------------===//
+
 #ifndef VIPER_ENABLE_GRAPHICS
 #define VIPER_ENABLE_GRAPHICS 1
 #endif
 
 #include "rt_animcontroller3d.h"
 #include "rt_asset.h"
+#include "rt_asset_error.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_fbx_loader.h"
@@ -72,6 +85,7 @@ struct Model3DView {
     void **cameras;
     int32_t camera_count;
     int32_t camera_capacity;
+
     struct {
         rt_scene_node3d *root;
         char *name;
@@ -79,6 +93,7 @@ struct Model3DView {
         int32_t camera_count;
         int32_t camera_capacity;
     } *scenes;
+
     int32_t scene_count;
     int32_t scene_capacity;
 };
@@ -484,11 +499,8 @@ static FbxNodeFixture make_fbx_animation_curve_fixture_with_attrs(int64_t id,
     return node;
 }
 
-static FbxNodeFixture make_fbx_animation_curve_mismatched_fixture(int64_t id,
-                                                                  const int64_t *times,
-                                                                  size_t time_count,
-                                                                  const double *values,
-                                                                  size_t value_count) {
+static FbxNodeFixture make_fbx_animation_curve_mismatched_fixture(
+    int64_t id, const int64_t *times, size_t time_count, const double *values, size_t value_count) {
     FbxNodeFixture node;
     node.name = "AnimationCurve";
     node.props.push_back(fbx_prop_i64_fixture(id));
@@ -872,7 +884,8 @@ static bool write_fbx_large_ngon_fixture(const char *path) {
 
     geometry.name = "Geometry";
     geometry.props.push_back(fbx_prop_i64_fixture(kGeometryId));
-    geometry.props.push_back(fbx_prop_string_fixture(make_fbx_object_name("LargeNgon", "Geometry")));
+    geometry.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("LargeNgon", "Geometry")));
     geometry.props.push_back(fbx_prop_string_fixture("Mesh"));
     geometry.children.push_back(FbxNodeFixture{
         "Vertices", {fbx_prop_array_fixture('d', positions.data(), positions.size())}, {}});
@@ -920,7 +933,8 @@ static bool write_fbx_texture_alias_fixture(const char *path, const char *textur
     FbxNodeFixture normal_texture_props70;
     FbxNodeFixture objects;
     FbxNodeFixture connections;
-    FbxNodeFixture model = make_fbx_model_fixture(kModelId, "TextureAliases", "Mesh", 0.0, 0.0, 0.0);
+    FbxNodeFixture model =
+        make_fbx_model_fixture(kModelId, "TextureAliases", "Mesh", 0.0, 0.0, 0.0);
     std::vector<uint8_t> bytes;
 
     geometry.name = "Geometry";
@@ -952,7 +966,8 @@ static bool write_fbx_texture_alias_fixture(const char *path, const char *textur
         fbx_prop_string_fixture(make_fbx_object_name("AliasBaseColor", "Texture")));
     base_texture.props.push_back(fbx_prop_string_fixture(""));
     base_texture_props70.name = "Properties70";
-    base_texture_props70.children.push_back(make_fbx_property_string("RelativeFilename", texture_ref));
+    base_texture_props70.children.push_back(
+        make_fbx_property_string("RelativeFilename", texture_ref));
     base_texture.children.push_back(base_texture_props70);
 
     normal_texture.name = "Texture";
@@ -961,7 +976,8 @@ static bool write_fbx_texture_alias_fixture(const char *path, const char *textur
         fbx_prop_string_fixture(make_fbx_object_name("AliasNormal", "Texture")));
     normal_texture.props.push_back(fbx_prop_string_fixture(""));
     normal_texture_props70.name = "Properties70";
-    normal_texture_props70.children.push_back(make_fbx_property_string("RelativeFilename", texture_ref));
+    normal_texture_props70.children.push_back(
+        make_fbx_property_string("RelativeFilename", texture_ref));
     normal_texture.children.push_back(normal_texture_props70);
 
     objects.name = "Objects";
@@ -1009,7 +1025,8 @@ static bool write_fbx_material_alias_fixture(const char *path) {
     FbxNodeFixture material_props70;
     FbxNodeFixture objects;
     FbxNodeFixture connections;
-    FbxNodeFixture model = make_fbx_model_fixture(kModelId, "MaterialAliases", "Mesh", 0.0, 0.0, 0.0);
+    FbxNodeFixture model =
+        make_fbx_model_fixture(kModelId, "MaterialAliases", "Mesh", 0.0, 0.0, 0.0);
     std::vector<uint8_t> bytes;
 
     geometry.name = "Geometry";
@@ -1083,8 +1100,7 @@ static bool write_fbx_multilayer_attribute_fixture(const char *path) {
     static const int32_t kIndices[] = {0, 1, ~2};
     static const double kUv0[] = {0.0, 0.0, 1.0, 0.0, 0.0, 1.0};
     static const double kUv1[] = {0.9, 0.1, 0.8, 0.2, 0.7, 0.3};
-    static const double kColors[] = {1.0, 0.0, 0.0, 1.0, 0.0, 1.0,
-                                     0.0, 1.0, 0.0, 0.0, 1.0, 0.5};
+    static const double kColors[] = {1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.5};
 
     FbxNodeFixture geometry;
     FbxNodeFixture uv0_layer;
@@ -1117,8 +1133,8 @@ static bool write_fbx_multilayer_attribute_fixture(const char *path) {
         FbxNodeFixture{"MappingInformationType", {fbx_prop_string_fixture("ByPolygonVertex")}, {}});
     uv0_layer.children.push_back(
         FbxNodeFixture{"ReferenceInformationType", {fbx_prop_string_fixture("Direct")}, {}});
-    uv0_layer.children.push_back(
-        FbxNodeFixture{"UV", {fbx_prop_array_fixture('d', kUv0, sizeof(kUv0) / sizeof(kUv0[0]))}, {}});
+    uv0_layer.children.push_back(FbxNodeFixture{
+        "UV", {fbx_prop_array_fixture('d', kUv0, sizeof(kUv0) / sizeof(kUv0[0]))}, {}});
     geometry.children.push_back(uv0_layer);
 
     uv1_layer.name = "LayerElementUV";
@@ -1127,8 +1143,8 @@ static bool write_fbx_multilayer_attribute_fixture(const char *path) {
         FbxNodeFixture{"MappingInformationType", {fbx_prop_string_fixture("ByPolygonVertex")}, {}});
     uv1_layer.children.push_back(
         FbxNodeFixture{"ReferenceInformationType", {fbx_prop_string_fixture("Direct")}, {}});
-    uv1_layer.children.push_back(
-        FbxNodeFixture{"UV", {fbx_prop_array_fixture('d', kUv1, sizeof(kUv1) / sizeof(kUv1[0]))}, {}});
+    uv1_layer.children.push_back(FbxNodeFixture{
+        "UV", {fbx_prop_array_fixture('d', kUv1, sizeof(kUv1) / sizeof(kUv1[0]))}, {}});
     geometry.children.push_back(uv1_layer);
 
     color_layer.name = "LayerElementColor";
@@ -1137,8 +1153,10 @@ static bool write_fbx_multilayer_attribute_fixture(const char *path) {
         FbxNodeFixture{"MappingInformationType", {fbx_prop_string_fixture("ByPolygonVertex")}, {}});
     color_layer.children.push_back(
         FbxNodeFixture{"ReferenceInformationType", {fbx_prop_string_fixture("Direct")}, {}});
-    color_layer.children.push_back(FbxNodeFixture{
-        "Colors", {fbx_prop_array_fixture('d', kColors, sizeof(kColors) / sizeof(kColors[0]))}, {}});
+    color_layer.children.push_back(
+        FbxNodeFixture{"Colors",
+                       {fbx_prop_array_fixture('d', kColors, sizeof(kColors) / sizeof(kColors[0]))},
+                       {}});
     geometry.children.push_back(color_layer);
 
     material.name = "Material";
@@ -1176,26 +1194,28 @@ static bool write_fbx_cluster_transform_link_fixture(const char *path) {
     static const int32_t kChildIndices[] = {1, 2};
     static const double kRootWeights[] = {1.0};
     static const double kChildWeights[] = {1.0, 1.0};
-    static const double kRootLink[16] = {1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
-                                         0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0};
-    static const double kChildLink[16] = {1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 4.0,
-                                          0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0};
+    static const double kRootLink[16] = {
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0};
+    static const double kChildLink[16] = {
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 4.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0};
     FbxNodeFixture geometry;
     FbxNodeFixture objects;
     FbxNodeFixture connections;
     FbxNodeFixture skin = make_fbx_deformer_fixture(kSkinId, "Skin", "Skin");
-    FbxNodeFixture root_cluster = make_fbx_cluster_fixture(kRootClusterId,
-                                                           "RootCluster",
-                                                           kRootIndices,
-                                                           sizeof(kRootIndices) / sizeof(kRootIndices[0]),
-                                                           kRootWeights,
-                                                           sizeof(kRootWeights) / sizeof(kRootWeights[0]));
-    FbxNodeFixture child_cluster = make_fbx_cluster_fixture(kChildClusterId,
-                                                            "ChildCluster",
-                                                            kChildIndices,
-                                                            sizeof(kChildIndices) / sizeof(kChildIndices[0]),
-                                                            kChildWeights,
-                                                            sizeof(kChildWeights) / sizeof(kChildWeights[0]));
+    FbxNodeFixture root_cluster =
+        make_fbx_cluster_fixture(kRootClusterId,
+                                 "RootCluster",
+                                 kRootIndices,
+                                 sizeof(kRootIndices) / sizeof(kRootIndices[0]),
+                                 kRootWeights,
+                                 sizeof(kRootWeights) / sizeof(kRootWeights[0]));
+    FbxNodeFixture child_cluster =
+        make_fbx_cluster_fixture(kChildClusterId,
+                                 "ChildCluster",
+                                 kChildIndices,
+                                 sizeof(kChildIndices) / sizeof(kChildIndices[0]),
+                                 kChildWeights,
+                                 sizeof(kChildWeights) / sizeof(kChildWeights[0]));
 
     root_cluster.children.push_back(make_fbx_matrix_child("TransformLink", kRootLink));
     child_cluster.children.push_back(make_fbx_matrix_child("TransformLink", kChildLink));
@@ -1216,8 +1236,10 @@ static bool write_fbx_cluster_transform_link_fixture(const char *path) {
 
     objects.name = "Objects";
     objects.children.push_back(geometry);
-    objects.children.push_back(make_fbx_model_fixture(kMeshModelId, "MeshNode", "Mesh", 0.0, 0.0, 0.0));
-    objects.children.push_back(make_fbx_model_fixture(kRootBoneId, "RootBone", "Root", 0.0, 0.0, 0.0));
+    objects.children.push_back(
+        make_fbx_model_fixture(kMeshModelId, "MeshNode", "Mesh", 0.0, 0.0, 0.0));
+    objects.children.push_back(
+        make_fbx_model_fixture(kRootBoneId, "RootBone", "Root", 0.0, 0.0, 0.0));
     objects.children.push_back(
         make_fbx_model_fixture(kChildBoneId, "ChildBone", "LimbNode", 0.0, 1.0, 0.0));
     objects.children.push_back(skin);
@@ -1279,11 +1301,13 @@ static bool write_fbx_constant_animation_fixture(const char *path) {
 
     anim_stack.name = "AnimationStack";
     anim_stack.props.push_back(fbx_prop_i64_fixture(kStackId));
-    anim_stack.props.push_back(fbx_prop_string_fixture(make_fbx_object_name("Constant", "AnimStack")));
+    anim_stack.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("Constant", "AnimStack")));
     anim_stack.props.push_back(fbx_prop_string_fixture(""));
     anim_layer.name = "AnimationLayer";
     anim_layer.props.push_back(fbx_prop_i64_fixture(kLayerId));
-    anim_layer.props.push_back(fbx_prop_string_fixture(make_fbx_object_name("BaseLayer", "AnimLayer")));
+    anim_layer.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("BaseLayer", "AnimLayer")));
     anim_layer.props.push_back(fbx_prop_string_fixture(""));
     translate_node.name = "AnimationCurveNode";
     translate_node.props.push_back(fbx_prop_i64_fixture(kTranslateNodeId));
@@ -1293,15 +1317,18 @@ static bool write_fbx_constant_animation_fixture(const char *path) {
 
     objects.name = "Objects";
     objects.children.push_back(geometry);
-    objects.children.push_back(make_fbx_model_fixture(kMeshModelId, "MeshNode", "Mesh", 0.0, 0.0, 0.0));
-    objects.children.push_back(make_fbx_model_fixture(kRootBoneId, "RootBone", "Root", 0.0, 0.0, 0.0));
+    objects.children.push_back(
+        make_fbx_model_fixture(kMeshModelId, "MeshNode", "Mesh", 0.0, 0.0, 0.0));
+    objects.children.push_back(
+        make_fbx_model_fixture(kRootBoneId, "RootBone", "Root", 0.0, 0.0, 0.0));
     objects.children.push_back(skin);
-    objects.children.push_back(make_fbx_cluster_fixture(kRootClusterId,
-                                                        "RootCluster",
-                                                        kRootIndices,
-                                                        sizeof(kRootIndices) / sizeof(kRootIndices[0]),
-                                                        kRootWeights,
-                                                        sizeof(kRootWeights) / sizeof(kRootWeights[0])));
+    objects.children.push_back(
+        make_fbx_cluster_fixture(kRootClusterId,
+                                 "RootCluster",
+                                 kRootIndices,
+                                 sizeof(kRootIndices) / sizeof(kRootIndices[0]),
+                                 kRootWeights,
+                                 sizeof(kRootWeights) / sizeof(kRootWeights[0])));
     objects.children.push_back(anim_stack);
     objects.children.push_back(anim_layer);
     objects.children.push_back(translate_node);
@@ -1464,7 +1491,8 @@ static bool write_fbx_skinned_animation_fixture_ex(const char *path,
         std::snprintf(name, sizeof(name), "DummyLayer%d", i);
         dummy_layer.name = "AnimationLayer";
         dummy_layer.props.push_back(fbx_prop_i64_fixture(kDummyLayerBaseId + i));
-        dummy_layer.props.push_back(fbx_prop_string_fixture(make_fbx_object_name(name, "AnimLayer")));
+        dummy_layer.props.push_back(
+            fbx_prop_string_fixture(make_fbx_object_name(name, "AnimLayer")));
         dummy_layer.props.push_back(fbx_prop_string_fixture(""));
         objects.children.push_back(dummy_layer);
     }
@@ -1495,11 +1523,11 @@ static bool write_fbx_skinned_animation_fixture_ex(const char *path,
     objects.children.push_back(make_fbx_animation_curve_fixture(
         kCurveYId, key_times, kCurveYValues, sizeof(key_times) / sizeof(key_times[0])));
     if (duplicate_x_curve) {
-        objects.children.push_back(make_fbx_animation_curve_fixture(kCurveXDuplicateId,
-                                                                    key_times,
-                                                                    kCurveXDuplicateValues,
-                                                                    sizeof(key_times) /
-                                                                        sizeof(key_times[0])));
+        objects.children.push_back(
+            make_fbx_animation_curve_fixture(kCurveXDuplicateId,
+                                             key_times,
+                                             kCurveXDuplicateValues,
+                                             sizeof(key_times) / sizeof(key_times[0])));
     }
 
     connections.name = "Connections";
@@ -1528,9 +1556,7 @@ static bool write_fbx_skinned_animation_fixture_ex(const char *path,
         make_fbx_connection_fixture(kCurveXId, kTranslateNodeId, curve_x_prop));
     if (duplicate_x_curve) {
         connections.children.push_back(
-            make_fbx_connection_fixture(kCurveXDuplicateId,
-                                        kTranslateNodeId,
-                                        curve_x_prop));
+            make_fbx_connection_fixture(kCurveXDuplicateId, kTranslateNodeId, curve_x_prop));
     }
     connections.children.push_back(
         make_fbx_connection_fixture(kCurveYId, kTranslateNodeId, curve_y_prop));
@@ -1982,26 +2008,24 @@ static void test_model3d_adapts_gltf_scene_graphs() {
 static void test_model3d_rejects_gltf_accessor_overrun_of_buffer_view() {
     const char *path = "/tmp/viper_model3d_accessor_overrun.gltf";
     std::vector<uint8_t> gltf_buffer;
-    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-                                0.0f, 0.0f, 1.0f, 0.0f};
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     for (float v : positions)
         append_bytes(gltf_buffer, v);
 
     std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
-    std::string gltf_json =
-        "{"
-        "\"asset\":{\"version\":\"2.0\"},"
-        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
-        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
-        "}],"
-        "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":24}],"
-        "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,"
-        "\"type\":\"VEC3\"}],"
-        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0}}]}],"
-        "\"nodes\":[{\"mesh\":0}],"
-        "\"scenes\":[{\"nodes\":[0]}],"
-        "\"scene\":0"
-        "}";
+    std::string gltf_json = "{"
+                            "\"asset\":{\"version\":\"2.0\"},"
+                            "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+                            buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+                            "}],"
+                            "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":24}],"
+                            "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,"
+                            "\"type\":\"VEC3\"}],"
+                            "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0}}]}],"
+                            "\"nodes\":[{\"mesh\":0}],"
+                            "\"scenes\":[{\"nodes\":[0]}],"
+                            "\"scene\":0"
+                            "}";
 
     EXPECT_TRUE(write_text_file(path, gltf_json), "Accessor-overrun glTF fixture can be written");
     void *model = rt_model3d_load(rt_const_cstr(path));
@@ -2012,8 +2036,7 @@ static void test_model3d_rejects_gltf_accessor_overrun_of_buffer_view() {
 static void test_gltf_asset_accessors_clamp_corrupt_counts() {
     const char *path = "/tmp/viper_gltf_asset_corrupt_counts.gltf";
     std::vector<uint8_t> gltf_buffer;
-    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-                                0.0f, 0.0f, 1.0f, 0.0f};
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     for (float v : positions)
         append_bytes(gltf_buffer, v);
 
@@ -2025,7 +2048,8 @@ static void test_gltf_asset_accessors_clamp_corrupt_counts() {
         buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
         "}],"
         "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":" +
-        std::to_string(gltf_buffer.size()) + "}],"
+        std::to_string(gltf_buffer.size()) +
+        "}],"
         "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,"
         "\"type\":\"VEC3\"}],"
         "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorFactor\":[1,0,0,1]}}],"
@@ -2097,8 +2121,7 @@ static void test_gltf_asset_accessors_clamp_corrupt_counts() {
         view->skeletons[0] = rt_skeleton3d_new();
         view->skeleton_count = 99;
         view->skeleton_capacity = 1;
-        EXPECT_TRUE(rt_gltf_skeleton_count(asset) == 1,
-                    "glTF skeleton count clamps corrupt count");
+        EXPECT_TRUE(rt_gltf_skeleton_count(asset) == 1, "glTF skeleton count clamps corrupt count");
         EXPECT_TRUE(rt_gltf_get_skeleton(asset, 1) == nullptr,
                     "glTF skeleton accessor rejects indexes past repaired count");
         void *saved_skeleton = view->skeletons[0];
@@ -2311,19 +2334,14 @@ static void test_model3d_load_asset_diagnostics_name_missing_dependency() {
     if (!mounted)
         return;
 
-    g_last_trap = nullptr;
-    g_expect_trap = true;
-    if (setjmp(g_trap_jmp) == 0) {
-        (void)rt_model3d_load_asset(rt_const_cstr("asset://assets/models/missing_dep.gltf"));
-        g_expect_trap = false;
-        EXPECT_TRUE(false, "Model3D.LoadAsset traps on missing external glTF dependencies");
-    } else {
-        g_expect_trap = false;
-        EXPECT_TRUE(g_last_trap != nullptr &&
-                        std::strstr(g_last_trap, "assets/models/missing_dep.gltf") != nullptr &&
-                        std::strstr(g_last_trap, "assets/models/missing.bin") != nullptr,
-                    "Model3D.LoadAsset diagnostics name the model and missing dependency");
-    }
+    void *model = rt_model3d_load_asset(rt_const_cstr("asset://assets/models/missing_dep.gltf"));
+    EXPECT_TRUE(model == nullptr, "Model3D.LoadAsset returns null for missing glTF dependencies");
+    EXPECT_TRUE(rt_asset_error_get_code() != RT_ASSET_ERROR_NONE,
+                "Model3D.LoadAsset records an error for missing glTF dependencies");
+    EXPECT_TRUE(
+        std::strstr(rt_asset_error_get_message(), "assets/models/missing_dep.gltf") != nullptr &&
+            std::strstr(rt_asset_error_get_message(), "assets/models/missing.bin") != nullptr,
+        "Model3D.LoadAsset diagnostics name the model and missing dependency");
 
     rt_asset_unmount(rt_const_cstr(pack_path));
     std::remove(pack_path);
@@ -2420,8 +2438,7 @@ static void test_model3d_loads_preloaded_fbx_bytes() {
     EXPECT_TRUE(model != nullptr, "Model3D.LoadPreloadedFBX parses staged FBX bytes");
     if (!model)
         return;
-    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1,
-                "Preloaded FBX byte path imports meshes");
+    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1, "Preloaded FBX byte path imports meshes");
     EXPECT_TRUE(rt_model3d_get_material_count(model) == 1,
                 "Preloaded FBX byte path imports materials");
     EXPECT_TRUE(rt_model3d_find_node(model, rt_const_cstr("Child")) != nullptr,
@@ -2576,20 +2593,18 @@ static void test_model3d_imports_quoted_obj_mtl_references() {
     EXPECT_TRUE(rt_pixels_save_png(pixels, rt_const_cstr(png_path)) == 1,
                 "Quoted OBJ texture PNG fixture can be written");
 
-    std::string mtl =
-        "newmtl \"Quoted Red\"\n"
-        "Kd 0.7 0.1 0.2\n"
-        "map_Kd -o 0 0 \"viper model3d quoted texture.png\"\n";
-    std::string obj =
-        "mtllib \"viper model3d quoted refs.mtl\"\n"
-        "v 0 0 0\n"
-        "v 1 0 0\n"
-        "v 0 1 0\n"
-        "vt 0 0\n"
-        "vt 1 0\n"
-        "vt 0 1\n"
-        "usemtl \"Quoted Red\"\n"
-        "f 1/1 2/2 3/3\n";
+    std::string mtl = "newmtl \"Quoted Red\"\n"
+                      "Kd 0.7 0.1 0.2\n"
+                      "map_Kd -o 0 0 \"viper model3d quoted texture.png\"\n";
+    std::string obj = "mtllib \"viper model3d quoted refs.mtl\"\n"
+                      "v 0 0 0\n"
+                      "v 1 0 0\n"
+                      "v 0 1 0\n"
+                      "vt 0 0\n"
+                      "vt 1 0\n"
+                      "vt 0 1\n"
+                      "usemtl \"Quoted Red\"\n"
+                      "f 1/1 2/2 3/3\n";
     EXPECT_TRUE(write_text_file(mtl_path, mtl), "Quoted OBJ MTL file can be written");
     EXPECT_TRUE(write_text_file(obj_path, obj), "Quoted OBJ file can be written");
 
@@ -2796,8 +2811,7 @@ static void test_model3d_triangulates_large_fbx_ngons() {
     EXPECT_TRUE(model != nullptr, "Model3D.Load triangulates FBX n-gons larger than 32 vertices");
     if (!model)
         return;
-    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1,
-                "Large n-gon FBX fixture imports one mesh");
+    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1, "Large n-gon FBX fixture imports one mesh");
     auto *mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(model, 0));
     EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 80,
                 "Large n-gon FBX mesh preserves all polygon vertices");
@@ -2874,8 +2888,12 @@ static void test_model3d_imports_fbx_material_scalar_aliases_and_allsame_uvs() {
                 "FBX material alias fixture imports mesh vertices");
     if (mesh && mesh->vertex_count == 3) {
         for (uint32_t i = 0; i < mesh->vertex_count; ++i) {
-            EXPECT_NEAR(mesh->vertices[i].uv[0], 0.25, 0.001, "FBX AllSame UV maps U to all vertices");
-            EXPECT_NEAR(mesh->vertices[i].uv[1], 0.25, 0.001, "FBX AllSame UV maps flipped V to all vertices");
+            EXPECT_NEAR(
+                mesh->vertices[i].uv[0], 0.25, 0.001, "FBX AllSame UV maps U to all vertices");
+            EXPECT_NEAR(mesh->vertices[i].uv[1],
+                        0.25,
+                        0.001,
+                        "FBX AllSame UV maps flipped V to all vertices");
         }
     }
 
@@ -3233,7 +3251,7 @@ static void test_fbx_bare_animation_curve_component_names_import() {
     EXPECT_NEAR(root_channel->keyframes[1].position[1],
                 20.0,
                 0.001,
-	                "FBX bare Y component connections drive translation Y");
+                "FBX bare Y component connections drive translation Y");
 }
 
 static void test_fbx_lowercase_animation_curve_component_names_import() {
@@ -3595,31 +3613,27 @@ static void test_model3d_rejects_truncated_fbx() {
     if (!wrote_fixture)
         return;
 
-    g_last_trap = nullptr;
-    g_expect_trap = true;
-    if (setjmp(g_trap_jmp) == 0) {
-        (void)rt_model3d_load(rt_const_cstr(path));
-        g_expect_trap = false;
-        EXPECT_TRUE(false, "Model3D.Load traps on truncated FBX input");
-        return;
-    }
-    g_expect_trap = false;
-    EXPECT_TRUE(g_last_trap != nullptr &&
-                    std::strstr(g_last_trap, "malformed or truncated binary FBX") != nullptr,
-                "Model3D.Load reports truncated FBX as a hard parse error");
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model == nullptr, "Model3D.Load returns null for truncated FBX input");
+    EXPECT_TRUE(rt_asset_error_get_code() != RT_ASSET_ERROR_NONE,
+                "Model3D.Load records an error for truncated FBX input");
+    EXPECT_TRUE(rt_asset_error_get_message() != nullptr &&
+                    std::strlen(rt_asset_error_get_message()) > 0,
+                "Model3D.Load exposes a non-empty truncated FBX error");
+    std::remove(path);
 }
 
 /// @brief Verify missing FBX files are recoverable through the high-level Model3D API.
-/// @details Direct `FBX.Load` remains a strict loader, but `Model3D.Load` is commonly used in
-/// fallback asset flows where a missing optional model should return NULL instead of aborting the
-/// program. This test intentionally leaves trap handling disabled so a regression manifests as a
-/// normal test-process failure.
+/// @details Content loaders report missing files as NULL plus last-error state so fallback asset
+/// flows can continue without aborting the program.
 static void test_model3d_missing_fbx_returns_null_without_trap() {
     const char *path = "/tmp/viper_model3d_missing_recoverable_fixture.fbx";
     std::remove(path);
 
     void *model = rt_model3d_load(rt_const_cstr(path));
     EXPECT_TRUE(model == nullptr, "Model3D.Load returns null for missing FBX files");
+    EXPECT_TRUE(rt_asset_error_get_code() != RT_ASSET_ERROR_NONE,
+                "Model3D.Load records an error for missing FBX files");
 }
 
 static void test_model3d_loads_demo_fbx_textures() {
@@ -3906,8 +3920,9 @@ static void test_gltf_rejects_unknown_animation_interpolation() {
     void *asset = rt_gltf_load(rt_const_cstr(path));
     EXPECT_TRUE(asset != nullptr, "glTF asset with a bad animation sampler still loads");
     if (asset) {
-        EXPECT_TRUE(rt_gltf_node_animation_count(asset) == 0,
-                    "glTF rejects unknown animation interpolation instead of treating it as linear");
+        EXPECT_TRUE(
+            rt_gltf_node_animation_count(asset) == 0,
+            "glTF rejects unknown animation interpolation instead of treating it as linear");
         if (rt_obj_release_check0(asset))
             rt_obj_free(asset);
     }
@@ -4172,14 +4187,14 @@ static void test_model3d_clamps_corrupt_counts_and_child_walks() {
                     "Model3D.InstantiateSceneAt skips null child slots in corrupt scenes");
         view->template_root->children[0] = saved_child;
 
-        if (saved_child && view->materials && view->materials[0] && view->meshes && view->meshes[0]) {
+        if (saved_child && view->materials && view->materials[0] && view->meshes &&
+            view->meshes[0]) {
             void *saved_mesh = saved_child->mesh;
             saved_child->mesh = view->materials[0];
             auto *bad_mesh_instance = static_cast<rt_scene_node3d *>(rt_model3d_instantiate(model));
-            auto *bad_mesh_child =
-                bad_mesh_instance && bad_mesh_instance->child_count > 0
-                    ? bad_mesh_instance->children[0]
-                    : nullptr;
+            auto *bad_mesh_child = bad_mesh_instance && bad_mesh_instance->child_count > 0
+                                       ? bad_mesh_instance->children[0]
+                                       : nullptr;
             EXPECT_TRUE(bad_mesh_child && bad_mesh_child->mesh == nullptr,
                         "Model3D.Instantiate drops wrong-class template mesh slots");
             saved_child->mesh = saved_mesh;
@@ -4190,10 +4205,9 @@ static void test_model3d_clamps_corrupt_counts_and_child_walks() {
                 saved_child->lod_levels[0].mesh = view->materials[0];
                 auto *bad_lod_instance =
                     static_cast<rt_scene_node3d *>(rt_model3d_instantiate(model));
-                auto *bad_lod_child =
-                    bad_lod_instance && bad_lod_instance->child_count > 0
-                        ? bad_lod_instance->children[0]
-                        : nullptr;
+                auto *bad_lod_child = bad_lod_instance && bad_lod_instance->child_count > 0
+                                          ? bad_lod_instance->children[0]
+                                          : nullptr;
                 EXPECT_TRUE(bad_lod_child && rt_scene_node3d_get_lod_count(bad_lod_child) == 0,
                             "Model3D.Instantiate drops wrong-class template LOD mesh slots");
                 saved_child->lod_levels[0].mesh = saved_lod_mesh;

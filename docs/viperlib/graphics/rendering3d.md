@@ -18,6 +18,43 @@ For the higher-level code-first game workflow, see [Game3D](game3d.md).
 level rendering, physics, input, audio, and final-frame contracts documented
 here.
 
+## Asset Load Diagnostics
+
+Script-facing content loaders do not trap for bad or missing content. Missing
+files, unreadable files, wrong magic bytes, truncated payloads, corrupt
+structure, unsupported formats, and excessive content sizes return `null` and
+record diagnostics on `Viper.Graphics3D.Assets3D`. Traps remain reserved for
+programmer errors such as `null` or invalid argument handles. Successful partial
+degradation, such as an OBJ material whose albedo texture is missing, returns
+the loaded asset and records warnings.
+
+`Assets3D.LastLoadError` is empty after a fully successful load. When a loader
+returns `null`, `Assets3D.LastLoadErrorCode` is one of:
+
+| Code | Meaning |
+|------|---------|
+| `0` | No error |
+| `1` | NotFound |
+| `2` | Unreadable |
+| `3` | BadMagic |
+| `4` | Corrupt |
+| `5` | Unsupported |
+| `6` | TooLarge |
+
+Warnings are per outer load, append-only, and capped. Use
+`Assets3D.LoadWarningCount`, `Assets3D.GetLoadWarning(index)`, or
+`Assets3D.GetLoadWarnings()` to inspect partial degradation.
+
+| Loader | Content failure behavior | Partial degradation |
+|--------|--------------------------|---------------------|
+| `Model3D.Load(path)` / `Model3D.LoadAsset(path)` | Returns `null` and sets `Assets3D.LastLoadError` for missing, unreadable, unsupported, malformed, truncated, or oversized `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`, and `.stl` content | Preserves lower-level warnings from material texture and dependency loads |
+| `FBX.Load(path)` | Returns `null` for missing, unreadable, wrong-magic, truncated, malformed, unsupported, or oversized FBX content | Missing texture references leave the material untextured and add warnings |
+| `GLTF.Load(path)` / `GLTF.LoadAsset(path)` | Returns `null` for missing roots, unreadable roots, wrong JSON/GLB magic, malformed JSON, corrupt buffers/accessors, missing required buffers, unsupported dependencies, or oversized content | Missing or unreadable material images leave that texture slot empty and add warnings |
+| `Mesh3D.FromOBJ(path)` | Returns `null` for missing files, invalid face indices, invalid numeric tokens, empty geometry, malformed syntax, or oversized accumulators | None |
+| `Mesh3D.FromSTL(path)` | Returns `null` for missing files, unreadable files, wrong magic, truncated binary payloads, malformed ASCII payloads, or oversized files | Degenerate triangles are skipped as before |
+| `Scene3D.Load(path)` | Returns `null` for missing, unreadable, non-JSON, malformed, corrupt, or oversized `.vscn` content | None |
+| `Pixels.Load(path)` and image loads reached from materials | Return `null` for missing, unreadable, wrong-magic, corrupt, unsupported, or oversized PNG/JPEG/BMP/GIF content | Material loaders catch this and record a warning instead of failing the whole model |
+
 Writable `Viper.Graphics3D` properties expose both property accessors and
 method-call setters. A writable property named `X` has a `set_X` runtime
 accessor and a matching `SetX(...)` class method, such as

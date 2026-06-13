@@ -6,13 +6,21 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/2d/rt_pixels_io.c
-// Purpose: Image I/O: BMP load/save, GIF load, and the format-dispatching rt_pixels_load. PNG and JPEG live in rt_pixels_png.c / rt_pixels_jpeg.c.
-//
-// Links: rt_pixels.h (public API), rt_pixels_io_internal.h (shared helpers)
+// Purpose: Image I/O: BMP load/save, GIF load, and format dispatch.
+// Key invariants:
+//   - Decode failures return NULL and report asset diagnostics.
+//   - Save paths keep their historical integer success/failure contract.
+// Ownership/Lifetime:
+//   - Loaded Pixels objects are GC-managed and owned by the caller.
+//   - Temporary decode buffers are released before return.
+// Links: rt_pixels.h, rt_pixels_io_internal.h, rt_asset_error.h
 //
 //===----------------------------------------------------------------------===//
 
 #include "rt_pixels_io_internal.h"
+
+#include "rt_asset_error.h"
+#include "rt_trap.h"
 
 #define BMP_MAX_PIXELS ((size_t)64u * 1024u * 1024u)
 
@@ -60,8 +68,7 @@ static uint16_t bmp_read_u16_le(const uint8_t *p) {
 /// @param p Pointer to at least four bytes.
 /// @return The decoded host-endian value.
 static uint32_t bmp_read_u32_le(const uint8_t *p) {
-    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
-           ((uint32_t)p[3] << 24);
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
 /// @brief Read a little-endian signed 32-bit integer from a byte buffer.
@@ -194,16 +201,26 @@ static int bmp_write_info_header(FILE *f, const bmp_info_header *hdr) {
 ///         failure (file open, magic mismatch, unsupported variant,
 ///         short read).
 void *rt_pixels_load_bmp(void *path) {
-    if (!path)
+    rt_asset_error_begin_load();
+    if (!path) {
+        rt_asset_error_end_load_failure();
+        rt_trap("Pixels.LoadBmp: path must not be null");
         return NULL;
+    }
 
     const char *filepath = rt_string_cstr((rt_string)path);
-    if (!filepath)
+    if (!filepath) {
+        rt_asset_error_end_load_failure();
+        rt_trap("Pixels.LoadBmp: invalid path");
         return NULL;
+    }
 
     FILE *f = fopen(filepath, "rb");
-    if (!f)
+    if (!f) {
+        rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND, "Pixels.LoadBmp: '%s' not found", filepath);
+        rt_asset_error_end_load_failure();
         return NULL;
+    }
 
     uint8_t *row_buf = NULL;
     rt_pixels_impl *pixels = NULL;
@@ -322,6 +339,13 @@ bmp_cleanup:
     }
     free(row_buf);
     fclose(f);
+    if (pixels) {
+        rt_asset_error_end_load_success();
+    } else {
+        rt_asset_error_setf_if_empty(
+            RT_ASSET_ERROR_CORRUPT, "Pixels.LoadBmp: '%s' is not a supported BMP", filepath);
+        rt_asset_error_end_load_failure();
+    }
     return pixels;
 }
 
@@ -451,17 +475,35 @@ bmp_save_cleanup:
 /// animation use the dedicated GIF decoder elsewhere.
 /// @return Pixels on success, NULL on file/format failure.
 void *rt_pixels_load_gif(void *path) {
-    if (!path)
+    rt_asset_error_begin_load();
+    if (!path) {
+        rt_asset_error_end_load_failure();
+        rt_trap("Pixels.LoadGif: path must not be null");
         return NULL;
+    }
 
     const char *filepath = rt_string_cstr((rt_string)path);
-    if (!filepath)
+    if (!filepath) {
+        rt_asset_error_end_load_failure();
+        rt_trap("Pixels.LoadGif: invalid path");
         return NULL;
+    }
 
     gif_frame_t *frames = NULL;
     int frame_count = 0, w = 0, h = 0;
-    if (gif_decode_file(filepath, &frames, &frame_count, &w, &h) <= 0)
+    if (gif_decode_file(filepath, &frames, &frame_count, &w, &h) <= 0) {
+        FILE *probe = fopen(filepath, "rb");
+        if (probe) {
+            fclose(probe);
+            rt_asset_error_setf(
+                RT_ASSET_ERROR_CORRUPT, "Pixels.LoadGif: '%s' is not a supported GIF", filepath);
+        } else {
+            rt_asset_error_setf(
+                RT_ASSET_ERROR_NOT_FOUND, "Pixels.LoadGif: '%s' not found", filepath);
+        }
+        rt_asset_error_end_load_failure();
         return NULL;
+    }
 
     // Take ownership of the first frame's Pixels, free the rest
     void *result = frames[0].pixels;
@@ -473,6 +515,7 @@ void *rt_pixels_load_gif(void *path) {
         }
     }
     free(frames);
+    rt_asset_error_end_load_success();
     return result;
 }
 
@@ -486,27 +529,45 @@ void *rt_pixels_load_gif(void *path) {
 /// based on the path's lowercase extension. Returns NULL for
 /// unrecognised extensions or on any underlying decode failure.
 void *rt_pixels_load(void *path) {
-    if (!path)
+    rt_asset_error_begin_load();
+    if (!path) {
+        rt_asset_error_end_load_failure();
+        rt_trap("Pixels.Load: path must not be null");
         return NULL;
+    }
 
     const char *filepath = rt_string_cstr((rt_string)path);
-    if (!filepath)
+    if (!filepath) {
+        rt_asset_error_end_load_failure();
+        rt_trap("Pixels.Load: invalid path");
         return NULL;
+    }
 
     FILE *af = fopen(filepath, "rb");
-    if (!af)
+    if (!af) {
+        rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND, "Pixels.Load: '%s' not found", filepath);
+        rt_asset_error_end_load_failure();
         return NULL;
+    }
     uint8_t hdr[8];
     size_t n = fread(hdr, 1, 8, af);
     fclose(af);
 
+    void *result = NULL;
     if (n >= 8 && hdr[0] == 137 && hdr[1] == 'P' && hdr[2] == 'N' && hdr[3] == 'G')
-        return rt_pixels_load_png(path);
-    if (n >= 2 && hdr[0] == 0xFF && hdr[1] == 0xD8)
-        return rt_pixels_load_jpeg(path);
-    if (n >= 2 && hdr[0] == 'B' && hdr[1] == 'M')
-        return rt_pixels_load_bmp(path);
-    if (n >= 3 && hdr[0] == 'G' && hdr[1] == 'I' && hdr[2] == 'F')
-        return rt_pixels_load_gif(path);
-    return NULL;
+        result = rt_pixels_load_png(path);
+    else if (n >= 2 && hdr[0] == 0xFF && hdr[1] == 0xD8)
+        result = rt_pixels_load_jpeg(path);
+    else if (n >= 2 && hdr[0] == 'B' && hdr[1] == 'M')
+        result = rt_pixels_load_bmp(path);
+    else if (n >= 3 && hdr[0] == 'G' && hdr[1] == 'I' && hdr[2] == 'F')
+        result = rt_pixels_load_gif(path);
+    else
+        rt_asset_error_setf(
+            RT_ASSET_ERROR_BAD_MAGIC, "Pixels.Load: '%s' is not a supported image", filepath);
+    if (result)
+        rt_asset_error_end_load_success();
+    else
+        rt_asset_error_end_load_failure();
+    return result;
 }

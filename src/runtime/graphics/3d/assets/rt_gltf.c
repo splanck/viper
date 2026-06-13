@@ -24,6 +24,7 @@
 
 #include "rt_gltf.h"
 #include "rt_asset.h"
+#include "rt_asset_error.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_gif.h"
@@ -40,6 +41,7 @@
 #include "rt_textureasset3d.h"
 #include "rt_vec3.h"
 
+#include "rt_gltf_internal.h"
 #include <ctype.h>
 #include <errno.h>
 #include <float.h>
@@ -50,7 +52,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "rt_gltf_internal.h"
 
 #if defined(_WIN32)
 #define gltf_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
@@ -903,6 +904,7 @@ static int64_t gltf_texture_source_index(void *texture_json) {
 //===----------------------------------------------------------------------===//
 // Implementation split across cohesive .inc units compiled as one translation unit.
 //===----------------------------------------------------------------------===//
+// clang-format off
 #include "rt_gltf_codec.inc"
 #include "rt_gltf_accessor.inc"
 #include "rt_gltf_import.inc"
@@ -911,6 +913,7 @@ static int64_t gltf_texture_source_index(void *texture_json) {
 #include "rt_gltf_material.inc"
 #include "rt_gltf_mesh.inc"
 #include "rt_gltf_scene.inc"
+// clang-format on
 
 //===----------------------------------------------------------------------===//
 // Main loader
@@ -956,15 +959,22 @@ static int gltf_load_buffer_uri(const char *filepath,
 
     char buf_path[1024];
     gltf_resolve_relative_path(filepath, uri, buf_path, sizeof(buf_path));
-    if (buf_path[0] == '\0')
+    if (buf_path[0] == '\0') {
+        rt_asset_error_setf(RT_ASSET_ERROR_UNSUPPORTED,
+                            "GLTF.Load: unsupported buffer dependency '%s' for '%s'",
+                            uri ? uri : "",
+                            filepath ? filepath : "");
         return 0;
+    }
     buffer->data =
         gltf_load_dependency_bytes(buf_path, load_assets, byte_length, preload_bundle, NULL);
     if (buffer->data)
         buffer->len = byte_length;
     if (byte_length > 0 && (!buffer->data || buffer->len < byte_length)) {
-        if (load_assets)
-            gltf_trap_asset_dependency(filepath, buf_path, "buffer");
+        rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND,
+                            "GLTF.Load: failed to load buffer dependency '%s' for '%s'",
+                            buf_path,
+                            filepath ? filepath : "");
         return 0;
     }
     return 1;
@@ -1315,13 +1325,13 @@ static void *rt_gltf_load_impl(rt_string path,
         file_data = gltf_load_root_bytes(path, filepath, load_assets, &file_size);
     }
     if (!file_data) {
-        if (load_assets)
-            gltf_trap_asset_dependency(filepath, filepath, "model");
+        rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND, "GLTF.Load: '%s' not found", filepath);
         return NULL;
     }
     if (file_size > (size_t)LONG_MAX) {
         if (!preloaded_data)
             free(file_data);
+        rt_asset_error_setf(RT_ASSET_ERROR_TOO_LARGE, "GLTF.Load: '%s' is too large", filepath);
         return NULL;
     }
 
@@ -1330,12 +1340,15 @@ static void *rt_gltf_load_impl(rt_string path,
     size_t bin_chunk_len = 0;
     if (!gltf_extract_json_document(file_data, file_size, &json_str, &bin_chunk, &bin_chunk_len)) {
         free(file_data);
+        rt_asset_error_setf(
+            RT_ASSET_ERROR_BAD_MAGIC, "GLTF.Load: '%s' is not a supported glTF/GLB", filepath);
         return NULL;
     }
 
     void *root = gltf_parse_validated_root_json(json_str);
     if (!root) {
         free(file_data);
+        rt_asset_error_setf(RT_ASSET_ERROR_CORRUPT, "GLTF.Load: '%s' has invalid JSON", filepath);
         return NULL;
     }
 
@@ -1354,6 +1367,8 @@ static void *rt_gltf_load_impl(rt_string path,
                            &buf_count)) {
         gltf_release_local(root);
         free(file_data);
+        rt_asset_error_setf_if_empty(
+            RT_ASSET_ERROR_CORRUPT, "GLTF.Load: '%s' has invalid buffers", filepath);
         return NULL;
     }
 
@@ -1361,6 +1376,8 @@ static void *rt_gltf_load_impl(rt_string path,
         gltf_free_buffers(buffers, buf_count, bin_chunk);
         gltf_release_local(root);
         free(file_data);
+        rt_asset_error_setf(
+            RT_ASSET_ERROR_CORRUPT, "GLTF.Load: '%s' has invalid sparse accessors", filepath);
         return NULL;
     }
 
@@ -1382,6 +1399,9 @@ static void *rt_gltf_load_impl(rt_string path,
 
     if (load_failed) {
         gltf_release_ref((void **)&asset);
+        rt_asset_error_setf_if_empty(RT_ASSET_ERROR_CORRUPT,
+                                     "GLTF.Load: '%s' contains unsupported or corrupt data",
+                                     filepath);
         return NULL;
     }
     return asset;
@@ -1389,12 +1409,48 @@ static void *rt_gltf_load_impl(rt_string path,
 
 /// @brief Load a glTF/GLB from the filesystem (no asset-manager resolution). See header.
 void *rt_gltf_load(rt_string path) {
-    return rt_gltf_load_impl(path, 0, NULL, 0, NULL);
+    rt_asset_error_begin_load();
+    if (!path) {
+        rt_asset_error_end_load_failure();
+        rt_trap("GLTF.Load: path must not be null");
+        return NULL;
+    }
+    if (!rt_string_cstr(path)) {
+        rt_asset_error_end_load_failure();
+        rt_trap("GLTF.Load: invalid path");
+        return NULL;
+    }
+    void *asset = rt_gltf_load_impl(path, 0, NULL, 0, NULL);
+    if (asset) {
+        rt_asset_error_end_load_success();
+    } else {
+        rt_asset_error_set_if_empty(RT_ASSET_ERROR_CORRUPT, "GLTF.Load: failed to load glTF");
+        rt_asset_error_end_load_failure();
+    }
+    return asset;
 }
 
 /// @brief Load a glTF/GLB through the asset manager (mounted/embedded + dev fallback). See header.
 void *rt_gltf_load_asset(rt_string path) {
-    return rt_gltf_load_impl(path, 1, NULL, 0, NULL);
+    rt_asset_error_begin_load();
+    if (!path) {
+        rt_asset_error_end_load_failure();
+        rt_trap("GLTF.LoadAsset: path must not be null");
+        return NULL;
+    }
+    if (!rt_string_cstr(path)) {
+        rt_asset_error_end_load_failure();
+        rt_trap("GLTF.LoadAsset: invalid path");
+        return NULL;
+    }
+    void *asset = rt_gltf_load_impl(path, 1, NULL, 0, NULL);
+    if (asset) {
+        rt_asset_error_end_load_success();
+    } else {
+        rt_asset_error_set_if_empty(RT_ASSET_ERROR_CORRUPT, "GLTF.LoadAsset: failed to load glTF");
+        rt_asset_error_end_load_failure();
+    }
+    return asset;
 }
 
 /// @brief Internal async path: build a glTF/GLB asset from worker-staged root bytes.

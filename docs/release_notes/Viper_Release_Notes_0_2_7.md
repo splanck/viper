@@ -34,13 +34,13 @@ A hardening cycle continuing v0.2.6. The headline new work ends per-frame Graphi
 
 | Metric | v0.2.6 | v0.2.7 | Delta |
 |---|---|---|---|
-| Commits | — | 101 | +101 |
-| Source files | 3,096 | 3,337 | +241 |
+| Commits | — | 99 | +99 |
+| Source files | 3,096 | 3,338 | +242 |
 | Production SLOC | 669K | 719K | +50K |
 | Test SLOC | 278K | 296K | +18K |
 | Demo SLOC | 192K | 193K | +1K |
 
-Counts via `scripts/count_sloc.sh` (production 719,083 / test 295,899 / demo 193,428 / source files 3,337); commits since the v0.2.6 release (2026-06-01).
+Counts via `scripts/count_sloc.sh` (production 719,083 / test 296,403 / demo 193,428 / source files 3,338); commits since the `v0.2.6-dev` tag (2026-06-01).
 
 ---
 
