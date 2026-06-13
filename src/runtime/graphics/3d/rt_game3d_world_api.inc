@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/rt_game3d_world_api.inc  (#included from rt_game3d.c; not a standalone translation unit)
-// Purpose: Game3D World3D construction plus the public World3D/WorldStream3D accessor surface
+// File: src/runtime/graphics/3d/rt_game3d_world_api.inc  (#included from rt_game3d.c; not a
+// standalone translation unit) Purpose: Game3D World3D construction plus the public
+// World3D/WorldStream3D accessor surface
 //===----------------------------------------------------------------------===//
 /// @brief Point the world's camera at the origin from a default over-the-shoulder pose.
 static void game3d_world_install_default_camera(rt_game3d_world *world) {
@@ -815,8 +816,8 @@ void *rt_game3d_world_spawn(void *world_obj, void *entity_obj) {
     return entity_obj;
 }
 
-/// @brief Despawn an entity (and its child tree); traps if it is not spawned in this
-///   world. See header.
+/// @brief Despawn an entity (and its child tree); stale handles no-op, while live
+///   unspawned entities still trap if they do not belong to this world. See header.
 void rt_game3d_world_despawn(void *world_obj, void *entity_obj) {
     rt_game3d_world *world =
         game3d_world_checked(world_obj, "Game3D.World3D.despawn: invalid world");
@@ -846,7 +847,7 @@ void *rt_game3d_world_find_entity(void *obj, rt_string name) {
     if (!world->name_index_valid)
         game3d_world_rebuild_name_index(world);
     rt_game3d_entity *indexed = game3d_world_name_index_find(world, needle);
-    if (indexed && indexed->spawned && indexed->world == world)
+    if (indexed && indexed->alive && indexed->spawned && indexed->world == world)
         return indexed;
     if (indexed)
         world->name_index_valid = 0;
@@ -855,6 +856,8 @@ void *rt_game3d_world_find_entity(void *obj, rt_string name) {
     int32_t entity_count = game3d_world_safe_entity_count(world);
     for (int32_t i = 0; i < entity_count; ++i) {
         rt_game3d_entity *entity = world->entities[i];
+        if (!entity || !entity->alive || !entity->spawned || entity->world != world)
+            continue;
         const char *entity_name = entity && entity->name ? rt_string_cstr(entity->name) : "";
         if (entity_name && strcmp(entity_name, needle) == 0)
             return entity;

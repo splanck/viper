@@ -685,7 +685,7 @@ static void game3d_world_apply_origin_rebase(rt_game3d_world *world, const doubl
     int32_t entity_count = game3d_world_safe_entity_count(world);
     for (int32_t i = 0; i < entity_count; ++i) {
         rt_game3d_entity *entity = world->entities[i];
-        if (!entity || entity->destroyed)
+        if (!entity || !entity->alive || entity->destroyed)
             continue;
         void *node = game3d_entity_node_ref(entity);
         void *body = game3d_entity_body_ref(entity);
@@ -1350,12 +1350,14 @@ void game3d_world_install_light(rt_game3d_world *world, int64_t slot, void *ligh
 //===----------------------------------------------------------------------===//
 // Implementation split across cohesive .inc units compiled as one translation unit.
 //===----------------------------------------------------------------------===//
+// clang-format off
 #include "rt_game3d_cache.inc"
 #include "rt_game3d_asset_load.inc"
 #include "rt_game3d_world_sim.inc"
 #include "rt_game3d_streaming.inc"
 #include "rt_game3d_world_api.inc"
 #include "rt_game3d_events.inc"
+// clang-format on
 
 /// @brief Set the physics gravity vector. See header.
 void rt_game3d_world_set_gravity(void *obj, double x, double y, double z) {
@@ -1439,7 +1441,7 @@ static void game3d_world_debug_draw_physics(rt_game3d_world *world) {
     for (int32_t i = 0; i < entity_count; ++i) {
         rt_game3d_entity *entity = world->entities[i];
         void *body = game3d_entity_body_ref(entity);
-        if (!entity || entity->destroyed || !body)
+        if (!entity || !entity->alive || entity->destroyed || !body)
             continue;
         void *collider = rt_body3d_get_collider(body);
         if (!collider)

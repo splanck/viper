@@ -86,9 +86,10 @@ static void game3d_character_controller_finalize(void *obj) {
 /// @brief Return the controller's Entity3D slot only when it still has the expected class.
 static rt_game3d_entity *game3d_character_controller_entity_ref(
     const rt_game3d_character_controller *controller) {
-    return controller ? (rt_game3d_entity *)rt_g3d_checked_or_null(
-                            controller->entity, RT_G3D_GAME3D_ENTITY_CLASS_ID)
-                      : NULL;
+    rt_game3d_entity *entity = controller ? (rt_game3d_entity *)rt_g3d_checked_or_null(
+                                                controller->entity, RT_G3D_GAME3D_ENTITY_CLASS_ID)
+                                          : NULL;
+    return game3d_entity_alive_or_record(entity) ? entity : NULL;
 }
 
 /// @brief Return the controller's Character3D slot only when it still has the expected class.
@@ -102,7 +103,7 @@ static void *game3d_character_controller_character_ref(
 static void *game3d_first_person_character_controller_ref(
     const rt_game3d_first_person_controller *controller) {
     return controller ? rt_g3d_checked_or_null(controller->character_controller,
-                                              RT_G3D_GAME3D_CHARACTER_CONTROLLER_CLASS_ID)
+                                               RT_G3D_GAME3D_CHARACTER_CONTROLLER_CLASS_ID)
                       : NULL;
 }
 
@@ -110,9 +111,12 @@ static void *game3d_first_person_character_controller_ref(
 static void *game3d_orbit_controller_target_ref(const rt_game3d_orbit_controller *controller) {
     if (!controller)
         return NULL;
-    if (rt_g3d_is_vec3(controller->target) ||
-        rt_g3d_has_class(controller->target, RT_G3D_GAME3D_ENTITY_CLASS_ID))
+    if (rt_g3d_is_vec3(controller->target))
         return controller->target;
+    rt_game3d_entity *entity = (rt_game3d_entity *)rt_g3d_checked_or_null(
+        controller->target, RT_G3D_GAME3D_ENTITY_CLASS_ID);
+    if (game3d_entity_alive_or_record(entity))
+        return entity;
     return NULL;
 }
 
@@ -120,12 +124,14 @@ static void *game3d_orbit_controller_target_ref(const rt_game3d_orbit_controller
 static void game3d_orbit_controller_distance_range(const rt_game3d_orbit_controller *controller,
                                                    double *out_min,
                                                    double *out_max) {
-    double min_distance = controller ? game3d_positive_clamped_or(
-                                           controller->min_distance, 1.0, RT_GAME3D_COORD_ABS_MAX)
-                                     : 1.0;
-    double max_distance = controller ? game3d_positive_clamped_or(
-                                           controller->max_distance, 100.0, RT_GAME3D_COORD_ABS_MAX)
-                                     : 100.0;
+    double min_distance =
+        controller
+            ? game3d_positive_clamped_or(controller->min_distance, 1.0, RT_GAME3D_COORD_ABS_MAX)
+            : 1.0;
+    double max_distance =
+        controller
+            ? game3d_positive_clamped_or(controller->max_distance, 100.0, RT_GAME3D_COORD_ABS_MAX)
+            : 100.0;
     if (max_distance < min_distance)
         max_distance = min_distance;
     if (out_min)
@@ -135,8 +141,7 @@ static void game3d_orbit_controller_distance_range(const rt_game3d_orbit_control
 }
 
 /// @brief Return a finite orbit distance within the controller's sanitized range.
-static double game3d_orbit_controller_distance_value(
-    const rt_game3d_orbit_controller *controller) {
+static double game3d_orbit_controller_distance_value(const rt_game3d_orbit_controller *controller) {
     double min_distance = 1.0;
     double max_distance = 100.0;
     if (!controller)
@@ -151,9 +156,11 @@ static double game3d_orbit_controller_distance_value(
 /// @brief Return the follow target only when it is still an Entity3D.
 static rt_game3d_entity *game3d_follow_controller_target_ref(
     const rt_game3d_follow_controller *controller) {
-    return controller ? (rt_game3d_entity *)rt_g3d_checked_or_null(
-                            controller->target_entity, RT_G3D_GAME3D_ENTITY_CLASS_ID)
-                      : NULL;
+    rt_game3d_entity *entity =
+        controller ? (rt_game3d_entity *)rt_g3d_checked_or_null(controller->target_entity,
+                                                                RT_G3D_GAME3D_ENTITY_CLASS_ID)
+                   : NULL;
+    return game3d_entity_alive_or_record(entity) ? entity : NULL;
 }
 
 /// @brief Return the follow offset only when it is still a Vec3.
@@ -313,8 +320,8 @@ double rt_game3d_character_controller_get_speed(void *obj) {
     rt_game3d_character_controller *controller = game3d_character_controller_checked(
         obj, "Game3D.CharacterController3D.get_speed: invalid controller");
     return controller ? game3d_nonnegative_clamped_or(controller->speed,
-                                                     RT_GAME3D_DEFAULT_MOVE_SPEED,
-                                                     RT_GAME3D_CONTROLLER_SPEED_MAX)
+                                                      RT_GAME3D_DEFAULT_MOVE_SPEED,
+                                                      RT_GAME3D_CONTROLLER_SPEED_MAX)
                       : 0.0;
 }
 
@@ -332,8 +339,8 @@ double rt_game3d_character_controller_get_jump_speed(void *obj) {
     rt_game3d_character_controller *controller = game3d_character_controller_checked(
         obj, "Game3D.CharacterController3D.get_jumpSpeed: invalid controller");
     return controller ? game3d_nonnegative_clamped_or(controller->jump_speed,
-                                                     RT_GAME3D_DEFAULT_JUMP_SPEED,
-                                                     RT_GAME3D_CONTROLLER_SPEED_MAX)
+                                                      RT_GAME3D_DEFAULT_JUMP_SPEED,
+                                                      RT_GAME3D_CONTROLLER_SPEED_MAX)
                       : 0.0;
 }
 
@@ -351,8 +358,8 @@ double rt_game3d_character_controller_get_gravity(void *obj) {
     rt_game3d_character_controller *controller = game3d_character_controller_checked(
         obj, "Game3D.CharacterController3D.get_gravity: invalid controller");
     return controller ? game3d_clamp_abs_or(controller->gravity,
-                                           RT_GAME3D_DEFAULT_GRAVITY,
-                                           RT_GAME3D_CONTROLLER_SPEED_MAX)
+                                            RT_GAME3D_DEFAULT_GRAVITY,
+                                            RT_GAME3D_CONTROLLER_SPEED_MAX)
                       : 0.0;
 }
 
@@ -545,11 +552,11 @@ static int game3d_camera_controller_validate_world(void *controller,
 /// @details First-person controllers can wrap a separately-created character
 ///   controller. This prevents one world's FPS controller from moving a character
 ///   registered in another world's physics simulation.
-static int game3d_character_controller_validate_world(
-    rt_game3d_character_controller *controller, rt_game3d_world *world, const char *api_name) {
-    void *bound_world = controller ? rt_g3d_checked_or_null(controller->world,
-                                                            RT_G3D_GAME3D_WORLD_CLASS_ID)
-                                   : NULL;
+static int game3d_character_controller_validate_world(rt_game3d_character_controller *controller,
+                                                      rt_game3d_world *world,
+                                                      const char *api_name) {
+    void *bound_world =
+        controller ? rt_g3d_checked_or_null(controller->world, RT_G3D_GAME3D_WORLD_CLASS_ID) : NULL;
     if (bound_world && world && bound_world != world) {
         rt_trap(api_name ? api_name
                          : "Game3D.CharacterController3D.update: controller belongs to another "
@@ -566,6 +573,8 @@ static int game3d_character_controller_validate_world(
 static int game3d_entity_validate_controller_world(rt_game3d_entity *entity,
                                                    rt_game3d_world *world,
                                                    const char *api_name) {
+    if (entity && !game3d_entity_alive_or_record(entity))
+        return 0;
     if (entity && entity->spawned && entity->world && world && entity->world != world) {
         rt_trap(api_name ? api_name : "Game3D.Controller: entity belongs to another world");
         return 0;
@@ -628,8 +637,10 @@ void rt_game3d_first_person_controller_set_character(void *obj, void *character_
         rt_game3d_character_controller *character = game3d_character_controller_checked(
             character_controller, "Game3D.FirstPersonController.set_character: invalid character");
         if (!game3d_character_controller_validate_world(
-                character, world, "Game3D.FirstPersonController.set_character: character belongs "
-                                  "to another world"))
+                character,
+                world,
+                "Game3D.FirstPersonController.set_character: character belongs "
+                "to another world"))
             return;
     }
     if (controller)
@@ -641,8 +652,8 @@ double rt_game3d_first_person_controller_get_speed(void *obj) {
     rt_game3d_first_person_controller *controller = game3d_first_person_controller_checked(
         obj, "Game3D.FirstPersonController.get_speed: invalid controller");
     return controller ? game3d_nonnegative_clamped_or(controller->speed,
-                                                     RT_GAME3D_DEFAULT_MOVE_SPEED,
-                                                     RT_GAME3D_CONTROLLER_SPEED_MAX)
+                                                      RT_GAME3D_DEFAULT_MOVE_SPEED,
+                                                      RT_GAME3D_CONTROLLER_SPEED_MAX)
                       : 0.0;
 }
 
@@ -660,8 +671,8 @@ double rt_game3d_first_person_controller_get_look_sensitivity(void *obj) {
     rt_game3d_first_person_controller *controller = game3d_first_person_controller_checked(
         obj, "Game3D.FirstPersonController.get_lookSensitivity: invalid controller");
     return controller ? game3d_nonnegative_clamped_or(controller->look_sensitivity,
-                                                     RT_GAME3D_DEFAULT_LOOK_SENSITIVITY,
-                                                     RT_GAME3D_LOOK_SENSITIVITY_MAX)
+                                                      RT_GAME3D_DEFAULT_LOOK_SENSITIVITY,
+                                                      RT_GAME3D_LOOK_SENSITIVITY_MAX)
                       : 0.0;
 }
 
@@ -706,20 +717,20 @@ void rt_game3d_first_person_controller_update(void *obj, void *world_obj, double
     if (!controller || !world || !world->camera || !world->input)
         return;
     if (!game3d_camera_controller_validate_world(
-            controller, world, "Game3D.FirstPersonController.update: controller belongs to "
-                               "another world"))
+            controller,
+            world,
+            "Game3D.FirstPersonController.update: controller belongs to "
+            "another world"))
         return;
     dt = game3d_clamp_dt(dt);
     if (controller->capture_mouse)
         rt_mouse_capture();
-    double sensitivity = game3d_nonnegative_clamped_or(
-        controller->look_sensitivity,
-        RT_GAME3D_DEFAULT_LOOK_SENSITIVITY,
-        RT_GAME3D_LOOK_SENSITIVITY_MAX);
-    double yaw =
-        (double)game3d_input_mouse_dx((rt_game3d_input *)world->input) * sensitivity;
-    double pitch = 0.0 - (double)game3d_input_mouse_dy((rt_game3d_input *)world->input) *
-                             sensitivity;
+    double sensitivity = game3d_nonnegative_clamped_or(controller->look_sensitivity,
+                                                       RT_GAME3D_DEFAULT_LOOK_SENSITIVITY,
+                                                       RT_GAME3D_LOOK_SENSITIVITY_MAX);
+    double yaw = (double)game3d_input_mouse_dx((rt_game3d_input *)world->input) * sensitivity;
+    double pitch =
+        0.0 - (double)game3d_input_mouse_dy((rt_game3d_input *)world->input) * sensitivity;
     yaw = game3d_clamp_abs_or(yaw, 0.0, RT_GAME3D_ANGLE_DEG_ABS_MAX);
     pitch = game3d_clamp_abs_or(pitch, 0.0, RT_GAME3D_ANGLE_DEG_ABS_MAX);
     void *character_controller = game3d_first_person_character_controller_ref(controller);
@@ -727,15 +738,16 @@ void rt_game3d_first_person_controller_update(void *obj, void *world_obj, double
         rt_game3d_character_controller *character = game3d_character_controller_checked(
             character_controller, "Game3D.FirstPersonController.update: invalid character");
         if (!game3d_character_controller_validate_world(
-                character, world, "Game3D.FirstPersonController.update: character belongs to "
-                                  "another world"))
+                character,
+                world,
+                "Game3D.FirstPersonController.update: character belongs to "
+                "another world"))
             return;
         rt_camera3d_fps_update(world->camera, yaw, pitch, 0.0, 0.0, 0.0, 0.0, dt);
         rt_game3d_character_controller_set_speed(
             character_controller,
-            game3d_nonnegative_clamped_or(controller->speed,
-                                          RT_GAME3D_DEFAULT_MOVE_SPEED,
-                                          RT_GAME3D_CONTROLLER_SPEED_MAX));
+            game3d_nonnegative_clamped_or(
+                controller->speed, RT_GAME3D_DEFAULT_MOVE_SPEED, RT_GAME3D_CONTROLLER_SPEED_MAX));
         rt_game3d_character_controller_update(
             character_controller, world->input, world->camera, dt);
     } else {
@@ -746,8 +758,7 @@ void rt_game3d_first_person_controller_update(void *obj, void *world_obj, double
             (rt_game3d_input *)world->input, &move_x, &move_y, &move_z);
         double speed = game3d_nonnegative_clamped_or(
             controller->speed, RT_GAME3D_DEFAULT_MOVE_SPEED, RT_GAME3D_CONTROLLER_SPEED_MAX);
-        rt_camera3d_fps_update(
-            world->camera, yaw, pitch, move_z, move_x, move_y, speed, dt);
+        rt_camera3d_fps_update(world->camera, yaw, pitch, move_z, move_x, move_y, speed, dt);
     }
 }
 
@@ -763,14 +774,18 @@ void rt_game3d_first_person_controller_late_update(void *obj, void *world_obj, d
     if (!controller || !world || !world->camera || !character_controller)
         return;
     if (!game3d_camera_controller_validate_world(
-            controller, world, "Game3D.FirstPersonController.lateUpdate: controller belongs to "
-                               "another world"))
+            controller,
+            world,
+            "Game3D.FirstPersonController.lateUpdate: controller belongs to "
+            "another world"))
         return;
     rt_game3d_character_controller *character = game3d_character_controller_checked(
         character_controller, "Game3D.FirstPersonController.lateUpdate: invalid character");
     if (!game3d_character_controller_validate_world(
-            character, world, "Game3D.FirstPersonController.lateUpdate: character belongs to "
-                              "another world"))
+            character,
+            world,
+            "Game3D.FirstPersonController.lateUpdate: character belongs to "
+            "another world"))
         return;
     void *character_ref = game3d_character_controller_character_ref(character);
     if (!character || !character_ref)
@@ -778,8 +793,7 @@ void rt_game3d_first_person_controller_late_update(void *obj, void *world_obj, d
     void *pos = rt_character3d_get_position(character_ref);
     if (pos) {
         void *eye = rt_vec3_new(game3d_clamp_coord_or(rt_vec3_x(pos), 0.0),
-                                game3d_clamp_coord_or(rt_vec3_y(pos) + character->eye_height,
-                                                      0.0),
+                                game3d_clamp_coord_or(rt_vec3_y(pos) + character->eye_height, 0.0),
                                 game3d_clamp_coord_or(rt_vec3_z(pos), 0.0));
         rt_camera3d_set_position(world->camera, eye);
         game3d_release_ref(&eye);
@@ -822,8 +836,8 @@ double rt_game3d_free_fly_controller_get_speed(void *obj) {
     rt_game3d_free_fly_controller *controller = game3d_free_fly_controller_checked(
         obj, "Game3D.FreeFlyController.get_speed: invalid controller");
     return controller ? game3d_nonnegative_clamped_or(controller->speed,
-                                                     RT_GAME3D_DEFAULT_MOVE_SPEED,
-                                                     RT_GAME3D_CONTROLLER_SPEED_MAX)
+                                                      RT_GAME3D_DEFAULT_MOVE_SPEED,
+                                                      RT_GAME3D_CONTROLLER_SPEED_MAX)
                       : 0.0;
 }
 
@@ -841,8 +855,8 @@ double rt_game3d_free_fly_controller_get_look_sensitivity(void *obj) {
     rt_game3d_free_fly_controller *controller = game3d_free_fly_controller_checked(
         obj, "Game3D.FreeFlyController.get_lookSensitivity: invalid controller");
     return controller ? game3d_nonnegative_clamped_or(controller->look_sensitivity,
-                                                     RT_GAME3D_DEFAULT_LOOK_SENSITIVITY,
-                                                     RT_GAME3D_LOOK_SENSITIVITY_MAX)
+                                                      RT_GAME3D_DEFAULT_LOOK_SENSITIVITY,
+                                                      RT_GAME3D_LOOK_SENSITIVITY_MAX)
                       : 0.0;
 }
 
@@ -885,8 +899,10 @@ void rt_game3d_free_fly_controller_update(void *obj, void *world_obj, double dt)
     if (!controller || !world || !world->camera || !world->input)
         return;
     if (!game3d_camera_controller_validate_world(
-            controller, world, "Game3D.FreeFlyController.update: controller belongs to another "
-                               "world"))
+            controller,
+            world,
+            "Game3D.FreeFlyController.update: controller belongs to another "
+            "world"))
         return;
     dt = game3d_clamp_dt(dt);
     if (controller->capture_mouse)
@@ -895,26 +911,24 @@ void rt_game3d_free_fly_controller_update(void *obj, void *world_obj, double dt)
     double move_y = 0.0;
     double move_z = 0.0;
     game3d_input_move_axis_components((rt_game3d_input *)world->input, &move_x, &move_y, &move_z);
-    double sensitivity = game3d_nonnegative_clamped_or(
-        controller->look_sensitivity,
-        RT_GAME3D_DEFAULT_LOOK_SENSITIVITY,
-        RT_GAME3D_LOOK_SENSITIVITY_MAX);
-    double yaw =
-        (double)game3d_input_mouse_dx((rt_game3d_input *)world->input) * sensitivity;
-    double pitch = 0.0 - (double)game3d_input_mouse_dy((rt_game3d_input *)world->input) *
-                             sensitivity;
+    double sensitivity = game3d_nonnegative_clamped_or(controller->look_sensitivity,
+                                                       RT_GAME3D_DEFAULT_LOOK_SENSITIVITY,
+                                                       RT_GAME3D_LOOK_SENSITIVITY_MAX);
+    double yaw = (double)game3d_input_mouse_dx((rt_game3d_input *)world->input) * sensitivity;
+    double pitch =
+        0.0 - (double)game3d_input_mouse_dy((rt_game3d_input *)world->input) * sensitivity;
     yaw = game3d_clamp_abs_or(yaw, 0.0, RT_GAME3D_ANGLE_DEG_ABS_MAX);
     pitch = game3d_clamp_abs_or(pitch, 0.0, RT_GAME3D_ANGLE_DEG_ABS_MAX);
-    rt_camera3d_fps_update(
-        world->camera,
-        yaw,
-        pitch,
-        move_z,
-        move_x,
-        move_y,
-        game3d_nonnegative_clamped_or(
-            controller->speed, RT_GAME3D_DEFAULT_MOVE_SPEED, RT_GAME3D_CONTROLLER_SPEED_MAX),
-        dt);
+    rt_camera3d_fps_update(world->camera,
+                           yaw,
+                           pitch,
+                           move_z,
+                           move_x,
+                           move_y,
+                           game3d_nonnegative_clamped_or(controller->speed,
+                                                         RT_GAME3D_DEFAULT_MOVE_SPEED,
+                                                         RT_GAME3D_CONTROLLER_SPEED_MAX),
+                           dt);
 }
 
 /// @brief No-op late update (free-fly needs no post-physics pass); validates handles. See header.
@@ -925,8 +939,10 @@ void rt_game3d_free_fly_controller_late_update(void *obj, void *world_obj, doubl
     rt_game3d_world *world =
         game3d_world_checked(world_obj, "Game3D.FreeFlyController.lateUpdate: invalid world");
     (void)game3d_camera_controller_validate_world(
-        controller, world, "Game3D.FreeFlyController.lateUpdate: controller belongs to another "
-                           "world");
+        controller,
+        world,
+        "Game3D.FreeFlyController.lateUpdate: controller belongs to another "
+        "world");
 }
 
 /// @brief GC finalizer for the orbit controller: release its target reference.
@@ -943,17 +959,18 @@ static void game3d_orbit_controller_finalize(void *obj) {
 void *rt_game3d_orbit_controller_new(void *world_obj, void *target) {
     rt_game3d_world *world =
         game3d_world_checked(world_obj, "Game3D.OrbitController.New: invalid world");
-    if (!rt_g3d_is_vec3(target) && !rt_g3d_has_class(target, RT_G3D_GAME3D_ENTITY_CLASS_ID)) {
-        rt_trap("Game3D.OrbitController.New: target must be Vec3 or Entity3D");
-        return NULL;
+    rt_game3d_entity *target_entity = NULL;
+    if (!rt_g3d_is_vec3(target)) {
+        target_entity = game3d_entity_checked(
+            target, "Game3D.OrbitController.New: target must be Vec3 or Entity3D");
+        if (!target_entity)
+            return NULL;
     }
     if (!world)
         return NULL;
-    if (rt_g3d_has_class(target, RT_G3D_GAME3D_ENTITY_CLASS_ID) &&
+    if (target_entity &&
         !game3d_entity_validate_controller_world(
-            (rt_game3d_entity *)target,
-            world,
-            "Game3D.OrbitController.New: target belongs to another world"))
+            target_entity, world, "Game3D.OrbitController.New: target belongs to another world"))
         return NULL;
     rt_game3d_orbit_controller *controller = (rt_game3d_orbit_controller *)rt_obj_new_i64(
         RT_G3D_GAME3D_ORBIT_CLASS_ID, (int64_t)sizeof(*controller));
@@ -985,15 +1002,18 @@ void *rt_game3d_orbit_controller_get_target(void *obj) {
 void rt_game3d_orbit_controller_set_target(void *obj, void *target) {
     rt_game3d_orbit_controller *controller = game3d_orbit_controller_checked(
         obj, "Game3D.OrbitController.set_target: invalid controller");
-    if (!rt_g3d_is_vec3(target) && !rt_g3d_has_class(target, RT_G3D_GAME3D_ENTITY_CLASS_ID)) {
-        rt_trap("Game3D.OrbitController.set_target: target must be Vec3 or Entity3D");
-        return;
+    rt_game3d_entity *target_entity = NULL;
+    if (!rt_g3d_is_vec3(target)) {
+        target_entity = game3d_entity_checked(
+            target, "Game3D.OrbitController.set_target: target must be Vec3 or Entity3D");
+        if (!target_entity)
+            return;
     }
-    if (controller && rt_g3d_has_class(target, RT_G3D_GAME3D_ENTITY_CLASS_ID)) {
+    if (controller && target_entity) {
         rt_game3d_world *world = (rt_game3d_world *)rt_g3d_checked_or_null(
             controller->world, RT_G3D_GAME3D_WORLD_CLASS_ID);
         if (!game3d_entity_validate_controller_world(
-                (rt_game3d_entity *)target,
+                target_entity,
                 world,
                 "Game3D.OrbitController.set_target: target belongs to another world"))
             return;
@@ -1066,8 +1086,10 @@ void rt_game3d_orbit_controller_update(void *obj, void *world_obj, double dt) {
     if (!controller || !world || !world->input)
         return;
     if (!game3d_camera_controller_validate_world(
-            controller, world, "Game3D.OrbitController.update: controller belongs to another "
-                               "world"))
+            controller,
+            world,
+            "Game3D.OrbitController.update: controller belongs to another "
+            "world"))
         return;
     double orbit_sensitivity =
         game3d_nonnegative_clamped_or(controller->orbit_sensitivity, 0.25, 1000.0);
@@ -1080,16 +1102,16 @@ void rt_game3d_orbit_controller_update(void *obj, void *world_obj, double dt) {
     controller->pitch = game3d_clamp(controller->pitch, -85.0, 85.0);
     if (rt_game3d_input_mouse_button(world->input, rt_game3d_mouse_left())) {
         controller->yaw = game3d_clamp_abs_or(
-            controller->yaw + (double)game3d_input_mouse_dx((rt_game3d_input *)world->input) *
-                                  orbit_sensitivity,
+            controller->yaw +
+                (double)game3d_input_mouse_dx((rt_game3d_input *)world->input) * orbit_sensitivity,
             0.0,
             RT_GAME3D_ANGLE_DEG_ABS_MAX);
-        controller->pitch -= (double)game3d_input_mouse_dy((rt_game3d_input *)world->input) *
-                             orbit_sensitivity;
+        controller->pitch -=
+            (double)game3d_input_mouse_dy((rt_game3d_input *)world->input) * orbit_sensitivity;
         controller->pitch = game3d_clamp(controller->pitch, -85.0, 85.0);
     }
-    controller->distance -= game3d_input_wheel_y_snapshot((rt_game3d_input *)world->input) *
-                            zoom_sensitivity;
+    controller->distance -=
+        game3d_input_wheel_y_snapshot((rt_game3d_input *)world->input) * zoom_sensitivity;
     controller->distance = game3d_clamp(controller->distance, min_distance, max_distance);
 }
 
@@ -1102,8 +1124,10 @@ void rt_game3d_orbit_controller_late_update(void *obj, void *world_obj, double d
         game3d_world_checked(world_obj, "Game3D.OrbitController.lateUpdate: invalid world");
     void *target = game3d_orbit_controller_target_ref(controller);
     if (!game3d_camera_controller_validate_world(
-            controller, world, "Game3D.OrbitController.lateUpdate: controller belongs to another "
-                               "world"))
+            controller,
+            world,
+            "Game3D.OrbitController.lateUpdate: controller belongs to another "
+            "world"))
         return;
     if (controller && world && world->camera && target) {
         double target_pos[3];
@@ -1120,15 +1144,14 @@ void rt_game3d_orbit_controller_late_update(void *obj, void *world_obj, double d
         target_pos[0] = game3d_clamp_coord_or(target_pos[0], 0.0);
         target_pos[1] = game3d_clamp_coord_or(target_pos[1], 0.0);
         target_pos[2] = game3d_clamp_coord_or(target_pos[2], 0.0);
-        rt_camera3d_orbit_components(world->camera,
-                                     target_pos[0],
-                                     target_pos[1],
-                                     target_pos[2],
-                                     game3d_orbit_controller_distance_value(controller),
-                                     game3d_clamp_abs_or(controller->yaw,
-                                                         0.0,
-                                                         RT_GAME3D_ANGLE_DEG_ABS_MAX),
-                                     game3d_clamp(controller->pitch, -85.0, 85.0));
+        rt_camera3d_orbit_components(
+            world->camera,
+            target_pos[0],
+            target_pos[1],
+            target_pos[2],
+            game3d_orbit_controller_distance_value(controller),
+            game3d_clamp_abs_or(controller->yaw, 0.0, RT_GAME3D_ANGLE_DEG_ABS_MAX),
+            game3d_clamp(controller->pitch, -85.0, 85.0));
     }
 }
 
@@ -1228,8 +1251,8 @@ double rt_game3d_follow_controller_get_damping(void *obj) {
     rt_game3d_follow_controller *controller = game3d_follow_controller_checked(
         obj, "Game3D.FollowController.get_damping: invalid controller");
     return controller ? game3d_nonnegative_clamped_or(controller->damping,
-                                                     RT_GAME3D_DEFAULT_FOLLOW_DAMPING,
-                                                     RT_GAME3D_DAMPING_MAX)
+                                                      RT_GAME3D_DEFAULT_FOLLOW_DAMPING,
+                                                      RT_GAME3D_DAMPING_MAX)
                       : 0.0;
 }
 
@@ -1266,8 +1289,10 @@ void rt_game3d_follow_controller_late_update(void *obj, void *world_obj, double 
     if (!controller || !world || !world->camera || !target_entity || !offset)
         return;
     if (!game3d_camera_controller_validate_world(
-            controller, world, "Game3D.FollowController.lateUpdate: controller belongs to another "
-                               "world"))
+            controller,
+            world,
+            "Game3D.FollowController.lateUpdate: controller belongs to another "
+            "world"))
         return;
 
     dt = game3d_clamp_dt(dt);

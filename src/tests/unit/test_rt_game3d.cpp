@@ -7,6 +7,18 @@
 //
 // File: tests/unit/test_rt_game3d.cpp
 // Purpose: Unit tests for the runtime-backed Viper.Game3D helper layer.
+// Key invariants:
+//   - Game3D public runtime helpers preserve deterministic state across VM and
+//     native-style C entry point usage.
+//   - Entity/world lifetime tests assert defined behavior for both live and
+//     stale retained handles.
+// Ownership/Lifetime:
+//   - Test-created runtime handles are process-local and rely on the runtime GC
+//     conventions used by the production C ABI.
+//   - Private layout mirrors are used only for targeted invariant checks and
+//     must stay in sync with rt_game3d_internal.h.
+// Links: src/runtime/graphics/3d/rt_game3d.h,
+//   src/runtime/graphics/3d/rt_game3d_internal.h
 //
 //===----------------------------------------------------------------------===//
 
@@ -22,6 +34,7 @@
 #include "rt_canvas3d.h"
 #include "rt_decal3d.h"
 #include "rt_game3d.h"
+#include "rt_game3d_diagnostics.h"
 #include "rt_heap.h"
 #include "rt_iksolver3d.h"
 #include "rt_input.h"
@@ -131,6 +144,7 @@ typedef struct {
     int32_t child_count;
     int32_t child_capacity;
     int8_t group;
+    int8_t alive;
     int8_t spawned;
     int8_t destroyed;
 } Game3DEntityTestLayout;
@@ -1126,9 +1140,22 @@ static bool test_world_entity_registry_and_collision_clear() {
                   0,
                   "clearCollisionEvents clears enter events");
 
+    rt_game3d_diagnostics_reset();
+    rt_game3d_entity_set_position(parent, 3.0, 4.0, 5.0);
+    void *live_pos = rt_game3d_entity_position(parent);
+    EXPECT_NEAR(rt_vec3_x(live_pos), 3.0, 0.0001, "live entity position getter returns X");
+    EXPECT_NEAR(rt_vec3_y(live_pos), 4.0, 0.0001, "live entity position getter returns Y");
+    EXPECT_NEAR(rt_vec3_z(live_pos), 5.0, 0.0001, "live entity position getter returns Z");
+    rt_game3d_entity_attach_animator(parent, nullptr);
+    EXPECT_EQ_INT(rt_game3d_diagnostics_get_stale_entity_calls(),
+                  0,
+                  "live entity calls do not increment stale diagnostics");
+
     rt_game3d_world_despawn(world, parent);
     EXPECT_TRUE(rt_game3d_entity_is_spawned(parent) == 0, "despawn clears parent spawned flag");
     EXPECT_TRUE(rt_game3d_entity_is_spawned(child) == 0, "despawn clears child spawned flag");
+    EXPECT_TRUE(rt_game3d_entity_is_destroyed(parent) != 0, "despawn marks parent stale");
+    EXPECT_TRUE(rt_game3d_entity_is_destroyed(child) != 0, "despawn marks child stale");
     EXPECT_EQ_INT(
         rt_game3d_world_get_entity_count(world), 1, "entityCount drops despawned subtree");
     EXPECT_EQ_INT(
@@ -1146,6 +1173,17 @@ static bool test_world_entity_registry_and_collision_clear() {
                   2,
                   "despawn detaches the parent subtree from the scene");
 
+    rt_game3d_diagnostics_reset();
+    void *despawned_pos = rt_game3d_entity_position(parent);
+    EXPECT_NEAR(rt_vec3_x(despawned_pos), 0.0, 0.0001, "despawned entity position is neutral X");
+    EXPECT_NEAR(rt_vec3_y(despawned_pos), 0.0, 0.0001, "despawned entity position is neutral Y");
+    EXPECT_NEAR(rt_vec3_z(despawned_pos), 0.0, 0.0001, "despawned entity position is neutral Z");
+    rt_game3d_entity_set_position(parent, 10.0, 20.0, 30.0);
+    rt_game3d_entity_attach_animator(parent, nullptr);
+    EXPECT_EQ_INT(rt_game3d_diagnostics_get_stale_entity_calls(),
+                  3,
+                  "despawned entity getter, mutator, and animator calls are counted no-ops");
+
     rt_game3d_world_destroy(world);
     EXPECT_TRUE(rt_game3d_world_is_destroyed(world) != 0, "destroy marks world destroyed");
     EXPECT_TRUE(rt_game3d_entity_is_destroyed(other) != 0,
@@ -1153,9 +1191,20 @@ static bool test_world_entity_registry_and_collision_clear() {
     EXPECT_TRUE(
         expect_trap_contains([&] { (void)rt_game3d_world_get_frame(world); }, "world is destroyed"),
         "destroyed world handles trap with a clear diagnostic");
-    EXPECT_TRUE(expect_trap_contains([&] { (void)rt_game3d_entity_position(other); },
-                                     "entity is destroyed"),
-                "destroyed entity handles trap with a clear diagnostic");
+    rt_game3d_diagnostics_reset();
+    void *destroyed_pos = rt_game3d_entity_position(other);
+    EXPECT_NEAR(
+        rt_vec3_x(destroyed_pos), 0.0, 0.0001, "world-destroyed entity position is neutral X");
+    EXPECT_NEAR(
+        rt_vec3_y(destroyed_pos), 0.0, 0.0001, "world-destroyed entity position is neutral Y");
+    EXPECT_NEAR(
+        rt_vec3_z(destroyed_pos), 0.0, 0.0001, "world-destroyed entity position is neutral Z");
+    rt_game3d_entity_set_position(other, 11.0, 22.0, 33.0);
+    rt_game3d_entity_attach_animator(other, nullptr);
+    EXPECT_EQ_INT(rt_game3d_diagnostics_get_stale_entity_calls(),
+                  3,
+                  "world-destroyed entity calls are counted no-ops");
+    rt_game3d_diagnostics_reset();
     PASS();
 }
 

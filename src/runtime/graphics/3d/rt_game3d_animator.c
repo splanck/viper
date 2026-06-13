@@ -9,6 +9,16 @@
 // Purpose: Animator3D wrapper for the Viper.Game3D layer — drives an animation
 //   controller and surfaces per-update animation events. Split out of rt_game3d.c;
 //   shares private types/helpers via rt_game3d_internal.h.
+// Key invariants:
+//   - Animator3D wraps either an AnimController3D or NodeAnimator3D and never
+//     advances both through the scene and Game3D in the same frame.
+//   - Entity attachment validates stale Entity3D handles before touching node
+//     bindings.
+// Ownership/Lifetime:
+//   - Animator3D retains its wrapped controller/node animator and owns its bounded
+//     event queue strings until consumed or finalized.
+//   - Attaching an animator assigns retained references into Entity3D and scene
+//     node slots; stale entities are no-op targets.
 // Links: rt_game3d_internal.h, rt_animcontroller3d.h
 //
 //===----------------------------------------------------------------------===//
@@ -64,16 +74,15 @@
 
 /// @brief Return the wrapped AnimController3D only when the private slot is still valid.
 static void *game3d_animator_controller_ref(const rt_game3d_animator *animator) {
-    return animator ? rt_g3d_checked_or_null(animator->controller,
-                                             RT_G3D_ANIMCONTROLLER3D_CLASS_ID)
+    return animator ? rt_g3d_checked_or_null(animator->controller, RT_G3D_ANIMCONTROLLER3D_CLASS_ID)
                     : NULL;
 }
 
 /// @brief Return the wrapped NodeAnimator3D only when the private slot is still valid.
 static void *game3d_animator_node_animator_ref(const rt_game3d_animator *animator) {
-    return animator ? rt_g3d_checked_or_null(animator->node_animator,
-                                             RT_G3D_NODEANIMATOR3D_CLASS_ID)
-                    : NULL;
+    return animator
+               ? rt_g3d_checked_or_null(animator->node_animator, RT_G3D_NODEANIMATOR3D_CLASS_ID)
+               : NULL;
 }
 
 /// @brief Clamp the private event count to the public fixed-buffer range.
@@ -194,9 +203,8 @@ void *rt_game3d_animator_new_from_bindings(void *controller, void *node_animator
     memset(animator, 0, sizeof(*animator));
     rt_obj_set_finalizer(animator, game3d_animator_finalize);
     game3d_assign_typed_ref(&animator->controller, controller, RT_G3D_ANIMCONTROLLER3D_CLASS_ID);
-    game3d_assign_typed_ref(&animator->node_animator,
-                            node_animator,
-                            RT_G3D_NODEANIMATOR3D_CLASS_ID);
+    game3d_assign_typed_ref(
+        &animator->node_animator, node_animator, RT_G3D_NODEANIMATOR3D_CLASS_ID);
     return animator;
 }
 
@@ -340,9 +348,7 @@ void rt_game3d_animator_set_speed(void *obj, rt_string name, double speed) {
     void *node_animator = game3d_animator_node_animator_ref(animator);
     double clamped = game3d_clamp_abs_or(speed, 1.0, RT_GAME3D_ANIM_SPEED_ABS_MAX);
     if (controller)
-        rt_anim_controller3d_set_state_speed(controller,
-                                             name,
-                                             clamped);
+        rt_anim_controller3d_set_state_speed(controller, name, clamped);
     if (node_animator)
         rt_node_animator3d_set_speed(node_animator, clamped);
 }
@@ -374,10 +380,9 @@ double rt_game3d_animator_state_time(void *obj) {
     if (!controller && node_animator)
         return rt_node_animator3d_get_time(node_animator);
     return controller
-               ? game3d_nonnegative_clamped_or(
-                     rt_anim_controller3d_get_state_time(controller),
-                     0.0,
-                     RT_GAME3D_ANIM_BLEND_TIME_MAX)
+               ? game3d_nonnegative_clamped_or(rt_anim_controller3d_get_state_time(controller),
+                                               0.0,
+                                               RT_GAME3D_ANIM_BLEND_TIME_MAX)
                : 0.0;
 }
 
@@ -435,6 +440,8 @@ void rt_game3d_animator_update(void *obj, double dt) {
 void *rt_game3d_entity_attach_animator(void *obj, void *animator_or_controller) {
     rt_game3d_entity *entity =
         game3d_entity_checked(obj, "Game3D.Entity3D.attachAnimator: invalid entity");
+    if (!entity)
+        return obj;
     void *animator = animator_or_controller;
     void *created_animator = NULL;
     if (animator_or_controller &&
@@ -447,9 +454,8 @@ void *rt_game3d_entity_attach_animator(void *obj, void *animator_or_controller) 
         animator = created_animator;
     } else if (animator_or_controller &&
                !rt_g3d_has_class(animator_or_controller, RT_G3D_GAME3D_ANIMATOR3D_CLASS_ID)) {
-        rt_trap(
-            "Game3D.Entity3D.attachAnimator: expected Animator3D, AnimController3D, or "
-            "NodeAnimator3D");
+        rt_trap("Game3D.Entity3D.attachAnimator: expected Animator3D, AnimController3D, or "
+                "NodeAnimator3D");
         return obj;
     }
     if (entity) {
@@ -459,8 +465,7 @@ void *rt_game3d_entity_attach_animator(void *obj, void *animator_or_controller) 
             if (animator) {
                 rt_game3d_animator *game_animator = game3d_animator_checked(
                     animator, "Game3D.Entity3D.attachAnimator: invalid animator");
-                rt_scene_node3d_bind_animator(node,
-                                              game3d_animator_controller_ref(game_animator));
+                rt_scene_node3d_bind_animator(node, game3d_animator_controller_ref(game_animator));
                 rt_scene_node3d_set_animator_scene_update(node, 0);
                 rt_scene_node3d_bind_node_animator(
                     node, game3d_animator_node_animator_ref(game_animator));

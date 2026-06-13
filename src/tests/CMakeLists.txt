@@ -1487,7 +1487,7 @@ if (EXISTS "${GAME3D_DESTROYED_ENTITY_REJECT_PROBE}")
             COMMAND $<TARGET_FILE:viper> run "${GAME3D_DESTROYED_ENTITY_REJECT_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_destroyed_entity_reject PROPERTIES
-            PASS_REGULAR_EXPRESSION "Game3D.Entity3D.position: entity is destroyed"
+            PASS_REGULAR_EXPRESSION "PASS stale entity no-op"
             LABELS "runtime;graphics3d;zia;requires_display"
             ENVIRONMENT "VIPER_3D_BACKEND=software"
             TIMEOUT 30)
@@ -1499,7 +1499,7 @@ if (EXISTS "${GAME3D_DOUBLE_DESPAWN_REJECT_PROBE}")
             COMMAND $<TARGET_FILE:viper> run "${GAME3D_DOUBLE_DESPAWN_REJECT_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     set_tests_properties(g3d_test_game3d_double_despawn_reject PROPERTIES
-            PASS_REGULAR_EXPRESSION "Game3D.World3D.despawn: entity is not spawned in this world"
+            PASS_REGULAR_EXPRESSION "PASS double despawn no-op"
             LABELS "runtime;graphics3d;zia;requires_display"
             ENVIRONMENT "VIPER_3D_BACKEND=software"
             TIMEOUT 30)

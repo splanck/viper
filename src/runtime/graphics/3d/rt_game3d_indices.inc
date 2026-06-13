@@ -70,7 +70,8 @@ static int game3d_world_body_index_find_slot(const rt_game3d_body_index_entry *e
 }
 
 /// @brief Insert or overwrite the `body`→`entity` mapping in the existing table, assuming spare
-///   capacity (callers grow first via game3d_world_grow_body_index). Bumps count only for a new key.
+///   capacity (callers grow first via game3d_world_grow_body_index). Bumps count only for a new
+///   key.
 /// @return 1 on success, 0 when the table has no free slot.
 static int game3d_world_body_index_insert_no_grow(rt_game3d_world *world,
                                                   void *body,
@@ -135,8 +136,10 @@ static int game3d_world_grow_body_index(rt_game3d_world *world, int32_t need) {
 }
 
 /// @brief Rebuild the body→entity index from the world's authoritative entity registry.
-/// @details Used after capacity/counter corruption is detected, or when callers need to recover from
-///          a stale open-addressing table. The index remains borrowed metadata; no entity refs move.
+/// @details Used after capacity/counter corruption is detected, or when callers need to recover
+/// from
+///          a stale open-addressing table. The index remains borrowed metadata; no entity refs
+///          move.
 static int game3d_world_rebuild_body_index(rt_game3d_world *world) {
     int32_t entity_count;
     if (!world)
@@ -146,7 +149,7 @@ static int game3d_world_rebuild_body_index(rt_game3d_world *world) {
     for (int32_t i = 0; i < entity_count; ++i) {
         rt_game3d_entity *entity = world->entities[i];
         void *body = game3d_entity_body_ref(entity);
-        if (!entity || !entity->spawned || entity->world != world || !body)
+        if (!entity || !entity->alive || !entity->spawned || entity->world != world || !body)
             continue;
         if (!game3d_world_grow_body_index(world, world->body_index_count + 1) ||
             !game3d_world_body_index_insert_no_grow(world, body, entity)) {
@@ -197,7 +200,7 @@ void game3d_world_body_index_remove(rt_game3d_world *world, void *body) {
 /// @brief Index `entity` under its physics body for O(1) body→entity lookup.
 int game3d_world_body_index_add(rt_game3d_world *world, rt_game3d_entity *entity) {
     void *body = game3d_entity_body_ref(entity);
-    if (!world || !body)
+    if (!world || !entity || !entity->alive || !body)
         return 1;
     if (!game3d_world_body_index_ensure_usable(world))
         return 0;
@@ -298,7 +301,7 @@ static void game3d_world_name_index_insert(rt_game3d_world *world, rt_game3d_ent
     const char *name;
     uint64_t hash;
     int32_t mask;
-    if (!world || !entity || !entity->name || world->name_index_capacity <= 0 ||
+    if (!world || !entity || !entity->alive || !entity->name || world->name_index_capacity <= 0 ||
         !world->name_index_hashes || !world->name_index_entities ||
         !game3d_index_capacity_is_power_of_two(world->name_index_capacity))
         return;
@@ -352,7 +355,7 @@ static void game3d_world_rebuild_name_index(rt_game3d_world *world) {
 ///   replaced the open-addressing table.
 int game3d_world_name_index_add_entity(rt_game3d_world *world, rt_game3d_entity *entity) {
     int32_t old_capacity;
-    if (!world || !entity)
+    if (!world || !entity || !entity->alive)
         return 1;
     if (!world->name_index_valid ||
         (world->name_index_capacity > 0 &&

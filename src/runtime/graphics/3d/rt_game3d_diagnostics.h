@@ -38,6 +38,7 @@ int64_t rt_game3d_diagnostics_get_ccd_clamped_bodies(void);
 int64_t rt_game3d_diagnostics_get_anim_events_dropped(void);
 int64_t rt_game3d_diagnostics_get_audio_voices_evicted(void);
 int64_t rt_game3d_diagnostics_get_nav_grid_fallbacks(void);
+int64_t rt_game3d_diagnostics_get_stale_entity_calls(void);
 void rt_game3d_diagnostics_reset(void);
 rt_string rt_game3d_diagnostics_summary(void);
 
@@ -46,6 +47,7 @@ void rt_game3d_diag_record_ccd_clamp(int64_t affected_bodies);
 void rt_game3d_diag_record_anim_events_dropped(int64_t count);
 void rt_game3d_diag_record_audio_voice_evicted(void);
 void rt_game3d_diag_record_nav_grid_fallback(void);
+void rt_game3d_diag_record_stale_entity_call(void);
 
 #ifdef __cplusplus
 }

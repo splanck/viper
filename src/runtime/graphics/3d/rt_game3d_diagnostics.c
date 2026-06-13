@@ -33,6 +33,7 @@ typedef struct {
     int64_t anim_events_dropped;
     int64_t audio_voices_evicted;
     int64_t nav_grid_fallbacks;
+    int64_t stale_entity_calls;
 } rt_game3d_diagnostics_state;
 
 static rt_game3d_diagnostics_state g_game3d_diagnostics;
@@ -95,6 +96,10 @@ int64_t rt_game3d_diagnostics_get_nav_grid_fallbacks(void) {
     return diag_nonnegative(g_game3d_diagnostics.nav_grid_fallbacks);
 }
 
+int64_t rt_game3d_diagnostics_get_stale_entity_calls(void) {
+    return diag_nonnegative(g_game3d_diagnostics.stale_entity_calls);
+}
+
 void rt_game3d_diagnostics_reset(void) {
     memset(&g_game3d_diagnostics, 0, sizeof(g_game3d_diagnostics));
 }
@@ -133,6 +138,11 @@ rt_string rt_game3d_diagnostics_summary(void) {
                      &offset,
                      "NavGridFallbacks",
                      g_game3d_diagnostics.nav_grid_fallbacks);
+    diag_append_line(buffer,
+                     sizeof(buffer),
+                     &offset,
+                     "StaleEntityCalls",
+                     g_game3d_diagnostics.stale_entity_calls);
     if (offset == 0)
         return rt_str_empty();
     return rt_string_from_bytes(buffer, offset);
@@ -157,4 +167,8 @@ void rt_game3d_diag_record_audio_voice_evicted(void) {
 
 void rt_game3d_diag_record_nav_grid_fallback(void) {
     diag_increment(&g_game3d_diagnostics.nav_grid_fallbacks, 1);
+}
+
+void rt_game3d_diag_record_stale_entity_call(void) {
+    diag_increment(&g_game3d_diagnostics.stale_entity_calls, 1);
 }

@@ -26,6 +26,7 @@
 #include <string.h>
 
 #include "rt_game3d.h"
+#include "rt_game3d_diagnostics.h"
 #include "rt_gltf.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_input.h"
@@ -151,6 +152,7 @@ typedef struct rt_game3d_entity {
     int32_t child_count;
     int32_t child_capacity;
     int8_t group;
+    int8_t alive;
     int8_t spawned;
     int8_t destroyed;
 } rt_game3d_entity;
@@ -177,8 +179,7 @@ static inline void *game3d_entity_body_ref(const rt_game3d_entity *entity) {
 
 /// @brief Return the entity's Animator3D slot only when it still has the expected class.
 static inline void *game3d_entity_anim_ref(const rt_game3d_entity *entity) {
-    return entity ? rt_g3d_checked_or_null(entity->anim, RT_G3D_GAME3D_ANIMATOR3D_CLASS_ID)
-                  : NULL;
+    return entity ? rt_g3d_checked_or_null(entity->anim, RT_G3D_GAME3D_ANIMATOR3D_CLASS_ID) : NULL;
 }
 
 /// @brief Safe number of child entity slots that may be read directly.
@@ -599,12 +600,33 @@ static inline rt_game3d_entity *game3d_entity_checked_allow_destroyed(void *obj,
     return entity;
 }
 
-/// @brief Validate `obj` as a live Entity3D handle, additionally trapping if the
-///   entity has been destroyed.
+/// @brief True when a typed Entity3D payload is still live for public API access.
+static inline int game3d_entity_alive_or_record(const rt_game3d_entity *entity) {
+    if (!entity)
+        return 0;
+    if (!entity->alive || entity->destroyed) {
+        rt_game3d_diag_record_stale_entity_call();
+        return 0;
+    }
+    return 1;
+}
+
+/// @brief Mark a retained Entity3D handle as dead after it leaves its world.
+static inline void game3d_entity_mark_dead(rt_game3d_entity *entity) {
+    if (!entity)
+        return;
+    entity->alive = 0;
+    entity->spawned = 0;
+    entity->destroyed = 1;
+    entity->world = NULL;
+}
+
+/// @brief Validate `obj` as a live Entity3D handle; stale handles record diagnostics
+///   and resolve to NULL so callers can return neutral values or no-op.
 static inline rt_game3d_entity *game3d_entity_checked(void *obj, const char *method) {
     rt_game3d_entity *entity = game3d_entity_checked_allow_destroyed(obj, method);
-    if (entity && entity->destroyed)
-        rt_trap(game3d_lifetime_diag(method, "entity is destroyed"));
+    if (!game3d_entity_alive_or_record(entity))
+        return NULL;
     return entity;
 }
 

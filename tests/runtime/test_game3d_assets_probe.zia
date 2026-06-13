@@ -30,13 +30,20 @@ func start() {
     var world = Game3D.World3D.New("Game3D Asset Lifetime Probe", 64, 48);
     var i = 0;
     while (i < 4) {
-        Game3D.World3D.spawn(world, assetEntity);
+        var loopEntity = Game3D.Assets3D.LoadModelAsset(path);
+        if (loopEntity == null ||
+            G3D.SceneNode3D.get_ChildCount(Game3D.Entity3D.get_node(loopEntity)) != 1) {
+            fail("LoadModelAsset did not create a fresh asset group");
+            return;
+        }
+        Game3D.Entity3D.setName(loopEntity, "AssetProbeImport");
+        Game3D.World3D.spawn(world, loopEntity);
         if (Game3D.World3D.get_entityCount(world) != 1 ||
             Game3D.World3D.findEntity(world, "AssetProbeImport") == null) {
             fail("imported asset group did not spawn/index cleanly");
             return;
         }
-        Game3D.World3D.despawn(world, assetEntity);
+        Game3D.World3D.despawn(world, loopEntity);
         if (Game3D.World3D.get_entityCount(world) != 0 ||
             Game3D.World3D.findEntity(world, "AssetProbeImport") != null) {
             fail("imported asset group despawn leaked world registry state");

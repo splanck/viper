@@ -678,7 +678,9 @@ static void *game3d_stream_terrain_tile_terrain_ref(const rt_game3d_stream_terra
 
 /// @brief Return a terrain tile's attached Game3D entity only when the private slot is valid.
 static void *game3d_stream_terrain_tile_entity_ref(void *entity) {
-    return rt_g3d_checked_or_null(entity, RT_G3D_GAME3D_ENTITY_CLASS_ID);
+    rt_game3d_entity *typed =
+        (rt_game3d_entity *)rt_g3d_checked_or_null(entity, RT_G3D_GAME3D_ENTITY_CLASS_ID);
+    return typed && typed->alive ? typed : NULL;
 }
 
 /// @brief Despawn/release collider and nav entities attached to a resident terrain tile.
@@ -1247,7 +1249,7 @@ static void game3d_world_stream_unload_cell(rt_game3d_world_stream *stream,
     if (cell->resident && cell->entity && stream && stream->world) {
         rt_game3d_entity *entity =
             (rt_game3d_entity *)rt_g3d_checked_or_null(cell->entity, RT_G3D_GAME3D_ENTITY_CLASS_ID);
-        if (entity && entity->spawned && entity->world == stream->world)
+        if (entity && entity->alive && entity->spawned && entity->world == stream->world)
             game3d_world_despawn_entity_tree((rt_game3d_world *)stream->world, entity, 1);
     }
     game3d_release_ref(&cell->entity);

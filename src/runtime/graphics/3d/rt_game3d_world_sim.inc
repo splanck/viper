@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/rt_game3d_world_sim.inc  (#included from rt_game3d.c; not a standalone translation unit)
-// Purpose: Game3D environment/debug helpers, per-frame controller/animation update, entity spawn/despawn
+// File: src/runtime/graphics/3d/rt_game3d_world_sim.inc  (#included from rt_game3d.c; not a
+// standalone translation unit) Purpose: Game3D environment/debug helpers, per-frame
+// controller/animation update, entity spawn/despawn
 //===----------------------------------------------------------------------===//
 /// @brief GC finalizer for an EnvHandle: release its water, terrain, and world refs.
 static void game3d_env_handle_finalize(void *obj) {
@@ -46,7 +47,7 @@ void *rt_game3d_env_handle_with_terrain(void *obj, double size, double height) {
         return obj;
     if (env->terrain_entity) {
         rt_game3d_entity *old = (rt_game3d_entity *)env->terrain_entity;
-        if (!old->destroyed && old->spawned && old->world == world)
+        if (old->alive && old->spawned && old->world == world)
             rt_game3d_world_despawn(world, env->terrain_entity);
         game3d_release_ref(&env->terrain_entity);
     }
@@ -81,7 +82,7 @@ void *rt_game3d_env_handle_with_water(void *obj, double level) {
         return obj;
     if (env->water_entity) {
         rt_game3d_entity *old = (rt_game3d_entity *)env->water_entity;
-        if (!old->destroyed && old->spawned && old->world == world)
+        if (old->alive && old->spawned && old->world == world)
             rt_game3d_world_despawn(world, env->water_entity);
         game3d_release_ref(&env->water_entity);
     }
@@ -309,7 +310,8 @@ static void game3d_world_update_animations(rt_game3d_world *world, double dt) {
         rt_game3d_entity *entity = world->entities[i];
         void *anim = game3d_entity_anim_ref(entity);
         int duplicate = 0;
-        if (!entity || entity->destroyed || !anim || !rt_game3d_animator_needs_game_update(anim))
+        if (!entity || !entity->alive || entity->destroyed || !anim ||
+            !rt_game3d_animator_needs_game_update(anim))
             continue;
         for (int32_t j = 0; j < animator_count; ++j) {
             if (animators[j] == anim) {
@@ -434,7 +436,7 @@ rt_game3d_entity *game3d_world_find_entity_by_body(rt_game3d_world *world, void 
     if (!found || slot < 0)
         return NULL;
     rt_game3d_entity *entity = world->body_index_entries[slot].entity;
-    if (!entity || !entity->spawned || entity->world != world ||
+    if (!entity || !entity->alive || !entity->spawned || entity->world != world ||
         (world->physics && !rt_world3d_contains_body(world->physics, body))) {
         game3d_world_body_index_remove(world, body);
         return NULL;
@@ -575,7 +577,7 @@ static void game3d_world_despawn_entity_one_internal(rt_game3d_world *world,
     entity->world = NULL;
     game3d_world_registry_remove_no_rebuild(world, entity);
     if (mark_destroyed) {
-        entity->destroyed = 1;
+        game3d_entity_mark_dead(entity);
         if (rt_obj_release_check0(entity))
             rt_obj_free(entity);
     }
@@ -600,8 +602,7 @@ static void game3d_world_rollback_spawned_entities(rt_game3d_world *world,
         return;
     for (int32_t i = spawned->count - 1; i >= 0; --i) {
         rt_game3d_entity *entity = spawned->items[i];
-        game3d_world_despawn_entity_one(
-            world, entity, entity == root && attach_to_scene ? 1 : 0);
+        game3d_world_despawn_entity_one(world, entity, entity == root && attach_to_scene ? 1 : 0);
     }
     game3d_world_rebuild_name_index(world);
 }
@@ -647,11 +648,11 @@ static void game3d_world_despawn_entity_tree_internal(rt_game3d_world *world,
     game3d_world_rebuild_name_index(world);
 }
 
-/// @brief Despawn an entity tree with an explicit heap stack, avoiding C-stack overflow.
+/// @brief Despawn an entity tree with an explicit heap stack, marking handles stale.
 static void game3d_world_despawn_entity_tree(rt_game3d_world *world,
                                              rt_game3d_entity *entity,
                                              int detach_root) {
-    game3d_world_despawn_entity_tree_internal(world, entity, detach_root, 0);
+    game3d_world_despawn_entity_tree_internal(world, entity, detach_root, 1);
 }
 
 /// @brief Spawn one entity in a tree walk; returns 1 when children should be visited,
@@ -662,7 +663,7 @@ static int game3d_world_spawn_entity_one(rt_game3d_world *world,
                                          int64_t *next_id) {
     if (!world || !entity)
         return 0;
-    if (entity->destroyed) {
+    if (!entity->alive || entity->destroyed) {
         rt_trap("Game3D.World3D.spawn: entity is destroyed");
         return -1;
     }
@@ -752,8 +753,8 @@ static int game3d_world_spawn_entity_one(rt_game3d_world *world,
 
 /// @brief Iteratively spawn an entity and its children: assign a stable id, add the root
 ///   node to the scene, register and add bodies to physics, and mark the tree spawned.
-/// @details Traps if the entity is destroyed or already belongs to another world. Only
-///   the root attaches to the scene (`attach_to_scene`); children remain parented to it.
+/// @details Internal callers pass only live entities; destroyed or cross-world entities trap here.
+///   Only the root attaches to the scene (`attach_to_scene`); children remain parented to it.
 int game3d_world_spawn_entity_tree(rt_game3d_world *world,
                                    rt_game3d_entity *entity,
                                    int attach_to_scene,
@@ -816,8 +817,7 @@ static void game3d_world_release_runtime(rt_game3d_world *world, int mark_entiti
     while (world->entity_count > 0) {
         rt_game3d_entity *entity = world->entities[world->entity_count - 1];
         if (entity) {
-            game3d_world_despawn_entity_tree_internal(
-                world, entity, 1, mark_entities_destroyed);
+            game3d_world_despawn_entity_tree_internal(world, entity, 1, mark_entities_destroyed);
         } else {
             world->entity_count--;
         }

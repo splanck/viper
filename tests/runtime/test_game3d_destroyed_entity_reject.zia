@@ -1,11 +1,31 @@
 module test_game3d_destroyed_entity_reject;
 
 bind Viper.Game3D as Game3D;
+bind Viper.Math as Math;
+bind Viper.Terminal as Terminal;
+
+func fail(message: String) {
+    Terminal.Say("FAIL: " + message);
+}
 
 func start() {
-    var world = Game3D.World3D.New("Game3D Destroyed Entity Reject", 32, 24);
+    Game3D.Diagnostics.Reset();
+    var world = Game3D.World3D.New("Game3D Destroyed Entity Noop", 32, 24);
     var entity = Game3D.Entity3D.New();
     Game3D.World3D.spawn(world, entity);
     Game3D.World3D.destroy(world);
-    Game3D.Entity3D.position(entity);
+    var pos = Game3D.Entity3D.position(entity);
+    if (pos == null ||
+        Math.Vec3.get_X(pos) != 0.0 ||
+        Math.Vec3.get_Y(pos) != 0.0 ||
+        Math.Vec3.get_Z(pos) != 0.0) {
+        fail("stale entity position should be neutral");
+        return;
+    }
+    Game3D.Entity3D.setPosition(entity, 1.0, 2.0, 3.0);
+    if (Game3D.Diagnostics.get_StaleEntityCalls() != 2) {
+        fail("stale entity calls should be counted");
+        return;
+    }
+    Terminal.Say("PASS stale entity no-op");
 }

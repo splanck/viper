@@ -147,10 +147,11 @@ tool can inspect one world handle without reaching through each subsystem.
 `Game3D.Diagnostics` exposes process-wide degradation counters for rare runtime
 fallbacks that keep execution correct but indicate pressure or lost fidelity:
 `BroadphaseFallbackCount`, `CcdClampedFrames`, `CcdClampedBodies`,
-`AnimEventsDropped`, `AudioVoicesEvicted`, and `NavGridFallbacks`. `Reset()`
-clears the process aggregates. `Summary()` returns stable `name=value` lines in
-that order, omitting zero counters and returning `""` when clean. Smoke probes
-can print `Game3D.Diagnostics.Summary()` and assert it is empty.
+`AnimEventsDropped`, `AudioVoicesEvicted`, `NavGridFallbacks`, and
+`StaleEntityCalls`. `Reset()` clears the process aggregates. `Summary()` returns
+stable `name=value` lines in that order, omitting zero counters and returning
+`""` when clean. Smoke probes can print `Game3D.Diagnostics.Summary()` and
+assert it is empty.
 
 `Viper.Graphics3D.Physics3DWorld.BroadphaseFallbackCount` reports the matching
 per-world broadphase fallback total. CCD inspection remains available through
@@ -422,11 +423,17 @@ an attached body only when the node sync mode is `SyncMode.BodyFromNode`:
 
 `World3D.spawn(entity)` attaches the entity node to the world scene and registers
 the entity by name. `World3D.despawn(entity)` removes it from the registry,
-scene, and physics world. Child Game3D entities are owned by their parent for
-despawn purposes; raw imported child nodes remain part of the imported node
-subtree. Adding a child to an already-spawned entity spawns that child into the
-same world; adding a spawned child under an unspawned entity is rejected because
-it would detach the child from its world scene.
+scene, and physics world, and the retained entity handle becomes stale.
+Destroying a world also marks any retained entities from that world stale. Stale
+entity getters return neutral values (`0`, `null`, or origin vectors), mutators
+including `attachAnimator` no-op, and each stale API call increments
+`Game3D.Diagnostics.StaleEntityCalls`; invalid non-entity handles still trap.
+`isSpawned()` and `isDestroyed()` remain available for lifecycle inspection.
+Child Game3D entities are owned by their parent for despawn purposes; raw
+imported child nodes remain part of the imported node subtree. Adding a child to
+an already-spawned entity spawns that child into the same world; adding a
+spawned child under an unspawned entity is rejected because it would detach the
+child from its world scene.
 
 Use `LayerMask.None()`, `LayerMask.All()`, `LayerMask.Of(layer)`,
 `include(layer)`, and `includes(layer)` for readable filters. Layer values are
@@ -1052,13 +1059,13 @@ The Game3D runtime is covered by:
 
 | Test | Coverage |
 |------|----------|
-| `test_rt_game3d` | C runtime contracts for constants, masks, input, world defaults, spawn/despawn, destroyed-handle diagnostics, shared-body rejection, collision-event clearing, native callback loops, fixed-loop accumulator/spiral-guard behavior, overlay hooks, final capture, packaged glTF hierarchy loading through `Assets3D.LoadModelAsset`, synthetic controller input, orbit/follow late update, first-person character movement, material presets, prefabs, lighting, quality, environment, post-FX, debug helpers, streamed terrain metadata inspection and LOD seam stitching beyond the single-heightmap cap, Animator3D root motion/events, Sound3D helpers, and Effects3D presets/expiry |
+| `test_rt_game3d` | C runtime contracts for constants, masks, input, world defaults, spawn/despawn, stale-entity no-op diagnostics, shared-body rejection, collision-event clearing, native callback loops, fixed-loop accumulator/spiral-guard behavior, overlay hooks, final capture, packaged glTF hierarchy loading through `Assets3D.LoadModelAsset`, synthetic controller input, orbit/follow late update, first-person character movement, material presets, prefabs, lighting, quality, environment, post-FX, debug helpers, streamed terrain metadata inspection and LOD seam stitching beyond the single-heightmap cap, Animator3D root motion/events, Sound3D helpers, and Effects3D presets/expiry |
 | `g3d_test_game3d_world_probe` | Zia construction, default subsystems, layer masks, entity spawn/find/despawn, direct `Entity3D.FromNode` subtree wrapping, synthetic `tick`, clamped `stepSimulation`, resize/aspect, manual frame path, final capture, and destroy |
 | `g3d_test_game3d_runframes_probe` | Zia deterministic `runFramesOnly`, dt/elapsed/frame accounting, and final capture |
 | `g3d_test_game3d_runframes_callback_reject` | Interpreted Zia callback rejection diagnostic for native callback-loop APIs |
 | `g3d_test_game3d_destroyed_handle_reject` | Interpreted Zia destroyed-`World3D` diagnostic for post-teardown handle use |
-| `g3d_test_game3d_destroyed_entity_reject` | Interpreted Zia destroyed-`Entity3D` diagnostic for post-teardown handle use |
-| `g3d_test_game3d_double_despawn_reject` | Interpreted Zia double-despawn ownership diagnostic |
+| `g3d_test_game3d_destroyed_entity_reject` | Interpreted Zia stale-`Entity3D` neutral getter/no-op diagnostics for post-teardown handle use |
+| `g3d_test_game3d_double_despawn_reject` | Interpreted Zia double-despawn stale-handle no-op diagnostic |
 | `g3d_test_game3d_camera_controllers_probe` | Zia free-fly synthetic input, orbit drag/zoom, and follow camera post-physics tracking |
 | `g3d_test_game3d_character_controller_probe` | Zia first-person character movement and late-update camera alignment |
 | `g3d_test_game3d_presets_probe` | Zia material/prefab presets, lighting, quality fallback, post-FX, environment chaining, physics body setup, and final-overlay debug capture |
