@@ -23,6 +23,7 @@
 #include "vgfx3d_backend_utils.h"
 
 #include <limits.h>
+#include <math.h>
 #include <string.h>
 
 /// @brief Transpose a 4x4 matrix from one row/column major layout to the other.
@@ -254,6 +255,48 @@ int32_t vgfx3d_metal_sanitize_shadow_index(int32_t shadow_index, int32_t shadow_
     if (shadow_count <= 0 || shadow_count > VGFX3D_MAX_SHADOW_LIGHTS)
         return -1;
     return (shadow_index >= 0 && shadow_index < shadow_count) ? shadow_index : -1;
+}
+
+/// @brief Project a world-space point through a shadow VP matrix using MSL sampling rules.
+int vgfx3d_metal_project_shadow_coord(const float *shadow_vp,
+                                      int32_t projection_type,
+                                      const float world_pos[3],
+                                      float out_uv_depth[3]) {
+    float lx;
+    float ly;
+    float lz;
+    float lw;
+    float ndc_x;
+    float ndc_y;
+    float ndc_z;
+
+    if (!shadow_vp || !world_pos || !out_uv_depth)
+        return 0;
+    lx = world_pos[0] * shadow_vp[0] + world_pos[1] * shadow_vp[1] + world_pos[2] * shadow_vp[2] +
+         shadow_vp[3];
+    ly = world_pos[0] * shadow_vp[4] + world_pos[1] * shadow_vp[5] + world_pos[2] * shadow_vp[6] +
+         shadow_vp[7];
+    lz = world_pos[0] * shadow_vp[8] + world_pos[1] * shadow_vp[9] + world_pos[2] * shadow_vp[10] +
+         shadow_vp[11];
+    lw = world_pos[0] * shadow_vp[12] + world_pos[1] * shadow_vp[13] +
+         world_pos[2] * shadow_vp[14] + shadow_vp[15];
+    if (projection_type == VGFX3D_SHADOW_PROJECTION_PERSPECTIVE) {
+        if (!isfinite(lw) || lw <= 0.0001f)
+            return 0;
+        ndc_x = lx / lw;
+        ndc_y = ly / lw;
+        ndc_z = lz / lw;
+    } else {
+        ndc_x = lx;
+        ndc_y = ly;
+        ndc_z = lz;
+    }
+    if (!isfinite(ndc_x) || !isfinite(ndc_y) || !isfinite(ndc_z))
+        return 0;
+    out_uv_depth[0] = ndc_x * 0.5f + 0.5f;
+    out_uv_depth[1] = 0.5f - ndc_y * 0.5f;
+    out_uv_depth[2] = ndc_z * 0.5f + 0.5f;
+    return 1;
 }
 
 /// @brief Decide whether to reuse a cached morph-target Metal buffer.

@@ -29,8 +29,8 @@
 
 #include "InstrBuilders.hpp"
 #include "OpcodeClassify.hpp"
-#include "RegClassify.hpp"
 #include "OperandRoles.hpp"
+#include "RegClassify.hpp"
 #include "il/runtime/RuntimeNameMap.hpp"
 
 #include <algorithm>
@@ -57,6 +57,30 @@ bool scratchAlreadyUsed(const std::vector<PhysReg> &scratch, PhysReg pr) {
     return std::find(scratch.begin(), scratch.end(), pr) != scratch.end();
 }
 
+/// @brief Rewrite same-instruction virtual uses to an already-resident physical register.
+/// @details Physical call-argument marshalling often has the shape `mov xN, v`.
+///          If `v` already lives in `xN`, clobber eviction must not discard the
+///          value before the source operand is materialized. Rewriting the use
+///          keeps the current instruction correct while allowing the old vreg
+///          state to be retired or spilled.
+bool rewriteVirtualUseToResidentPhys(MInstr &ins, uint16_t vreg, RegClass cls, PhysReg phys) {
+    bool rewritten = false;
+    for (std::size_t opIdx = 0; opIdx < ins.ops.size(); ++opIdx) {
+        auto &operand = ins.ops[opIdx];
+        if (operand.kind != MOperand::Kind::Reg || operand.reg.isPhys)
+            continue;
+        if (operand.reg.cls != cls || operand.reg.idOrPhys != vreg)
+            continue;
+        const auto [isUse, isDef] = operandRoles(ins, opIdx);
+        (void)isDef;
+        if (!isUse)
+            continue;
+        operand = MOperand::regOp(phys);
+        rewritten = true;
+    }
+    return rewritten;
+}
+
 /// @brief Pick the first available scratch register from @p candidates.
 /// @details If @p canReuseDefScratch is true, prefers a register already in @p scratch
 ///          (safe when the use and def are the same operand slot). Otherwise picks one
@@ -69,7 +93,8 @@ PhysReg chooseFromScratchSet(std::initializer_list<PhysReg> candidates,
                              const std::unordered_set<PhysReg> &blocked) {
     if (canReuseDefScratch) {
         for (PhysReg candidate : candidates) {
-            if (blocked.find(candidate) == blocked.end() && scratchAlreadyUsed(scratch, candidate)) {
+            if (blocked.find(candidate) == blocked.end() &&
+                scratchAlreadyUsed(scratch, candidate)) {
                 return candidate;
             }
         }
@@ -94,7 +119,8 @@ PhysReg chooseEmergencyScratch(bool fprClass,
                                const std::vector<PhysReg> &scratch,
                                const std::unordered_set<PhysReg> &blocked) {
     if (fprClass)
-        return chooseFromScratchSet({kScratchFPR, kScratchFPR2}, canReuseDefScratch, scratch, blocked);
+        return chooseFromScratchSet(
+            {kScratchFPR, kScratchFPR2}, canReuseDefScratch, scratch, blocked);
     return chooseFromScratchSet(
         {kScratchGPR, kScratchGPR2, kScratchGPR3}, canReuseDefScratch, scratch, blocked);
 }
@@ -806,8 +832,9 @@ void LinearAllocator::handleCall(MInstr &ins, std::vector<MInstr> &rewritten) {
             if (cls == RegClass::GPR)
                 callPrefix.push_back(makeStrFp(it->second.phys, off));
             else
-                callPrefix.push_back(MInstr{
-                    MOpcode::StrFprFpImm, {MOperand::regOp(it->second.phys), MOperand::immOp(off)}});
+                callPrefix.push_back(
+                    MInstr{MOpcode::StrFprFpImm,
+                           {MOperand::regOp(it->second.phys), MOperand::immOp(off)}});
             it->second.dirty = false;
         }
     }
@@ -830,7 +857,7 @@ void LinearAllocator::handleCall(MInstr &ins, std::vector<MInstr> &rewritten) {
         pendingGetBarrier_ = true;
 }
 
-void LinearAllocator::evictPhysDefClobbers(const MInstr &ins, std::vector<MInstr> &prefix) {
+void LinearAllocator::evictPhysDefClobbers(MInstr &ins, std::vector<MInstr> &prefix) {
     for (std::size_t opIdx = 0; opIdx < ins.ops.size(); ++opIdx) {
         const auto &op = ins.ops[opIdx];
         if (op.kind != MOperand::Kind::Reg || !op.reg.isPhys)
@@ -850,6 +877,25 @@ void LinearAllocator::evictPhysDefClobbers(const MInstr &ins, std::vector<MInstr
         for (auto &kv : states) {
             if (!kv.second.hasPhys || kv.second.phys != phys)
                 continue;
+            if (rewriteVirtualUseToResidentPhys(ins, kv.first, cls, phys)) {
+                const bool liveOut = isLiveOut(kv.first, cls);
+                const unsigned dist = getNextUseDistance(kv.first, cls);
+                const bool neededLater = liveOut || dist != UINT_MAX;
+                if (neededLater && (kv.second.dirty || kv.second.fpOffset == 0)) {
+                    const int off = ensureCurrentSpillSlot(kv.first, cls);
+                    kv.second.fpOffset = off;
+                    if (fprClass)
+                        prefix.push_back(
+                            MInstr{MOpcode::StrFprFpImm,
+                                   {MOperand::regOp(kv.second.phys), MOperand::immOp(off)}});
+                    else
+                        prefix.push_back(makeStrFp(kv.second.phys, off));
+                    kv.second.dirty = false;
+                }
+                kv.second.hasPhys = false;
+                kv.second.spilled = neededLater;
+                break;
+            }
             const bool liveOut = isLiveOut(kv.first, cls);
             const unsigned dist = getNextUseDistance(kv.first, cls);
             if (dist == UINT_MAX && !liveOut) {
@@ -867,15 +913,14 @@ void LinearAllocator::evictPhysDefClobbers(const MInstr &ins, std::vector<MInstr
         // A def of an argument register is call marshalling in flight: keep the
         // register out of the free pool until the call consumes it so reloads
         // and fresh allocations cannot clobber the marshalled value.
-        if (isArgRegister(phys, ti_)) {
+        if (isArgRegister(phys, ti_) && pools_.poolEligible[static_cast<std::size_t>(phys)]) {
             auto &pool = fprClass ? pools_.fprFree : pools_.gprFree;
             auto it = std::find(pool.begin(), pool.end(), phys);
-            if (it != pool.end() &&
-                std::find(reservedForCall_.begin(), reservedForCall_.end(), phys) ==
-                    reservedForCall_.end()) {
+            if (it != pool.end())
                 pool.erase(it);
+            if (std::find(reservedForCall_.begin(), reservedForCall_.end(), phys) ==
+                reservedForCall_.end())
                 reservedForCall_.push_back(phys);
-            }
         }
     }
 }

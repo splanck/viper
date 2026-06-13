@@ -18,10 +18,14 @@
 #include "rt_string.h"
 
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
+#include <cstring>
 
 extern "C" {
 #include "rt_canvas3d_internal.h"
+#include "rt_object.h"
+#include "rt_vec3.h"
 #include "vgfx3d_backend.h"
 }
 
@@ -59,6 +63,118 @@ static int tests_run = 0;
         else                                                                                       \
             tests_passed++;                                                                        \
     } while (0)
+
+#define EXPECT_EQ_U64(a, b, msg)                                                                   \
+    do {                                                                                           \
+        tests_run++;                                                                               \
+        if ((uint64_t)(a) != (uint64_t)(b))                                                        \
+            std::fprintf(stderr,                                                                   \
+                         "FAIL: %s (expected 0x%016llx, got 0x%016llx)\n",                         \
+                         msg,                                                                      \
+                         (unsigned long long)(b),                                                  \
+                         (unsigned long long)(a));                                                 \
+        else                                                                                       \
+            tests_passed++;                                                                        \
+    } while (0)
+
+static void release_obj(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static void set_identity_matrix(double *m) {
+    std::memset(m, 0, sizeof(double) * 16u);
+    m[0] = 1.0;
+    m[5] = 1.0;
+    m[10] = 1.0;
+    m[15] = 1.0;
+}
+
+static void set_translation_matrix(double *m, double x, double y, double z) {
+    set_identity_matrix(m);
+    m[3] = x;
+    m[7] = y;
+    m[11] = z;
+}
+
+static int project_world_to_pixel(const rt_canvas3d *canvas,
+                                  float wx,
+                                  float wy,
+                                  float wz,
+                                  int32_t width,
+                                  int32_t height,
+                                  int32_t *out_x,
+                                  int32_t *out_y) {
+    const float *m = canvas ? canvas->cached_vp : nullptr;
+    float cx;
+    float cy;
+    float cw;
+    float ndc_x;
+    float ndc_y;
+
+    if (!m || !out_x || !out_y || width <= 0 || height <= 0)
+        return 0;
+    cx = wx * m[0] + wy * m[1] + wz * m[2] + m[3];
+    cy = wx * m[4] + wy * m[5] + wz * m[6] + m[7];
+    cw = wx * m[12] + wy * m[13] + wz * m[14] + m[15];
+    if (!std::isfinite(cw) || cw <= 1e-6f)
+        return 0;
+    ndc_x = cx / cw;
+    ndc_y = cy / cw;
+    if (!std::isfinite(ndc_x) || !std::isfinite(ndc_y))
+        return 0;
+    *out_x = (int32_t)((ndc_x + 1.0f) * 0.5f * (float)width);
+    *out_y = (int32_t)((1.0f - ndc_y) * 0.5f * (float)height);
+    return *out_x >= 0 && *out_x < width && *out_y >= 0 && *out_y < height;
+}
+
+static float sample_luminance_box(const vgfx3d_rendertarget_t *target,
+                                  int32_t cx,
+                                  int32_t cy,
+                                  int32_t radius) {
+    float sum = 0.0f;
+    int32_t count = 0;
+
+    if (!target || !target->color_buf || target->width <= 0 || target->height <= 0 ||
+        target->stride < target->width * 4)
+        return 0.0f;
+    for (int32_t y = cy - radius; y <= cy + radius; y++) {
+        if (y < 0 || y >= target->height)
+            continue;
+        for (int32_t x = cx - radius; x <= cx + radius; x++) {
+            const uint8_t *px;
+            float r;
+            float g;
+            float b;
+
+            if (x < 0 || x >= target->width)
+                continue;
+            px = &target->color_buf[y * target->stride + x * 4];
+            r = (float)px[0] / 255.0f;
+            g = (float)px[1] / 255.0f;
+            b = (float)px[2] / 255.0f;
+            sum += r * 0.2126f + g * 0.7152f + b * 0.0722f;
+            count++;
+        }
+    }
+    return count > 0 ? sum / (float)count : 0.0f;
+}
+
+static uint64_t hash_render_target_rgba(const vgfx3d_rendertarget_t *target) {
+    uint64_t hash = 1469598103934665603ull;
+
+    if (!target || !target->color_buf || target->width <= 0 || target->height <= 0 ||
+        target->stride < target->width * 4)
+        return 0;
+    for (int32_t y = 0; y < target->height; y++) {
+        const uint8_t *row = &target->color_buf[y * target->stride];
+        for (int32_t x = 0; x < target->width * 4; x++) {
+            hash ^= row[x];
+            hash *= 1099511628211ull;
+        }
+    }
+    return hash;
+}
 
 static float g_clear_r = -1.0f;
 static float g_clear_g = -1.0f;
@@ -322,6 +438,133 @@ static void test_canvas_render_state_sanitizes_inputs() {
     EXPECT_EQ_I64(rt_canvas3d_get_delta_time(&canvas), 16, "Delta time getter applies max clamp");
 }
 
+static void test_software_spot_light_shadow_render_is_stable() {
+    const int32_t width = 96;
+    const int32_t height = 96;
+    const uint64_t expected_hash = 0x728c7560b310b408ull;
+    rt_canvas3d canvas = {};
+    void *target_obj = nullptr;
+    void *camera = nullptr;
+    void *eye = nullptr;
+    void *look = nullptr;
+    void *up = nullptr;
+    void *light_pos = nullptr;
+    void *light_dir = nullptr;
+    void *spot = nullptr;
+    void *plane = nullptr;
+    void *sphere = nullptr;
+    void *plane_mat = nullptr;
+    void *sphere_mat = nullptr;
+    double plane_model[16];
+    double sphere_model[16];
+    int32_t shadow_x = 0;
+    int32_t shadow_y = 0;
+    int32_t lit_left_x = 0;
+    int32_t lit_left_y = 0;
+    int32_t lit_right_x = 0;
+    int32_t lit_right_y = 0;
+    float shadow_luma;
+    float lit_left_luma;
+    float lit_right_luma;
+    uint64_t hash;
+    rt_rendertarget3d *target_owner;
+    vgfx3d_rendertarget_t *target;
+
+    canvas.backend = &vgfx3d_software_backend;
+    canvas.backend_ctx = vgfx3d_software_backend.create_ctx(nullptr, width, height);
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = width;
+    canvas.height = height;
+    canvas.framebuffer_width = width;
+    canvas.framebuffer_height = height;
+    canvas.shadow_cascade_count = 1;
+    EXPECT_TRUE(canvas.backend_ctx != nullptr, "Software backend context is available");
+    if (!canvas.backend_ctx)
+        return;
+
+    target_obj = rt_rendertarget3d_new(width, height);
+    camera = rt_camera3d_new(55.0, 1.0, 0.1, 20.0);
+    eye = rt_vec3_new(0.0, 2.4, 5.0);
+    look = rt_vec3_new(0.0, 0.25, 0.0);
+    up = rt_vec3_new(0.0, 1.0, 0.0);
+    light_pos = rt_vec3_new(-3.0, 5.0, 4.0);
+    light_dir = rt_vec3_new(3.0, -5.0, -4.0);
+    spot = rt_light3d_new_spot(light_pos, light_dir, 1.0, 0.96, 0.88, 1.0 / 64.0, 18.0, 34.0);
+    plane = rt_mesh3d_new_plane(6.0, 6.0);
+    sphere = rt_mesh3d_new_sphere(0.55, 24);
+    plane_mat = rt_material3d_new_color(0.76, 0.76, 0.72);
+    sphere_mat = rt_material3d_new_color(0.82, 0.82, 0.86);
+
+    EXPECT_TRUE(target_obj && camera && eye && look && up && light_pos && light_dir && spot &&
+                    plane && sphere && plane_mat && sphere_mat,
+                "Spot-shadow render test allocates scene resources");
+    if (!target_obj || !camera || !eye || !look || !up || !light_pos || !light_dir || !spot ||
+        !plane || !sphere || !plane_mat || !sphere_mat)
+        goto cleanup;
+
+    rt_camera3d_look_at(camera, eye, look, up);
+    rt_light3d_set_intensity(spot, 5.5);
+    rt_canvas3d_set_render_target(&canvas, target_obj);
+    rt_canvas3d_enable_shadows(&canvas, 128);
+    rt_canvas3d_set_shadow_bias(&canvas, 0.0012);
+    rt_canvas3d_set_ambient(&canvas, 0.035, 0.035, 0.04);
+    rt_canvas3d_set_light(&canvas, 0, spot);
+
+    set_identity_matrix(plane_model);
+    set_translation_matrix(sphere_model, 0.0, 0.65, 0.0);
+
+    rt_canvas3d_clear(&canvas, 0.018, 0.020, 0.024);
+    rt_canvas3d_begin(&canvas, camera);
+    EXPECT_TRUE(
+        project_world_to_pixel(&canvas, 0.45f, 0.0f, -0.55f, width, height, &shadow_x, &shadow_y),
+        "Predicted spot-shadow core projects inside the render target");
+    EXPECT_TRUE(project_world_to_pixel(
+                    &canvas, -1.05f, 0.0f, -0.55f, width, height, &lit_left_x, &lit_left_y),
+                "Lit plane sample before the penumbra projects inside the render target");
+    EXPECT_TRUE(project_world_to_pixel(
+                    &canvas, 1.45f, 0.0f, -0.55f, width, height, &lit_right_x, &lit_right_y),
+                "Lit plane sample after the penumbra projects inside the render target");
+    rt_canvas3d_draw_mesh_matrix(&canvas, plane, plane_model, plane_mat);
+    rt_canvas3d_draw_mesh_matrix(&canvas, sphere, sphere_model, sphere_mat);
+    rt_canvas3d_end(&canvas);
+
+    target_owner = (rt_rendertarget3d *)target_obj;
+    target = target_owner->target;
+    hash = hash_render_target_rgba(target);
+    shadow_luma = sample_luminance_box(target, shadow_x, shadow_y, 2);
+    lit_left_luma = sample_luminance_box(target, lit_left_x, lit_left_y, 2);
+    lit_right_luma = sample_luminance_box(target, lit_right_x, lit_right_y, 2);
+
+    EXPECT_TRUE(lit_left_luma > shadow_luma * 1.25f + 0.015f,
+                "Spot shadow darkens the plane relative to the lit side before the penumbra");
+    EXPECT_TRUE(lit_right_luma > shadow_luma * 1.25f + 0.015f,
+                "Spot shadow darkens the plane relative to the lit side after the penumbra");
+    EXPECT_EQ_U64(hash, expected_hash, "Software spot-shadow render snapshot remains stable");
+
+cleanup:
+    if (canvas.in_frame)
+        rt_canvas3d_end(&canvas);
+    rt_canvas3d_clear_lights(&canvas);
+    rt_canvas3d_disable_shadows(&canvas);
+    rt_canvas3d_reset_render_target(&canvas);
+    if (canvas.backend && canvas.backend_ctx && canvas.backend->destroy_ctx) {
+        canvas.backend->destroy_ctx(canvas.backend_ctx);
+        canvas.backend_ctx = nullptr;
+    }
+    release_obj(sphere_mat);
+    release_obj(plane_mat);
+    release_obj(sphere);
+    release_obj(plane);
+    release_obj(spot);
+    release_obj(light_dir);
+    release_obj(light_pos);
+    release_obj(up);
+    release_obj(look);
+    release_obj(eye);
+    release_obj(camera);
+    release_obj(target_obj);
+}
+
 int main() {
     test_null_canvas_has_no_capabilities();
     test_software_backend_reports_canvas_fallback_features();
@@ -329,6 +572,7 @@ int main() {
     test_gpu_backend_native_texture_capability_hook();
     test_frustum_culling_aliases_share_state();
     test_canvas_render_state_sanitizes_inputs();
+    test_software_spot_light_shadow_render_is_stable();
 
     if (tests_passed != tests_run) {
         std::fprintf(

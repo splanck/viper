@@ -226,10 +226,45 @@ static void test_capacity_and_cache_helpers(void) {
                 "Morph cache reuse compares against the clamped OpenGL shape count");
 }
 
+static void test_shadow_projection_helper_handles_orthographic_and_perspective(void) {
+    float m[16];
+    float world[3] = {0.25f, -0.25f, 2.0f};
+    float uv_depth[3];
+
+    memset(m, 0, sizeof(m));
+    m[0] = 1.0f;
+    m[5] = 1.0f;
+    m[10] = 1.0f;
+    m[15] = 2.0f;
+    EXPECT_TRUE(vgfx3d_opengl_project_shadow_coord(
+                    m, VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC, world, uv_depth) == 1,
+                "OpenGL orthographic shadow projection accepts finite coordinates");
+    EXPECT_NEAR(uv_depth[0], 0.625f, 1e-6f, "OpenGL orthographic shadow UV does not divide by W");
+    EXPECT_NEAR(uv_depth[1], 0.375f, 1e-6f, "OpenGL orthographic shadow UV preserves GL Y");
+
+    memset(m, 0, sizeof(m));
+    m[0] = 1.0f;
+    m[5] = 1.0f;
+    m[10] = 0.5f;
+    m[14] = 1.0f;
+    EXPECT_TRUE(vgfx3d_opengl_project_shadow_coord(
+                    m, VGFX3D_SHADOW_PROJECTION_PERSPECTIVE, world, uv_depth) == 1,
+                "OpenGL perspective shadow projection accepts positive W");
+    EXPECT_NEAR(uv_depth[0], 0.5625f, 1e-6f, "OpenGL perspective shadow UV divides by W");
+    EXPECT_NEAR(uv_depth[1], 0.4375f, 1e-6f, "OpenGL perspective shadow UV preserves GL Y");
+    EXPECT_NEAR(uv_depth[2], 0.75f, 1e-6f, "OpenGL perspective shadow depth divides by W");
+
+    world[2] = 0.0f;
+    EXPECT_TRUE(vgfx3d_opengl_project_shadow_coord(
+                    m, VGFX3D_SHADOW_PROJECTION_PERSPECTIVE, world, uv_depth) == 0,
+                "OpenGL perspective shadow projection rejects non-positive W");
+}
+
 int main(void) {
     test_frame_history_preserves_scene_state_across_overlay_passes();
     test_target_blend_motion_and_readback_helpers();
     test_capacity_and_cache_helpers();
+    test_shadow_projection_helper_handles_orthographic_and_perspective();
 
     printf("vgfx3d opengl shared tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

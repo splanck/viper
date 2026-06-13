@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/render/rt_canvas3d_deferred.inc  (#included from rt_canvas3d.c; not a standalone translation unit)
-// Purpose: Canvas3D deferred-draw queue, sorting, visibility flags, and material command fill
+// File: src/runtime/graphics/3d/render/rt_canvas3d_deferred.inc  (#included from rt_canvas3d.c; not
+// a standalone translation unit) Purpose: Canvas3D deferred-draw queue, sorting, visibility flags,
+// and material command fill
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Deferred draw command (for transparency sorting)
@@ -262,14 +263,14 @@ static int canvas3d_sort_tuple_less(const deferred_draw_t *a,
 ///          same front/back depth ordering contract as the qsort path while avoiding
 ///          mutation of the mixed-pass queue.
 /// @return The source index of the next draw, or -1 when no later draw exists.
-static CANVAS3D_UNUSED_PRIVATE int32_t canvas3d_pick_next_sorted_main_draw(
-    const deferred_draw_t *cmds,
-    int32_t draw_count,
-    int requires_blend,
-    int descending,
-    float previous_key,
-    uintptr_t previous_stable_sort_id,
-    int32_t previous_enqueue_index) {
+static CANVAS3D_UNUSED_PRIVATE int32_t
+canvas3d_pick_next_sorted_main_draw(const deferred_draw_t *cmds,
+                                    int32_t draw_count,
+                                    int requires_blend,
+                                    int descending,
+                                    float previous_key,
+                                    uintptr_t previous_stable_sort_id,
+                                    int32_t previous_enqueue_index) {
     int32_t best = -1;
     if (!cmds || draw_count <= 0)
         return -1;
@@ -663,19 +664,46 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
 // build_light_params) lives in rt_canvas3d_lighting.c (shared via
 // rt_canvas3d_internal.h).
 
-/// @brief Score a directional light by luminance-weighted intensity.
-/// @details Used to rank shadow-caster candidates: only type 0 (directional)
-///   lights score above zero, and their score uses the Rec. 709 luminance
-///   coefficients so a dim yellow light doesn't outrank a bright blue one
-///   just because it has higher green. Non-directional lights and nulls
-///   return -1.0 to drop out of any ranking comparison.
-static float canvas3d_shadow_light_param_score(const vgfx3d_light_params_t *l) {
+/// @brief Return luminance-weighted intensity for shadow-caster ranking.
+static float canvas3d_shadow_light_luminance_score(const vgfx3d_light_params_t *l) {
     float luminance;
 
-    if (!l || l->type != 0 || !l->casts_shadows)
+    if (!l || !l->casts_shadows)
         return -1.0f;
     luminance = (float)(0.2126 * l->color[0] + 0.7152 * l->color[1] + 0.0722 * l->color[2]);
     return (float)l->intensity * luminance;
+}
+
+/// @brief Score a directional light by luminance-weighted intensity.
+static float canvas3d_shadow_directional_light_param_score(const vgfx3d_light_params_t *l) {
+    if (!l || l->type != 0)
+        return -1.0f;
+    return canvas3d_shadow_light_luminance_score(l);
+}
+
+/// @brief Score a spot light by intensity, luminance, and proximity to the render-space camera.
+static float canvas3d_shadow_spot_light_param_score(const vgfx3d_light_params_t *l,
+                                                    const float *camera_pos) {
+    float base_score;
+    float dx;
+    float dy;
+    float dz;
+    float distance;
+
+    if (!l || l->type != 3)
+        return -1.0f;
+    base_score = canvas3d_shadow_light_luminance_score(l);
+    if (base_score <= 0.0f)
+        return -1.0f;
+    if (!camera_pos)
+        return base_score;
+    dx = l->position[0] - camera_pos[0];
+    dy = l->position[1] - camera_pos[1];
+    dz = l->position[2] - camera_pos[2];
+    distance = sqrtf(dx * dx + dy * dy + dz * dz);
+    if (!isfinite(distance) || distance < 0.0f)
+        distance = 0.0f;
+    return base_score / (1.0f + distance);
 }
 
 /// @brief Tolerance-based scalar equality for light parameters.
@@ -689,18 +717,16 @@ static int canvas3d_light_param_close(float a, float b) {
     return fabsf(a - b) <= 1e-5f * scale;
 }
 
-/// @brief Test whether two directional-light param structs refer to the "same" light
+/// @brief Test whether two shadow-light param structs refer to the "same" light
 ///        for the purpose of shadow-slot de-duplication.
-/// @details Compares direction[3], color[3], and intensity using `canvas3d_light_param_close`
-///          (tolerance-based, see above). Non-directional lights always return "not
-///          match" even when both are non-directional — shadow mapping in this runtime
-///          is directional-only, so matching a spot-vs-spot or point-vs-point light
-///          into the shadow slot table would be meaningless.
+/// @details Compares the fields that define the shadow projection and lighting contribution.
+///          Directional lights use direction/color/intensity; spot lights also include position,
+///          attenuation, and cone cosines. Point lights remain unshadowed and never match.
 static int canvas3d_shadow_light_params_match(const vgfx3d_light_params_t *a,
                                               const vgfx3d_light_params_t *b) {
     if (!a || !b || a->type != b->type)
         return 0;
-    if (a->type != 0 || !a->casts_shadows || !b->casts_shadows)
+    if ((a->type != 0 && a->type != 3) || !a->casts_shadows || !b->casts_shadows)
         return 0;
     if (a->identity || b->identity)
         return a->identity == b->identity;
@@ -709,17 +735,70 @@ static int canvas3d_shadow_light_params_match(const vgfx3d_light_params_t *a,
             !canvas3d_light_param_close(a->color[i], b->color[i]))
             return 0;
     }
-    return canvas3d_light_param_close(a->intensity, b->intensity);
+    if (!canvas3d_light_param_close(a->intensity, b->intensity))
+        return 0;
+    if (a->type == 3) {
+        for (int i = 0; i < 3; i++) {
+            if (!canvas3d_light_param_close(a->position[i], b->position[i]))
+                return 0;
+        }
+        return canvas3d_light_param_close(a->attenuation, b->attenuation) &&
+               canvas3d_light_param_close(a->inner_cos, b->inner_cos) &&
+               canvas3d_light_param_close(a->outer_cos, b->outer_cos);
+    }
+    return 1;
 }
 
-/// @brief Pick the strongest directional shadow-casting lights that are actually
-///        referenced by opaque draw commands this frame.
-/// @details Walks the deferred draw queue and, for every opaque main-pass command,
-///          visits the light params the command has accumulated. Each directional
-///          light is scored (see `canvas3d_shadow_light_param_score`) and inserted
-///          into a top-K table sorted by score. Duplicate lights (same direction /
-///          color / intensity within tolerance) are collapsed so one physical light
-///          can only claim one shadow slot even when many draws reference it.
+static void canvas3d_insert_shadow_light_candidate(vgfx3d_light_params_t *out_lights,
+                                                   float *best_scores,
+                                                   int32_t phase_start,
+                                                   int32_t max_shadow_lights,
+                                                   int32_t *count,
+                                                   const vgfx3d_light_params_t *light,
+                                                   float score) {
+    int32_t insert_at;
+
+    if (!out_lights || !best_scores || !count || !light || score <= 0.0f)
+        return;
+    if (phase_start >= max_shadow_lights)
+        return;
+    for (int32_t existing = 0; existing < *count; existing++) {
+        if (canvas3d_shadow_light_params_match(light, &out_lights[existing]))
+            return;
+    }
+    if (*count >= max_shadow_lights && score <= best_scores[max_shadow_lights - 1])
+        return;
+
+    insert_at = *count;
+    if (insert_at >= max_shadow_lights)
+        insert_at = max_shadow_lights - 1;
+    while (insert_at > phase_start && score > best_scores[insert_at - 1]) {
+        if (insert_at < max_shadow_lights) {
+            best_scores[insert_at] = best_scores[insert_at - 1];
+            out_lights[insert_at] = out_lights[insert_at - 1];
+        }
+        insert_at--;
+    }
+    if (insert_at < max_shadow_lights) {
+        best_scores[insert_at] = score;
+        out_lights[insert_at] = *light;
+        out_lights[insert_at].shadow_index = -1;
+        out_lights[insert_at].shadow_cascade_count = 1;
+        out_lights[insert_at].shadow_projection_type = light->type == 3
+                                                           ? VGFX3D_SHADOW_PROJECTION_PERSPECTIVE
+                                                           : VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC;
+        if (*count < max_shadow_lights)
+            (*count)++;
+    }
+}
+
+/// @brief Pick the shadow-casting lights that are actually referenced by opaque draw commands.
+/// @details Walks the deferred draw queue and, for every opaque main-pass command, visits the
+///          light params the command has accumulated. Directional lights are selected first using
+///          the existing luminance-weighted intensity score. Remaining budget is filled by spot
+///          lights scored by luminance-weighted intensity divided by camera distance. Duplicate
+///          lights are collapsed so one physical light can only claim one shadow slot even when
+///          many draws reference it.
 ///
 ///          Behaviour difference from the old bind-order-based selection: picks
 ///          propagate strictly from the draw list, so a bound but unused light can't
@@ -735,13 +814,14 @@ static int canvas3d_shadow_light_params_match(const vgfx3d_light_params_t *a,
 /// @param out_lights Output buffer sized `max_shadow_lights`.
 /// @param max_shadow_lights Caller cap; clamped to `VGFX3D_MAX_SHADOW_LIGHTS`.
 /// @return Number of shadow-light slots populated.
-static int32_t canvas3d_select_shadow_directional_lights_from_draws(
-    const deferred_draw_t *cmds,
-    int32_t draw_count,
-    vgfx3d_light_params_t *out_lights,
-    int32_t max_shadow_lights) {
+static int32_t canvas3d_select_shadow_lights_from_draws(const rt_canvas3d *c,
+                                                        const deferred_draw_t *cmds,
+                                                        int32_t draw_count,
+                                                        vgfx3d_light_params_t *out_lights,
+                                                        int32_t max_shadow_lights) {
     float best_scores[VGFX3D_MAX_SHADOW_LIGHTS];
     int32_t count = 0;
+    int32_t spot_phase_start;
 
     if (!cmds || draw_count <= 0 || !out_lights || max_shadow_lights <= 0)
         return 0;
@@ -759,40 +839,24 @@ static int32_t canvas3d_select_shadow_directional_lights_from_draws(
             continue;
         for (int32_t li = 0; li < cmds[ci].light_count; li++) {
             const vgfx3d_light_params_t *light = &cmds[ci].lights[li];
-            float score = canvas3d_shadow_light_param_score(light);
-            int32_t insert_at;
-            int duplicate = 0;
+            float score = canvas3d_shadow_directional_light_param_score(light);
 
-            if (score <= 0.0f)
-                continue;
-            for (int32_t existing = 0; existing < count; existing++) {
-                if (canvas3d_shadow_light_params_match(light, &out_lights[existing])) {
-                    duplicate = 1;
-                    break;
-                }
-            }
-            if (duplicate)
-                continue;
-            if (count >= max_shadow_lights && score <= best_scores[max_shadow_lights - 1])
-                continue;
+            canvas3d_insert_shadow_light_candidate(
+                out_lights, best_scores, 0, max_shadow_lights, &count, light, score);
+        }
+    }
 
-            insert_at = count;
-            if (insert_at >= max_shadow_lights)
-                insert_at = max_shadow_lights - 1;
-            while (insert_at > 0 && score > best_scores[insert_at - 1]) {
-                if (insert_at < max_shadow_lights) {
-                    best_scores[insert_at] = best_scores[insert_at - 1];
-                    out_lights[insert_at] = out_lights[insert_at - 1];
-                }
-                insert_at--;
-            }
-            if (insert_at < max_shadow_lights) {
-                best_scores[insert_at] = score;
-                out_lights[insert_at] = *light;
-                out_lights[insert_at].shadow_index = -1;
-                if (count < max_shadow_lights)
-                    count++;
-            }
+    spot_phase_start = count;
+    for (int32_t ci = 0; ci < draw_count; ci++) {
+        if (!canvas3d_deferred_casts_shadow(&cmds[ci]))
+            continue;
+        for (int32_t li = 0; li < cmds[ci].light_count; li++) {
+            const vgfx3d_light_params_t *light = &cmds[ci].lights[li];
+            float score =
+                canvas3d_shadow_spot_light_param_score(light, c ? c->cached_cam_pos : NULL);
+
+            canvas3d_insert_shadow_light_candidate(
+                out_lights, best_scores, spot_phase_start, max_shadow_lights, &count, light, score);
         }
     }
     return count;
@@ -818,6 +882,7 @@ static void canvas3d_apply_shadow_light_params(vgfx3d_light_params_t *lights,
                 canvas3d_shadow_light_params_match(&lights[i], &shadow_lights[slot])) {
                 lights[i].shadow_index = slot;
                 lights[i].shadow_cascade_count = shadow_lights[slot].shadow_cascade_count;
+                lights[i].shadow_projection_type = shadow_lights[slot].shadow_projection_type;
                 memcpy(lights[i].shadow_cascade_splits,
                        shadow_lights[slot].shadow_cascade_splits,
                        sizeof(lights[i].shadow_cascade_splits));
@@ -881,7 +946,8 @@ void canvas3d_clear_final_overlay(rt_canvas3d *c) {
 }
 
 /// @brief Reset finalized-frame latches when a new frame starts without a previous Flip().
-/// @details `FinalizeFrame` may be used for capture or manual compositing. If the caller then begins
+/// @details `FinalizeFrame` may be used for capture or manual compositing. If the caller then
+/// begins
 ///   another frame without presenting, post-FX and final-overlay state must not leak forward.
 static void canvas3d_reset_finalized_frame_state(rt_canvas3d *c) {
     if (!c)

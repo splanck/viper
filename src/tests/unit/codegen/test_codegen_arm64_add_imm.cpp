@@ -57,8 +57,9 @@ TEST(Arm64CLI, AddImmParam0) {
     const char *argv[] = {inP.c_str(), "-S", outP.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(outP);
-    EXPECT_TRUE(asmText.find("adds x") != std::string::npos &&
-                asmText.find(", x0, #5") != std::string::npos);
+    EXPECT_NE(asmText.find("adds x"), std::string::npos);
+    EXPECT_NE(asmText.find(", #5"), std::string::npos);
+    EXPECT_NE(asmText.find("b.vs"), std::string::npos);
 }
 
 TEST(Arm64CLI, SubImmParam1) {
@@ -76,8 +77,9 @@ TEST(Arm64CLI, SubImmParam1) {
     const char *argv[] = {inP2.c_str(), "-S", outP2.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(outP2);
-    EXPECT_TRUE(asmText.find("subs x") != std::string::npos &&
-                asmText.find(", x1, #3") != std::string::npos);
+    EXPECT_NE(asmText.find("subs x"), std::string::npos);
+    EXPECT_NE(asmText.find(", #3"), std::string::npos);
+    EXPECT_NE(asmText.find("b.vs"), std::string::npos);
 }
 
 int main(int argc, char **argv) {

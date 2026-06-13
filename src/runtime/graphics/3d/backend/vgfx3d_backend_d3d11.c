@@ -38,8 +38,8 @@
 #include "vgfx3d_backend_d3d11_shared.h"
 #include "vgfx3d_backend_utils.h"
 
-#include <math.h>
 #include <limits.h>
+#include <math.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -154,7 +154,7 @@ typedef struct {
     int32_t type;
     int32_t shadow_index;
     int32_t shadow_cascade_count;
-    float _pad0;
+    int32_t shadow_projection_type;
     float direction[4];
     float position[4];
     float color[4];
@@ -590,8 +590,7 @@ static int d3d11_harvest_frame_timing(d3d11_context_t *ctx, int block) {
     }
     ctx->frame_time_pending = 0;
     if (!disjoint.Disjoint && disjoint.Frequency > 0 && end_ticks >= start_ticks) {
-        double us =
-            ((double)(end_ticks - start_ticks) * 1000000.0) / (double)disjoint.Frequency;
+        double us = ((double)(end_ticks - start_ticks) * 1000000.0) / (double)disjoint.Frequency;
         ctx->frame_gpu_time_us = us >= (double)UINT64_MAX ? UINT64_MAX : (uint64_t)(us + 0.5);
         return 1;
     }
@@ -735,8 +734,7 @@ static ID3D11RasterizerState *d3d11_choose_rasterizer(d3d11_context_t *ctx,
 /// @details The common draw path uses four cached rasterizer states. D3D11 stores depth bias on the
 ///   rasterizer state itself, so only biased draws pay for a temporary state allocation.
 static int d3d11_draw_needs_depth_bias(const vgfx3d_draw_cmd_t *cmd) {
-    return cmd && (fabsf(cmd->depth_bias) > 1e-8f ||
-                   fabsf(cmd->slope_scaled_depth_bias) > 1e-8f);
+    return cmd && (fabsf(cmd->depth_bias) > 1e-8f || fabsf(cmd->slope_scaled_depth_bias) > 1e-8f);
 }
 
 /// @brief Convert the renderer's float depth-bias value to D3D11's integer DepthBias field.
@@ -1396,11 +1394,12 @@ static HRESULT d3d11_update_float_srv_buffer(d3d11_context_t *ctx,
     ID3D11DeviceContext_UpdateSubresource(ctx->ctx, (ID3D11Resource *)*buffer, 0, &box, data, 0, 0);
     return S_OK;
 }
-#include "vgfx3d_backend_d3d11_texture.inc"
-#include "vgfx3d_backend_d3d11_targets.inc"
-#include "vgfx3d_backend_d3d11_draw.inc"
+
 #include "vgfx3d_backend_d3d11_context.inc"
+#include "vgfx3d_backend_d3d11_draw.inc"
 #include "vgfx3d_backend_d3d11_present.inc"
+#include "vgfx3d_backend_d3d11_targets.inc"
+#include "vgfx3d_backend_d3d11_texture.inc"
 
 const vgfx3d_backend_t vgfx3d_d3d11_backend = {
     .name = "d3d11",

@@ -180,6 +180,17 @@ directional shadow caster into up to four camera-depth cascades, publish split
 metadata in the backend light payload, and keep unsupported/fake backends
 trapping before mutation. The open-world GPU smoke records a 3-cascade Metal
 fixture (`CSM_SHADOWS`) after the clustered-lighting probe.
+
+Shadow-map slots are a shared four-light budget. Enabled directional lights with
+`CastsShadows` are selected first by luminance-weighted intensity. Any remaining
+slots are filled by enabled spot lights with `CastsShadows`, ranked by
+intensity and distance to the active camera. Directional lights may use cascades;
+spot lights always use one perspective shadow map built from the light position,
+direction, outer cone angle, and range. Shadow contribution is limited to the
+spot cone, so pixels outside the outer cone do not sample the map border. Point
+lights do not cast shadows yet: setting `CastsShadows = true` on a point light is
+accepted and trap-free, but it does not allocate a shadow slot.
+
 `BackendSupports("bc7")`, `BackendSupports("astc")`, and
 `BackendSupports("etc2")` report native compressed texture upload support for
 the active backend/device. KTX2 supercompression is rejected; native mip payload
@@ -536,7 +547,7 @@ Scene light with configurable color, intensity, and enabled state.
 | `Color` | Object | Read | RGB `Vec3` |
 | `Intensity` | Double | Read | Brightness multiplier |
 | `Enabled` | Boolean | Read/Write | Disabled lights are skipped by rendering |
-| `CastsShadows` | Boolean | Read/Write | Only enabled, directional lights with this flag set are selected for current shadow passes; ambient lights default to false |
+| `CastsShadows` | Boolean | Read/Write | Enabled directional lights are selected first for shadow passes; enabled spot lights may use remaining slots; point lights accept the flag but do not shadow yet; ambient lights default to false |
 | `Direction` | Object | Read | Direction `Vec3` |
 | `Position` | Object | Read | Position `Vec3` |
 

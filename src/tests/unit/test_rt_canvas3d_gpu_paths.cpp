@@ -2532,6 +2532,155 @@ static void test_shadow_cascades_render_primary_directional_light_slots(void) {
     cleanup_fake_canvas(&canvas);
 }
 
+static void test_spot_shadow_selection_fills_budget_after_directionals(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "metal";
+    backend.end_frame = noop_end_frame;
+    backend.submit_draw = record_draw_with_lights;
+    backend.shadow_begin = record_shadow_begin;
+    backend.shadow_draw = record_shadow_draw;
+    backend.shadow_end = record_shadow_end;
+
+    rt_canvas3d canvas;
+    vgfx3d_rendertarget_t shadow_rt[VGFX3D_MAX_SHADOW_LIGHTS] = {};
+    float shadow_depth[VGFX3D_MAX_SHADOW_LIGHTS][16] = {};
+    rt_light3d directional = {};
+    rt_light3d weak_spot = {};
+    rt_light3d near_spot = {};
+    rt_light3d mid_spot = {};
+    rt_light3d far_spot = {};
+    init_fake_canvas(&canvas, &backend);
+
+    for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
+        shadow_rt[slot].depth_buf = shadow_depth[slot];
+        shadow_rt[slot].width = 4;
+        shadow_rt[slot].height = 4;
+        canvas.shadow_rts[slot] = &shadow_rt[slot];
+    }
+    canvas.shadows_enabled = 1;
+    canvas.shadow_bias = 0.0025f;
+    canvas.shadow_cascade_count = 1;
+
+    directional.type = 0;
+    directional.direction[1] = -1.0;
+    directional.color[0] = directional.color[1] = directional.color[2] = 1.0;
+    directional.intensity = 0.1;
+    directional.enabled = 1;
+    directional.casts_shadows = 1;
+
+    weak_spot.type = near_spot.type = mid_spot.type = far_spot.type = 3;
+    weak_spot.direction[2] = near_spot.direction[2] = mid_spot.direction[2] =
+        far_spot.direction[2] = -1.0;
+    weak_spot.color[0] = weak_spot.color[1] = weak_spot.color[2] = 1.0;
+    near_spot.color[0] = near_spot.color[1] = near_spot.color[2] = 1.0;
+    mid_spot.color[0] = mid_spot.color[1] = mid_spot.color[2] = 1.0;
+    far_spot.color[0] = far_spot.color[1] = far_spot.color[2] = 1.0;
+    weak_spot.position[2] = 0.5;
+    near_spot.position[2] = 1.0;
+    mid_spot.position[2] = 3.0;
+    far_spot.position[2] = 10.0;
+    weak_spot.intensity = 0.1;
+    near_spot.intensity = 1.0;
+    mid_spot.intensity = 3.0;
+    far_spot.intensity = 4.0;
+    weak_spot.outer_cos = near_spot.outer_cos = mid_spot.outer_cos = far_spot.outer_cos = 0.5;
+    weak_spot.inner_cos = near_spot.inner_cos = mid_spot.inner_cos = far_spot.inner_cos = 0.8;
+    weak_spot.enabled = near_spot.enabled = mid_spot.enabled = far_spot.enabled = 1;
+    weak_spot.casts_shadows = near_spot.casts_shadows = mid_spot.casts_shadows =
+        far_spot.casts_shadows = 1;
+
+    canvas.lights[0] = &directional;
+    canvas.lights[1] = &weak_spot;
+    canvas.lights[2] = &near_spot;
+    canvas.lights[3] = &mid_spot;
+    canvas.lights[4] = &far_spot;
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    ((mat4_impl *)transform)->m[11] = -2.0;
+
+    reset_shadow_counts();
+    reset_canvas_frame(&canvas, 1);
+    rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_TRUE(shadow_begin_calls == VGFX3D_MAX_SHADOW_LIGHTS && shadow_draw_calls == 4 &&
+                    shadow_end_calls == 4,
+                "Shadow selection fills the fixed budget with directionals first then spots");
+    EXPECT_TRUE(last_draw_light_count == 5 && last_draw_lights[0].shadow_index == 0 &&
+                    last_draw_lights[3].shadow_index == 1 &&
+                    last_draw_lights[2].shadow_index == 2 &&
+                    last_draw_lights[4].shadow_index == 3 && last_draw_lights[1].shadow_index == -1,
+                "Spot shadow selection ranks by intensity and distance after directional lights");
+    EXPECT_TRUE(
+        last_draw_lights[3].shadow_projection_type == VGFX3D_SHADOW_PROJECTION_PERSPECTIVE &&
+            last_draw_lights[2].shadow_projection_type == VGFX3D_SHADOW_PROJECTION_PERSPECTIVE &&
+            last_draw_lights[4].shadow_projection_type == VGFX3D_SHADOW_PROJECTION_PERSPECTIVE,
+        "Selected spot lights advertise perspective shadow projection to backends");
+    EXPECT_TRUE(std::fabs(shadow_vps[1][12]) + std::fabs(shadow_vps[1][13]) +
+                        std::fabs(shadow_vps[1][14]) >
+                    0.1f,
+                "Spot shadow VP stores a perspective W row in the per-slot matrix");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_spot_shadow_selection_uses_single_slot_without_cascades(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "metal";
+    backend.end_frame = noop_end_frame;
+    backend.submit_draw = record_draw_with_lights;
+    backend.shadow_begin = record_shadow_begin;
+    backend.shadow_draw = record_shadow_draw;
+    backend.shadow_end = record_shadow_end;
+
+    rt_canvas3d canvas;
+    vgfx3d_rendertarget_t shadow_rt = {};
+    float shadow_depth[16] = {};
+    rt_light3d spot = {};
+    init_fake_canvas(&canvas, &backend);
+
+    shadow_rt.depth_buf = shadow_depth;
+    shadow_rt.width = 4;
+    shadow_rt.height = 4;
+    canvas.shadow_rts[0] = &shadow_rt;
+    canvas.shadows_enabled = 1;
+    canvas.shadow_bias = 0.0025f;
+    canvas.shadow_cascade_count = 3;
+
+    spot.type = 3;
+    spot.direction[2] = -1.0;
+    spot.position[2] = 2.0;
+    spot.color[0] = spot.color[1] = spot.color[2] = 1.0;
+    spot.intensity = 2.0;
+    spot.outer_cos = 0.5;
+    spot.inner_cos = 0.8;
+    spot.enabled = 1;
+    spot.casts_shadows = 1;
+    canvas.lights[0] = &spot;
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    ((mat4_impl *)transform)->m[11] = -2.0;
+
+    reset_shadow_counts();
+    reset_canvas_frame(&canvas, 1);
+    rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_TRUE(shadow_begin_calls == 1 && shadow_draw_calls == 1 && shadow_end_calls == 1,
+                "Spot shadows ignore directional cascade count and render one shadow slot");
+    EXPECT_TRUE(last_draw_light_count == 1 && last_draw_lights[0].shadow_index == 0 &&
+                    last_draw_lights[0].shadow_cascade_count == 1 &&
+                    last_draw_lights[0].shadow_projection_type ==
+                        VGFX3D_SHADOW_PROJECTION_PERSPECTIVE,
+                "Spot shadow payload uses a single perspective shadow slot");
+
+    cleanup_fake_canvas(&canvas);
+}
+
 static void test_shadow_selection_uses_queued_scene_light_snapshots(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "metal";
@@ -3293,6 +3442,8 @@ int main() {
     test_instanced_batch_sort_key_uses_aggregate_bounds_center();
     test_shadow_selection_prefers_strongest_directional_light_regardless_of_slot();
     test_shadow_cascades_render_primary_directional_light_slots();
+    test_spot_shadow_selection_fills_budget_after_directionals();
+    test_spot_shadow_selection_uses_single_slot_without_cascades();
     test_shadow_selection_uses_queued_scene_light_snapshots();
     test_casts_shadows_false_skips_shadow_selection();
     test_occlusion_mode_rejects_off_frustum_draws_before_submission();

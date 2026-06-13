@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_draw.inc  (#included from vgfx3d_backend_d3d11.c; not a standalone translation unit)
-// Purpose: D3D11 draw state, constant-buffer packing, pipeline binding, and draw submission
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_draw.inc  (#included from
+// vgfx3d_backend_d3d11.c; not a standalone translation unit) Purpose: D3D11 draw state,
+// constant-buffer packing, pipeline binding, and draw submission
 //===----------------------------------------------------------------------===//
 
 /// @brief Push the currently-selected render target(s) and viewport into the pipeline.
@@ -422,6 +423,9 @@ static void d3d11_prepare_light_data(const vgfx3d_light_params_t *lights,
             vgfx3d_d3d11_sanitize_shadow_index(lights[i].shadow_index, advertised_shadow_count);
         light_data[i].shadow_cascade_count =
             light_data[i].shadow_index >= 0 ? lights[i].shadow_cascade_count : 1;
+        light_data[i].shadow_projection_type = light_data[i].shadow_index >= 0
+                                                   ? lights[i].shadow_projection_type
+                                                   : VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC;
         light_data[i].direction[0] = lights[i].direction[0];
         light_data[i].direction[1] = lights[i].direction[1];
         light_data[i].direction[2] = lights[i].direction[2];
@@ -637,8 +641,7 @@ static void d3d11_bind_main_pipeline(d3d11_context_t *ctx,
 
     rasterizer = NULL;
     if (d3d11_draw_needs_depth_bias(cmd))
-        (void)d3d11_get_depth_biased_rasterizer(
-            ctx, cmd, wireframe, backface_cull, &rasterizer);
+        (void)d3d11_get_depth_biased_rasterizer(ctx, cmd, wireframe, backface_cull, &rasterizer);
     if (!rasterizer)
         rasterizer = d3d11_choose_rasterizer(ctx, wireframe, backface_cull);
     if (rasterizer)
@@ -836,16 +839,14 @@ static int d3d11_bind_draw_resources(d3d11_context_t *ctx,
                    ? d3d11_get_or_create_cubemap_srv(
                          ctx, (const rt_cubemap3d *)cmd->env_map, &resources->cubemap)
                    : NULL;
-    srvs[14] = d3d11_get_or_create_material_srv(ctx,
-                                                cmd->metallic_roughness_map_asset,
-                                                cmd->metallic_roughness_map,
-                                                cmd->texture_asset_cache_key
-                                                    [RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS],
-                                                cmd->texture_asset_mip_start
-                                                    [RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS],
-                                                cmd->texture_asset_mip_count
-                                                    [RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS],
-                                                &resources->textures[9]);
+    srvs[14] = d3d11_get_or_create_material_srv(
+        ctx,
+        cmd->metallic_roughness_map_asset,
+        cmd->metallic_roughness_map,
+        cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS],
+        cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS],
+        cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS],
+        &resources->textures[9]);
     srvs[15] = d3d11_get_or_create_material_srv(
         ctx,
         cmd->ao_map_asset,

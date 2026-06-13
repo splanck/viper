@@ -779,6 +779,7 @@ function(viper_add_runtime_tests)
 
     viper_add_test(test_rt_canvas3d_production ${VIPER_TESTS_DIR}/unit/test_rt_canvas3d_production.cpp)
     target_link_libraries(test_rt_canvas3d_production PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    target_compile_definitions(test_rt_canvas3d_production PRIVATE RT_G3D_ALLOW_STACK_FIXTURES=1)
     viper_add_ctest(test_rt_canvas3d_production test_rt_canvas3d_production)
     viper_add_test_labels(test_rt_canvas3d_production graphics3d unit)
 

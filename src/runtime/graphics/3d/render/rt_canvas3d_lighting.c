@@ -50,6 +50,7 @@ static void canvas3d_copy_light_params(const rt_canvas3d *c,
     out->type = canvas3d_sanitize_light_type(l->type);
     out->shadow_index = -1;
     out->shadow_cascade_count = 1;
+    out->shadow_projection_type = VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC;
     out->casts_shadows = l->casts_shadows ? 1 : 0;
     out->identity = (uintptr_t)l;
     out->direction[0] = canvas3d_sanitize_f64_to_float(l->direction[0], 0.0f);

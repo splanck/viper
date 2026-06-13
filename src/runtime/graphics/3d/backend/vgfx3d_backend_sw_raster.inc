@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_sw_raster.inc  (#included from vgfx3d_backend_sw.c; not a standalone translation unit)
-// Purpose: Software backend edge-function triangle rasterizer and fragment shading
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_sw_raster.inc  (#included from
+// vgfx3d_backend_sw.c; not a standalone translation unit) Purpose: Software backend edge-function
+// triangle rasterizer and fragment shading
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Edge-function triangle rasterizer
@@ -698,7 +699,7 @@ static void sw_shade_lighting_pbr(const sw_fragment_ctx *fc,
         if (!sw_eval_light_dir(lt, wx, wy, wz, &llx, &lly, &llz, &la))
             continue;
 
-        if (lt->type == 0 && lt->shadow_index >= 0) {
+        if ((lt->type == 0 || lt->type == 3) && lt->shadow_index >= 0 && la > 0.0f) {
             int32_t shadow_slot = sw_resolve_shadow_slot(fog_ctx, lt, wx, wy, wz);
             la *= sw_sample_shadow_visibility(fog_ctx, shadow_slot, wx, wy, wz);
         }
@@ -846,7 +847,7 @@ static void sw_shade_lighting_phong(const sw_fragment_ctx *fc,
         if (!sw_eval_light_dir(lt, wx, wy, wz, &llx, &lly, &llz, &la))
             continue;
 
-        if (lt->type == 0 && lt->shadow_index >= 0) {
+        if ((lt->type == 0 || lt->type == 3) && lt->shadow_index >= 0 && la > 0.0f) {
             int32_t shadow_slot = sw_resolve_shadow_slot(fog_ctx, lt, wx, wy, wz);
             la *= sw_sample_shadow_visibility(fog_ctx, shadow_slot, wx, wy, wz);
         }
@@ -1183,10 +1184,8 @@ static int sw_raster_prepare(const screen_vert_t *v0,
                              sw_raster_geom *g) {
     float area = (v1->sx - v0->sx) * (v2->sy - v0->sy) - (v2->sx - v0->sx) * (v1->sy - v0->sy);
     float original_area = area;
-    float span_x = fmaxf(fmaxf(v0->sx, v1->sx), v2->sx) -
-                   fminf(fminf(v0->sx, v1->sx), v2->sx);
-    float span_y = fmaxf(fmaxf(v0->sy, v1->sy), v2->sy) -
-                   fminf(fminf(v0->sy, v1->sy), v2->sy);
+    float span_x = fmaxf(fmaxf(v0->sx, v1->sx), v2->sx) - fminf(fminf(v0->sx, v1->sx), v2->sx);
+    float span_y = fmaxf(fmaxf(v0->sy, v1->sy), v2->sy) - fminf(fminf(v0->sy, v1->sy), v2->sy);
     float scale = fmaxf(1.0f, fmaxf(fabsf(span_x), fabsf(span_y)));
     const float area_epsilon = fmaxf(1e-12f, scale * scale * 1e-12f);
 
@@ -1313,20 +1312,16 @@ static void raster_triangle(uint8_t *pixels,
         return;
 
     const int depth_disabled = cmd && cmd->disable_depth_test;
-    const float depth_bias =
-        cmd ? fmaxf(-0.05f, fminf(0.05f, cmd->depth_bias)) : 0.0f;
+    const float depth_bias = cmd ? fmaxf(-0.05f, fminf(0.05f, cmd->depth_bias)) : 0.0f;
     float slope_depth_bias = 0.0f;
     if (cmd && fabsf(cmd->slope_scaled_depth_bias) > 1e-8f) {
-        float denom = g.v0->sx * (g.v1->sy - g.v2->sy) +
-                      g.v1->sx * (g.v2->sy - g.v0->sy) +
+        float denom = g.v0->sx * (g.v1->sy - g.v2->sy) + g.v1->sx * (g.v2->sy - g.v0->sy) +
                       g.v2->sx * (g.v0->sy - g.v1->sy);
         if (fabsf(denom) > 1e-8f) {
-            float dzdx = (g.v0->sz * (g.v1->sy - g.v2->sy) +
-                          g.v1->sz * (g.v2->sy - g.v0->sy) +
+            float dzdx = (g.v0->sz * (g.v1->sy - g.v2->sy) + g.v1->sz * (g.v2->sy - g.v0->sy) +
                           g.v2->sz * (g.v0->sy - g.v1->sy)) /
                          denom;
-            float dzdy = (g.v0->sz * (g.v2->sx - g.v1->sx) +
-                          g.v1->sz * (g.v0->sx - g.v2->sx) +
+            float dzdy = (g.v0->sz * (g.v2->sx - g.v1->sx) + g.v1->sz * (g.v0->sx - g.v2->sx) +
                           g.v2->sz * (g.v1->sx - g.v0->sx)) /
                          denom;
             slope_depth_bias = cmd->slope_scaled_depth_bias * fmaxf(fabsf(dzdx), fabsf(dzdy));

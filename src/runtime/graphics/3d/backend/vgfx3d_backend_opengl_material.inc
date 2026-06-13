@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_material.inc  (#included from vgfx3d_backend_opengl.c; not a standalone translation unit)
-// Purpose: OpenGL sampler/material/light uniform binding, skybox draw, and uniform-location queries
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_material.inc  (#included from
+// vgfx3d_backend_opengl.c; not a standalone translation unit) Purpose: OpenGL
+// sampler/material/light uniform binding, skybox draw, and uniform-location queries
 //===----------------------------------------------------------------------===//
 
 /// @brief Activate texture unit `unit`, bind `texture`, and tell the program about it.
@@ -169,6 +170,9 @@ static void upload_light_uniforms(gl_context_t *ctx,
         gl.Uniform1i(ctx->uLightShadowIndex[i], shadow_index);
         gl.Uniform1i(ctx->uLightShadowCascadeCount[i],
                      shadow_index >= 0 ? lights[i].shadow_cascade_count : 1);
+        gl.Uniform1i(ctx->uLightShadowProjectionType[i],
+                     shadow_index >= 0 ? lights[i].shadow_projection_type
+                                       : VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC);
         gl.Uniform4f(ctx->uLightShadowCascadeSplits[i],
                      lights[i].shadow_cascade_splits[0],
                      lights[i].shadow_cascade_splits[1],
@@ -307,18 +311,20 @@ static void upload_main_uniforms(gl_context_t *ctx,
 /// `bind_morph_payload`). Each `has*` uniform tells the shader which
 /// slots are populated.
 static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
-    GLuint diffuse_tex = gl_get_material_texture(ctx,
-                                                 cmd->texture_asset,
-                                                 cmd->texture,
-                                                 cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
-                                                 cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
-                                                 cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR]);
-    GLuint normal_tex = gl_get_material_texture(ctx,
-                                                cmd->normal_map_asset,
-                                                cmd->normal_map,
-                                                cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL],
-                                                cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL],
-                                                cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL]);
+    GLuint diffuse_tex = gl_get_material_texture(
+        ctx,
+        cmd->texture_asset,
+        cmd->texture,
+        cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+        cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+        cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR]);
+    GLuint normal_tex =
+        gl_get_material_texture(ctx,
+                                cmd->normal_map_asset,
+                                cmd->normal_map,
+                                cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL],
+                                cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL],
+                                cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL]);
     GLuint specular_tex =
         gl_get_material_texture(ctx,
                                 cmd->specular_map_asset,
@@ -340,13 +346,13 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
         cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS],
         cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS],
         cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS]);
-    GLuint ao_tex = gl_get_material_texture(
-        ctx,
-        cmd->ao_map_asset,
-        cmd->ao_map,
-        cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_AO],
-        cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_AO],
-        cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_AO]);
+    GLuint ao_tex =
+        gl_get_material_texture(ctx,
+                                cmd->ao_map_asset,
+                                cmd->ao_map,
+                                cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_AO],
+                                cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_AO],
+                                cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_AO]);
     GLuint env_tex =
         cmd->env_map ? gl_get_cached_cubemap(ctx, (const rt_cubemap3d *)cmd->env_map) : 0;
     GLuint splat_tex = cmd->splat_map ? gl_get_cached_texture(ctx, cmd->splat_map) : 0;
@@ -623,6 +629,8 @@ static void query_main_uniforms(gl_context_t *ctx) {
         ctx->uLightShadowIndex[i] = gl.GetUniformLocation(ctx->program, name);
         snprintf(name, sizeof(name), "uLightShadowCascadeCount[%d]", i);
         ctx->uLightShadowCascadeCount[i] = gl.GetUniformLocation(ctx->program, name);
+        snprintf(name, sizeof(name), "uLightShadowProjectionType[%d]", i);
+        ctx->uLightShadowProjectionType[i] = gl.GetUniformLocation(ctx->program, name);
         snprintf(name, sizeof(name), "uLightShadowCascadeSplits[%d]", i);
         ctx->uLightShadowCascadeSplits[i] = gl.GetUniformLocation(ctx->program, name);
         snprintf(name, sizeof(name), "uLightDir[%d]", i);

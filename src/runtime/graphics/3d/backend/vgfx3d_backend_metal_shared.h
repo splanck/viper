@@ -140,6 +140,11 @@ vgfx3d_metal_motion_attachment_mode_t vgfx3d_metal_choose_motion_attachment_mode
 vgfx3d_metal_readback_kind_t vgfx3d_metal_choose_readback_kind(int8_t gpu_postfx_enabled);
 /// @brief Clamp light shadow indices to the currently completed contiguous shadow slots.
 int32_t vgfx3d_metal_sanitize_shadow_index(int32_t shadow_index, int32_t shadow_count);
+/// @brief Project a world-space point through a shadow matrix to MSL UV/depth coordinates.
+int vgfx3d_metal_project_shadow_coord(const float *shadow_vp,
+                                      int32_t projection_type,
+                                      const float world_pos[3],
+                                      float out_uv_depth[3]);
 /// @brief Decide whether to reuse a cached morph-target Metal buffer (key + revision + counts
 /// match).
 int vgfx3d_metal_should_reuse_morph_cache(const void *cached_key,

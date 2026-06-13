@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/render/rt_canvas3d_render_pass.inc  (#included from rt_canvas3d.c; not a standalone translation unit)
-// Purpose: Canvas3D shadow/main render passes and frame end
+// File: src/runtime/graphics/3d/render/rt_canvas3d_render_pass.inc  (#included from rt_canvas3d.c;
+// not a standalone translation unit) Purpose: Canvas3D shadow/main render passes and frame end
 //===----------------------------------------------------------------------===//
 static void canvas3d_refresh_texture_upload_bytes(rt_canvas3d *c) {
     uint64_t bytes = 0;
@@ -47,6 +47,8 @@ static int canvas3d_render_shadow_light_slot(
     slot = c->shadow_count;
     light = *selected_light;
     light.shadow_cascade_count = 1;
+    light.shadow_projection_type = light.type == 3 ? VGFX3D_SHADOW_PROJECTION_PERSPECTIVE
+                                                   : VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC;
     if (!canvas3d_ensure_shadow_target_slot(c, slot, c->shadow_resolution))
         return 0;
     shadow_rt = c->shadow_rts[slot];
@@ -74,7 +76,8 @@ static int canvas3d_render_shadow_light_slot(
     return 1;
 }
 
-/// @brief Render the directional/cascaded shadow-map pass for the queued 3D draws.
+/// @brief Render the directional, spot, and cascaded shadow-map pass for the queued
+///   3D draws.
 ///   Extracted from rt_canvas3d_end; populates c->shadow_rts and stamps shadow params
 ///   onto the draw commands. Self-contained scratch (shadow_lights/cascades).
 static void canvas3d_render_shadow_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
@@ -86,14 +89,15 @@ static void canvas3d_render_shadow_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
 
     if (c->shadows_enabled && c->backend->shadow_begin && c->backend->shadow_draw &&
         c->backend->shadow_end && canvas3d_ensure_shadow_targets(c, c->shadow_resolution)) {
-        int32_t selected_shadow_count = canvas3d_select_shadow_directional_lights_from_draws(
-            cmds, c->draw_count, selected_lights, VGFX3D_MAX_SHADOW_LIGHTS);
+        int32_t selected_shadow_count = canvas3d_select_shadow_lights_from_draws(
+            c, cmds, c->draw_count, selected_lights, VGFX3D_MAX_SHADOW_LIGHTS);
         float shadow_world_min[3];
         float shadow_world_max[3];
         int has_shadow_bounds = canvas3d_build_shadow_world_bounds(
             cmds, c->draw_count, shadow_world_min, shadow_world_max);
 
-        if (has_shadow_bounds && selected_shadow_count > 0 && c->shadow_cascade_count > 1) {
+        if (has_shadow_bounds && selected_shadow_count > 0 && selected_lights[0].type == 0 &&
+            c->shadow_cascade_count > 1) {
             vgfx3d_light_params_t primary_light = selected_lights[0];
             int32_t cascade_count = c->shadow_cascade_count;
             float cascade_splits[VGFX3D_MAX_SHADOW_LIGHTS];
@@ -112,6 +116,7 @@ static void canvas3d_render_shadow_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
                 cascade_count = 0;
             primary_light.shadow_index = 0;
             primary_light.shadow_cascade_count = cascade_count;
+            primary_light.shadow_projection_type = VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC;
             memcpy(primary_light.shadow_cascade_splits,
                    cascade_splits,
                    sizeof(primary_light.shadow_cascade_splits));
@@ -151,6 +156,8 @@ static void canvas3d_render_shadow_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
                 shadow_lights[c->shadow_count] = primary_light;
                 shadow_lights[c->shadow_count].shadow_index = c->shadow_count;
                 shadow_lights[c->shadow_count].shadow_cascade_count = cascade_count;
+                shadow_lights[c->shadow_count].shadow_projection_type =
+                    VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC;
                 memcpy(shadow_lights[c->shadow_count].shadow_cascade_splits,
                        cascade_splits,
                        sizeof(shadow_lights[c->shadow_count].shadow_cascade_splits));

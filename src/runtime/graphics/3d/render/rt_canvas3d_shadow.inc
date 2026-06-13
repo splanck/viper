@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/render/rt_canvas3d_shadow.inc  (#included from rt_canvas3d.c; not a standalone translation unit)
-// Purpose: Canvas3D shadow-map view/projection fitting and shadow render-target slots
+// File: src/runtime/graphics/3d/render/rt_canvas3d_shadow.inc  (#included from rt_canvas3d.c; not a
+// standalone translation unit) Purpose: Canvas3D shadow-map view/projection fitting and shadow
+// render-target slots
 //===----------------------------------------------------------------------===//
 
 /// @brief Build a tight orthographic shadow-map VP that bounds every opaque draw.
@@ -237,6 +238,109 @@ static int canvas3d_shadow_build_ortho_projection(const float *ls_min,
     return 1;
 }
 
+static float canvas3d_shadow_clamp_finite(float value, float lo, float hi, float fallback) {
+    if (!isfinite(value))
+        value = fallback;
+    if (value < lo)
+        return lo;
+    if (value > hi)
+        return hi;
+    return value;
+}
+
+static float canvas3d_shadow_spot_range_from_bounds(const vgfx3d_light_params_t *light,
+                                                    const float *world_min,
+                                                    const float *world_max) {
+    float range = 0.0f;
+    float corners[8][3];
+    float max_distance = 0.0f;
+
+    if (light && isfinite(light->attenuation) && light->attenuation > 1e-8f)
+        range = 1.0f / sqrtf(light->attenuation);
+    if (isfinite(range) && range > 0.05f)
+        return range;
+
+    canvas3d_shadow_build_world_corners(world_min, world_max, corners);
+    for (int i = 0; i < 8; i++) {
+        float dx = corners[i][0] - light->position[0];
+        float dy = corners[i][1] - light->position[1];
+        float dz = corners[i][2] - light->position[2];
+        float distance = sqrtf(dx * dx + dy * dy + dz * dz);
+
+        if (isfinite(distance) && distance > max_distance)
+            max_distance = distance;
+    }
+    return max_distance > 1.0f ? max_distance : 1.0f;
+}
+
+static int canvas3d_shadow_build_perspective_projection(float outer_cos,
+                                                        float near_z,
+                                                        float far_z,
+                                                        float *proj) {
+    const float k_min_half_angle = 0.01745329252f; /* 1 degree */
+    const float k_max_half_angle = 1.55334303427f; /* 89 degrees */
+    float clamped_cos;
+    float half_angle;
+    float f;
+
+    if (!proj || !isfinite(near_z) || !isfinite(far_z) || near_z <= 0.0f || far_z <= near_z + 1e-4f)
+        return 0;
+    clamped_cos = canvas3d_shadow_clamp_finite(outer_cos, -0.9998477f, 0.9998477f, 0.7071068f);
+    half_angle = acosf(clamped_cos);
+    half_angle =
+        canvas3d_shadow_clamp_finite(half_angle, k_min_half_angle, k_max_half_angle, 0.7853982f);
+    f = 1.0f / tanf(half_angle);
+    if (!isfinite(f) || f <= 0.0f)
+        return 0;
+
+    memset(proj, 0, sizeof(float) * 16);
+    proj[0] = f;
+    proj[5] = f;
+    proj[10] = (far_z + near_z) / (far_z - near_z);
+    proj[11] = -(2.0f * far_z * near_z) / (far_z - near_z);
+    proj[14] = 1.0f;
+    return 1;
+}
+
+static int canvas3d_build_spot_shadow_light_vp(const float *world_min,
+                                               const float *world_max,
+                                               const vgfx3d_light_params_t *spot_light,
+                                               float *out_light_vp) {
+    float ldir[3];
+    float eye[3];
+    float center[3];
+    float view[16];
+    float proj[16];
+    float far_z;
+    float near_z;
+
+    if (!world_min || !world_max || !spot_light || !out_light_vp)
+        return 0;
+    canvas3d_shadow_normalize_light_dir(spot_light, ldir);
+    eye[0] = spot_light->position[0];
+    eye[1] = spot_light->position[1];
+    eye[2] = spot_light->position[2];
+    if (!isfinite(eye[0]) || !isfinite(eye[1]) || !isfinite(eye[2]))
+        return 0;
+    center[0] = eye[0] + ldir[0];
+    center[1] = eye[1] + ldir[1];
+    center[2] = eye[2] + ldir[2];
+    far_z = canvas3d_shadow_spot_range_from_bounds(spot_light, world_min, world_max);
+    if (!isfinite(far_z) || far_z <= 0.1f)
+        far_z = 1.0f;
+    near_z = fmaxf(0.02f, fminf(0.5f, far_z * 0.02f));
+    if (near_z >= far_z)
+        near_z = far_z * 0.1f;
+    if (near_z < 0.001f)
+        near_z = 0.001f;
+
+    canvas3d_shadow_build_light_view(center, eye, view);
+    if (!canvas3d_shadow_build_perspective_projection(spot_light->outer_cos, near_z, far_z, proj))
+        return 0;
+    canvas3d_mul_mat4(proj, view, out_light_vp);
+    return 1;
+}
+
 /// @brief Snap light-space bounds to shadow-map texel/depth increments.
 /// @details Stable cascaded shadows need the orthographic light projection to move in whole shadow
 ///   texels; otherwise tiny camera movements shift the projected depth map under the scene and
@@ -287,7 +391,7 @@ static void canvas3d_shadow_snap_light_bounds(float *ls_min, float *ls_max, int3
 ///          visible geometry at maximum resolution.
 static int canvas3d_build_shadow_light_vp(const float *world_min,
                                           const float *world_max,
-                                          const vgfx3d_light_params_t *dir_light,
+                                          const vgfx3d_light_params_t *shadow_light,
                                           int32_t shadow_resolution,
                                           float *out_light_vp) {
     float center[3];
@@ -299,12 +403,15 @@ static int canvas3d_build_shadow_light_vp(const float *world_min,
     float ls_min[3];
     float ls_max[3];
 
-    if (!world_min || !world_max || !dir_light || !out_light_vp)
+    if (!world_min || !world_max || !shadow_light || !out_light_vp)
         return 0;
     if (!canvas3d_shadow_bounds_are_valid(world_min, world_max))
         return 0;
+    if (shadow_light->type == 3)
+        return canvas3d_build_spot_shadow_light_vp(
+            world_min, world_max, shadow_light, out_light_vp);
     canvas3d_shadow_bounds_center(world_min, world_max, center);
-    canvas3d_shadow_normalize_light_dir(dir_light, ldir);
+    canvas3d_shadow_normalize_light_dir(shadow_light, ldir);
     if (!canvas3d_shadow_place_eye(world_min, world_max, center, ldir, eye))
         return 0;
     canvas3d_shadow_build_light_view(center, eye, view);

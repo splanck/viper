@@ -113,7 +113,7 @@ class LinearAllocator {
     /// @brief Evict any vreg resident in a physical register that @p ins defines,
     ///        spilling it first when its value is still needed. Argument registers
     ///        written here are additionally reserved until the next call.
-    void evictPhysDefClobbers(const MInstr &ins, std::vector<MInstr> &prefix);
+    void evictPhysDefClobbers(MInstr &ins, std::vector<MInstr> &prefix);
     /// @brief Return argument registers reserved during call marshalling to the pools.
     void releaseCallReserved();
 
@@ -130,7 +130,8 @@ class LinearAllocator {
     int ensureCurrentSpillSlot(uint16_t vreg, RegClass cls, bool forceLiveOut = false);
     /// @brief Return true if @p vreg appears as an operand in the current instruction.
     [[nodiscard]] bool isProtectedOperand(uint16_t vreg, RegClass cls) const;
-    /// @brief Return true if @p phys appears as an explicit physical operand in the current instruction.
+    /// @brief Return true if @p phys appears as an explicit physical operand in the current
+    /// instruction.
     [[nodiscard]] bool isProtectedPhys(PhysReg phys, RegClass cls) const;
     /// @brief Return true if @p vreg is live at the exit of the current block.
     [[nodiscard]] bool isLiveOut(uint16_t vreg, RegClass cls) const;

@@ -431,9 +431,9 @@ static void test_mapped_copy_and_native_mip_validation_helpers(void) {
                     3, 12, 16, 8, &src_row_bytes, &dst_row_bytes) == 0 &&
                     src_row_bytes == 0u && dst_row_bytes == 0u,
                 "Mapped readback validation rejects short source row pitch");
-    EXPECT_TRUE(vgfx3d_d3d11_validate_mapped_texture_copy(
-                    3, 8, 32, 8, &src_row_bytes, &dst_row_bytes) == 0,
-                "Mapped readback validation rejects short RGBA8 destination rows");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_validate_mapped_texture_copy(3, 8, 32, 8, &src_row_bytes, &dst_row_bytes) == 0,
+        "Mapped readback validation rejects short RGBA8 destination rows");
     EXPECT_TRUE(vgfx3d_d3d11_validate_mapped_texture_copy(
                     0, 12, 32, 8, &src_row_bytes, &dst_row_bytes) == 0,
                 "Mapped readback validation rejects invalid copy widths");
@@ -465,59 +465,46 @@ static void test_mapped_copy_and_native_mip_validation_helpers(void) {
                 "Native mip-count validation accepts the full D3D11 mip chain");
     EXPECT_TRUE(vgfx3d_d3d11_is_valid_native_mip_count(8, 4, 5) == 0,
                 "Native mip-count validation rejects chains longer than the base extent");
-    EXPECT_TRUE(vgfx3d_d3d11_is_valid_native_mip_count(
-                    8, 4, (int64_t)UINT_MAX + 1ll) == 0,
+    EXPECT_TRUE(vgfx3d_d3d11_is_valid_native_mip_count(8, 4, (int64_t)UINT_MAX + 1ll) == 0,
                 "Native mip-count validation rejects values that overflow D3D11 MipLevels");
-    EXPECT_TRUE(vgfx3d_d3d11_validate_native_mip_desc(&mip0,
-                                                      NULL,
-                                                      mip0.format_id,
-                                                      mip0.block_width,
-                                                      mip0.block_height,
-                                                      mip0.block_bytes) == 1,
-                "Native mip validation accepts a complete first mip");
-    EXPECT_TRUE(vgfx3d_d3d11_validate_native_mip_desc(&mip1,
-                                                      &mip0,
-                                                      mip0.format_id,
-                                                      mip0.block_width,
-                                                      mip0.block_height,
-                                                      mip0.block_bytes) == 1,
-                "Native mip validation accepts the expected halved next mip");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_validate_native_mip_desc(
+            &mip0, NULL, mip0.format_id, mip0.block_width, mip0.block_height, mip0.block_bytes) ==
+            1,
+        "Native mip validation accepts a complete first mip");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_validate_native_mip_desc(
+            &mip1, &mip0, mip0.format_id, mip0.block_width, mip0.block_height, mip0.block_bytes) ==
+            1,
+        "Native mip validation accepts the expected halved next mip");
 
     mip1.width = 5;
-    EXPECT_TRUE(vgfx3d_d3d11_validate_native_mip_desc(&mip1,
-                                                      &mip0,
-                                                      mip0.format_id,
-                                                      mip0.block_width,
-                                                      mip0.block_height,
-                                                      mip0.block_bytes) == 0,
-                "Native mip validation rejects dimensions that do not follow the mip chain");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_validate_native_mip_desc(
+            &mip1, &mip0, mip0.format_id, mip0.block_width, mip0.block_height, mip0.block_bytes) ==
+            0,
+        "Native mip validation rejects dimensions that do not follow the mip chain");
     mip1.width = 4;
     mip1.format_id = RT_TEXTUREASSET3D_NATIVE_FORMAT_ASTC;
-    EXPECT_TRUE(vgfx3d_d3d11_validate_native_mip_desc(&mip1,
-                                                      &mip0,
-                                                      mip0.format_id,
-                                                      mip0.block_width,
-                                                      mip0.block_height,
-                                                      mip0.block_bytes) == 0,
-                "Native mip validation rejects format changes inside a D3D11 texture");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_validate_native_mip_desc(
+            &mip1, &mip0, mip0.format_id, mip0.block_width, mip0.block_height, mip0.block_bytes) ==
+            0,
+        "Native mip validation rejects format changes inside a D3D11 texture");
     mip1.format_id = RT_TEXTUREASSET3D_NATIVE_FORMAT_BC7;
     mip1.block_bytes = 8;
-    EXPECT_TRUE(vgfx3d_d3d11_validate_native_mip_desc(&mip1,
-                                                      &mip0,
-                                                      mip0.format_id,
-                                                      mip0.block_width,
-                                                      mip0.block_height,
-                                                      mip0.block_bytes) == 0,
-                "Native mip validation rejects block-layout changes inside a D3D11 texture");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_validate_native_mip_desc(
+            &mip1, &mip0, mip0.format_id, mip0.block_width, mip0.block_height, mip0.block_bytes) ==
+            0,
+        "Native mip validation rejects block-layout changes inside a D3D11 texture");
     mip1.block_bytes = 16;
     mip1.bytes = 8;
-    EXPECT_TRUE(vgfx3d_d3d11_validate_native_mip_desc(&mip1,
-                                                      &mip0,
-                                                      mip0.format_id,
-                                                      mip0.block_width,
-                                                      mip0.block_height,
-                                                      mip0.block_bytes) == 0,
-                "Native mip validation rejects short compressed payloads");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_validate_native_mip_desc(
+            &mip1, &mip0, mip0.format_id, mip0.block_width, mip0.block_height, mip0.block_bytes) ==
+            0,
+        "Native mip validation rejects short compressed payloads");
 }
 
 static void test_target_fallback_helper(void) {
@@ -685,6 +672,40 @@ static void test_postfx_readback_policy_helpers(void) {
         "Readback falls back to the swapchain when the current target is the backbuffer");
 }
 
+static void test_shadow_projection_helper_handles_orthographic_and_perspective(void) {
+    float m[16];
+    float world[3] = {0.25f, -0.25f, 2.0f};
+    float uv_depth[3];
+
+    memset(m, 0, sizeof(m));
+    m[0] = 1.0f;
+    m[5] = 1.0f;
+    m[10] = 1.0f;
+    m[15] = 2.0f;
+    EXPECT_TRUE(vgfx3d_d3d11_project_shadow_coord(
+                    m, VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC, world, uv_depth) == 1,
+                "D3D11 orthographic shadow projection accepts finite coordinates");
+    EXPECT_NEAR(uv_depth[0], 0.625f, 1e-6f, "D3D11 orthographic shadow UV does not divide by W");
+    EXPECT_NEAR(uv_depth[1], 0.625f, 1e-6f, "D3D11 orthographic shadow UV flips Y");
+
+    memset(m, 0, sizeof(m));
+    m[0] = 1.0f;
+    m[5] = 1.0f;
+    m[10] = 0.5f;
+    m[14] = 1.0f;
+    EXPECT_TRUE(vgfx3d_d3d11_project_shadow_coord(
+                    m, VGFX3D_SHADOW_PROJECTION_PERSPECTIVE, world, uv_depth) == 1,
+                "D3D11 perspective shadow projection accepts positive W");
+    EXPECT_NEAR(uv_depth[0], 0.5625f, 1e-6f, "D3D11 perspective shadow UV divides by W");
+    EXPECT_NEAR(uv_depth[1], 0.5625f, 1e-6f, "D3D11 perspective shadow UV flips Y after divide");
+    EXPECT_NEAR(uv_depth[2], 0.75f, 1e-6f, "D3D11 perspective shadow depth divides by W");
+
+    world[2] = 0.0f;
+    EXPECT_TRUE(vgfx3d_d3d11_project_shadow_coord(
+                    m, VGFX3D_SHADOW_PROJECTION_PERSPECTIVE, world, uv_depth) == 0,
+                "D3D11 perspective shadow projection rejects non-positive W");
+}
+
 int main(void) {
     test_pack_bone_palette_identity_pads_unused_bones();
     test_pack_bone_palette_identity_pads_empty_source();
@@ -703,6 +724,7 @@ int main(void) {
     test_morph_cache_reuse_helper();
     test_shadow_and_rtt_policy_helpers();
     test_postfx_readback_policy_helpers();
+    test_shadow_projection_helper_handles_orthographic_and_perspective();
 
     printf("vgfx3d d3d11 shared tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

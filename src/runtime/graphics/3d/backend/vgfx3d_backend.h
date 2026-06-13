@@ -118,7 +118,7 @@ typedef struct {
     float custom_params[8]; /* user-defined shader parameters */
     float depth_bias;       /* constant depth offset; negative pulls coplanar draws forward */
     float slope_scaled_depth_bias; /* slope-proportional depth offset for steep coplanar polygons */
-    int8_t has_alpha_texture;       /* draw-time texture scan found non-opaque alpha */
+    int8_t has_alpha_texture;      /* draw-time texture scan found non-opaque alpha */
 } vgfx3d_draw_cmd_t;
 
 #define VGFX3D_MAX_DRAW_INDEX_COUNT ((uint32_t)INT_MAX)
@@ -232,13 +232,17 @@ typedef struct {
  * Lighting parameters — set before begin_frame
  *=========================================================================*/
 
+#define VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC 0
+#define VGFX3D_SHADOW_PROJECTION_PERSPECTIVE 1
+
 /// @brief One light passed to submit_draw: kind (directional/point/ambient/spot), an
 ///   optional shadow-map slot index, direction/position/color/intensity/attenuation, and
 ///   spot inner/outer cone cosines.
 typedef struct {
-    int32_t type;                 /* 0=directional, 1=point, 2=ambient, 3=spot */
-    int32_t shadow_index;         /* -1 = unshadowed, otherwise [0, VGFX3D_MAX_SHADOW_LIGHTS) */
-    int32_t shadow_cascade_count; /* >1 means shadow_index is the first cascade slot */
+    int32_t type;                   /* 0=directional, 1=point, 2=ambient, 3=spot */
+    int32_t shadow_index;           /* -1 = unshadowed, otherwise [0, VGFX3D_MAX_SHADOW_LIGHTS) */
+    int32_t shadow_cascade_count;   /* >1 means shadow_index is the first cascade slot */
+    int32_t shadow_projection_type; /* VGFX3D_SHADOW_PROJECTION_* */
     int32_t casts_shadows;
     uintptr_t identity; /* stable CPU light identity used to match shadow slots after packing */
     float direction[3];

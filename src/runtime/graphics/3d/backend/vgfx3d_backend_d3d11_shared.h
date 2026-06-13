@@ -253,6 +253,11 @@ int32_t vgfx3d_d3d11_sanitize_shadow_index(int32_t requested_shadow_index,
                                            int32_t advertised_shadow_count);
 /// @brief Clamp a shadow-count value to the D3D11 shader-visible shadow slots.
 int32_t vgfx3d_d3d11_clamp_shadow_count(int32_t advertised_shadow_count);
+/// @brief Project a world-space point through a shadow matrix to HLSL UV/depth coordinates.
+int vgfx3d_d3d11_project_shadow_coord(const float *shadow_vp,
+                                      int32_t projection_type,
+                                      const float world_pos[3],
+                                      float out_uv_depth[3]);
 /// @brief Decide whether an RTT frame has enough state to mark its CPU mirror dirty.
 int vgfx3d_d3d11_should_mark_rtt_dirty(int8_t rtt_active,
                                        int has_target,

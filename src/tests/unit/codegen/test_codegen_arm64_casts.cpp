@@ -87,8 +87,8 @@ TEST(Arm64Casts, SiNarrowChk) {
     EXPECT_NE(asmText.find("lsl x0, x0, #48"), std::string::npos);
     EXPECT_NE(asmText.find("asr x0, x0, #48"), std::string::npos);
     EXPECT_NE(asmText.find("cmp x0, x9"), std::string::npos);
-    EXPECT_NE(asmText.find("b.ne L.Ltrap_ovf"), std::string::npos);
-    EXPECT_NE(asmText.find("L.Ltrap_ovf"), std::string::npos);
+    EXPECT_NE(asmText.find("b.ne L.Ltrap_cast_"), std::string::npos);
+    EXPECT_NE(asmText.find("L.Ltrap_cast_"), std::string::npos);
     EXPECT_NE(asmText.find(blSym("rt_trap")), std::string::npos);
 }
 

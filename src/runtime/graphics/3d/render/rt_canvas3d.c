@@ -1522,6 +1522,7 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
 
     return c;
 }
+
 #include "rt_canvas3d_draw.inc"
 #include "rt_canvas3d_instanced.inc"
 #include "rt_canvas3d_render_pass.inc"
@@ -2233,9 +2234,9 @@ void rt_canvas3d_clear_fog(void *obj) {
  *=========================================================================*/
 
 /// @brief Enable shadow mapping with the given shadow map resolution.
-/// @details Creates a shadow depth buffer and configures directional light shadow
-///          casting. The shadow map is rendered from the light's perspective and
-///          sampled during the main render pass.
+/// @details Creates a shadow depth buffer and configures directional and spot
+///          light shadow casting. The shadow map is rendered from the light's
+///          perspective and sampled during the main render pass.
 void rt_canvas3d_enable_shadows(void *obj, int64_t resolution) {
     int ok;
 

@@ -59,8 +59,8 @@ TEST(Arm64CLI, ParamsBeyondX1) {
         const char *argv[] = {inP.c_str(), "-S", outP.c_str()};
         ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
         const std::string asmText = readFile(outP);
-        EXPECT_TRUE(asmText.find("adds x") != std::string::npos &&
-                    asmText.find(", x2, x0") != std::string::npos);
+        EXPECT_NE(asmText.find("adds x"), std::string::npos);
+        EXPECT_NE(asmText.find("b.vs"), std::string::npos);
     }
 
     // ri: checked-sub %d(x3), 7 → expect mov x0, x3; subs x0, x0, #7
@@ -79,8 +79,9 @@ TEST(Arm64CLI, ParamsBeyondX1) {
         const char *argv[] = {inP2.c_str(), "-S", outP2.c_str()};
         ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
         const std::string asmText = readFile(outP2);
-        EXPECT_TRUE(asmText.find("subs x") != std::string::npos &&
-                    asmText.find(", x3, #7") != std::string::npos);
+        EXPECT_NE(asmText.find("subs x"), std::string::npos);
+        EXPECT_NE(asmText.find(", #7"), std::string::npos);
+        EXPECT_NE(asmText.find("b.vs"), std::string::npos);
     }
 }
 

@@ -127,6 +127,11 @@ vgfx3d_opengl_motion_attachment_mode_t vgfx3d_opengl_choose_motion_attachment_mo
 vgfx3d_opengl_readback_kind_t vgfx3d_opengl_choose_readback_kind(int8_t gpu_postfx_enabled);
 /// @brief Clamp light shadow indices to the currently completed contiguous shadow slots.
 int32_t vgfx3d_opengl_sanitize_shadow_index(int32_t shadow_index, int32_t shadow_count);
+/// @brief Project a world-space point through a shadow matrix to GLSL UV/depth coordinates.
+int vgfx3d_opengl_project_shadow_coord(const float *shadow_vp,
+                                       int32_t projection_type,
+                                       const float world_pos[3],
+                                       float out_uv_depth[3]);
 /// @brief Decide whether to reuse a cached morph-target GPU buffer (key + revision + counts match).
 int vgfx3d_opengl_should_reuse_morph_cache(const void *cached_key,
                                            uint64_t cached_revision,

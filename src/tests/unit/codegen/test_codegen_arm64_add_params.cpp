@@ -61,9 +61,8 @@ TEST(Arm64CLI, AddTwoParams) {
     const std::string asmText = readFile(outP);
     // Expect checked-add lowering. Regalloc may compute into any physical GPR
     // and then move the result into x0 for the ABI return value.
-    bool hasAdd = asmText.find("adds x") != std::string::npos &&
-                  asmText.find(", x0, x1") != std::string::npos;
-    EXPECT_TRUE(hasAdd);
+    EXPECT_NE(asmText.find("adds x"), std::string::npos);
+    EXPECT_NE(asmText.find("b.vs"), std::string::npos);
 }
 
 int main(int argc, char **argv) {

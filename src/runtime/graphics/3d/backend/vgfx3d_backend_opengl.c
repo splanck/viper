@@ -615,7 +615,8 @@ typedef struct {
     GLint uMetallicRoughnessTex, uAOTex;
     GLint uSplatTex, uSplatLayer0, uSplatLayer1, uSplatLayer2, uSplatLayer3, uSplatScales;
     GLint uLightType[VGFX3D_MAX_LIGHTS], uLightShadowIndex[VGFX3D_MAX_LIGHTS],
-        uLightDir[VGFX3D_MAX_LIGHTS], uLightPos[VGFX3D_MAX_LIGHTS], uLightColor[VGFX3D_MAX_LIGHTS],
+        uLightShadowProjectionType[VGFX3D_MAX_LIGHTS], uLightDir[VGFX3D_MAX_LIGHTS],
+        uLightPos[VGFX3D_MAX_LIGHTS], uLightColor[VGFX3D_MAX_LIGHTS],
         uLightIntensity[VGFX3D_MAX_LIGHTS];
     GLint uLightShadowCascadeCount[VGFX3D_MAX_LIGHTS], uLightShadowCascadeSplits[VGFX3D_MAX_LIGHTS];
     GLint uShadowVP[VGFX3D_MAX_SHADOW_LIGHTS];
@@ -977,12 +978,12 @@ static void orphan_stream_buffer(GLenum target, GLuint buffer, size_t capacity, 
 // fresh Pixels object the same pointer as an older cached upload.
 
 /// @brief Delete every cached 2D texture and reset the count.
-#include "vgfx3d_backend_opengl_texture.inc"
-#include "vgfx3d_backend_opengl_targets.inc"
-#include "vgfx3d_backend_opengl_mesh.inc"
-#include "vgfx3d_backend_opengl_material.inc"
 #include "vgfx3d_backend_opengl_context.inc"
 #include "vgfx3d_backend_opengl_frame.inc"
+#include "vgfx3d_backend_opengl_material.inc"
+#include "vgfx3d_backend_opengl_mesh.inc"
+#include "vgfx3d_backend_opengl_targets.inc"
+#include "vgfx3d_backend_opengl_texture.inc"
 
 const vgfx3d_backend_t vgfx3d_opengl_backend = {
     .name = "opengl",

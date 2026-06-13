@@ -270,10 +270,14 @@ Operand Spiller::makeFrameOperand(RegClass cls, int slot) const {
     if (slot >= rangeEnd - base - 1) {
         throw std::overflow_error("x86 spiller: spill slot index exceeds its placeholder range");
     }
-    const int placeholderSlot = slot + base + 1;
+    const int64_t placeholderSlot = static_cast<int64_t>(slot) + static_cast<int64_t>(base) + 1;
+    const int64_t offset64 = -placeholderSlot * static_cast<int64_t>(kSlotSizeBytes);
+    if (offset64 < std::numeric_limits<int32_t>::min() ||
+        offset64 > std::numeric_limits<int32_t>::max()) {
+        throw std::overflow_error("x86 spiller: spill slot displacement overflows int32");
+    }
     const auto baseReg = makePhysReg(RegClass::GPR, static_cast<uint16_t>(PhysReg::RBP));
-    const int32_t offset = -static_cast<int32_t>(placeholderSlot * kSlotSizeBytes);
-    return makeMemOperand(baseReg, offset);
+    return makeMemOperand(baseReg, static_cast<int32_t>(offset64));
 }
 
 } // namespace viper::codegen::x64::ra
