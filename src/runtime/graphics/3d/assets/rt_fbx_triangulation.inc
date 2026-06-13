@@ -34,6 +34,101 @@ static int fbx_point_in_tri_2d(
     return !(has_neg && has_pos);
 }
 
+/// @brief Squared 3D triangle area using Mesh3D's authoritative double positions when present.
+static double fbx_mesh_tri_area_sq(const rt_mesh3d *mesh,
+                                   int32_t i0,
+                                   int32_t i1,
+                                   int32_t i2,
+                                   double a[3],
+                                   double b[3],
+                                   double c[3]) {
+    double abx;
+    double aby;
+    double abz;
+    double acx;
+    double acy;
+    double acz;
+    double nx;
+    double ny;
+    double nz;
+    if (mesh->positions64) {
+        const double *p0 = &mesh->positions64[(size_t)i0 * 3u];
+        const double *p1 = &mesh->positions64[(size_t)i1 * 3u];
+        const double *p2 = &mesh->positions64[(size_t)i2 * 3u];
+        a[0] = p0[0];
+        a[1] = p0[1];
+        a[2] = p0[2];
+        b[0] = p1[0];
+        b[1] = p1[1];
+        b[2] = p1[2];
+        c[0] = p2[0];
+        c[1] = p2[1];
+        c[2] = p2[2];
+    } else {
+        const float *p0 = mesh->vertices[i0].pos;
+        const float *p1 = mesh->vertices[i1].pos;
+        const float *p2 = mesh->vertices[i2].pos;
+        a[0] = (double)p0[0];
+        a[1] = (double)p0[1];
+        a[2] = (double)p0[2];
+        b[0] = (double)p1[0];
+        b[1] = (double)p1[1];
+        b[2] = (double)p1[2];
+        c[0] = (double)p2[0];
+        c[1] = (double)p2[1];
+        c[2] = (double)p2[2];
+    }
+    abx = b[0] - a[0];
+    aby = b[1] - a[1];
+    abz = b[2] - a[2];
+    acx = c[0] - a[0];
+    acy = c[1] - a[1];
+    acz = c[2] - a[2];
+    nx = aby * acz - abz * acy;
+    ny = abz * acx - abx * acz;
+    nz = abx * acy - aby * acx;
+    return nx * nx + ny * ny + nz * nz;
+}
+
+/// @brief Scale-aware area threshold matching Mesh3D.AddTriangle's degeneracy policy.
+static double fbx_mesh_tri_area_epsilon_sq(const double a[3],
+                                           const double b[3],
+                                           const double c[3]) {
+    double abx = b[0] - a[0], aby = b[1] - a[1], abz = b[2] - a[2];
+    double acx = c[0] - a[0], acy = c[1] - a[1], acz = c[2] - a[2];
+    double bcx = c[0] - b[0], bcy = c[1] - b[1], bcz = c[2] - b[2];
+    double ab2 = abx * abx + aby * aby + abz * abz;
+    double ac2 = acx * acx + acy * acy + acz * acz;
+    double bc2 = bcx * bcx + bcy * bcy + bcz * bcz;
+    double max_edge_sq = fmax(ab2, fmax(ac2, bc2));
+    if (!isfinite(max_edge_sq) || max_edge_sq <= 0.0)
+        return 1e-24;
+    return fmax(1e-24, max_edge_sq * max_edge_sq * 1e-12);
+}
+
+/// @brief Emit a triangle from untrusted FBX geometry without invoking Mesh3D traps.
+/// @details Duplicate, out-of-range, and zero-area imported triangles are dropped. The public
+/// Mesh3D.AddTriangle API still traps for script errors; loader paths must fail recoverably.
+static int fbx_try_emit_mesh_triangle(void *mesh_obj, int32_t i0, int32_t i1, int32_t i2) {
+    rt_mesh3d *mesh = (rt_mesh3d *)mesh_obj;
+    double a[3];
+    double b[3];
+    double c[3];
+    double area_sq;
+    if (!mesh || !mesh->vertices)
+        return 0;
+    if (i0 < 0 || i1 < 0 || i2 < 0 || i0 == i1 || i1 == i2 || i0 == i2)
+        return 1;
+    if ((uint32_t)i0 >= mesh->vertex_count || (uint32_t)i1 >= mesh->vertex_count ||
+        (uint32_t)i2 >= mesh->vertex_count)
+        return 1;
+    area_sq = fbx_mesh_tri_area_sq(mesh, i0, i1, i2, a, b, c);
+    if (!isfinite(area_sq) || area_sq <= fbx_mesh_tri_area_epsilon_sq(a, b, c))
+        return 1;
+    rt_mesh3d_add_triangle(mesh_obj, i0, i1, i2);
+    return mesh->build_failed ? 0 : 1;
+}
+
 /// @brief Triangulate an FBX polygon of `poly_count` vertices and emit the triangles
 ///   into `mesh`. Returns 0 on allocation or mesh build failure, 1 otherwise.
 /// @details Fast-paths triangles; for N-gons it derives a projection plane from the
@@ -52,8 +147,7 @@ static int fbx_emit_polygon_triangles(void *mesh_obj, const int32_t *polygon, in
     if (!mesh || !polygon || poly_count < 3)
         return 1;
     if (poly_count == 3) {
-        rt_mesh3d_add_triangle(mesh_obj, polygon[0], polygon[1], polygon[2]);
-        return mesh->build_failed ? 0 : 1;
+        return fbx_try_emit_mesh_triangle(mesh_obj, polygon[0], polygon[1], polygon[2]);
     }
     if ((size_t)poly_count > sizeof(stack_indices) / sizeof(stack_indices[0])) {
         if ((size_t)poly_count > SIZE_MAX / sizeof(int32_t))
@@ -82,7 +176,11 @@ static int fbx_emit_polygon_triangles(void *mesh_obj, const int32_t *polygon, in
     }
     if (!isfinite(area) || fabs(area) < 1e-12) {
         for (int32_t fi = 1; fi < poly_count - 1; ++fi)
-            rt_mesh3d_add_triangle(mesh_obj, polygon[0], polygon[fi], polygon[fi + 1]);
+            if (!fbx_try_emit_mesh_triangle(mesh_obj, polygon[0], polygon[fi], polygon[fi + 1])) {
+                if (indices != stack_indices)
+                    free(indices);
+                return 0;
+            }
         if (indices != stack_indices)
             free(indices);
         return mesh->build_failed ? 0 : 1;
@@ -119,8 +217,7 @@ static int fbx_emit_polygon_triangles(void *mesh_obj, const int32_t *polygon, in
             }
             if (contains)
                 continue;
-            rt_mesh3d_add_triangle(mesh_obj, ia, ib, ic);
-            if (mesh->build_failed) {
+            if (!fbx_try_emit_mesh_triangle(mesh_obj, ia, ib, ic)) {
                 if (indices != stack_indices)
                     free(indices);
                 return 0;
@@ -134,11 +231,19 @@ static int fbx_emit_polygon_triangles(void *mesh_obj, const int32_t *polygon, in
         if (!clipped)
             break;
     }
-    if (remaining == 3)
-        rt_mesh3d_add_triangle(mesh_obj, indices[0], indices[1], indices[2]);
-    else {
+    if (remaining == 3) {
+        if (!fbx_try_emit_mesh_triangle(mesh_obj, indices[0], indices[1], indices[2])) {
+            if (indices != stack_indices)
+                free(indices);
+            return 0;
+        }
+    } else {
         for (int32_t fi = 1; fi < poly_count - 1; ++fi)
-            rt_mesh3d_add_triangle(mesh_obj, polygon[0], polygon[fi], polygon[fi + 1]);
+            if (!fbx_try_emit_mesh_triangle(mesh_obj, polygon[0], polygon[fi], polygon[fi + 1])) {
+                if (indices != stack_indices)
+                    free(indices);
+                return 0;
+            }
     }
     if (indices != stack_indices)
         free(indices);

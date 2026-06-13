@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/assets/rt_gltf_accessor.inc  (#included from rt_gltf.c; not a standalone translation unit)
-// Purpose: glTF accessor binding, sparse handling, and component decode/read
+// File: src/runtime/graphics/3d/assets/rt_gltf_accessor.inc  (#included from rt_gltf.c; not a
+// standalone translation unit) Purpose: glTF accessor binding, sparse handling, and component
+// decode/read
 //===----------------------------------------------------------------------===//
 
 /// @brief Return the byte size of one glTF accessor component by its GL-enum component type.
@@ -136,6 +137,8 @@ static int gltf_accessor_bind_buffer_view(void *root,
         return 0;
     if (byte_offset_acc > byte_length_bv || offset > buffers[buf_idx].len)
         return 0;
+    if (!rt_untrusted_count_ok((int64_t)out->count, elem_size, byte_length_bv - byte_offset_acc))
+        return 0;
     if (!gltf_checked_mul_size((size_t)(out->count - 1), (size_t)out->stride, &last_offset) ||
         !gltf_checked_add_size(byte_offset_acc, last_offset, &last_span) ||
         !gltf_checked_add_size(last_span, elem_size, &required_view_len))
@@ -195,14 +198,18 @@ static int gltf_accessor_bind_sparse(void *root,
             return 0;
         if (indices_offset > index_len || values_offset > value_len)
             return 0;
+        if (!rt_untrusted_count_ok(
+                (int64_t)sparse_count, (size_t)index_comp_size, index_len - indices_offset))
+            return 0;
         if (!gltf_checked_mul_size((size_t)sparse_count, (size_t)index_comp_size, &index_bytes) ||
             !gltf_checked_add_size(indices_offset, index_bytes, &index_end) ||
             index_end > index_len)
             return 0;
         if (!gltf_checked_mul_size((size_t)comp_size, (size_t)comp_count, &sparse_elem_size) ||
+            !rt_untrusted_count_ok(
+                (int64_t)sparse_count, sparse_elem_size, value_len - values_offset) ||
             !gltf_checked_mul_size((size_t)sparse_count, sparse_elem_size, &value_bytes) ||
-            !gltf_checked_add_size(values_offset, value_bytes, &value_end) ||
-            value_end > value_len)
+            !gltf_checked_add_size(values_offset, value_bytes, &value_end) || value_end > value_len)
             return 0;
         if (sparse_elem_size > INT32_MAX)
             return 0;
@@ -239,7 +246,8 @@ static int gltf_get_accessor_view(void *root,
     if (!gltf_accessor_bind_buffer_view(
             root, bv_idx, byte_offset_acc, buffers, buf_count, comp_size, out->comp_count, out))
         return 0;
-    return gltf_accessor_bind_sparse(root, acc, buffers, buf_count, comp_size, out->comp_count, out);
+    return gltf_accessor_bind_sparse(
+        root, acc, buffers, buf_count, comp_size, out->comp_count, out);
 }
 
 /// @brief Validate sparse accessor metadata globally before importers decide to skip primitives.

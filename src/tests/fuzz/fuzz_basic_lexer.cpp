@@ -31,8 +31,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     Lexer lexer(source, /*fileId=*/0);
 
     for (;;) {
-        auto tok = lexer.nextToken();
-        if (tok.type == TokenType::END_OF_FILE)
+        auto tok = lexer.next();
+        if (tok.kind == TokenKind::EndOfFile)
             break;
     }
 

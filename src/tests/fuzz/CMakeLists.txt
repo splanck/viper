@@ -95,3 +95,28 @@ target_include_directories(fuzz_il_parser PRIVATE
 target_link_libraries(fuzz_il_parser PRIVATE viper::il_full)
 target_compile_options(fuzz_il_parser PRIVATE -fsanitize=fuzzer)
 target_link_options(fuzz_il_parser PRIVATE -fsanitize=fuzzer)
+
+# ── 3D Content Loader Fuzzers ───────────────────────────────────────────────
+function(viper_add_3d_loader_fuzzer target source)
+    add_executable(${target} ${source})
+    target_include_directories(${target} PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${CMAKE_SOURCE_DIR}/include
+            ${CMAKE_BINARY_DIR}/generated
+            ${CMAKE_SOURCE_DIR}/src
+            ${CMAKE_SOURCE_DIR}/src/runtime
+            ${CMAKE_SOURCE_DIR}/src/runtime/core
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/assets
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/render
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/scene)
+    target_link_libraries(${target} PRIVATE viper_runtime)
+    target_compile_options(${target} PRIVATE -fsanitize=fuzzer)
+    target_link_options(${target} PRIVATE -fsanitize=fuzzer)
+endfunction()
+
+viper_add_3d_loader_fuzzer(fuzz_gltf_loader fuzz_gltf_loader.cpp)
+viper_add_3d_loader_fuzzer(fuzz_fbx_loader fuzz_fbx_loader.cpp)
+viper_add_3d_loader_fuzzer(fuzz_vscn_loader fuzz_vscn_loader.cpp)
+viper_add_3d_loader_fuzzer(fuzz_obj_stl fuzz_obj_stl.cpp)
+viper_add_3d_loader_fuzzer(fuzz_stream_manifest fuzz_stream_manifest.cpp)

@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/assets/rt_gltf_preload.inc  (#included from rt_gltf.c; not a standalone translation unit)
-// Purpose: glTF preload-bundle staging (buffers, views, accessors, meshes, morphs, images)
+// File: src/runtime/graphics/3d/assets/rt_gltf_preload.inc  (#included from rt_gltf.c; not a
+// standalone translation unit) Purpose: glTF preload-bundle staging (buffers, views, accessors,
+// meshes, morphs, images)
 //===----------------------------------------------------------------------===//
 
 /// @brief Resolve a raw JSON texture object's source, including KHR_texture_basisu.
@@ -311,7 +312,8 @@ static int gltf_preload_stage_external_buffer(rt_gltf_preload_bundle *bundle,
     size_t data_len = 0;
     gltf_resolve_relative_path(model_path, uri, resource_path, sizeof(resource_path));
     if (resource_path[0] != '\0') {
-        data = gltf_load_dependency_bytes(resource_path, load_assets, required_len, NULL, &data_len);
+        data =
+            gltf_load_dependency_bytes(resource_path, load_assets, required_len, NULL, &data_len);
         if (data) {
             if (!gltf_preload_bundle_add_dependency(
                     bundle, resource_path, GLTF_PRELOAD_DEP_BUFFER, data, data_len)) {
@@ -390,7 +392,8 @@ static int gltf_preload_stage_buffers(rt_gltf_preload_bundle *bundle,
             size_t required_len = 0;
             if (object_end == SIZE_MAX || object_end > array_end)
                 break;
-            if (!gltf_preload_grow_buffer_refs(&refs, &refs_capacity, index + 1)) {
+            if (!rt_untrusted_count_ok((int64_t)index + 1, 1u, json_len) ||
+                !gltf_preload_grow_buffer_refs(&refs, &refs_capacity, index + 1)) {
                 free(refs);
                 gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
                 return 0;
@@ -408,7 +411,8 @@ static int gltf_preload_stage_buffers(rt_gltf_preload_bundle *bundle,
                     return 0;
                 }
             } else {
-                if (!gltf_preload_bind_glb_buffer(index, glb_bin, glb_bin_len, required_len, refs)) {
+                if (!gltf_preload_bind_glb_buffer(
+                        index, glb_bin, glb_bin_len, required_len, refs)) {
                     free(refs);
                     gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
                     return 0;
@@ -490,7 +494,8 @@ static int gltf_preload_parse_buffer_views(const char *json,
             size_t object_end = gltf_json_find_matching(json, json_len, pos, '{', '}');
             if (object_end == SIZE_MAX || object_end > array_end)
                 break;
-            if (!gltf_preload_grow_view_refs(&views, &views_capacity, index + 1)) {
+            if (!rt_untrusted_count_ok((int64_t)index + 1, 1u, json_len) ||
+                !gltf_preload_grow_view_refs(&views, &views_capacity, index + 1)) {
                 free(views);
                 gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
                 return 0;
@@ -583,6 +588,9 @@ static int gltf_preload_validate_accessor(const char *json,
         gltf_json_object_get_size(json, json_len, obj_start, obj_end, "byteOffset", 0u);
     stride = view->byte_stride > 0u ? view->byte_stride : element_size;
     if (stride < element_size)
+        return 0;
+    if (accessor_offset > view->byte_length ||
+        !rt_untrusted_count_ok((int64_t)count, element_size, view->byte_length - accessor_offset))
         return 0;
     if (!gltf_checked_mul_size((size_t)(count - 1), stride, &last_offset) ||
         !gltf_checked_add_size(accessor_offset, last_offset, &accessor_last) ||
@@ -697,7 +705,8 @@ static int gltf_preload_parse_accessors(const char *json,
             size_t sparse_end;
             if (object_end == SIZE_MAX || object_end > array_end)
                 break;
-            if (!gltf_preload_grow_accessor_refs(&accessors, &accessors_capacity, index + 1)) {
+            if (!rt_untrusted_count_ok((int64_t)index + 1, 1u, json_len) ||
+                !gltf_preload_grow_accessor_refs(&accessors, &accessors_capacity, index + 1)) {
                 free(accessors);
                 gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
                 return 0;
@@ -832,6 +841,10 @@ static int gltf_preload_resolve_accessor_view(const gltf_preload_accessor_ref_t 
         stride = view->byte_stride > 0u ? view->byte_stride : element_size;
         if (stride < element_size || stride > INT32_MAX)
             return 0;
+        if (accessor->byte_offset > view->byte_length ||
+            !rt_untrusted_count_ok(
+                (int64_t)accessor->count, element_size, view->byte_length - accessor->byte_offset))
+            return 0;
         if (!gltf_checked_mul_size((size_t)(accessor->count - 1), stride, &last_offset) ||
             !gltf_checked_add_size(accessor->byte_offset, last_offset, &accessor_last) ||
             !gltf_checked_add_size(accessor_last, element_size, &accessor_end))
@@ -872,6 +885,15 @@ static int gltf_preload_resolve_accessor_view(const gltf_preload_accessor_ref_t 
             values_view->buffer < 0 || indices_view->buffer >= buffer_count ||
             values_view->buffer >= buffer_count || !buffers[indices_view->buffer].data ||
             !buffers[values_view->buffer].data)
+            return 0;
+        if (accessor->sparse_indices_offset > indices_view->byte_length ||
+            accessor->sparse_values_offset > values_view->byte_length ||
+            !rt_untrusted_count_ok((int64_t)accessor->sparse_count,
+                                   (size_t)index_comp_size,
+                                   indices_view->byte_length - accessor->sparse_indices_offset) ||
+            !rt_untrusted_count_ok((int64_t)accessor->sparse_count,
+                                   element_size,
+                                   values_view->byte_length - accessor->sparse_values_offset))
             return 0;
         if (!gltf_checked_mul_size(
                 (size_t)accessor->sparse_count, (size_t)index_comp_size, &index_bytes) ||
@@ -1163,8 +1185,8 @@ static double gltf_preload_target_weight(
             json, json_len, mesh_start, mesh_end, "weights", &weights_start, &weights_end) ||
         weights_start >= weights_end || json[weights_start] != '[')
         return 0.0;
-    weight = gltf_json_array_get_number(
-        json, json_len, weights_start, weights_end, target_index, 0.0);
+    weight =
+        gltf_json_array_get_number(json, json_len, weights_start, weights_end, target_index, 0.0);
     if (!isfinite(weight))
         return 0.0;
     if (weight < -1.0)
@@ -1693,8 +1715,8 @@ static int gltf_preload_resolve_primitive_attribs(const char *json,
                         out->weights1_view.count >= out->pos_view.count;
     if ((out->has_joints != out->has_weights) || (out->has_joints1 != out->has_weights1))
         return 0;
-    out->has_skinning_attrs = (out->has_joints && out->has_weights) ||
-                              (out->has_joints1 && out->has_weights1);
+    out->has_skinning_attrs =
+        (out->has_joints && out->has_weights) || (out->has_joints1 && out->has_weights1);
     out->has_indices = gltf_preload_resolve_accessor_view(accessors,
                                                           accessor_count,
                                                           idx_acc,
@@ -2208,6 +2230,10 @@ static int gltf_preload_prepare_required_images(const char *json,
         *out_required = NULL;
     if (image_count <= 0)
         return 1;
+    if (!rt_untrusted_count_ok((int64_t)image_count, 1u, json_len)) {
+        gltf_preload_set_error(error, error_cap, "failed to stage glTF preload");
+        return 0;
+    }
     required = (uint8_t *)calloc((size_t)image_count, sizeof(uint8_t));
     if (!required) {
         gltf_preload_set_error(error, error_cap, "failed to stage glTF preload");
@@ -2238,6 +2264,8 @@ static int gltf_validate_required_data_uri_images(const char *json, size_t json_
     image_count = gltf_json_count_objects_in_array(json, json_len, array_start, array_end);
     if (image_count <= 0)
         return 1;
+    if (!rt_untrusted_count_ok((int64_t)image_count, 1u, json_len))
+        return 0;
 
     required = (uint8_t *)calloc((size_t)image_count, sizeof(uint8_t));
     if (!required)
@@ -2654,7 +2682,8 @@ rt_gltf_preload_bundle *rt_gltf_preload_bundle_create_cstr(const char *model_pat
 }
 
 /// @brief Build an off-main-thread preload bundle from a runtime string path.
-/// @details Thin compatibility wrapper around `rt_gltf_preload_bundle_create_cstr`; callers that run
+/// @details Thin compatibility wrapper around `rt_gltf_preload_bundle_create_cstr`; callers that
+/// run
 ///          on worker threads should prefer the C-string variant with an already-snapshotted path.
 rt_gltf_preload_bundle *rt_gltf_preload_bundle_create(rt_string path,
                                                       uint8_t *root_data,
@@ -2662,12 +2691,8 @@ rt_gltf_preload_bundle *rt_gltf_preload_bundle_create(rt_string path,
                                                       int load_assets,
                                                       char *error,
                                                       size_t error_cap) {
-    return rt_gltf_preload_bundle_create_cstr(path ? rt_string_cstr(path) : NULL,
-                                              root_data,
-                                              root_size,
-                                              load_assets,
-                                              error,
-                                              error_cap);
+    return rt_gltf_preload_bundle_create_cstr(
+        path ? rt_string_cstr(path) : NULL, root_data, root_size, load_assets, error, error_cap);
 }
 
 /// @brief Synthesize a name for an embedded resource (e.g. `inline-image-3.png`).

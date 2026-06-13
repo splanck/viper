@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/rt_game3d_streaming.inc  (#included from rt_game3d.c; not a standalone translation unit)
-// Purpose: Game3D WorldStream3D manifest parsing, cell/terrain load-unload, and recompute
+// File: src/runtime/graphics/3d/rt_game3d_streaming.inc  (#included from rt_game3d.c; not a
+// standalone translation unit) Purpose: Game3D WorldStream3D manifest parsing, cell/terrain
+// load-unload, and recompute
 //===----------------------------------------------------------------------===//
 static int64_t game3d_stream_manifest_bytes(rt_string value);
 static int64_t game3d_i64_saturating_add(int64_t a, int64_t b);
@@ -179,6 +180,15 @@ static rt_string game3d_read_text_file_no_trap(rt_string path) {
     rt_string result = rt_string_from_bytes(bytes, (size_t)size);
     free(bytes);
     return result;
+}
+
+/// @brief Validate an optional manifest count declaration against the manifest byte budget.
+static int game3d_stream_declared_count_ok(void *root, const char *key, size_t manifest_bytes) {
+    if (!root || !key)
+        return 0;
+    if (!game3d_json_get(root, key))
+        return 1;
+    return rt_untrusted_count_ok(game3d_json_i64_or(root, key, -1), 1u, manifest_bytes);
 }
 
 /// @brief Whether @p path is absolute (leading '/' on POSIX, drive/UNC prefix on Windows).
@@ -1362,7 +1372,12 @@ static int game3d_world_stream_parse_cells_manifest(rt_game3d_world_stream *stre
         return 0;
     }
     int64_t count64 = rt_seq_len(cells);
-    if (count64 < 0 || count64 > INT32_MAX) {
+    int64_t manifest_len = rt_str_len(text);
+    size_t manifest_bytes = manifest_len > 0 ? (size_t)manifest_len : 0u;
+    if (count64 < 0 || count64 > INT32_MAX || !rt_untrusted_count_ok(count64, 1u, manifest_bytes) ||
+        !game3d_stream_declared_count_ok(root, "cellCount", manifest_bytes)) {
+        rt_asset_error_set(RT_ASSET_ERROR_TOO_LARGE,
+                           "Game3D.WorldStream3D: cells manifest declares too many cells");
         rt_string_unref(text);
         game3d_release_ref(&root);
         return 0;
@@ -1439,7 +1454,13 @@ static int game3d_world_stream_parse_terrain_manifest(rt_game3d_world_stream *st
         return 0;
     }
     int64_t count64 = rt_seq_len(tiles);
-    if (count64 < 0 || count64 > INT32_MAX) {
+    int64_t manifest_len = rt_str_len(text);
+    size_t manifest_bytes = manifest_len > 0 ? (size_t)manifest_len : 0u;
+    if (count64 < 0 || count64 > INT32_MAX || !rt_untrusted_count_ok(count64, 1u, manifest_bytes) ||
+        !game3d_stream_declared_count_ok(root, "tileCount", manifest_bytes) ||
+        !game3d_stream_declared_count_ok(root, "terrainTileCount", manifest_bytes)) {
+        rt_asset_error_set(RT_ASSET_ERROR_TOO_LARGE,
+                           "Game3D.WorldStream3D: terrain manifest declares too many tiles");
         rt_string_unref(text);
         game3d_release_ref(&root);
         return 0;

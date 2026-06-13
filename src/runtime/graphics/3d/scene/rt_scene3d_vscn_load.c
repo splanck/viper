@@ -52,6 +52,7 @@
 #include "rt_skeleton3d_internal.h"
 #include "rt_string.h"
 #include "rt_trap.h"
+#include "rt_untrusted_count.h"
 
 #include <math.h>
 #include <stdarg.h>
@@ -619,6 +620,7 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
     const char *indices_b64;
     int64_t vertex_count_i64;
     int64_t index_count_i64;
+    int64_t bone_count_i64 = 0;
     uint32_t vertex_count;
     uint32_t index_count;
     size_t vertices_len = 0;
@@ -640,15 +642,30 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
         !vjson_i64_exact(mesh_obj, "indexCount", 0, &index_count_i64))
         return NULL;
     if (vertex_count_i64 < 0 || index_count_i64 < 0 || vertex_count_i64 > UINT32_MAX ||
-        index_count_i64 > UINT32_MAX)
+        index_count_i64 > UINT32_MAX) {
+        rt_asset_error_set(RT_ASSET_ERROR_TOO_LARGE, "Scene3D.Load: mesh count exceeds range");
         return NULL;
+    }
+    if (!vjson_i64_exact(mesh_obj, "boneCount", 0, &bone_count_i64) || bone_count_i64 < 0 ||
+        bone_count_i64 > VGFX3D_MAX_BONES) {
+        rt_asset_error_set(bone_count_i64 > VGFX3D_MAX_BONES ? RT_ASSET_ERROR_TOO_LARGE
+                                                             : RT_ASSET_ERROR_CORRUPT,
+                           "Scene3D.Load: mesh bone count is invalid");
+        return NULL;
+    }
     vertex_count = (uint32_t)vertex_count_i64;
     index_count = (uint32_t)index_count_i64;
-    if (index_count % 3u != 0)
+    if (index_count % 3u != 0) {
+        rt_asset_error_set(RT_ASSET_ERROR_CORRUPT,
+                           "Scene3D.Load: mesh index count is not a triangle list");
         return NULL;
+    }
     if ((size_t)vertex_count > SIZE_MAX / sizeof(vgfx3d_vertex_t) ||
-        (size_t)vertex_count > SIZE_MAX / 84u || (size_t)index_count > SIZE_MAX / sizeof(uint32_t))
+        (size_t)vertex_count > SIZE_MAX / 84u ||
+        (size_t)index_count > SIZE_MAX / sizeof(uint32_t)) {
+        rt_asset_error_set(RT_ASSET_ERROR_TOO_LARGE, "Scene3D.Load: mesh payload is too large");
         return NULL;
+    }
     vertices_b64 = vjson_cstr(mesh_obj, "verticesBase64");
     indices_b64 = vjson_cstr(mesh_obj, "indicesBase64");
     if (!vertices_b64)
@@ -669,9 +686,19 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
         free(indices_raw);
         return NULL;
     }
+    if (!rt_untrusted_count_ok(vertex_count_i64, 84u, vertices_len) ||
+        !rt_untrusted_count_ok(index_count_i64, sizeof(uint32_t), indices_len)) {
+        rt_asset_error_set(RT_ASSET_ERROR_CORRUPT,
+                           "Scene3D.Load: mesh payload count exceeds source bytes");
+        free(vertices_raw);
+        free(indices_raw);
+        return NULL;
+    }
     if ((vertices_len != (size_t)vertex_count * sizeof(vgfx3d_vertex_t) &&
          vertices_len != (size_t)vertex_count * 84u) ||
         indices_len != (size_t)index_count * sizeof(uint32_t)) {
+        rt_asset_error_set(RT_ASSET_ERROR_CORRUPT,
+                           "Scene3D.Load: mesh payload size does not match counts");
         free(vertices_raw);
         free(indices_raw);
         return NULL;
@@ -766,15 +793,7 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
         mesh->index_count = 0;
     }
 
-    {
-        int64_t bone_count = 0;
-        if (!vjson_i64_exact(mesh_obj, "boneCount", 0, &bone_count) ||
-            bone_count > VGFX3D_MAX_BONES) {
-            scene3d_release_ref((void **)&mesh);
-            return NULL;
-        }
-        mesh->bone_count = bone_count > 0 ? (int32_t)bone_count : 0;
-    }
+    mesh->bone_count = bone_count_i64 > 0 ? (int32_t)bone_count_i64 : 0;
     mesh->bone_palette = NULL;
     mesh->prev_bone_palette = NULL;
     mesh->morph_deltas = NULL;

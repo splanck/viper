@@ -70,6 +70,9 @@ static int obj_parse_int(const char **p, int64_t *out) {
 /// 1-based indices in the file (OBJ convention); negative values
 /// reference from the end of the current vertex list.
 static int obj_parse_face_vert(const char **p, int64_t *vi, int64_t *ti, int64_t *ni) {
+    const char *start = p ? *p : NULL;
+    if (!p || !*p || !vi || !ti || !ni)
+        return 0;
     if (!obj_parse_int(p, vi))
         return 0;
     *ti = 0;
@@ -88,7 +91,7 @@ static int obj_parse_face_vert(const char **p, int64_t *vi, int64_t *ti, int64_t
                 return 0;
         }
     }
-    return 1;
+    return *p != start && *vi != 0;
 }
 
 /// @brief Parse a locale-independent ASCII double from `*p`, advancing `*p` past it.

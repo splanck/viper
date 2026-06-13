@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/assets/rt_fbx_loader_anim.inc  (#included from rt_fbx_loader.c; not a standalone translation unit)
-// Purpose: FBX animation extraction
+// File: src/runtime/graphics/3d/assets/rt_fbx_loader_anim.inc  (#included from rt_fbx_loader.c; not
+// a standalone translation unit) Purpose: FBX animation extraction
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Animation extraction
@@ -344,6 +344,9 @@ static void fbx_apply_skinning(fbx_node_t *objects,
             remap ? remap->control_count : (int32_t)((rt_mesh3d *)mesh_obj)->vertex_count;
         if (control_count <= 0)
             continue;
+        if (!rt_untrusted_count_ok(
+                (int64_t)control_count, 3u * sizeof(double), FBX_MAX_DECOMPRESSED_ARRAY_BYTES))
+            continue;
         if ((size_t)control_count > SIZE_MAX / sizeof(*controls))
             continue;
         controls = (fbx_skin_influence_t *)calloc((size_t)control_count, sizeof(*controls));
@@ -494,8 +497,7 @@ static int fbx_anim_curve_view_valid(const fbx_anim_curve_view_t *curve) {
     for (uint32_t i = 0; i < curve->count; i++) {
         double value = curve->values64 ? curve->values64[i] : (double)curve->values32[i];
         double seconds = (double)curve->times[i] / (double)FBX_TIME_SECOND;
-        if (!isfinite(value) || !isfinite(seconds) ||
-            fabs(seconds) > FBX_ANIM_TIME_SECONDS_MAX)
+        if (!isfinite(value) || !isfinite(seconds) || fabs(seconds) > FBX_ANIM_TIME_SECONDS_MAX)
             return 0;
         if (i > 0 && curve->times[i] <= curve->times[i - 1])
             return 0;
@@ -555,8 +557,7 @@ static double fbx_anim_curve_key_value(const fbx_anim_curve_view_t *curve,
 /// @param curve Animation curve view.
 /// @param segment_index Segment starting key index.
 /// @return One of FBX_ANIM_INTERP_*.
-static int fbx_anim_curve_segment_mode(const fbx_anim_curve_view_t *curve,
-                                       uint32_t segment_index) {
+static int fbx_anim_curve_segment_mode(const fbx_anim_curve_view_t *curve, uint32_t segment_index) {
     int32_t flags;
     if (!curve || !curve->attr_flags || segment_index >= curve->attr_flag_count)
         return FBX_ANIM_INTERP_LINEAR;
@@ -791,8 +792,7 @@ static int fbx_anim_append_curve_sample_times(int64_t **times,
         } else if (mode == FBX_ANIM_INTERP_CUBIC && delta >= 3) {
             int64_t t_a = t0 + delta / 3;
             int64_t t_b = t0 + (delta * 2) / 3;
-            if (t_a > t0 && t_a < t1 &&
-                !fbx_anim_append_time(times, count, capacity, t_a))
+            if (t_a > t0 && t_a < t1 && !fbx_anim_append_time(times, count, capacity, t_a))
                 return 0;
             if (t_b > t0 && t_b < t1 && t_b != t_a &&
                 !fbx_anim_append_time(times, count, capacity, t_b))
@@ -960,15 +960,16 @@ static void fbx_anim_collect_curves(fbx_node_t *objects,
                     fbx_anim_curve_view_t candidate;
                     uint32_t attr_flag_count = 0;
                     uint32_t attr_data_count = 0;
-                    const int32_t *attr_flags = fbx_get_i32_array(
-                        curve, "KeyAttrFlags", &attr_flag_count);
-                    const double *attr_data64 = fbx_get_f64_array(
-                        curve, "KeyAttrDataFloat", &attr_data_count);
+                    const int32_t *attr_flags =
+                        fbx_get_i32_array(curve, "KeyAttrFlags", &attr_flag_count);
+                    const double *attr_data64 =
+                        fbx_get_f64_array(curve, "KeyAttrDataFloat", &attr_data_count);
                     const float *attr_data32 = NULL;
                     if (fbx_anim_curve_has_data(view))
                         continue;
                     if (!attr_data64)
-                        attr_data32 = fbx_get_f32_array(curve, "KeyAttrDataFloat", &attr_data_count);
+                        attr_data32 =
+                            fbx_get_f32_array(curve, "KeyAttrDataFloat", &attr_data_count);
                     memset(&candidate, 0, sizeof(candidate));
                     candidate.times = times;
                     candidate.values64 = dvals;
@@ -1205,8 +1206,14 @@ static void fbx_extract_animations(fbx_node_t *root,
         if (!builders)
             continue;
 
-        fbx_anim_collect_curves(
-            objects, ct, skeleton, bone_bindings, bone_binding_count, bone_count, stack_id, builders);
+        fbx_anim_collect_curves(objects,
+                                ct,
+                                skeleton,
+                                bone_bindings,
+                                bone_binding_count,
+                                bone_count,
+                                stack_id,
+                                builders);
         if (!fbx_anim_compute_time_bounds(builders, bone_count, &min_time, &max_time)) {
             free(builders);
             continue;

@@ -245,6 +245,9 @@ static void *fbx_ascii_build_mesh(const double *positions,
         }
         emitted = (int32_t)((rt_mesh3d *)mesh)->vertex_count;
         {
+            double px = positions[(size_t)vi * 3u + 0];
+            double py = positions[(size_t)vi * 3u + 1];
+            double pz = positions[(size_t)vi * 3u + 2];
             double nx = 0.0;
             double ny = 1.0;
             double nz = 0.0;
@@ -254,6 +257,15 @@ static void *fbx_ascii_build_mesh(const double *positions,
                 normal_count, 3u, NULL, 0, polygon_vertex_idx, vi, index_count);
             int32_t ui = fbx_ascii_resolve_attribute_index(
                 uv_count, 2u, uv_indices, uv_index_count, polygon_vertex_idx, vi, index_count);
+            if (!fbx_sanitize_position3(&px, &py, &pz)) {
+                polygon_invalid = 1;
+                polygon_vertex_idx++;
+                if (end) {
+                    poly_count = 0;
+                    polygon_invalid = 0;
+                }
+                continue;
+            }
             if (normals && ni >= 0) {
                 nx = normals[(size_t)ni * 3u + 0];
                 ny = normals[(size_t)ni * 3u + 1];
@@ -264,15 +276,7 @@ static void *fbx_ascii_build_mesh(const double *positions,
                 u = fbx_clamp_abs_or(uvs[(size_t)ui * 2u + 0], 0.0, FBX_UV_ABS_MAX);
                 v = fbx_clamp_abs_or(1.0 - uvs[(size_t)ui * 2u + 1], 0.0, FBX_UV_ABS_MAX);
             }
-            rt_mesh3d_add_vertex(mesh,
-                                 positions[(size_t)vi * 3u + 0],
-                                 positions[(size_t)vi * 3u + 1],
-                                 positions[(size_t)vi * 3u + 2],
-                                 nx,
-                                 ny,
-                                 nz,
-                                 u,
-                                 v);
+            rt_mesh3d_add_vertex(mesh, px, py, pz, nx, ny, nz, u, v);
         }
         if (((rt_mesh3d *)mesh)->build_failed)
             goto fail;

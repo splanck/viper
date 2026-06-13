@@ -52,6 +52,7 @@
 #include "rt_skeleton3d.h"
 #include "rt_string.h"
 #include "rt_trap.h"
+#include "rt_untrusted_count.h"
 #include "rt_vec3.h"
 
 #include <ctype.h>

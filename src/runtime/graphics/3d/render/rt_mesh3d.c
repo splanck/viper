@@ -41,6 +41,7 @@
 #include "rt_object.h"
 #include "rt_pixels.h"
 #include "rt_string.h"
+#include "rt_untrusted_count.h"
 #include "vgfx3d_backend_utils.h"
 
 #include <math.h>

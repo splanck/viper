@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/assets/rt_fbx_loader_geometry.inc  (#included from rt_fbx_loader.c; not a standalone translation unit)
-// Purpose: FBX coordinate-system correction, geometry extraction, and material extraction
+// File: src/runtime/graphics/3d/assets/rt_fbx_loader_geometry.inc  (#included from rt_fbx_loader.c;
+// not a standalone translation unit) Purpose: FBX coordinate-system correction, geometry
+// extraction, and material extraction
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Coordinate system detection + correction
@@ -90,6 +91,9 @@ static int fbx_mesh_remap_init(fbx_mesh_remap_t *remap, int64_t id, int32_t cont
     remap->control_count = control_count;
     if (control_count <= 0)
         return 1;
+    if (!rt_untrusted_count_ok(
+            (int64_t)control_count, 3u * sizeof(double), FBX_MAX_DECOMPRESSED_ARRAY_BYTES))
+        return 0;
     remap->control_vertices =
         (fbx_vertex_index_list_t *)calloc((size_t)control_count, sizeof(*remap->control_vertices));
     return remap->control_vertices != NULL;
@@ -163,6 +167,9 @@ static int fbx_mesh_material_map_append(fbx_mesh_material_map_t *map,
     if (material_slot < 0)
         material_slot = 0;
     if (map->triangle_count > UINT32_MAX - triangle_count)
+        return 0;
+    if (!rt_untrusted_count_ok(
+            (int64_t)triangle_count, sizeof(int32_t), FBX_MAX_DECOMPRESSED_ARRAY_BYTES))
         return 0;
     if ((size_t)(map->triangle_count + triangle_count) > SIZE_MAX / sizeof(*map->triangle_slots))
         return 0;
@@ -352,14 +359,14 @@ static double fbx_vertex_layer_component(const fbx_vertex_layer_t *layer,
                                          int component,
                                          double fallback) {
     double value;
-    if (!layer || element_index < 0 || element_index >= (int32_t)layer->count ||
-        component < 0 || component >= layer->components)
+    if (!layer || element_index < 0 || element_index >= (int32_t)layer->count || component < 0 ||
+        component >= layer->components)
         return fallback;
     if (layer->data)
         value = layer->data[(size_t)element_index * (size_t)layer->components + (size_t)component];
     else if (layer->data32)
-        value =
-            (double)layer->data32[(size_t)element_index * (size_t)layer->components + (size_t)component];
+        value = (double)layer
+                    ->data32[(size_t)element_index * (size_t)layer->components + (size_t)component];
     else
         return fallback;
     return isfinite(value) ? value : fallback;
@@ -433,12 +440,18 @@ static void fbx_parse_geometry_layers(fbx_node_t *geom_node,
                                       fbx_vertex_layer_t *uv1_layer,
                                       fbx_vertex_layer_t *color_layer,
                                       fbx_material_layer_t *mat) {
-    fbx_parse_vertex_layer(geom_node, "LayerElementNormal", "Normals", "NormalsIndex",
-                           "NormalIndex", 3, 0, norm_layer);
+    fbx_parse_vertex_layer(geom_node,
+                           "LayerElementNormal",
+                           "Normals",
+                           "NormalsIndex",
+                           "NormalIndex",
+                           3,
+                           0,
+                           norm_layer);
     fbx_parse_vertex_layer(geom_node, "LayerElementUV", "UV", "UVIndex", NULL, 2, 0, uv_layer);
     fbx_parse_vertex_layer(geom_node, "LayerElementUV", "UV", "UVIndex", NULL, 2, 1, uv1_layer);
-    fbx_parse_vertex_layer(geom_node, "LayerElementColor", "Colors", "ColorIndex", "ColorIndex",
-                           4, 0, color_layer);
+    fbx_parse_vertex_layer(
+        geom_node, "LayerElementColor", "Colors", "ColorIndex", "ColorIndex", 4, 0, color_layer);
     fbx_parse_material_layer(geom_node, mat);
 }
 
@@ -473,6 +486,13 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
 
     double *positions = (double *)vp->v.array.data;
     int32_t *indices = (int32_t *)ip->v.array.data;
+    if (vp->v.array.count % 3u != 0)
+        return NULL;
+    if (!rt_untrusted_count_ok(
+            (int64_t)vp->v.array.count, sizeof(double), FBX_MAX_DECOMPRESSED_ARRAY_BYTES) ||
+        !rt_untrusted_count_ok(
+            (int64_t)ip->v.array.count, sizeof(int32_t), FBX_MAX_DECOMPRESSED_ARRAY_BYTES))
+        return NULL;
     uint32_t pos_count = vp->v.array.count / 3;
     uint32_t idx_count = ip->v.array.count;
     if (pos_count > (uint32_t)INT32_MAX || idx_count > (uint32_t)INT32_MAX)
@@ -559,8 +579,7 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
             int32_t ui = fbx_resolve_layer_index(&uv_layer, polygon_vertex_idx, polygon_idx, vi);
             if (ui >= 0) {
                 u = fbx_vertex_layer_component(&uv_layer, ui, 0, u);
-                v = 1.0 -
-                    fbx_vertex_layer_component(&uv_layer, ui, 1, 1.0); /* FBX V flips */
+                v = 1.0 - fbx_vertex_layer_component(&uv_layer, ui, 1, 1.0); /* FBX V flips */
             }
         }
         u = fbx_clamp_abs_or(u, 0.0, FBX_UV_ABS_MAX);
@@ -588,23 +607,20 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
             rt_mesh3d_add_vertex(mesh, px, py, pz, nx, ny, nz, u, v);
             if (((rt_mesh3d *)mesh)->build_failed)
                 return fbx_geom_fail(polygon, polygon_stack, mesh);
-            if ((uv1_layer.data || uv1_layer.data32) &&
-                emitted_vertex >= 0 &&
+            if ((uv1_layer.data || uv1_layer.data32) && emitted_vertex >= 0 &&
                 emitted_vertex < (int32_t)((rt_mesh3d *)mesh)->vertex_count) {
                 int32_t ui1 =
                     fbx_resolve_layer_index(&uv1_layer, polygon_vertex_idx, polygon_idx, vi);
                 if (ui1 >= 0) {
                     double u1 = fbx_vertex_layer_component(&uv1_layer, ui1, 0, u);
-                    double v1 =
-                        1.0 - fbx_vertex_layer_component(&uv1_layer, ui1, 1, 1.0 - v);
+                    double v1 = 1.0 - fbx_vertex_layer_component(&uv1_layer, ui1, 1, 1.0 - v);
                     ((rt_mesh3d *)mesh)->vertices[emitted_vertex].uv1[0] =
                         (float)fbx_clamp_abs_or(u1, u, FBX_UV_ABS_MAX);
                     ((rt_mesh3d *)mesh)->vertices[emitted_vertex].uv1[1] =
                         (float)fbx_clamp_abs_or(v1, v, FBX_UV_ABS_MAX);
                 }
             }
-            if ((color_layer.data || color_layer.data32) &&
-                emitted_vertex >= 0 &&
+            if ((color_layer.data || color_layer.data32) && emitted_vertex >= 0 &&
                 emitted_vertex < (int32_t)((rt_mesh3d *)mesh)->vertex_count) {
                 int32_t ci =
                     fbx_resolve_layer_index(&color_layer, polygon_vertex_idx, polygon_idx, vi);
@@ -690,8 +706,7 @@ static void *fbx_extract_material(fbx_node_t *mat_node) {
         if (strcmp(p->name, "P") != 0 || p->prop_count < 5)
             continue;
         const char *pname = fbx_prop_str(p, 0);
-        if ((fbx_ascii_equals_i(pname, "DiffuseColor") ||
-             fbx_ascii_equals_i(pname, "BaseColor") ||
+        if ((fbx_ascii_equals_i(pname, "DiffuseColor") || fbx_ascii_equals_i(pname, "BaseColor") ||
              fbx_ascii_equals_i(pname, "Albedo") || fbx_ascii_contains_i(pname, "basecolor") ||
              fbx_ascii_contains_i(pname, "base_color")) &&
             p->prop_count >= 7) {
@@ -732,12 +747,10 @@ static void *fbx_extract_material(fbx_node_t *mat_node) {
             rt_material3d_set_metallic(mat, fbx_clamp_double(fbx_prop_f64(p, 4), 0.0, 1.0, 0.0));
         } else if (fbx_ascii_contains_i(pname, "roughness")) {
             rt_material3d_set_roughness(mat, fbx_clamp_double(fbx_prop_f64(p, 4), 0.0, 1.0, 0.5));
-        } else if (fbx_ascii_contains_i(pname, "occlusion") ||
-                   fbx_ascii_equals_i(pname, "AO")) {
+        } else if (fbx_ascii_contains_i(pname, "occlusion") || fbx_ascii_equals_i(pname, "AO")) {
             rt_material3d_set_ao(mat, fbx_clamp_double(fbx_prop_f64(p, 4), 0.0, 1.0, 1.0));
         } else if (fbx_ascii_equals_i(pname, "NormalMapScale") ||
-                   fbx_ascii_equals_i(pname, "BumpFactor") ||
-                   fbx_ascii_equals_i(pname, "Bump")) {
+                   fbx_ascii_equals_i(pname, "BumpFactor") || fbx_ascii_equals_i(pname, "Bump")) {
             rt_material3d_set_normal_scale(
                 mat, fbx_clamp_double(fbx_prop_f64(p, 4), 0.0, 1000000.0, 1.0));
         } else if (fbx_ascii_equals_i(pname, "DoubleSided") ||

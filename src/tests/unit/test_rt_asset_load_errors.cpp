@@ -39,6 +39,11 @@ void *rt_mesh3d_from_obj(rt_string path);
 void *rt_mesh3d_from_stl(rt_string path);
 void *rt_scene3d_load(rt_string path);
 void *rt_pixels_load(void *path);
+void *rt_game3d_world_new(rt_string title, int64_t width, int64_t height);
+void *rt_game3d_world_stream_new(void *world_obj);
+void rt_game3d_world_stream_mount_cells(void *obj, rt_string manifest_path);
+int64_t rt_game3d_world_stream_get_cell_count(void *obj);
+void rt_game3d_world_destroy(void *obj);
 rt_string rt_const_cstr(const char *str);
 int64_t rt_obj_release_check0(void *obj);
 void rt_obj_free(void *obj);
@@ -195,6 +200,76 @@ TEST(AssetLoadErrors, WrongMagicFilesReturnNullAndSetError) {
     write_text(img.c_str(), "not image");
     expect_null_pixels_with_error(img.c_str(), "Pixels.Load wrong magic");
     std::remove(img.c_str());
+}
+
+TEST(AssetLoadErrors, UntrustedCountsReturnNullAndSetError) {
+    std::string vscn = tmp_path("huge_vertex_count.vscn");
+    write_text(vscn.c_str(),
+               "{\"format\":\"vscn\",\"version\":1,\"meshes\":[{\"vertexFormat\":"
+               "\"vgfx3d_vertex_le_v2\",\"vertexCount\":2147483648,\"indexCount\":0,"
+               "\"boneCount\":0,\"verticesBase64\":\"\",\"indicesBase64\":\"\"}],"
+               "\"nodes\":[]}");
+    expect_null_with_error(rt_scene3d_load, vscn.c_str(), "Scene3D.Load huge vertex count");
+    std::remove(vscn.c_str());
+
+    const uint8_t truncated_glb[] = {'g', 'l', 'T', 'F', 2, 0, 0,   0,   32,  0,
+                                     0,   0,   4,   0,   0, 0, 'J', 'S', 'O', 'N'};
+    std::string glb = tmp_path("truncated_count.glb");
+    write_bytes(glb.c_str(), truncated_glb, sizeof(truncated_glb));
+    expect_null_with_error(rt_gltf_load, glb.c_str(), "GLTF.Load truncated GLB");
+    std::remove(glb.c_str());
+
+    std::string obj = tmp_path("degenerate_face_token.obj");
+    write_text(obj.c_str(),
+               "v 0 0 0\n"
+               "v 1 0 0\n"
+               "v 0 1 0\n"
+               "f //\n");
+    expect_null_with_error(rt_mesh3d_from_obj, obj.c_str(), "Mesh3D.FromOBJ degenerate face");
+    std::remove(obj.c_str());
+
+    std::string fbx = tmp_path("degenerate_triangle.fbx");
+    write_text(fbx.c_str(),
+               "Objects:  {\n"
+               "    Geometry: 1, \"Geometry::Degenerate\", \"Mesh\" {\n"
+               "        Vertices: *9 { a: 0,0,0, 0,0,0, 0,0,0 }\n"
+               "        PolygonVertexIndex: *3 { a: 0,1,-3 }\n"
+               "    }\n"
+               "}\n");
+    expect_null_with_error(rt_fbx_load, fbx.c_str(), "FBX.Load degenerate triangle");
+    std::remove(fbx.c_str());
+
+    std::string huge_fbx = tmp_path("huge_ascii_position.fbx");
+    write_text(huge_fbx.c_str(),
+               "Objects:  {\n"
+               "    Geometry: 1, \"Geometry::Huge\", \"Mesh\" {\n"
+               "        Vertices: *9 { a: 1e39,0,0, 1e39,0,0, 1e39,0,0 }\n"
+               "        PolygonVertexIndex: *3 { a: 0,1,-3 }\n"
+               "    }\n"
+               "}\n");
+    expect_null_with_error(rt_fbx_load, huge_fbx.c_str(), "FBX.Load huge ASCII position");
+    std::remove(huge_fbx.c_str());
+}
+
+TEST(AssetLoadErrors, StreamManifestDeclaredCountIsBounded) {
+    std::string manifest = tmp_path("huge_stream_manifest.json");
+    write_text(manifest.c_str(), "{\"cellCount\":1000000000,\"cells\":[]}");
+
+    rt_asset_error_clear();
+    void *world = rt_game3d_world_new(rt_const_cstr("manifest-count-test"), 16, 16);
+    ASSERT_NE(world, nullptr);
+    void *stream = rt_game3d_world_stream_new(world);
+    ASSERT_NE(stream, nullptr);
+
+    rt_game3d_world_stream_mount_cells(stream, rt_const_cstr(manifest.c_str()));
+    EXPECT_EQ(rt_game3d_world_stream_get_cell_count(stream), INT64_C(0));
+    EXPECT_EQ(rt_asset_error_get_code(), RT_ASSET_ERROR_TOO_LARGE);
+    expect_error_recorded("Game3D.WorldStream3D huge manifest count");
+
+    release_obj(stream);
+    rt_game3d_world_destroy(world);
+    release_obj(world);
+    std::remove(manifest.c_str());
 }
 
 TEST(AssetLoadErrors, MissingObjMaterialTextureRecordsOneWarning) {

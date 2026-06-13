@@ -50,6 +50,7 @@ CPackSourceConfig.cmake
 *.obj
 !tests/runtime/**/*.obj
 !examples/games/3dbaseball/model.obj
+!src/tests/fuzz/corpus/**/*.obj
 *.lo
 *.slo
 *.la
@@ -151,6 +152,7 @@ examples/bin/
 *.blend
 *.fbx
 !tests/runtime/**/*.fbx
+!src/tests/fuzz/corpus/**/*.fbx
 *.zip
 
 # --- Scratch / exploratory ---

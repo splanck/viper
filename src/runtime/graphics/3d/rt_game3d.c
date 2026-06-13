@@ -46,6 +46,7 @@
 
 #include "rt_animcontroller3d.h"
 #include "rt_asset.h"
+#include "rt_asset_error.h"
 #include "rt_audio.h"
 #include "rt_box.h"
 #include "rt_canvas3d.h"
@@ -81,6 +82,7 @@
 #include "rt_textureasset3d.h"
 #include "rt_threadpool.h"
 #include "rt_trap.h"
+#include "rt_untrusted_count.h"
 #include "rt_vec2.h"
 #include "rt_vec3.h"
 
@@ -1655,9 +1657,10 @@ static void game3d_world_restore_stream_camera_far(rt_game3d_world *world) {
 
 /// @brief Sync the camera far plane to the active stream terrain horizon without one-way growth.
 /// @details Streamed terrain uses load/unload radii and tile radii to decide residency. If the
-///          camera far plane is shorter than that horizon, valid resident floor chunks can be clipped
-///          before Terrain3D or Canvas3D culling can keep them. This helper remembers the user's far
-///          plane, applies `max(user_far, stream_horizon)`, and lowers/restores it when possible.
+///          camera far plane is shorter than that horizon, valid resident floor chunks can be
+///          clipped before Terrain3D or Canvas3D culling can keep them. This helper remembers the
+///          user's far plane, applies `max(user_far, stream_horizon)`, and lowers/restores it when
+///          possible.
 static void game3d_world_sync_camera_far_for_stream(rt_game3d_world *world) {
     rt_game3d_world_stream *stream;
     double desired_far;

@@ -39,6 +39,7 @@
 #include "rt_skeleton3d_internal.h"
 #include "rt_string.h"
 #include "rt_textureasset3d.h"
+#include "rt_untrusted_count.h"
 #include "rt_vec3.h"
 
 #include "rt_gltf_internal.h"
@@ -986,10 +987,15 @@ static int gltf_load_buffers(void *root,
                              rt_gltf_preload_bundle *preload_bundle,
                              uint8_t *bin_chunk,
                              size_t bin_chunk_len,
+                             size_t root_size,
                              gltf_buffer_t **out_buffers,
                              int *out_buf_count) {
     void *buffers_arr = jarr(root, "buffers");
-    int buf_count = (int)jarr_len(buffers_arr);
+    int64_t buf_count64 = jarr_len(buffers_arr);
+    if (buf_count64 < 0 || buf_count64 > INT32_MAX ||
+        !rt_untrusted_count_ok(buf_count64, 1u, root_size))
+        return 0;
+    int buf_count = (int)buf_count64;
     gltf_buffer_t *buffers =
         (gltf_buffer_t *)calloc((size_t)(buf_count + 1), sizeof(gltf_buffer_t));
     if (!buffers)
@@ -1363,6 +1369,7 @@ static void *rt_gltf_load_impl(rt_string path,
                            preload_bundle,
                            bin_chunk,
                            bin_chunk_len,
+                           file_size,
                            &buffers,
                            &buf_count)) {
         gltf_release_local(root);

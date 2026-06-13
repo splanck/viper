@@ -121,6 +121,8 @@ static void *MESH3D_UNUSED_PRIVATE stl_load_binary(const uint8_t *data, size_t l
     uint32_t tri_count = stl_read_u32_le(data + 80);
     uint32_t reserve_triangles;
     size_t tri_count_size = (size_t)tri_count;
+    if (!rt_untrusted_count_ok((int64_t)tri_count, 50u, len - 84u))
+        return NULL;
     if (tri_count_size > (SIZE_MAX - 84u) / 50u)
         return NULL;
     size_t expected = 84u + tri_count_size * 50u;
@@ -631,7 +633,8 @@ void *rt_mesh3d_from_stl(rt_string path) {
         }
         uint32_t tri_count = stl_read_u32_le(header + 80);
         size_t expected_binary = 0;
-        if ((size_t)tri_count <= (SIZE_MAX - 84u) / 50u)
+        if (rt_untrusted_count_ok((int64_t)tri_count, 50u, (size_t)file_len - 84u) &&
+            (size_t)tri_count <= (SIZE_MAX - 84u) / 50u)
             expected_binary = 84u + (size_t)tri_count * 50u;
         if (expected_binary != 0 && (size_t)file_len == expected_binary && tri_count > 0) {
             mesh = stl_load_binary_stream(f, tri_count);

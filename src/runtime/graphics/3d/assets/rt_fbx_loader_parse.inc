@@ -547,11 +547,9 @@ static void *fbx_decompress_array(const uint8_t *data,
         return NULL;
     if (comp_len > FBX_MAX_COMPRESSED_ARRAY_BYTES)
         return NULL;
-    if (elem_size > 0 && count > SIZE_MAX / elem_size)
+    if (!rt_untrusted_count_ok((int64_t)count, (size_t)elem_size, FBX_MAX_DECOMPRESSED_ARRAY_BYTES))
         return NULL;
     expected = (size_t)count * (size_t)elem_size;
-    if (expected > FBX_MAX_DECOMPRESSED_ARRAY_BYTES)
-        return NULL;
     if ((data[0] & 0x0fu) != 8u || (data[0] >> 4) > 7u ||
         ((((uint32_t)data[0] << 8) | (uint32_t)data[1]) % 31u) != 0u || (data[1] & 0x20u) != 0u)
         return NULL;
@@ -670,11 +668,12 @@ static int fbx_parse_property(fbx_reader_t *r, fbx_prop_t *prop) {
 
             prop->v.array.count = count;
             prop->v.array.elem_type = prop->type;
-            if (elem_size > 0 && count > SIZE_MAX / elem_size)
+            if (!rt_untrusted_count_ok((int64_t)count,
+                                       (size_t)elem_size,
+                                       encoding == 0 ? (size_t)comp_len
+                                                     : FBX_MAX_DECOMPRESSED_ARRAY_BYTES))
                 return -1;
             size_t expected = (size_t)count * (size_t)elem_size;
-            if (expected > FBX_MAX_DECOMPRESSED_ARRAY_BYTES)
-                return -1;
             if (encoding == 1) {
                 prop->v.array.data =
                     fbx_decompress_array(r->data + r->pos, comp_len, count, elem_size);
@@ -781,7 +780,7 @@ static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node, int depth) {
         return -1;
     if (num_props > FBX_MAX_NODE_PROPS || (size_t)num_props > SIZE_MAX / sizeof(fbx_prop_t))
         return -1;
-    if (num_props > 0 && prop_list_len < num_props)
+    if (num_props > 0 && !rt_untrusted_count_ok((int64_t)num_props, 1u, (size_t)prop_list_len))
         return -1;
 
     /* Parse properties */
@@ -836,6 +835,8 @@ static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node, int depth) {
             if (new_cap > FBX_MAX_CHILDREN)
                 new_cap = FBX_MAX_CHILDREN;
             if ((size_t)new_cap > SIZE_MAX / sizeof(fbx_node_t))
+                return -1;
+            if (!rt_untrusted_count_ok((int64_t)new_cap, r->is_64bit ? 25u : 13u, r->len))
                 return -1;
             fbx_node_t *nc =
                 (fbx_node_t *)realloc(node->children, (size_t)new_cap * sizeof(fbx_node_t));

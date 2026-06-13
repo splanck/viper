@@ -1,0 +1,6 @@
+Objects:  {
+    Geometry: 1, "Geometry::Tiny", "Mesh" {
+        Vertices: *9 { a: 0,0,0, 1,0,0, 0,1,0 }
+        PolygonVertexIndex: *3 { a: 0,1,-3 }
+    }
+}

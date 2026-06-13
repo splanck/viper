@@ -15,9 +15,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "il/core/Module.hpp"
 #include "il/io/Parser.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <sstream>
 #include <string>
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
@@ -26,7 +28,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         return 0;
 
     std::string source(reinterpret_cast<const char *>(data), size);
-    (void)il::io::parseModule(source);
+    std::istringstream input(source);
+    il::core::Module module;
+    (void)il::io::Parser::parse(input, module);
 
     return 0;
 }
