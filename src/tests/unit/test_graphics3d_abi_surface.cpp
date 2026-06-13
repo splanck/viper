@@ -9,6 +9,16 @@
 // Purpose: Source-level guardrails for Viper.Graphics3D / Viper.Game3D public
 //   ABI naming and class-id sentinels.
 //
+// Key invariants:
+//   - RT_G3D_* class ids are append-only and contiguous.
+//   - Script-facing 3D API names stay stable once published.
+//
+// Ownership/Lifetime:
+//   - Reads repository files into transient std::string buffers.
+//   - Test state lives for one process invocation only.
+//
+// Links: src/runtime/graphics/3d/rt_graphics3d_ids.h, src/il/runtime/runtime.def
+//
 //===----------------------------------------------------------------------===//
 
 #include <cstdlib>
@@ -157,6 +167,7 @@ bool check_class_ids() {
         {"RT_G3D_TEXTUREASSET3D_CLASS_ID", "-0x603045"},
         {"RT_G3D_BLENDTREE3D_CLASS_ID", "-0x603046"},
         {"RT_G3D_IKSOLVER3D_CLASS_ID", "-0x603047"},
+        {"RT_G3D_GAME3D_DIAGNOSTICS_CLASS_ID", "-0x603048"},
     };
 
     std::vector<ParsedId> ids =
@@ -1268,6 +1279,40 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetImpostor\""),
                  "SceneNode3D.SetImpostor method missing") &&
+         ok;
+
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics.get_BroadphaseFallbackCount\""),
+                 "Diagnostics.BroadphaseFallbackCount getter missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics.get_CcdClampedFrames\""),
+                 "Diagnostics.CcdClampedFrames getter missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics.get_CcdClampedBodies\""),
+                 "Diagnostics.CcdClampedBodies getter missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics.get_AnimEventsDropped\""),
+                 "Diagnostics.AnimEventsDropped getter missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics.get_AudioVoicesEvicted\""),
+                 "Diagnostics.AudioVoicesEvicted getter missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics.get_NavGridFallbacks\""),
+                 "Diagnostics.NavGridFallbacks getter missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics.Reset\""),
+                 "Diagnostics.Reset method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Diagnostics.Summary\""),
+                 "Diagnostics.Summary method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Viper.Game3D.Diagnostics\""),
+                 "Diagnostics class missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"BroadphaseFallbackCount\""),
+                 "Diagnostics.BroadphaseFallbackCount property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"Summary\", \"str()\""),
+                 "Diagnostics.Summary runtime method missing") &&
          ok;
 
     static const char *forbidden[] = {

@@ -33,6 +33,7 @@
 #include "rt_animcontroller3d.h"
 
 #include "rt_blendtree3d.h"
+#include "rt_game3d_diagnostics.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_iksolver3d.h"
 #include "rt_mat4.h"
@@ -50,7 +51,10 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+// clang-format off
 #include "rt_animcontroller3d_internals.inc"
 #include "rt_animcontroller3d_sampling.inc"
 #include "rt_animcontroller3d_api.inc"
+// clang-format on
 #endif

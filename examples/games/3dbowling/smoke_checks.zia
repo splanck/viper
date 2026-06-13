@@ -1,12 +1,29 @@
 module smoke_checks;
 
+bind Viper.Game3D as Game3D;
 bind Viper.Graphics.Pixels as Pixels;
 bind Viper.Math;
+bind Viper.Terminal as Terminal;
 
 // ============================================================================
 // MODULE: smoke_checks
 // PURPOSE: Shared image-quality checks for 3D Bowling smoke probes.
 // ============================================================================
+
+func ResetDiagnostics() {
+    Game3D.Diagnostics.Reset();
+}
+
+func DiagnosticsClean() -> Bool {
+    var summary = Game3D.Diagnostics.Summary();
+    Terminal.Say("Game3D.Diagnostics.Summary=" + summary);
+    if (summary != "") {
+        Terminal.Say("FAIL: Game3D diagnostics recorded degradation");
+        Terminal.Say(summary);
+        return false;
+    }
+    return true;
+}
 
 /// @brief Return true if the frame is dominated by the engine's magenta diagnostic colour.
 func IsMostlyMagenta(img: Pixels, width: Integer, height: Integer) -> Bool {

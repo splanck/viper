@@ -4,6 +4,22 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/il/runtime/classes/RuntimeClasses.hpp
+// Purpose: Runtime class metadata and unified signature registry for all
+//   frontends.
+//
+// Key invariants:
+//   - runtime.def remains the source of truth for catalog entries.
+//   - Parsed method/property signatures stay frontend-neutral until adapted.
+//
+// Ownership/Lifetime:
+//   - Catalog storage is immutable after initialization.
+//   - RuntimeRegistry indexes are owned by function-local statics.
+//
+// Links: src/il/runtime/runtime.def, src/il/runtime/classes/RuntimeClasses.inc
+//
+//===----------------------------------------------------------------------===//
 ///
 /// @file RuntimeClasses.hpp
 /// @brief Runtime class metadata and unified signature registry for all frontends.
@@ -520,6 +536,7 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_Game3DEnvironment,
     RTCLS_Game3DEnvHandle,
     RTCLS_Game3DDebug3D,
+    RTCLS_Game3DDiagnostics,
     RTCLS_Transform3D,
     RTCLS_Path3D,
     RTCLS_InstanceBatch3D,
@@ -599,10 +616,9 @@ struct RuntimeClass {
     const char *qname{nullptr};  ///< Fully-qualified name (e.g., "Viper.String").
     const char *layout{nullptr}; ///< Layout descriptor (opaque until object model defined).
     const char *ctor{nullptr};   ///< Optional ctor helper extern; may be nullptr.
-    RuntimeTypeId typeId{
-        RuntimeTypeId::RTCLS_String}; ///< Stable type identifier.
-    std::vector<RuntimeProperty> properties; ///< Declared properties.
-    std::vector<RuntimeMethod> methods;      ///< Declared methods.
+    RuntimeTypeId typeId{RuntimeTypeId::RTCLS_String}; ///< Stable type identifier.
+    std::vector<RuntimeProperty> properties;           ///< Declared properties.
+    std::vector<RuntimeMethod> methods;                ///< Declared methods.
 };
 
 //===----------------------------------------------------------------------===//
@@ -668,11 +684,11 @@ struct ParsedMethod {
 
 /// @brief Extended property descriptor with parsed type.
 struct ParsedProperty {
-    const char *name{nullptr};   ///< Property name (e.g., "Length").
+    const char *name{nullptr};                ///< Property name (e.g., "Length").
     ILScalarType type{ILScalarType::Unknown}; ///< Resolved property type.
-    const char *getter{nullptr}; ///< Getter extern target.
-    const char *setter{nullptr}; ///< Setter extern target or nullptr.
-    bool readonly{false};        ///< True if setter is nullptr.
+    const char *getter{nullptr};              ///< Getter extern target.
+    const char *setter{nullptr};              ///< Setter extern target or nullptr.
+    bool readonly{false};                     ///< True if setter is nullptr.
 };
 
 /// @brief Parse a signature string like "str(i64,i64)" into structured form.

@@ -159,6 +159,8 @@ func assertShowcaseFrame(img: Pixels) -> Boolean {
 }
 
 func main() {
+    Diagnostics.Reset();
+
     var game = new Game3DShowcase();
     game.setup("Game3D Showcase Smoke", 960, 540);
     game.step(0.016);
@@ -168,6 +170,14 @@ func main() {
         Pixels.SavePng(finalFrame, "/tmp/game3d_showcase_games_current.png");
     }
     if (assertShowcaseFrame(finalFrame) == false) {
+        game.destroy();
+        return;
+    }
+    var diagSummary = Diagnostics.Summary();
+    Terminal.Say("Game3D.Diagnostics.Summary=" + diagSummary);
+    if (diagSummary != "") {
+        Terminal.Say("FAIL: showcase diagnostics recorded degradation");
+        Terminal.Say(diagSummary);
         game.destroy();
         return;
     }

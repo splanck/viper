@@ -810,6 +810,11 @@ function(viper_add_runtime_tests)
     viper_add_ctest(test_rt_game3d test_rt_game3d)
     viper_add_test_labels(test_rt_game3d graphics3d unit)
 
+    viper_add_test(test_rt_game3d_diagnostics ${VIPER_TESTS_DIR}/unit/test_rt_game3d_diagnostics.cpp)
+    target_link_libraries(test_rt_game3d_diagnostics PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_game3d_diagnostics test_rt_game3d_diagnostics)
+    viper_add_test_labels(test_rt_game3d_diagnostics graphics3d unit)
+
     viper_add_test(g3d_3dnext2_surface_probe ${VIPER_TESTS_DIR}/unit/test_3dnext2_surface_probe.cpp)
     target_link_libraries(g3d_3dnext2_surface_probe PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
     viper_add_ctest(g3d_3dnext2_surface_probe g3d_3dnext2_surface_probe)

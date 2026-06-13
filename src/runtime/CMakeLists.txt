@@ -302,6 +302,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/3d/rt_game3d_entity.c
         graphics/3d/rt_game3d_input.c
         graphics/3d/rt_game3d_presets.c
+        graphics/3d/rt_game3d_diagnostics.c
         graphics/3d/render/rt_mesh3d.c
         graphics/3d/render/rt_camera3d.c
         graphics/3d/render/rt_material3d.c
@@ -420,6 +421,7 @@ set(RT_GRAPHICS_DISABLED_SOURCES
         graphics/text/fonts/embedded_font.c
         graphics/3d/rt_g3d_commit_queue.c
         graphics/3d/rt_game3d.c
+        graphics/3d/rt_game3d_diagnostics.c
         graphics/media/rt_avi.c
         graphics/media/rt_theora.c
         graphics/media/rt_theora_recon.c

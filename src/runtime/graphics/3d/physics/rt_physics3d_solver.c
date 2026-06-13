@@ -26,6 +26,7 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "rt_collider3d.h"
+#include "rt_game3d_diagnostics.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_physics3d.h"
 #include "rt_physics3d_internal.h"
@@ -825,6 +826,8 @@ int world3d_detect_contacts(rt_world3d *w) {
         return 1;
 
     if (!world3d_reserve_broadphase_capacity(w, w->body_count)) {
+        w->broadphase_fallback_count++;
+        rt_game3d_diag_record_broadphase_fallback();
         for (int32_t i = 0; i < w->body_count; i++) {
             for (int32_t j = i + 1; j < w->body_count; j++) {
                 if (!world3d_pair_can_collide_cheap(w->bodies[i], w->bodies[j]))

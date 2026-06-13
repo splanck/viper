@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/anim/rt_animcontroller3d_internals.inc  (#included from rt_animcontroller3d.c; not a standalone translation unit)
-// Purpose: AnimController3D state/transition/event/layer tables and repair helpers
+// File: src/runtime/graphics/3d/anim/rt_animcontroller3d_internals.inc  (#included from
+// rt_animcontroller3d.c; not a standalone translation unit) Purpose: AnimController3D
+// state/transition/event/layer tables and repair helpers
 //===----------------------------------------------------------------------===//
 
 #define RT_ANIM_CONTROLLER3D_MAX_LAYERS 4
@@ -84,6 +85,7 @@ typedef struct {
     char event_queue[RT_ANIM_CONTROLLER3D_EVENT_QUEUE_MAX][RT_ANIM_CONTROLLER3D_EVENT_NAME_MAX];
     int32_t event_queue_head;
     int32_t event_queue_count;
+    int64_t events_dropped;
 } rt_anim_controller3d;
 
 /// @brief Validate that @p obj is a live AnimController3D handle, returning NULL otherwise.
@@ -216,9 +218,7 @@ static int controller_grow_array(void **buffer, int32_t *capacity, int32_t need,
 
 /// @brief Clamp a (count, capacity) pair to a safe element count: 0 when the array or sizes
 ///   are invalid, otherwise min(count, capacity).
-static int32_t controller_clamped_array_count(const void *items,
-                                              int32_t count,
-                                              int32_t capacity) {
+static int32_t controller_clamped_array_count(const void *items, int32_t count, int32_t capacity) {
     if (!items || count <= 0 || capacity <= 0)
         return 0;
     if (count > capacity)
@@ -228,25 +228,23 @@ static int32_t controller_clamped_array_count(const void *items,
 
 /// @brief Number of animation states safe to read directly (live count clamped to capacity).
 static int32_t controller_safe_state_count(const rt_anim_controller3d *controller) {
-    return controller ? controller_clamped_array_count(controller->states,
-                                                      controller->state_count,
-                                                      controller->state_capacity)
+    return controller ? controller_clamped_array_count(
+                            controller->states, controller->state_count, controller->state_capacity)
                       : 0;
 }
 
 /// @brief Number of transitions safe to read directly (live count clamped to capacity).
 static int32_t controller_safe_transition_count(const rt_anim_controller3d *controller) {
     return controller ? controller_clamped_array_count(controller->transitions,
-                                                      controller->transition_count,
-                                                      controller->transition_capacity)
+                                                       controller->transition_count,
+                                                       controller->transition_capacity)
                       : 0;
 }
 
 /// @brief Number of events safe to read directly (live count clamped to capacity).
 static int32_t controller_safe_event_count(const rt_anim_controller3d *controller) {
-    return controller ? controller_clamped_array_count(controller->events,
-                                                      controller->event_count,
-                                                      controller->event_capacity)
+    return controller ? controller_clamped_array_count(
+                            controller->events, controller->event_count, controller->event_capacity)
                       : 0;
 }
 
@@ -314,8 +312,7 @@ static void controller_repair_layer_state_indices(rt_anim_controller3d *controll
         }
         if (!isfinite((double)layer->transition_time) || layer->transition_time < 0.0f)
             layer->transition_time = 0.0f;
-        if (!isfinite((double)layer->transition_duration) ||
-            layer->transition_duration < 0.0f)
+        if (!isfinite((double)layer->transition_duration) || layer->transition_duration < 0.0f)
             layer->transition_duration = 0.0f;
         if (layer->transition_duration <= 0.0f) {
             layer->transitioning = 0;
@@ -455,8 +452,7 @@ static int32_t controller_find_state(rt_anim_controller3d *controller, rt_string
                     return -1;
                 index = controller->state_name_indices[slot];
                 if (controller->state_name_hashes[slot] == hash && index >= 0 &&
-                    index < state_count &&
-                    strcmp(controller->states[index].name, target) == 0)
+                    index < state_count && strcmp(controller->states[index].name, target) == 0)
                     return index;
             }
             return -1;
@@ -502,6 +498,8 @@ static void controller_enqueue_event(rt_anim_controller3d *controller, const cha
         controller->event_queue_head =
             (controller->event_queue_head + 1) % RT_ANIM_CONTROLLER3D_EVENT_QUEUE_MAX;
         controller->event_queue_count--;
+        controller->events_dropped++;
+        rt_game3d_diag_record_anim_events_dropped(1);
     }
     slot = (controller->event_queue_head + controller->event_queue_count) %
            RT_ANIM_CONTROLLER3D_EVENT_QUEUE_MAX;
@@ -974,7 +972,8 @@ static void controller_sanitize_trs_sample(float *pos,
                          : 1.0f;
     }
     for (int32_t i = 0; i < 4; i++)
-        rot[i] = controller_finite_float_or(rot[i], fallback_rot ? fallback_rot[i] : (i == 3 ? 1.0f : 0.0f));
+        rot[i] = controller_finite_float_or(
+            rot[i], fallback_rot ? fallback_rot[i] : (i == 3 ? 1.0f : 0.0f));
     controller_normalize_quat_float_or(rot, fallback_rot);
 }
 
@@ -999,7 +998,8 @@ static void controller_keyframe_effective_trs(const vgfx3d_keyframe_t *key,
         memcpy(out_rot, key->rotation, 4 * sizeof(float));
     else
         memcpy(out_rot, fallback_rot, 4 * sizeof(float));
-    controller_sanitize_trs_sample(out_pos, out_rot, out_scl, fallback_pos, fallback_rot, fallback_scl);
+    controller_sanitize_trs_sample(
+        out_pos, out_rot, out_scl, fallback_pos, fallback_rot, fallback_scl);
 }
 
 /// @brief Sample a channel's TRS at @p time, interpolating between the surrounding
@@ -1083,7 +1083,8 @@ static void controller_sample_channel_trs(const vgfx3d_anim_channel_t *channel,
         out_scl[i] = scl0[i] + (scl1[i] - scl0[i]) * alpha;
     }
     controller_quat_slerp_float(rot0, rot1, alpha, out_rot);
-    controller_sanitize_trs_sample(out_pos, out_rot, out_scl, fallback_pos, fallback_rot, fallback_scl);
+    controller_sanitize_trs_sample(
+        out_pos, out_rot, out_scl, fallback_pos, fallback_rot, fallback_scl);
 }
 
 /// @brief Compute one bone's local transform matrix for @p animation at @p time: sample

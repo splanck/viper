@@ -1,11 +1,10 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/nav/rt_navmesh3d_build.inc  (#included from rt_navmesh3d.c; not a standalone translation unit)
-// Purpose: NavMesh3D construction, tiles, areas, off-mesh links, and obstacles
+// File: src/runtime/graphics/3d/nav/rt_navmesh3d_build.inc  (#included from rt_navmesh3d.c; not a
+// standalone translation unit) Purpose: NavMesh3D construction, tiles, areas, off-mesh links, and
+// obstacles
 //===----------------------------------------------------------------------===//
-static int32_t navmesh3d_clamped_array_count(const void *array,
-                                             int32_t count,
-                                             int32_t capacity) {
+static int32_t navmesh3d_clamped_array_count(const void *array, int32_t count, int32_t capacity) {
     if (!array || count <= 0 || capacity <= 0)
         return 0;
     return count < capacity ? count : capacity;
@@ -21,16 +20,14 @@ static int32_t navmesh3d_read_triangle_count(const rt_navmesh3d *nm) {
 }
 
 static int32_t navmesh3d_read_offmesh_link_count(const rt_navmesh3d *nm) {
-    return nm ? navmesh3d_clamped_array_count(nm->offmesh_links,
-                                              nm->offmesh_link_count,
-                                              nm->offmesh_link_capacity)
+    return nm ? navmesh3d_clamped_array_count(
+                    nm->offmesh_links, nm->offmesh_link_count, nm->offmesh_link_capacity)
               : 0;
 }
 
 static int32_t navmesh3d_read_obstacle_count(const rt_navmesh3d *nm) {
-    return nm ? navmesh3d_clamped_array_count(nm->obstacles,
-                                              nm->obstacle_count,
-                                              nm->obstacle_capacity)
+    return nm ? navmesh3d_clamped_array_count(
+                    nm->obstacles, nm->obstacle_count, nm->obstacle_capacity)
               : 0;
 }
 
@@ -238,8 +235,7 @@ static int navmesh3d_read_u32(FILE *f, uint32_t *out) {
     uint8_t b[4];
     if (!out || !navmesh3d_io_read(f, b, sizeof(b)))
         return 0;
-    *out = (uint32_t)b[0] | ((uint32_t)b[1] << 8) | ((uint32_t)b[2] << 16) |
-           ((uint32_t)b[3] << 24);
+    *out = (uint32_t)b[0] | ((uint32_t)b[1] << 8) | ((uint32_t)b[2] << 16) | ((uint32_t)b[3] << 24);
     return 1;
 }
 
@@ -304,7 +300,8 @@ static int navmesh3d_write_f32(FILE *f, float v) {
     return navmesh3d_write_u32(f, u);
 }
 
-/// @brief Read a little-endian float bit pattern from @p f, sanitizing non-finite/out-of-range to 0.
+/// @brief Read a little-endian float bit pattern from @p f, sanitizing non-finite/out-of-range to
+/// 0.
 static int navmesh3d_read_f32(FILE *f, float *out) {
     uint32_t u;
     if (!out || !navmesh3d_read_u32(f, &u))
@@ -633,8 +630,7 @@ static void navmesh3d_tri_cell_range(const rt_navmesh3d *nm,
     const float *a = nm->vertices[t->v[0]].position;
     const float *b = nm->vertices[t->v[1]].position;
     const float *c = nm->vertices[t->v[2]].position;
-    if (!navmesh3d_float3_finite(a) || !navmesh3d_float3_finite(b) ||
-        !navmesh3d_float3_finite(c)) {
+    if (!navmesh3d_float3_finite(a) || !navmesh3d_float3_finite(b) || !navmesh3d_float3_finite(c)) {
         *cx0 = *cx1 = *cz0 = *cz1 = 0;
         return;
     }
@@ -714,9 +710,15 @@ static void navmesh3d_build_query_grid(rt_navmesh3d *nm) {
     if (gnz > 512)
         gnz = 512;
     ncells = (size_t)gnx * (size_t)gnz;
-    starts = (int32_t *)calloc(ncells + 1, sizeof(int32_t));
-    if (!starts)
+    if (g_navmesh3d_test_force_query_grid_alloc_failure) {
+        navmesh3d_record_query_grid_fallback(nm);
         return;
+    }
+    starts = (int32_t *)calloc(ncells + 1, sizeof(int32_t));
+    if (!starts) {
+        navmesh3d_record_query_grid_fallback(nm);
+        return;
+    }
     for (int32_t i = 0; i < nm->triangle_count; i++) {
         int cx0, cx1, cz0, cz1;
         navmesh3d_tri_cell_range(nm, i, min_x, min_z, inv, gnx, gnz, &cx0, &cx1, &cz0, &cz1);
@@ -733,6 +735,7 @@ static void navmesh3d_build_query_grid(rt_navmesh3d *nm) {
         free(starts);
         free(tris);
         free(cursor);
+        navmesh3d_record_query_grid_fallback(nm);
         return;
     }
     for (size_t c = 0; c < ncells; c++)
@@ -806,10 +809,10 @@ static void navmesh3d_reflag_all_triangles(rt_navmesh3d *nm) {
         return;
     for (int32_t i = 0; i < nm->triangle_count; i++) {
         nav_triangle_t *t = &nm->triangles[i];
-        int8_t source_blocked =
-            (nm->source_triangles && i < nm->source_triangle_count && nm->source_triangles[i].blocked)
-                ? 1
-                : 0;
+        int8_t source_blocked = (nm->source_triangles && i < nm->source_triangle_count &&
+                                 nm->source_triangles[i].blocked)
+                                    ? 1
+                                    : 0;
         t->blocked = (source_blocked || navmesh3d_triangle_blocked_by_obstacle(nm, t)) ? 1 : 0;
     }
     navmesh3d_refresh_offmesh_links(nm);
@@ -1379,8 +1382,7 @@ static int navmesh3d_export_v2(rt_navmesh3d *nm, FILE *f) {
         (link_count > 0 && !nm->offmesh_links) || (obstacle_count > 0 && !nm->obstacles))
         return 0;
     int ok = navmesh3d_io_write(f, magic, sizeof(magic)) &&
-             navmesh3d_write_f64(f, nm->agent_radius) &&
-             navmesh3d_write_f64(f, nm->agent_height) &&
+             navmesh3d_write_f64(f, nm->agent_radius) && navmesh3d_write_f64(f, nm->agent_height) &&
              navmesh3d_write_f64(f, nm->max_slope) && navmesh3d_write_f64(f, nm->tile_size) &&
              navmesh3d_write_u8(f, nm->skip_portal_width_gate ? 1u : 0u) &&
              navmesh3d_write_i32(f, vc);
@@ -1401,25 +1403,21 @@ static int navmesh3d_export_v2(rt_navmesh3d *nm, FILE *f) {
     ok = ok && navmesh3d_write_i32(f, link_count);
     for (int32_t i = 0; ok && i < link_count; i++) {
         const nav_offmesh_link_t *link = &nm->offmesh_links[i];
-        ok = navmesh3d_write_f32(f, link->from[0]) &&
-             navmesh3d_write_f32(f, link->from[1]) &&
+        ok = navmesh3d_write_f32(f, link->from[0]) && navmesh3d_write_f32(f, link->from[1]) &&
              navmesh3d_write_f32(f, link->from[2]) && navmesh3d_write_f32(f, link->to[0]) &&
              navmesh3d_write_f32(f, link->to[1]) && navmesh3d_write_f32(f, link->to[2]) &&
              navmesh3d_write_u8(f, link->bidirectional ? 1u : 0u) &&
              navmesh3d_write_i64(f, link->state_flags) &&
-             navmesh3d_write_f32(f, navmesh3d_sanitize_traversal_cost(
-                                        (double)link->traversal_cost)) &&
+             navmesh3d_write_f32(f,
+                                 navmesh3d_sanitize_traversal_cost((double)link->traversal_cost)) &&
              navmesh3d_write_string(f, link->kind);
     }
     ok = ok && navmesh3d_write_i32(f, obstacle_count);
     for (int32_t i = 0; ok && i < obstacle_count; i++) {
         const nav_obstacle_t *obstacle = &nm->obstacles[i];
-        ok = navmesh3d_write_f32(f, obstacle->min[0]) &&
-             navmesh3d_write_f32(f, obstacle->min[1]) &&
-             navmesh3d_write_f32(f, obstacle->min[2]) &&
-             navmesh3d_write_f32(f, obstacle->max[0]) &&
-             navmesh3d_write_f32(f, obstacle->max[1]) &&
-             navmesh3d_write_f32(f, obstacle->max[2]);
+        ok = navmesh3d_write_f32(f, obstacle->min[0]) && navmesh3d_write_f32(f, obstacle->min[1]) &&
+             navmesh3d_write_f32(f, obstacle->min[2]) && navmesh3d_write_f32(f, obstacle->max[0]) &&
+             navmesh3d_write_f32(f, obstacle->max[1]) && navmesh3d_write_f32(f, obstacle->max[2]);
     }
     return ok;
 }

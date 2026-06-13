@@ -35,6 +35,8 @@
 
 #include "rt_sound3d.h"
 
+#include "rt_game3d_diagnostics.h"
+
 #include <math.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -81,6 +83,11 @@ static struct {
 
 static int32_t s_voice_dist_count = 0;
 static int32_t s_voice_dist_next = 0;
+static int8_t s_voice_dist_test_force_all_playing = 0;
+
+void rt_sound3d_test_set_all_voices_playing(int8_t enabled) {
+    s_voice_dist_test_force_all_playing = enabled ? 1 : 0;
+}
 
 /// @brief Clamp @p value into the inclusive `[lo, hi]` range.
 static int64_t clamp_i64(int64_t value, int64_t lo, int64_t hi) {
@@ -360,12 +367,14 @@ void rt_sound3d_register_voice_ex(int64_t voice,
          * still live do we fall back to round-robin eviction. */
         int32_t slot = -1;
         for (int32_t i = 0; i < MAX_3D_VOICES; i++) {
-            if (s_voice_dist[i].voice_id <= 0 || !rt_voice_is_playing(s_voice_dist[i].voice_id)) {
+            if (s_voice_dist[i].voice_id <= 0 || (!s_voice_dist_test_force_all_playing &&
+                                                  !rt_voice_is_playing(s_voice_dist[i].voice_id))) {
                 slot = i;
                 break;
             }
         }
         if (slot < 0) {
+            rt_game3d_diag_record_audio_voice_evicted();
             slot = s_voice_dist_next;
             if (slot < 0 || slot >= MAX_3D_VOICES)
                 slot = 0;

@@ -25,6 +25,8 @@ bind "./smoke_checks";
 
 /// @brief Smoke-probe entry point. Success prints RESULT: ok.
 func main() {
+    smoke_checks.ResetDiagnostics();
+
     var render = new Renderer();
     render.initRenderer(config.QUALITY_CINEMATIC);
 
@@ -70,6 +72,10 @@ func main() {
     }
     if (smoke_checks.HasReadableEdges(snap, render.getWidth(), render.getHeight()) == false) {
         Terminal.Say("RESULT: fail edge vignette");
+        return;
+    }
+    if (smoke_checks.DiagnosticsClean() == false) {
+        Terminal.Say("RESULT: fail diagnostics");
         return;
     }
 

@@ -4,6 +4,18 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/tests/runtime/RTSound3DTests.cpp
+// Purpose: Test isolated Sound3D spatial audio contracts with local backend stubs.
+// Key invariants:
+//   - Spatial volume and pan math stays deterministic without a real audio backend.
+//   - Voice table wrapping and invalid-input handling keep stable contract behavior.
+// Ownership/Lifetime:
+//   - Stub state is process-local and reset by each test that observes it.
+//   - Test vectors are stack-owned for the duration of each runtime call.
+// Links: src/runtime/graphics/3d/audio/rt_sound3d.c
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_sound3d.h"
 
@@ -75,6 +87,8 @@ extern "C" int64_t rt_voice_is_playing(int64_t voice) {
     // instead of reclaiming a "finished" slot during these unit tests.
     return voice > 0 ? 1 : 0;
 }
+
+extern "C" void rt_game3d_diag_record_audio_voice_evicted(void) {}
 
 static void test_origin_has_full_volume_and_zero_pan() {
     Vec3 listener{0.0, 0.0, 0.0};

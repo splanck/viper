@@ -32,6 +32,7 @@
 #include "rt_navmesh3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_game3d_diagnostics.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_mat4.h"
 #include "rt_path3d.h"
@@ -58,6 +59,12 @@
 #define NAVMESH3D_MAX_TILES_PER_REFLAG 65536LL
 #define NAVMESH3D_IMPORT_MAX_RECORDS (1 << 24)
 #define NAVMESH3D_IMPORT_MAX_STRING_BYTES (1u << 20)
+
+static int8_t g_navmesh3d_test_force_query_grid_alloc_failure = 0;
+
+void rt_navmesh3d_test_set_query_grid_alloc_failure(int8_t enabled) {
+    g_navmesh3d_test_force_query_grid_alloc_failure = enabled ? 1 : 0;
+}
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
@@ -140,6 +147,7 @@ typedef struct {
     int32_t qgrid_nz;
     int32_t *qgrid_starts;
     int32_t *qgrid_tris;
+    int64_t qgrid_fallback_count;
     double voxel_min_x;
     double voxel_min_z;
     double voxel_cell_size;
@@ -150,9 +158,17 @@ typedef struct {
     int32_t *voxel_corner_vertices;
 } rt_navmesh3d;
 
+static void navmesh3d_record_query_grid_fallback(rt_navmesh3d *nm) {
+    if (nm)
+        nm->qgrid_fallback_count++;
+    rt_game3d_diag_record_nav_grid_fallback();
+}
+
+// clang-format off
 #include "rt_navmesh3d_build.inc"
 #include "rt_navmesh3d_bake.inc"
 #include "rt_navmesh3d_query.inc"
+// clang-format on
 #else
 typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

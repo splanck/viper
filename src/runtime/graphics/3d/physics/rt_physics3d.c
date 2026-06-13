@@ -36,6 +36,7 @@
 #include "rt_physics3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_collider3d.h"
+#include "rt_game3d_diagnostics.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_joints3d.h"
 #include "rt_raycast3d.h"
@@ -73,6 +74,11 @@ int ph3d_i32_stack_push(int32_t **items, int32_t *count, int32_t *capacity, int3
 #define PH3D_STEP_DT_MAX 1.0
 #define PH3D_EVENT_DIFF_FALLBACK_PAIR_LIMIT 4194304LL
 
+static int8_t g_ph3d_test_force_broadphase_alloc_failure = 0;
+
+void rt_world3d_test_set_broadphase_alloc_failure(int8_t enabled) {
+    g_ph3d_test_force_broadphase_alloc_failure = enabled ? 1 : 0;
+}
 
 /* The joint solver (rt_joints3d.c) reaches into a body's pose/velocity through
  * the shared rt_body3d_kinematics view declared in rt_physics3d.h. These asserts
@@ -315,7 +321,11 @@ static int world3d_reserve_joint_capacity(rt_world3d *w, int32_t needed) {
 ///        array, entries are treated as pure scratch — the tail is NOT zero-initialized
 ///        because the broadphase rebuild always writes every entry before reading it.
 int world3d_reserve_broadphase_capacity(rt_world3d *w, int32_t needed) {
-    if (!w || needed <= w->broadphase_capacity)
+    if (!w)
+        return 1;
+    if (g_ph3d_test_force_broadphase_alloc_failure)
+        return 0;
+    if (needed <= w->broadphase_capacity)
         return 1;
     int32_t new_capacity = ph3d_next_capacity(w->broadphase_capacity, needed, PH3D_INITIAL_BODIES);
     if (new_capacity < 0)
@@ -598,10 +608,12 @@ int body3d_has_collision_geometry(const rt_body3d *body) {
             body->half_extents[2] > 0.0);
 }
 
+// clang-format off
 #include "rt_physics3d_detect.inc"
 #include "rt_physics3d_world.inc"
 #include "rt_physics3d_events.inc"
 #include "rt_physics3d_body.inc"
+// clang-format on
 #else
 typedef int rt_graphics_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

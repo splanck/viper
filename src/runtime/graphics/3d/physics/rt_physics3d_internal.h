@@ -20,6 +20,14 @@
 //   - World3D / Body3D / Character3D / Trigger3D are GC-managed; shared mutable
 //     state flows exclusively through these struct pointers (no file-scope state).
 //
+// Ownership/Lifetime:
+//   - This header declares borrowed internal pointers only; owning references
+//     are held by the runtime objects that contain them.
+//   - Split Physics3D translation units include this header but do not expose
+//     these layouts as script-facing ABI.
+//
+// Links: rt_physics3d.c, rt_physics3d_world.inc, rt_physics3d_solver.c
+//
 //===----------------------------------------------------------------------===//
 #pragma once
 
@@ -194,9 +202,12 @@ struct rt_world3d {
     int32_t query_broadphase_count;
     uint64_t query_broadphase_signature;
     int8_t query_broadphase_valid;
+    int64_t broadphase_fallback_count;
     int32_t last_ccd_requested_substeps;
     int32_t last_ccd_substeps;
     int64_t ccd_substep_clamped_count;
+    int32_t last_ccd_clamped_body_count;
+    int64_t ccd_substep_clamped_body_count;
     int32_t solver_iterations;
     int32_t last_solver_island_count;
     int32_t last_solver_active_body_count;
@@ -384,6 +395,7 @@ int world3d_checked_increment(int32_t value, int32_t *out);
 int world3d_reserve_contacts(rt_world3d *w, int32_t needed);
 int world3d_reserve_frame_contacts(rt_world3d *w, int32_t needed);
 int world3d_reserve_broadphase_capacity(rt_world3d *w, int32_t needed);
+void rt_world3d_test_set_broadphase_alloc_failure(int8_t enabled);
 void *physics_hit3d_new(const rt_query_hit3d *src);
 void *physics_hit_list3d_new_ex(const rt_query_hit3d *hits,
                                 int32_t count,

@@ -21,6 +21,10 @@
 //   - Trigger3D: standalone AABB zone with frame-edge enter/exit detection.
 //   - Max 64 tracked bodies per trigger (TRG3D_MAX_TRACKED).
 //
+// Ownership/Lifetime:
+//   - World3D owns retained body and joint references until removal/finalize.
+//   - Query/event result handles are GC-managed runtime objects.
+//
 // Links: rt_raycast3d.h, misc/plans/3d/20-phase-a-core-game-systems.md
 //
 //===----------------------------------------------------------------------===//
@@ -73,6 +77,12 @@ int64_t rt_world3d_get_last_ccd_requested_substeps(void *world);
 int64_t rt_world3d_get_last_ccd_substeps(void *world);
 /// @brief Number of Step calls whose CCD substep demand exceeded the cap.
 int64_t rt_world3d_get_ccd_substep_clamped_count(void *world);
+/// @brief Bodies whose CCD demand exceeded the substep cap during the most recent Step.
+int64_t rt_world3d_get_last_ccd_clamped_body_count(void *world);
+/// @brief Total bodies affected by CCD substep clamping.
+int64_t rt_world3d_get_ccd_substep_clamped_body_count(void *world);
+/// @brief Number of broadphase reserve failures that fell back to brute-force pair scans.
+int64_t rt_world3d_get_broadphase_fallback_count(void *world);
 /// @brief Replace the world gravity vector at runtime.
 void rt_world3d_set_gravity(void *world, double gx, double gy, double gz);
 /// @brief Shift all body/contact/query state by the inverse of a floating-origin delta.

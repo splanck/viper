@@ -144,6 +144,20 @@ The editor/perf counters (`entityCount`, `bodyCount`, `drawCount`,
 read-only wrappers over the owned scene, canvas, physics world, and stream, so a
 tool can inspect one world handle without reaching through each subsystem.
 
+`Game3D.Diagnostics` exposes process-wide degradation counters for rare runtime
+fallbacks that keep execution correct but indicate pressure or lost fidelity:
+`BroadphaseFallbackCount`, `CcdClampedFrames`, `CcdClampedBodies`,
+`AnimEventsDropped`, `AudioVoicesEvicted`, and `NavGridFallbacks`. `Reset()`
+clears the process aggregates. `Summary()` returns stable `name=value` lines in
+that order, omitting zero counters and returning `""` when clean. Smoke probes
+can print `Game3D.Diagnostics.Summary()` and assert it is empty.
+
+`Viper.Graphics3D.Physics3DWorld.BroadphaseFallbackCount` reports the matching
+per-world broadphase fallback total. CCD inspection remains available through
+`LastCCDRequestedSubsteps`, `LastCCDSubsteps`, `CCDSubstepClampedCount`, plus
+`LastCCDClampedBodyCount` and `CCDSubstepClampedBodyCount` for affected-body
+totals.
+
 `World3D.setWorkerCount(count)` controls the worker budget reserved for internal
 3D jobs. `1` disables threaded jobs while preserving deterministic behavior;
 values above `1` allow systems that opt into ordered internal jobs to use

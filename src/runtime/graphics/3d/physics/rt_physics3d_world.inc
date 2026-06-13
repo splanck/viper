@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/physics/rt_physics3d_world.inc  (#included from rt_physics3d.c; not a standalone translation unit)
-// Purpose: Physics3D World3D lifecycle, stepping, and integration
+// File: src/runtime/graphics/3d/physics/rt_physics3d_world.inc  (#included from rt_physics3d.c; not
+// a standalone translation unit) Purpose: Physics3D World3D lifecycle, stepping, and integration
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * World3D
@@ -73,9 +73,12 @@ static void world3d_finalizer(void *obj) {
     w->query_broadphase_count = 0;
     w->query_broadphase_signature = 0;
     w->query_broadphase_valid = 0;
+    w->broadphase_fallback_count = 0;
     w->last_ccd_requested_substeps = 1;
     w->last_ccd_substeps = 1;
     w->ccd_substep_clamped_count = 0;
+    w->last_ccd_clamped_body_count = 0;
+    w->ccd_substep_clamped_body_count = 0;
     w->body_capacity = 0;
     w->contact_capacity = 0;
     w->frame_contact_capacity = 0;
@@ -136,6 +139,7 @@ void *rt_world3d_new(double gx, double gy, double gz) {
     w->query_broadphase_count = 0;
     w->query_broadphase_signature = 0;
     w->query_broadphase_valid = 0;
+    w->broadphase_fallback_count = 0;
     w->bodies = NULL;
     w->contacts = NULL;
     w->frame_contacts = NULL;
@@ -182,8 +186,10 @@ void *rt_world3d_new(double gx, double gy, double gz) {
 static int world3d_compute_substeps(rt_world3d *w, double dt) {
     int substeps = 1;
     int requested = 1;
+    int clamped_body_count = 0;
     if (!w || !isfinite(dt) || dt <= 0.0)
         return substeps;
+    w->last_ccd_clamped_body_count = 0;
     for (int32_t i = 0; i < w->body_count; i++) {
         const rt_body3d *b = w->bodies[i];
         if (!b || !b->use_ccd || b->motion_mode == PH3D_MODE_STATIC)
@@ -213,6 +219,8 @@ static int world3d_compute_substeps(rt_world3d *w, double dt) {
                 needed = 1;
             else
                 needed = (int)needed_f;
+            if (needed > PH3D_MAX_CCD_SUBSTEPS)
+                clamped_body_count++;
             if (needed > substeps)
                 substeps = needed;
         }
@@ -224,8 +232,12 @@ static int world3d_compute_substeps(rt_world3d *w, double dt) {
         substeps = PH3D_MAX_CCD_SUBSTEPS;
     w->last_ccd_requested_substeps = requested;
     w->last_ccd_substeps = substeps;
-    if (requested > substeps)
+    if (requested > substeps) {
         w->ccd_substep_clamped_count++;
+        w->last_ccd_clamped_body_count = clamped_body_count;
+        w->ccd_substep_clamped_body_count += clamped_body_count;
+        rt_game3d_diag_record_ccd_clamp(clamped_body_count);
+    }
     return substeps;
 }
 
@@ -268,7 +280,8 @@ void rt_world3d_step(void *obj, double dt) {
         return;
     w->body_count = world3d_body_count_safe(w);
     w->joint_count = world3d_joint_count_safe(w);
-    w->contact_count = world3d_contact_count_safe(w->contacts, w->contact_count, w->contact_capacity);
+    w->contact_count =
+        world3d_contact_count_safe(w->contacts, w->contact_count, w->contact_capacity);
     w->frame_contact_count = world3d_contact_count_safe(
         w->frame_contacts, w->frame_contact_count, w->frame_contact_capacity);
     w->previous_contact_count = world3d_contact_count_safe(
@@ -569,7 +582,8 @@ int64_t rt_world3d_get_last_solver_contact_count(void *obj) {
     rt_world3d *w = world3d_checked(obj);
     if (!w || w->last_solver_contact_count <= 0)
         return 0;
-    int32_t contact_count = world3d_contact_count_safe(w->contacts, w->contact_count, w->contact_capacity);
+    int32_t contact_count =
+        world3d_contact_count_safe(w->contacts, w->contact_count, w->contact_capacity);
     return w->last_solver_contact_count < contact_count ? w->last_solver_contact_count
                                                         : contact_count;
 }
@@ -713,6 +727,24 @@ int64_t rt_world3d_get_last_ccd_substeps(void *obj) {
 int64_t rt_world3d_get_ccd_substep_clamped_count(void *obj) {
     rt_world3d *w = world3d_checked(obj);
     return (w && w->ccd_substep_clamped_count > 0) ? w->ccd_substep_clamped_count : 0;
+}
+
+/// @brief `World3D.LastCCDClampedBodyCount` — bodies capped by CCD in the last Step.
+int64_t rt_world3d_get_last_ccd_clamped_body_count(void *obj) {
+    rt_world3d *w = world3d_checked(obj);
+    return (w && w->last_ccd_clamped_body_count > 0) ? w->last_ccd_clamped_body_count : 0;
+}
+
+/// @brief `World3D.CCDSubstepClampedBodyCount` — total bodies affected by CCD caps.
+int64_t rt_world3d_get_ccd_substep_clamped_body_count(void *obj) {
+    rt_world3d *w = world3d_checked(obj);
+    return (w && w->ccd_substep_clamped_body_count > 0) ? w->ccd_substep_clamped_body_count : 0;
+}
+
+/// @brief `World3D.BroadphaseFallbackCount` — brute-force broadphase fallback count.
+int64_t rt_world3d_get_broadphase_fallback_count(void *obj) {
+    rt_world3d *w = world3d_checked(obj);
+    return (w && w->broadphase_fallback_count > 0) ? w->broadphase_fallback_count : 0;
 }
 
 /// @brief `World3D.SetGravity(gx, gy, gz)` — change the world gravity vector.
