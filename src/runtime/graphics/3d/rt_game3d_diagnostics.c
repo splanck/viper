@@ -34,6 +34,7 @@ typedef struct {
     int64_t audio_voices_evicted;
     int64_t nav_grid_fallbacks;
     int64_t stale_entity_calls;
+    int64_t stale_async_loads_dropped;
 } rt_game3d_diagnostics_state;
 
 static rt_game3d_diagnostics_state g_game3d_diagnostics;
@@ -100,6 +101,10 @@ int64_t rt_game3d_diagnostics_get_stale_entity_calls(void) {
     return diag_nonnegative(g_game3d_diagnostics.stale_entity_calls);
 }
 
+int64_t rt_game3d_diagnostics_get_stale_async_loads_dropped(void) {
+    return diag_nonnegative(g_game3d_diagnostics.stale_async_loads_dropped);
+}
+
 void rt_game3d_diagnostics_reset(void) {
     memset(&g_game3d_diagnostics, 0, sizeof(g_game3d_diagnostics));
 }
@@ -143,6 +148,11 @@ rt_string rt_game3d_diagnostics_summary(void) {
                      &offset,
                      "StaleEntityCalls",
                      g_game3d_diagnostics.stale_entity_calls);
+    diag_append_line(buffer,
+                     sizeof(buffer),
+                     &offset,
+                     "StaleAsyncLoadsDropped",
+                     g_game3d_diagnostics.stale_async_loads_dropped);
     if (offset == 0)
         return rt_str_empty();
     return rt_string_from_bytes(buffer, offset);
@@ -171,4 +181,8 @@ void rt_game3d_diag_record_nav_grid_fallback(void) {
 
 void rt_game3d_diag_record_stale_entity_call(void) {
     diag_increment(&g_game3d_diagnostics.stale_entity_calls, 1);
+}
+
+void rt_game3d_diag_record_stale_async_load_dropped(void) {
+    diag_increment(&g_game3d_diagnostics.stale_async_loads_dropped, 1);
 }

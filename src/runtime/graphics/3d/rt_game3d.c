@@ -56,6 +56,7 @@
 #include "rt_g3d_commit_queue.h"
 #include "rt_gltf.h"
 #include "rt_graphics3d_ids.h"
+#include "rt_heap.h"
 #include "rt_input.h"
 #include "rt_json.h"
 #include "rt_map.h"

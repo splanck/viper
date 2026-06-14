@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/rt_game3d_asset_load.inc  (#included from rt_game3d.c; not a standalone translation unit)
-// Purpose: Game3D async asset loading, model-template instantiation, and the public Assets3D API
+// File: src/runtime/graphics/3d/rt_game3d_asset_load.inc  (#included from rt_game3d.c; not a
+// standalone translation unit) Purpose: Game3D async asset loading, model-template instantiation,
+// and the public Assets3D API
 //===----------------------------------------------------------------------===//
 /// @brief Update the cache entry backing @p model_template with a residency priority/distance hint.
 /// @details Caller must hold g_game3d_model_cache_lock. Drives victim selection so
@@ -48,6 +49,22 @@ static rt_game3d_model_template *game3d_model_template_new(rt_string path,
 static double game3d_asset_handle_sanitize_progress(double progress);
 static double game3d_asset_handle_load_progress(const rt_game3d_asset_handle *handle);
 static void game3d_asset_handle_store_progress(rt_game3d_asset_handle *handle, double progress);
+
+typedef void (*rt_game3d_test_async_cache_publish_hook_fn)(void *user_data);
+static rt_game3d_test_async_cache_publish_hook_fn g_game3d_test_async_cache_publish_hook = NULL;
+static void *g_game3d_test_async_cache_publish_hook_user_data = NULL;
+
+void rt_game3d_test_set_async_cache_publish_hook(rt_game3d_test_async_cache_publish_hook_fn hook,
+                                                 void *user_data) {
+    g_game3d_test_async_cache_publish_hook = hook;
+    g_game3d_test_async_cache_publish_hook_user_data = user_data;
+}
+
+static void game3d_asset_async_run_cache_publish_hook(void) {
+    rt_game3d_test_async_cache_publish_hook_fn hook = g_game3d_test_async_cache_publish_hook;
+    if (hook)
+        hook(g_game3d_test_async_cache_publish_hook_user_data);
+}
 
 /// @brief Allocate a terminal AssetHandle3D retaining its result object.
 static rt_game3d_asset_handle *game3d_asset_handle_new(
@@ -107,8 +124,9 @@ static rt_string game3d_asset_handle_load_error(rt_game3d_asset_handle *handle) 
 ///          `"failed to load model asset"` string, so async handles do the same while preserving
 ///          genuinely specific parser and texture diagnostics.
 static const char *game3d_asset_async_error_or_fallback(rt_game3d_asset_handle *handle,
-                                                       const char *message) {
-    if (handle && handle->asset_path && message && strstr(message, "failed to load model dependency"))
+                                                        const char *message) {
+    if (handle && handle->asset_path && message &&
+        strstr(message, "failed to load model dependency"))
         return "failed to load model asset";
     if (message && message[0])
         return message;
@@ -227,9 +245,10 @@ static rt_game3d_model_template *game3d_model_cache_try_retain_ready(rt_string c
 }
 
 /// @brief Insert a freshly loaded model template into the cache (evicting a victim if at budget).
-static rt_game3d_model_template *game3d_model_cache_store_loaded_template(rt_string cache_path,
-                                                                          int8_t asset_path,
-                                                                          void *loaded_model) {
+static rt_game3d_model_template *game3d_model_cache_store_loaded_template_for_generation(
+    rt_string cache_path, int8_t asset_path, void *loaded_model, uint64_t generation, int *stale) {
+    if (stale)
+        *stale = 0;
     if (!cache_path || !loaded_model)
         return NULL;
     rt_game3d_model_template *model_template =
@@ -238,6 +257,14 @@ static rt_game3d_model_template *game3d_model_cache_store_loaded_template(rt_str
         return NULL;
 
     game3d_model_cache_lock();
+    if (g_game3d_model_cache_generation != generation) {
+        game3d_model_cache_unlock();
+        if (stale)
+            *stale = 1;
+        if (rt_obj_release_check0(model_template))
+            rt_obj_free(model_template);
+        return NULL;
+    }
     int32_t index = game3d_model_cache_find_index(cache_path, asset_path);
     if (index >= 0) {
         rt_game3d_model_cache_entry *entry = &g_game3d_model_cache[index];
@@ -298,10 +325,22 @@ static void game3d_asset_async_job_cancel(void *user_data) {
     game3d_asset_async_job_free((rt_game3d_asset_async_job *)user_data);
 }
 
+static int game3d_asset_handle_has_external_waiter(rt_game3d_asset_handle *handle) {
+    if (!handle)
+        return 0;
+    rt_heap_hdr_t *hdr = rt_heap_hdr(handle);
+    if (!hdr || hdr->kind != RT_HEAP_OBJECT)
+        return 0;
+    size_t refcnt = __atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE);
+    return refcnt > 1u && refcnt < RT_HEAP_IMMORTAL_REFCNT;
+}
+
 /// @brief Copy an AssetHandle3D request into worker-safe POD fields on @p job.
 /// @details Must run on the main thread before the job is submitted. The worker reads only these
-///          snapshotted bytes and flags, never the handle's runtime strings or mutable request state.
-/// @return 1 when the request was copied; 0 when the path is absent or too large for the job buffer.
+///          snapshotted bytes and flags, never the handle's runtime strings or mutable request
+///          state.
+/// @return 1 when the request was copied; 0 when the path is absent or too large for the job
+/// buffer.
 static int game3d_asset_async_snapshot_request(rt_game3d_asset_async_job *job,
                                                const rt_game3d_asset_handle *handle) {
     const char *path;
@@ -349,6 +388,53 @@ static uint64_t game3d_asset_async_next_upload_slice_cost(rt_game3d_asset_async_
 
 static void game3d_asset_async_commit(void *user_data);
 static void game3d_asset_async_prepare_upload_slice(void *user_data);
+static void game3d_asset_async_worker(void *user_data);
+
+static int game3d_asset_async_restart_for_current_generation(rt_game3d_asset_async_job *job) {
+    rt_game3d_asset_handle *handle = job ? job->handle : NULL;
+    if (!handle || game3d_asset_handle_is_ready(handle) ||
+        game3d_asset_handle_is_cancelled(handle) || !job->template_request)
+        return 0;
+    if (!game3d_asset_handle_has_external_waiter(handle))
+        return 0;
+    if (!game3d_asset_async_ensure_runtime())
+        return -1;
+
+    rt_game3d_asset_async_job *next =
+        (rt_game3d_asset_async_job *)calloc(1, sizeof(rt_game3d_asset_async_job));
+    if (!next)
+        return -1;
+    if (!game3d_asset_async_snapshot_request(next, handle)) {
+        free(next);
+        return -1;
+    }
+
+    next->handle = handle;
+    next->cache_generation = game3d_model_cache_current_generation();
+    rt_obj_retain_maybe(handle);
+    game3d_asset_handle_store_progress(handle, 0.0);
+    if (!rt_threadpool_submit(
+            g_game3d_asset_async_pool, game3d_task_fnptr(game3d_asset_async_worker), next)) {
+        game3d_asset_async_job_free(next);
+        return -1;
+    }
+    return 1;
+}
+
+static void game3d_asset_async_drop_stale_job(rt_game3d_asset_async_job *job,
+                                              void **loaded_model_slot) {
+    rt_game3d_asset_handle *handle = job ? job->handle : NULL;
+    if (loaded_model_slot)
+        game3d_release_ref(loaded_model_slot);
+    rt_game3d_diag_record_stale_async_load_dropped();
+    int restart = game3d_asset_async_restart_for_current_generation(job);
+    if (restart < 0) {
+        game3d_asset_handle_fail_terminal(handle, "failed to schedule asset load");
+    } else if (restart == 0 && handle) {
+        game3d_asset_handle_store_flag(&handle->async_started, 0);
+    }
+    game3d_asset_async_job_free(job);
+}
 
 /// @brief Enqueue the next main-thread commit step for an async job onto the commit queue.
 /// @return 1 if a commit was enqueued, 0 if the job is finished.
@@ -387,7 +473,8 @@ static void *game3d_asset_async_commit_load_model(rt_game3d_asset_async_job *job
         } else if (job->preloaded_fbx_data) {
             uint8_t *data = job->preloaded_fbx_data;
             size_t size = job->preloaded_fbx_size;
-            loaded_model = rt_model3d_load_preloaded_fbx(handle->path, data, size, handle->asset_path);
+            loaded_model =
+                rt_model3d_load_preloaded_fbx(handle->path, data, size, handle->asset_path);
             job->preloaded_fbx_data = NULL;
             job->preloaded_fbx_size = 0u;
         } else {
@@ -424,6 +511,10 @@ static void game3d_asset_async_prepare_upload_slice(void *user_data) {
     if (game3d_asset_handle_is_ready(handle) || game3d_asset_handle_is_cancelled(handle)) {
         game3d_asset_handle_store_flag(&handle->async_started, 0);
         game3d_asset_async_job_free(job);
+        return;
+    }
+    if (job->template_request && !game3d_model_cache_generation_matches(job->cache_generation)) {
+        game3d_asset_async_drop_stale_job(job, NULL);
         return;
     }
 
@@ -482,15 +573,25 @@ static void game3d_asset_async_commit(void *user_data) {
                 rt_string cache_path =
                     game3d_model_cache_key_path(handle->path, handle->asset_path);
                 rt_game3d_model_template *model_template = NULL;
+                int stale = 0;
                 if (!cache_path) {
                     game3d_assign_ref((void **)&handle->error,
                                       rt_const_cstr("failed to schedule asset load"));
                 } else if (game3d_model_cache_generation_matches(job->cache_generation)) {
-                    model_template = game3d_model_cache_store_loaded_template(
-                        cache_path, handle->asset_path, loaded_model);
+                    game3d_asset_async_run_cache_publish_hook();
+                    model_template = game3d_model_cache_store_loaded_template_for_generation(
+                        cache_path,
+                        handle->asset_path,
+                        loaded_model,
+                        job->cache_generation,
+                        &stale);
                 } else {
-                    model_template =
-                        game3d_model_template_new(cache_path, handle->asset_path, loaded_model);
+                    stale = 1;
+                }
+                if (stale) {
+                    game3d_release_ref((void **)&cache_path);
+                    game3d_asset_async_drop_stale_job(job, &loaded_model);
+                    return;
                 }
                 if (model_template) {
                     game3d_assign_typed_ref(&handle->model_template,
@@ -561,12 +662,8 @@ static void game3d_asset_async_worker(void *user_data) {
             free(root_data);
             root_data = NULL;
         } else {
-            job->preloaded_gltf = rt_gltf_preload_bundle_create_cstr(path,
-                                                                     root_data,
-                                                                     root_len,
-                                                                     0,
-                                                                     job->error,
-                                                                     sizeof(job->error));
+            job->preloaded_gltf = rt_gltf_preload_bundle_create_cstr(
+                path, root_data, root_len, 0, job->error, sizeof(job->error));
             root_data = NULL;
             job->upload_total_bytes =
                 (uint64_t)rt_gltf_preload_bundle_decoded_image_bytes(job->preloaded_gltf);

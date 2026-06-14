@@ -333,6 +333,10 @@ typedef struct {
 #include <string>
 #include <vector>
 
+typedef void (*rt_game3d_test_async_cache_publish_hook_fn)(void *user_data);
+extern "C" void rt_game3d_test_set_async_cache_publish_hook(
+    rt_game3d_test_async_cache_publish_hook_fn hook, void *user_data);
+
 namespace {
 static std::jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
@@ -737,6 +741,39 @@ static bool write_game3d_embedded_triangle_gltf(const char *path, float x_offset
         "\"scene\":0"
         "}";
     return write_text_file(path, gltf_json.c_str());
+}
+
+static void release_runtime_ref(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static double game3d_template_aabb_min_x(void *model_template) {
+    void *entity = rt_game3d_model_template_instantiate(model_template);
+    if (!entity)
+        return HUGE_VAL;
+    void *node = rt_game3d_entity_get_node(entity);
+    void *min_v = rt_scene_node3d_get_aabb_min(node);
+    double min_x = min_v ? rt_vec3_x(min_v) : HUGE_VAL;
+    release_runtime_ref(min_v);
+    release_runtime_ref(entity);
+    return min_x;
+}
+
+struct Game3DStaleAsyncPublishHookState {
+    const char *path;
+    int calls;
+    int rewrite_ok;
+};
+
+extern "C" void game3d_test_clear_cache_during_async_publish(void *user_data) {
+    Game3DStaleAsyncPublishHookState *state = (Game3DStaleAsyncPublishHookState *)user_data;
+    if (!state)
+        return;
+    state->calls++;
+    rt_game3d_test_set_async_cache_publish_hook(nullptr, nullptr);
+    rt_game3d_assets_clear_cache();
+    state->rewrite_ok = write_game3d_embedded_triangle_gltf(state->path, 5.0f) ? 1 : 0;
 }
 
 struct Game3DTestVpaEntry {
@@ -3159,6 +3196,51 @@ static bool test_phase4_assets3d_model_templates() {
 
     rt_game3d_world_destroy(preload_world);
     rt_game3d_assets_clear_cache();
+    PASS();
+}
+
+static bool test_phase4_assets3d_stale_async_publish_revalidates_generation() {
+    TEST("Assets3D async template publish revalidates cache generation");
+    const char *path = "/tmp/viper_game3d_stale_async_publish.gltf";
+    EXPECT_TRUE(write_game3d_embedded_triangle_gltf(path, 0.0f),
+                "test can write pre-clear async model fixture");
+
+    rt_game3d_diagnostics_reset();
+    rt_game3d_assets_set_residency_budget(-1);
+    rt_game3d_assets_set_upload_budget(-1);
+    rt_game3d_assets_clear_cache();
+
+    rt_string path_s = rt_string_from_bytes(path, std::strlen(path));
+    void *handle = rt_game3d_assets_load_model_template_async(path_s);
+    EXPECT_TRUE(handle != nullptr, "LoadModelTemplateAsync returns a stale-race handle");
+
+    Game3DStaleAsyncPublishHookState hook_state = {path, 0, 0};
+    rt_game3d_test_set_async_cache_publish_hook(game3d_test_clear_cache_during_async_publish,
+                                                &hook_state);
+    EXPECT_TRUE(rt_game3d_asset_handle_get_ready(handle) == 0,
+                "stale-race handle starts worker loading");
+    EXPECT_TRUE(wait_asset_ready(handle, 400),
+                "stale-race handle re-enqueues and completes after cache invalidation");
+    rt_game3d_test_set_async_cache_publish_hook(nullptr, nullptr);
+
+    EXPECT_EQ_INT(hook_state.calls, 1, "cache publish hook runs exactly once");
+    EXPECT_EQ_INT(hook_state.rewrite_ok, 1, "cache publish hook rewrites the model fixture");
+    EXPECT_EQ_INT(rt_game3d_diagnostics_get_stale_async_loads_dropped(),
+                  1,
+                  "stale async publish increments diagnostics");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_asset_handle_get_error(handle)), "") == 0,
+                "re-enqueued stale-race handle completes without error");
+    void *model_template = rt_game3d_asset_handle_get_template(handle);
+    EXPECT_TRUE(model_template != nullptr, "re-enqueued stale-race handle exposes a template");
+    EXPECT_NEAR(game3d_template_aabb_min_x(model_template),
+                5.0,
+                0.0001,
+                "stale pre-clear model is not published into the fresh cache");
+
+    rt_string_unref(path_s);
+    rt_game3d_assets_clear_cache();
+    rt_game3d_diagnostics_reset();
+    std::remove(path);
     PASS();
 }
 
@@ -5604,6 +5686,7 @@ int main() {
     ok = test_phase3_material_presets_and_prefabs() && ok;
     ok = test_phase3_world_presets_environment_and_debug() && ok;
     ok = test_phase4_assets3d_model_templates() && ok;
+    ok = test_phase4_assets3d_stale_async_publish_revalidates_generation() && ok;
     ok = test_phase4_assets3d_resident_bytes_returns_to_baseline() && ok;
     ok = test_phase4_assets3d_residency_hint_eviction() && ok;
     ok = test_phase4_assets3d_texture_residency_budget() && ok;

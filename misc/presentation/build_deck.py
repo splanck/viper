@@ -36,7 +36,7 @@ MONO = "Menlo"
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 LOGO = os.path.join(ROOT, "misc", "images", "viperlogo2.png")
-OUT  = os.path.join(HERE, "Viper_Intro.pptx")
+OUT  = os.path.join(HERE, "Viper_Intro_Revised.pptx")
 
 EMU_IN = 914400
 SW, SH = 13.333, 7.5   # widescreen inches
@@ -219,13 +219,13 @@ def slide_title():
     para(tf, "An informal introduction", size=16, color=GREEN, bold=True,
          first=True, after=6)
     para(tf, "Viper", size=76, color=TEXT, bold=True, after=2)
-    para(tf, "An IL-first compiler toolchain & virtual machine "
-            "for building native apps and games.", size=22, color=MUTED,
+    para(tf, "A from-scratch compiler, VM, runtime, and native toolchain "
+            "for apps and games.", size=22, color=MUTED,
          after=0, line=1.1)
     # footer chips
     foot = textbox(s, 0.95, 6.7, 11.5, 0.5, anchor=MSO_ANCHOR.MIDDLE)
     para(foot, [
-        ("Active development", {"color": TEXT, "bold": True}),
+        ("Pre-alpha / active development", {"color": TEXT, "bold": True}),
         ("    ·    ", {"color": BORDER}),
         ("GPL-3.0", {"color": MUTED}),
         ("    ·    ", {"color": BORDER}),
@@ -250,8 +250,9 @@ def slide_core_idea():
         ("Run it on the ", ("VM", CYAN),
          " for fast iteration, or compile straight to ",
          ("native machine code", CYAN), "."),
-        ("Built ", ("100% from scratch", TEXT),
-         " — zero external dependencies, fully cross-platform."),
+        ("Built ", ("from scratch", TEXT),
+         " — no SDL, Boost, LLVM, zlib, OpenSSL, or third-party "
+         "runtime stack."),
     ]
     for i, parts in enumerate(pts):
         runs = []
@@ -305,11 +306,11 @@ def slide_languages():
          "Modern, statically typed — designed for real apps and games.",
          ["Classes, generics & enums", "Lambdas & modules",
           "Pattern matching & exhaustiveness",
-          "Memory-safe surface — no raw pointers"]),
-        (6.78, CYAN, "BASIC", "the teaching frontend",
+          "Memory-safe user surface — no raw pointers in normal code"]),
+        (6.78, CYAN, "BASIC", "the teaching / prototyping frontend",
          "A classic, approachable dialect for rapid prototyping.",
          ["Familiar LET / PRINT / IF / WHILE",
-          "Hand-written lexer + recursive-descent parser",
+          "Lexer + recursive-descent parser",
           "Intrinsics lower to runtime calls",
           "Great for learning the pipeline"]),
     ]
@@ -336,16 +337,14 @@ def slide_il():
     title(s, "Typed, SSA-based, and inspectable")
 
     zia = [
-        "module Hello;",
-        "",
-        "bind Viper.Terminal;",
+        "bind Terminal = Viper.Terminal;",
         "bind Fmt = Viper.Text.Fmt;",
         "",
         "func start() {",
         "    var x = 2 + 3;",
         "    var y = x * 2;",
-        "    Say(\"HELLO\");",
-        "    Say(Fmt.Int(y));",
+        "    Terminal.Say(\"HELLO\");",
+        "    Terminal.Say(Fmt.Int(y));",
         "}",
     ]
     il = [
@@ -368,13 +367,15 @@ def slide_il():
                             Inches(0.5), Inches(0.42))
     ar.fill.solid(); ar.fill.fore_color.rgb = GREEN
     ar.line.fill.background(); _no_shadow(ar)
-    code_block(s, 7.1, 2.5, 5.55, 3.4, il, header="Viper IL", size=14)
+    code_block(s, 7.1, 2.5, 5.55, 3.4, il, header="Viper IL — unoptimized",
+               size=14)
 
     foot = textbox(s, 0.7, 6.35, 11.9, 0.7)
     para(foot, [
         ("A verifier", {"color": CYAN, "bold": True}),
-        (" enforces structural & type invariants, then a ", {"color": MUTED}),
-        ("24-pass optimizer", {"color": CYAN, "bold": True}),
+        (" enforces structural and type invariants, then a ",
+         {"color": MUTED}),
+        ("20+ pass optimizer", {"color": CYAN, "bold": True}),
         (" runs GVN, LICM, SCCP, inlining, loop opts, and more.",
          {"color": MUTED}),
     ], size=15, first=True, after=0, line=1.1)
@@ -394,20 +395,20 @@ def slide_execution():
           "Execution tracing for debugging"]),
         (6.78, GREEN, "Native backends",
          "Compile IL straight to machine code.",
-         ["AArch64 — Apple Silicon, ARM64 Win/Linux",
-          "x86-64 — Windows & Linux (SysV / Win64)",
+         ["AArch64 — Apple Silicon, Windows ARM64, Linux ARM64",
+          "x86-64 — Windows and Linux (Win64 / SysV ABI)",
           "Register coalescing, post-RA scheduling",
           "Built-in assembler + linker",
-          "ELF · Mach-O · PE  with DWARF — zero deps"]),
+          "ELF · Mach-O · PE with debug info — self-contained output path"]),
     ]
     for left, accent, name, desc, feats in cards:
-        tf = card_text(card(s, left, 2.3, 5.85, 3.85, accent=accent))
+        tf = card_text(card(s, left, 2.3, 5.85, 3.95, accent=accent))
         para(tf, name, size=24, color=accent, bold=True, first=True, after=4)
         para(tf, desc, size=14.5, color=MUTED, after=13, line=1.1)
         for feat in feats:
             para(tf, feat, size=15.5, color=TEXT, after=9, bullet="▸")
 
-    foot = textbox(s, 0.7, 6.5, 11.9, 0.45)
+    foot = textbox(s, 0.7, 6.55, 11.9, 0.45)
     para(foot, [("Differential testing", {"color": TEXT, "bold": True}),
                 (" keeps them honest: VM and native outputs must match for "
                  "every defined program.", {"color": MUTED})],
@@ -418,7 +419,7 @@ def slide_runtime():
     s = new_slide()
     kicker(s, "The runtime")
     title(s, "One standard library, every frontend",
-          "436 classes across 22 modules — shared through a stable C ABI by "
+          "400+ classes across 22 modules — shared through a C ABI by "
           "both the VM and native code.")
 
     modules = [
@@ -449,9 +450,9 @@ def slide_runtime():
     foot = textbox(s, 0.7, 6.74, 11.9, 0.5)
     para(foot, [
         ("Plus", {"color": MUTED}),
-        (" Core, Data, Input, Memory, Game.Physics2D, Game.UI",
+        (" Core, Data, Input, Memory, Compression, Game.Physics2D, Game.UI",
          {"color": TEXT}),
-        ("  —  graphics, 3D & game engine, audio, networking, crypto, "
+        ("  —  graphics, 3D, audio, networking, crypto, "
          "threading, localization, and more.", {"color": MUTED}),
     ], size=14, first=True, after=0, line=1.1)
 
@@ -486,7 +487,7 @@ def slide_architecture():
     down_arrow(s, cx, 3.54)
     box(3.78, 6.6, 0.88,
         [("Viper IL", 19, GREEN, True),
-         ("typed SSA · verifier · 24-pass optimizer", 12.5, MUTED, False)],
+         ("typed SSA · verifier · 20+ pass optimizer", 12.5, MUTED, False)],
         accent=GREEN)
 
     lx, rx = 3.97, 9.36   # centers of the split boxes
@@ -494,10 +495,10 @@ def slide_architecture():
     down_arrow(s, rx, 4.74)
     box(4.98, 4.55, 0.94,
         [("Bytecode VM", 17, TEXT, True),
-         ("switch · table · threaded", 12, MUTED, False)],
+         ("switch · table · threaded dispatch", 12, MUTED, False)],
         accent=AMBER, left=1.7)
     box(4.98, 4.55, 0.94,
-        [("Native backends", 17, TEXT, True),
+        [("Native path", 17, TEXT, True),
          ("AArch64 · x86-64 · assembler · linker", 12, MUTED, False)],
         accent=AMBER, left=7.08)
     down_arrow(s, lx, 5.96)
@@ -505,7 +506,7 @@ def slide_architecture():
 
     box(6.22, 6.6, 0.82,
         [("Viper Runtime", 17, TEXT, True),
-         ("graphics · 3D · GUI · game engine · audio · net · …",
+         ("graphics · GUI · 3D · audio · net · crypto · game systems · …",
           12.5, MUTED, False)],
         accent=CYAN)
 
@@ -516,15 +517,25 @@ def slide_tooling():
     title(s, "From source to native binary")
 
     cmds = [
-        "viper init my-app       # scaffold a Zia project",
-        "viper run my-app        # build & run",
-        "viper repl              # interactive REPL",
-        "viper build app/ -o app # native executable",
+        "git clone https://github.com/splanck/viper",
+        "cd viper",
+        "./scripts/build_viper_linux.sh    # build the toolchain",
+        "./scripts/build_demos_linux.sh    # build the demos",
+        "",
+        "viper init my-app",
+        "viper run my-app",
+        "viper repl",
+        "viper build my-app -o my-app",
     ]
-    code_block(s, 0.7, 2.6, 6.55, 1.55, cmds, header="Try it", size=15)
+    code_block(s, 0.7, 2.25, 6.55, 2.45, cmds, header="Build from source",
+               size=12)
+    req = textbox(s, 0.72, 4.78, 6.5, 0.32)
+    para(req, [("Requirements:  ", {"color": MUTED, "bold": True}),
+               ("supported OS · C++ compiler · CMake · make",
+                {"color": MUTED})], size=12.5, first=True, after=0)
 
     # tools card (right column, full height)
-    ttf = card_text(card(s, 7.5, 2.6, 5.13, 3.65, accent=GREEN),
+    ttf = card_text(card(s, 7.5, 2.25, 5.13, 4.15, accent=GREEN),
                     ml=0.3, mt=0.24)
     para(ttf, "In the box", size=18, color=TEXT, bold=True, first=True,
          after=10)
@@ -533,8 +544,8 @@ def slide_tooling():
         ("repl", "live Zia & BASIC evaluation"),
         ("il-opt / il-verify", "optimize & check IL"),
         ("il-dis", "disassembler / pretty-printer"),
-        ("zia-server", "LSP + MCP language server"),
-        ("package", "installers: .app .deb .exe .tar.gz"),
+        ("zia-server", "LSP/MCP language tooling"),
+        ("package", "installers: .app · .deb · .exe · .tar.gz"),
     ]:
         para(ttf, [(tool, {"color": GREEN, "bold": True, "font": MONO,
                            "size": 13.5}),
@@ -542,18 +553,19 @@ def slide_tooling():
              after=10, line=1.05)
 
     # demos strip (left column, under the code)
-    dtf = card_text(card(s, 0.7, 4.35, 6.55, 1.9, accent=CYAN),
-                    ml=0.3, mt=0.22)
+    dtf = card_text(card(s, 0.7, 5.12, 6.55, 1.28, accent=CYAN),
+                    ml=0.3, mt=0.15)
     para(dtf, "Built with Viper", size=16, color=TEXT, bold=True, first=True,
-         after=8)
+         after=6)
     para(dtf, "Chess  ·  XENOSCAPE  ·  3D Bowling  ·  Game3D Showcase",
          size=14, color=TEXT, after=5, line=1.15)
-    para(dtf, "ViperSQL  ·  Paint  ·  6 apps + 17 games",
+    para(dtf, "ViperSQL  ·  Paint  ·  apps, games, tools, and demos",
          size=14, color=MUTED, after=0, line=1.15)
 
-    foot = textbox(s, 0.7, 6.55, 11.9, 0.45, anchor=MSO_ANCHOR.MIDDLE)
+    foot = textbox(s, 0.7, 6.6, 11.9, 0.45, anchor=MSO_ANCHOR.MIDDLE)
     para(foot, [("github.com/splanck/viper", {"color": CYAN, "bold": True}),
-                ("     —     thanks for watching.", {"color": MUTED})],
+                ("     —     clone it, run the demos, and tell me what "
+                 "breaks.", {"color": MUTED})],
          size=15, first=True, after=0)
 
 

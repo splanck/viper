@@ -195,8 +195,10 @@ static rt_string make_deep_json(int depth) {
     if (!buf)
         return rt_string_from_bytes("{}", 2);
     char *p = buf;
-    for (int i = 0; i < depth; i++)
-        p += sprintf(p, "{\"a\":");
+    for (int i = 0; i < depth; i++) {
+        memcpy(p, "{\"a\":", 5);
+        p += 5;
+    }
     *p++ = '0';
     for (int i = 0; i < depth; i++)
         *p++ = '}';
@@ -243,10 +245,14 @@ static rt_string make_deep_xml(int depth) {
     if (!buf)
         return rt_string_from_bytes("<a/>", 4);
     char *p = buf;
-    for (int i = 0; i < depth; i++)
-        p += sprintf(p, "<a>");
-    for (int i = 0; i < depth; i++)
-        p += sprintf(p, "</a>");
+    for (int i = 0; i < depth; i++) {
+        memcpy(p, "<a>", 3);
+        p += 3;
+    }
+    for (int i = 0; i < depth; i++) {
+        memcpy(p, "</a>", 4);
+        p += 4;
+    }
     *p = '\0';
     rt_string s = rt_string_from_bytes(buf, (int64_t)(p - buf));
     free(buf);

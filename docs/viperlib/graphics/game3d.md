@@ -162,10 +162,10 @@ tool can inspect one world handle without reaching through each subsystem.
 fallbacks that keep execution correct but indicate pressure or lost fidelity:
 `BroadphaseFallbackCount`, `CcdClampedFrames`, `CcdClampedBodies`,
 `AnimEventsDropped`, `AudioVoicesEvicted`, `NavGridFallbacks`, and
-`StaleEntityCalls`. `Reset()` clears the process aggregates. `Summary()` returns
-stable `name=value` lines in that order, omitting zero counters and returning
-`""` when clean. Smoke probes can print `Game3D.Diagnostics.Summary()` and
-assert it is empty.
+`StaleEntityCalls`, and `StaleAsyncLoadsDropped`. `Reset()` clears the process
+aggregates. `Summary()` returns stable `name=value` lines in that order,
+omitting zero counters and returning `""` when clean. Smoke probes can print
+`Game3D.Diagnostics.Summary()` and assert it is empty.
 
 `Viper.Graphics3D.Physics3DWorld.BroadphaseFallbackCount` reports the matching
 per-world broadphase fallback total. CCD inspection remains available through
@@ -567,7 +567,13 @@ silently dropping the material map.
 External `.bin` buffers can be loaded from the staged bundle even if the source
 file disappears before commit. `Assets3D.Preload(path)` and
 `Assets3D.PreloadAsset(assetPath)` schedule the same template-mode worker path as
-background cache warms for filesystem and package-aware keys respectively.
+background cache warms for filesystem and package-aware keys respectively. Async
+template jobs snapshot the shared model-cache generation when scheduled; if
+`Assets3D.ClearCache()` or another invalidation advances that generation before
+the main-thread commit publishes the result, the stale staged model is discarded
+and `Game3D.Diagnostics.StaleAsyncLoadsDropped` increments. A still-retained
+handle is reloaded against the fresh generation; ownerless preload work is
+dropped.
 `World3D.tick` and simulation steps drain the asset commit queue with a fixed
 per-frame item budget plus a decoded-texture byte budget so preload commits do
 not require polling a returned handle. `Assets3D.SetUploadBudget(bytes)` changes

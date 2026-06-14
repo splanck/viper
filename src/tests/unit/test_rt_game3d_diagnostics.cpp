@@ -109,6 +109,7 @@ static void test_summary_is_stable_and_resettable() {
     rt_game3d_diag_record_audio_voice_evicted();
     rt_game3d_diag_record_nav_grid_fallback();
     rt_game3d_diag_record_stale_entity_call();
+    rt_game3d_diag_record_stale_async_load_dropped();
 
     EXPECT_EQ_I64(rt_game3d_diagnostics_get_broadphase_fallback_count(),
                   1,
@@ -130,6 +131,9 @@ static void test_summary_is_stable_and_resettable() {
     EXPECT_EQ_I64(rt_game3d_diagnostics_get_stale_entity_calls(),
                   1,
                   "Stale entity getter reports direct record");
+    EXPECT_EQ_I64(rt_game3d_diagnostics_get_stale_async_loads_dropped(),
+                  1,
+                  "Stale async load getter reports direct record");
     EXPECT_STREQ(rt_string_cstr(rt_game3d_diagnostics_summary()),
                  "BroadphaseFallbackCount=1\n"
                  "CcdClampedFrames=1\n"
@@ -137,7 +141,8 @@ static void test_summary_is_stable_and_resettable() {
                  "AnimEventsDropped=3\n"
                  "AudioVoicesEvicted=1\n"
                  "NavGridFallbacks=1\n"
-                 "StaleEntityCalls=1\n",
+                 "StaleEntityCalls=1\n"
+                 "StaleAsyncLoadsDropped=1\n",
                  "Summary emits stable non-zero counter order");
 
     rt_game3d_diagnostics_reset();
