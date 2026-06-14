@@ -64,8 +64,8 @@ rendering, the scene exercises a broad slice of the 3D API:
   and a "return home" **Trigger3D** objective
 
 > The forest treats `MapleTree_1.fbx` as an optional local asset. If the file is
-> missing, the demo logs a notice and continues without trees; native demo builds
-> therefore do not embed it as a required asset.
+> missing, the demo logs a notice and plants a procedural fallback forest; native
+> demo builds therefore do not embed it as a required asset.
 
 ## Controls
 

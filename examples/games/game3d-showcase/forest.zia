@@ -22,12 +22,16 @@ class ShowcaseForest {
         var model = Model3D.LoadAsset(config.TREE_MODEL_PATH);
         if (treeBad(model)) { model = Model3D.Load(config.TREE_MODEL_PATH); }
         if (treeBad(model)) { model = Model3D.Load(config.TREE_MODEL_PATH_ALT); }
+        if (treeBad(model)) { model = Model3D.Load(config.TREE_MODEL_PATH_FROM_BIN); }
+        buildFoliageMaterials();
+
         if (treeBad(model)) {
-            Terminal.Say("Forest: MapleTree_1.fbx could not be resolved (embedded or on disk); skipping trees. Last loader error: " + Assets3D.get_LastLoadError());
+            var fallbackPlanted = plantHomeGrove(world, land, null);
+            fallbackPlanted = fallbackPlanted + plantHillForest(world, land, null);
+            Terminal.Say("Forest: MapleTree_1.fbx could not be resolved (embedded or on disk); planted " + toString(fallbackPlanted) + " procedural trees instead. Last loader error: " + Assets3D.get_LastLoadError());
             return;
         }
 
-        buildFoliageMaterials();
         var planted = plantHomeGrove(world, land, model);
         planted = planted + plantHillForest(world, land, model);
         Terminal.Say("Forest: planted " + toString(planted) + " maples.");
@@ -56,7 +60,7 @@ class ShowcaseForest {
                 if (gy > config.WATER_HEIGHT + 0.4) {
                     var s = config.FOREST_SCALE_MIN
                         + terrain.hash01(i, 7) * (config.FOREST_SCALE_MAX - config.FOREST_SCALE_MIN);
-                    plantTree(world, model, wx, wz, gy, s, terrain.hash01(i, 13) * 360.0);
+                    plantTreeOrFallback(world, model, wx, wz, gy, s, terrain.hash01(i, 13) * 360.0);
                     planted = planted + 1;
                 }
             }
@@ -84,7 +88,7 @@ class ShowcaseForest {
                     if (canPlantTree(land, wx, wz, maxX, maxZ)) {
                         var s = config.FOREST_SCALE_MIN
                             + terrain.hash01(seed, 5) * (config.FOREST_SCALE_MAX - config.FOREST_SCALE_MIN);
-                        plantTree(world, model, wx, wz, terrain.sampleGround(land, wx, wz), s, terrain.hash01(seed, 11) * 360.0);
+                        plantTreeOrFallback(world, model, wx, wz, terrain.sampleGround(land, wx, wz), s, terrain.hash01(seed, 11) * 360.0);
                         planted = planted + 1;
                     }
                 }
@@ -107,6 +111,14 @@ class ShowcaseForest {
         return true;
     }
 
+    hide func plantTreeOrFallback(world: World3D, model: Model3D, x: Float, z: Float, y: Float, scale: Float, yawDeg: Float) {
+        if (treeBad(model)) {
+            plantProceduralTree(world, x, z, y, scale, yawDeg);
+        } else {
+            plantTree(world, model, x, z, y, scale, yawDeg);
+        }
+    }
+
     hide func plantTree(world: World3D, model: Model3D, x: Float, z: Float, y: Float, scale: Float, yawDeg: Float) {
         var node = Model3D.Instantiate(model);
         var ent = Entity3D.FromNode(node);
@@ -117,6 +129,29 @@ class ShowcaseForest {
         Entity3D.setRotationEuler(ent, yawDeg, 0.0, 0.0);
         Entity3D.setPosition(ent, x, y, z);
         World3D.spawn(world, ent);
+    }
+
+    hide func plantProceduralTree(world: World3D, x: Float, z: Float, y: Float, scale: Float, yawDeg: Float) {
+        var height = scale * 620.0;
+        var trunkHeight = height * 0.56;
+        var trunkRadius = height * 0.038;
+        var canopyRadius = height * 0.22;
+        var canopyMat = treeMats.get(pickFoliage(x, z));
+
+        var trunk = Prefab.Cylinder(trunkRadius, trunkHeight, 8, barkMat);
+        Entity3D.setName(trunk, "procedural_maple_trunk");
+        Entity3D.setLayer(trunk, Layers.get_World());
+        Entity3D.setRotationEuler(trunk, 0.0, yawDeg, 0.0);
+        Entity3D.setPosition(trunk, x, y + trunkHeight * 0.5, z);
+        World3D.spawn(world, trunk);
+
+        var crown = Prefab.Sphere(canopyRadius, 12, canopyMat);
+        Entity3D.setName(crown, "procedural_maple_crown");
+        Entity3D.setLayer(crown, Layers.get_World());
+        Entity3D.setScaleXYZ(crown, 1.18, 0.82, 1.08);
+        Entity3D.setRotationEuler(crown, 0.0, yawDeg, 0.0);
+        Entity3D.setPosition(crown, x, y + trunkHeight + canopyRadius * 0.42, z);
+        World3D.spawn(world, crown);
     }
 
     hide func buildFoliageMaterials() {

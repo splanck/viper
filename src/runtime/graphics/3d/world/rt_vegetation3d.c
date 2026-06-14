@@ -199,11 +199,7 @@ static rt_material3d *vegetation3d_material_ref(void *ref) {
 static void vegetation3d_enable_double_sided_material(rt_material3d *mat) {
     if (!mat)
         return;
-#if defined(RT_G3D_ALLOW_STACK_FIXTURES)
-    (void)mat;
-#else
     mat->double_sided = 1;
-#endif
 }
 
 /// @brief Integer avalanche hash used for stable vegetation LOD thinning.
