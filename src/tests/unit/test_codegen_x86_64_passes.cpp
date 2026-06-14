@@ -498,6 +498,11 @@ viper::codegen::x64::Operand physGpr(viper::codegen::x64::PhysReg reg) {
         true, viper::codegen::x64::RegClass::GPR, static_cast<uint16_t>(reg)};
 }
 
+viper::codegen::x64::Operand physXmm(viper::codegen::x64::PhysReg reg) {
+    return viper::codegen::x64::OpReg{
+        true, viper::codegen::x64::RegClass::XMM, static_cast<uint16_t>(reg)};
+}
+
 viper::codegen::x64::Operand rbpMem(int disp) {
     viper::codegen::x64::OpMem mem{};
     mem.base = viper::codegen::x64::OpReg{true,
@@ -714,12 +719,19 @@ TEST(SchedulerPass, PreservesWin64FrameSetupBeforeCalleeSaves) {
 
     MBasicBlock entry{};
     entry.label = "entry";
+    entry.instructions.push_back(MInstr::make(MOpcode::PUSH, {physGpr(PhysReg::RBP)}));
     entry.instructions.push_back(
         MInstr::make(MOpcode::MOVrr, {physGpr(PhysReg::RBP), physGpr(PhysReg::RSP)}));
-    entry.instructions.push_back(MInstr::make(MOpcode::ADDri, {physGpr(PhysReg::RSP), OpImm{-64}}));
+    entry.instructions.push_back(MInstr::make(MOpcode::ADDri, {physGpr(PhysReg::RSP), OpImm{-96}}));
     entry.instructions.push_back(MInstr::make(MOpcode::MOVrm, {rbpMem(-8), physGpr(PhysReg::RBX)}));
     entry.instructions.push_back(
         MInstr::make(MOpcode::MOVrm, {rbpMem(-16), physGpr(PhysReg::RDI)}));
+    entry.instructions.push_back(
+        MInstr::make(MOpcode::MOVUPSrm, {rbpMem(-32), physXmm(PhysReg::XMM6)}));
+    entry.instructions.push_back(
+        MInstr::make(MOpcode::MOVmr, {physGpr(PhysReg::RAX), rbpMem(-64)}));
+    entry.instructions.push_back(
+        MInstr::make(MOpcode::ADDrr, {physGpr(PhysReg::RAX), physGpr(PhysReg::RDX)}));
 
     MFunction fn{};
     fn.name = "prologue_order";
@@ -728,11 +740,15 @@ TEST(SchedulerPass, PreservesWin64FrameSetupBeforeCalleeSaves) {
     scheduleFunction(fn);
 
     const auto &instrs = fn.blocks[0].instructions;
-    ASSERT_EQ(instrs.size(), 4U);
-    EXPECT_EQ(instrs[0].opcode, MOpcode::MOVrr);
-    EXPECT_EQ(instrs[1].opcode, MOpcode::ADDri);
-    EXPECT_EQ(instrs[2].opcode, MOpcode::MOVrm);
+    ASSERT_EQ(instrs.size(), 8U);
+    EXPECT_EQ(instrs[0].opcode, MOpcode::PUSH);
+    EXPECT_EQ(instrs[1].opcode, MOpcode::MOVrr);
+    EXPECT_EQ(instrs[2].opcode, MOpcode::ADDri);
     EXPECT_EQ(instrs[3].opcode, MOpcode::MOVrm);
+    EXPECT_EQ(instrs[4].opcode, MOpcode::MOVrm);
+    EXPECT_EQ(instrs[5].opcode, MOpcode::MOVUPSrm);
+    EXPECT_EQ(instrs[6].opcode, MOpcode::MOVmr);
+    EXPECT_EQ(instrs[7].opcode, MOpcode::ADDrr);
 }
 
 TEST(EmitPass, ProducesAssembly) {

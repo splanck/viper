@@ -33,7 +33,7 @@ func drawFrame(render: Renderer, laneObj: LaneBuilder, pinMgr: PinManager, ballO
 ///        screenshot, pixel-check the centre, RESULT: ok/fail.
 func main() {
     var render = new Renderer();
-    render.initRenderer(config.QUALITY_CINEMATIC);
+    render.initRendererWithSize(config.QUALITY_PERFORMANCE, 320, 180);
 
     var camCtrl = new CameraController();
     camCtrl.initCamera(render.getCamera());

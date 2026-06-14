@@ -433,6 +433,9 @@ static void apply_edit_targets(vg_codeeditor_t *editor,
     vg_edit_target_t *clamped_targets = calloc((size_t)target_count, sizeof(vg_edit_target_t));
     char **old_texts = calloc((size_t)target_count, sizeof(char *));
     bool *has_old_texts = calloc((size_t)target_count, sizeof(bool));
+    bool history_group_open = false;
+    bool changed = false;
+    bool syntax_global_dirty = false;
     if (!new_lines || !new_cols || !clamped_targets || !old_texts || !has_old_texts) {
         free(new_lines);
         free(new_cols);
@@ -473,11 +476,11 @@ static void apply_edit_targets(vg_codeeditor_t *editor,
         }
     }
 
-    if (editor->history && target_count > 1)
+    if (editor->history && target_count > 1) {
         edit_history_begin_group(editor->history);
+        history_group_open = true;
+    }
 
-    bool changed = false;
-    bool syntax_global_dirty = false;
     for (int i = 0; i < target_count; i++) {
         const vg_edit_target_t *target = &clamped_targets[i];
         char *old_text = old_texts[i];
@@ -542,7 +545,7 @@ static void apply_edit_targets(vg_codeeditor_t *editor,
     }
 
 cleanup:
-    if (editor->history && target_count > 1)
+    if (history_group_open)
         edit_history_end_group(editor->history);
 
     for (int i = 0; i < cursor_count; i++)

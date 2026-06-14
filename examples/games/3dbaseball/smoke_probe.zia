@@ -2,6 +2,8 @@ module smoke_probe;
 
 bind Viper.Graphics3D;
 bind Viper.Graphics.Pixels as Pixels;
+bind Viper.IO.Path as Path;
+bind Viper.IO.TempFile as TempFile;
 bind Viper.Terminal as Terminal;
 bind "./game";
 
@@ -23,18 +25,18 @@ func brightness(color: Integer) -> Integer {
 
 func main() {
     var demo = new BaseballFieldDemo();
-    demo.initDemo("3D Baseball Smoke", 1024, 640);
+    demo.initDemo("3D Baseball Smoke", 320, 200);
     demo.step(0.016);
     demo.renderFrame();
 
-    var snap = demo.getCanvas().Screenshot();
-    if Pixels.SavePng(snap, "/tmp/3dbaseball_smoke.png") != 1 {
+    var snap = demo.getCanvas().ScreenshotFinal();
+    if Pixels.SavePng(snap, Path.Join(TempFile.Dir(), "3dbaseball_smoke.png")) != 1 {
         Terminal.Say("RESULT: fail screenshot");
         return;
     }
 
-    var skySample = Pixels.Get(snap, 760, 120);
-    var fieldSample = Pixels.Get(snap, 580, 235);
+    var skySample = Pixels.Get(snap, 238, 38);
+    var fieldSample = Pixels.Get(snap, 181, 74);
     if brightness(fieldSample) >= brightness(skySample) - 12 {
         Terminal.Say("RESULT: fail field_missing");
         return;

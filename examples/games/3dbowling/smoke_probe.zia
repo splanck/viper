@@ -2,6 +2,8 @@ module smoke_probe;
 
 bind Viper.Graphics3D;
 bind Viper.Graphics.Pixels as Pixels;
+bind Viper.IO.Path as Path;
+bind Viper.IO.TempFile as TempFile;
 bind Viper.Terminal as Terminal;
 bind "./config";
 bind "./engine/renderer";
@@ -28,7 +30,7 @@ func main() {
     smoke_checks.ResetDiagnostics();
 
     var render = new Renderer();
-    render.initRenderer(config.QUALITY_CINEMATIC);
+    render.initRendererWithSize(config.QUALITY_PERFORMANCE, 320, 180);
 
     var camCtrl = new CameraController();
     camCtrl.initCamera(render.getCamera());
@@ -57,8 +59,8 @@ func main() {
     ballObj.draw(render.getCanvas());
     render.endFrame();
 
-    var snap = render.getCanvas().Screenshot();
-    if Pixels.SavePng(snap, "/tmp/3dbowling_smoke.png") != 1 {
+    var snap = render.getCanvas().ScreenshotFinal();
+    if Pixels.SavePng(snap, Path.Join(TempFile.Dir(), "3dbowling_smoke.png")) != 1 {
         Terminal.Say("RESULT: fail screenshot");
         return;
     }

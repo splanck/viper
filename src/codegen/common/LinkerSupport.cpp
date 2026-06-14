@@ -142,27 +142,51 @@ std::filesystem::path fallbackSupportLibraryPath(std::string_view libBaseName) {
     return supportLibBuildSubdir(libBaseName) / archiveFileName(libBaseName);
 }
 
-/// @brief Locate a support-library archive inside a CMake build directory.
-/// @details Probes Release/Debug/no-config sub-paths in that order so the same
-///          binary works against single- and multi-config CMake generators.
-///          Returns an empty path when no candidate exists.
-std::filesystem::path buildTreeSupportLibraryPath(const std::filesystem::path &buildDir,
-                                                  std::string_view libBaseName) {
-    auto pickFirstExisting =
-        [](std::initializer_list<std::filesystem::path> candidates) -> std::filesystem::path {
-        for (const auto &candidate : candidates) {
-            if (fileExists(candidate))
-                return candidate;
-        }
-        return std::filesystem::path{};
+std::vector<std::string> preferredBuildConfigs() {
+    std::vector<std::string> configs;
+    auto append = [&](std::string config) {
+        if (config.empty())
+            return;
+        if (std::find(configs.begin(), configs.end(), config) == configs.end())
+            configs.push_back(std::move(config));
     };
 
+    if (const char *env = std::getenv("VIPER_BUILD_TYPE"))
+        append(env);
+
+#if defined(NDEBUG)
+    append("Release");
+    append("RelWithDebInfo");
+    append("MinSizeRel");
+    append("Debug");
+#else
+    append("Debug");
+    append("RelWithDebInfo");
+    append("Release");
+    append("MinSizeRel");
+#endif
+    return configs;
+}
+
+/// @brief Locate a support-library archive inside a CMake build directory.
+/// @details On Windows, probes the script-provided or current build configuration
+///          before other multi-config directories; this prevents stale archives
+///          from a different configuration being mixed into the link. Returns an
+///          empty path when no candidate exists.
+std::filesystem::path buildTreeSupportLibraryPath(const std::filesystem::path &buildDir,
+                                                  std::string_view libBaseName) {
     const std::filesystem::path subdir = supportLibBuildSubdir(libBaseName);
     const std::string archive = archiveFileName(libBaseName);
 #ifdef _WIN32
-    return pickFirstExisting({buildDir / subdir / "Release" / archive,
-                              buildDir / subdir / "Debug" / archive,
-                              buildDir / subdir / archive});
+    std::vector<std::filesystem::path> candidates;
+    for (const auto &config : preferredBuildConfigs())
+        candidates.push_back(buildDir / subdir / config / archive);
+    candidates.push_back(buildDir / subdir / archive);
+    for (const auto &candidate : candidates) {
+        if (fileExists(candidate))
+            return candidate;
+    }
+    return std::filesystem::path{};
 #else
     return buildDir / subdir / archive;
 #endif

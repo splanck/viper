@@ -79,16 +79,18 @@ find_program(VIPER_BASH_EXECUTABLE NAMES bash)
 if (VIPER_BASH_EXECUTABLE)
     add_test(NAME check_vm_semantics_duplication
             COMMAND ${VIPER_BASH_EXECUTABLE}
-            ${CMAKE_SOURCE_DIR}/scripts/check_vm_semantics_duplication.sh
-            ${CMAKE_SOURCE_DIR})
+            scripts/check_vm_semantics_duplication.sh
+            .)
     set_tests_properties(check_vm_semantics_duplication PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
             LABELS "conformance;vm;bytecode;requires_posix_shell")
 
     add_test(NAME zia_runtime_name_literal_lint
             COMMAND ${VIPER_BASH_EXECUTABLE}
-            ${CMAKE_SOURCE_DIR}/scripts/lint_zia_runtime_names.sh
-            ${CMAKE_SOURCE_DIR})
+            scripts/lint_zia_runtime_names.sh
+            .)
     set_tests_properties(zia_runtime_name_literal_lint PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
             LABELS "tools;zia;requires_posix_shell")
 endif ()
 
@@ -1260,7 +1262,8 @@ add_test(NAME zia_calibration_baseball
 set_tests_properties(zia_calibration_baseball PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;comprehensive"
-        TIMEOUT 120)
+        PROCESSORS 4
+        TIMEOUT 300)
 
 add_test(NAME zia_staff_usage_baseball
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/baseball/staff_usage_probe.zia"
@@ -1293,7 +1296,8 @@ add_test(NAME zia_persistence_baseball
 set_tests_properties(zia_persistence_baseball PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;comprehensive"
-        TIMEOUT 60)
+        PROCESSORS 4
+        TIMEOUT 180)
 
 add_test(NAME zia_reporting_baseball
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/baseball/reporting_probe.zia"

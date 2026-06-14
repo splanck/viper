@@ -2147,8 +2147,8 @@ TEST(textinput_sanitizes_invalid_utf8_before_storage) {
     vg_textinput_t *input = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(input);
 
-    char invalid_set[] = {'a', (char)0xFF, 'b', '\0'};
-    vg_textinput_set_text(input, invalid_set);
+    const unsigned char invalid_set[] = {'a', 0xFFu, 'b', '\0'};
+    vg_textinput_set_text(input, (const char *)invalid_set);
     ASSERT_EQ(strcmp(input->text, "ab"), 0);
 
     input->max_length = 3;
@@ -2157,8 +2157,8 @@ TEST(textinput_sanitizes_invalid_utf8_before_storage) {
 
     input->max_length = 0;
     vg_textinput_set_cursor(input, 3);
-    char invalid_insert[] = {'x', (char)0xC0, 'y', '\0'};
-    vg_textinput_insert(input, invalid_insert);
+    const unsigned char invalid_insert[] = {'x', 0xC0u, 'y', '\0'};
+    vg_textinput_insert(input, (const char *)invalid_insert);
     ASSERT_EQ(strcmp(input->text, "abcxy"), 0);
 
     vg_widget_destroy(&input->base);
@@ -2175,8 +2175,8 @@ TEST(codeeditor_inserts_utf8_as_complete_byte_sequences) {
 
     char *text = vg_codeeditor_get_text(editor);
     ASSERT_NOT_NULL(text);
-    const char expected[] = {(char)0xC3, (char)0xA9, '\0'};
-    ASSERT_EQ(strcmp(text, expected), 0);
+    const unsigned char expected[] = {0xC3u, 0xA9u, '\0'};
+    ASSERT_EQ(strcmp(text, (const char *)expected), 0);
     free(text);
 
     vg_codeeditor_insert_text(editor, "Z");

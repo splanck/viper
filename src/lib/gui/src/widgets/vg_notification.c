@@ -375,6 +375,10 @@ static bool notification_bounds_for_index(vg_notification_manager_t *mgr,
             y = mgr->base.y + mgr->base.height - mgr->margin;
             from_top = false;
             break;
+        default:
+            x = mgr->base.x + mgr->base.width - mgr->margin - mgr->notification_width;
+            y = mgr->base.y + mgr->margin;
+            break;
     }
 
     size_t visible_count = 0;

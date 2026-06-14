@@ -450,6 +450,56 @@ static HRESULT d3d11_recreate_swapchain_main_targets(d3d11_context_t *ctx,
                                                      const char *log_context);
 static void d3d11_begin_frame_timing(d3d11_context_t *ctx);
 static void d3d11_end_frame_timing(d3d11_context_t *ctx);
+static void d3d11_release_texture_cache(d3d11_context_t *ctx);
+static void d3d11_prune_texture_cache(d3d11_context_t *ctx);
+static void d3d11_release_cubemap_cache(d3d11_context_t *ctx);
+static void d3d11_prune_cubemap_cache(d3d11_context_t *ctx);
+static float d3d11_cubemap_max_lod(const rt_cubemap3d *cubemap);
+static void d3d11_release_morph_cache_entry(d3d11_morph_cache_entry_t *entry);
+static void d3d11_release_morph_cache(d3d11_context_t *ctx);
+static void d3d11_release_temp_srv(d3d_temp_srv_t *entry);
+static ID3D11ShaderResourceView *d3d11_get_or_create_srv(d3d11_context_t *ctx,
+                                                         const void *pixels,
+                                                         d3d_temp_srv_t *out_temp);
+static ID3D11ShaderResourceView *d3d11_get_or_create_material_srv(d3d11_context_t *ctx,
+                                                                  void *asset,
+                                                                  const void *pixels,
+                                                                  uint64_t asset_cache_key,
+                                                                  int64_t mip_start,
+                                                                  int64_t mip_count,
+                                                                  d3d_temp_srv_t *out_temp);
+static ID3D11ShaderResourceView *d3d11_get_or_create_cubemap_srv(d3d11_context_t *ctx,
+                                                                 const rt_cubemap3d *cubemap,
+                                                                 d3d_temp_srv_t *out_temp);
+static HRESULT d3d11_create_staging_texture(d3d11_context_t *ctx,
+                                            int32_t width,
+                                            int32_t height,
+                                            DXGI_FORMAT format,
+                                            ID3D11Texture2D **out_tex);
+static HRESULT d3d11_create_depth_target(d3d11_context_t *ctx,
+                                         int32_t width,
+                                         int32_t height,
+                                         int shader_readable,
+                                         ID3D11Texture2D **out_tex,
+                                         ID3D11DepthStencilView **out_dsv,
+                                         ID3D11ShaderResourceView **out_srv);
+static void d3d11_destroy_scene_targets(d3d11_context_t *ctx);
+static HRESULT d3d11_ensure_scene_targets(d3d11_context_t *ctx, int32_t width, int32_t height);
+static HRESULT d3d11_ensure_overlay_target(d3d11_context_t *ctx, int32_t width, int32_t height);
+static HRESULT d3d11_ensure_postfx_target(d3d11_context_t *ctx, int32_t width, int32_t height);
+static HRESULT d3d11_ensure_postfx_scratch_target(d3d11_context_t *ctx,
+                                                  int32_t width,
+                                                  int32_t height);
+static int d3d11_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *target);
+static void d3d11_destroy_rtt_targets(d3d11_context_t *ctx);
+static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarget_t *rt);
+static void d3d11_destroy_shadow_targets(d3d11_context_t *ctx);
+static void d3d11_release_shadow_slot(d3d11_context_t *ctx, int32_t slot);
+static void d3d11_recompute_shadow_count(d3d11_context_t *ctx);
+static HRESULT d3d11_ensure_shadow_targets(d3d11_context_t *ctx,
+                                           int32_t slot,
+                                           int32_t width,
+                                           int32_t height);
 
 /// @brief Multiply two row-major 4×4 matrices: `out = a * b`.
 ///

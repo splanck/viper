@@ -58,12 +58,17 @@ class Renderer {
 
     /// @brief One-time setup: window, camera, lights, skybox, post-FX.
     expose func initRenderer(startQuality: Integer) {
-        canvas = Canvas3D.New(config.WINDOW_TITLE, config.WINDOW_WIDTH, config.WINDOW_HEIGHT);
+        initRendererWithSize(startQuality, config.WINDOW_WIDTH, config.WINDOW_HEIGHT);
+    }
+
+    /// @brief One-time setup with explicit dimensions for headless smoke probes.
+    expose func initRendererWithSize(startQuality: Integer, width: Integer, height: Integer) {
+        canvas = Canvas3D.New(config.WINDOW_TITLE, width, height);
         Canvas3D.SetDTMax(canvas, 50);
         Canvas3D.SetOcclusionCulling(canvas, true);
         Say("Backend: " + Canvas3D.get_Backend(canvas));
 
-        var aspect: Float = (config.WINDOW_WIDTH + 0.0) / (config.WINDOW_HEIGHT + 0.0);
+        var aspect: Float = (width + 0.0) / (height + 0.0);
         cam = Camera3D.New(config.CAMERA_FOV, aspect, config.CAMERA_NEAR, config.CAMERA_FAR);
         alleySkybox = createAlleySkybox();
         Canvas3D.SetSkybox(canvas, alleySkybox);

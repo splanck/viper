@@ -650,9 +650,8 @@ static int rt_dir_remove_all_cpath(const char *cpath) {
         int ok = 1;
         if (err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND) {
             ok = 1;
-        } else if (!RemoveDirectoryW(dir_path)) {
-            DWORD remove_err = GetLastError();
-            ok = (remove_err == ERROR_FILE_NOT_FOUND || remove_err == ERROR_PATH_NOT_FOUND) ? 1 : 0;
+        } else if (!rt_dir_win_remove_directory_w(dir_path)) {
+            ok = 0;
         }
         free(pattern);
         free(dir_path);
@@ -672,7 +671,7 @@ static int rt_dir_remove_all_cpath(const char *cpath) {
 
         if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
             if ((fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
-                if (!RemoveDirectoryW(full_path) && GetLastError() != ERROR_FILE_NOT_FOUND)
+                if (!rt_dir_win_remove_directory_w(full_path))
                     ok = 0;
             } else {
                 rt_string sub = rt_dir_win_wide_to_string(full_path);
@@ -694,7 +693,7 @@ static int rt_dir_remove_all_cpath(const char *cpath) {
     if (find_err != ERROR_NO_MORE_FILES)
         ok = 0;
     FindClose(h);
-    if (!RemoveDirectoryW(dir_path) && GetLastError() != ERROR_FILE_NOT_FOUND)
+    if (!rt_dir_win_remove_directory_w(dir_path))
         ok = 0;
     free(pattern);
     free(dir_path);

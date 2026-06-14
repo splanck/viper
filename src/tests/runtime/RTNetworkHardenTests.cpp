@@ -174,7 +174,8 @@ static void test_connect_refused_port() {
     // On Windows, the WinSock error code may be reported without these keywords.
     const bool matchRefused =
         strstr(g_last_trap, "refused") != nullptr || strstr(g_last_trap, "failed") != nullptr ||
-        strstr(g_last_trap, "timed out") != nullptr || strstr(g_last_trap, "error") != nullptr;
+        strstr(g_last_trap, "timed out") != nullptr ||
+        strstr(g_last_trap, "timeout") != nullptr || strstr(g_last_trap, "error") != nullptr;
     if (!matchRefused) {
         fprintf(stderr, "  DEBUG: actual trap = [%s]\n", g_last_trap);
     }

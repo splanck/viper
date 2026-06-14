@@ -430,8 +430,46 @@ static inline int rt_dir_win_is_dot_name(const wchar_t *name) {
     return wcscmp(name, L".") == 0 || wcscmp(name, L"..") == 0;
 }
 
+static inline int rt_dir_win_delete_error_may_be_transient(DWORD err) {
+    return err == ERROR_ACCESS_DENIED || err == ERROR_SHARING_VIOLATION ||
+           err == ERROR_LOCK_VIOLATION || err == ERROR_DIR_NOT_EMPTY;
+}
+
+static inline int rt_dir_win_missing_error(DWORD err) {
+    return err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND;
+}
+
 /// @brief Delete a file during recursive remove.
 static inline int rt_dir_win_delete_file_w(const wchar_t *path) {
-    return DeleteFileW(path) ? 1 : 0;
+    for (int attempt = 0; attempt < 25; ++attempt) {
+        if (DeleteFileW(path))
+            return 1;
+        DWORD err = GetLastError();
+        if (rt_dir_win_missing_error(err))
+            return 1;
+        if (!rt_dir_win_delete_error_may_be_transient(err))
+            return 0;
+        Sleep(10);
+    }
+    if (DeleteFileW(path))
+        return 1;
+    return rt_dir_win_missing_error(GetLastError()) ? 1 : 0;
+}
+
+/// @brief Remove a directory during recursive remove.
+static inline int rt_dir_win_remove_directory_w(const wchar_t *path) {
+    for (int attempt = 0; attempt < 25; ++attempt) {
+        if (RemoveDirectoryW(path))
+            return 1;
+        DWORD err = GetLastError();
+        if (rt_dir_win_missing_error(err))
+            return 1;
+        if (!rt_dir_win_delete_error_may_be_transient(err))
+            return 0;
+        Sleep(10);
+    }
+    if (RemoveDirectoryW(path))
+        return 1;
+    return rt_dir_win_missing_error(GetLastError()) ? 1 : 0;
 }
 #endif

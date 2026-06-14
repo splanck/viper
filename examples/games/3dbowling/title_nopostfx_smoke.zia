@@ -2,6 +2,8 @@ module title_nopostfx_smoke;
 
 bind Viper.Graphics3D;
 bind Viper.Graphics.Pixels as Pixels;
+bind Viper.IO.Path as Path;
+bind Viper.IO.TempFile as TempFile;
 bind Viper.Terminal as Terminal;
 bind "./config";
 bind "./menu";
@@ -21,7 +23,7 @@ bind "./lane/ball";
 /// @brief Capture one title-screen screenshot (no post-FX); print RESULT: ok.
 func main() {
     var render = new Renderer();
-    render.initRenderer(config.QUALITY_CINEMATIC);
+    render.initRendererWithSize(config.QUALITY_PERFORMANCE, 320, 180);
     Canvas3D.SetPostFX(render.getCanvas(), null);
 
     var camCtrl = new CameraController();
@@ -54,8 +56,8 @@ func main() {
     render.endFrame();
     menuObj.drawTitle(render.getCanvas(), render.getWidth(), render.getHeight());
 
-    var snap = render.getCanvas().Screenshot();
-    if Pixels.SavePng(snap, "/tmp/3dbowling_title_nopostfx.png") != 1 {
+    var snap = render.getCanvas().ScreenshotFinal();
+    if Pixels.SavePng(snap, Path.Join(TempFile.Dir(), "3dbowling_title_nopostfx.png")) != 1 {
         Terminal.Say("RESULT: fail screenshot");
         return;
     }

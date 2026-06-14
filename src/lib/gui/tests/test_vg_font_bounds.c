@@ -248,9 +248,12 @@ static void test_zero_hmtx_metrics_use_fallback_advance(void) {
 /// @brief vg_utf8_decode returns U+FFFD and advances one byte for overlong, surrogate, and
 /// too-large sequences.
 static void test_utf8_decoder_rejects_invalid_scalar_values(void) {
-    const char overlong[] = {(char)0xC0, (char)0xAF, 0};
-    const char surrogate[] = {(char)0xED, (char)0xA0, (char)0x80, 0};
-    const char too_large[] = {(char)0xF4, (char)0x90, (char)0x80, (char)0x80, 0};
+    const unsigned char overlong_bytes[] = {0xC0u, 0xAFu, 0};
+    const unsigned char surrogate_bytes[] = {0xEDu, 0xA0u, 0x80u, 0};
+    const unsigned char too_large_bytes[] = {0xF4u, 0x90u, 0x80u, 0x80u, 0};
+    const char *overlong = (const char *)overlong_bytes;
+    const char *surrogate = (const char *)surrogate_bytes;
+    const char *too_large = (const char *)too_large_bytes;
 
     const char *p = overlong;
     EXPECT_TRUE(vg_utf8_decode(&p) == 0xFFFD);

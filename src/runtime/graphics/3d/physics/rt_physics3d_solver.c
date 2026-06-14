@@ -693,6 +693,20 @@ int ph3d_broadphase_compare_min_x(const void *lhs, const void *rhs) {
         return -1;
     if (a->min[0] > b->min[0])
         return 1;
+    /* qsort is not stable; tie-break equal X spans so stacked bodies solve
+     * bottom-up consistently across C runtimes. */
+    if (a->min[1] < b->min[1])
+        return -1;
+    if (a->min[1] > b->min[1])
+        return 1;
+    if (a->min[2] < b->min[2])
+        return -1;
+    if (a->min[2] > b->min[2])
+        return 1;
+    if ((uintptr_t)a->body < (uintptr_t)b->body)
+        return -1;
+    if ((uintptr_t)a->body > (uintptr_t)b->body)
+        return 1;
     return 0;
 }
 

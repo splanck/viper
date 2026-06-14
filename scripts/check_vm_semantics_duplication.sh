@@ -26,7 +26,12 @@ reject_pattern() {
     shift
     local hits
     hits="$(mktemp "${TMPDIR:-/tmp}/viper_semantics_duplication_hits.XXXXXX")"
-    if rg -n --fixed-strings "$pattern" "$@" >"${hits}"; then
+    if command -v rg >/dev/null 2>&1; then
+        rg -n --fixed-strings "$pattern" "$@" >"${hits}" || true
+    else
+        grep -R -n --fixed-strings "$pattern" "$@" >"${hits}" || true
+    fi
+    if [[ -s "${hits}" ]]; then
         cat "${hits}" >&2
         rm -f "${hits}"
         fail "forbidden bytecode-local scalar semantic primitive: ${pattern}"

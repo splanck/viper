@@ -27,7 +27,7 @@
 #include <vector>
 
 namespace il::core {
-class Module;
+struct Module;
 }
 namespace il::support {
 class SourceManager;

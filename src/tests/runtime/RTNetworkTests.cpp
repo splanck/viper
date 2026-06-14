@@ -228,18 +228,18 @@ static int get_distinct_free_udp_port_ipv4(int avoid_port) {
     return 0;
 }
 
-static int get_free_port_ipv6() {
+static int get_free_port_ipv6(int socktype) {
 #if defined(_WIN32)
     WSADATA wsa;
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
         return 0;
-    SOCKET fd = socket(AF_INET6, SOCK_STREAM, 0);
+    SOCKET fd = socket(AF_INET6, socktype, 0);
     if (fd == INVALID_SOCKET) {
         WSACleanup();
         return 0;
     }
 #else
-    int fd = socket(AF_INET6, SOCK_STREAM, 0);
+    int fd = socket(AF_INET6, socktype, 0);
     if (fd < 0)
         return 0;
 #endif
@@ -268,6 +268,23 @@ static int get_free_port_ipv6() {
     close(fd);
 #endif
     return port;
+}
+
+static int get_free_tcp_port_ipv6() {
+    return get_free_port_ipv6(SOCK_STREAM);
+}
+
+static int get_free_udp_port_ipv6() {
+    return get_free_port_ipv6(SOCK_DGRAM);
+}
+
+static int get_distinct_free_udp_port_ipv6(int avoid_port) {
+    for (int i = 0; i < 16; ++i) {
+        const int port = get_free_udp_port_ipv6();
+        if (port > 0 && port != avoid_port)
+            return port;
+    }
+    return 0;
 }
 
 /// @brief Echo server thread function
@@ -369,7 +386,7 @@ static void test_server_client_connect_ipv6() {
         return;
     }
 
-    const int port = get_free_port_ipv6();
+    const int port = get_free_tcp_port_ipv6();
     if (port <= 0) {
         printf("  SKIP: could not allocate IPv6 loopback port\n");
         return;
@@ -973,10 +990,10 @@ static void test_udp_send_recv_ipv6() {
         return;
     }
 
-    const int recv_port = get_free_port_ipv6();
-    const int send_port = get_free_port_ipv6();
+    const int recv_port = get_free_udp_port_ipv6();
+    const int send_port = get_distinct_free_udp_port_ipv6(recv_port);
     if (recv_port <= 0 || send_port <= 0 || recv_port == send_port) {
-        printf("  SKIP: could not allocate IPv6 loopback ports\n");
+        printf("  SKIP: could not allocate IPv6 loopback UDP ports\n");
         return;
     }
 
