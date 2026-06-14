@@ -426,9 +426,11 @@ typedef struct {
     int32_t texture_wrap_s; /* RT_MATERIAL3D_TEXTURE_WRAP_* for imported material textures */
     int32_t texture_wrap_t;
     int32_t texture_filter; /* RT_MATERIAL3D_TEXTURE_FILTER_* */
+    int32_t anisotropy;     /* 1=off, otherwise clamped to [1,16] */
     int32_t texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     int32_t texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     int32_t texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
+    int32_t texture_slot_anisotropy[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     int32_t texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     double texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][6];
     int32_t shading_model;   /* 0=BlinnPhong, 1=Toon, 2=PBR, 3=Unlit, 4=Fresnel, 5=Emissive */
@@ -478,6 +480,7 @@ typedef struct {
 #define VGFX3D_MAX_SHADOW_LIGHTS 4
 #define RT_CANVAS3D_EVENT_QUEUE_CAPACITY 128
 #define RT_CANVAS3D_MESH_SNAPSHOT_FRAME_BYTE_BUDGET (256ull * 1024ull * 1024ull)
+#define RT_CANVAS3D_WORLD_BOUNDS_CACHE_SIZE 1024
 
 typedef struct {
     void *source;
@@ -498,6 +501,18 @@ typedef struct {
     int32_t covered_streak;
     int64_t last_frame_seen;
 } rt_canvas3d_occlusion_history_entry;
+
+/// @brief One fixed-slot per-frame world-AABB cache entry.
+/// @details The hash narrows lookup, but hits still compare the full mesh pointer plus all
+///          sixteen source double matrix components so collisions cannot affect correctness.
+typedef struct {
+    const void *mesh_key;
+    uint64_t matrix_hash;
+    double matrix_key[16];
+    float world_min[3];
+    float world_max[3];
+    int8_t occupied;
+} rt_canvas3d_world_bounds_cache_entry;
 
 /* Forward declaration — defined in vgfx3d_backend.h */
 typedef struct vgfx3d_backend vgfx3d_backend_t;
@@ -771,6 +786,8 @@ typedef struct {
     int32_t draw_capacity;
     void *trans_cmds; /* reusable transparent draw scratch buffer */
     int32_t trans_capacity;
+    void *sort_cmds; /* reusable deferred stable-sort scratch buffer */
+    int32_t sort_capacity;
     void *final_overlay_cmds; /* dynamic array of deferred_draw_t, replayed after post-FX */
     int32_t final_overlay_count;
     int32_t final_overlay_capacity;
@@ -881,6 +898,13 @@ typedef struct {
     int32_t last_occlusion_candidate_count;
     int64_t last_texture_upload_bytes;
     int64_t last_frame_gpu_time_us;
+    int64_t frame_draws_submitted;
+    int64_t frame_aabb_transforms;
+    int64_t frame_sort_passes;
+    int64_t frame_backend_state_changes;
+    uint64_t frame_last_backend_state_key;
+    int8_t frame_has_backend_state_key;
+    rt_canvas3d_world_bounds_cache_entry world_bounds_cache[RT_CANVAS3D_WORLD_BOUNDS_CACHE_SIZE];
 
     /* Timing */
     int64_t frame_serial;

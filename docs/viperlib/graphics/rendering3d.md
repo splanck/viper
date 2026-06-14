@@ -292,6 +292,9 @@ the active backend/device. `BackendSupports("texture:bc7")`,
 `BackendSupports("texture:ktx2-cpu")` report runtime CPU fallback coverage.
 KTX2 supercompression is rejected; native mip payload lengths are validated
 against the declared format/block dimensions.
+`BackendSupports("anisotropy")` reports whether the active GPU backend applies
+`Material3D.Anisotropy`; the software backend accepts the property but ignores
+it and reports false.
 
 | Texture format | Software / RenderTarget3D CPU path | Native GPU upload path | Undecodable CPU blocks |
 |----------------|-------------------------------------|------------------------|------------------------|
@@ -311,6 +314,18 @@ time, so already-bound materials follow later residency changes; when no
 fallback exists, capable GPU backends receive the resident compressed blocks
 through the same upload-budget telemetry path.
 
+| Backend | `BackendSupports("anisotropy")` | Sampler behavior |
+|---------|---------------------------------|------------------|
+| Software | False | Accepted and ignored; software sampling remains controlled by `texture_filter` |
+| D3D11 | True | Uses `D3D11_FILTER_ANISOTROPIC` with `MaxAnisotropy` clamped to `1..16` |
+| Metal | True | Uses `MTLSamplerDescriptor.maxAnisotropy` clamped to `1..16` |
+| OpenGL | Extension-dependent | Uses `GL_TEXTURE_MAX_ANISOTROPY_EXT` when `GL_EXT_texture_filter_anisotropic` is present, clamped to `GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT` and `16` |
+
+`Material3D.Anisotropy = 1` disables anisotropic filtering. Values below `1`
+clamp to `1`; values above `16` clamp to `16`. GPU backends cache sampler
+states by wrap mode, filter, and effective anisotropy, so changed settings reuse
+existing sampler objects once created.
+
 ### Canvas3D Performance Telemetry
 
 | Member | Type | Description |
@@ -318,6 +333,10 @@ through the same upload-budget telemetry path.
 | `TextureUploadBytes` | `Integer` property | Texture bytes uploaded into backend storage during the latest ended frame |
 | `TextureUploadPendingBytes` | `Integer` property | Texture bytes still waiting for backend texture or cubemap upload budget |
 | `FrameGpuTimeUs` | `Integer` property | Latest completed backend GPU frame time in microseconds, or `0` when unsupported/not yet available |
+| `DrawsSubmitted` | `Integer` property | Backend draw submissions issued since the latest public `Begin`/`Begin2D` |
+| `AabbTransforms` | `Integer` property | World-AABB transform computations performed since the latest public `Begin`/`Begin2D` |
+| `SortPasses` | `Integer` property | Stable deferred sort passes run since the latest public `Begin`/`Begin2D` |
+| `BackendStateChanges` | `Integer` property | Material/backend state runs observed in Canvas3D submission order |
 | `SetTextureUploadBudget(bytes)` | `Void(Integer)` method | Set the backend material-texture/cubemap upload byte budget per frame; negative means unlimited, `0` pauses new upload rows |
 
 `TextureUploadBytes` counts actual texture cache uploads and re-uploads performed by the active
@@ -341,6 +360,13 @@ completed non-disjoint sample; unsupported backends or frames without a ready
 sample report `0`. The open-world perf and GPU-smoke probes include the value in
 their `PERF:` / `GPU_FRAME_TIME:` lines so Windows reference runs can record CPU
 frame-loop metrics and D3D11 GPU timestamp evidence together.
+
+The CPU submission counters reset at public frame begin. `DrawsSubmitted`
+counts backend mesh or instanced submissions, `AabbTransforms` exposes the
+world-bounds work avoided by Canvas3D's per-frame mesh+matrix AABB cache,
+`SortPasses` counts deferred stable sort stages, and `BackendStateChanges`
+counts material/state runs after Canvas3D ordering when the backend exposes
+stateful submission costs; the software backend reports `0`.
 
 ### Canvas3D Visibility Controls
 
@@ -615,6 +641,7 @@ the currently resident RGBA8 mip and native block source for each draw.
 | `AO` | Double | Read/Write | Ambient-occlusion factor |
 | `EmissiveIntensity` | Double | Read/Write | Emissive multiplier |
 | `NormalScale` | Double | Read/Write | Normal-map strength |
+| `Anisotropy` | Integer | Read/Write | Texture anisotropy; `1=off`, clamps to `1..16` |
 | `AlphaMode` | Integer | Read/Write | `0=opaque`, `1=mask`, `2=blend` |
 | `DoubleSided` | Boolean | Read/Write | Render both triangle sides |
 | `Unlit` | Boolean | Read | True when unlit shading is enabled |

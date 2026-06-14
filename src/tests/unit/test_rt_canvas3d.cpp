@@ -5448,9 +5448,11 @@ static void test_canvas_material_command_sanitizes_corrupt_fields() {
     mat->texture_wrap_s = 99;
     mat->texture_wrap_t = -7;
     mat->texture_filter = 123;
+    mat->anisotropy = 0;
     mat->texture_slot_wrap_s[0] = 99;
     mat->texture_slot_wrap_t[0] = -7;
     mat->texture_slot_filter[0] = 123;
+    mat->texture_slot_anisotropy[0] = 0;
     mat->texture_slot_uv_set[0] = 99;
     mat->texture_slot_uv_transform[0][0] = std::numeric_limits<double>::quiet_NaN();
     mat->texture_slot_uv_transform[0][1] = std::numeric_limits<double>::infinity();
@@ -5460,6 +5462,7 @@ static void test_canvas_material_command_sanitizes_corrupt_fields() {
     mat->texture_slot_wrap_s[1] = RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE;
     mat->texture_slot_wrap_t[1] = RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT;
     mat->texture_slot_filter[1] = RT_MATERIAL3D_TEXTURE_FILTER_NEAREST;
+    mat->texture_slot_anisotropy[1] = 64;
     mat->texture_slot_uv_set[1] = -1;
     mat->custom_params[0] = 1.0e300;
     mat->custom_params[1] = -1.0e300;
@@ -5475,9 +5478,11 @@ static void test_canvas_material_command_sanitizes_corrupt_fields() {
     EXPECT_EQ(g_last_draw_cmd.texture_wrap_s, RT_MATERIAL3D_TEXTURE_WRAP_REPEAT);
     EXPECT_EQ(g_last_draw_cmd.texture_wrap_t, RT_MATERIAL3D_TEXTURE_WRAP_REPEAT);
     EXPECT_EQ(g_last_draw_cmd.texture_filter, RT_MATERIAL3D_TEXTURE_FILTER_LINEAR);
+    EXPECT_EQ(g_last_draw_cmd.texture_anisotropy, 1);
     EXPECT_EQ(g_last_draw_cmd.texture_slot_wrap_s[0], RT_MATERIAL3D_TEXTURE_WRAP_REPEAT);
     EXPECT_EQ(g_last_draw_cmd.texture_slot_wrap_t[0], RT_MATERIAL3D_TEXTURE_WRAP_REPEAT);
     EXPECT_EQ(g_last_draw_cmd.texture_slot_filter[0], RT_MATERIAL3D_TEXTURE_FILTER_LINEAR);
+    EXPECT_EQ(g_last_draw_cmd.texture_slot_anisotropy[0], 1);
     EXPECT_EQ(g_last_draw_cmd.texture_slot_uv_set[0], 1);
     EXPECT_NEAR(g_last_draw_cmd.texture_slot_uv_transform[0][0], 1.0f, 0.0001f);
     EXPECT_NEAR(g_last_draw_cmd.texture_slot_uv_transform[0][1], 0.0f, 0.0001f);
@@ -5487,6 +5492,7 @@ static void test_canvas_material_command_sanitizes_corrupt_fields() {
     EXPECT_EQ(g_last_draw_cmd.texture_slot_wrap_s[1], RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE);
     EXPECT_EQ(g_last_draw_cmd.texture_slot_wrap_t[1], RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT);
     EXPECT_EQ(g_last_draw_cmd.texture_slot_filter[1], RT_MATERIAL3D_TEXTURE_FILTER_NEAREST);
+    EXPECT_EQ(g_last_draw_cmd.texture_slot_anisotropy[1], 16);
     EXPECT_EQ(g_last_draw_cmd.texture_slot_uv_set[1], 0);
     EXPECT_NEAR(g_last_draw_cmd.custom_params[0], 1000000.0f, 1.0f);
     EXPECT_NEAR(g_last_draw_cmd.custom_params[1], -1000000.0f, 1.0f);

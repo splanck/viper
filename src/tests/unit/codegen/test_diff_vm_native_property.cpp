@@ -188,6 +188,43 @@ bool isNativeAvailable() {
     return g_selectedBackend != Backend::None;
 }
 
+constexpr const char kMaterialAnisotropyRoundTripIl[] = R"(il 0.2.0
+extern @Viper.Graphics3D.Material3D.New() -> ptr
+extern @Viper.Graphics3D.Material3D.set_Anisotropy(ptr, i64) -> void
+extern @Viper.Graphics3D.Material3D.get_Anisotropy(ptr) -> i64
+
+func @main() -> i64 {
+entry:
+  %mat = call @Viper.Graphics3D.Material3D.New()
+  %default = call @Viper.Graphics3D.Material3D.get_Anisotropy(%mat)
+  call @Viper.Graphics3D.Material3D.set_Anisotropy(%mat, 0)
+  %low = call @Viper.Graphics3D.Material3D.get_Anisotropy(%mat)
+  call @Viper.Graphics3D.Material3D.set_Anisotropy(%mat, 64)
+  %high = call @Viper.Graphics3D.Material3D.get_Anisotropy(%mat)
+  call @Viper.Graphics3D.Material3D.set_Anisotropy(%mat, 8)
+  %round = call @Viper.Graphics3D.Material3D.get_Anisotropy(%mat)
+  %a = iadd.ovf %default, %low
+  %b = iadd.ovf %a, %high
+  %sum = iadd.ovf %b, %round
+  ret %sum
+}
+)";
+
+il::core::Module parseModuleFromSource(const std::string &source) {
+    std::istringstream iss{source};
+    il::core::Module module;
+    auto parseResult = il::io::Parser::parse(iss, module);
+    ASSERT_TRUE(parseResult);
+    auto verifyResult = il::verify::Verifier::verify(module);
+    if (!verifyResult) {
+        std::ostringstream errStream;
+        il::support::printDiag(verifyResult.error(), errStream);
+        std::cerr << errStream.str() << "\n";
+    }
+    ASSERT_TRUE(verifyResult);
+    return module;
+}
+
 /// @brief Result of a differential test run.
 struct DiffTestResult {
     bool passed = false;
@@ -272,6 +309,30 @@ DiffTestResult runDifferentialTest(ILGenerator &generator,
 }
 
 } // namespace
+
+TEST(DiffVmNativeProperty, RuntimeMaterial3DAnisotropyRoundTrip) {
+    if (!isNativeAvailable()) {
+        VIPER_TEST_SKIP(std::string("Native execution not available (backend: ") +
+                        backendName(g_selectedBackend) + ")");
+    }
+
+    il::core::Module vmModule = parseModuleFromSource(kMaterialAnisotropyRoundTripIl);
+    VmFixture fixture;
+    const std::int64_t vmResult = fixture.run(vmModule);
+    ASSERT_EQ(vmResult, 26);
+
+    const std::filesystem::path outputDir = ensureOutputDir();
+    const std::filesystem::path ilPath = outputDir / "runtime_material3d_anisotropy.il";
+    writeILFile(ilPath, kMaterialAnisotropyRoundTripIl);
+
+    const int nativeResult = runOnArm64Native(ilPath);
+    const int vmExitCode = static_cast<int>(vmResult) & 0xFF;
+    const int nativeExitCode = nativeResult & 0xFF;
+    ASSERT_EQ(vmExitCode, nativeExitCode);
+
+    std::error_code ec;
+    std::filesystem::remove(ilPath, ec);
+}
 
 TEST(DiffVmNativeProperty, ArithmeticOnly) {
     if (!isNativeAvailable()) {

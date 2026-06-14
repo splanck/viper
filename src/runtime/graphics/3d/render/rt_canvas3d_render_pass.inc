@@ -94,7 +94,7 @@ static void canvas3d_render_shadow_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
         float shadow_world_min[3];
         float shadow_world_max[3];
         int has_shadow_bounds = canvas3d_build_shadow_world_bounds(
-            cmds, c->draw_count, shadow_world_min, shadow_world_max);
+            c, cmds, c->draw_count, shadow_world_min, shadow_world_max);
 
         if (has_shadow_bounds && selected_shadow_count > 0 && selected_lights[0].type == 0 &&
             c->shadow_cascade_count > 1) {
@@ -174,7 +174,7 @@ static void canvas3d_render_shadow_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
                             c, &cmds[i], cascade_depth_near, cascade_depth_far))
                         continue;
                     if (!canvas3d_deferred_intersects_world_bounds(
-                            &cmds[i], cascade_min, cascade_max))
+                            c, &cmds[i], cascade_min, cascade_max))
                         continue;
                     canvas3d_shadow_deferred(c, &cmds[i]);
                 }
@@ -220,6 +220,7 @@ static void canvas3d_render_main_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
     canvas3d_occlusion_grid_t occlusion_grid;
     int use_occlusion_grid = c->occlusion_culling ? 1 : 0;
     int sort_opaque = use_occlusion_grid || c->opaque_depth_sorting;
+    int state_sort_opaque = sort_opaque && !canvas3d_backend_uses_software_raster(c);
 
     if (use_occlusion_grid) {
         canvas3d_occlusion_history_prune(c);
@@ -231,7 +232,7 @@ static void canvas3d_render_main_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
         for (int32_t i = 0; i < c->draw_count; i++) {
             if (cmds[i].pass_kind == DEFERRED_PASS_MAIN) {
                 cmds[i].visible =
-                    (int8_t)canvas3d_deferred_intersects_frustum(&cmds[i], &visibility_frustum);
+                    (int8_t)canvas3d_deferred_intersects_frustum(c, &cmds[i], &visibility_frustum);
                 if (!cmds[i].visible) {
                     c->last_occluded_draw_count++;
                     c->last_frustum_culled_draw_count++;
@@ -272,8 +273,13 @@ static void canvas3d_render_main_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
                 else
                     opaque[oi++] = cmds[i];
             }
-            if (sort_opaque && opaque_count > 1)
-                qsort(opaque, (size_t)opaque_count, sizeof(deferred_draw_t), cmp_front_to_back);
+            if (sort_opaque && opaque_count > 1 &&
+                !(state_sort_opaque
+                      ? canvas3d_sort_opaque_draws_state_first(c, opaque, opaque_count)
+                      : canvas3d_sort_opaque_draws_depth_first(c, opaque, opaque_count))) {
+                rt_trap("Canvas3D.End: deferred opaque sort scratch allocation failed");
+                return;
+            }
             for (int32_t i = 0; i < opaque_count; i++) {
                 if (use_occlusion_grid &&
                     canvas3d_occlusion_test_and_write(c, &occlusion_grid, &opaque[i])) {
@@ -283,8 +289,10 @@ static void canvas3d_render_main_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
                 }
                 canvas3d_submit_deferred(c, &opaque[i]);
             }
-            if (trans_count > 1)
-                qsort(trans, (size_t)trans_count, sizeof(deferred_draw_t), cmp_back_to_front);
+            if (trans_count > 1 && !canvas3d_sort_transparent_draws(c, trans, trans_count)) {
+                rt_trap("Canvas3D.End: deferred transparent sort scratch allocation failed");
+                return;
+            }
             for (int32_t i = 0; i < trans_count; i++)
                 canvas3d_submit_deferred(c, &trans[i]);
         } else if (staged_total > 0) {
@@ -300,8 +308,8 @@ static void canvas3d_render_main_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
 ///          1. Skybox (if attached) into the scene color buffer.
 ///          2. Shadow pass: build a tight ortho light-VP, depth-render
 ///             every opaque main draw into the shadow map.
-///          3. Opaque main draws — front-to-back when occlusion culling
-///             is enabled (maximizes early-Z rejection), unsorted otherwise.
+///          3. Opaque main draws — front-to-back on software when enabled
+///             (maximizes early-Z rejection), state-grouped on GPU backends.
 ///          4. Translucent main draws — sorted back-to-front so alpha
 ///             blends compose correctly.
 ///          5. Pre/post-3D HUD overlay draws via `begin_overlay_frame`.

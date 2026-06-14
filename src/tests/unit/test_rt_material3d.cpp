@@ -4,6 +4,24 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/tests/unit/test_rt_material3d.cpp
+// Purpose: Unit tests for Material3D scalar state, texture references, and
+//   cloning/instance behavior.
+//
+// Key invariants:
+//   - Material scalar setters clamp to their documented runtime ranges.
+//   - Clones and instances retain resource handles but keep scalar overrides independent.
+//   - Invalid private texture refs are repaired without releasing unowned objects.
+//
+// Ownership/Lifetime:
+//   - Tests allocate GC-managed runtime objects directly and rely on process teardown.
+//   - Trap assertions use a local setjmp guard and abort on unexpected traps.
+//
+// Links: src/runtime/graphics/3d/render/rt_material3d.c,
+//        src/runtime/graphics/3d/render/rt_canvas3d_internal.h
+//
+//===----------------------------------------------------------------------===//
 
 #ifndef VIPER_ENABLE_GRAPHICS
 #define VIPER_ENABLE_GRAPHICS 1
@@ -105,6 +123,28 @@ static void test_pbr_setters_promote_legacy_material() {
     EXPECT_NEAR(rt_material3d_get_ao(mat), 0.9, 0.001, "AO getter round-trips");
 }
 
+static void test_anisotropy_clamps_and_round_trips() {
+    rt_material3d *mat = (rt_material3d *)rt_material3d_new();
+    EXPECT_TRUE(mat != nullptr, "Material3D.New creates an anisotropy fixture");
+    if (!mat)
+        return;
+
+    EXPECT_TRUE(rt_material3d_get_anisotropy(mat) == 1, "Material3D.Anisotropy defaults to off");
+    rt_material3d_set_anisotropy(mat, 8);
+    EXPECT_TRUE(rt_material3d_get_anisotropy(mat) == 8,
+                "Material3D.Anisotropy round-trips valid values");
+    EXPECT_TRUE(mat->anisotropy == 8,
+                "Material3D.Anisotropy stores the material-wide sampler state");
+    for (int slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++)
+        EXPECT_TRUE(mat->texture_slot_anisotropy[slot] == 8,
+                    "Material3D.Anisotropy updates every texture slot");
+    rt_material3d_set_anisotropy(mat, 0);
+    EXPECT_TRUE(rt_material3d_get_anisotropy(mat) == 1, "Material3D.Anisotropy clamps zero to one");
+    rt_material3d_set_anisotropy(mat, 64);
+    EXPECT_TRUE(rt_material3d_get_anisotropy(mat) == 16,
+                "Material3D.Anisotropy clamps high values to sixteen");
+}
+
 static void test_clone_and_instance_share_resources_but_copy_scalars() {
     rt_material3d *base = (rt_material3d *)rt_material3d_new_pbr(0.7, 0.5, 0.3);
     void *px = rt_pixels_new(1, 1);
@@ -125,6 +165,7 @@ static void test_clone_and_instance_share_resources_but_copy_scalars() {
     rt_material3d_set_ao(base, 0.8);
     rt_material3d_set_emissive_intensity(base, 2.0);
     rt_material3d_set_normal_scale(base, 0.6);
+    rt_material3d_set_anisotropy(base, 12);
     rt_material3d_set_alpha_mode(base, RT_MATERIAL3D_ALPHA_MODE_BLEND);
     rt_material3d_set_double_sided(base, 1);
 
@@ -156,6 +197,9 @@ static void test_clone_and_instance_share_resources_but_copy_scalars() {
                 "Instance boolean overrides do not mutate the source material");
     EXPECT_NEAR(
         clone->emissive_intensity, 2.0, 0.001, "Material3D.Clone preserves PBR scalar state");
+    EXPECT_TRUE(rt_material3d_get_anisotropy(clone) == 12 &&
+                    rt_material3d_get_anisotropy(inst) == 12,
+                "Material3D.Clone and MakeInstance preserve sampler anisotropy");
     EXPECT_TRUE(clone->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_BLEND,
                 "Material3D.Clone preserves alpha-mode state");
 }
@@ -179,8 +223,7 @@ static void test_setters_replace_wrong_class_private_refs_without_release() {
 
     mat->normal_map = wrong;
     rt_material3d_set_normal_map(mat, px);
-    EXPECT_TRUE(mat->normal_map == px,
-                "Material3D.SetNormalMap replaces wrong-class private refs");
+    EXPECT_TRUE(mat->normal_map == px, "Material3D.SetNormalMap replaces wrong-class private refs");
     EXPECT_TRUE(rt_heap_hdr(wrong)->refcnt == wrong_refcnt,
                 "Material3D.SetNormalMap does not release unowned wrong-class refs");
 
@@ -243,6 +286,7 @@ static void test_env_map_setter_repairs_stale_slot_before_rejecting_new_value() 
 int main() {
     test_new_pbr_defaults();
     test_pbr_setters_promote_legacy_material();
+    test_anisotropy_clamps_and_round_trips();
     test_clone_and_instance_share_resources_but_copy_scalars();
     test_setters_replace_wrong_class_private_refs_without_release();
     test_env_map_setter_repairs_stale_slot_before_rejecting_new_value();

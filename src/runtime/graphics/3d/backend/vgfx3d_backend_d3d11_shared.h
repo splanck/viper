@@ -43,6 +43,8 @@ extern "C" {
 #define VGFX3D_D3D11_TEXTURE_SLOT_COUNT RT_MATERIAL3D_TEXTURE_SLOT_COUNT
 #define VGFX3D_D3D11_MAX_TEXTURE2D_DIMENSION 16384
 #define VGFX3D_D3D11_MAX_CUBEMAP_DIMENSION 16384
+#define VGFX3D_D3D11_MAX_TEXTURE_ANISOTROPY 16
+#define VGFX3D_D3D11_ANISOTROPY_LEVEL_COUNT VGFX3D_D3D11_MAX_TEXTURE_ANISOTROPY
 
 /// @brief Blend state required by a draw: opaque, standard alpha, or additive.
 typedef enum {
@@ -175,6 +177,10 @@ void vgfx3d_d3d11_resolve_morph_upload_status(vgfx3d_d3d11_per_object_t *object_
                                               int morph_normal_upload_ok);
 /// @brief Number of mipmap levels needed to reach 1×1 from (width × height).
 int32_t vgfx3d_d3d11_compute_mip_count(int32_t width, int32_t height);
+/// @brief Clamp material sampler anisotropy into the backend cacheable [1,16] range.
+int32_t vgfx3d_d3d11_sanitize_anisotropy(int32_t requested);
+/// @brief Convert sanitized anisotropy to a compact cache index [0,15].
+int32_t vgfx3d_d3d11_sampler_anisotropy_index(int32_t requested);
 /// @brief Capacity-doubling growth helper (saturates at INT_MAX).
 int32_t vgfx3d_d3d11_next_capacity(int32_t current_capacity,
                                    int32_t needed,

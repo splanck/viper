@@ -5,11 +5,16 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tests/codegen/x86_64/test_diff_vm_native.cpp
-// Purpose: Ensure the ilc VM runner and native backend produce identical
-// Key invariants: Shared codegen fixture handles filesystem orchestration while
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// File: src/tests/codegen/x86_64/test_diff_vm_native.cpp
+// Purpose: Ensure the ilc VM runner and x86-64 native backend produce identical
+//          process results for representative IL programs.
+// Key invariants:
+//   - Each scenario runs the same IL through the VM and native CLI paths.
+//   - Exit codes and stdout must match exactly unless a scenario opts into tolerance.
+// Ownership/Lifetime:
+//   - CodegenFixture owns all temporary files created for each scenario.
+//   - Runtime objects allocated by scenario IL live until process teardown.
+// Links: docs/architecture.md, src/tests/common/CodegenFixture.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -33,7 +38,7 @@ struct CliScenario {
     CodegenComparisonOptions options;
 };
 
-const std::array<CliScenario, 2> kScenarios = {{{"BranchPrint",
+const std::array<CliScenario, 3> kScenarios = {{{"BranchPrint",
                                                  {R"(il 0.2.0
 extern @rt_print_i64(i64) -> void
 extern @rt_print_f64(f64) -> void
@@ -80,6 +85,32 @@ exit:
 }
 )",
                                                   "branch_print$literal.il",
+                                                  {},
+                                                  {}},
+                                                 {false, std::nullopt}},
+                                                {"Material3DAnisotropyRoundTrip",
+                                                 {R"(il 0.2.0
+extern @Viper.Graphics3D.Material3D.New() -> ptr
+extern @Viper.Graphics3D.Material3D.set_Anisotropy(ptr, i64) -> void
+extern @Viper.Graphics3D.Material3D.get_Anisotropy(ptr) -> i64
+
+func @main() -> i64 {
+entry:
+  %mat = call @Viper.Graphics3D.Material3D.New()
+  %default = call @Viper.Graphics3D.Material3D.get_Anisotropy(%mat)
+  call @Viper.Graphics3D.Material3D.set_Anisotropy(%mat, 0)
+  %low = call @Viper.Graphics3D.Material3D.get_Anisotropy(%mat)
+  call @Viper.Graphics3D.Material3D.set_Anisotropy(%mat, 64)
+  %high = call @Viper.Graphics3D.Material3D.get_Anisotropy(%mat)
+  call @Viper.Graphics3D.Material3D.set_Anisotropy(%mat, 8)
+  %round = call @Viper.Graphics3D.Material3D.get_Anisotropy(%mat)
+  %a = iadd.ovf %default, %low
+  %b = iadd.ovf %a, %high
+  %sum = iadd.ovf %b, %round
+  ret %sum
+}
+)",
+                                                  "material3d_anisotropy.il",
                                                   {},
                                                   {}},
                                                  {false, std::nullopt}}}};

@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/render/rt_canvas3d_occlusion.inc  (#included from rt_canvas3d.c; not a standalone translation unit)
-// Purpose: Canvas3D deferred world-bounds, shadow-cascade splits, frustum tests, and CPU occlusion grid/history
+// File: src/runtime/graphics/3d/render/rt_canvas3d_occlusion.inc  (#included from rt_canvas3d.c;
+// not a standalone translation unit) Purpose: Canvas3D deferred world-bounds, shadow-cascade
+// splits, frustum tests, and CPU occlusion grid/history
 //===----------------------------------------------------------------------===//
 
 /// @brief Hash one float into a stable CPU-occlusion identity fingerprint.
@@ -105,14 +106,15 @@ static uintptr_t canvas3d_occlusion_draw_key(const rt_canvas3d *c,
 /// world
 ///   bounds before end-of-frame sorting/culling. Centralizing that bookkeeping prevents one queue
 ///   path from diverging and reintroducing unstable transparent ordering.
-static int canvas3d_append_prepared_deferred_draw(rt_canvas3d *c, deferred_draw_t *dd) {
+static int canvas3d_append_prepared_deferred_draw(
+    rt_canvas3d *c, deferred_draw_t *dd, const canvas3d_world_bounds_cache_key_t *cache_key) {
     if (!c || !dd)
         return 0;
     if (!ensure_deferred_capacity(&c->draw_cmds, &c->draw_capacity, c->draw_count + 1))
         return 0;
     dd->enqueue_index = c->draw_count;
     dd->occlusion_key = canvas3d_occlusion_draw_key(c, dd, c->draw_count);
-    canvas3d_cache_deferred_world_bounds(dd);
+    canvas3d_cache_deferred_world_bounds(c, dd, cache_key);
     ((deferred_draw_t *)c->draw_cmds)[c->draw_count++] = *dd;
     return 1;
 }
@@ -151,7 +153,7 @@ static int canvas3d_enqueue_draw(rt_canvas3d *c,
                                 sort_key,
                                 local_bounds_min,
                                 local_bounds_max);
-    if (!canvas3d_append_prepared_deferred_draw(c, &dd)) {
+    if (!canvas3d_append_prepared_deferred_draw(c, &dd, NULL)) {
         rt_trap("Canvas3D: deferred draw queue allocation failed");
         return 0;
     }
@@ -198,6 +200,12 @@ static void canvas3d_submit_deferred(rt_canvas3d *c, const deferred_draw_t *dd) 
         return;
     if (dd->kind == DEFERRED_DRAW_INSTANCED) {
         if (c->backend->submit_draw_instanced && dd->instance_count > 0) {
+            canvas3d_note_backend_submission(c,
+                                             &dd->cmd,
+                                             dd->wireframe,
+                                             dd->backface_cull,
+                                             DEFERRED_DRAW_INSTANCED,
+                                             dd->pass_kind);
             c->backend->submit_draw_instanced(c->backend_ctx,
                                               c->gfx_win,
                                               &dd->cmd,
@@ -265,7 +273,8 @@ static void canvas3d_expand_bounds(float *io_min, float *io_max, const float *mn
 ///   scan every instance matrix and union all transformed bounds, avoiding sampled sort/cull inputs
 ///   that can flicker when an unsampled instance becomes visible. Invalid transforms are skipped;
 ///   the function returns 0 only when no finite contribution remains.
-static int canvas3d_compute_deferred_world_bounds_uncached(const deferred_draw_t *dd,
+static int canvas3d_compute_deferred_world_bounds_uncached(rt_canvas3d *c,
+                                                           const deferred_draw_t *dd,
                                                            float *out_min,
                                                            float *out_max) {
     int8_t has_bounds = 0;
@@ -279,6 +288,8 @@ static int canvas3d_compute_deferred_world_bounds_uncached(const deferred_draw_t
             float instance_max[3];
             for (int j = 0; j < 16; j++)
                 world_matrix[j] = (double)dd->instance_matrices[(size_t)i * 16u + (size_t)j];
+            if (c)
+                c->frame_aabb_transforms++;
             if (!vgfx3d_transform_aabb_checked(dd->local_bounds_min,
                                                dd->local_bounds_max,
                                                world_matrix,
@@ -300,6 +311,8 @@ static int canvas3d_compute_deferred_world_bounds_uncached(const deferred_draw_t
         double world_matrix[16];
         for (int j = 0; j < 16; j++)
             world_matrix[j] = (double)dd->cmd.model_matrix[j];
+        if (c)
+            c->frame_aabb_transforms++;
         return vgfx3d_transform_aabb_checked(
             dd->local_bounds_min, dd->local_bounds_max, world_matrix, out_min, out_max);
     }
@@ -309,11 +322,42 @@ static int canvas3d_compute_deferred_world_bounds_uncached(const deferred_draw_t
 /// @details Main-pass culling, occlusion, shadow bounds, and cascade assignment all need the same
 ///   world bound. Caching it once keeps those passes deterministic and removes repeated full scans
 ///   over large instanced batches.
-static void canvas3d_cache_deferred_world_bounds(deferred_draw_t *dd) {
+static void canvas3d_cache_deferred_world_bounds(
+    rt_canvas3d *c, deferred_draw_t *dd, const canvas3d_world_bounds_cache_key_t *cache_key) {
+    rt_canvas3d_world_bounds_cache_entry *entry;
+    uint32_t slot;
+
     if (!dd)
         return;
+    if (c && dd->kind == DEFERRED_DRAW_MESH && cache_key && cache_key->valid &&
+        cache_key->mesh_key && cache_key->matrix_hash) {
+        slot = (uint32_t)(cache_key->matrix_hash &
+                          (uint64_t)(RT_CANVAS3D_WORLD_BOUNDS_CACHE_SIZE - 1));
+        entry = &c->world_bounds_cache[slot];
+        if (entry->occupied && entry->mesh_key == cache_key->mesh_key &&
+            entry->matrix_hash == cache_key->matrix_hash &&
+            memcmp(entry->matrix_key, cache_key->matrix_key, sizeof(cache_key->matrix_key)) == 0) {
+            memcpy(dd->world_bounds_min, entry->world_min, sizeof(dd->world_bounds_min));
+            memcpy(dd->world_bounds_max, entry->world_max, sizeof(dd->world_bounds_max));
+            dd->has_world_bounds = 1;
+            return;
+        }
+        dd->has_world_bounds = canvas3d_compute_deferred_world_bounds_uncached(
+                                   c, dd, dd->world_bounds_min, dd->world_bounds_max)
+                                   ? 1
+                                   : 0;
+        if (dd->has_world_bounds) {
+            entry->occupied = 1;
+            entry->mesh_key = cache_key->mesh_key;
+            entry->matrix_hash = cache_key->matrix_hash;
+            memcpy(entry->matrix_key, cache_key->matrix_key, sizeof(entry->matrix_key));
+            memcpy(entry->world_min, dd->world_bounds_min, sizeof(entry->world_min));
+            memcpy(entry->world_max, dd->world_bounds_max, sizeof(entry->world_max));
+        }
+        return;
+    }
     dd->has_world_bounds = canvas3d_compute_deferred_world_bounds_uncached(
-                               dd, dd->world_bounds_min, dd->world_bounds_max)
+                               c, dd, dd->world_bounds_min, dd->world_bounds_max)
                                ? 1
                                : 0;
 }
@@ -335,7 +379,8 @@ static void canvas3d_mul_mat4(const float *a, const float *b, float *out) {
 /// Iterates per-instance for instanced draws (so the shadow VP fits
 /// every instance) or just transforms the single mesh AABB for normal
 /// draws. `io_has_bounds` flips to true on first contribution.
-static void canvas3d_accumulate_deferred_world_bounds(const deferred_draw_t *dd,
+static void canvas3d_accumulate_deferred_world_bounds(rt_canvas3d *c,
+                                                      const deferred_draw_t *dd,
                                                       float *io_min,
                                                       float *io_max,
                                                       int8_t *io_has_bounds) {
@@ -356,7 +401,7 @@ static void canvas3d_accumulate_deferred_world_bounds(const deferred_draw_t *dd,
     {
         float world_min[3];
         float world_max[3];
-        if (!canvas3d_compute_deferred_world_bounds_uncached(dd, world_min, world_max))
+        if (!canvas3d_compute_deferred_world_bounds_uncached(c, dd, world_min, world_max))
             return;
         if (!*io_has_bounds) {
             memcpy(io_min, world_min, sizeof(float) * 3);
@@ -516,7 +561,7 @@ static int canvas3d_build_shadow_cascade_world_bounds(const rt_canvas3d *c,
 /// @details Used during cascaded shadow rendering to avoid submitting every caster to every split.
 ///   Commands without usable bounds conservatively pass so procedural or corrupted bounds do not
 ///   drop valid shadows.
-static int canvas3d_deferred_intersects_view_depth(const rt_canvas3d *c,
+static int canvas3d_deferred_intersects_view_depth(rt_canvas3d *c,
                                                    const deferred_draw_t *dd,
                                                    float near_depth,
                                                    float far_depth) {
@@ -528,7 +573,7 @@ static int canvas3d_deferred_intersects_view_depth(const rt_canvas3d *c,
 
     if (!c || !dd)
         return 1;
-    canvas3d_accumulate_deferred_world_bounds(dd, draw_min, draw_max, &has_bounds);
+    canvas3d_accumulate_deferred_world_bounds(c, dd, draw_min, draw_max, &has_bounds);
     if (!has_bounds)
         return 1;
     if (!canvas3d_world_bounds_view_depth_range(c, draw_min, draw_max, &draw_near, &draw_far))
@@ -545,16 +590,17 @@ static int canvas3d_deferred_intersects_view_depth(const rt_canvas3d *c,
 /// @details Cascaded shadow maps first select casters by camera-depth interval, then by the fitted
 ///   cascade volume. This second test prevents far-away casters that share a depth slice but sit
 ///   outside the cascade fit from wasting shadow-map draw calls and perturbing depth precision.
-static int canvas3d_deferred_intersects_world_bounds(const deferred_draw_t *dd,
+static int canvas3d_deferred_intersects_world_bounds(rt_canvas3d *c,
+                                                     const deferred_draw_t *dd,
                                                      const float *world_min,
                                                      const float *world_max) {
     float draw_min[3];
     float draw_max[3];
     int8_t has_bounds = 0;
 
-    if (!dd || !world_min || !world_max)
+    if (!c || !dd || !world_min || !world_max)
         return 1;
-    canvas3d_accumulate_deferred_world_bounds(dd, draw_min, draw_max, &has_bounds);
+    canvas3d_accumulate_deferred_world_bounds(c, dd, draw_min, draw_max, &has_bounds);
     if (!has_bounds)
         return 1;
     for (int axis = 0; axis < 3; axis++) {
@@ -571,15 +617,16 @@ static int canvas3d_deferred_intersects_world_bounds(const deferred_draw_t *dd,
 ///   (e.g. procedural geometry with no declared local AABB) conservatively
 ///   pass so nothing visible is clipped away.
 /// @return 1 if the draw may be visible (keep it), 0 if definitely outside.
-static int canvas3d_deferred_intersects_frustum(const deferred_draw_t *dd,
+static int canvas3d_deferred_intersects_frustum(rt_canvas3d *c,
+                                                const deferred_draw_t *dd,
                                                 const vgfx3d_frustum_t *frustum) {
     float world_min[3] = {0.0f, 0.0f, 0.0f};
     float world_max[3] = {0.0f, 0.0f, 0.0f};
     int8_t has_bounds = 0;
 
-    if (!dd || !frustum)
+    if (!c || !dd || !frustum)
         return 1;
-    canvas3d_accumulate_deferred_world_bounds(dd, world_min, world_max, &has_bounds);
+    canvas3d_accumulate_deferred_world_bounds(c, dd, world_min, world_max, &has_bounds);
     if (!has_bounds)
         return 1;
     return vgfx3d_frustum_test_aabb_padded(frustum, world_min, world_max, dd->culling_pad) != 0;
@@ -903,7 +950,7 @@ static int canvas3d_project_world_point_to_occlusion_grid(const rt_canvas3d *c,
 ///          depth, but visible occluders are written at their farthest depth. Writing the far
 ///          depth keeps large depth-spanning bounds such as floors from acting like near
 ///          full-screen walls in the coarse grid.
-static int canvas3d_deferred_occlusion_rect(const rt_canvas3d *c,
+static int canvas3d_deferred_occlusion_rect(rt_canvas3d *c,
                                             const deferred_draw_t *dd,
                                             int32_t *out_min_x,
                                             int32_t *out_min_y,
@@ -928,7 +975,7 @@ static int canvas3d_deferred_occlusion_rect(const rt_canvas3d *c,
         return 0;
     if (!isfinite(dd->sort_key))
         return 0;
-    canvas3d_accumulate_deferred_world_bounds(dd, world_min, world_max, &has_bounds);
+    canvas3d_accumulate_deferred_world_bounds(c, dd, world_min, world_max, &has_bounds);
     if (!has_bounds)
         return 0;
     if (!canvas3d_world_bounds_view_depth_range(c, world_min, world_max, &near_depth, &far_depth))

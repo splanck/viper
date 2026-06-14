@@ -39,8 +39,8 @@ static GLenum gl_material_filter_mode(int32_t mode) {
 }
 
 /// @brief Map a material texture-wrap mode constant to a 3-entry sampler-cache index.
-/// @details The material sampler cache is a 3D array `material_samplers[wrap_s][wrap_t][filter]`
-///   where each wrap axis has exactly 3 valid values. This function maps the abstract
+/// @details The material sampler cache is keyed by wrap_s, wrap_t, filter, and anisotropy; each
+///   wrap axis has exactly 3 valid values. This function maps the abstract
 ///   `RT_MATERIAL3D_TEXTURE_WRAP_*` constant to the corresponding compact array index:
 ///     - 0 = GL_REPEAT (the default)
 ///     - 1 = GL_CLAMP_TO_EDGE
@@ -56,13 +56,28 @@ static int gl_sampler_wrap_index(int32_t mode) {
     return 0;
 }
 
+/// @brief Resolve the anisotropy value actually usable by this GL context.
+static int32_t gl_effective_sampler_anisotropy(gl_context_t *ctx,
+                                               int32_t requested,
+                                               int32_t filter) {
+    int32_t anisotropy;
+    if (!ctx || filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST || !ctx->anisotropy_supported ||
+        ctx->max_texture_anisotropy <= 1.0f)
+        return 1;
+    anisotropy = vgfx3d_opengl_sanitize_anisotropy(requested);
+    if (anisotropy > (int32_t)ctx->max_texture_anisotropy)
+        anisotropy = (int32_t)ctx->max_texture_anisotropy;
+    return anisotropy < 1 ? 1 : anisotropy;
+}
+
 /// @brief Return a cached or newly-created OpenGL sampler object for the given draw command and
 /// texture slot.
-/// @details Resolves wrap_s, wrap_t, and filter from the per-slot or primary material parameters,
-///          maps them to cache indices via `gl_sampler_wrap_index`, and returns the cached sampler
+/// @details Resolves wrap_s, wrap_t, filter, and anisotropy from the per-slot or primary material
+///          parameters, maps them to cache indices via `gl_sampler_wrap_index`, and returns the
+///          cached sampler
 ///          when available. Otherwise generates a new GL sampler, configures WRAP_S/T and
-///          MIN/MAG filters, stores it in `ctx->material_samplers[wrap_s][wrap_t][filter]`, and
-///          returns it. Returns 0 on null context/cmd or GL sampler generation failure.
+///          MIN/MAG filters, stores it in the material sampler cache, and returns it. Returns 0 on
+///          null context/cmd or GL sampler generation failure.
 static GLuint gl_get_material_sampler(gl_context_t *ctx,
                                       const vgfx3d_draw_cmd_t *cmd,
                                       int32_t slot) {
@@ -70,6 +85,8 @@ static GLuint gl_get_material_sampler(gl_context_t *ctx,
     int wrap_s;
     int wrap_t;
     int filter;
+    int32_t anisotropy;
+    int32_t anisotropy_index;
     GLenum gl_filter;
     GLuint sampler;
     if (!ctx || !cmd)
@@ -80,7 +97,12 @@ static GLuint gl_get_material_sampler(gl_context_t *ctx,
                      RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
                  ? 1
                  : 0;
-    sampler = ctx->material_samplers[wrap_s][wrap_t][filter];
+    anisotropy = gl_effective_sampler_anisotropy(
+        ctx,
+        use_slot ? cmd->texture_slot_anisotropy[slot] : cmd->texture_anisotropy,
+        filter ? RT_MATERIAL3D_TEXTURE_FILTER_NEAREST : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR);
+    anisotropy_index = vgfx3d_opengl_sampler_anisotropy_index(anisotropy);
+    sampler = ctx->material_samplers[wrap_s][wrap_t][filter][anisotropy_index];
     if (sampler)
         return sampler;
     gl.GenSamplers(1, &sampler);
@@ -97,7 +119,9 @@ static GLuint gl_get_material_sampler(gl_context_t *ctx,
                                                                : cmd->texture_wrap_t));
     gl.SamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, (GLint)gl_filter);
     gl.SamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER, (GLint)gl_filter);
-    ctx->material_samplers[wrap_s][wrap_t][filter] = sampler;
+    if (anisotropy > 1)
+        gl.SamplerParameterf(sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, (GLfloat)anisotropy);
+    ctx->material_samplers[wrap_s][wrap_t][filter][anisotropy_index] = sampler;
     return sampler;
 }
 
@@ -132,6 +156,10 @@ static void bind_texture_unit_with_sampler(gl_context_t *ctx,
         int use_slot = slot >= 0 && slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT;
         GLenum filter = gl_material_filter_mode(use_slot ? cmd->texture_slot_filter[slot]
                                                          : cmd->texture_filter);
+        int32_t anisotropy = gl_effective_sampler_anisotropy(
+            ctx,
+            use_slot ? cmd->texture_slot_anisotropy[slot] : cmd->texture_anisotropy,
+            use_slot ? cmd->texture_slot_filter[slot] : cmd->texture_filter);
         GLuint sampler = gl_get_material_sampler(ctx, cmd, slot);
         if (sampler) {
             gl.BindSampler((GLuint)unit, sampler);
@@ -147,6 +175,8 @@ static void bind_texture_unit_with_sampler(gl_context_t *ctx,
                                                                : cmd->texture_wrap_t));
         gl.TexParameteri(target, GL_TEXTURE_MIN_FILTER, (GLint)filter);
         gl.TexParameteri(target, GL_TEXTURE_MAG_FILTER, (GLint)filter);
+        if (anisotropy > 1)
+            gl.TexParameterf(target, GL_TEXTURE_MAX_ANISOTROPY_EXT, (GLfloat)anisotropy);
     }
 }
 

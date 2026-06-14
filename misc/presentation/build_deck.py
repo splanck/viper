@@ -229,7 +229,7 @@ def slide_title():
         ("    ·    ", {"color": BORDER}),
         ("GPL-3.0", {"color": MUTED}),
         ("    ·    ", {"color": BORDER}),
-        ("macOS · Linux · Windows", {"color": MUTED}),
+        ("Linux · macOS · Windows", {"color": MUTED}),
         ("    ·    ", {"color": BORDER}),
         ("github.com/splanck/viper", {"color": CYAN}),
     ], size=14, first=True, after=0)
@@ -393,7 +393,7 @@ def slide_execution():
           "Pooled frames & cached string literals",
           "Traps surface structured diagnostics",
           "Execution tracing for debugging"]),
-        (6.78, GREEN, "Native backends",
+        (6.78, GREEN, "Native path",
          "Compile IL straight to machine code.",
          ["AArch64 — Apple Silicon, Windows ARM64, Linux ARM64",
           "x86-64 — Windows and Linux (Win64 / SysV ABI)",
@@ -406,7 +406,9 @@ def slide_execution():
         para(tf, name, size=24, color=accent, bold=True, first=True, after=4)
         para(tf, desc, size=14.5, color=MUTED, after=13, line=1.1)
         for feat in feats:
-            para(tf, feat, size=15.5, color=TEXT, after=9, bullet="▸")
+            emph = feat.startswith("Built-in assembler")
+            para(tf, feat, size=15.5, color=TEXT, bold=emph, after=9,
+                 bullet="▸")
 
     foot = textbox(s, 0.7, 6.55, 11.9, 0.45)
     para(foot, [("Differential testing", {"color": TEXT, "bold": True}),
@@ -450,7 +452,7 @@ def slide_runtime():
     foot = textbox(s, 0.7, 6.74, 11.9, 0.5)
     para(foot, [
         ("Plus", {"color": MUTED}),
-        (" Core, Data, Input, Memory, Compression, Game.Physics2D, Game.UI",
+        (" Core, Data, Input, Memory, Compress, Game.Physics2D, Game.UI",
          {"color": TEXT}),
         ("  —  graphics, 3D, audio, networking, crypto, "
          "threading, localization, and more.", {"color": MUTED}),

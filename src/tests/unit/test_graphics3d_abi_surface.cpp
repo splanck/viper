@@ -954,6 +954,9 @@ bool check_runtime_surface_names() {
     ok = require(contains(canvas_header, "RT_CANVAS3D_BACKEND_CAP_ETC2"),
                  "Canvas3D backend capability bit for etc2 missing") &&
          ok;
+    ok = require(contains(canvas_header, "RT_CANVAS3D_BACKEND_CAP_ANISOTROPY"),
+                 "Canvas3D backend capability bit for anisotropy missing") &&
+         ok;
     ok = require(contains(canvas_overlay, "strcmp(name, \"bc7\")"),
                  "Canvas3D.BackendSupports missing bc7 capability name") &&
          ok;
@@ -962,6 +965,9 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(canvas_overlay, "strcmp(name, \"etc2\")"),
                  "Canvas3D.BackendSupports missing etc2 capability name") &&
+         ok;
+    ok = require(contains(canvas_overlay, "strcmp(name, \"anisotropy\")"),
+                 "Canvas3D.BackendSupports missing anisotropy capability name") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_SolverIterations\""),
                  "Physics3DWorld.SolverIterations getter must use Graphics3D PascalCase naming") &&
@@ -1236,6 +1242,18 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.SetNormalScale\""),
                  "Material3D.SetNormalScale static alias missing") &&
          ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.get_Anisotropy\""),
+                 "Material3D.Anisotropy getter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.set_Anisotropy\""),
+                 "Material3D.Anisotropy setter must use get_/set_ property naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.SetAnisotropy\""),
+                 "Material3D.SetAnisotropy static alias missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"Anisotropy\""),
+                 "Material3D.Anisotropy property missing") &&
+         ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.SetReflectivity\""),
                  "Material3D.SetReflectivity static alias missing") &&
          ok;
@@ -1262,6 +1280,18 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_FrameGpuTimeUs\""),
                  "Canvas3D.FrameGpuTimeUs getter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_DrawsSubmitted\""),
+                 "Canvas3D.DrawsSubmitted getter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_AabbTransforms\""),
+                 "Canvas3D.AabbTransforms getter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_SortPasses\""),
+                 "Canvas3D.SortPasses getter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_BackendStateChanges\""),
+                 "Canvas3D.BackendStateChanges getter must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_BackendName\""),
                  "Canvas3D.BackendName getter must use Graphics3D PascalCase naming") &&
@@ -1314,6 +1344,18 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"FrameGpuTimeUs\""),
                  "Canvas3D.FrameGpuTimeUs property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"DrawsSubmitted\""),
+                 "Canvas3D.DrawsSubmitted property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"AabbTransforms\""),
+                 "Canvas3D.AabbTransforms property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"SortPasses\""),
+                 "Canvas3D.SortPasses property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"BackendStateChanges\""),
+                 "Canvas3D.BackendStateChanges property missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetTextureUploadBudget\""),
                  "Canvas3D.SetTextureUploadBudget method missing") &&

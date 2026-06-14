@@ -493,7 +493,7 @@ int64_t rt_canvas3d_get_backend_capabilities(void *obj) {
     if (backend->get_native_texture_caps)
         caps |= backend->get_native_texture_caps(c->backend_ctx) &
                 (RT_CANVAS3D_BACKEND_CAP_BC7 | RT_CANVAS3D_BACKEND_CAP_ASTC |
-                 RT_CANVAS3D_BACKEND_CAP_ETC2);
+                 RT_CANVAS3D_BACKEND_CAP_ETC2 | RT_CANVAS3D_BACKEND_CAP_ANISOTROPY);
     caps |= RT_CANVAS3D_BACKEND_CAP_OCCLUSION | RT_CANVAS3D_BACKEND_CAP_HLOD;
 
     return caps;
@@ -554,6 +554,9 @@ static int64_t canvas3d_capability_from_name(const char *name) {
         return RT_CANVAS3D_BACKEND_CAP_ASTC;
     if (strcmp(name, "etc2") == 0)
         return RT_CANVAS3D_BACKEND_CAP_ETC2;
+    if (strcmp(name, "anisotropy") == 0 || strcmp(name, "anisotropic-filtering") == 0 ||
+        strcmp(name, "anisotropic_filtering") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_ANISOTROPY;
     return 0;
 }
 
@@ -643,6 +646,30 @@ int64_t rt_canvas3d_get_texture_upload_bytes(void *obj) {
 int64_t rt_canvas3d_get_frame_gpu_time_us(void *obj) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     return c ? c->last_frame_gpu_time_us : 0;
+}
+
+/// @brief Backend draw submissions issued since the latest public frame begin.
+int64_t rt_canvas3d_get_draws_submitted(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c ? c->frame_draws_submitted : 0;
+}
+
+/// @brief World-AABB transform computations performed since the latest public frame begin.
+int64_t rt_canvas3d_get_aabb_transforms(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c ? c->frame_aabb_transforms : 0;
+}
+
+/// @brief Stable deferred sort passes run since the latest public frame begin.
+int64_t rt_canvas3d_get_sort_passes(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c ? c->frame_sort_passes : 0;
+}
+
+/// @brief Material/backend state-group transitions observed during backend submission.
+int64_t rt_canvas3d_get_backend_state_changes(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c ? c->frame_backend_state_changes : 0;
 }
 
 /// @brief Set the active backend's per-frame texture upload budget.

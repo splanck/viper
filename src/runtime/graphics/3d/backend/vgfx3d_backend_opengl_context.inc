@@ -345,6 +345,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     ctx->glxCtx = glxCtx;
     gl.Enable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
     gl_init_context_defaults(ctx, w, h);
+    gl_query_anisotropy_support(ctx);
 
     if (!gl_compile_context_shaders(&shaders)) {
         gl_delete_context_shaders(&shaders);
@@ -401,8 +402,11 @@ static void gl_destroy_ctx(void *ctx_ptr) {
     for (int ws = 0; ws < 3; ws++) {
         for (int wt = 0; wt < 3; wt++) {
             for (int filter = 0; filter < 2; filter++) {
-                if (ctx->material_samplers[ws][wt][filter])
-                    gl.DeleteSamplers(1, &ctx->material_samplers[ws][wt][filter]);
+                for (int anisotropy = 0; anisotropy < VGFX3D_OPENGL_ANISOTROPY_LEVEL_COUNT;
+                     anisotropy++) {
+                    if (ctx->material_samplers[ws][wt][filter][anisotropy])
+                        gl.DeleteSamplers(1, &ctx->material_samplers[ws][wt][filter][anisotropy]);
+                }
             }
         }
     }

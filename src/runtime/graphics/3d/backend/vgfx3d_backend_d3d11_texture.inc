@@ -301,10 +301,12 @@ static int d3d11_format_supports_texture_sampling(d3d11_context_t *ctx, DXGI_FOR
 }
 
 /// @brief Report which native compressed texture formats this device can upload (BC7 only on
-/// D3D11).
+/// D3D11), plus sampler anisotropy support.
 static int64_t d3d11_get_native_texture_caps(void *ctx_ptr) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     int64_t caps = 0;
+    if (ctx && ctx->device)
+        caps |= RT_CANVAS3D_BACKEND_CAP_ANISOTROPY;
     if (d3d11_format_supports_texture_sampling(ctx, DXGI_FORMAT_BC7_UNORM))
         caps |= RT_CANVAS3D_BACKEND_CAP_BC7;
     return caps;

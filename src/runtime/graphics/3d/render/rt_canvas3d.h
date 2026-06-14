@@ -181,6 +181,7 @@ int8_t rt_canvas3d_get_backend_fallback(void *obj);
 #define RT_CANVAS3D_BACKEND_CAP_BC7 0x10000LL
 #define RT_CANVAS3D_BACKEND_CAP_ASTC 0x20000LL
 #define RT_CANVAS3D_BACKEND_CAP_ETC2 0x40000LL
+#define RT_CANVAS3D_BACKEND_CAP_ANISOTROPY 0x80000LL
 
 /// @brief Return an RT_CANVAS3D_BACKEND_CAP_* bitmask for the active backend.
 int64_t rt_canvas3d_get_backend_capabilities(void *obj);
@@ -200,6 +201,14 @@ int64_t rt_canvas3d_get_occlusion_candidate_count(void *obj);
 int64_t rt_canvas3d_get_texture_upload_bytes(void *obj);
 /// @brief Latest completed backend GPU frame time in microseconds, or 0 when unsupported.
 int64_t rt_canvas3d_get_frame_gpu_time_us(void *obj);
+/// @brief Backend draw submissions issued since the latest public Begin/Begin2D.
+int64_t rt_canvas3d_get_draws_submitted(void *obj);
+/// @brief World-AABB transform computations performed since the latest public Begin/Begin2D.
+int64_t rt_canvas3d_get_aabb_transforms(void *obj);
+/// @brief Stable deferred sort passes run since the latest public Begin/Begin2D.
+int64_t rt_canvas3d_get_sort_passes(void *obj);
+/// @brief Material/backend state-group transitions observed during backend submission.
+int64_t rt_canvas3d_get_backend_state_changes(void *obj);
 /// @brief Set the backend texture upload byte budget for each frame; negative disables the budget.
 void rt_canvas3d_set_texture_upload_budget(void *obj, int64_t bytes);
 /// @brief Texture payload bytes still waiting for backend texture upload budget.
@@ -465,6 +474,10 @@ void rt_material3d_set_emissive_color(void *obj, double r, double g, double b);
 void rt_material3d_set_normal_scale(void *obj, double value);
 /// @brief Read the normal scale.
 double rt_material3d_get_normal_scale(void *obj);
+/// @brief Set texture anisotropy; 1 disables anisotropic filtering, values clamp to [1,16].
+void rt_material3d_set_anisotropy(void *obj, int64_t anisotropy);
+/// @brief Read texture anisotropy in the public [1,16] range.
+int64_t rt_material3d_get_anisotropy(void *obj);
 /// @brief Set alpha mode: 0=Opaque, 1=Mask (alpha test), 2=Blend (transparent).
 void rt_material3d_set_alpha_mode(void *obj, int64_t mode);
 /// @brief Read the alpha mode.

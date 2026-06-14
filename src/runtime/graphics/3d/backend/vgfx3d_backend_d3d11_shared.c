@@ -205,6 +205,20 @@ int32_t vgfx3d_d3d11_compute_mip_count(int32_t width, int32_t height) {
     return mip_count;
 }
 
+/// @brief Clamp material sampler anisotropy into the backend cacheable [1,16] range.
+int32_t vgfx3d_d3d11_sanitize_anisotropy(int32_t requested) {
+    if (requested < 1)
+        return 1;
+    if (requested > VGFX3D_D3D11_MAX_TEXTURE_ANISOTROPY)
+        return VGFX3D_D3D11_MAX_TEXTURE_ANISOTROPY;
+    return requested;
+}
+
+/// @brief Convert sanitized anisotropy to a compact cache index [0,15].
+int32_t vgfx3d_d3d11_sampler_anisotropy_index(int32_t requested) {
+    return vgfx3d_d3d11_sanitize_anisotropy(requested) - 1;
+}
+
 /// @brief Capacity-doubling growth helper: returns the next power-of-2 capacity >= @p needed.
 /// Saturates at @p needed when doubling would overflow INT_MAX.
 int32_t vgfx3d_d3d11_next_capacity(int32_t current_capacity,

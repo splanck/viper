@@ -16,19 +16,20 @@
 ///      tight orthographic bounds.
 ///   5. Build the orthographic projection from those bounds.
 /// Returns 0 if there are no opaque draws (nothing to shadow).
-static int canvas3d_build_shadow_world_bounds(const deferred_draw_t *cmds,
+static int canvas3d_build_shadow_world_bounds(rt_canvas3d *c,
+                                              const deferred_draw_t *cmds,
                                               int32_t count,
                                               float *world_min,
                                               float *world_max) {
     int8_t has_bounds = 0;
-    if (!cmds || count <= 0 || !world_min || !world_max)
+    if (!c || !cmds || count <= 0 || !world_min || !world_max)
         return 0;
     world_min[0] = world_min[1] = world_min[2] = 0.0f;
     world_max[0] = world_max[1] = world_max[2] = 0.0f;
     for (int32_t i = 0; i < count; i++) {
         if (!canvas3d_deferred_casts_shadow(&cmds[i]))
             continue;
-        canvas3d_accumulate_deferred_world_bounds(&cmds[i], world_min, world_max, &has_bounds);
+        canvas3d_accumulate_deferred_world_bounds(c, &cmds[i], world_min, world_max, &has_bounds);
     }
     return has_bounds ? 1 : 0;
 }

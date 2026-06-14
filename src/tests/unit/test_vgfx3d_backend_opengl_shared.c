@@ -1,3 +1,25 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/tests/unit/test_vgfx3d_backend_opengl_shared.c
+// Purpose: Unit tests for OpenGL backend shared helper functions.
+//
+// Key invariants:
+//   - Shared helper math and cache policies are deterministic without an OpenGL context.
+//   - Render-target, blend, and readback policies stay consistent with backend code.
+//   - Sampler-state cache indices stay clamped to their fixed array bounds.
+//
+// Ownership/Lifetime:
+//   - Tests allocate only stack-local fixtures and process-local scratch buffers.
+//
+// Links: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_shared.c
+//
+//===----------------------------------------------------------------------===//
+
 #ifndef VIPER_ENABLE_GRAPHICS
 #define VIPER_ENABLE_GRAPHICS 1
 #endif
@@ -200,6 +222,16 @@ static void test_capacity_and_cache_helpers(void) {
                 "Old cache entries become prune candidates");
     EXPECT_TRUE(vgfx3d_opengl_should_prune_cache_entry(200, 10, 240) == 0,
                 "Recently used cache entries stay resident");
+    EXPECT_TRUE(vgfx3d_opengl_sanitize_anisotropy(0) == 1,
+                "OpenGL sampler anisotropy clamps zero to one");
+    EXPECT_TRUE(vgfx3d_opengl_sanitize_anisotropy(64) == 16,
+                "OpenGL sampler anisotropy clamps high values to sixteen");
+    EXPECT_TRUE(vgfx3d_opengl_sanitize_anisotropy(8) == 8,
+                "OpenGL sampler anisotropy preserves valid values");
+    EXPECT_TRUE(vgfx3d_opengl_sampler_anisotropy_index(1) == 0,
+                "OpenGL sampler anisotropy index starts at zero");
+    EXPECT_TRUE(vgfx3d_opengl_sampler_anisotropy_index(16) == 15,
+                "OpenGL sampler anisotropy index covers the final cache slot");
 
     memset(&cmd, 0, sizeof(cmd));
     cmd.morph_key = &cmd;

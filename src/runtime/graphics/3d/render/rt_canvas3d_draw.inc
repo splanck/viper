@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/render/rt_canvas3d_draw.inc  (#included from rt_canvas3d.c; not a standalone translation unit)
-// Purpose: Canvas3D rendering dispatch: clear, screen-overlay geometry, begin/draw mesh and text
+// File: src/runtime/graphics/3d/render/rt_canvas3d_draw.inc  (#included from rt_canvas3d.c; not a
+// standalone translation unit) Purpose: Canvas3D rendering dispatch: clear, screen-overlay
+// geometry, begin/draw mesh and text
 //===----------------------------------------------------------------------===//
 
 /*==========================================================================
@@ -426,6 +427,7 @@ void rt_canvas3d_begin_2d(void *obj) {
     c->cached_cam_is_ortho = params.is_ortho;
     c->frame_serial++;
     canvas3d_prune_motion_history(c);
+    canvas3d_reset_frame_submission_stats(c);
     c->draw_count = 0;
     c->frame_is_2d = 1;
     c->last_texture_upload_bytes = 0;
@@ -800,6 +802,7 @@ void rt_canvas3d_begin(void *obj, void *camera) {
     /* Reset draw command queue for this frame */
     c->frame_serial++;
     canvas3d_prune_motion_history(c);
+    canvas3d_reset_frame_submission_stats(c);
     c->draw_count = 0;
     c->frame_is_2d = 0;
     c->last_draw_count = 0;
@@ -971,12 +974,15 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
     }
 
     static const deferred_draw_t zero_queued_draw = {0};
+    canvas3d_world_bounds_cache_key_t bounds_cache_key;
     deferred_draw_t queued;
     deferred_draw_t *dd = &queued;
     *dd = zero_queued_draw;
     dd->kind = DEFERRED_DRAW_MESH;
     dd->pass_kind = DEFERRED_PASS_MAIN;
     dd->visible = 1;
+    canvas3d_make_deferred_world_bounds_cache_key(
+        &bounds_cache_key, mesh_obj ? mesh_obj : mesh, model_matrix);
 
     vgfx3d_vertex_t *queued_vertices = mesh->vertices;
     uint32_t *queued_indices = mesh->indices;
@@ -1092,7 +1098,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
                              : ((uintptr_t)mesh_obj ^ ((uintptr_t)material_obj << 1));
     dd->occlusion_key = dd->stable_sort_id ? dd->stable_sort_id : (uintptr_t)queued_vertices;
 
-    if (canvas3d_append_prepared_deferred_draw(c, &queued)) {
+    if (canvas3d_append_prepared_deferred_draw(c, &queued, &bounds_cache_key)) {
         canvas3d_clear_pending_splat(c);
         return;
     }

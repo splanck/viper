@@ -119,6 +119,8 @@ typedef unsigned int GLbitfield;
 #define GL_TEXTURE_MAG_FILTER 0x2800
 #define GL_TEXTURE_BASE_LEVEL 0x813C
 #define GL_TEXTURE_MAX_LEVEL 0x813D
+#define GL_TEXTURE_MAX_ANISOTROPY_EXT 0x84FE
+#define GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT 0x84FF
 #define GL_UNPACK_ALIGNMENT 0x0CF5
 #define GL_EXTENSIONS 0x1F03
 #define GL_VERSION 0x1F02
@@ -229,11 +231,13 @@ typedef void (*PFNGLCOMPRESSEDTEXIMAGE2DPROC)(
 typedef void (*PFNGLCOMPRESSEDTEXSUBIMAGE2DPROC)(
     GLenum, GLint, GLint, GLint, GLsizei, GLsizei, GLenum, GLsizei, const void *);
 typedef void (*PFNGLTEXPARAMETERIPROC)(GLenum, GLenum, GLint);
+typedef void (*PFNGLTEXPARAMETERFPROC)(GLenum, GLenum, GLfloat);
 typedef void (*PFNGLTEXBUFFERPROC)(GLenum, GLenum, GLuint);
 typedef void (*PFNGLGENERATEMIPMAPPROC)(GLenum);
 typedef void (*PFNGLGENSAMPLERSPROC)(GLsizei, GLuint *);
 typedef void (*PFNGLDELETESAMPLERSPROC)(GLsizei, const GLuint *);
 typedef void (*PFNGLSAMPLERPARAMETERIPROC)(GLuint, GLenum, GLint);
+typedef void (*PFNGLSAMPLERPARAMETERFPROC)(GLuint, GLenum, GLfloat);
 typedef void (*PFNGLBINDSAMPLERPROC)(GLuint, GLuint);
 typedef void (*PFNGLGENFRAMEBUFFERSPROC)(GLsizei, GLuint *);
 typedef void (*PFNGLDELETEFRAMEBUFFERSPROC)(GLsizei, const GLuint *);
@@ -253,6 +257,7 @@ typedef GLenum (*PFNGLGETERRORPROC)(void);
 typedef const unsigned char *(*PFNGLGETSTRINGPROC)(GLenum);
 typedef const unsigned char *(*PFNGLGETSTRINGIPROC)(GLenum, GLuint);
 typedef void (*PFNGLGETINTEGERVPROC)(GLenum, GLint *);
+typedef void (*PFNGLGETFLOATVPROC)(GLenum, GLfloat *);
 
 static struct {
     void *lib;
@@ -260,6 +265,7 @@ static struct {
     PFNGLGETSTRINGPROC GetString;
     PFNGLGETSTRINGIPROC GetStringi;
     PFNGLGETINTEGERVPROC GetIntegerv;
+    PFNGLGETFLOATVPROC GetFloatv;
     PFNGLCLEARPROC Clear;
     PFNGLCLEARCOLORPROC ClearColor;
     PFNGLCLEARDEPTHPROC ClearDepth;
@@ -326,11 +332,13 @@ static struct {
     PFNGLCOMPRESSEDTEXIMAGE2DPROC CompressedTexImage2D;
     PFNGLCOMPRESSEDTEXSUBIMAGE2DPROC CompressedTexSubImage2D;
     PFNGLTEXPARAMETERIPROC TexParameteri;
+    PFNGLTEXPARAMETERFPROC TexParameterf;
     PFNGLTEXBUFFERPROC TexBuffer;
     PFNGLGENERATEMIPMAPPROC GenerateMipmap;
     PFNGLGENSAMPLERSPROC GenSamplers;
     PFNGLDELETESAMPLERSPROC DeleteSamplers;
     PFNGLSAMPLERPARAMETERIPROC SamplerParameteri;
+    PFNGLSAMPLERPARAMETERFPROC SamplerParameterf;
     PFNGLBINDSAMPLERPROC BindSampler;
     PFNGLGENFRAMEBUFFERSPROC GenFramebuffers;
     PFNGLDELETEFRAMEBUFFERSPROC DeleteFramebuffers;
@@ -549,7 +557,9 @@ typedef struct {
     int8_t shadow_complete[VGFX3D_MAX_SHADOW_LIGHTS];
     float shadow_bias;
     float shadow_vp[VGFX3D_MAX_SHADOW_LIGHTS][16];
-    GLuint material_samplers[3][3][2];
+    GLuint material_samplers[3][3][2][VGFX3D_OPENGL_ANISOTROPY_LEVEL_COUNT];
+    int8_t anisotropy_supported;
+    GLfloat max_texture_anisotropy;
 
     gl_texture_cache_entry_t *texture_cache;
     int32_t texture_cache_count;
@@ -759,6 +769,7 @@ static int load_gl(void) {
     LOAD(GetError);
     LOAD(GetString);
     LOAD(GetIntegerv);
+    LOAD(GetFloatv);
     LOAD(Clear);
     LOAD(ClearColor);
     LOAD(ClearDepth);
@@ -836,11 +847,13 @@ static int load_gl(void) {
     LOADP(CompressedTexImage2D);
     LOADP(CompressedTexSubImage2D);
     LOADP(TexParameteri);
+    LOADP(TexParameterf);
     LOADP(TexBuffer);
     LOADP(GenerateMipmap);
     LOADP(GenSamplers);
     LOADP(DeleteSamplers);
     LOADP(SamplerParameteri);
+    LOADP(SamplerParameterf);
     LOADP(BindSampler);
     LOADP(GenFramebuffers);
     LOADP(DeleteFramebuffers);
@@ -971,6 +984,64 @@ static void orphan_stream_buffer(GLenum target, GLuint buffer, size_t capacity, 
         return;
     gl.BindBuffer(target, buffer);
     gl.BufferData(target, (GLsizeiptr)capacity, NULL, usage);
+}
+
+/// @brief Whether the named OpenGL extension is present (checks both indexed and legacy queries).
+static int gl_extension_supported(const char *name) {
+    GLint count = 0;
+    const char *extensions;
+
+    if (!name || !*name || !gl.GetString)
+        return 0;
+    if (gl.GetStringi && gl.GetIntegerv) {
+        gl.GetIntegerv(GL_NUM_EXTENSIONS, &count);
+        for (GLint i = 0; i < count; i++) {
+            const char *ext = (const char *)gl.GetStringi(GL_EXTENSIONS, (GLuint)i);
+            if (ext && strcmp(ext, name) == 0)
+                return 1;
+        }
+    }
+    extensions = (const char *)gl.GetString(GL_EXTENSIONS);
+    if (extensions) {
+        size_t len = strlen(name);
+        const char *p = extensions;
+        while ((p = strstr(p, name)) != NULL) {
+            if ((p == extensions || p[-1] == ' ') && (p[len] == '\0' || p[len] == ' '))
+                return 1;
+            p += len;
+        }
+    }
+    return 0;
+}
+
+/// @brief Whether the current GL context version is at least @p major.@p minor.
+static int gl_version_at_least(int major, int minor) {
+    const char *version = gl.GetString ? (const char *)gl.GetString(GL_VERSION) : NULL;
+    int found_major = 0;
+    int found_minor = 0;
+
+    if (!version || sscanf(version, "%d.%d", &found_major, &found_minor) != 2)
+        return 0;
+    return found_major > major || (found_major == major && found_minor >= minor);
+}
+
+/// @brief Probe GL_EXT_texture_filter_anisotropic once for the active context.
+static void gl_query_anisotropy_support(gl_context_t *ctx) {
+    GLfloat max_anisotropy = 1.0f;
+
+    if (!ctx)
+        return;
+    ctx->anisotropy_supported = 0;
+    ctx->max_texture_anisotropy = 1.0f;
+    if (!gl.GetFloatv || !gl_extension_supported("GL_EXT_texture_filter_anisotropic"))
+        return;
+    gl.GetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &max_anisotropy);
+    if (!isfinite(max_anisotropy) || max_anisotropy <= 1.0f)
+        return;
+    if (max_anisotropy > (GLfloat)VGFX3D_OPENGL_MAX_TEXTURE_ANISOTROPY)
+        max_anisotropy = (GLfloat)VGFX3D_OPENGL_MAX_TEXTURE_ANISOTROPY;
+    ctx->anisotropy_supported = 1;
+    ctx->max_texture_anisotropy = max_anisotropy;
 }
 
 // Texture / cubemap / morph caches — keyed by stable host identity + generation.

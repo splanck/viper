@@ -37,6 +37,8 @@ extern "C" {
 #define VGFX3D_OPENGL_BONE_PALETTE_FLOATS (VGFX3D_OPENGL_MAX_BONES * 16u)
 #define VGFX3D_OPENGL_BONE_PALETTE_BYTES (sizeof(float) * VGFX3D_OPENGL_BONE_PALETTE_FLOATS)
 #define VGFX3D_OPENGL_MAX_MORPH_SHAPES 32
+#define VGFX3D_OPENGL_MAX_TEXTURE_ANISOTROPY 16
+#define VGFX3D_OPENGL_ANISOTROPY_LEVEL_COUNT VGFX3D_OPENGL_MAX_TEXTURE_ANISOTROPY
 
 /// @brief Blend state required by a draw: opaque, standard alpha, or additive.
 typedef enum {
@@ -89,6 +91,10 @@ void vgfx3d_opengl_update_frame_history(vgfx3d_opengl_frame_history_t *history,
                                         int8_t is_overlay_pass);
 /// @brief Number of mipmap levels needed to reach 1×1 from (width × height).
 int32_t vgfx3d_opengl_compute_mip_count(int32_t width, int32_t height);
+/// @brief Clamp material sampler anisotropy into the backend cacheable [1,16] range.
+int32_t vgfx3d_opengl_sanitize_anisotropy(int32_t requested);
+/// @brief Convert sanitized anisotropy to a compact cache index [0,15].
+int32_t vgfx3d_opengl_sampler_anisotropy_index(int32_t requested);
 /// @brief Capacity-doubling growth helper (saturates at INT_MAX).
 int32_t vgfx3d_opengl_next_capacity(int32_t current_capacity,
                                     int32_t needed,

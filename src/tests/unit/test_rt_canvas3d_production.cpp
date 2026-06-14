@@ -283,7 +283,7 @@ static void fake_apply_postfx(void *, const vgfx3d_postfx_chain_t *) {}
 
 static int64_t fake_native_texture_caps(void *) {
     return RT_CANVAS3D_BACKEND_CAP_BC7 | RT_CANVAS3D_BACKEND_CAP_ASTC |
-           RT_CANVAS3D_BACKEND_CAP_ETC2;
+           RT_CANVAS3D_BACKEND_CAP_ETC2 | RT_CANVAS3D_BACKEND_CAP_ANISOTROPY;
 }
 
 static vgfx3d_backend_t make_fake_gpu_backend() {
@@ -357,6 +357,8 @@ static void test_software_backend_reports_canvas_fallback_features() {
                 "software backend does not advertise ASTC compressed upload");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_ETC2) == 0,
                 "software backend does not advertise ETC2 compressed upload");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_ANISOTROPY) == 0,
+                "software backend accepts but does not advertise anisotropy");
 
     EXPECT_TRUE(backend_supports(&canvas, "postfx-overlay"),
                 "BackendSupports accepts postfx-overlay alias");
@@ -371,6 +373,8 @@ static void test_software_backend_reports_canvas_fallback_features() {
                 "BackendSupports reports astc unsupported until backend upload exists");
     EXPECT_TRUE(!backend_supports(&canvas, "etc2"),
                 "BackendSupports reports etc2 unsupported until backend upload exists");
+    EXPECT_TRUE(!backend_supports(&canvas, "anisotropy"),
+                "BackendSupports reports software anisotropy unsupported");
 }
 
 static void test_gpu_backend_capability_bits_and_names() {
@@ -411,6 +415,8 @@ static void test_gpu_backend_capability_bits_and_names() {
                 "generic GPU backend does not imply ASTC compressed upload");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_ETC2) == 0,
                 "generic GPU backend does not imply ETC2 compressed upload");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_ANISOTROPY) == 0,
+                "generic GPU backend does not imply anisotropic filtering");
 
     EXPECT_TRUE(backend_supports(&canvas, "hardware_instancing"),
                 "BackendSupports accepts hardware_instancing");
@@ -432,6 +438,8 @@ static void test_gpu_backend_capability_bits_and_names() {
                 "BackendSupports accepts astc as a false capability name");
     EXPECT_TRUE(!backend_supports(&canvas, "etc2"),
                 "BackendSupports accepts etc2 as a false capability name");
+    EXPECT_TRUE(!backend_supports(&canvas, "anisotropy"),
+                "BackendSupports accepts anisotropy as a false capability name");
     EXPECT_TRUE(!backend_supports(&canvas, "missing_feature"),
                 "BackendSupports rejects unknown capability names");
 }
@@ -449,9 +457,13 @@ static void test_gpu_backend_native_texture_capability_hook() {
                 "native texture hook advertises ASTC compressed upload");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_ETC2) != 0,
                 "native texture hook advertises ETC2 compressed upload");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_ANISOTROPY) != 0,
+                "native texture hook advertises anisotropic filtering");
     EXPECT_TRUE(backend_supports(&canvas, "bc7"), "BackendSupports reports hooked BC7 support");
     EXPECT_TRUE(backend_supports(&canvas, "astc"), "BackendSupports reports hooked ASTC support");
     EXPECT_TRUE(backend_supports(&canvas, "etc2"), "BackendSupports reports hooked ETC2 support");
+    EXPECT_TRUE(backend_supports(&canvas, "anisotropic-filtering"),
+                "BackendSupports reports hooked anisotropy support");
 }
 
 static void test_backend_runtime_fallback_is_queryable() {

@@ -50,6 +50,7 @@
 #define MATERIAL3D_DEPTH_BIAS_ABS_MAX 0.05
 #define MATERIAL3D_SLOPE_DEPTH_BIAS_ABS_MAX 16.0
 #define MATERIAL3D_TWO_PI 6.28318530717958647692
+#define MATERIAL3D_MAX_ANISOTROPY 16
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
@@ -182,9 +183,8 @@ static int material_texture_ref_has_drawable_source(void *texture_ref) {
 
 /// @brief Whether a texture slot points at a supported material texture handle type.
 static int material_texture_ref_supported(void *texture_ref) {
-    return texture_ref &&
-           (material_pixels_handle_valid(texture_ref) ||
-            rt_g3d_has_class(texture_ref, RT_G3D_TEXTUREASSET3D_CLASS_ID));
+    return texture_ref && (material_pixels_handle_valid(texture_ref) ||
+                           rt_g3d_has_class(texture_ref, RT_G3D_TEXTUREASSET3D_CLASS_ID));
 }
 
 /// @brief Return whether a texture slot is currently drawable, clearing stale invalid refs.
@@ -307,6 +307,8 @@ static double material_clamp_uv_transform(double value, double fallback) {
     return value;
 }
 
+static int32_t material_sanitize_anisotropy(int64_t value);
+
 /// @brief Clamp a color component to the canonical `[0, 1]` range.
 /// @details Thin wrapper over `clamp01` whose separate name documents
 ///   intent at call sites — a reader scanning a setter sees "this channel
@@ -337,6 +339,7 @@ static void material_init_texture_slots(rt_material3d *mat) {
         mat->texture_slot_wrap_s[slot] = RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
         mat->texture_slot_wrap_t[slot] = RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
         mat->texture_slot_filter[slot] = RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+        mat->texture_slot_anisotropy[slot] = 1;
         mat->texture_slot_uv_set[slot] = 0;
         /* texture_slot_uv_transform is a 6-element affine: indices [0..3] are the
          * 2x2 linear part (scale/rotation/shear) and [4..5] the UV translation.
@@ -351,6 +354,7 @@ static void material_init_texture_slots(rt_material3d *mat) {
     mat->texture_wrap_s = mat->texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
     mat->texture_wrap_t = mat->texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
     mat->texture_filter = mat->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    mat->anisotropy = mat->texture_slot_anisotropy[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
 }
 
 /// @brief Initialize a freshly allocated material to the legacy-Phong default — white
@@ -398,7 +402,8 @@ static void material_init_defaults(rt_material3d *mat) {
     mat->slope_scaled_depth_bias = 0.0;
 }
 
-/// @brief Re-sanitize copied material state that may have been imported through legacy direct fields.
+/// @brief Re-sanitize copied material state that may have been imported through legacy direct
+/// fields.
 static void material_sanitize_state(rt_material3d *mat) {
     if (!mat)
         return;
@@ -440,20 +445,20 @@ static void material_sanitize_state(rt_material3d *mat) {
     for (int slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++) {
         int32_t wrap_s = mat->texture_slot_wrap_s[slot];
         int32_t wrap_t = mat->texture_slot_wrap_t[slot];
-        mat->texture_slot_wrap_s[slot] =
-            (wrap_s == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE ||
-             wrap_s == RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT)
-                ? wrap_s
-                : RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
-        mat->texture_slot_wrap_t[slot] =
-            (wrap_t == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE ||
-             wrap_t == RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT)
-                ? wrap_t
-                : RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
+        mat->texture_slot_wrap_s[slot] = (wrap_s == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE ||
+                                          wrap_s == RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT)
+                                             ? wrap_s
+                                             : RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
+        mat->texture_slot_wrap_t[slot] = (wrap_t == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE ||
+                                          wrap_t == RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT)
+                                             ? wrap_t
+                                             : RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
         mat->texture_slot_filter[slot] =
             mat->texture_slot_filter[slot] == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
                 ? RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
                 : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+        mat->texture_slot_anisotropy[slot] =
+            material_sanitize_anisotropy(mat->texture_slot_anisotropy[slot]);
         mat->texture_slot_uv_set[slot] = mat->texture_slot_uv_set[slot] == 1 ? 1 : 0;
         mat->texture_slot_uv_transform[slot][0] =
             material_clamp_uv_transform(mat->texture_slot_uv_transform[slot][0], 1.0);
@@ -471,9 +476,11 @@ static void material_sanitize_state(rt_material3d *mat) {
     mat->texture_wrap_s = mat->texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
     mat->texture_wrap_t = mat->texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
     mat->texture_filter = mat->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    mat->anisotropy = mat->texture_slot_anisotropy[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
     for (int i = 0; i < 8; i++)
-        mat->custom_params[i] = clamp_range(
-            mat->custom_params[i], -MATERIAL3D_CUSTOM_PARAM_ABS_MAX, MATERIAL3D_CUSTOM_PARAM_ABS_MAX);
+        mat->custom_params[i] = clamp_range(mat->custom_params[i],
+                                            -MATERIAL3D_CUSTOM_PARAM_ABS_MAX,
+                                            MATERIAL3D_CUSTOM_PARAM_ABS_MAX);
 }
 
 /// @brief Switch the material from legacy-Phong to PBR workflow. Called implicitly by
@@ -528,9 +535,13 @@ static void *material_clone_like(void *obj) {
     dst->texture_wrap_s = src->texture_wrap_s;
     dst->texture_wrap_t = src->texture_wrap_t;
     dst->texture_filter = src->texture_filter;
+    dst->anisotropy = src->anisotropy;
     memcpy(dst->texture_slot_wrap_s, src->texture_slot_wrap_s, sizeof(dst->texture_slot_wrap_s));
     memcpy(dst->texture_slot_wrap_t, src->texture_slot_wrap_t, sizeof(dst->texture_slot_wrap_t));
     memcpy(dst->texture_slot_filter, src->texture_slot_filter, sizeof(dst->texture_slot_filter));
+    memcpy(dst->texture_slot_anisotropy,
+           src->texture_slot_anisotropy,
+           sizeof(dst->texture_slot_anisotropy));
     memcpy(dst->texture_slot_uv_set, src->texture_slot_uv_set, sizeof(dst->texture_slot_uv_set));
     memcpy(dst->texture_slot_uv_transform,
            src->texture_slot_uv_transform,
@@ -685,6 +696,15 @@ static int32_t material_sanitize_filter(int64_t value) {
                                                          : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
 }
 
+/// @brief Clamp requested texture anisotropy into the script-facing [1,16] range.
+static int32_t material_sanitize_anisotropy(int64_t value) {
+    if (value < 1)
+        return 1;
+    if (value > MATERIAL3D_MAX_ANISOTROPY)
+        return MATERIAL3D_MAX_ANISOTROPY;
+    return (int32_t)value;
+}
+
 /// @brief Validate a texture-slot index and narrow it to int32_t.
 /// @details Returns -1 for any out-of-range value so that callers can perform a
 ///   single negative-check before indexing the per-slot arrays, keeping bounds
@@ -756,6 +776,7 @@ void rt_material3d_set_import_texture_slot(void *obj,
         mat->texture_wrap_s = mat->texture_slot_wrap_s[slot_index];
         mat->texture_wrap_t = mat->texture_slot_wrap_t[slot_index];
         mat->texture_filter = mat->texture_slot_filter[slot_index];
+        mat->anisotropy = mat->texture_slot_anisotropy[slot_index];
     }
 }
 
@@ -1042,6 +1063,26 @@ double rt_material3d_get_normal_scale(void *obj) {
     if (!mat)
         return 1.0;
     return clamp_range(mat->normal_scale, 0.0, MATERIAL3D_NORMAL_SCALE_MAX);
+}
+
+/// @brief Set material texture anisotropy (1 disables anisotropic filtering; clamps to 16).
+void rt_material3d_set_anisotropy(void *obj, int64_t anisotropy) {
+    rt_material3d *mat = material_checked(obj);
+    int32_t sanitized;
+    if (!mat)
+        return;
+    sanitized = material_sanitize_anisotropy(anisotropy);
+    mat->anisotropy = sanitized;
+    for (int slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++)
+        mat->texture_slot_anisotropy[slot] = sanitized;
+}
+
+/// @brief Read material texture anisotropy, clamped to the public [1,16] range.
+int64_t rt_material3d_get_anisotropy(void *obj) {
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
+        return 1;
+    return material_sanitize_anisotropy(mat->anisotropy);
 }
 
 /// @brief Set the alpha-handling mode (RT_MATERIAL3D_ALPHA_MODE_OPAQUE / MASK / BLEND).

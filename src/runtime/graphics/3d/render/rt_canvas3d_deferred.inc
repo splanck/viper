@@ -48,6 +48,13 @@ typedef struct {
     int32_t enqueue_index; /* original queue order; final tie-breaker for equal sort keys */
 } deferred_draw_t;
 
+typedef struct {
+    int8_t valid;
+    const void *mesh_key;
+    uint64_t matrix_hash;
+    double matrix_key[16];
+} canvas3d_world_bounds_cache_key_t;
+
 /// @brief Return whether a queued draw should participate in the shadow pass.
 /// @details Material shadow mode is captured in the draw command so deferred submission is
 ///   independent of later material mutation. AUTO preserves the existing behavior: opaque and
@@ -111,7 +118,9 @@ static int ensure_deferred_capacity(void **buf, int32_t *capacity, int32_t neede
 }
 
 static void canvas3d_submit_deferred(rt_canvas3d *c, const deferred_draw_t *dd);
-static void canvas3d_cache_deferred_world_bounds(deferred_draw_t *dd);
+static void canvas3d_cache_deferred_world_bounds(
+    rt_canvas3d *c, deferred_draw_t *dd, const canvas3d_world_bounds_cache_key_t *cache_key);
+static int canvas3d_backend_uses_software_raster(const rt_canvas3d *c);
 
 /// @brief Sanitize a draw sort key before it enters deferred ordering.
 /// @details NaN sort keys violate `qsort`'s strict weak ordering and make fallback selection
@@ -121,6 +130,149 @@ static float canvas3d_sanitize_sort_key(float sort_key, int requires_blend) {
     if (isfinite(sort_key))
         return sort_key;
     return requires_blend ? -FLT_MAX : FLT_MAX;
+}
+
+/// @brief Reset per-frame submission-cost counters and fixed-size AABB cache.
+/// @details Called by public Begin/Begin2D entry points. Internal overlay replay intentionally
+///          does not reset these fields so a frame can include its post-scene overlay submissions.
+static void canvas3d_reset_frame_submission_stats(rt_canvas3d *c) {
+    if (!c)
+        return;
+    c->frame_draws_submitted = 0;
+    c->frame_aabb_transforms = 0;
+    c->frame_sort_passes = 0;
+    c->frame_backend_state_changes = 0;
+    c->frame_last_backend_state_key = 0;
+    c->frame_has_backend_state_key = 0;
+    memset(c->world_bounds_cache, 0, sizeof(c->world_bounds_cache));
+}
+
+/// @brief Hash the original double-precision model matrix used as a world-bounds cache key.
+static uint64_t canvas3d_hash_matrix_f64(const double *matrix) {
+    uint64_t key = UINT64_C(1469598103934665603);
+
+    if (!matrix)
+        return 0;
+    for (int i = 0; i < 16; i++) {
+        uint64_t bits = 0;
+        memcpy(&bits, &matrix[i], sizeof(bits));
+        key ^= bits;
+        key *= UINT64_C(1099511628211);
+    }
+    key ^= key >> 32;
+    key *= UINT64_C(0x9E3779B185EBCA87);
+    key ^= key >> 29;
+    return key ? key : UINT64_C(1);
+}
+
+/// @brief Build a source mesh+matrix key for the world-AABB cache.
+static void canvas3d_make_deferred_world_bounds_cache_key(canvas3d_world_bounds_cache_key_t *out,
+                                                          const void *mesh_key,
+                                                          const double *matrix) {
+    if (!out)
+        return;
+    memset(out, 0, sizeof(*out));
+    if (!mesh_key || !matrix)
+        return;
+    out->valid = 1;
+    out->mesh_key = mesh_key;
+    out->matrix_hash = canvas3d_hash_matrix_f64(matrix);
+    memcpy(out->matrix_key, matrix, sizeof(out->matrix_key));
+}
+
+static uint64_t canvas3d_mix_sort_u64(uint64_t key, uint64_t value) {
+    value ^= value >> 33;
+    value *= UINT64_C(0xff51afd7ed558ccd);
+    value ^= value >> 33;
+    value *= UINT64_C(0xc4ceb9fe1a85ec53);
+    value ^= value >> 33;
+    key ^= value + UINT64_C(0x9E3779B97F4A7C15) + (key << 6) + (key >> 2);
+    return key;
+}
+
+static uint64_t canvas3d_mix_sort_ptr(uint64_t key, const void *ptr) {
+    return canvas3d_mix_sort_u64(key, (uint64_t)(uintptr_t)ptr);
+}
+
+/// @brief Pack the backend-visible pipeline/material/texture state for opaque grouping.
+/// @details This deliberately excludes depth and enqueue order; those are applied as later stable
+///          sort keys. The key is a grouping hint, not serialized data, so process-local pointer
+///          identity is sufficient.
+static uint64_t canvas3d_deferred_backend_state_key(const deferred_draw_t *dd) {
+    const vgfx3d_draw_cmd_t *cmd;
+    uint64_t key = UINT64_C(0xD1B54A32D192ED03);
+
+    if (!dd)
+        return key;
+    cmd = &dd->cmd;
+    key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)dd->kind);
+    key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)dd->pass_kind);
+    key = canvas3d_mix_sort_u64(key, (uint64_t)(uint8_t)dd->wireframe);
+    key = canvas3d_mix_sort_u64(key, (uint64_t)(uint8_t)dd->backface_cull);
+    key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)cmd->workflow);
+    key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)cmd->alpha_mode);
+    key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)cmd->shadow_mode);
+    key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)cmd->shading_model);
+    key = canvas3d_mix_sort_u64(key, (uint64_t)(uint8_t)cmd->unlit);
+    key = canvas3d_mix_sort_u64(key, (uint64_t)(uint8_t)cmd->disable_depth_test);
+    key = canvas3d_mix_sort_u64(key, (uint64_t)(uint8_t)cmd->additive_blend);
+    key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)cmd->double_sided);
+    key = canvas3d_mix_sort_u64(key, (uint64_t)(uint8_t)cmd->has_alpha_texture);
+    key = canvas3d_mix_sort_u64(key, (uint64_t)(uint8_t)cmd->has_splat);
+    key = canvas3d_mix_sort_ptr(key, cmd->texture);
+    key = canvas3d_mix_sort_ptr(key, cmd->normal_map);
+    key = canvas3d_mix_sort_ptr(key, cmd->specular_map);
+    key = canvas3d_mix_sort_ptr(key, cmd->emissive_map);
+    key = canvas3d_mix_sort_ptr(key, cmd->metallic_roughness_map);
+    key = canvas3d_mix_sort_ptr(key, cmd->ao_map);
+    key = canvas3d_mix_sort_ptr(key, cmd->texture_asset);
+    key = canvas3d_mix_sort_ptr(key, cmd->normal_map_asset);
+    key = canvas3d_mix_sort_ptr(key, cmd->specular_map_asset);
+    key = canvas3d_mix_sort_ptr(key, cmd->emissive_map_asset);
+    key = canvas3d_mix_sort_ptr(key, cmd->metallic_roughness_map_asset);
+    key = canvas3d_mix_sort_ptr(key, cmd->ao_map_asset);
+    key = canvas3d_mix_sort_ptr(key, cmd->env_map);
+    key = canvas3d_mix_sort_ptr(key, cmd->splat_map);
+    for (int slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++) {
+        key = canvas3d_mix_sort_u64(key, cmd->texture_asset_cache_key[slot]);
+        key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)cmd->texture_slot_wrap_s[slot]);
+        key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)cmd->texture_slot_wrap_t[slot]);
+        key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)cmd->texture_slot_filter[slot]);
+        key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)cmd->texture_slot_anisotropy[slot]);
+        key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)cmd->texture_slot_uv_set[slot]);
+    }
+    for (int layer = 0; layer < 4; layer++)
+        key = canvas3d_mix_sort_ptr(key, cmd->splat_layers[layer]);
+    return key ? key : UINT64_C(1);
+}
+
+/// @brief Account for one backend draw submission and material-state transition.
+static void canvas3d_note_backend_submission(rt_canvas3d *c,
+                                             const vgfx3d_draw_cmd_t *cmd,
+                                             int8_t wireframe,
+                                             int8_t backface_cull,
+                                             deferred_draw_kind_t kind,
+                                             deferred_pass_t pass_kind) {
+    deferred_draw_t state_draw;
+    uint64_t state_key;
+
+    if (!c || !cmd)
+        return;
+    c->frame_draws_submitted++;
+    if (canvas3d_backend_uses_software_raster(c))
+        return;
+    memset(&state_draw, 0, sizeof(state_draw));
+    state_draw.kind = kind;
+    state_draw.pass_kind = pass_kind;
+    state_draw.cmd = *cmd;
+    state_draw.wireframe = wireframe;
+    state_draw.backface_cull = backface_cull;
+    state_key = canvas3d_deferred_backend_state_key(&state_draw);
+    if (!c->frame_has_backend_state_key || c->frame_last_backend_state_key != state_key) {
+        c->frame_backend_state_changes++;
+        c->frame_last_backend_state_key = state_key;
+        c->frame_has_backend_state_key = 1;
+    }
 }
 
 /// @brief Grow the canvas's text-rendering vertex + index scratch buffers.
@@ -174,7 +326,7 @@ static int ensure_text_capacity(rt_canvas3d *c, int32_t vertex_count, int32_t in
 ///
 /// Used to sort transparent draws so they composite correctly (back
 /// objects drawn first so front objects blend over them).
-static int cmp_back_to_front(const void *a, const void *b) {
+static CANVAS3D_UNUSED_PRIVATE int cmp_back_to_front(const void *a, const void *b) {
     const deferred_draw_t *da = (const deferred_draw_t *)a;
     const deferred_draw_t *db = (const deferred_draw_t *)b;
     float ka = canvas3d_sanitize_sort_key(da->sort_key, 1);
@@ -198,7 +350,7 @@ static int cmp_back_to_front(const void *a, const void *b) {
 ///
 /// Used for opaque draws — front-to-back order maximizes early-Z
 /// rejection, dropping pixel-shader work for occluded fragments.
-static int cmp_front_to_back(const void *a, const void *b) {
+static CANVAS3D_UNUSED_PRIVATE int cmp_front_to_back(const void *a, const void *b) {
     const deferred_draw_t *da = (const deferred_draw_t *)a;
     const deferred_draw_t *db = (const deferred_draw_t *)b;
     float ka = canvas3d_sanitize_sort_key(da->sort_key, 0);
@@ -255,6 +407,209 @@ static int canvas3d_sort_tuple_less(const deferred_draw_t *a,
     if (a->stable_sort_id != b->stable_sort_id)
         return a->stable_sort_id < b->stable_sort_id;
     return a->enqueue_index < b->enqueue_index;
+}
+
+#define CANVAS3D_SORT_DEPTH_BUCKETS 4096
+
+typedef uint64_t (*canvas3d_sort_key_fn)(const deferred_draw_t *draw, void *ctx);
+
+static uint64_t canvas3d_sort_key_stable_id(const deferred_draw_t *draw, void *ctx) {
+    (void)ctx;
+    return draw ? (uint64_t)draw->stable_sort_id : 0;
+}
+
+static uint64_t canvas3d_sort_key_backend_state(const deferred_draw_t *draw, void *ctx) {
+    (void)ctx;
+    return canvas3d_deferred_backend_state_key(draw);
+}
+
+static int canvas3d_stable_radix_sort_u64(
+    rt_canvas3d *c, deferred_draw_t *items, int32_t count, canvas3d_sort_key_fn key_fn, void *ctx) {
+    deferred_draw_t *scratch;
+
+    if (!c || !items || count <= 1 || !key_fn)
+        return 1;
+    if (!ensure_deferred_capacity(&c->sort_cmds, &c->sort_capacity, count))
+        return 0;
+    scratch = (deferred_draw_t *)c->sort_cmds;
+    for (int shift = 0; shift < 64; shift += 8) {
+        int32_t counts[256] = {0};
+        int32_t offsets[256];
+
+        for (int32_t i = 0; i < count; i++) {
+            uint64_t key = key_fn(&items[i], ctx);
+            counts[(key >> shift) & 0xFFu]++;
+        }
+        offsets[0] = 0;
+        for (int i = 1; i < 256; i++)
+            offsets[i] = offsets[i - 1] + counts[i - 1];
+        for (int32_t i = 0; i < count; i++) {
+            uint64_t key = key_fn(&items[i], ctx);
+            uint32_t bucket = (uint32_t)((key >> shift) & 0xFFu);
+            scratch[offsets[bucket]++] = items[i];
+        }
+        memcpy(items, scratch, (size_t)count * sizeof(*items));
+    }
+    c->frame_sort_passes++;
+    return 1;
+}
+
+static int canvas3d_depth_bucket_for_key(float key, float min_key, float max_key) {
+    double t;
+    int bucket;
+
+    if (!isfinite(key))
+        key = min_key;
+    if (max_key <= min_key)
+        return 0;
+    t = ((double)key - (double)min_key) / ((double)max_key - (double)min_key);
+    if (t < 0.0)
+        t = 0.0;
+    if (t > 1.0)
+        t = 1.0;
+    bucket = (int)(t * (double)(CANVAS3D_SORT_DEPTH_BUCKETS - 1) + 0.5);
+    if (bucket < 0)
+        return 0;
+    if (bucket >= CANVAS3D_SORT_DEPTH_BUCKETS)
+        return CANVAS3D_SORT_DEPTH_BUCKETS - 1;
+    return bucket;
+}
+
+static int canvas3d_depth_tuple_before(const deferred_draw_t *a,
+                                       const deferred_draw_t *b,
+                                       int descending,
+                                       int requires_blend) {
+    float a_key;
+    float b_key;
+
+    if (!a || !b)
+        return 0;
+    a_key = canvas3d_sanitize_sort_key(a->sort_key, requires_blend);
+    b_key = canvas3d_sanitize_sort_key(b->sort_key, requires_blend);
+    if (descending) {
+        if (a_key > b_key)
+            return 1;
+        if (a_key < b_key)
+            return 0;
+    } else {
+        if (a_key < b_key)
+            return 1;
+        if (a_key > b_key)
+            return 0;
+    }
+    if (a->stable_sort_id < b->stable_sort_id)
+        return 1;
+    if (a->stable_sort_id > b->stable_sort_id)
+        return 0;
+    return a->enqueue_index < b->enqueue_index;
+}
+
+static void canvas3d_insertion_sort_depth_exact(deferred_draw_t *items,
+                                                int32_t count,
+                                                int descending,
+                                                int requires_blend) {
+    if (!items || count <= 1)
+        return;
+    for (int32_t i = 1; i < count; i++) {
+        deferred_draw_t value = items[i];
+        int32_t j = i;
+        while (j > 0 &&
+               canvas3d_depth_tuple_before(&value, &items[j - 1], descending, requires_blend)) {
+            items[j] = items[j - 1];
+            j--;
+        }
+        items[j] = value;
+    }
+}
+
+static int canvas3d_stable_bucket_sort_depth(
+    rt_canvas3d *c, deferred_draw_t *items, int32_t count, int descending, int requires_blend) {
+    deferred_draw_t *scratch;
+    int32_t counts[CANVAS3D_SORT_DEPTH_BUCKETS] = {0};
+    int32_t starts[CANVAS3D_SORT_DEPTH_BUCKETS];
+    int32_t offsets[CANVAS3D_SORT_DEPTH_BUCKETS];
+    float min_key = FLT_MAX;
+    float max_key = -FLT_MAX;
+
+    if (!c || !items || count <= 1)
+        return 1;
+    for (int32_t i = 0; i < count; i++) {
+        float key = canvas3d_sanitize_sort_key(items[i].sort_key, requires_blend);
+        if (key < min_key)
+            min_key = key;
+        if (key > max_key)
+            max_key = key;
+    }
+    if (min_key == FLT_MAX || max_key == -FLT_MAX || min_key == max_key)
+        return 1;
+    if (!ensure_deferred_capacity(&c->sort_cmds, &c->sort_capacity, count))
+        return 0;
+    scratch = (deferred_draw_t *)c->sort_cmds;
+    for (int32_t i = 0; i < count; i++) {
+        int bucket = canvas3d_depth_bucket_for_key(
+            canvas3d_sanitize_sort_key(items[i].sort_key, requires_blend), min_key, max_key);
+        counts[bucket]++;
+    }
+    if (descending) {
+        starts[CANVAS3D_SORT_DEPTH_BUCKETS - 1] = 0;
+        for (int i = CANVAS3D_SORT_DEPTH_BUCKETS - 2; i >= 0; i--)
+            starts[i] = starts[i + 1] + counts[i + 1];
+    } else {
+        starts[0] = 0;
+        for (int i = 1; i < CANVAS3D_SORT_DEPTH_BUCKETS; i++)
+            starts[i] = starts[i - 1] + counts[i - 1];
+    }
+    memcpy(offsets, starts, sizeof(offsets));
+    for (int32_t i = 0; i < count; i++) {
+        int bucket = canvas3d_depth_bucket_for_key(
+            canvas3d_sanitize_sort_key(items[i].sort_key, requires_blend), min_key, max_key);
+        scratch[offsets[bucket]++] = items[i];
+    }
+    memcpy(items, scratch, (size_t)count * sizeof(*items));
+    for (int bucket = 0; bucket < CANVAS3D_SORT_DEPTH_BUCKETS; bucket++) {
+        if (counts[bucket] > 1)
+            canvas3d_insertion_sort_depth_exact(
+                &items[starts[bucket]], counts[bucket], descending, requires_blend);
+    }
+    c->frame_sort_passes++;
+    return 1;
+}
+
+static int canvas3d_sort_transparent_draws(rt_canvas3d *c, deferred_draw_t *items, int32_t count) {
+    if (count <= 1)
+        return 1;
+    if (!canvas3d_stable_radix_sort_u64(c, items, count, canvas3d_sort_key_stable_id, NULL))
+        return 0;
+    return canvas3d_stable_bucket_sort_depth(c, items, count, 1, 1);
+}
+
+static int canvas3d_sort_opaque_draws_depth_first(rt_canvas3d *c,
+                                                  deferred_draw_t *items,
+                                                  int32_t count) {
+    if (count <= 1)
+        return 1;
+    if (!canvas3d_stable_radix_sort_u64(c, items, count, canvas3d_sort_key_stable_id, NULL))
+        return 0;
+    return canvas3d_stable_bucket_sort_depth(c, items, count, 0, 0);
+}
+
+static int canvas3d_sort_opaque_draws_state_first(rt_canvas3d *c,
+                                                  deferred_draw_t *items,
+                                                  int32_t count) {
+    if (!canvas3d_sort_opaque_draws_depth_first(c, items, count))
+        return 0;
+    return canvas3d_stable_radix_sort_u64(c, items, count, canvas3d_sort_key_backend_state, NULL);
+}
+
+static int canvas3d_backend_uses_software_raster(const rt_canvas3d *c) {
+    const char *name;
+
+    if (!c || !c->backend)
+        return 1;
+    if (c->backend == &vgfx3d_software_backend)
+        return 1;
+    name = c->backend->name;
+    return name && strcmp(name, "software") == 0;
 }
 
 /// @brief Pick the next visible main-pass draw in sorted order without allocating scratch storage.
@@ -463,6 +818,15 @@ static int32_t canvas3d_sanitize_material_filter(int32_t value) {
                                                          : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
 }
 
+/// @brief Clamp requested texture anisotropy to the cross-backend public [1,16] range.
+static int32_t canvas3d_sanitize_material_anisotropy(int32_t value) {
+    if (value < 1)
+        return 1;
+    if (value > 16)
+        return 16;
+    return value;
+}
+
 /// @brief Clamp a double into [lo, hi] and narrow to float; returns `fallback` on
 ///   non-finite input or an inverted (lo > hi) range.
 static float canvas3d_clamp_material_f64(double value, double lo, double hi, float fallback) {
@@ -617,6 +981,7 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
     cmd->texture_wrap_s = canvas3d_sanitize_material_wrap(mat->texture_wrap_s);
     cmd->texture_wrap_t = canvas3d_sanitize_material_wrap(mat->texture_wrap_t);
     cmd->texture_filter = canvas3d_sanitize_material_filter(mat->texture_filter);
+    cmd->texture_anisotropy = canvas3d_sanitize_material_anisotropy(mat->anisotropy);
     for (int slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++) {
         cmd->texture_slot_wrap_s[slot] =
             canvas3d_sanitize_material_wrap(mat->texture_slot_wrap_s[slot]);
@@ -624,6 +989,8 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
             canvas3d_sanitize_material_wrap(mat->texture_slot_wrap_t[slot]);
         cmd->texture_slot_filter[slot] =
             canvas3d_sanitize_material_filter(mat->texture_slot_filter[slot]);
+        cmd->texture_slot_anisotropy[slot] =
+            canvas3d_sanitize_material_anisotropy(mat->texture_slot_anisotropy[slot]);
         cmd->texture_slot_uv_set[slot] = mat->texture_slot_uv_set[slot] > 0 ? 1 : 0;
         for (int i = 0; i < 6; i++)
             cmd->texture_slot_uv_transform[slot][i] =
@@ -1263,6 +1630,8 @@ static void canvas3d_submit_mesh(rt_canvas3d *c,
                                  int8_t backface_cull) {
     if (!c || !c->backend || !cmd)
         return;
+    canvas3d_note_backend_submission(
+        c, cmd, wireframe, backface_cull, DEFERRED_DRAW_MESH, DEFERRED_PASS_MAIN);
     c->backend->submit_draw(
         c->backend_ctx, c->gfx_win, cmd, lights, light_count, ambient, wireframe, backface_cull);
 }

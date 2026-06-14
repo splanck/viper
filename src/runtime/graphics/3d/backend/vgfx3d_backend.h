@@ -83,9 +83,11 @@ typedef struct {
     int32_t texture_wrap_s;   /* RT_MATERIAL3D_TEXTURE_WRAP_* */
     int32_t texture_wrap_t;   /* RT_MATERIAL3D_TEXTURE_WRAP_* */
     int32_t texture_filter;   /* RT_MATERIAL3D_TEXTURE_FILTER_* */
+    int32_t texture_anisotropy;
     int32_t texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     int32_t texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     int32_t texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
+    int32_t texture_slot_anisotropy[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     int32_t texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     float texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][6];
     const void *metallic_roughness_map; /* Pixels fallback (glTF metallic/roughness map) or NULL */
@@ -360,9 +362,9 @@ typedef struct vgfx3d_backend {
     /* Optional GPU timing telemetry. Returns the latest completed backend GPU
      * frame time in microseconds, or 0 when unsupported/not yet available. */
     uint64_t (*get_frame_gpu_time_us)(void *ctx);
-    /* Optional native compressed TextureAsset3D capability bits. Return a mask
-     * using RT_CANVAS3D_BACKEND_CAP_BC7 / ASTC / ETC2 when native block upload is
-     * wired and supported by the active device. */
+    /* Optional backend texture capability bits. Return a mask using
+     * RT_CANVAS3D_BACKEND_CAP_BC7 / ASTC / ETC2 for native block upload and
+     * RT_CANVAS3D_BACKEND_CAP_ANISOTROPY when sampler anisotropy is supported. */
     int64_t (*get_native_texture_caps)(void *ctx);
 } vgfx3d_backend_t;
 

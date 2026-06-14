@@ -764,8 +764,11 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     SAFE_RELEASE(ctx->vs_main);
     for (int ws = 0; ws < 3; ws++) {
         for (int wt = 0; wt < 3; wt++) {
-            for (int filter = 0; filter < 2; filter++)
-                SAFE_RELEASE(ctx->material_samplers[ws][wt][filter]);
+            for (int filter = 0; filter < 2; filter++) {
+                for (int anisotropy = 0; anisotropy < VGFX3D_D3D11_ANISOTROPY_LEVEL_COUNT;
+                     anisotropy++)
+                    SAFE_RELEASE(ctx->material_samplers[ws][wt][filter][anisotropy]);
+            }
         }
     }
     SAFE_RELEASE(ctx->shadow_cmp_sampler);

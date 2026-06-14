@@ -1,3 +1,27 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/tests/unit/test_rt_canvas3d_gpu_paths.cpp
+// Purpose: Unit coverage for Canvas3D deferred submission, GPU-facing payloads,
+//   backend-path policy, and frame telemetry counters.
+//
+// Key invariants:
+//   - Stack Canvas3D fixtures exercise backend dispatch without opening windows.
+//   - Deferred draw mirrors stay layout-compatible with runtime deferred draws.
+//
+// Ownership/Lifetime:
+//   - Test-created runtime objects are process-local and released by existing helpers.
+//   - Fake backend records point to copied command payloads where lifetime matters.
+//
+// Links: src/runtime/graphics/3d/render/rt_canvas3d.c,
+//   src/runtime/graphics/3d/backend/vgfx3d_backend.h
+//
+//===----------------------------------------------------------------------===//
+
 #ifndef VIPER_ENABLE_GRAPHICS
 #define VIPER_ENABLE_GRAPHICS 1
 #endif
@@ -144,6 +168,9 @@ static int shadow_begin_calls = 0;
 static int shadow_draw_calls = 0;
 static int shadow_end_calls = 0;
 static int draw_submit_calls = 0;
+static const void *submitted_geometry_keys[16];
+static const void *submitted_textures[16];
+static int submitted_order_count = 0;
 static int shadow_begin_slots[VGFX3D_MAX_SHADOW_LIGHTS];
 static int shadow_end_slots[VGFX3D_MAX_SHADOW_LIGHTS];
 static float shadow_vps[VGFX3D_MAX_SHADOW_LIGHTS][16];
@@ -226,10 +253,17 @@ static void record_draw_skybox(void *, const void *) {
     skybox_draw_calls++;
 }
 
+static void reset_submission_order(void) {
+    submitted_order_count = 0;
+    std::memset(submitted_geometry_keys, 0, sizeof(submitted_geometry_keys));
+    std::memset(submitted_textures, 0, sizeof(submitted_textures));
+}
+
 static void reset_shadow_counts(void) {
     shadow_begin_calls = 0;
     shadow_draw_calls = 0;
     shadow_end_calls = 0;
+    reset_submission_order();
     std::memset(shadow_begin_slots, 0xFF, sizeof(shadow_begin_slots));
     std::memset(shadow_end_slots, 0xFF, sizeof(shadow_end_slots));
     std::memset(shadow_vps, 0, sizeof(shadow_vps));
@@ -259,13 +293,18 @@ static void record_shadow_end(void *, int32_t slot, float) {
 
 static void record_draw_with_lights(void *,
                                     vgfx_window_t,
-                                    const vgfx3d_draw_cmd_t *,
+                                    const vgfx3d_draw_cmd_t *cmd,
                                     const vgfx3d_light_params_t *lights,
                                     int32_t light_count,
                                     const float *,
                                     int8_t,
                                     int8_t) {
     draw_submit_calls++;
+    if (submitted_order_count < 16) {
+        submitted_geometry_keys[submitted_order_count] = cmd ? cmd->geometry_key : nullptr;
+        submitted_textures[submitted_order_count] = cmd ? cmd->texture : nullptr;
+        submitted_order_count++;
+    }
     last_draw_light_count = light_count > VGFX3D_MAX_LIGHTS ? VGFX3D_MAX_LIGHTS : light_count;
     if (lights && last_draw_light_count > 0)
         std::memcpy(last_draw_lights,
@@ -464,6 +503,7 @@ static void cleanup_fake_canvas(rt_canvas3d *canvas) {
     std::free(canvas->final_overlay_cmds);
     std::free(canvas->final_overlay_temp_buffers);
     std::free(canvas->draw_cmds);
+    std::free(canvas->sort_cmds);
     std::free(canvas->motion_history);
     if (canvas->postfx && rt_obj_release_check0(canvas->postfx))
         rt_obj_free(canvas->postfx);
@@ -473,6 +513,7 @@ static void cleanup_fake_canvas(rt_canvas3d *canvas) {
     canvas->final_overlay_cmds = nullptr;
     canvas->final_overlay_temp_buffers = nullptr;
     canvas->draw_cmds = nullptr;
+    canvas->sort_cmds = nullptr;
     canvas->motion_history = nullptr;
     canvas->postfx = nullptr;
     canvas->temp_buf_count = canvas->temp_buf_capacity = 0;
@@ -480,6 +521,7 @@ static void cleanup_fake_canvas(rt_canvas3d *canvas) {
     canvas->final_overlay_count = canvas->final_overlay_capacity = 0;
     canvas->final_overlay_temp_buf_count = canvas->final_overlay_temp_buf_capacity = 0;
     canvas->draw_count = canvas->draw_capacity = 0;
+    canvas->sort_capacity = 0;
     canvas->motion_history_count = canvas->motion_history_capacity = 0;
     reset_recorded_instancing();
 }
@@ -489,6 +531,13 @@ static void reset_canvas_frame(rt_canvas3d *canvas, int64_t frame_serial) {
     canvas->frame_serial = frame_serial;
     canvas->in_frame = 1;
     canvas->frame_is_2d = 0;
+    canvas->frame_draws_submitted = 0;
+    canvas->frame_aabb_transforms = 0;
+    canvas->frame_sort_passes = 0;
+    canvas->frame_backend_state_changes = 0;
+    canvas->frame_has_backend_state_key = 0;
+    canvas->frame_last_backend_state_key = 0;
+    std::memset(canvas->world_bounds_cache, 0, sizeof(canvas->world_bounds_cache));
 }
 
 static void enable_latched_motion_blur(rt_canvas3d *canvas) {
@@ -2345,6 +2394,222 @@ static void test_transparent_sort_key_uses_mesh_bounds_depth(void) {
     cleanup_fake_canvas(&canvas);
 }
 
+static void test_frame_stats_count_submissions_and_cache_repeated_world_bounds(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.end_frame = noop_end_frame;
+    backend.submit_draw = record_draw_with_lights;
+
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &backend);
+    reset_shadow_counts();
+    reset_canvas_frame(&canvas, 1);
+    canvas.opaque_depth_sorting = 1;
+    canvas.cached_cam_forward[2] = -1.0f;
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+
+    for (int i = 0; i < 1000; i++)
+        rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
+
+    EXPECT_TRUE(canvas.draw_count == 1000, "Frame stats cache test enqueues repeated draws");
+    EXPECT_TRUE(rt_canvas3d_get_aabb_transforms(&canvas) == 1,
+                "Repeated mesh+matrix world bounds use one AABB transform per frame");
+
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_TRUE(rt_canvas3d_get_draws_submitted(&canvas) == 1000,
+                "Frame stats count backend draw submissions");
+    EXPECT_TRUE(rt_canvas3d_get_backend_state_changes(&canvas) == 1,
+                "Identical repeated draws produce one backend state run");
+    EXPECT_TRUE(rt_canvas3d_get_sort_passes(&canvas) > 0, "Frame stats count deferred sort passes");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_opaque_sort_groups_material_state_before_depth(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.end_frame = noop_end_frame;
+    backend.submit_draw = record_draw_with_lights;
+
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &backend);
+    reset_shadow_counts();
+    reset_canvas_frame(&canvas, 1);
+    canvas.opaque_depth_sorting = 1;
+    canvas.cached_cam_forward[2] = -1.0f;
+
+    void *mesh = make_test_mesh();
+    void *tex_a = rt_pixels_new(1, 1);
+    void *tex_b = rt_pixels_new(1, 1);
+    rt_pixels_set(tex_a, 0, 0, 0xFFFFFFFF);
+    rt_pixels_set(tex_b, 0, 0, 0x80FFFFFF);
+
+    void *mat_a = rt_material3d_new();
+    void *mat_b = rt_material3d_new();
+    rt_material3d_set_texture(mat_a, tex_a);
+    rt_material3d_set_texture(mat_b, tex_b);
+
+    void *tx0 = rt_mat4_identity();
+    void *tx1 = rt_mat4_identity();
+    void *tx2 = rt_mat4_identity();
+    void *tx3 = rt_mat4_identity();
+    ((mat4_impl *)tx0)->m[11] = -1.0;
+    ((mat4_impl *)tx1)->m[11] = -2.0;
+    ((mat4_impl *)tx2)->m[11] = -3.0;
+    ((mat4_impl *)tx3)->m[11] = -4.0;
+
+    rt_canvas3d_draw_mesh(&canvas, mesh, tx0, mat_a);
+    rt_canvas3d_draw_mesh(&canvas, mesh, tx1, mat_b);
+    rt_canvas3d_draw_mesh(&canvas, mesh, tx2, mat_a);
+    rt_canvas3d_draw_mesh(&canvas, mesh, tx3, mat_b);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_TRUE(draw_submit_calls == 4, "Opaque state-sort test submits all draws");
+    EXPECT_TRUE(rt_canvas3d_get_backend_state_changes(&canvas) == 2,
+                "Opaque sorting groups matching material/texture state before depth");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_opaque_sort_keeps_depth_order_on_software_backend(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "software";
+    backend.end_frame = noop_end_frame;
+    backend.submit_draw = record_draw_with_lights;
+
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &backend);
+    reset_shadow_counts();
+    reset_canvas_frame(&canvas, 1);
+    canvas.opaque_depth_sorting = 1;
+    canvas.cached_cam_forward[2] = -1.0f;
+
+    void *mesh = make_test_mesh();
+    void *tex_a = rt_pixels_new(1, 1);
+    void *tex_b = rt_pixels_new(1, 1);
+    rt_pixels_set(tex_a, 0, 0, 0xFFFFFFFF);
+    rt_pixels_set(tex_b, 0, 0, 0x80FFFFFF);
+
+    void *mat_a = rt_material3d_new();
+    void *mat_b = rt_material3d_new();
+    rt_material3d_set_texture(mat_a, tex_a);
+    rt_material3d_set_texture(mat_b, tex_b);
+
+    void *tx0 = rt_mat4_identity();
+    void *tx1 = rt_mat4_identity();
+    void *tx2 = rt_mat4_identity();
+    void *tx3 = rt_mat4_identity();
+    ((mat4_impl *)tx0)->m[11] = -1.0;
+    ((mat4_impl *)tx1)->m[11] = -2.0;
+    ((mat4_impl *)tx2)->m[11] = -3.0;
+    ((mat4_impl *)tx3)->m[11] = -4.0;
+
+    rt_canvas3d_draw_mesh(&canvas, mesh, tx0, mat_a);
+    rt_canvas3d_draw_mesh(&canvas, mesh, tx1, mat_b);
+    rt_canvas3d_draw_mesh(&canvas, mesh, tx2, mat_a);
+    rt_canvas3d_draw_mesh(&canvas, mesh, tx3, mat_b);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_TRUE(draw_submit_calls == 4, "Software opaque sort test submits all draws");
+    EXPECT_TRUE(submitted_order_count == 4 && submitted_textures[0] == tex_a &&
+                    submitted_textures[1] == tex_b && submitted_textures[2] == tex_a &&
+                    submitted_textures[3] == tex_b,
+                "Software opaque sorting preserves front-to-back order instead of grouping state");
+    EXPECT_TRUE(rt_canvas3d_get_backend_state_changes(&canvas) == 0,
+                "Software backend does not report GPU state changes");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_transparent_sort_preserves_stable_sort_id_tie_break(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.end_frame = noop_end_frame;
+    backend.submit_draw = record_draw_with_lights;
+
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &backend);
+    reset_shadow_counts();
+    reset_canvas_frame(&canvas, 1);
+    canvas.cached_cam_forward[2] = -1.0f;
+
+    void *mesh_a = make_depth_test_mesh(-2.0f, -2.0f, -2.0f);
+    void *mesh_b = make_depth_test_mesh(-2.0f, -2.0f, -2.0f);
+    void *mat_a = rt_material3d_new();
+    void *mat_b = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    rt_material3d_set_alpha(mat_a, 0.5);
+    rt_material3d_set_alpha(mat_b, 0.5);
+    rt_material3d_set_alpha_mode(mat_a, RT_MATERIAL3D_ALPHA_MODE_BLEND);
+    rt_material3d_set_alpha_mode(mat_b, RT_MATERIAL3D_ALPHA_MODE_BLEND);
+
+    rt_canvas3d_draw_mesh(&canvas, mesh_a, transform, mat_a);
+    rt_canvas3d_draw_mesh(&canvas, mesh_b, transform, mat_b);
+
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    const void *expected_first = (draws[0].stable_sort_id <= draws[1].stable_sort_id)
+                                     ? draws[0].cmd.geometry_key
+                                     : draws[1].cmd.geometry_key;
+
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_TRUE(draw_submit_calls == 2, "Transparent tie-sort test submits both draws");
+    EXPECT_TRUE(submitted_order_count >= 2 && submitted_geometry_keys[0] == expected_first,
+                "Transparent sorting preserves stable_sort_id before enqueue order");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_transparent_sort_refines_depth_within_bucket(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.end_frame = noop_end_frame;
+    backend.submit_draw = record_draw_with_lights;
+
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &backend);
+    reset_shadow_counts();
+    reset_canvas_frame(&canvas, 1);
+    canvas.cached_cam_forward[2] = -1.0f;
+
+    void *mesh_far = make_depth_test_mesh(-1000.0f, -1000.0f, -1000.0f);
+    void *mesh_close_a = make_depth_test_mesh(-1.0f, -1.0f, -1.0f);
+    void *mesh_close_b = make_depth_test_mesh(-1.01f, -1.01f, -1.01f);
+    void *mat_far = rt_material3d_new();
+    void *mat_close_a = rt_material3d_new();
+    void *mat_close_b = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    rt_material3d_set_alpha(mat_far, 0.5);
+    rt_material3d_set_alpha(mat_close_a, 0.5);
+    rt_material3d_set_alpha(mat_close_b, 0.5);
+    rt_material3d_set_alpha_mode(mat_far, RT_MATERIAL3D_ALPHA_MODE_BLEND);
+    rt_material3d_set_alpha_mode(mat_close_a, RT_MATERIAL3D_ALPHA_MODE_BLEND);
+    rt_material3d_set_alpha_mode(mat_close_b, RT_MATERIAL3D_ALPHA_MODE_BLEND);
+
+    rt_canvas3d_draw_mesh(&canvas, mesh_far, transform, mat_far);
+    rt_canvas3d_draw_mesh(&canvas, mesh_close_a, transform, mat_close_a);
+    rt_canvas3d_draw_mesh(&canvas, mesh_close_b, transform, mat_close_b);
+
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    const void *far_key = draws[0].cmd.geometry_key;
+    const void *close_a_key = draws[1].cmd.geometry_key;
+    const void *close_b_key = draws[2].cmd.geometry_key;
+
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_TRUE(draw_submit_calls == 3, "Transparent bucket-depth test submits all draws");
+    EXPECT_TRUE(submitted_order_count >= 3 && submitted_geometry_keys[0] == far_key &&
+                    submitted_geometry_keys[1] == close_b_key &&
+                    submitted_geometry_keys[2] == close_a_key,
+                "Transparent bucket sort refines close depths with the legacy comparator order");
+
+    cleanup_fake_canvas(&canvas);
+}
+
 static void test_instanced_batch_sort_key_uses_aggregate_bounds_center(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "metal";
@@ -3439,6 +3704,11 @@ int main() {
     test_instanced_runtime_culls_outside_frustum();
     test_instanced_shadow_pass_includes_instances();
     test_transparent_sort_key_uses_mesh_bounds_depth();
+    test_frame_stats_count_submissions_and_cache_repeated_world_bounds();
+    test_opaque_sort_groups_material_state_before_depth();
+    test_opaque_sort_keeps_depth_order_on_software_backend();
+    test_transparent_sort_preserves_stable_sort_id_tie_break();
+    test_transparent_sort_refines_depth_within_bucket();
     test_instanced_batch_sort_key_uses_aggregate_bounds_center();
     test_shadow_selection_prefers_strongest_directional_light_regardless_of_slot();
     test_shadow_cascades_render_primary_directional_light_slots();

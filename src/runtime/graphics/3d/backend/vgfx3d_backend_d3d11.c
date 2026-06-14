@@ -269,7 +269,7 @@ typedef struct {
     ID3D11SamplerState *linear_wrap_sampler;
     ID3D11SamplerState *linear_clamp_sampler;
     ID3D11SamplerState *shadow_cmp_sampler;
-    ID3D11SamplerState *material_samplers[3][3][2];
+    ID3D11SamplerState *material_samplers[3][3][2][VGFX3D_D3D11_ANISOTROPY_LEVEL_COUNT];
 
     ID3D11VertexShader *vs_main;
     ID3D11VertexShader *vs_instanced;

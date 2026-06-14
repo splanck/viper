@@ -641,6 +641,7 @@ DIM ao AS DOUBLE
 DIM emissiveIntensity AS DOUBLE
 DIM normalScale AS DOUBLE
 DIM alphaMode AS INTEGER
+DIM anisotropy AS INTEGER
 DIM doubleSided AS BOOLEAN
 base = Viper.Graphics3D.Material3D.NewPBR(0.8, 0.7, 0.6)
 tex = Viper.Graphics.Pixels.New(1, 1)
@@ -654,6 +655,7 @@ base.SetMetallicRoughnessMap(tex)
 base.SetAOMap(tex)
 base.SetEmissiveMap(tex)
 base.SetNormalScale(0.75)
+base.Anisotropy = 64
 base.AlphaMode = 2
 base.DoubleSided = 1
 inst = base.MakeInstance()
@@ -664,6 +666,7 @@ roughness = inst.Roughness
 ao = inst.AO
 emissiveIntensity = inst.EmissiveIntensity
 normalScale = inst.NormalScale
+anisotropy = inst.Anisotropy
 alphaMode = inst.AlphaMode
 doubleSided = inst.DoubleSided
 PRINT metallic

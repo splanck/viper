@@ -174,9 +174,10 @@ static D3D11_TEXTURE_ADDRESS_MODE d3d11_sampler_address_mode(int index) {
 
 /// @brief Return a cached or newly-created D3D11 sampler state for the given draw command and
 /// texture slot.
-/// @details Resolves wrap_s, wrap_t, and filter from the per-slot or primary material parameters,
+/// @details Resolves wrap_s, wrap_t, filter, and anisotropy from per-slot or primary material
+///          parameters,
 ///          maps them to cache indices via `d3d11_sampler_wrap_index`, and returns the cached entry
-///          in `ctx->material_samplers[wrap_s][wrap_t][filter]` when available. Otherwise creates
+///          in `ctx->material_samplers[wrap_s][wrap_t][filter][anisotropy]` when available. Otherwise creates
 ///          a new `ID3D11SamplerState` and caches it. Falls back to `ctx->linear_wrap_sampler` on
 ///          creation failure or null cmd.
 static ID3D11SamplerState *d3d11_get_material_sampler(d3d11_context_t *ctx,
@@ -185,6 +186,8 @@ static ID3D11SamplerState *d3d11_get_material_sampler(d3d11_context_t *ctx,
     int wrap_s;
     int wrap_t;
     int filter;
+    int32_t anisotropy;
+    int32_t anisotropy_index;
     D3D11_SAMPLER_DESC desc;
     HRESULT hr;
     if (!ctx)
@@ -195,23 +198,31 @@ static ID3D11SamplerState *d3d11_get_material_sampler(d3d11_context_t *ctx,
         wrap_s = d3d11_sampler_wrap_index(cmd->texture_slot_wrap_s[slot]);
         wrap_t = d3d11_sampler_wrap_index(cmd->texture_slot_wrap_t[slot]);
         filter = cmd->texture_slot_filter[slot] == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? 1 : 0;
+        anisotropy = cmd->texture_slot_anisotropy[slot];
     } else {
         wrap_s = d3d11_sampler_wrap_index(cmd->texture_wrap_s);
         wrap_t = d3d11_sampler_wrap_index(cmd->texture_wrap_t);
         filter = cmd->texture_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? 1 : 0;
+        anisotropy = cmd->texture_anisotropy;
     }
-    if (ctx->material_samplers[wrap_s][wrap_t][filter])
-        return ctx->material_samplers[wrap_s][wrap_t][filter];
+    anisotropy = filter ? 1 : vgfx3d_d3d11_sanitize_anisotropy(anisotropy);
+    anisotropy_index = vgfx3d_d3d11_sampler_anisotropy_index(anisotropy);
+    if (ctx->material_samplers[wrap_s][wrap_t][filter][anisotropy_index])
+        return ctx->material_samplers[wrap_s][wrap_t][filter][anisotropy_index];
     d3d11_init_sampler_desc_defaults(&desc);
     desc.Filter = filter ? D3D11_FILTER_MIN_MAG_MIP_POINT : D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    if (!filter && anisotropy > 1) {
+        desc.Filter = D3D11_FILTER_ANISOTROPIC;
+        desc.MaxAnisotropy = (UINT)anisotropy;
+    }
     desc.AddressU = d3d11_sampler_address_mode(wrap_s);
     desc.AddressV = d3d11_sampler_address_mode(wrap_t);
     desc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
     hr = ID3D11Device_CreateSamplerState(
-        ctx->device, &desc, &ctx->material_samplers[wrap_s][wrap_t][filter]);
+        ctx->device, &desc, &ctx->material_samplers[wrap_s][wrap_t][filter][anisotropy_index]);
     if (FAILED(hr))
         return ctx->linear_wrap_sampler;
-    return ctx->material_samplers[wrap_s][wrap_t][filter];
+    return ctx->material_samplers[wrap_s][wrap_t][filter][anisotropy_index];
 }
 
 /// @brief Bind all material sampler states for a draw command to the pixel shader slots.

@@ -172,54 +172,17 @@ static void gl_record_texture_upload_bytes(gl_context_t *ctx, uint64_t bytes) {
     ctx->texture_upload_bytes += bytes;
 }
 
-/// @brief Whether the named OpenGL extension is present (checks both indexed and legacy queries).
-static int gl_extension_supported(const char *name) {
-    GLint count = 0;
-    const char *extensions;
-
-    if (!name || !*name || !gl.GetString)
-        return 0;
-    if (gl.GetStringi && gl.GetIntegerv) {
-        gl.GetIntegerv(GL_NUM_EXTENSIONS, &count);
-        for (GLint i = 0; i < count; i++) {
-            const char *ext = (const char *)gl.GetStringi(GL_EXTENSIONS, (GLuint)i);
-            if (ext && strcmp(ext, name) == 0)
-                return 1;
-        }
-    }
-    extensions = (const char *)gl.GetString(GL_EXTENSIONS);
-    if (extensions) {
-        size_t len = strlen(name);
-        const char *p = extensions;
-        while ((p = strstr(p, name)) != NULL) {
-            if ((p == extensions || p[-1] == ' ') && (p[len] == '\0' || p[len] == ' '))
-                return 1;
-            p += len;
-        }
-    }
-    return 0;
-}
-
-/// @brief Whether the current GL context version is at least @p major.@p minor (parsed from
-/// GL_VERSION).
-static int gl_version_at_least(int major, int minor) {
-    const char *version = gl.GetString ? (const char *)gl.GetString(GL_VERSION) : NULL;
-    int found_major = 0;
-    int found_minor = 0;
-
-    if (!version || sscanf(version, "%d.%d", &found_major, &found_minor) != 2)
-        return 0;
-    return found_major > major || (found_major == major && found_minor >= minor);
-}
-
-/// @brief Report which native compressed texture formats this GL context can upload.
-/// @details Probes for BPTC (BC7), ASTC LDR, and ETC2 via version/extension checks and returns the
-///          matching RT_CANVAS3D_BACKEND_CAP_* bitmask (0 if compressed uploads are unavailable).
+/// @brief Report which native compressed texture formats this GL context can upload, plus
+/// sampler anisotropy support.
+/// @details Probes for BPTC (BC7), ASTC LDR, ETC2, and GL_EXT_texture_filter_anisotropic and
+/// returns the matching RT_CANVAS3D_BACKEND_CAP_* bitmask.
 static int64_t gl_get_native_texture_caps(void *ctx_ptr) {
-    (void)ctx_ptr;
+    gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     int64_t caps = 0;
+    if (ctx && ctx->anisotropy_supported && ctx->max_texture_anisotropy > 1.0f)
+        caps |= RT_CANVAS3D_BACKEND_CAP_ANISOTROPY;
     if (!gl.CompressedTexImage2D)
-        return 0;
+        return caps;
     if (gl_version_at_least(4, 2) || gl_extension_supported("GL_ARB_texture_compression_bptc"))
         caps |= RT_CANVAS3D_BACKEND_CAP_BC7;
     if (gl_extension_supported("GL_KHR_texture_compression_astc_ldr"))

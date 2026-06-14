@@ -1,3 +1,25 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/tests/unit/test_vgfx3d_backend_d3d11_shared.c
+// Purpose: Unit tests for D3D11 backend shared helper functions.
+//
+// Key invariants:
+//   - Shared helper math and cache policies are deterministic without D3D11.
+//   - Constant-buffer layouts remain compatible with backend shaders.
+//   - Sampler-state cache indices stay clamped to their fixed array bounds.
+//
+// Ownership/Lifetime:
+//   - Tests allocate only stack-local fixtures and process-local scratch buffers.
+//
+// Links: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_shared.c
+//
+//===----------------------------------------------------------------------===//
+
 #ifndef VIPER_ENABLE_GRAPHICS
 #define VIPER_ENABLE_GRAPHICS 1
 #endif
@@ -386,6 +408,19 @@ static void test_capacity_and_mip_helpers(void) {
                 "RGBA8 destination validation rejects short strides");
 }
 
+static void test_sampler_anisotropy_helpers(void) {
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_anisotropy(0) == 1,
+                "D3D11 sampler anisotropy clamps zero to one");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_anisotropy(64) == 16,
+                "D3D11 sampler anisotropy clamps high values to sixteen");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_anisotropy(8) == 8,
+                "D3D11 sampler anisotropy preserves valid values");
+    EXPECT_TRUE(vgfx3d_d3d11_sampler_anisotropy_index(1) == 0,
+                "D3D11 sampler anisotropy index starts at zero");
+    EXPECT_TRUE(vgfx3d_d3d11_sampler_anisotropy_index(16) == 15,
+                "D3D11 sampler anisotropy index covers the final cache slot");
+}
+
 static void test_d3d11_limits_and_prune_helpers(void) {
     EXPECT_TRUE(vgfx3d_d3d11_is_valid_texture2d_extent(1, 1) == 1,
                 "Texture extent helper accepts the smallest valid texture");
@@ -718,6 +753,7 @@ int main(void) {
     test_upload_status_helpers_drop_stale_state();
     test_target_kind_blend_and_color_format_helpers();
     test_capacity_and_mip_helpers();
+    test_sampler_anisotropy_helpers();
     test_d3d11_limits_and_prune_helpers();
     test_mapped_copy_and_native_mip_validation_helpers();
     test_target_fallback_helper();

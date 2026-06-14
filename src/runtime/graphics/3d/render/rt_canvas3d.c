@@ -1315,6 +1315,9 @@ static void rt_canvas3d_finalize(void *obj) {
     free(c->trans_cmds);
     c->trans_cmds = NULL;
     c->trans_capacity = 0;
+    free(c->sort_cmds);
+    c->sort_cmds = NULL;
+    c->sort_capacity = 0;
     canvas3d_clear_final_overlay(c);
     free(c->final_overlay_cmds);
     c->final_overlay_cmds = NULL;
@@ -1529,6 +1532,12 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     c->frame_serial = 0;
     c->timing_serial = 0;
     c->opaque_depth_sorting = 1;
+    c->frame_draws_submitted = 0;
+    c->frame_aabb_transforms = 0;
+    c->frame_sort_passes = 0;
+    c->frame_backend_state_changes = 0;
+    c->frame_last_backend_state_key = 0;
+    c->frame_has_backend_state_key = 0;
     c->occlusion_depth_margin = 0.02f;
     c->occlusion_rect_expand_cells = 1;
     c->motion_history = NULL;

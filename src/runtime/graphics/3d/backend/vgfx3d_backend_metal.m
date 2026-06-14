@@ -2412,7 +2412,13 @@ static id<MTLSamplerState> metal_get_material_sampler(VGFXMetalContext *ctx,
                              RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
                          ? RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
                          : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
-    NSString *key = [NSString stringWithFormat:@ "%d:%d:%d", wrap_s, wrap_t, filter];
+    int32_t anisotropy = use_slot ? cmd->texture_slot_anisotropy[slot] : cmd->texture_anisotropy;
+    anisotropy =
+        filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
+            ? 1
+            : vgfx3d_metal_sanitize_anisotropy(anisotropy);
+    NSString *key =
+        [NSString stringWithFormat:@"%d:%d:%d:%d", wrap_s, wrap_t, filter, anisotropy];
     id<MTLSamplerState> sampler = ctx.samplerCache[key];
     if (sampler)
         return sampler;
@@ -2423,6 +2429,7 @@ static id<MTLSamplerState> metal_get_material_sampler(VGFXMetalContext *ctx,
     sd.magFilter = sd.minFilter;
     sd.mipFilter = filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? MTLSamplerMipFilterNearest
                                                                   : MTLSamplerMipFilterLinear;
+    sd.maxAnisotropy = (NSUInteger)anisotropy;
     sd.sAddressMode = metal_material_address_mode(wrap_s);
     sd.tAddressMode = metal_material_address_mode(wrap_t);
     sampler = [ctx.device newSamplerStateWithDescriptor:sd];
@@ -3230,6 +3237,7 @@ static int64_t metal_get_native_texture_caps(void *ctx_ptr) {
     int64_t caps = 0;
     if (!ctx || !ctx.device)
         return 0;
+    caps |= RT_CANVAS3D_BACKEND_CAP_ANISOTROPY;
 #if defined(__aarch64__)
     caps |= RT_CANVAS3D_BACKEND_CAP_ASTC | RT_CANVAS3D_BACKEND_CAP_ETC2;
 #else
