@@ -3,6 +3,8 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
+//===----------------------------------------------------------------------===//
+//
 // File: src/runtime/rt_platform.h
 // Purpose: Cross-platform preprocessor abstractions for the Viper runtime, providing portable
 // macros for thread-local storage, atomic operations, weak symbol linkage, and platform detection.
@@ -12,6 +14,7 @@
 //   - RT_ATOMIC_* macros use C11 _Atomic on GCC/Clang and MSVC intrinsics on Windows.
 //   - RT_WEAK uses __attribute__((weak)) on ELF targets and is empty on Mach-O/MSVC.
 //   - Platform detection macros (RT_PLATFORM_WINDOWS etc.) are mutually exclusive.
+//   - Compiler-specific diagnostics are hidden behind RT_* adapter macros.
 //
 // Ownership/Lifetime:
 //   - All macros are pure preprocessor definitions; no runtime state is introduced.
@@ -97,6 +100,18 @@
 #else
 #define RT_WEAK
 #define RT_WEAK_DATA
+#endif
+
+//===----------------------------------------------------------------------===//
+// Compiler Diagnostics
+//===----------------------------------------------------------------------===//
+
+#if RT_COMPILER_MSVC
+#define RT_SUPPRESS_SETJMP_WARNING_BEGIN __pragma(warning(push)) __pragma(warning(disable : 4611))
+#define RT_SUPPRESS_SETJMP_WARNING_END __pragma(warning(pop))
+#else
+#define RT_SUPPRESS_SETJMP_WARNING_BEGIN
+#define RT_SUPPRESS_SETJMP_WARNING_END
 #endif
 
 //===----------------------------------------------------------------------===//
@@ -437,9 +452,8 @@ static inline void rt_atomic_store_f64(volatile double *ptr, const double *value
         const double *: rt_atomic_load_f64)((ptr), (ret), (order))
 
 #define __atomic_store(ptr, val, order)                                                            \
-    _Generic((ptr),                                                                                \
-        volatile double *: rt_atomic_store_f64,                                                    \
-        double *: rt_atomic_store_f64)((ptr), (val), (order))
+    _Generic((ptr), volatile double *: rt_atomic_store_f64, double *: rt_atomic_store_f64)(        \
+        (ptr), (val), (order))
 
 #define __atomic_exchange_n(ptr, val, order)                                                       \
     _Generic((ptr),                                                                                \

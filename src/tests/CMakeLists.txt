@@ -1493,16 +1493,41 @@ if (EXISTS "${GAME3D_RUNFRAMES_PROBE}")
             TIMEOUT 30)
 endif ()
 
-set(GAME3D_RUNFRAMES_CALLBACK_REJECT_PROBE "${G3D_TESTS_DIR}/test_game3d_runframes_callback_reject.zia")
-if (EXISTS "${GAME3D_RUNFRAMES_CALLBACK_REJECT_PROBE}")
-    add_test(NAME g3d_test_game3d_runframes_callback_reject
-            COMMAND $<TARGET_FILE:viper> run "${GAME3D_RUNFRAMES_CALLBACK_REJECT_PROBE}"
+set(GAME3D_RUNFRAMES_CALLBACK_PROBE "${G3D_TESTS_DIR}/test_game3d_runframes_callback_probe.zia")
+if (EXISTS "${GAME3D_RUNFRAMES_CALLBACK_PROBE}")
+    add_test(NAME g3d_test_game3d_runframes_callback_probe
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_RUNFRAMES_CALLBACK_PROBE}"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
-    set_tests_properties(g3d_test_game3d_runframes_callback_reject PROPERTIES
-            PASS_REGULAR_EXPRESSION "Game3D.World3D.runFrames: callback must be a native function pointer"
+    set_tests_properties(g3d_test_game3d_runframes_callback_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "RESULT: ok"
             LABELS "runtime;graphics3d;zia;requires_display"
             ENVIRONMENT "VIPER_3D_BACKEND=software"
             TIMEOUT 30)
+endif ()
+
+set(GAME3D_RUNFIXED_CALLBACK_PROBE "${G3D_TESTS_DIR}/test_game3d_runfixed_callback_probe.zia")
+if (EXISTS "${GAME3D_RUNFIXED_CALLBACK_PROBE}")
+    add_test(NAME g3d_test_game3d_runfixed_callback_probe
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_RUNFIXED_CALLBACK_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_game3d_runfixed_callback_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "RESULT: ok"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+    if (NOT WIN32)
+        add_test(NAME native_run_game3d_runfixed_callback_probe
+                COMMAND ${CMAKE_COMMAND}
+                -DVIPER_EXE=$<TARGET_FILE:viper>
+                -DTEST_FILE=${GAME3D_RUNFIXED_CALLBACK_PROBE}
+                -DOUT_EXE=${CMAKE_BINARY_DIR}/game3d_runfixed_callback_probe_native
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_zia_native_run.cmake
+                WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+        set_tests_properties(native_run_game3d_runfixed_callback_probe PROPERTIES
+                LABELS "zia;native_run;runtime;graphics3d;requires_display"
+                ENVIRONMENT "VIPER_3D_BACKEND=software"
+                TIMEOUT 60)
+    endif ()
 endif ()
 
 set(GAME3D_DESTROYED_HANDLE_REJECT_PROBE "${G3D_TESTS_DIR}/test_game3d_destroyed_handle_reject.zia")

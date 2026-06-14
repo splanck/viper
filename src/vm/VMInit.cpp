@@ -5,10 +5,15 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Defines the routines that construct VM instances and prepare execution
-// state.  This includes wiring up debug/tracing facilities, populating lookup
-// tables for functions and globals, and initialising frames prior to running a
-// function.
+// File: src/vm/VMInit.cpp
+// Purpose: Construct VM instances and prepare execution state.
+// Key invariants:
+//   - VM function/global lookup tables are populated before execution starts.
+//   - Runtime extern bridges are registered before interpreted programs call them.
+// Ownership/Lifetime:
+//   - VM instances borrow Module storage and own per-execution frame/global state.
+//   - Runtime external registrations are process-wide and live for the process.
+// Links: src/vm/VM.hpp, src/vm/RuntimeBridge.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -48,6 +53,7 @@ namespace il::vm {
 
 void registerThreadsRuntimeExternals();
 void registerNetworkRuntimeExternals();
+void registerGame3DRuntimeExternals();
 
 namespace {
 
@@ -68,6 +74,7 @@ struct ThreadsRuntimeInitializer {
     ThreadsRuntimeInitializer() {
         registerThreadsRuntimeExternals();
         registerNetworkRuntimeExternals();
+        registerGame3DRuntimeExternals();
     }
 };
 
@@ -253,9 +260,7 @@ void initializeGlobalStorage(const Global &global, void *storage) {
         }
         case Type::Kind::I64: {
             const int64_t value = parseCheckedIntegerInitializer(
-                global,
-                std::numeric_limits<int64_t>::min(),
-                std::numeric_limits<int64_t>::max());
+                global, std::numeric_limits<int64_t>::min(), std::numeric_limits<int64_t>::max());
             std::memcpy(storage, &value, sizeof(value));
             break;
         }
@@ -432,8 +437,8 @@ void VM::init(std::shared_ptr<ProgramState> program) {
                     "VM initialization failed: failed to allocate mutable global storage");
             }
             initializeGlobalStorage(g, storage.get());
-            auto [globalIt, inserted] = programState_->mutableGlobalMap.emplace(g.name,
-                                                                                storage.get());
+            auto [globalIt, inserted] =
+                programState_->mutableGlobalMap.emplace(g.name, storage.get());
             (void)inserted;
             try {
                 programState_->mutableGlobalSizes.emplace(storage.get(), size);

@@ -329,6 +329,7 @@ add_library(il_vm STATIC
         vm/VMContext.cpp
         vm/ThreadsRuntime.cpp
         vm/NetworkRuntime.cpp
+        vm/Game3DRuntime.cpp
         vm/debug/VMDebug.cpp
         vm/RuntimeBridge.cpp
         vm/Marshal.cpp

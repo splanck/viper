@@ -7,12 +7,13 @@
 //
 // File: src/bytecode/BytecodeVM.hpp
 // Purpose: Stack-based bytecode interpreter for compiled Viper programs.
-// Key invariants: Module must outlive the VM. Call depth never exceeds kMaxCallDepth.
-//                 Operand stack per frame never exceeds kMaxStackSize.
-//                 Thread-local active VM pointer is managed by ActiveBytecodeVMGuard.
-// Ownership: VM borrows the BytecodeModule (non-owning pointer). Owns all internal
-//            state (value stack, call stack, alloca buffer, string cache, globals).
-// Lifetime: Constructed once, reusable across multiple exec() calls on the same module.
+// Key invariants:
+//   - Loaded BytecodeModule storage must outlive the VM.
+//   - Call depth and operand stack depth remain within fixed VM limits.
+//   - Thread-local active VM/module pointers are scoped by guard objects.
+// Ownership/Lifetime:
+//   - BytecodeVM borrows BytecodeModule storage and owns execution stacks/globals.
+//   - Re-entrant callback invocation borrows active frames only for synchronous calls.
 // Links: Bytecode.hpp, BytecodeModule.hpp, BytecodeCompiler.hpp
 //
 //===----------------------------------------------------------------------===//
@@ -174,6 +175,16 @@ class BytecodeVM {
     /// @param args Arguments to pass to the function (default: empty).
     /// @return The function's return value as a BCSlot.
     BCSlot exec(const BytecodeFunction *func, const std::vector<BCSlot> &args = {});
+
+    /// @brief Invoke a void function while another bytecode frame is active.
+    /// @details Used by synchronous native callback bridges. The callback runs on
+    ///          the same VM instance so module globals and runtime state match
+    ///          direct bytecode execution, then dispatch stops when the callback
+    ///          frame returns to its original caller depth.
+    /// @param func Void function to invoke.
+    /// @param args Arguments to pass to the callback.
+    /// @return True when the callback returned normally; false after a trap.
+    bool invokeVoidReentrant(const BytecodeFunction *func, const std::vector<BCSlot> &args = {});
 
     /// @brief Get the current VM execution state.
     /// @return The current VMState (Ready, Running, Halted, or Trapped).
@@ -408,9 +419,9 @@ class BytecodeVM {
     uint64_t maxInstrCount_; ///< Maximum dispatched instructions before trapping (0 = unlimited).
 
     // Runtime integration
-    bool runtimeBridgeEnabled_; ///< Whether CALL_NATIVE routes through RuntimeBridge.
-    bool useThreadedDispatch_;  ///< Whether to use computed-goto dispatch.
-    bool trustedDispatch_;      ///< Whether verified bytecode skips hot-path guards.
+    bool runtimeBridgeEnabled_;             ///< Whether CALL_NATIVE routes through RuntimeBridge.
+    bool useThreadedDispatch_;              ///< Whether to use computed-goto dispatch.
+    bool trustedDispatch_;                  ///< Whether verified bytecode skips hot-path guards.
     bool trustedDispatchRequested_ = false; ///< User-requested trusted dispatch preference.
     bool moduleDispatchValidated_ = false;  ///< True once load() validates module headers/tables.
     bool loadFailed_ = false; ///< True when the most recent load() rejected the module.
@@ -418,6 +429,14 @@ class BytecodeVM {
 
     /// @brief Exception handler stack (pushed by EH_PUSH, popped by EH_POP).
     std::vector<BCExceptionHandler> ehStack_;
+
+    /// @brief Call-stack depth where a reentrant callback invocation should stop.
+    /// @details SIZE_MAX means normal top-level execution with no reentrant stop boundary.
+    size_t reentrantStopDepth_;
+
+    /// @brief Operand stack pointer restored when a reentrant callback returns.
+    /// @details Preserves the suspended native call's argument slots across callback dispatch.
+    BCSlot *reentrantReturnSp_;
 
     /// @brief Alloca buffer for stack allocations (separate from the operand stack).
     std::vector<uint8_t> allocaBuffer_;
@@ -521,7 +540,8 @@ class BytecodeVM {
     bool returnValueFromFrame();
 
     /// @brief Return void from the current frame.
-    /// @return True when execution should continue in the caller; false when the entry frame halted.
+    /// @return True when execution should continue in the caller; false when the entry frame
+    /// halted.
     bool returnVoidFromFrame();
 
     /// @brief Push a global value onto the operand stack, retaining strings.
@@ -593,7 +613,8 @@ class BytecodeVM {
     /// @param module Candidate module passed to @ref load.
     /// @param failure Populated with the first validation failure.
     /// @return True when the module can be safely bound to this VM.
-    bool validateModuleForLoad(const BytecodeModule *module, ModuleValidationFailure &failure) const;
+    bool validateModuleForLoad(const BytecodeModule *module,
+                               ModuleValidationFailure &failure) const;
 
     /// @brief Validate one function's metadata and bytecode instruction stream.
     /// @param module Candidate module that owns @p func.
@@ -678,11 +699,22 @@ class BytecodeVM {
     void runThreaded();
 #endif
 
+    /// @brief Enter a new call frame with arguments already pushed on the stack.
+    /// @details Shared frame setup used by direct and reentrant bytecode calls.
+    /// @param func The function to enter.
+    /// @param site Diagnostic site name for frame validation traps.
+    void enterCallFrame(const BytecodeFunction *func, const char *site);
+
     /// @brief Push a new call frame for the given function.
-    /// @details Allocates locals and operand stack space on the value stack,
-    ///          copies arguments into parameter slots, and begins execution.
+    /// @details Validates the active operand stack depth against the callee arity.
     /// @param func The function to call.
     void call(const BytecodeFunction *func);
+
+    /// @brief Push a callback frame while a runtime call is suspended.
+    /// @details Uses only the arguments at the top of the stack; the suspended
+    ///          caller may still have runtime-call operands below them.
+    /// @param func The callback function to call.
+    void callReentrant(const BytecodeFunction *func);
 
     /// @brief Pop the current call frame and restore the caller's state.
     /// @return True if there are more frames on the call stack; false if the

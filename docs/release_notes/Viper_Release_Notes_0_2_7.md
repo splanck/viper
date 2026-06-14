@@ -13,7 +13,7 @@ A hardening cycle continuing v0.2.6. The new work ends per-frame Graphics3D flic
 - **Graphics3D flicker stabilized.** Queue-order-independent occlusion history with covered-streak gating, camera-depth-fitted shadow cascades, per-camera LOD/impostor hysteresis, and conservative terrain-horizon culling; every backend validates draw-command index ranges and shares one depth-bias scale.
 - **Spot light shadow maps (new).** Shadow-casting spot lights join the shared directional shadow budget, built from a single perspective light view-projection; all four backends (software/OpenGL/Metal/D3D11) sample with a perspective divide and cone-angle suppression while the directional cascade path stays orthographic.
 - **glTF/FBX import & node animation (new).** `NodeAnimation3D`/`NodeAnimator3D` play node, object, camera, and morph-weight clips, and `Model3D`/`Assets3D` can pull a single clip from an external file; the FBX importer gains full transforms, cubic curves, PBR routing, and async loading.
-- **Canvas3D authoring helpers (new).** `DrawMeshWind` foliage sway, `DrawImage2D` HUD blits, and native `SetFullscreen`/`ToggleFullscreen` (`Game3D.Keys.F11`); `DrawMeshSkinned` takes an `AnimController3D` pose and `Material3D` gains depth-bias and `ShadowMode`.
+- **Canvas3D authoring helpers (new).** `DrawMeshWind` foliage sway, `DrawImage2D` HUD blits, and native `SetFullscreen`/`ToggleFullscreen` (`Game3D.Keys.F11`); `DrawMeshSkinned` takes an `AnimController3D` pose, `Material3D` gains depth-bias, `ShadowMode`, and anisotropic filtering (1–16), and `Canvas3D` surfaces per-frame draw-submission telemetry.
 - **Open-world streaming & navmesh tooling (new).** `WorldStream3D` cells load binary sidecars into a resident-byte budget, `NavMesh3D.Export`/`Import` round-trip versioned `VNAVMSH2`, compressed textures drain large mips across frames, and stream manifests resolve `asset://` sidecars.
 - **3D runtime & Game3D fail closed.** Non-finite pose/playback inputs clamp or revert to the bind pose, scene/transform/raycast/physics/navigation entry points reject bad handles, stored references are class-checked, and screenshot/render-target capture finalizes with no present side effect.
 - **Runtime fails closed (repo-wide).** A cppcheck-driven audit makes every recoverable `rt_trap` return a safe sentinel and free its locals; unrecoverable entropy/DRBG failures route through a new non-returning `rt_abort`, so no path proceeds with predictable key material when a trap hook returns.
@@ -36,13 +36,13 @@ A hardening cycle continuing v0.2.6. The new work ends per-frame Graphics3D flic
 
 | Metric | v0.2.6 | v0.2.7 | Delta |
 |---|---|---|---|
-| Commits | — | 111 | +111 |
-| Source files | 3,096 | 3,352 | +256 |
-| Production SLOC | 669K | 723K | +54K |
-| Test SLOC | 278K | 298K | +20K |
+| Commits | — | 113 | +113 |
+| Source files | 3,096 | 3,353 | +257 |
+| Production SLOC | 669K | 724K | +55K |
+| Test SLOC | 278K | 299K | +20K |
 | Demo SLOC | 192K | 194K | +2K |
 
-Counts via `scripts/count_sloc.sh` (production 722,956 / test 298,156 / demo 193,849 / source files 3,352); commits since the `v0.2.6-dev` tag (2026-06-01).
+Counts via `scripts/count_sloc.sh` (production 724,138 / test 298,592 / demo 193,900 / source files 3,353); commits since the `v0.2.6-dev` tag (2026-06-01).
 
 ---
 
@@ -52,6 +52,7 @@ Counts via `scripts/count_sloc.sh` (production 722,956 / test 298,156 / demo 193
 - Every backend (software/OpenGL/Metal/D3D11) validates draw-command index ranges and shares one depth-bias scale; D3D11 closes its remaining sign-off gaps and hardens compressed-texture lifetime.
 - The software backend rasterizes across a deterministic worker pool — parallel scanline fills that reproduce the single-threaded image bit-for-bit — so headless and CI renders stay reproducible while throughput scales with cores.
 - Shadow-casting spot lights join the shared directional shadow budget: directional lights consume slots first by cascade count, then spot lights fill remaining slots ranked by intensity and camera distance. Spot lights build a single perspective view-projection from position, direction, outer cone angle, and range; all four shader languages (GLSL/HLSL/MSL/software) perspective-divide spot shadow coordinates and suppress contributions outside the cone angle while keeping directional paths orthographic and cascaded.
+- Anisotropic texture filtering arrives as a `Material3D.Anisotropy`/`SetAnisotropy` property clamped to a cross-backend 1–16 range and preserved through clones, instances, imported texture slots, and deferred draw-command capture; D3D11/Metal/OpenGL sampler caches key on effective anisotropy (advertised via `BackendSupports("anisotropy")`, OpenGL clamping to the device maximum, software accepting the property without advertising support). `Canvas3D` exposes per-frame submission telemetry — `DrawsSubmitted`, `AabbTransforms`, `SortPasses`, `BackendStateChanges` — its deferred queue orders through stable radix and bucket sorts over reusable scratch, and GPU opaque passes group backend state after depth ordering to cut material and sampler churn while the software path keeps front-to-back order.
 
 ### 3D assets, animation, and Canvas3D (new)
 
@@ -124,13 +125,13 @@ Counts via `scripts/count_sloc.sh` (production 722,956 / test 298,156 / demo 193
 
 ~20K new test SLOC.
 
-- **3D rendering, assets, and animation** — spot-shadow perspective/orthographic coordinate and budget-ordering coverage, vegetation sway, billboard batching, versioned navmesh round-trip, reference repair, texture-atlas, FBX/node-animation import, D3D11 mip-validation, fail-closed content-loader diagnostics (corrupt/missing/wrong-magic inputs and optional-texture warnings), untrusted-count guard and parser fuzz harnesses, and `Game3D.Diagnostics` fallback- and stale-entity no-op counter coverage.
+- **3D rendering, assets, and animation** — spot-shadow perspective/orthographic coordinate and budget-ordering coverage, vegetation sway, billboard batching, versioned navmesh round-trip, reference repair, texture-atlas, FBX/node-animation import, D3D11 mip-validation, fail-closed content-loader diagnostics (corrupt/missing/wrong-magic inputs and optional-texture warnings), untrusted-count guard and parser fuzz harnesses, anisotropic-sampler and frame-telemetry/deferred-sort ordering coverage, and `Game3D.Diagnostics` fallback- and stale-entity no-op counter coverage.
 - **IL, codegen, and cross-engine** — IL release-lifetime and alias-analysis precision, VM-vs-bytecode scalar-semantics equivalence, AArch64 register-allocation regressions, spilled-operand reload-caching pin test (zero inter-use reloads), and duplicate-spill-store elimination verification.
 - **Agent CLI and diagnostics** — the `agent_cli` suite, the diagnostic-code catalog, and structured bridge/MCP/LSP diagnostic and hover coverage.
 - **Runtime, frontends, and GUI** — media/pixel decode, BASIC parsing, Text/Time/IO edge cases, and GUI overlay/font-propagation regressions.
 
 ---
 
-Demos and docs tracked the work: `game3d-showcase` gained an F11 fullscreen toggle, wind-swayed foliage, a render-to-image minimap, physics props, wandering sentinels, spot shadows, and asset-load error reporting (and was split into per-subsystem modules) — and its and 3D Bowling's smoke probes now assert a clean `Game3D.Diagnostics` summary — while the Graphics3D guides, man pages, and codemap documented spot shadows, backend-fallback observability, asset-load and degradation diagnostics, streaming, navmesh export, and the agent-facing CLI and diagnostics schema. Structurally, the runtime's largest translation units — input, JSON, directory, audio decode, 2D pixels, GUI, network, TLS, and regex — split into focused per-feature files; the Zia editor/IntelliSense services moved into `zia_editor_services`; a new `viper_text_core` library and `fe_common` catalog/resolver extract the shared GUI/TUI text engine and the collection and overload code used by both frontends; and socket, entropy, and file-dialog logic consolidated into `rt_*_platform_{win,posix}.c` adapters behind a ratcheting lint baseline.
+Demos and docs tracked the work: `game3d-showcase` gained an F11 fullscreen toggle, wind-swayed foliage, a render-to-image minimap, physics props, wandering sentinels, spot shadows, asset-load error reporting, and a procedural fallback forest when its optional tree asset is missing (and was split into per-subsystem modules) — and its and 3D Bowling's smoke probes now assert a clean `Game3D.Diagnostics` summary — while the Graphics3D guides, man pages, and codemap documented spot shadows, backend-fallback observability, sampler anisotropy and render telemetry, asset-load and degradation diagnostics, streaming, navmesh export, and the agent-facing CLI and diagnostics schema. Structurally, the runtime's largest translation units — input, JSON, directory, audio decode, 2D pixels, GUI, network, TLS, and regex — split into focused per-feature files; the Zia editor/IntelliSense services moved into `zia_editor_services`; a new `viper_text_core` library and `fe_common` catalog/resolver extract the shared GUI/TUI text engine and the collection and overload code used by both frontends; and socket, entropy, and file-dialog logic consolidated into `rt_*_platform_{win,posix}.c` adapters behind a ratcheting lint baseline.
 
 <!-- END DRAFT -->

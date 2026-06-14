@@ -140,6 +140,8 @@ setup code.
 `World3D.runFixed` caps the number of simulation steps processed by one rendered
 frame. If a long frame would require more work than the cap, the dropped step
 count is exposed through `World3D.droppedFixedSteps` for telemetry and tuning.
+The `runFixed` update argument accepts a native-compiled function reference or
+an interpreted Zia function reference with signature `(Float) -> Unit`.
 Raw `Viper.Graphics3D.Physics3DWorld` users can use the same fixed-step pattern
 without the Game3D facade through `Physics3DWorld.StepFixed(dt, fixedDt,
 maxSteps)`, `FixedStepAlpha`, and `DroppedFixedSteps`. `fixedDt` should be
@@ -292,7 +294,7 @@ The managed frame helpers use this order:
 
 1. Poll or advance input/time.
 2. Update `world.dt`, `world.elapsed`, and `world.frame`.
-3. Run gameplay update if a native callback loop is being used.
+3. Run gameplay update if a callback loop is being used.
 4. Run the installed Game3D camera/controller `update`.
 5. Advance spawned `Entity3D.anim` controllers and collect animation events.
 6. Step physics.
@@ -302,7 +304,7 @@ The managed frame helpers use this order:
 10. Begin the frame and draw the scene.
 11. Draw the effects registry.
 12. End the scene.
-13. Draw the final overlay if a native overlay callback is being used.
+13. Draw the final overlay if an overlay callback is being used.
 14. Finalize/present, or leave the finalized frame available for capture.
 
 Controller `update` runs inside `stepSimulation(step)` before the physics step,
@@ -335,16 +337,17 @@ Manual code can use the same pieces directly:
 | `captureFinalFrame()` | Finalize post-FX/overlay and return `Pixels` |
 | `present()` | Finalize if needed and present the frame |
 
-For deterministic interpreted-Zia tests, use `runFramesOnly(frameCount, stepSec)`
-or call the manual methods explicitly. `runFramesOnly` uses the synthetic clock
-path and leaves the final frame capturable. `runFrames` / `runFramesOnly`
-temporarily switch the backing canvas to synthetic input and fixed-clock timing
-for callback, simulation, and render work, keep synthetic-held keys/buttons down
-across the whole deterministic run, then restore the previous canvas input
-source, clock source, and synthetic delta after the run completes. If a native
-`runFrames` callback traps, the synthetic canvas state is restored before the
-original trap is rethrown. The built-in run loops avoid double-counting time
-because `tick()` / `runFrames()` own frame and elapsed-time accounting.
+For deterministic tests, use `runFrames(frameCount, stepSec, &update)`,
+`runFramesOnly(frameCount, stepSec)`, or call the manual methods explicitly.
+`runFramesOnly` uses the synthetic clock path and leaves the final frame
+capturable. `runFrames` / `runFramesOnly` temporarily switch the backing canvas
+to synthetic input and fixed-clock timing for callback, simulation, and render
+work, keep synthetic-held keys/buttons down across the whole deterministic run,
+then restore the previous canvas input source, clock source, and synthetic delta
+after the run completes. If a `runFrames` callback traps, the synthetic canvas
+state is restored before the original trap is rethrown. The built-in run loops
+avoid double-counting time because `tick()` / `runFrames()` own frame and
+elapsed-time accounting.
 
 For worker-parity probes, set `World3D.setWorkerCount(world, 1)` and a
 multi-worker value before separate `runFramesOnly` replays and compare the final
@@ -382,24 +385,27 @@ backing window size, not a temporary `RenderTarget3D` bound on the canvas.
 ## Callback Boundary
 
 `World3D.run`, `runWithOverlay`, `runFixed`, `runFixedWithOverlay`,
-`runFrames`, and `drawOverlay` are native callback-loop helpers. The callback
-argument must be a native function pointer callable from C.
+`runFrames`, and `drawOverlay` accept script function references in both
+interpreted and native-compiled Zia. Update callbacks must have signature
+`(Float) -> Unit`; overlay callbacks must have signature `() -> Unit`.
 
-Interpreted Zia function references and closures are managed callback objects,
-not C-callable function pointers. Passing one to these native callback-loop
-methods traps with a `Game3D.World3D.*: callback must be a native function
-pointer` diagnostic. Until a VM callback trampoline exists for this API, use
-manual frame methods or `runFramesOnly` from interpreted Zia.
+Native-compiled Zia lowers `&update` and `&overlay` to executable function
+pointers. Interpreted Zia keeps those references as VM-managed callback handles;
+the Game3D VM bridge resolves them against the active module and calls the C
+runtime with native trampoline pointers, preserving the active VM state and
+script globals during callback re-entry.
 
-The missing piece is a VM-owned re-entrant callback ABI, not a Game3D event
-buffer. `BytecodeVM::exec` is a fresh top-level invocation that resets bytecode
-execution state, so Game3D cannot safely call it while a runtime call is already
-on the VM stack. A future trampoline needs to expose a VM-managed function or
-closure invocation entry point that preserves the active frame and handles
-captured closure environments. Until then, pollable collision/animation/event
-buffers and manual frame loops are the supported interpreted-Zia surface.
+If a callback reference is not a function in the active VM module, or if its
+arity/return shape does not match the required callback signature, the call traps
+with an API-specific diagnostic such as
+`Game3D.World3D.runFixed: update callback must have signature (Float) -> Unit`.
+The lower C runtime still validates raw pointer calls so direct embedding code
+gets a clear `native function pointer` diagnostic for garbage or non-executable
+pointers.
 
-This boundary is covered by `g3d_test_game3d_runframes_callback_reject`.
+This boundary is covered by `g3d_test_game3d_runframes_callback_probe`,
+`g3d_test_game3d_runfixed_callback_probe`, and
+`native_run_game3d_runfixed_callback_probe`.
 
 ---
 
@@ -1066,7 +1072,7 @@ smoothing.
 |---------|-------|
 | `LoadModelAsset` or `Sound3D.loadAsset` returns `null` | Run from the project root or package the asset path in `viper.project`; source-tree samples use `asset assets assets` or repository-relative fixture paths. |
 | Final overlay pixels look post-processed | Draw HUD after `World3D.endScene()` with `Canvas3D.BeginOverlay()` / `EndOverlay()`, then call `captureFinalFrame()` or `present()`. |
-| Interpreted Zia callback loop traps | Use manual `tick`/`stepSimulation`/frame methods or `runFramesOnly`; native callback loops require C-callable function pointers. |
+| A callback loop traps before the callback runs | Check that the update callback is `(Float) -> Unit`, the overlay callback is `() -> Unit`, and the function reference comes from the active script module. |
 | Software backend disables a requested quality feature | Inspect `Canvas3D.get_QualityActive()` and `get_QualityFallback()`; `Quality.Apply` avoids unsupported shadow/post-FX paths. |
 | A body does not collide with another body | Verify the entity layer, `BodyDef.withLayer`, and `BodyDef.withMask`; masks must include the other body layer. |
 | A handle fails after teardown | Destroy the `World3D` last. Spawned entities, effects, and audio source bindings are owned by the world. Destroyed-handle diagnostics use `Game3D.<Type>.<method>: <reason>` so the failing API call is visible. |
@@ -1082,7 +1088,9 @@ The Game3D runtime is covered by:
 | `test_rt_game3d` | C runtime contracts for constants, masks, input, world defaults, spawn/despawn, stale-entity no-op diagnostics, shared-body rejection, collision-event clearing, native callback loops, fixed-loop accumulator/spiral-guard behavior, overlay hooks, final capture, packaged glTF hierarchy loading through `Assets3D.LoadModelAsset`, synthetic controller input, orbit/follow late update, first-person character movement, material presets, prefabs, lighting, quality, environment, post-FX, debug helpers, streamed terrain metadata inspection and LOD seam stitching beyond the single-heightmap cap, Animator3D root motion/events, Sound3D helpers, and Effects3D presets/expiry |
 | `g3d_test_game3d_world_probe` | Zia construction, default subsystems, layer masks, entity spawn/find/despawn, direct `Entity3D.FromNode` subtree wrapping, synthetic `tick`, clamped `stepSimulation`, resize/aspect, manual frame path, final capture, and destroy |
 | `g3d_test_game3d_runframes_probe` | Zia deterministic `runFramesOnly`, dt/elapsed/frame accounting, and final capture |
-| `g3d_test_game3d_runframes_callback_reject` | Interpreted Zia callback rejection diagnostic for native callback-loop APIs |
+| `g3d_test_game3d_runframes_callback_probe` | Interpreted Zia `runFrames` update callback bridge, fixed dt delivery, and frame accounting |
+| `g3d_test_game3d_runfixed_callback_probe` | Interpreted Zia `runFixed` and `runFixedWithOverlay` callback bridges, re-entrant global mutation, fixed dt delivery, overlay invocation, and callback-driven teardown |
+| `native_run_game3d_runfixed_callback_probe` | Native-compiled Zia parity for the same fixed-step callback script |
 | `g3d_test_game3d_destroyed_handle_reject` | Interpreted Zia destroyed-`World3D` diagnostic for post-teardown handle use |
 | `g3d_test_game3d_destroyed_entity_reject` | Interpreted Zia stale-`Entity3D` neutral getter/no-op diagnostics for post-teardown handle use |
 | `g3d_test_game3d_double_despawn_reject` | Interpreted Zia double-despawn stale-handle no-op diagnostic |

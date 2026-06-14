@@ -1,0 +1,48 @@
+module test_game3d_runframes_callback_probe;
+
+bind Viper.Game3D as Game3D;
+bind Viper.Terminal as Terminal;
+
+var frameCallbackCount: Integer = 0;
+var frameCallbackDtMismatch: Boolean = false;
+
+func fail(message: String) {
+    Terminal.Say("FAIL: " + message);
+}
+
+func near(a: Float, b: Float, eps: Float) -> Boolean {
+    var d = a - b;
+    if (d < 0.0) {
+        d = 0.0 - d;
+    }
+    return d <= eps;
+}
+
+func onFrame(dt: Float) {
+    frameCallbackCount = frameCallbackCount + 1;
+    if (near(dt, 0.016, 0.0001) == false) {
+        frameCallbackDtMismatch = true;
+    }
+}
+
+func start() {
+    var world = Game3D.World3D.New("Game3D RunFrames Callback Probe", 32, 24);
+    Game3D.World3D.runFrames(world, 3, 0.016, &onFrame);
+
+    if (frameCallbackCount != 3) {
+        fail("runFrames callback count was " + toString(frameCallbackCount));
+        return;
+    }
+    if (frameCallbackDtMismatch) {
+        fail("runFrames callback received the wrong fixed dt");
+        return;
+    }
+    if (Game3D.World3D.get_frame(world) != 3) {
+        fail("runFrames did not advance the frame counter");
+        return;
+    }
+
+    Game3D.World3D.destroy(world);
+    Terminal.Say("RESULT: ok");
+    Terminal.Say("PASS");
+}

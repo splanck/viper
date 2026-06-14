@@ -1,0 +1,102 @@
+module test_game3d_runfixed_callback_probe;
+
+bind Viper.Game3D as Game3D;
+bind Viper.Graphics3D as G3D;
+bind Viper.Terminal as Terminal;
+
+var callbackWorld: Any = null;
+var callbackCount: Integer = 0;
+var callbackDtMismatch: Boolean = false;
+var overlayWorld: Any = null;
+var overlayUpdateCount: Integer = 0;
+var overlayDrawCount: Integer = 0;
+var overlayDtMismatch: Boolean = false;
+
+func fail(message: String) {
+    Terminal.Say("FAIL: " + message);
+}
+
+func near(a: Float, b: Float, eps: Float) -> Boolean {
+    var d = a - b;
+    if (d < 0.0) {
+        d = 0.0 - d;
+    }
+    return d <= eps;
+}
+
+func onFixed(dt: Float) {
+    callbackCount = callbackCount + 1;
+    if (near(dt, 0.016, 0.0001) == false) {
+        callbackDtMismatch = true;
+    }
+    if (callbackCount >= 2) {
+        Game3D.World3D.destroy(callbackWorld);
+    }
+}
+
+func onFixedWithOverlay(dt: Float) {
+    overlayUpdateCount = overlayUpdateCount + 1;
+    if (near(dt, 0.016, 0.0001) == false) {
+        overlayDtMismatch = true;
+    }
+    if (overlayUpdateCount >= 3) {
+        Game3D.World3D.destroy(overlayWorld);
+    }
+}
+
+func onOverlay() {
+    overlayDrawCount = overlayDrawCount + 1;
+}
+
+func start() {
+    var world = Game3D.World3D.New("Game3D RunFixed Callback Probe", 32, 24);
+    callbackWorld = world;
+    var canvas = Game3D.World3D.get_canvas(world);
+    G3D.Canvas3D.SetInputSource(canvas, 1);
+    G3D.Canvas3D.SetClockSource(canvas, 1);
+    G3D.Canvas3D.SetSyntheticDeltaTimeSec(canvas, 0.016);
+
+    Game3D.World3D.runFixed(world, 0.016, &onFixed);
+
+    if (callbackCount != 2) {
+        fail("runFixed callback count was " + toString(callbackCount));
+        return;
+    }
+    if (callbackDtMismatch) {
+        fail("runFixed callback received the wrong fixed dt");
+        return;
+    }
+    if (Game3D.World3D.isDestroyed(world) == false) {
+        fail("runFixed callback did not destroy the world");
+        return;
+    }
+
+    var overlayProbe = Game3D.World3D.New("Game3D RunFixed Overlay Callback Probe", 32, 24);
+    overlayWorld = overlayProbe;
+    var overlayCanvas = Game3D.World3D.get_canvas(overlayProbe);
+    G3D.Canvas3D.SetInputSource(overlayCanvas, 1);
+    G3D.Canvas3D.SetClockSource(overlayCanvas, 1);
+    G3D.Canvas3D.SetSyntheticDeltaTimeSec(overlayCanvas, 0.016);
+
+    Game3D.World3D.runFixedWithOverlay(overlayProbe, 0.016, &onFixedWithOverlay, &onOverlay);
+
+    if (overlayUpdateCount != 3) {
+        fail("runFixedWithOverlay update count was " + toString(overlayUpdateCount));
+        return;
+    }
+    if (overlayDrawCount < 2) {
+        fail("runFixedWithOverlay overlay count was " + toString(overlayDrawCount));
+        return;
+    }
+    if (overlayDtMismatch) {
+        fail("runFixedWithOverlay update received the wrong fixed dt");
+        return;
+    }
+    if (Game3D.World3D.isDestroyed(overlayProbe) == false) {
+        fail("runFixedWithOverlay callback did not destroy the world");
+        return;
+    }
+
+    Terminal.Say("RESULT: ok");
+    Terminal.Say("PASS");
+}

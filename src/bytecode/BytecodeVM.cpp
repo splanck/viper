@@ -1,5 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/bytecode/BytecodeVM.cpp
+// Purpose: Execute lowered Viper bytecode programs and bridge runtime calls.
+// Key invariants:
+//   - Bytecode stack, frame, and string ownership metadata remain synchronized.
+//   - Runtime bridge calls preserve VM trap semantics and deterministic state.
+// Ownership/Lifetime:
+//   - BytecodeVM borrows loaded BytecodeModule storage for the duration of execution.
+//   - Runtime callback bridges borrow active VM/module state only for synchronous calls.
+// Links: src/bytecode/BytecodeVM.hpp, src/vm/RuntimeBridge.hpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "bytecode/BytecodeVM.hpp"
 #include "bytecode/BytecodeSemantics.hpp"
@@ -8,9 +24,11 @@
 #include "il/runtime/signatures/Registry.hpp"
 #include "rt_async.h"
 #include "rt_future.h"
+#include "rt_game3d.h"
 #include "rt_http_server.h"
 #include "rt_https_server.h"
 #include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_threads.h"
 #include "support/small_vector.hpp"
 #include "viper/runtime/rt.h"
@@ -22,10 +40,12 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <exception>
+#include <initializer_list>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -121,6 +141,12 @@ UnifiedRuntimeHandler gPriorThreadStartSafeOwnedHandler = nullptr;
 UnifiedRuntimeHandler gPriorAsyncRunHandler = nullptr;
 UnifiedRuntimeHandler gPriorHttpBindHandler = nullptr;
 UnifiedRuntimeHandler gPriorHttpsBindHandler = nullptr;
+UnifiedRuntimeHandler gPriorGame3DRunHandler = nullptr;
+UnifiedRuntimeHandler gPriorGame3DRunWithOverlayHandler = nullptr;
+UnifiedRuntimeHandler gPriorGame3DRunFixedHandler = nullptr;
+UnifiedRuntimeHandler gPriorGame3DRunFixedWithOverlayHandler = nullptr;
+UnifiedRuntimeHandler gPriorGame3DRunFramesHandler = nullptr;
+UnifiedRuntimeHandler gPriorGame3DDrawOverlayHandler = nullptr;
 
 } // namespace
 
@@ -200,7 +226,8 @@ BytecodeVM::BytecodeVM()
     : module_(nullptr), state_(VMState::Ready), trapKind_(TrapKind::None), currentErrorCode_(0),
       sp_(nullptr), fp_(nullptr), instrCount_(0), maxInstrCount_(0), runtimeBridgeEnabled_(false),
       useThreadedDispatch_(true), // Default to faster threaded dispatch
-      trustedDispatch_(false), allocaTop_(0), singleStep_(false) {
+      trustedDispatch_(false), reentrantStopDepth_(std::numeric_limits<size_t>::max()),
+      reentrantReturnSp_(nullptr), allocaTop_(0), singleStep_(false) {
     // Pre-allocate reasonable stack size
     valueStack_.resize(kMaxStackSize * kMaxCallDepth);
     valueStackStringOwned_.assign(valueStack_.size(), 0);
@@ -555,10 +582,12 @@ bool BytecodeVM::validateFunctionForLoad(const BytecodeModule &module,
     }
 
     std::vector<uint8_t> instructionStarts(func.code.size(), 0);
+
     struct TargetCheck {
         uint32_t target = 0;
         const char *site = nullptr;
     };
+
     std::vector<TargetCheck> targets;
 
     auto relativeTarget = [](uint32_t basePc, int32_t offset, uint32_t &target) {
@@ -686,9 +715,8 @@ bool BytecodeVM::validateFunctionForLoad(const BytecodeModule &module,
             case BCOpcode::EH_PUSH: {
                 if (pc + 1 >= func.code.size())
                     return fail("EH_PUSH missing handler offset word");
-                if (!addRelativeTarget(pc + 1,
-                                       static_cast<int32_t>(func.code[pc + 1]),
-                                       "EH_PUSH")) {
+                if (!addRelativeTarget(
+                        pc + 1, static_cast<int32_t>(func.code[pc + 1]), "EH_PUSH")) {
                     return fail("EH_PUSH handler target under/overflows PC range");
                 }
                 pc += 2;
@@ -698,9 +726,8 @@ bool BytecodeVM::validateFunctionForLoad(const BytecodeModule &module,
             case BCOpcode::RESUME_LABEL: {
                 if (pc + 1 >= func.code.size())
                     return fail("RESUME_LABEL missing target offset word");
-                if (!addRelativeTarget(pc + 1,
-                                       static_cast<int32_t>(func.code[pc + 1]),
-                                       "RESUME_LABEL")) {
+                if (!addRelativeTarget(
+                        pc + 1, static_cast<int32_t>(func.code[pc + 1]), "RESUME_LABEL")) {
                     return fail("RESUME_LABEL target under/overflows PC range");
                 }
                 pc += 2;
@@ -715,9 +742,8 @@ bool BytecodeVM::validateFunctionForLoad(const BytecodeModule &module,
                 const uint64_t endPc = static_cast<uint64_t>(pc) + 3u + caseWords;
                 if (endPc > func.code.size())
                     return fail("SWITCH case table extends past function code");
-                if (!addRelativeTarget(pc + 2,
-                                       static_cast<int32_t>(func.code[pc + 2]),
-                                       "SWITCH default")) {
+                if (!addRelativeTarget(
+                        pc + 2, static_cast<int32_t>(func.code[pc + 2]), "SWITCH default")) {
                     return fail("SWITCH default target under/overflows PC range");
                 }
                 std::unordered_set<int32_t> seenCases;
@@ -727,9 +753,8 @@ bool BytecodeVM::validateFunctionForLoad(const BytecodeModule &module,
                     if (!seenCases.insert(caseValue).second)
                         return fail("SWITCH contains duplicate case value");
                     const uint32_t offsetPc = cursor++;
-                    if (!addRelativeTarget(offsetPc,
-                                           static_cast<int32_t>(func.code[offsetPc]),
-                                           "SWITCH case")) {
+                    if (!addRelativeTarget(
+                            offsetPc, static_cast<int32_t>(func.code[offsetPc]), "SWITCH case")) {
                         return fail("SWITCH case target under/overflows PC range");
                     }
                 }
@@ -752,7 +777,8 @@ bool BytecodeVM::validateFunctionForLoad(const BytecodeModule &module,
 
     for (const ExceptionRange &range : func.exceptionRanges) {
         if (range.startPc > range.endPc || range.endPc > func.code.size() ||
-            range.handlerPc >= instructionStarts.size() || instructionStarts[range.handlerPc] == 0) {
+            range.handlerPc >= instructionStarts.size() ||
+            instructionStarts[range.handlerPc] == 0) {
             return fail("exception range metadata is out of range");
         }
         if (range.startPc < instructionStarts.size() && instructionStarts[range.startPc] == 0)
@@ -924,9 +950,7 @@ bool BytecodeVM::retainStringSlot(BCSlot *slot, const char *site) {
 ///          accidentally release an alias. When @p src owns a non-null runtime
 ///          string handle, the copied handle is validated and retained before
 ///          @p dst becomes owning.
-bool BytecodeVM::copyStackSlotRetainingString(BCSlot *dst,
-                                              const BCSlot *src,
-                                              const char *site) {
+bool BytecodeVM::copyStackSlotRetainingString(BCSlot *dst, const BCSlot *src, const char *site) {
     *dst = *src;
     setSlotOwnsString(dst, false);
     if (!slotOwnsString(src) || !dst->ptr)
@@ -1061,12 +1085,31 @@ bool BytecodeVM::returnValueFromFrame() {
     }
     *sp_++ = result;
     setSlotOwnsString(sp_ - 1, resultOwnsString);
+    if (reentrantStopDepth_ != std::numeric_limits<size_t>::max() &&
+        callStack_.size() == reentrantStopDepth_) {
+        BCSlot *restoreSp = reentrantReturnSp_;
+        if (restoreSp) {
+            setSlotOwnsString(sp_ - 1, false);
+            sp_ = restoreSp;
+            *sp_++ = result;
+            setSlotOwnsString(sp_ - 1, resultOwnsString);
+        }
+        state_ = VMState::Halted;
+        return false;
+    }
     return true;
 }
 
 /// @brief Unwind a void-returning frame and halt when it was the entry frame.
 bool BytecodeVM::returnVoidFromFrame() {
     if (!popFrame()) {
+        state_ = VMState::Halted;
+        return false;
+    }
+    if (reentrantStopDepth_ != std::numeric_limits<size_t>::max() &&
+        callStack_.size() == reentrantStopDepth_) {
+        if (reentrantReturnSp_)
+            sp_ = reentrantReturnSp_;
         state_ = VMState::Halted;
         return false;
     }
@@ -1668,6 +1711,81 @@ BCSlot BytecodeVM::exec(const BytecodeFunction *func, const std::vector<BCSlot> 
     return BCSlot{};
 }
 
+/// @brief Invoke a void bytecode function without resetting the active VM.
+bool BytecodeVM::invokeVoidReentrant(const BytecodeFunction *func,
+                                     const std::vector<BCSlot> &args) {
+    registerUnifiedVmRuntimeHandlers();
+    if (!module_) {
+        if (!(loadFailed_ && state_ == VMState::Trapped))
+            trap(TrapKind::RuntimeError, "No module loaded");
+        return false;
+    }
+    if (!func) {
+        trap(TrapKind::RuntimeError, "Null function entry");
+        return false;
+    }
+    if (!functionBelongsToModule(func)) {
+        trap(TrapKind::RuntimeError, "Function entry does not belong to loaded module");
+        return false;
+    }
+    if (func->hasReturn) {
+        trap(TrapKind::RuntimeError, "Reentrant callback must return void");
+        return false;
+    }
+    if (args.size() != func->numParams) {
+        trap(TrapKind::RuntimeError, "Function entry arity mismatch");
+        return false;
+    }
+    if (!fp_ || callStack_.empty())
+        return exec(func, args).i64 == 0 && state_ != VMState::Trapped;
+    if (state_ == VMState::Trapped)
+        return false;
+
+    BCSlot *savedSp = sp_;
+    if (savedSp + static_cast<std::ptrdiff_t>(args.size()) >
+        valueStack_.data() + valueStack_.size()) {
+        trap(TrapKind::StackOverflow, "reentrant callback arguments exceed value stack");
+        return false;
+    }
+
+    const VMState savedState = state_;
+    const size_t savedStopDepth = reentrantStopDepth_;
+    BCSlot *savedReturnSp = reentrantReturnSp_;
+    const size_t callerDepth = callStack_.size();
+
+    ActiveBytecodeVMGuard vmGuard(this);
+    ActiveBytecodeModuleGuard moduleGuard(module_);
+    reentrantStopDepth_ = callerDepth;
+    reentrantReturnSp_ = savedSp;
+    state_ = VMState::Running;
+
+    for (const auto &arg : args) {
+        *sp_++ = arg;
+        setSlotOwnsString(sp_ - 1, false);
+    }
+
+    callReentrant(func);
+    if (state_ != VMState::Trapped && fp_) {
+#if defined(__GNUC__) || defined(__clang__)
+        if (useThreadedDispatch_) {
+            runThreaded();
+        } else {
+            run();
+        }
+#else
+        run();
+#endif
+    }
+
+    reentrantStopDepth_ = savedStopDepth;
+    reentrantReturnSp_ = savedReturnSp;
+    if (state_ == VMState::Trapped)
+        return false;
+    sp_ = savedSp;
+    state_ = savedState;
+    return true;
+}
+
 /// @brief Portable interpreter loop: the `switch`-based fallback executed when
 ///        threaded dispatch is unavailable or disabled.
 /// @details Fetches/decodes/executes one instruction per iteration until the
@@ -1681,8 +1799,7 @@ void BytecodeVM::run() {
         if (!fp_ || !fp_->func)
             return;
 
-        if (!trustedDispatch_ &&
-            !ensurePcInRange(*fp_->func, fp_->pc, "BytecodeVM::run(fetch)")) {
+        if (!trustedDispatch_ && !ensurePcInRange(*fp_->func, fp_->pc, "BytecodeVM::run(fetch)")) {
             return;
         }
 
@@ -2007,10 +2124,10 @@ void BytecodeVM::run() {
             }
 
             case BCOpcode::SDIV_I64_CHK: {
-                const auto result = il::semantics::signedDiv(
-                    sp_[-2].i64,
-                    sp_[-1].i64,
-                    detail::decodeArithmeticWidthArg(decodeArg8_0(instr)));
+                const auto result =
+                    il::semantics::signedDiv(sp_[-2].i64,
+                                             sp_[-1].i64,
+                                             detail::decodeArithmeticWidthArg(decodeArg8_0(instr)));
                 if (!result.ok()) {
                     const TrapKind fault = detail::toBytecodeTrap(result.trap);
                     if (!dispatchTrap(fault)) {
@@ -2038,10 +2155,10 @@ void BytecodeVM::run() {
             } break;
 
             case BCOpcode::SREM_I64_CHK: {
-                const auto result = il::semantics::signedRem(
-                    sp_[-2].i64,
-                    sp_[-1].i64,
-                    detail::decodeArithmeticWidthArg(decodeArg8_0(instr)));
+                const auto result =
+                    il::semantics::signedRem(sp_[-2].i64,
+                                             sp_[-1].i64,
+                                             detail::decodeArithmeticWidthArg(decodeArg8_0(instr)));
                 if (!result.ok()) {
                     const TrapKind fault = detail::toBytecodeTrap(result.trap);
                     if (!dispatchTrap(fault)) {
@@ -2270,8 +2387,7 @@ void BytecodeVM::run() {
 
             case BCOpcode::F64_TO_I64_CHK: {
                 const auto result = il::semantics::fpToSiRte(
-                    sp_[-1].f64,
-                    detail::decodeArithmeticWidthArg(decodeArg8_0(instr)));
+                    sp_[-1].f64, detail::decodeArithmeticWidthArg(decodeArg8_0(instr)));
                 if (!result.ok()) {
                     const TrapKind fault = detail::toBytecodeTrap(result.trap);
                     trapOrDispatch(fault,
@@ -2286,8 +2402,7 @@ void BytecodeVM::run() {
 
             case BCOpcode::F64_TO_U64_CHK: {
                 const auto result = il::semantics::fpToUiRte(
-                    sp_[-1].f64,
-                    detail::decodeArithmeticWidthArg(decodeArg8_0(instr)));
+                    sp_[-1].f64, detail::decodeArithmeticWidthArg(decodeArg8_0(instr)));
                 if (!result.ok()) {
                     const TrapKind fault = detail::toBytecodeTrap(result.trap);
                     trapOrDispatch(fault,
@@ -2302,8 +2417,7 @@ void BytecodeVM::run() {
 
             case BCOpcode::I64_NARROW_CHK: {
                 const auto result = il::semantics::signedNarrow(
-                    sp_[-1].i64,
-                    detail::decodeNarrowWidthArg(decodeArg8_0(instr)));
+                    sp_[-1].i64, detail::decodeNarrowWidthArg(decodeArg8_0(instr)));
                 if (!result.ok()) {
                     const TrapKind fault = detail::toBytecodeTrap(result.trap);
                     if (!dispatchTrap(fault)) {
@@ -2529,10 +2643,10 @@ void BytecodeVM::run() {
                 setSlotOwnsString(idxSlot, false);
                 int32_t *element = nullptr;
                 if (!resolveArrayFastElement<int32_t>(arrSlot->ptr,
-                                                       idx,
-                                                       element,
-                                                       "ARR_I32_GET_FAST index address overflow",
-                                                       "BytecodeVM::ARR_I32_GET_FAST"))
+                                                      idx,
+                                                      element,
+                                                      "ARR_I32_GET_FAST index address overflow",
+                                                      "BytecodeVM::ARR_I32_GET_FAST"))
                     break;
                 arrSlot->i64 = static_cast<int64_t>(*element);
                 setSlotOwnsString(arrSlot, false);
@@ -2554,10 +2668,10 @@ void BytecodeVM::run() {
                 --sp_;
                 int32_t *element = nullptr;
                 if (!resolveArrayFastElement<int32_t>(arrSlot->ptr,
-                                                       idx,
-                                                       element,
-                                                       "ARR_I32_SET_FAST index address overflow",
-                                                       "BytecodeVM::ARR_I32_SET_FAST"))
+                                                      idx,
+                                                      element,
+                                                      "ARR_I32_SET_FAST index address overflow",
+                                                      "BytecodeVM::ARR_I32_SET_FAST"))
                     break;
                 setSlotOwnsString(arrSlot, false);
                 *element = value;
@@ -2575,10 +2689,10 @@ void BytecodeVM::run() {
                 setSlotOwnsString(idxSlot, false);
                 int64_t *element = nullptr;
                 if (!resolveArrayFastElement<int64_t>(arrSlot->ptr,
-                                                       idx,
-                                                       element,
-                                                       "ARR_I64_GET_FAST index address overflow",
-                                                       "BytecodeVM::ARR_I64_GET_FAST"))
+                                                      idx,
+                                                      element,
+                                                      "ARR_I64_GET_FAST index address overflow",
+                                                      "BytecodeVM::ARR_I64_GET_FAST"))
                     break;
                 arrSlot->i64 = *element;
                 setSlotOwnsString(arrSlot, false);
@@ -2600,10 +2714,10 @@ void BytecodeVM::run() {
                 --sp_;
                 int64_t *element = nullptr;
                 if (!resolveArrayFastElement<int64_t>(arrSlot->ptr,
-                                                       idx,
-                                                       element,
-                                                       "ARR_I64_SET_FAST index address overflow",
-                                                       "BytecodeVM::ARR_I64_SET_FAST"))
+                                                      idx,
+                                                      element,
+                                                      "ARR_I64_SET_FAST index address overflow",
+                                                      "BytecodeVM::ARR_I64_SET_FAST"))
                     break;
                 setSlotOwnsString(arrSlot, false);
                 *element = value;
@@ -2993,8 +3107,7 @@ void BytecodeVM::run() {
                 int64_t code = (--sp_)->i64;
                 const il::vm::TrapKind vmTrapKind =
                     il::vm::map_err_to_trap(static_cast<int32_t>(code));
-                TrapKind decodedTrapKind =
-                    static_cast<TrapKind>(static_cast<int32_t>(vmTrapKind));
+                TrapKind decodedTrapKind = static_cast<TrapKind>(static_cast<int32_t>(vmTrapKind));
                 if (!dispatchTrap(decodedTrapKind, static_cast<int32_t>(code))) {
                     trap(decodedTrapKind, "Unhandled trap from error");
                 }
@@ -3100,19 +3213,9 @@ void BytecodeVM::run() {
 }
 
 /// @brief Call a bytecode function, setting up a new stack frame.
-/// @param func The function to call. Arguments must be pre-pushed on the stack.
-///
-/// Creates a new call frame with the function's parameters taken from the
-/// operand stack. Non-parameter locals are zero-initialized.
-void BytecodeVM::call(const BytecodeFunction *func) {
-    // Check stack overflow
-    if (callStack_.size() >= kMaxCallDepth) {
-        trap(TrapKind::StackOverflow, "call stack overflow");
-        return;
-    }
-    if (!ensureCallArity(func, fp_, sp_, "BytecodeVM::call"))
-        return;
-    if (!ensureFrameFootprint(func, sp_, "BytecodeVM::call"))
+/// @brief Enter a function frame with arguments already pushed on the operand stack.
+void BytecodeVM::enterCallFrame(const BytecodeFunction *func, const char *site) {
+    if (!ensureFrameFootprint(func, sp_, site))
         return;
 
     // Save call site PC
@@ -3158,6 +3261,30 @@ void BytecodeVM::call(const BytecodeFunction *func) {
 
     // Switch to new frame
     fp_ = &callStack_.back();
+}
+
+/// @param func The function to call. Arguments must be pre-pushed on the stack.
+///
+/// Creates a new call frame with the function's parameters taken from the
+/// operand stack. Non-parameter locals are zero-initialized.
+void BytecodeVM::call(const BytecodeFunction *func) {
+    // Check stack overflow
+    if (callStack_.size() >= kMaxCallDepth) {
+        trap(TrapKind::StackOverflow, "call stack overflow");
+        return;
+    }
+    if (!ensureCallArity(func, fp_, sp_, "BytecodeVM::call"))
+        return;
+    enterCallFrame(func, "BytecodeVM::call");
+}
+
+/// @brief Enter a callback frame while a native runtime call is suspended.
+void BytecodeVM::callReentrant(const BytecodeFunction *func) {
+    if (callStack_.size() >= kMaxCallDepth) {
+        trap(TrapKind::StackOverflow, "call stack overflow");
+        return;
+    }
+    enterCallFrame(func, "BytecodeVM::callReentrant");
 }
 
 /// @brief Pop the current call frame and return to the caller.
@@ -3399,8 +3526,9 @@ bool BytecodeVM::ensureMemoryAccess(const void *ptr, size_t bytes, const char *s
     const uintptr_t addr = reinterpret_cast<uintptr_t>(ptr);
     const size_t width = bytes == 0 ? 1 : bytes;
     if (width > std::numeric_limits<uintptr_t>::max() - addr) {
-        trapOrDispatch(TrapKind::Bounds,
-                       (std::string(site) + ": memory access range overflows address space").c_str());
+        trapOrDispatch(
+            TrapKind::Bounds,
+            (std::string(site) + ": memory access range overflows address space").c_str());
         return false;
     }
     const uintptr_t end = addr + width;
@@ -3476,10 +3604,9 @@ bool BytecodeVM::addPointerOffset(void *base, int64_t offset, void *&result, con
         }
         adjusted = baseAddr + static_cast<uintptr_t>(positive);
     } else {
-        const uint64_t magnitude =
-            offset == std::numeric_limits<int64_t>::min()
-                ? (uint64_t{1} << 63)
-                : static_cast<uint64_t>(-offset);
+        const uint64_t magnitude = offset == std::numeric_limits<int64_t>::min()
+                                       ? (uint64_t{1} << 63)
+                                       : static_cast<uint64_t>(-offset);
         if (magnitude > static_cast<uint64_t>(baseAddr)) {
             trapOrDispatch(TrapKind::Bounds,
                            (std::string(site) + ": pointer offset underflow").c_str());
@@ -4126,8 +4253,7 @@ static std::shared_ptr<const BytecodeModule> cloneBytecodeModuleForWorker(
 /// @param originalEntry Entry function resolved in the caller module.
 /// @return Matching function in @p module, or null when unavailable.
 static const BytecodeFunction *resolveClonedBytecodeEntry(
-    const std::shared_ptr<const BytecodeModule> &module,
-    const BytecodeFunction *originalEntry) {
+    const std::shared_ptr<const BytecodeModule> &module, const BytecodeFunction *originalEntry) {
     if (!module || !originalEntry)
         return nullptr;
     return module->findFunction(originalEntry->name);
@@ -4348,6 +4474,453 @@ static void validateBytecodeHttpsHandlerSignature(const BytecodeFunction &fn) {
     }
 }
 
+struct UnifiedGame3DCallbackScope {
+    il::vm::VM *stdVm = nullptr;
+    BytecodeVM *bcVm = nullptr;
+    const il::core::Function *stdUpdate = nullptr;
+    const il::core::Function *stdOverlay = nullptr;
+    const BytecodeFunction *bcUpdate = nullptr;
+    const BytecodeFunction *bcOverlay = nullptr;
+    UnifiedGame3DCallbackScope *previous = nullptr;
+};
+
+thread_local UnifiedGame3DCallbackScope *tlsUnifiedGame3DScope = nullptr;
+
+static void validateGame3DUpdateSignature(const il::core::Function &fn, const char *api) {
+    using Kind = il::core::Type::Kind;
+    if (fn.retType.kind == Kind::Void && fn.params.size() == 1 &&
+        fn.params[0].type.kind == Kind::F64) {
+        return;
+    }
+    std::string message(api);
+    message += ": update callback must have signature (Float) -> Unit";
+    rt_trap(message.c_str());
+}
+
+static void validateGame3DOverlaySignature(const il::core::Function &fn, const char *api) {
+    using Kind = il::core::Type::Kind;
+    if (fn.retType.kind == Kind::Void && fn.params.empty())
+        return;
+    std::string message(api);
+    message += ": overlay callback must have signature () -> Unit";
+    rt_trap(message.c_str());
+}
+
+static void validateBytecodeGame3DUpdateSignature(const BytecodeFunction &fn, const char *api) {
+    if (!fn.hasReturn && fn.numParams == 1)
+        return;
+    std::string message(api);
+    message += ": update callback must have signature (Float) -> Unit";
+    rt_trap(message.c_str());
+}
+
+static void validateBytecodeGame3DOverlaySignature(const BytecodeFunction &fn, const char *api) {
+    if (!fn.hasReturn && fn.numParams == 0)
+        return;
+    std::string message(api);
+    message += ": overlay callback must have signature () -> Unit";
+    rt_trap(message.c_str());
+}
+
+static const il::core::Function *resolveStdGame3DCallback(il::vm::VM &vm,
+                                                          void *entry,
+                                                          const char *api) {
+    const il::core::Function *fn = resolveILEntry(vm.module(), entry);
+    if (!fn) {
+        std::string message(api);
+        message += ": callback is not a function in the active VM module";
+        rt_trap(message.c_str());
+    }
+    return fn;
+}
+
+static const BytecodeFunction *resolveBytecodeGame3DCallback(const BytecodeModule *module,
+                                                             void *entry,
+                                                             const char *api) {
+    const BytecodeFunction *fn = resolveBytecodeEntry(module, entry);
+    if (!fn) {
+        std::string message(api);
+        message += ": callback is not a function in the active bytecode module";
+        rt_trap(message.c_str());
+    }
+    return fn;
+}
+
+extern "C" void unified_game3d_update_trampoline(double dt) {
+    UnifiedGame3DCallbackScope *scope = tlsUnifiedGame3DScope;
+    if (!scope) {
+        rt_trap("Game3D.World3D: invalid VM update callback scope");
+        return;
+    }
+
+    try {
+        if (scope->stdVm && scope->stdUpdate) {
+            il::support::SmallVector<il::vm::Slot, 1> args;
+            il::vm::Slot dtSlot{};
+            dtSlot.f64 = dt;
+            args.push_back(dtSlot);
+            il::vm::detail::VMAccess::callFunction(*scope->stdVm, *scope->stdUpdate, args);
+            return;
+        }
+        if (scope->bcVm && scope->bcUpdate) {
+            std::vector<BCSlot> args;
+            BCSlot dtSlot{};
+            dtSlot.f64 = dt;
+            args.push_back(dtSlot);
+            if (!scope->bcVm->invokeVoidReentrant(scope->bcUpdate, args)) {
+                const std::string &message = scope->bcVm->trapMessage();
+                rt_trap(message.empty() ? "Game3D.World3D: trapped bytecode update callback"
+                                        : message.c_str());
+            }
+            return;
+        }
+    } catch (const il::vm::RuntimeTrapSignal &signal) {
+        rt_trap(signal.message.empty() ? "Game3D.World3D: trapped VM update callback"
+                                       : signal.message.c_str());
+        return;
+    } catch (const std::exception &ex) {
+        const std::string message =
+            std::string("Game3D.World3D: unhandled VM update exception: ") + ex.what();
+        rt_trap(message.c_str());
+        return;
+    } catch (...) {
+        rt_trap("Game3D.World3D: unhandled VM update exception");
+        return;
+    }
+
+    rt_trap("Game3D.World3D: invalid VM update callback");
+}
+
+extern "C" void unified_game3d_overlay_trampoline(void) {
+    UnifiedGame3DCallbackScope *scope = tlsUnifiedGame3DScope;
+    if (!scope) {
+        rt_trap("Game3D.World3D: invalid VM overlay callback scope");
+        return;
+    }
+
+    try {
+        if (scope->stdVm && scope->stdOverlay) {
+            il::support::SmallVector<il::vm::Slot, 1> args;
+            il::vm::detail::VMAccess::callFunction(*scope->stdVm, *scope->stdOverlay, args);
+            return;
+        }
+        if (scope->bcVm && scope->bcOverlay) {
+            std::vector<BCSlot> args;
+            if (!scope->bcVm->invokeVoidReentrant(scope->bcOverlay, args)) {
+                const std::string &message = scope->bcVm->trapMessage();
+                rt_trap(message.empty() ? "Game3D.World3D: trapped bytecode overlay callback"
+                                        : message.c_str());
+            }
+            return;
+        }
+    } catch (const il::vm::RuntimeTrapSignal &signal) {
+        rt_trap(signal.message.empty() ? "Game3D.World3D: trapped VM overlay callback"
+                                       : signal.message.c_str());
+        return;
+    } catch (const std::exception &ex) {
+        const std::string message =
+            std::string("Game3D.World3D: unhandled VM overlay exception: ") + ex.what();
+        rt_trap(message.c_str());
+        return;
+    } catch (...) {
+        rt_trap("Game3D.World3D: unhandled VM overlay exception");
+        return;
+    }
+
+    rt_trap("Game3D.World3D: invalid VM overlay callback");
+}
+
+template <typename Fn>
+static void invokeUnifiedGame3DLoop(UnifiedGame3DCallbackScope &scope, Fn &&fn) {
+    char trapMessage[512] = "";
+    int trapped = 0;
+    jmp_buf recovery;
+
+    scope.previous = tlsUnifiedGame3DScope;
+    tlsUnifiedGame3DScope = &scope;
+    rt_trap_set_recovery(&recovery);
+    RT_SUPPRESS_SETJMP_WARNING_BEGIN;
+    const int recoveryState = setjmp(recovery);
+    RT_SUPPRESS_SETJMP_WARNING_END;
+    if (recoveryState != 0) {
+        const char *msg = rt_trap_get_error();
+        std::snprintf(trapMessage, sizeof(trapMessage), "%s", msg && msg[0] ? msg : "Game3D trap");
+        trapped = 1;
+    } else {
+        fn();
+    }
+    rt_trap_clear_recovery();
+    tlsUnifiedGame3DScope = scope.previous;
+    if (trapped)
+        rt_trap(trapMessage);
+}
+
+static void unified_game3d_run_handler(void **args, void *result) {
+    (void)result;
+    void *world = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *update = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+
+    if (il::vm::VM *stdVm = il::vm::activeVMInstance()) {
+        const il::core::Function *updateFn =
+            resolveStdGame3DCallback(*stdVm, update, "Game3D.World3D.run");
+        validateGame3DUpdateSignature(*updateFn, "Game3D.World3D.run");
+        UnifiedGame3DCallbackScope scope{
+            stdVm, nullptr, updateFn, nullptr, nullptr, nullptr, nullptr};
+        invokeUnifiedGame3DLoop(scope, [&]() {
+            rt_game3d_world_run(world, reinterpret_cast<void *>(&unified_game3d_update_trampoline));
+        });
+        return;
+    }
+
+    BytecodeVM *bcVm = activeBytecodeVMInstance();
+    const BytecodeModule *bcModule = activeBytecodeModule();
+    if (bcVm && bcModule) {
+        const BytecodeFunction *updateFn =
+            resolveBytecodeGame3DCallback(bcModule, update, "Game3D.World3D.run");
+        validateBytecodeGame3DUpdateSignature(*updateFn, "Game3D.World3D.run");
+        UnifiedGame3DCallbackScope scope{
+            nullptr, bcVm, nullptr, nullptr, updateFn, nullptr, nullptr};
+        invokeUnifiedGame3DLoop(scope, [&]() {
+            rt_game3d_world_run(world, reinterpret_cast<void *>(&unified_game3d_update_trampoline));
+        });
+        return;
+    }
+
+    if (gPriorGame3DRunHandler) {
+        gPriorGame3DRunHandler(args, result);
+        return;
+    }
+    rt_game3d_world_run(world, update);
+}
+
+static void unified_game3d_run_with_overlay_handler(void **args, void *result) {
+    (void)result;
+    void *world = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *update = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+    void *overlay = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+
+    if (il::vm::VM *stdVm = il::vm::activeVMInstance()) {
+        const il::core::Function *updateFn =
+            resolveStdGame3DCallback(*stdVm, update, "Game3D.World3D.runWithOverlay");
+        const il::core::Function *overlayFn =
+            resolveStdGame3DCallback(*stdVm, overlay, "Game3D.World3D.runWithOverlay");
+        validateGame3DUpdateSignature(*updateFn, "Game3D.World3D.runWithOverlay");
+        validateGame3DOverlaySignature(*overlayFn, "Game3D.World3D.runWithOverlay");
+        UnifiedGame3DCallbackScope scope{
+            stdVm, nullptr, updateFn, overlayFn, nullptr, nullptr, nullptr};
+        invokeUnifiedGame3DLoop(scope, [&]() {
+            rt_game3d_world_run_with_overlay(
+                world,
+                reinterpret_cast<void *>(&unified_game3d_update_trampoline),
+                reinterpret_cast<void *>(&unified_game3d_overlay_trampoline));
+        });
+        return;
+    }
+
+    BytecodeVM *bcVm = activeBytecodeVMInstance();
+    const BytecodeModule *bcModule = activeBytecodeModule();
+    if (bcVm && bcModule) {
+        const BytecodeFunction *updateFn =
+            resolveBytecodeGame3DCallback(bcModule, update, "Game3D.World3D.runWithOverlay");
+        const BytecodeFunction *overlayFn =
+            resolveBytecodeGame3DCallback(bcModule, overlay, "Game3D.World3D.runWithOverlay");
+        validateBytecodeGame3DUpdateSignature(*updateFn, "Game3D.World3D.runWithOverlay");
+        validateBytecodeGame3DOverlaySignature(*overlayFn, "Game3D.World3D.runWithOverlay");
+        UnifiedGame3DCallbackScope scope{
+            nullptr, bcVm, nullptr, nullptr, updateFn, overlayFn, nullptr};
+        invokeUnifiedGame3DLoop(scope, [&]() {
+            rt_game3d_world_run_with_overlay(
+                world,
+                reinterpret_cast<void *>(&unified_game3d_update_trampoline),
+                reinterpret_cast<void *>(&unified_game3d_overlay_trampoline));
+        });
+        return;
+    }
+
+    if (gPriorGame3DRunWithOverlayHandler) {
+        gPriorGame3DRunWithOverlayHandler(args, result);
+        return;
+    }
+    rt_game3d_world_run_with_overlay(world, update, overlay);
+}
+
+static void unified_game3d_run_fixed_handler(void **args, void *result) {
+    (void)result;
+    void *world = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    double step = args && args[1] ? *reinterpret_cast<double *>(args[1]) : 0.0;
+    void *update = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+
+    if (il::vm::VM *stdVm = il::vm::activeVMInstance()) {
+        const il::core::Function *updateFn =
+            resolveStdGame3DCallback(*stdVm, update, "Game3D.World3D.runFixed");
+        validateGame3DUpdateSignature(*updateFn, "Game3D.World3D.runFixed");
+        UnifiedGame3DCallbackScope scope{
+            stdVm, nullptr, updateFn, nullptr, nullptr, nullptr, nullptr};
+        invokeUnifiedGame3DLoop(scope, [&]() {
+            rt_game3d_world_run_fixed(
+                world, step, reinterpret_cast<void *>(&unified_game3d_update_trampoline));
+        });
+        return;
+    }
+
+    BytecodeVM *bcVm = activeBytecodeVMInstance();
+    const BytecodeModule *bcModule = activeBytecodeModule();
+    if (bcVm && bcModule) {
+        const BytecodeFunction *updateFn =
+            resolveBytecodeGame3DCallback(bcModule, update, "Game3D.World3D.runFixed");
+        validateBytecodeGame3DUpdateSignature(*updateFn, "Game3D.World3D.runFixed");
+        UnifiedGame3DCallbackScope scope{
+            nullptr, bcVm, nullptr, nullptr, updateFn, nullptr, nullptr};
+        invokeUnifiedGame3DLoop(scope, [&]() {
+            rt_game3d_world_run_fixed(
+                world, step, reinterpret_cast<void *>(&unified_game3d_update_trampoline));
+        });
+        return;
+    }
+
+    if (gPriorGame3DRunFixedHandler) {
+        gPriorGame3DRunFixedHandler(args, result);
+        return;
+    }
+    rt_game3d_world_run_fixed(world, step, update);
+}
+
+static void unified_game3d_run_fixed_with_overlay_handler(void **args, void *result) {
+    (void)result;
+    void *world = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    double step = args && args[1] ? *reinterpret_cast<double *>(args[1]) : 0.0;
+    void *update = args && args[2] ? *reinterpret_cast<void **>(args[2]) : nullptr;
+    void *overlay = args && args[3] ? *reinterpret_cast<void **>(args[3]) : nullptr;
+
+    if (il::vm::VM *stdVm = il::vm::activeVMInstance()) {
+        const il::core::Function *updateFn =
+            resolveStdGame3DCallback(*stdVm, update, "Game3D.World3D.runFixedWithOverlay");
+        const il::core::Function *overlayFn =
+            resolveStdGame3DCallback(*stdVm, overlay, "Game3D.World3D.runFixedWithOverlay");
+        validateGame3DUpdateSignature(*updateFn, "Game3D.World3D.runFixedWithOverlay");
+        validateGame3DOverlaySignature(*overlayFn, "Game3D.World3D.runFixedWithOverlay");
+        UnifiedGame3DCallbackScope scope{
+            stdVm, nullptr, updateFn, overlayFn, nullptr, nullptr, nullptr};
+        invokeUnifiedGame3DLoop(scope, [&]() {
+            rt_game3d_world_run_fixed_with_overlay(
+                world,
+                step,
+                reinterpret_cast<void *>(&unified_game3d_update_trampoline),
+                reinterpret_cast<void *>(&unified_game3d_overlay_trampoline));
+        });
+        return;
+    }
+
+    BytecodeVM *bcVm = activeBytecodeVMInstance();
+    const BytecodeModule *bcModule = activeBytecodeModule();
+    if (bcVm && bcModule) {
+        const BytecodeFunction *updateFn =
+            resolveBytecodeGame3DCallback(bcModule, update, "Game3D.World3D.runFixedWithOverlay");
+        const BytecodeFunction *overlayFn =
+            resolveBytecodeGame3DCallback(bcModule, overlay, "Game3D.World3D.runFixedWithOverlay");
+        validateBytecodeGame3DUpdateSignature(*updateFn, "Game3D.World3D.runFixedWithOverlay");
+        validateBytecodeGame3DOverlaySignature(*overlayFn, "Game3D.World3D.runFixedWithOverlay");
+        UnifiedGame3DCallbackScope scope{
+            nullptr, bcVm, nullptr, nullptr, updateFn, overlayFn, nullptr};
+        invokeUnifiedGame3DLoop(scope, [&]() {
+            rt_game3d_world_run_fixed_with_overlay(
+                world,
+                step,
+                reinterpret_cast<void *>(&unified_game3d_update_trampoline),
+                reinterpret_cast<void *>(&unified_game3d_overlay_trampoline));
+        });
+        return;
+    }
+
+    if (gPriorGame3DRunFixedWithOverlayHandler) {
+        gPriorGame3DRunFixedWithOverlayHandler(args, result);
+        return;
+    }
+    rt_game3d_world_run_fixed_with_overlay(world, step, update, overlay);
+}
+
+static void unified_game3d_run_frames_handler(void **args, void *result) {
+    (void)result;
+    void *world = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    int64_t frames = args && args[1] ? *reinterpret_cast<int64_t *>(args[1]) : 0;
+    double step = args && args[2] ? *reinterpret_cast<double *>(args[2]) : 0.0;
+    void *update = args && args[3] ? *reinterpret_cast<void **>(args[3]) : nullptr;
+
+    if (il::vm::VM *stdVm = il::vm::activeVMInstance()) {
+        const il::core::Function *updateFn =
+            resolveStdGame3DCallback(*stdVm, update, "Game3D.World3D.runFrames");
+        validateGame3DUpdateSignature(*updateFn, "Game3D.World3D.runFrames");
+        UnifiedGame3DCallbackScope scope{
+            stdVm, nullptr, updateFn, nullptr, nullptr, nullptr, nullptr};
+        invokeUnifiedGame3DLoop(scope, [&]() {
+            rt_game3d_world_run_frames(
+                world, frames, step, reinterpret_cast<void *>(&unified_game3d_update_trampoline));
+        });
+        return;
+    }
+
+    BytecodeVM *bcVm = activeBytecodeVMInstance();
+    const BytecodeModule *bcModule = activeBytecodeModule();
+    if (bcVm && bcModule) {
+        const BytecodeFunction *updateFn =
+            resolveBytecodeGame3DCallback(bcModule, update, "Game3D.World3D.runFrames");
+        validateBytecodeGame3DUpdateSignature(*updateFn, "Game3D.World3D.runFrames");
+        UnifiedGame3DCallbackScope scope{
+            nullptr, bcVm, nullptr, nullptr, updateFn, nullptr, nullptr};
+        invokeUnifiedGame3DLoop(scope, [&]() {
+            rt_game3d_world_run_frames(
+                world, frames, step, reinterpret_cast<void *>(&unified_game3d_update_trampoline));
+        });
+        return;
+    }
+
+    if (gPriorGame3DRunFramesHandler) {
+        gPriorGame3DRunFramesHandler(args, result);
+        return;
+    }
+    rt_game3d_world_run_frames(world, frames, step, update);
+}
+
+static void unified_game3d_draw_overlay_handler(void **args, void *result) {
+    (void)result;
+    void *world = args && args[0] ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    void *overlay = args && args[1] ? *reinterpret_cast<void **>(args[1]) : nullptr;
+
+    if (il::vm::VM *stdVm = il::vm::activeVMInstance()) {
+        const il::core::Function *overlayFn =
+            resolveStdGame3DCallback(*stdVm, overlay, "Game3D.World3D.drawOverlay");
+        validateGame3DOverlaySignature(*overlayFn, "Game3D.World3D.drawOverlay");
+        UnifiedGame3DCallbackScope scope{
+            stdVm, nullptr, nullptr, overlayFn, nullptr, nullptr, nullptr};
+        invokeUnifiedGame3DLoop(scope, [&]() {
+            rt_game3d_world_draw_overlay(
+                world, reinterpret_cast<void *>(&unified_game3d_overlay_trampoline));
+        });
+        return;
+    }
+
+    BytecodeVM *bcVm = activeBytecodeVMInstance();
+    const BytecodeModule *bcModule = activeBytecodeModule();
+    if (bcVm && bcModule) {
+        const BytecodeFunction *overlayFn =
+            resolveBytecodeGame3DCallback(bcModule, overlay, "Game3D.World3D.drawOverlay");
+        validateBytecodeGame3DOverlaySignature(*overlayFn, "Game3D.World3D.drawOverlay");
+        UnifiedGame3DCallbackScope scope{
+            nullptr, bcVm, nullptr, nullptr, nullptr, overlayFn, nullptr};
+        invokeUnifiedGame3DLoop(scope, [&]() {
+            rt_game3d_world_draw_overlay(
+                world, reinterpret_cast<void *>(&unified_game3d_overlay_trampoline));
+        });
+        return;
+    }
+
+    if (gPriorGame3DDrawOverlayHandler) {
+        gPriorGame3DDrawOverlayHandler(args, result);
+        return;
+    }
+    rt_game3d_world_draw_overlay(world, overlay);
+}
+
 /// Handler for Viper.Threads.Thread.Start - handles both standard VM and BytecodeVM.
 static void unified_thread_start_handler(void **args, void *result) {
     void *entry = nullptr;
@@ -4417,8 +4990,13 @@ static void unified_thread_start_handler(void **args, void *result) {
             rt_trap("Thread.Start: bytecode module snapshot failed");
             return;
         }
-        auto *payload = new (std::nothrow) BytecodeThreadPayload{
-            moduleOwner, moduleOwner.get(), ownedEntryFn, arg, false, bcVm->captureExecutionEnvironment()};
+        auto *payload =
+            new (std::nothrow) BytecodeThreadPayload{moduleOwner,
+                                                     moduleOwner.get(),
+                                                     ownedEntryFn,
+                                                     arg,
+                                                     false,
+                                                     bcVm->captureExecutionEnvironment()};
         if (!payload) {
             rt_trap("Thread.Start: payload allocation failed");
             return;
@@ -4517,13 +5095,13 @@ static void unified_thread_start_owned_handler(void **args, void *result) {
             rt_trap("Thread.StartOwned: bytecode module snapshot failed");
             return;
         }
-        auto *payload = new (std::nothrow) BytecodeThreadPayload{
-            moduleOwner,
-            moduleOwner.get(),
-            ownedEntryFn,
-            arg,
-            arg != nullptr,
-            bcVm->captureExecutionEnvironment()};
+        auto *payload =
+            new (std::nothrow) BytecodeThreadPayload{moduleOwner,
+                                                     moduleOwner.get(),
+                                                     ownedEntryFn,
+                                                     arg,
+                                                     arg != nullptr,
+                                                     bcVm->captureExecutionEnvironment()};
         if (!payload) {
             rt_trap("Thread.StartOwned: payload allocation failed");
             return;
@@ -4623,8 +5201,13 @@ static void unified_thread_start_safe_handler(void **args, void *result) {
             rt_trap("Thread.StartSafe: bytecode module snapshot failed");
             return;
         }
-        auto *payload = new (std::nothrow) BytecodeThreadPayload{
-            moduleOwner, moduleOwner.get(), ownedEntryFn, arg, false, bcVm->captureExecutionEnvironment()};
+        auto *payload =
+            new (std::nothrow) BytecodeThreadPayload{moduleOwner,
+                                                     moduleOwner.get(),
+                                                     ownedEntryFn,
+                                                     arg,
+                                                     false,
+                                                     bcVm->captureExecutionEnvironment()};
         if (!payload) {
             rt_trap("Thread.StartSafe: payload allocation failed");
             return;
@@ -4723,13 +5306,13 @@ static void unified_thread_start_safe_owned_handler(void **args, void *result) {
             rt_trap("Thread.StartSafeOwned: bytecode module snapshot failed");
             return;
         }
-        auto *payload = new (std::nothrow) BytecodeThreadPayload{
-            moduleOwner,
-            moduleOwner.get(),
-            ownedEntryFn,
-            arg,
-            arg != nullptr,
-            bcVm->captureExecutionEnvironment()};
+        auto *payload =
+            new (std::nothrow) BytecodeThreadPayload{moduleOwner,
+                                                     moduleOwner.get(),
+                                                     ownedEntryFn,
+                                                     arg,
+                                                     arg != nullptr,
+                                                     bcVm->captureExecutionEnvironment()};
         if (!payload) {
             rt_trap("Thread.StartSafeOwned: payload allocation failed");
             return;
@@ -5003,9 +5586,8 @@ static void unified_http_server_bind_handler(void **args, void *result) {
             rt_trap("HttpServer.BindHandler: bytecode module snapshot failed");
             return;
         }
-        auto *payload =
-            new BytecodeHttpHandlerPayload{
-                moduleOwner, moduleOwner.get(), ownedEntryFn, bcVm->captureExecutionEnvironment()};
+        auto *payload = new BytecodeHttpHandlerPayload{
+            moduleOwner, moduleOwner.get(), ownedEntryFn, bcVm->captureExecutionEnvironment()};
         rt_http_server_bind_handler_dispatch(
             server,
             tag,
@@ -5086,9 +5668,8 @@ static void unified_https_server_bind_handler(void **args, void *result) {
             rt_trap("HttpsServer.BindHandler: bytecode module snapshot failed");
             return;
         }
-        auto *payload =
-            new BytecodeHttpHandlerPayload{
-                moduleOwner, moduleOwner.get(), ownedEntryFn, bcVm->captureExecutionEnvironment()};
+        auto *payload = new BytecodeHttpHandlerPayload{
+            moduleOwner, moduleOwner.get(), ownedEntryFn, bcVm->captureExecutionEnvironment()};
         rt_https_server_bind_handler_dispatch(
             server,
             tag,
@@ -5215,14 +5796,13 @@ static void unified_async_run_handler(void **args, void *result) {
             rt_trap("Async.Run: future allocation failed");
             return;
         }
-        auto *payload = new (std::nothrow) BytecodeAsyncPayload{
-            moduleOwner,
-            moduleOwner.get(),
-            ownedEntryFn,
-            arg,
-            arg != nullptr,
-            bcVm->captureExecutionEnvironment(),
-            promise};
+        auto *payload = new (std::nothrow) BytecodeAsyncPayload{moduleOwner,
+                                                                moduleOwner.get(),
+                                                                ownedEntryFn,
+                                                                arg,
+                                                                arg != nullptr,
+                                                                bcVm->captureExecutionEnvironment(),
+                                                                promise};
         if (!payload) {
             rt_promise_set_error(promise, rt_const_cstr("Async.Run: payload allocation failed"));
             if (rt_obj_release_check0(promise))
@@ -5258,11 +5838,10 @@ static void unified_async_run_handler(void **args, void *result) {
     publishAsyncFutureResult(result, future);
 }
 
-/// @brief Install the dual-engine runtime handlers (Thread.Start, Async.Run,
-///        Http/Https BindHandler) exactly once per process, chaining to any
-///        previously registered handlers. Idempotent via std::call_once;
-///        invoked from load()/exec() so bytecode programs get correct
-///        threading/async/HTTP behavior.
+/// @brief Install the dual-engine runtime handlers for callback-taking runtime APIs.
+/// @details Chains to any previously registered Thread/Async/Network/Game3D handlers.
+///          Idempotent via std::call_once; invoked from load()/exec() so bytecode
+///          programs get correct callback behavior.
 void registerUnifiedVmRuntimeHandlers() {
     std::call_once(gUnifiedRuntimeHandlersOnce, []() {
         using il::runtime::signatures::make_signature;
@@ -5297,6 +5876,25 @@ void registerUnifiedVmRuntimeHandlers() {
         capturePriorHandler("Viper.Network.HttpsServer.BindHandler",
                             reinterpret_cast<void *>(&unified_https_server_bind_handler),
                             gPriorHttpsBindHandler);
+        capturePriorHandler("Viper.Game3D.World3D.run",
+                            reinterpret_cast<void *>(&unified_game3d_run_handler),
+                            gPriorGame3DRunHandler);
+        capturePriorHandler("Viper.Game3D.World3D.runWithOverlay",
+                            reinterpret_cast<void *>(&unified_game3d_run_with_overlay_handler),
+                            gPriorGame3DRunWithOverlayHandler);
+        capturePriorHandler("Viper.Game3D.World3D.runFixed",
+                            reinterpret_cast<void *>(&unified_game3d_run_fixed_handler),
+                            gPriorGame3DRunFixedHandler);
+        capturePriorHandler(
+            "Viper.Game3D.World3D.runFixedWithOverlay",
+            reinterpret_cast<void *>(&unified_game3d_run_fixed_with_overlay_handler),
+            gPriorGame3DRunFixedWithOverlayHandler);
+        capturePriorHandler("Viper.Game3D.World3D.runFrames",
+                            reinterpret_cast<void *>(&unified_game3d_run_frames_handler),
+                            gPriorGame3DRunFramesHandler);
+        capturePriorHandler("Viper.Game3D.World3D.drawOverlay",
+                            reinterpret_cast<void *>(&unified_game3d_draw_overlay_handler),
+                            gPriorGame3DDrawOverlayHandler);
     });
 
     using il::runtime::signatures::make_signature;
@@ -5351,9 +5949,53 @@ void registerUnifiedVmRuntimeHandlers() {
         ext.fn = reinterpret_cast<void *>(&unified_https_server_bind_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
     }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Game3D.World3D.run";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_game3d_run_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Game3D.World3D.runWithOverlay";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_game3d_run_with_overlay_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Game3D.World3D.runFixed";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::F64, SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_game3d_run_fixed_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Game3D.World3D.runFixedWithOverlay";
+        ext.signature =
+            make_signature(ext.name, {SigParam::Ptr, SigParam::F64, SigParam::Ptr, SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_game3d_run_fixed_with_overlay_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Game3D.World3D.runFrames";
+        ext.signature =
+            make_signature(ext.name, {SigParam::Ptr, SigParam::I64, SigParam::F64, SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_game3d_run_frames_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
+    {
+        il::vm::ExternDesc ext;
+        ext.name = "Viper.Game3D.World3D.drawOverlay";
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr});
+        ext.fn = reinterpret_cast<void *>(&unified_game3d_draw_overlay_handler);
+        il::vm::RuntimeBridge::registerExtern(ext);
+    }
 }
 
-/// Static initializer to register the unified thread/async handlers.
+/// Static initializer to register the unified callback-taking handlers.
 /// This overrides the standard VM handlers when BytecodeVM is linked.
 struct UnifiedThreadHandlerRegistrar {
     UnifiedThreadHandlerRegistrar() {
@@ -5361,7 +6003,7 @@ struct UnifiedThreadHandlerRegistrar {
     }
 };
 
-// Register the unified handlers when the library is loaded
+// Register the unified handlers when the library is loaded.
 [[maybe_unused]] const UnifiedThreadHandlerRegistrar kUnifiedThreadHandlerRegistrar{};
 
 } // anonymous namespace

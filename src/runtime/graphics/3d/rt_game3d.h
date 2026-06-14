@@ -1043,18 +1043,33 @@ void *rt_game3d_world_collision_event(void *world, int64_t phase, int64_t index)
 void rt_game3d_world_clear_collision_events(void *world);
 /// @brief Set the physics gravity vector.
 void rt_game3d_world_set_gravity(void *world, double x, double y, double z);
-/// @brief Run the blocking game loop, calling `update` each frame until the window closes.
+/// @brief Run the blocking game loop, calling `update(dt)` each frame until the window closes.
+/// @details Native callers pass a C-callable function pointer. VM/BytecodeVM callers pass a script
+/// function reference; the Game3D VM bridge resolves it and calls the runtime with a native
+/// trampoline. The update callback signature is `(Float) -> Unit`.
 void rt_game3d_world_run(void *world, void *update);
-/// @brief Run the game loop with both a per-frame `update` and a 2D `overlay` callback.
+/// @brief Run the game loop with per-frame `update(dt)` and 2D `overlay()` callbacks.
+/// @details Native callers pass C-callable function pointers. VM/BytecodeVM callers pass script
+/// function references, which the Game3D VM bridge invokes through native trampolines. The update
+/// signature is `(Float) -> Unit`; the overlay signature is `() -> Unit`.
 void rt_game3d_world_run_with_overlay(void *world, void *update, void *overlay);
-/// @brief Run a fixed-timestep game loop with the given step in seconds.
+/// @brief Run a fixed-timestep game loop with the given step and `update(dt)` callback.
+/// @details Native callers pass a C-callable function pointer. VM/BytecodeVM callers pass a script
+/// function reference, which the Game3D VM bridge invokes through a native trampoline. The update
+/// callback signature is `(Float) -> Unit`.
 void rt_game3d_world_run_fixed(void *world, double step_sec, void *update);
-/// @brief Run a fixed-timestep loop with an additional 2D overlay callback.
+/// @brief Run a fixed-timestep loop with `update(dt)` and 2D `overlay()` callbacks.
+/// @details Native callers pass C-callable function pointers. VM/BytecodeVM callers pass script
+/// function references, which the Game3D VM bridge invokes through native trampolines. The update
+/// signature is `(Float) -> Unit`; the overlay signature is `() -> Unit`.
 void rt_game3d_world_run_fixed_with_overlay(void *world,
                                             double step_sec,
                                             void *update,
                                             void *overlay);
-/// @brief Run a deterministic fixed number of frames at a fixed step (for tests/recording).
+/// @brief Run a deterministic fixed number of frames at a fixed step using `update(dt)`.
+/// @details Native callers pass a C-callable function pointer. VM/BytecodeVM callers pass a script
+/// function reference, which the Game3D VM bridge invokes through a native trampoline. The update
+/// callback signature is `(Float) -> Unit`.
 void rt_game3d_world_run_frames(void *world, int64_t frame_count, double step_sec, void *update);
 /// @brief Run a fixed number of frames with no update callback (pure simulation/render).
 void rt_game3d_world_run_frames_only(void *world, int64_t frame_count, double step_sec);
@@ -1070,7 +1085,10 @@ void rt_game3d_world_draw_scene(void *world);
 void rt_game3d_world_draw_effects(void *world);
 /// @brief End the 3D scene pass for the current frame.
 void rt_game3d_world_end_scene(void *world);
-/// @brief Draw a 2D overlay callback over the current frame.
+/// @brief Draw a 2D `overlay()` callback over the current frame.
+/// @details Native callers pass a C-callable function pointer. VM/BytecodeVM callers pass a script
+/// function reference, which the Game3D VM bridge invokes through a native trampoline. The overlay
+/// callback signature is `() -> Unit`.
 void rt_game3d_world_draw_overlay(void *world, void *overlay);
 /// @brief Finalize and capture the rendered frame as a Pixels image; returns it.
 void *rt_game3d_world_capture_final_frame(void *world);

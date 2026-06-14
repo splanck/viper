@@ -17,8 +17,8 @@
 //     game3d_assign_ref/game3d_release_ref keep owned-slot refcounts balanced.
 //   - Scalar inputs are sanitized at the API boundary (game3d_finite_or,
 //     game3d_clamp*, game3d_clamp_dt) so NaN/Inf never reach math or physics.
-//   - Run-loop callbacks are validated as native executable pointers before
-//     being called (game3d_callback_pointer_is_native), trapping otherwise.
+//   - Direct runtime run-loop callbacks are validated as native executable
+//     pointers before being called; VM callers use native bridge trampolines.
 //   - Angles are degrees, distances world units, time seconds, colors 0.0–1.0.
 //
 // Ownership/Lifetime:
@@ -326,25 +326,26 @@ static int game3d_callback_pointer_is_native(void *callback) {
 #endif
 }
 
-/// @brief Validate and cast a raw pointer to an update callback, trapping `method` if
-///   the pointer is non-native; returns NULL for a NULL callback.
-static rt_game3d_update_fn game3d_update_callback_checked(void *callback, const char *method) {
+/// @brief Validate and cast a raw pointer to an update callback, trapping with
+///   `diagnostic` if the pointer is non-native; returns NULL for a NULL callback.
+static rt_game3d_update_fn game3d_update_callback_checked(void *callback, const char *diagnostic) {
     if (!callback)
         return NULL;
     if (!game3d_callback_pointer_is_native(callback)) {
-        rt_trap(method);
+        rt_trap(diagnostic);
         return NULL;
     }
     return (rt_game3d_update_fn)callback;
 }
 
-/// @brief Validate and cast a raw pointer to an overlay callback, trapping `method` if
-///   the pointer is non-native; returns NULL for a NULL callback.
-static rt_game3d_overlay_fn game3d_overlay_callback_checked(void *callback, const char *method) {
+/// @brief Validate and cast a raw pointer to an overlay callback, trapping with
+///   `diagnostic` if the pointer is non-native; returns NULL for a NULL callback.
+static rt_game3d_overlay_fn game3d_overlay_callback_checked(void *callback,
+                                                            const char *diagnostic) {
     if (!callback)
         return NULL;
     if (!game3d_callback_pointer_is_native(callback)) {
-        rt_trap(method);
+        rt_trap(diagnostic);
         return NULL;
     }
     return (rt_game3d_overlay_fn)callback;
@@ -1811,8 +1812,9 @@ void rt_game3d_world_draw_overlay(void *obj, void *overlay) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.drawOverlay: invalid world");
     rt_game3d_overlay_fn fn = game3d_overlay_callback_checked(
         overlay,
-        "Game3D.World3D.drawOverlay: callback must be a native function pointer; use manual "
-        "overlay calls from interpreted Zia");
+        "Game3D.World3D.drawOverlay: overlay callback must be a native function pointer; pass a "
+        "native C-callable function pointer, or pass a script function reference through the VM "
+        "Game3D bridge");
     if (!world || !world->canvas)
         return;
     rt_canvas3d_begin_overlay(world->canvas);
@@ -1875,8 +1877,9 @@ void rt_game3d_world_run(void *obj, void *update) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.run: invalid world");
     rt_game3d_update_fn fn = game3d_update_callback_checked(
         update,
-        "Game3D.World3D.run: callback must be a native function pointer; use tick/step/manual "
-        "frame APIs from interpreted Zia");
+        "Game3D.World3D.run: update callback must be a native function pointer; pass a native "
+        "C-callable function pointer, or pass a script function reference through the VM Game3D "
+        "bridge");
     while (world && rt_game3d_world_tick(world)) {
         if (fn)
             fn(world->dt);
@@ -1896,12 +1899,14 @@ void rt_game3d_world_run_with_overlay(void *obj, void *update, void *overlay) {
         game3d_world_checked(obj, "Game3D.World3D.runWithOverlay: invalid world");
     rt_game3d_update_fn fn = game3d_update_callback_checked(
         update,
-        "Game3D.World3D.runWithOverlay: update callback must be a native function pointer; use "
-        "tick/step/manual frame APIs from interpreted Zia");
+        "Game3D.World3D.runWithOverlay: update callback must be a native function pointer; pass a "
+        "native C-callable function pointer, or pass a script function reference through the VM "
+        "Game3D bridge");
     rt_game3d_overlay_fn overlay_fn = game3d_overlay_callback_checked(
         overlay,
-        "Game3D.World3D.runWithOverlay: overlay callback must be a native function pointer; use "
-        "manual overlay calls from interpreted Zia");
+        "Game3D.World3D.runWithOverlay: overlay callback must be a native function pointer; pass a "
+        "native C-callable function pointer, or pass a script function reference through the VM "
+        "Game3D bridge");
     while (world && rt_game3d_world_tick(world)) {
         if (fn)
             fn(world->dt);
@@ -1914,28 +1919,20 @@ void rt_game3d_world_run_with_overlay(void *obj, void *update, void *overlay) {
     }
 }
 
-/// @brief Fixed-timestep loop with no overlay (delegates to the overlay variant). See header.
-void rt_game3d_world_run_fixed(void *obj, double step_sec, void *update) {
-    rt_game3d_world_run_fixed_with_overlay(obj, step_sec, update, NULL);
-}
-
 /// @brief Fixed-timestep game loop: accumulate real frame time and run `update` + a
 ///   physics step in fixed `step_sec` increments, rendering once per displayed frame
-///   (with an optional overlay). Decouples simulation rate from frame rate. See header.
-void rt_game3d_world_run_fixed_with_overlay(void *obj,
-                                            double step_sec,
-                                            void *update,
-                                            void *overlay) {
-    rt_game3d_world *world =
-        game3d_world_checked(obj, "Game3D.World3D.runFixedWithOverlay: invalid world");
-    rt_game3d_update_fn fn = game3d_update_callback_checked(
-        update,
-        "Game3D.World3D.runFixedWithOverlay: update callback must be a native function pointer; "
-        "use tick/step/manual frame APIs from interpreted Zia");
-    rt_game3d_overlay_fn overlay_fn = game3d_overlay_callback_checked(
-        overlay,
-        "Game3D.World3D.runFixedWithOverlay: overlay callback must be a native function pointer; "
-        "use manual overlay calls from interpreted Zia");
+///   (with an optional overlay). Decouples simulation rate from frame rate.
+static void game3d_world_run_fixed_impl(void *obj,
+                                        double step_sec,
+                                        void *update,
+                                        void *overlay,
+                                        const char *invalid_world_message,
+                                        const char *update_callback_message,
+                                        const char *overlay_callback_message) {
+    rt_game3d_world *world = game3d_world_checked(obj, invalid_world_message);
+    rt_game3d_update_fn fn = game3d_update_callback_checked(update, update_callback_message);
+    rt_game3d_overlay_fn overlay_fn =
+        game3d_overlay_callback_checked(overlay, overlay_callback_message);
     double fixed = game3d_clamp_dt(step_sec);
     double accumulator = 0.0;
     while (world && rt_game3d_world_tick(world)) {
@@ -1973,14 +1970,50 @@ void rt_game3d_world_run_fixed_with_overlay(void *obj,
     }
 }
 
+/// @brief Fixed-timestep loop with no overlay. See header.
+void rt_game3d_world_run_fixed(void *obj, double step_sec, void *update) {
+    game3d_world_run_fixed_impl(
+        obj,
+        step_sec,
+        update,
+        NULL,
+        "Game3D.World3D.runFixed: invalid world",
+        "Game3D.World3D.runFixed: update callback must be a native function pointer; pass a "
+        "native C-callable function pointer, or pass a script function reference through the VM "
+        "Game3D bridge",
+        "Game3D.World3D.runFixed: overlay callback must be a native function pointer; pass a "
+        "native C-callable function pointer, or pass a script function reference through the VM "
+        "Game3D bridge");
+}
+
+/// @brief Fixed-timestep loop with an extra native overlay callback. See header.
+void rt_game3d_world_run_fixed_with_overlay(void *obj,
+                                            double step_sec,
+                                            void *update,
+                                            void *overlay) {
+    game3d_world_run_fixed_impl(
+        obj,
+        step_sec,
+        update,
+        overlay,
+        "Game3D.World3D.runFixedWithOverlay: invalid world",
+        "Game3D.World3D.runFixedWithOverlay: update callback must be a native function pointer; "
+        "pass a native C-callable function pointer, or pass a script function reference through "
+        "the VM Game3D bridge",
+        "Game3D.World3D.runFixedWithOverlay: overlay callback must be a native function pointer; "
+        "pass a native C-callable function pointer, or pass a script function reference through "
+        "the VM Game3D bridge");
+}
+
 /// @brief Deterministically run a fixed number of frames at a fixed step, driving the
 ///   canvas from synthetic input/clock sources for reproducible tests/recordings. See header.
 void rt_game3d_world_run_frames(void *obj, int64_t frame_count, double step_sec, void *update) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.runFrames: invalid world");
     rt_game3d_update_fn fn = game3d_update_callback_checked(
         update,
-        "Game3D.World3D.runFrames: callback must be a native function pointer; use "
-        "runFramesOnly/manual frame APIs from interpreted Zia");
+        "Game3D.World3D.runFrames: callback must be a native function pointer for the update "
+        "argument; pass a native C-callable function pointer, or pass a script function reference "
+        "through the VM Game3D bridge");
     double fixed = game3d_clamp_dt(step_sec);
     rt_canvas3d *canvas = NULL;
     void *canvas_obj = NULL;
