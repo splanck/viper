@@ -123,7 +123,15 @@ if not "%VIPER_TEST_LABEL%"=="" (
     echo Running only tests labeled "%VIPER_TEST_LABEL%" ^(VIPER_TEST_LABEL^)
     set "CTEST_LABEL_ARGS=-L %VIPER_TEST_LABEL%"
 )
-ctest --test-dir "%VIPER_BUILD_DIR%" -C %VIPER_BUILD_TYPE% --output-on-failure -j %JOBS% %CTEST_LABEL_ARGS%
+set "CTEST_PRETTY_SCRIPT=%~dp0run_ctest_pretty.ps1"
+set "CTEST_USE_PRETTY=0"
+where powershell >nul 2>&1
+if not errorlevel 1 if exist "%CTEST_PRETTY_SCRIPT%" set "CTEST_USE_PRETTY=1"
+if "%CTEST_USE_PRETTY%"=="1" (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%CTEST_PRETTY_SCRIPT%" --test-dir "%VIPER_BUILD_DIR%" -C %VIPER_BUILD_TYPE% --output-on-failure -j %JOBS% %CTEST_LABEL_ARGS%
+) else (
+    ctest --test-dir "%VIPER_BUILD_DIR%" -C %VIPER_BUILD_TYPE% --output-on-failure -j %JOBS% %CTEST_LABEL_ARGS%
+)
 if errorlevel 1 (
     set TESTS_FAILED=1
     echo.
