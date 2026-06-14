@@ -32,6 +32,7 @@ static void *sw_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
         free(ctx);
         return NULL;
     }
+    sw_init_worker_pool(ctx);
     return ctx;
 }
 
@@ -40,6 +41,7 @@ static void sw_destroy_ctx(void *ctx_ptr) {
     if (!ctx_ptr)
         return;
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
+    sw_release_worker_pool(ctx);
     free(ctx->zbuf);
     free(ctx->vertex_scratch);
     free(ctx);
@@ -261,16 +263,17 @@ static int sw_resolve_output_target(sw_context_t *ctx,
 ///   position (via MVP), UVs, and color. Computes per-vertex Gouraud lighting for
 ///   legacy unlit/non-normal-mapped materials; otherwise stores raw albedo so the
 ///   fragment stage can light per-pixel.
-static void sw_transform_vertices(sw_context_t *ctx,
-                                  const vgfx3d_draw_cmd_t *cmd,
-                                  pipe_vert_t *pv,
-                                  uint32_t vc,
-                                  const float *mvp,
-                                  const float *normal_matrix,
-                                  const vgfx3d_light_params_t *lights,
-                                  int32_t light_count,
-                                  const float *ambient) {
-    for (uint32_t i = 0; i < vc; i++) {
+static void sw_transform_vertices_range(sw_context_t *ctx,
+                                        const vgfx3d_draw_cmd_t *cmd,
+                                        pipe_vert_t *pv,
+                                        uint32_t begin,
+                                        uint32_t end,
+                                        const float *mvp,
+                                        const float *normal_matrix,
+                                        const vgfx3d_light_params_t *lights,
+                                        int32_t light_count,
+                                        const float *ambient) {
+    for (uint32_t i = begin; i < end; i++) {
         const vgfx3d_vertex_t *src = &cmd->vertices[i];
         pipe_vert_t *dst = &pv[i];
         float pos4[4] = {src->pos[0], src->pos[1], src->pos[2], 1.0f};
@@ -328,6 +331,19 @@ static void sw_transform_vertices(sw_context_t *ctx,
             compute_lighting(dst, ctx, cmd, lights, light_count, ambient);
         }
     }
+}
+
+static void sw_transform_vertices(sw_context_t *ctx,
+                                  const vgfx3d_draw_cmd_t *cmd,
+                                  pipe_vert_t *pv,
+                                  uint32_t vc,
+                                  const float *mvp,
+                                  const float *normal_matrix,
+                                  const vgfx3d_light_params_t *lights,
+                                  int32_t light_count,
+                                  const float *ambient) {
+    sw_transform_vertices_range(
+        ctx, cmd, pv, 0, vc, mvp, normal_matrix, lights, light_count, ambient);
 }
 
 /// @brief Emit verbose per-draw diagnostics (command params, MVP rows, first few
@@ -476,17 +492,642 @@ static void sw_draw_wireframe_tri(
               wb);
 }
 
+typedef struct {
+    screen_vert_t sv[3];
+} sw_screen_tri_t;
+
+typedef struct {
+    sw_screen_tri_t *items;
+    uint32_t count;
+    uint32_t capacity;
+} sw_screen_tri_list_t;
+
+typedef struct {
+    uint32_t *indices;
+    uint32_t count;
+    uint32_t capacity;
+} sw_tile_bin_t;
+
+typedef struct {
+    sw_tile_bin_t *bins;
+    int32_t *active_indices;
+    int32_t cols;
+    int32_t rows;
+    int32_t count;
+    int32_t active_count;
+    int32_t active_capacity;
+} sw_tile_grid_t;
+
+typedef struct {
+    sw_context_t *ctx;
+    const vgfx3d_draw_cmd_t *cmd;
+    pipe_vert_t *pv;
+    uint32_t begin;
+    uint32_t end;
+    const float *mvp;
+    const float *normal_matrix;
+    const vgfx3d_light_params_t *lights;
+    int32_t light_count;
+    const float *ambient;
+} sw_transform_task_t;
+
+typedef struct {
+    const vgfx3d_draw_cmd_t *cmd;
+    const pipe_vert_t *pv;
+    uint32_t vertex_count;
+    uint32_t tri_begin;
+    uint32_t tri_end;
+    float half_w;
+    float half_h;
+    sw_screen_tri_list_t out;
+    volatile int32_t *failed;
+} sw_clip_task_t;
+
+typedef struct {
+    const sw_tile_grid_t *grid;
+    const sw_screen_tri_list_t *tris;
+    volatile int32_t *next_tile;
+    uint8_t *pixels;
+    float *zbuf;
+    int32_t fb_w;
+    int32_t fb_h;
+    int32_t stride;
+    const sw_pixels_view *tex;
+    const sw_pixels_view *emissive_tex;
+    const float *emissive_color;
+    const sw_pixels_view *normal_map;
+    const sw_pixels_view *specular_map;
+    const sw_pixels_view *metallic_roughness_map;
+    const sw_pixels_view *ao_map;
+    const vgfx3d_draw_cmd_t *cmd;
+    const vgfx3d_light_params_t *lights;
+    int32_t light_count;
+    const float *ambient;
+    int8_t backface_cull;
+    const sw_context_t *fog_ctx;
+} sw_raster_task_t;
+
+static void sw_screen_tri_list_free(sw_screen_tri_list_t *list) {
+    if (!list)
+        return;
+    free(list->items);
+    list->items = NULL;
+    list->count = 0;
+    list->capacity = 0;
+}
+
+static int sw_screen_tri_list_reserve(sw_screen_tri_list_t *list, uint32_t needed) {
+    uint32_t new_capacity;
+    sw_screen_tri_t *new_items;
+    if (!list)
+        return 0;
+    if (needed <= list->capacity)
+        return 1;
+    new_capacity = list->capacity ? list->capacity : 64u;
+    while (new_capacity < needed) {
+        if (new_capacity > UINT32_MAX / 2u) {
+            new_capacity = needed;
+            break;
+        }
+        new_capacity *= 2u;
+    }
+    if ((size_t)new_capacity > SIZE_MAX / sizeof(sw_screen_tri_t))
+        return 0;
+    new_items = (sw_screen_tri_t *)realloc(list->items, (size_t)new_capacity * sizeof(*new_items));
+    if (!new_items)
+        return 0;
+    list->items = new_items;
+    list->capacity = new_capacity;
+    return 1;
+}
+
+static int sw_screen_tri_list_push(sw_screen_tri_list_t *list, const screen_vert_t sv[3]) {
+    if (!list || !sv)
+        return 0;
+    if (list->count == UINT32_MAX)
+        return 0;
+    if (!sw_screen_tri_list_reserve(list, list->count + 1u))
+        return 0;
+    memcpy(list->items[list->count].sv, sv, 3u * sizeof(screen_vert_t));
+    list->count++;
+    return 1;
+}
+
+static void sw_tile_grid_free(sw_tile_grid_t *grid) {
+    if (!grid)
+        return;
+    if (grid->bins) {
+        for (int32_t i = 0; i < grid->count; i++)
+            free(grid->bins[i].indices);
+    }
+    free(grid->active_indices);
+    free(grid->bins);
+    grid->bins = NULL;
+    grid->active_indices = NULL;
+    grid->cols = 0;
+    grid->rows = 0;
+    grid->count = 0;
+    grid->active_count = 0;
+    grid->active_capacity = 0;
+}
+
+static int sw_tile_grid_init(sw_tile_grid_t *grid, int32_t width, int32_t height) {
+    int32_t cols;
+    int32_t rows;
+    if (!grid || width <= 0 || height <= 0)
+        return 0;
+    memset(grid, 0, sizeof(*grid));
+    cols = ((width - 1) / SW_TILE_SIZE) + 1;
+    rows = ((height - 1) / SW_TILE_SIZE) + 1;
+    if (cols <= 0 || rows <= 0 || cols > INT32_MAX / rows)
+        return 0;
+    grid->count = cols * rows;
+    grid->cols = cols;
+    grid->rows = rows;
+    grid->bins = (sw_tile_bin_t *)calloc((size_t)grid->count, sizeof(*grid->bins));
+    return grid->bins ? 1 : 0;
+}
+
+static int sw_tile_grid_mark_active(sw_tile_grid_t *grid, int32_t tile_index) {
+    int32_t new_capacity;
+    int32_t *new_indices;
+    if (!grid || tile_index < 0 || tile_index >= grid->count)
+        return 0;
+    if (grid->active_count < grid->active_capacity) {
+        grid->active_indices[grid->active_count++] = tile_index;
+        return 1;
+    }
+    new_capacity = grid->active_capacity ? grid->active_capacity * 2 : 32;
+    if (new_capacity <= grid->active_capacity)
+        new_capacity = grid->active_count + 1;
+    if ((size_t)new_capacity > SIZE_MAX / sizeof(int32_t))
+        return 0;
+    new_indices =
+        (int32_t *)realloc(grid->active_indices, (size_t)new_capacity * sizeof(*new_indices));
+    if (!new_indices)
+        return 0;
+    grid->active_indices = new_indices;
+    grid->active_capacity = new_capacity;
+    grid->active_indices[grid->active_count++] = tile_index;
+    return 1;
+}
+
+static int sw_tile_bin_append(sw_tile_bin_t *bin, uint32_t tri_index) {
+    uint32_t new_capacity;
+    uint32_t *new_indices;
+    if (!bin)
+        return 0;
+    if (bin->count == UINT32_MAX)
+        return 0;
+    if (bin->count < bin->capacity) {
+        bin->indices[bin->count++] = tri_index;
+        return 1;
+    }
+    new_capacity = bin->capacity ? bin->capacity * 2u : 16u;
+    if (new_capacity <= bin->capacity)
+        new_capacity = bin->count + 1u;
+    if ((size_t)new_capacity > SIZE_MAX / sizeof(uint32_t))
+        return 0;
+    new_indices = (uint32_t *)realloc(bin->indices, (size_t)new_capacity * sizeof(*new_indices));
+    if (!new_indices)
+        return 0;
+    bin->indices = new_indices;
+    bin->capacity = new_capacity;
+    bin->indices[bin->count++] = tri_index;
+    return 1;
+}
+
+static void sw_transform_task_run(void *arg) {
+    sw_transform_task_t *task = (sw_transform_task_t *)arg;
+    if (!task)
+        return;
+    sw_transform_vertices_range(task->ctx,
+                                task->cmd,
+                                task->pv,
+                                task->begin,
+                                task->end,
+                                task->mvp,
+                                task->normal_matrix,
+                                task->lights,
+                                task->light_count,
+                                task->ambient);
+}
+
+static int sw_parallel_transform_vertices(sw_context_t *ctx,
+                                          const vgfx3d_draw_cmd_t *cmd,
+                                          pipe_vert_t *pv,
+                                          uint32_t vc,
+                                          const float *mvp,
+                                          const float *normal_matrix,
+                                          const vgfx3d_light_params_t *lights,
+                                          int32_t light_count,
+                                          const float *ambient) {
+    sw_transform_task_t tasks[SW_MAX_TASKS];
+    int32_t task_count;
+    int32_t submitted = 0;
+    if (!ctx || !ctx->worker_pool || ctx->worker_count <= 1 || vc < 2)
+        return 0;
+    task_count =
+        (int32_t)(ctx->worker_count + 1 < (int64_t)vc ? ctx->worker_count + 1 : (int64_t)vc);
+    for (int32_t i = 0; i < task_count; i++) {
+        uint32_t begin = (uint32_t)(((uint64_t)vc * (uint64_t)i) / (uint64_t)task_count);
+        uint32_t end = (uint32_t)(((uint64_t)vc * (uint64_t)(i + 1)) / (uint64_t)task_count);
+        tasks[i].ctx = ctx;
+        tasks[i].cmd = cmd;
+        tasks[i].pv = pv;
+        tasks[i].begin = begin;
+        tasks[i].end = end;
+        tasks[i].mvp = mvp;
+        tasks[i].normal_matrix = normal_matrix;
+        tasks[i].lights = lights;
+        tasks[i].light_count = light_count;
+        tasks[i].ambient = ambient;
+    }
+    for (int32_t i = 1; i < task_count; i++) {
+        if (!rt_threadpool_submit(
+                ctx->worker_pool, sw_task_fnptr(sw_transform_task_run), &tasks[i]))
+            break;
+        submitted++;
+    }
+    for (int32_t i = submitted + 1; i < task_count; i++)
+        sw_transform_task_run(&tasks[i]);
+    sw_transform_task_run(&tasks[0]);
+    if (submitted > 0)
+        rt_threadpool_wait(ctx->worker_pool);
+    return 1;
+}
+
+static int sw_collect_screen_triangles_range(const vgfx3d_draw_cmd_t *cmd,
+                                             const pipe_vert_t *pv,
+                                             uint32_t vc,
+                                             uint32_t tri_begin,
+                                             uint32_t tri_end,
+                                             float half_w,
+                                             float half_h,
+                                             sw_screen_tri_list_t *out) {
+    pipe_vert_t clipped[MAX_CLIP_VERTS];
+    for (uint32_t tri_index = tri_begin; tri_index < tri_end; tri_index++) {
+        uint32_t i = tri_index * 3u;
+        uint32_t i0 = cmd->indices[i], i1 = cmd->indices[i + 1], i2 = cmd->indices[i + 2];
+        if (i0 >= vc || i1 >= vc || i2 >= vc)
+            continue;
+
+        pipe_vert_t tri[3] = {pv[i0], pv[i1], pv[i2]};
+        int clip_count = clip_triangle(tri, clipped);
+        if (clip_count < 3)
+            continue;
+
+        for (int t = 1; t < clip_count - 1; t++) {
+            screen_vert_t sv[3];
+            const pipe_vert_t *fan[3] = {&clipped[0], &clipped[t], &clipped[t + 1]};
+            int ok = 1;
+            for (int vi = 0; vi < 3; vi++) {
+                if (!sw_project_clip_to_screen(fan[vi], half_w, half_h, &sv[vi])) {
+                    ok = 0;
+                    break;
+                }
+            }
+            if (ok && !sw_screen_tri_list_push(out, sv))
+                return 0;
+        }
+    }
+    return 1;
+}
+
+static void sw_clip_task_run(void *arg) {
+    sw_clip_task_t *task = (sw_clip_task_t *)arg;
+    if (!task)
+        return;
+    if (!sw_collect_screen_triangles_range(task->cmd,
+                                           task->pv,
+                                           task->vertex_count,
+                                           task->tri_begin,
+                                           task->tri_end,
+                                           task->half_w,
+                                           task->half_h,
+                                           &task->out)) {
+        __atomic_store_n(task->failed, 1, __ATOMIC_RELAXED);
+    }
+}
+
+static int sw_collect_screen_triangles_parallel(sw_context_t *ctx,
+                                                const vgfx3d_draw_cmd_t *cmd,
+                                                const pipe_vert_t *pv,
+                                                uint32_t vc,
+                                                uint32_t index_count,
+                                                float half_w,
+                                                float half_h,
+                                                sw_screen_tri_list_t *out) {
+    sw_clip_task_t tasks[SW_MAX_TASKS];
+    uint32_t tri_count;
+    int32_t task_count;
+    int32_t submitted = 0;
+    volatile int32_t failed = 0;
+    if (!ctx || !ctx->worker_pool || ctx->worker_count <= 1 || !out)
+        return 0;
+    tri_count = index_count / 3u;
+    if (tri_count == 0)
+        return 1;
+    task_count = (int32_t)(ctx->worker_count + 1 < (int64_t)tri_count ? ctx->worker_count + 1
+                                                                      : (int64_t)tri_count);
+    memset(tasks, 0, sizeof(tasks));
+    for (int32_t i = 0; i < task_count; i++) {
+        uint32_t begin = (uint32_t)(((uint64_t)tri_count * (uint64_t)i) / (uint64_t)task_count);
+        uint32_t end = (uint32_t)(((uint64_t)tri_count * (uint64_t)(i + 1)) / (uint64_t)task_count);
+        tasks[i].cmd = cmd;
+        tasks[i].pv = pv;
+        tasks[i].vertex_count = vc;
+        tasks[i].tri_begin = begin;
+        tasks[i].tri_end = end;
+        tasks[i].half_w = half_w;
+        tasks[i].half_h = half_h;
+        tasks[i].failed = &failed;
+    }
+    for (int32_t i = 1; i < task_count; i++) {
+        if (!rt_threadpool_submit(ctx->worker_pool, sw_task_fnptr(sw_clip_task_run), &tasks[i]))
+            break;
+        submitted++;
+    }
+    for (int32_t i = submitted + 1; i < task_count; i++)
+        sw_clip_task_run(&tasks[i]);
+    sw_clip_task_run(&tasks[0]);
+    if (submitted > 0)
+        rt_threadpool_wait(ctx->worker_pool);
+    if (__atomic_load_n(&failed, __ATOMIC_RELAXED)) {
+        for (int32_t i = 0; i < task_count; i++)
+            sw_screen_tri_list_free(&tasks[i].out);
+        return 0;
+    }
+
+    uint32_t total = 0;
+    for (int32_t i = 0; i < task_count; i++) {
+        if (UINT32_MAX - total < tasks[i].out.count) {
+            for (int32_t j = 0; j < task_count; j++)
+                sw_screen_tri_list_free(&tasks[j].out);
+            return 0;
+        }
+        total += tasks[i].out.count;
+    }
+    if (!sw_screen_tri_list_reserve(out, total)) {
+        for (int32_t i = 0; i < task_count; i++)
+            sw_screen_tri_list_free(&tasks[i].out);
+        return 0;
+    }
+    for (int32_t i = 0; i < task_count; i++) {
+        if (tasks[i].out.count > 0) {
+            memcpy(&out->items[out->count],
+                   tasks[i].out.items,
+                   (size_t)tasks[i].out.count * sizeof(sw_screen_tri_t));
+            out->count += tasks[i].out.count;
+        }
+        sw_screen_tri_list_free(&tasks[i].out);
+    }
+    return 1;
+}
+
+static int sw_bin_screen_triangles(sw_tile_grid_t *grid,
+                                   const sw_screen_tri_list_t *tris,
+                                   int32_t fb_w,
+                                   int32_t fb_h,
+                                   int8_t backface_cull) {
+    if (!grid || !grid->bins || !tris)
+        return 0;
+    for (uint32_t tri_index = 0; tri_index < tris->count; tri_index++) {
+        const sw_screen_tri_t *tri = &tris->items[tri_index];
+        sw_raster_geom geom;
+        if (!sw_raster_prepare(
+                &tri->sv[0], &tri->sv[1], &tri->sv[2], fb_w, fb_h, backface_cull, 0, &geom))
+            continue;
+        int32_t tx0 = geom.min_x / SW_TILE_SIZE;
+        int32_t tx1 = geom.max_x / SW_TILE_SIZE;
+        int32_t ty0 = geom.min_y / SW_TILE_SIZE;
+        int32_t ty1 = geom.max_y / SW_TILE_SIZE;
+        if (tx0 < 0)
+            tx0 = 0;
+        if (ty0 < 0)
+            ty0 = 0;
+        if (tx1 >= grid->cols)
+            tx1 = grid->cols - 1;
+        if (ty1 >= grid->rows)
+            ty1 = grid->rows - 1;
+        for (int32_t ty = ty0; ty <= ty1; ty++) {
+            for (int32_t tx = tx0; tx <= tx1; tx++) {
+                sw_tile_bin_t *bin = &grid->bins[ty * grid->cols + tx];
+                uint32_t prior_count = bin->count;
+                if (!sw_tile_bin_append(bin, tri_index))
+                    return 0;
+                if (prior_count == 0 && !sw_tile_grid_mark_active(grid, ty * grid->cols + tx))
+                    return 0;
+            }
+        }
+    }
+    return 1;
+}
+
+static void sw_raster_task_run(void *arg) {
+    sw_raster_task_t *task = (sw_raster_task_t *)arg;
+    if (!task || !task->grid || !task->tris || !task->next_tile)
+        return;
+    for (;;) {
+        int32_t tile_index = __atomic_fetch_add(task->next_tile, 1, __ATOMIC_RELAXED);
+        if (tile_index >= task->grid->active_count)
+            break;
+        tile_index = task->grid->active_indices[tile_index];
+        int32_t tx = tile_index % task->grid->cols;
+        int32_t ty = tile_index / task->grid->cols;
+        int32_t min_x = tx * SW_TILE_SIZE;
+        int32_t min_y = ty * SW_TILE_SIZE;
+        int32_t max_x = min_x + SW_TILE_SIZE - 1;
+        int32_t max_y = min_y + SW_TILE_SIZE - 1;
+        const sw_tile_bin_t *bin = &task->grid->bins[tile_index];
+        if (max_x >= task->fb_w)
+            max_x = task->fb_w - 1;
+        if (max_y >= task->fb_h)
+            max_y = task->fb_h - 1;
+        for (uint32_t i = 0; i < bin->count; i++) {
+            const sw_screen_tri_t *tri = &task->tris->items[bin->indices[i]];
+            raster_triangle_scissored(task->pixels,
+                                      task->zbuf,
+                                      task->fb_w,
+                                      task->fb_h,
+                                      task->stride,
+                                      &tri->sv[0],
+                                      &tri->sv[1],
+                                      &tri->sv[2],
+                                      task->tex,
+                                      task->emissive_tex,
+                                      task->emissive_color,
+                                      task->normal_map,
+                                      task->specular_map,
+                                      task->metallic_roughness_map,
+                                      task->ao_map,
+                                      task->cmd,
+                                      task->lights,
+                                      task->light_count,
+                                      task->ambient,
+                                      task->backface_cull,
+                                      task->fog_ctx,
+                                      min_x,
+                                      min_y,
+                                      max_x,
+                                      max_y);
+        }
+    }
+}
+
+static int sw_raster_tiles_parallel(sw_context_t *ctx,
+                                    const sw_tile_grid_t *grid,
+                                    const sw_screen_tri_list_t *tris,
+                                    uint8_t *pixels,
+                                    float *zbuf,
+                                    int32_t fb_w,
+                                    int32_t fb_h,
+                                    int32_t stride,
+                                    const sw_material_views *mv,
+                                    const vgfx3d_draw_cmd_t *cmd,
+                                    const vgfx3d_light_params_t *lights,
+                                    int32_t light_count,
+                                    const float *ambient,
+                                    int8_t backface_cull) {
+    sw_raster_task_t tasks[SW_MAX_TASKS];
+    volatile int32_t next_tile = 0;
+    int32_t task_count;
+    if (!ctx || !ctx->worker_pool || !grid || grid->active_count <= 0 || !tris || !mv)
+        return 0;
+    task_count = (int32_t)(ctx->worker_count + 1 < (int64_t)grid->active_count
+                               ? ctx->worker_count + 1
+                               : (int64_t)grid->active_count);
+    for (int32_t i = 0; i < task_count; i++) {
+        tasks[i].grid = grid;
+        tasks[i].tris = tris;
+        tasks[i].next_tile = &next_tile;
+        tasks[i].pixels = pixels;
+        tasks[i].zbuf = zbuf;
+        tasks[i].fb_w = fb_w;
+        tasks[i].fb_h = fb_h;
+        tasks[i].stride = stride;
+        tasks[i].tex = mv->tex_ptr;
+        tasks[i].emissive_tex = mv->emissive_ptr;
+        tasks[i].emissive_color = cmd->emissive_color;
+        tasks[i].normal_map = mv->normal_ptr;
+        tasks[i].specular_map = mv->specular_ptr;
+        tasks[i].metallic_roughness_map = mv->metallic_roughness_ptr;
+        tasks[i].ao_map = mv->ao_ptr;
+        tasks[i].cmd = cmd;
+        tasks[i].lights = lights;
+        tasks[i].light_count = light_count;
+        tasks[i].ambient = ambient;
+        tasks[i].backface_cull = backface_cull;
+        tasks[i].fog_ctx = ctx;
+    }
+    for (int32_t i = 1; i < task_count; i++) {
+        if (!rt_threadpool_submit(ctx->worker_pool, sw_task_fnptr(sw_raster_task_run), &tasks[i]))
+            break;
+    }
+    sw_raster_task_run(&tasks[0]);
+    rt_threadpool_wait(ctx->worker_pool);
+    return 1;
+}
+
+static int sw_submit_draw_parallel(void *ctx_ptr,
+                                   vgfx_window_t win,
+                                   const vgfx3d_draw_cmd_t *cmd,
+                                   const vgfx3d_light_params_t *lights,
+                                   int32_t light_count,
+                                   const float *ambient,
+                                   int8_t wireframe,
+                                   int8_t backface_cull) {
+    sw_context_t *ctx = (sw_context_t *)ctx_ptr;
+    static const float zero_ambient[3] = {0.0f, 0.0f, 0.0f};
+    uint32_t index_count;
+    uint8_t *out_pixels;
+    float *out_zbuf;
+    int32_t out_w, out_h, out_stride;
+    float mvp[16];
+    float normal_matrix[16];
+    sw_material_views mv;
+    sw_screen_tri_list_t tris = {0};
+    sw_tile_grid_t grid = {0};
+    int ok = 0;
+
+    if (!ctx || !ctx->worker_pool || ctx->worker_count <= 1 || wireframe || sw_debug_enabled())
+        return 0;
+    if (rt_threadpool_current_worker_pool() == ctx->worker_pool)
+        return 0;
+    if (!cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 || cmd->index_count == 0)
+        return 0;
+    index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
+    if (index_count == 0)
+        return 0;
+    if (index_count < SW_PARALLEL_MIN_INDICES)
+        return 0;
+    if (!ambient)
+        ambient = zero_ambient;
+    if (!lights || light_count < 0)
+        light_count = 0;
+    if (!sw_resolve_output_target(ctx, win, &out_pixels, &out_zbuf, &out_w, &out_h, &out_stride))
+        return 0;
+
+    mat4f_mul(ctx->vp, cmd->model_matrix, mvp);
+    vgfx3d_compute_normal_matrix4(cmd->model_matrix, normal_matrix);
+    sw_resolve_material_views(cmd, &mv);
+
+    uint32_t vc = cmd->vertex_count;
+    pipe_vert_t *pv = sw_acquire_pipe_vertices(ctx, vc);
+    if (!pv)
+        return 0;
+    if (!sw_parallel_transform_vertices(
+            ctx, cmd, pv, vc, mvp, normal_matrix, lights, light_count, ambient))
+        return 0;
+    if (!sw_collect_screen_triangles_parallel(
+            ctx, cmd, pv, vc, index_count, (float)out_w * 0.5f, (float)out_h * 0.5f, &tris))
+        goto cleanup;
+    if (tris.count == 0) {
+        ok = 1;
+        goto cleanup;
+    }
+    if (!sw_tile_grid_init(&grid, out_w, out_h))
+        goto cleanup;
+    if (!sw_bin_screen_triangles(&grid, &tris, out_w, out_h, backface_cull))
+        goto cleanup;
+    if (grid.active_count == 0) {
+        ok = 1;
+        goto cleanup;
+    }
+    if (!sw_raster_tiles_parallel(ctx,
+                                  &grid,
+                                  &tris,
+                                  out_pixels,
+                                  out_zbuf,
+                                  out_w,
+                                  out_h,
+                                  out_stride,
+                                  &mv,
+                                  cmd,
+                                  lights,
+                                  light_count,
+                                  ambient,
+                                  backface_cull))
+        goto cleanup;
+    ok = 1;
+
+cleanup:
+    sw_tile_grid_free(&grid);
+    sw_screen_tri_list_free(&tris);
+    return ok;
+}
+
 /// @brief Backend `submit_draw` op for the software rasterizer. Resolves output
 ///   buffers, transforms vertices, then clips and rasterizes (or wireframes) each
 ///   triangle of the mesh.
-static void sw_submit_draw(void *ctx_ptr,
-                           vgfx_window_t win,
-                           const vgfx3d_draw_cmd_t *cmd,
-                           const vgfx3d_light_params_t *lights,
-                           int32_t light_count,
-                           const float *ambient,
-                           int8_t wireframe,
-                           int8_t backface_cull) {
+static void sw_submit_draw_serial(void *ctx_ptr,
+                                  vgfx_window_t win,
+                                  const vgfx3d_draw_cmd_t *cmd,
+                                  const vgfx3d_light_params_t *lights,
+                                  int32_t light_count,
+                                  const float *ambient,
+                                  int8_t wireframe,
+                                  int8_t backface_cull) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
     static const float zero_ambient[3] = {0.0f, 0.0f, 0.0f};
     uint32_t index_count;
@@ -582,6 +1223,21 @@ static void sw_submit_draw(void *ctx_ptr,
             }
         }
     }
+}
+
+static void sw_submit_draw(void *ctx_ptr,
+                           vgfx_window_t win,
+                           const vgfx3d_draw_cmd_t *cmd,
+                           const vgfx3d_light_params_t *lights,
+                           int32_t light_count,
+                           const float *ambient,
+                           int8_t wireframe,
+                           int8_t backface_cull) {
+    if (sw_submit_draw_parallel(
+            ctx_ptr, win, cmd, lights, light_count, ambient, wireframe, backface_cull))
+        return;
+    sw_submit_draw_serial(
+        ctx_ptr, win, cmd, lights, light_count, ambient, wireframe, backface_cull);
 }
 
 /// @brief Backend `end_frame` op — no-op for software (frames write directly to fb).

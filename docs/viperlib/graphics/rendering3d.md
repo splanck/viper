@@ -197,6 +197,15 @@ creates the software backend instead and emits one stderr notice for the process
 Windows on ARM64 defaults to software because affected drivers can fail during
 presentation; users can still opt into D3D11 with `VIPER_3D_BACKEND=d3d11`.
 
+When the software backend is active, the main color raster pass and software
+shadow-map pass use fixed 64x64 tiles and a context-owned worker pool. The
+default worker count is `min(hardware_threads, 8)`. Set
+`VIPER_3D_SW_THREADS=1` before creating the canvas to force the exact serial
+path; positive values above one are clamped to `1..8`. Tile bins preserve mesh
+submission order inside each tile, so depth, alpha, blending, texture sampling,
+fog, lighting, and shadow depth generation remain byte-deterministic across
+worker counts.
+
 | Property / Method | Type | Description |
 |-------------------|------|-------------|
 | `Backend` | `String` | Active renderer name: `software`, `metal`, `d3d11`, or `opengl` |

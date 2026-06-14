@@ -1285,30 +1285,46 @@ static int sw_raster_prepare(const screen_vert_t *v0,
 /// @brief Rasterize one screen-space triangle into the framebuffer with depth testing and
 ///   per-pixel shading, sampling the bound albedo/emissive/normal/specular/metallic-roughness/
 ///   AO maps. This is the software backend's inner fill loop.
-static void raster_triangle(uint8_t *pixels,
-                            float *zbuf,
-                            int32_t fb_w,
-                            int32_t fb_h,
-                            int32_t stride,
-                            const screen_vert_t *v0,
-                            const screen_vert_t *v1,
-                            const screen_vert_t *v2,
-                            const sw_pixels_view *tex,
-                            const sw_pixels_view *emissive_tex,
-                            const float *emissive_color,
-                            const sw_pixels_view *normal_map,
-                            const sw_pixels_view *specular_map,
-                            const sw_pixels_view *metallic_roughness_map,
-                            const sw_pixels_view *ao_map,
-                            const vgfx3d_draw_cmd_t *cmd,
-                            const vgfx3d_light_params_t *lights,
-                            int32_t light_count,
-                            const float *ambient,
-                            int8_t backface_cull,
-                            const sw_context_t *fog_ctx) {
+static float sw_advance_edge_value(float value, float delta, int steps) {
+    for (int i = 0; i < steps; i++)
+        value += delta;
+    return value;
+}
+
+static void raster_triangle_scissored(uint8_t *pixels,
+                                      float *zbuf,
+                                      int32_t fb_w,
+                                      int32_t fb_h,
+                                      int32_t stride,
+                                      const screen_vert_t *v0,
+                                      const screen_vert_t *v1,
+                                      const screen_vert_t *v2,
+                                      const sw_pixels_view *tex,
+                                      const sw_pixels_view *emissive_tex,
+                                      const float *emissive_color,
+                                      const sw_pixels_view *normal_map,
+                                      const sw_pixels_view *specular_map,
+                                      const sw_pixels_view *metallic_roughness_map,
+                                      const sw_pixels_view *ao_map,
+                                      const vgfx3d_draw_cmd_t *cmd,
+                                      const vgfx3d_light_params_t *lights,
+                                      int32_t light_count,
+                                      const float *ambient,
+                                      int8_t backface_cull,
+                                      const sw_context_t *fog_ctx,
+                                      int32_t clip_min_x,
+                                      int32_t clip_min_y,
+                                      int32_t clip_max_x,
+                                      int32_t clip_max_y) {
     int emit_debug = sw_debug_enabled() && g_sw_debug_tri_count < 16;
     sw_raster_geom g;
     if (!sw_raster_prepare(v0, v1, v2, fb_w, fb_h, backface_cull, emit_debug, &g))
+        return;
+    int min_x = g.min_x > clip_min_x ? g.min_x : clip_min_x;
+    int max_x = g.max_x < clip_max_x ? g.max_x : clip_max_x;
+    int min_y = g.min_y > clip_min_y ? g.min_y : clip_min_y;
+    int max_y = g.max_y < clip_max_y ? g.max_y : clip_max_y;
+    if (min_x > max_x || min_y > max_y)
         return;
 
     const int depth_disabled = cmd && cmd->disable_depth_test;
@@ -1363,10 +1379,14 @@ static void raster_triangle(uint8_t *pixels,
                           .splat_view = &splat_view,
                           .layer_views = layer_views};
 
-    float row_w0 = g.row_w0, row_w1 = g.row_w1, row_w2 = g.row_w2;
-    for (int y = g.min_y; y <= g.max_y; y++) {
-        float w0 = row_w0, w1 = row_w1, w2 = row_w2;
-        for (int x = g.min_x; x <= g.max_x; x++) {
+    float row_w0 = sw_advance_edge_value(g.row_w0, g.e12_dx, min_y - g.min_y);
+    float row_w1 = sw_advance_edge_value(g.row_w1, g.e20_dx, min_y - g.min_y);
+    float row_w2 = sw_advance_edge_value(g.row_w2, g.e01_dx, min_y - g.min_y);
+    for (int y = min_y; y <= max_y; y++) {
+        float w0 = sw_advance_edge_value(row_w0, -g.e12_dy, min_x - g.min_x);
+        float w1 = sw_advance_edge_value(row_w1, -g.e20_dy, min_x - g.min_x);
+        float w2 = sw_advance_edge_value(row_w2, -g.e01_dy, min_x - g.min_x);
+        for (int x = min_x; x <= max_x; x++) {
             if (sw_edge_accepts_sample(w0, g.edge12_top_left) &&
                 sw_edge_accepts_sample(w1, g.edge20_top_left) &&
                 sw_edge_accepts_sample(w2, g.edge01_top_left)) {
@@ -1416,4 +1436,52 @@ static void raster_triangle(uint8_t *pixels,
                 g.v2->sy,
                 g.v2->sz);
     }
+}
+
+static void raster_triangle(uint8_t *pixels,
+                            float *zbuf,
+                            int32_t fb_w,
+                            int32_t fb_h,
+                            int32_t stride,
+                            const screen_vert_t *v0,
+                            const screen_vert_t *v1,
+                            const screen_vert_t *v2,
+                            const sw_pixels_view *tex,
+                            const sw_pixels_view *emissive_tex,
+                            const float *emissive_color,
+                            const sw_pixels_view *normal_map,
+                            const sw_pixels_view *specular_map,
+                            const sw_pixels_view *metallic_roughness_map,
+                            const sw_pixels_view *ao_map,
+                            const vgfx3d_draw_cmd_t *cmd,
+                            const vgfx3d_light_params_t *lights,
+                            int32_t light_count,
+                            const float *ambient,
+                            int8_t backface_cull,
+                            const sw_context_t *fog_ctx) {
+    raster_triangle_scissored(pixels,
+                              zbuf,
+                              fb_w,
+                              fb_h,
+                              stride,
+                              v0,
+                              v1,
+                              v2,
+                              tex,
+                              emissive_tex,
+                              emissive_color,
+                              normal_map,
+                              specular_map,
+                              metallic_roughness_map,
+                              ao_map,
+                              cmd,
+                              lights,
+                              light_count,
+                              ambient,
+                              backface_cull,
+                              fog_ctx,
+                              0,
+                              0,
+                              fb_w - 1,
+                              fb_h - 1);
 }

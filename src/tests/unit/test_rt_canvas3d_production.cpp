@@ -7,6 +7,14 @@
 //
 // File: tests/unit/test_rt_canvas3d_production.cpp
 // Purpose: Headless production-readiness checks for Canvas3D runtime behavior.
+// Key invariants:
+//   - Production software-renderer scenes remain byte-stable across backend changes.
+//   - Backend capability reporting stays script-facing and deterministic.
+// Ownership/Lifetime:
+//   - Tests allocate runtime objects directly and release them before returning.
+//   - Environment overrides are restored by scoped guards.
+// Links: src/runtime/graphics/3d/backend/vgfx3d_backend_sw.c,
+//        docs/viperlib/graphics/rendering3d.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -20,13 +28,19 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <string>
+#include <vector>
 
 extern "C" {
 #include "rt_canvas3d_internal.h"
 #include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_vec3.h"
 #include "vgfx3d_backend.h"
+
+int64_t vgfx3d_software_backend_thread_count_for_test(const void *ctx);
 }
 
 static int tests_passed = 0;
@@ -81,6 +95,56 @@ static void release_obj(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
+
+static int set_process_env_var(const char *name, const char *value) {
+    if (!name || !*name)
+        return 0;
+#if RT_PLATFORM_WINDOWS
+    return _putenv_s(name, value ? value : "") == 0 ? 1 : 0;
+#else
+    return value ? (setenv(name, value, 1) == 0 ? 1 : 0) : (unsetenv(name) == 0 ? 1 : 0);
+#endif
+}
+
+class ScopedEnvVar {
+  public:
+    explicit ScopedEnvVar(const char *name) : name_(name ? name : ""), had_value_(false) {
+        const char *value = std::getenv(name_.c_str());
+        if (value) {
+            had_value_ = true;
+            old_value_ = value;
+        }
+    }
+
+    ~ScopedEnvVar() {
+        if (had_value_)
+            (void)set_process_env_var(name_.c_str(), old_value_.c_str());
+        else
+            (void)set_process_env_var(name_.c_str(), nullptr);
+    }
+
+    int set(const char *value) {
+        return set_process_env_var(name_.c_str(), value);
+    }
+
+    int unset() {
+        return set_process_env_var(name_.c_str(), nullptr);
+    }
+
+  private:
+    std::string name_;
+    bool had_value_;
+    std::string old_value_;
+};
+
+struct SoftwareSceneRenderResult {
+    uint64_t hash = 0;
+    float shadow_luma = 0.0f;
+    float lit_left_luma = 0.0f;
+    float lit_right_luma = 0.0f;
+    int64_t worker_count = 1;
+    std::vector<uint8_t> rgba;
+};
 
 static void set_identity_matrix(double *m) {
     std::memset(m, 0, sizeof(double) * 16u);
@@ -463,10 +527,9 @@ static void test_canvas_render_state_sanitizes_inputs() {
     EXPECT_EQ_I64(rt_canvas3d_get_delta_time(&canvas), 16, "Delta time getter applies max clamp");
 }
 
-static void test_software_spot_light_shadow_render_is_stable() {
+static int render_software_spot_light_shadow_scene(SoftwareSceneRenderResult *result) {
     const int32_t width = 96;
     const int32_t height = 96;
-    const uint64_t expected_hash = 0x728c7560b310b408ull;
     rt_canvas3d canvas = {};
     void *target_obj = nullptr;
     void *camera = nullptr;
@@ -491,7 +554,7 @@ static void test_software_spot_light_shadow_render_is_stable() {
     float shadow_luma;
     float lit_left_luma;
     float lit_right_luma;
-    uint64_t hash;
+    uint64_t hash = 0;
     rt_rendertarget3d *target_owner;
     vgfx3d_rendertarget_t *target;
 
@@ -505,7 +568,7 @@ static void test_software_spot_light_shadow_render_is_stable() {
     canvas.shadow_cascade_count = 1;
     EXPECT_TRUE(canvas.backend_ctx != nullptr, "Software backend context is available");
     if (!canvas.backend_ctx)
-        return;
+        return 0;
 
     target_obj = rt_rendertarget3d_new(width, height);
     camera = rt_camera3d_new(55.0, 1.0, 0.1, 20.0);
@@ -559,12 +622,19 @@ static void test_software_spot_light_shadow_render_is_stable() {
     shadow_luma = sample_luminance_box(target, shadow_x, shadow_y, 2);
     lit_left_luma = sample_luminance_box(target, lit_left_x, lit_left_y, 2);
     lit_right_luma = sample_luminance_box(target, lit_right_x, lit_right_y, 2);
-
-    EXPECT_TRUE(lit_left_luma > shadow_luma * 1.25f + 0.015f,
-                "Spot shadow darkens the plane relative to the lit side before the penumbra");
-    EXPECT_TRUE(lit_right_luma > shadow_luma * 1.25f + 0.015f,
-                "Spot shadow darkens the plane relative to the lit side after the penumbra");
-    EXPECT_EQ_U64(hash, expected_hash, "Software spot-shadow render snapshot remains stable");
+    if (result) {
+        result->hash = hash;
+        result->shadow_luma = shadow_luma;
+        result->lit_left_luma = lit_left_luma;
+        result->lit_right_luma = lit_right_luma;
+        result->worker_count = vgfx3d_software_backend_thread_count_for_test(canvas.backend_ctx);
+        result->rgba.assign((size_t)width * (size_t)height * 4u, 0u);
+        for (int32_t y = 0; y < height; y++) {
+            std::memcpy(&result->rgba[(size_t)y * (size_t)width * 4u],
+                        &target->color_buf[(size_t)y * (size_t)target->stride],
+                        (size_t)width * 4u);
+        }
+    }
 
 cleanup:
     if (canvas.in_frame)
@@ -588,6 +658,62 @@ cleanup:
     release_obj(eye);
     release_obj(camera);
     release_obj(target_obj);
+    return hash != 0;
+}
+
+static int rgba_equal(const SoftwareSceneRenderResult &a, const SoftwareSceneRenderResult &b) {
+    return a.rgba.size() == b.rgba.size() &&
+           (a.rgba.empty() || std::memcmp(a.rgba.data(), b.rgba.data(), a.rgba.size()) == 0);
+}
+
+static void test_software_spot_light_shadow_render_is_stable() {
+    const uint64_t expected_hash = 0x728c7560b310b408ull;
+    SoftwareSceneRenderResult result;
+
+    EXPECT_TRUE(render_software_spot_light_shadow_scene(&result),
+                "Software spot-shadow render scene completes");
+    if (result.hash == 0)
+        return;
+
+    EXPECT_TRUE(result.lit_left_luma > result.shadow_luma * 1.25f + 0.015f,
+                "Spot shadow darkens the plane relative to the lit side before the penumbra");
+    EXPECT_TRUE(result.lit_right_luma > result.shadow_luma * 1.25f + 0.015f,
+                "Spot shadow darkens the plane relative to the lit side after the penumbra");
+    EXPECT_EQ_U64(
+        result.hash, expected_hash, "Software spot-shadow render snapshot remains stable");
+}
+
+static void test_software_tiled_raster_threads_are_deterministic() {
+    ScopedEnvVar threads_env("VIPER_3D_SW_THREADS");
+    SoftwareSceneRenderResult one;
+    SoftwareSceneRenderResult four;
+    SoftwareSceneRenderResult automatic;
+
+    EXPECT_TRUE(threads_env.set("1"), "Test can force single-threaded software rasterization");
+    EXPECT_TRUE(render_software_spot_light_shadow_scene(&one),
+                "Single-threaded software raster render completes");
+    if (one.hash == 0)
+        return;
+    EXPECT_EQ_I64(one.worker_count, 1, "VIPER_3D_SW_THREADS=1 uses the serial worker count");
+
+    EXPECT_TRUE(threads_env.set("4"), "Test can force four software raster workers");
+    EXPECT_TRUE(render_software_spot_light_shadow_scene(&four),
+                "Four-worker software raster render completes");
+    if (four.hash == 0)
+        return;
+    EXPECT_EQ_I64(four.worker_count, 4, "VIPER_3D_SW_THREADS=4 creates four workers");
+    EXPECT_EQ_U64(four.hash, one.hash, "Four-worker software raster hash matches serial");
+    EXPECT_TRUE(rgba_equal(one, four), "Four-worker software raster pixels match serial");
+
+    EXPECT_TRUE(threads_env.unset(), "Test can restore unset software raster worker override");
+    EXPECT_TRUE(render_software_spot_light_shadow_scene(&automatic),
+                "Default software raster render completes");
+    if (automatic.hash == 0)
+        return;
+    EXPECT_TRUE(automatic.worker_count >= 1 && automatic.worker_count <= 8,
+                "Default software raster worker count is clamped to 1..8");
+    EXPECT_EQ_U64(automatic.hash, one.hash, "Default software raster hash matches serial");
+    EXPECT_TRUE(rgba_equal(one, automatic), "Default software raster pixels match serial");
 }
 
 int main() {
@@ -598,6 +724,7 @@ int main() {
     test_backend_runtime_fallback_is_queryable();
     test_frustum_culling_aliases_share_state();
     test_canvas_render_state_sanitizes_inputs();
+    test_software_tiled_raster_threads_are_deterministic();
     test_software_spot_light_shadow_render_is_stable();
 
     if (tests_passed != tests_run) {

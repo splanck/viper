@@ -21,8 +21,10 @@
 // Ownership/Lifetime:
 //   - Software backend context is owned by Canvas3D; freed in its destroy_ctx hook.
 //   - Z-buffer and vertex scratch are heap allocations resized on demand.
+//   - The context owns one persistent worker pool, created once and shut down
+//     before the context storage is released.
 //
-// Links: vgfx3d_backend.h, rt_canvas3d_internal.h
+// Links: vgfx3d_backend.h, rt_canvas3d_internal.h, src/runtime/threads/rt_threadpool.h
 //
 //===----------------------------------------------------------------------===//
 
@@ -30,6 +32,10 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_object.h"
+#include "rt_parallel.h"
+#include "rt_platform.h"
+#include "rt_threadpool.h"
 #include "vgfx3d_backend.h"
 #include "vgfx3d_backend_utils.h"
 
@@ -39,6 +45,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define SW_TILE_SIZE 64
+#define SW_MAX_WORKERS 8
+#define SW_MAX_TASKS (SW_MAX_WORKERS + 1)
+#define SW_PARALLEL_MIN_INDICES 192u
 
 /*==========================================================================
  * Software backend context
@@ -69,6 +80,9 @@ typedef struct {
     int8_t shadow_pass_slot;
     int8_t shadow_count;
     int8_t shadow_complete[VGFX3D_MAX_SHADOW_LIGHTS];
+    /* Persistent worker pool for deterministic tiled rasterization. */
+    void *worker_pool;
+    int64_t worker_count;
 } sw_context_t;
 
 static inline void sw_compute_view_vector(const sw_context_t *ctx,
@@ -274,6 +288,73 @@ static int sw_ensure_zbuf_capacity(sw_context_t *ctx, int32_t width, int32_t hei
     return 1;
 }
 
+/// @brief Clamp a software-rasterizer worker count to [1, SW_MAX_WORKERS].
+static int64_t sw_clamp_worker_count(int64_t count) {
+    if (count < 1)
+        return 1;
+    if (count > SW_MAX_WORKERS)
+        return SW_MAX_WORKERS;
+    return count;
+}
+
+/// @brief Default software-rasterizer worker count: hardware parallelism capped to 8.
+static int64_t sw_default_worker_count(void) {
+    return sw_clamp_worker_count(rt_parallel_default_workers());
+}
+
+/// @brief Resolve VIPER_3D_SW_THREADS into a deterministic worker budget.
+static int64_t sw_resolve_worker_count_from_env(void) {
+    const char *env = getenv("VIPER_3D_SW_THREADS");
+    char *end = NULL;
+    long long parsed;
+    if (!env || !*env)
+        return sw_default_worker_count();
+    parsed = strtoll(env, &end, 10);
+    if (end == env || (end && *end != '\0'))
+        return sw_default_worker_count();
+    return sw_clamp_worker_count((int64_t)parsed);
+}
+
+/// @brief Create the context-owned worker pool unless the requested count is one.
+static void sw_init_worker_pool(sw_context_t *ctx) {
+    if (!ctx)
+        return;
+    ctx->worker_count = sw_resolve_worker_count_from_env();
+    ctx->worker_pool = NULL;
+    if (ctx->worker_count <= 1)
+        return;
+    ctx->worker_pool = rt_threadpool_new(ctx->worker_count);
+    if (!ctx->worker_pool)
+        ctx->worker_count = 1;
+}
+
+/// @brief Shut down and release the context-owned worker pool.
+static void sw_release_worker_pool(sw_context_t *ctx) {
+    if (!ctx || !ctx->worker_pool)
+        return;
+    void *pool = ctx->worker_pool;
+    ctx->worker_pool = NULL;
+    ctx->worker_count = 1;
+    rt_threadpool_shutdown(pool);
+    if (rt_obj_release_check0(pool))
+        rt_obj_free(pool);
+}
+
+/// @brief Test-only probe for unit tests; not part of the script-facing API.
+int64_t vgfx3d_software_backend_thread_count_for_test(const void *ctx_ptr) {
+    const sw_context_t *ctx = (const sw_context_t *)ctx_ptr;
+    return ctx ? sw_clamp_worker_count(ctx->worker_count) : 1;
+}
+
+/// @brief Reinterpret a task function pointer as a void* for the existing pool API.
+static void *sw_task_fnptr(void (*fn)(void *)) {
+    void *ptr;
+    _Static_assert(sizeof(ptr) == sizeof(fn),
+                   "Software raster task callback bridge requires equal pointer sizes");
+    memcpy(&ptr, &fn, sizeof(ptr));
+    return ptr;
+}
+
 /*==========================================================================
  * Matrix helpers
  *=========================================================================*/
@@ -309,11 +390,14 @@ static int sw_pixel_count_checked(int32_t width, int32_t height, size_t *out_cou
     return 1;
 }
 
-#include "vgfx3d_backend_sw_vertex.inc"
+// clang-format off
+/* These implementation fragments have type/function dependencies. */
 #include "vgfx3d_backend_sw_texture.inc"
+#include "vgfx3d_backend_sw_vertex.inc"
 #include "vgfx3d_backend_sw_raster.inc"
 #include "vgfx3d_backend_sw_shadow.inc"
 #include "vgfx3d_backend_sw_vtable.inc"
+// clang-format on
 /*==========================================================================
  * Exported backend + selection
  *=========================================================================*/

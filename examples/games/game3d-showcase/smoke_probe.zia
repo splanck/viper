@@ -4,7 +4,10 @@ module smoke_probe;
 bind Viper.Game3D;
 bind Viper.Graphics.Pixels as Pixels;
 bind Viper.Math as Math;
+bind Viper.System.Environment as Environment;
 bind Viper.Terminal as Terminal;
+bind Viper.Text.Fmt as Fmt;
+bind Viper.Time.Clock as Clock;
 bind "./config";
 bind "./game";
 
@@ -22,6 +25,14 @@ func blue(px: Integer) -> Integer {
 
 func luminance(px: Integer) -> Integer {
     return (red(px) * 30 + green(px) * 59 + blue(px) * 11) / 100;
+}
+
+func ms(us: Integer) -> Float {
+    return us / 1000.0;
+}
+
+func fmt(value: Float) -> String {
+    return Fmt.NumFixed(value, 3);
 }
 
 func nearChannel(value: Integer, target: Integer) -> Boolean {
@@ -164,7 +175,12 @@ func main() {
     var game = new Game3DShowcase();
     game.setup("Game3D Showcase Smoke", 960, 540);
     game.step(0.016);
+    var renderStart = Clock.TicksUs();
     game.renderFrame();
+    var renderUs = Clock.TicksUs() - renderStart;
+    if (Environment.HasVariable("VIPER_SHOWCASE_PERF")) {
+        Terminal.Say("PERF: showcase_render_ms=" + fmt(ms(renderUs)));
+    }
     var finalFrame = World3D.captureFinalFrame(game.getWorld());
     if (finalFrame != null) {
         Pixels.SavePng(finalFrame, "/tmp/game3d_showcase_games_current.png");

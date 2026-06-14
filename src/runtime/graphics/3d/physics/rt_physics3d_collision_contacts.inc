@@ -401,17 +401,16 @@ void contact3d_expand_aabb_manifold(rt_contact3d *contact, const rt_body3d *a, c
 
     double p[3] = {contact->point[0], contact->point[1], contact->point[2]};
     p[axis] = contact->point[axis];
+    /* Keep the center support point, then add three face points whose centroid
+     * is the center so resting AABB stacks do not accumulate contact torque. */
     p[u] = overlap_min[u];
-    p[v] = overlap_min[v];
-    contact3d_try_add_manifold_point(contact, p, contact->normal, contact->separation);
-    p[u] = overlap_max[u];
-    p[v] = overlap_min[v];
-    contact3d_try_add_manifold_point(contact, p, contact->normal, contact->separation);
-    p[u] = overlap_min[u];
-    p[v] = overlap_max[v];
+    p[v] = contact->point[v];
     contact3d_try_add_manifold_point(contact, p, contact->normal, contact->separation);
     p[u] = overlap_max[u];
     p[v] = overlap_max[v];
+    contact3d_try_add_manifold_point(contact, p, contact->normal, contact->separation);
+    p[u] = contact->point[u];
+    p[v] = overlap_min[v];
     contact3d_try_add_manifold_point(contact, p, contact->normal, contact->separation);
 }
 
