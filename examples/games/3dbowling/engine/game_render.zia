@@ -1,0 +1,71 @@
+// ============================================================================
+// MODULE: engine/game_render
+// PURPOSE: 3D scene and 2D overlay drawing for 3D Bowling.
+// ============================================================================
+
+// game_render.zia — Rendering pass composition.
+module game_render;
+
+bind "../config";
+bind "../menu";
+bind "./game_scoring";
+
+/// @brief Render layer for the bowling controller.
+class BowlingGameRender extends BowlingGameScoring {
+    /// @brief 3D pass: draw lane / pins / sweep bar / ball / particles.
+    override expose func drawScene() {
+        laneObj.draw(render.getCanvas());
+        if (gameState == config.STATE_AIMING && screenState == config.SCREEN_PLAYING) {
+            ballObj.drawAimPreview(render.getCanvas(), aimX, spin);
+        }
+        if (pinMgr.isSweeping()) {
+            laneObj.drawSweepBar(render.getCanvas(), pinMgr.getSweepY());
+        }
+        pinMgr.draw(render.getCanvas());
+        ballObj.draw(render.getCanvas());
+        particleMgr.draw(render.getCanvas(), render.getCamera());
+    }
+
+    /// @brief 2D pass: HUD + active menu + celebration overlay.
+    override expose func drawOverlays() {
+        var canvas = render.getCanvas();
+        var cw = render.getWidth();
+        var ch = render.getHeight();
+
+        if (screenState == config.SCREEN_PLAYING) {
+            celebMgr.draw(canvas, cw, ch);
+            hudObj.draw(canvas, getActiveScoreKeeper(), power, charging, spin, aimX,
+                ballObj.getBallType(), gameState, render.getFps(), playerCount, activePlayer,
+                scoreKeeperOne.getTotalScore(), scoreKeeperTwo.getTotalScore(), laneObj.getOilPatternName());
+        } else if (screenState == config.SCREEN_PAUSED) {
+            hudObj.draw(canvas, getActiveScoreKeeper(), power, charging, spin, aimX,
+                ballObj.getBallType(), gameState, render.getFps(), playerCount, activePlayer,
+                scoreKeeperOne.getTotalScore(), scoreKeeperTwo.getTotalScore(), laneObj.getOilPatternName());
+            menuObj.drawPause(canvas, cw, ch);
+        } else if (screenState == config.SCREEN_OPTIONS) {
+            menuObj.drawOptions(canvas, cw, ch);
+        } else if (screenState == config.SCREEN_RESULTS) {
+            var headline = "Game Complete";
+            var subtitle = "Final Score: " + toString(resultsPlayerOne);
+            var detail = "Best score: " + toString(menuObj.getBestScore());
+
+            if (currentMode == config.MODE_VERSUS) {
+                headline = "Match Complete";
+                if (resultsWinner == 0) {
+                    subtitle = "Player 1 wins";
+                } else if (resultsWinner == 1) {
+                    subtitle = "Player 2 wins";
+                } else {
+                    subtitle = "Tie game";
+                }
+                detail = "P1 " + toString(resultsPlayerOne) + "  |  P2 " + toString(resultsPlayerTwo);
+            } else if (resultsNewHigh) {
+                detail = "New high score";
+            }
+
+            menuObj.drawResults(canvas, cw, ch, headline, subtitle, detail);
+        } else {
+            menuObj.drawTitle(canvas, cw, ch);
+        }
+    }
+}

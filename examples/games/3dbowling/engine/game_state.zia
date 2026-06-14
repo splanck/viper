@@ -1,0 +1,130 @@
+// ============================================================================
+// MODULE: engine/game_state
+// PURPOSE: Shared controller state and dispatch hooks for 3D Bowling.
+//
+// WHERE-THIS-FITS: Base class for the game_setup / game_flow /
+//          game_scoring / game_render inheritance chain.
+// ============================================================================
+
+// game_state.zia — Shared fields, defaults, and layer hooks.
+module game_state;
+
+bind Viper.Graphics3D;
+bind Viper.Input;
+bind Viper.Sound;
+bind "../config";
+bind "../menu";
+bind "./renderer";
+bind "./camera";
+bind "./hud";
+bind "../lane/lane";
+bind "../lane/pins";
+bind "../lane/ball";
+bind "../effects/particles";
+bind "../effects/celebrations";
+bind "../scoring/scoring";
+
+/// @brief Shared state for the bowling controller layers.
+class BowlingGameState {
+    hide Renderer render;
+    hide CameraController camCtrl;
+    hide HUD hudObj;
+    hide BowlingMenu menuObj;
+
+    hide LaneBuilder laneObj;
+    hide PinManager pinMgr;
+    hide Ball ballObj;
+    hide ParticleManager particleMgr;
+    hide CelebrationManager celebMgr;
+
+    hide Physics3DWorld physWorld;
+
+    hide ScoreKeeper scoreKeeperOne;
+    hide ScoreKeeper scoreKeeperTwo;
+
+    hide Integer screenState;
+    hide Integer gameState;
+    hide Float fixedStepAlpha;
+    hide Float settleTimer;
+    hide Float scoreTimer;
+    hide Float impactCooldown;
+    hide Float skidMarkTimer;
+    hide Float lightFlashTimer;
+
+    hide Float aimX;
+    hide Float power;
+    hide Float spin;
+    hide Boolean charging;
+    hide Boolean gutterLatched;
+    hide Boolean ballHitPinsThisRoll;
+    hide Boolean cinematicStarted;
+
+    hide Integer oilPattern;
+    hide Integer qualityMode;
+    hide Integer currentMode;
+    hide Integer playerCount;
+    hide Integer activePlayer;
+
+    hide Boolean pendingFrameAdvance;
+    hide Boolean pendingPlayerSwitch;
+    hide Boolean pendingResults;
+
+    hide SoundBank soundBank;
+    hide Boolean soundReady;
+    hide Boolean quitRequested;
+
+    hide Integer resultsPlayerOne;
+    hide Integer resultsPlayerTwo;
+    hide Integer resultsWinner;
+    hide Boolean resultsNewHigh;
+
+    /// @brief Reset every per-game variable to TITLE-screen defaults.
+    expose func init() {
+        screenState = config.SCREEN_TITLE;
+        gameState = config.STATE_AIMING;
+        fixedStepAlpha = 0.0;
+        settleTimer = 0.0;
+        scoreTimer = 0.0;
+        impactCooldown = 0.0;
+        skidMarkTimer = 0.0;
+        lightFlashTimer = 0.0;
+        aimX = 0.0;
+        power = 0.0;
+        spin = 0.0;
+        charging = false;
+        gutterLatched = false;
+        ballHitPinsThisRoll = false;
+        cinematicStarted = false;
+        oilPattern = config.OIL_HOUSE;
+        qualityMode = config.QUALITY_CINEMATIC;
+        currentMode = config.MODE_SINGLE;
+        playerCount = 1;
+        activePlayer = 0;
+        pendingFrameAdvance = false;
+        pendingPlayerSwitch = false;
+        pendingResults = false;
+        soundReady = false;
+        quitRequested = false;
+        resultsPlayerOne = 0;
+        resultsPlayerTwo = 0;
+        resultsWinner = -1;
+        resultsNewHigh = false;
+    }
+
+    expose func gameLoop() { }
+    expose func drawScene() { }
+    expose func drawOverlays() { }
+    expose func cycleCameraMode() { }
+    expose func updateScoring() { }
+    expose func updateSweeping(dt: Float) {
+        if (dt < 0.0) { return; }
+    }
+
+    expose func updateResetting(dt: Float) {
+        if (dt < 0.0) { return; }
+    }
+
+    expose func updateCelebrating(dt: Float) {
+        if (dt < 0.0) { return; }
+    }
+}

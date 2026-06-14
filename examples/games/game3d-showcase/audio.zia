@@ -1,0 +1,70 @@
+// audio.zia - Spatial audio setup and authored one-shot sounds.
+module audio;
+
+bind Viper.Game3D;
+bind Viper.Graphics3D;
+bind Viper.Sound;
+bind "./config";
+bind "./terrain";
+
+class ShowcaseAudio {
+    hide Sound3D audio;
+    hide Sound chimeClip;
+    hide Sound humClip;
+    hide Sound stepClip;
+    hide Sound victoryClip;
+    hide Sound gustClip;
+    hide Float ambientTimer;
+    hide Vec3 ambientSoundPos;
+    hide Vec3 footfallPos;
+    hide Vec3 beaconSoundPos;
+
+    expose func setup(world: World3D) {
+        audio = World3D.get_audio(world);
+        Sound3D.listenerFollowCamera(audio, true);
+        Sound3D.setAttenuation(audio, config.AUDIO_REF_DIST, config.AUDIO_MAX_DIST);
+        chimeClip = Synth.Sweep(520, 1040, 280, 45);
+        humClip = Synth.Tone(190, 460, 30);
+        stepClip = Synth.Noise(70, 22);
+        victoryClip = Synth.Sweep(440, 1320, 620, 55);
+        gustClip = Synth.Noise(180, 60);
+        ambientSoundPos = new Vec3(0.0, 0.0, 0.0);
+        footfallPos = new Vec3(0.0, 0.0, 0.0);
+        beaconSoundPos = new Vec3(0.0, 0.0, 0.0);
+        reset();
+    }
+
+    expose func reset() {
+        ambientTimer = 2.0;
+    }
+
+    expose func updateAmbient(dt: Float) {
+        ambientTimer = ambientTimer - dt;
+        if (ambientTimer <= 0.0 && audio != null) {
+            ambientTimer = 5.5;
+            ambientSoundPos.Set(
+                terrain.terrainWorldMaxX() * 0.5,
+                config.WATER_HEIGHT + 1.5,
+                terrain.terrainWorldMaxZ() * 0.5);
+            Sound3D.playAt(audio, gustClip, ambientSoundPos);
+        }
+    }
+
+    expose func playFootfall(x: Float, y: Float, z: Float) {
+        if (audio != null) {
+            footfallPos.Set(x, y, z);
+            Sound3D.playAt(audio, stepClip, footfallPos);
+        }
+    }
+
+    expose func playBeacon(x: Float, y: Float, z: Float) {
+        if (audio != null) {
+            beaconSoundPos.Set(x, y + 2.0, z);
+            Sound3D.playAt(audio, chimeClip, beaconSoundPos);
+        }
+    }
+
+    expose func playVictory() {
+        if (audio != null) { Sound3D.play2D(audio, victoryClip); }
+    }
+}

@@ -1,6 +1,7 @@
 module render_probe;
 
 bind Viper.Graphics3D;
+bind Viper.Graphics.Pixels as Pixels;
 bind Viper.Terminal;
 bind "./config";
 bind "./engine/renderer";
@@ -48,7 +49,7 @@ func main() {
     render.endFrame();
 
     var snap = render.getCanvas().Screenshot();
-    SayInt(snap.SavePng("/tmp/3dbowling_probe.png"));
+    SayInt(Pixels.SavePng(snap, "/tmp/3dbowling_probe.png"));
 
     render.flip();
 }

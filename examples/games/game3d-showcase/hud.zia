@@ -1,0 +1,75 @@
+// hud.zia - Game3D showcase overlay and debug panel.
+module hud;
+
+bind Viper.Game3D;
+bind Viper.Graphics3D;
+bind Viper.Core.Convert as Convert;
+bind "./config";
+bind "./minimap";
+bind "./worldsim";
+
+class ShowcaseHud {
+    expose func draw(canvas: Canvas3D, map: ShowcaseMinimap, sim: ShowcaseWorldSim,
+                     playerX: Float, playerZ: Float, debugOn: Boolean) {
+        var w = Canvas3D.get_Width(canvas);
+        var h = Canvas3D.get_Height(canvas);
+        var total = sim.getBeaconCount();
+        var statusColor = config.HUD_WARN;
+        var statusText = "Seek the ridge beacons.";
+
+        if (sim.getBeaconsLit() >= total) {
+            statusColor = config.HUD_GOOD;
+            statusText = "All linked. Return home.";
+        }
+        if (sim.getSanctuaryDone()) {
+            statusColor = config.HUD_GOOD;
+            statusText = "Sanctuary restored!";
+        }
+
+        Canvas3D.DrawRect2D(
+            canvas,
+            config.HUD_PANEL_X,
+            config.HUD_PANEL_Y,
+            config.HUD_PANEL_W,
+            config.HUD_PANEL_H,
+            config.HUD_PANEL);
+        Canvas3D.DrawRect2D(
+            canvas, config.HUD_PANEL_X, config.HUD_PANEL_Y, config.HUD_PANEL_W, 3, config.HUD_ACCENT);
+        Canvas3D.DrawText2D(canvas, 24, 28, "GAME3D OPEN WORLD", config.HUD_TEXT);
+        Canvas3D.DrawText2D(canvas, 24, 52, "WASD move | Mouse look | F11", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, 24, 72, "Wheel zoom | Shift sprint | Esc", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, 24, 104, "Ridge beacons: " + toString(sim.getBeaconsLit()) + " / " + toString(total), statusColor);
+        Canvas3D.DrawText2D(canvas, 24, 126, statusText, config.HUD_TEXT);
+
+        map.draw(canvas, w - 172, h - 172, 144, 144, playerX, playerZ,
+            sim.getBeaconXs(), sim.getBeaconZs(), sim.getBeaconState());
+        Canvas3D.DrawText2D(canvas, 24, h - 26, "FPS " + toString(Canvas3D.get_Fps(canvas)), config.HUD_MUTED);
+
+        Canvas3D.DrawCrosshair(canvas, config.HUD_ACCENT, 10);
+        if (sim.getScanLabel() != "") {
+            Canvas3D.DrawText2D(
+                canvas, w / 2 - 100, h / 2 + 18,
+                sim.getScanLabel() + "  " + toString(Convert.NumToInt(sim.getScanDist())) + "m", config.HUD_TEXT);
+        }
+
+        if (debugOn) { drawDebugPanel(canvas, w); }
+    }
+
+    hide func drawDebugPanel(canvas: Canvas3D, w: Integer) {
+        var x = w - 250;
+        var y = 14;
+        Canvas3D.DrawRect2D(canvas, x, y, 236, 134, config.HUD_PANEL);
+        Canvas3D.DrawRect2D(canvas, x, y, 236, 3, config.HUD_ACCENT);
+        Canvas3D.DrawText2D(canvas, x + 10, y + 16, "DEBUG  Ctrl=toggle  Space=quality", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, x + 10, y + 38, "Backend: " + Canvas3D.get_Backend(canvas), config.HUD_TEXT);
+        Canvas3D.DrawText2D(canvas, x + 10, y + 56, "FPS: " + toString(Canvas3D.get_Fps(canvas)), config.HUD_TEXT);
+        Canvas3D.DrawText2D(canvas, x + 10, y + 74, "Draws: " + toString(Canvas3D.get_DrawCount(canvas)), config.HUD_TEXT);
+        Canvas3D.DrawText2D(
+            canvas, x + 10, y + 92,
+            "Lights: " + toString(Canvas3D.get_LightCount(canvas)) + " / "
+                + toString(Canvas3D.get_MaxActiveLights(canvas)), config.HUD_TEXT);
+        Canvas3D.DrawText2D(
+            canvas, x + 10, y + 110,
+            "Quality: " + toString(Canvas3D.get_QualityActive(canvas)), config.HUD_TEXT);
+    }
+}

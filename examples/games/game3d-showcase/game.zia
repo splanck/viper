@@ -1,117 +1,42 @@
-// game.zia - Game3D open-world showcase game.
+// game.zia - Game3D open-world showcase orchestrator.
 module game;
 
 bind Viper.Game3D;
-bind Viper.Graphics.Pixels as Pixels;
 bind Viper.Graphics3D;
-bind Viper.Graphics3D.Assets3D as Assets3D;
-bind Viper.Core.Convert as Convert;
 bind Viper.Math;
 bind Viper.Terminal as Terminal;
-bind Viper.Sound;
 bind "./config";
+bind "./terrain";
+bind "./assets";
+bind "./water_sky";
+bind "./forest";
+bind "./critters";
+bind "./audio";
+bind "./postfx";
+bind "./minimap";
+bind "./hud";
+bind "./worldsim";
 
 class Game3DShowcase {
     hide World3D world;
     hide Canvas3D canvas;
     hide Camera3D camera;
     hide Input3D input;
-    hide Terrain3D terrain;
-    hide Water3D water;
-    hide CubeMap3D skybox;
-    hide Pixels splatMap;
-    hide Vegetation3D grass;
+    hide Terrain3D land;
+    hide ShowcaseTerrain terrainSys;
+    hide ShowcaseAssets assets;
+    hide ShowcaseWaterSky waterSky;
+    hide ShowcaseForest forestSys;
+    hide ShowcaseCritters crittersSys;
+    hide ShowcaseAudio audioSys;
+    hide ShowcaseEffects effectsSys;
+    hide ShowcaseMinimap minimapSys;
+    hide ShowcaseHud hudSys;
+    hide ShowcaseWorldSim sim;
 
-    // Recommendation #6 — pre-rendered terrain minimap image (blitted via DrawImage2D).
-    hide Pixels minimapBase;
-
-    // Recommendation #4 — spatial audio.
-    hide Sound3D audio;
-    hide Sound chimeClip;
-    hide Sound humClip;
-    hide Sound stepClip;
-    hide Sound victoryClip;
-    hide Sound gustClip;
-    hide Float stepPhase;
-    hide Float ambientTimer;
-
-    // Recommendation #7 — a "home sanctuary" trigger volume + objective state.
-    hide Trigger3D homeTrigger;
-    hide Boolean sanctuaryDone;
-
-    // Recommendation #5 — dynamic lights.
-    hide Light3D sunLight;
-    hide Light3D fillLight;
-    hide Light3D skyFill;
-    hide List[Light3D] beaconLights;
-    hide Light3D playerLight;
     hide Vec3 cameraEye;
     hide Vec3 cameraTarget;
     hide Vec3 cameraUp;
-    hide Vec3 sunDirection;
-    hide Vec3 ambientSoundPos;
-    hide Vec3 objectiveProbePos;
-    hide Vec3 footfallPos;
-    hide Vec3 beaconSoundPos;
-    hide Vec3 playerLightPos;
-
-    // Recommendation #6 — particles + decals.
-    hide Particles3D fireflies;
-    hide Particles3D mist;
-    hide Particles3D sprintDust;
-    hide List[Decal3D] decals;
-    hide Pixels scorchTex;
-
-    // Recommendation #3 — skeletal-animated sentinels.
-    hide Mesh3D critterMesh;
-    hide Skeleton3D critterSkel;
-    hide AnimController3D critterCtrl;
-    hide Boolean crittersActive;
-    hide Material3D critterMat;
-    hide List[Float] critterXs;
-    hide List[Float] critterZs;
-    // Recommendation #4 — wandering targets per sentinel.
-    hide List[Float] critterTX;
-    hide List[Float] critterTZ;
-    hide Integer critterWanderSeed;
-
-    // Recommendation #9 — raycast scanner.
-    hide List[Float] landmarkXs;
-    hide List[Float] landmarkYs;
-    hide List[Float] landmarkZs;
-    hide List[Float] landmarkR;
-    hide List[String] landmarkNames;
-    hide String scanLabel;
-    hide Float scanDist;
-
-    // Recommendation #10 — runtime quality + debug overlay.
-    hide Integer qualityLevel;
-    hide Boolean debugOn;
-    hide Boolean fullscreenOn;
-
-    hide Mesh3D cubeMesh;
-    hide Mesh3D beaconMesh;
-    hide Mesh3D playerBodyMesh;
-    hide Mesh3D playerCoreMesh;
-
-    hide Material3D terrainMat;
-    hide Material3D stoneMat;
-    hide Material3D pedestalMat;
-    hide Material3D playerMat;
-    hide Material3D beaconOffMat;
-    hide Material3D beaconOnMat;
-    hide Material3D archiveMat;
-    hide Material3D waterMarkerMat;
-    hide List[Material3D] treeMats;
-    hide Material3D barkMat;
-
-    // Recommendation #9 — wind-swayed procedural foliage (uses Canvas3D.DrawMeshWind).
-    hide Mesh3D saplingMesh;
-    hide Material3D saplingMat;
-    hide List[Float] reedXs;
-    hide List[Float] reedZs;
-    hide List[Float] reedPhase;
-
     hide Float playerX;
     hide Float playerY;
     hide Float playerZ;
@@ -120,17 +45,11 @@ class Game3DShowcase {
     hide Float cameraDistance;
     hide Float cameraFov;
     hide Float worldTime;
-    hide Integer beaconsLit;
+    hide Float stepPhase;
+    hide Integer qualityLevel;
+    hide Boolean debugOn;
+    hide Boolean fullscreenOn;
     hide Boolean quitRequested;
-
-    hide List[Float] beaconXs;
-    hide List[Float] beaconYs;
-    hide List[Float] beaconZs;
-    hide List[Integer] beaconState;
-
-    hide func packPixel(r: Integer, g: Integer, b: Integer, a: Integer) -> Integer {
-        return (((r * 256) + g) * 256 + b) * 256 + a;
-    }
 
     expose func setup(title: String, width: Integer, height: Integer) {
         world = World3D.NewWithHorizontalCamera(
@@ -141,108 +60,54 @@ class Game3DShowcase {
         cameraEye = new Vec3(0.0, 0.0, 0.0);
         cameraTarget = new Vec3(0.0, 0.0, 0.0);
         cameraUp = new Vec3(0.0, 1.0, 0.0);
-        sunDirection = new Vec3(-0.36, -1.0, -0.22);
-        ambientSoundPos = new Vec3(0.0, 0.0, 0.0);
-        objectiveProbePos = new Vec3(0.0, 0.0, 0.0);
-        footfallPos = new Vec3(0.0, 0.0, 0.0);
-        beaconSoundPos = new Vec3(0.0, 0.0, 0.0);
-        playerLightPos = new Vec3(0.0, 0.0, 0.0);
         Input3D.set_lookSensitivity(input, config.CAMERA_MOUSE_SENS);
         Canvas3D.SetDTMax(canvas, config.DT_MAX_MS);
 
         Quality.Apply(world, QualityLevel.get_Cinematic());
         Lighting.Outdoor(world, new Vec3(-0.36, -1.0, -0.22));
-        installOutdoorFillLight();
-        buildPostFX();
+        sim = new ShowcaseWorldSim();
+        sim.init();
+        sim.installOutdoorFillLight(world);
+        postfx.buildPostFX(canvas);
         Canvas3D.SetShadowBias(canvas, config.SHADOW_BIAS);
         World3D.setAmbient(world, config.AMBIENT_R, config.AMBIENT_G, config.AMBIENT_B);
         World3D.setFog(
             world, config.FOG_R, config.FOG_G, config.FOG_B, config.FOG_NEAR, config.FOG_FAR);
 
-        cubeMesh = Mesh3D.NewBox(1.0, 1.0, 1.0);
-        beaconMesh = Mesh3D.NewSphere(0.54, 22);
-        playerBodyMesh = Mesh3D.NewCylinder(config.PLAYER_RADIUS, config.PLAYER_BODY_HEIGHT, 20);
-        playerCoreMesh = Mesh3D.NewSphere(0.36, 18);
-        // Tangents let the cube carry a tangent-space normal map (pedestals).
-        Mesh3D.CalcTangents(cubeMesh);
+        assets = new ShowcaseAssets();
+        assets.setup();
+        terrainSys = new ShowcaseTerrain();
+        land = terrainSys.build(assets.getTerrainMat());
+        waterSky = new ShowcaseWaterSky();
+        waterSky.setup(land);
+        World3D.setSkybox(world, waterSky.getSkybox());
+        assets.applyEnvReflections(waterSky.getSkybox());
 
-        // Procedural PBR texture maps shared by the stone/metal landmarks.
-        var stoneAlbedo = createStoneAlbedo(config.PBR_TEXTURE_SIZE);
-        var metalAlbedo = createMetalAlbedo(config.PBR_TEXTURE_SIZE);
-        var rockNormal = createNormalMap(config.PBR_TEXTURE_SIZE, config.PBR_NORMAL_STRENGTH);
-
-        terrainMat = Materials.Rubber(0.58, 0.74, 0.36);
-        Material3D.SetEmissiveColor(terrainMat, 0.015, 0.026, 0.008);
-
-        // Stone monoliths/pedestals: PBR dielectric with albedo + normal maps.
-        stoneMat = Material3D.NewPBR(0.52, 0.54, 0.57);
-        Material3D.SetAlbedoMap(stoneMat, stoneAlbedo);
-        Material3D.SetNormalMap(stoneMat, rockNormal);
-        Material3D.SetRoughness(stoneMat, 0.80);
-        Material3D.SetMetallic(stoneMat, 0.05);
-        Material3D.SetEmissiveColor(stoneMat, 0.010, 0.012, 0.016);
-
-        pedestalMat = Material3D.NewPBR(0.46, 0.43, 0.34);
-        Material3D.SetAlbedoMap(pedestalMat, stoneAlbedo);
-        Material3D.SetNormalMap(pedestalMat, rockNormal);
-        Material3D.SetRoughness(pedestalMat, 0.90);
-        Material3D.SetMetallic(pedestalMat, 0.0);
-        Material3D.SetEmissiveColor(pedestalMat, 0.018, 0.016, 0.012);
-
-        playerMat = Materials.Plastic(0.22, 0.76, 0.48);
-        Material3D.SetEmissiveColor(playerMat, 0.012, 0.045, 0.026);
-        beaconOffMat = Materials.Plastic(0.38, 0.52, 0.70);
-        Material3D.SetEmissiveColor(beaconOffMat, 0.025, 0.045, 0.065);
-        beaconOnMat = Materials.Emissive(0.98, 0.80, 0.22, 1.45);
-
-        // Archive towers: PBR metal with a brushed albedo and sky reflection.
-        archiveMat = Material3D.NewPBR(0.78, 0.72, 0.58);
-        Material3D.SetAlbedoMap(archiveMat, metalAlbedo);
-        Material3D.SetNormalMap(archiveMat, rockNormal);
-        Material3D.SetRoughness(archiveMat, 0.34);
-        Material3D.SetMetallic(archiveMat, 0.85);
-        waterMarkerMat = Materials.Emissive(0.20, 0.72, 1.0, 1.20);
-
-        terrain = buildTerrain();
-        skybox = createOutdoorSkybox();
-        World3D.setSkybox(world, skybox);
-        applyEnvReflections();
-
-        water = Water3D.New(terrainWorldMaxX(), terrainWorldMaxZ());
-        Water3D.SetHeight(water, config.WATER_HEIGHT);
-        Water3D.SetColor(water, config.WATER_R, config.WATER_G, config.WATER_B, config.WATER_A);
-        Water3D.SetResolution(water, 96);
-        Water3D.SetEnvMap(water, skybox);
-        Water3D.SetReflectivity(water, config.WATER_REFLECTIVITY);
-        Water3D.AddWave(water, 1.0, 0.30, 2.1, 0.22, 18.0);
-        Water3D.AddWave(water, -0.35, 0.82, 1.7, 0.12, 11.0);
-
-        minimapBase = buildMinimapImage(config.MINIMAP_SIZE);
-
+        minimapSys = new ShowcaseMinimap();
+        minimapSys.build(land);
         resetWorld();
-        spawnLandmarks();
-        spawnForest();
-        buildVegetation();
-        setupReeds();
-        setupSun();
-        setupAudio();
-        setupBeaconLights();
-        setupPlayerLight();
-        setupParticles();
-        setupPhysicsProps();
-        setupCritters();
-        setupObjective();
+        sim.spawnLandmarks(world, land, assets.getStoneMat(), assets.getArchiveMat(), assets.getWaterMarkerMat());
+        forestSys = new ShowcaseForest();
+        forestSys.spawn(world, land, sim.getBeaconXs(), sim.getBeaconZs());
+        terrainSys.buildVegetation();
+        sim.setupSun(world, canvas);
+        audioSys = new ShowcaseAudio();
+        audioSys.setup(world);
+        sim.setupBeaconLights(world);
+        sim.setupPlayerLight(world, playerX, playerY, playerZ);
+        effectsSys = new ShowcaseEffects();
+        effectsSys.setup();
+        sim.setupPhysicsProps(world, land, assets.getPedestalMat(), assets.getBeaconOnMat());
+        crittersSys = new ShowcaseCritters();
+        crittersSys.setup();
+        sim.setupObjective(land);
+        hudSys = new ShowcaseHud();
         updateCamera();
         Terminal.Say("Backend: " + Canvas3D.get_Backend(canvas));
     }
 
-    expose func getWorld() -> World3D {
-        return world;
-    }
-
-    expose func getCanvas() -> Canvas3D {
-        return canvas;
-    }
+    expose func getWorld() -> World3D { return world; }
+    expose func getCanvas() -> Canvas3D { return canvas; }
 
     expose func step(dt: Float) {
         var stepDt = dt;
@@ -250,11 +115,81 @@ class Game3DShowcase {
         if (stepDt > config.DT_MAX_SEC) { stepDt = config.DT_MAX_SEC; }
         worldTime = worldTime + stepDt;
 
-        if (Input3D.pressed(input, Keys.get_Escape())) {
-            quitRequested = true;
-            return;
-        }
+        if (Input3D.pressed(input, Keys.get_Escape())) { quitRequested = true; return; }
+        handleToggles();
+        updateLook();
+        updateMovement(stepDt);
+        updateCameraFov();
+        clampPlayerToTerrain();
+        playerY = terrain.sampleGround(land, playerX, playerZ);
 
+        sim.updateBeacons(world, camera, playerX, playerY, playerZ, audioSys, effectsSys);
+        updateCamera();
+        sim.updateScanner(canvas, camera);
+        sim.updateDynamicLights(playerX, playerY, playerZ);
+        sim.updateTimeOfDay(world, worldTime);
+        waterSky.update(stepDt);
+        terrainSys.updateVegetation(stepDt, camera);
+        effectsSys.update(stepDt, playerX, playerY, playerZ);
+        crittersSys.update(stepDt, playerX, playerZ);
+        audioSys.updateAmbient(stepDt);
+        sim.updateObjective(camera, playerX, playerY, playerZ, audioSys);
+        World3D.stepSimulation(world, stepDt);
+    }
+
+    expose func renderFrame() {
+        World3D.beginFrame(world);
+        Canvas3D.DrawTerrain(canvas, land);
+        terrainSys.drawVegetation(canvas);
+        waterSky.drawWater(canvas, camera);
+        World3D.drawScene(world);
+        sim.drawBeacons(canvas, assets.getCubeMesh(), assets.getBeaconMesh(), assets.getPedestalMat(),
+            assets.getBeaconOffMat(), assets.getBeaconOnMat(), worldTime);
+        drawPlayer();
+        crittersSys.draw(canvas, land);
+        waterSky.drawReeds(canvas, land, worldTime);
+        effectsSys.drawDecals(canvas);
+        effectsSys.draw(canvas, camera);
+        World3D.drawEffects(world);
+        World3D.endScene(world);
+
+        Canvas3D.BeginOverlay(canvas);
+        hudSys.draw(canvas, minimapSys, sim, playerX, playerZ, debugOn);
+        Canvas3D.EndOverlay(canvas);
+    }
+
+    expose func run() {
+        Input3D.captureMouse(input);
+        while (quitRequested == false && World3D.tick(world)) {
+            step(World3D.get_dt(world));
+            renderFrame();
+            World3D.present(world);
+        }
+        Input3D.releaseMouse(input);
+    }
+
+    expose func destroy() {
+        World3D.destroy(world);
+    }
+
+    hide func resetWorld() {
+        playerX = terrain.terrainWorldMaxX() * 0.50;
+        playerZ = terrain.terrainWorldMaxZ() * 0.50;
+        playerY = terrain.sampleGround(land, playerX, playerZ);
+        cameraYaw = 0.0;
+        cameraPitch = config.CAMERA_PITCH_START;
+        cameraDistance = config.CAMERA_DISTANCE;
+        cameraFov = config.CAMERA_FOV;
+        worldTime = 0.0;
+        stepPhase = 0.0;
+        quitRequested = false;
+        qualityLevel = 2;
+        debugOn = false;
+        fullscreenOn = false;
+        sim.reset(land);
+    }
+
+    hide func handleToggles() {
         if (Input3D.pressed(input, Keys.get_Space())) {
             qualityLevel = qualityLevel + 1;
             if (qualityLevel > 2) { qualityLevel = 0; }
@@ -263,434 +198,63 @@ class Game3DShowcase {
         if (Input3D.pressed(input, Keys.get_Ctrl())) {
             if (debugOn) { debugOn = false; } else { debugOn = true; }
         }
-        // F11 toggles native desktop fullscreen (starts windowed). The canvas
-        // re-syncs its size on the toggle, and the per-frame projection derives
-        // aspect from the active output, so the view stays un-stretched.
         if (Input3D.pressed(input, Keys.get_F11())) {
             Canvas3D.ToggleFullscreen(canvas);
             fullscreenOn = Canvas3D.get_IsFullscreen(canvas);
         }
+    }
 
+    hide func updateLook() {
         var look = Input3D.lookAxis(input);
         cameraYaw = cameraYaw + Vec2.get_X(look);
         cameraPitch = cameraPitch - Vec2.get_Y(look);
         if (cameraPitch < config.CAMERA_PITCH_MIN) { cameraPitch = config.CAMERA_PITCH_MIN; }
         if (cameraPitch > config.CAMERA_PITCH_MAX) { cameraPitch = config.CAMERA_PITCH_MAX; }
-
         cameraDistance = cameraDistance - Input3D.wheelY(input) * config.CAMERA_WHEEL_SPEED;
         if (cameraDistance < config.CAMERA_DISTANCE_MIN) { cameraDistance = config.CAMERA_DISTANCE_MIN; }
         if (cameraDistance > config.CAMERA_DISTANCE_MAX) { cameraDistance = config.CAMERA_DISTANCE_MAX; }
+    }
 
+    hide func updateMovement(stepDt: Float) {
         var move = Input3D.moveAxis(input);
         var fwd = Vec3.get_Z(move);
         var right = Vec3.get_X(move);
         var moveX = Sin(cameraYaw) * fwd + Cos(cameraYaw) * right;
         var moveZ = (0.0 - Cos(cameraYaw)) * fwd + Sin(cameraYaw) * right;
         var moveLen = Sqrt(moveX * moveX + moveZ * moveZ);
+        if (moveLen <= 0.001) { return; }
 
-        if (moveLen > 0.001) {
-            moveX = moveX / moveLen;
-            moveZ = moveZ / moveLen;
-
-            var sprinting = Input3D.isDown(input, Keys.get_Shift());
-            var speed = config.PLAYER_MOVE_SPEED;
-            if (sprinting) { speed = speed * config.PLAYER_SPRINT_MULT; }
-
-            playerX = playerX + moveX * speed * stepDt;
-            playerZ = playerZ + moveZ * speed * stepDt;
-
-            stepPhase = stepPhase + speed * stepDt;
-            if (stepPhase >= config.STEP_DISTANCE) {
-                stepPhase = 0.0;
-                onFootfall(sprinting);
-            }
+        moveX = moveX / moveLen;
+        moveZ = moveZ / moveLen;
+        var sprinting = Input3D.isDown(input, Keys.get_Shift());
+        var speed = config.PLAYER_MOVE_SPEED;
+        if (sprinting) { speed = speed * config.PLAYER_SPRINT_MULT; }
+        playerX = playerX + moveX * speed * stepDt;
+        playerZ = playerZ + moveZ * speed * stepDt;
+        stepPhase = stepPhase + speed * stepDt;
+        if (stepPhase >= config.STEP_DISTANCE) {
+            stepPhase = 0.0;
+            audioSys.playFootfall(playerX, playerY, playerZ);
+            if (sprinting) { effectsSys.burstSprintDust(playerX, playerY, playerZ); }
         }
+    }
 
-        // Recommendation #10 — a subtle FOV "kick" while sprinting gives a sense
-        // of speed; it eases back to the resting FOV when the player slows.
+    hide func updateCameraFov() {
+        var move = Input3D.moveAxis(input);
+        var moveLen = Sqrt(Vec3.get_X(move) * Vec3.get_X(move) + Vec3.get_Z(move) * Vec3.get_Z(move));
         var fovTarget = config.CAMERA_FOV;
         if (Input3D.isDown(input, Keys.get_Shift()) && moveLen > 0.001) {
             fovTarget = config.CAMERA_FOV_SPRINT;
         }
         cameraFov = cameraFov + (fovTarget - cameraFov) * 0.12;
         Camera3D.SetHorizontalFov(camera, cameraFov);
-
-        clampPlayerToTerrain();
-        playerY = sampleGround(playerX, playerZ);
-        updateBeacons();
-        updateCamera();
-        updateScanner();
-        updateDynamicLights();
-        updateTimeOfDay();
-        Water3D.Update(water, stepDt);
-        updateVegetation(stepDt);
-        updateParticles(stepDt);
-        updateCritters(stepDt);
-        updateObjective(stepDt);
-        World3D.stepSimulation(world, stepDt);
-    }
-
-    expose func renderFrame() {
-        World3D.beginFrame(world);
-        Canvas3D.DrawTerrain(canvas, terrain);
-        if (grass != null) {
-            Canvas3D.DrawVegetation(canvas, grass);
-        }
-        Canvas3D.DrawWater(canvas, water, camera);
-        World3D.drawScene(world);
-        drawBeacons();
-        drawPlayer();
-        drawCritters();
-        drawReeds();
-        drawDecals();
-        drawParticles();
-        World3D.drawEffects(world);
-        World3D.endScene(world);
-
-        Canvas3D.BeginOverlay(canvas);
-        drawHud();
-        Canvas3D.EndOverlay(canvas);
-    }
-
-    expose func run() {
-        Input3D.captureMouse(input);
-
-        while (quitRequested == false && World3D.tick(world)) {
-            step(World3D.get_dt(world));
-            renderFrame();
-            World3D.present(world);
-        }
-
-        Input3D.releaseMouse(input);
-    }
-
-    expose func destroy() {
-        World3D.destroy(world);
-    }
-
-    hide func buildTerrain() -> Terrain3D {
-        var built = Terrain3D.New(config.TERRAIN_SIZE, config.TERRAIN_SIZE);
-        var noise = PerlinNoise.New(42);
-
-        Terrain3D.GeneratePerlin(
-            built,
-            noise,
-            config.TERRAIN_NOISE_SCALE,
-            config.TERRAIN_NOISE_OCTAVES,
-            config.TERRAIN_NOISE_PERSIST);
-        Terrain3D.SetScale(
-            built, config.TERRAIN_SCALE_X, config.TERRAIN_SCALE_Y, config.TERRAIN_SCALE_Z);
-        Terrain3D.SetMaterial(built, terrainMat);
-
-        Terrain3D.SetLayerTexture(built, 0, createGrassTexture(config.TERRAIN_TEXTURE_SIZE));
-        Terrain3D.SetLayerTexture(built, 1, createRockTexture(config.TERRAIN_TEXTURE_SIZE));
-        Terrain3D.SetLayerTexture(built, 2, createDirtTexture(config.TERRAIN_TEXTURE_SIZE));
-        Terrain3D.SetLayerScale(built, 0, 11.0);
-        Terrain3D.SetLayerScale(built, 1, 7.0);
-        Terrain3D.SetLayerScale(built, 2, 8.0);
-        splatMap = createTerrainSplatMap(built, config.SPLAT_SIZE, config.SPLAT_SIZE);
-        Terrain3D.SetSplatMap(built, splatMap);
-        Terrain3D.SetLODDistances(built, config.TERRAIN_LOD_NEAR, config.TERRAIN_LOD_FAR);
-        Terrain3D.SetSkirtDepth(built, config.TERRAIN_SKIRT_DEPTH);
-
-        return built;
-    }
-
-    hide func createOutdoorSkybox() -> CubeMap3D {
-        var right = createSkyFace(0);
-        var left = createSkyFace(1);
-        var top = createSkyFace(2);
-        var bottom = createSkyFace(3);
-        var front = createSkyFace(4);
-        var back = createSkyFace(5);
-        return CubeMap3D.New(right, left, top, bottom, front, back);
-    }
-
-    hide func createSkyFace(faceId: Integer) -> Pixels {
-        var size = config.SKYBOX_FACE_SIZE;
-        var face = Pixels.New(size, size);
-
-        for (var py: Integer = 0; py < size; py = py + 1) {
-            for (var px: Integer = 0; px < size; px = px + 1) {
-                var u = (((px + 0.5) / (size + 0.0)) * 2.0) - 1.0;
-                var v = (((py + 0.5) / (size + 0.0)) * 2.0) - 1.0;
-                face.Set(px, py, sampleSkyPixelForFace(faceId, u, v));
-            }
-        }
-
-        return face;
-    }
-
-    hide func sampleSkyPixelForFace(faceId: Integer, u: Float, v: Float) -> Integer {
-        var dx = 0.0;
-        var dy = 0.0;
-        var dz = 0.0;
-
-        if (faceId == 0) {
-            dx = 1.0;
-            dy = 0.0 - v;
-            dz = 0.0 - u;
-        } else {
-            if (faceId == 1) {
-                dx = -1.0;
-                dy = 0.0 - v;
-                dz = u;
-            } else {
-                if (faceId == 2) {
-                    dx = u;
-                    dy = 1.0;
-                    dz = v;
-                } else {
-                    if (faceId == 3) {
-                        dx = u;
-                        dy = -1.0;
-                        dz = 0.0 - v;
-                    } else {
-                        if (faceId == 4) {
-                            dx = u;
-                            dy = 0.0 - v;
-                            dz = 1.0;
-                        } else {
-                            dx = 0.0 - u;
-                            dy = 0.0 - v;
-                            dz = -1.0;
-                        }
-                    }
-                }
-            }
-        }
-
-        var len = Sqrt(dx * dx + dy * dy + dz * dz);
-        if (len <= 0.0001) {
-            return packPixel(132, 174, 220, 255);
-        }
-
-        return sampleSkyPixel(dx / len, dy / len, dz / len);
-    }
-
-    hide func sampleSkyPixel(dx: Float, dy: Float, dz: Float) -> Integer {
-        var up = clampFloat((dy + 0.10) / 1.10, 0.0, 1.0);
-        var haze = clampFloat(1.0 - absFloat(dy) * 2.6, 0.0, 1.0);
-        var sun = clampFloat((dx * 0.55 - dz * 0.35 + 1.0) / 2.0, 0.0, 1.0);
-        var r = lerpFloat(168.0, 88.0, up) + haze * (11.0 + sun * 6.0);
-        var g = lerpFloat(207.0, 144.0, up) + haze * (8.0 + sun * 4.0);
-        var b = lerpFloat(238.0, 218.0, up) + haze * 5.0;
-
-        if (dy < -0.18) {
-            var ground = clampFloat((0.0 - dy - 0.18) / 0.82, 0.0, 1.0);
-            r = lerpFloat(r, 77.0, ground);
-            g = lerpFloat(g, 94.0, ground);
-            b = lerpFloat(b, 82.0, ground);
-        }
-
-        return packPixel(
-            clampByte(Convert.NumToInt(r)),
-            clampByte(Convert.NumToInt(g)),
-            clampByte(Convert.NumToInt(b)),
-            255);
-    }
-
-    hide func createGrassTexture(size: Integer) -> Pixels {
-        var tex = Pixels.New(size, size);
-
-        for (var py: Integer = 0; py < size; py = py + 1) {
-            for (var px: Integer = 0; px < size; px = px + 1) {
-                var noise = ((px * 7 + py * 11 + px * py) % 28) - 14;
-                var r = clampByte(70 + noise / 2);
-                var g = clampByte(112 + noise);
-                var b = clampByte(48 + noise / 3);
-                tex.Set(px, py, packPixel(r, g, b, 255));
-            }
-        }
-
-        return tex;
-    }
-
-    hide func createRockTexture(size: Integer) -> Pixels {
-        var tex = Pixels.New(size, size);
-
-        for (var py: Integer = 0; py < size; py = py + 1) {
-            for (var px: Integer = 0; px < size; px = px + 1) {
-                var noise = ((px * 13 + py * 9 + px * py * 3) % 26) - 13;
-                var gray = clampByte(142 + noise);
-                var blue = clampByte(150 + noise / 2);
-                tex.Set(px, py, packPixel(gray, gray, blue, 255));
-            }
-        }
-
-        return tex;
-    }
-
-    hide func createDirtTexture(size: Integer) -> Pixels {
-        var tex = Pixels.New(size, size);
-
-        for (var py: Integer = 0; py < size; py = py + 1) {
-            for (var px: Integer = 0; px < size; px = px + 1) {
-                var noise = ((px * 9 + py * 5 + px * py) % 22) - 11;
-                var r = clampByte(142 + noise);
-                var g = clampByte(108 + noise / 2);
-                var b = clampByte(66 + noise / 3);
-                tex.Set(px, py, packPixel(r, g, b, 255));
-            }
-        }
-
-        return tex;
-    }
-
-    hide func createTerrainSplatMap(srcTerrain: Terrain3D, width: Integer, depth: Integer) -> Pixels {
-        var splat = Pixels.New(width, depth);
-        var maxX = terrainWorldMaxX();
-        var maxZ = terrainWorldMaxZ();
-        var lastX = width - 1;
-        var lastZ = depth - 1;
-
-        for (var py: Integer = 0; py < depth; py = py + 1) {
-            for (var px: Integer = 0; px < width; px = px + 1) {
-                var wx = (px + 0.0) * maxX / (lastX + 0.0);
-                var wz = (py + 0.0) * maxZ / (lastZ + 0.0);
-                var normal = Terrain3D.GetNormalAt(srcTerrain, wx, wz);
-                var ny = Vec3.get_Y(normal);
-                var grass = 0;
-                var rock = 0;
-                var dirt = 0;
-
-                if (ny > 0.88) {
-                    grass = 255;
-                } else {
-                    if (ny > 0.70) {
-                        if (((px / 7) + (py / 5)) % 4 <= 1) {
-                            dirt = 255;
-                        } else {
-                            grass = 255;
-                        }
-                    } else {
-                        rock = 255;
-                    }
-                }
-
-                splat.Set(px, py, packPixel(grass, rock, dirt, 0));
-            }
-        }
-
-        return splat;
-    }
-
-    hide func resetWorld() {
-        playerX = terrainWorldMaxX() * 0.50;
-        playerZ = terrainWorldMaxZ() * 0.50;
-        playerY = sampleGround(playerX, playerZ);
-        cameraYaw = 0.0;
-        cameraPitch = config.CAMERA_PITCH_START;
-        cameraDistance = config.CAMERA_DISTANCE;
-        cameraFov = config.CAMERA_FOV;
-        worldTime = 0.0;
-        stepPhase = 0.0;
-        beaconsLit = 0;
-        quitRequested = false;
-        scanLabel = "";
-        scanDist = 0.0;
-        qualityLevel = 2;
-        debugOn = false;
-        fullscreenOn = false;
-        sanctuaryDone = false;
-        ambientTimer = 2.0;
-
-        beaconXs = [];
-        beaconYs = [];
-        beaconZs = [];
-        beaconState = [];
-        addBeaconPct(0.18, 0.25);
-        addBeaconPct(0.80, 0.23);
-        addBeaconPct(0.73, 0.72);
-        addBeaconPct(0.31, 0.80);
-        addBeaconPct(0.52, 0.55);
-    }
-
-    hide func spawnLandmarks() {
-        landmarkXs = [];
-        landmarkYs = [];
-        landmarkZs = [];
-        landmarkR = [];
-        landmarkNames = [];
-        spawnMonolithPct("West Archive", 0.16, 0.18, 5.4, 1.35, 1.10, stoneMat);
-        spawnMonolithPct("North Archive", 0.84, 0.22, 4.2, 1.00, 1.00, archiveMat);
-        spawnMonolithPct("South Gate", 0.78, 0.62, 6.4, 1.55, 1.30, stoneMat);
-        spawnMonolithPct("Ridge Tower", 0.38, 0.72, 4.8, 1.10, 1.00, archiveMat);
-        spawnMonolithPct("Relay Stack", 0.52, 0.30, 3.6, 0.90, 0.90, waterMarkerMat);
-    }
-
-    hide func installOutdoorFillLight() {
-        fillLight = Light3D.NewDirectional(new Vec3(0.58, -0.55, 0.46), 0.50, 0.62, 0.82);
-        Light3D.SetIntensity(fillLight, 0.30);
-        World3D.addLight(world, 1, fillLight);
-
-        skyFill = Light3D.NewAmbient(0.54, 0.62, 0.72);
-        Light3D.SetIntensity(skyFill, 0.28);
-        World3D.addLight(world, 2, skyFill);
-    }
-
-    hide func spawnMonolithPct(
-        name: String, xPct: Float, zPct: Float, height: Float, sx: Float, sz: Float, mat: Material3D) {
-        spawnMonolith(name, terrainWorldMaxX() * xPct, terrainWorldMaxZ() * zPct, height, sx, sz, mat);
-    }
-
-    hide func spawnMonolith(
-        name: String, x: Float, z: Float, height: Float, sx: Float, sz: Float, mat: Material3D) {
-        var entity = Prefab.BoxXYZ(sx, height, sz, mat);
-        Entity3D.setName(entity, name);
-        Entity3D.setLayer(entity, Layers.get_World());
-        var cy = sampleGround(x, z) + height * 0.5;
-        Entity3D.setPosition(entity, x, cy, z);
-        World3D.spawn(world, entity);
-
-        // Record a pickable bounding sphere for the raycast scanner (#9).
-        landmarkXs.add(x);
-        landmarkYs.add(cy);
-        landmarkZs.add(z);
-        landmarkR.add(maxf(height * 0.5, maxf(sx, sz)) + 0.6);
-        landmarkNames.add(name);
-    }
-
-    hide func addBeaconPct(xPct: Float, zPct: Float) {
-        addBeacon(terrainWorldMaxX() * xPct, terrainWorldMaxZ() * zPct);
-    }
-
-    hide func addBeacon(x: Float, z: Float) {
-        beaconXs.add(x);
-        beaconYs.add(sampleGround(x, z));
-        beaconZs.add(z);
-        beaconState.add(0);
-    }
-
-    hide func updateBeacons() {
-        var radiusSq = config.BEACON_TRIGGER_RADIUS * config.BEACON_TRIGGER_RADIUS;
-
-        for i in 0..beaconXs.count() {
-            if (beaconState.get(i) != 0) { continue; }
-
-            var dx = playerX - beaconXs.get(i);
-            var dz = playerZ - beaconZs.get(i);
-            if (dx * dx + dz * dz <= radiusSq) {
-                beaconState.set(i, 1);
-                beaconsLit = beaconsLit + 1;
-                var point = new Vec3(beaconXs.get(i), beaconYs.get(i) + 2.0, beaconZs.get(i));
-                Effects3D.Sparks(world, point, new Vec3(0.0, 1.0, 0.0));
-                onBeaconLit(i);
-                if (beaconsLit >= beaconXs.count()) {
-                    Effects3D.Smoke(world, new Vec3(playerX, playerY + 1.0, playerZ));
-                    if (audio != null) { Sound3D.play2D(audio, victoryClip); }
-                    Camera3D.Shake(camera, config.SHAKE_ALL, 0.8, 3.0);
-                }
-            }
-        }
     }
 
     hide func clampPlayerToTerrain() {
         var minX = config.TERRAIN_MARGIN;
         var minZ = config.TERRAIN_MARGIN;
-        var maxX = terrainWorldMaxX() - config.TERRAIN_MARGIN;
-        var maxZ = terrainWorldMaxZ() - config.TERRAIN_MARGIN;
-
+        var maxX = terrain.terrainWorldMaxX() - config.TERRAIN_MARGIN;
+        var maxZ = terrain.terrainWorldMaxZ() - config.TERRAIN_MARGIN;
         if (playerX < minX) { playerX = minX; }
         if (playerX > maxX) { playerX = maxX; }
         if (playerZ < minZ) { playerZ = minZ; }
@@ -701,28 +265,18 @@ class Game3DShowcase {
         var pivotX = playerX;
         var pivotY = playerY + config.CAMERA_TARGET_HEIGHT;
         var pivotZ = playerZ;
-
         var flatX = Sin(cameraYaw);
         var flatZ = 0.0 - Cos(cameraYaw);
         var horizDist = cameraDistance * Cos(cameraPitch);
         var eyeX = pivotX - flatX * horizDist;
         var eyeZ = pivotZ - flatZ * horizDist;
-
         if (eyeX < config.TERRAIN_MARGIN) { eyeX = config.TERRAIN_MARGIN; }
-        if (eyeX > terrainWorldMaxX() - config.TERRAIN_MARGIN) {
-            eyeX = terrainWorldMaxX() - config.TERRAIN_MARGIN;
-        }
+        if (eyeX > terrain.terrainWorldMaxX() - config.TERRAIN_MARGIN) { eyeX = terrain.terrainWorldMaxX() - config.TERRAIN_MARGIN; }
         if (eyeZ < config.TERRAIN_MARGIN) { eyeZ = config.TERRAIN_MARGIN; }
-        if (eyeZ > terrainWorldMaxZ() - config.TERRAIN_MARGIN) {
-            eyeZ = terrainWorldMaxZ() - config.TERRAIN_MARGIN;
-        }
-
-        var eyeGround = sampleGround(eyeX, eyeZ);
+        if (eyeZ > terrain.terrainWorldMaxZ() - config.TERRAIN_MARGIN) { eyeZ = terrain.terrainWorldMaxZ() - config.TERRAIN_MARGIN; }
+        var eyeGround = terrain.sampleGround(land, eyeX, eyeZ);
         var eyeY = pivotY + Sin(cameraPitch) * cameraDistance;
-        if (eyeY < eyeGround + config.CAMERA_MIN_CLEARANCE) {
-            eyeY = eyeGround + config.CAMERA_MIN_CLEARANCE;
-        }
-
+        if (eyeY < eyeGround + config.CAMERA_MIN_CLEARANCE) { eyeY = eyeGround + config.CAMERA_MIN_CLEARANCE; }
         cameraEye.Set(eyeX, eyeY, eyeZ);
         cameraTarget.Set(
             pivotX + flatX * config.CAMERA_LOOK_AHEAD,
@@ -731,1167 +285,15 @@ class Game3DShowcase {
         Camera3D.LookAt(camera, cameraEye, cameraTarget, cameraUp);
     }
 
-    hide func drawBeacons() {
-        for i in 0..beaconXs.count() {
-            var bx = beaconXs.get(i);
-            var by = beaconYs.get(i);
-            var bz = beaconZs.get(i);
-            drawBlock(bx, by + 0.38, bz, 2.4, 0.76, 2.4, pedestalMat);
-            drawBlock(bx, by + 1.18, bz, 0.58, 1.06, 0.58, pedestalMat);
-
-            var bob = Sin(worldTime * 2.4 + i * 0.8) * 0.14;
-            var mat = beaconOffMat;
-            if (beaconState.get(i) != 0) { mat = beaconOnMat; }
-            Canvas3D.DrawMesh(canvas, beaconMesh, Mat4.Translate(bx, by + 2.25 + bob, bz), mat);
-        }
-    }
-
     hide func drawPlayer() {
         var bob = Sin(worldTime * 5.0) * 0.035;
-        var body =
-            Mat4.Mul(
-                Mat4.Translate(playerX, playerY + config.PLAYER_GROUND_OFFSET + bob, playerZ),
-                Mat4.Scale(1.0, 1.0, 1.0));
-        Canvas3D.DrawMesh(canvas, playerBodyMesh, body, playerMat);
-
-        var core =
-            Mat4.Mul(
-                Mat4.Translate(playerX, playerY + 1.20 + bob, playerZ),
-                Mat4.Scale(1.0, 1.0, 1.0));
-        Canvas3D.DrawMesh(canvas, playerCoreMesh, core, waterMarkerMat);
-    }
-
-    hide func drawBlock(
-        x: Float, y: Float, z: Float, sx: Float, sy: Float, sz: Float, mat: Material3D) {
-        var xform = Mat4.Mul(Mat4.Translate(x, y, z), Mat4.Scale(sx, sy, sz));
-        Canvas3D.DrawMesh(canvas, cubeMesh, xform, mat);
-    }
-
-    hide func drawHud() {
-        var w = Canvas3D.get_Width(canvas);
-        var h = Canvas3D.get_Height(canvas);
-        var total = beaconXs.count();
-        var statusColor = config.HUD_WARN;
-        var statusText = "Seek the ridge beacons.";
-
-        if (beaconsLit >= total) {
-            statusColor = config.HUD_GOOD;
-            statusText = "All linked. Return home.";
-        }
-        if (sanctuaryDone) {
-            statusColor = config.HUD_GOOD;
-            statusText = "Sanctuary restored!";
-        }
-
-        Canvas3D.DrawRect2D(
-            canvas,
-            config.HUD_PANEL_X,
-            config.HUD_PANEL_Y,
-            config.HUD_PANEL_W,
-            config.HUD_PANEL_H,
-            config.HUD_PANEL);
-        Canvas3D.DrawRect2D(
-            canvas, config.HUD_PANEL_X, config.HUD_PANEL_Y, config.HUD_PANEL_W, 3, config.HUD_ACCENT);
-        Canvas3D.DrawText2D(canvas, 24, 28, "GAME3D OPEN WORLD", config.HUD_TEXT);
-        Canvas3D.DrawText2D(canvas, 24, 52, "WASD move | Mouse look | F11", config.HUD_MUTED);
-        Canvas3D.DrawText2D(canvas, 24, 72, "Wheel zoom | Shift sprint | Esc", config.HUD_MUTED);
-        Canvas3D.DrawText2D(canvas, 24, 104, "Ridge beacons: " + toString(beaconsLit) + " / " + toString(total), statusColor);
-        Canvas3D.DrawText2D(canvas, 24, 126, statusText, config.HUD_TEXT);
-
-        drawMiniMap(w - 172, h - 172, 144, 144);
-        Canvas3D.DrawText2D(canvas, 24, h - 26, "FPS " + toString(Canvas3D.get_Fps(canvas)), config.HUD_MUTED);
-
-        // Recommendation #9 — center scanner reticle + target readout.
-        Canvas3D.DrawCrosshair(canvas, config.HUD_ACCENT, 10);
-        if (scanLabel != "") {
-            Canvas3D.DrawText2D(
-                canvas, w / 2 - 100, h / 2 + 18,
-                scanLabel + "  " + toString(Convert.NumToInt(scanDist)) + "m", config.HUD_TEXT);
-        }
-
-        // Recommendation #10 — toggleable diagnostics overlay.
-        if (debugOn) { drawDebugPanel(w); }
-    }
-
-    // Recommendation #6 — blit the pre-rendered terrain image as the minimap base
-    // (Canvas3D.DrawImage2D), then overlay live beacon/player markers on top. Falls
-    // back to a flat panel if the image is unavailable.
-    hide func drawMiniMap(x: Integer, y: Integer, width: Integer, height: Integer) {
-        if (minimapBase != null) {
-            Canvas3D.DrawImage2D(canvas, x, y, width, height, minimapBase);
-        } else {
-            Canvas3D.DrawRect2D(canvas, x, y, width, height, config.HUD_PANEL);
-        }
-        Canvas3D.DrawRect2D(canvas, x, y, width, 3, config.HUD_ACCENT);
-
-        for i in 0..beaconXs.count() {
-            var mx = x + Convert.NumToInt((beaconXs.get(i) / terrainWorldMaxX()) * (width + 0.0));
-            var my = y + Convert.NumToInt((beaconZs.get(i) / terrainWorldMaxZ()) * (height + 0.0));
-            var color = config.HUD_DANGER;
-            if (beaconState.get(i) != 0) { color = config.HUD_GOOD; }
-            Canvas3D.DrawRect2D(canvas, mx - 3, my - 3, 6, 6, color);
-        }
-
-        var ppx = x + Convert.NumToInt((playerX / terrainWorldMaxX()) * (width + 0.0));
-        var ppy = y + Convert.NumToInt((playerZ / terrainWorldMaxZ()) * (height + 0.0));
-        Canvas3D.DrawRect2D(canvas, ppx - 4, ppy - 4, 8, 8, config.HUD_ACCENT);
-    }
-
-    // Renders the terrain heightfield top-down into a Pixels image once at startup:
-    // water below the shoreline, grading from meadow green to rocky highland.
-    hide func buildMinimapImage(size: Integer) -> Pixels {
-        var img = Pixels.New(size, size);
-        var maxX = terrainWorldMaxX();
-        var maxZ = terrainWorldMaxZ();
-        var last = size - 1;
-        for (var py: Integer = 0; py < size; py = py + 1) {
-            for (var px: Integer = 0; px < size; px = px + 1) {
-                var wx = (px + 0.0) * maxX / (last + 0.0);
-                var wz = (py + 0.0) * maxZ / (last + 0.0);
-                img.Set(px, py, minimapHeightColor(Terrain3D.GetHeightAt(terrain, wx, wz)));
-            }
-        }
-        return img;
-    }
-
-    hide func minimapHeightColor(h: Float) -> Integer {
-        if (h < config.WATER_HEIGHT) {
-            return packPixel(28, 70, 110, 255);
-        }
-        var t = clampFloat((h - config.WATER_HEIGHT) / 20.0, 0.0, 1.0);
-        var r = Convert.NumToInt(lerpFloat(64.0, 150.0, t));
-        var g = Convert.NumToInt(lerpFloat(112.0, 138.0, t));
-        var b = Convert.NumToInt(lerpFloat(56.0, 120.0, t));
-        return packPixel(clampByte(r), clampByte(g), clampByte(b), 255);
-    }
-
-    hide func terrainWorldMaxX() -> Float {
-        return (config.TERRAIN_SIZE - 1 + 0.0) * config.TERRAIN_SCALE_X;
-    }
-
-    hide func terrainWorldMaxZ() -> Float {
-        return (config.TERRAIN_SIZE - 1 + 0.0) * config.TERRAIN_SCALE_Z;
-    }
-
-    hide func sampleGround(x: Float, z: Float) -> Float {
-        var sx = x;
-        var sz = z;
-
-        if (sx < 0.0) { sx = 0.0; }
-        if (sz < 0.0) { sz = 0.0; }
-        if (sx > terrainWorldMaxX()) { sx = terrainWorldMaxX(); }
-        if (sz > terrainWorldMaxZ()) { sz = terrainWorldMaxZ(); }
-
-        return Terrain3D.GetHeightAt(terrain, sx, sz);
-    }
-
-    hide func clampByte(value: Integer) -> Integer {
-        if (value < 0) { return 0; }
-        if (value > 255) { return 255; }
-        return value;
-    }
-
-    hide func clampFloat(value: Float, lo: Float, hi: Float) -> Float {
-        if (value < lo) { return lo; }
-        if (value > hi) { return hi; }
-        return value;
-    }
-
-    hide func absFloat(value: Float) -> Float {
-        if (value < 0.0) { return 0.0 - value; }
-        return value;
-    }
-
-    hide func lerpFloat(a: Float, b: Float, t: Float) -> Float {
-        return a + (b - a) * t;
-    }
-
-    // === Recommendation #1: imported maple-tree forest ====================
-
-    hide func applyEnvReflections() {
-        // Skybox-driven reflections sharpen the metal/stone landmarks; only
-        // safe to call once the cubemap skybox exists.
-        Material3D.SetEnvMap(stoneMat, skybox);
-        Material3D.SetReflectivity(stoneMat, 0.16);
-        Material3D.SetEnvMap(pedestalMat, skybox);
-        Material3D.SetReflectivity(pedestalMat, 0.10);
-        Material3D.SetEnvMap(archiveMat, skybox);
-        Material3D.SetReflectivity(archiveMat, 0.45);
-    }
-
-    hide func spawnForest() {
-        // Model3D.Load now returns null for a missing/unreadable file instead of
-        // trapping, so we probe candidate paths and keep whichever resolves —
-        // works run from the repo root OR from inside the demo folder.
-        // Packaged binaries embed the FBX (see viper.project) and resolve it via
-        // the asset system regardless of CWD. The filesystem candidates cover
-        // `viper run` during development (CWD = demo folder, then repo root).
-        var model = Model3D.LoadAsset(config.TREE_MODEL_PATH);
-        if (treeBad(model)) { model = Model3D.Load(config.TREE_MODEL_PATH); }
-        if (treeBad(model)) { model = Model3D.Load(config.TREE_MODEL_PATH_ALT); }
-        if (treeBad(model)) {
-            Terminal.Say("Forest: MapleTree_1.fbx could not be resolved (embedded or on disk); skipping trees. Last loader error: " + Assets3D.get_LastLoadError());
-            return;
-        }
-
-        buildFoliageMaterials();
-        var planted = plantHomeGrove(model);
-        planted = planted + plantHillForest(model);
-        Terminal.Say("Forest: planted " + toString(planted) + " maples.");
-    }
-
-    hide func treeBad(m: Model3D) -> Boolean {
-        if (m == null) { return true; }
-        return Model3D.get_MeshCount(m) <= 0;
-    }
-
-    // A guaranteed ring of maples around the spawn so the opening view always
-    // frames trees (relaxed rules: anywhere above the waterline).
-    hide func plantHomeGrove(model: Model3D) -> Integer {
-        var cx = terrainWorldMaxX() * 0.5;
-        var cz = terrainWorldMaxZ() * 0.5;
-        var planted = 0;
-
-        var i = 0;
-        while (i < config.GROVE_COUNT) {
-            var ang = (i + 0.0) / (config.GROVE_COUNT + 0.0) * 6.2831853 + hash01(i, 23);
-            var radius = config.GROVE_RADIUS_MIN
-                + hash01(i, 31) * (config.GROVE_RADIUS_MAX - config.GROVE_RADIUS_MIN);
-            var wx = cx + Sin(ang) * radius;
-            var wz = cz + Cos(ang) * radius;
-            if (wx > config.FOREST_MARGIN && wx < terrainWorldMaxX() - config.FOREST_MARGIN
-                    && wz > config.FOREST_MARGIN && wz < terrainWorldMaxZ() - config.FOREST_MARGIN) {
-                var gy = sampleGround(wx, wz);
-                if (gy > config.WATER_HEIGHT + 0.4) {
-                    var s = config.FOREST_SCALE_MIN
-                        + hash01(i, 7) * (config.FOREST_SCALE_MAX - config.FOREST_SCALE_MIN);
-                    plantTree(model, wx, wz, gy, s, hash01(i, 13) * 360.0);
-                    planted = planted + 1;
-                }
-            }
-            i = i + 1;
-        }
-
-        return planted;
-    }
-
-    // Procedural background forest scattered across the gentle high ground.
-    hide func plantHillForest(model: Model3D) -> Integer {
-        var maxX = terrainWorldMaxX();
-        var maxZ = terrainWorldMaxZ();
-        var cell = config.FOREST_CELL;
-        var planted = 0;
-        var seed = 0;
-
-        var gz = config.FOREST_MARGIN;
-        while (gz < maxZ - config.FOREST_MARGIN && planted < config.FOREST_MAX) {
-            var gx = config.FOREST_MARGIN;
-            while (gx < maxX - config.FOREST_MARGIN && planted < config.FOREST_MAX) {
-                seed = seed + 1;
-                if (hash01(seed, 17) < config.FOREST_DENSITY) {
-                    var wx = gx + (hash01(seed, 3) - 0.5) * cell * 1.4;
-                    var wz = gz + (hash01(seed, 9) - 0.5) * cell * 1.4;
-                    if (canPlantTree(wx, wz, maxX, maxZ)) {
-                        var s = config.FOREST_SCALE_MIN
-                            + hash01(seed, 5) * (config.FOREST_SCALE_MAX - config.FOREST_SCALE_MIN);
-                        plantTree(model, wx, wz, sampleGround(wx, wz), s, hash01(seed, 11) * 360.0);
-                        planted = planted + 1;
-                    }
-                }
-                gx = gx + cell;
-            }
-            gz = gz + cell;
-        }
-
-        return planted;
-    }
-
-    hide func canPlantTree(wx: Float, wz: Float, maxX: Float, maxZ: Float) -> Boolean {
-        if (wx < config.FOREST_MARGIN || wx > maxX - config.FOREST_MARGIN) { return false; }
-        if (wz < config.FOREST_MARGIN || wz > maxZ - config.FOREST_MARGIN) { return false; }
-        if (sampleGround(wx, wz) < config.FOREST_MIN_GROUND) { return false; }
-        var normal = Terrain3D.GetNormalAt(terrain, wx, wz);
-        if (Vec3.get_Y(normal) < config.FOREST_MIN_NORMALY) { return false; }
-        if (notNearBeacon(wx, wz) == false) { return false; }
-        if (notNearPlayerStart(wx, wz) == false) { return false; }
-        return true;
-    }
-
-    hide func plantTree(model: Model3D, x: Float, z: Float, y: Float, scale: Float, yawDeg: Float) {
-        var node = Model3D.Instantiate(model);
-        var ent = Entity3D.FromNode(node);
-        Entity3D.setName(ent, "maple");
-        Entity3D.setLayer(ent, Layers.get_World());
-        // The imported FBX materials read near-white; split the submeshes into a
-        // brown bark trunk and a per-location-varied foliage canopy (#3) instead of
-        // one flat recolour. Falls back to a recursive recolour if the model has no
-        // addressable submeshes.
-        applyTreeMaterials(ent, treeMats.get(pickFoliage(x, z)));
-        Entity3D.setScaleXYZ(ent, scale, scale, scale);
-        // MapleTree_1.fbx is authored Z-up: the entity's world-vertical spin axis
-        // is the FIRST euler component (X), not Y. Putting yaw in the Y slot tips
-        // the trunk on its side, so the turntable yaw goes in X here.
-        Entity3D.setRotationEuler(ent, yawDeg, 0.0, 0.0);
-        Entity3D.setPosition(ent, x, y, z);
-        World3D.spawn(world, ent);
-    }
-
-    hide func buildFoliageMaterials() {
-        treeMats = [];
-        treeMats.add(makeFoliage(0.20, 0.44, 0.18));   // summer green
-        treeMats.add(makeFoliage(0.74, 0.52, 0.16));   // amber
-        treeMats.add(makeFoliage(0.66, 0.26, 0.12));   // rust
-        barkMat = Materials.Rubber(0.30, 0.21, 0.13);  // brown trunk bark
-        Material3D.SetEmissiveColor(barkMat, 0.010, 0.007, 0.004);
-    }
-
-    // Recommendation #3 — split an imported tree's submeshes into bark vs canopy.
-    // Tall, narrow submeshes (height dominates the horizontal extent) read as the
-    // trunk and take the bark material; everything else takes the canopy colour.
-    // If the model exposes no mesh-bearing child nodes we fall back to a recursive
-    // recolour, so this never renders worse than the original single-colour tree.
-    hide func applyTreeMaterials(ent: Entity3D, canopyMat: Material3D) {
-        var node = Entity3D.get_node(ent);
-        var count = SceneNode3D.get_ChildCount(node);
-        var assigned = 0;
-        for i in 0..count {
-            var child = SceneNode3D.GetChild(node, i);
-            if (SceneNode3D.get_Mesh(child) != null) {
-                var amin = SceneNode3D.get_AABBMin(child);
-                var amax = SceneNode3D.get_AABBMax(child);
-                var dy = Vec3.get_Y(amax) - Vec3.get_Y(amin);
-                var dxz = maxf(Vec3.get_X(amax) - Vec3.get_X(amin),
-                               Vec3.get_Z(amax) - Vec3.get_Z(amin));
-                if (dy > dxz * 1.4) {
-                    SceneNode3D.set_Material(child, barkMat);
-                } else {
-                    SceneNode3D.set_Material(child, canopyMat);
-                }
-                assigned = assigned + 1;
-            }
-        }
-        if (assigned == 0) {
-            Entity3D.setMaterialRecursive(ent, canopyMat);
-        }
-    }
-
-    // Recommendation #9 — a ring of wind-swayed reeds near the spawn rendered with
-    // Canvas3D.DrawMeshWind: the base stays planted while the tip bends along the
-    // wind, each reed offset in phase so the cluster ripples rather than pulsing.
-    hide func setupReeds() {
-        saplingMesh = Mesh3D.NewCylinder(0.07, 2.6, 6);
-        saplingMat = Materials.Rubber(0.30, 0.60, 0.26);
-        Material3D.SetEmissiveColor(saplingMat, 0.010, 0.030, 0.008);
-        reedXs = [];
-        reedZs = [];
-        reedPhase = [];
-        var cx = terrainWorldMaxX() * 0.5;
-        var cz = terrainWorldMaxZ() * 0.5;
-        var i = 0;
-        while (i < config.REED_COUNT) {
-            var ang = (i + 0.0) / (config.REED_COUNT + 0.0) * 6.2831853 + hash01(i, 41);
-            var radius = 6.0 + hash01(i, 43) * 18.0;
-            var wx = cx + Sin(ang) * radius;
-            var wz = cz + Cos(ang) * radius;
-            if (wx > config.TERRAIN_MARGIN && wx < terrainWorldMaxX() - config.TERRAIN_MARGIN
-                    && wz > config.TERRAIN_MARGIN && wz < terrainWorldMaxZ() - config.TERRAIN_MARGIN) {
-                if (sampleGround(wx, wz) > config.WATER_HEIGHT + 0.3) {
-                    reedXs.add(wx);
-                    reedZs.add(wz);
-                    reedPhase.add(hash01(i, 47) * 6.2831853);
-                }
-            }
-            i = i + 1;
-        }
-    }
-
-    hide func drawReeds() {
-        if (saplingMesh == null) { return; }
-        var windDirX = Sin(config.GRASS_WIND_DIR);
-        var windDirZ = Cos(config.GRASS_WIND_DIR);
-        for i in 0..reedXs.count() {
-            var x = reedXs.get(i);
-            var z = reedZs.get(i);
-            var gy = sampleGround(x, z) + 1.3;   // half the 2.6 height: base sits on ground
-            var xform = Mat4.Translate(x, gy, z);
-            var phase = worldTime * config.GRASS_WIND_FREQ * 6.0 + reedPhase.get(i);
-            Canvas3D.DrawMeshWind(
-                canvas, saplingMesh, xform, saplingMat, windDirX, windDirZ,
-                config.REED_WIND_STRENGTH, phase);
-        }
-    }
-
-    hide func makeFoliage(r: Float, g: Float, b: Float) -> Material3D {
-        var m = Materials.Rubber(r, g, b);
-        return m;
-    }
-
-    // Mostly green with a scattering of amber/rust, keyed deterministically to position.
-    hide func pickFoliage(x: Float, z: Float) -> Integer {
-        var h = hash01(Convert.NumToInt(x * 7.0), Convert.NumToInt(z * 7.0));
-        if (h < 0.55) { return 0; }
-        if (h < 0.82) { return 1; }
-        return 2;
-    }
-
-    hide func notNearBeacon(x: Float, z: Float) -> Boolean {
-        for i in 0..beaconXs.count() {
-            var dx = x - beaconXs.get(i);
-            var dz = z - beaconZs.get(i);
-            if (dx * dx + dz * dz < config.FOREST_BEACON_CLEAR) { return false; }
-        }
-        return true;
-    }
-
-    hide func notNearPlayerStart(x: Float, z: Float) -> Boolean {
-        var dx = x - terrainWorldMaxX() * 0.5;
-        var dz = z - terrainWorldMaxZ() * 0.5;
-        return dx * dx + dz * dz > config.FOREST_PLAYER_CLEAR;
-    }
-
-    // Deterministic, seedable 0..1 hash so the forest is identical every run.
-    hide func hash01(a: Integer, b: Integer) -> Float {
-        var h = (a * 374761393 + b * 668265263) % 2147483647;
-        if (h < 0) { h = 0 - h; }
-        h = (h * 1103515245 + 12345) % 2147483647;
-        if (h < 0) { h = 0 - h; }
-        return (h % 100000 + 0.0) / 100000.0;
-    }
-
-    // === Recommendation #8: instanced ground vegetation ===================
-
-    hide func buildVegetation() {
-        grass = Vegetation3D.New(createGrassBladeTexture());
-        Vegetation3D.SetBladeSize(grass, config.GRASS_BLADE_W, config.GRASS_BLADE_H, config.GRASS_BLADE_VAR);
-        Vegetation3D.SetWindParams(grass, config.GRASS_WIND_STRENGTH, config.GRASS_WIND_FREQ, config.GRASS_WIND_DIR);
-        Vegetation3D.SetLODDistances(grass, config.GRASS_LOD_NEAR, config.GRASS_LOD_FAR);
-        Vegetation3D.SetDensityMap(grass, createVegetationDensity(config.SPLAT_SIZE, config.SPLAT_SIZE));
-        Vegetation3D.Populate(grass, terrain, config.GRASS_BLADE_COUNT);
-    }
-
-    hide func updateVegetation(dt: Float) {
-        if (grass == null) { return; }
-        var camPos = Camera3D.get_Position(camera);
-        Vegetation3D.Update(grass, dt, Vec3.get_X(camPos), Vec3.get_Y(camPos), Vec3.get_Z(camPos));
-    }
-
-    // Density map keyed to gentle, dry, grassy ground (white = dense blades).
-    // Written to every channel so it works regardless of which the runtime samples.
-    hide func createVegetationDensity(width: Integer, depth: Integer) -> Pixels {
-        var density = Pixels.New(width, depth);
-        var maxX = terrainWorldMaxX();
-        var maxZ = terrainWorldMaxZ();
-        var lastX = width - 1;
-        var lastZ = depth - 1;
-
-        for (var py: Integer = 0; py < depth; py = py + 1) {
-            for (var px: Integer = 0; px < width; px = px + 1) {
-                var wx = (px + 0.0) * maxX / (lastX + 0.0);
-                var wz = (py + 0.0) * maxZ / (lastZ + 0.0);
-                var ny = Vec3.get_Y(Terrain3D.GetNormalAt(terrain, wx, wz));
-                var h = Terrain3D.GetHeightAt(terrain, wx, wz);
-                var v = 0;
-                if (ny > 0.84 && h > config.WATER_HEIGHT + 0.6) {
-                    v = clampByte(Convert.NumToInt((ny - 0.84) / 0.16 * 255.0));
-                }
-                density.Set(px, py, packPixel(v, v, v, v));
-            }
-        }
-
-        return density;
-    }
-
-    hide func createGrassBladeTexture() -> Pixels {
-        var w = 16;
-        var h = 32;
-        var tex = Pixels.New(w, h);
-
-        for (var py: Integer = 0; py < h; py = py + 1) {
-            for (var px: Integer = 0; px < w; px = px + 1) {
-                var halfW = 8 - py / 4;
-                if (halfW < 1) { halfW = 1; }
-                var dx = px - 8;
-                if (dx < 0) { dx = 0 - dx; }
-                if (dx <= halfW) {
-                    var noise = ((px * 7 + py * 13) % 20) - 10;
-                    var r = clampByte(46 + noise);
-                    var g = clampByte(150 + noise - py);
-                    var b = clampByte(34 + noise);
-                    var alpha = 255;
-                    if (py > 26) { alpha = clampByte(255 - (py - 26) * 40); }
-                    tex.Set(px, py, packPixel(r, g, b, alpha));
-                } else {
-                    tex.Set(px, py, packPixel(0, 0, 0, 0));
-                }
-            }
-        }
-
-        return tex;
-    }
-
-    // === Recommendation #2: procedural PBR texture maps ===================
-
-    hide func createStoneAlbedo(size: Integer) -> Pixels {
-        var tex = Pixels.New(size, size);
-
-        for (var py: Integer = 0; py < size; py = py + 1) {
-            for (var px: Integer = 0; px < size; px = px + 1) {
-                var n = ((px * 13 + py * 7 + px * py * 3) % 40) - 20;
-                var base = clampByte(120 + n);
-                var cool = clampByte(126 + n / 2);
-                tex.Set(px, py, packPixel(base, base, cool, 255));
-            }
-        }
-
-        return tex;
-    }
-
-    hide func createMetalAlbedo(size: Integer) -> Pixels {
-        var tex = Pixels.New(size, size);
-
-        for (var py: Integer = 0; py < size; py = py + 1) {
-            for (var px: Integer = 0; px < size; px = px + 1) {
-                var n = ((px * 9 + py * 11) % 24) - 12;
-                var brush = ((py * 5) % 14) - 7;
-                var r = clampByte(150 + n + brush);
-                var g = clampByte(140 + n + brush);
-                var b = clampByte(118 + n);
-                tex.Set(px, py, packPixel(r, g, b, 255));
-            }
-        }
-
-        return tex;
-    }
-
-    hide func createNormalMap(size: Integer, strength: Float) -> Pixels {
-        var tex = Pixels.New(size, size);
-
-        for (var py: Integer = 0; py < size; py = py + 1) {
-            for (var px: Integer = 0; px < size; px = px + 1) {
-                var hl = bumpHeight(px - 1, py, size);
-                var hr = bumpHeight(px + 1, py, size);
-                var hd = bumpHeight(px, py - 1, size);
-                var hu = bumpHeight(px, py + 1, size);
-                var nx = (hl - hr) * strength;
-                var nz = (hd - hu) * strength;
-                var ny = 1.0;
-                var len = Sqrt(nx * nx + ny * ny + nz * nz);
-                if (len <= 0.0001) { len = 1.0; }
-                nx = nx / len;
-                ny = ny / len;
-                nz = nz / len;
-                var r = clampByte(Convert.NumToInt((nx * 0.5 + 0.5) * 255.0));
-                var g = clampByte(Convert.NumToInt((nz * 0.5 + 0.5) * 255.0));
-                var b = clampByte(Convert.NumToInt((ny * 0.5 + 0.5) * 255.0));
-                tex.Set(px, py, packPixel(r, g, b, 255));
-            }
-        }
-
-        return tex;
-    }
-
-    hide func bumpHeight(x: Integer, y: Integer, size: Integer) -> Float {
-        var xx = x % size;
-        if (xx < 0) { xx = xx + size; }
-        var yy = y % size;
-        if (yy < 0) { yy = yy + size; }
-        var n = (xx * 13 + yy * 7 + xx * yy * 3) % 23;
-        return (n + 0.0) / 23.0;
-    }
-
-    // === Recommendation #7: day/night cycle ===============================
-
-    hide func setupSun() {
-        // A directional sun we own (overrides the preset's slot 0) so the
-        // day/night loop can re-aim and re-tint it every frame.
-        sunLight = Light3D.NewDirectional(new Vec3(-0.36, -1.0, -0.22), 1.0, 0.96, 0.88);
-        Light3D.SetIntensity(sunLight, config.SUN_INTENSITY_DAY);
-        World3D.addLight(world, 0, sunLight);
-        // Primary directional shadow caster (cascaded shadow maps) for grounding depth.
-        Light3D.SetCastsShadows(sunLight, true);
-        Canvas3D.EnableShadows(canvas, 2048);
-        Canvas3D.SetShadowCascades(canvas, 3);
-    }
-
-    hide func updateTimeOfDay() {
-        if (sunLight == null) { return; }
-
-        // Dawn->dusk->dawn ping-pong: a triangle wave drives the sun from the
-        // dawn horizon up to noon and back down to the dusk horizon, then
-        // reverses toward dawn. The angle stays within [SUN_ARC_LO, SUN_ARC_HI]
-        // (above the horizon), so the world never goes fully dark -- dawn and
-        // dusk are low golden light, not night.
-        var cycle = worldTime / config.DAY_LENGTH_SEC + config.DAY_START_PHASE;
-        cycle = cycle - (Convert.NumToInt(cycle) + 0.0);
-        if (cycle < 0.0) { cycle = cycle + 1.0; }
-
-        var tri = cycle * 2.0;               // 0 -> 1 -> 0 across one round trip
-        if (tri > 1.0) { tri = 2.0 - tri; }
-
-        var ang = config.SUN_ARC_LO + tri * (config.SUN_ARC_HI - config.SUN_ARC_LO);
-        var elev = Sin(ang);                 // 1.0 at noon, ~0.41 at dawn/dusk
-        var day = clampFloat(elev, 0.0, 1.0);
-        var warm = 1.0 - day;
-
-        // Sun at a moderate elevation (~50deg at noon) with a steady horizontal
-        // bias, so terrain and trees always show a clear lit/shadowed side and cast
-        // real shadows. A near-overhead sun gives flat, shadowless shading.
-        var sunDirY = 0.0 - (0.40 + 0.30 * day);
-        sunDirection.Set(Cos(ang) * 0.55 - 0.40, sunDirY, -0.42);
-        Light3D.set_Direction(sunLight, sunDirection);
-        Light3D.SetColor(sunLight, 1.0, lerpFloat(0.60, 0.96, day), lerpFloat(0.34, 0.88, day));
-        Light3D.SetIntensity(sunLight, 0.05 + day * config.SUN_INTENSITY_DAY);
-
-        // Dim the static fill + sky-fill at night so darkness actually lands
-        // (leave a small floor so the world stays readable under moonlight).
-        if (fillLight != null) { Light3D.SetIntensity(fillLight, 0.02 + 0.06 * day); }
-        if (skyFill != null) { Light3D.SetIntensity(skyFill, 0.02 + 0.03 * day); }
-
-        World3D.setAmbient(
-            world,
-            lerpFloat(config.NIGHT_AMBIENT_R, config.DAY_AMBIENT_R, day),
-            lerpFloat(config.NIGHT_AMBIENT_G, config.DAY_AMBIENT_G, day),
-            lerpFloat(config.NIGHT_AMBIENT_B, config.DAY_AMBIENT_B, day));
-
-        World3D.setFog(
-            world,
-            lerpFloat(0.10, config.FOG_R, day) + warm * 0.10,
-            lerpFloat(0.12, config.FOG_G, day) + warm * 0.03,
-            lerpFloat(0.18, config.FOG_B, day),
-            config.FOG_NEAR,
-            config.FOG_FAR);
-    }
-
-    // === Recommendation #4: spatial audio =================================
-
-    hide func setupAudio() {
-        audio = World3D.get_audio(world);
-        Sound3D.listenerFollowCamera(audio, true);
-        Sound3D.setAttenuation(audio, config.AUDIO_REF_DIST, config.AUDIO_MAX_DIST);
-        // Procedurally synthesized clips — no external .wav assets required.
-        chimeClip = Synth.Sweep(520, 1040, 280, 45);
-        humClip = Synth.Tone(190, 460, 30);
-        stepClip = Synth.Noise(70, 22);
-        victoryClip = Synth.Sweep(440, 1320, 620, 55);
-        gustClip = Synth.Noise(180, 60);
-    }
-
-    // Recommendation #7 — a trigger volume ringing the spawn; stepping back into it
-    // once every beacon is linked restores the sanctuary (the demo's win state).
-    hide func setupObjective() {
-        var hx = terrainWorldMaxX() * 0.5;
-        var hz = terrainWorldMaxZ() * 0.5;
-        var hy = sampleGround(hx, hz);
-        homeTrigger = Trigger3D.New(hx - 5.0, hy - 2.0, hz - 5.0, hx + 5.0, hy + 7.0, hz + 5.0);
-    }
-
-    // Recommendations #7 + #8 — advance the objective trigger and a periodic
-    // wind-gust ambience lapping across the lake.
-    hide func updateObjective(dt: Float) {
-        ambientTimer = ambientTimer - dt;
-        if (ambientTimer <= 0.0 && audio != null) {
-            ambientTimer = 5.5;
-            ambientSoundPos.Set(
-                terrainWorldMaxX() * 0.5,
-                config.WATER_HEIGHT + 1.5,
-                terrainWorldMaxZ() * 0.5);
-            Sound3D.playAt(audio, gustClip, ambientSoundPos);
-        }
-        if (sanctuaryDone == false && homeTrigger != null && beaconsLit >= beaconXs.count()) {
-            objectiveProbePos.Set(playerX, playerY + 1.0, playerZ);
-            if (Trigger3D.Contains(homeTrigger, objectiveProbePos)) {
-                sanctuaryDone = true;
-                if (audio != null) { Sound3D.play2D(audio, victoryClip); }
-                Camera3D.Shake(camera, config.SHAKE_ALL, 1.0, 3.0);
-            }
-        }
-    }
-
-    hide func onFootfall(sprinting: Boolean) {
-        if (audio != null) {
-            footfallPos.Set(playerX, playerY, playerZ);
-            Sound3D.playAt(audio, stepClip, footfallPos);
-        }
-        if (sprinting && sprintDust != null) {
-            Particles3D.SetPosition(sprintDust, playerX, playerY + 0.1, playerZ);
-            Particles3D.Burst(sprintDust, 8);
-        }
-    }
-
-    // === Recommendation #5: dynamic lights ================================
-
-    hide func setupBeaconLights() {
-        beaconLights = [];
-        for i in 0..beaconXs.count() {
-            var pl = Light3D.NewPoint(
-                new Vec3(beaconXs.get(i), beaconYs.get(i) + 2.4, beaconZs.get(i)),
-                1.0, 0.80, 0.34, config.BEACON_LIGHT_RANGE);
-            Light3D.SetIntensity(pl, 0.0);
-            Light3D.SetEnabled(pl, false);
-            World3D.addLight(world, config.BEACON_LIGHT_SLOT + i, pl);
-            beaconLights.add(pl);
-        }
-    }
-
-    hide func onBeaconLit(i: Integer) {
-        if (i < beaconLights.count()) {
-            var pl = beaconLights.get(i);
-            Light3D.SetEnabled(pl, true);
-            Light3D.SetIntensity(pl, config.BEACON_LIGHT_INTENSITY);
-        }
-        stampScorch(beaconXs.get(i), beaconYs.get(i), beaconZs.get(i));
-        if (audio != null) {
-            beaconSoundPos.Set(beaconXs.get(i), beaconYs.get(i) + 2.0, beaconZs.get(i));
-            Sound3D.playAt(audio, chimeClip, beaconSoundPos);
-        }
-        Camera3D.Shake(camera, config.SHAKE_BEACON, 0.35, 4.0);
-    }
-
-    hide func setupPlayerLight() {
-        playerLight = Light3D.NewPoint(
-            new Vec3(playerX, playerY + 1.5, playerZ), 0.40, 0.72, 1.0, config.PLAYER_LIGHT_RANGE);
-        Light3D.SetIntensity(playerLight, config.PLAYER_LIGHT_INTENSITY);
-        World3D.addLight(world, config.PLAYER_LIGHT_SLOT, playerLight);
-    }
-
-    hide func updateDynamicLights() {
-        if (playerLight != null) {
-            playerLightPos.Set(playerX, playerY + 1.5, playerZ);
-            Light3D.set_Position(playerLight, playerLightPos);
-        }
-    }
-
-    // === Recommendation #6: particles + decals ============================
-
-    hide func setupParticles() {
-        fireflies = Particles3D.New(config.FIREFLY_COUNT);
-        Particles3D.SetDirection(fireflies, 0.0, 1.0, 0.0, 1.0);
-        Particles3D.SetSpeed(fireflies, 0.2, 0.7);
-        Particles3D.SetLifetime(fireflies, 2.5, 5.0);
-        Particles3D.SetSize(fireflies, 0.06, 0.02);
-        Particles3D.SetGravity(fireflies, 0.0, 0.05, 0.0);
-        Particles3D.SetColor(fireflies, 0xFFE08A, 0x88AA33);
-        Particles3D.SetAlpha(fireflies, 0.9, 0.0);
-        Particles3D.SetEmitterShape(fireflies, 1);
-        Particles3D.SetEmitterSize(fireflies, 14.0, 4.0, 14.0);
-        Particles3D.SetRate(fireflies, 40.0);
-        Particles3D.set_Additive(fireflies, true);
-        Particles3D.Start(fireflies);
-
-        mist = Particles3D.New(config.MIST_COUNT);
-        Particles3D.SetDirection(mist, 0.0, 1.0, 0.0, 0.4);
-        Particles3D.SetSpeed(mist, 0.1, 0.4);
-        Particles3D.SetLifetime(mist, 3.0, 6.0);
-        Particles3D.SetSize(mist, 0.8, 2.4);
-        Particles3D.SetGravity(mist, 0.0, 0.02, 0.0);
-        Particles3D.SetColor(mist, 0x99B8C8, 0x6688A0);
-        Particles3D.SetAlpha(mist, 0.28, 0.0);
-        Particles3D.SetEmitterShape(mist, 2);
-        Particles3D.SetEmitterSize(mist, 30.0, 1.0, 30.0);
-        Particles3D.SetPosition(
-            mist, terrainWorldMaxX() * 0.5, config.WATER_HEIGHT + 0.5, terrainWorldMaxZ() * 0.5);
-        Particles3D.SetRate(mist, 22.0);
-        Particles3D.Start(mist);
-
-        sprintDust = Particles3D.New(config.DUST_COUNT);
-        Particles3D.SetDirection(sprintDust, 0.0, 1.0, 0.0, 0.5);
-        Particles3D.SetSpeed(sprintDust, 0.4, 1.2);
-        Particles3D.SetLifetime(sprintDust, 0.3, 0.7);
-        Particles3D.SetSize(sprintDust, 0.18, 0.02);
-        Particles3D.SetGravity(sprintDust, 0.0, -0.6, 0.0);
-        Particles3D.SetColor(sprintDust, 0x9C8C6E, 0x6E5E44);
-        Particles3D.SetAlpha(sprintDust, 0.5, 0.0);
-        Particles3D.SetEmitterShape(sprintDust, 0);
-
-        scorchTex = createScorchTexture(20);
-        decals = [];
-    }
-
-    hide func updateParticles(dt: Float) {
-        if (fireflies != null) {
-            Particles3D.SetPosition(fireflies, playerX, playerY + 1.5, playerZ);
-            Particles3D.Update(fireflies, dt);
-        }
-        if (mist != null) { Particles3D.Update(mist, dt); }
-        if (sprintDust != null) { Particles3D.Update(sprintDust, dt); }
-        updateDecals(dt);
-    }
-
-    hide func drawParticles() {
-        if (fireflies != null) { Particles3D.Draw(fireflies, canvas, camera); }
-        if (mist != null) { Particles3D.Draw(mist, canvas, camera); }
-        if (sprintDust != null) { Particles3D.Draw(sprintDust, canvas, camera); }
-    }
-
-    hide func updateDecals(dt: Float) {
-        var i = 0;
-        while (i < decals.count()) {
-            Decal3D.Update(decals.get(i), dt);
-            if (Decal3D.get_Expired(decals.get(i)) != false) {
-                decals.removeAt(i);
-            } else {
-                i = i + 1;
-            }
-        }
-    }
-
-    hide func drawDecals() {
-        for i in 0..decals.count() {
-            Canvas3D.DrawDecal(canvas, decals.get(i));
-        }
-    }
-
-    hide func stampScorch(x: Float, y: Float, z: Float) {
-        if (scorchTex == null) { return; }
-        var decal = Decal3D.New(new Vec3(x, y + 0.05, z), new Vec3(0.0, 1.0, 0.0), 1.8, scorchTex);
-        Decal3D.SetLifetime(decal, config.SCORCH_LIFETIME);
-        decals.add(decal);
-        if (decals.count() > config.DECAL_MAX) { decals.removeAt(0); }
-    }
-
-    hide func createScorchTexture(size: Integer) -> Pixels {
-        var buf = Pixels.New(size, size);
-        var cx = size / 2;
-        var cy = size / 2;
-
-        for (var py: Integer = 0; py < size; py = py + 1) {
-            for (var px: Integer = 0; px < size; px = px + 1) {
-                var dx = (px - cx + 0.0) / (size + 0.0);
-                var dy = (py - cy + 0.0) / (size + 0.0);
-                var dist = Sqrt(dx * dx + dy * dy);
-                var alpha = 1.0 - dist * 2.4;
-                if (alpha > 0.0) {
-                    buf.Set(px, py, packPixel(30, 22, 16, clampByte(Convert.NumToInt(alpha * 150.0))));
-                } else {
-                    buf.Set(px, py, packPixel(0, 0, 0, 0));
-                }
-            }
-        }
-
-        return buf;
-    }
-
-    // === Recommendation #2: rigid-body physics props ======================
-
-    // A static plinth plus a stack of dynamic spheres dropped above it: the
-    // already-running World3D.stepSimulation settles them into a resting pile,
-    // exercising collision, restitution and the warm-started solver. (The player
-    // is kinematic, so it passes through — the props showcase the simulation.)
-    hide func setupPhysicsProps() {
-        var cx = terrainWorldMaxX() * 0.5 - 13.0;
-        var cz = terrainWorldMaxZ() * 0.5 - 13.0;
-        var gy = sampleGround(cx, cz);
-
-        var plinth = Prefab.BoxXYZ(5.0, 0.6, 5.0, pedestalMat);
-        Entity3D.setName(plinth, "Plinth");
-        Entity3D.setLayer(plinth, Layers.get_World());
-        Entity3D.setPosition(plinth, cx, gy + 0.3, cz);
-        Entity3D.attachBody(plinth, BodyDef.StaticBox(5.0, 0.6, 5.0));
-        World3D.spawn(world, plinth);
-
-        var i = 0;
-        while (i < config.PHYS_BALL_COUNT) {
-            var ball = Prefab.Sphere(0.45, 16, beaconOnMat);
-            var bx = cx + (hash01(i, 61) - 0.5) * 2.4;
-            var bz = cz + (hash01(i, 63) - 0.5) * 2.4;
-            Entity3D.setName(ball, "Boulder");
-            Entity3D.setLayer(ball, Layers.get_Dynamic());
-            Entity3D.setPosition(ball, bx, gy + 4.0 + (i + 0.0) * 1.2, bz);
-
-            var bdef = BodyDef.Sphere(0.45, 1.0);
-            BodyDef.set_restitution(bdef, 0.45);
-            BodyDef.withLayer(bdef, Layers.get_Dynamic());
-            var mask = LayerMask.Of(Layers.get_World());
-            mask = LayerMask.include(mask, Layers.get_Dynamic());
-            BodyDef.withMask(bdef, mask);
-            Entity3D.attachBody(ball, bdef);
-            World3D.spawn(world, ball);
-            i = i + 1;
-        }
-    }
-
-    // === Recommendation #3: procedurally-rigged skeletal sentinels ========
-
-    hide func setupCritters() {
-        critterSkel = Skeleton3D.New();
-        var b0 = Skeleton3D.AddBone(critterSkel, "root", -1, Mat4.Translate(0.0, 0.0, 0.0));
-        var b1 = Skeleton3D.AddBone(critterSkel, "mid", b0, Mat4.Translate(0.0, 1.0, 0.0));
-        var b2 = Skeleton3D.AddBone(critterSkel, "tip", b1, Mat4.Translate(0.0, 2.0, 0.0));
-        Skeleton3D.ComputeInverseBind(critterSkel);
-
-        critterMesh = Mesh3D.New();
-        addCritterSegment(0.0, 1.0, 0.34, b0, 0);
-        addCritterSegment(1.0, 2.0, 0.27, b1, 8);
-        addCritterSegment(2.0, 2.9, 0.18, b2, 16);
-        Mesh3D.SetSkeleton(critterMesh, critterSkel);
-        Mesh3D.RecalcNormals(critterMesh);
-
-        // Recommendation #5 — an AnimController3D state machine (idle <-> move)
-        // drives the sentinels: the "move" state plays a stronger sway and the
-        // controller crossfades states when the player approaches. DrawMeshSkinned
-        // now accepts the controller directly (no separate AnimPlayer needed).
-        var idleAnim = Animation3D.New("idle", 2.4);
-        Animation3D.set_Looping(idleAnim, true);
-        Animation3D.AddKeyframe(
-            idleAnim, b0, 0.0, new Vec3(0.0, 0.0, 0.0), Quat.Identity(), new Vec3(1.0, 1.0, 1.0));
-        addSwayKeys(idleAnim, b1, 0.16);
-        addSwayKeys(idleAnim, b2, 0.24);
-
-        var moveAnim = Animation3D.New("move", 2.4);
-        Animation3D.set_Looping(moveAnim, true);
-        Animation3D.AddKeyframe(
-            moveAnim, b0, 0.0, new Vec3(0.0, 0.0, 0.0), Quat.Identity(), new Vec3(1.0, 1.0, 1.0));
-        addSwayKeys(moveAnim, b1, 0.40);
-        addSwayKeys(moveAnim, b2, 0.60);
-
-        critterCtrl = AnimController3D.New(critterSkel);
-        AnimController3D.AddState(critterCtrl, "idle", idleAnim);
-        AnimController3D.AddState(critterCtrl, "move", moveAnim);
-        AnimController3D.AddTransition(critterCtrl, "idle", "move", 0.35);
-        AnimController3D.AddTransition(critterCtrl, "move", "idle", 0.5);
-        AnimController3D.Play(critterCtrl, "idle");
-        crittersActive = false;
-
-        critterMat = Materials.Emissive(0.32, 0.84, 0.96, 0.55);
-        Material3D.SetEmissiveColor(critterMat, 0.05, 0.18, 0.22);
-
-        critterXs = [];
-        critterZs = [];
-        var cx = terrainWorldMaxX() * 0.5;
-        var cz = terrainWorldMaxZ() * 0.5;
-        addCritter(cx, cz - 12.0);          // ahead of the player at launch
-        addCritter(cx - 15.0, cz + 9.0);
-        addCritter(cx + 17.0, cz + 5.0);
-
-        critterTX = [];
-        critterTZ = [];
-        critterWanderSeed = 11;
-        for i in 0..critterXs.count() {
-            critterTX.add(critterXs.get(i));
-            critterTZ.add(critterZs.get(i));
-            pickCritterTarget(i);
-        }
-    }
-
-    // Recommendation #4 — pick a fresh wander target for sentinel `i`, biased
-    // around the central meadow and kept inside the playable margin.
-    hide func pickCritterTarget(i: Integer) {
-        critterWanderSeed = critterWanderSeed + 1;
-        var ang = hash01(critterWanderSeed, 71) * 6.2831853;
-        critterWanderSeed = critterWanderSeed + 1;
-        var radius = 6.0 + hash01(critterWanderSeed, 73) * 26.0;
-        var cx = terrainWorldMaxX() * 0.5;
-        var cz = terrainWorldMaxZ() * 0.5;
-        critterTX.set(i, clampFloat(cx + Sin(ang) * radius,
-            config.TERRAIN_MARGIN, terrainWorldMaxX() - config.TERRAIN_MARGIN));
-        critterTZ.set(i, clampFloat(cz + Cos(ang) * radius,
-            config.TERRAIN_MARGIN, terrainWorldMaxZ() - config.TERRAIN_MARGIN));
-    }
-
-    hide func addCritter(x: Float, z: Float) {
-        critterXs.add(x);
-        critterZs.add(z);
-    }
-
-    hide func updateCritters(dt: Float) {
-        if (critterCtrl == null) { return; }
-        // Recommendation #4 — steer each sentinel toward its wander target,
-        // retargeting on arrival, so the chorus drifts across the meadow.
-        for i in 0..critterXs.count() {
-            var dx = critterTX.get(i) - critterXs.get(i);
-            var dz = critterTZ.get(i) - critterZs.get(i);
-            var dist = Sqrt(dx * dx + dz * dz);
-            if (dist < 1.2) {
-                pickCritterTarget(i);
-            } else {
-                var sp = config.CRITTER_SPEED * dt;
-                if (sp > dist) { sp = dist; }
-                critterXs.set(i, critterXs.get(i) + dx / dist * sp);
-                critterZs.set(i, critterZs.get(i) + dz / dist * sp);
-            }
-        }
-        // Crossfade the whole sentinel chorus to "move" when the player draws
-        // near the nearest one, and back to "idle" when they wander off.
-        var near = false;
-        for i in 0..critterXs.count() {
-            var dx = playerX - critterXs.get(i);
-            var dz = playerZ - critterZs.get(i);
-            if (dx * dx + dz * dz < 144.0) { near = true; }
-        }
-        if (near && crittersActive == false) {
-            AnimController3D.Crossfade(critterCtrl, "move", 0.35);
-            crittersActive = true;
-        } else {
-            if (near == false && crittersActive) {
-                AnimController3D.Crossfade(critterCtrl, "idle", 0.5);
-                crittersActive = false;
-            }
-        }
-        AnimController3D.Update(critterCtrl, dt);
-    }
-
-    hide func drawCritters() {
-        if (critterCtrl == null) { return; }
-        for i in 0..critterXs.count() {
-            var x = critterXs.get(i);
-            var z = critterZs.get(i);
-            var xform = Mat4.Mul(Mat4.Translate(x, sampleGround(x, z), z), Mat4.Scale(0.85, 0.85, 0.85));
-            Canvas3D.DrawMeshSkinned(canvas, critterMesh, xform, critterMat, critterCtrl);
-        }
-    }
-
-    // Adds one box segment (8 verts, 12 tris) rigidly weighted to a single bone.
-    hide func addCritterSegment(y0: Float, y1: Float, hw: Float, bone: Integer, base: Integer) {
-        Mesh3D.AddVertex(critterMesh, 0.0 - hw, y0, 0.0 - hw, 0.0, 0.0, 0.0, 0.0, 0.0);
-        Mesh3D.AddVertex(critterMesh, hw, y0, 0.0 - hw, 0.0, 0.0, 0.0, 0.0, 0.0);
-        Mesh3D.AddVertex(critterMesh, hw, y0, hw, 0.0, 0.0, 0.0, 0.0, 0.0);
-        Mesh3D.AddVertex(critterMesh, 0.0 - hw, y0, hw, 0.0, 0.0, 0.0, 0.0, 0.0);
-        Mesh3D.AddVertex(critterMesh, 0.0 - hw, y1, 0.0 - hw, 0.0, 0.0, 0.0, 0.0, 0.0);
-        Mesh3D.AddVertex(critterMesh, hw, y1, 0.0 - hw, 0.0, 0.0, 0.0, 0.0, 0.0);
-        Mesh3D.AddVertex(critterMesh, hw, y1, hw, 0.0, 0.0, 0.0, 0.0, 0.0);
-        Mesh3D.AddVertex(critterMesh, 0.0 - hw, y1, hw, 0.0, 0.0, 0.0, 0.0, 0.0);
-
-        var v = 0;
-        while (v < 8) {
-            Mesh3D.SetBoneWeights(critterMesh, base + v, bone, 1.0, 0, 0.0, 0, 0.0, 0, 0.0);
-            v = v + 1;
-        }
-
-        Mesh3D.AddTriangle(critterMesh, base + 0, base + 2, base + 1);
-        Mesh3D.AddTriangle(critterMesh, base + 0, base + 3, base + 2);
-        Mesh3D.AddTriangle(critterMesh, base + 4, base + 5, base + 6);
-        Mesh3D.AddTriangle(critterMesh, base + 4, base + 6, base + 7);
-        Mesh3D.AddTriangle(critterMesh, base + 0, base + 1, base + 5);
-        Mesh3D.AddTriangle(critterMesh, base + 0, base + 5, base + 4);
-        Mesh3D.AddTriangle(critterMesh, base + 1, base + 2, base + 6);
-        Mesh3D.AddTriangle(critterMesh, base + 1, base + 6, base + 5);
-        Mesh3D.AddTriangle(critterMesh, base + 2, base + 3, base + 7);
-        Mesh3D.AddTriangle(critterMesh, base + 2, base + 7, base + 6);
-        Mesh3D.AddTriangle(critterMesh, base + 3, base + 0, base + 4);
-        Mesh3D.AddTriangle(critterMesh, base + 3, base + 4, base + 7);
-    }
-
-    hide func addSwayKeys(anim: Animation3D, bone: Integer, amp: Float) {
-        var ofs = new Vec3(0.0, 1.0, 0.0);
-        var one = new Vec3(1.0, 1.0, 1.0);
-        var zAxis = new Vec3(0.0, 0.0, 1.0);
-        Animation3D.AddKeyframe(anim, bone, 0.0, ofs, Quat.FromAxisAngle(zAxis, 0.0), one);
-        Animation3D.AddKeyframe(anim, bone, 0.6, ofs, Quat.FromAxisAngle(zAxis, amp), one);
-        Animation3D.AddKeyframe(anim, bone, 1.2, ofs, Quat.FromAxisAngle(zAxis, 0.0), one);
-        Animation3D.AddKeyframe(anim, bone, 1.8, ofs, Quat.FromAxisAngle(zAxis, 0.0 - amp), one);
-        Animation3D.AddKeyframe(anim, bone, 2.4, ofs, Quat.FromAxisAngle(zAxis, 0.0), one);
-    }
-
-    // === Recommendation #9: raycast scanner ===============================
-
-    hide func updateScanner() {
-        var w = Canvas3D.get_Width(canvas);
-        var h = Canvas3D.get_Height(canvas);
-        var o = Camera3D.ScreenToRayOrigin(camera, w / 2, h / 2, w, h);
-        var d = Camera3D.ScreenToRay(camera, w / 2, h / 2, w, h);
-        var ox = Vec3.get_X(o);
-        var oy = Vec3.get_Y(o);
-        var oz = Vec3.get_Z(o);
-        var dx = Vec3.get_X(d);
-        var dy = Vec3.get_Y(d);
-        var dz = Vec3.get_Z(d);
-        var dl = Sqrt(dx * dx + dy * dy + dz * dz);
-        if (dl < 0.0001) { scanLabel = ""; return; }
-        dx = dx / dl;
-        dy = dy / dl;
-        dz = dz / dl;
-
-        var best = config.SCAN_MAX_DIST;
-        var label = "";
-
-        for i in 0..landmarkNames.count() {
-            var t = raySphere(
-                ox, oy, oz, dx, dy, dz,
-                landmarkXs.get(i), landmarkYs.get(i), landmarkZs.get(i), landmarkR.get(i));
-            if (t > 0.0 && t < best) {
-                best = t;
-                label = landmarkNames.get(i);
-            }
-        }
-        for i in 0..beaconXs.count() {
-            var tb = raySphere(
-                ox, oy, oz, dx, dy, dz,
-                beaconXs.get(i), beaconYs.get(i) + 2.2, beaconZs.get(i), 2.2);
-            if (tb > 0.0 && tb < best) {
-                best = tb;
-                if (beaconState.get(i) != 0) { label = "Ridge beacon (linked)"; }
-                else { label = "Ridge beacon (dormant)"; }
-            }
-        }
-
-        if (label == "") {
-            scanLabel = "";
-        } else {
-            scanLabel = label;
-            scanDist = best;
-        }
-    }
-
-    // Nearest positive ray-sphere hit distance (dir must be unit length), or -1.
-    hide func raySphere(
-        ox: Float, oy: Float, oz: Float, dx: Float, dy: Float, dz: Float,
-        cx: Float, cy: Float, cz: Float, r: Float) -> Float {
-        var lx = ox - cx;
-        var ly = oy - cy;
-        var lz = oz - cz;
-        var b = dx * lx + dy * ly + dz * lz;
-        var c = lx * lx + ly * ly + lz * lz - r * r;
-        var disc = b * b - c;
-        if (disc < 0.0) { return -1.0; }
-        return (0.0 - b) - Sqrt(disc);
-    }
-
-    hide func maxf(a: Float, b: Float) -> Float {
-        if (a > b) { return a; }
-        return b;
-    }
-
-    // === Recommendation #10: authored post-FX + debug overlay =============
-
-    hide func buildPostFX() {
-        var fx = PostFX3D.New();
-        // SSAO, depth-of-field, and motion blur require GPU window post-FX — they
-        // trap on the software / render-target CPU post-FX path — so gate all three
-        // behind the backend capability. Tonemap/bloom/colour-grade/vignette/FXAA
-        // are CPU-safe and always applied. (Recommendation #10 adds DOF + motion blur.)
-        var gpuFx = Canvas3D.BackendSupports(canvas, "ssao");
-        if (gpuFx) {
-            PostFX3D.AddSSAO(fx, 0.45, 0.55, 12);
-        }
-        PostFX3D.AddTonemap(fx, 2, 1.0);
-        PostFX3D.AddBloom(fx, config.POSTFX_BLOOM_THRESHOLD, config.POSTFX_BLOOM_INTENSITY, 3);
-        if (gpuFx) {
-            PostFX3D.AddDOF(fx, config.POSTFX_DOF_FOCUS, config.POSTFX_DOF_RANGE, config.POSTFX_DOF_STRENGTH);
-            PostFX3D.AddMotionBlur(fx, config.POSTFX_MOTIONBLUR_STRENGTH, config.POSTFX_MOTIONBLUR_SAMPLES);
-        }
-        PostFX3D.AddColorGrade(
-            fx, config.POSTFX_COLORGRADE_BRIGHT, config.POSTFX_COLORGRADE_CONTRAST,
-            config.POSTFX_COLORGRADE_SAT);
-        PostFX3D.AddVignette(fx, config.POSTFX_VIGNETTE_RADIUS, config.POSTFX_VIGNETTE_SOFT);
-        PostFX3D.AddFXAA(fx);
-        Canvas3D.SetPostFX(canvas, fx);
-    }
-
-    hide func drawDebugPanel(w: Integer) {
-        var x = w - 250;
-        var y = 14;
-        Canvas3D.DrawRect2D(canvas, x, y, 236, 134, config.HUD_PANEL);
-        Canvas3D.DrawRect2D(canvas, x, y, 236, 3, config.HUD_ACCENT);
-        Canvas3D.DrawText2D(canvas, x + 10, y + 16, "DEBUG  Ctrl=toggle  Space=quality", config.HUD_MUTED);
-        Canvas3D.DrawText2D(canvas, x + 10, y + 38, "Backend: " + Canvas3D.get_Backend(canvas), config.HUD_TEXT);
-        Canvas3D.DrawText2D(canvas, x + 10, y + 56, "FPS: " + toString(Canvas3D.get_Fps(canvas)), config.HUD_TEXT);
-        Canvas3D.DrawText2D(canvas, x + 10, y + 74, "Draws: " + toString(Canvas3D.get_DrawCount(canvas)), config.HUD_TEXT);
-        Canvas3D.DrawText2D(
-            canvas, x + 10, y + 92,
-            "Lights: " + toString(Canvas3D.get_LightCount(canvas)) + " / "
-                + toString(Canvas3D.get_MaxActiveLights(canvas)), config.HUD_TEXT);
-        Canvas3D.DrawText2D(
-            canvas, x + 10, y + 110,
-            "Quality: " + toString(Canvas3D.get_QualityActive(canvas)), config.HUD_TEXT);
+        var body = Mat4.Mul(
+            Mat4.Translate(playerX, playerY + config.PLAYER_GROUND_OFFSET + bob, playerZ),
+            Mat4.Scale(1.0, 1.0, 1.0));
+        Canvas3D.DrawMesh(canvas, assets.getPlayerBodyMesh(), body, assets.getPlayerMat());
+        var core = Mat4.Mul(
+            Mat4.Translate(playerX, playerY + 1.20 + bob, playerZ),
+            Mat4.Scale(1.0, 1.0, 1.0));
+        Canvas3D.DrawMesh(canvas, assets.getPlayerCoreMesh(), core, assets.getWaterMarkerMat());
     }
 }

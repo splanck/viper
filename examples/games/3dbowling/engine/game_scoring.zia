@@ -1,0 +1,226 @@
+// ============================================================================
+// MODULE: engine/game_scoring
+// PURPOSE: Scoring, turn advancement, results, and camera-mode transitions.
+// ============================================================================
+
+// game_scoring.zia — Score and match-flow state transitions.
+module game_scoring;
+
+bind Viper.Graphics3D;
+bind Viper.Terminal;
+bind "../config";
+bind "./camera";
+bind "./game_flow";
+bind "../effects/celebrations";
+bind "../scoring/scoring";
+
+/// @brief Scoring and turn flow layer for the bowling controller.
+class BowlingGameScoring extends BowlingGameFlow {
+    /// @brief STATE_SCORING handler: count pins, fire celebrations, advance state.
+    override expose func updateScoring() {
+        var current = getActiveScoreKeeper();
+        var newlyKnocked = pinMgr.countNewlyKnocked();
+        var scoredKnocked = newlyKnocked;
+        var trueGutter = ballObj.gutterBall() && ballHitPinsThisRoll == false;
+        if (trueGutter) {
+            scoredKnocked = 0;
+            if (newlyKnocked > 0) {
+                pinMgr.restoreSavedPinState();
+            }
+        }
+        var frameComplete = current.recordRoll(scoredKnocked);
+
+        if (trueGutter) {
+            celebMgr.onGutter();
+        } else if (current.wasStrike()) {
+            celebMgr.onStrike();
+            particleMgr.spawnFireworks();
+            camCtrl.shake(config.SHAKE_STRIKE_INTENSITY, config.SHAKE_STRIKE_DURATION);
+            render.flashPinLight(3.0);
+            lightFlashTimer = 0.40;
+            playSound("strike");
+            if (current.isGameOver() && current.getTotalScore() == config.MAX_SCORE) {
+                celebMgr.onPerfectGame();
+            }
+        } else if (current.wasSpare()) {
+            celebMgr.onSpare();
+            playSound("spare");
+        } else {
+            celebMgr.onOpenFrame();
+        }
+
+        pinMgr.savePinState();
+        pendingFrameAdvance = frameComplete;
+        pendingPlayerSwitch = frameComplete && playerCount > 1;
+        pendingResults = frameComplete && allPlayersFinished();
+        scoreTimer = 0.75;
+        cinematicStarted = false;
+
+        Say(getPlayerLabel(activePlayer) + "  Frame " + toString(current.getFrame())
+            + "  Total " + toString(current.getTotalScore()));
+
+        pinMgr.startSweep();
+        gameState = config.STATE_SWEEPING;
+    }
+
+    /// @brief STATE_SWEEPING update: advance sweep bar, transition when done.
+    override expose func updateSweeping(dt: Float) {
+        if (pinMgr.updateSweep(dt)) {
+            if (pendingFrameAdvance) {
+                pinMgr.startFullReset();
+                gameState = config.STATE_RESETTING;
+            } else {
+                pinMgr.prepareSecondRoll();
+                gameState = config.STATE_CELEBRATING;
+            }
+        }
+    }
+
+    /// @brief STATE_RESETTING update: rack-drop animation.
+    override expose func updateResetting(dt: Float) {
+        if (pinMgr.updateReset(dt)) {
+            gameState = config.STATE_CELEBRATING;
+        }
+    }
+
+    /// @brief STATE_CELEBRATING update: tick celebration manager + cinematic camera.
+    override expose func updateCelebrating(dt: Float) {
+        if (celebMgr.isActive()) {
+            var ctype = celebMgr.getType();
+            if (cinematicStarted == false &&
+                (ctype == celebrations.STRIKE || ctype == celebrations.TURKEY || ctype == celebrations.PERFECT)) {
+                camCtrl.startCinematic(0.0, config.PIN_Z_OFFSET);
+                cinematicStarted = true;
+            }
+            if (cinematicStarted) {
+                camCtrl.updateCinematic(dt);
+            }
+        }
+
+        scoreTimer = scoreTimer - dt;
+        if (scoreTimer <= 0.0 && celebMgr.isActive() == false) {
+            render.resetPinLight();
+            if (pendingResults && allPlayersFinished()) {
+                openResultsScreen();
+                return;
+            }
+
+            if (pendingPlayerSwitch) {
+                advanceToNextPlayer();
+            }
+            prepareNextTurn();
+        }
+    }
+
+    /// @brief Reset ball + camera + per-throw flags for the next roll.
+    hide func prepareNextTurn() {
+        ballObj.resetBall();
+        aimX = 0.0;
+        power = 0.0;
+        spin = 0.0;
+        charging = false;
+        fixedStepAlpha = 0.0;
+        gutterLatched = false;
+        ballHitPinsThisRoll = false;
+        cinematicStarted = false;
+        pendingFrameAdvance = false;
+        pendingPlayerSwitch = false;
+        pendingResults = false;
+        gameState = config.STATE_AIMING;
+        camCtrl.setAimMode(0.0);
+
+        var current = getActiveScoreKeeper();
+        hudObj.showMessage(getPlayerLabel(activePlayer) + "  Frame " + toString(current.getFrame())
+            + "  Roll " + toString(current.getRollInFrame()), config.HUD_COLOR_WHITE, config.MSG_DURATION_SHORT);
+    }
+
+    /// @brief Versus-mode handover: switch active player; check for results.
+    hide func advanceToNextPlayer() {
+        if (playerCount <= 1) {
+            activePlayer = 0;
+            return;
+        }
+
+        if (activePlayer == 0) {
+            if (scoreKeeperTwo.isGameOver() == false) {
+                activePlayer = 1;
+            }
+        } else {
+            if (scoreKeeperOne.isGameOver() == false) {
+                activePlayer = 0;
+            }
+        }
+    }
+
+    /// @brief True when every active player has completed all 10 frames.
+    hide func allPlayersFinished() -> Boolean {
+        if (playerCount <= 1) {
+            return scoreKeeperOne.isGameOver();
+        }
+        return scoreKeeperOne.isGameOver() && scoreKeeperTwo.isGameOver();
+    }
+
+    /// @brief Compute final results, persist stats, transition to results screen.
+    hide func openResultsScreen() {
+        var p1 = scoreKeeperOne.getTotalScore();
+        var p2 = scoreKeeperTwo.getTotalScore();
+        var previousBest = menuObj.getBestScore();
+        var resultsToast = "Final score: " + toString(p1);
+
+        menuObj.recordFinishedMatch(p1, currentMode);
+        resultsPlayerOne = p1;
+        resultsPlayerTwo = p2;
+        resultsWinner = -1;
+        resultsNewHigh = p1 > previousBest;
+        if (currentMode == config.MODE_VERSUS) {
+            if (p1 > p2) { resultsWinner = 0; }
+            if (p2 > p1) { resultsWinner = 1; }
+            if (resultsWinner == 0) { resultsToast = "Player 1 wins"; }
+            else if (resultsWinner == 1) { resultsToast = "Player 2 wins"; }
+            else { resultsToast = "Tie game"; }
+        } else if (resultsNewHigh) {
+            resultsToast = "New high score";
+        }
+
+        screenState = config.SCREEN_RESULTS;
+        camCtrl.setTitleMode();
+        hudObj.showMessage(resultsToast, config.HUD_COLOR_GOLD, config.MSG_DURATION_RESULTS);
+    }
+
+    /// @brief Cycle through aim/follow/overhead camera presets.
+    override expose func cycleCameraMode() {
+        if (gameState == config.STATE_AIMING) {
+            if (camCtrl.getMode() == camera.MODE_OVERHEAD) {
+                camCtrl.setAimMode(aimX);
+                hudObj.showMessage("Approach camera", config.HUD_COLOR_CYAN, config.MSG_DURATION_SHORT);
+            } else {
+                camCtrl.setOverheadMode();
+                hudObj.showMessage("Overhead preview", config.HUD_COLOR_CYAN, config.MSG_DURATION_SHORT);
+            }
+            return;
+        }
+
+        if (gameState == config.STATE_ROLLING || gameState == config.STATE_SETTLING || gameState == config.STATE_CELEBRATING) {
+            if (camCtrl.getMode() == camera.MODE_OVERHEAD) {
+                camCtrl.setRollMode();
+                hudObj.showMessage("Lane camera", config.HUD_COLOR_CYAN, config.MSG_DURATION_SHORT);
+            } else {
+                camCtrl.setOverheadMode();
+                hudObj.showMessage("Overhead camera", config.HUD_COLOR_CYAN, config.MSG_DURATION_SHORT);
+            }
+        }
+    }
+
+    /// @brief ScoreKeeper for the player currently on the lane.
+    hide func getActiveScoreKeeper() -> ScoreKeeper {
+        if (activePlayer == 1) { return scoreKeeperTwo; }
+        return scoreKeeperOne;
+    }
+
+    /// @brief Display label ("P1" / "P2") for an index.
+    hide func getPlayerLabel(index: Integer) -> String {
+        if (playerCount <= 1) { return "Player"; }
+        if (index == 1) { return "Player 2"; }
+        return "Player 1";
+    }
+}

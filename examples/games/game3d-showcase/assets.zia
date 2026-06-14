@@ -1,0 +1,87 @@
+// assets.zia - Shared meshes and materials for the Game3D showcase.
+module assets;
+
+bind Viper.Game3D;
+bind Viper.Graphics3D;
+bind "./config";
+bind "./terrain";
+
+class ShowcaseAssets {
+    hide Mesh3D cubeMesh;
+    hide Mesh3D beaconMesh;
+    hide Mesh3D playerBodyMesh;
+    hide Mesh3D playerCoreMesh;
+    hide Material3D terrainMat;
+    hide Material3D stoneMat;
+    hide Material3D pedestalMat;
+    hide Material3D playerMat;
+    hide Material3D beaconOffMat;
+    hide Material3D beaconOnMat;
+    hide Material3D archiveMat;
+    hide Material3D waterMarkerMat;
+
+    expose func setup() {
+        cubeMesh = Mesh3D.NewBox(1.0, 1.0, 1.0);
+        beaconMesh = Mesh3D.NewSphere(0.54, 22);
+        playerBodyMesh = Mesh3D.NewCylinder(config.PLAYER_RADIUS, config.PLAYER_BODY_HEIGHT, 20);
+        playerCoreMesh = Mesh3D.NewSphere(0.36, 18);
+        Mesh3D.CalcTangents(cubeMesh);
+
+        var stoneAlbedo = terrain.createStoneAlbedo(config.PBR_TEXTURE_SIZE);
+        var metalAlbedo = terrain.createMetalAlbedo(config.PBR_TEXTURE_SIZE);
+        var rockNormal = terrain.createNormalMap(config.PBR_TEXTURE_SIZE, config.PBR_NORMAL_STRENGTH);
+
+        terrainMat = Materials.Rubber(0.58, 0.74, 0.36);
+        Material3D.SetEmissiveColor(terrainMat, 0.015, 0.026, 0.008);
+
+        stoneMat = Material3D.NewPBR(0.52, 0.54, 0.57);
+        Material3D.SetAlbedoMap(stoneMat, stoneAlbedo);
+        Material3D.SetNormalMap(stoneMat, rockNormal);
+        Material3D.SetRoughness(stoneMat, 0.80);
+        Material3D.SetMetallic(stoneMat, 0.05);
+        Material3D.SetEmissiveColor(stoneMat, 0.010, 0.012, 0.016);
+
+        pedestalMat = Material3D.NewPBR(0.46, 0.43, 0.34);
+        Material3D.SetAlbedoMap(pedestalMat, stoneAlbedo);
+        Material3D.SetNormalMap(pedestalMat, rockNormal);
+        Material3D.SetRoughness(pedestalMat, 0.90);
+        Material3D.SetMetallic(pedestalMat, 0.0);
+        Material3D.SetEmissiveColor(pedestalMat, 0.018, 0.016, 0.012);
+
+        playerMat = Materials.Plastic(0.22, 0.76, 0.48);
+        Material3D.SetEmissiveColor(playerMat, 0.012, 0.045, 0.026);
+        beaconOffMat = Materials.Plastic(0.38, 0.52, 0.70);
+        Material3D.SetEmissiveColor(beaconOffMat, 0.025, 0.045, 0.065);
+        beaconOnMat = Materials.Emissive(0.98, 0.80, 0.22, 1.45);
+
+        archiveMat = Material3D.NewPBR(0.78, 0.72, 0.58);
+        Material3D.SetAlbedoMap(archiveMat, metalAlbedo);
+        Material3D.SetNormalMap(archiveMat, rockNormal);
+        Material3D.SetRoughness(archiveMat, 0.34);
+        Material3D.SetMetallic(archiveMat, 0.85);
+
+        waterMarkerMat = Materials.Emissive(0.20, 0.72, 1.0, 1.20);
+    }
+
+    expose func applyEnvReflections(skybox: CubeMap3D) {
+        Material3D.SetEnvMap(stoneMat, skybox);
+        Material3D.SetReflectivity(stoneMat, 0.16);
+        Material3D.SetEnvMap(pedestalMat, skybox);
+        Material3D.SetReflectivity(pedestalMat, 0.10);
+        Material3D.SetEnvMap(archiveMat, skybox);
+        Material3D.SetReflectivity(archiveMat, 0.45);
+    }
+
+    expose func getCubeMesh() -> Mesh3D { return cubeMesh; }
+    expose func getBeaconMesh() -> Mesh3D { return beaconMesh; }
+    expose func getPlayerBodyMesh() -> Mesh3D { return playerBodyMesh; }
+    expose func getPlayerCoreMesh() -> Mesh3D { return playerCoreMesh; }
+    expose func getTerrainMat() -> Material3D { return terrainMat; }
+    expose func getStoneMat() -> Material3D { return stoneMat; }
+    expose func getPedestalMat() -> Material3D { return pedestalMat; }
+    expose func getPlayerMat() -> Material3D { return playerMat; }
+    expose func getBeaconOffMat() -> Material3D { return beaconOffMat; }
+    expose func getBeaconOnMat() -> Material3D { return beaconOnMat; }
+    expose func getArchiveMat() -> Material3D { return archiveMat; }
+    expose func getWaterMarkerMat() -> Material3D { return waterMarkerMat; }
+}

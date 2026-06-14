@@ -1,0 +1,386 @@
+// ============================================================================
+// MODULE: engine/game_flow
+// PURPOSE: Main loop, input dispatch, fixed-step physics, and impacts.
+// ============================================================================
+
+// game_flow.zia — Per-frame state machine and physics step policy.
+module game_flow;
+
+bind Viper.Graphics3D;
+bind Viper.Input;
+bind "../config";
+bind "../menu";
+bind "./camera";
+bind "./game_setup";
+
+/// @brief Per-frame flow and physics layer for the bowling controller.
+class BowlingGameFlow extends BowlingGameSetup {
+    /// @brief The main per-frame loop. Branches on screenState then
+    ///        gameState; runs fixed-step physics; renders.
+    override expose func gameLoop() {
+        while (render.shouldClose() == false && quitRequested == false) {
+            render.poll();
+            if (render.shouldClose()) {
+                break;
+            }
+            var dt = render.getDeltaTime();
+
+            if (lightFlashTimer > 0.0) {
+                lightFlashTimer = lightFlashTimer - dt;
+                if (lightFlashTimer <= 0.0) {
+                    render.resetPinLight();
+                }
+            }
+
+            if (screenState == config.SCREEN_TITLE) {
+                camCtrl.updateTitle(dt);
+                handleTitleInput();
+            } else if (screenState == config.SCREEN_OPTIONS) {
+                camCtrl.updateTitle(dt);
+                handleOptionsInput();
+            } else if (screenState == config.SCREEN_PLAYING) {
+                handlePlayingInput(dt);
+            } else if (screenState == config.SCREEN_PAUSED) {
+                handlePauseInput();
+            } else if (screenState == config.SCREEN_RESULTS) {
+                camCtrl.updateTitle(dt);
+                handleResultsInput();
+            }
+
+            particleMgr.update(dt);
+            celebMgr.update(dt);
+            hudObj.update(dt);
+            updateAudioListener();
+
+            render.beginFrame();
+            drawScene();
+            render.endFrame();
+            drawOverlays();
+            render.flip();
+        }
+    }
+
+    /// @brief Title-screen menu dispatch.
+    hide func handleTitleInput() {
+        var cmd = menuObj.updateTitle();
+        if (cmd == menu.CMD_START_SINGLE) {
+            startNewMatch(config.MODE_SINGLE);
+        } else if (cmd == menu.CMD_START_VERSUS) {
+            startNewMatch(config.MODE_VERSUS);
+        } else if (cmd == menu.CMD_OPEN_OPTIONS) {
+            screenState = config.SCREEN_OPTIONS;
+        } else if (cmd == menu.CMD_QUIT) {
+            quitRequested = true;
+        }
+    }
+
+    /// @brief Options-screen menu dispatch.
+    hide func handleOptionsInput() {
+        var cmd = menuObj.updateOptions();
+        applyMenuSettings();
+        if (cmd == menu.CMD_BACK) {
+            showTitleScreen();
+        }
+    }
+
+    /// @brief Pause-screen menu dispatch (resume / restart / main menu).
+    hide func handlePauseInput() {
+        var cmd = menuObj.updatePause();
+        if (cmd == menu.CMD_RESUME) {
+            screenState = config.SCREEN_PLAYING;
+        } else if (cmd == menu.CMD_RESTART) {
+            restartCurrentMatch();
+        } else if (cmd == menu.CMD_MAIN_MENU) {
+            showTitleScreen();
+        }
+    }
+
+    /// @brief Results-screen menu dispatch (play again / main menu).
+    hide func handleResultsInput() {
+        var cmd = menuObj.updateResults();
+        if (cmd == menu.CMD_PLAY_AGAIN) {
+            startNewMatch(currentMode);
+        } else if (cmd == menu.CMD_MAIN_MENU) {
+            showTitleScreen();
+        }
+    }
+
+    /// @brief In-game input handler (aim / spin / throw / camera / pause).
+    hide func handlePlayingInput(dt: Float) {
+        if (Action.Pressed(config.ACT_PAUSE) || Action.Pressed(config.ACT_BACK)) {
+            screenState = config.SCREEN_PAUSED;
+            return;
+        }
+        if (Action.Pressed(config.ACT_RESET)) {
+            restartCurrentMatch();
+            return;
+        }
+        if (Action.Pressed(config.ACT_CAMERA)) {
+            cycleCameraMode();
+        }
+
+        if (gameState == config.STATE_AIMING) {
+            updateAiming(dt);
+        } else if (gameState == config.STATE_ROLLING) {
+            runFixedStep(dt, true);
+        } else if (gameState == config.STATE_SETTLING) {
+            runFixedStep(dt, false);
+        } else if (gameState == config.STATE_SCORING) {
+            updateScoring();
+        } else if (gameState == config.STATE_SWEEPING) {
+            updateSweeping(dt);
+        } else if (gameState == config.STATE_RESETTING) {
+            updateResetting(dt);
+        } else if (gameState == config.STATE_CELEBRATING) {
+            updateCelebrating(dt);
+        }
+    }
+
+    /// @brief Run runtime-owned fixed-step physics and matching game logic.
+    hide func runFixedStep(dt: Float, rolling: Boolean) {
+        var steps = Physics3DWorld.StepFixed(physWorld, dt, config.PHYSICS_DT, config.MAX_FIXED_STEPS);
+        var i = 0;
+        while (i < steps) {
+            if (rolling) {
+                updateRollingStep(config.PHYSICS_DT);
+            } else {
+                updateSettlingStep(config.PHYSICS_DT);
+            }
+            i = i + 1;
+        }
+
+        fixedStepAlpha = Physics3DWorld.get_FixedStepAlpha(physWorld);
+        if (steps > 0 || fixedStepAlpha > 0.0) {
+            camCtrl.updateRoll(config.PHYSICS_DT * ((steps + 0.0) + fixedStepAlpha));
+        }
+    }
+
+    /// @brief STATE_AIMING update: aim/spin axis input + power charge + throw.
+    hide func updateAiming(dt: Float) {
+        aimX = aimX + Action.Axis(config.ACT_AIM_X) * config.AIM_SPEED * dt;
+        if (aimX < -config.AIM_MAX) { aimX = -config.AIM_MAX; }
+        if (aimX > config.AIM_MAX) { aimX = config.AIM_MAX; }
+
+        spin = spin + Action.Axis(config.ACT_SPIN_X) * config.SPIN_RATE * dt;
+        if (spin < -config.SPIN_MAX) { spin = -config.SPIN_MAX; }
+        if (spin > config.SPIN_MAX) { spin = config.SPIN_MAX; }
+
+        if (Action.Pressed(config.ACT_BALL_PREV)) {
+            ballObj.cycleBall(-1);
+            playSound("ui");
+        }
+        if (Action.Pressed(config.ACT_BALL_NEXT)) {
+            ballObj.cycleBall(1);
+            playSound("ui");
+        }
+
+        if (Action.Held(config.ACT_THROW)) {
+            if (charging == false) {
+                charging = true;
+                power = 0.0;
+            }
+            power = power + dt * config.THROW_POWER_RATE;
+            if (power > config.THROW_POWER_MAX) { power = config.THROW_POWER_MAX; }
+        } else if (charging) {
+            charging = false;
+            ballObj.setSpin(spin);
+            ballObj.doThrow(aimX, power);
+            particleMgr.startLaneDust(aimX, config.BALL_THROW_Z);
+            playSpatialSound("roll", ballObj.getPosition(), 12.0, 80);
+            gutterLatched = false;
+            ballHitPinsThisRoll = false;
+            impactCooldown = 0.0;
+            skidMarkTimer = 0.0;
+            fixedStepAlpha = 0.0;
+            gameState = config.STATE_ROLLING;
+            camCtrl.setRollMode();
+        }
+
+        ballObj.setAimPosition(aimX);
+        camCtrl.updateAim(aimX, dt);
+    }
+
+    /// @brief STATE_ROLLING per-step update: ball motion + dust + skids.
+    hide func updateRollingStep(dt: Float) {
+        impactCooldown = impactCooldown - dt;
+        skidMarkTimer = skidMarkTimer - dt;
+
+        var friction = laneObj.getFrictionAt(ballObj.getPosX(), ballObj.getPosZ());
+        ballObj.updateMotion(dt, friction, laneObj.getOilEndZ());
+        ballObj.stabilizeLaneRoll();
+        pinMgr.updateKnockdowns(dt);
+        handlePinImpacts();
+        updateTriggerZones();
+
+        if (friction > config.OIL_FRICTION_BLEND && Abs(ballObj.getSpin()) > 0.16 && skidMarkTimer <= 0.0) {
+            particleMgr.spawnSkidMark(ballObj.getPosX(), ballObj.getPosZ());
+            skidMarkTimer = 0.16;
+        }
+
+        particleMgr.updateLaneDust(ballObj.getPosX(), ballObj.getPosZ());
+
+        if (ballObj.hasPastPins() ||
+            (ballHitPinsThisRoll && ballObj.getPosZ() > config.PIN_Z_OFFSET - 1.2) ||
+            ballObj.isSlow() ||
+            ballObj.getPosZ() > config.GUTTER_EXIT_Z) {
+            particleMgr.stopLaneDust();
+            fixedStepAlpha = 0.0;
+            settleTimer = config.SETTLE_TIME;
+            gameState = config.STATE_SETTLING;
+            camCtrl.setRollMode();
+        }
+    }
+
+    /// @brief STATE_SETTLING per-step update: wait for pins/ball to come to rest.
+    hide func updateSettlingStep(dt: Float) {
+        impactCooldown = impactCooldown - dt;
+        pinMgr.updateKnockdowns(dt);
+        handlePinImpacts();
+
+        settleTimer = settleTimer - dt;
+        if (pinMgr.allSettled() && settleTimer < config.SETTLE_TIME - 0.4) {
+            settleTimer = 0.0;
+        }
+
+        if (settleTimer <= 0.0) {
+            fixedStepAlpha = 0.0;
+            gameState = config.STATE_SCORING;
+        }
+    }
+
+    /// @brief Poll the gutter + pin-deck triggers; update ball state accordingly.
+    hide func updateTriggerZones() {
+        if (ballObj.thrown() == false) { return; }
+        if (config.GUTTER_ENABLED == 0) { return; }
+        if (ballHitPinsThisRoll) { return; }
+
+        var pos = ballObj.getPosition();
+        var px = Vec3.get_X(pos);
+        var py = Vec3.get_Y(pos);
+        var pz = Vec3.get_Z(pos);
+        var laneHalf = config.LANE_WIDTH / 2.0;
+        var overhangEdge = laneHalf + config.LANE_GUTTER_W * 0.72;
+        var inLeftGutter = false;
+        var inRightGutter = false;
+        if (pz > config.GUTTER_DETECT_Z && pz < config.GUTTER_DETECT_END_Z) {
+            if (px < -overhangEdge) { inLeftGutter = true; }
+            if (px > overhangEdge) { inRightGutter = true; }
+            if (py < config.BALL_RADIUS * 0.46) {
+                if (px < -(laneHalf - config.BALL_RADIUS * 0.03)) { inLeftGutter = true; }
+                if (px > laneHalf - config.BALL_RADIUS * 0.03) { inRightGutter = true; }
+            }
+        }
+        var inGutter = inLeftGutter || inRightGutter;
+        if (py < config.GUTTER_Y &&
+            pz > config.GUTTER_DETECT_Z &&
+            pz < config.GUTTER_DETECT_END_Z &&
+            Abs(px) > laneHalf + config.LANE_GUTTER_W * 0.28) {
+            inGutter = true;
+        }
+        if (inGutter && gutterLatched == false) {
+            gutterLatched = true;
+            var gutterSide = 1;
+            if (inLeftGutter || px < 0.0) {
+                gutterSide = -1;
+            }
+            ballObj.markGutter(gutterSide);
+            particleMgr.stopLaneDust();
+            particleMgr.spawnGutterSplash(ballObj.getPosX(), ballObj.getPosZ());
+            playSpatialSound("gutter", pos, 14.0, 90);
+            hudObj.showMessage("Gutter ball", config.HUD_COLOR_GRAY, config.MSG_DURATION_SHORT);
+        }
+
+        if (Abs(px) < 1.25 && pz > config.PIN_Z_OFFSET - 0.8 && pz < config.PIN_Z_OFFSET + 1.8) {
+            render.flashPinLight(1.8);
+            lightFlashTimer = 0.15;
+        }
+    }
+
+    /// @brief Spawn sparks + sounds + camera shake on each pin-pin / ball-pin impact.
+    hide func handlePinImpacts() {
+        var collisionCount = Physics3DWorld.get_CollisionEventCount(physWorld);
+        var bestStrength = 0.0;
+        var bestPos = new Vec3(0.0, 0.0, 0.0);
+        var ballPinImpact = false;
+        var sawBallPinImpact = false;
+
+        for (var ci: Integer = 0; ci < collisionCount; ci = ci + 1) {
+            var evt = Physics3DWorld.GetCollisionEvent(physWorld, ci);
+            if (CollisionEvent3D.get_IsTrigger(evt)) { continue; }
+            var bodyA = CollisionEvent3D.get_BodyA(evt);
+            var bodyB = CollisionEvent3D.get_BodyB(evt);
+            var layerA = Physics3DBody.get_CollisionLayer(bodyA);
+            var layerB = Physics3DBody.get_CollisionLayer(bodyB);
+            var posA = Physics3DBody.get_Position(bodyA);
+            var posB = Physics3DBody.get_Position(bodyB);
+            var point = new Vec3(
+                (Vec3.get_X(posA) + Vec3.get_X(posB)) * 0.5,
+                (Vec3.get_Y(posA) + Vec3.get_Y(posB)) * 0.5,
+                (Vec3.get_Z(posA) + Vec3.get_Z(posB)) * 0.5);
+            if (CollisionEvent3D.get_ContactCount(evt) > 0) {
+                var cp = CollisionEvent3D.GetContactPoint(evt, 0);
+                point = new Vec3(Vec3.get_X(cp), Vec3.get_Y(cp), Vec3.get_Z(cp));
+            }
+            var impulse = CollisionEvent3D.get_NormalImpulse(evt);
+            var relativeSpeed = CollisionEvent3D.get_RelativeSpeed(evt);
+            var strength = impulse + relativeSpeed * 0.18;
+            var isBallPinPair =
+                (layerA == config.LAYER_BALL && layerB == config.LAYER_PINS) ||
+                (layerA == config.LAYER_PINS && layerB == config.LAYER_BALL);
+
+            if (isBallPinPair) {
+                sawBallPinImpact = true;
+            }
+
+            var allowPinCascade = ballHitPinsThisRoll || sawBallPinImpact || isBallPinPair;
+            if (layerA == config.LAYER_PINS &&
+                (layerB == config.LAYER_BALL ||
+                 (layerB == config.LAYER_PINS && allowPinCascade))) {
+                pinMgr.registerImpact(bodyA, point, impulse, relativeSpeed);
+            }
+            if (layerB == config.LAYER_PINS &&
+                (layerA == config.LAYER_BALL ||
+                 (layerA == config.LAYER_PINS && allowPinCascade))) {
+                pinMgr.registerImpact(bodyB, point, impulse, relativeSpeed);
+            }
+
+            if (strength <= bestStrength) { continue; }
+
+            if ((layerA == config.LAYER_BALL || layerA == config.LAYER_PINS) && isImpactBodyInPinDeck(posA)) {
+                bestStrength = strength;
+                bestPos = point;
+                ballPinImpact = isBallPinPair;
+            }
+            if ((layerB == config.LAYER_BALL || layerB == config.LAYER_PINS) &&
+                isImpactBodyInPinDeck(posB) && strength > bestStrength) {
+                bestStrength = strength;
+                bestPos = point;
+                ballPinImpact = isBallPinPair;
+            }
+        }
+
+        if (sawBallPinImpact) {
+            ballHitPinsThisRoll = true;
+        }
+
+        if (impactCooldown > 0.0) { return; }
+
+        if (bestStrength > 0.18) {
+            impactCooldown = config.IMPACT_COOLDOWN;
+            if (ballPinImpact) {
+                ballObj.dampForPinDeckImpact(bestStrength * 0.006);
+            }
+            particleMgr.spawnCrashSparks(Vec3.get_X(bestPos), Vec3.get_Y(bestPos), Vec3.get_Z(bestPos));
+            playSpatialSound("crash", bestPos, 16.0, 90);
+            camCtrl.shake(config.SHAKE_PIN_INTENSITY, config.SHAKE_PIN_DURATION);
+            render.flashPinLight(1.25 + bestStrength * 0.35);
+            lightFlashTimer = 0.08;
+        }
+    }
+
+    /// @brief True if a position is inside the pin-deck Z range.
+    hide func isImpactBodyInPinDeck(pos: Vec3) -> Boolean {
+        var z = Vec3.get_Z(pos);
+        return z > config.PIN_Z_OFFSET - 1.0 && z < config.PIN_Z_OFFSET + 3.0;
+    }
+}

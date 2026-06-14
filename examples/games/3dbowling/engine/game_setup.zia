@@ -1,0 +1,264 @@
+// ============================================================================
+// MODULE: engine/game_setup
+// PURPOSE: Startup, menu settings, action bindings, audio, and world creation.
+// ============================================================================
+
+// game_setup.zia — Game startup and subsystem construction.
+module game_setup;
+
+bind Viper.Graphics3D;
+bind Viper.Input;
+bind Viper.Sound;
+bind Viper.Terminal;
+bind "../config";
+bind "../menu";
+bind "./renderer";
+bind "./camera";
+bind "./hud";
+bind "./game_state";
+bind "../lane/lane";
+bind "../lane/pins";
+bind "../lane/ball";
+bind "../effects/particles";
+bind "../effects/celebrations";
+bind "../scoring/scoring";
+
+/// @brief Startup layer for the bowling controller.
+class BowlingGameSetup extends BowlingGameState {
+    /// @brief Main entry. Print banner, initialize, enter loop, exit cleanly.
+    expose func run() {
+        printBanner();
+        initSubsystems();
+        gameLoop();
+        Say("Thanks for playing 3D Bowling!");
+    }
+
+    /// @brief Boxed splash text printed to the terminal at startup.
+    hide func printBanner() {
+        Say("╔══════════════════════════════════════╗");
+        Say("║         3D BOWLING                   ║");
+        Say("║  Native Viper 3D Runtime Showcase    ║");
+        Say("╚══════════════════════════════════════╝");
+        Say("");
+    }
+
+    /// @brief Construct every subsystem in dependency order; show title.
+    hide func initSubsystems() {
+        menuObj = new BowlingMenu();
+        oilPattern = menuObj.getOilPattern();
+        qualityMode = menuObj.getQualityMode();
+        currentMode = menuObj.getPreferredMode();
+
+        render = new Renderer();
+        render.initRenderer(qualityMode);
+
+        camCtrl = new CameraController();
+        camCtrl.initCamera(render.getCamera());
+
+        hudObj = new HUD();
+        hudObj.initHUD();
+
+        initSound();
+        setupActions();
+        showTitleScreen();
+    }
+
+    /// @brief Bind every named action to keys + gamepad inputs.
+    hide func setupActions() {
+        Action.Clear();
+        Action.LoadPreset("menu_navigation");
+        Action.BindKey(config.ACT_MENU_UP, Keyboard.get_KEY_W());
+        Action.BindKey(config.ACT_MENU_UP, Keyboard.get_KEY_UP());
+        Action.BindKey(config.ACT_MENU_DOWN, Keyboard.get_KEY_S());
+        Action.BindKey(config.ACT_MENU_DOWN, Keyboard.get_KEY_DOWN());
+        Action.BindKey(config.ACT_CONFIRM, Keyboard.get_KEY_ENTER());
+        Action.BindKey(config.ACT_CONFIRM, Keyboard.get_KEY_SPACE());
+        Action.BindKey(config.ACT_BACK, Keyboard.get_KEY_ESCAPE());
+        Action.BindPadButton(config.ACT_MENU_UP, -1, Pad.get_PAD_UP());
+        Action.BindPadButton(config.ACT_MENU_DOWN, -1, Pad.get_PAD_DOWN());
+        Action.BindPadButton(config.ACT_CONFIRM, -1, Pad.get_PAD_A());
+        Action.BindPadButton(config.ACT_BACK, -1, Pad.get_PAD_B());
+        Action.BindPadButton(config.ACT_BACK, -1, Pad.get_PAD_START());
+
+        Action.DefineAxis(config.ACT_AIM_X);
+        Action.BindKeyAxis(config.ACT_AIM_X, Keyboard.get_KEY_A(), -1.0);
+        Action.BindKeyAxis(config.ACT_AIM_X, Keyboard.get_KEY_LEFT(), -1.0);
+        Action.BindKeyAxis(config.ACT_AIM_X, Keyboard.get_KEY_D(), 1.0);
+        Action.BindKeyAxis(config.ACT_AIM_X, Keyboard.get_KEY_RIGHT(), 1.0);
+        Action.BindPadButtonAxis(config.ACT_AIM_X, -1, Pad.get_PAD_LEFT(), -1.0);
+        Action.BindPadButtonAxis(config.ACT_AIM_X, -1, Pad.get_PAD_RIGHT(), 1.0);
+
+        Action.DefineAxis(config.ACT_SPIN_X);
+        Action.BindKeyAxis(config.ACT_SPIN_X, Keyboard.get_KEY_Q(), -1.0);
+        Action.BindKeyAxis(config.ACT_SPIN_X, Keyboard.get_KEY_E(), 1.0);
+        Action.BindPadButtonAxis(config.ACT_SPIN_X, -1, Pad.get_PAD_LB(), -1.0);
+        Action.BindPadButtonAxis(config.ACT_SPIN_X, -1, Pad.get_PAD_RB(), 1.0);
+
+        Action.Define(config.ACT_THROW);
+        Action.BindKey(config.ACT_THROW, Keyboard.get_KEY_SPACE());
+        Action.BindPadButton(config.ACT_THROW, -1, Pad.get_PAD_A());
+
+        Action.Define(config.ACT_BALL_PREV);
+        Action.BindKey(config.ACT_BALL_PREV, Keyboard.get_KEY_1());
+        Action.BindPadButton(config.ACT_BALL_PREV, -1, Pad.get_PAD_LB());
+
+        Action.Define(config.ACT_BALL_NEXT);
+        Action.BindKey(config.ACT_BALL_NEXT, Keyboard.get_KEY_3());
+        Action.BindPadButton(config.ACT_BALL_NEXT, -1, Pad.get_PAD_RB());
+
+        Action.Define(config.ACT_RESET);
+        Action.BindKey(config.ACT_RESET, Keyboard.get_KEY_R());
+        Action.BindPadButton(config.ACT_RESET, -1, Pad.get_PAD_X());
+
+        Action.Define(config.ACT_PAUSE);
+        Action.BindKey(config.ACT_PAUSE, Keyboard.get_KEY_P());
+        Action.BindPadButton(config.ACT_PAUSE, -1, Pad.get_PAD_START());
+
+        Action.Define(config.ACT_CAMERA);
+        Action.BindKey(config.ACT_CAMERA, Keyboard.get_KEY_C());
+        Action.BindPadButton(config.ACT_CAMERA, -1, Pad.get_PAD_Y());
+    }
+
+    /// @brief Initialize the audio system and load the SFX bank.
+    /// @note Gracefully degrades on systems without audio.
+    hide func initSound() {
+        var ok = Audio.Init();
+        if (ok == 0) {
+            Say("Audio unavailable — continuing without sound");
+            return;
+        }
+
+        Audio.SetMasterVolume(80);
+        soundBank = SoundBank.New();
+        soundBank.RegisterSound("roll", Synth.Sfx(config.SFX_LASER));
+        soundBank.RegisterSound("crash", Synth.Sfx(config.SFX_EXPLODE));
+        soundBank.RegisterSound("strike", Synth.Sfx(config.SFX_POWERUP));
+        soundBank.RegisterSound("spare", Synth.Sfx(config.SFX_COIN));
+        soundBank.RegisterSound("gutter", Synth.Sfx(config.SFX_HIT));
+        soundBank.RegisterSound("ui", Synth.Sfx(config.SFX_COIN));
+        soundReady = true;
+    }
+
+    /// @brief Play a 2D SFX. No-op if audio failed to initialize.
+    hide func playSound(name: String) {
+        if (soundReady) {
+            soundBank.Play(name);
+        }
+    }
+
+    /// @brief Play a 3D positional SFX with distance falloff.
+    hide func playSpatialSound(name: String, pos: Vec3, maxDistance: Float, volume: Integer) {
+        if (soundReady == false) { return; }
+        Sound3D.PlayAt(soundBank.Get(name), pos, maxDistance, volume);
+    }
+
+    /// @brief Sync the 3D audio listener to the camera each frame.
+    hide func updateAudioListener() {
+        if (soundReady == false) { return; }
+        Sound3D.SetListener(Camera3D.get_Position(render.getCamera()),
+            Camera3D.get_Forward(render.getCamera()));
+    }
+
+    /// @brief Build a fresh physics world plus lane / pins / ball /
+    ///        particle / celebration managers; wire up env reflections.
+    hide func createGameplayWorld() {
+        physWorld = Physics3DWorld.New(0.0, config.GRAVITY_Y, 0.0);
+
+        laneObj = new LaneBuilder();
+        laneObj.initLane(physWorld, oilPattern);
+
+        pinMgr = new PinManager();
+        pinMgr.initPins(physWorld);
+        pinMgr.savePinState();
+
+        ballObj = new Ball();
+        ballObj.initBall(physWorld);
+
+        particleMgr = new ParticleManager();
+        particleMgr.initParticles();
+
+        celebMgr = new CelebrationManager();
+        celebMgr.initCelebrations();
+
+        var env = render.getSkybox();
+        laneObj.applyEnvironment(env);
+        pinMgr.applyEnvironment(env);
+        ballObj.applyEnvironment(env);
+    }
+
+    /// @brief Allocate fresh ScoreKeepers for both players.
+    hide func initScoreKeepers() {
+        scoreKeeperOne = new ScoreKeeper();
+        scoreKeeperOne.init();
+        scoreKeeperTwo = new ScoreKeeper();
+        scoreKeeperTwo.init();
+    }
+
+    /// @brief Pull oilPattern / qualityMode from the menu and apply.
+    hide func applyMenuSettings() {
+        oilPattern = menuObj.getOilPattern();
+        qualityMode = menuObj.getQualityMode();
+        render.applyQuality(qualityMode);
+    }
+
+    /// @brief Reset to TITLE-screen state with a fresh demo gameplay world.
+    hide func showTitleScreen() {
+        applyMenuSettings();
+        createGameplayWorld();
+        screenState = config.SCREEN_TITLE;
+        gameState = config.STATE_AIMING;
+        aimX = 0.0;
+        power = 0.0;
+        spin = 0.0;
+        charging = false;
+        gutterLatched = false;
+        ballHitPinsThisRoll = false;
+        fixedStepAlpha = 0.0;
+        camCtrl.setTitleMode();
+        hudObj.showMessage("Select a mode and bowl.", config.HUD_COLOR_WHITE, config.MSG_DURATION_LONG);
+    }
+
+    /// @brief Begin a new match (single or versus). Resets scoring + state.
+    hide func startNewMatch(mode: Integer) {
+        applyMenuSettings();
+        createGameplayWorld();
+        initScoreKeepers();
+
+        currentMode = mode;
+        playerCount = 1;
+        if (mode == config.MODE_VERSUS) { playerCount = 2; }
+        activePlayer = 0;
+
+        aimX = 0.0;
+        power = 0.0;
+        spin = 0.0;
+        charging = false;
+        fixedStepAlpha = 0.0;
+        settleTimer = 0.0;
+        scoreTimer = 0.0;
+        impactCooldown = 0.0;
+        skidMarkTimer = 0.0;
+        lightFlashTimer = 0.0;
+        gutterLatched = false;
+        ballHitPinsThisRoll = false;
+        cinematicStarted = false;
+        pendingFrameAdvance = false;
+        pendingPlayerSwitch = false;
+        pendingResults = false;
+
+        screenState = config.SCREEN_PLAYING;
+        gameState = config.STATE_AIMING;
+        camCtrl.setAimMode(0.0);
+
+        if (playerCount == 2) {
+            hudObj.showMessage("Versus match start. Player 1 up.", config.HUD_COLOR_GOLD, config.MSG_DURATION_LONG);
+        } else {
+            hudObj.showMessage("Aim and throw!", config.HUD_COLOR_WHITE, config.MSG_DURATION_LONG);
+        }
+    }
+
+    /// @brief Re-call startNewMatch with the current mode.
+    hide func restartCurrentMatch() {
+        startNewMatch(currentMode);
+    }
+}

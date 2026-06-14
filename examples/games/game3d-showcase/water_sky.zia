@@ -1,0 +1,188 @@
+// water_sky.zia - Skybox, water, and wind-swayed reed rendering.
+module water_sky;
+
+bind Viper.Game3D;
+bind Viper.Graphics.Pixels as Pixels;
+bind Viper.Graphics3D;
+bind Viper.Core.Convert as Convert;
+bind Viper.Math;
+bind "./config";
+bind "./terrain";
+
+class ShowcaseWaterSky {
+    hide Water3D water;
+    hide CubeMap3D skybox;
+    hide Mesh3D saplingMesh;
+    hide Material3D saplingMat;
+    hide List[Float] reedXs;
+    hide List[Float] reedZs;
+    hide List[Float] reedPhase;
+
+    expose func setup(land: Terrain3D) {
+        skybox = createOutdoorSkybox();
+
+        water = Water3D.New(terrain.terrainWorldMaxX(), terrain.terrainWorldMaxZ());
+        Water3D.SetHeight(water, config.WATER_HEIGHT);
+        Water3D.SetColor(water, config.WATER_R, config.WATER_G, config.WATER_B, config.WATER_A);
+        Water3D.SetResolution(water, 96);
+        Water3D.SetEnvMap(water, skybox);
+        Water3D.SetReflectivity(water, config.WATER_REFLECTIVITY);
+        Water3D.AddWave(water, 1.0, 0.30, 2.1, 0.22, 18.0);
+        Water3D.AddWave(water, -0.35, 0.82, 1.7, 0.12, 11.0);
+
+        setupReeds(land);
+    }
+
+    expose func getSkybox() -> CubeMap3D {
+        return skybox;
+    }
+
+    expose func getWater() -> Water3D {
+        return water;
+    }
+
+    expose func update(dt: Float) {
+        Water3D.Update(water, dt);
+    }
+
+    expose func drawWater(canvas: Canvas3D, camera: Camera3D) {
+        Canvas3D.DrawWater(canvas, water, camera);
+    }
+
+    expose func drawReeds(canvas: Canvas3D, land: Terrain3D, worldTime: Float) {
+        if (saplingMesh == null) { return; }
+        var windDirX = Sin(config.GRASS_WIND_DIR);
+        var windDirZ = Cos(config.GRASS_WIND_DIR);
+        for i in 0..reedXs.count() {
+            var x = reedXs.get(i);
+            var z = reedZs.get(i);
+            var gy = terrain.sampleGround(land, x, z) + 1.3;
+            var xform = Mat4.Translate(x, gy, z);
+            var phase = worldTime * config.GRASS_WIND_FREQ * 6.0 + reedPhase.get(i);
+            Canvas3D.DrawMeshWind(
+                canvas, saplingMesh, xform, saplingMat, windDirX, windDirZ,
+                config.REED_WIND_STRENGTH, phase);
+        }
+    }
+
+    hide func createOutdoorSkybox() -> CubeMap3D {
+        var right = createSkyFace(0);
+        var left = createSkyFace(1);
+        var top = createSkyFace(2);
+        var bottom = createSkyFace(3);
+        var front = createSkyFace(4);
+        var back = createSkyFace(5);
+        return CubeMap3D.New(right, left, top, bottom, front, back);
+    }
+
+    hide func createSkyFace(faceId: Integer) -> Pixels {
+        var size = config.SKYBOX_FACE_SIZE;
+        var face = Pixels.New(size, size);
+
+        for (var py: Integer = 0; py < size; py = py + 1) {
+            for (var px: Integer = 0; px < size; px = px + 1) {
+                var u = (((px + 0.5) / (size + 0.0)) * 2.0) - 1.0;
+                var v = (((py + 0.5) / (size + 0.0)) * 2.0) - 1.0;
+                face.Set(px, py, sampleSkyPixelForFace(faceId, u, v));
+            }
+        }
+
+        return face;
+    }
+
+    hide func sampleSkyPixelForFace(faceId: Integer, u: Float, v: Float) -> Integer {
+        var dx = 0.0;
+        var dy = 0.0;
+        var dz = 0.0;
+
+        if (faceId == 0) {
+            dx = 1.0;
+            dy = 0.0 - v;
+            dz = 0.0 - u;
+        } else {
+            if (faceId == 1) {
+                dx = -1.0;
+                dy = 0.0 - v;
+                dz = u;
+            } else {
+                if (faceId == 2) {
+                    dx = u;
+                    dy = 1.0;
+                    dz = v;
+                } else {
+                    if (faceId == 3) {
+                        dx = u;
+                        dy = -1.0;
+                        dz = 0.0 - v;
+                    } else {
+                        if (faceId == 4) {
+                            dx = u;
+                            dy = 0.0 - v;
+                            dz = 1.0;
+                        } else {
+                            dx = 0.0 - u;
+                            dy = 0.0 - v;
+                            dz = -1.0;
+                        }
+                    }
+                }
+            }
+        }
+
+        var len = Sqrt(dx * dx + dy * dy + dz * dz);
+        if (len <= 0.0001) {
+            return terrain.packPixel(132, 174, 220, 255);
+        }
+
+        return sampleSkyPixel(dx / len, dy / len, dz / len);
+    }
+
+    hide func sampleSkyPixel(dx: Float, dy: Float, dz: Float) -> Integer {
+        var up = terrain.clampFloat((dy + 0.10) / 1.10, 0.0, 1.0);
+        var haze = terrain.clampFloat(1.0 - terrain.absFloat(dy) * 2.6, 0.0, 1.0);
+        var sun = terrain.clampFloat((dx * 0.55 - dz * 0.35 + 1.0) / 2.0, 0.0, 1.0);
+        var r = terrain.lerpFloat(168.0, 88.0, up) + haze * (11.0 + sun * 6.0);
+        var g = terrain.lerpFloat(207.0, 144.0, up) + haze * (8.0 + sun * 4.0);
+        var b = terrain.lerpFloat(238.0, 218.0, up) + haze * 5.0;
+
+        if (dy < -0.18) {
+            var ground = terrain.clampFloat((0.0 - dy - 0.18) / 0.82, 0.0, 1.0);
+            r = terrain.lerpFloat(r, 77.0, ground);
+            g = terrain.lerpFloat(g, 94.0, ground);
+            b = terrain.lerpFloat(b, 82.0, ground);
+        }
+
+        return terrain.packPixel(
+            terrain.clampByte(Convert.NumToInt(r)),
+            terrain.clampByte(Convert.NumToInt(g)),
+            terrain.clampByte(Convert.NumToInt(b)),
+            255);
+    }
+
+    hide func setupReeds(land: Terrain3D) {
+        saplingMesh = Mesh3D.NewCylinder(0.07, 2.6, 6);
+        saplingMat = Materials.Rubber(0.30, 0.60, 0.26);
+        Material3D.SetEmissiveColor(saplingMat, 0.010, 0.030, 0.008);
+        reedXs = [];
+        reedZs = [];
+        reedPhase = [];
+        var cx = terrain.terrainWorldMaxX() * 0.5;
+        var cz = terrain.terrainWorldMaxZ() * 0.5;
+        var i = 0;
+        while (i < config.REED_COUNT) {
+            var ang = (i + 0.0) / (config.REED_COUNT + 0.0) * 6.2831853 + terrain.hash01(i, 41);
+            var radius = 6.0 + terrain.hash01(i, 43) * 18.0;
+            var wx = cx + Sin(ang) * radius;
+            var wz = cz + Cos(ang) * radius;
+            if (wx > config.TERRAIN_MARGIN && wx < terrain.terrainWorldMaxX() - config.TERRAIN_MARGIN
+                    && wz > config.TERRAIN_MARGIN && wz < terrain.terrainWorldMaxZ() - config.TERRAIN_MARGIN) {
+                if (terrain.sampleGround(land, wx, wz) > config.WATER_HEIGHT + 0.3) {
+                    reedXs.add(wx);
+                    reedZs.add(wz);
+                    reedPhase.add(terrain.hash01(i, 47) * 6.2831853);
+                }
+            }
+            i = i + 1;
+        }
+    }
+}

@@ -1,0 +1,370 @@
+// worldsim.zia - Beacons, landmarks, day cycle, scanner, lights, and physics props.
+module worldsim;
+
+bind Viper.Game3D;
+bind Viper.Graphics3D;
+bind Viper.Core.Convert as Convert;
+bind Viper.Math;
+bind "./config";
+bind "./terrain";
+bind "./audio";
+bind "./postfx";
+
+class ShowcaseWorldSim {
+    hide Light3D sunLight;
+    hide Light3D fillLight;
+    hide Light3D skyFill;
+    hide Light3D playerLight;
+    hide Vec3 sunDirection;
+    hide Vec3 objectiveProbePos;
+    hide Vec3 playerLightPos;
+    hide Trigger3D homeTrigger;
+    hide Boolean sanctuaryDone;
+    hide Integer beaconsLit;
+    hide List[Float] beaconXs;
+    hide List[Float] beaconYs;
+    hide List[Float] beaconZs;
+    hide List[Integer] beaconState;
+    hide List[Light3D] beaconLights;
+    hide List[Float] landmarkXs;
+    hide List[Float] landmarkYs;
+    hide List[Float] landmarkZs;
+    hide List[Float] landmarkR;
+    hide List[String] landmarkNames;
+    hide String scanLabel;
+    hide Float scanDist;
+
+    expose func init() {
+        sunDirection = new Vec3(-0.36, -1.0, -0.22);
+        objectiveProbePos = new Vec3(0.0, 0.0, 0.0);
+        playerLightPos = new Vec3(0.0, 0.0, 0.0);
+        scanLabel = "";
+        scanDist = 0.0;
+    }
+
+    expose func reset(land: Terrain3D) {
+        beaconsLit = 0;
+        scanLabel = "";
+        scanDist = 0.0;
+        sanctuaryDone = false;
+        beaconXs = [];
+        beaconYs = [];
+        beaconZs = [];
+        beaconState = [];
+        addBeaconPct(land, 0.18, 0.25);
+        addBeaconPct(land, 0.80, 0.23);
+        addBeaconPct(land, 0.73, 0.72);
+        addBeaconPct(land, 0.31, 0.80);
+        addBeaconPct(land, 0.52, 0.55);
+    }
+
+    expose func installOutdoorFillLight(world: World3D) {
+        fillLight = Light3D.NewDirectional(new Vec3(0.58, -0.55, 0.46), 0.50, 0.62, 0.82);
+        Light3D.SetIntensity(fillLight, 0.30);
+        World3D.addLight(world, 1, fillLight);
+
+        skyFill = Light3D.NewAmbient(0.54, 0.62, 0.72);
+        Light3D.SetIntensity(skyFill, 0.28);
+        World3D.addLight(world, 2, skyFill);
+    }
+
+    expose func spawnLandmarks(world: World3D, land: Terrain3D,
+                               stoneMat: Material3D, archiveMat: Material3D, waterMarkerMat: Material3D) {
+        landmarkXs = [];
+        landmarkYs = [];
+        landmarkZs = [];
+        landmarkR = [];
+        landmarkNames = [];
+        spawnMonolithPct(world, land, "West Archive", 0.16, 0.18, 5.4, 1.35, 1.10, stoneMat);
+        spawnMonolithPct(world, land, "North Archive", 0.84, 0.22, 4.2, 1.00, 1.00, archiveMat);
+        spawnMonolithPct(world, land, "South Gate", 0.78, 0.62, 6.4, 1.55, 1.30, stoneMat);
+        spawnMonolithPct(world, land, "Ridge Tower", 0.38, 0.72, 4.8, 1.10, 1.00, archiveMat);
+        spawnMonolithPct(world, land, "Relay Stack", 0.52, 0.30, 3.6, 0.90, 0.90, waterMarkerMat);
+    }
+
+    expose func setupSun(world: World3D, canvas: Canvas3D) {
+        sunLight = Light3D.NewDirectional(new Vec3(-0.36, -1.0, -0.22), 1.0, 0.96, 0.88);
+        Light3D.SetIntensity(sunLight, config.SUN_INTENSITY_DAY);
+        World3D.addLight(world, 0, sunLight);
+        Light3D.SetCastsShadows(sunLight, true);
+        Canvas3D.EnableShadows(canvas, 2048);
+        Canvas3D.SetShadowCascades(canvas, 3);
+    }
+
+    expose func updateTimeOfDay(world: World3D, worldTime: Float) {
+        if (sunLight == null) { return; }
+        var cycle = worldTime / config.DAY_LENGTH_SEC + config.DAY_START_PHASE;
+        cycle = cycle - (Convert.NumToInt(cycle) + 0.0);
+        if (cycle < 0.0) { cycle = cycle + 1.0; }
+
+        var tri = cycle * 2.0;
+        if (tri > 1.0) { tri = 2.0 - tri; }
+
+        var ang = config.SUN_ARC_LO + tri * (config.SUN_ARC_HI - config.SUN_ARC_LO);
+        var elev = Sin(ang);
+        var day = terrain.clampFloat(elev, 0.0, 1.0);
+        var warm = 1.0 - day;
+
+        var sunDirY = 0.0 - (0.40 + 0.30 * day);
+        sunDirection.Set(Cos(ang) * 0.55 - 0.40, sunDirY, -0.42);
+        Light3D.set_Direction(sunLight, sunDirection);
+        Light3D.SetColor(sunLight, 1.0, terrain.lerpFloat(0.60, 0.96, day), terrain.lerpFloat(0.34, 0.88, day));
+        Light3D.SetIntensity(sunLight, 0.05 + day * config.SUN_INTENSITY_DAY);
+
+        if (fillLight != null) { Light3D.SetIntensity(fillLight, 0.02 + 0.06 * day); }
+        if (skyFill != null) { Light3D.SetIntensity(skyFill, 0.02 + 0.03 * day); }
+
+        World3D.setAmbient(
+            world,
+            terrain.lerpFloat(config.NIGHT_AMBIENT_R, config.DAY_AMBIENT_R, day),
+            terrain.lerpFloat(config.NIGHT_AMBIENT_G, config.DAY_AMBIENT_G, day),
+            terrain.lerpFloat(config.NIGHT_AMBIENT_B, config.DAY_AMBIENT_B, day));
+
+        World3D.setFog(
+            world,
+            terrain.lerpFloat(0.10, config.FOG_R, day) + warm * 0.10,
+            terrain.lerpFloat(0.12, config.FOG_G, day) + warm * 0.03,
+            terrain.lerpFloat(0.18, config.FOG_B, day),
+            config.FOG_NEAR,
+            config.FOG_FAR);
+    }
+
+    expose func setupBeaconLights(world: World3D) {
+        beaconLights = [];
+        for i in 0..beaconXs.count() {
+            var pl = Light3D.NewPoint(
+                new Vec3(beaconXs.get(i), beaconYs.get(i) + 2.4, beaconZs.get(i)),
+                1.0, 0.80, 0.34, config.BEACON_LIGHT_RANGE);
+            Light3D.SetIntensity(pl, 0.0);
+            Light3D.SetEnabled(pl, false);
+            World3D.addLight(world, config.BEACON_LIGHT_SLOT + i, pl);
+            beaconLights.add(pl);
+        }
+    }
+
+    expose func setupPlayerLight(world: World3D, playerX: Float, playerY: Float, playerZ: Float) {
+        playerLight = Light3D.NewPoint(
+            new Vec3(playerX, playerY + 1.5, playerZ), 0.40, 0.72, 1.0, config.PLAYER_LIGHT_RANGE);
+        Light3D.SetIntensity(playerLight, config.PLAYER_LIGHT_INTENSITY);
+        World3D.addLight(world, config.PLAYER_LIGHT_SLOT, playerLight);
+    }
+
+    expose func updateDynamicLights(playerX: Float, playerY: Float, playerZ: Float) {
+        if (playerLight != null) {
+            playerLightPos.Set(playerX, playerY + 1.5, playerZ);
+            Light3D.set_Position(playerLight, playerLightPos);
+        }
+    }
+
+    expose func setupObjective(land: Terrain3D) {
+        var hx = terrain.terrainWorldMaxX() * 0.5;
+        var hz = terrain.terrainWorldMaxZ() * 0.5;
+        var hy = terrain.sampleGround(land, hx, hz);
+        homeTrigger = Trigger3D.New(hx - 5.0, hy - 2.0, hz - 5.0, hx + 5.0, hy + 7.0, hz + 5.0);
+    }
+
+    expose func updateBeacons(world: World3D, camera: Camera3D,
+                              playerX: Float, playerY: Float, playerZ: Float,
+                              audioObj: ShowcaseAudio, effectsObj: ShowcaseEffects) {
+        var radiusSq = config.BEACON_TRIGGER_RADIUS * config.BEACON_TRIGGER_RADIUS;
+        for i in 0..beaconXs.count() {
+            if (beaconState.get(i) != 0) { continue; }
+            var dx = playerX - beaconXs.get(i);
+            var dz = playerZ - beaconZs.get(i);
+            if (dx * dx + dz * dz <= radiusSq) {
+                beaconState.set(i, 1);
+                beaconsLit = beaconsLit + 1;
+                var point = new Vec3(beaconXs.get(i), beaconYs.get(i) + 2.0, beaconZs.get(i));
+                Effects3D.Sparks(world, point, new Vec3(0.0, 1.0, 0.0));
+                onBeaconLit(camera, i, audioObj, effectsObj);
+                if (beaconsLit >= beaconXs.count()) {
+                    Effects3D.Smoke(world, new Vec3(playerX, playerY + 1.0, playerZ));
+                    audioObj.playVictory();
+                    Camera3D.Shake(camera, config.SHAKE_ALL, 0.8, 3.0);
+                }
+            }
+        }
+    }
+
+    expose func updateObjective(camera: Camera3D, playerX: Float, playerY: Float, playerZ: Float,
+                                audioObj: ShowcaseAudio) {
+        if (sanctuaryDone == false && homeTrigger != null && beaconsLit >= beaconXs.count()) {
+            objectiveProbePos.Set(playerX, playerY + 1.0, playerZ);
+            if (Trigger3D.Contains(homeTrigger, objectiveProbePos)) {
+                sanctuaryDone = true;
+                audioObj.playVictory();
+                Camera3D.Shake(camera, config.SHAKE_ALL, 1.0, 3.0);
+            }
+        }
+    }
+
+    expose func updateScanner(canvas: Canvas3D, camera: Camera3D) {
+        var w = Canvas3D.get_Width(canvas);
+        var h = Canvas3D.get_Height(canvas);
+        var o = Camera3D.ScreenToRayOrigin(camera, w / 2, h / 2, w, h);
+        var d = Camera3D.ScreenToRay(camera, w / 2, h / 2, w, h);
+        var ox = Vec3.get_X(o);
+        var oy = Vec3.get_Y(o);
+        var oz = Vec3.get_Z(o);
+        var dx = Vec3.get_X(d);
+        var dy = Vec3.get_Y(d);
+        var dz = Vec3.get_Z(d);
+        var dl = Sqrt(dx * dx + dy * dy + dz * dz);
+        if (dl < 0.0001) { scanLabel = ""; return; }
+        dx = dx / dl;
+        dy = dy / dl;
+        dz = dz / dl;
+
+        var best = config.SCAN_MAX_DIST;
+        var label = "";
+        for i in 0..landmarkNames.count() {
+            var t = raySphere(
+                ox, oy, oz, dx, dy, dz,
+                landmarkXs.get(i), landmarkYs.get(i), landmarkZs.get(i), landmarkR.get(i));
+            if (t > 0.0 && t < best) {
+                best = t;
+                label = landmarkNames.get(i);
+            }
+        }
+        for i in 0..beaconXs.count() {
+            var tb = raySphere(
+                ox, oy, oz, dx, dy, dz,
+                beaconXs.get(i), beaconYs.get(i) + 2.2, beaconZs.get(i), 2.2);
+            if (tb > 0.0 && tb < best) {
+                best = tb;
+                if (beaconState.get(i) != 0) { label = "Ridge beacon (linked)"; }
+                else { label = "Ridge beacon (dormant)"; }
+            }
+        }
+
+        if (label == "") {
+            scanLabel = "";
+        } else {
+            scanLabel = label;
+            scanDist = best;
+        }
+    }
+
+    expose func drawBeacons(canvas: Canvas3D, cubeMesh: Mesh3D, beaconMesh: Mesh3D,
+                            pedestalMat: Material3D, beaconOffMat: Material3D,
+                            beaconOnMat: Material3D, worldTime: Float) {
+        for i in 0..beaconXs.count() {
+            var bx = beaconXs.get(i);
+            var by = beaconYs.get(i);
+            var bz = beaconZs.get(i);
+            drawBlock(canvas, cubeMesh, bx, by + 0.38, bz, 2.4, 0.76, 2.4, pedestalMat);
+            drawBlock(canvas, cubeMesh, bx, by + 1.18, bz, 0.58, 1.06, 0.58, pedestalMat);
+
+            var bob = Sin(worldTime * 2.4 + i * 0.8) * 0.14;
+            var mat = beaconOffMat;
+            if (beaconState.get(i) != 0) { mat = beaconOnMat; }
+            Canvas3D.DrawMesh(canvas, beaconMesh, Mat4.Translate(bx, by + 2.25 + bob, bz), mat);
+        }
+    }
+
+    expose func setupPhysicsProps(world: World3D, land: Terrain3D,
+                                  pedestalMat: Material3D, beaconOnMat: Material3D) {
+        var cx = terrain.terrainWorldMaxX() * 0.5 - 13.0;
+        var cz = terrain.terrainWorldMaxZ() * 0.5 - 13.0;
+        var gy = terrain.sampleGround(land, cx, cz);
+
+        var plinth = Prefab.BoxXYZ(5.0, 0.6, 5.0, pedestalMat);
+        Entity3D.setName(plinth, "Plinth");
+        Entity3D.setLayer(plinth, Layers.get_World());
+        Entity3D.setPosition(plinth, cx, gy + 0.3, cz);
+        Entity3D.attachBody(plinth, BodyDef.StaticBox(5.0, 0.6, 5.0));
+        World3D.spawn(world, plinth);
+
+        var i = 0;
+        while (i < config.PHYS_BALL_COUNT) {
+            var ball = Prefab.Sphere(0.45, 16, beaconOnMat);
+            var bx = cx + (terrain.hash01(i, 61) - 0.5) * 2.4;
+            var bz = cz + (terrain.hash01(i, 63) - 0.5) * 2.4;
+            Entity3D.setName(ball, "Boulder");
+            Entity3D.setLayer(ball, Layers.get_Dynamic());
+            Entity3D.setPosition(ball, bx, gy + 4.0 + (i + 0.0) * 1.2, bz);
+
+            var bdef = BodyDef.Sphere(0.45, 1.0);
+            BodyDef.set_restitution(bdef, 0.45);
+            BodyDef.withLayer(bdef, Layers.get_Dynamic());
+            var mask = LayerMask.Of(Layers.get_World());
+            mask = LayerMask.include(mask, Layers.get_Dynamic());
+            BodyDef.withMask(bdef, mask);
+            Entity3D.attachBody(ball, bdef);
+            World3D.spawn(world, ball);
+            i = i + 1;
+        }
+    }
+
+    expose func getBeaconXs() -> List[Float] { return beaconXs; }
+    expose func getBeaconYs() -> List[Float] { return beaconYs; }
+    expose func getBeaconZs() -> List[Float] { return beaconZs; }
+    expose func getBeaconState() -> List[Integer] { return beaconState; }
+    expose func getBeaconsLit() -> Integer { return beaconsLit; }
+    expose func getBeaconCount() -> Integer { return beaconXs.count(); }
+    expose func getSanctuaryDone() -> Boolean { return sanctuaryDone; }
+    expose func getScanLabel() -> String { return scanLabel; }
+    expose func getScanDist() -> Float { return scanDist; }
+
+    hide func spawnMonolithPct(world: World3D, land: Terrain3D,
+        name: String, xPct: Float, zPct: Float, height: Float, sx: Float, sz: Float, mat: Material3D) {
+        spawnMonolith(world, land, name, terrain.terrainWorldMaxX() * xPct, terrain.terrainWorldMaxZ() * zPct, height, sx, sz, mat);
+    }
+
+    hide func spawnMonolith(world: World3D, land: Terrain3D,
+        name: String, x: Float, z: Float, height: Float, sx: Float, sz: Float, mat: Material3D) {
+        var entity = Prefab.BoxXYZ(sx, height, sz, mat);
+        Entity3D.setName(entity, name);
+        Entity3D.setLayer(entity, Layers.get_World());
+        var cy = terrain.sampleGround(land, x, z) + height * 0.5;
+        Entity3D.setPosition(entity, x, cy, z);
+        World3D.spawn(world, entity);
+        landmarkXs.add(x);
+        landmarkYs.add(cy);
+        landmarkZs.add(z);
+        landmarkR.add(terrain.maxf(height * 0.5, terrain.maxf(sx, sz)) + 0.6);
+        landmarkNames.add(name);
+    }
+
+    hide func addBeaconPct(land: Terrain3D, xPct: Float, zPct: Float) {
+        addBeacon(land, terrain.terrainWorldMaxX() * xPct, terrain.terrainWorldMaxZ() * zPct);
+    }
+
+    hide func addBeacon(land: Terrain3D, x: Float, z: Float) {
+        beaconXs.add(x);
+        beaconYs.add(terrain.sampleGround(land, x, z));
+        beaconZs.add(z);
+        beaconState.add(0);
+    }
+
+    hide func onBeaconLit(camera: Camera3D, i: Integer, audioObj: ShowcaseAudio, effectsObj: ShowcaseEffects) {
+        if (i < beaconLights.count()) {
+            var pl = beaconLights.get(i);
+            Light3D.SetEnabled(pl, true);
+            Light3D.SetIntensity(pl, config.BEACON_LIGHT_INTENSITY);
+        }
+        effectsObj.stampScorch(beaconXs.get(i), beaconYs.get(i), beaconZs.get(i));
+        audioObj.playBeacon(beaconXs.get(i), beaconYs.get(i), beaconZs.get(i));
+        Camera3D.Shake(camera, config.SHAKE_BEACON, 0.35, 4.0);
+    }
+
+    hide func drawBlock(
+        canvas: Canvas3D, cubeMesh: Mesh3D,
+        x: Float, y: Float, z: Float, sx: Float, sy: Float, sz: Float, mat: Material3D) {
+        var xform = Mat4.Mul(Mat4.Translate(x, y, z), Mat4.Scale(sx, sy, sz));
+        Canvas3D.DrawMesh(canvas, cubeMesh, xform, mat);
+    }
+
+    hide func raySphere(
+        ox: Float, oy: Float, oz: Float, dx: Float, dy: Float, dz: Float,
+        cx: Float, cy: Float, cz: Float, r: Float) -> Float {
+        var lx = ox - cx;
+        var ly = oy - cy;
+        var lz = oz - cz;
+        var b = dx * lx + dy * ly + dz * lz;
+        var c = lx * lx + ly * ly + lz * lz - r * r;
+        var disc = b * b - c;
+        if (disc < 0.0) { return -1.0; }
+        return (0.0 - b) - Sqrt(disc);
+    }
+}

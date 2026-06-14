@@ -1,0 +1,182 @@
+// forest.zia - Imported maple forest placement and materials.
+module forest;
+
+bind Viper.Game3D;
+bind Viper.Graphics3D;
+bind Viper.Graphics3D.Assets3D as Assets3D;
+bind Viper.Core.Convert as Convert;
+bind Viper.Math;
+bind Viper.Terminal as Terminal;
+bind "./config";
+bind "./terrain";
+
+class ShowcaseForest {
+    hide List[Material3D] treeMats;
+    hide Material3D barkMat;
+    hide List[Float] beaconXs;
+    hide List[Float] beaconZs;
+
+    expose func spawn(world: World3D, land: Terrain3D, bx: List[Float], bz: List[Float]) {
+        beaconXs = bx;
+        beaconZs = bz;
+        var model = Model3D.LoadAsset(config.TREE_MODEL_PATH);
+        if (treeBad(model)) { model = Model3D.Load(config.TREE_MODEL_PATH); }
+        if (treeBad(model)) { model = Model3D.Load(config.TREE_MODEL_PATH_ALT); }
+        if (treeBad(model)) {
+            Terminal.Say("Forest: MapleTree_1.fbx could not be resolved (embedded or on disk); skipping trees. Last loader error: " + Assets3D.get_LastLoadError());
+            return;
+        }
+
+        buildFoliageMaterials();
+        var planted = plantHomeGrove(world, land, model);
+        planted = planted + plantHillForest(world, land, model);
+        Terminal.Say("Forest: planted " + toString(planted) + " maples.");
+    }
+
+    hide func treeBad(m: Model3D) -> Boolean {
+        if (m == null) { return true; }
+        return Model3D.get_MeshCount(m) <= 0;
+    }
+
+    hide func plantHomeGrove(world: World3D, land: Terrain3D, model: Model3D) -> Integer {
+        var cx = terrain.terrainWorldMaxX() * 0.5;
+        var cz = terrain.terrainWorldMaxZ() * 0.5;
+        var planted = 0;
+
+        var i = 0;
+        while (i < config.GROVE_COUNT) {
+            var ang = (i + 0.0) / (config.GROVE_COUNT + 0.0) * 6.2831853 + terrain.hash01(i, 23);
+            var radius = config.GROVE_RADIUS_MIN
+                + terrain.hash01(i, 31) * (config.GROVE_RADIUS_MAX - config.GROVE_RADIUS_MIN);
+            var wx = cx + Sin(ang) * radius;
+            var wz = cz + Cos(ang) * radius;
+            if (wx > config.FOREST_MARGIN && wx < terrain.terrainWorldMaxX() - config.FOREST_MARGIN
+                    && wz > config.FOREST_MARGIN && wz < terrain.terrainWorldMaxZ() - config.FOREST_MARGIN) {
+                var gy = terrain.sampleGround(land, wx, wz);
+                if (gy > config.WATER_HEIGHT + 0.4) {
+                    var s = config.FOREST_SCALE_MIN
+                        + terrain.hash01(i, 7) * (config.FOREST_SCALE_MAX - config.FOREST_SCALE_MIN);
+                    plantTree(world, model, wx, wz, gy, s, terrain.hash01(i, 13) * 360.0);
+                    planted = planted + 1;
+                }
+            }
+            i = i + 1;
+        }
+
+        return planted;
+    }
+
+    hide func plantHillForest(world: World3D, land: Terrain3D, model: Model3D) -> Integer {
+        var maxX = terrain.terrainWorldMaxX();
+        var maxZ = terrain.terrainWorldMaxZ();
+        var cell = config.FOREST_CELL;
+        var planted = 0;
+        var seed = 0;
+
+        var gz = config.FOREST_MARGIN;
+        while (gz < maxZ - config.FOREST_MARGIN && planted < config.FOREST_MAX) {
+            var gx = config.FOREST_MARGIN;
+            while (gx < maxX - config.FOREST_MARGIN && planted < config.FOREST_MAX) {
+                seed = seed + 1;
+                if (terrain.hash01(seed, 17) < config.FOREST_DENSITY) {
+                    var wx = gx + (terrain.hash01(seed, 3) - 0.5) * cell * 1.4;
+                    var wz = gz + (terrain.hash01(seed, 9) - 0.5) * cell * 1.4;
+                    if (canPlantTree(land, wx, wz, maxX, maxZ)) {
+                        var s = config.FOREST_SCALE_MIN
+                            + terrain.hash01(seed, 5) * (config.FOREST_SCALE_MAX - config.FOREST_SCALE_MIN);
+                        plantTree(world, model, wx, wz, terrain.sampleGround(land, wx, wz), s, terrain.hash01(seed, 11) * 360.0);
+                        planted = planted + 1;
+                    }
+                }
+                gx = gx + cell;
+            }
+            gz = gz + cell;
+        }
+
+        return planted;
+    }
+
+    hide func canPlantTree(land: Terrain3D, wx: Float, wz: Float, maxX: Float, maxZ: Float) -> Boolean {
+        if (wx < config.FOREST_MARGIN || wx > maxX - config.FOREST_MARGIN) { return false; }
+        if (wz < config.FOREST_MARGIN || wz > maxZ - config.FOREST_MARGIN) { return false; }
+        if (terrain.sampleGround(land, wx, wz) < config.FOREST_MIN_GROUND) { return false; }
+        var normal = Terrain3D.GetNormalAt(land, wx, wz);
+        if (Vec3.get_Y(normal) < config.FOREST_MIN_NORMALY) { return false; }
+        if (notNearBeacon(wx, wz) == false) { return false; }
+        if (notNearPlayerStart(wx, wz) == false) { return false; }
+        return true;
+    }
+
+    hide func plantTree(world: World3D, model: Model3D, x: Float, z: Float, y: Float, scale: Float, yawDeg: Float) {
+        var node = Model3D.Instantiate(model);
+        var ent = Entity3D.FromNode(node);
+        Entity3D.setName(ent, "maple");
+        Entity3D.setLayer(ent, Layers.get_World());
+        applyTreeMaterials(ent, treeMats.get(pickFoliage(x, z)));
+        Entity3D.setScaleXYZ(ent, scale, scale, scale);
+        Entity3D.setRotationEuler(ent, yawDeg, 0.0, 0.0);
+        Entity3D.setPosition(ent, x, y, z);
+        World3D.spawn(world, ent);
+    }
+
+    hide func buildFoliageMaterials() {
+        treeMats = [];
+        treeMats.add(makeFoliage(0.20, 0.44, 0.18));
+        treeMats.add(makeFoliage(0.74, 0.52, 0.16));
+        treeMats.add(makeFoliage(0.66, 0.26, 0.12));
+        barkMat = Materials.Rubber(0.30, 0.21, 0.13);
+        Material3D.SetEmissiveColor(barkMat, 0.010, 0.007, 0.004);
+    }
+
+    hide func applyTreeMaterials(ent: Entity3D, canopyMat: Material3D) {
+        var node = Entity3D.get_node(ent);
+        var count = SceneNode3D.get_ChildCount(node);
+        var assigned = 0;
+        for i in 0..count {
+            var child = SceneNode3D.GetChild(node, i);
+            if (SceneNode3D.get_Mesh(child) != null) {
+                var amin = SceneNode3D.get_AABBMin(child);
+                var amax = SceneNode3D.get_AABBMax(child);
+                var dy = Vec3.get_Y(amax) - Vec3.get_Y(amin);
+                var dxz = terrain.maxf(Vec3.get_X(amax) - Vec3.get_X(amin),
+                                       Vec3.get_Z(amax) - Vec3.get_Z(amin));
+                if (dy > dxz * 1.4) {
+                    SceneNode3D.set_Material(child, barkMat);
+                } else {
+                    SceneNode3D.set_Material(child, canopyMat);
+                }
+                assigned = assigned + 1;
+            }
+        }
+        if (assigned == 0) {
+            Entity3D.setMaterialRecursive(ent, canopyMat);
+        }
+    }
+
+    hide func makeFoliage(r: Float, g: Float, b: Float) -> Material3D {
+        var m = Materials.Rubber(r, g, b);
+        return m;
+    }
+
+    hide func pickFoliage(x: Float, z: Float) -> Integer {
+        var h = terrain.hash01(Convert.NumToInt(x * 7.0), Convert.NumToInt(z * 7.0));
+        if (h < 0.55) { return 0; }
+        if (h < 0.82) { return 1; }
+        return 2;
+    }
+
+    hide func notNearBeacon(x: Float, z: Float) -> Boolean {
+        for i in 0..beaconXs.count() {
+            var dx = x - beaconXs.get(i);
+            var dz = z - beaconZs.get(i);
+            if (dx * dx + dz * dz < config.FOREST_BEACON_CLEAR) { return false; }
+        }
+        return true;
+    }
+
+    hide func notNearPlayerStart(x: Float, z: Float) -> Boolean {
+        var dx = x - terrain.terrainWorldMaxX() * 0.5;
+        var dz = z - terrain.terrainWorldMaxZ() * 0.5;
+        return dx * dx + dz * dz > config.FOREST_PLAYER_CLEAR;
+    }
+}

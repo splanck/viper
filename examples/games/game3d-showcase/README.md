@@ -16,6 +16,23 @@ Quick validation:
 viper run examples/games/game3d-showcase/smoke_probe.zia
 ```
 
+## File Map
+
+- `main.zia` - entry point and packaged `--smoke` path.
+- `game.zia` - thin `Game3DShowcase` lifecycle, input, player movement, camera, and frame orchestration.
+- `assets.zia` - shared meshes, PBR/procedural materials, and environment reflections.
+- `terrain.zia` - terrain generation, splat/texture helpers, vegetation, and shared terrain math.
+- `water_sky.zia` - procedural cubemap skybox, animated water, and wind-swayed reeds.
+- `forest.zia` - optional imported maple model loading, deterministic placement, and tree materials.
+- `critters.zia` - procedurally rigged sentinels, wander targets, animation, and drawing.
+- `audio.zia` - synthesized clips plus spatial footstep, beacon, victory, and ambient playback.
+- `postfx.zia` - post-processing chain, particles, sprint dust, and scorch decals.
+- `worldsim.zia` - landmarks, beacons, day cycle, dynamic lights, scanner, objective, and physics props.
+- `minimap.zia` - pre-rendered terrain minimap and live player/beacon markers.
+- `hud.zia` - overlay text, reticle readout, minimap placement, and debug panel.
+- `config.zia` - all user-tunable constants used by the subsystems.
+- `smoke_probe.zia` - one-frame validation probe for render/HUD/diagnostic regressions.
+
 ## Features
 
 Built on the higher-level `Viper.Game3D` world surface plus direct `Viper.Graphics3D`
