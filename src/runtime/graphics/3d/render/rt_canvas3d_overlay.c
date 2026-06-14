@@ -37,6 +37,7 @@
 #include "rt_object.h"
 #include "rt_pixels.h"
 #include "rt_string.h"
+#include "rt_textureasset3d.h"
 #include "rt_vec3.h"
 #include "vgfx3d_backend.h"
 
@@ -45,6 +46,11 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+/// @brief Internal TextureAsset3D capability query used to back Canvas3D.BackendSupports.
+extern int8_t rt_textureasset3d_cpu_supports_format(const char *format_name);
+/// @brief Internal KTX2 parser/fallback availability query used by Canvas3D.BackendSupports.
+extern int8_t rt_textureasset3d_cpu_supports_ktx2(void);
 
 /// @brief Project a 3D world-space point onto 2D screen coordinates using the active scene VP.
 /// @details Standard `world → clip → NDC → screen` pipeline:
@@ -551,9 +557,28 @@ static int64_t canvas3d_capability_from_name(const char *name) {
     return 0;
 }
 
+/// @brief Return a CPU texture fallback support answer for `texture:*` capability keys.
+/// @return 0/1 for recognized texture keys, -1 when @p name is not a texture capability key.
+static int canvas3d_texture_capability_from_name(const char *name) {
+    if (!name)
+        return -1;
+    if (strcmp(name, "texture:bc7") == 0)
+        return rt_textureasset3d_cpu_supports_format("bc7") ? 1 : 0;
+    if (strcmp(name, "texture:etc2") == 0)
+        return rt_textureasset3d_cpu_supports_format("etc2") ? 1 : 0;
+    if (strcmp(name, "texture:astc") == 0)
+        return rt_textureasset3d_cpu_supports_format("astc") ? 1 : 0;
+    if (strcmp(name, "texture:ktx2-cpu") == 0 || strcmp(name, "texture:ktx2_cpu") == 0)
+        return rt_textureasset3d_cpu_supports_ktx2() ? 1 : 0;
+    if (strncmp(name, "texture:", 8) == 0)
+        return 0;
+    return -1;
+}
+
 /// @brief Return whether the active backend supports a named capability.
 int8_t rt_canvas3d_backend_supports(void *obj, rt_string capability) {
     int64_t flag;
+    int texture_capability;
     const char *name;
 
     if (!obj || !capability)
@@ -565,6 +590,13 @@ int8_t rt_canvas3d_backend_supports(void *obj, rt_string capability) {
         strcmp(name, "backend-fallback") == 0 || strcmp(name, "backend_fallback") == 0 ||
         strcmp(name, "software-fallback") == 0 || strcmp(name, "software_fallback") == 0)
         return rt_canvas3d_get_backend_fallback(obj);
+    texture_capability = canvas3d_texture_capability_from_name(name);
+    if (texture_capability >= 0) {
+        rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+        if (!c || !c->backend)
+            return 0;
+        return texture_capability ? 1 : 0;
+    }
     flag = canvas3d_capability_from_name(name);
     if (!flag)
         return 0;

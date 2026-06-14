@@ -4,12 +4,25 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/tests/unit/test_rt_gltf.cpp
+// Purpose: Unit tests for the glTF/GLB runtime loader and imported asset surface.
+// Key invariants:
+//   - glTF content failures return null and record recoverable asset diagnostics.
+//   - Imported meshes, materials, animations, textures, and scenes preserve authored data.
+// Ownership/Lifetime:
+//   - Temporary fixture files are owned by each test and removed where cleanup matters.
+//   - Runtime handles are GC-managed for the duration of the test process.
+// Links: rt_gltf.h, rt_asset_error.h, docs/viperlib/graphics/rendering3d.md
+//
+//===----------------------------------------------------------------------===//
 
 #ifndef VIPER_ENABLE_GRAPHICS
 #define VIPER_ENABLE_GRAPHICS 1
 #endif
 
 #include "rt_asset.h"
+#include "rt_asset_error.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_gltf.h"
@@ -510,13 +523,13 @@ static void test_gltf_preload_bundle_rejects_short_glb_bin() {
     std::memcpy(owned_root, glb.data(), glb.size());
 
     char error[128] = {0};
-    rt_gltf_preload_bundle *bundle = rt_gltf_preload_bundle_create(
-        rt_const_cstr("/tmp/viper_gltf_preload_short_bin.glb"),
-        owned_root,
-        glb.size(),
-        0,
-        error,
-        sizeof(error));
+    rt_gltf_preload_bundle *bundle =
+        rt_gltf_preload_bundle_create(rt_const_cstr("/tmp/viper_gltf_preload_short_bin.glb"),
+                                      owned_root,
+                                      glb.size(),
+                                      0,
+                                      error,
+                                      sizeof(error));
     EXPECT_TRUE(bundle == nullptr, "Preload rejects GLB BIN chunks shorter than buffer byteLength");
     EXPECT_TRUE(std::strstr(error, "failed to stage glTF dependency") != nullptr,
                 "Short GLB BIN preload reports a staging error");
@@ -2083,8 +2096,8 @@ static void test_gltf_clips_and_renormalizes_primary_joint_influences() {
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     const uint16_t joints[12] = {256, 1, 2, 3, 1, 2, 3, 4, 1, 2, 3, 4};
-    const float weights[12] = {0.5f, 0.25f, 0.25f, 0.0f, 1.0f, 0.0f,
-                               0.0f, 0.0f, 1.0f, 0.0f,  0.0f, 0.0f};
+    const float weights[12] = {
+        0.5f, 0.25f, 0.25f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f};
     const uint16_t indices[3] = {0, 1, 2};
 
     for (float v : positions)
@@ -2712,8 +2725,7 @@ static void test_gltf_imports_step_skeletal_animation_as_hold_keys() {
         "\"scenes\":[{\"nodes\":[0]}],\"scene\":0"
         "}";
 
-    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
-                "STEP skeletal glTF fixture can be created");
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "STEP skeletal glTF fixture can be created");
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
     EXPECT_TRUE(asset != nullptr, "GLTF.Load parses STEP skeletal animation assets");
     if (!asset)
@@ -2757,8 +2769,7 @@ static void test_gltf_rejects_skeletal_trs_animation_output_count_mismatch() {
     };
 
     static const float times[2] = {0.0f, 1.0f};
-    static const float translations[9] = {
-        0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f};
+    static const float translations[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f};
     size_t times_off = append_float_array(times, 2);
     size_t translations_off = append_float_array(translations, 9);
     std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
@@ -2816,8 +2827,7 @@ static void test_gltf_rejects_node_trs_animation_output_count_mismatch() {
     };
 
     static const float times[2] = {0.0f, 1.0f};
-    static const float translations[9] = {
-        0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f};
+    static const float translations[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f};
     size_t times_off = append_float_array(times, 2);
     size_t translations_off = append_float_array(translations, 9);
     std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
@@ -2873,29 +2883,27 @@ static void test_gltf_ignores_inverse_bind_matrices_with_count_mismatch() {
         return offset;
     };
 
-    static const float inverse_binds[32] = {
-        1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f, 9.0f, 0.0f, 0.0f, 1.0f,
-        1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f, 9.0f, 0.0f, 0.0f, 1.0f};
+    static const float inverse_binds[32] = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+                                            0.0f, 0.0f, 1.0f, 0.0f, 9.0f, 0.0f, 0.0f, 1.0f,
+                                            1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+                                            0.0f, 0.0f, 1.0f, 0.0f, 9.0f, 0.0f, 0.0f, 1.0f};
     size_t inverse_off = append_float_array(inverse_binds, 32);
     std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
 
-    std::string gltf_json =
-        "{"
-        "\"asset\":{\"version\":\"2.0\"},"
-        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
-        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
-        "}],"
-        "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(inverse_off) +
-        ",\"byteLength\":128}],"
-        "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":2,"
-        "\"type\":\"MAT4\"}],"
-        "\"skins\":[{\"joints\":[0],\"inverseBindMatrices\":0}],"
-        "\"nodes\":[{\"name\":\"Joint\",\"translation\":[4.0,0.0,0.0]}],"
-        "\"scenes\":[{\"nodes\":[0]}],\"scene\":0"
-        "}";
+    std::string gltf_json = "{"
+                            "\"asset\":{\"version\":\"2.0\"},"
+                            "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+                            buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+                            "}],"
+                            "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":" +
+                            std::to_string(inverse_off) +
+                            ",\"byteLength\":128}],"
+                            "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":2,"
+                            "\"type\":\"MAT4\"}],"
+                            "\"skins\":[{\"joints\":[0],\"inverseBindMatrices\":0}],"
+                            "\"nodes\":[{\"name\":\"Joint\",\"translation\":[4.0,0.0,0.0]}],"
+                            "\"scenes\":[{\"nodes\":[0]}],\"scene\":0"
+                            "}";
 
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
                 "Mismatched inverse-bind glTF fixture can be created");
@@ -3005,8 +3013,7 @@ static void test_gltf_imports_step_node_animation_duplicate_times() {
     };
 
     static const float times[3] = {0.0f, 0.0f, 1.0f};
-    static const float translations[9] = {
-        0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 3.0f, 0.0f, 0.0f};
+    static const float translations[9] = {0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 3.0f, 0.0f, 0.0f};
     size_t times_off = append_float_array(times, 3);
     size_t translations_off = append_float_array(translations, 9);
     std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
@@ -3074,12 +3081,9 @@ static void test_gltf_rejects_mismatched_morph_weight_animation_width() {
         return offset;
     };
 
-    static const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-                                       0.0f, 0.0f, 1.0f, 0.0f};
-    static const float morph_a[9] = {0.1f, 0.0f, 0.0f, 0.0f, 0.0f,
-                                     0.0f, 0.0f, 0.0f, 0.0f};
-    static const float morph_b[9] = {0.0f, 0.2f, 0.0f, 0.0f, 0.0f,
-                                     0.0f, 0.0f, 0.0f, 0.0f};
+    static const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
+    static const float morph_a[9] = {0.1f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    static const float morph_b[9] = {0.0f, 0.2f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
     static const float times[1] = {0.0f};
     static const float weights[1] = {1.0f};
     size_t positions_off = append_float_array(positions, 9);
@@ -3679,8 +3683,7 @@ static void test_gltf_rejects_control_chars_in_external_paths() {
         "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":4}],"
         "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":1,\"type\":\"SCALAR\"}]"
         "}";
-    EXPECT_TRUE(write_text_file(raw_path, raw_json),
-                "Raw-control URI glTF fixture can be created");
+    EXPECT_TRUE(write_text_file(raw_path, raw_json), "Raw-control URI glTF fixture can be created");
     EXPECT_TRUE(rt_gltf_load(rt_const_cstr(raw_path)) == nullptr,
                 "GLTF.Load rejects raw control characters in external paths");
 
@@ -3805,12 +3808,11 @@ static void test_gltf_material_without_pbr_uses_pbr_defaults() {
 
 static void test_gltf_ignores_wrong_typed_optional_string_fields() {
     const char *gltf_path = "/tmp/viper_gltf_wrong_typed_optional_strings.gltf";
-    std::string gltf_json =
-        "{\"asset\":{\"version\":\"2.0\"},"
-        "\"images\":[{\"uri\":17,\"mimeType\":18}],"
-        "\"textures\":[{\"source\":0}],"
-        "\"materials\":[{\"alphaMode\":19,"
-        "\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}]}";
+    std::string gltf_json = "{\"asset\":{\"version\":\"2.0\"},"
+                            "\"images\":[{\"uri\":17,\"mimeType\":18}],"
+                            "\"textures\":[{\"source\":0}],"
+                            "\"materials\":[{\"alphaMode\":19,"
+                            "\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}]}";
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
                 "Wrong-typed optional string glTF fixture can be created");
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
@@ -4121,6 +4123,32 @@ static void test_gltf_rejects_unsupported_required_extensions() {
     EXPECT_TRUE(
         asset == nullptr,
         "GLTF.Load rejects unsupported required extensions instead of rendering fallback data");
+    EXPECT_TRUE(rt_asset_error_get_code() == RT_ASSET_ERROR_UNSUPPORTED,
+                "GLTF.Load records unsupported required extensions as Unsupported");
+    EXPECT_TRUE(std::strstr(rt_asset_error_get_message(),
+                            "requires KHR_draco_mesh_compression (unsupported)") != nullptr,
+                "GLTF.Load names unsupported required extensions in LastLoadError");
+    std::remove(gltf_path);
+}
+
+static void test_gltf_warns_unsupported_optional_extensions() {
+    const char *gltf_path = "/tmp/viper_gltf_optional_extension_warning.gltf";
+    std::string gltf_json = "{\"asset\":{\"version\":\"2.0\"},"
+                            "\"extensionsUsed\":[\"EXT_missing_material_model\"]}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Optional-extension glTF fixture can be created");
+
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load accepts unsupported optional extensions");
+    EXPECT_TRUE(rt_asset_error_get_code() == RT_ASSET_ERROR_NONE,
+                "Optional unsupported glTF extensions do not set a load error");
+    EXPECT_TRUE(rt_asset_error_get_warning_count() == 1,
+                "Unsupported optional glTF extensions record one load warning");
+    EXPECT_TRUE(std::strstr(rt_asset_error_get_warning(0), "EXT_missing_material_model") != nullptr,
+                "Unsupported optional glTF warning names the extension");
+    EXPECT_TRUE(std::strstr(rt_asset_error_get_warning(0), "visual") != nullptr,
+                "Unsupported optional glTF warning describes the visual consequence");
+    std::remove(gltf_path);
 }
 
 static void test_gltf_rejects_required_extensions_with_partial_runtime_support() {
@@ -4408,6 +4436,7 @@ int main() {
     test_gltf_matrix_shear_does_not_leak_into_rotation();
     test_gltf_rejects_skins_over_runtime_bone_limit();
     test_gltf_rejects_unsupported_required_extensions();
+    test_gltf_warns_unsupported_optional_extensions();
     test_gltf_rejects_required_extensions_with_partial_runtime_support();
     test_gltf_rejects_non_string_required_extensions();
     test_gltf_accepts_supported_required_extensions_with_parser_coverage();

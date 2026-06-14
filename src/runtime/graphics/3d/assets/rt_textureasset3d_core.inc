@@ -341,8 +341,7 @@ static int textureasset3d_set_resident_mip_range_internal(rt_textureasset3d *ass
     safe_mip_count = textureasset3d_safe_mip_count(asset);
     clamped_mip_count = safe_mip_count > 0 ? safe_mip_count : 0;
     if (mip_count == 0 || first_mip >= safe_mip_count || safe_mip_count <= 0) {
-        asset->resident_mip_start =
-            first_mip > clamped_mip_count ? clamped_mip_count : first_mip;
+        asset->resident_mip_start = first_mip > clamped_mip_count ? clamped_mip_count : first_mip;
         asset->resident_mip_count = 0;
         asset->resident_bytes = 0;
         asset->pixels = NULL;
@@ -500,6 +499,45 @@ static void *textureasset3d_decode_rgba8_fallback(const uint8_t *data,
         }
     }
     return pixels;
+}
+
+static void textureasset3d_release_mip_pixels(void **mip_pixels, int64_t mip_count);
+
+/// @brief Allocate an 8x8 magenta/black checker Pixels fallback for failed compressed decodes.
+/// @details The conspicuous pattern makes unsupported CPU texture blocks visible on software and
+///          RenderTarget3D paths instead of producing an apparently blank material.
+static void *textureasset3d_make_decode_failure_checker(void) {
+    void *pixels = rt_pixels_new(8, 8);
+    if (!pixels) {
+        rt_trap("TextureAsset3D.LoadKTX2: checker fallback allocation failed");
+        return NULL;
+    }
+    for (int64_t y = 0; y < 8; y++) {
+        for (int64_t x = 0; x < 8; x++) {
+            int64_t rgba = (((x + y) & 1) == 0) ? INT64_C(0xFF00FFFF) : INT64_C(0x000000FF);
+            rt_pixels_set_rgba(pixels, x, y, rgba);
+        }
+    }
+    return pixels;
+}
+
+/// @brief Allocate a checker fallback for each mip slot after whole-texture CPU decode failure.
+static void **textureasset3d_make_decode_failure_checker_mips(int64_t mip_count) {
+    void **mip_pixels;
+
+    if (mip_count <= 0)
+        return NULL;
+    mip_pixels = (void **)calloc((size_t)mip_count, sizeof(void *));
+    if (!mip_pixels)
+        return NULL;
+    for (int64_t i = 0; i < mip_count; i++) {
+        mip_pixels[i] = textureasset3d_make_decode_failure_checker();
+        if (!mip_pixels[i]) {
+            textureasset3d_release_mip_pixels(mip_pixels, mip_count);
+            return NULL;
+        }
+    }
+    return mip_pixels;
 }
 
 /// @brief Release every decoded Pixels mip in the array, then free the array itself.

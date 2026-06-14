@@ -529,26 +529,89 @@ static int gltf_required_extension_supported(const char *name) {
            strcmp(name, "KHR_materials_specular") == 0 || strcmp(name, "KHR_lights_punctual") == 0;
 }
 
+/// @brief Membership test for extensions this loader handles in optional `extensionsUsed` form.
+/// @details Some extensions have partial optional support but are intentionally not accepted in
+///          `extensionsRequired`, where the glTF contract demands complete rendering semantics.
+static int gltf_used_extension_supported(const char *name) {
+    if (gltf_required_extension_supported(name))
+        return 1;
+    if (!name)
+        return 0;
+    return strcmp(name, "KHR_texture_basisu") == 0 ||
+           strcmp(name, "KHR_materials_clearcoat") == 0 ||
+           strcmp(name, "KHR_materials_transmission") == 0;
+}
+
+/// @brief Append one unsupported extension name to a comma-separated diagnostic list.
+static void gltf_append_extension_name(char *dst, size_t dst_cap, const char *name) {
+    size_t used;
+    size_t remaining;
+    if (!dst || dst_cap == 0)
+        return;
+    used = strlen(dst);
+    if (used >= dst_cap - 1)
+        return;
+    if (used > 0) {
+        remaining = dst_cap - used;
+        snprintf(dst + used, remaining, ", ");
+        dst[dst_cap - 1] = '\0';
+        used = strlen(dst);
+        if (used >= dst_cap - 1)
+            return;
+    }
+    remaining = dst_cap - used;
+    snprintf(dst + used, remaining, "%s", (name && *name) ? name : "<invalid extension name>");
+    dst[dst_cap - 1] = '\0';
+}
+
 /// @brief Enforce the glTF `extensionsRequired` contract.
 /// @details If the document declares extensions as REQUIRED (not merely USED), the
 ///          spec says a loader that can't handle any of them must refuse to load the
 ///          asset rather than produce a degraded rendering. This function walks the
-///          required list and returns 0 on the first unsupported extension so the
-///          top-level loader can bail cleanly. Missing or empty `extensionsRequired`
-///          is treated as "nothing required" (returns 1).
+///          required list, records every unsupported extension in the load error, and
+///          returns 0 so the top-level loader can bail cleanly. Missing or empty
+///          `extensionsRequired` is treated as "nothing required" (returns 1).
 /// @return 1 when every required extension is supported (or the array is absent);
 ///         0 when any required extension is unsupported and the load should fail.
 static int gltf_validate_required_extensions(void *root) {
     void *required = jarr(root, "extensionsRequired");
+    char unsupported[256];
+    int has_unsupported = 0;
     if (!required)
         return 1;
+    unsupported[0] = '\0';
     for (int64_t i = 0; i < jarr_len(required); i++) {
         rt_string name = (rt_string)rt_seq_get(required, i);
         const char *ext = rt_string_is_handle(name) ? rt_string_cstr(name) : NULL;
-        if (!gltf_required_extension_supported(ext))
-            return 0;
+        if (!gltf_required_extension_supported(ext)) {
+            gltf_append_extension_name(unsupported, sizeof(unsupported), ext);
+            has_unsupported = 1;
+        }
     }
-    return 1;
+    if (!has_unsupported)
+        return 1;
+    rt_asset_error_setf(
+        RT_ASSET_ERROR_UNSUPPORTED, "GLTF.Load: requires %s (unsupported)", unsupported);
+    return 0;
+}
+
+/// @brief Record warnings for optional `extensionsUsed` entries this loader does not implement.
+/// @details Optional extensions are legal to ignore, but silently dropping them can make assets
+///          appear wrong. Warnings name the extension and explain the visual degradation.
+static void gltf_warn_unsupported_used_extensions(void *root) {
+    void *used = jarr(root, "extensionsUsed");
+    if (!used)
+        return;
+    for (int64_t i = 0; i < jarr_len(used); i++) {
+        rt_string name = (rt_string)rt_seq_get(used, i);
+        const char *ext = rt_string_is_handle(name) ? rt_string_cstr(name) : NULL;
+        if (gltf_used_extension_supported(ext))
+            continue;
+        rt_asset_error_add_warningf("glTF extension '%s' ignored: visual result may miss "
+                                    "extension-specific material, geometry, animation, lighting, "
+                                    "or texture behavior",
+                                    (ext && *ext) ? ext : "<invalid extension name>");
+    }
 }
 
 /// @brief Zero-initialise a `gltf_texture_info_t` to identity-transform defaults.
@@ -1173,6 +1236,7 @@ static void *gltf_parse_validated_root_json(char *json_str) {
         gltf_release_local(root);
         return NULL;
     }
+    gltf_warn_unsupported_used_extensions(root);
     return root;
 }
 
@@ -1354,7 +1418,8 @@ static void *rt_gltf_load_impl(rt_string path,
     void *root = gltf_parse_validated_root_json(json_str);
     if (!root) {
         free(file_data);
-        rt_asset_error_setf(RT_ASSET_ERROR_CORRUPT, "GLTF.Load: '%s' has invalid JSON", filepath);
+        rt_asset_error_setf_if_empty(
+            RT_ASSET_ERROR_CORRUPT, "GLTF.Load: '%s' has invalid JSON", filepath);
         return NULL;
     }
 

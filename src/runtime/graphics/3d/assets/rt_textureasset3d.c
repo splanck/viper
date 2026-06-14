@@ -18,7 +18,8 @@
 //     and bounds-checked against the file size before any read.
 //   - BC7 software decode covers modes 0-7. ETC2 fallback covers RGBA8/EAC
 //     blocks in individual/differential color modes. ASTC fallback covers LDR
-//     2D void-extent blocks; unsupported compressed blocks keep native payloads.
+//     2D void-extent blocks; compressed decode failures keep native payloads
+//     and expose an 8x8 magenta/black checker fallback.
 //   - cache_identity is a process-unique nonzero id; native_revision bumps on
 //     every resident-range change so the backend cache key invalidates.
 //
@@ -35,6 +36,7 @@
 #include "rt_textureasset3d.h"
 
 #include "rt_asset.h"
+#include "rt_asset_error.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
@@ -72,7 +74,9 @@
 #define VK_FORMAT_ASTC_4X4_UNORM_BLOCK 157u
 #define VK_FORMAT_ASTC_12X12_SRGB_BLOCK 184u
 
+// clang-format off
 #include "rt_textureasset3d_core.inc"
 #include "rt_textureasset3d_codecs.inc"
 #include "rt_textureasset3d_ktx2.inc"
+// clang-format on
 #endif

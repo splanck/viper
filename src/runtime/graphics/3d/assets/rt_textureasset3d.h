@@ -7,6 +7,13 @@
 //
 // File: src/runtime/graphics/3d/assets/rt_textureasset3d.h
 // Purpose: TextureAsset3D runtime surface for KTX2/precompressed texture assets.
+// Key invariants:
+//   - Public loaders preserve KTX2 dimensions, mip metadata, and retained native payloads.
+//   - CPU fallback capability queries describe runtime decoder coverage, not GPU upload support.
+// Ownership/Lifetime:
+//   - TextureAsset3D handles are GC-managed runtime objects.
+//   - Borrowed native mip pointers remain owned by the TextureAsset3D object.
+// Links: rt_textureasset3d.c, rt_pixels.h, docs/viperlib/graphics/rendering3d.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once

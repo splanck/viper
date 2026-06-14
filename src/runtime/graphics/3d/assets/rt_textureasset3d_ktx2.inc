@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/assets/rt_textureasset3d_ktx2.inc  (#included from rt_textureasset3d.c; not a standalone translation unit)
-// Purpose: TextureAsset3D KTX2 parser and the public TextureAsset3D API
+// File: src/runtime/graphics/3d/assets/rt_textureasset3d_ktx2.inc  (#included from
+// rt_textureasset3d.c; not a standalone translation unit) Purpose: TextureAsset3D KTX2 parser and
+// the public TextureAsset3D API
 //===----------------------------------------------------------------------===//
 /// @brief Parse a KTX2 byte stream into a fully-populated TextureAsset3D.
 /// @details Validates the identifier and dimensionality, reads the level index, builds the
@@ -26,6 +27,7 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
     int64_t mip_count;
     void **mip_pixels = NULL;
     uint8_t **mip_payloads = NULL;
+    int attempted_cpu_decode = 0;
     rt_textureasset3d *asset;
 
     if (!api_name)
@@ -117,12 +119,17 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
         mip_pixels = textureasset3d_decode_rgba8_mips(data, size, mips, mip_count);
     /* BC3 software reference decode: also produce an RGBA8 Pixels fallback so BC3 textures render
      * on backends that cannot upload BC3 natively (native blocks are still retained below). */
-    if (strcmp(format.name, "bc3") == 0)
+    if (strcmp(format.name, "bc3") == 0) {
+        attempted_cpu_decode = 1;
         mip_pixels = textureasset3d_decode_bc3_mips(data, size, mips, mip_count);
+    }
     /* BC7 software reference decode -> RGBA8 Pixels fallback; native blocks are still retained. */
-    if (strcmp(format.name, "bc7") == 0)
+    if (strcmp(format.name, "bc7") == 0) {
+        attempted_cpu_decode = 1;
         mip_pixels = textureasset3d_decode_bc7_mips(data, size, mips, mip_count);
-    if (strcmp(format.name, "etc2") == 0)
+    }
+    if (strcmp(format.name, "etc2") == 0) {
+        attempted_cpu_decode = 1;
         mip_pixels = textureasset3d_decode_compressed_mips(
             data,
             size,
@@ -133,7 +140,9 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
             format.block_bytes,
             textureasset3d_decode_etc2_block_adapter,
             "TextureAsset3D.LoadKTX2: ETC2 Pixels fallback allocation failed");
-    if (strcmp(format.name, "astc") == 0)
+    }
+    if (strcmp(format.name, "astc") == 0) {
+        attempted_cpu_decode = 1;
         mip_pixels = textureasset3d_decode_compressed_mips(
             data,
             size,
@@ -144,6 +153,19 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
             format.block_bytes,
             textureasset3d_decode_astc_block_adapter,
             "TextureAsset3D.LoadKTX2: ASTC Pixels fallback allocation failed");
+    }
+    if (format.compressed && attempted_cpu_decode && !mip_pixels) {
+        mip_pixels = textureasset3d_make_decode_failure_checker_mips(mip_count);
+        if (!mip_pixels) {
+            free(mips);
+            rt_trap("TextureAsset3D.LoadKTX2: checker fallback allocation failed");
+            return NULL;
+        }
+        rt_asset_error_add_warningf("%s: %s CPU texture decode failed; using 8x8 magenta/black "
+                                    "checker fallback",
+                                    api_name,
+                                    format.name);
+    }
     if (format.compressed) {
         mip_payloads = textureasset3d_copy_native_mip_payloads(data, size, mips, mip_count);
         if (!mip_payloads) {
@@ -180,12 +202,10 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
     asset->cache_identity = textureasset3d_next_cache_identity();
     asset->native_revision = 1;
     asset->alpha_metadata_known =
-        textureasset3d_compute_alpha_metadata(mip_pixels, mip_count, &asset->has_alpha_texels)
-            ? 1
-            : 0;
+        textureasset3d_compute_alpha_metadata(mip_pixels, mip_count, &asset->has_alpha_texels) ? 1
+                                                                                               : 0;
     asset->retained_bytes = textureasset3d_compute_retained_bytes(asset);
     textureasset3d_set_resident_mip_range_internal(asset, 0, asset->mip_count, NULL);
-    (void)api_name;
     return asset;
 }
 
@@ -238,6 +258,20 @@ void *rt_textureasset3d_load_ktx2_asset(rt_string path) {
     asset = textureasset3d_parse_ktx2(data, size, "TextureAsset3D.LoadKTX2Asset");
     free(data);
     return asset;
+}
+
+/// @brief Return true when the runtime has a CPU fallback path for a KTX2 texture format.
+int8_t rt_textureasset3d_cpu_supports_format(const char *format_name) {
+    if (!format_name)
+        return 0;
+    return strcmp(format_name, "rgba8") == 0 || strcmp(format_name, "bc3") == 0 ||
+           strcmp(format_name, "bc7") == 0 || strcmp(format_name, "etc2") == 0 ||
+           strcmp(format_name, "astc") == 0;
+}
+
+/// @brief Return true when the runtime KTX2 parser can produce CPU texture payloads.
+int8_t rt_textureasset3d_cpu_supports_ktx2(void) {
+    return 1;
 }
 
 /// @brief Texture width in pixels (0 if the handle is invalid).

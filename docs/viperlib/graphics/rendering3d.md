@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-06-12
+last-verified: 2026-06-13
 ---
 
 # 3D Rendering, Animation, and Environment
@@ -54,6 +54,29 @@ Warnings are per outer load, append-only, and capped. Use
 | `Mesh3D.FromSTL(path)` | Returns `null` for missing files, unreadable files, wrong magic, truncated binary payloads, malformed ASCII payloads, or oversized files | Degenerate triangles are skipped as before |
 | `Scene3D.Load(path)` | Returns `null` for missing, unreadable, non-JSON, malformed, corrupt, or oversized `.vscn` content | None |
 | `Pixels.Load(path)` and image loads reached from materials | Return `null` for missing, unreadable, wrong-magic, corrupt, unsupported, or oversized PNG/JPEG/BMP/GIF content | Material loaders catch this and record a warning instead of failing the whole model |
+
+ASCII FBX files with the standard `; FBX` comment header are rejected as
+unsupported content with the exact error
+`ASCII FBX is not supported; re-export as binary FBX`. This is distinct from
+wrong-magic and corrupt binary FBX diagnostics.
+
+glTF extension support is explicit:
+
+| Extension | `extensionsRequired` | Optional `extensionsUsed` | Degradation behavior |
+|-----------|----------------------|---------------------------|----------------------|
+| `KHR_texture_transform` | Supported | Supported | UV transform metadata is imported |
+| `KHR_materials_emissive_strength` | Supported | Supported | Emissive intensity is imported |
+| `KHR_materials_unlit` | Supported | Supported | Material uses unlit shading |
+| `KHR_materials_specular` | Supported | Supported | Specular factors/textures are imported |
+| `KHR_lights_punctual` | Supported | Supported | Punctual lights are imported |
+| `KHR_texture_basisu` | Not supported as required | Optional KTX2 source selection supported | Required use returns `requires KHR_texture_basisu (unsupported)` |
+| `KHR_materials_clearcoat` | Not supported as required | Optional approximation supported | Clearcoat values map to reflectivity/custom material params |
+| `KHR_materials_transmission` | Not supported as required | Optional approximation supported | Transmission factor is recorded; material remains opaque |
+| Other extensions, including `KHR_draco_mesh_compression` | Not supported | Ignored with a load warning | Visual result may miss extension-specific material, geometry, animation, lighting, or texture behavior |
+
+Unsupported required extensions fail the load and name the extension list, for
+example `GLTF.Load: requires KHR_draco_mesh_compression (unsupported)`. Draco
+mesh compression is not implemented.
 
 Writable `Viper.Graphics3D` properties expose both property accessors and
 method-call setters. A writable property named `X` has a `set_X` runtime
@@ -255,12 +278,23 @@ accepted and trap-free, but it does not allocate a shadow slot.
 
 `BackendSupports("bc7")`, `BackendSupports("astc")`, and
 `BackendSupports("etc2")` report native compressed texture upload support for
-the active backend/device. KTX2 supercompression is rejected; native mip payload
-lengths are validated against the declared format/block dimensions. RGBA8, BC3,
-BC7 modes 0-7, representative ETC2 RGBA8/EAC, and ASTC LDR void-extent mips
-decode into CPU `Pixels` fallbacks; all native block-compressed mip payloads are
-still retained internally for capability-gated backend upload. Unsupported ETC2
-color modes and non-void ASTC blocks remain native-only.
+the active backend/device. `BackendSupports("texture:bc7")`,
+`BackendSupports("texture:etc2")`, `BackendSupports("texture:astc")`, and
+`BackendSupports("texture:ktx2-cpu")` report runtime CPU fallback coverage.
+KTX2 supercompression is rejected; native mip payload lengths are validated
+against the declared format/block dimensions.
+
+| Texture format | Software / RenderTarget3D CPU path | Native GPU upload path | Undecodable CPU blocks |
+|----------------|-------------------------------------|------------------------|------------------------|
+| RGBA8 KTX2 | Full decode to `Pixels` | Uploaded as ordinary RGBA texture | Load fails on malformed bytes |
+| BC3 KTX2 | Full BC3/DXT5 decode to `Pixels` | No `BackendSupports` native key | Load fails on malformed bytes |
+| BC7 KTX2 | BC7 modes 0-7 decode to `Pixels`; `texture:bc7` reports true | Device-dependent `bc7` key | 8x8 magenta/black checker + load warning |
+| ETC2 RGBA8/EAC KTX2 | Individual/differential color modes decode; `texture:etc2` reports true | Device-dependent `etc2` key | 8x8 magenta/black checker + load warning |
+| ASTC KTX2 | LDR 2D void-extent blocks decode; `texture:astc` reports true | Device-dependent `astc` key | 8x8 magenta/black checker + load warning |
+
+All native block-compressed mip payloads are still retained internally for
+capability-gated backend upload. On the software backend, the native upload keys
+are false and the `texture:*` CPU keys are true for the decoder coverage above.
 `TextureAsset3D.SetResidentMipRange` switches the active fallback to the first
 resident mip while updating byte telemetry.
 Materials retain the texture asset and resolve that active fallback at draw
@@ -554,9 +588,10 @@ Texture map methods accept `Pixels` or `TextureAsset3D` handles with either an
 active RGBA8 fallback or retained native mip blocks. KTX2 BC3, BC7, supported
 ETC2 RGBA8/EAC, and ASTC LDR void-extent texture assets expose CPU fallbacks
 alongside retained native mip block payloads and mip residency byte telemetry;
-unsupported compressed blocks stay native-only. Native-only assets draw on GPU
-backends that advertise the matching compression capability and otherwise behave
-as unbound textures until a fallback-capable mip is resident.
+unsupported compressed blocks use an 8x8 magenta/black checker fallback and
+record a load warning naming the format. Native-only assets draw on GPU backends
+that advertise the matching compression capability and otherwise behave as
+unbound textures until a fallback-capable mip is resident.
 When a `TextureAsset3D` is bound, the material retains the asset and resolves
 the currently resident RGBA8 mip and native block source for each draw.
 

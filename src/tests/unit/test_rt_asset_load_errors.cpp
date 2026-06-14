@@ -272,6 +272,27 @@ TEST(AssetLoadErrors, StreamManifestDeclaredCountIsBounded) {
     std::remove(manifest.c_str());
 }
 
+TEST(AssetLoadErrors, AsciiFbxHeaderReportsSpecificUnsupportedMessage) {
+    std::string fbx = tmp_path("ascii_header.fbx");
+    write_text(fbx.c_str(),
+               "; FBX 7.4.0 project file\n"
+               "; ----------------------------------------------------\n"
+               "Objects:  {\n"
+               "  Geometry: 1, \"Geometry::AsciiMesh\", \"Mesh\" {\n"
+               "    Vertices: *9 { a: 0,0,0, 1,0,0, 0,1,0 }\n"
+               "    PolygonVertexIndex: *3 { a: 0,1,-3 }\n"
+               "  }\n"
+               "}\n");
+
+    void *asset = rt_fbx_load(rt_const_cstr(fbx.c_str()));
+    EXPECT_EQ(asset, nullptr);
+    EXPECT_EQ(rt_asset_error_get_code(), RT_ASSET_ERROR_UNSUPPORTED);
+    EXPECT_EQ(std::string(rt_asset_error_get_message()),
+              std::string("ASCII FBX is not supported; re-export as binary FBX"));
+
+    std::remove(fbx.c_str());
+}
+
 TEST(AssetLoadErrors, MissingObjMaterialTextureRecordsOneWarning) {
     std::string obj_path = tmp_path("textured_missing.obj");
     std::string mtl_path = tmp_path("textured_missing.mtl");

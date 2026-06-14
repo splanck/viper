@@ -1821,6 +1821,40 @@ static void test_textureasset3d_etc2_astc_software_decode() {
     PASS();
 }
 
+static void test_textureasset3d_decode_failure_checker_fallback() {
+    TEST("TextureAsset3D decode failure produces checker fallback");
+    const char *path = "/tmp/viper_textureasset3d_bc7_checker_fallback.ktx2";
+    const uint8_t reserved_bc7_block[16] = {0};
+    rt_string path_s;
+    void *asset;
+    void *pixels;
+
+    EXPECT_TRUE(write_test_ktx2(path, 145u, 4u, 4u, reserved_bc7_block, sizeof(reserved_bc7_block)),
+                "reserved-mode BC7 KTX2 fixture written");
+    rt_asset_error_clear();
+    path_s = rt_string_from_bytes(path, std::strlen(path));
+    asset = rt_textureasset3d_load_ktx2(path_s);
+    rt_string_unref(path_s);
+    assert(asset != nullptr);
+
+    pixels = rt_textureasset3d_get_pixels(asset);
+    EXPECT_TRUE(pixels != nullptr, "decode failure exposes a visible Pixels fallback");
+    EXPECT_EQ(rt_pixels_width(pixels), 8);
+    EXPECT_EQ(rt_pixels_height(pixels), 8);
+    EXPECT_EQ(rt_pixels_get_rgba(pixels, 0, 0), 0xFF00FFFF);
+    EXPECT_EQ(rt_pixels_get_rgba(pixels, 1, 0), 0x000000FF);
+    EXPECT_EQ(rt_pixels_get_rgba(pixels, 0, 1), 0x000000FF);
+    EXPECT_EQ(rt_pixels_get_rgba(pixels, 1, 1), 0xFF00FFFF);
+    EXPECT_TRUE(rt_asset_error_get_warning_count() == 1, "decode failure records one load warning");
+    EXPECT_TRUE(std::strstr(rt_asset_error_get_warning(0), "bc7") != nullptr,
+                "decode failure warning names the format");
+    EXPECT_TRUE(std::strstr(rt_asset_error_get_warning(0), "checker") != nullptr,
+                "decode failure warning names the checker fallback");
+
+    std::remove(path);
+    PASS();
+}
+
 static void test_textureasset3d_mip_residency() {
     TEST("TextureAsset3D mip residency range telemetry");
     const char *path = "/tmp/viper_textureasset3d_mips_test.ktx2";
@@ -4118,6 +4152,25 @@ static void test_canvas_shadow_cascades_capability_gate() {
     PASS();
 }
 
+static void test_canvas_texture_backend_support_queries() {
+    TEST("Canvas3D texture BackendSupports reports software CPU support");
+    rt_canvas3d canvas;
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &vgfx3d_software_backend;
+
+    EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("texture:bc7")) == 1,
+                "software backend reports BC7 CPU texture fallback support");
+    EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("texture:etc2")) == 1,
+                "software backend reports ETC2 CPU texture fallback support");
+    EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("texture:astc")) == 1,
+                "software backend reports ASTC CPU texture fallback support");
+    EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("texture:ktx2-cpu")) == 1,
+                "software backend reports KTX2 CPU decode support");
+    EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("bc7")) == 0,
+                "software backend does not report native BC7 upload support");
+    PASS();
+}
+
 static void test_canvas_occlusion_culling_skips_covered_opaque_draws() {
     TEST("Canvas3D occlusion culling skips dense covered opaque draws");
     vgfx3d_backend_t backend = {};
@@ -5514,7 +5567,7 @@ static void test_canvas_material_textureasset_resolves_resident_mip_on_draw() {
 }
 
 static void test_canvas_material_textureasset_forwards_native_blocks_on_draw() {
-    TEST("Canvas3D forwards native TextureAsset3D material slots at draw time");
+    TEST("Canvas3D forwards TextureAsset3D material slots with decode-failure checker");
     const char *path = "/tmp/viper_textureasset3d_draw_native_astc_test.ktx2";
     const uint8_t astc_level0[] = {
         0x11,
@@ -5542,6 +5595,7 @@ static void test_canvas_material_textureasset_forwards_native_blocks_on_draw() {
     void *mesh = rt_mesh3d_new_plane(1.0, 1.0);
     void *mat = rt_material3d_new();
     void *xf = rt_mat4_identity();
+    void *checker;
 
     EXPECT_TRUE(write_test_ktx2(path, 157u, 4u, 4u, astc_level0, sizeof(astc_level0)),
                 "draw-time native ASTC fixture written");
@@ -5552,8 +5606,15 @@ static void test_canvas_material_textureasset_forwards_native_blocks_on_draw() {
            xf != nullptr);
 
     rt_material3d_set_texture(mat, asset);
-    EXPECT_TRUE(rt_textureasset3d_get_pixels(asset) == nullptr,
-                "native ASTC draw fixture has no Pixels fallback");
+    checker = rt_textureasset3d_get_pixels(asset);
+    EXPECT_TRUE(checker != nullptr,
+                "decode-failed ASTC draw fixture exposes checker Pixels fallback");
+    EXPECT_EQ(rt_pixels_width(checker), 8);
+    EXPECT_EQ(rt_pixels_height(checker), 8);
+    EXPECT_EQ(rt_pixels_get_rgba(checker, 0, 0), 0xFF00FFFFu);
+    EXPECT_EQ(rt_pixels_get_rgba(checker, 1, 0), 0x000000FFu);
+    EXPECT_EQ(rt_pixels_get_rgba(checker, 0, 1), 0x000000FFu);
+    EXPECT_EQ(rt_pixels_get_rgba(checker, 1, 1), 0xFF00FFFFu);
 
     backend.name = "opengl";
     backend.begin_frame = tracked_begin_frame;
@@ -5570,10 +5631,10 @@ static void test_canvas_material_textureasset_forwards_native_blocks_on_draw() {
     rt_canvas3d_begin(&canvas, cam);
     rt_canvas3d_draw_mesh(&canvas, mesh, xf, mat);
     rt_canvas3d_end(&canvas);
-    EXPECT_TRUE(g_last_draw_cmd.texture == nullptr,
-                "Draw command has no Pixels fallback for native-only TextureAsset3D");
+    EXPECT_TRUE(g_last_draw_cmd.texture == checker,
+                "Draw command binds the checker fallback for a decode-failed TextureAsset3D");
     EXPECT_TRUE(g_last_draw_cmd.texture_asset == asset,
-                "Draw command forwards native TextureAsset3D source");
+                "Draw command still forwards native TextureAsset3D source");
 
     rt_textureasset3d_set_resident_mip_range(asset, 0, 0);
     memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
@@ -6309,8 +6370,8 @@ static void test_terrain_draw_repairs_invalid_splat_map_and_restores_base_textur
     PASS();
 }
 
-static void test_terrain_rejects_native_only_textureasset_splat_layer() {
-    TEST("Terrain3D rejects native-only TextureAsset3D splat layers");
+static void test_terrain_accepts_decode_failure_checker_textureasset_splat_layer() {
+    TEST("Terrain3D accepts decode-failure checker TextureAsset3D splat layers");
     const char *path = "/tmp/viper_terrain_splat_native_only_astc_layer.ktx2";
     const uint8_t astc_level0[] = {
         0x11,
@@ -6333,6 +6394,7 @@ static void test_terrain_rejects_native_only_textureasset_splat_layer() {
     rt_string path_s;
     void *terrain = rt_terrain3d_new(16, 16);
     void *asset;
+    void *checker;
 
     EXPECT_TRUE(write_test_ktx2(path, 157u, 4u, 4u, astc_level0, sizeof(astc_level0)),
                 "terrain native-only TextureAsset3D fixture written");
@@ -6340,14 +6402,18 @@ static void test_terrain_rejects_native_only_textureasset_splat_layer() {
     asset = rt_textureasset3d_load_ktx2(path_s);
     rt_string_unref(path_s);
 
-    EXPECT_TRUE(terrain && asset, "Native-only terrain TextureAsset3D fixtures exist");
+    EXPECT_TRUE(terrain && asset, "Terrain TextureAsset3D fixtures exist");
     if (!terrain || !asset)
         return;
-    EXPECT_TRUE(rt_textureasset3d_get_pixels(asset) == nullptr,
-                "ASTC TextureAsset3D layer fixture has no Pixels fallback");
-    EXPECT_TRUE(expect_trap_contains([&] { rt_terrain3d_set_layer_texture(terrain, 0, asset); },
-                                     "RGBA8 Pixels"),
-                "Terrain splat layers reject TextureAsset3D values without drawable Pixels");
+    checker = rt_textureasset3d_get_pixels(asset);
+    EXPECT_TRUE(checker != nullptr, "ASTC TextureAsset3D layer fixture exposes checker fallback");
+    EXPECT_EQ(rt_pixels_width(checker), 8);
+    EXPECT_EQ(rt_pixels_height(checker), 8);
+    EXPECT_EQ(rt_pixels_get_rgba(checker, 0, 0), 0xFF00FFFFu);
+    EXPECT_EQ(rt_pixels_get_rgba(checker, 1, 0), 0x000000FFu);
+    EXPECT_TRUE(!expect_trap_contains([&] { rt_terrain3d_set_layer_texture(terrain, 0, asset); },
+                                      "RGBA8 Pixels"),
+                "Terrain splat layers accept TextureAsset3D values with drawable checker Pixels");
 
     std::remove(path);
     PASS();
@@ -7324,6 +7390,7 @@ int main() {
     test_textureasset3d_bc3_software_decode();
     test_textureasset3d_bc7_software_decode();
     test_textureasset3d_etc2_astc_software_decode();
+    test_textureasset3d_decode_failure_checker_fallback();
     test_textureasset3d_mip_residency();
     test_textureasset3d_rejects_unsupported_ktx2_headers();
     test_textureasset3d_native_resident_mips_feed_backend_utils();
@@ -7426,6 +7493,7 @@ int main() {
     test_canvas_platform_gpu_clustered_lighting_capability();
     test_canvas_software_clustered_lighting_submits_many_lights();
     test_canvas_shadow_cascades_capability_gate();
+    test_canvas_texture_backend_support_queries();
     test_canvas_occlusion_culling_skips_covered_opaque_draws();
     test_canvas_texture_upload_bytes_telemetry();
     test_canvas_frame_gpu_time_telemetry();
@@ -7463,7 +7531,7 @@ int main() {
     test_terrain_splat_layers_resolve_texture_assets();
     test_terrain_splat_bake_falls_back_when_textureasset_layer_loses_residency();
     test_terrain_draw_repairs_invalid_splat_map_and_restores_base_texture();
-    test_terrain_rejects_native_only_textureasset_splat_layer();
+    test_terrain_accepts_decode_failure_checker_textureasset_splat_layer();
 
     /* SW Backend Features (SW-01 through SW-08) */
     test_vertex_color_default_white();

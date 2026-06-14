@@ -1183,6 +1183,34 @@ static uint8_t *fbx_read_entire_file(const char *cpath, long *out_size) {
     return data;
 }
 
+/// @brief Return true when a byte stream starts with the FBX binary magic including its NUL byte.
+static int fbx_has_binary_magic(const uint8_t *data, long size) {
+    static const uint8_t magic[] = {'K', 'a', 'y', 'd', 'a', 'r', 'a', ' ', 'F', 'B', 'X',
+                                    ' ', 'B', 'i', 'n', 'a', 'r', 'y', ' ', ' ', 0x00};
+    return data && size >= (long)sizeof(magic) && memcmp(data, magic, sizeof(magic)) == 0;
+}
+
+/// @brief Sniff the initial comment block used by ASCII FBX files (`; FBX ...`).
+static int fbx_has_ascii_fbx_signature(const uint8_t *data, long size) {
+    size_t limit;
+    if (!data || size <= 0)
+        return 0;
+    limit = (size_t)size < 256u ? (size_t)size : 256u;
+    for (size_t i = 0; i < limit; i++) {
+        size_t j;
+        if (data[i] != ';')
+            continue;
+        j = i + 1u;
+        while (j < limit && (data[j] == ' ' || data[j] == '\t'))
+            j++;
+        if (j + 2u < limit && (data[j] == 'F' || data[j] == 'f') &&
+            (data[j + 1u] == 'B' || data[j + 1u] == 'b') &&
+            (data[j + 2u] == 'X' || data[j + 2u] == 'x'))
+            return 1;
+    }
+    return 0;
+}
+
 /// @brief Load an FBX binary file and extract meshes, skeleton, animations, and materials.
 /// @details Parses the FBX binary format (magic header "Kaydara FBX Binary"),
 ///          decodes geometry, deformers (skin clusters for skeletal binding),
@@ -1216,8 +1244,13 @@ static void *fbx_load_impl(rt_string path) {
         return NULL;
 
     /* Verify magic */
-    static const char magic[] = "Kaydara FBX Binary  ";
-    if (memcmp(data, magic, 20) != 0) {
+    if (!fbx_has_binary_magic(data, fsize)) {
+        if (fbx_has_ascii_fbx_signature(data, fsize)) {
+            free(data);
+            rt_asset_error_set(RT_ASSET_ERROR_UNSUPPORTED,
+                               "ASCII FBX is not supported; re-export as binary FBX");
+            return NULL;
+        }
         void *ascii_asset = fbx_load_ascii_minimal((const char *)data);
         free(data);
         if (ascii_asset)
@@ -1524,15 +1557,18 @@ void *rt_fbx_load_recoverable(rt_string path) {
     if (!data)
         return NULL;
 
-    static const char magic[] = "Kaydara FBX Binary  ";
-    if (fsize >= 20 && memcmp(data, magic, 20) == 0) {
+    if (fbx_has_binary_magic(data, fsize)) {
         free(data);
         return rt_fbx_load(path);
     }
 
+    int has_ascii_signature = fbx_has_ascii_fbx_signature(data, fsize);
     void *ascii_asset = fbx_load_ascii_minimal((const char *)data);
     free(data);
-    if (!ascii_asset)
+    if (!ascii_asset && has_ascii_signature)
+        rt_asset_error_set(RT_ASSET_ERROR_UNSUPPORTED,
+                           "ASCII FBX is not supported; re-export as binary FBX");
+    else if (!ascii_asset)
         rt_asset_error_set(RT_ASSET_ERROR_BAD_MAGIC, "FBX.Load: not a supported FBX file");
     return ascii_asset;
 }
