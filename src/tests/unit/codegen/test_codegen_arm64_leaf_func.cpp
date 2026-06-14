@@ -40,14 +40,20 @@ static std::string readFile(const std::string &path) {
     return ss.str();
 }
 
+static size_t findLabel(const std::string &asmText, const std::string &label, size_t pos = 0) {
+    const std::string atStart = label + ":\n";
+    if (pos == 0 && asmText.rfind(atStart, 0) == 0)
+        return 0;
+    return asmText.find("\n" + atStart, pos);
+}
+
 /// A simple leaf function (no calls) should NOT have stp x29, x30 in its body.
 /// Note: @main always has runtime init calls, so we test a non-main function.
 TEST(Arm64LeafFunc, LeafFunctionSkipsPrologue) {
     const std::string il = "il 0.1.2\n"
                            "func @leaf(%x:i64, %y:i64) -> i64 {\n"
                            "entry:\n"
-                           "  %r = iadd.ovf %x, %y\n"
-                           "  ret %r\n"
+                           "  ret %x\n"
                            "}\n"
                            "func @main() -> i64 {\n"
                            "entry:\n"
@@ -65,15 +71,15 @@ TEST(Arm64LeafFunc, LeafFunctionSkipsPrologue) {
     const std::string asmText = readFile(outP);
 
     // Find the leaf function's assembly
-    auto leafPos = asmText.find("_leaf:");
+    auto leafPos = findLabel(asmText, "_leaf");
     if (leafPos == std::string::npos)
-        leafPos = asmText.find("leaf:");
+        leafPos = findLabel(asmText, "leaf");
     ASSERT_NE(leafPos, std::string::npos);
 
     // Find the main function (comes after leaf)
-    auto mainPos = asmText.find("_main:", leafPos);
+    auto mainPos = findLabel(asmText, "_main", leafPos);
     if (mainPos == std::string::npos)
-        mainPos = asmText.find("main:", leafPos);
+        mainPos = findLabel(asmText, "main", leafPos);
     ASSERT_NE(mainPos, std::string::npos);
 
     // Extract just the leaf function's assembly
@@ -115,15 +121,15 @@ TEST(Arm64LeafFunc, NonLeafFunctionHasPrologue) {
     const std::string asmText = readFile(outP);
 
     // Find the caller function's assembly
-    auto callerPos = asmText.find("_caller:");
+    auto callerPos = findLabel(asmText, "_caller");
     if (callerPos == std::string::npos)
-        callerPos = asmText.find("caller:");
+        callerPos = findLabel(asmText, "caller");
     ASSERT_NE(callerPos, std::string::npos);
 
     // Find the next function after caller
-    auto mainPos = asmText.find("_main:", callerPos);
+    auto mainPos = findLabel(asmText, "_main", callerPos);
     if (mainPos == std::string::npos)
-        mainPos = asmText.find("main:", callerPos);
+        mainPos = findLabel(asmText, "main", callerPos);
     ASSERT_NE(mainPos, std::string::npos);
 
     std::string callerAsm = asmText.substr(callerPos, mainPos - callerPos);

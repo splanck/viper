@@ -3583,30 +3583,3 @@ void rt_texatlas3d_get_uv_rect(
     if (v1)
         *v1 = 1;
 }
-
-/// @brief Stub for `Game3D.Assets3D.PreloadAsset` when 3D graphics are unavailable.
-///
-/// Silent no-op stub.
-///
-/// @param path Packed asset path (ignored).
-void rt_game3d_assets_preload_asset(rt_string path) {
-    (void)path;
-}
-
-/// @brief Stub for `Game3D.Assets3D.GetResidentBytes` when 3D graphics are unavailable.
-///
-/// There is no shared 3D template cache in graphics-disabled builds.
-///
-/// @return 0.
-int64_t rt_game3d_assets_get_resident_bytes(void) {
-    return 0;
-}
-
-/// @brief Stub for `Game3D.Assets3D.SetUploadBudget` when 3D graphics are unavailable.
-///
-/// Silent no-op stub.
-///
-/// @param bytes Upload budget in decoded bytes (ignored).
-void rt_game3d_assets_set_upload_budget(int64_t bytes) {
-    (void)bytes;
-}

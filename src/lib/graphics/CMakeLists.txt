@@ -112,6 +112,9 @@ target_include_directories(vipergfx
 # MSVC: force synchronous PDB writes and UTF-8 source encoding
 if (MSVC)
     target_compile_options(vipergfx PRIVATE /utf-8 /FS)
+elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
+        CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+    target_compile_options(vipergfx PRIVATE -mno-outline-atomics)
 endif ()
 
 # POSIX feature test macros for Linux (posix_memalign, etc.)

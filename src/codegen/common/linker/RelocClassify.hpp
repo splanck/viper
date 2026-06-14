@@ -29,6 +29,7 @@ namespace viper::codegen::linker {
 /// Format-independent relocation categories.
 enum class RelocAction {
     PCRel32,      // S + A - P (32-bit)
+    PCRel64,      // S + A - P (64-bit)
     Abs64,        // S + A (64-bit)
     Abs32,        // S + A (32-bit)
     TlsOffset32,  // ELF x86_64 local-exec TLS: S + A - TP
@@ -45,6 +46,9 @@ enum class RelocAction {
     GotPage21,    // AArch64: GOT ADRP (relaxable to Page21 for local symbols)
     GotPageOff12, // AArch64: GOT LDR pageoff (relaxable to ADD for local symbols)
     GotPointer,   // AArch64 Mach-O: 32-bit PC-rel or 64-bit absolute pointer to a GOT slot
+    TlsA64AddTprelHi12, // ELF AArch64 local-exec TLS: ADD imm bits 23:12
+    TlsA64AddTprelLo12, // ELF AArch64 local-exec TLS: ADD imm bits 11:0
+    TlsA64AddTprelLo12Nc, // ELF AArch64 local-exec TLS: ADD imm bits 11:0, no overflow check
     Unknown,
 };
 
@@ -82,9 +86,15 @@ inline RelocAction elfA64Action(uint32_t type) {
     switch (type) {
         case elf_a64::kAbs64:
             return RelocAction::Abs64;
+        case elf_a64::kPrel64:
+            return RelocAction::PCRel64;
+        case elf_a64::kPrel32:
+            return RelocAction::PCRel32;
         case elf_a64::kAdrPrelPgHi21:
             return RelocAction::Page21;
         case elf_a64::kAddAbsLo12Nc:
+            return RelocAction::PageOff12;
+        case elf_a64::kLdSt8Lo12Nc:
             return RelocAction::PageOff12;
         case elf_a64::kCondBr19:
             return RelocAction::CondBr19;
@@ -102,6 +112,12 @@ inline RelocAction elfA64Action(uint32_t type) {
             return RelocAction::GotPage21;
         case elf_a64::kLd64GotLo12Nc:
             return RelocAction::GotPageOff12;
+        case elf_a64::kTlsLeAddTprelHi12:
+            return RelocAction::TlsA64AddTprelHi12;
+        case elf_a64::kTlsLeAddTprelLo12:
+            return RelocAction::TlsA64AddTprelLo12;
+        case elf_a64::kTlsLeAddTprelLo12Nc:
+            return RelocAction::TlsA64AddTprelLo12Nc;
         default:
             return RelocAction::Unknown;
     }

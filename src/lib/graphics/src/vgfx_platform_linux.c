@@ -378,6 +378,12 @@ static int x11_window_usable(const struct vgfx_window *win) {
     return x11 && x11->display && x11->window;
 }
 
+static int x11_ignore_bad_window_error(Display *display, XErrorEvent *event) {
+    (void)display;
+    (void)event;
+    return 0;
+}
+
 static void x11_register_window(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return;
@@ -600,7 +606,10 @@ static void x11_cleanup_platform(struct vgfx_window *win) {
             x11->colormap = 0;
         }
         if (x11->window) {
+            int (*old_handler)(Display *, XErrorEvent *) = XSetErrorHandler(x11_ignore_bad_window_error);
             XDestroyWindow(x11->display, x11->window);
+            XSync(x11->display, False);
+            XSetErrorHandler(old_handler);
             x11->window = 0;
         }
         XCloseDisplay(x11->display);

@@ -172,23 +172,15 @@ static void gl_record_texture_upload_bytes(gl_context_t *ctx, uint64_t bytes) {
     ctx->texture_upload_bytes += bytes;
 }
 
-/// @brief Report which native compressed texture formats this GL context can upload, plus
-/// sampler anisotropy support.
-/// @details Probes for BPTC (BC7), ASTC LDR, ETC2, and GL_EXT_texture_filter_anisotropic and
-/// returns the matching RT_CANVAS3D_BACKEND_CAP_* bitmask.
+/// @brief Report native texture-related capabilities this GL context can use.
+/// @details The native compressed upload code remains compiled, but the Linux OpenGL backend does
+/// not advertise BC7/ASTC/ETC2 until it has an upload+sample conformance probe. Extension presence
+/// alone is not enough: some GL stacks accept the upload but sample as an incomplete/no-op texture.
 static int64_t gl_get_native_texture_caps(void *ctx_ptr) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     int64_t caps = 0;
     if (ctx && ctx->anisotropy_supported && ctx->max_texture_anisotropy > 1.0f)
         caps |= RT_CANVAS3D_BACKEND_CAP_ANISOTROPY;
-    if (!gl.CompressedTexImage2D)
-        return caps;
-    if (gl_version_at_least(4, 2) || gl_extension_supported("GL_ARB_texture_compression_bptc"))
-        caps |= RT_CANVAS3D_BACKEND_CAP_BC7;
-    if (gl_extension_supported("GL_KHR_texture_compression_astc_ldr"))
-        caps |= RT_CANVAS3D_BACKEND_CAP_ASTC;
-    if (gl_version_at_least(4, 3) || gl_extension_supported("GL_ARB_ES3_compatibility"))
-        caps |= RT_CANVAS3D_BACKEND_CAP_ETC2;
     return caps;
 }
 
@@ -395,7 +387,9 @@ static int gl_continue_native_texture_upload(gl_context_t *ctx, gl_texture_cache
     }
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    gl.TexParameteri(GL_TEXTURE_2D,
+                     GL_TEXTURE_MIN_FILTER,
+                     entry->native_mip_count > 1 ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, (GLint)(entry->native_mip_count - 1));

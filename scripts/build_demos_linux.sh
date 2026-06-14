@@ -67,9 +67,14 @@ fi
 case "$(uname -m)" in
     x86_64|amd64)
         TARGET_ARCH="x64"
+        NATIVE_LINK=0
+        ;;
+    aarch64|arm64)
+        TARGET_ARCH="arm64"
+        NATIVE_LINK=1
         ;;
     *)
-        echo -e "${RED}Error: build_demos_linux.sh currently supports x86_64 Linux only${NC}"
+        echo -e "${RED}Error: build_demos_linux.sh currently supports x86_64 and arm64 Linux only${NC}"
         exit 1
         ;;
 esac
@@ -223,6 +228,11 @@ build_demo() {
     fi
 
     local demo_opt="-O1"
+    if [[ "$TARGET_ARCH" == "arm64" ]]; then
+        case "$name" in
+            chess-zia|crackman) demo_opt="-O0" ;;
+        esac
+    fi
 
     if grep -qE '^[[:space:]]*(embed|pack|pack-compressed)[[:space:]]' "$project_dir/viper.project"; then
         # Asset projects (embed -> .rodata, pack -> a .vpa beside the binary) must
@@ -250,24 +260,36 @@ build_demo() {
         fi
         echo -e "${GREEN}OK${NC}"
 
-        echo -n "  Codegen (native obj)... "
-        if ! "$VIPER" codegen "$TARGET_ARCH" compile "$il_file" --native-asm "$demo_opt" -o "$obj_file" \
-            >"$codegen_out" 2>"$codegen_err"; then
-            echo -e "${RED}FAILED${NC}"
-            head -20 "$codegen_err"
-            rm -f "$il_file" "$obj_file" "$frontend_err" "$codegen_out" "$codegen_err" \
-                "$link_err" "$run_out" "$run_err"
-            return 1
-        fi
-        echo -e "${GREEN}OK${NC}"
+        if [[ $NATIVE_LINK -eq 1 ]]; then
+            echo -n "  Codegen (native asm+link)... "
+            if ! "$VIPER" codegen "$TARGET_ARCH" "$il_file" --native-asm --native-link "$demo_opt" -o "$exe_file" \
+                >"$codegen_out" 2>"$codegen_err"; then
+                echo -e "${RED}FAILED${NC}"
+                head -20 "$codegen_err"
+                rm -f "$il_file" "$obj_file" "$frontend_err" "$codegen_out" "$codegen_err" \
+                    "$link_err" "$run_out" "$run_err"
+                return 1
+            fi
+        else
+            echo -n "  Codegen (native obj)... "
+            if ! "$VIPER" codegen "$TARGET_ARCH" compile "$il_file" --native-asm "$demo_opt" -o "$obj_file" \
+                >"$codegen_out" 2>"$codegen_err"; then
+                echo -e "${RED}FAILED${NC}"
+                head -20 "$codegen_err"
+                rm -f "$il_file" "$obj_file" "$frontend_err" "$codegen_out" "$codegen_err" \
+                    "$link_err" "$run_out" "$run_err"
+                return 1
+            fi
+            echo -e "${GREEN}OK${NC}"
 
-        echo -n "  Link (system c++)... "
-        if ! link_demo "$obj_file" "$exe_file" "$link_err"; then
-            echo -e "${RED}FAILED${NC}"
-            head -40 "$link_err"
-            rm -f "$il_file" "$obj_file" "$frontend_err" "$codegen_out" "$codegen_err" \
-                "$link_err" "$run_out" "$run_err"
-            return 1
+            echo -n "  Link (system c++)... "
+            if ! link_demo "$obj_file" "$exe_file" "$link_err"; then
+                echo -e "${RED}FAILED${NC}"
+                head -40 "$link_err"
+                rm -f "$il_file" "$obj_file" "$frontend_err" "$codegen_out" "$codegen_err" \
+                    "$link_err" "$run_out" "$run_err"
+                return 1
+            fi
         fi
         echo -e "${GREEN}OK${NC}"
     fi
@@ -302,8 +324,13 @@ build_demo() {
 }
 
 echo -e "${CYAN}Building Viper demos on Linux (${TARGET_ARCH})${NC}"
-echo -e "${CYAN}Object generation: Viper native backend${NC}"
-echo -e "${CYAN}Final link: system c++${NC}"
+if [[ $NATIVE_LINK -eq 1 ]]; then
+    echo -e "${CYAN}Object generation: Viper native backend${NC}"
+    echo -e "${CYAN}Final link: Viper native linker${NC}"
+else
+    echo -e "${CYAN}Object generation: Viper native backend${NC}"
+    echo -e "${CYAN}Final link: system c++${NC}"
+fi
 if [[ $SKIP_RUN -eq 0 ]]; then
     echo -e "${CYAN}Run validation: launch from ./examples/bin with timeout=${RUN_TIMEOUT_DEFAULT}s${NC}"
 fi

@@ -94,6 +94,32 @@ static bool isAArch64AddImmediate(uint32_t insn) {
     return viper::codegen::isA64AddImmediate(insn);
 }
 
+static bool writeAArch64AddImmediate12(uint8_t *patch,
+                                       uint32_t imm12,
+                                       const ObjFile &obj,
+                                       const std::string &symName,
+                                       const char *kind,
+                                       std::ostream &err) {
+    uint32_t insn = readLE32(patch);
+    if (!isAArch64AddImmediate(insn)) {
+        err << "error: " << obj.name << ": " << kind << " relocation is not applied to ADD";
+        if (!symName.empty())
+            err << " for '" << symName << "'";
+        err << "\n";
+        return false;
+    }
+    if (imm12 > 0xFFFu) {
+        err << "error: " << obj.name << ": " << kind << " immediate out of range";
+        if (!symName.empty())
+            err << " for '" << symName << "'";
+        err << "\n";
+        return false;
+    }
+    insn = (insn & 0xFFC003FFu) | (imm12 << 10);
+    writeLE32(patch, insn);
+    return true;
+}
+
 static bool isAArch64LdrXUnsignedOffset(uint32_t insn) {
     return (insn & 0xFFC00000u) == 0xF9400000u;
 }
@@ -412,6 +438,36 @@ static bool computeTlsImageInfo(const LinkLayout &layout, TlsImageInfo &info, st
         info.endVA = std::max(info.endVA, secEnd);
     }
 
+    return true;
+}
+
+static bool computeAArch64TlsTprel(uint64_t S,
+                                   int64_t A,
+                                   const ObjFile &obj,
+                                   const std::string &symName,
+                                   const char *kind,
+                                   const TlsImageInfo &tlsImage,
+                                   std::ostream &err,
+                                   uint64_t &tprel) {
+    if (!tlsImage.present) {
+        err << "error: " << obj.name << ": " << kind << " relocation requires a TLS image";
+        if (!symName.empty())
+            err << " for '" << symName << "'";
+        err << "\n";
+        return false;
+    }
+
+    uint64_t target = 0;
+    if (!checkedRelocTarget(S, A, obj, symName, kind, err, target))
+        return false;
+    if (target < tlsImage.startVA) {
+        err << "error: " << obj.name << ": " << kind << " target precedes TLS image";
+        if (!symName.empty())
+            err << " for '" << symName << "'";
+        err << "\n";
+        return false;
+    }
+    tprel = target - tlsImage.startVA;
     return true;
 }
 
@@ -914,7 +970,8 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
 
                 const RelocAction action = classifyReloc(obj.format, arch, rel.type);
                 if (!outSec.alloc && hasSymOutputSection && layout.sections[symOutSecIdx].alloc &&
-                    (action == RelocAction::PCRel32 || action == RelocAction::Branch26 ||
+                    (action == RelocAction::PCRel32 || action == RelocAction::PCRel64 ||
+                     action == RelocAction::Branch26 ||
                      action == RelocAction::Page21 || action == RelocAction::PageOff12 ||
                      action == RelocAction::PageOff12A || action == RelocAction::PageOff12L ||
                      action == RelocAction::LdSt32Off || action == RelocAction::LdSt64Off ||
@@ -968,6 +1025,19 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                             return false;
                         if (!writeCheckedRel32(patch, val, obj, symName, "PC-relative", err))
                             return false;
+                        break;
+                    }
+                    case RelocAction::PCRel64: {
+                        if (!requirePatchBytes(8, "64-bit PC-relative"))
+                            return false;
+                        uint64_t target = 0;
+                        int64_t val = 0;
+                        if (!checkedRelocTarget(
+                                S, A, obj, symName, "64-bit PC-relative", err, target) ||
+                            !checkedRelocDelta(
+                                target, P, obj, symName, "64-bit PC-relative", err, val))
+                            return false;
+                        writeLE64(patch, static_cast<uint64_t>(val));
                         break;
                     }
                     case RelocAction::Abs64: {
@@ -1113,6 +1183,81 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                                 target, tlsImage.endVA, obj, symName, "TLS local-exec", err, tpoff))
                             return false;
                         if (!writeCheckedRel32(patch, tpoff, obj, symName, "TLS local-exec", err))
+                            return false;
+                        break;
+                    }
+                    case RelocAction::TlsA64AddTprelHi12: {
+                        if (!requirePatchBytes(4, "AArch64 TLS local-exec HI12"))
+                            return false;
+                        if (!requireTargetOutputSection("AArch64 TLS local-exec HI12"))
+                            return false;
+                        if (!layout.sections[symOutSecIdx].tls) {
+                            err << "error: " << obj.name << ": AArch64 TLS local-exec target '"
+                                << targetDisplay << "' is not in a TLS section\n";
+                            return false;
+                        }
+                        uint64_t tprel = 0;
+                        if (!computeAArch64TlsTprel(S,
+                                                    A,
+                                                    obj,
+                                                    symName,
+                                                    "AArch64 TLS local-exec HI12",
+                                                    tlsImage,
+                                                    err,
+                                                    tprel))
+                            return false;
+                        if (tprel > 0xFFFFFFu) {
+                            err << "error: " << obj.name
+                                << ": AArch64 TLS local-exec HI12 relocation out of range";
+                            if (!symName.empty())
+                                err << " for '" << symName << "'";
+                            err << "\n";
+                            return false;
+                        }
+                        if (!writeAArch64AddImmediate12(patch,
+                                                        static_cast<uint32_t>((tprel >> 12) & 0xFFFu),
+                                                        obj,
+                                                        symName,
+                                                        "AArch64 TLS local-exec HI12",
+                                                        err))
+                            return false;
+                        break;
+                    }
+                    case RelocAction::TlsA64AddTprelLo12:
+                    case RelocAction::TlsA64AddTprelLo12Nc: {
+                        if (!requirePatchBytes(4, "AArch64 TLS local-exec LO12"))
+                            return false;
+                        if (!requireTargetOutputSection("AArch64 TLS local-exec LO12"))
+                            return false;
+                        if (!layout.sections[symOutSecIdx].tls) {
+                            err << "error: " << obj.name << ": AArch64 TLS local-exec target '"
+                                << targetDisplay << "' is not in a TLS section\n";
+                            return false;
+                        }
+                        uint64_t tprel = 0;
+                        if (!computeAArch64TlsTprel(S,
+                                                    A,
+                                                    obj,
+                                                    symName,
+                                                    "AArch64 TLS local-exec LO12",
+                                                    tlsImage,
+                                                    err,
+                                                    tprel))
+                            return false;
+                        if (action == RelocAction::TlsA64AddTprelLo12 && tprel > 0xFFFu) {
+                            err << "error: " << obj.name
+                                << ": AArch64 TLS local-exec LO12 relocation out of range";
+                            if (!symName.empty())
+                                err << " for '" << symName << "'";
+                            err << "\n";
+                            return false;
+                        }
+                        if (!writeAArch64AddImmediate12(patch,
+                                                        static_cast<uint32_t>(tprel & 0xFFFu),
+                                                        obj,
+                                                        symName,
+                                                        "AArch64 TLS local-exec LO12",
+                                                        err))
                             return false;
                         break;
                     }

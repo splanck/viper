@@ -116,6 +116,17 @@ bool isLinuxCppRuntimeSymbol(const std::string &name) {
     return false;
 }
 
+bool isLinuxCompilerRuntimeSymbol(const std::string &name) {
+    static const std::unordered_set<std::string> kExact = {
+        "__addtf3",       "__divtf3",      "__eqtf2",       "__extenddftf2",
+        "__fixtfdi",      "__fixtfsi",     "__fixunstfdi",  "__floatditf",
+        "__floatunditf",  "__floatunsitf", "__getf2",       "__gttf2",
+        "__letf2",        "__lttf2",       "__multf3",      "__netf2",
+        "__subtf3",       "__trunctfdf2",
+    };
+    return kExact.count(name) != 0;
+}
+
 LinuxNeededLib classifyLinuxImportLibrary(const std::string &name) {
     if (name.rfind("snd_", 0) == 0)
         return LinuxNeededLib::LibASound;
@@ -126,6 +137,8 @@ LinuxNeededLib classifyLinuxImportLibrary(const std::string &name) {
     if (name.rfind("pthread_", 0) == 0)
         return LinuxNeededLib::LibPthread;
     if (name.rfind("_Unwind_", 0) == 0)
+        return LinuxNeededLib::LibGccS;
+    if (isLinuxCompilerRuntimeSymbol(name))
         return LinuxNeededLib::LibGccS;
     if (isLinuxCppRuntimeSymbol(name))
         return LinuxNeededLib::LibStdCpp;

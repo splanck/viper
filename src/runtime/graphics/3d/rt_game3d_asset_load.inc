@@ -1054,12 +1054,12 @@ void *rt_game3d_model_template_instantiate_scene_at(void *obj, int64_t index) {
     void *scene = rt_model3d_instantiate_scene_at(model, index);
     if (!scene)
         return NULL;
-    rt_scene3d *scene3d = (rt_scene3d *)rt_g3d_checked_or_null(scene, RT_G3D_SCENE3D_CLASS_ID);
-    if (!scene3d) {
+    void *root = rt_scene3d_get_root(scene);
+    if (!root) {
         game3d_release_ref(&scene);
         return NULL;
     }
-    void *entity = game3d_entity_from_model_root(scene3d->root);
+    void *entity = game3d_entity_from_model_root(root);
     game3d_release_ref(&scene);
     return entity;
 }

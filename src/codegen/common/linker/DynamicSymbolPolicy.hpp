@@ -131,10 +131,45 @@ inline bool isKnownCppRuntimeDynamicSymbol(const std::string &name) {
     return dynamicSymbolHasPrefix(name, kCppRuntimePrefixes);
 }
 
+/// @brief Recognise compiler runtime helper symbols supplied by libgcc_s/compiler-rt.
+inline bool isKnownCompilerRuntimeDynamicSymbol(const std::string &name, LinkPlatform platform) {
+    const std::string stripped = stripDynamicSymbolLeadingUnderscores(name);
+
+    static const char *const kCompilerRuntimeExact[] = {
+        "addtf3",
+        "divtf3",
+        "eqtf2",
+        "extenddftf2",
+        "fixtfdi",
+        "fixtfsi",
+        "fixunstfdi",
+        "floatditf",
+        "floatunditf",
+        "floatunsitf",
+        "getf2",
+        "gttf2",
+        "letf2",
+        "lttf2",
+        "multf3",
+        "netf2",
+        "subtf3",
+        "trunctfdf2",
+        nullptr,
+    };
+    for (const char *const *p = kCompilerRuntimeExact; p && *p; ++p) {
+        if (stripped == *p)
+            return true;
+    }
+    return false;
+}
+
 /// Known system/dynamic library symbols that won't be present in runtime
 /// archives and may be resolved through platform loader metadata instead.
 inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform) {
     const std::string stripped = stripDynamicSymbolLeadingUnderscores(name);
+
+    if (isKnownCompilerRuntimeDynamicSymbol(name, platform))
+        return true;
 
     static const char *const kDynSymExact[] = {
         // libSystem ctype data/helpers referenced by libc++ <locale>/<sstream>

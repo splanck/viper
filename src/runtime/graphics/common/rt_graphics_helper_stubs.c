@@ -29,6 +29,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_graphics_stubs_internal.h"
+#include "rt_graphics_internal.h"
+
+#ifndef RT_COLOR_EXPLICIT_ALPHA_FLAG
+#define RT_COLOR_EXPLICIT_ALPHA_FLAG ((int64_t)1 << 56)
+#endif
 
 // Color constants — packed 0x00RRGGBB
 /// @brief Return the predefined red color constant.

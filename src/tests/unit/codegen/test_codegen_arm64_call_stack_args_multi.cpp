@@ -64,8 +64,8 @@ TEST(Arm64CLI, CallWithStackArgsUsesPerCallOutgoingArea) {
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "--target-darwin"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     const size_t subCount = countSubstring(asmText, "sub sp, sp");
     const size_t addCount = countSubstring(asmText, "add sp, sp");

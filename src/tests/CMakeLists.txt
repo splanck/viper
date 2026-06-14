@@ -483,7 +483,8 @@ endif ()
 
 viper_add_test(test_stl_load
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestStlLoad.cpp
-        LIBS viper_runtime viper_test_common)
+        LIBS viper_runtime viper_test_common
+        INCLUDES ${CMAKE_SOURCE_DIR}/src/lib/graphics/include)
 
 viper_add_test(test_rt_behavior
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestBehavior.cpp
@@ -996,6 +997,7 @@ add_test(NAME zia_viperide_phase2_phase3
 set_tests_properties(zia_viperide_phase2_phase3 PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;viperide;phase2;phase3"
+        RUN_SERIAL TRUE
         TIMEOUT 60)
 
 add_test(NAME zia_viperide_editor_hot_path

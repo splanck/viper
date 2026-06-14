@@ -51,17 +51,13 @@ static std::string readFile(const std::string &path) {
     return ss.str();
 }
 
-/// @brief Returns the expected mangled symbol name for a call target.
-static std::string blSym(const std::string &name) {
-#if defined(__APPLE__)
-    return "bl _" + name;
-#else
-    return "bl " + name;
-#endif
+/// @brief Returns the expected target-mangled symbol name for a call target.
+static std::string blSym(const TargetInfo &target, const std::string &name) {
+    return target.abiFormat == ABIFormat::Darwin ? "bl _" + name : "bl " + name;
 }
 
-static bool hasExactCall(const std::string &asmText, const std::string &name) {
-    const std::string expected = blSym(name);
+static bool hasExactCall(const TargetInfo &target, const std::string &asmText, const std::string &name) {
+    const std::string expected = blSym(target, name);
     std::istringstream lines(asmText);
     for (std::string line; std::getline(lines, line);) {
         const std::size_t first = line.find_first_not_of(" \t");
@@ -105,7 +101,7 @@ TEST(Arm64CLI, OverflowVariantsRR) {
         }
         if (c.expectTrap) {
             EXPECT_NE(asmText.find(c.expectTrap), std::string::npos);
-            EXPECT_TRUE(hasExactCall(asmText, "rt_trap_ovf"));
+            EXPECT_TRUE(hasExactCall(linuxTarget(), asmText, "rt_trap_ovf"));
         }
     }
 }
@@ -157,7 +153,7 @@ TEST(Arm64CLI, SubWidthOverflowUsesAnnotatedWidth) {
     EXPECT_NE(asmText.find("#48"), std::string::npos);
     EXPECT_NE(asmText.find("cmp x"), std::string::npos);
     EXPECT_NE(asmText.find("b.ne L.Ltrap_subwidth_ovf_"), std::string::npos);
-    EXPECT_TRUE(hasExactCall(asmText, "rt_trap_ovf"));
+    EXPECT_TRUE(hasExactCall(*module.ti, asmText, "rt_trap_ovf"));
 }
 
 int main(int argc, char **argv) {

@@ -466,7 +466,9 @@ void *rt_game3d_entity_attach_animator(void *obj, void *animator_or_controller) 
                 rt_game3d_animator *game_animator = game3d_animator_checked(
                     animator, "Game3D.Entity3D.attachAnimator: invalid animator");
                 rt_scene_node3d_bind_animator(node, game3d_animator_controller_ref(game_animator));
+#ifdef VIPER_ENABLE_GRAPHICS
                 rt_scene_node3d_set_animator_scene_update(node, 0);
+#endif
                 rt_scene_node3d_bind_node_animator(
                     node, game3d_animator_node_animator_ref(game_animator));
             } else {

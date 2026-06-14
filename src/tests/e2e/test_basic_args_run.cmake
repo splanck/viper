@@ -12,7 +12,11 @@ endif ()
 set(_ARGS_LIST ${ARGS})
 
 get_filename_component(_BASENAME "${BAS_FILE}" NAME_WE)
-set(OUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/${_BASENAME}.out.txt")
+set(_OUT_SUFFIX "")
+if (DEBUG_VM)
+    set(_OUT_SUFFIX ".debug")
+endif ()
+set(OUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/${_BASENAME}${_OUT_SUFFIX}.out.txt")
 
 set(_RUN_ARGS front basic -run ${BAS_FILE})
 if (DEBUG_VM)

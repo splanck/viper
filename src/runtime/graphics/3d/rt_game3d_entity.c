@@ -72,6 +72,34 @@
 #include <stdlib.h>
 #include <string.h>
 
+/// @brief Push an opaque SceneNode3D handle onto a growable traversal stack.
+static int game3d_node_stack_push(void ***stack_io,
+                                  size_t *count_io,
+                                  size_t *capacity_io,
+                                  void *node) {
+    void **stack = *stack_io;
+    size_t count = *count_io;
+    size_t capacity = *capacity_io;
+    if (!node)
+        return 1;
+    if (count >= capacity) {
+        size_t new_capacity = capacity > 0 ? capacity * 2u : 32u;
+        void **grown;
+        if (new_capacity <= capacity || new_capacity > SIZE_MAX / sizeof(*stack))
+            return 0;
+        grown = (void **)realloc(stack, new_capacity * sizeof(*stack));
+        if (!grown)
+            return 0;
+        stack = grown;
+        capacity = new_capacity;
+    }
+    stack[count++] = node;
+    *stack_io = stack;
+    *count_io = count;
+    *capacity_io = capacity;
+    return 1;
+}
+
 /// @brief GC finalizer for an entity: release child entities, node/mesh/material/body/anim/name
 ///   references it owns, then free the child array.
 static void game3d_entity_finalize(void *obj) {
@@ -374,32 +402,30 @@ void *rt_game3d_entity_set_material(void *obj, void *material) {
 ///   C-stack overflow on deep hierarchies). If no node in the subtree carries a mesh,
 ///   the mesh is assigned to `root` as a fallback. Traps on stack-allocation failure.
 /// @return Count of nodes that received the mesh (>= 1 when `root` is non-NULL).
-static int game3d_entity_set_mesh_subtree(rt_scene_node3d *root, void *mesh) {
-    rt_scene_node3d **stack = NULL;
+static int game3d_entity_set_mesh_subtree(void *root, void *mesh) {
+    void **stack = NULL;
     size_t count = 0;
     size_t capacity = 0;
     int assigned = 0;
     if (!root)
         return 0;
-    if (!scene_node_stack_push(&stack, &count, &capacity, root)) {
+    if (!game3d_node_stack_push(&stack, &count, &capacity, root)) {
         rt_trap("Game3D.Entity3D.setMeshRecursive: traversal stack allocation failed");
         return 0;
     }
     while (count > 0) {
-        rt_scene_node3d *node = stack[--count];
-        int32_t child_count;
-        if (node->mesh) {
+        void *node = stack[--count];
+        int64_t child_count;
+        if (rt_scene_node3d_get_mesh(node)) {
             rt_scene_node3d_set_mesh(node, mesh);
             assigned++;
         }
-        child_count = scene3d_node_child_count(node);
-        node->child_count = child_count;
-        for (int32_t i = child_count - 1; i >= 0; --i) {
-            rt_scene_node3d *child = (rt_scene_node3d *)rt_g3d_checked_or_null(
-                node->children[i], RT_G3D_SCENENODE3D_CLASS_ID);
+        child_count = rt_scene_node3d_child_count(node);
+        for (int64_t i = child_count - 1; i >= 0; --i) {
+            void *child = rt_scene_node3d_get_child(node, i);
             if (!child)
                 continue;
-            if (!scene_node_stack_push(&stack, &count, &capacity, child)) {
+            if (!game3d_node_stack_push(&stack, &count, &capacity, child)) {
                 free(stack);
                 rt_trap("Game3D.Entity3D.setMeshRecursive: traversal stack allocation failed");
                 return assigned;
@@ -417,28 +443,26 @@ static int game3d_entity_set_mesh_subtree(rt_scene_node3d *root, void *mesh) {
 /// @brief Assign `material` to every node in the subtree rooted at `root`, walked as an
 ///   iterative depth-first traversal over an explicit heap stack (avoids C-stack overflow
 ///   on deep hierarchies). Traps on stack-allocation failure.
-static void game3d_entity_set_material_subtree(rt_scene_node3d *root, void *material) {
-    rt_scene_node3d **stack = NULL;
+static void game3d_entity_set_material_subtree(void *root, void *material) {
+    void **stack = NULL;
     size_t count = 0;
     size_t capacity = 0;
     if (!root)
         return;
-    if (!scene_node_stack_push(&stack, &count, &capacity, root)) {
+    if (!game3d_node_stack_push(&stack, &count, &capacity, root)) {
         rt_trap("Game3D.Entity3D.setMaterialRecursive: traversal stack allocation failed");
         return;
     }
     while (count > 0) {
-        rt_scene_node3d *node = stack[--count];
-        int32_t child_count;
+        void *node = stack[--count];
+        int64_t child_count;
         rt_scene_node3d_set_material(node, material);
-        child_count = scene3d_node_child_count(node);
-        node->child_count = child_count;
-        for (int32_t i = child_count - 1; i >= 0; --i) {
-            rt_scene_node3d *child = (rt_scene_node3d *)rt_g3d_checked_or_null(
-                node->children[i], RT_G3D_SCENENODE3D_CLASS_ID);
+        child_count = rt_scene_node3d_child_count(node);
+        for (int64_t i = child_count - 1; i >= 0; --i) {
+            void *child = rt_scene_node3d_get_child(node, i);
             if (!child)
                 continue;
-            if (!scene_node_stack_push(&stack, &count, &capacity, child)) {
+            if (!game3d_node_stack_push(&stack, &count, &capacity, child)) {
                 free(stack);
                 rt_trap("Game3D.Entity3D.setMaterialRecursive: traversal stack allocation failed");
                 return;
@@ -461,7 +485,7 @@ void *rt_game3d_entity_set_mesh_recursive(void *obj, void *mesh) {
     }
     if (entity) {
         game3d_assign_typed_ref(&entity->mesh, mesh, RT_G3D_MESH3D_CLASS_ID);
-        game3d_entity_set_mesh_subtree((rt_scene_node3d *)game3d_entity_node_ref(entity), mesh);
+        game3d_entity_set_mesh_subtree(game3d_entity_node_ref(entity), mesh);
     }
     return obj;
 }
@@ -479,8 +503,7 @@ void *rt_game3d_entity_set_material_recursive(void *obj, void *material) {
     }
     if (entity) {
         game3d_assign_typed_ref(&entity->material, material, RT_G3D_MATERIAL3D_CLASS_ID);
-        game3d_entity_set_material_subtree((rt_scene_node3d *)game3d_entity_node_ref(entity),
-                                           material);
+        game3d_entity_set_material_subtree(game3d_entity_node_ref(entity), material);
     }
     return obj;
 }

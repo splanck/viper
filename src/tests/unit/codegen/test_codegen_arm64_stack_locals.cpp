@@ -32,13 +32,9 @@
 using namespace viper::codegen::aarch64;
 using namespace il;
 
-/// @brief Returns the expected mangled symbol name on Darwin.
-static std::string mangledSym(const std::string &name) {
-#if defined(__APPLE__)
-    return "_" + name;
-#else
-    return name;
-#endif
+/// @brief Returns the expected target-mangled symbol name.
+static std::string mangledSym(const TargetInfo &target, const std::string &name) {
+    return target.abiFormat == ABIFormat::Darwin ? "_" + name : name;
 }
 
 /// Build a simple IL function that allocates a local, stores param0 to it, loads it back, and
@@ -187,8 +183,8 @@ TEST(AArch64Codegen, StackLocals_AllocaLoadStore) {
 
     // Verify function header and prologue
     EXPECT_NE(asmText.find(".text"), std::string::npos);
-    EXPECT_NE(asmText.find(".globl " + mangledSym("test_local")), std::string::npos);
-    EXPECT_NE(asmText.find(mangledSym("test_local") + ":"), std::string::npos);
+    EXPECT_NE(asmText.find(".globl " + mangledSym(ti, "test_local")), std::string::npos);
+    EXPECT_NE(asmText.find(mangledSym(ti, "test_local") + ":"), std::string::npos);
     EXPECT_NE(asmText.find("stp x29, x30"), std::string::npos);
     EXPECT_NE(asmText.find("mov x29, sp"), std::string::npos);
 

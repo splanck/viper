@@ -112,6 +112,9 @@ target_include_directories(viperaud
 # MSVC: force synchronous PDB writes and UTF-8 source encoding
 if (MSVC)
     target_compile_options(viperaud PRIVATE /utf-8 /FS)
+elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
+        CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+    target_compile_options(viperaud PRIVATE -mno-outline-atomics)
 endif ()
 
 # POSIX feature test macros for Linux (nanosleep, pthread APIs, etc.)

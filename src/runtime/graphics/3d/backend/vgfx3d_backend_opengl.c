@@ -660,6 +660,92 @@ typedef struct {
 
 static int gl_loaded = 0;
 
+static void query_main_uniforms(gl_context_t *ctx);
+static void query_shadow_uniforms(gl_context_t *ctx);
+static void query_skybox_uniforms(gl_context_t *ctx);
+static void query_postfx_uniforms(gl_context_t *ctx);
+static void upload_main_uniforms(gl_context_t *ctx,
+                                 const vgfx3d_draw_cmd_t *cmd,
+                                 const vgfx3d_light_params_t *lights,
+                                 int32_t light_count,
+                                 const float *ambient,
+                                 int8_t instanced);
+static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd);
+static void bind_shadow_anim(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd);
+static void bind_morph_payload(gl_context_t *ctx,
+                               const vgfx3d_draw_cmd_t *cmd,
+                               GLint uHasSkinning,
+                               GLint uMorphShapeCount,
+                               GLint uVertexCount,
+                               GLint uMorphWeights,
+                               GLint uPrevMorphWeights,
+                               GLint uMorphDeltas,
+                               GLint uHasMorphNormalDeltas,
+                               GLint uMorphNormalDeltas);
+static void texture_cache_prune(gl_context_t *ctx);
+static void cubemap_cache_prune(gl_context_t *ctx);
+static void morph_cache_prune(gl_context_t *ctx);
+static void morph_cache_release_entry(gl_morph_cache_entry_t *entry);
+static void texture_cache_destroy(gl_context_t *ctx);
+static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr);
+static GLuint gl_get_cached_cubemap(gl_context_t *ctx, const rt_cubemap3d *cubemap);
+static float gl_cubemap_max_lod(const rt_cubemap3d *cubemap);
+static GLuint gl_get_material_texture(gl_context_t *ctx,
+                                      void *asset,
+                                      const void *pixels,
+                                      uint64_t asset_cache_key,
+                                      int64_t mip_start,
+                                      int64_t mip_count);
+static void gl_destroy_mesh_cache(gl_context_t *ctx);
+static void set_identity_instance_constants(void);
+static void configure_mesh_attributes(gl_context_t *ctx, GLuint mesh_vbo, GLuint mesh_ibo);
+static int configure_instance_attributes(gl_context_t *ctx,
+                                         const float *instance_matrices,
+                                         const float *prev_instance_matrices,
+                                         int32_t instance_count);
+static int prepare_mesh_buffers(gl_context_t *ctx,
+                                const vgfx3d_draw_cmd_t *cmd,
+                                GLuint *out_vbo,
+                                GLuint *out_ibo);
+static int draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_chain_t *chain);
+static void gl_draw_skybox_impl(gl_context_t *ctx, const rt_cubemap3d *cubemap);
+static void destroy_scene_targets(gl_context_t *ctx);
+static void destroy_postfx_readback_target(gl_context_t *ctx);
+static int ensure_scene_targets(gl_context_t *ctx, int32_t w, int32_t h);
+static void destroy_rtt_targets(gl_context_t *ctx);
+static int ensure_rtt_targets(gl_context_t *ctx, vgfx3d_rendertarget_t *rt);
+static void destroy_shadow_targets(gl_context_t *ctx);
+static int ensure_shadow_targets(gl_context_t *ctx, int32_t slot, int32_t w, int32_t h);
+static void gl_recompute_shadow_count(gl_context_t *ctx);
+static void bind_main_framebuffer(gl_context_t *ctx);
+static void gl_configure_draw_output(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd);
+static void gl_apply_depth_bias(const vgfx3d_draw_cmd_t *cmd);
+static void bind_texture_unit(GLint uniform_loc, int unit, GLenum target, GLuint texture);
+static void bind_texture_unit_with_sampler(gl_context_t *ctx,
+                                           GLint uniform_loc,
+                                           int unit,
+                                           GLenum target,
+                                           GLuint texture,
+                                           const vgfx3d_draw_cmd_t *cmd,
+                                           int32_t slot);
+static void gl_draw_texture_to_target(gl_context_t *ctx,
+                                      GLuint source_color_tex,
+                                      GLuint framebuffer,
+                                      GLenum draw_buffer,
+                                      int32_t width,
+                                      int32_t height,
+                                      const vgfx3d_postfx_snapshot_t *snapshot);
+static int gl_apply_postfx_chain(gl_context_t *ctx,
+                                 GLuint source_tex,
+                                 int32_t width,
+                                 int32_t height,
+                                 const vgfx3d_postfx_chain_t *chain,
+                                 GLuint final_framebuffer,
+                                 GLenum final_draw_buffer,
+                                 int force_offscreen_final,
+                                 GLuint *out_result_framebuffer,
+                                 GLenum *out_result_read_buffer);
+
 /// @brief Row-major to column-major (or vice versa) 4×4 transpose.
 ///
 /// Used because GLSL/glUniformMatrix4fv default to column-major while
@@ -1012,17 +1098,6 @@ static int gl_extension_supported(const char *name) {
         }
     }
     return 0;
-}
-
-/// @brief Whether the current GL context version is at least @p major.@p minor.
-static int gl_version_at_least(int major, int minor) {
-    const char *version = gl.GetString ? (const char *)gl.GetString(GL_VERSION) : NULL;
-    int found_major = 0;
-    int found_minor = 0;
-
-    if (!version || sscanf(version, "%d.%d", &found_major, &found_minor) != 2)
-        return 0;
-    return found_major > major || (found_major == major && found_minor >= minor);
 }
 
 /// @brief Probe GL_EXT_texture_filter_anisotropic once for the active context.

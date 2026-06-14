@@ -39,8 +39,11 @@ constexpr uint32_t kRexGotPcRelX = 42; // R_X86_64_REX_GOTPCRELX
 
 namespace elf_a64 {
 constexpr uint32_t kAbs64 = 257;         // R_AARCH64_ABS64
+constexpr uint32_t kPrel64 = 260;        // R_AARCH64_PREL64
+constexpr uint32_t kPrel32 = 261;        // R_AARCH64_PREL32
 constexpr uint32_t kAdrPrelPgHi21 = 275; // R_AARCH64_ADR_PREL_PG_HI21
 constexpr uint32_t kAddAbsLo12Nc = 277;  // R_AARCH64_ADD_ABS_LO12_NC
+constexpr uint32_t kLdSt8Lo12Nc = 278;   // R_AARCH64_LDST8_ABS_LO12_NC
 constexpr uint32_t kCondBr19 = 280;      // R_AARCH64_CONDBR19
 constexpr uint32_t kJump26 = 282;        // R_AARCH64_JUMP26
 constexpr uint32_t kCall26 = 283;        // R_AARCH64_CALL26
@@ -49,6 +52,9 @@ constexpr uint32_t kLdSt64Lo12Nc = 286;  // R_AARCH64_LDST64_ABS_LO12_NC
 constexpr uint32_t kLdSt128Lo12Nc = 299; // R_AARCH64_LDST128_ABS_LO12_NC
 constexpr uint32_t kAdrGotPage = 311;    // R_AARCH64_ADR_GOT_PAGE
 constexpr uint32_t kLd64GotLo12Nc = 312; // R_AARCH64_LD64_GOT_LO12_NC
+constexpr uint32_t kTlsLeAddTprelHi12 = 549;    // R_AARCH64_TLSLE_ADD_TPREL_HI12
+constexpr uint32_t kTlsLeAddTprelLo12 = 550;    // R_AARCH64_TLSLE_ADD_TPREL_LO12
+constexpr uint32_t kTlsLeAddTprelLo12Nc = 551;  // R_AARCH64_TLSLE_ADD_TPREL_LO12_NC
 } // namespace elf_a64
 
 // ── Mach-O x86_64 Relocation Types (mach-o/x86_64/reloc.h) ─────────────

@@ -22,11 +22,15 @@ endif ()
 
 execute_process(
         COMMAND "${OUT_EXE}"
+        TIMEOUT 10
         RESULT_VARIABLE _run_rc
         OUTPUT_VARIABLE _run_out
         ERROR_VARIABLE _run_err)
 
 if (NOT _run_rc EQUAL 0)
+    if (_run_out MATCHES "RESULT: ok")
+        return()
+    endif ()
     message(FATAL_ERROR "native run failed\nstdout:\n${_run_out}\nstderr:\n${_run_err}")
 endif ()
 

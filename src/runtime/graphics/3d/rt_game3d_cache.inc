@@ -232,21 +232,22 @@ static uint64_t game3d_u64_saturating_add(uint64_t a, uint64_t b) {
     return a + b;
 }
 
-/// @brief Saturating unsigned 64-bit multiplication (clamps to UINT64_MAX on overflow).
-static uint64_t game3d_u64_saturating_mul_u64(uint64_t a, uint64_t b) {
-    if (a != 0 && b > UINT64_MAX / a)
-        return UINT64_MAX;
-    return a * b;
+/// @brief Convert a uint64 to int64, saturating values above INT64_MAX.
+static int64_t game3d_i64_from_u64_saturating(uint64_t value) {
+    return value > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)value;
 }
 
+#ifdef VIPER_ENABLE_GRAPHICS
 /// @brief Convert an int64 to uint64, treating negative values as 0.
 static uint64_t game3d_u64_from_i64_nonnegative(int64_t value) {
     return value > 0 ? (uint64_t)value : 0;
 }
 
-/// @brief Convert a uint64 to int64, saturating values above INT64_MAX.
-static int64_t game3d_i64_from_u64_saturating(uint64_t value) {
-    return value > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)value;
+/// @brief Saturating unsigned 64-bit multiplication (clamps to UINT64_MAX on overflow).
+static uint64_t game3d_u64_saturating_mul_u64(uint64_t a, uint64_t b) {
+    if (a != 0 && b > UINT64_MAX / a)
+        return UINT64_MAX;
+    return a * b;
 }
 
 typedef struct {
@@ -358,6 +359,7 @@ static uint64_t game3d_count_material_texture_once(void *texture,
 ///   cubemaps do not inflate cache residency estimates.
 static uint64_t game3d_count_material_cubemap_once(void *cubemap,
                                                    game3d_seen_ptr_set *seen_textures) {
+#ifdef VIPER_ENABLE_GRAPHICS
     rt_cubemap3d *cm = (rt_cubemap3d *)cubemap;
     uint64_t total = 0;
     if (!cubemap || !seen_textures || !rt_g3d_has_class(cubemap, RT_G3D_CUBEMAP3D_CLASS_ID) ||
@@ -375,6 +377,11 @@ static uint64_t game3d_count_material_cubemap_once(void *cubemap,
                                           game3d_pixels_estimate_resident_bytes(cm->faces[face]));
     }
     return total;
+#else
+    (void)cubemap;
+    (void)seen_textures;
+    return 0;
+#endif
 }
 
 /// @brief Estimate the resident texture bytes of a material across all its texture slots (deduped).
@@ -644,6 +651,27 @@ static uint64_t game3d_scene_estimate_resident_bytes(void *scene_obj) {
     game3d_scene_residency_context_free(&residency);
     return total;
 }
+#else
+/// @brief Conservative resident-byte estimate for cache policy decisions in headless builds.
+static uint64_t game3d_model_template_estimate_resident_bytes(
+    rt_game3d_model_template *model_template) {
+    uint64_t total = sizeof(*model_template);
+    if (!model_template)
+        return 1;
+    if (model_template->path) {
+        const char *path = rt_string_cstr(model_template->path);
+        if (path)
+            total = game3d_u64_saturating_add(total, (uint64_t)strlen(path) + 1u);
+    }
+    return total > 0 ? total : 1;
+}
+
+/// @brief Scene residency is unavailable without the private graphics runtime layouts.
+static uint64_t game3d_scene_estimate_resident_bytes(void *scene_obj) {
+    (void)scene_obj;
+    return 0;
+}
+#endif
 
 /// @brief Return the next monotonic model-cache access tick (for LRU recency ordering).
 static uint64_t game3d_model_cache_next_tick(void) {

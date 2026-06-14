@@ -758,14 +758,8 @@ void rt_game3d_world_set_floating_origin(void *obj, int8_t enabled) {
         game3d_world_checked(obj, "Game3D.World3D.set_floatingOrigin: invalid world");
     if (world) {
         int8_t next = enabled ? 1 : 0;
-        if (world->floating_origin != next) {
-            rt_canvas3d *canvas = rt_canvas3d_checked_or_stack(world->canvas);
-            if (canvas) {
-                canvas3d_clear_motion_history(canvas);
-                canvas3d_clear_occlusion_history(canvas);
-                canvas->occlusion_state_valid = 0;
-            }
-        }
+        if (world->floating_origin != next)
+            game3d_canvas_clear_temporal_state(world->canvas);
         world->floating_origin = next;
     }
 }
@@ -793,8 +787,7 @@ void rt_game3d_world_set_origin_rebase_threshold(void *obj, double meters) {
 void rt_game3d_world_rebase_origin(void *obj, double dx, double dy, double dz) {
     rt_game3d_world *world =
         game3d_world_checked(obj, "Game3D.World3D.rebaseOrigin: invalid world");
-    rt_canvas3d *canvas = world ? rt_canvas3d_checked_or_stack(world->canvas) : NULL;
-    if (canvas && canvas->in_frame) {
+    if (world && game3d_canvas_in_frame(world->canvas)) {
         rt_trap("Game3D.World3D.rebaseOrigin: must be called between frames");
         return;
     }
@@ -935,7 +928,7 @@ void rt_game3d_world_on_resize(void *obj, int64_t width, int64_t height) {
     if (world->canvas)
         rt_canvas3d_resize(world->canvas, width, height);
     if (world->camera)
-        rt_camera3d_sync_render_aspect(world->camera, (double)width / (double)height);
+        game3d_camera_sync_render_aspect(world->camera, (double)width / (double)height);
 }
 
 /// @brief Set the global ambient light color. See header.
@@ -966,6 +959,7 @@ void rt_game3d_world_clear_lights(void *obj) {
 /// @brief Defensively validate the canvas's skybox slot: drop it (and invalidate the
 ///   skybox cache) when it is missing, no longer a CubeMap3D, or an incomplete cubemap.
 static void game3d_world_repair_canvas_skybox(rt_game3d_world *world) {
+#ifdef VIPER_ENABLE_GRAPHICS
     rt_canvas3d *canvas;
     if (!world || !world->canvas || !rt_g3d_has_class(world->canvas, RT_G3D_CANVAS3D_CLASS_ID))
         return;
@@ -983,14 +977,21 @@ static void game3d_world_repair_canvas_skybox(rt_game3d_world *world) {
         canvas->skybox = NULL;
         rt_canvas3d_invalidate_skybox_cache(canvas);
     }
+#else
+    (void)world;
+#endif
 }
 
 /// @brief Set the skybox from a cubemap, or clear it when passed NULL. See header.
 void rt_game3d_world_set_skybox(void *obj, void *cubemap) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.setSkybox: invalid world");
     game3d_world_repair_canvas_skybox(world);
+#ifdef VIPER_ENABLE_GRAPHICS
     if (cubemap && (!rt_g3d_has_class(cubemap, RT_G3D_CUBEMAP3D_CLASS_ID) ||
                     !rt_cubemap3d_is_complete(cubemap))) {
+#else
+    if (cubemap && !rt_g3d_has_class(cubemap, RT_G3D_CUBEMAP3D_CLASS_ID)) {
+#endif
         rt_trap("Game3D.World3D.setSkybox: cubemap must be CubeMap3D or null");
         return;
     }

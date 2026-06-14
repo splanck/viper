@@ -512,8 +512,8 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
             result.exit_code = 1;
             return finish();
         }
-#if !(defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__)))
-        err << "error: --run-native is only supported on macOS arm64 hosts\n";
+#if !(defined(__aarch64__) || defined(__arm64__))
+        err << "error: --run-native is only supported on AArch64 hosts\n";
         result.exit_code = 1;
         return finish();
 #endif

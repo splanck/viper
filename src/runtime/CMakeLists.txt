@@ -421,15 +421,21 @@ set(RT_GRAPHICS_DISABLED_SOURCES
         graphics/text/fonts/embedded_font.c
         graphics/3d/rt_g3d_commit_queue.c
         graphics/3d/rt_game3d.c
+        graphics/3d/rt_game3d_enums.c
+        graphics/3d/rt_game3d_controllers.c
+        graphics/3d/rt_game3d_bodydef.c
+        graphics/3d/rt_game3d_audio.c
+        graphics/3d/rt_game3d_effects.c
+        graphics/3d/rt_game3d_animator.c
+        graphics/3d/rt_game3d_entity.c
+        graphics/3d/rt_game3d_input.c
+        graphics/3d/rt_game3d_presets.c
         graphics/3d/rt_game3d_diagnostics.c
         graphics/media/rt_avi.c
         graphics/media/rt_theora.c
         graphics/media/rt_theora_recon.c
         graphics/media/rt_ycbcr.c
         graphics/3d/backend/vgfx3d_backend_utils.c
-        graphics/3d/backend/vgfx3d_backend_d3d11_shared.c
-        graphics/3d/backend/vgfx3d_backend_metal_shared.c
-        graphics/3d/backend/vgfx3d_backend_opengl_shared.c
         graphics/common/rt_canvas_stubs.c
         graphics/common/rt_graphics_helper_stubs.c
         graphics/common/rt_canvas3d_stubs.c
@@ -438,6 +444,7 @@ set(RT_GRAPHICS_DISABLED_SOURCES
         graphics/common/rt_3d_physics_stubs.c
         graphics/common/rt_3d_world_stubs.c
         graphics/common/rt_graphics_media_stubs.c
+        graphics/common/rt_disabled_runtime_stubs.c
 )
 
 # GPU backends (platform-conditional)
@@ -793,6 +800,10 @@ foreach (_rtobj IN LISTS VIPER_RUNTIME_COMPONENT_OBJECT_LIBS)
                 -Wshadow -Wnull-dereference -Wcast-qual
                 -Wimplicit-fallthrough -Wformat=2
                 -Wno-unused-parameter)
+        if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
+                CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+            target_compile_options(${_rtobj} PRIVATE -mno-outline-atomics)
+        endif ()
     endif ()
     if (IL_WARN_AS_ERROR AND NOT MSVC)
         target_compile_options(${_rtobj} PRIVATE -Werror)

@@ -115,7 +115,71 @@ static uint32_t readLE32(const uint8_t *p) {
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
+static uint64_t readLE64(const uint8_t *p) {
+    uint64_t v = 0;
+    for (int i = 0; i < 8; ++i)
+        v |= static_cast<uint64_t>(p[i]) << (i * 8);
+    return v;
+}
+
 int main() {
+    // --- AArch64 PREL64 (ELF: R_AARCH64_PREL64 = type 260) ---
+    // Emits S + A - P into an 8-byte data field, used by unwind metadata such
+    // as DW.ref.__gxx_personality_v0 on Linux AArch64.
+    {
+        std::vector<uint8_t> callerCode(8, 0);
+        auto caller = makeObj("a64_prel64.o",
+                              ObjFileFormat::ELF,
+                              callerCode,
+                              "personality_ref",
+                              elf_a64::kPrel64,
+                              0,
+                              0);
+
+        ObjFile target;
+        target.name = "personality.o";
+        target.format = ObjFileFormat::ELF;
+        target.sections.push_back({});
+        ObjSection targetText;
+        targetText.name = ".text";
+        targetText.data.resize(16, 0);
+        targetText.executable = true;
+        targetText.alloc = true;
+        targetText.alignment = 4;
+        target.sections.push_back(targetText);
+        target.symbols.push_back({});
+        ObjSymbol targetSym;
+        targetSym.name = "personality_ref";
+        targetSym.binding = ObjSymbol::Global;
+        targetSym.sectionIndex = 1;
+        targetSym.offset = 0;
+        target.symbols.push_back(targetSym);
+
+        std::vector<ObjFile> objs = {caller, target};
+        auto layout = makeLayout(objs, 0x100000);
+
+        GlobalSymEntry entry;
+        entry.name = "personality_ref";
+        entry.binding = GlobalSymEntry::Global;
+        entry.objIndex = 1;
+        entry.secIndex = 1;
+        entry.offset = 0;
+        entry.resolvedAddr = 0;
+        layout.globalSyms["personality_ref"] = entry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::AArch64, err);
+        CHECK(ok);
+        if (!err.str().empty())
+            std::cerr << "  PREL64 err: " << err.str() << "\n";
+
+        // S = 0x100000 + callerCode.size() = 0x100008
+        // P = 0x100000
+        CHECK(readLE64(layout.sections[0].data.data()) == 8);
+    }
+
     // --- AArch64 Branch26 (ELF: R_AARCH64_JUMP26 = type 282) ---
     // Encodes ((S + A - P) >> 2) & 0x03FFFFFF into the low 26 bits.
     // Instruction template: B = 0x14000000.

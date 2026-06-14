@@ -365,6 +365,73 @@ static int64_t game3d_default_worker_count(void) {
     return game3d_clamp_worker_count(rt_parallel_default_workers());
 }
 
+/// @brief Return non-zero when the world's Canvas3D is currently inside a frame.
+static int game3d_canvas_in_frame(void *canvas_obj) {
+#ifdef VIPER_ENABLE_GRAPHICS
+    rt_canvas3d *canvas = rt_canvas3d_checked_or_stack(canvas_obj);
+    return canvas && canvas->in_frame;
+#else
+    (void)canvas_obj;
+    return 0;
+#endif
+}
+
+/// @brief Drop Canvas3D temporal caches after world-space state changes.
+static void game3d_canvas_clear_temporal_state(void *canvas_obj) {
+#ifdef VIPER_ENABLE_GRAPHICS
+    rt_canvas3d *canvas = rt_canvas3d_checked_or_stack(canvas_obj);
+    if (canvas) {
+        canvas3d_clear_motion_history(canvas);
+        canvas3d_clear_occlusion_history(canvas);
+        canvas->occlusion_state_valid = 0;
+    }
+#else
+    (void)canvas_obj;
+#endif
+}
+
+/// @brief Return the current number of shadow maps produced for debug overlay text.
+static int64_t game3d_canvas_shadow_count(void *canvas_obj) {
+#ifdef VIPER_ENABLE_GRAPHICS
+    rt_canvas3d *canvas = rt_canvas3d_checked_or_stack(canvas_obj);
+    return canvas ? canvas->shadow_count : 0;
+#else
+    (void)canvas_obj;
+    return 0;
+#endif
+}
+
+/// @brief Return the active shadow-map resolution for debug overlay text.
+static int64_t game3d_canvas_shadow_resolution(void *canvas_obj) {
+#ifdef VIPER_ENABLE_GRAPHICS
+    rt_canvas3d *canvas = rt_canvas3d_checked_or_stack(canvas_obj);
+    return canvas ? canvas->shadow_resolution : 0;
+#else
+    (void)canvas_obj;
+    return 0;
+#endif
+}
+
+/// @brief Enable camera-relative Canvas3D uploads when the graphics backend is present.
+static void game3d_canvas_set_camera_relative_upload(void *canvas_obj, int8_t enabled) {
+#ifdef VIPER_ENABLE_GRAPHICS
+    rt_canvas3d_set_camera_relative_upload(canvas_obj, enabled);
+#else
+    (void)canvas_obj;
+    (void)enabled;
+#endif
+}
+
+/// @brief Synchronize camera render aspect when the private camera runtime is available.
+static void game3d_camera_sync_render_aspect(void *camera_obj, double aspect) {
+#ifdef VIPER_ENABLE_GRAPHICS
+    rt_camera3d_sync_render_aspect(camera_obj, aspect);
+#else
+    (void)camera_obj;
+    (void)aspect;
+#endif
+}
+
 /// @brief Restore the canvas input/clock settings temporarily replaced by runFrames.
 static void game3d_world_restore_run_frames_canvas(void *canvas_obj,
                                                    int32_t input_source,
@@ -642,8 +709,7 @@ static void game3d_world_stream_rebase_origin(rt_game3d_world_stream *stream,
 static void game3d_world_require_rebase_boundary(rt_game3d_world *world) {
     if (!world || !world->canvas)
         return;
-    rt_canvas3d *canvas = rt_canvas3d_checked_or_stack(world->canvas);
-    if (canvas && canvas->in_frame)
+    if (game3d_canvas_in_frame(world->canvas))
         rt_trap("Game3D.World3D.rebaseOrigin: must be called between frames");
 }
 
@@ -719,14 +785,7 @@ static void game3d_world_apply_origin_rebase(rt_game3d_world *world, const doubl
             }
         }
     }
-    {
-        rt_canvas3d *canvas = rt_canvas3d_checked_or_stack(world->canvas);
-        if (canvas) {
-            canvas3d_clear_motion_history(canvas);
-            canvas3d_clear_occlusion_history(canvas);
-            canvas->occlusion_state_valid = 0;
-        }
-    }
+    game3d_canvas_clear_temporal_state(world->canvas);
     if (audio) {
         void *listener = rt_g3d_checked_or_null(audio->listener, RT_G3D_SOUNDLISTENER3D_CLASS_ID);
         if (listener) {
@@ -1389,7 +1448,8 @@ int8_t rt_game3d_world_tick(void *obj) {
     world->elapsed += world->dt;
     world->frame += 1;
     if (world->camera && world->width > 0 && world->height > 0)
-        rt_camera3d_sync_render_aspect(world->camera, (double)world->width / (double)world->height);
+        game3d_camera_sync_render_aspect(world->camera,
+                                         (double)world->width / (double)world->height);
     return 1;
 }
 
@@ -1553,14 +1613,13 @@ static void game3d_world_draw_debug_overlay(rt_game3d_world *world) {
                                  rt_camera3d_get_effective_far_plane(world->camera));
     }
     {
-        rt_canvas3d *canvas = rt_canvas3d_checked_or_stack(world->canvas);
         game3d_world_debug_textf(world,
                                  14,
                                  84,
                                  0xFFE5AA,
                                  "shadows %lld res %lld",
-                                 (long long)(canvas ? canvas->shadow_count : 0),
-                                 (long long)(canvas ? canvas->shadow_resolution : 0));
+                                 (long long)game3d_canvas_shadow_count(world->canvas),
+                                 (long long)game3d_canvas_shadow_resolution(world->canvas));
     }
     game3d_world_debug_textf(world,
                              14,
@@ -1731,10 +1790,9 @@ static int game3d_world_begin_frame_impl(rt_game3d_world *world) {
     game3d_world_rebase_if_needed(world);
     game3d_world_sync_camera_far_for_stream(world);
     rt_canvas3d_clear(world->canvas, world->clear_r, world->clear_g, world->clear_b);
-    rt_canvas3d_set_camera_relative_upload(world->canvas, world->floating_origin);
+    game3d_canvas_set_camera_relative_upload(world->canvas, world->floating_origin);
     rt_canvas3d_begin(world->canvas, world->camera);
-    rt_canvas3d *canvas = rt_canvas3d_checked_or_stack(world->canvas);
-    return canvas && canvas->in_frame;
+    return game3d_canvas_in_frame(world->canvas);
 }
 
 /// @brief Clear the back buffer to the world's clear color and open the 3D pass with the
@@ -2015,7 +2073,6 @@ void rt_game3d_world_run_frames(void *obj, int64_t frame_count, double step_sec,
         "argument; pass a native C-callable function pointer, or pass a script function reference "
         "through the VM Game3D bridge");
     double fixed = game3d_clamp_dt(step_sec);
-    rt_canvas3d *canvas = NULL;
     void *canvas_obj = NULL;
     int32_t previous_input_source = 0;
     int32_t previous_clock_source = 0;
@@ -2028,12 +2085,24 @@ void rt_game3d_world_run_frames(void *obj, int64_t frame_count, double step_sec,
     if (!world || frame_count < 0)
         return;
     canvas_obj = world->canvas;
-    canvas = rt_canvas3d_checked_or_stack(canvas_obj);
-    if (canvas) {
+    if (canvas_obj) {
         rt_obj_retain_maybe(canvas_obj);
-        previous_input_source = canvas->input_source;
-        previous_clock_source = canvas->clock_source;
-        previous_synthetic_dt_us = canvas->synthetic_dt_us;
+#ifdef VIPER_ENABLE_GRAPHICS
+        rt_canvas3d *canvas = rt_canvas3d_checked_or_stack(canvas_obj);
+        if (!canvas) {
+            game3d_release_ref(&canvas_obj);
+            canvas_obj = NULL;
+        } else {
+            previous_input_source = canvas->input_source;
+            previous_clock_source = canvas->clock_source;
+            previous_synthetic_dt_us = canvas->synthetic_dt_us;
+        }
+#else
+        game3d_release_ref(&canvas_obj);
+        canvas_obj = NULL;
+#endif
+    }
+    if (canvas_obj) {
         canvas_state_saved = 1;
         rt_canvas3d_set_input_source(world->canvas, 1);
         rt_canvas3d_set_clock_source(world->canvas, 1);
@@ -2051,7 +2120,7 @@ void rt_game3d_world_run_frames(void *obj, int64_t frame_count, double step_sec,
     }
     if (!trapped) {
         for (int64_t i = 0; i < frame_count; ++i) {
-            if (canvas)
+            if (canvas_obj)
                 rt_canvas3d_advance_synthetic_frame(world->canvas);
             rt_game3d_input_update(world->input);
             world->dt = fixed;
