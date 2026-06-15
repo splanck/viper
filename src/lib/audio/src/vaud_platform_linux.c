@@ -55,6 +55,34 @@ typedef struct {
     pthread_cond_t pause_cond;   ///< Signal for pause/resume
 } vaud_linux_data;
 
+static void alsa_silent_error_handler(const char *file,
+                                      int line,
+                                      const char *function,
+                                      int err,
+                                      const char *fmt,
+                                      ...) {
+    (void)file;
+    (void)line;
+    (void)function;
+    (void)err;
+    (void)fmt;
+}
+
+static int alsa_verbose_errors_enabled(void) {
+    const char *value = getenv("VIPER_ALSA_VERBOSE");
+    return value && value[0] != '\0' && strcmp(value, "0") != 0;
+}
+
+static void alsa_begin_quiet_probe(void) {
+    if (!alsa_verbose_errors_enabled())
+        snd_lib_error_set_handler(alsa_silent_error_handler);
+}
+
+static void alsa_end_quiet_probe(void) {
+    if (!alsa_verbose_errors_enabled())
+        snd_lib_error_set_handler(NULL);
+}
+
 static int alsa_write_all(vaud_linux_data *plat, const int16_t *buffer, snd_pcm_uframes_t frames) {
     snd_pcm_uframes_t written_total = 0;
 
@@ -171,8 +199,12 @@ int vaud_platform_init(vaud_context_t ctx) {
         return 0;
     }
 
-    /* Open the default PCM device */
-    err = snd_pcm_open(&plat->pcm, "default", SND_PCM_STREAM_PLAYBACK, 0);
+    /* Open the default PCM device.  Keep startup probes quiet and nonblocking
+     * so optional demo audio cannot flood stderr or stall window startup when
+     * no default ALSA device is configured. */
+    alsa_begin_quiet_probe();
+    err = snd_pcm_open(&plat->pcm, "default", SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK);
+    alsa_end_quiet_probe();
     if (err < 0) {
         pthread_mutex_destroy(&plat->pause_mutex);
         pthread_cond_destroy(&plat->pause_cond);
@@ -183,6 +215,7 @@ int vaud_platform_init(vaud_context_t ctx) {
     }
 
     /* Configure PCM parameters */
+    alsa_begin_quiet_probe();
     err = snd_pcm_set_params(plat->pcm,
                              SND_PCM_FORMAT_S16_LE,         /* 16-bit signed little-endian */
                              SND_PCM_ACCESS_RW_INTERLEAVED, /* Interleaved channels */
@@ -191,6 +224,7 @@ int vaud_platform_init(vaud_context_t ctx) {
                              1,                             /* Allow resampling */
                              50000                          /* Latency: 50ms in microseconds */
     );
+    alsa_end_quiet_probe();
 
     if (err < 0) {
         snd_pcm_close(plat->pcm);
@@ -199,6 +233,17 @@ int vaud_platform_init(vaud_context_t ctx) {
         free(plat);
         ctx->platform_data = NULL;
         vaud_set_error(VAUD_ERR_PLATFORM, "Failed to configure ALSA device");
+        return 0;
+    }
+
+    err = snd_pcm_nonblock(plat->pcm, 0);
+    if (err < 0) {
+        snd_pcm_close(plat->pcm);
+        pthread_mutex_destroy(&plat->pause_mutex);
+        pthread_cond_destroy(&plat->pause_cond);
+        free(plat);
+        ctx->platform_data = NULL;
+        vaud_set_error(VAUD_ERR_PLATFORM, "Failed to configure ALSA blocking mode");
         return 0;
     }
 

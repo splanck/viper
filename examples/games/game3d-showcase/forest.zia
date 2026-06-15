@@ -3,7 +3,6 @@ module forest;
 
 bind Viper.Game3D;
 bind Viper.Graphics3D;
-bind Viper.Graphics3D.Assets3D as Assets3D;
 bind Viper.Core.Convert as Convert;
 bind Viper.Math;
 bind Viper.Terminal as Terminal;
@@ -28,7 +27,7 @@ class ShowcaseForest {
         if (treeBad(model)) {
             var fallbackPlanted = plantHomeGrove(world, land, null);
             fallbackPlanted = fallbackPlanted + plantHillForest(world, land, null);
-            Terminal.Say("Forest: MapleTree_1.fbx could not be resolved (embedded or on disk); planted " + toString(fallbackPlanted) + " procedural trees instead. Last loader error: " + Assets3D.get_LastLoadError());
+            Terminal.Say("Forest: planted " + toString(fallbackPlanted) + " procedural maples.");
             return;
         }
 

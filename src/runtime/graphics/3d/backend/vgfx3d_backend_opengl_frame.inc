@@ -84,7 +84,8 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     ctx->fog_color[0] = cam->fog_color[0];
     ctx->fog_color[1] = cam->fog_color[1];
     ctx->fog_color[2] = cam->fog_color[2];
-    glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx);
+    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+        return;
 
     memcpy(history.scene_vp, ctx->scene_vp, sizeof(history.scene_vp));
     memcpy(history.scene_prev_vp, ctx->scene_prev_vp, sizeof(history.scene_prev_vp));
@@ -210,7 +211,7 @@ static void gl_submit_draw(void *ctx_ptr,
     if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo))
         return;
 
-    gl.FrontFace(GL_CCW);
+    gl.FrontFace(GL_CW);
     if (backface_cull)
         gl.Enable(GL_CULL_FACE);
     else
@@ -223,7 +224,58 @@ static void gl_submit_draw(void *ctx_ptr,
     upload_main_uniforms(ctx, cmd, lights, light_count, ambient, 0);
     bind_material_textures(ctx, cmd);
     configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo);
+    if (gl_debug_enabled()) {
+        GLint draw_buffer = 0;
+        GLint framebuffer = 0;
+        GLint viewport[4] = {0, 0, 0, 0};
+        GLint scissor = 0;
+        GLint depth_test = 0;
+        GLint cull_face = 0;
+        GLint color_mask[4] = {0, 0, 0, 0};
+        gl.GetIntegerv(GL_DRAW_BUFFER, &draw_buffer);
+        gl.GetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &framebuffer);
+        gl.GetIntegerv(GL_VIEWPORT, viewport);
+        gl.GetIntegerv(GL_SCISSOR_TEST, &scissor);
+        gl.GetIntegerv(GL_DEPTH_TEST, &depth_test);
+        gl.GetIntegerv(GL_CULL_FACE, &cull_face);
+        gl.GetIntegerv(GL_COLOR_WRITEMASK, color_mask);
+        fprintf(stderr,
+                "[OpenGL] draw target=%d fbo=%d drawbuf=0x%04X viewport=%d,%d %dx%d "
+                "scissor=%d depth=%d cull=%d mask=%d%d%d%d verts=%u indices=%u ortho=%d "
+                "first=(%.3f,%.3f,%.3f) color=(%.3f,%.3f,%.3f,%.3f) unlit=%d depthoff=%d\n",
+                (int)ctx->active_target_kind,
+                (int)framebuffer,
+                (unsigned)draw_buffer,
+                (int)viewport[0],
+                (int)viewport[1],
+                (int)viewport[2],
+                (int)viewport[3],
+                (int)scissor,
+                (int)depth_test,
+                (int)cull_face,
+                (int)color_mask[0],
+                (int)color_mask[1],
+                (int)color_mask[2],
+                (int)color_mask[3],
+                cmd->vertex_count,
+                index_count,
+                (int)ctx->cam_is_ortho,
+                cmd->vertices[0].pos[0],
+                cmd->vertices[0].pos[1],
+                cmd->vertices[0].pos[2],
+                cmd->vertices[0].color[0],
+                cmd->vertices[0].color[1],
+                cmd->vertices[0].color[2],
+                cmd->vertices[0].color[3],
+                (int)cmd->unlit,
+                (int)cmd->disable_depth_test);
+    }
     gl.DrawElements(GL_TRIANGLES, (GLsizei)index_count, GL_UNSIGNED_INT, NULL);
+    if (gl_debug_enabled()) {
+        GLenum err = gl.GetError();
+        if (err != GL_NO_ERROR)
+            fprintf(stderr, "[OpenGL] draw error 0x%04X\n", (unsigned)err);
+    }
     GL_CHECK();
 }
 
@@ -263,7 +315,8 @@ static void gl_resize(void *ctx_ptr, int32_t w, int32_t h) {
     ctx->width = w;
     ctx->height = h;
     ctx->scene_composited_to_backbuffer = 0;
-    glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx);
+    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+        return;
     if (!ctx->rtt_active) {
         destroy_scene_targets(ctx);
         destroy_postfx_readback_target(ctx);
@@ -293,7 +346,8 @@ static int gl_readback_rgba(
     if (!ctx || !dst_rgba || !vgfx3d_opengl_validate_rgba8_destination(w, h, stride, &dst_bytes))
         return 0;
 
-    glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx);
+    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+        return 0;
     use_postfx_readback = !ctx->scene_composited_to_backbuffer &&
                           vgfx3d_opengl_choose_readback_kind(
                               (ctx->gpu_postfx_enabled && ctx->scene_postfx_pending) ? 1 : 0) ==
@@ -358,7 +412,8 @@ static void gl_present_impl(gl_context_t *ctx, const vgfx3d_postfx_chain_t *chai
 
     if (!ctx || ctx->rtt_active)
         return;
-    glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx);
+    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+        return;
     use_postfx = (chain != NULL && chain->enabled && chain->effect_count > 0 &&
                   ctx->gpu_postfx_enabled && ctx->scene_postfx_pending)
                      ? 1
@@ -367,6 +422,21 @@ static void gl_present_impl(gl_context_t *ctx, const vgfx3d_postfx_chain_t *chai
         !ctx->scene_composited_to_backbuffer) {
         if (draw_scene_texture(ctx, use_postfx ? chain : NULL))
             ctx->scene_composited_to_backbuffer = 1;
+    }
+    if (gl_debug_enabled()) {
+        GLint draw_buffer = 0;
+        GLint framebuffer = 0;
+        gl.GetIntegerv(GL_DRAW_BUFFER, &draw_buffer);
+        gl.GetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &framebuffer);
+        fprintf(stderr,
+                "[OpenGL] present fbo=%d drawbuf=0x%04X postfx_enabled=%d pending=%d "
+                "composited=%d use_postfx=%d\n",
+                (int)framebuffer,
+                (unsigned)draw_buffer,
+                (int)ctx->gpu_postfx_enabled,
+                (int)ctx->scene_postfx_pending,
+                (int)ctx->scene_composited_to_backbuffer,
+                use_postfx);
     }
     glx.SwapBuffers(ctx->display, ctx->window);
     ctx->scene_postfx_pending = 0;
@@ -390,7 +460,8 @@ static void gl_apply_postfx(void *ctx_ptr, const vgfx3d_postfx_chain_t *postfx) 
 
     if (!ctx || ctx->rtt_active)
         return;
-    glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx);
+    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+        return;
     use_postfx = (postfx != NULL && postfx->enabled && postfx->effect_count > 0 &&
                   ctx->gpu_postfx_enabled && ctx->scene_postfx_pending)
                      ? 1

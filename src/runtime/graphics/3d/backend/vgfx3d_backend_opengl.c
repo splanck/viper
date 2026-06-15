@@ -82,6 +82,7 @@ typedef unsigned int GLbitfield;
 #define GL_POLYGON_OFFSET_FILL 0x8037
 #define GL_BACK 0x0405
 #define GL_FRONT_AND_BACK 0x0408
+#define GL_CW 0x0900
 #define GL_CCW 0x0901
 #define GL_LESS 0x0201
 #define GL_LEQUAL 0x0203
@@ -151,6 +152,11 @@ typedef unsigned int GLbitfield;
 #define GL_SRC_ALPHA 0x0302
 #define GL_ONE_MINUS_SRC_ALPHA 0x0303
 #define GL_FRAMEBUFFER 0x8D40
+#define GL_DRAW_FRAMEBUFFER_BINDING 0x8CA6
+#define GL_DRAW_BUFFER 0x0C01
+#define GL_VIEWPORT 0x0BA2
+#define GL_SCISSOR_TEST 0x0C11
+#define GL_COLOR_WRITEMASK 0x0C23
 #define GL_RENDERBUFFER 0x8D41
 #define GL_COLOR_ATTACHMENT0 0x8CE0
 #define GL_COLOR_ATTACHMENT1 0x8CE1
@@ -391,6 +397,15 @@ static int gl_upload_ok(void) {
     fprintf(stderr, "GL upload error 0x%04X\n", (unsigned)err);
 #endif
     return 0;
+}
+
+static int gl_debug_enabled(void) {
+    static int cached = -1;
+    if (cached < 0) {
+        const char *value = getenv("VIPER_OPENGL_DEBUG");
+        cached = (value && value[0] && strcmp(value, "0") != 0) ? 1 : 0;
+    }
+    return cached;
 }
 
 typedef void *GLXContext;

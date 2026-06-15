@@ -159,13 +159,19 @@ class Game3DShowcase {
     }
 
     expose func run() {
-        Input3D.captureMouse(input);
+        var mouseCaptured = false;
         while (quitRequested == false && World3D.tick(world)) {
+            if (mouseCaptured == false && Input3D.mousePressed(input, MouseButtons.get_Left())) {
+                Input3D.captureMouse(input);
+                mouseCaptured = true;
+            }
             step(World3D.get_dt(world));
             renderFrame();
             World3D.present(world);
         }
-        Input3D.releaseMouse(input);
+        if (mouseCaptured) {
+            Input3D.releaseMouse(input);
+        }
     }
 
     expose func destroy() {

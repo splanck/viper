@@ -42,11 +42,26 @@
 #include <X11/Xutil.h>
 #include <X11/cursorfont.h>
 #include <X11/keysym.h>
+#include <dlfcn.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+
+typedef void *GLXFBConfig;
+
+#define VGFX_GLX_USE_GL 1
+#define VGFX_GLX_RGBA_BIT 0x00000001
+#define VGFX_GLX_WINDOW_BIT 0x00000001
+#define VGFX_GLX_DOUBLEBUFFER 5
+#define VGFX_GLX_RED_SIZE 8
+#define VGFX_GLX_GREEN_SIZE 9
+#define VGFX_GLX_BLUE_SIZE 10
+#define VGFX_GLX_ALPHA_SIZE 11
+#define VGFX_GLX_DEPTH_SIZE 12
+#define VGFX_GLX_RENDER_TYPE 0x8011
+#define VGFX_GLX_DRAWABLE_TYPE 0x8010
 
 //===----------------------------------------------------------------------===//
 // Platform Data Structure
@@ -98,6 +113,77 @@ typedef struct {
     struct vgfx_window *owner_window; ///< Backlink for multi-window global services
     struct vgfx_window *next_window;  ///< Intrusive list of live X11 windows
 } vgfx_x11_data;
+
+typedef GLXFBConfig *(*vgfx_glx_choose_fb_config_fn)(
+    Display *dpy, int screen, const int *attrib_list, int *nelements);
+typedef XVisualInfo *(*vgfx_glx_get_visual_from_fb_config_fn)(Display *dpy, GLXFBConfig config);
+
+static void *g_vgfx_glx_libgl_handle = NULL;
+
+/// @brief Try to select a double-buffered GLX visual for windows that may host GPU rendering.
+///
+/// ViperGFX windows are created before Canvas3D selects its backend, so the Linux window adapter
+/// must pick a visual that is compatible with both XImage software blits and GLX.  The OpenGL
+/// backend renders to GL_BACK and swaps; using a generic TrueColor visual can leave GLX without a
+/// matching double-buffered FBConfig, which produces a mapped title bar with a never-updated client
+/// area on some Linux drivers.
+static int x11_try_choose_glx_visual(vgfx_x11_data *x11, Window root) {
+    vgfx_glx_choose_fb_config_fn choose_fb_config;
+    vgfx_glx_get_visual_from_fb_config_fn get_visual_from_fb_config;
+    GLXFBConfig *configs;
+    XVisualInfo *visual_info = NULL;
+    int fb_count = 0;
+    const int fb_attribs[] = {
+        VGFX_GLX_RENDER_TYPE,  VGFX_GLX_RGBA_BIT,   VGFX_GLX_DRAWABLE_TYPE,
+        VGFX_GLX_WINDOW_BIT,   VGFX_GLX_DOUBLEBUFFER,
+        1,                     VGFX_GLX_RED_SIZE,
+        8,                     VGFX_GLX_GREEN_SIZE,
+        8,                     VGFX_GLX_BLUE_SIZE,
+        8,                     VGFX_GLX_ALPHA_SIZE,
+        8,                     VGFX_GLX_DEPTH_SIZE,
+        24,
+        None,
+    };
+
+    if (!x11 || !x11->display)
+        return 0;
+    if (!g_vgfx_glx_libgl_handle)
+        g_vgfx_glx_libgl_handle = dlopen("libGL.so.1", RTLD_LAZY);
+    if (!g_vgfx_glx_libgl_handle)
+        g_vgfx_glx_libgl_handle = dlopen("libGL.so", RTLD_LAZY);
+    if (!g_vgfx_glx_libgl_handle)
+        return 0;
+
+    choose_fb_config =
+        (vgfx_glx_choose_fb_config_fn)dlsym(g_vgfx_glx_libgl_handle, "glXChooseFBConfig");
+    get_visual_from_fb_config =
+        (vgfx_glx_get_visual_from_fb_config_fn)dlsym(g_vgfx_glx_libgl_handle,
+                                                     "glXGetVisualFromFBConfig");
+    if (!choose_fb_config || !get_visual_from_fb_config)
+        return 0;
+
+    configs = choose_fb_config(x11->display, x11->screen, fb_attribs, &fb_count);
+    if (!configs || fb_count <= 0) {
+        if (configs)
+            XFree(configs);
+        return 0;
+    }
+
+    for (int i = 0; i < fb_count; i++) {
+        visual_info = get_visual_from_fb_config(x11->display, configs[i]);
+        if (visual_info)
+            break;
+    }
+    XFree(configs);
+
+    if (!visual_info)
+        return 0;
+    x11->visual = visual_info->visual;
+    x11->depth = visual_info->depth;
+    x11->colormap = XCreateColormap(x11->display, root, x11->visual, AllocNone);
+    XFree(visual_info);
+    return x11->colormap != None;
+}
 
 static struct vgfx_window *g_vgfx_cursor_window = NULL;
 static struct vgfx_window *g_vgfx_clipboard_window = NULL;
@@ -736,12 +822,14 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     x11->screen = DefaultScreen(x11->display);
     Window root = RootWindow(x11->display, x11->screen);
 
-    /* Find a visual that matches our 32-bit RGBA framebuffer.  Prefer a
-     * 32-bit TrueColor visual so XPutImage can blit the pixel buffer without
-     * depth conversion.  Fall back to the default visual (usually 24-bit)
-     * which still works — the alpha byte in each 32-bpp pixel is ignored. */
+    /* Find a visual that works for both GPU and software presentation.  Prefer
+     * a double-buffered GLX visual because Canvas3D enables GPU presentation
+     * after the window already exists.  Fall back to the original XImage path:
+     * a 32-bit TrueColor visual first, then the screen default visual. */
     XVisualInfo vinfo;
-    if (XMatchVisualInfo(x11->display, x11->screen, 32, TrueColor, &vinfo)) {
+    if (x11_try_choose_glx_visual(x11, root)) {
+        /* Fields were filled by the GLX visual helper. */
+    } else if (XMatchVisualInfo(x11->display, x11->screen, 32, TrueColor, &vinfo)) {
         x11->visual = vinfo.visual;
         x11->depth = 32;
         x11->colormap = XCreateColormap(x11->display, root, x11->visual, AllocNone);
