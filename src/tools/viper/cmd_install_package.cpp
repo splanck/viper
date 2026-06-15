@@ -50,6 +50,16 @@ struct InstallPackageArgs {
     std::string macosSignIdentity;
     std::string macosNotaryProfile;
     bool macosStaple{false};
+    int macosNotaryTimeoutSeconds{0};
+    bool macosDmg{false};
+    std::string macosDmgBackground;
+    std::string macosDmgIcon;
+    std::string macosPkgLicense;
+    std::string macosPkgBackground;
+    std::string toolchainLicense;
+    std::string toolchainMaintainer;
+    std::string toolchainMaintainerEmail;
+    std::string toolchainHomepage;
     bool windowsSign{false};
     std::string windowsSignPfx;
     std::string windowsSignThumbprint;
@@ -94,6 +104,16 @@ void installPackageUsage() {
         << "  --macos-notary-profile <profile> notarytool keychain profile for macOS .pkg "
            "notarization\n"
         << "  --macos-staple       Staple the notarization ticket after successful submission\n"
+        << "  --macos-notary-timeout <seconds> Bound the notarytool wait (default: 1800)\n"
+        << "  --license <spdx>      License id for package metadata (default: GPL-3.0-only)\n"
+        << "  --maintainer <name>   Maintainer/packager name (default: Viper Project)\n"
+        << "  --maintainer-email <email> Maintainer email for the deb Maintainer field\n"
+        << "  --homepage <url>      Project homepage URL for deb/rpm metadata\n"
+        << "  --macos-dmg          Also wrap the macOS .pkg in a styled .dmg disk image\n"
+        << "  --macos-dmg-background <path> Background image (PNG) for the .dmg window\n"
+        << "  --macos-dmg-icon <path> Volume icon (.icns) for the .dmg\n"
+        << "  --macos-pkg-license <path> License text shown in the .pkg installer\n"
+        << "  --macos-pkg-background <path> Background image for the .pkg installer pane\n"
         << "  --windows-sign        Authenticode-sign generated Windows installer\n"
         << "  --windows-sign-pfx <path> PFX certificate for Windows signing\n"
         << "  --windows-sign-thumbprint <sha1> Certificate store SHA-1 thumbprint\n"
@@ -221,8 +241,7 @@ bool signWindowsInstallerArtifact(const InstallPackageArgs &args,
             err << "error: Windows PFX signing requires VIPER_WINDOWS_SIGN_PASSWORD\n";
             return false;
         }
-        const std::string allowPasswordArgv =
-            getenvOrEmpty("VIPER_WINDOWS_SIGN_PASSWORD_ARGV_OK");
+        const std::string allowPasswordArgv = getenvOrEmpty("VIPER_WINDOWS_SIGN_PASSWORD_ARGV_OK");
         if (allowPasswordArgv != "1" && allowPasswordArgv != "true" &&
             allowPasswordArgv != "TRUE") {
             err << "error: PFX password signing passes the password to signtool argv; use "
@@ -326,13 +345,24 @@ bool signMacOSPackageArtifact(const InstallPackageArgs &args,
     }
 
     if (!notaryProfile.empty()) {
-        const RunResult notaryResult = run_process({"xcrun",
-                                                    "notarytool",
-                                                    "submit",
-                                                    artifactPath.string(),
-                                                    "--keychain-profile",
-                                                    notaryProfile,
-                                                    "--wait"});
+        const int notaryTimeoutSeconds =
+            args.macosNotaryTimeoutSeconds > 0 ? args.macosNotaryTimeoutSeconds : 1800;
+        const std::string notaryTimeoutArg = std::to_string(notaryTimeoutSeconds) + "s";
+        // Bound the wait and retry once on a transient submit/network failure.
+        RunResult notaryResult{};
+        for (int attempt = 1; attempt <= 2; ++attempt) {
+            notaryResult = run_process({"xcrun",
+                                        "notarytool",
+                                        "submit",
+                                        artifactPath.string(),
+                                        "--keychain-profile",
+                                        notaryProfile,
+                                        "--wait",
+                                        "--timeout",
+                                        notaryTimeoutArg});
+            if (notaryResult.exit_code == 0)
+                break;
+        }
         if (notaryResult.exit_code != 0) {
             err << "error: notarytool submit failed with exit code " << notaryResult.exit_code
                 << "\n"
@@ -557,7 +587,11 @@ bool installPackageOptionRequiresValue(const std::string &arg) {
            arg == "--windows-sign-pfx" || arg == "--windows-sign-thumbprint" ||
            arg == "--windows-timestamp-url" || arg == "--windows-signtool" ||
            arg == "--windows-install-scope" || arg == "--windows-install-dir" ||
-           arg == "--windows-file-associations" || arg == "--windows-shortcuts" || arg == "-o";
+           arg == "--windows-file-associations" || arg == "--windows-shortcuts" ||
+           arg == "--macos-notary-timeout" || arg == "--license" || arg == "--maintainer" ||
+           arg == "--maintainer-email" || arg == "--homepage" || arg == "--macos-dmg-background" ||
+           arg == "--macos-dmg-icon" || arg == "--macos-pkg-license" ||
+           arg == "--macos-pkg-background" || arg == "-o";
 }
 
 /// @brief Parse the `viper install-package` command line into @p args.
@@ -610,6 +644,54 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
             args.macosNotaryProfile = argv[++i];
         } else if (arg == "--macos-staple") {
             args.macosStaple = true;
+        } else if (arg == "--macos-notary-timeout" && i + 1 < argc) {
+            try {
+                args.macosNotaryTimeoutSeconds = std::stoi(argv[++i]);
+            } catch (const std::exception &) {
+                std::cerr << "error: --macos-notary-timeout expects a number of seconds\n";
+                return false;
+            }
+            if (args.macosNotaryTimeoutSeconds <= 0) {
+                std::cerr << "error: --macos-notary-timeout expects a positive number of seconds\n";
+                return false;
+            }
+        } else if (arg == "--license" && i + 1 < argc) {
+            args.toolchainLicense = argv[++i];
+        } else if (arg == "--maintainer" && i + 1 < argc) {
+            args.toolchainMaintainer = argv[++i];
+        } else if (arg == "--maintainer-email" && i + 1 < argc) {
+            args.toolchainMaintainerEmail = argv[++i];
+        } else if (arg == "--homepage" && i + 1 < argc) {
+            args.toolchainHomepage = argv[++i];
+        } else if (arg == "--macos-dmg") {
+            args.macosDmg = true;
+        } else if (arg == "--macos-dmg-background" && i + 1 < argc) {
+            args.macosDmgBackground = argv[++i];
+            if (!fs::is_regular_file(args.macosDmgBackground)) {
+                std::cerr << "error: --macos-dmg-background not found: " << args.macosDmgBackground
+                          << "\n";
+                return false;
+            }
+        } else if (arg == "--macos-dmg-icon" && i + 1 < argc) {
+            args.macosDmgIcon = argv[++i];
+            if (!fs::is_regular_file(args.macosDmgIcon)) {
+                std::cerr << "error: --macos-dmg-icon not found: " << args.macosDmgIcon << "\n";
+                return false;
+            }
+        } else if (arg == "--macos-pkg-license" && i + 1 < argc) {
+            args.macosPkgLicense = argv[++i];
+            if (!fs::is_regular_file(args.macosPkgLicense)) {
+                std::cerr << "error: --macos-pkg-license not found: " << args.macosPkgLicense
+                          << "\n";
+                return false;
+            }
+        } else if (arg == "--macos-pkg-background" && i + 1 < argc) {
+            args.macosPkgBackground = argv[++i];
+            if (!fs::is_regular_file(args.macosPkgBackground)) {
+                std::cerr << "error: --macos-pkg-background not found: " << args.macosPkgBackground
+                          << "\n";
+                return false;
+            }
         } else if (arg == "--windows-sign") {
             args.windowsSign = true;
         } else if (arg == "--windows-sign-pfx" && i + 1 < argc) {
@@ -1353,6 +1435,14 @@ int cmdInstallPackage(int argc, char **argv) {
             installManifestPath = args.buildDir / "install_manifest.txt";
         viper::pkg::ToolchainInstallManifest manifest =
             viper::pkg::gatherToolchainInstallManifest(stageDir, installManifestPath);
+        if (!args.toolchainLicense.empty())
+            manifest.license = args.toolchainLicense;
+        if (!args.toolchainMaintainer.empty())
+            manifest.maintainer = args.toolchainMaintainer;
+        if (!args.toolchainMaintainerEmail.empty())
+            manifest.maintainerEmail = args.toolchainMaintainerEmail;
+        if (!args.toolchainHomepage.empty())
+            manifest.homepage = args.toolchainHomepage;
         const auto detectedInfo = detectManifestToolchainExecutableInfo(manifest);
         if (detectedInfo) {
             manifest.platform = detectedInfo->platform;
@@ -1450,6 +1540,8 @@ int cmdInstallPackage(int argc, char **argv) {
                     params.manifest = manifest;
                     params.outputPath = artifactPath.string();
                     params.packageVersion = args.macosPackageVersion;
+                    params.licenseFilePath = args.macosPkgLicense;
+                    params.backgroundImagePath = args.macosPkgBackground;
                     viper::pkg::buildMacOSToolchainPackage(params);
                     break;
                 }
@@ -1503,6 +1595,16 @@ int cmdInstallPackage(int argc, char **argv) {
             }
 
             std::cout << artifactPath.string() << "\n";
+
+            if (target == InstallPackageTarget::MacOS && args.macosDmg) {
+                viper::pkg::MacOSToolchainDmgParams dmgParams;
+                dmgParams.pkgPath = artifactPath.string();
+                dmgParams.outputPath = fs::path(artifactPath).replace_extension(".dmg").string();
+                dmgParams.backgroundPng = args.macosDmgBackground;
+                dmgParams.volumeIcns = args.macosDmgIcon;
+                viper::pkg::buildMacOSToolchainDmg(dmgParams);
+                std::cout << dmgParams.outputPath << "\n";
+            }
         }
 
         if (!args.keepStageDir && args.stageDir.empty())

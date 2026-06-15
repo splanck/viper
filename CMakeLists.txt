@@ -747,37 +747,41 @@ if(NOT TARGET uninstall)
 endif()
 
 # ---- Legacy developer archives (CPack) ----
-# Release installers are produced by `viper package` and `viper install-package`.
-# Keep CPack available only as a generic developer archive fallback.
-set(CPACK_PACKAGE_NAME "Viper")
-set(CPACK_PACKAGE_VENDOR "Viper Project")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Viper IL compiler toolchain and VM")
-set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
-set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
-set(CPACK_RESOURCE_FILE_README "${CMAKE_SOURCE_DIR}/README.md")
-set(CPACK_PACKAGE_CONTACT "viper@example.com")
+# The system of record for release installers is `viper package` / `viper install-package`
+# (src/tools/common/packaging). CPack remains only as an opt-in generic developer-archive
+# fallback; enable it with -DVIPER_ENABLE_LEGACY_CPACK=ON.
+option(VIPER_ENABLE_LEGACY_CPACK "Enable the legacy CPack developer-archive fallback" OFF)
+if(VIPER_ENABLE_LEGACY_CPACK)
+  set(CPACK_PACKAGE_NAME "Viper")
+  set(CPACK_PACKAGE_VENDOR "Viper Project")
+  set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Viper IL compiler toolchain and VM")
+  set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+  set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
+  set(CPACK_RESOURCE_FILE_README "${CMAKE_SOURCE_DIR}/README.md")
+  set(CPACK_PACKAGE_CONTACT "viper@example.com")
 
-if(APPLE)
-  # Build a macOS installer package (.pkg) suitable for CLI tools
-  set(CPACK_GENERATOR "productbuild")
-  set(CPACK_PACKAGE_FILE_NAME "Viper-${PROJECT_VERSION}-macos")
-elseif(WIN32)
-  # Windows: ZIP archive fallback, plus NSIS if a developer has it installed.
-  set(CPACK_GENERATOR "ZIP")
-  set(CPACK_PACKAGE_FILE_NAME "Viper-${PROJECT_VERSION}-win64")
-  # Optional: Enable NSIS installer if available
-  find_program(NSIS_FOUND makensis)
-  if(NSIS_FOUND)
-    list(APPEND CPACK_GENERATOR "NSIS")
+  if(APPLE)
+    # Build a macOS installer package (.pkg) suitable for CLI tools
+    set(CPACK_GENERATOR "productbuild")
+    set(CPACK_PACKAGE_FILE_NAME "Viper-${PROJECT_VERSION}-macos")
+  elseif(WIN32)
+    # Windows: ZIP archive fallback, plus NSIS if a developer has it installed.
+    set(CPACK_GENERATOR "ZIP")
+    set(CPACK_PACKAGE_FILE_NAME "Viper-${PROJECT_VERSION}-win64")
+    # Optional: Enable NSIS installer if available
+    find_program(NSIS_FOUND makensis)
+    if(NSIS_FOUND)
+      list(APPEND CPACK_GENERATOR "NSIS")
+    endif()
+  elseif(UNIX)
+    # Build both DEB and RPM if possible; users can choose
+    set(CPACK_GENERATOR "DEB;RPM")
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Viper Project")
+    set(CPACK_PACKAGE_FILE_NAME "viper-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
   endif()
-elseif(UNIX)
-  # Build both DEB and RPM if possible; users can choose
-  set(CPACK_GENERATOR "DEB;RPM")
-  set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Viper Project")
-  set(CPACK_PACKAGE_FILE_NAME "viper-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
-endif()
 
-include(CPack)
+  include(CPack)
+endif()
 
 viper_assert_no_archive_link_paths()
 

@@ -43,13 +43,14 @@ struct FileAssoc {
 
 /// @brief All package-related configuration from viper.project.
 struct PackageConfig {
-    std::string displayName; ///< package-name (defaults to project name)
-    std::string author;      ///< package-author
-    std::string description; ///< package-description
-    std::string homepage;    ///< package-homepage
-    std::string license;     ///< package-license (SPDX)
-    std::string identifier;  ///< package-identifier (reverse DNS)
-    std::string iconPath;    ///< package-icon (relative path to PNG)
+    std::string displayName;     ///< package-name (defaults to project name)
+    std::string author;          ///< package-author
+    std::string maintainerEmail; ///< package-maintainer-email (Debian `Maintainer: Name <email>`)
+    std::string description;     ///< package-description
+    std::string homepage;        ///< package-homepage
+    std::string license;         ///< package-license (SPDX)
+    std::string identifier;      ///< package-identifier (reverse DNS)
+    std::string iconPath;        ///< package-icon (relative path to PNG)
 
     std::vector<AssetEntry> assets;          ///< Extra files to bundle (source -> target).
     std::vector<FileAssoc> fileAssociations; ///< File-type associations to register.
@@ -68,6 +69,9 @@ struct PackageConfig {
     bool macosHardenedRuntime{false}; ///< Enable the hardened runtime when signing.
     std::string macosNotaryProfile;   ///< notarytool keychain profile
     bool macosStaple{false};          ///< Staple the notarization ticket to the artifact.
+    bool macosDisableHardenedRuntime{
+        false};                       ///< Opt out of the otherwise default-on hardened runtime.
+    int macosNotaryTimeoutSeconds{0}; ///< notarytool --timeout in seconds (0 = built-in 30m).
 
     std::string windowsInstallScope;   ///< machine (default) or user
     std::string windowsInstallDir;     ///< Optional install directory override.
@@ -101,7 +105,9 @@ struct PackageConfig {
                !windowsSignThumbprint.empty() || !windowsTimestampUrl.empty() ||
                !windowsSigntoolPath.empty() || windowsSignNoVerify ||
                !targetArchitectures.empty() || !category.empty() || !depends.empty() ||
-               !postInstallScript.empty() || !preUninstallScript.empty() || allowInstallHooks;
+               !postInstallScript.empty() || !preUninstallScript.empty() || allowInstallHooks ||
+               !maintainerEmail.empty() || macosDisableHardenedRuntime ||
+               macosNotaryTimeoutSeconds != 0;
     }
 };
 

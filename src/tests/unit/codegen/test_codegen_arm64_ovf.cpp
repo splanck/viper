@@ -92,8 +92,8 @@ TEST(Arm64CLI, OverflowVariantsRR) {
         const std::string inP = outPath(in);
         const std::string outP = outPath(out);
         writeFile(inP, il);
-        const char *argv[] = {inP.c_str(), "-S", outP.c_str()};
-        ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+        const char *argv[] = {inP.c_str(), "-S", outP.c_str(), "--target-linux"};
+        ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
         const std::string asmText = readFile(outP);
         EXPECT_NE(asmText.find(c.expectOpcode), std::string::npos);
         if (std::string(c.op) == "imul.ovf") {

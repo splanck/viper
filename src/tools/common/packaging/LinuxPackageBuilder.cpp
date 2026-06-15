@@ -321,11 +321,68 @@ bool manifestNeedsAlsa(const ToolchainInstallManifest &manifest) {
     return manifestHasSupportLibrary(manifest, "viperaud");
 }
 
+/// @brief Which C++ runtime the staged toolchain dynamically links.
+enum class ToolchainCxxRuntime { Unknown, LibStdCxx, LibCxx };
+
+/// @brief Detect the linked C++ runtime by scanning the primary staged ELF binary for the
+///        libstdc++ / libc++ SONAME in its dynamic string table. Returns Unknown when the
+///        binary is absent, not an ELF, or references neither/both — callers then keep the
+///        conservative default dependency.
+ToolchainCxxRuntime detectToolchainCxxRuntime(const ToolchainInstallManifest &manifest) {
+    const ToolchainFileEntry *primary = nullptr;
+    for (const auto &entry : manifest.files) {
+        if (entry.symlink || entry.kind != ToolchainFileKind::Binary)
+            continue;
+        const std::string base = fs::path(entry.stagedRelativePath).filename().string();
+        if (base == "viper" || base == "viper.exe") {
+            primary = &entry;
+            break;
+        }
+        if (!primary)
+            primary = &entry;
+    }
+    if (!primary)
+        return ToolchainCxxRuntime::Unknown;
+    std::error_code ec;
+    if (!fs::is_regular_file(primary->stagedAbsolutePath, ec))
+        return ToolchainCxxRuntime::Unknown;
+    std::vector<uint8_t> data;
+    try {
+        data = readFile(primary->stagedAbsolutePath.string());
+    } catch (const std::exception &) {
+        return ToolchainCxxRuntime::Unknown;
+    }
+    if (data.size() < 4 || data[0] != 0x7F || data[1] != 'E' || data[2] != 'L' || data[3] != 'F')
+        return ToolchainCxxRuntime::Unknown;
+    const std::string_view view(reinterpret_cast<const char *>(data.data()), data.size());
+    const bool hasStdCxx = view.find("libstdc++.so.6") != std::string_view::npos;
+    const bool hasLibCxx = view.find("libc++.so.1") != std::string_view::npos;
+    if (hasStdCxx && !hasLibCxx)
+        return ToolchainCxxRuntime::LibStdCxx;
+    if (hasLibCxx && !hasStdCxx)
+        return ToolchainCxxRuntime::LibCxx;
+    return ToolchainCxxRuntime::Unknown;
+}
+
 /// @brief Return the Debian Depends line for a toolchain .deb.
+/// @details Narrows the C++ runtime dependency to the library the staged binary actually links
+///          (libstdc++6 or libc++1); falls back to the `libstdc++6 | libc++1` alternative when
+///          detection is inconclusive.
 std::string toolchainDebDepends(const ToolchainInstallManifest &manifest) {
+    std::string cxxRuntime = "libstdc++6 | libc++1";
+    switch (detectToolchainCxxRuntime(manifest)) {
+        case ToolchainCxxRuntime::LibStdCxx:
+            cxxRuntime = "libstdc++6";
+            break;
+        case ToolchainCxxRuntime::LibCxx:
+            cxxRuntime = "libc++1";
+            break;
+        case ToolchainCxxRuntime::Unknown:
+            break;
+    }
     std::vector<std::string> deps = {
         "libc6",
-        "libstdc++6 | libc++1",
+        cxxRuntime,
         "libgcc-s1",
         "cmake",
         "g++ | clang++",
@@ -362,9 +419,12 @@ std::vector<std::string> appDebDepends(const PackageConfig &pkg) {
 ///          libX11 / alsa-lib when the manifest stages the graphics/audio support
 ///          libraries.
 std::vector<std::string> toolchainRpmRequires(const ToolchainInstallManifest &manifest) {
+    std::string cxxRuntime = "libstdc++";
+    if (detectToolchainCxxRuntime(manifest) == ToolchainCxxRuntime::LibCxx)
+        cxxRuntime = "libcxx";
     std::vector<std::string> deps = {
         "glibc",
-        "libstdc++",
+        cxxRuntime,
         "libgcc",
         "cmake",
         "gcc-c++",
@@ -700,7 +760,31 @@ std::string debMaintainerFor(const PackageConfig &pkg, const std::string &displa
         return maintainer;
     if (maintainer.find('@') != std::string::npos)
         return maintainer;
-    return maintainer + " <noreply@example.invalid>";
+    std::string email = trimAsciiWhitespace(pkg.maintainerEmail);
+    if (email.empty())
+        email = "noreply@example.invalid";
+    validateSingleLineField(email, "package maintainer email");
+    return maintainer + " <" + email + ">";
+}
+
+/// @brief Build the Debian/RPM maintainer string for a toolchain package from the manifest.
+/// @details Uses manifest.maintainer (default "Viper Project") and manifest.maintainerEmail,
+///          falling back to the RFC-2606 reserved `noreply@example.invalid` only when no email
+///          is configured. Always yields the required `Name <email>` form.
+std::string toolchainMaintainer(const ToolchainInstallManifest &manifest) {
+    std::string name = trimAsciiWhitespace(manifest.maintainer);
+    if (name.empty())
+        name = "Viper Project";
+    validateSingleLineField(name, "toolchain package maintainer");
+    if (name.find('<') != std::string::npos && name.find('>') != std::string::npos)
+        return name;
+    if (name.find('@') != std::string::npos)
+        return name;
+    std::string email = trimAsciiWhitespace(manifest.maintainerEmail);
+    if (email.empty())
+        email = "noreply@example.invalid";
+    validateSingleLineField(email, "toolchain package maintainer email");
+    return name + " <" + email + ">";
 }
 
 /// @brief Return @p value as a POSIX shell single-quoted literal.
@@ -1091,8 +1175,8 @@ void buildDebPackage(const LinuxBuildParams &params) {
         // Installed-Size in KiB
         uint64_t totalBytes = 0;
         for (const auto &df : dataFiles) {
-            checkedAddU64(totalBytes, static_cast<uint64_t>(df.data.size()),
-                          "Debian package installed size");
+            checkedAddU64(
+                totalBytes, static_cast<uint64_t>(df.data.size()), "Debian package installed size");
         }
         ctl << "Installed-Size: " << roundedKiB(totalBytes, "Debian package") << "\n";
 
@@ -1328,14 +1412,19 @@ void buildToolchainDebPackage(const LinuxToolchainBuildParams &params) {
         ctl << "Section: devel\n";
         ctl << "Priority: optional\n";
         ctl << "Architecture: " << archStr << "\n";
-        ctl << "Maintainer: Viper Project <noreply@example.invalid>\n";
+        ctl << "Maintainer: " << toolchainMaintainer(manifest) << "\n";
         ctl << "Depends: " << toolchainDebDepends(manifest) << "\n";
         uint64_t totalBytes = 0;
         for (const auto &df : dataFiles) {
-            checkedAddU64(totalBytes, static_cast<uint64_t>(df.data.size()),
+            checkedAddU64(totalBytes,
+                          static_cast<uint64_t>(df.data.size()),
                           "Debian toolchain package installed size");
         }
         ctl << "Installed-Size: " << roundedKiB(totalBytes, "Debian toolchain package") << "\n";
+        if (!manifest.homepage.empty()) {
+            validatePackageUrl(manifest.homepage, "toolchain package homepage");
+            ctl << "Homepage: " << manifest.homepage << "\n";
+        }
         ctl << "Description: Viper compiler toolchain\n";
         controlTar.addFileString("./control", ctl.str(), 0644);
     }
@@ -1528,7 +1617,17 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params) {
     spec << "Version: " << version << "\n";
     spec << "Release: 1%{?dist}\n";
     spec << "Summary: Viper compiler toolchain\n";
-    spec << "License: GPL-3.0-only\n";
+    {
+        std::string license = trimAsciiWhitespace(manifest.license);
+        if (license.empty())
+            license = "GPL-3.0-only";
+        validateSingleLineField(license, "toolchain package license");
+        spec << "License: " << license << "\n";
+    }
+    if (!manifest.homepage.empty()) {
+        validatePackageUrl(manifest.homepage, "toolchain package homepage");
+        spec << "URL: " << manifest.homepage << "\n";
+    }
     spec << "BuildArch: " << arch << "\n";
     spec << "Source0: %{name}-%{version}.tar.gz\n";
     for (const auto &dep : toolchainRpmRequires(manifest))

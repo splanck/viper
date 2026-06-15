@@ -51,22 +51,26 @@ enum class ToolchainFileKind {
 /// @brief A single file or symlink entry in the toolchain install manifest.
 struct ToolchainFileEntry {
     ToolchainFileKind kind{ToolchainFileKind::Extra}; ///< Classification driving the install path.
-    std::filesystem::path stagedAbsolutePath; ///< Full path in the staging directory.
-    std::string stagedRelativePath;           ///< Path relative to the staging root.
-    uint64_t sizeBytes{0};                    ///< File size in bytes (0 for symlinks).
-    uint32_t unixMode{0};                     ///< POSIX permission bits.
-    bool executable{false};                   ///< True if the file should be +x on install.
-    bool symlink{false};                      ///< True if this entry is a symbolic link.
-    std::string symlinkTarget;                ///< Non-empty only when symlink == true.
+    std::filesystem::path stagedAbsolutePath;         ///< Full path in the staging directory.
+    std::string stagedRelativePath;                   ///< Path relative to the staging root.
+    uint64_t sizeBytes{0};                            ///< File size in bytes (0 for symlinks).
+    uint32_t unixMode{0};                             ///< POSIX permission bits.
+    bool executable{false};                           ///< True if the file should be +x on install.
+    bool symlink{false};                              ///< True if this entry is a symbolic link.
+    std::string symlinkTarget;                        ///< Non-empty only when symlink == true.
 };
 
 /// @brief The full Viper toolchain install manifest for one (arch, platform) pair.
 struct ToolchainInstallManifest {
-    std::string version;                       ///< Toolchain version (e.g. "0.2.5").
-    std::string arch;                          ///< Target architecture ("x64"/"arm64").
-    std::string platform;                      ///< Target platform ("windows"/"macos"/"linux").
-    std::vector<ToolchainFileEntry> files;     ///< All staged files and symlinks.
-    std::vector<FileAssoc> fileAssociations;   ///< File-type associations to register.
+    std::string version;                     ///< Toolchain version (e.g. "0.2.5").
+    std::string arch;                        ///< Target architecture ("x64"/"arm64").
+    std::string platform;                    ///< Target platform ("windows"/"macos"/"linux").
+    std::string license{"GPL-3.0-only"};     ///< SPDX license id for package metadata.
+    std::string maintainer{"Viper Project"}; ///< Maintainer/packager display name.
+    std::string maintainerEmail;             ///< Maintainer email (empty => RFC-2606 placeholder).
+    std::string homepage;                    ///< Project homepage URL (optional, for deb/rpm).
+    std::vector<ToolchainFileEntry> files;   ///< All staged files and symlinks.
+    std::vector<FileAssoc> fileAssociations; ///< File-type associations to register.
 
     /// @brief Sum of sizeBytes for all non-symlink entries.
     uint64_t totalSizeBytes() const;

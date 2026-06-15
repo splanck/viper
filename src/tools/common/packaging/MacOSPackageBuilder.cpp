@@ -271,8 +271,7 @@ std::vector<fs::path> sortedTreeEntries(const fs::path &root) {
     std::vector<fs::path> entries;
     entries.push_back(root);
     std::error_code ec;
-    for (fs::recursive_directory_iterator it(root, ec);
-         it != fs::recursive_directory_iterator();
+    for (fs::recursive_directory_iterator it(root, ec); it != fs::recursive_directory_iterator();
          it.increment(ec)) {
         if (ec)
             throw std::runtime_error("cannot traverse macOS package payload: " + ec.message());
@@ -403,16 +402,16 @@ void appendLeafNamesFromDirectory(std::vector<std::string> &names, const fs::pat
     std::error_code ec;
     if (!fs::is_directory(dir, ec)) {
         if (ec)
-            throw std::runtime_error("cannot inspect directory '" + dir.string() + "': " +
-                                     ec.message());
+            throw std::runtime_error("cannot inspect directory '" + dir.string() +
+                                     "': " + ec.message());
         return;
     }
     for (fs::directory_iterator it(dir, fs::directory_options::skip_permission_denied, ec);
          it != fs::directory_iterator();
          it.increment(ec)) {
         if (ec)
-            throw std::runtime_error("cannot iterate directory '" + dir.string() + "': " +
-                                     ec.message());
+            throw std::runtime_error("cannot iterate directory '" + dir.string() +
+                                     "': " + ec.message());
         const auto status = it->symlink_status(ec);
         if (ec)
             throw std::runtime_error("cannot stat directory entry '" + it->path().string() +
@@ -433,8 +432,8 @@ void appendRelativeFilePathsFromDirectory(std::vector<std::string> &paths, const
     std::error_code ec;
     if (!fs::is_directory(dir, ec)) {
         if (ec)
-            throw std::runtime_error("cannot inspect directory '" + dir.string() + "': " +
-                                     ec.message());
+            throw std::runtime_error("cannot inspect directory '" + dir.string() +
+                                     "': " + ec.message());
         return;
     }
     for (fs::recursive_directory_iterator it(
@@ -442,8 +441,8 @@ void appendRelativeFilePathsFromDirectory(std::vector<std::string> &paths, const
          it != fs::recursive_directory_iterator();
          it.increment(ec)) {
         if (ec)
-            throw std::runtime_error("cannot iterate directory '" + dir.string() + "': " +
-                                     ec.message());
+            throw std::runtime_error("cannot iterate directory '" + dir.string() +
+                                     "': " + ec.message());
         const auto status = it->symlink_status(ec);
         if (ec)
             throw std::runtime_error("cannot stat directory entry '" + it->path().string() +
@@ -649,9 +648,8 @@ std::string generateMacOSUninstallScript(const std::string &packageIdentifier) {
     sh << "  done < \"$MANIFEST\"\n";
     sh << "fi\n";
     sh << "rm -rf \"$APP\"\n";
-    sh << "rm -f " << shQuote(std::string(kMacOSLocalCMakeViperDir) + "/ViperConfig.cmake")
-       << " " << shQuote(std::string(kMacOSLocalCMakeViperDir) + "/ViperConfigVersion.cmake")
-       << "\n";
+    sh << "rm -f " << shQuote(std::string(kMacOSLocalCMakeViperDir) + "/ViperConfig.cmake") << " "
+       << shQuote(std::string(kMacOSLocalCMakeViperDir) + "/ViperConfigVersion.cmake") << "\n";
     sh << "if [ -d \"$ROOT\" ]; then find \"$ROOT\" -depth -type d -empty -delete 2>/dev/null || "
           "true; fi\n";
     sh << "for dir in " << shQuote(std::string(kMacOSLocalCMakeViperDir)) << " "
@@ -695,13 +693,11 @@ std::string generateMacOSPreinstallScript(const std::vector<std::string> &toolNa
     sh << "          fi\n";
     sh << "          ;;\n";
     sh << "        share/man/*)\n";
-    sh << "          link=" << shQuote(std::string(kMacOSLocalManDir))
-       << "/${rel#share/man/}\n";
+    sh << "          link=" << shQuote(std::string(kMacOSLocalManDir)) << "/${rel#share/man/}\n";
     sh << "          if [ -L \"$link\" ]; then\n";
     sh << "            target=$(readlink \"$link\" || true)\n";
     sh << "            case \"$target\" in *../viper/share/man/*|"
-       << std::string(kMacOSToolchainInstallRoot)
-       << "/share/man/*) rm -f \"$link\" ;; esac\n";
+       << std::string(kMacOSToolchainInstallRoot) << "/share/man/*) rm -f \"$link\" ;; esac\n";
     sh << "          fi\n";
     sh << "          ;;\n";
     sh << "      esac\n";
@@ -713,8 +709,7 @@ std::string generateMacOSPreinstallScript(const std::vector<std::string> &toolNa
         sh << "link=" << shQuote(std::string(kMacOSLocalBinDir) + "/" + name) << "\n";
         sh << "if [ -L \"$link\" ]; then\n";
         sh << "  target=$(readlink \"$link\" || true)\n";
-        sh << "  case \"$target\" in ../viper/bin/*|"
-           << std::string(kMacOSToolchainInstallRoot)
+        sh << "  case \"$target\" in ../viper/bin/*|" << std::string(kMacOSToolchainInstallRoot)
            << "/bin/*) rm -f \"$link\" ;; esac\n";
         sh << "fi\n";
     }
@@ -827,7 +822,8 @@ std::string macOSHostArchitectures(const std::string &arch) {
 /// @return The Distribution XML text.
 std::string generateMacOSToolchainDistribution(const MacOSToolchainBuildParams &params,
                                                const std::string &pkgVersion,
-                                               uint64_t installKBytes) {
+                                               uint64_t installKBytes,
+                                               bool hasBackground) {
     std::ostringstream xml;
     const std::string escapedId = xmlEscape(params.identifier);
     const std::string escapedProductId = xmlEscape(params.identifier + ".product");
@@ -836,6 +832,11 @@ std::string generateMacOSToolchainDistribution(const MacOSToolchainBuildParams &
     xml << "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
     xml << "<installer-gui-script minSpecVersion=\"1\">\n";
     xml << "  <title>" << escapedName << "</title>\n";
+    xml << "  <welcome file=\"welcome.html\" mime-type=\"text/html\"/>\n";
+    xml << "  <license file=\"license.txt\" mime-type=\"text/plain\"/>\n";
+    if (hasBackground)
+        xml << "  <background file=\"background.png\" alignment=\"bottomleft\" "
+               "scaling=\"proportional\"/>\n";
     xml << "  <pkg-ref id=\"" << escapedId << "\">\n";
     xml << "    <bundle-version/>\n";
     xml << "  </pkg-ref>\n";
@@ -857,6 +858,35 @@ std::string generateMacOSToolchainDistribution(const MacOSToolchainBuildParams &
     xml << "  <product id=\"" << escapedProductId << "\" version=\"" << escapedVersion << "\"/>\n";
     xml << "</installer-gui-script>\n";
     return xml.str();
+}
+
+/// @brief Generate the HTML welcome pane shown first in the macOS toolchain installer.
+std::string generateMacOSToolchainWelcomeHtml(const std::string &displayName,
+                                              const std::string &version) {
+    std::ostringstream html;
+    html << "<!DOCTYPE html>\n<html><body "
+            "style=\"font-family:-apple-system,Helvetica,Arial,sans-serif;\">\n";
+    html << "<h2>" << xmlEscape(displayName) << " " << xmlEscape(version) << "</h2>\n";
+    html
+        << "<p>This installer sets up the Viper compiler toolchain &mdash; the <code>viper</code>, "
+           "<code>vbasic</code>, and <code>zia</code> command-line tools together with the runtime "
+           "libraries, headers, CMake package files, and manual pages.</p>\n";
+    html << "<p>The toolchain installs under <code>/usr/local/viper</code> with convenience "
+            "symlinks in <code>/usr/local/bin</code>. Click Continue to proceed.</p>\n";
+    html << "</body></html>\n";
+    return html.str();
+}
+
+/// @brief Generate the plain-text license pane for the macOS toolchain installer.
+std::string generateMacOSToolchainLicenseText(const std::string &spdx) {
+    const std::string id = spdx.empty() ? std::string("GPL-3.0-only") : spdx;
+    std::ostringstream txt;
+    txt << "Viper Compiler Toolchain\n\n";
+    txt << "This software is distributed under the " << id << " license.\n\n";
+    txt << "The complete license text ships with the Viper source distribution and is available "
+           "online at https://www.gnu.org/licenses/. By choosing Agree you accept the terms of the "
+        << id << " license.\n";
+    return txt.str();
 }
 
 /// @brief Walk the staged .app bundle and write all entries to a ZIP at `outputPath`.
@@ -953,7 +983,14 @@ void signMacOSBundle(const fs::path &stageRoot,
         "codesign", "--force", "--sign", developerId ? pkg.macosSignIdentity : std::string("-")};
     if (developerId)
         args.push_back("--timestamp");
-    if (pkg.macosHardenedRuntime || !pkg.macosNotaryProfile.empty()) {
+    // Hardened runtime is required for notarization and is the safe default for any real
+    // (Developer ID) signing; enable it unless the package explicitly opts out. Ad-hoc/local
+    // signing leaves it off unless requested.
+    bool hardenedRuntime =
+        pkg.macosHardenedRuntime || !pkg.macosNotaryProfile.empty() || developerId;
+    if (pkg.macosDisableHardenedRuntime)
+        hardenedRuntime = false;
+    if (hardenedRuntime) {
         args.push_back("--options");
         args.push_back("runtime");
     }
@@ -970,14 +1007,28 @@ void signMacOSBundle(const fs::path &stageRoot,
     if (!pkg.macosNotaryProfile.empty()) {
         const fs::path notaryZip = stageRoot / "notary-submit.zip";
         addStagedAppToZip(stageRoot, appPath, execPath, notaryZip.string());
-        runChecked({"xcrun",
-                    "notarytool",
-                    "submit",
-                    notaryZip.string(),
-                    "--keychain-profile",
-                    pkg.macosNotaryProfile,
-                    "--wait"},
-                   "macOS notarization");
+        std::vector<std::string> notaryArgs = {"xcrun",
+                                               "notarytool",
+                                               "submit",
+                                               notaryZip.string(),
+                                               "--keychain-profile",
+                                               pkg.macosNotaryProfile,
+                                               "--wait"};
+        // Bound the wait so a stalled Apple service cannot hang the build indefinitely.
+        const int notaryTimeoutSeconds =
+            pkg.macosNotaryTimeoutSeconds > 0 ? pkg.macosNotaryTimeoutSeconds : 1800;
+        notaryArgs.push_back("--timeout");
+        notaryArgs.push_back(std::to_string(notaryTimeoutSeconds) + "s");
+        // Retry once on a transient submit/network failure before giving up.
+        for (int attempt = 1;; ++attempt) {
+            try {
+                runChecked(notaryArgs, "macOS notarization");
+                break;
+            } catch (const std::exception &) {
+                if (attempt >= 2)
+                    throw;
+            }
+        }
         if (pkg.macosStaple) {
             runChecked({"xcrun", "stapler", "staple", appPath.string()},
                        "macOS notarization stapling");
@@ -1172,9 +1223,9 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
             throw std::runtime_error("macOS toolchain file associations require staged "
                                      "libexec/viper/viper-file-handler");
         }
-        const fs::path appContents = payloadRoot / fs::path(std::string(kMacOSToolchainAppPath))
-                                                       .relative_path() /
-                                    "Contents";
+        const fs::path appContents = payloadRoot /
+                                     fs::path(std::string(kMacOSToolchainAppPath)).relative_path() /
+                                     "Contents";
         const fs::path appMacOS = appContents / "MacOS";
         fs::create_directories(appMacOS);
         writeFileString(appContents / "Info.plist",
@@ -1233,8 +1284,32 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
         roundedKiB(params.manifest.totalSizeBytes(), "macOS toolchain package");
     const std::string packageInfo =
         generateMacOSToolchainPackageInfo(params, pkgVersion, payloadEntryCount);
+    // Installer branding resources: the welcome and license panes are always present; the
+    // background image is optional. License text comes from an override file when provided, else a
+    // generated notice keyed on the manifest's SPDX id.
+    const std::string welcomeHtml =
+        generateMacOSToolchainWelcomeHtml(params.displayName, pkgVersion);
+    std::string licenseText;
+    if (!params.licenseFilePath.empty()) {
+        if (!fs::is_regular_file(params.licenseFilePath))
+            throw std::runtime_error("macOS package license file not found: " +
+                                     params.licenseFilePath);
+        const auto bytes = readFile(params.licenseFilePath);
+        licenseText.assign(bytes.begin(), bytes.end());
+    } else {
+        licenseText = generateMacOSToolchainLicenseText(params.manifest.license);
+    }
+    const bool hasBackground = !params.backgroundImagePath.empty();
+    std::vector<uint8_t> backgroundBytes;
+    if (hasBackground) {
+        if (!fs::is_regular_file(params.backgroundImagePath))
+            throw std::runtime_error("macOS package background image not found: " +
+                                     params.backgroundImagePath);
+        backgroundBytes = readFile(params.backgroundImagePath);
+    }
+
     const std::string distribution =
-        generateMacOSToolchainDistribution(params, pkgVersion, installKBytes);
+        generateMacOSToolchainDistribution(params, pkgVersion, installKBytes, hasBackground);
 
     const fs::path output = fs::path(params.outputPath);
     if (!output.parent_path().empty())
@@ -1246,7 +1321,137 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
     product.addFileVec("ViperToolchain.pkg/Scripts", scriptsGzip, false);
     product.addFileString("ViperToolchain.pkg/PackageInfo", packageInfo, true);
     product.addFileString("Distribution", distribution, true);
+    product.addFileString("welcome.html", welcomeHtml, true);
+    product.addFileString("license.txt", licenseText, true);
+    if (hasBackground)
+        product.addFileVec("background.png", backgroundBytes, false);
     product.finishToFile(params.outputPath);
+}
+
+//=============================================================================
+// MacOS Toolchain DMG Builder
+//=============================================================================
+
+void buildMacOSToolchainDmg(const MacOSToolchainDmgParams &params) {
+#if !defined(__APPLE__)
+    (void)params;
+    throw std::runtime_error("building a macOS .dmg requires running on macOS (hdiutil)");
+#else
+    if (!fs::is_regular_file(params.pkgPath))
+        throw std::runtime_error("macOS .dmg source package is not a regular file: " +
+                                 params.pkgPath);
+    validateSingleLineField(params.volumeName, "macOS .dmg volume name");
+    if (params.volumeName.empty() || params.volumeName.find('/') != std::string::npos ||
+        params.volumeName.find(':') != std::string::npos)
+        throw std::runtime_error(
+            "macOS .dmg volume name must be non-empty and free of '/' and ':'");
+
+    std::error_code ec;
+    const fs::path tmpRoot = createUniqueTempDirectory(fs::temp_directory_path(), "viper-dmg");
+    const fs::path stage = tmpRoot / "stage";
+    fs::create_directories(stage);
+
+    const std::string pkgName =
+        params.pkgDisplayName.empty() ? std::string("Viper Toolchain.pkg") : params.pkgDisplayName;
+    fs::copy_file(params.pkgPath, stage / pkgName, fs::copy_options::overwrite_existing);
+
+    bool haveBackground = false;
+    if (!params.backgroundPng.empty()) {
+        if (!fs::is_regular_file(params.backgroundPng))
+            throw std::runtime_error("macOS .dmg background image not found: " +
+                                     params.backgroundPng);
+        const fs::path bgDir = stage / ".background";
+        fs::create_directories(bgDir);
+        fs::copy_file(
+            params.backgroundPng, bgDir / "background.png", fs::copy_options::overwrite_existing);
+        haveBackground = true;
+    }
+
+    bool haveVolumeIcon = false;
+    if (!params.volumeIcns.empty()) {
+        if (!fs::is_regular_file(params.volumeIcns))
+            throw std::runtime_error("macOS .dmg volume icon not found: " + params.volumeIcns);
+        fs::copy_file(
+            params.volumeIcns, stage / ".VolumeIcon.icns", fs::copy_options::overwrite_existing);
+        haveVolumeIcon = true;
+    }
+
+    // 1) Read-write image sized to the staged contents.
+    const fs::path rwDmg = tmpRoot / "rw.dmg";
+    runChecked({"hdiutil",
+                "create",
+                "-srcfolder",
+                stage.string(),
+                "-volname",
+                params.volumeName,
+                "-fs",
+                "HFS+",
+                "-format",
+                "UDRW",
+                "-ov",
+                rwDmg.string()},
+               "macOS .dmg read-write image creation");
+
+    // 2) Attach for styling.
+    const fs::path mountPoint = tmpRoot / "mnt";
+    fs::create_directories(mountPoint);
+    runChecked({"hdiutil",
+                "attach",
+                rwDmg.string(),
+                "-mountpoint",
+                mountPoint.string(),
+                "-nobrowse",
+                "-noverify",
+                "-noautoopen"},
+               "macOS .dmg attach");
+
+    // 3) Best-effort Finder styling — the image stays valid even if this fails (headless/CI).
+    {
+        std::ostringstream s;
+        s << "tell application \"Finder\"\n"
+          << "  tell disk \"" << params.volumeName << "\"\n"
+          << "    open\n"
+          << "    set current view of container window to icon view\n"
+          << "    set toolbar visible of container window to false\n"
+          << "    set statusbar visible of container window to false\n"
+          << "    set the bounds of container window to {200, 120, 720, 480}\n"
+          << "    set vopts to the icon view options of container window\n"
+          << "    set arrangement of vopts to not arranged\n"
+          << "    set icon size of vopts to 128\n";
+        if (haveBackground)
+            s << "    set background picture of vopts to file \".background:background.png\"\n";
+        s << "    set position of item \"" << pkgName << "\" of container window to {260, 240}\n"
+          << "    update without registering applications\n"
+          << "    delay 1\n"
+          << "    close\n"
+          << "  end tell\n"
+          << "end tell\n";
+        (void)run_process({"osascript", "-e", s.str()});
+    }
+    if (haveVolumeIcon)
+        (void)run_process({"SetFile", "-a", "C", mountPoint.string()});
+    (void)run_process({"sync"});
+
+    // 4) Detach (force-retry once if the volume is briefly busy).
+    if (run_process({"hdiutil", "detach", mountPoint.string()}).exit_code != 0)
+        runChecked({"hdiutil", "detach", "-force", mountPoint.string()}, "macOS .dmg detach");
+
+    // 5) Compress to a read-only UDZO image at the output path.
+    fs::remove(params.outputPath, ec);
+    runChecked({"hdiutil",
+                "convert",
+                rwDmg.string(),
+                "-format",
+                "UDZO",
+                "-imagekey",
+                "zlib-level=9",
+                "-ov",
+                "-o",
+                params.outputPath},
+               "macOS .dmg compression");
+
+    fs::remove_all(tmpRoot, ec);
+#endif
 }
 
 } // namespace viper::pkg

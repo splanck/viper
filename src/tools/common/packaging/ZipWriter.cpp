@@ -195,16 +195,6 @@ uint32_t crc32Bytes(const uint8_t *data, size_t len) {
     return rt_crc32_compute(len == 0 ? &kEmpty : data, len);
 }
 
-/// @brief Thread-safe localtime conversion (localtime_s on Windows, localtime_r else).
-/// @return false if the platform call fails.
-bool portableLocalTime(std::time_t timestamp, std::tm &out) {
-#if defined(_WIN32)
-    return localtime_s(&out, &timestamp) == 0;
-#else
-    return localtime_r(&timestamp, &out) != nullptr;
-#endif
-}
-
 /// @brief Thread-safe UTC conversion (gmtime_s on Windows, gmtime_r else).
 /// @return false if the platform call fails.
 bool portableGmTime(std::time_t timestamp, std::tm &out) {
@@ -261,14 +251,14 @@ void clampDosTime(std::tm &t) {
 
 } // namespace
 
-/// @brief Populate time and date with a DOS timestamp. Uses SOURCE_DATE_EPOCH
-/// in UTC when set; otherwise uses the current wall-clock local time.
+/// @brief Populate time and date with a DOS timestamp. Reproducible by default: stamps a fixed
+/// epoch interpreted in UTC, so identical inputs yield byte-identical archives regardless of build
+/// time or host timezone. Set SOURCE_DATE_EPOCH to stamp a specific Unix timestamp instead.
 void ZipWriter::getDosTime(uint16_t &time, uint16_t &date) {
-    std::time_t now = std::time(nullptr);
+    std::time_t stamp = 0;        // Deterministic default; clamped up to the 1980 DOS floor below.
+    (void)sourceDateEpoch(stamp); // Overrides `stamp` only when SOURCE_DATE_EPOCH is set.
     std::tm t{};
-    const bool deterministic = sourceDateEpoch(now);
-    const bool converted = deterministic ? portableGmTime(now, t) : portableLocalTime(now, t);
-    if (!converted) {
+    if (!portableGmTime(stamp, t)) {
         time = 0;
         date = 0x0021; // 1980-01-01
         return;
@@ -522,7 +512,8 @@ void ZipWriter::appendCentralDirectory(std::vector<uint8_t> &archive) const {
     }
 
     validateArchiveLimit(archive.size(), 0xFFFFFFFFu, "archives larger than 4 GiB");
-    validateArchiveLimit(archive.size() + kEndRecordSize, 0xFFFFFFFFu, "archives larger than 4 GiB");
+    validateArchiveLimit(
+        archive.size() + kEndRecordSize, 0xFFFFFFFFu, "archives larger than 4 GiB");
     uint32_t cdSize = static_cast<uint32_t>(archive.size()) - cdOffset;
 
     // End of central directory record

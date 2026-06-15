@@ -733,6 +733,23 @@ TEST(XarWriter, EmitsVerifiableSha1ZlibArchive) {
     EXPECT_TRUE(verifyXar(bytes, err));
 }
 
+TEST(ZipWriter, ProducesByteIdenticalArchivesForIdenticalInput) {
+    // Reproducible builds: identical input must yield byte-identical archives across runs,
+    // independent of wall-clock time or host timezone (the DOS date field is the usual culprit).
+    auto build = [] {
+        ZipWriter zip;
+        zip.addFileString("readme.txt", "hello viper", 0100644);
+        zip.addDirectory("data");
+        zip.addFileString("data/payload.bin", std::string(256, 'x'), 0100644);
+        return zip.finishToVector();
+    };
+    const auto first = build();
+    const auto second = build();
+    ASSERT_GT(first.size(), static_cast<size_t>(0));
+    EXPECT_EQ(first.size(), second.size());
+    EXPECT_TRUE(first == second);
+}
+
 TEST(Deflate, RoundTripSmall) {
     const char *msg = "Hello, VAPS packaging!";
     auto len = std::strlen(msg);
@@ -3912,6 +3929,138 @@ TEST(ToolchainLinuxPackageBuilder, BuildsDebFromManifest) {
     fs::remove_all(tmpRoot);
 }
 
+// Overwrite the staged primary binary with a synthetic ELF whose body names @p soname, so the
+// C++-runtime detector has something concrete to scan. The header is a complete ELF64
+// (little-endian, x86-64) so the manifest's architecture detector also accepts it.
+static void writeSyntheticElfBinary(const std::filesystem::path &stage, const std::string &soname) {
+    namespace fs = std::filesystem;
+    fs::path binPath = stage / "bin" / "viper";
+    if (!fs::exists(binPath))
+        binPath = stage / "bin" / "viper.exe";
+    unsigned char header[64] = {0};
+    header[0] = 0x7F;
+    header[1] = 'E';
+    header[2] = 'L';
+    header[3] = 'F';
+    header[4] = 2;   // EI_CLASS = ELFCLASS64
+    header[5] = 1;   // EI_DATA  = ELFDATA2LSB
+    header[6] = 1;   // EI_VERSION = EV_CURRENT
+    header[16] = 3;  // e_type = ET_DYN
+    header[18] = 62; // e_machine = EM_X86_64
+    header[20] = 1;  // e_version = EV_CURRENT
+    std::ofstream out(binPath, std::ios::binary | std::ios::trunc);
+    out.write(reinterpret_cast<const char *>(header), sizeof(header));
+    const std::string body = std::string(16, '\0') + soname + std::string(8, '\0');
+    out.write(body.data(), static_cast<std::streamsize>(body.size()));
+}
+
+TEST(ToolchainLinuxPackageBuilder, DebUsesConfiguredMaintainerAndHomepage) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_deb_maintainer";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    auto manifest = gatherToolchainInstallManifest(stage);
+    manifest.platform = "linux";
+    manifest.maintainer = "Acme Tools";
+    manifest.maintainerEmail = "dev@acme.test";
+    manifest.homepage = "https://viper.example.com";
+
+    LinuxToolchainBuildParams params;
+    params.manifest = manifest;
+    params.outputPath = (tmpRoot / "viper_9.8.7_amd64.deb").string();
+    buildToolchainDebPackage(params);
+
+    const std::string control = debControlText(readFile(params.outputPath));
+    EXPECT_CONTAINS(control, "Maintainer: Acme Tools <dev@acme.test>");
+    EXPECT_CONTAINS(control, "Homepage: https://viper.example.com");
+    fs::remove_all(tmpRoot);
+}
+
+TEST(ToolchainLinuxPackageBuilder, DebDefaultMaintainerUsesReservedPlaceholder) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_deb_default_maint";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    auto manifest = gatherToolchainInstallManifest(stage);
+    manifest.platform = "linux";
+
+    LinuxToolchainBuildParams params;
+    params.manifest = manifest;
+    params.outputPath = (tmpRoot / "viper_9.8.7_amd64.deb").string();
+    buildToolchainDebPackage(params);
+
+    const std::string control = debControlText(readFile(params.outputPath));
+    EXPECT_CONTAINS(control, "Maintainer: Viper Project <noreply@example.invalid>");
+    fs::remove_all(tmpRoot);
+}
+
+TEST(ToolchainLinuxPackageBuilder, DebNarrowsDependsToLibstdcxxForElf) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_deb_libstdcxx";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    writeSyntheticElfBinary(stage, "libstdc++.so.6");
+    auto manifest = gatherToolchainInstallManifest(stage);
+    manifest.platform = "linux";
+
+    LinuxToolchainBuildParams params;
+    params.manifest = manifest;
+    params.outputPath = (tmpRoot / "viper_9.8.7_amd64.deb").string();
+    buildToolchainDebPackage(params);
+
+    const std::string control = debControlText(readFile(params.outputPath));
+    EXPECT_CONTAINS(control, "Depends: libc6, libstdc++6, libgcc-s1");
+    fs::remove_all(tmpRoot);
+}
+
+TEST(ToolchainLinuxPackageBuilder, DebNarrowsDependsToLibcxxForElf) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_deb_libcxx";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    writeSyntheticElfBinary(stage, "libc++.so.1");
+    auto manifest = gatherToolchainInstallManifest(stage);
+    manifest.platform = "linux";
+
+    LinuxToolchainBuildParams params;
+    params.manifest = manifest;
+    params.outputPath = (tmpRoot / "viper_9.8.7_amd64.deb").string();
+    buildToolchainDebPackage(params);
+
+    const std::string control = debControlText(readFile(params.outputPath));
+    EXPECT_CONTAINS(control, "Depends: libc6, libc++1, libgcc-s1");
+    fs::remove_all(tmpRoot);
+}
+
+#if defined(__APPLE__)
+TEST(MacOSToolchainDmgBuilder, WrapsPkgIntoValidUdifImage) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_dmg_builder";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot);
+    const fs::path pkgPath = tmpRoot / "fake.pkg";
+    {
+        std::ofstream out(pkgPath, std::ios::binary);
+        out << "fake pkg payload";
+    }
+
+    MacOSToolchainDmgParams params;
+    params.pkgPath = pkgPath.string();
+    params.outputPath = (tmpRoot / "viper.dmg").string();
+    params.volumeName = "Viper Toolchain Test";
+    buildMacOSToolchainDmg(params);
+
+    ASSERT_TRUE(fs::is_regular_file(params.outputPath));
+    const auto bytes = readFile(params.outputPath);
+    ASSERT_GE(bytes.size(), static_cast<size_t>(512));
+    // UDIF disk images end with a 512-byte trailer whose magic is "koly".
+    const size_t off = bytes.size() - 512;
+    EXPECT_TRUE(bytes[off] == 'k' && bytes[off + 1] == 'o' && bytes[off + 2] == 'l' &&
+                bytes[off + 3] == 'y');
+    fs::remove_all(tmpRoot);
+}
+#endif
+
 TEST(ToolchainLinuxPackageBuilder, BuildsTarballFromManifest) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_tar_stage";
@@ -4213,6 +4362,35 @@ TEST(ToolchainMacOSPackageBuilder, BuildsPkgFromManifest) {
     if (!verified)
         std::cerr << err.str();
     EXPECT_TRUE(verified);
+    fs::remove_all(tmpRoot);
+}
+
+TEST(ToolchainMacOSPackageBuilder, PkgEmbedsWelcomeAndLicensePanes) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_pkg_branding";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    addMockMacOSFileHandler(stage);
+    const auto manifest = gatherToolchainInstallManifest(stage);
+
+    MacOSToolchainBuildParams params;
+    params.manifest = manifest;
+    params.outputPath = (tmpRoot / "viper-toolchain.pkg").string();
+    buildMacOSToolchainPackage(params);
+
+    // The welcome + license panes are added as top-level xar members alongside Distribution;
+    // confirm they are present by decoding the archive's table of contents.
+    const auto pkgBytes = readFile(params.outputPath);
+    ASSERT_GE(pkgBytes.size(), static_cast<size_t>(28));
+    const uint16_t headerSize = readBE16(pkgBytes.data() + 4);
+    const uint64_t tocCompressed = readBE64(pkgBytes.data() + 8);
+    const uint64_t tocUncompressed = readBE64(pkgBytes.data() + 16);
+    const auto toc = zlibDecompress(pkgBytes.data() + headerSize,
+                                    static_cast<size_t>(tocCompressed),
+                                    static_cast<size_t>(tocUncompressed));
+    const std::string tocText(toc.begin(), toc.end());
+    EXPECT_TRUE(tocText.find("<name>welcome.html</name>") != std::string::npos);
+    EXPECT_TRUE(tocText.find("<name>license.txt</name>") != std::string::npos);
     fs::remove_all(tmpRoot);
 }
 #endif

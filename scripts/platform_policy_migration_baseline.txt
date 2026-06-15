@@ -225,7 +225,7 @@ src/tests/unit/runtime/TestVpaFormat.cpp 2
 src/tests/unit/test_bytecode_vm.cpp 1
 src/tests/unit/test_cli_run_break_src_line_padding.cpp 1
 src/tests/unit/test_cli_run_break_src_whitespace.cpp 1
-src/tests/unit/test_packaging.cpp 10
+src/tests/unit/test_packaging.cpp 11
 src/tests/unit/test_run_process_quotes.cpp 2
 src/tests/unit/test_source_loader_limits.cpp 2
 src/tests/unit/test_support.cpp 1
@@ -239,10 +239,10 @@ src/tests/vm/DispatchHostCallTests.cpp 1
 src/tools/common/ScopedProcess.hpp 2
 src/tools/common/native_compiler.cpp 7
 src/tools/common/packaging/LinuxPackageBuilder.cpp 2
-src/tools/common/packaging/MacOSPackageBuilder.cpp 2
+src/tools/common/packaging/MacOSPackageBuilder.cpp 3
 src/tools/common/packaging/PkgUtils.hpp 4
 src/tools/common/packaging/WindowsPackageBuilder.cpp 1
-src/tools/common/packaging/ZipWriter.cpp 2
+src/tools/common/packaging/ZipWriter.cpp 1
 src/tools/lsp-common/Transport.cpp 2
 src/tools/viper/cmd_install_package.cpp 4
 src/tools/viper/cmd_package.cpp 4
