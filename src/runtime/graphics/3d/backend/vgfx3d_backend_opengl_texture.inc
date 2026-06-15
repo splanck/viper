@@ -9,6 +9,8 @@ static void texture_cache_clear(gl_context_t *ctx) {
     for (int32_t i = 0; i < ctx->texture_cache_count; i++) {
         if (ctx->texture_cache[i].tex)
             gl.DeleteTextures(1, &ctx->texture_cache[i].tex);
+        if (ctx->texture_cache[i].fallback_tex)
+            gl.DeleteTextures(1, &ctx->texture_cache[i].fallback_tex);
     }
     ctx->texture_cache_count = 0;
 }
@@ -81,6 +83,8 @@ static void texture_cache_prune(gl_context_t *ctx) {
         if (!keep) {
             if (ctx->texture_cache[i].tex)
                 gl.DeleteTextures(1, &ctx->texture_cache[i].tex);
+            if (ctx->texture_cache[i].fallback_tex)
+                gl.DeleteTextures(1, &ctx->texture_cache[i].fallback_tex);
             continue;
         }
         if (write_index != i)
@@ -88,6 +92,24 @@ static void texture_cache_prune(gl_context_t *ctx) {
         write_index++;
     }
     ctx->texture_cache_count = write_index;
+    while (ctx->texture_cache_count > GL_TEXTURE_CACHE_MAX_RESIDENT) {
+        int32_t oldest = 0;
+        for (int32_t i = 1; i < ctx->texture_cache_count; i++) {
+            if (ctx->texture_cache[i].last_used_frame < ctx->texture_cache[oldest].last_used_frame)
+                oldest = i;
+        }
+        if (ctx->texture_cache[oldest].tex)
+            gl.DeleteTextures(1, &ctx->texture_cache[oldest].tex);
+        if (ctx->texture_cache[oldest].fallback_tex)
+            gl.DeleteTextures(1, &ctx->texture_cache[oldest].fallback_tex);
+        if (oldest + 1 < ctx->texture_cache_count) {
+            memmove(&ctx->texture_cache[oldest],
+                    &ctx->texture_cache[oldest + 1],
+                    (size_t)(ctx->texture_cache_count - oldest - 1) *
+                        sizeof(ctx->texture_cache[0]));
+        }
+        ctx->texture_cache_count--;
+    }
 }
 
 /// @brief LRU prune for the cubemap cache (limit 64, age 240 frames).
@@ -114,6 +136,22 @@ static void cubemap_cache_prune(gl_context_t *ctx) {
         write_index++;
     }
     ctx->cubemap_cache_count = write_index;
+    while (ctx->cubemap_cache_count > GL_CUBEMAP_CACHE_MAX_RESIDENT) {
+        int32_t oldest = 0;
+        for (int32_t i = 1; i < ctx->cubemap_cache_count; i++) {
+            if (ctx->cubemap_cache[i].last_used_frame < ctx->cubemap_cache[oldest].last_used_frame)
+                oldest = i;
+        }
+        if (ctx->cubemap_cache[oldest].tex)
+            gl.DeleteTextures(1, &ctx->cubemap_cache[oldest].tex);
+        if (oldest + 1 < ctx->cubemap_cache_count) {
+            memmove(&ctx->cubemap_cache[oldest],
+                    &ctx->cubemap_cache[oldest + 1],
+                    (size_t)(ctx->cubemap_cache_count - oldest - 1) *
+                        sizeof(ctx->cubemap_cache[0]));
+        }
+        ctx->cubemap_cache_count--;
+    }
 }
 
 /// @brief LRU prune for the morph-target cache (limit 64, age 240 frames).
@@ -138,6 +176,21 @@ static void morph_cache_prune(gl_context_t *ctx) {
         write_index++;
     }
     ctx->morph_cache_count = write_index;
+    while (ctx->morph_cache_count > GL_MORPH_CACHE_MAX_RESIDENT) {
+        int32_t oldest = 0;
+        for (int32_t i = 1; i < ctx->morph_cache_count; i++) {
+            if (ctx->morph_cache[i].last_used_frame < ctx->morph_cache[oldest].last_used_frame)
+                oldest = i;
+        }
+        morph_cache_release_entry(&ctx->morph_cache[oldest]);
+        if (oldest + 1 < ctx->morph_cache_count) {
+            memmove(&ctx->morph_cache[oldest],
+                    &ctx->morph_cache[oldest + 1],
+                    (size_t)(ctx->morph_cache_count - oldest - 1) *
+                        sizeof(ctx->morph_cache[0]));
+        }
+        ctx->morph_cache_count--;
+    }
 }
 
 /// @brief Tear down all three caches and free their backing arrays.
@@ -173,9 +226,10 @@ static void gl_record_texture_upload_bytes(gl_context_t *ctx, uint64_t bytes) {
 }
 
 /// @brief Report native texture-related capabilities this GL context can use.
-/// @details The native compressed upload code remains compiled, but the Linux OpenGL backend does
-/// not advertise BC7/ASTC/ETC2 until it has an upload+sample conformance probe. Extension presence
-/// alone is not enough: some GL stacks accept the upload but sample as an incomplete/no-op texture.
+/// @details Extension discovery is captured during context creation, but native block-compressed
+/// upload is not advertised until OpenGL has an upload+sample conformance gate. Some Mesa paths
+/// accept BC/ASTC/ETC2 uploads without producing valid sampled texels, and BackendSupports must
+/// mean the full draw path works.
 static int64_t gl_get_native_texture_caps(void *ctx_ptr) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     int64_t caps = 0;
@@ -346,6 +400,8 @@ static int gl_continue_native_texture_upload(gl_context_t *ctx, gl_texture_cache
                                     0,
                                     (GLsizei)mip.bytes,
                                     NULL);
+            if (!gl_upload_ok())
+                return 0;
         }
         rows = vgfx3d_upload_block_rows_for_budget(mip.width,
                                                    mip.height,
@@ -377,6 +433,8 @@ static int gl_continue_native_texture_upload(gl_context_t *ctx, gl_texture_cache
                                    internal_format,
                                    (GLsizei)upload_bytes,
                                    (const uint8_t *)mip.data + offset);
+        if (!gl_upload_ok())
+            return 0;
         gl_record_texture_upload_bytes(ctx, upload_bytes);
         entry->native_next_block_row += rows;
         if ((uint64_t)(uint32_t)entry->native_next_block_row >= block_rows) {
@@ -393,6 +451,12 @@ static int gl_continue_native_texture_upload(gl_context_t *ctx, gl_texture_cache
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, (GLint)(entry->native_mip_count - 1));
+    if (!gl_upload_ok())
+        return 0;
+    if (entry->fallback_tex) {
+        gl.DeleteTextures(1, &entry->fallback_tex);
+        entry->fallback_tex = 0;
+    }
     entry->generation = entry->pending_generation;
     entry->pending_generation = 0;
     entry->upload_in_progress = 0;
@@ -418,6 +482,15 @@ static int gl_start_native_texture_upload(gl_context_t *ctx,
         return 0;
     if (mip_count <= 0)
         return 0;
+    if (ctx->max_texture_size > 0 &&
+        (first_mip.width > ctx->max_texture_size || first_mip.height > ctx->max_texture_size))
+        return 0;
+    if (entry->tex && entry->generation != 0 && entry->generation != cache_key) {
+        if (entry->fallback_tex)
+            gl.DeleteTextures(1, &entry->fallback_tex);
+        entry->fallback_tex = entry->tex;
+        entry->tex = 0;
+    }
     if (!entry->tex) {
         gl.GenTextures(1, &entry->tex);
         if (!entry->tex)
@@ -483,6 +556,10 @@ static int gl_continue_texture_upload(gl_context_t *ctx,
                      GL_RGBA,
                      GL_UNSIGNED_BYTE,
                      rgba);
+    if (!gl_upload_ok()) {
+        free(rgba);
+        return 0;
+    }
     bytes = (uint64_t)(uint32_t)slice_w * (uint64_t)(uint32_t)slice_rows * 4u;
     gl_record_texture_upload_bytes(ctx, bytes);
     free(rgba);
@@ -491,6 +568,12 @@ static int gl_continue_texture_upload(gl_context_t *ctx,
     entry->last_used_frame = ctx->frame_serial;
     if (entry->upload_next_row >= entry->height) {
         gl.GenerateMipmap(GL_TEXTURE_2D);
+        if (!gl_upload_ok())
+            return 0;
+        if (entry->fallback_tex) {
+            gl.DeleteTextures(1, &entry->fallback_tex);
+            entry->fallback_tex = 0;
+        }
         entry->generation = entry->pending_generation;
         entry->pending_generation = 0;
         entry->upload_in_progress = 0;
@@ -509,6 +592,14 @@ static int gl_start_texture_upload(gl_context_t *ctx,
 
     if (!ctx || !entry || !pixels_ptr || !vgfx3d_get_pixels_extent(pixels_ptr, &w, &h))
         return 0;
+    if (ctx->max_texture_size > 0 && (w > ctx->max_texture_size || h > ctx->max_texture_size))
+        return 0;
+    if (entry->tex && entry->generation != 0 && entry->generation != cache_key) {
+        if (entry->fallback_tex)
+            gl.DeleteTextures(1, &entry->fallback_tex);
+        entry->fallback_tex = entry->tex;
+        entry->tex = 0;
+    }
     if (!entry->tex) {
         gl.GenTextures(1, &entry->tex);
         if (!entry->tex)
@@ -535,6 +626,8 @@ static int gl_start_texture_upload(gl_context_t *ctx,
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    if (!gl_upload_ok())
+        return 0;
     gl_continue_texture_upload(ctx, entry, pixels_ptr);
     return 1;
 }
@@ -565,7 +658,7 @@ static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
             ctx->texture_cache[i].upload_in_progress) {
             return gl_continue_texture_upload(ctx, &ctx->texture_cache[i], pixels_ptr)
                        ? ctx->texture_cache[i].tex
-                       : 0;
+                       : ctx->texture_cache[i].fallback_tex;
         }
     }
 
@@ -573,7 +666,8 @@ static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
         if (ctx->texture_cache[i].pixels == pixels_ptr) {
             if (!gl_start_texture_upload(ctx, &ctx->texture_cache[i], pixels_ptr, cache_key))
                 return 0;
-            return ctx->texture_cache[i].upload_in_progress ? 0 : ctx->texture_cache[i].tex;
+            return ctx->texture_cache[i].upload_in_progress ? ctx->texture_cache[i].fallback_tex
+                                                            : ctx->texture_cache[i].tex;
         }
     }
 
@@ -638,7 +732,7 @@ static GLuint gl_get_cached_native_texture(gl_context_t *ctx,
             ctx->texture_cache[i].upload_in_progress) {
             return gl_continue_native_texture_upload(ctx, &ctx->texture_cache[i])
                        ? ctx->texture_cache[i].tex
-                       : 0;
+                       : ctx->texture_cache[i].fallback_tex;
         }
     }
 
@@ -647,7 +741,8 @@ static GLuint gl_get_cached_native_texture(gl_context_t *ctx,
             if (!gl_start_native_texture_upload(
                     ctx, &ctx->texture_cache[i], asset, cache_key, mip_start, mip_count))
                 return 0;
-            return ctx->texture_cache[i].upload_in_progress ? 0 : ctx->texture_cache[i].tex;
+            return ctx->texture_cache[i].upload_in_progress ? ctx->texture_cache[i].fallback_tex
+                                                            : ctx->texture_cache[i].tex;
         }
     }
 
@@ -766,6 +861,10 @@ static int gl_continue_cubemap_upload(gl_context_t *ctx,
                          GL_RGBA,
                          GL_UNSIGNED_BYTE,
                          rgba);
+        if (!gl_upload_ok()) {
+            free(rgba);
+            return 0;
+        }
         bytes = (uint64_t)(uint32_t)slice_size * (uint64_t)(uint32_t)slice_rows * 4u;
         gl_record_texture_upload_bytes(ctx, bytes);
         free(rgba);
@@ -779,6 +878,8 @@ static int gl_continue_cubemap_upload(gl_context_t *ctx,
     }
 
     gl.GenerateMipmap(GL_TEXTURE_CUBE_MAP);
+    if (!gl_upload_ok())
+        return 0;
     entry->generation = entry->pending_generation;
     entry->pending_generation = 0;
     entry->upload_in_progress = 0;
@@ -826,6 +927,8 @@ static int gl_start_cubemap_upload(gl_context_t *ctx,
                       GL_UNSIGNED_BYTE,
                       NULL);
     }
+    if (!gl_upload_ok())
+        return 0;
     gl_continue_cubemap_upload(ctx, entry, cubemap);
     return 1;
 }

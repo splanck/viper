@@ -47,14 +47,16 @@ static void destroy_postfx_readback_target(gl_context_t *ctx) {
 /// @brief Build a scene FBO with color (HDR/LDR), motion-vector, and depth attachments.
 ///
 /// MRT layout (color attachment 0 = scene color, 1 = motion vectors).
-/// Color format chosen by the platform helper — HDR16F when the
-/// driver supports floating-point render targets, RGBA8 otherwise.
+/// Color format chosen by the active context capabilities — HDR16F when the
+/// driver can render to float color targets, RGBA8 otherwise.
 /// Depth uses the 32-bit float format so post-FX can reconstruct
 /// world position with high precision.
 /// Verifies framebuffer completeness before returning success.
 static int ensure_scene_targets(gl_context_t *ctx, int32_t w, int32_t h) {
     GLint color_format;
+    GLint depth_format;
     GLenum color_type;
+    GLenum depth_type;
 
     if (!ctx || w <= 0 || h <= 0)
         return -1;
@@ -63,10 +65,13 @@ static int ensure_scene_targets(gl_context_t *ctx, int32_t w, int32_t h) {
 
     destroy_scene_targets(ctx);
     color_format = vgfx3d_opengl_choose_color_format(VGFX3D_OPENGL_TARGET_SCENE) ==
-                           VGFX3D_OPENGL_COLOR_FORMAT_HDR16F
+                               VGFX3D_OPENGL_COLOR_FORMAT_HDR16F &&
+                           ctx->supports_hdr_color_target
                        ? GL_RGBA16F
                        : GL_RGBA8;
     color_type = color_format == GL_RGBA16F ? GL_FLOAT : GL_UNSIGNED_BYTE;
+    depth_format = ctx->supports_depth_float_target ? GL_DEPTH_COMPONENT32F : GL_DEPTH_COMPONENT24;
+    depth_type = ctx->supports_depth_float_target ? GL_FLOAT : GL_UNSIGNED_INT;
 
     gl.GenFramebuffers(1, &ctx->scene_fbo);
     gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->scene_fbo);
@@ -97,8 +102,7 @@ static int ensure_scene_targets(gl_context_t *ctx, int32_t w, int32_t h) {
 
     gl.GenTextures(1, &ctx->scene_depth_tex);
     gl.BindTexture(GL_TEXTURE_2D, ctx->scene_depth_tex);
-    gl.TexImage2D(
-        GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, w, h, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    gl.TexImage2D(GL_TEXTURE_2D, 0, depth_format, w, h, 0, GL_DEPTH_COMPONENT, depth_type, NULL);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -106,7 +110,7 @@ static int ensure_scene_targets(gl_context_t *ctx, int32_t w, int32_t h) {
     gl.FramebufferTexture2D(
         GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, ctx->scene_depth_tex, 0);
 
-    if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+    if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE || !gl_upload_ok()) {
         destroy_scene_targets(ctx);
         return -1;
     }
@@ -140,13 +144,65 @@ static int ensure_postfx_readback_target(gl_context_t *ctx, int32_t w, int32_t h
         GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->postfx_readback_tex, 0);
     gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
     gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
-    if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+    if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE || !gl_upload_ok()) {
         destroy_postfx_readback_target(ctx);
         return -1;
     }
 
     ctx->postfx_readback_width = w;
     ctx->postfx_readback_height = h;
+    return 0;
+}
+
+/// @brief Release the intermediate post-FX scratch FBO + texture.
+///
+/// The scratch target forms the second side of the post-FX ping-pong pair. Keeping it separate
+/// from the scene FBO preserves the original scene color while multi-pass effects run.
+static void destroy_postfx_scratch_target(gl_context_t *ctx) {
+    if (!ctx)
+        return;
+    if (ctx->postfx_scratch_tex)
+        gl.DeleteTextures(1, &ctx->postfx_scratch_tex);
+    if (ctx->postfx_scratch_fbo)
+        gl.DeleteFramebuffers(1, &ctx->postfx_scratch_fbo);
+    ctx->postfx_scratch_tex = 0;
+    ctx->postfx_scratch_fbo = 0;
+    ctx->postfx_scratch_width = 0;
+    ctx->postfx_scratch_height = 0;
+}
+
+/// @brief Build a single-attachment LDR FBO used as post-FX intermediate storage.
+/// @return Zero on success, -1 when allocation or framebuffer completeness fails.
+static int ensure_postfx_scratch_target(gl_context_t *ctx, int32_t w, int32_t h) {
+    if (!ctx || w <= 0 || h <= 0)
+        return -1;
+    if (ctx->postfx_scratch_fbo && ctx->postfx_scratch_width == w &&
+        ctx->postfx_scratch_height == h) {
+        return 0;
+    }
+
+    destroy_postfx_scratch_target(ctx);
+
+    gl.GenFramebuffers(1, &ctx->postfx_scratch_fbo);
+    gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->postfx_scratch_fbo);
+    gl.GenTextures(1, &ctx->postfx_scratch_tex);
+    gl.BindTexture(GL_TEXTURE_2D, ctx->postfx_scratch_tex);
+    gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    gl.FramebufferTexture2D(
+        GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->postfx_scratch_tex, 0);
+    gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
+    gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
+    if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE || !gl_upload_ok()) {
+        destroy_postfx_scratch_target(ctx);
+        return -1;
+    }
+
+    ctx->postfx_scratch_width = w;
+    ctx->postfx_scratch_height = h;
     return 0;
 }
 
@@ -191,6 +247,7 @@ static void destroy_rtt_targets(gl_context_t *ctx) {
 /// from the shader, so renderbuffer is faster.
 static int ensure_rtt_targets(gl_context_t *ctx, vgfx3d_rendertarget_t *rt) {
     GLenum color_internal_format;
+    GLenum depth_internal_format;
     GLenum color_type;
 
     if (!ctx || !rt || rt->width <= 0 || rt->height <= 0)
@@ -219,6 +276,8 @@ static int ensure_rtt_targets(gl_context_t *ctx, vgfx3d_rendertarget_t *rt) {
     gl.BindTexture(GL_TEXTURE_2D, ctx->rtt_color_tex);
     color_internal_format = vgfx3d_rendertarget_is_hdr(rt) ? GL_RGBA16F : GL_RGBA8;
     color_type = vgfx3d_rendertarget_is_hdr(rt) ? GL_FLOAT : GL_UNSIGNED_BYTE;
+    depth_internal_format =
+        ctx->supports_depth_float_target ? GL_DEPTH_COMPONENT32F : GL_DEPTH_COMPONENT24;
     gl.TexImage2D(GL_TEXTURE_2D,
                   0,
                   color_internal_format,
@@ -239,11 +298,11 @@ static int ensure_rtt_targets(gl_context_t *ctx, vgfx3d_rendertarget_t *rt) {
 
     gl.GenRenderbuffers(1, &ctx->rtt_depth_rbo);
     gl.BindRenderbuffer(GL_RENDERBUFFER, ctx->rtt_depth_rbo);
-    gl.RenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT32F, rt->width, rt->height);
+    gl.RenderbufferStorage(GL_RENDERBUFFER, depth_internal_format, rt->width, rt->height);
     gl.FramebufferRenderbuffer(
         GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, ctx->rtt_depth_rbo);
 
-    if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+    if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE || !gl_upload_ok()) {
         destroy_rtt_targets(ctx);
         return -1;
     }
@@ -279,9 +338,11 @@ static void destroy_shadow_targets(gl_context_t *ctx) {
     ctx->shadow_count = 0;
 }
 
-/// @brief Recount the contiguous run of fully-prepared shadow slots (complete + valid
-///   depth texture/FBO/dimensions), stopping at the first gap, and cache it on the
-///   context as the shadow count advertised to GLSL.
+/// @brief Recount the highest fully-prepared shadow slot and cache the GLSL-visible span.
+///
+/// Slots may be produced sparsely when a scene only assigns shadow maps to selected lights. The
+/// shader still receives a compact upper bound, while each light's requested shadow slot is
+/// validated against the per-slot completion flags before upload.
 static void gl_recompute_shadow_count(gl_context_t *ctx) {
     int32_t count = 0;
     if (!ctx)
@@ -289,10 +350,29 @@ static void gl_recompute_shadow_count(gl_context_t *ctx) {
     for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
         if (!ctx->shadow_complete[slot] || !ctx->shadow_depth_tex[slot] || !ctx->shadow_fbo[slot] ||
             ctx->shadow_width[slot] <= 0 || ctx->shadow_height[slot] <= 0)
-            break;
+            continue;
         count = slot + 1;
     }
     ctx->shadow_count = count;
+}
+
+/// @brief Validate a material light's requested shadow texture slot against real GL resources.
+///
+/// `uShadowCount` is an upper bound for the sampler array, not proof that every lower slot has a
+/// completed map. This guard prevents lights from sampling an uninitialized or failed shadow FBO
+/// when shadow slots are sparse.
+static int32_t gl_sanitize_shadow_slot(gl_context_t *ctx, int32_t shadow_index) {
+    int32_t slot;
+    if (!ctx)
+        return -1;
+    slot = vgfx3d_opengl_sanitize_shadow_index(shadow_index, ctx->shadow_count);
+    if (slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
+        return -1;
+    if (!ctx->shadow_complete[slot] || !ctx->shadow_depth_tex[slot] || !ctx->shadow_fbo[slot] ||
+        ctx->shadow_width[slot] <= 0 || ctx->shadow_height[slot] <= 0) {
+        return -1;
+    }
+    return slot;
 }
 
 /// @brief Build a depth-only FBO for shadow-map rendering.
@@ -301,6 +381,8 @@ static void gl_recompute_shadow_count(gl_context_t *ctx) {
 /// no color attachments (depth-only). Linear filtering on the depth
 /// texture so the main pass can use hardware PCF when sampling.
 static int ensure_shadow_targets(gl_context_t *ctx, int32_t slot, int32_t w, int32_t h) {
+    GLint depth_format;
+    GLenum depth_type;
     if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS || w <= 0 || h <= 0)
         return -1;
     if (ctx->shadow_fbo[slot] && ctx->shadow_width[slot] == w && ctx->shadow_height[slot] == h)
@@ -316,14 +398,15 @@ static int ensure_shadow_targets(gl_context_t *ctx, int32_t slot, int32_t w, int
     ctx->shadow_depth_tex[slot] = 0;
     ctx->shadow_width[slot] = 0;
     ctx->shadow_height[slot] = 0;
+    depth_format = ctx->supports_depth_float_target ? GL_DEPTH_COMPONENT32F : GL_DEPTH_COMPONENT24;
+    depth_type = ctx->supports_depth_float_target ? GL_FLOAT : GL_UNSIGNED_INT;
 
     gl.GenFramebuffers(1, &ctx->shadow_fbo[slot]);
     gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->shadow_fbo[slot]);
 
     gl.GenTextures(1, &ctx->shadow_depth_tex[slot]);
     gl.BindTexture(GL_TEXTURE_2D, ctx->shadow_depth_tex[slot]);
-    gl.TexImage2D(
-        GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, w, h, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    gl.TexImage2D(GL_TEXTURE_2D, 0, depth_format, w, h, 0, GL_DEPTH_COMPONENT, depth_type, NULL);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -333,7 +416,7 @@ static int ensure_shadow_targets(gl_context_t *ctx, int32_t slot, int32_t w, int
     gl.DrawBuffer(GL_NONE);
     gl.ReadBuffer(GL_NONE);
 
-    if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+    if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE || !gl_upload_ok()) {
         if (ctx->shadow_depth_tex[slot])
             gl.DeleteTextures(1, &ctx->shadow_depth_tex[slot]);
         if (ctx->shadow_fbo[slot])
@@ -361,10 +444,12 @@ static void bind_main_framebuffer(gl_context_t *ctx) {
     if (ctx->rtt_active) {
         gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->rtt_fbo);
         gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
+        gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
         gl.Viewport(0, 0, ctx->rtt_width, ctx->rtt_height);
     } else if (ctx->active_target_kind == VGFX3D_OPENGL_TARGET_SWAPCHAIN) {
         gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
         gl.DrawBuffer(GL_BACK);
+        gl.ReadBuffer(GL_BACK);
         gl.Viewport(0, 0, ctx->width, ctx->height);
     } else {
         gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->scene_fbo);
@@ -372,6 +457,7 @@ static void bind_main_framebuffer(gl_context_t *ctx) {
             const GLenum attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
             gl.DrawBuffers(2, attachments);
         }
+        gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
         gl.Viewport(0, 0, ctx->scene_width, ctx->scene_height);
     }
 }
@@ -405,6 +491,7 @@ static void gl_configure_draw_output(gl_context_t *ctx, const vgfx3d_draw_cmd_t 
         gl.DepthMask(GL_FALSE);
     } else {
         gl.Enable(GL_DEPTH_TEST);
+        gl.DepthFunc(GL_LEQUAL);
         gl.DepthMask(blend_mode == VGFX3D_OPENGL_BLEND_OPAQUE ? GL_TRUE : GL_FALSE);
     }
 
@@ -453,6 +540,9 @@ static void gl_apply_depth_bias(const vgfx3d_draw_cmd_t *cmd) {
 /// + inverse VP + previous VP go through unconditionally so motion-
 /// blur and SSAO can do their world-space reconstructions.
 static void gl_apply_postfx_uniforms(gl_context_t *ctx, const vgfx3d_postfx_snapshot_t *snapshot) {
+    int32_t bloom_passes;
+    int32_t ssao_samples;
+    int32_t motion_samples;
     if (!ctx)
         return;
     gl.Uniform2f(ctx->postfx_uInvResolution,
@@ -494,31 +584,55 @@ static void gl_apply_postfx_uniforms(gl_context_t *ctx, const vgfx3d_postfx_snap
         return;
     }
 
+    bloom_passes = snapshot->bloom_passes < 0 ? 0 : snapshot->bloom_passes;
+    if (bloom_passes > 32)
+        bloom_passes = 32;
+    ssao_samples = snapshot->ssao_samples < 1 ? 1 : snapshot->ssao_samples;
+    if (ssao_samples > 8)
+        ssao_samples = 8;
+    motion_samples = snapshot->motion_blur_samples < 2 ? 2 : snapshot->motion_blur_samples;
+    if (motion_samples > 8)
+        motion_samples = 8;
     gl.Uniform1i(ctx->postfx_uBloomEnabled, snapshot->bloom_enabled ? 1 : 0);
-    gl.Uniform1f(ctx->postfx_uBloomThreshold, snapshot->bloom_threshold);
-    gl.Uniform1f(ctx->postfx_uBloomIntensity, snapshot->bloom_intensity);
-    gl.Uniform1i(ctx->postfx_uBloomPasses, snapshot->bloom_passes);
+    gl.Uniform1f(ctx->postfx_uBloomThreshold,
+                 isfinite(snapshot->bloom_threshold) ? snapshot->bloom_threshold : 1.0f);
+    gl.Uniform1f(ctx->postfx_uBloomIntensity,
+                 isfinite(snapshot->bloom_intensity) ? snapshot->bloom_intensity : 0.0f);
+    gl.Uniform1i(ctx->postfx_uBloomPasses, bloom_passes);
     gl.Uniform1i(ctx->postfx_uTonemapMode, snapshot->tonemap_mode);
-    gl.Uniform1f(ctx->postfx_uTonemapExposure, snapshot->tonemap_exposure);
+    gl.Uniform1f(ctx->postfx_uTonemapExposure,
+                 isfinite(snapshot->tonemap_exposure) ? snapshot->tonemap_exposure : 1.0f);
     gl.Uniform1i(ctx->postfx_uFxaaEnabled, snapshot->fxaa_enabled ? 1 : 0);
     gl.Uniform1i(ctx->postfx_uColorGradeEnabled, snapshot->color_grade_enabled ? 1 : 0);
-    gl.Uniform1f(ctx->postfx_uCgBrightness, snapshot->cg_brightness);
-    gl.Uniform1f(ctx->postfx_uCgContrast, snapshot->cg_contrast);
-    gl.Uniform1f(ctx->postfx_uCgSaturation, snapshot->cg_saturation);
+    gl.Uniform1f(ctx->postfx_uCgBrightness,
+                 isfinite(snapshot->cg_brightness) ? snapshot->cg_brightness : 0.0f);
+    gl.Uniform1f(ctx->postfx_uCgContrast,
+                 isfinite(snapshot->cg_contrast) ? snapshot->cg_contrast : 1.0f);
+    gl.Uniform1f(ctx->postfx_uCgSaturation,
+                 isfinite(snapshot->cg_saturation) ? snapshot->cg_saturation : 1.0f);
     gl.Uniform1i(ctx->postfx_uVignetteEnabled, snapshot->vignette_enabled ? 1 : 0);
-    gl.Uniform1f(ctx->postfx_uVignetteRadius, snapshot->vignette_radius);
-    gl.Uniform1f(ctx->postfx_uVignetteSoftness, snapshot->vignette_softness);
+    gl.Uniform1f(ctx->postfx_uVignetteRadius,
+                 isfinite(snapshot->vignette_radius) ? snapshot->vignette_radius : 1.0f);
+    gl.Uniform1f(ctx->postfx_uVignetteSoftness,
+                 isfinite(snapshot->vignette_softness) ? snapshot->vignette_softness : 0.0f);
     gl.Uniform1i(ctx->postfx_uSsaoEnabled, snapshot->ssao_enabled ? 1 : 0);
-    gl.Uniform1f(ctx->postfx_uSsaoRadius, snapshot->ssao_radius);
-    gl.Uniform1f(ctx->postfx_uSsaoIntensity, snapshot->ssao_intensity);
-    gl.Uniform1i(ctx->postfx_uSsaoSamples, snapshot->ssao_samples);
+    gl.Uniform1f(ctx->postfx_uSsaoRadius,
+                 isfinite(snapshot->ssao_radius) ? snapshot->ssao_radius : 0.0f);
+    gl.Uniform1f(ctx->postfx_uSsaoIntensity,
+                 isfinite(snapshot->ssao_intensity) ? snapshot->ssao_intensity : 0.0f);
+    gl.Uniform1i(ctx->postfx_uSsaoSamples, ssao_samples);
     gl.Uniform1i(ctx->postfx_uDofEnabled, snapshot->dof_enabled ? 1 : 0);
-    gl.Uniform1f(ctx->postfx_uDofFocusDistance, snapshot->dof_focus_distance);
-    gl.Uniform1f(ctx->postfx_uDofAperture, snapshot->dof_aperture);
-    gl.Uniform1f(ctx->postfx_uDofMaxBlur, snapshot->dof_max_blur);
+    gl.Uniform1f(ctx->postfx_uDofFocusDistance,
+                 isfinite(snapshot->dof_focus_distance) ? snapshot->dof_focus_distance : 0.0f);
+    gl.Uniform1f(ctx->postfx_uDofAperture,
+                 isfinite(snapshot->dof_aperture) ? snapshot->dof_aperture : 0.0f);
+    gl.Uniform1f(ctx->postfx_uDofMaxBlur,
+                 isfinite(snapshot->dof_max_blur) ? snapshot->dof_max_blur : 0.0f);
     gl.Uniform1i(ctx->postfx_uMotionBlurEnabled, snapshot->motion_blur_enabled ? 1 : 0);
-    gl.Uniform1f(ctx->postfx_uMotionBlurIntensity, snapshot->motion_blur_intensity);
-    gl.Uniform1i(ctx->postfx_uMotionBlurSamples, snapshot->motion_blur_samples);
+    gl.Uniform1f(ctx->postfx_uMotionBlurIntensity,
+                 isfinite(snapshot->motion_blur_intensity) ? snapshot->motion_blur_intensity
+                                                           : 0.0f);
+    gl.Uniform1i(ctx->postfx_uMotionBlurSamples, motion_samples);
 }
 
 /// @brief Composite the offscreen scene texture onto a target FBO via post-FX.
@@ -527,33 +641,38 @@ static void gl_apply_postfx_uniforms(gl_context_t *ctx, const vgfx3d_postfx_snap
 /// color/depth/motion as samplers, applies post-FX uniforms, draws
 /// 3 vertices (the standard "fullscreen triangle covers the viewport"
 /// trick — cheaper than a 6-vertex quad).
-static void gl_draw_texture_to_target(gl_context_t *ctx,
-                                      GLuint source_color_tex,
-                                      GLuint framebuffer,
-                                      GLenum draw_buffer,
-                                      int32_t width,
-                                      int32_t height,
-                                      const vgfx3d_postfx_snapshot_t *snapshot) {
+static int gl_draw_texture_to_target(gl_context_t *ctx,
+                                     GLuint source_color_tex,
+                                     GLuint framebuffer,
+                                     GLenum draw_buffer,
+                                     int32_t width,
+                                     int32_t height,
+                                     const vgfx3d_postfx_snapshot_t *snapshot) {
     if (!ctx || !ctx->postfx_program || !source_color_tex || width <= 0 || height <= 0)
-        return;
+        return 0;
 
     gl.BindFramebuffer(GL_FRAMEBUFFER, framebuffer);
     gl.DrawBuffer(draw_buffer);
     gl.ReadBuffer(draw_buffer);
     gl.Viewport(0, 0, width, height);
+    gl.Disable(GL_SCISSOR_TEST);
     gl.Disable(GL_DEPTH_TEST);
     gl.Disable(GL_CULL_FACE);
     gl.Disable(GL_BLEND);
+    gl.ColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     gl.DepthMask(GL_FALSE);
     gl.PolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     gl.UseProgram(ctx->postfx_program);
     gl.BindVertexArray(ctx->fullscreen_vao);
+    gl.Uniform1i(ctx->postfx_uSceneTex, 0);
+    gl.Uniform1i(ctx->postfx_uSceneDepthTex, 1);
+    gl.Uniform1i(ctx->postfx_uSceneMotionTex, 2);
     bind_texture_unit(ctx->postfx_uSceneTex, 0, GL_TEXTURE_2D, source_color_tex);
     bind_texture_unit(ctx->postfx_uSceneDepthTex, 1, GL_TEXTURE_2D, ctx->scene_depth_tex);
     bind_texture_unit(ctx->postfx_uSceneMotionTex, 2, GL_TEXTURE_2D, ctx->scene_motion_tex);
     gl_apply_postfx_uniforms(ctx, snapshot);
     gl.DrawArrays(GL_TRIANGLES, 0, 3);
-    GL_CHECK();
+    return gl_drain_errors("postfx draw");
 }
 
 /// @brief Apply a full chain of post-FX effects using ping-pong FBO rendering.
@@ -607,37 +726,47 @@ static int gl_apply_postfx_chain(gl_context_t *ctx,
     }
     if (ensure_postfx_readback_target(ctx, width, height) != 0)
         return 0;
+    if (ensure_postfx_scratch_target(ctx, width, height) != 0)
+        return 0;
 
     for (int32_t i = 0; i < chain->effect_count; i++) {
         const int is_last = (i == chain->effect_count - 1) ? 1 : 0;
         GLuint dst_framebuffer;
         GLenum dst_draw_buffer;
+        GLuint dst_texture;
 
         if (is_last && !force_offscreen_final) {
             dst_framebuffer = final_framebuffer;
             dst_draw_buffer = final_draw_buffer;
+            dst_texture = 0;
         } else if (source_tex == ctx->scene_color_tex) {
             dst_framebuffer = ctx->postfx_readback_fbo;
             dst_draw_buffer = GL_COLOR_ATTACHMENT0;
-        } else {
-            dst_framebuffer = ctx->scene_fbo;
+            dst_texture = ctx->postfx_readback_tex;
+        } else if (source_tex == ctx->postfx_readback_tex) {
+            dst_framebuffer = ctx->postfx_scratch_fbo;
             dst_draw_buffer = GL_COLOR_ATTACHMENT0;
+            dst_texture = ctx->postfx_scratch_tex;
+        } else {
+            dst_framebuffer = ctx->postfx_readback_fbo;
+            dst_draw_buffer = GL_COLOR_ATTACHMENT0;
+            dst_texture = ctx->postfx_readback_tex;
         }
 
-        gl_draw_texture_to_target(ctx,
-                                  source_tex,
-                                  dst_framebuffer,
-                                  dst_draw_buffer,
-                                  width,
-                                  height,
-                                  &chain->effects[i].snapshot);
+        if (!gl_draw_texture_to_target(ctx,
+                                       source_tex,
+                                       dst_framebuffer,
+                                       dst_draw_buffer,
+                                       width,
+                                       height,
+                                       &chain->effects[i].snapshot)) {
+            return 0;
+        }
 
         last_framebuffer = dst_framebuffer;
         last_read_buffer = dst_draw_buffer;
-        if (!is_last || force_offscreen_final) {
-            source_tex = (dst_framebuffer == ctx->postfx_readback_fbo) ? ctx->postfx_readback_tex
-                                                                       : ctx->scene_color_tex;
-        }
+        if ((!is_last || force_offscreen_final) && dst_texture)
+            source_tex = dst_texture;
     }
 
     if (out_result_framebuffer)
@@ -689,7 +818,8 @@ static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
         return 0;
     }
 
-    glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx);
+    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+        return 0;
     gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->rtt_fbo);
     gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
     if (vgfx3d_rendertarget_is_hdr(rt)) {

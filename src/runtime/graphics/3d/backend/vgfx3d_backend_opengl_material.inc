@@ -194,8 +194,7 @@ static void upload_light_uniforms(gl_context_t *ctx,
         light_count = VGFX3D_MAX_LIGHTS;
     gl.Uniform1i(ctx->uLightCount, light_count);
     for (int32_t i = 0; i < light_count; i++) {
-        int32_t shadow_index =
-            vgfx3d_opengl_sanitize_shadow_index(lights[i].shadow_index, ctx->shadow_count);
+        int32_t shadow_index = gl_sanitize_shadow_slot(ctx, lights[i].shadow_index);
         gl.Uniform1i(ctx->uLightType[i], lights[i].type);
         gl.Uniform1i(ctx->uLightShadowIndex[i], shadow_index);
         gl.Uniform1i(ctx->uLightShadowCascadeCount[i],
@@ -436,7 +435,8 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
         bind_texture_unit(ctx->uShadowTex[slot],
                           GL_TU_SHADOW0 + slot,
                           GL_TEXTURE_2D,
-                          ctx->shadow_count > slot ? ctx->shadow_depth_tex[slot] : 0);
+                          gl_sanitize_shadow_slot(ctx, slot) >= 0 ? ctx->shadow_depth_tex[slot]
+                                                                  : 0);
     }
     bind_texture_unit(ctx->uSplatTex, GL_TU_SPLAT_CONTROL, GL_TEXTURE_2D, splat_tex);
     bind_texture_unit(ctx->uSplatLayer0, GL_TU_SPLAT_LAYER0, GL_TEXTURE_2D, splat_layer0);
@@ -496,8 +496,8 @@ static int draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_chain_t *ch
     }
     if (!ctx->postfx_program)
         return 0;
-    gl_draw_texture_to_target(ctx, ctx->scene_color_tex, 0, GL_BACK, ctx->width, ctx->height, NULL);
-    return 1;
+    return gl_draw_texture_to_target(
+        ctx, ctx->scene_color_tex, 0, GL_BACK, ctx->width, ctx->height, NULL);
 }
 
 /// @brief Internal skybox draw — full-screen triangle with reconstructed view rays.
@@ -561,7 +561,7 @@ static void gl_draw_skybox_impl(gl_context_t *ctx, const rt_cubemap3d *cubemap) 
     gl.Uniform3f(
         ctx->skybox_uDirection, ctx->cam_forward[0], ctx->cam_forward[1], ctx->cam_forward[2]);
     gl.Uniform1i(ctx->skybox_uIsOrtho, ctx->cam_is_ortho ? 1 : 0);
-    bind_texture_unit(ctx->skybox_uSkybox, 13, GL_TEXTURE_CUBE_MAP, tex);
+    bind_texture_unit(ctx->skybox_uSkybox, GL_TU_ENV_MAP, GL_TEXTURE_CUBE_MAP, tex);
     gl.DrawArrays(GL_TRIANGLES, 0, 3);
 
     gl.ActiveTexture(GL_TEXTURE0);

@@ -33,6 +33,7 @@ class ShowcaseWorldSim {
     hide List[String] landmarkNames;
     hide String scanLabel;
     hide Float scanDist;
+    hide Float directLightingScale;
 
     expose func init() {
         sunDirection = new Vec3(-0.36, -1.0, -0.22);
@@ -40,6 +41,7 @@ class ShowcaseWorldSim {
         playerLightPos = new Vec3(0.0, 0.0, 0.0);
         scanLabel = "";
         scanDist = 0.0;
+        directLightingScale = 1.0;
     }
 
     expose func reset(land: Terrain3D) {
@@ -66,6 +68,14 @@ class ShowcaseWorldSim {
         skyFill = Light3D.NewAmbient(0.54, 0.62, 0.72);
         Light3D.SetIntensity(skyFill, 0.28);
         World3D.addLight(world, 2, skyFill);
+    }
+
+    expose func setDirectLightingFallback(enabled: Boolean) {
+        if (enabled) {
+            directLightingScale = 0.50;
+        } else {
+            directLightingScale = 1.0;
+        }
     }
 
     expose func spawnLandmarks(world: World3D, land: Terrain3D,
@@ -109,22 +119,22 @@ class ShowcaseWorldSim {
         sunDirection.Set(Cos(ang) * 0.55 - 0.40, sunDirY, -0.42);
         Light3D.set_Direction(sunLight, sunDirection);
         Light3D.SetColor(sunLight, 1.0, terrain.lerpFloat(0.60, 0.96, day), terrain.lerpFloat(0.34, 0.88, day));
-        Light3D.SetIntensity(sunLight, 0.05 + day * config.SUN_INTENSITY_DAY);
+        Light3D.SetIntensity(sunLight, (0.05 + day * config.SUN_INTENSITY_DAY) * directLightingScale);
 
-        if (fillLight != null) { Light3D.SetIntensity(fillLight, 0.02 + 0.06 * day); }
-        if (skyFill != null) { Light3D.SetIntensity(skyFill, 0.02 + 0.03 * day); }
+        if (fillLight != null) { Light3D.SetIntensity(fillLight, (0.02 + 0.06 * day) * directLightingScale); }
+        if (skyFill != null) { Light3D.SetIntensity(skyFill, (0.02 + 0.03 * day) * directLightingScale); }
 
         World3D.setAmbient(
             world,
-            terrain.lerpFloat(config.NIGHT_AMBIENT_R, config.DAY_AMBIENT_R, day),
-            terrain.lerpFloat(config.NIGHT_AMBIENT_G, config.DAY_AMBIENT_G, day),
-            terrain.lerpFloat(config.NIGHT_AMBIENT_B, config.DAY_AMBIENT_B, day));
+            terrain.lerpFloat(config.NIGHT_AMBIENT_R, config.DAY_AMBIENT_R, day) * directLightingScale,
+            terrain.lerpFloat(config.NIGHT_AMBIENT_G, config.DAY_AMBIENT_G, day) * directLightingScale,
+            terrain.lerpFloat(config.NIGHT_AMBIENT_B, config.DAY_AMBIENT_B, day) * directLightingScale);
 
         World3D.setFog(
             world,
-            terrain.lerpFloat(0.10, config.FOG_R, day) + warm * 0.10,
-            terrain.lerpFloat(0.12, config.FOG_G, day) + warm * 0.03,
-            terrain.lerpFloat(0.18, config.FOG_B, day),
+            (terrain.lerpFloat(0.10, config.FOG_R, day) + warm * 0.10) * directLightingScale,
+            (terrain.lerpFloat(0.12, config.FOG_G, day) + warm * 0.03) * directLightingScale,
+            terrain.lerpFloat(0.18, config.FOG_B, day) * directLightingScale,
             config.FOG_NEAR,
             config.FOG_FAR);
     }

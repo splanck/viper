@@ -166,7 +166,7 @@ static void gl_bind_default_sampler_uniforms(gl_context_t *ctx) {
     gl.Uniform1i(ctx->shadow_uDiffuseTex, 0);
 
     gl.UseProgram(ctx->skybox_program);
-    gl.Uniform1i(ctx->skybox_uSkybox, 13);
+    gl.Uniform1i(ctx->skybox_uSkybox, GL_TU_ENV_MAP);
 
     gl.UseProgram(ctx->postfx_program);
     gl.Uniform1i(ctx->postfx_uSceneTex, 0);
@@ -188,7 +188,10 @@ static void gl_bind_context_uniform_blocks(gl_context_t *ctx) {
 }
 
 /// @brief Generate VAOs, buffers, UBOs, and morph texture-buffer handles for the context.
-static void gl_generate_context_objects(gl_context_t *ctx) {
+/// @return Non-zero when every mandatory GL object name was created successfully.
+static int gl_generate_context_objects(gl_context_t *ctx) {
+    if (!ctx)
+        return 0;
     gl.GenVertexArrays(1, &ctx->vao);
     gl.GenVertexArrays(1, &ctx->fullscreen_vao);
     gl.GenVertexArrays(1, &ctx->skybox_vao);
@@ -204,10 +207,18 @@ static void gl_generate_context_objects(gl_context_t *ctx) {
     gl.GenBuffers(1, &ctx->skybox_vbo);
     gl.GenTextures(1, &ctx->morph_tbo);
     gl.GenTextures(1, &ctx->morph_normal_tbo);
+    return ctx->vao && ctx->fullscreen_vao && ctx->skybox_vao && ctx->fullscreen_vbo &&
+           ctx->mesh_vbo && ctx->mesh_ibo && ctx->instance_vbo && ctx->prev_instance_vbo &&
+           ctx->bone_ubo && ctx->prev_bone_ubo && ctx->morph_buffer &&
+           ctx->morph_normal_buffer && ctx->skybox_vbo && ctx->morph_tbo &&
+           ctx->morph_normal_tbo && gl_upload_ok();
 }
 
 /// @brief Allocate the dynamic streaming VBO/IBO, instance, morph, and bone buffers.
-static void gl_init_streaming_buffers(gl_context_t *ctx) {
+/// @return Non-zero when all initial storage allocations complete without GL errors.
+static int gl_init_streaming_buffers(gl_context_t *ctx) {
+    if (!ctx)
+        return 0;
     gl.BindBuffer(GL_ARRAY_BUFFER, ctx->mesh_vbo);
     gl.BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(4 * 1024 * 1024), NULL, GL_STREAM_DRAW);
     ctx->mesh_vbo_capacity = 4u * 1024u * 1024u;
@@ -235,10 +246,14 @@ static void gl_init_streaming_buffers(gl_context_t *ctx) {
     gl.BufferData(
         GL_UNIFORM_BUFFER, (GLsizeiptr)VGFX3D_OPENGL_BONE_PALETTE_BYTES, NULL, GL_DYNAMIC_DRAW);
     gl.BindBufferBase(GL_UNIFORM_BUFFER, 1, ctx->prev_bone_ubo);
+    return gl_upload_ok();
 }
 
 /// @brief Upload immutable fullscreen-triangle and skybox vertex buffers.
-static void gl_init_static_geometry_buffers(gl_context_t *ctx) {
+/// @return Non-zero when both immutable helper meshes upload and attribute setup succeeds.
+static int gl_init_static_geometry_buffers(gl_context_t *ctx) {
+    if (!ctx)
+        return 0;
     gl.BindVertexArray(ctx->fullscreen_vao);
     gl.BindBuffer(GL_ARRAY_BUFFER, ctx->fullscreen_vbo);
     gl.BufferData(GL_ARRAY_BUFFER,
@@ -256,6 +271,53 @@ static void gl_init_static_geometry_buffers(gl_context_t *ctx) {
                   GL_STATIC_DRAW);
     gl.VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * (GLsizei)sizeof(float), (void *)0);
     gl.EnableVertexAttribArray(0);
+    return gl_upload_ok();
+}
+
+/// @brief Release fixed context objects created before full backend initialization succeeds.
+///
+/// This is the failure-path counterpart to the tail of `gl_destroy_ctx()`. It intentionally skips
+/// caches and render targets because they are created only after `create_ctx()` returns a live
+/// backend context.
+static void gl_release_fixed_context_objects(gl_context_t *ctx) {
+    if (!ctx)
+        return;
+    if (ctx->fullscreen_vbo)
+        gl.DeleteBuffers(1, &ctx->fullscreen_vbo);
+    if (ctx->skybox_vbo)
+        gl.DeleteBuffers(1, &ctx->skybox_vbo);
+    if (ctx->morph_normal_tbo)
+        gl.DeleteTextures(1, &ctx->morph_normal_tbo);
+    if (ctx->morph_tbo)
+        gl.DeleteTextures(1, &ctx->morph_tbo);
+    if (ctx->morph_normal_buffer)
+        gl.DeleteBuffers(1, &ctx->morph_normal_buffer);
+    if (ctx->bone_ubo)
+        gl.DeleteBuffers(1, &ctx->bone_ubo);
+    if (ctx->prev_bone_ubo)
+        gl.DeleteBuffers(1, &ctx->prev_bone_ubo);
+    if (ctx->morph_buffer)
+        gl.DeleteBuffers(1, &ctx->morph_buffer);
+    if (ctx->instance_vbo)
+        gl.DeleteBuffers(1, &ctx->instance_vbo);
+    if (ctx->prev_instance_vbo)
+        gl.DeleteBuffers(1, &ctx->prev_instance_vbo);
+    if (ctx->mesh_vbo)
+        gl.DeleteBuffers(1, &ctx->mesh_vbo);
+    if (ctx->mesh_ibo)
+        gl.DeleteBuffers(1, &ctx->mesh_ibo);
+    if (ctx->skybox_vao)
+        gl.DeleteVertexArrays(1, &ctx->skybox_vao);
+    if (ctx->fullscreen_vao)
+        gl.DeleteVertexArrays(1, &ctx->fullscreen_vao);
+    if (ctx->vao)
+        gl.DeleteVertexArrays(1, &ctx->vao);
+    ctx->fullscreen_vbo = ctx->skybox_vbo = 0;
+    ctx->morph_normal_tbo = ctx->morph_tbo = 0;
+    ctx->morph_normal_buffer = ctx->bone_ubo = ctx->prev_bone_ubo = 0;
+    ctx->morph_buffer = ctx->instance_vbo = ctx->prev_instance_vbo = 0;
+    ctx->mesh_vbo = ctx->mesh_ibo = 0;
+    ctx->skybox_vao = ctx->fullscreen_vao = ctx->vao = 0;
 }
 
 /// @brief Initialize fixed GL render state used before per-draw overrides.
@@ -268,6 +330,29 @@ static void gl_init_default_render_state(void) {
     gl.Disable(GL_BLEND);
     gl.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     gl.PolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+}
+
+/// @brief Free CPU-owned context storage when GL object deletion is no longer possible.
+///
+/// This path is used only during destruction after `glXMakeCurrent` fails. Destroying the GLX
+/// context lets the driver reclaim context-owned objects, but host arrays and copied post-FX chain
+/// state still need explicit release.
+static void gl_release_host_only_context_storage(gl_context_t *ctx) {
+    if (!ctx)
+        return;
+    free(ctx->texture_cache);
+    ctx->texture_cache = NULL;
+    ctx->texture_cache_count = 0;
+    ctx->texture_cache_capacity = 0;
+    free(ctx->cubemap_cache);
+    ctx->cubemap_cache = NULL;
+    ctx->cubemap_cache_count = 0;
+    ctx->cubemap_cache_capacity = 0;
+    free(ctx->morph_cache);
+    ctx->morph_cache = NULL;
+    ctx->morph_cache_count = 0;
+    ctx->morph_cache_capacity = 0;
+    vgfx3d_postfx_chain_free(&ctx->gpu_postfx_chain);
 }
 
 /// @brief Allocate and initialize the entire OpenGL backend context.
@@ -345,6 +430,11 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     ctx->display = dpy;
     ctx->window = xwin;
     ctx->glxCtx = glxCtx;
+    if (!gl_query_context_capabilities(ctx)) {
+        glx.DestroyContext(dpy, glxCtx);
+        free(ctx);
+        return NULL;
+    }
     gl.Enable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
     gl_init_context_defaults(ctx, w, h);
     gl_query_anisotropy_support(ctx);
@@ -372,9 +462,14 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
 
     gl_bind_default_sampler_uniforms(ctx);
     gl_bind_context_uniform_blocks(ctx);
-    gl_generate_context_objects(ctx);
-    gl_init_streaming_buffers(ctx);
-    gl_init_static_geometry_buffers(ctx);
+    if (!gl_generate_context_objects(ctx) || !gl_init_streaming_buffers(ctx) ||
+        !gl_init_static_geometry_buffers(ctx)) {
+        gl_release_fixed_context_objects(ctx);
+        gl_delete_context_programs(ctx);
+        glx.DestroyContext(dpy, glxCtx);
+        free(ctx);
+        return NULL;
+    }
     gl_init_default_render_state();
 
     return ctx;
@@ -390,13 +485,20 @@ static void gl_destroy_ctx(void *ctx_ptr) {
     if (!ctx)
         return;
 
-    if (ctx->display && ctx->window && ctx->glxCtx)
-        glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx);
+    if (!(ctx->display && ctx->window && ctx->glxCtx) ||
+        !glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx)) {
+        gl_release_host_only_context_storage(ctx);
+        if (ctx->glxCtx && ctx->display)
+            glx.DestroyContext(ctx->display, ctx->glxCtx);
+        free(ctx);
+        return;
+    }
 
     texture_cache_destroy(ctx);
     gl_destroy_mesh_cache(ctx);
     destroy_scene_targets(ctx);
     destroy_postfx_readback_target(ctx);
+    destroy_postfx_scratch_target(ctx);
     destroy_rtt_targets(ctx);
     destroy_shadow_targets(ctx);
     vgfx3d_postfx_chain_free(&ctx->gpu_postfx_chain);

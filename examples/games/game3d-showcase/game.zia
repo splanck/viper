@@ -68,7 +68,11 @@ class Game3DShowcase {
         sim = new ShowcaseWorldSim();
         sim.init();
         sim.installOutdoorFillLight(world);
-        postfx.buildPostFX(canvas);
+        var gpuPostFx = Canvas3D.BackendSupports(canvas, "gpu_postfx");
+        if (gpuPostFx) {
+            postfx.buildPostFX(canvas);
+        }
+        sim.setDirectLightingFallback(gpuPostFx == false);
         Canvas3D.SetShadowBias(canvas, config.SHADOW_BIAS);
         World3D.setAmbient(world, config.AMBIENT_R, config.AMBIENT_G, config.AMBIENT_B);
         World3D.setFog(

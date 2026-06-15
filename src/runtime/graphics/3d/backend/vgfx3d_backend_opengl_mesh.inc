@@ -17,6 +17,30 @@ static void gl_destroy_mesh_cache(gl_context_t *ctx) {
     }
 }
 
+/// @brief Evict stale static mesh-cache entries using the same frame-age policy as texture caches.
+///
+/// Static geometry can otherwise stay resident forever after a level or scene transition because the
+/// fixed-size cache only evicts on new cache misses. Pruning once per frame keeps long-running
+/// sessions bounded even when no new static meshes are submitted after old ones disappear.
+static void gl_mesh_cache_prune(gl_context_t *ctx) {
+    if (!ctx)
+        return;
+    for (int32_t i = 0; i < GL_MESH_CACHE_CAPACITY; i++) {
+        gl_mesh_cache_entry_t *entry = &ctx->mesh_cache[i];
+        if (!entry->key)
+            continue;
+        if (!vgfx3d_opengl_should_prune_cache_entry(
+                ctx->frame_serial, entry->last_used_frame, 240)) {
+            continue;
+        }
+        if (entry->vbo)
+            gl.DeleteBuffers(1, &entry->vbo);
+        if (entry->ibo)
+            gl.DeleteBuffers(1, &entry->ibo);
+        memset(entry, 0, sizeof(*entry));
+    }
+}
+
 /// @brief Mesh-cache lookup; uploads to a static VBO/IBO on miss.
 ///
 /// Static meshes (with `geometry_key`) are cached so subsequent
@@ -136,9 +160,14 @@ static int prepare_mesh_buffers(gl_context_t *ctx,
                                GL_STREAM_DRAW) != 0) {
         return 0;
     }
-    orphan_stream_buffer(GL_ARRAY_BUFFER, ctx->mesh_vbo, ctx->mesh_vbo_capacity, GL_STREAM_DRAW);
+    if (!orphan_stream_buffer(
+            GL_ARRAY_BUFFER, ctx->mesh_vbo, ctx->mesh_vbo_capacity, GL_STREAM_DRAW)) {
+        return 0;
+    }
     gl.BindBuffer(GL_ARRAY_BUFFER, ctx->mesh_vbo);
     gl.BufferSubData(GL_ARRAY_BUFFER, 0, (GLsizeiptr)vbytes, cmd->vertices);
+    if (!gl_upload_ok())
+        return 0;
 
     if (ensure_buffer_capacity(GL_ELEMENT_ARRAY_BUFFER,
                                ctx->mesh_ibo,
@@ -148,10 +177,14 @@ static int prepare_mesh_buffers(gl_context_t *ctx,
                                GL_STREAM_DRAW) != 0) {
         return 0;
     }
-    orphan_stream_buffer(
-        GL_ELEMENT_ARRAY_BUFFER, ctx->mesh_ibo, ctx->mesh_ibo_capacity, GL_STREAM_DRAW);
+    if (!orphan_stream_buffer(
+            GL_ELEMENT_ARRAY_BUFFER, ctx->mesh_ibo, ctx->mesh_ibo_capacity, GL_STREAM_DRAW)) {
+        return 0;
+    }
     gl.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, ctx->mesh_ibo);
     gl.BufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, (GLsizeiptr)ibytes, cmd->indices);
+    if (!gl_upload_ok())
+        return 0;
     *out_vbo = ctx->mesh_vbo;
     *out_ibo = ctx->mesh_ibo;
     return 1;
@@ -254,10 +287,14 @@ static int configure_instance_attributes(gl_context_t *ctx,
                                GL_STREAM_DRAW) != 0) {
         return 0;
     }
-    orphan_stream_buffer(
-        GL_ARRAY_BUFFER, ctx->instance_vbo, ctx->instance_vbo_capacity, GL_STREAM_DRAW);
+    if (!orphan_stream_buffer(
+            GL_ARRAY_BUFFER, ctx->instance_vbo, ctx->instance_vbo_capacity, GL_STREAM_DRAW)) {
+        return 0;
+    }
     gl.BindBuffer(GL_ARRAY_BUFFER, ctx->instance_vbo);
     gl.BufferSubData(GL_ARRAY_BUFFER, 0, (GLsizeiptr)bytes, instance_matrices);
+    if (!gl_upload_ok())
+        return 0;
 
     gl.EnableVertexAttribArray(7);
     gl.EnableVertexAttribArray(8);
@@ -284,12 +321,16 @@ static int configure_instance_attributes(gl_context_t *ctx,
                                    GL_STREAM_DRAW) != 0) {
             return 0;
         }
-        orphan_stream_buffer(GL_ARRAY_BUFFER,
-                             ctx->prev_instance_vbo,
-                             ctx->prev_instance_vbo_capacity,
-                             GL_STREAM_DRAW);
+        if (!orphan_stream_buffer(GL_ARRAY_BUFFER,
+                                  ctx->prev_instance_vbo,
+                                  ctx->prev_instance_vbo_capacity,
+                                  GL_STREAM_DRAW)) {
+            return 0;
+        }
         gl.BindBuffer(GL_ARRAY_BUFFER, ctx->prev_instance_vbo);
         gl.BufferSubData(GL_ARRAY_BUFFER, 0, (GLsizeiptr)bytes, prev_instance_matrices);
+        if (!gl_upload_ok())
+            return 0;
         gl.EnableVertexAttribArray(11);
         gl.EnableVertexAttribArray(12);
         gl.EnableVertexAttribArray(13);
@@ -352,9 +393,13 @@ static void upload_bone_palette(gl_context_t *ctx,
     for (int32_t i = 0; i < bone_count; i++)
         transpose4x4(&bone_palette[i * 16], &upload[i * 16]);
 
-    orphan_stream_buffer(GL_UNIFORM_BUFFER, ubo, VGFX3D_OPENGL_BONE_PALETTE_BYTES, GL_DYNAMIC_DRAW);
+    if (!orphan_stream_buffer(
+            GL_UNIFORM_BUFFER, ubo, VGFX3D_OPENGL_BONE_PALETTE_BYTES, GL_DYNAMIC_DRAW)) {
+        return;
+    }
     gl.BindBuffer(GL_UNIFORM_BUFFER, ubo);
     gl.BufferSubData(GL_UNIFORM_BUFFER, 0, (GLsizeiptr)sizeof(upload), upload);
+    gl_upload_ok();
 }
 
 /// @brief Upload current + previous bone palettes and bind to UBO slots 0/1.
@@ -398,7 +443,7 @@ static int gl_upload_morph_payload_texture(GLuint *buffer,
     gl.BufferData(GL_TEXTURE_BUFFER, (GLsizeiptr)bytes, payload, GL_STATIC_DRAW);
     gl.BindTexture(GL_TEXTURE_BUFFER, *tbo);
     gl.TexBuffer(GL_TEXTURE_BUFFER, GL_R32F, *buffer);
-    return 1;
+    return gl_upload_ok();
 }
 
 /// @brief Streaming variant of `gl_upload_morph_payload_texture` (orphan-then-update).
@@ -418,12 +463,13 @@ static int gl_upload_transient_morph_payload(gl_context_t *ctx,
             GL_TEXTURE_BUFFER, buffer, capacity_bytes, bytes, 64u * 1024u, GL_STREAM_DRAW) != 0) {
         return 0;
     }
-    orphan_stream_buffer(GL_TEXTURE_BUFFER, buffer, *capacity_bytes, GL_STREAM_DRAW);
+    if (!orphan_stream_buffer(GL_TEXTURE_BUFFER, buffer, *capacity_bytes, GL_STREAM_DRAW))
+        return 0;
     gl.BindBuffer(GL_TEXTURE_BUFFER, buffer);
     gl.BufferSubData(GL_TEXTURE_BUFFER, 0, (GLsizeiptr)bytes, payload);
     gl.BindTexture(GL_TEXTURE_BUFFER, tbo);
     gl.TexBuffer(GL_TEXTURE_BUFFER, GL_R32F, buffer);
-    return 1;
+    return gl_upload_ok();
 }
 
 /// @brief Compute the byte size of a morph delta texture-buffer payload

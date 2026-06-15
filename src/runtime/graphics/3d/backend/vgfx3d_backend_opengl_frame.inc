@@ -21,11 +21,11 @@ static void gl_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
 /// @brief Backend `begin_frame` — set up matrices, target, frame-history, and clear.
 ///
 /// Per-frame setup steps:
-///   1. Bump frame serial; reset shadow-active flag.
-///   2. Detect overlay pass (skips scene composition).
-///   3. Prune all caches (texture / cubemap / morph) to bound residency.
-///   4. Compute VP + inverse VP from camera, capture fog state.
-///   5. Make GLX context current (multi-window apps may have switched).
+///   1. Make GLX context current (multi-window apps may have switched).
+///   2. Bump frame serial; reset shadow-active flag.
+///   3. Detect overlay pass (skips scene composition).
+///   4. Prune all caches (texture / cubemap / morph / mesh) to bound residency.
+///   5. Compute VP + inverse VP from camera, capture fog state.
 ///   6. Roll the frame-history (current VP → previous VP, etc.).
 ///   7. If transitioning from scene to overlay, composite scene → backbuffer.
 ///   8. Choose active target kind, ensure offscreen targets exist.
@@ -54,6 +54,8 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     };
     if (!ctx || !cam)
         return;
+    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+        return;
 
     ctx->frame_serial++;
     ctx->shadow_pass_slot = -1;
@@ -69,6 +71,7 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     texture_cache_prune(ctx);
     cubemap_cache_prune(ctx);
     morph_cache_prune(ctx);
+    gl_mesh_cache_prune(ctx);
 
     memcpy(ctx->view, cam->view, sizeof(ctx->view));
     memcpy(ctx->projection, cam->projection, sizeof(ctx->projection));
@@ -84,9 +87,6 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     ctx->fog_color[0] = cam->fog_color[0];
     ctx->fog_color[1] = cam->fog_color[1];
     ctx->fog_color[2] = cam->fog_color[2];
-    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
-        return;
-
     memcpy(history.scene_vp, ctx->scene_vp, sizeof(history.scene_vp));
     memcpy(history.scene_prev_vp, ctx->scene_prev_vp, sizeof(history.scene_prev_vp));
     memcpy(history.scene_inv_vp, ctx->scene_inv_vp, sizeof(history.scene_inv_vp));
@@ -211,7 +211,7 @@ static void gl_submit_draw(void *ctx_ptr,
     if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo))
         return;
 
-    gl.FrontFace(GL_CW);
+    gl.FrontFace(GL_CCW);
     if (backface_cull)
         gl.Enable(GL_CULL_FACE);
     else
@@ -320,6 +320,7 @@ static void gl_resize(void *ctx_ptr, int32_t w, int32_t h) {
     if (!ctx->rtt_active) {
         destroy_scene_targets(ctx);
         destroy_postfx_readback_target(ctx);
+        destroy_postfx_scratch_target(ctx);
     }
 }
 
@@ -391,6 +392,11 @@ static int gl_readback_rgba(
     gl.BindFramebuffer(GL_FRAMEBUFFER, use_postfx_readback ? readback_framebuffer : 0);
     gl.ReadBuffer(use_postfx_readback ? readback_buffer : GL_BACK);
     gl.ReadPixels(0, 0, copy_w, copy_h, GL_RGBA, GL_UNSIGNED_BYTE, tmp);
+    if (!gl_drain_errors("readback")) {
+        free(tmp);
+        bind_main_framebuffer(ctx);
+        return 0;
+    }
     vgfx3d_flip_rgba_rows(tmp, copy_w, copy_h);
     for (int32_t y = 0; y < copy_h; y++)
         memcpy(dst_rgba + (size_t)y * (size_t)stride,
@@ -448,70 +454,6 @@ static void gl_present(void *ctx_ptr) {
     gl_present_impl((gl_context_t *)ctx_ptr, NULL);
 }
 
-/// @brief Backend `present_postfx` — present with an ordered post-FX chain composited.
-static void gl_present_postfx(void *ctx_ptr, const vgfx3d_postfx_chain_t *postfx) {
-    gl_present_impl((gl_context_t *)ctx_ptr, postfx);
-}
-
-/// @brief Backend `apply_postfx` — composite post-FX without swapping buffers.
-static void gl_apply_postfx(void *ctx_ptr, const vgfx3d_postfx_chain_t *postfx) {
-    gl_context_t *ctx = (gl_context_t *)ctx_ptr;
-    int use_postfx;
-
-    if (!ctx || ctx->rtt_active)
-        return;
-    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
-        return;
-    use_postfx = (postfx != NULL && postfx->enabled && postfx->effect_count > 0 &&
-                  ctx->gpu_postfx_enabled && ctx->scene_postfx_pending)
-                     ? 1
-                     : 0;
-    if (ctx->gpu_postfx_enabled && ctx->scene_postfx_pending &&
-        !ctx->scene_composited_to_backbuffer) {
-        if (draw_scene_texture(ctx, use_postfx ? postfx : NULL))
-            ctx->scene_composited_to_backbuffer = 1;
-    }
-}
-
-/// @brief Backend `set_gpu_postfx_enabled` — toggle the offscreen-scene path.
-///
-/// When disabled, also clears any in-flight postfx state so the next
-/// frame doesn't try to composite stale data.
-static void gl_set_gpu_postfx_enabled(void *ctx_ptr, int8_t enabled) {
-    gl_context_t *ctx = (gl_context_t *)ctx_ptr;
-    if (!ctx)
-        return;
-    ctx->gpu_postfx_enabled = enabled ? 1 : 0;
-    if (!ctx->gpu_postfx_enabled) {
-        ctx->scene_postfx_pending = 0;
-        ctx->scene_composited_to_backbuffer = 0;
-        vgfx3d_postfx_chain_reset(&ctx->gpu_postfx_chain);
-        ctx->gpu_postfx_chain_valid = 0;
-    }
-}
-
-/// @brief Backend `set_gpu_postfx_snapshot` — store the current postfx chain.
-///
-/// NULL clears the chain (post-FX disabled). Used to capture the current
-/// postfx state at the begin/end of an overlay pass so the composite uses
-/// the right ordered passes.
-static void gl_set_gpu_postfx_snapshot(void *ctx_ptr, const vgfx3d_postfx_chain_t *postfx) {
-    gl_context_t *ctx = (gl_context_t *)ctx_ptr;
-    if (!ctx)
-        return;
-    if (!postfx) {
-        vgfx3d_postfx_chain_reset(&ctx->gpu_postfx_chain);
-        ctx->gpu_postfx_chain_valid = 0;
-        return;
-    }
-    if (!vgfx3d_postfx_chain_copy(&ctx->gpu_postfx_chain, postfx)) {
-        vgfx3d_postfx_chain_reset(&ctx->gpu_postfx_chain);
-        ctx->gpu_postfx_chain_valid = 0;
-        return;
-    }
-    ctx->gpu_postfx_chain_valid = 1;
-}
-
 /// @brief Backend `set_render_target` op — bind / unbind RTT.
 ///
 /// NULL `rt` tears down RTT and reverts to the swapchain. Non-NULL
@@ -521,7 +463,8 @@ static void gl_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     if (!ctx)
         return;
-    glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx);
+    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+        return;
     ctx->scene_postfx_pending = 0;
     ctx->scene_composited_to_backbuffer = 0;
     if (!rt) {

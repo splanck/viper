@@ -1115,8 +1115,8 @@ static void test_backend_select_platform_override() {
 static void test_backend_default_policy_names() {
     TEST("Backend selection - default policy names");
     EXPECT_TRUE(strcmp(vgfx3d_default_backend_name_for_platform(VGFX3D_BACKEND_PLATFORM_LINUX),
-                       "opengl") == 0,
-                "Linux defaults to OpenGL");
+                       "software") == 0,
+                "Linux defaults to software");
     EXPECT_TRUE(
         strcmp(vgfx3d_default_backend_name_for_platform(VGFX3D_BACKEND_PLATFORM_WINDOWS_ARM64),
                "software") == 0,

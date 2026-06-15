@@ -74,6 +74,8 @@ typedef unsigned int GLbitfield;
 #define GL_FALSE 0
 #define GL_NONE 0
 #define GL_NO_ERROR 0
+#define GL_INVALID_VALUE 0x0501
+#define GL_OUT_OF_MEMORY 0x0505
 #define GL_COLOR_BUFFER_BIT 0x00004000
 #define GL_DEPTH_BUFFER_BIT 0x00000100
 #define GL_DEPTH_TEST 0x0B71
@@ -111,6 +113,7 @@ typedef unsigned int GLbitfield;
 #define GL_RGBA16F 0x881A
 #define GL_R32F 0x822E
 #define GL_DEPTH_COMPONENT 0x1902
+#define GL_DEPTH_COMPONENT24 0x81A6
 #define GL_DEPTH_COMPONENT32F 0x8CAC
 #define GL_TEXTURE0 0x84C0
 #define GL_TEXTURE_WRAP_S 0x2802
@@ -125,7 +128,14 @@ typedef unsigned int GLbitfield;
 #define GL_UNPACK_ALIGNMENT 0x0CF5
 #define GL_EXTENSIONS 0x1F03
 #define GL_VERSION 0x1F02
+#define GL_MAJOR_VERSION 0x821B
+#define GL_MINOR_VERSION 0x821C
 #define GL_NUM_EXTENSIONS 0x821D
+#define GL_MAX_TEXTURE_SIZE 0x0D33
+#define GL_MAX_VERTEX_ATTRIBS 0x8869
+#define GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS 0x8B4D
+#define GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS 0x8B4C
+#define GL_MAX_TEXTURE_BUFFER_SIZE 0x8C2B
 #define GL_COMPRESSED_RGBA_BPTC_UNORM 0x8E8C
 #define GL_COMPRESSED_RGBA8_ETC2_EAC 0x9278
 #define GL_COMPRESSED_RGBA_ASTC_4x4_KHR 0x93B0
@@ -223,6 +233,7 @@ typedef void (*PFNGLDELETEBUFFERSPROC)(GLsizei, const GLuint *);
 typedef void (*PFNGLDELETEVERTEXARRAYSPROC)(GLsizei, const GLuint *);
 typedef void (*PFNGLBLENDFUNCPROC)(GLenum, GLenum);
 typedef void (*PFNGLDEPTHMASKPROC)(GLboolean);
+typedef void (*PFNGLCOLORMASKPROC)(GLboolean, GLboolean, GLboolean, GLboolean);
 typedef void (*PFNGLGENTEXTURESPROC)(GLsizei, GLuint *);
 typedef void (*PFNGLDELETETEXTURESPROC)(GLsizei, const GLuint *);
 typedef void (*PFNGLACTIVETEXTUREPROC)(GLenum);
@@ -328,6 +339,7 @@ static struct {
     PFNGLDELETEVERTEXARRAYSPROC DeleteVertexArrays;
     PFNGLBLENDFUNCPROC BlendFunc;
     PFNGLDEPTHMASKPROC DepthMask;
+    PFNGLCOLORMASKPROC ColorMask;
     PFNGLGENTEXTURESPROC GenTextures;
     PFNGLDELETETEXTURESPROC DeleteTextures;
     PFNGLACTIVETEXTUREPROC ActiveTexture;
@@ -382,21 +394,31 @@ static __attribute__((unused)) void gl_check_error(const char *file, int line) {
 #define GL_CHECK() ((void)0)
 #endif
 
-/// @brief Return whether the last OpenGL operation completed without a GL error.
-/// @details Static mesh cache population must not record a slot as valid after an upload failure.
-///          This helper is intentionally available in release builds, unlike GL_CHECK, because
-///          caching failed buffers can cause persistent missing/flickering geometry.
-static int gl_upload_ok(void) {
-    GLenum err;
+/// @brief Drain the GL error queue and report whether it was clean.
+/// @details This helper is intentionally available in release builds, unlike `GL_CHECK`, because
+///          resource creation and readback paths must not cache or expose objects after a driver
+///          error. Draining the queue also prevents an old error from poisoning a later operation.
+static int gl_drain_errors(const char *label) {
+    int ok = 1;
     if (!gl.GetError)
         return 1;
-    err = gl.GetError();
-    if (err == GL_NO_ERROR)
-        return 1;
+    for (;;) {
+        GLenum err = gl.GetError();
+        if (err == GL_NO_ERROR)
+            break;
+        ok = 0;
 #ifndef NDEBUG
-    fprintf(stderr, "GL upload error 0x%04X\n", (unsigned)err);
+        fprintf(stderr, "GL %s error 0x%04X\n", label ? label : "operation", (unsigned)err);
+#else
+        (void)label;
 #endif
-    return 0;
+    }
+    return ok;
+}
+
+/// @brief Return whether the most recent upload/resource operation produced no GL errors.
+static int gl_upload_ok(void) {
+    return gl_drain_errors("upload");
 }
 
 static int gl_debug_enabled(void) {
@@ -433,6 +455,21 @@ static struct {
     PFNGLXGETPROCADDRESSPROC GetProcAddress;
 } glx;
 
+static int gl_loaded = 0;
+
+/// @brief Reset the global libGL/GLX dispatch state after a failed dynamic-load attempt.
+///
+/// `load_gl()` resolves dozens of entry points in sequence. If any late lookup fails, leaving a
+/// partially-populated table would make later backend initialization attempts unsafe. This helper
+/// closes the library handle and clears every resolved pointer so the next attempt starts cleanly.
+static void gl_unload_partial_dispatch(void) {
+    if (gl.lib)
+        dlclose(gl.lib);
+    memset(&gl, 0, sizeof(gl));
+    memset(&glx, 0, sizeof(glx));
+    gl_loaded = 0;
+}
+
 #define GLX_RGBA_BIT 0x0001
 #define GLX_RENDER_TYPE 0x8011
 #define GLX_DRAWABLE_TYPE 0x8010
@@ -455,6 +492,7 @@ typedef struct {
     uint64_t generation;
     uint64_t pending_generation;
     GLuint tex;
+    GLuint fallback_tex;
     int32_t width;
     int32_t height;
     int32_t upload_next_row;
@@ -553,6 +591,10 @@ typedef struct {
     GLuint postfx_readback_tex;
     int32_t postfx_readback_width;
     int32_t postfx_readback_height;
+    GLuint postfx_scratch_fbo;
+    GLuint postfx_scratch_tex;
+    int32_t postfx_scratch_width;
+    int32_t postfx_scratch_height;
 
     GLuint rtt_fbo;
     GLuint rtt_color_tex;
@@ -589,6 +631,18 @@ typedef struct {
     uint64_t frame_serial;
     uint64_t texture_upload_bytes;
     uint64_t texture_upload_budget_bytes;
+    int32_t gl_major_version;
+    int32_t gl_minor_version;
+    int32_t max_texture_size;
+    int32_t max_vertex_attribs;
+    int32_t max_combined_texture_units;
+    int32_t max_vertex_texture_units;
+    int32_t max_texture_buffer_size;
+    int8_t supports_hdr_color_target;
+    int8_t supports_depth_float_target;
+    int8_t supports_bc7;
+    int8_t supports_astc;
+    int8_t supports_etc2;
 
     int32_t width;
     int32_t height;
@@ -673,8 +727,6 @@ typedef struct {
     GLint postfx_uCameraPos, postfx_uInvViewProjection, postfx_uPrevViewProjection;
 } gl_context_t;
 
-static int gl_loaded = 0;
-
 static void query_main_uniforms(gl_context_t *ctx);
 static void query_shadow_uniforms(gl_context_t *ctx);
 static void query_skybox_uniforms(gl_context_t *ctx);
@@ -712,6 +764,7 @@ static GLuint gl_get_material_texture(gl_context_t *ctx,
                                       int64_t mip_start,
                                       int64_t mip_count);
 static void gl_destroy_mesh_cache(gl_context_t *ctx);
+static void gl_mesh_cache_prune(gl_context_t *ctx);
 static void set_identity_instance_constants(void);
 static void configure_mesh_attributes(gl_context_t *ctx, GLuint mesh_vbo, GLuint mesh_ibo);
 static int configure_instance_attributes(gl_context_t *ctx,
@@ -726,12 +779,14 @@ static int draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_chain_t *ch
 static void gl_draw_skybox_impl(gl_context_t *ctx, const rt_cubemap3d *cubemap);
 static void destroy_scene_targets(gl_context_t *ctx);
 static void destroy_postfx_readback_target(gl_context_t *ctx);
+static void destroy_postfx_scratch_target(gl_context_t *ctx);
 static int ensure_scene_targets(gl_context_t *ctx, int32_t w, int32_t h);
 static void destroy_rtt_targets(gl_context_t *ctx);
 static int ensure_rtt_targets(gl_context_t *ctx, vgfx3d_rendertarget_t *rt);
 static void destroy_shadow_targets(gl_context_t *ctx);
 static int ensure_shadow_targets(gl_context_t *ctx, int32_t slot, int32_t w, int32_t h);
 static void gl_recompute_shadow_count(gl_context_t *ctx);
+static int32_t gl_sanitize_shadow_slot(gl_context_t *ctx, int32_t shadow_index);
 static void bind_main_framebuffer(gl_context_t *ctx);
 static void gl_configure_draw_output(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd);
 static void gl_apply_depth_bias(const vgfx3d_draw_cmd_t *cmd);
@@ -743,13 +798,13 @@ static void bind_texture_unit_with_sampler(gl_context_t *ctx,
                                            GLuint texture,
                                            const vgfx3d_draw_cmd_t *cmd,
                                            int32_t slot);
-static void gl_draw_texture_to_target(gl_context_t *ctx,
-                                      GLuint source_color_tex,
-                                      GLuint framebuffer,
-                                      GLenum draw_buffer,
-                                      int32_t width,
-                                      int32_t height,
-                                      const vgfx3d_postfx_snapshot_t *snapshot);
+static int gl_draw_texture_to_target(gl_context_t *ctx,
+                                     GLuint source_color_tex,
+                                     GLuint framebuffer,
+                                     GLenum draw_buffer,
+                                     int32_t width,
+                                     int32_t height,
+                                     const vgfx3d_postfx_snapshot_t *snapshot);
 static int gl_apply_postfx_chain(gl_context_t *ctx,
                                  GLuint source_tex,
                                  int32_t width,
@@ -857,15 +912,15 @@ static int load_gl(void) {
 #define LOAD(name)                                                                                 \
     gl.name = (__typeof__(gl.name))dlsym(gl.lib, "gl" #name);                                      \
     if (!gl.name)                                                                                  \
-    return -1
+    goto fail
 #define LOADX(name)                                                                                \
     glx.name = (__typeof__(glx.name))dlsym(gl.lib, "glX" #name);                                   \
     if (!glx.name)                                                                                 \
-    return -1
+    goto fail
 #define LOADP(name)                                                                                \
     gl.name = (__typeof__(gl.name))glx.GetProcAddress((const unsigned char *)"gl" #name);          \
     if (!gl.name)                                                                                  \
-    return -1
+    goto fail
 
     LOAD(GetError);
     LOAD(GetString);
@@ -970,6 +1025,7 @@ static int load_gl(void) {
     LOADP(DrawBuffer);
     LOADP(DrawBuffers);
     LOADP(ReadBuffer);
+    LOADP(ColorMask);
     gl.GetStringi = (PFNGLGETSTRINGIPROC)glx.GetProcAddress((const unsigned char *)"glGetStringi");
 
 #undef LOAD
@@ -978,6 +1034,10 @@ static int load_gl(void) {
 
     gl_loaded = 1;
     return 0;
+
+fail:
+    gl_unload_partial_dispatch();
+    return -1;
 }
 
 #include "vgfx3d_backend_opengl_shaders.inc"
@@ -1070,21 +1130,25 @@ static int ensure_buffer_capacity(GLenum target,
     }
     gl.BindBuffer(target, buffer);
     gl.BufferData(target, (GLsizeiptr)new_capacity, NULL, usage);
+    if (!gl_upload_ok())
+        return -1;
     *capacity = new_capacity;
     return 0;
 }
 
-/// @brief "Orphan" a streaming buffer — request a fresh GPU allocation.
+/// @brief "Orphan" a streaming buffer and verify that the driver accepted the reallocation.
 ///
 /// Calling `glBufferData(target, capacity, NULL, ...)` tells the driver
 /// the existing storage may be reused for in-flight draws while we
 /// build the next frame's data. Avoids the explicit-fence sync the
 /// driver would otherwise have to insert on `BufferSubData`.
-static void orphan_stream_buffer(GLenum target, GLuint buffer, size_t capacity, GLenum usage) {
+/// @return 1 when the orphan succeeded without GL errors; otherwise 0.
+static int orphan_stream_buffer(GLenum target, GLuint buffer, size_t capacity, GLenum usage) {
     if (!buffer || capacity == 0)
-        return;
+        return 0;
     gl.BindBuffer(target, buffer);
     gl.BufferData(target, (GLsizeiptr)capacity, NULL, usage);
+    return gl_upload_ok();
 }
 
 /// @brief Whether the named OpenGL extension is present (checks both indexed and legacy queries).
@@ -1101,6 +1165,8 @@ static int gl_extension_supported(const char *name) {
             if (ext && strcmp(ext, name) == 0)
                 return 1;
         }
+        if (count > 0)
+            return 0;
     }
     extensions = (const char *)gl.GetString(GL_EXTENSIONS);
     if (extensions) {
@@ -1113,6 +1179,60 @@ static int gl_extension_supported(const char *name) {
         }
     }
     return 0;
+}
+
+/// @brief Query the active context's OpenGL version and coarse resource limits.
+///
+/// The backend requires the GL 3.3 feature set used by the embedded GLSL and the fixed vertex
+/// layout. This function records the limits once, validates the minimum profile, and captures
+/// optional compressed-texture support so TextureAsset3D can use native blocks when the driver
+/// advertises them.
+static int gl_query_context_capabilities(gl_context_t *ctx) {
+    const char *version = NULL;
+
+    if (!ctx || !gl.GetIntegerv || !gl.GetString)
+        return 0;
+
+    gl.GetIntegerv(GL_MAJOR_VERSION, &ctx->gl_major_version);
+    gl.GetIntegerv(GL_MINOR_VERSION, &ctx->gl_minor_version);
+    if (ctx->gl_major_version <= 0) {
+        version = (const char *)gl.GetString(GL_VERSION);
+        if (version)
+            sscanf(version, "%d.%d", &ctx->gl_major_version, &ctx->gl_minor_version);
+    }
+    if (ctx->gl_major_version < 3 ||
+        (ctx->gl_major_version == 3 && ctx->gl_minor_version < 3)) {
+        fprintf(stderr,
+                "[OpenGL] GL 3.3 core backend unavailable on context version %d.%d\n",
+                ctx->gl_major_version,
+                ctx->gl_minor_version);
+        return 0;
+    }
+
+    gl.GetIntegerv(GL_MAX_TEXTURE_SIZE, &ctx->max_texture_size);
+    gl.GetIntegerv(GL_MAX_VERTEX_ATTRIBS, &ctx->max_vertex_attribs);
+    gl.GetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &ctx->max_combined_texture_units);
+    gl.GetIntegerv(GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS, &ctx->max_vertex_texture_units);
+    gl.GetIntegerv(GL_MAX_TEXTURE_BUFFER_SIZE, &ctx->max_texture_buffer_size);
+    if (ctx->max_vertex_attribs < 16 || ctx->max_combined_texture_units <= GL_TU_MORPH_NORMAL_DELTAS ||
+        ctx->max_vertex_texture_units < 2) {
+        fprintf(stderr,
+                "[OpenGL] backend limits insufficient: attribs=%d combinedTex=%d vertexTex=%d\n",
+                ctx->max_vertex_attribs,
+                ctx->max_combined_texture_units,
+                ctx->max_vertex_texture_units);
+        return 0;
+    }
+
+    ctx->supports_hdr_color_target = 1;
+    ctx->supports_depth_float_target = 1;
+    ctx->supports_bc7 = gl_extension_supported("GL_ARB_texture_compression_bptc") ||
+                        gl_extension_supported("GL_EXT_texture_compression_bptc");
+    ctx->supports_astc = gl_extension_supported("GL_KHR_texture_compression_astc_ldr");
+    ctx->supports_etc2 = ctx->gl_major_version > 4 ||
+                         (ctx->gl_major_version == 4 && ctx->gl_minor_version >= 3) ||
+                         gl_extension_supported("GL_ARB_ES3_compatibility");
+    return gl_drain_errors("capability query");
 }
 
 /// @brief Probe GL_EXT_texture_filter_anisotropic once for the active context.
@@ -1163,10 +1283,6 @@ const vgfx3d_backend_t vgfx3d_opengl_backend = {
     .submit_draw_instanced = gl_submit_draw_instanced,
     .present = gl_present,
     .readback_rgba = gl_readback_rgba,
-    .present_postfx = gl_present_postfx,
-    .apply_postfx = gl_apply_postfx,
-    .set_gpu_postfx_enabled = gl_set_gpu_postfx_enabled,
-    .set_gpu_postfx_snapshot = gl_set_gpu_postfx_snapshot,
     .set_texture_upload_budget = gl_set_texture_upload_budget,
     .get_texture_upload_pending_bytes = gl_get_texture_upload_pending_bytes,
     .get_texture_upload_bytes = gl_get_texture_upload_bytes,
