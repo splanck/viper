@@ -286,7 +286,7 @@ static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
 static HRESULT d3d11_ensure_scene_targets(d3d11_context_t *ctx, int32_t width, int32_t height) {
     HRESULT hr;
 
-    if (!ctx || width <= 0 || height <= 0)
+    if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height))
         return E_INVALIDARG;
     if (ctx->scene_color_tex && ctx->scene_color_rtv && ctx->scene_color_srv &&
         ctx->scene_motion_tex && ctx->scene_motion_rtv && ctx->scene_motion_srv &&
@@ -335,7 +335,7 @@ static HRESULT d3d11_ensure_scene_targets(d3d11_context_t *ctx, int32_t width, i
 static HRESULT d3d11_ensure_overlay_target(d3d11_context_t *ctx, int32_t width, int32_t height) {
     HRESULT hr;
 
-    if (!ctx || width <= 0 || height <= 0)
+    if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height))
         return E_INVALIDARG;
     if (ctx->overlay_color_tex && ctx->overlay_color_rtv && ctx->overlay_color_srv &&
         ctx->overlay_width == width && ctx->overlay_height == height)
@@ -381,7 +381,7 @@ static HRESULT d3d11_ensure_overlay_target(d3d11_context_t *ctx, int32_t width, 
 static HRESULT d3d11_ensure_postfx_target(d3d11_context_t *ctx, int32_t width, int32_t height) {
     HRESULT hr;
 
-    if (!ctx || width <= 0 || height <= 0)
+    if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height))
         return E_INVALIDARG;
     if (ctx->postfx_color_tex && ctx->postfx_color_rtv && ctx->postfx_color_srv &&
         ctx->postfx_width == width && ctx->postfx_height == height)
@@ -418,7 +418,7 @@ static HRESULT d3d11_ensure_postfx_scratch_target(d3d11_context_t *ctx,
                                                   int32_t height) {
     HRESULT hr;
 
-    if (!ctx || width <= 0 || height <= 0)
+    if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height))
         return E_INVALIDARG;
     if (ctx->postfx_scratch_tex && ctx->postfx_scratch_rtv && ctx->postfx_scratch_srv &&
         ctx->postfx_scratch_width == width && ctx->postfx_scratch_height == height)
@@ -580,7 +580,7 @@ static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarge
     vgfx3d_d3d11_color_format_t color_format;
     DXGI_FORMAT staging_format;
 
-    if (!ctx || !rt || rt->width <= 0 || rt->height <= 0)
+    if (!ctx || !rt || !vgfx3d_d3d11_is_valid_texture2d_extent(rt->width, rt->height))
         return E_INVALIDARG;
     if (ctx->rtt_color_tex && ctx->rtt_rtv && ctx->rtt_depth_tex && ctx->rtt_dsv &&
         ctx->rtt_staging && ctx->rtt_width == rt->width && ctx->rtt_height == rt->height &&
@@ -702,7 +702,8 @@ static HRESULT d3d11_ensure_shadow_targets(d3d11_context_t *ctx,
                                            int32_t height) {
     HRESULT hr;
 
-    if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS || width <= 0 || height <= 0)
+    if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS ||
+        !vgfx3d_d3d11_is_valid_texture2d_extent(width, height))
         return E_INVALIDARG;
     if (ctx->shadow_depth_tex[slot] && ctx->shadow_dsv[slot] && ctx->shadow_srv[slot] &&
         ctx->shadow_width[slot] == width && ctx->shadow_height[slot] == height)

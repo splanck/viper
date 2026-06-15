@@ -134,12 +134,8 @@ static void d3d11_clear_current_targets(d3d11_context_t *ctx,
         clear_color[3] = 1.0f;
     }
 
-    if (ctx->current_target_kind == VGFX3D_D3D11_TARGET_OVERLAY && !load_existing_color &&
-        ctx->current_rtv_count > 0 && ctx->current_rtvs[0]) {
+    if (!load_existing_color && ctx->current_rtv_count > 0 && ctx->current_rtvs[0])
         ID3D11DeviceContext_ClearRenderTargetView(ctx->ctx, ctx->current_rtvs[0], clear_color);
-    } else if (!load_existing_color && ctx->current_rtv_count > 0 && ctx->current_rtvs[0]) {
-        ID3D11DeviceContext_ClearRenderTargetView(ctx->ctx, ctx->current_rtvs[0], clear_color);
-    }
     if (!load_existing_color && ctx->current_target_kind == VGFX3D_D3D11_TARGET_SCENE &&
         ctx->current_rtv_count > 1 && ctx->current_rtvs[1])
         ID3D11DeviceContext_ClearRenderTargetView(ctx->ctx, ctx->current_rtvs[1], motion_clear);
@@ -209,6 +205,8 @@ static ID3D11SamplerState *d3d11_get_material_sampler(d3d11_context_t *ctx,
     anisotropy_index = vgfx3d_d3d11_sampler_anisotropy_index(anisotropy);
     if (ctx->material_samplers[wrap_s][wrap_t][filter][anisotropy_index])
         return ctx->material_samplers[wrap_s][wrap_t][filter][anisotropy_index];
+    if (!ctx->device)
+        return ctx->linear_wrap_sampler;
     d3d11_init_sampler_desc_defaults(&desc);
     desc.Filter = filter ? D3D11_FILTER_MIN_MAG_MIP_POINT : D3D11_FILTER_MIN_MAG_MIP_LINEAR;
     if (!filter && anisotropy > 1) {
@@ -400,9 +398,11 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
                                     8);
     for (int32_t slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++) {
         if (slot < 4)
-            material_data->texture_uv_sets0[slot] = cmd->texture_slot_uv_set[slot];
+            material_data->texture_uv_sets0[slot] =
+                vgfx3d_d3d11_sanitize_texture_uv_set(cmd->texture_slot_uv_set[slot]);
         else
-            material_data->texture_uv_sets1[slot - 4] = cmd->texture_slot_uv_set[slot];
+            material_data->texture_uv_sets1[slot - 4] =
+                vgfx3d_d3d11_sanitize_texture_uv_set(cmd->texture_slot_uv_set[slot]);
         material_data->texture_uv_transform0[slot][0] = cmd->texture_slot_uv_transform[slot][0];
         material_data->texture_uv_transform0[slot][1] = cmd->texture_slot_uv_transform[slot][1];
         material_data->texture_uv_transform0[slot][2] = cmd->texture_slot_uv_transform[slot][2];
@@ -485,25 +485,28 @@ static int d3d11_prepare_anim_resources(d3d11_context_t *ctx,
     ctx->current_morph_srv = NULL;
     ctx->current_morph_normal_srv = NULL;
 
-    vgfx3d_d3d11_pack_bone_palette(
-        bone_palette, object_data->has_skinning ? cmd->bone_palette : NULL, cmd->bone_count);
-    vgfx3d_d3d11_pack_bone_palette(prev_bone_palette,
-                                   object_data->has_prev_skinning
-                                       ? cmd->prev_bone_palette
-                                       : (object_data->has_skinning ? cmd->bone_palette : NULL),
-                                   cmd->bone_count);
+    if (vgfx3d_d3d11_should_upload_bone_palette(object_data->has_skinning,
+                                                object_data->has_prev_skinning)) {
+        vgfx3d_d3d11_pack_bone_palette(
+            bone_palette, object_data->has_skinning ? cmd->bone_palette : NULL, cmd->bone_count);
+        vgfx3d_d3d11_pack_bone_palette(prev_bone_palette,
+                                       object_data->has_prev_skinning
+                                           ? cmd->prev_bone_palette
+                                           : cmd->bone_palette,
+                                       cmd->bone_count);
 
-    hr = d3d11_update_constant_buffer(ctx, ctx->cb_bones, bone_palette, sizeof(bone_palette));
-    if (FAILED(hr))
-        d3d11_log_hresult("Map(cbBones)", hr);
-    current_bone_upload_ok = SUCCEEDED(hr);
-    hr = d3d11_update_constant_buffer(
-        ctx, ctx->cb_prev_bones, prev_bone_palette, sizeof(prev_bone_palette));
-    if (FAILED(hr))
-        d3d11_log_hresult("Map(cbPrevBones)", hr);
-    prev_bone_upload_ok = SUCCEEDED(hr);
-    vgfx3d_d3d11_resolve_bone_upload_status(
-        object_data, current_bone_upload_ok, prev_bone_upload_ok);
+        hr = d3d11_update_constant_buffer(ctx, ctx->cb_bones, bone_palette, sizeof(bone_palette));
+        if (FAILED(hr))
+            d3d11_log_hresult("Map(cbBones)", hr);
+        current_bone_upload_ok = SUCCEEDED(hr);
+        hr = d3d11_update_constant_buffer(
+            ctx, ctx->cb_prev_bones, prev_bone_palette, sizeof(prev_bone_palette));
+        if (FAILED(hr))
+            d3d11_log_hresult("Map(cbPrevBones)", hr);
+        prev_bone_upload_ok = SUCCEEDED(hr);
+        vgfx3d_d3d11_resolve_bone_upload_status(
+            object_data, current_bone_upload_ok, prev_bone_upload_ok);
+    }
 
     if (object_data->morph_shape_count <= 0 || !cmd->morph_deltas || !cmd->morph_weights) {
         object_data->morph_shape_count = 0;
@@ -513,9 +516,8 @@ static int d3d11_prepare_anim_resources(d3d11_context_t *ctx,
         return 0;
     }
 
-    if (!d3d11_checked_mul_size(
-            (size_t)object_data->morph_shape_count, (size_t)cmd->vertex_count, &morph_count) ||
-        !d3d11_checked_mul_size(morph_count, 3u, &morph_count)) {
+    if (!vgfx3d_d3d11_compute_morph_float_count(
+            cmd->vertex_count, object_data->morph_shape_count, &morph_count)) {
         object_data->morph_shape_count = 0;
         object_data->vertex_count = 0;
         object_data->has_prev_morph_weights = 0;
@@ -763,7 +765,7 @@ static void d3d11_prepare_postfx_data(d3d11_context_t *ctx,
     postfx_data->bloom_enabled = snapshot->bloom_enabled ? 1 : 0;
     postfx_data->bloom_threshold = snapshot->bloom_threshold;
     postfx_data->bloom_intensity = snapshot->bloom_intensity;
-    postfx_data->bloom_passes = snapshot->bloom_passes;
+    postfx_data->bloom_passes = vgfx3d_d3d11_clamp_int_param(snapshot->bloom_passes, 0, 32);
     postfx_data->tonemap_mode = snapshot->tonemap_mode;
     postfx_data->tonemap_exposure = snapshot->tonemap_exposure;
     postfx_data->fxaa_enabled = snapshot->fxaa_enabled ? 1 : 0;
@@ -777,14 +779,15 @@ static void d3d11_prepare_postfx_data(d3d11_context_t *ctx,
     postfx_data->ssao_enabled = snapshot->ssao_enabled ? 1 : 0;
     postfx_data->ssao_radius = snapshot->ssao_radius;
     postfx_data->ssao_intensity = snapshot->ssao_intensity;
-    postfx_data->ssao_samples = snapshot->ssao_samples;
+    postfx_data->ssao_samples = vgfx3d_d3d11_clamp_int_param(snapshot->ssao_samples, 2, 12);
     postfx_data->dof_enabled = snapshot->dof_enabled ? 1 : 0;
     postfx_data->dof_focus_distance = snapshot->dof_focus_distance;
     postfx_data->dof_aperture = snapshot->dof_aperture;
     postfx_data->dof_max_blur = snapshot->dof_max_blur;
     postfx_data->motion_blur_enabled = snapshot->motion_blur_enabled ? 1 : 0;
     postfx_data->motion_blur_intensity = snapshot->motion_blur_intensity;
-    postfx_data->motion_blur_samples = snapshot->motion_blur_samples;
+    postfx_data->motion_blur_samples =
+        vgfx3d_d3d11_clamp_int_param(snapshot->motion_blur_samples, 2, 8);
 }
 
 /// @brief Bind every texture / cubemap SRV the shader expects (PS slots 0..15).
@@ -1041,6 +1044,9 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
     if (index_count == 0)
         return;
 
+    if (!vgfx3d_d3d11_compute_instance_upload_bytes(
+            instance_count, sizeof(d3d_instance_data_t), &instance_upload_bytes))
+        return;
     if (!d3d11_ensure_instance_upload_capacity(ctx, instance_count))
         return;
     vgfx3d_d3d11_fill_instance_data(ctx->instance_upload_data,
@@ -1096,9 +1102,7 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
         return;
     }
 
-    if (!vgfx3d_d3d11_compute_instance_upload_bytes(
-            instance_count, sizeof(d3d_instance_data_t), &instance_upload_bytes) ||
-        !d3d11_acquire_mesh_buffers(ctx, cmd, &mesh_vb, &mesh_ib) ||
+    if (!d3d11_acquire_mesh_buffers(ctx, cmd, &mesh_vb, &mesh_ib) ||
         !d3d11_upload_dynamic_buffer(ctx,
                                      &ctx->instance_buffer,
                                      &ctx->instance_buffer_size,

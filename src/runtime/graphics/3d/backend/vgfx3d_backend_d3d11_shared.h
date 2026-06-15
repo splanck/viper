@@ -45,6 +45,7 @@ extern "C" {
 #define VGFX3D_D3D11_MAX_CUBEMAP_DIMENSION 16384
 #define VGFX3D_D3D11_MAX_TEXTURE_ANISOTROPY 16
 #define VGFX3D_D3D11_ANISOTROPY_LEVEL_COUNT VGFX3D_D3D11_MAX_TEXTURE_ANISOTROPY
+#define VGFX3D_D3D11_MAX_CONSTANT_BUFFER_BYTES (64u * 1024u)
 
 /// @brief Blend state required by a draw: opaque, standard alpha, or additive.
 typedef enum {
@@ -184,12 +185,30 @@ int32_t vgfx3d_d3d11_compute_mip_count(int32_t width, int32_t height);
 int32_t vgfx3d_d3d11_sanitize_anisotropy(int32_t requested);
 /// @brief Convert sanitized anisotropy to a compact cache index [0,15].
 int32_t vgfx3d_d3d11_sampler_anisotropy_index(int32_t requested);
+/// @brief Normalize texture UV-set selectors to the two shader-visible channels.
+int32_t vgfx3d_d3d11_sanitize_texture_uv_set(int32_t requested);
+/// @brief Clamp integer post-FX sample/pass counts before cbuffer upload.
+int32_t vgfx3d_d3d11_clamp_int_param(int32_t requested, int32_t min_value, int32_t max_value);
+/// @brief Decide whether the bone constant buffers need a per-draw upload.
+int vgfx3d_d3d11_should_upload_bone_palette(int has_skinning, int has_prev_skinning);
+/// @brief Saturating unsigned 64-bit addition for upload counters.
+uint64_t vgfx3d_d3d11_saturating_add_u64(uint64_t a, uint64_t b);
 /// @brief Capacity-doubling growth helper (saturates at INT_MAX).
 int32_t vgfx3d_d3d11_next_capacity(int32_t current_capacity,
                                    int32_t needed,
                                    int32_t minimum_capacity);
 /// @brief Overflow-safe row byte computation for tightly packed readback rows.
 int vgfx3d_d3d11_compute_row_bytes(int32_t width, int32_t bytes_per_pixel, size_t *out_bytes);
+/// @brief Compute a valid non-zero D3D11 buffer ByteWidth.
+int vgfx3d_d3d11_compute_buffer_byte_width(size_t size, uint32_t *out_width);
+/// @brief Compute a 16-byte-aligned D3D11 constant-buffer ByteWidth.
+int vgfx3d_d3d11_compute_constant_buffer_byte_width(size_t size, uint32_t *out_width);
+/// @brief Compute a D3D11 UpdateSubresource pitch for tightly packed RGBA8 rows.
+int vgfx3d_d3d11_compute_rgba8_upload_pitch(int32_t width, uint32_t *out_pitch);
+/// @brief Compute a bounded morph-delta float count for D3D11 float SRV uploads.
+int vgfx3d_d3d11_compute_morph_float_count(uint32_t vertex_count,
+                                           int32_t requested_shape_count,
+                                           size_t *out_elements);
 /// @brief Compute a D3D11 vertex-buffer upload span for per-instance data.
 int vgfx3d_d3d11_compute_instance_upload_bytes(int32_t instance_count,
                                                size_t instance_stride,

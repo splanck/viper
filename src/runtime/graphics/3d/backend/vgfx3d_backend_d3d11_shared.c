@@ -225,6 +225,37 @@ int32_t vgfx3d_d3d11_sampler_anisotropy_index(int32_t requested) {
     return vgfx3d_d3d11_sanitize_anisotropy(requested) - 1;
 }
 
+/// @brief Normalize texture UV-set selectors to the shader-visible uv0/uv1 range.
+int32_t vgfx3d_d3d11_sanitize_texture_uv_set(int32_t requested) {
+    return requested > 0 ? 1 : 0;
+}
+
+/// @brief Clamp an integer cbuffer parameter, tolerating inverted caller bounds.
+int32_t vgfx3d_d3d11_clamp_int_param(int32_t requested, int32_t min_value, int32_t max_value) {
+    int32_t tmp;
+
+    if (min_value > max_value) {
+        tmp = min_value;
+        min_value = max_value;
+        max_value = tmp;
+    }
+    if (requested < min_value)
+        return min_value;
+    if (requested > max_value)
+        return max_value;
+    return requested;
+}
+
+/// @brief Decide whether a draw needs current/previous bone cbuffer uploads.
+int vgfx3d_d3d11_should_upload_bone_palette(int has_skinning, int has_prev_skinning) {
+    return has_skinning || has_prev_skinning ? 1 : 0;
+}
+
+/// @brief Add two uint64_t counters with saturation instead of wraparound.
+uint64_t vgfx3d_d3d11_saturating_add_u64(uint64_t a, uint64_t b) {
+    return a > UINT64_MAX - b ? UINT64_MAX : a + b;
+}
+
 /// @brief Capacity-doubling growth helper: returns the next power-of-2 capacity >= @p needed.
 /// Saturates at @p needed when doubling would overflow INT_MAX.
 int32_t vgfx3d_d3d11_next_capacity(int32_t current_capacity,
@@ -272,6 +303,46 @@ int vgfx3d_d3d11_compute_row_bytes(int32_t width, int32_t bytes_per_pixel, size_
     if (!out_bytes || width <= 0 || bytes_per_pixel <= 0)
         return 0;
     return vgfx3d_d3d11_checked_mul_size((size_t)width, (size_t)bytes_per_pixel, out_bytes);
+}
+
+/// @brief Compute a valid D3D11 buffer ByteWidth from a size_t byte count.
+int vgfx3d_d3d11_compute_buffer_byte_width(size_t size, uint32_t *out_width) {
+    if (out_width)
+        *out_width = 0;
+    if (!out_width || size == 0 || size > UINT_MAX)
+        return 0;
+    *out_width = (uint32_t)size;
+    return 1;
+}
+
+/// @brief Compute a valid 16-byte-aligned D3D11 constant-buffer ByteWidth.
+int vgfx3d_d3d11_compute_constant_buffer_byte_width(size_t size, uint32_t *out_width) {
+    size_t aligned_size;
+
+    if (out_width)
+        *out_width = 0;
+    if (!out_width || size == 0 || size > VGFX3D_D3D11_MAX_CONSTANT_BUFFER_BYTES ||
+        size > SIZE_MAX - 15u)
+        return 0;
+    aligned_size = (size + 15u) & ~(size_t)15u;
+    if (aligned_size == 0 || aligned_size > VGFX3D_D3D11_MAX_CONSTANT_BUFFER_BYTES ||
+        aligned_size > UINT_MAX)
+        return 0;
+    *out_width = (uint32_t)aligned_size;
+    return 1;
+}
+
+/// @brief Compute a D3D11 row pitch for a tightly packed RGBA8 upload.
+int vgfx3d_d3d11_compute_rgba8_upload_pitch(int32_t width, uint32_t *out_pitch) {
+    size_t row_bytes;
+
+    if (out_pitch)
+        *out_pitch = 0;
+    if (!out_pitch || !vgfx3d_d3d11_compute_row_bytes(width, 4, &row_bytes) ||
+        row_bytes > UINT_MAX)
+        return 0;
+    *out_pitch = (uint32_t)row_bytes;
+    return 1;
 }
 
 /// @brief Compute a checked per-instance vertex-buffer upload size.
@@ -468,6 +539,33 @@ int32_t vgfx3d_d3d11_clamp_morph_shape_count(uint32_t vertex_count, int32_t requ
     if ((uint32_t)shape_count > max_shapes_by_index)
         shape_count = (int32_t)max_shapes_by_index;
     return shape_count;
+}
+
+/// @brief Compute the float element count for a D3D11 morph-delta SRV upload.
+int vgfx3d_d3d11_compute_morph_float_count(uint32_t vertex_count,
+                                           int32_t requested_shape_count,
+                                           size_t *out_elements) {
+    size_t shaped_vertices;
+    size_t elements;
+    size_t bytes;
+    int32_t shape_count;
+
+    if (out_elements)
+        *out_elements = 0;
+    if (!out_elements)
+        return 0;
+    shape_count = vgfx3d_d3d11_clamp_morph_shape_count(vertex_count, requested_shape_count);
+    if (shape_count <= 0)
+        return 0;
+    if (!vgfx3d_d3d11_checked_mul_size((size_t)shape_count,
+                                       (size_t)vertex_count,
+                                       &shaped_vertices) ||
+        !vgfx3d_d3d11_checked_mul_size(shaped_vertices, 3u, &elements) ||
+        !vgfx3d_d3d11_checked_mul_size(elements, sizeof(float), &bytes) ||
+        bytes > UINT_MAX)
+        return 0;
+    *out_elements = elements;
+    return 1;
 }
 
 /// @brief Decide whether a compacting cache sweep can drop one aged entry.

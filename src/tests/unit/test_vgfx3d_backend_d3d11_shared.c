@@ -29,6 +29,7 @@
 
 #include <limits.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -366,6 +367,8 @@ static void test_target_kind_blend_and_color_format_helpers(void) {
 
 static void test_capacity_and_mip_helpers(void) {
     size_t bytes = 0;
+    uint32_t byte_width = 0;
+    uint32_t row_pitch = 0;
 
     EXPECT_TRUE(vgfx3d_d3d11_compute_mip_count(1, 1) == 1, "1x1 textures use a single mip level");
     EXPECT_TRUE(vgfx3d_d3d11_compute_mip_count(4, 2) == 3,
@@ -386,6 +389,41 @@ static void test_capacity_and_mip_helpers(void) {
                 "Row-byte helper computes tightly packed RGBA16F rows");
     EXPECT_TRUE(vgfx3d_d3d11_compute_row_bytes(0, 4, &bytes) == 0 && bytes == 0u,
                 "Row-byte helper rejects non-positive widths");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_buffer_byte_width(64u, &byte_width) == 1 &&
+                    byte_width == 64u,
+                "Buffer ByteWidth helper preserves valid non-zero spans");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_buffer_byte_width(0u, &byte_width) == 0 &&
+                    byte_width == 0u,
+                "Buffer ByteWidth helper rejects zero-byte buffers");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_buffer_byte_width((size_t)UINT_MAX + 1u, &byte_width) == 0 &&
+                    byte_width == 0u,
+                "Buffer ByteWidth helper rejects spans beyond D3D11 UINT fields");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_constant_buffer_byte_width(1u, &byte_width) == 1 &&
+                    byte_width == 16u,
+                "Constant-buffer ByteWidth helper aligns small structs to sixteen bytes");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_constant_buffer_byte_width(16u, &byte_width) == 1 &&
+                    byte_width == 16u,
+                "Constant-buffer ByteWidth helper preserves already-aligned structs");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_constant_buffer_byte_width(17u, &byte_width) == 1 &&
+                    byte_width == 32u,
+                "Constant-buffer ByteWidth helper rounds up partial float4 slots");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_constant_buffer_byte_width(
+                    VGFX3D_D3D11_MAX_CONSTANT_BUFFER_BYTES, &byte_width) == 1 &&
+                    byte_width == VGFX3D_D3D11_MAX_CONSTANT_BUFFER_BYTES,
+                "Constant-buffer ByteWidth helper accepts the D3D11 64 KiB limit");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_constant_buffer_byte_width(
+                    VGFX3D_D3D11_MAX_CONSTANT_BUFFER_BYTES + 1u, &byte_width) == 0 &&
+                    byte_width == 0u,
+                "Constant-buffer ByteWidth helper rejects oversized cbuffers");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_rgba8_upload_pitch(3, &row_pitch) == 1 &&
+                    row_pitch == 12u,
+                "RGBA8 upload-pitch helper computes tightly packed rows");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_rgba8_upload_pitch(0, &row_pitch) == 0 &&
+                    row_pitch == 0u,
+                "RGBA8 upload-pitch helper rejects invalid widths");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_rgba8_upload_pitch(INT_MAX, &row_pitch) == 0 &&
+                    row_pitch == 0u,
+                "RGBA8 upload-pitch helper rejects pitches beyond D3D11 UINT fields");
     EXPECT_TRUE(vgfx3d_d3d11_compute_instance_upload_bytes(
                     3, sizeof(vgfx3d_d3d11_instance_data_t), &bytes) == 1 &&
                     bytes == 3u * sizeof(vgfx3d_d3d11_instance_data_t),
@@ -412,6 +450,47 @@ static void test_capacity_and_mip_helpers(void) {
                 "RGBA8 destination validation still checks spans without an out parameter");
     EXPECT_TRUE(vgfx3d_d3d11_validate_rgba8_destination(3, 2, 8, &bytes) == 0,
                 "RGBA8 destination validation rejects short strides");
+}
+
+static void test_d3d11_sanitization_helpers(void) {
+    size_t elements = 0;
+
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_texture_uv_set(-4) == 0,
+                "UV-set sanitizer maps negative selectors to uv0");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_texture_uv_set(0) == 0,
+                "UV-set sanitizer preserves uv0 selectors");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_texture_uv_set(7) == 1,
+                "UV-set sanitizer maps all positive selectors to uv1");
+    EXPECT_TRUE(vgfx3d_d3d11_clamp_int_param(5, 2, 8) == 5,
+                "Integer parameter clamp preserves in-range values");
+    EXPECT_TRUE(vgfx3d_d3d11_clamp_int_param(99, 2, 8) == 8,
+                "Integer parameter clamp caps high values");
+    EXPECT_TRUE(vgfx3d_d3d11_clamp_int_param(-4, 2, 8) == 2,
+                "Integer parameter clamp raises low values");
+    EXPECT_TRUE(vgfx3d_d3d11_clamp_int_param(5, 8, 2) == 5,
+                "Integer parameter clamp tolerates inverted bounds");
+    EXPECT_TRUE(vgfx3d_d3d11_should_upload_bone_palette(0, 0) == 0,
+                "Bone upload helper skips unskinned draws");
+    EXPECT_TRUE(vgfx3d_d3d11_should_upload_bone_palette(1, 0) == 1,
+                "Bone upload helper accepts current skinning");
+    EXPECT_TRUE(vgfx3d_d3d11_should_upload_bone_palette(0, 1) == 1,
+                "Bone upload helper accepts previous-frame skinning");
+    EXPECT_TRUE(vgfx3d_d3d11_saturating_add_u64(10u, 20u) == 30u,
+                "Saturating add preserves normal sums");
+    EXPECT_TRUE(vgfx3d_d3d11_saturating_add_u64(UINT64_MAX - 3u, 4u) == UINT64_MAX,
+                "Saturating add clamps overflow instead of wrapping");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_morph_float_count(2u, 3, &elements) == 1 &&
+                    elements == 18u,
+                "Morph float-count helper computes shape * vertex * xyz floats");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_morph_float_count(1024u, 64, &elements) == 1 &&
+                    elements == (size_t)VGFX3D_D3D11_MAX_MORPH_SHAPES * 1024u * 3u,
+                "Morph float-count helper uses the clamped D3D11 shape count");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_morph_float_count((uint32_t)INT_MAX, 1, &elements) == 0 &&
+                    elements == 0u,
+                "Morph float-count helper rejects shader-index overflow spans");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_morph_float_count(1u << 28, 8, &elements) == 0 &&
+                    elements == 0u,
+                "Morph float-count helper rejects SRV ByteWidth overflow spans");
 }
 
 static void test_sampler_anisotropy_helpers(void) {
@@ -779,6 +858,7 @@ int main(void) {
     test_upload_status_helpers_drop_stale_state();
     test_target_kind_blend_and_color_format_helpers();
     test_capacity_and_mip_helpers();
+    test_d3d11_sanitization_helpers();
     test_sampler_anisotropy_helpers();
     test_d3d11_limits_and_prune_helpers();
     test_mapped_copy_and_native_mip_validation_helpers();

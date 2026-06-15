@@ -434,7 +434,6 @@ typedef struct {
 #define D3D11_INITIAL_DYNAMIC_VB_SIZE (4u * 1024u * 1024u)
 #define D3D11_INITIAL_DYNAMIC_IB_SIZE (1u * 1024u * 1024u)
 #define D3D11_INITIAL_INSTANCE_BUFFER_SIZE (256u * 1024u)
-#define D3D11_MAX_CONSTANT_BUFFER_BYTES (64u * 1024u)
 
 static void d3d11_destroy_ctx(void *ctx_ptr);
 static void d3d11_log_hresult(const char *msg, HRESULT hr);
@@ -879,25 +878,6 @@ static int d3d11_checked_mul_size(size_t a, size_t b, size_t *out) {
     return 1;
 }
 
-/// @brief Compute a valid D3D11 constant-buffer ByteWidth.
-/// @details D3D11 constant buffers must be 16-byte aligned and cannot exceed
-///   4096 float4 registers (64 KiB). Returning 0 lets creation fail before a
-///   wrapped or oversized ByteWidth reaches `CreateBuffer`.
-static int d3d11_compute_constant_buffer_byte_width(size_t size, UINT *out_width) {
-    size_t aligned_size;
-
-    if (out_width)
-        *out_width = 0;
-    if (!out_width || size == 0 || size > D3D11_MAX_CONSTANT_BUFFER_BYTES || size > SIZE_MAX - 15u)
-        return 0;
-    aligned_size = (size + 15u) & ~(size_t)15u;
-    if (aligned_size == 0 || aligned_size > D3D11_MAX_CONSTANT_BUFFER_BYTES ||
-        aligned_size > UINT_MAX)
-        return 0;
-    *out_width = (UINT)aligned_size;
-    return 1;
-}
-
 /// @brief Create a dynamic D3D11 constant buffer for one CPU-side cbuffer struct.
 /// @details Centralizes the size validation and alignment policy so every cbuffer
 ///   created by the backend obeys the same 16-byte and 64 KiB limits.
@@ -905,6 +885,7 @@ static HRESULT d3d11_create_constant_buffer(d3d11_context_t *ctx,
                                             size_t size,
                                             ID3D11Buffer **out_buffer) {
     D3D11_BUFFER_DESC desc;
+    uint32_t byte_width;
 
     if (out_buffer)
         *out_buffer = NULL;
@@ -914,8 +895,9 @@ static HRESULT d3d11_create_constant_buffer(d3d11_context_t *ctx,
     desc.Usage = D3D11_USAGE_DYNAMIC;
     desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    if (!d3d11_compute_constant_buffer_byte_width(size, &desc.ByteWidth))
+    if (!vgfx3d_d3d11_compute_constant_buffer_byte_width(size, &byte_width))
         return E_OUTOFMEMORY;
+    desc.ByteWidth = (UINT)byte_width;
     return ID3D11Device_CreateBuffer(ctx->device, &desc, NULL, out_buffer);
 }
 
@@ -1108,9 +1090,10 @@ static HRESULT d3d11_ensure_dynamic_buffer(d3d11_context_t *ctx,
     D3D11_BUFFER_DESC desc;
     size_t new_capacity;
     ID3D11Buffer *new_buffer = NULL;
+    uint32_t byte_width;
     HRESULT hr;
 
-    if (!ctx || !buffer || !capacity)
+    if (!ctx || !ctx->device || !buffer || !capacity)
         return E_INVALIDARG;
     if (needed == 0)
         needed = 4;
@@ -1125,12 +1108,12 @@ static HRESULT d3d11_ensure_dynamic_buffer(d3d11_context_t *ctx,
             return E_OUTOFMEMORY;
         new_capacity *= 2;
     }
-    if (new_capacity > UINT_MAX)
+    if (!vgfx3d_d3d11_compute_buffer_byte_width(new_capacity, &byte_width))
         return E_OUTOFMEMORY;
 
     memset(&desc, 0, sizeof(desc));
     desc.Usage = D3D11_USAGE_DYNAMIC;
-    desc.ByteWidth = (UINT)new_capacity;
+    desc.ByteWidth = (UINT)byte_width;
     desc.BindFlags = bind_flags;
     desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     hr = ID3D11Device_CreateBuffer(ctx->device, &desc, NULL, &new_buffer);
@@ -1156,7 +1139,7 @@ static int d3d11_upload_dynamic_buffer(d3d11_context_t *ctx,
     D3D11_MAPPED_SUBRESOURCE mapped;
     HRESULT hr;
 
-    if (!ctx || !buffer || !capacity || !data || bytes == 0)
+    if (!ctx || !ctx->ctx || !buffer || !capacity || !data || bytes == 0)
         return 0;
     hr = d3d11_ensure_dynamic_buffer(ctx, buffer, capacity, bind_flags, bytes, initial_size);
     if (FAILED(hr)) {
@@ -1185,9 +1168,13 @@ static int d3d11_upload_dynamic_buffer(d3d11_context_t *ctx,
 /// path to assemble per-instance matrices before uploading.
 static int d3d11_ensure_instance_upload_capacity(d3d11_context_t *ctx, int32_t instance_count) {
     size_t new_capacity;
+    size_t upload_bytes;
     d3d_instance_data_t *new_data;
 
     if (!ctx || instance_count <= 0)
+        return 0;
+    if (!vgfx3d_d3d11_compute_instance_upload_bytes(
+            instance_count, sizeof(d3d_instance_data_t), &upload_bytes))
         return 0;
     if (ctx->instance_upload_capacity >= (size_t)instance_count)
         return 1;
@@ -1243,15 +1230,17 @@ static HRESULT d3d11_create_static_buffer(d3d11_context_t *ctx,
                                           ID3D11Buffer **out_buffer) {
     D3D11_BUFFER_DESC desc;
     D3D11_SUBRESOURCE_DATA init;
+    uint32_t byte_width;
 
     if (out_buffer)
         *out_buffer = NULL;
-    if (!ctx || !ctx->device || !data || bytes == 0 || !out_buffer || bytes > UINT_MAX)
+    if (!ctx || !ctx->device || !data || !out_buffer ||
+        !vgfx3d_d3d11_compute_buffer_byte_width(bytes, &byte_width))
         return E_INVALIDARG;
     memset(&desc, 0, sizeof(desc));
     memset(&init, 0, sizeof(init));
     desc.Usage = D3D11_USAGE_IMMUTABLE;
-    desc.ByteWidth = (UINT)bytes;
+    desc.ByteWidth = (UINT)byte_width;
     desc.BindFlags = bind_flags;
     init.pSysMem = data;
     return ID3D11Device_CreateBuffer(ctx->device, &desc, &init, out_buffer);
@@ -1369,9 +1358,10 @@ static HRESULT d3d11_ensure_float_srv_buffer(d3d11_context_t *ctx,
     ID3D11Buffer *new_buffer = NULL;
     ID3D11ShaderResourceView *new_srv = NULL;
     size_t bytes;
+    uint32_t byte_width;
     HRESULT hr;
 
-    if (!ctx || !buffer || !srv || !capacity)
+    if (!ctx || !ctx->device || !buffer || !srv || !capacity)
         return E_INVALIDARG;
     if (element_count == 0)
         return S_OK;
@@ -1380,13 +1370,13 @@ static HRESULT d3d11_ensure_float_srv_buffer(d3d11_context_t *ctx,
 
     if (!d3d11_checked_mul_size(element_count, sizeof(float), &bytes))
         return E_OUTOFMEMORY;
-    if (bytes > UINT_MAX)
+    if (!vgfx3d_d3d11_compute_buffer_byte_width(bytes, &byte_width))
         return E_OUTOFMEMORY;
     if (element_count > UINT_MAX)
         return E_OUTOFMEMORY;
 
     memset(&desc, 0, sizeof(desc));
-    desc.ByteWidth = (UINT)bytes;
+    desc.ByteWidth = (UINT)byte_width;
     desc.Usage = D3D11_USAGE_DEFAULT;
     desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
     hr = ID3D11Device_CreateBuffer(ctx->device, &desc, NULL, &new_buffer);
@@ -1426,7 +1416,7 @@ static HRESULT d3d11_update_float_srv_buffer(d3d11_context_t *ctx,
     size_t upload_bytes;
     HRESULT hr;
 
-    if (!ctx || !data || element_count == 0)
+    if (!ctx || !ctx->ctx || !data || element_count == 0)
         return E_INVALIDARG;
     hr = d3d11_ensure_float_srv_buffer(ctx, buffer, srv, capacity, element_count);
     if (FAILED(hr))
