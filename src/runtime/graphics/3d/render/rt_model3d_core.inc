@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/render/rt_model3d_core.inc  (#included from rt_model3d.c; not a standalone translation unit)
-// Purpose: Model3D types, lifecycle, node-tree, skeleton/animation binding
+// File: src/runtime/graphics/3d/render/rt_model3d_core.inc  (#included from rt_model3d.c; not a
+// standalone translation unit) Purpose: Model3D types, lifecycle, node-tree, skeleton/animation
+// binding
 //===----------------------------------------------------------------------===//
 typedef struct {
     rt_scene_node3d *root;
@@ -450,7 +451,7 @@ static int32_t model_count_subtree(const rt_scene_node3d *node) {
     if (!node)
         return 0;
     stack_capacity = 32;
-    stack = (const rt_scene_node3d **)malloc((size_t)stack_capacity * sizeof(*stack));
+    stack = (const rt_scene_node3d **)malloc((size_t)stack_capacity * sizeof(rt_scene_node3d *));
     if (!stack) {
         rt_trap("Model3D: node-count stack allocation failed");
         return 0;
@@ -470,14 +471,14 @@ static int32_t model_count_subtree(const rt_scene_node3d *node) {
         for (int32_t i = 0; i < child_count; i++) {
             if (stack_count >= stack_capacity) {
                 if (stack_capacity > INT32_MAX / 2 ||
-                    (size_t)(stack_capacity * 2) > SIZE_MAX / sizeof(*stack)) {
+                    (size_t)(stack_capacity * 2) > SIZE_MAX / sizeof(rt_scene_node3d *)) {
                     free(stack);
                     rt_trap("Model3D: too many nodes");
                     return 0;
                 }
                 int32_t new_capacity = stack_capacity * 2;
-                const rt_scene_node3d **grown =
-                    (const rt_scene_node3d **)realloc(stack, (size_t)new_capacity * sizeof(*stack));
+                const rt_scene_node3d **grown = (const rt_scene_node3d **)realloc(
+                    stack, (size_t)new_capacity * sizeof(rt_scene_node3d *));
                 if (!grown) {
                     free(stack);
                     rt_trap("Model3D: node-count stack allocation failed");
@@ -939,11 +940,11 @@ static void model_bind_default_node_animator(rt_model3d *model, rt_scene_node3d 
     if (live_count == node_animation_count) {
         animator = rt_node_animator3d_new_from_clips(model->node_animations, node_animation_count);
     } else {
-        if ((size_t)live_count > SIZE_MAX / sizeof(*clips)) {
+        if ((size_t)live_count > SIZE_MAX / sizeof(void *)) {
             rt_trap("Model3D.Instantiate: node-animation list too large");
             return;
         }
-        clips = (void **)malloc((size_t)live_count * sizeof(*clips));
+        clips = (void **)malloc((size_t)live_count * sizeof(void *));
         if (!clips) {
             rt_trap("Model3D.Instantiate: node-animation list allocation failed");
             return;
@@ -1032,14 +1033,14 @@ static int model_collect_scene_refs(rt_model3d *model, const rt_scene_node3d *no
             }
             if (stack_count >= stack_capacity) {
                 if (stack_capacity > INT32_MAX / 2 ||
-                    (size_t)(stack_capacity * 2) > SIZE_MAX / sizeof(*stack)) {
+                    (size_t)(stack_capacity * 2) > SIZE_MAX / sizeof(rt_scene_node3d *)) {
                     free(stack);
                     rt_trap(too_many_msg);
                     return 0;
                 }
                 int32_t new_capacity = stack_capacity * 2;
-                const rt_scene_node3d **grown =
-                    (const rt_scene_node3d **)realloc(stack, (size_t)new_capacity * sizeof(*stack));
+                const rt_scene_node3d **grown = (const rt_scene_node3d **)realloc(
+                    stack, (size_t)new_capacity * sizeof(rt_scene_node3d *));
                 if (!grown) {
                     free(stack);
                     rt_trap("Model3D.Load: scene-ref walk allocation failed");
@@ -1096,14 +1097,14 @@ static rt_scene_node3d *model_find_node_safe(rt_scene_node3d *root, rt_string na
             }
             if (stack_count >= stack_capacity) {
                 if (stack_capacity > INT32_MAX / 2 ||
-                    (size_t)(stack_capacity * 2) > SIZE_MAX / sizeof(*stack)) {
+                    (size_t)(stack_capacity * 2) > SIZE_MAX / sizeof(rt_scene_node3d *)) {
                     free(stack);
                     rt_trap("Model3D.FindNode: too many nodes");
                     return NULL;
                 }
                 int32_t new_capacity = stack_capacity * 2;
-                rt_scene_node3d **grown =
-                    (rt_scene_node3d **)realloc(stack, (size_t)new_capacity * sizeof(*stack));
+                rt_scene_node3d **grown = (rt_scene_node3d **)realloc(
+                    stack, (size_t)new_capacity * sizeof(rt_scene_node3d *));
                 if (!grown) {
                     free(stack);
                     rt_trap("Model3D.FindNode: search stack allocation failed");

@@ -60,7 +60,8 @@ static float *skin_ensure_normal_palette_scratch(vgfx3d_skinning_scratch_t *scra
         return scratch->normal_palette;
     if ((size_t)bone_count > SIZE_MAX / (16u * sizeof(float)))
         return NULL;
-    grown = (float *)realloc(scratch->normal_palette, (size_t)bone_count * 16u * sizeof(float));
+    size_t normal_palette_values = (size_t)bone_count * 16u;
+    grown = (float *)realloc(scratch->normal_palette, normal_palette_values * sizeof(float));
     if (!grown)
         return NULL;
     scratch->normal_palette = grown;

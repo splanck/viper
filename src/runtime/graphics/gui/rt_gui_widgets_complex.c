@@ -260,10 +260,10 @@ static int rt_radiogroup_registry_add(rt_radiogroup_data_t *data) {
         if (s_radiogroup_handle_cap > SIZE_MAX / 2)
             return 0;
         size_t new_cap = s_radiogroup_handle_cap ? s_radiogroup_handle_cap * 2 : 16;
-        if (new_cap > SIZE_MAX / sizeof(*s_radiogroup_handles))
+        if (new_cap > SIZE_MAX / sizeof(rt_radiogroup_data_t *))
             return 0;
         rt_radiogroup_data_t **new_handles = (rt_radiogroup_data_t **)realloc(
-            s_radiogroup_handles, new_cap * sizeof(*s_radiogroup_handles));
+            s_radiogroup_handles, new_cap * sizeof(rt_radiogroup_data_t *));
         if (!new_handles)
             return 0;
         s_radiogroup_handles = new_handles;

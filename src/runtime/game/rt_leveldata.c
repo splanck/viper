@@ -153,7 +153,9 @@ void *rt_leveldata_load(void *path) {
     if (!ld->tilemap)
         goto fail;
 
-    int64_t tile_limit = (w > INT64_MAX / h) ? INT64_MAX : w * h;
+    if (w > INT64_MAX / h)
+        goto fail;
+    int64_t tile_limit = w * h;
 
     // Read tile layers
     void *layers = rt_jsonpath_get(root, rt_const_cstr("layers"));

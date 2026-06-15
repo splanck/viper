@@ -37,8 +37,10 @@
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_string_builder.h"
 
 #include <ctype.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -46,6 +48,9 @@
 /// Minimum payload bytes read by Seq/Map public APIs when formatting TOML values.
 #define TOML_SEQ_MIN_PAYLOAD (sizeof(int64_t) * 2 + sizeof(void *) + sizeof(int8_t))
 #define TOML_MAP_MIN_PAYLOAD (sizeof(void *) * 2 + sizeof(size_t) * 2)
+
+// --- Internal parse error flag (S-14, thread-local to avoid concurrent parse clobbering) ---
+static _Thread_local int g_toml_had_error = 0;
 
 // --- Helper: create string from substring ---
 
@@ -74,6 +79,22 @@ static void skip_line(const char **p) {
         (*p)++;
 }
 
+/// @brief Skip whitespace, newlines, and comments inside multiline TOML arrays.
+/// @details Unlike `skip_ws`, this consumes line boundaries because TOML arrays
+///          may span multiple lines and may contain comments between elements.
+/// @param p Cursor to advance.
+static void skip_array_ws(const char **p) {
+    for (;;) {
+        while (**p == ' ' || **p == '\t' || **p == '\r' || **p == '\n')
+            (*p)++;
+        if (**p == '#') {
+            skip_line(p);
+            continue;
+        }
+        return;
+    }
+}
+
 // --- Helper: parse a bare key (alphanumeric, dash, underscore) ---
 
 /// @brief Parse a TOML bare key (alphanumerics, `-`, `_`, `.`).
@@ -92,21 +113,144 @@ static rt_string parse_bare_key(const char **p) {
 
 // --- Helper: parse a quoted string ---
 
-/// @brief Parse a basic / literal quoted TOML string (no escape decoding).
-/// @details Reads until the matching quote (or end-of-line, which is
-///          also treated as a string terminator for malformed input).
-///          Doesn't decode `\n`, `\"`, etc. — TOML escapes are not
-///          implemented in this simplified parser. The opening quote
-///          (`"` or `'`) must already be at `**p`.
+/// @brief Decode one hexadecimal digit used by TOML `\u`/`\U` escapes.
+/// @param c Input byte.
+/// @return Value in [0, 15], or -1 when @p c is not hexadecimal.
+static int toml_hex_value(char c) {
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
+    return -1;
+}
+
+/// @brief Append a Unicode scalar value as UTF-8 to a string builder.
+/// @details Rejects surrogate halves and values outside Unicode range by
+///          setting the TOML parse-error flag. Valid values append between
+///          one and four bytes.
+/// @param sb Destination builder.
+/// @param codepoint Unicode scalar value.
+static void toml_append_utf8(rt_string_builder *sb, uint32_t codepoint) {
+    char out[4];
+    size_t len = 0;
+    if (codepoint <= 0x7Fu) {
+        out[len++] = (char)codepoint;
+    } else if (codepoint <= 0x7FFu) {
+        out[len++] = (char)(0xC0u | (codepoint >> 6));
+        out[len++] = (char)(0x80u | (codepoint & 0x3Fu));
+    } else if (codepoint >= 0xD800u && codepoint <= 0xDFFFu) {
+        g_toml_had_error = 1;
+        return;
+    } else if (codepoint <= 0xFFFFu) {
+        out[len++] = (char)(0xE0u | (codepoint >> 12));
+        out[len++] = (char)(0x80u | ((codepoint >> 6) & 0x3Fu));
+        out[len++] = (char)(0x80u | (codepoint & 0x3Fu));
+    } else if (codepoint <= 0x10FFFFu) {
+        out[len++] = (char)(0xF0u | (codepoint >> 18));
+        out[len++] = (char)(0x80u | ((codepoint >> 12) & 0x3Fu));
+        out[len++] = (char)(0x80u | ((codepoint >> 6) & 0x3Fu));
+        out[len++] = (char)(0x80u | (codepoint & 0x3Fu));
+    } else {
+        g_toml_had_error = 1;
+        return;
+    }
+    rt_sb_append_bytes(sb, out, len);
+}
+
+/// @brief Parse a basic/literal TOML string, including multiline variants.
+/// @details Basic strings decode TOML escapes (`\n`, `\t`, `\"`, `\\`,
+///          `\uXXXX`, and `\UXXXXXXXX`). Literal strings preserve bytes.
+///          Triple-quoted strings may span lines and terminate only at the
+///          matching triple quote. The opening quote must be at `**p`.
 static rt_string parse_quoted_string(const char **p) {
     char quote = **p;
-    (*p)++;
-    const char *start = *p;
-    while (**p && **p != quote && **p != '\n')
+    int multiline = ((*p)[1] == quote && (*p)[2] == quote);
+    *p += multiline ? 3 : 1;
+
+    rt_string_builder sb;
+    rt_sb_init(&sb);
+    while (**p) {
+        if (multiline && (*p)[0] == quote && (*p)[1] == quote && (*p)[2] == quote) {
+            *p += 3;
+            rt_string result = rt_string_from_bytes(sb.data, sb.len);
+            rt_sb_free(&sb);
+            return result;
+        }
+        if (!multiline && **p == quote) {
+            (*p)++;
+            rt_string result = rt_string_from_bytes(sb.data, sb.len);
+            rt_sb_free(&sb);
+            return result;
+        }
+        if (!multiline && **p == '\n') {
+            g_toml_had_error = 1;
+            break;
+        }
+        if (quote == '"' && **p == '\\') {
+            (*p)++;
+            char esc = **p;
+            if (!esc) {
+                g_toml_had_error = 1;
+                break;
+            }
+            (*p)++;
+            switch (esc) {
+                case 'b':
+                    rt_sb_append_bytes(&sb, "\b", 1);
+                    break;
+                case 't':
+                    rt_sb_append_bytes(&sb, "\t", 1);
+                    break;
+                case 'n':
+                    rt_sb_append_bytes(&sb, "\n", 1);
+                    break;
+                case 'f':
+                    rt_sb_append_bytes(&sb, "\f", 1);
+                    break;
+                case 'r':
+                    rt_sb_append_bytes(&sb, "\r", 1);
+                    break;
+                case '"':
+                    rt_sb_append_bytes(&sb, "\"", 1);
+                    break;
+                case '\\':
+                    rt_sb_append_bytes(&sb, "\\", 1);
+                    break;
+                case 'u':
+                case 'U': {
+                    int digits = esc == 'u' ? 4 : 8;
+                    uint32_t cp = 0;
+                    for (int i = 0; i < digits; i++) {
+                        int hv = toml_hex_value((*p)[i]);
+                        if (hv < 0) {
+                            g_toml_had_error = 1;
+                            break;
+                        }
+                        cp = (cp << 4) | (uint32_t)hv;
+                    }
+                    if (g_toml_had_error)
+                        break;
+                    *p += digits;
+                    toml_append_utf8(&sb, cp);
+                    break;
+                }
+                default:
+                    g_toml_had_error = 1;
+                    break;
+            }
+            if (g_toml_had_error)
+                break;
+            continue;
+        }
+        rt_sb_append_bytes(&sb, *p, 1);
         (*p)++;
-    rt_string result = make_str(start, (int64_t)(*p - start));
-    if (**p == quote)
-        (*p)++;
+    }
+    if (!g_toml_had_error)
+        g_toml_had_error = 1;
+    rt_string result = rt_string_from_bytes(sb.data, sb.len);
+    rt_sb_free(&sb);
     return result;
 }
 
@@ -119,7 +263,7 @@ static rt_string parse_quoted_string(const char **p) {
 ///          `rt_parse_try_bool` to coerce after the fact). Stops at
 ///          newline, `#` (comment), or `,` (array element separator);
 ///          trailing in-line whitespace is trimmed off.
-static rt_string parse_value_until(const char **p, int stop_bracket) {
+static rt_string parse_value_until(const char **p, int stop_bracket, int stop_brace) {
     skip_ws(p);
 
     // Quoted string
@@ -128,7 +272,8 @@ static rt_string parse_value_until(const char **p, int stop_bracket) {
 
     // Bare value (number, boolean, date, or unquoted string)
     const char *start = *p;
-    while (**p && **p != '\n' && **p != '#' && **p != ',' && (!stop_bracket || **p != ']'))
+    while (**p && **p != '\n' && **p != '#' && **p != ',' && (!stop_bracket || **p != ']') &&
+           (!stop_brace || **p != '}'))
         (*p)++;
 
     // Trim trailing whitespace
@@ -139,56 +284,150 @@ static rt_string parse_value_until(const char **p, int stop_bracket) {
     return make_str(start, (int64_t)(end - start));
 }
 
-static rt_string parse_value(const char **p) {
-    return parse_value_until(p, 0);
-}
-
-// --- Internal parse error flag (S-14, thread-local to avoid concurrent parse clobbering) ---
-static _Thread_local int g_toml_had_error = 0;
-
 // --- Helper: parse an inline array ---
 
-/// @brief Parse a TOML inline array literal `[a, b, c]` into a Seq of strings.
-/// @details Walks comma-separated values until the closing `]`. Each
-///          element is read via `parse_value` (so all elements come
-///          back as raw strings). Tolerates trailing commas and
-///          stray whitespace between elements.
-static void *parse_array(const char **p) {
-    (*p)++; // skip '['
-    void *seq = rt_seq_new();
-    rt_seq_set_owns_elements(seq, 1);
-    int closed = 0;
+/// @brief Release a TOML value after storing it in an owning container.
+/// @details `rt_map_set` and `rt_seq_push` retain runtime values. This helper
+///          drops the parser's temporary reference for both raw strings and
+///          object-backed values.
+/// @param obj TOML value object, raw `rt_string`, or NULL.
+static void release_obj_maybe(void *obj) {
+    if (!obj)
+        return;
+    if (rt_string_is_handle(obj)) {
+        rt_string_unref((rt_string)obj);
+        return;
+    }
+    if (rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
 
-    while (**p && **p != '\n') {
+static void *parse_value_object(const char **p, int stop_bracket, int stop_brace);
+
+/// @brief Parse a TOML inline table literal `{ key = value, ... }`.
+/// @details Values may be strings, arrays, or nested inline tables. Duplicate
+///          keys and malformed separators mark the parse as failed.
+/// @param p Cursor positioned at the opening `{`; advanced past `}` on success.
+/// @return Fresh rt_map containing the inline table entries.
+static void *parse_inline_table(const char **p) {
+    (*p)++;
+    void *map = rt_map_new();
+    if (!map) {
+        g_toml_had_error = 1;
+        return NULL;
+    }
+
+    while (**p) {
         skip_ws(p);
-        if (**p == ']') {
-            closed = 1;
-            break;
+        if (**p == '}') {
+            (*p)++;
+            return map;
         }
+        rt_string key = NULL;
+        if (**p == '"' || **p == '\'')
+            key = parse_quoted_string(p);
+        else
+            key = parse_bare_key(p);
+        if (!key) {
+            g_toml_had_error = 1;
+            return map;
+        }
+        skip_ws(p);
+        if (**p != '=') {
+            g_toml_had_error = 1;
+            rt_string_unref(key);
+            return map;
+        }
+        (*p)++;
+        if (rt_map_has(map, key)) {
+            g_toml_had_error = 1;
+            rt_string_unref(key);
+            return map;
+        }
+        void *value = parse_value_object(p, 0, 1);
+        if (value) {
+            rt_map_set(map, key, value);
+            release_obj_maybe(value);
+        }
+        rt_string_unref(key);
+        skip_ws(p);
         if (**p == ',') {
             (*p)++;
             continue;
         }
-        rt_string val = parse_value_until(p, 1);
+        if (**p == '}') {
+            (*p)++;
+            return map;
+        }
+        g_toml_had_error = 1;
+        return map;
+    }
+
+    if (!g_toml_had_error)
+        g_toml_had_error = 1;
+    return map;
+}
+
+/// @brief Parse a TOML inline array literal `[a, b, c]` into a Seq of TOML values.
+/// @details Walks comma-separated values until the closing `]`. Each
+///          element is read via `parse_value_object`, so nested arrays and
+///          inline tables are preserved as runtime containers. Tolerates
+///          trailing commas and stray whitespace between elements.
+static void *parse_array(const char **p) {
+    (*p)++; // skip '['
+    void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
+
+    while (**p) {
+        skip_array_ws(p);
+        if (**p == ']') {
+            (*p)++;
+            return seq;
+        }
+        if (**p == ',') {
+            g_toml_had_error = 1;
+            break;
+        }
+        void *val = parse_value_object(p, 1, 0);
         if (val) {
             rt_seq_push(seq, val);
-            rt_string_unref(val);
+            release_obj_maybe(val);
         }
+        skip_array_ws(p);
+        if (**p == ',') {
+            (*p)++;
+            continue;
+        }
+        if (**p == ']') {
+            (*p)++;
+            return seq;
+        }
+        break;
     }
-    if (closed && **p == ']')
-        (*p)++;
-    else
+    if (!g_toml_had_error)
         g_toml_had_error = 1;
     return seq;
 }
 
+/// @brief Parse one TOML value as the appropriate runtime object.
+/// @details Arrays become Seq, inline tables become Map, and scalar values
+///          become rt_string. Numeric/bool/datetime coercion remains in the
+///          existing typed getters.
+/// @param p Cursor at the value start.
+/// @param stop_bracket Whether `]` terminates a bare value.
+/// @param stop_brace Whether `}` terminates a bare value.
+/// @return Fresh value object or NULL on allocation failure.
+static void *parse_value_object(const char **p, int stop_bracket, int stop_brace) {
+    skip_ws(p);
+    if (**p == '[')
+        return parse_array(p);
+    if (**p == '{')
+        return parse_inline_table(p);
+    return parse_value_until(p, stop_bracket, stop_brace);
+}
+
 /// @brief Maximum nesting depth for TOML sections/tables (consistent with JSON/XML/YAML).
 #define TOML_MAX_DEPTH 200
-
-static void release_obj_maybe(void *obj) {
-    if (obj && rt_obj_release_check0(obj))
-        rt_obj_free(obj);
-}
 
 static int is_map_obj(void *obj) {
     return obj && !rt_string_is_handle(obj) &&
@@ -238,6 +477,70 @@ static void *ensure_table_path(void *root, const char *name, size_t len) {
     }
 
     return current;
+}
+
+/// @brief Ensure an array-of-tables path exists and append a fresh table.
+/// @details For `[[a.b]]`, prefix segments are regular maps and the final
+///          segment is a Seq that owns map entries. The appended map becomes
+///          the current section for subsequent key/value lines.
+/// @param root Root TOML map.
+/// @param name Dotted array-of-tables name.
+/// @param len Byte length of @p name.
+/// @return Borrowed pointer to the appended table, or @p root after an error.
+static void *ensure_array_table_path(void *root, const char *name, size_t len) {
+    if (!root || !name || len == 0) {
+        g_toml_had_error = 1;
+        return root;
+    }
+
+    size_t last_start = 0;
+    for (size_t i = 0; i < len; i++) {
+        if (name[i] == '.')
+            last_start = i + 1;
+    }
+    if (last_start >= len) {
+        g_toml_had_error = 1;
+        return root;
+    }
+
+    void *parent = root;
+    if (last_start > 0)
+        parent = ensure_table_path(root, name, last_start - 1);
+    if (!is_map_obj(parent)) {
+        g_toml_had_error = 1;
+        return root;
+    }
+
+    rt_string key = make_str(name + last_start, (int64_t)(len - last_start));
+    void *seq = rt_map_get(parent, key);
+    if (seq && !is_seq_obj(seq)) {
+        g_toml_had_error = 1;
+        rt_string_unref(key);
+        return root;
+    }
+    if (!seq) {
+        seq = rt_seq_new();
+        if (!seq) {
+            g_toml_had_error = 1;
+            rt_string_unref(key);
+            return root;
+        }
+        rt_seq_set_owns_elements(seq, 1);
+        rt_map_set(parent, key, seq);
+        release_obj_maybe(seq);
+        seq = rt_map_get(parent, key);
+    }
+
+    void *table = rt_map_new();
+    if (!table) {
+        g_toml_had_error = 1;
+        rt_string_unref(key);
+        return root;
+    }
+    rt_seq_push(seq, table);
+    release_obj_maybe(table);
+    rt_string_unref(key);
+    return table;
 }
 
 // --- Public API ---
@@ -326,7 +629,8 @@ void *rt_toml_parse(rt_string src) {
                     continue;
                 }
 
-                current_section = ensure_table_path(root, name_cstr, name_len);
+                current_section = is_array ? ensure_array_table_path(root, name_cstr, name_len)
+                                           : ensure_table_path(root, name_cstr, name_len);
                 rt_string_unref(section_name);
             }
             skip_line(&p);
@@ -365,16 +669,10 @@ void *rt_toml_parse(rt_string src) {
             skip_line(&p);
             continue;
         }
-        if (*p == '[') {
-            void *arr = parse_array(&p);
-            rt_map_set(current_section, key, arr);
-            release_obj_maybe(arr);
-        } else {
-            rt_string val = parse_value(&p);
-            if (val) {
-                rt_map_set(current_section, key, val);
-                rt_string_unref(val);
-            }
+        void *val = parse_value_object(&p, 0, 0);
+        if (val) {
+            rt_map_set(current_section, key, val);
+            release_obj_maybe(val);
         }
         rt_string_unref(key);
 

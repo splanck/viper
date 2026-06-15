@@ -544,6 +544,12 @@ static int monitor_enter_blocking(RtMonitor *m, pthread_t self, int64_t timeout_
             pthread_cond_destroy(&w.cv);
             return 0;
         }
+        if (rc != 0 && rc != ETIMEDOUT) {
+            monitor_remove_acq(m, &w);
+            pthread_cond_destroy(&w.cv);
+            rt_trap("Monitor.Enter: condition wait failed");
+            return 0;
+        }
         if (w.state == RT_MON_WAITER_CANCELLED) {
             pthread_cond_destroy(&w.cv);
             rt_trap("Monitor.Enter: object finalized while waiting");
@@ -761,6 +767,15 @@ int8_t rt_monitor_try_enter_for(void *obj, int64_t ms) {
             pthread_mutex_unlock(&m->mu);
             if (rt_obj_release_check0(obj))
                 rt_obj_free(obj);
+            return 0;
+        }
+        if (rc != 0) {
+            monitor_remove_acq(m, &w);
+            pthread_cond_destroy(&w.cv);
+            pthread_mutex_unlock(&m->mu);
+            if (rt_obj_release_check0(obj))
+                rt_obj_free(obj);
+            rt_trap("Monitor.Enter: condition wait failed");
             return 0;
         }
         if (w.state == RT_MON_WAITER_CANCELLED) {

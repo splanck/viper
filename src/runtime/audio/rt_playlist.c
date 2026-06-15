@@ -84,7 +84,7 @@ static void generate_shuffle_order(playlist_impl *pl) {
     void *new_order = NULL;
     int64_t *indices = NULL;
     int64_t count = rt_seq_len(pl->tracks);
-    if (count == 0) {
+    if (count <= 0) {
         if (pl->shuffle_order) {
             if (rt_obj_release_check0(pl->shuffle_order))
                 rt_obj_free(pl->shuffle_order);

@@ -696,7 +696,8 @@ void *rt_pixels_blur(void *pixels, int64_t radius) {
 
     // Separable box blur: horizontal pass → temp, then vertical pass → result.
     // Reduces O(w×h×(2r+1)²) to O(w×h×(2r+1)×2).  Format: 0xRRGGBBAA.
-    uint32_t *tmp = (uint32_t *)malloc((size_t)(w * h) * sizeof(uint32_t));
+    size_t pixel_count = (size_t)w * (size_t)h;
+    uint32_t *tmp = (uint32_t *)malloc(pixel_count * sizeof(uint32_t));
     if (!tmp)
         return NULL;
 

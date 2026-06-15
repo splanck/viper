@@ -70,9 +70,10 @@ static int fbx_mesh_remaps_append(fbx_mesh_remap_t **remaps,
     fbx_mesh_remap_t *grown;
     if (!remaps || !count || !remap || *count < 0 || *count == INT32_MAX)
         return 0;
-    if ((size_t)(*count + 1) > SIZE_MAX / sizeof(**remaps))
+    size_t next_count = (size_t)(*count + 1);
+    if (next_count > SIZE_MAX / sizeof(**remaps))
         return 0;
-    grown = (fbx_mesh_remap_t *)realloc(*remaps, (size_t)(*count + 1) * sizeof(**remaps));
+    grown = (fbx_mesh_remap_t *)realloc(*remaps, next_count * sizeof(**remaps));
     if (!grown)
         return 0;
     *remaps = grown;

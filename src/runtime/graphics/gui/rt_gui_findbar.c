@@ -73,9 +73,9 @@ static int rt_findbar_register_wrapper(rt_findbar_data_t *data) {
     }
     if (s_findbar_wrapper_count >= s_findbar_wrapper_cap) {
         size_t new_cap = s_findbar_wrapper_cap ? s_findbar_wrapper_cap * 2 : 8;
-        if (new_cap < s_findbar_wrapper_cap || new_cap > SIZE_MAX / sizeof(*s_findbar_wrappers))
+        if (new_cap < s_findbar_wrapper_cap || new_cap > SIZE_MAX / sizeof(rt_findbar_data_t *))
             return 0;
-        void *p = realloc(s_findbar_wrappers, new_cap * sizeof(*s_findbar_wrappers));
+        void *p = realloc(s_findbar_wrappers, new_cap * sizeof(rt_findbar_data_t *));
         if (!p)
             return 0;
         s_findbar_wrappers = (rt_findbar_data_t **)p;

@@ -52,7 +52,9 @@ TEST(PlatformImportPlanners, LinuxPlannerClassifiesNeededLibraries) {
     LinuxImportPlan plan;
     std::ostringstream err;
     ASSERT_TRUE(planLinuxImports(
-        {"cbrtf", "cos", "dlopen", "pthread_create", "XOpenDisplay", "snd_pcm_open"}, plan, err));
+        {"cbrtf", "cos", "dlopen", "exp10", "pthread_create", "XOpenDisplay", "snd_pcm_open"},
+        plan,
+        err));
     EXPECT_EQ(std::vector<std::string>({"libc.so.6",
                                         "libm.so.6",
                                         "libdl.so.2",
@@ -114,16 +116,18 @@ TEST(PlatformImportPlanners, MacPlannerMapsDarwinArgvAccessorsToLibSystem) {
     EXPECT_EQ(1u, plan.symOrdinals["_NSGetArgv"]);
 }
 
-TEST(PlatformImportPlanners, MacPlannerMapsCbrtfToLibSystem) {
+TEST(PlatformImportPlanners, MacPlannerMapsDarwinMathHelpersToLibSystem) {
     MacImportPlan plan;
     std::ostringstream err;
-    ASSERT_TRUE(planMacImports({"cbrtf", "__sincosf_stret"}, plan, err));
+    ASSERT_TRUE(planMacImports({"cbrtf", "___exp10", "__sincosf_stret"}, plan, err));
 
     EXPECT_TRUE(std::any_of(plan.dylibs.begin(), plan.dylibs.end(), [](const DylibImport &import) {
         return import.path == "/usr/lib/libSystem.B.dylib";
     }));
     ASSERT_TRUE(plan.symOrdinals.count("cbrtf") != 0);
     EXPECT_EQ(1u, plan.symOrdinals["cbrtf"]);
+    ASSERT_TRUE(plan.symOrdinals.count("___exp10") != 0);
+    EXPECT_EQ(1u, plan.symOrdinals["___exp10"]);
     ASSERT_TRUE(plan.symOrdinals.count("__sincosf_stret") != 0);
     EXPECT_EQ(1u, plan.symOrdinals["__sincosf_stret"]);
 }

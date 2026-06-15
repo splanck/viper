@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/assets/rt_fbx_loader_scene.inc  (#included from rt_fbx_loader.c; not a standalone translation unit)
-// Purpose: FBX scene-graph extraction
+// File: src/runtime/graphics/3d/assets/rt_fbx_loader_scene.inc  (#included from rt_fbx_loader.c;
+// not a standalone translation unit) Purpose: FBX scene-graph extraction
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Scene graph extraction
@@ -150,16 +150,12 @@ static void fbx_read_model_transform_components(fbx_node_t *model_node,
         out->post_rotation[i] = fbx_sanitize_rotation_degrees(out->post_rotation[i]);
         out->rotation_offset[i] =
             fbx_clamp_abs_or(out->rotation_offset[i], 0.0, FBX_NUMERIC_ABS_MAX);
-        out->rotation_pivot[i] =
-            fbx_clamp_abs_or(out->rotation_pivot[i], 0.0, FBX_NUMERIC_ABS_MAX);
-        out->scaling_offset[i] =
-            fbx_clamp_abs_or(out->scaling_offset[i], 0.0, FBX_NUMERIC_ABS_MAX);
-        out->scaling_pivot[i] =
-            fbx_clamp_abs_or(out->scaling_pivot[i], 0.0, FBX_NUMERIC_ABS_MAX);
+        out->rotation_pivot[i] = fbx_clamp_abs_or(out->rotation_pivot[i], 0.0, FBX_NUMERIC_ABS_MAX);
+        out->scaling_offset[i] = fbx_clamp_abs_or(out->scaling_offset[i], 0.0, FBX_NUMERIC_ABS_MAX);
+        out->scaling_pivot[i] = fbx_clamp_abs_or(out->scaling_pivot[i], 0.0, FBX_NUMERIC_ABS_MAX);
         out->geometric_translation[i] =
             fbx_clamp_abs_or(out->geometric_translation[i], 0.0, FBX_NUMERIC_ABS_MAX);
-        out->geometric_rotation[i] =
-            fbx_sanitize_rotation_degrees(out->geometric_rotation[i]);
+        out->geometric_rotation[i] = fbx_sanitize_rotation_degrees(out->geometric_rotation[i]);
         out->geometric_scale[i] = fbx_scale_or_unit(out->geometric_scale[i]);
     }
 }
@@ -184,10 +180,8 @@ static void fbx_mat4_mul_local(const double a[16], const double b[16], double ou
     double r[16];
     for (int row = 0; row < 4; row++) {
         for (int col = 0; col < 4; col++) {
-            r[row * 4 + col] = a[row * 4 + 0] * b[0 * 4 + col] +
-                               a[row * 4 + 1] * b[1 * 4 + col] +
-                               a[row * 4 + 2] * b[2 * 4 + col] +
-                               a[row * 4 + 3] * b[3 * 4 + col];
+            r[row * 4 + col] = a[row * 4 + 0] * b[0 * 4 + col] + a[row * 4 + 1] * b[1 * 4 + col] +
+                               a[row * 4 + 2] * b[2 * 4 + col] + a[row * 4 + 3] * b[3 * 4 + col];
         }
     }
     memcpy(out, r, sizeof(r));
@@ -319,12 +313,40 @@ static void fbx_mat4_euler_degrees(const double xyz_degrees[3],
 /// @param matrix Row-major matrix updated in place.
 static void fbx_mat4_apply_zup(double matrix[16]) {
     static const double c[16] = {
-        1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
-        0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        -1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
     };
     static const double c_inv[16] = {
-        1.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0,
-        0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
     };
     double tmp[16];
     if (!matrix)
@@ -357,9 +379,11 @@ static void fbx_build_model_transform_matrix(const fbx_transform_components_t *c
                              step);
     fbx_mat4_append_local(out, step);
 
-    fbx_mat4_translate_local(c->rotation_offset[0], c->rotation_offset[1], c->rotation_offset[2], step);
+    fbx_mat4_translate_local(
+        c->rotation_offset[0], c->rotation_offset[1], c->rotation_offset[2], step);
     fbx_mat4_append_local(out, step);
-    fbx_mat4_translate_local(c->rotation_pivot[0], c->rotation_pivot[1], c->rotation_pivot[2], step);
+    fbx_mat4_translate_local(
+        c->rotation_pivot[0], c->rotation_pivot[1], c->rotation_pivot[2], step);
     fbx_mat4_append_local(out, step);
     if (c->rotation_active) {
         fbx_mat4_euler_degrees(c->pre_rotation, c->rotation_order, step);
@@ -378,7 +402,8 @@ static void fbx_build_model_transform_matrix(const fbx_transform_components_t *c
     fbx_mat4_translate_local(neg[0], neg[1], neg[2], step);
     fbx_mat4_append_local(out, step);
 
-    fbx_mat4_translate_local(c->scaling_offset[0], c->scaling_offset[1], c->scaling_offset[2], step);
+    fbx_mat4_translate_local(
+        c->scaling_offset[0], c->scaling_offset[1], c->scaling_offset[2], step);
     fbx_mat4_append_local(out, step);
     fbx_mat4_translate_local(c->scaling_pivot[0], c->scaling_pivot[1], c->scaling_pivot[2], step);
     fbx_mat4_append_local(out, step);
@@ -392,8 +417,7 @@ static void fbx_build_model_transform_matrix(const fbx_transform_components_t *c
 
     fbx_mat4_euler_degrees(c->geometric_rotation, c->rotation_order, step);
     fbx_mat4_append_local(out, step);
-    fbx_mat4_scale_local(
-        c->geometric_scale[0], c->geometric_scale[1], c->geometric_scale[2], step);
+    fbx_mat4_scale_local(c->geometric_scale[0], c->geometric_scale[1], c->geometric_scale[2], step);
     fbx_mat4_append_local(out, step);
 }
 
@@ -529,10 +553,7 @@ static int fbx_read_child_matrix16(fbx_node_t *node, const char *child_name, dou
 /// @param pos Receives XYZ translation when non-NULL.
 /// @param quat Receives XYZW quaternion when non-NULL.
 /// @param scale Receives XYZ scale when non-NULL.
-static void fbx_decompose_matrix_trs(const double m[16],
-                                     double *pos,
-                                     double *quat,
-                                     double *scale) {
+static void fbx_decompose_matrix_trs(const double m[16], double *pos, double *quat, double *scale) {
     double sx;
     double sy;
     double sz;
@@ -572,8 +593,7 @@ static void fbx_decompose_matrix_trs(const double m[16],
     sx = fbx_scale_or_unit(sx);
     sy = fbx_scale_or_unit(sy);
     sz = fbx_scale_or_unit(sz);
-    det = m[0] * (m[5] * m[10] - m[6] * m[9]) -
-          m[1] * (m[4] * m[10] - m[6] * m[8]) +
+    det = m[0] * (m[5] * m[10] - m[6] * m[9]) - m[1] * (m[4] * m[10] - m[6] * m[8]) +
           m[2] * (m[4] * m[9] - m[5] * m[8]);
     if (isfinite(det) && det < 0.0)
         sx = -sx;
@@ -922,12 +942,12 @@ static void *fbx_build_scene_root(fbx_node_t *root,
                         model_material_capacity == 0 ? 4 : model_material_capacity * 2;
                     void **grown;
                     if (model_material_capacity > INT32_MAX / 2 ||
-                        (size_t)new_capacity > SIZE_MAX / sizeof(*model_materials)) {
+                        (size_t)new_capacity > SIZE_MAX / sizeof(void *)) {
                         failed = 1;
                         break;
                     }
                     grown =
-                        (void **)realloc(model_materials, (size_t)new_capacity * sizeof(*grown));
+                        (void **)realloc(model_materials, (size_t)new_capacity * sizeof(void *));
                     if (!grown) {
                         failed = 1;
                         break;

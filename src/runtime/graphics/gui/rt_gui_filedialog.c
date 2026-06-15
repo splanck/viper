@@ -475,9 +475,9 @@ static int rt_filedialog_register_wrapper(rt_filedialog_data_t *data) {
     if (s_filedialog_wrapper_count >= s_filedialog_wrapper_cap) {
         size_t new_cap = s_filedialog_wrapper_cap ? s_filedialog_wrapper_cap * 2 : 8;
         if (new_cap < s_filedialog_wrapper_cap ||
-            new_cap > SIZE_MAX / sizeof(*s_filedialog_wrappers))
+            new_cap > SIZE_MAX / sizeof(rt_filedialog_data_t *))
             return 0;
-        void *p = realloc(s_filedialog_wrappers, new_cap * sizeof(*s_filedialog_wrappers));
+        void *p = realloc(s_filedialog_wrappers, new_cap * sizeof(rt_filedialog_data_t *));
         if (!p)
             return 0;
         s_filedialog_wrappers = (rt_filedialog_data_t **)p;

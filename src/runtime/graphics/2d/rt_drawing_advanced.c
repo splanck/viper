@@ -1305,7 +1305,8 @@ static int8_t rt_canvas_path_points(void *path,
     if ((uint64_t)count > SIZE_MAX / (2u * sizeof(int64_t)))
         return 0;
 
-    int64_t *points = (int64_t *)malloc((size_t)count * 2u * sizeof(int64_t));
+    size_t point_values = (size_t)count * 2u;
+    int64_t *points = (int64_t *)malloc(point_values * sizeof(int64_t));
     if (!points)
         return 0;
     for (int64_t i = 0; i < count; ++i) {
@@ -1427,12 +1428,15 @@ void rt_canvas_gradient_h(
         return;
 
     int64_t draw_w = px1 - px0;
-    uint8_t *row_buf = (uint8_t *)malloc((size_t)draw_w * 4u);
+    if ((uint64_t)draw_w > SIZE_MAX / 4u)
+        return;
+    size_t row_bytes = (size_t)draw_w * 4u;
+    uint8_t *row_buf = (uint8_t *)malloc(row_bytes);
     if (!row_buf)
         return;
 
     int64_t w_minus1 = orig_w > 1 ? orig_w - 1 : 1;
-    memset(row_buf, 0, (size_t)draw_w * 4u);
+    memset(row_buf, 0, row_bytes);
     for (int64_t col = 0; col < w; col++) {
         int64_t logical_x = rtg_add_sat64(x, col);
         int64_t col_px0 = rtg_scale_up_i64(logical_x, scale);

@@ -36,6 +36,7 @@
 #include "rt_ring.h"
 
 #include "rt_collection_ids.h"
+#include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 
@@ -66,6 +67,25 @@ static rt_ring_impl *as_ring(void *obj, const char *what) {
 static void ring_release_value(void *value) {
     if (value && rt_obj_release_check0(value))
         rt_obj_free(value);
+}
+
+/// @brief GC traversal callback for owned Ring elements.
+/// @details The Ring retains stored elements when `owns_elements` is true, so
+///          every live slot must be reported to the cycle collector. Borrowed
+///          rings skip traversal to match their non-owning lifetime contract.
+/// @param obj Ring object being traversed.
+/// @param visitor Collector visitor callback.
+/// @param ctx Collector-provided callback context.
+static void rt_ring_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    if (!obj || !visitor)
+        return;
+    rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
+    if (!ring || !ring->owns_elements || !ring->items || ring->capacity == 0)
+        return;
+    for (size_t i = 0; i < ring->count; i++) {
+        size_t idx = (ring->head + i) % ring->capacity;
+        visitor(ring->items[idx], ctx);
+    }
 }
 
 /// @brief Finalizer callback invoked by the garbage collector when a Ring is collected.
@@ -162,6 +182,7 @@ void *rt_ring_new(int64_t capacity) {
     ring->count = 0;
     ring->owns_elements = 1;
     rt_obj_set_finalizer(ring, rt_ring_finalize);
+    rt_gc_track(ring, rt_ring_traverse);
     return ring;
 }
 

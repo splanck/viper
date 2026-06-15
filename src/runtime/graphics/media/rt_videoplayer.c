@@ -27,7 +27,9 @@
 #include "rt_videoplayer.h"
 #include "../audio/rt_ogg.h"
 #include "rt_avi.h"
+#include "rt_bytes.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_file_ext.h"
 #include "rt_object.h"
 #include "rt_string.h"
 #include "rt_theora.h"
@@ -37,15 +39,15 @@
 #endif
 
 #include <math.h>
+#include <setjmp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#if !defined(_WIN32)
-#include <sys/types.h>
-#endif
 
 #include "rt_trap.h"
+extern void rt_trap_set_recovery(jmp_buf *buf);
+extern void rt_trap_clear_recovery(void);
 extern const char *rt_string_cstr(rt_string str);
 extern void *rt_pixels_new(int64_t width, int64_t height);
 extern int64_t rt_pixels_width(void *pixels);
@@ -121,14 +123,55 @@ static int videoplayer_copy_decoded_frame(void *frame_display, void *decoded) {
     return 1;
 }
 
-// Keep video file loading large-file safe on platforms where long is 32-bit.
-#if defined(_WIN32)
-#define video_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
-#define video_ftell(fp) _ftelli64((fp))
-#else
-#define video_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
-#define video_ftell(fp) ftello((fp))
-#endif
+/// @brief Read a video file through the runtime I/O layer into owned memory.
+/// @details The player stores the returned buffer and frees it in its finalizer.
+///          This helper copies from the Bytes object returned by
+///          `rt_io_file_read_all_bytes`, preserving that ownership model and
+///          using the runtime's cross-platform path handling. Runtime file I/O
+///          traps are recovered here so `rt_videoplayer_open` can preserve its
+///          existing NULL-on-load-failure behavior.
+/// @param path Runtime string path.
+/// @param out_len Receives the byte count on success.
+/// @return malloc-owned file bytes, or NULL on I/O, size, or allocation failure.
+static uint8_t *videoplayer_read_file_bytes(rt_string path, size_t *out_len) {
+    if (out_len)
+        *out_len = 0;
+    if (!path || !out_len)
+        return NULL;
+
+    void *bytes = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_trap_clear_recovery();
+        return NULL;
+    }
+    bytes = rt_io_file_read_all_bytes(path);
+    rt_trap_clear_recovery();
+    if (!bytes)
+        return NULL;
+
+    int64_t len_i64 = rt_bytes_len(bytes);
+    if (len_i64 <= 12 || len_i64 > INT64_C(512) * 1024 * 1024 ||
+        (uint64_t)len_i64 > (uint64_t)SIZE_MAX) {
+        if (rt_obj_release_check0(bytes))
+            rt_obj_free(bytes);
+        return NULL;
+    }
+
+    size_t len = (size_t)len_i64;
+    const uint8_t *src = rt_bytes_data_const(bytes);
+    uint8_t *copy = src ? (uint8_t *)malloc(len) : NULL;
+    if (copy)
+        memcpy(copy, src, len);
+    if (rt_obj_release_check0(bytes))
+        rt_obj_free(bytes);
+    if (!copy)
+        return NULL;
+
+    *out_len = len;
+    return copy;
+}
 
 /*==========================================================================
  * Standard JPEG DHT tables (Annex K of ITU-T T.81)
@@ -1120,41 +1163,11 @@ void *rt_videoplayer_open(rt_string path) {
     if (!path)
         return NULL;
 
-    const char *filepath = rt_string_cstr(path);
-    if (!filepath)
-        return NULL;
-
     /* Read entire file into memory */
-    FILE *f = fopen(filepath, "rb");
-    if (!f)
+    size_t file_len = 0;
+    uint8_t *data = videoplayer_read_file_bytes(path, &file_len);
+    if (!data)
         return NULL;
-
-    if (video_fseek(f, 0, SEEK_END) != 0) {
-        fclose(f);
-        return NULL;
-    }
-    int64_t file_len = video_ftell(f);
-    if (video_fseek(f, 0, SEEK_SET) != 0) {
-        fclose(f);
-        return NULL;
-    }
-
-    if (file_len <= 12 || file_len > INT64_C(512) * 1024 * 1024) { /* 512 MB limit */
-        fclose(f);
-        return NULL;
-    }
-
-    uint8_t *data = (uint8_t *)malloc((size_t)file_len);
-    if (!data) {
-        fclose(f);
-        return NULL;
-    }
-    if (fread(data, 1, (size_t)file_len, f) != (size_t)file_len) {
-        free(data);
-        fclose(f);
-        return NULL;
-    }
-    fclose(f);
 
     /* Detect container format by magic bytes */
     int is_ogg =
@@ -1180,7 +1193,7 @@ void *rt_videoplayer_open(rt_string path) {
         *vp = zero;
     }
     vp->file_data = data;
-    vp->file_len = (size_t)file_len;
+    vp->file_len = file_len;
     vp->playing = 0;
     vp->position = 0.0;
     vp->current_frame = -1;

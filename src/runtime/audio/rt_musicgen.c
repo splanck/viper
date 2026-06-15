@@ -1179,6 +1179,10 @@ void *rt_musicgen_build(void *song_ptr) {
         mg_note_t *notes = chan->notes;
         mg_note_t *sorted_notes = NULL;
         if (chan->note_count > 1) {
+            if ((size_t)chan->note_count > SIZE_MAX / sizeof(mg_note_t)) {
+                free(accum);
+                return NULL;
+            }
             sorted_notes = (mg_note_t *)malloc((size_t)chan->note_count * sizeof(mg_note_t));
             if (!sorted_notes) {
                 free(accum);
@@ -1207,6 +1211,10 @@ void *rt_musicgen_build(void *song_ptr) {
     }
 
     /* Soft-clip to 16-bit stereo */
+    if ((size_t)total_frames > SIZE_MAX / 2u) {
+        free(accum);
+        return NULL;
+    }
     size_t pcm_count = (size_t)total_frames * 2;
     if (pcm_count > SIZE_MAX / sizeof(int16_t)) {
         free(accum);

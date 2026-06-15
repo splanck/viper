@@ -38,8 +38,8 @@
 #include "rt_scene3d_internal.h"
 #include "rt_scene3d_vscn_internal.h"
 #include "rt_seq.h"
-#include "rt_string.h"
 #include "rt_skeleton3d_internal.h"
+#include "rt_string.h"
 #include "rt_trap.h"
 
 #include <math.h>
@@ -408,19 +408,20 @@ static int vscn_collect_node_assets(rt_scene_node3d *node, vscn_save_context_t *
                 return 0;
             }
         }
-        for (int32_t i = 0, child_count = scene3d_node_child_count(current); i < child_count;
-             i++) {
+        for (int32_t i = 0, child_count = scene3d_node_child_count(current); i < child_count; i++) {
             rt_scene_node3d *child = scene_node3d_checked(current->children[i]);
             if (!child)
                 continue;
             if (count >= capacity) {
                 size_t new_capacity = capacity * 2u;
                 rt_scene_node3d **grown;
-                if (new_capacity <= capacity || new_capacity > SIZE_MAX / sizeof(*stack)) {
+                if (new_capacity <= capacity ||
+                    new_capacity > SIZE_MAX / sizeof(rt_scene_node3d *)) {
                     free(stack);
                     return 0;
                 }
-                grown = (rt_scene_node3d **)realloc(stack, new_capacity * sizeof(*stack));
+                grown =
+                    (rt_scene_node3d **)realloc(stack, new_capacity * sizeof(rt_scene_node3d *));
                 if (!grown) {
                     free(stack);
                     return 0;
@@ -529,17 +530,16 @@ static int vscn_serialize_material(rt_material3d *material,
         return 0;
     vscn_make_indent(indent, sizeof(indent), depth);
 
-    const int texture_index =
-        vscn_ptr_table_index_or_add(&ctx->textures, vscn_material_texture_pixels(material->texture));
+    const int texture_index = vscn_ptr_table_index_or_add(
+        &ctx->textures, vscn_material_texture_pixels(material->texture));
     const int normal_index = vscn_ptr_table_index_or_add(
         &ctx->textures, vscn_material_texture_pixels(material->normal_map));
     const int specular_index = vscn_ptr_table_index_or_add(
         &ctx->textures, vscn_material_texture_pixels(material->specular_map));
     const int emissive_index = vscn_ptr_table_index_or_add(
         &ctx->textures, vscn_material_texture_pixels(material->emissive_map));
-    const int metallic_roughness_index =
-        vscn_ptr_table_index_or_add(&ctx->textures,
-                                    vscn_material_texture_pixels(material->metallic_roughness_map));
+    const int metallic_roughness_index = vscn_ptr_table_index_or_add(
+        &ctx->textures, vscn_material_texture_pixels(material->metallic_roughness_map));
     const int ao_index =
         vscn_ptr_table_index_or_add(&ctx->textures, vscn_material_texture_pixels(material->ao_map));
     const int env_index =
@@ -915,7 +915,8 @@ static int vscn_save_emit_cubemaps(char **buf, size_t *len, size_t *cap, vscn_sa
     if (!vscn_append(buf, len, cap, "  \"cubemaps\": [\n"))
         return 0;
     for (int32_t i = 0; i < ctx->cubemaps.count; i++) {
-        if (!vscn_serialize_cubemap((rt_cubemap3d *)ctx->cubemaps.items[i], ctx, buf, len, cap, 2) ||
+        if (!vscn_serialize_cubemap(
+                (rt_cubemap3d *)ctx->cubemaps.items[i], ctx, buf, len, cap, 2) ||
             (i < ctx->cubemaps.count - 1 && !vscn_append(buf, len, cap, ",")) ||
             !vscn_append(buf, len, cap, "\n"))
             return 0;
@@ -924,7 +925,10 @@ static int vscn_save_emit_cubemaps(char **buf, size_t *len, size_t *cap, vscn_sa
 }
 
 /// @brief Emit the `"materials": [ ... ],` array. @return 1 on success, 0 on append failure.
-static int vscn_save_emit_materials(char **buf, size_t *len, size_t *cap, vscn_save_context_t *ctx) {
+static int vscn_save_emit_materials(char **buf,
+                                    size_t *len,
+                                    size_t *cap,
+                                    vscn_save_context_t *ctx) {
     if (!vscn_append(buf, len, cap, "  \"materials\": [\n"))
         return 0;
     for (int32_t i = 0; i < ctx->materials.count; i++) {
@@ -966,8 +970,7 @@ static int vscn_save_emit_nodes(
             continue;
         if (emitted > 0 && !vscn_append(buf, len, cap, ","))
             return 0;
-        if (!vscn_serialize_node(child, ctx, buf, len, cap, 2) ||
-            !vscn_append(buf, len, cap, "\n"))
+        if (!vscn_serialize_node(child, ctx, buf, len, cap, 2) || !vscn_append(buf, len, cap, "\n"))
             return 0;
         emitted++;
     }

@@ -431,9 +431,9 @@ static int rt_minimap_register_wrapper(rt_minimap_data_t *data) {
     }
     if (s_minimap_wrapper_count >= s_minimap_wrapper_cap) {
         size_t new_cap = s_minimap_wrapper_cap ? s_minimap_wrapper_cap * 2 : 8;
-        if (new_cap < s_minimap_wrapper_cap || new_cap > SIZE_MAX / sizeof(*s_minimap_wrappers))
+        if (new_cap < s_minimap_wrapper_cap || new_cap > SIZE_MAX / sizeof(rt_minimap_data_t *))
             return 0;
-        void *p = realloc(s_minimap_wrappers, new_cap * sizeof(*s_minimap_wrappers));
+        void *p = realloc(s_minimap_wrappers, new_cap * sizeof(rt_minimap_data_t *));
         if (!p)
             return 0;
         s_minimap_wrappers = (rt_minimap_data_t **)p;

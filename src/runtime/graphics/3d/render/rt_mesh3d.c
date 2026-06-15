@@ -528,12 +528,14 @@ static int mesh3d_reserve_storage(rt_mesh3d *m,
             return 0;
         }
         if (m->positions64) {
+            size_t position_values;
             if ((size_t)vertex_capacity > SIZE_MAX / (3u * sizeof(double))) {
                 snprintf(msg, sizeof(msg), "%s: position sidecar allocation overflow", label);
                 rt_trap(msg);
                 return 0;
             }
-            np = (double *)realloc(m->positions64, (size_t)vertex_capacity * 3u * sizeof(double));
+            position_values = (size_t)vertex_capacity * 3u;
+            np = (double *)realloc(m->positions64, position_values * sizeof(double));
             if (!np) {
                 snprintf(msg, sizeof(msg), "%s: memory allocation failed", label);
                 rt_trap(msg);

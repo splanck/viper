@@ -715,7 +715,7 @@ void rt_codeeditor_set_custom_keywords(void *editor, rt_string keywords) {
 
         if (*token) {
             if (new_count >= cap) {
-                if (cap > INT_MAX / 2 || (size_t)cap * 2 > SIZE_MAX / sizeof(*new_keywords)) {
+                if (cap > INT_MAX / 2 || (size_t)cap * 2 > SIZE_MAX / sizeof(char *)) {
                     ok = 0;
                     break;
                 }

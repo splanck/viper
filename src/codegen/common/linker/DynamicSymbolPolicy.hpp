@@ -156,6 +156,9 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
     if (isKnownCompilerRuntimeDynamicSymbol(name, platform))
         return true;
 
+    if ((platform == LinkPlatform::macOS || platform == LinkPlatform::Linux) && stripped == "exp10")
+        return true;
+
     static const char *const kDynSymExact[] = {
         // libSystem ctype data/helpers referenced by libc++ <locale>/<sstream>
         // (pulled in by the embedded C++ frontend). Both raw and de-underscored

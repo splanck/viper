@@ -37,6 +37,7 @@
 #include "rt_trap.h"
 
 #include <limits.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -98,6 +99,34 @@ static rt_pathfinder_impl *checked_pathfinder(void *ptr, const char *api) {
     return (rt_pathfinder_impl *)ptr;
 }
 
+/// @brief Compute a checked cell count for a rectangular pathfinder grid.
+/// @details Keeps allocation sites safe even if the public dimension cap is
+///          changed later. The product must fit both `int32_t` indexing and
+///          `size_t` allocation math.
+/// @param w Grid width in cells.
+/// @param h Grid height in cells.
+/// @param out_count Receives `w * h` on success.
+/// @return 1 when the product is representable, 0 otherwise.
+static int8_t pf_checked_cell_count(int32_t w, int32_t h, int32_t *out_count) {
+    if (w <= 0 || h <= 0 || !out_count)
+        return 0;
+    if ((size_t)w > (size_t)INT32_MAX / (size_t)h)
+        return 0;
+    size_t total = (size_t)w * (size_t)h;
+    if (total > (size_t)INT32_MAX)
+        return 0;
+    *out_count = (int32_t)total;
+    return 1;
+}
+
+/// @brief Return true when @p count elements of @p elem_size fit in `size_t`.
+/// @param count Signed element count from pathfinder indexing.
+/// @param elem_size Size of one element.
+/// @return 1 when `count * elem_size` cannot overflow, 0 otherwise.
+static int8_t pf_allocation_count_ok(int32_t count, size_t elem_size) {
+    return count >= 0 && (elem_size == 0 || (size_t)count <= SIZE_MAX / elem_size);
+}
+
 //=============================================================================
 // GC Finalizer
 //=============================================================================
@@ -126,7 +155,12 @@ static rt_pathfinder_impl *pf_alloc(int32_t w, int32_t h) {
     if (!pf)
         return NULL;
 
-    int32_t count = w * h;
+    int32_t count;
+    if (!pf_checked_cell_count(w, h, &count) || !pf_allocation_count_ok(count, sizeof(pf_cell))) {
+        if (rt_obj_release_check0(pf))
+            rt_obj_free(pf);
+        return NULL;
+    }
     pf->cells = (pf_cell *)malloc((size_t)count * sizeof(pf_cell));
     if (!pf->cells) {
         if (rt_obj_release_check0(pf))
@@ -481,7 +515,10 @@ static void *pf_build_path(pf_node *nodes, int32_t goal_idx, int32_t width) {
     }
 
     // Build reversed array
-    int32_t *coords = (int32_t *)malloc((size_t)len * 2 * sizeof(int32_t));
+    if (len < 0 || len > INT32_MAX / 2 || (size_t)len > SIZE_MAX / (2u * sizeof(int32_t)))
+        return rt_list_new();
+    size_t coord_values = (size_t)len * 2u;
+    int32_t *coords = (int32_t *)malloc(coord_values * sizeof(int32_t));
     if (!coords)
         return rt_list_new();
 
@@ -571,7 +608,9 @@ static void *pf_astar(rt_pathfinder_impl *pf,
         return list;
     }
 
-    int32_t total = pf->width * pf->height;
+    int32_t total;
+    if (!pf_checked_cell_count(pf->width, pf->height, &total))
+        return cost_only ? NULL : rt_list_new();
     int64_t min_cost = PF_COST_CARDINAL;
     for (int32_t i = 0; i < total; i++) {
         if (pf->cells[i].walkable && pf->cells[i].cost > 0 && pf->cells[i].cost < min_cost)
@@ -579,6 +618,8 @@ static void *pf_astar(rt_pathfinder_impl *pf,
     }
 
     // Allocate per-search arrays
+    if (!pf_allocation_count_ok(total, sizeof(pf_node)))
+        return cost_only ? NULL : rt_list_new();
     pf_node *nodes = (pf_node *)calloc((size_t)total, sizeof(pf_node));
     if (!nodes)
         return cost_only ? NULL : rt_list_new();
@@ -594,6 +635,10 @@ static void *pf_astar(rt_pathfinder_impl *pf,
 
     // Heap
     pf_heap heap;
+    if (!pf_allocation_count_ok(total, sizeof(int32_t))) {
+        free(nodes);
+        return cost_only ? NULL : rt_list_new();
+    }
     heap.data = (int32_t *)malloc((size_t)total * sizeof(int32_t));
     heap.position = (int32_t *)malloc((size_t)total * sizeof(int32_t));
     heap.count = 0;
@@ -765,7 +810,12 @@ void *rt_pathfinder_find_nearest(void *ptr, int64_t sx, int64_t sy, int64_t targ
     if (!pf->cells[start].walkable)
         return rt_list_new();
 
-    int32_t total = pf->width * pf->height;
+    int32_t total;
+    if (!pf_checked_cell_count(pf->width, pf->height, &total))
+        return rt_list_new();
+    if (!pf_allocation_count_ok(total, sizeof(pf_node)) ||
+        !pf_allocation_count_ok(total, sizeof(int32_t)))
+        return rt_list_new();
     pf_node *nodes = (pf_node *)calloc((size_t)total, sizeof(pf_node));
     int32_t *queue = (int32_t *)malloc((size_t)total * sizeof(int32_t));
     if (!nodes || !queue) {

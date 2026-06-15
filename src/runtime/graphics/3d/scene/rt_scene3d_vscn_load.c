@@ -85,11 +85,12 @@ static int32_t scene3d_count_subtree(const rt_scene_node3d *node) {
         if (count >= capacity) {
             size_t new_capacity = capacity > 0 ? capacity * 2u : 64u;
             const rt_scene_node3d **grown;
-            if (new_capacity <= capacity || new_capacity > SIZE_MAX / sizeof(*stack)) {
+            if (new_capacity <= capacity || new_capacity > SIZE_MAX / sizeof(rt_scene_node3d *)) {
                 free(stack);
                 return INT32_MAX;
             }
-            grown = (const rt_scene_node3d **)realloc((void *)stack, new_capacity * sizeof(*stack));
+            grown = (const rt_scene_node3d **)realloc((void *)stack,
+                                                      new_capacity * sizeof(rt_scene_node3d *));
             if (!grown) {
                 free(stack);
                 return -1;
@@ -112,12 +113,13 @@ static int32_t scene3d_count_subtree(const rt_scene_node3d *node) {
             if (count >= capacity) {
                 size_t new_capacity = capacity > 0 ? capacity * 2u : 64u;
                 const rt_scene_node3d **grown;
-                if (new_capacity <= capacity || new_capacity > SIZE_MAX / sizeof(*stack)) {
+                if (new_capacity <= capacity ||
+                    new_capacity > SIZE_MAX / sizeof(rt_scene_node3d *)) {
                     free(stack);
                     return INT32_MAX;
                 }
-                grown =
-                    (const rt_scene_node3d **)realloc((void *)stack, new_capacity * sizeof(*stack));
+                grown = (const rt_scene_node3d **)realloc((void *)stack,
+                                                          new_capacity * sizeof(rt_scene_node3d *));
                 if (!grown) {
                     free(stack);
                     return -1;

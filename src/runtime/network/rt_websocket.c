@@ -732,6 +732,8 @@ static int ws_validate_handshake_response(const char *response,
     static const char WS_MAGIC[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
     size_t key_len = strlen(key_copy);
     size_t magic_len = sizeof(WS_MAGIC) - 1;
+    if (key_len > SIZE_MAX - magic_len - 1)
+        return 0;
     char *concat = (char *)malloc(key_len + magic_len + 1);
     if (!concat)
         return 0;

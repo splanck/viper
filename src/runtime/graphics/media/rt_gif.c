@@ -21,24 +21,17 @@
 
 #include "rt_gif.h"
 
+#include "rt_bytes.h"
+#include "rt_file_ext.h"
+#include "rt_object.h"
 #include "rt_pixels_internal.h"
 
 #include <limits.h>
+#include <setjmp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#if !defined(_WIN32)
-#include <sys/types.h>
-#endif
-
-#if defined(_WIN32)
-#define gif_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
-#define gif_ftell(fp) _ftelli64((fp))
-#else
-#define gif_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
-#define gif_ftell(fp) ftello((fp))
-#endif
 
 //===----------------------------------------------------------------------===//
 // GIF file reader
@@ -53,6 +46,64 @@ typedef struct {
 #define GIF_MAX_CANVAS_PIXELS ((size_t)64u * 1024u * 1024u)
 #define GIF_MAX_FILE_BYTES (INT64_C(100) * 1024 * 1024)
 #define GIF_MAX_DECODED_FRAME_BYTES ((size_t)512u * 1024u * 1024u)
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+
+/// @brief Read a GIF file through the runtime file API into decoder-owned memory.
+/// @details The decoder frees the returned buffer on every exit path. Reading
+///          through `rt_io_file_read_all_bytes` preserves that ownership and
+///          uses the runtime's cross-platform UTF-8 path handling. File I/O
+///          traps are recovered locally so `gif_decode_file` keeps its legacy
+///          return-0-on-open-failure contract.
+/// @param filepath UTF-8 filesystem path.
+/// @param out_len Receives the byte count on success.
+/// @return malloc-owned bytes, or NULL on I/O, size, or allocation failure.
+static uint8_t *gif_read_file_bytes(const char *filepath, size_t *out_len) {
+    if (out_len)
+        *out_len = 0;
+    if (!filepath || !out_len)
+        return NULL;
+
+    rt_string path = rt_string_from_bytes(filepath, strlen(filepath));
+    if (!path)
+        return NULL;
+
+    void *bytes = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_trap_clear_recovery();
+        rt_string_unref(path);
+        return NULL;
+    }
+    bytes = rt_io_file_read_all_bytes(path);
+    rt_trap_clear_recovery();
+    rt_string_unref(path);
+    if (!bytes)
+        return NULL;
+
+    int64_t len_i64 = rt_bytes_len(bytes);
+    if (len_i64 <= 0 || len_i64 > GIF_MAX_FILE_BYTES || (uint64_t)len_i64 > (uint64_t)SIZE_MAX) {
+        if (rt_obj_release_check0(bytes))
+            rt_obj_free(bytes);
+        return NULL;
+    }
+
+    size_t len = (size_t)len_i64;
+    const uint8_t *src = rt_bytes_data_const(bytes);
+    uint8_t *copy = src ? (uint8_t *)malloc(len) : NULL;
+    if (copy)
+        memcpy(copy, src, len);
+    if (rt_obj_release_check0(bytes))
+        rt_obj_free(bytes);
+    if (!copy)
+        return NULL;
+
+    *out_len = len;
+    return copy;
+}
+
 #define GIF_MAX_LZW_MIN_CODE_SIZE 8
 
 /// @brief Validate a GIF logical screen size and compute its pixel count.
@@ -415,7 +466,7 @@ static const int gif_interlace_step[4] = {8, 8, 4, 2};
 ///          in-memory decoder path (the same one used by VPA-embedded GIFs).
 ///          On success, @p out_frames is malloc'd and the caller must free it
 ///          (each contained Pixels object is GC-managed and released via
-///          rt_obj_release_check0). Failure modes (NULL paths, fopen failure,
+///          rt_obj_release_check0). Failure modes (NULL paths, read failure,
 ///          truncated files) all return 0 and leave outputs untouched.
 /// @param filepath        Filesystem path to the .gif file. Must be non-NULL.
 /// @param out_frames      Out: malloc'd array of decoded frames. Required.
@@ -431,37 +482,12 @@ int gif_decode_file(const char *filepath,
     if (!filepath || !out_frames || !out_frame_count)
         return 0;
 
-    FILE *f = fopen(filepath, "rb");
-    if (!f)
+    size_t file_len = 0;
+    uint8_t *file_data = gif_read_file_bytes(filepath, &file_len);
+    if (!file_data)
         return 0;
 
-    if (gif_fseek(f, 0, SEEK_END) != 0) {
-        fclose(f);
-        return 0;
-    }
-    int64_t file_len = (int64_t)gif_ftell(f);
-    if (file_len < 0 || gif_fseek(f, 0, SEEK_SET) != 0) {
-        fclose(f);
-        return 0;
-    }
-    if (file_len <= 0 || file_len > GIF_MAX_FILE_BYTES) {
-        fclose(f);
-        return 0;
-    }
-
-    uint8_t *file_data = (uint8_t *)malloc((size_t)file_len);
-    if (!file_data) {
-        fclose(f);
-        return 0;
-    }
-    if (fread(file_data, 1, (size_t)file_len, f) != (size_t)file_len) {
-        free(file_data);
-        fclose(f);
-        return 0;
-    }
-    fclose(f);
-
-    gif_reader_t reader = {file_data, (size_t)file_len, 0};
+    gif_reader_t reader = {file_data, file_len, 0};
     gif_reader_t *r = &reader;
 
     // Verify GIF signature

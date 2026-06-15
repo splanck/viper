@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/rt_game3d_cache.inc  (#included from rt_game3d.c; not a standalone translation unit)
-// Purpose: Game3D model-cache lifecycle: keys, residency estimation, victim selection and eviction
+// File: src/runtime/graphics/3d/rt_game3d_cache.inc  (#included from rt_game3d.c; not a standalone
+// translation unit) Purpose: Game3D model-cache lifecycle: keys, residency estimation, victim
+// selection and eviction
 //===----------------------------------------------------------------------===//
 
 #if defined(_WIN32)
@@ -585,9 +586,9 @@ static int game3d_scene_stack_push(rt_scene_node3d ***stack_io,
     if (count >= capacity) {
         size_t new_capacity = capacity * 2u;
         rt_scene_node3d **grown;
-        if (new_capacity <= capacity || new_capacity > SIZE_MAX / sizeof(*stack))
+        if (new_capacity <= capacity || new_capacity > SIZE_MAX / sizeof(rt_scene_node3d *))
             return 0;
-        grown = (rt_scene_node3d **)realloc(stack, new_capacity * sizeof(*stack));
+        grown = (rt_scene_node3d **)realloc(stack, new_capacity * sizeof(rt_scene_node3d *));
         if (!grown)
             return 0;
         stack = grown;
@@ -798,11 +799,11 @@ static rt_string game3d_model_cache_key_asset_path(rt_string path) {
             int32_t new_capacity = segment_capacity <= 0 ? 16 : segment_capacity * 2;
             char **grown;
             if (new_capacity < segment_capacity ||
-                (size_t)new_capacity > SIZE_MAX / sizeof(*grown)) {
+                (size_t)new_capacity > SIZE_MAX / sizeof(char *)) {
                 free(segments);
                 return rt_string_ref(path ? path : rt_const_cstr(""));
             }
-            grown = (char **)realloc(segments, (size_t)new_capacity * sizeof(*grown));
+            grown = (char **)realloc(segments, (size_t)new_capacity * sizeof(char *));
             if (!grown) {
                 free(segments);
                 return rt_string_ref(path ? path : rt_const_cstr(""));

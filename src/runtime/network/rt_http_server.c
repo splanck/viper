@@ -610,6 +610,18 @@ int rt_http_server_test_parse_request(const char *raw,
     if (body_out) {
         *body_out = NULL;
         if (req.body) {
+            if (req.body_len == SIZE_MAX) {
+                if (method_out && *method_out) {
+                    free(*method_out);
+                    *method_out = NULL;
+                }
+                if (path_out && *path_out) {
+                    free(*path_out);
+                    *path_out = NULL;
+                }
+                free_server_req(&req);
+                return 0;
+            }
             char *body_copy = (char *)malloc(req.body_len + 1);
             if (body_copy) {
                 memcpy(body_copy, req.body, req.body_len);

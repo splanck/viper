@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/nav/rt_navmesh3d_bake.inc  (#included from rt_navmesh3d.c; not a standalone translation unit)
-// Purpose: NavMesh3D versioned import/export and the from-scratch voxel bake pipeline
+// File: src/runtime/graphics/3d/nav/rt_navmesh3d_bake.inc  (#included from rt_navmesh3d.c; not a
+// standalone translation unit) Purpose: NavMesh3D versioned import/export and the from-scratch
+// voxel bake pipeline
 //===----------------------------------------------------------------------===//
 /// @brief Parse a VNAVMSH2 navmesh body (after its magic has been consumed) into a fresh
 ///   NavMesh3D, or NULL on malformed or oversized data.
@@ -101,12 +102,10 @@ static rt_navmesh3d *navmesh3d_import_v2_after_magic(FILE *f) {
             nav_offmesh_link_t *link = &nm->offmesh_links[i];
             uint8_t bidirectional = 0;
             rt_string kind = NULL;
-            if (!navmesh3d_read_f32(f, &link->from[0]) ||
-                !navmesh3d_read_f32(f, &link->from[1]) ||
-                !navmesh3d_read_f32(f, &link->from[2]) ||
-                !navmesh3d_read_f32(f, &link->to[0]) ||
-                !navmesh3d_read_f32(f, &link->to[1]) ||
-                !navmesh3d_read_f32(f, &link->to[2]) || !navmesh3d_read_u8(f, &bidirectional) ||
+            if (!navmesh3d_read_f32(f, &link->from[0]) || !navmesh3d_read_f32(f, &link->from[1]) ||
+                !navmesh3d_read_f32(f, &link->from[2]) || !navmesh3d_read_f32(f, &link->to[0]) ||
+                !navmesh3d_read_f32(f, &link->to[1]) || !navmesh3d_read_f32(f, &link->to[2]) ||
+                !navmesh3d_read_u8(f, &bidirectional) ||
                 !navmesh3d_read_i64(f, &link->state_flags) ||
                 !navmesh3d_read_f32(f, &link->traversal_cost) ||
                 !navmesh3d_read_string(f, &kind, NAVMESH3D_IMPORT_MAX_STRING_BYTES))
@@ -114,8 +113,7 @@ static rt_navmesh3d *navmesh3d_import_v2_after_magic(FILE *f) {
             link->bidirectional = bidirectional ? 1 : 0;
             link->from_tri = -1;
             link->to_tri = -1;
-            link->traversal_cost =
-                navmesh3d_sanitize_traversal_cost((double)link->traversal_cost);
+            link->traversal_cost = navmesh3d_sanitize_traversal_cost((double)link->traversal_cost);
             if (kind && rt_string_cstr(kind) && rt_string_cstr(kind)[0] != '\0')
                 link->kind = kind;
             else if (kind)
@@ -437,7 +435,10 @@ static void navmesh3d_voxel_rasterize(rt_mesh3d *src,
 
 /// @brief Erode the walkable set by @p erode_r cells; grid edges count as boundaries so the
 ///        navmesh insets by the agent radius. @return new walkable buffer (caller owns), or NULL.
-static uint8_t *navmesh3d_voxel_erode(const uint8_t *cell_walk, int32_t nx, int32_t nz, int erode_r) {
+static uint8_t *navmesh3d_voxel_erode(const uint8_t *cell_walk,
+                                      int32_t nx,
+                                      int32_t nz,
+                                      int erode_r) {
     size_t cell_count = (size_t)nx * (size_t)nz;
     uint8_t *eroded = (uint8_t *)malloc(cell_count);
     if (!eroded)
@@ -511,8 +512,11 @@ static int navmesh3d_voxel_dim_for_span(double span, double cell_size, int64_t *
 
 /// @brief Compute the XZ bounding box of a source mesh (finite vertices only).
 /// @return 0 when there are no finite vertices or the bounds are degenerate/non-finite.
-static int navmesh3d_voxel_xz_bounds(const rt_mesh3d *src, double *out_min_x, double *out_min_z,
-                                     double *out_max_x, double *out_max_z) {
+static int navmesh3d_voxel_xz_bounds(const rt_mesh3d *src,
+                                     double *out_min_x,
+                                     double *out_min_z,
+                                     double *out_max_x,
+                                     double *out_max_z) {
     double min_x = DBL_MAX, min_z = DBL_MAX, max_x = -DBL_MAX, max_z = -DBL_MAX;
     int finite_vertices = 0;
     for (uint32_t i = 0; i < src->vertex_count; i++) {
@@ -542,8 +546,8 @@ static int navmesh3d_voxel_xz_bounds(const rt_mesh3d *src, double *out_min_x, do
 
 /// @brief Derive bounded voxel grid dimensions for the given spans, coarsening @p cell_size
 ///        (in/out) until the grid fits the MAX_DIM/MAX_CELLS budget. @return 0 on failure.
-static int navmesh3d_voxel_grid_dims(double span_x, double span_z, double *cell_size,
-                                     int32_t *out_nx, int32_t *out_nz) {
+static int navmesh3d_voxel_grid_dims(
+    double span_x, double span_z, double *cell_size, int32_t *out_nx, int32_t *out_nz) {
     const int64_t MAX_DIM = 128;
     const int64_t MAX_CELLS = 16384;
     for (int guard = 0; guard < 64; guard++) {
@@ -614,7 +618,8 @@ static void *navmesh3d_voxel_bake(
     }
 
     /* 3. Rasterize slope-walkable surfaces into the grid, keeping the highest surface per cell. */
-    navmesh3d_voxel_rasterize(src, min_x, min_z, cell_size, nx, nz, walkable_cos, cell_h, cell_walk);
+    navmesh3d_voxel_rasterize(
+        src, min_x, min_z, cell_size, nx, nz, walkable_cos, cell_h, cell_walk);
 
     /* 4. Erode the walkable set by the agent radius; the grid edge counts as a boundary so the
      *    navmesh is inset by the radius and corridors narrower than 2*radius drop out. */
@@ -677,7 +682,14 @@ static void *navmesh3d_voxel_bake(
     nm->skip_portal_width_gate = 1; /* clearance comes from the radius erosion in step 4 */
     rt_obj_set_finalizer(nm, navmesh3d_finalizer);
 
-    int64_t tri_cap = (int64_t)cell_count * 2;
+    if (cell_count > (size_t)INT64_MAX / 2u) {
+        free(cell_h);
+        free(cell_walk);
+        free(corner_vid);
+        navmesh3d_free_partial(nm);
+        return NULL;
+    }
+    int64_t tri_cap = (int64_t)(cell_count * 2u);
     if (corner_count > SIZE_MAX / sizeof(nav_vertex_t) ||
         (size_t)tri_cap > SIZE_MAX / sizeof(nav_triangle_t) ||
         cell_count > SIZE_MAX / sizeof(float) || corner_count > SIZE_MAX / sizeof(int32_t)) {
@@ -712,7 +724,8 @@ static void *navmesh3d_voxel_bake(
     nm->source_triangle_count = 0;
     nm->triangle_count = 0;
 
-    navmesh3d_voxel_emit_grid_mesh(nm, corner_vid, cell_h, cell_walk, nx, nz, min_x, min_z, cell_size);
+    navmesh3d_voxel_emit_grid_mesh(
+        nm, corner_vid, cell_h, cell_walk, nx, nz, min_x, min_z, cell_size);
     memcpy(nm->voxel_corner_vertices, corner_vid, corner_count * sizeof(int32_t));
 
     free(cell_h);
@@ -848,9 +861,8 @@ static int32_t find_tri_with_max_dy(
     /* Spatial-grid fast path: a point inside a triangle lies inside that triangle's XZ AABB, so the
      * triangle is registered in the point's cell — scanning that one cell is exact and matches the
      * linear scan. Points outside the grid bounds cannot lie on any triangle. */
-    if (nm->qgrid_nx > 0 && nm->qgrid_starts && nm->qgrid_tris &&
-        isfinite(nm->qgrid_min_x) && isfinite(nm->qgrid_min_z) &&
-        isfinite(nm->qgrid_inv_cell) && nm->qgrid_inv_cell > 0.0) {
+    if (nm->qgrid_nx > 0 && nm->qgrid_starts && nm->qgrid_tris && isfinite(nm->qgrid_min_x) &&
+        isfinite(nm->qgrid_min_z) && isfinite(nm->qgrid_inv_cell) && nm->qgrid_inv_cell > 0.0) {
         int cx = (int)(((double)px - nm->qgrid_min_x) * nm->qgrid_inv_cell);
         int cz = (int)(((double)pz - nm->qgrid_min_z) * nm->qgrid_inv_cell);
         if (cx < 0 || cz < 0 || cx >= nm->qgrid_nx || cz >= nm->qgrid_nz)

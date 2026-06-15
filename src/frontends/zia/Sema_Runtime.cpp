@@ -23,24 +23,24 @@
 /// recognize expressions like `new Viper.Graphics.Canvas(...)` and property
 /// accesses like `canvas.Width`.
 ///
-/// ### Phase 2: Methods and Properties from RuntimeRegistry
+/// ### Phase 2: Runtime Function Fallbacks (ZiaRuntimeExterns.inc)
+///
+/// Reads the generated ZiaRuntimeExterns.inc metadata table and registers
+/// ABI-shaped fallback extern signatures for every RT_FUNC/RT_ALIAS entry.
+/// These cover runtime calls that are not described by the runtime-class
+/// catalog, such as `Viper.Time.SleepMs` or `Viper.Game.LevelData.ObjectType`.
+///
+/// ### Phase 3: Methods and Properties from RuntimeRegistry
 ///
 /// For each runtime class in the catalog:
 ///
 /// 1. **Methods**: Parses the signature string (e.g., "str(i64,i64)") and
-///    registers the function with full parameter type information. This
-///    enables the semantic analyzer to validate argument types at compile time.
+///    refines the function with full parameter type information. This enables
+///    the semantic analyzer to validate argument types at compile time.
 ///
 /// 2. **Properties**: Registers getter and setter functions. Getters are
 ///    zero-parameter functions returning the property type. Setters are
 ///    void functions taking the property type as a parameter.
-///
-/// ### Phase 3: Runtime Aliases (ZiaRuntimeExterns.inc)
-///
-/// Includes the generated ZiaRuntimeExterns.inc file which contains RT_ALIAS
-/// entries from runtime.def. These provide ABI-shaped fallback extern
-/// signatures for runtime calls that are not described by the runtime-class
-/// catalog, such as `Viper.Time.SleepMs` or `Viper.Game.LevelData.ObjectType`.
 ///
 /// ## Type Conversion
 ///
@@ -81,7 +81,7 @@
 /// @see RuntimeAdapter.hpp - Type conversion between IL and Zia types
 /// @see il::runtime::RuntimeRegistry - Source of runtime signatures
 /// @see Sema::defineExternFunction - Registers extern functions in symbol table
-/// @see ZiaRuntimeExterns.inc - Generated alias registrations
+/// @see ZiaRuntimeExterns.inc - Generated fallback extern metadata
 ///
 //===----------------------------------------------------------------------===//
 
@@ -89,9 +89,267 @@
 #include "frontends/zia/Sema.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
+#include <cctype>
+#include <string>
 #include <string_view>
+#include <vector>
 
 namespace il::frontends::zia {
+
+namespace {
+
+struct ZiaRuntimeExternSpec {
+    std::string_view canonical;
+    std::string_view signature;
+    std::string_view paramNames;
+    std::string_view bridgeRoles;
+};
+
+#include "il/runtime/ZiaRuntimeExterns.inc"
+
+struct RuntimeReturnOverride {
+    std::string_view canonical;
+    std::string_view className;
+};
+
+static std::string_view trimRuntimeToken(std::string_view value) {
+    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front())) != 0)
+        value.remove_prefix(1);
+    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back())) != 0)
+        value.remove_suffix(1);
+    return value;
+}
+
+static std::string_view runtimeTokenBase(std::string_view token) {
+    token = trimRuntimeToken(token);
+    size_t genericStart = token.find('<');
+    if (genericStart == std::string_view::npos)
+        return token;
+    return trimRuntimeToken(token.substr(0, genericStart));
+}
+
+static std::string_view runtimeTokenTypeArg(std::string_view token) {
+    token = trimRuntimeToken(token);
+    size_t genericStart = token.find('<');
+    size_t genericEnd = token.rfind('>');
+    if (genericStart == std::string_view::npos || genericEnd == std::string_view::npos ||
+        genericEnd <= genericStart)
+        return {};
+    return trimRuntimeToken(token.substr(genericStart + 1, genericEnd - genericStart - 1));
+}
+
+static bool startsWith(std::string_view value, std::string_view prefix) {
+    return value.size() >= prefix.size() && value.compare(0, prefix.size(), prefix) == 0;
+}
+
+static bool isGeneratedFactoryMethod(std::string_view method) {
+    if (method == "New" || method == "Clone" || method == "Copy" || method == "Zero" ||
+        method == "Range")
+        return true;
+
+    return startsWith(method, "Open") || startsWith(method, "Load") || startsWith(method, "From") ||
+           startsWith(method, "Parse") || startsWith(method, "Read") ||
+           startsWith(method, "Decode") || startsWith(method, "Create");
+}
+
+static bool isKnownRuntimeClass(const std::vector<il::runtime::RuntimeClass> &catalog,
+                                std::string_view className) {
+    for (const auto &cls : catalog) {
+        if (cls.qname && className == cls.qname)
+            return true;
+    }
+    return false;
+}
+
+static std::string_view generatedReturnOverride(std::string_view canonical) {
+    static constexpr RuntimeReturnOverride kReturnOverrides[] = {
+        // Crypto functions returning Viper.Collections.Bytes
+        {"Viper.Crypto.Rand.Bytes", "Viper.Collections.Bytes"},
+        {"Viper.Crypto.Cipher.Encrypt", "Viper.Collections.Bytes"},
+        {"Viper.Crypto.Cipher.Decrypt", "Viper.Collections.Bytes"},
+        {"Viper.Crypto.Cipher.EncryptAAD", "Viper.Collections.Bytes"},
+        {"Viper.Crypto.Cipher.DecryptAAD", "Viper.Collections.Bytes"},
+        {"Viper.Crypto.Cipher.EncryptWithKey", "Viper.Collections.Bytes"},
+        {"Viper.Crypto.Cipher.DecryptWithKey", "Viper.Collections.Bytes"},
+        {"Viper.Crypto.Cipher.EncryptWithKeyAAD", "Viper.Collections.Bytes"},
+        {"Viper.Crypto.Cipher.DecryptWithKeyAAD", "Viper.Collections.Bytes"},
+        {"Viper.Crypto.Cipher.GenerateKey", "Viper.Collections.Bytes"},
+        {"Viper.Crypto.Cipher.DeriveKey", "Viper.Collections.Bytes"},
+        {"Viper.Crypto.Aes.Encrypt", "Viper.Collections.Bytes"},
+        {"Viper.Crypto.Aes.Decrypt", "Viper.Collections.Bytes"},
+        {"Viper.Crypto.Aes.EncryptAuth", "Viper.Collections.Bytes"},
+        {"Viper.Crypto.Aes.DecryptAuth", "Viper.Collections.Bytes"},
+        {"Viper.Crypto.Aes.EncryptStr", "Viper.Collections.Bytes"},
+        {"Viper.Crypto.KeyDerive.Pbkdf2SHA256", "Viper.Collections.Bytes"},
+        {"Viper.Crypto.KeyDerive.ScryptSHA256", "Viper.Collections.Bytes"},
+        // IO functions returning Viper.Collections.Bytes
+        {"Viper.IO.Stream.ToBytes", "Viper.Collections.Bytes"},
+        // Text functions returning Viper.Collections.Seq
+        {"Viper.Text.Csv.ParseLine", "Viper.Collections.Seq"},
+        {"Viper.Text.Csv.ParseLineWith", "Viper.Collections.Seq"},
+        {"Viper.Text.Csv.Parse", "Viper.Collections.Seq"},
+        {"Viper.Text.Csv.ParseWith", "Viper.Collections.Seq"},
+        {"Viper.Text.Markdown.ExtractLinks", "Viper.Collections.Seq"},
+        {"Viper.Text.Markdown.ExtractHeadings", "Viper.Collections.Seq"},
+        {"Viper.Text.Html.ExtractLinks", "Viper.Collections.Seq"},
+        {"Viper.Text.Html.ExtractText", "Viper.Collections.Seq"},
+        // Collection methods returning Seq from non-Seq classes
+        {"Viper.Collections.Bag.Items", "Viper.Collections.Seq"},
+        {"Viper.Collections.SortedSet.Items", "Viper.Collections.Seq"},
+        {"Viper.Collections.Set.Items", "Viper.Collections.Seq"},
+    };
+
+    for (const auto &override : kReturnOverrides) {
+        if (canonical == override.canonical)
+            return override.className;
+    }
+    return {};
+}
+
+static TypeRef ziaParamTypeForGeneratedToken(std::string_view token) {
+    token = trimRuntimeToken(token);
+    if (!token.empty() && token.back() == '?') {
+        token.remove_suffix(1);
+        return types::optional(ziaParamTypeForGeneratedToken(token));
+    }
+
+    std::string_view base = runtimeTokenBase(token);
+    if (base == "str")
+        return types::string();
+    if (base == "i64" || base == "i32" || base == "i16" || base == "i8")
+        return types::integer();
+    if (base == "f64" || base == "f32")
+        return types::number();
+    if (base == "i1" || base == "bool")
+        return types::boolean();
+    if (base == "void")
+        return types::voidType();
+    if (base == "seq") {
+        std::string_view elem = runtimeTokenTypeArg(token);
+        if (elem.empty())
+            return types::ptr();
+        return types::seqOf(ziaParamTypeForGeneratedToken(elem));
+    }
+    if (base == "list") {
+        std::string_view elem = runtimeTokenTypeArg(token);
+        if (elem.empty())
+            return types::ptr();
+        return types::list(ziaParamTypeForGeneratedToken(elem));
+    }
+    if (base == "ptr")
+        return types::ptr();
+    return types::any();
+}
+
+static std::vector<std::string_view> generatedSignatureParamTokens(std::string_view signature) {
+    std::vector<std::string_view> tokens;
+    size_t open = signature.find('(');
+    size_t close = signature.rfind(')');
+    if (open == std::string_view::npos || close == std::string_view::npos || close <= open)
+        return tokens;
+
+    std::string_view args = signature.substr(open + 1, close - open - 1);
+    size_t start = 0;
+    int angleDepth = 0;
+    for (size_t i = 0; i <= args.size(); ++i) {
+        if (i < args.size()) {
+            if (args[i] == '<')
+                ++angleDepth;
+            else if (args[i] == '>' && angleDepth > 0)
+                --angleDepth;
+        }
+
+        if (i == args.size() || (args[i] == ',' && angleDepth == 0)) {
+            std::string_view token = trimRuntimeToken(args.substr(start, i - start));
+            if (!token.empty())
+                tokens.push_back(token);
+            start = i + 1;
+        }
+    }
+    return tokens;
+}
+
+static std::vector<TypeRef> ziaParamTypesForGeneratedExtern(std::string_view signature) {
+    std::vector<TypeRef> paramTypes;
+    auto tokens = generatedSignatureParamTokens(signature);
+    paramTypes.reserve(tokens.size());
+    for (std::string_view token : tokens)
+        paramTypes.push_back(ziaParamTypeForGeneratedToken(token));
+    return paramTypes;
+}
+
+static TypeRef ziaReturnTypeForGeneratedExtern(
+    std::string_view canonical,
+    const il::runtime::ParsedSignature &sig,
+    const std::vector<il::runtime::RuntimeClass> &catalog) {
+    if (!sig.objectTypeName.empty())
+        return types::runtimeClass(sig.objectTypeName);
+
+    if (!sig.elementTypeName.empty()) {
+        TypeRef elemType = ziaParamTypeForGeneratedToken(sig.elementTypeName);
+        if (sig.containerTypeName == "list")
+            return types::list(elemType);
+        return types::seqOf(elemType);
+    }
+
+    if (sig.returnType != il::runtime::ILScalarType::Object)
+        return toZiaType(sig.returnType);
+
+    if (std::string_view overrideClass = generatedReturnOverride(canonical); !overrideClass.empty())
+        return types::runtimeClass(std::string(overrideClass));
+
+    size_t lastDot = canonical.rfind('.');
+    if (lastDot != std::string_view::npos) {
+        std::string_view method = canonical.substr(lastDot + 1);
+        std::string_view className = canonical.substr(0, lastDot);
+        if (isGeneratedFactoryMethod(method) || isKnownRuntimeClass(catalog, className))
+            return types::runtimeClass(std::string(className));
+    }
+
+    return types::any();
+}
+
+static std::vector<std::string> splitGeneratedParamNames(std::string_view encoded) {
+    std::vector<std::string> names;
+    if (encoded.empty())
+        return names;
+
+    size_t start = 0;
+    while (true) {
+        size_t end = encoded.find('\n', start);
+        if (end == std::string_view::npos) {
+            names.emplace_back(encoded.substr(start));
+            break;
+        }
+        names.emplace_back(encoded.substr(start, end - start));
+        start = end + 1;
+    }
+    return names;
+}
+
+static Sema::RuntimePointerBridgeRole generatedBridgeRole(char code) {
+    if (code == 'c')
+        return Sema::RuntimePointerBridgeRole::Callback;
+    if (code == 'p')
+        return Sema::RuntimePointerBridgeRole::Payload;
+    return Sema::RuntimePointerBridgeRole::None;
+}
+
+static std::vector<Sema::RuntimePointerBridgeRole> decodeGeneratedBridgeRoles(
+    std::string_view encoded, std::size_t paramCount) {
+    if (encoded.empty())
+        return {};
+
+    std::vector<Sema::RuntimePointerBridgeRole> roles;
+    roles.reserve(paramCount);
+    for (std::size_t i = 0; i < paramCount; ++i) {
+        char code = i < encoded.size() ? encoded[i] : 'n';
+        roles.push_back(generatedBridgeRole(code));
+    }
+    return roles;
+}
+
+} // namespace
 
 /// @brief Heuristic: should a plain-object runtime @p method be treated as
 ///        returning the owner type? Accessor-style names (Get*/Keys/Values/
@@ -140,14 +398,13 @@ static bool methodTargetBelongsToClass(const il::runtime::RuntimeMethod &method,
 /// 1. **Type Registration**: Each runtime class is registered as a named type,
 ///    enabling `new ClassName()` expressions and type annotations.
 ///
-/// 2. **Method/Property Registration**: For each class, all methods and
-///    properties are registered with full type signatures. Methods get their
-///    signature from parseRuntimeSignature(); properties get separate getter
-///    and setter registrations.
+/// 2. **Fallback Registration**: Each generated RT_FUNC/RT_ALIAS row is
+///    registered with ABI-shaped parameter types and pointer-safety metadata.
 ///
-/// 3. **Alias Registration**: The ZiaRuntimeExterns.inc file is included to
-///    register standalone functions (RT_ALIAS entries) that aren't part of
-///    a class.
+/// 3. **Method/Property Registration**: For each class, all methods and
+///    properties refine the fallback signatures with catalog-level type
+///    information. Methods get their signature from parseRuntimeSignature();
+///    properties get separate getter and setter registrations.
 ///
 /// ## Error Handling
 ///
@@ -172,7 +429,8 @@ void Sema::initRuntimeFunctions() {
                                       TypeRef returnType,
                                       const std::vector<TypeRef> &fallbackParamTypes,
                                       std::optional<RuntimePointerSafety> pointerSafety =
-                                          std::nullopt) {
+                                          std::nullopt,
+                                      const std::vector<std::string> &paramNames = {}) {
         if (name.empty())
             return;
 
@@ -182,15 +440,15 @@ void Sema::initRuntimeFunctions() {
             std::optional<RuntimePointerSafety> refinedSafety = std::nullopt;
             if (runtimePointerSafety_.find(name) == runtimePointerSafety_.end())
                 refinedSafety = std::move(pointerSafety);
-            defineExternFunction(name,
-                                 returnType,
-                                 existing->type->paramTypes(),
-                                 existing->paramNames,
-                                 refinedSafety);
+            std::vector<std::string> effectiveParamNames =
+                paramNames.empty() ? existing->paramNames : paramNames;
+            defineExternFunction(
+                name, returnType, existing->type->paramTypes(), effectiveParamNames, refinedSafety);
             return;
         }
 
-        defineExternFunction(name, returnType, fallbackParamTypes, {}, std::move(pointerSafety));
+        defineExternFunction(
+            name, returnType, fallbackParamTypes, paramNames, std::move(pointerSafety));
     };
 
     //==========================================================================
@@ -208,11 +466,32 @@ void Sema::initRuntimeFunctions() {
     //==========================================================================
     // Phase 2: Register RT_FUNC fallback externs from runtime.def
     //==========================================================================
-    // The ZiaRuntimeExterns.inc file is generated by rtgen from runtime.def.
-    // It provides ABI-shaped fallback signatures for all RT_FUNC entries.
+    // The ZiaRuntimeExterns.inc table is generated by rtgen from runtime.def.
+    // It provides ABI-shaped fallback signatures for all RT_FUNC entries without
+    // forcing clang to optimize thousands of generated registration statements.
     // Phase 3 below overrides any entries that have richer runtime-class
     // metadata (e.g. receiver-less method signatures or typed seq<T> returns).
-#include "il/runtime/ZiaRuntimeExterns.inc"
+    for (const auto &entry : kZiaRuntimeExterns) {
+        auto sig = il::runtime::parseRuntimeSignature(entry.signature);
+        if (!sig.isValid())
+            continue;
+
+        TypeRef returnType = ziaReturnTypeForGeneratedExtern(entry.canonical, sig, catalog);
+        if (sig.isOptionalReturn)
+            returnType = types::optional(returnType);
+
+        RuntimePointerSafety pointerSafety{
+            sig.rawPointerReturn,
+            sig.rawPointerParams,
+            decodeGeneratedBridgeRoles(entry.bridgeRoles, sig.params.size()),
+        };
+
+        registerOrRefineExtern(std::string(entry.canonical),
+                               returnType,
+                               ziaParamTypesForGeneratedExtern(entry.signature),
+                               std::move(pointerSafety),
+                               splitGeneratedParamNames(entry.paramNames));
+    }
 
     //==========================================================================
     // Phase 3: Register methods and properties with full signatures (fine)

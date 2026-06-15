@@ -83,12 +83,12 @@ static void parser_error(json_parser *p, const char *msg) {
 
     char buf[256];
     snprintf(buf, sizeof(buf), "Json.Parse: %s at line %zu, column %zu", detail, line, col);
+    p->has_error = 1;
+    p->error_line = (int64_t)line;
+    p->error_column = (int64_t)col;
+    snprintf(p->error_message, sizeof(p->error_message), "%s", detail);
+    p->pos = p->len;
     if (!p->trap_errors) {
-        p->has_error = 1;
-        p->error_line = (int64_t)line;
-        p->error_column = (int64_t)col;
-        snprintf(p->error_message, sizeof(p->error_message), "%s", detail);
-        p->pos = p->len;
         return;
     }
     rt_trap(buf);
@@ -721,6 +721,11 @@ void *rt_json_parse(rt_string text) {
 
     void *result = parse_value(&p);
 
+    if (p.has_error) {
+        json_discard_value(result);
+        return NULL;
+    }
+
     if (p.depth_exceeded) {
         json_discard_value(result);
         parser_error(&p, "maximum nesting depth exceeded");
@@ -828,14 +833,14 @@ int8_t rt_json_try_parse(rt_string text,
 void *rt_json_parse_object(rt_string text) {
     if (!text) {
         rt_trap("Json.ParseObject: null input");
-        return rt_map_new();
+        return NULL;
     }
 
     const char *input = rt_string_cstr(text);
     size_t len = (size_t)rt_str_len(text);
     if (len == 0) {
         rt_trap("Json.ParseObject: empty input");
-        return rt_map_new();
+        return NULL;
     }
 
     json_parser p;
@@ -844,22 +849,27 @@ void *rt_json_parse_object(rt_string text) {
 
     if (parser_peek(&p) != '{') {
         rt_trap("Json.ParseObject: expected object at root");
-        return rt_map_new();
+        return NULL;
     }
 
     void *result = parse_object(&p);
 
+    if (p.has_error) {
+        json_discard_value(result);
+        return NULL;
+    }
+
     if (p.depth_exceeded) {
         json_discard_value(result);
         parser_error(&p, "maximum nesting depth exceeded");
-        return rt_map_new();
+        return NULL;
     }
 
     parser_skip_whitespace(&p);
     if (!parser_eof(&p)) {
         parser_error(&p, "unexpected content after JSON object");
         json_discard_value(result);
-        return rt_map_new();
+        return NULL;
     }
 
     return result;
@@ -888,14 +898,14 @@ void *rt_json_parse_object(rt_string text) {
 void *rt_json_parse_array(rt_string text) {
     if (!text) {
         rt_trap("Json.ParseArray: null input");
-        return rt_seq_new();
+        return NULL;
     }
 
     const char *input = rt_string_cstr(text);
     size_t len = (size_t)rt_str_len(text);
     if (len == 0) {
         rt_trap("Json.ParseArray: empty input");
-        return rt_seq_new();
+        return NULL;
     }
 
     json_parser p;
@@ -904,22 +914,27 @@ void *rt_json_parse_array(rt_string text) {
 
     if (parser_peek(&p) != '[') {
         rt_trap("Json.ParseArray: expected array at root");
-        return rt_seq_new();
+        return NULL;
     }
 
     void *result = parse_array(&p);
 
+    if (p.has_error) {
+        json_discard_value(result);
+        return NULL;
+    }
+
     if (p.depth_exceeded) {
         json_discard_value(result);
         parser_error(&p, "maximum nesting depth exceeded");
-        return rt_seq_new();
+        return NULL;
     }
 
     parser_skip_whitespace(&p);
     if (!parser_eof(&p)) {
         parser_error(&p, "unexpected content after JSON array");
         json_discard_value(result);
-        return rt_seq_new();
+        return NULL;
     }
 
     return result;

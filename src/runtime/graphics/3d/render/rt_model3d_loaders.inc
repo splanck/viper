@@ -512,19 +512,29 @@ static void *model3d_fbx_from_asset_bytes(rt_string original_path,
         rt_string_unref(tmp);
         return NULL;
     }
-    FILE *f = fopen(tpath, "wb");
-    if (!f) {
+    (void)tpath;
+    if (size > (size_t)INT64_MAX) {
         rt_string_unref(tmp);
         return NULL;
     }
-    size_t wrote = fwrite(bytes, 1, size, f);
-    if (fclose(f) != 0 || wrote != size) {
-        remove(tpath);
+    void *tmp_bytes = rt_bytes_new((int64_t)size);
+    if (!tmp_bytes) {
         rt_string_unref(tmp);
         return NULL;
     }
+    uint8_t *tmp_data = rt_bytes_data(tmp_bytes);
+    if (!tmp_data) {
+        if (rt_obj_release_check0(tmp_bytes))
+            rt_obj_free(tmp_bytes);
+        rt_string_unref(tmp);
+        return NULL;
+    }
+    memcpy(tmp_data, bytes, size);
+    rt_io_file_write_all_bytes(tmp, tmp_bytes);
+    if (rt_obj_release_check0(tmp_bytes))
+        rt_obj_free(tmp_bytes);
     void *asset = rt_fbx_load_recoverable_with_texture_base(tmp, original_path);
-    remove(tpath);
+    rt_io_file_delete(tmp);
     rt_string_unref(tmp);
     return asset;
 }

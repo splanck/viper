@@ -639,10 +639,10 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
         }
         rt_trap_clear_recovery();
         parallel_release_default_pool(pool, actual_pool);
-        if (task_error[0])
+        if (task_error[0]) {
             parallel_trap_error("Parallel.Reduce: reducer trapped", task_error);
-        if (task_error[0])
             return identity;
+        }
         return result;
     }
 
@@ -975,6 +975,7 @@ void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool) {
 void rt_parallel_for(int64_t start, int64_t end, void *func) {
     rt_parallel_for_pool(start, end, func, NULL);
 }
+
 //=============================================================================
 // Task Callbacks
 //=============================================================================

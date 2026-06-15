@@ -217,6 +217,23 @@ static int64_t clamp_i64(int64_t v, int64_t lo, int64_t hi) {
     return v;
 }
 
+/// @brief Convert a duration in milliseconds to a checked sample count.
+/// @details Performs the multiply in `int64_t`, rejects overflow and values
+///          outside `int32_t`, and returns zero samples as failure. Public synth
+///          entry points clamp duration before calling this helper.
+/// @param duration_ms Duration in milliseconds.
+/// @param out_samples Receives the computed sample count on success.
+/// @return 1 when the sample count is valid, 0 otherwise.
+static int synth_duration_to_samples(int64_t duration_ms, int32_t *out_samples) {
+    if (!out_samples || duration_ms <= 0 || duration_ms > INT64_MAX / SYNTH_SAMPLE_RATE)
+        return 0;
+    int64_t samples = (duration_ms * SYNTH_SAMPLE_RATE) / 1000;
+    if (samples <= 0 || samples > INT32_MAX)
+        return 0;
+    *out_samples = (int32_t)samples;
+    return 1;
+}
+
 /// @brief Compute the per-sample amplitude envelope for click-free playback.
 /// @details Linear fade-in for the first @p fade_samples samples and a
 ///          mirror linear fade-out for the last @p fade_samples. Returns
@@ -263,8 +280,8 @@ void *rt_synth_tone(int64_t freq_hz, int64_t duration_ms, int64_t waveform) {
     duration_ms = clamp_i64(duration_ms, 1, 10000);
     waveform = clamp_i64(waveform, 0, 3);
 
-    int32_t num_samples = (int32_t)((duration_ms * SYNTH_SAMPLE_RATE) / 1000);
-    if (num_samples < 1)
+    int32_t num_samples = 0;
+    if (!synth_duration_to_samples(duration_ms, &num_samples))
         return NULL;
 
     int16_t *samples = (int16_t *)malloc((size_t)num_samples * sizeof(int16_t));
@@ -299,8 +316,8 @@ void *rt_synth_sweep(int64_t start_hz, int64_t end_hz, int64_t duration_ms, int6
     duration_ms = clamp_i64(duration_ms, 1, 10000);
     waveform = clamp_i64(waveform, 0, 3);
 
-    int32_t num_samples = (int32_t)((duration_ms * SYNTH_SAMPLE_RATE) / 1000);
-    if (num_samples < 1)
+    int32_t num_samples = 0;
+    if (!synth_duration_to_samples(duration_ms, &num_samples))
         return NULL;
 
     int16_t *samples = (int16_t *)malloc((size_t)num_samples * sizeof(int16_t));
@@ -335,8 +352,8 @@ void *rt_synth_noise(int64_t duration_ms, int64_t volume) {
     duration_ms = clamp_i64(duration_ms, 1, 10000);
     volume = clamp_i64(volume, 0, 100);
 
-    int32_t num_samples = (int32_t)((duration_ms * SYNTH_SAMPLE_RATE) / 1000);
-    if (num_samples < 1)
+    int32_t num_samples = 0;
+    if (!synth_duration_to_samples(duration_ms, &num_samples))
         return NULL;
 
     int16_t *samples = (int16_t *)malloc((size_t)num_samples * sizeof(int16_t));

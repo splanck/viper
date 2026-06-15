@@ -208,6 +208,8 @@ char *rt_ws_compute_accept_key(const char *key_cstr) {
     static const char WS_MAGIC[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
     size_t key_len = strlen(key_cstr);
     size_t magic_len = sizeof(WS_MAGIC) - 1;
+    if (key_len > SIZE_MAX - magic_len - 1)
+        return NULL;
 
     char *concat = (char *)malloc(key_len + magic_len + 1);
     if (!concat)

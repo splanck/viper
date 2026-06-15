@@ -12,7 +12,8 @@
 //          StripMarkdown (remove formatting, return plain text).
 //
 // Key invariants:
-//   - ExtractLinks returns a Seq<String> of URL targets.
+//   - ExtractLinks returns a Seq<String> of URL targets, with unsafe schemes
+//     rewritten to "#".
 //   - ExtractHeadings returns a Seq<String> of heading text.
 //   - ToHtml converts headings, bold, italic, links, code, and lists; does not
 //     implement the full CommonMark spec.
@@ -41,14 +42,63 @@
 #include <stdio.h>
 #include <string.h>
 
+/// @brief Decode a small HTML entity into one character for URL scheme checks.
+/// @details Handles numeric decimal/hex entities and `&colon;`, which are the
+///          encodings relevant to obfuscated URL schemes. Returns zero when no
+///          complete supported entity starts at @p s.
+/// @param s Entity start, expected to point at `&`.
+/// @param len Remaining input length.
+/// @param consumed Receives bytes consumed when decoding succeeds.
+/// @return Decoded ASCII character, or zero when unsupported/incomplete.
+static char markdown_decode_entity_char(const char *s, int64_t len, int64_t *consumed) {
+    if (consumed)
+        *consumed = 0;
+    if (!s || len < 4 || s[0] != '&')
+        return 0;
+    if (len >= 7 && strncmp(s, "&colon;", 7) == 0) {
+        if (consumed)
+            *consumed = 7;
+        return ':';
+    }
+    if (s[1] != '#')
+        return 0;
+    int64_t i = 2;
+    int base = 10;
+    if (i < len && (s[i] == 'x' || s[i] == 'X')) {
+        base = 16;
+        i++;
+    }
+    int value = 0;
+    int digits = 0;
+    for (; i < len && s[i] != ';'; i++) {
+        int d = -1;
+        if (s[i] >= '0' && s[i] <= '9')
+            d = s[i] - '0';
+        else if (base == 16 && s[i] >= 'a' && s[i] <= 'f')
+            d = s[i] - 'a' + 10;
+        else if (base == 16 && s[i] >= 'A' && s[i] <= 'F')
+            d = s[i] - 'A' + 10;
+        else
+            return 0;
+        if (d >= base || value > 0x7F)
+            return 0;
+        value = value * base + d;
+        digits++;
+    }
+    if (digits == 0 || i >= len || s[i] != ';' || value <= 0 || value > 0x7F)
+        return 0;
+    if (consumed)
+        *consumed = i + 1;
+    return (char)value;
+}
+
 /// @brief Detect URL schemes that could execute script (javascript:, data:, vbscript:).
 /// @details Used by the link/image handlers to block XSS via Markdown
 ///          links of the form `[click](javascript:alert(1))`. The
-///          comparison is case-insensitive (manual lowercase fold so
-///          we don't pull in `tolower` per byte) and tolerates the
-///          scheme being a prefix of a longer URL string. Matched
-///          schemes get rewritten to `#` so the link is rendered but
-///          inert. (Tracking ID: S-13.)
+///          comparison normalizes case, leading/control whitespace, and
+///          simple HTML entity obfuscation before matching. Matched schemes
+///          get rewritten to `#` so the link is rendered but inert.
+///          (Tracking ID: S-13.)
 static bool url_scheme_is_blocked(const char *url, int64_t len) {
     static const struct {
         const char *scheme;
@@ -60,14 +110,35 @@ static bool url_scheme_is_blocked(const char *url, int64_t len) {
         len--;
     }
 
+    char normalized[16];
+    int64_t out_len = 0;
+    for (int64_t i = 0; i < len && out_len < (int64_t)sizeof(normalized) - 1; i++) {
+        unsigned char raw = (unsigned char)url[i];
+        char c = (char)raw;
+        if (raw <= 0x20)
+            continue;
+        if (c == '&') {
+            int64_t consumed = 0;
+            char decoded = markdown_decode_entity_char(url + i, len - i, &consumed);
+            if (decoded) {
+                c = decoded;
+                i += consumed - 1;
+            }
+        }
+        if (c >= 'A' && c <= 'Z')
+            c = (char)(c + 32);
+        normalized[out_len++] = c;
+        if (c == ':')
+            break;
+    }
+    normalized[out_len] = '\0';
+
     for (int s = 0; s < 3; s++) {
         int sl = blocked[s].scheme_len;
-        if (len >= sl) {
+        if (out_len >= sl) {
             bool match = true;
             for (int i = 0; i < sl; i++) {
-                char c = url[i];
-                if (c >= 'A' && c <= 'Z')
-                    c = (char)(c + 32);
+                char c = normalized[i];
                 if (c != blocked[s].scheme[i]) {
                     match = false;
                     break;
@@ -470,8 +541,11 @@ void *rt_markdown_extract_links(rt_string md) {
                 while (url_end < end_src && *url_end != ')')
                     url_end++;
                 if (url_end < end_src && *url_end == ')') {
-                    rt_string url = markdown_string_from_bytes_or_trap(
-                        url_start, (size_t)(url_end - url_start));
+                    int64_t url_len = (int64_t)(url_end - url_start);
+                    rt_string url =
+                        url_scheme_is_blocked(url_start, url_len)
+                            ? markdown_string_from_bytes_or_trap("#", 1)
+                            : markdown_string_from_bytes_or_trap(url_start, (size_t)url_len);
                     rt_seq_push(seq, url);
                     rt_string_unref(url);
                     p = url_end + 1;

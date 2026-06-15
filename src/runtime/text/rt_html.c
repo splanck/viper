@@ -39,6 +39,7 @@
 #include "rt_string_builder.h"
 
 #include <ctype.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -51,6 +52,34 @@
 static void release_local_obj(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
+}
+
+/// @brief Ensure the HTML parser parent stack can hold @p needed entries.
+/// @details The parser is intentionally tolerant of malformed markup, but it
+///          must never silently misparent deeply nested nodes. This helper grows
+///          the stack used for open elements and fails on size overflow or OOM.
+/// @param stack Address of the heap-allocated stack pointer.
+/// @param capacity Address of the current stack capacity in entries.
+/// @param needed Minimum number of entries required.
+/// @return 1 when the stack can hold @p needed entries, 0 on overflow or OOM.
+static int html_stack_reserve(void ***stack, size_t *capacity, size_t needed) {
+    if (needed <= *capacity)
+        return 1;
+    size_t new_capacity = *capacity ? *capacity : 256u;
+    while (new_capacity < needed) {
+        if (new_capacity > SIZE_MAX / 2u)
+            return 0;
+        new_capacity *= 2u;
+    }
+    const size_t entry_size = sizeof(void *);
+    if (new_capacity > SIZE_MAX / entry_size)
+        return 0;
+    void **grown = (void **)realloc(*stack, new_capacity * entry_size);
+    if (!grown)
+        return 0;
+    *stack = grown;
+    *capacity = new_capacity;
+    return 1;
 }
 
 static int ascii_eq_ci(char a, char b) {
@@ -337,8 +366,12 @@ void *rt_html_parse(rt_string str) {
     const char *p = src;
     const char *end = src + len;
 
-    // Simple stack of parent nodes (max depth 256)
-    void *stack[256];
+    size_t stack_capacity = 256u;
+    void **stack = (void **)malloc(stack_capacity * sizeof(*stack));
+    if (!stack) {
+        rt_trap("Html.Parse: stack allocation failed");
+        return root;
+    }
     int depth = 0;
     stack[0] = root;
 
@@ -432,7 +465,12 @@ void *rt_html_parse(rt_string str) {
             int self_close = (tag_close > tag_start && tag_close[-1] == '/') ||
                              is_self_closing_tag(tag_start, tag_name_len);
 
-            if (!self_close && depth < 255) {
+            if (!self_close) {
+                if (!html_stack_reserve(&stack, &stack_capacity, (size_t)depth + 2u)) {
+                    release_local_obj(node);
+                    rt_trap("Html.Parse: nesting stack allocation failed");
+                    break;
+                }
                 depth++;
                 stack[depth] = node;
             }
@@ -469,6 +507,7 @@ void *rt_html_parse(rt_string str) {
         }
     }
 
+    free(stack);
     return root;
 }
 

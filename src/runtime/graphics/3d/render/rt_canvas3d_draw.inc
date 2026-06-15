@@ -647,8 +647,10 @@ void rt_canvas3d_draw_text_3d(void *obj, int64_t x, int64_t y, rt_string text, i
         rt_trap("Canvas3D.DrawText3D: text is too large");
         return;
     }
-    int32_t vertex_count = (int32_t)(quad_count * 4u);
-    int32_t index_count = (int32_t)(quad_count * 6u);
+    size_t vertex_total = quad_count * 4u;
+    size_t index_total = quad_count * 6u;
+    int32_t vertex_count = (int32_t)vertex_total;
+    int32_t index_count = (int32_t)index_total;
     if (!ensure_text_capacity(c, vertex_count, index_count))
         return;
 

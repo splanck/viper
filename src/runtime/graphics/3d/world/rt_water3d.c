@@ -301,8 +301,8 @@ static int water3d_mesh_reserve(rt_mesh3d *mesh,
             return 0;
         }
         if (positions64) {
-            positions64 =
-                (double *)realloc(positions64, (size_t)vertex_capacity * 3u * sizeof(double));
+            size_t position_values = (size_t)vertex_capacity * 3u;
+            positions64 = (double *)realloc(positions64, position_values * sizeof(double));
             if (!positions64) {
                 rt_trap("Water3D.Update: mesh position sidecar allocation failed");
                 return 0;
@@ -652,18 +652,18 @@ static void water3d_fill_vertices(rt_water3d *w,
 
 /// @brief Emit the 2*grid*grid triangle indices for the water grid (two triangles per cell).
 static void water3d_fill_indices(rt_mesh3d *mesh, int32_t grid, int32_t row) {
-        uint32_t out_index = 0;
-        for (int gz = 0; gz < grid; gz++) {
-            for (int gx = 0; gx < grid; gx++) {
-                uint32_t base = (uint32_t)(gz * row + gx);
-                mesh->indices[out_index++] = base;
-                mesh->indices[out_index++] = base + (uint32_t)row;
-                mesh->indices[out_index++] = base + 1u;
-                mesh->indices[out_index++] = base + 1u;
-                mesh->indices[out_index++] = base + (uint32_t)row;
-                mesh->indices[out_index++] = base + (uint32_t)row + 1u;
-            }
+    uint32_t out_index = 0;
+    for (int gz = 0; gz < grid; gz++) {
+        for (int gx = 0; gx < grid; gx++) {
+            uint32_t base = (uint32_t)(gz * row + gx);
+            mesh->indices[out_index++] = base;
+            mesh->indices[out_index++] = base + (uint32_t)row;
+            mesh->indices[out_index++] = base + 1u;
+            mesh->indices[out_index++] = base + 1u;
+            mesh->indices[out_index++] = base + (uint32_t)row;
+            mesh->indices[out_index++] = base + (uint32_t)row + 1u;
         }
+    }
 }
 
 /// @brief Create the water material on first use or refresh its color/alpha/texture/env bindings.
@@ -783,8 +783,8 @@ void rt_water3d_update(void *obj, double dt) {
     mesh->build_failed = 0;
 
     /* Vertices */
-    water3d_fill_vertices(w, mesh, grid, row, hx, hz, step_x, step_z, inv_grid, wave_valid,
-                          wave_time_phase);
+    water3d_fill_vertices(
+        w, mesh, grid, row, hx, hz, step_x, step_z, inv_grid, wave_valid, wave_time_phase);
 
     if (topology_dirty)
         water3d_fill_indices(mesh, grid, row);

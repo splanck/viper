@@ -116,8 +116,7 @@ static void node_animator_clear_target_cache(rt_node_animator3d *animator) {
 }
 
 /// @brief Ensure the per-animator channel-target cache can address @p channel_count channels.
-static int node_animator_ensure_target_cache(rt_node_animator3d *animator,
-                                             int32_t channel_count) {
+static int node_animator_ensure_target_cache(rt_node_animator3d *animator, int32_t channel_count) {
     rt_scene_node3d **next;
     int32_t next_capacity;
     if (!animator || channel_count <= 0)
@@ -182,17 +181,17 @@ static int node_animator_stack_push(rt_node_animator3d *animator,
     if (!animator || !count || !node)
         return 0;
     if (*count >= animator->traversal_stack_capacity) {
-        next_capacity = animator->traversal_stack_capacity > 0 ? animator->traversal_stack_capacity
-                                                               : 32;
+        next_capacity =
+            animator->traversal_stack_capacity > 0 ? animator->traversal_stack_capacity : 32;
         while (next_capacity <= *count) {
             if (next_capacity > SIZE_MAX / 2)
                 return 0;
             next_capacity *= 2;
         }
-        if (next_capacity > SIZE_MAX / sizeof(*next))
+        if (next_capacity > SIZE_MAX / sizeof(rt_scene_node3d *))
             return 0;
         next = (rt_scene_node3d **)realloc(animator->traversal_stack,
-                                           next_capacity * sizeof(*next));
+                                           next_capacity * sizeof(rt_scene_node3d *));
         if (!next)
             return 0;
         animator->traversal_stack = next;
@@ -734,8 +733,7 @@ int8_t rt_node_animator3d_play(void *obj, rt_string name) {
     clip_count = scene3d_node_animator_clip_count(animator);
     for (int32_t i = 0; i < clip_count; i++) {
         const char *clip_name = node_anim_cstr_or_null(animator->animations[i]->name);
-        if ((clip_name && strcmp(clip_name, target) == 0) ||
-            (!clip_name && target[0] == '\0')) {
+        if ((clip_name && strcmp(clip_name, target) == 0) || (!clip_name && target[0] == '\0')) {
             animator->current_animation = i;
             animator->time = 0.0;
             animator->playing = 1;
@@ -1164,8 +1162,7 @@ static rt_scene_node3d *node_anim_resolve_target(rt_node_animator3d *animator,
         if (cached_target && cached_target->import_index == channel->target_node_index &&
             scene_node_is_descendant_of(root, cached_target))
             return cached_target;
-        cached_target =
-            node_anim_find_by_import_index(animator, root, channel->target_node_index);
+        cached_target = node_anim_find_by_import_index(animator, root, channel->target_node_index);
         if (channel_index >= 0 && channel_index < animator->cached_target_capacity)
             animator->cached_targets[channel_index] = cached_target;
         if (cached_target)

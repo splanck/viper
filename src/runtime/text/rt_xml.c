@@ -92,6 +92,60 @@ static bool has_error(void) {
     return xml_last_error[0] != '\0';
 }
 
+/// @brief Borrowed-node stack used to traverse XML trees without C recursion.
+typedef struct xml_node_stack {
+    void **items; ///< Borrowed XML node pointers.
+    size_t len;   ///< Number of occupied entries.
+    size_t cap;   ///< Allocated entry count.
+} xml_node_stack;
+
+/// @brief Release storage owned by an XML traversal stack.
+/// @param stack Stack to dispose. Safe to call on an empty stack.
+static void xml_node_stack_dispose(xml_node_stack *stack) {
+    if (!stack)
+        return;
+    free(stack->items);
+    stack->items = NULL;
+    stack->len = 0;
+    stack->cap = 0;
+}
+
+/// @brief Push a borrowed XML node pointer onto a traversal stack.
+/// @details The stack does not retain nodes; callers must only use it while the
+///          source XML tree is otherwise live. Growth is checked for both
+///          `size_t` overflow and allocation failure.
+/// @param stack Stack to grow.
+/// @param node Borrowed node pointer to push.
+/// @param api Diagnostic prefix used if the stack cannot grow.
+/// @return true on success, false after recording and trapping an allocation error.
+static bool xml_node_stack_push(xml_node_stack *stack, void *node, const char *api) {
+    if (!node)
+        return true;
+    if (stack->len == stack->cap) {
+        if (stack->cap > SIZE_MAX / 2u) {
+            set_error("XML traversal stack overflow");
+            rt_trap(api);
+            return false;
+        }
+        size_t new_cap = stack->cap ? stack->cap * 2u : 64u;
+        if (new_cap > SIZE_MAX / sizeof(*stack->items)) {
+            set_error("XML traversal stack overflow");
+            rt_trap(api);
+            return false;
+        }
+        void **grown = (void **)realloc(stack->items, new_cap * sizeof(*stack->items));
+        if (!grown) {
+            set_error("XML traversal stack allocation failed");
+            rt_trap(api);
+            return false;
+        }
+        stack->items = grown;
+        stack->cap = new_cap;
+    }
+    stack->items[stack->len++] = node;
+    return true;
+}
+
 //=============================================================================
 // Node Management
 //=============================================================================
@@ -1866,33 +1920,38 @@ void *rt_xml_root(void *doc) {
     return NULL;
 }
 
-/// @brief DFS helper for `FindAll` — push every descendant element matching `tag`.
+/// @brief Iterative DFS helper for `FindAll` — push every element matching `tag`.
 ///
 /// Each match is retained before being pushed so the result seq holds
-/// strong refs (callers can outlive the source tree). Recursion is
-/// pre-order, so results appear in document order.
-static void find_all_recursive(void *node, const char *tag, void *result) {
+/// strong refs (callers can outlive the source tree). Children are pushed in
+/// reverse order so the LIFO stack still emits document-order results.
+static void find_all_iterative(void *node, const char *tag, void *result) {
     if (!rt_xml_is_node(node))
         return;
-    xml_node *n = (xml_node *)node;
-
-    // Check this node
-    if (n->type == XML_NODE_ELEMENT && n->tag) {
-        const char *node_tag = rt_string_cstr(n->tag);
-        if (strcmp(node_tag, tag) == 0) {
-            rt_seq_push(result, node);
+    xml_node_stack stack = {0};
+    if (!xml_node_stack_push(&stack, node, "Xml.FindAll: traversal stack allocation failed"))
+        return;
+    while (stack.len > 0) {
+        void *cur = stack.items[--stack.len];
+        xml_node *n = (xml_node *)cur;
+        if (n->type == XML_NODE_ELEMENT && n->tag) {
+            const char *node_tag = rt_string_cstr(n->tag);
+            if (strcmp(node_tag, tag) == 0)
+                rt_seq_push(result, cur);
+        }
+        if (n->children) {
+            int64_t count = rt_seq_len(n->children);
+            for (int64_t i = count; i > 0; i--) {
+                if (!xml_node_stack_push(&stack,
+                                         rt_seq_get(n->children, i - 1),
+                                         "Xml.FindAll: traversal stack allocation failed")) {
+                    xml_node_stack_dispose(&stack);
+                    return;
+                }
+            }
         }
     }
-
-    // Recurse into children
-    if (n->children) {
-        int64_t count = rt_seq_len(n->children);
-        for (int64_t i = 0; i < count; i++) {
-            void *child = rt_seq_get(n->children, i);
-            find_all_recursive(child, tag, result);
-            // Borrowed reference — parent owns child, do not release
-        }
-    }
+    xml_node_stack_dispose(&stack);
 }
 
 /// @brief Advance `path` past any leading '/' separators and return the new position.
@@ -1921,9 +1980,14 @@ static bool element_tag_matches_segment(xml_node *node, const char *seg, size_t 
 /// @brief Recursive helper for slash-path FindAll: walks `path` one segment at a time,
 ///        pushing matching nodes into `result`. Handles both the "this node is the match"
 ///        and "descend into children" cases.
-static void find_path_all_recursive(void *node, const char *path, void *result) {
+static void find_path_all_recursive(void *node, const char *path, void *result, int depth) {
     if (!rt_xml_is_node(node))
         return;
+    if (depth >= XML_MAX_DEPTH) {
+        set_error("XML path search depth limit exceeded");
+        rt_trap("Xml.FindAll: path search depth limit exceeded");
+        return;
+    }
 
     path = skip_path_separators(path);
     if (!path || *path == '\0') {
@@ -1944,7 +2008,7 @@ static void find_path_all_recursive(void *node, const char *path, void *result) 
         if (n->children) {
             int64_t count = rt_seq_len(n->children);
             for (int64_t i = 0; i < count; i++)
-                find_path_all_recursive(rt_seq_get(n->children, i), rest, result);
+                find_path_all_recursive(rt_seq_get(n->children, i), rest, result, depth + 1);
         }
         return;
     }
@@ -1958,7 +2022,7 @@ static void find_path_all_recursive(void *node, const char *path, void *result) 
                 if (!rest || *rest == '\0')
                     rt_seq_push(result, child);
                 else
-                    find_path_all_recursive(child, rest, result);
+                    find_path_all_recursive(child, rest, result, depth + 1);
             }
         }
     }
@@ -1978,42 +2042,46 @@ void *rt_xml_find_all(void *node, rt_string tag) {
 
     const char *target = rt_string_cstr(tag);
     if (strchr(target, '/'))
-        find_path_all_recursive(node, target, result);
+        find_path_all_recursive(node, target, result, 0);
     else
-        find_all_recursive(node, target, result);
+        find_all_iterative(node, target, result);
     return result;
 }
 
-/// @brief DFS helper for `Find` — return first descendant element matching `tag`.
+/// @brief Iterative DFS helper for `Find` — return first descendant element matching `tag`.
 ///
-/// Pre-order traversal, returns the first hit. Retains the returned
-/// node before propagating up the call stack so the caller owns it.
-static void *find_first_recursive(void *node, const char *tag) {
+/// Pre-order traversal, returns the first hit. Retains the returned node so the
+/// caller owns it. Children are pushed in reverse order to preserve document order.
+static void *find_first_iterative(void *node, const char *tag) {
     if (!rt_xml_is_node(node))
         return NULL;
-    xml_node *n = (xml_node *)node;
-
-    // Check this node
-    if (n->type == XML_NODE_ELEMENT && n->tag) {
-        const char *node_tag = rt_string_cstr(n->tag);
-        if (strcmp(node_tag, tag) == 0) {
-            rt_obj_retain_maybe(node);
-            return node;
+    xml_node_stack stack = {0};
+    if (!xml_node_stack_push(&stack, node, "Xml.Find: traversal stack allocation failed"))
+        return NULL;
+    while (stack.len > 0) {
+        void *cur = stack.items[--stack.len];
+        xml_node *n = (xml_node *)cur;
+        if (n->type == XML_NODE_ELEMENT && n->tag) {
+            const char *node_tag = rt_string_cstr(n->tag);
+            if (strcmp(node_tag, tag) == 0) {
+                rt_obj_retain_maybe(cur);
+                xml_node_stack_dispose(&stack);
+                return cur;
+            }
+        }
+        if (n->children) {
+            int64_t count = rt_seq_len(n->children);
+            for (int64_t i = count; i > 0; i--) {
+                if (!xml_node_stack_push(&stack,
+                                         rt_seq_get(n->children, i - 1),
+                                         "Xml.Find: traversal stack allocation failed")) {
+                    xml_node_stack_dispose(&stack);
+                    return NULL;
+                }
+            }
         }
     }
-
-    // Recurse into children
-    if (n->children) {
-        int64_t count = rt_seq_len(n->children);
-        for (int64_t i = 0; i < count; i++) {
-            void *child = rt_seq_get(n->children, i);
-            void *found = find_first_recursive(child, tag);
-            // Borrowed reference — parent owns child, do not release
-            if (found)
-                return found;
-        }
-    }
-
+    xml_node_stack_dispose(&stack);
     return NULL;
 }
 
@@ -2035,7 +2103,7 @@ void *rt_xml_find(void *node, rt_string tag) {
             rt_obj_free(matches);
         return first;
     }
-    return find_first_recursive(node, target);
+    return find_first_iterative(node, target);
 }
 
 //=============================================================================

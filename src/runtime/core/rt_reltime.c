@@ -100,7 +100,7 @@ rt_string rt_reltime_format_from(int64_t timestamp, int64_t reference) {
         return rt_string_from_bytes("just now", 8);
     } else if (abs_diff < 60) {
         value = abs_diff;
-        unit = value == 1 ? "second" : "seconds";
+        unit = "seconds";
     } else if (abs_diff < 3600) {
         value = abs_diff / 60;
         unit = value == 1 ? "minute" : "minutes";

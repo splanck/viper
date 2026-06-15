@@ -46,6 +46,15 @@
 /// Default CSV delimiter.
 #define DEFAULT_DELIMITER ','
 
+/// @brief Release a local runtime object reference if it drops to zero.
+/// @details This helper is used on parser failure paths after a value has been
+///          created locally but should not be returned to the caller.
+/// @param obj Runtime object pointer or NULL.
+static void release_local_obj(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 /// @brief Convert a CSV field value to an owned string safely.
 /// @details Raw runtime strings are retained, boxed strings are unboxed, and other boxed/runtime
 ///          values use the shared object stringification path. This avoids interpreting arbitrary
@@ -105,10 +114,12 @@ static bool needs_quoting(const char *field, size_t len, char delim) {
 
 /// @brief Parse state for RFC 4180 CSV parsing.
 typedef struct {
-    const char *input; ///< Input string.
-    size_t len;        ///< Total length.
-    size_t pos;        ///< Current position.
-    char delim;        ///< Delimiter character.
+    const char *input;   ///< Input string.
+    size_t len;          ///< Total length.
+    size_t pos;          ///< Current position.
+    char delim;          ///< Delimiter character.
+    bool has_error;      ///< True after a malformed record or allocation failure.
+    const char *message; ///< Static diagnostic describing the first parse error.
 } csv_parser;
 
 /// @brief Initialize parser state.
@@ -117,6 +128,23 @@ static void parser_init(csv_parser *p, const char *input, size_t len, char delim
     p->len = len;
     p->pos = 0;
     p->delim = delim;
+    p->has_error = false;
+    p->message = NULL;
+}
+
+/// @brief Record a CSV parse failure before invoking the runtime trap hook.
+/// @details Runtime trap hooks can return in recovery-oriented tests and
+///          embedders. Recording the failure first lets callers stop parsing
+///          instead of interpreting the fallback return value as a real field.
+/// @param p Parser state to mark as failed.
+/// @param message Static diagnostic to expose to the caller and trap hook.
+static void csv_parse_error(csv_parser *p, const char *message) {
+    if (p) {
+        p->has_error = true;
+        p->message = message;
+        p->pos = p->len;
+    }
+    rt_trap(message);
 }
 
 /// @brief Check if parser is at end of input.
@@ -174,8 +202,8 @@ static rt_string parse_field(csv_parser *p, bool *at_line_end) {
         size_t len = 0;
         char *buf = (char *)malloc(cap);
         if (!buf) {
-            rt_trap("Csv.Parse: memory allocation failed");
-            return rt_string_from_bytes("", 0);
+            csv_parse_error(p, "Csv.Parse: memory allocation failed");
+            return NULL;
         }
 
         bool closed = false;
@@ -190,15 +218,15 @@ static rt_string parse_field(csv_parser *p, bool *at_line_end) {
                     if (len + 1 >= cap) {
                         if (cap > SIZE_MAX / 2) {
                             free(buf);
-                            rt_trap("Csv.Parse: field length overflow");
-                            return rt_string_from_bytes("", 0);
+                            csv_parse_error(p, "Csv.Parse: field length overflow");
+                            return NULL;
                         }
                         cap *= 2;
                         char *tmp = (char *)realloc(buf, cap);
                         if (!tmp) {
                             free(buf);
-                            rt_trap("Csv.Parse: memory allocation failed");
-                            return rt_string_from_bytes("", 0);
+                            csv_parse_error(p, "Csv.Parse: memory allocation failed");
+                            return NULL;
                         }
                         buf = tmp;
                     }
@@ -211,17 +239,17 @@ static rt_string parse_field(csv_parser *p, bool *at_line_end) {
             } else {
                 // Regular character (including newlines in quoted fields)
                 if (len + 1 >= cap) {
-                        if (cap > SIZE_MAX / 2) {
-                            free(buf);
-                            rt_trap("Csv.Parse: field length overflow");
-                            return rt_string_from_bytes("", 0);
-                        }
+                    if (cap > SIZE_MAX / 2) {
+                        free(buf);
+                        csv_parse_error(p, "Csv.Parse: field length overflow");
+                        return NULL;
+                    }
                     cap *= 2;
                     char *tmp = (char *)realloc(buf, cap);
                     if (!tmp) {
                         free(buf);
-                        rt_trap("Csv.Parse: memory allocation failed");
-                        return rt_string_from_bytes("", 0);
+                        csv_parse_error(p, "Csv.Parse: memory allocation failed");
+                        return NULL;
                     }
                     buf = tmp;
                 }
@@ -231,8 +259,8 @@ static rt_string parse_field(csv_parser *p, bool *at_line_end) {
 
         if (!closed) {
             free(buf);
-            rt_trap("Csv.Parse: unterminated quoted field");
-            return rt_string_from_bytes("", 0);
+            csv_parse_error(p, "Csv.Parse: unterminated quoted field");
+            return NULL;
         }
 
         buf[len] = '\0';
@@ -254,8 +282,8 @@ static rt_string parse_field(csv_parser *p, bool *at_line_end) {
                 *at_line_end = true;
             } else {
                 rt_string_unref(result);
-                rt_trap("Csv.Parse: invalid character after closing quote");
-                return rt_string_from_bytes("", 0);
+                csv_parse_error(p, "Csv.Parse: invalid character after closing quote");
+                return NULL;
             }
         } else {
             *at_line_end = true;
@@ -270,8 +298,8 @@ static rt_string parse_field(csv_parser *p, bool *at_line_end) {
             if (c == p->delim || c == '\r' || c == '\n')
                 break;
             if (c == '"') {
-                rt_trap("Csv.Parse: quote in unquoted field");
-                return rt_string_from_bytes("", 0);
+                csv_parse_error(p, "Csv.Parse: quote in unquoted field");
+                return NULL;
             }
             parser_consume(p);
         }
@@ -314,7 +342,8 @@ static void *parse_row(csv_parser *p) {
     do {
         rt_string field = parse_field(p, &at_line_end);
         if (!field) {
-            rt_trap("Csv.Parse: memory allocation failed");
+            if (!p->has_error)
+                csv_parse_error(p, "Csv.Parse: memory allocation failed");
             return row;
         }
         rt_seq_push(row, (void *)field);
@@ -542,8 +571,16 @@ void *rt_csv_parse_line_with(rt_string line, rt_string delim) {
     parser_init(&p, input, len, d);
 
     void *row = parse_row(&p);
+    if (p.has_error) {
+        release_local_obj(row);
+        return NULL;
+    }
     if (!parser_eof(&p))
-        rt_trap("Csv.ParseLine: expected a single CSV record");
+        csv_parse_error(&p, "Csv.ParseLine: expected a single CSV record");
+    if (p.has_error) {
+        release_local_obj(row);
+        return NULL;
+    }
     return row;
 }
 
@@ -642,6 +679,11 @@ void *rt_csv_parse_with(rt_string text, rt_string delim) {
 
     while (!parser_eof(&p)) {
         void *row = parse_row(&p);
+        if (p.has_error) {
+            release_local_obj(row);
+            release_local_obj(rows);
+            return NULL;
+        }
         rt_seq_push(rows, row);
         if (row && rt_obj_release_check0(row))
             rt_obj_free(row);

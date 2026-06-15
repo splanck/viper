@@ -1289,11 +1289,7 @@ int64_t rt_gc_collect(void) {
     }
 
     free(garbage);
-    garbage = NULL;
-    garbage_count = 0;
     free(snapshot);
-    snapshot = NULL;
-    snap_count = 0;
 
     rt_trap_clear_recovery();
 
@@ -1465,7 +1461,7 @@ void rt_gc_run_all_finalizers(void) {
             continue;
         }
 
-        if (hdr && (rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT && hdr->finalizer) {
+        if ((rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT && hdr->finalizer) {
             rt_heap_finalizer_t fin = hdr->finalizer;
             hdr->finalizer = NULL; /* prevent double-finalization */
             fin(obj);

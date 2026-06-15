@@ -35,14 +35,15 @@
 #include "rt_model3d.h"
 
 #include "rt_animcontroller3d.h"
+#include "rt_asset.h"
 #include "rt_asset_error.h"
+#include "rt_bytes.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
-#include "rt_asset.h"
 #include "rt_fbx_loader.h"
+#include "rt_file_ext.h"
 #include "rt_gltf.h"
 #include "rt_graphics3d_ids.h"
-#include "rt_tempfile.h"
 #include "rt_morphtarget3d.h"
 #include "rt_numeric.h"
 #include "rt_object.h"
@@ -50,6 +51,7 @@
 #include "rt_scene3d_internal.h"
 #include "rt_skeleton3d.h"
 #include "rt_string.h"
+#include "rt_tempfile.h"
 #include "rt_trap.h"
 
 #include <ctype.h>
@@ -71,9 +73,11 @@ extern void *rt_pixels_load(void *path);
 #define MODEL3D_UNUSED_PRIVATE
 #endif
 
+// clang-format off
 #include "rt_model3d_core.inc"
 #include "rt_model3d_loaders.inc"
 #include "rt_model3d_api.inc"
+// clang-format on
 #else
 typedef int rt_model3d_disabled_tu_guard;
 #endif /* VIPER_ENABLE_GRAPHICS */

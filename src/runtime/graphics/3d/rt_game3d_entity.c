@@ -85,9 +85,9 @@ static int game3d_node_stack_push(void ***stack_io,
     if (count >= capacity) {
         size_t new_capacity = capacity > 0 ? capacity * 2u : 32u;
         void **grown;
-        if (new_capacity <= capacity || new_capacity > SIZE_MAX / sizeof(*stack))
+        if (new_capacity <= capacity || new_capacity > SIZE_MAX / sizeof(void *))
             return 0;
-        grown = (void **)realloc(stack, new_capacity * sizeof(*stack));
+        grown = (void **)realloc(stack, new_capacity * sizeof(void *));
         if (!grown)
             return 0;
         stack = grown;

@@ -425,11 +425,9 @@ rt_string rt_sortedset_lower(void *obj, rt_string str) {
     int8_t found;
     int64_t idx = binary_search(set, str, &found);
 
-    // For lower, we want strictly less than
-    if (found)
-        idx--;
-    else
-        idx--;
+    (void)found;
+    // For lower, we want strictly less than the match or insertion point.
+    idx--;
 
     if (idx < 0)
         return rt_const_cstr("");

@@ -1868,214 +1868,46 @@ static void generateSignatures(const ParseState &state,
     std::cout << "  Generated " << outPath << "\n";
 }
 
-// Set of known runtime class qnames, populated before ZiaExterns generation.
-static std::unordered_set<std::string> knownClassNames;
+/// @brief Encode Zia extern parameter names into a compact generated string.
+/// @details Names are newline-separated. Empty or all-empty name lists encode
+///          as an empty string so callers inherit or omit parameter names.
+static std::string encodeZiaParamNames(const std::vector<std::string> &paramNames) {
+    bool hasName = false;
+    for (const auto &name : paramNames)
+        hasName = hasName || !name.empty();
+    if (!hasName)
+        return {};
 
-/// @brief Map IL return type to Zia types:: expression.
-static std::string ilTypeToZiaType(const std::string &ilType, const std::string &canonical) {
-    // Handle optional return types (trailing '?')
-    if (!ilType.empty() && ilType.back() == '?') {
-        std::string inner = ilType.substr(0, ilType.size() - 1);
-        return "types::optional(" + ilTypeToZiaType(inner, canonical) + ")";
-    }
-
-    std::string baseType = stripTypeArgs(ilType);
-    std::string typeArg = extractTypeArg(ilType);
-
-    if (baseType == "str")
-        return "types::string()";
-    if (baseType == "i64" || baseType == "i32" || baseType == "i16" || baseType == "i8")
-        return "types::integer()";
-    if (baseType == "f64" || baseType == "f32")
-        return "types::number()";
-    if (baseType == "i1" || baseType == "bool")
-        return "types::boolean()";
-    if (baseType == "void")
-        return "types::voidType()";
-    if (baseType == "seq") {
-        if (typeArg.empty())
-            return "types::runtimeClass(\"Viper.Collections.Seq\")";
-        return "types::seqOf(" + ilTypeToZiaType(typeArg, canonical) + ")";
-    }
-    if (baseType == "list") {
-        if (typeArg.empty())
-            return "types::runtimeClass(\"Viper.Collections.List\")";
-        return "types::list(" + ilTypeToZiaType(typeArg, canonical) + ")";
-    }
-    if (baseType == "obj" && !typeArg.empty())
-        return "types::runtimeClass(\"" + typeArg + "\")";
-    if (baseType == "ptr")
-        return "types::ptr()";
-    if (baseType == "obj") {
-        // Explicit return type overrides for functions that return objects
-        // from a different namespace than their own.
-        static const std::unordered_map<std::string, std::string> returnTypeOverrides = {
-            // Crypto functions returning Viper.Collections.Bytes
-            {"Viper.Crypto.Rand.Bytes", "Viper.Collections.Bytes"},
-            {"Viper.Crypto.Cipher.Encrypt", "Viper.Collections.Bytes"},
-            {"Viper.Crypto.Cipher.Decrypt", "Viper.Collections.Bytes"},
-            {"Viper.Crypto.Cipher.EncryptAAD", "Viper.Collections.Bytes"},
-            {"Viper.Crypto.Cipher.DecryptAAD", "Viper.Collections.Bytes"},
-            {"Viper.Crypto.Cipher.EncryptWithKey", "Viper.Collections.Bytes"},
-            {"Viper.Crypto.Cipher.DecryptWithKey", "Viper.Collections.Bytes"},
-            {"Viper.Crypto.Cipher.EncryptWithKeyAAD", "Viper.Collections.Bytes"},
-            {"Viper.Crypto.Cipher.DecryptWithKeyAAD", "Viper.Collections.Bytes"},
-            {"Viper.Crypto.Cipher.GenerateKey", "Viper.Collections.Bytes"},
-            {"Viper.Crypto.Cipher.DeriveKey", "Viper.Collections.Bytes"},
-            {"Viper.Crypto.Aes.Encrypt", "Viper.Collections.Bytes"},
-            {"Viper.Crypto.Aes.Decrypt", "Viper.Collections.Bytes"},
-            {"Viper.Crypto.Aes.EncryptAuth", "Viper.Collections.Bytes"},
-            {"Viper.Crypto.Aes.DecryptAuth", "Viper.Collections.Bytes"},
-            {"Viper.Crypto.Aes.EncryptStr", "Viper.Collections.Bytes"},
-            {"Viper.Crypto.KeyDerive.Pbkdf2SHA256", "Viper.Collections.Bytes"},
-            {"Viper.Crypto.KeyDerive.ScryptSHA256", "Viper.Collections.Bytes"},
-            // IO functions returning Viper.Collections.Bytes
-            {"Viper.IO.Stream.ToBytes", "Viper.Collections.Bytes"},
-            // Text functions returning Viper.Collections.Seq
-            {"Viper.Text.Csv.ParseLine", "Viper.Collections.Seq"},
-            {"Viper.Text.Csv.ParseLineWith", "Viper.Collections.Seq"},
-            {"Viper.Text.Csv.Parse", "Viper.Collections.Seq"},
-            {"Viper.Text.Csv.ParseWith", "Viper.Collections.Seq"},
-            {"Viper.Text.Markdown.ExtractLinks", "Viper.Collections.Seq"},
-            {"Viper.Text.Markdown.ExtractHeadings", "Viper.Collections.Seq"},
-            {"Viper.Text.Html.ExtractLinks", "Viper.Collections.Seq"},
-            {"Viper.Text.Html.ExtractText", "Viper.Collections.Seq"},
-            // Collection methods returning Seq from non-Seq classes
-            {"Viper.Collections.Bag.Items", "Viper.Collections.Seq"},
-            {"Viper.Collections.SortedSet.Items", "Viper.Collections.Seq"},
-            {"Viper.Collections.Set.Items", "Viper.Collections.Seq"},
-        };
-
-        auto overrideIt = returnTypeOverrides.find(canonical);
-        if (overrideIt != returnTypeOverrides.end())
-            return "types::runtimeClass(\"" + overrideIt->second + "\")";
-
-        // For factory methods that return instances of their class, derive the class type
-        // e.g., "Viper.GUI.App.New" -> runtimeClass("Viper.GUI.App")
-        // e.g., "Viper.Graphics.Pixels.LoadBmp" -> runtimeClass("Viper.Graphics.Pixels")
-        size_t lastDot = canonical.rfind('.');
-        if (lastDot != std::string::npos) {
-            std::string method = canonical.substr(lastDot + 1);
-            // Check for factory method patterns (exact matches or prefixes)
-            bool isFactory = (method == "New" || method == "Clone" || method == "Copy" ||
-                              method == "Zero" || method == "Range");
-            // Also check for prefix patterns like Open*, Load*, From*, etc.
-            if (!isFactory) {
-                isFactory = (method.rfind("Open", 0) == 0 || method.rfind("Load", 0) == 0 ||
-                             method.rfind("From", 0) == 0 || method.rfind("Parse", 0) == 0 ||
-                             method.rfind("Read", 0) == 0 || method.rfind("Decode", 0) == 0 ||
-                             method.rfind("Create", 0) == 0);
-            }
-            if (isFactory) {
-                std::string className = canonical.substr(0, lastDot);
-                return "types::runtimeClass(\"" + className + "\")";
-            }
-            // For any method on a known runtime class that returns obj,
-            // infer the class type (e.g., Vec2.Add returns Vec2).
-            if (!knownClassNames.empty()) {
-                std::string className = canonical.substr(0, lastDot);
-                if (knownClassNames.count(className))
-                    return "types::runtimeClass(\"" + className + "\")";
-            }
-        }
-        return "types::any()";
-    }
-    // Default unrecognized object-like tokens to safe type erasure.
-    return "types::any()";
-}
-
-/// @brief Map IL parameter type to a Zia types:: expression.
-static std::string ilParamTypeToZiaType(const std::string &ilType) {
-    if (!ilType.empty() && ilType.back() == '?') {
-        std::string inner = ilType.substr(0, ilType.size() - 1);
-        return "types::optional(" + ilParamTypeToZiaType(inner) + ")";
-    }
-
-    std::string baseType = stripTypeArgs(ilType);
-
-    if (baseType == "str")
-        return "types::string()";
-    if (baseType == "i64" || baseType == "i32" || baseType == "i16" || baseType == "i8")
-        return "types::integer()";
-    if (baseType == "f64" || baseType == "f32")
-        return "types::number()";
-    if (baseType == "i1" || baseType == "bool")
-        return "types::boolean()";
-    if (baseType == "void")
-        return "types::voidType()";
-    if (baseType == "seq") {
-        std::string typeArg = extractTypeArg(ilType);
-        if (typeArg.empty())
-            return "types::ptr()";
-        return "types::seqOf(" + ilParamTypeToZiaType(typeArg) + ")";
-    }
-    if (baseType == "list") {
-        std::string typeArg = extractTypeArg(ilType);
-        if (typeArg.empty())
-            return "types::ptr()";
-        return "types::list(" + ilParamTypeToZiaType(typeArg) + ")";
-    }
-    if (baseType == "obj")
-        return "types::any()";
-    if (baseType == "ptr")
-        return "types::ptr()";
-    return "types::any()";
-}
-
-/// @brief Emit a `, { "name", ... }` brace-list of Zia extern parameter names.
-static void emitZiaParamNames(std::ostream &out, const std::vector<std::string> &paramNames) {
-    out << ", {";
+    std::string encoded;
     for (size_t i = 0; i < paramNames.size(); ++i) {
         if (i > 0)
-            out << ", ";
-        out << cppStringLiteral(paramNames[i]);
+            encoded.push_back('\n');
+        encoded += paramNames[i];
     }
-    out << "}";
+    return encoded;
 }
 
-/// @brief Return true if an IL type token denotes a raw `ptr` (after trimming
-///        whitespace, an optional `?`, and any generic arguments).
-static bool ziaTypeTokenIsRawPointer(std::string type) {
-    while (!type.empty() && std::isspace(static_cast<unsigned char>(type.front())))
-        type.erase(type.begin());
-    while (!type.empty() && std::isspace(static_cast<unsigned char>(type.back())))
-        type.pop_back();
-    if (!type.empty() && type.back() == '?')
-        type.pop_back();
-    return stripTypeArgs(type) == "ptr";
-}
-
-/// @brief Map a bridge role string to its RuntimePointerBridgeRole enum expression.
-static std::string bridgeRoleExpr(const std::string &role) {
-    if (role == "callback")
-        return "RuntimePointerBridgeRole::Callback";
-    if (role == "payload")
-        return "RuntimePointerBridgeRole::Payload";
-    return "RuntimePointerBridgeRole::None";
-}
-
-/// @brief Emit a `, RuntimePointerSafety{...}` initializer for a Zia extern.
-/// @details Records whether the return and each argument is a raw pointer plus
-///          the per-argument bridge role, so the Zia frontend can enforce pointer
-///          safety at call sites.
-static void emitZiaPointerSafety(std::ostream &out,
-                                 const ParsedSignature &sig,
-                                 const std::vector<std::string> &bridgeRoles) {
-    out << ", RuntimePointerSafety{"
-        << (ziaTypeTokenIsRawPointer(sig.returnType) ? "true" : "false") << ", {";
-    for (size_t i = 0; i < sig.argTypes.size(); ++i) {
-        if (i > 0)
-            out << ", ";
-        out << (ziaTypeTokenIsRawPointer(sig.argTypes[i]) ? "true" : "false");
-    }
-    out << "}, {";
-    for (size_t i = 0; i < sig.argTypes.size(); ++i) {
-        if (i > 0)
-            out << ", ";
+/// @brief Encode Zia bridge roles as one character per surface parameter.
+/// @details `n` means no role, `c` callback, and `p` payload. All-none role
+///          vectors encode as an empty string to keep the generated table small.
+static std::string encodeZiaBridgeRoles(const std::vector<std::string> &bridgeRoles,
+                                        size_t paramCount) {
+    std::string encoded;
+    encoded.reserve(paramCount);
+    bool hasNonDefaultRole = false;
+    for (size_t i = 0; i < paramCount; ++i) {
         std::string role = i < bridgeRoles.size() ? bridgeRoles[i] : "none";
-        out << bridgeRoleExpr(role);
+        char code = 'n';
+        if (role == "callback") {
+            code = 'c';
+            hasNonDefaultRole = true;
+        } else if (role == "payload") {
+            code = 'p';
+            hasNonDefaultRole = true;
+        }
+        encoded.push_back(code);
     }
-    out << "}}";
+    return hasNonDefaultRole ? encoded : std::string{};
 }
 
 /// @brief Determine the Zia extern's parameter names for a runtime function.
@@ -2114,18 +1946,13 @@ static std::vector<std::string> ziaExternParamNamesFor(const RuntimeFunc &func,
 static void generateZiaExterns(const ParseState &state,
                                const fs::path &outDir,
                                const fs::path &inputPath) {
-    // Populate known class names for type inference
-    knownClassNames.clear();
-    for (const auto &cls : state.classes)
-        knownClassNames.insert(cls.name);
-
     fs::path outPath = outDir / "ZiaRuntimeExterns.inc";
     std::ostringstream out;
 
     out << fileHeader("ZiaRuntimeExterns.inc",
-                      "Zia frontend extern function definitions generated from runtime.def.");
+                      "Zia frontend extern metadata generated from runtime.def.");
 
-    out << "// This file is included by Sema_Runtime.cpp to register all runtime functions.\n";
+    out << "// This file is included by Sema_Runtime.cpp after ZiaRuntimeExternSpec is defined.\n";
     out << "// Usage: #include \"il/runtime/ZiaRuntimeExterns.inc\"\n\n";
 
     const fs::path runtimeDir = inputPath.parent_path();
@@ -2134,15 +1961,7 @@ static void generateZiaExterns(const ParseState &state,
     const fs::path runtimeHeaders = srcRoot / "runtime";
     auto headerDecls = loadRuntimeHeaderDeclarations(runtimeHeaders, repoRoot);
 
-    // First emit type registry entries for runtime classes
-    out << "// " << std::string(75, '=') << "\n";
-    out << "// RUNTIME CLASS TYPE REGISTRATIONS\n";
-    out << "// " << std::string(75, '=') << "\n";
-    for (const auto &cls : state.classes) {
-        out << "typeRegistry_[" << cppStringLiteral(cls.name) << "] = types::runtimeClass("
-            << cppStringLiteral(cls.name) << ");\n";
-    }
-    out << "\n";
+    out << "static constexpr ZiaRuntimeExternSpec kZiaRuntimeExterns[] = {\n";
 
     // Group functions by namespace for readability
     std::map<std::string, std::vector<const RuntimeFunc *>> byNamespace;
@@ -2158,75 +1977,49 @@ static void generateZiaExterns(const ParseState &state,
         byNamespace[ns].push_back(&func);
     }
 
-    // Each namespace group is wrapped in a lambda to limit stack depth.
-    // MSVC Debug mode allocates separate stack slots for every temporary in a
-    // function, so 4000+ inline defineExternFunction calls (each creating
-    // temporary vectors) would blow the default 1 MB Windows stack.  The lambda
-    // boundary forces each batch into its own stack frame.
+    // Keep groups only as comments for generated-file readability. The runtime
+    // registration loop in Sema_Runtime.cpp consumes the compact table below.
     for (const auto &[ns, funcs] : byNamespace) {
-        out << "// " << std::string(75, '=') << "\n";
-        out << "// " << ns << "\n";
-        out << "// " << std::string(75, '=') << "\n";
-        out << "[&]() {\n";
+        out << "    // " << ns << "\n";
 
         for (const auto *func : funcs) {
             ParsedSignature sig = parseSignature(func->signature);
-            std::string ziaType = ilTypeToZiaType(sig.returnType, func->canonical);
-            out << "defineExternFunction(" << cppStringLiteral(func->canonical) << ", " << ziaType;
-            out << ", {";
-            for (size_t i = 0; i < sig.argTypes.size(); ++i) {
-                if (i > 0)
-                    out << ", ";
-                out << ilParamTypeToZiaType(sig.argTypes[i]);
-            }
-            out << "}";
+            std::vector<std::string> paramNames;
             if (auto declIt = headerDecls.find(func->c_symbol); declIt != headerDecls.end()) {
-                auto paramNames = ziaExternParamNamesFor(*func, &declIt->second);
-                emitZiaParamNames(out, paramNames);
-            } else {
-                emitZiaParamNames(out, {});
+                paramNames = ziaExternParamNamesFor(*func, &declIt->second);
             }
-            emitZiaPointerSafety(out, sig, func->bridgeRoles);
-            out << ");\n";
+            out << "    {" << cppStringLiteral(func->canonical) << ", "
+                << cppStringLiteral(func->signature) << ", "
+                << cppStringLiteral(encodeZiaParamNames(paramNames)) << ", "
+                << cppStringLiteral(encodeZiaBridgeRoles(func->bridgeRoles, sig.argTypes.size()))
+                << "},\n";
         }
-        out << "}();\n\n";
     }
 
     // Also emit aliases
     if (!state.aliases.empty()) {
-        out << "// " << std::string(75, '=') << "\n";
-        out << "// ALIASES\n";
-        out << "// " << std::string(75, '=') << "\n";
-        out << "[&]() {\n";
+        out << "    // ALIASES\n";
 
         for (const auto &alias : state.aliases) {
             auto it = state.func_by_id.find(alias.target_id);
             if (it != state.func_by_id.end()) {
                 const auto &target = state.functions[it->second];
                 ParsedSignature sig = parseSignature(target.signature);
-                std::string ziaType = ilTypeToZiaType(sig.returnType, alias.canonical);
-                out << "defineExternFunction(" << cppStringLiteral(alias.canonical) << ", "
-                    << ziaType;
-                out << ", {";
-                for (size_t i = 0; i < sig.argTypes.size(); ++i) {
-                    if (i > 0)
-                        out << ", ";
-                    out << ilParamTypeToZiaType(sig.argTypes[i]);
-                }
-                out << "}";
+                std::vector<std::string> paramNames;
                 if (auto declIt = headerDecls.find(target.c_symbol); declIt != headerDecls.end()) {
-                    auto paramNames = ziaExternParamNamesFor(target, &declIt->second);
-                    emitZiaParamNames(out, paramNames);
-                } else {
-                    emitZiaParamNames(out, {});
+                    paramNames = ziaExternParamNamesFor(target, &declIt->second);
                 }
-                emitZiaPointerSafety(out, sig, target.bridgeRoles);
-                out << ");\n";
+                out << "    {" << cppStringLiteral(alias.canonical) << ", "
+                    << cppStringLiteral(target.signature) << ", "
+                    << cppStringLiteral(encodeZiaParamNames(paramNames)) << ", "
+                    << cppStringLiteral(
+                           encodeZiaBridgeRoles(target.bridgeRoles, sig.argTypes.size()))
+                    << "},\n";
             }
         }
-        out << "}();\n";
-        out << "\n";
     }
+
+    out << "};\n";
 
     writeGeneratedTextFile(outPath, out);
     std::cout << "  Generated " << outPath << "\n";

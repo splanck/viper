@@ -29,20 +29,20 @@ A hardening cycle continuing v0.2.6. The new work ends per-frame Graphics3D flic
 - **Frontend parsing & semantics.** BASIC adopts overflow-aware numeric, line-label, and `SELECT CASE` parsing and accepts numbered `DIM` fields inside `CLASS` bodies; Zia restores circular and self binds by treating an in-progress bind as a known dependency rather than a fatal `V1000`.
 - **Cross-platform utilities, language servers & CLI.** The Text/Time/IO surface closes documented edge cases, the BASIC/Zia LSP/MCP servers compute UTF-16 ranges and enforce a strict initialize-before-use lifecycle, and the CLI rejects mismatched run/build/ABI combinations behind atomic, descriptor-safe tool outputs.
 - **Shared platform adapters.** Socket setup/teardown/flags, CSPRNG selection, and file-dialog directory enumeration each move into dedicated `rt_*_platform_{win,posix}.c` adapters behind `rt_*_platform.h` headers; a ratcheting lint baseline ensures the remaining raw-macro count in shared TUs can only decrease.
-- **Project loading & packaging.** Convention detection scans real BASIC/Zia tokens and rejects symlink escapes; package writers stage through same-directory temp files and hash assets with SHA-256; staged toolchain binaries detect their own OS and architecture from the object header rather than the host; and the Windows toolchain installer becomes a native dialog wizard with a native ARM64 bootstrap.
+- **Project loading & packaging.** Convention detection scans real BASIC/Zia tokens and rejects symlink escapes; package writers stage through same-directory temp files and hash assets with SHA-256; staged toolchain binaries detect their own OS and architecture from the object header rather than the host; the Windows toolchain installer becomes a native dialog wizard with a native ARM64 bootstrap; and Linux gains a self-extracting AppImage toolchain package.
 - **Windows and Linux builds back to green.** Windows restores the BASIC-VM, installer, ViperIDE, and x86-64 suites (NOMINMAX, extended MSVC atomics, an 8-job parallelism cap) and closes its D3D11 sign-off gaps; Linux returns to a full green suite — 1,670 passing.
 
 ### By the Numbers
 
 | Metric | v0.2.6 | v0.2.7 | Delta |
 |---|---|---|---|
-| Commits | — | 120 | +120 |
-| Source files | 3,096 | 3,356 | +260 |
+| Commits | — | 124 | +124 |
+| Source files | 3,096 | 3,359 | +263 |
 | Production SLOC | 669K | 728K | +59K |
 | Test SLOC | 278K | 299K | +21K |
 | Demo SLOC | 192K | 194K | +2K |
 
-Counts via `scripts/count_sloc.sh` (production 727,753 / test 299,010 / demo 194,023 / source files 3,356); commits since the `v0.2.6-dev` tag (2026-06-01).
+Counts via `scripts/count_sloc.sh` (production 728,314 / test 299,513 / demo 194,023 / source files 3,359); commits since the `v0.2.6-dev` tag (2026-06-01).
 
 ---
 
@@ -116,7 +116,7 @@ Counts via `scripts/count_sloc.sh` (production 727,753 / test 299,010 / demo 194
 
 - Convention detection scans real BASIC/Zia tokens instead of text, rejects sources that escape the project root through symlinks, and gates install hooks and home-Desktop shortcuts behind explicit manifest opt-ins.
 - The PNG, ZIP, tar, PE, and DEB readers and writers tighten chunk ordering, header bounds, and path validation; package and archive writers stage through same-directory temp files so a failed write leaves no partial artifact, hash asset content with SHA-256 so a same-size/mtime edit still invalidates the build cache, and detect a staged toolchain binary's OS and architecture from its PE/ELF/Mach-O header rather than the host. ZIP archives now stamp a fixed date by default (overridable via `SOURCE_DATE_EPOCH`) so identical inputs produce byte-identical output, and the legacy CPack path is gated behind an explicit opt-in, leaving `viper install-package` as the single system of record.
-- macOS toolchain packaging gains a styled, compressed `.dmg` that wraps the `.pkg` for double-click installation, the `.pkg` now presents welcome and license panes, and code signing enables the hardened runtime by default for Developer ID while bounding the notarization wait with a configurable timeout; Debian and RPM metadata — license, maintainer, homepage, and the `libstdc++6`/`libc++1` runtime dependency now detected from the staged binary — is sourced from configuration instead of hardcoded placeholders.
+- macOS toolchain packaging gains a styled, compressed `.dmg` that wraps the `.pkg` for double-click installation, the `.pkg` now presents welcome and license panes, and code signing enables the hardened runtime by default for Developer ID while bounding the notarization wait with a configurable timeout; Debian and RPM metadata — license, maintainer, homepage, and the `libstdc++6`/`libc++1` runtime dependency now detected from the staged binary — is sourced from configuration instead of hardcoded placeholders. A new self-extracting Linux AppImage target builds a FUSE-less artifact from the staged manifest — `AppRun`, desktop, icon, and file-association metadata plus a generated POSIX runtime stub that extracts the embedded payload under `XDG_CACHE_HOME`/`TMPDIR` and execs the staged entry point — and joins the Linux all-package set.
 - The Windows toolchain installer and uninstaller become native dialog wizards: embedded dialog templates with common-controls initialization, license display, and user-vs-machine scope selection replace the old `MessageBox` prompts, and Windows ARM64 payloads ship a native AArch64 bootstrap built by a new in-tree ARM64 emitter instead of running the x64 stub under emulation. Add/Remove Programs gains HelpLink, Comments, and Contact metadata, and CLI signing routes through a single `sign-windows-installer.ps1` path (thumbprint or PFX, HTTPS timestamping, optional `signtool` verification).
 
 ### Windows and Linux builds
@@ -131,7 +131,7 @@ Counts via `scripts/count_sloc.sh` (production 727,753 / test 299,010 / demo 194
 - **3D rendering, assets, and animation** — spot-shadow perspective/orthographic coordinate and budget-ordering coverage, vegetation sway, billboard batching, versioned navmesh round-trip, reference repair, texture-atlas, FBX/node-animation import, D3D11 mip-validation, fail-closed content-loader diagnostics (corrupt/missing/wrong-magic inputs and optional-texture warnings), untrusted-count guard and parser fuzz harnesses, anisotropic-sampler and frame-telemetry/deferred-sort ordering coverage, and `Game3D.Diagnostics` fallback- and stale-entity no-op counter coverage.
 - **IL, codegen, and cross-engine** — IL release-lifetime and alias-analysis precision, VM-vs-bytecode scalar-semantics equivalence, AArch64 register-allocation regressions, spilled-operand reload-caching pin test (zero inter-use reloads), duplicate-spill-store elimination verification, and Game3D script-callback coverage with interpreted/native-run parity for the fixed-step loop.
 - **Agent CLI and diagnostics** — the `agent_cli` suite, the diagnostic-code catalog, and structured bridge/MCP/LSP diagnostic and hover coverage.
-- **Runtime, frontends, and GUI** — media/pixel decode, BASIC parsing, Text/Time/IO edge cases, GUI overlay/font-propagation regressions, and Windows installer-wizard / AArch64-emitter packaging coverage.
+- **Runtime, frontends, and GUI** — media/pixel decode, BASIC parsing, Text/Time/IO edge cases, GUI overlay/font-propagation regressions, and Linux AppImage / Windows installer-wizard / AArch64-emitter packaging coverage.
 
 ---
 
