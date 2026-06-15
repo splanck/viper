@@ -283,7 +283,9 @@ static void d3d11_prepare_object_data(const vgfx3d_draw_cmd_t *cmd, d3d_per_obje
         vgfx3d_d3d11_should_enable_skinning(cmd->bone_palette, cmd->bone_count) ? 1 : 0;
     object_data->has_prev_skinning =
         (object_data->has_skinning && cmd->prev_bone_palette != NULL) ? 1 : 0;
-    object_data->has_prev_instance_matrices = cmd->has_prev_instance_matrices ? 1 : 0;
+    object_data->has_prev_instance_matrices =
+        vgfx3d_d3d11_should_use_previous_instance_matrices(cmd->prev_instance_matrices,
+                                                           cmd->has_prev_instance_matrices);
 
     if (cmd->morph_deltas && cmd->morph_weights && cmd->morph_shape_count > 0)
         morph_count =
@@ -433,7 +435,9 @@ static void d3d11_prepare_light_data(const vgfx3d_light_params_t *lights,
         light_data[i].shadow_index =
             vgfx3d_d3d11_sanitize_shadow_index(lights[i].shadow_index, advertised_shadow_count);
         light_data[i].shadow_cascade_count =
-            light_data[i].shadow_index >= 0 ? lights[i].shadow_cascade_count : 1;
+            vgfx3d_d3d11_sanitize_shadow_cascade_count(lights[i].shadow_cascade_count,
+                                                       light_data[i].shadow_index,
+                                                       advertised_shadow_count);
         light_data[i].shadow_projection_type = light_data[i].shadow_index >= 0
                                                    ? lights[i].shadow_projection_type
                                                    : VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC;
@@ -1043,11 +1047,15 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
                                     instance_count,
                                     instance_matrices,
                                     cmd->prev_instance_matrices,
-                                    cmd->has_prev_instance_matrices);
+                                    (int8_t)vgfx3d_d3d11_should_use_previous_instance_matrices(
+                                        cmd->prev_instance_matrices,
+                                        cmd->has_prev_instance_matrices));
 
     d3d11_prepare_object_data(cmd, &object_data);
     object_data.has_prev_model_matrix = 0;
-    object_data.has_prev_instance_matrices = cmd->has_prev_instance_matrices ? 1 : 0;
+    object_data.has_prev_instance_matrices =
+        vgfx3d_d3d11_should_use_previous_instance_matrices(cmd->prev_instance_matrices,
+                                                           cmd->has_prev_instance_matrices);
     d3d11_prepare_scene_data(ctx, lights, light_count, ambient, &scene_data);
     d3d11_prepare_light_data(lights, scene_data.light_count, scene_data.shadow_count, light_data);
     d3d11_prepare_anim_resources(ctx, cmd, &object_data);

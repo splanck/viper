@@ -175,6 +175,12 @@ static void test_fill_instance_data_uses_previous_or_current_matrices(void) {
                 instances[1].model[3],
                 1e-6f,
                 "Instance data falls back to the current matrix when no history exists");
+    EXPECT_TRUE(vgfx3d_d3d11_should_use_previous_instance_matrices(prev_models, 1) == 1,
+                "Previous-instance helper accepts a flagged non-null history payload");
+    EXPECT_TRUE(vgfx3d_d3d11_should_use_previous_instance_matrices(NULL, 1) == 0,
+                "Previous-instance helper rejects a missing history payload");
+    EXPECT_TRUE(vgfx3d_d3d11_should_use_previous_instance_matrices(prev_models, 0) == 0,
+                "Previous-instance helper rejects an unflagged history payload");
 }
 
 static void test_frame_history_preserves_scene_state_across_overlay_passes(void) {
@@ -628,6 +634,14 @@ static void test_shadow_and_rtt_policy_helpers(void) {
     EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_index(VGFX3D_MAX_SHADOW_LIGHTS,
                                                    VGFX3D_MAX_SHADOW_LIGHTS + 4) == -1,
                 "Shadow index sanitizer clamps oversized advertised counts before validation");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_cascade_count(3, 0, 3) == 3,
+                "Shadow cascade sanitizer preserves complete advertised cascade ranges");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_cascade_count(4, 2, 3) == 1,
+                "Shadow cascade sanitizer clamps cascades to the remaining advertised slots");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_cascade_count(0, 0, 3) == 1,
+                "Shadow cascade sanitizer normalizes invalid cascade counts to one");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shadow_cascade_count(2, -1, 3) == 1,
+                "Shadow cascade sanitizer disables cascade fan-out for unshadowed lights");
 
     EXPECT_TRUE(vgfx3d_d3d11_should_mark_rtt_dirty(1, 1, 1, 1, 1, 1, 1) == 1,
                 "RTT dirty helper accepts complete active RTT state");
@@ -678,31 +692,43 @@ static void test_postfx_readback_policy_helpers(void) {
                 "Incomplete overlay resources do not mark a separate overlay target as used");
 
     EXPECT_TRUE(
-        vgfx3d_d3d11_choose_readback_kind(1, 0, 1, 1, 1, 1, 1, 1, VGFX3D_D3D11_TARGET_SCENE) ==
+        vgfx3d_d3d11_choose_readback_kind(1, 1, 0, 1, 1, 1, 1, 1, 1,
+                                          VGFX3D_D3D11_TARGET_SCENE) ==
             VGFX3D_D3D11_READBACK_PRESENTED_SNAPSHOT,
         "Readback uses the pre-present snapshot after a finalized swapchain frame");
     EXPECT_TRUE(
-        vgfx3d_d3d11_choose_readback_kind(0, 1, 1, 1, 1, 1, 1, 1, VGFX3D_D3D11_TARGET_SCENE) ==
+        vgfx3d_d3d11_choose_readback_kind(1, 0, 0, 0, 0, 0, 0, 0, 1,
+                                          VGFX3D_D3D11_TARGET_SCENE) ==
+            VGFX3D_D3D11_READBACK_SCENE_COLOR,
+        "Readback ignores a stale presented snapshot flag when no snapshot texture exists");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_choose_readback_kind(0, 0, 1, 1, 1, 1, 1, 1, 1,
+                                          VGFX3D_D3D11_TARGET_SCENE) ==
             VGFX3D_D3D11_READBACK_BACKBUFFER,
         "Readback uses the visible backbuffer after apply_postfx already composited");
     EXPECT_TRUE(
-        vgfx3d_d3d11_choose_readback_kind(0, 0, 1, 1, 1, 2, 1, 1, VGFX3D_D3D11_TARGET_SCENE) ==
+        vgfx3d_d3d11_choose_readback_kind(0, 0, 0, 1, 1, 1, 2, 1, 1,
+                                          VGFX3D_D3D11_TARGET_SCENE) ==
             VGFX3D_D3D11_READBACK_POSTFX_COMPOSITE,
         "Readback replays a valid GPU postfx chain when the scene is not composited");
     EXPECT_TRUE(
-        vgfx3d_d3d11_choose_readback_kind(0, 0, 1, 1, 1, 2, 0, 1, VGFX3D_D3D11_TARGET_SCENE) ==
+        vgfx3d_d3d11_choose_readback_kind(0, 0, 0, 1, 1, 1, 2, 0, 1,
+                                          VGFX3D_D3D11_TARGET_SCENE) ==
             VGFX3D_D3D11_READBACK_SCENE_COLOR,
         "Readback avoids replaying malformed postfx snapshots without effects storage");
     EXPECT_TRUE(
-        vgfx3d_d3d11_choose_readback_kind(0, 0, 1, 1, 1, 2, 1, 0, VGFX3D_D3D11_TARGET_SWAPCHAIN) ==
+        vgfx3d_d3d11_choose_readback_kind(0, 0, 0, 1, 1, 1, 2, 1, 0,
+                                          VGFX3D_D3D11_TARGET_SWAPCHAIN) ==
             VGFX3D_D3D11_READBACK_BACKBUFFER,
         "Readback avoids replaying postfx snapshots when scene targets are unavailable");
     EXPECT_TRUE(
-        vgfx3d_d3d11_choose_readback_kind(0, 0, 0, 0, 0, 0, 0, 1, VGFX3D_D3D11_TARGET_SCENE) ==
+        vgfx3d_d3d11_choose_readback_kind(0, 0, 0, 0, 0, 0, 0, 0, 1,
+                                          VGFX3D_D3D11_TARGET_SCENE) ==
             VGFX3D_D3D11_READBACK_SCENE_COLOR,
         "Readback can source the offscreen scene when it is still the active target");
     EXPECT_TRUE(
-        vgfx3d_d3d11_choose_readback_kind(0, 0, 0, 0, 0, 0, 0, 1, VGFX3D_D3D11_TARGET_SWAPCHAIN) ==
+        vgfx3d_d3d11_choose_readback_kind(0, 0, 0, 0, 0, 0, 0, 0, 1,
+                                          VGFX3D_D3D11_TARGET_SWAPCHAIN) ==
             VGFX3D_D3D11_READBACK_BACKBUFFER,
         "Readback falls back to the swapchain when the current target is the backbuffer");
 }

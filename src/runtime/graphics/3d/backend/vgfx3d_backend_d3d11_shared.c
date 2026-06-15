@@ -113,6 +113,12 @@ void vgfx3d_d3d11_fill_instance_data(vgfx3d_d3d11_instance_data_t *dst,
     }
 }
 
+/// @brief Decide whether instanced motion-history attributes are actually available.
+int vgfx3d_d3d11_should_use_previous_instance_matrices(
+    const float *prev_instance_matrices, int8_t has_prev_instance_matrices) {
+    return has_prev_instance_matrices && prev_instance_matrices ? 1 : 0;
+}
+
 /// @brief Roll the per-frame VP/inv-VP/cam-pos history forward by one frame.
 /// Scene VP and overlay VP are tracked separately because overlay passes use
 /// the current VP for both "current" and "previous" (no temporal coherence).
@@ -597,6 +603,21 @@ int32_t vgfx3d_d3d11_sanitize_shadow_index(int32_t requested_shadow_index,
     return requested_shadow_index;
 }
 
+/// @brief Clamp a light's cascade count so it cannot address beyond advertised shadow slots.
+int32_t vgfx3d_d3d11_sanitize_shadow_cascade_count(int32_t requested_cascade_count,
+                                                   int32_t sanitized_shadow_index,
+                                                   int32_t advertised_shadow_count) {
+    int32_t remaining_slots;
+
+    advertised_shadow_count = vgfx3d_d3d11_clamp_shadow_count(advertised_shadow_count);
+    if (sanitized_shadow_index < 0 || sanitized_shadow_index >= advertised_shadow_count)
+        return 1;
+    remaining_slots = advertised_shadow_count - sanitized_shadow_index;
+    if (remaining_slots <= 0 || requested_cascade_count < 1)
+        return 1;
+    return requested_cascade_count > remaining_slots ? remaining_slots : requested_cascade_count;
+}
+
 /// @brief Clamp a shadow-count value to the fixed HLSL shadow texture bindings.
 int32_t vgfx3d_d3d11_clamp_shadow_count(int32_t advertised_shadow_count) {
     if (advertised_shadow_count <= 0)
@@ -742,6 +763,7 @@ int vgfx3d_d3d11_uses_separate_overlay_target(vgfx3d_d3d11_target_kind_t resolve
 /// @brief Choose the readback source class without touching D3D11 resources.
 vgfx3d_d3d11_readback_kind_t vgfx3d_d3d11_choose_readback_kind(
     int8_t presented_snapshot_valid,
+    int presented_snapshot_has_texture,
     int8_t scene_composited_to_swapchain,
     int8_t gpu_postfx_enabled,
     int8_t postfx_chain_valid,
@@ -750,7 +772,7 @@ vgfx3d_d3d11_readback_kind_t vgfx3d_d3d11_choose_readback_kind(
     int postfx_has_effects,
     int has_scene_targets,
     vgfx3d_d3d11_target_kind_t current_target_kind) {
-    if (presented_snapshot_valid)
+    if (presented_snapshot_valid && presented_snapshot_has_texture)
         return VGFX3D_D3D11_READBACK_PRESENTED_SNAPSHOT;
     if (scene_composited_to_swapchain)
         return VGFX3D_D3D11_READBACK_BACKBUFFER;

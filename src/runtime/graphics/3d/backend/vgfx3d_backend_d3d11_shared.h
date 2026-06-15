@@ -156,6 +156,9 @@ void vgfx3d_d3d11_fill_instance_data(vgfx3d_d3d11_instance_data_t *dst,
                                      const float *instance_matrices,
                                      const float *prev_instance_matrices,
                                      int8_t has_prev_instance_matrices);
+/// @brief Decide whether instanced motion-history attributes are actually available.
+int vgfx3d_d3d11_should_use_previous_instance_matrices(
+    const float *prev_instance_matrices, int8_t has_prev_instance_matrices);
 /// @brief Roll per-frame VP/inv-VP/cam-pos history forward by one frame (scene + overlay tracked
 /// separately).
 void vgfx3d_d3d11_update_frame_history(vgfx3d_d3d11_frame_history_t *history,
@@ -257,6 +260,10 @@ int32_t vgfx3d_d3d11_compute_shadow_count(int32_t slot_count, const int *slot_co
 /// @brief Clamp or disable a light's shadow slot against the advertised slot range.
 int32_t vgfx3d_d3d11_sanitize_shadow_index(int32_t requested_shadow_index,
                                            int32_t advertised_shadow_count);
+/// @brief Clamp a light's cascade count so it cannot address beyond advertised shadow slots.
+int32_t vgfx3d_d3d11_sanitize_shadow_cascade_count(int32_t requested_cascade_count,
+                                                   int32_t sanitized_shadow_index,
+                                                   int32_t advertised_shadow_count);
 /// @brief Clamp a shadow-count value to the D3D11 shader-visible shadow slots.
 int32_t vgfx3d_d3d11_clamp_shadow_count(int32_t advertised_shadow_count);
 /// @brief Project a world-space point through a shadow matrix to HLSL UV/depth coordinates.
@@ -311,6 +318,7 @@ int vgfx3d_d3d11_uses_separate_overlay_target(vgfx3d_d3d11_target_kind_t resolve
 /// @brief Decide whether readback should source a present snapshot, backbuffer, post-FX, or scene.
 vgfx3d_d3d11_readback_kind_t vgfx3d_d3d11_choose_readback_kind(
     int8_t presented_snapshot_valid,
+    int presented_snapshot_has_texture,
     int8_t scene_composited_to_swapchain,
     int8_t gpu_postfx_enabled,
     int8_t postfx_chain_valid,

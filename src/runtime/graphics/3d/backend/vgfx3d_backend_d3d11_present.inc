@@ -656,22 +656,36 @@ static int d3d11_apply_postfx_chain(d3d11_context_t *ctx,
     return 1;
 }
 
-/// @brief Backend `readback_rgba` op — pick the best source texture to read.
-///
-/// Prefers the offscreen scene color (or the fully composited post-FX result)
-/// when scene targets are active. Falls back to the swapchain backbuffer
-/// otherwise. Used by screenshot capture and golden-frame e2e tests.
+/// @brief Acquire the swapchain backbuffer for readback fallback paths.
+static int d3d11_acquire_backbuffer_for_readback(d3d11_context_t *ctx,
+                                                 ID3D11Texture2D **out_back_buffer) {
+    HRESULT hr;
+
+    if (out_back_buffer)
+        *out_back_buffer = NULL;
+    if (!ctx || !ctx->swap_chain || !out_back_buffer)
+        return 0;
+    hr = IDXGISwapChain_GetBuffer(
+        ctx->swap_chain, 0, &IID_ID3D11Texture2D, (void **)out_back_buffer);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("IDXGISwapChain::GetBuffer(readback)", hr);
+        return 0;
+    }
+    return 1;
+}
+
+/// @brief Backend `readback_rgba` op - pick the best source texture to read.
 static int d3d11_readback_rgba(
     void *ctx_ptr, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     ID3D11Texture2D *back_buffer = NULL;
     ID3D11Texture2D *source_tex = NULL;
     vgfx3d_d3d11_readback_kind_t readback_kind;
-    HRESULT hr;
 
     if (!ctx || !dst_rgba || !vgfx3d_d3d11_validate_rgba8_destination(w, h, stride, NULL))
         return 0;
     readback_kind = vgfx3d_d3d11_choose_readback_kind(ctx->presented_color_valid,
+                                                      ctx->presented_color_tex != NULL,
                                                       ctx->scene_composited_to_swapchain,
                                                       ctx->gpu_postfx_enabled,
                                                       ctx->gpu_postfx_chain_valid,
@@ -683,24 +697,22 @@ static int d3d11_readback_rgba(
     if (readback_kind == VGFX3D_D3D11_READBACK_PRESENTED_SNAPSHOT) {
         source_tex = ctx->presented_color_tex;
     } else if (readback_kind == VGFX3D_D3D11_READBACK_POSTFX_COMPOSITE) {
-        if (!d3d11_apply_postfx_chain(ctx, &ctx->gpu_postfx_chain, NULL, 0, 0, 1, &source_tex)) {
-            return 0;
-        }
+        if (!d3d11_apply_postfx_chain(ctx, &ctx->gpu_postfx_chain, NULL, 0, 0, 1, &source_tex) &&
+            d3d11_has_scene_targets(ctx))
+            source_tex = ctx->scene_color_tex;
     } else if (readback_kind == VGFX3D_D3D11_READBACK_SCENE_COLOR && ctx->scene_width > 0 &&
                ctx->scene_height > 0) {
         if (ctx->overlay_used_this_frame && d3d11_has_overlay_target(ctx)) {
             if (!d3d11_resolve_scene_to_target(ctx, NULL, 0, 0, 1, &source_tex))
-                return 0;
+                source_tex = ctx->scene_color_tex;
         } else {
             source_tex = ctx->scene_color_tex;
         }
-    } else {
-        hr = IDXGISwapChain_GetBuffer(
-            ctx->swap_chain, 0, &IID_ID3D11Texture2D, (void **)&back_buffer);
-        if (FAILED(hr)) {
-            d3d11_log_hresult("IDXGISwapChain::GetBuffer(readback)", hr);
+    }
+
+    if (!source_tex) {
+        if (!d3d11_acquire_backbuffer_for_readback(ctx, &back_buffer))
             return 0;
-        }
         source_tex = back_buffer;
     }
 
@@ -818,7 +830,14 @@ static void d3d11_set_gpu_postfx_enabled(void *ctx_ptr, int8_t enabled) {
     }
 }
 
-/// @brief Backend `set_gpu_postfx_snapshot` — latch the frame's postfx chain for replay.
+/// @brief Invalidate stale presented snapshots when a new post-FX latch starts a frame.
+static void d3d11_invalidate_presented_snapshot_for_postfx_latch(d3d11_context_t *ctx) {
+    if (!ctx || ctx->scene_composited_to_swapchain)
+        return;
+    ctx->presented_color_valid = 0;
+}
+
+/// @brief Backend `set_gpu_postfx_snapshot` - latch the frame's postfx chain for replay.
 /// @details Called once per frame from the canvas. A null `postfx` clears the cached
 ///   chain (equivalent to "no postfx this frame"); otherwise the chain is deep-copied
 ///   into the context so later present-time passes see a stable snapshot even if the
@@ -828,6 +847,7 @@ static void d3d11_set_gpu_postfx_snapshot(void *ctx_ptr, const vgfx3d_postfx_cha
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     if (!ctx)
         return;
+    d3d11_invalidate_presented_snapshot_for_postfx_latch(ctx);
     if (!postfx) {
         vgfx3d_postfx_chain_reset(&ctx->gpu_postfx_chain);
         ctx->gpu_postfx_chain_valid = 0;
@@ -865,11 +885,20 @@ static void d3d11_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
     }
 }
 
-/// @brief Backend `shadow_begin` — switch the pipeline to shadow-pass mode.
+/// @brief Leave any active shadow pass and restore the current color/depth target set.
+static void d3d11_leave_shadow_pass(d3d11_context_t *ctx) {
+    if (!ctx || ctx->shadow_pass_slot < 0)
+        return;
+    d3d11_unbind_output_targets(ctx);
+    ctx->shadow_pass_slot = -1;
+    d3d11_select_current_targets(ctx);
+}
+
+/// @brief Backend `shadow_begin` - switch the pipeline to shadow-pass mode.
 ///
 /// Allocates the shadow depth target if needed, captures the light's
 /// view-projection matrix (used by main pass for shadow sampling),
-/// unbinds the shadow SRV (so we can write to it), binds the shadow
+/// unbinds draw/shadow SRVs (so we can write to it), binds the shadow
 /// DSV with no color RTV (depth-only pass), clears depth, sets viewport,
 /// and binds the shadow vertex shader with no pixel shader.
 static void d3d11_shadow_begin(void *ctx_ptr,
@@ -883,8 +912,10 @@ static void d3d11_shadow_begin(void *ctx_ptr,
     HRESULT hr;
 
     (void)depth_buf;
-    if (!ctx || !light_vp || width <= 0 || height <= 0 || slot < 0 ||
-        slot >= VGFX3D_MAX_SHADOW_LIGHTS)
+    if (!ctx)
+        return;
+    d3d11_leave_shadow_pass(ctx);
+    if (!light_vp || width <= 0 || height <= 0 || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
         return;
     ctx->shadow_pass_slot = -1;
     hr = d3d11_ensure_shadow_targets(ctx, slot, width, height);
@@ -897,6 +928,7 @@ static void d3d11_shadow_begin(void *ctx_ptr,
 
     ctx->shadow_pass_slot = slot;
     memcpy(ctx->shadow_vp[slot], light_vp, sizeof(ctx->shadow_vp[slot]));
+    d3d11_unbind_draw_resources(ctx);
     d3d11_unbind_shadow_resources(ctx);
     ID3D11DeviceContext_OMSetRenderTargets(ctx->ctx, 0, NULL, ctx->shadow_dsv[slot]);
     ID3D11DeviceContext_ClearDepthStencilView(
@@ -1017,6 +1049,7 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     }
     ID3D11DeviceContext_DrawIndexed(ctx->ctx, index_count, 0, 0);
     ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 1, null_shadow_ps_srv);
+    ID3D11DeviceContext_PSSetShader(ctx->ctx, NULL, NULL, 0);
     d3d11_release_temp_srv(&shadow_diffuse);
     {
         ID3D11ShaderResourceView *null_vs[2] = {NULL, NULL};
@@ -1032,10 +1065,12 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
 /// targets so subsequent draws hit the right buffers.
 static void d3d11_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
-    if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
+    if (!ctx)
         return;
-    if (ctx->shadow_pass_slot != slot)
+    if (slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS || ctx->shadow_pass_slot != slot) {
+        d3d11_leave_shadow_pass(ctx);
         return;
+    }
     d3d11_recompute_shadow_count(ctx);
     ctx->shadow_bias = bias;
     ctx->shadow_pass_slot = -1;
