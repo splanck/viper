@@ -130,6 +130,18 @@ function(viper_add_tools_tests)
                 TIMEOUT 540
                 SKIP_REGULAR_EXPRESSION "Skipping Linux installer smoke")
         viper_add_test_labels(linux_toolchain_rpm_installer_smoke installer tools requires_linux requires_linux_rpm requires_privileged_install slow)
+
+        viper_add_ctest(linux_toolchain_appimage_smoke
+                ${CMAKE_COMMAND}
+                -DVIPER_BIN=$<TARGET_FILE:viper>
+                -DVIPER_BUILD_DIR=${CMAKE_BINARY_DIR}
+                -DVIPER_CONFIG=$<CONFIG>
+                -P ${_VIPER_TOOLS_DIR}/LinuxToolchainAppImageSmoke.cmake)
+        set_tests_properties(linux_toolchain_appimage_smoke PROPERTIES
+                RUN_SERIAL TRUE
+                TIMEOUT 420
+                SKIP_REGULAR_EXPRESSION "Skipping Linux AppImage smoke")
+        viper_add_test_labels(linux_toolchain_appimage_smoke installer tools requires_linux slow)
     endif ()
 
     if (WIN32)

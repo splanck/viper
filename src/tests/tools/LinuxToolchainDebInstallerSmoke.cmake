@@ -73,12 +73,18 @@ if (NOT _info_rv EQUAL 0)
 endif ()
 foreach (_needle IN ITEMS
         "Package: viper"
+        "Maintainer: Viper Project <noreply@example.invalid>"
         "Depends:"
+        "libc6"
+        "libgcc-s1"
         "Viper compiler toolchain")
     if (NOT _info_out MATCHES "${_needle}")
         message(FATAL_ERROR "dpkg-deb -I output did not contain '${_needle}'\n${_info_out}")
     endif ()
 endforeach ()
+if (_info_out MATCHES "Depends:.*libx11-6" AND NOT _info_out MATCHES "vipergfx|vipergui")
+    message(FATAL_ERROR "Debian dependency metadata appears to include X11 unconditionally\n${_info_out}")
+endif ()
 
 execute_process(
         COMMAND "${DPKG_DEB_BIN}" -c "${_artifact}"

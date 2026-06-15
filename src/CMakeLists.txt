@@ -294,6 +294,7 @@ add_library(viper_packaging STATIC
         tools/common/packaging/IconGenerator.cpp
         tools/common/packaging/MacOSPackageBuilder.cpp
         tools/common/packaging/LinuxPackageBuilder.cpp
+        tools/common/packaging/LinuxRuntimeStubGen.cpp
         tools/common/packaging/ToolchainInstallManifest.cpp
         tools/common/packaging/PEBuilder.cpp
         tools/common/packaging/LnkWriter.cpp

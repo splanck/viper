@@ -80,6 +80,11 @@ endif ()
 foreach (_needle IN ITEMS
         "Name"
         "viper"
+        "License"
+        "GPL-3.0-only"
+        "Requires"
+        "glibc"
+        "libgcc"
         "Viper compiler toolchain")
     if (NOT _info_out MATCHES "${_needle}")
         message(FATAL_ERROR "rpm -qip output did not contain '${_needle}'\n${_info_out}")

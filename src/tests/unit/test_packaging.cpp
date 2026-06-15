@@ -32,6 +32,7 @@
 #include "InstallerStubGen.hpp"
 #include "InstallerStubGenA64.hpp"
 #include "LinuxPackageBuilder.hpp"
+#include "LinuxRuntimeStubGen.hpp"
 #include "LnkWriter.hpp"
 #include "MacOSPackageBuilder.hpp"
 #include "PEBuilder.hpp"
@@ -542,6 +543,18 @@ static std::vector<uint8_t> makeTarGz(
         tar.addFileString(file.first, file.second);
     auto tarBytes = tar.finish();
     return gzip(tarBytes.data(), tarBytes.size());
+}
+
+static std::vector<uint8_t> appImagePayloadBytes(const std::vector<uint8_t> &appImage) {
+    const std::string marker = std::string(kLinuxRuntimePayloadMarker) + "\n";
+    const auto it = std::search(appImage.begin(),
+                                appImage.end(),
+                                reinterpret_cast<const uint8_t *>(marker.data()),
+                                reinterpret_cast<const uint8_t *>(marker.data()) + marker.size());
+    if (it == appImage.end())
+        return {};
+    const auto payload = it + static_cast<std::ptrdiff_t>(marker.size());
+    return std::vector<uint8_t>(payload, appImage.end());
 }
 
 static std::filesystem::path createMockToolchainStage(const std::filesystem::path &tmpRoot) {
@@ -4231,7 +4244,7 @@ TEST(ToolchainLinuxPackageBuilder, BuildsTarballFromManifest) {
     ASSERT_TRUE(tarEntryData(tarBytes, topDir + "install.sh", installScript));
     EXPECT_CONTAINS(std::string(installScript.begin(), installScript.end()), "DESTDIR");
     EXPECT_CONTAINS(std::string(installScript.begin(), installScript.end()),
-                    "Unsafe old manifest path");
+                    "validate_manifest_relpath");
     uint32_t installMode = 0;
     EXPECT_TRUE(tarEntryMode(tarBytes, topDir + "install.sh", installMode));
     EXPECT_EQ(installMode, static_cast<uint32_t>(0755));
@@ -4239,6 +4252,8 @@ TEST(ToolchainLinuxPackageBuilder, BuildsTarballFromManifest) {
     ASSERT_TRUE(tarEntryData(tarBytes, topDir + "uninstall.sh", uninstallScript));
     EXPECT_CONTAINS(std::string(uninstallScript.begin(), uninstallScript.end()),
                     "install_manifest.txt");
+    EXPECT_CONTAINS(std::string(uninstallScript.begin(), uninstallScript.end()),
+                    "check_no_symlink_path \"$install_root/$rel\"");
     uint32_t uninstallMode = 0;
     EXPECT_TRUE(tarEntryMode(tarBytes, topDir + "uninstall.sh", uninstallMode));
     EXPECT_EQ(uninstallMode, static_cast<uint32_t>(0755));
@@ -4258,6 +4273,71 @@ TEST(ToolchainLinuxPackageBuilder, BuildsTarballFromManifest) {
     uint32_t helperMode = 0;
     EXPECT_TRUE(tarEntryMode(tarBytes, topDir + "share/doc/viper/helper.sh", helperMode));
     EXPECT_EQ(helperMode, static_cast<uint32_t>(0750));
+    fs::remove_all(tmpRoot);
+}
+
+TEST(LinuxRuntimeStubGen, BuildsVerifiableSelfExtractingLayout) {
+    TarWriter tar;
+    tar.addDirectory("./", 0755);
+    tar.addFileString("AppRun", "#!/bin/sh\nexit 0\n", 0755);
+    const auto tarBytes = tar.finish();
+    const auto tarGz = gzip(tarBytes.data(), tarBytes.size());
+
+    LinuxRuntimeStubParams params;
+    params.cacheName = "viper-test-linux-x64";
+    params.entryPath = "AppRun";
+    const auto appImage = buildLinuxAppImage(params, tarGz);
+
+    std::string err;
+    EXPECT_TRUE(verifyLinuxAppImage(appImage, &err));
+    const auto payload = appImagePayloadBytes(appImage);
+    ASSERT_TRUE(payload.size() >= 2);
+    EXPECT_EQ(payload[0], static_cast<uint8_t>(0x1F));
+    EXPECT_EQ(payload[1], static_cast<uint8_t>(0x8B));
+    EXPECT_THROWS((buildLinuxRuntimeStub({"../bad", "AppRun"})), std::runtime_error);
+}
+
+TEST(ToolchainLinuxPackageBuilder, BuildsAppImageFromManifest) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_appimage_stage";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    auto manifest = gatherToolchainInstallManifest(stage);
+    manifest.platform = "linux";
+
+    LinuxToolchainBuildParams params;
+    params.manifest = manifest;
+    params.outputPath = (tmpRoot / "Viper-9.8.7-x64.AppImage").string();
+    buildToolchainAppImage(params);
+
+    const auto appImage = readFile(params.outputPath);
+    std::string err;
+    EXPECT_TRUE(verifyLinuxAppImage(appImage, &err));
+    const auto payloadGz = appImagePayloadBytes(appImage);
+    const auto payloadTar = inflateGzipPayload(payloadGz);
+    std::ostringstream payloadErr;
+    EXPECT_TRUE(verifyTarGzPayload(payloadGz,
+                                   {"AppRun",
+                                    "bin/viper",
+                                    "share/applications/viper-source.desktop",
+                                    "share/applications/viper-il.desktop",
+                                    "share/mime/packages/viper.xml",
+                                    "viper.desktop",
+                                    "viper.png"},
+                                   payloadErr));
+    std::vector<uint8_t> desktop;
+    ASSERT_TRUE(tarEntryData(payloadTar, "viper.desktop", desktop));
+    EXPECT_CONTAINS(std::string(desktop.begin(), desktop.end()), "Exec=AppRun");
+    std::vector<uint8_t> icon;
+    ASSERT_TRUE(tarEntryData(payloadTar, "viper.png", icon));
+    ASSERT_TRUE(icon.size() >= 8);
+    EXPECT_EQ(icon[0], static_cast<uint8_t>(137));
+    EXPECT_EQ(icon[1], static_cast<uint8_t>('P'));
+    EXPECT_EQ(icon[2], static_cast<uint8_t>('N'));
+    EXPECT_EQ(icon[3], static_cast<uint8_t>('G'));
+    std::error_code ec;
+    const auto perms = fs::status(params.outputPath, ec).permissions();
+    EXPECT_TRUE((perms & fs::perms::owner_exec) != fs::perms::none);
     fs::remove_all(tmpRoot);
 }
 
