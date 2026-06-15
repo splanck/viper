@@ -16,6 +16,7 @@ LINK_CMD="${CXX:-c++}"
 
 RUNTIME_ARCHIVE="$BUILD_DIR/src/runtime/libviper_runtime.a"
 GUI_LIB="$BUILD_DIR/src/lib/gui/libvipergui.a"
+TEXT_CORE_LIB="$BUILD_DIR/src/common/text/libviper_text_core.a"
 GFX_LIB="$BUILD_DIR/lib/libvipergfx.a"
 AUDIO_LIB="$BUILD_DIR/lib/libviperaud.a"
 
@@ -114,8 +115,11 @@ build_linux() {
         x86_64|amd64)
             target_arch="x64"
             ;;
+        aarch64|arm64)
+            target_arch="arm64"
+            ;;
         *)
-            echo -e "${RED}Error: build_ide.sh currently supports x86_64 Linux only${NC}"
+            echo -e "${RED}Error: build_ide.sh currently supports x86_64 and arm64 Linux only${NC}"
             return 1
             ;;
     esac
@@ -125,7 +129,7 @@ build_linux() {
         return 1
     fi
 
-    for required in "$RUNTIME_ARCHIVE" "$GUI_LIB" "$GFX_LIB" "$AUDIO_LIB"; do
+    for required in "$RUNTIME_ARCHIVE" "$GUI_LIB" "$TEXT_CORE_LIB" "$GFX_LIB" "$AUDIO_LIB"; do
         if [[ ! -f "$required" ]]; then
             echo -e "${RED}Error: required library not found: $required${NC}"
             echo "Run './scripts/build_viper_linux.sh' first"
@@ -136,8 +140,12 @@ build_linux() {
     build_frontend
 
     echo -n "  Codegen (native obj)... "
-    if ! "$VIPER" codegen "$target_arch" compile "$IL_FILE" --native-asm -O1 -o "$OBJ_FILE" \
-        >"$CODEGEN_OUT" 2>"$CODEGEN_ERR"; then
+    local codegen_args=("$target_arch")
+    if [[ "$target_arch" == "x64" ]]; then
+        codegen_args+=("compile")
+    fi
+    codegen_args+=("$IL_FILE" "--native-asm" "-O1" "-o" "$OBJ_FILE")
+    if ! "$VIPER" codegen "${codegen_args[@]}" >"$CODEGEN_OUT" 2>"$CODEGEN_ERR"; then
         echo -e "${RED}FAILED${NC}"
         head -20 "$CODEGEN_ERR"
         return 1
@@ -149,6 +157,7 @@ build_linux() {
         "$OBJ_FILE" \
         "$RUNTIME_ARCHIVE" \
         "$GUI_LIB" \
+        "$TEXT_CORE_LIB" \
         "$GFX_LIB" \
         "$AUDIO_LIB" \
         -lX11 \

@@ -104,9 +104,9 @@ static int canvas3d_queue_screen_geometry(rt_canvas3d *c,
     cmd.index_count = (uint32_t)index_count;
     cmd.validated_index_count = cmd.index_count;
     cmd.model_matrix[0] = cmd.model_matrix[5] = cmd.model_matrix[10] = cmd.model_matrix[15] = 1.0f;
-    cmd.diffuse_color[0] = 1.0f;
-    cmd.diffuse_color[1] = 1.0f;
-    cmd.diffuse_color[2] = 1.0f;
+    cmd.diffuse_color[0] = r;
+    cmd.diffuse_color[1] = g;
+    cmd.diffuse_color[2] = b;
     cmd.diffuse_color[3] = a;
     cmd.alpha = a;
     cmd.unlit = 1;

@@ -161,7 +161,6 @@ static void gl_bind_default_sampler_uniforms(gl_context_t *ctx) {
     gl.Uniform1i(ctx->uEnvMap, GL_TU_ENV_MAP);
     gl.Uniform1i(ctx->uMetallicRoughnessTex, GL_TU_METALLIC_ROUGHNESS);
     gl.Uniform1i(ctx->uAOTex, GL_TU_AO);
-
     gl.UseProgram(ctx->shadow_program);
     gl.Uniform1i(ctx->shadow_uMorphDeltas, GL_TU_MORPH_DELTAS);
     gl.Uniform1i(ctx->shadow_uDiffuseTex, 0);
@@ -333,7 +332,10 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     XFree(configs);
     if (!glxCtx)
         return NULL;
-    glx.MakeCurrent(dpy, xwin, glxCtx);
+    if (!glx.MakeCurrent(dpy, xwin, glxCtx)) {
+        glx.DestroyContext(dpy, glxCtx);
+        return NULL;
+    }
 
     gl_context_t *ctx = (gl_context_t *)calloc(1, sizeof(gl_context_t));
     if (!ctx) {
