@@ -1438,6 +1438,17 @@ rt_string rt_url_encode_query(void *map) {
             rt_url_trap_runtime("URL.EncodeQuery: length overflow");
             return rt_str_empty();
         }
+        if (enc_value_len > SIZE_MAX - 2u || enc_key_len > SIZE_MAX - enc_value_len - 2u) {
+            if (value_str_handle)
+                rt_string_unref(value_str_handle);
+            free(enc_key);
+            free(enc_value);
+            free(result);
+            if (keys && rt_obj_release_check0(keys))
+                rt_obj_free(keys);
+            rt_url_trap_runtime("URL.EncodeQuery: length overflow");
+            return rt_str_empty();
+        }
         size_t max_needed = enc_key_len + enc_value_len + 2;
         if (pos > SIZE_MAX - max_needed) {
             if (value_str_handle)
@@ -1450,8 +1461,19 @@ rt_string rt_url_encode_query(void *map) {
             rt_url_trap_runtime("URL.EncodeQuery: length overflow");
             return rt_str_empty();
         }
-        size_t needed = enc_key_len + 1 + enc_value_len + (i > 0 ? 1 : 0);
-        if (pos + needed + 1 > cap) {
+        size_t needed = enc_key_len + 1u + enc_value_len + (i > 0 ? 1u : 0u);
+        if (pos > SIZE_MAX - 1u || needed > SIZE_MAX - pos - 1u) {
+            if (value_str_handle)
+                rt_string_unref(value_str_handle);
+            free(enc_key);
+            free(enc_value);
+            free(result);
+            if (keys && rt_obj_release_check0(keys))
+                rt_obj_free(keys);
+            rt_url_trap_runtime("URL.EncodeQuery: length overflow");
+            return rt_str_empty();
+        }
+        if (pos + needed + 1u > cap) {
             size_t target = pos + needed + 1;
             while (cap < target) {
                 if (cap > SIZE_MAX / 2) {

@@ -33,6 +33,7 @@
 #include "rt_heap.h"
 #include "rt_object.h"
 #include "rt_seq.h"
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -54,6 +55,24 @@ typedef enum {
     LAZYSEQ_CONCAT,     // Concatenated sequences
     LAZYSEQ_ZIP,        // Zipped sequences
 } lazyseq_type;
+
+/// @brief Add a LazySeq range step without signed overflow.
+/// @details Range iteration advances after yielding the current value. When the
+///          next value would overflow `int64_t`, the helper reports failure so
+///          the range can mark itself exhausted after the current element rather
+///          than wrapping and yielding values outside the requested sequence.
+/// @param cur Current range value.
+/// @param step Positive or negative step.
+/// @param out Receives the next value when the addition is representable.
+/// @return 1 when `cur + step` fits in `int64_t`; 0 when it would overflow.
+static int lazyseq_checked_step(int64_t cur, int64_t step, int64_t *out) {
+    if (!out)
+        return 0;
+    if ((step > 0 && cur > INT64_MAX - step) || (step < 0 && cur < INT64_MIN - step))
+        return 0;
+    *out = cur + step;
+    return 1;
+}
 
 /// Internal structure for LazySeq.
 struct rt_lazyseq_impl {
@@ -322,9 +341,12 @@ void *rt_lazyseq_next(rt_lazyseq seq, int8_t *has_more) {
             } else {
                 seq->data.range.value_storage = cur;
                 result = &seq->data.range.value_storage;
-                // Note: cur + step can overflow near INT64 boundaries. Caller should
-                // ensure range bounds don't cause wraparound.
-                seq->data.range.current = cur + step;
+                int64_t next = 0;
+                if (lazyseq_checked_step(cur, step, &next)) {
+                    seq->data.range.current = next;
+                } else {
+                    seq->exhausted = 1;
+                }
             }
             break;
         }

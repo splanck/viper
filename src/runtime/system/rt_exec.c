@@ -35,6 +35,7 @@
 #include "rt_exec.h"
 
 #include "rt_internal.h"
+#include "rt_platform.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
@@ -72,9 +73,18 @@ extern char **environ;
 static _Thread_local int64_t tl_last_exit_code = -1;
 
 /// @brief Read all output from a pipe into a dynamically allocated buffer.
-static char *read_pipe_output(FILE *fp, size_t *out_len) {
+/// @details Captures up to `CAPTURE_MAX_SIZE` bytes. When the cap is reached,
+///          `*out_truncated` is set so callers can report a distinct truncation
+///          condition instead of silently returning partial command output.
+/// @param fp Open pipe to read from.
+/// @param out_len Receives the number of captured bytes.
+/// @param out_truncated Receives 1 if the capture limit was reached.
+/// @return Heap buffer containing captured bytes, or NULL on allocation failure.
+static char *read_pipe_output(FILE *fp, size_t *out_len, int *out_truncated) {
     size_t cap = CAPTURE_INITIAL_SIZE;
     size_t len = 0;
+    if (out_truncated)
+        *out_truncated = 0;
     char *buf = (char *)malloc(cap);
     if (!buf) {
         *out_len = 0;
@@ -84,8 +94,11 @@ static char *read_pipe_output(FILE *fp, size_t *out_len) {
     while (!feof(fp)) {
         size_t space = cap - len;
         if (space < 256) {
-            if (cap >= CAPTURE_MAX_SIZE)
+            if (cap >= CAPTURE_MAX_SIZE) {
+                if (out_truncated)
+                    *out_truncated = 1;
                 break;
+            }
             size_t new_cap = cap * 2;
             if (new_cap > CAPTURE_MAX_SIZE)
                 new_cap = CAPTURE_MAX_SIZE;
@@ -240,7 +253,8 @@ static rt_string exec_capture_spawn(const char *program, void *args) {
     }
 
     size_t len;
-    char *output = read_pipe_output(fp, &len);
+    int truncated = 0;
+    char *output = read_pipe_output(fp, &len, &truncated);
     fclose(fp);
 
     // Wait for child
@@ -248,6 +262,11 @@ static rt_string exec_capture_spawn(const char *program, void *args) {
     free_argv(argv, owned_args, argc);
 
     if (!output) {
+        return rt_string_from_bytes("", 0);
+    }
+    if (truncated) {
+        free(output);
+        rt_trap("Exec.CaptureArgs: output truncated");
         return rt_string_from_bytes("", 0);
     }
 
@@ -426,6 +445,7 @@ static rt_string exec_capture_spawn(const char *program, void *args) {
     // Read output
     size_t cap = CAPTURE_INITIAL_SIZE;
     size_t len = 0;
+    int truncated = 0;
     char *buf = (char *)malloc(cap);
 
     if (buf) {
@@ -442,6 +462,9 @@ static rt_string exec_capture_spawn(const char *program, void *args) {
                     buf = new_buf;
                     cap = new_cap;
                 }
+            } else if (cap - len < 256 && cap >= CAPTURE_MAX_SIZE) {
+                truncated = 1;
+                break;
             }
         }
     }
@@ -452,6 +475,11 @@ static rt_string exec_capture_spawn(const char *program, void *args) {
     CloseHandle(pi.hThread);
 
     if (!buf) {
+        return rt_string_from_bytes("", 0);
+    }
+    if (truncated) {
+        free(buf);
+        rt_trap("Exec.CaptureArgs: output truncated");
         return rt_string_from_bytes("", 0);
     }
 
@@ -818,10 +846,21 @@ rt_string rt_exec_shell_capture(rt_string command) {
     }
 
     size_t len;
-    char *output = read_pipe_output(fp, &len);
-    pclose(fp);
+    int truncated = 0;
+    char *output = read_pipe_output(fp, &len, &truncated);
+    int status = pclose(fp);
+#if RT_PLATFORM_WINDOWS
+    tl_last_exit_code = (int64_t)status;
+#else
+    tl_last_exit_code = WIFEXITED(status) ? (int64_t)WEXITSTATUS(status) : (int64_t)-1;
+#endif
 
     if (!output) {
+        return rt_string_from_bytes("", 0);
+    }
+    if (truncated) {
+        free(output);
+        rt_trap("Exec.ShellCapture: output truncated");
         return rt_string_from_bytes("", 0);
     }
 
@@ -851,16 +890,22 @@ rt_string rt_exec_shell_full(rt_string command) {
     }
 
     size_t len;
-    char *output = read_pipe_output(fp, &len);
+    int truncated = 0;
+    char *output = read_pipe_output(fp, &len, &truncated);
     int status = pclose(fp);
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     tl_last_exit_code = (int64_t)status;
 #else
     tl_last_exit_code = WIFEXITED(status) ? (int64_t)WEXITSTATUS(status) : (int64_t)-1;
 #endif
 
     if (!output) {
+        return rt_string_from_bytes("", 0);
+    }
+    if (truncated) {
+        free(output);
+        rt_trap("Exec.ShellFull: output truncated");
         return rt_string_from_bytes("", 0);
     }
 

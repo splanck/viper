@@ -89,8 +89,8 @@ static int video_pixel_copy_bytes(const px_view *dst, const px_view *src, size_t
 /// @param d Fourth FOURCC byte.
 /// @return Packed 32-bit FOURCC value.
 static uint32_t video_fourcc(char a, char b, char c, char d) {
-    return (uint32_t)(uint8_t)a | ((uint32_t)(uint8_t)b << 8) |
-           ((uint32_t)(uint8_t)c << 16) | ((uint32_t)(uint8_t)d << 24);
+    return (uint32_t)(uint8_t)a | ((uint32_t)(uint8_t)b << 8) | ((uint32_t)(uint8_t)c << 16) |
+           ((uint32_t)(uint8_t)d << 24);
 }
 
 /// @brief Whether an AVI video stream codec can be decoded by this player.
@@ -102,8 +102,7 @@ static uint32_t video_fourcc(char a, char b, char c, char d) {
 static int videoplayer_avi_codec_supported(uint32_t fourcc) {
     return fourcc == video_fourcc('M', 'J', 'P', 'G') ||
            fourcc == video_fourcc('m', 'j', 'p', 'g') ||
-           fourcc == video_fourcc('J', 'P', 'E', 'G') ||
-           fourcc == video_fourcc('j', 'p', 'e', 'g');
+           fourcc == video_fourcc('J', 'P', 'E', 'G') || fourcc == video_fourcc('j', 'p', 'e', 'g');
 }
 
 /// @brief Copy a decoded Pixels object into the player's stable display buffer.
@@ -567,8 +566,7 @@ static const uint8_t std_dht[] = {
 /// @param marker JPEG marker byte after the 0xFF prefix.
 /// @return 1 for stand-alone markers, 0 for length-prefixed segment markers.
 static int jpeg_marker_has_no_payload(uint8_t marker) {
-    return marker == 0x01 || marker == 0xD8 || marker == 0xD9 ||
-           (marker >= 0xD0 && marker <= 0xD7);
+    return marker == 0x01 || marker == 0xD8 || marker == 0xD9 || (marker >= 0xD0 && marker <= 0xD7);
 }
 
 /// @brief Scan a JPEG/MJPEG frame for DHT and SOS markers by walking marker segments.
@@ -589,10 +587,10 @@ static int mjpeg_scan_markers(const uint8_t *data,
         return 0;
     *out_has_dht = 0;
     *out_sos_pos = 0;
-    while (pos + 1u < (size_t)size) {
+    while (pos < (size_t)size && (size_t)size - pos > 1u) {
         while (pos < (size_t)size && data[pos] != 0xFFu)
             pos++;
-        if (pos + 1u >= (size_t)size)
+        if (pos >= (size_t)size || (size_t)size - pos <= 1u)
             return 1;
         size_t marker_pos = pos;
         pos++;
@@ -611,7 +609,7 @@ static int mjpeg_scan_markers(const uint8_t *data,
         }
         if (jpeg_marker_has_no_payload(marker))
             continue;
-        if (pos + 2u > (size_t)size)
+        if (pos > (size_t)size || (size_t)size - pos < 2u)
             return 0;
         uint16_t seg_len = (uint16_t)(((uint16_t)data[pos] << 8) | (uint16_t)data[pos + 1u]);
         if (seg_len < 2u || (size_t)(seg_len - 2u) > (size_t)size - pos - 2u)

@@ -140,10 +140,8 @@ static int rsa_validate_public_components(const rt_rsa_key_t *key) {
     if (rsa_be_is_zero(key->public_exponent, key->public_exponent_len) ||
         (key->public_exponent[key->public_exponent_len - 1] & 1u) == 0)
         return 0;
-    if (rsa_be_cmp_trimmed(key->public_exponent,
-                           key->public_exponent_len,
-                           key->modulus,
-                           key->modulus_len) >= 0)
+    if (rsa_be_cmp_trimmed(
+            key->public_exponent, key->public_exponent_len, key->modulus, key->modulus_len) >= 0)
         return 0;
     if (key->public_exponent_len == 1 && key->public_exponent[0] < 3)
         return 0;
@@ -1157,7 +1155,8 @@ int rt_rsa_parse_private_key_pkcs8(const uint8_t *der, size_t der_len, rt_rsa_ke
         pos += alg_hdr + alg_len;
         if (!rsa_der_read_tlv(alg, alg_len, &tag, &oid_len, &oid_hdr) || tag != 0x06)
             goto done;
-        if (oid_hdr + oid_len > alg_len || oid_len != sizeof(OID_RSA_ENCRYPTION) ||
+        if (oid_hdr > alg_len || oid_len > alg_len - oid_hdr ||
+            oid_len != sizeof(OID_RSA_ENCRYPTION) ||
             memcmp(alg + oid_hdr, OID_RSA_ENCRYPTION, sizeof(OID_RSA_ENCRYPTION)) != 0)
             goto done;
         alg_pos = oid_hdr + oid_len;
@@ -1167,7 +1166,7 @@ int rt_rsa_parse_private_key_pkcs8(const uint8_t *der, size_t der_len, rt_rsa_ke
     if (!rsa_der_read_tlv(der + pos, outer_end - pos, &tag, &value_len, &hdr_len) || tag != 0x04) {
         goto done;
     }
-    if (pos + hdr_len + value_len != outer_end)
+    if (pos > outer_end || hdr_len > outer_end - pos || value_len != outer_end - pos - hdr_len)
         goto done;
     ok = rt_rsa_parse_private_key_pkcs1(der + pos + hdr_len, value_len, out);
 

@@ -1117,7 +1117,8 @@ static WSS_MAYBE_UNUSED rt_string rt_wss_server_client_recv(void *tcp) {
                         return rt_string_from_bytes("", 0);
                     }
 
-                    if (message_len + next_len > 64u * 1024u * 1024u) {
+                    if (message_len > 64u * 1024u * 1024u ||
+                        next_len > 64u * 1024u * 1024u - message_len) {
                         free(next_data);
                         free(message);
                         ws_server_send_frame(tcp, WS_OP_CLOSE, "\x03\xF1", 2);

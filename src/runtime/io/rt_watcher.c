@@ -84,8 +84,9 @@ static int watcher_timeout_to_int(int64_t ms) {
 
 /// @brief A single queued file system event.
 typedef struct watcher_event {
-    int64_t type; ///< Event type (RT_WATCH_EVENT_*)
-    void *path;   ///< Path of affected file (rt_string)
+    int64_t type;          ///< Event type (RT_WATCH_EVENT_*)
+    void *path;            ///< Path of affected file (rt_string)
+    int64_t dropped_count; ///< Number of file-system events represented by an overflow marker
 } watcher_event;
 
 /// @brief Internal watcher implementation structure.
@@ -105,6 +106,7 @@ typedef struct rt_watcher_impl {
     // Last polled event
     int64_t last_event_type;
     void *last_event_path;
+    int64_t last_overflow_count;
     int8_t has_last_event;
 
 #if RT_PLATFORM_LINUX
@@ -141,6 +143,7 @@ static void watcher_clear_events(rt_watcher_impl *w) {
             w->events[i].path = NULL;
         }
         w->events[i].type = RT_WATCH_EVENT_NONE;
+        w->events[i].dropped_count = 0;
     }
     w->event_head = 0;
     w->event_tail = 0;
@@ -150,6 +153,7 @@ static void watcher_clear_events(rt_watcher_impl *w) {
         w->last_event_path = NULL;
     }
     w->last_event_type = RT_WATCH_EVENT_NONE;
+    w->last_overflow_count = 0;
     w->has_last_event = 0;
 }
 
@@ -241,11 +245,15 @@ static void watcher_queue_event_owned(rt_watcher_impl *w, int64_t type, rt_strin
     if (w->event_count >= WATCHER_EVENT_QUEUE_SIZE) {
         int64_t overflow_slot =
             (w->event_tail + WATCHER_EVENT_QUEUE_SIZE - 1) % WATCHER_EVENT_QUEUE_SIZE;
+        int64_t dropped = w->events[overflow_slot].type == RT_WATCH_EVENT_OVERFLOW
+                              ? w->events[overflow_slot].dropped_count + 1
+                              : 2;
         rt_string overflow_path = rt_string_ref((rt_string)w->watch_path);
         if (w->events[overflow_slot].path)
             rt_string_unref(w->events[overflow_slot].path);
         w->events[overflow_slot].type = RT_WATCH_EVENT_OVERFLOW;
         w->events[overflow_slot].path = overflow_path;
+        w->events[overflow_slot].dropped_count = dropped;
         if (path)
             rt_string_unref(path);
         return;
@@ -253,6 +261,7 @@ static void watcher_queue_event_owned(rt_watcher_impl *w, int64_t type, rt_strin
 
     w->events[w->event_tail].type = type;
     w->events[w->event_tail].path = path;
+    w->events[w->event_tail].dropped_count = 0;
     w->event_tail = (w->event_tail + 1) % WATCHER_EVENT_QUEUE_SIZE;
     w->event_count++;
 }
@@ -760,6 +769,7 @@ int64_t rt_watcher_poll_for(void *obj, int64_t ms) {
             rt_string_unref(w->last_event_path);
         w->last_event_type = ev.type;
         w->last_event_path = ev.path;
+        w->last_overflow_count = ev.dropped_count;
         w->has_last_event = 1;
         return ev.type;
     }
@@ -791,6 +801,7 @@ int64_t rt_watcher_poll_for(void *obj, int64_t ms) {
             rt_string_unref(w->last_event_path);
         w->last_event_type = ev.type;
         w->last_event_path = ev.path;
+        w->last_overflow_count = ev.dropped_count;
         w->has_last_event = 1;
         return ev.type;
     }
@@ -826,6 +837,20 @@ int64_t rt_watcher_event_type(void *obj) {
 
     rt_watcher_impl *w = watcher_require(obj, "Watcher: invalid watcher");
     return w->has_last_event ? w->last_event_type : RT_WATCH_EVENT_NONE;
+}
+
+/// @brief Read how many file-system events were represented by the last overflow marker.
+/// @details Returns zero when no event has been polled or when the most recent
+///          event was not `RT_WATCH_EVENT_OVERFLOW`. Overflow markers are
+///          coalesced when the fixed queue remains full, so this value can be
+///          greater than one.
+int64_t rt_watcher_event_overflow_count(void *obj) {
+    if (!obj)
+        return 0;
+    rt_watcher_impl *w = watcher_require(obj, "Watcher: invalid watcher");
+    if (!w->has_last_event || w->last_event_type != RT_WATCH_EVENT_OVERFLOW)
+        return 0;
+    return w->last_overflow_count;
 }
 
 // =============================================================================

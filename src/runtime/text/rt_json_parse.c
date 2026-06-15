@@ -99,6 +99,9 @@ static void parser_error(json_parser *p, const char *msg) {
 //=============================================================================
 
 /// @brief Forward declaration: parse any JSON value (object/array/string/number/literal).
+/// @details JSON `null` is represented by a C `NULL` value in the runtime tree.
+///          Callers must inspect the parser error state to distinguish a valid
+///          root `null` from parse failure.
 static void *parse_value(json_parser *p);
 
 //=============================================================================
@@ -728,6 +731,8 @@ void *rt_json_parse(rt_string text) {
     parser_skip_whitespace(&p);
     if (!parser_eof(&p)) {
         parser_error(&p, "unexpected content after JSON value");
+        json_discard_value(result);
+        return NULL;
     }
 
     return result;
@@ -853,6 +858,8 @@ void *rt_json_parse_object(rt_string text) {
     parser_skip_whitespace(&p);
     if (!parser_eof(&p)) {
         parser_error(&p, "unexpected content after JSON object");
+        json_discard_value(result);
+        return rt_map_new();
     }
 
     return result;
@@ -911,6 +918,8 @@ void *rt_json_parse_array(rt_string text) {
     parser_skip_whitespace(&p);
     if (!parser_eof(&p)) {
         parser_error(&p, "unexpected content after JSON array");
+        json_discard_value(result);
+        return rt_seq_new();
     }
 
     return result;

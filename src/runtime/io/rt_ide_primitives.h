@@ -39,6 +39,26 @@ void *rt_project_manifest_parse_file(rt_string path);
 void *rt_workspace_edit_validate(void *edits);
 void *rt_workspace_edit_apply(void *edits);
 
+/// @brief Validate a workspace edit batch against an explicit root directory.
+/// @details This is the rooted variant of @ref rt_workspace_edit_validate. Each
+///          edit file is canonicalized relative to @p root and rejected if it
+///          would escape that tree. The returned map has the same shape as the
+///          unrooted validator: `success`, `editCount`, and `diagnostics`.
+/// @param edits Seq of edit maps with file/range/newText fields.
+/// @param root Workspace root that bounds every edit target.
+/// @return Validation result map owned by the caller.
+void *rt_workspace_edit_validate_in_root(void *edits, rt_string root);
+
+/// @brief Apply a workspace edit batch constrained to an explicit root directory.
+/// @details Validates with @ref rt_workspace_edit_validate_in_root, writes each
+///          updated file through a same-directory temporary file, then renames
+///          the completed temp into place. Existing files are restored from
+///          backups if any later write or rename fails.
+/// @param edits Seq of edit maps with file/range/newText fields.
+/// @param root Workspace root that bounds every edit target.
+/// @return Result map owned by the caller.
+void *rt_workspace_edit_apply_in_root(void *edits, rt_string root);
+
 #ifdef __cplusplus
 }
 #endif

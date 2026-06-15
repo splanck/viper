@@ -534,7 +534,7 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
 
     uint16_t sig_scheme = ((uint16_t)data[0] << 8) | data[1];
     uint16_t sig_len = ((uint16_t)data[2] << 8) | data[3];
-    if (4 + sig_len > len) {
+    if ((size_t)sig_len > len - 4u) {
         session->error = "TLS: CertificateVerify signature length overflows";
         return RT_TLS_ERROR_HANDSHAKE;
     }

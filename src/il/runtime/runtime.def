@@ -3301,6 +3301,8 @@ RT_FUNC(ProjectManifestParseFile, rt_project_manifest_parse_file, "Viper.Project
 
 RT_FUNC(WorkspaceEditValidate, rt_workspace_edit_validate, "Viper.Workspace.Edit.Validate", "obj<Viper.Collections.Map>(obj)")
 RT_FUNC(WorkspaceEditApply, rt_workspace_edit_apply, "Viper.Workspace.Edit.Apply", "obj<Viper.Collections.Map>(obj)")
+RT_FUNC(WorkspaceEditValidateInRoot, rt_workspace_edit_validate_in_root, "Viper.Workspace.Edit.ValidateInRoot", "obj<Viper.Collections.Map>(obj,str)")
+RT_FUNC(WorkspaceEditApplyInRoot, rt_workspace_edit_apply_in_root, "Viper.Workspace.Edit.ApplyInRoot", "obj<Viper.Collections.Map>(obj,str)")
 
 //=============================================================================
 // IO - ASSETS
@@ -3335,8 +3337,10 @@ RT_CLASS_BEGIN("Viper.Project.Manifest", ProjectManifest, "none", none)
 RT_CLASS_END()
 
 RT_CLASS_BEGIN("Viper.Workspace.Edit", WorkspaceEdit, "none", none)
-    RT_METHOD("Validate", "obj<Viper.Collections.Map>(obj)", WorkspaceEditValidate)
-    RT_METHOD("Apply",    "obj<Viper.Collections.Map>(obj)", WorkspaceEditApply)
+    RT_METHOD("Validate",       "obj<Viper.Collections.Map>(obj)",     WorkspaceEditValidate)
+    RT_METHOD("Apply",          "obj<Viper.Collections.Map>(obj)",     WorkspaceEditApply)
+    RT_METHOD("ValidateInRoot", "obj<Viper.Collections.Map>(obj,str)", WorkspaceEditValidateInRoot)
+    RT_METHOD("ApplyInRoot",    "obj<Viper.Collections.Map>(obj,str)", WorkspaceEditApplyInRoot)
 RT_CLASS_END()
 
 //=============================================================================
@@ -3517,6 +3521,7 @@ RT_FUNC(WatcherPoll,       rt_watcher_poll,          "Viper.IO.Watcher.Poll",   
 RT_FUNC(WatcherPollFor,    rt_watcher_poll_for,      "Viper.IO.Watcher.PollFor",        "i64(obj,i64)")
 RT_FUNC(WatcherEventPath,  rt_watcher_event_path,    "Viper.IO.Watcher.EventPath",      "str(obj)")
 RT_FUNC(WatcherEventType,  rt_watcher_event_type,    "Viper.IO.Watcher.EventType",      "i64(obj)")
+RT_FUNC(WatcherEventOverflowCount, rt_watcher_event_overflow_count, "Viper.IO.Watcher.EventOverflowCount", "i64(obj)")
 RT_FUNC(WatcherEventNone,     rt_watcher_event_none,     "Viper.IO.Watcher.get_EVENT_NONE",     "i64(obj)")
 RT_FUNC(WatcherEventCreated,  rt_watcher_event_created,  "Viper.IO.Watcher.get_EVENT_CREATED",  "i64(obj)")
 RT_FUNC(WatcherEventModified, rt_watcher_event_modified, "Viper.IO.Watcher.get_EVENT_MODIFIED", "i64(obj)")
@@ -10948,6 +10953,7 @@ RT_CLASS_BEGIN("Viper.IO.Watcher", Watcher, "obj", WatcherNew)
     RT_METHOD("PollFor", "i64(i64)", WatcherPollFor)
     RT_METHOD("EventPath", "str()", WatcherEventPath)
     RT_METHOD("EventType", "i64()", WatcherEventType)
+    RT_METHOD("EventOverflowCount", "i64()", WatcherEventOverflowCount)
 RT_CLASS_END()
 
 RT_CLASS_BEGIN("Viper.IO.Compress", Compress, "obj", none)

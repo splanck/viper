@@ -20,11 +20,15 @@
 #include "rt_watcher.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <limits>
 #include <map>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <sstream>
@@ -44,6 +48,9 @@ namespace fs = std::filesystem;
 
 namespace {
 
+constexpr size_t kGitignoreCacheMaxEntries = 64;
+constexpr int64_t kWorkspaceFileIndexMaxEntries = 100000;
+
 // Keep the cache root trivially initialized: native-linked tools may call this
 // runtime object before C++ global constructors from archive members have run.
 struct GitignoreCacheEntry {
@@ -54,6 +61,30 @@ struct GitignoreCacheEntry {
 };
 
 GitignoreCacheEntry *g_gitignoreCacheHead = nullptr;
+std::atomic<std::mutex *> g_gitignoreCacheMutex{nullptr};
+std::atomic<uint64_t> g_workspaceEditTempCounter{0};
+
+/// @brief Return the process-wide mutex protecting the gitignore cache list.
+/// @details The cache root intentionally remains a raw pointer for trivial
+///          initialization. The mutex is lazily allocated and intentionally
+///          kept for process lifetime so native-linked runtime archives do not
+///          need C++ static destructor registration for this translation unit.
+/// @return Mutex guarding `g_gitignoreCacheHead` and all linked entries.
+std::mutex &gitignoreCacheMutex() {
+    std::mutex *mutex = g_gitignoreCacheMutex.load(std::memory_order_acquire);
+    if (mutex)
+        return *mutex;
+
+    std::mutex *created = new std::mutex();
+    std::mutex *expected = nullptr;
+    if (g_gitignoreCacheMutex.compare_exchange_strong(
+            expected, created, std::memory_order_release, std::memory_order_acquire)) {
+        return *created;
+    }
+    // A racing initializer won; keep the losing allocation live to avoid
+    // introducing static-destruction imports in runtime archives.
+    return *expected;
+}
 
 std::string toStd(rt_string s) {
     if (!s)
@@ -97,6 +128,57 @@ std::string trim(std::string_view input) {
     while (last > first && std::isspace(static_cast<unsigned char>(input[last - 1])))
         last--;
     return std::string(input.substr(first, last - first));
+}
+
+/// @brief Normalize one `.gitignore` pattern while preserving gitignore escapes.
+/// @details Git treats unescaped leading `#` as a comment, leading `!` as a
+///          negation marker, and trailing spaces as insignificant unless they
+///          are escaped. This helper trims the syntactic whitespace while
+///          preserving escaped leading `#` / `!` so later comment/negation
+///          logic can distinguish them from control markers.
+/// @param input Raw line from a `.gitignore` file or caller-supplied ignore list.
+/// @return Normalized pattern; empty means the line should be ignored.
+std::string normalizeGitignorePattern(std::string_view input) {
+    size_t first = 0;
+    while (first < input.size() &&
+           (input[first] == ' ' || input[first] == '\t' || input[first] == '\r'))
+        first++;
+    std::string out(input.substr(first));
+    while (!out.empty() && (out.back() == ' ' || out.back() == '\t' || out.back() == '\r')) {
+        size_t slash_count = 0;
+        for (size_t i = out.size() - 1; i > 0 && out[i - 1] == '\\'; --i)
+            slash_count++;
+        if ((slash_count & 1u) != 0)
+            break;
+        out.pop_back();
+    }
+    return out;
+}
+
+/// @brief Rebase a pattern from a nested `.gitignore` file to root-relative form.
+/// @details Runtime enumeration compares every candidate as a root-relative path.
+///          Patterns loaded from `dir/.gitignore` therefore need to be scoped to
+///          `dir`. Plain basename patterns become `dir/**/name` so they match
+///          descendants of that directory but not siblings outside it. Negated
+///          patterns keep their leading `!`.
+/// @param base_rel Directory containing the `.gitignore`, relative to workspace root.
+/// @param pattern Normalized gitignore pattern.
+/// @return Root-relative pattern equivalent for the runtime matcher.
+std::string rebaseGitignorePattern(const std::string &base_rel, const std::string &pattern) {
+    if (base_rel.empty() || pattern.empty())
+        return pattern;
+    bool negated = pattern[0] == '!';
+    std::string body = negated ? pattern.substr(1) : pattern;
+    while (!body.empty() && body.front() == '/')
+        body.erase(body.begin());
+    std::string rebased = negated ? "!" : "";
+    rebased += base_rel;
+    if (!rebased.empty() && rebased.back() != '/')
+        rebased.push_back('/');
+    if (body.find('/') == std::string::npos)
+        rebased += "**/";
+    rebased += body;
+    return rebased;
 }
 
 std::string lower(std::string value) {
@@ -201,9 +283,18 @@ bool pathGlobMatch(std::string_view text, std::string_view pattern) {
 }
 
 bool patternMatchesPath(std::string pattern, const std::string &relativePath, bool isDir) {
-    pattern = normalizeSlashes(trim(pattern));
+    pattern = normalizeGitignorePattern(pattern);
     if (pattern.empty())
         return false;
+    for (size_t i = 0; i + 1 < pattern.size();) {
+        if (pattern[i] == '\\' && (pattern[i + 1] == '#' || pattern[i + 1] == '!') &&
+            (i == 0 || pattern[i - 1] == '/')) {
+            pattern.erase(i, 1);
+            continue;
+        }
+        i++;
+    }
+    pattern = normalizeSlashes(pattern);
     bool dirOnly = !pattern.empty() && pattern.back() == '/';
     if (dirOnly)
         pattern.pop_back();
@@ -220,7 +311,9 @@ bool patternMatchesPath(std::string pattern, const std::string &relativePath, bo
         std::string prefix = pattern;
         if (!prefix.empty() && prefix.back() != '/')
             prefix.push_back('/');
-        return rel.rfind(prefix, 0) == 0 || rel.find("/" + prefix) != std::string::npos;
+        return rel.rfind(prefix, 0) == 0 || rel.find("/" + prefix) != std::string::npos ||
+               (!relDir.empty() && (relDir == pattern || relDir.rfind(prefix, 0) == 0 ||
+                                    relDir.find("/" + prefix) != std::string::npos));
     }
 
     if (pattern.find('/') == std::string::npos) {
@@ -242,12 +335,37 @@ std::vector<std::string> readGitignorePatterns(const fs::path &root) {
     std::ifstream in(root / ".gitignore");
     std::string line;
     while (std::getline(in, line)) {
-        line = trim(line);
+        line = normalizeGitignorePattern(line);
         if (line.empty() || line[0] == '#')
             continue;
         patterns.push_back(line);
     }
     return patterns;
+}
+
+/// @brief Bound the gitignore cache by dropping least-recently inserted entries.
+/// @details The cache is a simple singly linked list with newest entries at the
+///          head. When more than `kGitignoreCacheMaxEntries` roots have been
+///          seen, this helper deletes the tail nodes under the cache mutex.
+static void pruneGitignoreCacheLocked() {
+    size_t count = 0;
+    GitignoreCacheEntry *prev = nullptr;
+    GitignoreCacheEntry *entry = g_gitignoreCacheHead;
+    while (entry) {
+        count++;
+        if (count > kGitignoreCacheMaxEntries) {
+            if (prev)
+                prev->next = nullptr;
+            while (entry) {
+                GitignoreCacheEntry *next = entry->next;
+                delete entry;
+                entry = next;
+            }
+            return;
+        }
+        prev = entry;
+        entry = entry->next;
+    }
 }
 
 int64_t fileTimeSeconds(const fs::path &path) {
@@ -271,6 +389,7 @@ std::vector<std::string> cachedGitignorePatterns(const fs::path &root) {
         key = normalizeSlashes(root.lexically_normal().string());
 
     const int64_t modified = fileTimeSeconds(root / ".gitignore");
+    std::lock_guard<std::mutex> lock(gitignoreCacheMutex());
     for (GitignoreCacheEntry *entry = g_gitignoreCacheHead; entry; entry = entry->next) {
         if (entry->key == key && entry->modified == modified)
             return entry->patterns;
@@ -294,7 +413,38 @@ std::vector<std::string> cachedGitignorePatterns(const fs::path &root) {
     entry->patterns = patterns;
     entry->next = g_gitignoreCacheHead;
     g_gitignoreCacheHead = entry;
+    pruneGitignoreCacheLocked();
     return patterns;
+}
+
+/// @brief Collect root and nested `.gitignore` patterns for a candidate path.
+/// @details Walks from the workspace root to the candidate's parent directory,
+///          loading each `.gitignore` through the shared cache. Patterns from
+///          nested files are rebased to root-relative paths so the existing
+///          matcher can evaluate the combined list without knowing which file
+///          contributed each pattern.
+/// @param root Workspace root.
+/// @param relative_path Candidate path relative to @p root.
+/// @return Combined normalized patterns in evaluation order.
+std::vector<std::string> gitignorePatternsForPath(const fs::path &root,
+                                                  const std::string &relative_path) {
+    std::vector<std::string> combined;
+    std::vector<fs::path> dirs;
+    dirs.push_back(root);
+    fs::path rel_path(relative_path);
+    fs::path current;
+    for (const auto &part : rel_path.parent_path()) {
+        current /= part;
+        dirs.push_back(root / current);
+    }
+    for (const auto &dir : dirs) {
+        std::error_code ec;
+        fs::path rel = fs::relative(dir, root, ec);
+        std::string base_rel = (!ec && rel != ".") ? normalizeSlashes(rel.generic_string()) : "";
+        for (const auto &pattern : cachedGitignorePatterns(dir))
+            combined.push_back(rebaseGitignorePattern(base_rel, pattern));
+    }
+    return combined;
 }
 
 bool shouldIgnorePathWithPatterns(const std::string &relativePath,
@@ -324,7 +474,7 @@ bool shouldIgnorePathWithPatterns(const std::string &relativePath,
 
     bool ignored = false;
     for (std::string pattern : patterns) {
-        pattern = trim(pattern);
+        pattern = normalizeGitignorePattern(pattern);
         if (pattern.empty() || pattern[0] == '#')
             continue;
         bool negated = pattern[0] == '!';
@@ -343,7 +493,7 @@ bool shouldIgnorePath(const fs::path &root,
                       bool includeGitignore) {
     std::vector<std::string> gitignorePatterns;
     if (includeGitignore)
-        gitignorePatterns = cachedGitignorePatterns(root);
+        gitignorePatterns = gitignorePatternsForPath(root, relativePath);
     return shouldIgnorePathWithPatterns(relativePath, isDir, extraPatterns, gitignorePatterns);
 }
 
@@ -524,9 +674,44 @@ struct EditRecord {
     int64_t endColumn{0};
     std::string newText;
     int64_t expectedMtime{-1};
+    int64_t expectedSize{-1};
     size_t startOffset{0};
     size_t endOffset{0};
 };
+
+/// @brief Resolve an edit target and optionally constrain it to a workspace root.
+/// @details The existing edit API accepts paths directly. Rooted callers pass a
+///          canonical root so this helper can reject traversal outside the
+///          workspace before any file is read or written. Accepted paths are
+///          returned as absolute, lexically normalized strings so later grouping
+///          treats equivalent paths as one file.
+/// @param file User-supplied edit target path.
+/// @param root Optional canonical root; NULL keeps the legacy unrooted behavior.
+/// @param out Receives the normalized absolute path on success.
+/// @return `true` when the target is usable for validation/apply.
+bool resolveEditTarget(const std::string &file, const fs::path *root, std::string &out) {
+    std::error_code ec;
+    fs::path candidate(file);
+    if (root && candidate.is_relative())
+        candidate = *root / candidate;
+    candidate = fs::absolute(candidate, ec).lexically_normal();
+    if (ec)
+        return false;
+    if (root) {
+        candidate = fs::weakly_canonical(candidate, ec);
+        if (ec)
+            return false;
+        fs::path relative = fs::relative(candidate, *root, ec);
+        if (ec || relative.empty())
+            return false;
+        for (const auto &part : relative) {
+            if (part == "..")
+                return false;
+        }
+    }
+    out = candidate.string();
+    return true;
+}
 
 bool loadEditRecord(void *obj, EditRecord &out, void *diagnostics, int64_t index) {
     if (!obj || rt_obj_class_id(obj) != RT_MAP_CLASS_ID) {
@@ -540,6 +725,7 @@ bool loadEditRecord(void *obj, EditRecord &out, void *diagnostics, int64_t index
     out.endColumn = rt_map_get_int(obj, rt_const_cstr("endColumn"));
     out.newText = mapGetString(obj, "newText");
     out.expectedMtime = rt_map_get_int_or(obj, rt_const_cstr("expectedMtime"), -1);
+    out.expectedSize = rt_map_get_int_or(obj, rt_const_cstr("expectedSize"), -1);
     if (out.file.empty()) {
         pushDiagnostic(diagnostics, "workspace edit missing file", "", index, "edit.file");
         return false;
@@ -554,9 +740,21 @@ bool loadEditRecord(void *obj, EditRecord &out, void *diagnostics, int64_t index
 
 bool validateEditRecords(std::vector<EditRecord> &records,
                          std::unordered_map<std::string, std::string> &contents,
-                         void *diagnostics) {
+                         void *diagnostics,
+                         const fs::path *root) {
     bool ok = true;
     for (auto &record : records) {
+        std::string resolvedFile;
+        if (!resolveEditTarget(record.file, root, resolvedFile)) {
+            pushDiagnostic(diagnostics,
+                           "workspace edit target is outside the workspace",
+                           record.file,
+                           0,
+                           "edit.root");
+            ok = false;
+            continue;
+        }
+        record.file = resolvedFile;
         if (!contents.count(record.file)) {
             std::ifstream in(record.file, std::ios::binary);
             if (!in) {
@@ -576,6 +774,19 @@ bool validateEditRecords(std::vector<EditRecord> &records,
                            "edit.version");
             ok = false;
             continue;
+        }
+        if (record.expectedSize >= 0) {
+            std::error_code sizeEc;
+            uintmax_t raw_size = fs::file_size(record.file, sizeEc);
+            if (sizeEc || raw_size != static_cast<uintmax_t>(record.expectedSize)) {
+                pushDiagnostic(diagnostics,
+                               "edit target changed since expectedSize",
+                               record.file,
+                               0,
+                               "edit.version");
+                ok = false;
+                continue;
+            }
         }
         auto &text = contents[record.file];
         auto start = offsetForLineColumn(text, record.startLine, record.startColumn);
@@ -611,6 +822,33 @@ bool validateEditRecords(std::vector<EditRecord> &records,
     return ok;
 }
 
+/// @brief Convert a runtime root string into a canonical filesystem path.
+/// @details Rooted edit APIs use this to define the trust boundary for every
+///          target file. The root must name an existing directory so symlinks
+///          and relative segments can be resolved before target comparison.
+/// @param root_s Runtime string provided by the caller.
+/// @param diagnostics Diagnostic sequence that receives root validation errors.
+/// @param out Receives the canonical root on success.
+/// @return `true` when @p root_s names a usable directory.
+bool workspaceEditRootFromString(rt_string root_s, void *diagnostics, fs::path &out) {
+    std::string root_text = toStd(root_s);
+    if (root_text.empty()) {
+        pushDiagnostic(diagnostics, "workspace edit root is empty", "", 0, "edit.root");
+        return false;
+    }
+    std::error_code ec;
+    fs::path root = fs::absolute(fs::path(root_text), ec);
+    if (!ec)
+        root = fs::weakly_canonical(root, ec);
+    if (ec || !fs::is_directory(root, ec)) {
+        pushDiagnostic(
+            diagnostics, "workspace edit root is not a directory", root_text, 0, "edit.root");
+        return false;
+    }
+    out = root;
+    return true;
+}
+
 } // namespace
 
 extern "C" {
@@ -635,16 +873,17 @@ void *rt_workspace_file_index_enumerate(rt_string root_s,
         extensions.insert(lower(ext));
     }
     const auto extraPatterns = splitList(toStd(excludes_csv));
-    const auto gitignorePatterns = cachedGitignorePatterns(root);
 
     fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec);
     fs::recursive_directory_iterator end;
+    int64_t emitted = 0;
     for (; !ec && it != end; it.increment(ec)) {
         std::error_code relEc;
         std::string rel = normalizeSlashes(fs::relative(it->path(), root, relEc).generic_string());
         if (relEc || rel.empty() || rel == ".")
             continue;
         bool isDir = it->is_directory(ec);
+        const auto gitignorePatterns = gitignorePatternsForPath(root, rel);
         if (shouldIgnorePathWithPatterns(rel, isDir, extraPatterns, gitignorePatterns)) {
             if (isDir)
                 it.disable_recursion_pending();
@@ -657,6 +896,8 @@ void *rt_workspace_file_index_enumerate(rt_string root_s,
             if (!extensions.count(ext))
                 continue;
         }
+        if (emitted >= kWorkspaceFileIndexMaxEntries)
+            break;
 
         void *entry = rt_map_new();
         const std::string path = fs::absolute(it->path(), ec).lexically_normal().string();
@@ -667,11 +908,17 @@ void *rt_workspace_file_index_enumerate(rt_string root_s,
         mapSetStr(entry, "kind", isDir ? "directory" : "file");
         rt_map_set_bool(entry, rt_const_cstr("isDirectory"), isDir ? 1 : 0);
         rt_map_set_int(entry, rt_const_cstr("id"), stablePathId(normalizeSlashes(path)));
-        rt_map_set_int(entry,
-                       rt_const_cstr("size"),
-                       (!isDir && !ec) ? static_cast<int64_t>(it->file_size(ec)) : 0);
+        int64_t file_size = 0;
+        if (!isDir) {
+            std::error_code sizeEc;
+            uintmax_t raw_size = it->file_size(sizeEc);
+            if (!sizeEc && raw_size <= static_cast<uintmax_t>(INT64_MAX))
+                file_size = static_cast<int64_t>(raw_size);
+        }
+        rt_map_set_int(entry, rt_const_cstr("size"), file_size);
         rt_map_set_int(entry, rt_const_cstr("modified"), fileTimeSeconds(it->path()));
         seqPushOwned(out, entry);
+        emitted++;
     }
     return out;
 }
@@ -702,6 +949,10 @@ void *rt_workspace_watcher_poll_batch(void *watcher, int64_t max_events) {
         mapSetStr(event, "path", toStd(path));
         mapSetStr(event, "typeName", eventTypeName(type));
         rt_map_set_int(event, rt_const_cstr("type"), type);
+        rt_map_set_int(event,
+                       rt_const_cstr("overflowCount"),
+                       type == RT_WATCH_EVENT_OVERFLOW ? rt_watcher_event_overflow_count(watcher)
+                                                       : 0);
         rt_map_set_bool(
             event, rt_const_cstr("requiresRescan"), type == RT_WATCH_EVENT_OVERFLOW ? 1 : 0);
         seqPushOwned(events, event);
@@ -890,7 +1141,19 @@ void *rt_project_manifest_parse_file(rt_string path_s) {
     return manifest;
 }
 
-void *rt_workspace_edit_validate(void *edits) {
+} // extern "C"
+
+namespace {
+
+/// @brief Validate normalized workspace edit records and package diagnostics.
+/// @details Shared implementation for the public rooted and unrooted validators.
+///          It loads runtime edit maps, checks target versions and edit ranges,
+///          and rejects overlapping edits before returning the stable result-map
+///          shape consumed by editor tooling.
+/// @param edits Runtime Seq of edit maps.
+/// @param root Optional canonical workspace root that bounds every edit target.
+/// @return Result map containing `success`, `editCount`, and `diagnostics`.
+static void *workspace_edit_validate_impl(void *edits, const fs::path *root) {
     void *result = rt_map_new();
     void *diagnostics = rt_seq_new_owned();
     std::vector<EditRecord> records;
@@ -907,7 +1170,7 @@ void *rt_workspace_edit_validate(void *edits) {
             else
                 ok = false;
         }
-        if (!validateEditRecords(records, contents, diagnostics))
+        if (!validateEditRecords(records, contents, diagnostics, root))
             ok = false;
     }
     rt_map_set_bool(result, rt_const_cstr("success"), ok ? 1 : 0);
@@ -917,8 +1180,93 @@ void *rt_workspace_edit_validate(void *edits) {
     return result;
 }
 
-void *rt_workspace_edit_apply(void *edits) {
-    void *result = rt_workspace_edit_validate(edits);
+/// @brief Staging paths for one transactional workspace file replacement.
+/// @details `file` is the destination, `temp` contains the new content before
+///          commit, and `backup` holds the original content after the first
+///          rename succeeds. `backupCreated` lets rollback distinguish pending
+///          writes from already-mutated files.
+struct PendingWorkspaceWrite {
+    std::string file;
+    std::string temp;
+    std::string backup;
+    bool backupCreated{false};
+};
+
+/// @brief Create a same-directory temporary path for a workspace edit target.
+/// @details The path is derived from the target filename plus a process-local
+///          atomic counter. It is used only with exclusive existence checks and
+///          same-directory renames, so successful replacements stay on the same
+///          filesystem as the destination.
+/// @param file Target file path.
+/// @param suffix Suffix distinguishing content temps from rollback backups.
+/// @return Candidate temporary path.
+static fs::path workspaceEditTempPath(const fs::path &file, const char *suffix) {
+    fs::path dir = file.parent_path();
+    if (dir.empty())
+        dir = ".";
+    uint64_t id = ++g_workspaceEditTempCounter;
+    std::string leaf =
+        "." + file.filename().generic_string() + ".viper-edit-" + std::to_string(id) + suffix;
+    return dir / leaf;
+}
+
+/// @brief Write a string to a new temporary file and verify the stream state.
+/// @details Splits very large strings into streamsize-sized chunks so the cast
+///          passed to `std::ostream::write` is always representable. The file is
+///          opened with truncation because the generated temp path is unique to
+///          the current apply attempt.
+/// @param path Temporary file path to write.
+/// @param text Complete replacement file contents.
+/// @return `true` when the file was written and flushed successfully.
+static bool writeWorkspaceEditTemp(const fs::path &path, const std::string &text) {
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out)
+        return false;
+    size_t pos = 0;
+    const size_t chunk_max = static_cast<size_t>(std::numeric_limits<std::streamsize>::max());
+    while (pos < text.size()) {
+        size_t chunk = std::min(chunk_max, text.size() - pos);
+        out.write(text.data() + pos, static_cast<std::streamsize>(chunk));
+        if (!out)
+            return false;
+        pos += chunk;
+    }
+    out.flush();
+    return out.good();
+}
+
+/// @brief Remove staged temp files and restore backups after an apply failure.
+/// @details Best-effort rollback: any replacement already moved into place is
+///          removed before its backup is renamed back. Remaining staged temps
+///          are deleted. Diagnostics for rollback failures are intentionally not
+///          appended so the original write failure remains the primary signal.
+/// @param writes Pending write records accumulated for this apply attempt.
+static void rollbackWorkspaceWrites(const std::vector<PendingWorkspaceWrite> &writes) {
+    for (auto it = writes.rbegin(); it != writes.rend(); ++it) {
+        std::error_code ec;
+        if (it->backupCreated) {
+            fs::remove(it->file, ec);
+            ec.clear();
+            fs::rename(it->backup, it->file, ec);
+            ec.clear();
+            fs::remove(it->backup, ec);
+        }
+        ec.clear();
+        fs::remove(it->temp, ec);
+    }
+}
+
+/// @brief Apply a validated workspace edit batch with best-effort rollback.
+/// @details This routine revalidates edits immediately before writing, applies
+///          edits in descending range order per file, stages every new file
+///          image into a same-directory temporary file, then commits via rename.
+///          If any backup or replacement fails, earlier replacements are
+///          restored from their backups and staged temps are removed.
+/// @param edits Runtime Seq of edit maps.
+/// @param root Optional canonical workspace root that bounds every edit target.
+/// @return Result map containing validation fields plus `appliedFiles`.
+static void *workspace_edit_apply_impl(void *edits, const fs::path *root) {
+    void *result = workspace_edit_validate_impl(edits, root);
     if (!rt_map_get_bool(result, rt_const_cstr("success"))) {
         rt_map_set_int(result, rt_const_cstr("appliedFiles"), 0);
         return result;
@@ -933,13 +1281,16 @@ void *rt_workspace_edit_apply(void *edits) {
         if (loadEditRecord(rt_seq_get(edits, i), record, diagnostics, i))
             records.push_back(std::move(record));
     }
-    validateEditRecords(records, contents, diagnostics);
+    if (!validateEditRecords(records, contents, diagnostics, root)) {
+        rt_map_set_bool(result, rt_const_cstr("success"), 0);
+        rt_map_set_int(result, rt_const_cstr("appliedFiles"), 0);
+        return result;
+    }
 
     std::map<std::string, std::vector<EditRecord>> byFile;
     for (const auto &record : records)
         byFile[record.file].push_back(record);
 
-    std::unordered_map<std::string, std::string> backups = contents;
     for (auto &[file, vec] : byFile) {
         std::sort(vec.begin(), vec.end(), [](const EditRecord &a, const EditRecord &b) {
             return a.startOffset > b.startOffset;
@@ -949,25 +1300,96 @@ void *rt_workspace_edit_apply(void *edits) {
             text.replace(edit.startOffset, edit.endOffset - edit.startOffset, edit.newText);
     }
 
-    int64_t applied = 0;
+    std::vector<PendingWorkspaceWrite> writes;
     for (const auto &[file, text] : contents) {
-        std::ofstream out(file, std::ios::binary | std::ios::trunc);
-        if (!out) {
-            pushDiagnostic(diagnostics, "cannot write edit target", file, 0, "edit.write");
+        fs::path target(file);
+        PendingWorkspaceWrite write;
+        write.file = file;
+        write.temp = workspaceEditTempPath(target, ".tmp").string();
+        write.backup = workspaceEditTempPath(target, ".bak").string();
+        if (!writeWorkspaceEditTemp(write.temp, text)) {
+            pushDiagnostic(
+                diagnostics, "cannot write temporary edit target", file, 0, "edit.write");
             rt_map_set_bool(result, rt_const_cstr("success"), 0);
-            for (const auto &[rollbackFile, rollbackText] : backups) {
-                std::ofstream rollback(rollbackFile, std::ios::binary | std::ios::trunc);
-                if (rollback)
-                    rollback << rollbackText;
-            }
+            rollbackWorkspaceWrites(writes);
             rt_map_set_int(result, rt_const_cstr("appliedFiles"), 0);
             return result;
         }
-        out << text;
+        writes.push_back(std::move(write));
+    }
+
+    int64_t applied = 0;
+    for (auto &write : writes) {
+        std::error_code ec;
+        fs::rename(write.file, write.backup, ec);
+        if (ec) {
+            pushDiagnostic(diagnostics, "cannot back up edit target", write.file, 0, "edit.write");
+            rt_map_set_bool(result, rt_const_cstr("success"), 0);
+            rollbackWorkspaceWrites(writes);
+            rt_map_set_int(result, rt_const_cstr("appliedFiles"), 0);
+            return result;
+        }
+        write.backupCreated = true;
+        ec.clear();
+        fs::rename(write.temp, write.file, ec);
+        if (ec) {
+            pushDiagnostic(diagnostics, "cannot replace edit target", write.file, 0, "edit.write");
+            rt_map_set_bool(result, rt_const_cstr("success"), 0);
+            rollbackWorkspaceWrites(writes);
+            rt_map_set_int(result, rt_const_cstr("appliedFiles"), 0);
+            return result;
+        }
         applied++;
+    }
+    for (const auto &write : writes) {
+        std::error_code ec;
+        fs::remove(write.backup, ec);
     }
     rt_map_set_int(result, rt_const_cstr("appliedFiles"), applied);
     return result;
+}
+
+} // namespace
+
+extern "C" {
+
+void *rt_workspace_edit_validate(void *edits) {
+    return workspace_edit_validate_impl(edits, nullptr);
+}
+
+void *rt_workspace_edit_validate_in_root(void *edits, rt_string root) {
+    void *diagnostics = rt_seq_new_owned();
+    fs::path resolvedRoot;
+    if (!workspaceEditRootFromString(root, diagnostics, resolvedRoot)) {
+        void *result = rt_map_new();
+        rt_map_set_bool(result, rt_const_cstr("success"), 0);
+        rt_map_set_int(result, rt_const_cstr("editCount"), 0);
+        rt_map_set(result, rt_const_cstr("diagnostics"), diagnostics);
+        releaseObject(diagnostics);
+        return result;
+    }
+    releaseObject(diagnostics);
+    return workspace_edit_validate_impl(edits, &resolvedRoot);
+}
+
+void *rt_workspace_edit_apply(void *edits) {
+    return workspace_edit_apply_impl(edits, nullptr);
+}
+
+void *rt_workspace_edit_apply_in_root(void *edits, rt_string root) {
+    void *diagnostics = rt_seq_new_owned();
+    fs::path resolvedRoot;
+    if (!workspaceEditRootFromString(root, diagnostics, resolvedRoot)) {
+        void *result = rt_map_new();
+        rt_map_set_bool(result, rt_const_cstr("success"), 0);
+        rt_map_set_int(result, rt_const_cstr("editCount"), 0);
+        rt_map_set_int(result, rt_const_cstr("appliedFiles"), 0);
+        rt_map_set(result, rt_const_cstr("diagnostics"), diagnostics);
+        releaseObject(diagnostics);
+        return result;
+    }
+    releaseObject(diagnostics);
+    return workspace_edit_apply_impl(edits, &resolvedRoot);
 }
 
 } // extern "C"

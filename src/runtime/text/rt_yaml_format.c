@@ -22,6 +22,7 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#include "rt_yaml_internal.h"
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
@@ -29,7 +30,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "rt_yaml_internal.h"
 
 //=============================================================================
 // Formatting Helpers
@@ -45,15 +45,41 @@ static void format_value(void *obj, int indent, int level, char **buf, size_t *c
 // terse.
 // ---------------------------------------------------------------------------
 
+/// @brief Ensure a YAML formatting buffer can hold `needed` bytes plus a trailing NUL.
+/// @details Grows geometrically using a temporary realloc result so the caller's
+///          buffer pointer and capacity remain valid on allocation failure. The
+///          helper traps on size_t overflow or OOM and returns `false`; callers
+///          should stop appending after a false return.
+/// @param buf In/out heap buffer pointer.
+/// @param cap In/out byte capacity of `*buf`.
+/// @param needed Number of non-NUL payload bytes required.
+/// @return `true` when the buffer can hold the requested payload and terminator.
+static bool yaml_format_reserve(char **buf, size_t *cap, size_t needed) {
+    if (!buf || !cap || needed == SIZE_MAX) {
+        rt_trap("rt_yaml: output length overflow");
+        return false;
+    }
+    size_t required = needed + 1u;
+    while (required > *cap) {
+        size_t new_cap = (*cap == 0) ? 256u : (*cap * 2u);
+        if (new_cap <= *cap || new_cap < required)
+            new_cap = required;
+        char *tmp = (char *)realloc(*buf, new_cap);
+        if (!tmp) {
+            rt_trap("rt_yaml: memory allocation failed");
+            return false;
+        }
+        *buf = tmp;
+        *cap = new_cap;
+    }
+    return true;
+}
+
 /// @brief Append `str` to a growing `*buf`, doubling capacity as needed.
 static void buf_append(char **buf, size_t *cap, size_t *len, const char *str) {
     size_t slen = strlen(str);
-    while (*len + slen + 1 > *cap) {
-        *cap = (*cap == 0) ? 256 : (*cap * 2);
-        *buf = realloc(*buf, *cap);
-        if (!*buf)
-            rt_trap("rt_yaml: memory allocation failed");
-    }
+    if (slen > SIZE_MAX - *len - 1u || !yaml_format_reserve(buf, cap, *len + slen))
+        return;
     memcpy(*buf + *len, str, slen);
     *len += slen;
     (*buf)[*len] = '\0';
@@ -61,12 +87,8 @@ static void buf_append(char **buf, size_t *cap, size_t *len, const char *str) {
 
 /// @brief Append a single byte (with realloc as needed).
 static void buf_append_char(char **buf, size_t *cap, size_t *len, char c) {
-    if (*len + 2 > *cap) {
-        *cap = (*cap == 0) ? 256 : (*cap * 2);
-        *buf = realloc(*buf, *cap);
-        if (!*buf)
-            rt_trap("rt_yaml: memory allocation failed");
-    }
+    if (*len == SIZE_MAX || !yaml_format_reserve(buf, cap, *len + 1u))
+        return;
     (*buf)[*len] = c;
     (*len)++;
     (*buf)[*len] = '\0';

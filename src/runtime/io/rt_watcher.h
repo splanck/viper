@@ -87,6 +87,13 @@ rt_string rt_watcher_event_path(void *obj);
 /// @return Event type (RT_WATCH_EVENT_*).
 int64_t rt_watcher_event_type(void *obj);
 
+/// @brief Get the number of dropped events represented by the last overflow event.
+/// @details Returns zero when no event has been polled or when the last event was
+///          not RT_WATCH_EVENT_OVERFLOW.
+/// @param obj Opaque Watcher object pointer.
+/// @return Coalesced dropped event count for the last overflow marker.
+int64_t rt_watcher_event_overflow_count(void *obj);
+
 /// @brief Return RT_WATCH_EVENT_NONE; receiver parameter is unused (property dispatch shim).
 int64_t rt_watcher_event_none(void *self);
 /// @brief Return RT_WATCH_EVENT_CREATED; receiver parameter is unused (property dispatch shim).

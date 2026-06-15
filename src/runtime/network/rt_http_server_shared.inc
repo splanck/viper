@@ -502,7 +502,7 @@ static chunk_parse_status_t decode_chunked_body(const char *encoded,
         }
 
         pos = (size_t)((line_end - encoded) + 2);
-        if (chunk_size > HTTP_REQ_MAX_BODY || decoded_len + chunk_size > HTTP_REQ_MAX_BODY) {
+        if (decoded_len > HTTP_REQ_MAX_BODY || chunk_size > HTTP_REQ_MAX_BODY - decoded_len) {
             free(decoded);
             return CHUNK_PARSE_INVALID;
         }
@@ -533,7 +533,8 @@ static chunk_parse_status_t decode_chunked_body(const char *encoded,
                 pos = (size_t)((trailer_end - encoded) + 2);
             }
         }
-        if (encoded_len - pos < chunk_size + 2) {
+        if (pos > encoded_len || chunk_size > encoded_len - pos ||
+            encoded_len - pos - chunk_size < 2) {
             free(decoded);
             return CHUNK_PARSE_INCOMPLETE;
         }

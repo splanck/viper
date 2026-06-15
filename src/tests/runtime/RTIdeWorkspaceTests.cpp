@@ -73,7 +73,11 @@ static bool seq_contains_relative(void *seq, const std::string &rel) {
 static void test_file_index_and_ignore() {
     fs::path root = temp_root();
     write_file(root / ".gitignore", "*.tmp\n!keep.tmp\nignored/\n");
+    write_file(root / "src/.gitignore", "*.gen.zia\n!keep.gen.zia\n\\#literal.zia\n");
     write_file(root / "src/main.zia", "module Main;\n");
+    write_file(root / "src/generated.gen.zia", "skip");
+    write_file(root / "src/keep.gen.zia", "keep");
+    write_file(root / "src/#literal.zia", "skip");
     write_file(root / "assets/tiles.png", "png");
     write_file(root / "build/generated.zia", "skip");
     write_file(root / ".cache/generated.zia", "skip");
@@ -86,6 +90,9 @@ static void test_file_index_and_ignore() {
     void *entries = rt_workspace_file_index_enumerate(
         root_s, rt_const_cstr(".zia,.png,.tmp"), rt_const_cstr(""), 1);
     assert(seq_contains_relative(entries, "src/main.zia"));
+    assert(seq_contains_relative(entries, "src/keep.gen.zia"));
+    assert(!seq_contains_relative(entries, "src/generated.gen.zia"));
+    assert(!seq_contains_relative(entries, "src/#literal.zia"));
     assert(seq_contains_relative(entries, "assets/tiles.png"));
     assert(seq_contains_relative(entries, "keep.tmp"));
     assert(!seq_contains_relative(entries, "build/generated.zia"));
@@ -98,6 +105,10 @@ static void test_file_index_and_ignore() {
                root_s, rt_const_cstr("tmp/cache.bin"), rt_const_cstr("tmp/")) == 1);
     assert(rt_workspace_file_index_should_ignore(
                root_s, rt_const_cstr("keep.tmp"), rt_const_cstr("*.tmp,!keep.tmp")) == 0);
+    assert(rt_workspace_file_index_should_ignore(
+               root_s, rt_const_cstr("#literal.zia"), rt_const_cstr("\\#literal.zia")) == 1);
+    assert(rt_workspace_file_index_should_ignore(
+               root_s, rt_const_cstr("!literal.zia"), rt_const_cstr("\\!literal.zia")) == 1);
     rt_string_unref(root_s);
     fs::remove_all(root);
 }
@@ -170,6 +181,7 @@ static void test_workspace_watcher_batch() {
     void *event = rt_seq_get(batch, 0);
     assert(get_str(event, "typeName") != "none");
     assert(!get_str(event, "path").empty());
+    assert(rt_map_get_int(event, rt_const_cstr("overflowCount")) == 0);
 
     rt_watcher_stop(watcher);
     rt_string_unref(root_s);
@@ -182,7 +194,8 @@ static void add_edit(void *seq,
                      int64_t sc,
                      int64_t el,
                      int64_t ec,
-                     const std::string &text) {
+                     const std::string &text,
+                     int64_t expected_size = -1) {
     void *edit = rt_map_new();
     rt_string path_s = s(file.string());
     rt_string text_s = s(text);
@@ -192,6 +205,8 @@ static void add_edit(void *seq,
     rt_map_set_int(edit, rt_const_cstr("endLine"), el);
     rt_map_set_int(edit, rt_const_cstr("endColumn"), ec);
     rt_map_set_str(edit, rt_const_cstr("newText"), text_s);
+    if (expected_size >= 0)
+        rt_map_set_int(edit, rt_const_cstr("expectedSize"), expected_size);
     rt_seq_push(seq, edit);
     rt_string_unref(path_s);
     rt_string_unref(text_s);
@@ -221,6 +236,32 @@ static void test_workspace_edits() {
     add_edit(overlap, a, 1, 3, 1, 6, "y");
     void *rejected = rt_workspace_edit_validate(overlap);
     assert(rt_map_get_bool(rejected, rt_const_cstr("success")) == 0);
+
+    rt_string root_s = s(root.string());
+    write_file(a, "first\nsecond\n");
+    void *rooted = rt_seq_new_owned();
+    add_edit(rooted, fs::path("a.zia"), 1, 1, 1, 6, "FIRST", 13);
+    void *rooted_valid = rt_workspace_edit_validate_in_root(rooted, root_s);
+    assert(rt_map_get_bool(rooted_valid, rt_const_cstr("success")) == 1);
+    void *rooted_applied = rt_workspace_edit_apply_in_root(rooted, root_s);
+    assert(rt_map_get_bool(rooted_applied, rt_const_cstr("success")) == 1);
+    assert(read_file(a) == "FIRST\nsecond\n");
+
+    void *size_mismatch = rt_seq_new_owned();
+    add_edit(size_mismatch, fs::path("a.zia"), 1, 1, 1, 6, "first", 999);
+    void *size_rejected = rt_workspace_edit_validate_in_root(size_mismatch, root_s);
+    assert(rt_map_get_bool(size_rejected, rt_const_cstr("success")) == 0);
+
+    fs::path outside = root.parent_path() / (root.filename().string() + "_outside.zia");
+    write_file(outside, "outside\n");
+    void *escaping = rt_seq_new_owned();
+    add_edit(escaping, outside, 1, 1, 1, 8, "ESCAPE");
+    void *escaping_rejected = rt_workspace_edit_validate_in_root(escaping, root_s);
+    assert(rt_map_get_bool(escaping_rejected, rt_const_cstr("success")) == 0);
+    assert(read_file(outside) == "outside\n");
+
+    rt_string_unref(root_s);
+    fs::remove(outside);
     fs::remove_all(root);
 }
 

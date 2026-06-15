@@ -61,7 +61,6 @@ struct rt_tls_server_ctx {
     int timeout_ms;
 };
 
-
 static void tls_set_server_last_error_msg(const char *msg);
 static int tls_hostname_is_ip_literal(const char *hostname);
 static int tls_dns_hostname_is_valid(const char *hostname);
@@ -482,7 +481,7 @@ static uint32_t read_u24(const uint8_t *p) {
 ///        Returns 0 on success, -1 if the buffer is too small or the encoding is malformed.
 int tls_der_read_tlv(
     const uint8_t *buf, size_t buf_len, uint8_t *tag, size_t *val_len, size_t *hdr_len) {
-    if (buf_len < 2)
+    if (!buf || !tag || !val_len || !hdr_len || buf_len < 2)
         return -1;
 
     *tag = buf[0];
@@ -494,13 +493,17 @@ int tls_der_read_tlv(
         size_t value = 0;
         if (num_len_bytes == 0 || num_len_bytes > 4 || 2 + num_len_bytes > buf_len)
             return -1;
+        if (buf[2] == 0)
+            return -1;
         for (size_t i = 0; i < num_len_bytes; i++)
             value = (value << 8) | buf[2 + i];
+        if (value < 0x80)
+            return -1;
         *val_len = value;
         *hdr_len = 2 + num_len_bytes;
     }
 
-    return (*hdr_len + *val_len <= buf_len) ? 0 : -1;
+    return (*hdr_len <= buf_len && *val_len <= buf_len - *hdr_len) ? 0 : -1;
 }
 
 /// @brief Return 1 if buf contains exactly the given DER-encoded OID bytes, 0 otherwise.
@@ -534,8 +537,8 @@ static int tls_dns_label_is_valid(const char *start, size_t len) {
         return 0;
     for (size_t i = 0; i < len; i++) {
         unsigned char c = (unsigned char)start[i];
-        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-              (c >= '0' && c <= '9') || c == '-')) {
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+              c == '-')) {
             return 0;
         }
     }
@@ -2692,8 +2695,7 @@ rt_tls_session_t *rt_tls_new(int socket_fd, const rt_tls_config_t *config) {
                 session->state = TLS_STATE_ERROR;
                 return session;
             }
-            session->hostname[i] =
-                (char)((ch >= 'A' && ch <= 'Z') ? (ch + ('a' - 'A')) : ch);
+            session->hostname[i] = (char)((ch >= 'A' && ch <= 'Z') ? (ch + ('a' - 'A')) : ch);
         }
         session->hostname[hostname_len] = '\0';
         if (!tls_hostname_is_ip_literal(session->hostname) &&

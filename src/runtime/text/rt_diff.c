@@ -36,10 +36,13 @@
 #include "rt_string_builder.h"
 
 #include <limits.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "rt_trap.h"
+
+#define RT_DIFF_MAX_LCS_CELLS (16u * 1024u * 1024u)
 
 // ---------------------------------------------------------------------------
 // Line splitting helper
@@ -52,6 +55,32 @@ typedef struct {
 } line_array;
 
 static void free_lines(line_array *la);
+
+/// @brief Validate that the LCS table for two line arrays is practical to allocate.
+/// @details The current diff implementation stores a full `(m + 1) x (n + 1)`
+///          dynamic-programming table. That gives stable minimal edit scripts
+///          but is quadratic in line count, so untrusted large inputs need an
+///          explicit budget before allocation. This helper performs all size
+///          calculations in subtract form and traps before the table can wrap
+///          or exceed the configured cell budget.
+/// @param m Number of lines in the left input.
+/// @param n Number of lines in the right input.
+/// @return `true` when the table size is within the runtime budget.
+static bool diff_lcs_table_size_ok(int m, int n) {
+    if (m < 0 || n < 0)
+        return false;
+    size_t rows = (size_t)m + 1u;
+    size_t cols = (size_t)n + 1u;
+    if (rows == 0 || cols == 0 || rows > SIZE_MAX / cols) {
+        rt_trap("Diff.Lines: input too large");
+        return false;
+    }
+    if (rows * cols > RT_DIFF_MAX_LCS_CELLS) {
+        rt_trap("Diff.Lines: too many line comparisons");
+        return false;
+    }
+    return true;
+}
 
 /// @brief Split a NUL-terminated string into a heap-allocated array of line copies.
 /// @details Counts `\n` characters first to size the array, then walks
@@ -191,6 +220,11 @@ void *rt_diff_lines(rt_string a, rt_string b) {
 
     int m = la.count;
     int n = lb.count;
+    if (!diff_lcs_table_size_ok(m, n)) {
+        free_lines(&la);
+        free_lines(&lb);
+        return result;
+    }
 
     // Build LCS table
     int **table = (int **)malloc((size_t)(m + 1) * sizeof(int *));

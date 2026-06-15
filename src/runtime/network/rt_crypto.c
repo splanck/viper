@@ -26,13 +26,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_crypto.h"
-#include "rt_entropy_platform.h"
 #include "rt_crypto_module.h"
+#include "rt_entropy_platform.h"
 #include "rt_trap.h"
 
+#include "rt_crypto_internal.h"
 #include <stdlib.h>
 #include <string.h>
-#include "rt_crypto_internal.h"
 
 #define RT_HKDF_MAX_OKM_LEN (255u * 32u)
 #define RT_CHACHA20_MAX_BYTES (((UINT64_C(1) << 32) - 1u) * 64u)
@@ -77,6 +77,38 @@ static void store64_le(uint8_t out[8], uint64_t value) {
 /// overflow would silently produce a wrong tag.
 static int gcm_lengths_valid(size_t aad_len, size_t text_len) {
     return (uint64_t)aad_len <= UINT64_MAX / 8 && (uint64_t)text_len <= UINT64_MAX / 8;
+}
+
+/// @brief Validate the TLS 1.3 HKDF label payload length before encoding it.
+/// @details TLS 1.3 encodes the label and context as one-byte lengths inside
+///          `HkdfLabel`. This helper performs all additions in subtract form,
+///          avoiding size_t wrap even if a future caller passes a non-literal
+///          label. It also verifies the caller-provided stack buffer is large
+///          enough for the two-byte output length, label length, label bytes,
+///          context length, and context bytes.
+/// @param prefix_len Length of the fixed `"tls13 "` prefix.
+/// @param label_len Length of the caller label.
+/// @param context_len Length of the transcript/context hash.
+/// @param buffer_cap Capacity of the local label encoding buffer.
+/// @return 1 when the label can be encoded; 0 on length overflow or protocol limit failure.
+static int tls13_hkdf_label_lengths_valid(size_t prefix_len,
+                                          size_t label_len,
+                                          size_t context_len,
+                                          size_t buffer_cap) {
+    if (label_len > 255u || prefix_len > 255u - label_len || context_len > 255u)
+        return 0;
+    size_t label_total = prefix_len + label_len;
+    size_t needed = 2u;
+    if (needed > buffer_cap || 1u > buffer_cap - needed)
+        return 0;
+    needed += 1u;
+    if (label_total > buffer_cap - needed)
+        return 0;
+    needed += label_total;
+    if (1u > buffer_cap - needed)
+        return 0;
+    needed += 1u;
+    return context_len <= buffer_cap - needed;
 }
 
 //=============================================================================
@@ -754,9 +786,7 @@ int rt_hkdf_expand_label(const uint8_t secret[32],
     size_t prefix_len = 6;
     size_t label_len = strlen(label);
 
-    if (prefix_len + label_len > 255 || context_len > 255)
-        return -1;
-    if (2 + 1 + prefix_len + label_len + 1 + context_len > sizeof(hkdf_label))
+    if (!tls13_hkdf_label_lengths_valid(prefix_len, label_len, context_len, sizeof(hkdf_label)))
         return -1;
 
     hkdf_label[pos++] = (uint8_t)(prefix_len + label_len);
@@ -878,9 +908,7 @@ int rt_hkdf_expand_label_sha384(const uint8_t secret[48],
     const char *prefix = "tls13 ";
     size_t prefix_len = 6;
     size_t label_len = strlen(label);
-    if (prefix_len + label_len > 255 || context_len > 255)
-        return -1;
-    if (2 + 1 + prefix_len + label_len + 1 + context_len > sizeof(hkdf_label))
+    if (!tls13_hkdf_label_lengths_valid(prefix_len, label_len, context_len, sizeof(hkdf_label)))
         return -1;
 
     hkdf_label[pos++] = (uint8_t)(prefix_len + label_len);

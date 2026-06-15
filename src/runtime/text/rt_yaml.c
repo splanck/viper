@@ -264,6 +264,7 @@ static bool parser_consume_line_marker(yaml_parser *p, const char *marker) {
         parser_advance(p);
     return true;
 }
+
 //=============================================================================
 // Scalar Parsing
 //=============================================================================
@@ -466,14 +467,22 @@ static bool append_utf8(uint32_t cp, char **buf, size_t *len, size_t *capacity) 
         bytes[n++] = (char)(0x80 | (cp & 0x3F));
     }
 
-    while (*len + n + 1 > *capacity) {
-        *capacity *= 2;
-        char *tmp = realloc(*buf, *capacity);
+    if (n > SIZE_MAX - *len - 1) {
+        rt_trap("rt_yaml: output length overflow");
+        return false;
+    }
+    size_t required = *len + n + 1u;
+    while (required > *capacity) {
+        size_t next_capacity = *capacity ? (*capacity * 2u) : 256u;
+        if (next_capacity <= *capacity || next_capacity < required)
+            next_capacity = required;
+        char *tmp = realloc(*buf, next_capacity);
         if (!tmp) {
             rt_trap("rt_yaml: memory allocation failed");
             return false;
         }
         *buf = tmp;
+        *capacity = next_capacity;
     }
     memcpy(*buf + *len, bytes, n);
     *len += n;

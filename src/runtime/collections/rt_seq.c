@@ -1107,7 +1107,8 @@ void *rt_seq_remove(void *obj, int64_t idx) {
 /// - Length becomes 0
 /// - is_empty returns true
 /// - Capacity unchanged (no reallocation)
-/// - All element references are forgotten (not freed)
+/// - Borrowed element references are forgotten
+/// - Owned element references are released
 ///
 /// **Example:**
 /// ```
@@ -1122,8 +1123,10 @@ void *rt_seq_remove(void *obj, int64_t idx) {
 ///
 /// @param obj Pointer to a Seq object. If NULL, this is a no-op.
 ///
-/// @note O(1) time complexity - just resets the length counter.
-/// @note The Seq does NOT free the elements - they must be managed separately.
+/// @note O(n) for owned sequences because each live element is released; O(n)
+///       for borrowed sequences to clear reusable slots.
+/// @note Borrowed elements are not freed. Owned elements are released and may be
+///       freed when their reference count drops to zero.
 /// @note The active portion of the internal array is cleared so released
 ///       handles do not remain in reusable storage.
 /// @note Thread safety: Not thread-safe.

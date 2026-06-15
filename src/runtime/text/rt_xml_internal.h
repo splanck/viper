@@ -13,8 +13,11 @@
 
 #pragma once
 
-#include "rt_xml.h" // rt_xml_node_type_t
 #include "rt_string.h"
+#include "rt_xml.h" // rt_xml_node_type_t
+
+#include <stdbool.h>
+#include <stddef.h>
 
 // Shared parse/validation helpers used by rt_xml_format.c (defined in rt_xml.c).
 bool contains_invalid_xml_chars(const char *s, size_t len);

@@ -1058,9 +1058,11 @@ static int gltf_load_buffers(void *root,
     if (buf_count64 < 0 || buf_count64 > INT32_MAX ||
         !rt_untrusted_count_ok(buf_count64, 1u, root_size))
         return 0;
+    size_t buffer_slots = (size_t)buf_count64 + 1u;
+    if (buffer_slots > SIZE_MAX / sizeof(gltf_buffer_t))
+        return 0;
     int buf_count = (int)buf_count64;
-    gltf_buffer_t *buffers =
-        (gltf_buffer_t *)calloc((size_t)(buf_count + 1), sizeof(gltf_buffer_t));
+    gltf_buffer_t *buffers = (gltf_buffer_t *)calloc(buffer_slots, sizeof(gltf_buffer_t));
     if (!buffers)
         return 0;
     for (int i = 0; i < buf_count; i++) {

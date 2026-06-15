@@ -315,6 +315,7 @@ static bool find_match(compiled_pattern *cp,
 
     for (int i = start_from; i <= text_len; i++) {
         ctx.start_pos = i;
+        ctx.steps = 0;
         int end_pos;
         if (match_node(&ctx, cp->root, i, &end_pos)) {
             *match_start = i;

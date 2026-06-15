@@ -10,7 +10,8 @@
 // Key invariants:
 //   - Parses all standard JSON types: null, boolean, number, string, array, object.
 //   - Numbers are stored as f64; integer parsing preserves exact values up to 53 bits.
-//   - rt_json_parse returns NULL on invalid JSON input.
+//   - JSON null is represented by a NULL value; invalid JSON is reported by trap
+//     or by the status result from rt_json_try_parse.
 //   - rt_json_format produces compact JSON; rt_json_pretty produces indented output.
 //
 // Ownership/Lifetime:
@@ -30,15 +31,18 @@ extern "C" {
 
 /// @brief Parse a JSON string into a Viper value.
 /// @param text JSON text to parse.
-/// @return Parsed value: Map (object), Seq (array), String, or boxed number/bool/null.
+/// @return Parsed value: Map (object), Seq (array), String, boxed number/bool, or NULL for JSON
+/// null.
 /// @details Parses any valid JSON value. Arrays become Seq, objects become Map,
 ///          strings stay as String, numbers become boxed f64, bools become boxed i1.
-/// @note Traps on invalid JSON with descriptive error message.
+/// @note Traps on invalid JSON with descriptive error message; use rt_json_try_parse
+///       when the caller needs to distinguish JSON null from a syntax failure without trapping.
 void *rt_json_parse(rt_string text);
 
 /// @brief Parse JSON without trapping on syntax errors.
 /// @param text JSON text to parse.
-/// @param out_value Receives the parsed value on success. Caller owns it.
+/// @param out_value Receives the parsed value on success. JSON null is reported
+///                  as `*out_value == NULL`; the integer return value still indicates success.
 /// @param out_message Receives an owned diagnostic string on failure when non-null.
 /// @param out_line Receives 1-based source line on failure when non-null.
 /// @param out_column Receives 1-based source column on failure when non-null.

@@ -966,7 +966,42 @@ void *rt_sse_connect(rt_string url) {
     return sse;
 }
 
-/// @brief Recv the sse.
+/// @brief Ensure the SSE event payload buffer can hold a pending append.
+/// @details Grows the receive buffer geometrically using a temporary `realloc`
+///          result so the previous event data remains valid if allocation
+///          fails. The requested size is the payload length excluding the final
+///          NUL terminator; this helper reserves one extra byte for callers
+///          that want to materialize the buffer as a C string.
+/// @param buf In/out heap buffer pointer.
+/// @param cap In/out capacity of `*buf` in bytes.
+/// @param needed Non-NUL payload bytes required after the append.
+/// @return `true` when `*buf` can hold `needed + 1` bytes; `false` after trap on overflow/OOM.
+static bool sse_reserve_event_data(char **buf, size_t *cap, size_t needed) {
+    if (!buf || !cap || needed == SIZE_MAX) {
+        rt_trap("SSE.Recv: event data length overflow");
+        return false;
+    }
+    size_t required = needed + 1u;
+    while (required > *cap) {
+        size_t next_cap = *cap ? (*cap * 2u) : 4096u;
+        if (next_cap <= *cap || next_cap < required)
+            next_cap = required;
+        char *grown = (char *)realloc(*buf, next_cap);
+        if (!grown) {
+            rt_trap("SSE.Recv: memory allocation failed");
+            return false;
+        }
+        *buf = grown;
+        *cap = next_cap;
+    }
+    return true;
+}
+
+/// @brief Receive the next SSE event's accumulated `data:` payload.
+/// @details Reads event-stream lines until a blank-line delimiter. Consecutive
+///          `data:` fields are joined with a single `\n`, matching the SSE
+///          specification. Returns the empty string on timeout, transport
+///          failure, reconnect failure, or allocation failure.
 rt_string rt_sse_recv(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
@@ -1009,14 +1044,12 @@ rt_string rt_sse_recv(void *obj) {
             if (*val == ' ')
                 val++;
             size_t vlen = strlen(val);
-            if (len + vlen + 2 > cap) {
-                cap = (len + vlen + 2) * 2;
-                char *nb = (char *)realloc(data_buf, cap);
-                if (!nb) {
-                    rt_string_unref(line);
-                    break;
-                }
-                data_buf = nb;
+            size_t separator = len > 0 ? 1u : 0u;
+            if (vlen > SIZE_MAX - len - separator ||
+                !sse_reserve_event_data(&data_buf, &cap, len + separator + vlen)) {
+                rt_string_unref(line);
+                len = 0;
+                break;
             }
             if (len > 0)
                 data_buf[len++] = '\n'; // Multi-line data separated by \n

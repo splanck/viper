@@ -463,7 +463,10 @@ static void test_parse_invalid_traps() {
     EXPECT_TRAP(rt_json_parse(make_str("")));
     EXPECT_TRAP(rt_json_parse(make_str("invalid")));
     EXPECT_TRAP(rt_json_parse(make_str("[1,2,]")));
+    EXPECT_TRAP(rt_json_parse(make_str("[1] trailing")));
     EXPECT_TRAP(rt_json_parse(make_str("{\"a\":")));
+    EXPECT_TRAP(rt_json_parse_object(make_str("{\"a\":1} trailing")));
+    EXPECT_TRAP(rt_json_parse_array(make_str("[1] trailing")));
     EXPECT_TRAP(rt_json_parse(make_str("01")));
     EXPECT_TRAP(rt_json_parse(make_str("\"bad\\xescape\"")));
     EXPECT_TRAP(rt_json_parse(make_str("1e309")));

@@ -136,10 +136,9 @@ static int multipart_boundary_is_valid(const char *boundary) {
         return 0;
     for (size_t i = 0; i < len; i++) {
         unsigned char c = (unsigned char)boundary[i];
-        if (!(c >= '0' && c <= '9') && !(c >= 'A' && c <= 'Z') &&
-            !(c >= 'a' && c <= 'z') && c != '\'' && c != '(' && c != ')' && c != '+' &&
-            c != '_' && c != ',' && c != '-' && c != '.' && c != '/' && c != ':' &&
-            c != '=' && c != '?') {
+        if (!(c >= '0' && c <= '9') && !(c >= 'A' && c <= 'Z') && !(c >= 'a' && c <= 'z') &&
+            c != '\'' && c != '(' && c != ')' && c != '+' && c != '_' && c != ',' && c != '-' &&
+            c != '.' && c != '/' && c != ':' && c != '=' && c != '?') {
             return 0;
         }
     }
@@ -638,9 +637,12 @@ void *rt_multipart_build(void *obj) {
         free(escaped_name);
 
         // Data
-        if (part->data_len > 0 && pos + part->data_len <= total) {
+        if (part->data_len > 0 && pos <= total && part->data_len <= total - pos) {
             memcpy(buf + pos, part->data, part->data_len);
             pos += part->data_len;
+        } else if (part->data_len > 0) {
+            free(buf);
+            return rt_bytes_new(0);
         }
         if (!multipart_appendf(buf, total, &pos, "\r\n")) {
             free(buf);

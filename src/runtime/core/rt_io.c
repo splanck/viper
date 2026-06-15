@@ -92,11 +92,25 @@ static _Thread_local rt_trap_recovery_base_t *rt_trap_recovery_top_ = NULL;
 static _Thread_local char rt_trap_error_[512] = "";
 static _Thread_local int rt_trap_net_code_ = 0;
 
+/// @brief Remove every stacked legacy longjmp recovery point on this thread.
+/// @details Native exception-style frames are left untouched because they are
+///          owned by lexical helper macros. This helper is used by the legacy
+///          `rt_trap_set_recovery(NULL)` API, whose documented behavior is to
+///          disable longjmp recovery rather than pop only one frame.
+static void rt_trap_clear_all_legacy_recoveries(void) {
+    while (rt_trap_recovery_top_ && rt_trap_recovery_top_->kind == RT_TRAP_RECOVERY_LEGACY) {
+        rt_trap_legacy_recovery_t *node = (rt_trap_legacy_recovery_t *)rt_trap_recovery_top_;
+        rt_trap_recovery_top_ = node->base.prev;
+        free(node);
+    }
+    rt_trap_error_[0] = '\0';
+}
+
 /// @brief Install a longjmp recovery point for recoverable traps on this thread.
-/// @param buf jmp_buf to longjmp to when rt_trap is called; NULL disables.
+/// @param buf jmp_buf to longjmp to when rt_trap is called; NULL disables all legacy recovery.
 void rt_trap_set_recovery(jmp_buf *buf) {
     if (!buf) {
-        rt_trap_clear_recovery();
+        rt_trap_clear_all_legacy_recoveries();
         return;
     }
     rt_trap_legacy_recovery_t *node =

@@ -38,13 +38,69 @@
 #include "rt_internal.h"
 #include "rt_map.h"
 #include "rt_network.h"
+#include "rt_platform.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static size_t g_http_download_temp_counter = 0;
+
+/// @brief Build a sibling temporary path for an HTTP download target.
+/// @details The returned path appends a hidden `.viper-download-N.tmp` suffix to
+///          the final filename, keeping the temp on the same filesystem so
+///          rename-based replacement can be used after a successful transfer.
+/// @param dest Final destination path.
+/// @param kind Suffix kind such as `"tmp"` or `"bak"`.
+/// @return Heap-allocated temp path, or NULL on allocation overflow/OOM.
+static char *http_download_temp_path(const char *dest, const char *kind) {
+    if (!dest || !kind)
+        return NULL;
+    size_t id = __atomic_fetch_add(&g_http_download_temp_counter, 1u, __ATOMIC_RELAXED) + 1u;
+    size_t dest_len = strlen(dest);
+    size_t kind_len = strlen(kind);
+    const char *marker = ".viper-download-";
+    size_t marker_len = strlen(marker);
+    if (dest_len > SIZE_MAX - marker_len - kind_len - 32u)
+        return NULL;
+    size_t cap = dest_len + marker_len + kind_len + 32u;
+    char *path = (char *)malloc(cap);
+    if (!path)
+        return NULL;
+    snprintf(path, cap, "%s%s%zu.%s", dest, marker, id, kind);
+    return path;
+}
+
+/// @brief Replace a download destination with a completed temp file.
+/// @details Existing destination files are first renamed to a backup. If the
+///          final rename fails, the backup is restored where possible. This
+///          avoids leaving a partial response at the destination path.
+/// @param temp_path Fully written temporary file.
+/// @param dest_path Final destination path.
+/// @param backup_path Sibling backup path.
+/// @return 1 on successful replacement; 0 on rename/restore failure.
+static int http_download_replace_file(const char *temp_path,
+                                      const char *dest_path,
+                                      const char *backup_path) {
+    int had_backup = 0;
+    if (rename(dest_path, backup_path) == 0) {
+        had_backup = 1;
+    } else if (errno != ENOENT) {
+        return 0;
+    }
+    if (rename(temp_path, dest_path) != 0) {
+        if (had_backup)
+            (void)rename(backup_path, dest_path);
+        return 0;
+    }
+    if (had_backup)
+        (void)remove(backup_path);
+    return 1;
+}
 
 /// @brief GC finalizer for an HttpReq object. Safe on a partially-built request
 ///        because every helper either nulls or initialises its target.
@@ -306,9 +362,10 @@ void *rt_http_post_bytes(rt_string url, void *body) {
 ///
 /// Returns 0 (false) on any failure: bad URL, transport error,
 /// non-2xx status, file-open failure, short write, or `fclose`
-/// error. On a partial write the half-finished file is removed
-/// (RC-14). Does not trap, so callers can branch on the boolean
-/// instead of installing an exception handler.
+/// error. The response is written to a same-directory temp file and only
+/// renamed over the destination after the transfer and close both succeed.
+/// Does not trap, so callers can branch on the boolean instead of installing
+/// an exception handler.
 /// @return 1 on full successful download, 0 otherwise.
 int8_t rt_http_download(rt_string url, rt_string dest_path) {
     const char *url_str = rt_string_cstr(url);
@@ -335,8 +392,20 @@ int8_t rt_http_download(rt_string url, rt_string dest_path) {
         return 0;
     }
 
-    FILE *f = fopen(path_str, "wb");
+    char *temp_path = http_download_temp_path(path_str, "tmp");
+    char *backup_path = http_download_temp_path(path_str, "bak");
+    if (!temp_path || !backup_path) {
+        free(temp_path);
+        free(backup_path);
+        free(req.method);
+        free_parsed_url(&req.url);
+        return 0;
+    }
+
+    FILE *f = fopen(temp_path, "wb");
     if (!f) {
+        free(temp_path);
+        free(backup_path);
         free(req.method);
         free_parsed_url(&req.url);
         return 0;
@@ -350,9 +419,19 @@ int8_t rt_http_download(rt_string url, rt_string dest_path) {
     // RC-14: if fwrite wrote fewer bytes (disk full, etc.) or fclose failed
     // (buffered data flush failure), remove the partial/corrupt file.
     if (!ok || close_err != 0) {
-        remove(path_str);
+        remove(temp_path);
+        free(temp_path);
+        free(backup_path);
         return 0;
     }
+    if (!http_download_replace_file(temp_path, path_str, backup_path)) {
+        remove(temp_path);
+        free(temp_path);
+        free(backup_path);
+        return 0;
+    }
+    free(temp_path);
+    free(backup_path);
     return 1;
 }
 
@@ -715,7 +794,8 @@ void *rt_http_req_new(rt_string method, rt_string url) {
     const char *method_str = method ? rt_string_cstr(method) : NULL;
     const char *url_str = url ? rt_string_cstr(url) : NULL;
 
-    if (!method_str || http_rt_string_has_embedded_nul(method) || !http_method_is_token(method_str)) {
+    if (!method_str || http_rt_string_has_embedded_nul(method) ||
+        !http_method_is_token(method_str)) {
         rt_trap("HTTP: invalid method");
         return NULL;
     }

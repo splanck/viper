@@ -895,18 +895,21 @@ void *rt_heap_realloc(void *payload, size_t elem_size, size_t new_len, size_t ne
         rt_heap_registry_unlock_();
         return NULL;
     }
-    rt_heap_registry_remove_locked_(payload);
-    rt_heap_registry_unlock_();
 
     rt_heap_hdr_t *resized = (rt_heap_hdr_t *)realloc(hdr, total_bytes);
     if (!resized) {
-        rt_heap_registry_lock_();
-        (void)rt_heap_registry_insert_locked_(payload);
         rt_heap_registry_unlock_();
         return NULL;
     }
 
     void *new_payload = rt_heap_data(resized);
+    if (!rt_heap_registry_move_locked_(payload, new_payload)) {
+        rt_heap_registry_unlock_();
+        rt_abort("rt_heap_realloc: registry update failed");
+        return NULL;
+    }
+    rt_heap_registry_unlock_();
+
     if (new_len > old_len && elem_size > 0) {
         memset((uint8_t *)new_payload + old_len * elem_size, 0, (new_len - old_len) * elem_size);
     }
@@ -914,14 +917,6 @@ void *rt_heap_realloc(void *payload, size_t elem_size, size_t new_len, size_t ne
     resized->len = new_len;
     resized->cap = cap;
     resized->alloc_size = total_bytes;
-
-    rt_heap_registry_lock_();
-    int moved = rt_heap_registry_insert_locked_(new_payload);
-    rt_heap_registry_unlock_();
-    if (!moved) {
-        rt_abort("rt_heap_realloc: registry update failed");
-        return NULL;
-    }
 
     return new_payload;
 }

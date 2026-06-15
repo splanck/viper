@@ -14,6 +14,7 @@
 #include "rt_seq.h"
 
 #include <cassert>
+#include <climits>
 #include <cstdio>
 
 /// @brief Helper to print test result.
@@ -79,6 +80,30 @@ static void test_lazyseq_range() {
         void *val = rt_lazyseq_next(seq, &has_more);
         first = *(int64_t *)val;
         test_result("Descending range starts at 5", first == 5);
+        rt_lazyseq_destroy(seq);
+    }
+
+    // Test 4: Step overflow exhausts instead of wrapping.
+    {
+        rt_lazyseq seq = rt_lazyseq_range(INT64_MAX - 1, INT64_MAX, 2);
+        int8_t has_more;
+        void *val = rt_lazyseq_next(seq, &has_more);
+        test_result("Overflow range yields first boundary value",
+                    has_more && *(int64_t *)val == INT64_MAX - 1);
+        val = rt_lazyseq_next(seq, &has_more);
+        test_result("Overflow range exhausts after checked step", !has_more && val == NULL);
+        rt_lazyseq_destroy(seq);
+    }
+
+    // Test 5: Negative step underflow exhausts instead of wrapping.
+    {
+        rt_lazyseq seq = rt_lazyseq_range(INT64_MIN + 1, INT64_MIN, -2);
+        int8_t has_more;
+        void *val = rt_lazyseq_next(seq, &has_more);
+        test_result("Underflow range yields first boundary value",
+                    has_more && *(int64_t *)val == INT64_MIN + 1);
+        val = rt_lazyseq_next(seq, &has_more);
+        test_result("Underflow range exhausts after checked step", !has_more && val == NULL);
         rt_lazyseq_destroy(seq);
     }
 

@@ -1409,7 +1409,6 @@ int tls_verify_chain(rt_tls_session_t *session) {
     return RT_TLS_ERROR_HANDSHAKE;
 }
 
-
 /// @brief Verify the TLS 1.3 CertificateVerify message using in-tree ECDSA-P256 or RSA (native).
 ///        Builds the 130-byte signed content, hashes it, and dispatches to ecdsa_p256_verify
 ///        or rt_rsa_pss_verify / rt_rsa_pkcs1_v15_verify based on the signature scheme.
@@ -1429,7 +1428,7 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
 
     sig_scheme = ((uint16_t)data[0] << 8) | data[1];
     sig_len = ((uint16_t)data[2] << 8) | data[3];
-    if (4 + sig_len > len) {
+    if ((size_t)sig_len > len - 4u) {
         session->error = "TLS: CertificateVerify signature length overflows";
         return RT_TLS_ERROR_HANDSHAKE;
     }

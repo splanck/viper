@@ -22,12 +22,12 @@
 #include "rt_string_builder.h"
 #include "rt_trap.h"
 
+#include "rt_xml_internal.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "rt_xml_internal.h"
 
 //=============================================================================
 
@@ -81,6 +81,10 @@ static void buf_append_bytes(char **buf, size_t *cap, size_t *len, const char *s
 
 /// @brief Append a single character to the growing format buffer.
 static void buf_append_char(char **buf, size_t *cap, size_t *len, char c) {
+    if (*len > SIZE_MAX - 2) {
+        rt_trap("XML format: output length overflow");
+        return;
+    }
     if (*len + 2 > *cap) {
         size_t new_cap = (*cap == 0) ? 256 : (*cap * 2);
         if (new_cap <= *cap) {

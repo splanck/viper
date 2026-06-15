@@ -74,7 +74,7 @@ static int rskip_whitespace(const char *s, int start, int end) {
 
 /// Find substring starting at pos, return position or -1
 static int find_at(const char *text, int text_len, const char *needle, int needle_len, int start) {
-    if (needle_len == 0 || start + needle_len > text_len)
+    if (needle_len == 0 || start < 0 || start > text_len || needle_len > text_len - start)
         return -1;
 
     for (int i = start; i <= text_len - needle_len; i++) {

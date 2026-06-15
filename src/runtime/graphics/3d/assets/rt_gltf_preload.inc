@@ -1431,7 +1431,7 @@ static int gltf_preload_stage_morph_targets(rt_gltf_preload_bundle *bundle,
                           gltf_accessor_has_payload(&tangent_view) &&
                           gltf_accessor_is_f32_components(&tangent_view, 3, 4);
             if (has_pos || has_norm || has_tangent) {
-                if (shape_count >= SIZE_MAX / sizeof(*shapes)) {
+                if (shape_count > (SIZE_MAX / sizeof(*shapes)) - 1u) {
                     gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
                     ok = 0;
                     goto done;

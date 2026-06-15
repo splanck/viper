@@ -144,11 +144,9 @@ static void *compress_run_string_bytes(void *bytes, int gzip, const char *fallba
         return NULL;
     }
     if (gzip)
-        result = gzip_data(
-            bytes_data((void *)owned_bytes), (size_t)len, DEFLATE_DEFAULT_LEVEL);
+        result = gzip_data(bytes_data((void *)owned_bytes), (size_t)len, DEFLATE_DEFAULT_LEVEL);
     else
-        result = deflate_data(
-            bytes_data((void *)owned_bytes), (size_t)len, DEFLATE_DEFAULT_LEVEL);
+        result = deflate_data(bytes_data((void *)owned_bytes), (size_t)len, DEFLATE_DEFAULT_LEVEL);
     rt_trap_clear_recovery();
     compress_release_temp_object((void *)owned_bytes);
     return result;
@@ -610,7 +608,7 @@ static bool inflate_stored(bit_reader_t *br, output_buffer_t *out) {
     br_align(br);
 
     // Read LEN and NLEN
-    if (br->pos + 4 > br->len)
+    if (br->pos > br->len || br->len - br->pos < 4)
         return false;
 
     uint16_t len = br->data[br->pos] | (br->data[br->pos + 1] << 8);
@@ -622,7 +620,7 @@ static bool inflate_stored(bit_reader_t *br, output_buffer_t *out) {
         return false;
 
     // Copy bytes
-    if (br->pos + len > br->len)
+    if ((size_t)len > br->len - br->pos)
         return false;
 
     if (!out_ensure(out, len))
@@ -992,7 +990,7 @@ static void *gunzip_member_data(const uint8_t *data, size_t len, size_t *member_
 
     // Skip FEXTRA
     if (flags & 0x04) {
-        if (pos + 2 > len) {
+        if (pos > len || len - pos < 2) {
             rt_trap("Gunzip: truncated header");
             return NULL;
         }
@@ -1028,7 +1026,7 @@ static void *gunzip_member_data(const uint8_t *data, size_t len, size_t *member_
 
     // Skip FHCRC
     if (flags & 0x02) {
-        if (pos + 2 > len) {
+        if (pos > len || len - pos < 2) {
             rt_trap("Gunzip: truncated header CRC");
             return NULL;
         }

@@ -43,6 +43,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef EOVERFLOW
+#define EOVERFLOW ERANGE
+#endif
+
 #if RT_PLATFORM_WINDOWS
 #include <io.h>
 #include <share.h>
@@ -113,6 +117,8 @@ typedef unsigned short mode_t;
 #include <sys/types.h>
 #include <unistd.h>
 #endif
+
+#define RT_FILE_MAX_LINE_BYTES (16u * 1024u * 1024u)
 
 /// @brief Clamp errno values into the 32-bit range stored by @ref RtError.
 /// @details Ensures large positive or negative errno values fit into the
@@ -469,6 +475,10 @@ int8_t rt_file_read_line(RtFile *file, rt_string *out_line, RtError *out_err) {
         if (n == 1) {
             if (ch == '\n')
                 break;
+            if (len >= RT_FILE_MAX_LINE_BYTES) {
+                rt_file_set_error(out_err, Err_RuntimeError, EOVERFLOW);
+                goto cleanup;
+            }
             if (len == SIZE_MAX || len + 1 >= cap) {
                 if (!rt_file_line_buffer_grow(&buffer, &cap, len, out_err))
                     goto cleanup;

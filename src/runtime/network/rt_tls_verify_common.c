@@ -17,7 +17,6 @@
 
 #include "rt_tls_verify_internal.h"
 
-
 //=============================================================================
 // Certificate Validation — CS-1, CS-2, CS-3
 //=============================================================================
@@ -43,14 +42,15 @@
 ///         extensions past end of list, zero-length cert, null arguments).
 int tls_next_certificate_entry(
     const uint8_t *list, size_t list_len, size_t *pos, const uint8_t **cert_der, size_t *cert_len) {
-    if (!list || !pos || !cert_der || !cert_len || *pos + 5 > list_len)
+    if (!list || !pos || !cert_der || !cert_len || *pos > list_len || list_len - *pos < 5)
         return -1;
 
     size_t entry_pos = *pos;
     size_t der_len = ((size_t)list[entry_pos] << 16) | ((size_t)list[entry_pos + 1] << 8) |
                      (size_t)list[entry_pos + 2];
     entry_pos += 3;
-    if (der_len == 0 || entry_pos + der_len + 2 > list_len)
+    if (der_len == 0 || entry_pos > list_len || der_len > list_len - entry_pos ||
+        list_len - entry_pos - der_len < 2)
         return -1;
 
     *cert_der = list + entry_pos;
@@ -59,7 +59,7 @@ int tls_next_certificate_entry(
 
     size_t ext_len = ((size_t)list[entry_pos] << 8) | (size_t)list[entry_pos + 1];
     entry_pos += 2;
-    if (entry_pos + ext_len > list_len)
+    if (entry_pos > list_len || ext_len > list_len - entry_pos)
         return -1;
 
     *pos = entry_pos + ext_len;
@@ -88,25 +88,25 @@ int tls_parse_certificate_msg(rt_tls_session_t *session, const uint8_t *data, si
 
     // Skip certificate_request_context
     uint8_t ctx_len = data[pos++];
-    if (pos + ctx_len > len) {
+    if ((size_t)ctx_len > len - pos) {
         session->error = "TLS: Certificate context overflows message";
         return RT_TLS_ERROR_HANDSHAKE;
     }
     pos += ctx_len;
 
     // Read certificate_list length (3-byte big-endian)
-    if (pos + 3 > len) {
+    if (len - pos < 3) {
         session->error = "TLS: Certificate list length missing";
         return RT_TLS_ERROR_HANDSHAKE;
     }
     size_t list_len = ((size_t)data[pos] << 16) | ((size_t)data[pos + 1] << 8) | data[pos + 2];
     pos += 3;
 
-    if (pos + list_len > len) {
+    if (list_len > len - pos) {
         session->error = "TLS: Certificate list overflows message";
         return RT_TLS_ERROR_HANDSHAKE;
     }
-    if (pos + list_len != len) {
+    if (list_len != len - pos) {
         session->error = "TLS: Certificate message has trailing data";
         return RT_TLS_ERROR_HANDSHAKE;
     }
@@ -242,8 +242,8 @@ static const uint8_t OID_X509_EXT_KEY_USAGE[] = {0x55, 0x1d, 0x25};     // 2.5.2
 ///        TLV length (header + value) into *subject_len.
 /// @return Non-null pointer into cert_der on success, NULL if the certificate is malformed.
 RT_TLS_MAYBE_UNUSED const uint8_t *cert_get_subject(const uint8_t *cert_der,
-                                                           size_t cert_len,
-                                                           size_t *subject_len) {
+                                                    size_t cert_len,
+                                                    size_t *subject_len) {
     uint8_t t;
     size_t vl, hl, cert_hl, tbs_hl;
     const uint8_t *tbs = NULL;

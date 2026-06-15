@@ -239,7 +239,7 @@ static int walk_chunks(const uint8_t *data,
                        avi_context_t *ctx,
                        void *extra) {
     size_t pos = start;
-    while (pos + 8 <= len) {
+    while (pos <= len && len - pos >= 8) {
         uint32_t fourcc = read_le32(data + pos);
         uint32_t size = read_le32(data + pos + 4);
         if (size > len - pos - 8) {

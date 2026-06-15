@@ -1174,7 +1174,7 @@ static int ws_recv_message(rt_ws_impl *ws,
         }
 
         if (len > 0) {
-            if (frag_len + len > WS_MAX_REASSEMBLY_SIZE) {
+            if (frag_len > WS_MAX_REASSEMBLY_SIZE || len > WS_MAX_REASSEMBLY_SIZE - frag_len) {
                 free(data);
                 free(frag_buf);
                 rt_ws_close_with(ws, WS_CLOSE_MESSAGE_TOO_BIG, rt_str_empty());

@@ -169,9 +169,8 @@ void **rt_arr_obj_resize(void **arr, size_t len) {
     }
 
     void **truncated = NULL;
-    size_t truncated_count = 0;
     if (len < old_len) {
-        truncated_count = old_len - len;
+        size_t truncated_count = old_len - len;
         truncated = (void **)malloc(truncated_count * sizeof(void *));
         if (!truncated)
             return NULL;
