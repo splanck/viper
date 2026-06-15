@@ -1355,7 +1355,7 @@ if (APPLE AND VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_vec3_mutators_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
-            LABELS "zia;smoke;native-link"
+            LABELS "zia;smoke;native-link;slow"
             TIMEOUT 60)
 
     add_test(NAME native_smoke_physics3d_fixed_step_arm64
@@ -1363,7 +1363,7 @@ if (APPLE AND VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_physics3d_fixed_step_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
-            LABELS "zia;smoke;native-link"
+            LABELS "zia;smoke;native-link;slow"
             TIMEOUT 60)
 
     add_test(NAME native_smoke_3dbowling_build_arm64
@@ -1371,7 +1371,7 @@ if (APPLE AND VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_3dbowling_build_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
-            LABELS "zia;smoke;native-link"
+            LABELS "zia;smoke;native-link;slow"
             TIMEOUT 120)
 
     add_test(NAME native_smoke_achievement_draw_arm64
@@ -1379,7 +1379,7 @@ if (APPLE AND VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_achievement_draw_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
-            LABELS "zia;smoke;native-link;requires_display"
+            LABELS "zia;smoke;native-link;requires_display;slow"
             RESOURCE_LOCK viper_display
             TIMEOUT 60)
 
@@ -1388,7 +1388,7 @@ if (APPLE AND VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_xenoscape_start_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
-            LABELS "zia;smoke;native-link;requires_display"
+            LABELS "zia;smoke;native-link;requires_display;slow"
             RESOURCE_LOCK viper_display
             TIMEOUT 60)
 
@@ -1397,7 +1397,7 @@ if (APPLE AND VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_xenoscape_action_names_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
-            LABELS "zia;smoke;native-link"
+            LABELS "zia;smoke;native-link;slow"
             TIMEOUT 60)
 
     add_test(NAME native_smoke_chess_ai_arm64
@@ -1405,7 +1405,7 @@ if (APPLE AND VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_chess_ai_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
-            LABELS "zia;smoke;native-link"
+            LABELS "zia;smoke;native-link;slow"
             TIMEOUT 120)
 
     add_test(NAME native_smoke_crackman_movement_arm64
@@ -1413,7 +1413,7 @@ if (APPLE AND VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_crackman_movement_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
-            LABELS "zia;smoke;native-link"
+            LABELS "zia;smoke;native-link;slow"
             TIMEOUT 120)
 
     # Regression gate for the ViperIDE IntelliSense fix: a codegen'd native
@@ -1424,7 +1424,7 @@ if (APPLE AND VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_viperide_completion_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
-            LABELS "zia;smoke;native-link"
+            LABELS "zia;smoke;native-link;slow"
             TIMEOUT 180)
 endif ()
 

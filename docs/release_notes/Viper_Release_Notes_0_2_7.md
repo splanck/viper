@@ -29,20 +29,20 @@ A hardening cycle continuing v0.2.6. The new work ends per-frame Graphics3D flic
 - **Frontend parsing & semantics.** BASIC adopts overflow-aware numeric, line-label, and `SELECT CASE` parsing and accepts numbered `DIM` fields inside `CLASS` bodies; Zia restores circular and self binds by treating an in-progress bind as a known dependency rather than a fatal `V1000`.
 - **Cross-platform utilities, language servers & CLI.** The Text/Time/IO surface closes documented edge cases, the BASIC/Zia LSP/MCP servers compute UTF-16 ranges and enforce a strict initialize-before-use lifecycle, and the CLI rejects mismatched run/build/ABI combinations behind atomic, descriptor-safe tool outputs.
 - **Shared platform adapters.** Socket setup/teardown/flags, CSPRNG selection, and file-dialog directory enumeration each move into dedicated `rt_*_platform_{win,posix}.c` adapters behind `rt_*_platform.h` headers; a ratcheting lint baseline ensures the remaining raw-macro count in shared TUs can only decrease.
-- **Project loading & packaging.** Convention detection scans real BASIC/Zia tokens and rejects symlink escapes; package writers stage through same-directory temp files and hash assets with SHA-256; staged toolchain binaries detect their own OS and architecture from the object header rather than the host.
+- **Project loading & packaging.** Convention detection scans real BASIC/Zia tokens and rejects symlink escapes; package writers stage through same-directory temp files and hash assets with SHA-256; staged toolchain binaries detect their own OS and architecture from the object header rather than the host; and the Windows toolchain installer becomes a native dialog wizard with a native ARM64 bootstrap.
 - **Windows and Linux builds back to green.** Windows restores the BASIC-VM, installer, ViperIDE, and x86-64 suites (NOMINMAX, extended MSVC atomics, an 8-job parallelism cap) and closes its D3D11 sign-off gaps; Linux returns to a full green suite — 1,670 passing.
 
 ### By the Numbers
 
 | Metric | v0.2.6 | v0.2.7 | Delta |
 |---|---|---|---|
-| Commits | — | 114 | +114 |
-| Source files | 3,096 | 3,353 | +257 |
-| Production SLOC | 669K | 724K | +55K |
-| Test SLOC | 278K | 299K | +20K |
+| Commits | — | 120 | +120 |
+| Source files | 3,096 | 3,356 | +260 |
+| Production SLOC | 669K | 728K | +59K |
+| Test SLOC | 278K | 299K | +21K |
 | Demo SLOC | 192K | 194K | +2K |
 
-Counts via `scripts/count_sloc.sh` (production 724,229 / test 298,592 / demo 194,018 / source files 3,353); commits since the `v0.2.6-dev` tag (2026-06-01).
+Counts via `scripts/count_sloc.sh` (production 727,753 / test 299,010 / demo 194,023 / source files 3,356); commits since the `v0.2.6-dev` tag (2026-06-01).
 
 ---
 
@@ -78,7 +78,7 @@ Counts via `scripts/count_sloc.sh` (production 724,229 / test 298,592 / demo 194
 
 - A cppcheck-driven audit makes every recoverable `rt_trap` return a safe sentinel and release its locals across core, text, crypto, network (HTTP/WebSocket/SMTP/TLS/URL), OOP, process, media decoders, and input helpers — and routes the few unrecoverable cases (entropy exhaustion, DRBG failure) through a new non-returning `rt_abort`, so no path can proceed with predictable key material when a trap hook returns.
 - BigInt gains checked size arithmetic and full arbitrary-width two's-complement bitwise/shift semantics; heap and pool allocation validate payload headers under the registry lock and freed blocks against their owning slab.
-- RSA signature verification goes constant-time; HTTP/2 framing, `204`/`304` empty-body suppression, the WSS accept-vs-`Stop` race, per-policy retry jitter, and SSE encoding negotiation tighten. Temp-file, archive, and savedata names fail closed when secure entropy is unavailable instead of dropping to predictable pid/time values.
+- RSA signature verification goes constant-time; HTTP/2 framing, `204`/`304` empty-body suppression, the WSS accept-vs-`Stop` race, per-policy retry jitter, and SSE encoding negotiation tighten. Temp-file, archive, and savedata names fail closed when secure entropy is unavailable instead of dropping to predictable pid/time values, HTTP downloads stream through a sibling temp file and rename into place only after a complete response, and the graphics-disabled Canvas3D/Camera3D/PostFX stubs now trap with a graphics-not-compiled diagnostic instead of silently dropping side-effecting calls.
 
 ### IL, codegen, and the native linker
 
@@ -117,20 +117,21 @@ Counts via `scripts/count_sloc.sh` (production 724,229 / test 298,592 / demo 194
 - Convention detection scans real BASIC/Zia tokens instead of text, rejects sources that escape the project root through symlinks, and gates install hooks and home-Desktop shortcuts behind explicit manifest opt-ins.
 - The PNG, ZIP, tar, PE, and DEB readers and writers tighten chunk ordering, header bounds, and path validation; package and archive writers stage through same-directory temp files so a failed write leaves no partial artifact, hash asset content with SHA-256 so a same-size/mtime edit still invalidates the build cache, and detect a staged toolchain binary's OS and architecture from its PE/ELF/Mach-O header rather than the host. ZIP archives now stamp a fixed date by default (overridable via `SOURCE_DATE_EPOCH`) so identical inputs produce byte-identical output, and the legacy CPack path is gated behind an explicit opt-in, leaving `viper install-package` as the single system of record.
 - macOS toolchain packaging gains a styled, compressed `.dmg` that wraps the `.pkg` for double-click installation, the `.pkg` now presents welcome and license panes, and code signing enables the hardened runtime by default for Developer ID while bounding the notarization wait with a configurable timeout; Debian and RPM metadata — license, maintainer, homepage, and the `libstdc++6`/`libc++1` runtime dependency now detected from the staged binary — is sourced from configuration instead of hardcoded placeholders.
+- The Windows toolchain installer and uninstaller become native dialog wizards: embedded dialog templates with common-controls initialization, license display, and user-vs-machine scope selection replace the old `MessageBox` prompts, and Windows ARM64 payloads ship a native AArch64 bootstrap built by a new in-tree ARM64 emitter instead of running the x64 stub under emulation. Add/Remove Programs gains HelpLink, Comments, and Contact metadata, and CLI signing routes through a single `sign-windows-installer.ps1` path (thumbprint or PFX, HTTPS timestamping, optional `signtool` verification).
 
 ### Windows and Linux builds
 
 - On Windows, NOMINMAX, extended MSVC atomic shims, a simplified CreateProcess stdio path, a standard-VM bridge that no longer double-releases borrowed strings, and an 8-job MSVC parallelism cap (avoiding C1060 heap exhaustion) restore the BASIC-VM, installer, ViperIDE, and x86-64 codegen suites, while the D3D11 backend closes its sign-off gaps; the build-script ctest run also stabilizes with normalized console output and deterministic suite ordering.
-- On Linux, restored OpenGL symbol loading, X11 backing-store sizing, ELF zero-fill/`PT_LOAD` grouping, and an expanded dynamic-import policy bring the full suite to 1,670 passing.
+- On Linux, restored OpenGL symbol loading, X11 backing-store sizing, ELF zero-fill/`PT_LOAD` grouping, and an expanded dynamic-import policy bring the full suite to 1,670 passing; a later pass restores OpenGL demo rendering with double-buffered GLX visual selection, a resident `libGL` handle that fixes an ARM64 `test_rt_game3d` segfault, and a simplified vertex-shader path that clears the black client areas Mesa/aarch64 left on the `3dbowling` and `game3d-showcase` demos.
 
 ### Tests
 
-~20K new test SLOC.
+~21K new test SLOC.
 
 - **3D rendering, assets, and animation** — spot-shadow perspective/orthographic coordinate and budget-ordering coverage, vegetation sway, billboard batching, versioned navmesh round-trip, reference repair, texture-atlas, FBX/node-animation import, D3D11 mip-validation, fail-closed content-loader diagnostics (corrupt/missing/wrong-magic inputs and optional-texture warnings), untrusted-count guard and parser fuzz harnesses, anisotropic-sampler and frame-telemetry/deferred-sort ordering coverage, and `Game3D.Diagnostics` fallback- and stale-entity no-op counter coverage.
 - **IL, codegen, and cross-engine** — IL release-lifetime and alias-analysis precision, VM-vs-bytecode scalar-semantics equivalence, AArch64 register-allocation regressions, spilled-operand reload-caching pin test (zero inter-use reloads), duplicate-spill-store elimination verification, and Game3D script-callback coverage with interpreted/native-run parity for the fixed-step loop.
 - **Agent CLI and diagnostics** — the `agent_cli` suite, the diagnostic-code catalog, and structured bridge/MCP/LSP diagnostic and hover coverage.
-- **Runtime, frontends, and GUI** — media/pixel decode, BASIC parsing, Text/Time/IO edge cases, and GUI overlay/font-propagation regressions.
+- **Runtime, frontends, and GUI** — media/pixel decode, BASIC parsing, Text/Time/IO edge cases, GUI overlay/font-propagation regressions, and Windows installer-wizard / AArch64-emitter packaging coverage.
 
 ---
 

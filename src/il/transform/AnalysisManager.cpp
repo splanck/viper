@@ -136,7 +136,8 @@ class AnalysisCacheInvalidator {
         }
 
         auto eraseChangedFunctions =
-            [&](std::unordered_map<const core::Function *, std::any> &cacheForAnalysis) {
+            [&](std::unordered_map<const core::Function *, detail::AnalysisValue>
+                    &cacheForAnalysis) {
                 for (auto it = cacheForAnalysis.begin(); it != cacheForAnalysis.end();) {
                     if (!it->first || !liveFunctions.contains(it->first) ||
                         changedFunctions.contains(it->first))
@@ -144,7 +145,7 @@ class AnalysisCacheInvalidator {
                     else
                         ++it;
                 }
-        };
+            };
         if (!preserved_.hasFunctionPreservations() && !preserved_.hasChangedFunctions()) {
             manager_.functionCache_.clear();
             return;

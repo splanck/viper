@@ -16,7 +16,7 @@
 //   - Thread-safe: concurrent cache reads via shared_mutex.
 // Ownership/Lifetime: AnalysisManager borrows its Module and AnalysisRegistry
 //          references; both must outlive the manager. Cached results are owned
-//          by the manager via std::any.
+//          by the manager through type-erased shared storage.
 // Links: il/core/fwd.hpp, il/transform/PassRegistry.hpp
 //
 //===----------------------------------------------------------------------===//
@@ -24,15 +24,16 @@
 
 #include "il/core/fwd.hpp"
 
-#include <any>
 #include <cassert>
 #include <functional>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <stdexcept>
 #include <string>
-#include <typeindex>
+#include <string_view>
+#include <typeinfo>
 #include <unordered_map>
 #include <utility>
 
@@ -42,14 +43,59 @@ class PreservedAnalyses;
 class AnalysisCacheInvalidator;
 
 namespace detail {
+/// @brief Type-erased owner for one cached analysis result.
+/// @details Analysis results may be registered by one translation unit and
+///          consumed by a pass compiled in another. The IL libraries use hidden
+///          symbol visibility on macOS, so RTTI identity cannot be used as the
+///          cache contract. This wrapper stores the object behind
+///          @c shared_ptr<void> and carries a compiler-generated type spelling
+///          that can be compared by content before performing a static cast.
+struct AnalysisValue {
+    std::shared_ptr<void> storage; ///< Heap-owned analysis result object.
+    std::string_view typeName{};   ///< Stable compiler spelling of the stored result type.
+
+    /// @brief Check whether this cache slot contains a computed analysis.
+    /// @return True when @ref storage owns a result object.
+    bool has_value() const {
+        return static_cast<bool>(storage);
+    }
+};
+
+/// @brief Return a stable spelling for an analysis result type.
+/// @details Compares RTTI name text rather than RTTI object identity. Hidden
+///          symbol visibility can produce distinct @c std::type_info objects
+///          for the same type across translation units on macOS, but the
+///          mangled type-name text remains a stable guard before the cache casts
+///          its type-erased payload back to @p Result.
+/// @tparam Result Concrete analysis result type.
+/// @return Implementation-defined name text describing @p Result.
+template <typename Result> std::string_view analysisTypeName() {
+    return typeid(Result).name();
+}
+
+/// @brief Build a type-erased analysis cache value.
+/// @details Allocates the result on the heap and keeps its original deleter via
+///          @c shared_ptr<Result> conversion to @c shared_ptr<void>. The stored
+///          type spelling is checked on retrieval before the pointer is cast
+///          back to @p Result.
+/// @tparam Result Concrete analysis result type.
+/// @param result Freshly computed analysis result.
+/// @return Type-erased cache value owning @p result.
+template <typename Result> AnalysisValue makeAnalysisValue(Result result) {
+    AnalysisValue value;
+    value.storage = std::make_shared<Result>(std::move(result));
+    value.typeName = analysisTypeName<Result>();
+    return value;
+}
+
 struct ModuleAnalysisRecord {
-    std::function<std::any(core::Module &)> compute;
-    std::type_index type{typeid(void)};
+    std::function<AnalysisValue(core::Module &)> compute;
+    std::string_view typeName{};
 };
 
 struct FunctionAnalysisRecord {
-    std::function<std::any(core::Module &, core::Function &)> compute;
-    std::type_index type{typeid(void)};
+    std::function<AnalysisValue(core::Module &, core::Function &)> compute;
+    std::string_view typeName{};
 };
 
 /// @brief Build a diagnostic for an unregistered analysis lookup.
@@ -75,15 +121,50 @@ std::string unknownAnalysisMessage(const char *scope, const std::string &id, con
     return message;
 }
 
+/// @brief Build a diagnostic for an analysis result type mismatch.
+/// @tparam Result Type requested by the caller.
+/// @param id Requested analysis identifier.
+/// @param actual Type spelling recorded by the registry or cache.
+/// @return Error message suitable for std::logic_error.
+template <typename Result>
+std::string analysisTypeMismatchMessage(const std::string &id, std::string_view actual) {
+    std::string message = "analysis result type mismatch for '";
+    message += id;
+    message += "': requested ";
+    message += analysisTypeName<Result>();
+    message += ", registered ";
+    message += actual;
+    return message;
+}
+
 /// @brief Validate that a registered analysis produces the requested result type.
 /// @details A mismatched type means the caller's template argument and the
-///          registry declaration disagree. Throwing @c std::bad_any_cast keeps
-///          release builds from dereferencing a null cast result.
+///          registry declaration disagree. The comparison intentionally uses
+///          compiler signature text instead of RTTI identity so it remains
+///          reliable when the analysis registry and consuming pass are compiled
+///          with hidden symbol visibility.
 /// @tparam Result Type requested by the caller.
-/// @param actual Type recorded by the registry.
-template <typename Result> void requireAnalysisType(std::type_index actual) {
-    if (actual != std::type_index(typeid(Result)))
-        throw std::bad_any_cast();
+/// @param id Requested analysis identifier.
+/// @param actual Type spelling recorded by the registry.
+template <typename Result>
+void requireAnalysisType(const std::string &id, std::string_view actual) {
+    if (actual != analysisTypeName<Result>())
+        throw std::logic_error(analysisTypeMismatchMessage<Result>(id, actual));
+}
+
+/// @brief Cast a type-erased cached analysis value back to its concrete type.
+/// @details The stored type spelling must match @p Result before the
+///          @c shared_ptr<void> payload is statically cast. An empty cache slot
+///          indicates an internal AnalysisManager bookkeeping error.
+/// @tparam Result Type requested by the caller.
+/// @param id Requested analysis identifier.
+/// @param value Cache value to cast.
+/// @return Mutable reference to the cached @p Result object.
+template <typename Result> Result &castAnalysisValue(const std::string &id, AnalysisValue &value) {
+    requireAnalysisType<Result>(id, value.typeName);
+    if (!value.storage)
+        throw std::logic_error("empty analysis result cache entry");
+    return *static_cast<Result *>(value.storage.get());
 }
 } // namespace detail
 
@@ -104,8 +185,10 @@ class AnalysisRegistry {
     template <typename Result>
     void registerModuleAnalysis(const std::string &id, std::function<Result(core::Module &)> fn) {
         moduleAnalyses_[id] = detail::ModuleAnalysisRecord{
-            [fn = std::move(fn)](core::Module &module) -> std::any { return fn(module); },
-            std::type_index(typeid(Result))};
+            [fn = std::move(fn)](core::Module &module) -> detail::AnalysisValue {
+                return detail::makeAnalysisValue<Result>(fn(module));
+            },
+            detail::analysisTypeName<Result>()};
     }
 
     /// @brief Register a function-level analysis computation.
@@ -116,10 +199,11 @@ class AnalysisRegistry {
     void registerFunctionAnalysis(const std::string &id,
                                   std::function<Result(core::Module &, core::Function &)> fn) {
         functionAnalyses_[id] = detail::FunctionAnalysisRecord{
-            [fn = std::move(fn)](core::Module &module, core::Function &fnRef) -> std::any {
-                return fn(module, fnRef);
+            [fn = std::move(fn)](core::Module &module,
+                                 core::Function &fnRef) -> detail::AnalysisValue {
+                return detail::makeAnalysisValue<Result>(fn(module, fnRef));
             },
-            std::type_index(typeid(Result))};
+            detail::analysisTypeName<Result>()};
     }
 
     const ModuleAnalysisMap &moduleAnalyses() const {
@@ -164,14 +248,10 @@ class AnalysisManager {
                     detail::unknownAnalysisMessage("module", id, *moduleAnalyses_));
             auto cacheIt = moduleCache_.find(id);
             if (cacheIt != moduleCache_.end() && cacheIt->second.has_value()) {
-                assert(it->second.type == std::type_index(typeid(Result)) &&
+                assert(it->second.typeName == detail::analysisTypeName<Result>() &&
                        "analysis result type mismatch");
-                detail::requireAnalysisType<Result>(it->second.type);
-                auto *value = std::any_cast<Result>(&cacheIt->second);
-                assert(value && "analysis result cast failed");
-                if (!value)
-                    throw std::bad_any_cast();
-                return *value;
+                detail::requireAnalysisType<Result>(id, it->second.typeName);
+                return detail::castAnalysisValue<Result>(id, cacheIt->second);
             }
         }
 
@@ -183,19 +263,15 @@ class AnalysisManager {
         assert(it != moduleAnalyses_->end() && "unknown module analysis");
         if (it == moduleAnalyses_->end())
             throw std::logic_error(detail::unknownAnalysisMessage("module", id, *moduleAnalyses_));
-        std::any &cache = moduleCache_[id];
+        detail::AnalysisValue &cache = moduleCache_[id];
         if (!cache.has_value()) {
             cache = it->second.compute(module_);
             ++counts_.moduleComputations;
         }
-        assert(it->second.type == std::type_index(typeid(Result)) &&
+        assert(it->second.typeName == detail::analysisTypeName<Result>() &&
                "analysis result type mismatch");
-        detail::requireAnalysisType<Result>(it->second.type);
-        auto *value = std::any_cast<Result>(&cache);
-        assert(value && "analysis result cast failed");
-        if (!value)
-            throw std::bad_any_cast();
-        return *value;
+        detail::requireAnalysisType<Result>(id, it->second.typeName);
+        return detail::castAnalysisValue<Result>(id, cache);
     }
 
     /// @brief Retrieve or compute a function-level analysis result.
@@ -228,14 +304,10 @@ class AnalysisManager {
             if (cacheIt != functionCache_.end()) {
                 auto fnIt = cacheIt->second.find(&fn);
                 if (fnIt != cacheIt->second.end() && fnIt->second.has_value()) {
-                    assert(it->second.type == std::type_index(typeid(Result)) &&
+                    assert(it->second.typeName == detail::analysisTypeName<Result>() &&
                            "analysis result type mismatch");
-                    detail::requireAnalysisType<Result>(it->second.type);
-                    auto *value = std::any_cast<Result>(&fnIt->second);
-                    assert(value && "analysis result cast failed");
-                    if (!value)
-                        throw std::bad_any_cast();
-                    return *value;
+                    detail::requireAnalysisType<Result>(id, it->second.typeName);
+                    return detail::castAnalysisValue<Result>(id, fnIt->second);
                 }
             }
         }
@@ -257,19 +329,15 @@ class AnalysisManager {
         if (it == functionAnalyses_->end())
             throw std::logic_error(
                 detail::unknownAnalysisMessage("function", id, *functionAnalyses_));
-        std::any &cache = functionCache_[id][&fn];
+        detail::AnalysisValue &cache = functionCache_[id][&fn];
         if (!cache.has_value()) {
             cache = it->second.compute(module_, fn);
             ++counts_.functionComputations;
         }
-        assert(it->second.type == std::type_index(typeid(Result)) &&
+        assert(it->second.typeName == detail::analysisTypeName<Result>() &&
                "analysis result type mismatch");
-        detail::requireAnalysisType<Result>(it->second.type);
-        auto *value = std::any_cast<Result>(&cache);
-        assert(value && "analysis result cast failed");
-        if (!value)
-            throw std::bad_any_cast();
-        return *value;
+        detail::requireAnalysisType<Result>(id, it->second.typeName);
+        return detail::castAnalysisValue<Result>(id, cache);
     }
 
     /// @brief Invalidate analyses not preserved by a module pass.
@@ -312,8 +380,9 @@ class AnalysisManager {
     core::Module &module_;
     const ModuleAnalysisMap *moduleAnalyses_ = nullptr;
     const FunctionAnalysisMap *functionAnalyses_ = nullptr;
-    std::unordered_map<std::string, std::any> moduleCache_;
-    std::unordered_map<std::string, std::unordered_map<const core::Function *, std::any>>
+    std::unordered_map<std::string, detail::AnalysisValue> moduleCache_;
+    std::unordered_map<std::string,
+                       std::unordered_map<const core::Function *, detail::AnalysisValue>>
         functionCache_;
     AnalysisCounts counts_{};
     mutable std::shared_mutex mutex_;

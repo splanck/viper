@@ -58,6 +58,24 @@ static deferred_pass_t canvas3d_screen_pass_kind(const rt_canvas3d *c) {
     return (c && c->frame_is_2d) ? DEFERRED_PASS_MAIN : DEFERRED_PASS_SCREEN_OVERLAY;
 }
 
+/// @brief Create the deferred draw command used for final-overlay screen geometry.
+/// @details Screen-space helper vertices already carry their tint in vertex colors.
+///          Final-overlay replay happens through the backend mesh path after post-FX, so the
+///          material diffuse color must stay neutral or the overlay tint is multiplied twice.
+///          The alpha scalar is also neutralized for this replay command because the vertex alpha
+///          remains the single source of overlay opacity.
+/// @param cmd Prepared screen-geometry command whose vertices and indices are retained elsewhere.
+/// @return A copy of `cmd` with neutral diffuse color and alpha suitable for final-overlay replay.
+static vgfx3d_draw_cmd_t canvas3d_make_final_overlay_screen_cmd(const vgfx3d_draw_cmd_t *cmd) {
+    vgfx3d_draw_cmd_t overlay_cmd = *cmd;
+    overlay_cmd.diffuse_color[0] = 1.0f;
+    overlay_cmd.diffuse_color[1] = 1.0f;
+    overlay_cmd.diffuse_color[2] = 1.0f;
+    overlay_cmd.diffuse_color[3] = 1.0f;
+    overlay_cmd.alpha = 1.0f;
+    return overlay_cmd;
+}
+
 /// @brief Append a 2D triangle list (positions + UVs + color) to the deferred queue.
 ///
 /// Used as the underlying primitive for `canvas3d_queue_screen_rect`
@@ -113,11 +131,12 @@ static int canvas3d_queue_screen_geometry(rt_canvas3d *c,
     cmd.disable_depth_test = 1;
 
     if (c->final_overlay_recording) {
+        vgfx3d_draw_cmd_t overlay_cmd = canvas3d_make_final_overlay_screen_cmd(&cmd);
         if (!canvas3d_track_final_overlay_temp_buffer(c, block)) {
             free(block);
             return 0;
         }
-        if (!canvas3d_enqueue_final_overlay_draw(c, &cmd, NULL, NULL)) {
+        if (!canvas3d_enqueue_final_overlay_draw(c, &overlay_cmd, NULL, NULL)) {
             canvas3d_release_tracked_final_overlay_temp_buffer(c, block);
             return 0;
         }

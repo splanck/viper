@@ -484,125 +484,191 @@ function(viper_add_basic_lex_golden_tests)
 endfunction()
 
 function(viper_add_basic_to_il_golden_tests)
-    if (TEST basic_to_il_ex1)
+    if (TEST basic_to_il_goldens_batch_0)
         return()
+    endif ()
+    if (NOT VIPER_BASIC_TO_IL_GOLDEN_BATCH_SHARDS MATCHES "^[1-9][0-9]*$")
+        message(FATAL_ERROR "VIPER_BASIC_TO_IL_GOLDEN_BATCH_SHARDS must be a positive integer")
     endif ()
 
     set(_VIPER_BASIC_ILC $<TARGET_FILE:viper>)
     set(_VIPER_BASIC_TO_IL_DIR ${VIPER_TESTS_DIR}/golden/basic_to_il)
     set(_VIPER_BASIC_TO_IL_CHECK ${_VIPER_BASIC_TO_IL_DIR}/check_il.cmake)
     set(_VIPER_BASIC_TO_IL_CHECK_BOUNDS ${_VIPER_BASIC_TO_IL_DIR}/check_il_bounds.cmake)
+    set(_VIPER_BASIC_TO_IL_CHECK_CONTAINS ${_VIPER_BASIC_TO_IL_DIR}/check_il_contains.cmake)
     set(_VIPER_GOLDEN_SRC_DIR ${VIPER_TESTS_DIR}/golden/src)
     set(_VIPER_GOLDEN_IL_DIR ${VIPER_TESTS_DIR}/golden/il)
     set(_VIPER_BASIC_GOLDENS_DIR ${VIPER_TESTS_DIR}/golden/basic_lowering)
     set(_VIPER_EH_LOWERING_DIR ${VIPER_TESTS_DIR}/golden/eh_lowering)
+    set(_VIPER_BASIC_TO_IL_BATCH_CASES "")
 
-    viper_add_ctest(basic_to_il_ex1
+    macro(_viper_basic_to_il_add_batch_case case_name case_kind case_bas case_golden case_must_have case_must_not_have)
+        if ("${case_kind}" STREQUAL "compare")
+            string(APPEND _VIPER_BASIC_TO_IL_BATCH_CASES
+                    "compare\t${case_name}\t${case_bas}\t${case_golden}\t\t\n")
+        elseif ("${case_kind}" STREQUAL "bounds")
+            string(APPEND _VIPER_BASIC_TO_IL_BATCH_CASES
+                    "bounds\t${case_name}\t${case_bas}\t${case_golden}\t\t\n")
+        elseif ("${case_kind}" STREQUAL "contains")
+            string(APPEND _VIPER_BASIC_TO_IL_BATCH_CASES
+                    "contains\t${case_name}\t${case_bas}\t\t${case_must_have}\t${case_must_not_have}\n")
+        else ()
+            message(FATAL_ERROR "Unknown BASIC-to-IL golden batch case kind '${case_kind}' for ${case_name}")
+        endif ()
+    endmacro()
+
+    macro(_viper_basic_to_il_add_ctest name)
+        set(_case_bas "")
+        set(_case_golden "")
+        set(_case_must_have "")
+        set(_case_must_not_have "")
+        set(_case_kind "")
+        set(_collect_field "")
+        foreach (_arg ${ARGN})
+            if ("${_arg}" MATCHES "^-D[A-Za-z_]+=" OR "${_arg}" STREQUAL "-P" OR "${_arg}" MATCHES "\\.cmake$")
+                set(_collect_field "")
+            endif ()
+
+            if ("${_arg}" MATCHES "^-DBAS_FILE=(.*)$")
+                set(_case_bas "${CMAKE_MATCH_1}")
+            elseif ("${_arg}" MATCHES "^-DGOLDEN=(.*)$")
+                set(_case_golden "${CMAKE_MATCH_1}")
+            elseif ("${_arg}" MATCHES "^-DMUST_HAVE=(.*)$")
+                set(_case_must_have "${CMAKE_MATCH_1}")
+                set(_collect_field "must_have")
+            elseif ("${_arg}" MATCHES "^-DMUST_NOT_HAVE=(.*)$")
+                set(_case_must_not_have "${CMAKE_MATCH_1}")
+                set(_collect_field "must_not_have")
+            elseif ("${_arg}" STREQUAL "${_VIPER_BASIC_TO_IL_CHECK}")
+                set(_case_kind "compare")
+            elseif ("${_arg}" STREQUAL "${_VIPER_BASIC_TO_IL_CHECK_BOUNDS}")
+                set(_case_kind "bounds")
+            elseif ("${_arg}" STREQUAL "${_VIPER_BASIC_TO_IL_CHECK_CONTAINS}")
+                set(_case_kind "contains")
+            elseif (_collect_field STREQUAL "must_have")
+                string(APPEND _case_must_have ";${_arg}")
+            elseif (_collect_field STREQUAL "must_not_have")
+                string(APPEND _case_must_not_have ";${_arg}")
+            endif ()
+        endforeach ()
+
+        if ("${_case_kind}" STREQUAL "" OR "${_case_bas}" STREQUAL "")
+            message(FATAL_ERROR "Unable to batch BASIC-to-IL golden test ${name}")
+        endif ()
+        _viper_basic_to_il_add_batch_case(
+                "${name}" "${_case_kind}" "${_case_bas}" "${_case_golden}" "${_case_must_have}" "${_case_must_not_have}")
+
+        if (VIPER_ENABLE_INDIVIDUAL_BASIC_TO_IL_GOLDEN_TESTS)
+            viper_add_ctest(${name} ${ARGN})
+        endif ()
+    endmacro()
+
+    _viper_basic_to_il_add_ctest(basic_to_il_ex1
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/vbasic/ex1_hello_cond.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/ex1_hello_cond.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_ex2
+    _viper_basic_to_il_add_ctest(basic_to_il_ex2
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/vbasic/ex2_sum_1_to_10.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/ex2_sum_1_to_10.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_ex3
+    _viper_basic_to_il_add_ctest(basic_to_il_ex3
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/vbasic/ex3_for_table.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/ex3_for_table.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_ex4
+    _viper_basic_to_il_add_ctest(basic_to_il_ex4
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/vbasic/ex4_if_elseif.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/ex4_if_elseif.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_ex_elseif
+    _viper_basic_to_il_add_ctest(basic_to_il_ex_elseif
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/vbasic/ex_elseif.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/ex_elseif.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_ex6
+    _viper_basic_to_il_add_ctest(basic_to_il_ex6
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/vbasic/ex6_array_sum.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/ex6_array_sum.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_array_dim_redim
+    _viper_basic_to_il_add_ctest(basic_to_il_array_dim_redim
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/array_dim_redim.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/array_dim_redim.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_array_dim_runtime
+    _viper_basic_to_il_add_ctest(basic_to_il_array_dim_runtime
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/array_dim_runtime.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/array_dim_runtime.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_ubound
+    _viper_basic_to_il_add_ctest(basic_to_il_ubound
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/ubound.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/ubound.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_not
+    _viper_basic_to_il_add_ctest(basic_to_il_not
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/vbasic/ex_not.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/not.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_print_commas
+    _viper_basic_to_il_add_ctest(basic_to_il_print_commas
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/vbasic/ex_print_commas.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/print_commas.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_print_semicolons
+    _viper_basic_to_il_add_ctest(basic_to_il_print_semicolons
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/vbasic/ex_print_semicolons.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/print_semicolons.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_print_newline_control
+    _viper_basic_to_il_add_ctest(basic_to_il_print_newline_control
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/vbasic/ex_print_newline_control.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/print_newline_control.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_colon
+    _viper_basic_to_il_add_ctest(basic_to_il_colon
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/vbasic/ex_colon.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/ex_colon.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_loc
+    _viper_basic_to_il_add_ctest(basic_to_il_loc
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/loc_add.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/loc_add.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_strings
+    _viper_basic_to_il_add_ctest(basic_to_il_strings
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/strings.bas
@@ -610,7 +676,7 @@ function(viper_add_basic_to_il_golden_tests)
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
     # Ensure STRING arrays lower to the rt_arr_str_* family only (no i32 helpers)
-    viper_add_ctest(basic_to_il_string_arrays_contains
+    _viper_basic_to_il_add_ctest(basic_to_il_string_arrays_contains
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/string_array_contains.bas
@@ -618,7 +684,7 @@ function(viper_add_basic_to_il_golden_tests)
             "-DMUST_NOT_HAVE=rt_arr_i32_"
             -P ${_VIPER_BASIC_TO_IL_DIR}/check_il_contains.cmake)
 
-    viper_add_ctest(basic_to_il_string_cmp
+    _viper_basic_to_il_add_ctest(basic_to_il_string_cmp
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/string_cmp.bas
@@ -626,7 +692,7 @@ function(viper_add_basic_to_il_golden_tests)
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
     # Property access on Viper.String lowers to canonical getter
-    viper_add_ctest(basic_to_il_string_prop_len
+    _viper_basic_to_il_add_ctest(basic_to_il_string_prop_len
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/string_prop_len.bas
@@ -634,7 +700,7 @@ function(viper_add_basic_to_il_golden_tests)
             -P ${_VIPER_BASIC_TO_IL_DIR}/check_il_contains.cmake)
 
     # Method call on Viper.String lowers with receiver-as-arg0
-    viper_add_ctest(basic_to_il_string_method_substring
+    _viper_basic_to_il_add_ctest(basic_to_il_string_method_substring
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/string_method_substring.bas
@@ -642,49 +708,49 @@ function(viper_add_basic_to_il_golden_tests)
             -P ${_VIPER_BASIC_TO_IL_DIR}/check_il_contains.cmake)
 
     # NEW Viper.String maps to ctor helper when present
-    viper_add_ctest(basic_to_il_string_new_ctor
+    _viper_basic_to_il_add_ctest(basic_to_il_string_new_ctor
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/string_new_ctor.bas
             "-DMUST_HAVE=Viper.String.FromStr"
             -P ${_VIPER_BASIC_TO_IL_DIR}/check_il_contains.cmake)
 
-    viper_add_ctest(basic_to_il_boolean_literals
+    _viper_basic_to_il_add_ctest(basic_to_il_boolean_literals
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_GOLDEN_SRC_DIR}/boolean_literals.bas
             -DGOLDEN=${_VIPER_GOLDEN_IL_DIR}/boolean_literals.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_boolean_dim_and_assign
+    _viper_basic_to_il_add_ctest(basic_to_il_boolean_dim_and_assign
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_GOLDEN_SRC_DIR}/boolean_dim_and_assign.bas
             -DGOLDEN=${_VIPER_GOLDEN_IL_DIR}/boolean_dim_and_assign.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_boolean_branch_join_skeleton
+    _viper_basic_to_il_add_ctest(basic_to_il_boolean_branch_join_skeleton
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_GOLDEN_SRC_DIR}/boolean_branch_join_skeleton.bas
             -DGOLDEN=${_VIPER_GOLDEN_IL_DIR}/boolean_branch_join_skeleton.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_boolean_not
+    _viper_basic_to_il_add_ctest(basic_to_il_boolean_not
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_GOLDEN_SRC_DIR}/boolean_not.bas
             -DGOLDEN=${_VIPER_GOLDEN_IL_DIR}/boolean_not.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_boolean_and
+    _viper_basic_to_il_add_ctest(basic_to_il_boolean_and
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_GOLDEN_SRC_DIR}/boolean_and.bas
             -DGOLDEN=${_VIPER_GOLDEN_IL_DIR}/boolean_and.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_boolean_or
+    _viper_basic_to_il_add_ctest(basic_to_il_boolean_or
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_GOLDEN_SRC_DIR}/boolean_or.bas
@@ -693,14 +759,14 @@ function(viper_add_basic_to_il_golden_tests)
 
     # Skip on Windows: short-circuit boolean tests cause crashes (to be investigated)
     if (NOT WIN32)
-        viper_add_ctest(basic_to_il_boolean_andalso
+        _viper_basic_to_il_add_ctest(basic_to_il_boolean_andalso
                 ${CMAKE_COMMAND}
                 -DILC=${_VIPER_BASIC_ILC}
                 -DBAS_FILE=${_VIPER_GOLDEN_SRC_DIR}/boolean_andalso.bas
                 -DGOLDEN=${_VIPER_GOLDEN_IL_DIR}/boolean_andalso.il
                 -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-        viper_add_ctest(basic_to_il_boolean_orelse
+        _viper_basic_to_il_add_ctest(basic_to_il_boolean_orelse
                 ${CMAKE_COMMAND}
                 -DILC=${_VIPER_BASIC_ILC}
                 -DBAS_FILE=${_VIPER_GOLDEN_SRC_DIR}/boolean_orelse.bas
@@ -708,119 +774,119 @@ function(viper_add_basic_to_il_golden_tests)
                 -P ${_VIPER_BASIC_TO_IL_CHECK})
     endif ()
 
-    viper_add_ctest(basic_to_il_conversions
+    _viper_basic_to_il_add_ctest(basic_to_il_conversions
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/conversions.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/conversions.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_float_ops
+    _viper_basic_to_il_add_ctest(basic_to_il_float_ops
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/float_ops.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/float_ops.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_math_phase1
+    _viper_basic_to_il_add_ctest(basic_to_il_math_phase1
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/math_phase1.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/math_phase1.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_math_phase2
+    _viper_basic_to_il_add_ctest(basic_to_il_math_phase2
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/math_phase2.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/math_phase2.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_abs_mixed
+    _viper_basic_to_il_add_ctest(basic_to_il_abs_mixed
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/abs_mixed.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/abs_mixed.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_bounds_checks
+    _viper_basic_to_il_add_ctest(basic_to_il_bounds_checks
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/bounds_check.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/bounds_check.il
             -P ${_VIPER_BASIC_TO_IL_CHECK_BOUNDS})
 
-    viper_add_ctest(basic_to_il_randomize
+    _viper_basic_to_il_add_ctest(basic_to_il_randomize
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/randomize.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/randomize.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_rnd
+    _viper_basic_to_il_add_ctest(basic_to_il_rnd
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/rnd.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/rnd.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_lower_funcdef_only
+    _viper_basic_to_il_add_ctest(basic_to_il_lower_funcdef_only
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/lower_funcdef_only.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/lower_funcdef_only.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_calls_lowering
+    _viper_basic_to_il_add_ctest(basic_to_il_calls_lowering
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/calls_lowering.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/calls_lowering.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_instr
+    _viper_basic_to_il_add_ctest(basic_to_il_instr
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/instr.bas
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/instr.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_len_mid
+    _viper_basic_to_il_add_ctest(basic_to_il_len_mid
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_GOLDENS_DIR}/LenMid.bas
             -DGOLDEN=${_VIPER_BASIC_GOLDENS_DIR}/LenMid.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_instr_dispatch
+    _viper_basic_to_il_add_ctest(basic_to_il_instr_dispatch
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_GOLDENS_DIR}/Instr.bas
             -DGOLDEN=${_VIPER_BASIC_GOLDENS_DIR}/Instr.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_labels_proc_loops
+    _viper_basic_to_il_add_ctest(basic_to_il_labels_proc_loops
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_GOLDENS_DIR}/labels_proc_loops.bas
             -DGOLDEN=${_VIPER_BASIC_GOLDENS_DIR}/labels_proc_loops.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_suffix_free_vars
+    _viper_basic_to_il_add_ctest(basic_to_il_suffix_free_vars
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_GOLDENS_DIR}/SuffixFreeVars.bas
             -DGOLDEN=${_VIPER_BASIC_GOLDENS_DIR}/SuffixFreeVars.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_lower_program_with_proc
+    _viper_basic_to_il_add_ctest(basic_to_il_lower_program_with_proc
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_GOLDENS_DIR}/LowerProgramWithProc.bas
             -DGOLDEN=${_VIPER_BASIC_GOLDENS_DIR}/LowerProgramWithProc.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
-    viper_add_ctest(basic_to_il_on_error_push_pop
+    _viper_basic_to_il_add_ctest(basic_to_il_on_error_push_pop
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_EH_LOWERING_DIR}/on_error_push_pop.bas
@@ -829,7 +895,7 @@ function(viper_add_basic_to_il_golden_tests)
 
     # Skip on Windows: resume_forms compilation crashes
     if (NOT WIN32)
-        viper_add_ctest(basic_to_il_resume_forms
+        _viper_basic_to_il_add_ctest(basic_to_il_resume_forms
                 ${CMAKE_COMMAND}
                 -DILC=${_VIPER_BASIC_ILC}
                 -DBAS_FILE=${_VIPER_EH_LOWERING_DIR}/resume_forms.bas
@@ -837,12 +903,32 @@ function(viper_add_basic_to_il_golden_tests)
                 -P ${_VIPER_BASIC_TO_IL_CHECK})
     endif ()
 
-    viper_add_ctest(basic_to_il_return_nest
+    _viper_basic_to_il_add_ctest(basic_to_il_return_nest
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_GOLDENS_DIR}/ReturnNest.bas
             -DGOLDEN=${_VIPER_BASIC_GOLDENS_DIR}/ReturnNest.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
+
+    viper_add_test(test_basic_to_il_goldens_batch
+            SRCS ${_VIPER_BASIC_TO_IL_DIR}/BasicToIlBatchRunner.cpp
+            LIBS ${VIPER_BASIC_LIBS} viper::il_io
+            NO_CTEST)
+
+    set(_VIPER_BASIC_TO_IL_BATCH_CASES_FILE
+            "${CMAKE_CURRENT_BINARY_DIR}/basic_to_il_goldens_batch_cases.tsv")
+    file(GENERATE
+            OUTPUT "${_VIPER_BASIC_TO_IL_BATCH_CASES_FILE}"
+            CONTENT "${_VIPER_BASIC_TO_IL_BATCH_CASES}")
+    math(EXPR _VIPER_BASIC_TO_IL_BATCH_LAST_SHARD "${VIPER_BASIC_TO_IL_GOLDEN_BATCH_SHARDS} - 1")
+    foreach (_VIPER_BASIC_TO_IL_BATCH_SHARD RANGE 0 ${_VIPER_BASIC_TO_IL_BATCH_LAST_SHARD})
+        viper_add_ctest(basic_to_il_goldens_batch_${_VIPER_BASIC_TO_IL_BATCH_SHARD}
+                test_basic_to_il_goldens_batch
+                ${_VIPER_BASIC_TO_IL_BATCH_CASES_FILE}
+                ${_VIPER_BASIC_TO_IL_BATCH_SHARD}
+                ${VIPER_BASIC_TO_IL_GOLDEN_BATCH_SHARDS})
+        viper_add_test_labels(basic_to_il_goldens_batch_${_VIPER_BASIC_TO_IL_BATCH_SHARD} basic)
+    endforeach ()
 endfunction()
 
 function(viper_add_basic_strings_test)

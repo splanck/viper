@@ -117,13 +117,15 @@ TEST(PlatformImportPlanners, MacPlannerMapsDarwinArgvAccessorsToLibSystem) {
 TEST(PlatformImportPlanners, MacPlannerMapsCbrtfToLibSystem) {
     MacImportPlan plan;
     std::ostringstream err;
-    ASSERT_TRUE(planMacImports({"cbrtf"}, plan, err));
+    ASSERT_TRUE(planMacImports({"cbrtf", "__sincosf_stret"}, plan, err));
 
     EXPECT_TRUE(std::any_of(plan.dylibs.begin(), plan.dylibs.end(), [](const DylibImport &import) {
         return import.path == "/usr/lib/libSystem.B.dylib";
     }));
     ASSERT_TRUE(plan.symOrdinals.count("cbrtf") != 0);
     EXPECT_EQ(1u, plan.symOrdinals["cbrtf"]);
+    ASSERT_TRUE(plan.symOrdinals.count("__sincosf_stret") != 0);
+    EXPECT_EQ(1u, plan.symOrdinals["__sincosf_stret"]);
 }
 
 TEST(PlatformImportPlanners, MacPlannerMapsLibcxxRuntimeSymbolsToLibcxxDylib) {

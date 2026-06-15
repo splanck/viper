@@ -12,7 +12,7 @@
 // Key invariants:
 //   - Size classes cover 1-64, 65-128, 129-256, and 257-512 byte allocations.
 //   - Allocations larger than 512 bytes fall back to malloc/free.
-//   - Freelist management uses atomic operations; multiple threads may allocate concurrently.
+//   - Freelist management is synchronized; multiple threads may allocate concurrently.
 //   - Freed blocks normally stay in the freelist until rt_pool_shutdown releases
 //     all slabs during runtime teardown.
 //

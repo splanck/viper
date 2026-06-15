@@ -89,6 +89,10 @@ endfunction()
 
 option(VIPER_INSTALL_TUI "Install TUI apps/libraries" OFF)
 option(VIPER_BUILD_TESTING "Enable CTest-based tests" ON)
+option(VIPER_ENABLE_INDIVIDUAL_BASIC_TO_IL_GOLDEN_TESTS
+       "Register one CTest per BASIC-to-IL golden case in addition to the batch test" OFF)
+set(VIPER_BASIC_TO_IL_GOLDEN_BATCH_SHARDS "8" CACHE STRING
+    "Number of CTest shards used for the batched BASIC-to-IL golden suite")
 option(VIPER_ENABLE_WINDOWS_INSTALLER_E2E "Run the generated Windows toolchain installer end-to-end smoke test" OFF)
 option(VIPER_BUILD_VSCODE_VSIX "Build and install the packaged Zia VS Code extension" OFF)
 option(VIPER_VM_THREADED "Enable threaded VM dispatch (faster on GCC/Clang)" ON)
@@ -127,6 +131,7 @@ option(IL_USE_LIBCXX "Use libc++ on Clang (Linux)" OFF)
 option(IL_SANITIZE_ADDRESS "Enable address sanitizer" OFF)
 option(IL_SANITIZE_UNDEFINED "Enable undefined behavior sanitizer" OFF)
 option(IL_SANITIZE_THREAD "Enable thread sanitizer (mutually exclusive with ASAN)" OFF)
+option(VIPER_FAST_DEBUG "Use light optimization for Debug builds of Viper targets" OFF)
 
 set(IL_COMPILE_FLAGS)
 set(IL_LINK_FLAGS)
@@ -246,6 +251,14 @@ else()
     if(IL_HAS_LLD)
       list(APPEND IL_LINK_FLAGS -fuse-ld=lld)
     endif()
+  endif()
+endif()
+
+if(VIPER_FAST_DEBUG)
+  if(MSVC)
+    list(APPEND IL_COMPILE_FLAGS "$<$<CONFIG:Debug>:/Ob1>")
+  else()
+    list(APPEND IL_COMPILE_FLAGS "$<$<CONFIG:Debug>:-Og>")
   endif()
 endif()
 

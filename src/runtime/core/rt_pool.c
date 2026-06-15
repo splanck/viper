@@ -9,14 +9,15 @@
 // Purpose: Implements a slab allocator for the Viper runtime. Reduces
 //          malloc/free overhead by pooling fixed-size allocations into
 //          four size classes (64, 128, 256, 512 bytes) and reusing freed
-//          blocks via lock-free intrusive freelists.
+//          blocks via spinlock-protected intrusive freelists.
 //
 // Key invariants:
 //   - Each size class maintains a singly-linked list of slabs; each slab holds
 //     BLOCKS_PER_SLAB (64) fixed-size blocks.
-//   - Free blocks are tracked via tagged pointers that embed a 16-bit version
-//     counter in the upper bits to prevent ABA races on CAS operations.
-//   - Slab list insertion uses atomic CAS; no mutex is held during allocation.
+//   - Free blocks are tracked with intrusive links inside the unused block body.
+//   - Freelist operations are spinlock-protected so `next` is never read from a
+//     block after another thread has already popped and returned it to user code.
+//   - Slab list insertion uses atomic CAS; no lifecycle mutex is held during allocation.
 //   - Allocation requests larger than the largest size class (512 bytes) fall
 //     through to the system allocator.
 //   - Blocks are zeroed on both allocation and recycling (memset in alloc/free).
@@ -54,8 +55,8 @@ static const size_t kClassSizes[RT_POOL_COUNT] = {64, 128, 256, 512};
 /// @brief Header for each block on the freelist.
 /// Uses intrusive linking - the header occupies the first bytes of the block.
 /// The `next` pointer MUST be accessed via atomic_load_next / atomic_store_next
-/// helpers because concurrent threads may read/write it through the lock-free
-/// freelist (push_to_freelist writes `next`, pop_from_freelist reads it).
+/// helpers because concurrent threads may read/write it through the freelist
+/// (push_to_freelist writes `next`, pop_from_freelist reads it).
 typedef struct rt_pool_block {
     struct rt_pool_block *next;
 } rt_pool_block_t;
@@ -108,8 +109,14 @@ typedef struct rt_pool_slab {
 // - Pool blocks are aligned to at least 8 bytes
 // - The version counter detects ABA scenarios where a pointer is recycled
 //
-// On Pointer-Authentication targets we avoid tagged pointers entirely and fall
-// back to a lock-protected raw-pointer freelist so PAC bits remain intact.
+// The original lock-free freelist used tagged pointers, but a pop operation has
+// to read `head->next` before it owns `head`. Another thread can pop the same
+// block, return it to the caller, and let user code overwrite the intrusive link
+// before the stale pop's CAS fails. The ABA tag prevents the stale CAS from
+// succeeding, but it cannot make the speculative `next` read safe. Keep the
+// tagged-pointer helpers available for experimentation, but use the spinlock
+// freelist in production until the allocator has a proper safe-reclamation
+// scheme or out-of-band block metadata.
 //
 //===----------------------------------------------------------------------===//
 
@@ -123,6 +130,14 @@ typedef struct rt_pool_slab {
 #define RT_POOL_PAC_SAFE 0
 #endif
 
+/// @brief Use the lock-protected intrusive freelist implementation.
+/// @details This is intentionally enabled on all supported targets. The former
+///          lock-free path can race with normal caller writes because it must
+///          dereference a candidate head block before owning it. The spinlock
+///          only covers freelist pointer updates and avoids that undefined
+///          behavior without changing allocation semantics.
+#define RT_POOL_USE_LOCKED_FREELIST 1
+
 /// @brief Return non-zero when @p ptr can be represented by the 48-bit tagged-pointer format.
 /// @details The fast freelist format stores a 16-bit ABA counter in the high bits
 ///          and the pointer in the low 48 bits.  Systems with 57-bit virtual
@@ -131,7 +146,7 @@ typedef struct rt_pool_slab {
 ///          than silently truncating a live pointer.
 /// @param ptr Pointer candidate to encode in the tagged freelist word.
 /// @return Non-zero when the pointer's high bits are clear and safe to pack.
-#if !RT_POOL_PAC_SAFE
+#if !RT_POOL_USE_LOCKED_FREELIST && !RT_POOL_PAC_SAFE
 static inline int ptr_fits_tagged_ptr(void *ptr) {
     return (((uintptr_t)ptr) & ~(uintptr_t)0x0000FFFFFFFFFFFFULL) == 0;
 }
@@ -154,6 +169,7 @@ static inline uint16_t unpack_version(uint64_t tagged) {
 }
 #endif
 
+#if !RT_POOL_USE_LOCKED_FREELIST && !RT_POOL_PAC_SAFE
 /// @brief Atomic compare-exchange for 64-bit values.
 static inline int atomic_cas_u64(volatile uint64_t *ptr, uint64_t *expected, uint64_t desired) {
 #if RT_COMPILER_MSVC
@@ -209,14 +225,15 @@ static inline void atomic_store_u64(volatile uint64_t *ptr, uint64_t value) {
     __atomic_store_n(ptr, value, __ATOMIC_RELEASE);
 #endif
 }
+#endif
 
 /// @brief Per-size-class pool state.
 /// CONC-005 fix: volatile qualifiers removed — all accesses use __atomic_*
 /// builtins or CAS operations which provide their own compiler+CPU barriers.
 typedef struct rt_pool_state {
-#if RT_POOL_PAC_SAFE
-    rt_pool_block_t *freelist_head; ///< PAC-safe raw-pointer freelist head.
-    int freelist_lock;              ///< Spinlock protecting PAC-safe freelist operations.
+#if RT_POOL_USE_LOCKED_FREELIST || RT_POOL_PAC_SAFE
+    rt_pool_block_t *freelist_head; ///< Raw-pointer freelist head.
+    int freelist_lock;              ///< Spinlock protecting freelist operations.
 #else
     uint64_t freelist_tagged; ///< Lock-free freelist head (tagged pointer, via atomic CAS)
 #endif
@@ -283,12 +300,12 @@ static void rt_pool_end_op_(void) {
     rt_pool_lifecycle_unlock_();
 }
 
-#if RT_POOL_PAC_SAFE
-/// @brief Acquire the PAC-safe freelist spinlock with yield-on-contention.
-/// @details Used only on Pointer-Authentication targets (arm64e on
-///          Apple Silicon) where tagged pointers would corrupt PAC
-///          signatures. Falls back to a simple lock-protected
-///          freelist instead of the lock-free tagged-pointer CAS.
+#if RT_POOL_USE_LOCKED_FREELIST || RT_POOL_PAC_SAFE
+/// @brief Acquire a freelist spinlock with yield-on-contention.
+/// @details Freelist operations are deliberately short: read or write one
+///          intrusive `next` pointer and update the head. The lock keeps
+///          candidate blocks owned by the freelist while their `next` pointers
+///          are inspected, which avoids racing with caller writes after a pop.
 static void rt_pool_lock_(int *lock) {
     if (__atomic_test_and_set(lock, __ATOMIC_ACQUIRE)) {
         do {
@@ -301,7 +318,7 @@ static void rt_pool_lock_(int *lock) {
     }
 }
 
-/// @brief Release the PAC-safe freelist spinlock with release semantics.
+/// @brief Release a freelist spinlock with release semantics.
 static void rt_pool_unlock_(int *lock) {
     __atomic_clear(lock, __ATOMIC_RELEASE);
 }
@@ -338,7 +355,7 @@ static rt_pool_slab_t *allocate_slab(rt_pool_class_t class_idx) {
     slab->block_size = block_size;
     slab->block_count = BLOCKS_PER_SLAB;
     slab->data = (char *)(slab + 1);
-#if !RT_POOL_PAC_SAFE
+#if !RT_POOL_USE_LOCKED_FREELIST && !RT_POOL_PAC_SAFE
     if (!ptr_fits_tagged_ptr(slab->data)) {
         free(slab);
         return NULL;
@@ -401,15 +418,14 @@ static rt_pool_class_t rt_pool_find_class_for_ptr_(void *ptr) {
 /// @brief Pop a block from the freelist.
 /// @param pool Pool state for the size class.
 /// @return Block pointer, or NULL if freelist is empty.
-/// @note Uses tagged pointers to prevent ABA problems. The version counter
-///       in the upper 16 bits ensures that even if a block is recycled back
-///       to the same address, the CAS will fail due to version mismatch.
+/// @note Uses a short spinlock so the head block remains owned by the freelist
+///       while its intrusive `next` pointer is read.
 static rt_pool_block_t *pop_from_freelist(rt_pool_state_t *pool) {
-#if RT_POOL_PAC_SAFE
+#if RT_POOL_USE_LOCKED_FREELIST || RT_POOL_PAC_SAFE
     rt_pool_lock_(&pool->freelist_lock);
     rt_pool_block_t *head = pool->freelist_head;
     if (head)
-        pool->freelist_head = head->next;
+        pool->freelist_head = atomic_load_next(head);
     rt_pool_unlock_(&pool->freelist_lock);
     if (!head)
         return NULL;
@@ -450,7 +466,7 @@ static rt_pool_block_t *pop_from_freelist(rt_pool_state_t *pool) {
 /// @param pool Pool state for the size class.
 /// @param block Block to return to the freelist.
 static void push_to_freelist(rt_pool_state_t *pool, rt_pool_block_t *block) {
-#if RT_POOL_PAC_SAFE
+#if RT_POOL_USE_LOCKED_FREELIST || RT_POOL_PAC_SAFE
     rt_pool_lock_(&pool->freelist_lock);
     atomic_store_next(block, pool->freelist_head);
     pool->freelist_head = block;
@@ -558,7 +574,7 @@ void *rt_pool_alloc(size_t size) {
                 return NULL;
             }
 
-#if RT_POOL_PAC_SAFE
+#if RT_POOL_USE_LOCKED_FREELIST || RT_POOL_PAC_SAFE
             rt_pool_lock_(&pool->freelist_lock);
             atomic_store_next(last, pool->freelist_head);
             pool->freelist_head = first;
@@ -709,7 +725,7 @@ void rt_pool_shutdown(void) {
 
         // Reset state
         pool->slabs = NULL;
-#if RT_POOL_PAC_SAFE
+#if RT_POOL_USE_LOCKED_FREELIST || RT_POOL_PAC_SAFE
         pool->freelist_head = NULL;
         __atomic_clear(&pool->freelist_lock, __ATOMIC_RELEASE);
 #else

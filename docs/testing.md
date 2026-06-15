@@ -45,11 +45,16 @@ platforms (ccache is auto-detected; disable with `VIPER_NO_CCACHE=1`):
 
 | Variable | Effect |
 |----------|--------|
+| `VIPER_BUILD_TYPE=RelWithDebInfo` | Override the full-suite script default build type (`Debug`) |
+| `VIPER_JOBS=<n>` | Override build parallelism |
+| `VIPER_CTEST_JOBS=<n>` | Override CTest parallelism independently from build jobs; macOS defaults to performance-core count |
+| `VIPER_FAST_DEBUG=0` | Disable the macOS default fast-Debug compile mode (`-Og` on GCC/Clang); set `1` to enable it elsewhere |
 | `VIPER_SKIP_CLEAN=1` | Skip the clean-all step (incremental rebuild) |
 | `VIPER_SKIP_TESTS=1` | Build without running ctest |
 | `VIPER_TEST_LABEL=<label>` | Run only tests with the given ctest label |
 | `VIPER_RUN_SLOW_TESTS=1` | Include tests labeled `slow` |
 | `VIPER_SKIP_LINT=1`, `VIPER_SKIP_AUDIT=1`, `VIPER_SKIP_SMOKE=1`, `VIPER_SKIP_INSTALL=1` | Skip the corresponding post-build stages |
+| `VIPER_EXTRA_CMAKE_ARGS="-DVIPER_ENABLE_INDIVIDUAL_BASIC_TO_IL_GOLDEN_TESTS=ON"` | Register legacy per-case BASIC-to-IL golden tests alongside the default batch shards |
 
 ```bash
 
@@ -128,6 +133,11 @@ Located in `src/tests/golden/`. Test textual stability of outputs:
 
 Golden tests use 10 CMake runner scripts. Helper functions in `TestHelpers.cmake` reduce
 registration to one line per test.
+
+BASIC-to-IL goldens are batched by default through an in-process runner split across
+`VIPER_BASIC_TO_IL_GOLDEN_BATCH_SHARDS` CTest shards (default `8`). Set
+`-DVIPER_ENABLE_INDIVIDUAL_BASIC_TO_IL_GOLDEN_TESTS=ON` in `VIPER_EXTRA_CMAKE_ARGS` to also
+register the legacy one-CTest-per-case entries for targeted debugging.
 
 ### End-to-End Tests
 

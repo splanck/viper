@@ -6,16 +6,41 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 PLATFORM="$(uname -s 2>/dev/null || true)"
 
+detect_build_jobs() {
+    case "$PLATFORM" in
+        Darwin)
+            sysctl -n hw.ncpu 2>/dev/null || echo 8
+            ;;
+        Linux)
+            if command -v nproc >/dev/null 2>&1; then
+                nproc
+            else
+                getconf _NPROCESSORS_ONLN 2>/dev/null || echo 8
+            fi
+            ;;
+    esac
+}
+
+detect_macos_performance_cores() {
+    local perf_cores
+    perf_cores="$(sysctl -n hw.perflevel0.physicalcpu 2>/dev/null || true)"
+    if [[ -n "$perf_cores" && "$perf_cores" =~ ^[0-9]+$ && "$perf_cores" -gt 0 ]]; then
+        echo "$perf_cores"
+        return
+    fi
+    sysctl -n hw.physicalcpu 2>/dev/null || detect_build_jobs
+}
+
 case "$PLATFORM" in
     Darwin)
-        JOBS="$(sysctl -n hw.ncpu 2>/dev/null || echo 8)"
+        DEFAULT_BUILD_TYPE="Debug"
+        DEFAULT_CTEST_JOBS="$(detect_macos_performance_cores)"
+        DEFAULT_FAST_DEBUG="1"
         ;;
     Linux)
-        if command -v nproc >/dev/null 2>&1; then
-            JOBS="$(nproc)"
-        else
-            JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 8)"
-        fi
+        DEFAULT_BUILD_TYPE="Debug"
+        DEFAULT_CTEST_JOBS="$(detect_build_jobs)"
+        DEFAULT_FAST_DEBUG="0"
         ;;
     *)
         echo "Error: build_viper_unix.sh supports macOS and Linux only"
@@ -23,8 +48,11 @@ case "$PLATFORM" in
         ;;
 esac
 
+JOBS="${VIPER_JOBS:-$(detect_build_jobs)}"
+CTEST_JOBS="${VIPER_CTEST_JOBS:-$DEFAULT_CTEST_JOBS}"
 BUILD_DIR="${VIPER_BUILD_DIR:-$ROOT_DIR/build}"
-BUILD_TYPE="${VIPER_BUILD_TYPE:-Debug}"
+BUILD_TYPE="${VIPER_BUILD_TYPE:-$DEFAULT_BUILD_TYPE}"
+FAST_DEBUG="${VIPER_FAST_DEBUG:-$DEFAULT_FAST_DEBUG}"
 SKIP_INSTALL="${VIPER_SKIP_INSTALL:-0}"
 SKIP_AUDIT="${VIPER_SKIP_AUDIT:-0}"
 SKIP_LINT="${VIPER_SKIP_LINT:-0}"
@@ -41,6 +69,7 @@ CONFIGURE_ARGS=(
     -S "$ROOT_DIR"
     -B "$BUILD_DIR"
     -DCMAKE_BUILD_TYPE="$BUILD_TYPE"
+    -DVIPER_FAST_DEBUG="$FAST_DEBUG"
 )
 
 if [[ -n "${VIPER_CMAKE_GENERATOR:-}" ]]; then
@@ -72,6 +101,9 @@ else
     echo "[build_viper] Skipping clean (VIPER_SKIP_CLEAN=1); incremental rebuild"
 fi
 cmake "${CONFIGURE_ARGS[@]}"
+echo "[build_viper] Build type: $BUILD_TYPE"
+echo "[build_viper] Fast Debug: $FAST_DEBUG"
+echo "[build_viper] Build jobs: $JOBS"
 cmake --build "$BUILD_DIR" -j"$JOBS"
 
 if command -v sync >/dev/null 2>&1; then
@@ -90,7 +122,8 @@ else
     else
         echo "[build_viper] Running full test suite..."
     fi
-    CTEST_ARGS=(--test-dir "$BUILD_DIR" --output-on-failure -j"$JOBS")
+    echo "[build_viper] CTest jobs: $CTEST_JOBS"
+    CTEST_ARGS=(--test-dir "$BUILD_DIR" --output-on-failure -j"$CTEST_JOBS")
     if [[ -n "$TEST_LABEL" ]]; then
         CTEST_ARGS+=(-L "$TEST_LABEL")
     fi

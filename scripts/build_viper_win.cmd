@@ -21,7 +21,13 @@ if not "%VIPER_JOBS%"=="" (
     if "!JOBS!"=="" set "JOBS=8"
     if !JOBS! GTR 8 set "JOBS=8"
 )
-echo Using %JOBS% parallel jobs
+if not "%VIPER_CTEST_JOBS%"=="" (
+    set "CTEST_JOBS=%VIPER_CTEST_JOBS%"
+) else (
+    set "CTEST_JOBS=%JOBS%"
+)
+echo Using %JOBS% build jobs
+echo Using %CTEST_JOBS% CTest jobs
 
 if "%VIPER_BUILD_DIR%"=="" set "VIPER_BUILD_DIR=build"
 if "%VIPER_BUILD_TYPE%"=="" set "VIPER_BUILD_TYPE=Debug"
@@ -32,8 +38,12 @@ if "%VIPER_SKIP_AUDIT%"=="" set "VIPER_SKIP_AUDIT=0"
 if "%VIPER_LINT_CHANGED_ONLY%"=="" set "VIPER_LINT_CHANGED_ONLY=1"
 if "%VIPER_SKIP_SMOKE%"=="" set "VIPER_SKIP_SMOKE=0"
 if "%VIPER_SKIP_CLEAN%"=="" set "VIPER_SKIP_CLEAN=0"
+if "%VIPER_RUN_SLOW_TESTS%"=="" set "VIPER_RUN_SLOW_TESTS=0"
+if "%VIPER_FAST_DEBUG%"=="" set "VIPER_FAST_DEBUG=0"
+echo Build type: %VIPER_BUILD_TYPE%
+echo Fast Debug: %VIPER_FAST_DEBUG%
 
-set "CONFIG_ARGS="
+set "CONFIG_ARGS=-DVIPER_FAST_DEBUG=%VIPER_FAST_DEBUG%"
 if not "%VIPER_CMAKE_GENERATOR%"=="" (
     set "CONFIG_ARGS=%CONFIG_ARGS% -G \"%VIPER_CMAKE_GENERATOR%\""
 )
@@ -123,14 +133,18 @@ if not "%VIPER_TEST_LABEL%"=="" (
     echo Running only tests labeled "%VIPER_TEST_LABEL%" ^(VIPER_TEST_LABEL^)
     set "CTEST_LABEL_ARGS=-L %VIPER_TEST_LABEL%"
 )
+if not "%VIPER_RUN_SLOW_TESTS%"=="1" (
+    echo Skipping tests labeled slow ^(set VIPER_RUN_SLOW_TESTS=1 to include them^)
+    set "CTEST_LABEL_ARGS=%CTEST_LABEL_ARGS% -LE slow"
+)
 set "CTEST_PRETTY_SCRIPT=%~dp0run_ctest_pretty.ps1"
 set "CTEST_USE_PRETTY=0"
 where powershell >nul 2>&1
 if not errorlevel 1 if exist "%CTEST_PRETTY_SCRIPT%" set "CTEST_USE_PRETTY=1"
 if "%CTEST_USE_PRETTY%"=="1" (
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%CTEST_PRETTY_SCRIPT%" --test-dir "%VIPER_BUILD_DIR%" -C %VIPER_BUILD_TYPE% --output-on-failure -j %JOBS% %CTEST_LABEL_ARGS%
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%CTEST_PRETTY_SCRIPT%" --test-dir "%VIPER_BUILD_DIR%" -C %VIPER_BUILD_TYPE% --output-on-failure -j %CTEST_JOBS% %CTEST_LABEL_ARGS%
 ) else (
-    ctest --test-dir "%VIPER_BUILD_DIR%" -C %VIPER_BUILD_TYPE% --output-on-failure -j %JOBS% %CTEST_LABEL_ARGS%
+    ctest --test-dir "%VIPER_BUILD_DIR%" -C %VIPER_BUILD_TYPE% --output-on-failure -j %CTEST_JOBS% %CTEST_LABEL_ARGS%
 )
 if errorlevel 1 (
     set TESTS_FAILED=1
