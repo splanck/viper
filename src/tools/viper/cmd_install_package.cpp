@@ -9,6 +9,7 @@
 
 #include "common/RunProcess.hpp"
 #include "tools/common/packaging/LinuxPackageBuilder.hpp"
+#include "tools/common/packaging/LinuxRuntimeStubGen.hpp"
 #include "tools/common/packaging/MacOSPackageBuilder.hpp"
 #include "tools/common/packaging/PkgUtils.hpp"
 #include "tools/common/packaging/PkgVerify.hpp"
@@ -33,7 +34,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-enum class InstallPackageTarget { Windows, MacOS, LinuxDeb, LinuxRpm, Tarball, All };
+enum class InstallPackageTarget { Windows, MacOS, LinuxDeb, LinuxRpm, AppImage, Tarball, All };
 
 /// @brief Parsed command-line arguments for the `viper install-package` subcommand.
 /// @details Selects the output format(s) and source (staged tree or build dir),
@@ -93,7 +94,7 @@ void installPackageUsage() {
         << "  Package the Viper toolchain from a staged install tree.\n"
         << "\n"
         << "Options:\n"
-        << "  --target <fmt>        windows | macos | linux-deb | linux-rpm | tarball | all\n"
+        << "  --target <fmt>        windows | macos | linux-deb | linux-rpm | appimage | tarball | all\n"
         << "  --arch <arch>         x64 | arm64 (default: manifest/host)\n"
         << "  --stage-dir <dir>     Existing staged install tree\n"
         << "  --build-dir <dir>     Build tree; runs cmake --build then cmake --install\n"
@@ -566,6 +567,8 @@ bool parseTarget(const std::string &text, InstallPackageTarget &out) {
         out = InstallPackageTarget::LinuxDeb;
     else if (text == "linux-rpm")
         out = InstallPackageTarget::LinuxRpm;
+    else if (text == "appimage")
+        out = InstallPackageTarget::AppImage;
     else if (text == "tarball")
         out = InstallPackageTarget::Tarball;
     else if (text == "all")
@@ -803,6 +806,8 @@ std::string targetFileName(InstallPackageTarget target,
             return "viper_" + version + "_" + debArchFor(arch) + ".deb";
         case InstallPackageTarget::LinuxRpm:
             return "viper-" + version + "-1." + rpmArchFor(arch) + ".rpm";
+        case InstallPackageTarget::AppImage:
+            return "Viper-" + version + "-" + arch + ".AppImage";
         case InstallPackageTarget::Tarball:
             return "viper-" + version + "-" + platform + "-" + arch + ".tar.gz";
         case InstallPackageTarget::All:
@@ -864,6 +869,16 @@ std::vector<std::string> requiredPayloadPaths(
                     "linux install path"));
             }
             appendLinuxAssociationMetadata("", false);
+            break;
+        case InstallPackageTarget::AppImage:
+            for (const auto &file : manifest.files) {
+                paths.push_back(viper::pkg::mapInstallPath(
+                    file, viper::pkg::InstallPathPolicy::PortableArchive));
+            }
+            paths.push_back("AppRun");
+            paths.push_back("viper.desktop");
+            paths.push_back("viper.png");
+            appendLinuxAssociationMetadata("", true);
             break;
         case InstallPackageTarget::Tarball: {
             const std::string version = manifest.version.empty() ? "0.0.0" : manifest.version;
@@ -1269,6 +1284,14 @@ bool verifyArtifact(const fs::path &artifact,
             }
             return readRpmPayloadPaths(data, nullptr, err);
         }
+        case InstallPackageTarget::AppImage: {
+            std::string appImageErr;
+            if (!viper::pkg::verifyLinuxAppImage(data, &appImageErr)) {
+                err << appImageErr;
+                return false;
+            }
+            return true;
+        }
         case InstallPackageTarget::All:
         default:
             return false;
@@ -1276,7 +1299,7 @@ bool verifyArtifact(const fs::path &artifact,
 }
 
 /// @brief Infer the package target from an artifact's filename extension.
-/// @details Maps .exe/.pkg/.deb/.rpm/.tar.gz/.tgz to their targets for
+/// @details Maps .exe/.pkg/.deb/.rpm/.AppImage/.tar.gz/.tgz to their targets for
 ///          `--verify-only`. @return true on a recognized extension.
 bool inferVerifyTargetFromPath(const fs::path &path, InstallPackageTarget &target) {
     const std::string name = lowerAscii(path.filename().string());
@@ -1288,6 +1311,8 @@ bool inferVerifyTargetFromPath(const fs::path &path, InstallPackageTarget &targe
         target = InstallPackageTarget::LinuxDeb;
     else if (name.size() >= 4 && name.substr(name.size() - 4) == ".rpm")
         target = InstallPackageTarget::LinuxRpm;
+    else if (name.size() >= 9 && name.substr(name.size() - 9) == ".appimage")
+        target = InstallPackageTarget::AppImage;
     else if ((name.size() >= 7 && name.substr(name.size() - 7) == ".tar.gz") ||
              (name.size() >= 4 && name.substr(name.size() - 4) == ".tgz"))
         target = InstallPackageTarget::Tarball;
@@ -1376,6 +1401,7 @@ bool targetMatchesStagedPlatform(InstallPackageTarget target, const std::string 
             return platform == "macos";
         case InstallPackageTarget::LinuxDeb:
         case InstallPackageTarget::LinuxRpm:
+        case InstallPackageTarget::AppImage:
             return platform == "linux";
         case InstallPackageTarget::Tarball:
             return true;
@@ -1401,6 +1427,7 @@ std::vector<InstallPackageTarget> selectedTargets(InstallPackageTarget target,
     } else if (platform == "linux") {
         result.push_back(InstallPackageTarget::LinuxDeb);
         result.push_back(InstallPackageTarget::LinuxRpm);
+        result.push_back(InstallPackageTarget::AppImage);
     }
     result.push_back(InstallPackageTarget::Tarball);
     return result;
@@ -1571,6 +1598,13 @@ int cmdInstallPackage(int argc, char **argv) {
                     params.manifest = manifest;
                     params.outputPath = artifactPath.string();
                     viper::pkg::buildToolchainRpmPackage(params);
+                    break;
+                }
+                case InstallPackageTarget::AppImage: {
+                    viper::pkg::LinuxToolchainBuildParams params;
+                    params.manifest = manifest;
+                    params.outputPath = artifactPath.string();
+                    viper::pkg::buildToolchainAppImage(params);
                     break;
                 }
                 case InstallPackageTarget::Tarball: {

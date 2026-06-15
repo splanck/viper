@@ -73,4 +73,9 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params);
 /// @throws std::runtime_error on failure.
 void buildToolchainTarball(const LinuxToolchainBuildParams &params);
 
+/// @brief Build a FUSE-less self-extracting Linux AppImage from a staged install manifest.
+/// @param params Manifest, output path, and package name.
+/// @throws std::runtime_error on failure.
+void buildToolchainAppImage(const LinuxToolchainBuildParams &params);
+
 } // namespace viper::pkg

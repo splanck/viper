@@ -29,8 +29,10 @@
 #include "ArWriter.hpp"
 #include "DesktopEntryGenerator.hpp"
 #include "IconGenerator.hpp"
+#include "LinuxRuntimeStubGen.hpp"
 #include "PkgGzip.hpp"
 #include "PkgMD5.hpp"
+#include "PkgPNG.hpp"
 #include "PkgUtils.hpp"
 #include "TarWriter.hpp"
 #include "common/RunProcess.hpp"
@@ -456,29 +458,17 @@ std::string renderInstallManifest(std::vector<std::string> paths) {
     return out.str();
 }
 
-/// @brief Return the POSIX `install.sh` script bundled in the portable tarball.
-/// @details Copies the staged tree under PREFIX (default /usr/local), honoring
-///          DESTDIR, and records what it installed for the matching uninstaller.
-std::string linuxTarballInstallScript() {
-    return R"VIPER_SCRIPT(#!/bin/sh
-set -eu
-
-prefix=${PREFIX:-/usr/local}
-destdir=${DESTDIR:-}
-
-case "$prefix" in
-    /*) ;;
-    *) echo "PREFIX must be an absolute path" >&2; exit 2 ;;
-esac
-case "$destdir" in
-    ""|/*) ;;
-    *) echo "DESTDIR must be empty or an absolute path" >&2; exit 2 ;;
-esac
-
-root=$(CDPATH= cd "$(dirname "$0")" && pwd)
-install_root=${destdir%/}$prefix
-old_manifest="$install_root/share/viper/install_manifest.txt"
-new_manifest="$root/share/viper/install_manifest.txt"
+/// @brief Shared shell helpers for generated Linux install/uninstall scripts.
+std::string linuxPathSafetyShellFunctions() {
+    return R"VIPER_SCRIPT(
+validate_manifest_relpath() {
+    rel=$1
+    case "$rel" in
+        ""|\#*) return 1 ;;
+        /*|..|../*|*/../*|*/..) echo "Unsafe manifest path: $rel" >&2; exit 2 ;;
+    esac
+    return 0
+}
 
 check_no_symlink_path() {
     path=$1
@@ -500,12 +490,39 @@ check_no_symlink_path() {
             current="$current/$component"
         fi
         if [ -L "$current" ]; then
-            echo "Refusing to install through symlink path component: $current" >&2
+            echo "Refusing to operate through symlink path component: $current" >&2
             exit 2
         fi
     done
 }
 
+)VIPER_SCRIPT";
+}
+
+/// @brief Return the POSIX `install.sh` script bundled in the portable tarball.
+/// @details Copies the staged tree under PREFIX (default /usr/local), honoring
+///          DESTDIR, and records what it installed for the matching uninstaller.
+std::string linuxTarballInstallScript() {
+    return std::string(R"VIPER_SCRIPT(#!/bin/sh
+set -eu
+
+prefix=${PREFIX:-/usr/local}
+destdir=${DESTDIR:-}
+
+case "$prefix" in
+    /*) ;;
+    *) echo "PREFIX must be an absolute path" >&2; exit 2 ;;
+esac
+case "$destdir" in
+    ""|/*) ;;
+    *) echo "DESTDIR must be empty or an absolute path" >&2; exit 2 ;;
+esac
+
+root=$(CDPATH= cd "$(dirname "$0")" && pwd)
+install_root=${destdir%/}$prefix
+old_manifest="$install_root/share/viper/install_manifest.txt"
+new_manifest="$root/share/viper/install_manifest.txt"
+)VIPER_SCRIPT") + linuxPathSafetyShellFunctions() + R"VIPER_SCRIPT(
 set --
 for dir in bin include lib share; do
     if [ -e "$root/$dir" ]; then
@@ -520,10 +537,7 @@ fi
 
 if [ -f "$old_manifest" ] && [ -f "$new_manifest" ] && [ "$old_manifest" != "$new_manifest" ]; then
     while IFS= read -r rel || [ -n "$rel" ]; do
-        case "$rel" in
-            ""|\#*) continue ;;
-            /*|..|../*|*/../*|*/..) echo "Unsafe old manifest path: $rel" >&2; exit 2 ;;
-        esac
+        validate_manifest_relpath "$rel" || continue
         if ! grep -F -x -- "$rel" "$new_manifest" >/dev/null 2>&1; then
             check_no_symlink_path "$install_root/$rel"
             rm -f "$install_root/$rel"
@@ -558,7 +572,7 @@ echo "Installed Viper toolchain under $install_root"
 /// @brief Return the POSIX `uninstall.sh` script bundled in the portable tarball.
 /// @details Removes the files recorded by install.sh's manifest under PREFIX.
 std::string linuxTarballUninstallScript() {
-    return R"VIPER_SCRIPT(#!/bin/sh
+    return std::string(R"VIPER_SCRIPT(#!/bin/sh
 set -eu
 
 prefix=${PREFIX:-/usr/local}
@@ -575,17 +589,15 @@ esac
 
 install_root=${destdir%/}$prefix
 manifest="$install_root/share/viper/install_manifest.txt"
-
+)VIPER_SCRIPT") + linuxPathSafetyShellFunctions() + R"VIPER_SCRIPT(
 if [ ! -f "$manifest" ]; then
     echo "Viper install manifest not found: $manifest" >&2
     exit 1
 fi
 
 while IFS= read -r rel || [ -n "$rel" ]; do
-    case "$rel" in
-        ""|\#*) continue ;;
-        /*|..|../*|*/../*|*/..) echo "Unsafe manifest path: $rel" >&2; exit 2 ;;
-    esac
+    validate_manifest_relpath "$rel" || continue
+    check_no_symlink_path "$install_root/$rel"
     rm -f "$install_root/$rel"
 done < "$manifest"
 
@@ -891,6 +903,41 @@ std::string appTarballLicenseText(const std::string &displayName, const PackageC
     else
         out << "SPDX-License-Identifier: NOASSERTION\n";
     return out.str();
+}
+
+/// @brief Return a small generated PNG used for toolchain AppImage desktop metadata.
+std::vector<uint8_t> defaultViperAppImageIconPng() {
+    PkgImage img;
+    img.width = 64;
+    img.height = 64;
+    img.pixels.resize(static_cast<size_t>(img.width) * img.height * 4u);
+    for (uint32_t y = 0; y < img.height; ++y) {
+        for (uint32_t x = 0; x < img.width; ++x) {
+            uint8_t *px = img.at(x, y);
+            const bool border = x < 4 || y < 4 || x >= img.width - 4 || y >= img.height - 4;
+            const bool diagonal = x > y ? x - y < 6 : y - x < 6;
+            px[0] = border ? 30 : (diagonal ? 40 : 15);
+            px[1] = border ? 90 : (diagonal ? 150 : 120);
+            px[2] = border ? 80 : (diagonal ? 120 : 170);
+            px[3] = 255;
+        }
+    }
+    return pngEncode(img);
+}
+
+/// @brief Append AppImage desktop/icon metadata at the payload root.
+void addToolchainAppImageMetadata(TarWriter &tar, const std::string &packageName) {
+    DesktopEntryParams desktop;
+    desktop.name = "Viper Toolchain";
+    desktop.comment = "Viper source and IL tools";
+    desktop.execPath = "AppRun";
+    desktop.iconName = packageName;
+    desktop.categories = "Development;";
+    desktop.terminal = true;
+    const std::string desktopText = generateDesktopEntry(desktop);
+    tar.addFileString(packageName + ".desktop", desktopText, 0644);
+    const auto icon = defaultViperAppImageIconPng();
+    tar.addFileVec(packageName + ".png", icon, 0644);
 }
 
 /// @brief Validate all install paths in `dataFiles` are normalized and unique.
@@ -1559,6 +1606,60 @@ void buildToolchainTarball(const LinuxToolchainBuildParams &params) {
     const auto tarBytes = tar.finish();
     const auto tarGz = gzip(tarBytes.data(), tarBytes.size());
     writeFileAtomic(params.outputPath, tarGz);
+}
+
+/// @brief Build a FUSE-less self-extracting Linux AppImage from a staged install manifest.
+void buildToolchainAppImage(const LinuxToolchainBuildParams &params) {
+    const auto &manifest = params.manifest;
+    requireLinuxToolchainManifest(manifest, "Linux AppImage");
+    const std::string packageName =
+        params.packageName.empty() ? std::string("viper") : normalizeDebName(params.packageName);
+    if (manifest.version.empty())
+        throw std::runtime_error("toolchain package version is required");
+    const std::string version = manifest.version;
+    validateDebVersion(version, "toolchain package version");
+    validateToolchainArchitecture(manifest.arch, "toolchain package architecture");
+
+    TarWriter tar;
+    tar.addDirectory("./", 0755);
+    tar.addSymlink("AppRun", "bin/viper");
+    for (const auto &file : manifest.files) {
+        const std::string relPath = mapInstallPath(file, InstallPathPolicy::PortableArchive);
+        validatePortableArchivePath(relPath, "AppImage payload path");
+        if (file.symlink) {
+            tar.addSymlink(relPath, file.symlinkTarget);
+        } else {
+            const auto data = readFile(file.stagedAbsolutePath.string());
+            tar.addFile(relPath, data.data(), data.size(), permissionBitsFor(file));
+        }
+    }
+    if (!manifest.fileAssociations.empty()) {
+        std::vector<DataFile> generated;
+        addToolchainFileAssociationMetadata(generated, manifest, packageName, "viper");
+        for (const auto &df : generated) {
+            const std::string portablePath = sanitizePackageRelativePath(
+                df.installPath.rfind("usr/", 0) == 0 ? df.installPath.substr(4) : df.installPath,
+                "AppImage generated metadata path");
+            tar.addFile(portablePath, df.data.data(), df.data.size(), df.mode);
+        }
+    }
+    addToolchainAppImageMetadata(tar, packageName);
+
+    const auto tarBytes = tar.finish();
+    const auto tarGz = gzip(tarBytes.data(), tarBytes.size());
+    LinuxRuntimeStubParams stub;
+    stub.cacheName = packageName + "-" + portableArchiveVersionComponent(version) + "-linux-" +
+                     manifest.arch;
+    stub.entryPath = "AppRun";
+    const auto appImage = buildLinuxAppImage(stub, tarGz);
+    writeFileAtomic(params.outputPath, appImage);
+    std::error_code ec;
+    fs::permissions(params.outputPath,
+                    fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
+                    fs::perm_options::add,
+                    ec);
+    if (ec)
+        throw std::runtime_error("cannot mark AppImage executable: " + ec.message());
 }
 
 /// @brief Build an RPM toolchain package from a staged install manifest using rpmbuild.

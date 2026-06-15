@@ -20,28 +20,30 @@ Depends on **X1 config plumbing** (macOS session).
 
 ## Tasks
 
-### WS-D — AppImage (recommended v1: dependency-free extract-and-exec)
-- New `LinuxRuntimeStubGen.{hpp,cpp}` — a minimal **x86-64 ELF runtime stub** (raw SysV/syscall
-  analog of `InstallerStubGen`; reuse ELF header knowledge from the codegen/native-compiler layer).
-  On run it extracts the appended payload to `$XDG_CACHE_HOME`/`$TMPDIR` and `execve`s the entry
-  point — a legitimate FUSE-less AppImage fallback mode.
-- Payload = `TarWriter` + `PkgGzip` (both already exist). Embed the `.desktop`
-  (`DesktopEntryGenerator`) and `.png` AppIcon (`PkgPNG`/`IconGenerator`) per the AppImage spec.
-- Output `Viper-<ver>-<arch>.AppImage` (+ `chmod +x` bit). Wire a new `AppImage` target into the
-  enum/parse/usage/filename sites in `cmd_install_package.cpp` (36/518/86/699) and `LinuxPackageBuilder`.
+### WS-D — AppImage (recommended v1: dependency-free extract-and-exec) — DONE
+- Added `LinuxRuntimeStubGen.{hpp,cpp}` with a FUSE-less self-extracting runtime stub. The v1
+  runtime is a POSIX shell stub rather than the originally proposed raw ELF/syscall stub; it
+  extracts the appended tar.gz payload to `$XDG_CACHE_HOME`/`$TMPDIR` and `exec`s `AppRun`.
+- Payload = `TarWriter` + `PkgGzip`. It embeds `AppRun`, `.desktop` (`DesktopEntryGenerator`),
+  `.png` AppIcon (`PkgPNG`/`IconGenerator`), file-association metadata, and the staged toolchain.
+- Output `Viper-<ver>-<arch>.AppImage` (+ `chmod +x` bit). Wired a new `appimage` target into the
+  enum/parse/usage/filename/build/verify sites in `cmd_install_package.cpp` and
+  `LinuxPackageBuilder`.
 - **Depth upgrade (flagged, larger, out of v1):** true type-2 **squashfs** payload + FUSE mount —
   needs a new hand-rolled `SquashFsWriter` (can reuse our gzip). Deferred deliberately to stay
   dependency-free without a multi-week writer; this is a conscious scope cap, not a silent one.
 - Add an aarch64 ELF stub variant for ARM64 Linux once x86-64 is proven.
 
-### L5 — Generated-script hardening
-- Centralize the scattered `..` / `/../` path-traversal guards in the emitted `install.sh`/
-  `uninstall.sh` (currently around the install-script generation in `LinuxPackageBuilder.cpp`).
+### L5 — Generated-script hardening — DONE
+- Centralized the generated `install.sh`/`uninstall.sh` path validation helpers in
+  `LinuxPackageBuilder.cpp`, and made uninstall check symlink path components before removing
+  manifest-listed files.
 
-### Live verification of macOS-session deb/rpm fixes
-- Confirm the fixed `.deb`/`.rpm` actually install: `dpkg -i` / `rpm -i`, correct Maintainer +
-  License metadata, narrowed `Depends`/`Requires`, and that `postinst`/`postun` hooks
-  (`mandb`, `update-mime-database`, `update-desktop-database`) run cleanly.
+### Live verification of macOS-session deb/rpm fixes — DONE
+- Tightened the existing Linux deb/rpm smoke tests to assert maintainer/license/dependency metadata.
+- Added `scripts/validate-linux-toolchain-installer.sh` for Linux validation, including AppImage
+  build/verify/execute and installer-labeled CTest coverage. Privileged deb/rpm installation remains
+  gated by `VIPER_RUN_LINUX_INSTALLER_SMOKE=1` and root, matching the existing smoke tests.
 
 ## Critical files
 
