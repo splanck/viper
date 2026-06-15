@@ -43,11 +43,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define THEORA_MAX_FRAME_PIXELS ((uint64_t)64u * 1024u * 1024u)
+#define THEORA_MAX_FRAME_BUFFER_BYTES ((size_t)768u * 1024u * 1024u)
 
-const uint8_t theora_zigzag[64] = {
-    0,  1,  8,  16, 9,  2,  3,  10, 17, 24, 32, 25, 18, 11, 4,  5,  12, 19, 26, 33, 40, 48,
-    41, 34, 27, 20, 13, 6,  7,  14, 21, 28, 35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23,
-    30, 37, 44, 51, 58, 59, 52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63};
+const uint8_t theora_zigzag[64] = {0,  1,  8,  16, 9,  2,  3,  10, 17, 24, 32, 25, 18, 11, 4,  5,
+                                   12, 19, 26, 33, 40, 48, 41, 34, 27, 20, 13, 6,  7,  14, 21, 28,
+                                   35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23, 30, 37, 44, 51,
+                                   58, 59, 52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63};
 
 static const uint8_t sb_hilbert_x[16] = {0, 1, 1, 0, 0, 0, 1, 1, 2, 2, 3, 3, 3, 2, 2, 3};
 
@@ -95,6 +97,7 @@ void br_init(bitreader_t *br, const uint8_t *data, size_t len) {
     br->bit_pos = 8;
     br->failed = 0;
 }
+
 /// @brief Read `nbits` bits (MSB-first) from the stream.
 ///
 /// Capped at 25 bits per call — enough for any single Theora field;
@@ -211,6 +214,99 @@ static int plane_mb_block_h(const theora_decoder_t *dec, int plane) {
     return 2;
 }
 
+/// @brief Multiply two non-negative int32 dimensions into an int32 result.
+/// @details Theora layout counts are stored as signed int32 values throughout the decoder.
+///          This helper keeps malformed headers from wrapping those counts before they are
+///          used as allocation sizes or array offsets.
+/// @param a First dimension, required to be non-negative.
+/// @param b Second dimension, required to be non-negative.
+/// @param out Receives @p a * @p b on success.
+/// @return 1 when the product fits in int32_t, 0 on negative input, NULL output, or overflow.
+static int theora_checked_mul_i32(int32_t a, int32_t b, int32_t *out) {
+    int64_t product;
+    if (!out || a < 0 || b < 0)
+        return 0;
+    product = (int64_t)a * (int64_t)b;
+    if (product > INT32_MAX)
+        return 0;
+    *out = (int32_t)product;
+    return 1;
+}
+
+/// @brief Add two non-negative int32 counts into an int32 result.
+/// @details Used for cumulative block and superblock offsets, which are later reused as array
+///          indices. Rejecting overflow here prevents a single oversized plane from poisoning
+///          all subsequent layout tables.
+/// @param a First count, required to be non-negative.
+/// @param b Second count, required to be non-negative.
+/// @param out Receives @p a + @p b on success.
+/// @return 1 when the sum fits in int32_t, 0 on negative input, NULL output, or overflow.
+static int theora_checked_add_i32(int32_t a, int32_t b, int32_t *out) {
+    int64_t sum;
+    if (!out || a < 0 || b < 0)
+        return 0;
+    sum = (int64_t)a + (int64_t)b;
+    if (sum > INT32_MAX)
+        return 0;
+    *out = (int32_t)sum;
+    return 1;
+}
+
+/// @brief Multiply two size_t values with overflow checking.
+/// @param a First factor.
+/// @param b Second factor.
+/// @param out Receives @p a * @p b on success.
+/// @return 1 when the product fits in size_t, 0 when @p out is NULL or the product overflows.
+static int theora_checked_mul_size(size_t a, size_t b, size_t *out) {
+    if (!out)
+        return 0;
+    if (a != 0 && b > SIZE_MAX / a)
+        return 0;
+    *out = a * b;
+    return 1;
+}
+
+/// @brief Validate a frame plane allocation size and enforce the decoder memory budget.
+/// @details Theora stores three reference frames (previous, golden, current). Each frame has one
+///          luma plane and two chroma planes. This helper validates the per-plane products and the
+///          total nine-plane allocation before any buffers are allocated.
+/// @param y_stride Luma stride in bytes.
+/// @param y_height Luma height in rows.
+/// @param c_stride Chroma stride in bytes.
+/// @param c_height Chroma height in rows.
+/// @param out_y_size Receives one luma-plane byte count.
+/// @param out_c_size Receives one chroma-plane byte count.
+/// @return 1 when all products fit and the aggregate allocation is within budget.
+static int theora_checked_frame_plane_sizes(int32_t y_stride,
+                                            int32_t y_height,
+                                            int32_t c_stride,
+                                            int32_t c_height,
+                                            size_t *out_y_size,
+                                            size_t *out_c_size) {
+    size_t y_size;
+    size_t c_size;
+    size_t frame_size;
+    size_t total_size;
+    if (y_stride <= 0 || y_height <= 0 || c_stride <= 0 || c_height <= 0)
+        return 0;
+    if (!theora_checked_mul_size((size_t)y_stride, (size_t)y_height, &y_size) ||
+        !theora_checked_mul_size((size_t)c_stride, (size_t)c_height, &c_size))
+        return 0;
+    if (y_size > SIZE_MAX - c_size || y_size + c_size > SIZE_MAX - c_size)
+        return 0;
+    frame_size = y_size + c_size + c_size;
+    if (frame_size > SIZE_MAX / 3u)
+        return 0;
+    total_size = frame_size * 3u;
+    if (total_size == 0 || total_size > THEORA_MAX_FRAME_BUFFER_BYTES)
+        return 0;
+    if (out_y_size)
+        *out_y_size = y_size;
+    if (out_c_size)
+        *out_c_size = c_size;
+    return 1;
+}
+
 /// @brief Tear down all heap allocations owned by the decoder's `priv`.
 ///
 /// Called from the public destroy path. NULL-safe.
@@ -293,6 +389,8 @@ static int parse_id_header(theora_decoder_t *dec, const uint8_t *data, size_t le
         return -1;
     if (dec->frame_width == 0 || dec->frame_height == 0 || dec->frame_width > INT32_MAX ||
         dec->frame_height > INT32_MAX)
+        return -1;
+    if ((uint64_t)dec->frame_width > THEORA_MAX_FRAME_PIXELS / (uint64_t)dec->frame_height)
         return -1;
     if (dec->pic_width == 0 || dec->pic_height == 0 || dec->pic_width > dec->frame_width ||
         dec->pic_height > dec->frame_height)
@@ -418,16 +516,21 @@ static int theora_alloc_layout(theora_decoder_t *dec, theora_priv_t *priv) {
         priv->plane_sb_rows[plane] = (priv->plane_block_rows[plane] + 3) / 4;
         priv->plane_block_offsets[plane] = block_offset;
         priv->plane_sb_offsets[plane] = sb_offset;
-        priv->plane_block_counts[plane] =
-            priv->plane_block_cols[plane] * priv->plane_block_rows[plane];
-        priv->plane_sb_counts[plane] = priv->plane_sb_cols[plane] * priv->plane_sb_rows[plane];
-        block_offset += priv->plane_block_counts[plane];
-        sb_offset += priv->plane_sb_counts[plane];
+        if (!theora_checked_mul_i32(priv->plane_block_cols[plane],
+                                    priv->plane_block_rows[plane],
+                                    &priv->plane_block_counts[plane]) ||
+            !theora_checked_mul_i32(priv->plane_sb_cols[plane],
+                                    priv->plane_sb_rows[plane],
+                                    &priv->plane_sb_counts[plane]) ||
+            !theora_checked_add_i32(block_offset, priv->plane_block_counts[plane], &block_offset) ||
+            !theora_checked_add_i32(sb_offset, priv->plane_sb_counts[plane], &sb_offset))
+            return -1;
     }
 
     total_blocks = block_offset;
     total_sbs = sb_offset;
-    mb_count = dec->macro_cols * dec->macro_rows;
+    if (!theora_checked_mul_i32(dec->macro_cols, dec->macro_rows, &mb_count))
+        return -1;
     priv->total_blocks = total_blocks;
     priv->total_superblocks = total_sbs;
     priv->total_macroblocks = mb_count;
@@ -455,6 +558,7 @@ static int theora_alloc_layout(theora_decoder_t *dec, theora_priv_t *priv) {
         !priv->plane_raster_to_coded[2] || !priv->mb_raster_to_coded || !priv->blocks ||
         !priv->mbs || !priv->bcoded || !priv->sb_partcoded || !priv->sb_fullcoded || !priv->qiis ||
         !priv->mbmodes || !priv->tis || !priv->ncoeffs || !priv->mvects || !priv->coeffs) {
+        theora_priv_free(dec);
         return -1;
     }
 
@@ -621,8 +725,11 @@ static int theora_finish_setup(theora_decoder_t *dec, theora_priv_t *priv) {
     dec->c_stride = priv->plane_width[1];
     dec->y_height = fh;
     dec->c_height = priv->plane_height[1];
-    y_size = (size_t)dec->y_stride * (size_t)dec->y_height;
-    c_size = (size_t)dec->c_stride * (size_t)dec->c_height;
+    if (!theora_checked_frame_plane_sizes(
+            dec->y_stride, dec->y_height, dec->c_stride, dec->c_height, &y_size, &c_size)) {
+        theora_priv_free(dec);
+        return -1;
+    }
 
     dec->ref_y = (uint8_t *)calloc(y_size, 1);
     dec->ref_cb = (uint8_t *)calloc(c_size, 1);
@@ -636,6 +743,7 @@ static int theora_finish_setup(theora_decoder_t *dec, theora_priv_t *priv) {
     if (!dec->ref_y || !dec->ref_cb || !dec->ref_cr || !dec->gold_y || !dec->gold_cb ||
         !dec->gold_cr || !dec->cur_y || !dec->cur_cb || !dec->cur_cr) {
         theora_free_frame_planes(dec);
+        theora_priv_free(dec);
         return -1;
     }
     dec->headers_complete = 1;
@@ -700,6 +808,8 @@ static int parse_setup_header(theora_decoder_t *dec, const uint8_t *data, size_t
                 while (1) {
                     int nbits = ilog_u32((uint32_t)(priv->nbms - 1));
                     priv->qrbmis[qti][pli][qri] = (uint16_t)br_read(&br, nbits);
+                    if (br.failed || priv->qrbmis[qti][pli][qri] >= (uint16_t)priv->nbms)
+                        return -1;
                     if (qi >= 63) {
                         priv->qrsizes[qti][pli][qri] = 0;
                         priv->nqrs[qti][pli] = (uint8_t)(qri + 1);
@@ -805,7 +915,6 @@ int theora_decode_header(theora_decoder_t *dec, const uint8_t *data, size_t len)
             return -1;
     }
 }
-
 
 /// @brief Read the per-frame header (frame type + 1-3 quantization indices).
 ///
@@ -928,9 +1037,9 @@ static int sb_block_count(const theora_priv_t *priv, int sbi) {
 ///   in that pass; both buffers are freed before returning.
 /// @return 0 on success, -1 on bitstream error or allocation failure.
 int decode_block_flags(theora_decoder_t *dec,
-                              theora_priv_t *priv,
-                              bitreader_t *br,
-                              int frame_type) {
+                       theora_priv_t *priv,
+                       bitreader_t *br,
+                       int frame_type) {
     memset(priv->bcoded, frame_type == 0 ? 1 : 0, (size_t)priv->total_blocks);
     if (frame_type == 0)
         return 0;
@@ -945,12 +1054,14 @@ int decode_block_flags(theora_decoder_t *dec,
             if (!priv->sb_partcoded[sbi])
                 nbits++;
         }
-        bits = (uint8_t *)malloc((size_t)nbits);
-        if (!bits)
-            return -1;
-        if (decode_rle_bits(br, bits, nbits, 1) != 0) {
-            free(bits);
-            return -1;
+        bits = nbits > 0 ? (uint8_t *)malloc((size_t)nbits) : NULL;
+        if (nbits > 0) {
+            if (!bits)
+                return -1;
+            if (decode_rle_bits(br, bits, nbits, 1) != 0) {
+                free(bits);
+                return -1;
+            }
         }
         nbits = 0;
         for (int sbi = 0; sbi < priv->total_superblocks; sbi++) {
@@ -977,12 +1088,14 @@ int decode_block_flags(theora_decoder_t *dec,
             if (priv->sb_partcoded[sbi])
                 nbits += sb_block_count(priv, sbi);
         }
-        bits = (uint8_t *)malloc((size_t)nbits);
-        if (!bits)
-            return -1;
-        if (decode_rle_bits(br, bits, nbits, 0) != 0) {
-            free(bits);
-            return -1;
+        bits = nbits > 0 ? (uint8_t *)malloc((size_t)nbits) : NULL;
+        if (nbits > 0) {
+            if (!bits)
+                return -1;
+            if (decode_rle_bits(br, bits, nbits, 0) != 0) {
+                free(bits);
+                return -1;
+            }
         }
         for (int bi = 0; bi < priv->total_blocks; bi++) {
             int plane = priv->blocks[bi].plane;
@@ -1049,10 +1162,7 @@ static int mb_has_coded_luma(const theora_priv_t *priv, int mbi) {
 ///   - Scheme 7: raw 3-bit mode index per MB (no Huffman coding).
 ///   Macroblocks without coded luma blocks are always assigned mode 0 (INTER_NOMV).
 /// @return 0 on success, -1 on bitstream error.
-int decode_mb_modes(theora_decoder_t *dec,
-                           theora_priv_t *priv,
-                           bitreader_t *br,
-                           int frame_type) {
+int decode_mb_modes(theora_decoder_t *dec, theora_priv_t *priv, bitreader_t *br, int frame_type) {
     (void)dec;
     if (frame_type == 0) {
         memset(priv->mbmodes, 1, (size_t)priv->total_macroblocks);
@@ -1062,13 +1172,16 @@ int decode_mb_modes(theora_decoder_t *dec,
     {
         int mscheme = (int)br_read(br, 3);
         uint8_t alphabet[8];
+        uint8_t seen[8] = {0, 0, 0, 0, 0, 0, 0, 0};
         if (br->failed)
             return -1;
         if (mscheme == 0) {
+            memset(alphabet, 0, sizeof(alphabet));
             for (int mode = 0; mode < 8; mode++) {
                 int mi = (int)br_read(br, 3);
-                if (mi < 0 || mi > 7 || br->failed)
+                if (mi < 0 || mi > 7 || br->failed || seen[mi])
                     return -1;
+                seen[mi] = 1;
                 alphabet[mi] = (uint8_t)mode;
             }
         } else if (mscheme != 7) {
@@ -1193,9 +1306,9 @@ static void assign_mv_to_coded_blocks(const theora_priv_t *priv, int mbi, int mv
 ///   - INTRA/INTER_NOMV: MV = (0, 0).
 /// @return 0 on success, -1 on bitstream error.
 int decode_motion_vectors(theora_decoder_t *dec,
-                                 theora_priv_t *priv,
-                                 bitreader_t *br,
-                                 int frame_type) {
+                          theora_priv_t *priv,
+                          bitreader_t *br,
+                          int frame_type) {
     int mvmode = 0;
     int last1x = 0, last1y = 0, last2x = 0, last2y = 0;
 
@@ -1360,12 +1473,14 @@ int decode_qiis(theora_priv_t *priv, bitreader_t *br, int nqi) {
             if (priv->bcoded[bi] && priv->qiis[bi] == qii)
                 nbits++;
         }
-        bits = (uint8_t *)malloc((size_t)nbits);
-        if (!bits)
-            return -1;
-        if (decode_rle_bits(br, bits, nbits, 1) != 0) {
-            free(bits);
-            return -1;
+        bits = nbits > 0 ? (uint8_t *)malloc((size_t)nbits) : NULL;
+        if (nbits > 0) {
+            if (!bits)
+                return -1;
+            if (decode_rle_bits(br, bits, nbits, 1) != 0) {
+                free(bits);
+                return -1;
+            }
         }
         for (int bi = 0; bi < priv->total_blocks; bi++) {
             if (priv->bcoded[bi] && priv->qiis[bi] == qii)

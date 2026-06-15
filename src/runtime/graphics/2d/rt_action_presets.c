@@ -25,10 +25,30 @@
 #include "rt_string.h"
 #include "rt_string_builder.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 extern int64_t rt_unbox_i64(void *box);
+
+/// @brief Duplicate an action preset name with malloc-backed ownership.
+/// @details Action structures free their `name` field with `free`, so this
+///          helper avoids depending on platform-specific `strdup` declarations
+///          while preserving the existing ownership contract.
+/// @param text Source action name.
+/// @return Newly allocated copy, or NULL on invalid input, overflow, or OOM.
+static char *action_preset_strdup(const char *text) {
+    if (!text)
+        return NULL;
+    size_t len = strlen(text);
+    if (len > SIZE_MAX - 1u)
+        return NULL;
+    char *copy = (char *)malloc(len + 1u);
+    if (!copy)
+        return NULL;
+    memcpy(copy, text, len + 1u);
+    return copy;
+}
 
 /// @brief Internal: define a button or axis action by C-string name.
 static Action *define_action_cstr(const char *name, int8_t is_axis) {
@@ -37,7 +57,7 @@ static Action *define_action_cstr(const char *name, int8_t is_axis) {
     Action *a = (Action *)malloc(sizeof(Action));
     if (!a)
         return NULL;
-    a->name = strdup(name);
+    a->name = action_preset_strdup(name);
     if (!a->name) {
         free(a);
         return NULL;

@@ -100,6 +100,23 @@ static void pad_clear_logical_state(int index) {
     g_pads[index] = zero;
 }
 
+/// @brief Clamp a rumble motor strength to [0, 1], treating NaN/inf as 0.
+/// @details Platform force-feedback APIs ultimately convert the value to an
+///          integer motor magnitude. Casting NaN or infinity to an integer is
+///          undefined, so the public and backend vibration paths share this
+///          sanitizer before storing state or issuing OS calls.
+/// @param value Caller-supplied motor strength.
+/// @return A finite normalized motor strength.
+static double pad_clamp_unit_finite(double value) {
+    if (!isfinite(value))
+        return 0.0;
+    if (value < 0.0)
+        return 0.0;
+    if (value > 1.0)
+        return 1.0;
+    return value;
+}
+
 //=============================================================================
 // Platform-Specific Gamepad Backend
 //=============================================================================
@@ -279,6 +296,10 @@ static void mac_scan_devices(void) {
 
     CFIndex count = CFSetGetCount(devices);
     if (count <= 0) {
+        CFRelease(devices);
+        return;
+    }
+    if ((uint64_t)count > (uint64_t)SIZE_MAX / sizeof(IOHIDDeviceRef)) {
         CFRelease(devices);
         return;
     }
@@ -808,8 +829,11 @@ static void linux_scan_gamepads(void) {
             continue;
 
         int fd = open(path, O_RDWR | O_NONBLOCK);
-        if (fd < 0)
+        bool fd_writable = fd >= 0;
+        if (fd < 0) {
             fd = open(path, O_RDONLY | O_NONBLOCK);
+            fd_writable = false;
+        }
         if (fd < 0)
             continue;
 
@@ -845,7 +869,7 @@ static void linux_scan_gamepads(void) {
 
         unsigned long ff_bits[(FF_MAX + 8 * sizeof(unsigned long)) / (8 * sizeof(unsigned long))];
         memset(ff_bits, 0, sizeof(ff_bits));
-        if (ioctl(fd, EVIOCGBIT(EV_FF, sizeof(ff_bits)), ff_bits) >= 0 &&
+        if (fd_writable && ioctl(fd, EVIOCGBIT(EV_FF, sizeof(ff_bits)), ff_bits) >= 0 &&
             linux_test_bit(ff_bits, FF_RUMBLE)) {
             pad->has_rumble = true;
         }
@@ -1032,16 +1056,8 @@ static void platform_pad_vibrate(int64_t index, double left, double right) {
     memset(&effect, 0, sizeof(effect));
     effect.type = FF_RUMBLE;
     effect.id = pad->rumble_id;
-    double left_amp = left;
-    double right_amp = right;
-    if (left_amp < 0.0)
-        left_amp = 0.0;
-    if (left_amp > 1.0)
-        left_amp = 1.0;
-    if (right_amp < 0.0)
-        right_amp = 0.0;
-    if (right_amp > 1.0)
-        right_amp = 1.0;
+    double left_amp = pad_clamp_unit_finite(left);
+    double right_amp = pad_clamp_unit_finite(right);
 
     effect.u.rumble.strong_magnitude = (uint16_t)(left_amp * 0xFFFF);
     effect.u.rumble.weak_magnitude = (uint16_t)(right_amp * 0xFFFF);
@@ -1176,16 +1192,8 @@ static void platform_pad_vibrate(int64_t index, double left, double right) {
     if (index < 0 || index >= VIPER_PAD_MAX)
         return;
 
-    double left_amp = left;
-    double right_amp = right;
-    if (left_amp < 0.0)
-        left_amp = 0.0;
-    if (left_amp > 1.0)
-        left_amp = 1.0;
-    if (right_amp < 0.0)
-        right_amp = 0.0;
-    if (right_amp > 1.0)
-        right_amp = 1.0;
+    double left_amp = pad_clamp_unit_finite(left);
+    double right_amp = pad_clamp_unit_finite(right);
 
     XINPUT_VIBRATION vib;
     vib.wLeftMotorSpeed = (WORD)(left_amp * 65535.0);
@@ -1505,8 +1513,8 @@ void rt_pad_vibrate(int64_t index, double left_motor, double right_motor) {
     if (!g_pads[index].connected)
         return;
 
-    double left = clamp_axis(left_motor, 0.0, 1.0);
-    double right = clamp_axis(right_motor, 0.0, 1.0);
+    double left = pad_clamp_unit_finite(left_motor);
+    double right = pad_clamp_unit_finite(right_motor);
 
     g_pads[index].vibration_left = left;
     g_pads[index].vibration_right = right;

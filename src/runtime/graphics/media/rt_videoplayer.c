@@ -54,6 +54,8 @@ extern int64_t rt_pixels_width(void *pixels);
 extern int64_t rt_pixels_height(void *pixels);
 extern void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len);
 
+#define VIDEOPLAYER_MAX_FILE_BYTES (INT64_C(512) * 1024 * 1024)
+
 /* Internal pixel struct for direct buffer copy */
 typedef struct {
     int64_t width, height;
@@ -134,16 +136,18 @@ static int videoplayer_copy_decoded_frame(void *frame_display, void *decoded) {
 /// @param out_len Receives the byte count on success.
 /// @return malloc-owned file bytes, or NULL on I/O, size, or allocation failure.
 static uint8_t *videoplayer_read_file_bytes(rt_string path, size_t *out_len) {
+    void *volatile bytes = NULL;
     if (out_len)
         *out_len = 0;
     if (!path || !out_len)
         return NULL;
 
-    void *bytes = NULL;
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) != 0) {
         rt_trap_clear_recovery();
+        if (bytes && rt_obj_release_check0((void *)bytes))
+            rt_obj_free((void *)bytes);
         return NULL;
     }
     bytes = rt_io_file_read_all_bytes(path);
@@ -151,21 +155,21 @@ static uint8_t *videoplayer_read_file_bytes(rt_string path, size_t *out_len) {
     if (!bytes)
         return NULL;
 
-    int64_t len_i64 = rt_bytes_len(bytes);
-    if (len_i64 <= 12 || len_i64 > INT64_C(512) * 1024 * 1024 ||
+    int64_t len_i64 = rt_bytes_len((void *)bytes);
+    if (len_i64 <= 12 || len_i64 > VIDEOPLAYER_MAX_FILE_BYTES ||
         (uint64_t)len_i64 > (uint64_t)SIZE_MAX) {
-        if (rt_obj_release_check0(bytes))
-            rt_obj_free(bytes);
+        if (rt_obj_release_check0((void *)bytes))
+            rt_obj_free((void *)bytes);
         return NULL;
     }
 
     size_t len = (size_t)len_i64;
-    const uint8_t *src = rt_bytes_data_const(bytes);
+    const uint8_t *src = rt_bytes_data_const((void *)bytes);
     uint8_t *copy = src ? (uint8_t *)malloc(len) : NULL;
     if (copy)
         memcpy(copy, src, len);
-    if (rt_obj_release_check0(bytes))
-        rt_obj_free(bytes);
+    if (rt_obj_release_check0((void *)bytes))
+        rt_obj_free((void *)bytes);
     if (!copy)
         return NULL;
 
@@ -1305,6 +1309,26 @@ void rt_videoplayer_stop(void *obj) {
 #endif
 }
 
+/// @brief Restore an OGV decoder to the frame that was current before a failed seek.
+/// @details The caller restores the visible pixel snapshot separately. This helper keeps the
+///          decoder's logical frame index honest: if replaying to @p old_frame fails, the decoder
+///          is left at -1 instead of claiming it is positioned on a frame it could not reconstruct.
+/// @param vp Video player whose OGV decode state should be restored.
+/// @param old_frame Previous current-frame index, or -1 when no frame was decoded.
+static void videoplayer_restore_ogv_decoder_after_failed_seek(rt_videoplayer *vp,
+                                                              int32_t old_frame) {
+    if (!vp)
+        return;
+    vp->current_frame = -1;
+    if (old_frame < 0)
+        return;
+    if (ogv_prepare_playback(vp) && ogv_decode_until_frame(vp, old_frame)) {
+        vp->current_frame = old_frame;
+        return;
+    }
+    vp->current_frame = -1;
+}
+
 /// @brief Jump to the frame containing time `seconds`.
 ///
 /// Per Theora's forward-only constraint, seeking backward decodes
@@ -1333,12 +1357,7 @@ void rt_videoplayer_seek(void *obj, double seconds) {
         if (!(ogv_prepare_playback(vp) && ogv_decode_until_frame(vp, target))) {
             videoplayer_restore_display(vp, snapshot, snapshot_count);
             vp->position = old_position;
-            vp->current_frame = old_frame;
-            if (old_frame >= 0) {
-                vp->current_frame = -1;
-                if (!ogv_prepare_playback(vp) || !ogv_decode_until_frame(vp, old_frame))
-                    vp->current_frame = old_frame;
-            }
+            videoplayer_restore_ogv_decoder_after_failed_seek(vp, old_frame);
             free(snapshot);
             return;
         }

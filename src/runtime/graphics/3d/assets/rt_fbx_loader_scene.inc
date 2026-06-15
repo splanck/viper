@@ -991,6 +991,7 @@ static void *fbx_build_scene_root(fbx_node_t *root,
             }
             if (binding->material_map.has_slots && binding->material_map.slot_count > 1 &&
                 model_material_count > 1) {
+                int32_t split_added = 0;
                 for (int32_t slot = 0; slot < binding->material_map.slot_count; slot++) {
                     void *slot_mesh = fbx_clone_mesh_for_material_slot(
                         (const rt_mesh3d *)mesh, &binding->material_map, slot);
@@ -1025,8 +1026,12 @@ static void *fbx_build_scene_root(fbx_node_t *root,
                     fbx_release_ref(&mesh_node);
                     fbx_release_ref(&slot_mesh);
                     extra_mesh_count++;
+                    split_added++;
                 }
-                continue;
+                if (failed)
+                    break;
+                if (split_added > 0)
+                    continue;
             }
             if (!primary_mesh) {
                 primary_mesh = mesh;
@@ -1068,6 +1073,26 @@ static void *fbx_build_scene_root(fbx_node_t *root,
     for (int32_t i = 0; !failed && i < model_count; i++) {
         void *parent = scene_root;
         if (models[i].parent_id != 0) {
+            int32_t guard = 0;
+            int64_t chain_parent_id = models[i].parent_id;
+            while (chain_parent_id != 0) {
+                int32_t found_parent = -1;
+                for (int32_t pi = 0; pi < model_count; pi++) {
+                    if (models[pi].id == chain_parent_id) {
+                        found_parent = pi;
+                        break;
+                    }
+                }
+                if (found_parent < 0)
+                    break;
+                if (found_parent == i || ++guard > model_count) {
+                    failed = 1;
+                    break;
+                }
+                chain_parent_id = models[found_parent].parent_id;
+            }
+            if (failed)
+                break;
             for (int32_t pi = 0; pi < model_count; pi++) {
                 if (models[pi].id == models[i].parent_id) {
                     parent = models[pi].node;

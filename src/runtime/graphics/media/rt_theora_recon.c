@@ -59,8 +59,147 @@ static void undo_dc_prediction(theora_priv_t *priv) {
     }
 }
 
-#define TH_FIX(x) ((int32_t)((x) * 4096.0 + 0.5))
-#define TH_DESCALE(x, n) (((x) + (1 << ((n) - 1))) >> (n))
+#define TH_FIX(x) ((int64_t)((x) * 4096.0 + 0.5))
+#define TH_DESCALE(x, n) theora_idct_descale_i64((x), (n))
+
+/// @brief Clamp a 64-bit intermediate to the int32 range used by the IDCT workspace.
+/// @details Malformed streams can synthesize unusually large coefficients before final int16
+///          truncation. Clamping after each fixed-point descale avoids signed-overflow UB while
+///          preserving valid-stream results.
+/// @param value Fixed-point intermediate after scaling.
+/// @return @p value clamped to [INT32_MIN, INT32_MAX].
+static int32_t theora_idct_clamp_i32(int64_t value) {
+    if (value > INT32_MAX)
+        return INT32_MAX;
+    if (value < INT32_MIN)
+        return INT32_MIN;
+    return (int32_t)value;
+}
+
+/// @brief Descale a 64-bit fixed-point IDCT intermediate with rounding.
+/// @details This is the 64-bit equivalent of Theora's integer IDCT descale macro. The expression is
+///          evaluated in int64_t before the final clamp so coefficient*constant products cannot
+///          overflow signed int32_t.
+/// @param value Fixed-point value to descale.
+/// @param shift Number of fractional bits to remove.
+/// @return Rounded and clamped int32_t result.
+static int32_t theora_idct_descale_i64(int64_t value, int shift) {
+    int64_t bias;
+    if (shift <= 0)
+        return theora_idct_clamp_i32(value);
+    bias = INT64_C(1) << (shift - 1);
+    return theora_idct_clamp_i32((value + bias) >> shift);
+}
+
+/// @brief Heap snapshot of mutable per-frame Theora decode arrays.
+/// @details The bitstream decode passes mutate these arrays before the frame is reconstructed.
+///          Keeping a snapshot lets the public frame decode API leave the decoder in its prior
+///          state when a malformed packet fails halfway through.
+typedef struct {
+    uint8_t *bcoded;
+    uint8_t *sb_partcoded;
+    uint8_t *sb_fullcoded;
+    uint8_t *qiis;
+    uint8_t *mbmodes;
+    uint8_t *tis;
+    uint8_t *ncoeffs;
+    int8_t (*mvects)[2];
+    int16_t (*coeffs)[64];
+} theora_decode_snapshot_t;
+
+/// @brief Allocate and copy the mutable decode arrays from @p priv into @p snapshot.
+/// @param priv Decoder private state whose arrays are already allocated.
+/// @param snapshot Destination snapshot structure; cleared on failure.
+/// @return 1 on success, 0 on allocation failure or invalid state.
+static int theora_decode_snapshot_take(const theora_priv_t *priv,
+                                       theora_decode_snapshot_t *snapshot) {
+    size_t block_count;
+    size_t superblock_count;
+    size_t macroblock_count;
+    if (!priv || !snapshot || priv->total_blocks < 0 || priv->total_superblocks < 0 ||
+        priv->total_macroblocks < 0)
+        return 0;
+    memset(snapshot, 0, sizeof(*snapshot));
+    block_count = (size_t)priv->total_blocks;
+    superblock_count = (size_t)priv->total_superblocks;
+    macroblock_count = (size_t)priv->total_macroblocks;
+    snapshot->bcoded = block_count ? (uint8_t *)malloc(block_count) : NULL;
+    snapshot->sb_partcoded = superblock_count ? (uint8_t *)malloc(superblock_count) : NULL;
+    snapshot->sb_fullcoded = superblock_count ? (uint8_t *)malloc(superblock_count) : NULL;
+    snapshot->qiis = block_count ? (uint8_t *)malloc(block_count) : NULL;
+    snapshot->mbmodes = macroblock_count ? (uint8_t *)malloc(macroblock_count) : NULL;
+    snapshot->tis = block_count ? (uint8_t *)malloc(block_count) : NULL;
+    snapshot->ncoeffs = block_count ? (uint8_t *)malloc(block_count) : NULL;
+    snapshot->mvects = block_count ? (int8_t (*)[2])malloc(block_count * sizeof(int8_t[2])) : NULL;
+    snapshot->coeffs =
+        block_count ? (int16_t (*)[64])malloc(block_count * sizeof(int16_t[64])) : NULL;
+    if ((block_count && (!snapshot->bcoded || !snapshot->qiis || !snapshot->tis ||
+                         !snapshot->ncoeffs || !snapshot->mvects || !snapshot->coeffs)) ||
+        (superblock_count && (!snapshot->sb_partcoded || !snapshot->sb_fullcoded)) ||
+        (macroblock_count && !snapshot->mbmodes))
+        return 0;
+    if (block_count) {
+        memcpy(snapshot->bcoded, priv->bcoded, block_count);
+        memcpy(snapshot->qiis, priv->qiis, block_count);
+        memcpy(snapshot->tis, priv->tis, block_count);
+        memcpy(snapshot->ncoeffs, priv->ncoeffs, block_count);
+        memcpy(snapshot->mvects, priv->mvects, block_count * sizeof(int8_t[2]));
+        memcpy(snapshot->coeffs, priv->coeffs, block_count * sizeof(int16_t[64]));
+    }
+    if (superblock_count) {
+        memcpy(snapshot->sb_partcoded, priv->sb_partcoded, superblock_count);
+        memcpy(snapshot->sb_fullcoded, priv->sb_fullcoded, superblock_count);
+    }
+    if (macroblock_count)
+        memcpy(snapshot->mbmodes, priv->mbmodes, macroblock_count);
+    return 1;
+}
+
+/// @brief Restore mutable decode arrays from a previously taken snapshot.
+/// @param priv Decoder private state to restore.
+/// @param snapshot Snapshot returned by @ref theora_decode_snapshot_take.
+static void theora_decode_snapshot_restore(theora_priv_t *priv,
+                                           const theora_decode_snapshot_t *snapshot) {
+    size_t block_count;
+    size_t superblock_count;
+    size_t macroblock_count;
+    if (!priv || !snapshot)
+        return;
+    block_count = (size_t)priv->total_blocks;
+    superblock_count = (size_t)priv->total_superblocks;
+    macroblock_count = (size_t)priv->total_macroblocks;
+    if (block_count) {
+        memcpy(priv->bcoded, snapshot->bcoded, block_count);
+        memcpy(priv->qiis, snapshot->qiis, block_count);
+        memcpy(priv->tis, snapshot->tis, block_count);
+        memcpy(priv->ncoeffs, snapshot->ncoeffs, block_count);
+        memcpy(priv->mvects, snapshot->mvects, block_count * sizeof(int8_t[2]));
+        memcpy(priv->coeffs, snapshot->coeffs, block_count * sizeof(int16_t[64]));
+    }
+    if (superblock_count) {
+        memcpy(priv->sb_partcoded, snapshot->sb_partcoded, superblock_count);
+        memcpy(priv->sb_fullcoded, snapshot->sb_fullcoded, superblock_count);
+    }
+    if (macroblock_count)
+        memcpy(priv->mbmodes, snapshot->mbmodes, macroblock_count);
+}
+
+/// @brief Release heap memory held by a decode snapshot and clear its pointers.
+/// @param snapshot Snapshot to free. NULL-safe.
+static void theora_decode_snapshot_free(theora_decode_snapshot_t *snapshot) {
+    if (!snapshot)
+        return;
+    free(snapshot->bcoded);
+    free(snapshot->sb_partcoded);
+    free(snapshot->sb_fullcoded);
+    free(snapshot->qiis);
+    free(snapshot->mbmodes);
+    free(snapshot->tis);
+    free(snapshot->ncoeffs);
+    free(snapshot->mvects);
+    free(snapshot->coeffs);
+    memset(snapshot, 0, sizeof(*snapshot));
+}
 
 /// @brief Apply one horizontal pass of the separable AAN integer IDCT to an 8-element row.
 /// @details Implements the factored 8-point IDCT butterfly using 12-bit fixed-point
@@ -554,6 +693,8 @@ int theora_decode_frame(theora_decoder_t *dec,
     theora_priv_t *priv;
     bitreader_t br;
     theora_frame_header_t fh;
+    theora_decode_snapshot_t snapshot;
+    int ok = 0;
     size_t y_size, c_size;
 
     if (!dec || !data || len < 1 || !dec->headers_complete || !dec->priv)
@@ -562,19 +703,26 @@ int theora_decode_frame(theora_decoder_t *dec,
     priv = (theora_priv_t *)dec->priv;
     br_init(&br, data, len);
     memset(&fh, 0, sizeof(fh));
+    memset(&snapshot, 0, sizeof(snapshot));
 
     if (decode_frame_header(dec, &br, &fh) != 0)
         return -1;
-    if (decode_block_flags(dec, priv, &br, fh.frame_type) != 0)
+    if (!theora_decode_snapshot_take(priv, &snapshot)) {
+        theora_decode_snapshot_free(&snapshot);
         return -1;
-    if (decode_mb_modes(dec, priv, &br, fh.frame_type) != 0)
+    }
+    if (decode_block_flags(dec, priv, &br, fh.frame_type) == 0 &&
+        decode_mb_modes(dec, priv, &br, fh.frame_type) == 0 &&
+        decode_motion_vectors(dec, priv, &br, fh.frame_type) == 0 &&
+        decode_qiis(priv, &br, fh.nqi) == 0 && decode_coefficients(priv, &br) == 0) {
+        ok = 1;
+    }
+    if (!ok) {
+        theora_decode_snapshot_restore(priv, &snapshot);
+        theora_decode_snapshot_free(&snapshot);
         return -1;
-    if (decode_motion_vectors(dec, priv, &br, fh.frame_type) != 0)
-        return -1;
-    if (decode_qiis(priv, &br, fh.nqi) != 0)
-        return -1;
-    if (decode_coefficients(priv, &br) != 0)
-        return -1;
+    }
+    theora_decode_snapshot_free(&snapshot);
     undo_dc_prediction(priv);
     reconstruct_frame(dec, priv, &fh);
 

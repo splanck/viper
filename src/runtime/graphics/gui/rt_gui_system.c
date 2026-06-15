@@ -22,8 +22,8 @@
 //   - Cursor style constants map 1:1 to VGFX_CURSOR_* enum values.
 //
 // Ownership/Lifetime:
-//   - Shortcut id/keys/description strings are strdup'd into the active app's
-//     shortcut table and freed by rt_shortcuts_clear().
+//   - Shortcut id/keys/description strings are duplicated into the active app's
+//     shortcut table with malloc-backed storage and freed by rt_shortcuts_clear().
 //   - Clipboard text returned by vgfx_clipboard_get_text is malloc'd by the
 //     platform; this file frees it after converting to rt_string.
 //
@@ -37,6 +37,25 @@
 #include "rt_platform.h"
 
 #ifdef VIPER_ENABLE_GRAPHICS
+
+/// @brief Duplicate a NUL-terminated GUI string with malloc-backed ownership.
+/// @details Keeps this runtime-facing module independent of platform-specific
+///          `strdup` availability and makes all copied strings compatible with
+///          the existing `free` cleanup paths.
+/// @param text Source string to copy; NULL returns NULL.
+/// @return Newly allocated copy, or NULL on invalid input, overflow, or OOM.
+static char *rt_gui_system_strdup(const char *text) {
+    if (!text)
+        return NULL;
+    size_t len = strlen(text);
+    if (len > SIZE_MAX - 1u)
+        return NULL;
+    char *copy = (char *)malloc(len + 1u);
+    if (!copy)
+        return NULL;
+    memcpy(copy, text, len + 1u);
+    return copy;
+}
 
 // Clipboard Functions (Phase 1)
 //=============================================================================
@@ -131,12 +150,12 @@ static int rt_shortcuts_record_triggered(rt_gui_app_t *app, const char *id) {
         app->triggered_shortcut_cap = new_cap;
     }
 
-    char *queued_id = strdup(id);
+    char *queued_id = rt_gui_system_strdup(id);
     if (!queued_id)
         return 0;
     app->triggered_shortcut_ids[app->triggered_shortcut_count++] = queued_id;
 
-    char *last_id = strdup(id);
+    char *last_id = rt_gui_system_strdup(id);
     if (last_id) {
         free(app->triggered_shortcut_id);
         app->triggered_shortcut_id = last_id;
@@ -163,7 +182,7 @@ static int parse_shortcut_keys(
     if (!keys)
         return 0;
 
-    char *copy = strdup(keys);
+    char *copy = rt_gui_system_strdup(keys);
     if (!copy)
         return 0;
 
@@ -550,8 +569,8 @@ int8_t rt_shortcuts_check_key(rt_gui_app_t *app, int key, int mods) {
         if (!app->shortcuts[i].enabled || !app->shortcuts[i].parsed_key)
             continue;
 
-    int expected_ctrl = app->shortcuts[i].parsed_ctrl;
-    int expected_super = app->shortcuts[i].parsed_super;
+        int expected_ctrl = app->shortcuts[i].parsed_ctrl;
+        int expected_super = app->shortcuts[i].parsed_super;
 
         if (expected_ctrl == event_ctrl && expected_super == event_super &&
             app->shortcuts[i].parsed_shift == has_shift &&
@@ -705,7 +724,7 @@ void rt_app_set_title(void *app, rt_string title) {
     char *cstr = rt_string_to_gui_cstr(title);
     if (!cstr)
         return;
-    char *stored = strdup(cstr);
+    char *stored = rt_gui_system_strdup(cstr);
     if (!stored) {
         free(cstr);
         return;

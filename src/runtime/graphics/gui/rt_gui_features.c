@@ -15,7 +15,7 @@
 //
 // Key invariants:
 //   - rt_commandpalette_on_execute callback fires synchronously inside the vg
-//     event loop; it strdup's the selected command id for later polling.
+//     event loop; it duplicates the selected command id for later polling.
 //   - Toast messages are transient: they auto-dismiss after the configured
 //     duration; no explicit dismiss call is required.
 //   - Minimap content is updated via rt_minimap_set_content and rendered at
@@ -28,7 +28,7 @@
 //   - Wrapper state structs (e.g. rt_commandpalette_data_t) are allocated via
 //     rt_obj_new_i64 (GC heap); their embedded vg_* pointers are manually freed
 //     in the corresponding destroy functions.
-//   - selected_command is strdup'd on selection and freed on next selection or
+//   - selected_command is duplicated on selection and freed on next selection or
 //     at destroy time.
 //
 // Links: src/runtime/graphics/rt_gui_internal.h (internal types/globals),
@@ -41,6 +41,25 @@
 #include "rt_platform.h"
 
 #ifdef VIPER_ENABLE_GRAPHICS
+
+/// @brief Duplicate a feature-widget string with malloc ownership.
+/// @details Command IDs, toast action labels, and dropped-file paths are stored
+///          as heap strings released with `free`; this helper avoids relying on
+///          platform-specific `strdup` declarations.
+/// @param text Source string to copy; NULL returns NULL.
+/// @return Newly allocated copy, or NULL on invalid input, overflow, or OOM.
+static char *rt_gui_features_strdup(const char *text) {
+    if (!text)
+        return NULL;
+    size_t len = strlen(text);
+    if (len > SIZE_MAX - 1u)
+        return NULL;
+    char *copy = (char *)malloc(len + 1u);
+    if (!copy)
+        return NULL;
+    memcpy(copy, text, len + 1u);
+    return copy;
+}
 
 /// @brief Return the GUI subsystem's monotonic clock in milliseconds.
 ///
@@ -184,7 +203,7 @@ static void rt_commandpalette_on_execute(vg_commandpalette_t *palette,
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)user_data;
     if (rt_commandpalette_wrapper_is_registered(data) &&
         data->magic == RT_COMMANDPALETTE_DATA_MAGIC && cmd && cmd->id) {
-        char *copy = strdup(cmd->id);
+        char *copy = rt_gui_features_strdup(cmd->id);
         if (!copy)
             return;
         free(data->selected_command);
@@ -880,7 +899,7 @@ void rt_toast_set_action(void *toast, rt_string label) {
         vg_notification_t *notif = mgr->notifications[i];
         if (!notif || notif->id != data->id)
             continue;
-        char *notif_label = strdup(new_label);
+        char *notif_label = rt_gui_features_strdup(new_label);
         if (!notif_label) {
             free(new_label);
             return;
@@ -1189,7 +1208,7 @@ rt_string rt_app_get_dropped_file(void *app, int64_t index) {
 void rt_gui_file_drop_add(rt_gui_app_t *app, const char *path) {
     if (!app || !path)
         return;
-    char *path_copy = strdup(path);
+    char *path_copy = rt_gui_features_strdup(path);
     if (!path_copy)
         return;
 

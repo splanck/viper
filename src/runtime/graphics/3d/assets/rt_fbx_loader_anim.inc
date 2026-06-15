@@ -727,13 +727,15 @@ static int fbx_i64_compare(const void *a, const void *b) {
 }
 
 /// @brief Append @p value to an unsorted key-time array; sorting/dedup happens once after collect.
+/// @details Non-finite or extreme key times indicate a corrupt animation curve and are reported as
+///          failure so callers can reject the stack instead of silently producing an empty clip.
 static int fbx_anim_append_time(int64_t **times, int32_t *count, int32_t *capacity, int64_t value) {
     double seconds = (double)value / (double)FBX_TIME_SECOND;
     if (!times || !count || !capacity || *count < 0 || *capacity < 0 || *count > *capacity ||
         (*count > 0 && !*times))
         return 0;
     if (!isfinite(seconds) || fabs(seconds) > FBX_ANIM_TIME_SECONDS_MAX)
-        return 1;
+        return 0;
     if (*count >= *capacity) {
         int32_t new_capacity;
         if (*capacity > INT32_MAX / 2)
@@ -1202,6 +1204,8 @@ static void fbx_extract_animations(fbx_node_t *root,
         if (!fbx_anim_stack_has_layer(objects, ct, stack_id))
             continue;
 
+        if ((size_t)bone_count > SIZE_MAX / sizeof(*builders))
+            continue;
         builders = (fbx_anim_bone_builder_t *)calloc((size_t)bone_count, sizeof(*builders));
         if (!builders)
             continue;

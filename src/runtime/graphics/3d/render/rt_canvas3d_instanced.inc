@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/render/rt_canvas3d_instanced.inc  (#included from rt_canvas3d.c; not a standalone translation unit)
-// Purpose: Canvas3D instanced-batch submission (fallback and hardware paths)
+// File: src/runtime/graphics/3d/render/rt_canvas3d_instanced.inc  (#included from rt_canvas3d.c;
+// not a standalone translation unit) Purpose: Canvas3D instanced-batch submission (fallback and
+// hardware paths)
 //===----------------------------------------------------------------------===//
 
 /// @brief Queue an instanced draw — render `instance_count` copies of `mesh` with per-instance
@@ -20,7 +21,7 @@ typedef struct {
     rt_material3d *mat;
     void *mesh_obj;
     void *material_obj;
-    void *new_refs[16];
+    void *new_refs[CANVAS3D_DRAW_RESOURCE_ROLLBACK_CAP];
     int32_t new_ref_count;
 } canvas3d_instanced_batch_t;
 
@@ -106,12 +107,11 @@ static void canvas3d_queue_instanced_fallback(const canvas3d_instanced_batch_t *
             preflight_ok = canvas3d_compute_vertex_rebase_shift_f32(
                 c, &instance_matrices[(size_t)i * 16u], shift, preflight);
         } else {
-            preflight_ok =
-                canvas3d_copy_mat4_f32_for_frame(
-                    c, &instance_matrices[(size_t)i * 16u], preflight) &&
-                (!has_prev_instance_matrices || !prev_instance_matrices ||
-                 canvas3d_copy_mat4_f32_for_frame(
-                     c, &prev_instance_matrices[(size_t)i * 16u], preflight));
+            preflight_ok = canvas3d_copy_mat4_f32_for_frame(
+                               c, &instance_matrices[(size_t)i * 16u], preflight) &&
+                           (!has_prev_instance_matrices || !prev_instance_matrices ||
+                            canvas3d_copy_mat4_f32_for_frame(
+                                c, &prev_instance_matrices[(size_t)i * 16u], preflight));
         }
         if (!preflight_ok) {
             canvas3d_instanced_release_refs(b);
@@ -419,15 +419,15 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
         return;
     }
 
-    rebase_positions64_instances =
-        canvas3d_uses_camera_relative_upload(c) && canvas3d_mesh_positions64_needs_vertex_rebase(mesh);
+    rebase_positions64_instances = canvas3d_uses_camera_relative_upload(c) &&
+                                   canvas3d_mesh_positions64_needs_vertex_rebase(mesh);
     needs_generated_tangents = canvas3d_prepare_normal_map_tangent_state(mesh, mat);
     rt_mesh3d_refresh_bounds(mesh);
     canvas3d_build_instanced_base_cmd(mesh, mat, c, &base_cmd);
 
-    use_fallback_instances =
-        rebase_positions64_instances || canvas3d_cmd_requires_blend(&base_cmd) ||
-        !c->backend->submit_draw_instanced;
+    use_fallback_instances = rebase_positions64_instances ||
+                             canvas3d_cmd_requires_blend(&base_cmd) ||
+                             !c->backend->submit_draw_instanced;
     if (use_fallback_instances && instance_count > CANVAS3D_MAX_FALLBACK_INSTANCES) {
         rt_trap("Canvas3D.DrawMeshInstanced: fallback instance count exceeds limit");
         return;
@@ -445,14 +445,23 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
     batch.mesh_obj = mesh_obj;
     batch.material_obj = material_obj;
     if (rt_heap_is_payload(mesh_obj)) {
-        if (!canvas3d_track_draw_resource(c, mesh_obj, batch.new_refs, &batch.new_ref_count, 16))
+        if (!canvas3d_track_draw_resource(c,
+                                          mesh_obj,
+                                          batch.new_refs,
+                                          &batch.new_ref_count,
+                                          CANVAS3D_DRAW_RESOURCE_ROLLBACK_CAP))
             return;
     }
-    if (!canvas3d_track_draw_resource(c, material_obj, batch.new_refs, &batch.new_ref_count, 16)) {
+    if (!canvas3d_track_draw_resource(c,
+                                      material_obj,
+                                      batch.new_refs,
+                                      &batch.new_ref_count,
+                                      CANVAS3D_DRAW_RESOURCE_ROLLBACK_CAP)) {
         canvas3d_instanced_release_refs(&batch);
         return;
     }
-    if (!canvas3d_track_material_resources(c, mat, batch.new_refs, &batch.new_ref_count, 16)) {
+    if (!canvas3d_track_material_resources(
+            c, mat, batch.new_refs, &batch.new_ref_count, CANVAS3D_DRAW_RESOURCE_ROLLBACK_CAP)) {
         canvas3d_instanced_release_refs(&batch);
         return;
     }

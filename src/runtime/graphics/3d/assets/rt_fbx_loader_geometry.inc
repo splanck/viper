@@ -100,31 +100,34 @@ static int fbx_mesh_remap_init(fbx_mesh_remap_t *remap, int64_t id, int32_t cont
     return remap->control_vertices != NULL;
 }
 
-/// @brief Append a new mesh vertex index to the list for a given control vertex (grows
-/// dynamically).
-static void fbx_mesh_remap_add_vertex(fbx_mesh_remap_t *remap,
-                                      int32_t control_index,
-                                      int32_t vertex_index) {
+/// @brief Append a new mesh vertex index to the list for a given control vertex.
+/// @details Grows the per-control-vertex list as needed. Returning status lets the geometry builder
+///          abort instead of silently losing the remap entry used later by skinning/bind data.
+/// @return 1 on success, 0 on invalid indices, capacity overflow, or allocation failure.
+static int fbx_mesh_remap_add_vertex(fbx_mesh_remap_t *remap,
+                                     int32_t control_index,
+                                     int32_t vertex_index) {
     fbx_vertex_index_list_t *list;
     int32_t new_capacity;
     int32_t *grown;
     if (!remap || !remap->control_vertices || control_index < 0 ||
         control_index >= remap->control_count || vertex_index < 0)
-        return;
+        return 0;
     list = &remap->control_vertices[control_index];
     if (list->count >= list->capacity) {
         if (list->capacity < 0 || list->capacity > INT32_MAX / 2)
-            return;
+            return 0;
         new_capacity = list->capacity == 0 ? 4 : list->capacity * 2;
         if ((size_t)new_capacity > SIZE_MAX / sizeof(*list->vertices))
-            return;
+            return 0;
         grown = (int32_t *)realloc(list->vertices, (size_t)new_capacity * sizeof(*list->vertices));
         if (!grown)
-            return;
+            return 0;
         list->vertices = grown;
         list->capacity = new_capacity;
     }
     list->vertices[list->count++] = vertex_index;
+    return 1;
 }
 
 /// @brief Linear-search `remaps` for the entry with the given `id`; returns NULL if not found.
@@ -640,7 +643,8 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
                             fbx_vertex_layer_component(&color_layer, ci, 3, 1.0), 0.0, 1.0, 1.0);
                 }
             }
-            fbx_mesh_remap_add_vertex(remap, vi, emitted_vertex);
+            if (!fbx_mesh_remap_add_vertex(remap, vi, emitted_vertex))
+                return fbx_geom_fail(polygon, polygon_stack, mesh);
             polygon[poly_count++] = emitted_vertex;
         }
         polygon_vertex_idx++;

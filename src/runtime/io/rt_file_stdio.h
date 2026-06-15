@@ -13,13 +13,15 @@
 #pragma once
 
 #include "rt_file_path.h"
+#include "rt_platform.h"
 
 #include <errno.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
 #include <fcntl.h>
 #include <io.h>
 #include <sys/stat.h>
@@ -76,7 +78,7 @@ static inline int rt_file_stdio_mode_flags(const char *mode, int *out_flags, int
 #elif defined(_O_BINARY)
     flags |= _O_BINARY;
 #endif
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     flags |= _O_NOINHERIT;
     pmode = _S_IREAD | _S_IWRITE;
 #endif
@@ -99,7 +101,7 @@ static inline FILE *rt_file_stdio_open_utf8(const char *path, const char *mode) 
         return NULL;
     }
 
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     wchar_t *wide_path = rt_file_path_utf8_to_wide(path);
     if (!wide_path) {
         errno = EINVAL;
@@ -129,5 +131,41 @@ static inline FILE *rt_file_stdio_open_utf8(const char *path, const char *mode) 
     if (!fp)
         close(fd);
     return fp;
+#endif
+}
+
+/// @brief Seek a stdio stream with a signed 64-bit byte offset.
+/// @details Centralizes the platform-specific large-file API used by runtime
+///          modules that still parse through `FILE *`. Windows uses `_fseeki64`;
+///          POSIX platforms use `fseeko`. Callers pass the usual `SEEK_SET`,
+///          `SEEK_CUR`, or `SEEK_END` origin and receive the underlying API's
+///          zero-on-success result.
+/// @param fp     Open stream to reposition.
+/// @param offset Signed byte offset interpreted relative to @p origin.
+/// @param origin Standard stdio seek origin.
+/// @return 0 on success; non-zero on invalid input or seek failure.
+static inline int rt_file_stdio_seek64(FILE *fp, int64_t offset, int origin) {
+    if (!fp)
+        return -1;
+#if RT_PLATFORM_WINDOWS
+    return _fseeki64(fp, offset, origin);
+#else
+    return fseeko(fp, (off_t)offset, origin);
+#endif
+}
+
+/// @brief Report the current stdio stream offset as a signed 64-bit value.
+/// @details Pairs with rt_file_stdio_seek64 so callers do not need to carry
+///          their own `_ftelli64`/`ftello` preprocessor branches. Returns -1
+///          when @p fp is NULL or when the underlying API reports failure.
+/// @param fp Open stream to query.
+/// @return Current byte offset from the beginning of the stream, or -1 on failure.
+static inline int64_t rt_file_stdio_tell64(FILE *fp) {
+    if (!fp)
+        return -1;
+#if RT_PLATFORM_WINDOWS
+    return (int64_t)_ftelli64(fp);
+#else
+    return (int64_t)ftello(fp);
 #endif
 }

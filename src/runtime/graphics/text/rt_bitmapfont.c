@@ -27,6 +27,7 @@
 
 #include "rt_bitmapfont.h"
 #include "rt_error.h"
+#include "rt_file_stdio.h"
 #include "rt_object.h"
 #include "rt_pixels_internal.h"
 #include "rt_string.h"
@@ -36,17 +37,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#if !defined(_WIN32)
-#include <sys/types.h>
-#endif
-
-#if defined(_WIN32)
-#define bf_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
-#define bf_ftell(fp) _ftelli64((fp))
-#else
-#define bf_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
-#define bf_ftell(fp) ftello((fp))
-#endif
 
 //=============================================================================
 // Internal Data Structures
@@ -409,7 +399,7 @@ static void *bitmapfont_load_bdf_as(rt_string path, int64_t class_id) {
     if (!cpath)
         return NULL;
 
-    FILE *f = fopen(cpath, "r");
+    FILE *f = rt_file_stdio_open_utf8(cpath, "rb");
     if (!f)
         return NULL;
 
@@ -592,7 +582,7 @@ static void *bitmapfont_load_psf_as(rt_string path, int64_t class_id) {
     if (!cpath)
         return NULL;
 
-    FILE *f = fopen(cpath, "rb");
+    FILE *f = rt_file_stdio_open_utf8(cpath, "rb");
     if (!f)
         return NULL;
 
@@ -681,7 +671,7 @@ static void *bitmapfont_load_psf_as(rt_string path, int64_t class_id) {
     memset(font, 0, sizeof(rt_bitmapfont_impl));
     rt_obj_set_finalizer(font, rt_bitmapfont_destroy);
 
-    if (bf_fseek(f, data_offset, SEEK_SET) != 0) {
+    if (rt_file_stdio_seek64(f, data_offset, SEEK_SET) != 0) {
         fclose(f);
         bf_release_font(font);
         return NULL;
@@ -739,14 +729,14 @@ static void *bitmapfont_load_psf_as(rt_string path, int64_t class_id) {
     }
 
     if (!parse_failed && has_unicode_table) {
-        int64_t table_start = bf_ftell(f);
-        if (table_start >= 0 && bf_fseek(f, 0, SEEK_END) == 0) {
-            int64_t file_end = bf_ftell(f);
+        int64_t table_start = rt_file_stdio_tell64(f);
+        if (table_start >= 0 && rt_file_stdio_seek64(f, 0, SEEK_END) == 0) {
+            int64_t file_end = rt_file_stdio_tell64(f);
             if (file_end >= table_start) {
                 size_t table_len = (size_t)(file_end - table_start);
                 if (table_len > 0 && table_len <= 16 * 1024 * 1024) {
                     uint8_t *table = (uint8_t *)malloc(table_len);
-                    if (table && bf_fseek(f, table_start, SEEK_SET) == 0 &&
+                    if (table && rt_file_stdio_seek64(f, table_start, SEEK_SET) == 0 &&
                         fread(table, 1, table_len, f) == table_len) {
                         if (psf_version == 2)
                             bf_apply_psf2_unicode_table(font, glyph_count, table, table_len);

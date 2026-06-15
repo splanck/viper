@@ -9,13 +9,15 @@
 /// @details Looks up the morph dependency by mesh/primitive key, validates the header (magic,
 ///          version, matching vertex count) and every record/name/payload offset against the blob
 ///          length, then rebuilds an rt_morphtarget3d — adding each named shape with its weight and
-///          per-vertex position/normal/tangent deltas (only the flagged channels). No-op if the
-///          blob is missing or malformed; always frees the blob and the transient morph reference.
-static void gltf_preload_take_decoded_morph(rt_gltf_preload_bundle *preload_bundle,
-                                            int mesh_index,
-                                            int primitive_index,
-                                            void *mesh_obj,
-                                            uint32_t vertex_count) {
+///          per-vertex position/normal/tangent deltas (only the flagged channels). Missing morph
+///          blobs are allowed; malformed present blobs fail the caller's asset load.
+/// @return 1 when the morph dependency is absent or fully attached; 0 when a present dependency is
+///         corrupt or cannot be applied.
+static int gltf_preload_take_decoded_morph(rt_gltf_preload_bundle *preload_bundle,
+                                           int mesh_index,
+                                           int primitive_index,
+                                           void *mesh_obj,
+                                           uint32_t vertex_count) {
     char key[96];
     uint8_t *blob;
     size_t blob_len = 0;
@@ -37,14 +39,14 @@ static void gltf_preload_take_decoded_morph(rt_gltf_preload_bundle *preload_bund
     void *morph = NULL;
 
     if (!preload_bundle || !mesh_obj || vertex_count == 0 || vertex_count > INT32_MAX)
-        return;
+        return 1;
     gltf_preload_morph_key(mesh_index, primitive_index, key, sizeof(key));
     blob = gltf_preload_bundle_take_dependency(
         preload_bundle, key, GLTF_PRELOAD_DEP_MORPH_POD, &blob_len);
     if (!blob)
-        return;
+        return 1;
     if (blob_len < GLTF_PRELOAD_MORPH_POD_HEADER_SIZE)
-        goto done;
+        goto malformed;
     magic = gltf_read_u32_le(blob + 0);
     version = gltf_read_u32_le(blob + 4);
     pod_vertex_count = gltf_read_u32_le(blob + 8);
@@ -54,11 +56,11 @@ static void gltf_preload_take_decoded_morph(rt_gltf_preload_bundle *preload_bund
     payload_bytes_u32 = gltf_read_u32_le(blob + 24);
     if (magic != GLTF_PRELOAD_MORPH_POD_MAGIC || version != GLTF_PRELOAD_MORPH_POD_VERSION ||
         pod_vertex_count != vertex_count || shape_count == 0 || shape_count > INT32_MAX)
-        goto done;
+        goto malformed;
     if (!gltf_checked_mul_size(
             (size_t)shape_count, GLTF_PRELOAD_MORPH_POD_RECORD_SIZE, &record_bytes) ||
         record_bytes != (size_t)record_bytes_u32)
-        goto done;
+        goto malformed;
     names_bytes = (size_t)names_bytes_u32;
     payload_bytes = (size_t)payload_bytes_u32;
     records_offset = GLTF_PRELOAD_MORPH_POD_HEADER_SIZE;
@@ -66,13 +68,13 @@ static void gltf_preload_take_decoded_morph(rt_gltf_preload_bundle *preload_bund
         !gltf_checked_add_size(names_offset, names_bytes, &payload_offset) ||
         !gltf_checked_add_size(payload_offset, payload_bytes, &required_len) ||
         required_len > blob_len)
-        goto done;
+        goto malformed;
     if (!gltf_checked_mul_size((size_t)vertex_count, 3u * sizeof(float), &channel_bytes))
-        goto done;
+        goto malformed;
 
     morph = rt_morphtarget3d_new((int64_t)vertex_count);
     if (!morph)
-        goto done;
+        goto malformed;
     for (uint32_t si = 0; si < shape_count; si++) {
         const uint8_t *record =
             blob + records_offset + (size_t)si * GLTF_PRELOAD_MORPH_POD_RECORD_SIZE;
@@ -85,26 +87,27 @@ static void gltf_preload_take_decoded_morph(rt_gltf_preload_bundle *preload_bund
         uint32_t tan_offset = gltf_read_u32_le(record + 24);
         const char *name;
         int64_t shape;
-        if (name_len == 0 || (size_t)name_offset + (size_t)name_len > names_bytes)
-            continue;
+        if (name_len == 0 || (size_t)name_offset >= names_bytes ||
+            (size_t)name_len > names_bytes - (size_t)name_offset)
+            goto malformed;
         name = (const char *)(blob + names_offset + name_offset);
         if (name[name_len - 1u] != '\0')
-            continue;
+            goto malformed;
         if ((flags & GLTF_PRELOAD_MORPH_POD_HAS_POSITIONS) != 0 &&
             ((size_t)pos_offset > payload_bytes ||
              channel_bytes > payload_bytes - (size_t)pos_offset))
-            continue;
+            goto malformed;
         if ((flags & GLTF_PRELOAD_MORPH_POD_HAS_NORMALS) != 0 &&
             ((size_t)norm_offset > payload_bytes ||
              channel_bytes > payload_bytes - (size_t)norm_offset))
-            continue;
+            goto malformed;
         if ((flags & GLTF_PRELOAD_MORPH_POD_HAS_TANGENTS) != 0 &&
             ((size_t)tan_offset > payload_bytes ||
              channel_bytes > payload_bytes - (size_t)tan_offset))
-            continue;
+            goto malformed;
         shape = rt_morphtarget3d_add_shape(morph, rt_const_cstr(name));
         if (shape < 0)
-            continue;
+            goto malformed;
         rt_morphtarget3d_set_weight(morph, shape, weight);
         for (uint32_t vi = 0; vi < vertex_count; vi++) {
             if ((flags & GLTF_PRELOAD_MORPH_POD_HAS_POSITIONS) != 0) {
@@ -142,9 +145,16 @@ static void gltf_preload_take_decoded_morph(rt_gltf_preload_bundle *preload_bund
     if (rt_morphtarget3d_get_shape_count(morph) > 0)
         rt_mesh3d_set_morph_targets(mesh_obj, morph);
 
-done:
     gltf_release_local(morph);
     free(blob);
+    return 1;
+
+malformed:
+    rt_asset_error_set_if_empty(RT_ASSET_ERROR_CORRUPT,
+                                "GLTF.Load: malformed preloaded morph data");
+    gltf_release_local(morph);
+    free(blob);
+    return 0;
 }
 
 /// @brief Unpack a primitive's preloaded "VGMP" mesh POD blob into a new Mesh3D.
@@ -174,10 +184,10 @@ static void *gltf_preload_take_decoded_mesh(rt_gltf_preload_bundle *preload_bund
     size_t vertex_offset;
     size_t index_offset;
     size_t required_len;
-    vgfx3d_vertex_t *vertices;
-    uint32_t *indices;
-    void *mesh_obj;
-    rt_mesh3d *mesh;
+    vgfx3d_vertex_t *vertices = NULL;
+    uint32_t *indices = NULL;
+    void *mesh_obj = NULL;
+    rt_mesh3d *mesh = NULL;
 
     if (out_flags)
         *out_flags = 0u;
@@ -212,49 +222,61 @@ static void *gltf_preload_take_decoded_mesh(rt_gltf_preload_bundle *preload_bund
 
     vertices = (vgfx3d_vertex_t *)malloc(vertex_bytes);
     indices = (uint32_t *)malloc(index_bytes);
-    if (!vertices || !indices) {
-        free(vertices);
-        free(indices);
+    if (!vertices || !indices)
         goto malformed;
-    }
     memcpy(vertices, blob + vertex_offset, vertex_bytes);
     memcpy(indices, blob + index_offset, index_bytes);
 
     mesh_obj = rt_mesh3d_new();
-    if (!mesh_obj) {
-        free(vertices);
-        free(indices);
+    if (!mesh_obj)
         goto malformed;
-    }
     mesh = (rt_mesh3d *)mesh_obj;
     free(mesh->vertices);
     free(mesh->positions64);
     free(mesh->indices);
     mesh->vertices = vertices;
+    vertices = NULL;
+    if ((size_t)vertex_count > SIZE_MAX / (3u * sizeof(double))) {
+        rt_asset_error_set_if_empty(RT_ASSET_ERROR_TOO_LARGE,
+                                    "GLTF.Load: preloaded mesh precision sidecar is too large");
+        goto malformed;
+    }
     mesh->positions64 = (double *)calloc((size_t)vertex_count * 3u, sizeof(double));
-    if (mesh->positions64) {
-        for (uint32_t vi = 0; vi < vertex_count; vi++) {
-            mesh->positions64[(size_t)vi * 3u + 0] = (double)vertices[vi].pos[0];
-            mesh->positions64[(size_t)vi * 3u + 1] = (double)vertices[vi].pos[1];
-            mesh->positions64[(size_t)vi * 3u + 2] = (double)vertices[vi].pos[2];
-        }
+    if (!mesh->positions64) {
+        rt_asset_error_set_if_empty(RT_ASSET_ERROR_TOO_LARGE,
+                                    "GLTF.Load: preloaded mesh precision sidecar is too large");
+        goto malformed;
+    }
+    for (uint32_t vi = 0; vi < vertex_count; vi++) {
+        mesh->positions64[(size_t)vi * 3u + 0] = (double)mesh->vertices[vi].pos[0];
+        mesh->positions64[(size_t)vi * 3u + 1] = (double)mesh->vertices[vi].pos[1];
+        mesh->positions64[(size_t)vi * 3u + 2] = (double)mesh->vertices[vi].pos[2];
     }
     mesh->vertex_count = vertex_count;
     mesh->vertex_capacity = vertex_count;
     mesh->indices = indices;
+    indices = NULL;
     mesh->index_count = index_count;
     mesh->index_capacity = index_count;
     mesh->bone_count = (int32_t)bone_count_u32;
     mesh->build_failed = 0;
     rt_mesh3d_touch_geometry_now(mesh);
-    gltf_preload_take_decoded_morph(
-        preload_bundle, mesh_index, primitive_index, mesh_obj, vertex_count);
+    if (!gltf_preload_take_decoded_morph(
+            preload_bundle, mesh_index, primitive_index, mesh_obj, vertex_count))
+        goto malformed;
     if (out_flags)
         *out_flags = flags;
     free(blob);
     return mesh_obj;
 
 malformed:
+    if (mesh_obj) {
+        if (rt_obj_release_check0(mesh_obj))
+            rt_obj_free(mesh_obj);
+    } else {
+        free(vertices);
+        free(indices);
+    }
     free(blob);
     return NULL;
 }
@@ -874,7 +896,8 @@ static void gltf_parse_punctual_lights(void *root, void ***out_lights, int32_t *
     punctual = extensions ? jget(extensions, "KHR_lights_punctual") : NULL;
     lights_arr = punctual ? jarr(punctual, "lights") : NULL;
     count64 = jarr_len(lights_arr);
-    if (!lights_arr || count64 <= 0 || count64 > INT32_MAX)
+    if (!lights_arr || count64 <= 0 || count64 > INT32_MAX ||
+        !rt_untrusted_count_ok(count64, sizeof(void *), 64u * 1024u * 1024u))
         return;
     lights = (void **)calloc((size_t)count64, sizeof(void *));
     if (!lights)

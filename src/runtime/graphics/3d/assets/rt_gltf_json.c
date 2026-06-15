@@ -131,13 +131,36 @@ size_t gltf_json_skip_string_raw(const char *json, size_t len, size_t pos) {
         return SIZE_MAX;
     pos++;
     while (pos < len) {
-        char c = json[pos++];
+        unsigned char c = (unsigned char)json[pos++];
+        if (c < 0x20u)
+            return SIZE_MAX;
         if (c == '"')
             return pos;
         if (c == '\\') {
+            char esc;
             if (pos >= len)
                 return SIZE_MAX;
-            pos++;
+            esc = json[pos++];
+            switch (esc) {
+                case '"':
+                case '\\':
+                case '/':
+                case 'b':
+                case 'f':
+                case 'n':
+                case 'r':
+                case 't':
+                    break;
+                case 'u': {
+                    uint32_t ignored_cp;
+                    if (!gltf_json_read_hex4(json, len, pos, &ignored_cp))
+                        return SIZE_MAX;
+                    pos += 4u;
+                    break;
+                }
+                default:
+                    return SIZE_MAX;
+            }
         }
     }
     return SIZE_MAX;
@@ -202,8 +225,8 @@ char *gltf_json_read_string_alloc(const char *json, size_t len, size_t pos, size
                     if (cp >= 0xD800u && cp <= 0xDBFFu) {
                         uint32_t low;
                         if (pos + 6u > len || json[pos] != '\\' || json[pos + 1u] != 'u' ||
-                            !gltf_json_read_hex4(json, len, pos + 2u, &low) ||
-                            low < 0xDC00u || low > 0xDFFFu) {
+                            !gltf_json_read_hex4(json, len, pos + 2u, &low) || low < 0xDC00u ||
+                            low > 0xDFFFu) {
                             free(out);
                             return NULL;
                         }
@@ -234,10 +257,90 @@ char *gltf_json_read_string_alloc(const char *json, size_t len, size_t pos, size
 /// way.
 int gltf_json_key_matches(
     const char *json, size_t len, size_t pos, const char *key, size_t *out_next) {
+    size_t key_len;
+    size_t start;
+    size_t cursor;
+    if (out_next)
+        *out_next = SIZE_MAX;
+    if (!json || !key || pos >= len || json[pos] != '"')
+        return 0;
+    key_len = strlen(key);
+    start = pos + 1u;
+    cursor = start;
+    while (cursor < len) {
+        unsigned char c = (unsigned char)json[cursor];
+        if (c < 0x20u)
+            return 0;
+        if (c == '\\')
+            break;
+        if (c == '"') {
+            if (out_next)
+                *out_next = cursor + 1u;
+            return cursor - start == key_len && memcmp(json + start, key, key_len) == 0;
+        }
+        cursor++;
+    }
     char *decoded = gltf_json_read_string_alloc(json, len, pos, out_next);
-    int matches = decoded && key && strcmp(decoded, key) == 0;
+    int matches = decoded && strcmp(decoded, key) == 0;
     free(decoded);
     return matches;
+}
+
+/// @brief Skip and validate a JSON primitive token.
+/// @details Accepts the JSON literals `true`, `false`, `null`, and numbers matching the JSON number
+///          grammar. Whitespace may trail the primitive before the delimiter, but arbitrary tokens
+///          are rejected so malformed glTF cannot be silently skipped.
+/// @param json Source JSON buffer.
+/// @param len Source byte length.
+/// @param pos Primitive start offset.
+/// @return Offset of the first delimiter after the primitive, or SIZE_MAX on malformed input.
+static size_t gltf_json_skip_primitive(const char *json, size_t len, size_t pos) {
+    size_t start = pos;
+    size_t end;
+    size_t p;
+    if (!json || pos >= len)
+        return SIZE_MAX;
+    while (pos < len && json[pos] != ',' && json[pos] != '}' && json[pos] != ']')
+        pos++;
+    end = pos;
+    while (end > start && isspace((unsigned char)json[end - 1u]))
+        end--;
+    if (end == start)
+        return SIZE_MAX;
+    if ((end - start == 4u && memcmp(json + start, "true", 4u) == 0) ||
+        (end - start == 4u && memcmp(json + start, "null", 4u) == 0) ||
+        (end - start == 5u && memcmp(json + start, "false", 5u) == 0))
+        return pos;
+    p = start;
+    if (json[p] == '-')
+        p++;
+    if (p >= end)
+        return SIZE_MAX;
+    if (json[p] == '0') {
+        p++;
+    } else if (json[p] >= '1' && json[p] <= '9') {
+        while (p < end && json[p] >= '0' && json[p] <= '9')
+            p++;
+    } else {
+        return SIZE_MAX;
+    }
+    if (p < end && json[p] == '.') {
+        p++;
+        if (p >= end || json[p] < '0' || json[p] > '9')
+            return SIZE_MAX;
+        while (p < end && json[p] >= '0' && json[p] <= '9')
+            p++;
+    }
+    if (p < end && (json[p] == 'e' || json[p] == 'E')) {
+        p++;
+        if (p < end && (json[p] == '+' || json[p] == '-'))
+            p++;
+        if (p >= end || json[p] < '0' || json[p] > '9')
+            return SIZE_MAX;
+        while (p < end && json[p] >= '0' && json[p] <= '9')
+            p++;
+    }
+    return p == end ? pos : SIZE_MAX;
 }
 
 /// @brief Skip a complete JSON value (string, number, object, or array) starting at @p pos.
@@ -253,9 +356,7 @@ size_t gltf_json_skip_value(const char *json, size_t len, size_t pos) {
     if (json[pos] == '"')
         return gltf_json_skip_string_raw(json, len, pos);
     if (json[pos] != '{' && json[pos] != '[') {
-        while (pos < len && json[pos] != ',' && json[pos] != '}' && json[pos] != ']')
-            pos++;
-        return pos;
+        return gltf_json_skip_primitive(json, len, pos);
     }
     do {
         char c = json[pos];
@@ -273,8 +374,7 @@ size_t gltf_json_skip_value(const char *json, size_t len, size_t pos) {
             array_depth++;
         else if (c == ']')
             array_depth--;
-        if (object_depth < 0 || array_depth < 0 ||
-            object_depth + array_depth > GLTF_JSON_MAX_DEPTH)
+        if (object_depth < 0 || array_depth < 0 || object_depth + array_depth > GLTF_JSON_MAX_DEPTH)
             return SIZE_MAX;
         pos++;
     } while (pos < len && (object_depth > 0 || array_depth > 0));
@@ -362,6 +462,8 @@ int gltf_json_find_top_level_array(
             array_depth++;
         else if (c == ']')
             array_depth--;
+        if (object_depth < 0 || array_depth < 0 || object_depth + array_depth > GLTF_JSON_MAX_DEPTH)
+            return 0;
         pos++;
     }
     return 0;

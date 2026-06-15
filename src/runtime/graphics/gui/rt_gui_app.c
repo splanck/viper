@@ -64,10 +64,30 @@ extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 
 static void rt_gui_app_finalizer(void *app_ptr);
 
+/// @brief Duplicate a NUL-terminated GUI app string with malloc ownership.
+/// @details GUI app titles and drag/drop payload snapshots are released with
+///          `free`, so this helper avoids depending on platform-specific
+///          `strdup` declarations while preserving the existing ownership model.
+/// @param text Source string to copy; NULL returns NULL.
+/// @return Newly allocated copy, or NULL on invalid input, overflow, or OOM.
+static char *rt_gui_app_strdup(const char *text) {
+    if (!text)
+        return NULL;
+    size_t len = strlen(text);
+    if (len > SIZE_MAX - 1u)
+        return NULL;
+    char *copy = (char *)malloc(len + 1u);
+    if (!copy)
+        return NULL;
+    memcpy(copy, text, len + 1u);
+    return copy;
+}
+
 /// @brief Return the index of `app` in `s_registered_apps`, or -1 if not found.
 /// @details Linear search over the live-app registry. The registry is small
 ///          (typically 1-4 apps) so O(n) is fine.
 static int rt_gui_app_index(const rt_gui_app_t *app) {
+    RT_ASSERT_MAIN_THREAD();
     if (!app)
         return -1;
     for (int i = 0; i < s_registered_app_count; i++) {
@@ -82,6 +102,7 @@ static int rt_gui_app_index(const rt_gui_app_t *app) {
 ///          code that holds a reference past app_destroy) without dereferencing
 ///          a freed pointer.
 static int rt_gui_destroyed_app_index(const void *handle) {
+    RT_ASSERT_MAIN_THREAD();
     if (!handle)
         return -1;
     for (int i = 0; i < s_destroyed_app_count; i++) {
@@ -95,6 +116,7 @@ static int rt_gui_destroyed_app_index(const void *handle) {
 /// @details Used by checked entry points to guard against use-after-destroy
 ///          without dereferencing the potentially freed pointer.
 int rt_gui_is_destroyed_app_handle(const void *handle) {
+    RT_ASSERT_MAIN_THREAD();
     return rt_gui_destroyed_app_index(handle) >= 0;
 }
 
@@ -103,6 +125,7 @@ int rt_gui_is_destroyed_app_handle(const void *handle) {
 ///          `rt_gui_app_from_widget` to confirm that a widget's user_data
 ///          really is an app pointer before casting it.
 int rt_gui_is_app_handle_known(const void *handle) {
+    RT_ASSERT_MAIN_THREAD();
     if (!handle)
         return 0;
     if (handle == s_current_app || handle == s_active_app)
@@ -115,6 +138,7 @@ int rt_gui_is_app_handle_known(const void *handle) {
 ///          new rt_gui_app_new called with the same address from the GC heap).
 ///          Without this, the recycled address would be permanently rejected.
 static void rt_gui_forget_destroyed_app_handle(const void *handle) {
+    RT_ASSERT_MAIN_THREAD();
     int idx = rt_gui_destroyed_app_index(handle);
     if (idx < 0)
         return;
@@ -129,6 +153,7 @@ static void rt_gui_forget_destroyed_app_handle(const void *handle) {
 ///          entries are skipped. A handle that wasn't found in the live registry
 ///          should still be noted (e.g., if the GC freed it before unregister ran).
 static void rt_gui_note_destroyed_app_handle(const void *handle) {
+    RT_ASSERT_MAIN_THREAD();
     if (!handle || rt_gui_destroyed_app_index(handle) >= 0)
         return;
     if (s_destroyed_app_count >= RT_GUI_DESTROYED_APP_TOMBSTONE_LIMIT) {
@@ -159,6 +184,7 @@ static void rt_gui_note_destroyed_app_handle(const void *handle) {
 ///          accepted. The registry uses geometric-growth realloc.
 /// @return 1 on success, 0 on OOM.
 int rt_gui_register_app(rt_gui_app_t *app) {
+    RT_ASSERT_MAIN_THREAD();
     if (!app)
         return 0;
     rt_gui_forget_destroyed_app_handle(app);
@@ -182,6 +208,7 @@ int rt_gui_register_app(rt_gui_app_t *app) {
 /// @details After removal the handle is considered destroyed — subsequent calls to
 ///          `rt_gui_is_app_handle_known` with this address will return false.
 static void rt_gui_unregister_app(rt_gui_app_t *app) {
+    RT_ASSERT_MAIN_THREAD();
     int idx = rt_gui_app_index(app);
     if (idx < 0)
         return;
@@ -834,7 +861,7 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
     params.resizable = 1;
 
     app->window = vgfx_create_window(&params);
-    app->title = strdup(window_title);
+    app->title = rt_gui_app_strdup(window_title);
     free(ctitle);
 
     if (!app->window) {
@@ -1300,8 +1327,8 @@ static void rt_gui_complete_drag_drop(rt_gui_app_t *app, vg_widget_t *event_root
                    : NULL;
     vg_widget_t *target = rt_gui_find_drop_target(hit, source, source->drag_type);
     if (target) {
-        char *new_type = source->drag_type ? strdup(source->drag_type) : NULL;
-        char *new_data = source->drag_data ? strdup(source->drag_data) : NULL;
+        char *new_type = source->drag_type ? rt_gui_app_strdup(source->drag_type) : NULL;
+        char *new_data = source->drag_data ? rt_gui_app_strdup(source->drag_data) : NULL;
         if ((source->drag_type && !new_type) || (source->drag_data && !new_data)) {
             free(new_type);
             free(new_data);

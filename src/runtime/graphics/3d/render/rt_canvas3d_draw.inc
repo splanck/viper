@@ -906,7 +906,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
     float validated_model_matrix[16];
     double vertex_rebase_origin[3] = {0.0, 0.0, 0.0};
     int rebase_identity_vertices = 0;
-    void *new_draw_refs[16];
+    void *new_draw_refs[CANVAS3D_DRAW_RESOURCE_ROLLBACK_CAP];
     int32_t new_draw_ref_count = 0;
     int suppress_normal_map = 0;
     uint32_t safe_vertex_count = 0;
@@ -970,25 +970,40 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
     rt_mesh3d_refresh_bounds(mesh);
 
     if (rt_heap_is_payload(mesh_obj)) {
-        if (!canvas3d_track_draw_resource(c, mesh_obj, new_draw_refs, &new_draw_ref_count, 16))
+        if (!canvas3d_track_draw_resource(c,
+                                          mesh_obj,
+                                          new_draw_refs,
+                                          &new_draw_ref_count,
+                                          CANVAS3D_DRAW_RESOURCE_ROLLBACK_CAP))
             return;
     }
-    if (!canvas3d_track_draw_resource(c, material_obj, new_draw_refs, &new_draw_ref_count, 16)) {
+    if (!canvas3d_track_draw_resource(c,
+                                      material_obj,
+                                      new_draw_refs,
+                                      &new_draw_ref_count,
+                                      CANVAS3D_DRAW_RESOURCE_ROLLBACK_CAP)) {
         canvas3d_release_new_draw_resources(c, new_draw_refs, new_draw_ref_count);
         return;
     }
-    if (!canvas3d_track_material_resources(c, mat, new_draw_refs, &new_draw_ref_count, 16)) {
+    if (!canvas3d_track_material_resources(
+            c, mat, new_draw_refs, &new_draw_ref_count, CANVAS3D_DRAW_RESOURCE_ROLLBACK_CAP)) {
         canvas3d_release_new_draw_resources(c, new_draw_refs, new_draw_ref_count);
         return;
     }
-    if (!canvas3d_track_draw_resource(
-            c, pending_splat_map, new_draw_refs, &new_draw_ref_count, 16)) {
+    if (!canvas3d_track_draw_resource(c,
+                                      pending_splat_map,
+                                      new_draw_refs,
+                                      &new_draw_ref_count,
+                                      CANVAS3D_DRAW_RESOURCE_ROLLBACK_CAP)) {
         canvas3d_release_new_draw_resources(c, new_draw_refs, new_draw_ref_count);
         return;
     }
     for (int i = 0; i < 4; i++) {
-        if (!canvas3d_track_draw_resource(
-                c, pending_splat_layers[i], new_draw_refs, &new_draw_ref_count, 16)) {
+        if (!canvas3d_track_draw_resource(c,
+                                          pending_splat_layers[i],
+                                          new_draw_refs,
+                                          &new_draw_ref_count,
+                                          CANVAS3D_DRAW_RESOURCE_ROLLBACK_CAP)) {
             canvas3d_release_new_draw_resources(c, new_draw_refs, new_draw_ref_count);
             return;
         }

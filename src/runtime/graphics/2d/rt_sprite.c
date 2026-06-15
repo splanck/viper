@@ -38,6 +38,7 @@
 
 #include "rt_sprite.h"
 
+#include "rt_file_stdio.h"
 #include "rt_gif.h"
 #include "rt_graphics.h"
 #include "rt_heap.h"
@@ -122,9 +123,15 @@ static int64_t sprite_normalize_delay(int64_t ms) {
     return ms < 1 ? 1 : ms;
 }
 
-/// @brief Grow the parallel frames[] / frame_delays_ms[] arrays to hold at
-///        least @p needed frames (doubling, overflow-checked); new slots get
-///        the sprite's default delay. @return 1 on success, 0 on failure.
+/// @brief Grow the parallel frames[] / frame_delays_ms[] arrays atomically.
+/// @details Allocates replacement arrays first, copies existing frame pointers
+///          and delay values into them, initializes new slots to NULL/default
+///          delay, then swaps both pointers together. This avoids the partial
+///          `realloc` state where one array has moved and the other allocation
+///          fails, which would corrupt the sprite's frame bookkeeping.
+/// @param sprite Sprite whose frame storage should grow.
+/// @param needed Minimum number of frame slots required.
+/// @return 1 on success, 0 on invalid input, overflow, or allocation failure.
 static int8_t sprite_ensure_frame_capacity(rt_sprite_impl *sprite, int64_t needed) {
     if (!sprite || needed <= 0)
         return 0;
@@ -143,22 +150,29 @@ static int8_t sprite_ensure_frame_capacity(rt_sprite_impl *sprite, int64_t neede
         (uint64_t)new_cap > (uint64_t)SIZE_MAX / sizeof(int64_t))
         return 0;
 
-    void **new_frames = (void **)realloc(sprite->frames, (size_t)new_cap * sizeof(void *));
-    if (!new_frames)
+    void **new_frames = (void **)malloc((size_t)new_cap * sizeof(void *));
+    int64_t *new_delays = (int64_t *)malloc((size_t)new_cap * sizeof(int64_t));
+    if (!new_frames || !new_delays) {
+        free(new_frames);
+        free(new_delays);
         return 0;
-    sprite->frames = new_frames;
+    }
 
-    int64_t *new_delays =
-        (int64_t *)realloc(sprite->frame_delays_ms, (size_t)new_cap * sizeof(int64_t));
-    if (!new_delays)
-        return 0;
-    sprite->frame_delays_ms = new_delays;
+    for (int64_t i = 0; i < sprite->frame_capacity; i++) {
+        new_frames[i] = sprite->frames ? sprite->frames[i] : NULL;
+        new_delays[i] =
+            sprite->frame_delays_ms ? sprite->frame_delays_ms[i] : sprite->frame_delay_ms;
+    }
 
     for (int64_t i = sprite->frame_capacity; i < new_cap; i++) {
-        sprite->frames[i] = NULL;
-        sprite->frame_delays_ms[i] =
+        new_frames[i] = NULL;
+        new_delays[i] =
             sprite->frame_delay_ms > 0 ? sprite->frame_delay_ms : SPRITE_DEFAULT_FRAME_DELAY_MS;
     }
+    free(sprite->frames);
+    free(sprite->frame_delays_ms);
+    sprite->frames = new_frames;
+    sprite->frame_delays_ms = new_delays;
     sprite->frame_capacity = new_cap;
     return 1;
 }
@@ -611,7 +625,7 @@ void *rt_sprite_new(void *pixels) {
 /// @brief Detect image format from file magic bytes.
 /// @return 1=BMP, 2=PNG, 0=unknown
 static int detect_image_format(const char *filepath) {
-    FILE *f = fopen(filepath, "rb");
+    FILE *f = rt_file_stdio_open_utf8(filepath, "rb");
     if (!f)
         return 0;
     uint8_t hdr[8];

@@ -876,7 +876,7 @@ static fbx_node_t *fbx_find_child(fbx_node_t *parent, const char *name) {
 
 /// @brief Coerce property `idx` of `node` to int64 (handles Y/I/L variants).
 static int64_t fbx_prop_i64(fbx_node_t *node, int idx) {
-    if (!node || idx >= node->prop_count)
+    if (!node || idx < 0 || idx >= node->prop_count)
         return 0;
     fbx_prop_t *p = &node->props[idx];
     switch (p->type) {
@@ -895,7 +895,7 @@ static int64_t fbx_prop_i64(fbx_node_t *node, int idx) {
 
 /// @brief Coerce property `idx` of `node` to double (handles F/D variants).
 static double fbx_prop_f64(fbx_node_t *node, int idx) {
-    if (!node || idx >= node->prop_count)
+    if (!node || idx < 0 || idx >= node->prop_count)
         return 0.0;
     fbx_prop_t *p = &node->props[idx];
     if (p->type == 'D')
@@ -913,7 +913,7 @@ static const char *fbx_prop_str(fbx_node_t *node, int idx);
 static int fbx_prop_truthy(fbx_node_t *node, int idx) {
     fbx_prop_t *p;
     const char *text;
-    if (!node || idx >= node->prop_count)
+    if (!node || idx < 0 || idx >= node->prop_count)
         return 0;
     p = &node->props[idx];
     switch (p->type) {
@@ -937,7 +937,7 @@ static int fbx_prop_truthy(fbx_node_t *node, int idx) {
 
 /// @brief Borrowed C-string view of property `idx` (S/R type). NULL otherwise.
 static const char *fbx_prop_str(fbx_node_t *node, int idx) {
-    if (!node || idx >= node->prop_count)
+    if (!node || idx < 0 || idx >= node->prop_count)
         return "";
     fbx_prop_t *p = &node->props[idx];
     if (p->type == 'S' && p->v.string.str)
@@ -1014,6 +1014,9 @@ static int fbx_parse_connections(fbx_node_t *root, fbx_conn_table_t *ct) {
             if (ct->capacity < 0 || ct->capacity > INT32_MAX / 2)
                 return 0;
             int32_t new_cap = ct->capacity == 0 ? 64 : ct->capacity * 2;
+            if (!rt_untrusted_count_ok(
+                    (int64_t)new_cap, sizeof(fbx_conn_t), FBX_MAX_DECOMPRESSED_ARRAY_BYTES))
+                return 0;
             if ((size_t)new_cap > SIZE_MAX / sizeof(fbx_conn_t))
                 return 0;
             fbx_conn_t *nc =

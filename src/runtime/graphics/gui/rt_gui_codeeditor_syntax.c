@@ -40,6 +40,25 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+/// @brief Duplicate a syntax keyword token with malloc ownership.
+/// @details Custom keyword lists are stored as `char *` entries and released
+///          with `free`; this helper avoids platform-specific `strdup`
+///          availability while keeping the parser's cleanup paths unchanged.
+/// @param text Source token to copy; NULL returns NULL.
+/// @return Newly allocated copy, or NULL on invalid input, overflow, or OOM.
+static char *rt_codeeditor_syntax_strdup(const char *text) {
+    if (!text)
+        return NULL;
+    size_t len = strlen(text);
+    if (len > SIZE_MAX - 1u)
+        return NULL;
+    char *copy = (char *)malloc(len + 1u);
+    if (!copy)
+        return NULL;
+    memcpy(copy, text, len + 1u);
+    return copy;
+}
+
 //=============================================================================
 // CodeEditor Enhancements - Syntax Highlighting (Phase 4)
 //=============================================================================
@@ -727,7 +746,7 @@ void rt_codeeditor_set_custom_keywords(void *editor, rt_string keywords) {
                 }
                 new_keywords = p;
             }
-            char *copy = strdup(token);
+            char *copy = rt_codeeditor_syntax_strdup(token);
             if (!copy) {
                 ok = 0;
                 break;

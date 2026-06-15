@@ -77,6 +77,7 @@ static volatile int g_canvas3d_backend_fallback_notice_emitted = 0;
 #define CANVAS3D_MATERIAL_DEPTH_BIAS_ABS_MAX 0.05
 #define CANVAS3D_MATERIAL_SLOPE_DEPTH_BIAS_ABS_MAX 16.0
 #define CANVAS3D_MAX_RAW_MORPH_SHAPES 32
+#define CANVAS3D_DRAW_RESOURCE_ROLLBACK_CAP 24
 #if defined(__clang__) || defined(__GNUC__)
 #define CANVAS3D_UNUSED_PRIVATE __attribute__((unused))
 #else
@@ -964,6 +965,13 @@ static void canvas3d_bind_morph_cmd(rt_canvas3d *c,
                 mesh->morph_normal_deltas,
                 delta_float_count,
                 "Canvas3D.DrawMesh: raw morph normal snapshot failed");
+        if (mesh->morph_normal_deltas && !normal_snapshot) {
+            canvas3d_release_tracked_temp_buffer(c, delta_snapshot);
+            canvas3d_release_tracked_temp_buffer(c, weights_snapshot);
+            if (prev_weights_snapshot)
+                canvas3d_release_tracked_temp_buffer(c, prev_weights_snapshot);
+            return;
+        }
         cmd->morph_deltas = delta_snapshot;
         cmd->morph_normal_deltas = normal_snapshot;
         cmd->morph_weights = weights_snapshot;
@@ -1222,7 +1230,7 @@ static int canvas3d_track_draw_resource(rt_canvas3d *c,
     if (!canvas3d_track_temp_object_new(c, obj, &inserted))
         return 0;
     if (inserted && new_refs && new_ref_count) {
-        if (*new_ref_count >= new_ref_capacity) {
+        if (new_ref_capacity <= 0 || *new_ref_count < 0 || *new_ref_count >= new_ref_capacity) {
             canvas3d_release_tracked_temp_object(c, tracked_obj);
             return 0;
         }

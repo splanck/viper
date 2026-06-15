@@ -130,15 +130,23 @@ static rt_gui_app_t *rt_filedialog_app(void) {
     return app ? app : s_current_app;
 }
 
-/// @brief Portable `strdup` wrapper — uses `_strdup` on Windows, `strdup` elsewhere.
+/// @brief Duplicate a NUL-terminated string using the runtime allocator contract.
+/// @details Avoids platform-specific `strdup` variants in graphics code and
+///          keeps ownership simple: the returned buffer is always allocated
+///          with `malloc` and must be released with `free`.
+/// @param text Source text to copy; NULL returns NULL.
+/// @return Newly allocated copy, or NULL on invalid input, overflow, or OOM.
 static char *rt_filedialog_strdup(const char *text) {
     if (!text)
         return NULL;
-#ifdef _WIN32
-    return _strdup(text);
-#else
-    return strdup(text);
-#endif
+    size_t len = strlen(text);
+    if (len > SIZE_MAX - 1u)
+        return NULL;
+    char *copy = (char *)malloc(len + 1u);
+    if (!copy)
+        return NULL;
+    memcpy(copy, text, len + 1u);
+    return copy;
 }
 
 /// @brief Join selected paths as a semicolon-delimited string with '\\' escaping.
@@ -466,6 +474,7 @@ static size_t s_filedialog_wrapper_cap = 0;
 ///          the magic tag), guarding against forged/freed handles. Capacity doubles from 8.
 /// @return 1 on success or if already present; 0 on overflow or realloc failure.
 static int rt_filedialog_register_wrapper(rt_filedialog_data_t *data) {
+    RT_ASSERT_MAIN_THREAD();
     if (!data)
         return 0;
     for (size_t i = 0; i < s_filedialog_wrapper_count; i++) {
@@ -489,6 +498,7 @@ static int rt_filedialog_register_wrapper(rt_filedialog_data_t *data) {
 
 /// @brief Remove a wrapper from the file-dialog registry, compacting the array. No-op if absent.
 static void rt_filedialog_unregister_wrapper(rt_filedialog_data_t *data) {
+    RT_ASSERT_MAIN_THREAD();
     if (!data)
         return;
     for (size_t i = 0; i < s_filedialog_wrapper_count; i++) {
@@ -504,6 +514,7 @@ static void rt_filedialog_unregister_wrapper(rt_filedialog_data_t *data) {
 
 /// @brief True if @p data is a currently-registered wrapper; backs handle validation.
 static int rt_filedialog_wrapper_is_registered(const rt_filedialog_data_t *data) {
+    RT_ASSERT_MAIN_THREAD();
     if (!data)
         return 0;
     for (size_t i = 0; i < s_filedialog_wrapper_count; i++) {
@@ -514,6 +525,7 @@ static int rt_filedialog_wrapper_is_registered(const rt_filedialog_data_t *data)
 }
 
 void rt_filedialog_invalidate_dialog(vg_dialog_t *dialog) {
+    RT_ASSERT_MAIN_THREAD();
     if (!dialog)
         return;
     for (size_t i = 0; i < s_filedialog_wrapper_count; i++) {
@@ -554,7 +566,7 @@ static void rt_filedialog_clear_selected_paths(rt_filedialog_data_t *data) {
 }
 
 /// @brief Copy the dialog's current selected-path list into the wrapper struct.
-/// @details Fetches the path array from the VG backend, deep-copies every string, then
+/// @details Fetches the borrowed path array owned by the VG backend, deep-copies every string, then
 ///          atomically replaces the wrapper's previous list. Partial copy failures clean
 ///          up fully and return 0 rather than leaving a corrupt partial list.
 static int rt_filedialog_copy_selected_paths(rt_filedialog_data_t *data) {

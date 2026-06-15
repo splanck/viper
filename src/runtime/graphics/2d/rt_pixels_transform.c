@@ -267,6 +267,48 @@ static int8_t pixels_long_double_extent_to_i64(long double extent, int64_t *out)
     return 1;
 }
 
+/// @brief Validate a Pixels buffer's row and total byte counts.
+/// @details Transform functions often index by `width * height` or copy whole
+///          rows. This helper performs the signed-dimension, pixel-count, and
+///          size_t byte overflow checks before those products are evaluated.
+///          Zero-width or zero-height buffers are valid and report zero counts.
+/// @param p                Pixels implementation to inspect.
+/// @param pixel_count_out  Optional output for width × height.
+/// @param pixel_bytes_out  Optional output for pixel_count × sizeof(uint32_t).
+/// @param row_bytes_out    Optional output for width × sizeof(uint32_t).
+/// @return 1 when all requested counts are representable; 0 otherwise.
+static int8_t pixels_transform_checked_layout(const rt_pixels_impl *p,
+                                              int64_t *pixel_count_out,
+                                              size_t *pixel_bytes_out,
+                                              size_t *row_bytes_out) {
+    int64_t pixel_count = 0;
+    size_t row_bytes = 0;
+    size_t pixel_bytes = 0;
+
+    if (!p || p->width < 0 || p->height < 0)
+        return 0;
+    if (p->width > 0) {
+        if ((uint64_t)p->width > (uint64_t)SIZE_MAX / sizeof(uint32_t))
+            return 0;
+        row_bytes = (size_t)p->width * sizeof(uint32_t);
+    }
+    if (p->width > 0 && p->height > 0) {
+        if (p->width > INT64_MAX / p->height)
+            return 0;
+        pixel_count = p->width * p->height;
+        if ((uint64_t)pixel_count > (uint64_t)SIZE_MAX / sizeof(uint32_t))
+            return 0;
+        pixel_bytes = (size_t)pixel_count * sizeof(uint32_t);
+    }
+    if (pixel_count_out)
+        *pixel_count_out = pixel_count;
+    if (pixel_bytes_out)
+        *pixel_bytes_out = pixel_bytes;
+    if (row_bytes_out)
+        *row_bytes_out = row_bytes;
+    return 1;
+}
+
 /// @brief Mirror the pixel buffer horizontally (left↔right). Returns a new Pixels.
 void *rt_pixels_flip_h(void *pixels) {
     rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.FlipH: null pixels");
@@ -300,10 +342,13 @@ void *rt_pixels_flip_v(void *pixels) {
     if (p->width <= 0 || p->height <= 0)
         return result;
 
+    size_t row_bytes = 0;
+    if (!pixels_transform_checked_layout(p, NULL, NULL, &row_bytes)) {
+        rt_trap("Pixels.FlipV: image dimensions overflow");
+        return NULL;
+    }
     for (int64_t y = 0; y < p->height; y++) {
-        memcpy(&result->data[(p->height - 1 - y) * p->width],
-               &p->data[y * p->width],
-               (size_t)p->width * sizeof(uint32_t));
+        memcpy(&result->data[(p->height - 1 - y) * p->width], &p->data[y * p->width], row_bytes);
     }
 
     return result;
@@ -379,7 +424,11 @@ void *rt_pixels_rotate_180(void *pixels) {
         return result;
 
     // Rotate 180: src[x,y] -> dst[width-1-x, height-1-y]
-    int64_t total = p->width * p->height;
+    int64_t total = 0;
+    if (!pixels_transform_checked_layout(p, &total, NULL, NULL)) {
+        rt_trap("Pixels.Rotate180: image dimensions overflow");
+        return NULL;
+    }
     for (int64_t i = 0; i < total; i++) {
         result->data[total - 1 - i] = p->data[i];
     }
@@ -411,10 +460,15 @@ void *rt_pixels_rotate(void *pixels, double angle_degrees) {
     // Fast paths for common angles
     if (fabs(angle_degrees) < 0.001 || fabs(angle_degrees - 360.0) < 0.001) {
         // No rotation - return a copy
+        size_t copy_bytes = 0;
+        if (!pixels_transform_checked_layout(p, NULL, &copy_bytes, NULL)) {
+            rt_trap("Pixels.Rotate: image dimensions overflow");
+            return NULL;
+        }
         rt_pixels_impl *result = pixels_alloc(p->width, p->height);
         if (!result)
             return NULL;
-        memcpy(result->data, p->data, (size_t)(p->width * p->height) * sizeof(uint32_t));
+        memcpy(result->data, p->data, copy_bytes);
         return result;
     }
     if (fabs(angle_degrees - 90.0) < 0.001)

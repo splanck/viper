@@ -491,7 +491,9 @@ void rt_tilemap_fill(void *tilemap_ptr, int64_t tile_index) {
     if (!tilemap)
         return;
 
-    int64_t count = tilemap->width * tilemap->height;
+    int64_t count = 0;
+    if (!tilemap_checked_grid_size(tilemap->width, tilemap->height, &count, NULL))
+        return;
     for (int64_t i = 0; i < count; i++)
         tilemap->tiles[i] = tile_index;
 }
@@ -1287,7 +1289,9 @@ void rt_tilemap_fill_layer(void *tilemap_ptr, int64_t layer, int64_t tile) {
         return;
     if (!tilemap->layers[layer].tiles)
         return;
-    int64_t count = tilemap->width * tilemap->height;
+    int64_t count = 0;
+    if (!tilemap_checked_grid_size(tilemap->width, tilemap->height, &count, NULL))
+        return;
     for (int64_t i = 0; i < count; i++)
         tilemap->layers[layer].tiles[i] = tile;
 }
@@ -1301,7 +1305,9 @@ void rt_tilemap_clear_layer(void *tilemap_ptr, int64_t layer) {
         return;
     if (!tilemap->layers[layer].tiles)
         return;
-    size_t grid_size = (size_t)(tilemap->width * tilemap->height) * sizeof(int64_t);
+    size_t grid_size = 0;
+    if (!tilemap_checked_grid_size(tilemap->width, tilemap->height, NULL, &grid_size))
+        return;
     memset(tilemap->layers[layer].tiles, 0, grid_size);
 }
 

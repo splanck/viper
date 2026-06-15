@@ -24,15 +24,6 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
-#if !defined(_WIN32)
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
-#ifndef _DARWIN_C_SOURCE
-#define _DARWIN_C_SOURCE
-#endif
-#endif
-
 #include "rt_asset_error.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
@@ -185,6 +176,7 @@ static int mesh3d_check_planned_payload(uint64_t vertex_count,
                                         uint64_t index_count,
                                         const char *trap_name) {
     uint64_t vertex_bytes;
+    uint64_t position_sidecar_bytes;
     uint64_t index_bytes;
     uint64_t total;
     if (vertex_count > UINT32_MAX || index_count > UINT32_MAX)
@@ -192,12 +184,18 @@ static int mesh3d_check_planned_payload(uint64_t vertex_count,
     if (vertex_count > UINT64_MAX / (uint64_t)sizeof(vgfx3d_vertex_t))
         goto too_large;
     vertex_bytes = vertex_count * (uint64_t)sizeof(vgfx3d_vertex_t);
+    if (vertex_count > UINT64_MAX / (uint64_t)(3u * sizeof(double)))
+        goto too_large;
+    position_sidecar_bytes = vertex_count * (uint64_t)(3u * sizeof(double));
     if (index_count > UINT64_MAX / (uint64_t)sizeof(uint32_t))
         goto too_large;
     index_bytes = index_count * (uint64_t)sizeof(uint32_t);
     if (UINT64_MAX - vertex_bytes < index_bytes)
         goto too_large;
     total = vertex_bytes + index_bytes;
+    if (UINT64_MAX - total < position_sidecar_bytes)
+        goto too_large;
+    total += position_sidecar_bytes;
     if (total <= MESH3D_PROCEDURAL_MAX_BYTES)
         return 1;
 too_large:

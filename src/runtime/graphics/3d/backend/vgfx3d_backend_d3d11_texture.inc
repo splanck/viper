@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_texture.inc  (#included from vgfx3d_backend_d3d11.c; not a standalone translation unit)
-// Purpose: D3D11 texture/cubemap cache lifecycle and streamed upload + SRV creation
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_texture.inc  (#included from
+// vgfx3d_backend_d3d11.c; not a standalone translation unit) Purpose: D3D11 texture/cubemap cache
+// lifecycle and streamed upload + SRV creation
 //===----------------------------------------------------------------------===//
 
 // Texture and cubemap caches — keyed by stable host identity + generation so
@@ -236,13 +237,12 @@ static uint64_t d3d11_texture_pending_bytes(const d3d_tex_cache_entry_t *entry) 
     if (!entry)
         return 0;
     if (entry->texture_asset)
-        return vgfx3d_textureasset_pending_native_snapshot_bytes(
-            entry->texture_asset,
-            entry->native_mip_start,
-            entry->native_mip_count,
-            entry->native_next_mip,
-            entry->native_next_block_row,
-            entry->upload_in_progress);
+        return vgfx3d_textureasset_pending_native_snapshot_bytes(entry->texture_asset,
+                                                                 entry->native_mip_start,
+                                                                 entry->native_mip_count,
+                                                                 entry->native_next_mip,
+                                                                 entry->native_next_block_row,
+                                                                 entry->upload_in_progress);
     return vgfx3d_pending_rgba_upload_bytes(
         entry->width, entry->height, entry->upload_next_row, entry->upload_in_progress);
 }
@@ -350,8 +350,7 @@ static int d3d11_validate_native_texture_snapshot(void *asset,
     previous_mip = first_mip;
     for (int64_t i = 1; i < mip_count; i++) {
         vgfx3d_native_texture_mip_t mip;
-        if (!vgfx3d_textureasset_get_native_snapshot_mip(
-                asset, mip_start, mip_count, i, &mip)) {
+        if (!vgfx3d_textureasset_get_native_snapshot_mip(asset, mip_start, mip_count, i, &mip)) {
             return 0;
         }
         if (!vgfx3d_d3d11_validate_native_mip_desc(&mip,
@@ -441,9 +440,7 @@ static HRESULT d3d11_allocate_native_texture_srv(d3d11_context_t *ctx,
         return E_INVALIDARG;
     format = d3d11_native_texture_format(first_mip->format_id);
     if (format == DXGI_FORMAT_UNKNOWN ||
-        !vgfx3d_d3d11_is_valid_native_mip_count(first_mip->width,
-                                                first_mip->height,
-                                                mip_count) ||
+        !vgfx3d_d3d11_is_valid_native_mip_count(first_mip->width, first_mip->height, mip_count) ||
         !vgfx3d_d3d11_validate_native_mip_desc(first_mip,
                                                NULL,
                                                first_mip->format_id,
@@ -500,7 +497,7 @@ static int d3d11_continue_native_texture_upload(d3d11_context_t *ctx,
         uint64_t offset;
         uint64_t upload_bytes;
         D3D11_BOX box;
-        vgfx3d_native_texture_mip_t previous_mip;
+        vgfx3d_native_texture_mip_t previous_mip = {0};
         const vgfx3d_native_texture_mip_t *previous_mip_ptr = NULL;
         int32_t expected_block_width;
         int32_t expected_block_height;
@@ -538,8 +535,7 @@ static int d3d11_continue_native_texture_upload(d3d11_context_t *ctx,
                                                    expected_block_width,
                                                    expected_block_height,
                                                    expected_block_bytes) ||
-            row_bytes == 0 || row_bytes > UINT_MAX || block_rows > UINT_MAX ||
-            mip.bytes > UINT_MAX)
+            row_bytes == 0 || row_bytes > UINT_MAX || block_rows > UINT_MAX || mip.bytes > UINT_MAX)
             return 0;
         if (entry->native_next_block_row < 0 ||
             (uint64_t)(uint32_t)entry->native_next_block_row >= block_rows)
@@ -802,11 +798,8 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_srv(d3d11_context_t *ctx,
 /// @brief Get the SRV for a native TextureAsset3D, creating/streaming it on a cache miss.
 /// @details Keyed by the asset's native cache key so residency changes invalidate the entry.
 /// @return The shader-resource view to bind, or NULL if it cannot be created.
-static ID3D11ShaderResourceView *d3d11_get_or_create_native_srv(d3d11_context_t *ctx,
-                                                                void *asset,
-                                                                uint64_t cache_key,
-                                                                int64_t mip_start,
-                                                                int64_t mip_count) {
+static ID3D11ShaderResourceView *d3d11_get_or_create_native_srv(
+    d3d11_context_t *ctx, void *asset, uint64_t cache_key, int64_t mip_start, int64_t mip_count) {
     if (!ctx || !asset ||
         !vgfx3d_textureasset_native_supported(asset, d3d11_get_native_texture_caps(ctx)))
         return NULL;
@@ -822,8 +815,8 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_native_srv(d3d11_context_t 
     for (int32_t i = 0; i < ctx->tex_cache_count; i++) {
         if (ctx->tex_cache[i].texture_asset == asset && ctx->tex_cache[i].generation == cache_key &&
             ctx->tex_cache[i].native_mip_start == mip_start &&
-            ctx->tex_cache[i].native_mip_count == mip_count &&
-            ctx->tex_cache[i].tex && ctx->tex_cache[i].srv) {
+            ctx->tex_cache[i].native_mip_count == mip_count && ctx->tex_cache[i].tex &&
+            ctx->tex_cache[i].srv) {
             ctx->tex_cache[i].last_used_frame = ctx->frame_serial;
             return ctx->tex_cache[i].srv;
         }
@@ -859,7 +852,8 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_native_srv(d3d11_context_t 
         d3d11_ensure_tex_cache_capacity(ctx, ctx->tex_cache_count + 1)) {
         d3d_tex_cache_entry_t *entry = &ctx->tex_cache[ctx->tex_cache_count++];
         memset(entry, 0, sizeof(*entry));
-        if (!d3d11_start_native_texture_upload(ctx, entry, asset, cache_key, mip_start, mip_count)) {
+        if (!d3d11_start_native_texture_upload(
+                ctx, entry, asset, cache_key, mip_start, mip_count)) {
             ctx->tex_cache_count--;
             return NULL;
         }
@@ -995,15 +989,14 @@ static int d3d11_continue_cubemap_upload(d3d11_context_t *ctx,
             free(rgba);
             return 0;
         }
-        ID3D11DeviceContext_UpdateSubresource(ctx->ctx,
-                                              (ID3D11Resource *)entry->tex,
-                                              D3D11CalcSubresource(0,
-                                                                   (UINT)entry->upload_face,
-                                                                   (UINT)mip_count),
-                                              &box,
-                                              rgba,
-                                              (UINT)row_pitch,
-                                              0);
+        ID3D11DeviceContext_UpdateSubresource(
+            ctx->ctx,
+            (ID3D11Resource *)entry->tex,
+            D3D11CalcSubresource(0, (UINT)entry->upload_face, (UINT)mip_count),
+            &box,
+            rgba,
+            (UINT)row_pitch,
+            0);
         bytes = (uint64_t)(uint32_t)slice_size * (uint64_t)(uint32_t)slice_rows * 4u;
         d3d11_record_texture_upload_bytes(ctx, bytes);
         free(rgba);

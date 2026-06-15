@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_present.inc  (#included from vgfx3d_backend_d3d11.c; not a standalone translation unit)
-// Purpose: D3D11 frame begin/end, resize, readback, post-FX chain, present, shadow, and skybox
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_present.inc  (#included from
+// vgfx3d_backend_d3d11.c; not a standalone translation unit) Purpose: D3D11 frame begin/end,
+// resize, readback, post-FX chain, present, shadow, and skybox
 //===----------------------------------------------------------------------===//
 
 /// @brief Backend `clear` op — stores the clear color for the next BeginFrame.
@@ -471,7 +472,7 @@ static int d3d11_draw_postfx_pass(d3d11_context_t *ctx,
 ///                   intermediate offscreen buffer when `force_offscreen_final` is set).
 /// @param width      Viewport width in pixels.
 /// @param height     Viewport height in pixels.
-/// @return Always 1; kept as int for symmetry with `d3d11_draw_postfx_pass`.
+/// @return 1 on successful composite or no-op; 0 when the destination is invalid.
 static int d3d11_draw_overlay_composite(d3d11_context_t *ctx,
                                         ID3D11RenderTargetView *dest_rtv,
                                         int32_t width,
@@ -481,8 +482,9 @@ static int d3d11_draw_overlay_composite(d3d11_context_t *ctx,
     ID3D11ShaderResourceView *null_srvs[4] = {NULL, NULL, NULL, NULL};
     float blend_factor[4] = {0, 0, 0, 0};
 
-    if (!ctx || !dest_rtv || width <= 0 || height <= 0 || !ctx->overlay_used_this_frame ||
-        !ctx->overlay_color_srv || !ctx->ps_overlay_composite) {
+    if (!ctx || !dest_rtv || width <= 0 || height <= 0)
+        return 0;
+    if (!ctx->overlay_used_this_frame || !ctx->overlay_color_srv || !ctx->ps_overlay_composite) {
         return 1;
     }
 

@@ -127,8 +127,7 @@ int vgfx3d_textureasset_get_native_resident_mip(void *asset,
         return 0;
     first = rt_textureasset3d_get_resident_mip_start(asset);
     count = rt_textureasset3d_get_resident_mip_count(asset);
-    return vgfx3d_textureasset_get_native_snapshot_mip(
-        asset, first, count, relative_mip, out_mip);
+    return vgfx3d_textureasset_get_native_snapshot_mip(asset, first, count, relative_mip, out_mip);
 }
 
 /// @brief Borrow one native compressed mip from an explicit resident-window snapshot.
@@ -187,8 +186,7 @@ uint64_t vgfx3d_textureasset_pending_native_snapshot_bytes(void *asset,
                                                            int upload_in_progress) {
     uint64_t total = 0;
 
-    if (!upload_in_progress || !asset || first_mip < 0 || mip_count <= 0 ||
-        next_relative_mip < 0)
+    if (!upload_in_progress || !asset || first_mip < 0 || mip_count <= 0 || next_relative_mip < 0)
         return 0;
     if (next_relative_mip >= mip_count)
         return 0;
@@ -196,16 +194,15 @@ uint64_t vgfx3d_textureasset_pending_native_snapshot_bytes(void *asset,
         vgfx3d_native_texture_mip_t mip;
         if (!vgfx3d_textureasset_get_native_snapshot_mip(asset, first_mip, mip_count, i, &mip))
             return total;
-        uint64_t bytes =
-            (i == next_relative_mip)
-                ? vgfx3d_pending_block_upload_bytes(mip.width,
-                                                    mip.height,
-                                                    mip.block_width,
-                                                    mip.block_height,
-                                                    mip.block_bytes,
-                                                    next_block_row,
-                                                    upload_in_progress)
-                : mip.bytes;
+        uint64_t bytes = (i == next_relative_mip)
+                             ? vgfx3d_pending_block_upload_bytes(mip.width,
+                                                                 mip.height,
+                                                                 mip.block_width,
+                                                                 mip.block_height,
+                                                                 mip.block_bytes,
+                                                                 next_block_row,
+                                                                 upload_in_progress)
+                             : mip.bytes;
         if (total > UINT64_MAX - bytes)
             return UINT64_MAX;
         total += bytes;
@@ -846,8 +843,8 @@ void vgfx3d_copy_linear_rgba32f_to_rgba8(uint8_t *dst_rgba,
 
     for (int32_t y = 0; y < copy_h; y++) {
         uint8_t *dst_row = dst_rgba + (size_t)y * (size_t)dst_stride;
-        // cppcheck-suppress invalidPointerCast ; unsigned-char row view for byte-stride addressing only.
-        const uint8_t *src_row = (const uint8_t *)src_rgba32f + (size_t)y * (size_t)src_stride_bytes;
+        const void *src_base = (const void *)src_rgba32f;
+        const uint8_t *src_row = (const uint8_t *)src_base + (size_t)y * (size_t)src_stride_bytes;
         for (int32_t x = 0; x < copy_w; x++) {
             float src_px[4];
             memcpy(src_px, src_row + (size_t)x * sizeof(src_px), sizeof(src_px));

@@ -42,6 +42,25 @@ static rt_gui_app_t *rt_messagebox_app(void) {
     return app ? app : s_current_app;
 }
 
+/// @brief Duplicate a message-box label with malloc ownership.
+/// @details Custom button labels are released with `free` by the message-box
+///          wrapper, so this helper avoids relying on platform-specific
+///          `strdup` declarations for fallback labels.
+/// @param text Source label to copy; NULL returns NULL.
+/// @return Newly allocated copy, or NULL on invalid input, overflow, or OOM.
+static char *rt_messagebox_strdup(const char *text) {
+    if (!text)
+        return NULL;
+    size_t len = strlen(text);
+    if (len > SIZE_MAX - 1u)
+        return NULL;
+    char *copy = (char *)malloc(len + 1u);
+    if (!copy)
+        return NULL;
+    memcpy(copy, text, len + 1u);
+    return copy;
+}
+
 /// @brief Return non-zero if the button label should be treated as a "cancel / close / no" action.
 static int rt_messagebox_label_is_cancel(const char *label) {
     if (!label)
@@ -546,7 +565,7 @@ void rt_messagebox_add_button(void *box, rt_string text, int64_t id) {
 
     char *clabel = rt_string_to_gui_cstr(text);
     if (!clabel)
-        clabel = strdup("OK");
+        clabel = rt_messagebox_strdup("OK");
     if (!clabel)
         return;
     size_t index = data->custom_button_count++;

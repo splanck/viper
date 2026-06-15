@@ -1250,33 +1250,49 @@ static int gltf_preload_pack_morph_pod(rt_gltf_preload_bundle *bundle,
     char key[96];
     if (!bundle || !shapes || shape_count == 0 || vertex_count == 0)
         return 1;
-    if (shape_count > INT32_MAX || vertex_count > INT32_MAX)
-        return 1;
+    if (shape_count > INT32_MAX || vertex_count > INT32_MAX) {
+        gltf_preload_set_error(error, error_cap, "glTF morph payload is too large");
+        return 0;
+    }
     if (!gltf_checked_mul_size((size_t)vertex_count, 3u * sizeof(float), &channel_bytes) ||
-        !gltf_checked_mul_size(shape_count, GLTF_PRELOAD_MORPH_POD_RECORD_SIZE, &record_bytes))
-        return 1;
+        !gltf_checked_mul_size(shape_count, GLTF_PRELOAD_MORPH_POD_RECORD_SIZE, &record_bytes)) {
+        gltf_preload_set_error(error, error_cap, "glTF morph payload is too large");
+        return 0;
+    }
     for (size_t i = 0; i < shape_count; i++) {
         size_t name_len = shapes[i].name ? strlen(shapes[i].name) : 0u;
-        if (name_len == SIZE_MAX)
-            return 1;
+        if (name_len > SIZE_MAX - 1u) {
+            gltf_preload_set_error(error, error_cap, "glTF morph target name is too large");
+            return 0;
+        }
         name_len += 1u;
-        if (!gltf_checked_add_size(names_bytes, name_len, &names_bytes))
-            return 1;
+        if (!gltf_checked_add_size(names_bytes, name_len, &names_bytes)) {
+            gltf_preload_set_error(error, error_cap, "glTF morph payload is too large");
+            return 0;
+        }
         if ((shapes[i].flags & GLTF_PRELOAD_MORPH_POD_HAS_POSITIONS) != 0 &&
-            !gltf_checked_add_size(payload_bytes, channel_bytes, &payload_bytes))
-            return 1;
+            !gltf_checked_add_size(payload_bytes, channel_bytes, &payload_bytes)) {
+            gltf_preload_set_error(error, error_cap, "glTF morph payload is too large");
+            return 0;
+        }
         if ((shapes[i].flags & GLTF_PRELOAD_MORPH_POD_HAS_NORMALS) != 0 &&
-            !gltf_checked_add_size(payload_bytes, channel_bytes, &payload_bytes))
-            return 1;
+            !gltf_checked_add_size(payload_bytes, channel_bytes, &payload_bytes)) {
+            gltf_preload_set_error(error, error_cap, "glTF morph payload is too large");
+            return 0;
+        }
         if ((shapes[i].flags & GLTF_PRELOAD_MORPH_POD_HAS_TANGENTS) != 0 &&
-            !gltf_checked_add_size(payload_bytes, channel_bytes, &payload_bytes))
-            return 1;
+            !gltf_checked_add_size(payload_bytes, channel_bytes, &payload_bytes)) {
+            gltf_preload_set_error(error, error_cap, "glTF morph payload is too large");
+            return 0;
+        }
     }
     if (!gltf_checked_add_size(GLTF_PRELOAD_MORPH_POD_HEADER_SIZE, record_bytes, &names_offset) ||
         !gltf_checked_add_size(names_offset, names_bytes, &payload_offset) ||
         !gltf_checked_add_size(payload_offset, payload_bytes, &blob_len) ||
-        record_bytes > UINT32_MAX || names_bytes > UINT32_MAX || payload_bytes > UINT32_MAX)
-        return 1;
+        record_bytes > UINT32_MAX || names_bytes > UINT32_MAX || payload_bytes > UINT32_MAX) {
+        gltf_preload_set_error(error, error_cap, "glTF morph payload is too large");
+        return 0;
+    }
     blob = (uint8_t *)calloc(1, blob_len);
     if (!blob) {
         gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
