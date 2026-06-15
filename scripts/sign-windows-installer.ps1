@@ -5,7 +5,8 @@ param(
     [string]$OutputPath,
     [string]$PfxPath = $env:VIPER_WINDOWS_SIGN_PFX,
     [string]$PfxPassword = $env:VIPER_WINDOWS_SIGN_PASSWORD,
-    [string]$TimestampUrl = $(if ($env:VIPER_WINDOWS_TIMESTAMP_URL) { $env:VIPER_WINDOWS_TIMESTAMP_URL } else { "http://timestamp.digicert.com" }),
+    [string]$Thumbprint = $env:VIPER_WINDOWS_SIGN_THUMBPRINT,
+    [string]$TimestampUrl = $(if ($env:VIPER_WINDOWS_TIMESTAMP_URL) { $env:VIPER_WINDOWS_TIMESTAMP_URL } else { "https://timestamp.digicert.com" }),
     [string]$SignToolPath = "signtool.exe",
     [switch]$NoVerify
 )
@@ -23,18 +24,19 @@ function Resolve-FullPath([string]$Path) {
 if (-not (Test-Path -LiteralPath $InputPath -PathType Leaf)) {
     throw "Input installer not found: $InputPath"
 }
-if ([string]::IsNullOrWhiteSpace($PfxPath)) {
-    throw "PFX path is required. Pass -PfxPath or set VIPER_WINDOWS_SIGN_PFX."
+if ([string]::IsNullOrWhiteSpace($PfxPath) -and [string]::IsNullOrWhiteSpace($Thumbprint)) {
+    throw "A PFX path or certificate thumbprint is required. Pass -PfxPath, -Thumbprint, or set VIPER_WINDOWS_SIGN_PFX/VIPER_WINDOWS_SIGN_THUMBPRINT."
 }
-if (-not (Test-Path -LiteralPath $PfxPath -PathType Leaf)) {
-    throw "PFX file not found: $PfxPath"
-}
-if ($null -eq $PfxPassword) {
-    throw "PFX password is required. Pass -PfxPassword or set VIPER_WINDOWS_SIGN_PASSWORD."
+if (-not [string]::IsNullOrWhiteSpace($PfxPath)) {
+    if (-not (Test-Path -LiteralPath $PfxPath -PathType Leaf)) {
+        throw "PFX file not found: $PfxPath"
+    }
+    if ($null -eq $PfxPassword) {
+        throw "PFX password is required. Pass -PfxPassword or set VIPER_WINDOWS_SIGN_PASSWORD."
+    }
 }
 
 $inputFull = Resolve-FullPath $InputPath
-$pfxFull = Resolve-FullPath $PfxPath
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
     $OutputPath = $inputFull
 }
@@ -50,7 +52,16 @@ if (-not [string]::Equals($outputFull, $inputFull, [System.StringComparison]::Or
     Copy-Item -LiteralPath $inputFull -Destination $outputFull -Force
 }
 
-& $SignToolPath sign /fd SHA256 /tr $TimestampUrl /td SHA256 /f $pfxFull /p $PfxPassword $outputFull
+$signArgs = @("sign", "/fd", "SHA256", "/tr", $TimestampUrl, "/td", "SHA256")
+if (-not [string]::IsNullOrWhiteSpace($Thumbprint)) {
+    $signArgs += @("/sha1", ($Thumbprint -replace '\s+', '').ToUpperInvariant())
+} else {
+    $pfxFull = Resolve-FullPath $PfxPath
+    $signArgs += @("/f", $pfxFull, "/p", $PfxPassword)
+}
+$signArgs += $outputFull
+
+& $SignToolPath @signArgs
 if ($LASTEXITCODE -ne 0) {
     throw "signtool sign failed with exit code $LASTEXITCODE"
 }

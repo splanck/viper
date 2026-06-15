@@ -136,12 +136,11 @@ void addWindowsCaseFoldedPath(std::set<std::string> &seen,
     std::string folded = clean;
     for (char &c : folded)
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    const std::string key =
-        std::to_string(static_cast<unsigned long long>(root)) + ":" + folded;
+    const std::string key = std::to_string(static_cast<unsigned long long>(root)) + ":" + folded;
     if (!seen.insert(key).second)
-        throw std::runtime_error(std::string(fieldName) +
-                                 " collides with another path on case-insensitive Windows: " +
-                                 clean);
+        throw std::runtime_error(
+            std::string(fieldName) +
+            " collides with another path on case-insensitive Windows: " + clean);
 }
 
 /// @brief Ensure that an absolute-expanded Windows path (e.g. %ProgramFiles%\App\bin\viper.exe)
@@ -161,30 +160,29 @@ void validateWindowsLayoutFitsStub(const WindowsPackageLayout &layout) {
     const std::string installDir =
         layout.installDirName.empty() ? layout.displayName : layout.installDirName;
     validateWindowsFileName(installDir, "Windows install directory");
-    const std::string rootProbe =
-        windowsRootProbeFor(layout, WindowsInstallRoot::InstallDir);
+    const std::string rootProbe = windowsRootProbeFor(layout, WindowsInstallRoot::InstallDir);
     validateStubPathFits(rootProbe, "Windows install directory");
     std::set<std::string> caseFoldedPaths;
     for (const auto &dir : layout.installDirectories) {
         validateWindowsRelativePath(dir.relativePath, "Windows install directory path");
         validateStubPathFits(windowsRootProbeFor(layout, dir.root) + "\\" + dir.relativePath,
                              "Windows install directory path");
-        addWindowsCaseFoldedPath(caseFoldedPaths, dir.root, dir.relativePath,
-                                 "Windows install directory path");
+        addWindowsCaseFoldedPath(
+            caseFoldedPaths, dir.root, dir.relativePath, "Windows install directory path");
     }
     for (const auto &file : layout.installFiles) {
         validateWindowsRelativePath(file.relativePath, "Windows install file path");
         validateStubPathFits(windowsRootProbeFor(layout, file.root) + "\\" + file.relativePath,
                              "Windows install file path");
-        addWindowsCaseFoldedPath(caseFoldedPaths, file.root, file.relativePath,
-                                 "Windows install file path");
+        addWindowsCaseFoldedPath(
+            caseFoldedPaths, file.root, file.relativePath, "Windows install file path");
     }
     for (const auto &file : layout.installedFiles) {
         validateWindowsRelativePath(file.relativePath, "Windows installed file path");
         validateStubPathFits(windowsRootProbeFor(layout, file.root) + "\\" + file.relativePath,
                              "Windows installed file path");
-        addWindowsCaseFoldedPath(caseFoldedPaths, file.root, file.relativePath,
-                                 "Windows installed file path");
+        addWindowsCaseFoldedPath(
+            caseFoldedPaths, file.root, file.relativePath, "Windows installed file path");
     }
     if (layout.addToPath && !layout.pathRelativePath.empty()) {
         validateWindowsRelativePath(layout.pathRelativePath, "Windows PATH entry path");
@@ -211,8 +209,8 @@ void validateWindowsLayoutFitsStub(const WindowsPackageLayout &layout) {
                                 "Windows file association command arguments");
         for (char c : assoc.openCommandArguments) {
             const unsigned char uc = static_cast<unsigned char>(c);
-            if (uc < 0x20 || c == '"' || c == '&' || c == '|' || c == '<' || c == '>' ||
-                c == '^' || c == '%') {
+            if (uc < 0x20 || c == '"' || c == '&' || c == '|' || c == '<' || c == '>' || c == '^' ||
+                c == '%') {
                 throw std::runtime_error("Windows file association command arguments contain "
                                          "unsafe command-line syntax: " +
                                          assoc.openCommandArguments);
@@ -572,8 +570,7 @@ std::optional<fs::path> findLocalDllCaseInsensitive(const fs::path &dir,
     constexpr size_t kMaxRecursiveDllSearchEntries = 4096;
     size_t visited = 0;
     ec.clear();
-    fs::recursive_directory_iterator it(
-        dir, fs::directory_options::skip_permission_denied, ec);
+    fs::recursive_directory_iterator it(dir, fs::directory_options::skip_permission_denied, ec);
     fs::recursive_directory_iterator end;
     while (!ec && it != end && visited++ < kMaxRecursiveDllSearchEntries) {
         const fs::path candidate = it->path();
@@ -855,6 +852,24 @@ PEVersionInfo windowsVersionInfoForLayout(const WindowsPackageLayout &layout,
     return info;
 }
 
+std::string textFromBytes(const std::vector<uint8_t> &data) {
+    if (data.empty())
+        return {};
+    return std::string(reinterpret_cast<const char *>(data.data()), data.size());
+}
+
+std::string appLicenseTextFor(const std::string &projectRoot, const PackageConfig &pkg) {
+    const fs::path root(projectRoot);
+    for (const char *name : {"LICENSE", "LICENSE.txt"}) {
+        const fs::path candidate = root / name;
+        if (fs::is_regular_file(candidate))
+            return textFromBytes(readFile(candidate.string()));
+    }
+    if (!pkg.license.empty())
+        return pkg.license;
+    return "GPL-3.0-only";
+}
+
 /// @brief Build the Windows ProgID for a toolchain file association.
 /// Equivalent to windowsProgIdFor but takes an explicit identifier string instead
 /// of a full PackageConfig; used for toolchain installer builds.
@@ -1072,6 +1087,9 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     layout.version = version;
     layout.identifier = pkg.identifier;
     layout.publisher = pkg.author;
+    layout.description = pkg.description;
+    layout.contact = pkg.maintainerEmail.empty() ? pkg.author : pkg.maintainerEmail;
+    layout.licenseText = appLicenseTextFor(params.projectRoot, pkg);
     layout.executableName = exec + ".exe";
     layout.perUserInstall = pkg.windowsInstallScope == "user";
     layout.homepage = pkg.homepage;
@@ -1412,6 +1430,10 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     layout.version = params.manifest.version;
     layout.identifier = params.identifier;
     layout.publisher = params.publisher;
+    layout.description = "Viper compiler toolchain";
+    layout.contact = params.manifest.maintainerEmail.empty() ? params.publisher
+                                                             : params.manifest.maintainerEmail;
+    layout.licenseText = params.manifest.license;
     layout.executableName = "viper.exe";
     layout.homepage = params.homepage;
     layout.displayIconRelativePath = "bin\\viper.exe";
@@ -1448,6 +1470,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     layout.compressedPayloadManifestRelativePath = ".viper-install-manifest.next";
     layout.installedManifestRelativePath = ".viper-install-manifest.txt";
     std::ostringstream payloadManifest;
+    std::string stagedLicenseText;
 
     for (const auto &file : params.manifest.files) {
         const std::string relInstall =
@@ -1478,8 +1501,12 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
                 lowerName == "license" ? "meta/license.txt" : "meta/readme.txt";
             zip.addFile(overlayName, data.data(), data.size(), 0100644);
             appendPayloadManifestEntry(&payloadManifest, overlayName, data.data(), data.size());
+            if (lowerName == "license")
+                stagedLicenseText = textFromBytes(data);
         }
     }
+    if (!stagedLicenseText.empty())
+        layout.licenseText = stagedLicenseText;
 
     addUniqueDir(layout.installDirectories, installDirSet, WindowsInstallRoot::InstallDir, "bin");
     {

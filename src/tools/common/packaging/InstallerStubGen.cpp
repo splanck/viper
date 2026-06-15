@@ -183,6 +183,12 @@ void InstallerStubGen::movMemReg(X64Reg base, int32_t disp, X64Reg src) {
     emitModRMDisp32(regBits(src), base, disp);
 }
 
+void InstallerStubGen::movMemReg32(X64Reg base, int32_t disp, X64Reg src) {
+    emitREX(false, src, base);
+    emit(0x89);
+    emitModRMDisp32(regBits(src), base, disp);
+}
+
 /// @brief Emit mov dword [base + disp32], imm32 — 32-bit immediate store to memory (C7 /0 id).
 void InstallerStubGen::movMemImm32(X64Reg base, int32_t disp, uint32_t imm) {
     // C7 /0 id (mov r/m32, imm32) — no REX.W so it's 32-bit
@@ -273,6 +279,14 @@ void InstallerStubGen::leaRegMemIndex(
     emitModRM(2, regBits(dst), 4);
     emit(static_cast<uint8_t>((scaleLog2 << 6) | (regBits(index) << 3) | regBits(base)));
     emit32(static_cast<uint32_t>(disp));
+}
+
+void InstallerStubGen::leaCodeLabel(X64Reg dst, uint32_t labelId) {
+    emitREX(true, dst, X64Reg::RBP);
+    emit(0x8D);
+    emitModRM(0, regBits(dst), 5);
+    fixups_.push_back({static_cast<uint32_t>(code_.size()), labelId, FixupKind::Rel32});
+    emit32(0);
 }
 
 // ============================================================================
@@ -411,6 +425,12 @@ void InstallerStubGen::callIATSlot(uint32_t flatIndex) {
 /// @brief Emit lea dst, [rip + disp32] — load address of embedded .rdata string (REX.W + 8D /r,
 /// RIP-relative). Records a DataRel32 fixup so the displacement is resolved against dataBaseRVA in
 /// finishText().
+void InstallerStubGen::callReg(X64Reg target) {
+    emitREX(false, X64Reg::RAX, target);
+    emit(0xFF);
+    emitModRM(3, 2, regBits(target));
+}
+
 void InstallerStubGen::leaRipData(X64Reg dst, uint32_t dataOffset) {
     // REX.W + 8D /r with ModRM(00, reg, 101) = RIP-relative addressing
     emitREX(true, dst, X64Reg::RBP); // RBP's regBits = 5 = 101b (RIP-relative encoding)

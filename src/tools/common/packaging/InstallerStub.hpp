@@ -19,9 +19,8 @@
 //   - Uninstaller uses the same layout metadata to delete installed files,
 //     remove shortcuts, and unregister the app.
 //   - Both stubs use Win32 APIs via IAT (no dynamic LoadLibrary).
-//   - Bootstrap code is emitted as x86-64 machine code. ARM64 payload packages
-//     currently use the same x86-64 bootstrap so the installer can run under
-//     Windows-on-ARM emulation while still deploying an ARM64 application.
+//   - Bootstrap code is emitted as x86-64 or AArch64 machine code to match the
+//     requested Windows payload architecture.
 //
 // Ownership/Lifetime:
 //   - Pure functions returning result structs.
@@ -77,6 +76,9 @@ struct WindowsPackageLayout {
     std::string version;        ///< Version string for Add/Remove Programs (e.g. "0.1.0")
     std::string identifier;     ///< Reverse-DNS identifier for registry keys
     std::string publisher;      ///< Publisher name shown in Add/Remove Programs
+    std::string description;    ///< Human-readable comments shown in installer metadata.
+    std::string contact;        ///< Support/contact string for Add/Remove Programs.
+    std::string licenseText;    ///< License text shown by the native Windows wizard.
     std::string executableName; ///< Name of the main executable (e.g. "crackman.exe")
     uint64_t overlayFileOffset{
         0}; ///< Byte offset within the installer PE where the ZIP overlay begins

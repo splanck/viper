@@ -301,6 +301,7 @@ add_library(viper_packaging STATIC
         tools/common/packaging/PkgVerify.cpp
         tools/common/packaging/ZipReader.cpp
         tools/common/packaging/InstallerStubGen.cpp
+        tools/common/packaging/InstallerStubGenA64.cpp
         tools/common/packaging/InstallerStub.cpp
         tools/common/packaging/XarWriter.cpp
         tools/common/asset/VpaWriter.cpp

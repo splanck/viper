@@ -209,7 +209,6 @@ bool signWindowsInstallerArtifact(const InstallPackageArgs &args,
         return false;
     }
 
-    std::vector<std::string> signCmd;
     std::string signtool = args.windowsSigntoolPath.empty()
                                ? getenvOrEmpty("VIPER_WINDOWS_SIGNTOOL")
                                : args.windowsSigntoolPath;
@@ -227,9 +226,28 @@ bool signWindowsInstallerArtifact(const InstallPackageArgs &args,
         return false;
     }
 
-    signCmd = {signtool, "sign", "/fd", "SHA256", "/tr", timestampUrl, "/td", "SHA256"};
+    std::string signScript = getenvOrEmpty("VIPER_WINDOWS_SIGN_SCRIPT");
+    if (signScript.empty())
+        signScript = (fs::path("scripts") / "sign-windows-installer.ps1").string();
+    if (!fs::is_regular_file(signScript)) {
+        err << "error: Windows signing script not found: " << signScript << "\n";
+        return false;
+    }
+
+    std::vector<std::string> signCmd = {"powershell.exe",
+                                        "-NoProfile",
+                                        "-ExecutionPolicy",
+                                        "Bypass",
+                                        "-File",
+                                        signScript,
+                                        "-InputPath",
+                                        artifactPath.string(),
+                                        "-TimestampUrl",
+                                        timestampUrl,
+                                        "-SignToolPath",
+                                        signtool};
     if (!thumbprint.empty()) {
-        signCmd.push_back("/sha1");
+        signCmd.push_back("-Thumbprint");
         signCmd.push_back(thumbprint);
     } else {
         if (!fs::is_regular_file(pfxPath)) {
@@ -249,26 +267,19 @@ bool signWindowsInstallerArtifact(const InstallPackageArgs &args,
                    "VIPER_WINDOWS_SIGN_PASSWORD_ARGV_OK=1 to acknowledge the exposure\n";
             return false;
         }
-        signCmd.push_back("/f");
+        signCmd.push_back("-PfxPath");
         signCmd.push_back(pfxPath);
-        signCmd.push_back("/p");
+        signCmd.push_back("-PfxPassword");
         signCmd.push_back(password);
     }
-    signCmd.push_back(artifactPath.string());
+    if (args.windowsSignNoVerify)
+        signCmd.push_back("-NoVerify");
     const RunResult signResult = run_process(signCmd);
     if (signResult.exit_code != 0) {
-        err << "error: signtool sign failed with exit code " << signResult.exit_code << "\n"
+        err << "error: Windows signing script failed with exit code " << signResult.exit_code
+            << "\n"
             << signResult.out << signResult.err;
         return false;
-    }
-    if (!args.windowsSignNoVerify) {
-        const RunResult verifyResult =
-            run_process({signtool, "verify", "/pa", "/all", artifactPath.string()});
-        if (verifyResult.exit_code != 0) {
-            err << "error: signtool verify failed with exit code " << verifyResult.exit_code << "\n"
-                << verifyResult.out << verifyResult.err;
-            return false;
-        }
     }
     return true;
 }
@@ -1529,6 +1540,9 @@ int cmdInstallPackage(int argc, char **argv) {
                     params.archStr = manifest.arch;
                     params.installScope = args.windowsInstallScope;
                     params.installDirName = args.windowsInstallDir;
+                    params.publisher = manifest.maintainer;
+                    if (!manifest.homepage.empty())
+                        params.homepage = manifest.homepage;
                     params.addToPath = args.windowsAddToPath;
                     params.registerFileAssociations = args.windowsFileAssociations;
                     params.createStartMenuShortcuts = args.windowsShortcuts;

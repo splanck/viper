@@ -89,6 +89,9 @@ class InstallerStubGen {
     /// @brief mov [dst + disp32], src  (store 64-bit to memory)
     void movMemReg(X64Reg base, int32_t disp, X64Reg src);
 
+    /// @brief mov dword [dst + disp32], src (store low 32 bits to memory)
+    void movMemReg32(X64Reg base, int32_t disp, X64Reg src);
+
     /// @brief mov dword [dst + disp32], imm32 (store 32-bit immediate)
     void movMemImm32(X64Reg base, int32_t disp, uint32_t imm);
 
@@ -107,6 +110,9 @@ class InstallerStubGen {
 
     /// @brief lea dst, [base + index * scale + disp32]
     void leaRegMemIndex(X64Reg dst, X64Reg base, X64Reg index, uint8_t scaleLog2, int32_t disp);
+
+    /// @brief lea dst, [rip + disp32] where disp targets an emitted code label.
+    void leaCodeLabel(X64Reg dst, uint32_t labelId);
 
     // ─── Arithmetic ───────────────────────────────────────────────────
 
@@ -137,6 +143,9 @@ class InstallerStubGen {
     /// The actual IAT slot RVA is computed during finishText() from the
     /// import list and IAT base RVA.
     void callIATSlot(uint32_t flatIndex);
+
+    /// @brief call reg - indirect call through a register containing a function pointer.
+    void callReg(X64Reg target);
 
     // ─── Data Embedding ───────────────────────────────────────────────
 

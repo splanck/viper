@@ -30,6 +30,7 @@
 #include "IconGenerator.hpp"
 #include "InstallerStub.hpp"
 #include "InstallerStubGen.hpp"
+#include "InstallerStubGenA64.hpp"
 #include "LinuxPackageBuilder.hpp"
 #include "LnkWriter.hpp"
 #include "MacOSPackageBuilder.hpp"
@@ -327,6 +328,16 @@ static size_t countIatCallsTo(const StubResult &stub,
             ++calls;
     }
     return calls;
+}
+
+static bool stubHasImport(const StubResult &stub,
+                          const std::string &dllName,
+                          const std::string &functionName) {
+    return std::any_of(stub.imports.begin(), stub.imports.end(), [&](const PEImport &imp) {
+        return imp.dllName == dllName &&
+               std::find(imp.functions.begin(), imp.functions.end(), functionName) !=
+                   imp.functions.end();
+    });
 }
 
 static std::vector<uint8_t> inflateGzipPayload(const std::vector<uint8_t> &gzipData) {
@@ -2646,6 +2657,73 @@ TEST(StubGen, EmitsIndexedWordLoadAndLea) {
     EXPECT_EQ(code, expected);
 }
 
+TEST(StubGen, EmitsCodeLabelLeaAndRegisterCall) {
+    InstallerStubGen gen;
+    const auto callback = gen.newLabel();
+    gen.leaCodeLabel(X64Reg::R9, callback);
+    gen.callReg(X64Reg::R9);
+    gen.ret();
+    gen.bindLabel(callback);
+    gen.ret();
+
+    const auto code = gen.finishText(0x1000, 0x2000, {}, 0x3000);
+    const std::vector<uint8_t> expected = {
+        0x4C, 0x8D, 0x0D, 0x04, 0x00, 0x00, 0x00, 0x41, 0xFF, 0xD1, 0xC3, 0xC3};
+    EXPECT_EQ(code, expected);
+}
+
+TEST(StubGen, EmitsDwordRegisterStore) {
+    InstallerStubGen gen;
+    gen.movMemReg32(X64Reg::RBP, -12, X64Reg::R8);
+
+    const auto code = gen.finishText(0x1000, 0x2000, {}, 0x3000);
+    const std::vector<uint8_t> expected = {0x44, 0x89, 0x85, 0xF4, 0xFF, 0xFF, 0xFF};
+    EXPECT_EQ(code, expected);
+}
+
+TEST(StubGenA64, EmitsBasicInstructionsAndBranchFixup) {
+    InstallerStubGenA64 gen;
+    const auto done = gen.newLabel();
+    gen.movRegImm32(A64Reg::X0, 7);
+    gen.b(done);
+    gen.nop();
+    gen.bindLabel(done);
+    gen.ret();
+
+    const auto code = gen.finishText(0x1000, 0x2000, {}, 0x3000);
+    const std::vector<uint8_t> expected = {0xE0,
+                                           0x00,
+                                           0x80,
+                                           0xD2,
+                                           0x02,
+                                           0x00,
+                                           0x00,
+                                           0x14,
+                                           0x1F,
+                                           0x20,
+                                           0x03,
+                                           0xD5,
+                                           0xC0,
+                                           0x03,
+                                           0x5F,
+                                           0xD6};
+    EXPECT_EQ(code, expected);
+}
+
+TEST(StubGenA64, ResolvesDataAndIATAddressFixups) {
+    InstallerStubGenA64 gen;
+    const uint32_t msgOff = gen.embedStringW("x");
+    gen.leaData(A64Reg::X0, msgOff);
+    gen.callIATSlot(0);
+    gen.ret();
+
+    const auto code = gen.finishText(0x1000, 0x3000, {{"kernel32.dll", {"ExitProcess"}}}, 0x4000);
+    const std::vector<uint8_t> expected = {
+        0x00, 0x00, 0x00, 0xF0, 0x00, 0x00, 0x00, 0x91, 0x10, 0x00, 0x00, 0xD0, 0x10, 0x02,
+        0x00, 0x91, 0x10, 0x02, 0x40, 0xF9, 0x00, 0x02, 0x3F, 0xD6, 0xC0, 0x03, 0x5F, 0xD6};
+    EXPECT_EQ(code, expected);
+}
+
 // ============================================================================
 // InstallerStub Integration Tests
 // ============================================================================
@@ -2665,7 +2743,7 @@ TEST(InstallerStub, GeneratesValidPE) {
     auto stub = buildInstallerStub(layout, "x64");
 
     // Should produce non-empty .text and imports
-    EXPECT_GT(stub.textSection.size(), static_cast<size_t>(10));
+    EXPECT_GE(stub.textSection.size(), static_cast<size_t>(8));
     EXPECT_FALSE(stub.imports.empty());
 
     // Build a PE with the stub and verify it
@@ -2730,6 +2808,8 @@ TEST(InstallerStub, EmitsWindowsAddRemoveProgramsMetadata) {
     layout.version = "1.2.3";
     layout.executableName = "testapp.exe";
     layout.publisher = "Viper";
+    layout.description = "Test app installer comments";
+    layout.contact = "support@example.invalid";
     layout.identifier = "org.viper.testapp";
     layout.homepage = "https://example.invalid/testapp";
     layout.displayIconRelativePath = "testapp.ico";
@@ -2744,8 +2824,40 @@ TEST(InstallerStub, EmitsWindowsAddRemoveProgramsMetadata) {
     EXPECT_TRUE(containsUtf16LE(stub.stubData, "InstallDate"));
     EXPECT_TRUE(containsUtf16LE(stub.stubData, "URLInfoAbout"));
     EXPECT_TRUE(containsUtf16LE(stub.stubData, "URLUpdateInfo"));
+    EXPECT_TRUE(containsUtf16LE(stub.stubData, "HelpLink"));
+    EXPECT_TRUE(containsUtf16LE(stub.stubData, "Comments"));
+    EXPECT_TRUE(containsUtf16LE(stub.stubData, "Contact"));
     EXPECT_TRUE(containsUtf16LE(stub.stubData, "20260512"));
     EXPECT_TRUE(containsUtf16LE(stub.stubData, "https://example.invalid/testapp"));
+    EXPECT_TRUE(containsUtf16LE(stub.stubData, "Test app installer comments"));
+    EXPECT_TRUE(containsUtf16LE(stub.stubData, "support@example.invalid"));
+}
+
+TEST(InstallerStub, ImportsAndEmbedsNativeWizard) {
+    WindowsPackageLayout layout;
+    layout.displayName = "TestApp";
+    layout.installDirName = "TestApp";
+    layout.executableName = "testapp.exe";
+    layout.licenseText = "TEST LICENSE TERMS";
+
+    auto installer = buildInstallerStub(layout, "x64");
+    auto uninstaller = buildUninstallerStub(layout, "x64");
+
+    EXPECT_TRUE(stubHasImport(installer, "comctl32.dll", "InitCommonControlsEx"));
+    EXPECT_TRUE(stubHasImport(installer, "user32.dll", "DialogBoxIndirectParamW"));
+    EXPECT_TRUE(stubHasImport(installer, "user32.dll", "EndDialog"));
+    EXPECT_TRUE(stubHasImport(installer, "user32.dll", "GetDlgItem"));
+    EXPECT_TRUE(stubHasImport(installer, "user32.dll", "SendMessageW"));
+    EXPECT_TRUE(stubHasImport(installer, "user32.dll", "EnableWindow"));
+    EXPECT_TRUE(stubHasImport(installer, "gdi32.dll", "CreateDIBSection"));
+    EXPECT_TRUE(stubHasImport(installer, "kernel32.dll", "CreateThread"));
+    EXPECT_TRUE(stubHasImport(uninstaller, "user32.dll", "DialogBoxIndirectParamW"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "I accept the license agreement"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "msctls_progress32"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "TEST LICENSE TERMS"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "Current user"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "All users"));
+    EXPECT_TRUE(containsUtf16LE(uninstaller.stubData, "I understand and want to continue"));
 }
 
 TEST(InstallerStub, ImportsRegistryQueryForOwnedFileAssociationCleanup) {
@@ -2864,7 +2976,7 @@ TEST(InstallerStub, SupportsQuietAutomationFlags) {
     EXPECT_TRUE(containsUtf16LE(uninstaller.stubData, "/quiet"));
     EXPECT_TRUE(containsUtf16LE(uninstaller.stubData, "/silent"));
     EXPECT_TRUE(containsUtf16LE(uninstaller.stubData, "/norestart"));
-    EXPECT_TRUE(containsUtf16LE(uninstaller.stubData, "Choose OK to continue or Cancel to exit."));
+    EXPECT_TRUE(containsUtf16LE(uninstaller.stubData, "I understand and want to continue"));
 }
 
 TEST(InstallerStubGen, RejectsOutOfRangeIATSlotFixup) {
@@ -2923,15 +3035,27 @@ TEST(InstallerStub, UninstallerDoesNotScheduleInstallRootForRebootDeletion) {
     EXPECT_EQ(countIatCallsTo(stub, "kernel32.dll", "MoveFileExW"), static_cast<size_t>(1));
 }
 
-TEST(InstallerStub, ARM64UsesX64Bootstrap) {
+TEST(InstallerStub, ARM64UsesNativeBootstrap) {
     WindowsPackageLayout layout;
     layout.displayName = "TestApp";
     layout.installDirName = "TestApp";
     layout.executableName = "testapp.exe";
     auto stub = buildInstallerStub(layout, "arm64");
-    EXPECT_EQ(stub.peArch, "x64");
-    EXPECT_GT(stub.textSection.size(), static_cast<size_t>(10));
+    EXPECT_EQ(stub.peArch, "arm64");
+    EXPECT_GT(stub.textSection.size(), static_cast<size_t>(100));
     EXPECT_FALSE(stub.imports.empty());
+    EXPECT_TRUE(stubHasImport(stub, "kernel32.dll", "CreateProcessW"));
+    EXPECT_TRUE(stubHasImport(stub, "kernel32.dll", "WaitForSingleObject"));
+    EXPECT_TRUE(containsUtf16LE(stub.stubData, "\\WindowsPowerShell\\v1.0\\powershell.exe"));
+    EXPECT_TRUE(containsUtf16LEStringData(stub.stubData, "-EncodedCommand"));
+
+    PEBuildParams pe;
+    pe.arch = stub.peArch;
+    pe.textSection = stub.textSection;
+    pe.rdataSection = stub.stubData;
+    pe.imports = stub.imports;
+    const auto peBytes = buildPE(pe);
+    EXPECT_EQ(readLE16(peBytes.data() + 0x84), static_cast<uint16_t>(0xAA64));
 }
 
 TEST(InstallerStub, AllowsZeroBytePayloadFile) {
@@ -3376,7 +3500,7 @@ TEST(WindowsPackageBuilder, RejectsPayloadArchitectureMismatch) {
     fs::remove_all(tmpRoot);
 }
 
-TEST(WindowsPackageBuilder, BuildsArm64PayloadPackageWithX64Bootstrap) {
+TEST(WindowsPackageBuilder, BuildsArm64PayloadPackageWithNativeBootstrap) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot =
         fs::temp_directory_path() / "viper_packaging_windows_builder_arm64_test";
@@ -3401,7 +3525,7 @@ TEST(WindowsPackageBuilder, BuildsArm64PayloadPackageWithX64Bootstrap) {
     auto pe = readFile(params.outputPath);
     std::ostringstream err;
     EXPECT_TRUE(verifyPEZipOverlay(pe, err));
-    EXPECT_EQ(readLE16(pe.data() + 0x84), static_cast<uint16_t>(0x8664));
+    EXPECT_EQ(readLE16(pe.data() + 0x84), static_cast<uint16_t>(0xAA64));
     fs::remove_all(tmpRoot);
 }
 

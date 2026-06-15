@@ -15,10 +15,8 @@
 //     while small bootstrap files are stored for direct extraction by the stub.
 //   - Overlay data contains the compressed payload, shortcuts, and a packaged
 //     uninstaller PE.
-//   - PE .text section contains a real x64 installer stub that extracts files,
-//     writes uninstall metadata, and installs shortcuts. ARM64 payload packages
-//     reuse the same bootstrap so the installer can run under Windows-on-ARM
-//     x64 emulation while deploying ARM64 binaries.
+//   - PE .text section contains a native installer stub for the requested
+//     Windows architecture, writes uninstall metadata, and installs shortcuts.
 //   - Resource section embeds RT_MANIFEST for UAC elevation.
 //   - Overlay data (ZIP) is appended after the last PE section.
 //

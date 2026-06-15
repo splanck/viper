@@ -7,7 +7,9 @@ param(
     [string]$Installer,
 
     [string]$InstallRoot = "$env:LOCALAPPDATA\Viper",
+    [string]$SignToolPath = "signtool.exe",
 
+    [switch]$RequireSignature,
     [switch]$KeepInstalled
 )
 
@@ -65,6 +67,13 @@ $originalPath = $env:Path
 New-Item -ItemType Directory -Path $work | Out-Null
 
 try {
+    if ($RequireSignature) {
+        & $SignToolPath verify /pa /all $installerPath
+        if ($LASTEXITCODE -ne 0) {
+            throw "signtool verify failed for signed installer: $installerPath"
+        }
+    }
+
     if (Test-Path -LiteralPath (Join-Path $InstallRoot "uninstall.exe")) {
         Run-Checked -FilePath (Join-Path $InstallRoot "uninstall.exe") -Arguments @("/quiet", "/norestart") | Out-Null
     }
