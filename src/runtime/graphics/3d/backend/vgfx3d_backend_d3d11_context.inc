@@ -84,8 +84,10 @@ static HRESULT d3d11_create_swapchain_targets(d3d11_context_t *ctx,
         return hr;
     }
     hr = d3d11_create_depth_target(ctx, width, height, 0, &ctx->depth_tex, &ctx->dsv, NULL);
-    if (FAILED(hr))
+    if (FAILED(hr)) {
         d3d11_log_hresult("CreateTexture2D/DepthStencilView(main)", hr);
+        SAFE_RELEASE(ctx->rtv);
+    }
     return hr;
 }
 

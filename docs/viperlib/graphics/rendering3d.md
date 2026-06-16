@@ -347,6 +347,9 @@ telemetry. Cache hits report no new upload bytes, software/unsupported backends
 report `0`, and the value is reset at the next non-overlay frame begin. D3D11
 rejects out-of-range row slices, malformed native block descriptors, and uploads
 whose byte counts cannot fit D3D11 `UINT` fields before it touches GPU resources.
+Its post-FX and readback paths also reject malformed effect-chain storage and
+unsupported staging formats before replaying GPU passes or mapping CPU-readable
+textures.
 `TextureUploadPendingBytes` reports remaining queued texture/cubemap row bytes
 plus native compressed mip bytes and returns to `0` after final submissions
 drain. The open-world native-compressed hitch CTest records the selected

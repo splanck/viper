@@ -46,6 +46,14 @@ extern "C" {
 #define VGFX3D_D3D11_MAX_TEXTURE_ANISOTROPY 16
 #define VGFX3D_D3D11_ANISOTROPY_LEVEL_COUNT VGFX3D_D3D11_MAX_TEXTURE_ANISOTROPY
 #define VGFX3D_D3D11_MAX_CONSTANT_BUFFER_BYTES (64u * 1024u)
+#define VGFX3D_D3D11_MAX_SLOPE_SCALED_DEPTH_BIAS 16.0f
+#define VGFX3D_D3D11_MATERIAL_SHININESS_MAX 1000000.0f
+#define VGFX3D_D3D11_MATERIAL_SPLAT_SCALE_MAX 1000000.0f
+#define VGFX3D_D3D11_LIGHT_INTENSITY_MAX 1000000.0f
+#define VGFX3D_D3D11_LIGHT_ATTENUATION_MAX 1000000.0f
+#define VGFX3D_D3D11_POSTFX_SCALAR_MAX 1000000.0f
+#define VGFX3D_D3D11_SHADING_MODEL_MAX 5
+#define VGFX3D_D3D11_TONEMAP_MODE_MAX 2
 
 /// @brief Blend state required by a draw: opaque, standard alpha, or additive.
 typedef enum {
@@ -209,6 +217,16 @@ void vgfx3d_d3d11_copy_mat4_finite_or_identity(float *dst, const float *src);
 void vgfx3d_d3d11_copy_mat4_finite_or(float *dst, const float *src, const float *fallback);
 /// @brief Sanitize D3D11 rasterizer slope-scaled depth bias.
 float vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(float requested);
+/// @brief Normalize material workflow constants before shader upload.
+int32_t vgfx3d_d3d11_sanitize_material_workflow(int32_t requested);
+/// @brief Normalize material alpha-mode constants before shader upload.
+int32_t vgfx3d_d3d11_sanitize_alpha_mode(int32_t requested);
+/// @brief Normalize Game3D shading-model constants before shader upload.
+int32_t vgfx3d_d3d11_sanitize_shading_model(int32_t requested);
+/// @brief Normalize tonemap mode constants before post-FX shader upload.
+int32_t vgfx3d_d3d11_sanitize_tonemap_mode(int32_t requested);
+/// @brief Validate a backend-facing post-FX chain before indexed iteration.
+int vgfx3d_d3d11_postfx_chain_is_usable(const vgfx3d_postfx_chain_t *chain);
 /// @brief Decide whether the bone constant buffers need a per-draw upload.
 int vgfx3d_d3d11_should_upload_bone_palette(int has_skinning, int has_prev_skinning);
 /// @brief Saturating unsigned 64-bit addition for upload counters.

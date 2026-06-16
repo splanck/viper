@@ -293,24 +293,22 @@ static int d3d11_copy_mapped_texture_to_rgba8(uint8_t *dst_rgba,
         return 1;
     }
 
-    for (int32_t y = 0; y < copy_h; y++) {
-        uint8_t *dst_row = dst_rgba + (size_t)y * (size_t)dst_stride;
-        const uint8_t *src_row = (const uint8_t *)mapped->pData + (size_t)y * mapped->RowPitch;
+    if (format == DXGI_FORMAT_R8G8B8A8_UNORM) {
+        size_t src_row_bytes;
+        size_t dst_row_bytes;
 
-        if (format == DXGI_FORMAT_R8G8B8A8_UNORM) {
-            size_t src_row_bytes;
-            size_t dst_row_bytes;
-
-            if (!vgfx3d_d3d11_validate_mapped_texture_copy(
-                    copy_w, dst_stride, mapped->RowPitch, 4, &src_row_bytes, &dst_row_bytes))
-                return 0;
-            (void)src_row_bytes;
+        if (!vgfx3d_d3d11_validate_mapped_texture_copy(
+                copy_w, dst_stride, mapped->RowPitch, 4, &src_row_bytes, &dst_row_bytes))
+            return 0;
+        (void)src_row_bytes;
+        for (int32_t y = 0; y < copy_h; y++) {
+            uint8_t *dst_row = dst_rgba + (size_t)y * (size_t)dst_stride;
+            const uint8_t *src_row = (const uint8_t *)mapped->pData + (size_t)y * mapped->RowPitch;
             memcpy(dst_row, src_row, dst_row_bytes);
-            continue;
         }
-        return 0;
+        return 1;
     }
-    return 1;
+    return 0;
 }
 
 /// @brief Read back a Texture2D into a host RGBA8 buffer.
@@ -392,7 +390,7 @@ static void d3d11_bind_postfx_target(d3d11_context_t *ctx,
                                      int32_t height) {
     D3D11_VIEWPORT viewport;
 
-    if (!ctx || !rtv || width <= 0 || height <= 0)
+    if (!ctx || !rtv || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height))
         return;
     memset(&viewport, 0, sizeof(viewport));
     viewport.Width = (FLOAT)width;
@@ -437,7 +435,8 @@ static int d3d11_draw_postfx_pass(d3d11_context_t *ctx,
     float blend_factor[4] = {0, 0, 0, 0};
     HRESULT hr;
 
-    if (!ctx || !source_color_srv || !dest_rtv || width <= 0 || height <= 0)
+    if (!ctx || !source_color_srv || !dest_rtv ||
+        !vgfx3d_d3d11_is_valid_texture2d_extent(width, height))
         return 0;
 
     d3d11_prepare_postfx_data(ctx, snapshot, &postfx_data);
@@ -495,7 +494,7 @@ static int d3d11_draw_overlay_composite(d3d11_context_t *ctx,
     ID3D11ShaderResourceView *null_srvs[4] = {NULL, NULL, NULL, NULL};
     float blend_factor[4] = {0, 0, 0, 0};
 
-    if (!ctx || !dest_rtv || width <= 0 || height <= 0)
+    if (!ctx || !dest_rtv || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height))
         return 0;
     if (!ctx->overlay_used_this_frame || !ctx->overlay_color_srv || !ctx->ps_overlay_composite) {
         return 1;
@@ -547,7 +546,7 @@ static int d3d11_resolve_scene_to_target(d3d11_context_t *ctx,
         width = final_width;
         height = final_height;
     }
-    if (!dest_rtv || width <= 0 || height <= 0)
+    if (!dest_rtv || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height))
         return 0;
     if (!d3d11_draw_postfx_pass(ctx, ctx->scene_color_srv, dest_rtv, width, height, NULL))
         return 0;
@@ -605,9 +604,9 @@ static int d3d11_apply_postfx_chain(d3d11_context_t *ctx,
 
     if (out_result_tex)
         *out_result_tex = NULL;
-    if (!ctx || !chain || !chain->enabled || chain->effect_count <= 0 || !chain->effects ||
-        !ctx->scene_color_srv || !ctx->scene_color_rtv || !ctx->scene_color_tex ||
-        !ctx->scene_depth_srv || !ctx->scene_motion_srv) {
+    if (!ctx || !vgfx3d_d3d11_postfx_chain_is_usable(chain) || !ctx->scene_color_srv ||
+        !ctx->scene_color_rtv || !ctx->scene_color_tex || !ctx->scene_depth_srv ||
+        !ctx->scene_motion_srv) {
         return 0;
     }
 
@@ -643,7 +642,7 @@ static int d3d11_apply_postfx_chain(d3d11_context_t *ctx,
             height = ctx->scene_height;
             result_tex = ctx->postfx_color_tex;
         }
-        if (!dest_rtv || width <= 0 || height <= 0)
+        if (!dest_rtv || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height))
             return 0;
         if (!d3d11_draw_postfx_pass(
                 ctx, source_srv, dest_rtv, width, height, &chain->effects[i].snapshot))
@@ -699,16 +698,17 @@ static int d3d11_readback_rgba(
 
     if (!ctx || !dst_rgba || !vgfx3d_d3d11_validate_rgba8_destination(w, h, stride, NULL))
         return 0;
-    readback_kind = vgfx3d_d3d11_choose_readback_kind(ctx->presented_color_valid,
-                                                      ctx->presented_color_tex != NULL,
-                                                      ctx->scene_composited_to_swapchain,
-                                                      ctx->gpu_postfx_enabled,
-                                                      ctx->gpu_postfx_chain_valid,
-                                                      ctx->gpu_postfx_chain.enabled,
-                                                      ctx->gpu_postfx_chain.effect_count,
-                                                      ctx->gpu_postfx_chain.effects != NULL,
-                                                      d3d11_has_scene_targets(ctx),
-                                                      ctx->current_target_kind);
+    readback_kind = vgfx3d_d3d11_choose_readback_kind(
+        ctx->presented_color_valid,
+        ctx->presented_color_tex != NULL,
+        ctx->scene_composited_to_swapchain,
+        ctx->gpu_postfx_enabled,
+        ctx->gpu_postfx_chain_valid,
+        ctx->gpu_postfx_chain.enabled,
+        ctx->gpu_postfx_chain.effect_count,
+        vgfx3d_d3d11_postfx_chain_is_usable(&ctx->gpu_postfx_chain),
+        d3d11_has_scene_targets(ctx),
+        ctx->current_target_kind);
     if (readback_kind == VGFX3D_D3D11_READBACK_PRESENTED_SNAPSHOT) {
         source_tex = ctx->presented_color_tex;
     } else if (readback_kind == VGFX3D_D3D11_READBACK_POSTFX_COMPOSITE) {
@@ -749,8 +749,8 @@ static void d3d11_present_internal(d3d11_context_t *ctx, const vgfx3d_postfx_cha
         ctx->scene_composited_to_swapchain = 0;
         return;
     }
-    use_postfx = (chain != NULL && chain->enabled && chain->effect_count > 0 &&
-                  ctx->gpu_postfx_enabled && d3d11_has_scene_targets(ctx))
+    use_postfx = (vgfx3d_d3d11_postfx_chain_is_usable(chain) && ctx->gpu_postfx_enabled &&
+                  d3d11_has_scene_targets(ctx))
                      ? 1
                      : 0;
     if (!use_postfx) {
@@ -794,8 +794,8 @@ static void d3d11_apply_postfx(void *ctx_ptr, const vgfx3d_postfx_chain_t *postf
                                                     d3d11_has_scene_targets(ctx),
                                                     ctx->scene_composited_to_swapchain))
         return;
-    use_postfx = (postfx != NULL && postfx->enabled && postfx->effect_count > 0 &&
-                  ctx->gpu_postfx_enabled && d3d11_has_scene_targets(ctx))
+    use_postfx = (vgfx3d_d3d11_postfx_chain_is_usable(postfx) && ctx->gpu_postfx_enabled &&
+                  d3d11_has_scene_targets(ctx))
                      ? 1
                      : 0;
     if (!use_postfx) {

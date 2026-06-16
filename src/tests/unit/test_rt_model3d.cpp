@@ -205,6 +205,18 @@ static bool write_text_file(const char *path, const std::string &text) {
     return ok;
 }
 
+static bool asset_warning_contains(const char *required_a, const char *required_b) {
+    int64_t count = rt_asset_error_get_warning_count();
+    for (int64_t i = 0; i < count; ++i) {
+        const char *warning = rt_asset_error_get_warning(i);
+        if (warning && std::strstr(warning, required_a) &&
+            (!required_b || std::strstr(warning, required_b))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static bool write_binary_file(const char *path, const std::vector<uint8_t> &bytes) {
     FILE *f = std::fopen(path, "wb");
     if (!f)
@@ -2626,12 +2638,10 @@ static void test_model3d_imports_quoted_obj_mtl_references() {
 static void test_model3d_sanitizes_obj_mtl_values_and_rejects_uri_maps() {
     const char *obj_path = "/tmp/viper_model3d_mtl_sanitize.obj";
     const char *mtl_path = "/tmp/viper_model3d_mtl_sanitize.mtl";
-    const char *unsafe_png_path = "/tmp/file:viper_model3d_mtl_unsafe.png";
+    const char *unsafe_texture_ref = "file:viper_model3d_mtl_unsafe.png";
     const char *normal_png_path = "/tmp/viper_model3d_mtl_norm.png";
     void *pixels = rt_pixels_new(1, 1);
     rt_pixels_set(pixels, 0, 0, 0x4488FFFFll);
-    EXPECT_TRUE(rt_pixels_save_png(pixels, rt_const_cstr(unsafe_png_path)) == 1,
-                "Unsafe-name OBJ texture PNG fixture can be written");
     EXPECT_TRUE(rt_pixels_save_png(pixels, rt_const_cstr(normal_png_path)) == 1,
                 "OBJ norm texture PNG fixture can be written");
 
@@ -2668,6 +2678,8 @@ static void test_model3d_sanitizes_obj_mtl_values_and_rejects_uri_maps() {
     EXPECT_NEAR(mat->alpha, 1.0, 0.001, "OBJ MTL d clamps alpha values");
     EXPECT_TRUE(rt_material3d_get_has_texture(mat) == 0,
                 "OBJ MTL rejects URI-scheme texture references");
+    EXPECT_TRUE(asset_warning_contains("unsafe relative path", unsafe_texture_ref),
+                "OBJ MTL unsafe texture URI reports an unsafe-path warning");
     EXPECT_TRUE(rt_material3d_get_has_normal_map(mat) == 1,
                 "OBJ MTL norm imports a normal texture");
 }

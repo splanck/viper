@@ -3516,7 +3516,7 @@ For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSuppor
 
 **Direct3D 11** (Windows) — Full feature parity: same feature set as OpenGL, including the shared `Material3D` PBR path. On non-Windows hosts, validation depends on the Windows CI lane.
 
-Backend correctness rules are shared where possible: skinning weights are normalized before application, oversized GPU bone palettes are clamped to backend shader limits, unused bone palette slots are identity transforms, terrain splatting requires a complete control-map-plus-four-layer texture set, masked materials alpha-test shadow casters, shadow slots are advertised only after the indexed pass completes, failed D3D11 swapchain presents invalidate their pre-present readback snapshot, and invalid draw/readback/texture/shadow inputs are rejected or treated conservatively instead of being dereferenced.
+Backend correctness rules are shared where possible: skinning weights are normalized before application, oversized GPU bone palettes are clamped to backend shader limits, unused bone palette slots are identity transforms, terrain splatting requires a complete control-map-plus-four-layer texture set, masked materials alpha-test shadow casters, shadow slots are advertised only after the indexed pass completes, failed D3D11 swapchain presents invalidate their pre-present readback snapshot, and invalid draw/readback/texture/shadow inputs are rejected or treated conservatively instead of being dereferenced. D3D11 additionally clamps backend-uploaded material/light/post-FX scalars and enum IDs, rejects malformed post-FX chain storage before indexed iteration, and limits CPU staging readback to supported RGBA8/HDR16F source formats.
 
 ## Performance Tips
 

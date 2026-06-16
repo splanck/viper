@@ -5,7 +5,7 @@
 // constant-buffer packing, pipeline binding, and draw submission
 //===----------------------------------------------------------------------===//
 
-#define D3D11_MATERIAL_EMISSIVE_INTENSITY_MAX 1000000.0f
+#define D3D11_MATERIAL_EMISSIVE_INTENSITY_MAX VGFX3D_D3D11_POSTFX_SCALAR_MAX
 #define D3D11_MATERIAL_NORMAL_SCALE_MAX 1000.0f
 
 /// @brief Push the currently-selected render target(s) and viewport into the pipeline.
@@ -390,9 +390,8 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
     material_data->specular[0] = vgfx3d_d3d11_clamp_float_param(cmd->specular[0], 0.0f, 1.0f, 1.0f);
     material_data->specular[1] = vgfx3d_d3d11_clamp_float_param(cmd->specular[1], 0.0f, 1.0f, 1.0f);
     material_data->specular[2] = vgfx3d_d3d11_clamp_float_param(cmd->specular[2], 0.0f, 1.0f, 1.0f);
-    material_data->specular[3] = vgfx3d_d3d11_finite_or(cmd->shininess, 32.0f);
-    if (material_data->specular[3] < 0.0f)
-        material_data->specular[3] = 0.0f;
+    material_data->specular[3] = vgfx3d_d3d11_clamp_float_param(
+        cmd->shininess, 0.0f, VGFX3D_D3D11_MATERIAL_SHININESS_MAX, 32.0f);
     material_data->emissive[0] =
         vgfx3d_d3d11_clamp_float_param(cmd->emissive_color[0], 0.0f, 1.0f, 0.0f);
     material_data->emissive[1] =
@@ -421,11 +420,11 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
     material_data->flags1[0] = has_emissive_map;
     material_data->flags1[1] = has_env_map;
     material_data->flags1[2] = has_splat;
-    material_data->pbr_flags[0] = cmd->workflow;
-    material_data->pbr_flags[1] = cmd->alpha_mode;
+    material_data->pbr_flags[0] = vgfx3d_d3d11_sanitize_material_workflow(cmd->workflow);
+    material_data->pbr_flags[1] = vgfx3d_d3d11_sanitize_alpha_mode(cmd->alpha_mode);
     material_data->pbr_flags[2] = has_metallic_roughness_map;
     material_data->pbr_flags[3] = has_ao_map;
-    material_data->shading_model = cmd->shading_model;
+    material_data->shading_model = vgfx3d_d3d11_sanitize_shading_model(cmd->shading_model);
     vgfx3d_d3d11_pack_scalar_array4(material_data->custom_params_packed,
                                     VGFX3D_D3D11_PACKED_CUSTOM_PARAM_VECS,
                                     cmd->custom_params,
@@ -454,6 +453,8 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
         material_data->splat_scales[i] = vgfx3d_d3d11_finite_or(cmd->splat_layer_scales[i], 1.0f);
         if (material_data->splat_scales[i] <= 0.0f)
             material_data->splat_scales[i] = 1.0f;
+        if (material_data->splat_scales[i] > VGFX3D_D3D11_MATERIAL_SPLAT_SCALE_MAX)
+            material_data->splat_scales[i] = VGFX3D_D3D11_MATERIAL_SPLAT_SCALE_MAX;
     }
 }
 
@@ -494,12 +495,10 @@ static void d3d11_prepare_light_data(const vgfx3d_light_params_t *lights,
             vgfx3d_d3d11_clamp_float_param(lights[i].color[1], 0.0f, 1.0f, 1.0f);
         light_data[i].color[2] =
             vgfx3d_d3d11_clamp_float_param(lights[i].color[2], 0.0f, 1.0f, 1.0f);
-        light_data[i].intensity = vgfx3d_d3d11_finite_or(lights[i].intensity, 1.0f);
-        if (light_data[i].intensity < 0.0f)
-            light_data[i].intensity = 0.0f;
-        light_data[i].attenuation = vgfx3d_d3d11_finite_or(lights[i].attenuation, 0.0f);
-        if (light_data[i].attenuation < 0.0f)
-            light_data[i].attenuation = 0.0f;
+        light_data[i].intensity = vgfx3d_d3d11_clamp_float_param(
+            lights[i].intensity, 0.0f, VGFX3D_D3D11_LIGHT_INTENSITY_MAX, 1.0f);
+        light_data[i].attenuation = vgfx3d_d3d11_clamp_float_param(
+            lights[i].attenuation, 0.0f, VGFX3D_D3D11_LIGHT_ATTENUATION_MAX, 0.0f);
         light_data[i].inner_cos =
             vgfx3d_d3d11_clamp_float_param(lights[i].inner_cos, -1.0f, 1.0f, 1.0f);
         light_data[i].outer_cos =
@@ -512,8 +511,8 @@ static void d3d11_prepare_light_data(const vgfx3d_light_params_t *lights,
         for (size_t split = 0; split < sizeof(light_data[i].shadow_cascade_splits) /
                                            sizeof(light_data[i].shadow_cascade_splits[0]);
              split++)
-            light_data[i].shadow_cascade_splits[split] =
-                vgfx3d_d3d11_finite_or(lights[i].shadow_cascade_splits[split], 0.0f);
+            light_data[i].shadow_cascade_splits[split] = vgfx3d_d3d11_clamp_float_param(
+                lights[i].shadow_cascade_splits[split], 0.0f, VGFX3D_D3D11_POSTFX_SCALAR_MAX, 0.0f);
     }
 }
 
@@ -824,12 +823,15 @@ static void d3d11_prepare_postfx_data(d3d11_context_t *ctx,
     postfx_data->bloom_intensity =
         vgfx3d_d3d11_clamp_float_param(snapshot->bloom_intensity, 0.0f, 1000000.0f, 0.0f);
     postfx_data->bloom_passes = vgfx3d_d3d11_clamp_int_param(snapshot->bloom_passes, 0, 32);
-    postfx_data->tonemap_mode = snapshot->tonemap_mode;
+    postfx_data->tonemap_mode = vgfx3d_d3d11_sanitize_tonemap_mode(snapshot->tonemap_mode);
     postfx_data->tonemap_exposure =
         vgfx3d_d3d11_clamp_float_param(snapshot->tonemap_exposure, 0.0f, 1000000.0f, 1.0f);
     postfx_data->fxaa_enabled = snapshot->fxaa_enabled ? 1 : 0;
     postfx_data->color_grade_enabled = snapshot->color_grade_enabled ? 1 : 0;
-    postfx_data->cg_brightness = vgfx3d_d3d11_finite_or(snapshot->cg_brightness, 0.0f);
+    postfx_data->cg_brightness = vgfx3d_d3d11_clamp_float_param(snapshot->cg_brightness,
+                                                                -VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+                                                                VGFX3D_D3D11_POSTFX_SCALAR_MAX,
+                                                                0.0f);
     postfx_data->cg_contrast =
         vgfx3d_d3d11_clamp_float_param(snapshot->cg_contrast, 0.0f, 1000000.0f, 1.0f);
     postfx_data->cg_saturation =
@@ -922,7 +924,8 @@ static int d3d11_bind_draw_resources(d3d11_context_t *ctx,
     srvs[12] = cmd->has_splat
                    ? d3d11_get_or_create_srv(ctx, cmd->splat_layers[3], &resources->textures[8])
                    : NULL;
-    srvs[13] = (cmd->env_map && cmd->reflectivity > 0.0001f)
+    srvs[13] = (cmd->env_map &&
+                vgfx3d_d3d11_clamp_float_param(cmd->reflectivity, 0.0f, 1.0f, 0.0f) > 0.0001f)
                    ? d3d11_get_or_create_cubemap_srv(
                          ctx, (const rt_cubemap3d *)cmd->env_map, &resources->cubemap)
                    : NULL;

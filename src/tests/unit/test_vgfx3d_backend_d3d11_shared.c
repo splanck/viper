@@ -542,6 +542,10 @@ static void test_d3d11_sanitization_helpers(void) {
                 -2.0f,
                 1e-6f,
                 "Finite float sanitizer replaces negative infinity");
+    EXPECT_NEAR(vgfx3d_d3d11_finite_or(HUGE_VALF, HUGE_VALF),
+                0.0f,
+                1e-6f,
+                "Finite float sanitizer never returns a non-finite fallback");
     EXPECT_NEAR(vgfx3d_d3d11_clamp_float_param(0.5f, 0.0f, 1.0f, 0.25f),
                 0.5f,
                 1e-6f,
@@ -558,6 +562,10 @@ static void test_d3d11_sanitization_helpers(void) {
                 0.25f,
                 1e-6f,
                 "Float parameter clamp applies fallback for non-finite values");
+    EXPECT_NEAR(vgfx3d_d3d11_clamp_float_param(HUGE_VALF, 0.0f, 1.0f, HUGE_VALF),
+                0.0f,
+                1e-6f,
+                "Float parameter clamp sanitizes a non-finite fallback before clamping");
     EXPECT_NEAR(vgfx3d_d3d11_clamp_float_param(0.5f, 1.0f, 0.0f, 0.25f),
                 0.5f,
                 1e-6f,
@@ -570,6 +578,38 @@ static void test_d3d11_sanitization_helpers(void) {
                 0.0f,
                 1e-6f,
                 "Slope-bias sanitizer clears non-finite values before D3D state creation");
+    EXPECT_NEAR(vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(
+                    VGFX3D_D3D11_MAX_SLOPE_SCALED_DEPTH_BIAS * 4.0f),
+                VGFX3D_D3D11_MAX_SLOPE_SCALED_DEPTH_BIAS,
+                1e-6f,
+                "Slope-bias sanitizer clamps oversized positive finite values");
+    EXPECT_NEAR(vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(
+                    -VGFX3D_D3D11_MAX_SLOPE_SCALED_DEPTH_BIAS * 4.0f),
+                -VGFX3D_D3D11_MAX_SLOPE_SCALED_DEPTH_BIAS,
+                1e-6f,
+                "Slope-bias sanitizer clamps oversized negative finite values");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_material_workflow(RT_MATERIAL3D_WORKFLOW_PBR) ==
+                    RT_MATERIAL3D_WORKFLOW_PBR,
+                "Material workflow sanitizer preserves PBR");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_material_workflow(99) == RT_MATERIAL3D_WORKFLOW_LEGACY,
+                "Material workflow sanitizer falls back to legacy for invalid values");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_alpha_mode(RT_MATERIAL3D_ALPHA_MODE_MASK) ==
+                    RT_MATERIAL3D_ALPHA_MODE_MASK,
+                "Alpha-mode sanitizer preserves masked materials");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_alpha_mode(-1) == RT_MATERIAL3D_ALPHA_MODE_OPAQUE,
+                "Alpha-mode sanitizer falls back to opaque below range");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_alpha_mode(99) == RT_MATERIAL3D_ALPHA_MODE_OPAQUE,
+                "Alpha-mode sanitizer falls back to opaque above range");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shading_model(VGFX3D_D3D11_SHADING_MODEL_MAX) ==
+                    VGFX3D_D3D11_SHADING_MODEL_MAX,
+                "Shading-model sanitizer preserves the highest valid model");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_shading_model(VGFX3D_D3D11_SHADING_MODEL_MAX + 1) == 0,
+                "Shading-model sanitizer falls back to Blinn-Phong above range");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_tonemap_mode(VGFX3D_D3D11_TONEMAP_MODE_MAX) ==
+                    VGFX3D_D3D11_TONEMAP_MODE_MAX,
+                "Tonemap sanitizer preserves the highest valid mode");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_tonemap_mode(99) == 0,
+                "Tonemap sanitizer disables invalid modes");
     EXPECT_TRUE(vgfx3d_d3d11_should_upload_bone_palette(0, 0) == 0,
                 "Bone upload helper skips unskinned draws");
     EXPECT_TRUE(vgfx3d_d3d11_should_upload_bone_palette(1, 0) == 1,
@@ -871,6 +911,29 @@ static void test_shadow_and_rtt_policy_helpers(void) {
 }
 
 static void test_postfx_readback_policy_helpers(void) {
+    vgfx3d_postfx_effect_desc_t effect;
+    vgfx3d_postfx_chain_t chain;
+
+    memset(&effect, 0, sizeof(effect));
+    memset(&chain, 0, sizeof(chain));
+    chain.enabled = 1;
+    chain.effect_count = 1;
+    chain.effect_capacity = 1;
+    chain.effects = &effect;
+    EXPECT_TRUE(vgfx3d_d3d11_postfx_chain_is_usable(&chain) == 1,
+                "PostFX chain validator accepts enabled chains with enough storage");
+    chain.effect_capacity = 0;
+    EXPECT_TRUE(vgfx3d_d3d11_postfx_chain_is_usable(&chain) == 0,
+                "PostFX chain validator rejects effect counts beyond capacity");
+    chain.effect_capacity = 1;
+    chain.effects = NULL;
+    EXPECT_TRUE(vgfx3d_d3d11_postfx_chain_is_usable(&chain) == 0,
+                "PostFX chain validator rejects missing effect storage");
+    chain.effects = &effect;
+    chain.enabled = 0;
+    EXPECT_TRUE(vgfx3d_d3d11_postfx_chain_is_usable(&chain) == 0,
+                "PostFX chain validator rejects disabled chains");
+
     EXPECT_TRUE(vgfx3d_d3d11_should_composite_to_swapchain(0, 1, 1, 0) == 1,
                 "D3D11 composites an unpresented GPU-postfx scene to the swapchain");
     EXPECT_TRUE(vgfx3d_d3d11_should_composite_to_swapchain(0, 1, 1, 1) == 0,

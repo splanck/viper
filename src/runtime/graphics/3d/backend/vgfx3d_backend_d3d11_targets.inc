@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_targets.inc  (#included from vgfx3d_backend_d3d11.c; not a standalone translation unit)
-// Purpose: D3D11 render-target lifecycle: scene, overlay, post-FX, RTT, and shadow targets
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_targets.inc  (#included from
+// vgfx3d_backend_d3d11.c; not a standalone translation unit) Purpose: D3D11 render-target
+// lifecycle: scene, overlay, post-FX, RTT, and shadow targets
 //===----------------------------------------------------------------------===//
 
 /// @brief Allocate a render-target color texture (with optional shader-readable SRV).
@@ -156,7 +157,8 @@ static HRESULT d3d11_create_staging_texture(d3d11_context_t *ctx,
     if (out_tex)
         *out_tex = NULL;
     if (!ctx || !ctx->device || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height) ||
-        !out_tex)
+        !out_tex ||
+        (format != DXGI_FORMAT_R8G8B8A8_UNORM && format != DXGI_FORMAT_R16G16B16A16_FLOAT))
         return E_INVALIDARG;
 
     memset(&desc, 0, sizeof(desc));

@@ -301,7 +301,9 @@ int32_t vgfx3d_d3d11_clamp_int_param(int32_t requested, int32_t min_value, int32
 
 /// @brief Replace NaN/Inf float parameters before D3D11 cbuffer/state upload.
 float vgfx3d_d3d11_finite_or(float requested, float fallback) {
-    return isfinite(requested) ? requested : fallback;
+    if (isfinite(requested))
+        return requested;
+    return isfinite(fallback) ? fallback : 0.0f;
 }
 
 /// @brief Clamp a finite float parameter, tolerating inverted caller bounds.
@@ -309,10 +311,19 @@ float vgfx3d_d3d11_clamp_float_param(float requested,
                                      float min_value,
                                      float max_value,
                                      float fallback) {
+    float safe_fallback = isfinite(fallback) ? fallback : 0.0f;
     float tmp;
 
     if (!isfinite(requested))
-        requested = fallback;
+        requested = safe_fallback;
+    if (!isfinite(min_value) && !isfinite(max_value)) {
+        min_value = safe_fallback;
+        max_value = safe_fallback;
+    } else if (!isfinite(min_value)) {
+        min_value = max_value;
+    } else if (!isfinite(max_value)) {
+        max_value = min_value;
+    }
     if (min_value > max_value) {
         tmp = min_value;
         min_value = max_value;
@@ -327,7 +338,45 @@ float vgfx3d_d3d11_clamp_float_param(float requested,
 
 /// @brief Sanitize slope-scaled rasterizer bias before D3D11 state creation/cache keys.
 float vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(float requested) {
-    return isfinite(requested) ? requested : 0.0f;
+    return vgfx3d_d3d11_clamp_float_param(requested,
+                                          -VGFX3D_D3D11_MAX_SLOPE_SCALED_DEPTH_BIAS,
+                                          VGFX3D_D3D11_MAX_SLOPE_SCALED_DEPTH_BIAS,
+                                          0.0f);
+}
+
+/// @brief Normalize material workflow constants before the shader branches on them.
+int32_t vgfx3d_d3d11_sanitize_material_workflow(int32_t requested) {
+    return requested == RT_MATERIAL3D_WORKFLOW_PBR ? RT_MATERIAL3D_WORKFLOW_PBR
+                                                   : RT_MATERIAL3D_WORKFLOW_LEGACY;
+}
+
+/// @brief Normalize alpha-mode constants before draw-state and shader upload.
+int32_t vgfx3d_d3d11_sanitize_alpha_mode(int32_t requested) {
+    if (requested < RT_MATERIAL3D_ALPHA_MODE_OPAQUE || requested > RT_MATERIAL3D_ALPHA_MODE_BLEND)
+        return RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
+    return requested;
+}
+
+/// @brief Normalize Game3D shading-model constants before shader upload.
+int32_t vgfx3d_d3d11_sanitize_shading_model(int32_t requested) {
+    if (requested < 0 || requested > VGFX3D_D3D11_SHADING_MODEL_MAX)
+        return 0;
+    return requested;
+}
+
+/// @brief Normalize tonemap mode constants before shader upload.
+int32_t vgfx3d_d3d11_sanitize_tonemap_mode(int32_t requested) {
+    if (requested < 0 || requested > VGFX3D_D3D11_TONEMAP_MODE_MAX)
+        return 0;
+    return requested;
+}
+
+/// @brief Validate a backend-facing post-FX chain before indexed iteration.
+int vgfx3d_d3d11_postfx_chain_is_usable(const vgfx3d_postfx_chain_t *chain) {
+    if (!chain || !chain->enabled || !chain->effects || chain->effect_count <= 0 ||
+        chain->effect_capacity < chain->effect_count)
+        return 0;
+    return 1;
 }
 
 /// @brief Decide whether a draw needs current/previous bone cbuffer uploads.
