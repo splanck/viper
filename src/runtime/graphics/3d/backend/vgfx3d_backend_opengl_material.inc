@@ -117,7 +117,13 @@ static GLuint gl_get_material_sampler(gl_context_t *ctx,
                          GL_TEXTURE_WRAP_T,
                          (GLint)gl_material_wrap_mode(use_slot ? cmd->texture_slot_wrap_t[slot]
                                                                : cmd->texture_wrap_t));
-    gl.SamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, (GLint)gl_filter);
+    /*
+     * Generic material samplers must not require mip chains: runtime Pixels
+     * textures and streaming fallbacks may expose only mip level 0. Native
+     * texture uploads still configure mipmapped filtering when a full mip chain
+     * is present.
+     */
+    gl.SamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, (GLint)(filter ? GL_NEAREST : GL_LINEAR));
     gl.SamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER, (GLint)gl_filter);
     if (anisotropy > 1)
         gl.SamplerParameterf(sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, (GLfloat)anisotropy);
@@ -177,7 +183,7 @@ static void bind_texture_unit_with_sampler(gl_context_t *ctx,
                          GL_TEXTURE_WRAP_T,
                          (GLint)gl_material_wrap_mode(use_slot ? cmd->texture_slot_wrap_t[slot]
                                                                : cmd->texture_wrap_t));
-        gl.TexParameteri(target, GL_TEXTURE_MIN_FILTER, (GLint)filter);
+        gl.TexParameteri(target, GL_TEXTURE_MIN_FILTER, (GLint)(filter == GL_NEAREST ? GL_NEAREST : GL_LINEAR));
         gl.TexParameteri(target, GL_TEXTURE_MAG_FILTER, (GLint)filter);
         if (anisotropy > 1)
             gl.TexParameterf(target, GL_TEXTURE_MAX_ANISOTROPY_EXT, (GLfloat)anisotropy);
@@ -316,7 +322,8 @@ static void upload_main_uniforms(gl_context_t *ctx,
     gl.Uniform1i(ctx->uHasPrevInstanceMatrices, cmd->has_prev_instance_matrices ? 1 : 0);
     gl.Uniform1i(ctx->uHasPrevSkinning, cmd->prev_bone_palette ? 1 : 0);
     gl.Uniform1i(ctx->uHasPrevMorphWeights, cmd->prev_morph_weights ? 1 : 0);
-    gl.Uniform1i(ctx->uFogEnabled, ctx->fog_enabled ? 1 : 0);
+    gl.Uniform1i(ctx->uFogEnabled,
+                 (ctx->fog_enabled && ctx->cam_is_ortho && !cmd->disable_depth_test) ? 1 : 0);
     gl.Uniform1f(ctx->uFogNear, ctx->fog_near);
     gl.Uniform1f(ctx->uFogFar, ctx->fog_far);
     gl.Uniform3f(ctx->uFogColor, ctx->fog_color[0], ctx->fog_color[1], ctx->fog_color[2]);
@@ -487,9 +494,8 @@ static void bind_shadow_anim(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
 
 /// @brief Composite the offscreen scene to the swapchain backbuffer.
 ///
-/// Convenience wrapper around `gl_apply_postfx_chain` that targets FBO 0
-/// (default framebuffer / swapchain), falling back to a no-op composite when
-/// the chain is disabled or unavailable.
+/// Convenience wrapper around `gl_apply_postfx_chain` that targets the display surface, falling
+/// back to an offscreen final target when the GLX default framebuffer cannot write RGB.
 static int draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_chain_t *chain) {
     int32_t w;
     int32_t h;
@@ -498,12 +504,23 @@ static int draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_chain_t *ch
     w = ctx->scene_width > 0 ? ctx->scene_width : ctx->width;
     h = ctx->scene_height > 0 ? ctx->scene_height : ctx->height;
     if (chain && chain->enabled && chain->effect_count > 0 && chain->effects &&
-        gl_apply_postfx_chain(ctx, ctx->scene_color_tex, w, h, chain, 0, GL_BACK, 0, NULL, NULL)) {
+        !ctx->default_framebuffer_writable && gl_apply_postfx_chain_in_scene(ctx, w, h, chain)) {
+        return 1;
+    }
+    if (chain && chain->enabled && chain->effect_count > 0 && chain->effects &&
+        gl_apply_postfx_chain(
+            ctx, ctx->scene_color_tex, w, h, chain, 0, ctx->default_draw_buffer, 0, NULL, NULL)) {
         return 1;
     }
     if (!ctx->postfx_program)
         return 0;
-    return gl_draw_texture_to_target(ctx, ctx->scene_color_tex, 0, GL_BACK, w, h, NULL);
+    if (!ctx->default_framebuffer_writable) {
+        if (ensure_postfx_readback_target(ctx, w, h) != 0)
+            return 0;
+        return gl_draw_texture_to_target(
+            ctx, ctx->scene_color_tex, ctx->postfx_readback_fbo, GL_COLOR_ATTACHMENT0, w, h, NULL);
+    }
+    return gl_draw_texture_to_target(ctx, ctx->scene_color_tex, 0, ctx->default_draw_buffer, w, h, NULL);
 }
 
 /// @brief Internal skybox draw — full-screen triangle with reconstructed view rays.

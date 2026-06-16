@@ -3,6 +3,7 @@ module forest;
 
 bind Viper.Game3D;
 bind Viper.Graphics3D;
+bind Viper.Graphics3D.Assets3D as Assets3D;
 bind Viper.Core.Convert as Convert;
 bind Viper.Math;
 bind Viper.Terminal as Terminal;
@@ -18,10 +19,7 @@ class ShowcaseForest {
     expose func spawn(world: World3D, land: Terrain3D, bx: List[Float], bz: List[Float]) {
         beaconXs = bx;
         beaconZs = bz;
-        var model = Model3D.LoadAsset(config.TREE_MODEL_PATH);
-        if (treeBad(model)) { model = Model3D.Load(config.TREE_MODEL_PATH); }
-        if (treeBad(model)) { model = Model3D.Load(config.TREE_MODEL_PATH_ALT); }
-        if (treeBad(model)) { model = Model3D.Load(config.TREE_MODEL_PATH_FROM_BIN); }
+        var model = loadTreeModel();
         buildFoliageMaterials();
 
         if (treeBad(model)) {
@@ -39,6 +37,46 @@ class ShowcaseForest {
     hide func treeBad(m: Model3D) -> Boolean {
         if (m == null) { return true; }
         return Model3D.get_MeshCount(m) <= 0;
+    }
+
+    hide func loadTreeModel() -> Model3D {
+        var model = Model3D.LoadAsset(config.TREE_MODEL_PATH);
+        if (not treeBad(model)) {
+            Terminal.Say("Forest: loaded tree asset '" + config.TREE_MODEL_PATH + "'.");
+            return model;
+        }
+        reportTreeLoadFailure(config.TREE_MODEL_PATH);
+
+        model = Model3D.Load(config.TREE_MODEL_PATH);
+        if (not treeBad(model)) {
+            Terminal.Say("Forest: loaded tree model '" + config.TREE_MODEL_PATH + "'.");
+            return model;
+        }
+        reportTreeLoadFailure(config.TREE_MODEL_PATH);
+
+        model = Model3D.Load(config.TREE_MODEL_PATH_ALT);
+        if (not treeBad(model)) {
+            Terminal.Say("Forest: loaded tree model '" + config.TREE_MODEL_PATH_ALT + "'.");
+            return model;
+        }
+        reportTreeLoadFailure(config.TREE_MODEL_PATH_ALT);
+
+        model = Model3D.Load(config.TREE_MODEL_PATH_FROM_BIN);
+        if (not treeBad(model)) {
+            Terminal.Say("Forest: loaded tree model '" + config.TREE_MODEL_PATH_FROM_BIN + "'.");
+            return model;
+        }
+        reportTreeLoadFailure(config.TREE_MODEL_PATH_FROM_BIN);
+        return null;
+    }
+
+    hide func reportTreeLoadFailure(path: String) {
+        var msg = Assets3D.get_LastLoadError();
+        if (msg == "") {
+            Terminal.Say("Forest: tree model path unavailable: " + path);
+        } else {
+            Terminal.Say("Forest: tree model path unavailable: " + path + " (" + msg + ")");
+        }
     }
 
     hide func plantHomeGrove(world: World3D, land: Terrain3D, model: Model3D) -> Integer {
@@ -137,20 +175,47 @@ class ShowcaseForest {
         var canopyRadius = height * 0.22;
         var canopyMat = treeMats.get(pickFoliage(x, z));
 
-        var trunk = Prefab.Cylinder(trunkRadius, trunkHeight, 8, barkMat);
+        var trunk = Prefab.Cylinder(trunkRadius, trunkHeight, 18, barkMat);
         Entity3D.setName(trunk, "procedural_maple_trunk");
         Entity3D.setLayer(trunk, Layers.get_World());
         Entity3D.setRotationEuler(trunk, 0.0, yawDeg, 0.0);
         Entity3D.setPosition(trunk, x, y + trunkHeight * 0.5, z);
         World3D.spawn(world, trunk);
 
-        var crown = Prefab.Sphere(canopyRadius, 12, canopyMat);
+        plantBranch(world, x, z, y + trunkHeight * 0.58, yawDeg + 18.0, trunkRadius * 0.44, trunkHeight * 0.48, 28.0);
+        plantBranch(world, x, z, y + trunkHeight * 0.66, yawDeg + 142.0, trunkRadius * 0.36, trunkHeight * 0.40, -32.0);
+        plantBranch(world, x, z, y + trunkHeight * 0.78, yawDeg + 258.0, trunkRadius * 0.30, trunkHeight * 0.34, 24.0);
+
+        plantCanopyLobe(world, x, z, y, yawDeg, canopyRadius, canopyMat, 0.0, 0.0, 1.28, 0.86, 1.18, 0.52);
+        plantCanopyLobe(world, x, z, y, yawDeg + 28.0, canopyRadius * 0.78, canopyMat, -0.34, 0.18, 1.08, 0.72, 0.94, 0.38);
+        plantCanopyLobe(world, x, z, y, yawDeg + 146.0, canopyRadius * 0.72, canopyMat, 0.36, -0.22, 0.96, 0.76, 1.06, 0.34);
+        plantCanopyLobe(world, x, z, y, yawDeg + 244.0, canopyRadius * 0.66, canopyMat, 0.10, 0.42, 1.02, 0.64, 0.88, 0.62);
+        plantCanopyLobe(world, x, z, y, yawDeg + 8.0, canopyRadius * 0.56, canopyMat, 0.0, 0.02, 0.78, 0.86, 0.72, 0.92);
+    }
+
+    hide func plantBranch(world: World3D, x: Float, z: Float, y: Float, yawDeg: Float, radius: Float, length: Float, pitchDeg: Float) {
+        var branch = Prefab.Cylinder(radius, length, 12, barkMat);
+        Entity3D.setName(branch, "procedural_maple_branch");
+        Entity3D.setLayer(branch, Layers.get_World());
+        Entity3D.setRotationEuler(branch, pitchDeg, yawDeg, 38.0);
+        Entity3D.setPosition(branch, x + Sin(yawDeg * 0.0174533) * length * 0.18, y + length * 0.18, z + Cos(yawDeg * 0.0174533) * length * 0.18);
+        World3D.spawn(world, branch);
+    }
+
+    hide func plantCanopyLobe(world: World3D, x: Float, z: Float, y: Float, yawDeg: Float, radius: Float, mat: Material3D, ox: Float, oz: Float, sx: Float, sy: Float, sz: Float, lift: Float) {
+        var crown = Prefab.Sphere(radius, 22, mat);
+        var wx = x + Sin(yawDeg * 0.0174533) * ox * radius + Cos(yawDeg * 0.0174533) * oz * radius;
+        var wz = z + Cos(yawDeg * 0.0174533) * ox * radius - Sin(yawDeg * 0.0174533) * oz * radius;
         Entity3D.setName(crown, "procedural_maple_crown");
         Entity3D.setLayer(crown, Layers.get_World());
-        Entity3D.setScaleXYZ(crown, 1.18, 0.82, 1.08);
+        Entity3D.setScaleXYZ(crown, sx, sy, sz);
         Entity3D.setRotationEuler(crown, 0.0, yawDeg, 0.0);
-        Entity3D.setPosition(crown, x, y + trunkHeight + canopyRadius * 0.42, z);
+        Entity3D.setPosition(crown, wx, y + scaleCanopyBase(radius) + lift * radius, wz);
         World3D.spawn(world, crown);
+    }
+
+    hide func scaleCanopyBase(radius: Float) -> Float {
+        return radius * 2.45;
     }
 
     hide func buildFoliageMaterials() {

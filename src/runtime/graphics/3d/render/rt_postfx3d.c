@@ -1227,6 +1227,8 @@ void rt_postfx3d_apply_to_canvas(void *canvas) {
         stride = c->render_target->stride;
     } else {
         vgfx_framebuffer_t fb;
+        if (c->backend && c->backend != &vgfx3d_software_backend)
+            return;
         if (!c->gfx_win)
             return;
         if (!vgfx_get_framebuffer(c->gfx_win, &fb) || !fb.pixels)

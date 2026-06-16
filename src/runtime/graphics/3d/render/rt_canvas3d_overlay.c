@@ -494,6 +494,9 @@ int64_t rt_canvas3d_get_backend_capabilities(void *obj) {
         caps |= backend->get_native_texture_caps(c->backend_ctx) &
                 (RT_CANVAS3D_BACKEND_CAP_BC7 | RT_CANVAS3D_BACKEND_CAP_ASTC |
                  RT_CANVAS3D_BACKEND_CAP_ETC2 | RT_CANVAS3D_BACKEND_CAP_ANISOTROPY);
+    caps |= RT_CANVAS3D_BACKEND_CAP_PBR | RT_CANVAS3D_BACKEND_CAP_NORMAL_MAPS |
+            RT_CANVAS3D_BACKEND_CAP_ALPHA_MASK | RT_CANVAS3D_BACKEND_CAP_MORPH_TARGETS |
+            RT_CANVAS3D_BACKEND_CAP_SKINNING | RT_CANVAS3D_BACKEND_CAP_TERRAIN_SPLAT;
     caps |= RT_CANVAS3D_BACKEND_CAP_OCCLUSION | RT_CANVAS3D_BACKEND_CAP_HLOD;
 
     return caps;
@@ -557,6 +560,24 @@ static int64_t canvas3d_capability_from_name(const char *name) {
     if (strcmp(name, "anisotropy") == 0 || strcmp(name, "anisotropic-filtering") == 0 ||
         strcmp(name, "anisotropic_filtering") == 0)
         return RT_CANVAS3D_BACKEND_CAP_ANISOTROPY;
+    if (strcmp(name, "pbr") == 0 || strcmp(name, "physically-based") == 0 ||
+        strcmp(name, "physically_based") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_PBR;
+    if (strcmp(name, "normal-maps") == 0 || strcmp(name, "normal_maps") == 0 ||
+        strcmp(name, "normalmap") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_NORMAL_MAPS;
+    if (strcmp(name, "alpha-mask") == 0 || strcmp(name, "alpha_mask") == 0 ||
+        strcmp(name, "masked-alpha") == 0 || strcmp(name, "masked_alpha") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_ALPHA_MASK;
+    if (strcmp(name, "morph-targets") == 0 || strcmp(name, "morph_targets") == 0 ||
+        strcmp(name, "morphing") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_MORPH_TARGETS;
+    if (strcmp(name, "skinning") == 0 || strcmp(name, "skeletal-animation") == 0 ||
+        strcmp(name, "skeletal_animation") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_SKINNING;
+    if (strcmp(name, "terrain-splat") == 0 || strcmp(name, "terrain_splat") == 0 ||
+        strcmp(name, "terrain-splatting") == 0 || strcmp(name, "terrain_splatting") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_TERRAIN_SPLAT;
     return 0;
 }
 
