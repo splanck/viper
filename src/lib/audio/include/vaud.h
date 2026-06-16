@@ -89,6 +89,21 @@ typedef int32_t vaud_voice_id;
 /// @brief Invalid voice ID constant.
 #define VAUD_INVALID_VOICE (-1)
 
+/// @brief Audio backend and mixer diagnostic counters.
+/// @details Counters are monotonic for the lifetime of a context. They are intended for debug
+///          panels, smoke probes, and backend triage; applications should not use them for normal
+///          playback control. Fields unsupported by a platform backend remain zero.
+typedef struct {
+    uint64_t render_calls;          ///< Mixer render callbacks completed or attempted.
+    uint64_t mixer_lock_misses;     ///< Mixer callbacks that emitted silence due to state-lock contention.
+    uint64_t backend_write_calls;   ///< Platform write calls issued to the device API.
+    uint64_t backend_partial_writes; ///< Device writes that accepted fewer frames than requested.
+    uint64_t backend_waits;         ///< Device waits/polls used to avoid busy retries.
+    uint64_t backend_xruns;         ///< Underrun/suspend recoveries observed by the backend.
+    uint64_t backend_recoveries;    ///< Successful or attempted backend recovery operations.
+    uint64_t backend_write_failures; ///< Device writes that failed after recovery attempts.
+} vaud_stats_t;
+
 //===----------------------------------------------------------------------===//
 // Error Handling
 //===----------------------------------------------------------------------===//
@@ -376,6 +391,13 @@ void vaud_stop_all_sounds(vaud_context_t ctx);
 /// @param ctx Audio context.
 /// @return Latency in milliseconds.
 float vaud_get_latency_ms(vaud_context_t ctx);
+
+/// @brief Copy audio mixer/backend diagnostic counters for @p ctx.
+/// @details The snapshot is lock-free and may race slightly with the audio thread, but each field
+///          is read atomically. Passing NULL for either argument is a no-op.
+/// @param ctx Audio context to inspect.
+/// @param out_stats Destination statistics snapshot.
+void vaud_get_stats(vaud_context_t ctx, vaud_stats_t *out_stats);
 
 #ifdef __cplusplus
 }

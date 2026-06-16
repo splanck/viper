@@ -208,13 +208,20 @@ static void gl_submit_draw(void *ctx_ptr,
     GLuint mesh_vbo, mesh_ibo;
     uint32_t index_count;
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
-        cmd->index_count == 0)
+        cmd->index_count == 0) {
+        if (ctx)
+            ctx->stats.dropped_draws++;
         return;
+    }
     index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
-    if (index_count == 0)
+    if (index_count == 0) {
+        ctx->stats.dropped_draws++;
         return;
-    if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo))
+    }
+    if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo)) {
+        ctx->stats.dropped_draws++;
         return;
+    }
 
     gl.FrontFace(GL_CCW);
     if (backface_cull)
@@ -276,6 +283,7 @@ static void gl_submit_draw(void *ctx_ptr,
                 (int)cmd->disable_depth_test);
     }
     gl.DrawElements(GL_TRIANGLES, (GLsizei)index_count, GL_UNSIGNED_INT, NULL);
+    ctx->stats.draw_calls++;
     if (gl_debug_enabled()) {
         GLenum err = gl.GetError();
         if (err != GL_NO_ERROR)
@@ -522,11 +530,15 @@ static void gl_present_impl(gl_context_t *ctx, const vgfx3d_postfx_chain_t *chai
     }
     if (!ctx->default_framebuffer_writable) {
         (void)gl_present_offscreen_vgfx(ctx);
+        ctx->stats.offscreen_presents++;
+        ctx->stats.present_path = 2;
         ctx->scene_postfx_pending = 0;
         ctx->scene_composited_to_backbuffer = 0;
         return;
     }
     glx.SwapBuffers(ctx->display, ctx->window);
+    ctx->stats.direct_presents++;
+    ctx->stats.present_path = 1;
     ctx->scene_postfx_pending = 0;
     ctx->scene_composited_to_backbuffer = 0;
 }
@@ -811,13 +823,20 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
     GLuint mesh_vbo, mesh_ibo;
     uint32_t index_count;
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
-        cmd->index_count == 0 || !instance_matrices || instance_count <= 0)
+        cmd->index_count == 0 || !instance_matrices || instance_count <= 0) {
+        if (ctx)
+            ctx->stats.dropped_draws++;
         return;
+    }
     index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
-    if (index_count == 0 || instance_count > INT_MAX)
+    if (index_count == 0 || instance_count > INT_MAX) {
+        ctx->stats.dropped_draws++;
         return;
-    if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo))
+    }
+    if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo)) {
+        ctx->stats.dropped_draws++;
         return;
+    }
 
     gl.FrontFace(GL_CCW);
     if (backface_cull)
@@ -838,9 +857,11 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
                                                                        : NULL,
                                        instance_count)) {
         set_identity_instance_constants();
+        ctx->stats.dropped_draws++;
         return;
     }
     gl.DrawElementsInstanced(
         GL_TRIANGLES, (GLsizei)index_count, GL_UNSIGNED_INT, NULL, (GLsizei)instance_count);
+    ctx->stats.draw_calls++;
     set_identity_instance_constants();
 }

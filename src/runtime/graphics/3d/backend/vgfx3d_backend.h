@@ -258,6 +258,24 @@ typedef struct {
     float outer_cos; /* spot: cosine of outer cone angle (zero brightness) */
 } vgfx3d_light_params_t;
 
+/// @brief Optional backend telemetry snapshot for renderer diagnostics.
+/// @details All counters are monotonic for the lifetime of the backend context unless otherwise
+///          stated. Backends that do not implement a field should leave it zero. The structure is
+///          intentionally plain integers so Canvas3D can expose selected values through stable
+///          runtime properties without allocating or depending on backend-private headers.
+typedef struct {
+    uint64_t draw_calls;               ///< Successful backend draw calls emitted.
+    uint64_t dropped_draws;            ///< Draw commands rejected by the backend before issuing API calls.
+    uint64_t mesh_cache_hits;          ///< Static mesh VBO/IBO cache hits.
+    uint64_t mesh_cache_misses;        ///< Static mesh VBO/IBO cache misses or refreshes.
+    uint64_t mesh_stream_uploads;      ///< Transient mesh VBO/IBO uploads.
+    uint64_t texture_fallback_binds;   ///< Times a fallback texture was bound while real payload was absent.
+    uint64_t direct_presents;          ///< Presents through the native GPU swapchain/default framebuffer.
+    uint64_t offscreen_presents;       ///< Presents resolved through an offscreen/readback path.
+    int32_t present_path;              ///< 0 unknown, 1 direct, 2 offscreen.
+    int32_t default_framebuffer_writable; ///< Last default framebuffer writability decision.
+} vgfx3d_backend_stats_t;
+
 /*==========================================================================
  * Backend vtable
  *=========================================================================*/
@@ -367,6 +385,11 @@ typedef struct vgfx3d_backend {
      * RT_CANVAS3D_BACKEND_CAP_BC7 / ASTC / ETC2 for native block upload and
      * RT_CANVAS3D_BACKEND_CAP_ANISOTROPY when sampler anisotropy is supported. */
     int64_t (*get_native_texture_caps)(void *ctx);
+
+    /// @brief Optional backend diagnostics hook.
+    /// @details Copies a point-in-time telemetry snapshot into @p out_stats. NULL means the
+    ///          backend has no private telemetry beyond Canvas3D's existing frame counters.
+    void (*get_backend_stats)(void *ctx, vgfx3d_backend_stats_t *out_stats);
 } vgfx3d_backend_t;
 
 /*==========================================================================

@@ -80,6 +80,7 @@ static int gl_lookup_cached_mesh_buffers(gl_context_t *ctx,
         !slot->vbo || !slot->ibo) {
         size_t vbytes;
         size_t ibytes;
+        ctx->stats.mesh_cache_misses++;
 
         if ((size_t)cmd->vertex_count > (size_t)PTRDIFF_MAX / sizeof(vgfx3d_vertex_t) ||
             (size_t)cmd->index_count > (size_t)PTRDIFF_MAX / sizeof(uint32_t)) {
@@ -120,6 +121,8 @@ static int gl_lookup_cached_mesh_buffers(gl_context_t *ctx,
         slot->revision = cmd->geometry_revision;
         slot->vertex_count = cmd->vertex_count;
         slot->index_count = cmd->index_count;
+    } else {
+        ctx->stats.mesh_cache_hits++;
     }
 
     slot->last_used_frame = ctx->frame_serial;
@@ -151,6 +154,7 @@ static int prepare_mesh_buffers(gl_context_t *ctx,
     ibytes = (size_t)cmd->index_count * sizeof(uint32_t);
     if (gl_lookup_cached_mesh_buffers(ctx, cmd, out_vbo, out_ibo))
         return 1;
+    ctx->stats.mesh_stream_uploads++;
 
     if (ensure_buffer_capacity(GL_ARRAY_BUFFER,
                                ctx->mesh_vbo,

@@ -83,36 +83,120 @@ static void alsa_end_quiet_probe(void) {
         snd_lib_error_set_handler(NULL);
 }
 
-static int alsa_write_all(vaud_linux_data *plat, const int16_t *buffer, snd_pcm_uframes_t frames) {
+/// @brief Apply explicit ALSA hardware and software parameters for ViperAUD output.
+/// @details This replaces `snd_pcm_set_params()` so the backend can control the period size,
+///          buffer size, start threshold, and wakeup granularity independently. The requested
+///          format remains stereo 44.1 kHz signed 16-bit PCM; ALSA may negotiate a nearby rate
+///          through its normal plugin layer.
+/// @param pcm Open playback PCM handle.
+/// @return 0 on success, otherwise a negative ALSA error code.
+static int alsa_configure_pcm(snd_pcm_t *pcm) {
+    snd_pcm_hw_params_t *hw = NULL;
+    snd_pcm_sw_params_t *sw = NULL;
+    snd_pcm_uframes_t period = VAUD_BUFFER_FRAMES;
+    snd_pcm_uframes_t buffer = VAUD_BUFFER_FRAMES * 4;
+    unsigned int rate = VAUD_SAMPLE_RATE;
+    int dir = 0;
+    int err = snd_pcm_hw_params_malloc(&hw);
+    if (err < 0)
+        return err;
+    err = snd_pcm_sw_params_malloc(&sw);
+    if (err < 0) {
+        snd_pcm_hw_params_free(hw);
+        return err;
+    }
+
+    if ((err = snd_pcm_hw_params_any(pcm, hw)) < 0)
+        goto done;
+    if ((err = snd_pcm_hw_params_set_access(pcm, hw, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0)
+        goto done;
+    if ((err = snd_pcm_hw_params_set_format(pcm, hw, SND_PCM_FORMAT_S16_LE)) < 0)
+        goto done;
+    if ((err = snd_pcm_hw_params_set_channels(pcm, hw, VAUD_CHANNELS)) < 0)
+        goto done;
+    if ((err = snd_pcm_hw_params_set_rate_near(pcm, hw, &rate, &dir)) < 0)
+        goto done;
+    if ((err = snd_pcm_hw_params_set_period_size_near(pcm, hw, &period, &dir)) < 0)
+        goto done;
+    if ((err = snd_pcm_hw_params_set_buffer_size_near(pcm, hw, &buffer)) < 0)
+        goto done;
+    if ((err = snd_pcm_hw_params(pcm, hw)) < 0)
+        goto done;
+
+    if ((err = snd_pcm_sw_params_current(pcm, sw)) < 0)
+        goto done;
+    if ((err = snd_pcm_sw_params_set_start_threshold(pcm, sw, period)) < 0)
+        goto done;
+    if ((err = snd_pcm_sw_params_set_avail_min(pcm, sw, period)) < 0)
+        goto done;
+    err = snd_pcm_sw_params(pcm, sw);
+
+done:
+    snd_pcm_sw_params_free(sw);
+    snd_pcm_hw_params_free(hw);
+    return err;
+}
+
+/// @brief Recover an ALSA write error and update backend telemetry.
+/// @param ctx Audio context owning the diagnostic counters.
+/// @param plat Linux platform state containing the PCM handle.
+/// @param err Negative ALSA error from `snd_pcm_writei` or `snd_pcm_wait`.
+/// @return 1 when recovery succeeded and writing may continue, 0 otherwise.
+static int alsa_recover_write_error(vaud_context_t ctx, vaud_linux_data *plat, int err) {
+    if (err == -EPIPE || err == -ESTRPIPE)
+        vaud_stats_add(&ctx->stats.backend_xruns, 1);
+    vaud_stats_add(&ctx->stats.backend_recoveries, 1);
+    if (snd_pcm_recover(plat->pcm, err, 0) < 0) {
+        vaud_stats_add(&ctx->stats.backend_write_failures, 1);
+        return 0;
+    }
+    return 1;
+}
+
+/// @brief Write a full interleaved PCM period to ALSA, handling partial writes and recovery.
+/// @details ALSA may accept fewer frames than requested, return transient `EAGAIN`, or report an
+///          underrun/suspend that can be recovered. This loop keeps the audio thread responsive by
+///          waiting on `EAGAIN`, attempting recoveries for recoverable failures, and surfacing every
+///          branch through `vaud_stats_t` counters.
+/// @param ctx Audio context owning diagnostics.
+/// @param plat Linux platform state.
+/// @param buffer Interleaved stereo PCM frames.
+/// @param frames Number of frames to write.
+/// @return 1 when all frames were written, 0 when the write should be treated as failed.
+static int alsa_write_all(vaud_context_t ctx,
+                          vaud_linux_data *plat,
+                          const int16_t *buffer,
+                          snd_pcm_uframes_t frames) {
     snd_pcm_uframes_t written_total = 0;
 
     while (__atomic_load_n(&plat->running, __ATOMIC_ACQUIRE) && written_total < frames) {
         const int16_t *cursor = buffer + ((size_t)written_total * VAUD_CHANNELS);
-        snd_pcm_sframes_t written = snd_pcm_writei(plat->pcm, cursor, frames - written_total);
+        snd_pcm_uframes_t remaining = frames - written_total;
+        vaud_stats_add(&ctx->stats.backend_write_calls, 1);
+        snd_pcm_sframes_t written = snd_pcm_writei(plat->pcm, cursor, remaining);
 
         if (written > 0) {
+            if ((snd_pcm_uframes_t)written < remaining)
+                vaud_stats_add(&ctx->stats.backend_partial_writes, 1);
             written_total += (snd_pcm_uframes_t)written;
             continue;
         }
 
-        if (written == 0)
+        if (written == 0) {
+            vaud_stats_add(&ctx->stats.backend_write_failures, 1);
             return 0;
+        }
 
-        if (written == -EAGAIN)
-            continue;
-
-        if (written == -EPIPE || written == -ESTRPIPE) {
-            int rc = snd_pcm_recover(plat->pcm, (int)written, 0);
-            if (rc < 0)
+        if (written == -EAGAIN) {
+            vaud_stats_add(&ctx->stats.backend_waits, 1);
+            int wait_rc = snd_pcm_wait(plat->pcm, 100);
+            if (wait_rc < 0 && !alsa_recover_write_error(ctx, plat, wait_rc))
                 return 0;
             continue;
         }
 
-        if (written < 0) {
-            int rc = snd_pcm_recover(plat->pcm, (int)written, 0);
-            if (rc < 0)
-                return 0;
-        }
+        if (!alsa_recover_write_error(ctx, plat, (int)written))
+            return 0;
     }
 
     return written_total == frames;
@@ -149,7 +233,7 @@ static void *audio_thread_func(void *arg) {
         vaud_mixer_render(ctx, buffer, VAUD_BUFFER_FRAMES);
 
         /* Write the whole period; ALSA may legally accept only part of it. */
-        if (!alsa_write_all(plat, buffer, VAUD_BUFFER_FRAMES)) {
+        if (!alsa_write_all(ctx, plat, buffer, VAUD_BUFFER_FRAMES)) {
             if (!__atomic_load_n(&plat->running, __ATOMIC_ACQUIRE))
                 break;
             (void)snd_pcm_prepare(plat->pcm);
@@ -216,14 +300,7 @@ int vaud_platform_init(vaud_context_t ctx) {
 
     /* Configure PCM parameters */
     alsa_begin_quiet_probe();
-    err = snd_pcm_set_params(plat->pcm,
-                             SND_PCM_FORMAT_S16_LE,         /* 16-bit signed little-endian */
-                             SND_PCM_ACCESS_RW_INTERLEAVED, /* Interleaved channels */
-                             VAUD_CHANNELS,                 /* Stereo */
-                             VAUD_SAMPLE_RATE,              /* 44100 Hz */
-                             1,                             /* Allow resampling */
-                             50000                          /* Latency: 50ms in microseconds */
-    );
+    err = alsa_configure_pcm(plat->pcm);
     alsa_end_quiet_probe();
 
     if (err < 0) {
