@@ -19,6 +19,22 @@ static HRESULT d3d11_allocate_cubemap_srv(d3d11_context_t *ctx,
                                           ID3D11Texture2D **out_tex,
                                           ID3D11ShaderResourceView **out_srv);
 
+/// @brief Return the white 2D fallback SRV and record the fallback bind.
+static ID3D11ShaderResourceView *d3d11_fallback_white_srv(d3d11_context_t *ctx) {
+    if (!ctx || !ctx->fallback_white_srv)
+        return NULL;
+    ctx->stats.texture_fallback_binds++;
+    return ctx->fallback_white_srv;
+}
+
+/// @brief Return the white cubemap fallback SRV and record the fallback bind.
+static ID3D11ShaderResourceView *d3d11_fallback_white_cubemap_srv(d3d11_context_t *ctx) {
+    if (!ctx || !ctx->fallback_white_cube_srv)
+        return NULL;
+    ctx->stats.texture_fallback_binds++;
+    return ctx->fallback_white_cube_srv;
+}
+
 /// @brief Release one 2D-texture cache slot and clear all identity/upload metadata.
 static void d3d11_release_texture_cache_entry(d3d_tex_cache_entry_t *entry) {
     if (!entry)
@@ -873,9 +889,10 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_srv(d3d11_context_t *ctx,
         if (ctx->tex_cache[i].pixels_ptr == pixels &&
             ctx->tex_cache[i].pending_generation == cache_key &&
             ctx->tex_cache[i].upload_in_progress) {
-            return d3d11_continue_texture_upload(ctx, &ctx->tex_cache[i], pixels)
-                       ? ctx->tex_cache[i].srv
-                       : NULL;
+            if (d3d11_continue_texture_upload(ctx, &ctx->tex_cache[i], pixels) &&
+                !ctx->tex_cache[i].upload_in_progress)
+                return ctx->tex_cache[i].srv;
+            return d3d11_fallback_white_srv(ctx);
         }
     }
 
@@ -883,7 +900,8 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_srv(d3d11_context_t *ctx,
         if (ctx->tex_cache[i].pixels_ptr == pixels) {
             if (!d3d11_start_texture_upload(ctx, &ctx->tex_cache[i], pixels, cache_key))
                 return NULL;
-            return ctx->tex_cache[i].upload_in_progress ? NULL : ctx->tex_cache[i].srv;
+            return ctx->tex_cache[i].upload_in_progress ? d3d11_fallback_white_srv(ctx)
+                                                        : ctx->tex_cache[i].srv;
         }
     }
 
@@ -891,7 +909,8 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_srv(d3d11_context_t *ctx,
         if (!ctx->tex_cache[i].pixels_ptr && !ctx->tex_cache[i].texture_asset) {
             if (!d3d11_start_texture_upload(ctx, &ctx->tex_cache[i], pixels, cache_key))
                 return NULL;
-            return ctx->tex_cache[i].upload_in_progress ? NULL : ctx->tex_cache[i].srv;
+            return ctx->tex_cache[i].upload_in_progress ? d3d11_fallback_white_srv(ctx)
+                                                        : ctx->tex_cache[i].srv;
         }
     }
     if (ctx->tex_cache_count < INT_MAX &&
@@ -902,7 +921,7 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_srv(d3d11_context_t *ctx,
             ctx->tex_cache_count--;
             return NULL;
         }
-        return entry->upload_in_progress ? NULL : entry->srv;
+        return entry->upload_in_progress ? d3d11_fallback_white_srv(ctx) : entry->srv;
     }
     return d3d11_create_temp_texture_srv(ctx, pixels, out_temp);
 }
@@ -937,9 +956,10 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_native_srv(
             ctx->tex_cache[i].native_mip_start == mip_start &&
             ctx->tex_cache[i].native_mip_count == mip_count &&
             ctx->tex_cache[i].upload_in_progress) {
-            return d3d11_continue_native_texture_upload(ctx, &ctx->tex_cache[i])
-                       ? ctx->tex_cache[i].srv
-                       : NULL;
+            if (d3d11_continue_native_texture_upload(ctx, &ctx->tex_cache[i]) &&
+                !ctx->tex_cache[i].upload_in_progress)
+                return ctx->tex_cache[i].srv;
+            return d3d11_fallback_white_srv(ctx);
         }
     }
 
@@ -948,7 +968,8 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_native_srv(
             if (!d3d11_start_native_texture_upload(
                     ctx, &ctx->tex_cache[i], asset, cache_key, mip_start, mip_count))
                 return NULL;
-            return ctx->tex_cache[i].upload_in_progress ? NULL : ctx->tex_cache[i].srv;
+            return ctx->tex_cache[i].upload_in_progress ? d3d11_fallback_white_srv(ctx)
+                                                        : ctx->tex_cache[i].srv;
         }
     }
 
@@ -957,7 +978,8 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_native_srv(
             if (!d3d11_start_native_texture_upload(
                     ctx, &ctx->tex_cache[i], asset, cache_key, mip_start, mip_count))
                 return NULL;
-            return ctx->tex_cache[i].upload_in_progress ? NULL : ctx->tex_cache[i].srv;
+            return ctx->tex_cache[i].upload_in_progress ? d3d11_fallback_white_srv(ctx)
+                                                        : ctx->tex_cache[i].srv;
         }
     }
     if (ctx->tex_cache_count < INT_MAX &&
@@ -969,7 +991,7 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_native_srv(
             ctx->tex_cache_count--;
             return NULL;
         }
-        return entry->upload_in_progress ? NULL : entry->srv;
+        return entry->upload_in_progress ? d3d11_fallback_white_srv(ctx) : entry->srv;
     }
     return NULL;
 }
@@ -1188,9 +1210,10 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_cubemap_srv(d3d11_context_t
             ctx->cubemap_cache[i].pending_generation == generation &&
             ctx->cubemap_cache[i].upload_in_progress) {
             ctx->cubemap_cache[i].last_used_frame = ctx->frame_serial;
-            return d3d11_continue_cubemap_upload(ctx, &ctx->cubemap_cache[i], cubemap)
-                       ? ctx->cubemap_cache[i].srv
-                       : NULL;
+            if (d3d11_continue_cubemap_upload(ctx, &ctx->cubemap_cache[i], cubemap) &&
+                !ctx->cubemap_cache[i].upload_in_progress)
+                return ctx->cubemap_cache[i].srv;
+            return d3d11_fallback_white_cubemap_srv(ctx);
         }
     }
 
@@ -1198,7 +1221,8 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_cubemap_srv(d3d11_context_t
         if (ctx->cubemap_cache[i].cubemap_ptr == cubemap) {
             if (!d3d11_start_cubemap_upload(ctx, &ctx->cubemap_cache[i], cubemap, generation))
                 return NULL;
-            return ctx->cubemap_cache[i].upload_in_progress ? NULL : ctx->cubemap_cache[i].srv;
+            return ctx->cubemap_cache[i].upload_in_progress ? d3d11_fallback_white_cubemap_srv(ctx)
+                                                            : ctx->cubemap_cache[i].srv;
         }
     }
 
@@ -1206,7 +1230,8 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_cubemap_srv(d3d11_context_t
         if (!ctx->cubemap_cache[i].cubemap_ptr) {
             if (!d3d11_start_cubemap_upload(ctx, &ctx->cubemap_cache[i], cubemap, generation))
                 return NULL;
-            return ctx->cubemap_cache[i].upload_in_progress ? NULL : ctx->cubemap_cache[i].srv;
+            return ctx->cubemap_cache[i].upload_in_progress ? d3d11_fallback_white_cubemap_srv(ctx)
+                                                            : ctx->cubemap_cache[i].srv;
         }
     }
     if (ctx->cubemap_cache_count < INT_MAX &&
@@ -1217,7 +1242,7 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_cubemap_srv(d3d11_context_t
             ctx->cubemap_cache_count--;
             return NULL;
         }
-        return entry->upload_in_progress ? NULL : entry->srv;
+        return entry->upload_in_progress ? d3d11_fallback_white_cubemap_srv(ctx) : entry->srv;
     }
 
     return d3d11_create_temp_cubemap_srv(ctx, cubemap, out_temp);

@@ -53,6 +53,93 @@ static int px_png_stride_checked(uint32_t width,
     return 1;
 }
 
+/// @brief Convert a big-endian 16-bit PNG sample to 8-bit with correct rounding.
+/// @details Dividing by 257 maps the full 16-bit UNORM range exactly onto
+///          8-bit UNORM endpoints: 0 maps to 0 and 65535 maps to 255. The
+///          old `(v + 128) >> 8` form produced 256 for 65535 and wrapped to
+///          zero when narrowed to uint8_t.
+/// @param p Pointer to the two big-endian sample bytes.
+/// @return Rounded 8-bit sample value.
+static uint8_t png_down16_to_u8(const uint8_t *p) {
+    uint32_t v = ((uint32_t)p[0] << 8) | (uint32_t)p[1];
+    return (uint8_t)((v + 128u) / 257u);
+}
+
+/// @brief Compute the exact filtered-byte count expected after PNG zlib inflate.
+/// @details Non-interlaced images contain one filter byte plus one row payload
+///          per image row. Adam7 images contain the same structure per non-empty
+///          pass. Computing this before inflate lets the decoder cap decompressed
+///          output precisely instead of using a broad process-wide ceiling.
+/// @param width Source PNG width in pixels.
+/// @param height Source PNG height in pixels.
+/// @param bit_depth PNG sample bit depth.
+/// @param samples_per_pixel Number of samples encoded per pixel.
+/// @param interlace PNG interlace method, 0 for none and 1 for Adam7.
+/// @param expected_out Receives the exact inflated byte count.
+/// @return 1 when the count is representable, 0 on overflow or invalid input.
+static int png_expected_filtered_size(uint32_t width,
+                                      uint32_t height,
+                                      uint8_t bit_depth,
+                                      int samples_per_pixel,
+                                      uint8_t interlace,
+                                      size_t *expected_out) {
+    size_t expected = 0;
+    if (!expected_out || width == 0 || height == 0)
+        return 0;
+    if (interlace == 0) {
+        size_t stride = 0;
+        size_t row_len = 0;
+        if (!px_png_stride_checked(width, bit_depth, samples_per_pixel, &stride) ||
+            !px_add_size(stride, 1, &row_len) || !px_mul_size(row_len, (size_t)height, &expected))
+            return 0;
+        *expected_out = expected;
+        return 1;
+    }
+    if (interlace == 1) {
+        static const uint32_t a7_x0[7] = {0, 4, 0, 2, 0, 1, 0};
+        static const uint32_t a7_dx[7] = {8, 8, 4, 4, 2, 2, 1};
+        static const uint32_t a7_y0[7] = {0, 0, 4, 0, 2, 0, 1};
+        static const uint32_t a7_dy[7] = {8, 8, 8, 4, 4, 2, 2};
+        for (int pass = 0; pass < 7; pass++) {
+            uint32_t sub_w =
+                width > a7_x0[pass] ? (width - a7_x0[pass] + a7_dx[pass] - 1u) / a7_dx[pass] : 0u;
+            uint32_t sub_h =
+                height > a7_y0[pass] ? (height - a7_y0[pass] + a7_dy[pass] - 1u) / a7_dy[pass] : 0u;
+            size_t sub_stride = 0;
+            size_t pass_row_len = 0;
+            size_t pass_bytes = 0;
+            if (sub_w == 0 || sub_h == 0)
+                continue;
+            if (!px_png_stride_checked(sub_w, bit_depth, samples_per_pixel, &sub_stride) ||
+                !px_add_size(sub_stride, 1, &pass_row_len) ||
+                !px_mul_size(pass_row_len, (size_t)sub_h, &pass_bytes) ||
+                !px_add_size(expected, pass_bytes, &expected))
+                return 0;
+        }
+        *expected_out = expected;
+        return 1;
+    }
+    return 0;
+}
+
+/// @brief Return a conservative compressed-IDAT byte cap for an expected PNG payload.
+/// @details Deflate streams can be slightly larger than the uncompressed payload
+///          for incompressible data. The decoder still should not retain an
+///          arbitrarily large compressed stream after IHDR tells us the exact
+///          inflated size, so allow ~0.4% overhead plus a fixed 64 KiB margin.
+/// @param expected_filtered_bytes Exact inflate result size.
+/// @param cap_out Receives the compressed-byte cap.
+/// @return 1 when the cap is representable, 0 on overflow.
+static int png_idat_cap_from_expected(size_t expected_filtered_bytes, size_t *cap_out) {
+    size_t slack = expected_filtered_bytes / 256u;
+    size_t cap = 0;
+    if (!cap_out || !px_add_size(expected_filtered_bytes, slack, &cap) ||
+        !px_add_size(cap, 64u * 1024u, &cap))
+        return 0;
+    *cap_out = cap;
+    return 1;
+}
+
 /// @brief Update a PNG/IEEE CRC32 state with one byte buffer.
 /// @details The caller supplies the preconditioned CRC state, typically
 ///          0xFFFFFFFFu for the first chunk fragment. The returned value is
@@ -202,6 +289,96 @@ static int png_filter_row(
     return 1;
 }
 
+/// @brief Compute PNG filter selection score for one candidate filtered row.
+/// @details The PNG spec leaves encoder filter selection open. This scorer uses
+///          the common sum-of-absolute-signed-bytes heuristic: smaller residuals
+///          generally compress better, while remaining cheap enough for every row.
+/// @param row Current unfiltered RGBA row.
+/// @param prev Previous unfiltered row, or NULL for the first row.
+/// @param len Row length in bytes.
+/// @param bpp Bytes per pixel for left-neighbor filters.
+/// @param filter PNG filter type 0..4.
+/// @return Residual score; SIZE_MAX marks an invalid filter.
+static size_t png_filter_score_row(
+    const uint8_t *row, const uint8_t *prev, size_t len, size_t bpp, int filter) {
+    size_t score = 0;
+    if (!row || bpp == 0 || filter < 0 || filter > 4)
+        return SIZE_MAX;
+    for (size_t i = 0; i < len; i++) {
+        uint8_t left = (i >= bpp) ? row[i - bpp] : 0;
+        uint8_t up = prev ? prev[i] : 0;
+        uint8_t up_left = (prev && i >= bpp) ? prev[i - bpp] : 0;
+        uint8_t pred = 0;
+        switch (filter) {
+            case 0:
+                pred = 0;
+                break;
+            case 1:
+                pred = left;
+                break;
+            case 2:
+                pred = up;
+                break;
+            case 3:
+                pred = (uint8_t)(((int)left + (int)up) / 2);
+                break;
+            case 4:
+                pred = paeth_predict(left, up, up_left);
+                break;
+        }
+        int residual = (int)(int8_t)(row[i] - pred);
+        score += (size_t)(residual < 0 ? -residual : residual);
+    }
+    return score;
+}
+
+/// @brief Encode one RGBA row with the best PNG filter by residual score.
+/// @details Writes the selected filter byte followed by filtered payload bytes.
+///          The previous row must be unfiltered; passing NULL is valid for the
+///          first row and naturally makes Up/Average/Paeth consider zero above.
+/// @param dst Destination of size `len + 1`.
+/// @param row Current unfiltered row bytes.
+/// @param prev Previous unfiltered row bytes, or NULL.
+/// @param len Row payload byte length.
+/// @param bpp Bytes per pixel for PNG left-neighbor filters.
+static void png_write_best_filtered_row(
+    uint8_t *dst, const uint8_t *row, const uint8_t *prev, size_t len, size_t bpp) {
+    int best_filter = 0;
+    size_t best_score = png_filter_score_row(row, prev, len, bpp, 0);
+    for (int filter = 1; filter <= 4; filter++) {
+        size_t score = png_filter_score_row(row, prev, len, bpp, filter);
+        if (score < best_score) {
+            best_score = score;
+            best_filter = filter;
+        }
+    }
+    dst[0] = (uint8_t)best_filter;
+    for (size_t i = 0; i < len; i++) {
+        uint8_t left = (i >= bpp) ? row[i - bpp] : 0;
+        uint8_t up = prev ? prev[i] : 0;
+        uint8_t up_left = (prev && i >= bpp) ? prev[i - bpp] : 0;
+        uint8_t pred = 0;
+        switch (best_filter) {
+            case 1:
+                pred = left;
+                break;
+            case 2:
+                pred = up;
+                break;
+            case 3:
+                pred = (uint8_t)(((int)left + (int)up) / 2);
+                break;
+            case 4:
+                pred = paeth_predict(left, up, up_left);
+                break;
+            default:
+                pred = 0;
+                break;
+        }
+        dst[i + 1u] = (uint8_t)(row[i] - pred);
+    }
+}
+
 /// @brief Decode a PNG memory buffer into malloc-owned raw RGBA32 pixels.
 ///
 /// Implements a focused PNG reader (RFC 2083): parses the 8-byte
@@ -256,6 +433,8 @@ int rt_png_decode_buffer_rgba32(const uint8_t *file_data,
     int iend_seen = 0;
     int plte_seen = 0;
     int trns_seen = 0;
+    size_t expected_filtered_len = 0;
+    size_t idat_cap_limit = 0;
 
     while (pos <= (size_t)file_len && 12u <= (size_t)file_len - pos) {
         uint32_t chunk_len = png_read_u32(file_data + pos);
@@ -313,6 +492,23 @@ int rt_png_decode_buffer_rgba32(const uint8_t *file_data,
                 (size_t)width * (size_t)height > PNG_MAX_PIXELS) {
                 if (idat_buf)
                     free(idat_buf);
+                return 0;
+            }
+            int spp_for_expected = 1;
+            if (color_type == 2)
+                spp_for_expected = 3;
+            else if (color_type == 4)
+                spp_for_expected = 2;
+            else if (color_type == 6)
+                spp_for_expected = 4;
+            if (!png_expected_filtered_size(width,
+                                            height,
+                                            bit_depth,
+                                            spp_for_expected,
+                                            interlace,
+                                            &expected_filtered_len) ||
+                !png_idat_cap_from_expected(expected_filtered_len, &idat_cap_limit)) {
+                free(idat_buf);
                 return 0;
             }
             ihdr_seen = 1;
@@ -380,6 +576,10 @@ int rt_png_decode_buffer_rgba32(const uint8_t *file_data,
                 return 0;
             }
             size_t needed_idat = idat_len + (size_t)chunk_len;
+            if (idat_cap_limit > 0 && needed_idat > idat_cap_limit) {
+                free(idat_buf);
+                return 0;
+            }
             if (needed_idat > idat_cap) {
                 size_t new_cap = idat_cap ? idat_cap : 1;
                 while (new_cap < needed_idat) {
@@ -435,18 +635,6 @@ int rt_png_decode_buffer_rgba32(const uint8_t *file_data,
     uint8_t *img = NULL;
     uint32_t *pixels = NULL;
     int success = 0;
-
-    if (!rt_compress_inflate_raw(
-            idat_buf + 2, deflate_len, 256u * 1024u * 1024u, &raw_data, &raw_len)) {
-        free(idat_buf);
-        return 0;
-    }
-    free(idat_buf);
-    if (png_adler32(raw_data, raw_len) != expected_adler)
-        goto cleanup;
-
-    // Compute bytes-per-pixel at the filter level (before sub-byte unpacking).
-    // For sub-byte depths (1,2,4-bit), each row is ceil(width*bit_depth/8) bytes.
     int samples_per_pixel = 1; // number of channels
     if (color_type == 2)
         samples_per_pixel = 3;
@@ -463,6 +651,22 @@ int rt_png_decode_buffer_rgba32(const uint8_t *file_data,
 
     size_t stride = 0;
     if (!px_png_stride_checked(width, bit_depth, samples_per_pixel, &stride))
+        goto cleanup;
+    if (expected_filtered_len == 0 &&
+        !png_expected_filtered_size(
+            width, height, bit_depth, samples_per_pixel, interlace, &expected_filtered_len))
+        goto cleanup;
+
+    if (!rt_compress_inflate_raw(
+            idat_buf + 2, deflate_len, expected_filtered_len, &raw_data, &raw_len)) {
+        free(idat_buf);
+        return 0;
+    }
+    free(idat_buf);
+    idat_buf = NULL;
+    if (raw_len != expected_filtered_len)
+        goto cleanup;
+    if (png_adler32(raw_data, raw_len) != expected_adler)
         goto cleanup;
 
     if (interlace == 1) {
@@ -592,9 +796,6 @@ int rt_png_decode_buffer_rgba32(const uint8_t *file_data,
     if (!pixels)
         goto cleanup;
 
-// Helper: downscale 16-bit big-endian sample to 8-bit with rounding.
-#define PNG_DOWN16(p) ((uint8_t)(((((uint16_t)(p)[0] << 8) | (p)[1]) + 128) >> 8))
-
     for (uint32_t y = 0; y < height; y++) {
         const uint8_t *row = img + y * stride;
         for (uint32_t x = 0; x < width; x++) {
@@ -606,7 +807,7 @@ int rt_png_decode_buffer_rgba32(const uint8_t *file_data,
                     uint16_t gray_sample = 0;
                     if (bit_depth == 16) {
                         gray_sample = (uint16_t)(((uint16_t)row[x * 2] << 8) | row[x * 2 + 1]);
-                        gray = PNG_DOWN16(row + x * 2);
+                        gray = png_down16_to_u8(row + x * 2);
                     } else if (bit_depth == 8) {
                         gray_sample = row[x];
                         gray = row[x];
@@ -634,9 +835,9 @@ int rt_png_decode_buffer_rgba32(const uint8_t *file_data,
                         uint16_t r16 = (uint16_t)(((uint16_t)sp[0] << 8) | sp[1]);
                         uint16_t g16 = (uint16_t)(((uint16_t)sp[2] << 8) | sp[3]);
                         uint16_t b16 = (uint16_t)(((uint16_t)sp[4] << 8) | sp[5]);
-                        r = PNG_DOWN16(sp);
-                        g = PNG_DOWN16(sp + 2);
-                        b_ch = PNG_DOWN16(sp + 4);
+                        r = png_down16_to_u8(sp);
+                        g = png_down16_to_u8(sp + 2);
+                        b_ch = png_down16_to_u8(sp + 4);
                         if (has_trns_rgb && r16 == trns_rgb[0] && g16 == trns_rgb[1] &&
                             b16 == trns_rgb[2])
                             alpha = 0;
@@ -671,8 +872,8 @@ int rt_png_decode_buffer_rgba32(const uint8_t *file_data,
                 }
                 case 4: { // Grayscale + Alpha
                     if (bit_depth == 16) {
-                        r = g = b_ch = PNG_DOWN16(row + x * 4);
-                        alpha = PNG_DOWN16(row + x * 4 + 2);
+                        r = g = b_ch = png_down16_to_u8(row + x * 4);
+                        alpha = png_down16_to_u8(row + x * 4 + 2);
                     } else {
                         r = g = b_ch = row[x * 2];
                         alpha = row[x * 2 + 1];
@@ -681,10 +882,10 @@ int rt_png_decode_buffer_rgba32(const uint8_t *file_data,
                 }
                 case 6: { // RGBA
                     if (bit_depth == 16) {
-                        r = PNG_DOWN16(row + x * 8);
-                        g = PNG_DOWN16(row + x * 8 + 2);
-                        b_ch = PNG_DOWN16(row + x * 8 + 4);
-                        alpha = PNG_DOWN16(row + x * 8 + 6);
+                        r = png_down16_to_u8(row + x * 8);
+                        g = png_down16_to_u8(row + x * 8 + 2);
+                        b_ch = png_down16_to_u8(row + x * 8 + 4);
+                        alpha = png_down16_to_u8(row + x * 8 + 6);
                     } else {
                         r = row[x * 4];
                         g = row[x * 4 + 1];
@@ -704,6 +905,7 @@ int rt_png_decode_buffer_rgba32(const uint8_t *file_data,
     success = 1;
 
 cleanup:
+    free(idat_buf);
     free(img);
     free(raw_data);
     if (!success) {
@@ -715,8 +917,6 @@ cleanup:
     *out_height = (int64_t)height;
     return 1;
 }
-
-#undef PNG_DOWN16
 
 /// @brief Decode a PNG file into a Pixels object.
 /// @return GC-managed `rt_pixels_impl*` on success, NULL on any decode failure.
@@ -846,9 +1046,9 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path) {
     if (!px_mul_size((size_t)w, 4, &stride))
         return 0;
 
-    // Build raw PNG scanline data with filter byte.
-    // First row uses filter=0 (None); subsequent rows use filter=1 (Sub)
-    // which encodes differences from the left neighbor for better compression.
+    // Build raw PNG scanline data with filter byte. Each row uses the lowest
+    // residual score among the standard PNG filters, which usually compresses
+    // much better than a fixed None/Sub policy while keeping encoding simple.
     size_t row_len = 0;
     if (!px_add_size(stride, 1, &row_len))
         return 0;
@@ -859,24 +1059,30 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path) {
     if (!raw_bytes)
         return 0;
     uint8_t *raw = rt_bytes_data(raw_bytes);
+    uint8_t *cur_row = (uint8_t *)malloc(stride ? stride : 1u);
+    uint8_t *prev_row = (uint8_t *)calloc(stride ? stride : 1u, 1u);
+    if (!cur_row || !prev_row) {
+        free(cur_row);
+        free(prev_row);
+        if (rt_obj_release_check0(raw_bytes))
+            rt_obj_free(raw_bytes);
+        return 0;
+    }
 
     for (uint32_t y = 0; y < h; y++) {
-        uint8_t *dst = raw + y * (stride + 1) + 1;
         for (uint32_t x = 0; x < w; x++) {
             uint32_t pixel = p->data[y * w + x];
-            dst[x * 4 + 0] = (uint8_t)((pixel >> 24) & 0xFF); // R
-            dst[x * 4 + 1] = (uint8_t)((pixel >> 16) & 0xFF); // G
-            dst[x * 4 + 2] = (uint8_t)((pixel >> 8) & 0xFF);  // B
-            dst[x * 4 + 3] = (uint8_t)(pixel & 0xFF);         // A
+            cur_row[x * 4 + 0] = (uint8_t)((pixel >> 24) & 0xFF); // R
+            cur_row[x * 4 + 1] = (uint8_t)((pixel >> 16) & 0xFF); // G
+            cur_row[x * 4 + 2] = (uint8_t)((pixel >> 8) & 0xFF);  // B
+            cur_row[x * 4 + 3] = (uint8_t)(pixel & 0xFF);         // A
         }
-        if (y == 0) {
-            raw[y * (stride + 1)] = 0; // Filter: None (no left neighbor for first row)
-        } else {
-            raw[y * (stride + 1)] = 1; // Filter: Sub
-            for (size_t i = stride; i > 4; i--)
-                dst[i - 1] -= dst[i - 5]; // Sub: each byte minus byte at same position 4 bytes left
-        }
+        png_write_best_filtered_row(
+            raw + y * row_len, cur_row, y == 0 ? NULL : prev_row, stride, 4);
+        memcpy(prev_row, cur_row, stride);
     }
+    free(cur_row);
+    free(prev_row);
 
     // Compress the raw data using DEFLATE.
     // All error paths after comp_bytes allocation must go through cleanup to

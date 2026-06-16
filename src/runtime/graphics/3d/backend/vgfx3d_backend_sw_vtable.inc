@@ -99,10 +99,8 @@ static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
             return;
         sw_fill_rgba_rows(rt->color_buf, rt->width, rt->height, rt->stride, cr, cg, cb);
         size_t total = 0;
-        if (sw_pixel_count_checked(rt->width, rt->height, &total)) {
-            for (size_t i = 0; i < total; i++)
-                rt->depth_buf[i] = FLT_MAX;
-        }
+        if (sw_pixel_count_checked(rt->width, rt->height, &total))
+            sw_fill_depth_buffer(rt->depth_buf, total, FLT_MAX);
         rt->hdr_color_valid = 0;
         vgfx3d_rendertarget_clear_sync(rt);
     } else {
@@ -113,10 +111,8 @@ static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
             sw_fill_rgba_rows(fb.pixels, fb.width, fb.height, fb.stride, cr, cg, cb);
         }
         size_t total = 0;
-        if (sw_pixel_count_checked(ctx->width, ctx->height, &total)) {
-            for (size_t i = 0; i < total; i++)
-                ctx->zbuf[i] = FLT_MAX;
-        }
+        if (sw_pixel_count_checked(ctx->width, ctx->height, &total))
+            sw_fill_depth_buffer(ctx->zbuf, total, FLT_MAX);
     }
 }
 
@@ -148,17 +144,13 @@ static void sw_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
             vgfx3d_rendertarget_t *rt = ctx->render_target;
             if (vgfx3d_rendertarget_ensure_depth(rt)) {
                 size_t total = 0;
-                if (sw_pixel_count_checked(rt->width, rt->height, &total)) {
-                    for (size_t i = 0; i < total; i++)
-                        rt->depth_buf[i] = FLT_MAX;
-                }
+                if (sw_pixel_count_checked(rt->width, rt->height, &total))
+                    sw_fill_depth_buffer(rt->depth_buf, total, FLT_MAX);
             }
         } else {
             size_t total = 0;
-            if (sw_pixel_count_checked(ctx->width, ctx->height, &total)) {
-                for (size_t i = 0; i < total; i++)
-                    ctx->zbuf[i] = FLT_MAX;
-            }
+            if (sw_pixel_count_checked(ctx->width, ctx->height, &total))
+                sw_fill_depth_buffer(ctx->zbuf, total, FLT_MAX);
         }
     }
     /* Reset shadow state — rebuilt if shadows are enabled this frame */
@@ -762,8 +754,7 @@ static int sw_parallel_transform_vertices(sw_context_t *ctx,
         tasks[i].ambient = ambient;
     }
     for (int32_t i = 1; i < task_count; i++) {
-        if (!rt_threadpool_submit(
-                ctx->worker_pool, sw_task_fnptr(sw_transform_task_run), &tasks[i]))
+        if (!rt_threadpool_submit_fn(ctx->worker_pool, sw_transform_task_run, &tasks[i]))
             break;
         submitted++;
     }
@@ -862,7 +853,7 @@ static int sw_collect_screen_triangles_parallel(sw_context_t *ctx,
         tasks[i].failed = &failed;
     }
     for (int32_t i = 1; i < task_count; i++) {
-        if (!rt_threadpool_submit(ctx->worker_pool, sw_task_fnptr(sw_clip_task_run), &tasks[i]))
+        if (!rt_threadpool_submit_fn(ctx->worker_pool, sw_clip_task_run, &tasks[i]))
             break;
         submitted++;
     }
@@ -1010,6 +1001,7 @@ static int sw_raster_tiles_parallel(sw_context_t *ctx,
     sw_raster_task_t tasks[SW_MAX_TASKS];
     int32_t next_tile = 0;
     int32_t task_count;
+    int32_t submitted = 0;
     if (!ctx || !ctx->worker_pool || !grid || grid->active_count <= 0 || !tris || !mv)
         return 0;
     task_count = (int32_t)(ctx->worker_count + 1 < (int64_t)grid->active_count
@@ -1039,11 +1031,15 @@ static int sw_raster_tiles_parallel(sw_context_t *ctx,
         tasks[i].fog_ctx = ctx;
     }
     for (int32_t i = 1; i < task_count; i++) {
-        if (!rt_threadpool_submit(ctx->worker_pool, sw_task_fnptr(sw_raster_task_run), &tasks[i]))
+        if (!rt_threadpool_submit_fn(ctx->worker_pool, sw_raster_task_run, &tasks[i]))
             break;
+        submitted++;
     }
+    for (int32_t i = submitted + 1; i < task_count; i++)
+        sw_raster_task_run(&tasks[i]);
     sw_raster_task_run(&tasks[0]);
-    rt_threadpool_wait(ctx->worker_pool);
+    if (submitted > 0)
+        rt_threadpool_wait(ctx->worker_pool);
     return 1;
 }
 

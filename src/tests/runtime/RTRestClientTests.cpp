@@ -5,9 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Tests for Viper.Network.RestClient
+// File: src/tests/runtime/RTRestClientTests.cpp
+// Purpose: Validate Viper.Network.RestClient behavior.
+// Key invariants:
+//   - Local HTTP fixtures bind only to loopback addresses.
+//   - Redirect and keep-alive state is captured deterministically.
+// Ownership/Lifetime:
+//   - Each helper owns and closes any native socket it creates.
+//   - Runtime response objects remain valid for each test scope.
+// Links: src/runtime/network/rt_restclient.c,
+//        src/runtime/network/rt_http_server.c
 //
 //===----------------------------------------------------------------------===//
+
+#include "tests/common/NetworkTestCompat.hpp"
 
 #include "rt_http_server.h"
 #include "rt_netutils.h"
@@ -131,7 +142,7 @@ static int get_bindable_local_port() {
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_addr.s_addr = htonl(viper::tests::kIpv4LoopbackHostOrder);
     addr.sin_port = 0;
     if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
         LOCAL_SOCK_CLOSE(fd);

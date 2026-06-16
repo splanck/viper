@@ -27,7 +27,22 @@
 // Extended Color Functions
 //=============================================================================
 
-/// @brief Hsl the from.
+/// @brief Clamp a runtime color channel to the 8-bit component range.
+/// @details Public color helpers receive arbitrary int64 values. Clamping
+///          prevents out-of-range channels from wrapping to unrelated colors.
+/// @param value Component value to clamp.
+/// @return Saturated component in [0, 255].
+static int64_t rt_color_clamp_channel(int64_t value) {
+    if (value < 0)
+        return 0;
+    if (value > 255)
+        return 255;
+    return value;
+}
+
+/// @brief Build an RGB color from hue, saturation, and lightness.
+/// @details Hue wraps onto the 0..359 color wheel. Saturation and lightness
+///          are percentages and clamp to [0, 100] before conversion.
 int64_t rt_color_from_hsl(int64_t h, int64_t s, int64_t l) {
     // Clamp inputs
     h = ((h % 360) + 360) % 360;
@@ -43,7 +58,8 @@ int64_t rt_color_from_hsl(int64_t h, int64_t s, int64_t l) {
     int64_t r, g, b;
     rtg_hsl_to_rgb(h, s, l, &r, &g, &b);
 
-    return ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+    return (rt_color_clamp_channel(r) << 16) | (rt_color_clamp_channel(g) << 8) |
+           rt_color_clamp_channel(b);
 }
 
 /// @brief Get the h value.
@@ -117,13 +133,17 @@ static void rt_color_split_rgba(
 ///          result carries RT_COLOR_EXPLICIT_ALPHA_FLAG so downstream transforms
 ///          continue to honor the user-provided alpha; when zero, the alpha
 ///          byte is dropped and a plain RGB value is returned. Components are
-///          masked to 8 bits — out-of-range inputs are silently truncated.
+///          clamped to 8 bits instead of wrapping.
 static int64_t rt_color_pack_rgba_like(
     int64_t r, int64_t g, int64_t b, int64_t a, int8_t has_alpha) {
-    int64_t rgb = ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+    r = rt_color_clamp_channel(r);
+    g = rt_color_clamp_channel(g);
+    b = rt_color_clamp_channel(b);
+    a = rt_color_clamp_channel(a);
+    int64_t rgb = (r << 16) | (g << 8) | b;
     if (!has_alpha)
         return rgb;
-    return (((a & 0xFF) << 24) | rgb) | RT_COLOR_EXPLICIT_ALPHA_FLAG;
+    return ((a << 24) | rgb) | RT_COLOR_EXPLICIT_ALPHA_FLAG;
 }
 
 /// @brief Lerp operation.
@@ -168,13 +188,16 @@ int64_t rt_color_get_b(int64_t color) {
     return color & 0xFF;
 }
 
-/// @brief Get the stored alpha byte.
-/// @details Plain RGB colors have no stored alpha, so this returns 0 for
-///          Color.RGB values. Drawing and transform helpers still treat plain
-///          RGB as opaque through rt_color_split_rgba().
+/// @brief Get the stored alpha byte from a color value.
+/// @details Public color accessors preserve the historical packed-value contract:
+///          `rgb(r,g,b)` has no stored alpha byte, so this returns 0 for RGB inputs.
+///          Rendering helpers that need effective opacity use `rt_color_split_rgba`
+///          internally and still treat RGB colors as opaque.
 /// @param color
 /// @return Result value.
 int64_t rt_color_get_a(int64_t color) {
+    if (!rt_color_has_explicit_alpha(color))
+        return 0;
     return (color >> 24) & 0xFF;
 }
 

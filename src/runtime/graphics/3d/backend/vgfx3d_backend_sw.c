@@ -39,6 +39,7 @@
 #include "vgfx3d_backend.h"
 #include "vgfx3d_backend_utils.h"
 
+#include <errno.h>
 #include <float.h>
 #include <math.h>
 #include <stdint.h>
@@ -50,6 +51,16 @@
 #define SW_MAX_WORKERS 8
 #define SW_MAX_TASKS (SW_MAX_WORKERS + 1)
 #define SW_PARALLEL_MIN_INDICES 192u
+
+/// @brief Submit a typed task callback to the runtime thread pool.
+/// @details The public Pool API accepts callbacks through the generic runtime
+///          object-call surface. The software renderer uses this internal entry
+///          point so C function pointers are passed with their real type.
+/// @param pool Pool object pointer.
+/// @param callback Task function to execute.
+/// @param arg Argument passed to @p callback.
+/// @return 1 when queued, 0 when the pool is invalid or shutting down.
+extern int8_t rt_threadpool_submit_fn(void *pool, void (*callback)(void *), void *arg);
 
 /*==========================================================================
  * Software backend context
@@ -93,6 +104,54 @@ static inline void sw_compute_view_vector(const sw_context_t *ctx,
                                           float *out_vy,
                                           float *out_vz);
 
+/// @brief Compute an overflow-resistant Euclidean length for a 3-vector.
+/// @details Scales components by their maximum absolute lane before squaring,
+///          so very large finite vectors do not overflow to infinity during
+///          normalization, fog, or light attenuation calculations.
+/// @param x X component.
+/// @param y Y component.
+/// @param z Z component.
+/// @return Vector length, or INFINITY when inputs are non-finite/overflowed.
+static float sw_length3(float x, float y, float z) {
+    if (!isfinite(x) || !isfinite(y) || !isfinite(z))
+        return INFINITY;
+    float ax = fabsf(x);
+    float ay = fabsf(y);
+    float az = fabsf(z);
+    float m = ax;
+    if (ay > m)
+        m = ay;
+    if (az > m)
+        m = az;
+    if (m <= 0.0f)
+        return 0.0f;
+    x /= m;
+    y /= m;
+    z /= m;
+    return m * sqrtf(x * x + y * y + z * z);
+}
+
+/// @brief Fill a software depth buffer with a constant depth value.
+/// @details Uses a small unrolled loop for the hot clear paths shared by the
+///          main framebuffer, render targets, and shadow maps. Keeping this in
+///          one helper also makes future platform-specific vectorization local.
+/// @param depth Depth-buffer pointer; NULL is ignored.
+/// @param count Number of float entries to write.
+/// @param value Depth value to store in every entry.
+static void sw_fill_depth_buffer(float *depth, size_t count, float value) {
+    if (!depth)
+        return;
+    size_t i = 0;
+    for (; i + 4u <= count; i += 4u) {
+        depth[i + 0u] = value;
+        depth[i + 1u] = value;
+        depth[i + 2u] = value;
+        depth[i + 3u] = value;
+    }
+    for (; i < count; i++)
+        depth[i] = value;
+}
+
 /// @brief Normalize the vector (*x,*y,*z) in place; on non-finite or near-zero length,
 ///   substitute the fallback vector and return 0, else return 1.
 static int sw_normalize3(
@@ -107,7 +166,7 @@ static int sw_normalize3(
             *z = fallback_z;
         return 0;
     }
-    len = sqrtf((*x) * (*x) + (*y) * (*y) + (*z) * (*z));
+    len = sw_length3(*x, *y, *z);
     if (!isfinite(len) || len <= 1e-7f) {
         *x = fallback_x;
         *y = fallback_y;
@@ -120,17 +179,18 @@ static int sw_normalize3(
     return 1;
 }
 
-/// @brief Recount the contiguous run of complete shadow slots (complete flag + valid
-///   depth buffer/dimensions), stopping at the first gap, and cache it on the context.
+/// @brief Recount the highest complete shadow slot and cache the scan bound.
+/// @details Shadow slots can be sparse while lights are reconfigured. Counting
+///          through the highest valid slot lets later valid slots remain visible
+///          even when an earlier slot is empty; invalid gaps simply sample as lit.
 static void sw_recompute_shadow_count(sw_context_t *ctx) {
     int8_t count = 0;
     if (!ctx)
         return;
     for (int slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
-        if (!ctx->shadow_complete[slot] || !ctx->shadow_depth[slot] || ctx->shadow_w[slot] <= 0 ||
-            ctx->shadow_h[slot] <= 0)
-            break;
-        count = (int8_t)(slot + 1);
+        if (ctx->shadow_complete[slot] && ctx->shadow_depth[slot] && ctx->shadow_w[slot] > 0 &&
+            ctx->shadow_h[slot] > 0)
+            count = (int8_t)(slot + 1);
     }
     ctx->shadow_count = count;
 }
@@ -309,8 +369,9 @@ static int64_t sw_resolve_worker_count_from_env(void) {
     long long parsed;
     if (!env || !*env)
         return sw_default_worker_count();
+    errno = 0;
     parsed = strtoll(env, &end, 10);
-    if (end == env || (end && *end != '\0'))
+    if (errno == ERANGE || end == env || (end && *end != '\0'))
         return sw_default_worker_count();
     return sw_clamp_worker_count((int64_t)parsed);
 }
@@ -344,15 +405,6 @@ static void sw_release_worker_pool(sw_context_t *ctx) {
 int64_t vgfx3d_software_backend_thread_count_for_test(const void *ctx_ptr) {
     const sw_context_t *ctx = (const sw_context_t *)ctx_ptr;
     return ctx ? sw_clamp_worker_count(ctx->worker_count) : 1;
-}
-
-/// @brief Reinterpret a task function pointer as a void* for the existing pool API.
-static void *sw_task_fnptr(void (*fn)(void *)) {
-    void *ptr;
-    _Static_assert(sizeof(ptr) == sizeof(fn),
-                   "Software raster task callback bridge requires equal pointer sizes");
-    memcpy(&ptr, &fn, sizeof(ptr));
-    return ptr;
 }
 
 /*==========================================================================

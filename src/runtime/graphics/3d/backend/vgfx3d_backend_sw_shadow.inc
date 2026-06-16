@@ -664,8 +664,7 @@ static int sw_shadow_collect_triangles_parallel(sw_context_t *ctx,
         tasks[i].failed = &failed;
     }
     for (int32_t i = 1; i < task_count; i++) {
-        if (!rt_threadpool_submit(
-                ctx->worker_pool, sw_task_fnptr(sw_shadow_collect_task_run), &tasks[i]))
+        if (!rt_threadpool_submit_fn(ctx->worker_pool, sw_shadow_collect_task_run, &tasks[i]))
             break;
         submitted++;
     }
@@ -785,8 +784,7 @@ static int sw_shadow_raster_tiles_parallel(sw_context_t *ctx,
         tasks[i].alpha_tex = alpha_tex;
     }
     for (int32_t i = 1; i < task_count; i++) {
-        if (!rt_threadpool_submit(
-                ctx->worker_pool, sw_task_fnptr(sw_shadow_raster_task_run), &tasks[i]))
+        if (!rt_threadpool_submit_fn(ctx->worker_pool, sw_shadow_raster_task_run, &tasks[i]))
             break;
     }
     sw_shadow_raster_task_run(&tasks[0]);
@@ -899,8 +897,7 @@ static void sw_shadow_begin(
     ctx->shadow_h[slot] = h;
     memcpy(ctx->shadow_vp[slot], light_vp, 16 * sizeof(float));
     /* Clear shadow depth to FLT_MAX */
-    for (size_t i = 0; i < pixel_count; i++)
-        depth_buf[i] = FLT_MAX;
+    sw_fill_depth_buffer(depth_buf, pixel_count, FLT_MAX);
 }
 
 /// @brief Backend `shadow_draw` op — rasterize one mesh into the shadow depth buffer.

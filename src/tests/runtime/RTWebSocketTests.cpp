@@ -7,7 +7,13 @@
 //
 // File: tests/runtime/RTWebSocketTests.cpp
 // Purpose: Validate WebSocket timeout support.
-// Key invariants: recv_for returns NULL on timeout, connect_for respects timeout.
+// Key invariants:
+//   - recv_for returns NULL on timeout and connect_for respects timeout.
+//   - HTTP header matching is ASCII case-insensitive and platform-neutral.
+// Ownership/Lifetime:
+//   - Local test servers own and close their runtime connections.
+//   - Runtime WebSocket objects remain valid for each test scope.
+// Links: src/runtime/network/rt_websocket.c
 //
 //===----------------------------------------------------------------------===//
 
@@ -31,6 +37,24 @@ static void test_result(const char *name, bool passed) {
     assert(passed);
 }
 
+static bool ascii_header_name_equals(const char *line, const char *name, size_t name_len) {
+    if (!line || !name)
+        return false;
+    for (size_t i = 0; i < name_len; i++) {
+        char a = line[i];
+        char b = name[i];
+        if (a >= 'A' && a <= 'Z')
+            a = (char)(a + ('a' - 'A'));
+        if (b >= 'A' && b <= 'Z')
+            b = (char)(b + ('a' - 'A'));
+        if (a == '\0')
+            return false;
+        if (a != b)
+            return false;
+    }
+    return true;
+}
+
 /// @brief Extract a header value from raw HTTP headers.
 /// Writes at most max_len-1 characters to out and NUL-terminates. Returns true on success.
 static bool extract_http_header(const char *headers, const char *name, char *out, size_t max_len) {
@@ -41,12 +65,7 @@ static bool extract_http_header(const char *headers, const char *name, char *out
     const char *p = headers;
     while ((p = strstr(p, "\r\n")) != NULL) {
         p += 2; // skip CRLF
-#ifdef _WIN32
-        if (_strnicmp(p, name, name_len) == 0)
-#else
-        if (strncasecmp(p, name, name_len) == 0)
-#endif
-        {
+        if (ascii_header_name_equals(p, name, name_len)) {
             const char *val = p + name_len;
             while (*val == ' ' || *val == '\t')
                 val++;

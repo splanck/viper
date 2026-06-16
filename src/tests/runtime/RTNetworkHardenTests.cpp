@@ -18,6 +18,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "tests/common/NetworkTestCompat.hpp"
 #include "tests/common/PosixCompat.h"
 
 #include "rt_async_socket.h"
@@ -115,7 +116,7 @@ static sock_t make_listener(int *out_port) {
 
     struct sockaddr_in addr = {};
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_addr.s_addr = htonl(viper::tests::kIpv4LoopbackHostOrder);
     addr.sin_port = 0;
 
     int rc = bind(fd, (struct sockaddr *)&addr, sizeof(addr));
@@ -174,8 +175,8 @@ static void test_connect_refused_port() {
     // On Windows, the WinSock error code may be reported without these keywords.
     const bool matchRefused =
         strstr(g_last_trap, "refused") != nullptr || strstr(g_last_trap, "failed") != nullptr ||
-        strstr(g_last_trap, "timed out") != nullptr ||
-        strstr(g_last_trap, "timeout") != nullptr || strstr(g_last_trap, "error") != nullptr;
+        strstr(g_last_trap, "timed out") != nullptr || strstr(g_last_trap, "timeout") != nullptr ||
+        strstr(g_last_trap, "error") != nullptr;
     if (!matchRefused) {
         fprintf(stderr, "  DEBUG: actual trap = [%s]\n", g_last_trap);
     }

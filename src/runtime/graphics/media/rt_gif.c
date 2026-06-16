@@ -46,6 +46,7 @@ typedef struct {
 #define GIF_MAX_CANVAS_PIXELS ((size_t)64u * 1024u * 1024u)
 #define GIF_MAX_FILE_BYTES (INT64_C(100) * 1024 * 1024)
 #define GIF_MAX_DECODED_FRAME_BYTES ((size_t)512u * 1024u * 1024u)
+#define GIF_MAX_LZW_SUB_BLOCK_BYTES ((size_t)64u * 1024u * 1024u)
 
 void rt_trap_set_recovery(jmp_buf *buf);
 void rt_trap_clear_recovery(void);
@@ -141,6 +142,23 @@ static int gif_checked_canvas_size(int screen_w, int screen_h, size_t *out_pixel
     if (pixels == 0 || pixels > GIF_MAX_CANVAS_PIXELS || pixels > SIZE_MAX / sizeof(uint32_t))
         return 0;
     *out_pixels = pixels;
+    return 1;
+}
+
+/// @brief Checked `size_t` multiplication for GIF decoder allocation sizing.
+/// @details Keeps rectangle snapshot and frame-buffer byte-count calculations
+///          from overflowing before the allocation size is passed to malloc or
+///          realloc.
+/// @param a Left operand.
+/// @param b Right operand.
+/// @param out Receives `a * b` on success.
+/// @return 1 when the product is representable, 0 otherwise.
+static int gif_checked_mul_size(size_t a, size_t b, size_t *out) {
+    if (!out)
+        return 0;
+    if (a != 0 && b > SIZE_MAX / a)
+        return 0;
+    *out = a * b;
     return 1;
 }
 
@@ -271,8 +289,12 @@ static uint8_t *gif_read_sub_blocks(gif_reader_t *r, size_t *out_len) {
             free(buf);
             return NULL;
         }
-        if (len + (size_t)block_size > cap) {
-            size_t needed = len + (size_t)block_size;
+        size_t needed = len + (size_t)block_size;
+        if (needed > GIF_MAX_LZW_SUB_BLOCK_BYTES) {
+            free(buf);
+            return NULL;
+        }
+        if (needed > cap) {
             if (needed > SIZE_MAX / 2) {
                 free(buf);
                 return NULL;
@@ -592,6 +614,7 @@ int gif_decode_file(const char *filepath,
     // Canvas for frame compositing (RGBA)
     uint32_t *canvas = (uint32_t *)calloc(canvas_size, sizeof(uint32_t));
     uint32_t *prev_canvas = NULL;
+    size_t prev_canvas_capacity = 0;
     if (!canvas) {
         free(canvas);
         free(frames);
@@ -754,17 +777,30 @@ int gif_decode_file(const char *filepath,
                 prev_rect_y1 = prev_rect_y0;
             if (gce_dispose == 3) {
                 size_t row_pixels = (size_t)(prev_rect_x1 - prev_rect_x0);
-                if (!prev_canvas) {
-                    prev_canvas = (uint32_t *)malloc(canvas_size * sizeof(uint32_t));
-                    if (!prev_canvas) {
+                size_t rect_h = (size_t)(prev_rect_y1 - prev_rect_y0);
+                size_t needed_pixels = 0;
+                if (row_pixels > 0 && rect_h > 0 &&
+                    (!gif_checked_mul_size(row_pixels, rect_h, &needed_pixels) ||
+                     needed_pixels > SIZE_MAX / sizeof(uint32_t))) {
+                    free(indices);
+                    decode_failed = GIF_DECODE_FAILURE_GENERIC;
+                    break;
+                }
+                if (needed_pixels > prev_canvas_capacity) {
+                    uint32_t *grown =
+                        (uint32_t *)realloc(prev_canvas, needed_pixels * sizeof(uint32_t));
+                    if (!grown) {
                         free(indices);
                         decode_failed = GIF_DECODE_FAILURE_GENERIC;
                         break;
                     }
+                    prev_canvas = grown;
+                    prev_canvas_capacity = needed_pixels;
                 }
                 for (int y = prev_rect_y0; y < prev_rect_y1; y++) {
-                    size_t off = (size_t)y * (size_t)screen_w + (size_t)prev_rect_x0;
-                    memcpy(prev_canvas + off, canvas + off, row_pixels * sizeof(uint32_t));
+                    size_t src_off = (size_t)y * (size_t)screen_w + (size_t)prev_rect_x0;
+                    size_t dst_off = (size_t)(y - prev_rect_y0) * row_pixels;
+                    memcpy(prev_canvas + dst_off, canvas + src_off, row_pixels * sizeof(uint32_t));
                 }
             }
 
@@ -868,11 +904,14 @@ int gif_decode_file(const char *filepath,
                     }
                 } break;
                 case 3: // Restore to previous
-                    if (prev_rect_x1 > prev_rect_x0 && prev_rect_y1 > prev_rect_y0) {
+                    if (prev_canvas && prev_rect_x1 > prev_rect_x0 && prev_rect_y1 > prev_rect_y0) {
                         size_t row_pixels = (size_t)(prev_rect_x1 - prev_rect_x0);
                         for (int y = prev_rect_y0; y < prev_rect_y1; y++) {
-                            size_t off = (size_t)y * (size_t)screen_w + (size_t)prev_rect_x0;
-                            memcpy(canvas + off, prev_canvas + off, row_pixels * sizeof(uint32_t));
+                            size_t dst_off = (size_t)y * (size_t)screen_w + (size_t)prev_rect_x0;
+                            size_t src_off = (size_t)(y - prev_rect_y0) * row_pixels;
+                            memcpy(canvas + dst_off,
+                                   prev_canvas + src_off,
+                                   row_pixels * sizeof(uint32_t));
                         }
                     }
                     break;

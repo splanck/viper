@@ -270,6 +270,10 @@ typedef struct {
     ID3D11SamplerState *linear_clamp_sampler;
     ID3D11SamplerState *shadow_cmp_sampler;
     ID3D11SamplerState *material_samplers[3][3][2][VGFX3D_D3D11_ANISOTROPY_LEVEL_COUNT];
+    ID3D11Texture2D *fallback_white_tex;
+    ID3D11ShaderResourceView *fallback_white_srv;
+    ID3D11Texture2D *fallback_white_cube_tex;
+    ID3D11ShaderResourceView *fallback_white_cube_srv;
 
     ID3D11VertexShader *vs_main;
     ID3D11VertexShader *vs_instanced;
@@ -376,6 +380,7 @@ typedef struct {
     uint64_t frame_serial;
     uint64_t texture_upload_bytes;
     uint64_t texture_upload_budget_bytes;
+    vgfx3d_backend_stats_t stats;
 
     ID3D11RenderTargetView *current_rtvs[2];
     UINT current_rtv_count;
@@ -527,6 +532,36 @@ static void d3d11_log_hresult(const char *msg, HRESULT hr) {
     char buffer[256];
     snprintf(
         buffer, sizeof(buffer), "[vgfx3d_d3d11] %s failed (hr=0x%08lx)\n", msg, (unsigned long)hr);
+    OutputDebugStringA(buffer);
+    fputs(buffer, stderr);
+}
+
+/// @brief Whether an HRESULT normally means the D3D11 device is no longer usable.
+static int d3d11_hresult_is_device_removed(HRESULT hr) {
+    return hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET ||
+           hr == DXGI_ERROR_DEVICE_HUNG || hr == DXGI_ERROR_DRIVER_INTERNAL_ERROR;
+}
+
+/// @brief Log `ID3D11Device::GetDeviceRemovedReason()` for device-loss failures.
+///
+/// The HRESULT returned by `Present`, `ResizeBuffers`, or resource creation
+/// often only says that the device was removed. The removed-reason HRESULT is
+/// the actionable value for driver resets, TDRs, and unsupported operations.
+/// This helper is intentionally side-effect-free beyond logging so callers can
+/// keep their existing recovery behavior.
+static void d3d11_log_device_removed_reason(d3d11_context_t *ctx, const char *msg, HRESULT hr) {
+    HRESULT reason;
+    char buffer[256];
+
+    if (!ctx || !ctx->device || !d3d11_hresult_is_device_removed(hr))
+        return;
+    reason = ID3D11Device_GetDeviceRemovedReason(ctx->device);
+    snprintf(buffer,
+             sizeof(buffer),
+             "[vgfx3d_d3d11] %s device removed/reset reason=0x%08lx (trigger=0x%08lx)\n",
+             msg ? msg : "D3D11",
+             (unsigned long)reason,
+             (unsigned long)hr);
     OutputDebugStringA(buffer);
     fputs(buffer, stderr);
 }
@@ -695,6 +730,7 @@ static void d3d11_present_swapchain(d3d11_context_t *ctx) {
     hr = IDXGISwapChain_Present(ctx->swap_chain, 1, 0);
     if (FAILED(hr)) {
         d3d11_log_hresult("IDXGISwapChain::Present", hr);
+        d3d11_log_device_removed_reason(ctx, "IDXGISwapChain::Present", hr);
         ctx->presented_color_valid = 0;
         return;
     }
@@ -1462,11 +1498,112 @@ static HRESULT d3d11_update_float_srv_buffer(d3d11_context_t *ctx,
     return S_OK;
 }
 
+/// @brief Create the context-owned white fallback SRVs for pending texture uploads.
+///
+/// D3D11 texture and cubemap uploads are paced by a per-frame byte budget. A
+/// newly requested material resource can therefore exist in the cache while its
+/// pixel payload is incomplete. These 1x1 immutable resources give draw code a
+/// valid SRV to bind until the real upload completes, matching the OpenGL
+/// backend's fallback semantics and keeping shader feature flags stable.
+/// @param ctx Backend context that owns the D3D11 device and receives the SRVs.
+/// @return `S_OK` when both fallback resources exist; otherwise the failing HRESULT.
+static HRESULT d3d11_create_white_fallback_resources(d3d11_context_t *ctx) {
+    static const uint8_t kWhitePixel[4] = {255u, 255u, 255u, 255u};
+    D3D11_TEXTURE2D_DESC desc;
+    D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc;
+    D3D11_SUBRESOURCE_DATA init_data;
+    D3D11_SUBRESOURCE_DATA cube_init[6];
+    HRESULT hr;
+
+    if (!ctx || !ctx->device)
+        return E_INVALIDARG;
+    if (ctx->fallback_white_srv && ctx->fallback_white_cube_srv)
+        return S_OK;
+
+    memset(&desc, 0, sizeof(desc));
+    desc.Width = 1;
+    desc.Height = 1;
+    desc.MipLevels = 1;
+    desc.ArraySize = 1;
+    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    desc.Usage = D3D11_USAGE_IMMUTABLE;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    memset(&init_data, 0, sizeof(init_data));
+    init_data.pSysMem = kWhitePixel;
+    init_data.SysMemPitch = sizeof(kWhitePixel);
+    init_data.SysMemSlicePitch = sizeof(kWhitePixel);
+    hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, &init_data, &ctx->fallback_white_tex);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateTexture2D(fallbackWhite2D)", hr);
+        return hr;
+    }
+
+    memset(&srv_desc, 0, sizeof(srv_desc));
+    srv_desc.Format = desc.Format;
+    srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+    srv_desc.Texture2D.MipLevels = 1;
+    hr = ID3D11Device_CreateShaderResourceView(ctx->device,
+                                               (ID3D11Resource *)ctx->fallback_white_tex,
+                                               &srv_desc,
+                                               &ctx->fallback_white_srv);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateShaderResourceView(fallbackWhite2D)", hr);
+        SAFE_RELEASE(ctx->fallback_white_tex);
+        return hr;
+    }
+
+    desc.ArraySize = 6;
+    desc.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE;
+    for (int face = 0; face < 6; face++) {
+        cube_init[face] = init_data;
+    }
+    hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, cube_init, &ctx->fallback_white_cube_tex);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateTexture2D(fallbackWhiteCube)", hr);
+        SAFE_RELEASE(ctx->fallback_white_srv);
+        SAFE_RELEASE(ctx->fallback_white_tex);
+        return hr;
+    }
+
+    memset(&srv_desc, 0, sizeof(srv_desc));
+    srv_desc.Format = desc.Format;
+    srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
+    srv_desc.TextureCube.MipLevels = 1;
+    hr = ID3D11Device_CreateShaderResourceView(ctx->device,
+                                               (ID3D11Resource *)ctx->fallback_white_cube_tex,
+                                               &srv_desc,
+                                               &ctx->fallback_white_cube_srv);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateShaderResourceView(fallbackWhiteCube)", hr);
+        SAFE_RELEASE(ctx->fallback_white_cube_tex);
+        SAFE_RELEASE(ctx->fallback_white_srv);
+        SAFE_RELEASE(ctx->fallback_white_tex);
+    }
+    return hr;
+}
+
 #include "vgfx3d_backend_d3d11_context.inc"
 #include "vgfx3d_backend_d3d11_draw.inc"
 #include "vgfx3d_backend_d3d11_present.inc"
 #include "vgfx3d_backend_d3d11_targets.inc"
 #include "vgfx3d_backend_d3d11_texture.inc"
+
+/// @brief Copy a point-in-time telemetry snapshot out of the D3D11 backend context.
+///
+/// Currently the D3D11 backend reports counters it owns directly, such as
+/// texture fallback binds during budgeted streaming. Fields for subsystems not
+/// instrumented by D3D11 remain zero rather than fabricating cross-backend
+/// values.
+static void d3d11_get_backend_stats(void *ctx_ptr, vgfx3d_backend_stats_t *out_stats) {
+    d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
+    if (!out_stats)
+        return;
+    memset(out_stats, 0, sizeof(*out_stats));
+    if (!ctx)
+        return;
+    *out_stats = ctx->stats;
+}
 
 const vgfx3d_backend_t vgfx3d_d3d11_backend = {
     .name = "d3d11",
@@ -1494,6 +1631,7 @@ const vgfx3d_backend_t vgfx3d_d3d11_backend = {
     .get_texture_upload_bytes = d3d11_get_texture_upload_bytes,
     .get_frame_gpu_time_us = d3d11_get_frame_gpu_time_us,
     .get_native_texture_caps = d3d11_get_native_texture_caps,
+    .get_backend_stats = d3d11_get_backend_stats,
 };
 
 #endif /* _WIN32 && VIPER_ENABLE_GRAPHICS */

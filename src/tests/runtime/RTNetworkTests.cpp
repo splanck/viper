@@ -7,10 +7,17 @@
 //
 // File: tests/runtime/RTNetworkTests.cpp
 // Purpose: Validate Viper.Network.Tcp and TcpServer support.
-// Key invariants: Client/server communication, timeout handling.
+// Key invariants:
+//   - Client/server communication and timeout handling remain deterministic.
+//   - Local socket probes bind only to loopback or wildcard addresses.
+// Ownership/Lifetime:
+//   - Each helper owns and closes any native socket it creates.
+//   - Runtime objects allocated by tests remain valid for each test scope.
 // Links: docs/viperlib/network.md
 //
 //===----------------------------------------------------------------------===//
+
+#include "tests/common/NetworkTestCompat.hpp"
 
 #include "rt_bytes.h"
 #include "rt_compress.h"
@@ -116,7 +123,7 @@ static bool localhost_bind_available() {
 
         sockaddr_in addr = {};
         addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_addr.s_addr = htonl(viper::tests::kIpv4LoopbackHostOrder);
         addr.sin_port = 0;
 
         const int rc = bind(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr));

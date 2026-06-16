@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/physics/rt_physics3d_detect.inc  (#included from rt_physics3d.c; not a standalone translation unit)
-// Purpose: Physics3D collision-detection helpers
+// File: src/runtime/graphics/3d/physics/rt_physics3d_detect.inc  (#included from rt_physics3d.c;
+// not a standalone translation unit) Purpose: Physics3D collision-detection helpers
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Collision detection helpers
@@ -400,9 +400,12 @@ void transform_point_from_pose(const rt_collider_pose *pose,
     double rotated[3];
     if (!pose || !local_point || !world_point)
         return;
-    scaled[0] = ph3d_saturate_state_value(local_point[0] * ph3d_sanitize_scale_value(pose->scale[0]));
-    scaled[1] = ph3d_saturate_state_value(local_point[1] * ph3d_sanitize_scale_value(pose->scale[1]));
-    scaled[2] = ph3d_saturate_state_value(local_point[2] * ph3d_sanitize_scale_value(pose->scale[2]));
+    scaled[0] =
+        ph3d_saturate_state_value(local_point[0] * ph3d_sanitize_scale_value(pose->scale[0]));
+    scaled[1] =
+        ph3d_saturate_state_value(local_point[1] * ph3d_sanitize_scale_value(pose->scale[1]));
+    scaled[2] =
+        ph3d_saturate_state_value(local_point[2] * ph3d_sanitize_scale_value(pose->scale[2]));
     quat_rotate_vec3(pose->rotation, scaled, rotated);
     world_point[0] = ph3d_saturate_state_value(pose->position[0] + rotated[0]);
     world_point[1] = ph3d_saturate_state_value(pose->position[1] + rotated[1]);
@@ -427,15 +430,18 @@ void transform_point_to_local(const rt_collider_pose *pose,
     quat_conjugate(pose->rotation, inv_rotation);
     quat_rotate_vec3(inv_rotation, translated, local_point);
     if (fabs(ph3d_sanitize_scale_value(pose->scale[0])) > 1e-12)
-        local_point[0] = ph3d_saturate_state_value(local_point[0] / ph3d_sanitize_scale_value(pose->scale[0]));
+        local_point[0] =
+            ph3d_saturate_state_value(local_point[0] / ph3d_sanitize_scale_value(pose->scale[0]));
     else
         local_point[0] = 0.0;
     if (fabs(ph3d_sanitize_scale_value(pose->scale[1])) > 1e-12)
-        local_point[1] = ph3d_saturate_state_value(local_point[1] / ph3d_sanitize_scale_value(pose->scale[1]));
+        local_point[1] =
+            ph3d_saturate_state_value(local_point[1] / ph3d_sanitize_scale_value(pose->scale[1]));
     else
         local_point[1] = 0.0;
     if (fabs(ph3d_sanitize_scale_value(pose->scale[2])) > 1e-12)
-        local_point[2] = ph3d_saturate_state_value(local_point[2] / ph3d_sanitize_scale_value(pose->scale[2]));
+        local_point[2] =
+            ph3d_saturate_state_value(local_point[2] / ph3d_sanitize_scale_value(pose->scale[2]));
     else
         local_point[2] = 0.0;
 }
@@ -467,15 +473,18 @@ void transform_vector_to_local(const rt_collider_pose *pose,
     quat_conjugate(pose->rotation, inv_rotation);
     quat_rotate_vec3(inv_rotation, world_vec, local_vec);
     if (fabs(ph3d_sanitize_scale_value(pose->scale[0])) > 1e-12)
-        local_vec[0] = ph3d_saturate_state_value(local_vec[0] / ph3d_sanitize_scale_value(pose->scale[0]));
+        local_vec[0] =
+            ph3d_saturate_state_value(local_vec[0] / ph3d_sanitize_scale_value(pose->scale[0]));
     else
         local_vec[0] = 0.0;
     if (fabs(ph3d_sanitize_scale_value(pose->scale[1])) > 1e-12)
-        local_vec[1] = ph3d_saturate_state_value(local_vec[1] / ph3d_sanitize_scale_value(pose->scale[1]));
+        local_vec[1] =
+            ph3d_saturate_state_value(local_vec[1] / ph3d_sanitize_scale_value(pose->scale[1]));
     else
         local_vec[1] = 0.0;
     if (fabs(ph3d_sanitize_scale_value(pose->scale[2])) > 1e-12)
-        local_vec[2] = ph3d_saturate_state_value(local_vec[2] / ph3d_sanitize_scale_value(pose->scale[2]));
+        local_vec[2] =
+            ph3d_saturate_state_value(local_vec[2] / ph3d_sanitize_scale_value(pose->scale[2]));
     else
         local_vec[2] = 0.0;
 }
@@ -532,10 +541,8 @@ static void body3d_sanitize_shape_cache(rt_body3d *body) {
     } else if (body->shape == PH3D_SHAPE_CAPSULE) {
         if (body->height < body->radius * 2.0)
             body->height = body->radius * 2.0;
-        vec3_set(body->half_extents,
-                 body->radius,
-                 fmax(body->height * 0.5, body->radius),
-                 body->radius);
+        vec3_set(
+            body->half_extents, body->radius, fmax(body->height * 0.5, body->radius), body->radius);
     }
 }
 
@@ -811,11 +818,10 @@ void body3d_apply_contact_impulse(rt_body3d *b, const double *impulse, const dou
         return;
     ph3d_vec3_copy_state(impulse_safe, impulse);
     ph3d_vec3_copy_state(r_safe, r);
-    ph3d_vec3_accumulate_state(
-        b->velocity,
-        impulse_safe[0] * b->inv_mass,
-        impulse_safe[1] * b->inv_mass,
-        impulse_safe[2] * b->inv_mass);
+    ph3d_vec3_accumulate_state(b->velocity,
+                               impulse_safe[0] * b->inv_mass,
+                               impulse_safe[1] * b->inv_mass,
+                               impulse_safe[2] * b->inv_mass);
     vec3_cross(r_safe, impulse_safe, angular_impulse);
     ph3d_vec3_sanitize_state(angular_impulse);
     body3d_apply_world_angular_impulse(b, angular_impulse);
@@ -1182,6 +1188,8 @@ static void world3d_clear_visible_collision_events(rt_world3d *w) {
 static int world3d_build_event_buffers(rt_world3d *w) {
     contact_pair_hash_entry *previous_table = NULL;
     contact_pair_hash_entry *current_table = NULL;
+    uint8_t *current_was_previous = NULL;
+    uint8_t *previous_still_current = NULL;
     int32_t previous_table_capacity = 0;
     int32_t current_table_capacity = 0;
     int32_t enter_count = 0;
@@ -1201,6 +1209,22 @@ static int world3d_build_event_buffers(rt_world3d *w) {
         rt_trap("Physics3D.World.Step: collision-event diff allocation failed");
         goto fail;
     }
+    if (w->contact_count > 0) {
+        current_was_previous =
+            (uint8_t *)calloc((size_t)w->contact_count, sizeof(*current_was_previous));
+        if (!current_was_previous) {
+            rt_trap("Physics3D.World.Step: event-diff classification allocation failed");
+            goto fail;
+        }
+    }
+    if (w->previous_contact_count > 0) {
+        previous_still_current =
+            (uint8_t *)calloc((size_t)w->previous_contact_count, sizeof(*previous_still_current));
+        if (!previous_still_current) {
+            rt_trap("Physics3D.World.Step: event-diff classification allocation failed");
+            goto fail;
+        }
+    }
 
     for (int32_t i = 0; i < w->contact_count; ++i) {
         int found = previous_table ? contact_pair_table_contains(
@@ -1215,6 +1239,7 @@ static int world3d_build_event_buffers(rt_world3d *w) {
             }
         }
         if (found) {
+            current_was_previous[i] = 1u;
             if (!world3d_checked_increment(stay_count, &stay_count))
                 goto overflow;
         } else {
@@ -1239,6 +1264,8 @@ static int world3d_build_event_buffers(rt_world3d *w) {
         if (!found) {
             if (!world3d_checked_increment(exit_count, &exit_count))
                 goto overflow;
+        } else {
+            previous_still_current[i] = 1u;
         }
     }
 
@@ -1251,37 +1278,14 @@ static int world3d_build_event_buffers(rt_world3d *w) {
     }
 
     for (int32_t i = 0; i < w->contact_count; ++i) {
-        int found = previous_table ? contact_pair_table_contains(
-                                         previous_table, previous_table_capacity, &w->contacts[i])
-                                   : 0;
-        if (!previous_table) {
-            for (int32_t j = 0; j < w->previous_contact_count; ++j) {
-                if (contact_pair_equals(&w->contacts[i], &w->previous_contacts[j])) {
-                    found = 1;
-                    break;
-                }
-            }
-        }
-        if (found)
+        if (current_was_previous && current_was_previous[i])
             contact_snapshot_copy(&w->stay_events[stay_write++], &w->contacts[i]);
         else
             contact_snapshot_copy(&w->enter_events[enter_write++], &w->contacts[i]);
     }
 
     for (int32_t i = 0; i < w->previous_contact_count; ++i) {
-        int found = current_table ? contact_pair_table_contains(current_table,
-                                                                current_table_capacity,
-                                                                &w->previous_contacts[i])
-                                  : 0;
-        if (!current_table) {
-            for (int32_t j = 0; j < w->contact_count; ++j) {
-                if (contact_pair_equals(&w->previous_contacts[i], &w->contacts[j])) {
-                    found = 1;
-                    break;
-                }
-            }
-        }
-        if (!found)
+        if (!previous_still_current || !previous_still_current[i])
             contact_snapshot_copy(&w->exit_events[exit_write++], &w->previous_contacts[i]);
     }
 
@@ -1291,6 +1295,8 @@ static int world3d_build_event_buffers(rt_world3d *w) {
     w->previous_contact_count = w->contact_count;
     for (int32_t i = 0; i < w->contact_count; ++i)
         contact_snapshot_copy(&w->previous_contacts[i], &w->contacts[i]);
+    free(current_was_previous);
+    free(previous_still_current);
     free(previous_table);
     free(current_table);
     return 1;
@@ -1298,6 +1304,8 @@ static int world3d_build_event_buffers(rt_world3d *w) {
 overflow:
     rt_trap("Physics3D.World.Step: event count overflow");
 fail:
+    free(current_was_previous);
+    free(previous_still_current);
     free(previous_table);
     free(current_table);
     return 0;

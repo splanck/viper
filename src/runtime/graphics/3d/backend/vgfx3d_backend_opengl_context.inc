@@ -370,6 +370,52 @@ static int gl_create_default_white_texture(gl_context_t *ctx) {
     return 1;
 }
 
+/// @brief Create the context-owned 1x1 white fallback cubemap.
+///
+/// Budgeted cubemap uploads reserve a texture object before all six faces have
+/// valid pixels. This fallback provides a complete cubemap for those interim
+/// frames, avoiding invalid binds and incomplete-cubemap sampling during
+/// environment-map streaming.
+/// @return Non-zero when the fallback cubemap is available.
+static int gl_create_default_white_cubemap(gl_context_t *ctx) {
+    static const uint8_t kWhitePixel[4] = {255u, 255u, 255u, 255u};
+
+    if (!ctx)
+        return 0;
+    if (ctx->default_white_cubemap)
+        return 1;
+    gl.GenTextures(1, &ctx->default_white_cubemap);
+    if (!ctx->default_white_cubemap)
+        return 0;
+    gl.BindTexture(GL_TEXTURE_CUBE_MAP, ctx->default_white_cubemap);
+    gl.PixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    for (int face = 0; face < 6; face++) {
+        gl.TexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + (GLenum)face,
+                      0,
+                      GL_RGBA8,
+                      1,
+                      1,
+                      0,
+                      GL_RGBA,
+                      GL_UNSIGNED_BYTE,
+                      kWhitePixel);
+    }
+    gl.PixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_BASE_LEVEL, 0);
+    gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAX_LEVEL, 0);
+    if (!gl_upload_ok()) {
+        gl.DeleteTextures(1, &ctx->default_white_cubemap);
+        ctx->default_white_cubemap = 0;
+        return 0;
+    }
+    return 1;
+}
+
 /// @brief Release fixed context objects created before full backend initialization succeeds.
 ///
 /// This is the failure-path counterpart to the tail of `gl_destroy_ctx()`. It intentionally skips
@@ -384,6 +430,8 @@ static void gl_release_fixed_context_objects(gl_context_t *ctx) {
         gl.DeleteBuffers(1, &ctx->skybox_vbo);
     if (ctx->default_white_tex)
         gl.DeleteTextures(1, &ctx->default_white_tex);
+    if (ctx->default_white_cubemap)
+        gl.DeleteTextures(1, &ctx->default_white_cubemap);
     if (ctx->morph_normal_tbo)
         gl.DeleteTextures(1, &ctx->morph_normal_tbo);
     if (ctx->morph_tbo)
@@ -412,6 +460,7 @@ static void gl_release_fixed_context_objects(gl_context_t *ctx) {
         gl.DeleteVertexArrays(1, &ctx->vao);
     ctx->fullscreen_vbo = ctx->skybox_vbo = 0;
     ctx->default_white_tex = 0;
+    ctx->default_white_cubemap = 0;
     ctx->morph_normal_tbo = ctx->morph_tbo = 0;
     ctx->morph_normal_buffer = ctx->bone_ubo = ctx->prev_bone_ubo = 0;
     ctx->morph_buffer = ctx->instance_vbo = ctx->prev_instance_vbo = 0;
@@ -602,7 +651,8 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     gl_bind_default_sampler_uniforms(ctx);
     gl_bind_context_uniform_blocks(ctx);
     if (!gl_generate_context_objects(ctx) || !gl_init_streaming_buffers(ctx) ||
-        !gl_init_static_geometry_buffers(ctx) || !gl_create_default_white_texture(ctx)) {
+        !gl_init_static_geometry_buffers(ctx) || !gl_create_default_white_texture(ctx) ||
+        !gl_create_default_white_cubemap(ctx)) {
         gl_release_fixed_context_objects(ctx);
         gl_delete_context_programs(ctx);
         glx.MakeCurrent(dpy, 0, NULL);
@@ -661,6 +711,8 @@ static void gl_destroy_ctx(void *ctx_ptr) {
         gl.DeleteBuffers(1, &ctx->skybox_vbo);
     if (ctx->default_white_tex)
         gl.DeleteTextures(1, &ctx->default_white_tex);
+    if (ctx->default_white_cubemap)
+        gl.DeleteTextures(1, &ctx->default_white_cubemap);
     if (ctx->morph_normal_tbo)
         gl.DeleteTextures(1, &ctx->morph_normal_tbo);
     if (ctx->morph_tbo)

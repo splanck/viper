@@ -1,8 +1,25 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/assets/rt_textureasset3d_codecs.inc  (#included from rt_textureasset3d.c; not a standalone translation unit)
-// Purpose: TextureAsset3D BC3/BC7/ETC2/ASTC software decoders and compressed fallback
+// File: src/runtime/graphics/3d/assets/rt_textureasset3d_codecs.inc  (#included from
+// rt_textureasset3d.c; not a standalone translation unit) Purpose: TextureAsset3D BC3/BC7/ETC2/ASTC
+// software decoders and compressed fallback
 //===----------------------------------------------------------------------===//
+/// @brief Write an RGBA texel directly into a freshly allocated Pixels fallback.
+///
+/// Compressed texture fallback decode already clips block overhang to the image
+/// bounds before calling this helper. Writing through the internal Pixels
+/// storage avoids per-texel public-handle validation and avoids bumping the
+/// content generation thousands of times during one decode; callers touch the
+/// image once after the complete fallback is populated.
+static void textureasset3d_write_fallback_rgba(rt_pixels_impl *pixels,
+                                               uint32_t x,
+                                               uint32_t y,
+                                               uint32_t rgba) {
+    if (!pixels || !pixels->data)
+        return;
+    pixels->data[(size_t)y * (size_t)pixels->width + (size_t)x] = rgba;
+}
+
 /* --- BC3 (DXT5) software reference decode. Produces an RGBA8 Pixels fallback so BC3-compressed
  *     textures render on backends that cannot upload BC3 natively (R-TEX-001). --- */
 /// @brief Expand a 5-bit color component to 8 bits by bit replication (BC1/BC3 R and B endpoints).
@@ -78,7 +95,7 @@ static void *textureasset3d_decode_bc3_fallback(const uint8_t *data,
                                                 uint32_t height,
                                                 uint64_t offset,
                                                 uint64_t length) {
-    void *pixels;
+    rt_pixels_impl *pixels;
     uint32_t blocks_x = (width + 3u) / 4u;
     uint32_t blocks_y = (height + 3u) / 4u;
     uint64_t needed = (uint64_t)blocks_x * (uint64_t)blocks_y * 16u;
@@ -91,7 +108,7 @@ static void *textureasset3d_decode_bc3_fallback(const uint8_t *data,
         return NULL;
     if (length < needed || offset > (uint64_t)size || needed > (uint64_t)size - offset)
         return NULL;
-    pixels = rt_pixels_new((int64_t)width, (int64_t)height);
+    pixels = (rt_pixels_impl *)rt_pixels_new((int64_t)width, (int64_t)height);
     if (!pixels) {
         rt_trap("TextureAsset3D.LoadKTX2: BC3 Pixels fallback allocation failed");
         return NULL;
@@ -111,11 +128,12 @@ static void *textureasset3d_decode_bc3_fallback(const uint8_t *data,
                         continue;
                     rgba = ((uint32_t)c[0] << 24) | ((uint32_t)c[1] << 16) | ((uint32_t)c[2] << 8) |
                            (uint32_t)c[3];
-                    rt_pixels_set_rgba(pixels, (int64_t)px, (int64_t)py, (int64_t)rgba);
+                    textureasset3d_write_fallback_rgba(pixels, px, py, rgba);
                 }
             }
         }
     }
+    pixels_touch(pixels);
     return pixels;
 }
 
@@ -585,7 +603,7 @@ static void *textureasset3d_decode_bc7_fallback(const uint8_t *data,
                                                 uint32_t height,
                                                 uint64_t offset,
                                                 uint64_t length) {
-    void *pixels;
+    rt_pixels_impl *pixels;
     uint32_t blocks_x = (width + 3u) / 4u;
     uint32_t blocks_y = (height + 3u) / 4u;
     uint64_t needed = (uint64_t)blocks_x * (uint64_t)blocks_y * 16u;
@@ -606,7 +624,7 @@ static void *textureasset3d_decode_bc7_fallback(const uint8_t *data,
             if (m >= 8)
                 return NULL;
         }
-    pixels = rt_pixels_new((int64_t)width, (int64_t)height);
+    pixels = (rt_pixels_impl *)rt_pixels_new((int64_t)width, (int64_t)height);
     if (!pixels) {
         rt_trap("TextureAsset3D.LoadKTX2: BC7 Pixels fallback allocation failed");
         return NULL;
@@ -627,11 +645,12 @@ static void *textureasset3d_decode_bc7_fallback(const uint8_t *data,
                         continue;
                     rgba = ((uint32_t)c[0] << 24) | ((uint32_t)c[1] << 16) | ((uint32_t)c[2] << 8) |
                            (uint32_t)c[3];
-                    rt_pixels_set_rgba(pixels, (int64_t)px, (int64_t)py, (int64_t)rgba);
+                    textureasset3d_write_fallback_rgba(pixels, px, py, rgba);
                 }
             }
         }
     }
+    pixels_touch(pixels);
     return pixels;
 }
 
@@ -912,7 +931,7 @@ static void *textureasset3d_decode_compressed_fallback(const uint8_t *data,
                                                        int32_t block_bytes,
                                                        textureasset3d_block_decode_fn decode,
                                                        const char *alloc_error) {
-    void *pixels;
+    rt_pixels_impl *pixels;
     uint32_t blocks_x;
     uint32_t blocks_y;
     uint64_t needed = 0;
@@ -939,7 +958,7 @@ static void *textureasset3d_decode_compressed_fallback(const uint8_t *data,
                 return NULL;
         }
 
-    pixels = rt_pixels_new((int64_t)width, (int64_t)height);
+    pixels = (rt_pixels_impl *)rt_pixels_new((int64_t)width, (int64_t)height);
     if (!pixels) {
         rt_trap(alloc_error ? alloc_error
                             : "TextureAsset3D.LoadKTX2: Pixels fallback allocation failed");
@@ -961,11 +980,12 @@ static void *textureasset3d_decode_compressed_fallback(const uint8_t *data,
                         continue;
                     rgba = ((uint32_t)c[0] << 24) | ((uint32_t)c[1] << 16) | ((uint32_t)c[2] << 8) |
                            (uint32_t)c[3];
-                    rt_pixels_set_rgba(pixels, (int64_t)px, (int64_t)py, (int64_t)rgba);
+                    textureasset3d_write_fallback_rgba(pixels, px, py, rgba);
                 }
             }
         }
     }
+    pixels_touch(pixels);
     return pixels;
 }
 

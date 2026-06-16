@@ -36,6 +36,7 @@
 #include "rt_internal.h"
 
 #include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -536,10 +537,51 @@ void rt_pixels_draw_ellipse_frame(
         pixels_touch(p);
 }
 
+/// @brief One pending horizontal flood-fill seed.
+/// @details The scanline flood-fill implementation expands this seed to a full
+///          `[left, right]` run when popped, then pushes only runs discovered
+///          immediately above and below. This stores work per span instead of
+///          per pixel and avoids recursion.
+typedef struct rt_pixels_fill_segment {
+    int64_t x;
+    int64_t y;
+} rt_pixels_fill_segment;
+
+/// @brief Push a flood-fill segment onto a dynamically grown stack.
+/// @details Capacity doubles geometrically from a small initial allocation.
+///          The helper is overflow-checked and leaves the existing stack valid
+///          on allocation failure.
+/// @param stack_io In/out pointer to the segment stack.
+/// @param count_io In/out active segment count.
+/// @param cap_io In/out allocated segment capacity.
+/// @param x Seed X coordinate.
+/// @param y Seed Y coordinate.
+/// @return 1 on success, 0 on overflow or allocation failure.
+static int pixels_fill_segment_push(
+    rt_pixels_fill_segment **stack_io, size_t *count_io, size_t *cap_io, int64_t x, int64_t y) {
+    if (!stack_io || !count_io || !cap_io)
+        return 0;
+    if (*count_io >= *cap_io) {
+        size_t new_cap = *cap_io ? *cap_io * 2u : 1024u;
+        if (new_cap < *cap_io || new_cap > SIZE_MAX / sizeof(**stack_io))
+            return 0;
+        rt_pixels_fill_segment *grown =
+            (rt_pixels_fill_segment *)realloc(*stack_io, new_cap * sizeof(**stack_io));
+        if (!grown)
+            return 0;
+        *stack_io = grown;
+        *cap_io = new_cap;
+    }
+    (*stack_io)[(*count_io)++] = (rt_pixels_fill_segment){x, y};
+    return 1;
+}
+
 /// @brief Replace the connected region of pixels matching the seed color with @p color.
-/// Uses an iterative scanline algorithm with a preallocated worklist (no recursion,
-/// no stack overflow risk on large images). Aborts silently on allocation failure
-/// or capacity overflow before mutating, so allocation failures do not partially fill.
+/// @details Uses an iterative scanline algorithm: each popped seed expands left
+///          and right across a contiguous target-color run, writes that run, then
+///          scans the adjacent rows for new target-color runs. This keeps memory
+///          proportional to the boundary/run complexity of the region instead of
+///          allocating `width * height` queue and visited arrays.
 void rt_pixels_flood_fill(void *pixels, int64_t x, int64_t y, int64_t color) {
     if (!pixels) {
         rt_trap("Pixels.FloodFill: null pixels");
@@ -558,59 +600,57 @@ void rt_pixels_flood_fill(void *pixels, int64_t x, int64_t y, int64_t color) {
     if (target == fill_c)
         return;
 
-    // Iterative flood fill with one visit bit per pixel. Allocation happens
-    // before mutation, and each pixel is enqueued at most once, so the fixed
-    // worklist cannot overflow and leave a partially-filled region.
-    typedef struct {
-        int64_t x;
-        int64_t y;
-    } FillSeed;
-
-    if (p->width <= 0 || p->height <= 0 || p->width > INT64_MAX / p->height)
-        return;
-    int64_t cap = p->width * p->height;
-    if ((uint64_t)cap > (uint64_t)SIZE_MAX / sizeof(FillSeed))
-        return;
-    if ((uint64_t)cap > (uint64_t)SIZE_MAX)
-        return;
-    FillSeed *queue = (FillSeed *)malloc((size_t)cap * sizeof(FillSeed));
-    uint8_t *visited = (uint8_t *)calloc((size_t)cap, 1);
-    if (!queue || !visited) {
-        free(queue);
-        free(visited);
-        return;
-    }
-
+    rt_pixels_fill_segment *stack = NULL;
+    size_t stack_count = 0;
+    size_t stack_cap = 0;
     int8_t wrote = 0;
-    int64_t head = 0;
-    int64_t tail = 0;
-    queue[tail++] = (FillSeed){x, y};
-    visited[y * p->width + x] = 1;
+    int failed = 0;
+    if (!pixels_fill_segment_push(&stack, &stack_count, &stack_cap, x, y))
+        return;
 
-    while (head < tail) {
-        FillSeed seed = queue[head++];
-        int64_t idx = seed.y * p->width + seed.x;
-        if (p->data[idx] != target)
+    while (stack_count > 0 && !failed) {
+        rt_pixels_fill_segment seed = stack[--stack_count];
+        if (seed.y < 0 || seed.y >= p->height || seed.x < 0 || seed.x >= p->width)
+            continue;
+        if (p->data[seed.y * p->width + seed.x] != target)
             continue;
 
-        p->data[idx] = fill_c;
+        int64_t left = seed.x;
+        int64_t right = seed.x;
+        while (left > 0 && p->data[seed.y * p->width + (left - 1)] == target)
+            left--;
+        while (right + 1 < p->width && p->data[seed.y * p->width + (right + 1)] == target)
+            right++;
+
+        uint32_t *row = p->data + seed.y * p->width;
+        for (int64_t px = left; px <= right; px++)
+            row[px] = fill_c;
         wrote = 1;
 
-        const int64_t nx[4] = {seed.x - 1, seed.x + 1, seed.x, seed.x};
-        const int64_t ny[4] = {seed.y, seed.y, seed.y - 1, seed.y + 1};
-        for (int i = 0; i < 4; i++) {
-            if (nx[i] < 0 || nx[i] >= p->width || ny[i] < 0 || ny[i] >= p->height)
+        for (int dy = -1; dy <= 1; dy += 2) {
+            int64_t scan_y = seed.y + dy;
+            if (scan_y < 0 || scan_y >= p->height)
                 continue;
-            int64_t nidx = ny[i] * p->width + nx[i];
-            if (!visited[nidx] && p->data[nidx] == target) {
-                visited[nidx] = 1;
-                queue[tail++] = (FillSeed){nx[i], ny[i]};
+            uint32_t *scan_row = p->data + scan_y * p->width;
+            int64_t px = left;
+            while (px <= right) {
+                while (px <= right && scan_row[px] != target)
+                    px++;
+                if (px > right)
+                    break;
+                int64_t run_start = px;
+                while (px <= right && scan_row[px] == target)
+                    px++;
+                if (!pixels_fill_segment_push(
+                        &stack, &stack_count, &stack_cap, run_start, scan_y)) {
+                    failed = 1;
+                    break;
+                }
             }
         }
     }
 
-    free(queue);
-    free(visited);
+    free(stack);
     if (wrote)
         pixels_touch(p);
 }

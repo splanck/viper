@@ -858,12 +858,88 @@ static vgfx_color_t bitmapfont_color_to_vgfx_rgb(int64_t color) {
     return (vgfx_color_t)((rt_pixels_color_to_rgba(color) >> 8) & 0x00FFFFFFu);
 }
 
-/// @brief Draw a single glyph at `(px, py)` using `vgfx_pset` per lit pixel.
+/// @brief Return whether a packed glyph bitmap has a lit texel at @p row/@p col.
+/// @details Glyph bitmaps are MSB-first, one row after another. The helper
+///          centralizes bounds checks and bit addressing so run extraction can
+///          stay focused on scanline traversal.
+/// @param g Glyph whose packed bitmap is being inspected.
+/// @param row_bytes Number of packed bytes per glyph row.
+/// @param row Zero-based glyph row.
+/// @param col Zero-based glyph column.
+/// @return Non-zero when the glyph pixel is set, otherwise zero.
+static int bf_glyph_bit_is_set(const rt_glyph *g, int row_bytes, int row, int col) {
+    int byte_idx;
+    int bit_idx;
+    if (!g || !g->bitmap || row < 0 || col < 0 || row >= g->height || col >= g->width)
+        return 0;
+    byte_idx = col / 8;
+    bit_idx = 7 - (col % 8);
+    return (g->bitmap[row * row_bytes + byte_idx] & (uint8_t)(1u << bit_idx)) != 0;
+}
+
+/// @brief Draw a glyph bitmap as horizontal runs of lit pixels.
+///
+/// Bitmap glyphs often contain adjacent lit pixels. Emitting one `fill_rect`
+/// per run substantially reduces backend calls compared with one `pset` per
+/// texel, and the same helper supports integer scaling by widening each run.
+/// For unscaled glyphs, the helper intentionally preserves the historical
+/// `pset`-per-lit-pixel behavior because Canvas tests and lightweight backends
+/// observe plot coordinates directly.
+/// @param win Target ViperGFX window.
+/// @param g Glyph bitmap to render.
+/// @param draw_x Baseline-adjusted destination X coordinate.
+/// @param draw_y Baseline-adjusted destination Y coordinate.
+/// @param scale Integer scale factor; values below 1 are ignored.
+/// @param color Backend RGB color.
+static void bf_draw_glyph_runs(vgfx_window_t win,
+                               const rt_glyph *g,
+                               int64_t draw_x,
+                               int64_t draw_y,
+                               int64_t scale,
+                               vgfx_color_t color) {
+    int rb;
+    if (!g || !g->bitmap || scale < 1)
+        return;
+    rb = bf_row_bytes(g->width);
+    for (int row = 0; row < g->height; row++) {
+        int col = 0;
+        while (col < g->width) {
+            int run_start;
+            int run_len;
+            while (col < g->width && !bf_glyph_bit_is_set(g, rb, row, col))
+                col++;
+            if (col >= g->width)
+                break;
+            run_start = col;
+            while (col < g->width && bf_glyph_bit_is_set(g, rb, row, col))
+                col++;
+            run_len = col - run_start;
+            if (scale == 1) {
+                for (int dx = 0; dx < run_len; dx++) {
+                    vgfx_pset(win,
+                              rtg_clamp_i64_to_i32(rtg_add_sat64(draw_x, run_start + dx)),
+                              rtg_clamp_i64_to_i32(rtg_add_sat64(draw_y, row)),
+                              color);
+                }
+                continue;
+            }
+            vgfx_fill_rect(
+                win,
+                rtg_clamp_i64_to_i32(rtg_add_sat64(draw_x, rtg_mul_sat64(run_start, scale))),
+                rtg_clamp_i64_to_i32(rtg_add_sat64(draw_y, rtg_mul_sat64(row, scale))),
+                rtg_clamp_i64_to_i32(rtg_mul_sat64(run_len, scale)),
+                rtg_clamp_i64_to_i32(scale),
+                color);
+        }
+    }
+}
+
+/// @brief Draw a single glyph at `(px, py)` using horizontal runs of lit pixels.
 /// @details Resolves the destination as `(px + x_offset, py + (ascent -
 ///          y_offset - height))` so the BDF baseline / bearing offsets
 ///          translate correctly to a top-of-line `(px, py)` reference. The
 ///          glyph bitmap is packed MSB-left, row-major; iterates row × col
-///          and emits a `vgfx_pset` for each set bit.
+///          and emits one fill rectangle per contiguous run of set bits.
 static void bf_draw_glyph(vgfx_window_t win,
                           const rt_glyph *g,
                           int64_t px,
@@ -876,20 +952,7 @@ static void bf_draw_glyph(vgfx_window_t win,
     // BDF y_offset is from baseline; we draw relative to top of line
     int64_t draw_x = rtg_add_sat64(px, g->x_offset);
     int64_t draw_y = rtg_add_sat64(py, (int64_t)ascent - g->y_offset - g->height);
-    int rb = bf_row_bytes(g->width);
-
-    for (int row = 0; row < g->height; row++) {
-        for (int col = 0; col < g->width; col++) {
-            int byte_idx = col / 8;
-            int bit_idx = 7 - (col % 8);
-            if (g->bitmap[row * rb + byte_idx] & (1 << bit_idx)) {
-                vgfx_pset(win,
-                          rtg_clamp_i64_to_i32(rtg_add_sat64(draw_x, col)),
-                          rtg_clamp_i64_to_i32(rtg_add_sat64(draw_y, row)),
-                          color);
-            }
-        }
-    }
+    bf_draw_glyph_runs(win, g, draw_x, draw_y, 1, color);
 }
 
 /// @brief Draw a single glyph with integer scaling.
@@ -906,23 +969,7 @@ static void bf_draw_glyph_scaled(vgfx_window_t win,
     int64_t draw_x = rtg_add_sat64(px, rtg_mul_sat64(g->x_offset, scale));
     int64_t draw_y =
         rtg_add_sat64(py, rtg_mul_sat64((int64_t)ascent - g->y_offset - g->height, scale));
-    int rb = bf_row_bytes(g->width);
-
-    for (int row = 0; row < g->height; row++) {
-        for (int col = 0; col < g->width; col++) {
-            int byte_idx = col / 8;
-            int bit_idx = 7 - (col % 8);
-            if (g->bitmap[row * rb + byte_idx] & (1 << bit_idx)) {
-                vgfx_fill_rect(
-                    win,
-                    rtg_clamp_i64_to_i32(rtg_add_sat64(draw_x, rtg_mul_sat64(col, scale))),
-                    rtg_clamp_i64_to_i32(rtg_add_sat64(draw_y, rtg_mul_sat64(row, scale))),
-                    rtg_clamp_i64_to_i32(scale),
-                    rtg_clamp_i64_to_i32(scale),
-                    color);
-            }
-        }
-    }
+    bf_draw_glyph_runs(win, g, draw_x, draw_y, scale, color);
 }
 
 /// @brief Draw a single glyph with foreground and background colors.
@@ -958,20 +1005,7 @@ static void bf_draw_glyph_bg(vgfx_window_t win,
                            bg);
         }
 
-        int rb = bf_row_bytes(g->width);
-
-        for (int row = 0; row < g->height; row++) {
-            for (int col = 0; col < g->width; col++) {
-                int byte_idx = col / 8;
-                int bit_idx = 7 - (col % 8);
-                if (g->bitmap[row * rb + byte_idx] & (1 << bit_idx)) {
-                    vgfx_pset(win,
-                              rtg_clamp_i64_to_i32(rtg_add_sat64(draw_x, col)),
-                              rtg_clamp_i64_to_i32(rtg_add_sat64(draw_y, row)),
-                              fg);
-                }
-            }
-        }
+        bf_draw_glyph_runs(win, g, draw_x, draw_y, 1, fg);
     } else if (bg_right > bg_left) {
         vgfx_fill_rect(win,
                        rtg_clamp_i64_to_i32(bg_left),

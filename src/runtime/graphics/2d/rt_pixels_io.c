@@ -557,7 +557,14 @@ void *rt_pixels_load(void *path) {
     }
     uint8_t hdr[8];
     size_t n = fread(hdr, 1, 8, af);
+    int read_error = ferror(af) != 0;
     fclose(af);
+    if (read_error) {
+        rt_asset_error_setf(
+            RT_ASSET_ERROR_UNREADABLE, "Pixels.Load: failed to read '%s'", filepath);
+        rt_asset_error_end_load_failure();
+        return NULL;
+    }
 
     void *result = NULL;
     if (n >= 8 && hdr[0] == 137 && hdr[1] == 'P' && hdr[2] == 'N' && hdr[3] == 'G')

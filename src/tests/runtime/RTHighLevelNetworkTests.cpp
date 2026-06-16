@@ -7,8 +7,18 @@
 //
 // File: tests/runtime/RTHighLevelNetworkTests.cpp
 // Purpose: Integration-style coverage for higher-level network APIs.
+// Key invariants:
+//   - Local network fixtures bind only to loopback addresses.
+//   - Captured protocol state remains deterministic across tests.
+// Ownership/Lifetime:
+//   - Each helper owns and closes any native socket it creates.
+//   - Runtime objects remain valid for each test scope.
+// Links: src/runtime/network/rt_http_client.c,
+//        src/runtime/network/rt_smtp.c
 //
 //===----------------------------------------------------------------------===//
+
+#include "tests/common/NetworkTestCompat.hpp"
 
 #include "rt_bytes.h"
 #include "rt_http2.h"
@@ -378,7 +388,7 @@ static int get_bindable_local_port() {
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_addr.s_addr = htonl(viper::tests::kIpv4LoopbackHostOrder);
     addr.sin_port = 0;
     if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
         LOCAL_SOCK_CLOSE(fd);

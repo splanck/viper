@@ -496,6 +496,38 @@ static int model3d_load_from_gltf(rt_model3d *model,
     return 1;
 }
 
+/// @brief Write embedded FBX bytes directly to a temporary path.
+///
+/// The previous bridge wrapped @p bytes in a runtime Bytes object before writing,
+/// doubling peak memory for large embedded FBX assets. This helper streams the
+/// caller-owned byte span straight to the tempfile.
+/// @param path Runtime string naming the temporary output file.
+/// @param bytes Embedded asset byte span to write.
+/// @param size Number of bytes in @p bytes.
+/// @return Non-zero when the entire byte span was written and the file closed cleanly.
+static int model3d_write_temp_asset_bytes(rt_string path, const uint8_t *bytes, size_t size) {
+    const char *cpath;
+    FILE *f;
+    size_t written;
+
+    if (!path || !bytes || size == 0)
+        return 0;
+    cpath = rt_string_cstr(path);
+    if (!cpath)
+        return 0;
+    f = rt_file_stdio_open_utf8(cpath, "wb");
+    if (!f)
+        return 0;
+    written = fwrite(bytes, 1, size, f);
+    if (written != size || fclose(f) != 0) {
+        if (written == size)
+            return 0;
+        fclose(f);
+        return 0;
+    }
+    return 1;
+}
+
 /// @brief Decode a binary/ASCII FBX from in-memory asset bytes via a temp-file bridge.
 /// @details The FBX importer is path-based (binary parsing re-opens the file), so embedded or
 ///   packed assets are spilled to a temp file, decoded with the recoverable loader, and
@@ -517,22 +549,11 @@ static void *model3d_fbx_from_asset_bytes(rt_string original_path,
         rt_string_unref(tmp);
         return NULL;
     }
-    void *tmp_bytes = rt_bytes_new((int64_t)size);
-    if (!tmp_bytes) {
+    if (!model3d_write_temp_asset_bytes(tmp, bytes, size)) {
+        rt_io_file_delete(tmp);
         rt_string_unref(tmp);
         return NULL;
     }
-    uint8_t *tmp_data = rt_bytes_data(tmp_bytes);
-    if (!tmp_data) {
-        if (rt_obj_release_check0(tmp_bytes))
-            rt_obj_free(tmp_bytes);
-        rt_string_unref(tmp);
-        return NULL;
-    }
-    memcpy(tmp_data, bytes, size);
-    rt_io_file_write_all_bytes(tmp, tmp_bytes);
-    if (rt_obj_release_check0(tmp_bytes))
-        rt_obj_free(tmp_bytes);
     void *asset = rt_fbx_load_recoverable_with_texture_base(tmp, original_path);
     rt_io_file_delete(tmp);
     rt_string_unref(tmp);

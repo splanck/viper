@@ -541,8 +541,18 @@ static void pool_deferred_cleanup_entry(void *arg) {
 // Public API - Task Submission
 //=============================================================================
 
-/// @brief Submit a task (callback + arg) for execution on the next available worker thread.
-int8_t rt_threadpool_submit(void *pool_obj, void *callback, void *arg) {
+/// @brief Submit a typed task (callback + arg) for execution on the next available worker thread.
+/// @details This internal C-facing entry point preserves the real function
+///          pointer type instead of routing through the public `void *`
+///          callback ABI. The pool is retained while the task is enqueued and
+///          released after queueing succeeds or fails; worker execution owns the
+///          queued task record.
+/// @param pool_obj Runtime Pool object.
+/// @param callback Function invoked by a worker with @p arg.
+/// @param arg Opaque argument passed to @p callback.
+/// @return 1 when the task is queued, 0 when inputs are invalid, the pool is
+///         shutting down, or allocation fails.
+int8_t rt_threadpool_submit_fn(void *pool_obj, void (*callback)(void *), void *arg) {
     if (!pool_obj || !callback)
         return 0;
 
@@ -574,7 +584,7 @@ int8_t rt_threadpool_submit(void *pool_obj, void *callback, void *arg) {
         return 0;
     }
 
-    task->callback = (void (*)(void *))callback;
+    task->callback = callback;
     task->arg = arg;
     task->next = NULL;
 
@@ -594,6 +604,15 @@ int8_t rt_threadpool_submit(void *pool_obj, void *callback, void *arg) {
 
     pool_release_object(pool);
     return 1;
+}
+
+/// @brief Submit a task through the legacy object-pointer callback API.
+/// @details Preserves the historical runtime ABI while routing actual queueing
+///          through the typed implementation. New C code should prefer
+///          `rt_threadpool_submit_fn` to avoid converting function pointers
+///          through `void *`.
+int8_t rt_threadpool_submit(void *pool_obj, void *callback, void *arg) {
+    return rt_threadpool_submit_fn(pool_obj, (void (*)(void *))callback, arg);
 }
 
 //=============================================================================

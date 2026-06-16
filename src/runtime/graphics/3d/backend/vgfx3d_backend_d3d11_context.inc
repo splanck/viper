@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_context.inc  (#included from vgfx3d_backend_d3d11.c; not a standalone translation unit)
-// Purpose: D3D11 device/swapchain/context creation, state objects, and teardown
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_context.inc  (#included from
+// vgfx3d_backend_d3d11.c; not a standalone translation unit) Purpose: D3D11
+// device/swapchain/context creation, state objects, and teardown
 //===----------------------------------------------------------------------===//
 typedef struct d3d11_shader_blobs_t {
     ID3DBlob *vs;
@@ -66,12 +67,10 @@ static void d3d11_fill_swap_chain_desc(DXGI_SWAP_CHAIN_DESC *swap_desc,
 }
 
 /// @brief Create the swapchain render-target view and matching main depth target.
-static HRESULT d3d11_create_swapchain_targets(d3d11_context_t *ctx,
-                                             int32_t width,
-                                             int32_t height) {
+static HRESULT d3d11_create_swapchain_targets(d3d11_context_t *ctx, int32_t width, int32_t height) {
     ID3D11Texture2D *back_buffer = NULL;
-    HRESULT hr = IDXGISwapChain_GetBuffer(
-        ctx->swap_chain, 0, &IID_ID3D11Texture2D, (void **)&back_buffer);
+    HRESULT hr =
+        IDXGISwapChain_GetBuffer(ctx->swap_chain, 0, &IID_ID3D11Texture2D, (void **)&back_buffer);
     if (FAILED(hr)) {
         d3d11_log_hresult("IDXGISwapChain::GetBuffer", hr);
         return hr;
@@ -178,8 +177,8 @@ static HRESULT d3d11_create_context_blend_states(d3d11_context_t *ctx) {
 
 /// @brief Create all solid/wireframe and cull/no-cull rasterizer-state combinations.
 static HRESULT d3d11_create_context_rasterizer_states(d3d11_context_t *ctx) {
-    HRESULT hr = d3d11_create_rasterizer_state(
-        ctx, D3D11_FILL_SOLID, D3D11_CULL_BACK, &ctx->rs_solid_cull);
+    HRESULT hr =
+        d3d11_create_rasterizer_state(ctx, D3D11_FILL_SOLID, D3D11_CULL_BACK, &ctx->rs_solid_cull);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateRasterizerState(solid+cull)", hr);
         return hr;
@@ -261,20 +260,16 @@ static HRESULT d3d11_compile_context_shaders(d3d11_shader_blobs_t *blobs) {
     hr = d3d11_compile_shader(d3d11_shader_source, "PSShadow", "ps_5_0", &blobs->ps_shadow);
     if (FAILED(hr))
         return hr;
-    hr = d3d11_compile_shader(
-        d3d11_skybox_shader_source, "VSSkybox", "vs_5_0", &blobs->vs_skybox);
+    hr = d3d11_compile_shader(d3d11_skybox_shader_source, "VSSkybox", "vs_5_0", &blobs->vs_skybox);
     if (FAILED(hr))
         return hr;
-    hr = d3d11_compile_shader(
-        d3d11_skybox_shader_source, "PSSkybox", "ps_5_0", &blobs->ps_skybox);
+    hr = d3d11_compile_shader(d3d11_skybox_shader_source, "PSSkybox", "ps_5_0", &blobs->ps_skybox);
     if (FAILED(hr))
         return hr;
-    hr = d3d11_compile_shader(
-        d3d11_postfx_shader_source, "VSPostFX", "vs_5_0", &blobs->vs_postfx);
+    hr = d3d11_compile_shader(d3d11_postfx_shader_source, "VSPostFX", "vs_5_0", &blobs->vs_postfx);
     if (FAILED(hr))
         return hr;
-    hr = d3d11_compile_shader(
-        d3d11_postfx_shader_source, "PSPostFX", "ps_5_0", &blobs->ps_postfx);
+    hr = d3d11_compile_shader(d3d11_postfx_shader_source, "PSPostFX", "ps_5_0", &blobs->ps_postfx);
     if (FAILED(hr))
         return hr;
     return d3d11_compile_shader(
@@ -283,7 +278,7 @@ static HRESULT d3d11_compile_context_shaders(d3d11_shader_blobs_t *blobs) {
 
 /// @brief Create all shader objects from compiled HLSL blobs.
 static HRESULT d3d11_create_context_shader_objects(d3d11_context_t *ctx,
-                                                  const d3d11_shader_blobs_t *blobs) {
+                                                   const d3d11_shader_blobs_t *blobs) {
     HRESULT hr = ID3D11Device_CreateVertexShader(ctx->device,
                                                  ID3D10Blob_GetBufferPointer(blobs->vs),
                                                  ID3D10Blob_GetBufferSize(blobs->vs),
@@ -454,7 +449,7 @@ static void d3d11_fill_instanced_layout(D3D11_INPUT_ELEMENT_DESC instanced_layou
 
 /// @brief Create main, instanced, and skybox input layouts.
 static HRESULT d3d11_create_context_input_layouts(d3d11_context_t *ctx,
-                                                 const d3d11_shader_blobs_t *blobs) {
+                                                  const d3d11_shader_blobs_t *blobs) {
     D3D11_INPUT_ELEMENT_DESC layout[8];
     D3D11_INPUT_ELEMENT_DESC instanced_layout[20];
     D3D11_INPUT_ELEMENT_DESC skybox_layout[1];
@@ -597,8 +592,8 @@ static HRESULT d3d11_create_context_skybox_buffer(d3d11_context_t *ctx) {
     skybox_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
     memset(&skybox_init, 0, sizeof(skybox_init));
     skybox_init.pSysMem = skybox_vertices;
-    HRESULT hr = ID3D11Device_CreateBuffer(
-        ctx->device, &skybox_desc, &skybox_init, &ctx->skybox_vb);
+    HRESULT hr =
+        ID3D11Device_CreateBuffer(ctx->device, &skybox_desc, &skybox_init, &ctx->skybox_vb);
     if (FAILED(hr))
         d3d11_log_hresult("CreateBuffer(skyboxVB)", hr);
     return hr;
@@ -673,6 +668,9 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
     if (FAILED(hr))
         goto fail;
     hr = d3d11_create_context_sampler_states(ctx);
+    if (FAILED(hr))
+        goto fail;
+    hr = d3d11_create_white_fallback_resources(ctx);
     if (FAILED(hr))
         goto fail;
     hr = d3d11_compile_context_shaders(&blobs);
@@ -776,6 +774,10 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     SAFE_RELEASE(ctx->shadow_cmp_sampler);
     SAFE_RELEASE(ctx->linear_clamp_sampler);
     SAFE_RELEASE(ctx->linear_wrap_sampler);
+    SAFE_RELEASE(ctx->fallback_white_cube_srv);
+    SAFE_RELEASE(ctx->fallback_white_cube_tex);
+    SAFE_RELEASE(ctx->fallback_white_srv);
+    SAFE_RELEASE(ctx->fallback_white_tex);
     SAFE_RELEASE(ctx->rs_wire_no_cull);
     SAFE_RELEASE(ctx->rs_wire_cull);
     SAFE_RELEASE(ctx->rs_solid_no_cull);

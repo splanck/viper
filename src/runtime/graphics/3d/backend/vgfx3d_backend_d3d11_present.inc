@@ -242,6 +242,7 @@ static void d3d11_resize(void *ctx_ptr, int32_t w, int32_t h) {
     hr = IDXGISwapChain_ResizeBuffers(ctx->swap_chain, 0, (UINT)w, (UINT)h, DXGI_FORMAT_UNKNOWN, 0);
     if (FAILED(hr)) {
         d3d11_log_hresult("IDXGISwapChain::ResizeBuffers", hr);
+        d3d11_log_device_removed_reason(ctx, "IDXGISwapChain::ResizeBuffers", hr);
         if (SUCCEEDED(d3d11_recreate_swapchain_main_targets(
                 ctx, old_w, old_h, "Recreate swapchain targets after failed resize"))) {
             d3d11_bind_swapchain_target(ctx);

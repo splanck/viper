@@ -655,27 +655,39 @@ static int jpeg_rgba_apply_orientation(uint32_t **pixels,
 
 /// @brief Decode a JPEG image from a memory buffer to malloc-owned raw RGBA32 pixels.
 /// @details This internal variant preserves the public raw-buffer contract while
-///          returning a structured status for callers that need diagnostics.
+///          returning a structured status for callers that need diagnostics. When
+///          @p direct_pixels is non-NULL, decoded pixels are written into caller-owned
+///          storage only after the encoded dimensions have been validated against
+///          @p direct_width and @p direct_height.
 /// @param data Pointer to JPEG data.
 /// @param len Length of @p data.
 /// @param out_pixels Receives malloc-owned RGBA32 pixels on success.
 /// @param out_width Receives decoded width on success.
 /// @param out_height Receives decoded height on success.
 /// @param out_status Receives success, corrupt, or unsupported status when non-NULL.
+/// @param direct_pixels Optional caller-owned destination buffer for direct decode.
+/// @param direct_width Expected width when @p direct_pixels is non-NULL.
+/// @param direct_height Expected height when @p direct_pixels is non-NULL.
 /// @return 1 on success; 0 on corrupt data, unsupported JPEG variants, or allocation failure.
 static int rt_jpeg_decode_buffer_rgba32_ex(const uint8_t *data,
                                            size_t len,
                                            uint32_t **out_pixels,
                                            int64_t *out_width,
                                            int64_t *out_height,
-                                           jpeg_decode_status_t *out_status) {
+                                           jpeg_decode_status_t *out_status,
+                                           uint32_t *direct_pixels,
+                                           int64_t direct_width,
+                                           int64_t direct_height) {
     uint32_t *pixels = NULL;
+    int pixels_owned = 0;
     jpeg_decode_status_t decode_status = JPEG_DECODE_STATUS_CORRUPT;
     if (out_status)
         *out_status = JPEG_DECODE_STATUS_CORRUPT;
     if (!data || len < 2 || data[0] != 0xFF || data[1] != 0xD8)
         return 0;
     if (!out_pixels || !out_width || !out_height)
+        return 0;
+    if (direct_pixels && (direct_width <= 0 || direct_height <= 0))
         return 0;
     *out_pixels = NULL;
     *out_width = 0;
@@ -1019,11 +1031,23 @@ static int rt_jpeg_decode_buffer_rgba32_ex(const uint8_t *data,
                 }
 
                 // Convert component buffers to RGBA pixels
-                pixels = jpeg_rgba_alloc((int64_t)ctx.width, (int64_t)ctx.height);
-                if (!pixels)
-                    goto jpeg_fail;
                 decoded_width = (int64_t)ctx.width;
                 decoded_height = (int64_t)ctx.height;
+                if (direct_pixels) {
+                    if (direct_width != decoded_width || direct_height != decoded_height)
+                        goto jpeg_fail;
+                    if (exif_orientation > 1 && exif_orientation <= 8) {
+                        decode_status = JPEG_DECODE_STATUS_UNSUPPORTED;
+                        goto jpeg_fail;
+                    }
+                    pixels = direct_pixels;
+                    pixels_owned = 0;
+                } else {
+                    pixels = jpeg_rgba_alloc(decoded_width, decoded_height);
+                    if (!pixels)
+                        goto jpeg_fail;
+                    pixels_owned = 1;
+                }
 
                 if (ctx.num_components == 1) {
                     // Grayscale
@@ -1127,7 +1151,7 @@ static int rt_jpeg_decode_buffer_rgba32_ex(const uint8_t *data,
         goto jpeg_fail;
 
     // Apply EXIF orientation transform without creating GC-managed Pixels.
-    if (pixels &&
+    if (!direct_pixels && pixels &&
         !jpeg_rgba_apply_orientation(&pixels, &decoded_width, &decoded_height, exif_orientation))
         goto jpeg_fail;
 
@@ -1139,7 +1163,7 @@ static int rt_jpeg_decode_buffer_rgba32_ex(const uint8_t *data,
     }
     if (!pixels)
         return 0;
-    *out_pixels = pixels;
+    *out_pixels = direct_pixels ? NULL : pixels;
     *out_width = decoded_width;
     *out_height = decoded_height;
     if (out_status)
@@ -1147,7 +1171,8 @@ static int rt_jpeg_decode_buffer_rgba32_ex(const uint8_t *data,
     return 1;
 
 jpeg_fail:
-    free(pixels);
+    if (pixels_owned)
+        free(pixels);
     if (comp_data) {
         for (int i = 0; i < ctx.num_components; i++)
             free(comp_data[i]);
@@ -1167,7 +1192,31 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                                  uint32_t **out_pixels,
                                  int64_t *out_width,
                                  int64_t *out_height) {
-    return rt_jpeg_decode_buffer_rgba32_ex(data, len, out_pixels, out_width, out_height, NULL);
+    return rt_jpeg_decode_buffer_rgba32_ex(
+        data, len, out_pixels, out_width, out_height, NULL, NULL, 0, 0);
+}
+
+/// @brief Decode a JPEG image from a memory buffer into caller-owned RGBA32 pixels.
+/// @details This avoids the intermediate malloc buffer used by
+///          @c rt_jpeg_decode_buffer_rgba32 when a caller already owns a frame-sized
+///          destination. The destination is only accepted for non-orienting JPEGs
+///          whose encoded dimensions exactly match @p dst_width and @p dst_height.
+int rt_jpeg_decode_buffer_into_rgba32(
+    const uint8_t *data, size_t len, uint32_t *dst_pixels, int64_t dst_width, int64_t dst_height) {
+    uint32_t *unused_pixels = NULL;
+    int64_t decoded_width = 0;
+    int64_t decoded_height = 0;
+    if (!dst_pixels)
+        return 0;
+    return rt_jpeg_decode_buffer_rgba32_ex(data,
+                                           len,
+                                           &unused_pixels,
+                                           &decoded_width,
+                                           &decoded_height,
+                                           NULL,
+                                           dst_pixels,
+                                           dst_width,
+                                           dst_height);
 }
 
 /// @brief Decode a JPEG image from a memory buffer.
@@ -1266,8 +1315,15 @@ void *rt_pixels_load_jpeg(void *path) {
     int64_t height = 0;
     jpeg_decode_status_t decode_status = JPEG_DECODE_STATUS_CORRUPT;
     void *result = NULL;
-    if (rt_jpeg_decode_buffer_rgba32_ex(
-            file_data, (size_t)file_len, &raw_pixels, &width, &height, &decode_status)) {
+    if (rt_jpeg_decode_buffer_rgba32_ex(file_data,
+                                        (size_t)file_len,
+                                        &raw_pixels,
+                                        &width,
+                                        &height,
+                                        &decode_status,
+                                        NULL,
+                                        0,
+                                        0)) {
         size_t pixel_count = 0;
         if (jpeg_rgba_pixel_count_checked(width, height, &pixel_count)) {
             rt_pixels_impl *pixels = pixels_alloc(width, height);

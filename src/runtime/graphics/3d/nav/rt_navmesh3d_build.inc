@@ -520,6 +520,22 @@ static float navmesh3d_tri_cost(const rt_navmesh3d *nm, int32_t tri) {
     return navmesh3d_sanitize_traversal_cost((double)nm->triangles[tri].traversal_cost);
 }
 
+/// @brief Mix an undirected edge key into a well-distributed 32-bit hash value.
+///
+/// Edge keys store `(min_vertex << 32) | max_vertex`. Using only the low bits
+/// clusters meshes whose high endpoint changes slowly across strips or grids.
+/// This SplitMix64 finalizer folds both vertex ids before the adjacency table
+/// takes its modulo, reducing probe chains on large baked navmeshes.
+/// @param key Packed undirected edge key.
+/// @return 32-bit mixed hash suitable for modulo table indexing.
+static uint32_t navmesh3d_hash_edge_key(uint64_t key) {
+    key += UINT64_C(0x9E3779B97F4A7C15);
+    key = (key ^ (key >> 30)) * UINT64_C(0xBF58476D1CE4E5B9);
+    key = (key ^ (key >> 27)) * UINT64_C(0x94D049BB133111EB);
+    key ^= key >> 31;
+    return (uint32_t)(key ^ (key >> 32));
+}
+
 /// @brief Compute triangle-edge adjacency, populating each triangle's `neighbors[3]` slots.
 /// @details Hash table keyed on `(min_vertex << 32) | max_vertex` matches each shared edge to
 ///          the two triangles that own it; first hit records the triangle, second hit cross-
@@ -542,7 +558,7 @@ static int navmesh3d_build_adjacency(rt_navmesh3d *nm) {
         map_cap = 16;
 
     typedef struct {
-        int64_t key;
+        uint64_t key;
         int32_t tri_idx;
         int32_t edge_idx;
         int8_t used;
@@ -561,8 +577,8 @@ static int navmesh3d_build_adjacency(rt_navmesh3d *nm) {
             int32_t vb = nm->triangles[i].v[(e + 1) % 3];
             int32_t lo = va < vb ? va : vb;
             int32_t hi = va < vb ? vb : va;
-            int64_t key = ((int64_t)(uint32_t)lo << 32) | (uint32_t)hi;
-            uint32_t slot = (uint32_t)(key & 0x7FFFFFFF) % (uint32_t)map_cap;
+            uint64_t key = ((uint64_t)(uint32_t)lo << 32) | (uint32_t)hi;
+            uint32_t slot = navmesh3d_hash_edge_key(key) % (uint32_t)map_cap;
             for (int probe = 0; probe < map_cap; probe++) {
                 uint32_t idx = (slot + (uint32_t)probe) % (uint32_t)map_cap;
                 if (!emap[idx].used) {

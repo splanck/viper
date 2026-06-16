@@ -18,6 +18,7 @@
 #include "rt_internal.h"
 #include "rt_network.h"
 #include "rt_string.h"
+#include "tests/common/NetworkTestCompat.hpp"
 
 #include <cassert>
 #include <cstdio>
@@ -79,7 +80,7 @@ static void test_tcp_recv_timeout() {
 
     struct sockaddr_in addr = {};
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_addr.s_addr = htonl(viper::tests::kIpv4LoopbackHostOrder);
     addr.sin_port = 0; // Let OS assign port
 
     int rc = bind(listener, (struct sockaddr *)&addr, sizeof(addr));

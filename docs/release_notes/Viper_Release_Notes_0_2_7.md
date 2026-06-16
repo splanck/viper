@@ -18,6 +18,7 @@ A hardening cycle continuing v0.2.6, with focused new 3D and tooling capability.
 - **Runtime fails closed (repo-wide).** A cppcheck-driven audit makes every recoverable `rt_trap` return a safe sentinel; unrecoverable entropy/DRBG failures route through a non-returning `rt_abort` so no path proceeds with predictable key material.
 - **Asset loaders fail closed (new).** Corrupt, truncated, or oversized 2D images and 3D models/scenes return `null` with queryable diagnostics; a shared count guard rejects any element count larger than its backing bytes, and libFuzzer harnesses keep the parsers crash-free.
 - **Game3D degradation diagnostics (new).** A process-wide `Game3D.Diagnostics` surface counts the rare correct-but-degraded fallbacks (brute-force broadphase, clamped CCD, evicted audio voices, navmesh-grid fallback) so smoke probes can assert a clean run.
+- **Backend & audio telemetry (new).** Opt-in `Canvas3D` backend counters (draws, dropped draws, mesh-cache hits/misses, stream uploads, fallback binds, active presentation path) and an audio-mixer diagnostics surface (renders, partial writes, xruns, recoveries, write failures) make a degraded render or audio path measurable rather than silent.
 - **IL & codegen invariants validate in release.** The IL builder promotes debug-only invariants to release-mode validation, the verifier makes the EH `resumetok` a linear handler-provenance capability (ADR 0005), and codegen and the linker surface diagnostics instead of asserting.
 - **Codegen performance round.** The AArch64 allocator unlocks all sixteen argument registers and caches spilled-operand reloads, and shares pre-RA copy-forwarding with x86-64; six correctness fixes accompany the perf work.
 - **Unified scalar semantics (new).** A VM-neutral kernel makes the tree-walking VM and both bytecode engines yield identical values and trap kinds for one IL module; block/instruction storage moves to stable-address containers with interned identifiers.
@@ -30,23 +31,23 @@ A hardening cycle continuing v0.2.6, with focused new 3D and tooling capability.
 
 | Metric | v0.2.6 | v0.2.7 | Delta |
 |---|---|---|---|
-| Commits | — | 136 | +136 |
-| Source files | 3,096 | 3,360 | +264 |
-| Production SLOC | 669K | 732K | +63K |
+| Commits | — | 143 | +143 |
+| Source files | 3,096 | 3,361 | +265 |
+| Production SLOC | 669K | 734K | +65K |
 | Test SLOC | 278K | 300K | +22K |
 | Demo SLOC | 192K | 194K | +2K |
 
-Counts via `scripts/count_sloc.sh` (production 732,133 / test 299,824 / demo 194,102 / source files 3,360); commits since the `v0.2.6-dev` tag (2026-06-01).
+Counts via `scripts/count_sloc.sh` (production 733,549 / test 299,899 / demo 194,156 / source files 3,361); commits since the `v0.2.6-dev` tag (2026-06-01).
 
 ---
 
 ### Graphics3D rendering
 
 - A sustained pass ends per-frame visible-triangle flicker: queue-order-independent occlusion history with covered-streak gating, camera-depth-fitted shadow cascades, per-camera LOD/impostor hysteresis, and conservative terrain-horizon culling.
-- Every backend (software/OpenGL/Metal/D3D11) validates draw-command index ranges and shares one depth-bias scale. D3D11 closes its sign-off gaps and routes uploads and screenshot readback through shared helpers that reject oversized, unaligned, or stale GPU state; OpenGL drains GPU errors after every upload and bounds its texture/mesh caches by age and LRU.
+- Every backend (software/OpenGL/Metal/D3D11) validates draw-command index ranges and shares one depth-bias scale. D3D11 closes its sign-off gaps and routes uploads and screenshot readback through shared helpers that reject oversized, unaligned, or stale GPU state, and clamps post-FX scalar/enum inputs and effect-chain capacity before indexed passes; OpenGL drains GPU errors after every upload and bounds its texture/mesh caches by age and LRU.
 - The software backend rasterizes across a deterministic worker pool — parallel scanline fills that reproduce the single-threaded image bit-for-bit — so headless and CI renders stay reproducible while throughput scales with cores.
 - Shadow-casting spot lights join the shared directional shadow budget: a single perspective light view-projection drives all four shader languages, which perspective-divide spot coordinates and suppress contributions outside the cone while directional paths stay orthographic and cascaded.
-- Anisotropic filtering arrives as `Material3D.Anisotropy` (clamped 1–16, advertised via `BackendSupports("anisotropy")`), and `Canvas3D` exposes per-frame submission telemetry (`DrawsSubmitted`, `SortPasses`, `BackendStateChanges`) with stable radix/bucket sorts over reusable scratch.
+- Anisotropic filtering arrives as `Material3D.Anisotropy` (clamped 1–16, advertised via `BackendSupports("anisotropy")`), and `Canvas3D` exposes per-frame submission telemetry (`DrawsSubmitted`, `SortPasses`, `BackendStateChanges`) with stable radix/bucket sorts over reusable scratch. Opt-in backend counters add draw/dropped-draw, mesh-cache hit/miss, stream-upload, and fallback-bind totals plus the active presentation path, and a `VIPER_OPENGL_PRESENT` override compares the Linux GL direct, probe, and offscreen paths during triage.
 
 ### 3D assets, animation, and Canvas3D (new)
 
@@ -86,7 +87,7 @@ Counts via `scripts/count_sloc.sh` (production 732,133 / test 299,824 / demo 194
 
 - The bytecode VM validates memory ranges and indirect callees before dereference, traps instead of asserting on bad branch/switch targets, and bounds runaway programs via `BytecodeVM.setMaxInstructions` and a signal-safe interrupt.
 - Game3D loop helpers (`run`/`runFixed`/overlay variants) now accept script function references from both the tree-walking and bytecode VMs, not only raw native pointers — the bytecode VM invokes these callbacks re-entrantly while a native call is suspended, so script-defined loops drive the engine under either VM.
-- Sound attach-state synchronizes under the context lock, ALSA recovers from short writes, and event-queue overflow drops transient motion events before close/key-up/focus-lost; glyph caches, file dialogs, and the code editor gain overflow guards.
+- Sound gains an audio-mixer diagnostics surface (render calls, partial writes, xruns, recoveries, unrecovered failures) and a reworked ALSA backend with explicit hw/sw PCM configuration and transient wait/recovery; attach-state synchronizes under the context lock, and event-queue overflow drops transient motion events before close/key-up/focus-lost; glyph caches, file dialogs, and the code editor gain overflow guards.
 
 ### GUI refined-depth visual pass
 
@@ -118,7 +119,7 @@ Counts via `scripts/count_sloc.sh` (production 732,133 / test 299,824 / demo 194
 
 ### Tests
 
-~21K new test SLOC.
+~21K new test SLOC. CTest resource locks now serialize tests that share generated codegen or VM-trace artifacts, keeping the suite parallel-safe.
 
 - **3D rendering, assets, and animation** — spot-shadow coordinate and budget-ordering coverage, vegetation sway, versioned navmesh round-trip, FBX/node-animation import, D3D11 upload/readback-helper validation, fail-closed content-loader diagnostics, untrusted-count guard and parser fuzz harnesses, and `Game3D.Diagnostics` fallback coverage.
 - **IL, codegen, and cross-engine** — IL release-lifetime and alias-analysis precision, VM-vs-bytecode scalar-semantics equivalence, AArch64 register-allocation regressions, duplicate-spill-store elimination, and Game3D script-callback parity across interpreted and native runs.
@@ -127,6 +128,6 @@ Counts via `scripts/count_sloc.sh` (production 732,133 / test 299,824 / demo 194
 
 ---
 
-Demos and docs tracked the work: `game3d-showcase` gained F11 fullscreen, wind-swayed foliage, a render-to-image minimap, spot shadows, and a procedural fallback forest for its missing optional tree asset, while the Graphics3D guides, man pages, and codemap documented spot shadows, backend-fallback observability, streaming, navmesh export, and the agent-facing CLI. Structurally, the runtime's largest translation units split into focused per-feature files, the Zia editor/IntelliSense services moved into `zia_editor_services` with runtime-extern registration collapsed into a metadata table, and socket/entropy/file-dialog logic consolidated into `rt_*_platform_{win,posix}.c` adapters.
+Demos and docs tracked the work: `game3d-showcase` gained F11 fullscreen, wind-swayed foliage, a render-to-image minimap, spot shadows, a renderer/audio counter HUD, and a procedural fallback forest for its missing optional tree asset, while the Graphics3D guides, man pages, and codemap documented spot shadows, backend-fallback observability, streaming, navmesh export, and the agent-facing CLI. Structurally, the runtime's largest translation units split into focused per-feature files, the Zia editor/IntelliSense services moved into `zia_editor_services` with runtime-extern registration collapsed into a metadata table, and socket/entropy/file-dialog logic consolidated into `rt_*_platform_{win,posix}.c` adapters.
 
 <!-- END DRAFT -->

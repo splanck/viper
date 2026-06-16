@@ -615,6 +615,7 @@ typedef struct {
     GLuint skybox_vao;
     GLuint skybox_vbo;
     GLuint default_white_tex;
+    GLuint default_white_cubemap;
 
     GLuint mesh_vbo;
     GLuint mesh_ibo;
@@ -957,6 +958,15 @@ static void gl_restore_main_draw_state(gl_context_t *ctx) {
 /// shader feature toggles flickering off while the real image upload catches up.
 static GLuint gl_fallback_white_texture(const gl_context_t *ctx) {
     return ctx ? ctx->default_white_tex : 0;
+}
+
+/// @brief Return the cubemap texture name to bind while an environment map is pending.
+///
+/// The cubemap cache uploads face rows over multiple frames. Binding a valid
+/// white cubemap while that upload is incomplete keeps skybox and image-based
+/// material paths from sampling an uninitialized texture object.
+static GLuint gl_fallback_white_cubemap(const gl_context_t *ctx) {
+    return ctx ? ctx->default_white_cubemap : 0;
 }
 
 /// @brief Row-major to column-major (or vice versa) 4×4 transpose.

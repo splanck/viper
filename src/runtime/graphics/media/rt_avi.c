@@ -65,6 +65,7 @@ static uint32_t make_fourcc(char a, char b, char c, char d) {
 #define AVI_MIN_VALID_FPS 0.001
 #define AVI_MAX_VALID_FPS 1000.0
 #define AVI_MAX_DIMENSION 32768
+#define AVI_MAX_IDX1_ENTRIES (1024u * 1024u)
 
 typedef struct {
     int stream_type;  ///< -1=unknown, 0=video, 1=audio.
@@ -480,15 +481,22 @@ static const uint8_t *avi_resolve_idx1_payload(const avi_context_t *ctx,
 /// @brief Prefer a valid legacy `idx1` chunk index over sequential `movi` discovery.
 /// @details Sequential walking is retained as a fallback, but `idx1` can recover correct playback
 ///          order from files whose `movi` data is nested or padded unusually. The replacement is
-///          accepted only when it yields at least one primary video frame.
+///          accepted only when it yields at least one primary video frame. Oversized indexes are
+///          ignored so hostile files cannot force an unbounded chunk-index allocation.
 static int avi_try_build_chunks_from_idx1(avi_context_t *ctx) {
     int32_t entry_count;
+    uint32_t raw_entry_count;
     int32_t chunk_count = 0;
     int32_t video_count = 0;
     avi_chunk_t *chunks;
     if (!ctx || !ctx->idx1_data || ctx->idx1_size < 16u || (ctx->idx1_size % 16u) != 0)
         return 0;
-    entry_count = (int32_t)(ctx->idx1_size / 16u);
+    raw_entry_count = ctx->idx1_size / 16u;
+    if (raw_entry_count == 0u || raw_entry_count > AVI_MAX_IDX1_ENTRIES ||
+        raw_entry_count > (uint32_t)INT32_MAX ||
+        (size_t)raw_entry_count > SIZE_MAX / sizeof(*chunks))
+        return 0;
+    entry_count = (int32_t)raw_entry_count;
     chunks = (avi_chunk_t *)malloc((size_t)entry_count * sizeof(*chunks));
     if (!chunks)
         return 0;

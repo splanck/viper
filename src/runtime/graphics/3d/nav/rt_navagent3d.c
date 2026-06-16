@@ -618,6 +618,132 @@ static double navagent_rvo_peer_penalty(rt_navagent3d *agent,
     }
 }
 
+/// @brief Append one avoidance neighbor pointer to a growable temporary list.
+///
+/// The RVO solver evaluates many candidate velocities against the same peer set.
+/// Keeping that set in a list avoids rescanning the spatial grid or registry for
+/// every candidate. The list is caller-owned and freed after the solver pass.
+/// @param items In/out pointer to the heap-allocated neighbor pointer array.
+/// @param count In/out number of valid entries in @p items.
+/// @param capacity In/out allocated entry capacity for @p items.
+/// @param other Neighbor agent to append.
+/// @return 1 on success, 0 when inputs are invalid, capacity overflows, or
+///         allocation fails; existing list contents remain valid on failure.
+static int navagent_neighbor_list_append(rt_navagent3d ***items,
+                                         int32_t *count,
+                                         int32_t *capacity,
+                                         rt_navagent3d *other) {
+    rt_navagent3d **grown;
+    int32_t new_capacity;
+
+    if (!items || !count || !capacity || !other || *count < 0 || *capacity < 0)
+        return 0;
+    if (*count >= *capacity) {
+        new_capacity = *capacity > 0 ? *capacity * 2 : 32;
+        if (new_capacity <= *capacity || (size_t)new_capacity > SIZE_MAX / sizeof(*grown))
+            return 0;
+        grown = (rt_navagent3d **)realloc(*items, (size_t)new_capacity * sizeof(*grown));
+        if (!grown)
+            return 0;
+        *items = grown;
+        *capacity = new_capacity;
+    }
+    (*items)[*count] = other;
+    (*count)++;
+    return 1;
+}
+
+/// @brief Collect the peer agents that can contribute to one RVO solve.
+///
+/// Uses the spatial grid when the query radius fits within the bounded ring;
+/// otherwise it falls back to the registry walk. Basic filters are applied up
+/// front so each candidate only evaluates agents on the same navmesh with
+/// avoidance enabled and a positive avoidance radius.
+/// @param agent Agent whose avoidance solve is being prepared.
+/// @param use_grid Non-zero to try the spatial-grid neighborhood first.
+/// @param out_neighbors Receives a heap-allocated array of candidate agents;
+///                      caller frees it with `free`.
+/// @param out_count Receives the number of entries in @p out_neighbors.
+/// @return 1 when collection succeeds, 0 for invalid inputs or allocation
+///         failure.
+static int navagent_collect_avoidance_neighbors(rt_navagent3d *agent,
+                                                int use_grid,
+                                                rt_navagent3d ***out_neighbors,
+                                                int32_t *out_count) {
+    rt_navagent3d **neighbors = NULL;
+    int32_t count = 0;
+    int32_t capacity = 0;
+
+    if (out_neighbors)
+        *out_neighbors = NULL;
+    if (out_count)
+        *out_count = 0;
+    if (!agent || !out_neighbors || !out_count)
+        return 0;
+
+#define NAVAGENT_APPEND_IF_PEER(candidate_)                                                        \
+    do {                                                                                           \
+        rt_navagent3d *candidate_agent__ = (candidate_);                                           \
+        if (candidate_agent__ != agent && candidate_agent__->avoidance_enabled &&                  \
+            candidate_agent__->navmesh == agent->navmesh &&                                        \
+            navagent_effective_avoidance_radius(candidate_agent__) > 0.0 &&                        \
+            !navagent_neighbor_list_append(&neighbors, &count, &capacity, candidate_agent__)) {    \
+            free(neighbors);                                                                       \
+            return 0;                                                                              \
+        }                                                                                          \
+    } while (0)
+
+    if (use_grid && agent->in_grid) {
+        double dmax = navagent_reach(agent) + g_navagent3d_max_reach;
+        int ring = (int)ceil(dmax / NAVAGENT_GRID_CELL) + 1;
+        if (ring >= 1 && ring <= NAVAGENT_GRID_MAX_RING) {
+            int32_t cx = agent->grid_cx;
+            int32_t cz = agent->grid_cz;
+            for (int32_t dz = -ring; dz <= ring; dz++) {
+                for (int32_t dx = -ring; dx <= ring; dx++) {
+                    int32_t qx = cx + dx;
+                    int32_t qz = cz + dz;
+                    uint32_t b = navagent_grid_bucket(qx, qz);
+                    for (rt_navagent3d *other = g_navagent3d_grid[b]; other;
+                         other = other->grid_next) {
+                        if (other->grid_cx == qx && other->grid_cz == qz)
+                            NAVAGENT_APPEND_IF_PEER(other);
+                    }
+                }
+            }
+            *out_neighbors = neighbors;
+            *out_count = count;
+            return 1;
+        }
+        /* reach too large for a tight neighborhood: fall through to the full registry scan */
+    }
+
+    for (rt_navagent3d *other = g_navagent3d_registry; other; other = other->registry_next)
+        NAVAGENT_APPEND_IF_PEER(other);
+    *out_neighbors = neighbors;
+    *out_count = count;
+#undef NAVAGENT_APPEND_IF_PEER
+    return 1;
+}
+
+/// @brief Score one candidate velocity against a pre-collected RVO neighbor list.
+static double navagent_rvo_neighbor_list_penalty(rt_navagent3d *agent,
+                                                 rt_navagent3d *const *neighbors,
+                                                 int32_t neighbor_count,
+                                                 double agent_radius,
+                                                 double horizon,
+                                                 double cand_x,
+                                                 double cand_z) {
+    double penalty = 0.0;
+    if (!neighbors || neighbor_count <= 0)
+        return 0.0;
+    for (int32_t i = 0; i < neighbor_count; i++) {
+        penalty +=
+            navagent_rvo_peer_penalty(agent, neighbors[i], agent_radius, horizon, cand_x, cand_z);
+    }
+    return penalty;
+}
+
 /// @brief Evaluate one candidate velocity against the grid or full registry.
 static double navagent_rvo_candidate_penalty(rt_navagent3d *agent,
                                              double agent_radius,
@@ -678,6 +804,9 @@ static int navagent_compute_avoidance_adjust(
     double best_x;
     double best_z;
     double best_score = 1.0e300;
+    rt_navagent3d **neighbors = NULL;
+    int32_t neighbor_count = 0;
+    int use_neighbor_list = 0;
     if (!agent || !agent->avoidance_enabled)
         return 0;
     agent_radius = navagent_effective_avoidance_radius(agent);
@@ -700,6 +829,8 @@ static int navagent_compute_avoidance_adjust(
     right_x = pref_z / pref_len;
     right_z = -pref_x / pref_len;
     candidate_count = navagent_build_velocity_candidates(pref_x, pref_z, max_speed, candidates);
+    use_neighbor_list =
+        navagent_collect_avoidance_neighbors(agent, use_grid, &neighbors, &neighbor_count);
     best_x = pref_x;
     best_z = pref_z;
     for (int i = 0; i < candidate_count; ++i) {
@@ -712,8 +843,11 @@ static int navagent_compute_avoidance_adjust(
         double forward = cand_x * pref_x + cand_z * pref_z;
         double side = cand_x * right_x + cand_z * right_z;
         double speed_loss = max_speed - cand_speed;
-        score +=
-            navagent_rvo_candidate_penalty(agent, agent_radius, horizon, use_grid, cand_x, cand_z);
+        score += use_neighbor_list
+                     ? navagent_rvo_neighbor_list_penalty(
+                           agent, neighbors, neighbor_count, agent_radius, horizon, cand_x, cand_z)
+                     : navagent_rvo_candidate_penalty(
+                           agent, agent_radius, horizon, use_grid, cand_x, cand_z);
         if (speed_loss > 0.0)
             score += speed_loss * speed_loss * 1.5;
         if (forward < 0.0)
@@ -727,6 +861,7 @@ static int navagent_compute_avoidance_adjust(
             best_z = cand_z;
         }
     }
+    free(neighbors);
     *out_ax = best_x - pref_x;
     *out_az = best_z - pref_z;
     return 1;

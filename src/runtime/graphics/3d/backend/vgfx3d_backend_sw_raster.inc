@@ -45,27 +45,46 @@ static inline float dot3f(float ax, float ay, float az, float bx, float by, floa
     return ax * bx + ay * by + az * bz;
 }
 
+/// @brief Compute `x^5` with multiplications for Schlick Fresnel terms.
+/// @details This replaces `powf(x, 5)` inside the fragment lighting loop.
+///          The exponent is constant, so two squarings plus one multiply avoid
+///          libm overhead while preserving the same formula.
+/// @param x Clamped Fresnel base, normally in the [0, 1] range.
+/// @return `x` raised to the fifth power.
+static inline float pow5f_fast(float x) {
+    float x2 = x * x;
+    return x2 * x2 * x;
+}
+
+/// @brief Raise @p x to a material-controlled exponent with common fast paths.
+/// @details Many authored materials use small integer exponents. Avoiding
+///          `powf` for those values removes a hot libm call from software
+///          fragment shading while preserving the generic fallback.
+/// @param x Non-negative lighting term to exponentiate.
+/// @param power Material shininess or Fresnel exponent.
+/// @return `x` raised to @p power, using exact multiplication paths for
+///         common integer exponents and `powf` otherwise.
+static inline float sw_material_powf(float x, float power) {
+    if (power <= 0.0f)
+        return 1.0f;
+    if (fabsf(power - 1.0f) < 1e-6f)
+        return x;
+    if (fabsf(power - 2.0f) < 1e-6f)
+        return x * x;
+    if (fabsf(power - 3.0f) < 1e-6f)
+        return x * x * x;
+    if (fabsf(power - 4.0f) < 1e-6f) {
+        float x2 = x * x;
+        return x2 * x2;
+    }
+    if (fabsf(power - 5.0f) < 1e-6f)
+        return pow5f_fast(x);
+    return powf(x, power);
+}
+
 /// @brief In-place 3-vector normalization (no-op for zero-length vectors).
 static inline void normalize3f(float *x, float *y, float *z) {
-    if (!x || !y || !z || !isfinite(*x) || !isfinite(*y) || !isfinite(*z)) {
-        if (x)
-            *x = 0.0f;
-        if (y)
-            *y = 0.0f;
-        if (z)
-            *z = 0.0f;
-        return;
-    }
-    float len = sqrtf((*x) * (*x) + (*y) * (*y) + (*z) * (*z));
-    if (!isfinite(len) || len <= 1e-7f) {
-        *x = 0.0f;
-        *y = 0.0f;
-        *z = 0.0f;
-        return;
-    }
-    *x /= len;
-    *y /= len;
-    *z /= len;
+    (void)sw_normalize3(x, y, z, 0.0f, 0.0f, 0.0f);
 }
 
 /// @brief Compute the unit view vector from a world-space point to the camera.
@@ -127,7 +146,7 @@ static inline float sw_compute_fog_distance(const sw_context_t *ctx, float wx, f
         float dx = wx - ctx->cam_pos[0];
         float dy = wy - ctx->cam_pos[1];
         float dz = wz - ctx->cam_pos[2];
-        return sqrtf(dx * dx + dy * dy + dz * dz);
+        return sw_length3(dx, dy, dz);
     }
 }
 
@@ -504,7 +523,7 @@ static void sw_shade_perturb_normal(const sw_fragment_ctx *fc,
     float pty = b0 * v0->ty + b1 * v1->ty + b2 * v2->ty;
     float ptz = b0 * v0->tz + b1 * v1->tz + b2 * v2->tz;
     float ptw = b0 * v0->tw + b1 * v1->tw + b2 * v2->tw;
-    float tlen = sqrtf(ptx * ptx + pty * pty + ptz * ptz);
+    float tlen = sw_length3(ptx, pty, ptz);
 
     if (normal_map && tlen > 1e-7f) {
         ptx /= tlen;
@@ -515,7 +534,7 @@ static void sw_shade_perturb_normal(const sw_fragment_ctx *fc,
         ptx -= tdotn * pnx;
         pty -= tdotn * pny;
         ptz -= tdotn * pnz;
-        tlen = sqrtf(ptx * ptx + pty * pty + ptz * ptz);
+        tlen = sw_length3(ptx, pty, ptz);
         if (tlen > 1e-7f) {
             ptx /= tlen;
             pty /= tlen;
@@ -547,7 +566,7 @@ static void sw_shade_perturb_normal(const sw_fragment_ctx *fc,
         float wn_x = ptx * map_x + bbx * map_y + pnx * map_z;
         float wn_y = pty * map_x + bby * map_y + pny * map_z;
         float wn_z = ptz * map_x + bbz * map_y + pnz * map_z;
-        float wlen = sqrtf(wn_x * wn_x + wn_y * wn_y + wn_z * wn_z);
+        float wlen = sw_length3(wn_x, wn_y, wn_z);
         if (wlen > 1e-7f) {
             pnx = wn_x / wlen;
             pny = wn_y / wlen;
@@ -584,7 +603,7 @@ static int sw_eval_light_dir(const vgfx3d_light_params_t *lt,
         lx = lt->position[0] - wx;
         ly = lt->position[1] - wy;
         lz = lt->position[2] - wz;
-        float dist = sqrtf(lx * lx + ly * ly + lz * lz);
+        float dist = sw_length3(lx, ly, lz);
         if (!isfinite(dist) || dist <= 1e-7f)
             return 0;
         lx /= dist;
@@ -595,7 +614,7 @@ static int sw_eval_light_dir(const vgfx3d_light_params_t *lt,
         lx = lt->position[0] - wx;
         ly = lt->position[1] - wy;
         lz = lt->position[2] - wz;
-        float dist = sqrtf(lx * lx + ly * ly + lz * lz);
+        float dist = sw_length3(lx, ly, lz);
         if (!isfinite(dist) || dist <= 1e-7f)
             return 0;
         lx /= dist;
@@ -718,7 +737,7 @@ static void sw_shade_lighting_pbr(const sw_fragment_ctx *fc,
         float f0_r = 0.04f + (base_r - 0.04f) * metallic;
         float f0_g = 0.04f + (base_g - 0.04f) * metallic;
         float f0_b = 0.04f + (base_b - 0.04f) * metallic;
-        float fresnel_w = powf(1.0f - vdh, 5.0f);
+        float fresnel_w = pow5f_fast(1.0f - vdh);
         float f_r = f0_r + (1.0f - f0_r) * fresnel_w;
         float f_g = f0_g + (1.0f - f0_g) * fresnel_w;
         float f_b = f0_b + (1.0f - f0_b) * fresnel_w;
@@ -866,7 +885,7 @@ static void sw_shade_lighting_phong(const sw_fragment_ctx *fc,
             float ndh = pnx * hx + pny * hy + pnz * hz;
             if (ndh < 0.0f)
                 ndh = 0.0f;
-            float spec = powf(ndh, cmd->shininess);
+            float spec = sw_material_powf(ndh, cmd->shininess);
             lit_r += lt->color[0] * li_i * spec * sp_r * la;
             lit_g += lt->color[1] * li_i * spec * sp_g * la;
             lit_b += lt->color[2] * li_i * spec * sp_b * la;
@@ -961,7 +980,7 @@ static int sw_blend_and_write(const sw_fragment_ctx *fc,
         float ndv = pixel_ndv;
         float power = cmd->custom_params[0] > 0.1f ? cmd->custom_params[0] : 3.0f;
         float bias = cmd->custom_params[1];
-        float fresnel = powf(1.0f - ndv, power) + bias;
+        float fresnel = sw_material_powf(1.0f - ndv, power) + bias;
         fa *= clamp01f(fresnel);
     }
 

@@ -58,6 +58,8 @@ extern int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                                         uint32_t **out_pixels,
                                         int64_t *out_width,
                                         int64_t *out_height);
+extern int rt_jpeg_decode_buffer_into_rgba32(
+    const uint8_t *data, size_t len, uint32_t *dst_pixels, int64_t dst_width, int64_t dst_height);
 
 #define VIDEOPLAYER_MAX_FILE_BYTES (INT64_C(512) * 1024 * 1024)
 #define VIDEOPLAYER_MAX_OGV_UPDATE_DECODE_FRAMES 8
@@ -680,40 +682,41 @@ static int mjpeg_scan_markers(const uint8_t *data,
     return 1;
 }
 
-/// @brief Decode an MJPEG frame to malloc-owned RGBA32, injecting standard DHT if missing.
+/// @brief Prepare an MJPEG frame as a complete JPEG byte range for the decoder.
 /// @details AVI MJPEG frames commonly omit Huffman tables. When injection is required, this helper
 ///          builds the patched JPEG in caller-owned scratch storage so sequential playback does not
-///          allocate and free a temporary DHT-patched byte buffer for every frame.
-static int decode_mjpeg_frame_rgba32(const uint8_t *data,
-                                     uint32_t size,
-                                     uint8_t **scratch,
-                                     size_t *scratch_capacity,
-                                     uint32_t **out_pixels,
-                                     int64_t *out_width,
-                                     int64_t *out_height) {
-    if (out_pixels)
-        *out_pixels = NULL;
-    if (out_width)
-        *out_width = 0;
-    if (out_height)
-        *out_height = 0;
-    if (!data || size < 4 || !out_pixels || !out_width || !out_height)
+///          allocate and free a temporary DHT-patched byte buffer for every frame. If the frame
+///          already contains DHT data, @p out_data points directly at @p data.
+/// @param data Raw AVI frame payload.
+/// @param size Payload byte count.
+/// @param scratch Reusable scratch pointer owned by the video player.
+/// @param scratch_capacity Byte capacity of @p scratch.
+/// @param out_data Receives the JPEG byte range to decode.
+/// @param out_size Receives the byte length of @p out_data.
+/// @return 1 when a decoder input was prepared, 0 for malformed frame headers or OOM.
+static int mjpeg_prepare_decode_source(const uint8_t *data,
+                                       uint32_t size,
+                                       uint8_t **scratch,
+                                       size_t *scratch_capacity,
+                                       const uint8_t **out_data,
+                                       size_t *out_size) {
+    if (out_data)
+        *out_data = NULL;
+    if (out_size)
+        *out_size = 0;
+    if (!data || size < 4 || !out_data || !out_size)
         return 0;
-
     int has_dht = 0;
     uint32_t sos_pos = 0;
     if (!mjpeg_scan_markers(data, size, &has_dht, &sos_pos))
         return 0;
 
-    if (has_dht)
-        return rt_jpeg_decode_buffer_rgba32(data, size, out_pixels, out_width, out_height);
+    if (has_dht || sos_pos == 0) {
+        *out_data = data;
+        *out_size = (size_t)size;
+        return 1;
+    }
 
-    /* Find SOS marker (0xFFDA) — insert DHT just before it */
-    if (sos_pos == 0)
-        return rt_jpeg_decode_buffer_rgba32(
-            data, size, out_pixels, out_width, out_height); /* no SOS found, try anyway */
-
-    /* Build new buffer: [header...SOS) + DHT + [SOS...end] */
     size_t dht_size = sizeof(std_dht);
     if ((size_t)size > SIZE_MAX - dht_size)
         return 0;
@@ -734,7 +737,67 @@ static int decode_mjpeg_frame_rgba32(const uint8_t *data,
     memcpy(buf, data, sos_pos);
     memcpy(buf + sos_pos, std_dht, dht_size);
     memcpy(buf + sos_pos + dht_size, data + sos_pos, size - sos_pos);
-    return rt_jpeg_decode_buffer_rgba32(buf, new_size, out_pixels, out_width, out_height);
+    *out_data = buf;
+    *out_size = new_size;
+    return 1;
+}
+
+/// @brief Decode an MJPEG frame to malloc-owned RGBA32, injecting standard DHT if missing.
+/// @details This compatibility path preserves the historical malloc-returning decode behavior for
+///          callers that need an owned raw frame. Playback uses @c decode_mjpeg_frame_into_rgba32
+///          to avoid the extra allocation.
+static int VIDEOPLAYER_UNUSED_PRIVATE decode_mjpeg_frame_rgba32(const uint8_t *data,
+                                                                uint32_t size,
+                                                                uint8_t **scratch,
+                                                                size_t *scratch_capacity,
+                                                                uint32_t **out_pixels,
+                                                                int64_t *out_width,
+                                                                int64_t *out_height) {
+    const uint8_t *decode_data = NULL;
+    size_t decode_size = 0;
+    if (out_pixels)
+        *out_pixels = NULL;
+    if (out_width)
+        *out_width = 0;
+    if (out_height)
+        *out_height = 0;
+    if (!out_pixels || !out_width || !out_height)
+        return 0;
+    if (!mjpeg_prepare_decode_source(
+            data, size, scratch, scratch_capacity, &decode_data, &decode_size))
+        return 0;
+    return rt_jpeg_decode_buffer_rgba32(
+        decode_data, decode_size, out_pixels, out_width, out_height);
+}
+
+/// @brief Decode an MJPEG frame directly into a caller-owned RGBA32 buffer.
+/// @details The helper shares the same DHT-injection path as the malloc-returning decoder, then
+/// asks
+///          the JPEG decoder to validate frame dimensions before writing into @p dst_pixels.
+///          Playback targets a reusable scratch Pixels object so failed decodes cannot corrupt the
+///          currently displayed frame.
+/// @param data Raw AVI frame payload.
+/// @param size Payload byte count.
+/// @param scratch Reusable DHT-injection byte buffer.
+/// @param scratch_capacity Current byte capacity of @p scratch.
+/// @param dst_pixels Destination RGBA32 buffer.
+/// @param dst_width Expected frame width.
+/// @param dst_height Expected frame height.
+/// @return 1 when decoding succeeds, otherwise 0.
+static int decode_mjpeg_frame_into_rgba32(const uint8_t *data,
+                                          uint32_t size,
+                                          uint8_t **scratch,
+                                          size_t *scratch_capacity,
+                                          uint32_t *dst_pixels,
+                                          int64_t dst_width,
+                                          int64_t dst_height) {
+    const uint8_t *decode_data = NULL;
+    size_t decode_size = 0;
+    if (!dst_pixels || !mjpeg_prepare_decode_source(
+                           data, size, scratch, scratch_capacity, &decode_data, &decode_size))
+        return 0;
+    return rt_jpeg_decode_buffer_into_rgba32(
+        decode_data, decode_size, dst_pixels, dst_width, dst_height);
 }
 
 typedef struct {
@@ -785,6 +848,26 @@ static void release_owned_ref(void **slot) {
     if (rt_obj_release_check0(*slot))
         rt_obj_free(*slot);
     *slot = NULL;
+}
+
+/// @brief Ensure the reusable decode Pixels object exists at the player's frame size.
+/// @details AVI/MJPEG playback decodes into this scratch object first, then copies into the stable
+///          display buffer only after the JPEG decoder succeeds. Reusing the object removes the
+///          previous per-frame raw RGBA malloc/free cycle without exposing partially decoded
+///          frames.
+/// @param vp Video player that owns the scratch frame.
+/// @return 1 when @c frame_decode is allocated with matching dimensions, otherwise 0.
+static int videoplayer_ensure_decode_frame(rt_videoplayer *vp) {
+    px_view *decode;
+    if (!vp || vp->width <= 0 || vp->height <= 0)
+        return 0;
+    decode = (px_view *)vp->frame_decode;
+    if (decode && decode->data && decode->width == vp->width && decode->height == vp->height)
+        return 1;
+    release_owned_ref(&vp->frame_decode);
+    vp->frame_decode = rt_pixels_new(vp->width, vp->height);
+    decode = (px_view *)vp->frame_decode;
+    return decode && decode->data && decode->width == vp->width && decode->height == vp->height;
 }
 
 /// @brief Copy the current display pixels into a malloc-owned rollback buffer.
@@ -845,46 +928,36 @@ static void videoplayer_restore_display(rt_videoplayer *vp, const uint32_t *data
 }
 
 /// @brief Decode one AVI/MJPEG frame into the stable display buffer.
-/// @details Fetches the requested frame from the AVI index, decodes it through the MJPEG/JPEG path,
-///          copies it into @c frame_display after dimension validation, and releases the temporary
-///          decoded Pixels handle before returning.
+/// @details Fetches the requested frame from the AVI index, decodes it through the MJPEG/JPEG path
+///          into the reusable @c frame_decode buffer, then copies it into @c frame_display after
+///          dimension validation. This keeps failed decodes from touching the displayed frame and
+///          removes the previous per-frame malloc-owned RGBA buffer.
 /// @param vp Video player owning the parsed AVI context and display buffer.
 /// @param frame_index Zero-based target frame index.
 /// @return 1 when the frame was decoded and copied, 0 on missing data or decode failure.
 static int videoplayer_decode_avi_frame(rt_videoplayer *vp, int32_t frame_index) {
     px_view *dst;
-    uint32_t *decoded_pixels = NULL;
-    int64_t decoded_w = 0;
-    int64_t decoded_h = 0;
-    uint64_t pixel_count;
+    px_view *decode;
     size_t copy_bytes;
     if (!vp || vp->container_type != 0 || frame_index < 0 || frame_index >= vp->total_frames)
         return 0;
     uint32_t frame_size = 0;
     const uint8_t *frame_data = avi_get_video_frame(&vp->avi, frame_index, &frame_size);
-    if (!frame_data || !decode_mjpeg_frame_rgba32(frame_data,
-                                                  frame_size,
-                                                  &vp->mjpeg_scratch,
-                                                  &vp->mjpeg_scratch_capacity,
-                                                  &decoded_pixels,
-                                                  &decoded_w,
-                                                  &decoded_h))
+    if (!frame_data || !videoplayer_ensure_decode_frame(vp))
         return 0;
+    decode = (px_view *)vp->frame_decode;
     dst = (px_view *)vp->frame_display;
-    if (!dst || !dst->data || dst->width != decoded_w || dst->height != decoded_h ||
-        decoded_w <= 0 || decoded_h <= 0 ||
-        (uint64_t)decoded_w > UINT64_MAX / (uint64_t)decoded_h) {
-        free(decoded_pixels);
+    if (!decode_mjpeg_frame_into_rgba32(frame_data,
+                                        frame_size,
+                                        &vp->mjpeg_scratch,
+                                        &vp->mjpeg_scratch_capacity,
+                                        decode->data,
+                                        decode->width,
+                                        decode->height))
         return 0;
-    }
-    pixel_count = (uint64_t)decoded_w * (uint64_t)decoded_h;
-    if (pixel_count > (uint64_t)SIZE_MAX / sizeof(uint32_t)) {
-        free(decoded_pixels);
+    if (!video_pixel_copy_bytes(dst, decode, &copy_bytes))
         return 0;
-    }
-    copy_bytes = (size_t)pixel_count * sizeof(uint32_t);
-    memcpy(dst->data, decoded_pixels, copy_bytes);
-    free(decoded_pixels);
+    memcpy(dst->data, decode->data, copy_bytes);
     vp->current_frame = frame_index;
     return 1;
 }

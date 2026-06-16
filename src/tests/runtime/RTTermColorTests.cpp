@@ -7,8 +7,12 @@
 //
 // File: tests/runtime/RTTermColorTests.cpp
 // Purpose: Verify rt_term_color_i32 emits correct SGR codes for bright backgrounds.
-// Key invariants: Background values 8-15 map to ANSI 100-107 without using 48;5.
-// Ownership/Lifetime: Runtime library tests.
+// Key invariants:
+//   - Background values 8-15 map to ANSI 100-107 without using 48;5.
+//   - PTY capture uses only portable POSIX termios flags.
+// Ownership/Lifetime:
+//   - Each capture owns and closes its PTY file descriptors.
+//   - The forked child exits after emitting one SGR sequence.
 // Links: docs/runtime-vm.md#runtime-abi
 //
 //===----------------------------------------------------------------------===//
@@ -42,6 +46,17 @@ int main() {
 
 namespace {
 
+void make_raw_termios(struct termios &tio) {
+    tio.c_iflag &=
+        static_cast<tcflag_t>(~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON));
+    tio.c_oflag &= static_cast<tcflag_t>(~OPOST);
+    tio.c_lflag &= static_cast<tcflag_t>(~(ECHO | ECHONL | ICANON | ISIG | IEXTEN));
+    tio.c_cflag &= static_cast<tcflag_t>(~(CSIZE | PARENB));
+    tio.c_cflag |= CS8;
+    tio.c_cc[VMIN] = 1;
+    tio.c_cc[VTIME] = 0;
+}
+
 std::string capture_sgr_once(int fg, int bg) {
     int master = -1;
     int slave = -1;
@@ -51,7 +66,7 @@ std::string capture_sgr_once(int fg, int bg) {
     // Set PTY to raw mode - no buffering, no echo, no processing
     struct termios tio;
     tcgetattr(slave, &tio);
-    cfmakeraw(&tio);
+    make_raw_termios(tio);
     tcsetattr(slave, TCSANOW, &tio);
 
     pid_t pid = fork();

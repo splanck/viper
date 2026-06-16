@@ -254,7 +254,7 @@ static int64_t pixels_map_fixed_256(int64_t dst, int64_t src_size, int64_t dst_s
 ///          allocating a 0-byte array.
 /// @return 1 on success (out written), 0 if @p extent is invalid or overflows i64.
 static int8_t pixels_long_double_extent_to_i64(long double extent, int64_t *out) {
-    if (!out || !isfinite((double)extent) || extent < 0.0L)
+    if (!out || !isfinite(extent) || extent < 0.0L)
         return 0;
 
     long double rounded = ceill(extent);
@@ -322,8 +322,10 @@ void *rt_pixels_flip_h(void *pixels) {
         return result;
 
     for (int64_t y = 0; y < p->height; y++) {
+        const uint32_t *src_row = p->data + y * p->width;
+        uint32_t *dst_row = result->data + y * p->width;
         for (int64_t x = 0; x < p->width; x++) {
-            result->data[y * p->width + (p->width - 1 - x)] = p->data[y * p->width + x];
+            dst_row[p->width - 1 - x] = src_row[x];
         }
     }
 
@@ -368,15 +370,11 @@ void *rt_pixels_rotate_cw(void *pixels) {
     if (!result)
         return NULL;
 
-    // Rotate 90 CW: src[x,y] -> dst[height-1-y, x]
-    // In terms of new coords: dst[x',y'] = src[y', width-1-x']
-    for (int64_t y = 0; y < p->height; y++) {
-        for (int64_t x = 0; x < p->width; x++) {
-            uint32_t pixel = p->data[y * p->width + x];
-            // New position: (height-1-y, x) in new coordinate system
-            int64_t new_x = p->height - 1 - y;
-            int64_t new_y = x;
-            result->data[new_y * new_width + new_x] = pixel;
+    // Rotate 90 CW: emit each destination row contiguously.
+    for (int64_t dst_y = 0; dst_y < new_height; dst_y++) {
+        uint32_t *dst_row = result->data + dst_y * new_width;
+        for (int64_t dst_x = 0; dst_x < new_width; dst_x++) {
+            dst_row[dst_x] = p->data[(p->height - 1 - dst_x) * p->width + dst_y];
         }
     }
 
@@ -397,14 +395,12 @@ void *rt_pixels_rotate_ccw(void *pixels) {
     if (!result)
         return NULL;
 
-    // Rotate 90 CCW: src[x,y] -> dst[y, width-1-x]
-    for (int64_t y = 0; y < p->height; y++) {
-        for (int64_t x = 0; x < p->width; x++) {
-            uint32_t pixel = p->data[y * p->width + x];
-            // New position: (y, width-1-x) in new coordinate system
-            int64_t new_x = y;
-            int64_t new_y = p->width - 1 - x;
-            result->data[new_y * new_width + new_x] = pixel;
+    // Rotate 90 CCW: emit each destination row contiguously.
+    for (int64_t dst_y = 0; dst_y < new_height; dst_y++) {
+        uint32_t *dst_row = result->data + dst_y * new_width;
+        int64_t src_x = p->width - 1 - dst_y;
+        for (int64_t dst_x = 0; dst_x < new_width; dst_x++) {
+            dst_row[dst_x] = p->data[dst_x * p->width + src_x];
         }
     }
 
@@ -598,6 +594,20 @@ void *rt_pixels_scale(void *pixels, int64_t new_width, int64_t new_height) {
     if (!result)
         return NULL;
 
+    if ((uint64_t)new_width > (uint64_t)SIZE_MAX / sizeof(int64_t)) {
+        if (rt_obj_release_check0(result))
+            rt_obj_free(result);
+        return NULL;
+    }
+    int64_t *x_map = (int64_t *)malloc((size_t)new_width * sizeof(*x_map));
+    if (!x_map) {
+        if (rt_obj_release_check0(result))
+            rt_obj_free(result);
+        return NULL;
+    }
+    for (int64_t x = 0; x < new_width; x++)
+        x_map[x] = pixels_map_index(x, p->width, new_width);
+
     // Nearest-neighbor scaling
     for (int64_t y = 0; y < new_height; y++) {
         // Map destination y to source y
@@ -607,13 +617,11 @@ void *rt_pixels_scale(void *pixels, int64_t new_width, int64_t new_height) {
         uint32_t *dst_row = result->data + y * new_width;
 
         for (int64_t x = 0; x < new_width; x++) {
-            // Map destination x to source x
-            int64_t src_x = pixels_map_index(x, p->width, new_width);
-
-            dst_row[x] = src_row[src_x];
+            dst_row[x] = src_row[x_map[x]];
         }
     }
 
+    free(x_map);
     return result;
 }
 
