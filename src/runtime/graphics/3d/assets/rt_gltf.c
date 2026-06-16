@@ -72,6 +72,7 @@ extern void rt_obj_retain_maybe(void *obj);
 #include "rt_trap.h"
 extern void rt_trap_set_recovery(jmp_buf *buf);
 extern void rt_trap_clear_recovery(void);
+extern const char *rt_trap_get_error(void);
 extern void rt_obj_free(void *obj);
 extern void *rt_asset_decode_typed(const char *name, const uint8_t *data, size_t size);
 extern void *rt_pixels_load(void *path);
@@ -1221,9 +1222,12 @@ static void *gltf_parse_validated_root_json(char *json_str) {
     rt_string json_rts;
     void *root = NULL;
     jmp_buf json_recovery;
+    const char *trap_message = NULL;
     if (!json_str)
         return NULL;
     if (!gltf_validate_required_data_uri_images(json_str, strlen(json_str))) {
+        rt_asset_error_set_if_empty(RT_ASSET_ERROR_UNSUPPORTED,
+                                    "GLTF.Load: required data URI image payload is invalid");
         free(json_str);
         return NULL;
     }
@@ -1231,14 +1235,23 @@ static void *gltf_parse_validated_root_json(char *json_str) {
     rt_trap_set_recovery(&json_recovery);
     if (setjmp(json_recovery) == 0)
         root = rt_json_parse_object(json_rts);
+    else
+        trap_message = rt_trap_get_error();
     rt_trap_clear_recovery();
     free(json_str);
-    if (!root)
+    if (!root) {
+        rt_asset_error_setf_if_empty(RT_ASSET_ERROR_CORRUPT,
+                                     "GLTF.Load: invalid JSON%s%s",
+                                     (trap_message && trap_message[0]) ? ": " : "",
+                                     (trap_message && trap_message[0]) ? trap_message : "");
         return NULL;
+    }
     {
         void *asset_json = jget(root, "asset");
         const char *version = jstr(asset_json, "version");
         if (!version || strncmp(version, "2.", 2) != 0) {
+            rt_asset_error_set_if_empty(RT_ASSET_ERROR_UNSUPPORTED,
+                                        "GLTF.Load: asset.version must be 2.x");
             gltf_release_local(root);
             return NULL;
         }
@@ -1406,7 +1419,8 @@ static void *rt_gltf_load_impl(rt_string path,
         file_data = gltf_load_root_bytes(path, filepath, load_assets, &file_size);
     }
     if (!file_data) {
-        rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND, "GLTF.Load: '%s' not found", filepath);
+        rt_asset_error_setf_if_empty(
+            RT_ASSET_ERROR_UNREADABLE, "GLTF.Load: failed to read '%s'", filepath);
         return NULL;
     }
     if (file_size > (size_t)LONG_MAX) {

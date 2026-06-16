@@ -101,12 +101,16 @@ static int png_chunk_is_critical(const uint8_t *chunk_type) {
 static uint32_t png_adler32(const uint8_t *data, size_t len) {
     uint32_t a = 1;
     uint32_t b = 0;
-    for (size_t i = 0; i < len; i++) {
-        a += data[i];
-        if (a >= 65521u)
-            a -= 65521u;
-        b += a;
+    while (len > 0) {
+        size_t chunk = len < 5552u ? len : 5552u;
+        for (size_t i = 0; i < chunk; i++) {
+            a += data[i];
+            b += a;
+        }
+        a %= 65521u;
         b %= 65521u;
+        data += chunk;
+        len -= chunk;
     }
     return (b << 16) | a;
 }
@@ -769,7 +773,7 @@ void *rt_pixels_load_png(void *path) {
         rt_asset_error_end_load_failure();
         return NULL;
     }
-    if (fread(file_data, 1, (size_t)file_len, f) != (size_t)file_len) {
+    if (!px_read_exact(f, file_data, (size_t)file_len)) {
         free(file_data);
         fclose(f);
         rt_asset_error_setf(
@@ -851,9 +855,10 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path) {
     size_t raw_len = 0;
     if (!px_mul_size(row_len, (size_t)h, &raw_len) || raw_len > (size_t)INT64_MAX)
         return 0;
-    uint8_t *raw = (uint8_t *)malloc(raw_len);
-    if (!raw)
+    void *raw_bytes = rt_bytes_new((int64_t)raw_len);
+    if (!raw_bytes)
         return 0;
+    uint8_t *raw = rt_bytes_data(raw_bytes);
 
     for (uint32_t y = 0; y < h; y++) {
         uint8_t *dst = raw + y * (stride + 1) + 1;
@@ -874,16 +879,8 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path) {
     }
 
     // Compress the raw data using DEFLATE.
-    // All error paths after raw_bytes/comp_bytes allocation must go through
-    // cleanup to release these GC-managed objects (refcount=1).
-    void *raw_bytes = rt_bytes_new((int64_t)raw_len);
-    if (!raw_bytes) {
-        free(raw);
-        return 0;
-    }
-    memcpy(rt_bytes_data(raw_bytes), raw, raw_len);
-    free(raw);
-
+    // All error paths after comp_bytes allocation must go through cleanup to
+    // release these GC-managed objects (refcount=1).
     void *comp_bytes = NULL;
     uint8_t *zlib_data = NULL;
     FILE *out = NULL;
@@ -915,12 +912,9 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path) {
     {
         const uint8_t *raw_b = rt_bytes_data_const(raw_bytes);
         int64_t raw_b_len = rt_bytes_len(raw_bytes);
-        uint32_t a = 1, b_v = 0;
-        for (int64_t i = 0; i < raw_b_len; i++) {
-            a = (a + raw_b[i]) % 65521;
-            b_v = (b_v + a) % 65521;
-        }
-        uint32_t adler = (b_v << 16) | a;
+        if (raw_b_len < 0)
+            goto save_cleanup;
+        uint32_t adler = png_adler32(raw_b, (size_t)raw_b_len);
         zlib_data[2 + comp_len + 0] = (uint8_t)((adler >> 24) & 0xFF);
         zlib_data[2 + comp_len + 1] = (uint8_t)((adler >> 16) & 0xFF);
         zlib_data[2 + comp_len + 2] = (uint8_t)((adler >> 8) & 0xFF);
@@ -936,7 +930,7 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path) {
 
     // Write PNG signature
     static const uint8_t sig[8] = {137, 80, 78, 71, 13, 10, 26, 10};
-    if (fwrite(sig, 1, 8, out) != 8)
+    if (!px_write_exact(out, sig, 8))
         write_ok = 0;
 
     // Write IHDR chunk
@@ -957,13 +951,13 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path) {
         ihdr[12] = 0; // interlace
 
         uint8_t len_buf[4] = {0, 0, 0, 13};
-        if (fwrite(len_buf, 1, 4, out) != 4)
+        if (!px_write_exact(out, len_buf, 4))
             write_ok = 0;
 
         uint8_t type_data[4 + 13];
         memcpy(type_data, "IHDR", 4);
         memcpy(type_data + 4, ihdr, 13);
-        if (write_ok && fwrite(type_data, 1, 17, out) != 17)
+        if (write_ok && !px_write_exact(out, type_data, 17))
             write_ok = 0;
 
         uint32_t chunk_crc = rt_crc32_compute(type_data, 17);
@@ -971,7 +965,7 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path) {
                               (uint8_t)(chunk_crc >> 16),
                               (uint8_t)(chunk_crc >> 8),
                               (uint8_t)chunk_crc};
-        if (write_ok && fwrite(crc_buf, 1, 4, out) != 4)
+        if (write_ok && !px_write_exact(out, crc_buf, 4))
             write_ok = 0;
     }
 
@@ -981,12 +975,12 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path) {
                               (uint8_t)(zlib_len >> 16),
                               (uint8_t)(zlib_len >> 8),
                               (uint8_t)zlib_len};
-        if (fwrite(len_buf, 1, 4, out) != 4)
+        if (!px_write_exact(out, len_buf, 4))
             write_ok = 0;
 
-        if (write_ok && fwrite("IDAT", 1, 4, out) != 4)
+        if (write_ok && !px_write_exact(out, "IDAT", 4))
             write_ok = 0;
-        if (write_ok && fwrite(zlib_data, 1, zlib_len, out) != zlib_len)
+        if (write_ok && !px_write_exact(out, zlib_data, zlib_len))
             write_ok = 0;
 
         uint32_t crc_state = png_crc32_update_state(0xFFFFFFFFu, (const uint8_t *)"IDAT", 4);
@@ -995,14 +989,14 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path) {
                               (uint8_t)(chunk_crc >> 16),
                               (uint8_t)(chunk_crc >> 8),
                               (uint8_t)chunk_crc};
-        if (write_ok && fwrite(crc_buf, 1, 4, out) != 4)
+        if (write_ok && !px_write_exact(out, crc_buf, 4))
             write_ok = 0;
     }
 
     // Write IEND chunk
     if (write_ok) {
         uint8_t iend[12] = {0, 0, 0, 0, 'I', 'E', 'N', 'D', 0xAE, 0x42, 0x60, 0x82};
-        if (fwrite(iend, 1, 12, out) != 12)
+        if (!px_write_exact(out, iend, 12))
             write_ok = 0;
     }
 

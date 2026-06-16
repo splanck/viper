@@ -126,21 +126,23 @@ static int videoplayer_copy_decoded_frame(void *frame_display, void *decoded) {
     return 1;
 }
 
-/// @brief Read a video file through the runtime I/O layer into owned memory.
-/// @details The player stores the returned buffer and frees it in its finalizer.
-///          This helper copies from the Bytes object returned by
-///          `rt_io_file_read_all_bytes`, preserving that ownership model and
-///          using the runtime's cross-platform path handling. Runtime file I/O
-///          traps are recovered here so `rt_videoplayer_open` can preserve its
-///          existing NULL-on-load-failure behavior.
+/// @brief Read a video file through the runtime I/O layer into retained Bytes storage.
+/// @details The player stores the returned Bytes object in its finalizer-owned state and points
+///          `file_data` at the object's backing buffer. This avoids a second full-file malloc/copy
+///          while still using the runtime's cross-platform path handling. Runtime file I/O traps
+///          are recovered here so `rt_videoplayer_open` can preserve its existing
+///          NULL-on-load-failure behavior.
 /// @param path Runtime string path.
 /// @param out_len Receives the byte count on success.
-/// @return malloc-owned file bytes, or NULL on I/O, size, or allocation failure.
-static uint8_t *videoplayer_read_file_bytes(rt_string path, size_t *out_len) {
+/// @param out_data Receives the mutable byte pointer owned by the returned Bytes object.
+/// @return Retained Bytes object, or NULL on I/O, size, or allocation failure.
+static void *videoplayer_read_file_bytes(rt_string path, size_t *out_len, uint8_t **out_data) {
     void *volatile bytes = NULL;
     if (out_len)
         *out_len = 0;
-    if (!path || !out_len)
+    if (out_data)
+        *out_data = NULL;
+    if (!path || !out_len || !out_data)
         return NULL;
 
     jmp_buf recovery;
@@ -165,17 +167,16 @@ static uint8_t *videoplayer_read_file_bytes(rt_string path, size_t *out_len) {
     }
 
     size_t len = (size_t)len_i64;
-    const uint8_t *src = rt_bytes_data_const((void *)bytes);
-    uint8_t *copy = src ? (uint8_t *)malloc(len) : NULL;
-    if (copy)
-        memcpy(copy, src, len);
-    if (rt_obj_release_check0((void *)bytes))
-        rt_obj_free((void *)bytes);
-    if (!copy)
+    uint8_t *data = rt_bytes_data((void *)bytes);
+    if (!data) {
+        if (rt_obj_release_check0((void *)bytes))
+            rt_obj_free((void *)bytes);
         return NULL;
+    }
 
     *out_len = len;
-    return copy;
+    *out_data = data;
+    return (void *)bytes;
 }
 
 /*==========================================================================
@@ -705,6 +706,7 @@ static void *decode_mjpeg_frame(const uint8_t *data, uint32_t size) {
 typedef struct {
     void *vptr;
     /* File data */
+    void *file_bytes;
     uint8_t *file_data;
     size_t file_len;
     /* Container */
@@ -1173,7 +1175,13 @@ static void videoplayer_finalizer(void *obj) {
     theora_decoder_free(&vp->theora);
     release_owned_ref(&vp->frame_display);
     release_owned_ref(&vp->frame_decode);
-    free(vp->file_data);
+    if (vp->file_bytes) {
+        if (rt_obj_release_check0(vp->file_bytes))
+            rt_obj_free(vp->file_bytes);
+        vp->file_bytes = NULL;
+    } else {
+        free(vp->file_data);
+    }
     vp->file_data = NULL;
 }
 
@@ -1200,8 +1208,9 @@ void *rt_videoplayer_open(rt_string path) {
 
     /* Read entire file into memory */
     size_t file_len = 0;
-    uint8_t *data = videoplayer_read_file_bytes(path, &file_len);
-    if (!data)
+    uint8_t *data = NULL;
+    void *file_bytes = videoplayer_read_file_bytes(path, &file_len, &data);
+    if (!file_bytes || !data)
         return NULL;
 
     /* Detect container format by magic bytes */
@@ -1212,7 +1221,8 @@ void *rt_videoplayer_open(rt_string path) {
          data[8] == 'A' && data[9] == 'V' && data[10] == 'I' && data[11] == ' ');
 
     if (!is_avi && !is_ogg) {
-        free(data);
+        if (rt_obj_release_check0(file_bytes))
+            rt_obj_free(file_bytes);
         return NULL;
     }
 
@@ -1220,13 +1230,15 @@ void *rt_videoplayer_open(rt_string path) {
     rt_videoplayer *vp =
         (rt_videoplayer *)rt_obj_new_i64(RT_VIDEOPLAYER_CLASS_ID, (int64_t)sizeof(rt_videoplayer));
     if (!vp) {
-        free(data);
+        if (rt_obj_release_check0(file_bytes))
+            rt_obj_free(file_bytes);
         return NULL;
     }
     {
         rt_videoplayer zero = {0};
         *vp = zero;
     }
+    vp->file_bytes = file_bytes;
     vp->file_data = data;
     vp->file_len = file_len;
     vp->playing = 0;

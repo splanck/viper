@@ -212,22 +212,25 @@ static void game3d_model_cache_notify_all(void) {
 static pthread_mutex_t g_game3d_model_cache_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t g_game3d_model_cache_cv;
 static pthread_once_t g_game3d_model_cache_once = PTHREAD_ONCE_INIT;
+static int g_game3d_model_cache_cv_ready = 0;
 #if defined(CLOCK_MONOTONIC) && !RT_PLATFORM_MACOS
 static int g_game3d_model_cache_cv_uses_monotonic = 0;
 #endif
 
 static void game3d_model_cache_init_once(void) {
     pthread_condattr_t attr;
+    int cv_ready = 0;
     if (pthread_condattr_init(&attr) == 0) {
 #if defined(CLOCK_MONOTONIC) && !RT_PLATFORM_MACOS
         g_game3d_model_cache_cv_uses_monotonic =
             pthread_condattr_setclock(&attr, CLOCK_MONOTONIC) == 0;
 #endif
-        (void)pthread_cond_init(&g_game3d_model_cache_cv, &attr);
+        cv_ready = pthread_cond_init(&g_game3d_model_cache_cv, &attr) == 0;
         (void)pthread_condattr_destroy(&attr);
     } else {
-        (void)pthread_cond_init(&g_game3d_model_cache_cv, NULL);
+        cv_ready = pthread_cond_init(&g_game3d_model_cache_cv, NULL) == 0;
     }
+    g_game3d_model_cache_cv_ready = cv_ready;
 }
 
 /// @brief Acquire the process-wide model-cache lock (statically initialized mutex).
@@ -244,6 +247,8 @@ static void game3d_model_cache_unlock(void) {
 static int game3d_model_cache_wait_locked_ms(uint32_t timeout_ms) {
     struct timespec deadline;
     uint32_t wait_ms = timeout_ms == 0u ? 1u : timeout_ms;
+    if (!g_game3d_model_cache_cv_ready)
+        return 0;
 #if RT_PLATFORM_MACOS
     deadline.tv_sec = (time_t)(wait_ms / 1000u);
     deadline.tv_nsec = (long)((uint64_t)(wait_ms % 1000u) * 1000000ull);
@@ -271,6 +276,8 @@ static int game3d_model_cache_wait_locked_ms(uint32_t timeout_ms) {
 /// @brief Wake all threads waiting on the model-cache condition variable.
 static void game3d_model_cache_notify_all(void) {
     pthread_once(&g_game3d_model_cache_once, game3d_model_cache_init_once);
+    if (!g_game3d_model_cache_cv_ready)
+        return;
     pthread_cond_broadcast(&g_game3d_model_cache_cv);
 }
 #endif
@@ -1945,6 +1952,8 @@ void rt_game3d_world_run(void *obj, void *update) {
         "Game3D.World3D.run: update callback must be a native function pointer; pass a native "
         "C-callable function pointer, or pass a script function reference through the VM Game3D "
         "bridge");
+    void *world_ref = obj;
+    rt_obj_retain_maybe(world_ref);
     while (world && rt_game3d_world_tick(world)) {
         if (fn)
             fn(world->dt);
@@ -1955,6 +1964,7 @@ void rt_game3d_world_run(void *obj, void *update) {
             break;
         game3d_world_render_once(world, NULL);
     }
+    game3d_release_ref(&world_ref);
 }
 
 /// @brief Variable-timestep loop with an extra native 2D overlay callback drawn each
@@ -1972,6 +1982,8 @@ void rt_game3d_world_run_with_overlay(void *obj, void *update, void *overlay) {
         "Game3D.World3D.runWithOverlay: overlay callback must be a native function pointer; pass a "
         "native C-callable function pointer, or pass a script function reference through the VM "
         "Game3D bridge");
+    void *world_ref = obj;
+    rt_obj_retain_maybe(world_ref);
     while (world && rt_game3d_world_tick(world)) {
         if (fn)
             fn(world->dt);
@@ -1982,6 +1994,7 @@ void rt_game3d_world_run_with_overlay(void *obj, void *update, void *overlay) {
             break;
         game3d_world_render_once(world, overlay_fn);
     }
+    game3d_release_ref(&world_ref);
 }
 
 /// @brief Fixed-timestep game loop: accumulate real frame time and run `update` + a
@@ -2000,6 +2013,8 @@ static void game3d_world_run_fixed_impl(void *obj,
         game3d_overlay_callback_checked(overlay, overlay_callback_message);
     double fixed = game3d_clamp_dt(step_sec);
     double accumulator = 0.0;
+    void *world_ref = obj;
+    rt_obj_retain_maybe(world_ref);
     while (world && rt_game3d_world_tick(world)) {
         int steps = 0;
         accumulator += world->dt;
@@ -2033,6 +2048,7 @@ static void game3d_world_run_fixed_impl(void *obj,
             world->fixed_interpolation_alpha = 0.999999;
         game3d_world_render_once(world, overlay_fn);
     }
+    game3d_release_ref(&world_ref);
 }
 
 /// @brief Fixed-timestep loop with no overlay. See header.
@@ -2091,6 +2107,8 @@ void rt_game3d_world_run_frames(void *obj, int64_t frame_count, double step_sec,
     jmp_buf recovery;
     if (!world || frame_count < 0)
         return;
+    void *world_ref = obj;
+    rt_obj_retain_maybe(world_ref);
     canvas_obj = world->canvas;
     if (canvas_obj) {
         rt_obj_retain_maybe(canvas_obj);
@@ -2151,6 +2169,7 @@ void rt_game3d_world_run_frames(void *obj, int64_t frame_count, double step_sec,
             canvas_obj, previous_input_source, previous_clock_source, previous_synthetic_dt_us);
         game3d_release_ref(&canvas_obj);
     }
+    game3d_release_ref(&world_ref);
     if (trapped)
         rt_trap(trap_message);
 }

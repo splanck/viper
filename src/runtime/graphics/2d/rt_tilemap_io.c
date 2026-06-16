@@ -53,6 +53,28 @@
 #define tmio_fseek(fp, off, whence) rt_file_stdio_seek64((fp), (off), (whence))
 #define tmio_ftell(fp) rt_file_stdio_tell64((fp))
 
+/// @brief Read exactly @p len bytes from @p f into @p data.
+/// @details Tilemap files are read as complete JSON blobs. This helper avoids
+///          assuming that one `fread` call must return the full file payload,
+///          while preserving the existing all-or-nothing loader contract.
+/// @param f Open binary stream.
+/// @param data Destination byte buffer.
+/// @param len Number of bytes to read.
+/// @return 1 when all bytes were read; otherwise 0.
+static int tmio_read_exact(FILE *f, void *data, size_t len) {
+    uint8_t *dst = (uint8_t *)data;
+    size_t done = 0;
+    if (!f || (!dst && len > 0))
+        return 0;
+    while (done < len) {
+        size_t n = fread(dst + done, 1, len - done, f);
+        if (n == 0)
+            return 0;
+        done += n;
+    }
+    return 1;
+}
+
 /// @brief Validate-and-return a Tilemap pointer; NULL for NULL or wrong class.
 /// @details Soft check used by every public Tilemap I/O entry point.
 static rt_tilemap_impl *tilemap_io_checked(void *tm) {
@@ -97,12 +119,17 @@ static int tilemap_io_grid_supported(int64_t width, int64_t height) {
 }
 
 /// @brief Set the tile property of the tilemap.
+/// @details Keys that exceed the fixed on-object storage slot are rejected so
+///          two distinct long keys cannot collapse to the same truncated name.
 void rt_tilemap_set_tile_property(void *tm, int64_t tile_index, rt_string key, int64_t value) {
     rt_tilemap_impl *tilemap = tilemap_io_checked(tm);
     if (!tilemap || tile_index < 0 || tile_index >= MAX_TILE_PROPS || !key)
         return;
     const char *ckey = rt_string_cstr(key);
     if (!ckey)
+        return;
+    size_t klen = strlen(ckey);
+    if (klen >= MAX_PROP_KEY_LEN)
         return;
 
     tile_props *p = &tilemap->tile_props[tile_index];
@@ -116,9 +143,6 @@ void rt_tilemap_set_tile_property(void *tm, int64_t tile_index, rt_string key, i
     // Add new
     if (p->count >= MAX_PROP_KEYS)
         return;
-    size_t klen = strlen(ckey);
-    if (klen > MAX_PROP_KEY_LEN - 1)
-        klen = MAX_PROP_KEY_LEN - 1;
     memcpy(p->entries[p->count].key, ckey, klen);
     p->entries[p->count].key[klen] = '\0';
     p->entries[p->count].value = value;
@@ -138,6 +162,8 @@ int64_t rt_tilemap_get_tile_property(void *tm,
     const char *ckey = rt_string_cstr(key);
     if (!ckey)
         return default_val;
+    if (strlen(ckey) >= MAX_PROP_KEY_LEN)
+        return default_val;
 
     tile_props *p = &tilemap->tile_props[tile_index];
     for (int32_t i = 0; i < p->count; i++) {
@@ -154,6 +180,8 @@ int8_t rt_tilemap_has_tile_property(void *tm, int64_t tile_index, rt_string key)
         return 0;
     const char *ckey = rt_string_cstr(key);
     if (!ckey)
+        return 0;
+    if (strlen(ckey) >= MAX_PROP_KEY_LEN)
         return 0;
 
     tile_props *p = &tilemap->tile_props[tile_index];
@@ -912,7 +940,7 @@ void *rt_tilemap_load_from_file(rt_string path) {
         fclose(f);
         return NULL;
     }
-    size_t read = fread(buf, 1, (size_t)file_size, f);
+    size_t read = tmio_read_exact(f, buf, (size_t)file_size) ? (size_t)file_size : 0;
     fclose(f);
     if (read != (size_t)file_size) {
         free(buf);

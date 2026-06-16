@@ -1107,6 +1107,8 @@ int canvas3d_queue_screen_image(rt_canvas3d *c, float x, float y, float w, float
 /// @brief Internal: retain a GC object referenced by a final-overlay draw until the overlay
 /// replays.
 int canvas3d_track_final_overlay_temp_object(rt_canvas3d *c, void *obj);
+/// @brief Internal: untrack and release a final-overlay temp object after a queueing failure.
+void canvas3d_release_tracked_final_overlay_temp_object(rt_canvas3d *c, void *obj);
 /// @brief Internal: apply a height-weighted XZ wind sway to a mesh's vertices in place.
 /// @details Base vertices (lowest local-Y) stay planted; displacement scales with
 ///   (normalized height)^2 along (dir_x, dir_z), modulated by sin(phase). Marks geometry

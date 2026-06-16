@@ -33,37 +33,52 @@
 
 static RT_THREAD_LOCAL rt_asset_error_code g_asset_error_code = RT_ASSET_ERROR_NONE;
 static RT_THREAD_LOCAL char g_asset_error_message[RT_ASSET_ERROR_MESSAGE_CAP];
+static RT_THREAD_LOCAL int g_asset_error_message_truncated = 0;
 static RT_THREAD_LOCAL char g_asset_warnings[RT_ASSET_WARNING_CAP][RT_ASSET_WARNING_MESSAGE_CAP];
+static RT_THREAD_LOCAL int g_asset_warning_truncated[RT_ASSET_WARNING_CAP];
 static RT_THREAD_LOCAL int64_t g_asset_warning_count = 0;
 static RT_THREAD_LOCAL int64_t g_asset_warning_suppressed = 0;
 static RT_THREAD_LOCAL int32_t g_asset_load_depth = 0;
 
-static void asset_error_vformat(char *dst, size_t dst_cap, const char *fmt, va_list ap)
+static int asset_error_vformat(char *dst, size_t dst_cap, const char *fmt, va_list ap)
 #if defined(__GNUC__) || defined(__clang__)
     __attribute__((format(printf, 3, 0)))
 #endif
     ;
 
-static void asset_error_vformat(char *dst, size_t dst_cap, const char *fmt, va_list ap) {
+/// @brief Format an asset diagnostic and report whether storage truncated it.
+/// @details Keeps every diagnostic buffer NUL-terminated even when `vsnprintf`
+///          fails or the formatted output exceeds @p dst_cap.
+/// @param dst Destination buffer.
+/// @param dst_cap Destination byte capacity including NUL.
+/// @param fmt printf-style format string; NULL is treated as an empty string.
+/// @param ap Format argument list.
+/// @return 1 when formatted text was truncated; otherwise 0.
+static int asset_error_vformat(char *dst, size_t dst_cap, const char *fmt, va_list ap) {
+    int written;
     if (!dst || dst_cap == 0)
-        return;
+        return 0;
     if (!fmt)
         fmt = "";
-    vsnprintf(dst, dst_cap, fmt, ap);
+    written = vsnprintf(dst, dst_cap, fmt, ap);
     dst[dst_cap - 1] = '\0';
+    return written < 0 || (size_t)written >= dst_cap;
 }
 
 void rt_asset_error_clear_error(void) {
     g_asset_error_code = RT_ASSET_ERROR_NONE;
     g_asset_error_message[0] = '\0';
+    g_asset_error_message_truncated = 0;
 }
 
 void rt_asset_error_clear(void) {
     rt_asset_error_clear_error();
     g_asset_warning_count = 0;
     g_asset_warning_suppressed = 0;
-    for (int64_t i = 0; i < RT_ASSET_WARNING_CAP; i++)
+    for (int64_t i = 0; i < RT_ASSET_WARNING_CAP; i++) {
         g_asset_warnings[i][0] = '\0';
+        g_asset_warning_truncated[i] = 0;
+    }
 }
 
 int rt_asset_error_begin_load(void) {
@@ -88,16 +103,21 @@ void rt_asset_error_end_load_failure(void) {
 }
 
 void rt_asset_error_set(rt_asset_error_code code, const char *message) {
+    int written;
     g_asset_error_code = code;
-    snprintf(g_asset_error_message, sizeof(g_asset_error_message), "%s", message ? message : "");
+    written = snprintf(
+        g_asset_error_message, sizeof(g_asset_error_message), "%s", message ? message : "");
     g_asset_error_message[sizeof(g_asset_error_message) - 1] = '\0';
+    g_asset_error_message_truncated =
+        written < 0 || (size_t)written >= sizeof(g_asset_error_message);
 }
 
 void rt_asset_error_setf(rt_asset_error_code code, const char *fmt, ...) {
     va_list ap;
     g_asset_error_code = code;
     va_start(ap, fmt);
-    asset_error_vformat(g_asset_error_message, sizeof(g_asset_error_message), fmt, ap);
+    g_asset_error_message_truncated =
+        asset_error_vformat(g_asset_error_message, sizeof(g_asset_error_message), fmt, ap);
     va_end(ap);
 }
 
@@ -112,7 +132,8 @@ void rt_asset_error_setf_if_empty(rt_asset_error_code code, const char *fmt, ...
         return;
     g_asset_error_code = code;
     va_start(ap, fmt);
-    asset_error_vformat(g_asset_error_message, sizeof(g_asset_error_message), fmt, ap);
+    g_asset_error_message_truncated =
+        asset_error_vformat(g_asset_error_message, sizeof(g_asset_error_message), fmt, ap);
     va_end(ap);
 }
 
@@ -126,27 +147,31 @@ const char *rt_asset_error_get_message(void) {
 
 void rt_asset_error_add_warning(const char *message) {
     if (g_asset_warning_count < RT_ASSET_WARNING_CAP) {
-        snprintf(g_asset_warnings[g_asset_warning_count],
-                 RT_ASSET_WARNING_MESSAGE_CAP,
-                 "%s",
-                 message ? message : "");
+        int written = snprintf(g_asset_warnings[g_asset_warning_count],
+                               RT_ASSET_WARNING_MESSAGE_CAP,
+                               "%s",
+                               message ? message : "");
         g_asset_warnings[g_asset_warning_count][RT_ASSET_WARNING_MESSAGE_CAP - 1] = '\0';
+        g_asset_warning_truncated[g_asset_warning_count] =
+            written < 0 || (size_t)written >= RT_ASSET_WARNING_MESSAGE_CAP;
         g_asset_warning_count++;
         return;
     }
     g_asset_warning_suppressed++;
-    snprintf(g_asset_warnings[RT_ASSET_WARNING_CAP - 1],
-             RT_ASSET_WARNING_MESSAGE_CAP,
-             "%lld more suppressed",
-             (long long)g_asset_warning_suppressed);
+    int written = snprintf(g_asset_warnings[RT_ASSET_WARNING_CAP - 1],
+                           RT_ASSET_WARNING_MESSAGE_CAP,
+                           "%lld more suppressed",
+                           (long long)g_asset_warning_suppressed);
     g_asset_warnings[RT_ASSET_WARNING_CAP - 1][RT_ASSET_WARNING_MESSAGE_CAP - 1] = '\0';
+    g_asset_warning_truncated[RT_ASSET_WARNING_CAP - 1] =
+        written < 0 || (size_t)written >= RT_ASSET_WARNING_MESSAGE_CAP;
 }
 
 void rt_asset_error_add_warningf(const char *fmt, ...) {
     char message[RT_ASSET_WARNING_MESSAGE_CAP];
     va_list ap;
     va_start(ap, fmt);
-    asset_error_vformat(message, sizeof(message), fmt, ap);
+    (void)asset_error_vformat(message, sizeof(message), fmt, ap);
     va_end(ap);
     rt_asset_error_add_warning(message);
 }
@@ -159,6 +184,20 @@ const char *rt_asset_error_get_warning(int64_t index) {
     if (index < 0 || index >= g_asset_warning_count)
         return "";
     return g_asset_warnings[index];
+}
+
+int rt_asset_error_get_message_was_truncated(void) {
+    return g_asset_error_message_truncated ? 1 : 0;
+}
+
+int rt_asset_error_get_warning_was_truncated(int64_t index) {
+    if (index < 0 || index >= g_asset_warning_count)
+        return 0;
+    return g_asset_warning_truncated[index] ? 1 : 0;
+}
+
+int64_t rt_asset_error_get_warning_suppressed_count(void) {
+    return g_asset_warning_suppressed;
 }
 
 rt_string rt_assets3d_get_last_load_error(void) {

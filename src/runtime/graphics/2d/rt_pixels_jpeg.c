@@ -1251,7 +1251,7 @@ void *rt_pixels_load_jpeg(void *path) {
         rt_asset_error_end_load_failure();
         return NULL;
     }
-    if (fread(file_data, 1, (size_t)file_len, f) != (size_t)file_len) {
+    if (!px_read_exact(f, file_data, (size_t)file_len)) {
         free(file_data);
         fclose(f);
         rt_asset_error_setf(

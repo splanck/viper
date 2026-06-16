@@ -380,6 +380,8 @@ static struct {
     PFNGLREADBUFFERPROC ReadBuffer;
 } gl;
 
+static int gl_debug_enabled(void);
+
 /* Debug GL error checking — enabled in debug builds only */
 #ifndef NDEBUG
 /// @brief Debug-only `glGetError()` wrapper that prints to stderr on failure.
@@ -390,9 +392,12 @@ static struct {
 static __attribute__((unused)) void gl_check_error(const char *file, int line) {
     if (!gl.GetError)
         return;
-    GLenum err = gl.GetError();
-    if (err != GL_NO_ERROR)
+    for (;;) {
+        GLenum err = gl.GetError();
+        if (err == GL_NO_ERROR)
+            break;
         fprintf(stderr, "GL error 0x%04X at %s:%d\n", (unsigned)err, file, line);
+    }
 }
 
 #define GL_CHECK() gl_check_error(__FILE__, __LINE__)
@@ -1393,8 +1398,11 @@ static int gl_query_context_capabilities(gl_context_t *ctx) {
     gl.GetIntegerv(GL_MINOR_VERSION, &ctx->gl_minor_version);
     if (ctx->gl_major_version <= 0) {
         version = (const char *)gl.GetString(GL_VERSION);
-        if (version)
-            sscanf(version, "%d.%d", &ctx->gl_major_version, &ctx->gl_minor_version);
+        if (version &&
+            sscanf(version, "%d.%d", &ctx->gl_major_version, &ctx->gl_minor_version) != 2) {
+            ctx->gl_major_version = 0;
+            ctx->gl_minor_version = 0;
+        }
     }
     if (ctx->gl_major_version < 3 || (ctx->gl_major_version == 3 && ctx->gl_minor_version < 3)) {
         fprintf(stderr,
@@ -1409,6 +1417,13 @@ static int gl_query_context_capabilities(gl_context_t *ctx) {
     gl.GetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &ctx->max_combined_texture_units);
     gl.GetIntegerv(GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS, &ctx->max_vertex_texture_units);
     gl.GetIntegerv(GL_MAX_TEXTURE_BUFFER_SIZE, &ctx->max_texture_buffer_size);
+    if (!gl_drain_errors("capability query")) {
+        ctx->max_texture_size = 0;
+        ctx->max_vertex_attribs = 0;
+        ctx->max_combined_texture_units = 0;
+        ctx->max_vertex_texture_units = 0;
+        ctx->max_texture_buffer_size = 0;
+    }
     if (ctx->max_vertex_attribs < 16 ||
         ctx->max_combined_texture_units <= GL_TU_MORPH_NORMAL_DELTAS ||
         ctx->max_vertex_texture_units < 2) {

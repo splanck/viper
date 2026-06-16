@@ -95,12 +95,14 @@ static void action_release_json_parser(void *parser) {
 /// @brief Append a JSON-quoted-string-literal version of `str` to a builder.
 ///
 /// Handles the standard JSON escape characters (`"`, `\\`, `\\n`,
-/// `\\r`, `\\t`). Non-ASCII bytes pass through as-is — the persistence
-/// format assumes UTF-8 throughout.
+/// `\\r`, `\\t`) and emits `\\u00XX` escapes for the remaining control bytes.
+/// Non-ASCII bytes pass through as-is — the persistence format assumes UTF-8
+/// throughout.
 static void sb_append_json_string(rt_string_builder *sb, const char *str) {
+    static const char hex[] = "0123456789ABCDEF";
     rt_sb_append_cstr(sb, "\"");
     while (*str) {
-        char c = *str++;
+        unsigned char c = (unsigned char)*str++;
         switch (c) {
             case '"':
                 rt_sb_append_cstr(sb, "\\\"");
@@ -118,7 +120,13 @@ static void sb_append_json_string(rt_string_builder *sb, const char *str) {
                 rt_sb_append_cstr(sb, "\\t");
                 break;
             default:
-                rt_sb_append_bytes(sb, &c, 1);
+                if (c < 0x20u) {
+                    char esc[6] = {'\\', 'u', '0', '0', hex[(c >> 4) & 0xFu], hex[c & 0xFu]};
+                    rt_sb_append_bytes(sb, esc, sizeof(esc));
+                } else {
+                    char byte = (char)c;
+                    rt_sb_append_bytes(sb, &byte, 1);
+                }
                 break;
         }
     }
@@ -263,7 +271,7 @@ int8_t rt_action_load(rt_string json) {
                     const char *val_cstr = rt_string_cstr(val);
                     size_t len = strlen(val_cstr);
                     if (len >= sizeof(action_name))
-                        len = sizeof(action_name) - 1;
+                        goto cleanup;
                     memcpy(action_name, val_cstr, len);
                     action_name[len] = '\0';
                 } else if (strcmp(key_cstr, "type") == 0) {

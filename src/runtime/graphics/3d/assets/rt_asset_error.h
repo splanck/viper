@@ -60,6 +60,12 @@ void rt_asset_error_add_warning(const char *message);
 void rt_asset_error_add_warningf(const char *fmt, ...) RT_ASSET_ERROR_PRINTF(1, 2);
 int64_t rt_asset_error_get_warning_count(void);
 const char *rt_asset_error_get_warning(int64_t index);
+/// @brief Return whether the current load-error message was truncated to fit storage.
+int rt_asset_error_get_message_was_truncated(void);
+/// @brief Return whether warning @p index was truncated to fit storage.
+int rt_asset_error_get_warning_was_truncated(int64_t index);
+/// @brief Return how many warnings were suppressed after the bounded warning list filled.
+int64_t rt_asset_error_get_warning_suppressed_count(void);
 
 rt_string rt_assets3d_get_last_load_error(void);
 int64_t rt_assets3d_get_last_load_error_code(void);

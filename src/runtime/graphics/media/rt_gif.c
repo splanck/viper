@@ -584,6 +584,10 @@ int gif_decode_file(const char *filepath,
     int gce_delay_ms = 0;
     int gce_dispose = 0;
     int gce_transparent = -1;
+    int prev_rect_x0 = 0;
+    int prev_rect_y0 = 0;
+    int prev_rect_x1 = 0;
+    int prev_rect_y1 = 0;
     int gce_valid = 0;
 
     // Process blocks
@@ -706,9 +710,26 @@ int gif_decode_file(const char *filepath,
                 break;
             }
 
-            // Save canvas for dispose method 3 (restore to previous)
-            if (gce_dispose == 3)
-                memcpy(prev_canvas, canvas, canvas_size * sizeof(uint32_t));
+            // Save only the affected canvas rectangle for dispose method 3.
+            prev_rect_x0 = img_left < 0 ? 0 : img_left;
+            prev_rect_y0 = img_top < 0 ? 0 : img_top;
+            prev_rect_x1 = img_left + img_w;
+            prev_rect_y1 = img_top + img_h;
+            if (prev_rect_x1 > screen_w)
+                prev_rect_x1 = screen_w;
+            if (prev_rect_y1 > screen_h)
+                prev_rect_y1 = screen_h;
+            if (prev_rect_x1 < prev_rect_x0)
+                prev_rect_x1 = prev_rect_x0;
+            if (prev_rect_y1 < prev_rect_y0)
+                prev_rect_y1 = prev_rect_y0;
+            if (gce_dispose == 3) {
+                size_t row_pixels = (size_t)(prev_rect_x1 - prev_rect_x0);
+                for (int y = prev_rect_y0; y < prev_rect_y1; y++) {
+                    size_t off = (size_t)y * (size_t)screen_w + (size_t)prev_rect_x0;
+                    memcpy(prev_canvas + off, canvas + off, row_pixels * sizeof(uint32_t));
+                }
+            }
 
             // Apply decoded pixels to canvas
             size_t idx = 0;
@@ -819,7 +840,13 @@ int gif_decode_file(const char *filepath,
                     }
                 } break;
                 case 3: // Restore to previous
-                    memcpy(canvas, prev_canvas, canvas_size * sizeof(uint32_t));
+                    if (prev_rect_x1 > prev_rect_x0 && prev_rect_y1 > prev_rect_y0) {
+                        size_t row_pixels = (size_t)(prev_rect_x1 - prev_rect_x0);
+                        for (int y = prev_rect_y0; y < prev_rect_y1; y++) {
+                            size_t off = (size_t)y * (size_t)screen_w + (size_t)prev_rect_x0;
+                            memcpy(canvas + off, prev_canvas + off, row_pixels * sizeof(uint32_t));
+                        }
+                    }
                     break;
                 default: // 0 or 1: do not dispose (keep canvas as-is)
                     break;

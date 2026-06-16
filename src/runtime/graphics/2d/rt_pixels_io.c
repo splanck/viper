@@ -115,7 +115,7 @@ static void bmp_write_i32_le(uint8_t *p, int32_t value) {
 /// @return 1 on success, 0 on short read or invalid arguments.
 static int bmp_read_file_header(FILE *f, bmp_file_header *out) {
     uint8_t buf[14];
-    if (!f || !out || fread(buf, 1, sizeof(buf), f) != sizeof(buf))
+    if (!f || !out || !px_read_exact(f, buf, sizeof(buf)))
         return 0;
     out->magic[0] = buf[0];
     out->magic[1] = buf[1];
@@ -133,7 +133,7 @@ static int bmp_read_file_header(FILE *f, bmp_file_header *out) {
 /// @return 1 on success, 0 on short read or invalid arguments.
 static int bmp_read_info_header(FILE *f, bmp_info_header *out) {
     uint8_t buf[40];
-    if (!f || !out || fread(buf, 1, sizeof(buf), f) != sizeof(buf))
+    if (!f || !out || !px_read_exact(f, buf, sizeof(buf)))
         return 0;
     out->header_size = bmp_read_u32_le(buf + 0);
     out->width = bmp_read_i32_le(buf + 4);
@@ -164,7 +164,7 @@ static int bmp_write_file_header(FILE *f, const bmp_file_header *hdr) {
     bmp_write_u16_le(buf + 6, hdr->reserved1);
     bmp_write_u16_le(buf + 8, hdr->reserved2);
     bmp_write_u32_le(buf + 10, hdr->data_offset);
-    return fwrite(buf, 1, sizeof(buf), f) == sizeof(buf);
+    return px_write_exact(f, buf, sizeof(buf));
 }
 
 /// @brief Write a BMP BITMAPINFOHEADER in canonical little-endian byte order.
@@ -187,7 +187,7 @@ static int bmp_write_info_header(FILE *f, const bmp_info_header *hdr) {
     bmp_write_i32_le(buf + 28, hdr->y_pels_per_meter);
     bmp_write_u32_le(buf + 32, hdr->colors_used);
     bmp_write_u32_le(buf + 36, hdr->colors_important);
-    return fwrite(buf, 1, sizeof(buf), f) == sizeof(buf);
+    return px_write_exact(f, buf, sizeof(buf));
 }
 
 /// @brief Decode a 24-bit uncompressed BMP file into a Pixels object.
@@ -314,7 +314,7 @@ void *rt_pixels_load_bmp(void *path) {
 
     // Read pixel data
     for (int32_t y = 0; y < height; y++) {
-        if (fread(row_buf, 1, row_size, f) != row_size)
+        if (!px_read_exact(f, row_buf, row_size))
             goto bmp_cleanup;
 
         // Determine destination row (bottom-up reverses row order)
@@ -444,7 +444,7 @@ int64_t rt_pixels_save_bmp(void *pixels, void *path) {
         for (size_t i = 0; i < padding; i++)
             row_buf[row_payload + i] = 0;
 
-        if (fwrite(row_buf, 1, row_size, f) != row_size) {
+        if (!px_write_exact(f, row_buf, row_size)) {
             goto bmp_save_cleanup;
         }
     }

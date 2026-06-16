@@ -1446,6 +1446,7 @@ void rt_mouse_update_pos(int64_t x, int64_t y) {
 /// @param dx Forced delta x in canvas pixels.
 /// @param dy Forced delta y in canvas pixels.
 void rt_mouse_force_delta(int64_t dx, int64_t dy) {
+    RT_ASSERT_MAIN_THREAD();
     g_mouse_delta_x = dx;
     g_mouse_delta_y = dy;
 }

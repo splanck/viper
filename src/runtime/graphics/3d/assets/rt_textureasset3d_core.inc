@@ -67,15 +67,15 @@ static const uint8_t ktx2_identifier[12] = {
     0x0A,
 };
 
-static int64_t g_next_textureasset3d_cache_identity = 1;
+static uint64_t g_next_textureasset3d_cache_identity = 1;
 
 /// @brief Atomically allocate the next process-unique, nonzero cache identity.
 /// @details 0 is reserved as "no key", so the loop retries past a wrapped-to-zero value.
 static uint64_t textureasset3d_next_cache_identity(void) {
     uint64_t id;
     do {
-        id = (uint64_t)__atomic_fetch_add(
-            &g_next_textureasset3d_cache_identity, (int64_t)1, __ATOMIC_RELAXED);
+        id = __atomic_fetch_add(
+            &g_next_textureasset3d_cache_identity, UINT64_C(1), __ATOMIC_RELAXED);
     } while (id == 0);
     return id;
 }
@@ -307,7 +307,8 @@ static int64_t textureasset3d_compute_retained_bytes(rt_textureasset3d *asset) {
         const textureasset3d_mip *mip = &asset->mips[i];
         if (asset->mip_payloads && asset->mip_payloads[i] && mip->length > 0) {
             textureasset3d_add_saturating_u64(&total, mip->length);
-        } else if (asset->mip_pixels && asset->mip_pixels[i]) {
+        }
+        if (asset->mip_pixels && asset->mip_pixels[i]) {
             textureasset3d_add_saturating_u64(
                 &total, textureasset3d_pixels_allocation_bytes(asset->mip_pixels[i]));
         }

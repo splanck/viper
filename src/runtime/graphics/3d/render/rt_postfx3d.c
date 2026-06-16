@@ -534,16 +534,40 @@ static void apply_bloom(
     /* Composite: add bloom back to scene (upsampled bilinear) */
     for (int32_t y = 0; y < h; y++)
         for (int32_t x = 0; x < w; x++) {
-            int32_t bx = x / 2, by = y / 2;
-            if (bx >= hw)
-                bx = hw - 1;
-            if (by >= hh)
-                by = hh - 1;
-            int32_t bi = (by * hw + bx) * 3;
+            float fx = ((float)x + 0.5f) * 0.5f - 0.5f;
+            float fy = ((float)y + 0.5f) * 0.5f - 0.5f;
+            int32_t x0 = (int32_t)floorf(fx);
+            int32_t y0 = (int32_t)floorf(fy);
+            float tx = fx - (float)x0;
+            float ty = fy - (float)y0;
+            if (x0 < 0) {
+                x0 = 0;
+                tx = 0.0f;
+            }
+            if (y0 < 0) {
+                y0 = 0;
+                ty = 0.0f;
+            }
+            int32_t x1 = x0 + 1;
+            int32_t y1 = y0 + 1;
+            if (x1 >= hw)
+                x1 = hw - 1;
+            if (y1 >= hh)
+                y1 = hh - 1;
+            if (x0 >= hw)
+                x0 = hw - 1;
+            if (y0 >= hh)
+                y0 = hh - 1;
+            int32_t bi00 = (y0 * hw + x0) * 3;
+            int32_t bi10 = (y0 * hw + x1) * 3;
+            int32_t bi01 = (y1 * hw + x0) * 3;
+            int32_t bi11 = (y1 * hw + x1) * 3;
             int32_t si = (y * w + x) * 3;
-            buf[si] += bloom[bi] * intensity;
-            buf[si + 1] += bloom[bi + 1] * intensity;
-            buf[si + 2] += bloom[bi + 2] * intensity;
+            for (int32_t c = 0; c < 3; c++) {
+                float top = bloom[bi00 + c] + (bloom[bi10 + c] - bloom[bi00 + c]) * tx;
+                float bottom = bloom[bi01 + c] + (bloom[bi11 + c] - bloom[bi01 + c]) * tx;
+                buf[si + c] += (top + (bottom - top) * ty) * intensity;
+            }
         }
 
     free(bloom);
@@ -979,7 +1003,8 @@ void rt_postfx3d_add_fxaa(void *obj) {
 
 /// @brief Append a color-grading effect.
 /// @details `brightness` is a signed additive offset centered on 0.0. `contrast` scales around
-/// mid-grey (0.5) and `saturation` interpolates from grayscale; both are multipliers centered on 1.0.
+/// mid-grey (0.5) and `saturation` interpolates from grayscale; both are multipliers centered
+/// on 1.0.
 void rt_postfx3d_add_color_grade(void *obj, double brightness, double contrast, double saturation) {
     postfx_entry_t *e;
     rt_postfx3d *fx = postfx3d_checked(obj);

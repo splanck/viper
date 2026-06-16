@@ -58,3 +58,47 @@ static inline int px_add_size(size_t a, size_t b, size_t *out) {
         *out = a + b;
     return 1;
 }
+
+/// @brief Read exactly @p len bytes from @p f into @p data.
+/// @details Wraps stdio in a short-read loop so image decoders do not rely on a
+///          single `fread` returning the entire payload. A zero-length read is
+///          considered successful and NULL @p data is accepted only in that case.
+/// @param f Open binary stream.
+/// @param data Destination byte buffer.
+/// @param len Number of bytes to read.
+/// @return 1 when every requested byte was read; otherwise 0.
+static inline int px_read_exact(FILE *f, void *data, size_t len) {
+    uint8_t *dst = (uint8_t *)data;
+    size_t done = 0;
+    if (!f || (!dst && len > 0))
+        return 0;
+    while (done < len) {
+        size_t n = fread(dst + done, 1, len - done, f);
+        if (n == 0)
+            return 0;
+        done += n;
+    }
+    return 1;
+}
+
+/// @brief Write exactly @p len bytes from @p data to @p f.
+/// @details Mirrors @ref px_read_exact for save paths and treats short writes as
+///          hard failures, which catches disk-full and interrupted stream cases
+///          before the temp file is committed.
+/// @param f Open binary stream.
+/// @param data Source byte buffer.
+/// @param len Number of bytes to write.
+/// @return 1 when every requested byte was written; otherwise 0.
+static inline int px_write_exact(FILE *f, const void *data, size_t len) {
+    const uint8_t *src = (const uint8_t *)data;
+    size_t done = 0;
+    if (!f || (!src && len > 0))
+        return 0;
+    while (done < len) {
+        size_t n = fwrite(src + done, 1, len - done, f);
+        if (n == 0)
+            return 0;
+        done += n;
+    }
+    return 1;
+}

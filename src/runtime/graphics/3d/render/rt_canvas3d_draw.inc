@@ -58,6 +58,28 @@ static deferred_pass_t canvas3d_screen_pass_kind(const rt_canvas3d *c) {
     return (c && c->frame_is_2d) ? DEFERRED_PASS_MAIN : DEFERRED_PASS_SCREEN_OVERLAY;
 }
 
+/// @brief Compute a robust finite-length estimate for a 2D screen-space vector.
+/// @details The scale-first form avoids overflowing `dx * dx + dy * dy` for large but finite
+///          coordinates while depending only on `sqrtf`, which is already part of the native
+///          runtime symbol surface. Infinite or NaN intermediate values are returned to the caller
+///          so degenerate line fallback handling remains centralized.
+/// @param dx X component of the vector.
+/// @param dy Y component of the vector.
+/// @return Euclidean length when finite, zero for a zero vector, or a non-finite value when the
+///         input subtraction overflowed.
+static float canvas3d_screen_vector_len(float dx, float dy) {
+    float ax = dx < 0.0f ? -dx : dx;
+    float ay = dy < 0.0f ? -dy : dy;
+    float scale = ax > ay ? ax : ay;
+    float sx;
+    float sy;
+    if (!isfinite(scale) || scale <= 0.0f)
+        return scale;
+    sx = dx / scale;
+    sy = dy / scale;
+    return scale * sqrtf(sx * sx + sy * sy);
+}
+
 /// @brief Create the deferred draw command used for final-overlay screen geometry.
 /// @details Screen-space helper vertices already carry their tint in vertex colors.
 ///          Final-overlay replay happens through the backend mesh path after post-FX, so the
@@ -219,6 +241,28 @@ int canvas3d_track_final_overlay_temp_object(rt_canvas3d *c, void *obj) {
     return 1;
 }
 
+/// @brief Release one final-overlay temp object before the overlay replay phase.
+/// @details Used by queueing failure paths after @ref canvas3d_track_final_overlay_temp_object
+///          has retained a material but a later buffer or command enqueue step fails. Removes the
+///          first matching slot, drops the retained reference, and keeps the dense array compact.
+/// @param c Canvas whose final-overlay temp-object list owns the reference.
+/// @param obj Object to untrack and release. NULL is ignored.
+void canvas3d_release_tracked_final_overlay_temp_object(rt_canvas3d *c, void *obj) {
+    if (!c || !obj)
+        return;
+    for (int32_t i = 0; i < c->final_overlay_temp_obj_count; ++i) {
+        if (c->final_overlay_temp_objects[i] == obj) {
+            int32_t last = c->final_overlay_temp_obj_count - 1;
+            c->final_overlay_temp_objects[i] = c->final_overlay_temp_objects[last];
+            c->final_overlay_temp_objects[last] = NULL;
+            c->final_overlay_temp_obj_count = last;
+            if (rt_obj_release_check0(obj))
+                rt_obj_free(obj);
+            return;
+        }
+    }
+}
+
 /// @brief Queue a screen-space textured quad (image blit) over pixel rect (x,y)-(x+w,y+h),
 ///        sampling `pixels` across UV (0,0)-(1,1). Unlit, depth-test disabled.
 /// @details Builds a transient unlit material from `pixels` and reuses the standard
@@ -304,11 +348,13 @@ int canvas3d_queue_screen_image(rt_canvas3d *c, float x, float y, float w, float
         if (rt_obj_release_check0(mat)) /* canvas now owns the frame reference */
             rt_obj_free(mat);
         if (!canvas3d_track_final_overlay_temp_buffer(c, block)) {
+            canvas3d_release_tracked_final_overlay_temp_object(c, mat);
             free(block);
             return 0;
         }
         if (!canvas3d_enqueue_final_overlay_draw(c, &cmd, NULL, NULL)) {
             canvas3d_release_tracked_final_overlay_temp_buffer(c, block);
+            canvas3d_release_tracked_final_overlay_temp_object(c, mat);
             return 0;
         }
         return 1;
@@ -323,6 +369,7 @@ int canvas3d_queue_screen_image(rt_canvas3d *c, float x, float y, float w, float
     if (rt_obj_release_check0(mat)) /* canvas now owns the frame reference */
         rt_obj_free(mat);
     if (!canvas3d_track_temp_buffer(c, block)) {
+        canvas3d_release_tracked_temp_object(c, mat);
         free(block);
         return 0;
     }
@@ -339,6 +386,7 @@ int canvas3d_queue_screen_image(rt_canvas3d *c, float x, float y, float w, float
                                NULL,
                                NULL)) {
         canvas3d_release_tracked_temp_buffer(c, block);
+        canvas3d_release_tracked_temp_object(c, mat);
         return 0;
     }
     return 1;
@@ -377,8 +425,8 @@ int canvas3d_queue_screen_line(rt_canvas3d *c,
 
     dx = x1 - x0;
     dy = y1 - y0;
-    len = sqrtf(dx * dx + dy * dy);
-    if (len < 1e-4f)
+    len = canvas3d_screen_vector_len(dx, dy);
+    if (!isfinite(len) || len < 1e-4f)
         return canvas3d_queue_screen_rect(
             c, x0 - thickness * 0.5f, y0 - thickness * 0.5f, thickness, thickness, r, g, b, a);
     px = -dy / len;
