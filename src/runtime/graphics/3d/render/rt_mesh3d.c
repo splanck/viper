@@ -250,8 +250,11 @@ static int mesh_parse_ascii_double_span(const char *p,
             s++;
         }
         while ((!limit || s < limit) && *s >= '0' && *s <= '9') {
-            if (exp_value < 10000)
-                exp_value = exp_value * 10 + (*s - '0');
+            if (exp_digits >= 4)
+                return 0;
+            exp_value = exp_value * 10 + (*s - '0');
+            if (exp_value > 512 + frac_digits)
+                return 0;
             exp_digits++;
             s++;
         }

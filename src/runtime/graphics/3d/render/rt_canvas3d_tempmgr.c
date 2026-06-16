@@ -59,9 +59,10 @@ int canvas3d_untrack_temp_buffer(rt_canvas3d *c, void *buffer) {
         return 0;
     for (int32_t i = 0; i < c->temp_buf_count; ++i) {
         if (c->temp_buffers[i] == buffer) {
-            for (int32_t j = i; j < c->temp_buf_count - 1; ++j)
-                c->temp_buffers[j] = c->temp_buffers[j + 1];
-            c->temp_buffers[--c->temp_buf_count] = NULL;
+            int32_t last = c->temp_buf_count - 1;
+            c->temp_buffers[i] = c->temp_buffers[last];
+            c->temp_buffers[last] = NULL;
+            c->temp_buf_count = last;
             return 1;
         }
     }
@@ -110,9 +111,10 @@ int canvas3d_untrack_final_overlay_temp_buffer(rt_canvas3d *c, void *buffer) {
         return 0;
     for (int32_t i = 0; i < c->final_overlay_temp_buf_count; ++i) {
         if (c->final_overlay_temp_buffers[i] == buffer) {
-            for (int32_t j = i; j < c->final_overlay_temp_buf_count - 1; ++j)
-                c->final_overlay_temp_buffers[j] = c->final_overlay_temp_buffers[j + 1];
-            c->final_overlay_temp_buffers[--c->final_overlay_temp_buf_count] = NULL;
+            int32_t last = c->final_overlay_temp_buf_count - 1;
+            c->final_overlay_temp_buffers[i] = c->final_overlay_temp_buffers[last];
+            c->final_overlay_temp_buffers[last] = NULL;
+            c->final_overlay_temp_buf_count = last;
             return 1;
         }
     }
@@ -141,8 +143,7 @@ int canvas3d_ensure_temp_object_set(rt_canvas3d *c, int32_t count_hint) {
         return 0;
     if (count_hint > INT32_MAX / 2)
         return 0;
-    int32_t needed =
-        canvas3d_next_power_of_two_i32(count_hint > 0 ? count_hint * 2 : 32);
+    int32_t needed = canvas3d_next_power_of_two_i32(count_hint > 0 ? count_hint * 2 : 32);
     if (needed < 32)
         needed = 32;
     if (c->temp_object_set_capacity >= needed)
@@ -272,9 +273,10 @@ void canvas3d_release_tracked_temp_object(rt_canvas3d *c, void *obj) {
         return;
     for (int32_t i = 0; i < c->temp_obj_count; ++i) {
         if (c->temp_objects[i] == obj) {
-            for (int32_t j = i; j < c->temp_obj_count - 1; ++j)
-                c->temp_objects[j] = c->temp_objects[j + 1];
-            c->temp_objects[--c->temp_obj_count] = NULL;
+            int32_t last = c->temp_obj_count - 1;
+            c->temp_objects[i] = c->temp_objects[last];
+            c->temp_objects[last] = NULL;
+            c->temp_obj_count = last;
             canvas3d_rebuild_temp_object_set(c);
             if (rt_obj_release_check0(obj))
                 rt_obj_free(obj);

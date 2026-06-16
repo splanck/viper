@@ -69,7 +69,7 @@ static rt_pixels_impl *cubemap_face_pixels_impl(void *pixels) {
     return pv;
 }
 
-static volatile int64_t g_next_cubemap_cache_identity = 1;
+static int64_t g_next_cubemap_cache_identity = 1;
 
 #define CUBEMAP3D_MAX_FACE_SIZE 32768
 

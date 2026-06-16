@@ -332,7 +332,7 @@ typedef struct {
 typedef struct {
     const sw_shadow_tile_grid_t *grid;
     const sw_shadow_tri_list_t *tris;
-    volatile int32_t *next_tile;
+    int32_t *next_tile;
     float *depth;
     int32_t sw;
     int32_t sh;
@@ -348,7 +348,7 @@ typedef struct {
     float half_w;
     float half_h;
     sw_shadow_tri_list_t out;
-    volatile int32_t *failed;
+    int32_t *failed;
 } sw_shadow_collect_task_t;
 
 static void sw_shadow_tri_list_free(sw_shadow_tri_list_t *list) {
@@ -644,7 +644,7 @@ static int sw_shadow_collect_triangles_parallel(sw_context_t *ctx,
     uint32_t tri_count;
     int32_t task_count;
     int32_t submitted = 0;
-    volatile int32_t failed = 0;
+    int32_t failed = 0;
     if (!ctx || !ctx->worker_pool || ctx->worker_count <= 1 || !cmd || !lmvp || !out)
         return 0;
     tri_count = index_count / 3u;
@@ -767,7 +767,7 @@ static int sw_shadow_raster_tiles_parallel(sw_context_t *ctx,
                                            const vgfx3d_draw_cmd_t *cmd,
                                            const sw_pixels_view *alpha_tex) {
     sw_shadow_raster_task_t tasks[SW_MAX_TASKS];
-    volatile int32_t next_tile = 0;
+    int32_t next_tile = 0;
     int32_t task_count;
     if (!ctx || !ctx->worker_pool || !grid || grid->active_count <= 0 || !tris || !depth)
         return 0;

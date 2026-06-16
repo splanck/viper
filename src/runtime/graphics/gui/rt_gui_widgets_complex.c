@@ -753,7 +753,7 @@ rt_string rt_theme_get_name(void) {
         name = (app->theme_kind == RT_GUI_THEME_LIGHT) ? "light" : "dark";
     } else {
         vg_theme_t *current = vg_theme_get_current();
-        if (current && current->name && strcasecmp(current->name, "Light") == 0)
+        if (current && current->name && rt_gui_ascii_casecmp(current->name, "Light") == 0)
             name = "light";
     }
     return rt_string_from_bytes(name, strlen(name));

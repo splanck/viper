@@ -57,6 +57,7 @@
 
 #include <limits.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -200,25 +201,32 @@ static bool rt_keyboard_reserve_key_events(int64_t **keys, int *capacity, int ne
     return true;
 }
 
-/// @brief Append one key edge event to a growable per-frame buffer.
-/// @details On allocation failure the runtime trap is raised and the event is skipped; successful
-///          growth keeps all events for the frame so GetPressed/GetReleased can report full bursts.
-/// @param keys Pointer to the edge-buffer pointer.
+/// @brief Append one key edge event after the caller has reserved the destination slot.
+/// @details Key state changes reserve storage before mutating level state, then call this helper to
+///          keep the actual append operation allocation-free and therefore non-trapping.
+/// @param keys Edge-buffer pointer with capacity for one additional entry.
 /// @param count Pointer to the active entry count.
-/// @param capacity Pointer to the allocated entry capacity.
 /// @param key Public VIPER_KEY_* code to append.
-static void rt_keyboard_append_key_event(int64_t **keys, int *count, int *capacity, int64_t key) {
-    if (!count || *count < 0)
+static void rt_keyboard_append_reserved_key_event(int64_t *keys, int *count, int64_t key) {
+    if (!keys || !count || *count < 0)
         return;
-    if (*count == INT_MAX || !rt_keyboard_reserve_key_events(keys, capacity, *count + 1)) {
-        rt_trap("Keyboard: key event buffer allocation failed");
-        return;
-    }
-    (*keys)[(*count)++] = key;
+    keys[(*count)++] = key;
+}
+
+/// @brief Clamp a runtime int64 coordinate to the platform cursor-warp int32 range.
+/// @param value Runtime coordinate in canvas pixels.
+/// @return @p value saturated to the signed 32-bit range accepted by graphics backends.
+static int32_t rt_input_clamp_i64_to_i32(int64_t value) {
+    if (value < (int64_t)INT32_MIN)
+        return INT32_MIN;
+    if (value > (int64_t)INT32_MAX)
+        return INT32_MAX;
+    return (int32_t)value;
 }
 
 /// @brief Ensure the UTF-8 text buffer can append @p needed bytes this frame.
-/// @details Text input can arrive in bursts from IME or paste-like platform events. The buffer grows
+/// @details Text input can arrive in bursts from IME or paste-like platform events. The buffer
+/// grows
 ///          geometrically and retains capacity across frames while `rt_keyboard_begin_frame` resets
 ///          only the active length.
 /// @param needed Minimum active byte capacity required.
@@ -371,7 +379,7 @@ static void rt_input_warp_mouse_platform(int64_t x, int64_t y) {
     }
 
 #if defined(VIPER_ENABLE_GRAPHICS)
-    vgfx_warp_cursor(g_mouse_canvas, (int32_t)x, (int32_t)y);
+    vgfx_warp_cursor(g_mouse_canvas, rt_input_clamp_i64_to_i32(x), rt_input_clamp_i64_to_i32(y));
 #else
     (void)x;
     (void)y;
@@ -415,10 +423,14 @@ static void rt_keyboard_record_key_down(int64_t key) {
 
     // Only record press if key wasn't already down
     if (!g_key_state[key]) {
+        if (g_pressed_count == INT_MAX || !rt_keyboard_reserve_key_events(&g_pressed_keys,
+                                                                          &g_pressed_capacity,
+                                                                          g_pressed_count + 1)) {
+            rt_trap("Keyboard: key event buffer allocation failed");
+            return;
+        }
         g_key_state[key] = true;
-
-        rt_keyboard_append_key_event(
-            &g_pressed_keys, &g_pressed_count, &g_pressed_capacity, key);
+        rt_keyboard_append_reserved_key_event(g_pressed_keys, &g_pressed_count, key);
     }
 
     // Caps Lock state is queried from the platform on demand.
@@ -430,10 +442,14 @@ static void rt_keyboard_record_key_up(int64_t key) {
         return;
 
     if (g_key_state[key]) {
+        if (g_released_count == INT_MAX || !rt_keyboard_reserve_key_events(&g_released_keys,
+                                                                           &g_released_capacity,
+                                                                           g_released_count + 1)) {
+            rt_trap("Keyboard: key event buffer allocation failed");
+            return;
+        }
         g_key_state[key] = false;
-
-        rt_keyboard_append_key_event(
-            &g_released_keys, &g_released_count, &g_released_capacity, key);
+        rt_keyboard_append_reserved_key_event(g_released_keys, &g_released_count, key);
     }
 }
 
@@ -695,34 +711,61 @@ rt_string rt_keyboard_key_name(int64_t key) {
         int64_t key;
         const char *name;
     } kKeyNames[] = {
-        {VIPER_KEY_SPACE, "Space"},         {VIPER_KEY_ESCAPE, "Escape"},
-        {VIPER_KEY_ENTER, "Enter"},         {VIPER_KEY_TAB, "Tab"},
-        {VIPER_KEY_BACKSPACE, "Backspace"}, {VIPER_KEY_INSERT, "Insert"},
-        {VIPER_KEY_DELETE, "Delete"},       {VIPER_KEY_RIGHT, "Right"},
-        {VIPER_KEY_LEFT, "Left"},           {VIPER_KEY_DOWN, "Down"},
-        {VIPER_KEY_UP, "Up"},               {VIPER_KEY_PAGEUP, "PageUp"},
-        {VIPER_KEY_PAGEDOWN, "PageDown"},   {VIPER_KEY_HOME, "Home"},
-        {VIPER_KEY_END, "End"},             {VIPER_KEY_F1, "F1"},
-        {VIPER_KEY_F2, "F2"},               {VIPER_KEY_F3, "F3"},
-        {VIPER_KEY_F4, "F4"},               {VIPER_KEY_F5, "F5"},
-        {VIPER_KEY_F6, "F6"},               {VIPER_KEY_F7, "F7"},
-        {VIPER_KEY_F8, "F8"},               {VIPER_KEY_F9, "F9"},
-        {VIPER_KEY_F10, "F10"},             {VIPER_KEY_F11, "F11"},
-        {VIPER_KEY_F12, "F12"},             {VIPER_KEY_LSHIFT, "Left Shift"},
-        {VIPER_KEY_RSHIFT, "Right Shift"},  {VIPER_KEY_LCTRL, "Left Ctrl"},
-        {VIPER_KEY_RCTRL, "Right Ctrl"},    {VIPER_KEY_LALT, "Left Alt"},
-        {VIPER_KEY_RALT, "Right Alt"},      {VIPER_KEY_MINUS, "Minus"},
-        {VIPER_KEY_EQUALS, "Equals"},       {VIPER_KEY_LBRACKET, "Left Bracket"},
+        {VIPER_KEY_SPACE, "Space"},
+        {VIPER_KEY_ESCAPE, "Escape"},
+        {VIPER_KEY_ENTER, "Enter"},
+        {VIPER_KEY_TAB, "Tab"},
+        {VIPER_KEY_BACKSPACE, "Backspace"},
+        {VIPER_KEY_INSERT, "Insert"},
+        {VIPER_KEY_DELETE, "Delete"},
+        {VIPER_KEY_RIGHT, "Right"},
+        {VIPER_KEY_LEFT, "Left"},
+        {VIPER_KEY_DOWN, "Down"},
+        {VIPER_KEY_UP, "Up"},
+        {VIPER_KEY_PAGEUP, "PageUp"},
+        {VIPER_KEY_PAGEDOWN, "PageDown"},
+        {VIPER_KEY_HOME, "Home"},
+        {VIPER_KEY_END, "End"},
+        {VIPER_KEY_F1, "F1"},
+        {VIPER_KEY_F2, "F2"},
+        {VIPER_KEY_F3, "F3"},
+        {VIPER_KEY_F4, "F4"},
+        {VIPER_KEY_F5, "F5"},
+        {VIPER_KEY_F6, "F6"},
+        {VIPER_KEY_F7, "F7"},
+        {VIPER_KEY_F8, "F8"},
+        {VIPER_KEY_F9, "F9"},
+        {VIPER_KEY_F10, "F10"},
+        {VIPER_KEY_F11, "F11"},
+        {VIPER_KEY_F12, "F12"},
+        {VIPER_KEY_LSHIFT, "Left Shift"},
+        {VIPER_KEY_RSHIFT, "Right Shift"},
+        {VIPER_KEY_LCTRL, "Left Ctrl"},
+        {VIPER_KEY_RCTRL, "Right Ctrl"},
+        {VIPER_KEY_LALT, "Left Alt"},
+        {VIPER_KEY_RALT, "Right Alt"},
+        {VIPER_KEY_MINUS, "Minus"},
+        {VIPER_KEY_EQUALS, "Equals"},
+        {VIPER_KEY_LBRACKET, "Left Bracket"},
         {VIPER_KEY_RBRACKET, "Right Bracket"},
-        {VIPER_KEY_BACKSLASH, "Backslash"}, {VIPER_KEY_SEMICOLON, "Semicolon"},
-        {VIPER_KEY_QUOTE, "Quote"},         {VIPER_KEY_GRAVE, "Grave"},
-        {VIPER_KEY_COMMA, "Comma"},         {VIPER_KEY_PERIOD, "Period"},
-        {VIPER_KEY_SLASH, "Slash"},         {VIPER_KEY_NUM0, "Numpad 0"},
-        {VIPER_KEY_NUM1, "Numpad 1"},       {VIPER_KEY_NUM2, "Numpad 2"},
-        {VIPER_KEY_NUM3, "Numpad 3"},       {VIPER_KEY_NUM4, "Numpad 4"},
-        {VIPER_KEY_NUM5, "Numpad 5"},       {VIPER_KEY_NUM6, "Numpad 6"},
-        {VIPER_KEY_NUM7, "Numpad 7"},       {VIPER_KEY_NUM8, "Numpad 8"},
-        {VIPER_KEY_NUM9, "Numpad 9"},       {VIPER_KEY_NUMADD, "Numpad Add"},
+        {VIPER_KEY_BACKSLASH, "Backslash"},
+        {VIPER_KEY_SEMICOLON, "Semicolon"},
+        {VIPER_KEY_QUOTE, "Quote"},
+        {VIPER_KEY_GRAVE, "Grave"},
+        {VIPER_KEY_COMMA, "Comma"},
+        {VIPER_KEY_PERIOD, "Period"},
+        {VIPER_KEY_SLASH, "Slash"},
+        {VIPER_KEY_NUM0, "Numpad 0"},
+        {VIPER_KEY_NUM1, "Numpad 1"},
+        {VIPER_KEY_NUM2, "Numpad 2"},
+        {VIPER_KEY_NUM3, "Numpad 3"},
+        {VIPER_KEY_NUM4, "Numpad 4"},
+        {VIPER_KEY_NUM5, "Numpad 5"},
+        {VIPER_KEY_NUM6, "Numpad 6"},
+        {VIPER_KEY_NUM7, "Numpad 7"},
+        {VIPER_KEY_NUM8, "Numpad 8"},
+        {VIPER_KEY_NUM9, "Numpad 9"},
+        {VIPER_KEY_NUMADD, "Numpad Add"},
         {VIPER_KEY_NUMSUB, "Numpad Subtract"},
         {VIPER_KEY_NUMMUL, "Numpad Multiply"},
         {VIPER_KEY_NUMDIV, "Numpad Divide"},

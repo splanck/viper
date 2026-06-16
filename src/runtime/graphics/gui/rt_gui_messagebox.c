@@ -65,8 +65,8 @@ static char *rt_messagebox_strdup(const char *text) {
 static int rt_messagebox_label_is_cancel(const char *label) {
     if (!label)
         return 0;
-    return strcasecmp(label, "cancel") == 0 || strcasecmp(label, "close") == 0 ||
-           strcasecmp(label, "no") == 0;
+    return rt_gui_ascii_casecmp(label, "cancel") == 0 ||
+           rt_gui_ascii_casecmp(label, "close") == 0 || rt_gui_ascii_casecmp(label, "no") == 0;
 }
 
 /// @brief Configure a dialog for modal presentation: enforce minimum width, apply font,

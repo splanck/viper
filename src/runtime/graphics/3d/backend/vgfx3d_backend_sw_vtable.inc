@@ -558,13 +558,13 @@ typedef struct {
     float half_w;
     float half_h;
     sw_screen_tri_list_t out;
-    volatile int32_t *failed;
+    int32_t *failed;
 } sw_clip_task_t;
 
 typedef struct {
     const sw_tile_grid_t *grid;
     const sw_screen_tri_list_t *tris;
-    volatile int32_t *next_tile;
+    int32_t *next_tile;
     uint8_t *pixels;
     float *zbuf;
     int32_t fb_w;
@@ -840,7 +840,7 @@ static int sw_collect_screen_triangles_parallel(sw_context_t *ctx,
     uint32_t tri_count;
     int32_t task_count;
     int32_t submitted = 0;
-    volatile int32_t failed = 0;
+    int32_t failed = 0;
     if (!ctx || !ctx->worker_pool || ctx->worker_count <= 1 || !out)
         return 0;
     tri_count = index_count / 3u;
@@ -1008,7 +1008,7 @@ static int sw_raster_tiles_parallel(sw_context_t *ctx,
                                     const float *ambient,
                                     int8_t backface_cull) {
     sw_raster_task_t tasks[SW_MAX_TASKS];
-    volatile int32_t next_tile = 0;
+    int32_t next_tile = 0;
     int32_t task_count;
     if (!ctx || !ctx->worker_pool || !grid || grid->active_count <= 0 || !tris || !mv)
         return 0;

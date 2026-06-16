@@ -24,6 +24,7 @@
 
 #include "rt_gui.h"
 #include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_string.h"
 
 #include "../lib/graphics/include/vgfx.h"
@@ -36,7 +37,7 @@
 #include "../lib/gui/include/vg_widgets.h"
 
 // Native file dialogs on macOS
-#ifdef __APPLE__
+#if RT_PLATFORM_MACOS
 #include "../lib/gui/src/dialogs/vg_filedialog_native.h"
 #endif
 
@@ -50,13 +51,25 @@
 #include <stdlib.h>
 #include <string.h>
 
-// For strcasecmp: Windows uses _stricmp, POSIX uses strcasecmp
-#ifdef _WIN32
-#define strcasecmp _stricmp
-#else
 // Unix and ViperDOS: strings.h provides strcasecmp.
+#if !RT_PLATFORM_WINDOWS
 #include <strings.h>
 #endif
+
+/// @brief Compare two GUI ASCII tokens case-insensitively without exporting a macro.
+/// @details Windows exposes the comparison as `_stricmp`; POSIX exposes `strcasecmp`. Keeping the
+///          choice behind a local helper avoids changing the namespace of every translation unit
+///          that includes this internal GUI header.
+/// @param a First NUL-terminated token.
+/// @param b Second NUL-terminated token.
+/// @return Less than, equal to, or greater than zero using the platform comparison semantics.
+static inline int rt_gui_ascii_casecmp(const char *a, const char *b) {
+#if RT_PLATFORM_WINDOWS
+    return _stricmp(a, b);
+#else
+    return strcasecmp(a, b);
+#endif
+}
 
 //=============================================================================
 // App state (defined in rt_gui_app.c)
@@ -631,7 +644,7 @@ void rt_theme_apply_hidpi_scale(void);
 // macOS native app menubar bridge
 //=============================================================================
 
-#ifdef __APPLE__
+#if RT_PLATFORM_MACOS
 /// @brief Register @p menubar as the app's native macOS menubar.
 /// @return true if it became the active native menubar. Defined in
 ///         rt_gui_macos_menu.m.

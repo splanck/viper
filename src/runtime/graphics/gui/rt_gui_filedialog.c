@@ -242,7 +242,7 @@ rt_string rt_filedialog_open(rt_string title, rt_string default_path, rt_string 
     char *cfilter = rt_string_to_cstr_no_nul(filter);
     char *cpath = rt_string_to_cstr_no_nul(default_path);
 
-#ifdef __APPLE__
+#if RT_PLATFORM_MACOS
     // Use native macOS file dialog
     char *result = vg_native_open_file(ctitle, cpath, "Files", cfilter);
 #else
@@ -287,7 +287,7 @@ rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, r
     char *cpath = rt_string_to_cstr_no_nul(default_path);
     char *cfilter = rt_string_to_cstr_no_nul(filter);
 
-#ifdef __APPLE__
+#if RT_PLATFORM_MACOS
     size_t count = 0;
     char **paths = vg_native_open_files(ctitle, cpath, "Files", cfilter, &count);
     rt_string result = rt_str_empty();
@@ -370,7 +370,7 @@ rt_string rt_filedialog_save(rt_string title,
     char *cname = rt_string_to_gui_cstr(default_name);
     char *cpath = rt_string_to_cstr_no_nul(default_path);
 
-#ifdef __APPLE__
+#if RT_PLATFORM_MACOS
     // Use native macOS file dialog
     char *result = vg_native_save_file(ctitle, cpath, cname, "Files", cfilter);
 #else
@@ -417,7 +417,7 @@ rt_string rt_filedialog_select_folder(rt_string title, rt_string default_path) {
     char *ctitle = rt_string_to_gui_cstr(title);
     char *cpath = rt_string_to_cstr_no_nul(default_path);
 
-#ifdef __APPLE__
+#if RT_PLATFORM_MACOS
     // Use native macOS file dialog
     char *result = vg_native_select_folder(ctitle, cpath);
 #else

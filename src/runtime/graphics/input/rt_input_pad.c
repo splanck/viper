@@ -134,7 +134,7 @@ static void platform_pad_poll(void);
 /// @brief Platform-specific rumble — set left/right motor strengths in [0,1].
 static void platform_pad_vibrate(int64_t index, double left, double right);
 
-#if defined(__APPLE__)
+#if RT_PLATFORM_MACOS
 //-----------------------------------------------------------------------------
 // macOS Implementation (IOKit HID Manager)
 //-----------------------------------------------------------------------------
@@ -661,7 +661,7 @@ static void platform_pad_vibrate(int64_t index, double left, double right) {
     // Vibration is not available via generic HID APIs on macOS.
 }
 
-#elif defined(__linux__)
+#elif RT_PLATFORM_LINUX
 //-----------------------------------------------------------------------------
 // Linux Implementation (evdev)
 //-----------------------------------------------------------------------------
@@ -1112,7 +1112,7 @@ static void platform_pad_vibrate(int64_t index, double left, double right) {
     }
 }
 
-#elif defined(_WIN32)
+#elif RT_PLATFORM_WINDOWS
 //-----------------------------------------------------------------------------
 // Windows Implementation (XInput)
 //-----------------------------------------------------------------------------
@@ -1264,20 +1264,32 @@ static void platform_pad_vibrate(int64_t index, double left, double right) {
 // Deadzone Application
 //=============================================================================
 
-/// @brief Apply per-axis deadzone to stick value
-static double apply_deadzone(double value) {
+/// @brief Apply a scaled radial deadzone and return one stick component.
+/// @details Axial deadzones distort diagonal input because each component is rescaled
+///          independently. This helper treats the pair as a vector, removes the inner radius,
+///          and rescales the remaining magnitude back to [0, 1].
+/// @param x Clamped horizontal stick component.
+/// @param y Clamped vertical stick component.
+/// @param want_x Non-zero to return the X component; zero to return Y.
+/// @return Deadzone-adjusted component in [-1, 1].
+static double apply_radial_deadzone_component(double x, double y, int want_x) {
+    if (!isfinite(x))
+        x = 0.0;
+    if (!isfinite(y))
+        y = 0.0;
     if (g_pad_deadzone <= 0.0)
-        return value;
+        return want_x ? x : y;
     if (g_pad_deadzone >= 1.0)
         return 0.0;
 
-    double abs_value = fabs(value);
-    if (abs_value < g_pad_deadzone)
+    double mag = sqrt(x * x + y * y);
+    if (!isfinite(mag) || mag <= g_pad_deadzone)
         return 0.0;
 
-    // Rescale remaining range to 0..1
-    double sign = value < 0 ? -1.0 : 1.0;
-    return sign * (abs_value - g_pad_deadzone) / (1.0 - g_pad_deadzone);
+    double scaled_mag = mag > 1.0 ? 1.0 : mag;
+    double scaled = (scaled_mag - g_pad_deadzone) / (1.0 - g_pad_deadzone);
+    double component = want_x ? x : y;
+    return (component / mag) * scaled;
 }
 
 /// @brief Clamp value to valid range
@@ -1454,7 +1466,9 @@ double rt_pad_left_x(int64_t index) {
     if (!g_pads[index].connected)
         return 0.0;
 
-    return apply_deadzone(clamp_axis(g_pads[index].left_x, -1.0, 1.0));
+    return apply_radial_deadzone_component(clamp_axis(g_pads[index].left_x, -1.0, 1.0),
+                                           clamp_axis(g_pads[index].left_y, -1.0, 1.0),
+                                           1);
 }
 
 /// @brief Get the left stick Y axis value (-1.0 to 1.0, deadzone applied).
@@ -1465,7 +1479,9 @@ double rt_pad_left_y(int64_t index) {
     if (!g_pads[index].connected)
         return 0.0;
 
-    return apply_deadzone(clamp_axis(g_pads[index].left_y, -1.0, 1.0));
+    return apply_radial_deadzone_component(clamp_axis(g_pads[index].left_x, -1.0, 1.0),
+                                           clamp_axis(g_pads[index].left_y, -1.0, 1.0),
+                                           0);
 }
 
 /// @brief Get the right stick X axis value (-1.0 to 1.0, deadzone applied).
@@ -1476,7 +1492,9 @@ double rt_pad_right_x(int64_t index) {
     if (!g_pads[index].connected)
         return 0.0;
 
-    return apply_deadzone(clamp_axis(g_pads[index].right_x, -1.0, 1.0));
+    return apply_radial_deadzone_component(clamp_axis(g_pads[index].right_x, -1.0, 1.0),
+                                           clamp_axis(g_pads[index].right_y, -1.0, 1.0),
+                                           1);
 }
 
 /// @brief Get the right stick Y axis value (-1.0 to 1.0, deadzone applied).
@@ -1487,7 +1505,9 @@ double rt_pad_right_y(int64_t index) {
     if (!g_pads[index].connected)
         return 0.0;
 
-    return apply_deadzone(clamp_axis(g_pads[index].right_y, -1.0, 1.0));
+    return apply_radial_deadzone_component(clamp_axis(g_pads[index].right_x, -1.0, 1.0),
+                                           clamp_axis(g_pads[index].right_y, -1.0, 1.0),
+                                           0);
 }
 
 /// @brief Get the left trigger value (0.0 = released, 1.0 = fully pressed).

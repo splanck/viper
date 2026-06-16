@@ -268,7 +268,7 @@ static void rt_gui_restore_app_runtime_state(rt_gui_app_t *app) {
     *vg_tooltip_manager_get() = app->tooltip_manager_state;
 }
 
-#ifdef __APPLE__
+#if RT_PLATFORM_MACOS
 /// @brief Return non-zero if the macOS native menu bar should be re-synced during an app switch.
 /// @details Syncing is needed whenever a window is involved in the transition:
 ///          when activating an app that has a window, or when deactivating an
@@ -567,7 +567,7 @@ rt_gui_app_t *rt_gui_get_active_app(void) {
 /// @param app App to activate. May be NULL to deactivate.
 void rt_gui_activate_app(rt_gui_app_t *app) {
     RT_ASSERT_MAIN_THREAD();
-#ifdef __APPLE__
+#if RT_PLATFORM_MACOS
     rt_gui_app_t *previous_active = s_active_app;
 #endif
     if (app == s_active_app) {
@@ -584,7 +584,7 @@ void rt_gui_activate_app(rt_gui_app_t *app) {
     s_current_app = app;
     rt_gui_refresh_theme(app);
     rt_gui_restore_app_runtime_state(app);
-#ifdef __APPLE__
+#if RT_PLATFORM_MACOS
     if (rt_gui_should_sync_macos_menu(app, previous_active))
         rt_gui_macos_menu_sync_app(app);
 #else
@@ -1734,7 +1734,6 @@ void rt_gui_app_render(void *app_ptr) {
     bool overlays_need_paint = rt_gui_app_overlays_need_paint(app);
     if (!did_layout && !size_changed && !root_needs_paint && !overlays_need_paint) {
         vgfx_pump_events(app->window);
-        rt_sleep_ms(16);
         return;
     }
 

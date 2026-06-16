@@ -202,16 +202,18 @@ static int parse_shortcut_keys(
             return 0;
         }
 
-        if (strcasecmp(token, "Ctrl") == 0 || strcasecmp(token, "Control") == 0) {
+        if (rt_gui_ascii_casecmp(token, "Ctrl") == 0 ||
+            rt_gui_ascii_casecmp(token, "Control") == 0) {
             *ctrl = 1;
             recognized = 1;
-        } else if (strcasecmp(token, "Shift") == 0) {
+        } else if (rt_gui_ascii_casecmp(token, "Shift") == 0) {
             *shift = 1;
             recognized = 1;
-        } else if (strcasecmp(token, "Alt") == 0) {
+        } else if (rt_gui_ascii_casecmp(token, "Alt") == 0) {
             *alt = 1;
             recognized = 1;
-        } else if (strcasecmp(token, "Cmd") == 0 || strcasecmp(token, "Command") == 0) {
+        } else if (rt_gui_ascii_casecmp(token, "Cmd") == 0 ||
+                   rt_gui_ascii_casecmp(token, "Command") == 0) {
             *super = 1;
             recognized = 1;
         } else if (strlen(token) == 1) {
@@ -234,98 +236,103 @@ static int parse_shortcut_keys(
                 *key = VG_KEY_F1 + ((int)fnum - 1);
                 recognized = 1;
             }
-        } else if (strcasecmp(token, "Enter") == 0 || strcasecmp(token, "Return") == 0) {
+        } else if (rt_gui_ascii_casecmp(token, "Enter") == 0 ||
+                   rt_gui_ascii_casecmp(token, "Return") == 0) {
             if (*key != 0) {
                 free(copy);
                 return 0;
             }
             *key = VG_KEY_ENTER;
             recognized = 1;
-        } else if (strcasecmp(token, "Escape") == 0 || strcasecmp(token, "Esc") == 0) {
+        } else if (rt_gui_ascii_casecmp(token, "Escape") == 0 ||
+                   rt_gui_ascii_casecmp(token, "Esc") == 0) {
             if (*key != 0) {
                 free(copy);
                 return 0;
             }
             *key = VG_KEY_ESCAPE;
             recognized = 1;
-        } else if (strcasecmp(token, "Space") == 0) {
+        } else if (rt_gui_ascii_casecmp(token, "Space") == 0) {
             if (*key != 0) {
                 free(copy);
                 return 0;
             }
             *key = VG_KEY_SPACE;
             recognized = 1;
-        } else if (strcasecmp(token, "Tab") == 0) {
+        } else if (rt_gui_ascii_casecmp(token, "Tab") == 0) {
             if (*key != 0) {
                 free(copy);
                 return 0;
             }
             *key = VG_KEY_TAB;
             recognized = 1;
-        } else if (strcasecmp(token, "Backspace") == 0) {
+        } else if (rt_gui_ascii_casecmp(token, "Backspace") == 0) {
             if (*key != 0) {
                 free(copy);
                 return 0;
             }
             *key = VG_KEY_BACKSPACE;
             recognized = 1;
-        } else if (strcasecmp(token, "Delete") == 0 || strcasecmp(token, "Del") == 0) {
+        } else if (rt_gui_ascii_casecmp(token, "Delete") == 0 ||
+                   rt_gui_ascii_casecmp(token, "Del") == 0) {
             if (*key != 0) {
                 free(copy);
                 return 0;
             }
             *key = VG_KEY_DELETE;
             recognized = 1;
-        } else if (strcasecmp(token, "Home") == 0) {
+        } else if (rt_gui_ascii_casecmp(token, "Home") == 0) {
             if (*key != 0) {
                 free(copy);
                 return 0;
             }
             *key = VG_KEY_HOME;
             recognized = 1;
-        } else if (strcasecmp(token, "End") == 0) {
+        } else if (rt_gui_ascii_casecmp(token, "End") == 0) {
             if (*key != 0) {
                 free(copy);
                 return 0;
             }
             *key = VG_KEY_END;
             recognized = 1;
-        } else if (strcasecmp(token, "PageUp") == 0 || strcasecmp(token, "PgUp") == 0) {
+        } else if (rt_gui_ascii_casecmp(token, "PageUp") == 0 ||
+                   rt_gui_ascii_casecmp(token, "PgUp") == 0) {
             if (*key != 0) {
                 free(copy);
                 return 0;
             }
             *key = VG_KEY_PAGE_UP;
             recognized = 1;
-        } else if (strcasecmp(token, "PageDown") == 0 || strcasecmp(token, "PgDn") == 0) {
+        } else if (rt_gui_ascii_casecmp(token, "PageDown") == 0 ||
+                   rt_gui_ascii_casecmp(token, "PgDn") == 0) {
             if (*key != 0) {
                 free(copy);
                 return 0;
             }
             *key = VG_KEY_PAGE_DOWN;
             recognized = 1;
-        } else if (strcasecmp(token, "Left") == 0) {
+        } else if (rt_gui_ascii_casecmp(token, "Left") == 0) {
             if (*key != 0) {
                 free(copy);
                 return 0;
             }
             *key = VG_KEY_LEFT;
             recognized = 1;
-        } else if (strcasecmp(token, "Right") == 0) {
+        } else if (rt_gui_ascii_casecmp(token, "Right") == 0) {
             if (*key != 0) {
                 free(copy);
                 return 0;
             }
             *key = VG_KEY_RIGHT;
             recognized = 1;
-        } else if (strcasecmp(token, "Up") == 0) {
+        } else if (rt_gui_ascii_casecmp(token, "Up") == 0) {
             if (*key != 0) {
                 free(copy);
                 return 0;
             }
             *key = VG_KEY_UP;
             recognized = 1;
-        } else if (strcasecmp(token, "Down") == 0) {
+        } else if (rt_gui_ascii_casecmp(token, "Down") == 0) {
             if (*key != 0) {
                 free(copy);
                 return 0;

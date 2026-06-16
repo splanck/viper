@@ -55,6 +55,7 @@ extern int64_t rt_pixels_height(void *pixels);
 extern void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len);
 
 #define VIDEOPLAYER_MAX_FILE_BYTES (INT64_C(512) * 1024 * 1024)
+#define VIDEOPLAYER_MAX_OGV_UPDATE_DECODE_FRAMES 8
 
 /* Internal pixel struct for direct buffer copy */
 typedef struct {
@@ -1125,6 +1126,36 @@ static int ogv_decode_until_frame(rt_videoplayer *vp, int32_t target_frame) {
     return 1;
 }
 
+/// @brief Decode toward a target OGV frame without exceeding a per-update work budget.
+/// @details Regular playback must not spend an unbounded amount of one host frame decoding
+///          intermediate Theora frames after audio sync or a large @c dt jumps ahead. This helper
+///          advances at most @p max_frames decoded frames and reports whether the target was
+///          reached.
+/// @param vp Video player whose OGV decoder should advance.
+/// @param target_frame Sequential target frame index.
+/// @param max_frames Maximum number of data frames to decode in this call.
+/// @return 1 when @p target_frame was reached, 0 on decode failure, and 2 when the budget was
+/// spent.
+static int ogv_decode_until_frame_budget(rt_videoplayer *vp,
+                                         int32_t target_frame,
+                                         int32_t max_frames) {
+    if (!vp)
+        return 0;
+    if (target_frame < 0 || vp->current_frame >= target_frame)
+        return 1;
+    if (max_frames <= 0)
+        return 2;
+    int32_t decoded = 0;
+    while (vp->current_frame < target_frame) {
+        if (decoded >= max_frames)
+            return 2;
+        if (!ogv_decode_next_frame(vp))
+            return 0;
+        decoded++;
+    }
+    return 1;
+}
+
 /// @brief GC finalizer for the videoplayer — releases the ogg reader, decoder, frame buffers, audio
 /// track.
 static void videoplayer_finalizer(void *obj) {
@@ -1293,7 +1324,7 @@ void rt_videoplayer_pause(void *obj) {
 #endif
 }
 
-/// @brief Stop playback and rewind to frame 0. The currently displayed frame remains visible.
+/// @brief Stop playback and rewind to frame 0, restoring the first frame when possible.
 void rt_videoplayer_stop(void *obj) {
     rt_videoplayer *vp = videoplayer_checked(obj);
     if (!vp)
@@ -1301,8 +1332,16 @@ void rt_videoplayer_stop(void *obj) {
     vp->playing = 0;
     vp->position = 0.0;
     vp->current_frame = -1;
-    if (vp->container_type == 1)
+    if (vp->total_frames > 0) {
+        if (vp->container_type == 1) {
+            if (ogv_prepare_playback(vp))
+                (void)ogv_decode_until_frame(vp, 0);
+        } else {
+            (void)videoplayer_decode_avi_frame(vp, 0);
+        }
+    } else if (vp->container_type == 1) {
         ogv_prepare_playback(vp);
+    }
 #ifdef VIPER_ENABLE_AUDIO
     if (vp->container_type == 1)
         videoplayer_stop_audio(vp);
@@ -1341,9 +1380,9 @@ void rt_videoplayer_seek(void *obj, double seconds) {
     if (!vp)
         return;
     seconds = videoplayer_clamp_seconds(vp, seconds);
-    size_t snapshot_count = 0;
-    uint32_t *snapshot = videoplayer_snapshot_display(vp, &snapshot_count);
     if (vp->container_type == 1) {
+        size_t snapshot_count = 0;
+        uint32_t *snapshot = videoplayer_snapshot_display(vp, &snapshot_count);
         double old_position = vp->position;
         int32_t old_frame = vp->current_frame;
         int32_t target = videoplayer_frame_index_at(vp, seconds);
@@ -1374,12 +1413,10 @@ void rt_videoplayer_seek(void *obj, double seconds) {
         if (target >= 0 && videoplayer_decode_avi_frame(vp, target)) {
             vp->position = seconds;
         } else {
-            videoplayer_restore_display(vp, snapshot, snapshot_count);
             vp->position = old_position;
             vp->current_frame = old_frame;
         }
     }
-    free(snapshot);
 }
 
 /// @brief Advance playback by `dt` seconds, decoding new frames as their timestamps elapse.
@@ -1436,7 +1473,11 @@ void rt_videoplayer_update(void *obj, double dt) {
 
     if (vp->container_type == 1) {
         if (target != vp->current_frame) {
-            if (!ogv_decode_until_frame(vp, target)) {
+            int decode_rc =
+                ogv_decode_until_frame_budget(vp, target, VIDEOPLAYER_MAX_OGV_UPDATE_DECODE_FRAMES);
+            if (decode_rc == 2)
+                return;
+            if (!decode_rc) {
                 vp->playing = 0;
                 if (vp->duration > 0.0)
                     vp->position = vp->duration;

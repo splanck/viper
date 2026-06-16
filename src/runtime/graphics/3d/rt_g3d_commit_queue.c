@@ -28,8 +28,8 @@ typedef struct rt_g3d_commit_item {
 /// @brief Queue state: a lock-free FIFO of items plus submit/drain counters.
 typedef struct rt_g3d_commit_queue {
     void *items;
-    volatile int64_t submitted;
-    volatile int64_t drained;
+    int64_t submitted;
+    int64_t drained;
 } rt_g3d_commit_queue;
 
 /// @brief Allocate a commit queue wrapping a fresh lock-free concurrent FIFO.

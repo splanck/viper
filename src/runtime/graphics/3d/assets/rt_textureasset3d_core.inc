@@ -67,7 +67,7 @@ static const uint8_t ktx2_identifier[12] = {
     0x0A,
 };
 
-static volatile int64_t g_next_textureasset3d_cache_identity = 1;
+static int64_t g_next_textureasset3d_cache_identity = 1;
 
 /// @brief Atomically allocate the next process-unique, nonzero cache identity.
 /// @details 0 is reserved as "no key", so the loop retries past a wrapped-to-zero value.

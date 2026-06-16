@@ -192,7 +192,7 @@ static int game3d_path_is_absolute(const char *path) {
         return 0;
     if (path[0] == '/' || path[0] == '\\')
         return 1;
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     if (((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) &&
         path[1] == ':')
         return 1;

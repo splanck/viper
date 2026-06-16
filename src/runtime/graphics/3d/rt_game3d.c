@@ -167,8 +167,7 @@ static void *g_game3d_asset_commit_queue = NULL;
  * Keep those updates on the main thread until those runtime paths are explicitly audited as
  * worker-thread safe. */
 #define RT_GAME3D_PARALLEL_ANIMATOR_UPDATES 0
-static volatile uint64_t g_game3d_asset_upload_budget_bytes =
-    RT_GAME3D_ASSET_UPLOAD_BUDGET_DEFAULT_BYTES;
+static uint64_t g_game3d_asset_upload_budget_bytes = RT_GAME3D_ASSET_UPLOAD_BUDGET_DEFAULT_BYTES;
 
 #if RT_PLATFORM_WINDOWS
 static INIT_ONCE g_game3d_model_cache_once = INIT_ONCE_STATIC_INIT;

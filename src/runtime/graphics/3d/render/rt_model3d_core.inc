@@ -262,6 +262,7 @@ static rt_model3d *model_new(void) {
 /// the caller can safely trap and bail).
 static int model_grow_array(void ***arr, int32_t *cap, int32_t need) {
     int32_t new_cap;
+    int32_t old_cap;
     if (need < 0 || !cap || !arr)
         return 0;
     if (*cap < 0)
@@ -282,9 +283,11 @@ static int model_grow_array(void ***arr, int32_t *cap, int32_t need) {
         return 0;
     if ((size_t)new_cap > SIZE_MAX / sizeof(void *))
         return 0;
+    old_cap = *cap;
     void **grown = (void **)realloc(*arr, (size_t)new_cap * sizeof(void *));
     if (!grown)
         return 0;
+    memset(grown + old_cap, 0, (size_t)(new_cap - old_cap) * sizeof(void *));
     *arr = grown;
     *cap = new_cap;
     return 1;
@@ -1583,13 +1586,70 @@ static double model_obj_clamp01(double value) {
     return value;
 }
 
-/// @brief Extract the texture filename from an MTL map directive value, taking the last
-///   whitespace-delimited token (after trimming) so leading option flags (e.g. "-o 1 1") are
-///   skipped. @return A malloc'd copy of the path, or NULL.
+/// @brief Return the argument count for a Wavefront MTL texture-map option.
+/// @details Counts are intentionally conservative for the common map options that appear before
+///          filenames. Unknown options return -1 so the parser can stop treating the line as
+///          option-only and preserve the remaining text as the texture path.
+/// @param token Option token, including its leading '-'.
+/// @return Number of required option arguments, -2 for a one-to-three numeric vector option,
+///         or -1 when @p token is not recognized.
+static int model_obj_map_option_arg_count(const char *token) {
+    if (!token || token[0] != '-')
+        return -1;
+    if (strcmp(token, "-blendu") == 0 || strcmp(token, "-blendv") == 0 ||
+        strcmp(token, "-boost") == 0 || strcmp(token, "-texres") == 0 ||
+        strcmp(token, "-clamp") == 0 || strcmp(token, "-bm") == 0 ||
+        strcmp(token, "-imfchan") == 0 || strcmp(token, "-type") == 0)
+        return 1;
+    if (strcmp(token, "-mm") == 0)
+        return 2;
+    if (strcmp(token, "-o") == 0 || strcmp(token, "-s") == 0 || strcmp(token, "-t") == 0)
+        return -2;
+    return -1;
+}
+
+/// @brief Return whether an MTL token looks like a numeric option argument.
+/// @details Used only to keep variable-width options such as `-o`, `-s`, and `-t` from consuming
+///          the filename. It accepts ordinary OBJ-style numeric starts, not full floating parsing.
+/// @param start First byte of the token.
+/// @param end One-past-end pointer for the token.
+/// @return 1 when the token starts like a signed decimal/exponent number; otherwise 0.
+static int model_obj_mtl_token_is_numeric(const char *start, const char *end) {
+    if (!start || start >= end)
+        return 0;
+    if (*start == '+' || *start == '-')
+        start++;
+    return start < end && ((*start >= '0' && *start <= '9') || *start == '.');
+}
+
+/// @brief Advance over spaces and tabs within a trimmed MTL directive range.
+/// @param p Current cursor.
+/// @param end One-past-end pointer for the directive value.
+/// @return First non-space/tab byte at or before @p end.
+static const char *model_obj_skip_mtl_spaces(const char *p, const char *end) {
+    while (p < end && (*p == ' ' || *p == '\t'))
+        p++;
+    return p;
+}
+
+/// @brief Advance over one whitespace-delimited MTL token.
+/// @param p Token start.
+/// @param end One-past-end pointer for the directive value.
+/// @return First whitespace byte or @p end.
+static const char *model_obj_skip_mtl_token(const char *p, const char *end) {
+    while (p < end && *p != ' ' && *p != '\t')
+        p++;
+    return p;
+}
+
+/// @brief Extract the texture filename from an MTL map directive value.
+/// @details Skips recognized `map_*` option tokens and their arguments, then returns the remaining
+///          text as the path. Quoted paths have their quotes stripped; unquoted paths preserve
+///          internal spaces so filenames such as `brick wall.png` survive option parsing.
+/// @return A malloc'd copy of the path, or NULL.
 static char *model_obj_extract_map_path(const char *value) {
     const char *start;
     const char *end;
-    const char *last;
     if (!value)
         return NULL;
     start = value;
@@ -1598,35 +1658,69 @@ static char *model_obj_extract_map_path(const char *value) {
     end = start + strlen(start);
     while (end > start && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\n' || end[-1] == '\r'))
         end--;
-    if (end > start && (*start == '"' || *start == '\'')) {
-        char quote = *start++;
-        const char *quoted_end = start;
+    while (start < end && *start == '-') {
+        const char *token_end = model_obj_skip_mtl_token(start, end);
+        char option[32];
+        size_t option_len = (size_t)(token_end - start);
+        int arg_count;
+        if (option_len == 0 || option_len >= sizeof(option))
+            break;
+        memcpy(option, start, option_len);
+        option[option_len] = '\0';
+        arg_count = model_obj_map_option_arg_count(option);
+        if (arg_count == -1)
+            break;
+        start = token_end;
+        if (arg_count == -2) {
+            int consumed = 0;
+            for (int i = 0; i < 3; i++) {
+                const char *arg_start = model_obj_skip_mtl_spaces(start, end);
+                const char *arg_end;
+                if (arg_start >= end)
+                    break;
+                arg_end = model_obj_skip_mtl_token(arg_start, end);
+                if (!model_obj_mtl_token_is_numeric(arg_start, arg_end))
+                    break;
+                start = arg_end;
+                consumed++;
+            }
+            if (consumed == 0)
+                break;
+            start = model_obj_skip_mtl_spaces(start, end);
+            continue;
+        }
+        for (int i = 0; i < arg_count; i++) {
+            start = model_obj_skip_mtl_spaces(start, end);
+            if (start >= end)
+                return NULL;
+            start = model_obj_skip_mtl_token(start, end);
+        }
+        start = model_obj_skip_mtl_spaces(start, end);
+    }
+    if (start >= end)
+        return NULL;
+    if (*start == '"' || *start == '\'') {
+        char quote = *start;
+        const char *quoted_start = start + 1;
+        const char *quoted_end = quoted_start;
         while (quoted_end < end && *quoted_end != quote)
             quoted_end++;
         if (quoted_end < end)
-            return model_strdup_range(start, quoted_end);
-    }
-    last = end;
-    while (last > start) {
-        const char *token_start = last;
-        while (token_start > start && token_start[-1] != ' ' && token_start[-1] != '\t')
-            token_start--;
-        if (token_start < end && (*token_start == '"' || *token_start == '\'')) {
-            char quote = *token_start;
-            const char *quoted_end = token_start + 1;
-            while (quoted_end < end && *quoted_end != quote)
-                quoted_end++;
-            if (quoted_end < end)
-                return model_strdup_range(token_start + 1, quoted_end);
+            return model_strdup_range(quoted_start, quoted_end);
+    } else {
+        const char *scan = start;
+        while (scan < end) {
+            if (*scan == '"' || *scan == '\'') {
+                char quote = *scan;
+                const char *quoted_start = scan + 1;
+                const char *quoted_end = quoted_start;
+                while (quoted_end < end && *quoted_end != quote)
+                    quoted_end++;
+                if (quoted_end < end)
+                    return model_strdup_range(quoted_start, quoted_end);
+            }
+            scan++;
         }
-        if (token_start == start)
-            break;
-        last = token_start - 1;
-        while (last > start && (last[-1] == ' ' || last[-1] == '\t'))
-            last--;
     }
-    last = end;
-    while (last > start && last[-1] != ' ' && last[-1] != '\t')
-        last--;
-    return model_strdup_range(last, end);
+    return model_strdup_range(start, end);
 }

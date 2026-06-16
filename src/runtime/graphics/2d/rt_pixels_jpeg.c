@@ -1097,11 +1097,11 @@ static int rt_jpeg_decode_buffer_rgba32_ex(const uint8_t *data,
                         if (tiff_magic != 42u)
                             goto exif_done;
                         uint32_t ifd_off = jpeg_tiff_read_u32(tiff + 4, big);
-                        if (ifd_off <= tiff_len - 2) {
+                        if (tiff_len >= 2u && ifd_off <= tiff_len - 2u) {
                             uint16_t count = jpeg_tiff_read_u16(tiff + ifd_off, big);
                             for (int ei = 0; ei < count; ei++) {
                                 size_t entry = ifd_off + 2 + (size_t)ei * 12;
-                                if (entry > tiff_len - 12)
+                                if (entry > tiff_len || tiff_len - entry < 12u)
                                     break;
                                 uint16_t tag = jpeg_tiff_read_u16(tiff + entry, big);
                                 if (tag == 0x0112) { // Orientation

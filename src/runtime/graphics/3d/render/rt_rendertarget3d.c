@@ -41,8 +41,8 @@
 
 #define RT_RENDERTARGET3D_DEFAULT_BUDGET_BYTES (1024ull * 1024ull * 1024ull)
 
-static volatile size_t g_rendertarget3d_reserved_bytes = 0;
-static volatile int64_t g_rendertarget3d_next_identity = 1;
+static size_t g_rendertarget3d_reserved_bytes = 0;
+static int64_t g_rendertarget3d_next_identity = 1;
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
@@ -149,7 +149,8 @@ static void rt_rendertarget_release_budget(uint64_t bytes) {
 }
 
 /// @brief Allocate a monotonic non-zero cache identity for a render-target shell.
-/// @details Backends use this instead of raw C pointers when caching native textures, avoiding stale
+/// @details Backends use this instead of raw C pointers when caching native textures, avoiding
+/// stale
 ///   cache hits if the allocator reuses a recently freed target address.
 static uint64_t rt_rendertarget_next_cache_identity(void) {
     uint64_t identity =

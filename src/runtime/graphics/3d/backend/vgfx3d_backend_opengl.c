@@ -40,6 +40,7 @@
 
 #include <dlfcn.h>
 #include <math.h>
+#include <sched.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -459,7 +460,7 @@ static struct {
 } glx;
 
 static int gl_loaded = 0;
-static volatile int gl_load_lock = 0;
+static int gl_load_lock = 0;
 
 /// @brief Acquire the process-global OpenGL dispatch table lock.
 ///
@@ -469,7 +470,12 @@ static volatile int gl_load_lock = 0;
 /// library dependency to the runtime. The GCC/Clang atomic builtins are already
 /// available on this Linux-only backend and provide a small spin lock here.
 static void gl_dispatch_lock(void) {
+    int spins = 0;
     while (__sync_lock_test_and_set(&gl_load_lock, 1)) {
+        if (++spins >= 1024) {
+            sched_yield();
+            spins = 0;
+        }
     }
 }
 
@@ -875,8 +881,7 @@ static void gl_restore_framebuffer_state(const gl_framebuffer_state_t *state) {
     gl.BindFramebuffer(GL_FRAMEBUFFER, (GLuint)state->framebuffer);
     gl.DrawBuffer((GLenum)state->draw_buffer);
     gl.ReadBuffer((GLenum)state->read_buffer);
-    gl.Viewport(
-        state->viewport[0], state->viewport[1], state->viewport[2], state->viewport[3]);
+    gl.Viewport(state->viewport[0], state->viewport[1], state->viewport[2], state->viewport[3]);
     gl.PixelStorei(GL_PACK_ALIGNMENT, state->pack_alignment);
     gl.PixelStorei(GL_UNPACK_ALIGNMENT, state->unpack_alignment);
 }
@@ -1104,8 +1109,8 @@ static int load_gl(void) {
     LOADP(PixelStorei);
     LOADP(TexImage2D);
     LOADP(TexSubImage2D);
-    gl.CompressedTexImage2D =
-        (PFNGLCOMPRESSEDTEXIMAGE2DPROC)glx.GetProcAddress((const unsigned char *)"glCompressedTexImage2D");
+    gl.CompressedTexImage2D = (PFNGLCOMPRESSEDTEXIMAGE2DPROC)glx.GetProcAddress(
+        (const unsigned char *)"glCompressedTexImage2D");
     gl.CompressedTexSubImage2D = (PFNGLCOMPRESSEDTEXSUBIMAGE2DPROC)glx.GetProcAddress(
         (const unsigned char *)"glCompressedTexSubImage2D");
     LOADP(TexParameteri);
@@ -1378,8 +1383,7 @@ static int gl_query_context_capabilities(gl_context_t *ctx) {
         if (version)
             sscanf(version, "%d.%d", &ctx->gl_major_version, &ctx->gl_minor_version);
     }
-    if (ctx->gl_major_version < 3 ||
-        (ctx->gl_major_version == 3 && ctx->gl_minor_version < 3)) {
+    if (ctx->gl_major_version < 3 || (ctx->gl_major_version == 3 && ctx->gl_minor_version < 3)) {
         fprintf(stderr,
                 "[OpenGL] GL 3.3 core backend unavailable on context version %d.%d\n",
                 ctx->gl_major_version,
@@ -1392,7 +1396,8 @@ static int gl_query_context_capabilities(gl_context_t *ctx) {
     gl.GetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &ctx->max_combined_texture_units);
     gl.GetIntegerv(GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS, &ctx->max_vertex_texture_units);
     gl.GetIntegerv(GL_MAX_TEXTURE_BUFFER_SIZE, &ctx->max_texture_buffer_size);
-    if (ctx->max_vertex_attribs < 16 || ctx->max_combined_texture_units <= GL_TU_MORPH_NORMAL_DELTAS ||
+    if (ctx->max_vertex_attribs < 16 ||
+        ctx->max_combined_texture_units <= GL_TU_MORPH_NORMAL_DELTAS ||
         ctx->max_vertex_texture_units < 2) {
         fprintf(stderr,
                 "[OpenGL] backend limits insufficient: attribs=%d combinedTex=%d vertexTex=%d\n",
@@ -1402,14 +1407,12 @@ static int gl_query_context_capabilities(gl_context_t *ctx) {
         return 0;
     }
 
-    ctx->supports_hdr_color_target =
-        gl_probe_color_renderable_format(GL_RGBA16F, GL_FLOAT) ? 1 : 0;
+    ctx->supports_hdr_color_target = gl_probe_color_renderable_format(GL_RGBA16F, GL_FLOAT) ? 1 : 0;
     ctx->supports_depth_float_target =
         gl_probe_depth_renderable_format(GL_DEPTH_COMPONENT32F, GL_FLOAT) ? 1 : 0;
-    ctx->supports_bc7 =
-        gl.CompressedTexImage2D && gl.CompressedTexSubImage2D &&
-        (gl_extension_supported("GL_ARB_texture_compression_bptc") ||
-         gl_extension_supported("GL_EXT_texture_compression_bptc"));
+    ctx->supports_bc7 = gl.CompressedTexImage2D && gl.CompressedTexSubImage2D &&
+                        (gl_extension_supported("GL_ARB_texture_compression_bptc") ||
+                         gl_extension_supported("GL_EXT_texture_compression_bptc"));
     ctx->supports_astc = gl.CompressedTexImage2D && gl.CompressedTexSubImage2D &&
                          gl_extension_supported("GL_KHR_texture_compression_astc_ldr");
     ctx->supports_etc2 =

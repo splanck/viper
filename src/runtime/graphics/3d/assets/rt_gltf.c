@@ -537,26 +537,30 @@ static int gltf_used_extension_supported(const char *name) {
            strcmp(name, "KHR_materials_transmission") == 0;
 }
 
-/// @brief Append one unsupported extension name to a comma-separated diagnostic list.
-static void gltf_append_extension_name(char *dst, size_t dst_cap, const char *name) {
-    size_t used;
-    size_t remaining;
-    if (!dst || dst_cap == 0)
-        return;
-    used = strlen(dst);
-    if (used >= dst_cap - 1)
-        return;
-    if (used > 0) {
-        remaining = dst_cap - used;
-        snprintf(dst + used, remaining, ", ");
-        dst[dst_cap - 1] = '\0';
-        used = strlen(dst);
-        if (used >= dst_cap - 1)
-            return;
+/// @brief Append one unsupported extension name to a growable comma-separated diagnostic list.
+/// @details The returned pointer may differ from @p list and remains malloc-owned by the caller.
+///          The helper leaves @p list untouched on allocation failure so callers can still free it.
+/// @param list Existing malloc-owned list, or NULL for the first name.
+/// @param name Extension name to append; invalid names are rendered explicitly.
+/// @return Updated malloc-owned list, or NULL on allocation failure.
+static char *gltf_append_extension_name_owned(char *list, const char *name) {
+    const char *safe_name = (name && *name) ? name : "<invalid extension name>";
+    size_t old_len = list ? strlen(list) : 0u;
+    size_t name_len = strlen(safe_name);
+    size_t sep_len = old_len > 0u ? 2u : 0u;
+    if (old_len > SIZE_MAX - sep_len || old_len + sep_len > SIZE_MAX - name_len ||
+        old_len + sep_len + name_len > SIZE_MAX - 1u)
+        return NULL;
+    size_t new_len = old_len + sep_len + name_len;
+    char *grown = (char *)realloc(list, new_len + 1u);
+    if (!grown)
+        return NULL;
+    if (sep_len > 0u) {
+        grown[old_len] = ',';
+        grown[old_len + 1u] = ' ';
     }
-    remaining = dst_cap - used;
-    snprintf(dst + used, remaining, "%s", (name && *name) ? name : "<invalid extension name>");
-    dst[dst_cap - 1] = '\0';
+    memcpy(grown + old_len + sep_len, safe_name, name_len + 1u);
+    return grown;
 }
 
 /// @brief Enforce the glTF `extensionsRequired` contract.
@@ -570,23 +574,32 @@ static void gltf_append_extension_name(char *dst, size_t dst_cap, const char *na
 ///         0 when any required extension is unsupported and the load should fail.
 static int gltf_validate_required_extensions(void *root) {
     void *required = jarr(root, "extensionsRequired");
-    char unsupported[256];
+    char *unsupported = NULL;
     int has_unsupported = 0;
+    int oom = 0;
     if (!required)
         return 1;
-    unsupported[0] = '\0';
     for (int64_t i = 0; i < jarr_len(required); i++) {
         rt_string name = (rt_string)rt_seq_get(required, i);
         const char *ext = rt_string_is_handle(name) ? rt_string_cstr(name) : NULL;
         if (!gltf_required_extension_supported(ext)) {
-            gltf_append_extension_name(unsupported, sizeof(unsupported), ext);
+            char *next = gltf_append_extension_name_owned(unsupported, ext);
+            if (next)
+                unsupported = next;
+            else
+                oom = 1;
             has_unsupported = 1;
         }
     }
     if (!has_unsupported)
         return 1;
-    rt_asset_error_setf(
-        RT_ASSET_ERROR_UNSUPPORTED, "GLTF.Load: requires %s (unsupported)", unsupported);
+    if (oom || !unsupported)
+        rt_asset_error_setf(RT_ASSET_ERROR_UNSUPPORTED,
+                            "GLTF.Load: requires unsupported extensions");
+    else
+        rt_asset_error_setf(
+            RT_ASSET_ERROR_UNSUPPORTED, "GLTF.Load: requires %s (unsupported)", unsupported);
+    free(unsupported);
     return 0;
 }
 

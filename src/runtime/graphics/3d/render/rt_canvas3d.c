@@ -58,7 +58,7 @@
 // included above — keeping the type-less TUs that share the internal header clean.
 int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t max);
 
-static volatile int g_canvas3d_backend_fallback_notice_emitted = 0;
+static int g_canvas3d_backend_fallback_notice_emitted = 0;
 
 #define CANVAS3D_MAX_INSTANCES 1048576
 #define CANVAS3D_MAX_FALLBACK_INSTANCES 65536
@@ -193,6 +193,18 @@ static double canvas3d_accumulate_synthetic_mouse_delta(double current, double d
     if (next < -CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX)
         return -CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX;
     return next;
+}
+
+/// @brief Return the valid synthetic mouse-button bit mask without an undefined-width shift.
+/// @details VIPER_MOUSE_BUTTON_MAX is small today, but this guard keeps the mask calculation
+///          defined if the input API grows. Values at or above 63 use every positive int64 bit.
+/// @return Bit mask of supported synthetic mouse buttons.
+static int64_t canvas3d_synthetic_mouse_button_mask(void) {
+#if VIPER_MOUSE_BUTTON_MAX >= 63
+    return INT64_MAX;
+#else
+    return (int64_t)((UINT64_C(1) << VIPER_MOUSE_BUTTON_MAX) - UINT64_C(1));
+#endif
 }
 
 /// @brief Drive the canvas's delta-time fields from the latched synthetic timestep
@@ -2081,8 +2093,7 @@ void rt_canvas3d_push_synthetic_mouse(
     c->synthetic_mouse_dy = canvas3d_accumulate_synthetic_mouse_delta(c->synthetic_mouse_dy, dy);
     c->synthetic_mouse_wheel_y =
         canvas3d_accumulate_synthetic_mouse_delta(c->synthetic_mouse_wheel_y, wheel);
-    c->synthetic_mouse_buttons =
-        buttons > 0 ? buttons & ((1LL << VIPER_MOUSE_BUTTON_MAX) - 1LL) : 0;
+    c->synthetic_mouse_buttons = buttons > 0 ? buttons & canvas3d_synthetic_mouse_button_mask() : 0;
     c->synthetic_mouse_has_buttons = 1;
 }
 
@@ -2213,8 +2224,10 @@ void rt_canvas3d_set_default_lighting(void *obj) {
     fill_dir = rt_vec3_new(0.65, -0.35, 0.55);
     key = key_dir ? rt_light3d_new_directional(key_dir, 1.0, 0.96, 0.88) : NULL;
     fill = fill_dir ? rt_light3d_new_directional(fill_dir, 0.55, 0.65, 1.0) : NULL;
-    rt_light3d_set_intensity(key, 1.35);
-    rt_light3d_set_intensity(fill, 0.35);
+    if (key)
+        rt_light3d_set_intensity(key, 1.35);
+    if (fill)
+        rt_light3d_set_intensity(fill, 0.35);
     canvas3d_assign_owned_ref((void **)&c->lights[0], key);
     canvas3d_assign_owned_ref((void **)&c->lights[1], fill);
 

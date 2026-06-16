@@ -69,7 +69,7 @@ static uint8_t *gif_read_file_bytes(const char *filepath, size_t *out_len) {
     if (!path)
         return NULL;
 
-    void *bytes = NULL;
+    void *volatile bytes = NULL;
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) != 0) {
@@ -803,16 +803,21 @@ int gif_decode_file(const char *filepath,
             // Apply disposal method for next frame
             switch (gce_dispose) {
                 case 2: // Restore to background
-                    for (int y = img_top; y < img_top + img_h && y < screen_h; y++) {
-                        if (y < 0)
-                            continue;
-                        for (int x = img_left; x < img_left + img_w && x < screen_w; x++) {
-                            if (x < 0)
-                                continue;
-                            canvas[y * screen_w + x] = bg_rgba;
-                        }
+                {
+                    int y0 = img_top < 0 ? 0 : img_top;
+                    int y1 = img_top + img_h;
+                    int x0 = img_left < 0 ? 0 : img_left;
+                    int x1 = img_left + img_w;
+                    if (y1 > screen_h)
+                        y1 = screen_h;
+                    if (x1 > screen_w)
+                        x1 = screen_w;
+                    for (int y = y0; y < y1; y++) {
+                        uint32_t *row = canvas + (size_t)y * (size_t)screen_w + (size_t)x0;
+                        for (int x = x0; x < x1; x++)
+                            *row++ = bg_rgba;
                     }
-                    break;
+                } break;
                 case 3: // Restore to previous
                     memcpy(canvas, prev_canvas, canvas_size * sizeof(uint32_t));
                     break;

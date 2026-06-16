@@ -129,7 +129,8 @@ static BOOL rt_gui_macos_item_is_preferences(const vg_menu_item_t *item) {
 ///          standard Cocoa `terminate:` action in the application menu.
 static BOOL rt_gui_macos_item_is_quit(const vg_menu_item_t *item) {
     return item && item->text &&
-           (strcasecmp(item->text, "Quit") == 0 || strcasecmp(item->text, "Exit") == 0 ||
+           (rt_gui_ascii_casecmp(item->text, "Quit") == 0 ||
+            rt_gui_ascii_casecmp(item->text, "Exit") == 0 ||
             strncasecmp(item->text, "Quit ", 5) == 0);
 }
 

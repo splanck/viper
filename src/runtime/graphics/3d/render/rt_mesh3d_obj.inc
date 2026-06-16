@@ -183,6 +183,8 @@ static int obj_vertex_cache_init(obj_vertex_cache_t *cache, size_t capacity) {
     capacity |= capacity >> 32u;
 #endif
     capacity++;
+    if (capacity > SIZE_MAX / sizeof(*cache->entries))
+        return 0;
     cache->entries = (obj_vertex_cache_entry_t *)calloc(capacity, sizeof(*cache->entries));
     cache->capacity = cache->entries ? capacity : 0;
     cache->count = 0;

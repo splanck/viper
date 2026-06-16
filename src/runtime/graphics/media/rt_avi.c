@@ -60,6 +60,11 @@ static uint32_t make_fourcc(char a, char b, char c, char d) {
 #define FOURCC_auds make_fourcc('a', 'u', 'd', 's')
 #define FOURCC_rec make_fourcc('r', 'e', 'c', ' ')
 
+#define AVI_MAX_CHUNK_DEPTH 32
+#define AVI_MIN_VALID_FPS 0.001
+#define AVI_MAX_VALID_FPS 1000.0
+#define AVI_MAX_DIMENSION 32768
+
 typedef struct {
     int stream_type;  ///< -1=unknown, 0=video, 1=audio.
     int stream_index; ///< Zero-based stream list index from hdrl.
@@ -77,6 +82,28 @@ static int avi_stream_index_from_fourcc(uint32_t fourcc) {
     if (c0 < '0' || c0 > '9' || c1 < '0' || c1 > '9')
         return -1;
     return (int)(c0 - '0') * 10 + (int)(c1 - '0');
+}
+
+/// @brief Return a finite AVI frame rate only when it is within the supported playback range.
+/// @details AVI headers are trusted only enough to preserve common files. Malformed files can
+///          advertise extreme rate/scale pairs that overflow timing math or make duration useless,
+///          so callers ignore values outside the conservative Viper video-player envelope.
+/// @param fps Candidate frames-per-second value computed from AVI metadata.
+/// @return @p fps when it is sane for playback; otherwise 0.0 to mean "ignore this value".
+static double avi_sane_fps(double fps) {
+    if (fps < AVI_MIN_VALID_FPS || fps > AVI_MAX_VALID_FPS)
+        return 0.0;
+    return fps;
+}
+
+/// @brief Clear audio metadata when a stream header or format chunk is internally inconsistent.
+/// @param ctx AVI parse context whose audio fields should be reset.
+static void avi_clear_audio(avi_context_t *ctx) {
+    if (!ctx)
+        return;
+    ctx->has_audio = 0;
+    ctx->audio_stream_index = -1;
+    memset(&ctx->audio, 0, sizeof(ctx->audio));
 }
 
 /*==========================================================================
@@ -132,10 +159,13 @@ static void parse_avih(avi_context_t *ctx, const uint8_t *data, uint32_t size) {
         ctx->video.height = (int32_t)height;
     if (total_frames <= INT32_MAX)
         ctx->video.frame_count = (int32_t)total_frames;
-    if (us_per_frame > 0)
-        ctx->video.fps = 1000000.0 / (double)us_per_frame;
-    else
+    if (us_per_frame > 0) {
+        double fps = avi_sane_fps(1000000.0 / (double)us_per_frame);
+        if (fps > 0.0)
+            ctx->video.fps = fps;
+    } else {
         ctx->video.fps = 30.0; /* default */
+    }
     if (ctx->video.fps > 0.0 && ctx->video.frame_count > 0)
         ctx->video.duration = (double)ctx->video.frame_count / ctx->video.fps;
 }
@@ -158,8 +188,11 @@ static void parse_strh(avi_context_t *ctx,
         if (ctx->video_stream_index < 0) {
             ctx->video_stream_index = stream->stream_index;
             ctx->video.fourcc = fcc_handler;
-            if (scale > 0 && rate > 0)
-                ctx->video.fps = (double)rate / (double)scale;
+            if (scale > 0 && rate > 0) {
+                double fps = avi_sane_fps((double)rate / (double)scale);
+                if (fps > 0.0)
+                    ctx->video.fps = fps;
+            }
             if (length > 0 && length <= (uint32_t)INT32_MAX)
                 ctx->video.frame_count = (int32_t)length;
             if (ctx->video.fps > 0.0 && ctx->video.frame_count > 0)
@@ -183,13 +216,24 @@ static void parse_strf_video(avi_context_t *ctx, const uint8_t *data, uint32_t s
     /* BITMAPINFOHEADER */
     int32_t raw_width = (int32_t)read_le32(data + 4);
     int32_t raw_height = (int32_t)read_le32(data + 8);
+    uint16_t planes = read_le16(data + 12);
+    uint16_t bit_count = read_le16(data + 14);
     uint32_t bi_compression = read_le32(data + 16);
+    if (planes != 1u)
+        return;
+    if (bit_count != 0u && bit_count != 8u && bit_count != 16u && bit_count != 24u &&
+        bit_count != 32u)
+        return;
+    if (raw_width <= 0 || raw_width > AVI_MAX_DIMENSION)
+        return;
     if (raw_width > 0)
         ctx->video.width = (int32_t)raw_width;
     if (raw_height == INT32_MIN)
         return;
     if (raw_height < 0)
         raw_height = -raw_height;
+    if (raw_height <= 0 || raw_height > AVI_MAX_DIMENSION)
+        return;
     if (raw_height > 0)
         ctx->video.height = raw_height;
     if (bi_compression != 0)
@@ -210,10 +254,34 @@ static void parse_strf_audio(avi_context_t *ctx, const uint8_t *data, uint32_t s
         sample_rate_u == 0 || sample_rate_u > 384000u || sample_rate_u > (uint32_t)INT32_MAX ||
         block_align <= 0 ||
         (bits_per_sample != 8 && bits_per_sample != 16 && bits_per_sample != 24 &&
-         bits_per_sample != 32 && bits_per_sample != 64)) {
-        ctx->has_audio = 0;
-        ctx->audio_stream_index = -1;
-        memset(&ctx->audio, 0, sizeof(ctx->audio));
+         bits_per_sample != 32 && bits_per_sample != 64) ||
+        (format_tag == 3u && bits_per_sample != 32 && bits_per_sample != 64)) {
+        avi_clear_audio(ctx);
+        return;
+    }
+    if (bits_per_sample % 8 != 0) {
+        avi_clear_audio(ctx);
+        return;
+    }
+    {
+        int64_t expected_align = (int64_t)channels * (int64_t)(bits_per_sample / 8);
+        if (expected_align <= 0 || expected_align > INT32_MAX ||
+            block_align != (int32_t)expected_align) {
+            avi_clear_audio(ctx);
+            return;
+        }
+    }
+    {
+        uint32_t avg_bytes_per_sec = read_le32(data + 8);
+        uint64_t expected_bps = (uint64_t)sample_rate_u * (uint64_t)block_align;
+        if (expected_bps > UINT32_MAX ||
+            (avg_bytes_per_sec != 0u && avg_bytes_per_sec != (uint32_t)expected_bps)) {
+            avi_clear_audio(ctx);
+            return;
+        }
+    }
+    if ((format_tag == 1u && bits_per_sample == 64)) {
+        avi_clear_audio(ctx);
         return;
     }
     ctx->audio.channels = channels;
@@ -231,6 +299,7 @@ static void parse_strf_audio(avi_context_t *ctx, const uint8_t *data, uint32_t s
 static int walk_chunks(const uint8_t *data,
                        size_t len,
                        size_t start,
+                       int depth,
                        void (*handler)(avi_context_t *,
                                        uint32_t fourcc,
                                        const uint8_t *payload,
@@ -238,6 +307,11 @@ static int walk_chunks(const uint8_t *data,
                                        void *extra),
                        avi_context_t *ctx,
                        void *extra) {
+    if (depth > AVI_MAX_CHUNK_DEPTH) {
+        if (ctx)
+            ctx->parse_error = 1;
+        return -1;
+    }
     size_t pos = start;
     while (pos <= len && len - pos >= 8) {
         uint32_t fourcc = read_le32(data + pos);
@@ -247,6 +321,8 @@ static int walk_chunks(const uint8_t *data,
                 ctx->parse_error = 1;
             return -1;
         }
+        if (ctx)
+            ctx->chunk_walk_depth = depth;
         handler(ctx, fourcc, data + pos + 8, size, extra);
         if (ctx && ctx->parse_error)
             break;
@@ -293,7 +369,8 @@ static void handle_hdrl(
             avi_stream_parse_state_t stream = {-1, ctx->stream_count};
             if (ctx->stream_count < INT32_MAX)
                 ctx->stream_count++;
-            walk_chunks(payload, size, 4, handle_strl, ctx, &stream);
+            walk_chunks(
+                payload, size, 4, ctx ? ctx->chunk_walk_depth + 1 : 0, handle_strl, ctx, &stream);
         }
     }
 }
@@ -305,7 +382,8 @@ static void handle_movi(
     if (fourcc == FOURCC_LIST && size >= 4) {
         uint32_t list_type = read_le32(payload);
         if (list_type == FOURCC_rec)
-            walk_chunks(payload, size, 4, handle_movi, ctx, NULL);
+            walk_chunks(
+                payload, size, 4, ctx ? ctx->chunk_walk_depth + 1 : 0, handle_movi, ctx, NULL);
         return;
     }
     /* Check chunk type by last 2 chars of FOURCC:
@@ -330,9 +408,11 @@ static void handle_top(
     if (fourcc == FOURCC_LIST && size >= 4) {
         uint32_t list_type = read_le32(payload);
         if (list_type == FOURCC_hdrl)
-            walk_chunks(payload, size, 4, handle_hdrl, ctx, NULL);
+            walk_chunks(
+                payload, size, 4, ctx ? ctx->chunk_walk_depth + 1 : 0, handle_hdrl, ctx, NULL);
         else if (list_type == FOURCC_movi)
-            walk_chunks(payload, size, 4, handle_movi, ctx, NULL);
+            walk_chunks(
+                payload, size, 4, ctx ? ctx->chunk_walk_depth + 1 : 0, handle_movi, ctx, NULL);
     }
 }
 
@@ -379,7 +459,7 @@ int avi_parse(avi_context_t *ctx, const uint8_t *data, size_t len) {
         return -1;
 
     /* Walk top-level chunks (skip RIFF header: 12 bytes) */
-    walk_chunks(data, riff_end, 12, handle_top, ctx, NULL);
+    walk_chunks(data, riff_end, 12, 0, handle_top, ctx, NULL);
     if (ctx->parse_error) {
         avi_free(ctx);
         return -1;
@@ -401,7 +481,7 @@ int avi_parse(avi_context_t *ctx, const uint8_t *data, size_t len) {
             return -1;
         }
         /* Update frame count from actual movi data if header was wrong */
-        if (ctx->video_frame_count > 0 && ctx->video.frame_count == 0)
+        if (ctx->video_frame_count > 0 && ctx->video.frame_count != ctx->video_frame_count)
             ctx->video.frame_count = ctx->video_frame_count;
         if (ctx->video.fps > 0.0 && ctx->video.frame_count > 0)
             ctx->video.duration = (double)ctx->video.frame_count / ctx->video.fps;
