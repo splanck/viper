@@ -214,6 +214,14 @@ static void test_capacity_and_cache_helpers(void) {
                 "Morph count helper rejects vertex counts that would overflow int indexing");
     EXPECT_TRUE(vgfx3d_opengl_clamp_morph_shape_count(1u << 28, 8) == 2,
                 "Morph count helper clamps to the signed shader index range");
+    EXPECT_TRUE(vgfx3d_opengl_texture_buffer_accepts_r32f_payload(64u, 16) == 1,
+                "R32F texture-buffer payload accepts exact texel-limit fits");
+    EXPECT_TRUE(vgfx3d_opengl_texture_buffer_accepts_r32f_payload(68u, 16) == 0,
+                "R32F texture-buffer payload rejects values beyond the texel limit");
+    EXPECT_TRUE(vgfx3d_opengl_texture_buffer_accepts_r32f_payload(66u, 64) == 0,
+                "R32F texture-buffer payload rejects non-float-aligned byte sizes");
+    EXPECT_TRUE(vgfx3d_opengl_texture_buffer_accepts_r32f_payload(64u, 0) == 1,
+                "R32F texture-buffer payload treats unknown GL limits as unbounded");
     EXPECT_TRUE(vgfx3d_opengl_has_complete_splat(1, 1, 1, 1, 1, 1) == 1,
                 "Terrain splat helper accepts a complete control map and four layers");
     EXPECT_TRUE(vgfx3d_opengl_has_complete_splat(1, 1, 1, 0, 1, 1) == 0,

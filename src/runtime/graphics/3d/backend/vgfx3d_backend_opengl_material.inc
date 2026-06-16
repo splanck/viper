@@ -121,6 +121,10 @@ static GLuint gl_get_material_sampler(gl_context_t *ctx,
     gl.SamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER, (GLint)gl_filter);
     if (anisotropy > 1)
         gl.SamplerParameterf(sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, (GLfloat)anisotropy);
+    if (!gl_upload_ok()) {
+        gl.DeleteSamplers(1, &sampler);
+        return 0;
+    }
     ctx->material_samplers[wrap_s][wrap_t][filter][anisotropy_index] = sampler;
     return sampler;
 }
@@ -334,9 +338,9 @@ static void upload_main_uniforms(gl_context_t *ctx,
 
 /// @brief Resolve every cmd texture from the cache and bind to its sampler unit.
 ///
-/// Slot map: 0=diffuse, 1=normal, 2=specular, 3=emissive, 4-5=shadow,
+/// Slot map: 0=diffuse, 1=normal, 2=specular, 3=emissive, 4-7=shadow,
 /// 8=splat-control, 9-12=splat layers, 13=env cubemap, 14=metallic-
-/// rough, 15=AO. Slots 11/12 are reserved for morph TBOs (set by
+/// rough, 15=AO. Slots 16/17 are reserved for morph TBOs (set by
 /// `bind_morph_payload`). Each `has*` uniform tells the shader which
 /// slots are populated.
 static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
@@ -487,17 +491,19 @@ static void bind_shadow_anim(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
 /// (default framebuffer / swapchain), falling back to a no-op composite when
 /// the chain is disabled or unavailable.
 static int draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_chain_t *chain) {
+    int32_t w;
+    int32_t h;
     if (!ctx || !ctx->scene_color_tex || ctx->width <= 0 || ctx->height <= 0)
         return 0;
+    w = ctx->scene_width > 0 ? ctx->scene_width : ctx->width;
+    h = ctx->scene_height > 0 ? ctx->scene_height : ctx->height;
     if (chain && chain->enabled && chain->effect_count > 0 && chain->effects &&
-        gl_apply_postfx_chain(
-            ctx, ctx->scene_color_tex, ctx->width, ctx->height, chain, 0, GL_BACK, 0, NULL, NULL)) {
+        gl_apply_postfx_chain(ctx, ctx->scene_color_tex, w, h, chain, 0, GL_BACK, 0, NULL, NULL)) {
         return 1;
     }
     if (!ctx->postfx_program)
         return 0;
-    return gl_draw_texture_to_target(
-        ctx, ctx->scene_color_tex, 0, GL_BACK, ctx->width, ctx->height, NULL);
+    return gl_draw_texture_to_target(ctx, ctx->scene_color_tex, 0, GL_BACK, w, h, NULL);
 }
 
 /// @brief Internal skybox draw — full-screen triangle with reconstructed view rays.

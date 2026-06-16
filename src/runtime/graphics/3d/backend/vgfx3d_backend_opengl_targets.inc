@@ -236,6 +236,7 @@ static void destroy_rtt_targets(gl_context_t *ctx) {
     ctx->rtt_height = 0;
     ctx->rtt_color_format = (int32_t)VGFX3D_RENDERTARGET_COLOR_FORMAT_UNORM8;
     ctx->rtt_active = 0;
+    ctx->rtt_color_dirty = 0;
     ctx->rtt_target = NULL;
 }
 
@@ -274,8 +275,9 @@ static int ensure_rtt_targets(gl_context_t *ctx, vgfx3d_rendertarget_t *rt) {
 
     gl.GenTextures(1, &ctx->rtt_color_tex);
     gl.BindTexture(GL_TEXTURE_2D, ctx->rtt_color_tex);
-    color_internal_format = vgfx3d_rendertarget_is_hdr(rt) ? GL_RGBA16F : GL_RGBA8;
-    color_type = vgfx3d_rendertarget_is_hdr(rt) ? GL_FLOAT : GL_UNSIGNED_BYTE;
+    color_internal_format =
+        (vgfx3d_rendertarget_is_hdr(rt) && ctx->supports_hdr_color_target) ? GL_RGBA16F : GL_RGBA8;
+    color_type = color_internal_format == GL_RGBA16F ? GL_FLOAT : GL_UNSIGNED_BYTE;
     depth_internal_format =
         ctx->supports_depth_float_target ? GL_DEPTH_COMPONENT32F : GL_DEPTH_COMPONENT24;
     gl.TexImage2D(GL_TEXTURE_2D,
@@ -338,11 +340,11 @@ static void destroy_shadow_targets(gl_context_t *ctx) {
     ctx->shadow_count = 0;
 }
 
-/// @brief Recount the highest fully-prepared shadow slot and cache the GLSL-visible span.
+/// @brief Recount the contiguous fully-prepared shadow slots advertised to GLSL.
 ///
-/// Slots may be produced sparsely when a scene only assigns shadow maps to selected lights. The
-/// shader still receives a compact upper bound, while each light's requested shadow slot is
-/// validated against the per-slot completion flags before upload.
+/// The shader receives a single `shadowCount` upper bound for the sampler array. Keeping that
+/// count to the completed prefix starting at slot 0 makes `0 <= shadowIndex < shadowCount`
+/// equivalent to "a complete GL shadow texture exists", matching the D3D11 backend contract.
 static void gl_recompute_shadow_count(gl_context_t *ctx) {
     int32_t count = 0;
     if (!ctx)
@@ -350,17 +352,16 @@ static void gl_recompute_shadow_count(gl_context_t *ctx) {
     for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
         if (!ctx->shadow_complete[slot] || !ctx->shadow_depth_tex[slot] || !ctx->shadow_fbo[slot] ||
             ctx->shadow_width[slot] <= 0 || ctx->shadow_height[slot] <= 0)
-            continue;
-        count = slot + 1;
+            break;
+        count++;
     }
     ctx->shadow_count = count;
 }
 
 /// @brief Validate a material light's requested shadow texture slot against real GL resources.
 ///
-/// `uShadowCount` is an upper bound for the sampler array, not proof that every lower slot has a
-/// completed map. This guard prevents lights from sampling an uninitialized or failed shadow FBO
-/// when shadow slots are sparse.
+/// This remains a direct resource guard even though `uShadowCount` is now contiguous, so a failed
+/// resize or allocation cannot leave a light sampling an incomplete shadow FBO.
 static int32_t gl_sanitize_shadow_slot(gl_context_t *ctx, int32_t shadow_index) {
     int32_t slot;
     if (!ctx)
@@ -648,9 +649,13 @@ static int gl_draw_texture_to_target(gl_context_t *ctx,
                                      int32_t width,
                                      int32_t height,
                                      const vgfx3d_postfx_snapshot_t *snapshot) {
+    gl_framebuffer_state_t saved;
+    int ok;
+
     if (!ctx || !ctx->postfx_program || !source_color_tex || width <= 0 || height <= 0)
         return 0;
 
+    gl_capture_framebuffer_state(&saved);
     gl.BindFramebuffer(GL_FRAMEBUFFER, framebuffer);
     gl.DrawBuffer(draw_buffer);
     gl.ReadBuffer(draw_buffer);
@@ -672,7 +677,10 @@ static int gl_draw_texture_to_target(gl_context_t *ctx,
     bind_texture_unit(ctx->postfx_uSceneMotionTex, 2, GL_TEXTURE_2D, ctx->scene_motion_tex);
     gl_apply_postfx_uniforms(ctx, snapshot);
     gl.DrawArrays(GL_TRIANGLES, 0, 3);
-    return gl_drain_errors("postfx draw");
+    ok = gl_drain_errors("postfx draw");
+    gl_restore_framebuffer_state(&saved);
+    gl_restore_main_draw_state(ctx);
+    return ok;
 }
 
 /// @brief Apply a full chain of post-FX effects using ping-pong FBO rendering.
@@ -805,6 +813,7 @@ static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
     size_t float_count;
     size_t pixel_count;
     size_t float_bytes;
+    gl_framebuffer_state_t saved_state;
 
     if (!ctx || !rt || rt->width <= 0 || rt->height <= 0 || !ctx->rtt_fbo ||
         ctx->rtt_target != rt) {
@@ -820,28 +829,34 @@ static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
 
     if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
         return 0;
+    gl_capture_framebuffer_state(&saved_state);
+    gl.PixelStorei(GL_PACK_ALIGNMENT, 1);
     gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->rtt_fbo);
     gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
     if (vgfx3d_rendertarget_is_hdr(rt)) {
         if (!gl_checked_mul_size(pixel_count, 4u, &float_count) ||
             !gl_checked_mul_size(float_count, sizeof(float), &float_bytes)) {
-            bind_main_framebuffer(ctx);
+            gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
+            gl_restore_framebuffer_state(&saved_state);
             return 0;
         }
         tmpf = (float *)malloc(float_bytes);
         if (!tmpf) {
-            bind_main_framebuffer(ctx);
+            gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
+            gl_restore_framebuffer_state(&saved_state);
             return 0;
         }
         if (!vgfx3d_rendertarget_ensure_hdr_color(rt)) {
             free(tmpf);
-            bind_main_framebuffer(ctx);
+            gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
+            gl_restore_framebuffer_state(&saved_state);
             return 0;
         }
         gl.ReadPixels(0, 0, rt->width, rt->height, GL_RGBA, GL_FLOAT, tmpf);
         if (!gl_upload_ok()) {
             free(tmpf);
-            bind_main_framebuffer(ctx);
+            gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
+            gl_restore_framebuffer_state(&saved_state);
             return 0;
         }
         for (int32_t y = 0; y < rt->height; y++) {
@@ -861,18 +876,21 @@ static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
     } else {
         size_t tight_bytes;
         if (!gl_checked_mul_size(pixel_count, 4u, &tight_bytes)) {
-            bind_main_framebuffer(ctx);
+            gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
+            gl_restore_framebuffer_state(&saved_state);
             return 0;
         }
         tmp = (uint8_t *)malloc(tight_bytes);
         if (!tmp) {
-            bind_main_framebuffer(ctx);
+            gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
+            gl_restore_framebuffer_state(&saved_state);
             return 0;
         }
         gl.ReadPixels(0, 0, rt->width, rt->height, GL_RGBA, GL_UNSIGNED_BYTE, tmp);
         if (!gl_upload_ok()) {
             free(tmp);
-            bind_main_framebuffer(ctx);
+            gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
+            gl_restore_framebuffer_state(&saved_state);
             return 0;
         }
         vgfx3d_flip_rgba_rows(tmp, rt->width, rt->height);
@@ -887,6 +905,8 @@ static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
 
     ctx->rtt_color_dirty = 0;
     rt->color_dirty = 0;
-    bind_main_framebuffer(ctx);
+    gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
+    gl_restore_framebuffer_state(&saved_state);
+    gl_restore_main_draw_state(ctx);
     return 1;
 }

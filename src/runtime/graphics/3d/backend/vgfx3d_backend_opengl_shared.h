@@ -111,6 +111,9 @@ int vgfx3d_opengl_validate_rgba8_destination(int32_t width,
                                              size_t *out_bytes);
 /// @brief Clamp morph shapes so shader-side int indexing cannot overflow.
 int32_t vgfx3d_opengl_clamp_morph_shape_count(uint32_t vertex_count, int32_t requested_shape_count);
+/// @brief Validate an R32F texture-buffer payload against a GL texel limit.
+int vgfx3d_opengl_texture_buffer_accepts_r32f_payload(size_t payload_bytes,
+                                                      int32_t max_texture_buffer_texels);
 /// @brief Pick the right render-target classification for the OpenGL backend.
 vgfx3d_opengl_target_kind_t vgfx3d_opengl_choose_target_kind(int8_t rtt_active,
                                                              int8_t gpu_postfx_enabled);

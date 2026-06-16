@@ -343,6 +343,7 @@ static int gl_readback_rgba(
     GLenum readback_buffer = GL_BACK;
     uint8_t *tmp;
     size_t dst_bytes;
+    gl_framebuffer_state_t saved_state;
 
     if (!ctx || !dst_rgba || !vgfx3d_opengl_validate_rgba8_destination(w, h, stride, &dst_bytes))
         return 0;
@@ -389,14 +390,19 @@ static int gl_readback_rgba(
         return 0;
 
     memset(dst_rgba, 0, dst_bytes);
+    gl_capture_framebuffer_state(&saved_state);
+    gl.PixelStorei(GL_PACK_ALIGNMENT, 1);
     gl.BindFramebuffer(GL_FRAMEBUFFER, use_postfx_readback ? readback_framebuffer : 0);
     gl.ReadBuffer(use_postfx_readback ? readback_buffer : GL_BACK);
     gl.ReadPixels(0, 0, copy_w, copy_h, GL_RGBA, GL_UNSIGNED_BYTE, tmp);
     if (!gl_drain_errors("readback")) {
+        gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
         free(tmp);
-        bind_main_framebuffer(ctx);
+        gl_restore_framebuffer_state(&saved_state);
+        gl_restore_main_draw_state(ctx);
         return 0;
     }
+    gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
     vgfx3d_flip_rgba_rows(tmp, copy_w, copy_h);
     for (int32_t y = 0; y < copy_h; y++)
         memcpy(dst_rgba + (size_t)y * (size_t)stride,
@@ -404,7 +410,8 @@ static int gl_readback_rgba(
                (size_t)copy_w * 4u);
     free(tmp);
 
-    bind_main_framebuffer(ctx);
+    gl_restore_framebuffer_state(&saved_state);
+    gl_restore_main_draw_state(ctx);
     return 1;
 }
 
@@ -510,6 +517,7 @@ static void gl_shadow_begin(
     gl.Clear(GL_DEPTH_BUFFER_BIT);
     gl.Enable(GL_DEPTH_TEST);
     gl.DepthMask(GL_TRUE);
+    gl.ColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
     gl.Enable(GL_CULL_FACE);
     gl.CullFace(GL_BACK);
     gl.FrontFace(GL_CCW);
@@ -618,6 +626,7 @@ static void gl_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
         return;
     ctx->shadow_bias = bias;
     gl.Disable(GL_POLYGON_OFFSET_FILL);
+    gl.ColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     ctx->shadow_complete[slot] = (ctx->shadow_depth_tex[slot] && ctx->shadow_fbo[slot] &&
                                   ctx->shadow_width[slot] > 0 && ctx->shadow_height[slot] > 0)
                                      ? 1

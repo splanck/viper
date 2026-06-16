@@ -446,6 +446,19 @@ static int gl_upload_morph_payload_texture(GLuint *buffer,
     return gl_upload_ok();
 }
 
+/// @brief Validate a morph payload against the context's texture-buffer limit.
+///
+/// OpenGL exposes `GL_MAX_TEXTURE_BUFFER_SIZE` in texels, not bytes. Morph
+/// payloads are uploaded as `R32F`, so each texel is one float. This check keeps
+/// both cached and transient morph uploads inside the hardware TBO address range
+/// before `glTexBuffer` binds the buffer to the shader.
+/// @return Non-zero when @p bytes can be represented by this context's TBO limit.
+static int gl_morph_payload_fits_texture_buffer(const gl_context_t *ctx, size_t bytes) {
+    if (!ctx)
+        return 0;
+    return vgfx3d_opengl_texture_buffer_accepts_r32f_payload(bytes, ctx->max_texture_buffer_size);
+}
+
 /// @brief Streaming variant of `gl_upload_morph_payload_texture` (orphan-then-update).
 ///
 /// Used for non-cached (per-frame-changing) morph payloads. Geometric
@@ -561,6 +574,8 @@ static gl_morph_cache_entry_t *gl_get_cached_morph_entry(gl_context_t *ctx,
     morph_cache_release_entry(slot);
     if (!gl_compute_morph_payload_bytes(cmd->vertex_count, morph_count, &bytes))
         return NULL;
+    if (!gl_morph_payload_fits_texture_buffer(ctx, bytes))
+        return NULL;
     if (!gl_upload_morph_payload_texture(
             &slot->morph_buffer, &slot->morph_tbo, cmd->morph_deltas, bytes)) {
         morph_cache_release_entry(slot);
@@ -618,6 +633,8 @@ static void bind_morph_payload(gl_context_t *ctx,
     if (morph_count > 0) {
         size_t bytes;
         if (!gl_compute_morph_payload_bytes(cmd->vertex_count, morph_count, &bytes)) {
+            morph_count = 0;
+        } else if (!gl_morph_payload_fits_texture_buffer(ctx, bytes)) {
             morph_count = 0;
         } else {
             cached_entry = gl_get_cached_morph_entry(ctx, cmd, morph_count);

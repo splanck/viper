@@ -183,6 +183,23 @@ int32_t vgfx3d_opengl_clamp_morph_shape_count(uint32_t vertex_count,
     return shape_count;
 }
 
+/// @brief Validate an R32F texture-buffer payload against a GL texel limit.
+/// @details Morph-target buffers are bound as `samplerBuffer` with `R32F`, so
+///   one texture-buffer texel stores exactly one float. A non-positive limit
+///   means the backend could not query a useful `GL_MAX_TEXTURE_BUFFER_SIZE`,
+///   in which case the caller should fall back to overflow-only validation.
+int vgfx3d_opengl_texture_buffer_accepts_r32f_payload(size_t payload_bytes,
+                                                      int32_t max_texture_buffer_texels) {
+    size_t texels;
+
+    if (payload_bytes == 0 || (payload_bytes % sizeof(float)) != 0)
+        return 0;
+    if (max_texture_buffer_texels <= 0)
+        return 1;
+    texels = payload_bytes / sizeof(float);
+    return texels <= (size_t)max_texture_buffer_texels;
+}
+
 /// @brief Pick the right render-target classification for the OpenGL backend.
 /// See vgfx3d_d3d11_choose_target_kind for the policy semantics.
 vgfx3d_opengl_target_kind_t vgfx3d_opengl_choose_target_kind(int8_t rtt_active,

@@ -78,6 +78,8 @@ typedef unsigned int GLbitfield;
 #define GL_OUT_OF_MEMORY 0x0505
 #define GL_COLOR_BUFFER_BIT 0x00004000
 #define GL_DEPTH_BUFFER_BIT 0x00000100
+#define GL_FRAMEBUFFER_BINDING 0x8CA6
+#define GL_READ_BUFFER 0x0C02
 #define GL_DEPTH_TEST 0x0B71
 #define GL_CULL_FACE 0x0B44
 #define GL_BLEND 0x0BE2
@@ -126,6 +128,7 @@ typedef unsigned int GLbitfield;
 #define GL_TEXTURE_MAX_ANISOTROPY_EXT 0x84FE
 #define GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT 0x84FF
 #define GL_UNPACK_ALIGNMENT 0x0CF5
+#define GL_PACK_ALIGNMENT 0x0D05
 #define GL_EXTENSIONS 0x1F03
 #define GL_VERSION 0x1F02
 #define GL_MAJOR_VERSION 0x821B
@@ -456,6 +459,24 @@ static struct {
 } glx;
 
 static int gl_loaded = 0;
+static volatile int gl_load_lock = 0;
+
+/// @brief Acquire the process-global OpenGL dispatch table lock.
+///
+/// The OpenGL backend keeps a single libGL/GLX function table shared by every
+/// Canvas3D context in the process. Backend creation can happen from more than
+/// one thread, so the dispatch resolver must be serialized without adding a new
+/// library dependency to the runtime. The GCC/Clang atomic builtins are already
+/// available on this Linux-only backend and provide a small spin lock here.
+static void gl_dispatch_lock(void) {
+    while (__sync_lock_test_and_set(&gl_load_lock, 1)) {
+    }
+}
+
+/// @brief Release the process-global OpenGL dispatch table lock.
+static void gl_dispatch_unlock(void) {
+    __sync_lock_release(&gl_load_lock);
+}
 
 /// @brief Reset the global libGL/GLX dispatch state after a failed dynamic-load attempt.
 ///
@@ -558,6 +579,7 @@ typedef struct {
     GLuint fullscreen_vbo;
     GLuint skybox_vao;
     GLuint skybox_vbo;
+    GLuint default_white_tex;
 
     GLuint mesh_vbo;
     GLuint mesh_ibo;
@@ -816,6 +838,81 @@ static int gl_apply_postfx_chain(gl_context_t *ctx,
                                  GLuint *out_result_framebuffer,
                                  GLenum *out_result_read_buffer);
 
+/// @brief Snapshot of framebuffer, viewport, and read/draw buffer state.
+///
+/// OpenGL state is global to the context. Backend helper passes such as
+/// readback, post-FX composition, and FBO capability probes temporarily bind
+/// different framebuffers and buffers. This compact state record lets those
+/// helpers restore the caller's binding instead of approximating it through
+/// `bind_main_framebuffer`, which can be wrong for nested operations.
+typedef struct {
+    GLint framebuffer;
+    GLint draw_buffer;
+    GLint read_buffer;
+    GLint viewport[4];
+    GLint pack_alignment;
+    GLint unpack_alignment;
+} gl_framebuffer_state_t;
+
+/// @brief Capture the current framebuffer/read/draw/viewport state.
+static void gl_capture_framebuffer_state(gl_framebuffer_state_t *state) {
+    if (!state)
+        return;
+    memset(state, 0, sizeof(*state));
+    gl.GetIntegerv(GL_FRAMEBUFFER_BINDING, &state->framebuffer);
+    gl.GetIntegerv(GL_DRAW_BUFFER, &state->draw_buffer);
+    gl.GetIntegerv(GL_READ_BUFFER, &state->read_buffer);
+    gl.GetIntegerv(GL_VIEWPORT, state->viewport);
+    gl.GetIntegerv(GL_PACK_ALIGNMENT, &state->pack_alignment);
+    gl.GetIntegerv(GL_UNPACK_ALIGNMENT, &state->unpack_alignment);
+}
+
+/// @brief Restore framebuffer/read/draw/viewport state captured by
+/// `gl_capture_framebuffer_state`.
+static void gl_restore_framebuffer_state(const gl_framebuffer_state_t *state) {
+    if (!state)
+        return;
+    gl.BindFramebuffer(GL_FRAMEBUFFER, (GLuint)state->framebuffer);
+    gl.DrawBuffer((GLenum)state->draw_buffer);
+    gl.ReadBuffer((GLenum)state->read_buffer);
+    gl.Viewport(
+        state->viewport[0], state->viewport[1], state->viewport[2], state->viewport[3]);
+    gl.PixelStorei(GL_PACK_ALIGNMENT, state->pack_alignment);
+    gl.PixelStorei(GL_UNPACK_ALIGNMENT, state->unpack_alignment);
+}
+
+/// @brief Restore the default draw state expected after helper full-screen passes.
+///
+/// Post-FX and readback helpers disable depth/cull/blend and bind their own
+/// program/VAO. Calling this before returning to normal scene or overlay drawing
+/// keeps later submissions from inheriting helper-pass state.
+static void gl_restore_main_draw_state(gl_context_t *ctx) {
+    if (!ctx)
+        return;
+    gl.Disable(GL_BLEND);
+    gl.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    gl.Enable(GL_DEPTH_TEST);
+    gl.DepthFunc(GL_LEQUAL);
+    gl.DepthMask(GL_TRUE);
+    gl.ColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    gl.Enable(GL_CULL_FACE);
+    gl.CullFace(GL_BACK);
+    gl.FrontFace(GL_CCW);
+    gl.Disable(GL_POLYGON_OFFSET_FILL);
+    gl.PolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    gl.UseProgram(ctx->program);
+    gl.BindVertexArray(ctx->vao);
+}
+
+/// @brief Return the texture name to bind when a material texture is not ready.
+///
+/// Budgeted streaming can leave a newly requested texture incomplete for a few
+/// frames. Binding a known 1x1 white texture preserves material color and avoids
+/// shader feature toggles flickering off while the real image upload catches up.
+static GLuint gl_fallback_white_texture(const gl_context_t *ctx) {
+    return ctx ? ctx->default_white_tex : 0;
+}
+
 /// @brief Row-major to column-major (or vice versa) 4×4 transpose.
 ///
 /// Used because GLSL/glUniformMatrix4fv default to column-major while
@@ -902,12 +999,19 @@ static int mat4f_inverse_gl(const float *m, float *out) {
 static int load_gl(void) {
     if (gl_loaded)
         return 0;
+    gl_dispatch_lock();
+    if (gl_loaded) {
+        gl_dispatch_unlock();
+        return 0;
+    }
 
     gl.lib = dlopen("libGL.so.1", RTLD_LAZY);
     if (!gl.lib)
         gl.lib = dlopen("libGL.so", RTLD_LAZY);
-    if (!gl.lib)
+    if (!gl.lib) {
+        gl_dispatch_unlock();
         return -1;
+    }
 
 #define LOAD(name)                                                                                 \
     gl.name = (__typeof__(gl.name))dlsym(gl.lib, "gl" #name);                                      \
@@ -1000,8 +1104,10 @@ static int load_gl(void) {
     LOADP(PixelStorei);
     LOADP(TexImage2D);
     LOADP(TexSubImage2D);
-    LOADP(CompressedTexImage2D);
-    LOADP(CompressedTexSubImage2D);
+    gl.CompressedTexImage2D =
+        (PFNGLCOMPRESSEDTEXIMAGE2DPROC)glx.GetProcAddress((const unsigned char *)"glCompressedTexImage2D");
+    gl.CompressedTexSubImage2D = (PFNGLCOMPRESSEDTEXSUBIMAGE2DPROC)glx.GetProcAddress(
+        (const unsigned char *)"glCompressedTexSubImage2D");
     LOADP(TexParameteri);
     LOADP(TexParameterf);
     LOADP(TexBuffer);
@@ -1033,10 +1139,12 @@ static int load_gl(void) {
 #undef LOADP
 
     gl_loaded = 1;
+    gl_dispatch_unlock();
     return 0;
 
 fail:
     gl_unload_partial_dispatch();
+    gl_dispatch_unlock();
     return -1;
 }
 
@@ -1181,6 +1289,76 @@ static int gl_extension_supported(const char *name) {
     return 0;
 }
 
+/// @brief Probe whether a color texture internal format can be used as an FBO attachment.
+///
+/// Some OpenGL drivers expose a version or extension that suggests support for a
+/// format but still reject it for render targets on a specific context/profile.
+/// This helper performs the actual framebuffer-completeness check used to decide
+/// whether the backend may allocate scene or RTT targets in that format.
+/// @return Non-zero when a 1x1 framebuffer using @p internal_format is complete.
+static int gl_probe_color_renderable_format(GLint internal_format, GLenum data_type) {
+    gl_framebuffer_state_t saved;
+    GLuint fbo = 0;
+    GLuint tex = 0;
+    int ok = 0;
+
+    gl_capture_framebuffer_state(&saved);
+    gl.GenFramebuffers(1, &fbo);
+    gl.GenTextures(1, &tex);
+    if (fbo && tex) {
+        gl.BindFramebuffer(GL_FRAMEBUFFER, fbo);
+        gl.BindTexture(GL_TEXTURE_2D, tex);
+        gl.TexImage2D(GL_TEXTURE_2D, 0, internal_format, 1, 1, 0, GL_RGBA, data_type, NULL);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        gl.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
+        gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
+        gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
+        ok = gl.CheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+    }
+    if (tex)
+        gl.DeleteTextures(1, &tex);
+    if (fbo)
+        gl.DeleteFramebuffers(1, &fbo);
+    gl_restore_framebuffer_state(&saved);
+    return ok && gl_drain_errors("color format probe");
+}
+
+/// @brief Probe whether a depth texture internal format can be used as an FBO attachment.
+///
+/// Depth formats vary more across GL drivers than the GL version alone implies.
+/// This live FBO probe prevents post-FX and shadow targets from selecting a
+/// floating depth format that the context cannot actually attach.
+/// @return Non-zero when a 1x1 depth-only framebuffer is complete.
+static int gl_probe_depth_renderable_format(GLint internal_format, GLenum data_type) {
+    gl_framebuffer_state_t saved;
+    GLuint fbo = 0;
+    GLuint tex = 0;
+    int ok = 0;
+
+    gl_capture_framebuffer_state(&saved);
+    gl.GenFramebuffers(1, &fbo);
+    gl.GenTextures(1, &tex);
+    if (fbo && tex) {
+        gl.BindFramebuffer(GL_FRAMEBUFFER, fbo);
+        gl.BindTexture(GL_TEXTURE_2D, tex);
+        gl.TexImage2D(
+            GL_TEXTURE_2D, 0, internal_format, 1, 1, 0, GL_DEPTH_COMPONENT, data_type, NULL);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        gl.FramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, tex, 0);
+        gl.DrawBuffer(GL_NONE);
+        gl.ReadBuffer(GL_NONE);
+        ok = gl.CheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+    }
+    if (tex)
+        gl.DeleteTextures(1, &tex);
+    if (fbo)
+        gl.DeleteFramebuffers(1, &fbo);
+    gl_restore_framebuffer_state(&saved);
+    return ok && gl_drain_errors("depth format probe");
+}
+
 /// @brief Query the active context's OpenGL version and coarse resource limits.
 ///
 /// The backend requires the GL 3.3 feature set used by the embedded GLSL and the fixed vertex
@@ -1224,14 +1402,20 @@ static int gl_query_context_capabilities(gl_context_t *ctx) {
         return 0;
     }
 
-    ctx->supports_hdr_color_target = 1;
-    ctx->supports_depth_float_target = 1;
-    ctx->supports_bc7 = gl_extension_supported("GL_ARB_texture_compression_bptc") ||
-                        gl_extension_supported("GL_EXT_texture_compression_bptc");
-    ctx->supports_astc = gl_extension_supported("GL_KHR_texture_compression_astc_ldr");
-    ctx->supports_etc2 = ctx->gl_major_version > 4 ||
-                         (ctx->gl_major_version == 4 && ctx->gl_minor_version >= 3) ||
-                         gl_extension_supported("GL_ARB_ES3_compatibility");
+    ctx->supports_hdr_color_target =
+        gl_probe_color_renderable_format(GL_RGBA16F, GL_FLOAT) ? 1 : 0;
+    ctx->supports_depth_float_target =
+        gl_probe_depth_renderable_format(GL_DEPTH_COMPONENT32F, GL_FLOAT) ? 1 : 0;
+    ctx->supports_bc7 =
+        gl.CompressedTexImage2D && gl.CompressedTexSubImage2D &&
+        (gl_extension_supported("GL_ARB_texture_compression_bptc") ||
+         gl_extension_supported("GL_EXT_texture_compression_bptc"));
+    ctx->supports_astc = gl.CompressedTexImage2D && gl.CompressedTexSubImage2D &&
+                         gl_extension_supported("GL_KHR_texture_compression_astc_ldr");
+    ctx->supports_etc2 =
+        gl.CompressedTexImage2D && gl.CompressedTexSubImage2D &&
+        (ctx->gl_major_version > 4 || (ctx->gl_major_version == 4 && ctx->gl_minor_version >= 3) ||
+         gl_extension_supported("GL_ARB_ES3_compatibility"));
     return gl_drain_errors("capability query");
 }
 

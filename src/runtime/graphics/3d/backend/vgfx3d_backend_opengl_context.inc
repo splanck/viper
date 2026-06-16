@@ -19,8 +19,11 @@ static GLXFBConfig gl_pick_matching_fb_config(Display *dpy,
                                              Window xwin,
                                              GLXFBConfig *configs,
                                              int fb_count) {
-    GLXFBConfig chosen = configs[0];
+    GLXFBConfig chosen;
     XWindowAttributes window_attrs;
+    if (!dpy || !configs || fb_count <= 0)
+        return NULL;
+    chosen = configs[0];
     if (XGetWindowAttributes(dpy, xwin, &window_attrs)) {
         for (int i = 0; i < fb_count; ++i) {
             XVisualInfo *visual_info = glx.GetVisualFromFBConfig(dpy, configs[i]);
@@ -274,6 +277,47 @@ static int gl_init_static_geometry_buffers(gl_context_t *ctx) {
     return gl_upload_ok();
 }
 
+/// @brief Create the context-owned 1x1 white fallback texture.
+///
+/// Budgeted texture uploads can take more than one frame. Binding this texture
+/// while the real texture is pending keeps the shader's textured path active
+/// and multiplies by white, so authored material colors remain visible without
+/// introducing a black/transparent first-frame artifact.
+/// @return Non-zero when the fallback texture is available.
+static int gl_create_default_white_texture(gl_context_t *ctx) {
+    static const uint8_t kWhitePixel[4] = {255u, 255u, 255u, 255u};
+
+    if (!ctx)
+        return 0;
+    if (ctx->default_white_tex)
+        return 1;
+    gl.GenTextures(1, &ctx->default_white_tex);
+    if (!ctx->default_white_tex)
+        return 0;
+    gl.BindTexture(GL_TEXTURE_2D, ctx->default_white_tex);
+    gl.PixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    gl.TexImage2D(GL_TEXTURE_2D,
+                  0,
+                  GL_RGBA8,
+                  1,
+                  1,
+                  0,
+                  GL_RGBA,
+                  GL_UNSIGNED_BYTE,
+                  kWhitePixel);
+    gl.PixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    if (!gl_upload_ok()) {
+        gl.DeleteTextures(1, &ctx->default_white_tex);
+        ctx->default_white_tex = 0;
+        return 0;
+    }
+    return 1;
+}
+
 /// @brief Release fixed context objects created before full backend initialization succeeds.
 ///
 /// This is the failure-path counterpart to the tail of `gl_destroy_ctx()`. It intentionally skips
@@ -286,6 +330,8 @@ static void gl_release_fixed_context_objects(gl_context_t *ctx) {
         gl.DeleteBuffers(1, &ctx->fullscreen_vbo);
     if (ctx->skybox_vbo)
         gl.DeleteBuffers(1, &ctx->skybox_vbo);
+    if (ctx->default_white_tex)
+        gl.DeleteTextures(1, &ctx->default_white_tex);
     if (ctx->morph_normal_tbo)
         gl.DeleteTextures(1, &ctx->morph_normal_tbo);
     if (ctx->morph_tbo)
@@ -313,6 +359,7 @@ static void gl_release_fixed_context_objects(gl_context_t *ctx) {
     if (ctx->vao)
         gl.DeleteVertexArrays(1, &ctx->vao);
     ctx->fullscreen_vbo = ctx->skybox_vbo = 0;
+    ctx->default_white_tex = 0;
     ctx->morph_normal_tbo = ctx->morph_tbo = 0;
     ctx->morph_normal_buffer = ctx->bone_ubo = ctx->prev_bone_ubo = 0;
     ctx->morph_buffer = ctx->instance_vbo = ctx->prev_instance_vbo = 0;
@@ -397,10 +444,17 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                         0};
     int fb_count = 0;
     GLXFBConfig *configs = glx.ChooseFBConfig(dpy, DefaultScreen(dpy), fb_attribs, &fb_count);
-    if (!configs || fb_count == 0)
+    if (!configs || fb_count == 0) {
+        if (configs)
+            XFree(configs);
         return NULL;
+    }
 
     GLXFBConfig chosen = gl_pick_matching_fb_config(dpy, xwin, configs, fb_count);
+    if (!chosen) {
+        XFree(configs);
+        return NULL;
+    }
     GLXContext glxCtx = NULL;
     if (glx.CreateContextAttribsARB) {
         const int ctx_attribs[] = {GLX_CONTEXT_MAJOR_VERSION_ARB,
@@ -424,6 +478,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
 
     gl_context_t *ctx = (gl_context_t *)calloc(1, sizeof(gl_context_t));
     if (!ctx) {
+        glx.MakeCurrent(dpy, 0, NULL);
         glx.DestroyContext(dpy, glxCtx);
         return NULL;
     }
@@ -431,6 +486,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     ctx->window = xwin;
     ctx->glxCtx = glxCtx;
     if (!gl_query_context_capabilities(ctx)) {
+        glx.MakeCurrent(dpy, 0, NULL);
         glx.DestroyContext(dpy, glxCtx);
         free(ctx);
         return NULL;
@@ -441,6 +497,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
 
     if (!gl_compile_context_shaders(&shaders)) {
         gl_delete_context_shaders(&shaders);
+        glx.MakeCurrent(dpy, 0, NULL);
         glx.DestroyContext(dpy, glxCtx);
         free(ctx);
         return NULL;
@@ -449,6 +506,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     if (!gl_link_context_programs(ctx, &shaders)) {
         gl_delete_context_programs(ctx);
         gl_delete_context_shaders(&shaders);
+        glx.MakeCurrent(dpy, 0, NULL);
         glx.DestroyContext(dpy, glxCtx);
         free(ctx);
         return NULL;
@@ -463,9 +521,10 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     gl_bind_default_sampler_uniforms(ctx);
     gl_bind_context_uniform_blocks(ctx);
     if (!gl_generate_context_objects(ctx) || !gl_init_streaming_buffers(ctx) ||
-        !gl_init_static_geometry_buffers(ctx)) {
+        !gl_init_static_geometry_buffers(ctx) || !gl_create_default_white_texture(ctx)) {
         gl_release_fixed_context_objects(ctx);
         gl_delete_context_programs(ctx);
+        glx.MakeCurrent(dpy, 0, NULL);
         glx.DestroyContext(dpy, glxCtx);
         free(ctx);
         return NULL;
@@ -519,6 +578,8 @@ static void gl_destroy_ctx(void *ctx_ptr) {
         gl.DeleteBuffers(1, &ctx->fullscreen_vbo);
     if (ctx->skybox_vbo)
         gl.DeleteBuffers(1, &ctx->skybox_vbo);
+    if (ctx->default_white_tex)
+        gl.DeleteTextures(1, &ctx->default_white_tex);
     if (ctx->morph_normal_tbo)
         gl.DeleteTextures(1, &ctx->morph_normal_tbo);
     if (ctx->morph_tbo)
@@ -553,6 +614,8 @@ static void gl_destroy_ctx(void *ctx_ptr) {
         gl.DeleteProgram(ctx->postfx_program);
     if (ctx->skybox_program)
         gl.DeleteProgram(ctx->skybox_program);
+    if (ctx->glxCtx && ctx->display)
+        glx.MakeCurrent(ctx->display, 0, NULL);
     if (ctx->glxCtx && ctx->display)
         glx.DestroyContext(ctx->display, ctx->glxCtx);
     free(ctx);
