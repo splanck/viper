@@ -236,6 +236,10 @@ char *gltf_json_read_string_alloc(const char *json, size_t len, size_t pos, size
                         free(out);
                         return NULL;
                     }
+                    if (cp == 0u) {
+                        free(out);
+                        return NULL;
+                    }
                     if (!gltf_json_append_utf8(out, &count, cap, cp)) {
                         free(out);
                         return NULL;
@@ -246,6 +250,9 @@ char *gltf_json_read_string_alloc(const char *json, size_t len, size_t pos, size
                     free(out);
                     return NULL;
             }
+        } else if ((unsigned char)c < 0x20u || c == '\0') {
+            free(out);
+            return NULL;
         }
         out[count++] = c;
     }

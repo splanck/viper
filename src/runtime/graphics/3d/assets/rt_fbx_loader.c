@@ -41,6 +41,7 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_compress.h"
+#include "rt_file_stdio.h"
 #include "rt_gif.h"
 #include "rt_mat4.h"
 #include "rt_morphtarget3d.h"
@@ -64,14 +65,7 @@
 #include <string.h>
 
 #define RT_FBX_MAX_FILE_BYTES (1024ull * 1024ull * 1024ull)
-
-#if defined(_WIN32)
-#define fbx_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
-#define fbx_ftell(fp) _ftelli64((fp))
-#else
-#define fbx_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
-#define fbx_ftell(fp) ftello((fp))
-#endif
+#define RT_FBX_MAX_TEXTURE_PATH_BYTES (1024u * 1024u)
 
 #if defined(_MSC_VER)
 #define RT_FBX_THREAD_LOCAL __declspec(thread)

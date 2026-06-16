@@ -42,6 +42,7 @@
 #include "rt_canvas3d_internal.h"
 #include "rt_fbx_loader.h"
 #include "rt_file_ext.h"
+#include "rt_file_stdio.h"
 #include "rt_gltf.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_morphtarget3d.h"

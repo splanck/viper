@@ -113,18 +113,19 @@ static int gltf_load_external_image_ref(void **image_slot,
                                         rt_gltf_preload_bundle *preload_bundle,
                                         const char *uri,
                                         int required_image) {
-    char image_path[1024];
-    gltf_resolve_relative_path(filepath, uri, image_path, sizeof(image_path));
-    if (image_path[0] != '\0')
+    char *image_path = gltf_resolve_relative_path_alloc(filepath, uri);
+    const char *display_path = image_path ? image_path : uri;
+    if (image_path)
         *image_slot = gltf_load_dependency_image(image_path, load_assets, preload_bundle);
-    if (!*image_slot && required_image &&
-        gltf_preload_image_is_supported_format(image_path[0] != '\0' ? image_path : uri)) {
+    if (!*image_slot && required_image && gltf_preload_image_is_supported_format(display_path)) {
         rt_asset_error_add_warningf("glTF texture '%s' not loaded: %s",
-                                    image_path[0] != '\0' ? image_path : uri,
+                                    display_path,
                                     rt_asset_error_get_message()[0] ? rt_asset_error_get_message()
                                                                     : "content unavailable");
+        free(image_path);
         return 1;
     }
+    free(image_path);
     return 1;
 }
 

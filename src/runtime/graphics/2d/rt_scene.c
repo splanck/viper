@@ -52,6 +52,8 @@
 // Forward declaration from rt_io.c
 #include "rt_trap.h"
 
+#define SCENE_NODE_MAX_PARENT_CHAIN 8192
+
 //=============================================================================
 // Internal Structures
 //=============================================================================
@@ -152,6 +154,28 @@ static int64_t scene_sub_saturating(int64_t a, int64_t b) {
 // Forward declarations
 static void mark_transform_dirty(scene_node_impl *node);
 static void update_world_transform(scene_node_impl *node);
+
+/// @brief Return whether a bounded parent-chain walk reaches @p target.
+/// @details Normal scene trees are acyclic, so this walk is short. The depth
+///          cap prevents corrupted parent pointers or cycles from causing an
+///          unbounded traversal in hierarchy mutation and transform updates.
+/// @param start Node at which to start walking ancestors.
+/// @param target Node to search for.
+/// @return 1 if @p target is found or the chain is rejected as too deep; otherwise 0.
+static int scene_parent_chain_contains(scene_node_impl *start, scene_node_impl *target) {
+    int64_t depth = 0;
+    for (scene_node_impl *cur = start; cur; cur = cur->parent) {
+        if (cur == target)
+            return 1;
+        depth++;
+        if (depth > SCENE_NODE_MAX_PARENT_CHAIN) {
+            rt_trap("SceneNode: parent chain too deep or cyclic");
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static void collect_visible_nodes(scene_node_impl *node, void *list);
 static int compare_depth(const void *a, const void *b);
 static void release_owned_ref(void **slot);
@@ -436,6 +460,11 @@ static void update_world_transform(scene_node_impl *node) {
 
     scene_node_impl *cur = node;
     while (cur && cur->transform_dirty) {
+        if (depth > SCENE_NODE_MAX_PARENT_CHAIN) {
+            free(heap_chain);
+            rt_trap("SceneNode: transform chain too deep or cyclic");
+            return;
+        }
         if (depth >= capacity) {
             if (capacity > INT64_MAX / 2 ||
                 (uint64_t)(capacity * 2) > (uint64_t)SIZE_MAX / sizeof(scene_node_impl *)) {
@@ -724,11 +753,8 @@ void rt_scene_node_add_child(void *node_ptr, void *child_ptr) {
     if (!node || !child)
         return;
 
-    // Guard against cycles: walk node's ancestor chain and reject if child is found
-    for (scene_node_impl *anc = node; anc; anc = anc->parent) {
-        if (anc == child)
-            return; // Would create a cycle — silently reject
-    }
+    if (scene_parent_chain_contains(node, child))
+        return; // Would create a cycle or uses a corrupt ancestor chain.
 
     rt_obj_retain_maybe(child);
 

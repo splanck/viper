@@ -36,20 +36,20 @@ A hardening cycle continuing v0.2.6. The new work ends per-frame Graphics3D flic
 
 | Metric | v0.2.6 | v0.2.7 | Delta |
 |---|---|---|---|
-| Commits | — | 126 | +126 |
+| Commits | — | 129 | +129 |
 | Source files | 3,096 | 3,359 | +263 |
-| Production SLOC | 669K | 729K | +60K |
+| Production SLOC | 669K | 730K | +61K |
 | Test SLOC | 278K | 300K | +22K |
 | Demo SLOC | 192K | 194K | +2K |
 
-Counts via `scripts/count_sloc.sh` (production 728,999 / test 299,593 / demo 194,023 / source files 3,359); commits since the `v0.2.6-dev` tag (2026-06-01).
+Counts via `scripts/count_sloc.sh` (production 730,324 / test 299,662 / demo 194,037 / source files 3,359); commits since the `v0.2.6-dev` tag (2026-06-01).
 
 ---
 
 ### Graphics3D rendering
 
 - A sustained pass ends per-frame visible-triangle flicker: queue-order-independent occlusion history with covered-streak gating, camera-depth-fitted shadow cascades, per-camera LOD/impostor hysteresis, and conservative terrain-horizon culling.
-- Every backend (software/OpenGL/Metal/D3D11) validates draw-command index ranges and shares one depth-bias scale; D3D11 closes its remaining sign-off gaps and hardens compressed-texture lifetime, and routes buffer/texture uploads and screenshot readback through shared helpers that reject oversized, unaligned, or stale GPU state before any device call — readback falling back through post-FX replay, scene color, and the backbuffer when a presented snapshot has no live texture.
+- Every backend (software/OpenGL/Metal/D3D11) validates draw-command index ranges and shares one depth-bias scale; D3D11 closes its remaining sign-off gaps and hardens compressed-texture lifetime, and routes buffer/texture uploads and screenshot readback through shared helpers that reject oversized, unaligned, or stale GPU state before any device call — readback falling back through post-FX replay, scene color, and the backbuffer when a presented snapshot has no live texture. OpenGL drains GPU errors after every upload, readback, and framebuffer build so a failed resource is never cached as valid, bounds its texture and mesh caches by age and LRU, and probes context capabilities before accepting a context.
 - The software backend rasterizes across a deterministic worker pool — parallel scanline fills that reproduce the single-threaded image bit-for-bit — so headless and CI renders stay reproducible while throughput scales with cores.
 - Shadow-casting spot lights join the shared directional shadow budget: directional lights consume slots first by cascade count, then spot lights fill remaining slots ranked by intensity and camera distance. Spot lights build a single perspective view-projection from position, direction, outer cone angle, and range; all four shader languages (GLSL/HLSL/MSL/software) perspective-divide spot shadow coordinates and suppress contributions outside the cone angle while keeping directional paths orthographic and cascaded.
 - Anisotropic texture filtering arrives as a `Material3D.Anisotropy`/`SetAnisotropy` property clamped to a cross-backend 1–16 range and preserved through clones, instances, imported texture slots, and deferred draw-command capture; D3D11/Metal/OpenGL sampler caches key on effective anisotropy (advertised via `BackendSupports("anisotropy")`, OpenGL clamping to the device maximum, software accepting the property without advertising support). `Canvas3D` exposes per-frame submission telemetry — `DrawsSubmitted`, `AabbTransforms`, `SortPasses`, `BackendStateChanges` — its deferred queue orders through stable radix and bucket sorts over reusable scratch, and GPU opaque passes group backend state after depth ordering to cut material and sampler churn while the software path keeps front-to-back order.
@@ -79,7 +79,7 @@ Counts via `scripts/count_sloc.sh` (production 728,999 / test 299,593 / demo 194
 - A cppcheck-driven audit makes every recoverable `rt_trap` return a safe sentinel and release its locals across core, text, crypto, network (HTTP/WebSocket/SMTP/TLS/URL), OOP, process, media decoders, and input helpers — and routes the few unrecoverable cases (entropy exhaustion, DRBG failure) through a new non-returning `rt_abort`, so no path can proceed with predictable key material when a trap hook returns.
 - BigInt gains checked size arithmetic and full arbitrary-width two's-complement bitwise/shift semantics; heap and pool allocation validate payload headers under the registry lock and freed blocks against their owning slab, and the pool freelist takes a short spinlock so a concurrent pop never reads a stale intrusive next pointer.
 - Text-format parsers fail closed and reach further: CSV and JSON preserve parse-failure state even when trap recovery returns, HTML and XML grow their traversal stacks under overflow checks, Markdown normalizes entity-obfuscated URL schemes before blocking unsafe links, and TOML parsing extends to escapes, inline tables, nested arrays, and arrays of tables.
-- RSA signature verification goes constant-time; HTTP/2 framing, `204`/`304` empty-body suppression, the WSS accept-vs-`Stop` race, per-policy retry jitter, and SSE encoding negotiation tighten. Temp-file, archive, and savedata names fail closed when secure entropy is unavailable instead of dropping to predictable pid/time values, HTTP downloads stream through a sibling temp file and rename into place only after a complete response, and the graphics-disabled Canvas3D/Camera3D/PostFX stubs now trap with a graphics-not-compiled diagnostic instead of silently dropping side-effecting calls.
+- RSA signature verification goes constant-time; HTTP/2 framing, `204`/`304` empty-body suppression, the WSS accept-vs-`Stop` race, per-policy retry jitter, and SSE encoding negotiation tighten. Temp-file, archive, and savedata names fail closed when secure entropy is unavailable instead of dropping to predictable pid/time values, HTTP downloads stream through a sibling temp file and rename into place only after a complete response, and the graphics-disabled Canvas3D/Camera3D/PostFX stubs now trap with a graphics-not-compiled diagnostic instead of silently dropping side-effecting calls. The GIF and Theora/OGV video decoders fail closed under frame and buffer budgets, checked block/superblock arithmetic, and per-frame snapshot rollback, so an oversized or corrupt packet leaves decoder state intact rather than trapping.
 
 ### IL, codegen, and the native linker
 
@@ -123,7 +123,7 @@ Counts via `scripts/count_sloc.sh` (production 728,999 / test 299,593 / demo 194
 ### Windows and Linux builds
 
 - On Windows, NOMINMAX, extended MSVC atomic shims, a simplified CreateProcess stdio path, a standard-VM bridge that no longer double-releases borrowed strings, and an 8-job MSVC parallelism cap (avoiding C1060 heap exhaustion) restore the BASIC-VM, installer, ViperIDE, and x86-64 codegen suites, while the D3D11 backend closes its sign-off gaps; the build-script ctest run also stabilizes with normalized console output and deterministic suite ordering.
-- On Linux, restored OpenGL symbol loading, X11 backing-store sizing, ELF zero-fill/`PT_LOAD` grouping, and an expanded dynamic-import policy bring the full suite to 1,670 passing; a later pass restores OpenGL demo rendering with double-buffered GLX visual selection, a resident `libGL` handle that fixes an ARM64 `test_rt_game3d` segfault, and a simplified vertex-shader path that clears the black client areas Mesa/aarch64 left on the `3dbowling` and `game3d-showcase` demos.
+- On Linux, restored OpenGL symbol loading, X11 backing-store sizing, ELF zero-fill/`PT_LOAD` grouping, and an expanded dynamic-import policy bring the full suite to 1,670 passing; a later pass restores OpenGL demo rendering with double-buffered GLX visual selection, a resident `libGL` handle that fixes an ARM64 `test_rt_game3d` segfault, and a simplified vertex-shader path that clears the black client areas Mesa/aarch64 left on the `3dbowling` and `game3d-showcase` demos; Linux now defaults to the deterministic software backend for reproducible headless and CI renders, with the hardened OpenGL backend remaining explicitly selectable.
 
 ### Tests
 

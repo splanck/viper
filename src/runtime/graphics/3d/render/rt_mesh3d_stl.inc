@@ -17,14 +17,6 @@
 #define STL_BINARY_INITIAL_RESERVE_TRIANGLES 65536u
 #define STL_MAX_FILE_BYTES (INT64_C(512) * 1024 * 1024)
 
-#if defined(_WIN32)
-#define stl_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
-#define stl_ftell(fp) _ftelli64((fp))
-#else
-#define stl_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
-#define stl_ftell(fp) ftello((fp))
-#endif
-
 /// @brief Read a little-endian uint32 from a binary STL byte stream.
 static uint32_t stl_read_u32_le(const uint8_t *p) {
     return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
@@ -588,22 +580,23 @@ void *rt_mesh3d_from_stl(rt_string path) {
         return NULL;
     }
 
-    FILE *f = fopen(filepath, "rb");
+    FILE *f = rt_file_stdio_open_utf8(filepath, "rb");
     if (!f) {
         rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND, "Mesh3D.FromSTL: '%s' not found", filepath);
         rt_asset_error_end_load_failure();
         return NULL;
     }
 
-    if (stl_fseek(f, 0, SEEK_END) != 0) {
+    if (rt_file_stdio_seek64(f, 0, SEEK_END) != 0) {
         fclose(f);
         rt_asset_error_setf(
             RT_ASSET_ERROR_UNREADABLE, "Mesh3D.FromSTL: failed to seek '%s'", filepath);
         rt_asset_error_end_load_failure();
         return NULL;
     }
-    int64_t file_len = (int64_t)stl_ftell(f);
-    if (file_len < 0 || file_len > STL_MAX_FILE_BYTES || stl_fseek(f, 0, SEEK_SET) != 0) {
+    int64_t file_len = rt_file_stdio_tell64(f);
+    if (file_len < 0 || file_len > STL_MAX_FILE_BYTES ||
+        rt_file_stdio_seek64(f, 0, SEEK_SET) != 0) {
         fclose(f);
         rt_asset_error_setf(file_len > STL_MAX_FILE_BYTES ? RT_ASSET_ERROR_TOO_LARGE
                                                           : RT_ASSET_ERROR_UNREADABLE,
@@ -649,7 +642,7 @@ void *rt_mesh3d_from_stl(rt_string path) {
             }
             return mesh;
         }
-        if (stl_fseek(f, 0, SEEK_SET) != 0) {
+        if (rt_file_stdio_seek64(f, 0, SEEK_SET) != 0) {
             fclose(f);
             rt_asset_error_setf(
                 RT_ASSET_ERROR_UNREADABLE, "Mesh3D.FromSTL: failed to seek '%s'", filepath);
@@ -661,7 +654,7 @@ void *rt_mesh3d_from_stl(rt_string path) {
     {
         char magic[5];
         if (fread(magic, 1, sizeof(magic), f) == sizeof(magic) && memcmp(magic, "solid", 5) == 0) {
-            if (stl_fseek(f, 0, SEEK_SET) != 0) {
+            if (rt_file_stdio_seek64(f, 0, SEEK_SET) != 0) {
                 fclose(f);
                 rt_asset_error_setf(
                     RT_ASSET_ERROR_UNREADABLE, "Mesh3D.FromSTL: failed to seek '%s'", filepath);
@@ -675,7 +668,7 @@ void *rt_mesh3d_from_stl(rt_string path) {
                 return mesh;
             }
         }
-        if (stl_fseek(f, 0, SEEK_SET) != 0) {
+        if (rt_file_stdio_seek64(f, 0, SEEK_SET) != 0) {
             fclose(f);
             rt_asset_error_setf(
                 RT_ASSET_ERROR_UNREADABLE, "Mesh3D.FromSTL: failed to seek '%s'", filepath);
@@ -686,7 +679,8 @@ void *rt_mesh3d_from_stl(rt_string path) {
 
     if (file_len >= 84 && ((file_len - 84) % 50) == 0) {
         uint64_t tri_count64 = (uint64_t)(file_len - 84) / 50u;
-        if (tri_count64 > 0 && tri_count64 <= UINT32_MAX / 3u && stl_fseek(f, 84, SEEK_SET) == 0) {
+        if (tri_count64 > 0 && tri_count64 <= UINT32_MAX / 3u &&
+            rt_file_stdio_seek64(f, 84, SEEK_SET) == 0) {
             mesh = stl_load_binary_stream(f, (uint32_t)tri_count64);
             fclose(f);
             if (mesh)

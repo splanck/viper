@@ -1060,7 +1060,7 @@ void *rt_mesh3d_from_obj(rt_string path) {
         return NULL;
     }
 
-    FILE *f = fopen(filepath, "r");
+    FILE *f = rt_file_stdio_open_utf8(filepath, "rb");
     if (!f) {
         rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND, "Mesh3D.FromOBJ: '%s' not found", filepath);
         rt_asset_error_end_load_failure();
@@ -1525,7 +1525,7 @@ int rt_mesh3d_from_obj_groups(rt_string path,
         rt_trap("Mesh3D.FromOBJ: invalid path");
         return 0;
     }
-    f = fopen(filepath, "r");
+    f = rt_file_stdio_open_utf8(filepath, "rb");
     if (!f) {
         rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND, "Mesh3D.FromOBJ: '%s' not found", filepath);
         return 0;

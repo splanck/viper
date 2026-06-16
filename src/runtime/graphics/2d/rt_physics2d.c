@@ -53,6 +53,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define PHYSICS2D_MAX_PUBLIC_STEP_DT 8.0
+#define PHYSICS2D_MAX_SUBSTEP_DT 1.0
+#define PHYSICS2D_MAX_SUBSTEPS 8
+
 //=============================================================================
 // Internal types
 //=============================================================================
@@ -64,6 +68,12 @@
 static void world_clear_contacts(rt_world_impl *w) {
     if (!w)
         return;
+    for (int32_t i = 0; i < w->contact_count; ++i) {
+        if (w->contacts[i].body_a && rt_obj_release_check0(w->contacts[i].body_a))
+            rt_obj_free(w->contacts[i].body_a);
+        if (w->contacts[i].body_b && rt_obj_release_check0(w->contacts[i].body_b))
+            rt_obj_free(w->contacts[i].body_b);
+    }
     w->contact_count = 0;
     w->contact_overflow = 0;
     memset(w->contacts, 0, sizeof(w->contacts));
@@ -85,6 +95,8 @@ void world_record_contact(
     if (!isfinite(nx) || !isfinite(ny) || !isfinite(pen))
         return;
     int32_t idx = w->contact_count++;
+    rt_obj_retain_maybe(a);
+    rt_obj_retain_maybe(b);
     w->contacts[idx].body_a = a;
     w->contacts[idx].body_b = b;
     w->contacts[idx].nx = nx;
@@ -321,6 +333,8 @@ static void world_finalizer(void *obj) {
         while (w->joint_count > 0)
             world_release_joint_at(w, w->joint_count - 1);
 
+        world_clear_contacts(w);
+
         int64_t i;
         for (i = 0; i < w->body_count; i++) {
             if (w->bodies[i] && rt_obj_release_check0(w->bodies[i]))
@@ -361,22 +375,18 @@ void *rt_physics2d_world_new(double gravity_x, double gravity_y) {
     return w;
 }
 
-/// @brief Advance the physics world by `dt` seconds. Stages: (1) apply gravity + accumulated
-/// forces to dynamic body velocities (symplectic Euler) and reset force accumulators; (2)
-/// integrate velocity → position; (2.5) iteratively solve joint constraints; (3) broad-phase
-/// 8×8 grid + narrow-phase shape overlap/CCD detection with bit-matrix de-dup, then resolve each
-/// collision per the bodies' restitution/friction/collision filter. No-op for invalid dt or dt ≤ 0.
-void rt_physics2d_world_step(void *obj, double dt) {
-    rt_world_impl *w;
+/// @brief Advance an already-validated world by one bounded integration step.
+/// @details Stages: apply gravity/forces, integrate velocity to position,
+///          solve joints, then perform broad/narrow-phase collision detection.
+///          The public step function calls this one or more times for large dt.
+/// @param obj Public world handle, passed through to joint solvers.
+/// @param w Checked world implementation pointer.
+/// @param dt Positive finite substep duration.
+static void physics2d_world_step_once(void *obj, rt_world_impl *w, double dt) {
     int64_t i;
-    if (!obj)
-        return;
-    w = checked_world(obj, "Physics2D.World.Step: expected Physics2D.World");
     if (!w)
         return;
     world_clear_contacts(w);
-    if (dt <= 0.0 || !isfinite(dt))
-        return;
 
     for (i = 0; i < w->body_count; i++) {
         rt_body_impl *b = w->bodies[i];
@@ -579,6 +589,56 @@ void rt_physics2d_world_step(void *obj, double dt) {
 
 #undef BPG_DIM
 #undef BPG_CELL_MAX
+}
+
+/// @brief Advance the physics world by `dt` seconds.
+/// @details Non-finite and non-positive values only clear stale contacts. Step
+///          calls up to one second preserve the historical single-step
+///          semi-implicit Euler behavior. Larger hitch values are capped and
+///          split into bounded substeps so joints and collision detection never
+///          receive an unbounded timestep after a pause.
+void rt_physics2d_world_step(void *obj, double dt) {
+    if (!obj)
+        return;
+    rt_world_impl *w = checked_world(obj, "Physics2D.World.Step: expected Physics2D.World");
+    if (!w)
+        return;
+    world_clear_contacts(w);
+    if (dt <= 0.0 || !isfinite(dt))
+        return;
+    if (dt > PHYSICS2D_MAX_PUBLIC_STEP_DT)
+        dt = PHYSICS2D_MAX_PUBLIC_STEP_DT;
+
+    int substeps = (int)(dt / PHYSICS2D_MAX_SUBSTEP_DT);
+    if ((double)substeps * PHYSICS2D_MAX_SUBSTEP_DT < dt)
+        substeps++;
+    if (substeps < 1)
+        substeps = 1;
+    if (substeps > PHYSICS2D_MAX_SUBSTEPS)
+        substeps = PHYSICS2D_MAX_SUBSTEPS;
+    double sub_dt = dt / (double)substeps;
+
+    rt_body_impl *force_bodies[PH_MAX_BODIES];
+    double force_x[PH_MAX_BODIES];
+    double force_y[PH_MAX_BODIES];
+    int64_t force_count = w->body_count;
+    if (force_count > PH_MAX_BODIES)
+        force_count = PH_MAX_BODIES;
+    for (int64_t i = 0; i < force_count; ++i) {
+        force_bodies[i] = w->bodies[i];
+        force_x[i] = w->bodies[i] ? w->bodies[i]->fx : 0.0;
+        force_y[i] = w->bodies[i] ? w->bodies[i]->fy : 0.0;
+    }
+
+    for (int step = 0; step < substeps; ++step) {
+        for (int64_t i = 0; i < force_count; ++i) {
+            if (force_bodies[i]) {
+                force_bodies[i]->fx = force_x[i];
+                force_bodies[i]->fy = force_y[i];
+            }
+        }
+        physics2d_world_step_once(obj, w, sub_dt);
+    }
 }
 
 /// @brief Insert a body into the world's simulation list. The world retains the body; remove

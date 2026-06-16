@@ -35,6 +35,7 @@
 #include "rt_mat4.h"
 #include "rt_navmesh3d.h"
 #include "rt_physics3d.h"
+#include "rt_platform.h"
 #include "rt_scene3d.h"
 
 #include <float.h>
@@ -110,6 +111,7 @@ static double g_navagent3d_max_reach = 0.0;
 
 static void navagent_grid_refresh(rt_navagent3d *agent);
 static void navagent_grid_remove(rt_navagent3d *agent);
+static void navagent_recompute_max_reach(void);
 static double navagent_clamp_abs_or(double value, double fallback, double max_abs);
 static double navagent_coord_or(double value, double fallback);
 
@@ -120,6 +122,7 @@ static rt_navagent3d *navagent3d_checked(void *obj) {
 
 /// @brief Add an agent to the global registry and insert it into the spatial grid at its cell.
 static void navagent_register(rt_navagent3d *agent) {
+    RT_ASSERT_MAIN_THREAD();
     if (!agent)
         return;
     agent->registry_next = g_navagent3d_registry;
@@ -129,6 +132,7 @@ static void navagent_register(rt_navagent3d *agent) {
 
 /// @brief Remove an agent from the spatial grid and unlink it from the global registry.
 static void navagent_unregister(rt_navagent3d *agent) {
+    RT_ASSERT_MAIN_THREAD();
     rt_navagent3d **link = &g_navagent3d_registry;
     if (!agent)
         return;
@@ -137,6 +141,7 @@ static void navagent_unregister(rt_navagent3d *agent) {
         if (*link == agent) {
             *link = agent->registry_next;
             agent->registry_next = NULL;
+            navagent_recompute_max_reach();
             return;
         }
         link = &(*link)->registry_next;
@@ -321,6 +326,20 @@ static double navagent_reach(const rt_navagent3d *agent) {
         r + s * NAVAGENT_RVO_MAX_TIME_HORIZON, 0.0, NAVAGENT_DISTANCE_MAX);
 }
 
+/// @brief Recompute the global maximum avoidance reach from registered agents.
+/// @details Called when an agent is removed or a reach-affecting property
+///          shrinks. This keeps grid neighbor-ring queries from using a stale
+///          overlarge bound forever after the largest agent changes.
+static void navagent_recompute_max_reach(void) {
+    double max_reach = 0.0;
+    for (rt_navagent3d *agent = g_navagent3d_registry; agent; agent = agent->registry_next) {
+        double reach = navagent_reach(agent);
+        if (reach > max_reach)
+            max_reach = reach;
+    }
+    g_navagent3d_max_reach = max_reach;
+}
+
 /// @brief Quantize a world coordinate to its spatial-grid cell index (clamped to ±1e9; 0 if
 /// non-finite).
 static int32_t navagent_grid_coord(double v) {
@@ -345,6 +364,7 @@ static uint32_t navagent_grid_bucket(int32_t cx, int32_t cz) {
 /// @brief Insert an agent into the spatial grid bucket for its current XZ cell (no-op if already
 /// in).
 static void navagent_grid_insert(rt_navagent3d *agent) {
+    RT_ASSERT_MAIN_THREAD();
     uint32_t b;
     if (!agent || agent->in_grid)
         return;
@@ -358,6 +378,7 @@ static void navagent_grid_insert(rt_navagent3d *agent) {
 
 /// @brief Unlink an agent from its spatial-grid bucket (no-op if not currently in the grid).
 static void navagent_grid_remove(rt_navagent3d *agent) {
+    RT_ASSERT_MAIN_THREAD();
     uint32_t b;
     rt_navagent3d **link;
     if (!agent || !agent->in_grid)
@@ -378,6 +399,7 @@ static void navagent_grid_remove(rt_navagent3d *agent) {
 /// @brief Keep @p agent's grid cell current and grow the global reach bound. Called after every
 ///   position sync and on registration; moves the agent between buckets only when its cell changes.
 static void navagent_grid_refresh(rt_navagent3d *agent) {
+    RT_ASSERT_MAIN_THREAD();
     double reach;
     int32_t cx;
     int32_t cz;
@@ -1281,10 +1303,12 @@ double rt_navagent3d_get_desired_speed(void *obj) {
 
 /// @brief Set max movement speed (clamped to ≥ 0). Updates take effect on the next `_update`.
 void rt_navagent3d_set_desired_speed(void *obj, double speed) {
+    RT_ASSERT_MAIN_THREAD();
     rt_navagent3d *agent = navagent3d_checked(obj);
     if (!agent)
         return;
     agent->desired_speed = navagent_nonnegative_capped_or(speed, 0.0, NAVAGENT_SPEED_MAX);
+    navagent_recompute_max_reach();
 }
 
 /// @brief Returns 1 if the agent automatically rebuilds its path on the repath interval. When
@@ -1326,10 +1350,12 @@ double rt_navagent3d_get_avoidance_radius(void *obj) {
 
 /// @brief Set local avoidance radius (clamped to >= 0). A zero radius disables separation force.
 void rt_navagent3d_set_avoidance_radius(void *obj, double radius) {
+    RT_ASSERT_MAIN_THREAD();
     rt_navagent3d *agent = navagent3d_checked(obj);
     if (!agent)
         return;
     agent->avoidance_radius = navagent_nonnegative_capped_or(radius, 0.0, NAVAGENT_RADIUS_MAX);
+    navagent_recompute_max_reach();
 }
 
 /// @brief Bind the agent to a CharacterController3D — `_update` will call `_move` on the

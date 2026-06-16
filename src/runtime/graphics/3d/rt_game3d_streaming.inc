@@ -7,13 +7,8 @@
 static int64_t game3d_stream_manifest_bytes(rt_string value);
 static int64_t game3d_i64_saturating_add(int64_t a, int64_t b);
 
-#if defined(_WIN32)
-#define game3d_stream_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
-#define game3d_stream_ftell(fp) _ftelli64((fp))
-#else
-#define game3d_stream_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
-#define game3d_stream_ftell(fp) ftello((fp))
-#endif
+#define game3d_stream_fseek(fp, off, whence) rt_file_stdio_seek64((fp), (off), (whence))
+#define game3d_stream_ftell(fp) rt_file_stdio_tell64((fp))
 
 /// @brief Whether a parsed JSON value is a map/object.
 static int game3d_json_is_map(void *obj) {
@@ -144,7 +139,7 @@ static rt_string game3d_read_text_file_no_trap(rt_string path) {
         free(asset_bytes);
         return result;
     }
-    FILE *file = fopen(cpath, "rb");
+    FILE *file = rt_file_stdio_open_utf8(cpath, "rb");
     if (!file)
         return NULL;
     if (game3d_stream_fseek(file, 0, SEEK_END) != 0) {
@@ -205,6 +200,43 @@ static int game3d_path_is_absolute(const char *path) {
     return 0;
 }
 
+/// @brief Return whether @p path begins with a URI-like scheme before any slash.
+/// @details Used to preserve `asset://...` manifest references while applying
+///          filesystem traversal checks only to filesystem-style sidecars.
+static int game3d_path_has_scheme(const char *path) {
+    if (!path || !isalpha((unsigned char)path[0]))
+        return 0;
+    for (const char *p = path + 1; *p; ++p) {
+        if (*p == ':' && p[1] == '/' && p[2] == '/')
+            return 1;
+        if (*p == '/' || *p == '\\')
+            return 0;
+        if (!isalnum((unsigned char)*p) && *p != '+' && *p != '-' && *p != '.')
+            return 0;
+    }
+    return 0;
+}
+
+/// @brief Return whether a filesystem-style path contains a parent-directory segment.
+/// @details Checks complete path segments separated by `/` or `\\`, so names
+///          like `level..json` remain valid while `../level` and `a/../b` are rejected.
+static int game3d_path_has_parent_segment(const char *path) {
+    const char *seg = path;
+    if (!path)
+        return 0;
+    while (*seg) {
+        while (*seg == '/' || *seg == '\\')
+            ++seg;
+        const char *end = seg;
+        while (*end && *end != '/' && *end != '\\')
+            ++end;
+        if ((size_t)(end - seg) == 2u && seg[0] == '.' && seg[1] == '.')
+            return 1;
+        seg = end;
+    }
+    return 0;
+}
+
 /// @brief Resolve a manifest-relative resource path against the manifest's own directory.
 /// @details Absolute references pass through; relative ones are joined to the manifest's folder so
 /// a
@@ -245,6 +277,13 @@ static rt_string game3d_json_resolved_sidecar_ref(void *entry, rt_string manifes
         raw = game3d_json_string_ref(entry, "binarySidecar");
     if (!raw)
         return rt_string_ref(rt_const_cstr(""));
+    const char *raw_cstr = rt_string_cstr(raw);
+    if (!game3d_path_has_scheme(raw_cstr) && game3d_path_has_parent_segment(raw_cstr)) {
+        rt_string_unref(raw);
+        return rt_string_ref(rt_const_cstr(""));
+    }
+    if (game3d_path_has_scheme(raw_cstr))
+        return raw;
     rt_string resolved = game3d_stream_resolve_manifest_path(manifest_path, raw);
     rt_string_unref(raw);
     return resolved;

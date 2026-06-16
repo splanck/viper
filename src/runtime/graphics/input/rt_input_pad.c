@@ -768,6 +768,28 @@ static int linux_find_free_pad_slot(void) {
     return -1;
 }
 
+/// @brief Open an evdev path non-blocking and close-on-exec.
+/// @details Uses O_CLOEXEC when available and falls back to FD_CLOEXEC through
+///          fcntl on older libc/kernel combinations.
+/// @param path `/dev/input/event*` path.
+/// @param writable Non-zero to request read/write access for force feedback.
+/// @return File descriptor on success; -1 on open failure.
+static int linux_open_evdev_nonblocking(const char *path, int writable) {
+    int flags = (writable ? O_RDWR : O_RDONLY) | O_NONBLOCK;
+#ifdef O_CLOEXEC
+    flags |= O_CLOEXEC;
+#endif
+    int fd = open(path, flags);
+#if !defined(O_CLOEXEC) && defined(FD_CLOEXEC)
+    if (fd >= 0) {
+        int fd_flags = fcntl(fd, F_GETFD);
+        if (fd_flags >= 0)
+            (void)fcntl(fd, F_SETFD, fd_flags | FD_CLOEXEC);
+    }
+#endif
+    return fd;
+}
+
 /// @brief Map a raw evdev axis reading to the [-1, +1] range using its absinfo range.
 static double linux_normalize_axis(int value, int min, int max) {
     if (max == min)
@@ -828,10 +850,10 @@ static void linux_scan_gamepads(void) {
         if (linux_device_already_bound(path_stat.st_rdev, path_stat.st_ino))
             continue;
 
-        int fd = open(path, O_RDWR | O_NONBLOCK);
+        int fd = linux_open_evdev_nonblocking(path, 1);
         bool fd_writable = fd >= 0;
         if (fd < 0) {
-            fd = open(path, O_RDONLY | O_NONBLOCK);
+            fd = linux_open_evdev_nonblocking(path, 0);
             fd_writable = false;
         }
         if (fd < 0)

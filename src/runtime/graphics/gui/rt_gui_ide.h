@@ -54,6 +54,12 @@ void rt_gui_test_harness_send_key(void *harness, rt_string key, int64_t modifier
 /// @brief Inject a mouse event of @p event_type at (@p x, @p y) for the given button.
 void rt_gui_test_harness_send_mouse(
     void *harness, rt_string event_type, int64_t x, int64_t y, int64_t button);
+/// @brief Return the number of synthetic input events recorded by the harness.
+int64_t rt_gui_test_harness_event_count(void *harness);
+/// @brief Return a Map snapshot for the event at @p index, or found=0 if out of range.
+void *rt_gui_test_harness_event_at(void *harness, int64_t index);
+/// @brief Remove all recorded synthetic input events without changing widgets or focus.
+void rt_gui_test_harness_clear_events(void *harness);
 /// @brief Return the id of the currently focused widget (empty string if none).
 rt_string rt_gui_test_harness_get_focus(void *harness);
 /// @brief Return a sequence of widget ids in registration (focus-traversal) order.

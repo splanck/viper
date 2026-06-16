@@ -1091,7 +1091,7 @@ static int gltf_decode_uri_path(const char *uri, char *out, size_t out_cap) {
             int lo = gltf_hex_digit(uri[2]);
             if (hi >= 0 && lo >= 0) {
                 decoded = (unsigned char)((hi << 4) | lo);
-                if (decoded == 0 || decoded < 0x20u || decoded == 0x7Fu)
+                if (decoded < 0x20u || decoded == 0x7Fu)
                     return 0;
                 out[oi++] = (char)decoded;
                 uri += 3;
@@ -1107,51 +1107,93 @@ static int gltf_decode_uri_path(const char *uri, char *out, size_t out_cap) {
     return oi > 0;
 }
 
-/// @brief Combine a glTF document's base path with a relative URI to produce an absolute path.
-/// @details Decodes the URI via `gltf_decode_uri_path`, normalizes safe `.` path segments,
-///          rejects absolute paths / `..` traversal / decoded NULs / overlong output, then
-///          prepends the directory component of @p base_path. Both `/` and `\` separators are
-///          recognised for cross-platform support. Writes an empty string to @p out on failure.
-static void gltf_resolve_relative_path(const char *base_path,
-                                       const char *uri,
-                                       char *out,
-                                       size_t out_cap) {
-    char decoded_uri[1024];
-    char normalized_uri[1024];
+/// @brief Decode a glTF URI path into a heap buffer sized from the input.
+/// @details The decoded path is still bounded by `GLTF_MAX_URI_PATH_BYTES`, rejects raw or
+///          percent-decoded control characters, and strips query/fragment suffixes just like
+///          `gltf_decode_uri_path`.
+/// @return Malloc-owned decoded path, or NULL on malformed/empty/overlong input.
+static char *gltf_decode_uri_path_alloc(const char *uri) {
+    size_t uri_len;
+    char *decoded;
+    if (!uri)
+        return NULL;
+    uri_len = 0;
+    while (uri[uri_len] != '\0' && uri[uri_len] != '?' && uri[uri_len] != '#') {
+        if (uri_len >= GLTF_MAX_URI_PATH_BYTES)
+            return NULL;
+        ++uri_len;
+    }
+    if (uri_len == 0 || uri_len > GLTF_MAX_URI_PATH_BYTES)
+        return NULL;
+    decoded = (char *)malloc(uri_len + 1u);
+    if (!decoded)
+        return NULL;
+    if (!gltf_decode_uri_path(uri, decoded, uri_len + 1u)) {
+        free(decoded);
+        return NULL;
+    }
+    return decoded;
+}
+
+/// @brief Combine a glTF document's base path with a relative URI into a malloc-owned path.
+/// @details Decodes the URI, normalizes safe `.` path segments, rejects absolute paths, URI
+///          schemes, `..` traversal, decoded NULs, and overlong results, then prepends the
+///          directory component of @p base_path. Both `/` and `\` separators are recognised.
+/// @return Malloc-owned resolved path, or NULL when the URI is unsafe, malformed, or too long.
+static char *gltf_resolve_relative_path_alloc(const char *base_path, const char *uri) {
+    char *decoded_uri;
+    char *normalized_uri;
+    char *resolved;
     const char *last_sep;
     const char *last_bsep;
     size_t dir_len;
-    if (!out || out_cap == 0) {
-        return;
+    size_t normalized_len;
+    size_t total_len;
+    decoded_uri = gltf_decode_uri_path_alloc(uri);
+    if (!decoded_uri)
+        return NULL;
+    normalized_uri = (char *)malloc(strlen(decoded_uri) + 1u);
+    if (!normalized_uri) {
+        free(decoded_uri);
+        return NULL;
     }
-    out[0] = '\0';
-    if (!uri)
-        return;
-    if (!gltf_decode_uri_path(uri, decoded_uri, sizeof(decoded_uri)))
-        return;
-    if (!gltf_normalize_relative_uri(decoded_uri, normalized_uri, sizeof(normalized_uri)))
-        return;
+    if (!gltf_normalize_relative_uri(decoded_uri, normalized_uri, strlen(decoded_uri) + 1u)) {
+        free(decoded_uri);
+        free(normalized_uri);
+        return NULL;
+    }
+    free(decoded_uri);
     last_sep = strrchr(base_path ? base_path : "", '/');
     last_bsep = strrchr(base_path ? base_path : "", '\\');
     if (last_bsep && (!last_sep || last_bsep > last_sep))
         last_sep = last_bsep;
+    normalized_len = strlen(normalized_uri);
     if (last_sep) {
         dir_len = (size_t)(last_sep - base_path + 1);
-        if (dir_len >= out_cap)
-            dir_len = out_cap - 1;
-        memcpy(out, base_path, dir_len);
-        out[dir_len] = '\0';
-        if (strlen(normalized_uri) >= out_cap - dir_len) {
-            out[0] = '\0';
-            return;
+        if (dir_len > GLTF_MAX_URI_PATH_BYTES || normalized_len > GLTF_MAX_URI_PATH_BYTES ||
+            dir_len > SIZE_MAX - normalized_len - 1u ||
+            dir_len + normalized_len > GLTF_MAX_URI_PATH_BYTES) {
+            free(normalized_uri);
+            return NULL;
         }
-        strncat(out, normalized_uri, out_cap - dir_len - 1);
+        total_len = dir_len + normalized_len;
+        resolved = (char *)malloc(total_len + 1u);
+        if (!resolved) {
+            free(normalized_uri);
+            return NULL;
+        }
+        memcpy(resolved, base_path, dir_len);
+        memcpy(resolved + dir_len, normalized_uri, normalized_len + 1u);
     } else {
-        if (strlen(normalized_uri) >= out_cap)
-            return;
-        strncpy(out, normalized_uri, out_cap - 1);
-        out[out_cap - 1] = '\0';
+        if (normalized_len > GLTF_MAX_URI_PATH_BYTES) {
+            free(normalized_uri);
+            return NULL;
+        }
+        resolved = normalized_uri;
+        normalized_uri = NULL;
     }
+    free(normalized_uri);
+    return resolved;
 }
 
 /// @brief True if @p path uses the `asset://` scheme (a packed/mounted asset URI).
@@ -1166,15 +1208,15 @@ static uint8_t *gltf_read_file_bytes(const char *filepath, size_t *out_size) {
         *out_size = 0;
     if (!filepath)
         return NULL;
-    FILE *f = fopen(filepath, "rb");
+    FILE *f = rt_file_stdio_open_utf8(filepath, "rb");
     if (!f)
         return NULL;
-    if (gltf_fseek(f, 0, SEEK_END) != 0) {
+    if (rt_file_stdio_seek64(f, 0, SEEK_END) != 0) {
         fclose(f);
         return NULL;
     }
-    int64_t fsize = (int64_t)gltf_ftell(f);
-    if (gltf_fseek(f, 0, SEEK_SET) != 0) {
+    int64_t fsize = rt_file_stdio_tell64(f);
+    if (rt_file_stdio_seek64(f, 0, SEEK_SET) != 0) {
         fclose(f);
         return NULL;
     }

@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/assets/rt_gltf_codec.inc  (#included from rt_gltf.c; not a standalone translation unit)
-// Purpose: glTF image-codec, data-URI/base64, byte I/O, and buffer-view access helpers
+// File: src/runtime/graphics/3d/assets/rt_gltf_codec.inc  (#included from rt_gltf.c; not a
+// standalone translation unit) Purpose: glTF image-codec, data-URI/base64, byte I/O, and
+// buffer-view access helpers
 //===----------------------------------------------------------------------===//
 //===----------------------------------------------------------------------===//
 // Buffer management
@@ -1007,6 +1008,36 @@ static int gltf_data_uri_meta_has_base64(const char *meta, size_t len) {
     return 0;
 }
 
+/// @brief Validate an optional MIME type from a glTF data URI metadata prefix.
+/// @details glTF data URIs are expected to carry binary base64 payloads. When a MIME type is
+///          present before the first `;` or `,`, require the conservative `type/subtype` token
+///          shape and reject whitespace/control characters so malformed metadata does not get
+///          silently treated as opaque binary.
+/// @return Non-zero when the MIME type is empty or a valid ASCII media type token.
+static int gltf_data_uri_mime_is_valid(const char *mime, size_t len) {
+    int saw_slash = 0;
+    if (!mime)
+        return len == 0;
+    if (len == 0)
+        return 1;
+    if (mime[0] == '/' || mime[len - 1u] == '/')
+        return 0;
+    for (size_t i = 0; i < len; ++i) {
+        unsigned char ch = (unsigned char)mime[i];
+        int token_char = isalnum(ch) || ch == '!' || ch == '#' || ch == '$' || ch == '&' ||
+                         ch == '-' || ch == '^' || ch == '_' || ch == '.' || ch == '+' || ch == '|';
+        if (ch == '/') {
+            if (saw_slash)
+                return 0;
+            saw_slash = 1;
+            continue;
+        }
+        if (!token_char)
+            return 0;
+    }
+    return saw_slash;
+}
+
 /// @brief Percent-decode (%XX) a URI string into a freshly allocated byte buffer (caller frees).
 /// @details Decodes %XX escapes to bytes and copies all other characters verbatim. Malformed
 ///          escapes reject the URI instead of leaving a literal `%` in the payload. The buffer is
@@ -1191,6 +1222,8 @@ static int gltf_parse_data_uri(
         } else {
             mime_len = meta_len;
         }
+        if (!is_base64 || !gltf_data_uri_mime_is_valid(meta, mime_len))
+            return 0;
         if (mime_buf && mime_buf_cap > 0 && mime_len > 0) {
             if (mime_len >= mime_buf_cap)
                 mime_len = mime_buf_cap - 1;
@@ -1202,15 +1235,9 @@ static int gltf_parse_data_uri(
     if (!gltf_percent_decode_bytes(
             payload, strlen(payload), &decoded_payload, &decoded_payload_len))
         return 0;
-    if (is_base64) {
-        *out_data = gltf_base64_decode((const char *)decoded_payload, decoded_payload_len, out_len);
-        free(decoded_payload);
-        return *out_data != NULL;
-    }
-
-    *out_data = decoded_payload;
-    *out_len = decoded_payload_len;
-    return 1;
+    *out_data = gltf_base64_decode((const char *)decoded_payload, decoded_payload_len, out_len);
+    free(decoded_payload);
+    return *out_data != NULL;
 }
 
 /// @brief Copy a data-URI's MIME type (the part between "data:" and the first ';' or ',') into
@@ -1271,7 +1298,8 @@ static const uint8_t *gltf_get_buffer_view_data(
     if (out_len)
         *out_len = byte_length;
     if (byte_length == 0)
-        return buffers[buf_idx].data ? buffers[buf_idx].data + byte_offset : &empty_buffer_view_byte;
+        return buffers[buf_idx].data ? buffers[buf_idx].data + byte_offset
+                                     : &empty_buffer_view_byte;
     if (!buffers[buf_idx].data)
         return NULL;
     return buffers[buf_idx].data + byte_offset;

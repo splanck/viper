@@ -412,7 +412,7 @@ static uint8_t *textureasset3d_read_file_bytes(const char *path, size_t *out_siz
         *out_size = 0;
     if (!path || !*path)
         return NULL;
-    file = fopen(path, "rb");
+    file = rt_file_stdio_open_utf8(path, "rb");
     if (!file)
         return NULL;
     if (textureasset3d_fseek(file, 0, SEEK_END) != 0) {

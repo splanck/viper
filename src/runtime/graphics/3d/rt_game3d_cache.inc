@@ -5,13 +5,8 @@
 // selection and eviction
 //===----------------------------------------------------------------------===//
 
-#if defined(_WIN32)
-#define game3d_asset_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
-#define game3d_asset_ftell(fp) _ftelli64((fp))
-#else
-#define game3d_asset_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
-#define game3d_asset_ftell(fp) ftello((fp))
-#endif
+#define game3d_asset_fseek(fp, off, whence) rt_file_stdio_seek64((fp), (off), (whence))
+#define game3d_asset_ftell(fp) rt_file_stdio_tell64((fp))
 
 /// @brief Return the template's loaded Model3D as a class-checked reference, or NULL
 ///   when the template is absent or its model slot holds the wrong type.
@@ -167,7 +162,7 @@ static uint8_t *game3d_asset_read_file_bytes(const char *path, size_t *out_size)
         *out_size = 0;
     if (!path)
         return NULL;
-    file = fopen(path, "rb");
+    file = rt_file_stdio_open_utf8(path, "rb");
     if (!file)
         return NULL;
     if (game3d_asset_fseek(file, 0, SEEK_END) != 0) {
@@ -711,51 +706,6 @@ static void game3d_model_cache_advance_generation_locked(void) {
         g_game3d_model_cache_generation++;
 }
 
-#if !defined(_WIN32)
-/// @brief Normalize a path to a canonical POSIX form for use as a stable cache key.
-/// @details Collapses separators and resolves "."/".." segments so equivalent paths share a key.
-/// @return 1 on success, 0 if the result would overflow @p out.
-static int game3d_normalize_posix_path(const char *input, char *out, size_t out_size) {
-    size_t out_len = 0;
-    const char *p = input;
-    if (!input || !out || out_size == 0 || input[0] != '/')
-        return 0;
-    out[out_len++] = '/';
-    out[out_len] = '\0';
-    while (*p) {
-        while (*p == '/')
-            p++;
-        const char *start = p;
-        while (*p && *p != '/')
-            p++;
-        size_t len = (size_t)(p - start);
-        if (len == 0 || (len == 1 && start[0] == '.'))
-            continue;
-        if (len == 2 && start[0] == '.' && start[1] == '.') {
-            if (out_len > 1) {
-                if (out[out_len - 1] == '/')
-                    out_len--;
-                while (out_len > 1 && out[out_len - 1] != '/')
-                    out_len--;
-                out[out_len] = '\0';
-            }
-            continue;
-        }
-        if (out_len > 1) {
-            if (out_len + 1 >= out_size)
-                return 0;
-            out[out_len++] = '/';
-        }
-        if (out_len + len >= out_size)
-            return 0;
-        memcpy(out + out_len, start, len);
-        out_len += len;
-        out[out_len] = '\0';
-    }
-    return 1;
-}
-#endif
-
 static rt_string game3d_model_cache_key_asset_path(rt_string path) {
     const char *raw = path ? rt_string_cstr(path) : "";
     char normalized[RT_GAME3D_MODEL_CACHE_KEY_MAX];
@@ -830,43 +780,9 @@ static rt_string game3d_model_cache_key_path(rt_string path, int8_t asset_path) 
         raw = "";
     if (asset_path)
         return game3d_model_cache_key_asset_path(path);
-#if defined(_WIN32)
-    {
-        char resolved[MAX_PATH];
-        DWORD len = GetFullPathNameA(raw, (DWORD)sizeof(resolved), resolved, NULL);
-        if (len > 0 && len < sizeof(resolved))
-            return rt_string_from_bytes(resolved, (size_t)len);
-    }
-#else
-    {
-        char resolved[PATH_MAX];
-        if (realpath(raw, resolved))
-            return rt_string_from_bytes(resolved, strlen(resolved));
-        char absolute[PATH_MAX];
-        char normalized[PATH_MAX];
-        if (raw[0] == '/') {
-            if (strlen(raw) < sizeof(absolute)) {
-                strcpy(absolute, raw);
-                if (game3d_normalize_posix_path(absolute, normalized, sizeof(normalized)))
-                    return rt_string_from_bytes(normalized, strlen(normalized));
-            }
-        } else {
-            char cwd[PATH_MAX];
-            if (getcwd(cwd, sizeof(cwd))) {
-                size_t cwd_len = strlen(cwd);
-                size_t raw_len = strlen(raw);
-                if (cwd_len + 1u + raw_len < sizeof(absolute)) {
-                    memcpy(absolute, cwd, cwd_len);
-                    absolute[cwd_len] = '/';
-                    memcpy(absolute + cwd_len + 1u, raw, raw_len + 1u);
-                    if (game3d_normalize_posix_path(absolute, normalized, sizeof(normalized)))
-                        return rt_string_from_bytes(normalized, strlen(normalized));
-                    return rt_string_from_bytes(absolute, cwd_len + 1u + raw_len);
-                }
-            }
-        }
-    }
-#endif
+    rt_string absolute = rt_path_abs(path ? path : rt_const_cstr(""));
+    if (absolute)
+        return absolute;
     return rt_string_ref(path ? path : rt_const_cstr(""));
 }
 

@@ -29,6 +29,7 @@
 #include "rt_box.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_file_stdio.h"
 #include "rt_json.h"
 #include "rt_map.h"
 #include "rt_object.h"
@@ -994,8 +995,10 @@ int64_t rt_scene3d_save(void *scene_obj, rt_string path) {
     vscn_save_context_t ctx = {0};
     char *buf = NULL;
     size_t len = 0, cap = 0;
-    FILE *f;
+    FILE *f = NULL;
+    char *tmp_path = NULL;
     size_t written = 0;
+    int64_t result = 0;
 
     for (int32_t i = 0, child_count = scene3d_node_child_count(scene->root); i < child_count; i++) {
         if (!scene->root->children[i])
@@ -1023,7 +1026,7 @@ int64_t rt_scene3d_save(void *scene_obj, rt_string path) {
         return 0;
     }
 
-    f = fopen(filepath, "wb");
+    f = rt_file_stdio_open_temp_for_replace_utf8(filepath, &tmp_path);
     if (!f) {
         vscn_save_free_ctx(&ctx);
         free(buf);
@@ -1033,6 +1036,8 @@ int64_t rt_scene3d_save(void *scene_obj, rt_string path) {
         size_t chunk = fwrite(buf + written, 1, len - written, f);
         if (chunk == 0) {
             fclose(f);
+            (void)rt_file_stdio_unlink_utf8(tmp_path);
+            free(tmp_path);
             vscn_save_free_ctx(&ctx);
             free(buf);
             return 0;
@@ -1040,13 +1045,19 @@ int64_t rt_scene3d_save(void *scene_obj, rt_string path) {
         written += chunk;
     }
     if (fflush(f) != 0 || fclose(f) != 0) {
+        (void)rt_file_stdio_unlink_utf8(tmp_path);
+        free(tmp_path);
         vscn_save_free_ctx(&ctx);
         free(buf);
         return 0;
     }
+    result = rt_file_stdio_replace_utf8(tmp_path, filepath) ? 1 : 0;
+    if (!result)
+        (void)rt_file_stdio_unlink_utf8(tmp_path);
+    free(tmp_path);
     vscn_save_free_ctx(&ctx);
     free(buf);
-    return 1;
+    return result;
 }
 
 #endif // VIPER_ENABLE_GRAPHICS

@@ -177,6 +177,28 @@ void *widgetToMap(const WidgetRecord *w) {
     return map;
 }
 
+/// @brief Convert a captured harness event into the map shape returned to runtime callers.
+/// @details A NULL event still returns a map with `found=false`, which lets scripts query
+///          optional event indices without trapping or special-casing a NULL object result.
+void *eventToMap(const EventRecord *event) {
+    void *map = rt_map_new();
+    if (!map)
+        return nullptr;
+    if (!event) {
+        rt_map_set_bool(map, rt_const_cstr("found"), 0);
+        return map;
+    }
+    rt_map_set_bool(map, rt_const_cstr("found"), 1);
+    mapSetStr(map, "type", event->type);
+    mapSetStr(map, "value", event->value);
+    rt_map_set_int(map, rt_const_cstr("x"), event->x);
+    rt_map_set_int(map, rt_const_cstr("y"), event->y);
+    rt_map_set_int(map, rt_const_cstr("button"), event->button);
+    rt_map_set_int(map, rt_const_cstr("modifiers"), event->modifiers);
+    rt_map_set_int(map, rt_const_cstr("frame"), event->frame);
+    return map;
+}
+
 bool intersects(const WidgetRecord &w, int64_t x, int64_t y, int64_t width, int64_t height) {
     return rangesIntersect(w.x, w.w, x, width) && rangesIntersect(w.y, w.h, y, height);
 }
@@ -493,6 +515,34 @@ void rt_gui_test_harness_send_mouse(
     } catch (const std::bad_alloc &) {
         return;
     }
+}
+
+/// @brief Return the number of synthetic input events recorded by a GUI test harness.
+/// @details Invalid handles return zero through the standard harness guard. Extremely large
+///          vectors are saturated to `INT64_MAX` to preserve the public integer contract.
+int64_t rt_gui_test_harness_event_count(void *harness) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireHarness(harness), 0);
+    if (h->state->events.size() > static_cast<size_t>(INT64_MAX))
+        return INT64_MAX;
+    return static_cast<int64_t>(h->state->events.size());
+}
+
+/// @brief Return one recorded harness event as a map.
+/// @details Out-of-range indices and invalid handles return a map with `found=false`; valid
+///          events include type, value, coordinates, button, modifiers, and frame fields.
+void *rt_gui_test_harness_event_at(void *harness, int64_t index) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN(h, requireHarness(harness), eventToMap(nullptr));
+    if (index < 0 || static_cast<uint64_t>(index) >= h->state->events.size())
+        return eventToMap(nullptr);
+    return eventToMap(&h->state->events[static_cast<size_t>(index)]);
+}
+
+/// @brief Clear all synthetic input events recorded by a GUI test harness.
+/// @details This does not alter focus, widgets, virtual lists, or the frame counter; it only
+///          resets the event journal exposed through the event inspection helpers.
+void rt_gui_test_harness_clear_events(void *harness) {
+    RT_GUI_IDE_REQUIRE_OR_RETURN_VOID(h, requireHarness(harness));
+    h->state->events.clear();
 }
 
 rt_string rt_gui_test_harness_get_focus(void *harness) {

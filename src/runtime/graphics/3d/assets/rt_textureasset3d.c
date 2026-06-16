@@ -37,6 +37,7 @@
 
 #include "rt_asset.h"
 #include "rt_asset_error.h"
+#include "rt_file_stdio.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
@@ -55,13 +56,8 @@
 #define TEXTUREASSET3D_MAX_RGBA8_FALLBACK_BYTES (256u * 1024u * 1024u)
 #define TEXTUREASSET3D_MAX_MIP_COUNT 32u
 
-#if defined(_WIN32)
-#define textureasset3d_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
-#define textureasset3d_ftell(fp) _ftelli64((fp))
-#else
-#define textureasset3d_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
-#define textureasset3d_ftell(fp) ftello((fp))
-#endif
+#define textureasset3d_fseek(fp, off, whence) rt_file_stdio_seek64((fp), (off), (whence))
+#define textureasset3d_ftell(fp) rt_file_stdio_tell64((fp))
 
 #define VK_FORMAT_R8G8B8A8_UNORM 37u
 #define VK_FORMAT_R8G8B8A8_SRGB 43u

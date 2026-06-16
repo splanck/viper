@@ -24,8 +24,13 @@
 #if RT_PLATFORM_WINDOWS
 #include <fcntl.h>
 #include <io.h>
+#include <process.h>
 #include <sys/stat.h>
 #include <wchar.h>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
 #ifndef O_RDONLY
 #define O_RDONLY _O_RDONLY
 #endif
@@ -41,6 +46,9 @@
 #ifndef O_TRUNC
 #define O_TRUNC _O_TRUNC
 #endif
+#ifndef O_EXCL
+#define O_EXCL _O_EXCL
+#endif
 #ifndef O_APPEND
 #define O_APPEND _O_APPEND
 #endif
@@ -50,6 +58,193 @@
 #include <sys/types.h>
 #include <unistd.h>
 #endif
+
+/// @brief Return a small process-local identifier for temporary file names.
+/// @details The value is not used for security. It only reduces collision
+///          probability before the following exclusive-create open enforces
+///          uniqueness. Windows uses `_getpid`; POSIX uses `getpid`.
+/// @return Current process id truncated to an unsigned long.
+static inline unsigned long rt_file_stdio_process_id(void) {
+#if RT_PLATFORM_WINDOWS
+    return (unsigned long)_getpid();
+#else
+    return (unsigned long)getpid();
+#endif
+}
+
+/// @brief Delete a file at a UTF-8 path.
+/// @details Windows converts @p path to a wide path and calls `_wunlink`.
+///          POSIX calls `unlink`. The function does not treat missing files
+///          specially; callers can inspect `errno` or the Windows CRT errno
+///          mapping when a non-zero result is returned.
+/// @param path UTF-8 path to delete.
+/// @return 0 on success, non-zero on invalid input or deletion failure.
+static inline int rt_file_stdio_unlink_utf8(const char *path) {
+    if (!path) {
+        errno = EINVAL;
+        return -1;
+    }
+#if RT_PLATFORM_WINDOWS
+    wchar_t *wide_path = rt_file_path_utf8_to_wide(path);
+    if (!wide_path) {
+        errno = EINVAL;
+        return -1;
+    }
+    int rc = _wunlink(wide_path);
+    free(wide_path);
+    return rc;
+#else
+    return unlink(path);
+#endif
+}
+
+/// @brief Atomically replace a UTF-8 destination path with a UTF-8 source path.
+/// @details Windows uses `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING` and
+///          `MOVEFILE_WRITE_THROUGH`. POSIX uses `rename`, which atomically
+///          replaces an existing destination when both paths are on the same
+///          filesystem. The temporary source should be created in the same
+///          directory as the destination when atomicity is required.
+/// @param src_utf8 Existing source path.
+/// @param dst_utf8 Destination path to replace.
+/// @return 1 on success, 0 on invalid input or replace failure.
+static inline int rt_file_stdio_replace_utf8(const char *src_utf8, const char *dst_utf8) {
+    if (!src_utf8 || !dst_utf8) {
+        errno = EINVAL;
+        return 0;
+    }
+#if RT_PLATFORM_WINDOWS
+    wchar_t *wide_src = rt_file_path_utf8_to_wide(src_utf8);
+    wchar_t *wide_dst = rt_file_path_utf8_to_wide(dst_utf8);
+    if (!wide_src || !wide_dst) {
+        free(wide_src);
+        free(wide_dst);
+        errno = EINVAL;
+        return 0;
+    }
+    int ok =
+        MoveFileExW(wide_src, wide_dst, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+    free(wide_src);
+    free(wide_dst);
+    return ok ? 1 : 0;
+#else
+    return rename(src_utf8, dst_utf8) == 0 ? 1 : 0;
+#endif
+}
+
+/// @brief Build a same-directory temporary path for replacing @p dst_path.
+/// @details The returned path appends `.tmp.<pid>.<attempt>` to the full
+///          destination path. It is intended to be opened with exclusive-create
+///          semantics by rt_file_stdio_open_temp_for_replace_utf8, so collisions
+///          are harmless and cause another candidate to be tried.
+/// @param dst_path Destination path that will later be replaced.
+/// @param attempt Candidate number used to vary the suffix.
+/// @return Malloc-owned temporary path, or NULL on invalid input, overflow, or allocation failure.
+static inline char *rt_file_stdio_temp_replace_path_utf8(const char *dst_path, unsigned attempt) {
+    if (!dst_path || !*dst_path) {
+        errno = EINVAL;
+        return NULL;
+    }
+    char suffix[64];
+    int suffix_len =
+        snprintf(suffix, sizeof(suffix), ".tmp.%lu.%u", rt_file_stdio_process_id(), attempt);
+    if (suffix_len <= 0 || (size_t)suffix_len >= sizeof(suffix)) {
+        errno = ENAMETOOLONG;
+        return NULL;
+    }
+    size_t dst_len = strlen(dst_path);
+    if (dst_len > SIZE_MAX - (size_t)suffix_len - 1u) {
+        errno = ENAMETOOLONG;
+        return NULL;
+    }
+    char *tmp = (char *)malloc(dst_len + (size_t)suffix_len + 1u);
+    if (!tmp)
+        return NULL;
+    memcpy(tmp, dst_path, dst_len);
+    memcpy(tmp + dst_len, suffix, (size_t)suffix_len + 1u);
+    return tmp;
+}
+
+/// @brief Open a same-directory temporary file for atomically replacing a UTF-8 destination path.
+/// @details Tries a bounded sequence of `.tmp.<pid>.<attempt>` candidate names
+///          beside @p dst_path, opening each with exclusive-create semantics so
+///          an existing file is never truncated. The returned FILE* is opened
+///          in binary write mode and must be closed by the caller before
+///          committing with rt_file_stdio_replace_utf8. On success @p out_tmp_path
+///          receives a malloc-owned path that the caller must free. On failure
+///          it is set to NULL.
+/// @param dst_path Destination path that will eventually be replaced.
+/// @param out_tmp_path Receives the malloc-owned temporary path.
+/// @return Open FILE* on success; NULL on invalid input, collisions after all attempts, or I/O
+/// error.
+static inline FILE *rt_file_stdio_open_temp_for_replace_utf8(const char *dst_path,
+                                                             char **out_tmp_path) {
+    if (out_tmp_path)
+        *out_tmp_path = NULL;
+    if (!dst_path || !out_tmp_path) {
+        errno = EINVAL;
+        return NULL;
+    }
+
+    for (unsigned attempt = 0; attempt < 256u; ++attempt) {
+        char *tmp_path = rt_file_stdio_temp_replace_path_utf8(dst_path, attempt);
+        if (!tmp_path)
+            return NULL;
+        int flags = O_WRONLY | O_CREAT | O_EXCL | O_TRUNC;
+#if defined(O_BINARY)
+        flags |= O_BINARY;
+#elif defined(_O_BINARY)
+        flags |= _O_BINARY;
+#endif
+#if RT_PLATFORM_WINDOWS
+        flags |= _O_NOINHERIT;
+        wchar_t *wide_path = rt_file_path_utf8_to_wide(tmp_path);
+        if (!wide_path) {
+            free(tmp_path);
+            errno = EINVAL;
+            return NULL;
+        }
+        int fd = _wopen(wide_path, flags, _S_IREAD | _S_IWRITE);
+        free(wide_path);
+#else
+#ifdef O_CLOEXEC
+        flags |= O_CLOEXEC;
+#endif
+        int fd = open(tmp_path, flags, (mode_t)0666);
+#endif
+        if (fd < 0) {
+            if (errno == EEXIST) {
+                free(tmp_path);
+                continue;
+            }
+            free(tmp_path);
+            return NULL;
+        }
+#if !RT_PLATFORM_WINDOWS && defined(FD_CLOEXEC) && !defined(O_CLOEXEC)
+        int fd_flags = fcntl(fd, F_GETFD);
+        if (fd_flags >= 0)
+            (void)fcntl(fd, F_SETFD, fd_flags | FD_CLOEXEC);
+#endif
+#if RT_PLATFORM_WINDOWS
+        FILE *fp = _fdopen(fd, "wb");
+#else
+        FILE *fp = fdopen(fd, "wb");
+#endif
+        if (!fp) {
+#if RT_PLATFORM_WINDOWS
+            _close(fd);
+#else
+            close(fd);
+#endif
+            (void)rt_file_stdio_unlink_utf8(tmp_path);
+            free(tmp_path);
+            return NULL;
+        }
+        *out_tmp_path = tmp_path;
+        return fp;
+    }
+    errno = EEXIST;
+    return NULL;
+}
 
 static inline int rt_file_stdio_mode_flags(const char *mode, int *out_flags, int *out_pmode) {
     if (!mode || !out_flags || !out_pmode)

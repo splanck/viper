@@ -36,6 +36,7 @@
 #include "rt_canvas3d.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_mat4.h"
+#include "rt_platform.h"
 #include "rt_scene3d.h"
 #include "rt_sound3d.h"
 #include "rt_soundlistener3d.h"
@@ -293,6 +294,7 @@ static int64_t sound3d_clamp_volume(int64_t volume) {
 ///   every live listener once per tick. Insertion at head is O(1) and
 ///   order doesn't matter since every node is visited uniformly.
 static void sound3d_listener_list_add(rt_soundlistener3d *listener) {
+    RT_ASSERT_MAIN_THREAD();
     if (!listener)
         return;
     listener->prev = NULL;
@@ -309,6 +311,7 @@ static void sound3d_listener_list_add(rt_soundlistener3d *listener) {
 ///   listener can be re-added later without carrying stale pointers. Called
 ///   by the finalizer and by deactivation paths.
 static void sound3d_listener_list_remove(rt_soundlistener3d *listener) {
+    RT_ASSERT_MAIN_THREAD();
     if (!listener)
         return;
     if (listener->prev)
@@ -326,6 +329,7 @@ static void sound3d_listener_list_remove(rt_soundlistener3d *listener) {
 ///   list, O(1) insertion, iteration order immaterial because every live
 ///   source is visited uniformly during `sync_bindings`.
 static void sound3d_source_list_add(rt_soundsource3d *source) {
+    RT_ASSERT_MAIN_THREAD();
     if (!source)
         return;
     source->prev = NULL;
@@ -339,6 +343,7 @@ static void sound3d_source_list_add(rt_soundsource3d *source) {
 /// @details Symmetric to `sound3d_listener_list_remove`; clears both prev
 ///   and next on exit so the source can re-enter the list cleanly.
 static void sound3d_source_list_remove(rt_soundsource3d *source) {
+    RT_ASSERT_MAIN_THREAD();
     if (!source)
         return;
     if (source->prev)
@@ -695,6 +700,7 @@ static void sound3d_source_finalize(void *obj) {
 /// the position delta over `dt`. Called by the game loop so spatial audio tracks moving entities
 /// without per-source manual updates.
 void rt_sound3d_sync_bindings(double dt) {
+    RT_ASSERT_MAIN_THREAD();
     rt_soundlistener3d *listener = s_listener_head;
     rt_soundsource3d *source = s_source_head;
     if (!isfinite(dt) || dt < 0.0)
@@ -854,6 +860,7 @@ int8_t rt_soundlistener3d_get_is_active(void *obj) {
 /// Setting `active=0` deactivates this listener and clears the audio core's listener state,
 /// which makes spatial sources fall back to centered/full-volume output.
 void rt_soundlistener3d_set_is_active(void *obj, int8_t active) {
+    RT_ASSERT_MAIN_THREAD();
     rt_soundlistener3d *listener = sound3d_listener_checked(obj);
     if (!listener)
         return;

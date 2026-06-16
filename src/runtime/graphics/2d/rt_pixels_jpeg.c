@@ -20,6 +20,7 @@
 #include "rt_pixels_io_internal.h"
 
 #include "rt_asset_error.h"
+#include "rt_file_stdio.h"
 #include "rt_trap.h"
 
 //=============================================================================
@@ -36,6 +37,12 @@
 #define JPEG_DRI 0xFFDD
 #define JPEG_RST0 0xFFD0
 #define JPEG_MAX_PIXELS ((size_t)64u * 1024u * 1024u)
+
+typedef enum {
+    JPEG_DECODE_STATUS_OK = 0,
+    JPEG_DECODE_STATUS_CORRUPT = 1,
+    JPEG_DECODE_STATUS_UNSUPPORTED = 2,
+} jpeg_decode_status_t;
 
 // Zigzag order for 8x8 block
 static const uint8_t jpeg_zigzag[64] = {
@@ -126,6 +133,36 @@ static int jpeg_read_u16(jpeg_ctx_t *ctx) {
 /// @return 1 if the bytes are fully inside the segment; otherwise 0.
 static int jpeg_segment_has(const jpeg_ctx_t *ctx, size_t seg_end, size_t needed) {
     return ctx && ctx->pos <= seg_end && needed <= seg_end - ctx->pos;
+}
+
+/// @brief Return whether a marker is a Start Of Frame variant this decoder does not implement.
+/// @details The runtime decoder intentionally supports baseline DCT (SOF0) only.
+///          Other SOF markers include progressive, lossless, arithmetic-coded,
+///          and differential JPEG variants. Treating these as unsupported lets
+///          file loads report a precise diagnostic instead of labeling a valid
+///          but unsupported JPEG as corrupt.
+/// @param marker Full 0xFFxx marker value.
+/// @return Non-zero when @p marker is an unsupported SOF marker.
+static int jpeg_marker_is_unsupported_sof(uint16_t marker) {
+    return (marker >= 0xFFC0u && marker <= 0xFFCFu && marker != JPEG_SOF0 && marker != JPEG_DHT);
+}
+
+/// @brief Validate bytes after an EOI marker.
+/// @details Some encoders append fill bytes after EOI. The decoder accepts only
+///          inert 0x00/0xFF padding so a real trailing payload is still rejected.
+/// @param data Complete JPEG byte buffer.
+/// @param pos Offset immediately after EOI.
+/// @param len Total byte length.
+/// @return Non-zero when the tail is empty or contains only accepted padding.
+static int jpeg_tail_is_fill(const uint8_t *data, size_t pos, size_t len) {
+    if (!data || pos > len)
+        return 0;
+    while (pos < len) {
+        if (data[pos] != 0x00u && data[pos] != 0xFFu)
+            return 0;
+        ++pos;
+    }
+    return 1;
 }
 
 /// @brief Read a TIFF-endian uint16 from an EXIF payload.
@@ -617,12 +654,25 @@ static int jpeg_rgba_apply_orientation(uint32_t **pixels,
 }
 
 /// @brief Decode a JPEG image from a memory buffer to malloc-owned raw RGBA32 pixels.
-int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
-                                 size_t len,
-                                 uint32_t **out_pixels,
-                                 int64_t *out_width,
-                                 int64_t *out_height) {
+/// @details This internal variant preserves the public raw-buffer contract while
+///          returning a structured status for callers that need diagnostics.
+/// @param data Pointer to JPEG data.
+/// @param len Length of @p data.
+/// @param out_pixels Receives malloc-owned RGBA32 pixels on success.
+/// @param out_width Receives decoded width on success.
+/// @param out_height Receives decoded height on success.
+/// @param out_status Receives success, corrupt, or unsupported status when non-NULL.
+/// @return 1 on success; 0 on corrupt data, unsupported JPEG variants, or allocation failure.
+static int rt_jpeg_decode_buffer_rgba32_ex(const uint8_t *data,
+                                           size_t len,
+                                           uint32_t **out_pixels,
+                                           int64_t *out_width,
+                                           int64_t *out_height,
+                                           jpeg_decode_status_t *out_status) {
     uint32_t *pixels = NULL;
+    jpeg_decode_status_t decode_status = JPEG_DECODE_STATUS_CORRUPT;
+    if (out_status)
+        *out_status = JPEG_DECODE_STATUS_CORRUPT;
     if (!data || len < 2 || data[0] != 0xFF || data[1] != 0xD8)
         return 0;
     if (!out_pixels || !out_width || !out_height)
@@ -668,14 +718,19 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
 
         if (mk == JPEG_EOI) {
             saw_eoi = 1;
-            if (ctx.pos != ctx.len)
+            if (!jpeg_tail_is_fill(ctx.data, ctx.pos, ctx.len))
                 goto jpeg_fail;
+            ctx.pos = ctx.len;
             break;
         }
 
         // Markers without length
         if (mk >= JPEG_RST0 && mk <= JPEG_RST0 + 7)
             continue;
+        if (jpeg_marker_is_unsupported_sof(mk)) {
+            decode_status = JPEG_DECODE_STATUS_UNSUPPORTED;
+            goto jpeg_fail;
+        }
 
         // Read marker length
         int seg_len = jpeg_read_u16(&ctx);
@@ -809,8 +864,10 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
             }
             case JPEG_SOS: {
                 // Start of Scan — decode the entropy-coded data
-                if (saw_scan || pixels || comp_data)
+                if (saw_scan || pixels || comp_data) {
+                    decode_status = JPEG_DECODE_STATUS_UNSUPPORTED;
                     goto jpeg_fail;
+                }
                 saw_scan = 1;
                 if (!jpeg_segment_has(&ctx, seg_end, 1))
                     goto jpeg_fail;
@@ -819,8 +876,10 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                     goto jpeg_fail;
                 if (ctx.num_components != 1 && ctx.num_components != 3)
                     goto jpeg_fail;
-                if (ns != ctx.num_components)
+                if (ns != ctx.num_components) {
+                    decode_status = JPEG_DECODE_STATUS_UNSUPPORTED;
                     goto jpeg_fail;
+                }
                 if (!jpeg_segment_has(&ctx, seg_end, 3) || (size_t)ns > (seg_end - ctx.pos - 3) / 2)
                     goto jpeg_fail;
                 ctx.scan_comp_count = (uint8_t)ns;
@@ -857,8 +916,10 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
                 int ah_al = jpeg_read_u8(&ctx);
                 if (ss < 0 || se < 0 || ah_al < 0)
                     goto jpeg_fail;
-                if (ss != 0 || se != 63 || ah_al != 0)
+                if (ss != 0 || se != 63 || ah_al != 0) {
+                    decode_status = JPEG_DECODE_STATUS_UNSUPPORTED;
                     goto jpeg_fail;
+                }
                 if (ctx.pos != seg_end)
                     goto jpeg_fail;
 
@@ -1081,6 +1142,8 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
     *out_pixels = pixels;
     *out_width = decoded_width;
     *out_height = decoded_height;
+    if (out_status)
+        *out_status = JPEG_DECODE_STATUS_OK;
     return 1;
 
 jpeg_fail:
@@ -1093,7 +1156,18 @@ jpeg_fail:
     *out_pixels = NULL;
     *out_width = 0;
     *out_height = 0;
+    if (out_status)
+        *out_status = decode_status;
     return 0;
+}
+
+/// @brief Decode a JPEG image from a memory buffer to malloc-owned raw RGBA32 pixels.
+int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
+                                 size_t len,
+                                 uint32_t **out_pixels,
+                                 int64_t *out_width,
+                                 int64_t *out_height) {
+    return rt_jpeg_decode_buffer_rgba32_ex(data, len, out_pixels, out_width, out_height, NULL);
 }
 
 /// @brief Decode a JPEG image from a memory buffer.
@@ -1138,7 +1212,7 @@ void *rt_pixels_load_jpeg(void *path) {
         return NULL;
     }
 
-    FILE *f = fopen(filepath, "rb");
+    FILE *f = rt_file_stdio_open_utf8(filepath, "rb");
     if (!f) {
         rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND, "Pixels.LoadJpeg: '%s' not found", filepath);
         rt_asset_error_end_load_failure();
@@ -1187,10 +1261,31 @@ void *rt_pixels_load_jpeg(void *path) {
     }
     fclose(f);
 
-    void *result = rt_jpeg_decode_buffer(file_data, (size_t)file_len);
+    uint32_t *raw_pixels = NULL;
+    int64_t width = 0;
+    int64_t height = 0;
+    jpeg_decode_status_t decode_status = JPEG_DECODE_STATUS_CORRUPT;
+    void *result = NULL;
+    if (rt_jpeg_decode_buffer_rgba32_ex(
+            file_data, (size_t)file_len, &raw_pixels, &width, &height, &decode_status)) {
+        size_t pixel_count = 0;
+        if (jpeg_rgba_pixel_count_checked(width, height, &pixel_count)) {
+            rt_pixels_impl *pixels = pixels_alloc(width, height);
+            if (pixels) {
+                memcpy(pixels->data, raw_pixels, pixel_count * sizeof(uint32_t));
+                result = pixels;
+            }
+        }
+        free(raw_pixels);
+    }
     free(file_data);
     if (result) {
         rt_asset_error_end_load_success();
+    } else if (decode_status == JPEG_DECODE_STATUS_UNSUPPORTED) {
+        rt_asset_error_setf(RT_ASSET_ERROR_UNSUPPORTED,
+                            "Pixels.LoadJpeg: '%s' uses an unsupported JPEG variant",
+                            filepath);
+        rt_asset_error_end_load_failure();
     } else {
         rt_asset_error_setf(
             RT_ASSET_ERROR_CORRUPT, "Pixels.LoadJpeg: '%s' is not a supported JPEG", filepath);

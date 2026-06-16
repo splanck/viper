@@ -36,6 +36,7 @@
 #include "rt_sound3d.h"
 
 #include "rt_game3d_diagnostics.h"
+#include "rt_platform.h"
 
 #include <math.h>
 #include <stddef.h>
@@ -86,6 +87,7 @@ static int32_t s_voice_dist_next = 0;
 static int8_t s_voice_dist_test_force_all_playing = 0;
 
 void rt_sound3d_test_set_all_voices_playing(int8_t enabled) {
+    RT_ASSERT_MAIN_THREAD();
     s_voice_dist_test_force_all_playing = enabled ? 1 : 0;
 }
 
@@ -309,6 +311,7 @@ void rt_sound3d_get_effective_listener_state(rt_sound3d_listener_state *out_stat
 /// @brief Promote a listener-state snapshot to the active spatial-audio listener.
 /// Called by SoundListener3D.Activate. Passing NULL or invalid state clears.
 void rt_sound3d_set_active_listener_state(const rt_sound3d_listener_state *state) {
+    RT_ASSERT_MAIN_THREAD();
     if (!state || !state->valid) {
         rt_sound3d_clear_active_listener_state();
         return;
@@ -319,6 +322,7 @@ void rt_sound3d_set_active_listener_state(const rt_sound3d_listener_state *state
 
 /// @brief Detach any active SoundListener3D and revert to the fallback listener.
 void rt_sound3d_clear_active_listener_state(void) {
+    RT_ASSERT_MAIN_THREAD();
     rt_sound3d_listener_state_identity(&s_active_listener);
     s_active_listener.valid = 0;
     s_has_active_listener = 0;
@@ -336,6 +340,7 @@ void rt_sound3d_register_voice_ex(int64_t voice,
                                   double ref_dist,
                                   double max_dist,
                                   int64_t base_volume) {
+    RT_ASSERT_MAIN_THREAD();
     if (voice <= 0)
         return;
     ref_dist = sound3d_distance_or(ref_dist, 0.0);
@@ -391,6 +396,19 @@ void rt_sound3d_register_voice_ex(int64_t voice,
 /// @details Convenience wrapper over rt_sound3d_register_voice_ex.
 void rt_sound3d_register_voice(int64_t voice, double max_dist, int64_t base_volume) {
     rt_sound3d_register_voice_ex(voice, 0.0, max_dist, base_volume);
+}
+
+/// @brief Return the number of active entries in the fixed 3D voice metadata table.
+/// @return Tracked voice-entry count in [0, MAX_3D_VOICES].
+int64_t rt_sound3d_tracked_voice_count(void) {
+    RT_ASSERT_MAIN_THREAD();
+    return s_voice_dist_count >= 0 ? s_voice_dist_count : 0;
+}
+
+/// @brief Return the capacity of the fixed 3D voice metadata table.
+/// @return Maximum simultaneous tracked 3D voice entries.
+int64_t rt_sound3d_tracked_voice_capacity(void) {
+    return MAX_3D_VOICES;
 }
 
 /// @brief Look up a voice's recorded 3D params in a single table scan.
@@ -555,6 +573,7 @@ void rt_sound3d_compute_voice_params(const rt_sound3d_listener_state *listener,
 /// @param position Vec3 world-space position of the listener (typically the camera).
 /// @param forward  Vec3 forward direction the listener is facing.
 void rt_sound3d_set_listener(void *position, void *forward) {
+    RT_ASSERT_MAIN_THREAD();
     double pos[3];
     double fwd[3];
     sound3d_vec_from_obj(position, pos);

@@ -32,6 +32,7 @@
 #include "rt_navmesh3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_file_stdio.h"
 #include "rt_game3d_diagnostics.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_mat4.h"

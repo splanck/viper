@@ -40,6 +40,7 @@
 #include "rt_box.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_file_stdio.h"
 #include "rt_json.h"
 #include "rt_map.h"
 #include "rt_object.h"
@@ -62,13 +63,8 @@
 #include <string.h>
 #include <sys/types.h>
 
-#if defined(_WIN32)
-#define vscn_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
-#define vscn_ftell(fp) _ftelli64((fp))
-#else
-#define vscn_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
-#define vscn_ftell(fp) ftello((fp))
-#endif
+#define vscn_fseek(fp, off, whence) rt_file_stdio_seek64((fp), (off), (whence))
+#define vscn_ftell(fp) rt_file_stdio_tell64((fp))
 
 /// @brief Count the total number of nodes in the subtree rooted at `node` (inclusive).
 /// @details Iterative so adversarially deep loaded hierarchies cannot overflow the C stack.
@@ -1084,7 +1080,7 @@ static rt_scene_node3d *vscn_parse_node(void *node_obj,
 static char *vscn_read_file(const char *filepath, size_t *out_size) {
     if (!out_size)
         return NULL;
-    FILE *f = fopen(filepath, "rb");
+    FILE *f = rt_file_stdio_open_utf8(filepath, "rb");
     int64_t file_size;
     char *json;
     *out_size = 0;

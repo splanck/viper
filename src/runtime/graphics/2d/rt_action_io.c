@@ -19,6 +19,7 @@
 #include "rt_input.h"
 #include "rt_internal.h"
 #include "rt_json_stream.h"
+#include "rt_object.h"
 #include "rt_platform.h"
 #include "rt_seq.h"
 #include "rt_string.h"
@@ -82,6 +83,13 @@ static BindingType binding_type_from_name(const char *name) {
     if (strcmp(name, "chord") == 0)
         return BIND_CHORD;
     return BIND_NONE;
+}
+
+/// @brief Release a streaming JSON parser object created by rt_json_stream_new.
+/// @param parser Parser handle; NULL is a no-op.
+static void action_release_json_parser(void *parser) {
+    if (parser && rt_obj_release_check0(parser))
+        rt_obj_free(parser);
 }
 
 /// @brief Append a JSON-quoted-string-literal version of `str` to a builder.
@@ -193,15 +201,16 @@ rt_string rt_action_save(void) {
 
 /// @brief `Action.Load(json)` — restore action+binding state from a JSON string.
 ///
-/// Inverse of `Save`. Clears existing actions before loading. Uses
-/// the streaming JSON parser (`rt_json_stream`) so giant configs
-/// don't allocate a parse tree. Returns 0 on any structural error
-/// (existing actions stay cleared in that case — fix the JSON before
-/// calling again).
+/// Inverse of `Save`. Uses the streaming JSON parser (`rt_json_stream`) so giant configs
+/// don't allocate a parse tree. Existing actions are replaced only after the entire
+/// document has parsed successfully.
 int8_t rt_action_load(rt_string json) {
     RT_ASSERT_MAIN_THREAD();
-    void *parser;
-    int64_t tok;
+    void *parser = NULL;
+    int64_t tok = RT_JSON_TOK_ERROR;
+    int8_t success = 0;
+    int8_t saw_actions = 0;
+    Action *saved_actions = NULL;
 
     if (!json)
         return 0;
@@ -210,42 +219,46 @@ int8_t rt_action_load(rt_string json) {
     if (!parser)
         return 0;
 
-    /* Expect { */
-    tok = rt_json_stream_next(parser);
-    if (tok != RT_JSON_TOK_OBJECT_START)
-        return 0;
-
-    /* Expect key "actions" */
-    tok = rt_json_stream_next(parser);
-    if (tok != RT_JSON_TOK_KEY)
-        return 0;
-
-    /* Expect [ */
-    tok = rt_json_stream_next(parser);
-    if (tok != RT_JSON_TOK_ARRAY_START)
-        return 0;
-
-    /* Clear existing actions before loading */
-    rt_action_clear();
     if (!g_initialized)
         rt_action_init();
 
-    /* Parse each action object */
+    saved_actions = g_actions;
+    g_actions = NULL;
+
     tok = rt_json_stream_next(parser);
-    while (tok == RT_JSON_TOK_OBJECT_START) {
-        char action_name[256];
-        int8_t is_axis = 0;
-        action_name[0] = '\0';
+    if (tok != RT_JSON_TOK_OBJECT_START)
+        goto cleanup;
 
-        /* Parse action fields */
+    tok = rt_json_stream_next(parser);
+    while (tok == RT_JSON_TOK_KEY) {
+        rt_string top_key = rt_json_stream_string_value(parser);
+        const char *top_key_cstr = rt_string_cstr(top_key);
         tok = rt_json_stream_next(parser);
-        while (tok == RT_JSON_TOK_KEY) {
-            rt_string key = rt_json_stream_string_value(parser);
-            const char *key_cstr = rt_string_cstr(key);
+        if (strcmp(top_key_cstr, "actions") != 0) {
+            rt_json_stream_skip(parser);
+            tok = rt_json_stream_next(parser);
+            continue;
+        }
+        if (saw_actions || tok != RT_JSON_TOK_ARRAY_START)
+            goto cleanup;
+        saw_actions = 1;
 
-            if (strcmp(key_cstr, "name") == 0) {
+        tok = rt_json_stream_next(parser);
+        while (tok == RT_JSON_TOK_OBJECT_START) {
+            char action_name[256];
+            int8_t is_axis = 0;
+            int8_t action_defined = 0;
+            action_name[0] = '\0';
+
+            tok = rt_json_stream_next(parser);
+            while (tok == RT_JSON_TOK_KEY) {
+                rt_string key = rt_json_stream_string_value(parser);
+                const char *key_cstr = rt_string_cstr(key);
                 tok = rt_json_stream_next(parser);
-                if (tok == RT_JSON_TOK_STRING) {
+
+                if (strcmp(key_cstr, "name") == 0) {
+                    if (tok != RT_JSON_TOK_STRING)
+                        goto cleanup;
                     rt_string val = rt_json_stream_string_value(parser);
                     const char *val_cstr = rt_string_cstr(val);
                     size_t len = strlen(val_cstr);
@@ -253,104 +266,132 @@ int8_t rt_action_load(rt_string json) {
                         len = sizeof(action_name) - 1;
                     memcpy(action_name, val_cstr, len);
                     action_name[len] = '\0';
-                }
-            } else if (strcmp(key_cstr, "type") == 0) {
-                tok = rt_json_stream_next(parser);
-                if (tok == RT_JSON_TOK_STRING) {
+                } else if (strcmp(key_cstr, "type") == 0) {
+                    if (tok != RT_JSON_TOK_STRING)
+                        goto cleanup;
                     rt_string val = rt_json_stream_string_value(parser);
                     is_axis = (strcmp(rt_string_cstr(val), "axis") == 0) ? 1 : 0;
-                }
-            } else if (strcmp(key_cstr, "bindings") == 0) {
-                /* Define the action first */
-                if (action_name[0] != '\0') {
-                    rt_string name_str = rt_const_cstr(action_name);
-                    if (is_axis)
-                        rt_action_define_axis(name_str);
-                    else
-                        rt_action_define(name_str);
-                }
+                } else if (strcmp(key_cstr, "bindings") == 0) {
+                    if (tok != RT_JSON_TOK_ARRAY_START)
+                        goto cleanup;
+                    if (action_name[0] != '\0' && !action_defined) {
+                        rt_string name_str = rt_const_cstr(action_name);
+                        if (is_axis)
+                            rt_action_define_axis(name_str);
+                        else
+                            rt_action_define(name_str);
+                        action_defined = find_action(action_name) ? 1 : 0;
+                    }
 
-                /* Parse bindings array */
-                tok = rt_json_stream_next(parser);
-                if (tok != RT_JSON_TOK_ARRAY_START)
-                    return 0;
-
-                tok = rt_json_stream_next(parser);
-                while (tok == RT_JSON_TOK_OBJECT_START) {
-                    BindingType btype = BIND_NONE;
-                    int64_t code = 0;
-                    int64_t pad = 0;
-                    double value = 0.0;
-                    int64_t chord_keys[MAX_CHORD_KEYS];
-                    int32_t chord_len = 0;
-
-                    /* Parse binding fields */
                     tok = rt_json_stream_next(parser);
-                    while (tok == RT_JSON_TOK_KEY) {
-                        rt_string bkey = rt_json_stream_string_value(parser);
-                        const char *bkey_cstr = rt_string_cstr(bkey);
+                    while (tok == RT_JSON_TOK_OBJECT_START) {
+                        BindingType btype = BIND_NONE;
+                        int64_t code = 0;
+                        int64_t pad = 0;
+                        double value = 0.0;
+                        int64_t chord_keys[MAX_CHORD_KEYS];
+                        int32_t chord_len = 0;
 
                         tok = rt_json_stream_next(parser);
-                        if (strcmp(bkey_cstr, "type") == 0 && tok == RT_JSON_TOK_STRING) {
-                            rt_string bval = rt_json_stream_string_value(parser);
-                            btype = binding_type_from_name(rt_string_cstr(bval));
-                        } else if (strcmp(bkey_cstr, "code") == 0 && tok == RT_JSON_TOK_NUMBER) {
-                            code = (int64_t)rt_json_stream_number_value(parser);
-                        } else if (strcmp(bkey_cstr, "pad") == 0 && tok == RT_JSON_TOK_NUMBER) {
-                            pad = (int64_t)rt_json_stream_number_value(parser);
-                        } else if (strcmp(bkey_cstr, "value") == 0 && tok == RT_JSON_TOK_NUMBER) {
-                            value = rt_json_stream_number_value(parser);
-                        } else if (strcmp(bkey_cstr, "keys") == 0 &&
-                                   tok == RT_JSON_TOK_ARRAY_START) {
-                            /* Parse chord keys array */
-                            chord_len = 0;
+                        while (tok == RT_JSON_TOK_KEY) {
+                            rt_string bkey = rt_json_stream_string_value(parser);
+                            const char *bkey_cstr = rt_string_cstr(bkey);
                             tok = rt_json_stream_next(parser);
-                            while (tok == RT_JSON_TOK_NUMBER && chord_len < MAX_CHORD_KEYS) {
-                                chord_keys[chord_len++] =
-                                    (int64_t)rt_json_stream_number_value(parser);
+
+                            if (strcmp(bkey_cstr, "type") == 0) {
+                                if (tok != RT_JSON_TOK_STRING)
+                                    goto cleanup;
+                                rt_string bval = rt_json_stream_string_value(parser);
+                                btype = binding_type_from_name(rt_string_cstr(bval));
+                            } else if (strcmp(bkey_cstr, "code") == 0) {
+                                if (tok != RT_JSON_TOK_NUMBER)
+                                    goto cleanup;
+                                code = (int64_t)rt_json_stream_number_value(parser);
+                            } else if (strcmp(bkey_cstr, "pad") == 0) {
+                                if (tok != RT_JSON_TOK_NUMBER)
+                                    goto cleanup;
+                                pad = (int64_t)rt_json_stream_number_value(parser);
+                            } else if (strcmp(bkey_cstr, "value") == 0) {
+                                if (tok != RT_JSON_TOK_NUMBER)
+                                    goto cleanup;
+                                value = rt_json_stream_number_value(parser);
+                            } else if (strcmp(bkey_cstr, "keys") == 0) {
+                                if (tok != RT_JSON_TOK_ARRAY_START)
+                                    goto cleanup;
+                                chord_len = 0;
                                 tok = rt_json_stream_next(parser);
+                                while (tok == RT_JSON_TOK_NUMBER) {
+                                    if (chord_len >= MAX_CHORD_KEYS)
+                                        goto cleanup;
+                                    chord_keys[chord_len++] =
+                                        (int64_t)rt_json_stream_number_value(parser);
+                                    tok = rt_json_stream_next(parser);
+                                }
+                                if (tok != RT_JSON_TOK_ARRAY_END)
+                                    goto cleanup;
+                            } else {
+                                rt_json_stream_skip(parser);
                             }
-                            /* tok should be ARRAY_END */
+
+                            tok = rt_json_stream_next(parser);
                         }
-                        /* For unknown fields with nested containers, drain before advancing */
-                        rt_json_stream_skip(parser);
+                        if (tok != RT_JSON_TOK_OBJECT_END)
+                            goto cleanup;
+
+                        if (btype != BIND_NONE && action_name[0] != '\0') {
+                            Action *a = find_action(action_name);
+                            if (a) {
+                                Binding *b = create_binding(btype, code, pad, value);
+                                if (b) {
+                                    if (btype == BIND_CHORD) {
+                                        b->chord_len = chord_len;
+                                        for (int32_t ci = 0; ci < chord_len; ci++)
+                                            b->chord_keys[ci] = chord_keys[ci];
+                                    }
+                                    add_binding(a, b);
+                                }
+                            }
+                        }
                         tok = rt_json_stream_next(parser);
                     }
-                    /* tok should be OBJECT_END for the binding */
-
-                    /* Add binding to action */
-                    if (btype != BIND_NONE && action_name[0] != '\0') {
-                        Action *a = find_action(action_name);
-                        if (a) {
-                            Binding *b = create_binding(btype, code, pad, value);
-                            if (b) {
-                                if (btype == BIND_CHORD) {
-                                    int32_t ci;
-                                    b->chord_len = chord_len;
-                                    for (ci = 0; ci < chord_len; ci++)
-                                        b->chord_keys[ci] = chord_keys[ci];
-                                }
-                                add_binding(a, b);
-                            }
-                        }
-                    }
-
-                    tok = rt_json_stream_next(parser);
+                    if (tok != RT_JSON_TOK_ARRAY_END)
+                        goto cleanup;
+                } else {
+                    rt_json_stream_skip(parser);
                 }
-                /* tok should be ARRAY_END for bindings */
-            } else {
-                /* Skip unknown field value — handles nested objects/arrays */
-                rt_json_stream_next(parser);
-                rt_json_stream_skip(parser);
+                tok = rt_json_stream_next(parser);
             }
-
+            if (tok != RT_JSON_TOK_OBJECT_END)
+                goto cleanup;
+            if (action_name[0] != '\0' && !action_defined) {
+                rt_string name_str = rt_const_cstr(action_name);
+                if (is_axis)
+                    rt_action_define_axis(name_str);
+                else
+                    rt_action_define(name_str);
+            }
             tok = rt_json_stream_next(parser);
         }
-        /* tok should be OBJECT_END for the action */
-
+        if (tok != RT_JSON_TOK_ARRAY_END)
+            goto cleanup;
         tok = rt_json_stream_next(parser);
     }
-    /* tok should be ARRAY_END for actions */
+    if (tok != RT_JSON_TOK_OBJECT_END)
+        goto cleanup;
+    tok = rt_json_stream_next(parser);
+    if (tok == RT_JSON_TOK_END && saw_actions)
+        success = 1;
 
-    return 1;
+cleanup:
+    action_release_json_parser(parser);
+    if (success) {
+        Action *loaded_actions = g_actions;
+        g_actions = saved_actions;
+        rt_action_clear();
+        g_actions = loaded_actions;
+    } else {
+        rt_action_clear();
+        g_actions = saved_actions;
+    }
+    return success;
 }

@@ -1133,23 +1133,23 @@ static int fbx_load_collect_geometry(rt_fbx_asset *asset,
 /// @details Content and I/O failures set asset diagnostics and return NULL. Allocation failure
 ///          still traps because it is a runtime resource failure, not bad content.
 static uint8_t *fbx_read_entire_file(const char *cpath, long *out_size) {
-    FILE *f = fopen(cpath, "rb");
+    FILE *f = rt_file_stdio_open_utf8(cpath, "rb");
     if (!f) {
         rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND, "FBX.Load: '%s' not found", cpath);
         return NULL;
     }
-    if (fbx_fseek(f, 0, SEEK_END) != 0) {
+    if (rt_file_stdio_seek64(f, 0, SEEK_END) != 0) {
         fclose(f);
         rt_asset_error_setf(RT_ASSET_ERROR_UNREADABLE, "FBX.Load: failed to seek '%s'", cpath);
         return NULL;
     }
-    int64_t fsize = (int64_t)fbx_ftell(f);
+    int64_t fsize = rt_file_stdio_tell64(f);
     if (fsize < 0) {
         fclose(f);
         rt_asset_error_setf(RT_ASSET_ERROR_UNREADABLE, "FBX.Load: failed to tell '%s'", cpath);
         return NULL;
     }
-    if (fbx_fseek(f, 0, SEEK_SET) != 0) {
+    if (rt_file_stdio_seek64(f, 0, SEEK_SET) != 0) {
         fclose(f);
         rt_asset_error_setf(RT_ASSET_ERROR_UNREADABLE, "FBX.Load: failed to seek '%s'", cpath);
         return NULL;
@@ -1499,17 +1499,17 @@ static uint8_t *fbx_read_recoverable_file(rt_string path, long *out_size) {
     if (!cpath)
         return NULL;
 
-    FILE *f = fopen(cpath, "rb");
+    FILE *f = rt_file_stdio_open_utf8(cpath, "rb");
     if (!f) {
         rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND, "FBX.Load: '%s' not found", cpath);
         return NULL;
     }
-    if (fbx_fseek(f, 0, SEEK_END) != 0) {
+    if (rt_file_stdio_seek64(f, 0, SEEK_END) != 0) {
         fclose(f);
         rt_asset_error_setf(RT_ASSET_ERROR_UNREADABLE, "FBX.Load: failed to seek '%s'", cpath);
         return NULL;
     }
-    int64_t fsize = (int64_t)fbx_ftell(f);
+    int64_t fsize = rt_file_stdio_tell64(f);
     if (fsize < 27 || (uint64_t)fsize > RT_FBX_MAX_FILE_BYTES ||
         (uint64_t)fsize >= (uint64_t)SIZE_MAX) {
         fclose(f);
@@ -1519,7 +1519,7 @@ static uint8_t *fbx_read_recoverable_file(rt_string path, long *out_size) {
                             cpath);
         return NULL;
     }
-    if (fbx_fseek(f, 0, SEEK_SET) != 0) {
+    if (rt_file_stdio_seek64(f, 0, SEEK_SET) != 0) {
         fclose(f);
         rt_asset_error_setf(RT_ASSET_ERROR_UNREADABLE, "FBX.Load: failed to seek '%s'", cpath);
         return NULL;

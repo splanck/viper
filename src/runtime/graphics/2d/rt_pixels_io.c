@@ -20,6 +20,7 @@
 #include "rt_pixels_io_internal.h"
 
 #include "rt_asset_error.h"
+#include "rt_file_stdio.h"
 #include "rt_trap.h"
 
 #define BMP_MAX_PIXELS ((size_t)64u * 1024u * 1024u)
@@ -215,7 +216,7 @@ void *rt_pixels_load_bmp(void *path) {
         return NULL;
     }
 
-    FILE *f = fopen(filepath, "rb");
+    FILE *f = rt_file_stdio_open_utf8(filepath, "rb");
     if (!f) {
         rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND, "Pixels.LoadBmp: '%s' not found", filepath);
         rt_asset_error_end_load_failure();
@@ -386,7 +387,8 @@ int64_t rt_pixels_save_bmp(void *pixels, void *path) {
     uint32_t data_size = (uint32_t)data_size_u64;
     uint32_t file_size = 54 + data_size; // 14 + 40 + data
 
-    FILE *f = fopen(filepath, "wb");
+    char *tmp_path = NULL;
+    FILE *f = rt_file_stdio_open_temp_for_replace_utf8(filepath, &tmp_path);
     if (!f)
         return 0;
     uint8_t *row_buf = NULL;
@@ -455,8 +457,12 @@ bmp_save_cleanup:
         result = 0;
     if (fclose(f) != 0)
         result = 0;
-    if (!result)
-        remove(filepath);
+    if (result) {
+        result = rt_file_stdio_replace_utf8(tmp_path, filepath) ? 1 : 0;
+    }
+    if (!result && tmp_path)
+        (void)rt_file_stdio_unlink_utf8(tmp_path);
+    free(tmp_path);
     return result;
 }
 
@@ -492,7 +498,7 @@ void *rt_pixels_load_gif(void *path) {
     gif_frame_t *frames = NULL;
     int frame_count = 0, w = 0, h = 0;
     if (gif_decode_file(filepath, &frames, &frame_count, &w, &h) <= 0) {
-        FILE *probe = fopen(filepath, "rb");
+        FILE *probe = rt_file_stdio_open_utf8(filepath, "rb");
         if (probe) {
             fclose(probe);
             rt_asset_error_setf(
@@ -543,7 +549,7 @@ void *rt_pixels_load(void *path) {
         return NULL;
     }
 
-    FILE *af = fopen(filepath, "rb");
+    FILE *af = rt_file_stdio_open_utf8(filepath, "rb");
     if (!af) {
         rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND, "Pixels.Load: '%s' not found", filepath);
         rt_asset_error_end_load_failure();

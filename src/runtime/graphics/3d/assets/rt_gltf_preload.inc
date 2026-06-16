@@ -143,24 +143,29 @@ static int gltf_preload_stage_external_image(rt_gltf_preload_bundle *bundle,
                                              int required,
                                              char *error,
                                              size_t error_cap) {
-    char resource_path[1024];
+    char *resource_path;
     uint8_t *data;
     size_t data_len = 0;
+    int ok;
     if (!uri || strncmp(uri, "data:", 5) == 0)
         return 1;
-    gltf_resolve_relative_path(model_path, uri, resource_path, sizeof(resource_path));
-    if (resource_path[0] == '\0')
+    resource_path = gltf_resolve_relative_path_alloc(model_path, uri);
+    if (!resource_path)
         return 1;
     data = gltf_load_dependency_bytes(resource_path, load_assets, 0u, NULL, &data_len);
     if (!data) {
         if (required && gltf_preload_image_is_supported_format(resource_path)) {
             gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
+            free(resource_path);
             return 0;
         }
+        free(resource_path);
         return 1;
     }
-    return gltf_preload_bundle_add_image_payload(
+    ok = gltf_preload_bundle_add_image_payload(
         bundle, resource_path, resource_path, data, data_len, required, error, error_cap);
+    free(resource_path);
+    return ok;
 }
 
 /// @brief Format the dependency key for inline buffer @p index ("<gltf:inline-buffer:N>").
@@ -307,21 +312,23 @@ static int gltf_preload_stage_external_buffer(rt_gltf_preload_bundle *bundle,
                                               int load_assets,
                                               size_t required_len,
                                               gltf_preload_buffer_ref_t *refs) {
-    char resource_path[1024];
+    char *resource_path;
     uint8_t *data = NULL;
     size_t data_len = 0;
-    gltf_resolve_relative_path(model_path, uri, resource_path, sizeof(resource_path));
-    if (resource_path[0] != '\0') {
+    resource_path = gltf_resolve_relative_path_alloc(model_path, uri);
+    if (resource_path) {
         data =
             gltf_load_dependency_bytes(resource_path, load_assets, required_len, NULL, &data_len);
         if (data) {
             if (!gltf_preload_bundle_add_dependency(
                     bundle, resource_path, GLTF_PRELOAD_DEP_BUFFER, data, data_len)) {
                 free(data);
+                free(resource_path);
                 return 0;
             }
             gltf_preload_set_buffer_ref(refs, index, data, data_len);
         }
+        free(resource_path);
     }
     return data || required_len == 0u;
 }

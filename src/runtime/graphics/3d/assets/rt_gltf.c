@@ -27,6 +27,7 @@
 #include "rt_asset_error.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_file_stdio.h"
 #include "rt_gif.h"
 #include "rt_gltf_json.h"
 #include "rt_mat4.h"
@@ -54,13 +55,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if defined(_WIN32)
-#define gltf_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
-#define gltf_ftell(fp) _ftelli64((fp))
-#else
-#define gltf_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
-#define gltf_ftell(fp) ftello((fp))
-#endif
+#define GLTF_MAX_URI_PATH_BYTES (1024u * 1024u)
 
 // Forward declarations for runtime JSON and collection APIs
 extern void *rt_json_parse_object(rt_string text);
@@ -1021,9 +1016,8 @@ static int gltf_load_buffer_uri(const char *filepath,
         return byte_length == 0;
     }
 
-    char buf_path[1024];
-    gltf_resolve_relative_path(filepath, uri, buf_path, sizeof(buf_path));
-    if (buf_path[0] == '\0') {
+    char *buf_path = gltf_resolve_relative_path_alloc(filepath, uri);
+    if (!buf_path) {
         rt_asset_error_setf(RT_ASSET_ERROR_UNSUPPORTED,
                             "GLTF.Load: unsupported buffer dependency '%s' for '%s'",
                             uri ? uri : "",
@@ -1039,8 +1033,10 @@ static int gltf_load_buffer_uri(const char *filepath,
                             "GLTF.Load: failed to load buffer dependency '%s' for '%s'",
                             buf_path,
                             filepath ? filepath : "");
+        free(buf_path);
         return 0;
     }
+    free(buf_path);
     return 1;
 }
 

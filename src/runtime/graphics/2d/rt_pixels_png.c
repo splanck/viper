@@ -20,6 +20,7 @@
 #include "rt_pixels_io_internal.h"
 
 #include "rt_asset_error.h"
+#include "rt_file_stdio.h"
 #include "rt_trap.h"
 
 #define PNG_MAX_PIXELS ((size_t)64u * 1024u * 1024u)
@@ -79,6 +80,16 @@ static uint32_t png_crc32_update_state(uint32_t crc, const uint8_t *data, size_t
 /// @brief Read a big-endian uint32 from a PNG chunk header / data.
 static uint32_t png_read_u32(const uint8_t *p) {
     return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | (uint32_t)p[3];
+}
+
+/// @brief Return whether a PNG chunk type is critical.
+/// @details PNG marks ancillary chunks by setting bit 5 in the first chunk-type
+///          byte. Unknown critical chunks cannot be skipped safely because they
+///          may change image interpretation.
+/// @param chunk_type Four-byte PNG chunk type.
+/// @return Non-zero for critical chunks, zero for ancillary chunks.
+static int png_chunk_is_critical(const uint8_t *chunk_type) {
+    return chunk_type && ((chunk_type[0] & 0x20u) == 0u);
 }
 
 /// @brief Compute the Adler-32 checksum of @p data per RFC 1950 §9.
@@ -237,7 +248,10 @@ int rt_png_decode_buffer_rgba32(const uint8_t *file_data,
     int has_trns_rgb = 0;
     int ihdr_seen = 0;
     int idat_seen = 0;
+    int idat_closed = 0;
     int iend_seen = 0;
+    int plte_seen = 0;
+    int trns_seen = 0;
 
     while (pos <= (size_t)file_len && 12u <= (size_t)file_len - pos) {
         uint32_t chunk_len = png_read_u32(file_data + pos);
@@ -299,16 +313,23 @@ int rt_png_decode_buffer_rgba32(const uint8_t *file_data,
             }
             ihdr_seen = 1;
         } else if (memcmp(chunk_type, "PLTE", 4) == 0) {
-            if (idat_seen || chunk_len == 0 || (chunk_len % 3u) != 0u || chunk_len > 768u) {
+            if (plte_seen || idat_seen || color_type == 0 || color_type == 4 || chunk_len == 0 ||
+                (chunk_len % 3u) != 0u || chunk_len > 768u) {
                 free(idat_buf);
                 return 0;
             }
             palette_count = (int)(chunk_len / 3);
-            if (palette_count > 256)
-                palette_count = 256;
+            if (color_type == 3) {
+                int max_palette_count = 1 << bit_depth;
+                if (palette_count > max_palette_count) {
+                    free(idat_buf);
+                    return 0;
+                }
+            }
             memcpy(palette, chunk_data, (size_t)palette_count * 3);
+            plte_seen = 1;
         } else if (memcmp(chunk_type, "tRNS", 4) == 0) {
-            if (idat_seen) {
+            if (trns_seen || idat_seen) {
                 free(idat_buf);
                 return 0;
             }
@@ -336,7 +357,12 @@ int rt_png_decode_buffer_rgba32(const uint8_t *file_data,
                 free(idat_buf);
                 return 0;
             }
+            trns_seen = 1;
         } else if (memcmp(chunk_type, "IDAT", 4) == 0) {
+            if (idat_closed) {
+                free(idat_buf);
+                return 0;
+            }
             if (color_type == 3 && palette_count <= 0) {
                 free(idat_buf);
                 return 0;
@@ -373,6 +399,13 @@ int rt_png_decode_buffer_rgba32(const uint8_t *file_data,
         } else if (memcmp(chunk_type, "IEND", 4) == 0) {
             iend_seen = 1;
             break;
+        } else {
+            if (png_chunk_is_critical(chunk_type)) {
+                free(idat_buf);
+                return 0;
+            }
+            if (idat_seen)
+                idat_closed = 1;
         }
 
         pos += 12 + chunk_len; // length + type + data + crc
@@ -698,7 +731,7 @@ void *rt_pixels_load_png(void *path) {
         return NULL;
     }
 
-    FILE *f = fopen(filepath, "rb");
+    FILE *f = rt_file_stdio_open_utf8(filepath, "rb");
     if (!f) {
         rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND, "Pixels.LoadPng: '%s' not found", filepath);
         rt_asset_error_end_load_failure();
@@ -854,6 +887,7 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path) {
     void *comp_bytes = NULL;
     uint8_t *zlib_data = NULL;
     FILE *out = NULL;
+    char *tmp_path = NULL;
     int64_t result = 0;
 
     comp_bytes = rt_compress_deflate(raw_bytes);
@@ -893,7 +927,7 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path) {
         zlib_data[2 + comp_len + 3] = (uint8_t)(adler & 0xFF);
     }
 
-    out = fopen(filepath, "wb");
+    out = rt_file_stdio_open_temp_for_replace_utf8(filepath, &tmp_path);
     if (!out)
         goto save_cleanup;
 
@@ -981,10 +1015,13 @@ save_cleanup:
             result = 0;
         if (fclose(out) != 0)
             result = 0;
-        // Remove corrupt PNG if write failed partway through
-        if (!result)
-            remove(filepath);
+        if (result) {
+            result = rt_file_stdio_replace_utf8(tmp_path, filepath) ? 1 : 0;
+        }
+        if (!result && tmp_path)
+            (void)rt_file_stdio_unlink_utf8(tmp_path);
     }
+    free(tmp_path);
     if (comp_bytes) {
         if (rt_obj_release_check0(comp_bytes))
             rt_obj_free(comp_bytes);

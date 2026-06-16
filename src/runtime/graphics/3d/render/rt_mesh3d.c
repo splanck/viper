@@ -27,6 +27,7 @@
 #include "rt_asset_error.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_file_stdio.h"
 #include "rt_mat4.h"
 #include "rt_morphtarget3d.h"
 #include "rt_object.h"

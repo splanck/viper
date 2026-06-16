@@ -1347,7 +1347,9 @@ function(viper_add_runtime_tests)
     viper_add_isolated_runtime_test(test_rt_sound3d_contract
             ${VIPER_TESTS_DIR}/runtime/RTSound3DTests.cpp
             ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/audio/rt_sound3d.c)
-    target_compile_definitions(test_rt_sound3d_contract PRIVATE VIPER_ENABLE_GRAPHICS=1)
+    target_compile_definitions(test_rt_sound3d_contract PRIVATE
+            VIPER_ENABLE_GRAPHICS=1
+            RT_NO_MAIN_THREAD_ASSERT=1)
 
     viper_add_isolated_runtime_test(test_rt_videowidget_contract
             ${VIPER_TESTS_DIR}/runtime/RTVideoWidgetContractTests.cpp

@@ -118,7 +118,7 @@ static int32_t tilemap_checked_grid_size(int64_t width,
     if (width > INT64_MAX / height)
         return 0;
     int64_t tile_count = width * height;
-    if (tile_count > INT64_MAX / (int64_t)sizeof(int64_t))
+    if ((uint64_t)tile_count > (uint64_t)(SIZE_MAX / sizeof(int64_t)))
         return 0;
     size_t tiles_size = (size_t)tile_count * sizeof(int64_t);
     if (tile_count_out)
@@ -442,6 +442,15 @@ void rt_tilemap_set_tileset(void *tilemap_ptr, void *pixels) {
 
     tilemap->tileset_cols = ts_width / tilemap->tile_width;
     tilemap->tileset_rows = ts_height / tilemap->tile_height;
+    if (tilemap->tileset_cols > 0 && tilemap->tileset_rows > INT64_MAX / tilemap->tileset_cols) {
+        tilemap->tileset_cols = 0;
+        tilemap->tileset_rows = 0;
+        tilemap->tile_count = 0;
+        tilemap->layers[0].tileset_cols = 0;
+        tilemap->layers[0].tileset_rows = 0;
+        tilemap->layers[0].tile_count = 0;
+        return;
+    }
     tilemap->tile_count = tilemap->tileset_cols * tilemap->tileset_rows;
 
     // Sync layer 0 tileset info
@@ -685,6 +694,76 @@ static void tilemap_release_temp(void *obj) {
         rt_obj_free(obj);
 }
 
+typedef struct {
+    void *tileset;
+    int64_t tile_index;
+    void *scaled_pixels;
+} tilemap_scaled_tile_cache_entry;
+
+/// @brief Find a cached scaled tile for a tileset/tile-id pair.
+/// @param entries Cache entries allocated by rt_tilemap_draw_scaled.
+/// @param count Number of valid entries in @p entries.
+/// @param tileset Source tileset object.
+/// @param tile_index One-based tile index in @p tileset.
+/// @return Cached Pixels object, or NULL when absent.
+static void *tilemap_scaled_cache_find(tilemap_scaled_tile_cache_entry *entries,
+                                       size_t count,
+                                       void *tileset,
+                                       int64_t tile_index) {
+    for (size_t i = 0; i < count; ++i) {
+        if (entries[i].tileset == tileset && entries[i].tile_index == tile_index)
+            return entries[i].scaled_pixels;
+    }
+    return NULL;
+}
+
+/// @brief Insert one scaled tile into the per-draw cache.
+/// @details Ownership of @p scaled_pixels transfers to the cache on success.
+///          The cache is released at the end of rt_tilemap_draw_scaled.
+/// @param entries Pointer to the cache allocation pointer.
+/// @param count Pointer to the current entry count.
+/// @param cap Pointer to the current allocation capacity.
+/// @param tileset Source tileset object.
+/// @param tile_index One-based tile index in @p tileset.
+/// @param scaled_pixels Scaled Pixels object to cache.
+/// @return 1 when cached; 0 on allocation failure or invalid input.
+static int tilemap_scaled_cache_insert(tilemap_scaled_tile_cache_entry **entries,
+                                       size_t *count,
+                                       size_t *cap,
+                                       void *tileset,
+                                       int64_t tile_index,
+                                       void *scaled_pixels) {
+    if (!entries || !count || !cap || !tileset || !scaled_pixels)
+        return 0;
+    if (*count == *cap) {
+        size_t new_cap = *cap ? *cap * 2u : 32u;
+        if (new_cap < *cap || new_cap > SIZE_MAX / sizeof(**entries))
+            return 0;
+        tilemap_scaled_tile_cache_entry *new_entries =
+            (tilemap_scaled_tile_cache_entry *)realloc(*entries, new_cap * sizeof(**entries));
+        if (!new_entries)
+            return 0;
+        *entries = new_entries;
+        *cap = new_cap;
+    }
+    (*entries)[*count].tileset = tileset;
+    (*entries)[*count].tile_index = tile_index;
+    (*entries)[*count].scaled_pixels = scaled_pixels;
+    ++(*count);
+    return 1;
+}
+
+/// @brief Release every cached scaled tile and free the cache allocation.
+/// @param entries Cache entries allocated during rt_tilemap_draw_scaled.
+/// @param count Number of valid entries in @p entries.
+static void tilemap_scaled_cache_release(tilemap_scaled_tile_cache_entry *entries, size_t count) {
+    if (!entries)
+        return;
+    for (size_t i = 0; i < count; ++i)
+        tilemap_release_temp(entries[i].scaled_pixels);
+    free(entries);
+}
+
 /// @brief Draw the tilemap using scaled destination tile cells.
 /// @details This editor-oriented path preserves tile IDs and viewport culling
 ///          while scaling each visible source tile through Pixels.Scale before
@@ -706,6 +785,10 @@ void rt_tilemap_draw_scaled(void *tilemap_ptr,
     rt_tilemap_impl *tilemap = tilemap_checked(tilemap_ptr, NULL);
     if (!tilemap)
         return;
+
+    tilemap_scaled_tile_cache_entry *scaled_cache = NULL;
+    size_t scaled_cache_count = 0;
+    size_t scaled_cache_cap = 0;
 
     int64_t dst_w = tilemap_scale_dimension(tilemap->tile_width, scale_percent);
     int64_t dst_h = tilemap_scale_dimension(tilemap->tile_height, scale_percent);
@@ -741,24 +824,37 @@ void rt_tilemap_draw_scaled(void *tilemap_ptr,
                 int64_t ti = tile_index - 1;
                 int64_t sx = tilemap_mul_saturating(ti % tileset_cols, tilemap->tile_width);
                 int64_t sy = tilemap_mul_saturating(ti / tileset_cols, tilemap->tile_height);
-                void *tile = rt_pixels_new(tilemap->tile_width, tilemap->tile_height);
-                if (!tile)
-                    continue;
-                rt_pixels_copy(
-                    tile, 0, 0, tileset, sx, sy, tilemap->tile_width, tilemap->tile_height);
-                void *scaled = rt_pixels_scale(tile, dst_w, dst_h);
+                void *scaled = tilemap_scaled_cache_find(
+                    scaled_cache, scaled_cache_count, tileset, tile_index);
+                if (!scaled) {
+                    void *tile = rt_pixels_new(tilemap->tile_width, tilemap->tile_height);
+                    if (!tile)
+                        continue;
+                    rt_pixels_copy(
+                        tile, 0, 0, tileset, sx, sy, tilemap->tile_width, tilemap->tile_height);
+                    scaled = rt_pixels_scale(tile, dst_w, dst_h);
+                    tilemap_release_temp(tile);
+                    if (scaled && !tilemap_scaled_cache_insert(&scaled_cache,
+                                                               &scaled_cache_count,
+                                                               &scaled_cache_cap,
+                                                               tileset,
+                                                               tile_index,
+                                                               scaled)) {
+                        tilemap_release_temp(scaled);
+                        scaled = NULL;
+                    }
+                }
                 if (scaled) {
                     int64_t screen_x =
                         tilemap_add_saturating(tilemap_mul_saturating(tx, dst_w), offset_x);
                     int64_t screen_y =
                         tilemap_add_saturating(tilemap_mul_saturating(ty, dst_h), offset_y);
                     rt_canvas_blit(canvas_ptr, screen_x, screen_y, scaled);
-                    tilemap_release_temp(scaled);
                 }
-                tilemap_release_temp(tile);
             }
         }
     }
+    tilemap_scaled_cache_release(scaled_cache, scaled_cache_count);
 }
 
 /// @brief Count non-empty, drawable tiles in a tile-coordinate sub-region.

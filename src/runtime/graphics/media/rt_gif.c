@@ -460,7 +460,7 @@ static uint8_t *lzw_decompress(int min_code_size,
         prev_code = code;
     }
 
-    if (failed || !saw_end || pos < expected_pixels) {
+    if (failed || !saw_end || pos != expected_pixels) {
         free(output);
         return NULL;
     }
@@ -833,6 +833,9 @@ int gif_decode_file(const char *filepath,
                 break;
             }
             gce_valid = 0;
+            gce_delay_ms = 0;
+            gce_dispose = 0;
+            gce_transparent = -1;
             continue;
         }
 
@@ -1004,7 +1007,7 @@ int rt_gif_decode_memory_first_rgba32(
 
             min_code_size = gif_read_u8(r);
             if (!gif_lzw_min_code_size_is_valid(min_code_size))
-                goto skip_image_data;
+                break;
             if (img_w <= 0 || img_h <= 0 || img_left > screen_w - img_w ||
                 img_top > screen_h - img_h)
                 goto skip_image_data;

@@ -1434,12 +1434,18 @@ int8_t rt_navmesh3d_export(void *obj, rt_string path) {
     const char *cpath = rt_string_cstr(path);
     if (!cpath || cpath[0] == '\0')
         return 0;
-    FILE *f = fopen(cpath, "wb");
+    char *tmp_path = NULL;
+    FILE *f = rt_file_stdio_open_temp_for_replace_utf8(cpath, &tmp_path);
     if (!f)
         return 0;
     int ok = navmesh3d_export_v2(nm, f);
     if (fclose(f) != 0)
         ok = 0;
+    if (ok)
+        ok = rt_file_stdio_replace_utf8(tmp_path, cpath) ? 1 : 0;
+    if (!ok && tmp_path)
+        (void)rt_file_stdio_unlink_utf8(tmp_path);
+    free(tmp_path);
     return ok ? 1 : 0;
 }
 

@@ -26,6 +26,7 @@
 #include "rt_tilemap_internal.h"
 
 #include "rt_box.h"
+#include "rt_file_stdio.h"
 #include "rt_graphics.h"
 #include "rt_heap.h"
 #include "rt_internal.h"
@@ -49,14 +50,8 @@
 #define TMIO_MAX_FILE_BYTES (INT64_C(256) * 1024 * 1024)
 #define TMIO_JSON_SAFE_INTEGER_LIMIT 9007199254740992.0
 
-// Keep tilemap file loading large-file safe on platforms where long is 32-bit.
-#if defined(_WIN32)
-#define tmio_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
-#define tmio_ftell(fp) _ftelli64((fp))
-#else
-#define tmio_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
-#define tmio_ftell(fp) ftello((fp))
-#endif
+#define tmio_fseek(fp, off, whence) rt_file_stdio_seek64((fp), (off), (whence))
+#define tmio_ftell(fp) rt_file_stdio_tell64((fp))
 
 /// @brief Validate-and-return a Tilemap pointer; NULL for NULL or wrong class.
 /// @details Soft check used by every public Tilemap I/O entry point.
@@ -80,6 +75,25 @@ static void tilemap_io_release_ref(void **slot) {
     if (rt_obj_release_check0(*slot))
         rt_obj_free(*slot);
     *slot = NULL;
+}
+
+/// @brief Validate tilemap grid dimensions before allocating layer storage.
+/// @details Checks positive dimensions, int64 tile-count overflow, and host
+///          size_t byte-count overflow. This mirrors the constructor guard so
+///          file and CSV loads can reject oversized inputs before doing any
+///          partial object setup.
+/// @param width Tile columns.
+/// @param height Tile rows.
+/// @return 1 when the grid fits all allocation limits; otherwise 0.
+static int tilemap_io_grid_supported(int64_t width, int64_t height) {
+    if (width <= 0 || height <= 0)
+        return 0;
+    if (width > INT64_MAX / height)
+        return 0;
+    int64_t tile_count = width * height;
+    if ((uint64_t)tile_count > (uint64_t)(SIZE_MAX / sizeof(int64_t)))
+        return 0;
+    return 1;
 }
 
 /// @brief Set the tile property of the tilemap.
@@ -644,6 +658,8 @@ int8_t rt_tilemap_save_to_file(void *tm, rt_string path) {
     int64_t layer_count = rt_tilemap_get_layer_count(tm);
 
     int8_t result = 0;
+    FILE *f = NULL;
+    char *tmp_path = NULL;
 
     // Build JSON object using Map
     void *root = rt_map_new();
@@ -827,17 +843,27 @@ int8_t rt_tilemap_save_to_file(void *tm, rt_string path) {
     if (!json_cstr)
         goto cleanup;
 
-    FILE *f = fopen(cpath, "wb");
+    f = rt_file_stdio_open_temp_for_replace_utf8(cpath, &tmp_path);
     if (!f)
         goto cleanup;
     size_t len = strlen(json_cstr);
     int8_t wrote_all = tmio_write_all(f, json_cstr, len);
     int write_error = ferror(f) != 0;
     int close_error = fclose(f) != 0;
+    f = NULL;
 
     result = (wrote_all && !write_error && !close_error) ? 1 : 0;
+    if (result)
+        result = rt_file_stdio_replace_utf8(tmp_path, cpath) ? 1 : 0;
 
 cleanup:
+    if (f) {
+        fclose(f);
+        f = NULL;
+    }
+    if (!result && tmp_path)
+        (void)rt_file_stdio_unlink_utf8(tmp_path);
+    free(tmp_path);
     tilemap_io_release_ref((void **)&json);
     tilemap_io_release_ref(&root);
     return result;
@@ -860,7 +886,7 @@ void *rt_tilemap_load_from_file(rt_string path) {
     void *result = NULL;
 
     // Read file contents
-    FILE *f = fopen(cpath, "rb");
+    FILE *f = rt_file_stdio_open_utf8(cpath, "rb");
     if (!f)
         return NULL;
     if (tmio_fseek(f, 0, SEEK_END) != 0) {
@@ -912,9 +938,7 @@ void *rt_tilemap_load_from_file(rt_string path) {
         !map_get_i64_checked(root, "tileWidth", &tw) ||
         !map_get_i64_checked(root, "tileHeight", &th))
         goto cleanup;
-    if (w <= 0 || h <= 0 || tw <= 0 || th <= 0)
-        goto cleanup;
-    if (w > INT64_MAX / h)
+    if (!tilemap_io_grid_supported(w, h) || tw <= 0 || th <= 0)
         goto cleanup;
     int64_t expected_tiles = w * h;
 
@@ -1209,7 +1233,7 @@ void *rt_tilemap_load_csv(rt_string path, int64_t tile_w, int64_t tile_h) {
     if (!cpath)
         return NULL;
 
-    FILE *f = fopen(cpath, "rb");
+    FILE *f = rt_file_stdio_open_utf8(cpath, "rb");
     if (!f)
         return NULL;
 
@@ -1243,6 +1267,11 @@ void *rt_tilemap_load_csv(rt_string path, int64_t tile_w, int64_t tile_h) {
     }
 
     if (rows == 0 || expected_cols == 0) {
+        fclose(f);
+        return NULL;
+    }
+
+    if (!tilemap_io_grid_supported(expected_cols, rows)) {
         fclose(f);
         return NULL;
     }

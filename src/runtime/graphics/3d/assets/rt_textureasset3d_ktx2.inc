@@ -28,6 +28,7 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
     void **mip_pixels = NULL;
     uint8_t **mip_payloads = NULL;
     int attempted_cpu_decode = 0;
+    const char *decode_failure_detail = "unsupported or corrupt compressed blocks";
     rt_textureasset3d *asset;
 
     if (!api_name)
@@ -121,15 +122,18 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
      * on backends that cannot upload BC3 natively (native blocks are still retained below). */
     if (strcmp(format.name, "bc3") == 0) {
         attempted_cpu_decode = 1;
+        decode_failure_detail = "corrupt BC3 block payload";
         mip_pixels = textureasset3d_decode_bc3_mips(data, size, mips, mip_count);
     }
     /* BC7 software reference decode -> RGBA8 Pixels fallback; native blocks are still retained. */
     if (strcmp(format.name, "bc7") == 0) {
         attempted_cpu_decode = 1;
+        decode_failure_detail = "unsupported reserved BC7 mode or corrupt block payload";
         mip_pixels = textureasset3d_decode_bc7_mips(data, size, mips, mip_count);
     }
     if (strcmp(format.name, "etc2") == 0) {
         attempted_cpu_decode = 1;
+        decode_failure_detail = "unsupported ETC2 color mode or corrupt block payload";
         mip_pixels = textureasset3d_decode_compressed_mips(
             data,
             size,
@@ -143,6 +147,7 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
     }
     if (strcmp(format.name, "astc") == 0) {
         attempted_cpu_decode = 1;
+        decode_failure_detail = "unsupported ASTC block type or corrupt block payload";
         mip_pixels = textureasset3d_decode_compressed_mips(
             data,
             size,
@@ -161,10 +166,11 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
             rt_trap("TextureAsset3D.LoadKTX2: checker fallback allocation failed");
             return NULL;
         }
-        rt_asset_error_add_warningf("%s: %s CPU texture decode failed; using 8x8 magenta/black "
-                                    "checker fallback",
+        rt_asset_error_add_warningf("%s: %s CPU texture decode failed (%s); using 8x8 "
+                                    "magenta/black checker fallback",
                                     api_name,
-                                    format.name);
+                                    format.name,
+                                    decode_failure_detail);
     }
     if (format.compressed) {
         mip_payloads = textureasset3d_copy_native_mip_payloads(data, size, mips, mip_count);

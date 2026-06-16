@@ -162,7 +162,7 @@ void *rt_navmesh3d_import(rt_string path) {
     const char *cpath = rt_string_cstr(path);
     if (!cpath || cpath[0] == '\0')
         return NULL;
-    FILE *f = fopen(cpath, "rb");
+    FILE *f = rt_file_stdio_open_utf8(cpath, "rb");
     if (!f)
         return NULL;
     char magic[8];

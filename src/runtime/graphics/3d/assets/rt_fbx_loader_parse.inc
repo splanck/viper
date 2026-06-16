@@ -40,6 +40,25 @@ static void fbx_normalize_path(char *dst, size_t dst_size, const char *src) {
     dst[di] = '\0';
 }
 
+/// @brief Normalize a path into a malloc-owned string with `/` separators.
+/// @details Used by external texture resolution so long but valid FBX texture references are
+///          bounded by `RT_FBX_MAX_TEXTURE_PATH_BYTES` instead of a small stack buffer.
+/// @return Malloc-owned normalized path, or NULL on allocation failure or overlong input.
+static char *fbx_normalize_path_alloc(const char *src) {
+    size_t len;
+    char *out;
+    if (!src)
+        src = "";
+    len = strlen(src);
+    if (len > RT_FBX_MAX_TEXTURE_PATH_BYTES)
+        return NULL;
+    out = (char *)malloc(len + 1u);
+    if (!out)
+        return NULL;
+    fbx_normalize_path(out, len + 1u, src);
+    return out;
+}
+
 /// @brief Return the last path component inside @p path.
 static const char *fbx_path_basename(const char *path) {
     const char *last = path;
@@ -52,86 +71,119 @@ static const char *fbx_path_basename(const char *path) {
     return last;
 }
 
-/// @brief Extract the directory portion of @p path into @p out (or empty if none).
-static void fbx_parent_dir(char *out, size_t out_size, const char *path) {
-    char normalized[1024];
+/// @brief Extract the directory portion of @p path into a malloc-owned string.
+/// @return Directory path using `/` separators, an empty string when no directory exists, or NULL.
+static char *fbx_parent_dir_alloc(const char *path) {
+    char *normalized;
+    char *out;
     const char *last_sep;
     size_t dir_len;
-    if (!out || out_size == 0)
-        return;
-    fbx_normalize_path(normalized, sizeof(normalized), path);
+    normalized = fbx_normalize_path_alloc(path);
+    if (!normalized)
+        return NULL;
     last_sep = strrchr(normalized, '/');
     if (!last_sep) {
-        out[0] = '\0';
-        return;
+        normalized[0] = '\0';
+        return normalized;
     }
     dir_len = (size_t)(last_sep - normalized);
     if (dir_len == 0 && normalized[0] == '/')
         dir_len = 1;
-    if (dir_len >= out_size)
-        dir_len = out_size - 1;
+    out = (char *)malloc(dir_len + 1u);
+    if (!out) {
+        free(normalized);
+        return NULL;
+    }
     memcpy(out, normalized, dir_len);
     out[dir_len] = '\0';
+    free(normalized);
+    return out;
 }
 
-/// @brief Join a directory and leaf filename using `/`.
-/// @return Non-zero when the joined path fit in @p out, 0 for empty/overflowing input.
-static int fbx_join_path(char *out, size_t out_size, const char *dir, const char *leaf) {
+/// @brief Join a directory and leaf filename using `/` into a malloc-owned path.
+/// @return Malloc-owned joined path, or NULL for empty/unsafe/overlong input.
+static char *fbx_join_path_alloc(const char *dir, const char *leaf) {
+    char *clean_leaf;
+    char *clean_dir;
+    char *out;
     size_t dir_len;
-    char clean_leaf[1024];
     size_t leaf_len;
-    if (!out || out_size == 0)
-        return 0;
-    out[0] = '\0';
     if (!leaf || !*leaf)
-        return 0;
-    if (strlen(leaf) >= sizeof(clean_leaf)) {
+        return NULL;
+    clean_leaf = fbx_normalize_path_alloc(leaf);
+    if (!clean_leaf) {
         rt_asset_error_add_warning("FBX.Load: texture filename is too long; texture skipped");
-        return 0;
+        return NULL;
     }
-    fbx_normalize_path(clean_leaf, sizeof(clean_leaf), leaf);
     leaf_len = strlen(clean_leaf);
-    if (leaf_len == 0 || leaf_len >= out_size)
-        return 0;
+    if (leaf_len == 0 || leaf_len > RT_FBX_MAX_TEXTURE_PATH_BYTES) {
+        free(clean_leaf);
+        return NULL;
+    }
     if (!dir || !*dir) {
-        memcpy(out, clean_leaf, leaf_len + 1u);
-        return 1;
+        return clean_leaf;
     }
-    fbx_normalize_path(out, out_size, dir);
-    dir_len = strlen(out);
-    if (dir_len > 0 && out[dir_len - 1] != '/' && dir_len + 1 < out_size) {
-        out[dir_len++] = '/';
-        out[dir_len] = '\0';
+    clean_dir = fbx_normalize_path_alloc(dir);
+    if (!clean_dir) {
+        free(clean_leaf);
+        return NULL;
     }
-    if (dir_len + leaf_len >= out_size) {
-        out[0] = '\0';
+    dir_len = strlen(clean_dir);
+    int needs_sep = dir_len > 0 && clean_dir[dir_len - 1u] != '/';
+    if (dir_len > RT_FBX_MAX_TEXTURE_PATH_BYTES || dir_len > SIZE_MAX - leaf_len - 2u ||
+        dir_len + (needs_sep ? 1u : 0u) + leaf_len > RT_FBX_MAX_TEXTURE_PATH_BYTES) {
+        free(clean_dir);
+        free(clean_leaf);
         rt_asset_error_add_warning("FBX.Load: joined texture path is too long; texture skipped");
-        return 0;
+        return NULL;
     }
+    out = (char *)malloc(dir_len + (needs_sep ? 1u : 0u) + leaf_len + 1u);
+    if (!out) {
+        free(clean_dir);
+        free(clean_leaf);
+        return NULL;
+    }
+    memcpy(out, clean_dir, dir_len);
+    if (needs_sep)
+        out[dir_len++] = '/';
     memcpy(out + dir_len, clean_leaf, leaf_len + 1u);
-    return 1;
+    free(clean_dir);
+    free(clean_leaf);
+    return out;
 }
 
-/// @brief Sanitize a texture reference into a safe relative path in @p out (path-traversal
-///   guard): normalizes separators, then rejects absolute paths, URI scheme separators, and any
-///   ".." segment, collapsing "." and redundant slashes into forward-slash-joined segments.
-/// @return Non-zero if a non-empty safe path was written; 0 if empty, unsafe, or overflowing.
-static int fbx_normalize_relative_texture_ref(const char *src, char *out, size_t out_size) {
-    char normalized[1024];
+/// @brief Sanitize a texture reference into a safe malloc-owned relative path.
+/// @details Path-traversal guard: normalizes separators, rejects absolute paths, URI schemes, and
+///          any `..` segment, then collapses `.` and redundant slashes into `/`-joined segments.
+/// @return Malloc-owned safe relative path, or NULL if empty, unsafe, overlong, or unavailable.
+static char *fbx_normalize_relative_texture_ref_alloc(const char *src) {
+    char *normalized;
+    char *out;
     const char *p;
     size_t out_len = 0;
+    size_t out_cap;
     int wrote_segment = 0;
-    if (!src || !*src || !out || out_size == 0)
-        return 0;
-    if (strlen(src) >= sizeof(normalized))
-        return 0;
-    fbx_normalize_path(normalized, sizeof(normalized), src);
-    if (!*normalized || fbx_is_absolute_path(normalized) || strchr(normalized, ':'))
-        return 0;
+    if (!src || !*src)
+        return NULL;
+    normalized = fbx_normalize_path_alloc(src);
+    if (!normalized)
+        return NULL;
+    if (!*normalized || fbx_is_absolute_path(normalized) || strchr(normalized, ':')) {
+        free(normalized);
+        return NULL;
+    }
     for (const char *q = normalized; *q; ++q) {
         unsigned char ch = (unsigned char)*q;
-        if (ch < 0x20u || ch == 0x7fu)
-            return 0;
+        if (ch < 0x20u || ch == 0x7fu) {
+            free(normalized);
+            return NULL;
+        }
+    }
+    out_cap = strlen(normalized) + 1u;
+    out = (char *)malloc(out_cap);
+    if (!out) {
+        free(normalized);
+        return NULL;
     }
     p = normalized;
     out[0] = '\0';
@@ -146,21 +198,35 @@ static int fbx_normalize_relative_texture_ref(const char *src, char *out, size_t
         seg_len = (size_t)(p - seg);
         if (seg_len == 0 || (seg_len == 1 && seg[0] == '.'))
             continue;
-        if (seg_len == 2 && seg[0] == '.' && seg[1] == '.')
-            return 0;
+        if (seg_len == 2 && seg[0] == '.' && seg[1] == '.') {
+            free(normalized);
+            free(out);
+            return NULL;
+        }
         if (wrote_segment) {
-            if (out_len + 1 >= out_size)
-                return 0;
+            if (out_len + 1 >= out_cap) {
+                free(normalized);
+                free(out);
+                return NULL;
+            }
             out[out_len++] = '/';
         }
-        if (seg_len >= out_size || out_len > out_size - 1 - seg_len)
-            return 0;
+        if (seg_len >= out_cap || out_len > out_cap - 1 - seg_len) {
+            free(normalized);
+            free(out);
+            return NULL;
+        }
         memcpy(out + out_len, seg, seg_len);
         out_len += seg_len;
         out[out_len] = '\0';
         wrote_segment = 1;
     }
-    return wrote_segment;
+    free(normalized);
+    if (!wrote_segment) {
+        free(out);
+        return NULL;
+    }
+    return out;
 }
 
 /// @brief Return non-zero for URI-style paths such as file:/, http:, or data:.
@@ -192,58 +258,69 @@ static int fbx_absolute_texture_paths_allowed(void) {
 
 /// @brief Try a local texture reference, then fall back to its basename beside the FBX file.
 static void *fbx_try_load_texture_path(const char *fbx_path, const char *texture_ref) {
-    char raw_ref[1024];
-    char normalized_ref[1024];
-    char dir[1024];
-    char candidate[1024];
+    char *raw_ref = NULL;
+    char *normalized_ref = NULL;
+    char *dir = NULL;
+    char *candidate = NULL;
     const char *basename;
     void *pixels = NULL;
-    int have_relative;
 
     if (!texture_ref || !*texture_ref)
         return NULL;
-    if (strlen(texture_ref) >= sizeof(raw_ref)) {
+    raw_ref = fbx_normalize_path_alloc(texture_ref);
+    if (!raw_ref) {
         rt_asset_error_add_warning("FBX.Load: texture reference is too long; texture skipped");
         return NULL;
     }
-
-    fbx_normalize_path(raw_ref, sizeof(raw_ref), texture_ref);
     if (!*raw_ref || fbx_has_uri_scheme(raw_ref))
-        return NULL;
-
-    fbx_parent_dir(dir, sizeof(dir), fbx_path);
+        goto done;
+    dir = fbx_parent_dir_alloc(fbx_path);
+    if (!dir)
+        goto done;
     if (fbx_is_absolute_path(raw_ref) && fbx_absolute_texture_paths_allowed()) {
         pixels = rt_pixels_load(rt_const_cstr(raw_ref));
         if (pixels)
-            return pixels;
+            goto done;
     }
 
-    have_relative =
-        fbx_normalize_relative_texture_ref(raw_ref, normalized_ref, sizeof(normalized_ref));
-    if (have_relative) {
+    normalized_ref = fbx_normalize_relative_texture_ref_alloc(raw_ref);
+    if (normalized_ref) {
         if (*dir) {
-            if (fbx_join_path(candidate, sizeof(candidate), dir, normalized_ref))
+            candidate = fbx_join_path_alloc(dir, normalized_ref);
+            if (candidate)
                 pixels = rt_pixels_load(rt_const_cstr(candidate));
         } else {
             pixels = rt_pixels_load(rt_const_cstr(normalized_ref));
         }
         if (pixels)
-            return pixels;
+            goto done;
+        free(candidate);
+        candidate = NULL;
     }
 
     basename = fbx_path_basename(raw_ref);
     if (!basename || !*basename)
-        return NULL;
-    if (have_relative && strcmp(basename, normalized_ref) == 0 && !*dir)
-        return NULL;
+        goto done;
+    if (normalized_ref && strcmp(basename, normalized_ref) == 0 && !*dir)
+        goto done;
 
     if (*dir) {
-        if (!fbx_join_path(candidate, sizeof(candidate), dir, basename))
-            return NULL;
+        candidate = fbx_join_path_alloc(dir, basename);
+        if (!candidate)
+            goto done;
     } else {
-        fbx_normalize_path(candidate, sizeof(candidate), basename);
+        candidate = fbx_normalize_path_alloc(basename);
+        if (!candidate)
+            goto done;
     }
-    return rt_pixels_load(rt_const_cstr(candidate));
+    pixels = rt_pixels_load(rt_const_cstr(candidate));
+
+done:
+    free(candidate);
+    free(dir);
+    free(normalized_ref);
+    free(raw_ref);
+    return pixels;
 }
 
 /// @brief Case-insensitive test (ASCII) for whether @p text ends with @p suffix.

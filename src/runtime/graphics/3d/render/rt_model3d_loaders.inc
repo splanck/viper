@@ -110,7 +110,7 @@ static void model_obj_parse_mtl_file(model_obj_material_table *table,
     if (!path)
         return;
     model_parent_dir(mtl_dir, sizeof(mtl_dir), path);
-    f = fopen(path, "r");
+    f = rt_file_stdio_open_utf8(path, "rb");
     if (!f) {
         rt_asset_error_add_warningf("material library '%s' not found", safe_ref);
         free(path);
@@ -212,7 +212,7 @@ static void model_obj_load_material_libraries(const char *obj_path,
     if (!obj_path || !table)
         return;
     model_parent_dir(obj_dir, sizeof(obj_dir), obj_path);
-    f = fopen(obj_path, "r");
+    f = rt_file_stdio_open_utf8(obj_path, "rb");
     if (!f)
         return;
     while ((line_status = model_read_text_line(f, &line, &line_cap, MODEL3D_OBJ_MAX_LINE_BYTES)) >
