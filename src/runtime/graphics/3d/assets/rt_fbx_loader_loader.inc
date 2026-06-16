@@ -1264,7 +1264,8 @@ static void *fbx_load_impl(rt_string path) {
     reader.data = data;
     reader.len = (size_t)fsize;
     reader.pos = 27; /* skip 23-byte magic + 2 unknown + 4 version */
-    memcpy(&reader.version, data + 23, 4);
+    reader.version = (uint32_t)data[23] | ((uint32_t)data[24] << 8u) | ((uint32_t)data[25] << 16u) |
+                     ((uint32_t)data[26] << 24u);
     reader.is_64bit = (reader.version >= 7500);
     reader.error = 0;
 

@@ -64,16 +64,18 @@ static float sw_wrap_coord(float value, int32_t mode) {
         return value;
     }
     if (mode == RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT) {
-        float period = floorf(value);
-        float frac = value - period;
-        int64_t iperiod = (int64_t)period;
+        double period = floor((double)value);
+        double frac = (double)value - period;
+        double parity = fmod(period, 2.0);
         if (frac < 0.0f) {
             frac += 1.0f;
-            iperiod--;
+            parity = fmod(period - 1.0, 2.0);
         }
-        return (iperiod & 1) ? 1.0f - frac : frac;
+        if (parity < 0.0)
+            parity += 2.0;
+        return parity >= 1.0 ? (float)(1.0 - frac) : (float)frac;
     }
-    return value - floorf(value);
+    return (float)((double)value - floor((double)value));
 }
 
 /// @brief Convert a potentially-out-of-range texel coordinate to a valid array index.
@@ -143,7 +145,7 @@ static void sample_texture_ex(const sw_pixels_view *tex,
     if (filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST) {
         int x = sw_wrap_index((int)floorf(u * (float)w), w, wrap_s);
         int y = sw_wrap_index((int)floorf(v * (float)h), h, wrap_t);
-        uint32_t p = tex->data[y * w + x];
+        uint32_t p = tex->data[(size_t)y * (size_t)w + (size_t)x];
         *r = (float)((p >> 24) & 0xFF) / 255.0f;
         *g = (float)((p >> 16) & 0xFF) / 255.0f;
         *b = (float)((p >> 8) & 0xFF) / 255.0f;
@@ -168,10 +170,10 @@ static void sample_texture_ex(const sw_pixels_view *tex,
     y1 = sw_wrap_index(y1, h, wrap_t);
 
     /* Sample 4 texels */
-    uint32_t p00 = tex->data[y0 * w + x0];
-    uint32_t p10 = tex->data[y0 * w + x1];
-    uint32_t p01 = tex->data[y1 * w + x0];
-    uint32_t p11 = tex->data[y1 * w + x1];
+    uint32_t p00 = tex->data[(size_t)y0 * (size_t)w + (size_t)x0];
+    uint32_t p10 = tex->data[(size_t)y0 * (size_t)w + (size_t)x1];
+    uint32_t p01 = tex->data[(size_t)y1 * (size_t)w + (size_t)x0];
+    uint32_t p11 = tex->data[(size_t)y1 * (size_t)w + (size_t)x1];
 
     /* Bilinear weights */
     float w00 = (1.0f - xf) * (1.0f - yf);

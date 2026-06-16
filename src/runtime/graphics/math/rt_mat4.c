@@ -101,7 +101,7 @@ static mat4_impl *mat4_checked(void *m) {
 #ifdef RT_MAT4_INTERNAL_ASSUME_STRUCT_HANDLE
     return (mat4_impl *)m;
 #else
-    if (!m || rt_obj_class_id(m) != RT_MAT4_CLASS_ID)
+    if (!rt_obj_is_instance(m, RT_MAT4_CLASS_ID, sizeof(mat4_impl)))
         return NULL;
     return (mat4_impl *)m;
 #endif

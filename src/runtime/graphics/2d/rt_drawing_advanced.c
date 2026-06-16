@@ -584,24 +584,25 @@ void rt_canvas_flood_fill(void *canvas_ptr, int64_t start_x, int64_t start_y, in
     /* O-03: Use a dynamically-growing stack starting at 4096 entries
      * instead of pre-allocating the worst-case (width * height) upfront.
      * This avoids O(r^2) allocations for small fill regions. */
+    typedef struct {
+        int64_t x;
+        int64_t y;
+    } flood_fill_point;
+
     int64_t stack_cap = 4096;
-    int64_t *stack_x = (int64_t *)malloc((size_t)stack_cap * sizeof(int64_t));
-    int64_t *stack_y = (int64_t *)malloc((size_t)stack_cap * sizeof(int64_t));
-    if (!stack_x || !stack_y) {
-        free(stack_x);
-        free(stack_y);
+    flood_fill_point *stack = (flood_fill_point *)malloc((size_t)stack_cap * sizeof(*stack));
+    if (!stack)
         return;
-    }
 
     int64_t stack_top = 0;
-    stack_x[stack_top] = start_x;
-    stack_y[stack_top] = start_y;
+    stack[stack_top].x = start_x;
+    stack[stack_top].y = start_y;
     stack_top++;
 
     while (stack_top > 0) {
         stack_top--;
-        int64_t x = stack_x[stack_top];
-        int64_t y = stack_y[stack_top];
+        int64_t x = stack[stack_top].x;
+        int64_t y = stack[stack_top].y;
 
         // Skip if out of bounds
         if (x < clip_px0 || x >= clip_px1 || y < clip_py0 || y >= clip_py1 || x < 0 ||
@@ -634,42 +635,34 @@ void rt_canvas_flood_fill(void *canvas_ptr, int64_t start_x, int64_t start_y, in
                 }
                 new_cap *= 2;
             }
-            if (new_cap > INT64_MAX / (int64_t)sizeof(int64_t))
+            if (new_cap > INT64_MAX / (int64_t)sizeof(*stack))
                 break;
-            int64_t *nx = (int64_t *)realloc(stack_x, (size_t)new_cap * sizeof(int64_t));
-            if (!nx) {
-                free(stack_x);
-                free(stack_y);
+            flood_fill_point *grown =
+                (flood_fill_point *)realloc(stack, (size_t)new_cap * sizeof(*stack));
+            if (!grown) {
+                free(stack);
                 return;
             }
-            stack_x = nx;
-            int64_t *ny = (int64_t *)realloc(stack_y, (size_t)new_cap * sizeof(int64_t));
-            if (!ny) {
-                free(stack_x);
-                free(stack_y);
-                return;
-            }
-            stack_y = ny;
+            stack = grown;
             stack_cap = new_cap;
         }
 
         // Push neighbors (4-connected)
-        stack_x[stack_top] = x + 1;
-        stack_y[stack_top] = y;
+        stack[stack_top].x = x + 1;
+        stack[stack_top].y = y;
         stack_top++;
-        stack_x[stack_top] = x - 1;
-        stack_y[stack_top] = y;
+        stack[stack_top].x = x - 1;
+        stack[stack_top].y = y;
         stack_top++;
-        stack_x[stack_top] = x;
-        stack_y[stack_top] = y + 1;
+        stack[stack_top].x = x;
+        stack[stack_top].y = y + 1;
         stack_top++;
-        stack_x[stack_top] = x;
-        stack_y[stack_top] = y - 1;
+        stack[stack_top].x = x;
+        stack[stack_top].y = y - 1;
         stack_top++;
     }
 
-    free(stack_x);
-    free(stack_y);
+    free(stack);
 }
 
 /// @brief Filled triangle defined by three points (any winding order).

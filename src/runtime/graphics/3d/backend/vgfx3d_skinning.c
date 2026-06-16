@@ -178,8 +178,11 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
     if (!src || !dst || vertex_count == 0)
         return;
     if (!palette || bone_count <= 0) {
-        if (dst != src)
+        if (dst != src) {
+            if ((size_t)vertex_count > SIZE_MAX / sizeof(*dst))
+                return;
             memcpy(dst, src, (size_t)vertex_count * sizeof(*dst));
+        }
         return;
     }
     bone_count = skin_effective_bone_count(bone_count);

@@ -75,13 +75,13 @@ static void ray_fill_hit(rt_body3d *body,
 /// @brief Ray vs sphere intersection (analytic quadratic solve).
 /// @return Non-zero on a hit with the entry distance written, 0 otherwise.
 int raycast_sphere_raw(const double *origin,
-                              const double *dir,
-                              const double *center,
-                              double radius,
-                              double max_distance,
-                              double *out_t,
-                              double *out_normal,
-                              int *out_started) {
+                       const double *dir,
+                       const double *center,
+                       double radius,
+                       double max_distance,
+                       double *out_t,
+                       double *out_normal,
+                       int *out_started) {
     double m[3];
     if (!origin || !dir || !center || !isfinite(radius) || radius < 0.0 ||
         !isfinite(max_distance) || max_distance < 0.0)
@@ -253,8 +253,8 @@ static int raycast_capsule_raw(const double *origin,
                 for (int i = 0; i < 2; i++) {
                     double ct = roots[i];
                     double y = md + ct * nd;
-                    if (!isfinite(ct) || !isfinite(y) || ct < 0.0 || ct > max_distance ||
-                        y < 0.0 || y > h)
+                    if (!isfinite(ct) || !isfinite(y) || ct < 0.0 || ct > max_distance || y < 0.0 ||
+                        y > h)
                         continue;
                     if (!found || ct < best_t) {
                         double p[3] = {origin[0] + dir[0] * ct,
@@ -291,14 +291,14 @@ static int raycast_capsule_raw(const double *origin,
 ///   AABB. Returns 1 on hit with distance @p out_t, world normal @p out_normal, and
 ///   @p out_started set when the ray began already inside the box.
 int raycast_box_pose_raw(void *box_collider,
-                                const rt_collider_pose *pose,
-                                const double *origin,
-                                const double *dir,
-                                double max_distance,
-                                double expand_radius,
-                                double *out_t,
-                                double *out_normal,
-                                int *out_started) {
+                         const rt_collider_pose *pose,
+                         const double *origin,
+                         const double *dir,
+                         double max_distance,
+                         double expand_radius,
+                         double *out_t,
+                         double *out_normal,
+                         int *out_started) {
     double he[3];
     double local_origin[3];
     double local_dir[3];
@@ -530,13 +530,6 @@ int mesh_physics_bvh_rebuild(rt_mesh3d *mesh) {
         return 0;
     if (mesh->physics_bvh_nodes && mesh->physics_bvh_revision == mesh->geometry_revision)
         return mesh->physics_bvh_node_count > 0;
-    free(mesh->physics_bvh_nodes);
-    mesh->physics_bvh_nodes = NULL;
-    free(mesh->physics_bvh_tri_indices);
-    mesh->physics_bvh_tri_indices = NULL;
-    mesh->physics_bvh_node_count = 0;
-    mesh->physics_bvh_tri_count = 0;
-    mesh->physics_bvh_revision = 0;
     tri_total = index_count / 3u;
     if (tri_total == 0 || tri_total > (uint32_t)(INT32_MAX / 2))
         return 0;
@@ -567,6 +560,8 @@ int mesh_physics_bvh_rebuild(rt_mesh3d *mesh) {
         free(tri_indices);
         return 0;
     }
+    free(mesh->physics_bvh_nodes);
+    free(mesh->physics_bvh_tri_indices);
     mesh->physics_bvh_nodes = nodes;
     mesh->physics_bvh_tri_indices = tri_indices;
     mesh->physics_bvh_node_count = node_count;

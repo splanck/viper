@@ -425,13 +425,13 @@ static const vgfx3d_backend_t *vgfx3d_backend_from_name(const char *name) {
         return NULL;
     if (strcmp(name, "software") == 0)
         return &vgfx3d_software_backend;
-#if defined(__APPLE__)
+#if RT_PLATFORM_MACOS
     if (strcmp(name, "metal") == 0)
         return &vgfx3d_metal_backend;
-#elif defined(_WIN32)
+#elif RT_PLATFORM_WINDOWS
     if (strcmp(name, "d3d11") == 0)
         return &vgfx3d_d3d11_backend;
-#elif defined(__linux__)
+#elif RT_PLATFORM_LINUX
     if (strcmp(name, "opengl") == 0)
         return &vgfx3d_opengl_backend;
 #endif
@@ -458,9 +458,9 @@ const vgfx3d_backend_t *vgfx3d_select_backend(void) {
 
     /* Prefer platform GPU backends by default; Canvas3D falls back to the
      * software backend at context creation when the GPU path is unavailable. */
-#if defined(__APPLE__)
+#if RT_PLATFORM_MACOS
     platform = VGFX3D_BACKEND_PLATFORM_MACOS;
-#elif defined(_WIN32)
+#elif RT_PLATFORM_WINDOWS
 #if defined(_M_ARM64) || defined(__aarch64__)
     /* Several Windows-on-ARM GPU stacks expose D3D11 but crash inside the
      * display driver during Present. Keep x64 on D3D11, but default ARM64 to
@@ -470,7 +470,7 @@ const vgfx3d_backend_t *vgfx3d_select_backend(void) {
 #else
     platform = VGFX3D_BACKEND_PLATFORM_WINDOWS;
 #endif
-#elif defined(__linux__)
+#elif RT_PLATFORM_LINUX
     platform = VGFX3D_BACKEND_PLATFORM_LINUX;
 #endif
 

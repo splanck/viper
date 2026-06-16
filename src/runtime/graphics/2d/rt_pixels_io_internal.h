@@ -20,6 +20,7 @@
 #include "rt_bytes.h"
 #include "rt_compress.h"
 #include "rt_crc32.h"
+#include "rt_file_stdio.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_string.h"
@@ -30,15 +31,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Use 64-bit seek/tell to support files larger than 2 GB on Windows
-// where `long` (and thus ftell/fseek) is only 32 bits even on 64-bit builds.
-#if defined(_WIN32)
-#define px_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
-#define px_ftell(fp) _ftelli64((fp))
-#else
-#define px_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
-#define px_ftell(fp) ftello((fp))
-#endif
+// Use the shared UTF-8 stdio wrapper's 64-bit seek/tell helpers so image codecs
+// do not carry their own platform-specific branches.
+#define px_fseek(fp, off, whence) rt_file_stdio_seek64((fp), (off), (whence))
+#define px_ftell(fp) rt_file_stdio_tell64((fp))
 
 /// @brief Multiply two size_t values, returning 0 on overflow.
 /// @details Writes the product to @p out only on success.  Used by the PNG

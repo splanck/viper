@@ -31,6 +31,7 @@
 #include "rt_heap.h"
 #include "rt_pixels.h"
 #include "rt_pixels_internal.h"
+#include "rt_platform.h"
 #include "rt_world3d_common.h"
 
 #include <math.h>
@@ -38,9 +39,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if defined(__APPLE__)
+#if RT_PLATFORM_MACOS
 #define WATER3D_OPTIONAL_SYMBOL __attribute__((weak_import))
-#elif defined(__GNUC__) || defined(__clang__)
+#elif RT_COMPILER_GCC_LIKE
 #define WATER3D_OPTIONAL_SYMBOL __attribute__((weak))
 #else
 #define WATER3D_OPTIONAL_SYMBOL

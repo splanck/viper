@@ -503,6 +503,11 @@ void rt_tilemap_fill(void *tilemap_ptr, int64_t tile_index) {
     int64_t count = 0;
     if (!tilemap_checked_grid_size(tilemap->width, tilemap->height, &count, NULL))
         return;
+    if (tile_index == 0) {
+        if ((uint64_t)count <= (uint64_t)SIZE_MAX / sizeof(*tilemap->tiles))
+            memset(tilemap->tiles, 0, (size_t)count * sizeof(*tilemap->tiles));
+        return;
+    }
     for (int64_t i = 0; i < count; i++)
         tilemap->tiles[i] = tile_index;
 }
@@ -698,23 +703,99 @@ typedef struct {
     void *tileset;
     int64_t tile_index;
     void *scaled_pixels;
+    uint8_t used;
 } tilemap_scaled_tile_cache_entry;
+
+/// @brief Hash a tileset pointer plus tile id for the scaled-tile cache.
+/// @details The cache is per draw call, so pointer identity is sufficient for
+///   the tileset portion of the key. The mixed result is used with a power-of-two
+///   table mask by tilemap_scaled_cache_find/insert.
+static size_t tilemap_scaled_cache_hash(void *tileset, int64_t tile_index) {
+    uintptr_t ptr = (uintptr_t)tileset;
+    uint64_t h = (uint64_t)(ptr >> 4u) ^ (uint64_t)tile_index;
+    h ^= h >> 33u;
+    h *= UINT64_C(0xff51afd7ed558ccd);
+    h ^= h >> 33u;
+    h *= UINT64_C(0xc4ceb9fe1a85ec53);
+    h ^= h >> 33u;
+    return (size_t)h;
+}
 
 /// @brief Find a cached scaled tile for a tileset/tile-id pair.
 /// @param entries Cache entries allocated by rt_tilemap_draw_scaled.
-/// @param count Number of valid entries in @p entries.
+/// @param cap Number of hash slots in @p entries; must be a power of two.
 /// @param tileset Source tileset object.
 /// @param tile_index One-based tile index in @p tileset.
 /// @return Cached Pixels object, or NULL when absent.
 static void *tilemap_scaled_cache_find(tilemap_scaled_tile_cache_entry *entries,
-                                       size_t count,
+                                       size_t cap,
                                        void *tileset,
                                        int64_t tile_index) {
-    for (size_t i = 0; i < count; ++i) {
-        if (entries[i].tileset == tileset && entries[i].tile_index == tile_index)
-            return entries[i].scaled_pixels;
+    if (!entries || cap == 0 || !tileset)
+        return NULL;
+    size_t mask = cap - 1u;
+    size_t slot = tilemap_scaled_cache_hash(tileset, tile_index) & mask;
+    for (size_t probe = 0; probe < cap; ++probe) {
+        tilemap_scaled_tile_cache_entry *entry = &entries[(slot + probe) & mask];
+        if (!entry->used)
+            return NULL;
+        if (entry->tileset == tileset && entry->tile_index == tile_index)
+            return entry->scaled_pixels;
     }
     return NULL;
+}
+
+/// @brief Insert an already-owned scaled tile into a hash-table slot.
+/// @return Non-zero on success; zero if the table is full or invalid.
+static int tilemap_scaled_cache_place(tilemap_scaled_tile_cache_entry *entries,
+                                      size_t cap,
+                                      void *tileset,
+                                      int64_t tile_index,
+                                      void *scaled_pixels) {
+    if (!entries || cap == 0 || !tileset || !scaled_pixels)
+        return 0;
+    size_t mask = cap - 1u;
+    size_t slot = tilemap_scaled_cache_hash(tileset, tile_index) & mask;
+    for (size_t probe = 0; probe < cap; ++probe) {
+        tilemap_scaled_tile_cache_entry *entry = &entries[(slot + probe) & mask];
+        if (!entry->used) {
+            entry->tileset = tileset;
+            entry->tile_index = tile_index;
+            entry->scaled_pixels = scaled_pixels;
+            entry->used = 1;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/// @brief Grow the scaled-tile cache hash table and reinsert existing entries.
+/// @return Non-zero on success, zero on allocation failure or capacity overflow.
+static int tilemap_scaled_cache_grow(tilemap_scaled_tile_cache_entry **entries, size_t *cap) {
+    if (!entries || !cap)
+        return 0;
+    size_t old_cap = *cap;
+    size_t new_cap = old_cap ? old_cap * 2u : 64u;
+    if (new_cap < old_cap || new_cap > SIZE_MAX / sizeof(**entries))
+        return 0;
+    tilemap_scaled_tile_cache_entry *new_entries =
+        (tilemap_scaled_tile_cache_entry *)calloc(new_cap, sizeof(**entries));
+    if (!new_entries)
+        return 0;
+    for (size_t i = 0; i < old_cap; ++i) {
+        tilemap_scaled_tile_cache_entry *old = &(*entries)[i];
+        if (old->used) {
+            if (!tilemap_scaled_cache_place(
+                    new_entries, new_cap, old->tileset, old->tile_index, old->scaled_pixels)) {
+                free(new_entries);
+                return 0;
+            }
+        }
+    }
+    free(*entries);
+    *entries = new_entries;
+    *cap = new_cap;
+    return 1;
 }
 
 /// @brief Insert one scaled tile into the per-draw cache.
@@ -735,32 +816,28 @@ static int tilemap_scaled_cache_insert(tilemap_scaled_tile_cache_entry **entries
                                        void *scaled_pixels) {
     if (!entries || !count || !cap || !tileset || !scaled_pixels)
         return 0;
-    if (*count == *cap) {
-        size_t new_cap = *cap ? *cap * 2u : 32u;
-        if (new_cap < *cap || new_cap > SIZE_MAX / sizeof(**entries))
+    size_t next_count = *count + 1u;
+    size_t grow_limit = (*cap / 10u) * 7u + ((*cap % 10u) * 7u) / 10u;
+    if (next_count < *count || *cap == 0 || next_count > grow_limit) {
+        if (!tilemap_scaled_cache_grow(entries, cap))
             return 0;
-        tilemap_scaled_tile_cache_entry *new_entries =
-            (tilemap_scaled_tile_cache_entry *)realloc(*entries, new_cap * sizeof(**entries));
-        if (!new_entries)
-            return 0;
-        *entries = new_entries;
-        *cap = new_cap;
     }
-    (*entries)[*count].tileset = tileset;
-    (*entries)[*count].tile_index = tile_index;
-    (*entries)[*count].scaled_pixels = scaled_pixels;
+    if (!tilemap_scaled_cache_place(*entries, *cap, tileset, tile_index, scaled_pixels))
+        return 0;
     ++(*count);
     return 1;
 }
 
 /// @brief Release every cached scaled tile and free the cache allocation.
 /// @param entries Cache entries allocated during rt_tilemap_draw_scaled.
-/// @param count Number of valid entries in @p entries.
-static void tilemap_scaled_cache_release(tilemap_scaled_tile_cache_entry *entries, size_t count) {
+/// @param cap Number of hash slots in @p entries.
+static void tilemap_scaled_cache_release(tilemap_scaled_tile_cache_entry *entries, size_t cap) {
     if (!entries)
         return;
-    for (size_t i = 0; i < count; ++i)
-        tilemap_release_temp(entries[i].scaled_pixels);
+    for (size_t i = 0; i < cap; ++i) {
+        if (entries[i].used)
+            tilemap_release_temp(entries[i].scaled_pixels);
+    }
     free(entries);
 }
 
@@ -824,8 +901,8 @@ void rt_tilemap_draw_scaled(void *tilemap_ptr,
                 int64_t ti = tile_index - 1;
                 int64_t sx = tilemap_mul_saturating(ti % tileset_cols, tilemap->tile_width);
                 int64_t sy = tilemap_mul_saturating(ti / tileset_cols, tilemap->tile_height);
-                void *scaled = tilemap_scaled_cache_find(
-                    scaled_cache, scaled_cache_count, tileset, tile_index);
+                void *scaled =
+                    tilemap_scaled_cache_find(scaled_cache, scaled_cache_cap, tileset, tile_index);
                 if (!scaled) {
                     void *tile = rt_pixels_new(tilemap->tile_width, tilemap->tile_height);
                     if (!tile)
@@ -854,7 +931,7 @@ void rt_tilemap_draw_scaled(void *tilemap_ptr,
             }
         }
     }
-    tilemap_scaled_cache_release(scaled_cache, scaled_cache_count);
+    tilemap_scaled_cache_release(scaled_cache, scaled_cache_cap);
 }
 
 /// @brief Count non-empty, drawable tiles in a tile-coordinate sub-region.

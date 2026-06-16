@@ -1,10 +1,11 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_frame.inc  (#included from vgfx3d_backend_opengl.c; not a standalone translation unit)
-// Purpose: OpenGL frame begin/end, submit, resize, readback, present, post-FX, and shadow passes
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_frame.inc  (#included from
+// vgfx3d_backend_opengl.c; not a standalone translation unit) Purpose: OpenGL frame begin/end,
+// submit, resize, readback, present, post-FX, and shadow passes
 //===----------------------------------------------------------------------===//
 
-/// @brief Backend `clear` op — store the clear color for use during `BeginFrame`.
+/// @brief Backend `clear` op: store the clear color for use during `BeginFrame`.
 ///
 /// We don't actually issue `glClear` here; that happens in
 /// `BeginFrame` so we know the current target/load-state.
@@ -396,13 +397,11 @@ static int gl_readback_rgba(
     gl.ReadBuffer(use_postfx_readback ? readback_buffer : GL_BACK);
     gl.ReadPixels(0, 0, copy_w, copy_h, GL_RGBA, GL_UNSIGNED_BYTE, tmp);
     if (!gl_drain_errors("readback")) {
-        gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
         free(tmp);
         gl_restore_framebuffer_state(&saved_state);
         gl_restore_main_draw_state(ctx);
         return 0;
     }
-    gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
     vgfx3d_flip_rgba_rows(tmp, copy_w, copy_h);
     for (int32_t y = 0; y < copy_h; y++)
         memcpy(dst_rgba + (size_t)y * (size_t)stride,
@@ -555,13 +554,13 @@ static void gl_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         ctx->shadow_uViewProjection, 1, GL_TRUE, ctx->shadow_vp[ctx->shadow_pass_slot]);
     bind_shadow_anim(ctx, cmd);
     {
-        GLuint diffuse_tex =
-            gl_get_material_texture(ctx,
-                                    cmd->texture_asset,
-                                    cmd->texture,
-                                    cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
-                                    cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
-                                    cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR]);
+        GLuint diffuse_tex = gl_get_material_texture(
+            ctx,
+            cmd->texture_asset,
+            cmd->texture,
+            cmd->texture_asset_cache_key[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+            cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
+            cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR]);
         gl.Uniform1i(ctx->shadow_uHasTexture, diffuse_tex ? 1 : 0);
         gl.Uniform1i(ctx->shadow_uAlphaMode, cmd->alpha_mode);
         gl.Uniform1f(ctx->shadow_uAlphaCutoff, cmd->alpha_cutoff);

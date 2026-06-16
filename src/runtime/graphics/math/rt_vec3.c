@@ -39,6 +39,7 @@
 
 #include "rt_vec3.h"
 
+#include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 
@@ -77,6 +78,39 @@ typedef struct {
     double z; ///< Z component (depth axis, positive = toward viewer in RH coords)
 } ViperVec3;
 
+/// @brief Return whether @p v is a Vec3-compatible heap payload.
+/// @details Accepts both the explicit Vec3 class id used by current constructors and the
+///          historical class-id-zero value object layout consumed throughout Graphics3D. Legacy
+///          classless payloads must be exactly three doubles.
+/// @param v Candidate runtime object payload.
+/// @return 1 for a compatible Vec3 payload, otherwise 0.
+static int vec3_is_compatible_object(void *v) {
+    if (!v)
+        return 0;
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(v, &hdr) || !hdr)
+        return 0;
+    if (hdr->kind != RT_HEAP_OBJECT || hdr->elem_kind != RT_ELEM_NONE)
+        return 0;
+    if (hdr->class_id == RT_VEC3_CLASS_ID)
+        return hdr->cap >= sizeof(ViperVec3);
+    return hdr->class_id == 0 && hdr->len == sizeof(ViperVec3) && hdr->cap == sizeof(ViperVec3);
+}
+
+/// @brief Validate and cast an opaque handle to a Vec3 payload.
+/// @details Rejects NULL, non-object heap payloads, incompatible class identifiers, and
+///   undersized allocations before any Vec3 component is read.
+/// @param v Candidate Vec3 runtime handle.
+/// @param op Diagnostic prefix used if validation fails.
+/// @return Typed Vec3 payload, or NULL after trapping.
+static ViperVec3 *vec3_checked(void *v, const char *op) {
+    if (!vec3_is_compatible_object(v)) {
+        rt_trap(op ? op : "Vec3: invalid vector");
+        return NULL;
+    }
+    return (ViperVec3 *)v;
+}
+
 /// @brief Compute a finite, overflow-resistant Vec3 length from raw components.
 /// @details Uses chained `hypot` calls instead of `sqrt(x*x + y*y + z*z)`,
 ///          preventing overflow/underflow during normalization, distance, and
@@ -104,7 +138,7 @@ static ViperVec3 *vec3_alloc(double x, double y, double z) {
     if (vec3_pool_top_ > 0) {
         v = (ViperVec3 *)vec3_pool_buf_[--vec3_pool_top_];
     } else {
-        v = (ViperVec3 *)rt_obj_new_i64(0, (int64_t)sizeof(ViperVec3));
+        v = (ViperVec3 *)rt_obj_new_i64(RT_VEC3_CLASS_ID, (int64_t)sizeof(ViperVec3));
         if (!v) {
             rt_trap("Vec3: memory allocation failed");
             return NULL; // Unreachable after trap
@@ -233,11 +267,10 @@ void *rt_vec3_one(void) {
 /// @see rt_vec3_y For the Y component
 /// @see rt_vec3_z For the Z component
 double rt_vec3_x(void *v) {
-    if (!v) {
-        rt_trap("Vec3.X: null vector");
+    ViperVec3 *vec = vec3_checked(v, "Vec3.X: invalid vector");
+    if (!vec)
         return 0.0;
-    }
-    return ((ViperVec3 *)v)->x;
+    return vec->x;
 }
 
 /// @brief Gets the Y component of the vector.
@@ -266,11 +299,10 @@ double rt_vec3_x(void *v) {
 /// @see rt_vec3_x For the X component
 /// @see rt_vec3_z For the Z component
 double rt_vec3_y(void *v) {
-    if (!v) {
-        rt_trap("Vec3.Y: null vector");
+    ViperVec3 *vec = vec3_checked(v, "Vec3.Y: invalid vector");
+    if (!vec)
         return 0.0;
-    }
-    return ((ViperVec3 *)v)->y;
+    return vec->y;
 }
 
 /// @brief Gets the Z component of the vector.
@@ -299,11 +331,10 @@ double rt_vec3_y(void *v) {
 /// @see rt_vec3_x For the X component
 /// @see rt_vec3_y For the Y component
 double rt_vec3_z(void *v) {
-    if (!v) {
-        rt_trap("Vec3.Z: null vector");
+    ViperVec3 *vec = vec3_checked(v, "Vec3.Z: invalid vector");
+    if (!vec)
         return 0.0;
-    }
-    return ((ViperVec3 *)v)->z;
+    return vec->z;
 }
 
 /// @brief Set the X component in place.
@@ -494,15 +525,13 @@ void *rt_vec3_mul(void *v, double s) {
 /// @see rt_vec3_mul For scalar multiplication
 /// @see rt_vec3_norm For normalizing to unit length
 void *rt_vec3_div(void *v, double s) {
-    if (!v) {
-        rt_trap("Vec3.Div: null vector");
+    ViperVec3 *vec = vec3_checked(v, "Vec3.Div: invalid vector");
+    if (!vec)
+        return NULL;
+    if (!isfinite(s) || s == 0.0) {
+        rt_trap("Vec3.Div: invalid divisor");
         return NULL;
     }
-    if (s == 0.0) {
-        rt_trap("Vec3.Div: division by zero");
-        return NULL;
-    }
-    ViperVec3 *vec = (ViperVec3 *)v;
     return vec3_alloc(vec->x / s, vec->y / s, vec->z / s);
 }
 

@@ -24,6 +24,8 @@
 
 #include <stdint.h>
 
+#define RT_MAT3_CLASS_ID INT64_C(-0x600207)
+
 #ifdef __cplusplus
 extern "C" {
 #endif

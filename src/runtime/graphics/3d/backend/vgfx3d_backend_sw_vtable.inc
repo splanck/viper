@@ -47,11 +47,43 @@ static void sw_destroy_ctx(void *ctx_ptr) {
     free(ctx);
 }
 
-/// @brief Backend `clear` op — clear the framebuffer to a solid color and reset Z.
-///
-/// Fills every pixel with `(r, g, b, 1)` packed as 0xAARRGGBB and
-/// sets every Z value to +infinity (well, FLT_MAX) so the next draw's
-/// "less than" depth tests succeed unconditionally.
+/// @brief Fill an RGBA byte framebuffer with a solid opaque color.
+/// @details Writes the first row pixel-by-pixel, then copies that row into
+///   subsequent rows. This preserves the software framebuffer byte layout and
+///   handles padded strides while avoiding per-pixel channel stores for every
+///   row during clears.
+/// @param pixels First byte of the target framebuffer.
+/// @param width Number of pixels per row.
+/// @param height Number of rows to fill.
+/// @param stride Byte distance between two adjacent rows.
+/// @param cr Red channel byte.
+/// @param cg Green channel byte.
+/// @param cb Blue channel byte.
+static void sw_fill_rgba_rows(uint8_t *pixels,
+                              int32_t width,
+                              int32_t height,
+                              int32_t stride,
+                              uint8_t cr,
+                              uint8_t cg,
+                              uint8_t cb) {
+    if (!pixels || width <= 0 || height <= 0 || width > INT32_MAX / 4 || stride < width * 4)
+        return;
+    uint8_t *row0 = pixels;
+    for (int32_t x = 0; x < width; x++) {
+        uint8_t *px = &row0[x * 4];
+        px[0] = cr;
+        px[1] = cg;
+        px[2] = cb;
+        px[3] = 0xFF;
+    }
+    size_t row_bytes = (size_t)width * 4u;
+    for (int32_t y = 1; y < height; y++)
+        memcpy(pixels + (size_t)y * (size_t)stride, row0, row_bytes);
+}
+
+/// @brief Backend `clear` op: clear the framebuffer to a solid color and reset Z.
+/// @details Fills every color pixel with `(r, g, b, 1)` and sets every depth
+///   value to FLT_MAX so the next draw's less-than depth tests succeed.
 static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
     if (!ctx)
@@ -65,14 +97,7 @@ static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
         vgfx3d_rendertarget_t *rt = ctx->render_target;
         if (!vgfx3d_rendertarget_ensure_color(rt) || !vgfx3d_rendertarget_ensure_depth(rt))
             return;
-        for (int32_t y = 0; y < rt->height; y++)
-            for (int32_t x = 0; x < rt->width; x++) {
-                uint8_t *px = &rt->color_buf[y * rt->stride + x * 4];
-                px[0] = cr;
-                px[1] = cg;
-                px[2] = cb;
-                px[3] = 0xFF;
-            }
+        sw_fill_rgba_rows(rt->color_buf, rt->width, rt->height, rt->stride, cr, cg, cb);
         size_t total = 0;
         if (sw_pixel_count_checked(rt->width, rt->height, &total)) {
             for (size_t i = 0; i < total; i++)
@@ -85,14 +110,7 @@ static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
         if (vgfx_get_framebuffer(win, &fb)) {
             if (!sw_ensure_zbuf_capacity(ctx, fb.width, fb.height))
                 return;
-            for (int32_t y = 0; y < fb.height; y++)
-                for (int32_t x = 0; x < fb.width; x++) {
-                    uint8_t *px = &fb.pixels[y * fb.stride + x * 4];
-                    px[0] = cr;
-                    px[1] = cg;
-                    px[2] = cb;
-                    px[3] = 0xFF;
-                }
+            sw_fill_rgba_rows(fb.pixels, fb.width, fb.height, fb.stride, cr, cg, cb);
         }
         size_t total = 0;
         if (sw_pixel_count_checked(ctx->width, ctx->height, &total)) {

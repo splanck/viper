@@ -323,10 +323,15 @@ static void mac_scan_devices(void) {
 
         CFTypeRef product = IOHIDDeviceGetProperty(device, CFSTR(kIOHIDProductKey));
         if (product && CFGetTypeID(product) == CFStringGetTypeID()) {
-            CFStringGetCString((CFStringRef)product,
-                               g_pads[pad_index].name,
-                               sizeof(g_pads[pad_index].name),
-                               kCFStringEncodingUTF8);
+            if (!CFStringGetCString((CFStringRef)product,
+                                    g_pads[pad_index].name,
+                                    sizeof(g_pads[pad_index].name),
+                                    kCFStringEncodingUTF8)) {
+                snprintf(g_pads[pad_index].name,
+                         sizeof(g_pads[pad_index].name),
+                         "HID Gamepad %d",
+                         pad_index);
+            }
         } else {
             snprintf(g_pads[pad_index].name,
                      sizeof(g_pads[pad_index].name),

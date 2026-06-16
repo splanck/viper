@@ -326,13 +326,24 @@ static void *apply_batch_color(void *pixels, int64_t tint_color, int64_t alpha) 
             result = cloned;
         }
 
-        spritebatch_pixels_view *impl = (spritebatch_pixels_view *)result;
+        rt_pixels_impl *impl = rt_pixels_checked_impl_or_null(result);
         if (impl && impl->data) {
-            int64_t pixel_count = impl->width * impl->height;
-            for (int64_t i = 0; i < pixel_count; ++i) {
+            uint32_t alpha_u = alpha <= 0 ? 0u : (alpha >= 255 ? 255u : (uint32_t)alpha);
+            if (impl->width <= 0 || impl->height <= 0)
+                return NULL;
+            uint64_t width = (uint64_t)impl->width;
+            uint64_t height = (uint64_t)impl->height;
+            if (height != 0 && width > UINT64_MAX / height)
+                return NULL;
+            uint64_t total = width * height;
+            if (total > (uint64_t)SIZE_MAX) {
+                return NULL;
+            }
+            size_t pixel_count = (size_t)total;
+            for (size_t i = 0; i < pixel_count; ++i) {
                 uint32_t rgba = impl->data[i];
                 uint32_t a = rgba & 0xFFu;
-                a = (a * (uint32_t)alpha + 127u) / 255u;
+                a = (a * alpha_u + 127u) / 255u;
                 impl->data[i] = (rgba & 0xFFFFFF00u) | a;
             }
         }

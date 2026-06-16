@@ -105,12 +105,12 @@
 #ifndef PATH_MAX
 #define PATH_MAX 4096
 #endif
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#elif defined(__APPLE__)
+#elif RT_PLATFORM_MACOS
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
 #include <pthread.h>
@@ -170,7 +170,7 @@ static void *g_game3d_asset_commit_queue = NULL;
 static volatile uint64_t g_game3d_asset_upload_budget_bytes =
     RT_GAME3D_ASSET_UPLOAD_BUDGET_DEFAULT_BYTES;
 
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
 static INIT_ONCE g_game3d_model_cache_once = INIT_ONCE_STATIC_INIT;
 static CRITICAL_SECTION g_game3d_model_cache_lock;
 static CONDITION_VARIABLE g_game3d_model_cache_cv;
@@ -213,12 +213,16 @@ static void game3d_model_cache_notify_all(void) {
 static pthread_mutex_t g_game3d_model_cache_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t g_game3d_model_cache_cv;
 static pthread_once_t g_game3d_model_cache_once = PTHREAD_ONCE_INIT;
+#if defined(CLOCK_MONOTONIC) && !RT_PLATFORM_MACOS
+static int g_game3d_model_cache_cv_uses_monotonic = 0;
+#endif
 
 static void game3d_model_cache_init_once(void) {
     pthread_condattr_t attr;
     if (pthread_condattr_init(&attr) == 0) {
-#if defined(CLOCK_MONOTONIC) && !defined(__APPLE__)
-        (void)pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
+#if defined(CLOCK_MONOTONIC) && !RT_PLATFORM_MACOS
+        g_game3d_model_cache_cv_uses_monotonic =
+            pthread_condattr_setclock(&attr, CLOCK_MONOTONIC) == 0;
 #endif
         (void)pthread_cond_init(&g_game3d_model_cache_cv, &attr);
         (void)pthread_condattr_destroy(&attr);
@@ -241,14 +245,16 @@ static void game3d_model_cache_unlock(void) {
 static int game3d_model_cache_wait_locked_ms(uint32_t timeout_ms) {
     struct timespec deadline;
     uint32_t wait_ms = timeout_ms == 0u ? 1u : timeout_ms;
-#if defined(__APPLE__)
+#if RT_PLATFORM_MACOS
     deadline.tv_sec = (time_t)(wait_ms / 1000u);
     deadline.tv_nsec = (long)((uint64_t)(wait_ms % 1000u) * 1000000ull);
     return pthread_cond_timedwait_relative_np(
                &g_game3d_model_cache_cv, &g_game3d_model_cache_lock, &deadline) == 0;
 #else
 #if defined(CLOCK_MONOTONIC)
-    if (clock_gettime(CLOCK_MONOTONIC, &deadline) != 0)
+    clockid_t wait_clock =
+        g_game3d_model_cache_cv_uses_monotonic ? CLOCK_MONOTONIC : CLOCK_REALTIME;
+    if (clock_gettime(wait_clock, &deadline) != 0)
         return 0;
 #else
     if (clock_gettime(CLOCK_REALTIME, &deadline) != 0)
@@ -281,14 +287,14 @@ static int game3d_callback_pointer_is_native(void *callback) {
         return 1;
     if (rt_heap_is_payload(callback))
         return 0;
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     MEMORY_BASIC_INFORMATION info;
     if (VirtualQuery(callback, &info, sizeof(info)) == 0)
         return 0;
     DWORD protect = info.Protect & 0xffu;
     return protect == PAGE_EXECUTE || protect == PAGE_EXECUTE_READ ||
            protect == PAGE_EXECUTE_READWRITE || protect == PAGE_EXECUTE_WRITECOPY;
-#elif defined(__APPLE__)
+#elif RT_PLATFORM_MACOS
     mach_vm_address_t region = (mach_vm_address_t)(uintptr_t)callback;
     mach_vm_size_t size = 0;
     vm_region_basic_info_data_64_t info = {0};
@@ -305,7 +311,7 @@ static int game3d_callback_pointer_is_native(void *callback) {
     if (object != MACH_PORT_NULL)
         mach_port_deallocate(mach_task_self(), object);
     return (info.protection & VM_PROT_EXECUTE) != 0;
-#elif defined(__linux__)
+#elif RT_PLATFORM_LINUX
     FILE *maps = fopen("/proc/self/maps", "r");
     char line[512];
     uintptr_t needle = (uintptr_t)callback;
@@ -324,7 +330,7 @@ static int game3d_callback_pointer_is_native(void *callback) {
     fclose(maps);
     return 0;
 #else
-    return 1;
+    return 0;
 #endif
 }
 

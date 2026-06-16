@@ -498,7 +498,9 @@ static void world3d_solve_velocity_contact(rt_contact3d *c) {
     {
         double fa = ph3d_clamp_nonnegative_finite(a->friction, 0.0);
         double fb = ph3d_clamp_nonnegative_finite(b->friction, 0.0);
-        mu = sqrt(fa * fb);
+        mu = sqrt(fa) * sqrt(fb);
+        if (!isfinite(mu))
+            mu = 0.0;
     }
     for (int32_t k = 0; k < c->contact_count; ++k) {
         double n[3];
@@ -552,6 +554,8 @@ static void world3d_solve_position_contact(rt_contact3d *c, double beta) {
     double inv_sum;
     double pen;
     double corr;
+    double next_a[3];
+    double next_b[3];
     int32_t deepest = 0;
     if (!c)
         return;
@@ -576,12 +580,16 @@ static void world3d_solve_position_contact(rt_contact3d *c, double beta) {
     pen = fmin(pen, PH3D_MAX_POSITION_CORRECTION);
     corr = beta * pen / inv_sum;
     n = c->normals[deepest];
-    a->position[0] -= corr * a->inv_mass * n[0];
-    a->position[1] -= corr * a->inv_mass * n[1];
-    a->position[2] -= corr * a->inv_mass * n[2];
-    b->position[0] += corr * b->inv_mass * n[0];
-    b->position[1] += corr * b->inv_mass * n[1];
-    b->position[2] += corr * b->inv_mass * n[2];
+    if (!ph3d_vec3_all_finite(n) || !isfinite(corr))
+        return;
+    for (int axis = 0; axis < 3; axis++) {
+        next_a[axis] = a->position[axis] - corr * a->inv_mass * n[axis];
+        next_b[axis] = b->position[axis] + corr * b->inv_mass * n[axis];
+    }
+    if (!ph3d_vec3_all_finite(next_a) || !ph3d_vec3_all_finite(next_b))
+        return;
+    vec3_copy(a->position, next_a);
+    vec3_copy(b->position, next_b);
     if (a->inv_mass > 0.0)
         body3d_touch_broadphase(a);
     if (b->inv_mass > 0.0)

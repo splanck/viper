@@ -30,6 +30,8 @@
 #include <stdint.h>
 
 #include "rt_heap.h"
+#include "rt_quat.h"
+#include "rt_vec3.h"
 
 /// @brief Return the runtime class id of an object (0 if none/plain value).
 extern int64_t rt_obj_class_id(void *p);
@@ -145,12 +147,32 @@ static inline int32_t rt_g3d_is_plain_value_object(void *obj, size_t payload_byt
            hdr->len == payload_bytes && hdr->cap == payload_bytes;
 }
 
-/// @brief True if @p obj is a boxed Vec3 (3 doubles, class-less heap value).
-static inline int32_t rt_g3d_is_vec3(void *obj) {
-    return rt_g3d_is_plain_value_object(obj, sizeof(double) * 3u);
+/// @brief True if @p obj is a tagged heap value with at least @p payload_bytes bytes.
+/// @details Vec3 and Quat started life as class-less heap values. Newer constructors tag them
+///          with explicit math class ids, while some internal fixtures and serialized surfaces
+///          still expose the old class id 0 shape. The helper accepts only the requested tag and
+///          enough inline payload space; legacy id 0 is handled separately by
+///          @ref rt_g3d_is_plain_value_object.
+static inline int32_t rt_g3d_is_tagged_value_object(void *obj,
+                                                    int64_t class_id,
+                                                    size_t payload_bytes) {
+    if (!obj)
+        return 0;
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(obj, &hdr) || !hdr)
+        return 0;
+    return hdr->kind == RT_HEAP_OBJECT && hdr->elem_kind == RT_ELEM_NONE &&
+           hdr->class_id == class_id && hdr->cap >= payload_bytes;
 }
 
-/// @brief True if @p obj is a boxed Quat (4 doubles, class-less heap value).
+/// @brief True if @p obj is a Vec3, accepting both tagged and legacy class-less payloads.
+static inline int32_t rt_g3d_is_vec3(void *obj) {
+    return rt_g3d_is_tagged_value_object(obj, RT_VEC3_CLASS_ID, sizeof(double) * 3u) ||
+           rt_g3d_is_plain_value_object(obj, sizeof(double) * 3u);
+}
+
+/// @brief True if @p obj is a Quat, accepting both tagged and legacy class-less payloads.
 static inline int32_t rt_g3d_is_quat(void *obj) {
-    return rt_g3d_is_plain_value_object(obj, sizeof(double) * 4u);
+    return rt_g3d_is_tagged_value_object(obj, RT_QUAT_CLASS_ID, sizeof(double) * 4u) ||
+           rt_g3d_is_plain_value_object(obj, sizeof(double) * 4u);
 }

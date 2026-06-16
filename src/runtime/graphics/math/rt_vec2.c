@@ -45,6 +45,7 @@
 
 #include "rt_vec2.h"
 
+#include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 
@@ -99,6 +100,39 @@ typedef struct {
     double y; ///< Y component (vertical axis, positive = up in math, down in screen coords)
 } ViperVec2;
 
+/// @brief Return whether @p v is a Vec2-compatible heap payload.
+/// @details Accepts both the explicit Vec2 class id used by current constructors and the
+///          historical class-id-zero value object layout. Classless payloads must be exactly the
+///          Vec2 byte size so unrelated raw heap objects are not treated as vectors.
+/// @param v Candidate runtime object payload.
+/// @return 1 for a compatible Vec2 payload, otherwise 0.
+static int vec2_is_compatible_object(void *v) {
+    if (!v)
+        return 0;
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(v, &hdr) || !hdr)
+        return 0;
+    if (hdr->kind != RT_HEAP_OBJECT || hdr->elem_kind != RT_ELEM_NONE)
+        return 0;
+    if (hdr->class_id == RT_VEC2_CLASS_ID)
+        return hdr->cap >= sizeof(ViperVec2);
+    return hdr->class_id == 0 && hdr->len == sizeof(ViperVec2) && hdr->cap == sizeof(ViperVec2);
+}
+
+/// @brief Validate and cast an opaque handle to a Vec2 payload.
+/// @details Rejects NULL, non-object heap payloads, incompatible class identifiers, and
+///   undersized allocations before any Vec2 component is read.
+/// @param v Candidate Vec2 runtime handle.
+/// @param op Diagnostic prefix used if validation fails.
+/// @return Typed Vec2 payload, or NULL after trapping.
+static ViperVec2 *vec2_checked(void *v, const char *op) {
+    if (!vec2_is_compatible_object(v)) {
+        rt_trap(op ? op : "Vec2: invalid vector");
+        return NULL;
+    }
+    return (ViperVec2 *)v;
+}
+
 /// @brief Compute a finite, overflow-resistant Vec2 length from raw components.
 /// @details Uses `hypot` instead of `sqrt(x*x + y*y)` so large finite components
 ///          do not overflow while squaring. Non-finite inputs return `INFINITY`,
@@ -127,7 +161,7 @@ static ViperVec2 *vec2_alloc(double x, double y) {
         v = (ViperVec2 *)vec2_pool_buf_[--vec2_pool_top_];
     } else {
         // Slow path: heap-allocate a fresh object and arm the pool finalizer.
-        v = (ViperVec2 *)rt_obj_new_i64(0, (int64_t)sizeof(ViperVec2));
+        v = (ViperVec2 *)rt_obj_new_i64(RT_VEC2_CLASS_ID, (int64_t)sizeof(ViperVec2));
         if (!v) {
             rt_trap("Vec2: memory allocation failed");
             return NULL; // Unreachable after trap
@@ -262,11 +296,10 @@ void *rt_vec2_one(void) {
 /// @see rt_vec2_y For the Y component
 /// @see rt_vec2_new For creating vectors with specific components
 double rt_vec2_x(void *v) {
-    if (!v) {
-        rt_trap("Vec2.X: null vector");
+    ViperVec2 *vec = vec2_checked(v, "Vec2.X: invalid vector");
+    if (!vec)
         return 0.0;
-    }
-    return ((ViperVec2 *)v)->x;
+    return vec->x;
 }
 
 /// @brief Gets the Y component of the vector.
@@ -296,11 +329,10 @@ double rt_vec2_x(void *v) {
 /// @see rt_vec2_x For the X component
 /// @see rt_vec2_new For creating vectors with specific components
 double rt_vec2_y(void *v) {
-    if (!v) {
-        rt_trap("Vec2.Y: null vector");
+    ViperVec2 *vec = vec2_checked(v, "Vec2.Y: invalid vector");
+    if (!vec)
         return 0.0;
-    }
-    return ((ViperVec2 *)v)->y;
+    return vec->y;
 }
 
 //=============================================================================
@@ -467,15 +499,13 @@ void *rt_vec2_mul(void *v, double s) {
 /// @see rt_vec2_mul For scalar multiplication
 /// @see rt_vec2_norm For normalizing to unit length
 void *rt_vec2_div(void *v, double s) {
-    if (!v) {
-        rt_trap("Vec2.Div: null vector");
+    ViperVec2 *vec = vec2_checked(v, "Vec2.Div: invalid vector");
+    if (!vec)
+        return NULL;
+    if (!isfinite(s) || s == 0.0) {
+        rt_trap("Vec2.Div: invalid divisor");
         return NULL;
     }
-    if (s == 0.0) {
-        rt_trap("Vec2.Div: division by zero");
-        return NULL;
-    }
-    ViperVec2 *vec = (ViperVec2 *)v;
     return vec2_alloc(vec->x / s, vec->y / s);
 }
 

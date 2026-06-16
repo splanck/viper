@@ -409,15 +409,15 @@ static int canvas3d_backend_supports_clustered_lighting(const vgfx3d_backend_t *
     if (backend == &vgfx3d_software_backend ||
         (backend->name && strcmp(backend->name, "software") == 0))
         return 1;
-#if defined(__APPLE__)
+#if RT_PLATFORM_MACOS
     if (backend == &vgfx3d_metal_backend)
         return 1;
 #endif
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     if (backend == &vgfx3d_d3d11_backend)
         return 1;
 #endif
-#if defined(__linux__)
+#if RT_PLATFORM_LINUX
     if (backend == &vgfx3d_opengl_backend)
         return 1;
 #endif
@@ -431,15 +431,15 @@ static int canvas3d_backend_supports_shadow_csm(const vgfx3d_backend_t *backend)
     if (backend == &vgfx3d_software_backend ||
         (backend->name && strcmp(backend->name, "software") == 0))
         return 1;
-#if defined(__APPLE__)
+#if RT_PLATFORM_MACOS
     if (backend == &vgfx3d_metal_backend)
         return 1;
 #endif
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     if (backend == &vgfx3d_d3d11_backend)
         return 1;
 #endif
-#if defined(__linux__)
+#if RT_PLATFORM_LINUX
     if (backend == &vgfx3d_opengl_backend)
         return 1;
 #endif

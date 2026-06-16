@@ -25,6 +25,7 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_platform.h"
 #include "rt_postfx3d.h"
 #include "vgfx.h"
 #include <limits.h>
@@ -375,15 +376,15 @@ typedef struct vgfx3d_backend {
 /// @brief The always-available CPU software backend (fallback of last resort).
 extern const vgfx3d_backend_t vgfx3d_software_backend;
 
-#if defined(__APPLE__)
+#if RT_PLATFORM_MACOS
 /// @brief The Metal GPU backend (macOS only).
 extern const vgfx3d_backend_t vgfx3d_metal_backend;
 #endif
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
 /// @brief The Direct3D 11 GPU backend (Windows only).
 extern const vgfx3d_backend_t vgfx3d_d3d11_backend;
 #endif
-#if defined(__linux__)
+#if RT_PLATFORM_LINUX
 /// @brief The OpenGL GPU backend (Linux only).
 extern const vgfx3d_backend_t vgfx3d_opengl_backend;
 #endif

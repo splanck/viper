@@ -26,6 +26,8 @@
 
 #include <stdint.h>
 
+#define RT_QUAT_CLASS_ID INT64_C(-0x600208)
+
 #ifdef __cplusplus
 extern "C" {
 #endif

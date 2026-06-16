@@ -79,10 +79,12 @@ static int obj_parse_face_vert(const char **p, int64_t *vi, int64_t *ti, int64_t
     *ni = 0;
     if (**p == '/') {
         (*p)++;
-        if (**p == '\0' || **p == ' ' || **p == '\t' || **p == '\n' || **p == '\r')
-            return 0;
-        if (!obj_parse_int(p, ti))
-            return 0;
+        if (**p != '/') {
+            if (**p == '\0' || **p == ' ' || **p == '\t' || **p == '\n' || **p == '\r')
+                return 0;
+            if (!obj_parse_int(p, ti))
+                return 0;
+        }
         if (**p == '/') {
             (*p)++;
             if (**p == '\0' || **p == ' ' || **p == '\t' || **p == '\n' || **p == '\r')
@@ -169,6 +171,18 @@ static int obj_vertex_cache_init(obj_vertex_cache_t *cache, size_t capacity) {
         return 0;
     if (capacity < 64)
         capacity = 64;
+    if (capacity > (SIZE_MAX >> 1u))
+        return 0;
+    capacity--;
+    capacity |= capacity >> 1u;
+    capacity |= capacity >> 2u;
+    capacity |= capacity >> 4u;
+    capacity |= capacity >> 8u;
+    capacity |= capacity >> 16u;
+#if SIZE_MAX > UINT32_MAX
+    capacity |= capacity >> 32u;
+#endif
+    capacity++;
     cache->entries = (obj_vertex_cache_entry_t *)calloc(capacity, sizeof(*cache->entries));
     cache->capacity = cache->entries ? capacity : 0;
     cache->count = 0;
@@ -611,13 +625,13 @@ void rt_mesh3d_calc_tangents_impl(rt_mesh3d *m) {
         return;
     }
 
-    if ((size_t)m->vertex_count > SIZE_MAX / 3u / sizeof(float)) {
+    if ((size_t)m->vertex_count > SIZE_MAX / 3u / sizeof(double)) {
         rt_trap("Mesh3D.CalcTangents: tangent allocation overflow");
         return;
     }
     size_t tangent_floats = (size_t)m->vertex_count * 3u;
-    float *tan1 = (float *)calloc(tangent_floats, sizeof(float));
-    float *tan2 = (float *)calloc(tangent_floats, sizeof(float));
+    double *tan1 = (double *)calloc(tangent_floats, sizeof(double));
+    double *tan2 = (double *)calloc(tangent_floats, sizeof(double));
     if (!tan1 || !tan2) {
         free(tan1);
         free(tan2);
@@ -662,59 +676,60 @@ void rt_mesh3d_calc_tangents_impl(rt_mesh3d *m) {
             !mesh_value_fits_float(sdir_d[2]) || !mesh_value_fits_float(tdir_d[0]) ||
             !mesh_value_fits_float(tdir_d[1]) || !mesh_value_fits_float(tdir_d[2]))
             continue;
-        float sdir[3] = {(float)sdir_d[0], (float)sdir_d[1], (float)sdir_d[2]};
-        float tdir[3] = {(float)tdir_d[0], (float)tdir_d[1], (float)tdir_d[2]};
         size_t b0 = (size_t)i0 * 3u;
         size_t b1 = (size_t)i1 * 3u;
         size_t b2 = (size_t)i2 * 3u;
 
-        tan1[b0 + 0] += sdir[0];
-        tan1[b0 + 1] += sdir[1];
-        tan1[b0 + 2] += sdir[2];
-        tan1[b1 + 0] += sdir[0];
-        tan1[b1 + 1] += sdir[1];
-        tan1[b1 + 2] += sdir[2];
-        tan1[b2 + 0] += sdir[0];
-        tan1[b2 + 1] += sdir[1];
-        tan1[b2 + 2] += sdir[2];
+        tan1[b0 + 0] += sdir_d[0];
+        tan1[b0 + 1] += sdir_d[1];
+        tan1[b0 + 2] += sdir_d[2];
+        tan1[b1 + 0] += sdir_d[0];
+        tan1[b1 + 1] += sdir_d[1];
+        tan1[b1 + 2] += sdir_d[2];
+        tan1[b2 + 0] += sdir_d[0];
+        tan1[b2 + 1] += sdir_d[1];
+        tan1[b2 + 2] += sdir_d[2];
 
-        tan2[b0 + 0] += tdir[0];
-        tan2[b0 + 1] += tdir[1];
-        tan2[b0 + 2] += tdir[2];
-        tan2[b1 + 0] += tdir[0];
-        tan2[b1 + 1] += tdir[1];
-        tan2[b1 + 2] += tdir[2];
-        tan2[b2 + 0] += tdir[0];
-        tan2[b2 + 1] += tdir[1];
-        tan2[b2 + 2] += tdir[2];
+        tan2[b0 + 0] += tdir_d[0];
+        tan2[b0 + 1] += tdir_d[1];
+        tan2[b0 + 2] += tdir_d[2];
+        tan2[b1 + 0] += tdir_d[0];
+        tan2[b1 + 1] += tdir_d[1];
+        tan2[b1 + 2] += tdir_d[2];
+        tan2[b2 + 0] += tdir_d[0];
+        tan2[b2 + 1] += tdir_d[1];
+        tan2[b2 + 2] += tdir_d[2];
     }
 
     /* Normalize, orthogonalize against the normal, and store handedness in tangent.w. */
     for (uint32_t i = 0; i < m->vertex_count; i++) {
         float *t = m->vertices[i].tangent;
         float *n = m->vertices[i].normal;
-        float *tan = &tan1[(size_t)i * 3u];
-        float *bitan = &tan2[(size_t)i * 3u];
+        double *tan = &tan1[(size_t)i * 3u];
+        double *bitan = &tan2[(size_t)i * 3u];
 
         /* Gram-Schmidt: T = T - N * dot(N, T) */
-        float dot = n[0] * tan[0] + n[1] * tan[1] + n[2] * tan[2];
-        t[0] = tan[0] - n[0] * dot;
-        t[1] = tan[1] - n[1] * dot;
-        t[2] = tan[2] - n[2] * dot;
+        double dot = (double)n[0] * tan[0] + (double)n[1] * tan[1] + (double)n[2] * tan[2];
+        double tx = tan[0] - (double)n[0] * dot;
+        double ty = tan[1] - (double)n[1] * dot;
+        double tz = tan[2] - (double)n[2] * dot;
 
         /* Normalize */
-        float len = sqrtf(t[0] * t[0] + t[1] * t[1] + t[2] * t[2]);
+        double len = sqrt(tx * tx + ty * ty + tz * tz);
         if (isfinite(len) && len > 1e-8f) {
-            t[0] /= len;
-            t[1] /= len;
-            t[2] /= len;
+            tx /= len;
+            ty /= len;
+            tz /= len;
+            t[0] = mesh_value_fits_float(tx) ? (float)tx : 1.0f;
+            t[1] = mesh_value_fits_float(ty) ? (float)ty : 0.0f;
+            t[2] = mesh_value_fits_float(tz) ? (float)tz : 0.0f;
             {
-                float cross_nt[3] = {n[1] * t[2] - n[2] * t[1],
-                                     n[2] * t[0] - n[0] * t[2],
-                                     n[0] * t[1] - n[1] * t[0]};
-                float handedness =
+                double cross_nt[3] = {(double)n[1] * (double)t[2] - (double)n[2] * (double)t[1],
+                                      (double)n[2] * (double)t[0] - (double)n[0] * (double)t[2],
+                                      (double)n[0] * (double)t[1] - (double)n[1] * (double)t[0]};
+                double handedness =
                     cross_nt[0] * bitan[0] + cross_nt[1] * bitan[1] + cross_nt[2] * bitan[2];
-                t[3] = (isfinite(handedness) && handedness < 0.0f) ? -1.0f : 1.0f;
+                t[3] = (isfinite(handedness) && handedness < 0.0) ? -1.0f : 1.0f;
             }
         } else {
             mesh_default_tangent_from_normal(n, t);

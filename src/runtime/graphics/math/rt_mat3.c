@@ -51,7 +51,9 @@
 
 #include "rt_mat3.h"
 
+#include "rt_heap.h"
 #include "rt_object.h"
+#include "rt_trap.h"
 #include "rt_vec2.h"
 #include "rt_vec3.h"
 
@@ -69,6 +71,39 @@ typedef struct mat3_impl {
 
 #define M(mat, r, c) ((mat)->m[(r) * 3 + (c)])
 
+/// @brief Return whether @p m is a Mat3-compatible heap payload.
+/// @details Accepts both the explicit Mat3 class id used by current constructors and the legacy
+///          class-id-zero nine-double layout. Classless payloads must be exactly the Mat3 byte
+///          size to avoid accepting unrelated heap blobs.
+/// @param m Candidate runtime object payload.
+/// @return 1 for a compatible Mat3 payload, otherwise 0.
+static int mat3_is_compatible_object(void *m) {
+    if (!m)
+        return 0;
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(m, &hdr) || !hdr)
+        return 0;
+    if (hdr->kind != RT_HEAP_OBJECT || hdr->elem_kind != RT_ELEM_NONE)
+        return 0;
+    if (hdr->class_id == RT_MAT3_CLASS_ID)
+        return hdr->cap >= sizeof(mat3_impl);
+    return hdr->class_id == 0 && hdr->len == sizeof(mat3_impl) && hdr->cap == sizeof(mat3_impl);
+}
+
+/// @brief Validate and cast an opaque handle to a Mat3 payload.
+/// @details Rejects NULL, non-object heap payloads, incompatible class identifiers, and
+///   undersized allocations before any matrix elements are read.
+/// @param m Candidate Mat3 runtime handle.
+/// @param op Diagnostic prefix used if validation fails.
+/// @return Typed Mat3 payload, or NULL after trapping.
+static mat3_impl *mat3_checked(void *m, const char *op) {
+    if (!mat3_is_compatible_object(m)) {
+        rt_trap(op ? op : "Mat3: invalid matrix");
+        return NULL;
+    }
+    return (mat3_impl *)m;
+}
+
 //=============================================================================
 // Construction
 //=============================================================================
@@ -85,7 +120,7 @@ void *rt_mat3_new(double m00,
                   double m20,
                   double m21,
                   double m22) {
-    mat3_impl *mat = (mat3_impl *)rt_obj_new_i64(0, sizeof(mat3_impl));
+    mat3_impl *mat = (mat3_impl *)rt_obj_new_i64(RT_MAT3_CLASS_ID, sizeof(mat3_impl));
     if (!mat)
         return NULL;
 
@@ -153,10 +188,13 @@ void *rt_mat3_shear(double sx, double sy) {
 /// @brief Read a single matrix element by (row, col), both in [0, 2]. Returns 0 for null
 /// matrix or out-of-range indices.
 double rt_mat3_get(void *m, int64_t row, int64_t col) {
-    if (!m || row < 0 || row > 2 || col < 0 || col > 2)
+    mat3_impl *mat;
+    if (row < 0 || row > 2 || col < 0 || col > 2)
         return 0.0;
 
-    mat3_impl *mat = (mat3_impl *)m;
+    mat = mat3_checked(m, "Mat3.Get: invalid matrix");
+    if (!mat)
+        return 0.0;
     return M(mat, row, col);
 }
 
@@ -315,12 +353,15 @@ void *rt_mat3_transpose(void *m) {
                        mat->m[8]);
 }
 
-/// @brief Compute the 3×3 determinant via cofactor expansion. 0 indicates a singular matrix.
+/// @brief Compute the 3x3 determinant via cofactor expansion. 0 indicates a singular matrix.
 double rt_mat3_det(void *m) {
+    mat3_impl *mat;
     if (!m)
         return 0.0;
 
-    mat3_impl *mat = (mat3_impl *)m;
+    mat = mat3_checked(m, "Mat3.Det: invalid matrix");
+    if (!mat)
+        return 0.0;
 
     // Determinant using cofactor expansion along first row
     return mat->m[0] * (mat->m[4] * mat->m[8] - mat->m[5] * mat->m[7]) -
@@ -328,17 +369,24 @@ double rt_mat3_det(void *m) {
            mat->m[2] * (mat->m[3] * mat->m[7] - mat->m[4] * mat->m[6]);
 }
 
-/// @brief Compute the 3×3 inverse via the cofactor / adjugate formula. Returns identity on
-/// NULL input or singular matrix (det ≈ 0).
+/// @brief Compute the 3x3 inverse via the cofactor / adjugate formula.
 void *rt_mat3_inverse(void *m) {
-    if (!m)
-        return rt_mat3_identity();
+    mat3_impl *mat;
+    double det;
+    if (!m) {
+        rt_trap("Mat3.Inverse: null matrix");
+        return NULL;
+    }
 
-    mat3_impl *mat = (mat3_impl *)m;
-    double det = rt_mat3_det(m);
+    mat = mat3_checked(m, "Mat3.Inverse: invalid matrix");
+    if (!mat)
+        return NULL;
+    det = rt_mat3_det(m);
 
-    if (!isfinite(det) || fabs(det) < 1e-15)
-        return rt_mat3_identity(); // Singular matrix
+    if (!isfinite(det) || fabs(det) < 1e-15) {
+        rt_trap("Mat3.Inverse: singular matrix");
+        return NULL;
+    }
 
     double invDet = 1.0 / det;
 

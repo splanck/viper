@@ -1005,7 +1005,7 @@ static int sw_blend_and_write(const sw_fragment_ctx *fc,
 /// @param b0,b1,b2 Barycentric weights of the pixel within the triangle.
 /// @return 1 if a pixel was written (opaque or blended), 0 if discarded.
 static int sw_shade_fragment(
-    const sw_fragment_ctx *fc, int x, int y, int idx, float z, float b0, float b1, float b2) {
+    const sw_fragment_ctx *fc, int x, int y, size_t idx, float z, float b0, float b1, float b2) {
     const screen_vert_t *v0 = fc->v0;
     const screen_vert_t *v1 = fc->v1;
     const screen_vert_t *v2 = fc->v2;
@@ -1286,9 +1286,7 @@ static int sw_raster_prepare(const screen_vert_t *v0,
 ///   per-pixel shading, sampling the bound albedo/emissive/normal/specular/metallic-roughness/
 ///   AO maps. This is the software backend's inner fill loop.
 static float sw_advance_edge_value(float value, float delta, int steps) {
-    for (int i = 0; i < steps; i++)
-        value += delta;
-    return value;
+    return value + delta * (float)steps;
 }
 
 static void raster_triangle_scissored(uint8_t *pixels,
@@ -1397,7 +1395,7 @@ static void raster_triangle_scissored(uint8_t *pixels,
                 float b0 = w0 * g.inv_area, b1 = w1 * g.inv_area, b2 = w2 * g.inv_area;
                 float z = b0 * g.v0->sz + b1 * g.v1->sz + b2 * g.v2->sz;
                 z += depth_bias + slope_depth_bias;
-                int idx = y * fb_w + x;
+                size_t idx = (size_t)y * (size_t)fb_w + (size_t)x;
                 if (depth_disabled || z < zbuf[idx]) {
                     depth_passes++;
                     pixels_written += sw_shade_fragment(&fc, x, y, idx, z, b0, b1, b2);

@@ -25,6 +25,8 @@
 
 #include <stdint.h>
 
+#define RT_VEC3_CLASS_ID INT64_C(-0x600206)
+
 #ifdef __cplusplus
 extern "C" {
 #endif

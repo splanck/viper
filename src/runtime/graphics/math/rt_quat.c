@@ -37,6 +37,7 @@
 
 #include "rt_quat.h"
 
+#include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_mat4.h"
 #include "rt_object.h"
@@ -50,6 +51,39 @@ typedef struct {
     double z;
     double w;
 } ViperQuat;
+
+/// @brief Return whether @p q is a Quat-compatible heap payload.
+/// @details Accepts the explicit Quat class id from current constructors and the historical
+///          class-id-zero value object layout. Legacy classless payloads must be exactly four
+///          doubles so unrelated raw heap values are rejected.
+/// @param q Candidate runtime object payload.
+/// @return 1 for a compatible quaternion payload, otherwise 0.
+static int quat_is_compatible_object(void *q) {
+    if (!q)
+        return 0;
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(q, &hdr) || !hdr)
+        return 0;
+    if (hdr->kind != RT_HEAP_OBJECT || hdr->elem_kind != RT_ELEM_NONE)
+        return 0;
+    if (hdr->class_id == RT_QUAT_CLASS_ID)
+        return hdr->cap >= sizeof(ViperQuat);
+    return hdr->class_id == 0 && hdr->len == sizeof(ViperQuat) && hdr->cap == sizeof(ViperQuat);
+}
+
+/// @brief Validate and cast an opaque handle to a quaternion payload.
+/// @details Rejects NULL, non-object heap payloads, incompatible class identifiers, and
+///   undersized allocations before quaternion fields are read.
+/// @param q Candidate Quat runtime handle.
+/// @param op Diagnostic prefix used if validation fails.
+/// @return Typed quaternion payload, or NULL after trapping.
+static ViperQuat *quat_checked(void *q, const char *op) {
+    if (!quat_is_compatible_object(q)) {
+        rt_trap(op ? op : "Quat: invalid quaternion");
+        return NULL;
+    }
+    return (ViperQuat *)q;
+}
 
 /// @brief Compute a finite, overflow-resistant Euclidean norm for quaternion components.
 /// @details Uses `hypot` in a chain so very large finite inputs do not overflow while
@@ -75,7 +109,7 @@ static double quat_safe_len3(double x, double y, double z) {
 /// @brief Allocate a GC-managed quaternion object and initialize all four components.
 /// @return New ViperQuat with the given (x, y, z, w) components, or NULL on OOM.
 static ViperQuat *quat_alloc(double x, double y, double z, double w) {
-    ViperQuat *q = (ViperQuat *)rt_obj_new_i64(0, (int64_t)sizeof(ViperQuat));
+    ViperQuat *q = (ViperQuat *)rt_obj_new_i64(RT_QUAT_CLASS_ID, (int64_t)sizeof(ViperQuat));
     if (!q) {
         rt_trap("Quat: memory allocation failed");
         return NULL;
@@ -130,6 +164,8 @@ void *rt_quat_from_axis_angle(void *axis, double angle) {
 /// @brief Build a unit quaternion from Euler angles (radians). Convention: roll about Z, then
 /// pitch about X, then yaw about Y (intrinsic ZXY). Match against your scene's rotation order.
 void *rt_quat_from_euler(double pitch, double yaw, double roll) {
+    if (!isfinite(pitch) || !isfinite(yaw) || !isfinite(roll))
+        return quat_alloc(0.0, 0.0, 0.0, 1.0);
     double cp = cos(pitch * 0.5);
     double sp = sin(pitch * 0.5);
     double cy = cos(yaw * 0.5);
@@ -150,38 +186,34 @@ void *rt_quat_from_euler(double pitch, double yaw, double roll) {
 
 /// @brief X the quat.
 double rt_quat_x(void *q) {
-    if (!q) {
-        rt_trap("Quat.X: null quaternion");
+    ViperQuat *quat = quat_checked(q, "Quat.X: invalid quaternion");
+    if (!quat)
         return 0.0;
-    }
-    return ((ViperQuat *)q)->x;
+    return quat->x;
 }
 
 /// @brief Y the quat.
 double rt_quat_y(void *q) {
-    if (!q) {
-        rt_trap("Quat.Y: null quaternion");
+    ViperQuat *quat = quat_checked(q, "Quat.Y: invalid quaternion");
+    if (!quat)
         return 0.0;
-    }
-    return ((ViperQuat *)q)->y;
+    return quat->y;
 }
 
 /// @brief Z the quat.
 double rt_quat_z(void *q) {
-    if (!q) {
-        rt_trap("Quat.Z: null quaternion");
+    ViperQuat *quat = quat_checked(q, "Quat.Z: invalid quaternion");
+    if (!quat)
         return 0.0;
-    }
-    return ((ViperQuat *)q)->z;
+    return quat->z;
 }
 
 /// @brief W the quat.
 double rt_quat_w(void *q) {
-    if (!q) {
-        rt_trap("Quat.W: null quaternion");
+    ViperQuat *quat = quat_checked(q, "Quat.W: invalid quaternion");
+    if (!quat)
         return 0.0;
-    }
-    return ((ViperQuat *)q)->w;
+    return quat->w;
 }
 
 //=============================================================================
@@ -288,12 +320,18 @@ double rt_quat_dot(void *a, void *b) {
 /// (0 = a, 1 = b). Picks the shorter arc by negating one operand if the dot product is < 0.
 /// Falls back to `_lerp` for nearly-aligned inputs to avoid numerical instability.
 void *rt_quat_slerp(void *a, void *b, double t) {
-    if (!a || !b) {
-        rt_trap("Quat.Slerp: null quaternion");
+    if (!isfinite(t)) {
+        rt_trap("Quat.Slerp: non-finite interpolation parameter");
         return NULL;
     }
-    ViperQuat *qa = (ViperQuat *)a;
-    ViperQuat *qb = (ViperQuat *)b;
+    if (t < 0.0)
+        t = 0.0;
+    else if (t > 1.0)
+        t = 1.0;
+    ViperQuat *qa = quat_checked(a, "Quat.Slerp: invalid start quaternion");
+    ViperQuat *qb = quat_checked(b, "Quat.Slerp: invalid end quaternion");
+    if (!qa || !qb)
+        return NULL;
 
     double dot = qa->x * qb->x + qa->y * qb->y + qa->z * qb->z + qa->w * qb->w;
 
