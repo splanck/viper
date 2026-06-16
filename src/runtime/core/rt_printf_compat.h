@@ -10,7 +10,7 @@
 // Key invariants:
 //   - Default implementation forwards directly to the platform's snprintf.
 //   - Test code may define a strong symbol rt_snprintf to override behavior.
-//   - Return value semantics match C99 snprintf (would-write count or negative on error).
+//   - Return value semantics match standard snprintf (would-write count or negative on error).
 //   - The weak symbol pattern works on ELF and Mach-O; MSVC requires different approach.
 //
 // Ownership/Lifetime:

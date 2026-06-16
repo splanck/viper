@@ -9,7 +9,7 @@
 // error handling.
 //
 // Key invariants:
-//   - When *ok is true the result matches the C99 math library pow().
+//   - When *ok is true the result matches the standard C math library pow().
 //   - When *ok is false the result is unspecified and the caller must trap.
 //   - Valid inputs (non-negative base, finite exponent) never set *ok to false.
 //   - rt_math_pow is the simple 2-arg form for IL calling convention; no domain checks.

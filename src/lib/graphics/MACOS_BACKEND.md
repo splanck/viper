@@ -323,7 +323,7 @@ All shapes render correctly with proper pixel-perfect accuracy.
 ✅ Matches behavior specified in gfxlib.md
 ✅ Passes all visual tests
 ✅ Zero compiler warnings with `-Wall -Wextra`
-✅ C99 compatible (Objective-C subset)
+✅ C11 compatible (Objective-C subset)
 ✅ Works on macOS 10.14+ (tested on macOS 15.x)
 
 ## Summary

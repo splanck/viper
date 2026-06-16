@@ -31,7 +31,7 @@ management, pixel operations, drawing primitives, and input handling through a s
 
 - **Zero external dependencies** — No SDL, GLFW, or other libraries
 - **Native platform APIs** — Direct Cocoa/X11/Win32 integration
-- **Pure C implementation** — C99 standard with C++ compatibility
+- **Pure C implementation** — C11 standard with C++ compatibility
 - **Deterministic rendering** — Integer-only math for predictable results
 
 ---

@@ -145,7 +145,7 @@ Test project /Users/stephen/git/viper/build
 -- ViperGFX: Configuring examples subdirectory
 -- ViperGFX Configuration:
 --   Version: 0.1.1
---   C Standard: C99
+--   C Standard: C11
 --   Build Tests: ON
 --   Build Examples: ON
 --   Standalone Build: FALSE

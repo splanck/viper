@@ -166,9 +166,18 @@ function(viper_add_test target)
         message(FATAL_ERROR "viper_add_test requires at least one source")
     endif ()
     add_executable(${target} ${_viper_sources})
+    set_target_properties(${target} PROPERTIES
+            C_STANDARD 11
+            C_STANDARD_REQUIRED ON
+            C_EXTENSIONS OFF)
     if (WIN32)
         target_sources(${target} PRIVATE
                 ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../common/WinDialogSuppress.c)
+    else ()
+        target_compile_definitions(${target} PRIVATE _POSIX_C_SOURCE=200809L)
+        if (NOT APPLE)
+            target_compile_definitions(${target} PRIVATE _DEFAULT_SOURCE)
+        endif ()
     endif ()
     target_link_libraries(${target} PRIVATE viper_testing)
     if (VT_LIBS)

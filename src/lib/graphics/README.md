@@ -516,7 +516,7 @@ src/lib/graphics/
 
 ### Build Requirements
 
-- **C99-compliant compiler** (GCC, Clang, or MSVC)
+- **C11-compliant compiler** (GCC, Clang, or MSVC)
 - **CMake 3.10+**
 - **Platform SDK**:
     - macOS: Xcode Command Line Tools (Cocoa framework)

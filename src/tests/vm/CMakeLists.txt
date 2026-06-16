@@ -335,6 +335,7 @@ function(viper_add_vm_unit_tests)
             ${VIPER_TESTS_DIR}/unit/test_vm_trace_unicode_path.cpp)
     target_link_libraries(test_vm_trace_unicode_path PRIVATE viper_il_full ${VIPER_VM_LIB} il_api)
     viper_add_ctest(test_vm_trace_unicode_path test_vm_trace_unicode_path)
+    set_tests_properties(test_vm_trace_unicode_path PROPERTIES RESOURCE_LOCK vm_trace_artifacts)
 
     viper_add_test(test_vm_zext1_isub ${VIPER_TESTS_DIR}/unit/test_vm_zext1_isub.cpp)
     target_link_libraries(test_vm_zext1_isub PRIVATE viper_il_full ${VIPER_VM_LIB} il_api)

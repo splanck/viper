@@ -231,7 +231,7 @@ Viper guarantees consistent numeric behavior across all platforms and execution 
 
 - **Overflow checking**: Zia defaults to checked arithmetic (traps on overflow); BASIC uses wrapping
 - **Division**: Zia `/` on integers is integer division; BASIC has separate `/` (float) and `\` (integer)
-- **Modulo**: Remainder preserves the dividend's sign (C99 semantics)
+- **Modulo**: Remainder preserves the dividend's sign (C11 semantics)
 - **Conversions**: Casts use checked variants that trap when values are out of range
 - **Rounding**: All rounding uses round-to-nearest-even (IEEE 754 default)
 
