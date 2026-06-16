@@ -443,6 +443,25 @@ static int gl_debug_enabled(void) {
     return cached;
 }
 
+/// @brief Parse the Linux OpenGL presentation override.
+/// @details The default path remains the conservative offscreen/ViperGFX resolve used by the
+///          existing backend. `VIPER_OPENGL_PRESENT=auto` trusts the framebuffer writability probe,
+///          `direct` forces native GLX/default-framebuffer presentation, and `offscreen` forces the
+///          compatibility resolve path. Unknown values fall back to offscreen.
+/// @return 0 for offscreen, 1 for auto/probe, 2 for direct.
+static int gl_present_override_mode(void) {
+    const char *value = getenv("VIPER_OPENGL_PRESENT");
+    if (!value || value[0] == '\0')
+        return 0;
+    if (strcmp(value, "auto") == 0 || strcmp(value, "probe") == 0)
+        return 1;
+    if (strcmp(value, "direct") == 0 || strcmp(value, "glx") == 0)
+        return 2;
+    if (strcmp(value, "offscreen") == 0 || strcmp(value, "vgfx") == 0 || strcmp(value, "0") == 0)
+        return 0;
+    return 0;
+}
+
 typedef void *GLXContext;
 typedef unsigned long GLXDrawable;
 typedef struct __GLXFBConfigRec *GLXFBConfig;
@@ -713,6 +732,8 @@ typedef struct {
     int8_t default_doublebuffered;
     int8_t default_framebuffer_writable;
     GLenum default_draw_buffer;
+    int32_t present_path;
+    vgfx3d_backend_stats_t stats;
     vgfx3d_opengl_target_kind_t active_target_kind;
     vgfx3d_postfx_chain_t gpu_postfx_chain;
 
@@ -1483,6 +1504,23 @@ static void gl_query_anisotropy_support(gl_context_t *ctx) {
 #include "vgfx3d_backend_opengl_targets.inc"
 #include "vgfx3d_backend_opengl_texture.inc"
 
+/// @brief Copy OpenGL backend telemetry into a backend-neutral diagnostics struct.
+/// @details Canvas3D calls this optional vtable hook from user-facing debug getters. The function
+///          never allocates and is NULL-safe so debug overlays can poll it every frame.
+/// @param ctx_ptr Opaque OpenGL backend context.
+/// @param out_stats Destination snapshot. Left untouched when NULL.
+static void gl_get_backend_stats(void *ctx_ptr, vgfx3d_backend_stats_t *out_stats) {
+    gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    if (!out_stats)
+        return;
+    memset(out_stats, 0, sizeof(*out_stats));
+    if (!ctx)
+        return;
+    *out_stats = ctx->stats;
+    out_stats->present_path = ctx->present_path;
+    out_stats->default_framebuffer_writable = ctx->default_framebuffer_writable ? 1 : 0;
+}
+
 const vgfx3d_backend_t vgfx3d_opengl_backend = {
     .name = "opengl",
     .create_ctx = gl_create_ctx,
@@ -1508,6 +1546,7 @@ const vgfx3d_backend_t vgfx3d_opengl_backend = {
     .get_texture_upload_pending_bytes = gl_get_texture_upload_pending_bytes,
     .get_texture_upload_bytes = gl_get_texture_upload_bytes,
     .get_native_texture_caps = gl_get_native_texture_caps,
+    .get_backend_stats = gl_get_backend_stats,
 };
 
 #endif /* __linux__ && VIPER_ENABLE_GRAPHICS */

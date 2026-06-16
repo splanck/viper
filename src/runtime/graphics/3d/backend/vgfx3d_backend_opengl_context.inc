@@ -76,6 +76,7 @@ static void gl_init_context_defaults(gl_context_t *ctx, int32_t w, int32_t h) {
     ctx->texture_upload_budget_bytes = UINT64_MAX;
     ctx->default_doublebuffered = 1;
     ctx->default_draw_buffer = GL_BACK;
+    ctx->present_path = 0;
 }
 
 /// @brief Cache the default framebuffer draw/read buffer for this GLX context.
@@ -549,12 +550,30 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     gl_init_context_defaults(ctx, w, h);
     gl_query_default_framebuffer_buffer(ctx);
     gl_probe_default_framebuffer_writable(ctx);
-    /*
-     * Linux GLX default drawables can pass a clear/read probe while still rejecting the
-     * fullscreen shader resolve used by post-FX. Keep all final color composition in backend-owned
-     * FBOs and present through ViperGFX; scene rendering and post-FX remain GPU-backed.
-     */
-    ctx->default_framebuffer_writable = 0;
+    {
+        int present_override = gl_present_override_mode();
+        if (present_override == 0) {
+            /*
+             * Linux GLX default drawables can pass a clear/read probe while still rejecting the
+             * fullscreen shader resolve used by post-FX. Keep all final color composition in
+             * backend-owned FBOs and present through ViperGFX unless the user explicitly opts into
+             * auto/direct presentation for parity debugging.
+             */
+            ctx->default_framebuffer_writable = 0;
+        } else if (present_override == 2) {
+            ctx->default_framebuffer_writable = 1;
+        }
+        ctx->present_path = ctx->default_framebuffer_writable ? 1 : 2;
+        ctx->stats.present_path = ctx->present_path;
+        ctx->stats.default_framebuffer_writable = ctx->default_framebuffer_writable ? 1 : 0;
+        if (gl_debug_enabled()) {
+            fprintf(stderr,
+                    "[OpenGL] present override=%d path=%s default_fb_writable=%d\n",
+                    present_override,
+                    ctx->present_path == 1 ? "direct" : "offscreen",
+                    (int)ctx->default_framebuffer_writable);
+        }
+    }
     gl_query_anisotropy_support(ctx);
 
     if (!gl_compile_context_shaders(&shaders)) {

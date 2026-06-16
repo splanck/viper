@@ -1143,6 +1143,84 @@ void rt_audio_stop_all_sounds(void) {
     audio_state_unlock();
 }
 
+/// @brief Clamp a ViperAUD unsigned diagnostic counter into the runtime signed range.
+/// @param value Monotonic ViperAUD counter.
+/// @return Signed runtime value saturated at INT64_MAX.
+static int64_t rt_audio_counter_to_i64(uint64_t value) {
+    return value > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)value;
+}
+
+/// @brief Copy the current audio context's ViperAUD statistics without forcing initialization.
+/// @details The debug counters should be readable before `Audio.Init()` and after failed
+///          initialization. This helper therefore snapshots the existing context only when one is
+///          live, otherwise returning zero-filled counters.
+/// @return ViperAUD statistics snapshot for the current context, or zeros.
+static vaud_stats_t rt_audio_stats_snapshot(void) {
+    vaud_stats_t stats;
+    memset(&stats, 0, sizeof(stats));
+    audio_state_lock();
+    if (g_audio_ctx)
+        vaud_get_stats(g_audio_ctx, &stats);
+    audio_state_unlock();
+    return stats;
+}
+
+/// @brief Runtime accessor for ViperAUD mixer render callbacks.
+/// @return Monotonic render callback count for the live audio context, or zero.
+int64_t rt_audio_get_render_calls(void) {
+    vaud_stats_t stats = rt_audio_stats_snapshot();
+    return rt_audio_counter_to_i64(stats.render_calls);
+}
+
+/// @brief Runtime accessor for mixer lock-contention callbacks.
+/// @return Number of callbacks that emitted silence because state was locked.
+int64_t rt_audio_get_mixer_lock_misses(void) {
+    vaud_stats_t stats = rt_audio_stats_snapshot();
+    return rt_audio_counter_to_i64(stats.mixer_lock_misses);
+}
+
+/// @brief Runtime accessor for platform backend write calls.
+/// @return Monotonic platform write-call count, or zero when unsupported.
+int64_t rt_audio_get_backend_write_calls(void) {
+    vaud_stats_t stats = rt_audio_stats_snapshot();
+    return rt_audio_counter_to_i64(stats.backend_write_calls);
+}
+
+/// @brief Runtime accessor for partial platform writes.
+/// @return Number of write calls that accepted fewer frames than requested.
+int64_t rt_audio_get_backend_partial_writes(void) {
+    vaud_stats_t stats = rt_audio_stats_snapshot();
+    return rt_audio_counter_to_i64(stats.backend_partial_writes);
+}
+
+/// @brief Runtime accessor for platform wait operations.
+/// @return Number of backend waits used for transient write unavailability.
+int64_t rt_audio_get_backend_waits(void) {
+    vaud_stats_t stats = rt_audio_stats_snapshot();
+    return rt_audio_counter_to_i64(stats.backend_waits);
+}
+
+/// @brief Runtime accessor for backend underrun/suspend observations.
+/// @return Number of xrun or suspend conditions seen by the platform backend.
+int64_t rt_audio_get_backend_xruns(void) {
+    vaud_stats_t stats = rt_audio_stats_snapshot();
+    return rt_audio_counter_to_i64(stats.backend_xruns);
+}
+
+/// @brief Runtime accessor for backend recovery attempts.
+/// @return Number of platform recovery attempts, successful or not.
+int64_t rt_audio_get_backend_recoveries(void) {
+    vaud_stats_t stats = rt_audio_stats_snapshot();
+    return rt_audio_counter_to_i64(stats.backend_recoveries);
+}
+
+/// @brief Runtime accessor for unrecovered backend write failures.
+/// @return Number of write failures remaining after recovery attempts.
+int64_t rt_audio_get_backend_write_failures(void) {
+    vaud_stats_t stats = rt_audio_stats_snapshot();
+    return rt_audio_counter_to_i64(stats.backend_write_failures);
+}
+
 //===----------------------------------------------------------------------===//
 // Sound Effects
 //===----------------------------------------------------------------------===//
@@ -2294,6 +2372,54 @@ void rt_audio_update(void) {}
 
 /// @brief Audio-disabled stub for `Audio.StopAllSounds`. Silent no-op.
 void rt_audio_stop_all_sounds(void) {}
+
+/// @brief Audio-disabled stats stub for render callback count.
+/// @return Always zero because no mixer thread exists.
+int64_t rt_audio_get_render_calls(void) {
+    return 0;
+}
+
+/// @brief Audio-disabled stats stub for mixer lock misses.
+/// @return Always zero because no mixer thread exists.
+int64_t rt_audio_get_mixer_lock_misses(void) {
+    return 0;
+}
+
+/// @brief Audio-disabled stats stub for backend write calls.
+/// @return Always zero because no platform backend exists.
+int64_t rt_audio_get_backend_write_calls(void) {
+    return 0;
+}
+
+/// @brief Audio-disabled stats stub for backend partial writes.
+/// @return Always zero because no platform backend exists.
+int64_t rt_audio_get_backend_partial_writes(void) {
+    return 0;
+}
+
+/// @brief Audio-disabled stats stub for backend waits.
+/// @return Always zero because no platform backend exists.
+int64_t rt_audio_get_backend_waits(void) {
+    return 0;
+}
+
+/// @brief Audio-disabled stats stub for backend underrun/suspend observations.
+/// @return Always zero because no platform backend exists.
+int64_t rt_audio_get_backend_xruns(void) {
+    return 0;
+}
+
+/// @brief Audio-disabled stats stub for backend recovery attempts.
+/// @return Always zero because no platform backend exists.
+int64_t rt_audio_get_backend_recoveries(void) {
+    return 0;
+}
+
+/// @brief Audio-disabled stats stub for backend write failures.
+/// @return Always zero because no platform backend exists.
+int64_t rt_audio_get_backend_write_failures(void) {
+    return 0;
+}
 
 /// @brief Audio-disabled stub for `Sound.Load`. Returns `NULL` for a
 ///        null path; otherwise traps because callers need a usable

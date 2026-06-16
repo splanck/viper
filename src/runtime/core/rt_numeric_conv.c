@@ -295,7 +295,7 @@ static inline const unsigned char *rt_skip_ascii_space(const unsigned char *curs
 
 /// @brief Return the end of a strict decimal floating literal.
 /// @details Accepts `[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?`.
-///          Hexadecimal C99 float syntax is intentionally rejected so the
+///          Hexadecimal C float syntax is intentionally rejected so the
 ///          public parser matches the documented decimal grammar.
 static const unsigned char *rt_scan_decimal_float(const unsigned char *cursor) {
     if (!cursor)

@@ -3,6 +3,7 @@ module hud;
 
 bind Viper.Game3D;
 bind Viper.Graphics3D;
+bind Viper.Sound;
 bind Viper.Core.Convert as Convert;
 bind "./config";
 bind "./minimap";
@@ -56,10 +57,10 @@ class ShowcaseHud {
     }
 
     hide func drawDebugPanel(canvas: Canvas3D, w: Integer) {
-        var x = w - 250;
+        var x = w - 296;
         var y = 14;
-        Canvas3D.DrawRect2D(canvas, x, y, 236, 134, config.HUD_PANEL);
-        Canvas3D.DrawRect2D(canvas, x, y, 236, 3, config.HUD_ACCENT);
+        Canvas3D.DrawRect2D(canvas, x, y, 282, 244, config.HUD_PANEL);
+        Canvas3D.DrawRect2D(canvas, x, y, 282, 3, config.HUD_ACCENT);
         Canvas3D.DrawText2D(canvas, x + 10, y + 16, "DEBUG  Ctrl=toggle  Space=quality", config.HUD_MUTED);
         Canvas3D.DrawText2D(canvas, x + 10, y + 38, "Backend: " + Canvas3D.get_Backend(canvas), config.HUD_TEXT);
         Canvas3D.DrawText2D(canvas, x + 10, y + 56, "FPS: " + toString(Canvas3D.get_Fps(canvas)), config.HUD_TEXT);
@@ -71,5 +72,28 @@ class ShowcaseHud {
         Canvas3D.DrawText2D(
             canvas, x + 10, y + 110,
             "Quality: " + toString(Canvas3D.get_QualityActive(canvas)), config.HUD_TEXT);
+        Canvas3D.DrawText2D(
+            canvas, x + 10, y + 128,
+            "GL draws/drops: " + toString(Canvas3D.get_BackendDrawCalls(canvas)) + " / "
+                + toString(Canvas3D.get_BackendDroppedDraws(canvas)), config.HUD_TEXT);
+        Canvas3D.DrawText2D(
+            canvas, x + 10, y + 146,
+            "Mesh cache H/M: " + toString(Canvas3D.get_BackendMeshCacheHits(canvas)) + " / "
+                + toString(Canvas3D.get_BackendMeshCacheMisses(canvas)), config.HUD_TEXT);
+        Canvas3D.DrawText2D(
+            canvas, x + 10, y + 164,
+            "Stream/Fallback: " + toString(Canvas3D.get_BackendMeshStreamUploads(canvas)) + " / "
+                + toString(Canvas3D.get_BackendTextureFallbackBinds(canvas)), config.HUD_TEXT);
+        Canvas3D.DrawText2D(
+            canvas, x + 10, y + 182,
+            "Present path: " + toString(Canvas3D.get_BackendPresentPath(canvas)), config.HUD_TEXT);
+        Canvas3D.DrawText2D(
+            canvas, x + 10, y + 200,
+            "Audio render/miss: " + toString(Audio.get_RenderCalls()) + " / "
+                + toString(Audio.get_MixerLockMisses()), config.HUD_TEXT);
+        Canvas3D.DrawText2D(
+            canvas, x + 10, y + 218,
+            "ALSA xruns/fail: " + toString(Audio.get_BackendXruns()) + " / "
+                + toString(Audio.get_BackendWriteFailures()), config.HUD_TEXT);
     }
 }

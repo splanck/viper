@@ -67,6 +67,23 @@ void rt_audio_update(void);
 /// @brief Stop all playing sounds (but not music).
 void rt_audio_stop_all_sounds(void);
 
+/// @brief Mixer render callbacks attempted by the active audio context.
+int64_t rt_audio_get_render_calls(void);
+/// @brief Mixer callbacks that emitted silence because the state lock was busy.
+int64_t rt_audio_get_mixer_lock_misses(void);
+/// @brief Platform backend write calls issued by the active audio context.
+int64_t rt_audio_get_backend_write_calls(void);
+/// @brief Platform backend writes that accepted fewer frames than requested.
+int64_t rt_audio_get_backend_partial_writes(void);
+/// @brief Platform backend waits used to avoid busy retry loops.
+int64_t rt_audio_get_backend_waits(void);
+/// @brief Platform backend underrun or suspend recoveries observed.
+int64_t rt_audio_get_backend_xruns(void);
+/// @brief Platform backend recovery attempts.
+int64_t rt_audio_get_backend_recoveries(void);
+/// @brief Platform backend writes that failed after recovery attempts.
+int64_t rt_audio_get_backend_write_failures(void);
+
 //=========================================================================
 // Sound Effects
 //=========================================================================

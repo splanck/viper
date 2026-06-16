@@ -421,7 +421,7 @@ Status: ✅ All shapes render correctly
 
 **Standards:**
 
-- C99 compliant
+- C11 compliant
 - Integer-only math (no floating point)
 - No dynamic allocation
 - Const-correct contexts

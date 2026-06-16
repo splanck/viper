@@ -3,12 +3,12 @@
 **Version:** 1.0.0
 **Status:** Complete (All Platforms)
 
-ViperAUD is a cross-platform audio library written in C99 that provides sound effect playback and music streaming
+ViperAUD is a cross-platform audio library written in C11 that provides sound effect playback and music streaming
 with zero external dependencies (only OS-level audio APIs).
 
 ## Features
 
-- **Pure C99** - No external dependencies (no SDL_mixer, OpenAL, etc.)
+- **Pure C11** - No external dependencies (no SDL_mixer, OpenAL, etc.)
 - **Software mixing** - 32 simultaneous voices with panning and volume control
 - **Cross-platform** - Native backends for macOS (AudioQueue), Linux (ALSA), Windows (WASAPI)
 - **Sound effects** - Load-and-play with automatic voice management
@@ -415,7 +415,7 @@ Viper.Sound.Audio.StopAllSounds()
 
 ### Build Requirements
 
-- **C99-compliant compiler** (GCC, Clang, or MSVC)
+- **C11-compliant compiler** (GCC, Clang, or MSVC)
 - **CMake 3.10+**
 - **Platform SDK**:
     - macOS: Xcode Command Line Tools (AudioToolbox framework)

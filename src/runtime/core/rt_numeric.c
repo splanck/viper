@@ -207,7 +207,7 @@ static bool rt_strtod_c_locale(const char *input, char **out_end, double *out_va
 
 /// @brief Return the end of a strict decimal floating literal.
 /// @details Accepts `[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?`.
-///          Hexadecimal C99 float syntax is intentionally rejected.
+///          Hexadecimal C float syntax is intentionally rejected.
 static const unsigned char *rt_scan_decimal_float(const unsigned char *cursor) {
     if (!cursor)
         return NULL;

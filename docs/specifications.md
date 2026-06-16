@@ -214,7 +214,7 @@ The compiler is a **cross-compiler**: it runs on macOS/Linux development machine
 
 ## 3. C Language Features
 
-### 3.1 C99 Features
+### 3.1 C11 Features
 
 - `//` comments
 - Mixed declarations and code
