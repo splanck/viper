@@ -450,6 +450,14 @@ static void test_capacity_and_mip_helpers(void) {
                 "RGBA8 destination validation still checks spans without an out parameter");
     EXPECT_TRUE(vgfx3d_d3d11_validate_rgba8_destination(3, 2, 8, &bytes) == 0,
                 "RGBA8 destination validation rejects short strides");
+    EXPECT_TRUE(vgfx3d_d3d11_validate_row_span(16, 4, 8) == 1,
+                "Row-span validation accepts a contained upload band");
+    EXPECT_TRUE(vgfx3d_d3d11_validate_row_span(16, 15, 1) == 1,
+                "Row-span validation accepts the final texture row");
+    EXPECT_TRUE(vgfx3d_d3d11_validate_row_span(16, 15, 2) == 0,
+                "Row-span validation rejects bands past the texture extent");
+    EXPECT_TRUE(vgfx3d_d3d11_validate_row_span(16, -1, 1) == 0,
+                "Row-span validation rejects negative row cursors");
 }
 
 static void test_d3d11_sanitization_helpers(void) {
@@ -469,6 +477,14 @@ static void test_d3d11_sanitization_helpers(void) {
                 "Integer parameter clamp raises low values");
     EXPECT_TRUE(vgfx3d_d3d11_clamp_int_param(5, 8, 2) == 5,
                 "Integer parameter clamp tolerates inverted bounds");
+    EXPECT_NEAR(vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(1.25f),
+                1.25f,
+                1e-6f,
+                "Slope-bias sanitizer preserves finite values");
+    EXPECT_NEAR(vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(HUGE_VALF),
+                0.0f,
+                1e-6f,
+                "Slope-bias sanitizer clears non-finite values before D3D state creation");
     EXPECT_TRUE(vgfx3d_d3d11_should_upload_bone_palette(0, 0) == 0,
                 "Bone upload helper skips unskinned draws");
     EXPECT_TRUE(vgfx3d_d3d11_should_upload_bone_palette(1, 0) == 1,
@@ -533,6 +549,11 @@ static void test_d3d11_limits_and_prune_helpers(void) {
                 "Cache prune helper keeps enough entries to preserve the resident floor");
     EXPECT_TRUE(vgfx3d_d3d11_should_prune_cache_entry(100, 0, 0, 12, 64, 240) == 0,
                 "Cache prune helper keeps recently used entries");
+    EXPECT_TRUE(vgfx3d_d3d11_should_prune_cache_entry(10, 11, 0, 1000, 0, 240) == 0,
+                "Cache prune helper rejects impossible kept counts");
+    EXPECT_TRUE(vgfx3d_d3d11_should_prune_cache_entry(
+                    INT_MAX, INT_MAX - 1, 1, UINT64_MAX, INT_MAX - 1, 0) == 1,
+                "Cache prune helper avoids signed overflow when preserving the resident floor");
 }
 
 static void test_mapped_copy_and_native_mip_validation_helpers(void) {
@@ -579,6 +600,8 @@ static void test_mapped_copy_and_native_mip_validation_helpers(void) {
 
     EXPECT_TRUE(vgfx3d_d3d11_native_mip_row_bytes(&mip0) == 32u,
                 "Native mip row-byte helper counts BC7 block columns");
+    EXPECT_TRUE(vgfx3d_d3d11_native_mip_block_rows(&mip0) == 1u,
+                "Native mip block-row helper counts BC7 block rows");
     EXPECT_TRUE(vgfx3d_d3d11_native_mip_required_bytes(&mip0) == 32u,
                 "Native mip required-byte helper counts BC7 block rows");
     EXPECT_TRUE(vgfx3d_d3d11_is_valid_native_mip_count(8, 4, 4) == 1,
@@ -625,6 +648,35 @@ static void test_mapped_copy_and_native_mip_validation_helpers(void) {
             &mip1, &mip0, mip0.format_id, mip0.block_width, mip0.block_height, mip0.block_bytes) ==
             0,
         "Native mip validation rejects short compressed payloads");
+    mip1.bytes = (uint64_t)UINT_MAX + 1u;
+    EXPECT_TRUE(
+        vgfx3d_d3d11_validate_native_mip_desc(
+            &mip1, &mip0, mip0.format_id, mip0.block_width, mip0.block_height, mip0.block_bytes) ==
+            0,
+        "Native mip validation rejects payloads that cannot fit D3D11 UINT upload fields");
+    mip1.bytes = 16;
+    mip1.block_height = 0;
+    EXPECT_TRUE(vgfx3d_d3d11_native_mip_block_rows(&mip1) == 0u,
+                "Native block-row helper rejects invalid block heights");
+    EXPECT_TRUE(vgfx3d_d3d11_native_mip_required_bytes(&mip1) == 0u,
+                "Native required-byte helper rejects invalid block heights");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_validate_native_mip_desc(
+            &mip1, &mip0, mip0.format_id, mip0.block_width, mip0.block_height, mip0.block_bytes) ==
+            0,
+        "Native mip validation rejects invalid block heights before upload math");
+    mip1.block_height = 4;
+    {
+        vgfx3d_native_texture_mip_t corrupt_previous = mip0;
+        corrupt_previous.block_width = 0;
+        EXPECT_TRUE(vgfx3d_d3d11_validate_native_mip_desc(&mip1,
+                                                          &corrupt_previous,
+                                                          mip0.format_id,
+                                                          mip0.block_width,
+                                                          mip0.block_height,
+                                                          mip0.block_bytes) == 0,
+                    "Native mip validation rejects corrupt previous-mip descriptors");
+    }
 }
 
 static void test_target_fallback_helper(void) {
@@ -684,8 +736,10 @@ static void test_shadow_and_rtt_policy_helpers(void) {
     int complete_first[VGFX3D_MAX_SHADOW_LIGHTS] = {0};
     int complete_sparse[VGFX3D_MAX_SHADOW_LIGHTS] = {0};
     int complete_all[VGFX3D_MAX_SHADOW_LIGHTS] = {0};
+    int complete_negative[VGFX3D_MAX_SHADOW_LIGHTS] = {0};
 
     complete_first[0] = 1;
+    complete_negative[0] = -1;
     if (VGFX3D_MAX_SHADOW_LIGHTS > 1)
         complete_sparse[1] = 1;
     for (int i = 0; i < VGFX3D_MAX_SHADOW_LIGHTS; i++)
@@ -697,6 +751,9 @@ static void test_shadow_and_rtt_policy_helpers(void) {
                 "Shadow count helper advertises the first complete slot");
     EXPECT_TRUE(vgfx3d_d3d11_compute_shadow_count(VGFX3D_MAX_SHADOW_LIGHTS, complete_sparse) == 0,
                 "Shadow count helper rejects sparse shadow slots");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_compute_shadow_count(VGFX3D_MAX_SHADOW_LIGHTS, complete_negative) == 0,
+        "Shadow count helper treats negative sentinels as incomplete slots");
     EXPECT_TRUE(vgfx3d_d3d11_compute_shadow_count(VGFX3D_MAX_SHADOW_LIGHTS, complete_all) ==
                     VGFX3D_MAX_SHADOW_LIGHTS,
                 "Shadow count helper advertises only a contiguous complete prefix");
@@ -769,6 +826,12 @@ static void test_postfx_readback_policy_helpers(void) {
                 "Direct swapchain overlays do not reuse stale separate overlay target state");
     EXPECT_TRUE(vgfx3d_d3d11_uses_separate_overlay_target(VGFX3D_D3D11_TARGET_OVERLAY, 0) == 0,
                 "Incomplete overlay resources do not mark a separate overlay target as used");
+    EXPECT_TRUE(vgfx3d_d3d11_should_keep_presented_snapshot(1, 1) == 1,
+                "Presented snapshot stays valid only after a successful snapshot and Present");
+    EXPECT_TRUE(vgfx3d_d3d11_should_keep_presented_snapshot(1, 0) == 0,
+                "Presented snapshot is invalidated when Present fails");
+    EXPECT_TRUE(vgfx3d_d3d11_should_keep_presented_snapshot(0, 1) == 0,
+                "Presented snapshot is invalidated when the pre-present copy fails");
 
     EXPECT_TRUE(
         vgfx3d_d3d11_choose_readback_kind(1, 1, 0, 1, 1, 1, 1, 1, 1,
@@ -841,9 +904,15 @@ static void test_shadow_projection_helper_handles_orthographic_and_perspective(v
     EXPECT_NEAR(uv_depth[2], 0.75f, 1e-6f, "D3D11 perspective shadow depth divides by W");
 
     world[2] = 0.0f;
+    uv_depth[0] = 9.0f;
+    uv_depth[1] = 9.0f;
+    uv_depth[2] = 9.0f;
     EXPECT_TRUE(vgfx3d_d3d11_project_shadow_coord(
                     m, VGFX3D_SHADOW_PROJECTION_PERSPECTIVE, world, uv_depth) == 0,
                 "D3D11 perspective shadow projection rejects non-positive W");
+    EXPECT_NEAR(uv_depth[0], 0.0f, 1e-6f, "Failed shadow projection clears stale U");
+    EXPECT_NEAR(uv_depth[1], 0.0f, 1e-6f, "Failed shadow projection clears stale V");
+    EXPECT_NEAR(uv_depth[2], 0.0f, 1e-6f, "Failed shadow projection clears stale depth");
 }
 
 int main(void) {

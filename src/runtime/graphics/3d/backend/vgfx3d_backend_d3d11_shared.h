@@ -189,6 +189,8 @@ int32_t vgfx3d_d3d11_sampler_anisotropy_index(int32_t requested);
 int32_t vgfx3d_d3d11_sanitize_texture_uv_set(int32_t requested);
 /// @brief Clamp integer post-FX sample/pass counts before cbuffer upload.
 int32_t vgfx3d_d3d11_clamp_int_param(int32_t requested, int32_t min_value, int32_t max_value);
+/// @brief Sanitize D3D11 rasterizer slope-scaled depth bias.
+float vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(float requested);
 /// @brief Decide whether the bone constant buffers need a per-draw upload.
 int vgfx3d_d3d11_should_upload_bone_palette(int has_skinning, int has_prev_skinning);
 /// @brief Saturating unsigned 64-bit addition for upload counters.
@@ -222,6 +224,8 @@ int vgfx3d_d3d11_validate_rgba8_destination(int32_t width,
                                             int32_t height,
                                             int32_t stride,
                                             size_t *out_bytes);
+/// @brief Validate a row range before building a D3D11_BOX.
+int vgfx3d_d3d11_validate_row_span(int32_t extent, int32_t start, int32_t count);
 /// @brief Check dimensions against D3D11 feature-level 11 texture limits.
 int vgfx3d_d3d11_is_valid_texture2d_extent(int32_t width, int32_t height);
 /// @brief Check a square cubemap face dimension against D3D11 limits.
@@ -235,6 +239,8 @@ int vgfx3d_d3d11_validate_mapped_texture_copy(int32_t width,
                                               size_t *out_dst_row_bytes);
 /// @brief Bytes in one compressed/native texture block row.
 uint64_t vgfx3d_d3d11_native_mip_row_bytes(const vgfx3d_native_texture_mip_t *mip);
+/// @brief Number of compressed/native block rows in a mip.
+uint64_t vgfx3d_d3d11_native_mip_block_rows(const vgfx3d_native_texture_mip_t *mip);
 /// @brief Minimum bytes needed for the complete compressed/native mip payload.
 uint64_t vgfx3d_d3d11_native_mip_required_bytes(const vgfx3d_native_texture_mip_t *mip);
 /// @brief Check that a native compressed mip is valid for a D3D11 texture mip chain.
@@ -346,6 +352,8 @@ vgfx3d_d3d11_readback_kind_t vgfx3d_d3d11_choose_readback_kind(
     int postfx_has_effects,
     int has_scene_targets,
     vgfx3d_d3d11_target_kind_t current_target_kind);
+/// @brief Decide whether a pre-present snapshot remains valid after Present returns.
+int vgfx3d_d3d11_should_keep_presented_snapshot(int snapshot_ok, int present_ok);
 
 #ifdef __cplusplus
 }

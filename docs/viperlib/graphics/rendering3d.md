@@ -344,7 +344,9 @@ Metal, OpenGL, or D3D11 backend. Pixels-backed 2D material textures and cubemaps
 are advanced in row slices under `SetTextureUploadBudget`; native compressed
 `TextureAsset3D` blocks are submitted by resident mip under the same budget and
 telemetry. Cache hits report no new upload bytes, software/unsupported backends
-report `0`, and the value is reset at the next non-overlay frame begin.
+report `0`, and the value is reset at the next non-overlay frame begin. D3D11
+rejects out-of-range row slices, malformed native block descriptors, and uploads
+whose byte counts cannot fit D3D11 `UINT` fields before it touches GPU resources.
 `TextureUploadPendingBytes` reports remaining queued texture/cubemap row bytes
 plus native compressed mip bytes and returns to `0` after final submissions
 drain. The open-world native-compressed hitch CTest records the selected

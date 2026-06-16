@@ -385,7 +385,7 @@ static HRESULT d3d11_allocate_texture_srv(d3d11_context_t *ctx,
         *out_tex = NULL;
     if (out_srv)
         *out_srv = NULL;
-    if (!ctx || !out_tex || !out_srv)
+    if (!ctx || !ctx->device || !out_tex || !out_srv)
         return E_INVALIDARG;
     if (!vgfx3d_d3d11_is_valid_texture2d_extent(w, h) || w > (int32_t)(UINT_MAX / 4u)) {
         return E_INVALIDARG;
@@ -436,11 +436,15 @@ static HRESULT d3d11_allocate_native_texture_srv(d3d11_context_t *ctx,
         *out_tex = NULL;
     if (out_srv)
         *out_srv = NULL;
-    if (!ctx || !out_tex || !out_srv || !first_mip || mip_count <= 0 || mip_count > UINT_MAX)
+    if (!ctx || !ctx->device || !out_tex || !out_srv || !first_mip || mip_count <= 0 ||
+        mip_count > UINT_MAX)
         return E_INVALIDARG;
     format = d3d11_native_texture_format(first_mip->format_id);
     if (format == DXGI_FORMAT_UNKNOWN ||
-        !vgfx3d_d3d11_is_valid_native_mip_count(first_mip->width, first_mip->height, mip_count) ||
+        !d3d11_format_supports_texture_sampling(ctx, format) ||
+        !vgfx3d_d3d11_is_valid_native_mip_count(first_mip->width,
+                                                first_mip->height,
+                                                mip_count) ||
         !vgfx3d_d3d11_validate_native_mip_desc(first_mip,
                                                NULL,
                                                first_mip->format_id,
@@ -480,8 +484,8 @@ static HRESULT d3d11_allocate_native_texture_srv(d3d11_context_t *ctx,
 /// @return 1 if the upload finished this call, 0 if more mips remain.
 static int d3d11_continue_native_texture_upload(d3d11_context_t *ctx,
                                                 d3d_tex_cache_entry_t *entry) {
-    if (!ctx || !entry || !entry->texture_asset || !entry->upload_in_progress || !entry->tex ||
-        !entry->srv)
+    if (!ctx || !ctx->ctx || !entry || !entry->texture_asset || !entry->upload_in_progress ||
+        !entry->tex || !entry->srv)
         return 0;
     if (entry->native_mip_count <= 0)
         return 0;
@@ -496,6 +500,9 @@ static int d3d11_continue_native_texture_upload(d3d11_context_t *ctx,
         int32_t rows;
         uint64_t offset;
         uint64_t upload_bytes;
+        uint64_t remaining_block_rows;
+        uint64_t top_row;
+        uint64_t bottom_row;
         D3D11_BOX box;
         vgfx3d_native_texture_mip_t previous_mip = {0};
         const vgfx3d_native_texture_mip_t *previous_mip_ptr = NULL;
@@ -524,9 +531,6 @@ static int d3d11_continue_native_texture_upload(d3d11_context_t *ctx,
         expected_block_width = previous_mip_ptr ? previous_mip.block_width : mip.block_width;
         expected_block_height = previous_mip_ptr ? previous_mip.block_height : mip.block_height;
         expected_block_bytes = previous_mip_ptr ? previous_mip.block_bytes : mip.block_bytes;
-        row_bytes = d3d11_native_texture_row_bytes(&mip);
-        block_rows = ((uint64_t)(uint32_t)mip.height + (uint64_t)(uint32_t)mip.block_height - 1u) /
-                     (uint64_t)(uint32_t)mip.block_height;
         if (mip.format_id != entry->native_format ||
             d3d11_native_texture_format(mip.format_id) == DXGI_FORMAT_UNKNOWN ||
             !vgfx3d_d3d11_validate_native_mip_desc(&mip,
@@ -535,7 +539,11 @@ static int d3d11_continue_native_texture_upload(d3d11_context_t *ctx,
                                                    expected_block_width,
                                                    expected_block_height,
                                                    expected_block_bytes) ||
-            row_bytes == 0 || row_bytes > UINT_MAX || block_rows > UINT_MAX || mip.bytes > UINT_MAX)
+            mip.bytes > UINT_MAX)
+            return 0;
+        row_bytes = d3d11_native_texture_row_bytes(&mip);
+        block_rows = vgfx3d_d3d11_native_mip_block_rows(&mip);
+        if (row_bytes == 0 || row_bytes > UINT_MAX || block_rows == 0 || block_rows > UINT_MAX)
             return 0;
         if (entry->native_next_block_row < 0 ||
             (uint64_t)(uint32_t)entry->native_next_block_row >= block_rows)
@@ -550,19 +558,28 @@ static int d3d11_continue_native_texture_upload(d3d11_context_t *ctx,
                                                    ctx->texture_upload_bytes);
         if (rows <= 0)
             return 0;
+        remaining_block_rows = block_rows - (uint64_t)(uint32_t)entry->native_next_block_row;
+        if ((uint64_t)(uint32_t)rows > remaining_block_rows)
+            return 0;
         offset = (uint64_t)(uint32_t)entry->native_next_block_row * row_bytes;
         upload_bytes = (uint64_t)(uint32_t)rows * row_bytes;
         if (offset > mip.bytes || upload_bytes > mip.bytes - offset || upload_bytes > UINT_MAX)
             return 0;
+        top_row = (uint64_t)(uint32_t)entry->native_next_block_row *
+                  (uint64_t)(uint32_t)mip.block_height;
+        bottom_row = top_row + (uint64_t)(uint32_t)rows *
+                                   (uint64_t)(uint32_t)mip.block_height;
+        if (top_row >= (uint64_t)(uint32_t)mip.height || top_row > UINT_MAX)
+            return 0;
+        if (bottom_row > (uint64_t)(uint32_t)mip.height)
+            bottom_row = (uint64_t)(uint32_t)mip.height;
+        if (bottom_row > UINT_MAX)
+            return 0;
         memset(&box, 0, sizeof(box));
         box.left = 0;
         box.right = (UINT)mip.width;
-        box.top = (UINT)(entry->native_next_block_row * mip.block_height);
-        box.bottom = box.top + (UINT)(rows * mip.block_height);
-        if (box.top >= (UINT)mip.height)
-            return 0;
-        if (box.bottom > (UINT)mip.height)
-            box.bottom = (UINT)mip.height;
+        box.top = (UINT)top_row;
+        box.bottom = (UINT)bottom_row;
         box.front = 0;
         box.back = 1;
         d3d11_unbind_draw_resources(ctx);
@@ -645,7 +662,8 @@ static int d3d11_continue_texture_upload(d3d11_context_t *ctx,
     uint64_t bytes;
     uint32_t row_pitch;
 
-    if (!ctx || !entry || !pixels || !entry->upload_in_progress || !entry->tex || !entry->srv)
+    if (!ctx || !ctx->ctx || !entry || !pixels || !entry->upload_in_progress || !entry->tex ||
+        !entry->srv)
         return 0;
     if (!vgfx3d_d3d11_is_valid_texture2d_extent(entry->width, entry->height))
         return 0;
@@ -660,7 +678,8 @@ static int d3d11_continue_texture_upload(d3d11_context_t *ctx,
         return 0;
     if (vgfx3d_unpack_pixels_rgba_rows(
             pixels, entry->upload_next_row, rows, 0, &slice_w, &slice_rows, &rgba) != 0 ||
-        !rgba || slice_w != entry->width || slice_rows <= 0) {
+        !rgba || slice_w != entry->width || slice_rows <= 0 ||
+        !vgfx3d_d3d11_validate_row_span(entry->height, entry->upload_next_row, slice_rows)) {
         free(rgba);
         return 0;
     }
@@ -893,7 +912,7 @@ static HRESULT d3d11_allocate_cubemap_srv(d3d11_context_t *ctx,
         *out_tex = NULL;
     if (out_srv)
         *out_srv = NULL;
-    if (!ctx || !out_tex || !out_srv)
+    if (!ctx || !ctx->device || !out_tex || !out_srv)
         return E_INVALIDARG;
     if (!vgfx3d_d3d11_is_valid_cubemap_extent(face_size) || face_size > (int32_t)(UINT_MAX / 4u))
         return E_INVALIDARG;
@@ -934,8 +953,8 @@ static int d3d11_continue_cubemap_upload(d3d11_context_t *ctx,
                                          const rt_cubemap3d *cubemap) {
     int32_t mip_count;
 
-    if (!ctx || !entry || !cubemap || !entry->upload_in_progress || !entry->tex || !entry->srv ||
-        entry->face_size <= 0)
+    if (!ctx || !ctx->ctx || !entry || !cubemap || !entry->upload_in_progress || !entry->tex ||
+        !entry->srv || !vgfx3d_d3d11_is_valid_cubemap_extent(entry->face_size))
         return 0;
     if (entry->upload_face < 0 || entry->upload_face >= 6) {
         entry->upload_face = 0;
@@ -972,7 +991,9 @@ static int d3d11_continue_cubemap_upload(d3d11_context_t *ctx,
                                             &slice_size,
                                             &slice_rows,
                                             &rgba) != 0 ||
-            !rgba || slice_size != entry->face_size || slice_rows <= 0) {
+            !rgba || slice_size != entry->face_size || slice_rows <= 0 ||
+            !vgfx3d_d3d11_validate_row_span(
+                entry->face_size, entry->upload_next_row, slice_rows)) {
             free(rgba);
             return 0;
         }

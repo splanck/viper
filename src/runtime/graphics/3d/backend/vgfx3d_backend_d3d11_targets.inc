@@ -28,7 +28,8 @@ static HRESULT d3d11_create_color_target(d3d11_context_t *ctx,
         *out_rtv = NULL;
     if (out_srv)
         *out_srv = NULL;
-    if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height) || !out_tex || !out_rtv)
+    if (!ctx || !ctx->device || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height) ||
+        !out_tex || !out_rtv)
         return E_INVALIDARG;
 
     memset(&desc, 0, sizeof(desc));
@@ -95,7 +96,8 @@ static HRESULT d3d11_create_depth_target(d3d11_context_t *ctx,
         *out_dsv = NULL;
     if (out_srv)
         *out_srv = NULL;
-    if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height) || !out_tex || !out_dsv)
+    if (!ctx || !ctx->device || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height) ||
+        !out_tex || !out_dsv)
         return E_INVALIDARG;
 
     memset(&desc, 0, sizeof(desc));
@@ -153,7 +155,8 @@ static HRESULT d3d11_create_staging_texture(d3d11_context_t *ctx,
 
     if (out_tex)
         *out_tex = NULL;
-    if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height) || !out_tex)
+    if (!ctx || !ctx->device || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height) ||
+        !out_tex)
         return E_INVALIDARG;
 
     memset(&desc, 0, sizeof(desc));
@@ -175,7 +178,7 @@ static HRESULT d3d11_ensure_presented_snapshot_texture(d3d11_context_t *ctx,
     D3D11_TEXTURE2D_DESC desc;
     HRESULT hr;
 
-    if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height))
+    if (!ctx || !ctx->device || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height))
         return E_INVALIDARG;
     if (ctx->presented_color_tex && ctx->presented_width == width &&
         ctx->presented_height == height)
@@ -462,8 +465,8 @@ static int d3d11_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *
     int mapped_ok = 0;
     int ok = 0;
 
-    if (!ctx || !target || !ctx->rtt_color_tex || !ctx->rtt_staging || ctx->rtt_target != target ||
-        target->width <= 0 || target->height <= 0) {
+    if (!ctx || !ctx->ctx || !target || !ctx->rtt_color_tex || !ctx->rtt_staging ||
+        ctx->rtt_target != target || target->width <= 0 || target->height <= 0) {
         return 0;
     }
     if (!vgfx3d_rendertarget_ensure_color(target))

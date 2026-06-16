@@ -178,7 +178,8 @@ static HRESULT d3d11_recreate_swapchain_main_targets(d3d11_context_t *ctx,
     ID3D11Texture2D *back_buffer = NULL;
     HRESULT hr;
 
-    if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height))
+    if (!ctx || !ctx->device || !ctx->swap_chain ||
+        !vgfx3d_d3d11_is_valid_texture2d_extent(width, height))
         return E_INVALIDARG;
 
     hr = IDXGISwapChain_GetBuffer(ctx->swap_chain, 0, &IID_ID3D11Texture2D, (void **)&back_buffer);
@@ -215,7 +216,7 @@ static void d3d11_resize(void *ctx_ptr, int32_t w, int32_t h) {
     int32_t old_h;
     HRESULT hr;
 
-    if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(w, h))
+    if (!ctx || !ctx->swap_chain || !vgfx3d_d3d11_is_valid_texture2d_extent(w, h))
         return;
     if (ctx->width == w && ctx->height == h)
         return;
@@ -323,7 +324,7 @@ static int d3d11_readback_texture_rgba(d3d11_context_t *ctx,
     int mapped_ok = 0;
     int ok = 0;
 
-    if (!ctx || !source_tex || !dst_rgba ||
+    if (!ctx || !ctx->ctx || !source_tex || !dst_rgba ||
         !vgfx3d_d3d11_validate_rgba8_destination(w, h, stride, &clear_bytes))
         return 0;
 

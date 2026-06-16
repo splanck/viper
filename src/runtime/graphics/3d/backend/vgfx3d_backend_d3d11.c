@@ -687,13 +687,19 @@ static uint64_t d3d11_get_frame_gpu_time_us(void *ctx_ptr) {
 /// next frame typically recovers.
 static void d3d11_present_swapchain(d3d11_context_t *ctx) {
     HRESULT hr;
+    int snapshot_ok;
 
     if (!ctx || !ctx->swap_chain)
         return;
-    (void)d3d11_snapshot_backbuffer_for_readback(ctx);
+    snapshot_ok = d3d11_snapshot_backbuffer_for_readback(ctx);
     hr = IDXGISwapChain_Present(ctx->swap_chain, 1, 0);
-    if (FAILED(hr))
+    if (FAILED(hr)) {
         d3d11_log_hresult("IDXGISwapChain::Present", hr);
+        ctx->presented_color_valid = 0;
+        return;
+    }
+    ctx->presented_color_valid =
+        (int8_t)vgfx3d_d3d11_should_keep_presented_snapshot(snapshot_ok, 1);
 }
 
 /// @brief Runtime-compile an HLSL shader entry point to bytecode.
@@ -783,7 +789,9 @@ static ID3D11RasterizerState *d3d11_choose_rasterizer(d3d11_context_t *ctx,
 /// @details The common draw path uses four cached rasterizer states. D3D11 stores depth bias on the
 ///   rasterizer state itself, so only biased draws pay for a temporary state allocation.
 static int d3d11_draw_needs_depth_bias(const vgfx3d_draw_cmd_t *cmd) {
-    return cmd && (fabsf(cmd->depth_bias) > 1e-8f || fabsf(cmd->slope_scaled_depth_bias) > 1e-8f);
+    return cmd && (fabsf(cmd->depth_bias) > 1e-8f ||
+                   fabsf(vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(
+                       cmd->slope_scaled_depth_bias)) > 1e-8f);
 }
 
 /// @brief Convert the renderer's float depth-bias value to D3D11's integer DepthBias field.
@@ -815,7 +823,8 @@ static HRESULT d3d11_create_depth_biased_rasterizer(d3d11_context_t *ctx,
     desc.FrontCounterClockwise = TRUE;
     desc.DepthClipEnable = TRUE;
     desc.DepthBias = d3d11_depth_bias_to_int(cmd->depth_bias);
-    desc.SlopeScaledDepthBias = cmd->slope_scaled_depth_bias;
+    desc.SlopeScaledDepthBias =
+        vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(cmd->slope_scaled_depth_bias);
     desc.DepthBiasClamp = 0.0f;
     return ID3D11Device_CreateRasterizerState(ctx->device, &desc, out_state);
 }
@@ -839,7 +848,7 @@ static HRESULT d3d11_get_depth_biased_rasterizer(d3d11_context_t *ctx,
     if (!ctx || !cmd || !out_state)
         return E_INVALIDARG;
     depth_bias = d3d11_depth_bias_to_int(cmd->depth_bias);
-    slope_bias = cmd->slope_scaled_depth_bias;
+    slope_bias = vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(cmd->slope_scaled_depth_bias);
     if (ctx->rs_depth_biased_valid && ctx->rs_depth_biased_cached &&
         ctx->rs_depth_biased_depth_bias == depth_bias &&
         ctx->rs_depth_biased_slope_bias == slope_bias &&

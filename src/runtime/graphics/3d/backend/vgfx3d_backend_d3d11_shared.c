@@ -246,6 +246,11 @@ int32_t vgfx3d_d3d11_clamp_int_param(int32_t requested, int32_t min_value, int32
     return requested;
 }
 
+/// @brief Sanitize slope-scaled rasterizer bias before D3D11 state creation/cache keys.
+float vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(float requested) {
+    return isfinite(requested) ? requested : 0.0f;
+}
+
 /// @brief Decide whether a draw needs current/previous bone cbuffer uploads.
 int vgfx3d_d3d11_should_upload_bone_palette(int has_skinning, int has_prev_skinning) {
     return has_skinning || has_prev_skinning ? 1 : 0;
@@ -406,6 +411,13 @@ int vgfx3d_d3d11_validate_rgba8_destination(int32_t width,
     return 1;
 }
 
+/// @brief Validate a row span before converting it into unsigned D3D11 box bounds.
+int vgfx3d_d3d11_validate_row_span(int32_t extent, int32_t start, int32_t count) {
+    if (extent <= 0 || start < 0 || count <= 0 || start >= extent)
+        return 0;
+    return count <= extent - start;
+}
+
 /// @brief Check 2D texture dimensions against D3D11 feature-level 11 limits.
 int vgfx3d_d3d11_is_valid_texture2d_extent(int32_t width, int32_t height) {
     return width > 0 && height > 0 && width <= VGFX3D_D3D11_MAX_TEXTURE2D_DIMENSION &&
@@ -458,16 +470,21 @@ uint64_t vgfx3d_d3d11_native_mip_row_bytes(const vgfx3d_native_texture_mip_t *mi
     return cols * (uint64_t)(uint32_t)mip->block_bytes;
 }
 
+/// @brief Number of compressed/native block rows needed to cover a mip height.
+uint64_t vgfx3d_d3d11_native_mip_block_rows(const vgfx3d_native_texture_mip_t *mip) {
+    if (!mip || mip->height <= 0 || mip->block_height <= 0)
+        return 0;
+    return ((uint64_t)(uint32_t)mip->height + (uint64_t)(uint32_t)mip->block_height - 1u) /
+           (uint64_t)(uint32_t)mip->block_height;
+}
+
 /// @brief Minimum payload bytes required by a complete compressed/native mip.
 uint64_t vgfx3d_d3d11_native_mip_required_bytes(const vgfx3d_native_texture_mip_t *mip) {
     uint64_t row_bytes;
     uint64_t block_rows;
 
-    if (!mip || mip->height <= 0 || mip->block_height <= 0)
-        return 0;
     row_bytes = vgfx3d_d3d11_native_mip_row_bytes(mip);
-    block_rows = ((uint64_t)(uint32_t)mip->height + (uint64_t)(uint32_t)mip->block_height - 1u) /
-                 (uint64_t)(uint32_t)mip->block_height;
+    block_rows = vgfx3d_d3d11_native_mip_block_rows(mip);
     if (row_bytes == 0 || block_rows == 0 || block_rows > UINT64_MAX / row_bytes)
         return 0;
     return row_bytes * block_rows;
@@ -484,6 +501,8 @@ int vgfx3d_d3d11_validate_native_mip_desc(const vgfx3d_native_texture_mip_t *mip
 
     if (!mip || !mip->data || mip->bytes == 0 || expected_format_id <= 0)
         return 0;
+    if (mip->bytes > UINT_MAX)
+        return 0;
     if (!vgfx3d_d3d11_is_valid_texture2d_extent(mip->width, mip->height))
         return 0;
     if (mip->format_id != expected_format_id)
@@ -499,6 +518,11 @@ int vgfx3d_d3d11_validate_native_mip_desc(const vgfx3d_native_texture_mip_t *mip
     if (previous_mip) {
         int32_t expected_width = previous_mip->width > 1 ? previous_mip->width >> 1 : 1;
         int32_t expected_height = previous_mip->height > 1 ? previous_mip->height >> 1 : 1;
+        if (!vgfx3d_d3d11_is_valid_texture2d_extent(previous_mip->width, previous_mip->height))
+            return 0;
+        if (previous_mip->block_width <= 0 || previous_mip->block_height <= 0 ||
+            previous_mip->block_bytes <= 0)
+            return 0;
         if (mip->width != expected_width || mip->height != expected_height)
             return 0;
     }
@@ -582,12 +606,16 @@ int vgfx3d_d3d11_should_prune_cache_entry(int32_t total_count,
 
     if (total_count <= 0 || kept_count < 0 || scan_index < 0 || scan_index >= total_count)
         return 0;
+    if (kept_count > total_count)
+        return 0;
     if (max_resident < 0)
         max_resident = 0;
     if (total_count <= max_resident || age <= prune_age)
         return 0;
+    if (kept_count >= max_resident)
+        return 1;
     remaining_after_current = total_count - scan_index - 1;
-    return kept_count + remaining_after_current >= max_resident;
+    return remaining_after_current >= max_resident - kept_count;
 }
 
 /// @brief Pick the right render-target classification for the current draw context.
@@ -683,7 +711,7 @@ int32_t vgfx3d_d3d11_compute_shadow_count(int32_t slot_count, const int *slot_co
     if (!slot_complete || slot_count <= 0)
         return 0;
     max_slots = slot_count > VGFX3D_MAX_SHADOW_LIGHTS ? VGFX3D_MAX_SHADOW_LIGHTS : slot_count;
-    while (count < max_slots && slot_complete[count])
+    while (count < max_slots && slot_complete[count] > 0)
         count++;
     return count;
 }
@@ -737,6 +765,11 @@ int vgfx3d_d3d11_project_shadow_coord(const float *shadow_vp,
     float ndc_y;
     float ndc_z;
 
+    if (out_uv_depth) {
+        out_uv_depth[0] = 0.0f;
+        out_uv_depth[1] = 0.0f;
+        out_uv_depth[2] = 0.0f;
+    }
     if (!shadow_vp || !world_pos || !out_uv_depth)
         return 0;
     lx = world_pos[0] * shadow_vp[0] + world_pos[1] * shadow_vp[1] + world_pos[2] * shadow_vp[2] +
@@ -880,4 +913,9 @@ vgfx3d_d3d11_readback_kind_t vgfx3d_d3d11_choose_readback_kind(
     if (has_scene_targets && current_target_kind != VGFX3D_D3D11_TARGET_SWAPCHAIN)
         return VGFX3D_D3D11_READBACK_SCENE_COLOR;
     return VGFX3D_D3D11_READBACK_BACKBUFFER;
+}
+
+/// @brief Keep a pre-present snapshot only when both snapshot and Present succeeded.
+int vgfx3d_d3d11_should_keep_presented_snapshot(int snapshot_ok, int present_ok) {
+    return snapshot_ok && present_ok ? 1 : 0;
 }

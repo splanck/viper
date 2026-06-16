@@ -281,7 +281,9 @@ D3D11. Pixels-backed 2D material textures and cubemaps are row-sliced, while
 native compressed `TextureAsset3D` mip blocks are submitted by resident mip, by
 `Canvas3D.SetTextureUploadBudget(bytes)`; negative means unlimited, `0` pauses new upload rows, and
 positive values cap per-frame upload bytes while preserving progress for sub-row budgets. Cache hits
-and software/unsupported backends report `0`; non-overlay frame begin resets the counter.
+and software/unsupported backends report `0`; non-overlay frame begin resets the counter. D3D11
+validates row slices, native block rows, block layouts, and D3D11-sized upload byte fields before
+issuing texture updates.
 `TextureUploadPendingBytes` returns to `0` once all material/cubemap row slices
 and native compressed mip submissions drain. Use it
 to correlate async asset commits and streaming movement with GPU texture upload pressure.
@@ -3513,7 +3515,7 @@ For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSuppor
 
 **Direct3D 11** (Windows) — Full feature parity: same feature set as OpenGL, including the shared `Material3D` PBR path. On non-Windows hosts, validation depends on the Windows CI lane.
 
-Backend correctness rules are shared where possible: skinning weights are normalized before application, oversized GPU bone palettes are clamped to backend shader limits, unused bone palette slots are identity transforms, terrain splatting requires a complete control-map-plus-four-layer texture set, masked materials alpha-test shadow casters, shadow slots are advertised only after the indexed pass completes, and invalid draw/readback/texture/shadow inputs are rejected or treated conservatively instead of being dereferenced.
+Backend correctness rules are shared where possible: skinning weights are normalized before application, oversized GPU bone palettes are clamped to backend shader limits, unused bone palette slots are identity transforms, terrain splatting requires a complete control-map-plus-four-layer texture set, masked materials alpha-test shadow casters, shadow slots are advertised only after the indexed pass completes, failed D3D11 swapchain presents invalidate their pre-present readback snapshot, and invalid draw/readback/texture/shadow inputs are rejected or treated conservatively instead of being dereferenced.
 
 ## Performance Tips
 
