@@ -158,8 +158,8 @@ void vgfx3d_d3d11_fill_instance_data(vgfx3d_d3d11_instance_data_t *dst,
                                      const float *prev_instance_matrices,
                                      int8_t has_prev_instance_matrices);
 /// @brief Decide whether instanced motion-history attributes are actually available.
-int vgfx3d_d3d11_should_use_previous_instance_matrices(
-    const float *prev_instance_matrices, int8_t has_prev_instance_matrices);
+int vgfx3d_d3d11_should_use_previous_instance_matrices(const float *prev_instance_matrices,
+                                                       int8_t has_prev_instance_matrices);
 /// @brief Roll per-frame VP/inv-VP/cam-pos history forward by one frame (scene + overlay tracked
 /// separately).
 void vgfx3d_d3d11_update_frame_history(vgfx3d_d3d11_frame_history_t *history,
@@ -189,6 +189,24 @@ int32_t vgfx3d_d3d11_sampler_anisotropy_index(int32_t requested);
 int32_t vgfx3d_d3d11_sanitize_texture_uv_set(int32_t requested);
 /// @brief Clamp integer post-FX sample/pass counts before cbuffer upload.
 int32_t vgfx3d_d3d11_clamp_int_param(int32_t requested, int32_t min_value, int32_t max_value);
+/// @brief Replace non-finite float parameters before D3D11 cbuffer/state upload.
+float vgfx3d_d3d11_finite_or(float requested, float fallback);
+/// @brief Clamp finite float parameters, using @p fallback for NaN/Inf values.
+float vgfx3d_d3d11_clamp_float_param(float requested,
+                                     float min_value,
+                                     float max_value,
+                                     float fallback);
+/// @brief Return non-zero only when every value in @p values is finite.
+int vgfx3d_d3d11_float_array_is_finite(const float *values, size_t count);
+/// @brief Copy float constants while replacing NaN/Inf lanes with @p fallback.
+void vgfx3d_d3d11_copy_float_array_finite_or(float *dst,
+                                             const float *src,
+                                             size_t count,
+                                             float fallback);
+/// @brief Copy a matrix when finite, otherwise write the identity matrix.
+void vgfx3d_d3d11_copy_mat4_finite_or_identity(float *dst, const float *src);
+/// @brief Copy a matrix when finite, otherwise copy @p fallback or identity.
+void vgfx3d_d3d11_copy_mat4_finite_or(float *dst, const float *src, const float *fallback);
 /// @brief Sanitize D3D11 rasterizer slope-scaled depth bias.
 float vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(float requested);
 /// @brief Decide whether the bone constant buffers need a per-draw upload.

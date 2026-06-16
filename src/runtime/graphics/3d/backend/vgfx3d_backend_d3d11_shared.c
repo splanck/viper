@@ -51,7 +51,7 @@ void vgfx3d_d3d11_pack_scalar_array4(float (*dst)[4],
     if (src_scalar_count > scalar_capacity)
         src_scalar_count = scalar_capacity;
     for (int32_t i = 0; i < src_scalar_count; i++)
-        dst[i / 4][i % 4] = src[i];
+        dst[i / 4][i % 4] = isfinite(src[i]) ? src[i] : 0.0f;
 }
 
 /// @brief Store a row-major identity matrix into one fixed bone-palette slot.
@@ -66,12 +66,66 @@ static void vgfx3d_d3d11_store_identity4x4(float *dst) {
     dst[15] = 1.0f;
 }
 
+/// @brief Return non-zero only when every float in @p values is finite.
+int vgfx3d_d3d11_float_array_is_finite(const float *values, size_t count) {
+    if (!values && count > 0)
+        return 0;
+    for (size_t i = 0; i < count; i++) {
+        if (!isfinite(values[i]))
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Copy float constants while replacing NaN/Inf lanes with @p fallback.
+void vgfx3d_d3d11_copy_float_array_finite_or(float *dst,
+                                             const float *src,
+                                             size_t count,
+                                             float fallback) {
+    float safe_fallback = isfinite(fallback) ? fallback : 0.0f;
+
+    if (!dst || count == 0)
+        return;
+    if (!src) {
+        for (size_t i = 0; i < count; i++)
+            dst[i] = safe_fallback;
+        return;
+    }
+    for (size_t i = 0; i < count; i++)
+        dst[i] = isfinite(src[i]) ? src[i] : safe_fallback;
+}
+
+/// @brief Copy a matrix when finite, otherwise write identity.
+void vgfx3d_d3d11_copy_mat4_finite_or_identity(float *dst, const float *src) {
+    if (!dst)
+        return;
+    if (src && vgfx3d_d3d11_float_array_is_finite(src, 16u)) {
+        memcpy(dst, src, sizeof(float) * 16u);
+        return;
+    }
+    vgfx3d_d3d11_store_identity4x4(dst);
+}
+
+/// @brief Copy a matrix when finite, otherwise copy a finite fallback or identity.
+void vgfx3d_d3d11_copy_mat4_finite_or(float *dst, const float *src, const float *fallback) {
+    if (!dst)
+        return;
+    if (src && vgfx3d_d3d11_float_array_is_finite(src, 16u)) {
+        memcpy(dst, src, sizeof(float) * 16u);
+        return;
+    }
+    if (fallback && vgfx3d_d3d11_float_array_is_finite(fallback, 16u)) {
+        memcpy(dst, fallback, sizeof(float) * 16u);
+        return;
+    }
+    vgfx3d_d3d11_store_identity4x4(dst);
+}
+
 /// @brief Copy a bone palette (mat4 per bone) into a fixed-size cbuffer slot.
 /// Fills unused slots with identity so out-of-range indices do not collapse vertices.
 /// If @p bone_count exceeds `VGFX3D_D3D11_MAX_BONES`, the upload is clamped to
 /// the largest supported palette size for this backend.
 void vgfx3d_d3d11_pack_bone_palette(float *dst, const float *src, int32_t bone_count) {
-    size_t copy_count;
     int32_t first_unused = 0;
 
     if (!dst)
@@ -80,8 +134,8 @@ void vgfx3d_d3d11_pack_bone_palette(float *dst, const float *src, int32_t bone_c
     if (src && bone_count > 0) {
         if (bone_count > VGFX3D_D3D11_MAX_BONES)
             bone_count = VGFX3D_D3D11_MAX_BONES;
-        copy_count = (size_t)bone_count * 16u;
-        memcpy(dst, src, copy_count * sizeof(float));
+        for (int32_t i = 0; i < bone_count; i++)
+            vgfx3d_d3d11_copy_mat4_finite_or_identity(&dst[(size_t)i * 16u], &src[(size_t)i * 16u]);
         first_unused = bone_count;
     }
     for (int32_t i = first_unused; i < VGFX3D_D3D11_MAX_BONES; i++)
@@ -101,21 +155,20 @@ void vgfx3d_d3d11_fill_instance_data(vgfx3d_d3d11_instance_data_t *dst,
 
     for (int32_t i = 0; i < instance_count; i++) {
         const float *model = &instance_matrices[(size_t)i * 16u];
-        memcpy(dst[i].model, model, sizeof(dst[i].model));
-        vgfx3d_compute_normal_matrix4(model, dst[i].normal);
+        vgfx3d_d3d11_copy_mat4_finite_or_identity(dst[i].model, model);
+        vgfx3d_compute_normal_matrix4(dst[i].model, dst[i].normal);
         if (has_prev_instance_matrices && prev_instance_matrices) {
-            memcpy(dst[i].prev_model,
-                   &prev_instance_matrices[(size_t)i * 16u],
-                   sizeof(dst[i].prev_model));
+            vgfx3d_d3d11_copy_mat4_finite_or(
+                dst[i].prev_model, &prev_instance_matrices[(size_t)i * 16u], dst[i].model);
         } else {
-            memcpy(dst[i].prev_model, model, sizeof(dst[i].prev_model));
+            memcpy(dst[i].prev_model, dst[i].model, sizeof(dst[i].prev_model));
         }
     }
 }
 
 /// @brief Decide whether instanced motion-history attributes are actually available.
-int vgfx3d_d3d11_should_use_previous_instance_matrices(
-    const float *prev_instance_matrices, int8_t has_prev_instance_matrices) {
+int vgfx3d_d3d11_should_use_previous_instance_matrices(const float *prev_instance_matrices,
+                                                       int8_t has_prev_instance_matrices) {
     return has_prev_instance_matrices && prev_instance_matrices ? 1 : 0;
 }
 
@@ -246,6 +299,32 @@ int32_t vgfx3d_d3d11_clamp_int_param(int32_t requested, int32_t min_value, int32
     return requested;
 }
 
+/// @brief Replace NaN/Inf float parameters before D3D11 cbuffer/state upload.
+float vgfx3d_d3d11_finite_or(float requested, float fallback) {
+    return isfinite(requested) ? requested : fallback;
+}
+
+/// @brief Clamp a finite float parameter, tolerating inverted caller bounds.
+float vgfx3d_d3d11_clamp_float_param(float requested,
+                                     float min_value,
+                                     float max_value,
+                                     float fallback) {
+    float tmp;
+
+    if (!isfinite(requested))
+        requested = fallback;
+    if (min_value > max_value) {
+        tmp = min_value;
+        min_value = max_value;
+        max_value = tmp;
+    }
+    if (requested < min_value)
+        return min_value;
+    if (requested > max_value)
+        return max_value;
+    return requested;
+}
+
 /// @brief Sanitize slope-scaled rasterizer bias before D3D11 state creation/cache keys.
 float vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(float requested) {
     return isfinite(requested) ? requested : 0.0f;
@@ -343,8 +422,7 @@ int vgfx3d_d3d11_compute_rgba8_upload_pitch(int32_t width, uint32_t *out_pitch) 
 
     if (out_pitch)
         *out_pitch = 0;
-    if (!out_pitch || !vgfx3d_d3d11_compute_row_bytes(width, 4, &row_bytes) ||
-        row_bytes > UINT_MAX)
+    if (!out_pitch || !vgfx3d_d3d11_compute_row_bytes(width, 4, &row_bytes) || row_bytes > UINT_MAX)
         return 0;
     *out_pitch = (uint32_t)row_bytes;
     return 1;
@@ -581,12 +659,10 @@ int vgfx3d_d3d11_compute_morph_float_count(uint32_t vertex_count,
     shape_count = vgfx3d_d3d11_clamp_morph_shape_count(vertex_count, requested_shape_count);
     if (shape_count <= 0)
         return 0;
-    if (!vgfx3d_d3d11_checked_mul_size((size_t)shape_count,
-                                       (size_t)vertex_count,
-                                       &shaped_vertices) ||
+    if (!vgfx3d_d3d11_checked_mul_size(
+            (size_t)shape_count, (size_t)vertex_count, &shaped_vertices) ||
         !vgfx3d_d3d11_checked_mul_size(shaped_vertices, 3u, &elements) ||
-        !vgfx3d_d3d11_checked_mul_size(elements, sizeof(float), &bytes) ||
-        bytes > UINT_MAX)
+        !vgfx3d_d3d11_checked_mul_size(elements, sizeof(float), &bytes) || bytes > UINT_MAX)
         return 0;
     *out_elements = elements;
     return 1;

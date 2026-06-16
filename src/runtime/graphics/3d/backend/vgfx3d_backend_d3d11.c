@@ -789,9 +789,9 @@ static ID3D11RasterizerState *d3d11_choose_rasterizer(d3d11_context_t *ctx,
 /// @details The common draw path uses four cached rasterizer states. D3D11 stores depth bias on the
 ///   rasterizer state itself, so only biased draws pay for a temporary state allocation.
 static int d3d11_draw_needs_depth_bias(const vgfx3d_draw_cmd_t *cmd) {
-    return cmd && (fabsf(cmd->depth_bias) > 1e-8f ||
-                   fabsf(vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(
-                       cmd->slope_scaled_depth_bias)) > 1e-8f);
+    return cmd &&
+           (fabsf(cmd->depth_bias) > 1e-8f || fabsf(vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(
+                                                  cmd->slope_scaled_depth_bias)) > 1e-8f);
 }
 
 /// @brief Convert the renderer's float depth-bias value to D3D11's integer DepthBias field.
@@ -1078,6 +1078,8 @@ static HRESULT d3d11_update_constant_buffer(d3d11_context_t *ctx,
         ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)buffer, 0);
         return E_POINTER;
     }
+    if ((size_t)desc.ByteWidth > size)
+        memset(mapped.pData, 0, (size_t)desc.ByteWidth);
     memcpy(mapped.pData, data, size);
     ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)buffer, 0);
     return S_OK;
@@ -1155,6 +1157,8 @@ static int d3d11_upload_dynamic_buffer(d3d11_context_t *ctx,
         d3d11_log_hresult("CreateBuffer(dynamic)", hr);
         return 0;
     }
+    if (!*buffer || *capacity < bytes)
+        return 0;
     hr = ID3D11DeviceContext_Map(
         ctx->ctx, (ID3D11Resource *)*buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
     if (FAILED(hr)) {
@@ -1190,9 +1194,17 @@ static int d3d11_ensure_instance_upload_capacity(d3d11_context_t *ctx, int32_t i
 
     new_capacity = ctx->instance_upload_capacity > 0 ? ctx->instance_upload_capacity : 32u;
     while (new_capacity < (size_t)instance_count) {
+        size_t next_capacity;
         if (new_capacity > SIZE_MAX / 2u)
             return 0;
-        new_capacity *= 2u;
+        next_capacity = new_capacity * 2u;
+        if (next_capacity > (size_t)INT_MAX ||
+            !vgfx3d_d3d11_compute_instance_upload_bytes(
+                (int32_t)next_capacity, sizeof(d3d_instance_data_t), &upload_bytes)) {
+            new_capacity = (size_t)instance_count;
+            break;
+        }
+        new_capacity = next_capacity;
     }
     if (new_capacity > SIZE_MAX / sizeof(*new_data))
         return 0;
@@ -1270,14 +1282,20 @@ static int d3d11_acquire_mesh_buffers(d3d11_context_t *ctx,
                                       ID3D11Buffer **out_ib) {
     size_t vertex_bytes;
     size_t index_bytes;
+    uint32_t index_count;
 
     if (!ctx || !cmd || !out_vb || !out_ib || !cmd->vertices || !cmd->indices ||
         cmd->vertex_count == 0 || cmd->index_count == 0)
         return 0;
+    *out_vb = NULL;
+    *out_ib = NULL;
+    index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
+    if (index_count == 0)
+        return 0;
 
     if (!d3d11_checked_mul_size(
             (size_t)cmd->vertex_count, sizeof(vgfx3d_vertex_t), &vertex_bytes) ||
-        !d3d11_checked_mul_size((size_t)cmd->index_count, sizeof(uint32_t), &index_bytes))
+        !d3d11_checked_mul_size((size_t)index_count, sizeof(uint32_t), &index_bytes))
         return 0;
     if (!cmd->geometry_key || cmd->geometry_revision == 0) {
         if (!d3d11_upload_dynamic_buffer(ctx,
@@ -1322,7 +1340,7 @@ static int d3d11_acquire_mesh_buffers(d3d11_context_t *ctx,
             return 0;
 
         if (slot->key != cmd->geometry_key || slot->revision != cmd->geometry_revision ||
-            slot->vertex_count != cmd->vertex_count || slot->index_count != cmd->index_count ||
+            slot->vertex_count != cmd->vertex_count || slot->index_count != index_count ||
             !slot->vb || !slot->ib) {
             d3d11_release_mesh_cache_entry(slot);
             hr = d3d11_create_static_buffer(
@@ -1342,7 +1360,7 @@ static int d3d11_acquire_mesh_buffers(d3d11_context_t *ctx,
             slot->key = cmd->geometry_key;
             slot->revision = cmd->geometry_revision;
             slot->vertex_count = cmd->vertex_count;
-            slot->index_count = cmd->index_count;
+            slot->index_count = index_count;
         }
 
         slot->last_used_frame = ctx->frame_serial;

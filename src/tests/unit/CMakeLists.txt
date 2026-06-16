@@ -1477,6 +1477,10 @@ function(viper_add_runtime_tests)
             ${CMAKE_SOURCE_DIR}/src/runtime/graphics/2d/rt_sprite.c)
     target_compile_definitions(test_rt_sprite_contract PRIVATE
             RT_PIXELS_INTERNAL_ASSUME_STRUCT_HANDLE=1)
+    if (WIN32)
+        target_sources(test_rt_sprite_contract PRIVATE
+                ${VIPER_TESTS_DIR}/runtime/RTFilePathUtf8WideShim.c)
+    endif ()
 
     viper_add_test(test_rt_listview ${VIPER_TESTS_DIR}/runtime/RTListViewTests.cpp)
     target_link_libraries(test_rt_listview PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
@@ -1519,6 +1523,10 @@ function(viper_add_runtime_tests)
             ${VIPER_TESTS_DIR}/runtime/RTBitmapFontContractTests.cpp
             ${CMAKE_SOURCE_DIR}/src/runtime/graphics/text/rt_bitmapfont.c)
     target_compile_definitions(test_rt_bitmapfont_contract PRIVATE VIPER_ENABLE_GRAPHICS=1)
+    if (WIN32)
+        target_sources(test_rt_bitmapfont_contract PRIVATE
+                ${VIPER_TESTS_DIR}/runtime/RTFilePathUtf8WideShim.c)
+    endif ()
 
     viper_add_test(test_rt_canvas_frame ${VIPER_TESTS_DIR}/runtime/RTCanvasFrameTests.cpp)
     target_link_libraries(test_rt_canvas_frame PRIVATE ${VIPER_RUNTIME_TEST_LIBS})

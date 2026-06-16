@@ -15,9 +15,9 @@ static void d3d11_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, floa
     (void)win;
     if (!ctx)
         return;
-    ctx->clear_r = r;
-    ctx->clear_g = g;
-    ctx->clear_b = b;
+    ctx->clear_r = vgfx3d_d3d11_clamp_float_param(r, 0.0f, 1.0f, 0.0f);
+    ctx->clear_g = vgfx3d_d3d11_clamp_float_param(g, 0.0f, 1.0f, 0.0f);
+    ctx->clear_b = vgfx3d_d3d11_clamp_float_param(b, 0.0f, 1.0f, 0.0f);
 }
 
 /// @brief Backend `begin_frame` — set up matrices, target selection, and clear.
@@ -39,18 +39,30 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     ctx->presented_color_valid = 0;
     ctx->shadow_pass_slot = -1;
 
-    memcpy(ctx->view, cam->view, sizeof(ctx->view));
-    memcpy(ctx->projection, cam->projection, sizeof(ctx->projection));
-    mat4f_mul_d3d(cam->projection, cam->view, ctx->vp);
+    vgfx3d_d3d11_copy_mat4_finite_or_identity(ctx->view, cam->view);
+    vgfx3d_d3d11_copy_mat4_finite_or_identity(ctx->projection, cam->projection);
+    mat4f_mul_d3d(ctx->projection, ctx->view, ctx->vp);
     if (vgfx3d_invert_matrix4(ctx->vp, ctx->inv_vp) != 0)
         memcpy(ctx->inv_vp, k_identity4x4, sizeof(ctx->inv_vp));
-    memcpy(ctx->cam_pos, cam->position, sizeof(float) * 3);
-    memcpy(ctx->cam_forward, cam->forward, sizeof(float) * 3);
+    vgfx3d_d3d11_copy_float_array_finite_or(ctx->cam_pos, cam->position, 3u, 0.0f);
+    if (vgfx3d_d3d11_float_array_is_finite(cam->forward, 3u))
+        memcpy(ctx->cam_forward, cam->forward, sizeof(float) * 3u);
+    else {
+        ctx->cam_forward[0] = 0.0f;
+        ctx->cam_forward[1] = 0.0f;
+        ctx->cam_forward[2] = -1.0f;
+    }
     ctx->cam_is_ortho = cam->is_ortho ? 1 : 0;
     ctx->fog_enabled = cam->fog_enabled;
-    ctx->fog_near = cam->fog_near;
-    ctx->fog_far = cam->fog_far;
-    memcpy(ctx->fog_color, cam->fog_color, sizeof(ctx->fog_color));
+    ctx->fog_near = vgfx3d_d3d11_finite_or(cam->fog_near, 10.0f);
+    if (ctx->fog_near < 0.0f)
+        ctx->fog_near = 0.0f;
+    ctx->fog_far = vgfx3d_d3d11_finite_or(cam->fog_far, 50.0f);
+    if (ctx->fog_far <= ctx->fog_near)
+        ctx->fog_far = ctx->fog_near + 1.0f;
+    ctx->fog_color[0] = vgfx3d_d3d11_clamp_float_param(cam->fog_color[0], 0.0f, 1.0f, 0.5f);
+    ctx->fog_color[1] = vgfx3d_d3d11_clamp_float_param(cam->fog_color[1], 0.0f, 1.0f, 0.5f);
+    ctx->fog_color[2] = vgfx3d_d3d11_clamp_float_param(cam->fog_color[2], 0.0f, 1.0f, 0.5f);
     if (vgfx3d_d3d11_should_reset_composited_swapchain_for_frame(ctx->rtt_active,
                                                                  cam->load_existing_color))
         ctx->scene_composited_to_swapchain = 0;
@@ -102,7 +114,7 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
             &history,
             ctx->vp,
             ctx->inv_vp,
-            cam->position,
+            ctx->cam_pos,
             ctx->current_pass_is_overlay,
             (int8_t)vgfx3d_d3d11_uses_separate_overlay_target(ctx->active_target_kind,
                                                               d3d11_has_overlay_target(ctx)));
@@ -930,7 +942,7 @@ static void d3d11_shadow_begin(void *ctx_ptr,
     }
 
     ctx->shadow_pass_slot = slot;
-    memcpy(ctx->shadow_vp[slot], light_vp, sizeof(ctx->shadow_vp[slot]));
+    vgfx3d_d3d11_copy_mat4_finite_or_identity(ctx->shadow_vp[slot], light_vp);
     d3d11_unbind_draw_resources(ctx);
     d3d11_unbind_shadow_resources(ctx);
     ID3D11DeviceContext_OMSetRenderTargets(ctx->ctx, 0, NULL, ctx->shadow_dsv[slot]);
@@ -1075,7 +1087,7 @@ static void d3d11_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
         return;
     }
     d3d11_recompute_shadow_count(ctx);
-    ctx->shadow_bias = bias;
+    ctx->shadow_bias = vgfx3d_d3d11_finite_or(bias, 0.0f);
     ctx->shadow_pass_slot = -1;
     d3d11_select_current_targets(ctx);
 }

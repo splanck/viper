@@ -117,6 +117,20 @@ static void test_pack_bone_palette_keeps_highest_supported_bone(void) {
                 "Bone packing preserves the tail matrix element of the final supported bone");
 }
 
+static void test_pack_bone_palette_identity_pads_invalid_bones(void) {
+    float src[16];
+    float dst[VGFX3D_D3D11_BONE_PALETTE_FLOATS];
+
+    set_identity4x4(src);
+    src[3] = HUGE_VALF;
+    memset(dst, 0xCD, sizeof(dst));
+    vgfx3d_d3d11_pack_bone_palette(dst, src, 1);
+
+    EXPECT_NEAR(dst[0], 1.0f, 1e-6f, "Invalid bone matrix falls back to identity");
+    EXPECT_NEAR(dst[3], 0.0f, 1e-6f, "Invalid bone matrix clears non-finite translation");
+    EXPECT_NEAR(dst[15], 1.0f, 1e-6f, "Invalid bone matrix preserves identity tail");
+}
+
 static void test_bone_palette_upload_size_covers_supported_bone_count(void) {
     EXPECT_TRUE(VGFX3D_D3D11_BONE_PALETTE_FLOATS == VGFX3D_D3D11_MAX_BONES * 16u,
                 "Bone palette upload has one 4x4 matrix per supported bone");
@@ -135,6 +149,41 @@ static void test_pack_scalar_array4_matches_hlsl_layout(void) {
     EXPECT_NEAR(packed[0][3], 4.0f, 1e-6f, "Packed scalar array stores lane 3");
     EXPECT_NEAR(packed[1][0], 5.0f, 1e-6f, "Packed scalar array advances to the second vector");
     EXPECT_NEAR(packed[1][3], 8.0f, 1e-6f, "Packed scalar array stores the final scalar");
+
+    src[2] = HUGE_VALF;
+    src[5] = -HUGE_VALF;
+    vgfx3d_d3d11_pack_scalar_array4(packed, 2, src, 8);
+    EXPECT_NEAR(packed[0][2], 0.0f, 1e-6f, "Packed scalar array sanitizes positive infinity");
+    EXPECT_NEAR(packed[1][1], 0.0f, 1e-6f, "Packed scalar array sanitizes negative infinity");
+}
+
+static void test_finite_copy_helpers(void) {
+    float good[4] = {1.0f, 2.0f, 3.0f, 4.0f};
+    float bad[4] = {1.0f, HUGE_VALF, 3.0f, -HUGE_VALF};
+    float copied[4];
+    float matrix[16];
+    float fallback[16];
+    float out[16];
+
+    EXPECT_TRUE(vgfx3d_d3d11_float_array_is_finite(good, 4u) == 1,
+                "Finite-array helper accepts finite values");
+    EXPECT_TRUE(vgfx3d_d3d11_float_array_is_finite(bad, 4u) == 0,
+                "Finite-array helper rejects non-finite values");
+    vgfx3d_d3d11_copy_float_array_finite_or(copied, bad, 4u, 0.25f);
+    EXPECT_NEAR(copied[0], 1.0f, 1e-6f, "Finite-array copy preserves finite lanes");
+    EXPECT_NEAR(copied[1], 0.25f, 1e-6f, "Finite-array copy replaces positive infinity");
+    EXPECT_NEAR(copied[3], 0.25f, 1e-6f, "Finite-array copy replaces negative infinity");
+
+    set_identity4x4(matrix);
+    matrix[7] = HUGE_VALF;
+    vgfx3d_d3d11_copy_mat4_finite_or_identity(out, matrix);
+    EXPECT_NEAR(out[0], 1.0f, 1e-6f, "Invalid matrix identity fallback writes first diagonal");
+    EXPECT_NEAR(out[7], 0.0f, 1e-6f, "Invalid matrix identity fallback clears bad lane");
+
+    set_identity4x4(fallback);
+    fallback[3] = 9.0f;
+    vgfx3d_d3d11_copy_mat4_finite_or(out, matrix, fallback);
+    EXPECT_NEAR(out[3], 9.0f, 1e-6f, "Invalid matrix copies finite fallback matrix");
 }
 
 static void test_constant_buffer_struct_sizes_match_expected_layout(void) {
@@ -176,6 +225,14 @@ static void test_fill_instance_data_uses_previous_or_current_matrices(void) {
                 instances[1].model[3],
                 1e-6f,
                 "Instance data falls back to the current matrix when no history exists");
+    models[16] = HUGE_VALF;
+    memset(instances, 0, sizeof(instances));
+    vgfx3d_d3d11_fill_instance_data(instances, 2, models, NULL, 0);
+    EXPECT_NEAR(instances[1].model[0],
+                1.0f,
+                1e-6f,
+                "Instance data replaces invalid model matrices with identity");
+    EXPECT_NEAR(instances[1].model[3], 0.0f, 1e-6f, "Instance data clears non-finite matrix lanes");
     EXPECT_TRUE(vgfx3d_d3d11_should_use_previous_instance_matrices(prev_models, 1) == 1,
                 "Previous-instance helper accepts a flagged non-null history payload");
     EXPECT_TRUE(vgfx3d_d3d11_should_use_previous_instance_matrices(NULL, 1) == 0,
@@ -389,11 +446,9 @@ static void test_capacity_and_mip_helpers(void) {
                 "Row-byte helper computes tightly packed RGBA16F rows");
     EXPECT_TRUE(vgfx3d_d3d11_compute_row_bytes(0, 4, &bytes) == 0 && bytes == 0u,
                 "Row-byte helper rejects non-positive widths");
-    EXPECT_TRUE(vgfx3d_d3d11_compute_buffer_byte_width(64u, &byte_width) == 1 &&
-                    byte_width == 64u,
+    EXPECT_TRUE(vgfx3d_d3d11_compute_buffer_byte_width(64u, &byte_width) == 1 && byte_width == 64u,
                 "Buffer ByteWidth helper preserves valid non-zero spans");
-    EXPECT_TRUE(vgfx3d_d3d11_compute_buffer_byte_width(0u, &byte_width) == 0 &&
-                    byte_width == 0u,
+    EXPECT_TRUE(vgfx3d_d3d11_compute_buffer_byte_width(0u, &byte_width) == 0 && byte_width == 0u,
                 "Buffer ByteWidth helper rejects zero-byte buffers");
     EXPECT_TRUE(vgfx3d_d3d11_compute_buffer_byte_width((size_t)UINT_MAX + 1u, &byte_width) == 0 &&
                     byte_width == 0u,
@@ -415,11 +470,9 @@ static void test_capacity_and_mip_helpers(void) {
                     VGFX3D_D3D11_MAX_CONSTANT_BUFFER_BYTES + 1u, &byte_width) == 0 &&
                     byte_width == 0u,
                 "Constant-buffer ByteWidth helper rejects oversized cbuffers");
-    EXPECT_TRUE(vgfx3d_d3d11_compute_rgba8_upload_pitch(3, &row_pitch) == 1 &&
-                    row_pitch == 12u,
+    EXPECT_TRUE(vgfx3d_d3d11_compute_rgba8_upload_pitch(3, &row_pitch) == 1 && row_pitch == 12u,
                 "RGBA8 upload-pitch helper computes tightly packed rows");
-    EXPECT_TRUE(vgfx3d_d3d11_compute_rgba8_upload_pitch(0, &row_pitch) == 0 &&
-                    row_pitch == 0u,
+    EXPECT_TRUE(vgfx3d_d3d11_compute_rgba8_upload_pitch(0, &row_pitch) == 0 && row_pitch == 0u,
                 "RGBA8 upload-pitch helper rejects invalid widths");
     EXPECT_TRUE(vgfx3d_d3d11_compute_rgba8_upload_pitch(INT_MAX, &row_pitch) == 0 &&
                     row_pitch == 0u,
@@ -477,6 +530,38 @@ static void test_d3d11_sanitization_helpers(void) {
                 "Integer parameter clamp raises low values");
     EXPECT_TRUE(vgfx3d_d3d11_clamp_int_param(5, 8, 2) == 5,
                 "Integer parameter clamp tolerates inverted bounds");
+    EXPECT_NEAR(vgfx3d_d3d11_finite_or(2.5f, 1.0f),
+                2.5f,
+                1e-6f,
+                "Finite float sanitizer preserves finite parameters");
+    EXPECT_NEAR(vgfx3d_d3d11_finite_or(HUGE_VALF, 1.0f),
+                1.0f,
+                1e-6f,
+                "Finite float sanitizer replaces positive infinity");
+    EXPECT_NEAR(vgfx3d_d3d11_finite_or(-HUGE_VALF, -2.0f),
+                -2.0f,
+                1e-6f,
+                "Finite float sanitizer replaces negative infinity");
+    EXPECT_NEAR(vgfx3d_d3d11_clamp_float_param(0.5f, 0.0f, 1.0f, 0.25f),
+                0.5f,
+                1e-6f,
+                "Float parameter clamp preserves in-range values");
+    EXPECT_NEAR(vgfx3d_d3d11_clamp_float_param(-1.0f, 0.0f, 1.0f, 0.25f),
+                0.0f,
+                1e-6f,
+                "Float parameter clamp raises low values");
+    EXPECT_NEAR(vgfx3d_d3d11_clamp_float_param(2.0f, 0.0f, 1.0f, 0.25f),
+                1.0f,
+                1e-6f,
+                "Float parameter clamp caps high values");
+    EXPECT_NEAR(vgfx3d_d3d11_clamp_float_param(HUGE_VALF, 0.0f, 1.0f, 0.25f),
+                0.25f,
+                1e-6f,
+                "Float parameter clamp applies fallback for non-finite values");
+    EXPECT_NEAR(vgfx3d_d3d11_clamp_float_param(0.5f, 1.0f, 0.0f, 0.25f),
+                0.5f,
+                1e-6f,
+                "Float parameter clamp tolerates inverted bounds");
     EXPECT_NEAR(vgfx3d_d3d11_sanitize_slope_scaled_depth_bias(1.25f),
                 1.25f,
                 1e-6f,
@@ -495,8 +580,7 @@ static void test_d3d11_sanitization_helpers(void) {
                 "Saturating add preserves normal sums");
     EXPECT_TRUE(vgfx3d_d3d11_saturating_add_u64(UINT64_MAX - 3u, 4u) == UINT64_MAX,
                 "Saturating add clamps overflow instead of wrapping");
-    EXPECT_TRUE(vgfx3d_d3d11_compute_morph_float_count(2u, 3, &elements) == 1 &&
-                    elements == 18u,
+    EXPECT_TRUE(vgfx3d_d3d11_compute_morph_float_count(2u, 3, &elements) == 1 && elements == 18u,
                 "Morph float-count helper computes shape * vertex * xyz floats");
     EXPECT_TRUE(vgfx3d_d3d11_compute_morph_float_count(1024u, 64, &elements) == 1 &&
                     elements == (size_t)VGFX3D_D3D11_MAX_MORPH_SHAPES * 1024u * 3u,
@@ -751,9 +835,8 @@ static void test_shadow_and_rtt_policy_helpers(void) {
                 "Shadow count helper advertises the first complete slot");
     EXPECT_TRUE(vgfx3d_d3d11_compute_shadow_count(VGFX3D_MAX_SHADOW_LIGHTS, complete_sparse) == 0,
                 "Shadow count helper rejects sparse shadow slots");
-    EXPECT_TRUE(
-        vgfx3d_d3d11_compute_shadow_count(VGFX3D_MAX_SHADOW_LIGHTS, complete_negative) == 0,
-        "Shadow count helper treats negative sentinels as incomplete slots");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_shadow_count(VGFX3D_MAX_SHADOW_LIGHTS, complete_negative) == 0,
+                "Shadow count helper treats negative sentinels as incomplete slots");
     EXPECT_TRUE(vgfx3d_d3d11_compute_shadow_count(VGFX3D_MAX_SHADOW_LIGHTS, complete_all) ==
                     VGFX3D_MAX_SHADOW_LIGHTS,
                 "Shadow count helper advertises only a contiguous complete prefix");
@@ -834,45 +917,37 @@ static void test_postfx_readback_policy_helpers(void) {
                 "Presented snapshot is invalidated when the pre-present copy fails");
 
     EXPECT_TRUE(
-        vgfx3d_d3d11_choose_readback_kind(1, 1, 0, 1, 1, 1, 1, 1, 1,
-                                          VGFX3D_D3D11_TARGET_SCENE) ==
+        vgfx3d_d3d11_choose_readback_kind(1, 1, 0, 1, 1, 1, 1, 1, 1, VGFX3D_D3D11_TARGET_SCENE) ==
             VGFX3D_D3D11_READBACK_PRESENTED_SNAPSHOT,
         "Readback uses the pre-present snapshot after a finalized swapchain frame");
     EXPECT_TRUE(
-        vgfx3d_d3d11_choose_readback_kind(1, 0, 0, 0, 0, 0, 0, 0, 1,
-                                          VGFX3D_D3D11_TARGET_SCENE) ==
+        vgfx3d_d3d11_choose_readback_kind(1, 0, 0, 0, 0, 0, 0, 0, 1, VGFX3D_D3D11_TARGET_SCENE) ==
             VGFX3D_D3D11_READBACK_SCENE_COLOR,
         "Readback ignores a stale presented snapshot flag when no snapshot texture exists");
     EXPECT_TRUE(
-        vgfx3d_d3d11_choose_readback_kind(0, 0, 1, 1, 1, 1, 1, 1, 1,
-                                          VGFX3D_D3D11_TARGET_SCENE) ==
+        vgfx3d_d3d11_choose_readback_kind(0, 0, 1, 1, 1, 1, 1, 1, 1, VGFX3D_D3D11_TARGET_SCENE) ==
             VGFX3D_D3D11_READBACK_BACKBUFFER,
         "Readback uses the visible backbuffer after apply_postfx already composited");
     EXPECT_TRUE(
-        vgfx3d_d3d11_choose_readback_kind(0, 0, 0, 1, 1, 1, 2, 1, 1,
-                                          VGFX3D_D3D11_TARGET_SCENE) ==
+        vgfx3d_d3d11_choose_readback_kind(0, 0, 0, 1, 1, 1, 2, 1, 1, VGFX3D_D3D11_TARGET_SCENE) ==
             VGFX3D_D3D11_READBACK_POSTFX_COMPOSITE,
         "Readback replays a valid GPU postfx chain when the scene is not composited");
     EXPECT_TRUE(
-        vgfx3d_d3d11_choose_readback_kind(0, 0, 0, 1, 1, 1, 2, 0, 1,
-                                          VGFX3D_D3D11_TARGET_SCENE) ==
+        vgfx3d_d3d11_choose_readback_kind(0, 0, 0, 1, 1, 1, 2, 0, 1, VGFX3D_D3D11_TARGET_SCENE) ==
             VGFX3D_D3D11_READBACK_SCENE_COLOR,
         "Readback avoids replaying malformed postfx snapshots without effects storage");
+    EXPECT_TRUE(vgfx3d_d3d11_choose_readback_kind(
+                    0, 0, 0, 1, 1, 1, 2, 1, 0, VGFX3D_D3D11_TARGET_SWAPCHAIN) ==
+                    VGFX3D_D3D11_READBACK_BACKBUFFER,
+                "Readback avoids replaying postfx snapshots when scene targets are unavailable");
     EXPECT_TRUE(
-        vgfx3d_d3d11_choose_readback_kind(0, 0, 0, 1, 1, 1, 2, 1, 0,
-                                          VGFX3D_D3D11_TARGET_SWAPCHAIN) ==
-            VGFX3D_D3D11_READBACK_BACKBUFFER,
-        "Readback avoids replaying postfx snapshots when scene targets are unavailable");
-    EXPECT_TRUE(
-        vgfx3d_d3d11_choose_readback_kind(0, 0, 0, 0, 0, 0, 0, 0, 1,
-                                          VGFX3D_D3D11_TARGET_SCENE) ==
+        vgfx3d_d3d11_choose_readback_kind(0, 0, 0, 0, 0, 0, 0, 0, 1, VGFX3D_D3D11_TARGET_SCENE) ==
             VGFX3D_D3D11_READBACK_SCENE_COLOR,
         "Readback can source the offscreen scene when it is still the active target");
-    EXPECT_TRUE(
-        vgfx3d_d3d11_choose_readback_kind(0, 0, 0, 0, 0, 0, 0, 0, 1,
-                                          VGFX3D_D3D11_TARGET_SWAPCHAIN) ==
-            VGFX3D_D3D11_READBACK_BACKBUFFER,
-        "Readback falls back to the swapchain when the current target is the backbuffer");
+    EXPECT_TRUE(vgfx3d_d3d11_choose_readback_kind(
+                    0, 0, 0, 0, 0, 0, 0, 0, 1, VGFX3D_D3D11_TARGET_SWAPCHAIN) ==
+                    VGFX3D_D3D11_READBACK_BACKBUFFER,
+                "Readback falls back to the swapchain when the current target is the backbuffer");
 }
 
 static void test_shadow_projection_helper_handles_orthographic_and_perspective(void) {
@@ -919,8 +994,10 @@ int main(void) {
     test_pack_bone_palette_identity_pads_unused_bones();
     test_pack_bone_palette_identity_pads_empty_source();
     test_pack_bone_palette_keeps_highest_supported_bone();
+    test_pack_bone_palette_identity_pads_invalid_bones();
     test_bone_palette_upload_size_covers_supported_bone_count();
     test_pack_scalar_array4_matches_hlsl_layout();
+    test_finite_copy_helpers();
     test_constant_buffer_struct_sizes_match_expected_layout();
     test_fill_instance_data_uses_previous_or_current_matrices();
     test_frame_history_preserves_scene_state_across_overlay_passes();

@@ -9,6 +9,16 @@
 // re-uploaded textures (Pixels.Set) get fresh GPU resources without
 // aliasing allocator-reused addresses to stale uploads.
 
+static HRESULT d3d11_allocate_texture_srv(d3d11_context_t *ctx,
+                                          int32_t w,
+                                          int32_t h,
+                                          ID3D11Texture2D **out_tex,
+                                          ID3D11ShaderResourceView **out_srv);
+static HRESULT d3d11_allocate_cubemap_srv(d3d11_context_t *ctx,
+                                          int32_t face_size,
+                                          ID3D11Texture2D **out_tex,
+                                          ID3D11ShaderResourceView **out_srv);
+
 /// @brief Release one 2D-texture cache slot and clear all identity/upload metadata.
 static void d3d11_release_texture_cache_entry(d3d_tex_cache_entry_t *entry) {
     if (!entry)
@@ -232,6 +242,94 @@ static void d3d11_record_texture_upload_bytes(d3d11_context_t *ctx, uint64_t byt
     ctx->texture_upload_bytes = vgfx3d_d3d11_saturating_add_u64(ctx->texture_upload_bytes, bytes);
 }
 
+/// @brief Create a one-draw RGBA8 texture SRV when the persistent cache cannot grow.
+static ID3D11ShaderResourceView *d3d11_create_temp_texture_srv(d3d11_context_t *ctx,
+                                                               const void *pixels,
+                                                               d3d_temp_srv_t *out_temp) {
+    uint8_t *rgba = NULL;
+    int32_t width = 0;
+    int32_t height = 0;
+    uint32_t row_pitch = 0;
+    uint64_t upload_bytes;
+
+    if (!ctx || !ctx->ctx || !pixels || !out_temp)
+        return NULL;
+    memset(out_temp, 0, sizeof(*out_temp));
+    if (vgfx3d_unpack_pixels_rgba(pixels, &width, &height, &rgba) != 0 || !rgba ||
+        !vgfx3d_d3d11_is_valid_texture2d_extent(width, height) ||
+        !vgfx3d_d3d11_compute_rgba8_upload_pitch(width, &row_pitch)) {
+        free(rgba);
+        return NULL;
+    }
+    if (FAILED(d3d11_allocate_texture_srv(ctx, width, height, &out_temp->tex, &out_temp->srv))) {
+        free(rgba);
+        d3d11_release_temp_srv(out_temp);
+        return NULL;
+    }
+    d3d11_unbind_draw_resources(ctx);
+    ID3D11DeviceContext_UpdateSubresource(
+        ctx->ctx, (ID3D11Resource *)out_temp->tex, 0, NULL, rgba, row_pitch, 0);
+    ID3D11DeviceContext_GenerateMips(ctx->ctx, out_temp->srv);
+    upload_bytes = (uint64_t)(uint32_t)width * (uint64_t)(uint32_t)height * 4u;
+    d3d11_record_texture_upload_bytes(ctx, upload_bytes);
+    free(rgba);
+    out_temp->temporary = 1;
+    return out_temp->srv;
+}
+
+/// @brief Create a one-draw cubemap SRV when the persistent cubemap cache cannot grow.
+static ID3D11ShaderResourceView *d3d11_create_temp_cubemap_srv(d3d11_context_t *ctx,
+                                                               const rt_cubemap3d *cubemap,
+                                                               d3d_temp_srv_t *out_temp) {
+    uint8_t *faces[6] = {NULL, NULL, NULL, NULL, NULL, NULL};
+    int32_t face_size = 0;
+    int32_t mip_count;
+    uint32_t row_pitch = 0;
+    uint64_t face_bytes;
+
+    if (!ctx || !ctx->ctx || !cubemap || !out_temp)
+        return NULL;
+    memset(out_temp, 0, sizeof(*out_temp));
+    if (vgfx3d_unpack_cubemap_faces_rgba(cubemap, &face_size, faces) != 0 ||
+        !vgfx3d_d3d11_is_valid_cubemap_extent(face_size) ||
+        !vgfx3d_d3d11_compute_rgba8_upload_pitch(face_size, &row_pitch)) {
+        for (int32_t i = 0; i < 6; i++)
+            free(faces[i]);
+        return NULL;
+    }
+    for (int32_t i = 0; i < 6; i++) {
+        if (!faces[i]) {
+            for (int32_t face = 0; face < 6; face++)
+                free(faces[face]);
+            return NULL;
+        }
+    }
+    if (FAILED(d3d11_allocate_cubemap_srv(ctx, face_size, &out_temp->tex, &out_temp->srv))) {
+        for (int32_t i = 0; i < 6; i++)
+            free(faces[i]);
+        d3d11_release_temp_srv(out_temp);
+        return NULL;
+    }
+    mip_count = vgfx3d_d3d11_compute_mip_count(face_size, face_size);
+    d3d11_unbind_draw_resources(ctx);
+    for (int32_t face = 0; face < 6; face++) {
+        ID3D11DeviceContext_UpdateSubresource(ctx->ctx,
+                                              (ID3D11Resource *)out_temp->tex,
+                                              D3D11CalcSubresource(0, (UINT)face, (UINT)mip_count),
+                                              NULL,
+                                              faces[face],
+                                              row_pitch,
+                                              0);
+        free(faces[face]);
+        faces[face] = NULL;
+    }
+    ID3D11DeviceContext_GenerateMips(ctx->ctx, out_temp->srv);
+    face_bytes = (uint64_t)(uint32_t)face_size * (uint64_t)(uint32_t)face_size * 4u;
+    d3d11_record_texture_upload_bytes(ctx, face_bytes * 6u);
+    out_temp->temporary = 1;
+    return out_temp->srv;
+}
+
 /// @brief Bytes still to upload for a cached texture entry (native or RGBA streaming path).
 static uint64_t d3d11_texture_pending_bytes(const d3d_tex_cache_entry_t *entry) {
     if (!entry)
@@ -440,11 +538,8 @@ static HRESULT d3d11_allocate_native_texture_srv(d3d11_context_t *ctx,
         mip_count > UINT_MAX)
         return E_INVALIDARG;
     format = d3d11_native_texture_format(first_mip->format_id);
-    if (format == DXGI_FORMAT_UNKNOWN ||
-        !d3d11_format_supports_texture_sampling(ctx, format) ||
-        !vgfx3d_d3d11_is_valid_native_mip_count(first_mip->width,
-                                                first_mip->height,
-                                                mip_count) ||
+    if (format == DXGI_FORMAT_UNKNOWN || !d3d11_format_supports_texture_sampling(ctx, format) ||
+        !vgfx3d_d3d11_is_valid_native_mip_count(first_mip->width, first_mip->height, mip_count) ||
         !vgfx3d_d3d11_validate_native_mip_desc(first_mip,
                                                NULL,
                                                first_mip->format_id,
@@ -565,10 +660,9 @@ static int d3d11_continue_native_texture_upload(d3d11_context_t *ctx,
         upload_bytes = (uint64_t)(uint32_t)rows * row_bytes;
         if (offset > mip.bytes || upload_bytes > mip.bytes - offset || upload_bytes > UINT_MAX)
             return 0;
-        top_row = (uint64_t)(uint32_t)entry->native_next_block_row *
-                  (uint64_t)(uint32_t)mip.block_height;
-        bottom_row = top_row + (uint64_t)(uint32_t)rows *
-                                   (uint64_t)(uint32_t)mip.block_height;
+        top_row =
+            (uint64_t)(uint32_t)entry->native_next_block_row * (uint64_t)(uint32_t)mip.block_height;
+        bottom_row = top_row + (uint64_t)(uint32_t)rows * (uint64_t)(uint32_t)mip.block_height;
         if (top_row >= (uint64_t)(uint32_t)mip.height || top_row > UINT_MAX)
             return 0;
         if (bottom_row > (uint64_t)(uint32_t)mip.height)
@@ -810,8 +904,7 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_srv(d3d11_context_t *ctx,
         }
         return entry->upload_in_progress ? NULL : entry->srv;
     }
-    (void)out_temp;
-    return NULL;
+    return d3d11_create_temp_texture_srv(ctx, pixels, out_temp);
 }
 
 /// @brief Get the SRV for a native TextureAsset3D, creating/streaming it on a cache miss.
@@ -992,8 +1085,7 @@ static int d3d11_continue_cubemap_upload(d3d11_context_t *ctx,
                                             &slice_rows,
                                             &rgba) != 0 ||
             !rgba || slice_size != entry->face_size || slice_rows <= 0 ||
-            !vgfx3d_d3d11_validate_row_span(
-                entry->face_size, entry->upload_next_row, slice_rows)) {
+            !vgfx3d_d3d11_validate_row_span(entry->face_size, entry->upload_next_row, slice_rows)) {
             free(rgba);
             return 0;
         }
@@ -1128,6 +1220,5 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_cubemap_srv(d3d11_context_t
         return entry->upload_in_progress ? NULL : entry->srv;
     }
 
-    (void)out_temp;
-    return NULL;
+    return d3d11_create_temp_cubemap_srv(ctx, cubemap, out_temp);
 }

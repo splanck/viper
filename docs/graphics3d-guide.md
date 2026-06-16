@@ -283,7 +283,8 @@ native compressed `TextureAsset3D` mip blocks are submitted by resident mip, by
 positive values cap per-frame upload bytes while preserving progress for sub-row budgets. Cache hits
 and software/unsupported backends report `0`; non-overlay frame begin resets the counter. D3D11
 validates row slices, native block rows, block layouts, and D3D11-sized upload byte fields before
-issuing texture updates.
+issuing texture updates. If a D3D11 texture/cubemap cache table cannot grow, a valid upload may
+still render through a one-draw temporary SRV that is released after the draw.
 `TextureUploadPendingBytes` returns to `0` once all material/cubemap row slices
 and native compressed mip submissions drain. Use it
 to correlate async asset commits and streaming movement with GPU texture upload pressure.

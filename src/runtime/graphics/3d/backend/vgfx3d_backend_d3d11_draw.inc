@@ -5,6 +5,9 @@
 // constant-buffer packing, pipeline binding, and draw submission
 //===----------------------------------------------------------------------===//
 
+#define D3D11_MATERIAL_EMISSIVE_INTENSITY_MAX 1000000.0f
+#define D3D11_MATERIAL_NORMAL_SCALE_MAX 1000.0f
+
 /// @brief Push the currently-selected render target(s) and viewport into the pipeline.
 ///
 /// Combines `OMSetRenderTargets` (color RTVs + depth DSV) with a
@@ -173,9 +176,9 @@ static D3D11_TEXTURE_ADDRESS_MODE d3d11_sampler_address_mode(int index) {
 /// @details Resolves wrap_s, wrap_t, filter, and anisotropy from per-slot or primary material
 ///          parameters,
 ///          maps them to cache indices via `d3d11_sampler_wrap_index`, and returns the cached entry
-///          in `ctx->material_samplers[wrap_s][wrap_t][filter][anisotropy]` when available. Otherwise creates
-///          a new `ID3D11SamplerState` and caches it. Falls back to `ctx->linear_wrap_sampler` on
-///          creation failure or null cmd.
+///          in `ctx->material_samplers[wrap_s][wrap_t][filter][anisotropy]` when available.
+///          Otherwise creates a new `ID3D11SamplerState` and caches it. Falls back to
+///          `ctx->linear_wrap_sampler` on creation failure or null cmd.
 static ID3D11SamplerState *d3d11_get_material_sampler(d3d11_context_t *ctx,
                                                       const vgfx3d_draw_cmd_t *cmd,
                                                       int32_t slot) {
@@ -270,20 +273,20 @@ static void d3d11_prepare_object_data(const vgfx3d_draw_cmd_t *cmd, d3d_per_obje
     int morph_count = 0;
 
     memset(object_data, 0, sizeof(*object_data));
-    memcpy(object_data->model, cmd->model_matrix, sizeof(object_data->model));
-    memcpy(object_data->prev_model,
-           cmd->has_prev_model_matrix ? cmd->prev_model_matrix : cmd->model_matrix,
-           sizeof(object_data->prev_model));
-    vgfx3d_compute_normal_matrix4(cmd->model_matrix, object_data->normal);
+    vgfx3d_d3d11_copy_mat4_finite_or_identity(object_data->model, cmd->model_matrix);
+    vgfx3d_d3d11_copy_mat4_finite_or(object_data->prev_model,
+                                     cmd->has_prev_model_matrix ? cmd->prev_model_matrix
+                                                                : cmd->model_matrix,
+                                     object_data->model);
+    vgfx3d_compute_normal_matrix4(object_data->model, object_data->normal);
 
     object_data->has_prev_model_matrix = cmd->has_prev_model_matrix ? 1 : 0;
     object_data->has_skinning =
         vgfx3d_d3d11_should_enable_skinning(cmd->bone_palette, cmd->bone_count) ? 1 : 0;
     object_data->has_prev_skinning =
         (object_data->has_skinning && cmd->prev_bone_palette != NULL) ? 1 : 0;
-    object_data->has_prev_instance_matrices =
-        vgfx3d_d3d11_should_use_previous_instance_matrices(cmd->prev_instance_matrices,
-                                                           cmd->has_prev_instance_matrices);
+    object_data->has_prev_instance_matrices = vgfx3d_d3d11_should_use_previous_instance_matrices(
+        cmd->prev_instance_matrices, cmd->has_prev_instance_matrices);
 
     if (cmd->morph_deltas && cmd->morph_weights && cmd->morph_shape_count > 0)
         morph_count =
@@ -317,26 +320,38 @@ static void d3d11_prepare_scene_data(d3d11_context_t *ctx,
                                      int32_t light_count,
                                      const float *ambient,
                                      d3d_per_scene_t *scene_data) {
+    static const float zero_vec3[3] = {0.0f, 0.0f, 0.0f};
+    static const float forward_fallback[3] = {0.0f, 0.0f, -1.0f};
+
     memset(scene_data, 0, sizeof(*scene_data));
-    memcpy(scene_data->vp, ctx->vp, sizeof(scene_data->vp));
-    memcpy(scene_data->prev_vp, ctx->draw_prev_vp, sizeof(scene_data->prev_vp));
-    memcpy(scene_data->shadow_vp, ctx->shadow_vp, sizeof(scene_data->shadow_vp));
-    memcpy(scene_data->camera_pos, ctx->cam_pos, sizeof(float) * 3);
-    scene_data->camera_pos[3] = ctx->cam_is_ortho ? 1.0f : 0.0f;
-    memcpy(scene_data->camera_forward, ctx->cam_forward, sizeof(scene_data->camera_forward));
-    if (ambient) {
-        scene_data->ambient[0] = ambient[0];
-        scene_data->ambient[1] = ambient[1];
-        scene_data->ambient[2] = ambient[2];
+    vgfx3d_d3d11_copy_mat4_finite_or_identity(scene_data->vp, ctx->vp);
+    vgfx3d_d3d11_copy_mat4_finite_or(scene_data->prev_vp, ctx->draw_prev_vp, scene_data->vp);
+    for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
+        vgfx3d_d3d11_copy_mat4_finite_or_identity(scene_data->shadow_vp[slot],
+                                                  ctx->shadow_vp[slot]);
     }
+    vgfx3d_d3d11_copy_float_array_finite_or(scene_data->camera_pos, ctx->cam_pos, 3u, 0.0f);
+    scene_data->camera_pos[3] = ctx->cam_is_ortho ? 1.0f : 0.0f;
+    if (vgfx3d_d3d11_float_array_is_finite(ctx->cam_forward, 3u))
+        memcpy(scene_data->camera_forward, ctx->cam_forward, sizeof(scene_data->camera_forward));
+    else
+        memcpy(scene_data->camera_forward, forward_fallback, sizeof(forward_fallback));
+    if (ambient)
+        vgfx3d_d3d11_copy_float_array_finite_or(scene_data->ambient, ambient, 3u, 0.0f);
+    else
+        vgfx3d_d3d11_copy_float_array_finite_or(scene_data->ambient, zero_vec3, 3u, 0.0f);
     scene_data->ambient[3] = 1.0f;
-    scene_data->fog_color[0] = ctx->fog_color[0];
-    scene_data->fog_color[1] = ctx->fog_color[1];
-    scene_data->fog_color[2] = ctx->fog_color[2];
+    scene_data->fog_color[0] = vgfx3d_d3d11_clamp_float_param(ctx->fog_color[0], 0.0f, 1.0f, 0.5f);
+    scene_data->fog_color[1] = vgfx3d_d3d11_clamp_float_param(ctx->fog_color[1], 0.0f, 1.0f, 0.5f);
+    scene_data->fog_color[2] = vgfx3d_d3d11_clamp_float_param(ctx->fog_color[2], 0.0f, 1.0f, 0.5f);
     scene_data->fog_color[3] = ctx->fog_enabled ? 1.0f : 0.0f;
-    scene_data->fog_near = ctx->fog_near;
-    scene_data->fog_far = ctx->fog_far;
-    scene_data->shadow_bias = ctx->shadow_bias;
+    scene_data->fog_near = vgfx3d_d3d11_finite_or(ctx->fog_near, 10.0f);
+    if (scene_data->fog_near < 0.0f)
+        scene_data->fog_near = 0.0f;
+    scene_data->fog_far = vgfx3d_d3d11_finite_or(ctx->fog_far, 50.0f);
+    if (scene_data->fog_far <= scene_data->fog_near)
+        scene_data->fog_far = scene_data->fog_near + 1.0f;
+    scene_data->shadow_bias = vgfx3d_d3d11_finite_or(ctx->shadow_bias, 0.0f);
     scene_data->light_count =
         lights ? (light_count < 0
                       ? 0
@@ -361,25 +376,44 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
                                         int has_metallic_roughness_map,
                                         int has_ao_map,
                                         d3d_per_material_t *material_data) {
+    static const float uv_fallback[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+
     memset(material_data, 0, sizeof(*material_data));
-    memcpy(material_data->diffuse, cmd->diffuse_color, sizeof(material_data->diffuse));
-    material_data->specular[0] = cmd->specular[0];
-    material_data->specular[1] = cmd->specular[1];
-    material_data->specular[2] = cmd->specular[2];
-    material_data->specular[3] = cmd->shininess;
-    material_data->emissive[0] = cmd->emissive_color[0];
-    material_data->emissive[1] = cmd->emissive_color[1];
-    material_data->emissive[2] = cmd->emissive_color[2];
-    material_data->scalars[0] = cmd->alpha;
-    material_data->scalars[1] = cmd->reflectivity;
+    material_data->diffuse[0] =
+        vgfx3d_d3d11_clamp_float_param(cmd->diffuse_color[0], 0.0f, 1.0f, 1.0f);
+    material_data->diffuse[1] =
+        vgfx3d_d3d11_clamp_float_param(cmd->diffuse_color[1], 0.0f, 1.0f, 1.0f);
+    material_data->diffuse[2] =
+        vgfx3d_d3d11_clamp_float_param(cmd->diffuse_color[2], 0.0f, 1.0f, 1.0f);
+    material_data->diffuse[3] =
+        vgfx3d_d3d11_clamp_float_param(cmd->diffuse_color[3], 0.0f, 1.0f, 1.0f);
+    material_data->specular[0] = vgfx3d_d3d11_clamp_float_param(cmd->specular[0], 0.0f, 1.0f, 1.0f);
+    material_data->specular[1] = vgfx3d_d3d11_clamp_float_param(cmd->specular[1], 0.0f, 1.0f, 1.0f);
+    material_data->specular[2] = vgfx3d_d3d11_clamp_float_param(cmd->specular[2], 0.0f, 1.0f, 1.0f);
+    material_data->specular[3] = vgfx3d_d3d11_finite_or(cmd->shininess, 32.0f);
+    if (material_data->specular[3] < 0.0f)
+        material_data->specular[3] = 0.0f;
+    material_data->emissive[0] =
+        vgfx3d_d3d11_clamp_float_param(cmd->emissive_color[0], 0.0f, 1.0f, 0.0f);
+    material_data->emissive[1] =
+        vgfx3d_d3d11_clamp_float_param(cmd->emissive_color[1], 0.0f, 1.0f, 0.0f);
+    material_data->emissive[2] =
+        vgfx3d_d3d11_clamp_float_param(cmd->emissive_color[2], 0.0f, 1.0f, 0.0f);
+    material_data->scalars[0] = vgfx3d_d3d11_clamp_float_param(cmd->alpha, 0.0f, 1.0f, 1.0f);
+    material_data->scalars[1] = vgfx3d_d3d11_clamp_float_param(cmd->reflectivity, 0.0f, 1.0f, 0.0f);
     material_data->scalars[2] =
         cmd->env_map ? d3d11_cubemap_max_lod((const rt_cubemap3d *)cmd->env_map) : 0.0f;
-    material_data->pbr_scalars0[0] = cmd->metallic;
-    material_data->pbr_scalars0[1] = cmd->roughness;
-    material_data->pbr_scalars0[2] = cmd->ao;
-    material_data->pbr_scalars0[3] = cmd->emissive_intensity;
-    material_data->pbr_scalars1[0] = cmd->normal_scale;
-    material_data->pbr_scalars1[1] = cmd->alpha_cutoff;
+    material_data->pbr_scalars0[0] =
+        vgfx3d_d3d11_clamp_float_param(cmd->metallic, 0.0f, 1.0f, 0.0f);
+    material_data->pbr_scalars0[1] =
+        vgfx3d_d3d11_clamp_float_param(cmd->roughness, 0.0f, 1.0f, 0.5f);
+    material_data->pbr_scalars0[2] = vgfx3d_d3d11_clamp_float_param(cmd->ao, 0.0f, 1.0f, 1.0f);
+    material_data->pbr_scalars0[3] = vgfx3d_d3d11_clamp_float_param(
+        cmd->emissive_intensity, 0.0f, D3D11_MATERIAL_EMISSIVE_INTENSITY_MAX, 1.0f);
+    material_data->pbr_scalars1[0] = vgfx3d_d3d11_clamp_float_param(
+        cmd->normal_scale, 0.0f, D3D11_MATERIAL_NORMAL_SCALE_MAX, 1.0f);
+    material_data->pbr_scalars1[1] =
+        vgfx3d_d3d11_clamp_float_param(cmd->alpha_cutoff, 0.0f, 1.0f, 0.5f);
     material_data->flags0[0] = has_texture;
     material_data->flags0[1] = cmd->unlit;
     material_data->flags0[2] = has_normal_map;
@@ -403,15 +437,24 @@ static void d3d11_prepare_material_data(const vgfx3d_draw_cmd_t *cmd,
         else
             material_data->texture_uv_sets1[slot - 4] =
                 vgfx3d_d3d11_sanitize_texture_uv_set(cmd->texture_slot_uv_set[slot]);
-        material_data->texture_uv_transform0[slot][0] = cmd->texture_slot_uv_transform[slot][0];
-        material_data->texture_uv_transform0[slot][1] = cmd->texture_slot_uv_transform[slot][1];
-        material_data->texture_uv_transform0[slot][2] = cmd->texture_slot_uv_transform[slot][2];
-        material_data->texture_uv_transform0[slot][3] = cmd->texture_slot_uv_transform[slot][3];
-        material_data->texture_uv_transform1[slot][0] = cmd->texture_slot_uv_transform[slot][4];
-        material_data->texture_uv_transform1[slot][1] = cmd->texture_slot_uv_transform[slot][5];
+        material_data->texture_uv_transform0[slot][0] =
+            vgfx3d_d3d11_finite_or(cmd->texture_slot_uv_transform[slot][0], uv_fallback[0]);
+        material_data->texture_uv_transform0[slot][1] =
+            vgfx3d_d3d11_finite_or(cmd->texture_slot_uv_transform[slot][1], uv_fallback[1]);
+        material_data->texture_uv_transform0[slot][2] =
+            vgfx3d_d3d11_finite_or(cmd->texture_slot_uv_transform[slot][2], uv_fallback[2]);
+        material_data->texture_uv_transform0[slot][3] =
+            vgfx3d_d3d11_finite_or(cmd->texture_slot_uv_transform[slot][3], uv_fallback[3]);
+        material_data->texture_uv_transform1[slot][0] =
+            vgfx3d_d3d11_finite_or(cmd->texture_slot_uv_transform[slot][4], uv_fallback[4]);
+        material_data->texture_uv_transform1[slot][1] =
+            vgfx3d_d3d11_finite_or(cmd->texture_slot_uv_transform[slot][5], uv_fallback[5]);
     }
-    memcpy(
-        material_data->splat_scales, cmd->splat_layer_scales, sizeof(material_data->splat_scales));
+    for (int32_t i = 0; i < 4; i++) {
+        material_data->splat_scales[i] = vgfx3d_d3d11_finite_or(cmd->splat_layer_scales[i], 1.0f);
+        if (material_data->splat_scales[i] <= 0.0f)
+            material_data->splat_scales[i] = 1.0f;
+    }
 }
 
 /// @brief Copy up to `VGFX3D_MAX_LIGHTS` lights from the scene into the cbuffer Light array.
@@ -431,32 +474,46 @@ static void d3d11_prepare_light_data(const vgfx3d_light_params_t *lights,
     if (!lights || light_count <= 0)
         return;
     for (int32_t i = 0; i < light_count && i < VGFX3D_MAX_LIGHTS; i++) {
-        light_data[i].type = lights[i].type;
+        light_data[i].type = (lights[i].type >= 0 && lights[i].type <= 3) ? lights[i].type : 0;
         light_data[i].shadow_index =
             vgfx3d_d3d11_sanitize_shadow_index(lights[i].shadow_index, advertised_shadow_count);
-        light_data[i].shadow_cascade_count =
-            vgfx3d_d3d11_sanitize_shadow_cascade_count(lights[i].shadow_cascade_count,
-                                                       light_data[i].shadow_index,
-                                                       advertised_shadow_count);
-        light_data[i].shadow_projection_type = light_data[i].shadow_index >= 0
-                                                   ? lights[i].shadow_projection_type
-                                                   : VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC;
-        light_data[i].direction[0] = lights[i].direction[0];
-        light_data[i].direction[1] = lights[i].direction[1];
-        light_data[i].direction[2] = lights[i].direction[2];
-        light_data[i].position[0] = lights[i].position[0];
-        light_data[i].position[1] = lights[i].position[1];
-        light_data[i].position[2] = lights[i].position[2];
-        light_data[i].color[0] = lights[i].color[0];
-        light_data[i].color[1] = lights[i].color[1];
-        light_data[i].color[2] = lights[i].color[2];
-        light_data[i].intensity = lights[i].intensity;
-        light_data[i].attenuation = lights[i].attenuation;
-        light_data[i].inner_cos = lights[i].inner_cos;
-        light_data[i].outer_cos = lights[i].outer_cos;
-        memcpy(light_data[i].shadow_cascade_splits,
-               lights[i].shadow_cascade_splits,
-               sizeof(light_data[i].shadow_cascade_splits));
+        light_data[i].shadow_cascade_count = vgfx3d_d3d11_sanitize_shadow_cascade_count(
+            lights[i].shadow_cascade_count, light_data[i].shadow_index, advertised_shadow_count);
+        light_data[i].shadow_projection_type =
+            (light_data[i].shadow_index >= 0 &&
+             lights[i].shadow_projection_type == VGFX3D_SHADOW_PROJECTION_PERSPECTIVE)
+                ? VGFX3D_SHADOW_PROJECTION_PERSPECTIVE
+                : VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC;
+        vgfx3d_d3d11_copy_float_array_finite_or(
+            light_data[i].direction, lights[i].direction, 3u, 0.0f);
+        vgfx3d_d3d11_copy_float_array_finite_or(
+            light_data[i].position, lights[i].position, 3u, 0.0f);
+        light_data[i].color[0] =
+            vgfx3d_d3d11_clamp_float_param(lights[i].color[0], 0.0f, 1.0f, 1.0f);
+        light_data[i].color[1] =
+            vgfx3d_d3d11_clamp_float_param(lights[i].color[1], 0.0f, 1.0f, 1.0f);
+        light_data[i].color[2] =
+            vgfx3d_d3d11_clamp_float_param(lights[i].color[2], 0.0f, 1.0f, 1.0f);
+        light_data[i].intensity = vgfx3d_d3d11_finite_or(lights[i].intensity, 1.0f);
+        if (light_data[i].intensity < 0.0f)
+            light_data[i].intensity = 0.0f;
+        light_data[i].attenuation = vgfx3d_d3d11_finite_or(lights[i].attenuation, 0.0f);
+        if (light_data[i].attenuation < 0.0f)
+            light_data[i].attenuation = 0.0f;
+        light_data[i].inner_cos =
+            vgfx3d_d3d11_clamp_float_param(lights[i].inner_cos, -1.0f, 1.0f, 1.0f);
+        light_data[i].outer_cos =
+            vgfx3d_d3d11_clamp_float_param(lights[i].outer_cos, -1.0f, 1.0f, 0.0f);
+        if (light_data[i].inner_cos < light_data[i].outer_cos) {
+            float tmp = light_data[i].inner_cos;
+            light_data[i].inner_cos = light_data[i].outer_cos;
+            light_data[i].outer_cos = tmp;
+        }
+        for (size_t split = 0; split < sizeof(light_data[i].shadow_cascade_splits) /
+                                           sizeof(light_data[i].shadow_cascade_splits[0]);
+             split++)
+            light_data[i].shadow_cascade_splits[split] =
+                vgfx3d_d3d11_finite_or(lights[i].shadow_cascade_splits[split], 0.0f);
     }
 }
 
@@ -490,9 +547,8 @@ static int d3d11_prepare_anim_resources(d3d11_context_t *ctx,
         vgfx3d_d3d11_pack_bone_palette(
             bone_palette, object_data->has_skinning ? cmd->bone_palette : NULL, cmd->bone_count);
         vgfx3d_d3d11_pack_bone_palette(prev_bone_palette,
-                                       object_data->has_prev_skinning
-                                           ? cmd->prev_bone_palette
-                                           : cmd->bone_palette,
+                                       object_data->has_prev_skinning ? cmd->prev_bone_palette
+                                                                      : cmd->bone_palette,
                                        cmd->bone_count);
 
         hr = d3d11_update_constant_buffer(ctx, ctx->cb_bones, bone_palette, sizeof(bone_palette));
@@ -763,29 +819,42 @@ static void d3d11_prepare_postfx_data(d3d11_context_t *ctx,
     if (!snapshot)
         return;
     postfx_data->bloom_enabled = snapshot->bloom_enabled ? 1 : 0;
-    postfx_data->bloom_threshold = snapshot->bloom_threshold;
-    postfx_data->bloom_intensity = snapshot->bloom_intensity;
+    postfx_data->bloom_threshold =
+        vgfx3d_d3d11_clamp_float_param(snapshot->bloom_threshold, 0.0f, 1000000.0f, 1.0f);
+    postfx_data->bloom_intensity =
+        vgfx3d_d3d11_clamp_float_param(snapshot->bloom_intensity, 0.0f, 1000000.0f, 0.0f);
     postfx_data->bloom_passes = vgfx3d_d3d11_clamp_int_param(snapshot->bloom_passes, 0, 32);
     postfx_data->tonemap_mode = snapshot->tonemap_mode;
-    postfx_data->tonemap_exposure = snapshot->tonemap_exposure;
+    postfx_data->tonemap_exposure =
+        vgfx3d_d3d11_clamp_float_param(snapshot->tonemap_exposure, 0.0f, 1000000.0f, 1.0f);
     postfx_data->fxaa_enabled = snapshot->fxaa_enabled ? 1 : 0;
     postfx_data->color_grade_enabled = snapshot->color_grade_enabled ? 1 : 0;
-    postfx_data->cg_brightness = snapshot->cg_brightness;
-    postfx_data->cg_contrast = snapshot->cg_contrast;
-    postfx_data->cg_saturation = snapshot->cg_saturation;
+    postfx_data->cg_brightness = vgfx3d_d3d11_finite_or(snapshot->cg_brightness, 0.0f);
+    postfx_data->cg_contrast =
+        vgfx3d_d3d11_clamp_float_param(snapshot->cg_contrast, 0.0f, 1000000.0f, 1.0f);
+    postfx_data->cg_saturation =
+        vgfx3d_d3d11_clamp_float_param(snapshot->cg_saturation, 0.0f, 1000000.0f, 1.0f);
     postfx_data->vignette_enabled = snapshot->vignette_enabled ? 1 : 0;
-    postfx_data->vignette_radius = snapshot->vignette_radius;
-    postfx_data->vignette_softness = snapshot->vignette_softness;
+    postfx_data->vignette_radius =
+        vgfx3d_d3d11_clamp_float_param(snapshot->vignette_radius, 0.0f, 1.0f, 1.0f);
+    postfx_data->vignette_softness =
+        vgfx3d_d3d11_clamp_float_param(snapshot->vignette_softness, 0.0f, 1.0f, 0.0f);
     postfx_data->ssao_enabled = snapshot->ssao_enabled ? 1 : 0;
-    postfx_data->ssao_radius = snapshot->ssao_radius;
-    postfx_data->ssao_intensity = snapshot->ssao_intensity;
+    postfx_data->ssao_radius =
+        vgfx3d_d3d11_clamp_float_param(snapshot->ssao_radius, 0.0f, 1000000.0f, 0.0f);
+    postfx_data->ssao_intensity =
+        vgfx3d_d3d11_clamp_float_param(snapshot->ssao_intensity, 0.0f, 1000000.0f, 0.0f);
     postfx_data->ssao_samples = vgfx3d_d3d11_clamp_int_param(snapshot->ssao_samples, 2, 12);
     postfx_data->dof_enabled = snapshot->dof_enabled ? 1 : 0;
-    postfx_data->dof_focus_distance = snapshot->dof_focus_distance;
-    postfx_data->dof_aperture = snapshot->dof_aperture;
-    postfx_data->dof_max_blur = snapshot->dof_max_blur;
+    postfx_data->dof_focus_distance =
+        vgfx3d_d3d11_clamp_float_param(snapshot->dof_focus_distance, 0.0f, 1000000.0f, 0.0f);
+    postfx_data->dof_aperture =
+        vgfx3d_d3d11_clamp_float_param(snapshot->dof_aperture, 0.0f, 1000000.0f, 0.0f);
+    postfx_data->dof_max_blur =
+        vgfx3d_d3d11_clamp_float_param(snapshot->dof_max_blur, 0.0f, 1000000.0f, 0.0f);
     postfx_data->motion_blur_enabled = snapshot->motion_blur_enabled ? 1 : 0;
-    postfx_data->motion_blur_intensity = snapshot->motion_blur_intensity;
+    postfx_data->motion_blur_intensity =
+        vgfx3d_d3d11_clamp_float_param(snapshot->motion_blur_intensity, 0.0f, 1000000.0f, 0.0f);
     postfx_data->motion_blur_samples =
         vgfx3d_d3d11_clamp_int_param(snapshot->motion_blur_samples, 2, 8);
 }
@@ -1049,19 +1118,18 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
         return;
     if (!d3d11_ensure_instance_upload_capacity(ctx, instance_count))
         return;
-    vgfx3d_d3d11_fill_instance_data(ctx->instance_upload_data,
-                                    instance_count,
-                                    instance_matrices,
-                                    cmd->prev_instance_matrices,
-                                    (int8_t)vgfx3d_d3d11_should_use_previous_instance_matrices(
-                                        cmd->prev_instance_matrices,
-                                        cmd->has_prev_instance_matrices));
+    vgfx3d_d3d11_fill_instance_data(
+        ctx->instance_upload_data,
+        instance_count,
+        instance_matrices,
+        cmd->prev_instance_matrices,
+        (int8_t)vgfx3d_d3d11_should_use_previous_instance_matrices(
+            cmd->prev_instance_matrices, cmd->has_prev_instance_matrices));
 
     d3d11_prepare_object_data(cmd, &object_data);
     object_data.has_prev_model_matrix = 0;
-    object_data.has_prev_instance_matrices =
-        vgfx3d_d3d11_should_use_previous_instance_matrices(cmd->prev_instance_matrices,
-                                                           cmd->has_prev_instance_matrices);
+    object_data.has_prev_instance_matrices = vgfx3d_d3d11_should_use_previous_instance_matrices(
+        cmd->prev_instance_matrices, cmd->has_prev_instance_matrices);
     d3d11_prepare_scene_data(ctx, lights, light_count, ambient, &scene_data);
     d3d11_prepare_light_data(lights, scene_data.light_count, scene_data.shadow_count, light_data);
     d3d11_prepare_anim_resources(ctx, cmd, &object_data);
