@@ -104,7 +104,8 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     ctx->scene_history_valid = history.scene_history_valid;
 
     if (ctx->current_pass_is_overlay && ctx->default_framebuffer_writable &&
-        ctx->gpu_postfx_enabled && ctx->scene_postfx_pending && !ctx->scene_composited_to_backbuffer) {
+        ctx->gpu_postfx_enabled && ctx->scene_postfx_pending &&
+        !ctx->scene_composited_to_backbuffer) {
         if (draw_scene_texture(ctx, ctx->gpu_postfx_chain_valid ? &ctx->gpu_postfx_chain : NULL))
             ctx->scene_composited_to_backbuffer = 1;
     }
@@ -114,7 +115,8 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     else
         ctx->active_target_kind =
             vgfx3d_opengl_choose_target_kind(ctx->rtt_active, ctx->gpu_postfx_enabled);
-    if (!ctx->current_pass_is_overlay && ctx->active_target_kind == VGFX3D_OPENGL_TARGET_SWAPCHAIN &&
+    if (!ctx->current_pass_is_overlay &&
+        ctx->active_target_kind == VGFX3D_OPENGL_TARGET_SWAPCHAIN &&
         !ctx->default_framebuffer_writable) {
         ctx->active_target_kind = VGFX3D_OPENGL_TARGET_SCENE;
     }
@@ -329,6 +331,29 @@ static void gl_resize(void *ctx_ptr, int32_t w, int32_t h) {
     }
 }
 
+/// @brief Ensure the context has a reusable host-side RGBA readback buffer.
+/// @details GPU readback paths are called by screenshots, overlays, and the X11 fallback
+///          presenter. Keeping one scratch buffer on the context avoids allocating and freeing
+///          a large temporary every frame while still preserving the exact byte-count overflow
+///          checks in each caller.
+/// @param ctx OpenGL backend context that owns the scratch allocation.
+/// @param bytes Minimum number of bytes required by the caller.
+/// @return Pointer to at least @p bytes of writable storage, or NULL on allocation failure.
+static uint8_t *gl_ensure_readback_scratch(gl_context_t *ctx, size_t bytes) {
+    uint8_t *next;
+
+    if (!ctx || bytes == 0)
+        return NULL;
+    if (ctx->readback_scratch_rgba && ctx->readback_scratch_bytes >= bytes)
+        return ctx->readback_scratch_rgba;
+    next = (uint8_t *)realloc(ctx->readback_scratch_rgba, bytes);
+    if (!next)
+        return NULL;
+    ctx->readback_scratch_rgba = next;
+    ctx->readback_scratch_bytes = bytes;
+    return next;
+}
+
 /// @brief Backend `readback_rgba` op — copy current screen to a host RGBA buffer.
 ///
 /// Two paths:
@@ -347,6 +372,7 @@ static int gl_readback_rgba(
     GLuint readback_framebuffer = 0;
     GLenum readback_buffer = ctx ? ctx->default_draw_buffer : GL_BACK;
     uint8_t *tmp;
+    size_t tmp_bytes;
     size_t dst_bytes;
     gl_framebuffer_state_t saved_state;
 
@@ -355,10 +381,11 @@ static int gl_readback_rgba(
 
     if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
         return 0;
-    use_postfx_readback = ctx->default_framebuffer_writable && !ctx->scene_composited_to_backbuffer &&
-                          vgfx3d_opengl_choose_readback_kind(
-                              (ctx->gpu_postfx_enabled && ctx->scene_postfx_pending) ? 1 : 0) ==
-                              VGFX3D_OPENGL_READBACK_POSTFX_COMPOSITE;
+    use_postfx_readback =
+        ctx->default_framebuffer_writable && !ctx->scene_composited_to_backbuffer &&
+        vgfx3d_opengl_choose_readback_kind((ctx->gpu_postfx_enabled && ctx->scene_postfx_pending)
+                                               ? 1
+                                               : 0) == VGFX3D_OPENGL_READBACK_POSTFX_COMPOSITE;
     if (use_postfx_readback) {
         if (!ctx->scene_fbo || ctx->scene_width <= 0 || ctx->scene_height <= 0)
             return 0;
@@ -396,7 +423,8 @@ static int gl_readback_rgba(
         (size_t)copy_w * (size_t)copy_h > SIZE_MAX / 4u) {
         return 0;
     }
-    tmp = (uint8_t *)malloc((size_t)copy_w * (size_t)copy_h * 4u);
+    tmp_bytes = (size_t)copy_w * (size_t)copy_h * 4u;
+    tmp = gl_ensure_readback_scratch(ctx, tmp_bytes);
     if (!tmp)
         return 0;
 
@@ -408,7 +436,6 @@ static int gl_readback_rgba(
     gl.ReadBuffer(use_postfx_readback ? readback_buffer : ctx->default_draw_buffer);
     gl.ReadPixels(0, 0, copy_w, copy_h, GL_RGBA, GL_UNSIGNED_BYTE, tmp);
     if (!gl_drain_errors("readback")) {
-        free(tmp);
         gl_restore_framebuffer_state(&saved_state);
         gl_restore_main_draw_state(ctx);
         return 0;
@@ -418,7 +445,6 @@ static int gl_readback_rgba(
         memcpy(dst_rgba + (size_t)y * (size_t)stride,
                tmp + (size_t)y * (size_t)copy_w * 4u,
                (size_t)copy_w * 4u);
-    free(tmp);
 
     gl_restore_framebuffer_state(&saved_state);
     gl_restore_main_draw_state(ctx);
@@ -438,6 +464,7 @@ static int gl_present_offscreen_vgfx(gl_context_t *ctx) {
     int32_t copy_w;
     int32_t copy_h;
     uint8_t *tmp;
+    size_t tmp_bytes;
     gl_framebuffer_state_t saved_state;
 
     if (!ctx || !ctx->vgfx_win)
@@ -459,7 +486,12 @@ static int gl_present_offscreen_vgfx(gl_context_t *ctx) {
     }
     copy_w = source_w < fb.width ? source_w : fb.width;
     copy_h = source_h < fb.height ? source_h : fb.height;
-    tmp = (uint8_t *)malloc((size_t)copy_w * (size_t)copy_h * 4u);
+    if (copy_w <= 0 || copy_h <= 0 || (size_t)copy_w > SIZE_MAX / (size_t)copy_h ||
+        (size_t)copy_w * (size_t)copy_h > SIZE_MAX / 4u) {
+        return 0;
+    }
+    tmp_bytes = (size_t)copy_w * (size_t)copy_h * 4u;
+    tmp = gl_ensure_readback_scratch(ctx, tmp_bytes);
     if (!tmp)
         return 0;
 
@@ -474,7 +506,6 @@ static int gl_present_offscreen_vgfx(gl_context_t *ctx) {
         memcpy((uint8_t *)fb.pixels + (size_t)y * (size_t)fb.stride,
                tmp + (size_t)y * (size_t)copy_w * 4u,
                (size_t)copy_w * 4u);
-    free(tmp);
     gl_restore_framebuffer_state(&saved_state);
     gl_restore_main_draw_state(ctx);
 
@@ -814,7 +845,7 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
         cmd->index_count == 0 || !instance_matrices || instance_count <= 0)
         return;
     index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
-    if (index_count == 0 || instance_count > INT_MAX)
+    if (index_count == 0)
         return;
     if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo))
         return;

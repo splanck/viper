@@ -56,6 +56,7 @@ static uint32_t make_fourcc(char a, char b, char c, char d) {
 #define FOURCC_avih make_fourcc('a', 'v', 'i', 'h')
 #define FOURCC_strh make_fourcc('s', 't', 'r', 'h')
 #define FOURCC_strf make_fourcc('s', 't', 'r', 'f')
+#define FOURCC_idx1 make_fourcc('i', 'd', 'x', '1')
 #define FOURCC_vids make_fourcc('v', 'i', 'd', 's')
 #define FOURCC_auds make_fourcc('a', 'u', 'd', 's')
 #define FOURCC_rec make_fourcc('r', 'e', 'c', ' ')
@@ -82,6 +83,28 @@ static int avi_stream_index_from_fourcc(uint32_t fourcc) {
     if (c0 < '0' || c0 > '9' || c1 < '0' || c1 > '9')
         return -1;
     return (int)(c0 - '0') * 10 + (int)(c1 - '0');
+}
+
+/// @brief Classify a stream-numbered `movi`/`idx1` FOURCC as primary video or audio.
+/// @details AVI media tags encode stream number in the first two bytes and payload kind in the
+///          last two bytes: `dc`/`db` for video frames, `wb` for wave audio. Filtering here keeps
+///          recursive `movi` walking and legacy `idx1` parsing on the same stream-selection rules.
+/// @return 1 when the chunk belongs to the primary video/audio stream, 0 when it should be ignored.
+static int avi_classify_media_fourcc(const avi_context_t *ctx, uint32_t fourcc, int8_t *out_video) {
+    uint8_t c2 = (uint8_t)((fourcc >> 16) & 0xFF);
+    uint8_t c3 = (uint8_t)((fourcc >> 24) & 0xFF);
+    int stream_index = avi_stream_index_from_fourcc(fourcc);
+    if (!ctx || !out_video || stream_index < 0)
+        return 0;
+    if (c2 == 'd' && (c3 == 'c' || c3 == 'b') && stream_index == ctx->video_stream_index) {
+        *out_video = 1;
+        return 1;
+    }
+    if (c2 == 'w' && c3 == 'b' && stream_index == ctx->audio_stream_index) {
+        *out_video = 0;
+        return 1;
+    }
+    return 0;
 }
 
 /// @brief Return a finite AVI frame rate only when it is within the supported playback range.
@@ -379,6 +402,7 @@ static void handle_hdrl(
 static void handle_movi(
     avi_context_t *ctx, uint32_t fourcc, const uint8_t *payload, uint32_t size, void *extra) {
     (void)extra;
+    int8_t is_video = 0;
     if (fourcc == FOURCC_LIST && size >= 4) {
         uint32_t list_type = read_le32(payload);
         if (list_type == FOURCC_rec)
@@ -386,18 +410,9 @@ static void handle_movi(
                 payload, size, 4, ctx ? ctx->chunk_walk_depth + 1 : 0, handle_movi, ctx, NULL);
         return;
     }
-    /* Check chunk type by last 2 chars of FOURCC:
-     * 'dc' or 'db' = compressed/DIB video, 'wb' = wave bytes (audio) */
-    uint8_t c2 = (uint8_t)((fourcc >> 16) & 0xFF);
-    uint8_t c3 = (uint8_t)((fourcc >> 24) & 0xFF);
-    int stream_index = avi_stream_index_from_fourcc(fourcc);
-    if ((c2 == 'd' && (c3 == 'c' || c3 == 'b'))) {
-        if (stream_index == ctx->video_stream_index && add_chunk(ctx, payload, size, 1) != 0)
-            ctx->parse_error = 1; /* video */
-    } else if (c2 == 'w' && c3 == 'b') {
-        if (stream_index == ctx->audio_stream_index && add_chunk(ctx, payload, size, 0) != 0)
-            ctx->parse_error = 1; /* audio */
-    }
+    if (avi_classify_media_fourcc(ctx, fourcc, &is_video) &&
+        add_chunk(ctx, payload, size, is_video) != 0)
+        ctx->parse_error = 1;
     /* Skip 'ix##', 'JUNK' and other chunks */
 }
 
@@ -410,10 +425,101 @@ static void handle_top(
         if (list_type == FOURCC_hdrl)
             walk_chunks(
                 payload, size, 4, ctx ? ctx->chunk_walk_depth + 1 : 0, handle_hdrl, ctx, NULL);
-        else if (list_type == FOURCC_movi)
+        else if (list_type == FOURCC_movi) {
+            if (ctx && ctx->file_data && payload >= ctx->file_data &&
+                (size_t)(payload - ctx->file_data) <= ctx->file_len) {
+                ctx->movi_list_offset = (size_t)(payload - ctx->file_data);
+                ctx->movi_payload_start = ctx->movi_list_offset + 4u;
+                ctx->movi_payload_end = ctx->movi_list_offset + (size_t)size;
+            }
             walk_chunks(
                 payload, size, 4, ctx ? ctx->chunk_walk_depth + 1 : 0, handle_movi, ctx, NULL);
+        }
+    } else if (fourcc == FOURCC_idx1 && ctx) {
+        ctx->idx1_data = payload;
+        ctx->idx1_size = size;
     }
+}
+
+/// @brief Resolve a legacy idx1 offset to a media chunk payload pointer.
+/// @details AVI writers disagree on whether `dwChunkOffset` is file-relative, relative to the
+///          `movi` list type tag, relative to the first chunk after that tag, and whether it points
+///          at the chunk header or payload. This helper tries those common interpretations and
+///          accepts only candidates whose chunk FOURCC and bounded length match the idx1 entry.
+static const uint8_t *avi_resolve_idx1_payload(const avi_context_t *ctx,
+                                               uint32_t ckid,
+                                               uint32_t offset,
+                                               uint32_t length) {
+    size_t bases[3];
+    if (!ctx || !ctx->file_data || length == 0)
+        return NULL;
+    bases[0] = 0;
+    bases[1] = ctx->movi_list_offset;
+    bases[2] = ctx->movi_payload_start;
+    for (int i = 0; i < 3; i++) {
+        size_t base = bases[i];
+        size_t pos;
+        if (base > ctx->file_len || (size_t)offset > ctx->file_len - base)
+            continue;
+        pos = base + (size_t)offset;
+        if (pos <= ctx->file_len && ctx->file_len - pos >= 8u &&
+            read_le32(ctx->file_data + pos) == ckid) {
+            uint32_t chunk_size = read_le32(ctx->file_data + pos + 4);
+            if (chunk_size >= length && (size_t)length <= ctx->file_len - pos - 8u)
+                return ctx->file_data + pos + 8u;
+        }
+        if (pos >= 8u && read_le32(ctx->file_data + pos - 8u) == ckid) {
+            uint32_t chunk_size = read_le32(ctx->file_data + pos - 4u);
+            if (chunk_size >= length && (size_t)length <= ctx->file_len - pos)
+                return ctx->file_data + pos;
+        }
+    }
+    return NULL;
+}
+
+/// @brief Prefer a valid legacy `idx1` chunk index over sequential `movi` discovery.
+/// @details Sequential walking is retained as a fallback, but `idx1` can recover correct playback
+///          order from files whose `movi` data is nested or padded unusually. The replacement is
+///          accepted only when it yields at least one primary video frame.
+static int avi_try_build_chunks_from_idx1(avi_context_t *ctx) {
+    int32_t entry_count;
+    int32_t chunk_count = 0;
+    int32_t video_count = 0;
+    avi_chunk_t *chunks;
+    if (!ctx || !ctx->idx1_data || ctx->idx1_size < 16u || (ctx->idx1_size % 16u) != 0)
+        return 0;
+    entry_count = (int32_t)(ctx->idx1_size / 16u);
+    chunks = (avi_chunk_t *)malloc((size_t)entry_count * sizeof(*chunks));
+    if (!chunks)
+        return 0;
+    for (int32_t i = 0; i < entry_count; i++) {
+        const uint8_t *entry = ctx->idx1_data + (size_t)i * 16u;
+        uint32_t ckid = read_le32(entry + 0);
+        uint32_t offset = read_le32(entry + 8);
+        uint32_t length = read_le32(entry + 12);
+        int8_t is_video = 0;
+        const uint8_t *payload;
+        if (!avi_classify_media_fourcc(ctx, ckid, &is_video))
+            continue;
+        payload = avi_resolve_idx1_payload(ctx, ckid, offset, length);
+        if (!payload)
+            continue;
+        chunks[chunk_count].data = payload;
+        chunks[chunk_count].size = length;
+        chunks[chunk_count].is_video = is_video;
+        if (is_video)
+            video_count++;
+        chunk_count++;
+    }
+    if (video_count <= 0) {
+        free(chunks);
+        return 0;
+    }
+    free(ctx->chunks);
+    ctx->chunks = chunks;
+    ctx->chunk_count = chunk_count;
+    ctx->chunk_capacity = chunk_count;
+    return 1;
 }
 
 /*==========================================================================
@@ -464,6 +570,7 @@ int avi_parse(avi_context_t *ctx, const uint8_t *data, size_t len) {
         avi_free(ctx);
         return -1;
     }
+    (void)avi_try_build_chunks_from_idx1(ctx);
 
     /* Build video frame index */
     if (ctx->chunk_count > 0) {

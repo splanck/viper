@@ -114,6 +114,14 @@ typedef struct {
     int32_t physics_bvh_tri_count;
 } rt_mesh3d;
 
+/// @brief Allocate a Mesh3D object with all runtime bookkeeping initialized but no default
+///   vertex/index storage.
+/// @details This internal constructor is for import and clone paths that immediately allocate
+///          exact-size buffers. Public code should continue using `rt_mesh3d_new`, which reserves
+///          small growable arrays for programmatic `AddVertex` / `AddTriangle` construction.
+/// @return GC-managed Mesh3D handle, or NULL on allocation failure.
+void *rt_mesh3d_new_empty_storage(void);
+
 /// @brief Vertex count safe to read directly — the live count clamped to capacity, 0 when
 ///   the vertex buffer is absent or empty.
 static inline uint32_t rt_mesh3d_safe_vertex_count(const rt_mesh3d *mesh) {

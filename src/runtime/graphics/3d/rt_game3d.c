@@ -33,16 +33,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#if !defined(_WIN32)
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
-#ifndef _DARWIN_C_SOURCE
-#define _DARWIN_C_SOURCE
-#endif
-#endif
-
 #include "rt_game3d.h"
+#include "rt_platform_feature.h"
 
 #include "rt_animcontroller3d.h"
 #include "rt_asset.h"
@@ -92,6 +84,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <float.h>
+#include <inttypes.h>
 #include <limits.h>
 #include <math.h>
 #include <setjmp.h>
@@ -282,6 +275,52 @@ static void game3d_model_cache_notify_all(void) {
 }
 #endif
 
+#if RT_PLATFORM_LINUX
+/// @brief Parse one `/proc/self/maps` line and test whether it contains @p needle
+///   inside an executable mapping.
+/// @details Linux exposes process mappings as hex address ranges followed by permission
+///          flags. This parser uses `uintmax_t`/`uintptr_t` bounds instead of assuming
+///          `unsigned long` has pointer width, making the validation independent of the
+///          C data model. On success it returns non-zero and writes the executable range
+///          into @p out_start/@p out_end so the caller can cache it for later callbacks.
+static int game3d_linux_maps_line_contains_executable_callback(const char *line,
+                                                               uintptr_t needle,
+                                                               uintptr_t *out_start,
+                                                               uintptr_t *out_end) {
+    if (!line)
+        return 0;
+
+    errno = 0;
+    char *cursor = NULL;
+    uintmax_t parsed_start = strtoumax(line, &cursor, 16);
+    if (errno != 0 || !cursor || *cursor != '-')
+        return 0;
+    cursor++;
+
+    errno = 0;
+    char *after_end = NULL;
+    uintmax_t parsed_end = strtoumax(cursor, &after_end, 16);
+    if (errno != 0 || !after_end || parsed_start > (uintmax_t)UINTPTR_MAX ||
+        parsed_end > (uintmax_t)UINTPTR_MAX || parsed_start >= parsed_end)
+        return 0;
+
+    while (*after_end == ' ' || *after_end == '\t')
+        after_end++;
+    if (after_end[0] == '\0' || after_end[1] == '\0' || after_end[2] == '\0' || after_end[2] != 'x')
+        return 0;
+
+    uintptr_t start = (uintptr_t)parsed_start;
+    uintptr_t end = (uintptr_t)parsed_end;
+    if (needle < start || needle >= end)
+        return 0;
+    if (out_start)
+        *out_start = start;
+    if (out_end)
+        *out_end = end;
+    return 1;
+}
+#endif
+
 /// @brief True if `callback` looks like a genuine native code pointer (not a GC
 ///   heap payload or tagged value), so it is safe to call as a frontend function.
 /// @details Frontends hand raw function pointers to the run-loop entry points. A
@@ -318,19 +357,24 @@ static int game3d_callback_pointer_is_native(void *callback) {
         mach_port_deallocate(mach_task_self(), object);
     return (info.protection & VM_PROT_EXECUTE) != 0;
 #elif RT_PLATFORM_LINUX
+    static RT_THREAD_LOCAL uintptr_t cached_exec_start = 0;
+    static RT_THREAD_LOCAL uintptr_t cached_exec_end = 0;
     FILE *maps = fopen("/proc/self/maps", "r");
     char line[512];
     uintptr_t needle = (uintptr_t)callback;
+    if (cached_exec_start < cached_exec_end && needle >= cached_exec_start &&
+        needle < cached_exec_end)
+        return 1;
     if (!maps)
         return 0;
     while (fgets(line, sizeof(line), maps)) {
-        unsigned long start = 0;
-        unsigned long end = 0;
-        char perms[5] = {0, 0, 0, 0, 0};
-        if (sscanf(line, "%lx-%lx %4s", &start, &end, perms) == 3 && needle >= (uintptr_t)start &&
-            needle < (uintptr_t)end) {
+        uintptr_t start = 0;
+        uintptr_t end = 0;
+        if (game3d_linux_maps_line_contains_executable_callback(line, needle, &start, &end)) {
+            cached_exec_start = start;
+            cached_exec_end = end;
             fclose(maps);
-            return strchr(perms, 'x') != NULL;
+            return 1;
         }
     }
     fclose(maps);

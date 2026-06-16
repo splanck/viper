@@ -633,6 +633,8 @@ typedef struct {
     GLuint postfx_scratch_tex;
     int32_t postfx_scratch_width;
     int32_t postfx_scratch_height;
+    uint8_t *readback_scratch_rgba;
+    size_t readback_scratch_bytes;
 
     GLuint rtt_fbo;
     GLuint rtt_color_tex;

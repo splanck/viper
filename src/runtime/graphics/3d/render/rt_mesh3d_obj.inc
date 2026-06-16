@@ -290,6 +290,12 @@ static int obj_vertex_cache_insert(
     return 0;
 }
 
+/// @brief Store the first failing OBJ line number without overwriting an earlier cause.
+static void obj_record_error_line(uint64_t *error_line, uint64_t line_number) {
+    if (error_line && *error_line == 0)
+        *error_line = line_number;
+}
+
 /// @brief Turn an OBJ face index into a 1-based absolute index, or reject it.
 /// @details OBJ face indices are 1-based and can be negative (counting from the end of
 ///   the currently-defined list). A raw value of 0 means "no index at this slot" —
@@ -969,7 +975,8 @@ static void obj_parse_into_mesh(FILE *f,
                                 int *p_cap_t,
                                 int *p_parse_failed,
                                 int *p_missing_normals,
-                                int *p_line_too_long) {
+                                int *p_line_too_long,
+                                uint64_t *p_error_line) {
     float *positions = *p_positions;
     int cnt_p = *p_cnt_p;
     int cap_p = *p_cap_p;
@@ -984,9 +991,11 @@ static void obj_parse_into_mesh(FILE *f,
     char *line = NULL;
     size_t line_cap = 0;
     int line_status;
+    uint64_t line_number = 0;
     while ((line_status = mesh3d_read_text_line(f, &line, &line_cap, MESH3D_OBJ_MAX_LINE_BYTES)) >
            0) {
         const char *p = line;
+        line_number++;
         while (*p == ' ' || *p == '\t')
             p++;
 
@@ -998,6 +1007,7 @@ static void obj_parse_into_mesh(FILE *f,
             p += 2;
             if (!obj_parse_float_attrib(&p, &positions, &cnt_p, &cap_p, 3)) {
                 parse_failed = 1;
+                obj_record_error_line(p_error_line, line_number);
                 break;
             }
         } else if (p[0] == 'v' && p[1] == 'n' && p[2] == ' ') {
@@ -1005,6 +1015,7 @@ static void obj_parse_into_mesh(FILE *f,
             p += 3;
             if (!obj_parse_float_attrib(&p, &normals, &cnt_n, &cap_n, 3)) {
                 parse_failed = 1;
+                obj_record_error_line(p_error_line, line_number);
                 break;
             }
         } else if (p[0] == 'v' && p[1] == 't' && p[2] == ' ') {
@@ -1012,6 +1023,7 @@ static void obj_parse_into_mesh(FILE *f,
             p += 3;
             if (!obj_parse_float_attrib(&p, &texcoords, &cnt_t, &cap_t, 2)) {
                 parse_failed = 1;
+                obj_record_error_line(p_error_line, line_number);
                 break;
             }
         } else if (p[0] == 'f' && p[1] == ' ') {
@@ -1028,6 +1040,7 @@ static void obj_parse_into_mesh(FILE *f,
                                      cnt_t,
                                      &missing_normals)) {
                 parse_failed = 1;
+                obj_record_error_line(p_error_line, line_number);
                 break;
             }
         } else if (strncmp(p, "mtllib ", 7) == 0 || strncmp(p, "usemtl ", 7) == 0 ||
@@ -1040,8 +1053,10 @@ static void obj_parse_into_mesh(FILE *f,
         parse_failed = 1;
         if (p_line_too_long)
             *p_line_too_long = 1;
+        obj_record_error_line(p_error_line, line_number + 1u);
     } else if (line_status < 0) {
         parse_failed = 1;
+        obj_record_error_line(p_error_line, line_number + 1u);
     }
     free(line);
     *p_positions = positions;
@@ -1090,6 +1105,7 @@ void *rt_mesh3d_from_obj(rt_string path) {
     int parse_failed = 0;
     int missing_normals = 0;
     int line_too_long = 0;
+    uint64_t error_line = 0;
     float *positions = (float *)malloc((size_t)cap_p * 3 * sizeof(float));
     float *normals = (float *)malloc((size_t)cap_n * 3 * sizeof(float));
     float *texcoords = (float *)malloc((size_t)cap_t * 2 * sizeof(float));
@@ -1125,7 +1141,8 @@ void *rt_mesh3d_from_obj(rt_string path) {
                         &cap_t,
                         &parse_failed,
                         &missing_normals,
-                        &line_too_long);
+                        &line_too_long,
+                        &error_line);
 
     fclose(f);
     free(positions);
@@ -1137,9 +1154,17 @@ void *rt_mesh3d_from_obj(rt_string path) {
         rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
         if (rt_obj_release_check0(mesh))
             rt_obj_free(mesh);
-        rt_asset_error_set(line_too_long ? RT_ASSET_ERROR_TOO_LARGE : RT_ASSET_ERROR_CORRUPT,
-                           line_too_long ? "Mesh3D.FromOBJ: line exceeds 1 MiB limit"
-                                         : "Mesh3D.FromOBJ: invalid or unsupported geometry");
+        if (error_line != 0) {
+            rt_asset_error_setf(
+                line_too_long ? RT_ASSET_ERROR_TOO_LARGE : RT_ASSET_ERROR_CORRUPT,
+                line_too_long ? "Mesh3D.FromOBJ: line %llu exceeds 1 MiB limit"
+                              : "Mesh3D.FromOBJ: invalid or unsupported geometry at line %llu",
+                (unsigned long long)error_line);
+        } else {
+            rt_asset_error_set(line_too_long ? RT_ASSET_ERROR_TOO_LARGE : RT_ASSET_ERROR_CORRUPT,
+                               line_too_long ? "Mesh3D.FromOBJ: line exceeds 1 MiB limit"
+                                             : "Mesh3D.FromOBJ: invalid or unsupported geometry");
+        }
         rt_asset_error_end_load_failure();
         return NULL;
     }
@@ -1246,6 +1271,8 @@ static char *obj_copy_directive_token(const char *p) {
         start = p;
         while (*p && *p != quote && *p != '\n' && *p != '\r')
             p++;
+        if (*p != quote)
+            return NULL;
         end = p;
         len = (size_t)(end - start);
         copy = (char *)malloc(len + 1u);
@@ -1518,6 +1545,8 @@ int rt_mesh3d_from_obj_groups(rt_string path,
     int cnt_p = 0, cnt_n = 0, cnt_t = 0;
     int parse_failed = 0;
     int line_too_long = 0;
+    uint64_t line_number = 0;
+    uint64_t error_line = 0;
     float *positions;
     float *normals;
     float *texcoords;
@@ -1559,6 +1588,7 @@ int rt_mesh3d_from_obj_groups(rt_string path,
     while ((line_status = mesh3d_read_text_line(f, &line, &line_cap, MESH3D_OBJ_MAX_LINE_BYTES)) >
            0) {
         const char *p = line;
+        line_number++;
         while (*p == ' ' || *p == '\t')
             p++;
         if (*p == '#' || *p == '\n' || *p == '\r' || *p == '\0')
@@ -1567,24 +1597,28 @@ int rt_mesh3d_from_obj_groups(rt_string path,
             p += 2;
             if (!obj_parse_float_attrib(&p, &positions, &cnt_p, &cap_p, 3)) {
                 parse_failed = 1;
+                obj_record_error_line(&error_line, line_number);
                 break;
             }
         } else if (p[0] == 'v' && p[1] == 'n' && p[2] == ' ') {
             p += 3;
             if (!obj_parse_float_attrib(&p, &normals, &cnt_n, &cap_n, 3)) {
                 parse_failed = 1;
+                obj_record_error_line(&error_line, line_number);
                 break;
             }
         } else if (p[0] == 'v' && p[1] == 't' && p[2] == ' ') {
             p += 3;
             if (!obj_parse_float_attrib(&p, &texcoords, &cnt_t, &cap_t, 2)) {
                 parse_failed = 1;
+                obj_record_error_line(&error_line, line_number);
                 break;
             }
         } else if (strncmp(p, "usemtl ", 7) == 0) {
             char *next = obj_copy_directive_token(p + 7);
             if (!next) {
                 parse_failed = 1;
+                obj_record_error_line(&error_line, line_number);
                 break;
             }
             free(current_material);
@@ -1603,6 +1637,7 @@ int rt_mesh3d_from_obj_groups(rt_string path,
                                              texcoords,
                                              cnt_t)) {
                 parse_failed = 1;
+                obj_record_error_line(&error_line, line_number);
                 break;
             }
         }
@@ -1610,8 +1645,10 @@ int rt_mesh3d_from_obj_groups(rt_string path,
     if (line_status == -2) {
         parse_failed = 1;
         line_too_long = 1;
+        obj_record_error_line(&error_line, line_number + 1u);
     } else if (line_status < 0) {
         parse_failed = 1;
+        obj_record_error_line(&error_line, line_number + 1u);
     }
 
 done_reading:
@@ -1626,9 +1663,17 @@ done_reading:
 
     if (parse_failed || group_count <= 0) {
         obj_group_builders_free(groups, group_count);
-        rt_asset_error_set(line_too_long ? RT_ASSET_ERROR_TOO_LARGE : RT_ASSET_ERROR_CORRUPT,
-                           line_too_long ? "Mesh3D.FromOBJ: line exceeds 1 MiB limit"
-                                         : "Mesh3D.FromOBJ: invalid or unsupported geometry");
+        if (error_line != 0) {
+            rt_asset_error_setf(
+                line_too_long ? RT_ASSET_ERROR_TOO_LARGE : RT_ASSET_ERROR_CORRUPT,
+                line_too_long ? "Mesh3D.FromOBJ: line %llu exceeds 1 MiB limit"
+                              : "Mesh3D.FromOBJ: invalid or unsupported geometry at line %llu",
+                (unsigned long long)error_line);
+        } else {
+            rt_asset_error_set(line_too_long ? RT_ASSET_ERROR_TOO_LARGE : RT_ASSET_ERROR_CORRUPT,
+                               line_too_long ? "Mesh3D.FromOBJ: line exceeds 1 MiB limit"
+                                             : "Mesh3D.FromOBJ: invalid or unsupported geometry");
+        }
         return 0;
     }
     if (!obj_groups_transfer(groups, group_count, out_groups, out_count)) {

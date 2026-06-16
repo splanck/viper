@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_mesh.inc  (#included from vgfx3d_backend_opengl.c; not a standalone translation unit)
-// Purpose: OpenGL mesh buffer/attribute setup and bone-palette/morph payload upload
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_mesh.inc  (#included from
+// vgfx3d_backend_opengl.c; not a standalone translation unit) Purpose: OpenGL mesh buffer/attribute
+// setup and bone-palette/morph payload upload
 //===----------------------------------------------------------------------===//
 
 /// @brief Release every mesh-cache slot's VBO + IBO.
@@ -19,8 +20,8 @@ static void gl_destroy_mesh_cache(gl_context_t *ctx) {
 
 /// @brief Evict stale static mesh-cache entries using the same frame-age policy as texture caches.
 ///
-/// Static geometry can otherwise stay resident forever after a level or scene transition because the
-/// fixed-size cache only evicts on new cache misses. Pruning once per frame keeps long-running
+/// Static geometry can otherwise stay resident forever after a level or scene transition because
+/// the fixed-size cache only evicts on new cache misses. Pruning once per frame keeps long-running
 /// sessions bounded even when no new static meshes are submitted after old ones disappear.
 static void gl_mesh_cache_prune(gl_context_t *ctx) {
     if (!ctx)
@@ -524,7 +525,6 @@ static gl_morph_cache_entry_t *gl_get_cached_morph_entry(gl_context_t *ctx,
     gl_morph_cache_entry_t *slot = NULL;
     gl_morph_cache_entry_t *oldest = NULL;
     size_t bytes;
-    int32_t slot_index = -1;
 
     if (!ctx || !cmd || morph_count <= 0 || !cmd->morph_key || cmd->morph_revision == 0)
         return NULL;
@@ -547,8 +547,7 @@ static gl_morph_cache_entry_t *gl_get_cached_morph_entry(gl_context_t *ctx,
     }
 
     if (!slot && ctx->morph_cache_count < ctx->morph_cache_capacity) {
-        slot_index = ctx->morph_cache_count++;
-        slot = &ctx->morph_cache[slot_index];
+        slot = &ctx->morph_cache[ctx->morph_cache_count++];
         memset(slot, 0, sizeof(*slot));
     }
     if (!slot && ctx->morph_cache_count == ctx->morph_cache_capacity) {
@@ -561,10 +560,9 @@ static gl_morph_cache_entry_t *gl_get_cached_morph_entry(gl_context_t *ctx,
         memset(nv + ctx->morph_cache_capacity,
                0,
                (size_t)(new_cap - ctx->morph_cache_capacity) * sizeof(gl_morph_cache_entry_t));
-        slot_index = ctx->morph_cache_count++;
         ctx->morph_cache = nv;
         ctx->morph_cache_capacity = new_cap;
-        slot = &ctx->morph_cache[slot_index];
+        slot = &ctx->morph_cache[ctx->morph_cache_count++];
     }
     if (!slot)
         slot = oldest;

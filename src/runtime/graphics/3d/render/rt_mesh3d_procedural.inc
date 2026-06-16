@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/render/rt_mesh3d_procedural.inc  (#included from rt_mesh3d.c; not a standalone translation unit)
-// Purpose: Mesh3D procedural generators: box, sphere, plane, cylinder
+// File: src/runtime/graphics/3d/render/rt_mesh3d_procedural.inc  (#included from rt_mesh3d.c; not a
+// standalone translation unit) Purpose: Mesh3D procedural generators: box, sphere, plane, cylinder
 //===----------------------------------------------------------------------===//
 /* Procedural generators — NewBox, NewSphere, NewPlane, NewCylinder */
 /// @brief Generate a box mesh centered at the origin with full size (sx, sy, sz).
@@ -97,6 +97,8 @@ void *rt_mesh3d_new_sphere(double radius, int64_t segments) {
     int64_t bottom_index;
     uint32_t vertex_capacity = (uint32_t)(2 + (rings - 1) * ring_stride);
     uint32_t index_capacity = (uint32_t)(slices * 3 + (rings - 2) * slices * 6 + slices * 3);
+    float *slice_trig = NULL;
+    float *ring_trig = NULL;
     if (!mesh3d_check_planned_payload(
             vertex_capacity, index_capacity, "Mesh3D.NewSphere: mesh exceeds memory budget")) {
         mesh_mark_build_failed((rt_mesh3d *)m);
@@ -107,18 +109,37 @@ void *rt_mesh3d_new_sphere(double radius, int64_t segments) {
         mesh_mark_build_failed((rt_mesh3d *)m);
         return mesh_return_null_if_build_failed(m);
     }
+    slice_trig = (float *)malloc((size_t)(slices + 1) * 2u * sizeof(float));
+    ring_trig = (float *)malloc((size_t)(rings + 1) * 2u * sizeof(float));
+    if (!slice_trig || !ring_trig) {
+        free(slice_trig);
+        free(ring_trig);
+        mesh_mark_build_failed((rt_mesh3d *)m);
+        rt_trap("Mesh3D.NewSphere: trigonometry table allocation failed");
+        return mesh_return_null_if_build_failed(m);
+    }
+    for (int64_t slice = 0; slice <= slices; slice++) {
+        float theta = 2.0f * (float)M_PI * (float)slice / (float)slices;
+        slice_trig[(size_t)slice * 2u + 0u] = cosf(theta);
+        slice_trig[(size_t)slice * 2u + 1u] = sinf(theta);
+    }
+    for (int64_t ring = 0; ring <= rings; ring++) {
+        float phi = (float)M_PI * (float)ring / (float)rings;
+        ring_trig[(size_t)ring * 2u + 0u] = cosf(phi);
+        ring_trig[(size_t)ring * 2u + 1u] = sinf(phi);
+    }
 
     /* Generate a single pole vertex at each end, and seam-duplicated body rings.
      * This keeps UV seams intact without emitting zero-area cap triangles. */
     rt_mesh3d_begin_geometry_batch((rt_mesh3d *)m);
     rt_mesh3d_add_vertex(m, 0.0, r, 0.0, 0.0, 1.0, 0.0, 0.5, 0.0);
     for (int64_t ring = 1; ring < rings; ring++) {
-        float phi = (float)M_PI * (float)ring / (float)rings;
-        float sp = sinf(phi), cp = cosf(phi);
+        float cp = ring_trig[(size_t)ring * 2u + 0u];
+        float sp = ring_trig[(size_t)ring * 2u + 1u];
 
         for (int64_t slice = 0; slice <= slices; slice++) {
-            float theta = 2.0f * (float)M_PI * (float)slice / (float)slices;
-            float st = sinf(theta), ct = cosf(theta);
+            float ct = slice_trig[(size_t)slice * 2u + 0u];
+            float st = slice_trig[(size_t)slice * 2u + 1u];
 
             float nx = sp * ct, ny = cp, nz = sp * st;
             float u = (float)slice / (float)slices;
@@ -152,6 +173,8 @@ void *rt_mesh3d_new_sphere(double radius, int64_t segments) {
         }
     }
     rt_mesh3d_end_geometry_batch((rt_mesh3d *)m);
+    free(slice_trig);
+    free(ring_trig);
 
     return mesh_return_null_if_build_failed(m);
 }
@@ -202,6 +225,7 @@ void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments) {
 
     double r = radius;
     double hy = height * 0.5;
+    float *trig = NULL;
     if (!mesh3d_check_planned_payload((uint64_t)(4 * segments + 4),
                                       (uint64_t)(12 * segments),
                                       "Mesh3D.NewCylinder: mesh exceeds memory budget")) {
@@ -215,12 +239,23 @@ void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments) {
         mesh_mark_build_failed((rt_mesh3d *)m);
         return mesh_return_null_if_build_failed(m);
     }
+    trig = (float *)malloc((size_t)(segments + 1) * 2u * sizeof(float));
+    if (!trig) {
+        mesh_mark_build_failed((rt_mesh3d *)m);
+        rt_trap("Mesh3D.NewCylinder: trigonometry table allocation failed");
+        return mesh_return_null_if_build_failed(m);
+    }
+    for (int64_t i = 0; i <= segments; i++) {
+        float theta = 2.0f * (float)M_PI * (float)i / (float)segments;
+        trig[(size_t)i * 2u + 0u] = cosf(theta);
+        trig[(size_t)i * 2u + 1u] = sinf(theta);
+    }
 
     /* Side vertices */
     rt_mesh3d_begin_geometry_batch((rt_mesh3d *)m);
     for (int64_t i = 0; i <= segments; i++) {
-        float theta = 2.0f * (float)M_PI * (float)i / (float)segments;
-        float ct = cosf(theta), st = sinf(theta);
+        float ct = trig[(size_t)i * 2u + 0u];
+        float st = trig[(size_t)i * 2u + 1u];
         float u = (float)i / (float)segments;
 
         rt_mesh3d_add_vertex(m, r * ct, -hy, r * st, ct, 0, st, u, 1.0);
@@ -238,8 +273,8 @@ void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments) {
     int64_t tc = (int64_t)((rt_mesh3d *)m)->vertex_count;
     rt_mesh3d_add_vertex(m, 0, hy, 0, 0, 1, 0, 0.5, 0.5);
     for (int64_t i = 0; i < segments; i++) {
-        float theta = 2.0f * (float)M_PI * (float)i / (float)segments;
-        float ct = cosf(theta), st = sinf(theta);
+        float ct = trig[(size_t)i * 2u + 0u];
+        float st = trig[(size_t)i * 2u + 1u];
         rt_mesh3d_add_vertex(m, r * ct, hy, r * st, 0, 1, 0, ct * 0.5 + 0.5, st * 0.5 + 0.5);
     }
     for (int64_t i = 0; i < segments; i++) {
@@ -251,8 +286,8 @@ void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments) {
     int64_t bc = (int64_t)((rt_mesh3d *)m)->vertex_count;
     rt_mesh3d_add_vertex(m, 0, -hy, 0, 0, -1, 0, 0.5, 0.5);
     for (int64_t i = 0; i < segments; i++) {
-        float theta = 2.0f * (float)M_PI * (float)i / (float)segments;
-        float ct = cosf(theta), st = sinf(theta);
+        float ct = trig[(size_t)i * 2u + 0u];
+        float st = trig[(size_t)i * 2u + 1u];
         rt_mesh3d_add_vertex(m, r * ct, -hy, r * st, 0, -1, 0, ct * 0.5 + 0.5, st * 0.5 + 0.5);
     }
     for (int64_t i = 0; i < segments; i++) {
@@ -260,6 +295,7 @@ void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments) {
         rt_mesh3d_add_triangle(m, bc, bc + 1 + i, bc + 1 + next);
     }
     rt_mesh3d_end_geometry_batch((rt_mesh3d *)m);
+    free(trig);
 
     return mesh_return_null_if_build_failed(m);
 }

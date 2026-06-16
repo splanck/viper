@@ -63,6 +63,9 @@ extern const char *rt_string_cstr(rt_string s);
 #define MESH3D_PROCEDURAL_MAX_BYTES (128ull * 1024ull * 1024ull)
 #define MESH3D_CLEAR_RETAIN_VERTEX_CAP 65536u
 #define MESH3D_CLEAR_RETAIN_INDEX_CAP 196608u
+#define MESH3D_POSITION64_PRECISION_RISK_THRESHOLD 65536.0
+#define MESH3D_POSITION64_MATERIAL_DELTA 1e-3
+#define MESH3D_NORMAL_STACK_VERTS 256u
 #if defined(__clang__) || defined(__GNUC__)
 #define MESH3D_UNUSED_PRIVATE __attribute__((unused))
 #else
@@ -296,6 +299,29 @@ static mat4_impl *mesh3d_mat4_checked(void *obj) {
 /// @brief Test whether @p value is finite and within ±FLT_MAX for safe `double → float` narrowing.
 static int mesh_value_fits_float(double value) {
     return isfinite(value) && value >= -MESH3D_FLOAT_ABS_MAX && value <= MESH3D_FLOAT_ABS_MAX;
+}
+
+/// @brief Return whether an authored double coordinate should promote the mesh to positions64.
+/// @details Ordinary local meshes do not need the double sidecar: the backend and culling paths
+///          already operate on float vertices. The sidecar is reserved for coordinates that are
+///          large enough to need camera-relative vertex rebasing, or whose float narrowing loses a
+///          material amount of precision. This mirrors the Canvas3D rebase predicate so AddVertex
+///          meshes pay the memory cost only when the extra precision can affect rendering.
+static int mesh_position_component_needs_positions64(double value) {
+    float narrowed;
+    if (!mesh_value_fits_float(value))
+        return 1;
+    if (fabs(value) > MESH3D_POSITION64_PRECISION_RISK_THRESHOLD)
+        return 1;
+    narrowed = (float)value;
+    return fabs(value - (double)narrowed) > MESH3D_POSITION64_MATERIAL_DELTA;
+}
+
+/// @brief Return whether a vertex position should allocate the optional double-position sidecar.
+static int mesh_position_needs_positions64(double x, double y, double z) {
+    return mesh_position_component_needs_positions64(x) ||
+           mesh_position_component_needs_positions64(y) ||
+           mesh_position_component_needs_positions64(z);
 }
 
 /// @brief Sanitize copied vertex data that may have come from imported or direct internal storage.
@@ -673,6 +699,30 @@ static void mesh_repair_animation_refs(rt_mesh3d *m) {
         mesh_release_morph_slot(&m->morph_targets_ref);
 }
 
+/// @brief Drop transient animation payload pointers that are owned by the current draw frame.
+/// @details `bone_palette`, `morph_deltas`, and related pointers are borrowed snapshots produced by
+///          animation controllers during draw submission. Mesh3D owns only the retained skeleton
+///          and morph-target handles, so Clear must null these transient pointers rather than
+///          attempting to free storage that belongs to another subsystem.
+static void mesh3d_clear_transient_animation_payloads(rt_mesh3d *m) {
+    if (!m)
+        return;
+    m->bone_palette = NULL;
+    m->prev_bone_palette = NULL;
+    m->bone_count = 0;
+    m->morph_deltas = NULL;
+    m->morph_normal_deltas = NULL;
+    m->morph_weights = NULL;
+    m->prev_morph_weights = NULL;
+    m->morph_shape_count = 0;
+    m->morph_bound_deltas_source = NULL;
+    m->morph_bound_revision = 0;
+    m->morph_bound_vertex_count = 0;
+    m->morph_bound_shape_count = 0;
+    m->morph_bound_pad = 0.0;
+    m->morph_bound_valid = 0;
+}
+
 /// @brief GC finalizer for Mesh3D — releases the owned vertex and index buffers.
 static void rt_mesh3d_finalize(void *obj) {
     rt_mesh3d *m = (rt_mesh3d *)obj;
@@ -690,27 +740,29 @@ static void rt_mesh3d_finalize(void *obj) {
     mesh_release_morph_slot(&m->morph_targets_ref);
 }
 
-/// @brief Create a new empty 3D mesh for programmatic construction.
-/// @details Allocates vertex and index arrays with initial capacity. Vertices are
-///          stored as vgfx3d_vertex_t (92 bytes each, float internally) and indices
-///          as uint32_t. The mesh supports up to 16M vertices. Geometry is built
-///          by calling add_vertex/add_triangle, or by using the procedural generators
-///          (new_box, new_sphere, new_plane, new_cylinder). GC finalizer frees arrays.
-/// @return Opaque mesh handle, or NULL on allocation failure.
-void *rt_mesh3d_new(void) {
+/// @brief Allocate and initialize a Mesh3D object with optional default growable buffers.
+/// @details Shared constructor used by both the public `Mesh3D.New` path and exact-size importer
+///          paths. When @p allocate_default_storage is non-zero, the mesh receives the small
+///          default vertex/index arrays used by programmatic append workflows; otherwise the mesh
+///          starts with zero capacity and callers must assign or reserve storage before adding
+///          geometry.
+static rt_mesh3d *mesh3d_new_initialized(int allocate_default_storage) {
     rt_mesh3d *m = (rt_mesh3d *)rt_obj_new_i64(RT_G3D_MESH3D_CLASS_ID, (int64_t)sizeof(rt_mesh3d));
     if (!m) {
         rt_trap("Mesh3D.New: memory allocation failed");
         return NULL;
     }
     m->vptr = NULL;
-    m->vertices = (vgfx3d_vertex_t *)calloc(MESH_INIT_VERTS, sizeof(vgfx3d_vertex_t));
+    m->vertices = allocate_default_storage
+                      ? (vgfx3d_vertex_t *)calloc(MESH_INIT_VERTS, sizeof(vgfx3d_vertex_t))
+                      : NULL;
     m->positions64 = NULL;
     m->vertex_count = 0;
-    m->vertex_capacity = MESH_INIT_VERTS;
-    m->indices = (uint32_t *)calloc(MESH_INIT_IDXS, sizeof(uint32_t));
+    m->vertex_capacity = allocate_default_storage ? MESH_INIT_VERTS : 0;
+    m->indices =
+        allocate_default_storage ? (uint32_t *)calloc(MESH_INIT_IDXS, sizeof(uint32_t)) : NULL;
     m->index_count = 0;
-    m->index_capacity = MESH_INIT_IDXS;
+    m->index_capacity = allocate_default_storage ? MESH_INIT_IDXS : 0;
     m->bone_palette = NULL;
     m->prev_bone_palette = NULL;
     m->bone_count = 0;
@@ -742,7 +794,7 @@ void *rt_mesh3d_new(void) {
     m->physics_bvh_node_count = 0;
     m->physics_bvh_tri_count = 0;
     rt_mesh3d_reset_bounds(m);
-    if (!m->vertices || !m->indices) {
+    if (allocate_default_storage && (!m->vertices || !m->indices)) {
         free(m->vertices);
         free(m->positions64);
         free(m->indices);
@@ -755,7 +807,26 @@ void *rt_mesh3d_new(void) {
         return NULL;
     }
     rt_obj_set_finalizer(m, rt_mesh3d_finalize);
-    return mesh_return_null_if_build_failed(m);
+    return m;
+}
+
+/// @brief Create a new empty 3D mesh for programmatic construction.
+/// @details Allocates vertex and index arrays with initial capacity. Vertices are
+///          stored as vgfx3d_vertex_t (92 bytes each, float internally) and indices
+///          as uint32_t. The mesh supports up to 16M vertices. Geometry is built
+///          by calling add_vertex/add_triangle, or by using the procedural generators
+///          (new_box, new_sphere, new_plane, new_cylinder). GC finalizer frees arrays.
+/// @return Opaque mesh handle, or NULL on allocation failure.
+void *rt_mesh3d_new(void) {
+    return mesh_return_null_if_build_failed(mesh3d_new_initialized(1));
+}
+
+/// @brief Create a Mesh3D with initialized metadata but no default vertex/index arrays.
+/// @details Exact-size importers use this to avoid the allocation/free pair that would otherwise
+///          happen when replacing `Mesh3D.New`'s small default buffers with decoded asset payloads.
+///          The object is otherwise a normal Mesh3D and is finalized by `rt_mesh3d_finalize`.
+void *rt_mesh3d_new_empty_storage(void) {
+    return mesh_return_null_if_build_failed(mesh3d_new_initialized(0));
 }
 
 /// @brief Remove all vertices and indices from the mesh, resetting to empty.
@@ -765,14 +836,7 @@ void rt_mesh3d_clear(void *obj) {
         return;
     m->vertex_count = 0;
     m->index_count = 0;
-    m->bone_palette = NULL;
-    m->prev_bone_palette = NULL;
-    m->bone_count = 0;
-    m->morph_deltas = NULL;
-    m->morph_normal_deltas = NULL;
-    m->morph_weights = NULL;
-    m->prev_morph_weights = NULL;
-    m->morph_shape_count = 0;
+    mesh3d_clear_transient_animation_payloads(m);
     m->build_failed = 0;
     mesh_release_skeleton_slot(&m->skeleton_ref);
     mesh_release_morph_slot(&m->morph_targets_ref);
@@ -851,7 +915,8 @@ void rt_mesh3d_add_vertex(
             return;
         }
     }
-    if (!mesh3d_ensure_positions64(m, "Mesh3D.AddVertex")) {
+    if ((m->positions64 || mesh_position_needs_positions64(x, y, z)) &&
+        !mesh3d_ensure_positions64(m, "Mesh3D.AddVertex")) {
         mesh_mark_build_failed(m);
         return;
     }
@@ -859,9 +924,11 @@ void rt_mesh3d_add_vertex(
     uint32_t vertex_index = m->vertex_count++;
     vgfx3d_vertex_t *vt = &m->vertices[vertex_index];
     memset(vt, 0, sizeof(vgfx3d_vertex_t));
-    m->positions64[(size_t)vertex_index * 3u + 0] = x;
-    m->positions64[(size_t)vertex_index * 3u + 1] = y;
-    m->positions64[(size_t)vertex_index * 3u + 2] = z;
+    if (m->positions64) {
+        m->positions64[(size_t)vertex_index * 3u + 0] = x;
+        m->positions64[(size_t)vertex_index * 3u + 1] = y;
+        m->positions64[(size_t)vertex_index * 3u + 2] = z;
+    }
     vt->pos[0] = (float)x;
     vt->pos[1] = (float)y;
     vt->pos[2] = (float)z;
@@ -996,6 +1063,10 @@ void rt_mesh3d_recalc_normals(void *obj) {
     rt_mesh3d *m = mesh3d_checked(obj);
     uint32_t vertex_count;
     uint32_t index_count;
+    double stack_accum[MESH3D_NORMAL_STACK_VERTS * 3u];
+    double *heap_accum = NULL;
+    double *accum;
+    size_t accum_values;
     if (!m)
         return;
     rt_mesh3d_repair_geometry_counts(m);
@@ -1014,10 +1085,17 @@ void rt_mesh3d_recalc_normals(void *obj) {
         rt_trap("Mesh3D.RecalcNormals: normal accumulator allocation overflow");
         return;
     }
-    double *accum = (double *)calloc((size_t)vertex_count * 3u, sizeof(double));
-    if (vertex_count > 0 && !accum) {
-        rt_trap("Mesh3D.RecalcNormals: memory allocation failed");
-        return;
+    accum_values = (size_t)vertex_count * 3u;
+    if (accum_values <= (size_t)MESH3D_NORMAL_STACK_VERTS * 3u) {
+        memset(stack_accum, 0, accum_values * sizeof(double));
+        accum = stack_accum;
+    } else {
+        heap_accum = (double *)calloc(accum_values, sizeof(double));
+        if (!heap_accum) {
+            rt_trap("Mesh3D.RecalcNormals: memory allocation failed");
+            return;
+        }
+        accum = heap_accum;
     }
 
     /* Zero all normals */
@@ -1076,7 +1154,7 @@ void rt_mesh3d_recalc_normals(void *obj) {
             n[2] = 0.0f;
         }
     }
-    free(accum);
+    free(heap_accum);
     mesh3d_bump_vertex_revision(m, 1);
 }
 
@@ -1084,6 +1162,11 @@ void rt_mesh3d_recalc_normals(void *obj) {
 ///   none, accumulating area-weighted face normals and normalizing. Traps on accumulator
 ///   allocation overflow.
 static int mesh3d_fill_missing_normals(rt_mesh3d *m) {
+    double stack_accum[MESH3D_NORMAL_STACK_VERTS * 3u];
+    double *heap_accum = NULL;
+    double *accum;
+    size_t accum_values;
+
     if (!m || m->index_count < 3u)
         return 1;
     if ((size_t)m->vertex_count > SIZE_MAX / (3u * sizeof(double))) {
@@ -1091,9 +1174,15 @@ static int mesh3d_fill_missing_normals(rt_mesh3d *m) {
                            "Mesh3D.FromOBJ: normal accumulator allocation overflow");
         return 0;
     }
-    double *accum = (double *)calloc((size_t)m->vertex_count * 3u, sizeof(double));
-    if (m->vertex_count > 0 && !accum) {
-        return 0;
+    accum_values = (size_t)m->vertex_count * 3u;
+    if (accum_values <= (size_t)MESH3D_NORMAL_STACK_VERTS * 3u) {
+        memset(stack_accum, 0, accum_values * sizeof(double));
+        accum = stack_accum;
+    } else {
+        heap_accum = (double *)calloc(accum_values, sizeof(double));
+        if (!heap_accum)
+            return 0;
+        accum = heap_accum;
     }
     for (uint32_t i = 0; i + 2 < m->index_count; i += 3) {
         uint32_t i0 = m->indices[i], i1 = m->indices[i + 1], i2 = m->indices[i + 2];
@@ -1102,6 +1191,9 @@ static int mesh3d_fill_missing_normals(rt_mesh3d *m) {
         float *p0 = m->vertices[i0].pos;
         float *p1 = m->vertices[i1].pos;
         float *p2 = m->vertices[i2].pos;
+        double d0[3] = {(double)p0[0], (double)p0[1], (double)p0[2]};
+        double d1[3] = {(double)p1[0], (double)p1[1], (double)p1[2]};
+        double d2[3] = {(double)p2[0], (double)p2[1], (double)p2[2]};
         double e1[3] = {(double)p1[0] - (double)p0[0],
                         (double)p1[1] - (double)p0[1],
                         (double)p1[2] - (double)p0[2]};
@@ -1112,7 +1204,7 @@ static int mesh3d_fill_missing_normals(rt_mesh3d *m) {
         double ny = e1[2] * e2[0] - e1[0] * e2[2];
         double nz = e1[0] * e2[1] - e1[1] * e2[0];
         double len_sq = nx * nx + ny * ny + nz * nz;
-        if (!isfinite(len_sq) || len_sq <= 1e-20)
+        if (!isfinite(len_sq) || len_sq <= mesh_triangle_area_epsilon_sq_f64(d0, d1, d2))
             continue;
         accum[(size_t)i0 * 3u + 0] += nx;
         accum[(size_t)i0 * 3u + 1] += ny;
@@ -1144,7 +1236,7 @@ static int mesh3d_fill_missing_normals(rt_mesh3d *m) {
             n[2] = 0.0f;
         }
     }
-    free(accum);
+    free(heap_accum);
     mesh3d_bump_vertex_revision(m, 1);
     return 1;
 }
@@ -1165,16 +1257,9 @@ void *rt_mesh3d_clone(void *obj) {
         return NULL;
     vertex_count = rt_mesh3d_safe_vertex_count(src);
     index_count = rt_mesh3d_safe_index_count(src);
-    rt_mesh3d *dst = (rt_mesh3d *)rt_mesh3d_new();
+    rt_mesh3d *dst = (rt_mesh3d *)rt_mesh3d_new_empty_storage();
     if (!dst)
         return NULL;
-
-    free(dst->vertices);
-    free(dst->positions64);
-    free(dst->indices);
-    dst->vertices = NULL;
-    dst->positions64 = NULL;
-    dst->indices = NULL;
 
     if ((size_t)vertex_count > SIZE_MAX / sizeof(vgfx3d_vertex_t) ||
         (size_t)index_count > SIZE_MAX / sizeof(uint32_t) ||

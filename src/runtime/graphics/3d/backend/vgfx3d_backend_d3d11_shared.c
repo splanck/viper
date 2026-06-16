@@ -815,7 +815,7 @@ int32_t vgfx3d_d3d11_sanitize_shadow_cascade_count(int32_t requested_cascade_cou
     if (sanitized_shadow_index < 0 || sanitized_shadow_index >= advertised_shadow_count)
         return 1;
     remaining_slots = advertised_shadow_count - sanitized_shadow_index;
-    if (remaining_slots <= 0 || requested_cascade_count < 1)
+    if (requested_cascade_count < 1)
         return 1;
     return requested_cascade_count > remaining_slots ? remaining_slots : requested_cascade_count;
 }
