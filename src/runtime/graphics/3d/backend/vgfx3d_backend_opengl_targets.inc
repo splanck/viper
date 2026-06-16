@@ -64,12 +64,8 @@ static int ensure_scene_targets(gl_context_t *ctx, int32_t w, int32_t h) {
         return 0;
 
     destroy_scene_targets(ctx);
-    color_format = vgfx3d_opengl_choose_color_format(VGFX3D_OPENGL_TARGET_SCENE) ==
-                               VGFX3D_OPENGL_COLOR_FORMAT_HDR16F &&
-                           ctx->supports_hdr_color_target
-                       ? GL_RGBA16F
-                       : GL_RGBA8;
-    color_type = color_format == GL_RGBA16F ? GL_FLOAT : GL_UNSIGNED_BYTE;
+    color_format = GL_RGBA;
+    color_type = GL_UNSIGNED_BYTE;
     depth_format = ctx->supports_depth_float_target ? GL_DEPTH_COMPONENT32F : GL_DEPTH_COMPONENT24;
     depth_type = ctx->supports_depth_float_target ? GL_FLOAT : GL_UNSIGNED_INT;
 
@@ -122,6 +118,9 @@ static int ensure_scene_targets(gl_context_t *ctx, int32_t w, int32_t h) {
 
 /// @brief Build a single-attachment LDR FBO for tonemapped post-FX readback.
 static int ensure_postfx_readback_target(gl_context_t *ctx, int32_t w, int32_t h) {
+    GLint color_format;
+    GLenum color_type;
+
     if (!ctx || w <= 0 || h <= 0)
         return -1;
     if (ctx->postfx_readback_fbo && ctx->postfx_readback_width == w &&
@@ -131,11 +130,14 @@ static int ensure_postfx_readback_target(gl_context_t *ctx, int32_t w, int32_t h
 
     destroy_postfx_readback_target(ctx);
 
+    color_format = GL_RGBA;
+    color_type = GL_UNSIGNED_BYTE;
+
     gl.GenFramebuffers(1, &ctx->postfx_readback_fbo);
     gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->postfx_readback_fbo);
     gl.GenTextures(1, &ctx->postfx_readback_tex);
     gl.BindTexture(GL_TEXTURE_2D, ctx->postfx_readback_tex);
-    gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    gl.TexImage2D(GL_TEXTURE_2D, 0, color_format, w, h, 0, GL_RGBA, color_type, NULL);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -174,6 +176,9 @@ static void destroy_postfx_scratch_target(gl_context_t *ctx) {
 /// @brief Build a single-attachment LDR FBO used as post-FX intermediate storage.
 /// @return Zero on success, -1 when allocation or framebuffer completeness fails.
 static int ensure_postfx_scratch_target(gl_context_t *ctx, int32_t w, int32_t h) {
+    GLint color_format;
+    GLenum color_type;
+
     if (!ctx || w <= 0 || h <= 0)
         return -1;
     if (ctx->postfx_scratch_fbo && ctx->postfx_scratch_width == w &&
@@ -183,11 +188,18 @@ static int ensure_postfx_scratch_target(gl_context_t *ctx, int32_t w, int32_t h)
 
     destroy_postfx_scratch_target(ctx);
 
+    color_format = vgfx3d_opengl_choose_color_format(VGFX3D_OPENGL_TARGET_SCENE) ==
+                               VGFX3D_OPENGL_COLOR_FORMAT_HDR16F &&
+                           ctx->supports_hdr_color_target
+                       ? GL_RGBA16F
+                       : GL_RGBA8;
+    color_type = color_format == GL_RGBA16F ? GL_FLOAT : GL_UNSIGNED_BYTE;
+
     gl.GenFramebuffers(1, &ctx->postfx_scratch_fbo);
     gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->postfx_scratch_fbo);
     gl.GenTextures(1, &ctx->postfx_scratch_tex);
     gl.BindTexture(GL_TEXTURE_2D, ctx->postfx_scratch_tex);
-    gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    gl.TexImage2D(GL_TEXTURE_2D, 0, color_format, w, h, 0, GL_RGBA, color_type, NULL);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -448,9 +460,15 @@ static void bind_main_framebuffer(gl_context_t *ctx) {
         gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
         gl.Viewport(0, 0, ctx->rtt_width, ctx->rtt_height);
     } else if (ctx->active_target_kind == VGFX3D_OPENGL_TARGET_SWAPCHAIN) {
-        gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
-        gl.DrawBuffer(GL_BACK);
-        gl.ReadBuffer(GL_BACK);
+        if (!ctx->default_framebuffer_writable && ctx->scene_fbo) {
+            gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->scene_fbo);
+            gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
+            gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
+        } else {
+            gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
+            gl.DrawBuffer(ctx->default_draw_buffer);
+            gl.ReadBuffer(ctx->default_draw_buffer);
+        }
         gl.Viewport(0, 0, ctx->width, ctx->height);
     } else {
         gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->scene_fbo);
@@ -513,8 +531,13 @@ static void gl_configure_draw_output(gl_context_t *ctx, const vgfx3d_draw_cmd_t 
         gl.Viewport(0, 0, ctx->rtt_width, ctx->rtt_height);
         return;
     }
-    gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
-    gl.DrawBuffer(GL_BACK);
+    if (!ctx->default_framebuffer_writable && ctx->scene_fbo) {
+        gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->scene_fbo);
+        gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
+    } else {
+        gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
+        gl.DrawBuffer(ctx->default_draw_buffer);
+    }
     gl.Viewport(0, 0, ctx->width, ctx->height);
 }
 
@@ -683,6 +706,51 @@ static int gl_draw_texture_to_target(gl_context_t *ctx,
     return ok;
 }
 
+/// @brief Apply post-FX inside the scene FBO when standalone final FBOs are unusable.
+/// @details The Linux GLX fallback presents through the ViperGFX CPU window path because the
+///          default drawable rejects the fullscreen resolve used by post-FX. On the affected
+///          stack, additional single-attachment FBOs can also report complete while discarding
+///          color writes. The scene FBO is proven writable by the main render pass, so this
+///          fallback ping-pongs between scene color attachment 0 and the motion attachment after
+///          motion vectors are no longer needed. The final color is copied back to attachment 0
+///          so final-overlay replay, readback, and presentation all consume the normal scene
+///          color target.
+/// @return Non-zero when every enabled effect pass resolves and the final color is in scene
+///         color attachment 0.
+static int gl_apply_postfx_chain_in_scene(gl_context_t *ctx,
+                                          int32_t width,
+                                          int32_t height,
+                                          const vgfx3d_postfx_chain_t *chain) {
+    GLuint source_tex;
+
+    if (!ctx || !ctx->scene_fbo || !ctx->scene_color_tex || !ctx->scene_motion_tex ||
+        width <= 0 || height <= 0 || !chain || !chain->enabled || chain->effect_count <= 0 ||
+        !chain->effects) {
+        return 0;
+    }
+
+    source_tex = ctx->scene_color_tex;
+    for (int32_t i = 0; i < chain->effect_count; i++) {
+        const int source_is_scene_color = (source_tex == ctx->scene_color_tex) ? 1 : 0;
+        const GLenum dst_attachment =
+            source_is_scene_color ? GL_COLOR_ATTACHMENT1 : GL_COLOR_ATTACHMENT0;
+        const GLuint dst_tex = source_is_scene_color ? ctx->scene_motion_tex : ctx->scene_color_tex;
+        if (!gl_draw_texture_to_target(
+                ctx, source_tex, ctx->scene_fbo, dst_attachment, width, height, &chain->effects[i].snapshot)) {
+            return 0;
+        }
+        source_tex = dst_tex;
+    }
+
+    if (source_tex != ctx->scene_color_tex) {
+        if (!gl_draw_texture_to_target(
+                ctx, source_tex, ctx->scene_fbo, GL_COLOR_ATTACHMENT0, width, height, NULL)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 /// @brief Apply a full chain of post-FX effects using ping-pong FBO rendering.
 /// @details Iterates `chain->effects[0..effect_count-1]`, drawing each pass via
 ///   `gl_draw_texture_to_target`. Passes alternate between `scene_fbo`/`scene_color_tex`
@@ -727,7 +795,7 @@ static int gl_apply_postfx_chain(gl_context_t *ctx,
     if (out_result_framebuffer)
         *out_result_framebuffer = 0;
     if (out_result_read_buffer)
-        *out_result_read_buffer = GL_BACK;
+        *out_result_read_buffer = ctx ? ctx->default_draw_buffer : GL_BACK;
     if (!ctx || !source_tex || width <= 0 || height <= 0 || !chain || !chain->enabled ||
         chain->effect_count <= 0 || !chain->effects) {
         return 0;
@@ -775,6 +843,20 @@ static int gl_apply_postfx_chain(gl_context_t *ctx,
         last_read_buffer = dst_draw_buffer;
         if ((!is_last || force_offscreen_final) && dst_texture)
             source_tex = dst_texture;
+    }
+
+    if (force_offscreen_final && last_framebuffer != ctx->postfx_readback_fbo) {
+        if (!gl_draw_texture_to_target(ctx,
+                                       source_tex,
+                                       ctx->postfx_readback_fbo,
+                                       GL_COLOR_ATTACHMENT0,
+                                       width,
+                                       height,
+                                       NULL)) {
+            return 0;
+        }
+        last_framebuffer = ctx->postfx_readback_fbo;
+        last_read_buffer = GL_COLOR_ATTACHMENT0;
     }
 
     if (out_result_framebuffer)

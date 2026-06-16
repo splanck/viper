@@ -103,8 +103,8 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     memcpy(ctx->scene_cam_pos, history.scene_cam_pos, sizeof(ctx->scene_cam_pos));
     ctx->scene_history_valid = history.scene_history_valid;
 
-    if (ctx->current_pass_is_overlay && ctx->gpu_postfx_enabled && ctx->scene_postfx_pending &&
-        !ctx->scene_composited_to_backbuffer) {
+    if (ctx->current_pass_is_overlay && ctx->default_framebuffer_writable &&
+        ctx->gpu_postfx_enabled && ctx->scene_postfx_pending && !ctx->scene_composited_to_backbuffer) {
         if (draw_scene_texture(ctx, ctx->gpu_postfx_chain_valid ? &ctx->gpu_postfx_chain : NULL))
             ctx->scene_composited_to_backbuffer = 1;
     }
@@ -114,6 +114,10 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     else
         ctx->active_target_kind =
             vgfx3d_opengl_choose_target_kind(ctx->rtt_active, ctx->gpu_postfx_enabled);
+    if (!ctx->current_pass_is_overlay && ctx->active_target_kind == VGFX3D_OPENGL_TARGET_SWAPCHAIN &&
+        !ctx->default_framebuffer_writable) {
+        ctx->active_target_kind = VGFX3D_OPENGL_TARGET_SCENE;
+    }
 
     if (ctx->active_target_kind == VGFX3D_OPENGL_TARGET_SCENE) {
         if (ensure_scene_targets(ctx, ctx->width, ctx->height) != 0)
@@ -332,7 +336,7 @@ static void gl_resize(void *ctx_ptr, int32_t w, int32_t h) {
 ///     pending, runs the composite shader into a staging FBO and reads
 ///     from it. Gives the user the post-FX'd image even though it
 ///     hasn't been presented yet.
-///   - Direct readback: pulls from `GL_BACK` of the swapchain.
+///   - Direct readback: pulls from the context's active default framebuffer buffer.
 /// Always flips Y because GL has bottom-left origin; ours is top-left.
 static int gl_readback_rgba(
     void *ctx_ptr, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride) {
@@ -341,7 +345,7 @@ static int gl_readback_rgba(
     int32_t source_w, source_h;
     int32_t copy_w, copy_h;
     GLuint readback_framebuffer = 0;
-    GLenum readback_buffer = GL_BACK;
+    GLenum readback_buffer = ctx ? ctx->default_draw_buffer : GL_BACK;
     uint8_t *tmp;
     size_t dst_bytes;
     gl_framebuffer_state_t saved_state;
@@ -351,7 +355,7 @@ static int gl_readback_rgba(
 
     if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
         return 0;
-    use_postfx_readback = !ctx->scene_composited_to_backbuffer &&
+    use_postfx_readback = ctx->default_framebuffer_writable && !ctx->scene_composited_to_backbuffer &&
                           vgfx3d_opengl_choose_readback_kind(
                               (ctx->gpu_postfx_enabled && ctx->scene_postfx_pending) ? 1 : 0) ==
                               VGFX3D_OPENGL_READBACK_POSTFX_COMPOSITE;
@@ -364,7 +368,7 @@ static int gl_readback_rgba(
                                                                    ctx->scene_height,
                                                                    &ctx->gpu_postfx_chain,
                                                                    0,
-                                                                   GL_BACK,
+                                                                   ctx->default_draw_buffer,
                                                                    1,
                                                                    &readback_framebuffer,
                                                                    &readback_buffer)) {
@@ -373,6 +377,12 @@ static int gl_readback_rgba(
         }
         source_w = ctx->scene_width;
         source_h = ctx->scene_height;
+    } else if (!ctx->default_framebuffer_writable && ctx->scene_fbo) {
+        readback_framebuffer = ctx->scene_fbo;
+        readback_buffer = GL_COLOR_ATTACHMENT0;
+        source_w = ctx->scene_width;
+        source_h = ctx->scene_height;
+        use_postfx_readback = 1;
     } else {
         source_w = ctx->width;
         source_h = ctx->height;
@@ -392,9 +402,10 @@ static int gl_readback_rgba(
 
     memset(dst_rgba, 0, dst_bytes);
     gl_capture_framebuffer_state(&saved_state);
+    (void)gl_drain_errors("pre-readback");
     gl.PixelStorei(GL_PACK_ALIGNMENT, 1);
     gl.BindFramebuffer(GL_FRAMEBUFFER, use_postfx_readback ? readback_framebuffer : 0);
-    gl.ReadBuffer(use_postfx_readback ? readback_buffer : GL_BACK);
+    gl.ReadBuffer(use_postfx_readback ? readback_buffer : ctx->default_draw_buffer);
     gl.ReadPixels(0, 0, copy_w, copy_h, GL_RGBA, GL_UNSIGNED_BYTE, tmp);
     if (!gl_drain_errors("readback")) {
         free(tmp);
@@ -414,6 +425,65 @@ static int gl_readback_rgba(
     return 1;
 }
 
+/// @brief Present an offscreen OpenGL final target through the ViperGFX window buffer.
+/// @details This fallback is used only when the GLX default framebuffer probe shows that the
+///          window drawable does not accept RGB writes. Rendering and post-FX remain on OpenGL;
+///          the resolved final FBO is copied to the existing RGBA ViperGFX framebuffer and
+///          presented through the platform XImage path.
+static int gl_present_offscreen_vgfx(gl_context_t *ctx) {
+    vgfx_framebuffer_t fb;
+    GLuint framebuffer;
+    int32_t source_w;
+    int32_t source_h;
+    int32_t copy_w;
+    int32_t copy_h;
+    uint8_t *tmp;
+    gl_framebuffer_state_t saved_state;
+
+    if (!ctx || !ctx->vgfx_win)
+        return 0;
+    if (!ctx->default_framebuffer_writable && ctx->scene_fbo) {
+        framebuffer = ctx->scene_fbo;
+        source_w = ctx->scene_width;
+        source_h = ctx->scene_height;
+    } else if (ctx->scene_fbo) {
+        framebuffer = ctx->scene_fbo;
+        source_w = ctx->scene_width;
+        source_h = ctx->scene_height;
+    } else {
+        return 0;
+    }
+    if (!vgfx_get_framebuffer(ctx->vgfx_win, &fb) || !fb.pixels || fb.width <= 0 ||
+        fb.height <= 0 || fb.stride < fb.width * 4 || source_w <= 0 || source_h <= 0) {
+        return 0;
+    }
+    copy_w = source_w < fb.width ? source_w : fb.width;
+    copy_h = source_h < fb.height ? source_h : fb.height;
+    tmp = (uint8_t *)malloc((size_t)copy_w * (size_t)copy_h * 4u);
+    if (!tmp)
+        return 0;
+
+    gl_capture_framebuffer_state(&saved_state);
+    gl.PixelStorei(GL_PACK_ALIGNMENT, 1);
+    gl.BindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
+    gl.ReadPixels(0, 0, copy_w, copy_h, GL_RGBA, GL_UNSIGNED_BYTE, tmp);
+    gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
+    vgfx3d_flip_rgba_rows(tmp, copy_w, copy_h);
+    for (int32_t y = 0; y < copy_h; y++)
+        memcpy((uint8_t *)fb.pixels + (size_t)y * (size_t)fb.stride,
+               tmp + (size_t)y * (size_t)copy_w * 4u,
+               (size_t)copy_w * 4u);
+    free(tmp);
+    gl_restore_framebuffer_state(&saved_state);
+    gl_restore_main_draw_state(ctx);
+
+    vgfx_set_gpu_present(ctx->vgfx_win, 0);
+    (void)vgfx_update(ctx->vgfx_win);
+    vgfx_set_gpu_present(ctx->vgfx_win, 1);
+    return 1;
+}
+
 /// @brief Internal present — composite scene to backbuffer (if needed) then SwapBuffers.
 ///
 /// Skips the composite when scene was never rendered offscreen (no
@@ -430,7 +500,7 @@ static void gl_present_impl(gl_context_t *ctx, const vgfx3d_postfx_chain_t *chai
                   ctx->gpu_postfx_enabled && ctx->scene_postfx_pending)
                      ? 1
                      : 0;
-    if (ctx->gpu_postfx_enabled && ctx->scene_postfx_pending &&
+    if (ctx->default_framebuffer_writable && ctx->gpu_postfx_enabled && ctx->scene_postfx_pending &&
         !ctx->scene_composited_to_backbuffer) {
         if (draw_scene_texture(ctx, use_postfx ? chain : NULL))
             ctx->scene_composited_to_backbuffer = 1;
@@ -450,6 +520,12 @@ static void gl_present_impl(gl_context_t *ctx, const vgfx3d_postfx_chain_t *chai
                 (int)ctx->scene_composited_to_backbuffer,
                 use_postfx);
     }
+    if (!ctx->default_framebuffer_writable) {
+        (void)gl_present_offscreen_vgfx(ctx);
+        ctx->scene_postfx_pending = 0;
+        ctx->scene_composited_to_backbuffer = 0;
+        return;
+    }
     glx.SwapBuffers(ctx->display, ctx->window);
     ctx->scene_postfx_pending = 0;
     ctx->scene_composited_to_backbuffer = 0;
@@ -458,6 +534,84 @@ static void gl_present_impl(gl_context_t *ctx, const vgfx3d_postfx_chain_t *chai
 /// @brief Backend `present` (no postfx) — direct SwapBuffers via `gl_present_impl`.
 static void gl_present(void *ctx_ptr) {
     gl_present_impl((gl_context_t *)ctx_ptr, NULL);
+}
+
+/// @brief Backend `present_postfx` hook — composite the scene through the supplied chain and swap.
+/// @details Canvas3D calls this legacy single-step hook when the active frame does not need
+///          final-overlay replay after post-processing. The implementation delegates to the
+///          shared presenter so a disabled or empty chain still resolves the offscreen scene to
+///          the swapchain before presentation.
+static void gl_present_postfx(void *ctx_ptr, const vgfx3d_postfx_chain_t *postfx) {
+    gl_present_impl((gl_context_t *)ctx_ptr, postfx);
+}
+
+/// @brief Backend split post-FX hook — composite pending scene color without swapping.
+/// @details This is used when Canvas3D must replay final overlays after post-FX or capture a
+///          finalized screenshot without presenting the drawable. It writes the pending scene
+///          target into the backbuffer and marks it composited; a later `present` call performs
+///          the actual buffer swap.
+static void gl_apply_postfx(void *ctx_ptr, const vgfx3d_postfx_chain_t *postfx) {
+    gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    int use_postfx;
+    if (!ctx || ctx->rtt_active)
+        return;
+    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+        return;
+    use_postfx = (postfx && postfx->enabled && postfx->effect_count > 0 &&
+                  ctx->gpu_postfx_enabled && ctx->scene_postfx_pending)
+                     ? 1
+                     : 0;
+    if (ctx->gpu_postfx_enabled && ctx->scene_postfx_pending &&
+        !ctx->scene_composited_to_backbuffer) {
+        int drawn = draw_scene_texture(ctx, use_postfx ? postfx : NULL);
+        if (drawn)
+            ctx->scene_composited_to_backbuffer = 1;
+    }
+}
+
+/// @brief Backend `set_gpu_postfx_enabled` hook — route future frames through scene targets.
+/// @details When enabled, `begin_frame` chooses the offscreen scene FBO so post-processing can
+///          sample the rendered color/depth/motion buffers. Disabling post-FX clears latched
+///          chain state and any pending scene-composite flags so the next frame returns to direct
+///          swapchain rendering.
+static void gl_set_gpu_postfx_enabled(void *ctx_ptr, int8_t enabled) {
+    gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    int8_t next_enabled = enabled ? 1 : 0;
+    if (!ctx)
+        return;
+    if (ctx->gpu_postfx_enabled != next_enabled) {
+        ctx->scene_postfx_pending = 0;
+        ctx->scene_composited_to_backbuffer = 0;
+    }
+    ctx->gpu_postfx_enabled = next_enabled;
+    if (!ctx->gpu_postfx_enabled) {
+        vgfx3d_postfx_chain_reset(&ctx->gpu_postfx_chain);
+        ctx->gpu_postfx_chain_valid = 0;
+    }
+}
+
+/// @brief Backend `set_gpu_postfx_snapshot` hook — latch a stable copy of the frame chain.
+/// @details The Canvas3D-side chain is mutable after frame setup, so the backend stores its own
+///          copy for present-time composition and readback. Snapshot refresh can also occur while
+///          replaying final overlays after `apply_postfx`; it must preserve an already-composited
+///          backbuffer so overlay replay is not overwritten by a second scene composite. Copy
+///          failure resets the cached chain instead of leaving partial effect state visible to
+///          later frames.
+static void gl_set_gpu_postfx_snapshot(void *ctx_ptr, const vgfx3d_postfx_chain_t *postfx) {
+    gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    if (!ctx)
+        return;
+    if (!postfx) {
+        vgfx3d_postfx_chain_reset(&ctx->gpu_postfx_chain);
+        ctx->gpu_postfx_chain_valid = 0;
+        return;
+    }
+    if (!vgfx3d_postfx_chain_copy(&ctx->gpu_postfx_chain, postfx)) {
+        vgfx3d_postfx_chain_reset(&ctx->gpu_postfx_chain);
+        ctx->gpu_postfx_chain_valid = 0;
+        return;
+    }
+    ctx->gpu_postfx_chain_valid = 1;
 }
 
 /// @brief Backend `set_render_target` op — bind / unbind RTT.

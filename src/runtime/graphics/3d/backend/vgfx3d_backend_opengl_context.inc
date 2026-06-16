@@ -73,6 +73,63 @@ static void gl_init_context_defaults(gl_context_t *ctx, int32_t w, int32_t h) {
     memcpy(ctx->scene_inv_vp, kIdentity4x4, sizeof(ctx->scene_inv_vp));
     ctx->active_target_kind = VGFX3D_OPENGL_TARGET_SWAPCHAIN;
     ctx->texture_upload_budget_bytes = UINT64_MAX;
+    ctx->default_doublebuffered = 1;
+    ctx->default_draw_buffer = GL_BACK;
+}
+
+/// @brief Cache the default framebuffer draw/read buffer for this GLX context.
+/// @details Linux windows may be created by a shared X11 layer before the 3D backend is selected.
+///          Some drivers expose the resulting drawable as single-buffered even when a
+///          double-buffered FBConfig was requested. In that case `GL_BACK` draws are discarded or
+///          unreadable, producing a blank client area; targeting `GL_FRONT` keeps presentation and
+///          screenshots tied to the drawable that actually exists.
+static void gl_query_default_framebuffer_buffer(gl_context_t *ctx) {
+    GLint doublebuffered = 1;
+    if (!ctx || !gl.GetIntegerv)
+        return;
+    gl.GetIntegerv(GL_DOUBLEBUFFER, &doublebuffered);
+    ctx->default_doublebuffered = doublebuffered ? 1 : 0;
+    ctx->default_draw_buffer = ctx->default_doublebuffered ? GL_BACK : GL_FRONT;
+    if (gl_debug_enabled()) {
+        fprintf(stderr,
+                "[OpenGL] default framebuffer doublebuffered=%d draw_buffer=0x%04X\n",
+                (int)ctx->default_doublebuffered,
+                (unsigned)ctx->default_draw_buffer);
+    }
+}
+
+/// @brief Detect whether the GLX default framebuffer accepts RGB writes.
+/// @details Some Linux GLX/X11 combinations create a context successfully but silently keep the
+///          window drawable's RGB channels black. Offscreen FBO rendering still works in that
+///          configuration, so the backend can fall back to presenting the final offscreen image
+///          through ViperGFX. The probe saves and restores framebuffer state and only runs during
+///          context creation before user-visible rendering begins.
+static void gl_probe_default_framebuffer_writable(gl_context_t *ctx) {
+    gl_framebuffer_state_t saved;
+    uint8_t sample[4] = {0, 0, 0, 0};
+    if (!ctx || !gl.ReadPixels)
+        return;
+    gl_capture_framebuffer_state(&saved);
+    gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
+    gl.DrawBuffer(ctx->default_draw_buffer);
+    gl.ReadBuffer(ctx->default_draw_buffer);
+    gl.Viewport(0, 0, ctx->width, ctx->height);
+    gl.Disable(GL_SCISSOR_TEST);
+    gl.ColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    gl.ClearColor(1.0f, 0.0f, 0.0f, 1.0f);
+    gl.Clear(GL_COLOR_BUFFER_BIT);
+    gl.ReadPixels(ctx->width / 2, ctx->height / 2, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, sample);
+    ctx->default_framebuffer_writable = sample[0] > 200 && sample[1] < 32 && sample[2] < 32;
+    if (gl_debug_enabled()) {
+        fprintf(stderr,
+                "[OpenGL] default framebuffer writable=%d sample=%u,%u,%u,%u\n",
+                (int)ctx->default_framebuffer_writable,
+                (unsigned)sample[0],
+                (unsigned)sample[1],
+                (unsigned)sample[2],
+                (unsigned)sample[3]);
+    }
+    gl_restore_framebuffer_state(&saved);
 }
 
 /// @brief Compile every shader used by the OpenGL backend context.
@@ -310,6 +367,8 @@ static int gl_create_default_white_texture(gl_context_t *ctx) {
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
     if (!gl_upload_ok()) {
         gl.DeleteTextures(1, &ctx->default_white_tex);
         ctx->default_white_tex = 0;
@@ -437,8 +496,6 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                         8,
                         GLX_BLUE_SIZE,
                         8,
-                        GLX_ALPHA_SIZE,
-                        8,
                         GLX_DEPTH_SIZE,
                         24,
                         0};
@@ -471,6 +528,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     XFree(configs);
     if (!glxCtx)
         return NULL;
+    XSync(dpy, False);
     if (!glx.MakeCurrent(dpy, xwin, glxCtx)) {
         glx.DestroyContext(dpy, glxCtx);
         return NULL;
@@ -484,6 +542,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     }
     ctx->display = dpy;
     ctx->window = xwin;
+    ctx->vgfx_win = win;
     ctx->glxCtx = glxCtx;
     if (!gl_query_context_capabilities(ctx)) {
         glx.MakeCurrent(dpy, 0, NULL);
@@ -493,6 +552,14 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     }
     gl.Enable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
     gl_init_context_defaults(ctx, w, h);
+    gl_query_default_framebuffer_buffer(ctx);
+    gl_probe_default_framebuffer_writable(ctx);
+    /*
+     * Linux GLX default drawables can pass a clear/read probe while still rejecting the
+     * fullscreen shader resolve used by post-FX. Keep all final color composition in backend-owned
+     * FBOs and present through ViperGFX; scene rendering and post-FX remain GPU-backed.
+     */
+    ctx->default_framebuffer_writable = 0;
     gl_query_anisotropy_support(ctx);
 
     if (!gl_compile_context_shaders(&shaders)) {

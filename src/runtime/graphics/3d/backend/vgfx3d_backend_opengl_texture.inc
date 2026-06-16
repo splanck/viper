@@ -227,13 +227,16 @@ static void gl_record_texture_upload_bytes(gl_context_t *ctx, uint64_t bytes) {
 
 /// @brief Report native texture-related capabilities this GL context can use.
 /// @details Extension discovery is captured during context creation, but native block-compressed
-/// upload is not advertised until OpenGL has an upload+sample conformance gate. Some Mesa paths
-/// accept BC/ASTC/ETC2 uploads without producing valid sampled texels, and BackendSupports must
-/// mean the full draw path works.
+///          upload is not advertised until OpenGL has an upload+sample conformance gate. Some Mesa
+///          paths accept BC/ASTC/ETC2 uploads without producing valid sampled texels, and
+///          BackendSupports must mean the full draw path works. Anisotropic filtering is a sampler
+///          state and can be advertised directly from the extension/limit query.
 static int64_t gl_get_native_texture_caps(void *ctx_ptr) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     int64_t caps = 0;
-    if (ctx && ctx->anisotropy_supported && ctx->max_texture_anisotropy > 1.0f)
+    if (!ctx)
+        return 0;
+    if (ctx->anisotropy_supported && ctx->max_texture_anisotropy > 1.0f)
         caps |= RT_CANVAS3D_BACKEND_CAP_ANISOTROPY;
     return caps;
 }
@@ -626,7 +629,7 @@ static int gl_start_texture_upload(gl_context_t *ctx,
     gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     if (!gl_upload_ok())
         return 0;

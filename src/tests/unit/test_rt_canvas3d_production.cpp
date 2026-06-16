@@ -351,6 +351,18 @@ static void test_software_backend_reports_canvas_fallback_features() {
                 "software backend advertises runtime HLOD/impostor proxies");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_OCCLUSION) != 0,
                 "software backend advertises CPU occlusion culling");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_PBR) != 0,
+                "software backend advertises material PBR workflow support");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_NORMAL_MAPS) != 0,
+                "software backend advertises normal-map material support");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_ALPHA_MASK) != 0,
+                "software backend advertises alpha-mask material support");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_MORPH_TARGETS) != 0,
+                "software backend advertises CPU morph-target support");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_SKINNING) != 0,
+                "software backend advertises CPU skinning support");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_TERRAIN_SPLAT) != 0,
+                "software backend advertises terrain splat support");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_BC7) == 0,
                 "software backend does not advertise BC7 compressed upload");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_ASTC) == 0,
@@ -367,6 +379,17 @@ static void test_software_backend_reports_canvas_fallback_features() {
     EXPECT_TRUE(backend_supports(&canvas, "hlod"), "BackendSupports accepts hlod capability alias");
     EXPECT_TRUE(backend_supports(&canvas, "occlusion"),
                 "BackendSupports accepts occlusion capability alias");
+    EXPECT_TRUE(backend_supports(&canvas, "pbr"), "BackendSupports accepts pbr capability alias");
+    EXPECT_TRUE(backend_supports(&canvas, "normal-maps"),
+                "BackendSupports accepts normal-maps capability alias");
+    EXPECT_TRUE(backend_supports(&canvas, "alpha-mask"),
+                "BackendSupports accepts alpha-mask capability alias");
+    EXPECT_TRUE(backend_supports(&canvas, "morph-targets"),
+                "BackendSupports accepts morph-targets capability alias");
+    EXPECT_TRUE(backend_supports(&canvas, "skinning"),
+                "BackendSupports accepts skinning capability alias");
+    EXPECT_TRUE(backend_supports(&canvas, "terrain-splat"),
+                "BackendSupports accepts terrain-splat capability alias");
     EXPECT_TRUE(!backend_supports(&canvas, "bc7"),
                 "BackendSupports reports bc7 unsupported until backend upload exists");
     EXPECT_TRUE(!backend_supports(&canvas, "astc"),
@@ -409,6 +432,18 @@ static void test_gpu_backend_capability_bits_and_names() {
         "GPU backend advertises GPU postfx overlay composition when split apply/present exists");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_HLOD) != 0,
                 "GPU backend advertises runtime HLOD/impostor proxies");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_PBR) != 0,
+                "GPU backend advertises material PBR workflow support");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_NORMAL_MAPS) != 0,
+                "GPU backend advertises normal-map material support");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_ALPHA_MASK) != 0,
+                "GPU backend advertises alpha-mask material support");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_MORPH_TARGETS) != 0,
+                "GPU backend advertises morph-target support");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_SKINNING) != 0,
+                "GPU backend advertises skinning support");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_TERRAIN_SPLAT) != 0,
+                "GPU backend advertises terrain splat support");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_BC7) == 0,
                 "generic GPU backend does not imply BC7 compressed upload");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_ASTC) == 0,
@@ -432,6 +467,18 @@ static void test_gpu_backend_capability_bits_and_names() {
         "BackendSupports reports GPU postfx overlay support when split apply/present exists");
     EXPECT_TRUE(backend_supports(&canvas, "impostor"),
                 "BackendSupports accepts impostor alias for HLOD proxies");
+    EXPECT_TRUE(backend_supports(&canvas, "physically_based"),
+                "BackendSupports accepts physically_based alias for PBR");
+    EXPECT_TRUE(backend_supports(&canvas, "normalmap"),
+                "BackendSupports accepts normalmap alias");
+    EXPECT_TRUE(backend_supports(&canvas, "masked-alpha"),
+                "BackendSupports accepts masked-alpha alias");
+    EXPECT_TRUE(backend_supports(&canvas, "morphing"),
+                "BackendSupports accepts morphing alias");
+    EXPECT_TRUE(backend_supports(&canvas, "skeletal-animation"),
+                "BackendSupports accepts skeletal-animation alias");
+    EXPECT_TRUE(backend_supports(&canvas, "terrain_splatting"),
+                "BackendSupports accepts terrain_splatting alias");
     EXPECT_TRUE(!backend_supports(&canvas, "bc7"),
                 "BackendSupports accepts bc7 as a false capability name");
     EXPECT_TRUE(!backend_supports(&canvas, "astc"),

@@ -139,7 +139,6 @@ static int x11_try_choose_glx_visual(vgfx_x11_data *x11, Window root) {
         1,                     VGFX_GLX_RED_SIZE,
         8,                     VGFX_GLX_GREEN_SIZE,
         8,                     VGFX_GLX_BLUE_SIZE,
-        8,                     VGFX_GLX_ALPHA_SIZE,
         8,                     VGFX_GLX_DEPTH_SIZE,
         24,
         None,
@@ -188,6 +187,26 @@ static int x11_try_choose_glx_visual(vgfx_x11_data *x11, Window root) {
 static struct vgfx_window *g_vgfx_cursor_window = NULL;
 static struct vgfx_window *g_vgfx_clipboard_window = NULL;
 static struct vgfx_window *g_vgfx_x11_windows = NULL;
+
+/// @brief Wait briefly for an X11 window to become viewable after `XMapWindow`.
+/// @details X11 mapping is asynchronous. Canvas3D can create an OpenGL context immediately after
+///          `vgfx_create_window`; if the drawable is still `IsUnmapped`, GLX accepts commands but
+///          the default framebuffer can remain black. This helper synchronizes with the server and
+///          polls the map state for a bounded interval so callers get a realized drawable without
+///          blocking indefinitely under unusual window-manager behavior.
+static void x11_wait_for_viewable(vgfx_x11_data *x11) {
+    if (!x11 || !x11->display || x11->window == None)
+        return;
+    for (int attempt = 0; attempt < 50; attempt++) {
+        XWindowAttributes attrs;
+        XSync(x11->display, False);
+        if (XGetWindowAttributes(x11->display, x11->window, &attrs) &&
+            attrs.map_state == IsViewable) {
+            return;
+        }
+        usleep(10000);
+    }
+}
 
 enum {
     /*
@@ -947,6 +966,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     /* Map (show) the window */
     XMapWindow(x11->display, x11->window);
     XFlush(x11->display);
+    x11_wait_for_viewable(x11);
 
     return 1;
 }

@@ -84,8 +84,10 @@ typedef unsigned int GLbitfield;
 #define GL_CULL_FACE 0x0B44
 #define GL_BLEND 0x0BE2
 #define GL_POLYGON_OFFSET_FILL 0x8037
+#define GL_FRONT 0x0404
 #define GL_BACK 0x0405
 #define GL_FRONT_AND_BACK 0x0408
+#define GL_DOUBLEBUFFER 0x0C32
 #define GL_CW 0x0900
 #define GL_CCW 0x0901
 #define GL_LESS 0x0201
@@ -413,6 +415,8 @@ static int gl_drain_errors(const char *label) {
 #ifndef NDEBUG
         fprintf(stderr, "GL %s error 0x%04X\n", label ? label : "operation", (unsigned)err);
 #else
+        if (gl_debug_enabled())
+            fprintf(stderr, "GL %s error 0x%04X\n", label ? label : "operation", (unsigned)err);
         (void)label;
 #endif
     }
@@ -568,6 +572,7 @@ typedef struct {
 typedef struct {
     Display *display;
     Window window;
+    vgfx_window_t vgfx_win;
     GLXContext glxCtx;
 
     GLuint program;
@@ -692,6 +697,9 @@ typedef struct {
     int8_t rtt_color_dirty;
     int8_t scene_postfx_pending;
     int8_t scene_composited_to_backbuffer;
+    int8_t default_doublebuffered;
+    int8_t default_framebuffer_writable;
+    GLenum default_draw_buffer;
     vgfx3d_opengl_target_kind_t active_target_kind;
     vgfx3d_postfx_chain_t gpu_postfx_chain;
 
@@ -827,6 +835,7 @@ static int gl_draw_texture_to_target(gl_context_t *ctx,
                                      int32_t width,
                                      int32_t height,
                                      const vgfx3d_postfx_snapshot_t *snapshot);
+static int ensure_postfx_readback_target(gl_context_t *ctx, int32_t w, int32_t h);
 static int gl_apply_postfx_chain(gl_context_t *ctx,
                                  GLuint source_tex,
                                  int32_t width,
@@ -837,6 +846,10 @@ static int gl_apply_postfx_chain(gl_context_t *ctx,
                                  int force_offscreen_final,
                                  GLuint *out_result_framebuffer,
                                  GLenum *out_result_read_buffer);
+static int gl_apply_postfx_chain_in_scene(gl_context_t *ctx,
+                                          int32_t width,
+                                          int32_t height,
+                                          const vgfx3d_postfx_chain_t *chain);
 
 /// @brief Snapshot of framebuffer, viewport, and read/draw buffer state.
 ///
@@ -1467,6 +1480,10 @@ const vgfx3d_backend_t vgfx3d_opengl_backend = {
     .submit_draw_instanced = gl_submit_draw_instanced,
     .present = gl_present,
     .readback_rgba = gl_readback_rgba,
+    .present_postfx = gl_present_postfx,
+    .apply_postfx = gl_apply_postfx,
+    .set_gpu_postfx_enabled = gl_set_gpu_postfx_enabled,
+    .set_gpu_postfx_snapshot = gl_set_gpu_postfx_snapshot,
     .set_texture_upload_budget = gl_set_texture_upload_budget,
     .get_texture_upload_pending_bytes = gl_get_texture_upload_pending_bytes,
     .get_texture_upload_bytes = gl_get_texture_upload_bytes,
