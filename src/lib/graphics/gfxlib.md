@@ -127,7 +127,7 @@ version: 1.0.0
 
 - **Zero external dependencies** – No SDL, GLFW, or other windowing libraries
 - **Native platform APIs only** – Cocoa (macOS), X11 (Linux), Win32 (Windows)
-- **Pure C implementation** – C99 standard, C++ compatible headers
+- **Pure C implementation** – C11 standard, C++ compatible headers
 - **Software rendering only** – No OpenGL/Vulkan/Metal
 - **Heavily documented** – 164% comment coverage (2,090 comment lines for 1,277 SLOC)
 
@@ -1805,7 +1805,7 @@ int32_t vgfx_get_scale(vgfx_window_t window, float* scale_x, float* scale_y);
 cmake_minimum_required(VERSION 3.10)
 project(vipergfx C)
 
-set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD 11)
 
 # Compiler warnings
 if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")

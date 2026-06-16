@@ -63,6 +63,14 @@ static inline void vaud_atomic_store_i32(volatile int *ptr, int value) {
 static inline int vaud_atomic_load_i32(const volatile int *ptr) {
     return (int)_InterlockedCompareExchange((volatile long *)ptr, 0, 0);
 }
+
+static inline void vaud_atomic_add_u64(volatile uint64_t *ptr, uint64_t value) {
+    (void)_InterlockedExchangeAdd64((volatile long long *)ptr, (long long)value);
+}
+
+static inline uint64_t vaud_atomic_load_u64(const volatile uint64_t *ptr) {
+    return (uint64_t)_InterlockedCompareExchange64((volatile long long *)ptr, 0, 0);
+}
 #else
 static inline void vaud_atomic_store_i32(volatile int *ptr, int value) {
     __atomic_store_n(ptr, value, __ATOMIC_RELEASE);
@@ -71,7 +79,23 @@ static inline void vaud_atomic_store_i32(volatile int *ptr, int value) {
 static inline int vaud_atomic_load_i32(const volatile int *ptr) {
     return __atomic_load_n(ptr, __ATOMIC_ACQUIRE);
 }
+
+static inline void vaud_atomic_add_u64(volatile uint64_t *ptr, uint64_t value) {
+    __atomic_fetch_add(ptr, value, __ATOMIC_RELAXED);
+}
+
+static inline uint64_t vaud_atomic_load_u64(const volatile uint64_t *ptr) {
+    return __atomic_load_n(ptr, __ATOMIC_RELAXED);
+}
 #endif
+
+/// @brief Atomically increment one audio diagnostic counter.
+/// @param counter Counter field inside vaud_context::stats.
+/// @param amount Amount to add, usually 1.
+static inline void vaud_stats_add(volatile uint64_t *counter, uint64_t amount) {
+    if (counter && amount)
+        vaud_atomic_add_u64(counter, amount);
+}
 
 //===----------------------------------------------------------------------===//
 // Voice State
@@ -206,6 +230,7 @@ struct vaud_context {
 
     // H-1: Pre-allocated mix accumulator — avoids malloc() inside the real-time audio callback.
     int32_t accum_buf[VAUD_BUFFER_FRAMES * VAUD_CHANNELS]; ///< 32-bit mix accumulator (RT-safe)
+    vaud_stats_t stats; ///< Mixer/backend diagnostic counters.
 
     // Thread synchronization
     vaud_mutex_t mutex;      ///< Protects voice and music state

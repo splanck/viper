@@ -25,16 +25,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef VIPER_ENABLE_GRAPHICS
+#include "rt_platform_feature.h"
 
-#if !defined(_WIN32)
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
-#ifndef _DARWIN_C_SOURCE
-#define _DARWIN_C_SOURCE
-#endif
-#endif
+#ifdef VIPER_ENABLE_GRAPHICS
 
 #include "rt_asset_error.h"
 #include "rt_box.h"
@@ -281,6 +274,168 @@ static uint8_t *vscn_base64_decode_ex(const char *data,
     return output;
 }
 
+/// @brief Decode base64 RGBA bytes directly into a Pixels object's packed RGBA32 storage.
+/// @details VSCN textures are serialized as byte-order RGBA. Pixels stores each texel as
+///          `0xRRGGBBAA`, so this routine decodes each base64 byte stream group and packs
+///          four emitted bytes into one `uint32_t` without allocating an intermediate RGBA
+///          byte buffer. It uses the same strict alphabet, padding, and pad-bit validation
+///          rules as `vscn_base64_decode_ex`.
+/// @param data Base64 text; NULL is invalid.
+/// @param len Byte length of @p data.
+/// @param pixels Destination Pixels object with at least @p expected_pixels texels.
+/// @param expected_pixels Number of RGBA texels expected from the decoded stream.
+/// @param error_offset Optional byte offset for invalid base64; SIZE_MAX means size mismatch/OOM.
+/// @return 1 on successful exact-size decode, 0 on malformed base64 or decoded-size mismatch.
+static int vscn_base64_decode_rgba_pixels_ex(const char *data,
+                                             size_t len,
+                                             rt_pixels_impl *pixels,
+                                             size_t expected_pixels,
+                                             size_t *error_offset) {
+    if (error_offset)
+        *error_offset = SIZE_MAX;
+    if (!data || !pixels || !pixels->data)
+        return 0;
+    if (expected_pixels > SIZE_MAX / 4u)
+        return 0;
+    if (len == 0)
+        return expected_pixels == 0;
+    if (len % 4 != 0) {
+        if (error_offset)
+            *error_offset = len;
+        return 0;
+    }
+
+    size_t padding = 0;
+    if (data[len - 1] == '=')
+        padding++;
+    if (data[len - 2] == '=')
+        padding++;
+    for (size_t k = 0; k + padding < len; k++) {
+        if (data[k] == '=') {
+            if (error_offset)
+                *error_offset = k;
+            return 0;
+        }
+    }
+    if ((len / 4) > SIZE_MAX / 3u)
+        return 0;
+    size_t decoded_len = (len / 4u) * 3u - padding;
+    if (decoded_len != expected_pixels * 4u)
+        return 0;
+
+    size_t byte_index = 0;
+    size_t pixel_index = 0;
+    uint32_t packed = 0;
+    for (size_t i = 0; i < len;) {
+        size_t group = i;
+        int a = vscn_base64_digit_value(data[i++]);
+        int b = vscn_base64_digit_value(data[i++]);
+        int c = vscn_base64_digit_value(data[i++]);
+        int d = vscn_base64_digit_value(data[i++]);
+        int is_last_group = (i == len);
+        if (a < 0 || b < 0 || c == -1 || d == -1) {
+            if (error_offset) {
+                if (a < 0)
+                    *error_offset = group;
+                else if (b < 0)
+                    *error_offset = group + 1u;
+                else if (c == -1)
+                    *error_offset = group + 2u;
+                else
+                    *error_offset = group + 3u;
+            }
+            return 0;
+        }
+        if ((c == -2 || d == -2) && !is_last_group) {
+            if (error_offset)
+                *error_offset = c == -2 ? group + 2u : group + 3u;
+            return 0;
+        }
+        if (c == -2 && d != -2) {
+            if (error_offset)
+                *error_offset = group + 3u;
+            return 0;
+        }
+        if (d == -2 && c != -2 && (c & 0x03) != 0) {
+            if (error_offset)
+                *error_offset = group + 2u;
+            return 0;
+        }
+        if (c == -2 && (b & 0x0F) != 0) {
+            if (error_offset)
+                *error_offset = group + 1u;
+            return 0;
+        }
+
+        int emitted = c == -2 ? 1 : (d == -2 ? 2 : 3);
+        if (c == -2)
+            c = 0;
+        if (d == -2)
+            d = 0;
+        uint32_t triple =
+            ((uint32_t)a << 18) | ((uint32_t)b << 12) | ((uint32_t)c << 6) | (uint32_t)d;
+        uint8_t bytes[3] = {
+            (uint8_t)((triple >> 16) & 0xFF),
+            (uint8_t)((triple >> 8) & 0xFF),
+            (uint8_t)(triple & 0xFF),
+        };
+        for (int out_i = 0; out_i < emitted; out_i++) {
+            switch (byte_index & 3u) {
+                case 0:
+                    packed = (uint32_t)bytes[out_i] << 24;
+                    break;
+                case 1:
+                    packed |= (uint32_t)bytes[out_i] << 16;
+                    break;
+                case 2:
+                    packed |= (uint32_t)bytes[out_i] << 8;
+                    break;
+                default:
+                    packed |= (uint32_t)bytes[out_i];
+                    pixels->data[pixel_index++] = packed;
+                    packed = 0;
+                    break;
+            }
+            byte_index++;
+        }
+    }
+    return byte_index == expected_pixels * 4u && pixel_index == expected_pixels;
+}
+
+/// @brief Decode a little-endian uint32 from serialized VSCN index bytes.
+/// @details VSCN mesh payloads are tagged as little-endian; validating indices directly from
+///          source bytes lets the loader reject corrupt buffers before allocating a destination
+///          index array.
+static uint32_t vscn_read_u32_le(const uint8_t *data) {
+    return ((uint32_t)data[0]) | ((uint32_t)data[1] << 8) | ((uint32_t)data[2] << 16) |
+           ((uint32_t)data[3] << 24);
+}
+
+/// @brief Validate that every serialized VSCN index is inside the loaded vertex range.
+/// @return 1 if all @p index_count little-endian uint32 indices are `< vertex_count`, else 0.
+static int vscn_indices_are_in_range(const uint8_t *indices_raw,
+                                     uint32_t index_count,
+                                     uint32_t vertex_count) {
+    if (!indices_raw && index_count > 0)
+        return 0;
+    for (uint32_t i = 0; i < index_count; i++) {
+        if (vscn_read_u32_le(indices_raw + (size_t)i * sizeof(uint32_t)) >= vertex_count)
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Copy little-endian VSCN index bytes into the host uint32 index array.
+/// @details On little-endian hosts this is equivalent to a memcpy, but spelling the conversion
+///          here keeps VSCN index payloads portable if the runtime is built for a big-endian
+///          target.
+static void vscn_copy_indices_le(uint32_t *dst, const uint8_t *src, uint32_t index_count) {
+    if (!dst || !src)
+        return;
+    for (uint32_t i = 0; i < index_count; i++)
+        dst[i] = vscn_read_u32_le(src + (size_t)i * sizeof(uint32_t));
+}
+
 /// @brief Drop GC references to all `count` loaded objects, then free the array itself.
 ///
 /// Used by the loader to roll back partially-loaded resources
@@ -434,11 +589,28 @@ static rt_string vjson_string_value(void *obj, const char *key) {
     return rt_string_is_handle(value) ? (rt_string)value : NULL;
 }
 
+/// @brief Read `obj[key]` as a borrowed C string and exact byte length.
+/// @details Unlike `strlen(rt_string_cstr(...))`, this uses the runtime string length so large
+///          base64 payloads are not scanned only to discover their byte count. The returned
+///          pointer remains borrowed from the rt_string and is valid for the parsed JSON lifetime.
+static const char *vjson_cstr_len(void *obj, const char *key, size_t *out_len) {
+    if (out_len)
+        *out_len = 0;
+    rt_string value = vjson_string_value(obj, key);
+    if (!value)
+        return NULL;
+    int64_t raw_len = rt_str_len(value);
+    if (raw_len < 0 || (uint64_t)raw_len > (uint64_t)SIZE_MAX)
+        return NULL;
+    if (out_len)
+        *out_len = (size_t)raw_len;
+    return rt_string_cstr(value);
+}
+
 /// @brief Read `obj[key]` as a borrowed C string. NULL if missing or non-string.
 /// The pointer remains valid only as long as the underlying rt_string lives.
 static const char *vjson_cstr(void *obj, const char *key) {
-    rt_string value = vjson_string_value(obj, key);
-    return value ? rt_string_cstr(value) : NULL;
+    return vjson_cstr_len(obj, key, NULL);
 }
 
 /// @brief Array-form `arr[index]` as double with default. Useful for vec3/vec4 unpacking.
@@ -472,9 +644,8 @@ static rt_pixels_impl *vscn_parse_texture(void *texture_obj) {
     int64_t width;
     int64_t height;
     const char *rgba_b64;
-    size_t rgba_len = 0;
+    size_t rgba_b64_len = 0;
     size_t rgba_error = SIZE_MAX;
-    uint8_t *rgba = NULL;
     rt_pixels_impl *pixels = NULL;
 
     if (!vjson_is_map(texture_obj))
@@ -482,7 +653,7 @@ static rt_pixels_impl *vscn_parse_texture(void *texture_obj) {
     if (!vjson_i64_exact(texture_obj, "width", 0, &width) ||
         !vjson_i64_exact(texture_obj, "height", 0, &height))
         return NULL;
-    rgba_b64 = vjson_cstr(texture_obj, "rgbaBase64");
+    rgba_b64 = vjson_cstr_len(texture_obj, "rgbaBase64", &rgba_b64_len);
     if (width <= 0 || height <= 0)
         return NULL;
     if ((uint64_t)width > SIZE_MAX || (uint64_t)height > SIZE_MAX)
@@ -494,28 +665,22 @@ static rt_pixels_impl *vscn_parse_texture(void *texture_obj) {
     if (!rgba_b64)
         rgba_b64 = "";
 
-    rgba = vscn_base64_decode_ex(rgba_b64, strlen(rgba_b64), &rgba_len, &rgba_error);
-    if (!rgba) {
+    pixels = (rt_pixels_impl *)rt_pixels_new(width, height);
+    if (!pixels)
+        return NULL;
+
+    if (!vscn_base64_decode_rgba_pixels_ex(
+            rgba_b64, rgba_b64_len, pixels, (size_t)width * (size_t)height, &rgba_error)) {
         if (rgba_error != SIZE_MAX)
             vscn_set_base64_error("texture.rgbaBase64", rgba_error);
-        return NULL;
-    }
-    if (rgba_len != (size_t)width * (size_t)height * 4) {
-        free(rgba);
-        return NULL;
-    }
-
-    pixels = (rt_pixels_impl *)rt_pixels_new(width, height);
-    if (!pixels) {
-        free(rgba);
+        else
+            rt_asset_error_set(RT_ASSET_ERROR_CORRUPT,
+                               "Scene3D.Load: texture payload size does not match dimensions");
+        if (rt_obj_release_check0(pixels))
+            rt_obj_free(pixels);
         return NULL;
     }
 
-    for (size_t i = 0; i < (size_t)width * (size_t)height; i++) {
-        pixels->data[i] = ((uint32_t)rgba[i * 4 + 0] << 24) | ((uint32_t)rgba[i * 4 + 1] << 16) |
-                          ((uint32_t)rgba[i * 4 + 2] << 8) | (uint32_t)rgba[i * 4 + 3];
-    }
-    free(rgba);
     pixels_touch(pixels);
     return pixels;
 }
@@ -583,7 +748,9 @@ static rt_material3d *vscn_parse_material(void *material_obj,
 
 /// @brief Validate raw vertex payloads loaded from VSCN before they reach bounds, skinning, or
 ///   backend upload code.
-static int vscn_vertex_payload_is_valid(const vgfx3d_vertex_t *vertices, uint32_t vertex_count) {
+static int vscn_vertex_payload_is_valid(const vgfx3d_vertex_t *vertices,
+                                        uint32_t vertex_count,
+                                        int32_t bone_count) {
     if (!vertices && vertex_count > 0)
         return 0;
     for (uint32_t vi = 0; vi < vertex_count; vi++) {
@@ -602,6 +769,9 @@ static int vscn_vertex_payload_is_valid(const vgfx3d_vertex_t *vertices, uint32_
                 !isfinite((double)v->bone_weights[i]) || v->bone_weights[i] < 0.0f ||
                 v->bone_weights[i] > 1.0f)
                 return 0;
+            if (v->bone_weights[i] > 0.000001f &&
+                (bone_count <= 0 || (int32_t)v->bone_indices[i] >= bone_count))
+                return 0;
             weight_sum += v->bone_weights[i];
         }
         if (weight_sum > 1.0001f)
@@ -616,6 +786,8 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
     const char *vertex_format;
     const char *vertices_b64;
     const char *indices_b64;
+    size_t vertices_b64_len = 0;
+    size_t indices_b64_len = 0;
     int64_t vertex_count_i64;
     int64_t index_count_i64;
     int64_t bone_count_i64 = 0;
@@ -627,6 +799,7 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
     size_t indices_error = SIZE_MAX;
     uint8_t *vertices_raw = NULL;
     uint8_t *indices_raw = NULL;
+    int vertices_are_legacy84 = 0;
 
     if (!vjson_is_map(mesh_obj))
         return NULL;
@@ -664,17 +837,16 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
         rt_asset_error_set(RT_ASSET_ERROR_TOO_LARGE, "Scene3D.Load: mesh payload is too large");
         return NULL;
     }
-    vertices_b64 = vjson_cstr(mesh_obj, "verticesBase64");
-    indices_b64 = vjson_cstr(mesh_obj, "indicesBase64");
+    vertices_b64 = vjson_cstr_len(mesh_obj, "verticesBase64", &vertices_b64_len);
+    indices_b64 = vjson_cstr_len(mesh_obj, "indicesBase64", &indices_b64_len);
     if (!vertices_b64)
         vertices_b64 = "";
     if (!indices_b64)
         indices_b64 = "";
 
     vertices_raw =
-        vscn_base64_decode_ex(vertices_b64, strlen(vertices_b64), &vertices_len, &vertices_error);
-    indices_raw =
-        vscn_base64_decode_ex(indices_b64, strlen(indices_b64), &indices_len, &indices_error);
+        vscn_base64_decode_ex(vertices_b64, vertices_b64_len, &vertices_len, &vertices_error);
+    indices_raw = vscn_base64_decode_ex(indices_b64, indices_b64_len, &indices_len, &indices_error);
     if (!vertices_raw || !indices_raw) {
         if (!vertices_raw && vertices_error != SIZE_MAX)
             vscn_set_base64_error("mesh.verticesBase64", vertices_error);
@@ -684,7 +856,39 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
         free(indices_raw);
         return NULL;
     }
-    if (!rt_untrusted_count_ok(vertex_count_i64, 84u, vertices_len) ||
+    size_t native_vertex_bytes = (size_t)vertex_count * sizeof(vgfx3d_vertex_t);
+    size_t legacy_vertex_bytes = (size_t)vertex_count * 84u;
+    if (vertex_format && strcmp(vertex_format, "vgfx3d_vertex_le_v2") == 0) {
+        if (vertices_len != native_vertex_bytes) {
+            rt_asset_error_set(RT_ASSET_ERROR_CORRUPT,
+                               "Scene3D.Load: v2 mesh payload size does not match counts");
+            free(vertices_raw);
+            free(indices_raw);
+            return NULL;
+        }
+    } else if (vertex_format && strcmp(vertex_format, "vgfx3d_vertex_le_v1") == 0) {
+        if (vertices_len != legacy_vertex_bytes) {
+            rt_asset_error_set(RT_ASSET_ERROR_CORRUPT,
+                               "Scene3D.Load: v1 mesh payload size does not match counts");
+            free(vertices_raw);
+            free(indices_raw);
+            return NULL;
+        }
+        vertices_are_legacy84 = 1;
+    } else if (vertices_len == native_vertex_bytes) {
+        vertices_are_legacy84 = 0;
+    } else if (vertices_len == legacy_vertex_bytes) {
+        vertices_are_legacy84 = 1;
+    } else {
+        rt_asset_error_set(RT_ASSET_ERROR_CORRUPT,
+                           "Scene3D.Load: mesh payload size does not match counts");
+        free(vertices_raw);
+        free(indices_raw);
+        return NULL;
+    }
+    if (!rt_untrusted_count_ok(vertex_count_i64,
+                               vertices_are_legacy84 ? 84u : sizeof(vgfx3d_vertex_t),
+                               vertices_len) ||
         !rt_untrusted_count_ok(index_count_i64, sizeof(uint32_t), indices_len)) {
         rt_asset_error_set(RT_ASSET_ERROR_CORRUPT,
                            "Scene3D.Load: mesh payload count exceeds source bytes");
@@ -692,17 +896,22 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
         free(indices_raw);
         return NULL;
     }
-    if ((vertices_len != (size_t)vertex_count * sizeof(vgfx3d_vertex_t) &&
-         vertices_len != (size_t)vertex_count * 84u) ||
-        indices_len != (size_t)index_count * sizeof(uint32_t)) {
+    if (indices_len != (size_t)index_count * sizeof(uint32_t)) {
         rt_asset_error_set(RT_ASSET_ERROR_CORRUPT,
                            "Scene3D.Load: mesh payload size does not match counts");
         free(vertices_raw);
         free(indices_raw);
         return NULL;
     }
+    if (!vscn_indices_are_in_range(indices_raw, index_count, vertex_count)) {
+        rt_asset_error_set(RT_ASSET_ERROR_CORRUPT,
+                           "Scene3D.Load: mesh index references missing vertex");
+        free(vertices_raw);
+        free(indices_raw);
+        return NULL;
+    }
 
-    mesh = (rt_mesh3d *)rt_mesh3d_new();
+    mesh = (rt_mesh3d *)rt_mesh3d_new_empty_storage();
     if (!mesh) {
         free(vertices_raw);
         free(indices_raw);
@@ -718,7 +927,7 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
             scene3d_release_ref((void **)&mesh);
             return NULL;
         }
-        if (vertices_len == (size_t)vertex_count * sizeof(vgfx3d_vertex_t)) {
+        if (!vertices_are_legacy84) {
             memcpy(vertices, vertices_raw, (size_t)vertex_count * sizeof(vgfx3d_vertex_t));
         } else {
             typedef struct {
@@ -748,15 +957,13 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
                        sizeof(vertices[vi].bone_weights));
             }
         }
-        if (!vscn_vertex_payload_is_valid(vertices, vertex_count)) {
+        if (!vscn_vertex_payload_is_valid(vertices, vertex_count, (int32_t)bone_count_i64)) {
             free(vertices);
             free(vertices_raw);
             free(indices_raw);
             scene3d_release_ref((void **)&mesh);
             return NULL;
         }
-        free(mesh->vertices);
-        free(mesh->positions64);
         mesh->vertices = vertices;
         mesh->positions64 = NULL;
         mesh->vertex_count = vertex_count;
@@ -773,17 +980,7 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
             scene3d_release_ref((void **)&mesh);
             return NULL;
         }
-        memcpy(indices, indices_raw, (size_t)index_count * sizeof(uint32_t));
-        for (uint32_t i = 0; i < index_count; i++) {
-            if (indices[i] >= vertex_count) {
-                free(indices);
-                free(vertices_raw);
-                free(indices_raw);
-                scene3d_release_ref((void **)&mesh);
-                return NULL;
-            }
-        }
-        free(mesh->indices);
+        vscn_copy_indices_le(indices, indices_raw, index_count);
         mesh->indices = indices;
         mesh->index_count = index_count;
         mesh->index_capacity = index_count;
@@ -829,7 +1026,7 @@ static rt_light3d *vscn_parse_light(void *light_obj) {
     light->direction[2] = -1.0;
     light->color[0] = light->color[1] = light->color[2] = 1.0;
     light->enabled = 1;
-    light->casts_shadows = vjson_bool(light_obj, "castsShadows", light->type != 2);
+    light->casts_shadows = vjson_bool(light_obj, "castsShadows", 0);
     light->intensity = vscn_nonnegative_or(vjson_f64(light_obj, "intensity", 1.0), 1.0);
     light->attenuation = vscn_nonnegative_or(vjson_f64(light_obj, "attenuation", 0.0), 0.0);
     light->inner_cos = vjson_f64(light_obj, "innerCos", 1.0);

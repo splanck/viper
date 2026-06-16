@@ -240,6 +240,7 @@ static void mix_music(vaud_music_t music, int32_t *output, int32_t frames, float
 void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames) {
     if (!ctx || !output || frames <= 0)
         return;
+    vaud_stats_add(&ctx->stats.render_calls, 1);
 
     if (vaud_atomic_load_i32(&ctx->destroying) != 0) {
         vaud_zero_output(output, frames);
@@ -268,6 +269,7 @@ void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames) {
     memset(accum, 0, sample_count * sizeof(int32_t));
 
     if (!vaud_mutex_trylock(&ctx->mutex)) {
+        vaud_stats_add(&ctx->stats.mixer_lock_misses, 1);
         vaud_zero_output(output, frames);
         return;
     }

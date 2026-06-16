@@ -118,7 +118,7 @@ int main(int argc, char *argv[]) {
     // I32 Division and Remainder
     //=========================================================================
 
-    // Signed division truncation toward zero (C99)
+    // Signed division truncation toward zero (C11)
     assert(runBinary(Opcode::SDivChk0, Type::Kind::I32, 7, -2) == -3);
     assert(runBinary(Opcode::SDivChk0, Type::Kind::I32, -7, 2) == -3);
     assert(runBinary(Opcode::SDivChk0, Type::Kind::I32, -7, -2) == 3);

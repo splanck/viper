@@ -75,6 +75,7 @@ function(viper_add_e2e_vm_suite)
             -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/vbasic/trace_src.bas
             -DGOLDEN=${CMAKE_SOURCE_DIR}/src/tests/e2e/TraceSrcTests.bas.out
             -P ${_VIPER_E2E_DIR}/test_trace_src.cmake)
+    set_tests_properties(vm_trace_src PROPERTIES RESOURCE_LOCK vm_trace_artifacts)
     viper_set_test_labels(vm_trace_src vm)
 
     viper_add_ctest(vm_break_src_exact
@@ -85,6 +86,7 @@ function(viper_add_e2e_vm_suite)
             -DLINE=1
             -DROOT=${CMAKE_SOURCE_DIR}
             -P ${_VIPER_E2E_DIR}/test_break_src_exact.cmake)
+    set_tests_properties(vm_break_src_exact PROPERTIES RESOURCE_LOCK vm_trace_artifacts)
     viper_set_test_labels(vm_break_src_exact vm)
 
     viper_add_ctest(vm_break_src_coalesce
@@ -95,6 +97,7 @@ function(viper_add_e2e_vm_suite)
             -DLINE=1
             -DROOT=${CMAKE_SOURCE_DIR}
             -P ${_VIPER_E2E_DIR}/test_break_src_exact.cmake)
+    set_tests_properties(vm_break_src_coalesce PROPERTIES RESOURCE_LOCK vm_trace_artifacts)
     viper_set_test_labels(vm_break_src_coalesce vm)
 
     viper_add_ctest(front_basic_example

@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_context.inc  (#included from vgfx3d_backend_opengl.c; not a standalone translation unit)
-// Purpose: OpenGL context creation, shader/program/object init, and teardown
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_context.inc  (#included from
+// vgfx3d_backend_opengl.c; not a standalone translation unit) Purpose: OpenGL context creation,
+// shader/program/object init, and teardown
 //===----------------------------------------------------------------------===//
 typedef struct gl_shader_set_t {
     GLuint vs;
@@ -16,9 +17,9 @@ typedef struct gl_shader_set_t {
 
 /// @brief Pick an FBConfig compatible with the target X window's visual/depth.
 static GLXFBConfig gl_pick_matching_fb_config(Display *dpy,
-                                             Window xwin,
-                                             GLXFBConfig *configs,
-                                             int fb_count) {
+                                              Window xwin,
+                                              GLXFBConfig *configs,
+                                              int fb_count) {
     GLXFBConfig chosen;
     XWindowAttributes window_attrs;
     if (!dpy || !configs || fb_count <= 0)
@@ -75,6 +76,7 @@ static void gl_init_context_defaults(gl_context_t *ctx, int32_t w, int32_t h) {
     ctx->texture_upload_budget_bytes = UINT64_MAX;
     ctx->default_doublebuffered = 1;
     ctx->default_draw_buffer = GL_BACK;
+    ctx->present_path = 0;
 }
 
 /// @brief Cache the default framebuffer draw/read buffer for this GLX context.
@@ -269,9 +271,8 @@ static int gl_generate_context_objects(gl_context_t *ctx) {
     gl.GenTextures(1, &ctx->morph_normal_tbo);
     return ctx->vao && ctx->fullscreen_vao && ctx->skybox_vao && ctx->fullscreen_vbo &&
            ctx->mesh_vbo && ctx->mesh_ibo && ctx->instance_vbo && ctx->prev_instance_vbo &&
-           ctx->bone_ubo && ctx->prev_bone_ubo && ctx->morph_buffer &&
-           ctx->morph_normal_buffer && ctx->skybox_vbo && ctx->morph_tbo &&
-           ctx->morph_normal_tbo && gl_upload_ok();
+           ctx->bone_ubo && ctx->prev_bone_ubo && ctx->morph_buffer && ctx->morph_normal_buffer &&
+           ctx->skybox_vbo && ctx->morph_tbo && ctx->morph_normal_tbo && gl_upload_ok();
 }
 
 /// @brief Allocate the dynamic streaming VBO/IBO, instance, morph, and bone buffers.
@@ -353,15 +354,7 @@ static int gl_create_default_white_texture(gl_context_t *ctx) {
         return 0;
     gl.BindTexture(GL_TEXTURE_2D, ctx->default_white_tex);
     gl.PixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    gl.TexImage2D(GL_TEXTURE_2D,
-                  0,
-                  GL_RGBA8,
-                  1,
-                  1,
-                  0,
-                  GL_RGBA,
-                  GL_UNSIGNED_BYTE,
-                  kWhitePixel);
+    gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, kWhitePixel);
     gl.PixelStorei(GL_UNPACK_ALIGNMENT, 4);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
@@ -458,6 +451,9 @@ static void gl_release_host_only_context_storage(gl_context_t *ctx) {
     ctx->morph_cache = NULL;
     ctx->morph_cache_count = 0;
     ctx->morph_cache_capacity = 0;
+    free(ctx->readback_scratch_rgba);
+    ctx->readback_scratch_rgba = NULL;
+    ctx->readback_scratch_bytes = 0;
     vgfx3d_postfx_chain_free(&ctx->gpu_postfx_chain);
 }
 
@@ -554,12 +550,30 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     gl_init_context_defaults(ctx, w, h);
     gl_query_default_framebuffer_buffer(ctx);
     gl_probe_default_framebuffer_writable(ctx);
-    /*
-     * Linux GLX default drawables can pass a clear/read probe while still rejecting the
-     * fullscreen shader resolve used by post-FX. Keep all final color composition in backend-owned
-     * FBOs and present through ViperGFX; scene rendering and post-FX remain GPU-backed.
-     */
-    ctx->default_framebuffer_writable = 0;
+    {
+        int present_override = gl_present_override_mode();
+        if (present_override == 0) {
+            /*
+             * Linux GLX default drawables can pass a clear/read probe while still rejecting the
+             * fullscreen shader resolve used by post-FX. Keep all final color composition in
+             * backend-owned FBOs and present through ViperGFX unless the user explicitly opts into
+             * auto/direct presentation for parity debugging.
+             */
+            ctx->default_framebuffer_writable = 0;
+        } else if (present_override == 2) {
+            ctx->default_framebuffer_writable = 1;
+        }
+        ctx->present_path = ctx->default_framebuffer_writable ? 1 : 2;
+        ctx->stats.present_path = ctx->present_path;
+        ctx->stats.default_framebuffer_writable = ctx->default_framebuffer_writable ? 1 : 0;
+        if (gl_debug_enabled()) {
+            fprintf(stderr,
+                    "[OpenGL] present override=%d path=%s default_fb_writable=%d\n",
+                    present_override,
+                    ctx->present_path == 1 ? "direct" : "offscreen",
+                    (int)ctx->default_framebuffer_writable);
+        }
+    }
     gl_query_anisotropy_support(ctx);
 
     if (!gl_compile_context_shaders(&shaders)) {
@@ -681,6 +695,9 @@ static void gl_destroy_ctx(void *ctx_ptr) {
         gl.DeleteProgram(ctx->postfx_program);
     if (ctx->skybox_program)
         gl.DeleteProgram(ctx->skybox_program);
+    free(ctx->readback_scratch_rgba);
+    ctx->readback_scratch_rgba = NULL;
+    ctx->readback_scratch_bytes = 0;
     if (ctx->glxCtx && ctx->display)
         glx.MakeCurrent(ctx->display, 0, NULL);
     if (ctx->glxCtx && ctx->display)

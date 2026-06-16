@@ -2109,3 +2109,27 @@ float vaud_get_latency_ms(vaud_context_t ctx) {
     /* Latency is approximately buffer size in frames / sample rate */
     return (float)VAUD_BUFFER_FRAMES / (float)VAUD_SAMPLE_RATE * 1000.0f;
 }
+
+/// @brief Copy mixer/backend diagnostic counters from an audio context.
+/// @details The fields are read atomically so callers can sample them while the mixer thread is
+///          running. A NULL destination is ignored; a NULL context produces a zero-filled snapshot.
+/// @param ctx Audio context to inspect.
+/// @param out_stats Destination statistics snapshot.
+void vaud_get_stats(vaud_context_t ctx, vaud_stats_t *out_stats) {
+    if (!out_stats)
+        return;
+
+    memset(out_stats, 0, sizeof(*out_stats));
+    if (!ctx)
+        return;
+
+    out_stats->render_calls = vaud_atomic_load_u64(&ctx->stats.render_calls);
+    out_stats->mixer_lock_misses = vaud_atomic_load_u64(&ctx->stats.mixer_lock_misses);
+    out_stats->backend_write_calls = vaud_atomic_load_u64(&ctx->stats.backend_write_calls);
+    out_stats->backend_partial_writes = vaud_atomic_load_u64(&ctx->stats.backend_partial_writes);
+    out_stats->backend_waits = vaud_atomic_load_u64(&ctx->stats.backend_waits);
+    out_stats->backend_xruns = vaud_atomic_load_u64(&ctx->stats.backend_xruns);
+    out_stats->backend_recoveries = vaud_atomic_load_u64(&ctx->stats.backend_recoveries);
+    out_stats->backend_write_failures =
+        vaud_atomic_load_u64(&ctx->stats.backend_write_failures);
+}

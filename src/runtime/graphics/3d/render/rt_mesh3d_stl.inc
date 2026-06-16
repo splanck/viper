@@ -54,6 +54,191 @@ static uint32_t stl_initial_reserve_triangles(uint32_t tri_count) {
                                                             : STL_BINARY_INITIAL_RESERVE_TRIANGLES;
 }
 
+typedef struct {
+    uint32_t x_bits;
+    uint32_t y_bits;
+    uint32_t z_bits;
+    uint32_t mesh_index;
+    uint8_t used;
+} stl_vertex_cache_entry_t;
+
+typedef struct {
+    stl_vertex_cache_entry_t *entries;
+    size_t capacity;
+    size_t count;
+} stl_vertex_cache_t;
+
+/// @brief Convert a finite float coordinate to its stable IEEE bit pattern for exact matching.
+static uint32_t stl_float_bits(float value) {
+    uint32_t bits;
+    if (value == 0.0f)
+        value = 0.0f;
+    memcpy(&bits, &value, sizeof(bits));
+    return bits;
+}
+
+/// @brief Hash an exact STL vertex key into a 64-bit open-addressing probe seed.
+static uint64_t stl_hash_vertex_bits(uint32_t x_bits, uint32_t y_bits, uint32_t z_bits) {
+    uint64_t h = 1469598103934665603ull;
+    h = (h ^ (uint64_t)x_bits) * 1099511628211ull;
+    h = (h ^ (uint64_t)y_bits) * 1099511628211ull;
+    h = (h ^ (uint64_t)z_bits) * 1099511628211ull;
+    h ^= h >> 33;
+    h *= 0xff51afd7ed558ccdull;
+    h ^= h >> 33;
+    return h;
+}
+
+/// @brief Initialize the STL exact-vertex cache with power-of-two capacity.
+/// @details STL has no explicit index stream, but many exporters repeat identical vertex triples
+///          across adjacent facets. This cache maps exact float coordinate bit patterns to emitted
+///          Mesh3D indices so the loader can build indexed geometry without merging authored seams
+///          that are merely close rather than identical.
+static int stl_vertex_cache_init(stl_vertex_cache_t *cache, size_t capacity) {
+    if (!cache)
+        return 0;
+    if (capacity < 1024u)
+        capacity = 1024u;
+    if (capacity > (SIZE_MAX >> 1u))
+        return 0;
+    capacity--;
+    capacity |= capacity >> 1u;
+    capacity |= capacity >> 2u;
+    capacity |= capacity >> 4u;
+    capacity |= capacity >> 8u;
+    capacity |= capacity >> 16u;
+#if SIZE_MAX > UINT32_MAX
+    capacity |= capacity >> 32u;
+#endif
+    capacity++;
+    if (capacity > SIZE_MAX / sizeof(*cache->entries))
+        return 0;
+    cache->entries = (stl_vertex_cache_entry_t *)calloc(capacity, sizeof(*cache->entries));
+    cache->capacity = cache->entries ? capacity : 0;
+    cache->count = 0;
+    return cache->entries != NULL;
+}
+
+/// @brief Release storage owned by an STL exact-vertex cache.
+static void stl_vertex_cache_free(stl_vertex_cache_t *cache) {
+    if (!cache)
+        return;
+    free(cache->entries);
+    cache->entries = NULL;
+    cache->capacity = 0;
+    cache->count = 0;
+}
+
+/// @brief Grow and rehash an STL exact-vertex cache.
+static int stl_vertex_cache_grow(stl_vertex_cache_t *cache) {
+    stl_vertex_cache_t grown;
+    size_t new_capacity;
+    if (!cache || !cache->entries || cache->capacity > SIZE_MAX / 2u)
+        return 0;
+    new_capacity = cache->capacity * 2u;
+    if (!stl_vertex_cache_init(&grown, new_capacity))
+        return 0;
+    for (size_t i = 0; i < cache->capacity; i++) {
+        stl_vertex_cache_entry_t entry = cache->entries[i];
+        if (!entry.used)
+            continue;
+        uint64_t h = stl_hash_vertex_bits(entry.x_bits, entry.y_bits, entry.z_bits);
+        for (size_t probe = 0; probe < grown.capacity; probe++) {
+            size_t slot = (size_t)((h + probe) & (uint64_t)(grown.capacity - 1u));
+            if (!grown.entries[slot].used) {
+                grown.entries[slot] = entry;
+                grown.count++;
+                break;
+            }
+        }
+    }
+    free(cache->entries);
+    *cache = grown;
+    return 1;
+}
+
+/// @brief Look up an exact STL vertex key in the cache.
+static int stl_vertex_cache_lookup(const stl_vertex_cache_t *cache,
+                                   uint32_t x_bits,
+                                   uint32_t y_bits,
+                                   uint32_t z_bits,
+                                   uint32_t *out_index) {
+    if (!cache || !cache->entries || cache->capacity == 0)
+        return 0;
+    uint64_t h = stl_hash_vertex_bits(x_bits, y_bits, z_bits);
+    for (size_t probe = 0; probe < cache->capacity; probe++) {
+        size_t slot = (size_t)((h + probe) & (uint64_t)(cache->capacity - 1u));
+        const stl_vertex_cache_entry_t *entry = &cache->entries[slot];
+        if (!entry->used)
+            return 0;
+        if (entry->x_bits == x_bits && entry->y_bits == y_bits && entry->z_bits == z_bits) {
+            if (out_index)
+                *out_index = entry->mesh_index;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/// @brief Insert an exact STL vertex key into the cache, growing before long probe chains form.
+static int stl_vertex_cache_insert(stl_vertex_cache_t *cache,
+                                   uint32_t x_bits,
+                                   uint32_t y_bits,
+                                   uint32_t z_bits,
+                                   uint32_t mesh_index) {
+    if (!cache || !cache->entries)
+        return 0;
+    size_t next_count = cache->count + 1u;
+    size_t grow_limit = (cache->capacity / 10u) * 7u + ((cache->capacity % 10u) * 7u) / 10u;
+    if (next_count < cache->count || next_count > grow_limit) {
+        if (!stl_vertex_cache_grow(cache))
+            return 0;
+    }
+    uint64_t h = stl_hash_vertex_bits(x_bits, y_bits, z_bits);
+    for (size_t probe = 0; probe < cache->capacity; probe++) {
+        size_t slot = (size_t)((h + probe) & (uint64_t)(cache->capacity - 1u));
+        stl_vertex_cache_entry_t *entry = &cache->entries[slot];
+        if (!entry->used) {
+            entry->x_bits = x_bits;
+            entry->y_bits = y_bits;
+            entry->z_bits = z_bits;
+            entry->mesh_index = mesh_index;
+            entry->used = 1;
+            cache->count++;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/// @brief Emit or reuse one STL vertex and return its Mesh3D index.
+/// @details Cache insertion is best-effort. If the dedup table cannot grow, the loader still emits
+///          a valid non-deduplicated vertex rather than failing an otherwise valid STL asset.
+static int stl_get_or_add_vertex(
+    void *mesh, stl_vertex_cache_t *cache, float x, float y, float z, uint32_t *out_index) {
+    rt_mesh3d *m = (rt_mesh3d *)mesh;
+    uint32_t x_bits;
+    uint32_t y_bits;
+    uint32_t z_bits;
+    uint32_t index;
+    if (!m || !out_index)
+        return 0;
+    x_bits = stl_float_bits(x);
+    y_bits = stl_float_bits(y);
+    z_bits = stl_float_bits(z);
+    if (stl_vertex_cache_lookup(cache, x_bits, y_bits, z_bits, out_index))
+        return 1;
+    if (m->vertex_count == UINT32_MAX)
+        return 0;
+    index = m->vertex_count;
+    rt_mesh3d_add_vertex(mesh, x, y, z, 0, 0, 0, 0, 0);
+    if (m->build_failed || m->vertex_count <= index)
+        return 0;
+    (void)stl_vertex_cache_insert(cache, x_bits, y_bits, z_bits, index);
+    *out_index = index;
+    return 1;
+}
+
 /// @brief Return non-zero when STL vertex order should be flipped to match facet normal.
 static int stl_triangle_should_flip(const float *verts, const float *normal) {
     double abx;
@@ -82,22 +267,28 @@ static int stl_triangle_should_flip(const float *verts, const float *normal) {
 }
 
 /// @brief Append one STL triangle, skipping zero-area faces without failing the entire import.
-static int stl_emit_triangle(void *mesh, const float *verts, const float *normal) {
-    int64_t base;
+static int stl_emit_triangle(void *mesh,
+                             stl_vertex_cache_t *cache,
+                             const float *verts,
+                             const float *normal) {
+    uint32_t i0;
+    uint32_t i1;
+    uint32_t i2;
     if (!mesh || !verts)
         return 0;
     if (!mesh_positions_form_triangle(verts, verts + 3, verts + 6))
         return 1;
-    base = (int64_t)((rt_mesh3d *)mesh)->vertex_count;
-    rt_mesh3d_add_vertex(mesh, verts[0], verts[1], verts[2], 0, 0, 0, 0, 0);
-    rt_mesh3d_add_vertex(mesh, verts[3], verts[4], verts[5], 0, 0, 0, 0, 0);
-    rt_mesh3d_add_vertex(mesh, verts[6], verts[7], verts[8], 0, 0, 0, 0, 0);
+    if (!stl_get_or_add_vertex(mesh, cache, verts[0], verts[1], verts[2], &i0) ||
+        !stl_get_or_add_vertex(mesh, cache, verts[3], verts[4], verts[5], &i1) ||
+        !stl_get_or_add_vertex(mesh, cache, verts[6], verts[7], verts[8], &i2)) {
+        return 0;
+    }
     if (((rt_mesh3d *)mesh)->build_failed)
         return 0;
     if (stl_triangle_should_flip(verts, normal))
-        rt_mesh3d_add_triangle(mesh, base, base + 2, base + 1);
+        rt_mesh3d_add_triangle(mesh, i0, i2, i1);
     else
-        rt_mesh3d_add_triangle(mesh, base, base + 1, base + 2);
+        rt_mesh3d_add_triangle(mesh, i0, i1, i2);
     return !((rt_mesh3d *)mesh)->build_failed;
 }
 
@@ -112,6 +303,7 @@ static void *MESH3D_UNUSED_PRIVATE stl_load_binary(const uint8_t *data, size_t l
         return NULL;
     uint32_t tri_count = stl_read_u32_le(data + 80);
     uint32_t reserve_triangles;
+    stl_vertex_cache_t vertex_cache = {0};
     size_t tri_count_size = (size_t)tri_count;
     if (!rt_untrusted_count_ok((int64_t)tri_count, 50u, len - 84u))
         return NULL;
@@ -131,6 +323,7 @@ static void *MESH3D_UNUSED_PRIVATE stl_load_binary(const uint8_t *data, size_t l
         return mesh_return_null_if_build_failed(mesh);
     }
     rt_mesh3d_begin_geometry_batch((rt_mesh3d *)mesh);
+    (void)stl_vertex_cache_init(&vertex_cache, (size_t)reserve_triangles * 3u);
 
     for (uint32_t i = 0; i < tri_count; i++) {
         const uint8_t *tri = data + 84 + (size_t)i * 50;
@@ -156,20 +349,23 @@ static void *MESH3D_UNUSED_PRIVATE stl_load_binary(const uint8_t *data, size_t l
             mesh_mark_build_failed((rt_mesh3d *)mesh);
             break;
         }
-        if (!stl_emit_triangle(mesh, verts, normal))
+        if (!stl_emit_triangle(mesh, &vertex_cache, verts, normal))
             break;
     }
 
     if (((rt_mesh3d *)mesh)->build_failed) {
+        stl_vertex_cache_free(&vertex_cache);
         rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
         return mesh_return_null_if_build_failed(mesh);
     }
     if (((rt_mesh3d *)mesh)->index_count == 0) {
+        stl_vertex_cache_free(&vertex_cache);
         rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
         if (rt_obj_release_check0(mesh))
             rt_obj_free(mesh);
         return NULL;
     }
+    stl_vertex_cache_free(&vertex_cache);
     rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
     rt_mesh3d_recalc_normals(mesh);
     return mesh;
@@ -180,6 +376,7 @@ static void *MESH3D_UNUSED_PRIVATE stl_load_binary(const uint8_t *data, size_t l
 ///   zero/overflowing count or read error.
 static void *stl_load_binary_stream(FILE *f, uint32_t tri_count) {
     uint32_t reserve_triangles;
+    stl_vertex_cache_t vertex_cache = {0};
     if (!f || tri_count == 0 || tri_count > UINT32_MAX / 3u)
         return NULL;
     void *mesh = rt_mesh3d_new();
@@ -192,6 +389,7 @@ static void *stl_load_binary_stream(FILE *f, uint32_t tri_count) {
         return mesh_return_null_if_build_failed(mesh);
     }
     rt_mesh3d_begin_geometry_batch((rt_mesh3d *)mesh);
+    (void)stl_vertex_cache_init(&vertex_cache, (size_t)reserve_triangles * 3u);
 
     uint8_t tri[50];
     for (uint32_t i = 0; i < tri_count; i++) {
@@ -221,20 +419,23 @@ static void *stl_load_binary_stream(FILE *f, uint32_t tri_count) {
             mesh_mark_build_failed((rt_mesh3d *)mesh);
             break;
         }
-        if (!stl_emit_triangle(mesh, verts, normal))
+        if (!stl_emit_triangle(mesh, &vertex_cache, verts, normal))
             break;
     }
 
     if (((rt_mesh3d *)mesh)->build_failed) {
+        stl_vertex_cache_free(&vertex_cache);
         rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
         return mesh_return_null_if_build_failed(mesh);
     }
     if (((rt_mesh3d *)mesh)->index_count == 0) {
+        stl_vertex_cache_free(&vertex_cache);
         rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
         if (rt_obj_release_check0(mesh))
             rt_obj_free(mesh);
         return NULL;
     }
+    stl_vertex_cache_free(&vertex_cache);
     rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
     rt_mesh3d_recalc_normals(mesh);
     return mesh;
@@ -367,7 +568,9 @@ static void *MESH3D_UNUSED_PRIVATE stl_load_ascii(const uint8_t *data, size_t le
     int state = STL_ASCII_OUTSIDE_FACET;
     int parse_failed = 0;
     int emitted_triangles = 0;
+    stl_vertex_cache_t vertex_cache = {0};
     rt_mesh3d_begin_geometry_batch((rt_mesh3d *)mesh);
+    (void)stl_vertex_cache_init(&vertex_cache, 1024u);
 
     while (p < end) {
         const char *line = p;
@@ -422,7 +625,7 @@ static void *MESH3D_UNUSED_PRIVATE stl_load_ascii(const uint8_t *data, size_t le
                     parse_failed = 1;
                 } else {
                     uint32_t before = ((rt_mesh3d *)mesh)->index_count;
-                    if (!stl_emit_triangle(mesh, verts, normal) ||
+                    if (!stl_emit_triangle(mesh, &vertex_cache, verts, normal) ||
                         ((rt_mesh3d *)mesh)->build_failed)
                         parse_failed = 1;
                     if (((rt_mesh3d *)mesh)->index_count > before)
@@ -439,6 +642,7 @@ static void *MESH3D_UNUSED_PRIVATE stl_load_ascii(const uint8_t *data, size_t le
     if (parse_failed || state != STL_ASCII_OUTSIDE_FACET || emitted_triangles == 0 ||
         ((rt_mesh3d *)mesh)->build_failed) {
         free(text);
+        stl_vertex_cache_free(&vertex_cache);
         rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
         if (rt_obj_release_check0(mesh))
             rt_obj_free(mesh);
@@ -446,6 +650,7 @@ static void *MESH3D_UNUSED_PRIVATE stl_load_ascii(const uint8_t *data, size_t le
     }
 
     free(text);
+    stl_vertex_cache_free(&vertex_cache);
     rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
     rt_mesh3d_recalc_normals(mesh);
     return mesh;
@@ -473,12 +678,14 @@ static void *stl_load_ascii_stream(FILE *f) {
     int state = STL_ASCII_OUTSIDE_FACET;
     int parse_failed = 0;
     int emitted_triangles = 0;
+    stl_vertex_cache_t vertex_cache = {0};
     if (!f)
         return NULL;
     mesh = rt_mesh3d_new();
     if (!mesh)
         return NULL;
     rt_mesh3d_begin_geometry_batch((rt_mesh3d *)mesh);
+    (void)stl_vertex_cache_init(&vertex_cache, 1024u);
     while ((line_status = mesh3d_read_text_line(
                 f, &line_buf, &line_cap, MESH3D_STL_ASCII_MAX_LINE_BYTES)) > 0) {
         const char *line = line_buf;
@@ -526,7 +733,7 @@ static void *stl_load_ascii_stream(FILE *f) {
                     parse_failed = 1;
                 } else {
                     uint32_t before = ((rt_mesh3d *)mesh)->index_count;
-                    if (!stl_emit_triangle(mesh, verts, normal) ||
+                    if (!stl_emit_triangle(mesh, &vertex_cache, verts, normal) ||
                         ((rt_mesh3d *)mesh)->build_failed)
                         parse_failed = 1;
                     if (((rt_mesh3d *)mesh)->index_count > before)
@@ -548,6 +755,7 @@ static void *stl_load_ascii_stream(FILE *f) {
     free(line_buf);
     if (parse_failed || state != STL_ASCII_OUTSIDE_FACET || emitted_triangles == 0 ||
         ((rt_mesh3d *)mesh)->build_failed) {
+        stl_vertex_cache_free(&vertex_cache);
         rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
         if (rt_obj_release_check0(mesh))
             rt_obj_free(mesh);
@@ -555,6 +763,7 @@ static void *stl_load_ascii_stream(FILE *f) {
                                     "Mesh3D.FromSTL: invalid ASCII STL geometry");
         return NULL;
     }
+    stl_vertex_cache_free(&vertex_cache);
     rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
     rt_mesh3d_recalc_normals(mesh);
     return mesh;

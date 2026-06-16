@@ -61,6 +61,11 @@ typedef struct {
     int32_t video_stream_index; ///< Primary video stream index, or -1 until discovered.
     int32_t audio_stream_index; ///< Primary audio stream index, or -1 until discovered.
     int32_t chunk_walk_depth;   ///< Current RIFF walk depth used to reject malicious nesting.
+    size_t movi_list_offset;    ///< File offset of the `movi` LIST type tag, when present.
+    size_t movi_payload_start;  ///< File offset of the first chunk inside the `movi` LIST.
+    size_t movi_payload_end;    ///< File offset one past the `movi` LIST payload.
+    const uint8_t *idx1_data;   ///< Legacy AVI index payload, borrowed from file_data.
+    uint32_t idx1_size;         ///< Size in bytes of idx1_data.
     int8_t parse_error;         ///< Internal parse/allocation failure flag.
     int8_t has_audio;
     /* Chunk index: all movi chunks in playback order */

@@ -68,7 +68,7 @@ in `vgfx3d_backend_metal.m`), so that probe is new Phase-11 work.
   on upload, winding is `MTLWindingCounterClockwise`, the projection remaps
   OpenGL NDC depth `[-1,1]` → Metal `[0,1]` in the vertex shader, and texture
   sampling uses a **top-left origin** (matching software and D3D11). The MSL
-  source is split into halves "to stay under the C99 string limit"
+  source is split into halves to stay under portable C string literal limits
   (`vgfx3d_backend_metal.m:214`) — keep new shader code within that structure.
 - **Argument/constant packing.** New per-draw or per-cluster data goes in
   `MTLBuffer`s (often `MTLResourceStorageModeShared`); respect 16-byte alignment

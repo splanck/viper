@@ -102,7 +102,7 @@ Total Lines of Code: 1,613
 
 Compilation: ✅ No warnings
 Tests: ✅ All 11 tests pass
-C99 Compatible: ✅ Yes
+C11 Compatible: ✅ Yes
 C++ Compatible: ✅ Yes
 ```
 
@@ -245,5 +245,5 @@ The following improvements were made in the Viper runtime layer (`src/runtime/gr
 - Drawing algorithms are correct (Bresenham, midpoint circle)
 - Memory management is safe (aligned allocation, bounds checking)
 - API is stable and matches the specification (gfxlib.md v1.0.2)
-- Thread-local error handling works across C99/C11/C++
+- Thread-local error handling works across C11/C++
 - Library is ready for platform backend development

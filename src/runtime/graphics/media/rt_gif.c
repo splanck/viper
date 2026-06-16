@@ -476,6 +476,36 @@ static uint8_t *lzw_decompress(int min_code_size,
 static const int gif_interlace_start[4] = {0, 4, 2, 1};
 static const int gif_interlace_step[4] = {8, 8, 4, 2};
 
+/// @brief Convert GIF Graphic Control Extension delay units to display milliseconds.
+/// @details The file stores delay in centiseconds. A zero or one-centisecond delay is commonly
+///          authored accidentally and causes busy animation loops, so the decoder follows browser
+///          practice by normalizing those tiny values to a conservative 100 ms fallback.
+static int gif_delay_ms_from_centiseconds(int delay_cs) {
+    if (delay_cs <= 1)
+        return 100;
+    if (delay_cs > INT_MAX / 10)
+        return INT_MAX;
+    return delay_cs * 10;
+}
+
+/// @brief Map a decoded GIF row to its display row, accounting for four-pass interlacing.
+/// @details Non-interlaced images use row order directly. Interlaced images are stored by pass, so
+///          this helper centralizes the row remap for the full-animation and first-frame decoders.
+static int gif_actual_image_row(int decoded_row, int image_height, int interlaced) {
+    int row_in_pass;
+    if (!interlaced)
+        return decoded_row;
+    row_in_pass = decoded_row;
+    for (int pass = 0; pass < 4; pass++) {
+        int pass_rows = (image_height - gif_interlace_start[pass] + gif_interlace_step[pass] - 1) /
+                        gif_interlace_step[pass];
+        if (row_in_pass < pass_rows)
+            return gif_interlace_start[pass] + row_in_pass * gif_interlace_step[pass];
+        row_in_pass -= pass_rows;
+    }
+    return decoded_row;
+}
+
 /// @brief Decode a GIF file from disk into an array of RGBA frames.
 /// @details Reads the entire file into memory, then dispatches to the
 ///          in-memory decoder path (the same one used by VPA-embedded GIFs).
@@ -561,10 +591,9 @@ int gif_decode_file(const char *filepath,
 
     // Canvas for frame compositing (RGBA)
     uint32_t *canvas = (uint32_t *)calloc(canvas_size, sizeof(uint32_t));
-    uint32_t *prev_canvas = (uint32_t *)calloc(canvas_size, sizeof(uint32_t));
-    if (!canvas || !prev_canvas) {
+    uint32_t *prev_canvas = NULL;
+    if (!canvas) {
         free(canvas);
-        free(prev_canvas);
         free(frames);
         free(file_data);
         return 0;
@@ -620,12 +649,12 @@ int gif_decode_file(const char *filepath,
                 gce_dispose = (gce_packed >> 2) & 0x07;
                 int has_transparent = gce_packed & 0x01;
                 delay = gif_read_u16_le(r);
-                gce_delay_ms = delay * 10; // centiseconds to ms
                 trans_idx = gif_read_u8(r);
                 if (delay < 0 || trans_idx < 0) {
                     decode_failed = GIF_DECODE_FAILURE_GENERIC;
                     break;
                 }
+                gce_delay_ms = gif_delay_ms_from_centiseconds(delay);
                 gce_transparent = has_transparent ? trans_idx : -1;
                 gce_valid = 1;
                 if (gif_read_u8(r) != 0) { // block terminator
@@ -725,6 +754,14 @@ int gif_decode_file(const char *filepath,
                 prev_rect_y1 = prev_rect_y0;
             if (gce_dispose == 3) {
                 size_t row_pixels = (size_t)(prev_rect_x1 - prev_rect_x0);
+                if (!prev_canvas) {
+                    prev_canvas = (uint32_t *)malloc(canvas_size * sizeof(uint32_t));
+                    if (!prev_canvas) {
+                        free(indices);
+                        decode_failed = GIF_DECODE_FAILURE_GENERIC;
+                        break;
+                    }
+                }
                 for (int y = prev_rect_y0; y < prev_rect_y1; y++) {
                     size_t off = (size_t)y * (size_t)screen_w + (size_t)prev_rect_x0;
                     memcpy(prev_canvas + off, canvas + off, row_pixels * sizeof(uint32_t));
@@ -733,28 +770,10 @@ int gif_decode_file(const char *filepath,
 
             // Apply decoded pixels to canvas
             size_t idx = 0;
+            int invalid_color_index = 0;
             for (int y = 0; y < img_h && idx < index_len; y++) {
                 // De-interlace: map logical row y to actual row
-                int actual_y;
-                if (interlaced) {
-                    actual_y = -1;
-                    int row_in_pass = y;
-                    for (int pass = 0; pass < 4; pass++) {
-                        int pass_rows =
-                            (img_h - gif_interlace_start[pass] + gif_interlace_step[pass] - 1) /
-                            gif_interlace_step[pass];
-                        if (row_in_pass < pass_rows) {
-                            actual_y =
-                                gif_interlace_start[pass] + row_in_pass * gif_interlace_step[pass];
-                            break;
-                        }
-                        row_in_pass -= pass_rows;
-                    }
-                    if (actual_y < 0)
-                        actual_y = y;
-                } else {
-                    actual_y = y;
-                }
+                int actual_y = gif_actual_image_row(y, img_h, interlaced);
 
                 int canvas_y = img_top + actual_y;
                 if (canvas_y < 0 || canvas_y >= screen_h) {
@@ -776,10 +795,19 @@ int gif_decode_file(const char *filepath,
                                         ((uint32_t)color_table[color_idx * 3 + 1] << 16) |
                                         ((uint32_t)color_table[color_idx * 3 + 2] << 8) | 0xFF;
                         canvas[canvas_y * screen_w + canvas_x] = rgba;
+                    } else {
+                        invalid_color_index = 1;
+                        break;
                     }
                 }
+                if (invalid_color_index)
+                    break;
             }
             free(indices);
+            if (invalid_color_index) {
+                decode_failed = GIF_DECODE_FAILURE_GENERIC;
+                break;
+            }
 
             // Create Pixels object for this frame (snapshot of current canvas)
             if (!gif_decoded_frame_budget_allows(decoded_frame_bytes, frame_snapshot_bytes)) {
@@ -988,7 +1016,7 @@ int rt_gif_decode_memory_first_rgba32(
                 trans_idx = gif_read_u8(r);
                 if (delay < 0 || trans_idx < 0)
                     break;
-                gce_delay_ms = delay * 10;
+                gce_delay_ms = gif_delay_ms_from_centiseconds(delay);
                 gce_transparent = (gce_packed & 0x01) ? trans_idx : -1;
                 gce_valid = 1;
                 if (gif_read_u8(r) != 0)
@@ -1020,7 +1048,7 @@ int rt_gif_decode_memory_first_rgba32(
             size_t index_len = 0;
             uint8_t *indices = NULL;
             size_t idx = 0;
-            uint32_t *copy;
+            int invalid_color_index = 0;
 
             if (img_left < 0 || img_top < 0 || img_w < 0 || img_h < 0 || img_packed < 0)
                 break;
@@ -1057,26 +1085,7 @@ int rt_gif_decode_memory_first_rgba32(
                 break;
 
             for (int y = 0; y < img_h && idx < index_len; y++) {
-                int actual_y;
-                if (interlaced) {
-                    actual_y = -1;
-                    int row_in_pass = y;
-                    for (int pass = 0; pass < 4; pass++) {
-                        int pass_rows =
-                            (img_h - gif_interlace_start[pass] + gif_interlace_step[pass] - 1) /
-                            gif_interlace_step[pass];
-                        if (row_in_pass < pass_rows) {
-                            actual_y =
-                                gif_interlace_start[pass] + row_in_pass * gif_interlace_step[pass];
-                            break;
-                        }
-                        row_in_pass -= pass_rows;
-                    }
-                    if (actual_y < 0)
-                        actual_y = y;
-                } else {
-                    actual_y = y;
-                }
+                int actual_y = gif_actual_image_row(y, img_h, interlaced);
 
                 int canvas_y = img_top + actual_y;
                 if (canvas_y < 0 || canvas_y >= screen_h) {
@@ -1096,19 +1105,20 @@ int rt_gif_decode_memory_first_rgba32(
                                         ((uint32_t)color_table[color_idx * 3 + 1] << 16) |
                                         ((uint32_t)color_table[color_idx * 3 + 2] << 8) | 0xFF;
                         canvas[canvas_y * screen_w + canvas_x] = rgba;
+                    } else {
+                        invalid_color_index = 1;
+                        break;
                     }
                 }
+                if (invalid_color_index)
+                    break;
             }
             free(indices);
-
-            copy = (uint32_t *)malloc(canvas_size * sizeof(uint32_t));
-            if (!copy) {
+            if (invalid_color_index) {
                 free(canvas);
                 return 0;
             }
-            memcpy(copy, canvas, canvas_size * sizeof(uint32_t));
-            free(canvas);
-            *out_pixels = copy;
+            *out_pixels = canvas;
             if (out_width)
                 *out_width = screen_w;
             if (out_height)

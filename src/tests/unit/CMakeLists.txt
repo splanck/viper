@@ -13,6 +13,10 @@ function(viper_add_isolated_runtime_test target)
     endif ()
 
     add_executable(${target} ${ARGN})
+    set_target_properties(${target} PROPERTIES
+            C_STANDARD 11
+            C_STANDARD_REQUIRED ON
+            C_EXTENSIONS OFF)
     target_include_directories(${target} PRIVATE
             ${VIPER_TESTS_DIR}
             ${CMAKE_SOURCE_DIR}/include

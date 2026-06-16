@@ -219,6 +219,20 @@ int64_t rt_canvas3d_get_backend_state_changes(void *obj);
 void rt_canvas3d_set_texture_upload_budget(void *obj, int64_t bytes);
 /// @brief Texture payload bytes still waiting for backend texture upload budget.
 int64_t rt_canvas3d_get_texture_upload_pending_bytes(void *obj);
+/// @brief Successful draw calls emitted by the active backend since canvas creation.
+int64_t rt_canvas3d_get_backend_draw_calls(void *obj);
+/// @brief Draw commands rejected inside the active backend since canvas creation.
+int64_t rt_canvas3d_get_backend_dropped_draws(void *obj);
+/// @brief Static mesh cache hits observed by the active backend since canvas creation.
+int64_t rt_canvas3d_get_backend_mesh_cache_hits(void *obj);
+/// @brief Static mesh cache misses observed by the active backend since canvas creation.
+int64_t rt_canvas3d_get_backend_mesh_cache_misses(void *obj);
+/// @brief Transient mesh uploads performed by the active backend since canvas creation.
+int64_t rt_canvas3d_get_backend_mesh_stream_uploads(void *obj);
+/// @brief Fallback texture binds observed by the active backend since canvas creation.
+int64_t rt_canvas3d_get_backend_texture_fallback_binds(void *obj);
+/// @brief Active backend present path: 0 unknown, 1 direct GPU drawable, 2 offscreen resolve.
+int64_t rt_canvas3d_get_backend_present_path(void *obj);
 /// @brief Capture the current back-buffer contents into a fresh Pixels object.
 void *rt_canvas3d_screenshot(void *obj);
 /// @brief Begin recording a final overlay pass composited after post-FX during finalization.

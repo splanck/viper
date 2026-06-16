@@ -178,21 +178,26 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/common)
 # ── helpers for AArch64 and cross-platform codegen tests ────────────────────
 # Defined at file scope so they are available both inside and outside the
 # ARM64-gated block below.
-macro(_aarch64_add_test _name _src _libs)
+macro(_aarch64_add_test _name _src)
     add_executable(${_name} ${_src})
     if (WIN32)
         target_sources(${_name} PRIVATE ${VIPER_TESTS_DIR}/common/WinDialogSuppress.c)
     endif ()
-    target_link_libraries(${_name} PRIVATE viper_testing ${_libs})
+    target_link_libraries(${_name} PRIVATE viper_testing ${ARGN})
     viper_add_ctest(${_name} $<TARGET_FILE:${_name}>)
 endmacro()
 
-macro(_aarch64_add_test_common _name _src _libs)
+macro(_aarch64_add_cmd_test _name _src)
+    _aarch64_add_test(${_name} ${_src} ${ARGN})
+    set_tests_properties(${_name} PROPERTIES RESOURCE_LOCK aarch64_codegen_artifacts)
+endmacro()
+
+macro(_aarch64_add_test_common _name _src)
     add_executable(${_name} ${_src})
     if (WIN32)
         target_sources(${_name} PRIVATE ${VIPER_TESTS_DIR}/common/WinDialogSuppress.c)
     endif ()
-    target_link_libraries(${_name} PRIVATE viper_test_common ${_libs})
+    target_link_libraries(${_name} PRIVATE viper_test_common ${ARGN})
     viper_add_ctest(${_name} $<TARGET_FILE:${_name}>)
 endmacro()
 
@@ -312,12 +317,12 @@ if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64" AND NOT WIN32)
             test_codegen_arm64_benchmark_regressions
     )
     foreach (_test IN LISTS _AARCH64_CMD_TESTS)
-        _aarch64_add_test(${_test}
+        _aarch64_add_cmd_test(${_test}
                 ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/${_test}.cpp
                 "il_codegen_aarch64;viper_cmd_arm64")
     endforeach ()
 
-    _aarch64_add_test(test_codegen_arm64_casts
+    _aarch64_add_cmd_test(test_codegen_arm64_casts
             ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_casts.cpp
             "il_codegen_aarch64;viper_cmd_arm64")
 
@@ -333,6 +338,7 @@ if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64" AND NOT WIN32)
     _aarch64_add_test_common(test_codegen_env_is_native
             ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_env_is_native.cpp
             "il_codegen_aarch64;viper_cmd_arm64")
+    set_tests_properties(test_codegen_env_is_native PROPERTIES RESOURCE_LOCK aarch64_codegen_artifacts)
 
     # Property-based differential testing: VM vs ARM64 native
     # This test must run alone (RUN_SERIAL) to avoid resource contention with other
@@ -340,7 +346,11 @@ if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64" AND NOT WIN32)
     _aarch64_add_test_common(test_diff_vm_native_property
             ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_diff_vm_native_property.cpp
             "il_codegen_aarch64;viper_cmd_arm64")
-    set_tests_properties(test_diff_vm_native_property PROPERTIES RUN_SERIAL TRUE TIMEOUT 120 LABELS "slow")
+    set_tests_properties(test_diff_vm_native_property PROPERTIES
+            RUN_SERIAL TRUE
+            TIMEOUT 120
+            LABELS "slow"
+            RESOURCE_LOCK aarch64_codegen_artifacts)
 
     # ── ARM64 end-to-end demo tests ────────────────────────────────────
     set(_AARCH64_E2E_TESTS
@@ -348,7 +358,7 @@ if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64" AND NOT WIN32)
             test_arm64_demos_run
     )
     foreach (_test IN LISTS _AARCH64_E2E_TESTS)
-        _aarch64_add_test(${_test}
+        _aarch64_add_cmd_test(${_test}
                 ${CMAKE_CURRENT_SOURCE_DIR}/e2e/${_test}.cpp
                 "viper_common")
     endforeach ()

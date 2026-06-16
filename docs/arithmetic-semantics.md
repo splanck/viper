@@ -65,7 +65,7 @@ still requires `.ovf` opcodes regardless of the flag.
 
 | Opcode | Truncation | Div-by-zero | MIN/-1 |
 |--------|-----------|-------------|--------|
-| `sdiv.chk0` | Toward zero (C99) | **Trap** | **Trap** |
+| `sdiv.chk0` | Toward zero (C11) | **Trap** | **Trap** |
 | `udiv.chk0` | Toward zero | **Trap** | N/A |
 
 Source IL should use the `.chk0` forms. The verifier rejects plain `sdiv` /
@@ -86,7 +86,7 @@ Source IL should use the `.chk0` forms. As with division, the verifier accepts
 plain `srem` / `urem` only when CheckOpt has preserved a non-zero constant
 divisor proof by demoting from a checked opcode.
 
-**Remainder sign rule** (C99): `-7 % 2 = -1`, `7 % -2 = 1`, `-7 % -2 = -1`.
+**Remainder sign rule** (C11): `-7 % 2 = -1`, `7 % -2 = 1`, `-7 % -2 = -1`.
 
 `MIN % -1 = 0` is mathematically correct and does not trap.
 

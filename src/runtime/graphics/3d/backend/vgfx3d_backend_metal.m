@@ -239,7 +239,7 @@
 @end
 
 //=============================================================================
-// MSL Shader source (vertex + fragment in two halves to stay under C99 limit)
+// MSL Shader source (vertex + fragment in two halves for portable C string literal limits)
 //=============================================================================
 
 #pragma clang diagnostic push

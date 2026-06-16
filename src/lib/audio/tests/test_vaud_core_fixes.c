@@ -729,8 +729,35 @@ static void test_mixer_outputs_silence_when_state_lock_is_busy(void) {
     for (size_t i = 0; i < sizeof(out) / sizeof(out[0]); i++)
         EXPECT_TRUE(out[i] == 0);
 
+    vaud_stats_t stats;
+    memset(&stats, 0, sizeof(stats));
+    vaud_get_stats(ctx, &stats);
+    EXPECT_TRUE(stats.render_calls == 1);
+    EXPECT_TRUE(stats.mixer_lock_misses == 1);
+
     vaud_destroy(ctx);
 #endif
+}
+
+static void test_vaud_get_stats_handles_nulls_and_counts_render(void) {
+    vaud_stats_t stats;
+    memset(&stats, 0x7F, sizeof(stats));
+    vaud_get_stats(NULL, &stats);
+    EXPECT_TRUE(stats.render_calls == 0);
+    EXPECT_TRUE(stats.mixer_lock_misses == 0);
+
+    vaud_context_t ctx = vaud_create();
+    EXPECT_TRUE(ctx != NULL);
+
+    int16_t out[VAUD_CHANNELS] = {0, 0};
+    vaud_mixer_render(ctx, out, 1);
+    memset(&stats, 0, sizeof(stats));
+    vaud_get_stats(ctx, &stats);
+    EXPECT_TRUE(stats.render_calls == 1);
+    EXPECT_TRUE(stats.mixer_lock_misses == 0);
+
+    vaud_get_stats(ctx, NULL);
+    vaud_destroy(ctx);
 }
 
 int main(void) {
@@ -752,6 +779,7 @@ int main(void) {
     test_mixer_outputs_silence_when_context_paused();
     test_vaud_update_refills_without_holding_state_mutex();
     test_mixer_outputs_silence_when_state_lock_is_busy();
+    test_vaud_get_stats_handles_nulls_and_counts_render();
 
     if (tests_failed != 0)
         return 1;

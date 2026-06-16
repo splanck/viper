@@ -710,6 +710,75 @@ int64_t rt_canvas3d_get_texture_upload_pending_bytes(void *obj) {
     return bytes > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)bytes;
 }
 
+/// @brief Clamp a backend unsigned telemetry counter into the public signed runtime range.
+/// @param value Backend-owned monotonically increasing counter.
+/// @return @p value as signed 64-bit, saturated at INT64_MAX.
+static int64_t canvas3d_backend_counter_to_i64(uint64_t value) {
+    return value > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)value;
+}
+
+/// @brief Copy the active backend's optional diagnostics snapshot.
+/// @details Backends expose this through a late vtable hook so Canvas3D does not need to know
+///          concrete backend context layouts. Missing hooks return an all-zero snapshot.
+/// @param c Canvas3D payload, may be NULL.
+/// @return Backend telemetry snapshot, zero-filled when unsupported.
+static vgfx3d_backend_stats_t canvas3d_get_backend_stats_snapshot(rt_canvas3d *c) {
+    vgfx3d_backend_stats_t stats;
+    memset(&stats, 0, sizeof(stats));
+    if (c && c->backend && c->backend->get_backend_stats)
+        c->backend->get_backend_stats(c->backend_ctx, &stats);
+    return stats;
+}
+
+/// @brief Successful draw calls emitted by the active backend since canvas creation.
+int64_t rt_canvas3d_get_backend_draw_calls(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    vgfx3d_backend_stats_t stats = canvas3d_get_backend_stats_snapshot(c);
+    return canvas3d_backend_counter_to_i64(stats.draw_calls);
+}
+
+/// @brief Draw commands rejected inside the active backend since canvas creation.
+int64_t rt_canvas3d_get_backend_dropped_draws(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    vgfx3d_backend_stats_t stats = canvas3d_get_backend_stats_snapshot(c);
+    return canvas3d_backend_counter_to_i64(stats.dropped_draws);
+}
+
+/// @brief Static mesh cache hits observed by the active backend since canvas creation.
+int64_t rt_canvas3d_get_backend_mesh_cache_hits(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    vgfx3d_backend_stats_t stats = canvas3d_get_backend_stats_snapshot(c);
+    return canvas3d_backend_counter_to_i64(stats.mesh_cache_hits);
+}
+
+/// @brief Static mesh cache misses observed by the active backend since canvas creation.
+int64_t rt_canvas3d_get_backend_mesh_cache_misses(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    vgfx3d_backend_stats_t stats = canvas3d_get_backend_stats_snapshot(c);
+    return canvas3d_backend_counter_to_i64(stats.mesh_cache_misses);
+}
+
+/// @brief Transient mesh uploads performed by the active backend since canvas creation.
+int64_t rt_canvas3d_get_backend_mesh_stream_uploads(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    vgfx3d_backend_stats_t stats = canvas3d_get_backend_stats_snapshot(c);
+    return canvas3d_backend_counter_to_i64(stats.mesh_stream_uploads);
+}
+
+/// @brief Fallback texture binds observed by the active backend since canvas creation.
+int64_t rt_canvas3d_get_backend_texture_fallback_binds(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    vgfx3d_backend_stats_t stats = canvas3d_get_backend_stats_snapshot(c);
+    return canvas3d_backend_counter_to_i64(stats.texture_fallback_binds);
+}
+
+/// @brief Active backend present path: 0 unknown, 1 direct GPU drawable, 2 offscreen resolve.
+int64_t rt_canvas3d_get_backend_present_path(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    vgfx3d_backend_stats_t stats = canvas3d_get_backend_stats_snapshot(c);
+    return stats.present_path;
+}
+
 /// @brief Capture the current canvas contents into a freshly allocated Pixels object.
 /// @details Three-way capture path, picked by what's bound:
 ///          1. RTT bound → call `rendertarget_sync_color_if_needed` to

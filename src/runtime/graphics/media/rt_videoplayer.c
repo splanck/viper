@@ -53,9 +53,20 @@ extern void *rt_pixels_new(int64_t width, int64_t height);
 extern int64_t rt_pixels_width(void *pixels);
 extern int64_t rt_pixels_height(void *pixels);
 extern void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len);
+extern int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
+                                        size_t len,
+                                        uint32_t **out_pixels,
+                                        int64_t *out_width,
+                                        int64_t *out_height);
 
 #define VIDEOPLAYER_MAX_FILE_BYTES (INT64_C(512) * 1024 * 1024)
 #define VIDEOPLAYER_MAX_OGV_UPDATE_DECODE_FRAMES 8
+#define VIDEOPLAYER_MAX_OGV_CONSECUTIVE_DECODE_ERRORS 16
+#if defined(__clang__) || defined(__GNUC__)
+#define VIDEOPLAYER_UNUSED_PRIVATE __attribute__((unused))
+#else
+#define VIDEOPLAYER_UNUSED_PRIVATE
+#endif
 
 /* Internal pixel struct for direct buffer copy */
 typedef struct {
@@ -116,7 +127,8 @@ static int videoplayer_avi_codec_supported(uint32_t fourcc) {
 /// @param frame_display Destination Pixels object owned by the video player.
 /// @param decoded Source Pixels object returned by the frame decoder.
 /// @return 1 when the copy succeeded, 0 for NULL/mismatched/overflowing views.
-static int videoplayer_copy_decoded_frame(void *frame_display, void *decoded) {
+static int VIDEOPLAYER_UNUSED_PRIVATE videoplayer_copy_decoded_frame(void *frame_display,
+                                                                     void *decoded) {
     px_view *dst = (px_view *)frame_display;
     px_view *src = (px_view *)decoded;
     size_t copy_bytes = 0;
@@ -668,39 +680,61 @@ static int mjpeg_scan_markers(const uint8_t *data,
     return 1;
 }
 
-/// @brief Decode an MJPEG frame, injecting standard DHT if missing.
-static void *decode_mjpeg_frame(const uint8_t *data, uint32_t size) {
-    if (!data || size < 4)
-        return NULL;
+/// @brief Decode an MJPEG frame to malloc-owned RGBA32, injecting standard DHT if missing.
+/// @details AVI MJPEG frames commonly omit Huffman tables. When injection is required, this helper
+///          builds the patched JPEG in caller-owned scratch storage so sequential playback does not
+///          allocate and free a temporary DHT-patched byte buffer for every frame.
+static int decode_mjpeg_frame_rgba32(const uint8_t *data,
+                                     uint32_t size,
+                                     uint8_t **scratch,
+                                     size_t *scratch_capacity,
+                                     uint32_t **out_pixels,
+                                     int64_t *out_width,
+                                     int64_t *out_height) {
+    if (out_pixels)
+        *out_pixels = NULL;
+    if (out_width)
+        *out_width = 0;
+    if (out_height)
+        *out_height = 0;
+    if (!data || size < 4 || !out_pixels || !out_width || !out_height)
+        return 0;
 
     int has_dht = 0;
     uint32_t sos_pos = 0;
     if (!mjpeg_scan_markers(data, size, &has_dht, &sos_pos))
-        return NULL;
+        return 0;
 
     if (has_dht)
-        return rt_jpeg_decode_buffer(data, size);
+        return rt_jpeg_decode_buffer_rgba32(data, size, out_pixels, out_width, out_height);
 
     /* Find SOS marker (0xFFDA) — insert DHT just before it */
     if (sos_pos == 0)
-        return rt_jpeg_decode_buffer(data, size); /* no SOS found, try anyway */
+        return rt_jpeg_decode_buffer_rgba32(
+            data, size, out_pixels, out_width, out_height); /* no SOS found, try anyway */
 
     /* Build new buffer: [header...SOS) + DHT + [SOS...end] */
     size_t dht_size = sizeof(std_dht);
     if ((size_t)size > SIZE_MAX - dht_size)
-        return NULL;
+        return 0;
     size_t new_size = size + dht_size;
-    uint8_t *buf = (uint8_t *)malloc(new_size);
+    if (!scratch || !scratch_capacity)
+        return 0;
+    if (*scratch_capacity < new_size) {
+        uint8_t *next = (uint8_t *)realloc(*scratch, new_size);
+        if (!next)
+            return 0;
+        *scratch = next;
+        *scratch_capacity = new_size;
+    }
+    uint8_t *buf = *scratch;
     if (!buf)
-        return NULL;
+        return 0;
 
     memcpy(buf, data, sos_pos);
     memcpy(buf + sos_pos, std_dht, dht_size);
     memcpy(buf + sos_pos + dht_size, data + sos_pos, size - sos_pos);
-
-    void *result = rt_jpeg_decode_buffer(buf, new_size);
-    free(buf);
-    return result;
+    return rt_jpeg_decode_buffer_rgba32(buf, new_size, out_pixels, out_width, out_height);
 }
 
 typedef struct {
@@ -716,6 +750,7 @@ typedef struct {
     ogg_reader_t *ogg_reader;
     theora_decoder_t theora;
     uint32_t theora_serial; /* OGG stream serial for Theora */
+    int32_t ogv_consecutive_decode_errors;
 #ifdef VIPER_ENABLE_AUDIO
     void *audio_track; /* rt_music */
     int8_t audio_started;
@@ -734,6 +769,8 @@ typedef struct {
     /* Frame buffers */
     void *frame_display; /* Pixels — currently displayed */
     void *frame_decode;  /* Pixels — scratch for decode (may be reallocated) */
+    uint8_t *mjpeg_scratch;
+    size_t mjpeg_scratch_capacity;
 } rt_videoplayer;
 
 static rt_videoplayer *videoplayer_checked(void *obj) {
@@ -815,15 +852,39 @@ static void videoplayer_restore_display(rt_videoplayer *vp, const uint32_t *data
 /// @param frame_index Zero-based target frame index.
 /// @return 1 when the frame was decoded and copied, 0 on missing data or decode failure.
 static int videoplayer_decode_avi_frame(rt_videoplayer *vp, int32_t frame_index) {
+    px_view *dst;
+    uint32_t *decoded_pixels = NULL;
+    int64_t decoded_w = 0;
+    int64_t decoded_h = 0;
+    uint64_t pixel_count;
+    size_t copy_bytes;
     if (!vp || vp->container_type != 0 || frame_index < 0 || frame_index >= vp->total_frames)
         return 0;
     uint32_t frame_size = 0;
     const uint8_t *frame_data = avi_get_video_frame(&vp->avi, frame_index, &frame_size);
-    void *decoded = frame_data ? decode_mjpeg_frame(frame_data, frame_size) : NULL;
-    int copied = videoplayer_copy_decoded_frame(vp->frame_display, decoded);
-    release_owned_ref(&decoded);
-    if (!copied)
+    if (!frame_data || !decode_mjpeg_frame_rgba32(frame_data,
+                                                  frame_size,
+                                                  &vp->mjpeg_scratch,
+                                                  &vp->mjpeg_scratch_capacity,
+                                                  &decoded_pixels,
+                                                  &decoded_w,
+                                                  &decoded_h))
         return 0;
+    dst = (px_view *)vp->frame_display;
+    if (!dst || !dst->data || dst->width != decoded_w || dst->height != decoded_h ||
+        decoded_w <= 0 || decoded_h <= 0 ||
+        (uint64_t)decoded_w > UINT64_MAX / (uint64_t)decoded_h) {
+        free(decoded_pixels);
+        return 0;
+    }
+    pixel_count = (uint64_t)decoded_w * (uint64_t)decoded_h;
+    if (pixel_count > (uint64_t)SIZE_MAX / sizeof(uint32_t)) {
+        free(decoded_pixels);
+        return 0;
+    }
+    copy_bytes = (size_t)pixel_count * sizeof(uint32_t);
+    memcpy(dst->data, decoded_pixels, copy_bytes);
+    free(decoded_pixels);
     vp->current_frame = frame_index;
     return 1;
 }
@@ -842,11 +903,16 @@ static double videoplayer_clamp_seconds(const rt_videoplayer *vp, double seconds
 }
 
 static int32_t videoplayer_frame_index_at(const rt_videoplayer *vp, double seconds) {
+    long double frame;
+    long double epsilon;
     if (!vp || vp->total_frames <= 0 || !isfinite(seconds) || !isfinite(vp->fps) || vp->fps <= 0.0)
         return -1;
-    long double frame = (long double)seconds * (long double)vp->fps;
+    frame = (long double)seconds * (long double)vp->fps;
+    epsilon = 1.0e-9L * (frame > 1.0L ? frame : 1.0L);
     if (frame < 0.0L)
         return -1;
+    if (frame >= (long double)vp->total_frames - epsilon)
+        return vp->total_frames - 1;
     if (frame >= (long double)INT32_MAX)
         return INT32_MAX;
     return (int32_t)frame;
@@ -1062,6 +1128,7 @@ static int ogv_prepare_playback(rt_videoplayer *vp) {
 
     theora_decoder_free(&vp->theora);
     theora_decoder_init(&vp->theora);
+    vp->ogv_consecutive_decode_errors = 0;
 
     const uint8_t *packet = NULL;
     size_t packet_len = 0;
@@ -1096,10 +1163,15 @@ static int ogv_decode_next_frame(rt_videoplayer *vp) {
         const uint8_t *cb = NULL;
         const uint8_t *cr = NULL;
         int rc = theora_decode_frame(&vp->theora, packet, packet_len, &y, &cb, &cr);
-        if (rc != 0)
+        if (rc != 0) {
+            vp->ogv_consecutive_decode_errors++;
+            if (vp->ogv_consecutive_decode_errors > VIDEOPLAYER_MAX_OGV_CONSECUTIVE_DECODE_ERRORS)
+                return 0;
             continue;
+        }
         if (!copy_theora_frame_to_display(vp, y, cb, cr))
             return 0;
+        vp->ogv_consecutive_decode_errors = 0;
 
         int32_t frame_index = theora_granule_to_frame_index(&vp->theora, info.granule_position);
         if (frame_index < 0)
@@ -1175,6 +1247,9 @@ static void videoplayer_finalizer(void *obj) {
     theora_decoder_free(&vp->theora);
     release_owned_ref(&vp->frame_display);
     release_owned_ref(&vp->frame_decode);
+    free(vp->mjpeg_scratch);
+    vp->mjpeg_scratch = NULL;
+    vp->mjpeg_scratch_capacity = 0;
     if (vp->file_bytes) {
         if (rt_obj_release_check0(vp->file_bytes))
             rt_obj_free(vp->file_bytes);

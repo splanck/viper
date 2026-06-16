@@ -42,32 +42,40 @@ class ShowcaseForest {
     hide func loadTreeModel() -> Model3D {
         var model = Model3D.LoadAsset(config.TREE_MODEL_PATH);
         if (not treeBad(model)) {
-            Terminal.Say("Forest: loaded tree asset '" + config.TREE_MODEL_PATH + "'.");
+            reportTreeLoadSuccess("asset", config.TREE_MODEL_PATH, model);
             return model;
         }
         reportTreeLoadFailure(config.TREE_MODEL_PATH);
 
         model = Model3D.Load(config.TREE_MODEL_PATH);
         if (not treeBad(model)) {
-            Terminal.Say("Forest: loaded tree model '" + config.TREE_MODEL_PATH + "'.");
+            reportTreeLoadSuccess("model", config.TREE_MODEL_PATH, model);
             return model;
         }
         reportTreeLoadFailure(config.TREE_MODEL_PATH);
 
         model = Model3D.Load(config.TREE_MODEL_PATH_ALT);
         if (not treeBad(model)) {
-            Terminal.Say("Forest: loaded tree model '" + config.TREE_MODEL_PATH_ALT + "'.");
+            reportTreeLoadSuccess("model", config.TREE_MODEL_PATH_ALT, model);
             return model;
         }
         reportTreeLoadFailure(config.TREE_MODEL_PATH_ALT);
 
         model = Model3D.Load(config.TREE_MODEL_PATH_FROM_BIN);
         if (not treeBad(model)) {
-            Terminal.Say("Forest: loaded tree model '" + config.TREE_MODEL_PATH_FROM_BIN + "'.");
+            reportTreeLoadSuccess("model", config.TREE_MODEL_PATH_FROM_BIN, model);
             return model;
         }
         reportTreeLoadFailure(config.TREE_MODEL_PATH_FROM_BIN);
         return null;
+    }
+
+    hide func reportTreeLoadSuccess(kind: String, path: String, model: Model3D) {
+        Terminal.Say("Forest: loaded tree " + kind + " '" + path + "'"
+            + " meshes=" + toString(Model3D.get_MeshCount(model))
+            + " materials=" + toString(Model3D.get_MaterialCount(model))
+            + " nodes=" + toString(Model3D.get_NodeCount(model))
+            + " scenes=" + toString(Model3D.get_SceneCount(model)) + ".");
     }
 
     hide func reportTreeLoadFailure(path: String) {
@@ -185,12 +193,17 @@ class ShowcaseForest {
         plantBranch(world, x, z, y + trunkHeight * 0.58, yawDeg + 18.0, trunkRadius * 0.44, trunkHeight * 0.48, 28.0);
         plantBranch(world, x, z, y + trunkHeight * 0.66, yawDeg + 142.0, trunkRadius * 0.36, trunkHeight * 0.40, -32.0);
         plantBranch(world, x, z, y + trunkHeight * 0.78, yawDeg + 258.0, trunkRadius * 0.30, trunkHeight * 0.34, 24.0);
+        plantBranch(world, x, z, y + trunkHeight * 0.88, yawDeg + 314.0, trunkRadius * 0.22, trunkHeight * 0.26, 36.0);
 
         plantCanopyLobe(world, x, z, y, yawDeg, canopyRadius, canopyMat, 0.0, 0.0, 1.28, 0.86, 1.18, 0.52);
         plantCanopyLobe(world, x, z, y, yawDeg + 28.0, canopyRadius * 0.78, canopyMat, -0.34, 0.18, 1.08, 0.72, 0.94, 0.38);
         plantCanopyLobe(world, x, z, y, yawDeg + 146.0, canopyRadius * 0.72, canopyMat, 0.36, -0.22, 0.96, 0.76, 1.06, 0.34);
         plantCanopyLobe(world, x, z, y, yawDeg + 244.0, canopyRadius * 0.66, canopyMat, 0.10, 0.42, 1.02, 0.64, 0.88, 0.62);
         plantCanopyLobe(world, x, z, y, yawDeg + 8.0, canopyRadius * 0.56, canopyMat, 0.0, 0.02, 0.78, 0.86, 0.72, 0.92);
+        plantLeafPlate(world, x, z, y, yawDeg + 18.0, canopyRadius, canopyMat, 0.0, 0.0, 1.08);
+        plantLeafPlate(world, x, z, y, yawDeg + 72.0, canopyRadius * 0.86, canopyMat, -0.26, 0.22, 0.94);
+        plantLeafPlate(world, x, z, y, yawDeg + 136.0, canopyRadius * 0.78, canopyMat, 0.24, -0.28, 0.88);
+        plantLeafPlate(world, x, z, y, yawDeg + 248.0, canopyRadius * 0.72, canopyMat, 0.12, 0.30, 0.82);
     }
 
     hide func plantBranch(world: World3D, x: Float, z: Float, y: Float, yawDeg: Float, radius: Float, length: Float, pitchDeg: Float) {
@@ -214,6 +227,17 @@ class ShowcaseForest {
         World3D.spawn(world, crown);
     }
 
+    hide func plantLeafPlate(world: World3D, x: Float, z: Float, y: Float, yawDeg: Float, radius: Float, mat: Material3D, ox: Float, oz: Float, lift: Float) {
+        var plate = Prefab.BoxXYZ(radius * 1.72, radius * 0.08, radius * 1.18, mat);
+        var wx = x + Sin(yawDeg * 0.0174533) * ox * radius + Cos(yawDeg * 0.0174533) * oz * radius;
+        var wz = z + Cos(yawDeg * 0.0174533) * ox * radius - Sin(yawDeg * 0.0174533) * oz * radius;
+        Entity3D.setName(plate, "procedural_maple_leaf_plate");
+        Entity3D.setLayer(plate, Layers.get_World());
+        Entity3D.setRotationEuler(plate, 6.0, yawDeg, 11.0);
+        Entity3D.setPosition(plate, wx, y + scaleCanopyBase(radius) + lift * radius, wz);
+        World3D.spawn(world, plate);
+    }
+
     hide func scaleCanopyBase(radius: Float) -> Float {
         return radius * 2.45;
     }
@@ -229,27 +253,33 @@ class ShowcaseForest {
 
     hide func applyTreeMaterials(ent: Entity3D, canopyMat: Material3D) {
         var node = Entity3D.get_node(ent);
-        var count = SceneNode3D.get_ChildCount(node);
-        var assigned = 0;
-        for i in 0..count {
-            var child = SceneNode3D.GetChild(node, i);
-            if (SceneNode3D.get_Mesh(child) != null) {
-                var amin = SceneNode3D.get_AABBMin(child);
-                var amax = SceneNode3D.get_AABBMax(child);
-                var dy = Vec3.get_Y(amax) - Vec3.get_Y(amin);
-                var dxz = terrain.maxf(Vec3.get_X(amax) - Vec3.get_X(amin),
-                                       Vec3.get_Z(amax) - Vec3.get_Z(amin));
-                if (dy > dxz * 1.4) {
-                    SceneNode3D.set_Material(child, barkMat);
-                } else {
-                    SceneNode3D.set_Material(child, canopyMat);
-                }
-                assigned = assigned + 1;
-            }
-        }
+        var assigned = applyTreeMaterialsRecursive(node, canopyMat);
         if (assigned == 0) {
             Entity3D.setMaterialRecursive(ent, canopyMat);
         }
+    }
+
+    hide func applyTreeMaterialsRecursive(node: SceneNode3D, canopyMat: Material3D) -> Integer {
+        if (node == null) { return 0; }
+        var assigned = 0;
+        if (SceneNode3D.get_Mesh(node) != null) {
+            var amin = SceneNode3D.get_AABBMin(node);
+            var amax = SceneNode3D.get_AABBMax(node);
+            var dy = Vec3.get_Y(amax) - Vec3.get_Y(amin);
+            var dxz = terrain.maxf(Vec3.get_X(amax) - Vec3.get_X(amin),
+                                   Vec3.get_Z(amax) - Vec3.get_Z(amin));
+            if (dy > dxz * 1.4) {
+                SceneNode3D.set_Material(node, barkMat);
+            } else {
+                SceneNode3D.set_Material(node, canopyMat);
+            }
+            assigned = assigned + 1;
+        }
+        var count = SceneNode3D.get_ChildCount(node);
+        for i in 0..count {
+            assigned = assigned + applyTreeMaterialsRecursive(SceneNode3D.GetChild(node, i), canopyMat);
+        }
+        return assigned;
     }
 
     hide func makeFoliage(r: Float, g: Float, b: Float) -> Material3D {

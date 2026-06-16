@@ -226,7 +226,7 @@ These compiler extensions are **mandatory** for compiling Viper OS. Without them
 
 ## 3. C Core Language Features
 
-### 3.1 C99 Features
+### 3.1 C11 Features
 
 | Feature | Example | Files Using |
 |---------|---------|-------------|
@@ -822,7 +822,7 @@ The kernel uses modern C++ but in a constrained freestanding environment:
 
 ### 11.4 libc C Language Features
 
-#### 11.4.1 C99/C11/C17 Features Used
+#### 11.4.1 C11/C17 Features Used
 
 | Feature | Example | Files |
 |---------|---------|-------|

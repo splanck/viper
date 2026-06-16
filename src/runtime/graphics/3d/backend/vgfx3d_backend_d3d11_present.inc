@@ -30,7 +30,6 @@ static void d3d11_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, floa
 /// pipeline up for the upcoming draws.
 static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
-    HRESULT hr = S_OK;
 
     if (!ctx || !cam)
         return;

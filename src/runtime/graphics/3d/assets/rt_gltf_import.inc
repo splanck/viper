@@ -227,31 +227,12 @@ static void *gltf_preload_take_decoded_mesh(rt_gltf_preload_bundle *preload_bund
     memcpy(vertices, blob + vertex_offset, vertex_bytes);
     memcpy(indices, blob + index_offset, index_bytes);
 
-    mesh_obj = rt_mesh3d_new();
+    mesh_obj = rt_mesh3d_new_empty_storage();
     if (!mesh_obj)
         goto malformed;
     mesh = (rt_mesh3d *)mesh_obj;
-    free(mesh->vertices);
-    free(mesh->positions64);
-    free(mesh->indices);
     mesh->vertices = vertices;
     vertices = NULL;
-    if ((size_t)vertex_count > SIZE_MAX / (3u * sizeof(double))) {
-        rt_asset_error_set_if_empty(RT_ASSET_ERROR_TOO_LARGE,
-                                    "GLTF.Load: preloaded mesh precision sidecar is too large");
-        goto malformed;
-    }
-    mesh->positions64 = (double *)calloc((size_t)vertex_count * 3u, sizeof(double));
-    if (!mesh->positions64) {
-        rt_asset_error_set_if_empty(RT_ASSET_ERROR_TOO_LARGE,
-                                    "GLTF.Load: preloaded mesh precision sidecar is too large");
-        goto malformed;
-    }
-    for (uint32_t vi = 0; vi < vertex_count; vi++) {
-        mesh->positions64[(size_t)vi * 3u + 0] = (double)mesh->vertices[vi].pos[0];
-        mesh->positions64[(size_t)vi * 3u + 1] = (double)mesh->vertices[vi].pos[1];
-        mesh->positions64[(size_t)vi * 3u + 2] = (double)mesh->vertices[vi].pos[2];
-    }
     mesh->vertex_count = vertex_count;
     mesh->vertex_capacity = vertex_count;
     mesh->indices = indices;
