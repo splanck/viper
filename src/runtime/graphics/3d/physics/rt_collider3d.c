@@ -320,8 +320,8 @@ static void transform_bounds_raw(const double *bounds_min,
         }
     }
     for (int axis = 0; axis < 3; ++axis) {
-        if (!isfinite(out_min[axis]) || !isfinite(out_max[axis]) ||
-            out_min[axis] == DBL_MAX || out_max[axis] == -DBL_MAX) {
+        if (!isfinite(out_min[axis]) || !isfinite(out_max[axis]) || out_min[axis] == DBL_MAX ||
+            out_max[axis] == -DBL_MAX) {
             out_min[axis] = 0.0;
             out_max[axis] = 0.0;
         }
@@ -411,8 +411,8 @@ static void collider3d_set_from_transform(rt_collider3d_child *dst, void *transf
         dst->scale[2] = collider3d_transform_component_or(xf->scale[2], 1.0);
         for (int axis = 0; axis < 3; ++axis) {
             if (fabs(dst->scale[axis]) > COLLIDER3D_EXTENT_MAX)
-                dst->scale[axis] = dst->scale[axis] < 0.0 ? -COLLIDER3D_EXTENT_MAX
-                                                           : COLLIDER3D_EXTENT_MAX;
+                dst->scale[axis] =
+                    dst->scale[axis] < 0.0 ? -COLLIDER3D_EXTENT_MAX : COLLIDER3D_EXTENT_MAX;
         }
         dst->rotation[0] = xf->rotation[0];
         dst->rotation[1] = xf->rotation[1];
@@ -500,14 +500,10 @@ static void collider3d_recompute_bounds(rt_collider3d *collider) {
             if (mesh) {
                 rt_mesh3d_refresh_bounds(mesh);
                 collider->mesh_bounds_revision = mesh->geometry_revision;
-                vec3_set(collider->bounds_min,
-                         mesh->aabb_min[0],
-                         mesh->aabb_min[1],
-                         mesh->aabb_min[2]);
-                vec3_set(collider->bounds_max,
-                         mesh->aabb_max[0],
-                         mesh->aabb_max[1],
-                         mesh->aabb_max[2]);
+                vec3_set(
+                    collider->bounds_min, mesh->aabb_min[0], mesh->aabb_min[1], mesh->aabb_min[2]);
+                vec3_set(
+                    collider->bounds_max, mesh->aabb_max[0], mesh->aabb_max[1], mesh->aabb_max[2]);
             } else {
                 collider->mesh_bounds_revision = 0;
                 vec3_set(collider->bounds_min, 0.0, 0.0, 0.0);
@@ -517,9 +513,12 @@ static void collider3d_recompute_bounds(rt_collider3d *collider) {
         case RT_COLLIDER3D_TYPE_HEIGHTFIELD: {
             double half_width = 0.0;
             double half_depth = 0.0;
-            collider->heightfield_scale[0] = collider3d_scale_or_unit(collider->heightfield_scale[0]);
-            collider->heightfield_scale[1] = collider3d_scale_or_unit(collider->heightfield_scale[1]);
-            collider->heightfield_scale[2] = collider3d_scale_or_unit(collider->heightfield_scale[2]);
+            collider->heightfield_scale[0] =
+                collider3d_scale_or_unit(collider->heightfield_scale[0]);
+            collider->heightfield_scale[1] =
+                collider3d_scale_or_unit(collider->heightfield_scale[1]);
+            collider->heightfield_scale[2] =
+                collider3d_scale_or_unit(collider->heightfield_scale[2]);
             collider->heightfield_min =
                 collider3d_transform_component_or(collider->heightfield_min, 0.0);
             collider->heightfield_max =
@@ -759,6 +758,40 @@ void *rt_collider3d_new_compound(void) {
     return collider;
 }
 
+/// @brief Grow a compound collider's child arrays without partial mutation.
+/// @details The child handle array and child-transform sidecar must grow together. Allocating both
+///          replacements before committing avoids leaving the compound with one grown array and one
+///          old array if the second allocation fails.
+/// @param compound Compound collider whose child storage should grow.
+/// @param new_capacity Replacement capacity, already overflow-checked by the caller.
+/// @return Non-zero on success; zero after trapping on allocation failure.
+static int collider3d_grow_compound_children(rt_collider3d *compound, int32_t new_capacity) {
+    void **new_children;
+    rt_collider3d_child *new_transforms;
+    size_t live_count;
+    if (!compound || new_capacity <= compound->child_capacity)
+        return 1;
+    new_children = (void **)calloc((size_t)new_capacity, sizeof(*new_children));
+    new_transforms = (rt_collider3d_child *)calloc((size_t)new_capacity, sizeof(*new_transforms));
+    if (!new_children || !new_transforms) {
+        free(new_children);
+        free(new_transforms);
+        rt_trap("Collider3D.AddChild: allocation failed");
+        return 0;
+    }
+    live_count = (size_t)compound->child_count;
+    if (live_count > 0) {
+        memcpy(new_children, compound->children, live_count * sizeof(*new_children));
+        memcpy(new_transforms, compound->child_transforms, live_count * sizeof(*new_transforms));
+    }
+    free(compound->children);
+    free(compound->child_transforms);
+    compound->children = new_children;
+    compound->child_transforms = new_transforms;
+    compound->child_capacity = new_capacity;
+    return 1;
+}
+
 /// @brief Append a child collider to a compound, transformed by `local_transform` (a Transform3D).
 /// Children are retained for the compound's lifetime. Recomputes the compound's AABB to enclose
 /// the new child. Traps if the parent isn't compound, child is null, or self-reference is
@@ -790,8 +823,6 @@ void rt_collider3d_add_child(void *compound_obj, void *child_obj, void *local_tr
         return;
     }
     if (compound->child_count >= compound->child_capacity) {
-        void **new_children;
-        rt_collider3d_child *new_transforms;
         if (compound->child_capacity >= INT32_MAX / 2) {
             rt_trap("Collider3D.AddChild: too many children");
             return;
@@ -802,31 +833,8 @@ void rt_collider3d_add_child(void *compound_obj, void *child_obj, void *local_tr
             rt_trap("Collider3D.AddChild: allocation overflow");
             return;
         }
-        new_children = (void **)calloc((size_t)new_capacity, sizeof(void *));
-        if (!new_children) {
-            rt_trap("Collider3D.AddChild: allocation failed");
+        if (!collider3d_grow_compound_children(compound, new_capacity))
             return;
-        }
-        new_transforms =
-            (rt_collider3d_child *)calloc((size_t)new_capacity, sizeof(rt_collider3d_child));
-        if (!new_transforms) {
-            free(new_children);
-            rt_trap("Collider3D.AddChild: allocation failed");
-            return;
-        }
-        if (compound->child_count > 0) {
-            memcpy(new_children,
-                   compound->children,
-                   (size_t)compound->child_count * sizeof(*new_children));
-            memcpy(new_transforms,
-                   compound->child_transforms,
-                   (size_t)compound->child_count * sizeof(*new_transforms));
-        }
-        free(compound->children);
-        free(compound->child_transforms);
-        compound->children = new_children;
-        compound->child_transforms = new_transforms;
-        compound->child_capacity = new_capacity;
     }
     rt_obj_retain_maybe(child_obj);
     compound->children[compound->child_count] = child;
@@ -949,6 +957,17 @@ void rt_collider3d_get_box_half_extents_raw(void *collider, double *half_extents
     vec3_copy(half_extents_out, shape->half_extents);
 }
 
+/// @brief Reset an existing box collider's dimensions for reusable internal query shapes.
+void rt_collider3d_reset_box_raw(void *collider, double hx, double hy, double hz) {
+    rt_collider3d *shape = collider3d_checked(collider);
+    if (!shape || shape->type != RT_COLLIDER3D_TYPE_BOX)
+        return;
+    shape->half_extents[0] = collider3d_extent_or_unit(hx);
+    shape->half_extents[1] = collider3d_extent_or_unit(hy);
+    shape->half_extents[2] = collider3d_extent_or_unit(hz);
+    collider3d_recompute_bounds(shape);
+}
+
 /// @brief Internal: sphere/capsule radius. Returns 0 for unsupported shapes.
 double rt_collider3d_get_radius_raw(void *collider) {
     rt_collider3d *shape = collider3d_checked(collider);
@@ -957,6 +976,15 @@ double rt_collider3d_get_radius_raw(void *collider) {
     if (shape->type != RT_COLLIDER3D_TYPE_SPHERE && shape->type != RT_COLLIDER3D_TYPE_CAPSULE)
         return 0.0;
     return collider3d_extent_or_unit(shape->radius);
+}
+
+/// @brief Reset an existing sphere collider's radius for reusable internal query shapes.
+void rt_collider3d_reset_sphere_raw(void *collider, double radius) {
+    rt_collider3d *shape = collider3d_checked(collider);
+    if (!shape || shape->type != RT_COLLIDER3D_TYPE_SPHERE)
+        return;
+    shape->radius = collider3d_extent_or_unit(radius);
+    collider3d_recompute_bounds(shape);
 }
 
 /// @brief Internal: capsule total height including hemispherical caps. 0 for non-capsule.

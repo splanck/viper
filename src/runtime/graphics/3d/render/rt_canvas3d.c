@@ -1360,11 +1360,17 @@ static void rt_canvas3d_finalize(void *obj) {
     free(c->occlusion_history_hash);
     c->occlusion_history_hash = NULL;
     c->occlusion_history_hash_capacity = 0;
+    free(c->occlusion_duplicate_counts);
+    c->occlusion_duplicate_counts = NULL;
+    c->occlusion_duplicate_count_capacity = 0;
     /* Free any leftover temp buffers (e.g., from skinned draws) */
     canvas3d_clear_temp_buffers(c);
     free(c->temp_buffers);
     c->temp_buffers = NULL;
     c->temp_buf_count = c->temp_buf_capacity = 0;
+    free(c->temp_buffer_set);
+    c->temp_buffer_set = NULL;
+    c->temp_buffer_set_capacity = 0;
     free(c->mesh_snapshots);
     c->mesh_snapshots = NULL;
     c->mesh_snapshot_count = c->mesh_snapshot_capacity = 0;
@@ -1529,6 +1535,8 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     c->postfx = NULL;
     c->temp_buffers = NULL;
     c->temp_buf_count = c->temp_buf_capacity = 0;
+    c->temp_buffer_set = NULL;
+    c->temp_buffer_set_capacity = 0;
     c->mesh_snapshots = NULL;
     c->mesh_snapshot_count = c->mesh_snapshot_capacity = 0;
     c->mesh_snapshot_hash = NULL;

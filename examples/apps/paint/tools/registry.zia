@@ -1,0 +1,93 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/apps/paint/tools/registry.zia
+// Purpose: Central registry of all paint tools. Holds them as a List[Tool] and
+//          resolves a tool by its config.TOOL_* id, so PaintApp dispatches
+//          press/drag/release/preview through one dynamic call instead of a
+//          long per-tool if/else ladder.
+// Key invariants:
+//   - Always non-empty; get(id) never returns null (interface types cannot be
+//     null-compared in Zia — see misc/plans/demos/viper_bugs.md ISSUE-003), so
+//     an unknown id falls back to the first registered tool.
+// Ownership/Lifetime:
+//   - Owns one instance of each tool for the lifetime of the app.
+// Links: tool.zia (Tool), app.zia (dispatch)
+//
+//===----------------------------------------------------------------------===//
+
+// registry.zia - Tool registry for Viper Paint
+module registry;
+
+bind Viper.Collections;
+
+bind "./tool";
+bind "./pencil";
+bind "./brush";
+bind "./eraser";
+bind "./line";
+bind "./rectangle";
+bind "./ellipse";
+bind "./fill";
+bind "./eyedropper";
+bind "./gradient";
+bind "./curve";
+bind "./polygon";
+bind "./spray";
+bind "./select";
+bind "./text";
+
+/// @brief Ordered collection of every paint tool, keyed by tool id.
+class ToolRegistry {
+    hide List[Tool] tools;
+    hide TextTool theText;   // Kept typed so the app can feed text input.
+
+    expose func init() {
+        theText = new TextTool();
+        tools = [];
+        tools.add(new PencilTool());
+        tools.add(new BrushTool());
+        tools.add(new EraserTool());
+        tools.add(new LineTool());
+        tools.add(new RectangleTool());
+        tools.add(new EllipseTool());
+        tools.add(new FillTool());
+        tools.add(new EyedropperTool());
+        tools.add(new GradientTool());
+        tools.add(new CurveTool());
+        tools.add(new PolygonTool());
+        tools.add(new SprayTool());
+        tools.add(new SelectTool());
+        tools.add(theText);
+    }
+
+    /// @brief The shared text tool instance (for app-driven text input).
+    expose func textTool() -> TextTool {
+        return theText;
+    }
+
+    /// @brief Resolve the tool with the given id (falls back to first tool).
+    expose func get(id: Integer) -> Tool {
+        var i = 0;
+        while i < tools.count() {
+            var t = tools.get(i);
+            if t.id() == id {
+                return t;
+            }
+            i = i + 1;
+        }
+        return tools.get(0);
+    }
+
+    expose func count() -> Integer {
+        return tools.count();
+    }
+
+    expose func at(index: Integer) -> Tool {
+        return tools.get(index);
+    }
+}

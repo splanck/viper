@@ -252,9 +252,10 @@ bool ViperType::isAssignableFrom(const ViperType &source) const {
     if (source.kind == TypeKindSem::Unknown)
         return true;
 
-    // Entity and Ptr types accept null (Optional[Unknown])
+    // Reference-like class/interface values and Ptr accept null (Optional[Unknown]).
     // This allows patterns like: func findItem() -> Entity { ... return null; }
-    if ((kind == TypeKindSem::Class || kind == TypeKindSem::Ptr) &&
+    if ((kind == TypeKindSem::Class || kind == TypeKindSem::Interface ||
+         kind == TypeKindSem::Ptr) &&
         source.kind == TypeKindSem::Optional && !source.typeArgs.empty() &&
         source.typeArgs[0]->kind == TypeKindSem::Unknown)
         return true;

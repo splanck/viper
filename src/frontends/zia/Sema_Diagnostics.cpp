@@ -128,6 +128,11 @@ void Sema::checkUnusedVariables(const Scope &scope) {
         if (name == "_")
             continue;
 
+        // Parameters whose names begin with '_' are intentionally unused.
+        // Keep local variables stricter so accidental dead locals still surface.
+        if (sym.kind == Symbol::Kind::Parameter && !name.empty() && name[0] == '_')
+            continue;
+
         // Instance methods permit implicit field/member access without writing
         // `self.`, so warning on the synthetic receiver parameter is noise.
         if (sym.kind == Symbol::Kind::Parameter && name == "self")

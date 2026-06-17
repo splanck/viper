@@ -1,0 +1,83 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/apps/paint/selection.zia
+// Purpose: Rectangular marquee selection model. Holds the active selection
+//          bounds in canvas (document) coordinates; the select tool writes
+//          it, and copy/cut/clear/fill operations read it.
+// Key invariants:
+//   - Bounds are always normalized (w >= 0, h >= 0) after set().
+//   - active == 0 means "no selection"; bounds are then meaningless.
+// Ownership/Lifetime:
+//   - Owned by PaintApp; shared with tools via ToolContext.
+// Links: tools/select.zia, clipboard.zia, tools/tool.zia
+//
+//===----------------------------------------------------------------------===//
+
+// selection.zia - Rectangular selection model for Viper Paint
+module selection;
+
+/// @brief Active rectangular selection in canvas-space pixels.
+class Selection {
+    expose Integer active;   // 1 if a selection exists
+    expose Integer x;        // Left (canvas space)
+    expose Integer y;        // Top
+    expose Integer w;        // Width in pixels
+    expose Integer h;        // Height in pixels
+
+    expose func init() {
+        active = 0;
+        x = 0;
+        y = 0;
+        w = 0;
+        h = 0;
+    }
+
+    /// @brief Set normalized bounds from two drag corners; clears if degenerate.
+    expose func setCorners(x1: Integer, y1: Integer, x2: Integer, y2: Integer) {
+        var ax = x1;
+        var ay = y1;
+        var bx = x2;
+        var by = y2;
+        if bx < ax {
+            var tx = ax;
+            ax = bx;
+            bx = tx;
+        }
+        if by < ay {
+            var ty = ay;
+            ay = by;
+            by = ty;
+        }
+        x = ax;
+        y = ay;
+        w = bx - ax + 1;
+        h = by - ay + 1;
+        if w <= 1 or h <= 1 {
+            active = 0;
+        } else {
+            active = 1;
+        }
+    }
+
+    expose func clear() {
+        active = 0;
+        w = 0;
+        h = 0;
+    }
+
+    /// @brief True if (px, py) is inside the active selection.
+    expose func contains(px: Integer, py: Integer) -> Integer {
+        if active == 0 {
+            return 0;
+        }
+        if px >= x and px < x + w and py >= y and py < y + h {
+            return 1;
+        }
+        return 0;
+    }
+}

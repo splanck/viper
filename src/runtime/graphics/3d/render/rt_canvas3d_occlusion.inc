@@ -56,20 +56,14 @@ static uintptr_t canvas3d_occlusion_draw_fingerprint(const deferred_draw_t *dd) 
     return key ? (uintptr_t)key : base_key;
 }
 
-/// @brief Count prior queued draws with the same occlusion fingerprint.
-/// @details Identical duplicate submissions need distinct history entries or they repeatedly reset
-///   a shared covered streak within the same frame. Counting only prior matching fingerprints gives
-///   duplicates stable per-peer ordinals while avoiding the old global enqueue-index dependency.
-static int32_t canvas3d_occlusion_prior_duplicate_count(const rt_canvas3d *c,
+/// @brief Count already processed draws with @p fingerprint by scanning the current queue prefix.
+/// @details Used only as a fallback when the per-frame duplicate-count table cannot be allocated.
+static int32_t canvas3d_occlusion_prior_duplicate_count(const deferred_draw_t *queued,
                                                         uintptr_t fingerprint,
                                                         int32_t prior_count) {
     int32_t count = 0;
-    const deferred_draw_t *queued;
-    if (!c || !fingerprint || !c->draw_cmds || prior_count <= 0)
+    if (!queued || !fingerprint || prior_count <= 0)
         return 0;
-    if (prior_count > c->draw_count)
-        prior_count = c->draw_count;
-    queued = (const deferred_draw_t *)c->draw_cmds;
     for (int32_t i = 0; i < prior_count; ++i) {
         if (queued[i].occlusion_fingerprint == fingerprint)
             count++;
@@ -77,28 +71,109 @@ static int32_t canvas3d_occlusion_prior_duplicate_count(const rt_canvas3d *c,
     return count;
 }
 
-/// @brief Build the final CPU occlusion-history key for a deferred draw.
-/// @details The base fingerprint is independent of unrelated queue order. A stable duplicate
-///   ordinal is then folded in only when identical earlier fingerprints already exist this frame,
-///   preserving one history slot per duplicated draw and preventing false flicker/collapse.
-static uintptr_t canvas3d_occlusion_draw_key(const rt_canvas3d *c,
-                                             deferred_draw_t *dd,
-                                             int32_t prior_count) {
-    uintptr_t fingerprint;
-    int32_t duplicate_index;
-    uint64_t key;
-    if (!dd)
+/// @brief Clear the per-frame occlusion duplicate-count table.
+static void canvas3d_occlusion_duplicate_counts_clear(rt_canvas3d *c) {
+    if (!c || !c->occlusion_duplicate_counts || c->occlusion_duplicate_count_capacity <= 0)
+        return;
+    memset(c->occlusion_duplicate_counts,
+           0,
+           (size_t)c->occlusion_duplicate_count_capacity * sizeof(*c->occlusion_duplicate_counts));
+}
+
+/// @brief Ensure duplicate-count scratch can hold approximately @p draw_count fingerprints.
+/// @details Capacity is power-of-two and at least twice the draw count so linear probing remains
+///          short even for many repeated meshes.
+static int canvas3d_ensure_occlusion_duplicate_counts(rt_canvas3d *c, int32_t draw_count) {
+    int32_t needed;
+    rt_canvas3d_occlusion_duplicate_entry *grown;
+    if (!c)
         return 0;
-    fingerprint = canvas3d_occlusion_draw_fingerprint(dd);
-    dd->occlusion_fingerprint = fingerprint;
+    if (draw_count > INT32_MAX / 2)
+        return 0;
+    needed = canvas3d_next_power_of_two_i32(draw_count > 0 ? draw_count * 2 : 32);
+    if (needed < 32)
+        needed = 32;
+    if (c->occlusion_duplicate_count_capacity >= needed) {
+        canvas3d_occlusion_duplicate_counts_clear(c);
+        return 1;
+    }
+    if ((size_t)needed > SIZE_MAX / sizeof(*c->occlusion_duplicate_counts))
+        return 0;
+    grown = (rt_canvas3d_occlusion_duplicate_entry *)realloc(c->occlusion_duplicate_counts,
+                                                             (size_t)needed * sizeof(*grown));
+    if (!grown)
+        return 0;
+    c->occlusion_duplicate_counts = grown;
+    c->occlusion_duplicate_count_capacity = needed;
+    canvas3d_occlusion_duplicate_counts_clear(c);
+    return 1;
+}
+
+/// @brief Return the current duplicate ordinal for @p fingerprint, then increment its counter.
+/// @details This is the hot-path replacement for scanning all prior queued draws. A return value of
+///          zero means the fingerprint is first-seen this frame; one means the second identical
+///          draw, and so on.
+static int32_t canvas3d_occlusion_duplicate_next_index(rt_canvas3d *c, uintptr_t fingerprint) {
+    int32_t mask;
+    int32_t slot;
+    if (!c || !fingerprint || !c->occlusion_duplicate_counts ||
+        c->occlusion_duplicate_count_capacity <= 0)
+        return 0;
+    mask = c->occlusion_duplicate_count_capacity - 1;
+    slot = (int32_t)(canvas3d_hash_u64(fingerprint) & (uint32_t)mask);
+    for (int32_t probe = 0; probe < c->occlusion_duplicate_count_capacity; probe++) {
+        rt_canvas3d_occlusion_duplicate_entry *entry = &c->occlusion_duplicate_counts[slot];
+        if (!entry->fingerprint) {
+            entry->fingerprint = fingerprint;
+            entry->count = 1;
+            return 0;
+        }
+        if (entry->fingerprint == fingerprint) {
+            int32_t duplicate_index = entry->count;
+            if (entry->count < INT32_MAX)
+                entry->count++;
+            return duplicate_index;
+        }
+        slot = (slot + 1) & mask;
+    }
+    return 0;
+}
+
+/// @brief Build the final CPU occlusion-history key from a fingerprint and duplicate ordinal.
+static uintptr_t canvas3d_occlusion_key_from_duplicate(uintptr_t fingerprint,
+                                                       int32_t duplicate_index) {
+    uint64_t key;
     if (!fingerprint)
         return 0;
-    duplicate_index = canvas3d_occlusion_prior_duplicate_count(c, fingerprint, prior_count);
     if (duplicate_index <= 0)
         return fingerprint;
     key = canvas3d_hash_u64((uint64_t)fingerprint ^
                             ((uint64_t)(uint32_t)duplicate_index + 0x9E3779B97F4A7C15ull));
     return key ? (uintptr_t)key : fingerprint;
+}
+
+/// @brief Assign final CPU occlusion keys to every queued draw in one linear pass.
+/// @details Draws may patch their stable identity after enqueueing, so key assignment happens after
+///          the frame queue is complete. When duplicate-count scratch is unavailable, this falls
+///          back to the previous prior-prefix scan for correctness.
+static void canvas3d_assign_occlusion_keys(rt_canvas3d *c, deferred_draw_t *cmds, int32_t count) {
+    int use_table;
+    if (!c || !cmds || count <= 0)
+        return;
+    use_table = canvas3d_ensure_occlusion_duplicate_counts(c, count);
+    for (int32_t i = 0; i < count; i++) {
+        uintptr_t fingerprint = canvas3d_occlusion_draw_fingerprint(&cmds[i]);
+        int32_t duplicate_index;
+        cmds[i].occlusion_fingerprint = fingerprint;
+        if (!fingerprint) {
+            cmds[i].occlusion_key = 0;
+            continue;
+        }
+        duplicate_index = use_table
+                              ? canvas3d_occlusion_duplicate_next_index(c, fingerprint)
+                              : canvas3d_occlusion_prior_duplicate_count(cmds, fingerprint, i);
+        cmds[i].occlusion_key = canvas3d_occlusion_key_from_duplicate(fingerprint, duplicate_index);
+    }
 }
 
 /// @brief Append a fully prepared deferred draw and stamp shared queue metadata.
@@ -113,7 +188,8 @@ static int canvas3d_append_prepared_deferred_draw(
     if (!ensure_deferred_capacity(&c->draw_cmds, &c->draw_capacity, c->draw_count + 1))
         return 0;
     dd->enqueue_index = c->draw_count;
-    dd->occlusion_key = canvas3d_occlusion_draw_key(c, dd, c->draw_count);
+    dd->occlusion_fingerprint = 0;
+    dd->occlusion_key = 0;
     canvas3d_cache_deferred_world_bounds(c, dd, cache_key);
     ((deferred_draw_t *)c->draw_cmds)[c->draw_count++] = *dd;
     return 1;

@@ -257,7 +257,7 @@ typedef void (*rt_mouse_warp_hook_fn)(void *canvas, int64_t x, int64_t y);
 
 static rt_caps_lock_query_hook_fn g_caps_lock_query_hook = NULL;
 static rt_mouse_warp_hook_fn g_mouse_warp_hook = NULL;
-static void *g_mouse_canvas;
+static void *g_mouse_canvas = NULL;
 
 static int32_t rt_input_query_caps_lock_platform(void);
 static void rt_input_warp_mouse_platform(int64_t x, int64_t y);
@@ -1336,9 +1336,6 @@ static bool g_mouse_double_clicked[VIPER_MOUSE_BUTTON_MAX];
 // Cursor state
 static bool g_mouse_hidden = false;
 static bool g_mouse_captured = false;
-
-// Active canvas
-static void *g_mouse_canvas = NULL;
 
 // Initialization flag
 static bool g_mouse_initialized = false;

@@ -96,11 +96,25 @@ Drawing primitives accept `0x00RRGGBB`, `Color.RGB()`, and tagged `Color.RGBA()`
 | `DrawThickLine(x1, y1, x2, y2, thickness, color)` | `Void(Integer...)` | Line with thickness (parallelogram body + rounded endcap circles) |
 | `DrawTriangle(x1, y1, x2, y2, x3, y3, color)` | `Void(Integer...)` | Filled triangle; collinear vertices draw the longest edge |
 | `DrawBezier(x1, y1, cx, cy, x2, y2, color)` | `Void(Integer...)` | Quadratic Bezier curve |
+| `DrawText(x, y, text, color)` | `Void(Integer, Integer, String, Integer)` | Draw built-in 8x8 bitmap-font text |
+| `DrawTextBg(x, y, text, fg, bg)` | `Void(Integer, Integer, String, Integer, Integer)` | Draw text with a filled background cell behind each glyph pixel |
+| `DrawTextScaled(x, y, text, scale, color)` | `Void(Integer, Integer, String, Integer, Integer)` | Draw built-in text with integer pixel scaling |
+| `DrawTextScaledBg(x, y, text, scale, fg, bg)` | `Void(Integer, Integer, String, Integer, Integer, Integer)` | Draw scaled text with a filled background cell behind each glyph pixel |
+| `DrawTextCentered(y, text, color)` | `Void(Integer, String, Integer)` | Draw text centered horizontally in this buffer |
+| `DrawTextRight(margin, y, text, color)` | `Void(Integer, Integer, String, Integer)` | Draw text right-aligned with a margin |
+| `DrawTextCenteredScaled(y, text, color, scale)` | `Void(Integer, String, Integer, Integer)` | Draw scaled text centered horizontally |
+| `TextWidth(text)` | `Integer(String)` | Measure built-in text width in pixels at 1x |
+| `TextHeight()` | `Integer()` | Return the built-in font height (8 pixels) |
+| `TextScaledWidth(text, scale)` | `Integer(String, Integer)` | Measure built-in text width in pixels at integer scale |
 
 > **Color format note:** `Pixels.Set`, `Pixels.Fill`, and `Pixels.Get` are raw-storage APIs for
 > `0xRRGGBBAA`; `SetRGBA`, `FillRGBA`, and `GetRGBA` are explicit raw aliases. Drawing primitives
 > and `SetColor`/`FillColor`/`GetColor` accept or return values compatible with `Viper.Graphics.Color`.
 > `SetRGB`/`GetRGB` remain RGB-only convenience methods.
+
+Text rendering uses the same embedded monospace 8x8 bitmap font as `Canvas.Text`. Non-ASCII UTF-8
+codepoints measure as one cell and render with the fallback glyph. All text methods clip silently at
+the buffer edge and accept `0x00RRGGBB`, `Color.RGB()`, or tagged `Color.RGBA()` colors.
 
 #### Zia Example — Drawing into an off-screen buffer
 
@@ -121,6 +135,7 @@ func start() {
     buf.DrawLine(0, 0, 319, 239, Color.RGB(255, 80, 0));       // orange diagonal
     buf.DrawEllipse(160, 60, 60, 25, Color.RGB(200, 0, 200)); // purple ellipse
     buf.FloodFill(5, 5, Color.RGB(10, 10, 50));                // flood fill corner
+    buf.DrawText(16, 16, "Pixels", Color.RGB(255, 255, 255));  // direct text rasterization
 
     // Blit the finished buffer to a canvas for display
     var c = Canvas.New("Pixels Draw Demo", 320, 240);

@@ -125,7 +125,7 @@ static int gltf_accessor_bind_buffer_view(void *root,
 
     elem_size = (size_t)comp_size * (size_t)comp_count;
     if (byte_stride > 0) {
-        if (byte_stride < elem_size || byte_stride > INT32_MAX)
+        if (byte_stride < elem_size || byte_stride > 252u || byte_stride % (size_t)comp_size != 0)
             return 0;
         out->stride = (int32_t)byte_stride;
     } else {

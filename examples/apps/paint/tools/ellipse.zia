@@ -1,19 +1,22 @@
-// ============================================================================
-// MODULE: ellipse (EllipseTool)
-// PURPOSE: Same drag-preview shape contract, ellipse bounded by the
-//          drag rectangle. (Hold-Shift-to-constrain-to-circle is
-//          left as a future enhancement.)
+//===----------------------------------------------------------------------===//
 //
-// KEY-DESIGN-CHOICES:
-//   * BOUNDING-BOX INPUT. The drag defines a bounding box; the
-//     ellipse is inscribed in it. center = bbox centre;
-//     rx = bbox.width/2; ry = bbox.height/2. canvas.drawEllipseFill /
-//     drawEllipse handle the rasterization.
-//   * ZERO-RADIUS GUARD. rx > 0 && ry > 0 check prevents a
-//     degenerate single-pixel drag from producing a malformed shape.
-// ============================================================================
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/apps/paint/tools/ellipse.zia
+// Purpose: Ellipse shape tool (filled or outline), inscribed in the drag's
+//          bounding box. Live bounding-box preview; commit on release.
+// Key invariants:
+//   - rx/ry derived from the normalized bbox; zero-radius drags are ignored.
+// Ownership/Lifetime:
+//   - Holds the drag corners + filled flag.
+// Links: tool.zia, ../viewport.zia, ../canvas.zia
+//
+//===----------------------------------------------------------------------===//
 
-// ellipse.viper - Ellipse tool for Viper Paint
+// ellipse.zia - Ellipse tool for Viper Paint
 module ellipse;
 
 bind Viper.Graphics;
@@ -21,15 +24,16 @@ bind Viper.Graphics;
 bind "../config";
 bind "../canvas";
 bind "../colors";
+bind "../viewport";
+bind "./tool";
 
 /// @brief Filled / outline ellipse shape tool (bbox-inscribed).
-class EllipseTool {
-    hide Integer drawing;       // 1 if currently drawing
-    expose Integer startX;      // Start corner X (bounding box)
-    expose Integer startY;      // Start corner Y
-    expose Integer endX;        // End corner X
-    expose Integer endY;        // End corner Y
-    expose Integer filled;      // 1 = filled, 0 = outline
+class EllipseTool implements Tool {
+    hide Integer drawing;
+    hide Integer startX;
+    hide Integer startY;
+    hide Integer endX;
+    hide Integer endY;
 
     expose func init() {
         drawing = 0;
@@ -37,30 +41,16 @@ class EllipseTool {
         startY = 0;
         endX = 0;
         endY = 0;
-        filled = 1;  // Default to filled
     }
 
-    expose func getName() -> String {
-        return "Ellipse";
-    }
+    expose func id() -> Integer { return config.TOOL_ELLIPSE; }
+    expose func name() -> String { return "Ellipse"; }
+    expose func icon() -> String { return "O"; }
+    expose func isFreehand() -> Integer { return 0; }
+    expose func isDrawing() -> Integer { return drawing; }
+    expose func snapshotsBeforePress() -> Integer { return 1; }
 
-    expose func getIcon() -> String {
-        return "O";
-    }
-
-    expose func getShortcut() -> Integer {
-        return config.KEY_O;
-    }
-
-    expose func toggleFilled() {
-        if filled == 1 {
-            filled = 0;
-        } else {
-            filled = 1;
-        }
-    }
-
-    expose func onMouseDown(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager) {
+    expose func onPress(x: Integer, y: Integer, ctx: ToolContext) {
         drawing = 1;
         startX = x;
         startY = y;
@@ -68,16 +58,15 @@ class EllipseTool {
         endY = y;
     }
 
-    expose func onMouseMove(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager) {
+    expose func onDrag(x: Integer, y: Integer, ctx: ToolContext) {
         if drawing == 1 {
             endX = x;
             endY = y;
         }
     }
 
-    expose func onMouseUp(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager) {
+    expose func onRelease(x: Integer, y: Integer, ctx: ToolContext) {
         if drawing == 1 {
-            // Calculate normalized bounding box
             var x1 = startX;
             var y1 = startY;
             var x2 = x;
@@ -93,29 +82,23 @@ class EllipseTool {
                 y2 = tmp;
             }
 
-            // Calculate center and radii
             var rx = (x2 - x1) / 2;
             var ry = (y2 - y1) / 2;
             var cx = x1 + rx;
             var cy = y1 + ry;
 
             if rx > 0 and ry > 0 {
-                if filled == 1 {
-                    canvas.drawEllipseFill(cx, cy, rx, ry, colors.foreground);
+                if ctx.shapeFilled == 1 {
+                    ctx.dc.drawEllipseFill(cx, cy, rx, ry, ctx.colors.foreground);
                 } else {
-                    canvas.drawEllipse(cx, cy, rx, ry, colors.foreground);
+                    ctx.dc.drawEllipse(cx, cy, rx, ry, ctx.colors.foreground);
                 }
             }
             drawing = 0;
         }
     }
 
-    expose func isDrawing() -> Integer {
-        return drawing;
-    }
-
-    // Draw preview on screen canvas
-    expose func drawPreview(gfx: Canvas, offsetX: Integer, offsetY: Integer, color: Integer) {
+    expose func drawPreview(gfx: Canvas, view: CanvasViewport, ctx: ToolContext) {
         if drawing == 1 {
             var x1 = startX;
             var y1 = startY;
@@ -131,11 +114,10 @@ class EllipseTool {
                 y1 = y2;
                 y2 = tmp;
             }
-
-            // Draw bounding box as preview
-            var w = x2 - x1 + 1;
-            var h = y2 - y1 + 1;
-            gfx.Frame(offsetX + x1, offsetY + y1, w, h, color);
+            gfx.Frame(view.canvasToScreenX(x1), view.canvasToScreenY(y1),
+                      view.canvasSizeToScreen(x2 - x1 + 1),
+                      view.canvasSizeToScreen(y2 - y1 + 1),
+                      ctx.colors.foreground);
         }
     }
 }

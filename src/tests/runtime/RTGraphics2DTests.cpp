@@ -581,6 +581,10 @@ static void test_animation_collision_palette_gradient_and_rig() {
     assert(rt_gradient2d_sample(gradient, 100) == 0xFFFFFFFF);
     int64_t smooth_mid = rt_gradient2d_sample(gradient, 50);
     assert(red_of(smooth_mid) >= 126 && red_of(smooth_mid) <= 128);
+    int64_t normalized_mid = rt_gradient2d_sample_normalized(gradient, 0.5);
+    assert(red_of(normalized_mid) >= 126 && red_of(normalized_mid) <= 128);
+    assert(rt_gradient2d_sample_normalized(gradient, 50.0) == smooth_mid);
+    assert(rt_gradient2d_sample_normalized(gradient, 1.0) == 0xFFFFFFFF);
     void *stepped_gradient = rt_gradient2d_new(0x000000FF, 0xFFFFFFFF, 3);
     assert(rt_gradient2d_sample(stepped_gradient, 20) == 0x000000FF);
     assert(rt_gradient2d_sample(stepped_gradient, 50) == 0x7F7F7FFF);
@@ -593,6 +597,11 @@ static void test_animation_collision_palette_gradient_and_rig() {
     assert(rt_color_get_g(gradient_color) == 255);
     assert(rt_color_get_b(gradient_color) == 0);
     assert(rt_color_get_a(gradient_color) == 128);
+    int64_t normalized_color = rt_gradient2d_sample_color_normalized(tagged_gradient, 0.0);
+    assert(rt_color_get_r(normalized_color) == 0);
+    assert(rt_color_get_g(normalized_color) == 255);
+    assert(rt_color_get_b(normalized_color) == 0);
+    assert(rt_color_get_a(normalized_color) == 128);
     void *grad_pixels = rt_pixels_new(2, 1);
     rt_gradient2d_fill_horizontal(gradient, grad_pixels);
     assert(rt_pixels_get(grad_pixels, 0, 0) == 0x000000FF);

@@ -1,0 +1,120 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/apps/paint/tools/polygon.zia
+// Purpose: Polygon / polyline tool. Click to add vertices; click near the first
+//          vertex (with >= 3 points) to close and stroke the outline.
+// Key invariants:
+//   - Multi-click: snapshots once via ctx.snapshot() before committing.
+//   - Preview shows placed edges plus a rubber-band edge to the hover cursor.
+// Ownership/Lifetime:
+//   - Holds the vertex list across clicks (cleared after commit).
+// Links: tool.zia, ../canvas.zia (drawLine)
+//
+//===----------------------------------------------------------------------===//
+
+// polygon.zia - Polygon/polyline tool for Viper Paint
+module polygon;
+
+bind Viper.Graphics;
+bind Viper.Collections;
+
+bind "../config";
+bind "../canvas";
+bind "../colors";
+bind "../viewport";
+bind "./tool";
+
+/// @brief Multi-click polygon outline tool.
+class PolygonTool implements Tool {
+    hide Integer active;
+    hide List xs;
+    hide List ys;
+
+    expose func init() {
+        active = 0;
+        xs = new List();
+        ys = new List();
+    }
+
+    expose func id() -> Integer { return config.TOOL_POLYGON; }
+    expose func name() -> String { return "Polygon"; }
+    expose func icon() -> String { return "Y"; }
+    expose func isFreehand() -> Integer { return 0; }
+    expose func isDrawing() -> Integer { return active; }
+    expose func snapshotsBeforePress() -> Integer { return 0; }
+
+    expose func onPress(x: Integer, y: Integer, ctx: ToolContext) {
+        if active == 0 {
+            active = 1;
+            xs.Clear();
+            ys.Clear();
+            xs.Push(x);
+            ys.Push(y);
+            return;
+        }
+        // Close when clicking near the first vertex with enough points.
+        if xs.Length >= 3 and near(x, y, xs.Get(0), ys.Get(0)) == 1 {
+            commit(ctx);
+            active = 0;
+            return;
+        }
+        xs.Push(x);
+        ys.Push(y);
+    }
+
+    expose func onDrag(x: Integer, y: Integer, ctx: ToolContext) {
+    }
+
+    expose func onRelease(x: Integer, y: Integer, ctx: ToolContext) {
+    }
+
+    expose func drawPreview(gfx: Canvas, view: CanvasViewport, ctx: ToolContext) {
+        if active == 0 {
+            return;
+        }
+        var color = ctx.colors.foreground;
+        var n = xs.Length;
+        var i = 0;
+        while i < n - 1 {
+            gfx.Line(view.canvasToScreenX(xs.Get(i)), view.canvasToScreenY(ys.Get(i)),
+                     view.canvasToScreenX(xs.Get(i + 1)), view.canvasToScreenY(ys.Get(i + 1)),
+                     color);
+            i = i + 1;
+        }
+        // Rubber-band from the last vertex to the cursor.
+        gfx.Line(view.canvasToScreenX(xs.Get(n - 1)), view.canvasToScreenY(ys.Get(n - 1)),
+                 view.canvasToScreenX(ctx.hoverX), view.canvasToScreenY(ctx.hoverY),
+                 color);
+        // Highlight the first vertex (click here to close).
+        gfx.Ring(view.canvasToScreenX(xs.Get(0)), view.canvasToScreenY(ys.Get(0)), 5, 0xFFFFFF);
+    }
+
+    hide func near(x: Integer, y: Integer, fx: Integer, fy: Integer) -> Integer {
+        var dx = x - fx;
+        var dy = y - fy;
+        if dx < 0 { dx = 0 - dx; }
+        if dy < 0 { dy = 0 - dy; }
+        if dx <= 6 and dy <= 6 {
+            return 1;
+        }
+        return 0;
+    }
+
+    hide func commit(ctx: ToolContext) {
+        ctx.snapshot();
+        var color = ctx.colors.foreground;
+        var n = xs.Length;
+        var i = 0;
+        while i < n - 1 {
+            ctx.dc.drawLine(xs.Get(i), ys.Get(i), xs.Get(i + 1), ys.Get(i + 1), color);
+            i = i + 1;
+        }
+        // Closing edge.
+        ctx.dc.drawLine(xs.Get(n - 1), ys.Get(n - 1), xs.Get(0), ys.Get(0), color);
+    }
+}

@@ -854,6 +854,32 @@ typedef struct {
     int32_t original_index;
 } game3d_model_cache_victim_candidate_t;
 
+static game3d_model_cache_victim_candidate_t *g_game3d_model_cache_victim_heap = NULL;
+static int32_t g_game3d_model_cache_victim_heap_capacity = 0;
+
+/// @brief Ensure the reusable victim heap can hold @p needed entries.
+/// @details The model cache lock must be held. Reusing this scratch buffer avoids an allocation
+///          spike each time byte-budget enforcement runs.
+/// @param needed Maximum number of victim candidates to stage.
+/// @return Scratch heap storage, or NULL if allocation failed.
+static game3d_model_cache_victim_candidate_t *game3d_model_cache_acquire_victim_heap(
+    int32_t needed) {
+    game3d_model_cache_victim_candidate_t *grown;
+    if (needed <= 0)
+        return NULL;
+    if (g_game3d_model_cache_victim_heap_capacity >= needed)
+        return g_game3d_model_cache_victim_heap;
+    if ((size_t)needed > SIZE_MAX / sizeof(*g_game3d_model_cache_victim_heap))
+        return NULL;
+    grown = (game3d_model_cache_victim_candidate_t *)realloc(g_game3d_model_cache_victim_heap,
+                                                             (size_t)needed * sizeof(*grown));
+    if (!grown)
+        return NULL;
+    g_game3d_model_cache_victim_heap = grown;
+    g_game3d_model_cache_victim_heap_capacity = needed;
+    return g_game3d_model_cache_victim_heap;
+}
+
 /// @brief Eviction ordering for model-cache victims: non-zero if @p candidate is a better
 ///   eviction target than @p current — lower residency priority first, then greater residency
 ///   distance, then least-recently-used, then lower original index as a stable tiebreak.
@@ -1003,10 +1029,7 @@ static void game3d_model_cache_evict_to_budget(void) {
         return;
     if (g_game3d_model_cache_count <= 0)
         return;
-    if ((size_t)g_game3d_model_cache_count > SIZE_MAX / sizeof(*heap))
-        goto fallback_scan;
-    heap = (game3d_model_cache_victim_candidate_t *)malloc((size_t)g_game3d_model_cache_count *
-                                                           sizeof(*heap));
+    heap = game3d_model_cache_acquire_victim_heap(g_game3d_model_cache_count);
     if (!heap)
         goto fallback_scan;
     heap_count = game3d_model_cache_build_victim_heap(heap, g_game3d_model_cache_count);
@@ -1020,7 +1043,6 @@ static void game3d_model_cache_evict_to_budget(void) {
         if (index >= 0)
             game3d_model_cache_remove_at(index);
     }
-    free(heap);
     return;
 
 fallback_scan:

@@ -1,33 +1,34 @@
-// ============================================================================
-// MODULE: pencil (PencilTool)
-// PURPOSE: Single-pixel line drawing tool. The "test case" for the
-//          tool interface — the simplest possible implementation of the
-//          onMouseDown / onMouseMove / onMouseUp contract.
+//===----------------------------------------------------------------------===//
 //
-// TOOL CONTRACT: Every tool exposes init, getName, getIcon, getShortcut,
-//          isDrawing, plus onMouseDown/Move/Up. Some tools also expose
-//          drawPreview for WYSIWYG shape tools. The main app polls
-//          isDrawing to know if a preview should render over the canvas.
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
 //
-// KEY-DESIGN-CHOICES:
-//   * BRESENHAM VIA drawLine. Mouse-move interpolates between
-//     consecutive sample points so fast swipes produce continuous
-//     strokes rather than dots. canvas.drawLine handles the Bresenham
-//     rasterization.
-//   * LAST-POINT TRACKING. Each onMouseMove draws from lastX/Y to the
-//     new position, then updates lastX/Y. The single-pixel variant
-//     doesn't need sub-pixel work (drawLine handles Bresenham).
-// ============================================================================
+//===----------------------------------------------------------------------===//
+//
+// File: examples/apps/paint/tools/pencil.zia
+// Purpose: Single-pixel-wide line tool — the simplest Tool implementation.
+// Key invariants:
+//   - Freehand tool: press/drag/release stroke; drawLine interpolates so
+//     fast swipes stay continuous (Bresenham via the runtime).
+// Ownership/Lifetime:
+//   - Stateless except for the in-progress stroke endpoints.
+// Links: tool.zia (Tool interface), ../canvas.zia
+//
+//===----------------------------------------------------------------------===//
 
-// pencil.viper - Pencil tool for Viper Paint
+// pencil.zia - Pencil tool for Viper Paint
 module pencil;
+
+bind Viper.Graphics;
 
 bind "../config";
 bind "../canvas";
 bind "../colors";
+bind "../viewport";
+bind "./tool";
 
 /// @brief Single-pixel-wide line tool.
-class PencilTool {
+class PencilTool implements Tool {
     hide Integer drawing;       // 1 if currently drawing
     hide Integer lastX;         // Last mouse X
     hide Integer lastY;         // Last mouse Y
@@ -38,45 +39,38 @@ class PencilTool {
         lastY = 0;
     }
 
-    expose func getName() -> String {
-        return "Pencil";
-    }
+    expose func id() -> Integer { return config.TOOL_PENCIL; }
+    expose func name() -> String { return "Pencil"; }
+    expose func icon() -> String { return "P"; }
+    expose func isFreehand() -> Integer { return 1; }
+    expose func isDrawing() -> Integer { return drawing; }
+    expose func snapshotsBeforePress() -> Integer { return 1; }
 
-    expose func getIcon() -> String {
-        return "P";
-    }
-
-    expose func getShortcut() -> Integer {
-        return config.KEY_P;
-    }
-
-    expose func onMouseDown(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager) {
+    expose func onPress(x: Integer, y: Integer, ctx: ToolContext) {
         drawing = 1;
         lastX = x;
         lastY = y;
-        // Draw single point
-        canvas.setPixel(x, y, colors.foreground);
+        ctx.dc.setPixel(x, y, ctx.colors.foreground);
     }
 
-    expose func onMouseMove(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager) {
+    expose func onDrag(x: Integer, y: Integer, ctx: ToolContext) {
         if drawing == 1 {
-            // Draw line from last to current
-            canvas.drawLine(lastX, lastY, x, y, colors.foreground);
+            ctx.dc.drawLine(lastX, lastY, x, y, ctx.colors.foreground);
             lastX = x;
             lastY = y;
         }
     }
 
-    expose func onMouseUp(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager) {
+    expose func onRelease(x: Integer, y: Integer, ctx: ToolContext) {
         if drawing == 1 {
-            canvas.drawLine(lastX, lastY, x, y, colors.foreground);
+            ctx.dc.drawLine(lastX, lastY, x, y, ctx.colors.foreground);
             lastX = x;
             lastY = y;
         }
         drawing = 0;
     }
 
-    expose func isDrawing() -> Integer {
-        return drawing;
+    expose func drawPreview(gfx: Canvas, view: CanvasViewport, ctx: ToolContext) {
+        // Freehand tool: no rubber-band preview.
     }
 }

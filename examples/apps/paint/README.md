@@ -1,43 +1,77 @@
 # Viper Paint
 
-Viper Paint is a Zia drawing app built on the Viper graphics runtime. The drawing surface stays `Pixels`-backed for direct paint operations, while the app uses higher-level runtime helpers for input actions, game UI widgets, file dialogs, viewport management, history, layers, and diagnostics.
+Viper Paint is a Zia drawing app built on the Viper graphics runtime. The drawing
+surface stays `Pixels`-backed for direct paint operations, while the app leans on
+higher-level runtime helpers for input actions, game UI widgets, file dialogs,
+viewport management, history, layers, and diagnostics. Tools are dispatched
+through a `Tool` interface + registry, so the toolbox is data-driven.
 
-## Runtime Features
+## Tools
 
-- `Viper.Graphics.Canvas.BeginFrame`, `SetFps`, and `DeltaTime` drive the main loop.
-- `Viper.Input.Action` maps tool and app commands to named actions.
-- `Viper.Game.ButtonGroup` manages mutually exclusive tool selection.
-- `Viper.Game.UI.GameButton` renders the toolbar/tool buttons while Paint keeps custom hit testing for the Canvas window.
-- `Viper.Graphics.Pixels.Load`, `SavePng`, `SaveBmp`, `BlendPixel`, and `DrawThickLine` back image IO and brush rendering.
-- `Viper.Graphics.Pixels.Invert`, `Grayscale`, `FlipH`, `Blur`, and cached `Scale` output back layer/image operations.
-- `Viper.GUI.FileDialog` and `MessageBox` provide open/save dialogs and error feedback.
-- `Viper.Game.Config` loads runtime defaults from `paint.runtime.json`.
-- `Viper.Game.DebugOverlay` is available with `F3`.
+- **Pencil / Brush / Eraser** — freehand drawing. The brush has size + opacity +
+  round/square shape; the eraser is true-alpha (transparent on normal layers,
+  background colour on the locked base layer).
+- **Line / Rectangle / Ellipse** — drag with a live rubber-band; rectangles and
+  ellipses toggle filled/outline (`D`).
+- **Fill** — flood fill. **Eyedropper** — alpha-aware colour sampling from the
+  composite.
+- **Gradient** — drag to fill the layer with a foreground→background gradient.
+- **Curve** — three-click quadratic Bezier with live preview.
+- **Polygon** — click vertices, click the first vertex to close.
+- **Spray** — airbrush that builds density while held.
+- **Text** — click, type, Enter to bake into the layer.
+- **Select** — rectangular marquee (marching ants) with cut/copy/paste/delete.
+
+## Colour
+
+- Click the foreground/background swatch to open the **HSL colour picker**
+  (saturation/lightness field + hue bar, hex + RGB readout).
+- A fixed palette plus a most-recent-colours strip; left/right-click sets
+  foreground/background.
+
+## Layers
+
+- The right panel lists layers with visibility, name, opacity, and blend mode.
+- The active-layer control strip cycles the **blend mode** (Normal / Multiply /
+  Screen / Overlay / Add) and sets opacity via a click bar.
+- Add / duplicate / delete / reorder / **merge down** / **flatten** (Layer menu).
+
+## Image
+
+- Grayscale, Invert, Blur, Flip H/V, Rotate 90° CW/CCW, Tint (foreground),
+  Crop to Selection (Image menu).
+
+## Menus & chrome
+
+- A top **menu bar** (File / Edit / Image / Layer / View / Help) exposes every
+  command; quick New/Open/Save buttons sit alongside.
+- Live brush-size cursor, transient save/open toasts, and an `H` shortcut overlay.
 
 ## Shortcuts
 
-- `1`-`8` or `P/B/E/L/R/O/F/I`: select Pencil, Brush, Eraser, Line, Rectangle, Ellipse, Fill, or Eyedropper.
-- `Tab` / `Backspace`: cycle tools forward or backward.
-- `[` / `]`: decrease or increase brush size.
-- `Ctrl+N`, `Ctrl+O`, `Ctrl+S`, `Ctrl+Shift+S`: new, open, save, save as.
-- `Ctrl+Z`, `Ctrl+Y`: undo and redo.
-- `PageUp`, `PageDown`, `Home`: zoom in, zoom out, reset zoom.
-- `Ctrl+mouse wheel`: zoom under the viewport; mouse wheel pans.
-- `F11`: fullscreen toggle.
-- `F3`: debug overlay.
+- Tools: `1`-`8` or `P/B/E/L/R/O/F/I`; `S` select, `G` gradient, `U` curve,
+  `Y` polygon, `A` spray, `T` text. `Tab`/`Backspace` cycle.
+- Brush: `[` / `]` size, `W` shape, `D` fill/outline.
+- Colour: `X` swap; click a swatch for the picker.
+- File: `Ctrl+N/O/S`, `Ctrl+Shift+S` save as.
+- Edit: `Ctrl+Z/Y` undo/redo, `Ctrl+C/X/V`, `Delete`.
+- Layers: `Ctrl+E` merge down, `M` cycle blend mode.
+- View: `PageUp/PageDown` zoom, `Home` reset, `Ctrl+wheel` zoom, wheel pan.
+- `F11` fullscreen, `F3` debug overlay, `H` shortcuts.
 
-## Layers And Image Operations
+## File formats
 
-- The right panel lists layers. Left-click a layer to select it; right-click toggles visibility.
-- Toolbar layer actions: `+ Layer`, `Dup`, `Del`, `Up`, and `Down`.
-- Toolbar image actions operate on the active layer: `Gray`, `Invert`, `FlipH`, and `Blur`.
-- Multi-layer compositing is cached and invalidated on pixel/layer changes; zoomed viewport images are cached per document revision and zoom level.
+- Open: PNG, BMP, JPEG, GIF (via `Pixels.Load`). Save: PNG and BMP (the runtime
+  has no JPEG/GIF encoders).
 
-## File Formats
+## Runtime features used
 
-- Open supports the formats handled by `Pixels.Load`: PNG, BMP, JPEG, and GIF.
-- Save supports PNG and BMP. JPEG/GIF are intentionally not offered for save because the current graphics runtime does not expose JPEG/GIF encoders.
-
-## Notes
-
-Paint is still a `Canvas` application rather than a full `Viper.GUI.App` because the GUI runtime does not yet expose a first-class embeddable interactive drawing surface. A future `Viper.GUI.PaintSurface` or equivalent would let Paint move menus, docking panels, shortcuts, command palette, and drag/drop fully into the GUI shell model used by ViperIDE.
+- `Viper.Graphics.Canvas` (`BeginFrame`, `SetFps`, `DeltaTime`, `GradientV`,
+  `CopyRect`, `Text`/`TextWidth`) drives the loop and chrome.
+- `Viper.Graphics.Pixels` (`BlendPixel`, `Set`, `DrawThickLine`, `DrawBezier`,
+  `DrawTriangle`, `RotateCW/CCW`, `Resize`, `Tint`, `Copy`, `Scale`, image ops).
+- `Viper.Graphics.Color` HSL/hex helpers back the colour picker.
+- `Viper.Input.Action` for named keybindings; `Viper.Input.Keyboard.GetText` for
+  the text tool; `Viper.Math.Random` for spray.
+- `Viper.Game.ButtonGroup` / `Viper.Game.UI.GameButton` for the toolbox;
+  `Viper.GUI.FileDialog` / `MessageBox` / `Cursor` for dialogs + cursors.

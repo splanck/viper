@@ -39,6 +39,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define PHYSICS2D_CONTACT_SLOP 0.01
+#define PHYSICS2D_CONTACT_CORRECTION_PERCENT 0.4
+
 //=============================================================================
 // Narrow-phase forward declarations (all file-local)
 //=============================================================================
@@ -638,13 +641,12 @@ static void resolve_collision(rt_body_impl *a, rt_body_impl *b, double nx, doubl
 
     /* Positional correction (Baumgarte stabilisation): directly move bodies
      * apart to counter numerical drift that causes objects to slowly sink into
-     * each other. A small slop (0.01) is tolerated before correcting to avoid
-     * jittering on resting contacts. The 40% factor spreads the correction
+     * each other. A small slop is tolerated before correcting to avoid
+     * jittering on resting contacts. The correction factor spreads the correction
      * over several frames rather than snapping immediately (prevents bouncing). */
     {
-        double slop = 0.01;
-        double pct = 0.4;
-        correction = (pen - slop > 0.0 ? pen - slop : 0.0) * pct / total_inv;
+        correction = (pen - PHYSICS2D_CONTACT_SLOP > 0.0 ? pen - PHYSICS2D_CONTACT_SLOP : 0.0) *
+                     PHYSICS2D_CONTACT_CORRECTION_PERCENT / total_inv;
         a->x -= correction * a->inv_mass * nx;
         a->y -= correction * a->inv_mass * ny;
         b->x += correction * b->inv_mass * nx;

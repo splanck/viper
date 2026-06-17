@@ -539,6 +539,66 @@ static void mesh_mark_build_failed(rt_mesh3d *mesh) {
         mesh->build_failed = 1;
 }
 
+/// @brief Allocate grown vertex storage without mutating the mesh until all allocations succeed.
+/// @details `realloc` can commit one buffer before a later sidecar allocation fails. This helper
+///          allocates replacement vertex storage, copies the live vertices, and optionally
+///          allocates a replacement double-position sidecar. The caller commits both pointers
+///          together.
+/// @param m Mesh whose live vertex data should be copied.
+/// @param vertex_capacity Replacement vertex capacity in elements.
+/// @param label Caller label used in trap messages.
+/// @param out_vertices Receives the replacement vertex buffer.
+/// @param out_positions64 Receives the replacement sidecar, or NULL when no sidecar is active.
+/// @return Non-zero when every requested buffer was allocated and copied.
+static int mesh3d_alloc_grown_vertex_storage(rt_mesh3d *m,
+                                             uint32_t vertex_capacity,
+                                             const char *label,
+                                             vgfx3d_vertex_t **out_vertices,
+                                             double **out_positions64) {
+    char msg[160];
+    vgfx3d_vertex_t *vertices;
+    double *positions64 = NULL;
+    size_t vertex_bytes;
+    if (!m || !out_vertices || !out_positions64)
+        return 0;
+    *out_vertices = NULL;
+    *out_positions64 = NULL;
+    if ((size_t)vertex_capacity > SIZE_MAX / sizeof(vgfx3d_vertex_t)) {
+        snprintf(msg, sizeof(msg), "%s: vertex allocation overflow", label);
+        rt_trap(msg);
+        return 0;
+    }
+    vertex_bytes = (size_t)vertex_capacity * sizeof(vgfx3d_vertex_t);
+    vertices = (vgfx3d_vertex_t *)malloc(vertex_bytes);
+    if (!vertices) {
+        snprintf(msg, sizeof(msg), "%s: memory allocation failed", label);
+        rt_trap(msg);
+        return 0;
+    }
+    if (m->vertices && m->vertex_count > 0)
+        memcpy(vertices, m->vertices, (size_t)m->vertex_count * sizeof(vgfx3d_vertex_t));
+    if (m->positions64) {
+        if ((size_t)vertex_capacity > SIZE_MAX / (3u * sizeof(double))) {
+            snprintf(msg, sizeof(msg), "%s: position sidecar allocation overflow", label);
+            rt_trap(msg);
+            free(vertices);
+            return 0;
+        }
+        positions64 = (double *)malloc((size_t)vertex_capacity * 3u * sizeof(double));
+        if (!positions64) {
+            snprintf(msg, sizeof(msg), "%s: memory allocation failed", label);
+            rt_trap(msg);
+            free(vertices);
+            return 0;
+        }
+        if (m->vertex_count > 0)
+            memcpy(positions64, m->positions64, (size_t)m->vertex_count * 3u * sizeof(double));
+    }
+    *out_vertices = vertices;
+    *out_positions64 = positions64;
+    return 1;
+}
+
 /// @brief Ensure vertex and index buffers can hold at least the requested capacities.
 static int mesh3d_reserve_storage(rt_mesh3d *m,
                                   uint32_t vertex_capacity,
@@ -550,35 +610,12 @@ static int mesh3d_reserve_storage(rt_mesh3d *m,
     if (vertex_capacity > m->vertex_capacity) {
         vgfx3d_vertex_t *nv;
         double *np = NULL;
-        if ((size_t)vertex_capacity > SIZE_MAX / sizeof(vgfx3d_vertex_t)) {
-            snprintf(msg, sizeof(msg), "%s: vertex allocation overflow", label);
-            rt_trap(msg);
+        if (!mesh3d_alloc_grown_vertex_storage(m, vertex_capacity, label, &nv, &np))
             return 0;
-        }
-        if (m->positions64) {
-            size_t position_values;
-            if ((size_t)vertex_capacity > SIZE_MAX / (3u * sizeof(double))) {
-                snprintf(msg, sizeof(msg), "%s: position sidecar allocation overflow", label);
-                rt_trap(msg);
-                return 0;
-            }
-            position_values = (size_t)vertex_capacity * 3u;
-            np = (double *)realloc(m->positions64, position_values * sizeof(double));
-            if (!np) {
-                snprintf(msg, sizeof(msg), "%s: memory allocation failed", label);
-                rt_trap(msg);
-                return 0;
-            }
-            m->positions64 = np;
-        }
-        nv = (vgfx3d_vertex_t *)realloc(m->vertices,
-                                        (size_t)vertex_capacity * sizeof(vgfx3d_vertex_t));
-        if (!nv) {
-            snprintf(msg, sizeof(msg), "%s: memory allocation failed", label);
-            rt_trap(msg);
-            return 0;
-        }
+        free(m->vertices);
+        free(m->positions64);
         m->vertices = nv;
+        m->positions64 = np;
         m->vertex_capacity = vertex_capacity;
     }
     if (index_capacity > m->index_capacity) {

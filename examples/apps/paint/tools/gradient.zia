@@ -5,20 +5,21 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: examples/apps/paint/tools/line.zia
-// Purpose: Straight-line shape tool — press to anchor, drag for a live
-//          rubber-band preview, release to commit a single atomic edit.
+// File: examples/apps/paint/tools/gradient.zia
+// Purpose: Linear gradient tool. Drag to define the gradient axis (start =
+//          foreground colour, end = background colour); the active layer is
+//          filled with the directional gradient on release.
 // Key invariants:
-//   - The document is only mutated on release; drawPreview renders the
-//     in-progress line on-screen (zoom-aware via the viewport).
+//   - Fills on release via DrawingCanvas.fillGradient (projection + Color.Lerp).
+//   - Preview shows the gradient axis line with end markers.
 // Ownership/Lifetime:
-//   - Holds start/end endpoints during a drag only.
-// Links: tool.zia, ../viewport.zia, ../canvas.zia
+//   - Holds the drag axis endpoints.
+// Links: tool.zia, ../canvas.zia (fillGradient)
 //
 //===----------------------------------------------------------------------===//
 
-// line.zia - Line tool for Viper Paint
-module line;
+// gradient.zia - Linear gradient tool for Viper Paint
+module gradient;
 
 bind Viper.Graphics;
 
@@ -28,8 +29,8 @@ bind "../colors";
 bind "../viewport";
 bind "./tool";
 
-/// @brief Straight line shape tool with drag-preview.
-class LineTool implements Tool {
+/// @brief Linear gradient (foreground -> background) along a drag axis.
+class GradientTool implements Tool {
     hide Integer drawing;
     hide Integer startX;
     hide Integer startY;
@@ -44,9 +45,9 @@ class LineTool implements Tool {
         endY = 0;
     }
 
-    expose func id() -> Integer { return config.TOOL_LINE; }
-    expose func name() -> String { return "Line"; }
-    expose func icon() -> String { return "L"; }
+    expose func id() -> Integer { return config.TOOL_GRADIENT; }
+    expose func name() -> String { return "Gradient"; }
+    expose func icon() -> String { return "G"; }
     expose func isFreehand() -> Integer { return 0; }
     expose func isDrawing() -> Integer { return drawing; }
     expose func snapshotsBeforePress() -> Integer { return 1; }
@@ -68,16 +69,22 @@ class LineTool implements Tool {
 
     expose func onRelease(x: Integer, y: Integer, ctx: ToolContext) {
         if drawing == 1 {
-            ctx.dc.drawLine(startX, startY, x, y, ctx.colors.foreground);
+            ctx.dc.fillGradient(startX, startY, x, y, ctx.colors.foreground, ctx.colors.background);
             drawing = 0;
         }
     }
 
     expose func drawPreview(gfx: Canvas, view: CanvasViewport, ctx: ToolContext) {
         if drawing == 1 {
-            gfx.Line(view.canvasToScreenX(startX), view.canvasToScreenY(startY),
-                     view.canvasToScreenX(endX), view.canvasToScreenY(endY),
-                     ctx.colors.foreground);
+            var sx = view.canvasToScreenX(startX);
+            var sy = view.canvasToScreenY(startY);
+            var ex = view.canvasToScreenX(endX);
+            var ey = view.canvasToScreenY(endY);
+            gfx.Line(sx, sy, ex, ey, 0xFFFFFF);
+            gfx.Disc(sx, sy, 4, ctx.colors.foreground);
+            gfx.Ring(sx, sy, 4, 0xFFFFFF);
+            gfx.Disc(ex, ey, 4, ctx.colors.background);
+            gfx.Ring(ex, ey, 4, 0xFFFFFF);
         }
     }
 }

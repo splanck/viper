@@ -1425,14 +1425,17 @@ static int obj_parse_face_line_grouped(const char *p,
                 break;
             }
             new_capacity = face_capacity * 2u;
-            new_face = (obj_face_vert_t *)malloc(new_capacity * sizeof(*new_face));
+            if (face == face_stack) {
+                new_face = (obj_face_vert_t *)malloc(new_capacity * sizeof(*new_face));
+                if (new_face)
+                    memcpy(new_face, face_stack, (size_t)face_count * sizeof(*face_stack));
+            } else {
+                new_face = (obj_face_vert_t *)realloc(face, new_capacity * sizeof(*new_face));
+            }
             if (!new_face) {
                 parse_failed = 1;
                 break;
             }
-            memcpy(new_face, face, (size_t)face_count * sizeof(*face));
-            if (face != face_stack)
-                free(face);
             face = new_face;
             face_capacity = new_capacity;
         }

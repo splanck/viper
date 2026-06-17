@@ -78,8 +78,12 @@ void rt_collider3d_compute_world_aabb_raw(void *collider,
 int8_t rt_collider3d_is_static_only_raw(void *collider);
 /// @brief Box collider: write its half-extents (xyz) to @p half_extents_out.
 void rt_collider3d_get_box_half_extents_raw(void *collider, double *half_extents_out);
+/// @brief Reset an existing box collider's half-extents and cached bounds for internal query reuse.
+void rt_collider3d_reset_box_raw(void *collider, double hx, double hy, double hz);
 /// @brief Sphere/capsule collider: its radius.
 double rt_collider3d_get_radius_raw(void *collider);
+/// @brief Reset an existing sphere collider's radius and cached bounds for internal query reuse.
+void rt_collider3d_reset_sphere_raw(void *collider, double radius);
 /// @brief Capsule collider: total height including caps.
 double rt_collider3d_get_height_raw(void *collider);
 /// @brief Mesh collider: the backing triangle-mesh handle (NULL if not a mesh).

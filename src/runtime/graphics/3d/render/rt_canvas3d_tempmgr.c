@@ -13,7 +13,7 @@
 // Key invariants:
 //   - Tracked temp buffers/objects are released at end-of-frame, or on a failed
 //     allocation path via the release_* helpers.
-//   - The transient-object hash set mirrors the temp_objects list exactly.
+//   - The transient-buffer/object hash sets mirror their tracking lists exactly.
 // Ownership/Lifetime:
 //   - Temp buffers are malloc'd elsewhere; tracking takes ownership for the frame.
 //   - Tracked objects are retained on insert and released on removal/frame end.
@@ -29,14 +29,126 @@
 #include <stdlib.h>
 #include <string.h>
 
+/// @brief Clear the per-frame transient-buffer tracking set (all slots empty).
+static void canvas3d_temp_buffer_set_clear(rt_canvas3d *c) {
+    if (!c || !c->temp_buffer_set || c->temp_buffer_set_capacity <= 0)
+        return;
+    memset(c->temp_buffer_set, 0, (size_t)c->temp_buffer_set_capacity * sizeof(void *));
+}
+
+/// @brief Ensure the transient-buffer set is sized for @p count_hint tracked buffers.
+/// @details The set is an open-addressed duplicate filter for `temp_buffers`. It is rebuilt from
+///          the list after growth so callers can keep using swap-remove on the list.
+/// @param c Canvas that owns the per-frame temp buffers.
+/// @param count_hint Expected tracked buffer count.
+/// @return Non-zero when the set exists and contains the current list contents.
+static int canvas3d_ensure_temp_buffer_set(rt_canvas3d *c, int32_t count_hint) {
+    int32_t needed;
+    void **grown;
+    if (!c)
+        return 0;
+    if (count_hint > INT32_MAX / 2)
+        return 0;
+    needed = canvas3d_next_power_of_two_i32(count_hint > 0 ? count_hint * 2 : 32);
+    if (needed < 32)
+        needed = 32;
+    if (c->temp_buffer_set_capacity >= needed)
+        return 1;
+    if ((size_t)needed > SIZE_MAX / sizeof(*c->temp_buffer_set))
+        return 0;
+    grown = (void **)realloc(c->temp_buffer_set, (size_t)needed * sizeof(*grown));
+    if (!grown)
+        return 0;
+    c->temp_buffer_set = grown;
+    c->temp_buffer_set_capacity = needed;
+    canvas3d_temp_buffer_set_clear(c);
+    for (int32_t i = 0; i < c->temp_buf_count; ++i) {
+        void *existing = c->temp_buffers[i];
+        int32_t mask;
+        int32_t slot;
+        if (!existing)
+            continue;
+        mask = c->temp_buffer_set_capacity - 1;
+        slot = (int32_t)(canvas3d_hash_u64((uintptr_t)existing) & (uint32_t)mask);
+        for (int32_t probe = 0; probe < c->temp_buffer_set_capacity; ++probe) {
+            if (!c->temp_buffer_set[slot]) {
+                c->temp_buffer_set[slot] = existing;
+                break;
+            }
+            slot = (slot + 1) & mask;
+        }
+    }
+    return 1;
+}
+
+/// @brief Return whether @p buffer is currently tracked as a per-frame transient buffer.
+/// @details Uses the hash set when available and falls back to a linear scan if scratch allocation
+///          fails, preserving the old no-duplicate behavior under memory pressure.
+static int canvas3d_temp_buffer_set_contains(rt_canvas3d *c, void *buffer) {
+    int32_t mask;
+    int32_t slot;
+    if (!c || !buffer || c->temp_buf_count <= 0)
+        return 0;
+    if (!c->temp_buffer_set || c->temp_buffer_set_capacity < c->temp_buf_count * 2) {
+        if (!canvas3d_ensure_temp_buffer_set(c, c->temp_buf_count + 1)) {
+            for (int32_t i = 0; i < c->temp_buf_count; ++i) {
+                if (c->temp_buffers[i] == buffer)
+                    return 1;
+            }
+            return 0;
+        }
+    }
+    mask = c->temp_buffer_set_capacity - 1;
+    slot = (int32_t)(canvas3d_hash_u64((uintptr_t)buffer) & (uint32_t)mask);
+    for (int32_t probe = 0; probe < c->temp_buffer_set_capacity; ++probe) {
+        void *entry = c->temp_buffer_set[slot];
+        if (!entry)
+            return 0;
+        if (entry == buffer)
+            return 1;
+        slot = (slot + 1) & mask;
+    }
+    return 0;
+}
+
+/// @brief Insert @p buffer into the transient-buffer duplicate set.
+/// @return Non-zero when the buffer is present in the set after the call.
+static int canvas3d_temp_buffer_set_insert(rt_canvas3d *c, void *buffer) {
+    int32_t mask;
+    int32_t slot;
+    if (!c || !buffer)
+        return 0;
+    if (!canvas3d_ensure_temp_buffer_set(c, c->temp_buf_count + 1))
+        return 0;
+    mask = c->temp_buffer_set_capacity - 1;
+    slot = (int32_t)(canvas3d_hash_u64((uintptr_t)buffer) & (uint32_t)mask);
+    for (int32_t probe = 0; probe < c->temp_buffer_set_capacity; ++probe) {
+        if (!c->temp_buffer_set[slot]) {
+            c->temp_buffer_set[slot] = buffer;
+            return 1;
+        }
+        if (c->temp_buffer_set[slot] == buffer)
+            return 1;
+        slot = (slot + 1) & mask;
+    }
+    return 0;
+}
+
+/// @brief Rebuild the transient-buffer hash set from the tracked-buffer list.
+static void canvas3d_rebuild_temp_buffer_set(rt_canvas3d *c) {
+    if (!c || !c->temp_buffer_set)
+        return;
+    canvas3d_temp_buffer_set_clear(c);
+    for (int32_t i = 0; i < c->temp_buf_count; ++i)
+        canvas3d_temp_buffer_set_insert(c, c->temp_buffers[i]);
+}
+
 /// @brief Track a malloc'd temp buffer so it is freed at end-of-frame.
 int canvas3d_track_temp_buffer(rt_canvas3d *c, void *buffer) {
     if (!c || !buffer)
         return 0;
-    for (int32_t i = 0; i < c->temp_buf_count; ++i) {
-        if (c->temp_buffers[i] == buffer)
-            return 1;
-    }
+    if (canvas3d_temp_buffer_set_contains(c, buffer))
+        return 1;
     if (c->temp_buf_count >= c->temp_buf_capacity) {
         if (c->temp_buf_capacity < 0 || c->temp_buf_capacity > INT32_MAX / 2)
             return 0;
@@ -48,6 +160,12 @@ int canvas3d_track_temp_buffer(rt_canvas3d *c, void *buffer) {
             return 0;
         c->temp_buffers = nb;
         c->temp_buf_capacity = new_cap;
+    }
+    if (!canvas3d_temp_buffer_set_insert(c, buffer)) {
+        for (int32_t i = 0; i < c->temp_buf_count; ++i) {
+            if (c->temp_buffers[i] == buffer)
+                return 1;
+        }
     }
     c->temp_buffers[c->temp_buf_count++] = buffer;
     return 1;
@@ -63,6 +181,7 @@ int canvas3d_untrack_temp_buffer(rt_canvas3d *c, void *buffer) {
             c->temp_buffers[i] = c->temp_buffers[last];
             c->temp_buffers[last] = NULL;
             c->temp_buf_count = last;
+            canvas3d_rebuild_temp_buffer_set(c);
             return 1;
         }
     }
@@ -292,6 +411,7 @@ void canvas3d_clear_temp_buffers(rt_canvas3d *c) {
     for (int32_t i = 0; i < c->temp_buf_count; i++)
         free(c->temp_buffers[i]);
     c->temp_buf_count = 0;
+    canvas3d_temp_buffer_set_clear(c);
     c->mesh_snapshot_count = 0;
     canvas3d_mesh_snapshot_hash_clear(c);
     c->mesh_snapshot_bytes = 0u;

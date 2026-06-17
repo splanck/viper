@@ -1,61 +1,63 @@
-// ============================================================================
-// MODULE: eyedropper (EyedropperTool)
-// PURPOSE: Click to sample a pixel's colour into the foreground.
-//          "Instant" tool like FillTool — no drag, no preview.
+//===----------------------------------------------------------------------===//
 //
-// KEY-DESIGN-CHOICES:
-//   * ZERO GUARD. If the picked colour is 0 (fully transparent +
-//     black) we skip the setForeground — that's usually the
-//     background of an empty layer, not a colour the user meant to
-//     pick. A more correct implementation would sniff alpha
-//     separately, but this heuristic is fine for the demo.
-// ============================================================================
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/apps/paint/tools/eyedropper.zia
+// Purpose: Click to sample a pixel's colour into the foreground. Instant tool.
+// Key invariants:
+//   - Alpha-aware: samples the COMPOSITE via DrawingCanvas.sampleColor, which
+//     returns -1 for fully transparent pixels (skipped) instead of guessing
+//     with a "color != 0" heuristic.
+//   - Read-only: does not push an undo snapshot.
+// Ownership/Lifetime:
+//   - Stateless except the last picked colour (for status display).
+// Links: tool.zia, ../canvas.zia (sampleColor)
+//
+//===----------------------------------------------------------------------===//
 
-// eyedropper.viper - Eyedropper (color picker) tool for Viper Paint
+// eyedropper.zia - Eyedropper (colour picker) tool for Viper Paint
 module eyedropper;
+
+bind Viper.Graphics;
 
 bind "../config";
 bind "../canvas";
 bind "../colors";
+bind "../viewport";
+bind "./tool";
 
-/// @brief Click-to-sample colour picker.
-class EyedropperTool {
-    expose Integer lastPickedColor;  // Last color that was picked
+/// @brief Click-to-sample colour picker (alpha-aware, samples composite).
+class EyedropperTool implements Tool {
+    expose Integer lastPickedColor;
 
     expose func init() {
         lastPickedColor = 0;
     }
 
-    expose func getName() -> String {
-        return "Eyedropper";
-    }
+    expose func id() -> Integer { return config.TOOL_EYEDROPPER; }
+    expose func name() -> String { return "Eyedropper"; }
+    expose func icon() -> String { return "I"; }
+    expose func isFreehand() -> Integer { return 0; }
+    expose func isDrawing() -> Integer { return 0; }
+    expose func snapshotsBeforePress() -> Integer { return 0; }
 
-    expose func getIcon() -> String {
-        return "I";
-    }
-
-    expose func getShortcut() -> Integer {
-        return config.KEY_I;
-    }
-
-    expose func onMouseDown(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager) {
-        // Pick color at position
-        var color = canvas.getPixel(x, y);
-        if color != 0 {
-            colors.setForeground(color);
+    expose func onPress(x: Integer, y: Integer, ctx: ToolContext) {
+        var color = ctx.dc.sampleColor(x, y);
+        if color >= 0 {
+            ctx.colors.setForeground(color);
             lastPickedColor = color;
         }
     }
 
-    expose func onMouseMove(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager) {
-        // Could show preview of color under cursor
+    expose func onDrag(x: Integer, y: Integer, ctx: ToolContext) {
     }
 
-    expose func onMouseUp(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager) {
-        // Eyedropper doesn't do anything on mouse up
+    expose func onRelease(x: Integer, y: Integer, ctx: ToolContext) {
     }
 
-    expose func isDrawing() -> Integer {
-        return 0;  // Eyedropper is instant
+    expose func drawPreview(gfx: Canvas, view: CanvasViewport, ctx: ToolContext) {
     }
 }

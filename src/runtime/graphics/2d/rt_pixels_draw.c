@@ -33,6 +33,7 @@
 #include "rt_pixels.h"
 #include "rt_pixels_internal.h"
 
+#include "rt_font.h"
 #include "rt_internal.h"
 
 #include <math.h>
@@ -877,6 +878,293 @@ void rt_pixels_draw_bezier(void *pixels,
         have_prev = 1;
     }
     if (wrote)
+        pixels_touch(p);
+}
+
+//=============================================================================
+// Text Rendering
+//=============================================================================
+
+/// @brief Saturating multiply for non-negative dimensions and font metrics.
+static int64_t pixels_mul_nonneg_sat64(int64_t a, int64_t b) {
+    if (a <= 0 || b <= 0)
+        return 0;
+    if (a > INT64_MAX / b)
+        return INT64_MAX;
+    return a * b;
+}
+
+/// @brief Saturating int64 subtraction for alignment arithmetic.
+static int64_t pixels_sub_sat64(int64_t a, int64_t b) {
+    long double value = (long double)a - (long double)b;
+    if (value >= (long double)INT64_MAX)
+        return INT64_MAX;
+    if (value <= (long double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)value;
+}
+
+/// @brief Decode the next UTF-8 codepoint, substituting '?' for malformed sequences.
+static int pixels_next_codepoint(const char *str,
+                                 size_t byte_len,
+                                 size_t *index,
+                                 int *codepoint_out) {
+    if (!str || !index || !codepoint_out || *index >= byte_len)
+        return 0;
+
+    size_t i = *index;
+    unsigned char c0 = (unsigned char)str[i];
+    uint32_t cp = '?';
+    size_t advance = 1;
+
+    if (c0 < 0x80) {
+        cp = c0;
+    } else if ((c0 & 0xE0u) == 0xC0u && i + 1 < byte_len) {
+        unsigned char c1 = (unsigned char)str[i + 1];
+        if ((c1 & 0xC0u) == 0x80u) {
+            cp = ((uint32_t)(c0 & 0x1Fu) << 6) | (uint32_t)(c1 & 0x3Fu);
+            advance = 2;
+            if (cp < 0x80u)
+                cp = '?';
+        }
+    } else if ((c0 & 0xF0u) == 0xE0u && i + 2 < byte_len) {
+        unsigned char c1 = (unsigned char)str[i + 1];
+        unsigned char c2 = (unsigned char)str[i + 2];
+        if ((c1 & 0xC0u) == 0x80u && (c2 & 0xC0u) == 0x80u) {
+            cp = ((uint32_t)(c0 & 0x0Fu) << 12) | ((uint32_t)(c1 & 0x3Fu) << 6) |
+                 (uint32_t)(c2 & 0x3Fu);
+            advance = 3;
+            if (cp < 0x800u || (cp >= 0xD800u && cp <= 0xDFFFu))
+                cp = '?';
+        }
+    } else if ((c0 & 0xF8u) == 0xF0u && i + 3 < byte_len) {
+        unsigned char c1 = (unsigned char)str[i + 1];
+        unsigned char c2 = (unsigned char)str[i + 2];
+        unsigned char c3 = (unsigned char)str[i + 3];
+        if ((c1 & 0xC0u) == 0x80u && (c2 & 0xC0u) == 0x80u && (c3 & 0xC0u) == 0x80u) {
+            cp = ((uint32_t)(c0 & 0x07u) << 18) | ((uint32_t)(c1 & 0x3Fu) << 12) |
+                 ((uint32_t)(c2 & 0x3Fu) << 6) | (uint32_t)(c3 & 0x3Fu);
+            advance = 4;
+            if (cp < 0x10000u || cp > 0x10FFFFu)
+                cp = '?';
+        }
+    }
+
+    *index = i + advance;
+    *codepoint_out = (int)cp;
+    return 1;
+}
+
+/// @brief Fill a clipped rectangle directly with raw RGBA.
+static int8_t pixels_fill_rect_raw(
+    rt_pixels_impl *p, int64_t x, int64_t y, int64_t w, int64_t h, uint32_t rgba) {
+    if (!rt_pixels_clip_rect_to_bounds(p, &x, &y, &w, &h))
+        return 0;
+
+    for (int64_t row = y; row < y + h; row++)
+        for (int64_t col = x; col < x + w; col++)
+            p->data[row * p->width + col] = rgba;
+    return 1;
+}
+
+/// @brief Return rendered monospace text width by counting UTF-8 codepoints.
+static int64_t pixels_text_codepoint_width(rt_string text, int64_t scale) {
+    if (!text || scale < 1)
+        return 0;
+
+    const char *str = rt_string_cstr(text);
+    if (!str)
+        return 0;
+
+    size_t byte_len = (size_t)rt_str_len(text);
+    size_t index = 0;
+    int64_t count = 0;
+    int codepoint = 0;
+    while (pixels_next_codepoint(str, byte_len, &index, &codepoint))
+        count++;
+
+    return pixels_mul_nonneg_sat64(pixels_mul_nonneg_sat64(count, 8), scale);
+}
+
+/// @brief Rasterize text into a Pixels buffer; optional background fills full glyph cells.
+static int8_t pixels_draw_text_raw(rt_pixels_impl *p,
+                                   int64_t x,
+                                   int64_t y,
+                                   rt_string text,
+                                   int64_t scale,
+                                   uint32_t fg,
+                                   const uint32_t *bg) {
+    if (!p || !p->data || !text || scale < 1)
+        return 0;
+
+    const char *str = rt_string_cstr(text);
+    if (!str)
+        return 0;
+
+    size_t byte_len = (size_t)rt_str_len(text);
+    size_t index = 0;
+    int codepoint = 0;
+    int64_t cx = x;
+    int64_t advance = pixels_mul_nonneg_sat64(8, scale);
+    int8_t wrote = 0;
+
+    while (pixels_next_codepoint(str, byte_len, &index, &codepoint)) {
+        int glyph_cp = (codepoint >= 32 && codepoint <= 126) ? codepoint : '?';
+        const uint8_t *glyph = rt_font_get_glyph(glyph_cp);
+
+        for (int row = 0; row < 8; row++) {
+            uint8_t bits = glyph[row];
+            int64_t py = rt_pixels_add_sat64(y, pixels_mul_nonneg_sat64((int64_t)row, scale));
+            for (int col = 0; col < 8; col++) {
+                int64_t px = rt_pixels_add_sat64(cx, pixels_mul_nonneg_sat64((int64_t)col, scale));
+                int8_t foreground = (bits & (uint8_t)(0x80u >> col)) != 0;
+                if (foreground) {
+                    if (scale == 1)
+                        wrote |= set_pixel_raw(p, px, py, fg);
+                    else
+                        wrote |= pixels_fill_rect_raw(p, px, py, scale, scale, fg);
+                } else if (bg) {
+                    if (scale == 1)
+                        wrote |= set_pixel_raw(p, px, py, *bg);
+                    else
+                        wrote |= pixels_fill_rect_raw(p, px, py, scale, scale, *bg);
+                }
+            }
+        }
+        cx = rt_pixels_add_sat64(cx, advance);
+    }
+
+    return wrote;
+}
+
+/// @brief Draw built-in 8x8 bitmap-font text at (x, y).
+void rt_pixels_draw_text(void *pixels, int64_t x, int64_t y, rt_string text, int64_t color) {
+    if (!pixels) {
+        rt_trap("Pixels.DrawText: null pixels");
+        return;
+    }
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.DrawText: invalid pixels");
+    if (!p || !text)
+        return;
+
+    uint32_t rgba = rt_pixels_color_to_rgba(color);
+    if (pixels_draw_text_raw(p, x, y, text, 1, rgba, NULL))
+        pixels_touch(p);
+}
+
+/// @brief Draw text with foreground and full 8x8 cell background colors.
+void rt_pixels_draw_text_bg(
+    void *pixels, int64_t x, int64_t y, rt_string text, int64_t fg, int64_t bg) {
+    if (!pixels) {
+        rt_trap("Pixels.DrawTextBg: null pixels");
+        return;
+    }
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.DrawTextBg: invalid pixels");
+    if (!p || !text)
+        return;
+
+    uint32_t fg_rgba = rt_pixels_color_to_rgba(fg);
+    uint32_t bg_rgba = rt_pixels_color_to_rgba(bg);
+    if (pixels_draw_text_raw(p, x, y, text, 1, fg_rgba, &bg_rgba))
+        pixels_touch(p);
+}
+
+/// @brief Return rendered text width in pixels at 1x scale.
+int64_t rt_pixels_text_width(rt_string text) {
+    return pixels_text_codepoint_width(text, 1);
+}
+
+/// @brief Return built-in font line height in pixels.
+int64_t rt_pixels_text_height(void) {
+    return 8;
+}
+
+/// @brief Draw built-in text scaled by an integer factor.
+void rt_pixels_draw_text_scaled(
+    void *pixels, int64_t x, int64_t y, rt_string text, int64_t scale, int64_t color) {
+    if (!pixels) {
+        rt_trap("Pixels.DrawTextScaled: null pixels");
+        return;
+    }
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.DrawTextScaled: invalid pixels");
+    if (!p || !text || scale < 1)
+        return;
+
+    uint32_t rgba = rt_pixels_color_to_rgba(color);
+    if (pixels_draw_text_raw(p, x, y, text, scale, rgba, NULL))
+        pixels_touch(p);
+}
+
+/// @brief Draw scaled text with foreground and full scaled-cell background colors.
+void rt_pixels_draw_text_scaled_bg(
+    void *pixels, int64_t x, int64_t y, rt_string text, int64_t scale, int64_t fg, int64_t bg) {
+    if (!pixels) {
+        rt_trap("Pixels.DrawTextScaledBg: null pixels");
+        return;
+    }
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.DrawTextScaledBg: invalid pixels");
+    if (!p || !text || scale < 1)
+        return;
+
+    uint32_t fg_rgba = rt_pixels_color_to_rgba(fg);
+    uint32_t bg_rgba = rt_pixels_color_to_rgba(bg);
+    if (pixels_draw_text_raw(p, x, y, text, scale, fg_rgba, &bg_rgba))
+        pixels_touch(p);
+}
+
+/// @brief Return rendered text width in pixels at the given integer scale.
+int64_t rt_pixels_text_scaled_width(rt_string text, int64_t scale) {
+    return pixels_text_codepoint_width(text, scale);
+}
+
+/// @brief Draw text horizontally centered in the Pixels buffer at row y.
+void rt_pixels_draw_text_centered(void *pixels, int64_t y, rt_string text, int64_t color) {
+    if (!pixels) {
+        rt_trap("Pixels.DrawTextCentered: null pixels");
+        return;
+    }
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.DrawTextCentered: invalid pixels");
+    if (!p || !text)
+        return;
+
+    int64_t x = (p->width - rt_pixels_text_width(text)) / 2;
+    uint32_t rgba = rt_pixels_color_to_rgba(color);
+    if (pixels_draw_text_raw(p, x, y, text, 1, rgba, NULL))
+        pixels_touch(p);
+}
+
+/// @brief Draw text right-aligned to the Pixels buffer with a margin.
+void rt_pixels_draw_text_right(
+    void *pixels, int64_t margin, int64_t y, rt_string text, int64_t color) {
+    if (!pixels) {
+        rt_trap("Pixels.DrawTextRight: null pixels");
+        return;
+    }
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.DrawTextRight: invalid pixels");
+    if (!p || !text)
+        return;
+
+    int64_t x = pixels_sub_sat64(pixels_sub_sat64(p->width, rt_pixels_text_width(text)), margin);
+    uint32_t rgba = rt_pixels_color_to_rgba(color);
+    if (pixels_draw_text_raw(p, x, y, text, 1, rgba, NULL))
+        pixels_touch(p);
+}
+
+/// @brief Draw scaled text horizontally centered in the Pixels buffer at row y.
+void rt_pixels_draw_text_centered_scaled(
+    void *pixels, int64_t y, rt_string text, int64_t color, int64_t scale) {
+    if (!pixels) {
+        rt_trap("Pixels.DrawTextCenteredScaled: null pixels");
+        return;
+    }
+    rt_pixels_impl *p =
+        rt_pixels_checked_impl(pixels, "Pixels.DrawTextCenteredScaled: invalid pixels");
+    if (!p || !text || scale < 1)
+        return;
+
+    int64_t x = (p->width - rt_pixels_text_scaled_width(text, scale)) / 2;
+    uint32_t rgba = rt_pixels_color_to_rgba(color);
+    if (pixels_draw_text_raw(p, x, y, text, scale, rgba, NULL))
         pixels_touch(p);
 }
 

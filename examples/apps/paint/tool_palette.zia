@@ -1,19 +1,21 @@
-// ============================================================================
-// MODULE: tool_palette (ToolPalette)
-// PURPOSE: Exclusive-selection group for the 8 paint tools. Wraps
-//          Viper.Game.ButtonGroup so the radio-button semantics
-//          ("only one selected at a time") come for free.
+//===----------------------------------------------------------------------===//
 //
-// KEY-DESIGN-CHOICES:
-//   * BUTTONGROUP-BACKED. The runtime's ButtonGroup provides
-//     Add/Select/SelectNext/SelectPrev/IsSelected already; this
-//     class is a thin adapter that names the tool IDs and syncs
-//     visual `selected` flags on the rendered ToolButton widgets.
-//   * syncButtons PROPAGATION. After a selection change (via
-//     keyboard, shortcut, or click), the app calls syncButtons to
-//     mirror the group's state onto every individual button's
-//     `selected` flag so they render in the right style.
-// ============================================================================
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/apps/paint/tool_palette.zia
+// Purpose: Exclusive-selection group for the paint tools, backed by
+//          Viper.Game.ButtonGroup. Populated dynamically from the tool
+//          registry so adding a tool needs no change here.
+// Key invariants:
+//   - register() is called once per tool id before selectInitial().
+// Ownership/Lifetime:
+//   - Owns the ButtonGroup; PaintApp drives selection.
+// Links: tools/registry.zia, app.zia
+//
+//===----------------------------------------------------------------------===//
 
 // tool_palette.zia - Runtime ButtonGroup-backed Paint tool selection
 module tool_palette;
@@ -21,23 +23,23 @@ module tool_palette;
 bind Viper.Game.ButtonGroup as ButtonGroup;
 
 bind "./config";
-bind "./ui/button";
 
-/// @brief Exclusive-selection tool group with visual-sync helper.
+/// @brief Exclusive-selection tool group (dynamically populated).
 class ToolPalette {
     hide ButtonGroup group;
 
     expose func init() {
         group = ButtonGroup.New();
-        group.Add(config.TOOL_PENCIL);
-        group.Add(config.TOOL_BRUSH);
-        group.Add(config.TOOL_ERASER);
-        group.Add(config.TOOL_LINE);
-        group.Add(config.TOOL_RECTANGLE);
-        group.Add(config.TOOL_ELLIPSE);
-        group.Add(config.TOOL_FILL);
-        group.Add(config.TOOL_EYEDROPPER);
-        group.Select(config.TOOL_BRUSH);
+    }
+
+    /// @brief Register a tool id (in registry order, before selectInitial).
+    expose func register(id: Integer) {
+        group.Add(id);
+    }
+
+    /// @brief Choose the initially selected tool.
+    expose func selectInitial(id: Integer) {
+        group.Select(id);
     }
 
     expose func select(toolId: Integer) -> Integer {
@@ -64,23 +66,5 @@ class ToolPalette {
             return 1;
         }
         return 0;
-    }
-
-    expose func syncButtons(btnPencil: button.ToolButton,
-                            btnBrush: button.ToolButton,
-                            btnEraser: button.ToolButton,
-                            btnLine: button.ToolButton,
-                            btnRect: button.ToolButton,
-                            btnEllipse: button.ToolButton,
-                            btnFill: button.ToolButton,
-                            btnEyedropper: button.ToolButton) {
-        btnPencil.selected = isSelected(config.TOOL_PENCIL);
-        btnBrush.selected = isSelected(config.TOOL_BRUSH);
-        btnEraser.selected = isSelected(config.TOOL_ERASER);
-        btnLine.selected = isSelected(config.TOOL_LINE);
-        btnRect.selected = isSelected(config.TOOL_RECTANGLE);
-        btnEllipse.selected = isSelected(config.TOOL_ELLIPSE);
-        btnFill.selected = isSelected(config.TOOL_FILL);
-        btnEyedropper.selected = isSelected(config.TOOL_EYEDROPPER);
     }
 }

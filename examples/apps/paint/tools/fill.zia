@@ -1,56 +1,54 @@
-// ============================================================================
-// MODULE: fill (FillTool)
-// PURPOSE: Single-click flood fill. Not a drag tool — onMouseDown fires
-//          canvas.floodFill and the tool is instantly done.
+//===----------------------------------------------------------------------===//
 //
-// KEY-DESIGN-CHOICES:
-//   * INSTANT (not drag). isDrawing always returns 0; there's no
-//     preview phase. A flood fill is a one-shot operation that
-//     completes before onMouseUp fires.
-//   * ALL THE WORK IS IN canvas.floodFill. The tool is a thin
-//     dispatch layer; the actual scanline-fill algorithm lives in
-//     DrawingCanvas.
-// ============================================================================
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/apps/paint/tools/fill.zia
+// Purpose: Single-click flood fill. Instant (no drag, no preview); all work is
+//          in DrawingCanvas.floodFill (iterative scanline fill).
+// Key invariants:
+//   - isDrawing always 0; the fill completes within onPress.
+// Ownership/Lifetime:
+//   - Stateless.
+// Links: tool.zia, ../canvas.zia
+//
+//===----------------------------------------------------------------------===//
 
-// fill.viper - Fill (flood fill) tool for Viper Paint
+// fill.zia - Flood fill tool for Viper Paint
 module fill;
+
+bind Viper.Graphics;
 
 bind "../config";
 bind "../canvas";
 bind "../colors";
+bind "../viewport";
+bind "./tool";
 
 /// @brief Instant flood-fill tool (click to fill connected region).
-class FillTool {
+class FillTool implements Tool {
     expose func init() {
-        // No state needed
     }
 
-    expose func getName() -> String {
-        return "Fill";
+    expose func id() -> Integer { return config.TOOL_FILL; }
+    expose func name() -> String { return "Fill"; }
+    expose func icon() -> String { return "F"; }
+    expose func isFreehand() -> Integer { return 0; }
+    expose func isDrawing() -> Integer { return 0; }
+    expose func snapshotsBeforePress() -> Integer { return 1; }
+
+    expose func onPress(x: Integer, y: Integer, ctx: ToolContext) {
+        ctx.dc.floodFill(x, y, ctx.colors.foreground);
     }
 
-    expose func getIcon() -> String {
-        return "F";
+    expose func onDrag(x: Integer, y: Integer, ctx: ToolContext) {
     }
 
-    expose func getShortcut() -> Integer {
-        return config.KEY_F;
+    expose func onRelease(x: Integer, y: Integer, ctx: ToolContext) {
     }
 
-    expose func onMouseDown(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager) {
-        // Flood fill at click position
-        canvas.floodFill(x, y, colors.foreground);
-    }
-
-    expose func onMouseMove(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager) {
-        // Fill tool doesn't do anything on move
-    }
-
-    expose func onMouseUp(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager) {
-        // Fill tool doesn't do anything on mouse up
-    }
-
-    expose func isDrawing() -> Integer {
-        return 0;  // Fill is instant, not a drag operation
+    expose func drawPreview(gfx: Canvas, view: CanvasViewport, ctx: ToolContext) {
     }
 }

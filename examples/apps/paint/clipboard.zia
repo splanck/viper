@@ -1,0 +1,68 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/apps/paint/clipboard.zia
+// Purpose: In-app pixel clipboard. Holds a detached Pixels buffer copied from
+//          a selection so it can be pasted back into any layer.
+// Key invariants:
+//   - buffer is null when empty; non-null buffers are independent copies
+//     (extracted via Pixels.Copy), safe to paste repeatedly.
+// Ownership/Lifetime:
+//   - Owns its Pixels buffer; replaced wholesale on each copy.
+// Links: selection.zia, tools/select.zia, tools/tool.zia
+//
+//===----------------------------------------------------------------------===//
+
+// clipboard.zia - Pixel clipboard for Viper Paint copy/paste
+module clipboard;
+
+bind Viper.Graphics;
+
+/// @brief Holds a copied rectangular Pixels region for paste.
+class PaintClipboard {
+    hide Pixels? buffer;
+
+    expose func init() {
+        buffer = null;
+    }
+
+    /// @brief Extract an (x, y, w, h) region from src into the clipboard.
+    expose func copyFrom(src: Pixels, sx: Integer, sy: Integer, w: Integer, h: Integer) {
+        if src == null or w <= 0 or h <= 0 {
+            return;
+        }
+        var out = Pixels.New(w, h);
+        out.Copy(0, 0, src, sx, sy, w, h);
+        buffer = out;
+    }
+
+    expose func hasContent() -> Integer {
+        if buffer != null {
+            return 1;
+        }
+        return 0;
+    }
+
+    expose func width() -> Integer {
+        if buffer == null {
+            return 0;
+        }
+        return buffer!.Width;
+    }
+
+    expose func height() -> Integer {
+        if buffer == null {
+            return 0;
+        }
+        return buffer!.Height;
+    }
+
+    /// @brief The clipboard buffer (may be null). Caller checks hasContent first.
+    expose func get() -> Pixels? {
+        return buffer;
+    }
+}

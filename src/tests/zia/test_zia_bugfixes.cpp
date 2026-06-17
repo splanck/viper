@@ -107,6 +107,14 @@ bool hasErrorContaining(const CompilerResult &result, const std::string &needle)
     return false;
 }
 
+bool hasDiagnosticCode(const CompilerResult &result, const std::string &code) {
+    for (const auto &d : result.diagnostics.diagnostics()) {
+        if (d.code == code)
+            return true;
+    }
+    return false;
+}
+
 TEST(ZiaRuntimeMemory, ExplicitReleaseUsesPublicRuntimeSurface) {
     SourceManager sm;
     const std::string source = R"(
@@ -3201,6 +3209,134 @@ func start() {
     auto neverResult = compile(neverInput, opts, sm2);
     EXPECT_FALSE(neverResult.succeeded());
     EXPECT_TRUE(hasErrorContaining(neverResult, "cannot be used for a local value"));
+}
+
+TEST(ZiaBugFixes, UnderscorePrefixedParametersSuppressUnusedWarning) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func keep(_unused: Integer, _label: String, value: Integer) -> Integer {
+    return value;
+}
+
+func start() {
+    Viper.Terminal.SayInt(keep(1, "ignored", 2));
+}
+)";
+    CompilerInput input{.source = source, .path = "underscore_parameter_unused.zia"};
+    CompilerOptions opts{};
+    opts.warningPolicy.warningsAsErrors = true;
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+    EXPECT_FALSE(hasDiagnosticCode(result, "W001"));
+}
+
+TEST(ZiaBugFixes, InterfaceValuesAndListGetsCanCompareWithNull) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+interface Tool {
+    func id() -> Integer;
+}
+
+func start() {
+    var t: Tool = null;
+    if t == null {
+        Viper.Terminal.Say("empty");
+    }
+
+    var tools: List[Tool] = [];
+    var maybe = tools.get(0);
+    if maybe != null {
+        Viper.Terminal.SayInt(maybe.id());
+    }
+}
+)";
+    CompilerInput input{.source = source, .path = "interface_null_comparison.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded()) {
+        std::cerr << "Diagnostics for InterfaceValuesAndListGetsCanCompareWithNull:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+    EXPECT_TRUE(result.succeeded());
+}
+
+TEST(ZiaBugFixes, Gradient2DSampleAcceptsNormalizedNumber) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+bind Viper.Graphics;
+
+func start() {
+    var fg = Color.RGBA(0, 0, 0, 255);
+    var bg = Color.RGBA(255, 255, 255, 255);
+    var g = Gradient2D.New(fg, bg, 4);
+    var c = g.Sample(0.5);
+    var raw = g.SampleRGBA(0.5);
+    var pct = g.SamplePct(50);
+    var rawPct = g.SampleRGBAPct(50);
+    Viper.Terminal.SayInt(Color.GetR(c) + Color.GetR(pct) + raw + rawPct);
+}
+)";
+    CompilerInput input{.source = source, .path = "gradient_normalized_sample.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded()) {
+        std::cerr << "Diagnostics for Gradient2DSampleAcceptsNormalizedNumber:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+    EXPECT_TRUE(result.succeeded());
+}
+
+TEST(ZiaBugFixes, PixelsTextMethodsResolveThroughRuntimeSurface) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+bind Viper.Graphics;
+
+func start() {
+    var p = Pixels.New(48, 24);
+    p.DrawText(0, 0, "A", Color.RGB(255, 0, 0));
+    p.DrawTextBg(8, 0, "B", Color.RGB(0, 255, 0), Color.RGBA(0, 0, 0, 128));
+    p.DrawTextScaled(0, 8, "C", 2, Color.RGB(0, 0, 255));
+    p.DrawTextScaledBg(16, 8, "D", 2, Color.RGB(255, 255, 255), Color.RGB(10, 20, 30));
+    p.DrawTextCentered(16, "E", Color.RGB(20, 30, 40));
+    p.DrawTextRight(4, 16, "F", Color.RGB(50, 60, 70));
+    p.DrawTextCenteredScaled(0, "G", Color.RGB(80, 90, 100), 2);
+    var w = Pixels.TextWidth("hi");
+    var h = Pixels.TextHeight();
+    var sw = Pixels.TextScaledWidth("hi", 2);
+    Viper.Terminal.SayInt(w + h + sw);
+}
+)";
+    CompilerInput input{.source = source, .path = "pixels_text_methods.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded()) {
+        std::cerr << "Diagnostics for PixelsTextMethodsResolveThroughRuntimeSurface:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+    EXPECT_TRUE(result.succeeded());
 }
 
 } // namespace

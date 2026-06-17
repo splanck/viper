@@ -81,6 +81,17 @@ final UI_BORDER = 0x505050;
 final UI_TEXT = 0xE0E0E0;
 final UI_TEXT_DIM = 0x909090;
 
+// Accent + polish palette (refined dark chrome)
+final UI_ACCENT = 0x3080D0;        // Primary accent (selection, focus, OK)
+final UI_ACCENT_HI = 0x4A9EFF;     // Bright accent (glow / hover highlight)
+final UI_BG_PANEL_HI = 0x424242;   // Gradient top for panels/toolbar
+final UI_BG_PANEL_LO = 0x303030;   // Gradient bottom for panels/toolbar
+final UI_SHADOW = 0x05050A;        // Drop-shadow colour
+final UI_TOAST_BG = 0x1E1E28;      // Toast background
+final UI_OK = 0x36C06A;            // Success accent (toast)
+final UI_WARN = 0xE0A030;          // Warning accent
+final UI_ERR = 0xE05050;           // Error accent
+
 // Tool IDs
 final TOOL_PENCIL = 0;
 final TOOL_BRUSH = 1;
@@ -91,6 +102,11 @@ final TOOL_ELLIPSE = 5;
 final TOOL_FILL = 6;
 final TOOL_EYEDROPPER = 7;
 final TOOL_SELECT = 8;
+final TOOL_GRADIENT = 9;
+final TOOL_CURVE = 10;
+final TOOL_POLYGON = 11;
+final TOOL_SPRAY = 12;
+final TOOL_TEXT = 13;
 
 // Keyboard shortcuts (ASCII codes)
 final KEY_P = 80;  // Pencil

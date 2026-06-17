@@ -447,9 +447,9 @@ static void physics2d_world_step_once(void *obj, rt_world_impl *w, double dt) {
 
     /* Step 3: Broad-phase + narrow-phase collision detection and resolution.
      *
-     * Broad phase: uniform 8×8 grid. The grid is recomputed from scratch each
-     * step. The world swept AABB is computed first, then divided into
-     * BPG_DIM×BPG_DIM cells. Each body is registered in every cell its swept
+     * Broad phase: bounded adaptive uniform grid. The grid is recomputed from
+     * scratch each step. The world swept AABB is computed first, then divided into
+     * grid_dim×grid_dim cells. Each body is registered in every cell its swept
      * bounds overlap.
      *
      * All grid arrays are stack-local, making this function safe to call on
@@ -469,10 +469,16 @@ static void physics2d_world_step_once(void *obj, rt_world_impl *w, double dt) {
      * byte [i*PH_MAX_BODIES+j >> 3], bit [(i*PH_MAX_BODIES+j) & 7]. The matrix
      * is stack-local: (256×256) / 8 = 8192 bytes ≈ 8 KB. */
 
-#define BPG_DIM 8       /* Broad-phase grid cells per axis (8×8 = 64 total) */
-#define BPG_CELL_MAX 32 /* Maximum body indices stored per grid cell */
+#define BPG_BASE_DIM 8  /* Small-world broad-phase grid cells per axis. */
+#define BPG_MAX_DIM 16  /* Largest stack-backed grid cells per axis. */
+#define BPG_CELL_MAX 32 /* Maximum body indices stored per grid cell. */
 
     if (w->body_count >= 2) {
+        int grid_dim = BPG_BASE_DIM;
+        if (w->body_count > 128)
+            grid_dim = BPG_MAX_DIM;
+        else if (w->body_count > 64)
+            grid_dim = 12;
         /* --- Step 3a: Compute the world swept AABB that encloses all bodies --- */
         double wx0 = 1e18, wy0 = 1e18, wx1 = -1e18, wy1 = -1e18;
         for (i = 0; i < w->body_count; i++) {
@@ -498,15 +504,15 @@ static void physics2d_world_step_once(void *obj, rt_world_impl *w, double dt) {
             wx1 = wx0 + 1.0;
         if (wy1 <= wy0)
             wy1 = wy0 + 1.0;
-        double cell_w = (wx1 - wx0) / BPG_DIM;
-        double cell_h = (wy1 - wy0) / BPG_DIM;
+        double cell_w = (wx1 - wx0) / (double)grid_dim;
+        double cell_h = (wy1 - wy0) / (double)grid_dim;
 
         /* --- Step 3b: Populate the broad-phase grid (stack-local) ---
          * Each body is inserted into every cell its swept bounds touch. A body
          * that straddles a cell boundary appears in both cells so it will be
          * paired with neighbours on either side. */
-        uint8_t grid_bodies[BPG_DIM * BPG_DIM][BPG_CELL_MAX];
-        int grid_count[BPG_DIM * BPG_DIM];
+        uint8_t grid_bodies[BPG_MAX_DIM * BPG_MAX_DIM][BPG_CELL_MAX];
+        int grid_count[BPG_MAX_DIM * BPG_MAX_DIM];
         int grid_overflow = 0;
         memset(grid_count, 0, sizeof(grid_count));
 
@@ -521,26 +527,26 @@ static void physics2d_world_step_once(void *obj, rt_world_impl *w, double dt) {
             int cx0 = (int)((bx0 - wx0) / cell_w);
             if (cx0 < 0)
                 cx0 = 0;
-            if (cx0 >= BPG_DIM)
-                cx0 = BPG_DIM - 1;
+            if (cx0 >= grid_dim)
+                cx0 = grid_dim - 1;
             int cy0 = (int)((by0 - wy0) / cell_h);
             if (cy0 < 0)
                 cy0 = 0;
-            if (cy0 >= BPG_DIM)
-                cy0 = BPG_DIM - 1;
+            if (cy0 >= grid_dim)
+                cy0 = grid_dim - 1;
             int cx1 = (int)((bx1 - wx0) / cell_w);
             if (cx1 < 0)
                 cx1 = 0;
-            if (cx1 >= BPG_DIM)
-                cx1 = BPG_DIM - 1;
+            if (cx1 >= grid_dim)
+                cx1 = grid_dim - 1;
             int cy1 = (int)((by1 - wy0) / cell_h);
             if (cy1 < 0)
                 cy1 = 0;
-            if (cy1 >= BPG_DIM)
-                cy1 = BPG_DIM - 1;
+            if (cy1 >= grid_dim)
+                cy1 = grid_dim - 1;
             for (int cy = cy0; cy <= cy1; cy++) {
                 for (int cx = cx0; cx <= cx1; cx++) {
-                    int cell = cy * BPG_DIM + cx;
+                    int cell = cy * grid_dim + cx;
                     int cnt = grid_count[cell];
                     if (cnt < BPG_CELL_MAX) {
                         grid_bodies[cell][cnt] = (uint8_t)i;
@@ -565,7 +571,7 @@ static void physics2d_world_step_once(void *obj, rt_world_impl *w, double dt) {
             uint8_t pair_checked[PH_MAX_BODIES * PH_MAX_BODIES / 8 + 1];
             memset(pair_checked, 0, sizeof(pair_checked));
 
-            for (int cell = 0; cell < BPG_DIM * BPG_DIM; cell++) {
+            for (int cell = 0; cell < grid_dim * grid_dim; cell++) {
                 int cnt = grid_count[cell];
                 for (int a = 0; a < cnt; a++) {
                     for (int b_idx = a + 1; b_idx < cnt; b_idx++) {
@@ -587,7 +593,8 @@ static void physics2d_world_step_once(void *obj, rt_world_impl *w, double dt) {
         }
     }
 
-#undef BPG_DIM
+#undef BPG_BASE_DIM
+#undef BPG_MAX_DIM
 #undef BPG_CELL_MAX
 }
 

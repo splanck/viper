@@ -510,6 +510,15 @@ typedef struct {
     int64_t last_frame_seen;
 } rt_canvas3d_occlusion_history_entry;
 
+/// @brief Per-frame duplicate counter for queued draws sharing one occlusion fingerprint.
+/// @details CPU occlusion history needs distinct keys for identical repeated submissions. The
+///          deferred draw queue is finalized in one pass, and this table tracks how many times each
+///          fingerprint has already appeared in the current frame.
+typedef struct {
+    uintptr_t fingerprint;
+    int32_t count;
+} rt_canvas3d_occlusion_duplicate_entry;
+
 /// @brief One fixed-slot per-frame world-AABB cache entry.
 /// @details The hash narrows lookup, but hits still compare the full mesh pointer plus all
 ///          sixteen source double matrix components so collisions cannot affect correctness.
@@ -846,6 +855,8 @@ typedef struct {
     void **temp_buffers;
     int32_t temp_buf_count;
     int32_t temp_buf_capacity;
+    void **temp_buffer_set;
+    int32_t temp_buffer_set_capacity;
     rt_canvas3d_mesh_snapshot_entry *mesh_snapshots;
     int32_t mesh_snapshot_count;
     int32_t mesh_snapshot_capacity;
@@ -953,6 +964,8 @@ typedef struct {
     int32_t occlusion_history_capacity;
     int32_t *occlusion_history_hash;
     int32_t occlusion_history_hash_capacity;
+    rt_canvas3d_occlusion_duplicate_entry *occlusion_duplicate_counts;
+    int32_t occlusion_duplicate_count_capacity;
     int8_t occlusion_state_valid;
     void *occlusion_last_render_target;
     int32_t occlusion_last_output_width;

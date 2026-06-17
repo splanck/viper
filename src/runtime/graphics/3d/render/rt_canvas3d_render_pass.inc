@@ -343,6 +343,7 @@ void rt_canvas3d_end(void *obj) {
 
     cmds = (deferred_draw_t *)c->draw_cmds;
     queued_draw_count = c->draw_count;
+    canvas3d_assign_occlusion_keys(c, cmds, queued_draw_count);
 
     if (c->skybox) {
         if (!rt_g3d_has_class(c->skybox, RT_G3D_CUBEMAP3D_CLASS_ID)) {

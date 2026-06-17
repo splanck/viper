@@ -1,0 +1,90 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/apps/paint/tools/spray.zia
+// Purpose: Airbrush / spray tool. While held, scatters random foreground dots
+//          within the brush radius each frame, building up density over time.
+// Key invariants:
+//   - Freehand tool; onDrag fires every frame the button is held (even with no
+//     motion), giving continuous spray.
+//   - Dots use reduced per-dot opacity so coverage accumulates gradually.
+// Ownership/Lifetime:
+//   - Stateless except the drawing flag.
+// Links: tool.zia, ../canvas.zia, Viper.Math.Random
+//
+//===----------------------------------------------------------------------===//
+
+// spray.zia - Airbrush/spray tool for Viper Paint
+module spray;
+
+bind Viper.Graphics;
+bind Random = Viper.Math.Random;
+
+bind "../config";
+bind "../canvas";
+bind "../colors";
+bind "../brush";
+bind "../viewport";
+bind "./tool";
+
+/// @brief Airbrush: scatters random dots within the brush radius while held.
+class SprayTool implements Tool {
+    hide Integer drawing;
+
+    expose func init() {
+        drawing = 0;
+    }
+
+    expose func id() -> Integer { return config.TOOL_SPRAY; }
+    expose func name() -> String { return "Spray"; }
+    expose func icon() -> String { return "A"; }
+    expose func isFreehand() -> Integer { return 1; }
+    expose func isDrawing() -> Integer { return drawing; }
+    expose func snapshotsBeforePress() -> Integer { return 1; }
+
+    expose func onPress(x: Integer, y: Integer, ctx: ToolContext) {
+        drawing = 1;
+        spray(x, y, ctx);
+    }
+
+    expose func onDrag(x: Integer, y: Integer, ctx: ToolContext) {
+        if drawing == 1 {
+            spray(x, y, ctx);
+        }
+    }
+
+    expose func onRelease(x: Integer, y: Integer, ctx: ToolContext) {
+        drawing = 0;
+    }
+
+    expose func drawPreview(gfx: Canvas, view: CanvasViewport, ctx: ToolContext) {
+        // Show the spray radius as a ring at the cursor.
+        var r = ctx.brushSettings.size / 2;
+        if r < 1 { r = 1; }
+        gfx.Ring(view.canvasToScreenX(ctx.hoverX), view.canvasToScreenY(ctx.hoverY),
+                 view.canvasSizeToScreen(r), 0xFFFFFF);
+    }
+
+    // Scatter a burst of random dots inside the brush radius.
+    hide func spray(cx: Integer, cy: Integer, ctx: ToolContext) {
+        var radius = ctx.brushSettings.size / 2;
+        if radius < 1 { radius = 1; }
+        var count = radius + 4;
+        var dotOpacity = ctx.brushSettings.opacity / 3;
+        if dotOpacity < 4 { dotOpacity = 4; }
+        var color = ctx.colors.foreground;
+        var i = 0;
+        while i < count {
+            var ox = Random.Range(0 - radius, radius);
+            var oy = Random.Range(0 - radius, radius);
+            if ox * ox + oy * oy <= radius * radius {
+                ctx.dc.setPixelBlend(cx + ox, cy + oy, color, dotOpacity);
+            }
+            i = i + 1;
+        }
+    }
+}

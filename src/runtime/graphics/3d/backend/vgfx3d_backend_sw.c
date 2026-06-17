@@ -94,6 +94,8 @@ typedef struct {
     /* Persistent worker pool for deterministic tiled rasterization. */
     void *worker_pool;
     int64_t worker_count;
+    int32_t debug_draw_count;
+    int32_t debug_tri_count;
 } sw_context_t;
 
 static inline void sw_compute_view_vector(const sw_context_t *ctx,

@@ -1154,9 +1154,6 @@ static int sw_shade_fragment(
 /// Honours every flag on `cmd` (unlit, alpha mode, normal map, etc.).
 /// Optimization: perspective-correct attribute interpolation via
 /// `u/w`, `v/w`, `1/w` vertex attributes.
-/// @brief Tri-count gate shared by raster_triangle's reject + summary debug logs.
-static int g_sw_debug_tri_count = 0;
-
 /// @brief Computed rasterization setup for one screen-space triangle: the
 ///   (possibly winding-swapped) vertices, clipped bounding box, inverse area, and
 ///   half-space edge-function deltas + first-pixel values.
@@ -1200,6 +1197,7 @@ static int sw_raster_prepare(const screen_vert_t *v0,
                              int32_t fb_h,
                              int8_t backface_cull,
                              int emit_debug,
+                             int32_t *debug_tri_count,
                              sw_raster_geom *g) {
     float area = (v1->sx - v0->sx) * (v2->sy - v0->sy) - (v2->sx - v0->sx) * (v1->sy - v0->sy);
     float original_area = area;
@@ -1212,7 +1210,7 @@ static int sw_raster_prepare(const screen_vert_t *v0,
         if (emit_debug) {
             fprintf(stderr,
                     "[sw3d] tri %d degenerate area=%.6f orig=%.6f\n",
-                    g_sw_debug_tri_count++,
+                    debug_tri_count ? (*debug_tri_count)++ : 0,
                     fabsf(area),
                     original_area);
         }
@@ -1227,7 +1225,7 @@ static int sw_raster_prepare(const screen_vert_t *v0,
             fprintf(stderr,
                     "[sw3d] tri %d culled area=%.3f v0=(%.2f %.2f %.3f) v1=(%.2f %.2f %.3f) "
                     "v2=(%.2f %.2f %.3f)\n",
-                    g_sw_debug_tri_count++,
+                    debug_tri_count ? (*debug_tri_count)++ : 0,
                     original_area,
                     v0->sx,
                     v0->sy,
@@ -1248,6 +1246,16 @@ static int sw_raster_prepare(const screen_vert_t *v0,
         area = -area;
     }
 
+    if (!isfinite(v0->sx) || !isfinite(v0->sy) || !isfinite(v1->sx) || !isfinite(v1->sy) ||
+        !isfinite(v2->sx) || !isfinite(v2->sy)) {
+        if (emit_debug) {
+            fprintf(stderr,
+                    "[sw3d] tri %d rejected non-finite screen coordinate\n",
+                    debug_tri_count ? (*debug_tri_count)++ : 0);
+        }
+        return 0;
+    }
+
     int min_x = (int)fmaxf(floorf(fminf(fminf(v0->sx, v1->sx), v2->sx)), 0.0f);
     int max_x = (int)fminf(ceilf(fmaxf(fmaxf(v0->sx, v1->sx), v2->sx)), (float)(fb_w - 1));
     int min_y = (int)fmaxf(floorf(fminf(fminf(v0->sy, v1->sy), v2->sy)), 0.0f);
@@ -1256,7 +1264,7 @@ static int sw_raster_prepare(const screen_vert_t *v0,
         if (emit_debug) {
             fprintf(stderr,
                     "[sw3d] tri %d clipped bbox=(%d..%d,%d..%d) area=%.3f orig=%.3f\n",
-                    g_sw_debug_tri_count++,
+                    debug_tri_count ? (*debug_tri_count)++ : 0,
                     min_x,
                     max_x,
                     min_y,
@@ -1328,14 +1336,22 @@ static void raster_triangle_scissored(uint8_t *pixels,
                                       int32_t light_count,
                                       const float *ambient,
                                       int8_t backface_cull,
-                                      const sw_context_t *fog_ctx,
+                                      sw_context_t *fog_ctx,
                                       int32_t clip_min_x,
                                       int32_t clip_min_y,
                                       int32_t clip_max_x,
                                       int32_t clip_max_y) {
-    int emit_debug = sw_debug_enabled() && g_sw_debug_tri_count < 16;
+    int emit_debug = sw_debug_enabled() && fog_ctx && fog_ctx->debug_tri_count < 16;
     sw_raster_geom g;
-    if (!sw_raster_prepare(v0, v1, v2, fb_w, fb_h, backface_cull, emit_debug, &g))
+    if (!sw_raster_prepare(v0,
+                           v1,
+                           v2,
+                           fb_w,
+                           fb_h,
+                           backface_cull,
+                           emit_debug,
+                           fog_ctx ? &fog_ctx->debug_tri_count : NULL,
+                           &g))
         return;
     int min_x = g.min_x > clip_min_x ? g.min_x : clip_min_x;
     int max_x = g.max_x < clip_max_x ? g.max_x : clip_max_x;
@@ -1433,7 +1449,7 @@ static void raster_triangle_scissored(uint8_t *pixels,
         fprintf(stderr,
                 "[sw3d] tri %d area=%.3f orig=%.3f bbox=(%d..%d,%d..%d) inside=%d depth=%d "
                 "written=%d v0=(%.2f %.2f %.3f) v1=(%.2f %.2f %.3f) v2=(%.2f %.2f %.3f)\n",
-                g_sw_debug_tri_count++,
+                fog_ctx ? fog_ctx->debug_tri_count++ : 0,
                 g.area,
                 g.original_area,
                 g.min_x,
@@ -1475,7 +1491,7 @@ static void raster_triangle(uint8_t *pixels,
                             int32_t light_count,
                             const float *ambient,
                             int8_t backface_cull,
-                            const sw_context_t *fog_ctx) {
+                            sw_context_t *fog_ctx) {
     raster_triangle_scissored(pixels,
                               zbuf,
                               fb_w,

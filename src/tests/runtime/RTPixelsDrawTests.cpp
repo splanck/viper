@@ -399,6 +399,76 @@ static void test_drawbezier_connects_sparse_samples() {
 }
 
 // ============================================================================
+// DrawText
+// ============================================================================
+
+static int64_t count_region_pixels(
+    void *pixels, int64_t x0, int64_t y0, int64_t w, int64_t h, int64_t rgba) {
+    int64_t count = 0;
+    for (int64_t y = y0; y < y0 + h; y++)
+        for (int64_t x = x0; x < x0 + w; x++)
+            if (rt_pixels_get(pixels, x, y) == rgba)
+                count++;
+    return count;
+}
+
+static void test_drawtext_renders_font_metrics_and_alpha_colors() {
+    void *p = rt_pixels_new(16, 8);
+    rt_string text = rt_str_from_lit("A", 1);
+    uint64_t gen = rt_pixels_generation(p);
+
+    rt_pixels_draw_text(p, 0, 0, text, rt_color_rgba(0x12, 0x34, 0x56, 0x78));
+
+    assert(rt_pixels_generation(p) == gen + 1);
+    assert(rt_pixels_text_width(text) == 8);
+    assert(rt_pixels_text_height() == 8);
+    assert(count_region_pixels(p, 0, 0, 8, 8, 0x12345678) > 0);
+    assert(rt_pixels_get(p, 8, 0) == 0);
+
+    rt_string utf8 = rt_str_from_lit("h\xc3\xa9", 3);
+    assert(rt_pixels_text_width(utf8) == 16);
+    assert(rt_pixels_text_scaled_width(utf8, 3) == 48);
+    assert(rt_pixels_text_scaled_width(utf8, 0) == 0);
+    printf("test_drawtext_renders_font_metrics_and_alpha_colors: PASSED\n");
+}
+
+static void test_drawtext_background_scaled_and_alignment() {
+    void *bg = rt_pixels_new(8, 8);
+    rt_pixels_draw_text_bg(bg, 0, 0, rt_str_from_lit("A", 1), 0xFFFFFF, 0x102030);
+    int64_t fg_count = count_region_pixels(bg, 0, 0, 8, 8, 0xFFFFFFFF);
+    int64_t bg_count = count_region_pixels(bg, 0, 0, 8, 8, 0x102030FF);
+    assert(fg_count > 0);
+    assert(bg_count > 0);
+    assert(fg_count + bg_count == 64);
+
+    void *scaled = rt_pixels_new(16, 16);
+    rt_pixels_draw_text_scaled_bg(
+        scaled, 0, 0, rt_str_from_lit("!", 1), 2, rt_color_rgba(1, 2, 3, 4), 0x050607);
+    assert(count_region_pixels(scaled, 0, 0, 16, 16, 0x01020304) > 0);
+    assert(count_region_pixels(scaled, 0, 0, 16, 16, 0x050607FF) > 0);
+
+    void *centered = rt_pixels_new(24, 8);
+    rt_pixels_draw_text_centered(centered, 0, rt_str_from_lit("A", 1), 0xABCDEF);
+    assert(count_region_pixels(centered, 0, 0, 8, 8, 0xABCDEFFF) == 0);
+    assert(count_region_pixels(centered, 8, 0, 8, 8, 0xABCDEFFF) > 0);
+    assert(count_region_pixels(centered, 16, 0, 8, 8, 0xABCDEFFF) == 0);
+
+    void *right = rt_pixels_new(24, 8);
+    rt_pixels_draw_text_right(right, 4, 0, rt_str_from_lit("A", 1), 0x445566);
+    assert(count_region_pixels(right, 0, 0, 12, 8, 0x445566FF) == 0);
+    assert(count_region_pixels(right, 12, 0, 8, 8, 0x445566FF) > 0);
+    assert(count_region_pixels(right, 20, 0, 4, 8, 0x445566FF) == 0);
+
+    void *centered_scaled = rt_pixels_new(40, 16);
+    rt_pixels_draw_text_centered_scaled(centered_scaled, 0, rt_str_from_lit("A", 1), 0x778899, 2);
+    assert(count_region_pixels(centered_scaled, 0, 0, 12, 16, 0x778899FF) == 0);
+    assert(count_region_pixels(centered_scaled, 12, 0, 16, 16, 0x778899FF) > 0);
+    assert(count_region_pixels(centered_scaled, 28, 0, 12, 16, 0x778899FF) == 0);
+
+    printf("test_drawtext_background_scaled_and_alignment: PASSED\n");
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -456,6 +526,10 @@ int main() {
     // DrawBezier
     test_drawbezier_endpoints();
     test_drawbezier_connects_sparse_samples();
+
+    // DrawText
+    test_drawtext_renders_font_metrics_and_alpha_colors();
+    test_drawtext_background_scaled_and_alignment();
 
     printf("\nAll tests passed!\n");
     return 0;

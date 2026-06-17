@@ -198,9 +198,8 @@ static void canvas3d_queue_instanced_fallback(const canvas3d_instanced_batch_t *
             queued->stable_sort_id = instance_motion_key
                                          ? instance_motion_key
                                          : (queued->stable_sort_id ^ (uintptr_t)(uint32_t)i);
-            queued->occlusion_key =
-                queued->stable_sort_id ? queued->stable_sort_id : (uintptr_t)per_instance.vertices;
-            queued->occlusion_key = canvas3d_occlusion_draw_key(c, queued, c->draw_count - 1);
+            queued->occlusion_fingerprint = 0;
+            queued->occlusion_key = 0;
             canvas3d_finalize_deferred_visibility_flags(
                 queued, conservative_bounds, disable_occlusion);
         }

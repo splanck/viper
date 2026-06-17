@@ -1,0 +1,135 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/apps/paint/tools/text.zia
+// Purpose: Text tool. Click to place a caret, type a string (fed by the app via
+//          Keyboard.GetText), preview it live, and bake it into the active layer
+//          on Enter. Baking is done by the app (it renders the glyphs and
+//          captures them with Canvas.CopyRect) because Pixels has no text
+//          primitive — see misc/plans/demos/viper_bugs.md ISSUE-001.
+// Key invariants:
+//   - Holds the caret (canvas coords) + typed buffer while active.
+//   - The app drives text input and performs the CopyRect bake; this tool only
+//     stores state and previews.
+// Ownership/Lifetime:
+//   - One shared instance, exposed by the registry so the app can feed input.
+// Links: tool.zia, app.zia (bakeText), Viper.Input.Keyboard.GetText
+//
+//===----------------------------------------------------------------------===//
+
+// text.zia - Text tool for Viper Paint
+module text;
+
+bind Viper.Graphics;
+bind Str = Viper.String;
+
+bind "../config";
+bind "../canvas";
+bind "../colors";
+bind "../viewport";
+bind "./tool";
+
+/// @brief Click-to-place text tool; typed buffer baked on Enter.
+class TextTool implements Tool {
+    expose Integer active;
+    expose Integer caretX;
+    expose Integer caretY;
+    hide String buffer;
+    hide Integer commitWanted;
+    hide Integer blink;
+
+    expose func init() {
+        active = 0;
+        caretX = 0;
+        caretY = 0;
+        buffer = "";
+        commitWanted = 0;
+        blink = 0;
+    }
+
+    expose func id() -> Integer { return config.TOOL_TEXT; }
+    expose func name() -> String { return "Text"; }
+    expose func icon() -> String { return "T"; }
+    expose func isFreehand() -> Integer { return 0; }
+    expose func isDrawing() -> Integer { return active; }
+    expose func snapshotsBeforePress() -> Integer { return 0; }
+
+    expose func onPress(x: Integer, y: Integer, ctx: ToolContext) {
+        // Place / reposition the caret; keep any typed buffer so text can be
+        // nudged before committing.
+        caretX = x;
+        caretY = y;
+        active = 1;
+    }
+
+    expose func onDrag(x: Integer, y: Integer, ctx: ToolContext) {
+    }
+
+    expose func onRelease(x: Integer, y: Integer, ctx: ToolContext) {
+    }
+
+    expose func drawPreview(gfx: Canvas, view: CanvasViewport, ctx: ToolContext) {
+        if active == 0 {
+            return;
+        }
+        blink = blink + 1;
+        var sx = view.canvasToScreenX(caretX);
+        var sy = view.canvasToScreenY(caretY);
+        if Str.Length(buffer) > 0 {
+            gfx.Text(sx, sy, buffer, ctx.colors.foreground);
+        }
+        // Blinking caret bar after the text.
+        if (blink / 16) % 2 == 0 {
+            var cxp = sx + Canvas.TextWidth(buffer);
+            gfx.Box(cxp, sy, 1, 8, ctx.colors.foreground);
+        }
+    }
+
+    // --- app-facing input + commit API ---------------------------------------
+    expose func appendText(s: String) {
+        if active == 1 {
+            buffer = buffer + s;
+        }
+    }
+
+    expose func backspace() {
+        if active == 1 {
+            var n = Str.Length(buffer);
+            if n > 0 {
+                buffer = Str.Left(buffer, n - 1);
+            }
+        }
+    }
+
+    expose func text() -> String {
+        return buffer;
+    }
+
+    expose func requestCommit() {
+        if active == 1 and Str.Length(buffer) > 0 {
+            commitWanted = 1;
+        } else {
+            active = 0;
+        }
+    }
+
+    expose func wantsCommit() -> Integer {
+        return commitWanted;
+    }
+
+    expose func finishCommit() {
+        commitWanted = 0;
+        active = 0;
+        buffer = "";
+    }
+
+    expose func cancel() {
+        active = 0;
+        buffer = "";
+        commitWanted = 0;
+    }
+}

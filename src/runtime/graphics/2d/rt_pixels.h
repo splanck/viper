@@ -22,6 +22,8 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include "rt_string.h"
+
 #include <stddef.h>
 #include <stdint.h>
 
@@ -336,6 +338,41 @@ void rt_pixels_draw_bezier(void *pixels,
                            int64_t x2,
                            int64_t y2,
                            int64_t color);
+
+/// @brief Draw built-in 8x8 bitmap-font text at (x, y).
+void rt_pixels_draw_text(void *pixels, int64_t x, int64_t y, rt_string text, int64_t color);
+
+/// @brief Draw built-in 8x8 bitmap-font text with a filled background cell per glyph pixel.
+void rt_pixels_draw_text_bg(
+    void *pixels, int64_t x, int64_t y, rt_string text, int64_t fg, int64_t bg);
+
+/// @brief Return rendered text width in pixels at 1x scale.
+int64_t rt_pixels_text_width(rt_string text);
+
+/// @brief Return built-in font line height in pixels.
+int64_t rt_pixels_text_height(void);
+
+/// @brief Draw built-in text scaled by an integer factor.
+void rt_pixels_draw_text_scaled(
+    void *pixels, int64_t x, int64_t y, rt_string text, int64_t scale, int64_t color);
+
+/// @brief Draw scaled built-in text with a filled background cell per glyph pixel.
+void rt_pixels_draw_text_scaled_bg(
+    void *pixels, int64_t x, int64_t y, rt_string text, int64_t scale, int64_t fg, int64_t bg);
+
+/// @brief Return rendered text width in pixels at the given integer scale.
+int64_t rt_pixels_text_scaled_width(rt_string text, int64_t scale);
+
+/// @brief Draw text horizontally centered in the Pixels buffer at row y.
+void rt_pixels_draw_text_centered(void *pixels, int64_t y, rt_string text, int64_t color);
+
+/// @brief Draw text right-aligned to the Pixels buffer with the given margin.
+void rt_pixels_draw_text_right(
+    void *pixels, int64_t margin, int64_t y, rt_string text, int64_t color);
+
+/// @brief Draw scaled text horizontally centered in the Pixels buffer at row y.
+void rt_pixels_draw_text_centered_scaled(
+    void *pixels, int64_t y, rt_string text, int64_t color, int64_t scale);
 
 /// @brief Alpha-composite a color onto a pixel (Porter-Duff over).
 /// @param pixels Pixels object.

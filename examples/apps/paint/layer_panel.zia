@@ -1,21 +1,23 @@
-// ============================================================================
-// MODULE: layer_panel (LayerPanel)
-// PURPOSE: Rendered list of document layers with selection + visibility
-//          toggling. Top-down visual order (top layer drawn first) so
-//          it matches what the user sees composited on the canvas.
+//===----------------------------------------------------------------------===//
 //
-// KEY-DESIGN-CHOICES:
-//   * TOP-DOWN RENDER. Panel draws layers from (count-1) down to 0
-//     — the topmost visible layer appears at the top of the panel.
-//     This matches user mental model: "top of the panel = top of
-//     the stack = drawn last".
-//   * LEFT-CLICK = SELECT, RIGHT-CLICK = TOGGLE VISIBILITY. Keeps
-//     both primary interactions in one panel without a hover menu.
-//   * ELLIPSIS LABEL TRUNCATION. Layer names that don't fit in the
-//     available width get truncated with "." Math clamps the
-//     maxChars count down to 4 so extremely narrow panels don't
-//     crash with negative lengths.
-// ============================================================================
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/apps/paint/layer_panel.zia
+// Purpose: Layer list sidebar. Shows each layer (visibility, name, opacity,
+//          blend mode) top-down, plus an active-layer control strip with a
+//          click-to-cycle blend label and a click-to-set opacity bar.
+// Key invariants:
+//   - Rows are drawn top (count-1) down to 0 to match the composited stack.
+//   - Left-click a row selects; right-click toggles visibility; the control
+//     strip edits the active layer's blend mode / opacity.
+// Ownership/Lifetime:
+//   - Stateless view over DrawingCanvas; positioned by PaintApp each frame.
+// Links: canvas.zia (layer accessors), layers.zia (blend names)
+//
+//===----------------------------------------------------------------------===//
 
 // layer_panel.zia - Layer list rendering and interaction for Paint
 module layer_panel;
@@ -26,7 +28,7 @@ bind Str = Viper.String;
 bind "./canvas";
 bind "./config";
 
-/// @brief Layer-list sidebar with click-to-select + right-click-visibility.
+/// @brief Layer-list sidebar with active-layer blend + opacity controls.
 class LayerPanel {
     expose Integer x;
     expose Integer y;
@@ -39,7 +41,7 @@ class LayerPanel {
         y = 0;
         width = 0;
         height = 0;
-        rowHeight = 24;
+        rowHeight = 26;
     }
 
     expose func setup(px: Integer, py: Integer, pw: Integer, ph: Integer) {
@@ -51,21 +53,39 @@ class LayerPanel {
         if height < 80 { height = 80; }
     }
 
+    hide func ctrlY() -> Integer { return y + 26; }
+    hide func blendX() -> Integer { return x + 6; }
+    hide func blendW() -> Integer { return 46; }
+    hide func opBarX() -> Integer { return x + 56; }
+    hide func opBarW() -> Integer { return width - 62; }
+    hide func rowsTop() -> Integer { return y + 50; }
+
     expose func draw(gfx: Canvas, doc: canvas.DrawingCanvas) {
         gfx.RoundBox(x, y, width, height, 6, config.UI_BG_PANEL);
         gfx.RoundFrame(x, y, width, height, 6, config.UI_BORDER);
         gfx.Text(x + 8, y + 8, "Layers", config.UI_TEXT);
 
-        var rowY = y + 28;
+        // Active-layer control strip: blend label + opacity bar.
+        var cy = ctrlY();
+        gfx.RoundBox(blendX(), cy, blendW(), 16, 3, config.UI_BG_BUTTON);
+        gfx.RoundFrame(blendX(), cy, blendW(), 16, 3, config.UI_BORDER);
+        gfx.Text(blendX() + 5, cy + 4, doc.activeBlendName(), config.UI_TEXT);
+
+        var op = doc.layerOpacityAt(doc.activeLayerIndex());
+        gfx.RoundBox(opBarX(), cy + 2, opBarW(), 12, 3, config.UI_BG_DARK);
+        var fill = op * opBarW() / 100;
+        if fill > 0 {
+            gfx.RoundBox(opBarX(), cy + 2, fill, 12, 3, config.UI_ACCENT);
+        }
+        gfx.RoundFrame(opBarX(), cy + 2, opBarW(), 12, 3, config.UI_BORDER);
+
+        var rowY = rowsTop();
         var i = doc.layerCount() - 1;
         while i >= 0 {
             drawLayerRow(gfx, doc, i, rowY);
             rowY = rowY + rowHeight;
             i = i - 1;
         }
-
-        var helpY = y + height - 14;
-        gfx.Text(x + 8, helpY, "L: select  R: eye", config.UI_TEXT_DIM);
     }
 
     expose func handleMouse(mx: Integer,
@@ -79,18 +99,38 @@ class LayerPanel {
             return "";
         }
 
-        var rowTop = y + 28;
-        var row = (my - rowTop) / rowHeight;
+        var pressed = 0;
+        if leftDown == 1 and lastLeftDown == 0 {
+            pressed = 1;
+        }
+
+        // Active-layer control strip.
+        var cy = ctrlY();
+        if leftDown == 1 and my >= cy and my < cy + 16 {
+            if pressed == 1 and mx >= blendX() and mx < blendX() + blendW() {
+                doc.cycleActiveBlendMode();
+                return "Blend: " + doc.activeBlendName();
+            }
+            if mx >= opBarX() and mx < opBarX() + opBarW() {
+                var pct = (mx - opBarX()) * 100 / opBarW();
+                if pct < 0 { pct = 0; }
+                if pct > 100 { pct = 100; }
+                doc.setActiveLayerOpacity(pct);
+                return "Opacity " + pct;
+            }
+        }
+
+        // Layer rows.
+        var row = (my - rowsTop()) / rowHeight;
         if row < 0 {
             return "";
         }
-
         var layerIndex = doc.layerCount() - 1 - row;
         if layerIndex < 0 or layerIndex >= doc.layerCount() {
             return "";
         }
 
-        if leftDown == 1 and lastLeftDown == 0 {
+        if pressed == 1 {
             doc.selectLayer(layerIndex);
             return "Selected " + doc.activeLayerName();
         }
@@ -116,21 +156,27 @@ class LayerPanel {
         if selected == 1 {
             bg = config.UI_BG_BUTTON_ACTIVE;
         }
-        gfx.Box(x + 4, rowY, width - 8, rowHeight - 2, bg);
-        gfx.Frame(x + 4, rowY, width - 8, rowHeight - 2, config.UI_BORDER);
+        gfx.RoundBox(x + 4, rowY, width - 8, rowHeight - 2, 3, bg);
+        gfx.RoundFrame(x + 4, rowY, width - 8, rowHeight - 2, 3, config.UI_BORDER);
 
-        var eye = "off";
+        // Visibility dot.
+        var eyeColor = config.UI_TEXT_DIM;
         if doc.layerVisibleAt(layerIndex) == 1 {
-            eye = "on";
+            eyeColor = config.UI_ACCENT_HI;
         }
-        gfx.Text(x + 8, rowY + 6, eye, config.UI_TEXT_DIM);
+        gfx.Disc(x + 12, rowY + 8, 4, eyeColor);
 
+        // Name (truncated).
         var label = doc.layerNameAt(layerIndex);
-        var maxChars = (width - 54) / 8;
-        if maxChars < 4 { maxChars = 4; }
+        var maxChars = (width - 36) / 8;
+        if maxChars < 3 { maxChars = 3; }
         if Str.Length(label) > maxChars {
             label = Str.Left(label, maxChars - 1) + ".";
         }
-        gfx.Text(x + 34, rowY + 6, label, config.UI_TEXT);
+        gfx.Text(x + 22, rowY + 3, label, config.UI_TEXT);
+
+        // Opacity % + blend label (second line, dim).
+        var info = doc.layerOpacityAt(layerIndex) + "% " + doc.blendNameAt(layerIndex);
+        gfx.Text(x + 22, rowY + 13, info, config.UI_TEXT_DIM);
     }
 }

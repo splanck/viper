@@ -54,16 +54,32 @@ typedef void (*rt_game3d_test_async_cache_publish_hook_fn)(void *user_data);
 static rt_game3d_test_async_cache_publish_hook_fn g_game3d_test_async_cache_publish_hook = NULL;
 static void *g_game3d_test_async_cache_publish_hook_user_data = NULL;
 
+/// @brief Install a test-only callback that runs just before async cache publication.
+/// @details The hook pointer and userdata are protected by the model-cache lock because async asset
+///          jobs can publish from the main-thread commit queue while tests install or clear hooks
+///          from setup/teardown code.
+/// @param hook Callback to invoke before publication, or NULL to clear the hook.
+/// @param user_data Opaque value passed to @p hook.
 void rt_game3d_test_set_async_cache_publish_hook(rt_game3d_test_async_cache_publish_hook_fn hook,
                                                  void *user_data) {
+    game3d_model_cache_lock();
     g_game3d_test_async_cache_publish_hook = hook;
     g_game3d_test_async_cache_publish_hook_user_data = user_data;
+    game3d_model_cache_unlock();
 }
 
+/// @brief Invoke the async cache publication hook after copying it under lock.
+/// @details The callback runs outside the cache lock so tests can inspect cache state or trigger
+///          additional runtime work without deadlocking the publication path.
 static void game3d_asset_async_run_cache_publish_hook(void) {
-    rt_game3d_test_async_cache_publish_hook_fn hook = g_game3d_test_async_cache_publish_hook;
+    rt_game3d_test_async_cache_publish_hook_fn hook;
+    void *user_data;
+    game3d_model_cache_lock();
+    hook = g_game3d_test_async_cache_publish_hook;
+    user_data = g_game3d_test_async_cache_publish_hook_user_data;
+    game3d_model_cache_unlock();
     if (hook)
-        hook(g_game3d_test_async_cache_publish_hook_user_data);
+        hook(user_data);
 }
 
 /// @brief Allocate a terminal AssetHandle3D retaining its result object.
@@ -1307,6 +1323,9 @@ void rt_game3d_assets_clear_cache(void) {
     g_game3d_model_cache_capacity = 0;
     g_game3d_model_cache_tick = 0;
     g_game3d_model_resident_bytes = 0;
+    free(g_game3d_model_cache_victim_heap);
+    g_game3d_model_cache_victim_heap = NULL;
+    g_game3d_model_cache_victim_heap_capacity = 0;
     game3d_model_cache_advance_generation_locked();
     game3d_model_cache_notify_all();
     game3d_model_cache_unlock();

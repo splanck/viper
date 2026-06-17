@@ -747,6 +747,10 @@ void rt_gradient2d_set_steps(void *gradient, int64_t steps);
 int64_t rt_gradient2d_sample(void *gradient, int64_t t_pct);
 /// @brief Sample the gradient as a Viper.Graphics.Color-compatible value.
 int64_t rt_gradient2d_sample_color(void *gradient, int64_t t_pct);
+/// @brief Sample the gradient at normalized @p t (0.0..1.0), returning an RGBA color.
+int64_t rt_gradient2d_sample_normalized(void *gradient, double t);
+/// @brief Sample the gradient at normalized @p t as a Viper.Graphics.Color-compatible value.
+int64_t rt_gradient2d_sample_color_normalized(void *gradient, double t);
 /// @brief Fill a Pixels image with a left-to-right gradient.
 void rt_gradient2d_fill_horizontal(void *gradient, void *pixels);
 /// @brief Fill a Pixels image with a top-to-bottom gradient.

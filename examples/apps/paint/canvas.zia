@@ -71,6 +71,17 @@ class DrawingCanvas {
         return layerStack.getActivePixels().GetRGB(x, y);
     }
 
+    // Sample the composited color at a position for the eyedropper.
+    // Reads raw RGBA from the composite; returns 0x00RRGGBB, or -1 when the
+    // sampled pixel is fully transparent (alpha 0) so callers can skip it.
+    expose func sampleColor(x: Integer, y: Integer) -> Integer {
+        var raw = getPixels().Get(x, y);
+        if raw % 256 == 0 {
+            return -1;
+        }
+        return raw / 256;
+    }
+
     // Set pixel color at position (expects 0x00RRGGBB format)
     expose func setPixel(x: Integer, y: Integer, color: Integer) {
         layerStack.getActivePixels().SetRGB(x, y, color);
@@ -86,6 +97,19 @@ class DrawingCanvas {
             layerStack.getActivePixels().BlendPixel(x, y, color, opacity * 255 / 100);
             markChanged();
         }
+    }
+
+    // Erase a pixel. On the opaque base layer (index 0) this paints the
+    // background colour (Photoshop-style locked background); on any normal
+    // layer it writes a fully transparent pixel (raw RGBA 0) so layers below
+    // and the checkerboard show through. Uses the raw Pixels.Set primitive.
+    expose func erasePixel(x: Integer, y: Integer) {
+        if layerStack.activeIndex == 0 {
+            layerStack.getActivePixels().SetRGB(x, y, backgroundColor);
+        } else {
+            layerStack.getActivePixels().Set(x, y, 0);
+        }
+        markChanged();
     }
 
     // Draw a line (Bresenham, 0x00RRGGBB color)
@@ -136,9 +160,83 @@ class DrawingCanvas {
         markChanged();
     }
 
+    // Draw a quadratic Bezier curve (control point cx, cy).
+    expose func drawBezier(x1: Integer, y1: Integer, cpx: Integer, cpy: Integer, x2: Integer, y2: Integer, color: Integer) {
+        layerStack.getActivePixels().DrawBezier(x1, y1, cpx, cpy, x2, y2, color);
+        markChanged();
+    }
+
+    // Draw a filled triangle (used for convex polygon fan fill).
+    expose func drawTriangleFill(x1: Integer, y1: Integer, x2: Integer, y2: Integer, x3: Integer, y3: Integer, color: Integer) {
+        layerStack.getActivePixels().DrawTriangle(x1, y1, x2, y2, x3, y3, color);
+        markChanged();
+    }
+
     // Flood fill (iterative — no depth limit, works on any canvas size)
     expose func floodFill(startX: Integer, startY: Integer, newColor: Integer) {
         layerStack.getActivePixels().FloodFill(startX, startY, newColor);
+        markChanged();
+    }
+
+    // Fill the active layer with a linear gradient from c1 (at the drag start)
+    // to c2 (at the drag end). Each pixel's blend factor is its projection onto
+    // the drag vector, clamped to [0,100]; colours interpolated with Color.Lerp.
+    expose func fillGradient(x1: Integer, y1: Integer, x2: Integer, y2: Integer, c1: Integer, c2: Integer) {
+        var dx = x2 - x1;
+        var dy = y2 - y1;
+        var lenSq = dx * dx + dy * dy;
+        if lenSq <= 0 {
+            return;
+        }
+        var px = layerStack.getActivePixels();
+        var yy = 0;
+        while yy < height {
+            var xx = 0;
+            while xx < width {
+                var rel = (xx - x1) * dx + (yy - y1) * dy;
+                var t = rel * 100 / lenSq;
+                if t < 0 { t = 0; }
+                if t > 100 { t = 100; }
+                px.SetRGB(xx, yy, Color.Lerp(c1, c2, t));
+                xx = xx + 1;
+            }
+            yy = yy + 1;
+        }
+        markChanged();
+    }
+
+    // Erase a rectangular region of the active layer (transparent on normal
+    // layers, background colour on the base layer). Used by cut/delete.
+    expose func eraseRegion(rx: Integer, ry: Integer, rw: Integer, rh: Integer) {
+        var px = layerStack.getActivePixels();
+        var onBase = 0;
+        if layerStack.activeIndex == 0 {
+            onBase = 1;
+        }
+        var yy = ry;
+        while yy < ry + rh {
+            var xx = rx;
+            while xx < rx + rw {
+                if xx >= 0 and yy >= 0 and xx < width and yy < height {
+                    if onBase == 1 {
+                        px.SetRGB(xx, yy, backgroundColor);
+                    } else {
+                        px.Set(xx, yy, 0);
+                    }
+                }
+                xx = xx + 1;
+            }
+            yy = yy + 1;
+        }
+        markChanged();
+    }
+
+    // Stamp a Pixels buffer onto the active layer at (dx, dy). Used by paste.
+    expose func pastePixels(src: Pixels, dx: Integer, dy: Integer) {
+        if src == null {
+            return;
+        }
+        layerStack.getActivePixels().Copy(dx, dy, src, 0, 0, src.Width, src.Height);
         markChanged();
     }
 
@@ -301,6 +399,75 @@ class DrawingCanvas {
     expose func flipActiveV() {
         layerStack.replaceActivePixels(layerStack.getActivePixels().FlipV());
         markChanged();
+    }
+
+    expose func tintActive(color: Integer) {
+        layerStack.replaceActivePixels(layerStack.getActivePixels().Tint(color));
+        markChanged();
+    }
+
+    // Whole-canvas transforms (rotate all layers + swap dimensions).
+    expose func rotateCanvasCW() {
+        layerStack.rotateAllCW();
+        width = layerStack.width;
+        height = layerStack.height;
+        markChanged();
+    }
+
+    expose func rotateCanvasCCW() {
+        layerStack.rotateAllCCW();
+        width = layerStack.width;
+        height = layerStack.height;
+        markChanged();
+    }
+
+    expose func resizeCanvas(newW: Integer, newH: Integer) {
+        layerStack.resizeAll(newW, newH);
+        width = layerStack.width;
+        height = layerStack.height;
+        markChanged();
+    }
+
+    expose func cropCanvas(cx: Integer, cy: Integer, cw: Integer, ch: Integer) {
+        layerStack.cropAll(cx, cy, cw, ch);
+        width = layerStack.width;
+        height = layerStack.height;
+        markChanged();
+    }
+
+    // Layer compositing operations.
+    expose func mergeActiveDownLayer() -> Integer {
+        var changed = layerStack.mergeActiveDown();
+        if changed == 1 {
+            markChanged();
+        }
+        return changed;
+    }
+
+    expose func flattenLayers() {
+        layerStack.flatten();
+        markChanged();
+    }
+
+    expose func cycleActiveBlendMode() {
+        layerStack.cycleBlendMode(layerStack.activeIndex);
+        markChanged();
+    }
+
+    expose func activeBlendMode() -> Integer {
+        return layerStack.getBlendMode(layerStack.activeIndex);
+    }
+
+    expose func layerBlendModeAt(index: Integer) -> Integer {
+        return layerStack.getBlendMode(index);
+    }
+
+    expose func blendNameAt(index: Integer) -> String {
+        return layers.blendModeName(layerStack.getBlendMode(index));
+    }
+
+    expose func activeBlendName() -> String {
+        return layers.blendModeName(layerStack.getBlendMode(layerStack.activeIndex));
     }
 
     hide func markChanged() {

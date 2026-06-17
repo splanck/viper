@@ -37,6 +37,7 @@ bind Viper.Input;
 bind Viper.Core.Convert;
 bind Viper.GUI as GUI;
 bind Viper.Game;
+bind Viper.Collections;
 
 bind "./config";
 bind "./settings";
@@ -51,16 +52,15 @@ bind "./tool_palette";
 bind "./layer_panel";
 bind "./feedback";
 bind "./file_service";
-bind "./tools/pencil";
-bind "./tools/brush";
-bind "./tools/eraser";
-bind "./tools/line";
-bind "./tools/rectangle";
-bind "./tools/ellipse";
-bind "./tools/fill";
-bind "./tools/eyedropper";
+bind "./selection";
+bind "./clipboard";
+bind "./tools/tool";
+bind "./tools/registry";
+bind "./tools/text";
 bind "./ui/button";
 bind "./ui/slider";
+bind "./ui/color_picker";
+bind "./ui/menu";
 
 /// @brief Top-level controller. Owns every subsystem + the main loop.
 class PaintApp {
@@ -78,15 +78,13 @@ class PaintApp {
     expose colors.ColorManager colors;
     expose brush.BrushSettings brushSettings;
 
-    // Tools
-    hide pencil.PencilTool pencilTool;
-    hide brush_tool.BrushTool brushTool;
-    hide eraser.EraserTool eraserTool;
-    hide line.LineTool lineTool;
-    hide rectangle.RectangleTool rectTool;
-    hide ellipse.EllipseTool ellipseTool;
-    hide fill.FillTool fillTool;
-    hide eyedropper.EyedropperTool eyedropperTool;
+    // Tools (registry-backed dynamic dispatch)
+    hide registry.ToolRegistry toolRegistry;
+    hide tool.ToolContext toolCtx;
+    hide tool.Tool activeTool;
+    hide selection.Selection selection;
+    hide clipboard.PaintClipboard paintClipboard;
+    hide text.TextTool textTool;
 
     // Current tool state
     expose Integer currentTool;  // Tool ID from config
@@ -100,34 +98,21 @@ class PaintApp {
     hide file_service.PaintFileService fileService;
     hide DebugOverlay debugOverlay;
 
-    // UI elements - Tool buttons
-    hide button.ToolButton btnPencil;
-    hide button.ToolButton btnBrush;
-    hide button.ToolButton btnEraser;
-    hide button.ToolButton btnLine;
-    hide button.ToolButton btnRect;
-    hide button.ToolButton btnEllipse;
-    hide button.ToolButton btnFill;
-    hide button.ToolButton btnEyedropper;
+    // UI elements - Tool buttons (registry-driven, one per tool)
+    hide List[button.ToolButton] toolButtons;
 
     // UI elements - Sliders
     hide slider.Slider sizeSlider;
     hide slider.Slider opacitySlider;
 
-    // UI elements - Buttons
+    // Modal colour picker
+    hide color_picker.ColorPicker colorPicker;
+
+    // Toolbar quick buttons (everything else lives in the menu bar).
     hide button.Button btnNew;
     hide button.Button btnOpen;
     hide button.Button btnSave;
-    hide button.Button btnClear;
-    hide button.Button btnLayer;
-    hide button.Button btnLayerDup;
-    hide button.Button btnLayerDel;
-    hide button.Button btnLayerUp;
-    hide button.Button btnLayerDown;
-    hide button.Button btnGray;
-    hide button.Button btnInvert;
-    hide button.Button btnFlipH;
-    hide button.Button btnBlur;
+    hide menu.MenuBar menuBar;
 
     // Mouse state
     hide Integer mouseX;
@@ -143,6 +128,12 @@ class PaintApp {
     // Application state
     expose Integer running;
     expose String statusMessage;
+    hide Integer showHelp;
+
+    // On-canvas toast (transient banner).
+    hide String toastMsg;
+    hide Integer toastTtl;
+    hide Integer toastKind;
 
     // Canvas offset (where canvas is drawn on screen)
     hide Integer canvasOffsetX;
@@ -185,23 +176,30 @@ class PaintApp {
         layersPanel = new layer_panel.LayerPanel();
         feedbackMgr = new feedback.FeedbackManager();
         fileService = new file_service.PaintFileService();
+        colorPicker = new color_picker.ColorPicker();
         debugOverlay = DebugOverlay.New();
         if runtimeSettings.debugOnStart == 1 {
             debugOverlay.Enable();
         }
 
-        // Initialize tools (new calls init automatically)
-        pencilTool = new pencil.PencilTool();
-        brushTool = new brush_tool.BrushTool();
-        eraserTool = new eraser.EraserTool();
-        lineTool = new line.LineTool();
-        rectTool = new rectangle.RectangleTool();
-        ellipseTool = new ellipse.EllipseTool();
-        fillTool = new fill.FillTool();
-        eyedropperTool = new eyedropper.EyedropperTool();
+        // Initialize tools (registry-backed) and the shared tool context.
+        selection = new selection.Selection();
+        paintClipboard = new clipboard.PaintClipboard();
+        toolRegistry = new registry.ToolRegistry();
+        toolCtx = new tool.ToolContext();
+        toolCtx.attach(canvas, colors, brushSettings, selection, paintClipboard, historyMgr);
+
+        // Populate the tool palette (exclusive selection) from the registry.
+        var ti = 0;
+        while ti < toolRegistry.count() {
+            toolPalette.register(toolRegistry.at(ti).id());
+            ti = ti + 1;
+        }
 
         currentTool = runtimeSettings.defaultTool;
-        toolPalette.select(currentTool);
+        toolPalette.selectInitial(currentTool);
+        activeTool = toolRegistry.get(currentTool);
+        textTool = toolRegistry.textTool();
 
         // Calculate canvas offset
         canvasOffsetX = config.TOOL_PANEL_WIDTH + 10;
@@ -217,7 +215,11 @@ class PaintApp {
 
         // State
         running = 1;
-        setStatus("Ready - draw, 1-8/P/B/E/L/R/O/F/I tools, Ctrl+S save, Ctrl+Z undo");
+        showHelp = 0;
+        toastMsg = "";
+        toastTtl = 0;
+        toastKind = 0;
+        setStatus("Ready - menus up top, H for shortcuts, click a swatch for the colour picker");
         mouseX = 0;
         mouseY = 0;
         lastMouseX = 0;
@@ -236,56 +238,43 @@ class PaintApp {
         var toolSize = config.TOOL_BUTTON_SIZE;
         var margin = config.TOOL_BUTTON_MARGIN;
 
-        // Tool buttons
-        btnPencil = new button.ToolButton();
-        btnPencil.setup(toolX, toolY, toolSize, "P", config.TOOL_PENCIL);
-        toolY = toolY + toolSize + margin;
+        // Tool buttons — one per registered tool, laid out in a 2-column grid.
+        toolButtons = [];
+        var cols = 2;
+        var k = 0;
+        while k < toolRegistry.count() {
+            var t = toolRegistry.at(k);
+            var bcol = k % cols;
+            var brow = k / cols;
+            var btn = new button.ToolButton();
+            btn.setup(toolX + bcol * (toolSize + margin),
+                      toolY + brow * (toolSize + margin),
+                      toolSize, t.icon(), t.id());
+            toolButtons.add(btn);
+            k = k + 1;
+        }
+        var rows = (toolRegistry.count() + cols - 1) / cols;
 
-        btnBrush = new button.ToolButton();
-        btnBrush.setup(toolX, toolY, toolSize, "B", config.TOOL_BRUSH);
-        btnBrush.selected = 1;  // Start selected
-        toolY = toolY + toolSize + margin;
-
-        btnEraser = new button.ToolButton();
-        btnEraser.setup(toolX, toolY, toolSize, "E", config.TOOL_ERASER);
-        toolY = toolY + toolSize + margin;
-
-        btnLine = new button.ToolButton();
-        btnLine.setup(toolX, toolY, toolSize, "L", config.TOOL_LINE);
-        toolY = toolY + toolSize + margin;
-
-        btnRect = new button.ToolButton();
-        btnRect.setup(toolX, toolY, toolSize, "R", config.TOOL_RECTANGLE);
-        toolY = toolY + toolSize + margin;
-
-        btnEllipse = new button.ToolButton();
-        btnEllipse.setup(toolX, toolY, toolSize, "O", config.TOOL_ELLIPSE);
-        toolY = toolY + toolSize + margin;
-
-        btnFill = new button.ToolButton();
-        btnFill.setup(toolX, toolY, toolSize, "F", config.TOOL_FILL);
-        toolY = toolY + toolSize + margin;
-
-        btnEyedropper = new button.ToolButton();
-        btnEyedropper.setup(toolX, toolY, toolSize, "I", config.TOOL_EYEDROPPER);
-
-        // Sliders - positioned below tool buttons
+        // Sliders - positioned below the tool-button grid.
         var sliderX = 6;
-        var sliderY = toolY + toolSize + 30;
+        var sliderY = toolY + rows * (toolSize + margin) + 28;
         var sliderW = config.TOOL_PANEL_WIDTH - 12;
 
         sizeSlider = new slider.Slider();
-        sizeSlider.setup(sliderX, sliderY, sliderW, 16, "Size", 1, 64, 8);
+        sizeSlider.setup(sliderX, sliderY, sliderW, 16, "Size", config.MIN_BRUSH_SIZE, config.MAX_BRUSH_SIZE, brushSettings.size);
 
         sliderY = sliderY + 40;
         opacitySlider = new slider.Slider();
-        opacitySlider.setup(sliderX, sliderY, sliderW, 16, "Opacity", 0, 100, 100);
+        opacitySlider.setup(sliderX, sliderY, sliderW, 16, "Opacity", config.MIN_OPACITY, config.MAX_OPACITY, brushSettings.opacity);
 
-        // Toolbar buttons
+        // Menu bar lives in the top toolbar; the bulk of commands are there.
+        buildMenus();
+
+        // Quick-access buttons to the right of the menu titles.
         var btnY = 8;
         var btnH = 24;
         var btnW = 50;
-        var btnX = config.TOOL_PANEL_WIDTH + 10;
+        var btnX = 372;
 
         btnNew = new button.Button();
         btnNew.setup(btnX, btnY, btnW, btnH, "New");
@@ -297,48 +286,100 @@ class PaintApp {
 
         btnSave = new button.Button();
         btnSave.setup(btnX, btnY, btnW, btnH, "Save");
-        btnX = btnX + btnW + 20;
-
-        btnClear = new button.Button();
-        btnClear.setup(btnX, btnY, btnW + 10, btnH, "Clear");
-        btnX = btnX + btnW + 16;
-
-        btnLayer = new button.Button();
-        btnLayer.setup(btnX, btnY, btnW + 30, btnH, "+ Layer");
-        btnX = btnX + btnW + 36;
-
-        btnLayerDup = new button.Button();
-        btnLayerDup.setup(btnX, btnY, btnW + 4, btnH, "Dup");
-        btnX = btnX + btnW + 10;
-
-        btnLayerDel = new button.Button();
-        btnLayerDel.setup(btnX, btnY, btnW + 4, btnH, "Del");
-        btnX = btnX + btnW + 10;
-
-        btnLayerUp = new button.Button();
-        btnLayerUp.setup(btnX, btnY, btnW, btnH, "Up");
-        btnX = btnX + btnW + 6;
-
-        btnLayerDown = new button.Button();
-        btnLayerDown.setup(btnX, btnY, btnW, btnH, "Down");
-        btnX = btnX + btnW + 20;
-
-        btnGray = new button.Button();
-        btnGray.setup(btnX, btnY, btnW + 10, btnH, "Gray");
-        btnX = btnX + btnW + 16;
-
-        btnInvert = new button.Button();
-        btnInvert.setup(btnX, btnY, btnW + 10, btnH, "Invert");
-        btnX = btnX + btnW + 16;
-
-        btnFlipH = new button.Button();
-        btnFlipH.setup(btnX, btnY, btnW + 10, btnH, "FlipH");
-        btnX = btnX + btnW + 16;
-
-        btnBlur = new button.Button();
-        btnBlur.setup(btnX, btnY, btnW + 10, btnH, "Blur");
 
         updateLayerPanelLayout();
+    }
+
+    // Build the menu-bar structure (titles + items with action strings).
+    hide func buildMenus() {
+        menuBar = new menu.MenuBar();
+        menuBar.height = config.TOOLBAR_HEIGHT;
+
+        var mFile = menuBar.addMenu("File");
+        mFile.addItem("New", "new");
+        mFile.addItem("Open...", "open");
+        mFile.addItem("Save", "save");
+        mFile.addItem("Save As...", "saveas");
+        mFile.addItem("Quit", "quit");
+
+        var mEdit = menuBar.addMenu("Edit");
+        mEdit.addItem("Undo", "undo");
+        mEdit.addItem("Redo", "redo");
+        mEdit.addItem("Cut", "cut");
+        mEdit.addItem("Copy", "copy");
+        mEdit.addItem("Paste", "paste");
+        mEdit.addItem("Delete", "delete");
+        mEdit.addItem("Clear Canvas", "clear");
+
+        var mImage = menuBar.addMenu("Image");
+        mImage.addItem("Grayscale", "gray");
+        mImage.addItem("Invert", "invert");
+        mImage.addItem("Blur", "blur");
+        mImage.addItem("Flip Horizontal", "fliph");
+        mImage.addItem("Flip Vertical", "flipv");
+        mImage.addItem("Rotate 90 CW", "rotcw");
+        mImage.addItem("Rotate 90 CCW", "rotccw");
+        mImage.addItem("Tint (foreground)", "tint");
+        mImage.addItem("Crop to Selection", "crop");
+
+        var mLayer = menuBar.addMenu("Layer");
+        mLayer.addItem("Add Layer", "addlayer");
+        mLayer.addItem("Duplicate", "duplayer");
+        mLayer.addItem("Delete", "dellayer");
+        mLayer.addItem("Merge Down", "mergedown");
+        mLayer.addItem("Move Up", "layerup");
+        mLayer.addItem("Move Down", "layerdown");
+        mLayer.addItem("Cycle Blend Mode", "blend");
+        mLayer.addItem("Flatten Image", "flatten");
+
+        var mView = menuBar.addMenu("View");
+        mView.addItem("Zoom In", "zoomin");
+        mView.addItem("Zoom Out", "zoomout");
+        mView.addItem("Reset Zoom", "zoomreset");
+        mView.addItem("Fullscreen", "fullscreen");
+        mView.addItem("Debug Overlay", "debug");
+
+        var mHelp = menuBar.addMenu("Help");
+        mHelp.addItem("Shortcuts", "help");
+    }
+
+    // Map a menu action string to the corresponding command.
+    hide func dispatchMenuAction(action: String) {
+        if action == "new" { newDocument(); }
+        else if action == "open" { openDocument(); }
+        else if action == "save" { saveDocument(); }
+        else if action == "saveas" { saveDocumentAs(); }
+        else if action == "quit" { running = 0; }
+        else if action == "undo" { undo(); }
+        else if action == "redo" { redo(); }
+        else if action == "cut" { cutSelection(); }
+        else if action == "copy" { copySelection(); }
+        else if action == "paste" { pasteClipboard(); }
+        else if action == "delete" { deleteSelection(); }
+        else if action == "clear" { clearDocument(); }
+        else if action == "gray" { applyGrayscale(); }
+        else if action == "invert" { applyInvert(); }
+        else if action == "blur" { applyBlur(); }
+        else if action == "fliph" { flipLayerH(); }
+        else if action == "flipv" { flipLayerV(); }
+        else if action == "rotcw" { rotateImageCW(); }
+        else if action == "rotccw" { rotateImageCCW(); }
+        else if action == "tint" { tintLayer(); }
+        else if action == "crop" { cropToSelection(); }
+        else if action == "addlayer" { addLayer(); }
+        else if action == "duplayer" { duplicateLayer(); }
+        else if action == "dellayer" { deleteLayer(); }
+        else if action == "mergedown" { mergeDownLayer(); }
+        else if action == "layerup" { moveLayerUp(); }
+        else if action == "layerdown" { moveLayerDown(); }
+        else if action == "blend" { cycleBlend(); }
+        else if action == "flatten" { flattenImage(); }
+        else if action == "zoomin" { view.zoomIn(canvas.width, canvas.height); setStatus("Zoom " + view.zoomLabel()); }
+        else if action == "zoomout" { view.zoomOut(canvas.width, canvas.height); setStatus("Zoom " + view.zoomLabel()); }
+        else if action == "zoomreset" { view.resetZoom(canvas.width, canvas.height); setStatus("Zoom reset"); }
+        else if action == "fullscreen" { toggleFullscreen(); }
+        else if action == "debug" { debugOverlay.Toggle(); }
+        else if action == "help" { toggleHelp(); }
     }
 
     // Snapshot current canvas pixels for undo (call before each stroke)
@@ -398,6 +439,30 @@ class PaintApp {
             mouseRight = 0;
         }
 
+        // Modal colour picker consumes all input while open.
+        if colorPicker.visible == 1 {
+            var pickResult = colorPicker.handleMouse(mouseX, mouseY, mouseDown, lastMouseDown);
+            if pickResult == color_picker.RESULT_APPLIED {
+                applyPickerColor();
+            }
+            return;
+        }
+
+        // Menu bar gets first chance at clicks; modal while a dropdown is open.
+        var menuPressed = 0;
+        if mouseDown == 1 and lastMouseDown == 0 {
+            menuPressed = 1;
+        }
+        var menuWasOpen = menuBar.isOpen();
+        var menuAct = menuBar.handleMouse(mouseX, mouseY, menuPressed);
+        if menuAct != "" {
+            dispatchMenuAction(menuAct);
+            return;
+        }
+        if menuBar.isOpen() == 1 or menuWasOpen == 1 {
+            return;
+        }
+
         view.applyWheel(Viper.Input.Mouse.WheelX(),
                         Viper.Input.Mouse.WheelY(),
                         canvas.width,
@@ -411,52 +476,23 @@ class PaintApp {
         }
 
         // Reset button click states
-        btnPencil.resetClick();
-        btnBrush.resetClick();
-        btnEraser.resetClick();
-        btnLine.resetClick();
-        btnRect.resetClick();
-        btnEllipse.resetClick();
-        btnFill.resetClick();
-        btnEyedropper.resetClick();
+        var rb = 0;
+        while rb < toolButtons.count() {
+            toolButtons.get(rb).resetClick();
+            rb = rb + 1;
+        }
         btnNew.resetClick();
         btnOpen.resetClick();
         btnSave.resetClick();
-        btnClear.resetClick();
-        btnLayer.resetClick();
-        btnLayerDup.resetClick();
-        btnLayerDel.resetClick();
-        btnLayerUp.resetClick();
-        btnLayerDown.resetClick();
-        btnGray.resetClick();
-        btnInvert.resetClick();
-        btnFlipH.resetClick();
-        btnBlur.resetClick();
 
-        // Handle tool button clicks
-        if btnPencil.handleMouse(mouseX, mouseY, mouseDown) == 1 {
-            selectTool(config.TOOL_PENCIL);
-        }
-        if btnBrush.handleMouse(mouseX, mouseY, mouseDown) == 1 {
-            selectTool(config.TOOL_BRUSH);
-        }
-        if btnEraser.handleMouse(mouseX, mouseY, mouseDown) == 1 {
-            selectTool(config.TOOL_ERASER);
-        }
-        if btnLine.handleMouse(mouseX, mouseY, mouseDown) == 1 {
-            selectTool(config.TOOL_LINE);
-        }
-        if btnRect.handleMouse(mouseX, mouseY, mouseDown) == 1 {
-            selectTool(config.TOOL_RECTANGLE);
-        }
-        if btnEllipse.handleMouse(mouseX, mouseY, mouseDown) == 1 {
-            selectTool(config.TOOL_ELLIPSE);
-        }
-        if btnFill.handleMouse(mouseX, mouseY, mouseDown) == 1 {
-            selectTool(config.TOOL_FILL);
-        }
-        if btnEyedropper.handleMouse(mouseX, mouseY, mouseDown) == 1 {
-            selectTool(config.TOOL_EYEDROPPER);
+        // Handle tool button clicks (registry-driven).
+        var hb = 0;
+        while hb < toolButtons.count() {
+            var tbBtn = toolButtons.get(hb);
+            if tbBtn.handleMouse(mouseX, mouseY, mouseDown) == 1 {
+                selectTool(tbBtn.toolId);
+            }
+            hb = hb + 1;
         }
 
         // Handle sliders
@@ -473,59 +509,18 @@ class PaintApp {
             setStatus(layerMsg);
         }
 
-        // Handle toolbar buttons
+        // Quick-access toolbar buttons.
         btnNew.handleMouse(mouseX, mouseY, mouseDown);
         btnOpen.handleMouse(mouseX, mouseY, mouseDown);
         btnSave.handleMouse(mouseX, mouseY, mouseDown);
-        btnClear.handleMouse(mouseX, mouseY, mouseDown);
-        btnLayer.handleMouse(mouseX, mouseY, mouseDown);
-        btnLayerDup.handleMouse(mouseX, mouseY, mouseDown);
-        btnLayerDel.handleMouse(mouseX, mouseY, mouseDown);
-        btnLayerUp.handleMouse(mouseX, mouseY, mouseDown);
-        btnLayerDown.handleMouse(mouseX, mouseY, mouseDown);
-        btnGray.handleMouse(mouseX, mouseY, mouseDown);
-        btnInvert.handleMouse(mouseX, mouseY, mouseDown);
-        btnFlipH.handleMouse(mouseX, mouseY, mouseDown);
-        btnBlur.handleMouse(mouseX, mouseY, mouseDown);
-
         if btnNew.clicked() == 1 {
             newDocument();
         }
-        if btnClear.clicked() == 1 {
-            clearDocument();
-        }
-        if btnLayer.clicked() == 1 {
-            addLayer();
-        }
-        if btnLayerDup.clicked() == 1 {
-            duplicateLayer();
-        }
-        if btnLayerDel.clicked() == 1 {
-            deleteLayer();
-        }
-        if btnLayerUp.clicked() == 1 {
-            moveLayerUp();
-        }
-        if btnLayerDown.clicked() == 1 {
-            moveLayerDown();
-        }
-        if btnGray.clicked() == 1 {
-            applyGrayscale();
-        }
-        if btnInvert.clicked() == 1 {
-            applyInvert();
-        }
-        if btnFlipH.clicked() == 1 {
-            flipLayerH();
-        }
-        if btnBlur.clicked() == 1 {
-            applyBlur();
+        if btnOpen.clicked() == 1 {
+            openDocument();
         }
         if btnSave.clicked() == 1 {
             saveDocument();
-        }
-        if btnOpen.clicked() == 1 {
-            openDocument();
         }
 
         // Handle keyboard shortcuts
@@ -538,6 +533,24 @@ class PaintApp {
 
     // Handle keyboard shortcuts
     hide func handleKeyboard() {
+        // While typing with the text tool, capture keys for the text buffer.
+        if currentTool == config.TOOL_TEXT and textTool.active == 1 {
+            var typed = Viper.Input.Keyboard.GetText();
+            if typed != "" {
+                textTool.appendText(typed);
+            }
+            if Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.get_KEY_BACKSPACE()) {
+                textTool.backspace();
+            }
+            if Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.get_KEY_ENTER()) {
+                textTool.requestCommit();
+            }
+            if Viper.Input.Keyboard.WasPressed(Viper.Input.Keyboard.get_KEY_ESCAPE()) {
+                textTool.cancel();
+            }
+            return;
+        }
+
         var ctrl = boolToInt(Viper.Input.Keyboard.Ctrl());
 
         if ctrl == 1 {
@@ -567,6 +580,22 @@ class PaintApp {
             }
             if inputActions.pressed(actions.ACT_REDO) == 1 {
                 redo();
+                return;
+            }
+            if inputActions.pressed(actions.ACT_COPY) == 1 {
+                copySelection();
+                return;
+            }
+            if inputActions.pressed(actions.ACT_CUT) == 1 {
+                cutSelection();
+                return;
+            }
+            if inputActions.pressed(actions.ACT_PASTE) == 1 {
+                pasteClipboard();
+                return;
+            }
+            if inputActions.pressed(actions.ACT_MERGE_DOWN) == 1 {
+                mergeDownLayer();
                 return;
             }
         }
@@ -600,6 +629,50 @@ class PaintApp {
         }
         if inputActions.pressed(actions.ACT_TOOL_EYEDROPPER) == 1 {
             selectTool(config.TOOL_EYEDROPPER);
+        }
+        if inputActions.pressed(actions.ACT_TOOL_SELECT) == 1 {
+            selectTool(config.TOOL_SELECT);
+        }
+        if inputActions.pressed(actions.ACT_TOOL_GRADIENT) == 1 {
+            selectTool(config.TOOL_GRADIENT);
+        }
+        if inputActions.pressed(actions.ACT_TOOL_CURVE) == 1 {
+            selectTool(config.TOOL_CURVE);
+        }
+        if inputActions.pressed(actions.ACT_TOOL_POLYGON) == 1 {
+            selectTool(config.TOOL_POLYGON);
+        }
+        if inputActions.pressed(actions.ACT_TOOL_SPRAY) == 1 {
+            selectTool(config.TOOL_SPRAY);
+        }
+        if inputActions.pressed(actions.ACT_TOOL_TEXT) == 1 {
+            selectTool(config.TOOL_TEXT);
+        }
+        if inputActions.pressed(actions.ACT_DELETE) == 1 {
+            deleteSelection();
+        }
+        if inputActions.pressed(actions.ACT_TOGGLE_FILL) == 1 {
+            if toolCtx.shapeFilled == 1 {
+                toolCtx.shapeFilled = 0;
+                setStatus("Shapes: outline");
+            } else {
+                toolCtx.shapeFilled = 1;
+                setStatus("Shapes: filled");
+            }
+        }
+        if inputActions.pressed(actions.ACT_TOGGLE_SHAPE) == 1 {
+            brushSettings.toggleShape();
+            if brushSettings.shape == brush.SHAPE_ROUND {
+                setStatus("Brush: round");
+            } else {
+                setStatus("Brush: square");
+            }
+        }
+        if inputActions.pressed(actions.ACT_BLEND_CYCLE) == 1 {
+            cycleBlend();
+        }
+        if inputActions.pressed(actions.ACT_HELP) == 1 {
+            toggleHelp();
         }
 
         if inputActions.pressed(actions.ACT_NEXT_TOOL) == 1 {
@@ -683,9 +756,9 @@ class PaintApp {
             historyMgr.clear();
             view.resetZoom(canvas.width, canvas.height);
             doc.markOpened(fileService.currentPath, canvas.revision);
-            setStatus("Opened " + fileService.currentPath);
+            showToast("Opened " + fileService.currentPath, 1);
         } else if result < 0 {
-            setStatus("Open failed");
+            showToast("Open failed", 2);
         }
     }
 
@@ -693,9 +766,9 @@ class PaintApp {
         var result = fileService.saveDocument(canvas);
         if result == 1 {
             doc.markSaved(fileService.currentPath, canvas.revision);
-            setStatus("Saved " + fileService.currentPath);
+            showToast("Saved " + fileService.currentPath, 1);
         } else if result < 0 {
-            setStatus("Save failed");
+            showToast("Save failed", 2);
         }
     }
 
@@ -703,9 +776,9 @@ class PaintApp {
         var result = fileService.saveDocumentAs(canvas);
         if result == 1 {
             doc.markSaved(fileService.currentPath, canvas.revision);
-            setStatus("Saved " + fileService.currentPath);
+            showToast("Saved " + fileService.currentPath, 1);
         } else if result < 0 {
-            setStatus("Save failed");
+            showToast("Save failed", 2);
         }
     }
 
@@ -727,6 +800,82 @@ class PaintApp {
         } else {
             setStatus("Nothing to redo");
         }
+    }
+
+    // --- selection clipboard operations ---------------------------------------
+    hide func copySelection() {
+        if selection.active == 1 {
+            paintClipboard.copyFrom(canvas.getActivePixels(), selection.x, selection.y, selection.w, selection.h);
+            setStatus("Copied " + selection.w + "x" + selection.h);
+        } else {
+            setStatus("No selection to copy");
+        }
+    }
+
+    hide func cutSelection() {
+        if selection.active == 1 {
+            snapshotForUndo();
+            paintClipboard.copyFrom(canvas.getActivePixels(), selection.x, selection.y, selection.w, selection.h);
+            canvas.eraseRegion(selection.x, selection.y, selection.w, selection.h);
+            setStatus("Cut " + selection.w + "x" + selection.h);
+        } else {
+            setStatus("No selection to cut");
+        }
+    }
+
+    hide func pasteClipboard() {
+        if paintClipboard.hasContent() == 1 {
+            snapshotForUndo();
+            var dx = 0;
+            var dy = 0;
+            if selection.active == 1 {
+                dx = selection.x;
+                dy = selection.y;
+            }
+            canvas.pastePixels(paintClipboard.get()!, dx, dy);
+            setStatus("Pasted at " + dx + "," + dy);
+        } else {
+            setStatus("Clipboard empty");
+        }
+    }
+
+    hide func deleteSelection() {
+        if selection.active == 1 {
+            snapshotForUndo();
+            canvas.eraseRegion(selection.x, selection.y, selection.w, selection.h);
+            setStatus("Deleted selection");
+        }
+    }
+
+    // Bake the text tool's buffer into the active layer. Pixels has no text
+    // primitive (viper_bugs ISSUE-001), so render the glyphs white-on-black to a
+    // scratch corner, capture with CopyRect, and write the foreground colour for
+    // every non-black (glyph) pixel. The scratch corner is overwritten by the
+    // normal render that follows (bake runs before gfx.Clear).
+    hide func bakeText() {
+        var str = textTool.text();
+        if str != "" {
+            snapshotForUndo();
+            var w = Canvas.TextWidth(str);
+            var h = Canvas.TextHeight();
+            gfx.Box(0, 0, w + 2, h + 2, 0x000000);
+            gfx.Text(1, 1, str, 0xFFFFFF);
+            var cap = gfx.CopyRect(0, 0, w + 2, h + 2);
+            var fg = colors.foreground;
+            var ty = 0;
+            while ty < h + 2 {
+                var tx = 0;
+                while tx < w + 2 {
+                    if cap.GetRGB(tx, ty) != 0x000000 {
+                        canvas.setPixel(textTool.caretX + tx - 1, textTool.caretY + ty - 1, fg);
+                    }
+                    tx = tx + 1;
+                }
+                ty = ty + 1;
+            }
+            setStatus("Text placed");
+        }
+        textTool.finishCommit();
     }
 
     hide func addLayer() {
@@ -784,10 +933,74 @@ class PaintApp {
         setStatus("Flipped active layer horizontally");
     }
 
+    hide func flipLayerV() {
+        snapshotForUndo();
+        canvas.flipActiveV();
+        setStatus("Flipped active layer vertically");
+    }
+
+    hide func tintLayer() {
+        snapshotForUndo();
+        canvas.tintActive(colors.foreground);
+        setStatus("Tinted active layer with foreground");
+    }
+
+    // Dimension-changing / multi-layer ops are not snapshot-undoable (the
+    // history stores only the active layer's pixels at fixed dimensions).
+    hide func rotateImageCW() {
+        canvas.rotateCanvasCW();
+        historyMgr.clear();
+        view.resetZoom(canvas.width, canvas.height);
+        setStatus("Rotated canvas 90 CW");
+    }
+
+    hide func rotateImageCCW() {
+        canvas.rotateCanvasCCW();
+        historyMgr.clear();
+        view.resetZoom(canvas.width, canvas.height);
+        setStatus("Rotated canvas 90 CCW");
+    }
+
+    hide func mergeDownLayer() {
+        if canvas.mergeActiveDownLayer() == 1 {
+            historyMgr.clear();
+            setStatus("Merged layer down");
+        } else {
+            setStatus("No layer below to merge");
+        }
+    }
+
+    hide func flattenImage() {
+        canvas.flattenLayers();
+        historyMgr.clear();
+        setStatus("Flattened image");
+    }
+
+    hide func cycleBlend() {
+        canvas.cycleActiveBlendMode();
+        setStatus("Blend mode: " + canvas.activeBlendMode());
+    }
+
+    hide func cropToSelection() {
+        if selection.active == 1 {
+            canvas.cropCanvas(selection.x, selection.y, selection.w, selection.h);
+            selection.clear();
+            historyMgr.clear();
+            view.resetZoom(canvas.width, canvas.height);
+            setStatus("Cropped to selection");
+        } else {
+            setStatus("No selection to crop");
+        }
+    }
+
     hide func applyBlur() {
         snapshotForUndo();
-        canvas.applyBlur(2);
-        setStatus("Blurred active layer");
+        // Blur strength tracks the brush-size slider so it is user-controllable.
+        var radius = brushSettings.size / 8;
+        if radius < 1 { radius = 1; }
+        if radius > 8 { radius = 8; }
+        canvas.applyBlur(radius);
+        setStatus("Blurred active layer (radius " + radius + ")");
     }
 
     hide func syncDocumentState() {
@@ -821,6 +1034,9 @@ class PaintApp {
         if cy < 0 { cy = 0; }
         if cx >= canvas.width { cx = canvas.width - 1; }
         if cy >= canvas.height { cy = canvas.height - 1; }
+
+        // Keep the live cursor position available to tools (multi-click preview).
+        toolCtx.setHover(cx, cy);
 
         if isFreehandTool() == 1 {
             var toolDrawing = activeToolIsDrawing();
@@ -891,120 +1107,60 @@ class PaintApp {
     }
 
     hide func isFreehandTool() -> Integer {
-        if currentTool == config.TOOL_PENCIL {
-            return 1;
-        }
-        if currentTool == config.TOOL_BRUSH {
-            return 1;
-        }
-        if currentTool == config.TOOL_ERASER {
-            return 1;
-        }
-        return 0;
+        return activeTool.isFreehand();
     }
 
     hide func activeToolIsDrawing() -> Integer {
-        if currentTool == config.TOOL_PENCIL {
-            return pencilTool.isDrawing();
-        }
-        if currentTool == config.TOOL_BRUSH {
-            return brushTool.isDrawing();
-        }
-        if currentTool == config.TOOL_ERASER {
-            return eraserTool.isDrawing();
-        }
-        return 0;
+        return activeTool.isDrawing();
     }
 
-    // Canvas mouse down handler
+    // Canvas mouse handlers — uniform dynamic dispatch through the active tool.
     hide func onCanvasMouseDown(x: Integer, y: Integer) {
-        if currentTool != config.TOOL_EYEDROPPER {
+        if activeTool.snapshotsBeforePress() == 1 {
             snapshotForUndo();
         }
-        if currentTool == config.TOOL_PENCIL {
-            pencilTool.onMouseDown(x, y, canvas, colors);
-        } else if currentTool == config.TOOL_BRUSH {
-            brushTool.onMouseDown(x, y, canvas, colors, brushSettings);
-        } else if currentTool == config.TOOL_ERASER {
-            eraserTool.onMouseDown(x, y, canvas, colors, brushSettings);
-        } else if currentTool == config.TOOL_LINE {
-            lineTool.onMouseDown(x, y, canvas, colors);
-        } else if currentTool == config.TOOL_RECTANGLE {
-            rectTool.onMouseDown(x, y, canvas, colors);
-        } else if currentTool == config.TOOL_ELLIPSE {
-            ellipseTool.onMouseDown(x, y, canvas, colors);
-        } else if currentTool == config.TOOL_FILL {
-            fillTool.onMouseDown(x, y, canvas, colors);
-        } else if currentTool == config.TOOL_EYEDROPPER {
-            eyedropperTool.onMouseDown(x, y, canvas, colors);
-        }
+        activeTool.onPress(x, y, toolCtx);
     }
 
-    // Canvas mouse move handler
     hide func onCanvasMouseMove(x: Integer, y: Integer) {
-        if currentTool == config.TOOL_PENCIL {
-            pencilTool.onMouseMove(x, y, canvas, colors);
-        } else if currentTool == config.TOOL_BRUSH {
-            brushTool.onMouseMove(x, y, canvas, colors, brushSettings);
-        } else if currentTool == config.TOOL_ERASER {
-            eraserTool.onMouseMove(x, y, canvas, colors, brushSettings);
-        } else if currentTool == config.TOOL_LINE {
-            lineTool.onMouseMove(x, y, canvas, colors);
-        } else if currentTool == config.TOOL_RECTANGLE {
-            rectTool.onMouseMove(x, y, canvas, colors);
-        } else if currentTool == config.TOOL_ELLIPSE {
-            ellipseTool.onMouseMove(x, y, canvas, colors);
-        }
+        activeTool.onDrag(x, y, toolCtx);
     }
 
-    // Canvas mouse up handler
     hide func onCanvasMouseUp(x: Integer, y: Integer) {
-        if currentTool == config.TOOL_PENCIL {
-            pencilTool.onMouseUp(x, y, canvas, colors);
-        } else if currentTool == config.TOOL_BRUSH {
-            brushTool.onMouseUp(x, y, canvas, colors, brushSettings);
-        } else if currentTool == config.TOOL_ERASER {
-            eraserTool.onMouseUp(x, y, canvas, colors, brushSettings);
-        } else if currentTool == config.TOOL_LINE {
-            lineTool.onMouseUp(x, y, canvas, colors);
-        } else if currentTool == config.TOOL_RECTANGLE {
-            rectTool.onMouseUp(x, y, canvas, colors);
-        } else if currentTool == config.TOOL_ELLIPSE {
-            ellipseTool.onMouseUp(x, y, canvas, colors);
-        }
+        activeTool.onRelease(x, y, toolCtx);
     }
 
-    // Select a tool
+    // Select a tool by id; the registry resolves the live Tool instance.
     hide func selectTool(toolId: Integer) {
         currentTool = toolPalette.select(toolId);
+        activeTool = toolRegistry.get(currentTool);
         syncToolButtons();
-
-        if toolId == config.TOOL_PENCIL {
-            setStatus("Pencil");
-        } else if toolId == config.TOOL_BRUSH {
-            setStatus("Brush");
-        } else if toolId == config.TOOL_ERASER {
-            setStatus("Eraser");
-        } else if toolId == config.TOOL_LINE {
-            setStatus("Line");
-        } else if toolId == config.TOOL_RECTANGLE {
-            setStatus("Rectangle");
-        } else if toolId == config.TOOL_ELLIPSE {
-            setStatus("Ellipse");
-        } else if toolId == config.TOOL_FILL {
-            setStatus("Fill");
-        } else if toolId == config.TOOL_EYEDROPPER {
-            setStatus("Eyedropper");
+        // Toggle OS text input so the text tool can receive typed characters.
+        if currentTool == config.TOOL_TEXT {
+            Viper.Input.Keyboard.EnableTextInput();
+        } else {
+            Viper.Input.Keyboard.DisableTextInput();
+            textTool.cancel();
         }
+        setStatus(activeTool.name());
     }
 
     hide func syncToolButtons() {
-        toolPalette.syncButtons(btnPencil, btnBrush, btnEraser, btnLine,
-                                btnRect, btnEllipse, btnFill, btnEyedropper);
+        var tb = 0;
+        while tb < toolButtons.count() {
+            var b = toolButtons.get(tb);
+            b.selected = toolPalette.isSelected(b.toolId);
+            tb = tb + 1;
+        }
     }
 
     // Render everything
     hide func render() {
+        // Bake any pending text into the active layer before clearing the frame.
+        if textTool.wantsCommit() == 1 {
+            bakeText();
+        }
+
         // Clear background
         gfx.Clear( config.UI_BG_DARK);
 
@@ -1022,49 +1178,39 @@ class PaintApp {
 
         drawDebugOverlay();
 
+        // Transient toast, then menu dropdown + help overlay (top-most chrome).
+        drawToast();
+        menuBar.drawOverlay(gfx, mouseX, mouseY);
+        drawHelpOverlay();
+
+        // Modal colour picker draws on top of everything.
+        colorPicker.draw(gfx, appWidth, appHeight);
+
         // Present to screen
         gfx.Flip();
     }
 
-    // Draw the top toolbar
+    // Draw the top toolbar: menu bar + quick buttons + document name.
     hide func drawToolbar() {
-        // Toolbar background
-        gfx.Box( 0, 0, appWidth, config.TOOLBAR_HEIGHT, config.UI_BG_PANEL);
-        gfx.Line( 0, config.TOOLBAR_HEIGHT - 1, appWidth, config.TOOLBAR_HEIGHT - 1, config.UI_BORDER);
-
-        // Draw buttons
+        menuBar.drawBar(gfx, appWidth);
         btnNew.draw(gfx);
         btnOpen.draw(gfx);
         btnSave.draw(gfx);
-        btnClear.draw(gfx);
-        btnLayer.draw(gfx);
-        btnLayerDup.draw(gfx);
-        btnLayerDel.draw(gfx);
-        btnLayerUp.draw(gfx);
-        btnLayerDown.draw(gfx);
-        btnGray.draw(gfx);
-        btnInvert.draw(gfx);
-        btnFlipH.draw(gfx);
-        btnBlur.draw(gfx);
-
-        gfx.TextRight(appWidth - 12, 12, doc.displayName(), config.UI_TEXT_DIM);
+        gfx.TextRight(appWidth - 12, 14, doc.displayName(), config.UI_TEXT_DIM);
     }
 
     // Draw the left tool panel
     hide func drawToolPanel() {
-        // Panel background
-        gfx.Box( 0, config.TOOLBAR_HEIGHT, config.TOOL_PANEL_WIDTH, appHeight - config.TOOLBAR_HEIGHT, config.UI_BG_PANEL);
+        // Panel background (vertical gradient + divider).
+        gfx.GradientV( 0, config.TOOLBAR_HEIGHT, config.TOOL_PANEL_WIDTH, appHeight - config.TOOLBAR_HEIGHT, config.UI_BG_PANEL_HI, config.UI_BG_PANEL_LO);
         gfx.Line( config.TOOL_PANEL_WIDTH - 1, config.TOOLBAR_HEIGHT, config.TOOL_PANEL_WIDTH - 1, appHeight, config.UI_BORDER);
 
-        // Draw tool buttons
-        btnPencil.draw(gfx);
-        btnBrush.draw(gfx);
-        btnEraser.draw(gfx);
-        btnLine.draw(gfx);
-        btnRect.draw(gfx);
-        btnEllipse.draw(gfx);
-        btnFill.draw(gfx);
-        btnEyedropper.draw(gfx);
+        // Draw tool buttons (registry-driven).
+        var tb = 0;
+        while tb < toolButtons.count() {
+            toolButtons.get(tb).draw(gfx);
+            tb = tb + 1;
+        }
 
         // Draw sliders
         sizeSlider.draw(gfx);
@@ -1077,8 +1223,8 @@ class PaintApp {
         var panelY = config.TOOLBAR_HEIGHT;
         var panelH = appHeight - config.TOOLBAR_HEIGHT - config.STATUS_BAR_HEIGHT;
 
-        // Panel background
-        gfx.Box( panelX, panelY, config.COLOR_PANEL_WIDTH, panelH, config.UI_BG_PANEL);
+        // Panel background (vertical gradient + divider).
+        gfx.GradientV( panelX, panelY, config.COLOR_PANEL_WIDTH, panelH, config.UI_BG_PANEL_HI, config.UI_BG_PANEL_LO);
         gfx.Line( panelX, panelY, panelX, panelY + panelH, config.UI_BORDER);
 
         // Draw foreground/background color swatches (smaller)
@@ -1112,8 +1258,23 @@ class PaintApp {
             var color = colors.getPaletteColor(i);
 
             gfx.Box( cx, cy, cellSize, cellSize, color);
+            gfx.Frame( cx, cy, cellSize, cellSize, config.UI_BG_DARK);
 
             i = i + 1;
+        }
+
+        // Recent-colours strip (most-recent first).
+        if colors.recentCount > 0 {
+            var recentY = paletteY + 8 * (cellSize + gap) + 6;
+            gfx.Text( panelX + 6, recentY, "Recent", config.UI_TEXT_DIM);
+            var rcY = recentY + 12;
+            var r = 0;
+            while r < colors.recentCount {
+                var rcX = panelX + 6 + r * (cellSize + gap);
+                gfx.Box( rcX, rcY, cellSize, cellSize, colors.getRecentColor(r));
+                gfx.Frame( rcX, rcY, cellSize, cellSize, config.UI_BORDER);
+                r = r + 1;
+            }
         }
 
         layersPanel.draw(gfx, canvas);
@@ -1130,7 +1291,20 @@ class PaintApp {
         var cellSize = config.PALETTE_CELL_SIZE;
         var cols = config.PALETTE_COLS;
         var gap = config.PALETTE_MARGIN;
+        var swatchX = panelX + 8;
         var i = 0;
+
+        // Clicking the foreground / background swatch opens the colour picker.
+        if mouseDown == 1 and lastMouseDown == 0 {
+            if mouseX >= swatchX and mouseX < swatchX + swatchSize and mouseY >= swatchY and mouseY < swatchY + swatchSize {
+                colorPicker.open(0, colors.foreground, appWidth, appHeight);
+                return;
+            }
+            if mouseX >= swatchX + 12 and mouseX < swatchX + 12 + swatchSize and mouseY >= swatchY + 12 and mouseY < swatchY + 12 + swatchSize {
+                colorPicker.open(1, colors.background, appWidth, appHeight);
+                return;
+            }
+        }
 
         if mouseDown == 1 and lastMouseDown == 0 {
             i = 0;
@@ -1146,6 +1320,22 @@ class PaintApp {
                 i = i + 1;
             }
         }
+
+        // Recent-colours strip click → foreground.
+        if mouseDown == 1 and lastMouseDown == 0 and colors.recentCount > 0 {
+            var recentY = paletteY + 8 * (cellSize + gap) + 6;
+            var rcY = recentY + 12;
+            var r = 0;
+            while r < colors.recentCount {
+                var rcX = panelX + 6 + r * (cellSize + gap);
+                if mouseX >= rcX and mouseX < rcX + cellSize and mouseY >= rcY and mouseY < rcY + cellSize {
+                    colors.setForeground(colors.getRecentColor(r));
+                    setStatus("Foreground from recent");
+                }
+                r = r + 1;
+            }
+        }
+
         if mouseRight == 1 and lastMouseRight == 0 {
             i = 0;
             while i < colors.paletteCount {
@@ -1162,27 +1352,42 @@ class PaintApp {
         }
     }
 
+    // Apply the colour picker's result to the foreground or background.
+    hide func applyPickerColor() {
+        var picked = colorPicker.currentColor();
+        if colorPicker.target == 1 {
+            colors.setBackground(picked);
+            setStatus("Background colour set " + Color.ToHex(picked));
+        } else {
+            colors.setForeground(picked);
+            setStatus("Foreground colour set " + Color.ToHex(picked));
+        }
+        colorPicker.close();
+    }
+
     // Draw the bottom status bar
     hide func drawStatusBar() {
         var barY = appHeight - config.STATUS_BAR_HEIGHT;
 
-        gfx.Box( 0, barY, appWidth, config.STATUS_BAR_HEIGHT, config.UI_BG_PANEL);
-        gfx.Line( 0, barY, appWidth, barY, config.UI_BORDER);
+        gfx.GradientV( 0, barY, appWidth, config.STATUS_BAR_HEIGHT, config.UI_BG_PANEL_HI, config.UI_BG_PANEL_LO);
+        gfx.Line( 0, barY, appWidth, barY, config.UI_ACCENT);
 
-        // Status message
-        gfx.Text( 10, barY + 8, statusMessage, config.UI_TEXT);
+        // Left: active tool + brush summary.
+        var info = activeTool.name() + "  size " + brushSettings.size + "  op " + brushSettings.opacity + "%";
+        gfx.Text( 10, barY + 8, info, config.UI_TEXT);
 
-        // Canvas coordinates
+        // Middle: status message (accented).
+        gfx.Text( 230, barY + 8, statusMessage, config.UI_ACCENT_HI);
+
+        // Right: cursor coords (when over canvas) + zoom + size + active layer.
         var cx = view.screenToCanvasX(mouseX);
         var cy = view.screenToCanvasY(mouseY);
+        var right = "";
         if view.contains(mouseX, mouseY) == 1 and cx >= 0 and cx < canvas.width and cy >= 0 and cy < canvas.height {
-            var coordStr = "X: " + Viper.Core.Convert.ToString_Int(cx) + " Y: " + Viper.Core.Convert.ToString_Int(cy) + "  Zoom: " + view.zoomLabel();
-            gfx.Text( 200, barY + 8, coordStr, config.UI_TEXT_DIM);
+            right = cx + "," + cy + "   ";
         }
-
-        // Canvas size
-        var sizeStr = doc.displayName() + "  " + Viper.Core.Convert.ToString_Int(canvas.width) + "x" + Viper.Core.Convert.ToString_Int(canvas.height) + "  " + canvas.activeLayerName();
-        gfx.TextRight( appWidth - 10, barY + 8, sizeStr, config.UI_TEXT_DIM);
+        right = right + view.zoomLabel() + "   " + canvas.width + "x" + canvas.height + "   " + canvas.activeLayerName();
+        gfx.TextRight( appWidth - 10, barY + 8, right, config.UI_TEXT_DIM);
     }
 
     // Draw the canvas area
@@ -1190,57 +1395,100 @@ class PaintApp {
         view.draw(gfx, canvas.getPixels(), canvas.width, canvas.height, canvas.revision);
     }
 
-    // Draw tool preview overlay
+    // Draw tool preview overlay — the active tool renders its own rubber-band,
+    // plus a live brush-size cursor for the freehand drawing tools.
     hide func drawToolPreview() {
         gfx.SetClipRect(view.x, view.y, view.width, view.height);
-        if currentTool == config.TOOL_LINE and lineTool.isDrawing() == 1 {
-            gfx.Line(view.canvasToScreenX(lineTool.startX),
-                     view.canvasToScreenY(lineTool.startY),
-                     view.canvasToScreenX(lineTool.endX),
-                     view.canvasToScreenY(lineTool.endY),
-                     colors.foreground);
-        } else if currentTool == config.TOOL_RECTANGLE and rectTool.isDrawing() == 1 {
-            var x1 = rectTool.startX;
-            var y1 = rectTool.startY;
-            var x2 = rectTool.endX;
-            var y2 = rectTool.endY;
-            if x2 < x1 {
-                var tmp = x1;
-                x1 = x2;
-                x2 = tmp;
-            }
-            if y2 < y1 {
-                var tmp = y1;
-                y1 = y2;
-                y2 = tmp;
-            }
-            gfx.Frame(view.canvasToScreenX(x1),
-                      view.canvasToScreenY(y1),
-                      view.canvasSizeToScreen(x2 - x1 + 1),
-                      view.canvasSizeToScreen(y2 - y1 + 1),
-                      colors.foreground);
-        } else if currentTool == config.TOOL_ELLIPSE and ellipseTool.isDrawing() == 1 {
-            var x1 = ellipseTool.startX;
-            var y1 = ellipseTool.startY;
-            var x2 = ellipseTool.endX;
-            var y2 = ellipseTool.endY;
-            if x2 < x1 {
-                var tmp = x1;
-                x1 = x2;
-                x2 = tmp;
-            }
-            if y2 < y1 {
-                var tmp = y1;
-                y1 = y2;
-                y2 = tmp;
-            }
-            gfx.Frame(view.canvasToScreenX(x1),
-                      view.canvasToScreenY(y1),
-                      view.canvasSizeToScreen(x2 - x1 + 1),
-                      view.canvasSizeToScreen(y2 - y1 + 1),
-                      colors.foreground);
+        activeTool.drawPreview(gfx, view, toolCtx);
+        if view.contains(mouseX, mouseY) == 1 {
+            drawBrushCursor();
         }
         gfx.ClearClipRect();
+    }
+
+    // A live cursor outline showing where/how big the next stroke lands.
+    hide func drawBrushCursor() {
+        var sx = view.canvasToScreenX(toolCtx.hoverX);
+        var sy = view.canvasToScreenY(toolCtx.hoverY);
+        if currentTool == config.TOOL_PENCIL {
+            gfx.Line(sx - 4, sy, sx + 4, sy, 0xFFFFFF);
+            gfx.Line(sx, sy - 4, sx, sy + 4, 0xFFFFFF);
+        } else if currentTool == config.TOOL_BRUSH or currentTool == config.TOOL_ERASER {
+            if brushSettings.shape == brush.SHAPE_SQUARE {
+                var d = view.canvasSizeToScreen(brushSettings.size);
+                gfx.Frame(sx - d / 2, sy - d / 2, d, d, 0xFFFFFF);
+            } else {
+                var r = brushSettings.size / 2;
+                if r < 1 { r = 1; }
+                gfx.Ring(sx, sy, view.canvasSizeToScreen(r), 0xFFFFFF);
+            }
+        }
+    }
+
+    hide func toggleHelp() {
+        showHelp = 1 - showHelp;
+    }
+
+    // Centered shortcut reference (toggled with H or Help menu).
+    hide func drawHelpOverlay() {
+        if showHelp == 0 {
+            return;
+        }
+        var pw = 480;
+        var ph = 250;
+        var px = (appWidth - pw) / 2;
+        var py = (appHeight - ph) / 2;
+        if py < 8 { py = 8; }
+        gfx.Box(0, 0, appWidth, appHeight, 0x101015);
+        gfx.RoundBox(px, py, pw, ph, 8, config.UI_BG_PANEL);
+        gfx.RoundFrame(px, py, pw, ph, 8, config.UI_ACCENT);
+        gfx.Text(px + 16, py + 12, "Viper Paint - Shortcuts", config.UI_TEXT);
+        var ly = py + 38;
+        helpLine(px + 16, ly, "Tools", "1-8 / P B E L R O F I"); ly = ly + 18;
+        helpLine(px + 16, ly, "More", "S sel  G grad  U curve  Y poly  A spray  T text"); ly = ly + 18;
+        helpLine(px + 16, ly, "Brush", "[ ] size   W shape   D fill   Tab/Bksp cycle"); ly = ly + 18;
+        helpLine(px + 16, ly, "Colour", "X swap   click a swatch for the picker"); ly = ly + 18;
+        helpLine(px + 16, ly, "File", "Ctrl+N/O/S   Ctrl+Shift+S save-as"); ly = ly + 18;
+        helpLine(px + 16, ly, "Edit", "Ctrl+Z/Y undo/redo   Ctrl+C/X/V   Del"); ly = ly + 18;
+        helpLine(px + 16, ly, "Layers", "Ctrl+E merge   M blend mode"); ly = ly + 18;
+        helpLine(px + 16, ly, "View", "PgUp/PgDn zoom  Home reset  Ctrl+wheel zoom"); ly = ly + 18;
+        helpLine(px + 16, ly, "Window", "F11 fullscreen   F3 debug overlay"); ly = ly + 18;
+        gfx.Text(px + 16, py + ph - 22, "Press H to close", config.UI_TEXT_DIM);
+    }
+
+    hide func helpLine(hx: Integer, hy: Integer, key: String, desc: String) {
+        gfx.Text(hx, hy, key, config.UI_ACCENT_HI);
+        gfx.Text(hx + 70, hy, desc, config.UI_TEXT);
+    }
+
+    // kind: 0 info, 1 success, 2 error.
+    hide func showToast(msg: String, kind: Integer) {
+        toastMsg = msg;
+        toastKind = kind;
+        toastTtl = 150;
+        setStatus(msg);
+    }
+
+    // Transient banner near the top of the canvas; auto-expires.
+    hide func drawToast() {
+        if toastTtl <= 0 {
+            return;
+        }
+        toastTtl = toastTtl - 1;
+        var tw = Canvas.TextWidth(toastMsg) + 36;
+        var tx = (appWidth - tw) / 2;
+        var ty = config.TOOLBAR_HEIGHT + 12;
+        var accent = config.UI_ACCENT;
+        if toastKind == 1 {
+            accent = config.UI_OK;
+        } else if toastKind == 2 {
+            accent = config.UI_ERR;
+        }
+        gfx.Box(tx + 3, ty + 3, tw, 26, config.UI_SHADOW);
+        gfx.RoundBox(tx, ty, tw, 26, 6, config.UI_TOAST_BG);
+        gfx.RoundFrame(tx, ty, tw, 26, 6, accent);
+        gfx.Box(tx, ty + 5, 4, 16, accent);
+        gfx.Text(tx + 18, ty + 9, toastMsg, config.UI_TEXT);
     }
 
     hide func drawDebugOverlay() {

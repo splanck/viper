@@ -1,38 +1,39 @@
-// ============================================================================
-// MODULE: brush_tool (BrushTool)
-// PURPOSE: Variable-size, variable-opacity brush. Like pencil but
-//          consults BrushSettings for size / opacity / shape (round or
-//          square) and uses alpha-blended per-pixel stamps for softer
-//          strokes.
+//===----------------------------------------------------------------------===//
 //
-// KEY-DESIGN-CHOICES:
-//   * STAMP + INTERPOLATE. drawBrushLine interpolates the stamp
-//     position along the mouse path (using the longer of |dx|/|dy|
-//     as the step count) so fast motion still produces continuous
-//     coverage. Endpoint is always stamped even if integer division
-//     truncates the last step.
-//   * FAST PATH. When opacity is 100 and shape is round, defer to
-//     canvas.drawThickLine (the graphics runtime's optimised
-//     thick-line). Slower path handles partial-opacity + square
-//     brushes cell-by-cell.
-//   * BLENDED PIXEL WRITE. setPixelBlend composites the foreground
-//     colour with the existing pixel at the given alpha. This
-//     supports "soft paint" stacking on overlapping strokes.
-// ============================================================================
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/apps/paint/tools/brush.zia
+// Purpose: Variable-size, variable-opacity brush. Consults BrushSettings for
+//          size / opacity / shape and uses alpha-blended per-pixel stamps.
+// Key invariants:
+//   - Freehand tool; stamp+interpolate keeps fast strokes continuous.
+//   - Fast path (opacity 100 + round) defers to the runtime thick-line.
+// Ownership/Lifetime:
+//   - Stateless except for in-progress stroke endpoints.
+// Links: tool.zia, ../canvas.zia, ../brush.zia
+//
+//===----------------------------------------------------------------------===//
 
-// brush.viper - Brush tool for Viper Paint
+// brush.zia - Brush tool for Viper Paint
 module brush_tool;
+
+bind Viper.Graphics;
 
 bind "../config";
 bind "../canvas";
 bind "../colors";
 bind "../brush";
+bind "../viewport";
+bind "./tool";
 
 /// @brief Variable-size brush with round/square shapes and opacity.
-class BrushTool {
-    hide Integer drawing;       // 1 if currently drawing
-    hide Integer lastX;         // Last mouse X
-    hide Integer lastY;         // Last mouse Y
+class BrushTool implements Tool {
+    hide Integer drawing;
+    hide Integer lastX;
+    hide Integer lastY;
 
     expose func init() {
         drawing = 0;
@@ -40,49 +41,42 @@ class BrushTool {
         lastY = 0;
     }
 
-    expose func getName() -> String {
-        return "Brush";
-    }
+    expose func id() -> Integer { return config.TOOL_BRUSH; }
+    expose func name() -> String { return "Brush"; }
+    expose func icon() -> String { return "B"; }
+    expose func isFreehand() -> Integer { return 1; }
+    expose func isDrawing() -> Integer { return drawing; }
+    expose func snapshotsBeforePress() -> Integer { return 1; }
 
-    expose func getIcon() -> String {
-        return "B";
-    }
-
-    expose func getShortcut() -> Integer {
-        return config.KEY_B;
-    }
-
-    expose func onMouseDown(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager, brushSettings: BrushSettings) {
+    expose func onPress(x: Integer, y: Integer, ctx: ToolContext) {
         drawing = 1;
         lastX = x;
         lastY = y;
-        // Draw brush stamp at start position
-        drawBrushStamp(x, y, canvas, colors, brushSettings);
+        drawBrushStamp(x, y, ctx.dc, ctx.colors, ctx.brushSettings);
     }
 
-    expose func onMouseMove(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager, brushSettings: BrushSettings) {
+    expose func onDrag(x: Integer, y: Integer, ctx: ToolContext) {
         if drawing == 1 {
-            // Interpolate between last and current for smooth strokes
-            drawBrushLine(lastX, lastY, x, y, canvas, colors, brushSettings);
+            drawBrushLine(lastX, lastY, x, y, ctx.dc, ctx.colors, ctx.brushSettings);
             lastX = x;
             lastY = y;
         }
     }
 
-    expose func onMouseUp(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager, brushSettings: BrushSettings) {
+    expose func onRelease(x: Integer, y: Integer, ctx: ToolContext) {
         if drawing == 1 {
-            drawBrushLine(lastX, lastY, x, y, canvas, colors, brushSettings);
+            drawBrushLine(lastX, lastY, x, y, ctx.dc, ctx.colors, ctx.brushSettings);
             lastX = x;
             lastY = y;
         }
         drawing = 0;
     }
 
-    expose func isDrawing() -> Integer {
-        return drawing;
+    expose func drawPreview(gfx: Canvas, view: CanvasViewport, ctx: ToolContext) {
+        // Freehand tool: the live brush cursor preview is drawn by the chrome.
     }
 
-    // Draw a single brush stamp at position
+    // Draw a single brush stamp at position.
     hide func drawBrushStamp(cx: Integer, cy: Integer, canvas: DrawingCanvas, colors: ColorManager, brushSettings: BrushSettings) {
         var size = brushSettings.size;
         var half = size / 2;
@@ -98,7 +92,6 @@ class BrushTool {
                 if shape == brush.SHAPE_SQUARE {
                     inBrush = 1;
                 } else {
-                    // Round brush
                     if dx * dx + dy * dy <= half * half {
                         inBrush = 1;
                     }
@@ -112,7 +105,7 @@ class BrushTool {
         }
     }
 
-    // Draw brush stamps along a line
+    // Draw brush stamps along a line.
     hide func drawBrushLine(x1: Integer, y1: Integer, x2: Integer, y2: Integer, canvas: DrawingCanvas, colors: ColorManager, brushSettings: BrushSettings) {
         if brushSettings.opacity >= 100 and brushSettings.shape == brush.SHAPE_ROUND {
             canvas.drawThickLine(x1, y1, x2, y2, brushSettings.size, colors.foreground);
@@ -142,8 +135,6 @@ class BrushTool {
             i = i + 1;
         }
 
-        // Always stamp the endpoint so the last segment cannot be skipped by
-        // spacing or integer division rounding.
         drawBrushStamp(x2, y2, canvas, colors, brushSettings);
     }
 }

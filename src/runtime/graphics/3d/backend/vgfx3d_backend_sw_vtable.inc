@@ -139,6 +139,8 @@ static void sw_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     ctx->fog_color[0] = cam->fog_color[0];
     ctx->fog_color[1] = cam->fog_color[1];
     ctx->fog_color[2] = cam->fog_color[2];
+    ctx->debug_draw_count = 0;
+    ctx->debug_tri_count = 0;
     if (!cam->load_existing_depth) {
         if (ctx->render_target) {
             vgfx3d_rendertarget_t *rt = ctx->render_target;
@@ -359,19 +361,19 @@ static void sw_transform_vertices(sw_context_t *ctx,
 /// @brief Emit verbose per-draw diagnostics (command params, MVP rows, first few
 ///   transformed vertices) to stderr for the first 8 draws when SW debug is on.
 static void sw_debug_log_draw(const vgfx3d_draw_cmd_t *cmd,
+                              sw_context_t *ctx,
                               const float *mvp,
                               const pipe_vert_t *pv,
                               uint32_t vc,
                               const float *ambient,
                               int32_t light_count) {
-    static int debug_draw_count = 0;
-    if (!sw_debug_enabled() || debug_draw_count >= 8)
+    if (!ctx || !sw_debug_enabled() || ctx->debug_draw_count >= 8)
         return;
     uint32_t limit = vc < 4 ? vc : 4;
     fprintf(stderr,
             "[sw3d] draw %d vc=%u ic=%u ambient=(%.3f %.3f %.3f) lights=%d alpha=%.3f "
             "diffuse=(%.3f %.3f %.3f %.3f)\n",
-            debug_draw_count,
+            ctx->debug_draw_count,
             cmd->vertex_count,
             cmd->index_count,
             ambient ? ambient[0] : 0.0f,
@@ -419,7 +421,7 @@ static void sw_debug_log_draw(const vgfx3d_draw_cmd_t *cmd,
                 pv[i].color[2],
                 pv[i].color[3]);
     }
-    debug_draw_count++;
+    ctx->debug_draw_count++;
 }
 
 /// @brief Perspective-divide one clipped pipeline vertex into a screen-space
@@ -574,7 +576,7 @@ typedef struct {
     int32_t light_count;
     const float *ambient;
     int8_t backface_cull;
-    const sw_context_t *fog_ctx;
+    sw_context_t *fog_ctx;
 } sw_raster_task_t;
 
 static void sw_screen_tri_list_free(sw_screen_tri_list_t *list) {
@@ -905,7 +907,7 @@ static int sw_bin_screen_triangles(sw_tile_grid_t *grid,
         const sw_screen_tri_t *tri = &tris->items[tri_index];
         sw_raster_geom geom;
         if (!sw_raster_prepare(
-                &tri->sv[0], &tri->sv[1], &tri->sv[2], fb_w, fb_h, backface_cull, 0, &geom))
+                &tri->sv[0], &tri->sv[1], &tri->sv[2], fb_w, fb_h, backface_cull, 0, NULL, &geom))
             continue;
         int32_t tx0 = geom.min_x / SW_TILE_SIZE;
         int32_t tx1 = geom.max_x / SW_TILE_SIZE;
@@ -1182,7 +1184,7 @@ static void sw_submit_draw_serial(void *ctx_ptr,
     if (!pv)
         return;
     sw_transform_vertices(ctx, cmd, pv, vc, mvp, normal_matrix, lights, light_count, ambient);
-    sw_debug_log_draw(cmd, mvp, pv, vc, ambient, light_count);
+    sw_debug_log_draw(cmd, ctx, mvp, pv, vc, ambient, light_count);
 
     /* Process triangles: clip → rasterize */
     pipe_vert_t clipped[MAX_CLIP_VERTS];

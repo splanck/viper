@@ -8,7 +8,8 @@
 //          RESULT: ok on success.
 //
 // WHERE-THIS-FITS: Run by CI (`zia_smoke_paint`) to catch tool-
-//          rendering regressions without needing a display.
+//          rendering regressions without needing a display. Exercises the
+//          Tool interface (onPress/onDrag/onRelease + ToolContext).
 // ============================================================================
 
 module smoke_probe;
@@ -17,6 +18,10 @@ bind Viper.Terminal as Terminal;
 bind "./canvas";
 bind "./colors";
 bind "./brush";
+bind "./selection";
+bind "./clipboard";
+bind "./history";
+bind "./tools/tool";
 bind "./tools/pencil";
 bind "./tools/brush";
 
@@ -48,11 +53,17 @@ func main() {
     dc.initWithSize(32, 32);
 
     var cm = new ColorManager();
+    var bs = new BrushSettings();
+    var sel = new Selection();
+    var clip = new PaintClipboard();
+    var hist = new HistoryManager();
+    var ctx = new ToolContext();
+    ctx.attach(dc, cm, bs, sel, clip, hist);
 
     var pencilTool = new PencilTool();
-    pencilTool.onMouseDown(2, 2, dc, cm);
-    pencilTool.onMouseMove(10, 2, dc, cm);
-    pencilTool.onMouseUp(10, 2, dc, cm);
+    pencilTool.onPress(2, 2, ctx);
+    pencilTool.onDrag(10, 2, ctx);
+    pencilTool.onRelease(10, 2, ctx);
     var pencilInk = countInk(dc);
     if pencilInk < 8 {
         fail("pencil stroke too small");
@@ -61,13 +72,12 @@ func main() {
 
     dc.clear();
 
-    var bs = new BrushSettings();
     bs.setSize(4);
 
     var brushTool = new BrushTool();
-    brushTool.onMouseDown(2, 10, dc, cm, bs);
-    brushTool.onMouseMove(10, 10, dc, cm, bs);
-    brushTool.onMouseUp(10, 10, dc, cm, bs);
+    brushTool.onPress(2, 10, ctx);
+    brushTool.onDrag(10, 10, ctx);
+    brushTool.onRelease(10, 10, ctx);
 
     var brushInk = countInk(dc);
     if brushInk <= pencilInk {

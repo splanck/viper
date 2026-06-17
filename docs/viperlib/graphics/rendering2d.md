@@ -80,9 +80,9 @@ gradient.FillHorizontal(pixels)
 
 `Palette2D.Apply` maps each source pixel to the nearest defined palette color in RGBA space and writes a new `Pixels` buffer. Empty palettes copy source pixels unchanged. `ApplyLegacy` keeps the older indexed behavior: the source red byte is the palette index, and `0x000000II` alpha-byte indices are also accepted for assets that used fully transparent pixels as palette indices.
 
-`Palette2D.GetColor(index)` and `Gradient2D.Sample(t)` return values that work with `Color.GetR/G/B/A`, preserving alpha from raw pixel storage. `Palette2D.GetRGBA(index)` and `Gradient2D.SampleRGBA(t)` return raw `0xRRGGBBAA`.
+`Palette2D.GetColor(index)` and `Gradient2D.Sample(t)` return values that work with `Color.GetR/G/B/A`, preserving alpha from raw pixel storage. `Gradient2D.Sample(t)` and `Gradient2D.SampleRGBA(t)` take a normalized `Number` position from `0.0` to `1.0`; values above `1.0` are accepted as legacy percent positions. `Palette2D.GetRGBA(index)` and `Gradient2D.SampleRGBA(t)` return raw `0xRRGGBBAA`. Use `Gradient2D.SamplePct(percent)` and `Gradient2D.SampleRGBAPct(percent)` when you want the explicit integer percent form.
 
-`Gradient2D` uses `Steps <= 2` as smooth interpolation. Larger `Steps` values quantize into that many discrete levels, including both endpoints. For example, a three-step gradient samples start, midpoint, and end colors; horizontal and vertical fills use the same sampling as `SampleRGBA`.
+`Gradient2D` uses `Steps <= 2` as smooth interpolation. Larger `Steps` values quantize into that many discrete levels, including both endpoints. For example, a three-step gradient samples start, midpoint, and end colors; horizontal and vertical fills use the same interpolation and quantization as the sampling methods.
 
 ## Video Playback
 

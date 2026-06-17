@@ -56,6 +56,10 @@ static void world3d_finalizer(void *obj) {
     free(w->joints);
     free(w->joint_types);
     free(w->broadphase_entries);
+    if (w->query_sphere_collider && rt_obj_release_check0(w->query_sphere_collider))
+        rt_obj_free(w->query_sphere_collider);
+    if (w->query_box_collider && rt_obj_release_check0(w->query_box_collider))
+        rt_obj_free(w->query_box_collider);
     w->bodies = NULL;
     w->contacts = NULL;
     w->frame_contacts = NULL;
@@ -70,6 +74,8 @@ static void world3d_finalizer(void *obj) {
     w->joints = NULL;
     w->joint_types = NULL;
     w->broadphase_entries = NULL;
+    w->query_sphere_collider = NULL;
+    w->query_box_collider = NULL;
     w->query_broadphase_count = 0;
     w->query_broadphase_signature = 0;
     w->query_broadphase_valid = 0;

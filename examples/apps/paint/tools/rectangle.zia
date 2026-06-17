@@ -1,20 +1,23 @@
-// ============================================================================
-// MODULE: rectangle (RectangleTool)
-// PURPOSE: Same drag-preview shape contract as LineTool, but
-//          rectangle-shaped. Supports filled and outline variants
-//          via toggleFilled().
+//===----------------------------------------------------------------------===//
 //
-// KEY-DESIGN-CHOICES:
-//   * NORMALISE ON COMMIT. Mouse-down establishes startX/Y; drag
-//     updates endX/Y. Commit-time logic swaps them if needed so the
-//     shape draws correctly regardless of drag direction.
-//   * ALWAYS-OUTLINE PREVIEW. The on-screen preview is always drawn
-//     as an outline, even when filled mode is selected. This keeps
-//     the underlying document visible through the rubber-band so
-//     the user can aim precisely.
-// ============================================================================
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/apps/paint/tools/rectangle.zia
+// Purpose: Rectangle shape tool (filled or outline). Press-drag-release with
+//          a live outline preview; normalizes the drag rect on commit.
+// Key invariants:
+//   - filled toggles between DrawBox (fill) and DrawFrame (outline) on commit.
+//   - The preview is always an outline so the document stays visible while aiming.
+// Ownership/Lifetime:
+//   - Holds the drag corners + filled flag.
+// Links: tool.zia, ../viewport.zia, ../canvas.zia
+//
+//===----------------------------------------------------------------------===//
 
-// rectangle.viper - Rectangle tool for Viper Paint
+// rectangle.zia - Rectangle tool for Viper Paint
 module rectangle;
 
 bind Viper.Graphics;
@@ -22,15 +25,16 @@ bind Viper.Graphics;
 bind "../config";
 bind "../canvas";
 bind "../colors";
+bind "../viewport";
+bind "./tool";
 
 /// @brief Filled / outline rectangle shape tool.
-class RectangleTool {
-    hide Integer drawing;       // 1 if currently drawing
-    expose Integer startX;      // Start corner X
-    expose Integer startY;      // Start corner Y
-    expose Integer endX;        // End corner X (current mouse)
-    expose Integer endY;        // End corner Y
-    expose Integer filled;      // 1 = filled, 0 = outline
+class RectangleTool implements Tool {
+    hide Integer drawing;
+    hide Integer startX;
+    hide Integer startY;
+    hide Integer endX;
+    hide Integer endY;
 
     expose func init() {
         drawing = 0;
@@ -38,30 +42,16 @@ class RectangleTool {
         startY = 0;
         endX = 0;
         endY = 0;
-        filled = 1;  // Default to filled
     }
 
-    expose func getName() -> String {
-        return "Rectangle";
-    }
+    expose func id() -> Integer { return config.TOOL_RECTANGLE; }
+    expose func name() -> String { return "Rectangle"; }
+    expose func icon() -> String { return "R"; }
+    expose func isFreehand() -> Integer { return 0; }
+    expose func isDrawing() -> Integer { return drawing; }
+    expose func snapshotsBeforePress() -> Integer { return 1; }
 
-    expose func getIcon() -> String {
-        return "R";
-    }
-
-    expose func getShortcut() -> Integer {
-        return config.KEY_R;
-    }
-
-    expose func toggleFilled() {
-        if filled == 1 {
-            filled = 0;
-        } else {
-            filled = 1;
-        }
-    }
-
-    expose func onMouseDown(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager) {
+    expose func onPress(x: Integer, y: Integer, ctx: ToolContext) {
         drawing = 1;
         startX = x;
         startY = y;
@@ -69,16 +59,15 @@ class RectangleTool {
         endY = y;
     }
 
-    expose func onMouseMove(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager) {
+    expose func onDrag(x: Integer, y: Integer, ctx: ToolContext) {
         if drawing == 1 {
             endX = x;
             endY = y;
         }
     }
 
-    expose func onMouseUp(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager) {
+    expose func onRelease(x: Integer, y: Integer, ctx: ToolContext) {
         if drawing == 1 {
-            // Calculate normalized rectangle
             var x1 = startX;
             var y1 = startY;
             var x2 = x;
@@ -96,21 +85,16 @@ class RectangleTool {
             var w = x2 - x1 + 1;
             var h = y2 - y1 + 1;
 
-            if filled == 1 {
-                canvas.drawRectFill(x1, y1, w, h, colors.foreground);
+            if ctx.shapeFilled == 1 {
+                ctx.dc.drawRectFill(x1, y1, w, h, ctx.colors.foreground);
             } else {
-                canvas.drawRect(x1, y1, w, h, colors.foreground);
+                ctx.dc.drawRect(x1, y1, w, h, ctx.colors.foreground);
             }
             drawing = 0;
         }
     }
 
-    expose func isDrawing() -> Integer {
-        return drawing;
-    }
-
-    // Draw preview on screen canvas
-    expose func drawPreview(gfx: Canvas, offsetX: Integer, offsetY: Integer, color: Integer) {
+    expose func drawPreview(gfx: Canvas, view: CanvasViewport, ctx: ToolContext) {
         if drawing == 1 {
             var x1 = startX;
             var y1 = startY;
@@ -126,11 +110,10 @@ class RectangleTool {
                 y1 = y2;
                 y2 = tmp;
             }
-            var w = x2 - x1 + 1;
-            var h = y2 - y1 + 1;
-
-            // Draw rectangle outline as preview
-            gfx.Frame(offsetX + x1, offsetY + y1, w, h, color);
+            gfx.Frame(view.canvasToScreenX(x1), view.canvasToScreenY(y1),
+                      view.canvasSizeToScreen(x2 - x1 + 1),
+                      view.canvasSizeToScreen(y2 - y1 + 1),
+                      ctx.colors.foreground);
         }
     }
 }

@@ -1,0 +1,131 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/apps/paint/tools/select.zia
+// Purpose: Rectangular marquee selection tool. Drag to define the selection;
+//          the marquee is drawn with animated marching ants. Copy/cut/paste/
+//          delete are driven from the app keyboard handlers against the
+//          shared Selection model.
+// Key invariants:
+//   - Writes the normalized selection into ctx.selection on release.
+//   - Selecting does not edit pixels (snapshotsBeforePress == 0).
+// Ownership/Lifetime:
+//   - Holds the in-progress drag rect + the marching-ants phase.
+// Links: tool.zia, ../selection.zia, app.zia (copy/cut/paste/delete)
+//
+//===----------------------------------------------------------------------===//
+
+// select.zia - Rectangular marquee selection tool for Viper Paint
+module select;
+
+bind Viper.Graphics;
+
+bind "../config";
+bind "../canvas";
+bind "../colors";
+bind "../viewport";
+bind "../selection";
+bind "./tool";
+
+/// @brief Rectangular marquee with marching-ants overlay.
+class SelectTool implements Tool {
+    hide Integer drawing;
+    hide Integer startX;
+    hide Integer startY;
+    hide Integer endX;
+    hide Integer endY;
+    hide Integer antPhase;
+
+    expose func init() {
+        drawing = 0;
+        startX = 0;
+        startY = 0;
+        endX = 0;
+        endY = 0;
+        antPhase = 0;
+    }
+
+    expose func id() -> Integer { return config.TOOL_SELECT; }
+    expose func name() -> String { return "Select"; }
+    expose func icon() -> String { return "S"; }
+    expose func isFreehand() -> Integer { return 0; }
+    expose func isDrawing() -> Integer { return drawing; }
+    expose func snapshotsBeforePress() -> Integer { return 0; }
+
+    expose func onPress(x: Integer, y: Integer, ctx: ToolContext) {
+        drawing = 1;
+        startX = x;
+        startY = y;
+        endX = x;
+        endY = y;
+    }
+
+    expose func onDrag(x: Integer, y: Integer, ctx: ToolContext) {
+        if drawing == 1 {
+            endX = x;
+            endY = y;
+        }
+    }
+
+    expose func onRelease(x: Integer, y: Integer, ctx: ToolContext) {
+        if drawing == 1 {
+            ctx.selection.setCorners(startX, startY, x, y);
+            drawing = 0;
+        }
+    }
+
+    expose func drawPreview(gfx: Canvas, view: CanvasViewport, ctx: ToolContext) {
+        antPhase = antPhase + 1;
+        if drawing == 1 {
+            drawAnts(gfx, view, startX, startY, endX, endY);
+        } else if ctx.selection.active == 1 {
+            drawAnts(gfx, view,
+                     ctx.selection.x, ctx.selection.y,
+                     ctx.selection.x + ctx.selection.w - 1,
+                     ctx.selection.y + ctx.selection.h - 1);
+        }
+    }
+
+    hide func drawAnts(gfx: Canvas, view: CanvasViewport, ax: Integer, ay: Integer, bx: Integer, by: Integer) {
+        var x1 = ax;
+        var y1 = ay;
+        var x2 = bx;
+        var y2 = by;
+        if x2 < x1 { var tx = x1; x1 = x2; x2 = tx; }
+        if y2 < y1 { var ty = y1; y1 = y2; y2 = ty; }
+        var sx = view.canvasToScreenX(x1);
+        var sy = view.canvasToScreenY(y1);
+        var sw = view.canvasSizeToScreen(x2 - x1 + 1);
+        var sh = view.canvasSizeToScreen(y2 - y1 + 1);
+        drawDashed(gfx, sx, sy, sw, sh, antPhase);
+    }
+
+    hide func drawDashed(gfx: Canvas, x: Integer, y: Integer, w: Integer, h: Integer, phase: Integer) {
+        var dash = 4;
+        var px = 0;
+        while px < w {
+            var c = dashColor(px + phase, dash);
+            gfx.Plot(x + px, y, c);
+            gfx.Plot(x + px, y + h - 1, c);
+            px = px + 1;
+        }
+        var py = 0;
+        while py < h {
+            var c = dashColor(py + phase, dash);
+            gfx.Plot(x, y + py, c);
+            gfx.Plot(x + w - 1, y + py, c);
+            py = py + 1;
+        }
+    }
+
+    hide func dashColor(pos: Integer, dash: Integer) -> Integer {
+        if (pos / dash) % 2 == 0 {
+            return 0xFFFFFF;
+        }
+        return 0x000000;
+    }
+}

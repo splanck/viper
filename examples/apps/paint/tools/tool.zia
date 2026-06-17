@@ -1,0 +1,115 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/apps/paint/tools/tool.zia
+// Purpose: Defines the uniform Tool interface every paint tool implements
+//          and the ToolContext that bundles the shared dependencies handed
+//          to each tool callback (document canvas, colors, brush settings,
+//          selection, clipboard).
+// Key invariants:
+//   - Every tool routes its work through a ToolContext rather than a long
+//     bespoke parameter list, so the registry can dispatch them uniformly.
+//   - ToolContext reference fields are attached once at app startup before
+//     any tool callback runs; they are never observed null at draw time.
+// Ownership/Lifetime:
+//   - ToolContext does not own its referenced subsystems; PaintApp owns
+//     them and lends them through attach().
+// Links: registry.zia, app.zia, ../canvas.zia, ../selection.zia
+//
+//===----------------------------------------------------------------------===//
+
+// tool.zia - Shared tool interface + context for Viper Paint
+module tool;
+
+bind Viper.Graphics;
+
+bind "../canvas";
+bind "../colors";
+bind "../brush";
+bind "../viewport";
+bind "../selection";
+bind "../clipboard";
+bind "../history";
+
+/// @brief Shared dependencies handed to every tool callback.
+/// @invariant Reference fields are attached before first use (never null at draw time).
+/// @ownership Borrows all subsystems from PaintApp; owns nothing.
+class ToolContext {
+    expose DrawingCanvas dc;          // Document pixel buffer / layer stack
+    expose ColorManager colors;       // Foreground / background / palette
+    expose BrushSettings brushSettings; // Size / opacity / shape
+    expose Selection selection;       // Active marquee selection
+    expose PaintClipboard clipboard;  // Pixel clipboard for copy/paste
+    expose HistoryManager history;    // Undo/redo snapshots
+    expose Integer hoverX;            // Current cursor X in canvas space (live)
+    expose Integer hoverY;            // Current cursor Y in canvas space (live)
+    expose Integer shapeFilled;       // Shared shape fill mode (1 filled, 0 outline)
+
+    expose func init() {
+        dc = null;
+        colors = null;
+        brushSettings = null;
+        selection = null;
+        clipboard = null;
+        history = null;
+        hoverX = 0;
+        hoverY = 0;
+        shapeFilled = 1;
+    }
+
+    /// @brief Wire the live subsystem references. Called once at startup.
+    expose func attach(canvasRef: DrawingCanvas,
+                       colorsRef: ColorManager,
+                       brushRef: BrushSettings,
+                       selectionRef: Selection,
+                       clipboardRef: PaintClipboard,
+                       historyRef: HistoryManager) {
+        dc = canvasRef;
+        colors = colorsRef;
+        brushSettings = brushRef;
+        selection = selectionRef;
+        clipboard = clipboardRef;
+        history = historyRef;
+    }
+
+    /// @brief Live cursor position in canvas space (set each frame by the app).
+    expose func setHover(cx: Integer, cy: Integer) {
+        hoverX = cx;
+        hoverY = cy;
+    }
+
+    /// @brief Push an undo snapshot of the active layer (multi-click tools call
+    ///        this once, right before they commit).
+    expose func snapshot() {
+        history.snapshot(dc.getActivePixels());
+    }
+}
+
+/// @brief Uniform contract every paint tool implements.
+/// @invariant Stored in the registry's List[Tool] and dispatched dynamically.
+interface Tool {
+    /// Stable tool ID (config.TOOL_*).
+    func id() -> Integer;
+    /// Human-readable name (status bar).
+    func name() -> String;
+    /// Single-glyph icon for the tool button.
+    func icon() -> String;
+    /// 1 for continuous press/drag tools (pencil/brush/eraser/spray).
+    func isFreehand() -> Integer;
+    /// 1 while a drag/stroke is in progress.
+    func isDrawing() -> Integer;
+    /// 1 if the app should push an undo snapshot before onPress.
+    func snapshotsBeforePress() -> Integer;
+    /// Press in canvas coordinates.
+    func onPress(x: Integer, y: Integer, ctx: ToolContext);
+    /// Drag in canvas coordinates (only meaningful while drawing).
+    func onDrag(x: Integer, y: Integer, ctx: ToolContext);
+    /// Release in canvas coordinates; shape tools commit here.
+    func onRelease(x: Integer, y: Integer, ctx: ToolContext);
+    /// Draw a zoom-aware on-screen overlay (rubber-band, marquee). No-op for most.
+    func drawPreview(gfx: Canvas, view: CanvasViewport, ctx: ToolContext);
+}

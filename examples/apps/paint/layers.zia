@@ -36,17 +36,27 @@ bind Viper.Graphics;
 
 bind "./config";
 
-/// @brief One layer (name + visibility + opacity + pixel buffer).
+// Layer blend modes.
+final BLEND_NORMAL = 0;
+final BLEND_MULTIPLY = 1;
+final BLEND_SCREEN = 2;
+final BLEND_OVERLAY = 3;
+final BLEND_ADD = 4;
+final BLEND_COUNT = 5;
+
+/// @brief One layer (name + visibility + opacity + blend mode + pixels).
 class PaintLayer {
     expose String name;
     expose Integer visible;
     expose Integer opacity;
+    expose Integer blendMode;
     hide Pixels pixels;
 
     expose func init() {
         name = "Layer";
         visible = 1;
         opacity = 100;
+        blendMode = BLEND_NORMAL;
         pixels = null;
     }
 
@@ -54,6 +64,7 @@ class PaintLayer {
         name = layerName;
         visible = 1;
         opacity = 100;
+        blendMode = BLEND_NORMAL;
         pixels = Pixels.New(w, h);
         pixels.DrawBox(0, 0, w, h, fillColor);
     }
@@ -218,6 +229,145 @@ class LayerStack {
         }
     }
 
+    expose func getBlendMode(index: Integer) -> Integer {
+        if index < 0 or index >= layerList.count() {
+            return BLEND_NORMAL;
+        }
+        var layer = layerList.get(index);
+        if layer == null {
+            return BLEND_NORMAL;
+        }
+        return layer.blendMode;
+    }
+
+    expose func cycleBlendMode(index: Integer) {
+        if index < 0 or index >= layerList.count() {
+            return;
+        }
+        var layer = layerList.get(index);
+        if layer != null {
+            layer.blendMode = (layer.blendMode + 1) % BLEND_COUNT;
+            markDirty();
+        }
+    }
+
+    // Composite the active layer onto the one below it, then remove the active
+    // layer. Honors the active layer's opacity + blend mode.
+    expose func mergeActiveDown() -> Integer {
+        if activeIndex <= 0 or activeIndex >= layerList.count() {
+            return 0;
+        }
+        var top = layerList.get(activeIndex);
+        var below = layerList.get(activeIndex - 1);
+        if top == null or below == null {
+            return 0;
+        }
+        var dst = below.getPixels();
+        var src = top.getPixels();
+        var y = 0;
+        while y < height {
+            var x = 0;
+            while x < width {
+                var raw = src.Get(x, y);
+                var a = raw % 256;
+                if a > 0 {
+                    a = a * top.opacity / 100;
+                    var rgb = raw / 256;
+                    if top.blendMode != BLEND_NORMAL {
+                        rgb = applyBlend(rgb, dst.Get(x, y) / 256, top.blendMode);
+                    }
+                    dst.BlendPixel(x, y, rgb, a);
+                }
+                x = x + 1;
+            }
+            y = y + 1;
+        }
+        layerList.removeAt(activeIndex);
+        activeIndex = activeIndex - 1;
+        markDirty();
+        return 1;
+    }
+
+    // Collapse every layer down to a single layer.
+    expose func flatten() {
+        while layerList.count() > 1 {
+            activeIndex = layerList.count() - 1;
+            mergeActiveDown();
+        }
+        activeIndex = 0;
+        markDirty();
+    }
+
+    // Rotate every layer 90 degrees clockwise; swaps canvas dimensions.
+    expose func rotateAllCW() {
+        var i = 0;
+        while i < layerList.count() {
+            var layer = layerList.get(i);
+            if layer != null {
+                layer.setPixels(layer.getPixels().RotateCW());
+            }
+            i = i + 1;
+        }
+        var tmp = width;
+        width = height;
+        height = tmp;
+        markDirty();
+    }
+
+    // Rotate every layer 90 degrees counter-clockwise; swaps dimensions.
+    expose func rotateAllCCW() {
+        var i = 0;
+        while i < layerList.count() {
+            var layer = layerList.get(i);
+            if layer != null {
+                layer.setPixels(layer.getPixels().RotateCCW());
+            }
+            i = i + 1;
+        }
+        var tmp = width;
+        width = height;
+        height = tmp;
+        markDirty();
+    }
+
+    // Resize (bilinear) every layer to new dimensions.
+    expose func resizeAll(newW: Integer, newH: Integer) {
+        if newW < 1 or newH < 1 {
+            return;
+        }
+        var i = 0;
+        while i < layerList.count() {
+            var layer = layerList.get(i);
+            if layer != null {
+                layer.setPixels(layer.getPixels().Resize(newW, newH));
+            }
+            i = i + 1;
+        }
+        width = newW;
+        height = newH;
+        markDirty();
+    }
+
+    // Crop every layer to a sub-rectangle; resets canvas dimensions.
+    expose func cropAll(cx: Integer, cy: Integer, cw: Integer, ch: Integer) {
+        if cw < 1 or ch < 1 {
+            return;
+        }
+        var i = 0;
+        while i < layerList.count() {
+            var layer = layerList.get(i);
+            if layer != null {
+                var cut = Pixels.New(cw, ch);
+                cut.Copy(0, 0, layer.getPixels(), cx, cy, cw, ch);
+                layer.setPixels(cut);
+            }
+            i = i + 1;
+        }
+        width = cw;
+        height = ch;
+        markDirty();
+    }
+
     expose func renameLayer(index: Integer, name: String) {
         if index < 0 or index >= layerList.count() {
             return;
@@ -318,6 +468,7 @@ class LayerStack {
 
     hide func blendLayer(out: Pixels, layer: PaintLayer) {
         var src = layer.getPixels();
+        var mode = layer.blendMode;
         var y = 0;
         while y < height {
             var x = 0;
@@ -327,6 +478,10 @@ class LayerStack {
                 if alpha > 0 {
                     alpha = alpha * layer.opacity / 100;
                     var rgb = raw / 256;
+                    if mode != BLEND_NORMAL {
+                        var dstRaw = out.Get(x, y);
+                        rgb = applyBlend(rgb, dstRaw / 256, mode);
+                    }
                     out.BlendPixel(x, y, rgb, alpha);
                 }
                 x = x + 1;
@@ -341,4 +496,43 @@ class LayerStack {
         }
         return layerList.get(activeIndex);
     }
+}
+
+// --- blend-mode math (module-level helpers) ---------------------------------
+
+/// @brief Blend a source RGB over a destination RGB per the given mode.
+func applyBlend(src: Integer, dst: Integer, mode: Integer) -> Integer {
+    var r = blendChannel(Color.GetR(src), Color.GetR(dst), mode);
+    var g = blendChannel(Color.GetG(src), Color.GetG(dst), mode);
+    var b = blendChannel(Color.GetB(src), Color.GetB(dst), mode);
+    return Color.RGB(r, g, b);
+}
+
+/// @brief One-channel blend (0..255) for multiply/screen/overlay/add.
+func blendChannel(s: Integer, d: Integer, mode: Integer) -> Integer {
+    var r = s;
+    if mode == BLEND_MULTIPLY {
+        r = s * d / 255;
+    } else if mode == BLEND_SCREEN {
+        r = 255 - (255 - s) * (255 - d) / 255;
+    } else if mode == BLEND_OVERLAY {
+        if d < 128 {
+            r = 2 * s * d / 255;
+        } else {
+            r = 255 - 2 * (255 - s) * (255 - d) / 255;
+        }
+    } else if mode == BLEND_ADD {
+        r = s + d;
+        if r > 255 { r = 255; }
+    }
+    return r;
+}
+
+/// @brief Short label for a blend mode (for the layer panel).
+func blendModeName(mode: Integer) -> String {
+    if mode == BLEND_MULTIPLY { return "Mult"; }
+    if mode == BLEND_SCREEN { return "Scrn"; }
+    if mode == BLEND_OVERLAY { return "Ovr"; }
+    if mode == BLEND_ADD { return "Add"; }
+    return "Norm";
 }

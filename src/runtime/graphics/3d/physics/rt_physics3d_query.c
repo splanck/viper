@@ -167,9 +167,9 @@ static int query_hit_insert_sorted(rt_query_hit3d *hits, int32_t count, const rt
 ///          displaces it (bounded insertion sort), so the array always holds the K closest results.
 /// @return The new hit count.
 int query_hit_insert_sorted_bounded(rt_query_hit3d *hits,
-                                           int32_t count,
-                                           int32_t capacity,
-                                           const rt_query_hit3d *hit) {
+                                    int32_t count,
+                                    int32_t capacity,
+                                    const rt_query_hit3d *hit) {
     int32_t pos;
     rt_query_hit3d clean;
     if (!hits || !hit || capacity <= 0)
@@ -247,8 +247,8 @@ int32_t world3d_build_query_broadphase(rt_world3d *w) {
 
 /// @brief Whether a broadphase entry's AABB overlaps the query's AABB on all three axes.
 int query_entry_overlaps_bounds(const ph3d_broadphase_entry *entry,
-                                       const double *query_min,
-                                       const double *query_max) {
+                                const double *query_min,
+                                const double *query_max) {
     return entry && query_min && query_max && entry->max[0] >= query_min[0] &&
            entry->min[0] <= query_max[0] && entry->max[1] >= query_min[1] &&
            entry->min[1] <= query_max[1] && entry->max[2] >= query_min[2] &&
@@ -271,6 +271,41 @@ static void init_temp_query_body(rt_body3d *body, void *collider, const double *
         vec3_copy(body->position, position);
         ph3d_vec3_sanitize_state(body->position);
     }
+}
+
+/// @brief Borrow the world's reusable sphere collider, creating it on first use.
+/// @details Query bodies only need a collider long enough for one query operation. Reusing one
+///          world-owned sphere collider removes per-query heap churn while preserving the existing
+///          narrow-phase API that expects a Collider3D handle.
+/// @param w World that owns the scratch collider.
+/// @param radius Sanitized sphere radius for this query.
+/// @return Collider3D sphere handle, or NULL on allocation failure.
+static void *world3d_query_sphere_collider(rt_world3d *w, double radius) {
+    if (!w)
+        return NULL;
+    if (!w->query_sphere_collider) {
+        w->query_sphere_collider = rt_collider3d_new_sphere(radius);
+    } else {
+        rt_collider3d_reset_sphere_raw(w->query_sphere_collider, radius);
+    }
+    return w->query_sphere_collider;
+}
+
+/// @brief Borrow the world's reusable box collider, creating it on first use.
+/// @details The collider dimensions are reset in place before every AABB overlap query, avoiding
+///          allocation/free pairs for the query shape.
+/// @param w World that owns the scratch collider.
+/// @param half Sanitized xyz half-extents.
+/// @return Collider3D box handle, or NULL on allocation failure.
+static void *world3d_query_box_collider(rt_world3d *w, const double half[3]) {
+    if (!w || !half)
+        return NULL;
+    if (!w->query_box_collider) {
+        w->query_box_collider = rt_collider3d_new_box(half[0], half[1], half[2]);
+    } else {
+        rt_collider3d_reset_box_raw(w->query_box_collider, half[0], half[1], half[2]);
+    }
+    return w->query_box_collider;
 }
 
 /// @brief Test a transient query body for overlap against a registered body.
@@ -328,12 +363,12 @@ static void sweep_sphere_fill_hit(rt_body3d *body,
     else
         vec3_negate(dir, out_hit->normal);
     query_normalize_normal(out_hit->normal, dir);
-    out_hit->point[0] =
-        query_saturate_coord(start_center[0] + dir[0] * out_hit->distance - out_hit->normal[0] * radius);
-    out_hit->point[1] =
-        query_saturate_coord(start_center[1] + dir[1] * out_hit->distance - out_hit->normal[1] * radius);
-    out_hit->point[2] =
-        query_saturate_coord(start_center[2] + dir[2] * out_hit->distance - out_hit->normal[2] * radius);
+    out_hit->point[0] = query_saturate_coord(start_center[0] + dir[0] * out_hit->distance -
+                                             out_hit->normal[0] * radius);
+    out_hit->point[1] = query_saturate_coord(start_center[1] + dir[1] * out_hit->distance -
+                                             out_hit->normal[1] * radius);
+    out_hit->point[2] = query_saturate_coord(start_center[2] + dir[2] * out_hit->distance -
+                                             out_hit->normal[2] * radius);
     query_sanitize_hit(out_hit, max_distance, dir);
 }
 
@@ -348,8 +383,7 @@ static int sweep_sphere_against_simple_body(const double *start_center,
     double t = 0.0;
     double normal[3] = {0.0, 1.0, 0.0};
     int started = 0;
-    if (!start_center || !delta || !body3d_has_collision_geometry(other) ||
-        max_distance <= 1e-12)
+    if (!start_center || !delta || !body3d_has_collision_geometry(other) || max_distance <= 1e-12)
         return 0;
     vec3_copy(dir, delta);
     if (!query_normalize_direction(dir))
@@ -519,6 +553,7 @@ static int sweep_sphere_against_body(void *sphere_collider,
 static int sweep_capsule_against_body(const double *a,
                                       const double *b,
                                       double radius,
+                                      void *sphere_collider,
                                       const double *delta,
                                       rt_body3d *other,
                                       double max_distance,
@@ -528,11 +563,7 @@ static int sweep_capsule_against_body(const double *a,
     int samples;
     int hit = 0;
     rt_query_hit3d best = {0};
-    void *sphere_collider;
-    if (!a || !b || !delta || !body3d_has_collision_geometry(other))
-        return 0;
-    sphere_collider = rt_collider3d_new_sphere(radius);
-    if (!sphere_collider)
+    if (!a || !b || !sphere_collider || !delta || !body3d_has_collision_geometry(other))
         return 0;
     vec3_sub(b, a, axis);
     axis_len = vec3_len(axis);
@@ -556,8 +587,6 @@ static int sweep_capsule_against_body(const double *a,
             hit = 1;
         }
     }
-    if (rt_obj_release_check0(sphere_collider))
-        rt_obj_free(sphere_collider);
     if (hit && out_hit)
         *out_hit = best;
     return hit;
@@ -583,7 +612,7 @@ void *rt_world3d_overlap_sphere(void *obj, void *center_obj, double radius, int6
     if (!query_read_vec3(center_obj, center))
         return NULL;
     radius = query_sanitize_distance(radius);
-    sphere_collider = rt_collider3d_new_sphere(radius);
+    sphere_collider = world3d_query_sphere_collider(w, radius);
     if (!sphere_collider)
         return NULL;
     init_temp_query_body(&query_body, sphere_collider, center);
@@ -607,8 +636,6 @@ void *rt_world3d_overlap_sphere(void *obj, void *center_obj, double radius, int6
                 hits[hit_count++] = hit;
         }
     }
-    if (rt_obj_release_check0(sphere_collider))
-        rt_obj_free(sphere_collider);
     return physics_hit_list3d_new_ex(
         hits, hit_count, total_count, total_count > (int64_t)hit_count);
 }
@@ -639,7 +666,7 @@ void *rt_world3d_overlap_aabb(void *obj, void *min_obj, void *max_obj, int64_t m
     half[2] = query_sanitize_distance(fabs(mx[2] - mn[2]) * 0.5);
     if (!ph3d_vec3_all_finite(center) || !ph3d_vec3_all_finite(half))
         return NULL;
-    box_collider = rt_collider3d_new_box(half[0], half[1], half[2]);
+    box_collider = world3d_query_box_collider(w, half);
     if (!box_collider)
         return NULL;
     init_temp_query_body(&query_body, box_collider, center);
@@ -663,8 +690,6 @@ void *rt_world3d_overlap_aabb(void *obj, void *min_obj, void *max_obj, int64_t m
                 hits[hit_count++] = hit;
         }
     }
-    if (rt_obj_release_check0(box_collider))
-        rt_obj_free(box_collider);
     return physics_hit_list3d_new_ex(
         hits, hit_count, total_count, total_count > (int64_t)hit_count);
 }
@@ -691,7 +716,7 @@ void *rt_world3d_sweep_sphere(
         return NULL;
     radius = query_sanitize_distance(radius);
     max_distance = query_cap_vector_length(delta);
-    sphere_collider = rt_collider3d_new_sphere(radius);
+    sphere_collider = world3d_query_sphere_collider(w, radius);
     if (!sphere_collider)
         return NULL;
     init_temp_query_body(&query_body, sphere_collider, center);
@@ -720,8 +745,6 @@ void *rt_world3d_sweep_sphere(
             found = 1;
         }
     }
-    if (rt_obj_release_check0(sphere_collider))
-        rt_obj_free(sphere_collider);
     return found ? physics_hit3d_new(&best_hit) : NULL;
 }
 
@@ -737,6 +760,7 @@ void *rt_world3d_sweep_capsule(
     double a[3], b[3], delta[3];
     double query_min[3], query_max[3], swept_min[3], swept_max[3];
     double max_distance;
+    void *sphere_collider;
     if (!w || !rt_g3d_is_vec3(a_obj) || !rt_g3d_is_vec3(b_obj) || !rt_g3d_is_vec3(delta_obj) ||
         !isfinite(radius) || radius < 0.0)
         return NULL;
@@ -745,6 +769,9 @@ void *rt_world3d_sweep_capsule(
         return NULL;
     radius = query_sanitize_distance(radius);
     max_distance = query_cap_vector_length(delta);
+    sphere_collider = world3d_query_sphere_collider(w, radius);
+    if (!sphere_collider)
+        return NULL;
     for (int axis = 0; axis < 3; ++axis) {
         query_min[axis] = query_saturate_coord(fmin(a[axis], b[axis]) - radius);
         query_max[axis] = query_saturate_coord(fmax(a[axis], b[axis]) + radius);
@@ -762,7 +789,8 @@ void *rt_world3d_sweep_capsule(
         }
         if (!body3d_has_collision_geometry(body) || !query_mask_matches_body(body, mask))
             continue;
-        if (!sweep_capsule_against_body(a, b, radius, delta, body, max_distance, &hit))
+        if (!sweep_capsule_against_body(
+                a, b, radius, sphere_collider, delta, body, max_distance, &hit))
             continue;
         if (!query_sanitize_hit(&hit, max_distance, delta))
             continue;

@@ -381,11 +381,12 @@ void rt_commandpalette_remove_command(void *palette, rt_string id) {
     if (rt_string_contains_nul(id))
         return;
     char *cid = rt_string_to_cstr(id);
+    if (!cid)
+        return;
     vg_commandpalette_remove_command(data->palette, cid);
-    if (cid && data->selected_command && strcmp(data->selected_command, cid) == 0)
+    if (data->selected_command && strcmp(data->selected_command, cid) == 0)
         rt_commandpalette_clear_selection(data);
-    if (cid)
-        free(cid);
+    free(cid);
 }
 
 /// @brief Remove all entries from the commandpalette.

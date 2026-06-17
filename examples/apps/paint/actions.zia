@@ -56,6 +56,21 @@ final ACT_TOOL_RECT = "tool_rect";
 final ACT_TOOL_ELLIPSE = "tool_ellipse";
 final ACT_TOOL_FILL = "tool_fill";
 final ACT_TOOL_EYEDROPPER = "tool_eyedropper";
+final ACT_TOOL_SELECT = "tool_select";
+final ACT_TOOL_GRADIENT = "tool_gradient";
+final ACT_TOOL_CURVE = "tool_curve";
+final ACT_TOOL_POLYGON = "tool_polygon";
+final ACT_TOOL_SPRAY = "tool_spray";
+final ACT_TOOL_TEXT = "tool_text";
+final ACT_COPY = "copy";
+final ACT_CUT = "cut";
+final ACT_PASTE = "paste";
+final ACT_DELETE = "delete";
+final ACT_TOGGLE_FILL = "toggle_fill";
+final ACT_TOGGLE_SHAPE = "toggle_shape";
+final ACT_MERGE_DOWN = "merge_down";
+final ACT_BLEND_CYCLE = "blend_cycle";
+final ACT_HELP = "help";
 
 /// @brief Keyboard-binding layer with semantic action-name query.
 class PaintActions {
@@ -112,6 +127,31 @@ class PaintActions {
         Action.BindKey(ACT_TOOL_FILL, config.KEY_F);
         bindKey(ACT_TOOL_EYEDROPPER, Keyboard.get_KEY_8());
         Action.BindKey(ACT_TOOL_EYEDROPPER, config.KEY_I);
+
+        // New tools (letter shortcuts).
+        bindKey(ACT_TOOL_SELECT, config.KEY_S);
+        bindKey(ACT_TOOL_GRADIENT, Keyboard.get_KEY_G());
+        bindKey(ACT_TOOL_CURVE, Keyboard.get_KEY_U());
+        bindKey(ACT_TOOL_POLYGON, config.KEY_Y);
+        bindKey(ACT_TOOL_SPRAY, Keyboard.get_KEY_A());
+        bindKey(ACT_TOOL_TEXT, Keyboard.get_KEY_T());
+
+        // Selection edit actions (used with Ctrl, except Delete).
+        bindKey(ACT_COPY, Keyboard.get_KEY_C());
+        bindKey(ACT_CUT, config.KEY_X);
+        bindKey(ACT_PASTE, Keyboard.get_KEY_V());
+        bindKey(ACT_DELETE, config.KEY_DELETE);
+
+        // Mode toggles.
+        bindKey(ACT_TOGGLE_FILL, Keyboard.get_KEY_D());
+        bindKey(ACT_TOGGLE_SHAPE, Keyboard.get_KEY_W());
+
+        // Layer ops.
+        bindKey(ACT_MERGE_DOWN, Keyboard.get_KEY_E());
+        bindKey(ACT_BLEND_CYCLE, Keyboard.get_KEY_M());
+
+        // Help overlay.
+        bindKey(ACT_HELP, Keyboard.get_KEY_H());
     }
 
     /// @brief True once when the action fires (edge-triggered).

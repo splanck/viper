@@ -1,0 +1,292 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/apps/paint/ui/color_picker.zia
+// Purpose: Modal in-canvas HSL colour picker. A saturation/lightness field +
+//          a hue bar, with a live preview swatch, hex + RGB readout, and
+//          OK/Cancel. Built on Viper.Graphics.Color HSL helpers.
+// Key invariants:
+//   - The S/L field and hue strip are rendered into cached Pixels buffers and
+//     blitted; the S/L field is rebuilt only when the hue changes.
+//   - Picker owns its HSL state; the app applies currentColor() only on OK.
+// Ownership/Lifetime:
+//   - Owned by PaintApp; positioned (centered) on open.
+// Links: ../colors.zia, app.zia (integration)
+//
+//===----------------------------------------------------------------------===//
+
+// color_picker.zia - Modal HSL colour picker for Viper Paint
+module color_picker;
+
+bind Viper.Graphics;
+bind Viper.Core.Convert as Convert;
+
+bind "../config";
+
+// Geometry constants.
+final SL_SIZE = 150;       // Saturation/Lightness field edge (px)
+final HUE_W = 20;          // Hue bar width (px)
+final PAD = 14;            // Inner padding
+final TITLE_H = 30;        // Title row height
+final FOOTER_H = 64;       // Preview + buttons area height
+
+// handleMouse result codes.
+final RESULT_NONE = 0;
+final RESULT_APPLIED = 1;
+final RESULT_CANCELLED = 2;
+
+/// @brief Modal HSL colour picker drawn directly on the Canvas.
+class ColorPicker {
+    expose Integer visible;
+    expose Integer target;     // 0 = foreground, 1 = background
+    expose Integer x;
+    expose Integer y;
+    expose Integer w;
+    expose Integer h;
+
+    hide Integer hue;          // 0..360
+    hide Integer sat;          // 0..100
+    hide Integer light;        // 0..100
+
+    hide Pixels? slSurface;    // Cached saturation/lightness field
+    hide Integer cachedHue;    // Hue the slSurface was built for
+    hide Pixels? hueStrip;     // Cached hue bar (built once)
+
+    hide Integer draggingSL;
+    hide Integer draggingHue;
+
+    expose func init() {
+        visible = 0;
+        target = 0;
+        x = 0;
+        y = 0;
+        w = PAD * 3 + SL_SIZE + HUE_W;
+        h = TITLE_H + SL_SIZE + FOOTER_H + PAD;
+        hue = 0;
+        sat = 100;
+        light = 50;
+        slSurface = null;
+        cachedHue = -1;
+        hueStrip = null;
+        draggingSL = 0;
+        draggingHue = 0;
+    }
+
+    /// @brief Open the picker centered in the window, seeded from a colour.
+    expose func open(forBackground: Integer, color: Integer, screenW: Integer, screenH: Integer) {
+        target = forBackground;
+        hue = Color.GetH(color);
+        sat = Color.GetS(color);
+        light = Color.GetL(color);
+        x = (screenW - w) / 2;
+        y = (screenH - h) / 2;
+        if y < 10 { y = 10; }
+        visible = 1;
+        draggingSL = 0;
+        draggingHue = 0;
+    }
+
+    expose func close() {
+        visible = 0;
+        draggingSL = 0;
+        draggingHue = 0;
+    }
+
+    /// @brief Current colour built from the HSL state.
+    expose func currentColor() -> Integer {
+        return Color.FromHSL(hue, sat, light);
+    }
+
+    // --- sub-rectangle helpers -------------------------------------------------
+    hide func slX() -> Integer { return x + PAD; }
+    hide func slY() -> Integer { return y + TITLE_H; }
+    hide func hueX() -> Integer { return x + PAD + SL_SIZE + PAD; }
+    hide func hueY() -> Integer { return y + TITLE_H; }
+    hide func okX() -> Integer { return x + w - PAD - 70; }
+    hide func cancelX() -> Integer { return x + w - PAD - 150; }
+    hide func buttonsY() -> Integer { return y + TITLE_H + SL_SIZE + 28; }
+
+    /// @brief Handle mouse; returns RESULT_NONE/APPLIED/CANCELLED.
+    expose func handleMouse(mx: Integer, my: Integer, down: Integer, lastDown: Integer) -> Integer {
+        if visible == 0 {
+            return RESULT_NONE;
+        }
+
+        var pressed = 0;
+        if down == 1 and lastDown == 0 {
+            pressed = 1;
+        }
+        var released = 0;
+        if down == 0 and lastDown == 1 {
+            released = 1;
+        }
+
+        // Buttons (on press).
+        if pressed == 1 {
+            var by = buttonsY();
+            if my >= by and my < by + 24 {
+                if mx >= okX() and mx < okX() + 70 {
+                    return RESULT_APPLIED;
+                }
+                if mx >= cancelX() and mx < cancelX() + 70 {
+                    close();
+                    return RESULT_CANCELLED;
+                }
+            }
+            // Clicking fully outside the panel cancels.
+            if mx < x or mx >= x + w or my < y or my >= y + h {
+                close();
+                return RESULT_CANCELLED;
+            }
+        }
+
+        // Begin drags on press inside the respective regions.
+        if pressed == 1 {
+            if inSL(mx, my) == 1 {
+                draggingSL = 1;
+            } else if inHue(mx, my) == 1 {
+                draggingHue = 1;
+            }
+        }
+        if released == 1 {
+            draggingSL = 0;
+            draggingHue = 0;
+        }
+
+        if down == 1 and draggingSL == 1 {
+            updateSL(mx, my);
+        }
+        if down == 1 and draggingHue == 1 {
+            updateHue(my);
+        }
+        return RESULT_NONE;
+    }
+
+    hide func inSL(mx: Integer, my: Integer) -> Integer {
+        if mx >= slX() and mx < slX() + SL_SIZE and my >= slY() and my < slY() + SL_SIZE {
+            return 1;
+        }
+        return 0;
+    }
+
+    hide func inHue(mx: Integer, my: Integer) -> Integer {
+        if mx >= hueX() and mx < hueX() + HUE_W and my >= hueY() and my < hueY() + SL_SIZE {
+            return 1;
+        }
+        return 0;
+    }
+
+    hide func updateSL(mx: Integer, my: Integer) {
+        var sx = mx - slX();
+        var sy = my - slY();
+        if sx < 0 { sx = 0; }
+        if sx > SL_SIZE - 1 { sx = SL_SIZE - 1; }
+        if sy < 0 { sy = 0; }
+        if sy > SL_SIZE - 1 { sy = SL_SIZE - 1; }
+        sat = sx * 100 / (SL_SIZE - 1);
+        light = 100 - (sy * 100 / (SL_SIZE - 1));
+    }
+
+    hide func updateHue(my: Integer) {
+        var hy = my - hueY();
+        if hy < 0 { hy = 0; }
+        if hy > SL_SIZE - 1 { hy = SL_SIZE - 1; }
+        hue = hy * 360 / (SL_SIZE - 1);
+    }
+
+    hide func rebuildSL() {
+        var surf = Pixels.New(SL_SIZE, SL_SIZE);
+        var yy = 0;
+        while yy < SL_SIZE {
+            var l = 100 - (yy * 100 / (SL_SIZE - 1));
+            var xx = 0;
+            while xx < SL_SIZE {
+                var s = xx * 100 / (SL_SIZE - 1);
+                surf.SetRGB(xx, yy, Color.FromHSL(hue, s, l));
+                xx = xx + 1;
+            }
+            yy = yy + 1;
+        }
+        slSurface = surf;
+        cachedHue = hue;
+    }
+
+    hide func rebuildHue() {
+        var surf = Pixels.New(HUE_W, SL_SIZE);
+        var yy = 0;
+        while yy < SL_SIZE {
+            var hh = yy * 360 / (SL_SIZE - 1);
+            var xx = 0;
+            while xx < HUE_W {
+                surf.SetRGB(xx, yy, Color.FromHSL(hh, 100, 50));
+                xx = xx + 1;
+            }
+            yy = yy + 1;
+        }
+        hueStrip = surf;
+    }
+
+    expose func draw(gfx: Canvas, screenW: Integer, screenH: Integer) {
+        if visible == 0 {
+            return;
+        }
+
+        // Dim backdrop for modality.
+        gfx.Box(0, 0, screenW, screenH, 0x101015);
+
+        // Panel + drop shadow.
+        gfx.Box(x + 4, y + 5, w, h, 0x05050A);
+        gfx.RoundBox(x, y, w, h, 8, config.UI_BG_PANEL);
+        gfx.RoundFrame(x, y, w, h, 8, config.UI_ACCENT);
+
+        var title = "Foreground Colour";
+        if target == 1 {
+            title = "Background Colour";
+        }
+        gfx.Text(x + PAD, y + 10, title, config.UI_TEXT);
+
+        // Saturation/lightness field (rebuild only on hue change).
+        if slSurface == null or cachedHue != hue {
+            rebuildSL();
+        }
+        gfx.Blit(slX(), slY(), slSurface!);
+        gfx.Frame(slX() - 1, slY() - 1, SL_SIZE + 2, SL_SIZE + 2, config.UI_BORDER);
+
+        // S/L cursor crosshair.
+        var cxp = slX() + sat * (SL_SIZE - 1) / 100;
+        var cyp = slY() + (100 - light) * (SL_SIZE - 1) / 100;
+        gfx.Ring(cxp, cyp, 5, 0x000000);
+        gfx.Ring(cxp, cyp, 4, 0xFFFFFF);
+
+        // Hue bar (built once).
+        if hueStrip == null {
+            rebuildHue();
+        }
+        gfx.Blit(hueX(), hueY(), hueStrip!);
+        gfx.Frame(hueX() - 1, hueY() - 1, HUE_W + 2, SL_SIZE + 2, config.UI_BORDER);
+        var hcy = hueY() + hue * (SL_SIZE - 1) / 360;
+        gfx.Frame(hueX() - 2, hcy - 2, HUE_W + 4, 4, 0xFFFFFF);
+
+        // Preview swatch + hex + RGB.
+        var col = currentColor();
+        var pvY = y + TITLE_H + SL_SIZE + 8;
+        gfx.Box(x + PAD, pvY, 36, 24, col);
+        gfx.Frame(x + PAD, pvY, 36, 24, config.UI_BORDER);
+        gfx.Text(x + PAD + 46, pvY + 2, Color.ToHex(col), config.UI_TEXT);
+        var rgb = "R" + Color.GetR(col) + " G" + Color.GetG(col) + " B" + Color.GetB(col);
+        gfx.Text(x + PAD + 46, pvY + 12, rgb, config.UI_TEXT_DIM);
+
+        // OK / Cancel buttons.
+        var by = buttonsY();
+        gfx.RoundBox(cancelX(), by, 70, 24, 4, config.UI_BG_BUTTON);
+        gfx.RoundFrame(cancelX(), by, 70, 24, 4, config.UI_BORDER);
+        gfx.Text(cancelX() + 16, by + 8, "Cancel", config.UI_TEXT);
+        gfx.RoundBox(okX(), by, 70, 24, 4, config.UI_ACCENT);
+        gfx.RoundFrame(okX(), by, 70, 24, 4, config.UI_BORDER);
+        gfx.Text(okX() + 28, by + 8, "OK", config.UI_TEXT);
+    }
+}

@@ -205,6 +205,8 @@ struct rt_world3d {
     int32_t query_broadphase_count;
     uint64_t query_broadphase_signature;
     int8_t query_broadphase_valid;
+    void *query_sphere_collider;
+    void *query_box_collider;
     int64_t broadphase_fallback_count;
     int32_t last_ccd_requested_substeps;
     int32_t last_ccd_substeps;

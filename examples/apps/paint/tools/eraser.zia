@@ -1,32 +1,42 @@
-// ============================================================================
-// MODULE: eraser (EraserTool)
-// PURPOSE: Same stamp+interpolate machinery as BrushTool, but the
-//          colour is always `canvas.backgroundColor` and writes are
-//          opaque (setPixel, not setPixelBlend). The result is a
-//          destructive "erase to background" behaviour.
+//===----------------------------------------------------------------------===//
 //
-// KEY-DESIGN-CHOICES:
-//   * DESTRUCTIVE OPAQUE WRITES. Erasing is NOT a transparency op —
-//     the strokes literally overwrite the canvas with the background
-//     colour. A "true" alpha eraser would require layers with
-//     transparent channels, which the MVP doesn't model.
-//   * FAST PATH FOR ROUND BRUSH. Same optimisation as BrushTool —
-//     defer to canvas.drawThickLine for round-brush strokes.
-// ============================================================================
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/apps/paint/tools/eraser.zia
+// Purpose: Eraser tool. Same stamp+interpolate machinery as the brush, but it
+//          ERASES: on a normal layer it writes transparency (revealing layers
+//          below + the checkerboard); on the opaque base layer it paints the
+//          background colour. Routed through DrawingCanvas.erasePixel.
+// Key invariants:
+//   - True-alpha behaviour: normal layers become transparent, not bg-coloured.
+//   - Per-pixel stamping (no thick-line fast path) because transparency cannot
+//     be written by the runtime's opaque thick-line primitive.
+// Ownership/Lifetime:
+//   - Stateless except for in-progress stroke endpoints.
+// Links: tool.zia, ../canvas.zia (erasePixel), ../brush.zia
+//
+//===----------------------------------------------------------------------===//
 
-// eraser.viper - Eraser tool for Viper Paint
+// eraser.zia - Eraser tool for Viper Paint
 module eraser;
+
+bind Viper.Graphics;
 
 bind "../config";
 bind "../canvas";
 bind "../colors";
 bind "../brush";
+bind "../viewport";
+bind "./tool";
 
-/// @brief Opaque eraser — paints over canvas with background colour.
-class EraserTool {
-    hide Integer drawing;       // 1 if currently drawing
-    hide Integer lastX;         // Last mouse X
-    hide Integer lastY;         // Last mouse Y
+/// @brief True-alpha eraser — transparent on normal layers, bg on the base.
+class EraserTool implements Tool {
+    hide Integer drawing;
+    hide Integer lastX;
+    hide Integer lastY;
 
     expose func init() {
         drawing = 0;
@@ -34,51 +44,45 @@ class EraserTool {
         lastY = 0;
     }
 
-    expose func getName() -> String {
-        return "Eraser";
-    }
+    expose func id() -> Integer { return config.TOOL_ERASER; }
+    expose func name() -> String { return "Eraser"; }
+    expose func icon() -> String { return "E"; }
+    expose func isFreehand() -> Integer { return 1; }
+    expose func isDrawing() -> Integer { return drawing; }
+    expose func snapshotsBeforePress() -> Integer { return 1; }
 
-    expose func getIcon() -> String {
-        return "E";
-    }
-
-    expose func getShortcut() -> Integer {
-        return config.KEY_E;
-    }
-
-    expose func onMouseDown(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager, brushSettings: BrushSettings) {
+    expose func onPress(x: Integer, y: Integer, ctx: ToolContext) {
         drawing = 1;
         lastX = x;
         lastY = y;
-        drawEraserStamp(x, y, canvas, colors, brushSettings);
+        eraseStamp(x, y, ctx.dc, ctx.brushSettings);
     }
 
-    expose func onMouseMove(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager, brushSettings: BrushSettings) {
+    expose func onDrag(x: Integer, y: Integer, ctx: ToolContext) {
         if drawing == 1 {
-            drawEraserLine(lastX, lastY, x, y, canvas, colors, brushSettings);
+            eraseLine(lastX, lastY, x, y, ctx.dc, ctx.brushSettings);
             lastX = x;
             lastY = y;
         }
     }
 
-    expose func onMouseUp(x: Integer, y: Integer, canvas: DrawingCanvas, colors: ColorManager, brushSettings: BrushSettings) {
+    expose func onRelease(x: Integer, y: Integer, ctx: ToolContext) {
         if drawing == 1 {
-            drawEraserLine(lastX, lastY, x, y, canvas, colors, brushSettings);
+            eraseLine(lastX, lastY, x, y, ctx.dc, ctx.brushSettings);
             lastX = x;
             lastY = y;
         }
         drawing = 0;
     }
 
-    expose func isDrawing() -> Integer {
-        return drawing;
+    expose func drawPreview(gfx: Canvas, view: CanvasViewport, ctx: ToolContext) {
+        // Freehand tool: cursor preview is drawn by the chrome.
     }
 
-    // Draw eraser stamp (uses background color)
-    hide func drawEraserStamp(cx: Integer, cy: Integer, canvas: DrawingCanvas, colors: ColorManager, brushSettings: BrushSettings) {
+    // Erase a single brush-shaped stamp at (cx, cy).
+    hide func eraseStamp(cx: Integer, cy: Integer, canvas: DrawingCanvas, brushSettings: BrushSettings) {
         var size = brushSettings.size;
         var half = size / 2;
-        var color = canvas.backgroundColor;  // Erase to canvas background
         var shape = brushSettings.shape;
 
         var dy = 0 - half;
@@ -94,7 +98,7 @@ class EraserTool {
                     }
                 }
                 if inBrush == 1 {
-                    canvas.setPixel(cx + dx, cy + dy, color);
+                    canvas.erasePixel(cx + dx, cy + dy);
                 }
                 dx = dx + 1;
             }
@@ -102,13 +106,8 @@ class EraserTool {
         }
     }
 
-    // Draw eraser stamps along a line
-    hide func drawEraserLine(x1: Integer, y1: Integer, x2: Integer, y2: Integer, canvas: DrawingCanvas, colors: ColorManager, brushSettings: BrushSettings) {
-        if brushSettings.shape == brush.SHAPE_ROUND {
-            canvas.drawThickLine(x1, y1, x2, y2, brushSettings.size, canvas.backgroundColor);
-            return;
-        }
-
+    // Erase stamps interpolated along a line.
+    hide func eraseLine(x1: Integer, y1: Integer, x2: Integer, y2: Integer, canvas: DrawingCanvas, brushSettings: BrushSettings) {
         var dx = x2 - x1;
         var dy = y2 - y1;
         var deltaX = dx;
@@ -128,10 +127,10 @@ class EraserTool {
         while i <= steps {
             var px = x1 + deltaX * i / steps;
             var py = y1 + deltaY * i / steps;
-            drawEraserStamp(px, py, canvas, colors, brushSettings);
+            eraseStamp(px, py, canvas, brushSettings);
             i = i + 1;
         }
 
-        drawEraserStamp(x2, y2, canvas, colors, brushSettings);
+        eraseStamp(x2, y2, canvas, brushSettings);
     }
 }

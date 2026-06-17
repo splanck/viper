@@ -1803,6 +1803,31 @@ int64_t rt_gradient2d_sample_color(void *gradient, int64_t t_pct) {
     return rt_pixels_rgba_to_color((uint32_t)rt_gradient2d_sample(gradient, t_pct));
 }
 
+/// @brief Convert documented normalized sample positions to the internal percent scale.
+/// @details Values in [0.0, 1.0] are normalized positions. Values above 1.0 are
+///          treated as legacy percent inputs so old `50` callers keep sampling
+///          the midpoint after the public binding moves to Number.
+static int64_t gradient2d_position_to_percent(double t) {
+    if (t != t)
+        return 0;
+    double pct = (t >= 0.0 && t <= 1.0) ? t * 100.0 : t;
+    if (pct <= 0.0)
+        return 0;
+    if (pct >= 100.0)
+        return 100;
+    return (int64_t)(pct + 0.5);
+}
+
+/// @brief Sample the gradient at a normalized position and return raw RGBA.
+int64_t rt_gradient2d_sample_normalized(void *gradient, double t) {
+    return rt_gradient2d_sample(gradient, gradient2d_position_to_percent(t));
+}
+
+/// @brief Sample the gradient at a normalized position and return a Color-compatible value.
+int64_t rt_gradient2d_sample_color_normalized(void *gradient, double t) {
+    return rt_pixels_rgba_to_color((uint32_t)rt_gradient2d_sample_normalized(gradient, t));
+}
+
 /// @brief Fill `pixels` with a left-to-right horizontal gradient.
 /// @details Maps each column X to a sample position `X * 100 / (width - 1)` and writes
 ///          the same sampled color to all rows in that column.

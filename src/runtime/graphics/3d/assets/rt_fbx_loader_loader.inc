@@ -67,6 +67,82 @@ static int fbx_ascii_grow_i32_array(int32_t **values, size_t *capacity, size_t n
     return 1;
 }
 
+/// @brief Parse one finite ASCII-FBX double with '.' decimal semantics, independent of locale.
+/// @details FBX text files are ASCII interchange data and always use `.` for fractional values.
+///          Calling `strtod` directly makes parsing depend on the process locale, so this helper
+///          accepts the numeric grammar emitted by FBX exporters and advances @p out_end to the
+///          first unconsumed byte. The optional @p limit bounds scanning to the current line.
+/// @param p First byte of the candidate number.
+/// @param limit Optional exclusive end pointer; pass NULL to scan until a non-number byte.
+/// @param out_end Receives the first unconsumed byte on success.
+/// @param out Receives the parsed finite double.
+/// @return 1 when a finite number was parsed, otherwise 0.
+static int fbx_ascii_parse_double_span(const char *p,
+                                       const char *limit,
+                                       const char **out_end,
+                                       double *out) {
+    const char *s = p;
+    double value = 0.0;
+    int sign = 1;
+    int digits = 0;
+    int frac_digits = 0;
+    int exp_sign = 1;
+    int exp_value = 0;
+    int exp_digits = 0;
+    double result;
+    if (!s || !out_end || !out)
+        return 0;
+    while ((!limit || s < limit) && isspace((unsigned char)*s))
+        s++;
+    if ((!limit || s < limit) && (*s == '+' || *s == '-')) {
+        if (*s == '-')
+            sign = -1;
+        s++;
+    }
+    while ((!limit || s < limit) && *s >= '0' && *s <= '9') {
+        value = value * 10.0 + (double)(*s - '0');
+        digits++;
+        s++;
+    }
+    if ((!limit || s < limit) && *s == '.') {
+        s++;
+        while ((!limit || s < limit) && *s >= '0' && *s <= '9') {
+            value = value * 10.0 + (double)(*s - '0');
+            digits++;
+            frac_digits++;
+            s++;
+        }
+    }
+    if (digits == 0)
+        return 0;
+    if ((!limit || s < limit) && (*s == 'e' || *s == 'E')) {
+        const char *exp_start = s;
+        s++;
+        if ((!limit || s < limit) && (*s == '+' || *s == '-')) {
+            if (*s == '-')
+                exp_sign = -1;
+            s++;
+        }
+        while ((!limit || s < limit) && *s >= '0' && *s <= '9') {
+            if (exp_digits >= 4)
+                return 0;
+            exp_value = exp_value * 10 + (*s - '0');
+            if (exp_value > 512 + frac_digits)
+                return 0;
+            exp_digits++;
+            s++;
+        }
+        if (exp_digits == 0)
+            s = exp_start;
+    }
+    result = (double)sign * value * pow(10.0, (double)(exp_sign * exp_value - frac_digits));
+    if (!isfinite(result))
+        return 0;
+    *out_end = s;
+    *out = result;
+    return 1;
+}
+
 /// @brief Locate the "a:" value payload of the ASCII-FBX array node named @p key within
 ///   @p text; NULL if the node or its payload marker is absent.
 static const char *fbx_ascii_array_payload(const char *text, const char *key) {
@@ -92,13 +168,13 @@ static int fbx_ascii_parse_double_array(const char *payload, double **out, size_
     if (!payload || !out || !out_count)
         return 0;
     while (*p && *p != '}') {
-        char *end = NULL;
+        const char *end = NULL;
+        double value;
         while (*p == ',' || isspace((unsigned char)*p))
             p++;
         if (*p == '}')
             break;
-        double value = strtod(p, &end);
-        if (end == p || !isfinite(value)) {
+        if (!fbx_ascii_parse_double_span(p, NULL, &end, &value) || end == p) {
             free(values);
             return 0;
         }
@@ -379,19 +455,16 @@ static int fbx_ascii_parse_property_vec3(const char *text,
         const char *name = strstr(p, property_name);
         if (name && (!line_end || name < line_end)) {
             const char *nums = fbx_ascii_after_commas(p, 4);
-            char *end0 = NULL;
-            char *end1 = NULL;
-            char *end2 = NULL;
+            const char *end0 = NULL;
+            const char *end1 = NULL;
+            const char *end2 = NULL;
             if (!nums || (line_end && nums > line_end))
                 return 0;
-            out[0] = strtod(nums, &end0);
-            if (!end0 || end0 == nums)
+            if (!fbx_ascii_parse_double_span(nums, line_end, &end0, &out[0]))
                 return 0;
-            out[1] = strtod(end0 + (*end0 == ','), &end1);
-            if (!end1 || end1 == end0)
+            if (!fbx_ascii_parse_double_span(end0 + (*end0 == ','), line_end, &end1, &out[1]))
                 return 0;
-            out[2] = strtod(end1 + (*end1 == ','), &end2);
-            if (!end2 || end2 == end1)
+            if (!fbx_ascii_parse_double_span(end1 + (*end1 == ','), line_end, &end2, &out[2]))
                 return 0;
             return isfinite(out[0]) && isfinite(out[1]) && isfinite(out[2]);
         }
@@ -416,11 +489,11 @@ static int fbx_ascii_parse_property_scalar(const char *text,
         const char *name = strstr(p, property_name);
         if (name && (!line_end || name < line_end)) {
             const char *num = fbx_ascii_after_commas(p, 4);
-            char *end = NULL;
+            const char *end = NULL;
             if (!num || (line_end && num > line_end))
                 return 0;
-            *out = strtod(num, &end);
-            return end && end != num && isfinite(*out);
+            return fbx_ascii_parse_double_span(num, line_end, &end, out) && end != num &&
+                   isfinite(*out);
         }
         p += 2;
     }
