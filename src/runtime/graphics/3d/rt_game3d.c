@@ -82,7 +82,6 @@
 #include "rt_vec3.h"
 
 #include <ctype.h>
-#include <errno.h>
 #include <float.h>
 #include <inttypes.h>
 #include <limits.h>
@@ -276,41 +275,75 @@ static void game3d_model_cache_notify_all(void) {
 #endif
 
 #if RT_PLATFORM_LINUX
+/// @brief Parse one hex address from a `/proc/self/maps` line.
+/// @details Keeps native-linked programs independent of `strtoumax`, which is not part of the
+///          current dynamic import surface. Overflow is detected against `uintptr_t` directly.
+/// @param cursor Input/output cursor. Advanced to the first non-hex character on success.
+/// @param out_value Parsed address.
+/// @return Non-zero when at least one hex digit was parsed without overflow.
+static int game3d_parse_linux_maps_hex_address(const char **cursor, uintptr_t *out_value) {
+    const char *p;
+    uintptr_t value = 0;
+    int saw_digit = 0;
+
+    if (!cursor || !*cursor || !out_value)
+        return 0;
+
+    p = *cursor;
+    for (;;) {
+        unsigned digit;
+        unsigned char ch = (unsigned char)*p;
+        if (ch >= (unsigned char)'0' && ch <= (unsigned char)'9') {
+            digit = (unsigned)(ch - (unsigned char)'0');
+        } else if (ch >= (unsigned char)'a' && ch <= (unsigned char)'f') {
+            digit = 10u + (unsigned)(ch - (unsigned char)'a');
+        } else if (ch >= (unsigned char)'A' && ch <= (unsigned char)'F') {
+            digit = 10u + (unsigned)(ch - (unsigned char)'A');
+        } else {
+            break;
+        }
+
+        if (value > (UINTPTR_MAX - (uintptr_t)digit) / 16u)
+            return 0;
+        value = value * 16u + (uintptr_t)digit;
+        saw_digit = 1;
+        p++;
+    }
+
+    if (!saw_digit)
+        return 0;
+    *cursor = p;
+    *out_value = value;
+    return 1;
+}
+
 /// @brief Parse one `/proc/self/maps` line and test whether it contains @p needle
 ///   inside an executable mapping.
-/// @details Linux exposes process mappings as hex address ranges followed by permission
-///          flags. This parser uses `uintmax_t`/`uintptr_t` bounds instead of assuming
-///          `unsigned long` has pointer width, making the validation independent of the
-///          C data model. On success it returns non-zero and writes the executable range
-///          into @p out_start/@p out_end so the caller can cache it for later callbacks.
+/// @details Linux exposes process mappings as hex address ranges followed by permission flags. On
+///          success it returns non-zero and writes the executable range into @p out_start/@p out_end
+///          so the caller can cache it for later callbacks.
 static int game3d_linux_maps_line_contains_executable_callback(const char *line,
                                                                uintptr_t needle,
                                                                uintptr_t *out_start,
                                                                uintptr_t *out_end) {
+    const char *cursor = line;
+    uintptr_t start;
+    uintptr_t end;
+
     if (!line)
         return 0;
 
-    errno = 0;
-    char *cursor = NULL;
-    uintmax_t parsed_start = strtoumax(line, &cursor, 16);
-    if (errno != 0 || !cursor || *cursor != '-')
+    if (!game3d_parse_linux_maps_hex_address(&cursor, &start) || *cursor != '-')
         return 0;
     cursor++;
-
-    errno = 0;
-    char *after_end = NULL;
-    uintmax_t parsed_end = strtoumax(cursor, &after_end, 16);
-    if (errno != 0 || !after_end || parsed_start > (uintmax_t)UINTPTR_MAX ||
-        parsed_end > (uintmax_t)UINTPTR_MAX || parsed_start >= parsed_end)
+    if (!game3d_parse_linux_maps_hex_address(&cursor, &end) || start >= end)
         return 0;
 
-    while (*after_end == ' ' || *after_end == '\t')
-        after_end++;
-    if (after_end[0] == '\0' || after_end[1] == '\0' || after_end[2] == '\0' || after_end[2] != 'x')
+    while (*cursor == ' ' || *cursor == '\t')
+        cursor++;
+    if (cursor[0] == '\0' || cursor[1] == '\0' || cursor[2] == '\0' || cursor[2] != 'x')
         return 0;
 
-    uintptr_t start = (uintptr_t)parsed_start;
-    uintptr_t end = (uintptr_t)parsed_end;
     if (needle < start || needle >= end)
         return 0;
     if (out_start)
